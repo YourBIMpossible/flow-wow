@@ -332,6 +332,151 @@ ns:Register("action", "craft:make", { order = 47, get = function(ctx)
              label = (hint.btn:GetText() or "Make") .. " x " .. g.recipe }
 end })
 
+-- Standing by a cooking fire, an anvil or a forge (out of combat, not on a
+-- mount), the key opens the profession you'd use there: Cooking at a fire,
+-- Blacksmithing at an anvil, Smelting at a forge (when you carry ore, or
+-- don't smith). The game doesn't say where its anvils are, so Flow learns
+-- them: each time your profession window shows a recipe's "Requires Anvil"
+-- (or Forge, or Cooking Fire) as met, the spot where you stand is kept.
+-- Until it knows the real one in a town it guesses: blacksmith trainers
+-- work by an anvil and a forge, cooking trainers by a fire.
+X.STATION_YARDS = 8     -- from a spot where the station worked
+X.TRAINER_YARDS = 15    -- from a trainer (the guess)
+local STATION_MAX = 200
+-- Ores you can smelt (Copper to Dark Iron).
+X.ORES = { 2770, 2771, 2775, 2772, 2776, 3858, 7911, 10620, 11370 }
+
+-- "Anvil", "Forge", "Cooking Fire" (what a recipe requires) -> the station.
+function X.StationKind(name)
+    name = tostring(name or ""):lower()
+    if name:find("anvil") then return "anvil" end
+    if name:find("forge") then return "forge" end
+    if name:find("fire") then return "fire" end
+end
+
+local function toolsMet(met, ...)
+    for j = 1, select("#", ...), 2 do
+        local name, has = select(j, ...)
+        local k = X.StationKind(name)
+        if k and has then met[k] = true end
+    end
+end
+-- The stations the open profession window says you're at: { anvil = true, ... }.
+function X.StationsMet()
+    local met = {}
+    if GetNumTradeSkills and GetTradeSkillTools then
+        local ok, n = pcall(GetNumTradeSkills)
+        for i = 1, (ok and n or 0) do pcall(function() toolsMet(met, GetTradeSkillTools(i)) end) end
+    end
+    local T = C_TradeSkillUI
+    if T and T.GetAllRecipeIDs and T.GetRecipeRequirements then
+        local ok, ids = pcall(T.GetAllRecipeIDs)
+        for _, id in ipairs(ok and ids or {}) do
+            local ok2, reqs = pcall(T.GetRecipeRequirements, id)
+            for _, r in ipairs(ok2 and reqs or {}) do
+                local k = X.StationKind(r.name)
+                if k and r.met then met[k] = true end
+            end
+        end
+    end
+    return met
+end
+
+-- Keeps a spot where `kind` worked (one per few yards; the oldest go first).
+function X.LearnStation(list, kind, p)
+    if not (list and kind and p and p.cont) then return nil end
+    for _, s in ipairs(list) do
+        if s.kind == kind and dist(p, s) < X.STATION_YARDS then return s end
+    end
+    local s = { kind = kind, cont = p.cont, wx = p.wx, wy = p.wy }
+    list[#list + 1] = s
+    while #list > STATION_MAX do table.remove(list, 1) end
+    return s
+end
+local learnPending = false
+local function learnStations()
+    learnPending = false
+    local p = ns.nav and ns.nav:PlayerPos()
+    if not p then return end
+    for kind in pairs(X.StationsMet()) do
+        if not (kind == "fire" and X.FireNear()) then   -- (your own campfire burns out)
+            X.LearnStation(ns.db.actions.stations, kind, p)
+        end
+    end
+end
+for _, ev in ipairs({ "TRADE_SKILL_SHOW", "TRADE_SKILL_UPDATE", "TRADE_SKILL_LIST_UPDATE" }) do
+    ns:On(ev, function()
+        if learnPending then return end
+        learnPending = true
+        if C_Timer and C_Timer.After then C_Timer.After(0.5, learnStations) else learnStations() end
+    end)
+end
+
+-- Where the blacksmith and cooking trainers stand (world spots), kept 30 s.
+local trainerCache = { t = -math.huge, anvil = {}, fire = {} }
+local function trainerSpots()
+    if GetTime() - trainerCache.t < 30 then return trainerCache end
+    local out = { t = GetTime(), anvil = {}, fire = {} }
+    for kind, prof in pairs({ anvil = "Blacksmithing", fire = "Cooking" }) do
+        for _, name in ipairs(ns.places:TrainersFor(prof)) do
+            for _, pt in ipairs(ns.places:Points(name)) do
+                local cont, wx, wy = ns.nav:ToWorld(pt.map, pt.x, pt.y)
+                if cont then out[kind][#out[kind] + 1] = { cont = cont, wx = wx, wy = wy } end
+            end
+        end
+    end
+    trainerCache = out
+    return out
+end
+
+-- Which stations you're by: { anvil = true, forge = true, fire = true }.
+-- A trainer's guess only counts where Flow hasn't learned the real one close by.
+function X.StationsNear(p, learned, trainers)
+    local near, known = {}, {}
+    if not p then return near end
+    for _, s in ipairs(learned or {}) do
+        local d = dist(p, s)
+        if d < X.STATION_YARDS then near[s.kind] = true end
+        if d < 40 then known[s.kind] = true end
+    end
+    for _, pt in ipairs(trainers and trainers.anvil or {}) do
+        if dist(p, pt) < X.TRAINER_YARDS then
+            near.anvil = near.anvil or not known.anvil
+            near.forge = near.forge or not known.forge
+        end
+    end
+    for _, pt in ipairs(trainers and trainers.fire or {}) do
+        if dist(p, pt) < X.TRAINER_YARDS then near.fire = near.fire or not known.fire end
+    end
+    return near
+end
+
+-- The profession to open at these stations, and the station: Smelting at a
+-- forge when you carry ore (or don't smith), else Blacksmithing at an anvil
+-- or forge, else Cooking at a fire. nil when you know none of them.
+function X.StationProf(near, knowsFn, hasOre)
+    local smelt = near.forge and knowsFn("Smelting")
+    local smith = (near.anvil or near.forge) and knowsFn("Blacksmithing")
+    if smelt and (hasOre or not smith) then return "Smelting", "forge" end
+    if smith then return "Blacksmithing", near.anvil and "anvil" or "forge" end
+    if near.fire and knowsFn("Cooking") then return "Cooking", "fire" end
+end
+
+local function hasOre()
+    for _, id in ipairs(X.ORES) do if count(id) > 0 then return true end end
+    return false
+end
+ns:Register("action", "craft:station", { order = 49, get = function(ctx)
+    if professionOpen() or (IsMounted and IsMounted()) then return nil end
+    if not (knows("Cooking") or knows("Blacksmithing") or knows("Smelting")) then return nil end
+    local near = X.StationsNear(ctx.p, ns.db.actions.stations, trainerSpots())
+    near.fire = near.fire or X.FireNear()
+    local prof, station = X.StationProf(near, knows, hasOre())
+    if not prof then return nil end
+    return { type = "spell", spell = prof, unit = "player", icon = spellIcon(prof),
+             label = string.format("Open %s (at the %s)", prof, station) }
+end })
+
 -- A recipe (or other item) to use from your bags: the key uses it.
 ns:Register("action", "bag:use", { order = 48, get = function(ctx)
     local g = ctx.goal
@@ -592,6 +737,7 @@ end
 
 ns:OnLoad(function(saved)
     saved.actions = saved.actions or {}
+    saved.actions.stations = saved.actions.stations or {}   -- where anvils, forges and fires worked
 end)
 
 ns.commands.action = function(arg)

@@ -1558,6 +1558,51 @@ ns:Register("test", "craft here: campfire, open, make; the arrow shows the icon"
     end
 end)
 
+ns:Register("test", "craft station: the profession button by an anvil, forge or fire", function(t)
+    local X = ns.actions
+    t:eq(X.StationKind("Anvil"), "anvil", "Anvil")
+    t:eq(X.StationKind("Forge"), "forge", "Forge")
+    t:eq(X.StationKind("Cooking Fire"), "fire", "Cooking Fire")
+    t:eq(X.StationKind("Blacksmith Hammer"), nil, "a tool isn't a station")
+    -- Learning: one spot per few yards, per station.
+    local list, here = {}, { cont = 0, wx = 1000, wy = 2000 }
+    X.LearnStation(list, "anvil", here)
+    X.LearnStation(list, "anvil", { cont = 0, wx = 1003, wy = 2000 })
+    X.LearnStation(list, "forge", here)
+    t:eq(#list, 2, "same anvil kept once, the forge beside it too")
+    -- Near: by the learned spot, not 20 yards off.
+    local near = X.StationsNear(here, list, { anvil = {}, fire = {} })
+    t:ok(near.anvil and near.forge and not near.fire, "by the anvil and forge")
+    near = X.StationsNear({ cont = 0, wx = 1020, wy = 2000 }, list, { anvil = {}, fire = {} })
+    t:ok(not near.anvil, "20 yards off: not by it")
+    -- A trainer guesses, unless the real anvil is known close by.
+    local trainers = { anvil = { { cont = 0, wx = 1025, wy = 2000 } }, fire = { { cont = 0, wx = 5000, wy = 5000 } } }
+    near = X.StationsNear({ cont = 0, wx = 1020, wy = 2000 }, list, trainers)
+    t:ok(not near.anvil, "real anvil known 20 yards away: no guess at the trainer")
+    near = X.StationsNear({ cont = 0, wx = 5005, wy = 5000 }, {}, trainers)
+    t:ok(near.fire and not near.anvil, "by a cooking trainer: a fire")
+    -- Which profession.
+    local all = function() return true end
+    local noSmith = function(sp) return sp ~= "Blacksmithing" end
+    t:eq(X.StationProf({ anvil = true, forge = true }, all, false), "Blacksmithing", "no ore: Blacksmithing")
+    t:eq(X.StationProf({ anvil = true, forge = true }, all, true), "Smelting", "ore in bags: Smelting")
+    t:eq(X.StationProf({ forge = true }, noSmith, false), "Smelting", "a miner who doesn't smith: Smelting")
+    local _, st = X.StationProf({ fire = true }, all, false)
+    t:eq(st, "fire", "Cooking at a fire")
+    t:eq(X.StationProf({ fire = true }, function() return false end, false), nil, "none known: nothing")
+    -- The action itself, at an anvil learned where you stand.
+    local p = ns.nav:PlayerPos()
+    local windowOpen = (TradeSkillFrame and TradeSkillFrame:IsShown()) or (ProfessionsFrame and ProfessionsFrame:IsShown())
+    if p and ns.api.SpellInfo("Blacksmithing") and not InCombatLockdown() and not (IsMounted and IsMounted()) and not windowOpen then
+        with(ns.db.actions, "stations", { { kind = "anvil", cont = p.cont, wx = p.wx, wy = p.wy } }, function()
+            local s = ns:Get("action", "craft:station").get(X:Context())
+            t:ok(s and (s.spell == "Blacksmithing" or s.spell == "Smelting"), "the key opens Blacksmithing (Smelting with ore by a forge)")
+        end)
+    else
+        t:ok(true, "(no Blacksmithing, mounted or no position: the action check skipped)")
+    end
+end)
+
 ns:Register("test", "actions: 'Learn Brilliant Smallfish' isn't a fishing stop", function(t)
     local P = ns.actions.GoalProf
     t:eq(P({ key = "use:6325", kind = "craft", text = "Learn Brilliant Smallfish: use the recipe in your bags" }), nil, "recipe stop")
