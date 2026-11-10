@@ -266,7 +266,7 @@ local function actionColor(s)
         if c then return { c.r, c.g, c.b } end
         return { 1, 1, 1 }
     end
-    if s.type == "interact" or s.type == "clear" or s.type == "click" then return { 0.85, 0.85, 0.85 } end
+    if s.type == "interact" or s.type == "clear" or s.type == "click" or s.type == "sit" or s.type == "wait" then return { 0.85, 0.85, 0.85 } end
     return COLORS.buff
 end
 ns.ActionColor = actionColor  -- (tests)

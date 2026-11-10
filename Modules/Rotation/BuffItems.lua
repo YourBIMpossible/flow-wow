@@ -4,6 +4,7 @@
 -- or loot stop (quest mobs, farming meat or cloth), or right after a fight,
 -- and only when that buff isn't on you already (a stone or oil: when your
 -- weapon has none). Always out of combat and not in inns or cities.
+-- Also WoW: Forever's campfires: near one without its buffs, sit (below).
 -- One press uses it (a Flow Action: Rotation/Actions.lua).
 
 local _, ns = ...
@@ -172,6 +173,17 @@ function BI.WeaponFirst(enemy, health, maxHealth)
     return not enemy and (health or 0) > 0.5 * (maxHealth or 1)
 end
 
+-- WoW: Forever's camps. Near a lit campfire (yours or another player's) you
+-- get "Campfire Nearby"; sit there for a minute ("Welcoming Campfire" counts
+-- it down) and the camp's buffs land as "Camp Benefits". So: near a fire
+-- without the buffs, sit; while the minute runs, wait (a press would stand
+-- you up). nearby, benefits, timer: are those auras on you.
+local CAMP_NEARBY, CAMP_BENEFITS, CAMP_TIMER = "Campfire Nearby", "Camp Benefits", "Welcoming Campfire"
+function BI.CampStep(nearby, benefits, timer)
+    if not nearby or benefits then return nil end
+    return timer and "wait" or "sit"
+end
+
 local function enemyTargeted()
     return UnitExists("target") and UnitCanAttack("player", "target") and not UnitIsDead("target") or false
 end
@@ -194,4 +206,20 @@ ns:Register("action", "buff:item", { order = 2.5, get = function(ctx)
              reason = weapon and "You're killing here and your weapon has no stone or oil on it"
                  or food and "You're killing here and you aren't Well Fed"
                  or "You're killing here and that buff isn't on" }
+end })
+
+-- Sit by a campfire for its buffs (after the buff items: eating sits you
+-- down too, and an elixir would stand you up). The key is bound to the
+-- game's Sit/Stand while it's the step.
+ns:Register("action", "buff:camp", { order = 2.6, get = function(ctx)
+    if UnitIsDeadOrGhost("player") or UnitAffectingCombat("player") then return nil end
+    if (ctx and ctx.fishing) or (IsMounted and IsMounted()) then return nil end
+    local step = BI.CampStep(A.Buff("player", CAMP_NEARBY), A.Buff("player", CAMP_BENEFITS), A.Buff("player", CAMP_TIMER))
+    if not step then return nil end
+    if step == "wait" then
+        return { type = "wait", icon = "Interface\\Icons\\Spell_Fire_Fire", label = "Stay sitting: the camp buffs come after a minute",
+                 reason = "You're by a campfire and its minute is counting down" }
+    end
+    return { type = "sit", icon = "Interface\\Icons\\Spell_Fire_Fire", label = "Sit by the campfire (1 min) for the camp buffs",
+             reason = "You're by a campfire and don't have its buffs" }
 end })

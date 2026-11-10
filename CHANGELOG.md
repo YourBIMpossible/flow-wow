@@ -11,6 +11,10 @@
   under half health. Same moment, if you aren't Well Fed and carry food that says it makes you
   Well Fed, the Flow key eats it, after elixirs and the stone (you sit for ten seconds). Plain
   food is left alone.
+- **Campfire buffs.** Near a lit campfire (yours or another player's, "Campfire Nearby") without
+  its camp buffs, Flow's key sits you down; it shows "Stay sitting" while the minute runs (a
+  press does nothing, so it never stands you up), then goes once the buffs are on. Not in combat,
+  mounted or fishing.
 
 ## 0.35.106
 - **New quests are accepted for you.** Talk to a quest giver and Flow turns in your finished

@@ -45,7 +45,8 @@ C._helpful = helpful
 
 -- What the key itself is bound to instead of Flow's button: nil (the
 -- button), "INTERACTTARGET" (reel in the bobber, mine the vein, loot your
--- kill) or "STARTATTACK" (the game's Start Attack: auto attack on, never off).
+-- kill), "SITORSTAND" (sit by a campfire) or "STARTATTACK" (the game's Start
+-- Attack: auto attack on, never off).
 local keyCommand = nil
 
 function C.IsAttack(spell) return spell == "Attack" or spell == "Auto Attack" end
@@ -69,6 +70,7 @@ end
 function C.KeyCommandFor(s, canStartAttack)
     if not s then return nil end
     if s.type == "interact" then return "INTERACTTARGET" end
+    if s.type == "sit" then return "SITORSTAND" end
     if C.IsAttack(s.spell) and canStartAttack then return "STARTATTACK" end
     return nil
 end
@@ -86,6 +88,8 @@ local function describe(s)
     if not s then return "" end
     if s.type == "item" then return "/use " .. tostring(s.item) .. (s.targetSlot and (" on slot " .. s.targetSlot) or "") end
     if s.type == "interact" then return "Interact" end
+    if s.type == "sit" then return "Sit" end
+    if s.type == "wait" then return "Wait" end
     if s.type == "clear" then return "/cleartarget" end
     if s.type == "click" then return "/click " .. tostring(s.label) end
     return macroFor(s)
@@ -480,9 +484,9 @@ end)
 ns:On("PLAYER_REGEN_DISABLED", function()
     if btn and not btn:IsShown() then btn:Show() end  -- key must work all fight
     setHeal()   -- Shift + key: your heal, all fight
-    -- The key goes back to Flow's button for the fight (not Interact). This
+    -- The key goes back to Flow's button for the fight (not Interact or Sit). This
     -- event comes just before the lockdown, so changes are still allowed.
-    if keyCommand == "INTERACTTARGET" then C:SetKeyCommand(nil) end
+    if keyCommand == "INTERACTTARGET" or keyCommand == "SITORSTAND" then C:SetKeyCommand(nil) end
     local helper = assistantSpell()
     if helper then
         setAction({ spell = helper })
