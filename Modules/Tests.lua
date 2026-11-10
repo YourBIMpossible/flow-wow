@@ -1847,6 +1847,19 @@ ns:Register("test", "minimap dot: on the stop, in the arrow's colour", function(
     t:eq(P.hereColor, nil, "hidden: colour cleared")
 end)
 
+ns:Register("test", "height probe: gap and floors", function(t)
+    local H = ns.heightProbe
+    t:eq(H.Gap(5, 3), 4, "5 yd away, 3 yd flat: 4 yd up or down")
+    t:eq(H.Gap(3, 3), nil, "no gap when the distances match")
+    t:eq(H.Gap(nil, 3), nil, "no game distance: no gap")
+    local floors = { { mapID = 10, relativeHeightIndex = 0 }, { mapID = 11, relativeHeightIndex = 1 } }
+    t:eq(H.FloorStep(floors, 10, 11), 1, "one floor up")
+    t:eq(H.FloorStep(floors, 11, 10), -1, "one floor down")
+    t:eq(H.FloorStep(floors, 10, 99), nil, "not a floor of this place")
+    local ok, lines = pcall(H.Lines)
+    t:ok(ok and type(lines) == "table" and #lines >= 4, "the report builds: " .. tostring(ok or lines))
+end)
+
 ns:Register("test", "copy window: plain text and web addresses", function(t)
     local C = ns.copyBox
     t:eq(C.Plain("|cff66ccffFlow|r: hi"), "Flow: hi", "colour codes gone")

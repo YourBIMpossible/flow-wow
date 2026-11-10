@@ -457,6 +457,10 @@ end)
 local function apiReport(arg)
     ns.db.api = ns.db.api or {}
     local a, b = (arg or ""):match("^(%S*)%s*(%S*)")
+    if a == "height" then
+        if ns.heightProbe then ns.heightProbe:Run(b) else ns:Print("height probe not loaded: restart the game") end
+        return
+    end
     if a == "combatlog" and (b == "on" or b == "off" or b == "auto") then
         if b == "auto" then ns.db.api.combatLog = nil else ns.db.api.combatLog = (b == "on") end
         ns:Print("combat log use set to " .. b .. ". /reload to apply.")
@@ -505,7 +509,7 @@ local function apiReport(arg)
     print("  position: " .. (okP and (shown(y) .. ", " .. shown(x) .. ", height " .. shown(z)) or "not available")
         .. ", indoors: " .. tostring(IsIndoors and IsIndoors()))
     if UnitExists("target") then print("  target health: " .. shown(UnitHealth("target"))) end
-    print("  /flow api combatlog on|off|auto")
+    print("  /flow api combatlog on|off|auto   /flow api height [pin|watch]")
 end
 
 -- /flow slash command; modules can add subcommands to ns.commands.
