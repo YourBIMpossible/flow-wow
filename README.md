@@ -14,7 +14,8 @@ Flow for WoW is a separate project from Flow Engine.
 ### Combat
 - **Rotation helper**: an icon shows the spell to press next, and the matching action bar or
   stance bar button glows. The border colour says why: green attack, light blue buff, gold heal,
-  fast gold pulse heal now. A big cooldown timer sits on the icon; the next three spells are
+  fast gold pulse heal now. A big cooldown timer sits on the icon (and, when it suggests
+  re-casting a buff, the buff's last 30 seconds in light blue); the next three spells are
   **on deck** to its right (shrinking, with their timers, reordering as the fight changes), and
   a crossed-swords badge on its left shows auto attack is on.
 - **Cast button and key**: click the icon or press your Flow key to cast the suggestion. Set the

@@ -18,6 +18,9 @@
   placed first, then you sit again so the buffs include them. In a group, party members running
   Flow tell each other which objects they could add: a camp status icon above the key shows how
   many, and hovering it lists who has what. Flow can't see the bags of players without it.
+- **Buff timer on the Flow icon.** When Flow suggests re-casting a buff that's still on (a
+  blessing, a seal, Mark of the Wild on a party member...), the icon shows the seconds it has left
+  once it's under 30, in light blue. Cooldown numbers still take the middle when there is one.
 - **Healthstone, then potion, at low health in a fight.** When the game's low-health warning is
   on (or you're at a third of your health, where it's shown), Flow's icon shows your healthstone,
   else your best healing potion, ahead of any heal spell, for every class. The key is locked in a

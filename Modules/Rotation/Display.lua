@@ -267,6 +267,25 @@ function ns.CooldownText(start, dur, now)
     return string.format("%.1f", left)
 end
 
+-- The buff timer: when Flow suggests re-casting a buff that's still on but
+-- running out, the seconds it has left (under 30), in the buff's light blue.
+-- "" when it's gone, lasts longer, or never runs out.
+local BUFF_SHOW = 30
+function ns.BuffTimerText(left)
+    left = ns.api.Safe(left)
+    if type(left) ~= "number" or left <= 0 or left >= BUFF_SHOW then return "" end
+    if left >= 10 then return string.format("%d", math.floor(left + 0.5)) end
+    return string.format("%.1f", left)
+end
+
+-- Seconds left on the buff a suggestion re-casts (on whoever it's for).
+local function buffLeft(s)
+    if s.kind ~= "buff" or not s.spell then return nil end
+    local ok, up, left = pcall(A.Buff, s.unit or "player", s.spell)
+    if ok and up then return left end
+    return nil
+end
+
 -- Border for a Flow Action (equip the pole, make a campfire...): not the
 -- route purple, which reads as "epic item". Spells use the spell colour
 -- (light blue, like buffs); items their own quality colour (white, green...).
@@ -312,7 +331,14 @@ local function render(s, cfg)
     icon.text:SetText(s.label or (s.target and ("on " .. s.target)) or (cfg.debug and s.reason) or "")
     local start, dur = cooldownOf(s)
     icon.cd:SetCooldown(start or 0, dur or 0)
-    icon.timer:SetText(ns.CooldownText(start, dur, GetTime()))
+    local timer = ns.CooldownText(start, dur, GetTime())
+    if timer ~= "" then
+        icon.timer:SetTextColor(1, 0.95, 0.7)
+    else
+        timer = ns.BuffTimerText(buffLeft(s))
+        icon.timer:SetTextColor(COLORS.buff[1], COLORS.buff[2], COLORS.buff[3])
+    end
+    icon.timer:SetText(timer)
     icon:Show()
 
     local key = tostring(s.spell or s.item or s.type) .. s.kind

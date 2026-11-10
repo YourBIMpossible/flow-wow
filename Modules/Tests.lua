@@ -1926,6 +1926,12 @@ ns:Register("test", "Flow button: cooldown timer text", function(t)
     t:eq(T(98, 6, 100), "4.0", "under 10 s: tenths")
     t:eq(T(0.5, 300, 100), "4m", "minutes when long")
     t:eq(T(10, 30, 100), "", "finished: no timer")
+    local B = ns.BuffTimerText
+    t:eq(B(nil), "", "buff gone: no buff timer")
+    t:eq(B(45), "", "buff with 30 s or more left: no buff timer")
+    t:eq(B(math.huge), "", "buff that never runs out: no buff timer")
+    t:eq(B(22.4), "22", "buff under 30 s: seconds left")
+    t:eq(B(4.25), "4.2", "buff under 10 s: tenths")
 end)
 
 ns:Register("test", "rotation: heal on the game's low-health warning; break free when held", function(t)
