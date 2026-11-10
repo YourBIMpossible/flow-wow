@@ -264,6 +264,25 @@ end)()
         return sub, hasEnchant, item
     end
 
+    local function iconOf(id)
+        return (C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(id)) or (GetItemIcon and GetItemIcon(id))
+    end
+
+    -- The weapon buff you could put on now, resting or not (the buff button
+    -- offers it in town too): an item step, or nil and why not.
+    ns.weaponBuff = {}
+    function ns.weaponBuff.Now()
+        if not stoneOn() then return nil, "the step is off (/flow stone on)" end
+        if UnitIsDeadOrGhost("player") then return nil, "you're dead" end
+        local sub, hasEnchant, item = why()
+        if not sub then return nil, "no weapon in your main hand" end
+        if hasEnchant then return nil, "your weapon already has one on" end
+        if not item then return nil, "nothing in your bags fits this weapon (/flow stone)" end
+        return { type = "item", item = "item:" .. item.id, icon = iconOf(item.id), targetSlot = 16,
+                 label = "Put on your weapon: " .. item.name,
+                 reason = "Your weapon has no stone on it" }
+    end
+
     -- Order 2.5: before buff:item and bag:learn, which aren't urgent and would
     -- otherwise be returned first and keep this step off the icon.
     -- Urgent unless an enemy is targeted or you're under half health (fishing:
@@ -274,14 +293,11 @@ end)()
         if not stoneOn() or UnitIsDeadOrGhost("player") then return nil end
         if IsResting and IsResting() then return nil end
         if ctx and ctx.fishing then return nil end
-        local sub, hasEnchant, item = why()
-        if not sub or hasEnchant or not item then return nil end
-        local icon = (C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(item.id)) or (GetItemIcon and GetItemIcon(item.id))
-        return { type = "item", item = "item:" .. item.id, icon = icon, targetSlot = 16,
-                 -- Low on health: let the rotation's heal go first.
-                 urgent = not enemyTargeted() and (UnitHealth("player") or 0) > 0.5 * (UnitHealthMax("player") or 1),
-                 label = "Put on your weapon: " .. item.name,
-                 reason = "Your weapon has no stone on it" }
+        local s = ns.weaponBuff.Now()
+        if not s then return nil end
+        -- Low on health: let the rotation's heal go first.
+        s.urgent = not enemyTargeted() and (UnitHealth("player") or 0) > 0.5 * (UnitHealthMax("player") or 1)
+        return s
     end })
 
     ns.commands.stone = function(arg)
@@ -302,17 +318,16 @@ end)()
         end
         print("  resting (inn/city, step waits): " .. (resting and "yes" or "no")
             .. ", enemy targeted: " .. (enemyTargeted() and "yes" or "no"))
-        local blocker = (not stoneOn() and "the step is off")
-            or (not sub and "no weapon in your main hand")
-            or (hasEnchant and "your weapon already has one on")
-            or (not item and "nothing in your bags fits this weapon")
-            or (resting and "you're resting; leave the inn/city")
+        local onButton = ns.buffButton and ns.buffButton.On()
+        local _, whyNot = ns.weaponBuff.Now()
+        local blocker = whyNot
+            or (resting and not onButton and "you're resting; leave the inn/city (or turn on the buff button: it offers it in town too)")
             or (InCombatLockdown() and "you're in combat")
         if blocker then
             print("  -> not showing: " .. blocker)
         else
-            local where = (ns.buffButton and ns.buffButton.On())
-                and "on the blue buff button left of Flow's icon - click it or press your buff key (/flow buffkey)"
+            local where = onButton
+                and "on the blue buff button left of Flow's icon (after any buff spell that's due) - click it or press your buff key (/flow buffkey)"
                 or "on Flow's icon - click the icon or press your Flow key"
             print("  -> showing " .. where .. ": \"Put on your weapon: " .. item.name .. "\"")
         end
@@ -346,8 +361,8 @@ end)()
 --
 --   Buff button: the rotation's "buff" suggestions (seals, auras, blessings,
 --   shouts, group buffs) first, then a stone, weightstone or oil for your
---   weapon (buff:stone, buff:item). Out of combat it shows what's missing and
---   hides when nothing is.
+--   weapon (buff:stone, buff:item; in town too). Out of combat it shows what's
+--   missing, and sits dim when nothing is (hover it: why).
 --   In a fight: WoW won't let addons change what a button casts, so it holds
 --   the buff spell you last cast from it (a paladin's seal: press it again
 --   when the seal runs out). Bright = needed now, dim = still on.
@@ -466,14 +481,33 @@ do
         end
     end
 
+    -- A weapon enhancement or buff item to show, or nil and why there's no
+    -- weapon buff. In town (resting) Flow's icon waits for you to head out;
+    -- this button offers the stone anyway.
     local function pickItem()
-        if not ns.actions or (ns.db.actions and ns.db.actions.enabled == false) then return nil end
-        if UnitIsDeadOrGhost("player") then return nil end
-        local ctx = ns.actions:Context()
-        for _, get in ipairs(itemGets) do
-            local ok, s = pcall(get, ctx)
-            if ok and s then return s end
+        if not ns.actions or (ns.db.actions and ns.db.actions.enabled == false) then
+            return nil, "Flow Actions are off"
         end
+        if UnitIsDeadOrGhost("player") then return nil, "you're dead" end
+        local okC, ctx = pcall(ns.actions.Context, ns.actions)
+        if okC then
+            for _, get in ipairs(itemGets) do
+                local ok, s = pcall(get, ctx)
+                if ok and s then return s end
+            end
+        end
+        local W = ns.weaponBuff
+        if not W then return nil end
+        local ok, s, whyNot = pcall(W.Now)
+        if not ok then return nil end
+        if s then s.reason = "In town Flow's icon waits for you to head out; you can put it on now" end
+        return s, whyNot
+    end
+
+    -- What the button shows when nothing is due (dim, does nothing).
+    function BB.Idle(whyNot)
+        return { idle = true, label = "no buffs due",
+                 reason = "Nothing to buff right now." .. (whyNot and (" Weapon stone/oil: " .. whyNot .. ".") or "") }
     end
 
     -------------------------------------------------------------------------------
@@ -492,6 +526,7 @@ do
 
     local function describe(s)
         if not s then return "" end
+        if s.idle then return "nothing due (dim)" end
         if s.spell then return "spell " .. s.spell .. " @" .. tostring(s.unit or "player") end
         return "item " .. tostring(s.item) .. " slot " .. tostring(s.targetSlot)
     end
@@ -576,7 +611,7 @@ do
         end)
         btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
         btn:HookScript("PostClick", function(_, _, down)
-            if down ~= false and current and not InCombatLockdown() then
+            if down ~= false and current and not current.idle and not InCombatLockdown() then
                 ns:Log("action", "buff button pressed: " .. describe(current))
             end
         end)
@@ -617,11 +652,12 @@ do
             if current then paint(current, live and live.spell == held) end
             return
         end
-        local s = BB.Pick(live, pickItem())
-        current = s
+        local item, whyNot = pickItem()
+        local s = BB.Pick(live, item)
+        current = s or BB.Idle(whyNot)
         setAction(s)
-        if s then paint(s, true) end
-        if (s ~= nil) ~= btn:IsShown() then btn:SetShown(s ~= nil) end
+        paint(current, s ~= nil)
+        if not btn:IsShown() then btn:Show() end
     end
 
     ns:OnLoad(function()
@@ -669,7 +705,8 @@ do
             note = "(own key: /flow buffkey <key>)",
             tip = "Your buffs (seals, auras, blessings, shouts, party buffs) and weapon stones and oils go on a "
                 .. "separate blue button left of Flow's icon, so Flow's key only does your fight: damage, heals "
-                .. "and cleanses. Give it its own key with /flow buffkey Q. In a fight it keeps the buff you "
+                .. "and cleanses. Out of combat it's always there (dim when nothing is due: hover it for why) "
+                .. "and offers your stone or oil in town too. Give it its own key with /flow buffkey Q. In a fight it keeps the buff you "
                 .. "last cast from it and lights up when that buff runs out. Off: buffs and stones go back on "
                 .. "Flow's icon and key.",
             get = function() return BB.On() end,
@@ -721,6 +758,10 @@ do
         t:eq(BB.FightSpell({ spell = "Seal" }, "Blessing"), "Seal", "fight: the buff due now")
         t:eq(BB.FightSpell(nil, "Seal"), "Seal", "fight: else the one you last cast")
         t:ok(BB.FightSpell(nil, nil) == nil, "fight: else nothing")
+        local idle = BB.Idle("no weapon in your main hand")
+        t:ok(idle.idle and idle.item == nil and idle.spell == nil, "idle: shows, does nothing")
+        t:ok(idle.reason:find("no weapon in your main hand", 1, true) ~= nil, "idle: says why there's no stone")
+        t:ok(not BB.Idle(nil).reason:find("Weapon", 1, true), "idle: no weapon line when there's no reason")
         local stone = ns:Get("action", "buff:stone") or ns:Get("action", "buff:item")
         t:ok(not BB.On() or stone == nil or stone.get({}) == nil, "stones aren't on the main icon while the buff button is on")
     end)
