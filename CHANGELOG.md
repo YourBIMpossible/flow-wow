@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+- **Your weapon stone goes on with one press, and food that makes you Well Fed too.** When
+  you're about to kill a lot (at a kill or loot stop, or right after a fight) and your main hand
+  has no sharpening stone, weightstone or oil on it, the Flow key (out of combat, not in inns or
+  cities) puts the one in your bags on it, no more opening bags and clicking the weapon. Stones
+  and weapon oils are now found by name too, not only when the game files them as an item
+  enhancement. Never oil on a fishing pole. It shows on Flow's icon ahead of the out-of-combat
+  buff the rotation suggests (a paladin's seal, say), except when an enemy is targeted or you're
+  under half health. Same moment, if you aren't Well Fed and carry food that says it makes you
+  Well Fed, the Flow key eats it, after elixirs and the stone (you sit for ten seconds). Plain
+  food is left alone.
+
 ## 0.35.106
 - **New quests are accepted for you.** Talk to a quest giver and Flow turns in your finished
   quests first, then opens their new quest and accepts it. A quest started by an item is
