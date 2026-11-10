@@ -63,9 +63,14 @@ end
 ns:On("PLAYER_LOGIN", function()
     C_Timer.After(8, function()
         if InCombatLockdown() then return end
-        local ok, passed, failed, _, out = pcall(run)
+        local t0 = debugprofilestop and debugprofilestop()
+        local ok, passed, failed, checks, out = pcall(run)
+        local ms = t0 and (debugprofilestop() - t0) or 0
         if not ok then ns:Log("tests", "run failed: " .. tostring(passed)) return end
-        ns:Log("tests", string.format("at login: %d passed, %d failed", passed, failed))
+        ns:Log("tests", string.format("at login: %d passed, %d failed (%.0f ms)", passed, failed, ms))
+        -- Kept for the after-login diagnostics, so it needn't run them again.
+        ns.lastTestRun = { at = date("%H:%M:%S"), passed = passed, failed = failed, checks = checks,
+                           out = out, ms = ms }
         if failed > 0 then
             local first = (out[1] or ""):gsub("^FAIL ", "")
             ns:Print(string.format("|cffff6060%d self-test%s failed|r (%s%s). Details: /flow test",
@@ -1030,7 +1035,10 @@ ns:Register("test", "perf: Flow's update loops are timed", function(t)
     P.stats["test: wrapped"] = nil
     t:ok(P.stats["arrow + minimap (10/s)"] ~= nil, "route arrow timed")
     t:ok(P.stats["route: order stops"] ~= nil, "planner timed")
-    t:ok(#P:Report() >= 1, "report has a summary line")
+    -- quick: a full clean-up inside the login self-test run is a hitch.
+    local rep = P:Report(true)
+    t:ok(#rep >= 1, "report has a summary line")
+    t:ok(rep[1]:find("/flow perf", 1, true) ~= nil, "quick report skips the clean-up and says so")
     t:ok(ns.nav.Busy() == true or ns.nav.Busy() == false, "tracker can tell when the route is being redone")
 end)
 

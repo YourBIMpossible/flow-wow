@@ -49,9 +49,17 @@ local function capture(fn)
     return lines
 end
 
-function D:Snapshot(reason)
+local clock = debugprofilestop
+
+-- `spread`: one check per frame, so the after-login snapshot never stalls
+-- the game (all 13 checks plus the self-tests in one frame did). At logout
+-- it runs all at once: the game writes the saved data straight after.
+-- Each check's time goes in its heading, and a slow snapshot is logged.
+function D:Snapshot(reason, spread)
     local d = db()
     if not d then return end
+    D.gen = (D.gen or 0) + 1
+    local gen = D.gen
     local c = ns.commands
     local _, class = UnitClass("player")
     local out = { "taken " .. date("%Y-%m-%d %H:%M:%S") .. " (" .. (reason or "?") .. ")",
@@ -76,16 +84,42 @@ function D:Snapshot(reason)
         { "prof plan", function() c.professions("plan") end },
         { "talents", function() c.talents() end },
         { "flow action", function() c.action("") end },
-        { "perf", function() c.perf("") end },
-        { "tests", function() c.test("") end },
+        { "perf", function() c.perf("quick") end },
+        { "tests", function()
+            -- After login: the run from 8 s after login, not a second one.
+            local r = spread and ns.lastTestRun
+            if r then
+                print(string.format("(run at %s, %.0f ms) tests: %d passed, %d failed (%d checks)",
+                    r.at, r.ms, r.passed, r.failed, r.checks))
+                for _, l in ipairs(r.out) do print(l) end
+            else c.test("") end
+        end },
     }
-    for _, chk in ipairs(checks) do
-        if chk[2] then
-            out[#out + 1] = "--- " .. chk[1]
-            for _, l in ipairs(capture(chk[2])) do out[#out + 1] = l end
+    local i, total, slowName, slowMs = 0, 0, nil, 0
+    local function step()
+        if gen ~= D.gen then return end  -- a newer snapshot took over
+        i = i + 1
+        local chk = checks[i]
+        if not chk then
+            out[2] = out[2] .. string.format(", snapshot took %.0f ms", total)
+            d.snapshot = out
+            if total > 50 then
+                ns:Log("perf", string.format("snapshot (%s) took %.0f ms, slowest %s %.0f ms%s", reason or "?",
+                    total, tostring(slowName), slowMs, spread and " (one check per frame)" or ""))
+            end
+            return
         end
+        local t0 = clock and clock()
+        local lines = capture(chk[2])
+        local ms = t0 and (clock() - t0) or 0
+        total = total + ms
+        if ms > slowMs then slowName, slowMs = chk[1], ms end
+        out[#out + 1] = string.format("--- %s (%.1f ms)", chk[1], ms)
+        for _, l in ipairs(lines) do out[#out + 1] = l end
+        if spread then C_Timer.After(0, step) end
     end
-    d.snapshot = out
+    if spread then step() return end
+    while gen == D.gen and i <= #checks do step() end
 end
 
 -- Lua errors from Flow's own files go into the log (and still show as usual).
@@ -110,8 +144,11 @@ end)
 
 -- Fresh snapshot right before the game writes the saved data (reload/logout).
 ns:On("PLAYER_LOGOUT", function() D:Snapshot("reload or logout") end)
-ns:On("PLAYER_ENTERING_WORLD", function()
-    C_Timer.After(10, function() pcall(D.Snapshot, D, "after login") end)
+-- After a login or /reload only, not every loading screen (it ran after
+-- each dungeon, boat and zone change too).
+ns:On("PLAYER_ENTERING_WORLD", function(isLogin, isReload)
+    if not (isLogin or isReload) then return end
+    C_Timer.After(10, function() pcall(D.Snapshot, D, "after login", true) end)
 end)
 -- The rotation check, read once a minute while you're playing (out of
 -- combat, alive) for the snapshot taken at logout.

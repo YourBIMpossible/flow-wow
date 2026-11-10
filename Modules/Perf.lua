@@ -57,8 +57,10 @@ local function memoryKB()
     return ok and kb or nil
 end
 
--- Lines for /flow perf and the snapshot.
-function P:Report()
+-- Lines for /flow perf and the snapshot. `quick` (the snapshot) skips the
+-- full garbage clean-up and the second memory scan: a full clean-up walks
+-- every addon's memory in one frame, a hitch you can feel.
+function P:Report(quick)
     local secs = math.max(GetTime() - (self.since or GetTime()), 1)
     local out, rows, sum = {}, {}, 0
     for name, st in pairs(self.stats) do
@@ -66,12 +68,16 @@ function P:Report()
     end
     table.sort(rows, function(a, b) return a.st.total > b.st.total end)
     local kb = memoryKB()
-    -- What Flow really keeps: after a full clean-up of the garbage.
-    collectgarbage("collect")
-    local kept = memoryKB()
-    out[#out + 1] = string.format("over %d s: Flow used %.2f ms per second (%.2f%% of one CPU core), memory %s (%s kept after clean-up)",
+    local kept
+    if not quick then
+        -- What Flow really keeps: after a full clean-up of the garbage.
+        collectgarbage("collect")
+        kept = memoryKB()
+    end
+    out[#out + 1] = string.format("over %d s: Flow used %.2f ms per second (%.2f%% of one CPU core), memory %s (%s)",
         secs, sum / secs, sum / secs / 10, kb and string.format("%.1f MB", kb / 1024) or "?",
-        kept and string.format("%.1f MB", kept / 1024) or "?")
+        quick and "/flow perf for what's kept after clean-up"
+            or ((kept and string.format("%.1f MB", kept / 1024) or "?") .. " kept after clean-up"))
     for _, r in ipairs(rows) do
         local st = r.st
         out[#out + 1] = string.format("  %-32s %6.2f ms/s  avg %5.2f ms  worst %6.1f ms  makes %6.1f KB/s  (%d calls)",
@@ -89,9 +95,10 @@ end
 ns:On("PLAYER_LOGIN", function() P.since = GetTime() end)
 
 ns.commands.perf = function(arg)
-    if (arg or ""):lower() == "reset" then P:Reset(); ns:Print("perf counters reset") return end
+    arg = (arg or ""):lower()
+    if arg == "reset" then P:Reset(); ns:Print("perf counters reset") return end
     ns:Print("performance:")
-    for _, line in ipairs(P:Report()) do print(line) end
+    for _, line in ipairs(P:Report(arg == "quick")) do print(line) end
     print("  /flow perf reset")
 end
 

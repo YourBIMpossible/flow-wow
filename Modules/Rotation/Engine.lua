@@ -458,8 +458,11 @@ function E.GroupUnits()
         local unit = (raid and "raid" or "party") .. i
         if UnitExists(unit) and not UnitIsUnit(unit, "player") and UnitIsConnected(unit)
             and not UnitIsDeadOrGhost(unit) and UnitIsVisible(unit) and UnitIsFriend("player", unit) then
+            -- In combat both can be secret (any test on them errors, every
+            -- rotation tick): unknown counts as in range.
             local inRange, checked = UnitInRange(unit)
-            if not (checked and not inRange) then
+            inRange, checked = A.Safe(inRange), A.Safe(checked)
+            if not (checked and inRange == false) then
                 local _, class = UnitClass(unit)
                 local assigned = UnitGroupRolesAssigned and UnitGroupRolesAssigned(unit) or "NONE"
                 out[#out + 1] = { unit = unit, name = A.Safe(UnitName(unit)) or unit, guid = UnitGUID(unit),
