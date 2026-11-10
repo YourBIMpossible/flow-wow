@@ -129,20 +129,6 @@ local function bagLinks()
     return links
 end
 
--- Worn gear: repair before it breaks (broken gear gives no stats).
-ns:Register("advisor", "durability", {
-    check = function()
-        if not (ns.Durability and ns.vendor and ns.vendor.DurabilityLevel) then return {} end
-        local pct, broken = ns.Durability()
-        local level = ns.vendor.DurabilityLevel(pct, broken)
-        if not level then return {} end
-        return { { importance = level == "critical" and 99 or 90,
-                   text = string.format("Repair your gear (%s, lowest %d%%): /flow way repair",
-                       broken and "something is broken" or (level == "critical" and "nearly broken" or "worn"), pct * 100),
-                   improves = { "Gear stats (broken gear gives none)" } } }
-    end,
-})
-
 ns:Register("advisor", "gear", {
     check = function()
         local out = {}

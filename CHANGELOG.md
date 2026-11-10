@@ -28,11 +28,9 @@
   order of the three steps, turning any of them off, best or lowest bandage first, the in-fight
   healthstone/potion, and placing camp objects. Right-click never casts.
 - **Status icons above the Flow key** (between fights, no chat spam): a small row for things to
-  sort out. **Gear durability**: an anvil showing your most worn piece once it's at 30% (yellow),
-  red at 10% or broken; click it for the way to the nearest repair. Also an Advisor line. Hover
-  any status icon for what it means; the key's own tooltip lists them too. Turn the row off from
-  the key's right-click menu.
-  **Auto-repair**: opening a vendor who repairs fixes everything if you have the gold, and says
+  sort out (so far: what your group can add to the camp). Hover one for what it means; the key's
+  own tooltip lists them too. Turn the row off from the key's right-click menu.
+- **Auto-repair**: opening a vendor who repairs fixes everything if you have the gold, and says
   what it cost (Options: "Auto-repair at vendors", on by default).
 - **The route on the world map is a faint dotted trail**, like a treasure map, instead of a solid
   line with crawling chevrons: it shows the way without covering the map. The stretch from you

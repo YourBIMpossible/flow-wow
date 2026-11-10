@@ -587,6 +587,6 @@ function BI:OpenMenu()
     items[#items + 1] = { sep = true }
     items[#items + 1] = toggle("In a fight: Healthstone, then potion", "emergencyItems")
     items[#items + 1] = toggle("Place my camp objects at campfires", "campKits")
-    items[#items + 1] = toggle("Status icons above the key (repair...)", "statusIcons")
+    items[#items + 1] = toggle("Status icons above the key", "statusIcons")
     ns.menu:Open(items)
 end

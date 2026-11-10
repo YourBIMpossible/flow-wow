@@ -2896,14 +2896,6 @@ ns:Register("test", "buff items: used when you're about to kill a lot, if not on
     t:eq(table.concat(BI.Order(nil), ","), "bandage,food,heal", "default order: bandage, food, heal spell")
     t:eq(table.concat(BI.Order("heal,bandage"), ","), "heal,bandage,food", "your order, missing steps added")
     t:eq(table.concat(BI.Order("food,food,junk"), ","), "food,bandage,heal", "repeats and unknown words dropped")
-    local V = ns.vendor
-    t:eq(V.DurabilityLevel(0.8, false), nil, "gear fine: no warning")
-    t:eq(V.DurabilityLevel(0.25, false), "low", "30% or less: worn")
-    t:eq(V.DurabilityLevel(0.05, false), "critical", "10% or less: nearly broken")
-    t:eq(V.DurabilityLevel(0.9, true), "critical", "anything broken: critical")
-    t:eq(V.DurabilityStatus(0.8, false), nil, "gear fine: no repair icon")
-    t:eq(V.DurabilityStatus(0.25, false).text, "25%", "worn: the icon shows your lowest durability")
-    t:eq(V.DurabilityStatus(0.05, false).color[2] < 0.5, true, "nearly broken: the icon turns red")
     t:eq(BI.PartyKitStatus({}, 100), nil, "no party objects: no camp icon")
     t:eq(BI.PartyKitStatus({ Mia = { kits = { "Camp Tent", "Enchanted Lute" }, at = 95 } }, 100).text, "2",
         "camp icon: how many objects your group can add")
