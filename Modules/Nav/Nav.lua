@@ -1166,54 +1166,77 @@ function N:SetArrowStyle(style)
         old:Hide(); old:SetScript("OnUpdate", nil)
         frame.prof.arrow = self:MakeProfArrow(frame.prof)
         frame.prof.arrow:SetRotation(old.angle or 0)
+        frame.prof.arrow.at = old.at or old.angle or 0
+        frame.prof.arrow:Paint()
     end
 end
 
--- The faint profession arrow: a long, narrow compass needle under the main
--- arrow, like the long hand of a clock. Its tip reaches past the main arrow,
--- so you can read both at once. Same turning as the main arrow: 0 = straight
--- up, turning counter-clockwise.
-local NEEDLE_TIP, NEEDLE_TAIL, NEEDLE_HEAD, NEEDLE_BARB = 46, 16, 11, 0.42
+-- The faint profession arrow: the main arrow's own art, stretched narrow and
+-- long (two thirds the width, a third longer), in dark smoked glass under the
+-- main arrow. It turns as one piece and eases round like the main arrow.
+-- Same turning: 0 = straight up, counter-clockwise.
+N.PROF_ARROW_W, N.PROF_ARROW_H = 64 * 0.66, 64 * 1.33
 function N:MakeProfArrow(holder)
     local a = CreateFrame("Frame", nil, holder)
     a:SetAllPoints(holder)
-    local c = ns.theme.profPointer
-    local function line(width)
-        local l = a:CreateLine(nil, "ARTWORK")
-        l:SetThickness(width)
-        l:SetColorTexture(c[1], c[2], c[3], 1)
-        return l
+    local W, H = N.PROF_ARROW_W, N.PROF_ARROW_H
+    local function tex(file, layer, sub, blend, alpha)
+        local t = a:CreateTexture(nil, layer, nil, sub)
+        t:SetTexture(ART .. file)
+        if blend then t:SetBlendMode(blend) end
+        t:SetAlpha(alpha)
+        t:SetPoint("CENTER")
+        return t
     end
-    a.shaft, a.left, a.right = line(3), line(3), line(3)
-    a.hub = a:CreateTexture(nil, "OVERLAY")
-    a.hub:SetSize(9, 9)
-    a.hub:SetPoint("CENTER")
-    a.hub:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask")
-    a.hub:SetVertexColor(c[1], c[2], c[3])
-    local function at(l, which, x, y)
-        if which == "start" then l:SetStartPoint("CENTER", a, x, y) else l:SetEndPoint("CENTER", a, x, y) end
+    -- Dark body, a soft shadow under it and the main arrow's highlights on
+    -- top: dark glass, not a flat grey cut-out.
+    a.shadow = tex("ArrowShadow", "BACKGROUND", 1, nil, 0.45)
+    a.body = tex("ArrowBody", "ARTWORK", 1, nil, 0.9)
+    a.shine = tex("ArrowShine", "ARTWORK", 2, "ADD", 0.55)
+    a.parts = { a.shadow, a.body, a.shine }
+    -- Turning the picture itself keeps it narrow at every angle. A client
+    -- that can't turn pictures gets the main arrow's pre-turned frames at
+    -- full size instead.
+    a.turns = a.body.SetRotation ~= nil
+    local _, l, r, t, b = N.ArrowCell(0)
+    for _, part in ipairs(a.parts) do
+        if a.turns then part:SetSize(W, H); part:SetTexCoord(l, r, t, b) else part:SetSize(H, H) end
     end
-    function a:SetRotation(r)
-        self.angle = r or 0
-        local dx, dy = -math.sin(self.angle), math.cos(self.angle)
-        local tx, ty = dx * NEEDLE_TIP, dy * NEEDLE_TIP
-        self.tipX, self.tipY = tx, ty
-        at(self.shaft, "start", -dx * NEEDLE_TAIL, -dy * NEEDLE_TAIL)
-        at(self.shaft, "end", tx, ty)
-        -- The two barbs of the head, swept back from the tip.
-        local back = math.atan2(-dy, -dx)
-        for i, barb in ipairs({ self.left, self.right }) do
-            local th = back + (i == 1 and NEEDLE_BARB or -NEEDLE_BARB)
-            at(barb, "start", tx, ty)
-            at(barb, "end", tx + NEEDLE_HEAD * math.cos(th), ty + NEEDLE_HEAD * math.sin(th))
+    -- a.angle is where it's heading, a.at what's on screen.
+    a.angle, a.at, a.cell = 0, 0, -1
+    function a:Paint()
+        if self.turns then
+            for _, part in ipairs(self.parts) do part:SetRotation(self.at) end
+            return
         end
+        local i, l2, r2, t2, b2 = N.ArrowCell(self.at)
+        if i == self.cell then return end
+        self.cell = i
+        for _, part in ipairs(self.parts) do part:SetTexCoord(l2, r2, t2, b2) end
     end
-    function a:SetVertexColor(r, g, b)
-        for _, l in ipairs({ self.shaft, self.left, self.right }) do l:SetColorTexture(r, g, b, 1) end
-        self.hub:SetVertexColor(r, g, b)
-    end
-    a:SetRotation(0)
+    function a:SetRotation(rad) self.angle = rad or 0 end
+    function a:SetVertexColor(r2, g2, b2) self.body:SetVertexColor(r2, g2, b2) end
+    local c = ns.theme.profPointer
+    a:SetVertexColor(c[1], c[2], c[3])
+    a:SetScript("OnUpdate", function(me, elapsed)
+        local dt = math.min(elapsed or 0, 0.1)
+        -- Turn the shortest way round, quickly but without snapping.
+        local diff = (me.angle - me.at + math.pi) % (2 * math.pi) - math.pi
+        if math.abs(diff) > 0.001 then
+            me.at = me.at + diff * (1 - math.exp(-dt * 14))
+            me:Paint()
+        end
+    end)
+    a:Paint()
     return a
+end
+
+-- How far the profession arrow reaches past the arrow frame's edge (it is
+-- longer than the frame), plus a little air: the texts above and below move
+-- out by this much so the arrow never runs over or under them.
+function N.NeedleClearance(f)
+    local h = (f and f.GetHeight and f:GetHeight()) or 56
+    return math.max(0, math.ceil(N.PROF_ARROW_H / 2 - h / 2)) + 2
 end
 
 -- While the needle shows, the main arrow sits on top of it smaller and
@@ -1226,6 +1249,33 @@ function N.SetOverNeedle(f, on)
     a.overNeedle = on
     a:SetScale(on and N.ON_NEEDLE_SCALE or 1)
     a:SetAlpha(on and N.ON_NEEDLE_ALPHA or 1)
+    -- The main arrow's text moves down clear of the long profession arrow.
+    if f.text then
+        f.text:ClearAllPoints()
+        f.text:SetPoint("TOP", f, "BOTTOM", 0, on and -N.NeedleClearance(f) or -2)
+    end
+end
+
+-- Travel time: yards to "~1m 20s" at the speed you are moving, or the speed
+-- you last moved at (a run, 7 yd a second, before you have moved at all).
+N.RUN_SPEED = 7
+function N.TravelSpeed()
+    local s = A.Safe(GetUnitSpeed("player")) or 0
+    if type(s) == "number" and s > 0.5 then N.lastSpeed = s end
+    return N.lastSpeed or N.RUN_SPEED
+end
+function N.FormatTravel(yd, speed)
+    speed = speed or N.TravelSpeed()
+    if type(yd) ~= "number" or yd <= 0 or type(speed) ~= "number" or speed <= 0 then return "" end
+    local sec = math.max(1, math.floor(yd / speed + 0.5))
+    if sec < 60 then return string.format("~%ds", sec) end
+    if sec < 3600 then return string.format("~%dm %02ds", math.floor(sec / 60), sec % 60) end
+    return string.format("~%dh %02dm", math.floor(sec / 3600), math.floor(sec % 3600 / 60))
+end
+-- The same with a space in front, or nothing when there is no time to show.
+function N.TravelSuffix(yd, speed)
+    local t = N.FormatTravel(yd, speed)
+    return t ~= "" and (" " .. t) or ""
 end
 
 -- Shared look for route stops (trip plan, world map pins, map list):
@@ -2288,7 +2338,7 @@ local function showPanel()
     end
     local g = current.goal
     local h = panel.hero
-    local task = fillHero(panel, g, string.format("%d yd", current.d or 0))
+    local task = fillHero(panel, g, string.format("%d yd%s", current.d or 0, N.TravelSuffix(current.d)))
     panel.pin:Refresh()
 
     local lines = {}
@@ -2406,7 +2456,7 @@ function N:ShowStop(goal, anchor)
     for _, s in ipairs(N.plan or {}) do if s.goal.key == goal.key then pt = s.point break end end
     pt = pt or (goal.points and goal.points[1])
     local d = (p and pt and pt.wx and pt.cont == p.cont) and dist(p.wx, p.wy, pt.wx, pt.wy)
-    local task = fillHero(card, goal, d and string.format("%d yd", d) or "")
+    local task = fillHero(card, goal, d and string.format("%d yd%s", d, N.TravelSuffix(d)) or "")
 
     -- Body: what the tooltip says, minus the title and task the band shows.
     local tt = textTooltip()
@@ -2465,7 +2515,7 @@ local function buildArrow()
     f.prof:SetAlpha(0.85)
     f.prof.arrow = N:MakeProfArrow(f.prof)
     f.prof.text = f.prof:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    f.prof.text:SetPoint("BOTTOM", f, "TOP", 0, 2)
+    f.prof.text:SetPoint("BOTTOM", f, "TOP", 0, N.NeedleClearance(f))
     f.prof.text:SetWidth(260)
     f.prof.text:SetWordWrap(false)
     do local c = ns.theme.muted; f.prof.text:SetTextColor(c[1], c[2], c[3]) end
@@ -2604,7 +2654,7 @@ local function buildArrow()
     -- The faint arrow's text: left-click opens that stop, right-click the
     -- arrow's menu, hover its details.
     f.prof.hit = CreateFrame("Button", nil, f.prof)
-    f.prof.hit:SetPoint("BOTTOM", f, "TOP", 0, 0)
+    f.prof.hit:SetPoint("BOTTOM", f, "TOP", 0, N.NeedleClearance(f) - 2)
     f.prof.hit:SetSize(240, 16)
     f.prof.hit:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     f.prof.hit:SetScript("OnClick", function(_, button)
@@ -2746,7 +2796,7 @@ local function updateProf(p)
         N.SetOverNeedle(frame, true)
     end
     if ns.db.nav.profArrowText ~= false then
-        holder.text:SetText(here and ("Here: " .. name) or string.format("%s, %d yd", name, choice.d))
+        holder.text:SetText(here and ("Here: " .. name) or string.format("%s, %d yd%s", name, choice.d, N.TravelSuffix(choice.d)))
         holder.text:Show(); holder.hit:Show()
     else
         holder.text:Hide(); holder.hit:Hide()
@@ -2861,7 +2911,8 @@ local function update()
             frame.sub:SetText(choice.d < ARRIVED * 2 and "You're here" or "You're in the area")
         end
     else
-        frame.sub:SetText(string.format("%d yd%s%s", choice.d,
+        frame.sub:SetText(string.format("%d yd%s%s%s", choice.d,
+            N.TravelSuffix(how == "path" and length or choice.d),
             (not facing and b) and (" " .. compass(b)) or "",
             how == "path" and string.format(" (trail, %d yd walk)", length)
                 or (how == "entrance" and " (it's inside: entrance first)" or "")))

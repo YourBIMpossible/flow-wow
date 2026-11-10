@@ -2129,29 +2129,56 @@ ns:Register("test", "faint profession arrow: which stops, and when it shows", fu
     t:ok(c and c[1] < 0.5 and c[2] < 0.5 and c[3] < 0.5, "dark grey")
 end)
 
-ns:Register("test", "faint profession needle: long and narrow under, the main arrow small on top", function(t)
+ns:Register("test", "profession arrow: the main arrow's art, narrow and long, clear of the text", function(t)
     local N = ns.nav
     local f = N.arrowFrame
     if not (f and f.prof and f.arrow) then t:ok(true, "(no arrow yet)") return end
     local a = f.prof.arrow
-    t:ok(a.shaft and a.left and a.right and a.hub, "a shaft, two barbs and a hub")
-    t:ok(a.halo == nil, "not a copy of the main arrow")
-    local angle = a.angle
-    a:SetRotation(0)
-    t:ok(a.tipY > 0 and math.abs(a.tipX) < 0.01, "0: points straight up")
+    t:ok(a.body and a.shine and a.shadow, "body, shine and shadow, like the main arrow")
+    t:ok(a.shaft == nil, "not drawn from lines")
+    t:ok(math.abs(N.PROF_ARROW_W - 64 * 0.66) < 0.01 and math.abs(N.PROF_ARROW_H - 64 * 1.33) < 0.01,
+        "two thirds the width, a third longer")
+    if a.turns then
+        t:ok(math.abs(a.body:GetWidth() - N.PROF_ARROW_W) < 0.5 and math.abs(a.body:GetHeight() - N.PROF_ARROW_H) < 0.5,
+            "drawn narrow and long")
+    end
+    local angle, at = a.angle, a.at
     a:SetRotation(math.pi / 2)
-    t:ok(a.tipX < 0 and math.abs(a.tipY) < 0.01, "a quarter turn: points left, like the main arrow")
-    t:ok(math.sqrt(a.tipX ^ 2 + a.tipY ^ 2) > f.arrow:GetWidth() / 2, "its tip reaches past the main arrow")
-    a:SetRotation(angle)
+    t:ok(math.abs(a.angle - math.pi / 2) < 0.001, "remembers where it's heading")
+    a.at = math.pi / 2; a:Paint()
+    if a.turns and a.body.GetRotation then
+        t:ok(math.abs(a.body:GetRotation() - math.pi / 2) < 0.01, "a quarter turn: the art turns with it")
+    end
+    a:SetRotation(angle); a.at = at; a:Paint()
+    local c = ns.theme.profPointer
+    t:ok(c[1] < 0.2 and c[2] < 0.2 and c[3] < 0.2, "near black")
     t:ok(f.prof:GetFrameLevel() < f.arrow:GetFrameLevel(), "under the main arrow")
+    local clear = N.NeedleClearance(f)
+    t:ok(f:GetHeight() / 2 + clear > N.PROF_ARROW_H / 2, "the texts sit past the arrow's tip")
     local was = f.arrow.overNeedle
     N.SetOverNeedle(f, true)
     t:ok(math.abs(f.arrow:GetScale() - N.ON_NEEDLE_SCALE) < 0.01 and f.arrow:GetAlpha() < 1,
-        "needle showing: the main arrow is smaller and see-through")
+        "arrow showing: the main arrow is smaller and see-through")
+    local _, _, _, _, y = f.text:GetPoint(1)
+    t:ok(y and y <= -clear, "the main text moves down clear of it")
     N.SetOverNeedle(f, false)
     t:ok(math.abs(f.arrow:GetScale() - 1) < 0.01 and math.abs(f.arrow:GetAlpha() - 1) < 0.01,
-        "no needle: the main arrow back to full size")
+        "no profession arrow: the main arrow back to full size")
+    _, _, _, _, y = f.text:GetPoint(1)
+    t:ok(y and math.abs(y + 2) < 0.01, "and its text back in place")
     N.SetOverNeedle(f, was)
+end)
+
+ns:Register("test", "travel time: yards to a short time at your speed", function(t)
+    local N = ns.nav
+    t:eq(N.FormatTravel(70, 7), "~10s", "70 yd running")
+    t:eq(N.FormatTravel(560, 7), "~1m 20s", "560 yd running")
+    t:eq(N.FormatTravel(2, 7), "~1s", "never ~0s")
+    t:eq(N.FormatTravel(7 * 3725, 7), "~1h 02m", "over an hour")
+    t:eq(N.FormatTravel(0, 7), "", "nothing to go")
+    t:eq(N.FormatTravel(100, 0), "", "no speed: no time")
+    t:eq(N.TravelSuffix(70, 7), " ~10s", "a space in front for the arrow text")
+    t:ok(N.TravelSpeed() > 0, "a speed even standing still")
 end)
 
 -------------------------------------------------------------------------------
