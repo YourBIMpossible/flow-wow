@@ -2058,6 +2058,31 @@ ns:Register("test", "faint profession arrow: which stops, and when it shows", fu
     t:ok(c and c[1] < 0.5 and c[2] < 0.5 and c[3] < 0.5, "dark grey")
 end)
 
+ns:Register("test", "faint profession needle: long and narrow under, the main arrow small on top", function(t)
+    local N = ns.nav
+    local f = N.arrowFrame
+    if not (f and f.prof and f.arrow) then t:ok(true, "(no arrow yet)") return end
+    local a = f.prof.arrow
+    t:ok(a.shaft and a.left and a.right and a.hub, "a shaft, two barbs and a hub")
+    t:ok(a.halo == nil, "not a copy of the main arrow")
+    local angle = a.angle
+    a:SetRotation(0)
+    t:ok(a.tipY > 0 and math.abs(a.tipX) < 0.01, "0: points straight up")
+    a:SetRotation(math.pi / 2)
+    t:ok(a.tipX < 0 and math.abs(a.tipY) < 0.01, "a quarter turn: points left, like the main arrow")
+    t:ok(math.sqrt(a.tipX ^ 2 + a.tipY ^ 2) > f.arrow:GetWidth() / 2, "its tip reaches past the main arrow")
+    a:SetRotation(angle)
+    t:ok(f.prof:GetFrameLevel() < f.arrow:GetFrameLevel(), "under the main arrow")
+    local was = f.arrow.overNeedle
+    N.SetOverNeedle(f, true)
+    t:ok(math.abs(f.arrow:GetScale() - N.ON_NEEDLE_SCALE) < 0.01 and f.arrow:GetAlpha() < 1,
+        "needle showing: the main arrow is smaller and see-through")
+    N.SetOverNeedle(f, false)
+    t:ok(math.abs(f.arrow:GetScale() - 1) < 0.01 and math.abs(f.arrow:GetAlpha() - 1) < 0.01,
+        "no needle: the main arrow back to full size")
+    N.SetOverNeedle(f, was)
+end)
+
 -------------------------------------------------------------------------------
 -- Click tests: press Flow's own buttons the way you would and check what you
 -- should see appears (a menu opens), so a broken button is caught at login

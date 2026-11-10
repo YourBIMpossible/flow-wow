@@ -52,7 +52,7 @@ ns.theme = {
     arrow    = rgb("E69F00"),  -- orange: Flow's accent colour on panels and buttons
     user     = rgb("56B4E9"),  -- sky blue: your own waypoint
     muted    = rgb("BBBBBB"),
-    profPointer = rgb("6B6E76"),  -- dark grey: the faint profession arrow behind the main one
+    profPointer = rgb("6B6E76"),  -- dark grey: the faint profession needle under the main arrow
 }
 
 -- Flow's panel title bar, the brand on every Flow panel (Flow Tracker, Flow

@@ -1169,13 +1169,63 @@ function N:SetArrowStyle(style)
     end
 end
 
--- The faint profession arrow: the same arrow, dark grey, in a see-through
--- holder behind the main arrow.
+-- The faint profession arrow: a long, narrow compass needle under the main
+-- arrow, like the long hand of a clock. Its tip reaches past the main arrow,
+-- so you can read both at once. Same turning as the main arrow: 0 = straight
+-- up, turning counter-clockwise.
+local NEEDLE_TIP, NEEDLE_TAIL, NEEDLE_HEAD, NEEDLE_BARB = 46, 16, 11, 0.42
 function N:MakeProfArrow(holder)
-    local a = self:MakeArrow(holder)
+    local a = CreateFrame("Frame", nil, holder)
+    a:SetAllPoints(holder)
     local c = ns.theme.profPointer
-    a:SetVertexColor(c[1], c[2], c[3])
+    local function line(width)
+        local l = a:CreateLine(nil, "ARTWORK")
+        l:SetThickness(width)
+        l:SetColorTexture(c[1], c[2], c[3], 1)
+        return l
+    end
+    a.shaft, a.left, a.right = line(3), line(3), line(3)
+    a.hub = a:CreateTexture(nil, "OVERLAY")
+    a.hub:SetSize(9, 9)
+    a.hub:SetPoint("CENTER")
+    a.hub:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask")
+    a.hub:SetVertexColor(c[1], c[2], c[3])
+    local function at(l, which, x, y)
+        if which == "start" then l:SetStartPoint("CENTER", a, x, y) else l:SetEndPoint("CENTER", a, x, y) end
+    end
+    function a:SetRotation(r)
+        self.angle = r or 0
+        local dx, dy = -math.sin(self.angle), math.cos(self.angle)
+        local tx, ty = dx * NEEDLE_TIP, dy * NEEDLE_TIP
+        self.tipX, self.tipY = tx, ty
+        at(self.shaft, "start", -dx * NEEDLE_TAIL, -dy * NEEDLE_TAIL)
+        at(self.shaft, "end", tx, ty)
+        -- The two barbs of the head, swept back from the tip.
+        local back = math.atan2(-dy, -dx)
+        for i, barb in ipairs({ self.left, self.right }) do
+            local th = back + (i == 1 and NEEDLE_BARB or -NEEDLE_BARB)
+            at(barb, "start", tx, ty)
+            at(barb, "end", tx + NEEDLE_HEAD * math.cos(th), ty + NEEDLE_HEAD * math.sin(th))
+        end
+    end
+    function a:SetVertexColor(r, g, b)
+        for _, l in ipairs({ self.shaft, self.left, self.right }) do l:SetColorTexture(r, g, b, 1) end
+        self.hub:SetVertexColor(r, g, b)
+    end
+    a:SetRotation(0)
     return a
+end
+
+-- While the needle shows, the main arrow sits on top of it smaller and
+-- see-through (the short hand), so the needle shows through and past it.
+N.ON_NEEDLE_SCALE, N.ON_NEEDLE_ALPHA = 0.8, 0.7
+function N.SetOverNeedle(f, on)
+    local a = f and f.arrow
+    on = on and true or false
+    if not a or a.overNeedle == on then return end
+    a.overNeedle = on
+    a:SetScale(on and N.ON_NEEDLE_SCALE or 1)
+    a:SetAlpha(on and N.ON_NEEDLE_ALPHA or 1)
 end
 
 -- Shared look for route stops (trip plan, world map pins, map list):
@@ -2406,13 +2456,13 @@ local function buildArrow()
     local p = ns.db.nav.point
     if p then f:SetPoint(p[1], UIParent, p[2], p[3], p[4])
     else f:SetPoint("TOP", UIParent, "TOP", 0, -120) end
-    -- The faint profession arrow sits behind the main arrow (a lower frame
-    -- level, see-through), its stop name and distance in small grey text
-    -- above, opposite the main arrow's text.
+    -- The faint profession needle sits under the main arrow (a lower frame
+    -- level, a little see-through), its stop name and distance in small grey
+    -- text above, opposite the main arrow's text.
     f.prof = CreateFrame("Frame", nil, f)
     f.prof:SetAllPoints(f)
     f.prof:SetFrameLevel(math.max(0, f:GetFrameLevel() - 1))
-    f.prof:SetAlpha(0.5)
+    f.prof:SetAlpha(0.85)
     f.prof.arrow = N:MakeProfArrow(f.prof)
     f.prof.text = f.prof:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     f.prof.text:SetPoint("BOTTOM", f, "TOP", 0, 2)
@@ -2681,7 +2731,7 @@ local function updateProf(p)
     if not holder then return end
     local choice = N:ProfPointerOn() and chooseProf(p) or nil
     N.profChoice = choice
-    if not choice then holder:Hide() return end
+    if not choice then holder:Hide(); N.SetOverNeedle(frame, false) return end
     local g, pt = choice.goal, choice.point
     local name = g.text or g.title or "Profession stop"
     local here = choice.d < ARRIVED * 2 or N:InArea(g, p)
@@ -2689,9 +2739,11 @@ local function updateProf(p)
     local facing = N.ArrowFacing()
     if here or not (b and facing) then
         holder.arrow:Hide()
+        N.SetOverNeedle(frame, false)
     else
         holder.arrow:SetRotation(-(b + facing))
         holder.arrow:Show()
+        N.SetOverNeedle(frame, true)
     end
     if ns.db.nav.profArrowText ~= false then
         holder.text:SetText(here and ("Here: " .. name) or string.format("%s, %d yd", name, choice.d))
