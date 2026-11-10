@@ -144,7 +144,8 @@ function H:Refresh()
     else
         local left = remaining(g)
         panel.text:SetText(string.format("Flow: make %s%d|r x %s", GOLD, left, g.recipe))
-        panel.sub:SetText(string.format("%s %d -> %d. More would be wasted (hover for why).", prof, rank or 0, g.target or 0))
+        panel.sub:SetText(g.upgrade and "An upgrade for you, not needed for the skill (hover for more)."
+            or string.format("%s %d -> %d. More would be wasted (hover for why).", prof, rank or 0, g.target or 0))
         panel.btn:SetText("Make " .. left)
         panel.btn:SetEnabled(left > 0)
     end

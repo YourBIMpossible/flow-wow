@@ -484,6 +484,95 @@ local function recipeStop(prof, s, known)
              blockedBy = #pts == 0 and ("Flow doesn't know who sells " .. name) or nil }
 end
 
+-------------------------------------------------------------------------------
+-- Gear you can make: recipes you know whose item would be an upgrade for
+-- you (the same verdict as your bags: at least +0.5 score for your levelling
+-- role, and wearable at your level). Shown beside the skill plan, never
+-- instead of it: the fastest way up stays the route either way.
+-------------------------------------------------------------------------------
+
+-- Blacksmithing gear is made at an anvil. (Recipes Flow read from your
+-- profession window don't say where; the guide's own steps do.)
+local PROF_STATION = { Blacksmithing = "anvil" }
+local gainCache = {}      -- item ID -> { gain, role, link, slot } or false (not an upgrade)
+local pendingItems = {}   -- item IDs the game hadn't loaded: re-plan once it has
+
+-- How much better item `id` is for you than what you wear: gain, role, link,
+-- slot; nil when it isn't an upgrade (or you already carry one).
+function SP.UpgradeGain(id)
+    if not (id and ns.gear) or count(id) > 0 then return nil end
+    local c = gainCache[id]
+    if c == nil then
+        local link = A.ItemInfo and select(2, A.ItemInfo(id))
+        if not link then
+            pendingItems[id] = true
+            if C_Item and C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(id) end
+            return nil
+        end
+        c = false
+        local cmp = ns.gear:Compare(link)
+        local role = ns:LevelingRole() or "dps"
+        local gain = cmp and cmp.canUse and cmp.diffs and cmp.diffs[role]
+        if gain and gain >= 0.5 and (cmp.item.minLevel or 0) <= UnitLevel("player") then
+            c = { gain, role, link, cmp.item.equipLoc }
+        end
+        gainCache[id] = c
+    end
+    if c then return c[1], c[2], c[3], c[4] end
+end
+
+-- The best upgrade per slot from `cands` ({ recipe, item, reagents, diff,
+-- station }), biggest gain first. gainOf(itemID) -> gain, role, link, slot.
+function SP.PickUpgrades(cands, gainOf)
+    local best = {}
+    for _, c in ipairs(cands) do
+        local gain, role, link, slot = gainOf(c.item)
+        if gain then
+            slot = slot or c.item
+            if not best[slot] or gain > best[slot].gain then
+                best[slot] = { recipe = c.recipe, item = c.item, reagents = c.reagents or {}, diff = c.diff,
+                               station = c.station, gain = gain, role = role, link = link }
+            end
+        end
+    end
+    local out = {}
+    for _, u in pairs(best) do out[#out + 1] = u end
+    table.sort(out, function(a, b)
+        if a.gain ~= b.gain then return a.gain > b.gain end
+        return a.recipe < b.recipe
+    end)
+    return out
+end
+
+-- Upgrades you can make in `prof`, from the recipes your profession window
+-- showed. gainOf: SP.UpgradeGain unless given (tests).
+function SP.Upgrades(prof, gainOf)
+    local known = ns.recipes and ns.recipes:Known(prof)
+    if not known then return {} end
+    local g = ns:Get("profGuide", prof)
+    local stepOf = {}
+    for _, s in ipairs(g and g.steps or {}) do stepOf[s.recipe] = s end
+    local cands = {}
+    for name, r in pairs(known) do
+        if type(r) == "table" and r.item then
+            cands[#cands + 1] = { recipe = name, item = r.item, reagents = r.reagents, diff = r.diff,
+                                  station = (stepOf[name] and stepOf[name].station) or PROF_STATION[prof] }
+        end
+    end
+    return SP.PickUpgrades(cands, gainOf or SP.UpgradeGain)
+end
+
+-- What you wear or your level changed: every verdict may have.
+for _, ev in ipairs({ "PLAYER_EQUIPMENT_CHANGED", "PLAYER_LEVEL_UP", "PLAYER_SPECIALIZATION_CHANGED" }) do
+    ns:On(ev, function() wipe(gainCache) end)
+end
+ns:On("GET_ITEM_INFO_RECEIVED", function(id)
+    if id and pendingItems[id] then
+        pendingItems[id] = nil
+        if ns.nav and ns.nav.RequestCollect then ns.nav.RequestCollect() end
+    end
+end)
+
 local function planProfession(prof, t, out)
     local g = ns:Get("profGuide", prof)
     local rank, max = A.Skill(prof)
@@ -628,6 +717,51 @@ local function planProfession(prof, t, out)
                       or string.format("Make %s x %s", num, s.recipe),
                   details = details,
                   blockedBy = blocked or nil })
+        end
+    end
+
+    -- Gear you can make that's an upgrade for you. When the plan already
+    -- makes it, its craft stop says so. Otherwise it's an extra, optional
+    -- stop: the route takes it only when it's on the way, it never changes
+    -- what the plan makes, and missing materials only list it (not routed).
+    for _, u in ipairs(SP.Upgrades(prof)) do
+        watched[u.item] = true
+        local tag = string.format("+%d %s", math.floor(u.gain + 0.5), ns.ROLE_LABEL[u.role] or u.role)
+        local onPlan
+        for _, goal in ipairs(out) do
+            if goal.key == "craft:" .. prof .. ":" .. u.recipe then onPlan = goal end
+        end
+        if onPlan then
+            onPlan.text = onPlan.text .. " (an upgrade for you)"
+            onPlan.upgrade = u.link
+            onPlan.details[#onPlan.details + 1] = string.format("One of them is an upgrade for you (%s): equip it.", tag)
+        else
+            local missing = {}
+            for id, q in pairs(u.reagents) do
+                watched[id] = true
+                local short = q - count(id)
+                if short > 0 then missing[#missing + 1] = string.format("%d more %s", short, itemName(id)) end
+            end
+            table.sort(missing)
+            local anywhere = not u.station
+            local pts = u.station and stationPoints(u.station) or (anywhere and { playerPoint() }) or nil
+            local details = {
+                string.format("%s is an upgrade for you (%s). Equip it once it's made.", u.link or u.recipe, tag),
+                string.format("Not needed for %s %d: the fastest way there is planned without it, so skip it if you like.",
+                    prof, t.target),
+            }
+            if u.diff and u.diff ~= "trivial" then
+                details[#details + 1] = "It also gives skill while the recipe isn't grey."
+            end
+            add({ key = "upgrade:" .. prof .. ":" .. u.recipe, kind = "craft", points = pts or {}, anywhere = anywhere,
+                  optional = true, weight = 1.5, upgrade = u.link,
+                  icon = profIcon(prof), station = u.station,
+                  prof = prof, recipe = u.recipe, makeCount = 1, rank = rank,
+                  text = string.format("Make %s: an upgrade for you (%s)", u.recipe, tag),
+                  details = details,
+                  blockedBy = (#missing > 0 and ("needs " .. table.concat(missing, ", ")))
+                      or (toolMissing and ("needs a " .. toolMissing))
+                      or ((not pts or #pts == 0) and ("no known " .. (u.station or "spot"))) or nil })
         end
     end
 

@@ -419,6 +419,47 @@ ns:Register("test", "planner: finish the area you're in first", function(t)
     t:ok(ok, "ran" .. (ok and "" or (": " .. tostring(err))))
 end)
 
+ns:Register("test", "skill plan: gear you can make that's an upgrade, beside the fastest path", function(t)
+    local SP = ns.skillPlan
+    local gains = {
+        [101] = { 3, "tank", "belt A", "INVTYPE_WAIST" },
+        [102] = { 5, "tank", "belt B", "INVTYPE_WAIST" },
+        [103] = { 1, "tank", "gloves", "INVTYPE_HAND" },
+    }
+    local function gainOf(id)
+        local g = gains[id]
+        if g then return g[1], g[2], g[3], g[4] end
+    end
+    local ups = SP.PickUpgrades({
+        { recipe = "Belt A", item = 101 }, { recipe = "Belt B", item = 102 },
+        { recipe = "Bandage", item = 104 }, { recipe = "Gloves", item = 103 },
+    }, gainOf)
+    t:eq(#ups, 2, "one per slot, and only upgrades")
+    t:eq(ups[1] and ups[1].recipe, "Belt B", "the bigger belt upgrade, first")
+    t:eq(ups[2] and ups[2].recipe, "Gloves", "then the gloves")
+    -- From your profession window's recipes (Flow's own saved list).
+    local saved = ns.db.crafting["Blacksmithing"]
+    ns.db.crafting["Blacksmithing"] = { rank = 30, recipes = {
+        ["Belt B"] = { item = 102, diff = "optimal", reagents = { [2840] = 6 } },
+        ["Rough Sharpening Stone"] = { item = 2862, diff = "easy", reagents = { [2835] = 1 } },
+    } }
+    local ok, err = pcall(function()
+        ups = SP.Upgrades("Blacksmithing", gainOf)
+        t:eq(#ups, 1, "only the recipe that makes an upgrade")
+        t:eq(ups[1] and ups[1].station, "anvil", "Blacksmithing gear: at an anvil")
+        t:eq(ups[1] and ups[1].reagents[2840], 6, "its materials come along")
+        -- The fastest path is worked out from the guide alone: the upgrade
+        -- doesn't change what it makes.
+        local g = ns:Get("profGuide", "Blacksmithing")
+        local _, order = SP._simulate("Blacksmithing", g.steps, 1, 20, {})
+        for _, st in ipairs(order) do t:ok(st.recipe ~= "Belt B", "the fastest path doesn't make the belt") end
+        t:ok(#order > 0, "the fastest path still has its steps")
+    end)
+    ns.db.crafting["Blacksmithing"] = saved
+    t:ok(ok, "ran" .. (ok and "" or (": " .. tostring(err))))
+    t:eq(#SP.Upgrades("No Such Profession", gainOf), 0, "a profession you never opened: nothing")
+end)
+
 ns:Register("test", "spec badge: better / worse / same per spec", function(t)
     t:eq(ns.SpecTrend(1.2), "up", "better"); t:eq(ns.SpecTrend(-3), "down", "worse")
     t:eq(ns.SpecTrend(0.2), "same", "about the same"); t:eq(ns.SpecTrend(nil), nil, "no score")
