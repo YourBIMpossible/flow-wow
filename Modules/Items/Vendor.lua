@@ -410,8 +410,68 @@ function V:Panel()
     return panel
 end
 
+-------------------------------------------------------------------------------
+-- Durability: a warning when your gear wears down, and auto-repair
+-------------------------------------------------------------------------------
+
+-- Your most worn piece of gear: its durability (0..1, 1 with nothing that
+-- wears) and whether anything is broken.
+function ns.Durability()
+    local low, broken = 1, false
+    if not GetInventoryItemDurability then return low, broken end
+    for slot = 1, 19 do
+        local ok, cur, max = pcall(GetInventoryItemDurability, slot)
+        cur, max = ok and tonumber(cur), ok and tonumber(max)
+        if cur and max and max > 0 then
+            low = math.min(low, cur / max)
+            if cur == 0 then broken = true end
+        end
+    end
+    return low, broken
+end
+
+-- nil (fine), "low" (30% or less) or "critical" (10% or less, or broken).
+function V.DurabilityLevel(pct, broken)
+    if broken or (pct or 1) <= 0.10 then return "critical" end
+    if (pct or 1) <= 0.30 then return "low" end
+    return nil
+end
+
+-- Say it once per level; again only after a repair.
+local warned
+ns:On("UPDATE_INVENTORY_DURABILITY", function()
+    local pct, broken = ns.Durability()
+    local level = V.DurabilityLevel(pct, broken)
+    if not level then warned = nil return end
+    if level == warned or (warned == "critical" and level == "low") then return end
+    warned = level
+    if level == "critical" then
+        ns:Print(string.format("|cffff5555your gear is %s|r (lowest %d%%): broken gear gives no stats. Repair soon: /flow way repair",
+            broken and "broken" or "nearly broken", pct * 100))
+    else
+        ns:Print(string.format("your gear is wearing down (lowest %d%%). Repair at the next vendor: /flow way repair", pct * 100))
+    end
+end)
+
+-- At a vendor who repairs: repair everything, if you can afford it
+-- (Options: "Auto-repair at vendors").
+function V:AutoRepair()
+    if not (CanMerchantRepair and CanMerchantRepair() and GetRepairAllCost and RepairAllItems) then return end
+    local cost, can = GetRepairAllCost()
+    cost = tonumber(cost) or 0
+    if cost <= 0 then return end
+    if not can or (GetMoney and GetMoney() < cost) then
+        ns:Print("can't afford to repair your gear here (" .. money(cost) .. ")")
+        return
+    end
+    RepairAllItems()
+    warned = nil
+    ns:Print("repaired your gear for " .. money(cost))
+end
+
 ns:On("MERCHANT_SHOW", function()
     merchantOpen = true
+    if ns.db.sell.autoRepair ~= false then V:AutoRepair() end
     if not ns.db.sell.enabled then return end
     V:Panel()
     wipe(sold); junkSold = 0
@@ -466,7 +526,16 @@ ns:OnLoad(function(saved)
     if saved.sell.autoJunk == nil then saved.sell.autoJunk = true end
     -- Auto-sell the rest of Flow's "sell" items too (you asked for it).
     if saved.sell.autoAll == nil then saved.sell.autoAll = true end
+    if saved.sell.autoRepair == nil then saved.sell.autoRepair = true end
 end)
+
+ns:Register("setupItem", "autoRepair", {
+    order = 17, label = "Auto-repair at vendors",
+    why = "Repairs all your gear when you open a vendor who repairs, if you have the gold (Flow says what it cost).",
+    isOn = function() return ns.db.sell.autoRepair ~= false end,
+    set = function(on) ns.db.sell.autoRepair = on end,
+    suggested = true, default = true, isNew = true,
+})
 
 ns:Register("setupItem", "autoAll", {
     order = 16, label = "Auto-sell everything Flow marks to sell",

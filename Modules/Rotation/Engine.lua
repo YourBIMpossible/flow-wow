@@ -208,7 +208,8 @@ E.HURT = { outStart = 6, outBig = 15, inHot = 8, inHeal = 20, low = 40, regen = 
 -- one Rejuvenation and one Healing Touch took the estimate to nearly 0, yet
 -- the player went on casting Rejuvenation four more times: still hurt.
 E.HEAL_VALUE = { Rejuvenation = 8, Regrowth = 12, ["Healing Touch"] = 15,
-                 ["Flash of Light"] = 10, ["Holy Light"] = 15, ["Word of Glory"] = 12, ["Lay on Hands"] = 60 }
+                 ["Flash of Light"] = 10, ["Holy Light"] = 15, ["Word of Glory"] = 12, ["Lay on Hands"] = 60,
+                 ["First Aid"] = 15 }   -- (a bandage)
 E.hurt = 0
 
 -- How much an enemy is on you right now: 1 yes, 0 no, 0.5 the game won't say.
@@ -315,6 +316,53 @@ function E:LowHealthHeal(ctx, heals)
 end
 
 -------------------------------------------------------------------------------
+-- Healing items: a healthstone or potion in a fight, bandages and food after
+-- (BuffItems.lua finds them in your bags)
+-------------------------------------------------------------------------------
+
+-- Low health in a fight (the game's warning, or a third of your health where
+-- it's shown): your healthstone, else your best healing potion, before any
+-- heal spell. Every class. The key is locked in a fight, so it shows on the
+-- Flow icon and glows on your bar: press it there.
+E.EMERGENCY_PCT = 0.35
+function E:Emergency(ctx)
+    local BI = ns.buffItems
+    if not (BI and ctx.inCombat) or ns.db.rotation.emergencyItems == false then return nil end
+    if UnitIsDeadOrGhost("player") then return nil end
+    local low = ctx.lowHealth or (ctx.maxHp > 0 and ctx.hpPct <= E.EMERGENCY_PCT)
+    if not low then return nil end
+    local s = BI.EmergencyStep()
+    if s then s.fightType = ctx.fightType end
+    return s
+end
+
+-- Out of a fight and hurt (Flow's estimate): your recovery steps in the
+-- order you chose (right-click the Flow key), by default bandage, then food,
+-- then a heal spell. A step you have nothing for is skipped. Not while you
+-- eat, cast or channel (a bandage is a channel); food only when you're quite
+-- hurt and no enemy is targeted (you'd sit down at the pull).
+function E:Recover(ctx, def)
+    if ctx.inCombat or UnitIsDeadOrGhost("player") then return nil end
+    if E.hurt < E.HURT.outStart then return nil end
+    if eating() or ctx.casting or (UnitChannelInfo and UnitChannelInfo("player")) then return nil end
+    local BI, r = ns.buffItems, ns.db.rotation
+    local mounted = IsMounted and IsMounted()
+    for _, step in ipairs(BI and BI.Order(r.recoverOrder) or { "heal" }) do
+        local s
+        if step == "bandage" and BI and r.recoverBandage ~= false and not mounted then
+            s = BI.BandageStep(r.bandageRank == "low")
+        elseif step == "food" and BI and r.recoverFood ~= false and not mounted and not ctx.hostile
+            and E.hurt >= E.HURT.outBig then
+            s = BI.FoodStep()
+        elseif step == "heal" and r.recoverHeal ~= false then
+            s = self:EarlyHeal(ctx, def)
+        end
+        if s then s.fightType = ctx.fightType; return s end
+    end
+    return nil
+end
+
+-------------------------------------------------------------------------------
 -- Breaking free (stuns, fears...)
 -------------------------------------------------------------------------------
 
@@ -357,6 +405,10 @@ function E:Choose()
     local brk = self:BreakFree(ctx)
     if brk then return brk end
 
+    -- Low health in a fight: healthstone, then potion, before heal spells.
+    local em = self:Emergency(ctx)
+    if em then return em end
+
     if def.heals then
         local h = self:HealDecision(ctx, def.heals)
         if h then h.fightType = ctx.fightType; return h end
@@ -367,9 +419,11 @@ function E:Choose()
     end
 
     -- Your health is hidden: heal on Flow's estimate, long before the warning.
-    local h = self:EarlyHeal(ctx, def)
+    -- Out of a fight, your recovery order (bandage, food, heal spell).
+    local h
+    if ctx.inCombat then h = self:EarlyHeal(ctx, def) else h = self:Recover(ctx, def) end
     if h then
-        local key = h.spell .. (ctx.inCombat and " (in a fight)" or "")
+        local key = (h.spell or h.label or "item") .. (ctx.inCombat and " (in a fight)" or "")
         if key ~= E.lastEarlyLog then
             E.lastEarlyLog = key
             ns:Log("heal", string.format("suggest %s: hurt %.0f%s", key, E.hurt, ctx.hostile and ", enemy targeted" or ""))
@@ -653,7 +707,7 @@ function E:Explain()
     out[#out + 1] = string.format("Hurt estimate: %.0f s of hits (heals out of a fight at %d+, big heal at %d+; in a fight HoT at %d+, heal at %d+); an enemy on you now: %s",
         E.hurt, H.outStart, H.outBig, H.inHot, H.inHeal, tostring(E.BeingHit()))
     local s = self.current
-    out[#out + 1] = "Suggesting now: " .. (s and (s.spell .. " (" .. s.reason .. ")") or "nothing")
+    out[#out + 1] = "Suggesting now: " .. (s and ((s.spell or s.label or "?") .. " (" .. tostring(s.reason) .. ")") or "nothing")
     for _, rule in ipairs(priorityFor(def, ctx)) do
         local state
         if not known[rule.spell] then

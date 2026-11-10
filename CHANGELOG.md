@@ -14,7 +14,23 @@
 - **Campfire buffs.** Near a lit campfire (yours or another player's, "Campfire Nearby") without
   its camp buffs, Flow's key sits you down; it shows "Stay sitting" while the minute runs (a
   press does nothing, so it never stands you up), then goes once the buffs are on. Not in combat,
-  mounted or fishing.
+  mounted or fishing. The camp objects you carry or know (a tent, a mana well, a lute...) are
+  placed first, then you sit again so the buffs include them. In a group, party members running
+  Flow tell each other which objects they could add: you get a chat line ("Mia can add Camp Tent
+  to the camp") and the icon's tooltip lists them. Flow can't see the bags of players without it.
+- **Healthstone, then potion, at low health in a fight.** When the game's low-health warning is
+  on (or you're at a third of your health, where it's shown), Flow's icon shows your healthstone,
+  else your best healing potion, ahead of any heal spell, for every class. The key is locked in a
+  fight, so press it on your bar: it glows there.
+- **After a fight: bandage, then food, then a heal spell.** Hurt out of combat, the Flow key uses
+  your best bandage (not while Recently Bandaged), then food that heals (when you're quite hurt and
+  no enemy is targeted), then your heal spell. **Right-click the Flow key** for the options: the
+  order of the three steps, turning any of them off, best or lowest bandage first, the in-fight
+  healthstone/potion, and placing camp objects. Right-click never casts.
+- **Gear durability.** A chat warning when your most worn piece drops to 30%, and again when it's
+  nearly broken (10%) or broken, with an Advisor line; `/flow way repair` points you to a vendor.
+  **Auto-repair**: opening a vendor who repairs fixes everything if you have the gold, and says
+  what it cost (Options: "Auto-repair at vendors", on by default).
 - **The route on the world map is a faint dotted trail**, like a treasure map, instead of a solid
   line with crawling chevrons: it shows the way without covering the map. The stretch from you
   to your next stop (and that stop's dot) wears the arrow's colour, so with the distance colours

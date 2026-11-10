@@ -2871,6 +2871,36 @@ ns:Register("test", "buff items: used when you're about to kill a lot, if not on
     t:eq(BI.CampStep(true, false, true), "wait", "the minute is running: wait, don't stand up")
     t:eq(BI.CampStep(true, true, false), nil, "camp buffs on: nothing")
     t:eq(BI.CampStep(false, false, false), nil, "no campfire near: nothing")
+    t:eq(BI.CampStep(true, false, false, { name = "Camp Tent" }), "place", "a camp object to place: before sitting")
+    t:eq(BI.CampStep(true, true, false, { name = "Camp Tent" }), "place", "buffs on: still place it (it adds to them)")
+    t:eq(BI.CampStep(true, false, true, { name = "Camp Tent" }), "wait", "the minute is running: never stand up to place one")
+    t:eq(BI.CampStep(true, true, false, nil, 100), "sit", "just placed one: sit again so the buffs include it")
+    t:eq(BI.PartyKitText({ ["Mia-Realm"] = { kits = { "Camp Tent", "Enchanted Lute" }, at = 95 },
+                           Bob = { kits = { "Mana Well" }, at = 10 } }, 100),
+        "Mia: Camp Tent, Enchanted Lute", "party camp objects: fresh lists only, realm dropped")
+    t:eq(BI.PartyKitText({}, 100), nil, "no party lists: nothing")
+    t:eq(BI.HealKind("Minor Healthstone", 0, 0), "healthstone", "a healthstone")
+    t:eq(BI.HealKind("Lesser Healing Potion", 0, 1), "potion", "a healing potion")
+    t:eq(BI.HealKind("Minor Mana Potion", 0, 1), nil, "a mana potion doesn't heal")
+    t:eq(BI.HealKind("Heavy Linen Bandage", 0, 7), "bandage", "a bandage")
+    t:eq(BI.HealKind("Tough Jerky", 0, 5, { "Tough Jerky", "Use: Restores 61 health over 18 sec." }), "food", "plain food heals")
+    t:eq(BI.HealKind("Refreshing Spring Water", 0, 5, { "Use: Restores 151 mana over 18 sec." }), nil, "drink: no")
+    t:eq(BI.HealKind("Roasted Boar Meat", 0, 5, { "Use: Restores 294 health. ...you will become well fed..." }), nil,
+        "Well Fed food is left for the buff step")
+    local heal = { { id = 1, kind = "potion", rank = 15 }, { id = 2, kind = "healthstone", rank = 10 },
+                   { id = 3, kind = "bandage", rank = 5 }, { id = 4, kind = "bandage", rank = 20 } }
+    t:eq(BI.PickEmergency(heal).id, 2, "in a fight: the healthstone before the potion")
+    t:eq(BI.PickEmergency(heal, function(id) return id ~= 2 end).id, 1, "healthstone on cooldown: the potion")
+    t:eq(BI.PickKind(heal, "bandage").id, 4, "best bandage first by default")
+    t:eq(BI.PickKind(heal, "bandage", true).id, 3, "lowest bandage first when you choose it")
+    t:eq(table.concat(BI.Order(nil), ","), "bandage,food,heal", "default order: bandage, food, heal spell")
+    t:eq(table.concat(BI.Order("heal,bandage"), ","), "heal,bandage,food", "your order, missing steps added")
+    t:eq(table.concat(BI.Order("food,food,junk"), ","), "food,bandage,heal", "repeats and unknown words dropped")
+    local V = ns.vendor
+    t:eq(V.DurabilityLevel(0.8, false), nil, "gear fine: no warning")
+    t:eq(V.DurabilityLevel(0.25, false), "low", "30% or less: worn")
+    t:eq(V.DurabilityLevel(0.05, false), "critical", "10% or less: nearly broken")
+    t:eq(V.DurabilityLevel(0.9, true), "critical", "anything broken: critical")
     t:ok(BI.IsWeaponBuff("Rough Sharpening Stone"), "a stone by its name")
     t:ok(BI.IsWeaponBuff("Coarse Weightstone"), "a weightstone by its name")
     t:ok(BI.IsWeaponBuff("Minor Wizard Oil") and BI.IsWeaponBuff("Frost Oil"), "weapon oils by name")

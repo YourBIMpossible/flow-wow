@@ -135,6 +135,7 @@ local function setAction(s)
         btn:SetAttribute("type", "item")
         btn:SetAttribute("item", s.item)
         btn:SetAttribute("target-slot", s.targetSlot)
+        btn:SetAttribute("unit", s.unit)   -- (a bandage: on you)
     else
         btn:SetAttribute("type", nil)
     end
@@ -240,6 +241,7 @@ function C:FillTooltip(tt)
         tt:AddLine("Ctrl + key: " .. s.spell .. " on your target instead.", 0.4, 0.8, 1)
     end
     tt:AddLine("Hold Shift and drag to move; hold Ctrl and use the mouse wheel to resize.", 0.6, 0.6, 0.6)
+    tt:AddLine("Right-click: options (after-fight order, bandages, camp).", 0.6, 0.6, 0.6)
 end
 
 local function refreshLabels()
@@ -249,7 +251,7 @@ local function refreshLabels()
     local live = E.current
     local first = C.KeysOf(ns.db.cast)[1]
     local healKey = first and C.HealSpell and C:HealSpell() and C.HealKeyFor(first)
-    if InCombatLockdown() and healKey and live and (live.kind == "heal" or live.kind == "emergency")
+    if InCombatLockdown() and healKey and live and live.spell and (live.kind == "heal" or live.kind == "emergency")
         and lockedSpell ~= live.spell then
         keyText:SetText("|cff66ff66S-" .. C.ShortKey(first, GetBindingText and function(k) return GetBindingText(k, "KEY_", true) end) .. "|r")
         if not ns.db.cast.healTipShown then
@@ -286,6 +288,9 @@ local function build(cfg)
     -- Shift + drag moves it; make shift-clicks do nothing so moving never casts.
     btn:SetAttribute("shift-type1", "macro")
     btn:SetAttribute("shift-macrotext1", "")
+    -- Right-click never casts: it opens the key's options (below).
+    btn:SetAttribute("type2", "macro")
+    btn:SetAttribute("macrotext2", "")
     btn:SetMovable(true)
     btn:SetClampedToScreen(true)
     btn:RegisterForDrag("LeftButton")
@@ -293,6 +298,12 @@ local function build(cfg)
         if IsShiftKeyDown() and not InCombatLockdown() then self:StartMoving(); C.moving = true end
     end)
     btn:SetScript("OnDragStop", function() C:EndMove() end)
+    -- Right-click: the Flow key's options (recovery order, bandages, camp).
+    btn:HookScript("OnClick", function(_, button, down)
+        if button == "RightButton" and not down and not InCombatLockdown() and ns.buffItems then
+            ns.buffItems:OpenMenu()
+        end
+    end)
     btn:SetScript("OnEnter", function(self)
         ns.Tip(self, "ANCHOR_RIGHT")
         pcall(C.FillTooltip, C, GameTooltip)
@@ -623,7 +634,8 @@ ns:OnLoad(function()
         acc = 0
         fight.ticks = fight.ticks + 1
         local s = E.current
-        if s then fight.seen[s.spell] = (fight.seen[s.spell] or 0) + 1 else fight.empty = fight.empty + 1 end
+        local what = s and (s.spell or s.item or s.label or "?")
+        if what then fight.seen[what] = (fight.seen[what] or 0) + 1 else fight.empty = fight.empty + 1 end
     end)
 end)
 

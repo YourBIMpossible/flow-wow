@@ -30,8 +30,15 @@ Flow for WoW is a separate project from Flow Engine.
   Crafting: campfire, open the profession, make exactly enough. Things to learn in your bags
   (recipes, scrolls): it learns them. About to fight (a kill stop, or just
   after a fight): elixirs and scrolls, a stone or oil on your weapon, then food that makes you Well
-  Fed. By a WoW: Forever campfire without its camp buffs: sit (the key sits you down; stay a
-  minute). One press per step.
+  Fed. By a WoW: Forever campfire: place the camp objects you carry (a tent, a lute...), then sit
+  for the camp buffs (the key sits you down; stay a minute); party members running Flow say which
+  objects they could add. One press per step.
+- **Healing items**: low in a fight, Flow's icon shows your healthstone, then your best healing
+  potion, before any heal spell (press it on your bar: it glows). After a fight the key recovers
+  you: bandage, then food, then a heal spell by default. Right-click the Flow key to change that
+  order, turn steps off, or use your lowest bandages first.
+- **Gear repair**: a chat warning when your gear is worn (30%) or nearly broken, an Advisor line,
+  and auto-repair at vendors who repair (Options, on by default).
   `/flow action` shows what it would do.
 - **Buffs while questing**: keeps your seal, blessing and aura up; quiet in cities and inns.
   Remembers what you cast when the game hides your auras.

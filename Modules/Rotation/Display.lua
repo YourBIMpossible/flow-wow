@@ -21,6 +21,7 @@ local BAR_PREFIXES = {
 
 local icon, glows, current
 local buttonsBySpell = {}
+local buttonsByItem = {}   -- item ID -> buttons (a healthstone, a bandage)
 
 -- A coloured frame made of plain colour textures. Works on every client
 -- (no dependency on Blizzard art files).
@@ -172,7 +173,7 @@ local function glowFor(btn)
 end
 
 local function scanButtons()
-    wipe(buttonsBySpell)
+    wipe(buttonsBySpell); wipe(buttonsByItem)
     for _, prefix in ipairs(BAR_PREFIXES) do
         for i = 1, 12 do
             local btn = _G[prefix .. i]
@@ -188,6 +189,10 @@ local function scanButtons()
                             table.insert(buttonsBySpell[name], btn)
                             glowFor(btn)  -- build now, out of combat
                         end
+                    elseif kind == "item" and id then
+                        buttonsByItem[id] = buttonsByItem[id] or {}
+                        table.insert(buttonsByItem[id], btn)
+                        glowFor(btn)
                     end
                 end
             end
@@ -212,9 +217,16 @@ local function clearGlows()
     end
 end
 
-local function showGlows(spell, color, kind)
+-- The buttons holding a suggestion: its spell, or its item.
+local function buttonsOf(s)
+    if s.spell then return buttonsBySpell[s.spell] or {} end
+    local id = s.item and tonumber(tostring(s.item):match("(%d+)"))
+    return id and buttonsByItem[id] or {}
+end
+
+local function showGlows(s, color, kind)
     clearGlows()
-    for _, btn in ipairs(buttonsBySpell[spell] or {}) do
+    for _, btn in ipairs(buttonsOf(s)) do
         local g = glowFor(btn)
         g.border:SetColor(color[1], color[2], color[3])
         g.fade:SetDuration(kind == "emergency" and 0.2 or 0.45)
@@ -307,7 +319,7 @@ local function render(s, cfg)
     if key ~= current then
         current = key
         -- (A held spell isn't advice: no glow on your action bars.)
-        if s.spell and s.kind ~= "held" then showGlows(s.spell, color, s.kind) else clearGlows() end
+        if (s.spell or s.item) and s.kind ~= "held" then showGlows(s, color, s.kind) else clearGlows() end
     end
 end
 
