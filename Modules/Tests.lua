@@ -1042,6 +1042,17 @@ ns:Register("test", "perf: Flow's update loops are timed", function(t)
     t:ok(ns.nav.Busy() == true or ns.nav.Busy() == false, "tracker can tell when the route is being redone")
 end)
 
+ns:Register("test", "perf: route refresh gathers one stop source at a time", function(t)
+    local N, P = ns.nav, ns.perf
+    local list = { "already here" }
+    N._gatherFrom("test: src", { collect = function() return { { key = "k1", text = "a" } } end }, list)
+    t:eq(#list, 2, "one source's stops added to the list being built")
+    t:eq(list[2].provider, "test: src", "stop tagged with its source")
+    N._gatherFrom("test: bad", { collect = function() error("boom") end }, list)
+    t:eq(#list, 2, "a failing source adds nothing and doesn't stop the refresh")
+    P.stats["gather: test: src"], P.stats["gather: test: bad"] = nil, nil
+end)
+
 ns:Register("test", "perf: a timed call inside another counts once", function(t)
     local P = ns.perf
     local clock = debugprofilestop

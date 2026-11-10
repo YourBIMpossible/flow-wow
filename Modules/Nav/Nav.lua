@@ -336,24 +336,34 @@ function N:Coin(c)
 end
 
 local timedProviders = {}   -- each stop source timed on its own in /flow perf
-function N:Collect()
-    local list = {}
-    for key, provider in ns:Each("navGoal") do
-        local t = timedProviders[key]
-        if not t or t.fn ~= provider.collect then
-            t = { fn = provider.collect, timed = ns.perf.Wrap("gather: " .. key, provider.collect) }
-            timedProviders[key] = t
+-- One stop source's goals, added to `list`.
+local function gatherFrom(key, provider, list)
+    local t = timedProviders[key]
+    if not t or t.fn ~= provider.collect then
+        t = { fn = provider.collect, timed = ns.perf.Wrap("gather: " .. key, provider.collect) }
+        timedProviders[key] = t
+    end
+    local ok, found = pcall(t.timed)
+    if ok then
+        for _, goal in ipairs(found or {}) do
+            goal.provider = key
+            resolvePoints(goal)
+            list[#list + 1] = goal
         end
-        local ok, found = pcall(t.timed)
-        if ok then
-            for _, goal in ipairs(found or {}) do
-                goal.provider = key
-                resolvePoints(goal)
-                list[#list + 1] = goal
-            end
-        elseif ns.db.rotation.debug then
-            ns:Print("nav goal " .. key .. ": " .. tostring(found))
-        end
+    elseif ns.db.rotation.debug then
+        ns:Print("nav goal " .. key .. ": " .. tostring(found))
+    end
+end
+N._gatherFrom = gatherFrom  -- (tests)
+
+-- Every source in one go, then planned: what commands use. The routine
+-- refresh (collectSoon below) gathers one source per frame instead and
+-- hands the list in as `gathered`, so no one frame does all of it.
+function N:Collect(gathered)
+    local list = gathered
+    if not list then
+        list = {}
+        for key, provider in ns:Each("navGoal") do gatherFrom(key, provider, list) end
     end
     -- Blocked stops stay off the route but are listed (with a lock and the
     -- reason) on the map list and the tracker:
@@ -2418,17 +2428,48 @@ end
 -- busy: something changed (quest, level, item...) and the route is being
 -- redone; the Flow Tracker spins its icon meanwhile. The quiet refresh every
 -- 10 s doesn't count, or it would spin all the time.
-local pendingCollect, busy = false, false
+-- The refresh gathers one stop source per frame (~15 frames, a quarter
+-- second), then plans in the frame after: all in one frame, a busy refresh
+-- could take 30+ ms, a hitch you can see. A change that comes in while it
+-- gathers gets one more refresh straight after.
+local pendingCollect, gathering, again, busy = false, false, false, false
 function N.Busy() return busy end
-local function collectSoon(quiet)
+local collectSoon
+local function finishRefresh()
+    pendingCollect, gathering, busy = false, false, false
+    if again then again = false; collectSoon(false) end
+end
+local function collectSpread()
+    gathering = true
+    local sources = {}
+    for key, provider in ns:Each("navGoal") do sources[#sources + 1] = { key = key, provider = provider } end
+    local list, i = {}, 0
+    local function step()
+        i = i + 1
+        local s = sources[i]
+        if s then
+            -- gatherFrom pcalls the source; this catches the rest, so a bad
+            -- stop can't leave the refresh stuck (no route updates ever again).
+            local ok, err = pcall(gatherFrom, s.key, s.provider, list)
+            if not ok and ns.db.rotation.debug then ns:Print("nav goal " .. s.key .. ": " .. tostring(err)) end
+            C_Timer.After(0, step)
+            return
+        end
+        pcall(N.Collect, N, list)
+        finishRefresh()
+    end
+    step()
+end
+collectSoon = function(quiet)
     if not quiet then busy = true end
-    if pendingCollect then return end
+    if pendingCollect then
+        -- Waiting the 1 s: this change is picked up anyway. Gathering: the
+        -- sources already read may be out of date, so go again after.
+        if gathering and not quiet then again = true end
+        return
+    end
     pendingCollect = true
-    C_Timer.After(1, function()
-        pendingCollect = false
-        pcall(N.Collect, N)
-        busy = false
-    end)
+    C_Timer.After(1, collectSpread)
 end
 local function scheduleCollect() collectSoon(false) end
 N.RequestCollect = scheduleCollect  -- other modules: re-plan soon (throttled)
