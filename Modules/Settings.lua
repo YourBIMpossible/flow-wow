@@ -6,7 +6,7 @@
 --                  Flow says what and you choose: use it anyway (your own
 --                  binding is untouched and comes back if you clear Flow's
 --                  key) or pick another. Movement keys get an extra warning.
---   Flow           Flow's own options (route colours, 3D arrow, minimap).
+--   Flow           Flow's own options (route colours, the arrow, minimap).
 --   Suggested WoW settings
 --                  The game settings Flow recommends (Setup.lua rows: auto
 --                  loot, nameplates, target of target, ...), each with what
@@ -265,10 +265,15 @@ local function build(parent)
     _, y = check(f, y, "Colour-blind route colours", "(safer colours)",
         "The route and arrow colour shows the route's state: purple = Most XP first, blue = Shortest path, orange = Custom route (you picked the next stop), green = your own waypoint. On: the same roles in colours that stay apart for the common kinds of colour blindness.",
         function() return ns.theme:ColorBlind() end, function(on) ns.theme:SetColorBlind(on) end)
-    _, y = check(f, y, "3D arrow", "(off = flat line arrow)",
-        "A shaded chevron lying on the ground ahead of you. It turns left and right; WoW: Forever gives no heights, so it can't point up or down.",
-        function() return ns.db.nav.arrowStyle ~= "flat" end,
-        function(on) ns.nav:SetArrowStyle(on and "3d" or "flat") end)
+    f.arrowRow, y = choices(f, y, "Arrow",
+        "Modern (default): a glossy chevron floating over its shadow; when you arrive, a glowing ring with ripples and a beam of light. 3D: the chevron of lines over a ring of pillars. Flat: the plain line arrow. All turn left and right; WoW: Forever gives no heights, so none can point up or down. Also in the arrow's right-click menu and /flow nav arrow.",
+        { { "Modern", "modern", 64 }, { "3D", "3d", 40 }, { "Flat", "flat", 44 } },
+        function() return ns.nav:ArrowStyle() end,
+        function(v) ns.nav:SetArrowStyle(v) end)
+    _, y = check(f, y, "Arrow colour by distance", "(off = the route's colour)",
+        "Grey while the stop is in another zone, red when it's far away turning yellow then green as you close in, blue once you're in its area. Off: the route's colour (purple / blue / orange), green for your own waypoint.",
+        function() return ns.nav:ArrowColorMode() == "distance" end,
+        function(on) ns.nav:SetArrowColorMode(on and "distance" or "route") end)
     _, y = check(f, y, "Stop areas on the minimap", nil,
         "The area of the stop the arrow points at, on the minimap (and the stop you hover in the Flow Tracker).",
         function() return ns.db.nav.minimapAreas ~= false end,

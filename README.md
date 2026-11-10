@@ -61,15 +61,16 @@ Flow for WoW is a separate project from Flow Engine.
   on the map, then goes back to the route when you arrive or clear it.
 - **Hub business first**: in a quest hub the route turns in every finished quest there and
   picks up the quests on offer before heading out, like a walkthrough.
-- **Quest areas**: in an objective area the arrow becomes a ring of little pillars that pop up
-  as you arrive (and run a wave when you're right on the spot); hover it to see every quest
-  there. A "do it here" stop (crafting, a recipe to learn) shows its own icon bouncing in the
-  ring.
-- **3D arrow**: a shaded chevron on the ground over a ring of pillars, with a floating sphere
-  when you've arrived (or the flat line arrow: right-click it and untick "3D arrow"). It turns
-  with your character. (The game doesn't tell add-ons where the camera points, so it can't
-  follow the camera.) The login intro spins the pillars around a gold FLOW with the version
-  underneath (`/flow splash`).
+- **Quest areas**: in an objective area the arrow shows a glowing ring, a beam of light and
+  ripples (they speed up when you're right on the spot); hover it to see every quest there. A
+  "do it here" stop (crafting, a recipe to learn) shows its own icon bouncing in the ring.
+- **Arrow**: a glossy metal chevron that glides as it turns and floats over its own shadow. Its
+  colour says how close you are: grey while the stop is in another zone, then red (far) through
+  yellow to green (close), and blue once you're in its area (`/flow nav arrowcolor route` gives
+  it the route's colour instead). Right-click it to pick Modern, 3D (pillars) or Flat lines
+  (`/flow nav arrow modern|3d|flat`). It turns with your character. (The game doesn't tell
+  add-ons where the camera points, so it can't follow the camera.) The login intro spins the
+  arrow around a gold FLOW with the version underneath (`/flow splash`).
 - **Corpse arrow**: when you die the arrow turns red and points to your corpse.
 - **Milestones**: class training and your mount always make the route and fit around the
   quests on the way. Flow tells you to start saving for your mount 5 levels early.

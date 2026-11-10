@@ -573,7 +573,7 @@ function N:MakeHudArrow(parent)
 end
 
 -------------------------------------------------------------------------------
--- 3D arrow (the default look; /flow nav arrow flat for the line arrow).
+-- 3D arrow (/flow nav arrow 3d; the modern arrow below is the default).
 -- A thick chevron lying on the ground in front of you, seen from above and
 -- behind like the game camera: it tilts away towards the horizon, its far
 -- end is smaller (perspective), it has a lit top, darker sides and a soft
@@ -867,15 +867,252 @@ function N:MakeArrow3D(parent)
     return a
 end
 
--- The arrow in the style you chose: "3d" (default) or "flat".
-function N:MakeArrow(parent)
-    if ns.db.nav.arrowStyle == "flat" then return self:MakeHudArrow(parent) end
-    return self:MakeArrow3D(parent)
+-------------------------------------------------------------------------------
+-- Modern arrow (the default look): a glossy, bevelled chevron with a dark
+-- outline and a soft shadow, drawn from pictures that tools/make-arrow-art.py
+-- renders (128 turns, one picture each, in Modules/Nav/Art). Its colour
+-- tells you how close you are (N.ArrowColor): grey while the stop is in
+-- another zone, red far away through yellow to green close by, blue in the
+-- stop's area. It floats over its shadow and a pool of its own light. When
+-- you've arrived it gives way to a glowing ring on the ground with ripples
+-- running out of it and a beam of light rising from the middle.
+-------------------------------------------------------------------------------
+
+local ART = "Interface\\AddOns\\Flow\\Modules\\Nav\\Art\\"
+local TURNS, ART_COLS, ART_ROWS = 128, 16, 8
+local COLOR_NEAR, COLOR_FAR = 40, 600   -- yards: fully green inside NEAR, fully red beyond FAR
+
+-- The picture for a turn of `angle` (radians, anticlockwise, 0 = pointing
+-- up): its number (0-127) and its texture coordinates left, right, top, bottom.
+function N.ArrowCell(angle)
+    local two = 2 * math.pi
+    local i = math.floor(((angle or 0) % two) / two * TURNS + 0.5) % TURNS
+    local col, row = i % ART_COLS, math.floor(i / ART_COLS)
+    return i, col / ART_COLS, (col + 1) / ART_COLS, row / ART_ROWS, (row + 1) / ART_ROWS
 end
 
--- Switch styles on the fly (arrow menu, /flow nav arrow).
+-- How the arrow should be coloured for this stop: "here" (you're in its
+-- area), "away" (it's in another zone or on another continent) or "zone"
+-- (same zone: by distance). p = N:PlayerPos(), pt = the stop's point.
+function N.ArrowState(p, pt, here)
+    if here then return "here" end
+    if p and pt then
+        if p.cont and pt.cont and p.cont ~= pt.cont then return "away" end
+        local mine, theirs = N.ZoneOf(p.map), N.ZoneOf(pt.map)
+        if mine and theirs and mine ~= theirs then return "away" end
+    end
+    return "zone"
+end
+
+local function mix(a, b, t)
+    return a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t
+end
+
+-- The arrow's colour (r, g, b) for a state from N.ArrowState and the
+-- distance in yards, from the theme (the colour-blind palette has its own).
+function N.ArrowColor(state, d)
+    local th = ns.theme
+    if state == "away" then return th.arrowAway[1], th.arrowAway[2], th.arrowAway[3] end
+    if state == "here" then return th.arrowHere[1], th.arrowHere[2], th.arrowHere[3] end
+    local near = 1 - math.min(1, math.max(0, ((d or COLOR_FAR) - COLOR_NEAR) / (COLOR_FAR - COLOR_NEAR)))
+    if near < 0.5 then return mix(th.arrowFar, th.arrowMid, near * 2) end
+    return mix(th.arrowMid, th.arrowNear, near * 2 - 1)
+end
+
+-- The ring on the ground when you've arrived: an ellipse as wide as the
+-- arrow, flattened by the same camera tilt as the pictures.
+local HALO_W, HALO_H, HALO_Y = 58, 42, -4
+
+function N:MakeArrowModern(parent)
+    local a = CreateFrame("Frame", nil, parent)
+    a:SetSize(64, 64)
+    a:SetPoint("CENTER")
+    local function tex(file, layer, sub, blend)
+        local t = a:CreateTexture(nil, layer, nil, sub)
+        t:SetTexture(ART .. file)
+        if blend then t:SetBlendMode(blend) end
+        return t
+    end
+    -- Pointing the way: shadow and light pool stay on the ground, the
+    -- arrow (body + its highlights) floats above them.
+    a.shadow = tex("ArrowShadow", "BACKGROUND", 1)
+    a.shadow:SetAllPoints()
+    a.pool = tex("ArrowGlow", "BACKGROUND", 2, "ADD")
+    a.pool:SetSize(60, 36)
+    a.pool:SetPoint("CENTER", a, "CENTER", 0, -3)
+    a.body = tex("ArrowBody", "ARTWORK", 1)
+    a.body:SetSize(64, 64)
+    a.body:SetPoint("CENTER")
+    a.shine = tex("ArrowShine", "ARTWORK", 2, "ADD")
+    a.shine:SetAllPoints(a.body)
+    -- Arrived: the ring, a ripple running out of it and the beam.
+    a.halo = tex("ArrowRing", "BACKGROUND", 3, "ADD")
+    a.halo:SetSize(HALO_W, HALO_H)
+    a.halo:SetPoint("CENTER", a, "CENTER", 0, HALO_Y)
+    a.ripple = tex("ArrowRing", "BACKGROUND", 4, "ADD")
+    a.ripple:SetPoint("CENTER", a, "CENTER", 0, HALO_Y)
+    a.beam = tex("ArrowBeam", "ARTWORK", 3, "ADD")
+    a.beam:SetPoint("BOTTOM", a, "CENTER", 0, HALO_Y)
+    -- The stop's own icon (craft here, use from your bags) bouncing in the
+    -- ring: round, on a dark disc.
+    local CIRCLE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
+    a.disc = a:CreateTexture(nil, "OVERLAY", nil, 1)
+    a.disc:SetTexture(CIRCLE)
+    a.disc:SetSize(24, 24)
+    a.icon = a:CreateTexture(nil, "OVERLAY", nil, 2)
+    a.icon:SetSize(18, 18)
+    a.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    if a.CreateMaskTexture then
+        local okM, mask = pcall(a.CreateMaskTexture, a)
+        if okM and mask then
+            mask:SetTexture(CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+            mask:SetAllPoints(a.icon)
+            pcall(a.icon.AddMaskTexture, a.icon, mask)
+        end
+    end
+    for _, t in ipairs({ a.halo, a.ripple, a.beam, a.disc, a.icon }) do t:Hide() end
+
+    -- a.r/g/b and a.angle are where the arrow is heading; a.cr/cg/cb and
+    -- a.at are what's on screen, easing towards them (snapping while the
+    -- login intro spins it).
+    a.angle, a.at, a.cell = 0, 0, -1
+    a.r, a.g, a.b = 1, 0.62, 0
+    a.cr, a.cg, a.cb = a.r, a.g, a.b
+    a.fade = 0   -- 0 = pointing, 1 = arrived (the arrow faded out, the ring in)
+
+    local function paintCell()
+        local i, l, r, t, b = N.ArrowCell(a.at)
+        if i == a.cell then return end
+        a.cell = i
+        a.body:SetTexCoord(l, r, t, b)
+        a.shine:SetTexCoord(l, r, t, b)
+        a.shadow:SetTexCoord(l, r, t, b)
+    end
+    local function paintColor()
+        local r, g, b = a.cr, a.cg, a.cb
+        a.body:SetVertexColor(r, g, b)
+        a.pool:SetVertexColor(r, g, b)
+        a.halo:SetVertexColor(r, g, b)
+        a.ripple:SetVertexColor(r, g, b)
+        a.beam:SetVertexColor(r, g, b)
+        a.disc:SetVertexColor(r * 0.3, g * 0.3, b * 0.3, 1)
+    end
+    local function paintFade()
+        local on = 1 - a.fade
+        a.body:SetAlpha(on); a.shine:SetAlpha(on * 0.9)
+        a.shadow:SetAlpha(on * 0.75); a.pool:SetAlpha(0.35 * on)
+        local arrived = a.fade > 0.01
+        a.halo:SetShown(arrived); a.ripple:SetShown(arrived); a.beam:SetShown(arrived)
+        local icon = a.arrived and not a.noBall and a.iconTex ~= nil
+        a.icon:SetShown(icon); a.disc:SetShown(icon)
+    end
+
+    function a:SetRotation(r)
+        self.angle = r or 0
+        if self.spinning then self.at = self.angle; paintCell() end
+    end
+    function a:SetVertexColor(r, g, b)
+        self.r, self.g, self.b = r, g, b
+        if self.spinning then self.cr, self.cg, self.cb = r, g, b; paintColor() end
+    end
+    function a:SetArrived(on)
+        on = on and true or false
+        if self.arrived == on then return end
+        self.arrived = on
+        self.arrivedAt = GetTime()
+        paintFade()
+    end
+    function a:SetCenterIcon(tex)
+        if tex == self.iconTex then return end
+        self.iconTex = tex
+        if tex then self.icon:SetTexture(tex) end
+        paintFade()
+    end
+    -- Right on the spot: the ripples run faster and brighter.
+    function a:SetWave(on) self.wave = (on and self.arrived) and true or false end
+
+    a:SetScript("OnUpdate", function(me, elapsed)
+        local dt = math.min(elapsed or 0, 0.1)
+        local now = GetTime()
+        -- Turn the shortest way round, quickly but without snapping.
+        local diff = (me.angle - me.at + math.pi) % (2 * math.pi) - math.pi
+        if math.abs(diff) > 0.001 then
+            me.at = me.at + diff * (1 - math.exp(-dt * 14))
+            paintCell()
+        end
+        -- Colour changes blend over about a second.
+        local k = 1 - math.exp(-dt * 3)
+        if math.abs(me.r - me.cr) + math.abs(me.g - me.cg) + math.abs(me.b - me.cb) > 0.004 then
+            me.cr = me.cr + (me.r - me.cr) * k
+            me.cg = me.cg + (me.g - me.cg) * k
+            me.cb = me.cb + (me.b - me.cb) * k
+            paintColor()
+        end
+        -- Fade between pointing and arrived (a quarter second).
+        local want = me.arrived and 1 or 0
+        if me.fade ~= want then
+            local step = dt * 4
+            me.fade = (want > me.fade) and math.min(want, me.fade + step) or math.max(want, me.fade - step)
+            paintFade()
+        end
+        if me.fade < 1 then
+            -- Float: the arrow bobs, its shadow stays on the ground.
+            me.body:SetPoint("CENTER", me, "CENTER", 0, 1.5 * math.sin(now * 2.4))
+        end
+        if me.fade > 0 then
+            local f = me.fade
+            local pulse = 0.5 + 0.5 * math.sin(now * 4)
+            me.halo:SetAlpha(f * (0.6 + 0.4 * pulse))
+            local u = (now * (me.wave and 1.4 or 0.7)) % 1
+            me.ripple:SetSize(HALO_W * (0.55 + 0.75 * u), HALO_H * (0.55 + 0.75 * u))
+            me.ripple:SetAlpha(f * (1 - u) * (me.wave and 0.9 or 0.6))
+            me.beam:SetSize(18 + 4 * pulse, 50 + 8 * pulse)
+            me.beam:SetAlpha(f * (0.45 + 0.25 * pulse))
+            if me.icon:IsShown() then
+                local hop = math.abs(math.sin(now * 3.2)) * 5   -- a hop: "do this here, now"
+                me.icon:SetPoint("CENTER", me, "CENTER", 0, 8 + hop)
+                me.disc:SetPoint("CENTER", me, "CENTER", 0, 8 + hop)
+            end
+        end
+    end)
+    paintCell(); paintColor(); paintFade()
+    return a
+end
+
+-- The arrow styles, in the order the menus list them.
+N.ARROW_STYLES = {
+    { "modern", "Modern" },
+    { "3d", "3D (pillars)" },
+    { "flat", "Flat lines" },
+}
+
+-- The style in use: "modern" (default), "3d" or "flat".
+function N:ArrowStyle()
+    local s = ns.db.nav.arrowStyle
+    return (s == "3d" or s == "flat") and s or "modern"
+end
+
+-- The arrow in the style you chose.
+function N:MakeArrow(parent)
+    local style = self:ArrowStyle()
+    if style == "flat" then return self:MakeHudArrow(parent) end
+    if style == "3d" then return self:MakeArrow3D(parent) end
+    return self:MakeArrowModern(parent)
+end
+
+-- Arrow colour: "distance" (default: grey in another zone, red to green as
+-- you close in, blue in the area) or "route" (the route's own colour, your
+-- waypoint green).
+function N:ArrowColorMode()
+    return ns.db.nav.arrowColor == "route" and "route" or "distance"
+end
+function N:SetArrowColorMode(mode)
+    ns.db.nav.arrowColor = (mode == "route") and "route" or nil
+end
+
+-- Switch styles on the fly (arrow menu, settings, /flow nav arrow).
 function N:SetArrowStyle(style)
-    ns.db.nav.arrowStyle = (style == "flat") and "flat" or "3d"
+    ns.db.nav.arrowStyle = (style == "3d" or style == "flat") and style or "modern"
     local frame = N.arrowFrame
     if frame and frame.arrow then
         local old = frame.arrow
@@ -2112,8 +2349,12 @@ local function buildArrow()
             end
             for _, it in ipairs(ns.menu:RouteItems()) do items[#items + 1] = it end
             items[#items + 1] = { sep = true }
-            items[#items + 1] = { text = "3D arrow", checked = ns.db.nav.arrowStyle ~= "flat",
-                func = function() N:SetArrowStyle(ns.db.nav.arrowStyle == "flat" and "3d" or "flat") end }
+            for _, st in ipairs(N.ARROW_STYLES) do
+                items[#items + 1] = { text = "Arrow: " .. st[2], checked = N:ArrowStyle() == st[1],
+                    func = function() N:SetArrowStyle(st[1]) end }
+            end
+            items[#items + 1] = { text = "Arrow colour by distance", checked = N:ArrowColorMode() == "distance",
+                func = function() N:SetArrowColorMode(N:ArrowColorMode() == "distance" and "route" or "distance") end }
             -- (Only once you've Shift-dragged the drawer somewhere of its own.)
             if ns.db.nav.drawerPoint then
                 items[#items + 1] = { text = "Drawer next to the arrow (again)", func = function()
@@ -2409,8 +2650,13 @@ local function update()
     if frame.arrow.SetWave then
         frame.arrow:SetWave(here and frame.arrow.arrived and ((spotD and spotD <= SPOT_ON) or choice.d < ARRIVED * 2))
     end
-    local c = choice.waypoint and ns.theme.waypoint or ns.theme.route   -- your waypoint: green
-    frame.arrow:SetVertexColor(c[1], c[2], c[3])
+    if N:ArrowColorMode() == "distance" then
+        -- Grey: in another zone; red far away to green close by; blue in the area.
+        frame.arrow:SetVertexColor(N.ArrowColor(N.ArrowState(p, choice.point, here), choice.d))
+    else
+        local c = choice.waypoint and ns.theme.waypoint or ns.theme.route   -- your waypoint: green
+        frame.arrow:SetVertexColor(c[1], c[2], c[3])
+    end
     frame:Show()
     if panel and panel:IsShown() then showPanel()
     elseif ns.db.nav.drawerOpen and not N.drawerRestored then
@@ -2506,6 +2752,12 @@ ns:OnLoad(function(saved)
     -- the older name of "custom").
     N.loadedAt = GetTime()
     if saved.nav.sorter == "selected" then saved.nav.sorter = "custom" end
+    -- The modern arrow came after "3D" was the default (and the old switch
+    -- could only say 3D or flat): a saved "3D" moves to the modern one, once.
+    if not saved.nav.arrowModern then
+        saved.nav.arrowModern = true
+        if saved.nav.arrowStyle == "3d" then saved.nav.arrowStyle = nil end
+    end
     if saved.nav.selectedKey then N.selection = { first = saved.nav.selectedKey } end
     ns.theme:UpdateRoute()
     frame = buildArrow()
@@ -2584,9 +2836,14 @@ ns.commands.nav = function(arg)
             N:Collect()
             ns:Print(n .. " hidden stop(s) back on the route.")
         end
-    elseif arg == "arrow 3d" or arg == "arrow flat" then
-        N:SetArrowStyle(arg:match("arrow (%a+%d?)") == "flat" and "flat" or "3d")
-        ns:Print("arrow: " .. (ns.db.nav.arrowStyle == "flat" and "flat lines" or "3D"))
+    elseif arg == "arrow modern" or arg == "arrow 3d" or arg == "arrow flat" then
+        N:SetArrowStyle(arg:match("^arrow (%w+)$"))
+        ns:Print("arrow: " .. N:ArrowStyle())
+    elseif arg == "arrowcolor distance" or arg == "arrowcolor route" or arg == "arrowcolor" then
+        if arg ~= "arrowcolor" then N:SetArrowColorMode(arg:match("^arrowcolor (%a+)$")) end
+        ns:Print("arrow colour: " .. (N:ArrowColorMode() == "distance"
+            and "by distance (grey: another zone, red to green: closing in, blue: in the area)"
+            or "the route's colour (your waypoint green)") .. ". /flow nav arrowcolor distance|route")
     elseif arg == "why" then
         -- What the route is made of, and what Flow wanted but couldn't place.
         ns:Print(string.format("route: mode %s, professions %s, Questie %s",

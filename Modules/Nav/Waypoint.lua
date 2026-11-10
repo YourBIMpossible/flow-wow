@@ -1,5 +1,5 @@
 -- Your own waypoint. It is NOT a stop on the route: while it's set the arrow
--- points there in green (Nav.lua, N.WaypointChoice), the map draws a green
+-- points there (Nav.lua, N.WaypointChoice; green with the route colours), the map draws a green
 -- line to it and the Flow Router a green line above the route, and the
 -- route itself carries on unchanged. It clears itself when you arrive.
 --   Set:   paste coordinates (/flow way or /way, or right-click the arrow: Set a
@@ -46,7 +46,7 @@ function W:Set(map, x, y, note)
         ns.db.nav.waypoint = { map = map, x = x, y = y, note = note }
     end
     W.Changed()
-    ns:Print(string.format("waypoint set at %.1f, %.1f%s: the arrow points there in green (your route waits)",
+    ns:Print(string.format("waypoint set at %.1f, %.1f%s: the arrow points there (your route waits)",
         x * 100, y * 100, note and (" (" .. note .. ")") or ""))
 end
 

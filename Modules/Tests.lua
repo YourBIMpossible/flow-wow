@@ -1346,6 +1346,127 @@ ns:Register("test", "arrow 3D: pillars on the ring and a sphere when you arrive"
     a:Hide()
 end)
 
+ns:Register("test", "modern arrow: pictures for each turn", function(t)
+    local N = ns.nav
+    local i, l, r, top, b = N.ArrowCell(0)
+    t:eq(i, 0, "pointing up: the first picture")
+    t:ok(l == 0 and r == 1 / 16 and top == 0 and b == 1 / 8, "top-left cell of the sheet")
+    i, l, _, top = N.ArrowCell(math.pi / 2)
+    t:eq(i, 32, "a quarter turn left: picture 32")
+    t:ok(l == 0 and top == 2 / 8, "row 3, first column")
+    t:eq((N.ArrowCell(2 * math.pi - 0.001)), 0, "just short of a full turn: back to the first")
+    t:eq((N.ArrowCell(-math.pi / 2)), 96, "turning right works too")
+    t:eq((N.ArrowCell(nil)), 0, "no angle: pointing up")
+end)
+
+ns:Register("test", "modern arrow: grey away, red to green closing in, blue here", function(t)
+    local N, th = ns.nav, ns.theme
+    local function same(r, g, b, c) return math.abs(r - c[1]) < 1e-6 and math.abs(g - c[2]) < 1e-6 and math.abs(b - c[3]) < 1e-6 end
+    t:ok(same(N.ArrowColor("away", 50), th.arrowAway), "another zone: grey, however close")
+    t:ok(same(N.ArrowColor("here", 900), th.arrowHere), "in the area: blue")
+    t:ok(same(N.ArrowColor("zone", 2000), th.arrowFar), "far away: red")
+    t:ok(same(N.ArrowColor("zone", 10), th.arrowNear), "close by: green")
+    local r1, g1 = N.ArrowColor("zone", 500)
+    local r2, g2 = N.ArrowColor("zone", 150)
+    t:ok(g2 > g1 and r2 <= r1, "greener as you close in")
+    -- Which state: other continent / other zone / same zone / here.
+    local p = { cont = 0, map = 1429 }
+    t:eq(N.ArrowState(p, { cont = 1, map = 1411 }, false), "away", "other continent: away")
+    t:eq(N.ArrowState(p, { cont = 0, map = 1429 }, false), "zone", "same zone: by distance")
+    t:eq(N.ArrowState(p, { cont = 0, map = 1429 }, true), "here", "in the area: here")
+    t:eq(N.ArrowState(p, nil, false), "zone", "no point: by distance")
+    local zoneA, zoneB = N.ZoneOf(1429), N.ZoneOf(1436)
+    if zoneA and zoneB and zoneA ~= zoneB then
+        t:eq(N.ArrowState(p, { cont = 0, map = 1436 }, false), "away", "Westfall from Elwynn: away")
+    else
+        t:ok(true, "(map info not available here)")
+    end
+    -- The colour-blind palette has its own ramp.
+    local was = th:ColorBlind()
+    th:UsePalette("colorblind")
+    t:ok(same(N.ArrowColor("zone", 2000), th.arrowFar) and th.arrowFar.hex == "D55E00", "colour-blind: vermillion far away")
+    th:UsePalette(was and "colorblind" or "standard")
+end)
+
+ns:Register("test", "modern arrow: turns, colours, ring and beam when you arrive", function(t)
+    local a = ns.nav:MakeArrowModern(UIParent)
+    t:ok(a.body and a.shine and a.shadow and a.halo and a.beam, "body, highlights, shadow, ring and beam")
+    t:eq(a.SetRingSpin, nil, "no pillars: the login intro spins the arrow itself")
+    a.spinning = true
+    a:SetRotation(math.pi / 2)
+    t:eq(a.cell, 32, "spinning: the picture follows at once")
+    a:SetVertexColor(0.2, 0.4, 0.6)
+    t:ok(a.cr == 0.2 and a.cg == 0.4 and a.cb == 0.6, "spinning: the colour follows at once")
+    a.spinning = nil
+    a:SetVertexColor(1, 0, 0)
+    t:ok(a.r == 1 and a.cr == 0.2, "pointing: the colour eases there")
+    a:GetScript("OnUpdate")(a, 0.05)
+    t:ok(a.cr > 0.2 and a.cr < 1, "and moves a step each frame")
+    a:SetArrived(true)
+    a:GetScript("OnUpdate")(a, 0.05)
+    t:ok(a.halo:IsShown() and a.beam:IsShown() and a.ripple:IsShown(), "arrived: ring, ripple and beam")
+    a:SetCenterIcon("Interface\\Icons\\INV_Misc_Food_15")
+    t:ok(a.icon:IsShown(), "the stop's icon in the ring")
+    a:SetWave(true)
+    t:ok(a.wave, "on the spot: the ripples speed up")
+    a:SetArrived(false)
+    for _ = 1, 10 do a:GetScript("OnUpdate")(a, 0.05) end
+    t:ok(not a.halo:IsShown() and not a.icon:IsShown(), "pointing again: no ring, no icon")
+    t:eq(a.fade, 0, "the arrow is back")
+    a:SetWave(true)
+    t:ok(not a.wave, "no ripples unless arrived")
+    a:Hide()
+end)
+
+ns:Register("test", "click: arrow style and colour in the menu and on the settings page", function(t)
+    local N = ns.nav
+    local style, colour = ns.db.nav.arrowStyle, ns.db.nav.arrowColor
+    t:eq(N:ArrowStyle(), (style == "3d" or style == "flat") and style or "modern", "style read back")
+    -- The arrow's right-click menu lists every style and the colour switch.
+    local f = N.arrowFrame
+    if f and f:GetScript("OnClick") and ns.menu then
+        ns.menu:Close()
+        local captured
+        local open = ns.menu.Open
+        ns.menu.Open = function(_, items) captured = items end
+        local ok, err = pcall(f:GetScript("OnClick"), f, "RightButton")
+        ns.menu.Open = open
+        t:ok(ok, "right-click runs" .. (ok and "" or (": " .. tostring(err))))
+        local flat, col
+        for _, it in ipairs(captured or {}) do
+            if it.text == "Arrow: Flat lines" then flat = it end
+            if it.text == "Arrow colour by distance" then col = it end
+        end
+        t:ok(flat and col, "menu: the styles and the colour switch")
+        if flat then pcall(flat.func) end
+        t:eq(N:ArrowStyle(), "flat", "menu: flat arrow")
+        t:ok(N.arrowFrame.arrow.halo == nil and N.arrowFrame.arrow.SetRingSpin == nil, "rebuilt as the flat arrow")
+        if col then pcall(col.func) end
+        t:eq(N:ArrowColorMode(), colour == "route" and "distance" or "route", "menu: colour switched")
+    else
+        t:ok(true, "(no arrow yet)")
+    end
+    -- Settings page: the Arrow row's Modern button.
+    local row
+    for _, r in ipairs(ns.settings:Choices()) do
+        if r.label and r.label:GetText() == "Arrow" then row = r end
+    end
+    if row then
+        for _, b in ipairs(row.buttons) do
+            if b.value == "modern" then
+                local ok, err = pcall(b:GetScript("OnClick"), b, "LeftButton")
+                t:ok(ok, "the Modern button runs" .. (ok and "" or (": " .. tostring(err))))
+            end
+        end
+        t:eq(N:ArrowStyle(), "modern", "settings button: modern arrow")
+        t:ok(N.arrowFrame == nil or N.arrowFrame.arrow.halo ~= nil, "rebuilt as the modern arrow")
+    else
+        t:ok(true, "(settings page not built yet: open /flow settings once)")
+    end
+    N:SetArrowStyle(style)
+    ns.db.nav.arrowColor = colour
+end)
+
 ns:Register("test", "craft here: campfire, open, make; the arrow shows the icon", function(t)
     local get = function(k, ctx) return ns:Get("action", k).get(ctx) end
     local stop = { key = "craft:Cooking:Test", recipe = "Roasted Boar Meat", prof = "Cooking",

@@ -25,6 +25,14 @@ local PALETTES = {
         waypoint = rgb("1EFF00"),  -- uncommon green: your own waypoint (arrow, map line, Router line)
         changed  = rgb("9A9A9A"),  -- grey: your route while previewing another
         hover    = rgb("FF4A4A"),  -- red: the stop under your mouse
+        -- The modern arrow's colour by how close you are (Nav.lua, N.ArrowColor):
+        -- grey while the stop is in another zone, then red (far) through
+        -- yellow to green (close), and blue once you're in its area.
+        arrowAway = rgb("9EA0A8"),
+        arrowFar  = rgb("FF2E1F"),
+        arrowMid  = rgb("FFD91A"),
+        arrowNear = rgb("33F24D"),
+        arrowHere = rgb("4DA6FF"),
     },
     colorblind = {
         modes    = { xp = rgb("CC79A7"), distance = rgb("0072B2"), custom = rgb("E69F00"), selected = rgb("E69F00") },
@@ -32,6 +40,11 @@ local PALETTES = {
         waypoint = rgb("009E73"),  -- bluish green
         changed  = rgb("9A9A9A"),
         hover    = rgb("D55E00"),
+        arrowAway = rgb("9EA0A8"),
+        arrowFar  = rgb("D55E00"),  -- vermillion
+        arrowMid  = rgb("F0E442"),  -- yellow
+        arrowNear = rgb("009E73"),  -- bluish green
+        arrowHere = rgb("56B4E9"),  -- sky blue
     },
 }
 
