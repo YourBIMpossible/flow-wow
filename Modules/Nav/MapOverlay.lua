@@ -65,6 +65,10 @@ local function aboveMap()
     return "DIALOG"
 end
 
+-- The stop you're heading to (set by pin, recoloured by keepUp) and the
+-- arrow's colour (arrowColor, below); declared here for pin().
+local targetPin, arrowColor
+
 local function line(c, x1, y1, x2, y2, color, alpha)
     nLines = nLines + 1
     local l = lines[nLines]
@@ -169,7 +173,7 @@ local function pin(c, x, y, label, color, stop, top, target)
     p.edge:ClearAllPoints(); p.edge:SetPoint("TOPLEFT", -2, 2); p.edge:SetPoint("BOTTOMRIGHT", 2, -2)
     if target and not top then
         -- (o), the stop you're heading to: a WHITE ring, a dark gap, the dot
-        -- in the route colour. Every other stop has a black ring.
+        -- in the arrow's colour. Every other stop has a black ring.
         p.edge:SetVertexColor(1, 1, 1, 1)
         p.hole:ClearAllPoints(); p.hole:SetPoint("TOPLEFT", 1, -1); p.hole:SetPoint("BOTTOMRIGHT", -1, 1)
         p.hole:Show()
@@ -179,7 +183,13 @@ local function pin(c, x, y, label, color, stop, top, target)
         p.hole:Hide()
         p.bg:SetAllPoints()
     end
+    if target and not top then
+        -- Its dot wears the arrow's colour (kept up on the map tick).
+        targetPin = p
+        color = arrowColor(false) or color
+    end
     p.bg:SetVertexColor(color[1], color[2], color[3], 1)
+    p.liveCol = color
     p.text:SetText(label)
     p.full, p.short = label, (label:gsub(" %[%d+%]", ""))   -- "3 [9]" and "3" (for the declutter)
     p.top = top and true or false
@@ -188,21 +198,48 @@ local function pin(c, x, y, label, color, stop, top, target)
 end
 M._pin = pin   -- (tests)
 
--- Draws one route as a thin, unbroken line through round points. Stops on
--- another map are skipped, and the line joins the ones on this map.
--- Each point's label carries the stop's type icon and number ("[icon] 3 [9]").
--- Direction: small chevrons travel along each leg ("marching ants"), so you
--- can see which way the route runs, and when a leg goes out and back.
--- Legs are kept from the last draw; only the chevrons move (cheap).
-local legs, ants, nAnts = {}, {}, 0
-local antPhase = 0
-local ANT_GAP = 46    -- screen pixels between chevrons
-local ANT_SIZE = 4
-local WHITE = { 1, 1, 1 }   -- chevrons are white on every leg (one shared colour)
+-- Draws one route as a faint dotted trail through round points, like a
+-- treasure map: it shows the way without covering the map. Stops on another
+-- map are skipped, and the trail joins the ones on this map. Each point's
+-- label carries the stop's type icon and number ("[icon] 3 [9]"). The trail
+-- from you to the stop you're heading to wears the arrow's colour (and the
+-- stop's dot too), a little stronger; the rest of the route is fainter.
+-- Legs are kept from the last draw; the dots are drawn again only when you
+-- move or the arrow's colour changes (no animation, nothing every frame).
+local legs, dots, nDots = {}, {}, 0
+local DOT_GAP = 12     -- screen pixels between dots
+local DOT_SIZE = 4     -- screen pixels across
+local DOT_CLEAR = 9    -- no dots this close to either end (under the stops' points)
+local FIRST_ALPHA, REST_ALPHA = 0.8, 0.45
+local CIRCLE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
+
+-- The arrow's colour right now (Nav sets it each time it turns the arrow),
+-- for the trail to where it points: the route's first stop (waypoint false)
+-- or your waypoint (true). nil: the arrow points somewhere else.
+function arrowColor(waypoint)
+    local N = ns.nav
+    if not (N and N.arrowColor) then return nil end
+    if (N.arrowWaypoint and true or false) ~= waypoint then return nil end
+    return N.arrowColor
+end
+
+-- Where along a leg len long the dots go: evenly, about gap apart, none
+-- within clear of either end.
+local function dotSpots(len, gap, clear)
+    local out = {}
+    local span = len - 2 * clear
+    if span < gap * 0.5 then return out end
+    local n = math.max(1, math.floor(span / gap + 0.5))
+    local step = span / n
+    for i = 0, n do out[#out + 1] = clear + i * step end
+    return out
+end
+M._dotSpots = dotSpots   -- (tests)
 
 -- Lines that start at you (to the first stop, to your waypoint). Between
 -- route changes only these move, so the 0.5 s map tick moves just them
--- (followPlayer) instead of drawing everything again.
+-- (followPlayer) instead of drawing everything again. l: a line, or nil (a
+-- dotted trail: only its leg moves).
 local links = { n = 0 }
 local function addLink(st, l, leg)
     st.n = st.n + 1
@@ -211,51 +248,48 @@ local function addLink(st, l, leg)
     st[st.n] = k
 end
 
-local function antLine()
-    nAnts = nAnts + 1
-    local l = ants[nAnts]
-    if not l then l = host:CreateLine(nil, "OVERLAY", nil, 7); ants[nAnts] = l end
-    return l
+local function dot()
+    nDots = nDots + 1
+    local d = dots[nDots]
+    if not d then
+        d = host:CreateTexture(nil, "OVERLAY", nil, 6)
+        d:SetTexture(CIRCLE)
+        dots[nDots] = d
+    end
+    return d
 end
 
-local function drawAnts()
+local function drawDots()
     local c = canvas()
     if not (c and host) then return end
-    local old = nAnts
-    nAnts = 0
+    local old = nDots
+    nDots = 0
     local w, h, sc = c:GetWidth(), c:GetHeight(), canvasScale()
-    local gap, size, th = ANT_GAP / sc, ANT_SIZE / sc, 1.6 / sc
+    local gap, size, clear = DOT_GAP / sc, DOT_SIZE / sc, DOT_CLEAR / sc
     for _, leg in ipairs(legs) do
         local x1, y1, x2, y2 = leg[1] * w, -leg[2] * h, leg[3] * w, -leg[4] * h
         local dx, dy = x2 - x1, y2 - y1
         local len = math.sqrt(dx * dx + dy * dy)
-        if len > gap * 0.6 then
+        local col = (leg.live ~= nil and arrowColor(leg.live)) or leg.color
+        local a = leg.alpha
+        if len > 0 then
             local ux, uy = dx / len, dy / len
-            local d = (antPhase * gap) % gap
-            local col = leg.color
-            local a = leg.alpha or 0.95
-            while d < len and nAnts < 400 do
-                local cx, cy = x1 + ux * d, y1 + uy * d
-                -- ">" pointing along the leg: two arms back from the tip.
-                -- 20 times a second: only the ends move; thickness, colour
-                -- and showing are set only when they change.
-                for side = -1, 1, 2 do
-                    local l = antLine()
-                    if l.th ~= th then l:SetThickness(th); l.th = th end
-                    if l.a ~= a or l.col ~= col then l:SetColorTexture(col[1], col[2], col[3], a); l.a, l.col = a, col end
-                    l:SetStartPoint("TOPLEFT", c, cx - ux * size + side * uy * size * 0.8, cy - uy * size - side * ux * size * 0.8)
-                    l:SetEndPoint("TOPLEFT", c, cx + ux * size * 0.4, cy + uy * size * 0.4)
-                    if not l.on then l:Show(); l.on = true end
-                end
-                d = d + gap
+            for _, along in ipairs(dotSpots(len, gap, clear)) do
+                if nDots >= 600 then break end
+                local d = dot()
+                -- Only what changed is set again (size, colour, showing).
+                if d.size ~= size then d:SetSize(size, size); d.size = size end
+                if d.a ~= a or d.col ~= col then d:SetVertexColor(col[1], col[2], col[3], a); d.a, d.col = a, col end
+                d:ClearAllPoints()
+                d:SetPoint("CENTER", c, "TOPLEFT", x1 + ux * along, y1 + uy * along)
+                if not d.on then d:Show(); d.on = true end
             end
         end
     end
-    for i = nAnts + 1, old do ants[i]:Hide(); ants[i].on = false end
+    for i = nDots + 1, old do dots[i]:Hide(); dots[i].on = false end
 end
--- The chevrons' own clock (20 times a second while the map is open), timed
--- apart from the redraws so /flow perf shows it.
-local drawAntsTimed = ns.perf.Wrap("world map (moving chevrons)", drawAnts)
+-- Timed apart from the redraws so /flow perf shows it.
+local drawDotsTimed = ns.perf.Wrap("world map (route dots)", drawDots)
 
 -- The stop you moved to the front (the ^ handle, "Go here first"). The route
 -- is planned from it, so it's stop 1 and wears the (o) like any first stop;
@@ -534,9 +568,9 @@ local function declutter()
         boxes[#boxes + 1] = { l, b, r, t }
     end
 end
--- Draws one route as a thin, unbroken line through round points, starting
--- at you. Stops on another map are skipped, and the line joins the ones on
--- this map. Each point's label carries the stop's type icon and number.
+-- Draws one route as a dotted trail through round points, starting at you.
+-- Stops on another map are skipped, and the trail joins the ones on this
+-- map. Each point's label carries the stop's type icon and number.
 local function drawRoute(c, mapID, plan, color, withPins, alpha, pinsOnly)
     if not plan then return end
     local px, py = toMap(ns.nav:PlayerPos(), mapID)
@@ -550,11 +584,14 @@ local function drawRoute(c, mapID, plan, color, withPins, alpha, pinsOnly)
         local beyond = not ns.nav:StopVisible(i, false)
         if x and (not beyond or (pointed and withPins)) then
             if px and not pinsOnly and not beyond then
-                -- From you to the first stop: brighter, so it's clear where to go now.
+                -- From you to the first stop: the arrow's colour and stronger,
+                -- so it's clear where to go now; the rest fainter. (A preview,
+                -- alpha given, keeps its own colour.)
                 local first = (i == 1)
-                line(c, px, py, x, y, first and theme().route or color, alpha or 1)
-                legs[#legs + 1] = { px, py, x, y, color = WHITE, alpha = first and 1 or 0.9 }  -- chevrons are white on every leg
-                if fromYou then addLink(links, lines[nLines], legs[#legs]) end
+                legs[#legs + 1] = { px, py, x, y, color = first and alpha == nil and theme().route or color,
+                                    live = (first and alpha == nil) and false or nil,
+                                    alpha = (first and FIRST_ALPHA or REST_ALPHA) * (alpha or 1) }
+                if fromYou then addLink(links, nil, legs[#legs]) end
             end
             fromYou = false
             px, py = x, y
@@ -623,9 +660,8 @@ local function drawWaypoint(c, mapID)
     local col = theme().waypoint
     local px, py = toMap(ns.nav:PlayerPos(), mapID)
     if px and host then   -- (host: the map's line layer, made on the first redraw)
-        line(c, px, py, x, y, col, 1)
-        legs[#legs + 1] = { px, py, x, y, color = WHITE, alpha = 1 }   -- white chevrons, like the route
-        addLink(links, lines[nLines], legs[#legs])
+        legs[#legs + 1] = { px, py, x, y, color = col, live = true, alpha = FIRST_ALPHA }   -- dots, like the route
+        addLink(links, nil, legs[#legs])
     end
     wpPin = wpPin or makeWaypointPin()
     wpPin:SetParent(c)
@@ -1123,7 +1159,7 @@ local function buildList()
     hc:SetScript("OnLeave", function() GameTooltip:Hide() end)
     f.showHidden = hc
 
-    -- Show the route on the map (lines, points, chevrons); off = the list only.
+    -- Show the route on the map (dotted trail, points); off = the list only.
     local rc = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
     rc:SetSize(20, 20)
     rc:SetPoint("TOPLEFT", 170, -68)
@@ -1445,7 +1481,7 @@ end
 local function changed(st, c, mapID, pointed)
     local T, p = theme(), ns.nav:PlayerPos()
     local w = ns.waypoint and ns.waypoint:Get()
-    local route = T.route or WHITE
+    local route = T.route or { 1, 1, 1 }
     local d = false
     d = setv(st, "map", mapID or false) or d
     d = setv(st, "w", c:GetWidth()) or d
@@ -1482,7 +1518,7 @@ end
 M._changed = changed   -- (tests)
 
 -- Nothing changed but you moved: move the lines that start at you (and the
--- chevrons' legs with them). st = the lines (links); false = nothing to move.
+-- dots' legs with them). st = the lines (links); false = nothing to move.
 local function followPlayer(st, c, mapID)
     local px, py = toMap(ns.nav:PlayerPos(), mapID)
     if not px or (px == st.px and py == st.py) then return false end
@@ -1490,7 +1526,7 @@ local function followPlayer(st, c, mapID)
     local w, h = c:GetWidth(), c:GetHeight()
     for i = 1, st.n do
         local k = st[i]
-        k.line:SetStartPoint("TOPLEFT", c, px * w, -py * h)
+        if k.line then k.line:SetStartPoint("TOPLEFT", c, px * w, -py * h) end
         k.leg[1], k.leg[2] = px, py
     end
     return true
@@ -1516,6 +1552,7 @@ local function fullDraw()
     local oldLines, oldPins = nLines, nPins
     legs = {}
     links.n = 0
+    targetPin = nil
     nLines, nPins = 0, 0
     local oldBlobs = nBlobs
     nBlobs = 0
@@ -1560,15 +1597,7 @@ local function fullDraw()
     pcall(declutter)   -- labels push apart
     for i = nBlobs + 1, oldBlobs do blobs[i]:Hide() end
     shapes = shapesNext   -- area shapes not drawn this time are dropped
-    drawAnts()
-    if not host.antsOn then
-        host.antsOn = true
-        host:SetScript("OnUpdate", function(_, dt)
-            antPhase = antPhase + dt * 0.6   -- chevrons crawl along the route
-            host.antT = (host.antT or 0) + dt
-            if host.antT > 0.05 then host.antT = 0; drawAntsTimed() end
-        end)
-    end
+    drawDots()
     updateList()
 end
 
@@ -1585,7 +1614,20 @@ local function keepUp()
     if not (c and WorldMapFrame:IsShown() and ns.nav and ns.db.nav.mapRoute ~= false) then return false end
     local mapID = WorldMapFrame:GetMapID()
     if not host or changed(last, c, mapID, pointedKey()) then return true end
-    followPlayer(links, c, mapID)
+    local moved = followPlayer(links, c, mapID)
+    -- The arrow's colour changed (red to green as you close in): the stop's
+    -- dot and the trail to it follow.
+    local col = arrowColor(false)
+    local recolor = false
+    if targetPin and targetPin:IsShown() and col and targetPin.liveCol ~= col then
+        targetPin.bg:SetVertexColor(col[1], col[2], col[3], 1)
+        targetPin.liveCol = col
+        recolor = true
+    end
+    if col ~= links.col or arrowColor(true) ~= links.wcol then
+        links.col, links.wcol, recolor = col, arrowColor(true), true
+    end
+    if moved or recolor then drawDotsTimed() end
     updateList()
     return false
 end
@@ -1656,7 +1698,7 @@ ns.commands.map = function(arg)
             for i = 1, nBlobs do blobs[i]:Hide() end
             if list then list:Hide() end
             legs, links.n = {}, 0
-            drawAnts()   -- no legs: the chevrons go too
+            drawDots()   -- no legs: the dots go too
             for k in pairs(last) do last[k] = nil end
         end
         ns:Print("route on the world map " .. arg)
@@ -1665,5 +1707,5 @@ ns.commands.map = function(arg)
     end
 end
 
--- Timed for /flow perf (with "keeping up with you" and "moving chevrons").
+-- Timed for /flow perf (with "keeping up with you" and "route dots").
 M.Redraw = ns.perf.Wrap("world map (full redraw)", M.Redraw)

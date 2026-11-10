@@ -3209,6 +3209,11 @@ local function update()
         col = choice.waypoint and ns.theme.waypoint or ns.theme.route   -- your waypoint: green
     end
     frame.arrow:SetVertexColor(col[1], col[2], col[3])
+    -- The world map's trail and target dot wear the same colour (MapOverlay).
+    -- A new table only when the colour changes, so the map can tell.
+    local ac = N.arrowColor
+    if not (ac and ac[1] == col[1] and ac[2] == col[2] and ac[3] == col[3]) then N.arrowColor = col end
+    N.arrowWaypoint = choice.waypoint and true or false
     -- The minimap dot: the arrow's colour, on the stop (not on you).
     if ns.minimapPin then pcall(ns.minimapPin.Update, ns.minimapPin, p, N.DotPoint(choice, here), g, col, here) end
     updateProf(p)

@@ -86,7 +86,8 @@ Flow for WoW is a separate project from Flow Engine.
   completionist) and the order. Hover a stop for details, click it for its stop card, use the
   `^` handle to route from that stop (it stays marked red), right-click to hide it or "Point
   the arrow here". A button above it shows or hides the route on the map.
-- **World map and minimap**: numbered waypoints with quest levels (`3 [9]`) and pickups
+- **World map and minimap**: the route as a faint dotted trail, like a treasure map (the stretch
+  to your next stop, and that stop's dot, in the arrow's colour); numbered waypoints with quest levels (`3 [9]`) and pickups
   (`!2`); labels push each other apart so they don't overlap. Quest areas are drawn as clouds
   with borders; the minimap shows your current stop's area the same way, and the (o) marker.
 - **Stop card**: Flow's view of a stop (drag it by its title); the arrow's own panel slides

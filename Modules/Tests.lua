@@ -806,9 +806,20 @@ ns:Register("test", "map: the 0.5 s tick only redraws when something changed", f
         t:ok(not M._followPlayer(links, canvas, 1429), "standing still: nothing to move")
         pos.x = 0.42
         t:ok(M._followPlayer(links, canvas, 1429), "you moved: your lines follow")
-        t:near(leg[1], 0.42, 1e-6, "the chevrons' leg starts at you")
+        t:near(leg[1], 0.42, 1e-6, "the dots' leg starts at you")
         t:near(calls[#calls] and calls[#calls][1] or 0, 420, 1e-6, "the line starts at you (x)")
         t:near(calls[#calls] and calls[#calls][2] or 0, -420, 1e-6, "the line starts at you (y)")
+        local dotLeg = { 0.40, 0.60, 0.5, 0.5 }
+        local dotLinks = { n = 1, { leg = dotLeg } }   -- a dotted trail: no line, only its leg
+        dotLinks.px, dotLinks.py = 0.40, 0.60
+        pos.x = 0.44
+        t:ok(M._followPlayer(dotLinks, canvas, 1429), "a dotted trail follows you too")
+        t:near(dotLeg[1], 0.44, 1e-6, "its leg starts at you")
+        local spots = M._dotSpots(100, 12, 9)
+        t:near(spots[1], 9, 1e-6, "no dot under the first point")
+        t:near(spots[#spots], 91, 1e-6, "nor under the last")
+        t:ok(#spots >= 7 and #spots <= 9, "about 12 apart")
+        t:eq(#M._dotSpots(20, 12, 9), 0, "two points side by side: no dots")
 
         -- An area's shape is worked out once, again only when its spawns change.
         local g = { key = "t:area", area = true, points = {} }
