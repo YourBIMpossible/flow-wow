@@ -361,12 +361,13 @@ end)()
 --
 --   Buff button: out of combat a stone, weightstone or oil for your weapon
 --   first (buff:stone, buff:item; in town too), then the rotation's "buff"
---   suggestions (seals, auras, blessings, shouts, group buffs). At the pull it
+--   suggestions (auras, blessings, shouts, group buffs; a paladin's seal stays
+--   on Flow's icon with the fight). At the pull it
 --   swaps to the buff spell. Out of combat it shows what's
 --   missing, and sits dim when nothing is (hover it: why).
 --   In a fight: WoW won't let addons change what a button casts, so it holds
---   the buff spell you last cast from it (a paladin's seal: press it again
---   when the seal runs out). Bright = needed now, dim = still on.
+--   the buff spell you last cast from it (press it again when that buff runs
+--   out). Bright = needed now, dim = still on.
 --
 --   /flow buffbutton on|off     (on by default)
 --   /flow buffkey <KEY>         its own key, e.g. /flow buffkey Q  (off: clear)
@@ -382,6 +383,10 @@ do
     end
     function BB.On() return ns.db ~= nil and cfg().enabled ~= false end
 
+    -- Buffs that stay on Flow's icon and key: a paladin's seal is part of the
+    -- fight (Judgement needs one up), so it's pressed with the rest of it.
+    function BB.OnAction(rule) return type(rule.spell) == "string" and rule.spell:find("^Seal of") ~= nil end
+
     -------------------------------------------------------------------------------
     -- Pure parts (tested)
     -------------------------------------------------------------------------------
@@ -394,7 +399,7 @@ do
         if out then return out end
         out = {}
         for _, r in ipairs(list) do
-            if r.kind ~= "buff" then out[#out + 1] = r end
+            if r.kind ~= "buff" or BB.OnAction(r) then out[#out + 1] = r end
         end
         stripped[list] = out
         return out
@@ -442,7 +447,7 @@ do
     local function pickBuff(def, ctx)
         local list = (def.priorities and def.priorities[ctx.fightType]) or def.priority or {}
         for _, rule in ipairs(list) do
-            if rule.kind == "buff" and ready(rule, ctx) then
+            if rule.kind == "buff" and not BB.OnAction(rule) and ready(rule, ctx) then
                 return { spell = rule.spell, kind = "buff", reason = rule.reason or rule.spell }
             end
         end
@@ -712,9 +717,9 @@ do
         ns.settings:AddCheck({
             label = "Buff button beside Flow's icon",
             note = "(own key: /flow buffkey <key>)",
-            tip = "Your buffs (seals, auras, blessings, shouts, party buffs) and weapon stones and oils go on a "
-                .. "separate blue button left of Flow's icon, so Flow's key only does your fight: damage, heals "
-                .. "and cleanses. Out of combat it's always there (dim when nothing is due: hover it for why) "
+            tip = "Your buffs (auras, blessings, shouts, party buffs) and weapon stones and oils go on a "
+                .. "separate blue button left of Flow's icon, so Flow's key only does your fight: damage, heals, "
+                .. "cleanses and a paladin's seal. Out of combat it's always there (dim when nothing is due: hover it for why) "
                 .. "and offers your stone or oil in town too. Give it its own key with /flow buffkey Q. In a fight it keeps the buff you "
                 .. "last cast from it and lights up when that buff runs out. Off: buffs and stones go back on "
                 .. "Flow's icon and key.",
@@ -762,6 +767,12 @@ do
         t:eq(out[1].spell, "Strike", "damage kept")
         t:eq(out[2].spell, "Heal", "heal kept")
         t:ok(BB.Strip(list) == out, "cached per list")
+        local pally = BB.Strip({ { spell = "Seal of Righteousness", kind = "buff" }, { spell = "Devotion Aura", kind = "buff" },
+                                 { spell = "Judgement" } })
+        t:eq(#pally, 2, "a paladin: the aura moves to the buff button")
+        t:eq(pally[1].spell, "Seal of Righteousness", "the seal stays on Flow's icon, with the fight")
+        t:ok(BB.OnAction({ spell = "Seal of Fury" }) and not BB.OnAction({ spell = "Blessing of Might" }),
+            "seals stay on the action button, blessings don't")
         t:eq(BB.Pick({ spell = "Seal" }, { item = "item:2862" }).item, "item:2862", "out of combat: the weapon stone before a buff spell")
         t:eq(BB.Pick({ spell = "Seal" }, nil).spell, "Seal", "the buff spell when the weapon needs nothing")
         t:eq(BB.Pick(nil, { item = "item:2862" }).item, "item:2862", "the stone when no buff spell is due")
