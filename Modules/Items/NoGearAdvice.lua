@@ -361,8 +361,9 @@ end)()
 --
 --   Buff button: out of combat a stone, weightstone or oil for your weapon
 --   first (buff:stone, buff:item; in town too), then the rotation's "buff"
---   suggestions (auras, blessings, shouts, group buffs; a paladin's seal stays
---   on Flow's icon with the fight). At the pull it
+--   suggestions (auras, aspects, blessings, group buffs; seals, shouts,
+--   shields, Hunter's Mark and fight forms stay on Flow's icon with the fight,
+--   BB.OnAction). At the pull it
 --   swaps to the buff spell. Out of combat it shows what's
 --   missing, and sits dim when nothing is (hover it: why).
 --   In a fight: WoW won't let addons change what a button casts, so it holds
@@ -383,9 +384,22 @@ do
     end
     function BB.On() return ns.db ~= nil and cfg().enabled ~= false end
 
-    -- Buffs that stay on Flow's icon and key: a paladin's seal is part of the
-    -- fight (Judgement needs one up), so it's pressed with the rest of it.
-    function BB.OnAction(rule) return type(rule.spell) == "string" and rule.spell:find("^Seal of") ~= nil end
+    -- Buffs that stay on Flow's icon and key because they're part of the
+    -- fight, pressed with the rest of it: a paladin's seal (Judgement needs
+    -- one up), shouts, shields (Lightning Shield, Power Word: Shield),
+    -- Hunter's Mark, and a druid's fight form (Bear, Cat, Moonkin) when the
+    -- rotation asks you to shift for the fight. Auras, aspects, blessings,
+    -- Mark of the Wild and Travel Form stay on the buff button.
+    local ON_ACTION = { "^Seal of ", " Shout$", " Shield$", "^Hunter's Mark$",
+                        "^Bear Form$", "^Dire Bear Form$", "^Cat Form$", "^Moonkin Form$" }
+    function BB.OnAction(rule)
+        local name = type(rule) == "table" and rule.spell
+        if type(name) ~= "string" then return false end
+        for _, pat in ipairs(ON_ACTION) do
+            if name:find(pat) then return true end
+        end
+        return false
+    end
 
     -------------------------------------------------------------------------------
     -- Pure parts (tested)
@@ -717,9 +731,9 @@ do
         ns.settings:AddCheck({
             label = "Buff button beside Flow's icon",
             note = "(own key: /flow buffkey <key>)",
-            tip = "Your buffs (auras, blessings, shouts, party buffs) and weapon stones and oils go on a "
+            tip = "Your buffs (auras, aspects, blessings, party buffs) and weapon stones and oils go on a "
                 .. "separate blue button left of Flow's icon, so Flow's key only does your fight: damage, heals, "
-                .. "cleanses and a paladin's seal. Out of combat it's always there (dim when nothing is due: hover it for why) "
+                .. "cleanses, plus seals, shouts, shields and Hunter's Mark. Out of combat it's always there (dim when nothing is due: hover it for why) "
                 .. "and offers your stone or oil in town too. Give it its own key with /flow buffkey Q. In a fight it keeps the buff you "
                 .. "last cast from it and lights up when that buff runs out. Off: buffs and stones go back on "
                 .. "Flow's icon and key.",
@@ -771,8 +785,15 @@ do
                                  { spell = "Judgement" } })
         t:eq(#pally, 2, "a paladin: the aura moves to the buff button")
         t:eq(pally[1].spell, "Seal of Righteousness", "the seal stays on Flow's icon, with the fight")
-        t:ok(BB.OnAction({ spell = "Seal of Fury" }) and not BB.OnAction({ spell = "Blessing of Might" }),
-            "seals stay on the action button, blessings don't")
+        for _, name in ipairs({ "Seal of Fury", "Battle Shout", "Commanding Shout", "Lightning Shield",
+                                "Power Word: Shield", "Hunter's Mark", "Bear Form", "Moonkin Form" }) do
+            t:ok(BB.OnAction({ spell = name }), name .. ": on the action button, with the fight")
+        end
+        for _, name in ipairs({ "Blessing of Might", "Devotion Aura", "Aspect of the Hawk", "Mark of the Wild",
+                                "Travel Form", "Trueshot Aura" }) do
+            t:ok(not BB.OnAction({ spell = name }), name .. ": on the buff button")
+        end
+        t:ok(not BB.OnAction({}) and not BB.OnAction(nil), "no spell: not on the action button")
         t:eq(BB.Pick({ spell = "Seal" }, { item = "item:2862" }).item, "item:2862", "out of combat: the weapon stone before a buff spell")
         t:eq(BB.Pick({ spell = "Seal" }, nil).spell, "Seal", "the buff spell when the weapon needs nothing")
         t:eq(BB.Pick(nil, { item = "item:2862" }).item, "item:2862", "the stone when no buff spell is due")
