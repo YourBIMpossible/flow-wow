@@ -3034,12 +3034,17 @@ end
 -- dark grey behind the main arrow, with its text above. Hidden at the
 -- stop (the text says "Here:"), and when it's off or nothing is due.
 -- What the profession arrow shows: "ring" at its stop, "off" while you are
--- at the main stop (one thing to look at there) or it can't point, else
--- "arrow".
+-- on the main stop's point (one thing to look at there) or it can't point,
+-- else "arrow". Anywhere else in a main quest's area it still points.
 function N.ProfArrowMode(mainHere, profHere, canPoint)
     if profHere then return "ring" end
     if mainHere or not canPoint then return "off" end
     return "arrow"
+end
+
+-- Standing on a stop's point (not just inside its area).
+function N.AtStopPoint(d)
+    return d ~= nil and d < ARRIVED * 2
 end
 
 local function updateProf(p)
@@ -3053,7 +3058,7 @@ local function updateProf(p)
     local here = choice.d < ARRIVED * 2 or N:InArea(g, p)
     local b = bearing(p, pt.wx, pt.wy)
     local facing = N.ArrowFacing()
-    local mode = N.ProfArrowMode(N.arrived, here, b and facing)
+    local mode = N.ProfArrowMode(N.arrivedSpot, here, b and facing)
     holder.mode = mode
     if holder.ring then holder.ring:SetShown(mode == "ring") end
     if mode == "arrow" then
@@ -3158,6 +3163,10 @@ local function update()
     -- nameplate on screen: then the arrow points straight at it.
     local here = choice.d < ARRIVED * 2 or N:InArea(g, p)
     N.arrived = here
+    -- On the stop's own point, not just somewhere in its area. A big area
+    -- quest can have a profession stop inside it (a node, a forge); that
+    -- arrow should still point while you roam the area.
+    N.arrivedSpot = N.AtStopPoint(choice.d)
     -- In the area it's the ring. (Pointing at the nearest Questie spawn spot
     -- was tried in 0.35.45: the spots are where things CAN spawn, not where
     -- they are, so the arrow jumped around and sent you back and forth.) The

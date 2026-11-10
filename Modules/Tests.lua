@@ -2136,6 +2136,11 @@ ns:Register("test", "profession arrow: off at the main stop, a faint ring at its
     t:eq(N.ProfArrowMode(false, true, true), "ring", "at the profession stop: the ring")
     t:eq(N.ProfArrowMode(true, true, true), "ring", "at both: the ring")
     t:eq(N.ProfArrowMode(false, false, nil), "off", "can't tell which way you face: off")
+    -- The main stop's "here" passed in is the point, not the whole area:
+    -- in a big area quest the profession arrow keeps pointing.
+    t:ok(N.AtStopPoint(5), "on the main stop's point: off")
+    t:ok(not N.AtStopPoint(200), "elsewhere in its area: still points")
+    t:ok(not N.AtStopPoint(nil), "no distance: not there")
     local f = N.arrowFrame
     if not (f and f.prof) then t:ok(true, "(no arrow yet)") return end
     t:ok(f.prof.ring ~= nil, "the profession arrow has a ring")
