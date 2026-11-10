@@ -1288,37 +1288,6 @@ ns:Register("test", "skillplan: materials from bags, then bank, then smelting", 
         :find("2 still to get", 1, true), "and what's still to get")
 end)
 
-ns:Register("test", "skillplan: the warband bank counts, and only comes up when it holds something", function(t)
-    local SP = ns.skillPlan
-    local LINEN = 900006
-    local bank, wb = { [LINEN] = 5 }, { [LINEN] = 3 }   -- 5 at the banker, 3 of them warband
-    local st = SP.Stock(function() return 0 end, function(id) return bank[id] or 0 end,
-        function() end, function(id) return wb[id] or 0 end)
-    local r = st:Take(LINEN, 1)
-    t:eq(r.bank, 1, "from the bank"); t:eq(r.warband, 0, "your own bank first")
-    local r2 = st:Take(LINEN, 3)
-    t:eq(r2.bank, 3, "the rest from the bank"); t:eq(r2.warband, 2, "two of them from the warband bank")
-    t:ok(SP.SourceLine("Linen Cloth", r2):find("3 from your bank (2 in the warband bank)", 1, true), "says so")
-    t:ok(not SP.SourceLine("Linen Cloth", r):find("warband", 1, true), "none from there: not mentioned")
-    local plain = SP.Stock(function() return 0 end, function() return 4 end, function() end):Take(LINEN, 2)
-    t:eq(plain.warband, 0, "no warband bank: nothing from it")
-    t:ok(not SP.SourceLine("Linen Cloth", plain):find("warband", 1, true), "and never mentioned")
-    t:eq(SP.WarbandShare(LINEN, 4, function() return 1 end, function() return 3 end), 3, "share: past your own bank")
-    t:eq(SP.WarbandShare(LINEN, 4, function() return 6 end, function() return 3 end), 0, "your own bank covers it")
-    local savedB, savedW = ns.db.bank, ns.db.warband
-    local ok, err = pcall(function()
-        ns.db.bank = { items = { [900007] = 2 }, seenAt = 1 }
-        ns.db.warband = { items = { [900007] = 4 }, seenAt = 1 }
-        t:eq(SP.WarbandCount(900007), 4, "what Flow saw in the warband bank")
-        t:eq(SP.BankCount(900007), 6, "counts with your bank")
-        ns.db.warband = nil
-        t:eq(SP.WarbandCount(900007), 0, "never opened: none")
-        t:eq(SP.BankCount(900007), 2, "just your bank")
-    end)
-    ns.db.bank, ns.db.warband = savedB, savedW
-    t:ok(ok, "ran" .. (ok and "" or (": " .. tostring(err))))
-end)
-
 ns:Register("test", "skillplan: the bank Flow saw counts, an upgrade with an unread material isn't makeable", function(t)
     local SP = ns.skillPlan
     local saved = ns.db.bank

@@ -76,8 +76,6 @@ function H.MaterialLines(g, left, bagsOf, bankOf)
         reagents = known and known[g.recipe] and known[g.recipe].reagents
     end
     if not (SP and reagents and next(reagents)) then return {}, left end
-    -- The warband bank's share, only with the real bank (tests pass their own).
-    local warbandOf = (bankOf == nil) and SP.WarbandCount or nil
     bagsOf, bankOf = bagsOf or A.Count, bankOf or SP.BankCount
     local function smeltOf(id)
         local s = ns:Get("itemSource", id)
@@ -90,7 +88,7 @@ function H.MaterialLines(g, left, bagsOf, bankOf)
     local ids = {}
     for id in pairs(reagents) do ids[#ids + 1] = id end
     table.sort(ids)
-    local st, lines, now = SP.Stock(bagsOf, bankOf, smeltOf, warbandOf), {}, left
+    local st, lines, now = SP.Stock(bagsOf, bankOf, smeltOf), {}, left
     for _, id in ipairs(ids) do
         local q = reagents[id]
         local r = st:Take(id, q * left)

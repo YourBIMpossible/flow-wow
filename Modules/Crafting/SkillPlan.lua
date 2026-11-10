@@ -576,9 +576,6 @@ end)
 -------------------------------------------------------------------------------
 -- Your bank, remembered per character (read while it's open), so the plan
 -- takes materials out of it instead of sending you to gather them again.
--- The warband bank (shared by every character on the account, opened at
--- any banker) is remembered once for the whole account. It is only ever
--- mentioned when it holds something the plan uses.
 -------------------------------------------------------------------------------
 
 ns:OnLoad(function(saved) saved.bank = saved.bank or {} end)
@@ -587,7 +584,7 @@ ns:PerCharacter("bank")
 local bankOpen = false
 
 -- The bank's containers on this client: the main bank, the reagent bank,
--- bank bags, and the newer bank tabs (the warband bank is read apart).
+-- bank bags, and the newer bank tabs (not the warband bank).
 local function bankContainers()
     local ids, seen = {}, {}
     local function add(b) if b and not seen[b] then seen[b] = true; ids[#ids + 1] = b end end
@@ -600,18 +597,6 @@ local function bankContainers()
     end
     return ids
 end
-
--- The warband bank's tabs, on a client that has one (none on older ones).
-local function warbandContainers()
-    local ids = {}
-    for k, v in pairs(Enum and Enum.BagIndex or {}) do
-        if type(k) == "string" and k:find("^AccountBankTab") then ids[#ids + 1] = v end
-    end
-    table.sort(ids)
-    return ids
-end
-local warbandBag = {}
-for _, b in ipairs(warbandContainers()) do warbandBag[b] = true end
 
 local function containerSlots(bag)
     if C_Container and C_Container.GetContainerNumSlots then return C_Container.GetContainerNumSlots(bag) or 0 end
@@ -630,42 +615,22 @@ local function containerItem(bag, slot)
     end
 end
 
--- What a set of containers holds: items by id, and how many slots they have.
-local function readContainers(bags)
-    local items, slots = {}, 0
-    for _, bag in ipairs(bags) do
+-- Reads the bank while it's open. True when what's in it changed.
+function SP.ReadBank()
+    if not bankOpen then return false end
+    local items = {}
+    for _, bag in ipairs(bankContainers()) do
         local okSlots, n = pcall(containerSlots, bag)
-        n = okSlots and n or 0
-        slots = slots + n
-        for slot = 1, n do
+        for slot = 1, okSlots and n or 0 do
             local id, c = containerItem(bag, slot)
             if id and c then items[id] = (items[id] or 0) + c end
         end
     end
-    return items, slots
-end
-
-local function differs(old, items)
-    old = old or {}
-    for id, c in pairs(items) do if old[id] ~= c then return true end end
-    for id in pairs(old) do if items[id] == nil then return true end end
-    return false
-end
-
--- Reads the bank (and the warband bank) while it's open. True when what's
--- in either changed.
-function SP.ReadBank()
-    if not bankOpen then return false end
-    local items = readContainers(bankContainers())
-    local changed = differs(ns.db.bank and ns.db.bank.items, items)
+    local old = ns.db.bank and ns.db.bank.items or {}
+    local changed = false
+    for id, c in pairs(items) do if old[id] ~= c then changed = true end end
+    for id in pairs(old) do if items[id] == nil then changed = true end end
     ns.db.bank = { items = items, seenAt = time() }
-    -- No warband tabs bought (or none on this client): nothing is kept, so
-    -- the warband bank never comes up.
-    local wb, slots = readContainers(warbandContainers())
-    if slots > 0 then
-        changed = differs(ns.db.warband and ns.db.warband.items, wb) or changed
-        ns.db.warband = { items = wb, seenAt = time() }
-    end
     return changed
 end
 
@@ -678,12 +643,10 @@ ns:On("BANKFRAME_CLOSED", function() bankOpen = false end)
 for _, ev in ipairs({ "PLAYERBANKSLOTS_CHANGED", "PLAYERREAGENTBANKSLOTS_CHANGED" }) do
     ns:On(ev, function() if bankOpen then rereadBank() end end)
 end
--- The warband bank's tabs report changes as bag updates.
-ns:On("BAG_UPDATE", function(bag) if bankOpen and warbandBag[bag] then rereadBank() end end)
 
--- How many of an item are in your own bank: what Flow saw there, or what
--- the game counts beyond your bags (whichever is more).
-function SP.CharBankCount(id)
+-- How many of an item are in your bank: what Flow saw there, or what the
+-- game counts beyond your bags (whichever is more).
+function SP.BankCount(id)
     local items = ns.db.bank and ns.db.bank.items
     local n = items and items[id] or 0
     if A.ItemCount then
@@ -693,40 +656,11 @@ function SP.CharBankCount(id)
     return n
 end
 
--- How many are in the warband bank: what Flow last saw there, or what the
--- game counts there now (whichever is more). 0 when you don't use it.
-function SP.WarbandCount(id)
-    local items = ns.db.warband and ns.db.warband.items
-    local n = items and items[id] or 0
-    if A.ItemCount then
-        local ok1, all = pcall(A.ItemCount, id, true, false, true, true)
-        local ok2, own = pcall(A.ItemCount, id, true, false, true, false)
-        if ok1 and ok2 and type(all) == "number" and type(own) == "number" then n = math.max(n, all - own) end
-    end
-    return n
-end
-
--- Your bank and the warband bank together: both are at the banker.
-function SP.BankCount(id)
-    return SP.CharBankCount(id) + SP.WarbandCount(id)
-end
-
--- Of `n` taken from the bank, how many come out of the warband bank (your
--- own bank goes first).
-function SP.WarbandShare(id, n, ownOf, warbandOf)
-    local own = (ownOf or SP.CharBankCount)(id)
-    local wb = (warbandOf or SP.WarbandCount)(id)
-    return math.max(0, math.min(wb, (n or 0) - own))
-end
-
 -- What's on hand for a plan, shared by its stops so nothing is counted
 -- twice: your bags first, then your bank, then bars smelted from the ore in
 -- either. bagsOf / bankOf(id) -> count; smeltOf(id) -> { from, n } or nil.
--- warbandOf(id) (optional): how much of bankOf's count is the warband bank,
--- taken last, so a take can say how many come from there.
-function SP.Stock(bagsOf, bankOf, smeltOf, warbandOf)
-    warbandOf = warbandOf or function() return 0 end
-    local st = { bags = {}, bank = {}, wb = {} }
+function SP.Stock(bagsOf, bankOf, smeltOf)
+    local st = { bags = {}, bank = {} }
     local function left(t, f, id)
         if t[id] == nil then t[id] = f(id) or 0 end
         return t[id]
@@ -741,16 +675,11 @@ function SP.Stock(bagsOf, bankOf, smeltOf, warbandOf)
     -- Sets `want` of `id` aside: how many from your bags, your bank, smelted
     -- (and the ore that takes, from bags / bank), and how many are still short.
     function st:Take(id, want)
-        local r = { id = id, need = want, bags = 0, bank = 0, warband = 0, smelt = 0, oreBags = 0, oreBank = 0, short = 0 }
+        local r = { need = want, bags = 0, bank = 0, smelt = 0, oreBags = 0, oreBank = 0, short = 0 }
         r.bags = math.min(want, left(self.bags, bagsOf, id))
         self.bags[id] = self.bags[id] - r.bags
-        local inBank = left(self.bank, bankOf, id)
-        r.bank = math.min(want - r.bags, inBank)
+        r.bank = math.min(want - r.bags, left(self.bank, bankOf, id))
         self.bank[id] = self.bank[id] - r.bank
-        -- Your own bank first, then the warband bank.
-        local wb = math.min(left(self.wb, warbandOf, id), inBank)
-        r.warband = math.max(0, r.bank - (inBank - wb))
-        self.wb[id] = wb - r.warband
         local rest = want - r.bags - r.bank
         local sm = smeltOf(id)
         if sm and rest > 0 then
@@ -770,8 +699,7 @@ function SP.Stock(bagsOf, bankOf, smeltOf, warbandOf)
     -- A copy that starts from what's left here (to try something out).
     function st:Fork()
         return SP.Stock(function(id) return left(self.bags, bagsOf, id) end,
-                        function(id) return left(self.bank, bankOf, id) end, smeltOf,
-                        function(id) return left(self.wb, warbandOf, id) end)
+                        function(id) return left(self.bank, bankOf, id) end, smeltOf)
     end
     return st
 end
@@ -780,10 +708,7 @@ end
 function SP.SourceLine(name, r, oreName)
     local parts = {}
     if r.bags > 0 then parts[#parts + 1] = r.bags .. " in your bags" end
-    if r.bank > 0 then
-        local wb = r.warband or 0
-        parts[#parts + 1] = r.bank .. " from your bank" .. (wb > 0 and string.format(" (%d in the warband bank)", wb) or "")
-    end
+    if r.bank > 0 then parts[#parts + 1] = r.bank .. " from your bank" end
     if r.smelt > 0 then
         local where = (r.oreBags > 0 and r.oreBank > 0) and "bags and bank" or (r.oreBank > 0 and "bank" or "bags")
         parts[#parts + 1] = string.format("smelt %d from %d %s (%s)", r.smelt, r.oreBags + r.oreBank, oreName or "ore", where)
@@ -889,7 +814,7 @@ local function planProfession(prof, t, out)
     -- One stock for the whole plan: bags, then bank, then smelting. What it
     -- takes from the bank becomes a bank stop, what it smelts a smelt stop;
     -- the crafts that need them come after (deps).
-    local stock = SP.Stock(count, SP.BankCount, smeltOf, SP.WarbandCount)
+    local stock = SP.Stock(count, SP.BankCount, smeltOf)
     local bankPull, smeltWant, smeltBankOre = {}, {}, {}
     local bankNeeded, smeltNeeded = false, {}   -- false: only an optional upgrade wants it
     local function pull(r, id, optional)
@@ -1135,11 +1060,7 @@ local function planProfession(prof, t, out)
     local fromBank = {}
     for _, id in ipairs(sortedIds(bankPull)) do
         local n = math.min(bankPull[id], SP.BankCount(id))
-        local wb = SP.WarbandShare(id, n)
-        if n > 0 then
-            fromBank[#fromBank + 1] = string.format("%d %s%s", n, itemName(id),
-                wb > 0 and string.format(" (%d in the warband bank)", wb) or "")
-        end
+        if n > 0 then fromBank[#fromBank + 1] = string.format("%d %s", n, itemName(id)) end
     end
     if #fromBank > 0 then
         local seen = ns.db.bank and ns.db.bank.seenAt
