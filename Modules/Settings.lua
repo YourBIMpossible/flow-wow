@@ -21,6 +21,13 @@ ns.settings = S
 
 local frame
 
+-- S:AddCheck{ label, note, tip, get, set }: one more tick box under "Flow".
+-- Add it before the page first opens (at file load).
+S.extraChecks = {}
+function S:AddCheck(def)
+    self.extraChecks[#self.extraChecks + 1] = def
+end
+
 local MODIFIER_KEYS = {
     LSHIFT = true, RSHIFT = true, LCTRL = true, RCTRL = true,
     LALT = true, RALT = true, LMETA = true, RMETA = true,
@@ -366,6 +373,10 @@ local function build(parent)
                 function() return ns.db.bonus[x.key] ~= false end,
                 function(on) ns.db.bonus[x.key] = on end)
         end
+    end
+    -- Tick boxes other files add with S:AddCheck (after the built-in ones).
+    for _, x in ipairs(S.extraChecks) do
+        _, y = check(f, y, x.label, x.note, x.tip, x.get, x.set)
     end
     y = y - 10
 

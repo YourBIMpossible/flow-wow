@@ -657,12 +657,29 @@ do
     -- Commands and test
     -------------------------------------------------------------------------------
 
+    function BB.Set(on)
+        cfg().enabled = on and true or false
+        applyKey()
+    end
+
+    -- Options > AddOns > Flow, under "Flow".
+    if ns.settings and ns.settings.AddCheck then
+        ns.settings:AddCheck({
+            label = "Buff button beside Flow's icon",
+            note = "(own key: /flow buffkey <key>)",
+            tip = "Your buffs (seals, auras, blessings, shouts, party buffs) and weapon stones and oils go on a "
+                .. "separate blue button left of Flow's icon, so Flow's key only does your fight: damage, heals "
+                .. "and cleanses. Give it its own key with /flow buffkey Q. In a fight it keeps the buff you "
+                .. "last cast from it and lights up when that buff runs out. Off: buffs and stones go back on "
+                .. "Flow's icon and key.",
+            get = function() return BB.On() end,
+            set = function(on) BB.Set(on) end,
+        })
+    end
+
     ns.commands.buffbutton = function(arg)
         arg = (arg or ""):lower()
-        if arg == "on" or arg == "off" then
-            cfg().enabled = (arg == "on")
-            applyKey()
-        end
+        if arg == "on" or arg == "off" then BB.Set(arg == "on") end
         ns:Print("buff button: " .. (BB.On() and "on" or "off") .. " (/flow buffbutton on|off)")
         print("  key: " .. (cfg().key or "none (/flow buffkey <key>)"))
         print("  shows now: " .. (current and describe(current) or "nothing"))
