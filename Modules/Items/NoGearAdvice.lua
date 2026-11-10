@@ -188,11 +188,30 @@ end)()
 
     local function stoneOn() return not (ns.db and ns.db.stoneStep == false) end
 
-    -- Names that mean "goes on a weapon": stones, weightstones, oils.
+    -- Names that mean "goes on a weapon": stones, weightstones, real weapon oils
+    -- (not Oily Blackmouth, Fire Oil or Oil of Immolation).
+    local OILS = { "Wizard Oil", "Mana Oil", "^Frost Oil$", "^Shadow Oil$" }
     local function isWeaponBuff(name)
         if not name then return false end
-        return name:find("Sharpening Stone") ~= nil or name:find("Weightstone") ~= nil
-            or name:find("Oil") ~= nil
+        if name:find("Sharpening Stone") or name:find("Weightstone") then return true end
+        for _, o in ipairs(OILS) do
+            if name:find(o) then return true end
+        end
+        return false
+    end
+
+    local FISHING_POLE = 20
+    local SUBNAME = { [0] = "one-hand axe", [1] = "two-hand axe", [4] = "one-hand mace",
+        [5] = "two-hand mace", [6] = "polearm", [7] = "one-hand sword", [8] = "two-hand sword",
+        [10] = "staff", [13] = "fist weapon", [15] = "dagger", [20] = "fishing pole" }
+
+    local function fits(name, sub)
+        return sub ~= nil and sub ~= FISHING_POLE and BI.FitsWeapon(name, sub) and true or false
+    end
+
+    -- A live enemy targeted: you're about to pull, let the rotation's opener go first.
+    local function enemyTargeted()
+        return UnitExists("target") and UnitCanAttack("player", "target") and not UnitIsDead("target") or false
     end
 
     local function nameOf(id)
@@ -210,18 +229,28 @@ end)()
         if info and info[6] == 2 then return info[7] end
     end
 
-    -- The first weapon buff in your bags that fits the weapon: { id, name } or nil.
-    local function find(weaponSub)
+    -- Every weapon buff in your bags: { { id, name }, ... }.
+    local function carried()
+        local out, seen = {}, {}
         local C = C_Container
         local slots = (C and C.GetContainerNumSlots) or GetContainerNumSlots
         local itemAt = (C and C.GetContainerItemID) or GetContainerItemID
-        if not (slots and itemAt) then return nil end
+        if not (slots and itemAt) then return out end
         for bag = 0, 4 do
             for slot = 1, (slots(bag) or 0) do
                 local id = itemAt(bag, slot)
-                local name = id and nameOf(id)
-                if isWeaponBuff(name) and BI.FitsWeapon(name, weaponSub) then return { id = id, name = name } end
+                local name = id and not seen[id] and nameOf(id)
+                if id then seen[id] = true end
+                if isWeaponBuff(name) then out[#out + 1] = { id = id, name = name } end
             end
+        end
+        return out
+    end
+
+    -- The first weapon buff in your bags that fits the weapon: { id, name } or nil.
+    local function find(weaponSub)
+        for _, it in ipairs(carried()) do
+            if fits(it.name, weaponSub) then return it end
         end
     end
 
@@ -232,13 +261,22 @@ end)()
         return sub, hasEnchant, item
     end
 
-    ns:Register("action", "buff:stone", { order = 4, get = function()
+    -- Order 2.5: before buff:item and bag:learn, which aren't urgent and would
+    -- otherwise be returned first and keep this step off the icon.
+    -- Urgent unless an enemy is targeted or you're under half health (fishing:
+    -- no step at all, the pole is on): out of combat the
+    -- rotation nearly always suggests something (a paladin's seal, an aura),
+    -- and a step that isn't urgent only shows when the rotation suggests nothing.
+    ns:Register("action", "buff:stone", { order = 2.5, get = function(ctx)
         if not stoneOn() or UnitIsDeadOrGhost("player") then return nil end
         if IsResting and IsResting() then return nil end
+        if ctx and ctx.fishing then return nil end
         local sub, hasEnchant, item = why()
         if not sub or hasEnchant or not item then return nil end
         local icon = (C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(item.id)) or (GetItemIcon and GetItemIcon(item.id))
         return { type = "item", item = "item:" .. item.id, icon = icon, targetSlot = 16,
+                 -- Low on health: let the rotation's heal go first.
+                 urgent = not enemyTargeted() and (UnitHealth("player") or 0) > 0.5 * (UnitHealthMax("player") or 1),
                  label = "Put on your weapon: " .. item.name,
                  reason = "Your weapon has no stone on it" }
     end })
@@ -247,10 +285,35 @@ end)()
         arg = (arg or ""):lower()
         if arg == "on" or arg == "off" then ns.db.stoneStep = (arg == "on") end
         local sub, hasEnchant, item = why()
+        local resting = IsResting and IsResting() or false
         ns:Print("weapon stone step: " .. (stoneOn() and "on" or "off") .. " (/flow stone on|off)")
-        print(string.format("  main hand type: %s, already has a stone/oil: %s, one in your bags that fits: %s, resting here: %s",
-            tostring(sub), tostring(hasEnchant), item and item.name or "none",
-            tostring(IsResting and IsResting() or false)))
+        local mh = GetInventoryItemID and GetInventoryItemID("player", 16)
+        print(string.format("  main hand: %s (%s)", mh and (nameOf(mh) or ("item " .. mh)) or "nothing",
+            sub and (SUBNAME[sub] or ("weapon type " .. sub)) or "not a weapon"))
+        print("  already has a stone/oil on it: " .. (hasEnchant and "yes" or "no"))
+        local all = carried()
+        if #all == 0 then print("  stones/oils in your bags: none") end
+        for _, it in ipairs(all) do
+            print(string.format("  in your bags: %s - %s", it.name,
+                fits(it.name, sub) and "fits this weapon" or "does NOT fit this weapon (sharpening stones: blades; weightstones: maces/staves)"))
+        end
+        print("  resting (inn/city, step waits): " .. (resting and "yes" or "no")
+            .. ", enemy targeted: " .. (enemyTargeted() and "yes" or "no"))
+        local blocker = (not stoneOn() and "the step is off")
+            or (not sub and "no weapon in your main hand")
+            or (hasEnchant and "your weapon already has one on")
+            or (not item and "nothing in your bags fits this weapon")
+            or (resting and "you're resting; leave the inn/city")
+            or (InCombatLockdown() and "you're in combat")
+        if blocker then
+            print("  -> not showing: " .. blocker)
+        else
+            print("  -> showing on Flow's icon now: \"Put on your weapon: " .. item.name .. "\" - click the icon or press your Flow key")
+        end
+        local shown = ns.rotation and ns.rotation.shown
+        if shown then
+            print("  Flow's icon shows right now: " .. tostring(shown.label or shown.spell or shown.key or shown.kind))
+        end
     end
 
     ns:Register("test", "stone: weapon buffs are found by name and fit the weapon", function(t)
@@ -258,6 +321,12 @@ end)()
         t:ok(isWeaponBuff("Rough Weightstone"), "a weightstone")
         t:ok(not isWeaponBuff("Linen Bandage"), "not a bandage")
         t:ok(not isWeaponBuff(nil), "no name, no match")
+        t:ok(isWeaponBuff("Lesser Wizard Oil"), "a wizard oil")
+        t:ok(not isWeaponBuff("Oily Blackmouth"), "not a fish")
+        t:ok(not isWeaponBuff("Fire Oil"), "not fire oil")
+        t:ok(not fits("Lesser Wizard Oil", FISHING_POLE), "nothing on a fishing pole")
+        local a = ns:Get("action", "buff:stone")
+        t:ok(a and a.order < 3, "comes before buff:item and bag:learn")
         t:ok(BI.FitsWeapon("Rough Sharpening Stone", 7), "stone on a one-hand sword")
         t:ok(not BI.FitsWeapon("Rough Sharpening Stone", 4), "no stone on a mace")
         t:ok(BI.FitsWeapon("Rough Weightstone", 5), "weightstone on a two-hand mace")
