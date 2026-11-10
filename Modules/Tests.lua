@@ -1257,10 +1257,81 @@ ns:Register("test", "crafting: make exactly enough, and say what's next", functi
     for _, g in ipairs(ns.skillPlan.lastStops or {}) do
         if g.recipe then
             t:ok(g.makeCount and g.makeCount > 0, g.recipe .. ": has a count")
-            t:ok(g.target and g.planned, g.recipe .. ": knows its target and planned total")
+            t:ok(g.planned and (g.target or g.extra), g.recipe .. ": knows its target (or is a smelt / upgrade) and planned total")
             t:ok(g.text:find("|cffffd100", 1, true) ~= nil, g.recipe .. ": count highlighted")
         end
     end
+end)
+
+ns:Register("test", "skillplan: materials from bags, then bank, then smelting", function(t)
+    local SP = ns.skillPlan
+    local BAR, ORE, LEATHER = 900001, 900002, 900003
+    local bags = { [BAR] = 2, [ORE] = 3 }
+    local bank = { [BAR] = 1, [ORE] = 6, [LEATHER] = 4 }
+    local function smeltOf(id) if id == BAR then return { from = ORE, n = 1 } end end
+    local st = SP.Stock(function(id) return bags[id] or 0 end, function(id) return bank[id] or 0 end, smeltOf)
+    t:eq(st:Avail(BAR), 12, "2 bags + 1 bank + 9 ore to smelt")
+    local r = st:Take(BAR, 8)
+    t:eq(r.bags, 2, "bags first"); t:eq(r.bank, 1, "then the bank")
+    t:eq(r.smelt, 5, "then smelt the rest")
+    t:eq(r.oreBags, 3, "ore from your bags first"); t:eq(r.oreBank, 2, "then the bank's ore")
+    t:eq(r.short, 0, "nothing short")
+    t:eq(st:Avail(BAR), 4, "what's left counts once")
+    local try = st:Fork()
+    local r2 = try:Take(BAR, 6)
+    t:eq(r2.short, 2, "a copy sees only what's left")
+    t:eq(st:Avail(BAR), 4, "trying on the copy takes nothing")
+    local line = SP.SourceLine("Copper Bar", r, "Copper Ore")
+    t:ok(line:find("2 in your bags", 1, true) and line:find("1 from your bank", 1, true)
+        and line:find("smelt 5 from 5 Copper Ore (bags and bank)", 1, true), "says where each comes from: " .. line)
+    t:ok(SP.SourceLine("Tigerseye", { need = 2, bags = 0, bank = 0, smelt = 0, oreBags = 0, oreBank = 0, short = 2 })
+        :find("2 still to get", 1, true), "and what's still to get")
+end)
+
+ns:Register("test", "skillplan: the bank Flow saw counts, an upgrade with an unread material isn't makeable", function(t)
+    local SP = ns.skillPlan
+    local saved = ns.db.bank
+    local ok, err = pcall(function()
+        ns.db.bank = { items = { [900004] = 7 }, seenAt = 1 }
+        t:eq(SP.BankCount(900004), 7, "what Flow saw in your bank")
+        t:eq(SP.BankCount(900005), 0, "not in it: none")
+    end)
+    ns.db.bank = saved
+    t:ok(ok, "ran" .. (ok and "" or (": " .. tostring(err))))
+    local ups = SP.PickUpgrades({ { recipe = "Boots", item = 1, reagents = { [2840] = 2 }, partial = true } },
+        function() return 3, "dps", "boots", "INVTYPE_FEET" end)
+    t:ok(ups[1] and ups[1].partial, "an incomplete material list comes along")
+    local lines = ns.craftHint.UpgradeLines({ { recipe = "Boots", tag = "+3 DPS", missing = { "2 Tigerseye", "4 Light Leather" } },
+                                             { recipe = "Belt", tag = "+1 DPS", missing = {}, unread = true } })
+    t:ok(lines[1]:find("needs 2 Tigerseye, 4 Light Leather", 1, true), "the fold-out says what's missing")
+    t:ok(lines[2]:find("open this window again", 1, true), "and when Flow couldn't read the materials")
+    for _, g in ipairs(SP.lastStops or {}) do
+        t:ok(not (g.key or ""):find("^upgrade:") or not g.blockedBy or not g.blockedBy:find("^needs %d"),
+            (g.recipe or g.key) .. ": an upgrade missing materials is never a stop")
+    end
+end)
+
+ns:Register("test", "crafting: the window shows the arrow's stop, materials and the upgrades fold-out", function(t)
+    local H = ns.craftHint
+    local a = { key = "craft:X:A", recipe = "A" }
+    local b = { key = "upgrade:X:B", recipe = "B" }
+    t:eq(H.Pick({ b, a }, { goal = { key = "craft:X:A" } }), a, "the faint arrow's stop wins")
+    t:eq(H.Pick({ b, a }, nil, { { goal = { key = "craft:X:A" } } }), a, "else the profession route's first")
+    t:eq(H.Pick({ b, a }), b, "else the first")
+    local lines, now = H.MaterialLines({ reagents = { [2840] = 2 } }, 4,
+        function() return 3 end, function() return 10 end)
+    t:eq(#lines, 1, "one line per material")
+    t:ok(lines[1]:find("3 in your bags", 1, true) and lines[1]:find("5 from your bank", 1, true), "bags then bank: " .. lines[1])
+    t:eq(now, 1, "make now only what your bags hold")
+    local ok, err = pcall(function()
+        local p = H.Panel()
+        local was = H.upgradesOpen
+        p.upBtn:Click()
+        t:eq(H.upgradesOpen, not was, "clicking opens / closes the fold-out")
+        p.upBtn:Click()
+        t:eq(H.upgradesOpen, was, "and back")
+    end)
+    t:ok(ok, "fold-out click" .. (ok and "" or (": " .. tostring(err))))
 end)
 
 ns:Register("test", "actions: a selected NPC never blocks the Flow key", function(t)

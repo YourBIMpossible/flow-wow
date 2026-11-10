@@ -28,7 +28,9 @@ local function readClassic()
             for j = 1, (GetTradeSkillNumReagents and GetTradeSkillNumReagents(i) or 0) do
                 local _, _, count = GetTradeSkillReagentInfo(i, j)
                 local id = GetTradeSkillReagentItemLink and itemId(GetTradeSkillReagentItemLink(i, j))
-                if id and count then r.reagents[id] = count end
+                -- The game hadn't loaded that item yet: the list is incomplete,
+                -- so Flow doesn't treat the recipe as makeable from the rest.
+                if id and count then r.reagents[id] = count else r.partial = true end
             end
             recipes[name] = r
         end
@@ -57,7 +59,7 @@ local function readModern()
                 for j = 1, T.GetRecipeNumReagents(id) or 0 do
                     local _, _, count = T.GetRecipeReagentInfo(id, j)
                     local rid = itemId(T.GetRecipeReagentItemLink(id, j))
-                    if rid and count then r.reagents[rid] = count end
+                    if rid and count then r.reagents[rid] = count else r.partial = true end
                 end
             end
             recipes[info.name] = r

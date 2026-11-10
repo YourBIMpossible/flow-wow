@@ -3,9 +3,9 @@
 -- profession that's behind your level) it works out, from what you have NOW:
 --   what to make     cheapest skill-ups per material at your skill (Guides.lua,
 --                    corrected by your real profession window, Recipes.lua)
---   what that needs  materials, minus what's in your bags
---   how to get them  smelt ore you carry, mine veins / kill mobs on this map,
---                    buy from a vendor
+--   what that needs  materials, minus what's in your bags and your bank
+--   how to get them  take them out of the bank, smelt the ore you have, mine
+--                    veins / kill mobs on this map, buy from a vendor
 -- and hands the route planner the stops: gather, smelt, craft, learn, buy.
 -- The planner mixes them with your quests by distance, so you mine the veins
 -- that are on the way. Bags change -> plan changes (re-planned live).
@@ -531,7 +531,7 @@ function SP.PickUpgrades(cands, gainOf)
             slot = slot or c.item
             if not best[slot] or gain > best[slot].gain then
                 best[slot] = { recipe = c.recipe, item = c.item, reagents = c.reagents or {}, diff = c.diff,
-                               station = c.station, gain = gain, role = role, link = link }
+                               station = c.station, gain = gain, role = role, link = link, partial = c.partial }
             end
         end
     end
@@ -555,7 +555,7 @@ function SP.Upgrades(prof, gainOf)
     local cands = {}
     for name, r in pairs(known) do
         if type(r) == "table" and r.item then
-            cands[#cands + 1] = { recipe = name, item = r.item, reagents = r.reagents, diff = r.diff,
+            cands[#cands + 1] = { recipe = name, item = r.item, reagents = r.reagents, diff = r.diff, partial = r.partial,
                                   station = (stepOf[name] and stepOf[name].station) or PROF_STATION[prof] }
         end
     end
@@ -572,6 +572,172 @@ ns:On("GET_ITEM_INFO_RECEIVED", function(id)
         if ns.nav and ns.nav.RequestCollect then ns.nav.RequestCollect() end
     end
 end)
+
+-------------------------------------------------------------------------------
+-- Your bank, remembered per character (read while it's open), so the plan
+-- takes materials out of it instead of sending you to gather them again.
+-------------------------------------------------------------------------------
+
+ns:OnLoad(function(saved) saved.bank = saved.bank or {} end)
+ns:PerCharacter("bank")
+
+local bankOpen = false
+
+-- The bank's containers on this client: the main bank, the reagent bank,
+-- bank bags, and the newer bank tabs (not the warband bank).
+local function bankContainers()
+    local ids, seen = {}, {}
+    local function add(b) if b and not seen[b] then seen[b] = true; ids[#ids + 1] = b end end
+    add(BANK_CONTAINER or -1)
+    add(REAGENTBANK_CONTAINER)
+    local first = (NUM_TOTAL_EQUIPPED_BAG_SLOTS or NUM_BAG_SLOTS or 4) + 1
+    for b = first, first + (NUM_BANKBAGSLOTS or 7) - 1 do add(b) end
+    for k, v in pairs(Enum and Enum.BagIndex or {}) do
+        if type(k) == "string" and (k == "Bank" or k == "Reagentbank" or k:find("^CharacterBankTab")) then add(v) end
+    end
+    return ids
+end
+
+local function containerSlots(bag)
+    if C_Container and C_Container.GetContainerNumSlots then return C_Container.GetContainerNumSlots(bag) or 0 end
+    return GetContainerNumSlots and GetContainerNumSlots(bag) or 0
+end
+
+local function containerItem(bag, slot)
+    if C_Container and C_Container.GetContainerItemInfo then
+        local info = C_Container.GetContainerItemInfo(bag, slot)
+        if info then return info.itemID, info.stackCount end
+        return nil
+    end
+    if GetContainerItemInfo then
+        local _, n, _, _, _, _, link, _, _, id = GetContainerItemInfo(bag, slot)
+        return id or (link and tonumber(link:match("item:(%d+)"))), n
+    end
+end
+
+-- Reads the bank while it's open. True when what's in it changed.
+function SP.ReadBank()
+    if not bankOpen then return false end
+    local items = {}
+    for _, bag in ipairs(bankContainers()) do
+        local okSlots, n = pcall(containerSlots, bag)
+        for slot = 1, okSlots and n or 0 do
+            local id, c = containerItem(bag, slot)
+            if id and c then items[id] = (items[id] or 0) + c end
+        end
+    end
+    local old = ns.db.bank and ns.db.bank.items or {}
+    local changed = false
+    for id, c in pairs(items) do if old[id] ~= c then changed = true end end
+    for id in pairs(old) do if items[id] == nil then changed = true end end
+    ns.db.bank = { items = items, seenAt = time() }
+    return changed
+end
+
+local function rereadBank()
+    local ok, changed = pcall(SP.ReadBank)
+    if ok and changed and ns.nav and ns.nav.RequestCollect then ns.nav.RequestCollect() end
+end
+ns:On("BANKFRAME_OPENED", function() bankOpen = true; C_Timer.After(0.3, rereadBank) end)
+ns:On("BANKFRAME_CLOSED", function() bankOpen = false end)
+for _, ev in ipairs({ "PLAYERBANKSLOTS_CHANGED", "PLAYERREAGENTBANKSLOTS_CHANGED" }) do
+    ns:On(ev, function() if bankOpen then rereadBank() end end)
+end
+
+-- How many of an item are in your bank: what Flow saw there, or what the
+-- game counts beyond your bags (whichever is more).
+function SP.BankCount(id)
+    local items = ns.db.bank and ns.db.bank.items
+    local n = items and items[id] or 0
+    if A.ItemCount then
+        local ok, total = pcall(A.ItemCount, id, true)
+        if ok and type(total) == "number" then n = math.max(n, total - count(id)) end
+    end
+    return n
+end
+
+-- What's on hand for a plan, shared by its stops so nothing is counted
+-- twice: your bags first, then your bank, then bars smelted from the ore in
+-- either. bagsOf / bankOf(id) -> count; smeltOf(id) -> { from, n } or nil.
+function SP.Stock(bagsOf, bankOf, smeltOf)
+    local st = { bags = {}, bank = {} }
+    local function left(t, f, id)
+        if t[id] == nil then t[id] = f(id) or 0 end
+        return t[id]
+    end
+    -- How many of `id` you could have in hand.
+    function st:Avail(id)
+        local n = left(self.bags, bagsOf, id) + left(self.bank, bankOf, id)
+        local sm = smeltOf(id)
+        if sm then n = n + math.floor((left(self.bags, bagsOf, sm.from) + left(self.bank, bankOf, sm.from)) / sm.n) end
+        return n
+    end
+    -- Sets `want` of `id` aside: how many from your bags, your bank, smelted
+    -- (and the ore that takes, from bags / bank), and how many are still short.
+    function st:Take(id, want)
+        local r = { need = want, bags = 0, bank = 0, smelt = 0, oreBags = 0, oreBank = 0, short = 0 }
+        r.bags = math.min(want, left(self.bags, bagsOf, id))
+        self.bags[id] = self.bags[id] - r.bags
+        r.bank = math.min(want - r.bags, left(self.bank, bankOf, id))
+        self.bank[id] = self.bank[id] - r.bank
+        local rest = want - r.bags - r.bank
+        local sm = smeltOf(id)
+        if sm and rest > 0 then
+            r.from = sm.from
+            local lb, lk = left(self.bags, bagsOf, sm.from), left(self.bank, bankOf, sm.from)
+            r.smelt = math.min(rest, math.floor((lb + lk) / sm.n))
+            local ore = r.smelt * sm.n
+            r.oreBags = math.min(ore, lb)
+            r.oreBank = ore - r.oreBags
+            self.bags[sm.from] = lb - r.oreBags
+            self.bank[sm.from] = lk - r.oreBank
+            rest = rest - r.smelt
+        end
+        r.short = rest
+        return r
+    end
+    -- A copy that starts from what's left here (to try something out).
+    function st:Fork()
+        return SP.Stock(function(id) return left(self.bags, bagsOf, id) end,
+                        function(id) return left(self.bank, bankOf, id) end, smeltOf)
+    end
+    return st
+end
+
+-- One line per material: "Copper Bar x8: 2 in your bags, 6 from your bank".
+function SP.SourceLine(name, r, oreName)
+    local parts = {}
+    if r.bags > 0 then parts[#parts + 1] = r.bags .. " in your bags" end
+    if r.bank > 0 then parts[#parts + 1] = r.bank .. " from your bank" end
+    if r.smelt > 0 then
+        local where = (r.oreBags > 0 and r.oreBank > 0) and "bags and bank" or (r.oreBank > 0 and "bank" or "bags")
+        parts[#parts + 1] = string.format("smelt %d from %d %s (%s)", r.smelt, r.oreBags + r.oreBank, oreName or "ore", where)
+    end
+    if r.short > 0 then parts[#parts + 1] = r.short .. " still to get" end
+    return string.format("%s x%d: %s", name, r.need, #parts > 0 and table.concat(parts, ", ") or "none needed")
+end
+
+-- Where your bank is: bankers you've talked to, else the nearest one Flow
+-- knows (Services.lua). Points and names.
+function SP.BankerPoints()
+    local names = {}
+    for name, spot in pairs(ns.db.places or {}) do
+        if ns.places.HasRole(spot, "bank") then names[#names + 1] = name end
+    end
+    table.sort(names)
+    if #names > 0 then
+        local pts = npcPoints(names)
+        if #pts > 0 then return pts, names end
+    end
+    local b = ns.services and ns.services.Nearest and ns.services:Nearest("bank")
+    if b and b.map then return { { map = b.map, x = b.x, y = b.y } }, { b.name } end
+    return {}, names
+end
+
+local function smeltOf(id)
+    local s = src(id)
+    return s and s.smelt
+end
 
 local function planProfession(prof, t, out)
     local g = ns:Get("profGuide", prof)
@@ -644,11 +810,70 @@ local function planProfession(prof, t, out)
     -- Mining also levels from the veins themselves.
     local steps = g.steps or {}
     local crafts, order, reaches = simulate(prof, steps, rank, t.target)
-    local need = {}
-    for _, s in ipairs(order) do
-        local n = math.ceil(crafts[s])
-        for id, q in pairs(s.mats or {}) do need[id] = (need[id] or 0) + n * q end
+
+    -- One stock for the whole plan: bags, then bank, then smelting. What it
+    -- takes from the bank becomes a bank stop, what it smelts a smelt stop;
+    -- the crafts that need them come after (deps).
+    local stock = SP.Stock(count, SP.BankCount, smeltOf)
+    local bankPull, smeltWant, smeltBankOre = {}, {}, {}
+    local bankNeeded, smeltNeeded = false, {}   -- false: only an optional upgrade wants it
+    local function pull(r, id, optional)
+        if r.bank > 0 then
+            bankPull[id] = (bankPull[id] or 0) + r.bank
+            bankNeeded = bankNeeded or not optional
+        end
+        if r.smelt > 0 then
+            smeltWant[id] = (smeltWant[id] or 0) + r.smelt
+            smeltNeeded[id] = smeltNeeded[id] or not optional
+            if r.oreBank > 0 then
+                bankPull[r.from] = (bankPull[r.from] or 0) + r.oreBank
+                smeltBankOre[id] = true
+                bankNeeded = bankNeeded or not optional
+            end
+        end
     end
+    local bankPts, bankNames = SP.BankerPoints()
+    local bankBlocked = #bankPts == 0 and "no known banker" or nil
+    local function smeltBlocked(id)
+        local sm = smeltOf(id)
+        local mining = A.Skill("Mining")
+        if not mining then return "needs Mining to smelt" end
+        if mining < (sm.skill or 1) then return string.format("needs Mining %d to smelt", sm.skill) end
+        if #(stationPoints("forge") or {}) == 0 then return "no known forge" end
+    end
+    -- What has to happen before a craft: the bank, the smelting (and why
+    -- it can't, if it can't).
+    local function before(takes)
+        local deps, seenDep, blocked = {}, {}, nil
+        local function dep(k) if not seenDep[k] then seenDep[k] = true; deps[#deps + 1] = k end end
+        for _, tk in ipairs(takes) do
+            local r = tk.r
+            if r.bank > 0 or r.oreBank > 0 then
+                dep("bank:" .. prof)
+                blocked = blocked or (bankBlocked and ("get " .. itemName(tk.id) .. " from your bank first: " .. bankBlocked))
+            end
+            if r.smelt > 0 then
+                dep("smelt:" .. prof .. ":" .. tk.id)
+                local why = smeltBlocked(tk.id)
+                blocked = blocked or (why and ("smelt " .. itemName(tk.id) .. " first: " .. why))
+            end
+        end
+        return #deps > 0 and deps or nil, blocked
+    end
+    local function sourceLines(takes)
+        local lines = {}
+        for _, tk in ipairs(takes) do
+            lines[#lines + 1] = SP.SourceLine(itemName(tk.id), tk.r, tk.r.from and itemName(tk.r.from))
+        end
+        return lines
+    end
+    local function sortedIds(mats)
+        local ids = {}
+        for id in pairs(mats or {}) do ids[#ids + 1] = id end
+        table.sort(ids)
+        return ids
+    end
+    local raw = {}
 
     -- Learn recipes the plan uses that your profession window doesn't list.
     local known = ns.recipes:Known(prof)
@@ -665,22 +890,47 @@ local function planProfession(prof, t, out)
         end
     end
 
-    -- Craft what you can now.
+    -- Craft what you can now (bags, bank, smelting); the rest is gathered.
     for _, s in ipairs(order) do
-        local n = math.ceil(crafts[s])
-        for id, q in pairs(s.mats or {}) do
+        local planned = math.ceil(crafts[s])
+        local n = planned
+        local ids = sortedIds(s.mats)
+        for _, id in ipairs(ids) do
             watched[id] = true
-            n = math.min(n, math.floor(count(id) / q))
+            local sm = smeltOf(id)
+            if sm then watched[sm.from] = true end
+            n = math.min(n, math.floor(stock:Avail(id) / s.mats[id]))
+        end
+        local takes = {}
+        if n > 0 then
+            for _, id in ipairs(ids) do
+                local r = stock:Take(id, n * s.mats[id])
+                pull(r, id)
+                takes[#takes + 1] = { id = id, r = r }
+            end
+        end
+        -- The crafts that wait for more: set aside what you have for them,
+        -- gather the rest (ore for what smelts).
+        if planned > n then
+            for _, id in ipairs(ids) do
+                local r = stock:Take(id, (planned - n) * s.mats[id])
+                if r.short > 0 then
+                    local sm = smeltOf(id)
+                    if sm then raw[sm.from] = (raw[sm.from] or 0) + r.short * sm.n
+                    else raw[id] = (raw[id] or 0) + r.short end
+                end
+            end
         end
         if n > 0 then
+            local deps, depBlocked = before(takes)
             local pts, anywhere = stationPoints(s.station), false
             if not pts or #pts == 0 then pts, anywhere = { playerPoint() }, true end
             local blocked = toolMissing and ("needs a " .. toolMissing)
                 or (known and not known[s.recipe] and (s.recipeItem and (count(s.recipeItem) > 0 and "use the recipe in your bags first" or ("buy " .. itemName(s.recipeItem) .. " first"))
                     or ("learn " .. s.recipe .. " first")))
+            blocked = blocked or depBlocked
             -- The count is the point: exactly what reaches your target, so
             -- it's highlighted, and the details say why that many.
-            local planned = math.ceil(crafts[s])
             local num = "|cffffd100" .. n .. "|r"
             local c = chance(prof, s, rank)
             local details = {
@@ -692,7 +942,9 @@ local function planProfession(prof, t, out)
             if n < planned then
                 details[#details + 1] = string.format("You have materials for %d now; the rest comes after you gather more.", n)
             end
-            details[#details + 1] = anywhere and "You have the materials: do it now, wherever you are."
+            for _, line in ipairs(sourceLines(takes)) do details[#details + 1] = line end
+            details[#details + 1] = (anywhere and not deps) and "You have the materials: do it now, wherever you are."
+                or (anywhere and "Then make them wherever you are.")
                 or (s.station == "fire" and "At the fire by the cooking trainer (a campfire needs Simple Wood and Flint and Tinder)."
                     or ("At the " .. s.station .. " (by the blacksmith)."))
             -- Cooking: where you stand only if you can make a campfire (Simple
@@ -708,7 +960,7 @@ local function planProfession(prof, t, out)
                 end
             end
             add({ key = "craft:" .. prof .. ":" .. s.recipe, kind = "craft", points = pts, anywhere = anywhere,
-                  weight = 0.5,
+                  weight = 0.5, deps = deps, reagents = s.mats,
                   -- The arrow shows the profession's icon (bouncing) when you're there.
                   icon = profIcon(prof), station = s.station,
                   -- For the profession window hint (CraftHint.lua).
@@ -721,9 +973,14 @@ local function planProfession(prof, t, out)
     end
 
     -- Gear you can make that's an upgrade for you. When the plan already
-    -- makes it, its craft stop says so. Otherwise it's an extra, optional
-    -- stop: the route takes it only when it's on the way, it never changes
-    -- what the plan makes, and missing materials only list it (not routed).
+    -- makes it, its craft stop says so. Otherwise, with everything it needs
+    -- on hand (bags, bank, smelting), it's an extra, optional stop: the route
+    -- takes it only when it's on the way and it never changes what the plan
+    -- makes. Missing materials: not a stop at all, only listed in the
+    -- profession window (SP.lastUpgrades), so it never steers you.
+    local lacking = {}
+    SP.lastUpgrades = SP.lastUpgrades or {}
+    SP.lastUpgrades[prof] = lacking
     for _, u in ipairs(SP.Upgrades(prof)) do
         watched[u.item] = true
         local tag = string.format("+%d %s", math.floor(u.gain + 0.5), ns.ROLE_LABEL[u.role] or u.role)
@@ -736,62 +993,86 @@ local function planProfession(prof, t, out)
             onPlan.upgrade = u.link
             onPlan.details[#onPlan.details + 1] = string.format("One of them is an upgrade for you (%s): equip it.", tag)
         else
-            local missing = {}
-            for id, q in pairs(u.reagents) do
+            local try, takes, missing = stock:Fork(), {}, {}
+            for _, id in ipairs(sortedIds(u.reagents)) do
                 watched[id] = true
-                local short = q - count(id)
-                if short > 0 then missing[#missing + 1] = string.format("%d more %s", short, itemName(id)) end
+                local sm = smeltOf(id)
+                if sm then watched[sm.from] = true end
+                local r = try:Take(id, u.reagents[id])
+                takes[#takes + 1] = { id = id, r = r }
+                if r.short > 0 then missing[#missing + 1] = string.format("%d %s", r.short, itemName(id)) end
             end
-            table.sort(missing)
-            local anywhere = not u.station
-            local pts = u.station and stationPoints(u.station) or (anywhere and { playerPoint() }) or nil
-            local details = {
-                string.format("%s is an upgrade for you (%s). Equip it once it's made.", u.link or u.recipe, tag),
-                string.format("Not needed for %s %d: the fastest way there is planned without it, so skip it if you like.",
-                    prof, t.target),
-            }
-            if u.diff and u.diff ~= "trivial" then
-                details[#details + 1] = "It also gives skill while the recipe isn't grey."
+            local unread = u.partial or next(u.reagents) == nil
+            if #missing > 0 or unread then
+                lacking[#lacking + 1] = { recipe = u.recipe, link = u.link, tag = tag, missing = missing,
+                                          unread = unread or nil }
+            else
+                local deps, depBlocked = before(takes)
+                local anywhere = not u.station
+                local pts = u.station and stationPoints(u.station) or (anywhere and { playerPoint() }) or nil
+                local details = {
+                    string.format("%s is an upgrade for you (%s). Equip it once it's made.", u.link or u.recipe, tag),
+                    string.format("Not needed for %s %d: the fastest way there is planned without it, so skip it if you like.",
+                        prof, t.target),
+                }
+                if u.diff and u.diff ~= "trivial" then
+                    details[#details + 1] = "It also gives skill while the recipe isn't grey."
+                end
+                for _, line in ipairs(sourceLines(takes)) do details[#details + 1] = line end
+                local blocked = (toolMissing and ("needs a " .. toolMissing))
+                    or ((not pts or #pts == 0) and ("no known " .. (u.station or "spot"))) or depBlocked
+                -- Only a stop you can actually make sets its materials aside.
+                if not blocked then
+                    for _, tk in ipairs(takes) do pull(stock:Take(tk.id, tk.r.need), tk.id, true) end
+                end
+                add({ key = "upgrade:" .. prof .. ":" .. u.recipe, kind = "craft", points = pts or {}, anywhere = anywhere,
+                      optional = true, weight = 1.5, upgrade = u.link, extra = "upgrade", deps = deps, reagents = u.reagents,
+                      icon = profIcon(prof), station = u.station,
+                      prof = prof, recipe = u.recipe, makeCount = 1, planned = 1, rank = rank,
+                      text = string.format("Make |cffffd1001|r x %s: an upgrade for you (%s)", u.recipe, tag),
+                      details = details,
+                      blockedBy = blocked })
             end
-            add({ key = "upgrade:" .. prof .. ":" .. u.recipe, kind = "craft", points = pts or {}, anywhere = anywhere,
-                  optional = true, weight = 1.5, upgrade = u.link,
-                  icon = profIcon(prof), station = u.station,
-                  prof = prof, recipe = u.recipe, makeCount = 1, rank = rank,
-                  text = string.format("Make %s: an upgrade for you (%s)", u.recipe, tag),
-                  details = details,
-                  blockedBy = (#missing > 0 and ("needs " .. table.concat(missing, ", ")))
-                      or (toolMissing and ("needs a " .. toolMissing))
-                      or ((not pts or #pts == 0) and ("no known " .. (u.station or "spot"))) or nil })
         end
     end
 
-    -- Materials you still need: smelt what you carry, then gather the rest.
-    local raw = {}
-    for id, n in pairs(need) do
-        local missing = n - count(id)
-        local s = src(id)
-        if missing > 0 and s and s.smelt then
-            local from = s.smelt.from
-            watched[from] = true
-            local canSmelt = math.min(missing, math.floor(count(from) / s.smelt.n))
-            if canSmelt > 0 then
-                local mining = A.Skill("Mining")
-                local pts = stationPoints("forge") or {}
-                add({ key = "smelt:" .. id, kind = "craft", points = pts,
-                      text = string.format("Smelt %d %s at a forge", canSmelt, itemName(id)),
-                      details = { "Forges stand by the blacksmiths." },
-                      blockedBy = (not mining and "needs Mining to smelt")
-                          or (mining < s.smelt.skill and string.format("needs Mining %d to smelt", s.smelt.skill))
-                          or (#pts == 0 and "no known forge") or nil })
-            end
-            missing = missing - canSmelt
-            if missing > 0 then raw[from] = (raw[from] or 0) + missing * s.smelt.n end
-        elseif missing > 0 then
-            raw[id] = (raw[id] or 0) + missing
-        end
+    -- Smelt stops: bars from the ore you have (bags or bank), at a forge,
+    -- before the crafts that use them.
+    for _, id in ipairs(sortedIds(smeltWant)) do
+        local sm, n = smeltOf(id), smeltWant[id]
+        local pts = stationPoints("forge") or {}
+        local bar = itemName(id)
+        add({ key = "smelt:" .. prof .. ":" .. id, kind = "craft", points = pts, extra = "smelt",
+              optional = not smeltNeeded[id] or nil, weight = smeltNeeded[id] and 0.5 or 1.5,
+              deps = smeltBankOre[id] and { "bank:" .. prof } or nil,
+              icon = profIcon("Mining"), station = "forge",
+              -- Done in the Mining (smelting) window: the hint shows it there.
+              prof = "Mining", serves = prof, recipe = "Smelt " .. bar:gsub(" Bar$", ""),
+              makeCount = n, planned = n, reagents = { [sm.from] = sm.n },
+              text = string.format("Smelt |cffffd100%d|r %s at a forge", n, bar),
+              details = { string.format("%d %s for your %s crafts, from %d %s%s.", n, bar, prof, n * sm.n,
+                              itemName(sm.from), smeltBankOre[id] and " (some from your bank)" or ""),
+                          "Forges stand by the blacksmiths." },
+              blockedBy = smeltBlocked(id) })
     end
 
-    -- Group by where it comes from: one stop per node type / mob group.
+    -- Bank stop: what the plan takes out of your bank, first.
+    local fromBank = {}
+    for _, id in ipairs(sortedIds(bankPull)) do
+        local n = math.min(bankPull[id], SP.BankCount(id))
+        if n > 0 then fromBank[#fromBank + 1] = string.format("%d %s", n, itemName(id)) end
+    end
+    if #fromBank > 0 then
+        local seen = ns.db.bank and ns.db.bank.seenAt
+        add({ key = "bank:" .. prof, kind = "collect", points = bankPts, npcs = bankNames,
+              optional = not bankNeeded or nil, weight = bankNeeded and 0.5 or 1.5,
+              text = "Get from your bank: " .. table.concat(fromBank, ", "),
+              details = { string.format("For your %s crafts. Take them out at the banker.", prof),
+                          seen and "Your bank as Flow last saw it (open it to update)." or "Open your bank once so Flow can see what's in it." },
+              blockedBy = bankBlocked })
+    end
+
+    -- Still short: group by where it comes from: one stop per node type / mob group.
     local nodes = {}
     for id, n in pairs(raw) do
         watched[id] = true
@@ -924,6 +1205,7 @@ ns:Register("navGoal", "skillplan", {
         local out = {}
         SP.lastTargets = SP:Targets()   -- (fishing feeds cooking: SP.PlannedCatch)
         SP.lastFromFish = 0
+        SP.lastUpgrades = {}
         for prof, t in pairs(SP.lastTargets) do
             local ok, err = pcall(planProfession, prof, t, out)
             if not ok then ns:Log("skillplan", prof .. ": " .. tostring(err)) end
@@ -953,6 +1235,8 @@ ns:On("BAG_UPDATE_DELAYED", function()
         if lastCounts[id] ~= c then lastCounts[id] = c; changed = true end
     end
     if changed and ns.nav and ns.nav.RequestCollect then ns.nav.RequestCollect() end
+    -- Moving things in or out of the bank: read it again.
+    if bankOpen then rereadBank() end
 end)
 ns:On("SKILL_LINES_CHANGED", function() if ns.nav and ns.nav.RequestCollect then ns.nav.RequestCollect() end end)
 
