@@ -359,9 +359,10 @@ end)()
 -- weapon enhancements, so the main icon and key are only ever your fight
 -- (damage, heals, dispels, Flow Actions) and the two never get mixed up.
 --
---   Buff button: the rotation's "buff" suggestions (seals, auras, blessings,
---   shouts, group buffs) first, then a stone, weightstone or oil for your
---   weapon (buff:stone, buff:item; in town too). Out of combat it shows what's
+--   Buff button: out of combat a stone, weightstone or oil for your weapon
+--   first (buff:stone, buff:item; in town too), then the rotation's "buff"
+--   suggestions (seals, auras, blessings, shouts, group buffs). At the pull it
+--   swaps to the buff spell. Out of combat it shows what's
 --   missing, and sits dim when nothing is (hover it: why).
 --   In a fight: WoW won't let addons change what a button casts, so it holds
 --   the buff spell you last cast from it (a paladin's seal: press it again
@@ -410,9 +411,10 @@ do
         return out
     end
 
-    -- What the button shows out of combat: a buff spell first (quick), then an
-    -- item for your weapon (a 3 s use).
-    function BB.Pick(spellBuff, itemBuff) return spellBuff or itemBuff end
+    -- What the button shows out of combat: your weapon's stone or oil first
+    -- (a 3 s use: do it while you can, it can't go on in a fight), then a buff
+    -- spell. At the pull it swaps to the buff spell (PLAYER_REGEN_DISABLED below).
+    function BB.Pick(spellBuff, itemBuff) return itemBuff or spellBuff end
 
     -- What the button holds for a fight: the live buff spell, else the buff spell
     -- you last cast, else nothing (an item takes too long mid-fight).
@@ -760,7 +762,8 @@ do
         t:eq(out[1].spell, "Strike", "damage kept")
         t:eq(out[2].spell, "Heal", "heal kept")
         t:ok(BB.Strip(list) == out, "cached per list")
-        t:eq(BB.Pick({ spell = "Seal" }, { item = "item:2862" }).spell, "Seal", "a buff spell before a stone")
+        t:eq(BB.Pick({ spell = "Seal" }, { item = "item:2862" }).item, "item:2862", "out of combat: the weapon stone before a buff spell")
+        t:eq(BB.Pick({ spell = "Seal" }, nil).spell, "Seal", "the buff spell when the weapon needs nothing")
         t:eq(BB.Pick(nil, { item = "item:2862" }).item, "item:2862", "the stone when no buff spell is due")
         t:eq(BB.FightSpell({ spell = "Seal" }, "Blessing"), "Seal", "fight: the buff due now")
         t:eq(BB.FightSpell(nil, "Seal"), "Seal", "fight: else the one you last cast")
