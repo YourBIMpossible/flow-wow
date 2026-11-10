@@ -241,6 +241,10 @@ function C:FillTooltip(tt)
         tt:AddLine("Ctrl + key: " .. s.spell .. " on your target instead.", 0.4, 0.8, 1)
     end
     tt:AddLine("Hold Shift and drag to move; hold Ctrl and use the mouse wheel to resize.", 0.6, 0.6, 0.6)
+    for _, st in ipairs(E.status or {}) do
+        local c = st.color or { 1, 0.82, 0 }
+        tt:AddLine(st.tip, c[1], c[2], c[3], true)
+    end
     tt:AddLine("Right-click: options (after-fight order, bandages, camp).", 0.6, 0.6, 0.6)
 end
 

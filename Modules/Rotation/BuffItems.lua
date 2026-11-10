@@ -363,13 +363,26 @@ ns:OnLoad(function()
         local kits = {}
         for n in tostring(rest or ""):gmatch("[^,]+") do kits[#kits + 1] = n end
         local text = table.concat(kits, ", ")
-        local prev = partyKits[short]
         partyKits[short] = { kits = kits, at = GetTime(), text = text }
-        if #kits > 0 and not (prev and prev.text == text) and A.Buff("player", CAMP_NEARBY) then
-            ns:Print(string.format("%s can add %s to the camp", short, text))
-        end
     end
 end)
+
+-- By a fire: a status icon above Flow's key when your group could add camp
+-- objects (hover: who has what).
+function BI.PartyKitStatus(entries, now)
+    local text = BI.PartyKitText(entries, now)
+    if not text then return nil end
+    local n = 0
+    for _, e in pairs(entries) do
+        if e.at and now - e.at < PARTY_FRESH and e.kits then n = n + #e.kits end
+    end
+    return { icon = CAMP_ICON, text = tostring(n), color = { 0.35, 0.75, 1.0 },
+             tip = "Your group can add to this camp: " .. text }
+end
+ns:Register("status", "camp", { order = 30, get = function()
+    if not A.Buff("player", CAMP_NEARBY) then return nil end
+    return BI.PartyKitStatus(partyKits, GetTime())
+end })
 
 -- At a campfire: place your camp objects, then sit for the buffs (after the
 -- buff items: eating sits you down too, and an elixir would stand you up).
@@ -574,5 +587,6 @@ function BI:OpenMenu()
     items[#items + 1] = { sep = true }
     items[#items + 1] = toggle("In a fight: Healthstone, then potion", "emergencyItems")
     items[#items + 1] = toggle("Place my camp objects at campfires", "campKits")
+    items[#items + 1] = toggle("Status icons above the key (repair...)", "statusIcons")
     ns.menu:Open(items)
 end

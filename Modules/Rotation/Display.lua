@@ -392,12 +392,104 @@ local function onUpdate(_, dt)
     end
 end
 
+-------------------------------------------------------------------------------
+-- Status icons: a small row above Flow's icon for things to sort out between
+-- fights (worn gear, what your group can add to the camp...), instead of
+-- chat lines. Hidden in fights. Hover one: what it means; click: its fix.
+-- ns:Register("status", key, { order = n, get = function() return
+--     { icon = tex, text = "25%", color = { r, g, b }, tip = "...", click = fn } end })
+-------------------------------------------------------------------------------
+
+local PIP = 20
+local pips = {}
+
+-- The status entries to show now, in order: { key, icon, text, color, tip, click }.
+function E.StatusList()
+    local out = {}
+    for key, def in ns:Each("status") do
+        local ok, st = pcall(def.get)
+        if ok and type(st) == "table" then
+            st.key, st.order = key, def.order or 50
+            out[#out + 1] = st
+        end
+    end
+    table.sort(out, function(a, b) return a.order < b.order end)
+    return out
+end
+
+local function pipAt(i)
+    if pips[i] then return pips[i] end
+    local p = CreateFrame("Button", nil, UIParent)
+    p:SetSize(PIP, PIP)
+    p:SetFrameStrata("HIGH")
+    p:SetPoint("BOTTOMLEFT", icon, "TOPLEFT", (i - 1) * (PIP + 4), 6)
+    p.back = p:CreateTexture(nil, "BACKGROUND")
+    p.back:SetPoint("TOPLEFT", -1, 1); p.back:SetPoint("BOTTOMRIGHT", 1, -1)
+    p.tex = p:CreateTexture(nil, "ARTWORK")
+    p.tex:SetAllPoints(); p.tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    p.text = p:CreateFontString(nil, "OVERLAY")
+    p.text:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
+    p.text:SetPoint("BOTTOM", p, "BOTTOM", 0, -1)
+    p:SetScript("OnEnter", function(self)
+        local st = self.status
+        if not st then return end
+        ns.Tip(self, "ANCHOR_TOP")
+        GameTooltip:AddLine(st.tip or "", 1, 1, 1, true)
+        if st.click then GameTooltip:AddLine("Click: " .. (st.clickText or "fix it"), 0.6, 0.6, 0.6) end
+        GameTooltip:Show()
+    end)
+    p:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    p:SetScript("OnClick", function(self)
+        local st = self.status
+        if st and st.click then pcall(st.click) end
+    end)
+    pips[i] = p
+    return p
+end
+
+local function renderStatus()
+    local cfg = ns.db.rotation
+    local list = {}
+    if cfg.enabled and cfg.statusIcons ~= false and not InCombatLockdown() and icon
+        and not (ns.reveal and not ns.reveal:Shown("icon")) then
+        list = E.StatusList()
+    end
+    E.status = list   -- (for the Flow key's tooltip)
+    for i = 1, math.max(#list, #pips) do
+        local st = list[i]
+        if st then
+            local p = pipAt(i)
+            local c = st.color or { 1, 0.82, 0 }
+            p.status = st
+            p.tex:SetTexture(st.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+            p.back:SetColorTexture(c[1], c[2], c[3], 0.95)
+            p.text:SetText(st.text or "")
+            p.text:SetTextColor(c[1], c[2], c[3])
+            p:Show()
+        elseif pips[i] then
+            pips[i].status = nil
+            pips[i]:Hide()
+        end
+    end
+end
+
+local statusElapsed = 1
 ns:OnLoad(function(saved)
     icon = buildIcon(saved.rotation)
     E.icon = icon  -- for the cast button (Cast.lua)
     local driver = CreateFrame("Frame")
     driver:SetScript("OnUpdate", ns.perf.Wrap("rotation + actions (10/s)", onUpdate))
+    local status = CreateFrame("Frame")
+    status:SetScript("OnUpdate", function(_, dt)
+        statusElapsed = statusElapsed + dt
+        if statusElapsed < 1 then return end
+        statusElapsed = 0
+        local ok, err = pcall(renderStatus)
+        if not ok then E.lastError, E.lastErrorAt = "status: " .. tostring(err), GetTime() end
+    end)
 end)
+ns:On("PLAYER_REGEN_DISABLED", function() statusElapsed = 1 end)
+ns:On("PLAYER_REGEN_ENABLED", function() statusElapsed = 1 end)
 
 local function rescan()
     scanButtons()

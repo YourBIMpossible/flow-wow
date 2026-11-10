@@ -437,21 +437,31 @@ function V.DurabilityLevel(pct, broken)
     return nil
 end
 
--- Say it once per level; again only after a repair.
-local warned
-ns:On("UPDATE_INVENTORY_DURABILITY", function()
-    local pct, broken = ns.Durability()
+-- The status icon above Flow's key: an anvil with your lowest durability,
+-- yellow when worn, red when nearly broken. nil when your gear is fine.
+local REPAIR_ICON = "Interface\\Icons\\Trade_BlackSmithing"
+function V.DurabilityStatus(pct, broken)
     local level = V.DurabilityLevel(pct, broken)
-    if not level then warned = nil return end
-    if level == warned or (warned == "critical" and level == "low") then return end
-    warned = level
-    if level == "critical" then
-        ns:Print(string.format("|cffff5555your gear is %s|r (lowest %d%%): broken gear gives no stats. Repair soon: /flow way repair",
-            broken and "broken" or "nearly broken", pct * 100))
-    else
-        ns:Print(string.format("your gear is wearing down (lowest %d%%). Repair at the next vendor: /flow way repair", pct * 100))
-    end
-end)
+    if not level then return nil end
+    local crit = level == "critical"
+    return { icon = REPAIR_ICON, text = string.format("%d%%", (pct or 0) * 100),
+             color = crit and { 1, 0.25, 0.25 } or { 1, 0.82, 0 },
+             tip = string.format("Gear %s (lowest %d%%)%s. Repair at a vendor.",
+                 broken and "broken" or (crit and "nearly broken" or "worn"), (pct or 0) * 100,
+                 crit and ": broken gear gives no stats" or ""),
+             clickText = "the way to the nearest repair",
+             click = function() if ns.services then ns.services:GoTo("repair") end end }
+end
+
+-- Cached: re-read when your durability changes.
+local dur
+local function readDurability() local p, b = ns.Durability(); dur = { p, b } end
+ns:On("UPDATE_INVENTORY_DURABILITY", readDurability)
+ns:On("PLAYER_ENTERING_WORLD", readDurability)
+ns:Register("status", "repair", { order = 10, get = function()
+    if not dur then readDurability() end
+    return V.DurabilityStatus(dur[1], dur[2])
+end })
 
 -- At a vendor who repairs: repair everything, if you can afford it
 -- (Options: "Auto-repair at vendors").
@@ -465,7 +475,6 @@ function V:AutoRepair()
         return
     end
     RepairAllItems()
-    warned = nil
     ns:Print("repaired your gear for " .. money(cost))
 end
 

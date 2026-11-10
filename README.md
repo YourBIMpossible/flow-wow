@@ -37,8 +37,10 @@ Flow for WoW is a separate project from Flow Engine.
   potion, before any heal spell (press it on your bar: it glows). After a fight the key recovers
   you: bandage, then food, then a heal spell by default. Right-click the Flow key to change that
   order, turn steps off, or use your lowest bandages first.
-- **Gear repair**: a chat warning when your gear is worn (30%) or nearly broken, an Advisor line,
-  and auto-repair at vendors who repair (Options, on by default).
+- **Status icons** above the Flow key, between fights only, instead of chat lines: an anvil with
+  your lowest durability (yellow when worn, red when nearly broken; click for the way to a repair)
+  and, by a campfire, what your group can add to the camp. Hover for details. Auto-repair at
+  vendors who repair (Options, on by default).
   `/flow action` shows what it would do.
 - **Buffs while questing**: keeps your seal, blessing and aura up; quiet in cities and inns.
   Remembers what you cast when the game hides your auras.
