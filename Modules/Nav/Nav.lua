@@ -1176,6 +1176,7 @@ end
 -- main arrow. It turns as one piece and eases round like the main arrow.
 -- Same turning: 0 = straight up, counter-clockwise.
 N.PROF_ARROW_W, N.PROF_ARROW_H = 64 * 0.66, 64 * 1.33
+N.PROF_RING_ALPHA = 0.35   -- the faint ring at the profession stop
 function N:MakeProfArrow(holder)
     local a = CreateFrame("Frame", nil, holder)
     a:SetAllPoints(holder)
@@ -2760,6 +2761,16 @@ local function buildArrow()
     f.prof:SetFrameLevel(math.max(0, f:GetFrameLevel() - 1))
     f.prof:SetAlpha(0.85)
     f.prof.arrow = N:MakeProfArrow(f.prof)
+    -- At the profession stop: a faint see-through ring where the arrow was,
+    -- with none of the main arrow's beam or bouncing icon (those mean "your
+    -- main stop").
+    f.prof.ring = f.prof:CreateTexture(nil, "BACKGROUND", nil, 2)
+    f.prof.ring:SetTexture(ART .. "ArrowRing")
+    f.prof.ring:SetBlendMode("ADD")
+    f.prof.ring:SetSize(HALO_W, HALO_H)
+    f.prof.ring:SetPoint("CENTER", f.prof, "CENTER", 0, HALO_Y)
+    f.prof.ring:SetAlpha(N.PROF_RING_ALPHA)
+    f.prof.ring:Hide()
     f.prof.text = f.prof:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     f.prof.text:SetPoint("BOTTOM", f, "TOP", 0, N.NeedleClearance(f))
     f.prof.text:SetWidth(260)
@@ -3022,6 +3033,15 @@ end
 -- The faint profession arrow: points straight at its stop (no trails),
 -- dark grey behind the main arrow, with its text above. Hidden at the
 -- stop (the text says "Here:"), and when it's off or nothing is due.
+-- What the profession arrow shows: "ring" at its stop, "off" while you are
+-- at the main stop (one thing to look at there) or it can't point, else
+-- "arrow".
+function N.ProfArrowMode(mainHere, profHere, canPoint)
+    if profHere then return "ring" end
+    if mainHere or not canPoint then return "off" end
+    return "arrow"
+end
+
 local function updateProf(p)
     local holder = frame.prof
     if not holder then return end
@@ -3033,13 +3053,16 @@ local function updateProf(p)
     local here = choice.d < ARRIVED * 2 or N:InArea(g, p)
     local b = bearing(p, pt.wx, pt.wy)
     local facing = N.ArrowFacing()
-    if here or not (b and facing) then
-        holder.arrow:Hide()
-        N.SetOverNeedle(frame, false)
-    else
+    local mode = N.ProfArrowMode(N.arrived, here, b and facing)
+    holder.mode = mode
+    if holder.ring then holder.ring:SetShown(mode == "ring") end
+    if mode == "arrow" then
         holder.arrow:SetRotation(-(b + facing))
         holder.arrow:Show()
         N.SetOverNeedle(frame, true)
+    else
+        holder.arrow:Hide()
+        N.SetOverNeedle(frame, false)
     end
     if ns.db.nav.profArrowText ~= false then
         holder.text:SetText(here and ("Here: " .. name) or string.format("%s, %d yd%s", name, choice.d, N.TravelText(p, pt, choice.d)))

@@ -2129,6 +2129,20 @@ ns:Register("test", "faint profession arrow: which stops, and when it shows", fu
     t:ok(c and c[1] < 0.5 and c[2] < 0.5 and c[3] < 0.5, "dark grey")
 end)
 
+ns:Register("test", "profession arrow: off at the main stop, a faint ring at its own", function(t)
+    local N = ns.nav
+    t:eq(N.ProfArrowMode(false, false, true), "arrow", "on the way: it points")
+    t:eq(N.ProfArrowMode(true, false, true), "off", "at the main stop: no second arrow")
+    t:eq(N.ProfArrowMode(false, true, true), "ring", "at the profession stop: the ring")
+    t:eq(N.ProfArrowMode(true, true, true), "ring", "at both: the ring")
+    t:eq(N.ProfArrowMode(false, false, nil), "off", "can't tell which way you face: off")
+    local f = N.arrowFrame
+    if not (f and f.prof) then t:ok(true, "(no arrow yet)") return end
+    t:ok(f.prof.ring ~= nil, "the profession arrow has a ring")
+    t:ok(f.prof.ring:GetAlpha() <= 0.5, "see-through")
+    t:ok(f.prof.beam == nil and f.prof.icon == nil, "no beam, no bouncing icon")
+end)
+
 ns:Register("test", "profession arrow: the main arrow's art, narrow and long, clear of the text", function(t)
     local N = ns.nav
     local f = N.arrowFrame
