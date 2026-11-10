@@ -1259,15 +1259,22 @@ end
 -- Travel time: yards to "~1m 20s" at the speed you are moving, or the speed
 -- you last moved at (a run, 7 yd a second, before you have moved at all).
 N.RUN_SPEED = 7
+-- (A flight path's speed isn't yours: it is never remembered as your speed.)
 function N.TravelSpeed()
+    local onTaxi = UnitOnTaxi and UnitOnTaxi("player")
     local s = A.Safe(GetUnitSpeed("player")) or 0
-    if type(s) == "number" and s > 0.5 then N.lastSpeed = s end
+    if not onTaxi and type(s) == "number" and s > 0.5 then N.lastSpeed = s end
     return N.lastSpeed or N.RUN_SPEED
 end
 function N.FormatTravel(yd, speed)
     speed = speed or N.TravelSpeed()
     if type(yd) ~= "number" or yd <= 0 or type(speed) ~= "number" or speed <= 0 then return "" end
-    local sec = math.max(1, math.floor(yd / speed + 0.5))
+    return N.FormatSeconds(yd / speed)
+end
+-- Seconds to "~45s" / "~1m 20s" / "~1h 02m" ("" for no time).
+function N.FormatSeconds(sec)
+    if type(sec) ~= "number" or sec <= 0 then return "" end
+    sec = math.max(1, math.floor(sec + 0.5))
     if sec < 60 then return string.format("~%ds", sec) end
     if sec < 3600 then return string.format("~%dm %02ds", math.floor(sec / 60), sec % 60) end
     return string.format("~%dh %02dm", math.floor(sec / 3600), math.floor(sec % 3600 / 60))
@@ -1434,6 +1441,242 @@ end
 local function zoneName(map)
     local info = map and C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(map)
     return info and info.name or "another zone"
+end
+
+-------------------------------------------------------------------------------
+-- Travel by air: the flight masters this character can fly to (read when
+-- you open a flight map), how long each flight took (for the whole account),
+-- and the time to a stop by air when that beats going on foot.
+-- Assumes the flight masters you know on a continent connect, which is how
+-- the game's flight network works for the paths you have learned.
+-------------------------------------------------------------------------------
+
+ns:OnLoad(function(saved)
+    saved.flights = saved.flights or {}
+    saved.flightTimes = saved.flightTimes or {}
+end)
+ns:PerCharacter("flights")
+
+-- Flight paths fly around hills and through other flight masters: yards (in
+-- a straight line) per second of flight, learned from your own flights.
+N.FLIGHT_RATE = 24
+N.FLIGHT_OVERHEAD = 10   -- seconds: taking off and landing
+-- Only worth saying when it saves this much (fraction of the walk).
+N.AIR_SAVES = 0.8
+
+-- The flight masters on the open flight map: name, map position, and the
+-- one you are standing at. Either client API.
+function N.ReadTaxiNodes()
+    local map = GetTaxiMapID and GetTaxiMapID()
+    local nodes, here = {}, nil
+    if C_TaxiMap and C_TaxiMap.GetAllTaxiNodes and map then
+        local st = Enum and Enum.FlightPathState
+        for _, n in ipairs(C_TaxiMap.GetAllTaxiNodes(map) or {}) do
+            local reach = not (st and n.state == st.Unreachable)
+            if reach and n.name and n.position then
+                local x, y = n.position:GetXY()
+                nodes[#nodes + 1] = { name = n.name, x = x, y = y }
+                if st and n.state == st.Current then here = n.name end
+            end
+        end
+    elseif NumTaxiNodes and TaxiNodeGetType then
+        for i = 1, NumTaxiNodes() do
+            local kind = TaxiNodeGetType(i)
+            if kind == "CURRENT" or kind == "REACHABLE" then
+                local x, y = TaxiNodePosition(i)
+                nodes[#nodes + 1] = { name = TaxiNodeName(i), x = x, y = y }
+                if kind == "CURRENT" then here = TaxiNodeName(i) end
+            end
+        end
+    end
+    return nodes, here, map
+end
+
+-- Remembers the flight masters this character can fly to, in world yards.
+function N.LearnTaxiNodes(nodes, map)
+    local known = ns.db.flights
+    for _, n in ipairs(nodes) do
+        local cont, wx, wy = N:ToWorld(map, n.x, n.y)
+        if cont and wx then known[n.name] = { cont = cont, wx = wx, wy = wy } end
+    end
+end
+
+-- Seconds a flight takes: what it took last time, else a guess from the
+-- straight distance at the rate your flights have gone.
+function N.FlightSeconds(from, to)
+    local t = ns.db.flightTimes and ns.db.flightTimes[from .. ">" .. to]
+    if t then return t end
+    local a, b = ns.db.flights[from], ns.db.flights[to]
+    if not (a and b and a.cont == b.cont) then return nil end
+    return dist(a.wx, a.wy, b.wx, b.wy) / (ns.db.flightRate or N.FLIGHT_RATE) + N.FLIGHT_OVERHEAD
+end
+
+-- The known flight master nearest a spot on a continent, and how far.
+local function nearestFlightMaster(cont, wx, wy)
+    local best, bd
+    for name, n in pairs(ns.db.flights or {}) do
+        if n.cont == cont then
+            local d = dist(wx, wy, n.wx, n.wy)
+            if not bd or d < bd then best, bd = name, d end
+        end
+    end
+    return best, bd
+end
+
+-- By air to a point from where you are: { sec, from, to } when walking to a
+-- flight master, flying and walking on beats walking `walkYd` at `speed`.
+function N.AirRoute(p, pt, walkYd, speed)
+    if not (p and pt and pt.wx and p.cont == pt.cont and walkYd) then return nil end
+    speed = speed or N.TravelSpeed()
+    local from, d1 = nearestFlightMaster(p.cont, p.wx, p.wy)
+    local to, d2 = nearestFlightMaster(pt.cont, pt.wx, pt.wy)
+    if not (from and to) or from == to then return nil end
+    local fly = N.FlightSeconds(from, to)
+    if not fly then return nil end
+    local sec = (d1 + d2) / speed + fly
+    if sec >= (walkYd / speed) * N.AIR_SAVES then return nil end
+    return { sec = sec, from = from, to = to }
+end
+
+-- The flight you are on: where from and to, and when it took off.
+N.taxiTrip = nil
+local taxiHere   -- the flight master whose map is open
+ns:On("TAXIMAP_OPENED", function()
+    local ok, nodes, here, map = pcall(N.ReadTaxiNodes)
+    if not ok then return end
+    taxiHere = here
+    if map then N.LearnTaxiNodes(nodes, map) end
+end)
+if hooksecurefunc and TakeTaxiNode then
+    hooksecurefunc("TakeTaxiNode", function(i)
+        local to = TaxiNodeName and TaxiNodeName(i)
+        if to and taxiHere and to ~= taxiHere then
+            N.taxiTrip = { from = taxiHere, to = to, start = GetTime() }
+        end
+    end)
+end
+
+-- Landed: remember how long it took, and learn how fast flights go.
+function N.Landed(trip, elapsed)
+    if not (trip and elapsed and elapsed > 5) then return end
+    ns.db.flightTimes[trip.from .. ">" .. trip.to] = math.floor(elapsed + 0.5)
+    local a, b = ns.db.flights[trip.from], ns.db.flights[trip.to]
+    if a and b and a.cont == b.cont and elapsed > N.FLIGHT_OVERHEAD then
+        local rate = dist(a.wx, a.wy, b.wx, b.wy) / (elapsed - N.FLIGHT_OVERHEAD)
+        if rate > 5 and rate < 100 then
+            ns.db.flightRate = ns.db.flightRate and (ns.db.flightRate * 0.7 + rate * 0.3) or rate
+        end
+    end
+end
+ns:On("PLAYER_CONTROL_GAINED", function()
+    local trip = N.taxiTrip
+    if trip and not (UnitOnTaxi and UnitOnTaxi("player")) then
+        N.taxiTrip = nil
+        N.Landed(trip, GetTime() - trip.start)
+    end
+end)
+
+-- On a flight: seconds until you land, and where.
+function N.TaxiLeft()
+    local trip = N.taxiTrip
+    if not (trip and UnitOnTaxi and UnitOnTaxi("player")) then return nil end
+    local total = N.FlightSeconds(trip.from, trip.to)
+    if not total then return nil, trip.to end
+    return math.max(1, total - (GetTime() - trip.start)), trip.to
+end
+
+-- The walk to a stop crosses into another zone: yards to that zone's edge
+-- along the arrow's line, and the zone's map (nil: it stays in this zone).
+-- at(yd) -> the zone at that distance along the line.
+function N.FirstChange(len, at, step)
+    step = step or 50
+    local z0 = at(0)
+    local lo, hi
+    local d = step
+    while d < len + step do
+        local dd = math.min(d, len)
+        local z = at(dd)
+        if z and z ~= z0 then lo, hi = dd - step, dd break end
+        lo = dd
+        d = d + step
+    end
+    if not hi then return nil end
+    lo = math.max(0, lo)
+    for _ = 1, 6 do
+        local mid = (lo + hi) / 2
+        local z = at(mid)
+        if z and z ~= z0 then hi = mid else lo = mid end
+    end
+    return hi, at(hi)
+end
+
+-- The continent's map above a zone's map.
+local function continentMap(map)
+    local want = (Enum and Enum.UIMapType and Enum.UIMapType.Continent) or 2
+    local m = map
+    for _ = 1, 6 do
+        local info = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(m)
+        if not info then return nil end
+        if info.mapType == want then return m end
+        if not info.parentMapID or info.parentMapID == 0 then return nil end
+        m = info.parentMapID
+    end
+end
+
+-- The zone under a world spot on a continent.
+local function zoneAtWorld(cont, contMap, wx, wy)
+    if not (C_Map.GetMapPosFromWorldPos and C_Map.GetMapInfoAtPosition) then return nil end
+    local ok, _, pos = pcall(C_Map.GetMapPosFromWorldPos, cont, CreateVector2D(wx, wy), contMap)
+    if not (ok and pos) then return nil end
+    local x, y = pos:GetXY()
+    if x < 0 or x > 1 or y < 0 or y > 1 then return nil end
+    local info = C_Map.GetMapInfoAtPosition(contMap, x, y)
+    return info and N.ZoneOf(info.mapID)
+end
+
+-- Yards to the next zone on the way to a stop in another zone, and its
+-- name. Worked out again only after you've moved a bit.
+local borderCache = {}
+function N.NextZone(p, pt)
+    if not (p and pt and pt.wx and p.cont == pt.cont) then return nil end
+    local zone, goal = N.ZoneOf(p.map), N.ZoneOf(pt.map)
+    if not (zone and goal) or zone == goal then return nil end
+    local c = borderCache
+    if c.map == pt.map and c.tx == pt.wx and c.wx and dist(c.wx, c.wy, p.wx, p.wy) < 20 then return c.yd, c.name end
+    local contMap = continentMap(p.map)
+    local yd, z
+    if contMap then
+        local len = dist(p.wx, p.wy, pt.wx, pt.wy)
+        local ux, uy = (pt.wx - p.wx) / len, (pt.wy - p.wy) / len
+        yd, z = N.FirstChange(math.min(len, 5000), function(d)
+            return zoneAtWorld(p.cont, contMap, p.wx + ux * d, p.wy + uy * d)
+        end)
+    end
+    borderCache = { map = pt.map, tx = pt.wx, wx = p.wx, wy = p.wy, yd = yd, name = z and zoneName(z) }
+    return yd, borderCache.name
+end
+
+-- The time part of a stop's distance line (with a space in front, or ""):
+--   on a flight: "~1m 10s (landing at Sentinel Hill in ~50s)"
+--   quicker by air: "~2m 10s by air"
+--   on foot: "~3m 40s", and, for a stop in another zone, "(Westfall in ~40s)".
+function N.TravelText(p, pt, yd)
+    local speed = N.TravelSpeed()
+    local left, landing = N.TaxiLeft()
+    if landing then
+        local node = ns.db.flights[landing]
+        local walk = (node and pt and pt.wx and node.cont == pt.cont) and dist(node.wx, node.wy, pt.wx, pt.wy) / speed or 0
+        if not left then return string.format(" (flying to %s)", landing) end
+        return string.format(" %s (landing at %s in %s)", N.FormatSeconds(left + walk), landing, N.FormatSeconds(left))
+    end
+    local air = N.AirRoute(p, pt, yd, speed)
+    if air then return " " .. N.FormatSeconds(air.sec) .. " by air" end
+    local out = N.TravelSuffix(yd, speed)
+    local okZ, zyd, zname = pcall(N.NextZone, p, pt)
+    if okZ and zyd and zname and zyd < (yd or 0) then
+        out = out .. string.format(" (%s in %s)", zname, N.FormatTravel(zyd, speed))
+    end
+    return out
 end
 
 local function isQuestStop(key)
@@ -2338,11 +2581,14 @@ local function showPanel()
     end
     local g = current.goal
     local h = panel.hero
-    local task = fillHero(panel, g, string.format("%d yd%s", current.d or 0, N.TravelSuffix(current.d)))
+    local p = N:PlayerPos()
+    local task = fillHero(panel, g, string.format("%d yd%s", current.d or 0, N.TravelText(p, current.point, current.d)))
     panel.pin:Refresh()
 
     local lines = {}
     if g.title and g.title ~= task then lines[#lines + 1] = "|cffffd200" .. g.title .. "|r" end
+    local air = N.AirRoute(p, current.point, current.d)
+    if air then lines[#lines + 1] = string.format("Quicker by air: fly from %s to %s.", air.from, air.to) end
     if g.blockedBy then lines[#lines + 1] = "|cffff7070Blocked: " .. g.blockedBy .. "|r" end
     for _, l in ipairs(g.details or {}) do
         if not l:find("^Quest: ") and not l:find("^Objective: ") then lines[#lines + 1] = "|cffcccccc" .. l .. "|r" end
@@ -2456,7 +2702,7 @@ function N:ShowStop(goal, anchor)
     for _, s in ipairs(N.plan or {}) do if s.goal.key == goal.key then pt = s.point break end end
     pt = pt or (goal.points and goal.points[1])
     local d = (p and pt and pt.wx and pt.cont == p.cont) and dist(p.wx, p.wy, pt.wx, pt.wy)
-    local task = fillHero(card, goal, d and string.format("%d yd%s", d, N.TravelSuffix(d)) or "")
+    local task = fillHero(card, goal, d and string.format("%d yd%s", d, N.TravelText(p, pt, d)) or "")
 
     -- Body: what the tooltip says, minus the title and task the band shows.
     local tt = textTooltip()
@@ -2796,7 +3042,7 @@ local function updateProf(p)
         N.SetOverNeedle(frame, true)
     end
     if ns.db.nav.profArrowText ~= false then
-        holder.text:SetText(here and ("Here: " .. name) or string.format("%s, %d yd%s", name, choice.d, N.TravelSuffix(choice.d)))
+        holder.text:SetText(here and ("Here: " .. name) or string.format("%s, %d yd%s", name, choice.d, N.TravelText(p, pt, choice.d)))
         holder.text:Show(); holder.hit:Show()
     else
         holder.text:Hide(); holder.hit:Hide()
@@ -2912,7 +3158,7 @@ local function update()
         end
     else
         frame.sub:SetText(string.format("%d yd%s%s%s", choice.d,
-            N.TravelSuffix(how == "path" and length or choice.d),
+            N.TravelText(p, choice.point, how == "path" and length or choice.d),
             (not facing and b) and (" " .. compass(b)) or "",
             how == "path" and string.format(" (trail, %d yd walk)", length)
                 or (how == "entrance" and " (it's inside: entrance first)" or "")))

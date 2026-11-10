@@ -2200,6 +2200,40 @@ ns:Register("test", "profession arrow: the main arrow's art, narrow and long, cl
     N.SetOverNeedle(f, was)
 end)
 
+ns:Register("test", "travel by air: flight times, quicker by air, landing, the next zone", function(t)
+    local N = ns.nav
+    t:eq(N.FormatSeconds(50), "~50s", "seconds"); t:eq(N.FormatSeconds(0), "", "no time")
+    local savedF, savedT, savedR, savedTrip = ns.db.flights, ns.db.flightTimes, ns.db.flightRate, N.taxiTrip
+    local ok, err = pcall(function()
+        ns.db.flights = { A = { cont = 0, wx = 0, wy = 0 }, B = { cont = 0, wx = 2400, wy = 0 },
+                          C = { cont = 1, wx = 0, wy = 0 } }
+        ns.db.flightTimes, ns.db.flightRate = {}, nil
+        t:eq(N.FlightSeconds("A", "B"), 2400 / N.FLIGHT_RATE + N.FLIGHT_OVERHEAD, "never flown: a guess from the distance")
+        t:eq(N.FlightSeconds("A", "C"), nil, "another continent: no flight")
+        N.Landed({ from = "A", to = "B" }, 80)
+        t:eq(N.FlightSeconds("A", "B"), 80, "flown: what it took")
+        t:ok(ns.db.flightRate and math.abs(ns.db.flightRate - 2400 / 70) < 0.01, "and how fast flights go")
+        local p, pt = { cont = 0, wx = 50, wy = 0 }, { cont = 0, wx = 2380, wy = 0 }
+        local air = N.AirRoute(p, pt, 2330, 7)
+        t:ok(air and air.from == "A" and air.to == "B", "a long walk: fly from A to B")
+        t:ok(air and math.abs(air.sec - (70 / 7 + 80)) < 0.01, "walk to A, fly, walk from B")
+        t:eq(N.AirRoute(p, { cont = 0, wx = 300, wy = 0 }, 250, 7), nil, "a short walk: walk")
+        t:eq(N.AirRoute(p, { cont = 1, wx = 300, wy = 0 }, 250, 7), nil, "another continent: no air route")
+        t:ok(N.TravelText(p, pt, 2330):find("by air", 1, true), "the arrow says by air")
+        ns.db.flights = {}
+        t:ok(not N.TravelText(p, pt, 2330):find("by air", 1, true), "no flight masters known: on foot")
+        N.taxiTrip = nil
+        t:eq(N.TaxiLeft(), nil, "not flying: no landing")
+    end)
+    ns.db.flights, ns.db.flightTimes, ns.db.flightRate, N.taxiTrip = savedF, savedT, savedR, savedTrip
+    t:ok(ok, "ran" .. (ok and "" or (": " .. tostring(err))))
+    -- The next zone along the line: zone 1 up to 230 yd, then zone 2.
+    local yd, z = N.FirstChange(1000, function(d) return d < 230 and 1 or 2 end)
+    t:ok(yd and math.abs(yd - 230) < 2 and z == 2, "the next zone starts at 230 yd")
+    t:eq(N.FirstChange(1000, function() return 1 end), nil, "one zone all the way: nothing")
+    t:ok(N.FirstChange(1000, function(d) return d < 230 and 1 or nil end) == nil, "off the map: not a zone")
+end)
+
 ns:Register("test", "travel time: yards to a short time at your speed", function(t)
     local N = ns.nav
     t:eq(N.FormatTravel(70, 7), "~10s", "70 yd running")
