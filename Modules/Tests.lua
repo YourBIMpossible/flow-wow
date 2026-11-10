@@ -53,8 +53,15 @@ end
 
 ns.commands.test = function(arg)
     local passed, failed, checks, out = run(arg)
-    ns:Print(string.format("tests: %d passed, %d failed (%d checks)", passed, failed, checks))
+    local head = string.format("tests: %d passed, %d failed (%d checks)", passed, failed, checks)
+    ns:Print(head)
     for _, l in ipairs(out) do print(l) end
+    -- A failure: open it in the copy window too, so it can be copied out.
+    if failed > 0 and ns.copyBox then
+        local lines = { head }
+        for _, l in ipairs(out) do lines[#lines + 1] = l end
+        pcall(ns.copyBox.Show, ns.copyBox, "Flow self-tests: " .. failed .. " failed", lines)
+    end
 end
 
 -- After every login and /reload: run them all, and if anything fails say so
@@ -1793,6 +1800,48 @@ ns:Register("test", "minimap dot: on the stop, in the arrow's colour", function(
     t:ok(not (P.Pin() and P.Pin():IsShown()), "no point: no dot")
     P:Hide()
     t:eq(P.hereColor, nil, "hidden: colour cleared")
+end)
+
+ns:Register("test", "copy window: plain text and web addresses", function(t)
+    local C = ns.copyBox
+    t:eq(C.Plain("|cff66ccffFlow|r: hi"), "Flow: hi", "colour codes gone")
+    t:eq(C.Plain("Equip |cff1eff00|Hitem:123::|h[Sword]|h|r now"), "Equip [Sword] now", "an item link keeps its name")
+    t:eq(C.Plain("a||b"), "a|b", "an escaped bar")
+    local l = C.Links("see https://example.com/a?b=1, and www.example.org then")
+    t:eq(#l, 2, "two web addresses")
+    t:eq(l[1], "https://example.com/a?b=1", "the https one, without the comma after it")
+    t:eq(l[2], "www.example.org", "the www one")
+    t:eq(#C.Links("http://x.io/y"), 1, "www inside an http one isn't counted twice")
+    local n = #C.lines
+    ns:Print("copy window test line https://example.com")
+    t:eq(#C.lines, math.min(n + 1, 300), "Flow's chat lines are kept")
+    t:ok(C.lines[#C.lines]:find("copy window test line", 1, true) ~= nil, "as plain text")
+    t:ok(ns.commands.copy ~= nil, "/flow copy")
+end)
+
+ns:Register("test", "click: the copy window opens selected, and picks out web addresses", function(t)
+    local C = ns.copyBox
+    local f = C:Show("test", { "one https://example.com/x", "two www.example.org" })
+    t:ok(f and f:IsShown(), "shown")
+    t:eq(f.edit:GetText(), "one https://example.com/x\ntwo www.example.org", "the text, one line each")
+    t:eq(#f.links, 2, "two addresses found")
+    t:ok(f.linkBtn:IsEnabled(), "the address button is on")
+    local ok, err = pcall(f.linkBtn:GetScript("OnClick"), f.linkBtn)
+    t:ok(ok, "address button click: " .. tostring(err))
+    t:eq(f.linkAt, 1, "first address picked")
+    pcall(f.linkBtn:GetScript("OnClick"), f.linkBtn)
+    pcall(f.linkBtn:GetScript("OnClick"), f.linkBtn)
+    t:eq(f.linkAt, 1, "after the last one: back to the first")
+    ok, err = pcall(f.edit:GetScript("OnTextChanged"), f.edit, true)
+    t:ok(ok and f.edit:GetText() == f.text, "typing can't change it: " .. tostring(err))
+    ok, err = pcall(f.edit:GetScript("OnEscapePressed"), f.edit)
+    t:ok(ok and not f:IsShown(), "Esc closes it: " .. tostring(err))
+    local box = ns.askClaude and ns.askClaude.Frame and ns.askClaude.Frame()
+    if box and box.copy then
+        ok, err = pcall(box.copy:GetScript("OnClick"), box.copy)
+        t:ok(ok, "Flow Chat Copy button: " .. tostring(err))
+    end
+    C:Hide()
 end)
 
 ns:Register("test", "bags: things to learn and full bags", function(t)

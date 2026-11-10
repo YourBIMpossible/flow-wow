@@ -14,6 +14,7 @@
 Core.lua
 Modules\Theme.lua
 Modules\Diag.lua
+Modules\CopyBox.lua
 Modules\Perf.lua
 Modules\Menu.lua
 Modules\Reveal.lua

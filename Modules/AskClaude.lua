@@ -114,7 +114,7 @@ local function buildBox()
     f.status:SetPoint("BOTTOMLEFT", 12, 40); f.status:SetPoint("BOTTOMRIGHT", -12, 40)
     f.status:SetJustifyH("LEFT")
     f.edit = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
-    f.edit:SetSize(300, 22)
+    f.edit:SetSize(236, 22)   -- (room for Send, Check now and Copy)
     f.edit:SetPoint("BOTTOMLEFT", 18, 10)
     f.edit:SetAutoFocus(false)
     f.edit:SetMaxLetters(1000)   -- (the game's chat box stops at 255)
@@ -137,6 +137,16 @@ local function buildBox()
         ns:Print("checking for Claude's answers (reloading)...")
         ReloadUI()
     end)
+    -- Copy: the whole conversation in the copy window (select, Ctrl+C; web
+    -- addresses in Claude's answers can be picked out one by one).
+    f.copy = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    f.copy:SetSize(56, 22); f.copy:SetText("Copy")
+    f.copy:SetPoint("LEFT", f.check, "RIGHT", 4, 0)
+    f.copy:SetScript("OnClick", function()
+        local lines = AC.History(ns.claudeInbox, ns.db.chat, 20)
+        if #lines == 0 then f.status:SetText("Nothing to copy yet.") return end
+        ns.copyBox:Show("Flow Chat: the conversation", lines)
+    end)
     f:Hide()
     return f
 end
@@ -157,6 +167,8 @@ function AC:Open(draft)
     box.edit:SetFocus()
     if draft then box.edit:SetCursorPosition(#draft) end
 end
+
+function AC.Frame() return box end   -- (tests)
 
 local function check()
     local chat = ns.db.chat
