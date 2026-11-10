@@ -380,6 +380,45 @@ ns:Register("test", "planner: a quest's turn-in comes along with its objectives"
     t:ok(at["7:1"] and at["7:done"] and at["7:1"] < at["7:done"], "after its objective")
 end)
 
+ns:Register("test", "planner: finish the area you're in first", function(t)
+    local P = ns.planner
+    local saved = ns.db.nearFirst
+    ns.db.nearFirst = false   -- (the plain planner, without the near-first weights)
+    local ok, err = pcall(function()
+        local function goal(key, x, extra)
+            local g = { key = key, text = key, points = { { cont = 0, wx = x, wy = 0 } } }
+            for k, v in pairs(extra or {}) do g[k] = v end
+            return g
+        end
+        local p = { cont = 0, wx = 0, wy = 0 }
+        -- Two stops around you, one behind you, two far ahead. The shortest
+        -- trip goes behind you first (2800 yd); finishing here first is 3200.
+        local function line() return { goal("A", 100), goal("B", 200), goal("W", -600), goal("E", 1500), goal("E2", 1600) } end
+        local plan = P:Plan(p, line(), { areaFirst = true })
+        t:eq(plan and plan[1].goal.key, "A", "the stops around you first")
+        t:eq(plan and plan[2].goal.key, "B", "both of them, before the far ones")
+        plan = P:Plan(p, line(), { areaFirst = false })
+        t:eq(plan and plan[1].goal.key, "W", "rule off: the shortest trip goes the other way first")
+        -- Leaving early only when it saves a lot.
+        t:ok(P.AreaKeepsFree(1000, 3000), "saves 2000 of 3000 yd: leave the area early")
+        t:ok(not P.AreaKeepsFree(2800, 3200), "saves 400 of 3200 yd: finish the area")
+        -- A turn-in nearby whose objective is far away can't be finished here.
+        plan = P:Plan(p, { goal("A", 100), goal("q:done", 150, { deps = { "q:1" } }), goal("q:1", -900), goal("E", 1500) },
+            { areaFirst = true })
+        local at = {}
+        for i, s in ipairs(plan or {}) do at[s.goal.key] = i end
+        t:eq(at.A, 1, "the area first")
+        t:ok(at["q:1"] and at["q:done"] and at["q:1"] < at["q:done"], "the turn-in still after its objective")
+        -- A quest to pick up a little further out still counts as the area.
+        plan = P:Plan(p, { goal("pickup:9", 450, { weight = 1 }), goal("W", -350), goal("E", 3000) }, { areaFirst = true })
+        t:eq(plan and plan[1].goal.key, "pickup:9", "a quest pickup 450 yd away is part of the area")
+        plan = P:Plan(p, { goal("X", 450), goal("W", -350), goal("E", 3000) }, { areaFirst = true })
+        t:eq(plan and plan[1].goal.key, "W", "any other stop 450 yd away isn't")
+    end)
+    ns.db.nearFirst = saved
+    t:ok(ok, "ran" .. (ok and "" or (": " .. tostring(err))))
+end)
+
 ns:Register("test", "spec badge: better / worse / same per spec", function(t)
     t:eq(ns.SpecTrend(1.2), "up", "better"); t:eq(ns.SpecTrend(-3), "down", "worse")
     t:eq(ns.SpecTrend(0.2), "same", "about the same"); t:eq(ns.SpecTrend(nil), nil, "no score")
@@ -1503,6 +1542,7 @@ ns:Register("test", "click: arrow style and colour in the menu and on the settin
         if flat then pcall(flat.func) end
         t:eq(N:ArrowStyle(), "flat", "menu: flat arrow")
         t:ok(N.arrowFrame.arrow.halo == nil and N.arrowFrame.arrow.SetRingSpin == nil, "rebuilt as the flat arrow")
+        t:ok(not N.arrowFrame.prof or N.arrowFrame.prof.arrow.halo == nil, "the faint profession arrow rebuilt as flat too")
         if col then pcall(col.func) end
         t:eq(N:ArrowColorMode(), colour == "route" and "distance" or "route", "menu: colour switched")
     else
@@ -1949,6 +1989,34 @@ ns:Register("test", "waypoint: the game's map pin reads as a table or a vector",
     t:ok(okM, "the arrow's menu builds")
 end)
 
+ns:Register("test", "faint profession arrow: which stops, and when it shows", function(t)
+    local N = ns.nav
+    t:ok(N.IsProfessionStop({ key = "step:1", provider = "skillplan" }), "a skill-up step")
+    t:ok(N.IsProfessionStop({ key = "train:Mining", provider = "errands" }), "profession training")
+    t:ok(not N.IsProfessionStop({ key = "train:class", provider = "errands", milestone = true }), "class training stays on the quest arrow")
+    t:ok(not N.IsProfessionStop({ key = "123:1", provider = "questie" }), "a quest objective isn't one")
+    local q, m = { key = "1:1", provider = "questie" }, { key = "train:Mining", provider = "errands" }
+    local quest, prof = N.SplitProfessions({ q, m }, true)
+    t:ok(#quest == 1 and quest[1] == q and #prof == 1 and prof[1] == m, "on: quests on the main arrow, the trainer on the faint one")
+    quest, prof = N.SplitProfessions({ q, m }, false)
+    t:ok(#quest == 2 and #prof == 0, "off: everything on the main arrow")
+    quest, prof = N.SplitProfessions({ m }, true)
+    t:ok(#quest == 1 and #prof == 0, "only profession stops left: they stay on the main arrow")
+    local cfg = ns.db.nav
+    local arrow, mode, profs = cfg.profArrow, cfg.mode, cfg.professions
+    cfg.profArrow, cfg.mode, cfg.professions = nil, "optimal", true
+    t:ok(N:ProfPointerOn(), "on with Optimal with professions")
+    cfg.professions = false
+    t:ok(not N:ProfPointerOn(), "not with Optimal without professions")
+    cfg.professions, cfg.mode = true, "quests"
+    t:ok(not N:ProfPointerOn(), "not with Quests only")
+    cfg.mode, cfg.profArrow = "optimal", false
+    t:ok(not N:ProfPointerOn(), "not when you switched it off")
+    cfg.profArrow, cfg.mode, cfg.professions = arrow, mode, profs
+    local c = ns.theme.profPointer
+    t:ok(c and c[1] < 0.5 and c[2] < 0.5 and c[3] < 0.5, "dark grey")
+end)
+
 -------------------------------------------------------------------------------
 -- Click tests: press Flow's own buttons the way you would and check what you
 -- should see appears (a menu opens), so a broken button is caught at login
@@ -1966,6 +2034,41 @@ ns:Register("test", "click: the arrow's right-click menu opens", function(t)
     t:ok(ok, "right-click runs" .. (ok and "" or (": " .. tostring(err))))
     t:ok(menuShown(), "the menu is on screen")
     closeMenu()
+end)
+
+ns:Register("test", "click: the faint profession arrow (menu switches, its text)", function(t)
+    local N = ns.nav
+    local f = N.arrowFrame
+    if not (f and f.prof and f.prof.hit and f:GetScript("OnClick") and ns.menu) then t:ok(true, "(no arrow yet)") return end
+    t:ok(f.prof.arrow and f.prof:GetFrameLevel() < f.arrow:GetFrameLevel(), "drawn behind the main arrow")
+    closeMenu()
+    local ok, err = pcall(f.prof.hit:GetScript("OnClick"), f.prof.hit, "RightButton")
+    t:ok(ok, "right-click on its text runs" .. (ok and "" or (": " .. tostring(err))))
+    t:ok(menuShown(), "right-click: the arrow's menu")
+    closeMenu()
+    local okE, errE = pcall(f.prof.hit:GetScript("OnEnter"), f.prof.hit)
+    GameTooltip:Hide()
+    t:ok(okE, "hovering its text runs" .. (okE and "" or (": " .. tostring(errE))))
+    -- The arrow's menu has the switch, and it works.
+    local captured
+    local open = ns.menu.Open
+    ns.menu.Open = function(_, items) captured = items end
+    local okM, errM = pcall(f:GetScript("OnClick"), f, "RightButton")
+    ns.menu.Open = open
+    t:ok(okM, "the arrow's menu builds" .. (okM and "" or (": " .. tostring(errM))))
+    local item
+    for _, it in ipairs(captured or {}) do
+        if it.text and it.text:find("^Faint profession arrow") then item = it end
+    end
+    t:ok(item, "menu: the faint profession arrow switch")
+    local saved = ns.db.nav.profArrow
+    if item then
+        local okT, errT = pcall(item.func)
+        t:ok(okT, "the switch runs" .. (okT and "" or (": " .. tostring(errT))))
+        t:eq(ns.db.nav.profArrow ~= false, saved == false, "the switch flips it")
+    end
+    N:SetProfArrow(saved ~= false)
+    ns.db.nav.profArrow = saved
 end)
 
 ns:Register("test", "click: the Flow Router's Route dropdown opens", function(t)

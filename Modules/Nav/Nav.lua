@@ -440,8 +440,47 @@ function N:Collect(gathered)
         local okA, picked = pcall(ns.xpValue.Apply, ns.xpValue, shown)
         if okA and picked then shown = picked end
     end
-    goals = shown
+    -- Profession stops (training, skill-ups) get their own faint arrow when
+    -- it's on, so the quest arrow never sends you off to them.
+    local quest, prof = N.SplitProfessions(shown, N:ProfPointerOn())
+    N.profGoals = prof
+    N.profDirty = true
+    goals = quest
     N.planDirty = true
+end
+
+-- A profession stop: a skill-up step (SkillPlan.lua) or a profession errand
+-- (train or skill up a profession). Class training is not one: it stays on
+-- the quest arrow.
+function N.IsProfessionStop(g)
+    if not g or g.milestone then return false end
+    if g.provider == "skillplan" then return true end
+    return g.provider == "errands" and g.key ~= "train:class"
+end
+
+-- The faint profession arrow is on with "Optimal with professions" unless
+-- you switched it off (arrow menu, Options, /flow nav profarrow off).
+function N:ProfPointerOn()
+    local cfg = ns.db.nav
+    return cfg.profArrow ~= false and self:Mode() == "optimal" and cfg.professions ~= false
+end
+
+-- Splits the stops into quest stops and profession stops. Off, or with
+-- nothing but profession stops left, everything stays on the main arrow.
+function N.SplitProfessions(list, on)
+    if not on then return list, {} end
+    local quest, prof = {}, {}
+    for _, g in ipairs(list) do
+        if N.IsProfessionStop(g) then prof[#prof + 1] = g else quest[#quest + 1] = g end
+    end
+    if #quest == 0 then return list, {} end
+    return quest, prof
+end
+
+-- Turn the faint profession arrow on or off, and redo the route.
+function N:SetProfArrow(on)
+    ns.db.nav.profArrow = on and true or false
+    self:Collect()
 end
 
 function N:Hide(key)
@@ -1122,6 +1161,21 @@ function N:SetArrowStyle(style)
         frame.arrow:SetRotation(old.angle or 0)
         if old.arrived then frame.arrow:SetArrived(true) end
     end
+    if frame and frame.prof and frame.prof.arrow then
+        local old = frame.prof.arrow
+        old:Hide(); old:SetScript("OnUpdate", nil)
+        frame.prof.arrow = self:MakeProfArrow(frame.prof)
+        frame.prof.arrow:SetRotation(old.angle or 0)
+    end
+end
+
+-- The faint profession arrow: the same arrow, dark grey, in a see-through
+-- holder behind the main arrow.
+function N:MakeProfArrow(holder)
+    local a = self:MakeArrow(holder)
+    local c = ns.theme.profPointer
+    a:SetVertexColor(c[1], c[2], c[3])
+    return a
 end
 
 -- Shared look for route stops (trip plan, world map pins, map list):
@@ -1670,6 +1724,32 @@ local function choose(p)
         end
     end
     return ranked[1]
+end
+
+-- The profession stops' own route (N.profGoals), planned like the quest
+-- route: again when something changed, or every 8 s once you've moved.
+-- Returns { goal, point, d } for the faint arrow, or nil.
+local profPlan, profPlanAt = nil, 0
+local function chooseProf(p)
+    local list = N.profGoals
+    if not (ns.planner and list and #list > 0) then N.profPlan, profPlan = nil, nil return nil end
+    for _, goal in ipairs(list) do
+        if goal.anywhere then goal.points = { { cont = p.cont, wx = p.wx, wy = p.wy, map = p.map, x = p.x, y = p.y } } end
+    end
+    local now = GetTime()
+    local moved = not N.profPos or N.profPos.cont ~= p.cont
+        or dist(p.wx, p.wy, N.profPos.wx, N.profPos.wy) > 30
+    if N.profDirty or not profPlan or (now - profPlanAt > 8 and moved) or now - profPlanAt > 60 then
+        local ok, result = pcall(ns.planner.Plan, ns.planner, p, list, {})
+        profPlan = ok and result or nil
+        if not ok then N.lastError = "profession route: " .. tostring(result) end
+        profPlanAt, N.profDirty = now, false
+        N.profPos = { cont = p.cont, wx = p.wx, wy = p.wy }
+    end
+    N.profPlan = profPlan
+    local s = profPlan and profPlan[1]
+    if not s then return nil end
+    return { goal = s.goal, point = s.point, d = dist(p.wx, p.wy, s.point.wx, s.point.wy) }
 end
 
 -- Where the minimap dot goes. It marks the stop, never you:
@@ -2326,6 +2406,20 @@ local function buildArrow()
     local p = ns.db.nav.point
     if p then f:SetPoint(p[1], UIParent, p[2], p[3], p[4])
     else f:SetPoint("TOP", UIParent, "TOP", 0, -120) end
+    -- The faint profession arrow sits behind the main arrow (a lower frame
+    -- level, see-through), its stop name and distance in small grey text
+    -- above, opposite the main arrow's text.
+    f.prof = CreateFrame("Frame", nil, f)
+    f.prof:SetAllPoints(f)
+    f.prof:SetFrameLevel(math.max(0, f:GetFrameLevel() - 1))
+    f.prof:SetAlpha(0.5)
+    f.prof.arrow = N:MakeProfArrow(f.prof)
+    f.prof.text = f.prof:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    f.prof.text:SetPoint("BOTTOM", f, "TOP", 0, 2)
+    f.prof.text:SetWidth(260)
+    f.prof.text:SetWordWrap(false)
+    do local c = ns.theme.muted; f.prof.text:SetTextColor(c[1], c[2], c[3]) end
+    f.prof:Hide()
     f.arrow = N:MakeArrow(f)
     N.arrowFrame = f
     f.text = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -2373,6 +2467,13 @@ local function buildArrow()
             end
             items[#items + 1] = { text = "Arrow colour by distance", checked = N:ArrowColorMode() == "distance",
                 func = function() N:SetArrowColorMode(N:ArrowColorMode() == "distance" and "route" or "distance") end }
+            local cfg = ns.db.nav
+            items[#items + 1] = { text = "Faint profession arrow (with Optimal with professions)", checked = cfg.profArrow ~= false,
+                func = function() N:SetProfArrow(cfg.profArrow == false) end }
+            if cfg.profArrow ~= false then
+                items[#items + 1] = { text = "Profession arrow text", checked = cfg.profArrowText ~= false,
+                    func = function() cfg.profArrowText = (cfg.profArrowText == false) end }
+            end
             -- (Only once you've Shift-dragged the drawer somewhere of its own.)
             if ns.db.nav.drawerPoint then
                 items[#items + 1] = { text = "Drawer next to the arrow (again)", func = function()
@@ -2450,6 +2551,23 @@ local function buildArrow()
     f:SetScript("OnLeave", leave)
     f.textHit:SetScript("OnEnter", function() enter(f) end)
     f.textHit:SetScript("OnLeave", leave)
+    -- The faint arrow's text: left-click opens that stop, right-click the
+    -- arrow's menu, hover its details.
+    f.prof.hit = CreateFrame("Button", nil, f.prof)
+    f.prof.hit:SetPoint("BOTTOM", f, "TOP", 0, 0)
+    f.prof.hit:SetSize(240, 16)
+    f.prof.hit:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    f.prof.hit:SetScript("OnClick", function(_, button)
+        if button == "RightButton" then f:GetScript("OnClick")(f, button)
+        elseif N.profChoice then N:OpenStop(N.profChoice.goal) end
+    end)
+    f.prof.hit:SetScript("OnEnter", function(self)
+        if not N.profChoice then return end
+        ns.Tip(self, "ANCHOR_TOP")
+        N:FillTooltip(GameTooltip, N.profChoice.goal, "Profession stop (the faint arrow). Click: open it. Right-click: options.")
+        GameTooltip:Show()
+    end)
+    f.prof.hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
     f:Hide()
     return f
 end
@@ -2555,6 +2673,35 @@ function N:ShowCorpse(p)
     return true
 end
 
+-- The faint profession arrow: points straight at its stop (no trails),
+-- dark grey behind the main arrow, with its text above. Hidden at the
+-- stop (the text says "Here:"), and when it's off or nothing is due.
+local function updateProf(p)
+    local holder = frame.prof
+    if not holder then return end
+    local choice = N:ProfPointerOn() and chooseProf(p) or nil
+    N.profChoice = choice
+    if not choice then holder:Hide() return end
+    local g, pt = choice.goal, choice.point
+    local name = g.text or g.title or "Profession stop"
+    local here = choice.d < ARRIVED * 2 or N:InArea(g, p)
+    local b = bearing(p, pt.wx, pt.wy)
+    local facing = N.ArrowFacing()
+    if here or not (b and facing) then
+        holder.arrow:Hide()
+    else
+        holder.arrow:SetRotation(-(b + facing))
+        holder.arrow:Show()
+    end
+    if ns.db.nav.profArrowText ~= false then
+        holder.text:SetText(here and ("Here: " .. name) or string.format("%s, %d yd", name, choice.d))
+        holder.text:Show(); holder.hit:Show()
+    else
+        holder.text:Hide(); holder.hit:Hide()
+    end
+    holder:Show()
+end
+
 local function update()
     local cfg = ns.db.nav
     -- Route colour follows the order mode (purple / blue / gold): recolour on change.
@@ -2572,7 +2719,10 @@ local function update()
     if cfg.learn then record(p) end
 
     -- Dead: the arrow turns red and points back to your corpse.
-    if UnitIsDeadOrGhost("player") and N:ShowCorpse(p) then return end
+    if UnitIsDeadOrGhost("player") and N:ShowCorpse(p) then
+        if frame.prof then frame.prof:Hide() end
+        return
+    end
 
     local choice = choose(p)          -- (keeps the route planned, waypoint or not)
     -- A party member you follow (Follow.lua), else your own waypoint, else the route.
@@ -2600,6 +2750,7 @@ local function update()
         else
             frame:Hide()
         end
+        if frame.prof then frame.prof:Hide() end
         return
     end
 
@@ -2679,6 +2830,7 @@ local function update()
     frame.arrow:SetVertexColor(col[1], col[2], col[3])
     -- The minimap dot: the arrow's colour, on the stop (not on you).
     if ns.minimapPin then pcall(ns.minimapPin.Update, ns.minimapPin, p, N.DotPoint(choice, here), g, col, here) end
+    updateProf(p)
     frame:Show()
     if panel and panel:IsShown() then showPanel()
     elseif ns.db.nav.drawerOpen and not N.drawerRestored then
@@ -2816,6 +2968,11 @@ ns.commands.nav = function(arg)
     if arg == "on" or arg == "off" then
         cfg.enabled = (arg == "on")
         ns:Print("navigation arrow " .. arg)
+    elseif arg:find("^profarrow") then
+        local v = arg:match("^profarrow%s+(%a+)")
+        if v == "on" or v == "off" then N:SetProfArrow(v == "on") end
+        ns:Print("faint profession arrow: " .. (cfg.profArrow ~= false and "on" or "off")
+            .. (N:ProfPointerOn() and "" or " (shows with Optimal with professions)"))
     elseif arg:find("^professions") then
         local v = arg:match("^professions%s+(%a+)")
         cfg.professions = (v ~= "off")
@@ -2960,3 +3117,24 @@ end
 
 -- Timed for /flow perf.
 N.Collect = ns.perf.Wrap("route: gather stops", N.Collect)
+
+-- Options > AddOns > Flow, under "Flow".
+if ns.settings and ns.settings.AddCheck then
+    ns.settings:AddCheck({
+        label = "Faint profession arrow",
+        note = "(with Optimal with professions)",
+        tip = "Profession stops (training, skill-ups) get their own route and a faint dark grey arrow behind "
+            .. "the main one, with their name above it. The main arrow then only takes you to quests. "
+            .. "Off: profession stops go back on the main arrow's route.",
+        get = function() return ns.db.nav.profArrow ~= false end,
+        set = function(on) N:SetProfArrow(on) end,
+    })
+    ns.settings:AddCheck({
+        label = "Finish the area you're in first",
+        note = "(stops within 300 yd)",
+        tip = "The route clears the stops around you before it sends you the other way, unless going "
+            .. "the other way first saves a lot of walking. Quests to pick up nearby count as part of the area.",
+        get = function() return ns.db.nav.areaFirst ~= false end,
+        set = function(on) ns.db.nav.areaFirst = on and true or false; N.planDirty = true end,
+    })
+end

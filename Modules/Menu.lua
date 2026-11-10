@@ -153,6 +153,8 @@ function Menu:RouteItemsRaw()
                 or "|cff777777Custom route (pick a stop: its ^ or Go here next)|r",
           radio = true, checked = sort == "custom", disabled = sort ~= "custom",
           func = function() ns.xpValue:SetMode("custom") end },
+        { text = "Finish the area you're in first", checked = ns.db.nav.areaFirst ~= false,
+          func = function() ns.db.nav.areaFirst = (ns.db.nav.areaFirst == false); nav.planDirty = true end },
         { sep = true },
         { title = true, text = "Stops on the map" },
     }

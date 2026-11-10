@@ -33,6 +33,12 @@ local IMPROVE_HEAD = 14
 local MAX_POINTS = 25         -- spots per stop considered (nearest to you)
 local OPTIONAL_DETOUR = 250   -- yards an optional stop may add
 local MAX_PASSES = 6
+-- Finish this area: stops within AREA yards of you come before the rest,
+-- unless going elsewhere first saves at least AREA_SAVE yards or
+-- AREA_SAVE_FRAC of the trip (whichever is more). Quests to pick up count
+-- as the area out to AREA_PICKUP: their objectives are usually close by.
+local AREA, AREA_PICKUP = 300, 600
+local AREA_SAVE, AREA_SAVE_FRAC = 400, 0.25
 
 local sqrt = math.sqrt
 local function dist(ax, ay, bx, by)
@@ -47,6 +53,9 @@ end
 --   here  = { [key] = true } this zone's stops you should finish first
 --   away  = { [key] = true } stops in another zone: they wait until every
 --           `here` stop is done
+--   near  = { [key] = true } the area around you (set by P:Plan): the rest
+--           waits until these are done
+--   areaFirst = false: no area rule (nil: Flow's setting)
 local OPT = {}
 
 -- Finish the zone first: an away stop may not come while a here stop is left.
@@ -55,6 +64,12 @@ local function waits(key, hereLeft)
 end
 
 local function forced(key) return OPT.first == key or (OPT.tour and OPT.tour[key]) end
+
+-- Finish the area first: a stop outside it waits while an area stop is left
+-- (your own pick and milestones like class training never wait).
+local function waitsArea(s, nearLeft)
+    return nearLeft and OPT.near and not OPT.near[s.key] and not forced(s.key) and not s.goal.milestone
+end
 
 -- The nearest spot of stop s from `from` (you, or a spot of another stop),
 -- and how far. The polish below asks this same question thousands of times
@@ -200,6 +215,15 @@ local function valid(order)
         end
         if lastHere > firstAway then return false end
     end
+    -- The area around you before the rest.
+    if OPT.near then
+        local lastNear, firstFar = 0, math.huge
+        for i, s in ipairs(order) do
+            if OPT.near[s.key] then lastNear = i
+            elseif waitsArea(s, true) and i < firstFar then firstFar = i end
+        end
+        if lastNear > firstFar then return false end
+    end
     return true
 end
 P._valid = function(order, opt) local old = OPT; OPT = opt or {}; local r = valid(order); OPT = old; return r end   -- (tests)
@@ -210,12 +234,13 @@ local function greedy(p, stops)
     local from = p   -- where you are at this point of the trip
     while #remaining > 0 do
         for k in pairs(left) do left[k] = nil end
-        local tourLeft, firstLeft, hereLeft = false, false, false
+        local tourLeft, firstLeft, hereLeft, nearLeft = false, false, false, false
         for _, s in ipairs(remaining) do
             left[s.key] = true
             if OPT.tour and OPT.tour[s.key] then tourLeft = true end
             if s.key == OPT.first then firstLeft = true end
             if OPT.here and OPT.here[s.key] then hereLeft = true end
+            if OPT.near and OPT.near[s.key] then nearLeft = true end
         end
         local bestI, bestScore
         for i, s in ipairs(remaining) do
@@ -225,6 +250,7 @@ local function greedy(p, stops)
             if firstLeft and s.key ~= OPT.first then ready = false end
             if tourLeft and not (OPT.tour[s.key] or s.key == OPT.first) then ready = false end
             if waits(s.key, hereLeft) then ready = false end   -- this zone first
+            if waitsArea(s, nearLeft) then ready = false end   -- this area first
             if ready then
                 local _, bd = nearest(from, s)
                 local score = bd * (s.goal.weight or 1)
@@ -313,12 +339,43 @@ local function prune(p, order)
     return order, dropped
 end
 
--- Returns the trip: { { goal, point, leg, cum }, ..., dropped = { text } }
-function P:Plan(p, goals, opts)
-    OPT = opts or {}
-    nearPt, nearD = {}, {}   -- the nearest-spot answers are for this plan only
-    local stops = candidates(p, goals)
-    if #stops == 0 then return nil end
+-- The area around you (OPT.near): stops within AREA yards (quest pickups
+-- AREA_PICKUP) that aren't in another zone. A stop whose quest objectives
+-- are outside the area isn't in it (it can't be finished here). nil when
+-- the area is empty or is everything (no rule needed).
+local function areaSet(stops)
+    local near, keyed, far = {}, {}, false
+    for _, s in ipairs(stops) do
+        keyed[s.key] = true
+        local r = s.key:find("^pickup:") and AREA_PICKUP or AREA
+        if s.near <= r and not (OPT.away and OPT.away[s.key]) then near[s.key] = true end
+    end
+    local changed = true
+    while changed do
+        changed = false
+        for _, s in ipairs(stops) do
+            if near[s.key] then
+                for _, dep in ipairs(s.goal.deps or NONE) do
+                    if keyed[dep] and not near[dep] then near[s.key], changed = nil, true break end
+                end
+            end
+        end
+    end
+    for _, s in ipairs(stops) do
+        if not near[s.key] and not forced(s.key) and not s.goal.milestone then far = true end
+    end
+    if not (next(near) and far) then return nil end
+    return near
+end
+
+-- Keep the free order (leaving the area early) only when it saves a lot:
+-- free and kept are the two trips' costs.
+function P.AreaKeepsFree(free, kept)
+    return free < kept - math.max(AREA_SAVE, AREA_SAVE_FRAC * kept)
+end
+
+-- Nearest-next, then polished (the near part only on a long trip).
+local function build(p, stops)
     local order = greedy(p, stops)
     if #order > IMPROVE_HEAD then
         -- Polish the near part, then carry on nearest-next from its last stop.
@@ -333,6 +390,30 @@ function P:Plan(p, goals, opts)
         for _, s in ipairs(greedy(last, rest)) do order[#order + 1] = s end
     else
         order = improve(p, order)
+    end
+    return order
+end
+
+-- Returns the trip: { { goal, point, leg, cum }, ..., dropped = { text } }
+function P:Plan(p, goals, opts)
+    OPT = {}   -- (a copy: the area rule adds to it)
+    for k, v in pairs(opts or {}) do OPT[k] = v end
+    OPT.near = nil
+    nearPt, nearD = {}, {}   -- the nearest-spot answers are for this plan only
+    local stops = candidates(p, goals)
+    if #stops == 0 then return nil end
+    local order = build(p, stops)
+    -- Finish this area: if the best trip leaves the area before it's done,
+    -- plan one that doesn't, and keep that unless it costs a lot more.
+    local areaFirst = OPT.areaFirst
+    if areaFirst == nil then areaFirst = not (ns.db and ns.db.nav and ns.db.nav.areaFirst == false) end
+    if areaFirst then
+        OPT.near = areaSet(stops)
+        if OPT.near and not valid(order) then
+            local inArea = build(p, stops)
+            if P.AreaKeepsFree(cost(p, order), cost(p, inArea)) then OPT.near = nil
+            else order = inArea end
+        end
     end
     local dropped
     order, dropped = prune(p, order)
