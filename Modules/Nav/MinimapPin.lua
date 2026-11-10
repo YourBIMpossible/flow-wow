@@ -283,6 +283,7 @@ local function signature(p, goal)
         math.floor((f or 0) * 20), Minimap:GetZoom() or 0, tostring(goal and goal.key),
         tostring(hoverGoal and hoverGoal.key), tostring(ns.db.nav.minimapAreas), Minimap:GetWidth())
         .. ":" .. tostring(ns.db.nav.nearbyNodes) .. ":" .. tostring(ns.nearby and ns.nearby.version)
+        .. ":" .. tostring(P.hereColor ~= nil)
 end
 function P:UpdateAreas(p, goal, force)
     if not Minimap then return end
@@ -302,7 +303,8 @@ function P:UpdateAreas(p, goal, force)
     nDiscs = 0
     if ns.db.nav.minimapPin ~= false and ns.db.nav.minimapAreas ~= false and p and not (ns.Lite and ns.Lite()) then
         if hoverGoal and hoverGoal ~= goal then drawAreaMini(p, hoverGoal, ns.theme.hover, true) end
-        drawAreaMini(p, goal, ns.theme.route, hoverGoal == nil or hoverGoal == goal)
+        -- In the area, the area takes the arrow's colour (it stands in for the dot).
+        drawAreaMini(p, goal, P.hereColor or ns.theme.route, hoverGoal == nil or hoverGoal == goal)
     end
     -- Ore and herbs you can gather, where they spawn near you (Crafting/Nearby.lua).
     if ns.nearby and p and not (ns.Lite and ns.Lite()) then
@@ -323,11 +325,14 @@ function P:SetHover(goal)
     P:UpdateAreas(P.lastP, P.lastGoal, true)
 end
 
--- p: player position (Nav:PlayerPos), pt: the stop's point, goal: the stop.
-function P:Update(p, pt, goal)
+-- p: player position (Nav:PlayerPos), pt: the stop's point (nil: no dot),
+-- goal: the stop, col: the arrow's colour { r, g, b } (the dot matches it),
+-- here: you've arrived.
+function P:Update(p, pt, goal, col, here)
     if not Minimap then return end
     if not pin then build() end
     P.lastP, P.lastGoal = p, goal
+    P.hereColor = (here and col) or nil
     pcall(P.UpdateAreas, P, p, goal)
     if ns.db.nav.minimapPin == false or not (p and pt and pt.wx and pt.cont == p.cont) then pin:Hide() return end
     local x, y, _, east, south = toMini(p, pt.wx, pt.wy)
@@ -336,8 +341,8 @@ function P:Update(p, pt, goal)
     local d = math.sqrt(x * x + y * y)
     local edge = d > radius - 6
     if edge then x, y = x / d * (radius - 6), y / d * (radius - 6) end
-    -- Your waypoint, or a party member you follow: green.
-    local col = (goal and (goal.key == "user:wp" or goal.key == "user:follow")) and ns.theme.waypoint or ns.theme.route
+    -- No arrow colour given: your waypoint, or a party member you follow, green.
+    col = col or ((goal and (goal.key == "user:wp" or goal.key == "user:follow")) and ns.theme.waypoint or ns.theme.route)
     pin.dot:SetVertexColor(col[1], col[2], col[3], 1)
     pin.ring:SetVertexColor(col[1], col[2], col[3], 1)
     pin:SetSize(edge and 12 or 16, edge and 12 or 16)
@@ -348,8 +353,11 @@ function P:Update(p, pt, goal)
     pin:Show()
 end
 
+function P.Pin() return pin end   -- (tests)
+
 function P:Hide()
     if pin then pin:Hide() end
+    P.hereColor = nil
     lastSig = nil   -- draw again next time
     for i = 1, nDiscs do discs[i]:Hide() end
     nDiscs = 0

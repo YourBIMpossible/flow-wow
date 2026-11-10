@@ -57,9 +57,7 @@ local function buildIcon(cfg)
     local f = CreateFrame("Frame", "FlowRotationIcon", UIParent)
     f:SetSize(52, 52)
     f:SetFrameStrata("HIGH")
-    local p = cfg.point
-    if p then f:SetPoint(p[1], UIParent, p[2], p[3], p[4])
-    else f:SetPoint("CENTER", UIParent, "CENTER", 0, -160) end
+    ns.RestorePlace(f, cfg, 0, -160)  -- the cast button then puts it on top of itself
 
     f.tex = f:CreateTexture(nil, "ARTWORK")
     f.tex:SetAllPoints()

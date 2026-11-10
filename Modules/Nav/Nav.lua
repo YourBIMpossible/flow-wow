@@ -1672,6 +1672,24 @@ local function choose(p)
     return ranked[1]
 end
 
+-- Where the minimap dot goes. It marks the stop, never you:
+--  * in a quest's area the dot goes away and the area itself shows (Flow's
+--    cloud on the minimap, or the game's own quest zone when that's off);
+--  * a "do it where you stand" stop has no dot (its spot is wherever you are);
+--  * once you're at a stop the dot stays on the spot you reached, even if a
+--    nearer spot of the same stop turns up as you walk around.
+-- choice: from choose(); here: arrived. Returns the point, or nil (no dot).
+N.dotHeld = {}
+function N.DotPoint(choice, here)
+    local held = N.dotHeld   -- key, point: the spot you arrived at
+    if not choice then held.key, held.point = nil, nil return nil end
+    local g = choice.goal
+    if g.anywhere or (here and g.area) then return nil end
+    if not here then held.key, held.point = nil, nil return choice.point end
+    if held.key ~= g.key or not held.point then held.key, held.point = g.key, choice.point end
+    return held.point
+end
+
 -- Your own waypoint (Waypoint.lua: Ctrl/Alt-click the map, /way, "Point the
 -- arrow here"). It isn't a route stop: while it's set the arrow points at it,
 -- in the waypoint green, the map draws a green line to it, and the route
@@ -2531,7 +2549,7 @@ function N:ShowCorpse(p)
     if b and facing then frame.arrow:SetRotation(-(b + facing)); frame.arrow:Show() end
     frame.sub:SetText(d < ARRIVED * 2 and "Here: resurrect" or string.format("%d yd", d))
     if ns.minimapPin then
-        pcall(ns.minimapPin.Update, ns.minimapPin, p, { cont = cont, wx = wx, wy = wy }, { text = "Your corpse" })
+        pcall(ns.minimapPin.Update, ns.minimapPin, p, { cont = cont, wx = wx, wy = wy }, { text = "Your corpse" }, CORPSE_RED)
     end
     frame:Show()
     return true
@@ -2561,7 +2579,8 @@ local function update()
     choice = (ns.follow and ns.follow.Choice(p)) or N.WaypointChoice(p) or choice
     current = choice
     N.current = choice  -- for Flow Actions (Modules/Rotation/Actions.lua)
-    if ns.minimapPin then pcall(ns.minimapPin.Update, ns.minimapPin, p, choice and choice.point, choice and choice.goal) end
+    -- (With a stop, the minimap dot is drawn below, once the arrow's colour is known.)
+    if ns.minimapPin and not choice then pcall(ns.minimapPin.Update, ns.minimapPin, p, nil, nil) end
     local tk = choice and choice.goal.key
     local planKey = N.plan and #N.plan > 0 and (N.plan[1].goal.key .. ":" .. #N.plan) or ""
     if tk ~= N.lastTargetKey or planKey ~= N.lastPlanKey then
@@ -2650,13 +2669,16 @@ local function update()
     if frame.arrow.SetWave then
         frame.arrow:SetWave(here and frame.arrow.arrived and ((spotD and spotD <= SPOT_ON) or choice.d < ARRIVED * 2))
     end
+    local col
     if N:ArrowColorMode() == "distance" then
         -- Grey: in another zone; red far away to green close by; blue in the area.
-        frame.arrow:SetVertexColor(N.ArrowColor(N.ArrowState(p, choice.point, here), choice.d))
+        col = { N.ArrowColor(N.ArrowState(p, choice.point, here), choice.d) }
     else
-        local c = choice.waypoint and ns.theme.waypoint or ns.theme.route   -- your waypoint: green
-        frame.arrow:SetVertexColor(c[1], c[2], c[3])
+        col = choice.waypoint and ns.theme.waypoint or ns.theme.route   -- your waypoint: green
     end
+    frame.arrow:SetVertexColor(col[1], col[2], col[3])
+    -- The minimap dot: the arrow's colour, on the stop (not on you).
+    if ns.minimapPin then pcall(ns.minimapPin.Update, ns.minimapPin, p, N.DotPoint(choice, here), g, col, here) end
     frame:Show()
     if panel and panel:IsShown() then showPanel()
     elseif ns.db.nav.drawerOpen and not N.drawerRestored then

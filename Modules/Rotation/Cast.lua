@@ -235,7 +235,7 @@ function C:FillTooltip(tt)
     if key ~= "" and helpful(s) and ns.db.cast.ctrlTarget ~= false then
         tt:AddLine("Ctrl + key: " .. s.spell .. " on your target instead.", 0.4, 0.8, 1)
     end
-    tt:AddLine("Hold Shift: a handle appears; drag it to move the icon.", 0.6, 0.6, 0.6)
+    tt:AddLine("Hold Shift and drag to move; hold Ctrl and use the mouse wheel to resize.", 0.6, 0.6, 0.6)
 end
 
 local function refreshLabels()
@@ -272,9 +272,7 @@ local function build(cfg)
     btn = CreateFrame("Button", "FlowCastButton", UIParent, "SecureActionButtonTemplate")
     btn:SetSize(52, 52)
     btn:SetFrameStrata("HIGH")
-    local p = cfg.point
-    if p then btn:SetPoint(p[1], UIParent, p[2], p[3], p[4])
-    else btn:SetPoint("CENTER", UIParent, "CENTER", 0, -160) end
+    ns.RestorePlace(btn, cfg, 0, -160)
     -- Listen for both press and release: the secure button itself acts on the
     -- one matching your "cast on key down" setting. (Registering only one
     -- made key presses do nothing on some clients.)
@@ -303,6 +301,7 @@ local function build(cfg)
     if icon then
         icon:ClearAllPoints()
         icon:SetPoint("CENTER", btn, "CENTER")
+        icon:SetScale(btn:GetScale())
         keyText = icon:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
         keyText:SetPoint("TOPRIGHT", icon, "TOPRIGHT", -2, -2)
         lockIcon = CreateFrame("Frame", nil, icon)
@@ -315,6 +314,9 @@ local function build(cfg)
         lockIcon.label:SetText("key:")
         lockIcon:Hide()
     end
+    -- Shift: drag to move. Ctrl: mouse wheel to resize (the icon too).
+    C.handle = ns:MoveHandle(btn, { name = "the Flow button", save = function() return ns.db.rotation end,
+        also = function() return { E.icon } end })
 end
 
 -------------------------------------------------------------------------------
@@ -648,93 +650,18 @@ ns:On("UNIT_SPELLCAST_SUCCEEDED", function(unit, _, spellID)
 end)
 
 -------------------------------------------------------------------------------
--- Moving the icon: hold Shift (out of combat) and a "drag to move" handle
--- appears over it. Dragging the secure button itself didn't work reliably
--- (it takes the mouse press as a click), so the handle moves it instead.
+-- Moving and resizing the icon: hold Shift (out of combat) and a "drag to
+-- move" handle appears over it; hold Ctrl and the mouse wheel resizes it.
+-- The shared handle (ns:MoveHandle in Core.lua) does both; the visible icon
+-- resizes along with the secure button under it.
 -------------------------------------------------------------------------------
 
-local handle
-local function buildHandle()
-    handle = CreateFrame("Frame", nil, UIParent)
-    handle:SetFrameStrata("DIALOG")
-    handle:EnableMouse(true)
-    handle.bg = handle:CreateTexture(nil, "BACKGROUND")
-    handle.bg:SetAllPoints()
-    handle.bg:SetColorTexture(0, 0, 0, 0.35)
-    handle.edge = {}
-    local o = ns.theme.arrow
-    for i, pts in ipairs({ { "TOPLEFT", "TOPRIGHT" }, { "BOTTOMLEFT", "BOTTOMRIGHT" },
-                           { "TOPLEFT", "BOTTOMLEFT" }, { "TOPRIGHT", "BOTTOMRIGHT" } }) do
-        local t = handle:CreateTexture(nil, "BORDER")
-        t:SetPoint(pts[1]); t:SetPoint(pts[2])
-        if i <= 2 then t:SetHeight(2) else t:SetWidth(2) end
-        t:SetColorTexture(o[1], o[2], o[3], 1)
-        handle.edge[i] = t
-    end
-    -- The label sits ABOVE the button (under it is the action's own text,
-    -- which it used to cover), on a small dark tab so it reads.
-    handle.text = handle:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    handle.text:SetPoint("BOTTOM", handle, "TOP", 0, 4)
-    handle.text:SetText("drag to move")
-    handle.tab = handle:CreateTexture(nil, "BACKGROUND")
-    handle.tab:SetPoint("TOPLEFT", handle.text, "TOPLEFT", -4, 2)
-    handle.tab:SetPoint("BOTTOMRIGHT", handle.text, "BOTTOMRIGHT", 4, -2)
-    handle.tab:SetColorTexture(0, 0, 0, 0.6)
-    -- Hover: it lights up, so it's clear you can grab it.
-    function handle:Paint(hot)
-        self.bg:SetColorTexture(o[1], o[2], o[3], hot and 0.35 or 0.12)
-        for _, t in ipairs(self.edge) do t:SetColorTexture(o[1], o[2], o[3], hot and 1 or 0.7) end
-        self.text:SetTextColor(hot and 1 or o[1], hot and 1 or o[2], hot and 1 or o[3])
-    end
-    handle:Paint(false)
-    handle:SetScript("OnEnter", function(self)
-        self:Paint(true)
-        pcall(SetCursor, "UI_MOVE_CURSOR")
-        ns.Tip(self, "ANCHOR_TOP")
-        GameTooltip:AddLine("Drag to move the Flow button", 1, 1, 1)
-        GameTooltip:AddLine("Let go of Shift to use it again.", 0.7, 0.7, 0.7)
-        GameTooltip:Show()
-    end)
-    handle:SetScript("OnLeave", function(self)
-        self:Paint(false)
-        pcall(ResetCursor)
-        GameTooltip:Hide()
-    end)
-    handle:SetScript("OnMouseDown", function()
-        if InCombatLockdown() then return end
-        btn:StartMoving()
-        handle.moving, C.moving = true, true
-    end)
-    handle:SetScript("OnMouseUp", function()
-        if not handle.moving then return end
-        handle.moving = false
-        C:EndMove()
-    end)
-    handle:Hide()
-end
-
-local function showHandle()
-    if not btn then return end
-    local want = IsShiftKeyDown() and not InCombatLockdown() and btn:IsShown()
-    if want and not handle then buildHandle() end
-    if not handle then return end
-    if want then
-        handle:ClearAllPoints()
-        handle:SetAllPoints(btn)
-        handle:Show()
-    elseif not handle.moving then
-        handle:Hide()
-    end
-end
-ns:On("MODIFIER_STATE_CHANGED", showHandle)
-ns:On("PLAYER_REGEN_DISABLED", function() if handle then handle.moving = false; handle:Hide() end end)
-
--- Finish moving the icon and remember where. The cast button is a secure
--- frame: moving it is forbidden in combat ("Flow has been blocked from an
--- action..." when a drag was still going as a fight began). So a drag still
--- going when combat starts is finished at the start of the fight (still
--- allowed then, see PLAYER_REGEN_DISABLED below), and a release during the
--- fight does nothing.
+-- Finish a drag of the button itself and remember where. The cast button is
+-- a secure frame: moving it is forbidden in combat ("Flow has been blocked
+-- from an action..." when a drag was still going as a fight began). So a
+-- drag still going when combat starts is finished at the start of the fight
+-- (still allowed then, see PLAYER_REGEN_DISABLED below), and a release
+-- during the fight does nothing.
 function C:EndMove()
     if not (self.moving and btn) or InCombatLockdown() then return end
     self.moving = false

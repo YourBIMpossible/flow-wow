@@ -582,15 +582,20 @@ do
         local key = cfg().key
         tt:AddLine(key and ("Key: " .. ((GetBindingText and GetBindingText(key, "KEY_", true)) or key))
             or "No key yet: /flow buffkey <key>", 0.8, 0.8, 0.8)
+        tt:AddLine("Hold Shift and drag to move; hold Ctrl and use the mouse wheel to resize.", 0.6, 0.6, 0.6)
     end
 
     local function build()
         btn = CreateFrame("Button", "FlowBuffButton", UIParent, "SecureActionButtonTemplate")
         btn:SetSize(40, 40)
         btn:SetFrameStrata("HIGH")
+        -- Where you left it, or (never moved) just left of the Flow button.
         local main = _G.FlowCastButton
-        if main then btn:SetPoint("RIGHT", main, "LEFT", -12, 0)
-        else btn:SetPoint("CENTER", UIParent, "CENTER", -60, -160) end
+        if cfg().point or not main then ns.RestorePlace(btn, cfg(), -60, -160)
+        else
+            btn:SetScale(ns.ClampScale(cfg().scale or 1))
+            btn:SetPoint("RIGHT", main, "LEFT", -12, 0)
+        end
         btn:RegisterForClicks("AnyUp", "AnyDown")
         local bg = btn:CreateTexture(nil, "BACKGROUND")
         bg:SetPoint("TOPLEFT", -2, 2); bg:SetPoint("BOTTOMRIGHT", 2, -2)
@@ -615,6 +620,8 @@ do
                 ns:Log("action", "buff button pressed: " .. describe(current))
             end
         end)
+        -- Shift: drag to move. Ctrl: mouse wheel to resize. Same as the Flow button.
+        BB.handle = ns:MoveHandle(btn, { name = "the buff button", save = cfg })
         btn:Hide()
     end
 

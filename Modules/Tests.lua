@@ -1307,6 +1307,61 @@ ns:Register("test", "taint: moving the cast icon never happens in combat", funct
     ns.cast.moving = was
 end)
 
+ns:Register("test", "resize: buttons stay between half and double size", function(t)
+    t:eq(ns.ClampScale(1), 1, "normal size")
+    t:eq(ns.ClampScale(5), 2, "at most double")
+    t:eq(ns.ClampScale(0.1), 0.5, "at least half")
+    t:eq(ns.ClampScale(1.1 + 1e-9), 1.1, "rounded, so steps don't drift")
+    t:eq(ns.ClampScale(nil), 1, "nothing saved: normal size")
+end)
+
+ns:Register("test", "click: Shift moves and Ctrl + wheel resizes the Flow and buff buttons", function(t)
+    t:ok(ns.cast.handle ~= nil, "the Flow button has a handle")
+    t:ok(ns.buffButton.handle ~= nil, "the buff button has a handle")
+    -- On a stand-in frame (made once), so your own buttons never move.
+    local f = ns._testMoveFrame
+    if not f then
+        f = CreateFrame("Frame", nil, UIParent)
+        f:SetSize(40, 40)
+        f:SetAlpha(0)
+        ns._testMoveFrame = f
+        f.save = {}
+        f.handle = ns:MoveHandle(f, { name = "test", save = function() return f.save end })
+    end
+    local h = f.handle
+    ns.RestorePlace(f, { point = { "CENTER", "CENTER", 100, 50 } })
+    t:eq(f:GetScale(), 1, "restored at normal size")
+    f:Show()
+    -- The handle's own scripts run (no Shift or Ctrl held: they do nothing).
+    for _, s in ipairs({ "OnMouseDown", "OnMouseUp", "OnEnter", "OnLeave" }) do
+        local ok, err = pcall(h:GetScript(s), h)
+        t:ok(ok, s .. " runs" .. (ok and "" or (": " .. tostring(err))))
+    end
+    local ok, err = pcall(h:GetScript("OnMouseWheel"), h, 1)
+    t:ok(ok, "the wheel runs" .. (ok and "" or (": " .. tostring(err))))
+    if not IsControlKeyDown() then t:eq(f:GetScale(), 1, "no Ctrl: the wheel leaves the size alone") end
+    t:ok(not h.moving, "no Shift: a press doesn't start a move")
+    if InCombatLockdown() then
+        t:ok(true, "(in a fight: resizing is off)")
+    else
+        local x0, y0 = f:GetCenter()
+        h:ScaleBy(1)
+        t:eq(f:GetScale(), 1.1, "one notch: a tenth bigger")
+        t:eq(f.save.scale, 1.1, "the size is saved")
+        t:ok(f.save.point and f.save.point[1] == "CENTER", "the spot is saved")
+        local x1, y1 = f:GetCenter()
+        if x0 and x1 then
+            t:ok(math.abs(x1 * 1.1 - x0) < 1 and math.abs(y1 * 1.1 - y0) < 1, "it grows around its centre")
+        end
+        for _ = 1, 30 do h:ScaleBy(-1) end
+        t:eq(f:GetScale(), 0.5, "shrinks to half and stops")
+        -- Back where it was, at the saved size.
+        ns.RestorePlace(f, f.save)
+        t:eq(f:GetScale(), 0.5, "restored at the saved size")
+    end
+    f:Hide()
+end)
+
 ns:Register("test", "route: what it optimises is pluggable", function(t)
     local X = ns.xpValue
     t:ok(ns:Get("routeObjective", "xp") and ns:Get("routeObjective", "distance"), "built-in objectives registered")
@@ -1710,6 +1765,34 @@ ns:Register("test", "minimap cloud: one smooth shape per area", function(t)
     t:eq(P.ShapeRow(square, 20), nil, "a row outside the shape: nothing")
     local s = P.Shrink(square, 0.5)
     t:near(s[2][1], 5, 0.01, "shrunk towards the middle")
+end)
+
+ns:Register("test", "minimap dot: on the stop, in the arrow's colour", function(t)
+    local N, P = ns.nav, ns.minimapPin
+    local A, B = { wx = 0, wy = 0 }, { wx = 30, wy = 0 }
+    local spot = { key = "test:spot" }
+    t:eq(N.DotPoint({ goal = spot, point = A }, false), A, "on the way: the stop's spot")
+    t:eq(N.DotPoint({ goal = spot, point = A }, true), A, "arrived: the spot you reached")
+    t:eq(N.DotPoint({ goal = spot, point = B }, true), A, "walking around there: the dot stays put")
+    t:eq(N.DotPoint({ goal = spot, point = B }, false), B, "left the stop: back on its spot")
+    t:eq(N.DotPoint({ goal = { key = "test:area", area = true }, point = A }, true), nil, "in a quest's area: no dot, the area shows")
+    t:eq(N.DotPoint({ goal = { key = "test:any", anywhere = true }, point = A }, false), nil, "a do-it-anywhere stop: no dot")
+    t:eq(N.DotPoint(nil), nil, "no stop: no dot")
+    local p = N:PlayerPos()
+    if not (Minimap and p and p.wx) then t:ok(true, "(no minimap or position)") return end
+    local col = { 0.1, 0.6, 0.3 }
+    P:Update(p, { cont = p.cont, wx = p.wx + 10, wy = p.wy }, spot, col, false)
+    local dot = P.Pin() and P.Pin().dot
+    if dot and P.Pin():IsShown() then
+        local r, g, b = dot:GetVertexColor()
+        t:ok(math.abs(r - 0.1) < 0.01 and math.abs(g - 0.6) < 0.01 and math.abs(b - 0.3) < 0.01, "dot: the arrow's colour")
+    end
+    t:eq(P.hereColor, nil, "on the way: the area keeps the route colour")
+    P:Update(p, nil, spot, col, true)
+    t:eq(P.hereColor, col, "in the area: the area takes the arrow's colour")
+    t:ok(not (P.Pin() and P.Pin():IsShown()), "no point: no dot")
+    P:Hide()
+    t:eq(P.hereColor, nil, "hidden: colour cleared")
 end)
 
 ns:Register("test", "bags: things to learn and full bags", function(t)
