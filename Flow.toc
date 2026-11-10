@@ -61,6 +61,7 @@ Modules\Items\Vendor.lua
 Modules\Items\LootFilter.lua
 Modules\Items\Auction.lua
 Modules\Rotation\Engine.lua
+Modules\Rotation\DispelProbe.lua
 Modules\Rotation\Display.lua
 Modules\Rotation\Cast.lua
 Modules\Rotation\Actions.lua
@@ -93,6 +94,7 @@ Modules\Nav\MapOverlay.lua
 Modules\Nav\RouteTracker.lua
 Modules\Advisor\Advisor.lua
 Modules\Advisor\Builtins.lua
+Modules\Items\NoGearAdvice.lua
 
 # Classes: each folder registers its own data, spells and rotation.
 # Adding a class = adding a folder and listing its files here.
