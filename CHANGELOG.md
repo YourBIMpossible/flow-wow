@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- **Professions: a switch of their own.** The route list is Quests only, Optimal, Completionist, with one
+  "Professions" tick under them instead of two "Optimal with / without professions" routes.
 - **Bandages, food and the campfire are on the buff button.** Hurt after a fight, the blue buff button offers your
   bandage or food; by a campfire it places your camp objects and sits you down. Flow's key no longer shows them, so
   it keeps to the fight, loot and gathering. Your recovery order still holds: a heal spell on Flow's key waits while

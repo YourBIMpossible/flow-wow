@@ -178,7 +178,7 @@ ns:Register("setupItem", "professions", {
 -- The trainers are never a waypoint: they're stops the route plans in with
 -- everything else (Goals.lua "errands"), however many there are. "Add to my
 -- route" shows only when your route leaves trainers out ("Quests only", or
--- "Optimal without professions"), and switches it to "Optimal with professions".
+-- the Professions tick off), and turns professions on.
 --
 -- Opens for 8 s (it waits while your mouse is on it) when there's something
 -- to do: a while after you log in, when you level up, when what's needed
@@ -317,11 +317,11 @@ local function buildCard()
     f.timer:SetStatusBarColor(o[1], o[2], o[3])
     f.timer:SetMinMaxValues(0, SHOW)
 
-    -- Your route with trainers in it: "Optimal with professions".
+    -- Your route with trainers in it: professions on.
     f.add:SetScript("OnClick", function()
         ns.db.nav.professions = true
         if ns.nav:Mode() == "quests" then ns.nav:SetMode("optimal") else ns.nav:Collect() end
-        ns:Print("route: Optimal with professions. Your trainers are stops on it now.")
+        ns:Print("route: professions on. Your trainers are stops on it now.")
         -- (Show where they landed once the route is planned again.)
         C_Timer.After(1.5, function() if f:IsShown() then P:ShowReminder() end end)
     end)

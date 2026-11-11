@@ -169,9 +169,12 @@ function Menu:RouteItemsRaw()
     local items = {
         { title = true, text = "Route" },
         { text = "Quests only", radio = true, checked = mode == "quests", func = setRoute("quests", profs) },
-        { text = "Optimal with professions", radio = true, checked = mode == "optimal" and profs, func = setRoute("optimal", true) },
-        { text = "Optimal without professions", radio = true, checked = mode == "optimal" and not profs, func = setRoute("optimal", false) },
+        { text = "Optimal", radio = true, checked = mode == "optimal", func = setRoute("optimal", profs) },
         { text = "Completionist: every quest here, any level", radio = true, checked = mode == "complete", func = setRoute("complete", profs) },
+        -- Professions: their own switch, whichever route you picked (Quests
+        -- only never has them).
+        { text = mode == "quests" and "|cff777777Professions (not with Quests only)|r" or "Professions",
+          checked = profs and mode ~= "quests", disabled = mode == "quests", func = setRoute(mode, not profs) },
         { sep = true },
         { title = true, text = "Order" },
         { text = ns.theme:ModeText("xp", "Most XP first"), radio = true, checked = sort == "xp", func = function() ns.xpValue:SetMode("xp") end },
