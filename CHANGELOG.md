@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- **Profession window: make-now list is honest about chance.** Orange rows say "sure skill points"; yellow and
+  green say "maybe ... (not every time)", since a couple of yellows can give nothing. On the same number of
+  whole points, the sure recipe now comes first.
 - **Profession window: the goal gets its own box.** What Flow wants you to make next (with its materials and
   the Make button) now sits in its own box under the right side of the profession window, with a legendary
   orange border. The box under the left side keeps only the lists: make now from your bags, cheapest to buy,

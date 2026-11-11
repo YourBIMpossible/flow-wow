@@ -230,8 +230,11 @@ end
 -- The recipes you can make right now from your bags that still give skill,
 -- most expected skill points first. Points = how many you can make x the
 -- chance each gives a point (it ignores colours shifting as you climb).
+-- Ranked by whole points, and on a tie the surer recipe first: orange gives
+-- a point every time, while 2 yellows can give none (owner made 2 yellow
+-- Copper Chain Pants, listed above 2 orange belts, and got nothing).
 -- bagsOf(itemID) -> count (tests); default: your bags.
--- -> { { recipe, item, reagents, diff, count, points } }
+-- -> { { recipe, item, reagents, diff, count, points, chance } }
 function SP.MakeNowSkillUps(known, bagsOf)
     bagsOf = bagsOf or count
     local out = {}
@@ -245,11 +248,14 @@ function SP.MakeNowSkillUps(known, bagsOf)
             end
             if n and n > 0 then
                 out[#out + 1] = { recipe = name, item = r.item, reagents = r.reagents, diff = r.diff,
-                                  count = n, points = n * c }
+                                  count = n, points = n * c, chance = c }
             end
         end
     end
     table.sort(out, function(a, b)
+        local pa, pb = math.floor(a.points + 1e-9), math.floor(b.points + 1e-9)
+        if pa ~= pb then return pa > pb end
+        if a.chance ~= b.chance then return a.chance > b.chance end
         if a.points ~= b.points then return a.points > b.points end
         return a.recipe < b.recipe
     end)
