@@ -194,11 +194,17 @@ function H.MakeNowRows(list, max)
     local out = {}
     for i, c in ipairs(list or {}) do
         if i > (max or 3) then break end
-        local pts = math.floor(c.points + 0.5)
-        local tag = string.format("make %d, about %d skill point%s", c.count, pts, pts == 1 and "" or "s")
+        local tag
+        if c.diff == "optimal" then
+            tag = string.format("make %d, %d sure skill point%s", c.count, c.count, c.count == 1 and "" or "s")
+        else
+            local pts = math.max(math.floor(c.points + 1e-9), 0)
+            tag = string.format("make %d, maybe %d skill point%s (not every time)", c.count, pts, pts == 1 and "" or "s")
+        end
         out[#out + 1] = { recipe = c.recipe, reagents = c.reagents, tag = tag,
             line = string.format("%d. %s (%s): %s", i, c.recipe, DIFF_WORD[c.diff] or c.diff or "?", tag),
-            note = "From what's in your bags now. Points are a guess: recipes turn green, then grey, as you climb." }
+            note = "From what's in your bags now. Orange gives a point every time. Yellow gives one about half"
+                .. " the time and green now and then, so a few can give none. Recipes turn green, then grey, as you climb." }
     end
     return out
 end

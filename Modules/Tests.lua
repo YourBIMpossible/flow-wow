@@ -1510,7 +1510,14 @@ ns:Register("test", "crafting: what your bags make for skill is ranked by skill 
     t:eq(list[2].recipe, "Many", "then the next most")
     t:eq(list[3].count, 3, "the scarcest material sets the count")
     local rows = ns.craftHint.MakeNowRows(list, 3)
-    t:ok(rows[1].line:find("make 5, about 5 skill points", 1, true), "the row says how many and the gain: " .. rows[1].line)
+    t:ok(rows[1].line:find("make 5, 5 sure skill points", 1, true), "orange: sure points: " .. rows[1].line)
+    t:ok(rows[2].line:find("maybe 2 skill points (not every time)", 1, true), "others: maybe: " .. rows[2].line)
+    -- 4 yellow (2.4 expected) vs 2 orange (2 sure): the sure one first.
+    local tie = ns.skillPlan.MakeNowSkillUps({
+        Pants = { diff = "medium",  reagents = { [1] = 1 } },
+        Belt  = { diff = "optimal", reagents = { [2] = 1 } },
+    }, function(id) return id == 1 and 4 or 2 end)
+    t:eq(tie[1].recipe, "Belt", "on the same whole points, the sure recipe first")
 end)
 
 ns:Register("test", "crafting: an upgrade's hover lists its materials, read from the newest recipe data", function(t)
@@ -1905,7 +1912,10 @@ ns:Register("test", "craft here: campfire, open, make; the arrow shows the icon"
     if s then t:eq(s.spell, "Basic Campfire", "makes a campfire first") else t:ok(true, "(no wood or no Basic Campfire: the route buys wood)") end
     -- First Aid (no station): open it straight away.
     local fa = get("craft:open", { goal = { key = "craft:First Aid:X", recipe = "Linen Bandage", prof = "First Aid", anywhere = true }, at = true })
-    if ns.api.SpellInfo("First Aid") and not (TradeSkillFrame and TradeSkillFrame:IsShown()) then
+    -- (Not with a profession window already open: then the key presses Make
+    -- instead. This client's window is ProfessionsFrame, not TradeSkillFrame.)
+    local winOpen = (TradeSkillFrame and TradeSkillFrame:IsShown()) or (ProfessionsFrame and ProfessionsFrame:IsShown())
+    if ns.api.SpellInfo("First Aid") and not winOpen then
         t:eq(fa and fa.spell, "First Aid", "opens First Aid")
     end
     t:eq(ns.cast._describe({ type = "click", label = "Make 4 x Roasted Boar Meat" }), "/click Make 4 x Roasted Boar Meat", "click step described")
