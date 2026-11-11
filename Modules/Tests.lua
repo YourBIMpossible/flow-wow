@@ -1464,6 +1464,10 @@ ns:Register("test", "crafting: the window shows the arrow's stop, materials and 
         t:ok(p.goalBox and p.goalBox ~= p, "the goal has its own box, apart from the lists")
         t:eq(p.btn:GetParent(), p.goalBox, "the Make button sits in the goal box")
         t:eq(_G.FlowCraftGoal and _G.FlowCraftGoal.btn, p.btn, "the action key finds the Make button")
+        if p.goalBox.GetBackdropBorderColor then
+            local r, g, b = p.goalBox:GetBackdropBorderColor()
+            t:ok(r > 0.95 and math.abs(g - 0.5) < 0.05 and b < 0.05, "the goal box has a legendary orange border")
+        end
         local was = H.upgradesOpen
         p.upBtn:Click()
         t:eq(H.upgradesOpen, not was, "clicking opens / closes the fold-out")
