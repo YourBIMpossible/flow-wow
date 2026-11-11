@@ -17,6 +17,11 @@
   it keeps to the fight, loot and gathering. Your recovery order still holds: a heal spell on Flow's key waits while
   a bandage or food you put first is there. Buff button off: all of it is back on Flow's key.
 
+## 0.35.144
+- Fixed three self-tests that failed at every login after 0.35.143: they expected the faint
+  profession arrow on by default (it's off unless ticked now) and water not to count (the key
+  drinks it since 0.35.136). The arrow-layout check now says its numbers when it fails.
+
 ## 0.35.143
 - **A faint profession arrow (off unless you tick it).** Arrow menu or Flow Settings: "Faint
   profession arrow". With "Optimal with professions", profession stops (training, skill-ups,

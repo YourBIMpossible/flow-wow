@@ -2378,6 +2378,8 @@ ns:Register("test", "faint profession arrow: which stops, and when it shows", fu
     local cfg = ns.db.nav
     local arrow, mode, profs = cfg.profArrow, cfg.mode, cfg.professions
     cfg.profArrow, cfg.mode, cfg.professions = nil, "optimal", true
+    t:ok(not N:ProfPointerOn(), "never ticked: off (0.35.143: on, it took profession stops off the Flow key's route)")
+    cfg.profArrow = true
     t:ok(N:ProfPointerOn(), "on with Optimal with professions")
     cfg.professions = false
     t:ok(not N:ProfPointerOn(), "not with Optimal without professions")
@@ -2441,7 +2443,8 @@ ns:Register("test", "profession arrow: the main arrow's art, narrow and long, cl
     t:ok(math.abs(f.arrow:GetScale() - N.ON_NEEDLE_SCALE) < 0.01 and f.arrow:GetAlpha() < 1,
         "arrow showing: the main arrow is smaller and see-through")
     local _, _, _, _, y = f.text:GetPoint(1)
-    t:ok(y and y <= -clear, "the main text moves down clear of it")
+    local want = -N.NeedleClearance(f)
+    t:ok(y and y <= want + 0.5, string.format("the main text moves down clear of it (text at %s, clear of it below %s)", tostring(y), tostring(want)))
     N.SetOverNeedle(f, false)
     t:ok(math.abs(f.arrow:GetScale() - 1) < 0.01 and math.abs(f.arrow:GetAlpha() - 1) < 0.01,
         "no profession arrow: the main arrow back to full size")
@@ -3189,7 +3192,7 @@ ns:Register("test", "buff items: used when you're about to kill a lot, if not on
     t:eq(BI.HealKind("Minor Mana Potion", 0, 1), nil, "a mana potion doesn't heal")
     t:eq(BI.HealKind("Heavy Linen Bandage", 0, 7), "bandage", "a bandage")
     t:eq(BI.HealKind("Tough Jerky", 0, 5, { "Tough Jerky", "Use: Restores 61 health over 18 sec." }), "food", "plain food heals")
-    t:eq(BI.HealKind("Refreshing Spring Water", 0, 5, { "Use: Restores 151 mana over 18 sec." }), nil, "drink: no")
+    t:eq(BI.HealKind("Refreshing Spring Water", 0, 5, { "Use: Restores 151 mana over 18 sec." }), "drink", "water: a drink (since 0.35.136 the key drinks when you're low on mana)")
     local k, wf = BI.HealKind("Roasted Boar Meat", 0, 5, { "Use: Restores 294 health. ...you will become well fed..." })
     t:eq(k, "food", "Well Fed food that restores health heals too")
     t:eq(wf, true, "...and is marked as Well Fed food")
