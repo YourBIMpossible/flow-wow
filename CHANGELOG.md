@@ -1,6 +1,17 @@
 # Changelog
 
 ## Unreleased
+- **Dungeon runs (needs Questie).** Flow plans one dungeon run at a time: the quests you can do
+  on this trip, at your level, in one wing. Later parts of a chain, quests above you and other
+  wings wait for the next run. Lead-in quests are traced back to the first one you can take now
+  (up to 3; "Include long lead-ins" per dungeon for more), and quests you can't get say why once
+  (class, race, reputation, profession, other faction). The arrow menu's new **Dungeons** section
+  lists the runs at your level with how they compare to your questing XP per hour (measured, or
+  estimated until Flow has 15 minutes of your questing): **Prepare this run** puts the pickups and
+  lead-ins on the route, then the entrance; **Straight to the entrance**; **Share quests** in a
+  group for the run quests party members lack. Inside, the route shows only that dungeon's
+  quests. Flow times your runs and uses your own run time from then on. "Suggest dungeons" turns
+  the suggestion off.
 - **Your weapon stone goes on with one press, and food that makes you Well Fed too.** When
   you're about to kill a lot (at a kill or loot stop, or right after a fight) and your main hand
   has no sharpening stone, weightstone or oil on it, the Flow key (out of combat, not in inns or

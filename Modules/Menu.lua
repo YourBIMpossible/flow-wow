@@ -190,6 +190,12 @@ function Menu:RouteItemsRaw()
               if following then ns.follow:Stop() end
               if ns.waypoint:Get() then ns.waypoint:Clear(); ns:Print("waypoint cleared") end
           end },
+    }) do items[#items + 1] = it end
+    -- Dungeon runs worth doing at your level (Dungeons.lua; needs Questie).
+    if ns.dungeons then
+        for _, it in ipairs(ns.dungeons:MenuItems()) do items[#items + 1] = it end
+    end
+    for _, it in ipairs({
         { sep = true },
         { text = string.format("Unhide all stops (%d)", nHidden), disabled = nHidden == 0,
           func = function() ns.commands.nav("unhide") end },

@@ -89,6 +89,7 @@ Modules\Nav\Party.lua
 Modules\Nav\PartyHelp.lua
 Modules\Nav\Follow.lua
 Modules\Quests\QuestShare.lua
+Modules\Nav\Dungeons.lua
 Modules\Invites.lua
 Modules\AskClaude.lua
 Modules\Bonus.lua

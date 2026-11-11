@@ -252,7 +252,8 @@ ns:Register("navGoal", "pickups", {
         local ceiling = level + ns.quests.HARD_ABOVE - 1
         local goals = {}
         for _, q in ipairs(list) do
-            if (q.level or 0) >= floor and (q.level or 0) <= ceiling and q.starter and q.starter.spawns then
+            if (q.level or 0) >= floor and (q.level or 0) <= ceiling and q.starter and q.starter.spawns
+                and not (ns.dungeons and ns.dungeons:Claims(q.id)) then
                 goals[#goals + 1] = {
                     key = "pickup:" .. q.id, weight = 0.9, level = q.level,
                     npcs = q.starter.name and { q.starter.name } or nil,

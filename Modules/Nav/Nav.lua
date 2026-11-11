@@ -415,6 +415,8 @@ function N:Collect(gathered)
     -- "Just <name>'s" quests (PartyHelp.lua): only theirs, and yours where
     -- they need the same thing.
     if ns.partyHelp then list = ns.partyHelp:FilterGoals(list) end
+    -- Inside a dungeon: only its quests (Dungeons.lua).
+    if ns.dungeons then list = ns.dungeons:FilterInside(list) end
     -- Stops you hid (right-click on the map) stay out of the route; they're
     -- kept in N.hiddenGoals so the map panel can list and unhide them.
     local hidden = ns.db.nav.hidden or {}
