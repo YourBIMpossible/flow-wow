@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- **Profession window: upgrades show their materials.** Flow now reads each recipe's materials on this client
+  (it saved none before, so every upgrade said "open this window again"). Hover an upgrade for what it takes
+  and what you have; click it to show that recipe in the profession window.
 - **Personal copy.** Equip and put-it-on-your-bars suggestions are quiet (/flow gearadvice, /flow baradvice);
   the buff button and the faint profession arrow are on unless you turn them off.
 - **Quests: one talk is enough** to drop a quest its giver doesn't offer you.
