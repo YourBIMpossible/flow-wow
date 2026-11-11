@@ -1467,6 +1467,23 @@ ns:Register("test", "crafting: the window shows the arrow's stop, materials and 
     t:ok(ok, "fold-out click" .. (ok and "" or (": " .. tostring(err))))
 end)
 
+ns:Register("test", "crafting: skill recipes are ranked by material cost per skill point", function(t)
+    local known = {
+        Dear   = { diff = "optimal", reagents = { [1] = 10 } },   -- 100 a point
+        Cheap  = { diff = "medium",  reagents = { [1] = 3 } },    -- 30 / 0.6 = 50 a point
+        Grey   = { diff = "trivial", reagents = { [1] = 1 } },    -- gives no skill
+        NoIdea = { diff = "optimal", reagents = { [2] = 1 } },    -- no price known
+    }
+    local list = ns.skillPlan.CheapSkillUps(known, function(id) return id == 1 and 10 or nil end)
+    t:eq(#list, 3, "the grey one is left out")
+    t:eq(list[1].recipe, "Cheap", "cheapest per skill point first")
+    t:eq(list[2].recipe, "Dear", "then the dearer one")
+    t:eq(list[3].recipe, "NoIdea", "unknown prices go last")
+    local rows = ns.craftHint.CheapRows(list, 2)
+    t:eq(#rows, 2, "only the top ones are shown")
+    t:ok(rows[1].line:find("Cheap", 1, true), "the row names the recipe: " .. rows[1].line)
+end)
+
 ns:Register("test", "crafting: an upgrade's hover lists its materials, read from the newest recipe data", function(t)
     local mats = ns.craftHint.UpgradeMats({ reagents = { [2840] = 6, [2842] = 2 } },
         function(id) return id == 2840 and 4 or 0 end, function(id) return id == 2840 and 5 or 0 end)
