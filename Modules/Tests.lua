@@ -1461,6 +1461,9 @@ ns:Register("test", "crafting: the window shows the arrow's stop, materials and 
     t:eq(now, 1, "make now only what your bags hold")
     local ok, err = pcall(function()
         local p = H.Panel()
+        t:ok(p.goalBox and p.goalBox ~= p, "the goal has its own box, apart from the lists")
+        t:eq(p.btn:GetParent(), p.goalBox, "the Make button sits in the goal box")
+        t:eq(_G.FlowCraftGoal and _G.FlowCraftGoal.btn, p.btn, "the action key finds the Make button")
         local was = H.upgradesOpen
         p.upBtn:Click()
         t:eq(H.upgradesOpen, not was, "clicking opens / closes the fold-out")

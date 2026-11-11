@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- **Profession window: the goal gets its own box.** What Flow wants you to make next (with its materials and
+  the Make button) now sits in a small box to the right of the profession window. The box under the window
+  keeps only the lists: make now from your bags, cheapest to buy, and the upgrades fold-out.
 - **Map: a quieter next-stop marker.** The stop you're heading to on the world map is smaller (12 instead of 16)
   with a thin, faint white ring instead of a bold one.
 - **Profession window: make now from your bags.** A new list above the cheapest one shows the recipes your bags
