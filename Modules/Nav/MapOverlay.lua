@@ -678,6 +678,74 @@ local function drawWaypoint(c, mapID)
     wpPin:Show()
 end
 M._drawWaypoint = drawWaypoint   -- (tests)
+
+-- The profession route (the faint arrow's stops, Nav N.profPlan): a dotted
+-- path from you through its next stops and a pin on the first, in the
+-- profession arrow's colour (smoked glass, ringed light so it shows on the map).
+M.PROF_STOPS = 5
+local profPin
+local function makeProfPin()
+    local p = CreateFrame("Button", nil, UIParent)
+    local CIRCLE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
+    p.ring = p:CreateTexture(nil, "BACKGROUND"); p.ring:SetPoint("TOPLEFT", -2, 2); p.ring:SetPoint("BOTTOMRIGHT", 2, -2)
+    p.ring:SetTexture(CIRCLE)
+    p.hole = p:CreateTexture(nil, "BORDER", nil, 1); p.hole:SetPoint("TOPLEFT", 1, -1); p.hole:SetPoint("BOTTOMRIGHT", -1, 1)
+    p.hole:SetTexture(CIRCLE)
+    p.dot = p:CreateTexture(nil, "BORDER", nil, 2); p.dot:SetPoint("TOPLEFT", 5, -5); p.dot:SetPoint("BOTTOMRIGHT", -5, 5)
+    p.dot:SetTexture(CIRCLE)
+    p.text = p:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    p.text:SetPoint("LEFT", p, "RIGHT", 3, 0)
+    p:SetScript("OnEnter", function(self)
+        ns.Tip(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("Profession: " .. (self.label or "next stop"))
+        GameTooltip:AddLine("Where the faint profession arrow points. The dotted path is your next profession stops.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    p:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    return p
+end
+-- Profession stops worth a line on the map: not "do it where you stand".
+function M.ProfStops(plan, max)
+    local out = {}
+    for _, s in ipairs(plan or {}) do
+        if #out >= (max or M.PROF_STOPS) then break end
+        if s.point and not (s.goal and s.goal.anywhere) then out[#out + 1] = s end
+    end
+    return out
+end
+local function drawProf(c, mapID)
+    local stops = (ns.nav.ProfPointerOn and ns.nav:ProfPointerOn()) and M.ProfStops(ns.nav.profPlan) or {}
+    local col = theme().profPointer
+    local px, py = toMap(ns.nav:PlayerPos(), mapID)
+    local first
+    for i, s in ipairs(stops) do
+        local x, y = toMap(s.point, mapID)
+        if x and px and host then
+            legs[#legs + 1] = { px, py, x, y, color = col, alpha = i == 1 and FIRST_ALPHA or 0.55 }
+            if i == 1 then addLink(links, nil, legs[#legs]) end
+        end
+        if x and not first then first = { x, y, s.goal } end
+        if x then px, py = x, y end
+    end
+    if not first then if profPin then profPin:Hide() end return end
+    profPin = profPin or makeProfPin()
+    profPin:SetParent(c)
+    profPin:SetFrameStrata(aboveMap())
+    profPin:SetFrameLevel(math.min(c:GetFrameLevel() + 1000, 9000) + 140)
+    profPin:SetSize(16, 16)
+    profPin:SetScale(1 / canvasScale())
+    profPin.ring:SetVertexColor(0.86, 0.87, 0.9, 1)
+    profPin.hole:SetVertexColor(col[1], col[2], col[3], 1)
+    profPin.dot:SetVertexColor(0.86, 0.87, 0.9, 1)
+    local g = first[3] or {}
+    profPin.label = g.text or g.title
+    profPin.text:SetText("|cffdcdde6" .. (profPin.label or "Profession") .. "|r")
+    local sc = profPin:GetScale()
+    profPin:ClearAllPoints()
+    profPin:SetPoint("CENTER", c, "TOPLEFT", first[1] * c:GetWidth() / sc, -first[2] * c:GetHeight() / sc)
+    profPin:Show()
+end
+M.ProfPin = function() return profPin end   -- (tests)
 M.WaypointPin = function() return wpPin end
 
 -------------------------------------------------------------------------------
@@ -1588,9 +1656,11 @@ local function fullDraw()
         else
             drawRoute(c, mapID, ns.nav.plan, T.route, true)
         end
+        drawProf(c, mapID)
         drawWaypoint(c, mapID)
-    elseif wpPin then
-        wpPin:Hide()
+    else
+        if wpPin then wpPin:Hide() end
+        if profPin then profPin:Hide() end
     end
     for i = nLines + 1, oldLines do lines[i]:Hide() end
     for i = nPins + 1, oldPins do pins[i]:Hide() end

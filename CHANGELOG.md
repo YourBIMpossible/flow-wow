@@ -1,6 +1,10 @@
 # Changelog
 
 ## Unreleased
+- **Profession marker and path.** The faint profession arrow's stop now has its own pin on the world map and a dot on the
+  minimap, in the arrow's smoked-glass colour with a light ring, plus a dotted path through your next profession stops.
+- **Farm it here, not at the bank.** A profession plan only sends you to the bank when the banker is close or the material
+  can't be had on this map. Wolves around you beat 2 meat from a bank across the zone.
 - **Dungeon runs (needs Questie).** Flow plans one dungeon run at a time: the quests you can do
   on this trip, at your level, in one wing. Later parts of a chain, quests above you and other
   wings wait for the next run. Lead-in quests are traced back to the first one you can take now

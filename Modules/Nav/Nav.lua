@@ -3106,6 +3106,10 @@ local function updateProf(p)
     if not holder then return end
     local choice = N:ProfPointerOn() and chooseProf(p) or nil
     N.profChoice = choice
+    if ns.minimapPin and ns.minimapPin.UpdateProf then
+        local pt = choice and not choice.goal.anywhere and choice.point or nil
+        pcall(ns.minimapPin.UpdateProf, ns.minimapPin, p, pt, choice and choice.goal)
+    end
     if not choice then holder:Hide(); N.SetOverNeedle(frame, false) return end
     local g, pt = choice.goal, choice.point
     local name = g.text or g.title or "Profession stop"

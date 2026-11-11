@@ -684,6 +684,19 @@ ns:Register("test", "cooking: meat you carry is used first, either meat will do"
     t:eq(#SP.Alternatives(g.steps, 99999), 1, "unknown item: just itself")
 end)
 
+ns:Register("test", "profession route: map path skips 'anywhere' stops, capped", function(t)
+    local M = ns.mapOverlay
+    if not (M and M.ProfStops) then t:ok(false, "map overlay loaded") return end
+    local pt = { map = 1, x = 0.5, y = 0.5 }
+    local plan = { { goal = { key = "a", anywhere = true }, point = pt } }
+    for i = 1, 8 do plan[#plan + 1] = { goal = { key = "s" .. i }, point = pt } end
+    local out = M.ProfStops(plan, 5)
+    t:eq(#out, 5, "five stops on the map")
+    t:eq(out[1].goal.key, "s1", "'do it where you stand' left off")
+    t:eq(#M.ProfStops(nil), 0, "no profession route: nothing")
+    t:ok(ns.minimapPin.UpdateProf ~= nil, "minimap has a profession dot")
+end)
+
 ns:Register("test", "bank: far bank stock is skipped for mats you can farm here", function(t)
     local SP = ns.skillPlan
     t:ok(SP.UseBank(100, true), "banker close: use the bank")
