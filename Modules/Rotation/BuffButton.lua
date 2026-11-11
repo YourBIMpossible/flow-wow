@@ -9,9 +9,11 @@
 --   with the fight (BB.OnAction). Before all of those, hurt after a fight:
 --   your bandage or food; after them, by a campfire: place your camp objects
 --   and sit. So Flow's key keeps to the fight, loot and gathering. It always
---   shows the next buff, faded until a fight is near (an enemy targeted, a
---   kill stop, just after a fight), so you can use it when you choose; dim
---   with "no buffs due" when there's none (hover: why).
+--   shows the next buff: the one due, else the one of yours (spell, stone,
+--   Well Fed, elixir) that runs out first, with its time left. All of it,
+--   bandage and campfire included, stays faded until a fight is near (an
+--   enemy targeted, a kill stop, just after a fight), so you use it when you
+--   choose; "no buffs due" only when you have no buffs at all (hover: why).
 --   In a fight: WoW won't let addons change what a button casts, so it holds
 --   the buff spell due at the pull, else the one you last cast from it (press
 --   it again when that buff runs out). Bright = needed now, dim = still on.
@@ -87,19 +89,44 @@ end
 -- then a buff spell. Before them, hurt after a fight: your bandage or food.
 -- After them, by a campfire: place your camp objects, sit for the camp buffs.
 -- An item that's only a preview (soon: no fight near yet) goes last.
+-- Not Well Fed and carrying the food for it: that food beats the bandage. One
+-- meal heals you and buffs you; bandaging first would waste the bandage.
 function BB.Pick(spellBuff, itemBuff, recover, camp)
+    if itemBuff and itemBuff.wellFed and recover then return itemBuff end
     if itemBuff and itemBuff.soon then return recover or spellBuff or camp or itemBuff end
     return recover or itemBuff or spellBuff or camp
 end
 
 -- Bright (do it now) or faded (the next buff, use it when you choose).
--- Hurt after a fight (your bandage or food) and the campfire steps are always
--- bright; a buff only when a fight is near (about to kill a lot, or an enemy
--- targeted). The faded one still works when pressed.
-function BB.Bright(s, recover, camp, fightNear)
-    if not s or s.idle then return false end
-    if s == recover or s == camp then return true end
-    return fightNear == true
+-- Everything is faded until a fight is near (about to kill a lot, just after
+-- a fight, or an enemy targeted): the bandage, the food and the campfire
+-- too. A buff that's still on (later) lights up then only if it runs out
+-- within RUNNING_OUT seconds. The faded one still works when pressed.
+local RUNNING_OUT = 120
+function BB.Bright(s, fightNear)
+    if not s or s.idle or fightNear ~= true then return false end
+    if s.later then return (s.left or math.huge) < RUNNING_OUT end
+    return true
+end
+
+-- Nothing due: the buff that runs out first. cands = { { step, left } },
+-- left in seconds (math.huge: never runs out, only when nothing else does).
+-- The step comes back marked later, with its time left.
+function BB.Soonest(cands)
+    local best
+    for _, c in ipairs(cands or {}) do
+        if c.step and c.left and (not best or c.left < best.left) then best = c end
+    end
+    if not best then return nil end
+    best.step.later, best.step.left = true, best.left
+    return best.step
+end
+
+-- "12m", "40s", or "on" (never runs out).
+function BB.Left(sec)
+    if not sec or sec == math.huge then return "on" end
+    if sec >= 60 then return math.floor(sec / 60 + 0.5) .. "m" end
+    return math.max(0, math.floor(sec)) .. "s"
 end
 
 -- What the button holds for a fight: the live buff spell, else the buff spell
@@ -120,9 +147,10 @@ end
 
 local liveBuff, liveAt = nil, 0   -- the rotation's buff suggestion, and when it was worked out
 local liveRecover                 -- hurt after a fight: the bandage or food to use (same moment)
+local liveNext                    -- your buffs still on, with their time left (same moment)
 
+-- In towns and inns too: the button only shows it (faded), you choose.
 local function ready(rule, ctx)
-    if not ctx.inCombat and E.Resting and E.Resting() then return false end
     if not E:Knows(rule.spell) then return false end
     if rule.when then
         local ok, w = pcall(rule.when, ctx)
@@ -142,6 +170,22 @@ local function pickBuff(def, ctx)
         local ok, g = pcall(E.GroupBuff, E, ctx, def)
         if ok and g then return g end
     end
+end
+
+-- Your buff spells that are on you now, each with its time left.
+local function onSpells(def, ctx)
+    local list = (def.priorities and def.priorities[ctx.fightType]) or def.priority or {}
+    local out = {}
+    for _, rule in ipairs(list) do
+        if rule.kind == "buff" and not BB.OnAction(rule) and E:Knows(rule.spell) then
+            local on, left = A.Buff("player", rule.spell)
+            if on then
+                out[#out + 1] = { left = left, step = { spell = rule.spell, kind = "buff", unit = "player",
+                    reason = "Still on you. Recast it whenever you like, before it runs out." } }
+            end
+        end
+    end
+    return out
 end
 
 local function noGroupBuff() return nil end
@@ -164,6 +208,8 @@ function E:Choose()
         liveBuff, liveAt = okB and b or nil, GetTime()
         local okR, rec = pcall(self.Recover, self, ctx, def, "items")
         liveRecover = okR and rec or nil
+        local okN, on = pcall(onSpells, def, ctx)
+        liveNext = okN and on or nil
     end
     return s
 end
@@ -224,6 +270,22 @@ local function pickItem(ctx)
     local ok, s = pcall(BI.ItemStep, ctx, true)
     itemCache = ok and s or nil
     return itemCache
+end
+
+-- Nothing due: your buff spells and buff items still on, the one running
+-- out first (read with the bags, at most once a second).
+local upAt, upCache = -10, nil
+local function pickUpcoming(spells)
+    local now = GetTime()
+    if now - upAt >= 1 then
+        upAt = now
+        local ok, items = pcall(BI and BI.UpcomingItems or function() return {} end)
+        upCache = ok and items or {}
+    end
+    local cands = {}
+    for _, c in ipairs(spells or {}) do cands[#cands + 1] = c end
+    for _, c in ipairs(upCache or {}) do cands[#cands + 1] = { step = c.step, left = c.left } end
+    return BB.Soonest(cands)
 end
 
 local function fightNear(ctx)
@@ -298,6 +360,7 @@ local function paint(s, bright)
     local name = s and ((s.type == "sit" and "Sit by the fire") or (s.type == "wait" and "Stay sitting")
         or s.spell or (id and A.ItemInfo and A.ItemInfo(id)) or s.label) or ""
     if s and s.target then name = name .. " on " .. s.target end
+    if s and s.later then name = name .. " (" .. BB.Left(s.left) .. ")" end
     label:SetText(name)
     keyText:SetText(keyLabel())
 end
@@ -310,8 +373,11 @@ local function fillTooltip(tt)
     elseif item and tt.SetItemByID then tt:SetItemByID(item) end
     if id or item then tt:AddLine(" ") end
     tt:AddLine("Flow buff button", 1, 0.82, 0)
+    if s and s.later then
+        tt:AddLine("Next buff to run out: " .. BB.Left(s.left) .. " left.", 0.5, 0.8, 1, true)
+    end
     if s and s.faded then
-        tt:AddLine("Next buff. Faded: no fight near yet. It lights up when you're about to fight "
+        tt:AddLine("Faded: no fight near yet. It lights up when you're about to fight "
             .. "(an enemy targeted, a kill stop, or just after a fight). Press it whenever you like.", 0.5, 0.8, 1, true)
     end
     if s and s.reason then tt:AddLine("Why: " .. s.reason, 1, 1, 1, true) end
@@ -406,8 +472,9 @@ local function tick(_, dt)
     local ctx = actionCtx()
     local recover, camp = GetTime() - liveAt < 1 and liveRecover or nil, pickCamp(ctx)
     local s = BB.Pick(live, pickItem(ctx), recover, camp)
+        or pickUpcoming(GetTime() - liveAt < 1 and liveNext or nil)
     current = s or BB.Idle()
-    current.faded = s ~= nil and not BB.Bright(s, recover, camp, fightNear(ctx)) or nil
+    current.faded = s ~= nil and not BB.Bright(s, fightNear(ctx)) or nil
     setAction(s)
     paint(current, s ~= nil and not current.faded)
     if not btn:IsShown() then btn:Show() end
@@ -436,11 +503,11 @@ ns:On("PLAYER_REGEN_DISABLED", function()
     end
 end)
 
-ns:On("BAG_UPDATE_DELAYED", function() itemAt = -10 end)
+ns:On("BAG_UPDATE_DELAYED", function() itemAt, upAt = -10, -10 end)
 
 ns:On("UNIT_SPELLCAST_SUCCEEDED", function(unit, _, spellID)
     if unit ~= "player" then return end
-    itemAt = -10   -- a stone, oil or food just used: look at the bags again now
+    itemAt, upAt = -10, -10   -- a stone, oil or food just used: look at the bags again now
     local name = A.SpellInfo(A.Safe(spellID) or 0)
     if name and buffSpells[name] then lastCast = name end
     -- A group buff cast from here: remember it, as Engine.lua does for the
@@ -470,7 +537,8 @@ if ns.settings and ns.settings.AddCheck then
             .. "food after a fight, and the campfire steps (place, sit) go on a "
             .. "separate blue button left of Flow's icon, so Flow's key only does your fight: damage, heals, "
             .. "cleanses, plus seals, shouts, shields and Hunter's Mark. Out of combat it's always there and "
-            .. "shows your next buff, faded until a fight is near (an enemy targeted, a kill stop, just after "
+            .. "shows your next buff (the one due, else the one running out first, with its time left), all of "
+            .. "it faded until a fight is near (an enemy targeted, a kill stop, just after "
             .. "a fight), so you can use it when you choose (hover it for why). Give it its own key with /flow buffkey Q. In a fight "
             .. "it keeps the buff you last cast from it and lights up when that buff runs out. Off: all of it "
             .. "goes back on Flow's icon and key.",

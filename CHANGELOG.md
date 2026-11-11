@@ -1,6 +1,18 @@
 # Changelog
 
 ## Unreleased
+- **Professions: training goes on the route, and plans stop at your cap.** The next tier (Journeyman, Expert,
+  Artisan) is now a route stop from 25 points below your cap, as soon as your level allows, for every
+  profession you have. Cooking, First Aid and Fishing get their Expert book (buy it, then read it) and their
+  Artisan quest instead of a trainer. The skill plan no longer plans past your cap: Cooking 62 of 75 plans to
+  75, then "Train Journeyman Cooking", instead of buying 45 apples for points you can't get yet. Vendors of the
+  other faction are no longer picked for a "Buy" stop.
+- **Quests: more checks before planning a pickup.** Flow now leaves out quests over their highest level, parts
+  of a quest you aren't on, breadcrumbs for a quest you're already on or past, quests Questie marks as never
+  offered, and quests that need a reputation, profession skill or spell you don't have. Lead-in quests count
+  as done as soon as the game says so, even before Flow's list has them.
+- **Buff button: Well Fed food before a bandage.** Hurt after a fight and not Well Fed with the food for it in
+  your bags: the button shows the food first, since one meal heals you and buffs you.
 - **Professions: follow the levelling guides' path.** The skill plan now makes what the public levelling guides
   make at each skill, instead of grinding one recipe on until it turns grey (Cooking 62 no longer says 105
   Charred Wolf Meat). Cooking has a Horde path (Kodo, Strider Stew, Lizard Tail) and an Alliance path (Bear

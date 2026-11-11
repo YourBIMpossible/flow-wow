@@ -287,19 +287,29 @@ ns:Register("navGoal", "errands", {
         -- "Include professions" (map panel, /flow nav professions on|off).
         local includeProfs = ns.db.nav.professions ~= false
 
+        local out = {}
+        -- The next tier of a profession you have: on the route from 25 below
+        -- the cap (when the trainer, book or quest can teach it), not only
+        -- once you're stuck. SkillPlan builds the stop; it skips the
+        -- professions planned here so there's one "train:" stop each.
+        local SP = ns.skillPlan
+        local level = UnitLevel("player")
         for _, p in ipairs(includeProfs and ns:ProfessionPlan() or {}) do
-            local rank, max = A.Skill(p.name)
-            local why
-            if not rank then why = "Learn " .. p.name
-            elseif max > 0 and rank >= max and max < 300 then why = "Train the next " .. p.name .. " tier" end
-            if why then
+            local rank = A.Skill(p.name)
+            if not rank then
                 for _, npc in ipairs(ns.places:TrainersFor(p.name)) do wanted[#wanted + 1] = npc end
-                goals[#goals + 1] = { profession = p.name, optional = p.optional, why = why }
+                goals[#goals + 1] = { profession = p.name, optional = p.optional, why = "Learn " .. p.name }
+            elseif SP and SP.TierGoal then
+                local ok, tg = pcall(SP.TierGoal, p.name, level, p.optional)
+                if ok and tg and tg.points and #tg.points > 0 then
+                    tg.details = tg.details or {}
+                    if p.optional then tg.details[#tg.details + 1] = "Optional, so the arrow only picks it when you're close by." end
+                    out[#out + 1] = tg
+                end
             end
         end
         if ns.quests.NPCsByName then ns.quests:NPCsByName(wanted) end  -- start lookup once
 
-        local out = {}
         for _, g in ipairs(goals) do
             local points = {}
             local names = ns.places:TrainersFor(g.profession)
@@ -320,7 +330,6 @@ ns:Register("navGoal", "errands", {
         -- Skill-ups: gathering/fishing for planned professions that are behind
         -- your level. Optional stops, so the planner only routes you there
         -- when it's on the way (or nothing else is left).
-        local level = UnitLevel("player")
         local here = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
         local db = ns.quests.QuestieDB and ns.quests.QuestieDB()
         local toolAdded = {}

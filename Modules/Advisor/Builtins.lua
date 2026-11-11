@@ -258,9 +258,12 @@ ns:Register("advisor", "professions", {
         local skills, collapsed = professionSkills()
         for _, p in ipairs(skills) do
             if p.primary then primaries = primaries + 1 end
-            if p.max > 0 and p.rank >= p.max and p.max < 300 then
-                out[#out + 1] = { importance = 60,
-                    text = string.format("%s is capped at %d (max %d): train the next tier", p.name, p.rank, p.max),
+            local tier = ns.skillPlan and ns.skillPlan.Tier and ns.skillPlan.Tier(p.name, p.rank, p.max, level)
+            if tier and tier.ready then
+                out[#out + 1] = { importance = p.rank >= p.max and 60 or 45,
+                    text = p.rank >= p.max
+                        and string.format("%s is capped at %d: learn %s %s", p.name, p.max, tier.name, p.name)
+                        or string.format("%s %d of %d: you can learn %s %s now", p.name, p.rank, p.max, tier.name, p.name),
                     improves = { "Professions" }, goalKey = "train:" .. p.name }
             elseif p.rank + 15 < (ns.skillPlan and ns.skillPlan.Pace(p.name, level) or target) then
                 out[#out + 1] = { importance = 30,

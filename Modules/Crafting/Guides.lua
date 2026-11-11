@@ -98,6 +98,10 @@ ns:Register("itemSource", 4536, { name = "Shiny Red Apple", vendor = true, price
 ns:Register("itemSource", 2665, { name = "Stormwind Seasoning Herbs", vendor = true, price = 20 })
 ns:Register("itemSource", 2605, { name = "Green Dye", vendor = true, price = 100 })
 -- Recipes and manuals.
+-- Expert (150 -> 225) for these three comes from a book, not a trainer (1g each).
+ns:Register("itemSource", 16072, { name = "Expert Cookbook", vendor = true, price = 10000 })
+ns:Register("itemSource", 16084, { name = "Expert First Aid - Under Wraps", vendor = true, price = 10000 })
+ns:Register("itemSource", 16083, { name = "Expert Fishing - The Bass and You", vendor = true, price = 10000 })
 ns:Register("itemSource", 6325, { name = "Recipe: Brilliant Smallfish", vendor = true, price = 40 })
 ns:Register("itemSource", 6328, { name = "Recipe: Longjaw Mud Snapper", vendor = true, price = 400 })
 ns:Register("itemSource", 6330, { name = "Recipe: Bristle Whisker Catfish", vendor = true, price = 1200 })

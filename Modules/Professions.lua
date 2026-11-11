@@ -202,7 +202,8 @@ function P.NextSteps(plan, skill, level)
         local step
         if not rank then
             step = { name = p.name, kind = "learn", text = "Learn " .. p.name }
-        elseif max and max > 0 and rank >= max and max < 300 and (level or 0) >= (TIER_LEVEL[max] or 0) then
+        elseif max and max > 0 and max < 300 and rank >= max - 25 and (level or 0) >= (TIER_LEVEL[max] or 0) then
+            -- The trainer teaches the next tier from 25 below the cap.
             step = { name = p.name, kind = "train", text = string.format("Train the next %s tier (%d/%d)", p.name, rank, max) }
         end
         if step then

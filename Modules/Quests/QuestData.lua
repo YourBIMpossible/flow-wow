@@ -486,9 +486,33 @@ end)
 -- short-lived, so nothing is kept from before.
 ns:PerCharacter("quests.notOffered")
 
+-- Quests Questie knows are never offered (removed, broken, other clients).
+local function hiddenByQuestie(id)
+    if not (id and QuestieLoader and QuestieLoader.ImportModule) then return false end
+    local ok, corr = pcall(QuestieLoader.ImportModule, QuestieLoader, "QuestieCorrections")
+    local hidden = ok and type(corr) == "table" and corr.hiddenQuests
+    return type(hidden) == "table" and hidden[id] ~= nil or false
+end
+
+-- Done before: the list read at login, or the game's own flag (the list can
+-- be empty a while after login, and a fresh turn-in isn't in it yet).
+local function done(id)
+    if completed[id] then return true end
+    return C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted and C_QuestLog.IsQuestFlaggedCompleted(id) == true or false
+end
+
+-- Flow's own check, so it holds even where Questie's IsDoable errors:
+-- level (and the highest level that still gets it), race, class, the quests
+-- that must come first, a part that needs its parent quest on, breadcrumbs,
+-- an NPC that didn't offer it, exclusive quests, and reputation, skill,
+-- spell and faction (Dungeons.lua's D.Eligible).
 function Q:Available(q, levelSlack)
     local level = UnitLevel("player")
     if (q.requiredLevel or 0) > level + (levelSlack or 0) then return false end
+    local maxLevel = tonumber(q.requiredMaxLevel)
+    if maxLevel and maxLevel > 0 and level > maxLevel then return false end
+    local id = q.Id or q.id
+    if hiddenByQuestie(id) then return false end
     if band then
         local _, _, raceID = UnitRace("player")
         local _, _, classID = UnitClass("player")
@@ -498,17 +522,33 @@ function Q:Available(q, levelSlack)
             and band(q.requiredClasses, 2 ^ (classID - 1)) == 0 then return false end
     end
     for _, pre in ipairs(q.preQuestGroup or {}) do
-        if not completed[pre] then return false end
+        if not done(pre) then return false end
     end
     local single = q.preQuestSingle or {}
     if #single > 0 then
         local any = false
-        for _, pre in ipairs(single) do if completed[pre] then any = true break end end
+        for _, pre in ipairs(single) do if done(pre) then any = true break end end
         if not any then return false end
     end
-    if not Q:Offered(q.Id or q.id, q) then return false end  -- events, NPCs that don't offer it
+    -- A part of a bigger quest: only while that quest is in your log.
+    local parent = tonumber(q.parentQuest)
+    if parent and parent > 0 and not inLog[parent] then return false end
+    -- A breadcrumb (it only points you at another quest): not once you're on
+    -- or past that quest.
+    local crumbFor = tonumber(q.breadcrumbForQuestId)
+    if crumbFor and crumbFor > 0 and (done(crumbFor) or inLog[crumbFor]) then return false end
+    -- The quest a breadcrumb points at: not while the breadcrumb is in your log.
+    for _, crumb in ipairs(type(q.breadcrumbs) == "table" and q.breadcrumbs or {}) do
+        if inLog[crumb] then return false end
+    end
+    if not Q:Offered(id, q) then return false end  -- events, NPCs that don't offer it
     for _, ex in ipairs(q.exclusiveTo or {}) do
-        if completed[ex] or inLog[ex] then return false end
+        if done(ex) or inLog[ex] then return false end
+    end
+    local D = ns.dungeons
+    if D and D.Eligible then
+        local ok, fits = pcall(D.Eligible, q)
+        if ok and fits == false then return false end
     end
     return true
 end

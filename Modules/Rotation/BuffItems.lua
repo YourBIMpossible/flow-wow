@@ -209,7 +209,7 @@ end
 -- soon = true. Without preview, nothing until you're about to fight, so the
 -- bags aren't read ten times a second for nothing.
 function BI.ItemStep(ctx, preview)
-    if UnitIsDeadOrGhost("player") or (IsResting and IsResting()) then return nil end
+    if UnitIsDeadOrGhost("player") or (not preview and IsResting and IsResting()) then return nil end
     if ctx and ctx.fishing then return nil end
     local killing = BI.Killing(ctx)
     if not killing and not preview then return nil end
@@ -222,7 +222,7 @@ function BI.ItemStep(ctx, preview)
     local weapon, food = it.sub == ENHANCE_SUB, it.sub == FOOD_SUB
     local why = killing and "You're killing here" or "Next time you fight"
     return { type = "item", item = "item:" .. it.id, icon = icon,
-             targetSlot = weapon and 16 or nil, soon = not killing or nil,
+             targetSlot = weapon and 16 or nil, soon = not killing or nil, wellFed = food or nil,
              urgent = BI.WeaponFirst(enemyTargeted(), UnitHealth("player"), UnitHealthMax("player"),
                  ns.rotation and (ns.rotation.hurt or 0) >= ns.rotation.HURT.outStart),
              label = (weapon and "Put on your weapon: " or food and "Eat: " or "Use: ") .. (it.name or "buff item"),
@@ -232,6 +232,43 @@ function BI.ItemStep(ctx, preview)
 end
 
 ns:Register("action", "buff:item", { order = 2.5, get = function(ctx) return BI.ItemStep(ctx, false) end })
+
+-- The buff items you carry whose buff is on now, each with its time left:
+-- { { step, left } }. A stone or oil: the time left on your weapon; food:
+-- Well Fed; an elixir, scroll or flask: its buff. The buff button shows the
+-- one running out first when nothing is due.
+function BI.UpcomingItems()
+    if UnitIsDeadOrGhost("player") then return {} end
+    local out = {}
+    local has, mhExp
+    if GetWeaponEnchantInfo then has, mhExp = GetWeaponEnchantInfo() end
+    has, mhExp = A.Safe(has), A.Safe(mhExp)
+    local sub = mainHand()
+    for _, it in ipairs(carried()) do
+        local left, weapon, food
+        if it.sub == ENHANCE_SUB then
+            weapon = true
+            if has and mhExp and BI.FitsWeapon(it.name, sub) then left = mhExp / 1000 end
+        elseif it.sub == FOOD_SUB then
+            food = true
+            local on, l = A.Buff("player", WELL_FED)
+            if on then left = l end
+        elseif it.spell then
+            local on, l = A.Buff("player", it.spell)
+            if on then left = l end
+        end
+        if left then
+            local icon = (C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(it.id)) or (GetItemIcon and GetItemIcon(it.id))
+            out[#out + 1] = { left = left, step = { type = "item", item = "item:" .. it.id, icon = icon,
+                targetSlot = weapon and 16 or nil,
+                label = (weapon and "Put on your weapon: " or food and "Eat: " or "Use: ") .. (it.name or "buff item"),
+                reason = weapon and "Your weapon's stone or oil is still on: renew it when you choose"
+                    or food and "Still Well Fed: eat again when you choose"
+                    or "That buff is still on: renew it when you choose" } }
+        end
+    end
+    return out
+end
 
 -------------------------------------------------------------------------------
 -- Bag helpers (camp objects and healing items)
