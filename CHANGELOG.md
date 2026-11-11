@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- **Dungeon key: a gold key atop your quest list.** A run worth doing shows as its own gold key above the
+  top-left corner of your quest list (Questie's, else the Flow Tracker), not as an icon above the Flow key.
+  Hover it for why, click it to prepare the run.
 - **Professions: a switch of their own.** The route list is Quests only, Optimal, Completionist, with one
   "Professions" tick under them instead of two "Optimal with / without professions" routes.
 - **Bandages, food and the campfire are on the buff button.** Hurt after a fight, the blue buff button offers your

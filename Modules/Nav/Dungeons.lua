@@ -1222,15 +1222,17 @@ function D:MenuItems()
 end
 
 -------------------------------------------------------------------------------
--- Status icon above the Flow key (rendered where the status registry is)
+-- The key badge: a run worth doing (or the one you prepared). It belongs with
+-- the route, so it sits atop the quest list: above the top-left corner of
+-- Questie's tracker, else of the Flow Tracker, else (neither showing) well
+-- clear of the arrow. Its own key-shaped picture (tools/make-key-art.py).
 -------------------------------------------------------------------------------
 
 local statusCache, statusAt, statusKey = nil, 0, nil
-ns:Register("status", "dungeon", {
-    order = 40,
-    get = function()
+do
+    local function status()
         -- (Worked out at most every 2 s, and again at once when you prepare
-        -- or cancel a run, so the icon and its click never lag behind.)
+        -- or cancel a run, so the badge and its click never lag behind.)
         local key = D:Prepared()
         if GetTime() - statusAt < 2 and key == statusKey then return statusCache end
         statusAt, statusKey = GetTime(), key
@@ -1242,7 +1244,7 @@ ns:Register("status", "dungeon", {
         local prepared = key == run.key
         local T = ns.theme
         statusCache = {
-            icon = "Interface\\Icons\\INV_Misc_Key_04",
+            icon = "Interface\\AddOns\\Flow\\Modules\\Nav\\Art\\DungeonKey",
             text = ratioText(run),
             color = solo and T.muted or T.good,
             tip = table.concat(D.Summary(run, solo), "\n"),
@@ -1250,8 +1252,67 @@ ns:Register("status", "dungeon", {
             clickText = prepared and "Cancel this run" or "Prepare this run",
         }
         return statusCache
-    end,
-})
+    end
+    D.KeyStatus = status
+
+    local badge
+    -- Where it hangs: the top of whichever quest list is showing.
+    local function shown(f) return f and f:IsShown() and f:GetLeft() and f end
+    local function place(b)
+        local list = shown(_G.Questie_BaseFrame) or shown(_G.FlowTracker)
+        local arrow = not list and shown(_G.FlowNavArrow)
+        if not (list or arrow) then return false end
+        b:ClearAllPoints()
+        if list then b:SetPoint("BOTTOMLEFT", list, "TOPLEFT", 0, 2)
+        else b:SetPoint("RIGHT", arrow, "LEFT", -40, 0) end
+        return true
+    end
+    local function build()
+        local b = CreateFrame("Button", "FlowDungeonBadge", UIParent)
+        b:SetSize(26, 26)
+        b:SetFrameStrata("MEDIUM")
+        b.tex = b:CreateTexture(nil, "ARTWORK")
+        b.tex:SetAllPoints()
+        b.text = b:CreateFontString(nil, "OVERLAY")
+        b.text:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
+        b.text:SetPoint("LEFT", b, "RIGHT", 2, 0)
+        b:SetScript("OnEnter", function(self)
+            local st = self.status
+            if not st then return end
+            ns.Tip(self, "ANCHOR_TOP")
+            GameTooltip:AddLine(st.tip or "", 1, 1, 1, true)
+            GameTooltip:AddLine("Click: " .. st.clickText, 0.6, 0.6, 0.6)
+            GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        b:SetScript("OnClick", function(self)
+            local st = self.status
+            if st then pcall(st.click); statusAt = 0 end
+        end)
+        return b
+    end
+
+    local elapsed = 1
+    local driver = CreateFrame("Frame")
+    driver:SetScript("OnUpdate", function(_, dt)
+        elapsed = elapsed + dt
+        if elapsed < 1 then return end
+        elapsed = 0
+        local ok, st = pcall(status)
+        if not (ok and st) then
+            if badge then badge.status = nil; badge:Hide() end
+            return
+        end
+        badge = badge or build()
+        if not place(badge) then badge:Hide() return end
+        local c = st.color
+        badge.status = st
+        badge.tex:SetTexture(st.icon)
+        badge.text:SetText(st.text or "")
+        badge.text:SetTextColor(c[1], c[2], c[3])
+        badge:Show()
+    end)
+end
 
 -------------------------------------------------------------------------------
 -- Events: XP rate, run times, staying current
