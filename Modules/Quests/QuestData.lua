@@ -328,10 +328,12 @@ local band = bit and bit.band
 --   * Questie's event calendar: event / holiday quests (Hallow's End...)
 --     only while Questie says the event is on. Quests sorted under a holiday
 --     with no calendar entry are treated as off.
---   * what NPCs actually offer: when a quest giver shows you their list of
---     quests and one Flow expected isn't on it, on two separate visits, it's
---     skipped for a day (ns.db.quests.notOffered). Covers events Questie
---     doesn't know about. (It used to judge from any one conversation, even
+--   * what NPCs actually offer: when a quest giver shows you their quests
+--     and one Flow expected isn't among them, it's skipped for ten minutes;
+--     missing again on a later visit, for a day (ns.db.quests.notOffered).
+--     Covers events Questie doesn't know about, and quests in Questie's data
+--     with no prerequisites listed (Forever's own quests: "Arugal's Folly"
+--     98298 was an Accept stop at an NPC who never offered it). (It used to judge from any one conversation, even
 --     one with no quest list or while you were accepting, and hid quests the
 --     NPC did offer, for a week: 7 at once from one talk.)
 local HOLIDAY_SORTS = { [-22] = true, [-284] = true, [-364] = true, [-366] = true, [-369] = true,
@@ -339,6 +341,8 @@ local HOLIDAY_SORTS = { [-22] = true, [-284] = true, [-364] = true, [-366] = tru
     [-1003] = true, [-1004] = true, [-1005] = true, [-1006] = true, [-1007] = true, [-1008] = true }
 local NOT_OFFERED_HIDE = 86400   -- seconds a quest stays skipped once confirmed
 local NOT_OFFERED_GAP = 60       -- the two visits must be at least this far apart
+local NOT_OFFERED_PAUSE = 600    -- seconds a quest stays skipped after one visit without it
+local DIRECT_AFTER_LIST = 30     -- a quest window this soon after the NPC's list came from that list
 local QUIET_AFTER = 5            -- seconds after you accept / turn in: the list is changing
 
 local eventSet, eventActive
@@ -362,20 +366,28 @@ function Q:Offered(id, q)
     if set and set[id] and not active[id] then return false end
     if q and HOLIDAY_SORTS[q.zoneOrSort or 0] and not (active and active[id]) then return false end
     local no = ns.db.quests and ns.db.quests.notOffered and ns.db.quests.notOffered[id]
-    if type(no) == "table" and no.hiddenAt and time() - no.hiddenAt < NOT_OFFERED_HIDE then return false end
+    if type(no) == "table" then
+        local now = time()
+        if no.hiddenAt and now - no.hiddenAt < NOT_OFFERED_HIDE then return false end
+        if no.firstAt and now - no.firstAt < NOT_OFFERED_PAUSE then return false end
+    end
     return true
 end
 
 -- At a quest giver: note which quests Flow expected but the NPC didn't offer.
--- Only judged from a real list of quests on offer, never in the seconds after
--- you accept or turn one in, and a quest is skipped only after two visits.
+-- Only judged from the NPC's quests on screen, never in the seconds after you
+-- accept or turn one in. One visit skips a quest briefly, a second for a day.
 local lastQuestChange = 0
 ns:On("QUEST_ACCEPTED", function() lastQuestChange = GetTime() end)
 ns:On("QUEST_TURNED_IN", function() lastQuestChange = GetTime() end)
 
 -- What this NPC is offering right now: { [id or name] = true }, or nil when
--- the window shows no list of quests (then nothing can be concluded).
-function Q.OfferedNow(event)
+-- the window shows none of their quests (then nothing can be concluded).
+-- A list with only quests to hand in counts (nothing new on offer), and so
+-- does a quest window the NPC opened straight away (`direct`: they have that
+-- one quest and no list): the NPC who gives nothing new never showed a list
+-- of quests on offer, so Flow kept sending you back to them.
+function Q.OfferedNow(event, direct)
     local offered, any = {}, false
     if event == "GOSSIP_SHOW" and C_GossipInfo and C_GossipInfo.GetAvailableQuests then
         for _, info in ipairs(C_GossipInfo.GetAvailableQuests() or {}) do
@@ -383,52 +395,81 @@ function Q.OfferedNow(event)
             if info.title then offered[info.title] = true end
             any = true
         end
+        if C_GossipInfo.GetActiveQuests and #(C_GossipInfo.GetActiveQuests() or {}) > 0 then any = true end
     elseif event == "QUEST_GREETING" and GetNumAvailableQuests and GetAvailableTitle then
         for i = 1, GetNumAvailableQuests() do
             local title = GetAvailableTitle(i)
             if title then offered[title] = true; any = true end
         end
+        if GetNumActiveQuests and (GetNumActiveQuests() or 0) > 0 then any = true end
+    elseif direct and event == "QUEST_DETAIL" then
+        local id = GetQuestID and GetQuestID()
+        local title = GetTitleText and GetTitleText()
+        if id and id ~= 0 then offered[id] = true; any = true end
+        if title and title ~= "" then offered[title] = true; any = true end
+    elseif direct and (event == "QUEST_PROGRESS" or event == "QUEST_COMPLETE") then
+        any = true   -- handing one in, nothing new
     end
     return any and offered or nil
 end
 
 -- One visit's verdict for quest `id` (seen on offer or not) at time `now`.
--- Returns true when it's now skipped. Pure enough to test.
+-- Returns "pause" (first miss: skipped for ten minutes), "day" (missed again
+-- on a later visit: skipped for a day), or nil (nothing new). Pure enough to
+-- test. (A day's skip that had run out was never renewed: the quest came back
+-- for good.)
 function Q.NoteOffer(id, onOffer, now)
     ns.db.quests.notOffered = ns.db.quests.notOffered or {}
     local list = ns.db.quests.notOffered
-    if onOffer then list[id] = nil return false end
+    if onOffer then list[id] = nil return nil end
     local e = type(list[id]) == "table" and list[id] or nil
-    if not e then list[id] = { firstAt = now } return false end
-    if e.hiddenAt then return true end
-    if now - e.firstAt >= NOT_OFFERED_GAP then e.hiddenAt = now return true end
-    return false
+    if not e then list[id] = { firstAt = now } return "pause" end
+    if e.hiddenAt and now - e.hiddenAt < NOT_OFFERED_HIDE then return nil end
+    if now - (e.firstAt or 0) >= NOT_OFFERED_GAP then e.hiddenAt = now return "day" end
+    return nil
+end
+
+-- A quest window with no list before it: the NPC has that one quest. Not when
+-- their list was just up (you picked from it), and not after a hand-in window
+-- (the next part of a chain opens by itself, whatever else they have).
+local listAt, handInAt = {}, -DIRECT_AFTER_LIST
+function Q.IsDirect(event, guid, now)
+    if event == "GOSSIP_SHOW" or event == "QUEST_GREETING" then return false end
+    if listAt[guid] and now - listAt[guid] < DIRECT_AFTER_LIST then return false end
+    if event == "QUEST_DETAIL" and now - handInAt < DIRECT_AFTER_LIST then return false end
+    return true
 end
 
 local function checkOffers(event)
-    if GetTime() - lastQuestChange < QUIET_AFTER then return end
     local guid = ns.api.Safe(UnitGUID("npc"))
     local npcId = guid and tonumber(guid:match("^%a+%-%d+%-%d+%-%d+%-%d+%-(%d+)"))
     if not npcId then return end
+    local clock = GetTime()
+    local direct = Q.IsDirect(event, guid, clock)
+    if event == "GOSSIP_SHOW" or event == "QUEST_GREETING" then listAt[guid] = clock end
+    if event == "QUEST_COMPLETE" then handInAt = clock end
+    if clock - lastQuestChange < QUIET_AFTER then return end
     local npc = Q:QuestieGet("GetNPC", npcId)
     if not npc or not npc.questStarts then return end
-    local offered = Q.OfferedNow(event)
-    if not offered then return end   -- no list on screen: nothing to conclude
+    local offered = Q.OfferedNow(event, direct)
+    if not offered then return end   -- none of their quests on screen: nothing to conclude
     local now, changed = time(), false
     for _, id in ipairs(npc.questStarts) do
         local qd = Q:QuestieGet("GetQuest", id)
         if qd and not completed[id] and not inLog[id] then
             local name = qd.name
             local on = offered[id] or (name and offered[name]) or false
-            if Q.NoteOffer(id, on, now) and not on then
+            local verdict = Q.NoteOffer(id, on, now)
+            if verdict then
                 changed = true
-                ns:Log("quests", "not offered twice by " .. tostring(npc.name) .. ": " .. tostring(name) .. " (" .. id .. "), skipped for a day")
+                ns:Log("quests", "not offered by " .. tostring(npc.name) .. ": " .. tostring(name) .. " (" .. id .. "), skipped for "
+                    .. (verdict == "day" and "a day" or "ten minutes"))
             end
         end
     end
     if changed and ns.nav and ns.nav.RequestCollect then ns.nav.RequestCollect() end
 end
-for _, ev in ipairs({ "GOSSIP_SHOW", "QUEST_GREETING" }) do
+for _, ev in ipairs({ "GOSSIP_SHOW", "QUEST_GREETING", "QUEST_DETAIL", "QUEST_PROGRESS", "QUEST_COMPLETE" }) do
     ns:On(ev, function() C_Timer.After(0.2, function() pcall(checkOffers, ev) end) end)
 end
 
@@ -673,7 +714,8 @@ function Q:Missed()
     if not missedCache then return nil end
     local out = {}
     for _, q in ipairs(missedCache) do
-        if not inLog[q.id] and not completed[q.id] then out[#out + 1] = q end
+        -- (Also: a quest its giver just didn't offer goes at once.)
+        if not inLog[q.id] and not completed[q.id] and Q:Offered(q.id, q.raw) then out[#out + 1] = q end
     end
     return out
 end

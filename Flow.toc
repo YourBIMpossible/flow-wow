@@ -111,5 +111,8 @@ Classes\Druid\Data.lua
 Classes\Druid\Spells.lua
 Classes\Druid\Rotation.lua
 
+# Personal copy only: the owner's own choices over main
+Modules\Personal.lua
+
 # Self-tests (/flow test; also saved in the diagnostics on every /reload)
 Modules\Tests.lua

@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- **Personal copy.** Equip and put-it-on-your-bars suggestions are quiet (/flow gearadvice, /flow baradvice);
+  the buff button and the faint profession arrow are on unless you turn them off.
+- **Quests: one talk is enough** to drop a quest its giver doesn't offer you.
 - **Dungeon key: a gold key atop your quest list.** A run worth doing shows as its own gold key above the
   top-left corner of your quest list (Questie's, else the Flow Tracker), not as an icon above the Flow key.
   Hover it for why, click it to prepare the run.

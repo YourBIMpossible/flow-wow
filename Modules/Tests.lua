@@ -615,17 +615,30 @@ ns:Register("test", "quests: availability (level, events, not offered)", functio
     t:ok(not Q:Available({ Id = 999102, requiredLevel = me + 5 }), "requires a higher level: not available")
     t:ok(not Q:Offered(999103, { zoneOrSort = -1003 }), "holiday quest with no event on: not offered")
     ns.db.quests.notOffered = ns.db.quests.notOffered or {}
-    -- Not offered: one visit isn't enough; two visits a minute apart skip it for a day.
+    -- Not offered: one visit skips it for ten minutes, a second visit for a day.
     local now = time()
-    t:ok(not Q.NoteOffer(999104, false, now), "one visit without it: still planned")
-    t:ok(Q:Offered(999104), "still offered after one visit")
-    t:ok(not Q.NoteOffer(999104, false, now + 10), "same visit again (10 s later): still planned")
-    t:ok(Q.NoteOffer(999104, false, now + 120), "second visit, 2 minutes later: skipped")
+    t:eq(Q.NoteOffer(999104, false, now), "pause", "one visit without it: skipped for now")
+    t:ok(not Q:Offered(999104), "not planned right after")
+    t:eq(Q.NoteOffer(999104, false, now + 10), nil, "same visit again (10 s later): nothing new")
+    ns.db.quests.notOffered[999104].firstAt = now - 3600
+    t:ok(Q:Offered(999104), "an hour later: tried again")
+    t:eq(Q.NoteOffer(999104, false, now), "day", "missing on the second visit: skipped for a day")
     t:ok(not Q:Offered(999104), "skipped now")
+    t:eq(Q.NoteOffer(999104, false, now + 300), nil, "already skipped: nothing new")
     ns.db.quests.notOffered[999104].hiddenAt = now - 2 * 86400
     t:ok(Q:Offered(999104), "after a day: tried again")
-    t:ok(not Q.NoteOffer(999104, true, now), "seen on offer: cleared")
+    t:eq(Q.NoteOffer(999104, false, now), "day", "still missing: skipped for another day")
+    t:eq(Q.NoteOffer(999104, true, now), nil, "seen on offer: cleared")
     t:eq(ns.db.quests.notOffered[999104], nil, "no record left")
+end)
+
+ns:Register("test", "quests: a quest window with no list is the NPC's only quest", function(t)
+    local Q = ns.quests
+    t:ok(not Q.IsDirect("GOSSIP_SHOW", "npc-test-1", 1000), "a list is not a direct window")
+    t:ok(Q.IsDirect("QUEST_PROGRESS", "npc-test-1", 1000), "straight to a hand-in: direct")
+    t:ok(Q.OfferedNow("QUEST_PROGRESS", true) ~= nil, "a direct hand-in says nothing new is on offer")
+    t:eq(Q.OfferedNow("QUEST_PROGRESS", false), nil, "picked from a list: nothing to conclude")
+    t:eq(Q.OfferedNow("QUEST_DETAIL", false), nil, "a quest picked from a list: nothing to conclude")
 end)
 
 ns:Register("test", "bags: sell decisions", function(t)
