@@ -1086,7 +1086,7 @@ local function planProfession(prof, t, out)
             local unread = u.partial or next(u.reagents) == nil
             if #missing > 0 or unread then
                 lacking[#lacking + 1] = { recipe = u.recipe, link = u.link, tag = tag, missing = missing,
-                                          unread = unread or nil }
+                                          unread = unread or nil, reagents = u.reagents }
             else
                 local deps, depBlocked = before(takes)
                 local anywhere = not u.station

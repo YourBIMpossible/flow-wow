@@ -38,6 +38,22 @@ local function readClassic()
     return prof, rank, recipes
 end
 
+-- A recipe's materials from its schematic (newest API), into r.reagents.
+-- Only the plain, required ones: optional extras aren't needed to make it.
+local function schematicReagents(getSchematic, id, r)
+    local ok, s = pcall(getSchematic, id, false)
+    if not (ok and type(s) == "table") then r.partial = true return end
+    local BASIC = Enum and Enum.CraftingReagentType and Enum.CraftingReagentType.Basic or 1
+    for _, slot in ipairs(s.reagentSlotSchematics or {}) do
+        if (slot.reagentType == nil or slot.reagentType == BASIC) and slot.required ~= false then
+            local first = slot.reagents and slot.reagents[1]
+            local rid, count = first and first.itemID, slot.quantityRequired
+            if rid and count and count > 0 then r.reagents[rid] = count else r.partial = true end
+        end
+    end
+end
+R._schematicReagents = schematicReagents  -- (tests)
+
 -- Newer API (C_TradeSkillUI), where the classic one is gone.
 local function readModern()
     local T = C_TradeSkillUI
@@ -61,6 +77,10 @@ local function readModern()
                     local rid = itemId(T.GetRecipeReagentItemLink(id, j))
                     if rid and count then r.reagents[rid] = count else r.partial = true end
                 end
+            elseif T.GetRecipeSchematic then
+                -- This client has no per-reagent calls: without this, every
+                -- recipe was saved with no materials at all.
+                schematicReagents(T.GetRecipeSchematic, id, r)
             end
             recipes[info.name] = r
         end

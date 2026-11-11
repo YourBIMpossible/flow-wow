@@ -1467,6 +1467,29 @@ ns:Register("test", "crafting: the window shows the arrow's stop, materials and 
     t:ok(ok, "fold-out click" .. (ok and "" or (": " .. tostring(err))))
 end)
 
+ns:Register("test", "crafting: an upgrade's hover lists its materials, read from the newest recipe data", function(t)
+    local mats = ns.craftHint.UpgradeMats({ reagents = { [2840] = 6, [2842] = 2 } },
+        function(id) return id == 2840 and 4 or 0 end, function(id) return id == 2840 and 5 or 0 end)
+    t:eq(#mats, 2, "one line per material")
+    t:ok(mats[1].text:find("^6 x ") and mats[1].text:find("you have 4", 1, true)
+        and mats[1].text:find("+5 in the bank", 1, true), "need, bags and bank: " .. mats[1].text)
+    t:eq(mats[1].enough, true, "bags and bank together cover it")
+    t:eq(mats[2].enough, false, "none of the other: still to get")
+    local r = { reagents = {} }
+    ns.recipes._schematicReagents(function()
+        return { reagentSlotSchematics = {
+            { reagentType = 1, required = true, quantityRequired = 8, reagents = { { itemID = 2840 } } },
+            { reagentType = 0, required = false, quantityRequired = 1, reagents = { { itemID = 999 } } },
+        } }
+    end, 1, r)
+    t:eq(r.reagents[2840], 8, "the plain material and how many")
+    t:eq(r.reagents[999], nil, "an optional extra isn't needed")
+    t:eq(r.partial, nil, "all read")
+    local bad = { reagents = {} }
+    ns.recipes._schematicReagents(function() error("no data") end, 1, bad)
+    t:eq(bad.partial, true, "unreadable: marked incomplete")
+end)
+
 ns:Register("test", "actions: a selected NPC never blocks the Flow key", function(t)
     -- Flow's own spells cast on you, not your target (Lee Brown selected: cast failed).
     if ns.api.SpellInfo("Fishing") and not (UnitChannelInfo and UnitChannelInfo("player")) then

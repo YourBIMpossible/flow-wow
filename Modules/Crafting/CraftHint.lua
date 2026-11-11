@@ -81,10 +81,7 @@ function H.MaterialLines(g, left, bagsOf, bankOf)
         local s = ns:Get("itemSource", id)
         return s and s.smelt
     end
-    local function name(id)
-        local s = ns:Get("itemSource", id)
-        return (s and s.name) or (A.ItemInfo and A.ItemInfo(id)) or ("item " .. id)
-    end
+    local name = H._itemName
     local ids = {}
     for id in pairs(reagents) do ids[#ids + 1] = id end
     table.sort(ids)
@@ -107,6 +104,57 @@ function H.UpgradeLines(list)
         out[#out + 1] = string.format("%s (%s): %s", u.link or u.recipe, u.tag or "", what)
     end
     return out
+end
+
+local function itemName(id)
+    local s = ns:Get("itemSource", id)
+    return (s and s.name) or (A.ItemInfo and A.ItemInfo(id)) or ("item " .. id)
+end
+H._itemName = itemName
+
+-- What one upgrade takes, for its hover text: { { text, enough } }, one per
+-- material. bagsOf / bankOf(id) -> count (tests); defaults: your bags and bank.
+function H.UpgradeMats(u, bagsOf, bankOf)
+    local SP = ns.skillPlan
+    bagsOf = bagsOf or A.Count
+    bankOf = bankOf or (SP and SP.BankCount) or function() return 0 end
+    local ids, out = {}, {}
+    for id in pairs(u.reagents or {}) do ids[#ids + 1] = id end
+    table.sort(ids)
+    for _, id in ipairs(ids) do
+        local need, bags, bank = u.reagents[id], bagsOf(id) or 0, bankOf(id) or 0
+        local text = string.format("%d x %s: you have %d", need, itemName(id), bags)
+        if bank > 0 then text = text .. string.format(" (+%d in the bank)", bank) end
+        out[#out + 1] = { text = text, enough = bags + bank >= need }
+    end
+    return out
+end
+
+-- Shows a recipe in the open profession window, as if you'd clicked it in
+-- the list. It only selects: nothing is made.
+function H.Select(recipe)
+    if GetNumTradeSkills and GetTradeSkillInfo then
+        for i = 1, GetNumTradeSkills() do
+            if GetTradeSkillInfo(i) == recipe then
+                if TradeSkillFrame_SetSelection then
+                    TradeSkillFrame_SetSelection(i)
+                    if TradeSkillFrame_Update then TradeSkillFrame_Update() end
+                    return true
+                elseif SelectTradeSkill then
+                    SelectTradeSkill(i)
+                    return true
+                end
+            end
+        end
+    end
+    local T = C_TradeSkillUI
+    if T and T.GetAllRecipeIDs and T.GetRecipeInfo and T.OpenRecipe then
+        for _, id in ipairs(T.GetAllRecipeIDs() or {}) do
+            local info = T.GetRecipeInfo(id)
+            if info and info.name == recipe then T.OpenRecipe(id) return true end
+        end
+    end
+    return false
 end
 
 function H.ToggleUpgrades()
@@ -183,10 +231,7 @@ local function build()
     panel.upBtn.label = panel.upBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     panel.upBtn.label:SetPoint("LEFT")
     panel.upBtn:SetScript("OnClick", function() H.ToggleUpgrades() end)
-    panel.ups = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    panel.ups:SetPoint("TOPLEFT", panel.upBtn, "BOTTOMLEFT", 8, -2)
-    panel.ups:SetWidth(WIDTH - 24)
-    panel.ups:SetJustifyH("LEFT")
+    panel.upRows = {}   -- one row per upgrade: hover for its materials, click to show it
     panel.btn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     panel.btn:SetSize(84, 24); panel.btn:SetPoint("TOPRIGHT", -6, -6)
     panel.btn:SetScript("OnClick", function(self)
@@ -209,12 +254,56 @@ function H.Panel()
     return panel
 end
 
+local function upgradeTip(row)
+    local u = row.u
+    if not u then return end
+    ns.Tip(row, "ANCHOR_RIGHT")
+    GameTooltip:AddLine(string.format("%s (%s)", u.link or u.recipe, u.tag or ""), 1, 1, 1)
+    local mats = H.UpgradeMats(u)
+    if #mats > 0 then GameTooltip:AddLine("Materials for one:", 1, 0.82, 0) end
+    for _, m in ipairs(mats) do
+        if m.enough then GameTooltip:AddLine(m.text, 0.25, 1, 0.25, true)
+        else GameTooltip:AddLine(m.text, 1, 0.35, 0.35, true) end
+    end
+    if u.unread then
+        GameTooltip:AddLine("Flow couldn't read all its materials yet. Close and open this window.", 0.8, 0.8, 0.8, true)
+    end
+    GameTooltip:AddLine("Click to show it in the profession window.", 0.6, 0.9, 1, true)
+    GameTooltip:Show()
+end
+
+-- The i-th upgrade row, made when first needed.
+local function upRow(i)
+    local row = panel.upRows[i]
+    if row then return row end
+    row = CreateFrame("Button", nil, panel)
+    row:SetWidth(WIDTH - 24)
+    row.label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.label:SetPoint("TOPLEFT")
+    row.label:SetWidth(WIDTH - 24)
+    row.label:SetJustifyH("LEFT")
+    local hl = row:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints()
+    hl:SetColorTexture(1, 1, 1, 0.08)
+    row:SetScript("OnEnter", upgradeTip)
+    row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    row:SetScript("OnClick", function(self)
+        if self.u and not H.Select(self.u.recipe) then
+            ns:Print("Couldn't find " .. self.u.recipe .. " in this profession window.")
+        end
+    end)
+    panel.upRows[i] = row
+    return row
+end
+
 -- Lays out the material lines and the fold-out, and sizes the panel.
-local function layout(matLines, upLines)
+-- ups: the upgrades behind upLines, same order.
+local function layout(matLines, upLines, ups)
     panel.mats:SetText(table.concat(matLines, "\n"))
     local h = 7 + panel.text:GetStringHeight() + 3 + panel.sub:GetStringHeight() + 4
     if #matLines > 0 then h = h + panel.mats:GetStringHeight() + 4 end
     panel.upBtn:ClearAllPoints()
+    local shown = 0
     if #upLines > 0 then
         panel.upBtn:SetPoint("TOPLEFT", panel, "TOPLEFT", 8, -h)
         panel.upBtn.label:SetText(string.format("%s Upgrades you lack materials for (%d)",
@@ -222,15 +311,24 @@ local function layout(matLines, upLines)
         panel.upBtn:Show()
         h = h + 16
         if H.upgradesOpen then
-            panel.ups:SetText(table.concat(upLines, "\n"))
-            panel.ups:Show()
-            h = h + panel.ups:GetStringHeight() + 4
-        else
-            panel.ups:Hide()
+            for i, line in ipairs(upLines) do
+                local row = upRow(i)
+                row.u = ups and ups[i]
+                row.label:SetText(line)
+                local rh = math.max(10, row.label:GetStringHeight())
+                row:SetHeight(rh)
+                row:ClearAllPoints()
+                row:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -h)
+                row:Show()
+                h = h + rh + 2
+                shown = i
+            end
+            h = h + 2
         end
     else
-        panel.upBtn:Hide(); panel.ups:Hide()
+        panel.upBtn:Hide()
     end
+    for i = shown + 1, #panel.upRows do panel.upRows[i]:Hide() end
     panel:SetHeight(math.max(52, h + 6))
 end
 
@@ -247,8 +345,8 @@ function H:Refresh()
     local stops = prof and H.CraftStops(prof) or {}
     local N = ns.nav or {}
     local g = H.Pick(stops, N.profChoice, N.profPlan, N.plan)
-    local upLines = H.UpgradeLines(prof and ns.skillPlan and ns.skillPlan.lastUpgrades
-        and ns.skillPlan.lastUpgrades[prof])
+    local ups = prof and ns.skillPlan and ns.skillPlan.lastUpgrades and ns.skillPlan.lastUpgrades[prof] or nil
+    local upLines = H.UpgradeLines(ups)
     if not (frame and (g or #upLines > 0)) then
         if panel then panel:Hide() end
         return
@@ -286,7 +384,7 @@ function H:Refresh()
         panel.btn:SetText("Make " .. now)
         panel.btn:SetEnabled(now > 0)
     end
-    layout(matLines, upLines)
+    layout(matLines, upLines, ups)
     panel:Show()
 end
 
