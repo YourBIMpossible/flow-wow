@@ -1187,9 +1187,10 @@ function D:MenuItems()
 end
 
 -------------------------------------------------------------------------------
--- The key badge on the nav arrow: a run worth doing (or the one you prepared).
--- It belongs with the route, so it sits on the arrow (left of it, moving and
--- hiding with it), not in the status row above the Flow key.
+-- The key badge: a run worth doing (or the one you prepared). It belongs with
+-- the route, so it sits atop the quest list: above the top-left corner of
+-- Questie's tracker, else of the Flow Tracker, else (neither showing) well
+-- clear of the arrow. Its own key-shaped picture (tools/make-key-art.py).
 -------------------------------------------------------------------------------
 
 local statusCache, statusAt = nil, 0
@@ -1204,7 +1205,7 @@ do
         local solo = not ns.party:InGroup()
         local prepared = D:Prepared() == run.key
         statusCache = {
-            icon = "Interface\\Icons\\INV_Misc_Key_04",
+            icon = "Interface\\AddOns\\Flow\\Modules\\Nav\\Art\\DungeonKey",
             text = ratioText(run),
             color = solo and { 0.7, 0.7, 0.7 } or { 0.4, 1, 0.4 },
             tip = table.concat(D.Summary(run, solo), "\n"),
@@ -1216,17 +1217,26 @@ do
     D.ArrowStatus = status
 
     local badge
-    local function build(arrow)
-        local b = CreateFrame("Button", "FlowDungeonBadge", arrow)
-        b:SetSize(22, 22)
-        b:SetPoint("RIGHT", arrow, "LEFT", -6, 0)
-        b.back = b:CreateTexture(nil, "BACKGROUND")
-        b.back:SetPoint("TOPLEFT", -1, 1); b.back:SetPoint("BOTTOMRIGHT", 1, -1)
+    -- Where it hangs: the top of whichever quest list is showing.
+    local function shown(f) return f and f:IsShown() and f:GetLeft() and f end
+    local function place(b)
+        local list = shown(_G.Questie_BaseFrame) or shown(_G.FlowTracker)
+        local arrow = not list and shown(_G.FlowNavArrow)
+        if not (list or arrow) then return false end
+        b:ClearAllPoints()
+        if list then b:SetPoint("BOTTOMLEFT", list, "TOPLEFT", 0, 2)
+        else b:SetPoint("RIGHT", arrow, "LEFT", -40, 0) end
+        return true
+    end
+    local function build()
+        local b = CreateFrame("Button", "FlowDungeonBadge", UIParent)
+        b:SetSize(26, 26)
+        b:SetFrameStrata("MEDIUM")
         b.tex = b:CreateTexture(nil, "ARTWORK")
-        b.tex:SetAllPoints(); b.tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        b.tex:SetAllPoints()
         b.text = b:CreateFontString(nil, "OVERLAY")
-        b.text:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
-        b.text:SetPoint("TOP", b, "BOTTOM", 0, -1)
+        b.text:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
+        b.text:SetPoint("LEFT", b, "RIGHT", 2, 0)
         b:SetScript("OnEnter", function(self)
             local st = self.status
             if not st then return end
@@ -1249,18 +1259,16 @@ do
         elapsed = elapsed + dt
         if elapsed < 1 then return end
         elapsed = 0
-        local arrow = _G.FlowNavArrow
-        if not arrow then return end
         local ok, st = pcall(status)
         if not (ok and st) then
             if badge then badge.status = nil; badge:Hide() end
             return
         end
-        badge = badge or build(arrow)
+        badge = badge or build()
+        if not place(badge) then badge:Hide() return end
         local c = st.color
         badge.status = st
         badge.tex:SetTexture(st.icon)
-        badge.back:SetColorTexture(c[1], c[2], c[3], 0.95)
         badge.text:SetText(st.text or "")
         badge.text:SetTextColor(c[1], c[2], c[3])
         badge:Show()
