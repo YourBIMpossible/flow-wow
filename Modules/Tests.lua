@@ -3948,4 +3948,49 @@ ns:Register("test", "dungeons: worth it, XP rate, run times, gathering", functio
     t:ok(D.GatherMinutes(from, { { cont = 2, wx = 0, wy = 0 } }, nil) > 5, "another continent: a long trip")
     local order = D.GatherMinutes(from, { { cont = 1, wx = 840, wy = 0 }, { cont = 1, wx = 420, wy = 0 } }, nil)
     t:near(order, 4 + 2, 0.01, "nearest first, not list order")
+    local withCrumb = { quests = { 1 }, levels = { [1] = 30 }, leadIns = {}, breadcrumbs = { { id = 9, level = 30 } } }
+    t:eq(D.Worth(withCrumb, { level = 30, estimate = function() return 1000 end, share = function() return 1 end })
+        .questXP, 2000, "a breadcrumb's XP counts")
+end)
+
+ns:Register("test", "dungeons: placed by objectives, wings by bosses, breadcrumbs on the way", function(t)
+    local D = ns.dungeons
+    t:eq(D.ObjectivesTop({ 1581, nil, 1581 }), 1581, "every placed objective in one dungeon")
+    t:eq(D.ObjectivesTop({ 1581, false }), nil, "one objective outside: not a dungeon quest")
+    t:eq(D.ObjectivesTop({ 1581, 796 }), nil, "two dungeons: neither")
+    t:eq(D.ObjectivesTop({ nil, nil }), nil, "nothing placed: nothing")
+    local wings = {
+        { name = "Graveyard", bosses = { [1] = true }, lo = 32, hi = 34 },
+        { name = "Library", bosses = { [2] = true }, lo = 34, hi = 37 },
+        { name = "Armory", bosses = { [3] = true }, lo = 40, hi = 40 },
+        { name = "Cathedral", bosses = { [4] = true }, lo = 40, hi = 42 },
+    }
+    local function wing(objs, lv) local w = D.WingFor(objs, wings, lv) return w and w.name end
+    t:eq(wing({ { creatures = { { id = 2, level = 37 } } } }), "Library", "kill a boss: the boss's wing")
+    t:eq(wing({ { creatures = { { id = 50, level = 31 }, { id = 3, level = 40 } } } }), "Armory",
+        "an item a boss drops: the boss's wing, not the trash that also drops it")
+    t:eq(wing({ { creatures = { { id = 50, level = 31 } } } }), "Graveyard", "trash: the wing its level fits")
+    t:eq(wing({ { creatures = { { id = 50, level = 40 } } } }, 40), nil,
+        "trash two wings fit, quest level two wings fit: no wing")
+    t:eq(wing({}, 36), "Library", "no creatures: the quest's level")
+    t:eq(wing({ { creatures = { { id = 1 } } }, { creatures = { { id = 2 } } } }), "Library",
+        "a tie: the later wing")
+    t:eq(wing({ { creatures = { { id = 4 } } }, { creatures = { { id = 50, level = 33 } } } }), "Cathedral",
+        "a boss outweighs one trash kill")
+    t:eq(D.WingFor({}, {}, 30), nil, "no wings: nil")
+    local stops = { { cont = 1, wx = 0, wy = 0 } }
+    local near = D.NearStops({
+        { id = 1, at = { cont = 1, wx = 100, wy = 0 } },
+        { id = 2, at = { cont = 1, wx = 200, wy = 0 } },
+        { id = 3, at = { cont = 2, wx = 0, wy = 0 } },
+        { id = 4 },
+    }, stops, 150)
+    t:eq(#near, 1, "only the breadcrumb near a stop")
+    t:eq(near[1] and near[1].id, 1, "the one 100 yards away")
+    local runs = D.CutRuns({
+        { id = 1, level = 58, dungeon = 1583, dungeonName = "Blackrock Spire", wing = "Upper",
+          wingTitle = "Upper Blackrock Spire", state = "pickup" },
+    }, 58, 53)
+    t:eq(runs[1] and runs[1].name, "Upper Blackrock Spire", "the wing's own run name")
+    t:eq(runs[1] and runs[1].breadcrumbs and #runs[1].breadcrumbs, 0, "no breadcrumbs until the route adds them")
 end)

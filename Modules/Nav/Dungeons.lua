@@ -39,16 +39,43 @@ D.KILLS = 100          -- elites killed in a run (rough, any dungeon)
 D.PARTY_SHARE = 0.26   -- your part of a kill's XP in a group of 5 (with the group bonus)
 D.STOP_MINUTES = 2     -- each pickup: talk, read, accept
 D.RUN_SPEED = 7        -- yards per second on foot (mounts only make it better)
+D.BREADCRUMB_YARDS = 150 -- a breadcrumb is taken when its giver is this close to a stop you make anyway
 
--- Wings Questie keeps as their own areas. Others (Blackrock Spire, Uldaman)
--- are split by the level window.
+-- Wings Questie keeps as their own areas (only Dire Maul files its creatures
+-- under them; the others give a wing its own entrance).
 D.WING = {
     [10008] = "Library", [10009] = "Armory", [10010] = "Cathedral",
     [10022] = "North", [10023] = "West", [10024] = "West", [10025] = "West",
     [10026] = "East", [10027] = "East",
 }
--- Dire Maul's wings are listed as dungeons of their own: one dungeon.
-local ALIAS = { [10022] = 2557, [10023] = 2557, [10024] = 2557, [10025] = 2557, [10026] = 2557, [10027] = 2557 }
+-- Wings told apart by their bosses (Questie files every creature in these
+-- under the one dungeon). A quest that targets a boss, or an item a boss
+-- drops, is that boss's wing; any other creature goes to the wing whose
+-- boss levels it fits. { name, title (the run's name), bosses = { npc ids } }
+D.WINGS = {
+    [796] = {   -- Scarlet Monastery
+        { name = "Graveyard", bosses = { 3983, 4543, 6488, 6489, 6490 } },
+        { name = "Library", bosses = { 3974, 6487 } },
+        { name = "Armory", bosses = { 3975 } },
+        { name = "Cathedral", bosses = { 4542, 3976, 3977 } },
+    },
+    [1583] = {  -- Blackrock Spire
+        { name = "Lower", title = "Lower Blackrock Spire", bosses = { 9196, 9236, 9237, 10596, 10584, 9736,
+            10220, 10268, 9568, 9596, 9718, 10376, 10509, 9219 } },
+        { name = "Upper", title = "Upper Blackrock Spire", bosses = { 9816, 10264, 10899, 10429, 10339,
+            10430, 10363, 16042 } },
+    },
+    [2017] = {  -- Stratholme
+        { name = "Live", title = "Stratholme (Live)", bosses = { 10558, 10516, 10808, 11032, 10997, 10811,
+            10813, 10393, 11143 } },
+        { name = "Undead", title = "Stratholme (Undead)", bosses = { 10435, 10437, 10438, 10439, 10436,
+            10440, 10809 } },
+    },
+}
+-- Dire Maul's wings (and Stratholme's Gauntlet) are listed as dungeons of
+-- their own: one dungeon.
+local ALIAS = { [10022] = 2557, [10023] = 2557, [10024] = 2557, [10025] = 2557, [10026] = 2557, [10027] = 2557,
+                [10001] = 2017 }
 -- Battlegrounds Questie lists with the dungeons.
 local SKIP = { [2597] = true, [3277] = true, [3358] = true }
 
@@ -159,9 +186,9 @@ end
 
 -- Cuts the quests into runs: one per dungeon wing, with the quests that fit
 -- this trip. entries: { { id, name, level, dungeon, dungeonName, wing, state,
--- info } }. Quests above level + LEVEL_ABOVE are the next run; below floor
--- they're ignored (unless they're in your log). Returns the runs with at
--- least one quest, most quests first:
+-- info, wingTitle (the run's name, optional) } }. Quests above level +
+-- LEVEL_ABOVE are the next run; below floor they're ignored (unless they're
+-- in your log). Returns the runs with at least one quest, most quests first:
 --   { key, dungeon, wing, name, ready, pickups, inside, followups = { ids },
 --     unlocks = { { id, steps } }, leadIns = { steps to pick up },
 --     quests = { ids counted }, levels = { [id] = level }, next = n,
@@ -173,8 +200,8 @@ function D.CutRuns(entries, level, floor)
         local run = runs[key]
         if not run then
             run = { key = key, dungeon = e.dungeon, wing = e.wing,
-                    name = (e.dungeonName or "?") .. (e.wing and (" " .. e.wing) or ""),
-                    ready = {}, pickups = {}, inside = {}, followups = {}, unlocks = {}, leadIns = {},
+                    name = e.wingTitle or ((e.dungeonName or "?") .. (e.wing and (" " .. e.wing) or "")),
+                    ready = {}, pickups = {}, inside = {}, followups = {}, unlocks = {}, leadIns = {}, breadcrumbs = {},
                     quests = {}, levels = {}, next = 0, skipped = {}, toolong = {}, count = 0 }
             runs[key] = run
             order[#order + 1] = run
@@ -223,6 +250,79 @@ function D.CutRuns(entries, level, floor)
     return out
 end
 
+-- The dungeon a quest's objectives are in. tops: one entry per objective,
+-- where its creatures / objects / item droppers are: a dungeon key, false
+-- (somewhere outside, or more than one place) or nil (Questie doesn't say).
+-- Every objective Questie places must be in the same dungeon; else nil.
+function D.ObjectivesTop(tops)
+    local top
+    for i = 1, #tops do
+        local t = tops[i]
+        if t == false then return nil end
+        if t ~= nil then
+            if top and top ~= t then return nil end
+            top = t
+        end
+    end
+    return top
+end
+
+-- The wing a quest belongs to. objectives: { { creatures = { { id, level } } } }
+-- (the creature to kill, or the ones that drop the item); wings: { { name,
+-- bosses = { [id] = true }, lo, hi } } (boss levels). A boss is 2 votes for
+-- its wing; any other creature 1 vote for the one wing whose levels it fits
+-- (within 2). Most votes wins, a tie the later wing; no votes: the quest's
+-- level. Returns the wing or nil.
+function D.WingFor(objectives, wings, questLevel)
+    if not (wings and #wings > 0) then return nil end
+    local function byLevel(lv)
+        local best, bd, tie = nil, math.huge, false
+        for i, w in ipairs(wings) do
+            local d = (lv < w.lo and w.lo - lv) or (lv > w.hi and lv - w.hi) or 0
+            if d < bd then best, bd, tie = i, d, false elseif d == bd then tie = true end
+        end
+        if best and not tie and bd <= 2 then return best end
+    end
+    local votes = {}
+    for _, o in ipairs(objectives or {}) do
+        local hit, boss = {}, false
+        for _, c in ipairs(o.creatures or {}) do
+            for i, w in ipairs(wings) do
+                if w.bosses[c.id] then hit[i], boss = 2, true end
+            end
+        end
+        if not boss then
+            for _, c in ipairs(o.creatures or {}) do
+                local i = c.level and byLevel(c.level)
+                if i then hit[i] = 1 end
+            end
+        end
+        for i, v in pairs(hit) do votes[i] = (votes[i] or 0) + v end
+    end
+    local best, bv = nil, 0
+    for i = 1, #wings do
+        local v = votes[i] or 0
+        if v > 0 and v >= bv then best, bv = i, v end
+    end
+    if not best and questLevel then best = byLevel(questLevel) end
+    return best and wings[best] or nil
+end
+
+-- The breadcrumbs worth taking: those whose giver is within radius yards of
+-- a stop you make anyway. cands: { { at = { cont, wx, wy }, ... } }.
+function D.NearStops(cands, stops, radius)
+    local out = {}
+    for _, c in ipairs(cands or {}) do
+        for _, s in ipairs(stops or {}) do
+            if c.at and s.cont == c.at.cont then
+                local dx, dy = s.wx - c.at.wx, s.wy - c.at.wy
+                if dx * dx + dy * dy <= radius * radius then out[#out + 1] = c break end
+            end
+        end
+    end
+    return out
+end
+
 -- Minutes to gather the pickups on foot, nearest first, ending at the
 -- entrance. from, stops, entrance: { cont, wx, wy } (world yards); another
 -- continent counts as a long trip.
@@ -258,6 +358,7 @@ function D.Worth(run, o)
     end
     for _, id in ipairs(run.quests) do add(run.levels[id]) end
     for _, st in ipairs(run.leadIns) do add(st.level) end
+    for _, st in ipairs(run.breadcrumbs or {}) do add(st.level) end
     local mobXP = D.KILLS * (o.level * 5 + 45) * 2 * D.PARTY_SHARE
     local minutes = (o.runMinutes or D.RUN_MINUTES) + (o.gatherMinutes or 0)
     local perHour = (questXP + mobXP) / minutes * 60
@@ -348,8 +449,81 @@ local function buildDungeons()
     return true
 end
 
--- Which quests belong to which dungeon (by the quest's zone). Built once,
--- in the background, a few hundred quests a frame.
+-- Where Questie places things: the dungeon (key), false (outside or more
+-- than one place) or nil (nowhere). Cached; reads QuestieDB directly.
+local function placer(qdb)
+    local function q(fn, id, field)
+        if not (fn and id) then return nil end
+        local ok, v = pcall(fn, id, field)
+        return ok and v or nil
+    end
+    local function topOf(spawns)
+        if type(spawns) ~= "table" then return nil end
+        local t
+        for zone in pairs(spawns) do
+            local z = areaTop[zone]
+            if not z or (t and t ~= z) then return false end
+            t = z
+        end
+        return t
+    end
+    local function merge(a, b)
+        if a == false or b == false then return false end
+        if a == nil then return b end
+        if b == nil or a == b then return a end
+        return false
+    end
+    local npcTop, objTop, itemTop = {}, {}, {}
+    local P = {}
+    function P.npc(id)
+        if npcTop[id] == nil then
+            local t = topOf(q(qdb.QueryNPCSingle, id, "spawns"))
+            npcTop[id] = (t == nil) and "none" or t
+        end
+        local t = npcTop[id]
+        if t == "none" then return nil end
+        return t
+    end
+    function P.object(id)
+        if objTop[id] == nil then
+            local t = topOf(q(qdb.QueryObjectSingle, id, "spawns"))
+            objTop[id] = (t == nil) and "none" or t
+        end
+        local t = objTop[id]
+        if t == "none" then return nil end
+        return t
+    end
+    function P.item(id)
+        if itemTop[id] == nil then
+            local t
+            for _, n in ipairs(q(qdb.QueryItemSingle, id, "npcDrops") or {}) do t = merge(t, P.npc(n)) end
+            for _, o in ipairs(q(qdb.QueryItemSingle, id, "objectDrops") or {}) do t = merge(t, P.object(o)) end
+            itemTop[id] = (t == nil) and "none" or t
+        end
+        local t = itemTop[id]
+        if t == "none" then return nil end
+        return t
+    end
+    -- Raw objectives: { creatures, objects, items, reputation, kill credit }.
+    function P.quest(obj)
+        if type(obj) ~= "table" then return nil end
+        local tops = {}
+        for _, c in ipairs(obj[1] or {}) do tops[#tops + 1] = P.npc(c[1]) end
+        for _, o in ipairs(obj[2] or {}) do tops[#tops + 1] = P.object(o[1]) end
+        for _, it in ipairs(obj[3] or {}) do tops[#tops + 1] = P.item(it[1]) end
+        for _, kc in ipairs(type(obj[5]) == "table" and obj[5] or {}) do
+            local t
+            for _, n in ipairs(kc[1] or {}) do t = merge(t, P.npc(n)) end
+            tops[#tops + 1] = t
+        end
+        return D.ObjectivesTop(tops)
+    end
+    return P
+end
+
+-- Which quests belong to which dungeon: the quest's zone, else where all
+-- its objectives are (a quest filed under the giver's zone). Built once, in
+-- the background, a few hundred quests a frame.
 local indexState = "none"   -- none | building | ready | failed
 local dungeonOfId, wingOfZone = {}, {}
 local function buildIndex()
@@ -363,7 +537,9 @@ local function buildIndex()
     local co = coroutine.create(function()
         local ids = src.allIds()
         local per = query and 300 or 40
-        for i, id in ipairs(ids) do
+        local place = query and placer(qdb)
+        local work = 0
+        for _, id in ipairs(ids) do
             local zone
             if query then
                 local ok, z = pcall(query, id, "zoneOrSort")
@@ -373,6 +549,13 @@ local function buildIndex()
                 zone = raw and raw.zoneOrSort
             end
             local t = zone and zone > 0 and areaTop[zone]
+            work = work + 1
+            if not t and place then
+                local ok, obj = pcall(query, id, "objectives")
+                t = ok and place.quest(obj) or nil
+                zone = nil
+                work = work + 4
+            end
             if t then
                 local d = dungeons[t]
                 d.ids[#d.ids + 1] = id
@@ -388,7 +571,7 @@ local function buildIndex()
                     d.maxQ = math.max(d.maxQ or lv, lv)
                 end
             end
-            if i % per == 0 then coroutine.yield() end
+            if work >= per then work = 0; coroutine.yield() end
         end
     end)
     local function step()
@@ -506,9 +689,64 @@ local function startsInside(q, d)
     return giverInside(q, d)
 end
 
--- The wing a quest belongs to: its zone, else where most of its creatures are.
+-- A dungeon's boss-defined wings, each with the level band of its bosses
+-- (built once per dungeon).
+local wingCache = {}
+local function wingsOf(d)
+    if wingCache[d.key] ~= nil then return wingCache[d.key] or nil end
+    local out = {}
+    for _, def in ipairs(D.WINGS[d.key] or {}) do
+        local w = { name = def.name, title = def.title, bosses = {} }
+        for _, id in ipairs(def.bosses) do
+            w.bosses[id] = true
+            local n = npc(id)
+            local lo = n and n.minLevel
+            if lo and lo > 0 then
+                local hi = n.maxLevel or lo
+                w.lo = math.min(w.lo or lo, lo)
+                w.hi = math.max(w.hi or hi, hi)
+            end
+        end
+        if w.lo then out[#out + 1] = w end
+    end
+    wingCache[d.key] = #out >= 2 and out or false
+    return wingCache[d.key] or nil
+end
+
+local function creature(id)
+    local n = npc(id)
+    local lo = n and n.minLevel
+    return { id = id, level = (lo and lo > 0) and math.floor((lo + (n.maxLevel or lo)) / 2) or nil }
+end
+
+local function droppers(itemId)
+    local qdb = db()
+    if not (qdb and qdb.QueryItemSingle) then return {} end
+    local ok, list = pcall(qdb.QueryItemSingle, itemId, "npcDrops")
+    return (ok and type(list) == "table") and list or {}
+end
+
+-- The wing a quest belongs to: { name, title } or nil. Its zone (Dire Maul),
+-- else its bosses and creature levels (D.WINGS), else where most of its
+-- creatures are filed.
 local function wingOf(id, q, d)
-    if wingOfZone[id] then return wingOfZone[id] end
+    if wingOfZone[id] then return { name = wingOfZone[id] } end
+    local wings = wingsOf(d)
+    if wings then
+        local objectives = {}
+        for _, o in ipairs(q.ObjectiveData or {}) do
+            local cs = {}
+            if o.Type == "monster" and o.Id then
+                cs[1] = creature(o.Id)
+            elseif o.Type == "killcredit" then
+                for _, n in ipairs(o.IdList or {}) do cs[#cs + 1] = creature(n) end
+            elseif o.Type == "item" and o.Id then
+                for _, n in ipairs(droppers(o.Id)) do cs[#cs + 1] = creature(n) end
+            end
+            if #cs > 0 then objectives[#objectives + 1] = { creatures = cs } end
+        end
+        return D.WingFor(objectives, wings, q.level)
+    end
     if count(d.wingEntrance) == 0 then return nil end
     local votes = {}
     for _, o in ipairs(q.ObjectiveData or {}) do
@@ -520,7 +758,7 @@ local function wingOf(id, q, d)
     end
     local best, bn = nil, 0
     for w, n in pairs(votes) do if n > bn then best, bn = w, n end end
-    return best
+    return best and { name = best } or nil
 end
 
 -------------------------------------------------------------------------------
@@ -587,6 +825,45 @@ function D.QuestingRate()
     return ns.xpValue.Estimate(UnitLevel("player")) * 6, true
 end
 
+-- Breadcrumbs to the run's pickups and lead-ins you could take: not done,
+-- none of the target's breadcrumbs in your log, your level, for you, and a
+-- giver Flow can find. { { id, name, level, leadsTo, at = world point } }.
+local function breadcrumbsFor(run, ctx)
+    local out, seen = {}, {}
+    local function open(bq)
+        for _, p in ipairs(bq.preQuestGroup or {}) do if not ctx.done[p] then return false end end
+        local single = bq.preQuestSingle or {}
+        local any = #single == 0
+        for _, p in ipairs(single) do if ctx.done[p] then any = true break end end
+        for _, x in ipairs(bq.exclusiveTo or {}) do if ctx.done[x] or ctx.log[x] then return false end end
+        return any
+    end
+    local function consider(targetId)
+        local target = quest(targetId)
+        local list = target and target.breadcrumbs
+        local qdb = db()
+        if list == nil and target and qdb and qdb.QueryQuestSingle then
+            local ok, l = pcall(qdb.QueryQuestSingle, targetId, "breadcrumbs")
+            list = ok and l or nil
+        end
+        if type(list) ~= "table" then return end
+        for _, b in ipairs(list) do if ctx.log[b] then return end end
+        for _, b in ipairs(list) do
+            local bq = not seen[b] and not ctx.done[b] and quest(b)
+            seen[b] = true
+            if bq and (bq.requiredLevel or 0) <= ctx.level and open(bq) and D.Eligible(bq) then
+                local at = world(starterPoints(bq)[1])
+                if at then
+                    out[#out + 1] = { id = b, name = bq.name, level = bq.level, leadsTo = target.name, at = at }
+                end
+            end
+        end
+    end
+    for _, id in ipairs(run.pickups) do consider(id) end
+    for _, st in ipairs(run.leadIns) do consider(st.id) end
+    return out
+end
+
 local function compute()
     local level = UnitLevel("player")
     local Q = ns.quests
@@ -609,8 +886,10 @@ local function compute()
                 if q and (q.level or 0) > 0 then
                     local ok, st, info = pcall(D.State, q, ctx)
                     if ok then
+                        local w = wingOf(id, q, d)
                         entries[#entries + 1] = { id = id, name = q.name, level = q.level, dungeon = top,
-                            dungeonName = d.name, wing = wingOf(id, q, d), state = st, info = info }
+                            dungeonName = d.name, wing = w and w.name, wingTitle = w and w.title,
+                            state = st, info = info }
                     end
                 end
             end
@@ -632,6 +911,8 @@ local function compute()
             local w = world(starterPoints(quest(st.id) or {})[1])
             if w then stops[#stops + 1] = w end
         end
+        run.breadcrumbs = D.NearStops(breadcrumbsFor(run, ctx), stops, D.BREADCRUMB_YARDS)
+        for _, b in ipairs(run.breadcrumbs) do stops[#stops + 1] = b.at end
         run.gatherMinutes = from and D.GatherMinutes(from, stops, world(run.entrance)) or #stops * D.STOP_MINUTES
         local t = times[run.dungeon]
         run.runMinutes = (t and t.avg) or D.RUN_MINUTES
@@ -678,8 +959,12 @@ function D:Prepare(key)
     local run = self:Run(key)
     if not run then return end
     ns.db.nav.dungeonRun = { key = key, dungeon = run.dungeon, name = run.name }
-    ns:Print(string.format("%s: %d to pick up%s, then the entrance.", run.name, #run.pickups + #run.leadIns,
-        #run.leadIns > 0 and string.format(" (%d unlock quests)", #run.leadIns) or ""))
+    local extra = {}
+    if #run.leadIns > 0 then extra[#extra + 1] = string.format("%d unlock quests", #run.leadIns) end
+    if #run.breadcrumbs > 0 then extra[#extra + 1] = string.format("%d on the way", #run.breadcrumbs) end
+    ns:Print(string.format("%s: %d to pick up%s, then the entrance.", run.name,
+        #run.pickups + #run.leadIns + #run.breadcrumbs,
+        #extra > 0 and (" (" .. table.concat(extra, ", ") .. ")") or ""))
     if ns.nav and ns.nav.Collect then ns.nav:Collect() end
 end
 
@@ -704,6 +989,7 @@ function D:Claims(id)
         claimedFor, claimed = run, {}
         for _, q in ipairs(run and run.pickups or {}) do claimed[q] = true end
         for _, st in ipairs(run and run.leadIns or {}) do claimed[st.id] = true end
+        for _, b in ipairs(run and run.breadcrumbs or {}) do claimed[b.id] = true end
     end
     return claimed[id] == true
 end
@@ -776,6 +1062,7 @@ ns:Register("navGoal", "dungeon", {
         end
         for _, id in ipairs(run.pickups) do pickup(id, "for " .. run.name) end
         for _, st in ipairs(run.leadIns) do pickup(st.id, "unlocks " .. (st.unlocks or "a dungeon quest")) end
+        for _, b in ipairs(run.breadcrumbs or {}) do pickup(b.id, "leads to " .. (b.leadsTo or "a dungeon quest")) end
         -- The entrance, last; not while you're in there or just came out.
         local been = ns.db.nav.dungeonIn
         if #goals == 0 and run.entrance and not currentDungeon() and not (been and been.key == run.dungeon) then
@@ -829,6 +1116,8 @@ function D.Summary(run, solo)
     if #run.ready > 0 then parts[#parts + 1] = #run.ready .. " ready" end
     if #run.pickups > 0 then parts[#parts + 1] = #run.pickups .. " to pick up" end
     if #run.leadIns > 0 then parts[#parts + 1] = #run.leadIns .. " lead-in" .. (#run.leadIns > 1 and "s" or "") end
+    local nb = #(run.breadcrumbs or {})
+    if nb > 0 then parts[#parts + 1] = nb .. " breadcrumb" .. (nb > 1 and "s" or "") .. " on the way" end
     if #run.inside > 0 then parts[#parts + 1] = #run.inside .. " start inside" end
     if #run.followups > 0 then parts[#parts + 1] = #run.followups .. " follow-up" .. (#run.followups > 1 and "s" or "") end
     if #parts > 0 then lines[#lines + 1] = table.concat(parts, ", ") .. "." end

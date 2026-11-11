@@ -71,8 +71,10 @@ Flow for WoW is a separate project from Flow Engine.
 - **Dungeon runs** (with Questie): the arrow menu's Dungeons section lists the dungeon runs at
   your level (one wing, the quests you can do this trip; later parts wait for the next run) and
   how each compares to your questing XP per hour. Prepare a run and the pickups and short
-  lead-in quests go on the route, then the entrance; inside, the route shows only that
-  dungeon's quests. In a group, "Share quests" shares the run quests party members lack.
+  lead-in quests go on the route (plus any breadcrumb whose giver is next to one of those
+  stops), then the entrance; inside, the route shows only that dungeon's quests. Wings are
+  told apart by their bosses. In a group, "Share quests" shares the run quests party members
+  lack.
 - **Your own waypoint** (Ctrl or Alt-click the map, `/way 45.2 63.1`, or "Point the arrow
   here") isn't a stop on the route: the arrow turns green and points there along a green line
   on the map, then goes back to the route when you arrive or clear it.
