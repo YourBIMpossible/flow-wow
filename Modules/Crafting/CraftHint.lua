@@ -186,6 +186,21 @@ function H.CheapRows(list, max)
     return out
 end
 
+-- What you can make right now for skill, as panel rows: at most `max`,
+-- each { recipe, reagents, tag, line, note }. list: SP.MakeNowSkillUps(...).
+function H.MakeNowRows(list, max)
+    local out = {}
+    for i, c in ipairs(list or {}) do
+        if i > (max or 3) then break end
+        local pts = math.floor(c.points + 0.5)
+        local tag = string.format("make %d, about %d skill point%s", c.count, pts, pts == 1 and "" or "s")
+        out[#out + 1] = { recipe = c.recipe, reagents = c.reagents, tag = tag,
+            line = string.format("%d. %s (%s): %s", i, c.recipe, DIFF_WORD[c.diff] or c.diff or "?", tag),
+            note = "From what's in your bags now. Points are a guess: recipes turn green, then grey, as you climb." }
+    end
+    return out
+end
+
 function H.ToggleUpgrades()
     H.upgradesOpen = not H.upgradesOpen
     if panel and panel:IsShown() then H:Refresh() end
@@ -273,8 +288,11 @@ local function build()
     panel.upBtn:SetScript("OnClick", function() H.ToggleUpgrades() end)
     panel.upRows = {}   -- one row per upgrade: hover for its materials, click to show it
     panel.cheapHdr = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    panel.cheapHdr:SetText("Cheapest for a skill point")
+    panel.cheapHdr:SetText("Cheapest to buy materials for (per skill point)")
     panel.cheapHdr:Hide()
+    panel.nowHdr = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    panel.nowHdr:SetText("Make now from your bags")
+    panel.nowHdr:Hide()
     panel.btn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     panel.btn:SetSize(84, 24); panel.btn:SetPoint("TOPRIGHT", -6, -6)
     panel.btn:SetScript("OnClick", function(self)
@@ -345,8 +363,9 @@ end
 
 -- Lays out the material lines and the fold-out, and sizes the panel.
 -- ups: the upgrades behind upLines, same order.
--- cheap: the cheapest recipes for a skill point (H.CheapRows), shown first.
-local function layout(matLines, upLines, ups, cheap)
+-- nowRows: what your bags make for skill (H.MakeNowRows), shown first;
+-- cheap: the cheapest recipes to buy materials for (H.CheapRows), next.
+local function layout(matLines, upLines, ups, cheap, nowRows)
     panel.mats:SetText(table.concat(matLines, "\n"))
     local h = 7 + panel.text:GetStringHeight() + 3 + panel.sub:GetStringHeight() + 4
     if #matLines > 0 then h = h + panel.mats:GetStringHeight() + 4 end
@@ -364,16 +383,20 @@ local function layout(matLines, upLines, ups, cheap)
         row:Show()
         h = h + rh + 2
     end
-    if cheap and #cheap > 0 then
-        panel.cheapHdr:ClearAllPoints()
-        panel.cheapHdr:SetPoint("TOPLEFT", panel, "TOPLEFT", 8, -h)
-        panel.cheapHdr:Show()
-        h = h + 14
-        for _, c in ipairs(cheap) do place(c, c.line) end
-        h = h + 2
-    else
-        panel.cheapHdr:Hide()
+    local function section(hdr, rows)
+        if rows and #rows > 0 then
+            hdr:ClearAllPoints()
+            hdr:SetPoint("TOPLEFT", panel, "TOPLEFT", 8, -h)
+            hdr:Show()
+            h = h + 14
+            for _, c in ipairs(rows) do place(c, c.line) end
+            h = h + 2
+        else
+            hdr:Hide()
+        end
     end
+    section(panel.nowHdr, nowRows)
+    section(panel.cheapHdr, cheap)
     if #upLines > 0 then
         panel.upBtn:SetPoint("TOPLEFT", panel, "TOPLEFT", 8, -h)
         panel.upBtn.label:SetText(string.format("%s Upgrades you lack materials for (%d)",
@@ -410,9 +433,10 @@ function H:Refresh()
     local waiting = not g and prof and ns.skillPlan and ns.skillPlan.lastWaiting
         and ns.skillPlan.lastWaiting[prof] and ns.skillPlan.lastWaiting[prof][1] or nil
     local SPm = ns.skillPlan
-    local cheap = (prof and SPm and SPm.CheapSkillUps and ns.recipes)
-        and H.CheapRows(SPm.CheapSkillUps((ns.recipes:Known(prof))), 3) or {}
-    if not (frame and (g or waiting or #upLines > 0 or #cheap > 0)) then
+    local known = prof and ns.recipes and ns.recipes:Known(prof) or nil
+    local cheap = (known and SPm and SPm.CheapSkillUps) and H.CheapRows(SPm.CheapSkillUps(known), 3) or {}
+    local nowRows = (known and SPm and SPm.MakeNowSkillUps) and H.MakeNowRows(SPm.MakeNowSkillUps(known), 3) or {}
+    if not (frame and (g or waiting or #upLines > 0 or #cheap > 0 or #nowRows > 0)) then
         if panel then panel:Hide() end
         return
     end
@@ -457,7 +481,7 @@ function H:Refresh()
         panel.btn:SetText("Make " .. now)
         panel.btn:SetEnabled(now > 0)
     end
-    layout(matLines, upLines, ups, cheap)
+    layout(matLines, upLines, ups, cheap, nowRows)
     panel:Show()
 end
 
