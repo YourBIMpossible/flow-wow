@@ -2118,6 +2118,23 @@ ns:Register("test", "waypoint: the game's map pin reads as a table or a vector",
     t:ok(okM, "the arrow's menu builds")
 end)
 
+ns:Register("test", "crafts wait while their materials stop is off the route", function(t)
+    local N = ns.nav
+    local bank = { key = "bank:Cooking", kind = "collect", text = "Get from your bank: 2 Stringy Wolf Meat" }
+    local cook = { key = "step:1", kind = "craft", deps = { "bank:Cooking" }, text = "Make 2 x Charred Wolf Meat" }
+    local after = { key = "step:2", kind = "craft", deps = { "step:1" }, text = "Make 1 x Spiced Wolf Meat" }
+    local free = { key = "step:3", kind = "craft", deps = { "smelt:done" }, text = "Make 1 x Herb Baked Egg" }
+    local all = { [bank.key] = bank, [cook.key] = cook, [after.key] = after, [free.key] = free }
+    local kept, held = N.HoldCrafts({ bank, cook, after, free }, all)
+    t:eq(#kept, 4, "bank stop on the route: every craft stays")
+    t:eq(#held, 0, "nothing held")
+    kept, held = N.HoldCrafts({ cook, after, free }, all)
+    t:ok(#kept == 1 and kept[1] == free, "bank stop off the route: only the craft that doesn't need it stays")
+    t:eq(#held, 2, "the craft needing the bank, and the one needing that craft, wait")
+    t:ok(held[1].blockedBy and held[1].blockedBy:find("Stringy Wolf Meat", 1, true) ~= nil, "it says what it waits for: " .. tostring(held[1].blockedBy))
+    t:eq(cook.blockedBy, nil, "the original goal isn't changed")
+end)
+
 ns:Register("test", "faint profession arrow: which stops, and when it shows", function(t)
     local N = ns.nav
     t:ok(N.IsProfessionStop({ key = "step:1", provider = "skillplan" }), "a skill-up step")

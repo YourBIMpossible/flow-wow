@@ -378,7 +378,7 @@ function N:Collect(gathered)
     ns.db.nav.deferred = deferred
     local present, kept, blockedGoals = {}, {}, {}
     for _, g in ipairs(list) do
-        present[g.key] = true
+        present[g.key] = g
         if g.cost and g.cost > money then
             if not deferred[g.key] then
                 ns:Print(string.format("skipping %s for now: it costs %s and you have %s. It comes back on the route once you can pay.",
@@ -442,6 +442,11 @@ function N:Collect(gathered)
         local okA, picked = pcall(ns.xpValue.Apply, ns.xpValue, shown)
         if okA and picked then shown = picked end
     end
+    -- A craft whose materials come from a stop that's off the route (blocked,
+    -- hidden, filtered out) can't be made yet: it waits, never "Here: Make".
+    local held
+    shown, held = N.HoldCrafts(shown, present)
+    for _, g in ipairs(held) do blockedGoals[#blockedGoals + 1] = g end
     -- Profession stops (training, skill-ups) get their own faint arrow when
     -- it's on, so the quest arrow never sends you off to them.
     local quest, prof = N.SplitProfessions(shown, N:ProfPointerOn())
@@ -465,6 +470,40 @@ end
 function N:ProfPointerOn()
     local cfg = ns.db.nav
     return cfg.profArrow ~= false and self:Mode() == "optimal" and cfg.professions ~= false
+end
+
+-- Craft stops whose deps (bank, smelting, an earlier craft) are stops that
+-- exist (all: key -> goal) but aren't in `shown` can't be made yet. They come
+-- out of the route, blocked with the reason; repeats so a craft that needs a
+-- held craft waits too. A dep that isn't in `all` is done and doesn't hold.
+-- Returns kept, held.
+function N.HoldCrafts(shown, all)
+    local kept, held = shown, {}
+    while true do
+        local inRoute, next, changed = {}, {}, false
+        for _, g in ipairs(kept) do inRoute[g.key] = true end
+        for _, g in ipairs(kept) do
+            local wait
+            if g.kind == "craft" then
+                for _, dep in ipairs(g.deps or {}) do
+                    if not inRoute[dep] and all[dep] then wait = all[dep] break end
+                end
+            end
+            if wait then
+                -- A copy: providers may hand back the same goal next time.
+                local c = {}
+                for k, v in pairs(g) do c[k] = v end
+                local name = wait.text or wait.title or wait.key
+                c.blockedBy = "first: " .. name .. (wait.blockedBy and (" (" .. wait.blockedBy .. ")") or "")
+                held[#held + 1] = c
+                changed = true
+            else
+                next[#next + 1] = g
+            end
+        end
+        kept = next
+        if not changed then return kept, held end
+    end
 end
 
 -- Splits the stops into quest stops and profession stops. Off, or with
