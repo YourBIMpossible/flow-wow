@@ -4156,7 +4156,9 @@ ns:Register("test", "recovery: one order for every way of being hurt; fight heal
         BI.FoodStep = function(buffFood) askedBuff = buffFood; return have.food and { label = "Food" } or nil end
         local function set(order, b, f, h) r.recoverOrder, r.recoverBandage, r.recoverFood, r.recoverHeal = order, b, f, h end
         local function pick(ctx)
-            local s = E:HealStep(ctx, def)
+            -- The whole order (bandage, food, heal spell), wherever each one shows.
+            local s
+            if ctx.inCombat then s = E:HealStep(ctx, def) else s = E:Recover(ctx, def, "all") end
             return s and (s.label or s.spell) or nil
         end
         local function isSpell(ctx)
@@ -4172,6 +4174,9 @@ ns:Register("test", "recovery: one order for every way of being hurt; fight heal
             have = { bandage = true, food = true, spell = true }
             set(nil, nil, nil, nil)
             t:eq(pick(ctx), "Bandage", name .. ": default order starts with the bandage, not the heal spell")
+            local onBuff = E:Recover(ctx, def, "items")
+            t:eq(onBuff and onBuff.label, "Bandage", name .. ": the buff button gets the bandage")
+            t:ok(E:Recover(ctx, def, "heal") == nil, name .. ": Flow's key holds the heal spell back while the bandage is first")
             have.bandage = false
             t:eq(pick(ctx), "Food", name .. ": no bandage: food")
             have.food = false

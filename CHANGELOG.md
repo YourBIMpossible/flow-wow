@@ -1,6 +1,12 @@
 # Changelog
 
 ## Unreleased
+- **Bandages, food and the campfire are on the buff button.** Hurt after a fight, the blue buff button offers your
+  bandage or food; by a campfire it places your camp objects and sits you down. Flow's key no longer shows them, so
+  it keeps to the fight, loot and gathering. Your recovery order still holds: a heal spell on Flow's key waits while
+  a bandage or food you put first is there. Buff button off: all of it is back on Flow's key.
+- **Professions: a switch of their own.** The route list is Quests only, Optimal, Completionist, with one
+  "Professions" tick under them instead of two "Optimal with / without professions" routes.
 - **The arrow follows the best route, not the closest stop.** "Finish the area you're in first" is now off unless
   you tick it: it sent the arrow to every stop within 300 yards before the rest, even when the shorter trip went
   the other way. The route is now the shortest whole trip by default.

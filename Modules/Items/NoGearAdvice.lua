@@ -365,7 +365,9 @@ end)()
 --   first (buff:stone, buff:item; in town too), then the rotation's "buff"
 --   suggestions (auras, aspects, blessings, group buffs; seals, shouts,
 --   shields, Hunter's Mark and fight forms stay on Flow's icon with the fight,
---   BB.OnAction). At the pull it
+--   BB.OnAction). Before all of those, hurt after a fight: your bandage or
+--   food; after them, by a campfire: place your camp objects and sit. So
+--   Flow's key keeps to the fight, loot and gathering. At the pull it
 --   swaps to the buff spell. Out of combat it shows what's
 --   missing, and sits dim when nothing is (hover it: why).
 --   In a fight: WoW won't let addons change what a button casts, so it holds
@@ -435,7 +437,9 @@ do
     -- What the button shows out of combat: your weapon's stone or oil first
     -- (a 3 s use: do it while you can, it can't go on in a fight), then a buff
     -- spell. At the pull it swaps to the buff spell (PLAYER_REGEN_DISABLED below).
-    function BB.Pick(spellBuff, itemBuff) return itemBuff or spellBuff end
+    -- Before them, hurt after a fight: your bandage or food. After them, by a
+    -- campfire: place your camp objects, sit for the camp buffs.
+    function BB.Pick(spellBuff, itemBuff, recover, camp) return recover or itemBuff or spellBuff or camp end
 
     -- What the button holds for a fight: the live buff spell, else the buff spell
     -- you last cast, else nothing (an item takes too long mid-fight).
@@ -449,6 +453,7 @@ do
     -------------------------------------------------------------------------------
 
     local liveBuff, liveAt = nil, 0   -- the rotation's buff suggestion, and when it was worked out
+    local liveRecover                 -- hurt after a fight: the bandage or food to use (same moment)
 
     local function ready(rule, ctx)
         if not ctx.inCombat and E.Resting() then return false end
@@ -486,6 +491,8 @@ do
         if ctx then
             local okB, b = pcall(pickBuff, def, ctx)
             liveBuff, liveAt = okB and b or nil, GetTime()
+            local okR, rec = pcall(self.Recover, self, ctx, def, "items")
+            liveRecover = okR and rec or nil
         end
         return s
     end
@@ -502,6 +509,26 @@ do
                 return orig(ctx)
             end
         end
+    end
+
+    -- The campfire steps (place your camp objects, sit, wait) leave it too.
+    local campGet
+    do
+        local a = ns:Get("action", "buff:camp")
+        if a and a.get then
+            campGet = a.get
+            a.get = function(ctx)
+                if BB.On() then return nil end
+                return campGet(ctx)
+            end
+        end
+    end
+    local function pickCamp()
+        if not (campGet and ns.actions) or (ns.db.actions and ns.db.actions.enabled == false) then return nil end
+        local okC, ctx = pcall(ns.actions.Context, ns.actions)
+        if not okC then return nil end
+        local ok, s = pcall(campGet, ctx)
+        return ok and s or nil
     end
 
     -- A weapon enhancement or buff item to show, or nil and why there's no
@@ -550,8 +577,9 @@ do
     local function describe(s)
         if not s then return "" end
         if s.idle then return "nothing due (dim)" end
+        if s.type == "sit" or s.type == "wait" then return s.type end
         if s.spell then return "spell " .. s.spell .. " @" .. tostring(s.unit or "player") end
-        return "item " .. tostring(s.item) .. " slot " .. tostring(s.targetSlot)
+        return "item " .. tostring(s.item) .. " slot " .. tostring(s.targetSlot) .. (s.unit and (" @" .. s.unit) or "")
     end
 
     local function setAction(s)
@@ -559,8 +587,13 @@ do
         local text = describe(s)
         if text == shownText then return end
         shownText = text
-        for _, a in ipairs({ "type", "spell", "item", "unit", "target-slot" }) do btn:SetAttribute(a, nil) end
-        if s and s.spell then
+        for _, a in ipairs({ "type", "spell", "item", "unit", "target-slot", "macrotext" }) do btn:SetAttribute(a, nil) end
+        if s and s.type == "sit" then
+            btn:SetAttribute("type", "macro")
+            btn:SetAttribute("macrotext", "/sit")
+        elseif s and s.type == "wait" then
+            -- Stay sitting: pressing it does nothing.
+        elseif s and s.spell then
             btn:SetAttribute("type", "spell")
             btn:SetAttribute("spell", s.spell)
             btn:SetAttribute("unit", s.unit or "player")
@@ -568,6 +601,7 @@ do
             btn:SetAttribute("type", "item")
             btn:SetAttribute("item", s.item)
             btn:SetAttribute("target-slot", s.targetSlot)
+            if s.unit then btn:SetAttribute("unit", s.unit) end   -- a bandage: on you
         end
     end
 
@@ -584,7 +618,8 @@ do
         tex:SetTexture(t or "Interface\\Icons\\INV_Misc_QuestionMark")
         tex:SetDesaturated(not bright)
         btn:SetAlpha(bright and 1 or 0.55)
-        local name = s and (s.spell or (itemId(s) and A.ItemInfo and A.ItemInfo(itemId(s))) or s.label) or ""
+        local name = s and ((s.type == "sit" and "Sit by the fire") or (s.type == "wait" and "Stay sitting")
+            or s.spell or (itemId(s) and A.ItemInfo and A.ItemInfo(itemId(s))) or s.label) or ""
         if s and s.target then name = name .. " on " .. s.target end
         label:SetText(name)
         keyText:SetText(keyLabel())
@@ -683,7 +718,7 @@ do
             return
         end
         local item, whyNot = pickItem()
-        local s = BB.Pick(live, item)
+        local s = BB.Pick(live, item, GetTime() - liveAt < 1 and liveRecover or nil, pickCamp())
         current = s or BB.Idle(whyNot)
         setAction(s)
         paint(current, s ~= nil)
@@ -733,11 +768,12 @@ do
         ns.settings:AddCheck({
             label = "Buff button beside Flow's icon",
             note = "(own key: /flow buffkey <key>)",
-            tip = "Your buffs (auras, aspects, blessings, party buffs) and weapon stones and oils go on a "
+            tip = "Your buffs (auras, aspects, blessings, party buffs), weapon stones and oils, your bandage and "
+                .. "food after a fight, and the campfire steps (place, sit) go on a "
                 .. "separate blue button left of Flow's icon, so Flow's key only does your fight: damage, heals, "
                 .. "cleanses, plus seals, shouts, shields and Hunter's Mark. Out of combat it's always there (dim when nothing is due: hover it for why) "
                 .. "and offers your stone or oil in town too. Give it its own key with /flow buffkey Q. In a fight it keeps the buff you "
-                .. "last cast from it and lights up when that buff runs out. Off: buffs and stones go back on "
+                .. "last cast from it and lights up when that buff runs out. Off: all of it goes back on "
                 .. "Flow's icon and key.",
             get = function() return BB.On() end,
             set = function(on) BB.Set(on) end,
@@ -802,6 +838,12 @@ do
         t:eq(BB.FightSpell({ spell = "Seal" }, "Blessing"), "Seal", "fight: the buff due now")
         t:eq(BB.FightSpell(nil, "Seal"), "Seal", "fight: else the one you last cast")
         t:ok(BB.FightSpell(nil, nil) == nil, "fight: else nothing")
+        t:eq(BB.Pick({ spell = "Aura" }, { item = "item:2862" }, { label = "Bandage" }, { type = "sit" }).label, "Bandage",
+            "hurt after a fight: the bandage or food before any buff")
+        t:eq(BB.Pick({ spell = "Aura" }, nil, nil, { type = "sit" }).spell, "Aura", "by a campfire: your buffs before you sit")
+        t:eq(BB.Pick(nil, nil, nil, { type = "sit" }).type, "sit", "by a campfire with nothing else due: sit")
+        local camp = ns:Get("action", "buff:camp")
+        t:ok(not BB.On() or camp == nil or camp.get({}) == nil, "the campfire steps aren't on the main icon while the buff button is on")
         local idle = BB.Idle("no weapon in your main hand")
         t:ok(idle.idle and idle.item == nil and idle.spell == nil, "idle: shows, does nothing")
         t:ok(idle.reason:find("no weapon in your main hand", 1, true) ~= nil, "idle: says why there's no stone")

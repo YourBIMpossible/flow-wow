@@ -2880,7 +2880,7 @@ local function buildArrow()
             items[#items + 1] = { text = "Arrow colour by distance", checked = N:ArrowColorMode() == "distance",
                 func = function() N:SetArrowColorMode(N:ArrowColorMode() == "distance" and "route" or "distance") end }
             local cfg = ns.db.nav
-            items[#items + 1] = { text = "Faint profession arrow (with Optimal with professions)", checked = cfg.profArrow ~= false,
+            items[#items + 1] = { text = "Faint profession arrow (Optimal, professions on)", checked = cfg.profArrow ~= false,
                 func = function() N:SetProfArrow(cfg.profArrow == false) end }
             if cfg.profArrow ~= false then
                 items[#items + 1] = { text = "Profession arrow text", checked = cfg.profArrowText ~= false,
@@ -3417,7 +3417,7 @@ ns.commands.nav = function(arg)
         local v = arg:match("^profarrow%s+(%a+)")
         if v == "on" or v == "off" then N:SetProfArrow(v == "on") end
         ns:Print("faint profession arrow: " .. (cfg.profArrow ~= false and "on" or "off")
-            .. (N:ProfPointerOn() and "" or " (shows with Optimal with professions)"))
+            .. (N:ProfPointerOn() and "" or " (shows on the Optimal route with professions on)"))
     elseif arg:find("^professions") then
         local v = arg:match("^professions%s+(%a+)")
         cfg.professions = (v ~= "off")
@@ -3567,7 +3567,7 @@ N.Collect = ns.perf.Wrap("route: gather stops", N.Collect)
 if ns.settings and ns.settings.AddCheck then
     ns.settings:AddCheck({
         label = "Faint profession arrow",
-        note = "(with Optimal with professions)",
+        note = "(Optimal route, professions on)",
         tip = "Profession stops (training, skill-ups) get their own route and a faint dark grey arrow behind "
             .. "the main one, with their name above it. The main arrow then only takes you to quests. "
             .. "Off: profession stops go back on the main arrow's route.",

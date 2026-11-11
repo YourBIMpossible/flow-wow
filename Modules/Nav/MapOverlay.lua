@@ -1264,14 +1264,15 @@ local function buildList()
     dd:SetScript("OnEnter", function(self)
         ns.Tip(self, "ANCHOR_RIGHT")
         GameTooltip:AddLine("Choose the route", 1, 1, 1)
-        GameTooltip:AddLine("Current quests, optimal (with or without professions), or completionist; and the order.", 0.8, 0.8, 0.8, true)
+        GameTooltip:AddLine("Current quests, optimal or completionist; professions on or off; and the order.", 0.8, 0.8, 0.8, true)
         GameTooltip:Show()
     end)
     dd:SetScript("OnLeave", function() GameTooltip:Hide() end)
     function dd:Update()
         local mode, profs = ns.nav:Mode(), ns.db.nav.professions ~= false
         local what = (mode == "quests" and "Current quests") or (mode == "complete" and "Completionist")
-            or (profs and "Optimal with professions" or "Optimal without professions")
+            or "Optimal"
+        if mode ~= "quests" then what = what .. (profs and ", professions on" or ", professions off") end
         self.text:SetText("|cffffd200Route:|r " .. what)
     end
     f.routeDrop = dd

@@ -321,7 +321,7 @@ local function buildCard()
     f.add:SetScript("OnClick", function()
         ns.db.nav.professions = true
         if ns.nav:Mode() == "quests" then ns.nav:SetMode("optimal") else ns.nav:Collect() end
-        ns:Print("route: Optimal with professions. Your trainers are stops on it now.")
+        ns:Print("route: professions on. Your trainers are stops on it now.")
         -- (Show where they landed once the route is planned again.)
         C_Timer.After(1.5, function() if f:IsShown() then P:ShowReminder() end end)
     end)
