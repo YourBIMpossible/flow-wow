@@ -74,9 +74,6 @@ Modules\Nav\Places.lua
 Modules\Nav\Planner.lua
 Modules\Nav\XpValue.lua
 Modules\Nav\MinimapPin.lua
-Modules\UI\ApprovedStopCardModel.lua
-Modules\UI\ApprovedStopCard.lua
-Modules\UI\ApprovedStopCardAdapter.lua
 Modules\Nav\Goals.lua
 Modules\Nav\Mounts.lua
 Modules\Crafting\Guides.lua
