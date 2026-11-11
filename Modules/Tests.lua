@@ -1484,6 +1484,25 @@ ns:Register("test", "crafting: skill recipes are ranked by material cost per ski
     t:ok(rows[1].line:find("Cheap", 1, true), "the row names the recipe: " .. rows[1].line)
 end)
 
+ns:Register("test", "crafting: what your bags make for skill is ranked by skill points", function(t)
+    local known = {
+        Two    = { diff = "optimal", reagents = { [1] = 2 } },          -- 5 made, 5 points
+        Many   = { diff = "easy",    reagents = { [1] = 1 } },          -- 10 made, 2 points
+        Both   = { diff = "medium",  reagents = { [1] = 1, [2] = 1 } }, -- 3 made, 1.8 points
+        Lack   = { diff = "optimal", reagents = { [3] = 1 } },          -- none in bags
+        Grey   = { diff = "trivial", reagents = { [1] = 1 } },
+    }
+    local bags = { [1] = 10, [2] = 3 }
+    local list = ns.skillPlan.MakeNowSkillUps(known, function(id) return bags[id] or 0 end)
+    t:eq(#list, 3, "what you can't make, and grey, are left out")
+    t:eq(list[1].recipe, "Two", "most skill points first")
+    t:eq(list[1].count, 5, "how many your bags make")
+    t:eq(list[2].recipe, "Many", "then the next most")
+    t:eq(list[3].count, 3, "the scarcest material sets the count")
+    local rows = ns.craftHint.MakeNowRows(list, 3)
+    t:ok(rows[1].line:find("make 5, about 5 skill points", 1, true), "the row says how many and the gain: " .. rows[1].line)
+end)
+
 ns:Register("test", "crafting: an upgrade's hover lists its materials, read from the newest recipe data", function(t)
     local mats = ns.craftHint.UpgradeMats({ reagents = { [2840] = 6, [2842] = 2 } },
         function(id) return id == 2840 and 4 or 0 end, function(id) return id == 2840 and 5 or 0 end)

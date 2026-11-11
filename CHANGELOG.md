@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- **Profession window: make now from your bags.** A new list above the cheapest one shows the recipes your bags
+  can make right now that still give skill, most skill points first, with how many you can make.
 - **Profession window: cheapest recipes for a skill point.** Under the profession window Flow now lists the
   three recipes that cost the least in materials for each skill point, cheapest first. Costs come from auction
   prices Flow has seen, then vendor prices. Hover a row for its materials; click it to show that recipe.

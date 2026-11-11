@@ -227,6 +227,35 @@ function SP.CheapSkillUps(known, costOf)
     return out
 end
 
+-- The recipes you can make right now from your bags that still give skill,
+-- most expected skill points first. Points = how many you can make x the
+-- chance each gives a point (it ignores colours shifting as you climb).
+-- bagsOf(itemID) -> count (tests); default: your bags.
+-- -> { { recipe, item, reagents, diff, count, points } }
+function SP.MakeNowSkillUps(known, bagsOf)
+    bagsOf = bagsOf or count
+    local out = {}
+    for name, r in pairs(known or {}) do
+        local c = type(r) == "table" and CHANCE[r.diff] or 0
+        if c > 0 and r.reagents and next(r.reagents) and not r.partial then
+            local n
+            for id, q in pairs(r.reagents) do
+                local can = q > 0 and math.floor((bagsOf(id) or 0) / q) or 0
+                n = n and math.min(n, can) or can
+            end
+            if n and n > 0 then
+                out[#out + 1] = { recipe = name, item = r.item, reagents = r.reagents, diff = r.diff,
+                                  count = n, points = n * c }
+            end
+        end
+    end
+    table.sort(out, function(a, b)
+        if a.points ~= b.points then return a.points > b.points end
+        return a.recipe < b.recipe
+    end)
+    return out
+end
+
 local function matUnits(step)
     local n = 0
     for _, q in pairs(step.mats or {}) do n = n + q end
