@@ -1,6 +1,21 @@
 # Changelog
 
 ## Unreleased
+- **Dungeon key: the quests and the route show.** The run's tooltip, its menu and the "Prepare" chat line now
+  list each quest: what to pick up, who gives it and in which zone, the lead-ins, the ones in your log and the
+  ones that start inside. Once you prepare a run, the route goes to the pickups first and then to the entrance
+  (the entrance used to show only once every pickup was in your log, so the route never said where the run
+  went). A giver Questie can't place is named on the entrance stop.
+- **Travel time, flights counted.** When a stop can be done at more than one spot (a forge, an anvil, a cooking
+  fire, a trainer), Flow picks the one quickest to reach, counting the flight paths you know, not the one
+  closest in a straight line. Every forge and anvil you've used and every Blacksmithing and Cooking trainer's
+  is now a choice. Smelting no longer counts for half, so the plan doesn't send you far out to smelt.
+- **Cannibalize.** Undead: after a fight, hurt, with a dead humanoid or undead targeted close by, the buff button
+  and the Flow key show Cannibalize before food or a bandage (turn it off in Buff items).
+- **No heals above 80% health.** The buff button and the Flow key no longer suggest food or a bandage
+  to heal while you're above 80% health.
+- **No learn tips for professions you don't have.** Recipes and patterns for a profession you lack, or need
+  more skill than you have, are no longer offered as "Learn" in your bags.
 - **Professions: training goes on the route, and plans stop at your cap.** The next tier (Journeyman, Expert,
   Artisan) is now a route stop from 25 points below your cap, as soon as your level allows, for every
   profession you have. Cooking, First Aid and Fishing get their Expert book (buy it, then read it) and their

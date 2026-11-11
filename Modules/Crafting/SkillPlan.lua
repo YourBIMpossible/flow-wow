@@ -112,7 +112,7 @@ local function npcPoints(names)
             all[#all + 1] = pt
         end
     end
-    return #mine > 0 and mine or all, #mine > 0
+    return #mine > 0 and mine or all, #mine > 0, all
 end
 
 -- What an item costs at a vendor (copper): the price you last saw there,
@@ -164,15 +164,39 @@ local FLINT = 4471
 function SP.CanCampfire()
     return A.SpellInfo("Basic Campfire") ~= nil and count(SIMPLE_WOOD) > 0 and count(FLINT) > 0
 end
--- Anvils and forges stand by the blacksmiths; Flow uses those as the spot.
+-- Where a station stands: every forge, anvil or fire Flow has seen work
+-- for you (Actions.lua learns them when a recipe's "Requires Forge" is met),
+-- plus the trainers that work by one (anvils and forges by the
+-- blacksmiths, a fire by the cooks). All of them, in every zone: the route
+-- picks the one quickest to reach, flights counted (Planner: air), not the
+-- nearest of this zone's few.
+SP.STATION_KINDS = { forge = { forge = true }, anvil = { anvil = true, forge = true }, fire = { fire = true } }
+function SP.LearnedStationPoints(station, learned)
+    local kinds, out = SP.STATION_KINDS[station], {}
+    if not kinds then return out end
+    for _, s in ipairs(learned or {}) do
+        if kinds[s.kind] and s.cont and s.wx then
+            -- (a copy: the route marks its points; these are saved)
+            out[#out + 1] = { cont = s.cont, wx = s.wx, wy = s.wy, map = s.map, x = s.x, y = s.y, learned = true }
+        end
+    end
+    return out
+end
 local function stationPoints(station)
+    local trainers
     if station == "fire" then
         if SP.CanCampfire() then return nil end   -- make one where you stand
-        return npcPoints(ns.places:TrainersFor("Cooking"))
+        trainers = "Cooking"
+    elseif station == "anvil" or station == "forge" then
+        trainers = "Blacksmithing"
+    else
+        return nil
     end
-    if station == "anvil" or station == "forge" then
-        return npcPoints(ns.places:TrainersFor("Blacksmithing"))
-    end
+    local learned = ns.db.actions and ns.db.actions.stations
+    local pts = SP.LearnedStationPoints(station, learned)
+    local _, _, all = npcPoints(ns.places:TrainersFor(trainers))
+    for _, pt in ipairs(all) do pts[#pts + 1] = pt end
+    return pts
 end
 
 -------------------------------------------------------------------------------
@@ -981,7 +1005,8 @@ function SP.YardsTo(points)
     if not (p and p.wx) then return nil end
     local best
     for _, pt in ipairs(points or {}) do
-        local cont, wx, wy = ns.nav:ToWorld(pt.map, pt.x, pt.y)
+        local cont, wx, wy = pt.cont, pt.wx, pt.wy
+        if not wx and pt.map then cont, wx, wy = ns.nav:ToWorld(pt.map, pt.x, pt.y) end
         if wx and cont == p.cont then
             local d = math.sqrt((wx - p.wx) ^ 2 + (wy - p.wy) ^ 2)
             if not best or d < best then best = d end
@@ -1389,7 +1414,9 @@ local function planProfession(prof, t, out)
         local pts = stationPoints("forge") or {}
         local bar = itemName(id)
         add({ key = "smelt:" .. prof .. ":" .. id, kind = "craft", points = pts, extra = "smelt",
-              optional = not smeltNeeded[id] or nil, weight = smeltNeeded[id] and 0.5 or 1.5,
+              -- (weight 1: a far forge counts as far; at 0.5 the route would
+              -- cross the zone to smelt before the stops on the way)
+              optional = not smeltNeeded[id] or nil, weight = smeltNeeded[id] and 1 or 1.5,
               deps = smeltBankOre[id] and { "bank:" .. prof } or nil,
               icon = profIcon("Mining"), station = "forge",
               -- Done in the Mining (smelting) window: the hint shows it there.
@@ -1398,7 +1425,7 @@ local function planProfession(prof, t, out)
               text = string.format("Smelt |cffffd100%d|r %s at a forge", n, bar),
               details = { string.format("%d %s for your %s crafts, from %d %s%s.", n, bar, prof, n * sm.n,
                               itemName(sm.from), smeltBankOre[id] and " (some from your bank)" or ""),
-                          "Forges stand by the blacksmiths." },
+                          "Flow sends you to the forge quickest to reach (flights counted): one you've used, or the one by a blacksmith." },
               blockedBy = smeltBlocked(id) })
     end
 

@@ -341,6 +341,13 @@ end
 -- then a heal spell. A step you have nothing for is skipped. Not while you
 -- eat, cast or channel (a bandage is a channel); food only when you're quite
 -- hurt and no enemy is targeted (you'd sit down at the pull).
+-- Above this share of your health (where the game shows it) Flow suggests
+-- no heal of any kind: no spell, bandage, food or Cannibalize. Its own
+-- estimate (E.hurt) only counts while your health is hidden.
+E.HEAL_ABOVE_NONE = 0.8
+function E.HealthFine(ctx)
+    return ctx ~= nil and (ctx.maxHp or 0) > 0 and (ctx.hpPct or 0) > E.HEAL_ABOVE_NONE
+end
 E.FOOD_PCT = 0.6   -- eat at or below this share of your health (where it's shown)
 -- (Two small looks at the game, on their own so the tests can stand in.)
 function E.RecoverBusy(ctx)
@@ -381,13 +388,53 @@ function E:DrinkStep(ctx)
     return s
 end
 
+-- Cannibalize (Undead racial): heals 7% of your health every 2 s for 10 s
+-- from a humanoid or undead corpse within 5 yards; 2 min cooldown. It costs
+-- nothing, so when it's ready and the corpse you just killed fits, it comes
+-- before your recovery order. The game can't tell an add-on where corpses
+-- are, so Flow goes by your target: dead, humanoid or undead. Close (about
+-- 10 yards, the nearest the game will say): eat it; farther: walk to it.
+E.CANNIBALIZE = "Cannibalize"
+E.CORPSE_TYPES = { [6] = "Undead", [7] = "Humanoid" }   -- creature type IDs, English names as a fallback
+function E.CorpseFits(typeName, localName)
+    if not typeName then return false end
+    for id, en in pairs(E.CORPSE_TYPES) do
+        if typeName == en or (localName and typeName == localName(id)) then return true end
+    end
+    return false
+end
+local function creatureTypeName(id)
+    local CI = C_CreatureInfo
+    if not (CI and CI.GetCreatureTypeInfo) then return nil end
+    local ok, info = pcall(CI.GetCreatureTypeInfo, id)
+    return ok and info and info.name or nil
+end
+-- A usable corpse targeted: true, close (within about 10 yards).
+function E.CannibalCorpse()
+    if not (UnitExists("target") and A.Safe(UnitIsDead("target"))) then return false end
+    if A.Safe(UnitIsPlayer and UnitIsPlayer("target")) and not A.Safe(UnitCanAttack("player", "target")) then return false end
+    local kind = A.Safe(UnitCreatureType and UnitCreatureType("target"))
+    if not E.CorpseFits(kind, creatureTypeName) then return false end
+    local close = CheckInteractDistance and A.Safe(CheckInteractDistance("target", 3))
+    return true, close and true or false
+end
+function E:CannibalizeStep(ctx)
+    if ns.db.rotation.recoverCannibalize == false or E.Mounted() then return nil end
+    if not self:Ready(E.CANNIBALIZE) then return nil end
+    local fits, close = E.CannibalCorpse()
+    if not fits then return nil end
+    return { spell = E.CANNIBALIZE, kind = "heal", fightType = ctx.fightType,
+             reason = close and "Hurt after your fight: Cannibalize the corpse (free, heals over 10 s; stay within 5 yards)"
+                 or "Hurt after your fight: walk onto the corpse and Cannibalize it (free; within 5 yards)" }
+end
+
 -- part: with the buff button on (BuffButton.lua) the bandage and food are
 -- on it and only the heal spell is on the Flow key. nil = this is the Flow
 -- key ("heal" when the buff button is on, else "all"); "items" = the buff
 -- button asking. Your order still holds across the two: the heal spell waits
 -- while a bandage or food you put first is there to use, and the other way.
 function E:Recover(ctx, def, part)
-    if ctx.inCombat or E.RecoverBusy(ctx) then return nil end
+    if ctx.inCombat or E.RecoverBusy(ctx) or E.HealthFine(ctx) then return nil end
     if part == nil then part = (ns.buffButton and ns.buffButton.On()) and "heal" or "all" end
     -- Hurt: Flow's estimate, your real health where the game shows it, or
     -- the game's low-health warning. All three go through the same order,
@@ -398,6 +445,12 @@ function E:Recover(ctx, def, part)
     if not (E.hurt >= E.HURT.outStart or direct or quite) then return nil end
     local BI, r = ns.buffItems, ns.db.rotation
     local mounted = E.Mounted()
+    -- Cannibalize first (free, on the buff button with your bandages).
+    local can = self:CannibalizeStep(ctx)
+    if can then
+        if part == "heal" then return nil end
+        return can
+    end
     for _, step in ipairs(BI and BI.Order(r.recoverOrder) or { "heal" }) do
         local s
         if step == "bandage" and BI and r.recoverBandage ~= false and not mounted then
@@ -495,6 +548,8 @@ end
 -- low health, then heal spells (real health, the game's low-health warning,
 -- then Flow's estimate). Out of one: only your recovery order.
 function E:HealStep(ctx, def)
+    -- Above 80% health (where the game shows it): no heal, food or bandage.
+    if E.HealthFine(ctx) then return (not ctx.inCombat) and self:DrinkStep(ctx) or nil end
     -- Out of a fight: your recovery order, then a drink if you're low on mana
     -- (also while you eat: Recover waits while you eat, drinking doesn't).
     if not ctx.inCombat then return self:Recover(ctx, def) or self:DrinkStep(ctx) end

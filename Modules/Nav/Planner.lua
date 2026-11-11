@@ -56,7 +56,35 @@ end
 --   near  = { [key] = true } the area around you (set by P:Plan): the rest
 --           waits until these are done
 --   areaFirst = true/false: the area rule on or off (nil: Flow's setting, off unless ticked)
+--   air   = function(a, b) -> yards: the trip from spot a to spot b by
+--           flight (the walks to and from the flight masters plus the
+--           flight, as the yards you'd run in that time), nil if none.
+--           Stops are then picked by the time they take, not the straight
+--           line (Nav sets it: N.TravelYards).
 local OPT = {}
+
+-- A flight never beats a short walk: below this the straight line is the
+-- answer (and the flight sum isn't worked out).
+local AIR_MIN = 300
+
+-- How far it is from spot a to spot b in running yards: the straight line,
+-- or by flight when that's quicker.
+local function far(a, b)
+    local d = dist(a.wx, a.wy, b.wx, b.wy)
+    if OPT.air and d > AIR_MIN then
+        local ok, t = pcall(OPT.air, a, b)
+        if ok and type(t) == "number" and t < d then return t end
+    end
+    return d
+end
+-- (for the tests)
+function P._Far(a, b, opts)
+    local keep = OPT
+    OPT = opts or {}
+    local d = far(a, b)
+    OPT = keep
+    return d
+end
 
 -- Finish the zone first: an away stop may not come while a here stop is left.
 local function waits(key, hereLeft)
@@ -85,10 +113,9 @@ local function nearest(from, s)
         m = {}
         nearPt[from], nearD[from] = m, {}
     end
-    local x, y = from.wx, from.wy
     local best, bd
     for _, pt in ipairs(s.points) do
-        local d = dist(x, y, pt.wx, pt.wy)
+        local d = far(from, pt)
         if not bd or d < bd then best, bd = pt, d end
     end
     m[s], nearD[from][s] = best, bd
@@ -107,7 +134,7 @@ local function candidates(p, goals)
         for _, pt in ipairs(g.points or NONE) do
             if pt.wx and pt.cont == p.cont then
                 n = n + 1
-                pts[n], dk[pt] = pt, dist(p.wx, p.wy, pt.wx, pt.wy)
+                pts[n], dk[pt] = pt, far(p, pt)
             end
         end
         if n > 0 then
@@ -188,12 +215,13 @@ local function candidates(p, goals)
 end
 
 -- Walks an order from your position. Returns weighted cost, legs, points.
+-- (The legs are straight yards, what the route shows; the cost counts flights.)
 local function walk(p, order)
     local from, total = p, 0
     local legs, pts = {}, {}
     for i, s in ipairs(order) do
         local best, bd = nearest(from, s)
-        legs[i], pts[i] = bd, best
+        legs[i], pts[i] = dist(from.wx, from.wy, best.wx, best.wy), best
         total = total + bd * (s.goal.weight or 1)
         from = best
     end

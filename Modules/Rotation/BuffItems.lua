@@ -864,6 +864,7 @@ function BI:OpenMenu()
     local function toggle(text, key)
         return { text = text, checked = r[key] ~= false, func = function() r[key] = (r[key] == false) end }
     end
+    items[#items + 1] = toggle("Cannibalize a fresh corpse first (Undead)", "recoverCannibalize")
     items[#items + 1] = toggle("Use bandages", "recoverBandage")
     items[#items + 1] = toggle("Eat food", "recoverFood")
     items[#items + 1] = toggle("Eat Well Fed food too (first when fights are ahead)", "recoverBuffFood")

@@ -967,9 +967,10 @@ function D:Prepare(key)
     local extra = {}
     if #run.leadIns > 0 then extra[#extra + 1] = string.format("%d unlock quests", #run.leadIns) end
     if #run.breadcrumbs > 0 then extra[#extra + 1] = string.format("%d on the way", #run.breadcrumbs) end
-    ns:Print(string.format("%s: %d to pick up%s, then the entrance.", run.name,
+    ns:Print(string.format("%s: %d to pick up%s, then the entrance. The route takes you to each.", run.name,
         #run.pickups + #run.leadIns + #run.breadcrumbs,
         #extra > 0 and (" (" .. table.concat(extra, ", ") .. ")") or ""))
+    for _, line in ipairs(D.QuestLines(run, D.QuestInfo)) do ns:Print("  " .. line) end
     if ns.nav and ns.nav.Collect then ns.nav:Collect() end
 end
 
@@ -1065,7 +1066,7 @@ ns:Register("navGoal", "dungeon", {
         local run = D:Run(key)
         if not run then return nil end
         local goals = {}
-        local required = 0
+        local needed, unplaced = {}, {}
         local function pickup(id, why, optional)
             local q = quest(id)
             if not q or ns.quests:InLog(id) then return end
@@ -1075,8 +1076,14 @@ ns:Register("navGoal", "dungeon", {
             -- (an event's, another race's or class's) stay off the route.
             if not D.TakeNow(q) then return end
             local pts = starterPoints(q)
-            if #pts == 0 then return end
             local g = starterNPC(q)
+            if #pts == 0 then
+                -- (Questie doesn't place its giver: said on the entrance stop)
+                if not optional then
+                    unplaced[#unplaced + 1] = (q.name or "quest") .. (g and g.name and (" from " .. g.name) or "")
+                end
+                return
+            end
             goals[#goals + 1] = {
                 key = "pickup:" .. id, weight = optional and 1.2 or 1.0, optional = optional or nil, level = q.level,
                 npcs = g and g.name and { g.name } or nil, kind = "accept", points = pts,
@@ -1085,19 +1092,25 @@ ns:Register("navGoal", "dungeon", {
                             optional and "Optional: only if you pass by. Skipping it never blocks the run."
                                 or ("For your " .. run.name .. " run.") },
             }
-            if not optional then required = required + 1 end
+            if not optional then needed[#needed + 1] = "pickup:" .. id end
         end
         for _, id in ipairs(run.pickups) do pickup(id, "for " .. run.name) end
         for _, st in ipairs(run.leadIns) do pickup(st.id, "unlocks " .. (st.unlocks or "a dungeon quest")) end
         -- Breadcrumbs: picked up only on the way, never part of the chain.
         for _, b in ipairs(run.breadcrumbs or {}) do pickup(b.id, "leads to " .. (b.leadsTo or "a dungeon quest"), true) end
-        -- The entrance, last (optional breadcrumbs don't hold it back); not while you're in there or just came out.
+        -- The entrance, after the pickups (optional breadcrumbs don't hold
+        -- it back), so the whole trip shows; not while you're in there or
+        -- just came out. (It used to appear only once every pickup was in
+        -- your log: until then the route didn't say where the run went.)
         local been = ns.db.nav.dungeonIn
-        if required == 0 and run.entrance and not currentDungeon() and not (been and been.key == run.dungeon) then
+        if run.entrance and not currentDungeon() and not (been and been.key == run.dungeon) then
+            local details = { string.format("%d quests for this run.", run.count) }
+            if #needed > 0 then details[#details + 1] = string.format("After the %d pickup%s.", #needed, #needed > 1 and "s" or "") end
+            for _, u in ipairs(unplaced) do details[#details + 1] = "Not on the map (find the giver yourself): " .. u .. "." end
             goals[#goals + 1] = {
                 key = "dungeon:" .. run.key, weight = 0.8, kind = "waypoint", points = { run.entrance },
-                title = run.name, text = "Enter " .. run.name,
-                details = { string.format("%d quests for this run.", run.count) },
+                title = run.name, text = "Enter " .. run.name, deps = #needed > 0 and needed or nil,
+                details = details,
             }
         end
         return goals
@@ -1136,7 +1149,56 @@ local function ratioText(run)
     return run.worth.ratio and string.format("%.1fx", run.worth.ratio) or "?"
 end
 
-function D.Summary(run, solo)
+-- Who gives quest id and where: { name, level, giver, zone, item }. The
+-- giver is the NPC (or object) that starts it; item: it starts from an item.
+function D.QuestInfo(id)
+    local q = quest(id)
+    if not q then return { name = "quest " .. tostring(id) } end
+    local info = { name = q.name, level = q.level }
+    local g = starterNPC(q)
+    if g then
+        info.giver = g.name
+        local zone = g.zoneID
+        if not zone and g.spawns then zone = next(g.spawns) end
+        info.zone = zone and ns.quests:ZoneName(zone) or nil
+    elseif q.Starts and q.Starts.Item and q.Starts.Item[1] then
+        info.item = true
+    elseif q.Starts and q.Starts.GameObject and q.Starts.GameObject[1] then
+        local o = ns.quests:QuestieGet("GetObject", q.Starts.GameObject[1])
+        info.giver = o and o.name or nil
+    end
+    return info
+end
+
+-- One line per quest of the run, in the order you do them: the ones to pick
+-- up (with who gives them and where), the lead-ins they need, then the
+-- ones in your log and the ones that start inside. info(id) -> D.QuestInfo.
+D.QUEST_LINES = 12
+function D.QuestLines(run, info)
+    local lines = {}
+    local function add(prefix, id)
+        local i = info(id) or {}
+        local who = ""
+        if i.giver then who = " - " .. i.giver .. (i.zone and (", " .. i.zone) or "")
+        elseif i.item then who = " - starts from an item" end
+        lines[#lines + 1] = string.format("%s %s%s%s", prefix, i.name or ("quest " .. tostring(id)),
+            i.level and string.format(" (%d)", i.level) or "", who)
+    end
+    for _, st in ipairs(run.leadIns or {}) do add("Unlock:", st.id) end
+    for _, id in ipairs(run.pickups or {}) do add("Pick up:", id) end
+    for _, b in ipairs(run.breadcrumbs or {}) do add("On the way:", b.id) end
+    for _, id in ipairs(run.ready or {}) do add("In your log:", id) end
+    for _, id in ipairs(run.inside or {}) do add("Starts inside:", id) end
+    if #lines > D.QUEST_LINES then
+        local more = #lines - D.QUEST_LINES
+        for i = #lines, D.QUEST_LINES + 1, -1 do lines[i] = nil end
+        lines[#lines + 1] = string.format("... and %d more.", more)
+    end
+    return lines
+end
+
+-- info (optional, D.QuestInfo): list the quests too, one per line.
+function D.Summary(run, solo, info)
     local lines = {}
     lines[#lines + 1] = string.format("%s: about %s your questing XP per hour%s.", run.name, ratioText(run),
         run.estimatedRate and " (estimated)" or "")
@@ -1155,6 +1217,9 @@ function D.Summary(run, solo)
     lines[#lines + 1] = string.format("About %d min (%d to gather).", math.floor(run.worth.minutes + 0.5),
         math.floor(run.gatherMinutes + 0.5))
     if solo then lines[#lines + 1] = "Needs a group." end
+    if info then
+        for _, line in ipairs(D.QuestLines(run, info)) do lines[#lines + 1] = line end
+    end
     return lines
 end
 
@@ -1171,7 +1236,7 @@ end
 local function runMenu(run)
     local prepared = D:Prepared() == run.key
     local items = { { title = true, text = run.name } }
-    for _, line in ipairs(D.Summary(run, not ns.party:InGroup())) do
+    for _, line in ipairs(D.Summary(run, not ns.party:InGroup(), D.QuestInfo)) do
         items[#items + 1] = { text = muted(line), disabled = true }
     end
     items[#items + 1] = { sep = true }
@@ -1247,7 +1312,7 @@ do
             icon = "Interface\\AddOns\\Flow\\Modules\\Nav\\Art\\DungeonKey",
             text = ratioText(run),
             color = solo and T.muted or T.good,
-            tip = table.concat(D.Summary(run, solo), "\n"),
+            tip = table.concat(D.Summary(run, solo, D.QuestInfo), "\n"),
             click = function() if D:Prepared() == run.key then D:Cancel() else D:Prepare(run.key) end end,
             clickText = prepared and "Cancel this run" or "Prepare this run",
         }

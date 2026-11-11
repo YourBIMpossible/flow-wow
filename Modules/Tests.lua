@@ -273,6 +273,62 @@ ns:Register("test", "planner: nearest first, turn-in after its objective", funct
     t:eq(plan and plan[1].goal.key, "1:1", "objective before its turn-in")
 end)
 
+ns:Register("test", "travel time: a stop's spot picked by the time to get there, flights counted", function(t)
+    local P, N = ns.planner, ns.nav
+    -- The planner: a forge 2000 yd away on foot, or one 3000 yd away by a
+    -- flight that makes it 500 yd of running.
+    local walkTo = { cont = 0, wx = 2000, wy = 0 }
+    local flyTo = { cont = 0, wx = 3000, wy = 0 }
+    local forge = { key = "smelt", text = "smelt", points = { walkTo, flyTo } }
+    local p = { cont = 0, wx = 0, wy = 0 }
+    local air = function(a, b) if b == flyTo then return 500 end end
+    local plan = P:Plan(p, { forge }, {})
+    t:eq(plan and plan[1].point, walkTo, "no flights: the nearest in a straight line")
+    plan = P:Plan(p, { forge }, { air = air })
+    t:eq(plan and plan[1].point, flyTo, "with flights: the quicker one")
+    t:eq(plan and math.floor(plan[1].leg + 0.5), 3000, "the leg still shows straight yards")
+    t:eq(P._Far(p, walkTo, { air = air }), 2000, "no flight: the straight line")
+    t:eq(P._Far(p, flyTo, { air = air }), 500, "a flight that's quicker counts")
+    t:eq(P._Far(p, { cont = 0, wx = 200, wy = 0 }, { air = function() return 1 end }), 200, "a short walk never asks about flights")
+    t:eq(P._Far(p, flyTo, { air = function() return 9000 end }), 3000, "a slower flight doesn't count")
+    t:eq(P._Far(p, flyTo, { air = function() error("x") end }), 3000, "a flight lookup that fails: the straight line")
+    -- Nav: walk to the flight master, fly (its seconds as running yards), walk on.
+    local keepF, keepT = ns.db.flights, ns.db.flightTimes
+    ns.db.flights = { A = { cont = 0, wx = 0, wy = 0 }, B = { cont = 0, wx = 5000, wy = 0 } }
+    ns.db.flightTimes = { ["A>B"] = 60 }
+    local ok, err = pcall(function()
+        local a, b = { cont = 0, wx = 100, wy = 0 }, { cont = 0, wx = 5100, wy = 0 }
+        t:eq(N.TravelYards(a, b, 7), 100 + 100 + 60 * 7, "walk + flight + walk")
+        t:eq(N.TravelYards(a, { cont = 0, wx = 200, wy = 0 }, 7), nil, "same flight master at both ends: no flight")
+        t:eq(N.TravelYards(a, { cont = 1, wx = 5100, wy = 0 }, 7), nil, "another continent: no flight")
+        local n = N.NearestFlightMaster(0, 4900, 0)
+        t:eq(n, "B", "nearest flight master")
+    end)
+    ns.db.flights, ns.db.flightTimes = keepF, keepT
+    N.flightGen = (N.flightGen or 0) + 1
+    if not ok then error(err) end
+end)
+
+ns:Register("test", "travel time: forges and fires you've used count as station spots", function(t)
+    local SP = ns.skillPlan
+    local learned = {
+        { kind = "forge", cont = 0, wx = 10, wy = 10, map = 1426, x = 0.5, y = 0.5 },
+        { kind = "anvil", cont = 0, wx = 20, wy = 20 },
+        { kind = "fire", cont = 1, wx = 30, wy = 30 },
+    }
+    local forges = SP.LearnedStationPoints("forge", learned)
+    t:eq(#forges, 1, "a forge: only forges")
+    t:eq(forges[1].map, 1426, "keeps the map spot for the map")
+    t:ok(forges[1] ~= learned[1], "a copy, not the saved spot")
+    t:eq(#SP.LearnedStationPoints("anvil", learned), 2, "an anvil: anvils and forges (they stand together)")
+    t:eq(#SP.LearnedStationPoints("fire", learned), 1, "a fire: fires")
+    t:eq(#SP.LearnedStationPoints("loom", learned), 0, "not a station: none")
+    -- Learning keeps the map spot now.
+    local list = {}
+    local s = ns.actions.LearnStation(list, "forge", { map = 1426, x = 0.4, y = 0.6, cont = 0, wx = 1, wy = 2 })
+    t:eq(s and s.map, 1426, "learned with its map")
+end)
+
 ns:Register("test", "planner: near first, far stops and item drops wait", function(t)
     local F = ns.nearFirst
     t:eq(F.Multiplier({}, 100), 1, "close: unchanged")
@@ -4769,6 +4825,40 @@ ns:Register("test", "click: the Dungeons menu entries are well formed and open",
     end
 end)
 
+ns:Register("test", "dungeon key: the quests to get and who gives them are listed", function(t)
+    local D = ns.dungeons
+    local names = {
+        [1] = { name = "Ready One", level = 20 },
+        [2] = { name = "Pick Me", level = 21, giver = "Old Man", zone = "Duskwood" },
+        [3] = { name = "Unlock Me", level = 19, giver = "Guard" },
+        [4] = { name = "Item Start", level = 22, item = true },
+        [5] = { name = "Inside", level = 23 },
+    }
+    local function info(id) return names[id] end
+    local run = { name = "Test Run", count = 5, ready = { 1 }, pickups = { 2, 4 }, inside = { 5 },
+        leadIns = { { id = 3 } }, breadcrumbs = {}, toolong = {}, skipped = {}, next = 0, unlocks = {},
+        followups = {}, worth = { ratio = 1.5, minutes = 30 }, gatherMinutes = 5 }
+    local lines = D.QuestLines(run, info)
+    t:eq(#lines, 5, "one line per quest")
+    t:eq(lines[1], "Unlock: Unlock Me (19) - Guard", "the lead-in first, with its giver")
+    t:eq(lines[2], "Pick up: Pick Me (21) - Old Man, Duskwood", "a pickup: who and where")
+    t:eq(lines[3], "Pick up: Item Start (22) - starts from an item", "an item start says so")
+    t:eq(lines[4], "In your log: Ready One (20)", "a quest you have")
+    t:eq(lines[5], "Starts inside: Inside (23)", "one that starts in the dungeon")
+    t:eq(D.QuestLines(run, function() return nil end)[1], "Unlock: quest 3", "no data: the id")
+    local many = { name = "Big", count = 20, ready = {}, pickups = {}, inside = {}, leadIns = {}, breadcrumbs = {} }
+    for i = 1, 20 do many.pickups[i] = 2 end
+    local ml = D.QuestLines(many, info)
+    t:eq(#ml, D.QUEST_LINES + 1, "a long list is cut")
+    t:eq(ml[#ml], string.format("... and %d more.", 20 - D.QUEST_LINES), "and says how many more")
+    local okA, plain = pcall(D.Summary, run, false)
+    local okB, full = pcall(D.Summary, run, false, info)
+    t:ok(okA and okB, "the summary builds with and without the list")
+    if okA and okB then t:eq(#full, #plain + 5, "the list adds its lines only when asked") end
+    local okI, qi = pcall(D.QuestInfo, 999999999)
+    t:ok(okI and type(qi) == "table" and type(qi.name) == "string", "an unknown quest still gives a name")
+end)
+
 ns:Register("test", "map: the trail to your next stop takes the arrow's colour", function(t)
     local M = ns.mapOverlay
     -- 0.35.127: `x and false or nil` is always nil, so it never did.
@@ -4782,7 +4872,7 @@ ns:Register("test", "recovery: one order for every way of being hurt; fight heal
     if not (E and BI and ns.db and ns.db.rotation) then t:ok(true, "(no rotation)") return end
     local r = ns.db.rotation
     local keep = { busy = E.RecoverBusy, mounted = E.Mounted, hd = E.HealDecision, lh = E.LowHealthHeal, eh = E.EarlyHeal,
-                   em = BI.EmergencyStep, band = BI.BandageStep, food = BI.FoodStep, hurt = E.hurt,
+                   em = BI.EmergencyStep, band = BI.BandageStep, food = BI.FoodStep, hurt = E.hurt, can = E.CannibalizeStep,
                    order = r.recoverOrder, b = r.recoverBandage, f = r.recoverFood, h = r.recoverHeal,
                    bf = r.recoverBuffFood, ei = r.emergencyItems }
     local have, askedBuff = {}, nil
@@ -4796,6 +4886,7 @@ ns:Register("test", "recovery: one order for every way of being hurt; fight heal
         BI.EmergencyStep = function() return have.stone and { label = "Healthstone!" } or have.potion and { label = "Healing potion!" } or nil end
         BI.BandageStep = function() return have.bandage and { label = "Bandage" } or nil end
         BI.FoodStep = function(buffFood) askedBuff = buffFood; return have.food and { label = "Food" } or nil end
+        E.CannibalizeStep = function() return have.corpse and { spell = "Cannibalize", kind = "heal" } or nil end
         local function set(order, b, f, h) r.recoverOrder, r.recoverBandage, r.recoverFood, r.recoverHeal = order, b, f, h end
         local function pick(ctx)
             -- The whole order (bandage, food, heal spell), wherever each one shows.
@@ -4841,6 +4932,12 @@ ns:Register("test", "recovery: one order for every way of being hurt; fight heal
             t:eq(pick(ctx), nil, name .. ": eating or casting: nothing")
             have.busy, have.mounted = false, true
             t:ok(isSpell(ctx), name .. ": mounted: no bandage or food, a heal spell")
+            -- Cannibalize (a usable corpse targeted) comes first, on the buff button.
+            have = { bandage = true, food = true, spell = true, corpse = true }
+            t:eq(pick(ctx), "Cannibalize", name .. ": a fitting corpse: Cannibalize before the bandage")
+            local onBtn = E:Recover(ctx, def, "items")
+            t:eq(onBtn and onBtn.spell, "Cannibalize", name .. ": it shows on the buff button")
+            t:ok(E:Recover(ctx, def, "heal") == nil, name .. ": and Flow's key holds the heal spell back")
         end
         -- Lightly hurt (estimate only): bandage or heal, but not food.
         E.hurt = E.HURT.outStart
@@ -4879,12 +4976,72 @@ ns:Register("test", "recovery: one order for every way of being hurt; fight heal
         have = { spell = true }
         t:eq(pick({ inCombat = true, maxHp = 100, hp = 30, hpPct = 0.3 }), "Heal", "fight, health shown: the normal heal")
         t:eq(pick({ inCombat = true, maxHp = 0, hp = 0, hpPct = 1 }), "Early Heal", "fight, health hidden, no warning: Flow's estimate")
+        -- Above 80% health (shown): no heal of any kind, whatever the estimate says.
+        E.hurt = E.HURT.max
+        set(nil, nil, nil, nil)
+        have = { bandage = true, food = true, spell = true, corpse = true, stone = true, potion = true }
+        t:eq(pick({ inCombat = false, maxHp = 100, hp = 85, hpPct = 0.85 }), nil, "85% health shown, out of a fight: no heal, bandage, food or Cannibalize")
+        t:eq(E:Recover({ inCombat = false, maxHp = 100, hp = 85, hpPct = 0.85 }, def, "items"), nil, "85%: nothing on the buff button either")
+        t:eq(pick({ inCombat = true, maxHp = 100, hp = 85, hpPct = 0.85 }), nil, "85% health shown, in a fight: no heal")
+        t:ok(pick({ inCombat = false, maxHp = 100, hp = 75, hpPct = 0.75 }) ~= nil, "75%: the recovery order runs")
+        t:ok(E.HealthFine({ maxHp = 100, hpPct = 0.81 }) and not E.HealthFine({ maxHp = 100, hpPct = 0.8 })
+            and not E.HealthFine({ maxHp = 0, hpPct = 1 }), "the line is above 80%, and only when your health is shown")
     end)
     E.RecoverBusy, E.Mounted, E.HealDecision, E.LowHealthHeal, E.EarlyHeal = keep.busy, keep.mounted, keep.hd, keep.lh, keep.eh
     BI.EmergencyStep, BI.BandageStep, BI.FoodStep, E.hurt = keep.em, keep.band, keep.food, keep.hurt
+    E.CannibalizeStep = keep.can
     r.recoverOrder, r.recoverBandage, r.recoverFood, r.recoverHeal = keep.order, keep.b, keep.f, keep.h
     r.recoverBuffFood, r.emergencyItems = keep.bf, keep.ei
     t:ok(ok, "recovery checks ran" .. (ok and "" or (": " .. tostring(err))))
+end)
+
+ns:Register("test", "learn key: no recipe for a profession you don't have (or not trained far enough)", function(t)
+    local X = ns.actions
+    local ranks = { Cooking = 60, ["First Aid"] = 150 }
+    local function skill(n) return ranks[n] end
+    local function blocked(lines, red) return X.RecipeBlocked(lines, red, skill) end
+    t:eq(X._MIN_SKILL, "^Requires (.-) %((%d+)%)$", "the skill line pattern from the game's text")
+    t:eq(blocked({ "Pattern: Red Linen Robe", "Requires Tailoring (40)" }), true, "Tailoring recipe, no Tailoring: not learnable")
+    t:eq(blocked({ "Recipe: Smoked Bear Meat", "Requires Cooking (80)" }), true, "Cooking 60, recipe needs 80: not yet")
+    t:eq(blocked({ "Recipe: Brilliant Smallfish", "Requires Cooking (1)" }), false, "Cooking recipe you can learn: kept")
+    t:eq(blocked({ "Manual: Heavy Silk Bandage", "Requires First Aid (180)" }), true, "First Aid 150, needs 180: not yet")
+    t:eq(blocked({ "Scroll of Stamina", "Use: Teaches you..." }), false, "no skill line: kept (the usual checks decide)")
+    t:eq(blocked({ "Recipe: X", "Requires Level 30" }, { false, true }), true, "a Requires line the game shows in red: not learnable")
+    t:eq(blocked({ "Recipe: X", "Requires Level 30" }, { false, false }), false, "a Requires line you meet: kept")
+end)
+
+ns:Register("test", "recovery: Cannibalize only on a humanoid or undead corpse", function(t)
+    local E = ns.rotation
+    if not (E and E.CorpseFits) then t:ok(true, "(no rotation)") return end
+    t:ok(E.CorpseFits("Humanoid"), "humanoid: yes")
+    t:ok(E.CorpseFits("Undead"), "undead: yes")
+    t:ok(not E.CorpseFits("Beast"), "beast: no")
+    t:ok(not E.CorpseFits(nil), "type unknown: no")
+    local loc = function(id) return id == 7 and "Humanoide" or nil end
+    t:ok(E.CorpseFits("Humanoide", loc), "the game's own name for humanoid (another language): yes")
+    local r = ns.db and ns.db.rotation
+    if not r then return end
+    local keepR, keepC, keepM, keepOff = E.Ready, E.CannibalCorpse, E.Mounted, r.recoverCannibalize
+    local ok, err = pcall(function()
+        local fits, close, ready = true, true, true
+        E.Ready = function(_, sp) return sp == "Cannibalize" and ready end
+        E.CannibalCorpse = function() return fits, close end
+        E.Mounted = function() return false end
+        r.recoverCannibalize = nil
+        local s = E:CannibalizeStep({})
+        t:eq(s and s.spell, "Cannibalize", "ready, corpse close: Cannibalize")
+        close = false
+        s = E:CannibalizeStep({})
+        t:ok(s and s.reason:find("walk", 1, true) ~= nil, "corpse farther: walk to it first")
+        fits = false
+        t:ok(E:CannibalizeStep({}) == nil, "no fitting corpse: nothing")
+        fits, ready = true, false
+        t:ok(E:CannibalizeStep({}) == nil, "on cooldown or not Undead: nothing")
+        ready, r.recoverCannibalize = true, false
+        t:ok(E:CannibalizeStep({}) == nil, "turned off: nothing")
+    end)
+    E.Ready, E.CannibalCorpse, E.Mounted, r.recoverCannibalize = keepR, keepC, keepM, keepOff
+    t:ok(ok, "Cannibalize checks ran" .. (ok and "" or (": " .. tostring(err))))
 end)
 
 ns:Register("test", "repair: early warning, vendor decision, after the sale", function(t)

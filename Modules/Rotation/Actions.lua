@@ -424,7 +424,8 @@ function X.LearnStation(list, kind, p)
     for _, s in ipairs(list) do
         if s.kind == kind and dist(p, s) < X.STATION_YARDS then return s end
     end
-    local s = { kind = kind, cont = p.cont, wx = p.wx, wy = p.wy }
+    -- (map/x/y too, so the map can show it; older spots have only world yards)
+    local s = { kind = kind, cont = p.cont, wx = p.wx, wy = p.wy, map = p.map, x = p.x, y = p.y }
     list[#list + 1] = s
     while #list > STATION_MAX do table.remove(list, 1) end
     return s
@@ -557,10 +558,35 @@ local function tooltipLines(bag, slot)
     if not (T and T.GetBagItem) then return nil end
     local ok, data = pcall(T.GetBagItem, bag, slot)
     if not (ok and data and data.lines) then return nil end
-    local out = {}
-    for _, l in ipairs(data.lines) do out[#out + 1] = l.leftText or "" end
-    return out
+    local out, red = {}, {}
+    for i, l in ipairs(data.lines) do
+        out[i] = l.leftText or ""
+        local c = l.leftColor
+        red[i] = type(c) == "table" and (c.r or 0) > 0.9 and (c.g or 1) < 0.25 and (c.b or 1) < 0.25 or false
+    end
+    return out, red
 end
+
+-- A recipe you can't learn yet: its "Requires Tailoring (50)" line names a
+-- profession you don't have or haven't trained that far, or the game shows
+-- a "Requires" line in red. lines/red come from the tooltip; skill(name)
+-- gives your rank in a profession (nil: you don't have it).
+-- ("Requires %s (%d)" -> "^Requires (.-) %((%d+)%)$")
+local MIN_SKILL = "^" .. (ITEM_MIN_SKILL or "Requires %s (%d)"):gsub("[%(%)%.%-%+%[%]%?%*]", "%%%0")
+    :gsub("%%s", "(.-)"):gsub("%%d", "(%%d+)") .. "$"
+local REQUIRES = (ITEM_REQ_SKILL or "Requires %s"):match("^(.-)%%s") or "Requires "
+function X.RecipeBlocked(lines, red, skill)
+    for i, t in ipairs(lines or {}) do
+        local prof, need = t:match(MIN_SKILL)
+        if prof then
+            local rank = skill(prof)
+            if not rank or rank < (tonumber(need) or 0) then return true end
+        end
+        if red and red[i] and t:find(REQUIRES, 1, true) == 1 then return true end
+    end
+    return false
+end
+X._MIN_SKILL = MIN_SKILL
 function X.Learnables()
     if not learnDirty then return learnables end
     learnDirty = false
@@ -575,8 +601,9 @@ function X.Learnables()
             local id = itemAt(bag, slot)
             if id and usable(id) then
                 local _, _, _, _, _, classID = instant(id)
-                local lines = tooltipLines(bag, slot)
+                local lines, red = tooltipLines(bag, slot)
                 local teaches, isKnown = classID == 9, false
+                if X.RecipeBlocked(lines, red, A.Skill) then teaches = false; lines = nil end
                 for _, t in ipairs(lines or {}) do
                     if t:find(known, 1, true) then isKnown = true end
                     if t:find("Teaches", 1, true) or t:find("teaches you", 1, true) then teaches = true end
