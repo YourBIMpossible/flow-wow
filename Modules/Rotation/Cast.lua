@@ -383,6 +383,7 @@ function C.TargetKeyFor(key) return C.ModKey(key, "CTRL") end
 
 function C:HealSpell() return healSpell end
 
+local emergItem
 local function setHeal()
     if InCombatLockdown() or not btn then return end
     local spell = ns.db.cast.shiftHeal ~= false and C.HealFor(E:Definition(),
@@ -395,6 +396,31 @@ local function setHeal()
     C:ApplyKey()   -- the Shift binding comes and goes with the heal
 end
 C._setHeal = setHeal
+
+-- Alt + key: your healthstone (else your best healing potion), set before
+-- the fight like the Shift heal, so the item works in a fight even when
+-- it's on none of your bars. It can't switch mid-fight: with the healthstone
+-- on cooldown, the potion is on the Flow icon to press from your bar or bag.
+function C.ItemKeyFor(key) return C.ModKey(key, "ALT") end
+function C:EmergencyItem() return emergItem end
+-- The item for Alt + key, or nil. carried = BI.PickEmergency of your bags.
+function C.EmergencyItemFor(cast, rotation, carried)
+    if (cast and cast.altItem == false) or (rotation and rotation.emergencyItems == false) or not carried then return nil end
+    return "item:" .. carried.id
+end
+local function setEmergency()
+    if InCombatLockdown() or not btn then return end
+    local BI = ns.buffItems
+    local item = C.EmergencyItemFor(ns.db.cast, ns.db.rotation, BI and BI.EmergencyCarry and BI.EmergencyCarry() or nil)
+    if item == emergItem then return end
+    emergItem = item
+    btn:SetAttribute("type-emerg", item and "item" or nil)
+    btn:SetAttribute("item-emerg", item)
+    C:ApplyKey()   -- the Alt binding comes and goes with the item
+end
+C._setEmergency = setEmergency
+ns:On("BAG_UPDATE_DELAYED", function() if C_Timer then C_Timer.After(0.2, setEmergency) else setEmergency() end end)
+ns:On("PLAYER_REGEN_ENABLED", function() if C_Timer then C_Timer.After(0.5, setEmergency) else setEmergency() end end)
 
 -- Your easy-button keys: up to two (ns.db.cast.key and .key2), both cast the
 -- suggestion. Returns the ones set, without repeats.
@@ -417,6 +443,8 @@ function C:ApplyKey()
         else SetOverrideBindingClick(owner, true, key, "FlowCastButton", "LeftButton") end
         local healKey = healSpell and C.HealKeyFor(key)
         if healKey then SetOverrideBindingClick(owner, true, healKey, "FlowCastButton", "heal") end
+        local itemKey = emergItem and C.ItemKeyFor(key)
+        if itemKey then SetOverrideBindingClick(owner, true, itemKey, "FlowCastButton", "emerg") end
         local targetKey = ns.db.cast.ctrlTarget ~= false and C.TargetKeyFor(key)
         if targetKey then SetOverrideBindingClick(owner, true, targetKey, "FlowCastButton", "ontarget") end
     end
@@ -499,6 +527,7 @@ end)
 ns:On("PLAYER_REGEN_DISABLED", function()
     if btn and not btn:IsShown() then btn:Show() end  -- key must work all fight
     setHeal()   -- Shift + key: your heal, all fight
+    setEmergency()   -- Alt + key: your healthstone or potion
     -- The key goes back to Flow's button for the fight (not Interact or Sit). This
     -- event comes just before the lockdown, so changes are still allowed.
     if keyCommand == "INTERACTTARGET" or keyCommand == "SITORSTAND" then C:SetKeyCommand(nil) end
@@ -547,6 +576,9 @@ function C:Test()
     print("  shift + key: " .. (healSpell and first and C.HealKeyFor(first)
         and string.format("%s casts %s on you (bound to %s)", C.HealKeyFor(first), healSpell, tostring(GetBindingAction(C.HealKeyFor(first), true)))
         or "no heal on it"))
+    print("  alt + key: " .. (emergItem and first and C.ItemKeyFor(first)
+        and string.format("%s uses %s (bound to %s)", C.ItemKeyFor(first), emergItem, tostring(GetBindingAction(C.ItemKeyFor(first), true)))
+        or "no healthstone or healing potion on it"))
     local tk = first and C.TargetKeyFor(first)
     print("  ctrl + key: " .. (tk and ns.db.cast.ctrlTarget ~= false
         and string.format("%s casts %s on your target (bound to %s)", tk, tostring(btn and btn:GetAttribute("spell-ontarget") or "nothing now"),

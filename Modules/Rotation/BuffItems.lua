@@ -440,16 +440,18 @@ BI.RECENTLY_BANDAGED = "Recently Bandaged"
 local BANDAGE_DEBUFF = 60
 
 -- What a bag item is for healing: "healthstone", "potion", "bandage",
--- "food" or nil. lines = its tooltip text (food: only the kind that heals;
--- Well Fed food is left for the buff step above).
+-- "food" or nil. lines = its tooltip text (food: only the kind that heals).
+-- Healing and Well Fed are separate things a food can do: the second return
+-- is true for food that also makes you Well Fed (eaten to heal only when
+-- there's no plain food, and only if you allow it).
 function BI.HealKind(name, classID, subID, lines)
     name = name or ""
     if name:find("Healthstone") then return "healthstone" end
     if name:find("Healing Potion") or (classID == 0 and subID == POTION_SUB and name:find("Healing")) then return "potion" end
     if name:find("Bandage") or (classID == 0 and subID == BANDAGE_SUB) then return "bandage" end
-    if classID == 0 and subID == FOOD_SUB and lines and not BI.IsBuffFood(lines) then
+    if classID == 0 and subID == FOOD_SUB and lines then
         for _, l in ipairs(lines) do
-            if type(l) == "string" and l:lower():find("health", 1, true) then return "food" end
+            if type(l) == "string" and l:lower():find("health", 1, true) then return "food", BI.IsBuffFood(lines) and true or false end
         end
     end
     return nil
@@ -479,8 +481,8 @@ local function healItems()
             lines = tipLines(id)
             if lines == nil then complete = false end
         end
-        local kind = BI.HealKind(name, classID, subID, lines)
-        if kind then out[#out + 1] = { id = id, kind = kind, name = name, rank = rankOf(id) } end
+        local kind, buff = BI.HealKind(name, classID, subID, lines)
+        if kind then out[#out + 1] = { id = id, kind = kind, name = name, rank = rankOf(id), buff = buff or nil } end
     end)
     if complete then healCache = out end
     return out
@@ -539,11 +541,25 @@ local function useStep(it, kind, label, reason, unit)
              unit = unit, label = label, reason = reason }
 end
 
+-- The healthstone (else healing potion) you carry, usable right now or not:
+-- what Alt + your key is set to before a fight.
+function BI.EmergencyCarry() return BI.PickEmergency(healItems()) end
+
+-- How to press it: Alt + your key when that's the item set on it, else from
+-- your bar or bag (the key itself can't change in a fight).
+function BI.EmergencyHow(item, altItem, altKey)
+    if altItem and altKey and item == altItem then return "press " .. altKey end
+    return "press it on your bar or in your bag: the key is locked in a fight"
+end
+
 function BI.EmergencyStep()
     local it = BI.PickEmergency(healItems(), itemReady)
     if not it then return nil end
+    local C = ns.cast
+    local first = C and C.Keys and C:Keys()[1]
+    local how = BI.EmergencyHow("item:" .. it.id, C and C.EmergencyItem and C:EmergencyItem(), first and C.ItemKeyFor and C.ItemKeyFor(first))
     return useStep(it, "emergency", it.kind == "healthstone" and "Healthstone!" or "Healing potion!",
-        "Low health: use your " .. it.name .. " now (press it on your bar: the key is locked in a fight)")
+        "Low health: use your " .. it.name .. " now (" .. how .. ")")
 end
 
 function BI.BandageStep(lowFirst)
@@ -554,8 +570,18 @@ function BI.BandageStep(lowFirst)
         "Hurt after your fight: bandage up (stand still while it heals)", "player")
 end
 
-function BI.FoodStep()
-    local it = BI.PickKind(healItems(), "food", false, itemReady)
+-- The food to heal with: plain food first (best rank); food that also makes
+-- you Well Fed only when there's no plain food and buffFood allows it.
+function BI.PickFood(items, buffFood, ready)
+    local plain, buff = {}, {}
+    for _, it in ipairs(items or {}) do
+        if it.kind == "food" then local t = it.buff and buff or plain; t[#t + 1] = it end
+    end
+    return BI.PickKind(plain, "food", false, ready) or (buffFood and BI.PickKind(buff, "food", false, ready)) or nil
+end
+
+function BI.FoodStep(buffFood)
+    local it = BI.PickFood(healItems(), buffFood, itemReady)
     if not it then return nil end
     return useStep(it, "heal", "Eat: " .. it.name, "Hurt after your fight: eat to heal up")
 end
@@ -583,6 +609,7 @@ function BI:OpenMenu()
     end
     items[#items + 1] = toggle("Use bandages", "recoverBandage")
     items[#items + 1] = toggle("Eat food", "recoverFood")
+    items[#items + 1] = toggle("Eat Well Fed food too, when there's no plain food", "recoverBuffFood")
     items[#items + 1] = toggle("Cast heals", "recoverHeal")
     items[#items + 1] = { sep = true }
     items[#items + 1] = { title = true, text = "Bandages" }

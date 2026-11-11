@@ -347,6 +347,10 @@ local function build(parent)
         "Your easy key can't change what it casts during a fight (WoW's rule), so a heal Flow shows mid-fight can't be cast with it. Shift + your key always casts your fastest heal on you, fights included.",
         function() return ns.db.cast.shiftHeal ~= false end,
         function(on) ns.db.cast.shiftHeal = on end)
+    _, y = check(f, y, "Alt + easy key: healthstone or potion", "(works in fights too)",
+        "Alt + your easy key uses your healthstone, or your best healing potion when you carry no healthstone, even when it's on none of your bars. It's set before the fight and can't switch during one.",
+        function() return ns.db.cast.altItem ~= false end,
+        function(on) ns.db.cast.altItem = on; if ns.cast and ns.cast._setEmergency then ns.cast._setEmergency() end end)
     _, y = check(f, y, "Ctrl + easy key: on your target", "(heals and buffs)",
         "Your buffs and heals always go on you, even with a friend targeted. Hold Ctrl with your easy key to cast the shown heal or buff on your target instead.",
         function() return ns.db.cast.ctrlTarget ~= false end,

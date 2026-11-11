@@ -159,16 +159,18 @@ end)
         end
         -- Both straight ahead, the drop a hair nearer: unweighted the drop comes
         -- first (300 + 10 yd vs 310 + 10); with near-first it is heavier, so the
-        -- kill comes first.
+        -- kill comes first. (The planner's own "finish this area" rule is off
+        -- here: at 300 yd the drop is in the area and the kill isn't, which
+        -- would put the drop first whatever the weights say.)
         local drop = goal("1:1", 300, 0, { kind = "collect" })
         local kill = goal("2:1", 310, 0, { kind = "kill", weight = 1 })
-        local plan = ns.planner:Plan(p, { drop, kill }, {})
+        local plan = ns.planner:Plan(p, { drop, kill }, { areaFirst = false })
         t:eq(plan and plan[1].goal.key, "2:1", "a kill right behind an item drop comes first")
         t:eq(drop.weight, nil, "the drop's own weight is back")
         t:eq(kill.weight, 1, "the kill's own weight is back")
 
         ns.db.nearFirst = false
-        plan = ns.planner:Plan(p, { drop, kill }, {})
+        plan = ns.planner:Plan(p, { drop, kill }, { areaFirst = false })
         t:eq(plan and plan[1].goal.key, "1:1", "off: the nearer drop comes first")
         ns.db.nearFirst = saved
     end)

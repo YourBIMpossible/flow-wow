@@ -2933,8 +2933,15 @@ ns:Register("test", "buff items: used when you're about to kill a lot, if not on
     t:eq(BI.HealKind("Heavy Linen Bandage", 0, 7), "bandage", "a bandage")
     t:eq(BI.HealKind("Tough Jerky", 0, 5, { "Tough Jerky", "Use: Restores 61 health over 18 sec." }), "food", "plain food heals")
     t:eq(BI.HealKind("Refreshing Spring Water", 0, 5, { "Use: Restores 151 mana over 18 sec." }), nil, "drink: no")
-    t:eq(BI.HealKind("Roasted Boar Meat", 0, 5, { "Use: Restores 294 health. ...you will become well fed..." }), nil,
-        "Well Fed food is left for the buff step")
+    local k, wf = BI.HealKind("Roasted Boar Meat", 0, 5, { "Use: Restores 294 health. ...you will become well fed..." })
+    t:eq(k, "food", "Well Fed food that restores health heals too")
+    t:eq(wf, true, "...and is marked as Well Fed food")
+    t:eq(select(2, BI.HealKind("Tough Jerky", 0, 5, { "Use: Restores 61 health over 18 sec." })), false, "plain food: not marked")
+    local foods = { { id = 1, kind = "food", rank = 5 }, { id = 2, kind = "food", rank = 25, buff = true } }
+    t:eq(BI.PickFood(foods, true).id, 1, "plain food before Well Fed food, whatever the rank")
+    t:eq(BI.PickFood({ foods[2] }, true).id, 2, "only Well Fed food: eat it to heal")
+    t:eq(BI.PickFood({ foods[2] }, false), nil, "only Well Fed food, and you keep it for the buff: none")
+    t:eq(BI.PickFood(foods, true, function(id) return id ~= 1 end).id, 2, "plain food unusable: the Well Fed food")
     local heal = { { id = 1, kind = "potion", rank = 15 }, { id = 2, kind = "healthstone", rank = 10 },
                    { id = 3, kind = "bandage", rank = 5 }, { id = 4, kind = "bandage", rank = 20 } }
     t:eq(BI.PickEmergency(heal).id, 2, "in a fight: the healthstone before the potion")
@@ -3340,6 +3347,16 @@ ns:Register("test", "shift + easy key: your heal on you, even in a fight", funct
     t:eq(C.HealKeyFor("ALT-CTRL-Q"), "ALT-CTRL-SHIFT-Q", "all modifiers")
     t:eq(C.HealKeyFor("SHIFT-F"), nil, "a key that already uses Shift: none")
     t:eq(C.HealKeyFor(nil), nil, "no key: none")
+    t:eq(C.ItemKeyFor("`"), "ALT-`", "Alt + your key: the healthstone or potion")
+    t:eq(C.ItemKeyFor("ALT-Q"), nil, "a key with Alt already: none")
+    t:eq(C.EmergencyItemFor({}, {}, { id = 5512 }), "item:5512", "the carried healthstone goes on Alt + key")
+    t:eq(C.EmergencyItemFor({}, {}, nil), nil, "none carried: nothing on it")
+    t:eq(C.EmergencyItemFor({ altItem = false }, {}, { id = 5512 }), nil, "Alt + key off: nothing")
+    t:eq(C.EmergencyItemFor({}, { emergencyItems = false }, { id = 5512 }), nil, "fight items off: nothing")
+    local BIh = ns.buffItems
+    t:eq(BIh.EmergencyHow("item:1", "item:1", "ALT-`"), "press ALT-`", "the item on Alt + key: say so")
+    t:ok(BIh.EmergencyHow("item:2", "item:1", "ALT-`"):find("bar or in your bag", 1, true) ~= nil, "another item (stone on cooldown): bar or bag")
+    t:ok(BIh.EmergencyHow("item:2", nil, nil):find("bar or in your bag", 1, true) ~= nil, "no Alt key: bar or bag")
     local def = { heals = { "Healing Touch", "Rejuvenation", "Regrowth" } }
     local ms = { ["Healing Touch"] = 1500, Rejuvenation = 0, Regrowth = 2000 }
     local function knows(s) return s ~= "Regrowth" end
@@ -4036,4 +4053,109 @@ ns:Register("test", "dungeons: placed by objectives, wings by bosses, breadcrumb
     }, 58, 53)
     t:eq(runs[1] and runs[1].name, "Upper Blackrock Spire", "the wing's own run name")
     t:eq(runs[1] and runs[1].breadcrumbs and #runs[1].breadcrumbs, 0, "no breadcrumbs until the route adds them")
+end)
+
+ns:Register("test", "recovery: one order for every way of being hurt; fight healing apart", function(t)
+    local E, BI = ns.rotation, ns.buffItems
+    if not (E and BI and ns.db and ns.db.rotation) then t:ok(true, "(no rotation)") return end
+    local r = ns.db.rotation
+    local keep = { busy = E.RecoverBusy, mounted = E.Mounted, hd = E.HealDecision, lh = E.LowHealthHeal, eh = E.EarlyHeal,
+                   em = BI.EmergencyStep, band = BI.BandageStep, food = BI.FoodStep, hurt = E.hurt,
+                   order = r.recoverOrder, b = r.recoverBandage, f = r.recoverFood, h = r.recoverHeal,
+                   bf = r.recoverBuffFood, ei = r.emergencyItems }
+    local have, askedBuff = {}, nil
+    local def = { heals = { "Heal" } }
+    local ok, err = pcall(function()
+        E.RecoverBusy = function() return have.busy or false end
+        E.Mounted = function() return have.mounted or false end
+        E.HealDecision = function(_, ctx) return (have.spell and ctx.maxHp > 0 and ctx.hpPct < 0.5) and { spell = "Heal", kind = "heal" } or nil end
+        E.LowHealthHeal = function(_, ctx) return (have.spell and ctx.maxHp <= 0 and ctx.lowHealth) and { spell = "Fast Heal", kind = "emergency" } or nil end
+        E.EarlyHeal = function() return have.spell and { spell = "Early Heal", kind = "heal" } or nil end
+        BI.EmergencyStep = function() return have.stone and { label = "Healthstone!" } or have.potion and { label = "Healing potion!" } or nil end
+        BI.BandageStep = function() return have.bandage and { label = "Bandage" } or nil end
+        BI.FoodStep = function(buffFood) askedBuff = buffFood; return have.food and { label = "Food" } or nil end
+        local function set(order, b, f, h) r.recoverOrder, r.recoverBandage, r.recoverFood, r.recoverHeal = order, b, f, h end
+        local function pick(ctx)
+            local s = E:HealStep(ctx, def)
+            return s and (s.label or s.spell) or nil
+        end
+        local function isSpell(ctx)
+            local p = pick(ctx)
+            return p ~= nil and p:find("Heal", 1, true) ~= nil
+        end
+        -- Three ways of being hurt out of a fight.
+        local shown  = { inCombat = false, maxHp = 100, hp = 30, hpPct = 0.3 }                -- health readable
+        local hidden = { inCombat = false, maxHp = 0, hp = 0, hpPct = 1 }                     -- hidden: Flow's estimate
+        local warn   = { inCombat = false, maxHp = 0, hp = 0, hpPct = 1, lowHealth = true }   -- hidden: the game's warning
+        for name, ctx in pairs({ shown = shown, hidden = hidden, warn = warn }) do
+            E.hurt = (name == "hidden") and E.HURT.outBig or 0
+            have = { bandage = true, food = true, spell = true }
+            set(nil, nil, nil, nil)
+            t:eq(pick(ctx), "Bandage", name .. ": default order starts with the bandage, not the heal spell")
+            have.bandage = false
+            t:eq(pick(ctx), "Food", name .. ": no bandage: food")
+            have.food = false
+            t:ok(isSpell(ctx), name .. ": no bandage or food: a heal spell")
+            have = { bandage = true, food = true, spell = true }
+            set("heal,food,bandage")
+            t:ok(isSpell(ctx), name .. ": heal first when you put it first")
+            set("food,bandage,heal")
+            t:eq(pick(ctx), "Food", name .. ": food first when you put it first")
+            set(nil, false)
+            t:eq(pick(ctx), "Food", name .. ": bandages off: food")
+            set(nil, false, false)
+            t:ok(isSpell(ctx), name .. ": bandages and food off: a heal spell")
+            set(nil, false, false, false)
+            t:eq(pick(ctx), nil, name .. ": every step off: nothing, and no heal spell slips through")
+            set("heal,bandage,food", nil, nil, false)
+            t:eq(pick(ctx), "Bandage", name .. ": heal first but heals off: the bandage")
+            set(nil, nil, nil, nil)
+            have.busy = true
+            t:eq(pick(ctx), nil, name .. ": eating or casting: nothing")
+            have.busy, have.mounted = false, true
+            t:ok(isSpell(ctx), name .. ": mounted: no bandage or food, a heal spell")
+        end
+        -- Lightly hurt (estimate only): bandage or heal, but not food.
+        E.hurt = E.HURT.outStart
+        have = { food = true }
+        set(nil, nil, nil, nil)
+        t:eq(pick(hidden), nil, "lightly hurt: you don't sit down to eat")
+        E.hurt = 0
+        t:eq(pick(hidden), nil, "not hurt: nothing")
+        t:eq(pick({ inCombat = false, maxHp = 100, hp = 100, hpPct = 1 }), nil, "full health shown: nothing")
+        -- An enemy targeted: no sitting down to eat.
+        have = { food = true, spell = true }
+        t:ok(pick({ inCombat = false, maxHp = 100, hp = 30, hpPct = 0.3, hostile = true }) ~= "Food", "enemy targeted: no food")
+        -- The Well Fed food choice reaches the food step.
+        have = { food = true }
+        r.recoverBuffFood = false; pick(shown)
+        t:eq(askedBuff, false, "keep Well Fed food for the buff: passed on")
+        r.recoverBuffFood = nil; pick(shown)
+        t:eq(askedBuff, true, "by default Well Fed food may heal when there's no plain food")
+        -- In a fight: healthstone, then potion, then a heal spell; never the recovery order.
+        local fight = { inCombat = true, maxHp = 0, hp = 0, hpPct = 1, lowHealth = true }
+        r.emergencyItems = nil
+        have = { stone = true, potion = true, spell = true, bandage = true, food = true }
+        t:eq(pick(fight), "Healthstone!", "fight, low: the healthstone first")
+        have.stone = false
+        t:eq(pick(fight), "Healing potion!", "healthstone gone or on cooldown: the potion")
+        have.potion = false
+        t:eq(pick(fight), "Fast Heal", "neither usable: a heal spell")
+        have.spell = false
+        t:eq(pick(fight), nil, "nothing usable: nothing (never a bandage or food in a fight)")
+        have = { stone = true, spell = true }
+        r.emergencyItems = false
+        t:eq(pick(fight), "Fast Heal", "fight items off: straight to the heal spell")
+        r.emergencyItems = nil
+        set(nil, false, false, false)
+        t:eq(pick(fight), "Healthstone!", "recovery steps off don't touch fight healing")
+        have = { spell = true }
+        t:eq(pick({ inCombat = true, maxHp = 100, hp = 30, hpPct = 0.3 }), "Heal", "fight, health shown: the normal heal")
+        t:eq(pick({ inCombat = true, maxHp = 0, hp = 0, hpPct = 1 }), "Early Heal", "fight, health hidden, no warning: Flow's estimate")
+    end)
+    E.RecoverBusy, E.Mounted, E.HealDecision, E.LowHealthHeal, E.EarlyHeal = keep.busy, keep.mounted, keep.hd, keep.lh, keep.eh
+    BI.EmergencyStep, BI.BandageStep, BI.FoodStep, E.hurt = keep.em, keep.band, keep.food, keep.hurt
+    r.recoverOrder, r.recoverBandage, r.recoverFood, r.recoverHeal = keep.order, keep.b, keep.f, keep.h
+    r.recoverBuffFood, r.emergencyItems = keep.bf, keep.ei
+    t:ok(ok, "recovery checks ran" .. (ok and "" or (": " .. tostring(err))))
 end)

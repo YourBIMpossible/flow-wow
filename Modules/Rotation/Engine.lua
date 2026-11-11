@@ -341,21 +341,32 @@ end
 -- then a heal spell. A step you have nothing for is skipped. Not while you
 -- eat, cast or channel (a bandage is a channel); food only when you're quite
 -- hurt and no enemy is targeted (you'd sit down at the pull).
+E.FOOD_PCT = 0.6   -- eat at or below this share of your health (where it's shown)
+-- (Two small looks at the game, on their own so the tests can stand in.)
+function E.RecoverBusy(ctx)
+    return UnitIsDeadOrGhost("player") or eating() or ctx.casting or (UnitChannelInfo and UnitChannelInfo("player")) or false
+end
+function E.Mounted() return (IsMounted and IsMounted()) and true or false end
+
 function E:Recover(ctx, def)
-    if ctx.inCombat or UnitIsDeadOrGhost("player") then return nil end
-    if E.hurt < E.HURT.outStart then return nil end
-    if eating() or ctx.casting or (UnitChannelInfo and UnitChannelInfo("player")) then return nil end
+    if ctx.inCombat or E.RecoverBusy(ctx) then return nil end
+    -- Hurt: Flow's estimate, your real health where the game shows it, or
+    -- the game's low-health warning. All three go through the same order,
+    -- so a heal spell never jumps ahead of the bandage you put first, and
+    -- "Cast heals" off means no heal spell at all out of a fight.
+    local direct = def.heals and (self:HealDecision(ctx, def.heals) or self:LowHealthHeal(ctx, def.heals)) or nil
+    local quite = E.hurt >= E.HURT.outBig or ctx.lowHealth or (ctx.maxHp > 0 and ctx.hpPct <= E.FOOD_PCT)
+    if not (E.hurt >= E.HURT.outStart or direct or quite) then return nil end
     local BI, r = ns.buffItems, ns.db.rotation
-    local mounted = IsMounted and IsMounted()
+    local mounted = E.Mounted()
     for _, step in ipairs(BI and BI.Order(r.recoverOrder) or { "heal" }) do
         local s
         if step == "bandage" and BI and r.recoverBandage ~= false and not mounted then
             s = BI.BandageStep(r.bandageRank == "low")
-        elseif step == "food" and BI and r.recoverFood ~= false and not mounted and not ctx.hostile
-            and E.hurt >= E.HURT.outBig then
-            s = BI.FoodStep()
+        elseif step == "food" and BI and r.recoverFood ~= false and not mounted and not ctx.hostile and quite then
+            s = BI.FoodStep(r.recoverBuffFood ~= false)
         elseif step == "heal" and r.recoverHeal ~= false then
-            s = self:EarlyHeal(ctx, def)
+            s = direct or self:EarlyHeal(ctx, def)
         end
         if s then s.fightType = ctx.fightType; return s end
     end
@@ -393,6 +404,22 @@ function E:BreakFree(ctx)
         end
     end
 end
+-- The heal to suggest now, or nil. In a fight: a healthstone or potion at
+-- low health, then heal spells (real health, the game's low-health warning,
+-- then Flow's estimate). Out of one: only your recovery order.
+function E:HealStep(ctx, def)
+    if not ctx.inCombat then return self:Recover(ctx, def) end
+    local h = self:Emergency(ctx)
+    if not h and def.heals then
+        -- Your health is hidden (Forever): the game's own low-health warning
+        -- says when you're at about a third or less: heal now, fastest first.
+        h = self:HealDecision(ctx, def.heals) or self:LowHealthHeal(ctx, def.heals)
+    end
+    h = h or self:EarlyHeal(ctx, def)
+    if h then h.fightType = ctx.fightType end
+    return h
+end
+
 function E:Choose()
     local def = self:Definition()
     if not def then return nil end
@@ -405,23 +432,8 @@ function E:Choose()
     local brk = self:BreakFree(ctx)
     if brk then return brk end
 
-    -- Low health in a fight: healthstone, then potion, before heal spells.
-    local em = self:Emergency(ctx)
-    if em then return em end
-
-    if def.heals then
-        local h = self:HealDecision(ctx, def.heals)
-        if h then h.fightType = ctx.fightType; return h end
-        -- Your health is hidden (Forever): the game's own low-health warning
-        -- says when you're at about a third or less: heal now, fastest first.
-        h = self:LowHealthHeal(ctx, def.heals)
-        if h then h.fightType = ctx.fightType; return h end
-    end
-
-    -- Your health is hidden: heal on Flow's estimate, long before the warning.
-    -- Out of a fight, your recovery order (bandage, food, heal spell).
-    local h
-    if ctx.inCombat then h = self:EarlyHeal(ctx, def) else h = self:Recover(ctx, def) end
+    -- Healing: items and spells in a fight, your recovery order out of one.
+    local h = self:HealStep(ctx, def)
     if h then
         local key = (h.spell or h.label or "item") .. (ctx.inCombat and " (in a fight)" or "")
         if key ~= E.lastEarlyLog then

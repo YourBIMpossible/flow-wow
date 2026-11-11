@@ -1,6 +1,13 @@
 # Changelog
 
 ## Unreleased
+- **One recovery order, always.** Out of a fight every heal goes through your order (bandage, food, heal spell by default):
+  a heal spell no longer jumps ahead when your health is shown or the low-health warning is on, and "Cast heals" off
+  means no heal spell. Fight healing is unchanged: healthstone, potion, then heal spells.
+- **Well Fed food heals too.** Food that restores health and also makes you Well Fed is eaten to heal when you carry no
+  plain food (right-click the Flow key to keep it for the buff).
+- **Alt + easy key: healthstone or potion.** Set before the fight, so it works in one even when the item is on none of
+  your bars. It can't switch mid-fight (WoW's rule).
 - **Profession marker and path.** The faint profession arrow's stop now has its own pin on the world map and a dot on the
   minimap, in the arrow's smoked-glass colour with a light ring, plus a dotted path through your next profession stops.
 - **Farm it here, not at the bank.** A profession plan only sends you to the bank when the banker is close or the material
