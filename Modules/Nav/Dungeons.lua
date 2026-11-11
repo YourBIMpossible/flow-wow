@@ -912,7 +912,7 @@ ns:Register("status", "dungeon", {
         statusCache = {
             icon = "Interface\\Icons\\INV_Misc_Key_04",
             text = ratioText(run),
-            color = solo and { r = 0.7, g = 0.7, b = 0.7 } or { r = 0.4, g = 1, b = 0.4 },
+            color = solo and { 0.7, 0.7, 0.7 } or { 0.4, 1, 0.4 },
             tip = table.concat(D.Summary(run, solo), "\n"),
             click = function() if prepared then D:Cancel() else D:Prepare(run.key) end end,
             clickText = prepared and "Cancel this run" or "Prepare this run",
