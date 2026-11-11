@@ -374,7 +374,7 @@ function ns:MoveHandle(target, opts)
         target:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
         local save = type(opts.save) == "function" and opts.save() or opts.save
         save.point = { "CENTER", "BOTTOMLEFT", x, y }
-        save.scale = target:GetScale()
+        save.scale = ns.ClampScale(target:GetScale())   -- the game keeps 1.1 as 1.1000000238
         if opts.onDone then opts.onDone() end
     end
     -- A drag still going when a fight starts is finished at the start of the

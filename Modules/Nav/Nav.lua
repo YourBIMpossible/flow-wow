@@ -90,7 +90,8 @@ local function flatMap(map)
 end
 
 function N:ToWorld(map, x, y)
-    local f = map and flatMap(map)
+    if not (map and x and y) then return nil end   -- a spot with no map (the game call errors on nil)
+    local f = flatMap(map)
     if f then return f.cont, f.ox + x * f.ux + y * f.vx, f.oy + x * f.uy + y * f.vy end
     return gameToWorld(map, x, y)
 end
@@ -1213,10 +1214,22 @@ function N:SetArrowStyle(style)
 end
 
 -- The faint profession arrow: the main arrow's own art, stretched narrow and
--- long (two thirds the width, a third longer), in dark smoked glass under the
--- main arrow. It turns as one piece and eases round like the main arrow.
+-- long (66% of its width, 133% of its length), in dark smoked glass under
+-- the main arrow. It turns as one piece and eases round like the main arrow.
 -- Same turning: 0 = straight up, counter-clockwise.
-N.PROF_ARROW_W, N.PROF_ARROW_H = 64 * 0.66, 64 * 1.33
+-- Measured on the art you see, not its 64 px picture cell: the main arrow's
+-- drawn arrow is MAIN_WID across and MAIN_LEN long (its side-on length; the
+-- pointing-up picture is tilted away, so it looks shorter), shown at
+-- ON_NEEDLE_SCALE while this arrow is out. The pointing-up cell this one is
+-- cut from holds an arrow ART0_W x ART0_H inside its 64 px.
+N.MAIN_WID, N.MAIN_LEN = 40, 54
+N.ART0_W, N.ART0_H = 40, 38
+N.ON_NEEDLE_SCALE, N.ON_NEEDLE_ALPHA = 0.8, 0.7
+N.PROF_WID_K, N.PROF_LEN_K = 0.5, 1.5   -- vs the main arrow you see: thinner, longer
+N.PROF_WID = N.MAIN_WID * N.ON_NEEDLE_SCALE * N.PROF_WID_K
+N.PROF_LEN = N.MAIN_LEN * N.ON_NEEDLE_SCALE * N.PROF_LEN_K
+N.PROF_ARROW_W = 64 * N.PROF_WID / N.ART0_W
+N.PROF_ARROW_H = 64 * N.PROF_LEN / N.ART0_H
 N.PROF_RING_ALPHA = 0.35   -- the faint ring at the profession stop
 function N:MakeProfArrow(holder)
     local a = CreateFrame("Frame", nil, holder)
@@ -1278,12 +1291,12 @@ end
 -- out by this much so the arrow never runs over or under them.
 function N.NeedleClearance(f)
     local h = (f and f.GetHeight and f:GetHeight()) or 56
-    return math.max(0, math.ceil(N.PROF_ARROW_H / 2 - h / 2)) + 2
+    return math.max(0, math.ceil(N.PROF_LEN / 2 - h / 2)) + 2
 end
 
 -- While the needle shows, the main arrow sits on top of it smaller and
--- see-through (the short hand), so the needle shows through and past it.
-N.ON_NEEDLE_SCALE, N.ON_NEEDLE_ALPHA = 0.8, 0.7
+-- see-through (the short hand), so the needle shows through and past it
+-- (ON_NEEDLE_SCALE / ALPHA, set with the profession arrow's size above).
 function N.SetOverNeedle(f, on)
     local a = f and f.arrow
     on = on and true or false

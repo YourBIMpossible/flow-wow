@@ -296,7 +296,7 @@ end)()
         local s = ns.weaponBuff.Now()
         if not s then return nil end
         -- Low on health: let the rotation's heal go first.
-        s.urgent = not enemyTargeted() and (UnitHealth("player") or 0) > 0.5 * (UnitHealthMax("player") or 1)
+        s.urgent = ns.buffItems.WeaponFirst(enemyTargeted(), UnitHealth("player"), UnitHealthMax("player"))
         return s
     end })
 

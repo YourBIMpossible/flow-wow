@@ -722,12 +722,22 @@ local function list()
     return ordered
 end
 
+local errors = {}   -- last error per action step (X:Current)
+X._errors = errors   -- (tests)
+
 -- The action for right now (out of combat only), or nil.
 function X:Current()
     if InCombatLockdown() or UnitIsDeadOrGhost("player") or ns.db.actions.enabled == false then return nil end
     local ctx = self:Context()
     for _, e in ipairs(list()) do
         local ok, s = pcall(e.a.get, ctx)
+        -- A step that errors is skipped, but never silently: keep each new
+        -- error in the log (one line per step and message, not every tick).
+        if not ok then
+            local msg = e.key .. ": " .. tostring(s)
+            if errors[e.key] ~= msg then errors[e.key] = msg; ns:Log("action", "error in " .. msg) end
+            s = nil
+        end
         if ok and s then
             s.kind, s.key = "action", e.key
             return s

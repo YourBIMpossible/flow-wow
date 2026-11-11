@@ -174,13 +174,19 @@ local function mainHand()
     return classID == 2 and subID or nil
 end
 
--- A weapon enhancement goes before the rotation's out-of-combat suggestion
--- (a paladin's seal, an aura), or it would only show when the rotation has
--- nothing at all. Not when an enemy is targeted (the opener first) or you're
--- under half health (the heal first). Order 2.5: before bag:learn (3), which
--- isn't urgent and, coming first, would keep this step off the icon.
+-- A buff item (stone, oil, elixir, Well Fed food) goes before the rotation's
+-- out-of-combat suggestion (a paladin's seal, an aura), or it would only show
+-- when the rotation has nothing at all, which for most classes is almost
+-- never. Not when an enemy is targeted (the opener first) or you're under
+-- half health (the heal first). Health the client hides (a secret value:
+-- any comparison errors, and the error kept every buff item off the icon)
+-- counts as fine. Order 2.5: before bag:learn (3), which isn't urgent and,
+-- coming first, would keep this step off the icon.
 function BI.WeaponFirst(enemy, health, maxHealth)
-    return not enemy and (health or 0) > 0.5 * (maxHealth or 1)
+    if enemy then return false end
+    health, maxHealth = A.Safe(health), A.Safe(maxHealth)
+    if not (health and maxHealth and maxHealth > 0) then return true end
+    return health > 0.5 * maxHealth
 end
 
 local function enemyTargeted()
@@ -200,7 +206,7 @@ ns:Register("action", "buff:item", { order = 2.5, get = function(ctx)
     local weapon, food = it.sub == ENHANCE_SUB, it.sub == FOOD_SUB
     return { type = "item", item = "item:" .. it.id, icon = icon,
              targetSlot = weapon and 16 or nil,
-             urgent = weapon and BI.WeaponFirst(enemyTargeted(), UnitHealth("player"), UnitHealthMax("player")) or nil,
+             urgent = BI.WeaponFirst(enemyTargeted(), UnitHealth("player"), UnitHealthMax("player")),
              label = (weapon and "Put on your weapon: " or food and "Eat: " or "Use: ") .. (it.name or "buff item"),
              reason = weapon and "You're killing here and your weapon has no stone or oil on it"
                  or food and "You're killing here and you aren't Well Fed"
