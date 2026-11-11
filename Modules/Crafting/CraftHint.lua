@@ -372,7 +372,10 @@ function H:Refresh()
     local g = H.Pick(stops, N.profChoice, N.profPlan, N.plan)
     local ups = prof and ns.skillPlan and ns.skillPlan.lastUpgrades and ns.skillPlan.lastUpgrades[prof] or nil
     local upLines = H.UpgradeLines(ups)
-    if not (frame and (g or #upLines > 0)) then
+    -- Planned for the skill, but you hold nothing to make it from yet.
+    local waiting = not g and prof and ns.skillPlan and ns.skillPlan.lastWaiting
+        and ns.skillPlan.lastWaiting[prof] and ns.skillPlan.lastWaiting[prof][1] or nil
+    if not (frame and (g or waiting or #upLines > 0)) then
         if panel then panel:Hide() end
         return
     end
@@ -383,7 +386,15 @@ function H:Refresh()
     panel:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", 0, -2)
     local rank = A.Skill(prof) or (g and g.rank)
     local matLines = {}
-    if not g then
+    if waiting then
+        panel.text:SetText(string.format("Flow: next for skill, make %s%d|r x %s", GOLD, waiting.makeCount, waiting.recipe))
+        panel.sub:SetText(string.format("%s %d -> %d. %s", prof, waiting.rank or rank or 0, waiting.target or 0,
+            waiting.unlearned and "Learn the recipe, then get the materials below."
+                or "Get the materials below first."))
+        matLines = H.MaterialLines(waiting, waiting.makeCount)
+        panel.btn:SetText("Make 0")
+        panel.btn:Disable()
+    elseif not g then
         panel.text:SetText("Flow: nothing to make here for your skill right now.")
         local nextStop = H.NextStop()
         panel.sub:SetText(nextStop and ("Next: " .. nextStop) or "")
