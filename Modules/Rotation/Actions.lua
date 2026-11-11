@@ -334,11 +334,11 @@ ns:Register("action", "craft:open", { order = 46, get = function(ctx)
     return { type = "spell", spell = g.prof, unit = "player", icon = spellIcon(g.prof), label = "Open " .. g.prof }
 end })
 
--- The window is open and Flow's panel under it says how many: the key
--- presses that panel's "Make N" button.
+-- The window is open and Flow's goal box beside it says how many: the key
+-- presses that box's "Make N" button.
 ns:Register("action", "craft:make", { order = 47, get = function(ctx)
     local g = craftHere(ctx)
-    local hint = _G.FlowCraftHint
+    local hint = _G.FlowCraftGoal
     if not (g and professionOpen() and hint and hint:IsShown() and hint.btn and hint.btn:IsEnabled()) then return nil end
     return { type = "click", button = hint.btn, icon = g.icon or spellIcon(g.prof),
              label = (hint.btn:GetText() or "Make") .. " x " .. g.recipe }
