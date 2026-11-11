@@ -1,7 +1,7 @@
 # Changelog
 
 ## Unreleased
-- **Profession stop: no white outline.** Its map pin and minimap dot lose the light ring; a small centre stays.
+- **Profession stop: no white outline.** Its map pin and minimap dot are plain smoked glass: no light ring, no centre dot.
 - **Worn gear: an early warning.** When anything you wear drops under 20% durability an anvil shows above Flow's key
   (hover: which item, the nearest repair vendor Flow knows) and the route gets a Repair stop. Options: "Warn early when
   gear wears out".

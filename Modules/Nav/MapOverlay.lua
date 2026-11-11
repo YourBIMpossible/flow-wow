@@ -681,7 +681,7 @@ M._drawWaypoint = drawWaypoint   -- (tests)
 
 -- The profession route (the faint arrow's stops, Nav N.profPlan): a dotted
 -- path from you through its next stops and a pin on the first, in the
--- profession arrow's colour (smoked glass with a small light centre, no outline).
+-- profession arrow's colour (plain smoked glass: no outline, no centre).
 M.PROF_STOPS = 5
 local profPin
 local function makeProfPin()
@@ -736,7 +736,7 @@ local function drawProf(c, mapID)
     profPin:SetScale(1 / canvasScale())
     profPin.ring:Hide()   -- no light outline: this pin is meant to be discreet
     profPin.hole:SetVertexColor(col[1], col[2], col[3], 1)
-    profPin.dot:SetVertexColor(0.86, 0.87, 0.9, 0.7)
+    profPin.dot:Hide()
     local g = first[3] or {}
     profPin.label = g.text or g.title
     profPin.text:SetText("|cffdcdde6" .. (profPin.label or "Profession") .. "|r")

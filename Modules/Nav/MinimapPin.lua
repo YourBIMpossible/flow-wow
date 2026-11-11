@@ -358,9 +358,8 @@ end
 function P.Pin() return pin end   -- (tests)
 
 -- The profession stop the faint arrow points at: its own dot in the
--- profession arrow's colour (smoked glass with a small light centre, no
--- outline). pt nil: no dot.
-P.PROF_RING = { 0.86, 0.87, 0.9 }   -- (the centre's colour)
+-- profession arrow's colour (plain smoked glass: no outline, no
+-- centre). pt nil: no dot.
 function P:UpdateProf(p, pt, goal)
     if not Minimap then return end
     if not profPin then
@@ -374,10 +373,10 @@ function P:UpdateProf(p, pt, goal)
     local d = math.sqrt(x * x + y * y)
     local edge = d > radius - 6
     if edge then x, y = x / d * (radius - 6), y / d * (radius - 6) end
-    local c, r = ns.theme.profPointer, P.PROF_RING
+    local c = ns.theme.profPointer
     profPin.ring:Hide()   -- no light outline: this dot is meant to be discreet
     profPin.hole:SetVertexColor(c[1], c[2], c[3], 1)
-    profPin.dot:SetVertexColor(r[1], r[2], r[3], 0.7)
+    profPin.dot:Hide()
     profPin:SetSize(edge and 10 or 13, edge and 10 or 13)
     profPin:SetAlpha(edge and 0.75 or 0.95)
     profPin:ClearAllPoints()
