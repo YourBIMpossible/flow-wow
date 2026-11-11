@@ -446,3 +446,10 @@ for _, ev in ipairs({ "TRADE_SKILL_SHOW", "TRADE_SKILL_LIST_UPDATE", "TRADE_SKIL
     ns:On(ev, function() C_Timer.After(0.4, function() pcall(H.Refresh, H) end) end)
 end
 ns:On("TRADE_SKILL_CLOSE", function() if panel then panel:Hide() end end)
+
+-- The skill planner calls this when it has planned again. Without it the
+-- panel kept asking for an upgrade you'd already made until something else
+-- (equipping it) happened to redraw the panel.
+function H.PlanChanged()
+    if panel and panel:IsShown() then pcall(H.Refresh, H) end
+end

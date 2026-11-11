@@ -1303,6 +1303,9 @@ ns:Register("navGoal", "skillplan", {
             end
         end
         SP.lastStops = kept
+        -- The profession window's panel shows this plan: bring it up to date
+        -- (the upgrade you just made is in your bags, so it's off the plan).
+        if ns.craftHint and ns.craftHint.PlanChanged then ns.craftHint.PlanChanged() end
         return kept
     end,
 })
