@@ -1468,6 +1468,48 @@ ns:Register("test", "stop card: drag by the title, opens where you left it", fun
     ns.db.nav.cardPoint = saved
 end)
 
+ns:Register("test", "stop card: a trainer stop names the trainer the route picked", function(t)
+    local M = ns.approvedStopCardModel
+    local pts = { Ann = { { map = 1, x = 0.1, y = 0.1 } }, Bob = { { map = 1, x = 0.5, y = 0.5 } } }
+    local function pointsFor(name) return pts[name] end
+    local goal = { key = "train:Fishing", optional = true, npcs = { "Ann", "Bob" },
+        title = "Train the next Fishing tier", text = "Train the next Fishing tier (Ann / Bob)",
+        details = { "Train the next Fishing tier at Ann or Bob.",
+                    "Optional, so the arrow only picks it when you're close by." } }
+    local m = M.Build(goal, pts.Bob[1], { pointsFor = pointsFor })
+    t:eq(m.title, "Train the next Fishing tier", "short title, no list of names in it")
+    t:eq(m.profession, "Fishing", "profession from the stop's key")
+    t:eq(m.destination, "Bob", "the trainer at the point the route chose, not the first in the list")
+    t:eq(#m.alternatives, 1, "the others fold away"); t:eq(m.alternatives[1], "Ann", "the other trainer")
+    t:eq(#m.details, 0, "the old all-names line and the optional line aren't repeated")
+    t:ok(m.note ~= nil, "optional stops say so")
+    t:eq(M.Build(goal, nil, { pointsFor = pointsFor }).destination, "Trainer not selected", "no point: says so")
+    local q = M.Build({ key = "12:1", title = "A Quest", text = "A Quest: Kill 5 boars", details = { "Quest: A Quest", "Near the farm." } })
+    t:eq(q.title, "Kill 5 boars", "quest stops lead with the task"); t:eq(q.details[1], "Near the farm.", "details kept")
+    t:eq(q.destination, nil, "no trainer line on a quest stop")
+end)
+
+ns:Register("test", "stop card: buttons match the stop, and a failing one can't break the card", function(t)
+    local N = ns.nav
+    N:ShowStop({ key = "test:blocked", text = "Test stop", points = {}, blockedBy = "Do the first part" })
+    local card = _G.FlowStopCard
+    t:ok(card and card.flowApprovedCard and card:IsShown(), "the approved card is the stop card")
+    local actions = card.model.actions
+    t:eq(#actions, 2, "not in the quest log: no quest-log button")
+    t:eq(actions[1].label, "Show on map", "map first"); t:eq(actions[2].label, "Go here next", "then go")
+    t:ok(card.buttons[2].allowed == false, "a blocked stop can't be picked")
+    local hit = false
+    card.buttons[2].callback = function() hit = true end
+    card.buttons[2]:GetScript("OnClick")(card.buttons[2])
+    t:ok(not hit, "clicking the greyed button does nothing")
+    card.lastError = nil
+    card.buttons[1].callback = function() error("boom") end
+    card.buttons[1]:GetScript("OnClick")(card.buttons[1])
+    t:ok(card.lastError ~= nil and card:IsShown(), "a button that fails is logged, the card stays")
+    N:ShowStop({ key = "test:blocked", text = "Test stop", points = {} })
+    t:ok(not card:IsShown(), "clicking the same stop again closes it")
+end)
+
 ns:Register("test", "intro: the arrow spins up and lands pointing up", function(t)
     local I = ns.intro
     t:near(I.SpinAngle(0), 0, 0.001, "starts still")

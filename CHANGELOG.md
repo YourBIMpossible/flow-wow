@@ -1,6 +1,10 @@
 # Changelog
 
 ## Unreleased
+- **New stop card.** The window a click on a stop opens (Flow Tracker, Router, map) has the approved glossy look:
+  its own typeface, the stop's distance in the title bar, real buttons for Show on map and Go here next (greyed while
+  the stop is blocked). A trainer stop has a short title, names the trainer your route actually picked and folds the
+  rest under "Other trainers". The route itself is unchanged. Needs a game restart, not just /reload (new files).
 - **Quests an NPC doesn't give.** Questie lists Forever's own quests with no "do this first" (a second "Arugal's Folly",
   "Return to Quinn (Again)", "Wild Eyes"), so Flow sent you to accept them early. Now one talk with the giver is enough:
   if the quest isn't among what they show, its stop goes for ten minutes, and for a day when it's missing again. It

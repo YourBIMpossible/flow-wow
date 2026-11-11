@@ -31,7 +31,7 @@ $outToc = Join-Path $out 'Flow.toc'
 # out-of-date add-on. Every release zip before 0.35.87 had it.
 $tocLines = @(Get-Content $outToc | Where-Object { $_ -notmatch '^## X-Flow-Dev:' })
 [IO.File]::WriteAllLines($outToc, [string[]]$tocLines, (New-Object Text.UTF8Encoding $false))
-foreach ($d in 'Modules', 'Classes') {
+foreach ($d in 'Modules', 'Classes', 'Media') {
     Copy-Item (Join-Path $root $d) (Join-Path $out $d) -Recurse
 }
 
