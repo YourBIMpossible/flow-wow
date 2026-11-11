@@ -40,7 +40,8 @@
   estimated until Flow has 15 minutes of your questing): **Prepare this run** puts the pickups and
   lead-ins on the route, then the entrance; **Straight to the entrance**; **Share quests** in a
   group for the run quests party members lack. Inside, the route shows only that dungeon's
-  quests. Flow times your runs and uses your own run time from then on. "Suggest dungeons" turns
+  quests. Flow times your runs and uses your own run time from then on. A run worth doing shows
+  as a small key left of the arrow (hover: why; click: prepare it). "Suggest dungeons" turns
   the suggestion off. A quest Questie files under its giver's zone counts for the dungeon when
   all its objectives are in there. Scarlet Monastery, Blackrock Spire (Lower / Upper) and
   Stratholme (Live / Undead) are split by their bosses: a quest that targets a boss, or an item
