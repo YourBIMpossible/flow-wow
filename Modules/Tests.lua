@@ -2927,6 +2927,34 @@ ns:Register("test", "buff items: used when you're about to kill a lot, if not on
                            Bob = { kits = { "Mana Well" }, at = -100 } }, 100),   -- 200 s old: stale
         "Mia: Camp Tent, Enchanted Lute", "party camp objects: fresh lists only, realm dropped")
     t:eq(BI.PartyKitText({}, 100), nil, "no party lists: nothing")
+    -- With your party known: near, elsewhere, unknown, and people who left.
+    local lists = { ["Mia-Realm"] = { kits = { "Camp Tent" }, at = 95 }, Bob = { kits = { "Mana Well" }, at = 95 },
+                    Zed = { kits = { "Lodestone" }, at = 95 }, Ann = { kits = { "Fish Bowl" }, at = 95 } }
+    local roster = { { name = "Mia", near = true }, { name = "Bob", near = false }, { name = "Cid", near = true },
+                     { name = "Ann" } }
+    local can, rest = BI.PartyKitText(lists, 100, roster)
+    t:eq(can, "Ann (place unknown): Fish Bowl; Mia: Camp Tent", "only people near you (or unplaced) count; Zed left the party")
+    t:eq(rest, "Bob: elsewhere; Cid: unknown", "out of range: elsewhere; no list: unknown, not 'has nothing'")
+    local st = BI.PartyKitStatus(lists, 100, roster, { { name = "Enchanted Lute", state = "placed" }, { name = "Camp Tent", state = "notready" } })
+    t:eq(st.text, "2", "the count is the objects near you")
+    t:ok(st.tip:find("Bob: elsewhere", 1, true) ~= nil and st.tip:find("Enchanted Lute (placed), Camp Tent (not ready)", 1, true) ~= nil,
+        "the tip says who isn't counted and your own objects' state")
+    t:eq(BI.PartyKitStatus({ Bob = lists.Bob }, 100, { { name = "Bob", near = false } }), nil, "only someone elsewhere: no icon")
+    local pruned = BI.PruneParty({ Mia = {}, ["Zed-Realm"] = {} }, { { name = "Mia" } })
+    t:ok(pruned.Mia ~= nil and pruned["Zed-Realm"] == nil, "someone who left: their list is dropped")
+    -- Placed is per visit to a fire, not a fixed hour.
+    t:eq(BI.CampVisit(3, 100, 130), 3, "back within a minute: the same camp visit")
+    t:eq(BI.CampVisit(3, 100, 161), 4, "away over a minute: a new visit")
+    t:eq(BI.CampVisit(0, nil, 5), 1, "first fire: visit 1")
+    t:eq(BI.KitState(true, true, true), "placed", "placed by you this visit")
+    t:eq(BI.KitState(false, true, true), "ready", "have it, usable now")
+    t:eq(BI.KitState(false, true, false), "notready", "have it, on cooldown: not ready (not 'placed')")
+    t:eq(BI.KitState(false, false, false), nil, "don't have it: not listed")
+    -- The minute: counting, done, interrupted.
+    t:eq(BI.CampStep(true, false, true), "wait", "sitting, minute running: wait")
+    t:eq(BI.CampStep(true, true, false), nil, "minute done, buffs on: nothing more")
+    t:eq(BI.CampStep(true, false, false), "sit", "stood up before it ended (no minute, no buffs): sit again")
+    t:eq(BI.CampStep(false, false, true), nil, "walked away from the fire: nothing")
     t:eq(BI.HealKind("Minor Healthstone", 0, 0), "healthstone", "a healthstone")
     t:eq(BI.HealKind("Lesser Healing Potion", 0, 1), "potion", "a healing potion")
     t:eq(BI.HealKind("Minor Mana Potion", 0, 1), nil, "a mana potion doesn't heal")

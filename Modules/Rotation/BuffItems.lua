@@ -286,49 +286,132 @@ end
 -- WoW: Forever's camp objects, by name: a spell you know or an item you carry.
 BI.CAMP_KITS = { "Camp Tent", "Mana Well", "Sharpening Wheel", "Enchanted Lute", "First Aid Kit",
                  "Fish Bowl", "Incense Candle", "Lodestone", "Camp Chair", "Faction Banner", "Cookie's Feast" }
-local KIT_AGAIN = 3600     -- one placed counts as out for an hour (it stays up a while)
+-- (These names are the ones the camp objects had when this was written; the
+-- game gives addons no list of them. /flow log shows what Flow saw by a fire.)
+local CAMP_SAME = 60       -- away from the fire this long: the next fire is another camp
 local PARTY_FRESH = 120    -- a party member's list counts for 2 minutes
-local placed = {}          -- kit name -> GetTime() you placed it
+local placed = {}          -- kit name -> the camp visit you placed it in
+local visit, lastNear = 0, nil   -- which camp visit this is; GetTime() last by a fire
+
+-- The game doesn't say which camp a fire is, or how long an object stays
+-- up. So "placed" means only: you placed it during this visit to a fire.
+-- Leave for a minute and it's a new visit; from then on the object's own
+-- cooldown (as the game reports it) decides whether it's offered again.
+function BI.CampVisit(n, lastNearAt, now)
+    if not lastNearAt or now - lastNearAt > CAMP_SAME then return n + 1 end
+    return n
+end
+
+-- One camp object, for you: "placed" (by you, this visit), "ready" (you
+-- have it and can place it now), "notready" (you have it: cooldown or not
+-- usable), nil (you don't have it).
+function BI.KitState(placedHere, have, ready)
+    if not have then return nil end
+    if placedHere then return "placed" end
+    return ready and "ready" or "notready"
+end
+local KIT_WORD = { placed = "placed", ready = "ready", notready = "not ready" }
+function BI.KitStateText(states)
+    local parts = {}
+    for _, s in ipairs(states or {}) do parts[#parts + 1] = s.name .. " (" .. (KIT_WORD[s.state] or "?") .. ")" end
+    return #parts > 0 and table.concat(parts, ", ") or nil
+end
 local castNames = {}       -- the spell an item casts -> its kit name
 local fresh, freshTimer    -- GetTime() you last placed one; its minute seen
 local isKit = {}
 for _, k in ipairs(BI.CAMP_KITS) do isKit[k] = true end
 
 -- The camp objects you could place now: { name, spell } or { name, item, id }.
-function BI.CampKits(now)
-    now = now or GetTime()
-    local out, bag = {}, nil
+-- Second return: every camp object you have, with its state (KitState).
+function BI.CampKits()
+    local out, states, bag = {}, {}, nil
+    local E = ns.rotation
     for _, kit in ipairs(BI.CAMP_KITS) do
-        if not (placed[kit] and now - placed[kit] < KIT_AGAIN) then
-            if ns.rotation and ns.rotation:Ready(kit) then
-                out[#out + 1] = { name = kit, spell = kit }
-            else
-                bag = bag or bagByName()
-                local id = bag[kit]
-                if id and itemReady(id) then
-                    castNames[itemSpell(id) or kit] = kit
-                    out[#out + 1] = { name = kit, item = "item:" .. id, id = id }
-                end
+        local here = placed[kit] == visit
+        local known = E and E.Knows and E:Knows(kit)
+        local ready, entry
+        if E and E:Ready(kit) then
+            ready, entry = true, { name = kit, spell = kit }
+        elseif not known then
+            bag = bag or bagByName()
+            local id = bag[kit]
+            if id then
+                known = true
+                castNames[itemSpell(id) or kit] = kit
+                if itemReady(id) then ready, entry = true, { name = kit, item = "item:" .. id, id = id } end
             end
+        end
+        local state = BI.KitState(here, known or ready, ready)
+        if state then states[#states + 1] = { name = kit, state = state } end
+        if state == "ready" then out[#out + 1] = entry end
+    end
+    return out, states
+end
+
+-- What your party can add, from the lists their Flow sends:
+-- entries = { [sender] = { kits = {names}, at = time } }. "Mia: Camp Tent; ..."
+-- roster (optional) = your party now: { { name, near } }, near = true (in
+-- range of you), false (not), nil (the game won't say). With it: people who
+-- left are dropped, someone out of range isn't counted for this camp, and
+-- the second return lists the rest: "Bob: elsewhere; Cid: unknown" (no fresh
+-- list means unknown, not "has nothing").
+local function short(name) return (tostring(name):gsub("%-.*$", "")) end
+function BI.PartyKitText(entries, now, roster)
+    local near, inParty
+    if roster then
+        near, inParty = {}, {}
+        for _, m in ipairs(roster) do inParty[short(m.name)] = true; near[short(m.name)] = m.near end
+    end
+    local who, far, seen = {}, {}, {}
+    for name, e in pairs(entries or {}) do
+        local s = short(name)
+        if e.at and now - e.at < PARTY_FRESH and e.kits and (not roster or inParty[s]) then
+            seen[s] = true
+            if roster and near[s] == false then far[#far + 1] = s .. ": elsewhere"
+            elseif #e.kits > 0 then who[#who + 1] = name end
+        end
+    end
+    for _, m in ipairs(roster or {}) do
+        local s = short(m.name)
+        if not seen[s] then far[#far + 1] = s .. ": unknown" end
+    end
+    table.sort(who); table.sort(far)
+    local parts = {}
+    for _, name in ipairs(who) do
+        local s = short(name)
+        parts[#parts + 1] = s .. (roster and near[s] == nil and " (place unknown)" or "") .. ": " .. table.concat(entries[name].kits, ", ")
+    end
+    return #parts > 0 and table.concat(parts, "; ") or nil, #far > 0 and table.concat(far, "; ") or nil
+end
+
+-- Your party now (not you): { { name, near } }. near: the game's own range
+-- check on a group member (about 40 yards), nil when it gives no answer.
+function BI.PartyRoster()
+    local out = {}
+    for i = 1, 4 do
+        local unit = "party" .. i
+        local name = UnitExists and UnitExists(unit) and UnitName(unit)
+        if name then
+            local near
+            if UnitInRange then
+                local ok, inRange, checked = pcall(UnitInRange, unit)
+                inRange, checked = ok and A.Safe(inRange), ok and A.Safe(checked)
+                if checked then near = inRange and true or false end
+            end
+            out[#out + 1] = { name = name, near = near }
         end
     end
     return out
 end
 
--- What your party can add, from the lists their Flow sends:
--- entries = { [sender] = { kits = {names}, at = time } }. "Mia: Camp Tent; ..."
-function BI.PartyKitText(entries, now)
-    local who = {}
-    for name, e in pairs(entries or {}) do
-        if e.at and now - e.at < PARTY_FRESH and e.kits and #e.kits > 0 then who[#who + 1] = name end
+-- Lists from people no longer in your party are dropped.
+function BI.PruneParty(entries, roster)
+    local keep = {}
+    for _, m in ipairs(roster or {}) do keep[short(m.name)] = true end
+    for name in pairs(entries) do
+        if not keep[short(name)] then entries[name] = nil end
     end
-    if #who == 0 then return nil end
-    table.sort(who)
-    local parts = {}
-    for _, name in ipairs(who) do
-        parts[#parts + 1] = (name:gsub("%-.*$", "")) .. ": " .. table.concat(entries[name].kits, ", ")
-    end
-    return table.concat(parts, "; ")
+    return entries
 end
 
 -- Party members running Flow: each tells the group which camp objects it
@@ -355,10 +438,12 @@ ns:On("UNIT_SPELLCAST_SUCCEEDED", function(unit, _, spellID)
     if name == "First Aid" then BI.bandagedAt = GetTime() end   -- (a bandage)
     local kit = castNames[name] or (isKit[name] and name)
     if kit then
-        placed[kit], fresh, freshTimer = GetTime(), GetTime(), nil
+        placed[kit], fresh, freshTimer = visit, GetTime(), nil
         lastShareText = nil   -- tell the group at once
+        ns:Log("camp", string.format("placed %s (spell %s, id %s), camp visit %d", kit, name, tostring(A.Safe(spellID)), visit))
     end
 end)
+ns:On("GROUP_ROSTER_UPDATE", function() BI.PruneParty(partyKits, BI.PartyRoster()) end)
 
 ns:OnLoad(function()
     local P = ns.party
@@ -375,19 +460,22 @@ end)
 
 -- By a fire: a status icon above Flow's key when your group could add camp
 -- objects (hover: who has what).
-function BI.PartyKitStatus(entries, now)
-    local text = BI.PartyKitText(entries, now)
+-- mine (optional) = your own objects' states (CampKits' second return).
+function BI.PartyKitStatus(entries, now, roster, mine)
+    local text, rest = BI.PartyKitText(entries, now, roster)
     if not text then return nil end
     local n = 0
-    for _, e in pairs(entries) do
-        if e.at and now - e.at < PARTY_FRESH and e.kits then n = n + #e.kits end
-    end
-    return { icon = CAMP_ICON, text = tostring(n), color = { 0.35, 0.75, 1.0 },
-             tip = "Your group can add to this camp: " .. text }
+    for _ in text:gmatch("[^;,]+") do n = n + 1 end
+    local tip = "Near you, your group says it can place: " .. text
+    if rest then tip = tip .. "\nNot counted: " .. rest end
+    local own = BI.KitStateText(mine)
+    if own then tip = tip .. "\nYours: " .. own end
+    return { icon = CAMP_ICON, text = tostring(n), color = { 0.35, 0.75, 1.0 }, tip = tip }
 end
 ns:Register("status", "camp", { order = 30, get = function()
     if not A.Buff("player", CAMP_NEARBY) then return nil end
-    return BI.PartyKitStatus(partyKits, GetTime())
+    local _, mine = BI.CampKits()
+    return BI.PartyKitStatus(partyKits, GetTime(), BI.PartyRoster(), mine)
 end })
 
 -- At a campfire: place your camp objects, then sit for the buffs (after the
@@ -398,18 +486,27 @@ ns:Register("action", "buff:camp", { order = 2.6, get = function(ctx)
     if (ctx and ctx.fishing) or (IsMounted and IsMounted()) then return nil end
     if not A.Buff("player", CAMP_NEARBY) then return nil end
     local now = GetTime()
+    local v = BI.CampVisit(visit, lastNear, now)
+    lastNear = now
     local timer = A.Buff("player", CAMP_TIMER)
+    if v ~= visit then
+        visit = v
+        local _, st = BI.CampKits()
+        ns:Log("camp", string.format("by a fire (visit %d): benefits %s, minute running %s; yours: %s", visit,
+            tostring(A.Buff("player", CAMP_BENEFITS) and true or false), tostring(timer and true or false),
+            BI.KitStateText(st) or "no camp objects found by name"))
+    end
     -- Just placed one: sit again for its buffs, until that minute is over.
     if fresh then
         if timer then freshTimer = true
         elseif freshTimer or now - fresh > PARTY_FRESH then fresh, freshTimer = nil, nil end
     end
-    local kits = ns.db.rotation.campKits ~= false and BI.CampKits(now) or {}
+    local kits = ns.db.rotation.campKits ~= false and BI.CampKits() or {}
     shareKits(kits, now)
     local step = BI.CampStep(true, A.Buff("player", CAMP_BENEFITS), timer, kits[1], fresh)
     if not step then return nil end
-    local others = BI.PartyKitText(partyKits, now)
-    local group = others and (". Your group can add: " .. others) or ""
+    local others = BI.PartyKitText(partyKits, now, BI.PartyRoster())
+    local group = others and (". Near you, your group says it can place: " .. others) or ""
     if step == "wait" then
         return { type = "wait", icon = CAMP_ICON, label = "Stay sitting: the camp buffs come after a minute",
                  reason = "You're by a campfire and its minute is counting down" .. group }
