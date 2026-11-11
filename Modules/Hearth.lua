@@ -37,6 +37,80 @@ function H:BoundTo(inn, bind)
     return false
 end
 
+-- Would the hearthstone get you there sooner? An estimate, never an action:
+-- Flow does not use the hearthstone for you.
+--   straight: the distance at your speed
+--   hearthstone: what's left of its cooldown + the cast + the loading screen
+--                + the run from your inn to the same place
+-- Anything unknown (which inn, where it is, the cooldown) means no estimate.
+H.ITEM = 6948
+H.CAST, H.LOAD = 10, 10          -- seconds: the cast, and a guess at the loading screen
+H.MIN_SAVE, H.MIN_SHARE = 120, 0.25   -- say it only when it saves 2 minutes and a quarter of the trip
+
+function H.Compare(directYd, bindYd, cooldownLeft, speed)
+    if not (type(directYd) == "number" and type(bindYd) == "number" and type(cooldownLeft) == "number"
+        and type(speed) == "number" and speed > 0) then return nil end
+    local direct = directYd / speed
+    local hearth = cooldownLeft + H.CAST + H.LOAD + bindYd / speed
+    local saving = direct - hearth
+    return { direct = direct, hearth = hearth, saving = saving, wait = cooldownLeft,
+             better = saving >= H.MIN_SAVE and saving >= direct * H.MIN_SHARE }
+end
+
+local function span(s)
+    if s >= 90 then return string.format("%d min", math.floor(s / 60 + 0.5)) end
+    return string.format("%d s", math.floor(s + 0.5))
+end
+
+-- The line to show, or nil when the hearthstone isn't clearly quicker.
+function H.AdviceText(c, bind)
+    if not (c and c.better) then return nil end
+    return string.format("Estimate: hearthstone to %s, then run, is about %s quicker (%s against %s%s). Your call: Flow never uses it for you.",
+        bind or "your inn", span(c.saving), span(c.hearth), span(c.direct),
+        c.wait > 0 and (", counting " .. span(c.wait) .. " left on its cooldown") or "")
+end
+
+-- Where your hearthstone goes, as a point: only when it's an inn Flow knows.
+function H:BindPoint()
+    local bind = GetBindLocation and GetBindLocation()
+    if not bind then return nil end
+    for _, inn in ns:Each("innkeeper") do
+        if H:BoundTo(inn, bind) then
+            local p = ns.places and ns.places:Points(inn.name)[1]
+            if p and p.map then return p, bind end
+        end
+    end
+    return nil
+end
+
+-- Seconds left on the hearthstone's cooldown; nil when you carry none or the game won't say.
+function H:CooldownLeft()
+    if not (GetItemCount and (GetItemCount(H.ITEM) or 0) > 0) then return nil end
+    local get = (C_Container and C_Container.GetItemCooldown) or GetItemCooldown
+    if not get then return nil end
+    local ok, start, duration = pcall(get, H.ITEM)
+    local A = ns.api
+    start, duration = ok and A.Safe(start) or nil, ok and A.Safe(duration) or nil
+    if type(start) ~= "number" or type(duration) ~= "number" then return nil end
+    if start == 0 or duration == 0 then return 0 end
+    return math.max(0, start + duration - GetTime())
+end
+
+-- The estimate line for a place directYd away, or nil.
+function H:Advice(map, x, y, directYd)
+    local ok, text = pcall(function()
+        local nav = ns.nav
+        local p, bind = H:BindPoint()
+        if not (nav and p) then return nil end
+        local c1, ax, ay = nav:ToWorld(p.map, p.x, p.y)
+        local c2, bx, by = nav:ToWorld(map, x, y)
+        if not (c1 and c2 and c1 == c2 and ax and bx) then return nil end
+        local bindYd = math.sqrt((ax - bx) ^ 2 + (ay - by) ^ 2)
+        return H.AdviceText(H.Compare(directYd, bindYd, H:CooldownLeft(), nav.RUN_SPEED or 7), bind)
+    end)
+    return ok and text or nil
+end
+
 ns:Register("navGoal", "hearth", {
     collect = function()
         if ns.db.hearth and ns.db.hearth.off then return nil end

@@ -416,23 +416,57 @@ end
 
 -- At a vendor who repairs: repair everything, if you can afford it
 -- (Options: "Auto-repair at vendors").
-function V:AutoRepair()
-    if not (CanMerchantRepair and CanMerchantRepair() and GetRepairAllCost and RepairAllItems) then return end
-    local cost, can = GetRepairAllCost()
-    cost = tonumber(cost) or 0
-    if cost <= 0 then return end
-    if not can or (GetMoney and GetMoney() < cost) then
-        ns:Print("can't afford to repair your gear here (" .. money(cost) .. ")")
-        return
-    end
-    RepairAllItems()
-    ns:Print("repaired your gear for " .. money(cost))
+-- What to do about repairs at this vendor:
+--   "none"   they don't repair, or nothing is worn
+--   "off"    auto-repair is off (Flow says the cost once, repairs nothing)
+--   "poor"   not enough money (yet: a sale may still be coming in)
+--   "repair" repair now
+function V.RepairDecision(canRepair, cost, have, autoOn)
+    if not canRepair or type(cost) ~= "number" or cost <= 0 then return "none" end
+    if not autoOn then return "off" end
+    if type(have) ~= "number" or have < cost then return "poor" end
+    return "repair"
 end
+
+-- When to repair on opening a vendor: "afterSale" when auto-sell just sold
+-- something (its money lands a moment later and may be what pays), else "now".
+function V.RepairWhen(sellOn, soldCount)
+    return (sellOn and (soldCount or 0) > 0) and "afterSale" or "now"
+end
+
+-- final: this is the last try of the visit, so say it when you can't pay.
+local saidPoor, saidOff, lastRepair
+function V:AutoRepair(final)
+    if not (CanMerchantRepair and GetRepairAllCost and RepairAllItems) then return "none" end
+    local cost, needed = GetRepairAllCost()
+    cost = tonumber(cost) or 0
+    local have = GetMoney and GetMoney() or nil
+    local d = V.RepairDecision(CanMerchantRepair() and needed ~= false, cost, have, ns.db.sell.autoRepair ~= false)
+    lastRepair = d
+    if d == "repair" then
+        RepairAllItems()
+        ns:Print("repaired your gear for " .. money(cost))
+        ns:Log("repair", "repaired for " .. tostring(cost))
+    elseif d == "poor" and final and not saidPoor then
+        saidPoor = true
+        ns:Print(string.format("can't afford to repair your gear here (%s; you have %s)", money(cost), money(have or 0)))
+        ns:Log("repair", string.format("can't afford: cost %s, have %s", tostring(cost), tostring(have)))
+    elseif d == "off" and not saidOff then
+        saidOff = true
+        ns:Print("this vendor repairs: " .. money(cost) .. " for everything. Auto-repair is off, so press the repair button yourself.")
+    end
+    return d
+end
+
+-- Money came in while a vendor is open and the repair was unaffordable: try again.
+ns:On("PLAYER_MONEY", function()
+    if merchantOpen and lastRepair == "poor" then V:AutoRepair(false) end
+end)
 
 ns:On("MERCHANT_SHOW", function()
     merchantOpen = true
-    if ns.db.sell.autoRepair ~= false then V:AutoRepair() end
-    if not ns.db.sell.enabled then return end
+    saidPoor, saidOff, lastRepair = nil, nil, nil
+    if not ns.db.sell.enabled then V:AutoRepair(true) return end
     V:Panel()
     wipe(sold); junkSold = 0
     V.visitCollapsed = nil  -- each visit starts open if there's something to sell, else collapsed
@@ -447,6 +481,13 @@ ns:On("MERCHANT_SHOW", function()
         if ns.db.sell.autoAll then sold = sold + (V:SellProposed() or 0) end
         V:Cleanup(sold)   -- Auto-cleanup: tidy your bags after auto-sell
         V:Refresh()
+        -- Repair after selling, so what you just sold helps pay for it.
+        if V.RepairWhen(true, sold) == "now" then
+            V:AutoRepair(true)
+        else
+            C_Timer.After(0.8, function() if merchantOpen then V:AutoRepair(false) end end)
+            C_Timer.After(2.5, function() if merchantOpen and lastRepair == "poor" then V:AutoRepair(true) end end)
+        end
     end)
 end)
 
@@ -491,7 +532,7 @@ end)
 
 ns:Register("setupItem", "autoRepair", {
     order = 17, label = "Auto-repair at vendors",
-    why = "Repairs all your gear when you open a vendor who repairs, if you have the gold (Flow says what it cost).",
+    why = "Repairs all your gear when you open a vendor who repairs, after auto-sell so the sale helps pay (Flow says what it cost, or that you can't afford it).",
     isOn = function() return ns.db.sell.autoRepair ~= false end,
     set = function(on) ns.db.sell.autoRepair = on end,
     suggested = true, default = true, isNew = true,

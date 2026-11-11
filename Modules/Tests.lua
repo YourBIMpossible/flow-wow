@@ -4187,3 +4187,68 @@ ns:Register("test", "recovery: one order for every way of being hurt; fight heal
     r.recoverBuffFood, r.emergencyItems = keep.bf, keep.ei
     t:ok(ok, "recovery checks ran" .. (ok and "" or (": " .. tostring(err))))
 end)
+
+ns:Register("test", "repair: early warning, vendor decision, after the sale", function(t)
+    local R, V = ns.repair, ns.vendor or ns.sell
+    local function gear(g) return function(slot) local v = g[slot]; if v then return v[1], v[2] end end end
+    local pct, slot, low = R.Worst(gear({ [1] = { 50, 100 }, [5] = { 19, 100 }, [16] = { 60, 60 } }))
+    t:eq(slot, 5, "the most worn item is found"); t:eq(low, 1, "one item under 20%")
+    t:ok(R.Low(pct), "19%: warn")
+    pct = R.Worst(gear({ [1] = { 20, 100 }, [5] = { 80, 100 } }))
+    t:ok(not R.Low(pct), "exactly 20%: no warning yet")
+    _, slot, low = R.Worst(gear({ [1] = { 0, 0 }, [5] = { 90, 100 } }))
+    t:eq(slot, 5, "an item with no durability is skipped"); t:eq(low, 0, "and never counts as low")
+    pct = R.Worst(gear({}))
+    t:eq(pct, nil, "nothing with durability: unknown"); t:ok(not R.Low(pct), "unknown is never a warning")
+    _, slot, low = R.Worst(gear({ [1] = { 5, 100 }, [5] = { 10, 100 }, [7] = { 0, 100 } }))
+    t:eq(slot, 7, "a broken item is the worst"); t:eq(low, 3, "three under 20%")
+    local st = { pct = 0.18, slot = 5, low = 2 }
+    local lines = table.concat(R.Lines(st, "Old Vest", { name = "Smith Argus", yards = 240 }, false, nil, true), "\n")
+    t:ok(lines:find("Old Vest is at 18%", 1, true) ~= nil, "names the item and how worn")
+    t:ok(lines:find("Smith Argus, about 240 yd", 1, true) ~= nil, "names the nearest vendor")
+    t:ok(lines:find("2 items under 20%", 1, true) ~= nil, "says how many")
+    lines = table.concat(R.Lines(st, nil, nil, false, nil, true), "\n")
+    t:ok(lines:find("doesn't know a repair vendor", 1, true) ~= nil, "no vendor known: says so, no guess")
+    lines = table.concat(R.Lines(st, nil, nil, true, nil, false), "\n")
+    t:ok(lines:find("Looking up", 1, true) ~= nil, "vendor list still loading: says so")
+    t:ok(lines:find("Auto-repair is off", 1, true) ~= nil, "auto-repair off: says you press the button")
+    lines = table.concat(R.Lines(st, nil, { name = "X", yards = 5 }, false, "Estimate: hearth", true), "\n")
+    t:ok(lines:find("Estimate: hearth", 1, true) ~= nil, "the hearthstone estimate rides along when there is one")
+    if V and V.RepairDecision then
+        t:eq(V.RepairDecision(false, 100, 500, true), "none", "vendor doesn't repair: nothing")
+        t:eq(V.RepairDecision(true, 0, 500, true), "none", "nothing worn: nothing")
+        t:eq(V.RepairDecision(true, 100, 500, false), "off", "auto-repair off: say the cost, repair nothing")
+        t:eq(V.RepairDecision(true, 100, 99, true), "poor", "not enough money")
+        t:eq(V.RepairDecision(true, 100, nil, true), "poor", "money unknown: don't try")
+        t:eq(V.RepairDecision(true, 100, 100, true), "repair", "just enough: repair")
+        t:eq(V.RepairWhen(true, 3), "afterSale", "something sold: repair once the money is in")
+        t:eq(V.RepairWhen(true, 0), "now", "nothing sold: repair straight away")
+        t:eq(V.RepairWhen(false, 3), "now", "auto-sell off: repair straight away")
+    else
+        t:ok(false, "the vendor module isn't reachable from tests")
+    end
+end)
+
+ns:Register("test", "hearthstone: an estimate only when it clearly saves time", function(t)
+    local H = ns.hearth
+    local c = H.Compare(7000, 700, 0, 7)       -- 1000 s straight; 20 + 100 s by hearthstone
+    t:ok(c.better, "far away, inn next to it, off cooldown: quicker")
+    t:eq(math.floor(c.saving), 880, "the saving counts the cast and the loading screen")
+    t:ok(H.AdviceText(c, "Goldshire"):find("Estimate", 1, true) ~= nil, "it's labelled an estimate")
+    t:ok(H.AdviceText(c, "Goldshire"):find("never uses it for you", 1, true) ~= nil, "and says Flow won't use it")
+    c = H.Compare(7000, 700, 900, 7)           -- 900 s of cooldown eats the saving
+    t:ok(not c.better, "a long cooldown left: not quicker"); t:eq(H.AdviceText(c, "x"), nil, "so nothing is said")
+    c = H.Compare(7000, 700, 300, 7)
+    t:ok(c.better, "some cooldown left but still well ahead")
+    t:ok(H.AdviceText(c, "x"):find("left on its cooldown", 1, true) ~= nil, "the wait is named")
+    c = H.Compare(1400, 350, 0, 7)             -- 200 s straight, 70 s by hearthstone: saves 130 s
+    t:ok(c.better, "saves over two minutes and over a quarter: quicker")
+    c = H.Compare(1050, 350, 0, 7)             -- saves 80 s
+    t:ok(not c.better, "under two minutes saved: not worth saying")
+    c = H.Compare(7000, 5200, 0, 7)            -- saves 237 s of 1000: under a quarter
+    t:ok(not c.better, "a small share of a long trip: not worth saying")
+    t:eq(H.Compare(7000, nil, 0, 7), nil, "inn position unknown: no estimate")
+    t:eq(H.Compare(7000, 700, nil, 7), nil, "cooldown unknown (or no hearthstone): no estimate")
+    t:eq(H.Compare(nil, 700, 0, 7), nil, "distance unknown: no estimate")
+    t:eq(H.AdviceText(nil, "x"), nil, "no estimate: nothing said")
+end)

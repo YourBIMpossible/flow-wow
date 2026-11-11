@@ -85,6 +85,7 @@ Modules\Crafting\CraftBar.lua
 Modules\Nav\Waypoint.lua
 Modules\Nav\HeightProbe.lua
 Modules\Nav\Services.lua
+Modules\Items\Repair.lua
 Modules\Nav\Party.lua
 Modules\Nav\PartyHelp.lua
 Modules\Nav\Follow.lua

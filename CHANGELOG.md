@@ -1,6 +1,16 @@
 # Changelog
 
 ## Unreleased
+- **Worn gear: an early warning.** When anything you wear drops under 20% durability an anvil shows above Flow's key
+  (hover: which item, the nearest repair vendor Flow knows) and the route gets a Repair stop. Options: "Warn early when
+  gear wears out".
+- **Repair after selling.** At a vendor Flow now sells first and repairs after, so the sale helps pay; it says once when
+  you still can't afford it, and with auto-repair off it says the cost and leaves the button to you.
+- **Hearthstone estimate.** Asking for a service that's far away (or the repair warning) says when hearthstone-then-run
+  looks clearly quicker than going straight: at least 2 minutes and a quarter of the trip, counting its cooldown, the
+  cast and the loading screen. It's an estimate, only for inns Flow knows, and Flow never uses the hearthstone for you.
+- **Camp objects: placed is per campfire.** No more hour-long silence after placing one; your group's objects are listed
+  as near you, elsewhere or unknown, and members who leave drop off the list.
 - **One recovery order, always.** Out of a fight every heal goes through your order (bandage, food, heal spell by default):
   a heal spell no longer jumps ahead when your health is shown or the low-health warning is on, and "Cast heals" off
   means no heal spell. Fight healing is unchanged: healthstone, potion, then heal spells.

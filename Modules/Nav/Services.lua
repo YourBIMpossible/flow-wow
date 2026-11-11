@@ -139,10 +139,11 @@ function S:GoTo(kind)
         return
     end
     ns.waypoint:Set(n.map, n.x, n.y, n.name .. " (" .. LABEL[kind] .. ")")
-    local bind = GetBindLocation and GetBindLocation()
+    -- The hearthstone only when Flow's estimate says it's clearly quicker (Hearth.lua).
+    local hearth = ns.hearth and ns.hearth.Advice and ns.hearth:Advice(n.map, n.x, n.y, n.yards)
     ns:Print(string.format("nearest %s: %s, %d yd%s.%s", LABEL[kind], n.name, n.yards,
         (n.learned == "you" and " (you've been there)") or (n.learned == "shared" and " (found by another Flow player)") or "",
-        (n.yards > 600 and bind) and (" Far: your hearthstone goes to " .. bind .. ".") or ""))
+        hearth and (" " .. hearth) or ""))
 end
 
 ns:On("PLAYER_LOGIN", function() C_Timer.After(20, function() pcall(S.Scan, S) end) end)
