@@ -266,16 +266,30 @@ ns:Register("action", "fish:equip", { order = 10, get = function(ctx)
     end
 end })
 
+-- The lure to put on: the biggest bonus you carry and can use first, the
+-- smallest last (X.LURES order). has(id) -> count; canUse(id) -> bool.
+function X.BestLure(has, canUse)
+    for _, id in ipairs(X.LURES) do
+        if (has(id) or 0) > 0 and canUse(id) then return id end
+    end
+end
+
+-- A lure step for a pole that's on with no lure (nil otherwise). The buff
+-- button shows it whenever the pole is on; the Flow key at a fishing spot.
+function X.LureStep(ctx)
+    if not (ctx and ctx.pole) or lured() or channeling("Fishing") then return nil end
+    local id = X.BestLure(count, usable)
+    if not id then return nil end
+    local name = (A.ItemInfo and A.ItemInfo(id)) or "a lure"
+    return { type = "item", item = "item:" .. id, targetSlot = MAIN, icon = itemIcon(id), lure = true,
+             label = "Put " .. name .. " on your pole",
+             reason = "Your fishing pole has no lure on it" }
+end
+
 -- Fishing: a lure on the pole (best one you carry that you can use).
 ns:Register("action", "fish:lure", { order = 20, get = function(ctx)
-    if not (ctx.fishing and ctx.pole) or lured() or channeling("Fishing") then return nil end
-    for _, id in ipairs(X.LURES) do
-        if count(id) > 0 and usable(id) then
-            local name = (A.ItemInfo and A.ItemInfo(id)) or "a lure"
-            return { type = "item", item = "item:" .. id, targetSlot = MAIN, icon = itemIcon(id),
-                     label = "Put " .. name .. " on your pole" }
-        end
-    end
+    if not ctx.fishing then return nil end
+    return X.LureStep(ctx)
 end })
 
 -- Fishing: reel in. While the line is out, the key presses Interact, which
