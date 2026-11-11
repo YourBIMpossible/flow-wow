@@ -4937,6 +4937,26 @@ ns:Register("test", "buff button: buffs off the main icon, onto their own button
         "hurt after a fight: the bandage or food before any buff")
     t:eq(BB.Pick({ spell = "Aura" }, nil, nil, { type = "sit" }).spell, "Aura", "by a campfire: your buffs before you sit")
     t:eq(BB.Pick(nil, nil, nil, { type = "sit" }).type, "sit", "by a campfire with nothing else due: sit")
+    -- The next buff shows ahead of time, faded until a fight is near.
+    local soon = { item = "item:2862", soon = true }
+    t:eq(BB.Pick({ spell = "Aura" }, soon).spell, "Aura", "no fight near: a missing buff spell before a stone preview")
+    t:eq(BB.Pick(nil, soon).item, "item:2862", "no fight near: the stone shows ahead of time")
+    t:eq(BB.Pick(nil, soon, nil, { type = "sit" }).type, "sit", "by a campfire: sit before a stone preview")
+    local aura = { spell = "Aura" }
+    t:ok(not BB.Bright(aura, nil, nil, false), "no fight near: the next buff is faded")
+    t:ok(BB.Bright(aura, nil, nil, true), "a fight near: the buff lights up")
+    t:ok(not BB.Bright(soon, nil, nil, false), "no fight near: the stone preview is faded")
+    local band, sit = { label = "Bandage" }, { type = "sit" }
+    t:ok(BB.Bright(band, band, nil, false), "hurt after a fight: the bandage is bright anyway")
+    t:ok(BB.Bright(sit, nil, sit, false), "by a campfire: sitting is bright anyway")
+    t:ok(not BB.Bright(BB.Idle(), nil, nil, true) and not BB.Bright(nil, nil, nil, true), "nothing due: never bright")
+    local BIt = ns.buffItems
+    t:ok(BIt and type(BIt.ItemStep) == "function" and type(BIt.FightNear) == "function",
+        "buff items: a preview step and a fight-near check exist")
+    local okS = pcall(BIt.ItemStep, {}, true)
+    t:ok(okS, "buff item preview runs without errors")
+    local okN, near = pcall(BIt.FightNear, {})
+    t:ok(okN and type(near) == "boolean", "fight near: a plain yes or no")
     t:eq(BB.FightSpell({ spell = "Aura" }, "Blessing"), "Aura", "fight: the buff due now")
     t:eq(BB.FightSpell(nil, "Aura"), "Aura", "fight: else the one you last cast")
     t:ok(BB.FightSpell(nil, nil) == nil, "fight: else nothing")

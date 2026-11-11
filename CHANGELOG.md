@@ -1,6 +1,10 @@
 # Changelog
 
 ## Unreleased
+- **Buff button: shows your next buff ahead of time.** Out of combat the blue buff button now always shows the
+  next buff it would do (a missing aura or blessing, your stone or oil, buff food), faded, so you can use it
+  when you choose. It lights up only when a fight is near: an enemy targeted, a kill stop, or just after a fight.
+  Your bandage or food when hurt and the campfire steps stay bright. Hover it for why it's faded.
 - **Profession window: make-now list is honest about chance.** Orange rows say "sure skill points"; yellow and
   green say "maybe ... (not every time)", since a couple of yellows can give nothing. On the same number of
   whole points, the sure recipe now comes first.

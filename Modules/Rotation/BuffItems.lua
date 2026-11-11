@@ -198,29 +198,40 @@ local function enemyTargeted()
     return UnitExists("target") and UnitCanAttack("player", "target") and not UnitIsDead("target") or false
 end
 
-ns:Register("action", "buff:item", { order = 2.5, get = function(ctx)
+-- A fight is near: you're about to kill a lot (BI.Killing) or an enemy is
+-- targeted. The buff button lights up its buff only then.
+function BI.FightNear(ctx, now)
+    return BI.Killing(ctx, now) or enemyTargeted()
+end
+
+-- The buff item step. preview: also when no fight is near (the buff button
+-- shows the next one, faded, so you can pick your moment); the step then has
+-- soon = true. Without preview, nothing until you're about to fight, so the
+-- bags aren't read ten times a second for nothing.
+function BI.ItemStep(ctx, preview)
     if UnitIsDeadOrGhost("player") or (IsResting and IsResting()) then return nil end
     if ctx and ctx.fishing then return nil end
-    -- Not about to fight: nothing to do, so don't read every bag slot (this
-    -- runs ten times a second out of combat).
     local killing = BI.Killing(ctx)
-    if not killing then return nil end
+    if not killing and not preview then return nil end
     local items = carried()
     if #items == 0 then return nil end
     local enchanted = GetWeaponEnchantInfo and GetWeaponEnchantInfo() and true or false
-    local it = BI.Pick(items, function(spell) return (A.Buff("player", spell)) end, mainHand(), enchanted, killing)
+    local it = BI.Pick(items, function(spell) return (A.Buff("player", spell)) end, mainHand(), enchanted, true)
     if not it then return nil end
     local icon = (C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(it.id)) or (GetItemIcon and GetItemIcon(it.id))
     local weapon, food = it.sub == ENHANCE_SUB, it.sub == FOOD_SUB
+    local why = killing and "You're killing here" or "Next time you fight"
     return { type = "item", item = "item:" .. it.id, icon = icon,
-             targetSlot = weapon and 16 or nil,
+             targetSlot = weapon and 16 or nil, soon = not killing or nil,
              urgent = BI.WeaponFirst(enemyTargeted(), UnitHealth("player"), UnitHealthMax("player"),
                  ns.rotation and (ns.rotation.hurt or 0) >= ns.rotation.HURT.outStart),
              label = (weapon and "Put on your weapon: " or food and "Eat: " or "Use: ") .. (it.name or "buff item"),
-             reason = weapon and "You're killing here and your weapon has no stone or oil on it"
-                 or food and "You're killing here and you aren't Well Fed"
-                 or "You're killing here and that buff isn't on" }
-end })
+             reason = weapon and (why .. ": your weapon has no stone or oil on it")
+                 or food and (why .. ": you aren't Well Fed")
+                 or (why .. ": that buff isn't on") }
+end
+
+ns:Register("action", "buff:item", { order = 2.5, get = function(ctx) return BI.ItemStep(ctx, false) end })
 
 -------------------------------------------------------------------------------
 -- Bag helpers (camp objects and healing items)
