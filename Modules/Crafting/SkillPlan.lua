@@ -768,27 +768,46 @@ end
 -- Can you get this material on this map without the bank? You can gather
 -- or fish it, a mob here drops it, a vendor here sells it, or it smelts
 -- from an ore you can get here.
-function SP.FarmableHere(id, depth)
-    local s = src(id)
+-- env: source(id) -> the item's source entry; skill(name) -> your rank or
+-- nil; dropsHere(names) / soldHere(id) -> is one on this map.
+function SP.Farmable(id, env, depth)
+    local s = env.source(id)
     if not s then return false end
     if s.gather then
-        local r = A.Skill(s.gather)
-        if r and r >= (s.skill or 1) then return true end
+        local r = env.skill(s.gather)
+        if r and r >= (s.skill or 1) then return true end   -- (too low a skill: you can't gather it)
     end
-    if s.fished and A.Skill("Fishing") then return true end
-    if s.drops then
-        local _, here = npcPoints(s.drops)
-        if here then return true end
-    end
-    if s.vendor then
-        local _, here = vendorPoints(id)
-        if here then return true end
-    end
+    if s.fished and env.skill("Fishing") then return true end
+    if s.drops and env.dropsHere(s.drops) then return true end
+    if s.vendor and env.soldHere(id) then return true end
     local sm = s.smelt
     if sm and sm.from and sm.from ~= id and (depth or 0) < 2 then
-        return SP.FarmableHere(sm.from, (depth or 0) + 1)
+        return SP.Farmable(sm.from, env, (depth or 0) + 1)
     end
     return false
+end
+
+local hereEnv = {
+    source = src,
+    skill = function(name) return (A.Skill(name)) end,
+    dropsHere = function(names) local _, here = npcPoints(names); return here and true or false end,
+    soldHere = function(id) local _, here = vendorPoints(id); return here and true or false end,
+}
+function SP.FarmableHere(id) return SP.Farmable(id, hereEnv) end
+
+-- How sure Flow is of your bank, for the bank stop: seenAt = when Flow last
+-- read it (nil: never). Never read, or read days ago, is said as such: the
+-- counts are what Flow last knew, not what is certainly there.
+SP.BANK_STALE = 3 * 24 * 3600
+function SP.BankNote(seenAt, now)
+    if not seenAt then
+        return "Flow hasn't seen inside your bank yet: these counts are the game's and may be off. Open your bank once."
+    end
+    local age = (now or time()) - seenAt
+    if age >= SP.BANK_STALE then
+        return string.format("Your bank as Flow saw it %d days ago: it may have changed (open it to update).", math.floor(age / 86400))
+    end
+    return "Your bank as Flow last saw it (open it to update)."
 end
 
 local function planProfession(prof, t, out)
@@ -1125,7 +1144,7 @@ local function planProfession(prof, t, out)
               optional = not bankNeeded or nil, weight = bankNeeded and 0.5 or 1.5,
               text = "Get from your bank: " .. table.concat(fromBank, ", "),
               details = { string.format("For your %s crafts. Take them out at the banker.", prof),
-                          seen and "Your bank as Flow last saw it (open it to update)." or "Open your bank once so Flow can see what's in it." },
+                          SP.BankNote(seen) },
               blockedBy = bankBlocked })
     end
 

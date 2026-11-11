@@ -705,6 +705,45 @@ ns:Register("test", "bank: far bank stock is skipped for mats you can farm here"
     t:ok(not SP.UseBank(nil, true), "banker distance unknown, farmable: farm")
     t:ok(SP.UseBank(nil, false), "banker distance unknown, not farmable: bank")
     t:ok(not SP.FarmableHere(99999), "unknown item: not farmable")
+    -- Can you get it here? (made-up items; nothing is read from the game)
+    local HERB, HIDE, BAR, ORE, FISH, SOLD = 1, 2, 3, 4, 5, 6
+    local srcs = {
+        [HERB] = { gather = "Herbalism", skill = 50 }, [HIDE] = { drops = { "Wolf" } },
+        [BAR] = { smelt = { from = ORE, n = 1 } }, [ORE] = { gather = "Mining", skill = 1 },
+        [FISH] = { fished = true }, [SOLD] = { vendor = true },
+    }
+    local skills, mobsHere, soldHere = {}, false, false
+    local env = { source = function(id) return srcs[id] end, skill = function(n) return skills[n] end,
+                  dropsHere = function() return mobsHere end, soldHere = function() return soldHere end }
+    t:ok(not SP.Farmable(HERB, env), "no Herbalism: can't gather it")
+    skills.Herbalism = 49
+    t:ok(not SP.Farmable(HERB, env), "Herbalism too low for this herb: can't gather it")
+    t:ok(SP.UseBank(1200, SP.Farmable(HERB, env)), "so a far bank is still the way")
+    skills.Herbalism = 50
+    t:ok(SP.Farmable(HERB, env), "skill high enough: gather it")
+    t:ok(not SP.UseBank(1200, SP.Farmable(HERB, env)), "and the far bank is skipped")
+    t:ok(not SP.Farmable(HIDE, env), "the mob isn't on this map: not farmable here")
+    mobsHere = true
+    t:ok(SP.Farmable(HIDE, env), "the mob is here: farm it")
+    t:ok(not SP.Farmable(BAR, env), "bar, no Mining: its ore can't be had")
+    skills.Mining = 10
+    t:ok(SP.Farmable(BAR, env), "bar: farmable through its ore")
+    t:ok(not SP.Farmable(FISH, env), "no Fishing: not farmable"); skills.Fishing = 1
+    t:ok(SP.Farmable(FISH, env), "Fishing: farmable")
+    t:ok(not SP.Farmable(SOLD, env), "no vendor here sells it"); soldHere = true
+    t:ok(SP.Farmable(SOLD, env), "a vendor here sells it")
+    -- Part of what you need is in the bank: that part comes from it, the rest is still to get.
+    local st = SP.Stock(function() return 0 end, function(id) return id == HIDE and 2 or 0 end, function() end)
+    local r = st:Take(HIDE, 10)
+    t:eq(r.bank, 2, "the 2 in the bank"); t:eq(r.short, 8, "8 still to get")
+    -- Bank skipped (far, farmable): its stock isn't counted at all.
+    st = SP.Stock(function() return 0 end, function() return 0 end, function() end)
+    r = st:Take(HIDE, 10)
+    t:eq(r.bank, 0, "skipped bank: nothing from it"); t:eq(r.short, 10, "all 10 to farm")
+    -- What Flow knows of the bank is said, never assumed.
+    t:ok(SP.BankNote(nil, 1000):find("hasn't seen inside your bank", 1, true) ~= nil, "bank never read: says the counts may be off")
+    t:ok(SP.BankNote(1000, 1000 + 3600):find("last saw it", 1, true) ~= nil, "read this hour: as Flow last saw it")
+    t:ok(SP.BankNote(1000, 1000 + 5 * 86400):find("5 days ago: it may have changed", 1, true) ~= nil, "read 5 days ago: says it may have changed")
 end)
 
 ns:Register("test", "drops: rate moves from the guide's to yours", function(t)
