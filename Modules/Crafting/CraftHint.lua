@@ -133,7 +133,8 @@ end
 -- Shows a recipe in the open profession window, as if you'd clicked it in
 -- the list. It only selects: nothing is made.
 function H.Select(recipe)
-    if GetNumTradeSkills and GetTradeSkillInfo then
+    local newWindow = ProfessionsFrame and ProfessionsFrame:IsShown()
+    if not newWindow and GetNumTradeSkills and GetTradeSkillInfo then
         for i = 1, GetNumTradeSkills() do
             if GetTradeSkillInfo(i) == recipe then
                 if TradeSkillFrame_SetSelection then
@@ -151,7 +152,17 @@ function H.Select(recipe)
     if T and T.GetAllRecipeIDs and T.GetRecipeInfo and T.OpenRecipe then
         for _, id in ipairs(T.GetAllRecipeIDs() or {}) do
             local info = T.GetRecipeInfo(id)
-            if info and info.name == recipe then T.OpenRecipe(id) return true end
+            if info and info.name == recipe then
+                -- Asking the game to open the recipe does nothing while its
+                -- window is already up here, so pick it in the window's own
+                -- list first, the way a click on that list does.
+                local page = ProfessionsFrame and ProfessionsFrame.CraftingPage
+                if page and page.SelectRecipe and pcall(page.SelectRecipe, page, info) then return true end
+                if EventRegistry and pcall(EventRegistry.TriggerEvent, EventRegistry,
+                    "ProfessionsRecipeListMixin.Event.OnRecipeSelected", info) then return true end
+                T.OpenRecipe(id)
+                return true
+            end
         end
     end
     return false
