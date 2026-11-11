@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- **Right-click the arrow: the stop's card.** Right-clicking the arrow (or the line under it) opens the new stop card
+  for the stop it points at, beside the arrow; right-click again closes it. The options menu (route, arrow style)
+  moved to Shift-right-click, and still opens on a plain right-click while you follow someone or a waypoint.
 - **New stop card.** The window a click on a stop opens (Flow Tracker, Router, map) has the approved glossy look:
   its own typeface, the stop's distance in the title bar, real buttons for Show on map and Go here next (greyed while
   the stop is blocked). A trainer stop has a short title, names the trainer your route actually picked and folds the

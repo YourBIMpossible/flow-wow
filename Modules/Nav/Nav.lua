@@ -2675,7 +2675,7 @@ local function showPanel()
         for _, a in ipairs(N.alongGoals) do lines[#lines + 1] = "  |cffcccccc" .. (a.text or a.title or "?") .. "|r" end
     end
     lines[#lines + 1] = " "
-    lines[#lines + 1] = "|cff888888Right-click the arrow for options. Click the arrow or the ^ tab to fold this away.|r"
+    lines[#lines + 1] = "|cff888888Right-click the arrow: this stop's card (Shift: options). Click the arrow or the ^ tab to fold this away.|r"
     panel.text:SetText(table.concat(lines, "\n"))
     panel:SetHeight(h:GetHeight() + panel.text:GetStringHeight() + 24)
     -- Placed when it opens (it's refreshed all the time while open): on the
@@ -2847,8 +2847,13 @@ local function buildArrow()
         local a, _, r, x, y = self:GetPoint()
         ns.db.nav.point = { a, r, x, y }
     end)
-    f:SetScript("OnClick", function(_, button)
-        if button == "RightButton" then
+    f:SetScript("OnClick", function(_, button, how)
+        -- Right-click: this stop's card, beside the arrow. Shift-right-click
+        -- (or when the arrow isn't on a route stop): the options menu.
+        if button == "RightButton" and how ~= "menu" and not IsShiftKeyDown()
+            and current and current.goal and not current.follow and not current.waypoint then
+            N:OpenStop(current.goal, f)
+        elseif button == "RightButton" then
             -- Menu: this stop, then route and order choices, unhide all.
             local items = {}
             if current and current.follow then
@@ -2905,17 +2910,18 @@ local function buildArrow()
         end
     end)
     -- The text under the arrow (stop name, distance) clicks like the arrow:
-    -- left = this panel, right = the menu.
+    -- left = this panel, right = the stop's card (Shift: the menu).
     f.textHit = CreateFrame("Button", nil, f)
     f.textHit:SetPoint("TOP", f, "BOTTOM", 0, 0)
     f.textHit:SetSize(240, 34)
     f.textHit:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     f.textHit:SetScript("OnClick", function(_, button) f:GetScript("OnClick")(f, button) end)
+    N.ARROW_HINT = "Right-click: this stop's card. Shift-right-click: options."
     -- Hover the arrow (or ring, or its text): the stop's details, e.g. quest progress.
     local function tip(owner)
         if not current or (panel and panel:IsShown()) then return end   -- the drawer already shows it
         ns.Tip(owner, "ANCHOR_BOTTOM")
-        N:FillTooltip(GameTooltip, current.goal, not N.arrived and "Click: details and the trip. Right-click: options." or nil)
+        N:FillTooltip(GameTooltip, current.goal, not N.arrived and "Click: details and the trip. " .. N.ARROW_HINT or nil)
         -- In an area: every other quest stop you're in the area for, with progress.
         if N.arrived then
             local p = N:PlayerPos()
@@ -2931,7 +2937,7 @@ local function buildArrow()
                 end
             end
             GameTooltip:AddLine(" ")
-            GameTooltip:AddLine("You're there. Click: details. Right-click: options.", 0.55, 0.55, 0.55, true)
+            GameTooltip:AddLine("You're there. Click: details. " .. N.ARROW_HINT, 0.55, 0.55, 0.55, true)
         end
         GameTooltip:Show()
     end
@@ -2970,7 +2976,7 @@ local function buildArrow()
     f.prof.hit:SetSize(240, 16)
     f.prof.hit:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     f.prof.hit:SetScript("OnClick", function(_, button)
-        if button == "RightButton" then f:GetScript("OnClick")(f, button)
+        if button == "RightButton" then f:GetScript("OnClick")(f, button, "menu")
         elseif N.profChoice then N:OpenStop(N.profChoice.goal) end
     end)
     f.prof.hit:SetScript("OnEnter", function(self)
