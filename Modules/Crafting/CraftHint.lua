@@ -273,6 +273,12 @@ end
 -- The legendary item colour (|cffff8000): the goal box's border.
 H.GOAL_BORDER = { 1, 0.5, 0 }
 
+-- ", then Smoked Bear Meat": what the levelling guides make after this step
+-- (the planner's `nextRecipe`), so the goal shows it's one leg of the climb.
+function H.ThenText(g)
+    return (g and g.nextRecipe) and (", then " .. g.nextRecipe) or ""
+end
+
 local function box(name, width, border)
     local f = CreateFrame("Frame", name, UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
     f:SetSize(width, 52)
@@ -497,7 +503,8 @@ function H:Refresh()
     local matLines = {}
     if waiting then
         panel.text:SetText(string.format("Flow: next for skill, make %s%d|r x %s", GOLD, waiting.makeCount, waiting.recipe))
-        panel.sub:SetText(string.format("%s %d -> %d. %s", prof, waiting.rank or rank or 0, waiting.target or 0,
+        panel.sub:SetText(string.format("%s %d -> %d%s. %s", prof, waiting.rank or rank or 0,
+            waiting.stepTo or waiting.target or 0, H.ThenText(waiting),
             waiting.unlearned and "Learn the recipe, then get the materials below."
                 or "Get the materials below first."))
         matLines = H.MaterialLines(waiting, waiting.makeCount)
@@ -522,6 +529,7 @@ function H:Refresh()
         panel.text:SetText(string.format("Flow: make %s%d|r x %s", GOLD, left, g.recipe))
         panel.sub:SetText((g.extra == "upgrade" and "An upgrade for you, not needed for the skill (hover for more).")
             or (g.extra == "smelt" and string.format("Bars for your %s plan.", g.serves or "profession"))
+            or (g.nextRecipe and string.format("%s %d -> %d%s.", prof, rank or 0, g.stepTo or g.target or 0, H.ThenText(g)))
             or string.format("%s %d -> %d. More would be wasted (hover for why).", prof, rank or 0, g.target or 0))
         if now < left and now == 0 then
             panel.sub:SetText(panel.sub:GetText() .. " Get the materials below first.")

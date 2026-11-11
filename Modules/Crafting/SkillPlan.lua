@@ -268,14 +268,55 @@ local function matUnits(step)
     return math.max(n, 1)
 end
 
--- Expected crafts per step to go from rank to target: at each point, the
--- step with the most skill per material. When two are as good (Charred Wolf
--- Meat, Roasted Boar Meat), the one whose materials are in your bags wins, so
--- what you already carry gets used before anything is farmed.
+-- A step your faction can use (a guide step may name one: its recipe or
+-- meat is only sold or found on that side).
+local function forYou(s)
+    if not s.faction then return true end
+    local mine = UnitFactionGroup and UnitFactionGroup("player")
+    return not mine or mine == s.faction
+end
+
+-- The guide's own path: the steps it says to use at this skill (`use =
+-- { from, to }`, from public levelling guides). Only where the guide says
+-- nothing does any recipe that still gives skill count, so the plan never
+-- grinds a recipe on to grey when the proven path has moved on (owner: 105
+-- Charred Wolf Meat for Cooking 62 -> 100).
+-- `use` is one range or a list of them ({ { 110, 125 }, { 140, 160 } }).
+local function inUse(use, rank)
+    if type(use[1]) == "table" then
+        for _, u in ipairs(use) do if rank >= u[1] and rank < u[2] then return true end end
+        return false
+    end
+    return rank >= use[1] and rank < use[2]
+end
+local function onPath(steps, rank)
+    local out, any = {}, false
+    for _, s in ipairs(steps) do
+        if s.use and forYou(s) then
+            any = true
+            if inUse(s.use, rank) then out[#out + 1] = s end
+        end
+    end
+    if #out > 0 then return out end
+    if any then
+        -- Past what the guide covers, or a gap: whatever still gives skill.
+        local rest = {}
+        for _, s in ipairs(steps) do if forYou(s) then rest[#rest + 1] = s end end
+        return rest
+    end
+    return steps
+end
+SP._onPath = onPath
+
+-- Expected crafts per step to go from rank to target: at each point, of the
+-- steps the guide uses there, the one with the most skill per material. When
+-- two are as good (Charred Wolf Meat, Roasted Boar Meat), the one whose
+-- materials are in your bags wins, so what you already carry gets used before
+-- anything is farmed.
 -- `have` (optional): item ID -> count in bags; defaults to your bags.
 local simulate
 function simulate(prof, steps, rank, target, have)
-    local crafts, order = {}, {}
+    local crafts, order, spans = {}, {}, {}   -- spans: step -> { from, to } skill it covers
     local left = {}
     local function bag(id)
         if left[id] == nil then left[id] = (have and have[id]) or (not have and count(id)) or 0 end
@@ -286,24 +327,33 @@ function simulate(prof, steps, rank, target, have)
         return true
     end
     local guard = 0
-    while rank < target and guard < 600 do
-        guard = guard + 1
+    local function pick(cands)
         local best, bestV, bestC, bestHave
-        for _, s in ipairs(steps) do
+        for _, s in ipairs(cands) do
             local c = chance(prof, s, rank)
             local v = c / matUnits(s)
             local h = canMake(s)
-            if c > 0 and (not bestV or v > bestV or (v == bestV and h and not bestHave)) then
+            if c > 0 and forYou(s) and (not bestV or v > bestV or (v == bestV and h and not bestHave)) then
                 best, bestV, bestC, bestHave = s, v, c, h
             end
         end
+        return best, bestC, bestHave
+    end
+    while rank < target and guard < 2000 do
+        guard = guard + 1
+        local path = onPath(steps, rank)
+        local best, bestC, bestHave = pick(path)
+        -- The guide's step for here gives nothing (grey early in your game):
+        -- any recipe that still does.
+        if not best and path ~= steps then best, bestC, bestHave = pick(steps) end
         if not best then break end
-        if not crafts[best] then crafts[best] = 0; order[#order + 1] = best end
+        if not crafts[best] then crafts[best] = 0; order[#order + 1] = best; spans[best] = { math.floor(rank) } end
         crafts[best] = crafts[best] + 1
         if bestHave then for id, q in pairs(best.mats or {}) do left[id] = bag(id) - q end end
         rank = rank + bestC
+        spans[best][2] = math.min(math.floor(rank + 1e-9), target)
     end
-    return crafts, order, rank >= target
+    return crafts, order, rank >= target, spans
 end
 
 -- Materials that stand in for `id`: dropped materials of other steps that
@@ -551,11 +601,17 @@ local function recipeStop(prof, s, known)
                  icon = BAG_ICON, useItem = s.recipeItem,   -- in your bags: the arrow shows a bag
                  text = "Learn " .. s.recipe .. ": use the recipe in your bags" }
     end
+    local fish = false
+    for mid in pairs(s.mats or {}) do
+        local ms = src(mid)
+        if ms and ms.fished then fish = true end
+    end
     local pts, _, sellers = vendorPoints(s.recipeItem)
     return { key = "buy:" .. s.recipeItem, kind = "merchant", points = pts, npcs = sellers,
              cost = SP.Price(s.recipeItem),
              text = "Buy " .. name,
-             details = { "So you can cook what you catch (skip it if you already know " .. s.recipe .. ")." },
+             details = { fish and ("So you can cook what you catch (skip it if you already know " .. s.recipe .. ").")
+                             or ("The levelling guides make " .. s.recipe .. " here. A vendor sells it; the trainer doesn't teach it.") },
              blockedBy = #pts == 0 and ("Flow doesn't know who sells " .. name) or nil }
 end
 
@@ -959,7 +1015,12 @@ local function planProfession(prof, t, out)
 
     -- Mining also levels from the veins themselves.
     local steps = g.steps or {}
-    local crafts, order, reaches = simulate(prof, steps, rank, t.target)
+    local crafts, order, reaches, spans = simulate(prof, steps, rank, t.target)
+    -- Each step's share of the climb, and what the guide does after it.
+    local function stepTo(s) return spans[s] and spans[s][2] or t.target end
+    local function after(s)
+        for i, o in ipairs(order) do if o == s then return order[i + 1] end end
+    end
 
     -- One stock for the whole plan: bags, then bank, then smelting. What it
     -- takes from the bank becomes a bank stop, what it smelts a smelt stop;
@@ -1083,8 +1144,10 @@ local function planProfession(prof, t, out)
             SP.lastWaiting = SP.lastWaiting or {}
             local list = SP.lastWaiting[prof] or {}
             SP.lastWaiting[prof] = list
+            local nx = after(s)
             list[#list + 1] = { prof = prof, recipe = s.recipe, makeCount = planned, planned = planned,
-                                rank = rank, target = t.target, reagents = s.mats,
+                                rank = rank, target = t.target, stepTo = stepTo(s), nextRecipe = nx and nx.recipe,
+                                reagents = s.mats,
                                 unlearned = (known and not known[s.recipe]) or nil }
         end
         if n > 0 then
@@ -1099,11 +1162,14 @@ local function planProfession(prof, t, out)
             -- it's highlighted, and the details say why that many.
             local num = "|cffffd100" .. n .. "|r"
             local c = chance(prof, s, rank)
+            local from = spans[s] and spans[s][1] or rank
+            local nx = after(s)
             local details = {
-                string.format("%d takes %s %d -> %d: %s.", planned, prof, rank, t.target,
-                    c >= 1 and "each one gives a skill point while it's yellow"
-                    or "it's green now, so only some give a point (Flow counted on that)"),
-                "More than that won't raise the skill further for now, so it'd be wasted materials.",
+                string.format("%d takes %s %d -> %d: %s.", planned, prof, from, stepTo(s),
+                    c >= 1 and "each one gives a skill point while it's orange"
+                    or "it isn't orange, so only some give a point (Flow counted on that)"),
+                nx and string.format("Then the levelling guides switch to %s: past %d this one gives too little.", nx.recipe, stepTo(s))
+                    or "More than that won't raise the skill further for now, so it'd be wasted materials.",
             }
             if n < planned then
                 details[#details + 1] = string.format("You have materials for %d now; the rest comes after you gather more.", n)
@@ -1131,6 +1197,7 @@ local function planProfession(prof, t, out)
                   icon = profIcon(prof), station = s.station,
                   -- For the profession window hint (CraftHint.lua).
                   prof = prof, recipe = s.recipe, makeCount = n, planned = planned, rank = rank, target = t.target,
+                  stepTo = stepTo(s), nextRecipe = nx and nx.recipe,
                   text = s.recipe:find("^Smelt ") and string.format("%s x%s at a forge", s.recipe, num)
                       or string.format("Make %s x %s", num, s.recipe),
                   details = details,
@@ -1314,6 +1381,11 @@ local function planProfession(prof, t, out)
                   cost = SP.Price(id) and SP.Price(id) * n or nil,
                   text = string.format("Buy %d %s", n, name),
                   blockedBy = #pts == 0 and ("Flow doesn't know who sells " .. name) or nil })
+        elseif s and s.made then
+            -- You make it yourself (Heavy Grinding Stone for Green Iron Leggings).
+            add({ key = "need:" .. id, kind = "collect", points = { playerPoint() },
+                  text = string.format("Make %d %s (%s)", n, name, s.made),
+                  blockedBy = string.format("make %d %s first (%s)", n, name, s.made) })
         else
             add({ key = "need:" .. id, kind = "collect", points = { playerPoint() },
                   text = string.format("Get %d %s", n, name),

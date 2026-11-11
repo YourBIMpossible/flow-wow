@@ -1249,6 +1249,30 @@ ns:Register("test", "skillplan: fishing feeds cooking", function(t)
     t:ok(crafts[g.steps[3]] == nil, "no fish in bags: plan doesn't count on cooking fish")
 end)
 
+ns:Register("test", "skillplan: follows the levelling guides' path", function(t)
+    local SP = ns.skillPlan
+    local g = ns:Get("profGuide", "Cooking")
+    -- Owner: at Cooking 62 the plan said 105 Charred Wolf Meat to 100.
+    local path = SP._onPath(g.steps, 62)
+    t:ok(#path > 0, "the guide has a step for Cooking 62")
+    local mine = UnitFactionGroup("player")
+    for _, s in ipairs(path) do
+        t:ok(s.recipe ~= "Charred Wolf Meat", "62: not Charred Wolf Meat (" .. s.recipe .. ")")
+        t:ok(not s.faction or s.faction == mine, "62: your side's recipe (" .. s.recipe .. ")")
+    end
+    local _, order, reaches = SP._simulate("Cooking__test", g.steps, 62, 100, {})
+    t:ok(reaches, "62 -> 100 reaches")
+    for _, s in ipairs(order) do t:ok(s.recipe ~= "Charred Wolf Meat", "62 -> 100 makes no Charred Wolf Meat") end
+    t:eq(order[1] and order[1].recipe, mine == "Horde" and "Strider Stew" or "Smoked Bear Meat", "62: the guides' recipe first")
+    -- Fish recipes have no path of their own.
+    for _, s in ipairs(SP._onPath(g.steps, 60)) do t:ok(not s.recipe:find("Mud Snapper"), "60: fish only stands in") end
+    -- A step the guides use twice (Rough Bronze Leggings 110-125, 140-160).
+    local bs = ns:Get("profGuide", "Blacksmithing")
+    local at145 = SP._onPath(bs.steps, 145)
+    t:eq(#at145, 1, "145: one step"); t:eq(at145[1] and at145[1].recipe, "Rough Bronze Leggings", "145: back to bronze leggings")
+    t:eq(SP._onPath(bs.steps, 130)[1].recipe, "Heavy Grinding Stone", "130: heavy grinding stones in between")
+end)
+
 ns:Register("test", "perf: Flow's update loops are timed", function(t)
     local P = ns.perf
     local f = P.Wrap("test: wrapped", function(a, b) return a + b, "x" end)

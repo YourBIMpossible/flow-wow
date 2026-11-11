@@ -1,6 +1,12 @@
 # Changelog
 
 ## Unreleased
+- **Professions: follow the levelling guides' path.** The skill plan now makes what the public levelling guides
+  make at each skill, instead of grinding one recipe on until it turns grey (Cooking 62 no longer says 105
+  Charred Wolf Meat). Cooking has a Horde path (Kodo, Strider Stew, Lizard Tail) and an Alliance path (Bear
+  Meat, Crab, Wolf Kabob) to 130, then Omelet and Roast Raptor to 225; fish you catch stand in for the meat
+  they match. First Aid runs to 300, Blacksmithing to 270. Recipes sold by a vendor get a "Buy" stop, and the
+  plan and profession window say when the guides switch recipe. Recipes only a quest teaches are left out.
 - **Buff button: shows your next buff ahead of time.** Out of combat the blue buff button now always shows the
   next buff it would do (a missing aura or blessing, your stone or oil, buff food), faded, so you can use it
   when you choose. It lights up only when a fight is near: an enemy targeted, a kill stop, or just after a fight.
