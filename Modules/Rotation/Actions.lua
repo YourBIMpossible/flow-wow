@@ -295,20 +295,28 @@ ns:Register("action", "fish:lure", { order = 20, get = function(ctx)
 end })
 
 -- Fishing: reel in. While the line is out, the key presses Interact, which
--- clicks your bobber (press when it splashes).
-ns:Register("action", "fish:reel", { order = 30, get = function(ctx)
-    if not (ctx.pole and channeling("Fishing") and X.CanInteract()) then return nil end
-    if X.FriendlyTarget() then return X.ClearTargetStep("so the key reels in, not talks to your target") end
-    return { type = "interact", icon = spellIcon("Fishing"), label = "Press when the bobber splashes", urgent = true }
-end })
+-- clicks your bobber (press when it splashes). Flow key and buff button.
+function X.ReelStep(ctx)
+    if not (ctx and ctx.pole and channeling("Fishing") and X.CanInteract()) then return nil end
+    if X.FriendlyTarget() then
+        local s = X.ClearTargetStep("so the key reels in, not talks to your target")
+        s.fish = true
+        return s
+    end
+    return { type = "interact", icon = spellIcon("Fishing"), label = "Press when the bobber splashes", urgent = true,
+             fish = true, reason = "Your line is out: press when the bobber splashes" }
+end
+ns:Register("action", "fish:reel", { order = 30, get = X.ReelStep })
 
--- Fishing: cast.
-ns:Register("action", "fish:cast", { order = 40, get = function(ctx)
-    if not (ctx.fishing and ctx.pole) or channeling("Fishing") then return nil end
+-- Fishing: cast. Flow key and buff button.
+function X.CastStep(ctx)
+    if not (ctx and ctx.fishing and ctx.pole) or channeling("Fishing") then return nil end
     if not knows("Fishing") then return nil end
-    return { type = "spell", spell = "Fishing", unit = "player", icon = spellIcon("Fishing"),
-             label = ctx.noWater and "Face the water, then cast" or "Cast your line" }
-end })
+    return { type = "spell", spell = "Fishing", unit = "player", icon = spellIcon("Fishing"), fish = true,
+             label = ctx.noWater and "Face the water, then cast" or "Cast your line",
+             reason = ctx.noWater and "Your last cast missed the water" or "Your pole is on and you're at the water" }
+end
+ns:Register("action", "fish:cast", { order = 40, get = X.CastStep })
 
 -- Crafting where you stand (a "Make 4 x Roasted Boar Meat" stop that follows
 -- you): the key makes a campfire if the recipe needs one, opens the

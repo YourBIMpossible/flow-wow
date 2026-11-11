@@ -17,7 +17,8 @@
   "Put <lure> on your pole", lit, anywhere (not only at a fishing stop). It picks the lure with the biggest
   bonus you carry and can use first, the smallest last. Healing up after a fight still comes first. At a
   fishing stop without your pole on, the button shows "Equip your Fishing Pole" (your weapons go back on when
-  you leave, as with the Flow key).
+  you leave, as with the Flow key). Then it casts your line, and with a buff key set (/flow buffkey Q), that
+  key reels in while the line is out: press it when the bobber splashes.
 - **Professions: follow the levelling guides' path.** The skill plan now makes what the public levelling guides
   make at each skill, instead of grinding one recipe on until it turns grey (Cooking 62 no longer says 105
   Charred Wolf Meat). Cooking has a Horde path (Kodo, Strider Stew, Lizard Tail) and an Alliance path (Bear

@@ -5008,6 +5008,12 @@ ns:Register("test", "buff button: buffs off the main icon, onto their own button
     local X = ns.actions
     t:ok(X.EquipStep({ atFish = false, pole = false }) == nil, "away from a fishing stop: no pole equip")
     t:ok(X.EquipStep({ atFish = true, pole = true }) == nil, "pole already on: no pole equip")
+    t:ok(X.CastStep({ fishing = false, pole = true }) == nil, "not at the water: no cast")
+    t:ok(X.CastStep({ fishing = true, pole = false }) == nil, "no pole on: no cast")
+    t:ok(X.ReelStep({ pole = false }) == nil, "no pole on: no reel")
+    t:eq(BB.Pick({ spell = "Aura" }, nil, nil, nil, { spell = "Fishing", fish = true }).spell, "Fishing",
+        "fishing: the cast before a buff spell")
+    t:ok(BB.Bright({ type = "interact", fish = true }, false), "line out: reel in is lit")
     local bag = { [6529] = 3, [6530] = 2, [6533] = 1 }
     local function has(id) return bag[id] end
     t:eq(X.BestLure(has, function() return true end), 6533, "several lures: the biggest bonus first")
