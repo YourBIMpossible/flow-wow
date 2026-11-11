@@ -739,6 +739,58 @@ local function smeltOf(id)
     return s and s.smelt
 end
 
+-- The bank is a trip. Its stock only counts for a plan when the banker is
+-- close, or when the material can't be had on this map anyway (no mob here
+-- drops it, you can't gather it, nobody here sells it). Otherwise the plan
+-- farms it where you are: the wolves around you, not 2 meat from a bank
+-- across the zone.
+SP.BANK_NEAR = 300   -- yards
+function SP.UseBank(bankYards, farmHere)
+    if bankYards and bankYards <= SP.BANK_NEAR then return true end
+    return not farmHere
+end
+
+-- Yards from you to the nearest of these points (nil: unknown / another continent).
+function SP.YardsTo(points)
+    local p = ns.nav and ns.nav.PlayerPos and ns.nav:PlayerPos()
+    if not (p and p.wx) then return nil end
+    local best
+    for _, pt in ipairs(points or {}) do
+        local cont, wx, wy = ns.nav:ToWorld(pt.map, pt.x, pt.y)
+        if wx and cont == p.cont then
+            local d = math.sqrt((wx - p.wx) ^ 2 + (wy - p.wy) ^ 2)
+            if not best or d < best then best = d end
+        end
+    end
+    return best
+end
+
+-- Can you get this material on this map without the bank? You can gather
+-- or fish it, a mob here drops it, a vendor here sells it, or it smelts
+-- from an ore you can get here.
+function SP.FarmableHere(id, depth)
+    local s = src(id)
+    if not s then return false end
+    if s.gather then
+        local r = A.Skill(s.gather)
+        if r and r >= (s.skill or 1) then return true end
+    end
+    if s.fished and A.Skill("Fishing") then return true end
+    if s.drops then
+        local _, here = npcPoints(s.drops)
+        if here then return true end
+    end
+    if s.vendor then
+        local _, here = vendorPoints(id)
+        if here then return true end
+    end
+    local sm = s.smelt
+    if sm and sm.from and sm.from ~= id and (depth or 0) < 2 then
+        return SP.FarmableHere(sm.from, (depth or 0) + 1)
+    end
+    return false
+end
+
 local function planProfession(prof, t, out)
     local g = ns:Get("profGuide", prof)
     local rank, max = A.Skill(prof)
@@ -814,7 +866,13 @@ local function planProfession(prof, t, out)
     -- One stock for the whole plan: bags, then bank, then smelting. What it
     -- takes from the bank becomes a bank stop, what it smelts a smelt stop;
     -- the crafts that need them come after (deps).
-    local stock = SP.Stock(count, SP.BankCount, smeltOf)
+    local bankPts, bankNames = SP.BankerPoints()
+    local bankYards = SP.YardsTo(bankPts)
+    local function bankOf(id)
+        if SP.UseBank(bankYards, SP.FarmableHere(id)) then return SP.BankCount(id) end
+        return 0
+    end
+    local stock = SP.Stock(count, bankOf, smeltOf)
     local bankPull, smeltWant, smeltBankOre = {}, {}, {}
     local bankNeeded, smeltNeeded = false, {}   -- false: only an optional upgrade wants it
     local function pull(r, id, optional)
@@ -832,7 +890,6 @@ local function planProfession(prof, t, out)
             end
         end
     end
-    local bankPts, bankNames = SP.BankerPoints()
     local bankBlocked = #bankPts == 0 and "no known banker" or nil
     local function smeltBlocked(id)
         local sm = smeltOf(id)

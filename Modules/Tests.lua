@@ -684,6 +684,16 @@ ns:Register("test", "cooking: meat you carry is used first, either meat will do"
     t:eq(#SP.Alternatives(g.steps, 99999), 1, "unknown item: just itself")
 end)
 
+ns:Register("test", "bank: far bank stock is skipped for mats you can farm here", function(t)
+    local SP = ns.skillPlan
+    t:ok(SP.UseBank(100, true), "banker close: use the bank")
+    t:ok(not SP.UseBank(1200, true), "banker across the zone, wolves here: farm them")
+    t:ok(SP.UseBank(1200, false), "can't get it here: the bank it is")
+    t:ok(not SP.UseBank(nil, true), "banker distance unknown, farmable: farm")
+    t:ok(SP.UseBank(nil, false), "banker distance unknown, not farmable: bank")
+    t:ok(not SP.FarmableHere(99999), "unknown item: not farmable")
+end)
+
 ns:Register("test", "drops: rate moves from the guide's to yours", function(t)
     local SP = ns.skillPlan
     local saved = ns.db.crafting.drops
