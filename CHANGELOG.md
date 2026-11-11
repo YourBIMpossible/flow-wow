@@ -1,6 +1,10 @@
 # Changelog
 
 ## Unreleased
+- **Quests an NPC doesn't give.** Questie lists Forever's own quests with no "do this first" (a second "Arugal's Folly",
+  "Return to Quinn (Again)", "Wild Eyes"), so Flow sent you to accept them early. Now one talk with the giver is enough:
+  if the quest isn't among what they show, its stop goes for ten minutes, and for a day when it's missing again. It
+  also counts when the NPC only takes a hand-in or opens one quest with no list, which never counted before.
 - **Profession stop: no white outline.** Its map pin and minimap dot are plain smoked glass: no light ring, no centre dot.
 - **Worn gear: an early warning.** When anything you wear drops under 20% durability an anvil shows above Flow's key
   (hover: which item, the nearest repair vendor Flow knows) and the route gets a Repair stop. Options: "Warn early when
