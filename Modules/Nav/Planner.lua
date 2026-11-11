@@ -55,7 +55,7 @@ end
 --           `here` stop is done
 --   near  = { [key] = true } the area around you (set by P:Plan): the rest
 --           waits until these are done
---   areaFirst = false: no area rule (nil: Flow's setting)
+--   areaFirst = true/false: the area rule on or off (nil: Flow's setting, off unless ticked)
 local OPT = {}
 
 -- Finish the zone first: an away stop may not come while a here stop is left.
@@ -406,7 +406,9 @@ function P:Plan(p, goals, opts)
     -- Finish this area: if the best trip leaves the area before it's done,
     -- plan one that doesn't, and keep that unless it costs a lot more.
     local areaFirst = OPT.areaFirst
-    if areaFirst == nil then areaFirst = not (ns.db and ns.db.nav and ns.db.nav.areaFirst == false) end
+    -- Off unless you tick it: the arrow follows the shortest whole trip, not
+    -- whatever is closest (on by default, it sent you to the near stops first).
+    if areaFirst == nil then areaFirst = (ns.db and ns.db.nav and ns.db.nav.areaFirst == true) or false end
     if areaFirst then
         OPT.near = areaSet(stops)
         if OPT.near and not valid(order) then

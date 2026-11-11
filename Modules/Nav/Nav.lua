@@ -3583,9 +3583,10 @@ if ns.settings and ns.settings.AddCheck then
     ns.settings:AddCheck({
         label = "Finish the area you're in first",
         note = "(stops within 300 yd)",
-        tip = "The route clears the stops around you before it sends you the other way, unless going "
-            .. "the other way first saves a lot of walking. Quests to pick up nearby count as part of the area.",
-        get = function() return ns.db.nav.areaFirst ~= false end,
+        tip = "Off (default): the arrow follows the shortest whole trip. On: the route clears the stops "
+            .. "around you before it sends you the other way, unless going the other way first saves a lot "
+            .. "of walking. Quests to pick up nearby count as part of the area.",
+        get = function() return ns.db.nav.areaFirst == true end,
         set = function(on) ns.db.nav.areaFirst = on and true or false; N.planDirty = true end,
     })
 end

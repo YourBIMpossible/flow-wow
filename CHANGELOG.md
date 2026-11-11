@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- **The arrow follows the best route, not the closest stop.** "Finish the area you're in first" is now off unless
+  you tick it: it sent the arrow to every stop within 300 yards before the rest, even when the shorter trip went
+  the other way. The route is now the shortest whole trip by default.
 - **Right-click the arrow: the stop's card.** Right-clicking the arrow (or the line under it) opens the new stop card
   for the stop it points at, beside the arrow; right-click again closes it. The options menu (route, arrow style)
   moved to Shift-right-click, and still opens on a plain right-click while you follow someone or a waypoint.
