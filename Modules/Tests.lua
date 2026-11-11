@@ -4998,13 +4998,16 @@ ns:Register("test", "buff button: buffs off the main icon, onto their own button
     t:ok(not BB.Bright(band, false) and not BB.Bright(sit, false), "no fight near: bandage and campfire are faded too")
     t:ok(BB.Bright(band, true), "a fight near (just after one): the bandage lights up")
     t:ok(not BB.Bright(BB.Idle(), true) and not BB.Bright(nil, true), "nothing due: never bright")
-    -- Fishing pole on, no lure: the lure, after healing up, lit with no fight near.
-    local lure = { item = "item:6529", lure = true }
+    -- Fishing (pole to equip at a fishing stop, or a lure for it): after healing
+    -- up, lit with no fight near.
+    local lure = { item = "item:6529", fish = true }
     t:eq(BB.Pick({ spell = "Aura" }, { item = "item:2862" }, nil, nil, lure).item, "item:6529",
         "pole on with no lure: the lure before buffs and items")
     t:eq(BB.Pick(nil, nil, { label = "Bandage" }, nil, lure).label, "Bandage", "hurt with the pole on: heal first, then the lure")
     t:ok(BB.Bright(lure, false), "the lure is lit with no fight near")
     local X = ns.actions
+    t:ok(X.EquipStep({ atFish = false, pole = false }) == nil, "away from a fishing stop: no pole equip")
+    t:ok(X.EquipStep({ atFish = true, pole = true }) == nil, "pole already on: no pole equip")
     local bag = { [6529] = 3, [6530] = 2, [6533] = 1 }
     local function has(id) return bag[id] end
     t:eq(X.BestLure(has, function() return true end), 6533, "several lures: the biggest bonus first")

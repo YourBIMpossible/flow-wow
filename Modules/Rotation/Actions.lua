@@ -253,18 +253,20 @@ ns:On("UI_ERROR_MESSAGE", function(_, msg) X.NoteDry(A.Safe(msg)) end)
 -- The steps
 -------------------------------------------------------------------------------
 
--- Fishing: equip the pole.
-ns:Register("action", "fish:equip", { order = 10, get = function(ctx)
-    if not ctx.atFish or ctx.pole then return nil end
+-- Fishing: equip the pole, at a fishing stop (Flow key and buff button).
+-- before: remember your weapons, so they go back on when you leave.
+function X.EquipStep(ctx)
+    if not (ctx and ctx.atFish) or ctx.pole then return nil end
     -- Not with an enemy targeted: you're about to fight (weapon stays on).
     if UnitExists("target") and UnitCanAttack("player", "target") and not UnitIsDead("target") then return nil end
     for _, id in ipairs(bagItems()) do
         if X.IsPole(id) then
             return { type = "item", item = "item:" .. id, icon = itemIcon(id), label = "Equip your Fishing Pole",
-                     before = saveWeapons }
+                     fish = true, reason = "You're at a fishing spot", before = saveWeapons }
         end
     end
-end })
+end
+ns:Register("action", "fish:equip", { order = 10, get = X.EquipStep })
 
 -- The lure to put on: the biggest bonus you carry and can use first, the
 -- smallest last (X.LURES order). has(id) -> count; canUse(id) -> bool.
@@ -281,7 +283,7 @@ function X.LureStep(ctx)
     local id = X.BestLure(count, usable)
     if not id then return nil end
     local name = (A.ItemInfo and A.ItemInfo(id)) or "a lure"
-    return { type = "item", item = "item:" .. id, targetSlot = MAIN, icon = itemIcon(id), lure = true,
+    return { type = "item", item = "item:" .. id, targetSlot = MAIN, icon = itemIcon(id), fish = true,
              label = "Put " .. name .. " on your pole",
              reason = "Your fishing pole has no lure on it" }
 end

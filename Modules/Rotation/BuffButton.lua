@@ -91,9 +91,10 @@ end
 -- An item that's only a preview (soon: no fight near yet) goes last.
 -- Not Well Fed and carrying the food for it: that food beats the bandage. One
 -- meal heals you and buffs you; bandaging first would waste the bandage.
--- Your fishing pole on with no lure: the lure, right after healing up.
-function BB.Pick(spellBuff, itemBuff, recover, camp, lure)
-    if lure then return recover or lure end
+-- Fishing (at a fishing stop without your pole on, or your pole on with no
+-- lure): equip the pole / put on the lure, right after healing up.
+function BB.Pick(spellBuff, itemBuff, recover, camp, fish)
+    if fish then return recover or fish end
     if itemBuff and itemBuff.wellFed and recover then return itemBuff end
     if itemBuff and itemBuff.soon then return recover or spellBuff or camp or itemBuff end
     return recover or itemBuff or spellBuff or camp
@@ -104,10 +105,10 @@ end
 -- a fight, or an enemy targeted): the bandage, the food and the campfire
 -- too. A buff that's still on (later) lights up then only if it runs out
 -- within RUNNING_OUT seconds. The faded one still works when pressed.
--- A lure for the pole you have on is bright always: you're fishing now.
+-- The pole or its lure is bright always: you're fishing now.
 local RUNNING_OUT = 120
 function BB.Bright(s, fightNear)
-    if s and s.lure then return true end
+    if s and s.fish then return true end
     if not s or s.idle or fightNear ~= true then return false end
     if s.later then return (s.left or math.huge) < RUNNING_OUT end
     return true
@@ -276,10 +277,14 @@ local function pickItem(ctx)
     return itemCache
 end
 
--- Your fishing pole on with no lure: the best lure you carry (Flow Actions).
-local function pickLure(ctx)
-    if not (ctx and ctx.pole and ns.actions and ns.actions.LureStep) then return nil end
-    local ok, s = pcall(ns.actions.LureStep, ctx)
+-- Fishing (Flow Actions): at a fishing stop without your pole on, equip it;
+-- your pole on with no lure, the best lure you carry.
+local function pickFish(ctx)
+    local X = ns.actions
+    if not (ctx and X and X.EquipStep and X.LureStep) then return nil end
+    local ok, s = pcall(X.EquipStep, ctx)
+    if ok and s then return s end
+    ok, s = pcall(X.LureStep, ctx)
     return ok and s or nil
 end
 
@@ -436,6 +441,11 @@ local function build()
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    -- A step's own work before the press (the pole: remember your weapons,
+    -- so they go back on when you leave), as on the Flow key.
+    btn:HookScript("PreClick", function()
+        if current and current.before and not InCombatLockdown() then pcall(current.before) end
+    end)
     btn:HookScript("PostClick", function(_, _, down)
         if down ~= false and current and not current.idle and not InCombatLockdown() then
             ns:Log("action", "buff button pressed: " .. describe(current))
@@ -482,7 +492,7 @@ local function tick(_, dt)
     end
     local ctx = actionCtx()
     local recover, camp = GetTime() - liveAt < 1 and liveRecover or nil, pickCamp(ctx)
-    local s = BB.Pick(live, pickItem(ctx), recover, camp, pickLure(ctx))
+    local s = BB.Pick(live, pickItem(ctx), recover, camp, pickFish(ctx))
         or pickUpcoming(GetTime() - liveAt < 1 and liveNext or nil)
     current = s or BB.Idle()
     current.faded = s ~= nil and not BB.Bright(s, fightNear(ctx)) or nil
