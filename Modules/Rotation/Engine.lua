@@ -381,8 +381,14 @@ function E:DrinkStep(ctx)
     return s
 end
 
-function E:Recover(ctx, def)
+-- part: with the buff button on (BuffButton.lua) the bandage and food are
+-- on it and only the heal spell is on the Flow key. nil = this is the Flow
+-- key ("heal" when the buff button is on, else "all"); "items" = the buff
+-- button asking. Your order still holds across the two: the heal spell waits
+-- while a bandage or food you put first is there to use, and the other way.
+function E:Recover(ctx, def, part)
     if ctx.inCombat or E.RecoverBusy(ctx) then return nil end
+    if part == nil then part = (ns.buffButton and ns.buffButton.On()) and "heal" or "all" end
     -- Hurt: Flow's estimate, your real health where the game shows it, or
     -- the game's low-health warning. All three go through the same order,
     -- so a heal spell never jumps ahead of the bandage you put first, and
@@ -401,7 +407,11 @@ function E:Recover(ctx, def)
         elseif step == "heal" and r.recoverHeal ~= false then
             s = direct or self:EarlyHeal(ctx, def)
         end
-        if s then s.fightType = ctx.fightType; return s end
+        if s then
+            if part ~= "all" and part ~= (step == "heal" and "heal" or "items") then return nil end
+            s.fightType = ctx.fightType
+            return s
+        end
     end
     return nil
 end

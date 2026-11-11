@@ -4658,7 +4658,9 @@ ns:Register("test", "recovery: one order for every way of being hurt; fight heal
         BI.FoodStep = function(buffFood) askedBuff = buffFood; return have.food and { label = "Food" } or nil end
         local function set(order, b, f, h) r.recoverOrder, r.recoverBandage, r.recoverFood, r.recoverHeal = order, b, f, h end
         local function pick(ctx)
-            local s = E:HealStep(ctx, def)
+            -- The whole order (bandage, food, heal spell), wherever each one shows.
+            local s
+            if ctx.inCombat then s = E:HealStep(ctx, def) else s = E:Recover(ctx, def, "all") end
             return s and (s.label or s.spell) or nil
         end
         local function isSpell(ctx)
@@ -4674,6 +4676,9 @@ ns:Register("test", "recovery: one order for every way of being hurt; fight heal
             have = { bandage = true, food = true, spell = true }
             set(nil, nil, nil, nil)
             t:eq(pick(ctx), "Bandage", name .. ": default order starts with the bandage, not the heal spell")
+            local onBuff = E:Recover(ctx, def, "items")
+            t:eq(onBuff and onBuff.label, "Bandage", name .. ": the buff button gets the bandage")
+            t:ok(E:Recover(ctx, def, "heal") == nil, name .. ": Flow's key holds the heal spell back while the bandage is first")
             have.bandage = false
             t:eq(pick(ctx), "Food", name .. ": no bandage: food")
             have.food = false
@@ -4833,6 +4838,10 @@ ns:Register("test", "buff button: buffs off the main icon, onto their own button
     t:eq(BB.Pick({ spell = "Aura" }, nil).spell, "Aura", "the buff spell when the weapon needs nothing")
     t:eq(BB.Pick(nil, { item = "item:2862" }).item, "item:2862", "the stone when no buff spell is due")
     t:ok(BB.Pick(nil, nil) == nil, "nothing due: nothing")
+    t:eq(BB.Pick({ spell = "Aura" }, { item = "item:2862" }, { label = "Bandage" }, { type = "sit" }).label, "Bandage",
+        "hurt after a fight: the bandage or food before any buff")
+    t:eq(BB.Pick({ spell = "Aura" }, nil, nil, { type = "sit" }).spell, "Aura", "by a campfire: your buffs before you sit")
+    t:eq(BB.Pick(nil, nil, nil, { type = "sit" }).type, "sit", "by a campfire with nothing else due: sit")
     t:eq(BB.FightSpell({ spell = "Aura" }, "Blessing"), "Aura", "fight: the buff due now")
     t:eq(BB.FightSpell(nil, "Aura"), "Aura", "fight: else the one you last cast")
     t:ok(BB.FightSpell(nil, nil) == nil, "fight: else nothing")
