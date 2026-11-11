@@ -243,7 +243,7 @@ local function remaining(g)
 end
 
 -- Hover text sits beside its box, never over it: over it, it hid the Make
--- button and the rows you were pointing at. The goal box's goes under it.
+-- button and the rows you were pointing at. The goal box's goes to its right.
 local function tipBeside(owner)
     GameTooltip:SetOwner(owner, "ANCHOR_NONE")
     GameTooltip:ClearAllPoints()
@@ -252,7 +252,7 @@ end
 local function tipUnderGoal(owner)
     GameTooltip:SetOwner(owner, "ANCHOR_NONE")
     GameTooltip:ClearAllPoints()
-    GameTooltip:SetPoint("TOPLEFT", goal, "BOTTOMLEFT", 0, -4)
+    GameTooltip:SetPoint("TOPLEFT", goal, "TOPRIGHT", 4, 0)
 end
 
 local function tooltip(owner, g)
@@ -264,14 +264,17 @@ local function tooltip(owner, g)
     GameTooltip:Show()
 end
 
-local function box(name, width)
+-- The legendary item colour (|cffff8000): the goal box's border.
+H.GOAL_BORDER = { 1, 0.5, 0 }
+
+local function box(name, width, border)
     local f = CreateFrame("Frame", name, UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
     f:SetSize(width, 52)
     f:SetFrameStrata("HIGH")
     if f.SetBackdrop then
         f:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
         f:SetBackdropColor(0.06, 0.05, 0.08, 0.92)
-        local r = ns.theme.route
+        local r = border or ns.theme.route
         f:SetBackdropBorderColor(r[1], r[2], r[3], 1)
     end
     return f
@@ -279,10 +282,10 @@ end
 
 local function build()
     panel = box("FlowCraftHint", WIDTH)
-    -- The goal lives in its own box right of the window, apart from the
+    -- The goal lives in its own box under the window's right side, apart from the
     -- lists of what you can do (owner: "keep the goal separate from the
     -- ability"). Its parts stay reachable as panel.text / sub / mats / btn.
-    goal = box("FlowCraftGoal", GOAL_WIDTH)
+    goal = box("FlowCraftGoal", GOAL_WIDTH, H.GOAL_BORDER)
     panel.goalBox = goal
     panel.text = goal:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     panel.text:SetPoint("TOPLEFT", 8, -7); panel.text:SetPoint("RIGHT", goal, "RIGHT", -96, 0)
@@ -483,7 +486,7 @@ function H:Refresh()
     panel:ClearAllPoints()
     panel:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", 0, -2)
     goal:ClearAllPoints()
-    goal:SetPoint("TOPLEFT", frame, "TOPRIGHT", 4, 0)
+    goal:SetPoint("TOPRIGHT", frame, "BOTTOMRIGHT", 0, -2)
     local rank = A.Skill(prof) or (g and g.rank)
     local matLines = {}
     if waiting then

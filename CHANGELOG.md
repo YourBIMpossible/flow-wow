@@ -2,8 +2,9 @@
 
 ## Unreleased
 - **Profession window: the goal gets its own box.** What Flow wants you to make next (with its materials and
-  the Make button) now sits in a small box to the right of the profession window. The box under the window
-  keeps only the lists: make now from your bags, cheapest to buy, and the upgrades fold-out.
+  the Make button) now sits in its own box under the right side of the profession window, with a legendary
+  orange border. The box under the left side keeps only the lists: make now from your bags, cheapest to buy,
+  and the upgrades fold-out.
 - **Profession window: make now from your bags.** A new list above the cheapest one shows the recipes your bags
   can make right now that still give skill, most skill points first, with how many you can make.
 - **Profession window: cheapest recipes for a skill point.** Under the profession window Flow now lists the
