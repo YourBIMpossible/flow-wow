@@ -764,6 +764,31 @@ local function drawProf(c, mapID)
     profPin:Show()
 end
 M.ProfPin = function() return profPin end   -- (tests)
+
+-- A prepared dungeon run's stops on another continent: the route plans only
+-- the one you're on, so they get pins of their own on that continent's maps
+-- (the Barrens' quest givers while you're in Silverpine), in the route colour.
+local function awayStops()
+    local p = ns.nav:PlayerPos()
+    if not (p and ns.dungeons and ns.dungeons.AwayGoals) then return {} end
+    local ok, away = pcall(ns.dungeons.AwayGoals, ns.dungeons, ns.nav:Goals(), p.cont)
+    return ok and away or {}
+end
+M._awayStops = awayStops   -- (tests)
+
+local function drawAway(c, mapID)
+    local col = theme().route
+    for _, a in ipairs(awayStops()) do
+        local g = a.goal
+        for _, pt in ipairs(g.points or {}) do
+            local x, y = toMap(pt, mapID)
+            if x then
+                pin(c, x, y, (g.kind == "accept" and g.title) or g.text or g.title or "?", col, { goal = g, point = pt })
+                break
+            end
+        end
+    end
+end
 M.WaypointPin = function() return wpPin end
 
 -------------------------------------------------------------------------------
@@ -1291,6 +1316,10 @@ local function buildList()
         local what = (mode == "quests" and "Current quests") or (mode == "complete" and "Completionist")
             or "Optimal"
         if mode ~= "quests" then what = what .. (profs and ", professions on" or ", professions off") end
+        local D = ns.dungeons
+        if D and D.RunOnly and D:RunOnly() then
+            what = "Dungeon run: " .. ((ns.db.nav.dungeonRun and ns.db.nav.dungeonRun.name) or "?")
+        end
         self.text:SetText("|cffffd200Route:|r " .. what)
     end
     f.routeDrop = dd
@@ -1512,6 +1541,14 @@ local function updateList()
         entries[#entries + 1] = { stop = s, i = i }
     end
     for _, b in ipairs(blocked) do entries[#entries + 1] = { blocked = b } end
+    -- A dungeon run's stops on another continent (not on the route): where they are.
+    local away = awayStops()
+    for _, a in ipairs(away) do entries[#entries + 1] = { away = a } end
+    if #plan == 0 and #away > 0 then
+        local to = away[1].cont
+        list.title:SetText(string.format("Nothing on this continent. %s",
+            ns.dungeons.TravelHint(to, UnitFactionGroup("player")) or ""))
+    end
     for _, h in ipairs(hiddenGoals) do entries[#entries + 1] = { hidden = h } end
     for i = 1, MAX_ROWS do
         local r, e = list.rows[i], entries[i]
@@ -1534,6 +1571,13 @@ local function updateList()
             local text, why = ns.nav:FormatBlocked(b)
             r.text:SetText(text)
             r.leg:SetText(why)
+            r:Show()
+        elseif e and i <= fit and e.away then
+            local g = e.away.goal
+            r.key, r.isHidden, r.blocked, r.goal = g.key, false, nil, g
+            r.go:Hide()
+            r.text:SetText("|cff9a9a9a" .. (g.text or g.title or "?") .. "|r")
+            r.leg:SetText("|cffffd200" .. (ns.dungeons.CONTINENTS[e.away.cont] or "other continent") .. "|r")
             r:Show()
         elseif e and i <= fit and e.hidden then
             local h = e.hidden
@@ -1585,6 +1629,9 @@ local function changed(st, c, mapID, pointed)
     d = setv(st, "wpX", w and w.x or false) or d
     d = setv(st, "wpY", w and w.y or false) or d
     d = setv(st, "cont", p and p.cont or false) or d
+    -- (A dungeon run's pins on another continent: drawAway.)
+    d = setv(st, "run", (ns.dungeons and ns.dungeons:Prepared()) or false) or d
+    d = setv(st, "runOnly", ns.db.nav.dungeonOnly == true) or d
     d = setv(st, "here", (mapID and toMap(p, mapID)) ~= nil) or d
     local plan = ns.nav.plan or EMPTY
     local sp = st.plan or {}
@@ -1686,6 +1733,7 @@ local function fullDraw()
         else
             drawRoute(c, mapID, ns.nav.plan, T.route, true)
         end
+        drawAway(c, mapID)
         drawProf(c, mapID)
         drawWaypoint(c, mapID)
     else

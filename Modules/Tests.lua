@@ -4859,6 +4859,57 @@ ns:Register("test", "dungeon key: the quests to get and who gives them are liste
     t:ok(okI and type(qi) == "table" and type(qi.name) == "string", "an unknown quest still gives a name")
 end)
 
+ns:Register("test", "dungeon run route: only the run's stops, and where the far ones are", function(t)
+    local D = ns.dungeons
+    local run = { key = "9:", name = "Test Caverns", quests = { 10, 11 }, leadIns = { { id = 12 } },
+        unlocks = { { id = 11, steps = { { id = 13, inLog = true } } } }, breadcrumbs = { { id = 14 } } }
+    local ids = D.RunIds(run)
+    for _, id in ipairs({ 10, 11, 12, 13, 14 }) do t:ok(ids[id], "run needs quest " .. id) end
+    t:ok(not ids[99], "other quests are not the run's")
+    t:ok(D.KeepForRun({ key = "dungeon:9:", provider = "dungeon" }, ids), "the entrance stays")
+    t:ok(D.KeepForRun({ key = "10:obj1" }, ids), "a run quest's objective stays")
+    t:ok(D.KeepForRun({ key = "13:turnin" }, ids), "an unlock quest in your log stays")
+    t:ok(D.KeepForRun({ key = "pickup:14" }, ids), "an on-the-way pickup stays")
+    t:ok(not D.KeepForRun({ key = "99:obj1" }, ids), "another quest goes")
+    t:ok(not D.KeepForRun({ key = "prof:mining", provider = "skill" }, ids), "a profession stop goes")
+    t:ok(D.KeepForRun({ key = "user:wp" }, ids) and D.KeepForRun({ key = "party:x" }, ids), "waypoint and party stay")
+
+    local nav = ns.db.nav
+    local saveRun, saveOnly, saveRunFn = nav.dungeonRun, nav.dungeonOnly, D.Run
+    D.Run = function(_, key) if key == run.key then return run end end
+    nav.dungeonRun = { key = run.key, dungeon = 9, name = run.name }
+    local list = {
+        { key = "dungeon:9:", provider = "dungeon", points = { { cont = 1 } } },
+        { key = "10:obj1", points = { { cont = 1 }, { cont = 1 } } },
+        { key = "99:obj1", points = { { cont = 0 } } },
+        { key = "craft:x", anywhere = true, points = {} },
+    }
+    local ok, err = pcall(function()
+        nav.dungeonOnly = nil
+        t:eq(#D:FilterOnly(list), 4, "off: the route is untouched")
+        t:eq(#D:AwayGoals(list, 0), 1, "off: only the run's own stop counts as away")
+        nav.dungeonOnly = true
+        t:ok(D:RunOnly(), "on with a prepared run")
+        local only = D:FilterOnly(list)
+        t:eq(#only, 2, "on: only the run's stops")
+        local away = D:AwayGoals(only, 0)
+        t:eq(#away, 2, "both run stops are on the other continent")
+        t:eq(away[1].cont, 1, "and say which")
+        t:eq(#D:AwayGoals(only, 1), 0, "nothing away on their own continent")
+        local text, sub = D:AwayHint(only, 0, "Horde")
+        t:eq(text, "Test Caverns: 2 stops in Kalimdor", "the arrow says where")
+        t:ok(sub and sub:find("Zeppelin to Orgrimmar", 1, true), "and how to get there")
+        t:eq(D:AwayHint(only, 1, "Horde"), nil, "no hint when they're here")
+        nav.dungeonRun = {}
+        t:ok(not D:RunOnly(), "no run prepared: off")
+    end)
+    nav.dungeonRun, nav.dungeonOnly, D.Run = saveRun, saveOnly, saveRunFn
+    t:ok(ok, tostring(err))
+    t:ok(D.TravelHint(0, "Alliance"):find("Menethil", 1, true), "Alliance boat to the Eastern Kingdoms")
+    t:ok(D.TravelHint(1, "Neutral"):find("Ratchet", 1, true), "anyone: Booty Bay to Ratchet")
+    t:eq(D.TravelHint(5, "Horde"), nil, "an unknown continent: no hint")
+end)
+
 ns:Register("test", "map: the trail to your next stop takes the arrow's colour", function(t)
     local M = ns.mapOverlay
     -- 0.35.127: `x and false or nil` is always nil, so it never did.

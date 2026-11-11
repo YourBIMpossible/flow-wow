@@ -159,8 +159,13 @@ function Menu:RouteItemsRaw()
     local sort = ns.xpValue:Mode()
     local nHidden = 0
     for _ in pairs(ns.db.nav.hidden or {}) do nHidden = nHidden + 1 end
-    local function setRoute(m, p)
+    -- Route: Dungeon run (Dungeons.lua) sits with the three routes: picking
+    -- one of those turns it off.
+    local D = ns.dungeons
+    local runOnly = D and D.RunOnly and D:RunOnly() or false
+    local function setRoute(m, p, keepRun)
         return function()
+            if not keepRun then ns.db.nav.dungeonOnly = nil end
             ns.db.nav.professions = p
             nav:SetMode(m)
             nav:Collect()
@@ -168,13 +173,13 @@ function Menu:RouteItemsRaw()
     end
     local items = {
         { title = true, text = "Route" },
-        { text = "Quests only", radio = true, checked = mode == "quests", func = setRoute("quests", profs) },
-        { text = "Optimal", radio = true, checked = mode == "optimal", func = setRoute("optimal", profs) },
-        { text = "Completionist: every quest here, any level", radio = true, checked = mode == "complete", func = setRoute("complete", profs) },
+        { text = "Quests only", radio = true, checked = not runOnly and mode == "quests", func = setRoute("quests", profs) },
+        { text = "Optimal", radio = true, checked = not runOnly and mode == "optimal", func = setRoute("optimal", profs) },
+        { text = "Completionist: every quest here, any level", radio = true, checked = not runOnly and mode == "complete", func = setRoute("complete", profs) },
         -- Professions: their own switch, whichever route you picked (Quests
         -- only never has them).
         { text = mode == "quests" and "|cff777777Professions (not with Quests only)|r" or "Professions",
-          checked = profs and mode ~= "quests", disabled = mode == "quests", func = setRoute(mode, not profs) },
+          checked = profs and mode ~= "quests", disabled = mode == "quests", func = setRoute(mode, not profs, true) },
         { sep = true },
         { title = true, text = "Order" },
         { text = ns.theme:ModeText("xp", "Most XP first"), radio = true, checked = sort == "xp", func = function() ns.xpValue:SetMode("xp") end },
@@ -190,6 +195,10 @@ function Menu:RouteItemsRaw()
         { sep = true },
         { title = true, text = "Stops on the map" },
     }
+    if D and D.RouteItem then
+        local ok, it = pcall(D.RouteItem, D)
+        if ok and it then table.insert(items, 5, it) end
+    end
     -- Which stops the map and the Flow Tracker show (the Flow Router always
     -- lists them all): everything in this area, or your next N.
     local shown, area = nav:StopsShown(), nav:AreaMode()

@@ -451,6 +451,8 @@ function N:Collect(gathered)
     if ns.partyHelp then list = ns.partyHelp:FilterGoals(list) end
     -- Inside a dungeon: only its quests (Dungeons.lua).
     if ns.dungeons then list = ns.dungeons:FilterInside(list) end
+    -- Route: Dungeon run: only the prepared run's stops (Dungeons.lua).
+    if ns.dungeons and ns.dungeons.FilterOnly then list = ns.dungeons:FilterOnly(list) end
     -- Stops you hid (right-click on the map) stay out of the route; they're
     -- kept in N.hiddenGoals so the map panel can list and unhide them.
     local hidden = ns.db.nav.hidden or {}
@@ -2289,6 +2291,18 @@ local function anyReachable(p)
     return yes
 end
 
+-- The arrow's words when nothing here is left but a dungeon run's stops are
+-- on another continent (worked out at most every 2 s: it reads every stop).
+local away = { at = -10 }
+local function awayHint(p)
+    if not (ns.dungeons and ns.dungeons.AwayHint) then return nil end
+    if away.goals == goals and away.cont == p.cont and GetTime() - away.at < 2 then return away.text, away.sub end
+    local ok, text, sub = pcall(ns.dungeons.AwayHint, ns.dungeons, goals, p.cont, UnitFactionGroup("player"))
+    if not ok then text, sub = nil, nil end
+    away.goals, away.cont, away.at, away.text, away.sub = goals, p.cont, GetTime(), text, sub
+    return text, sub
+end
+
 local function choose(p)
     -- "Do it where you stand" stops (e.g. crafting with no station) follow you.
     for _, goal in ipairs(goals) do
@@ -3250,7 +3264,15 @@ local function update()
         end
     end
     if not choice then
-        if #goals == 0 and not ns.quests:Source() then
+        -- Nothing on this continent, but the dungeon run's stops are on the
+        -- other one: say where, and how to get there (Dungeons.lua).
+        local hint, sub = awayHint(p)
+        if hint then
+            frame.text:SetText(hint)
+            frame.sub:SetText(sub or "")
+            frame.arrow:Hide()
+            frame:Show()
+        elseif #goals == 0 and not ns.quests:Source() then
             frame.text:SetText("No directions yet")
             frame.sub:SetText("Install Questie + QuestieDB for quest locations")
             frame.arrow:Hide()

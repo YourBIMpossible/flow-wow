@@ -976,6 +976,7 @@ end
 
 function D:Cancel()
     ns.db.nav.dungeonRun = {}
+    ns.db.nav.dungeonOnly = nil
     if ns.nav and ns.nav.Collect then ns.nav:Collect() end
 end
 
@@ -1046,6 +1047,139 @@ function D:FilterInside(list)
         if id then return out end
     end
     return list
+end
+
+-------------------------------------------------------------------------------
+-- Route: Dungeon run (the Route menu). Only the prepared run's stops: its
+-- pickups and entrance, the objectives and turn-ins of its quests in your log
+-- (with their unlock and on-the-way quests), your waypoint and the party's.
+-------------------------------------------------------------------------------
+
+function D:RunOnly() return ns.db.nav.dungeonOnly == true and self:Prepared() ~= nil end
+
+-- Route: Dungeon run for `key` (else the run you prepared, else the best
+-- one); false turns it off (the run stays prepared).
+function D:SetRunOnly(key)
+    if key == false then
+        ns.db.nav.dungeonOnly = nil
+        if ns.nav and ns.nav.Collect then ns.nav:Collect() end
+        return
+    end
+    key = key or self:Prepared() or (self:Best() and self:Best().key)
+    if not key then
+        ns:Print("no dungeon run to follow: open Dungeons in the Route menu and prepare one")
+        return
+    end
+    ns.db.nav.dungeonOnly = true
+    if self:Prepared() ~= key then self:Prepare(key)
+    elseif ns.nav and ns.nav.Collect then ns.nav:Collect() end
+end
+
+-- Its choice in the Route menu, with the three routes (Menu.lua); nil
+-- without Questie's dungeons.
+function D:RouteItem()
+    if not self:Available() then return nil end
+    local key = self:Prepared()
+    local name = key and ns.db.nav.dungeonRun.name
+    if not name then
+        local best = self:Best()
+        name = best and best.name
+    end
+    if not name then
+        return { text = "|cff777777Dungeon run (prepare one under Dungeons, below)|r", radio = true, disabled = true }
+    end
+    return { text = "Dungeon run: " .. name .. " (its quests, then the entrance)", radio = true,
+             checked = self:RunOnly(), func = function() self:SetRunOnly() end }
+end
+
+-- Every quest the run needs: the ones it counts, their unlocks, lead-ins and
+-- the quests on the way.
+function D.RunIds(run)
+    local ids = {}
+    for _, id in ipairs(run.quests or {}) do ids[id] = true end
+    for _, st in ipairs(run.leadIns or {}) do ids[st.id] = true end
+    for _, u in ipairs(run.unlocks or {}) do
+        for _, st in ipairs(u.steps or {}) do ids[st.id] = true end
+    end
+    for _, b in ipairs(run.breadcrumbs or {}) do ids[b.id] = true end
+    return ids
+end
+
+-- Does stop g stay on Route: Dungeon run? ids = D.RunIds(run).
+function D.KeepForRun(g, ids)
+    if g.provider == "dungeon" then return true end
+    local k = g.key or ""
+    local id = questOf(k)
+    if id then return ids[id] == true end
+    return k:find("^user:") ~= nil or k:find("^help:") ~= nil or k:find("^party:") ~= nil
+end
+
+function D:FilterOnly(list)
+    if not self:RunOnly() then return list end
+    local run = self:Run(self:Prepared())
+    if not run then return list end
+    local ids, out = D.RunIds(run), {}
+    for _, g in ipairs(list) do
+        if D.KeepForRun(g, ids) then out[#out + 1] = g end
+    end
+    return out
+end
+
+-- The route only plans the continent you're on, so a run whose quest givers
+-- are across the sea would show nothing. These say where they are: map pins
+-- (MapOverlay.lua), rows in the Flow Router and the arrow's text.
+D.CONTINENTS = { [0] = "Eastern Kingdoms", [1] = "Kalimdor" }
+
+-- How to cross to continent `to` (Classic: zeppelins for the Horde, boats for
+-- the Alliance, Booty Bay - Ratchet for anyone).
+function D.TravelHint(to, faction)
+    if to == 1 then
+        if faction == "Horde" then
+            return "Zeppelin to Orgrimmar: the tower outside Undercity (Tirisfal Glades) or Grom'gol (Stranglethorn Vale)."
+        elseif faction == "Alliance" then
+            return "Boat from Menethil Harbor (Wetlands) to Auberdine or Theramore."
+        end
+        return "Boat from Booty Bay to Ratchet."
+    elseif to == 0 then
+        if faction == "Horde" then
+            return "Zeppelin from the tower outside Orgrimmar (Durotar) to Undercity or Grom'gol."
+        elseif faction == "Alliance" then
+            return "Boat from Auberdine (Darkshore) or Theramore to Menethil Harbor."
+        end
+        return "Boat from Ratchet to Booty Bay."
+    end
+end
+
+-- The run's stops with no spot on continent `cont`: { { goal, cont } }. With
+-- Route: Dungeon run every stop counts (the route holds nothing else);
+-- otherwise only the run's own (pickups, entrance).
+function D:AwayGoals(goals, cont)
+    local out = {}
+    if not (cont and self:Prepared()) then return out end
+    local only = self:RunOnly()
+    for _, g in ipairs(goals or {}) do
+        if (only or g.provider == "dungeon") and not g.anywhere then
+            local here, there = false, nil
+            for _, pt in ipairs(g.points or {}) do
+                if pt.cont == cont then here = true break end
+                there = there or pt.cont
+            end
+            if not here and there then out[#out + 1] = { goal = g, cont = there } end
+        end
+    end
+    return out
+end
+
+-- What the arrow says when nothing on your continent is left but the run's
+-- stops are elsewhere: text, sub; nil when that isn't so.
+function D:AwayHint(goals, cont, faction)
+    local away = self:AwayGoals(goals, cont)
+    if #away == 0 then return nil end
+    local to = away[1].cont
+    local run = ns.db.nav.dungeonRun
+    return string.format("%s: %d stop%s in %s", (run and run.name) or "Dungeon run", #away,
+            #away > 1 and "s" or "", D.CONTINENTS[to] or "another continent"),
+        D.TravelHint(to, faction) or "Travel there: they show on its map."
 end
 
 -------------------------------------------------------------------------------
@@ -1240,6 +1374,10 @@ local function runMenu(run)
         items[#items + 1] = { text = muted(line), disabled = true }
     end
     items[#items + 1] = { sep = true }
+    items[#items + 1] = { text = "Route: only this run (its quest givers on the map, then the entrance)",
+        checked = prepared and D:RunOnly(), func = function()
+            if prepared and D:RunOnly() then D:SetRunOnly(false) else D:SetRunOnly(run.key) end
+        end }
     if prepared then
         items[#items + 1] = { text = "Cancel this run", func = function() D:Cancel() end }
     else
@@ -1420,7 +1558,7 @@ local function finishRun()
     local times = charData("dungeonTimes")
     times[inn.key] = D.LearnTime(times[inn.key], (inn.left - inn.t) / 60)
     local run = ns.db.nav.dungeonRun
-    if run and run.dungeon == inn.key then ns.db.nav.dungeonRun = {} end
+    if run and run.dungeon == inn.key then ns.db.nav.dungeonRun = {}; ns.db.nav.dungeonOnly = nil end
     ns.db.nav.dungeonIn = {}
     D.dirty = true
 end

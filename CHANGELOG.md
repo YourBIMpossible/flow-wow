@@ -6,6 +6,12 @@
   ones that start inside. Once you prepare a run, the route goes to the pickups first and then to the entrance
   (the entrance used to show only once every pickup was in your log, so the route never said where the run
   went). A giver Questie can't place is named on the entrance stop.
+- **Route: Dungeon run.** A fourth choice next to Quests only / Optimal / Completionist in the Route menu (and
+  "Route: only this run" in a run's own menu): the route holds only that run's stops: its quest givers, the
+  objectives and turn-ins of its quests in your log, then the entrance. The run's quest givers on the other
+  continent now get pins on that continent's map and rows in the Flow Router marked with where they are, and
+  when nothing is left on your side the arrow says how to cross (zeppelin or boat). Picking another route or
+  cancelling the run turns it off.
 - **Travel time, flights counted.** When a stop can be done at more than one spot (a forge, an anvil, a cooking
   fire, a trainer), Flow picks the one quickest to reach, counting the flight paths you know, not the one
   closest in a straight line. Every forge and anvil you've used and every Blacksmithing and Cooking trainer's
@@ -1933,7 +1939,8 @@ Flow's first release on CurseForge, for World of Warcraft: Forever. What's in it
 ## 0.17.6
 - Diagnostics Claude can read from disk: Flow logs its errors and takes a snapshot of its checks on
   every `/reload` and logout (saved with Flow's data). `/flow dump` captures one on demand;
-  `toolsead-diag.ps1` prints it.
+  `tools
+ead-diag.ps1` prints it.
 
 ## 0.17.5
 - Profession and class trainers are found by NPC ID (with a name check) as well as by name, and
