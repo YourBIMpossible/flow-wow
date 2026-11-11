@@ -89,13 +89,14 @@ end
 -- then a buff spell. Before them, hurt after a fight: your bandage or food.
 -- After them, by a campfire: place your camp objects, sit for the camp buffs.
 -- An item that's only a preview (soon: no fight near yet) goes last.
--- Not Well Fed and carrying the food for it: that food beats the bandage. One
--- meal heals you and buffs you; bandaging first would waste the bandage.
+-- Not Well Fed and carrying the food for it: that food comes first, before
+-- the bandage (one meal heals you and buffs you; bandaging first would waste
+-- the bandage) and before your buff spells, a fight near or not.
 -- Fishing (at a fishing stop without your pole on, or your pole on with no
 -- lure): equip the pole / put on the lure, right after healing up.
 function BB.Pick(spellBuff, itemBuff, recover, camp, fish)
     if fish then return recover or fish end
-    if itemBuff and itemBuff.wellFed and recover then return itemBuff end
+    if itemBuff and itemBuff.wellFed then return itemBuff end
     if itemBuff and itemBuff.soon then return recover or spellBuff or camp or itemBuff end
     return recover or itemBuff or spellBuff or camp
 end

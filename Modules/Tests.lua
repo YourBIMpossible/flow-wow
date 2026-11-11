@@ -3220,11 +3220,13 @@ ns:Register("test", "buff items: used when you're about to kill a lot, if not on
     local none = function() return false end
     local all = function() return true end
     local fedOnly = function(spell) return spell ~= BI.WELL_FED end
-    t:eq(BI.Pick(items, none, 7, false, true).id, 1, "elixir first, when its buff is missing")
+    t:eq(BI.Pick(items, none, 7, false, true).id, 4, "not Well Fed: the food first, before the elixir")
+    local fed = function(spell) return spell == BI.WELL_FED end
+    t:eq(BI.Pick(items, fed, 7, false, true).id, 1, "Well Fed: the elixir, when its buff is missing")
     t:eq(BI.Pick(items, all, 7, false, true).id, 2, "buff on: a sharpening stone for a sword")
     t:eq(BI.Pick(items, all, 4, false, true).id, 3, "a weightstone for a mace")
     t:eq(BI.Pick(items, all, 7, true, true), nil, "the weapon has one already, Well Fed: nothing")
-    t:eq(BI.Pick(items, fedOnly, 7, true, true).id, 4, "not Well Fed: eat, after the quick ones")
+    t:eq(BI.Pick(items, fedOnly, 7, true, true).id, 4, "not Well Fed: eat")
     t:ok(BI.FitsWeapon("Minor Wizard Oil", 10), "oil goes on anything")
     t:ok(not BI.FitsWeapon("Rough Sharpening Stone", 4), "no sharpening stone on a mace")
     t:ok(not BI.FitsWeapon("Minor Wizard Oil", 20), "no oil on a fishing pole")
@@ -4990,6 +4992,8 @@ ns:Register("test", "buff button: buffs off the main icon, onto their own button
     t:eq(BB.Pick({ spell = "Aura" }, soon).spell, "Aura", "no fight near: a missing buff spell before a stone preview")
     t:eq(BB.Pick(nil, soon).item, "item:2862", "no fight near: the stone shows ahead of time")
     t:eq(BB.Pick(nil, soon, nil, { type = "sit" }).type, "sit", "by a campfire: sit before a stone preview")
+    t:eq(BB.Pick({ spell = "Aura" }, { item = "item:724", wellFed = true, soon = true }, nil, { type = "sit" }).item, "item:724",
+        "not Well Fed, no fight near: the food before a buff spell or the campfire")
     local aura = { spell = "Aura" }
     t:ok(not BB.Bright(aura, false), "no fight near: the next buff is faded")
     t:ok(BB.Bright(aura, true), "a fight near: the buff lights up")

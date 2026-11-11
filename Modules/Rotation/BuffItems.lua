@@ -66,21 +66,22 @@ end
 
 -- The item to use now, or nil. items = { { id, sub, name, spell } },
 -- active(spell) -> bool, weaponSub (main-hand subclass), enchanted (it has one),
--- killing (about to kill a lot: nothing otherwise). Quick ones first: the
--- elixir, then the stone, then food last (you sit for ten seconds).
+-- killing (about to kill a lot: nothing otherwise). Well Fed food first (it
+-- lasts longest and you sit to eat, so do it before the quick ones), then
+-- the elixir, then the stone.
 function BI.Pick(items, active, weaponSub, enchanted, killing)
     if not killing then return nil end
+    if not active(WELL_FED) then
+        for _, it in ipairs(items) do
+            if it.sub == FOOD_SUB then return it end
+        end
+    end
     for _, it in ipairs(items) do
         if BUFF_SUB[it.sub] and it.spell and not active(it.spell) then return it end
     end
     if not enchanted then
         for _, it in ipairs(items) do
             if it.sub == ENHANCE_SUB and BI.FitsWeapon(it.name, weaponSub) then return it end
-        end
-    end
-    if not active(WELL_FED) then
-        for _, it in ipairs(items) do
-            if it.sub == FOOD_SUB then return it end
         end
     end
 end
