@@ -185,7 +185,10 @@ end
 -- Crafts n of a recipe by name, through the game's own call.
 function H.Craft(recipe, n)
     if InCombatLockdown() then return false end
-    if GetNumTradeSkills and GetTradeSkillInfo and DoTradeSkill then
+    -- The new-style window still has the old calls, but they make nothing
+    -- there: only use them for the old-style window.
+    local newWindow = ProfessionsFrame and ProfessionsFrame:IsShown()
+    if not newWindow and GetNumTradeSkills and GetTradeSkillInfo and DoTradeSkill then
         for i = 1, GetNumTradeSkills() do
             if GetTradeSkillInfo(i) == recipe then DoTradeSkill(i, n) return true end
         end
@@ -204,8 +207,16 @@ local function remaining(g)
     return math.max(0, (g.makeCount or 0) - (made[g.recipe] or 0))
 end
 
+-- This panel's hover text sits beside the panel, never over it: over it, it
+-- hid the Make button and the rows you were pointing at.
+local function tipBeside(owner)
+    GameTooltip:SetOwner(owner, "ANCHOR_NONE")
+    GameTooltip:ClearAllPoints()
+    GameTooltip:SetPoint("TOPLEFT", panel, "TOPRIGHT", 4, 0)
+end
+
 local function tooltip(owner, g)
-    ns.Tip(owner, "ANCHOR_RIGHT")
+    tipBeside(owner)
     GameTooltip:AddLine(string.format("Make %s%d|r x %s", GOLD, remaining(g), g.recipe), 1, 1, 1)
     for _, d in ipairs(g.details or {}) do GameTooltip:AddLine(d, 0.8, 0.8, 0.8, true) end
     local nextStop = H.NextStop(g.key)
@@ -247,7 +258,10 @@ local function build()
     panel.btn:SetSize(84, 24); panel.btn:SetPoint("TOPRIGHT", -6, -6)
     panel.btn:SetScript("OnClick", function(self)
         local g, n = panel.goal, panel.makeNow or 0
-        if g and n > 0 and not H.Craft(g.recipe, n) then
+        if not g then return end
+        if n <= 0 then
+            ns:Print("You don't have the materials in your bags to make " .. g.recipe .. " yet.")
+        elseif not H.Craft(g.recipe, n) then
             ns:Print("Couldn't find " .. g.recipe .. " in this profession window.")
         end
     end)
@@ -268,7 +282,7 @@ end
 local function upgradeTip(row)
     local u = row.u
     if not u then return end
-    ns.Tip(row, "ANCHOR_RIGHT")
+    tipBeside(row)
     GameTooltip:AddLine(string.format("%s (%s)", u.link or u.recipe, u.tag or ""), 1, 1, 1)
     local mats = H.UpgradeMats(u)
     if #mats > 0 then GameTooltip:AddLine("Materials for one:", 1, 0.82, 0) end
