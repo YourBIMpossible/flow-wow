@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- **Map: a quieter next-stop marker.** The stop you're heading to on the world map is smaller (12 instead of 16)
+  with a thin, faint white ring instead of a bold one.
 - **Profession window: make now from your bags.** A new list above the cheapest one shows the recipes your bags
   can make right now that still give skill, most skill points first, with how many you can make.
 - **Profession window: cheapest recipes for a skill point.** Under the profession window Flow now lists the

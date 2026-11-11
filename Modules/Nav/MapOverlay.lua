@@ -92,7 +92,9 @@ local function line(c, x1, y1, x2, y2, color, alpha)
 end
 
 -- target: the stop you're heading to (route stop 1), drawn as Flow's target
--- marker (o) with a white ring; the other stops have black rings.
+-- marker (o) with a faint white ring; the other stops have black rings.
+M.TARGET_SIZE = 12          -- was 16: the heading-there pin drowned the map
+M.TARGET_RING_ALPHA = 0.45
 -- top: the stop under your mouse (bigger, in the hover colour, on top).
 local function pin(c, x, y, label, color, stop, top, target)
     nPins = nPins + 1
@@ -134,7 +136,8 @@ local function pin(c, x, y, label, color, stop, top, target)
             hoverKey = nil
             GameTooltip:Hide()
             if self.isTarget then
-                self:SetSize(16, 16); self.edge:SetVertexColor(1, 1, 1, 1)   -- white ring: where you're heading
+                self:SetSize(M.TARGET_SIZE, M.TARGET_SIZE)                   -- faint white ring: where you're heading
+                self.edge:SetVertexColor(1, 1, 1, M.TARGET_RING_ALPHA)
             else
                 self:SetSize(11, 11); self.edge:SetVertexColor(0, 0, 0, 0.9)
             end
@@ -169,7 +172,7 @@ local function pin(c, x, y, label, color, stop, top, target)
     local base = math.min(c:GetFrameLevel() + 1000, 9000)
     p:SetFrameStrata(aboveMap())
     p:SetFrameLevel(top and base + 200 or base + 100)
-    local size = top and 18 or (target and 16 or 11)
+    local size = top and 18 or (target and M.TARGET_SIZE or 11)
     p:SetSize(size, size)
     p.text:SetFontObject((top or target) and "GameFontNormal" or "GameFontHighlightSmall")
     p:SetScale(1 / canvasScale())
@@ -179,12 +182,14 @@ local function pin(c, x, y, label, color, stop, top, target)
     p.bg:ClearAllPoints()
     p.edge:ClearAllPoints(); p.edge:SetPoint("TOPLEFT", -2, 2); p.edge:SetPoint("BOTTOMRIGHT", 2, -2)
     if target and not top then
-        -- (o), the stop you're heading to: a WHITE ring, a dark gap, the dot
-        -- in the arrow's colour. Every other stop has a black ring.
-        p.edge:SetVertexColor(1, 1, 1, 1)
-        p.hole:ClearAllPoints(); p.hole:SetPoint("TOPLEFT", 1, -1); p.hole:SetPoint("BOTTOMRIGHT", -1, 1)
+        -- (o), the stop you're heading to: a thin, faint white ring, a dark
+        -- gap, the dot in the arrow's colour. Kept small so it marks the spot
+        -- without drowning the map. Every other stop has a black ring.
+        p.edge:ClearAllPoints(); p.edge:SetPoint("TOPLEFT", -1, 1); p.edge:SetPoint("BOTTOMRIGHT", 1, -1)
+        p.edge:SetVertexColor(1, 1, 1, M.TARGET_RING_ALPHA)
+        p.hole:ClearAllPoints(); p.hole:SetPoint("TOPLEFT", 0, 0); p.hole:SetPoint("BOTTOMRIGHT", 0, 0)
         p.hole:Show()
-        p.bg:SetPoint("TOPLEFT", 4, -4); p.bg:SetPoint("BOTTOMRIGHT", -4, 4)
+        p.bg:SetPoint("TOPLEFT", 2, -2); p.bg:SetPoint("BOTTOMRIGHT", -2, 2)
     else
         p.edge:SetVertexColor(top and 1 or 0, top and 1 or 0, top and 1 or 0, top and 1 or 0.9)
         p.hole:Hide()
