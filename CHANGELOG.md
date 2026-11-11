@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- **Profession window: cheapest recipes for a skill point.** Under the profession window Flow now lists the
+  three recipes that cost the least in materials for each skill point, cheapest first. Costs come from auction
+  prices Flow has seen, then vendor prices. Hover a row for its materials; click it to show that recipe.
 - **Profession window: upgrades show their materials.** Flow now reads each recipe's materials on this client
   (it saved none before, so every upgrade said "open this window again"). Hover an upgrade for what it takes
   and what you have; click it to show that recipe in the profession window.

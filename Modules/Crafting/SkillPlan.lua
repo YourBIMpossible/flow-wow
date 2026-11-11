@@ -187,6 +187,46 @@ local function chance(prof, step, rank)
     return 0
 end
 
+-- What one of an item costs (copper): the auction house price Flow last saw,
+-- else a vendor's price, else what a vendor pays you for it (a low guess,
+-- but it still ranks rare materials above common ones). nil: no idea.
+function SP.MatCost(id)
+    local ok, ah = pcall(function() return ns.auction and ns.auction:Price(id) end)
+    if ok and ah and ah > 0 then return ah end
+    local v = SP.Price(id)
+    if v and v > 0 then return v end
+    local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+    local ok2, sell = pcall(function() return get and select(11, get(id)) end)
+    if ok2 and sell and sell > 0 then return sell end
+end
+
+-- The recipes that still give skill, cheapest materials per skill point
+-- first. `known`: what your profession window showed (recipes:Known);
+-- costOf(itemID) -> copper or nil (SP.MatCost unless given).
+-- -> { { recipe, item, reagents, diff, cost, perPoint, unpriced } }
+function SP.CheapSkillUps(known, costOf)
+    costOf = costOf or SP.MatCost
+    local out = {}
+    for name, r in pairs(known or {}) do
+        local c = type(r) == "table" and CHANCE[r.diff] or 0
+        if c > 0 and r.reagents and next(r.reagents) and not r.partial then
+            local cost, unpriced = 0, false
+            for id, q in pairs(r.reagents) do
+                local p = costOf(id)
+                if p then cost = cost + p * q else unpriced = true end
+            end
+            out[#out + 1] = { recipe = name, item = r.item, reagents = r.reagents, diff = r.diff,
+                              cost = cost, perPoint = cost / c, unpriced = unpriced or nil }
+        end
+    end
+    table.sort(out, function(a, b)
+        if (a.unpriced or false) ~= (b.unpriced or false) then return not a.unpriced end
+        if a.perPoint ~= b.perPoint then return a.perPoint < b.perPoint end
+        return a.recipe < b.recipe
+    end)
+    return out
+end
+
 local function matUnits(step)
     local n = 0
     for _, q in pairs(step.mats or {}) do n = n + q end

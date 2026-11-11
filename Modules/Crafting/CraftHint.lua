@@ -168,6 +168,24 @@ function H.Select(recipe)
     return false
 end
 
+-- The cheapest recipes for a skill point, as panel rows: at most `max`,
+-- each { recipe, reagents, tag, line, note } (hover and click like an
+-- upgrade row). list: SP.CheapSkillUps(...).
+local DIFF_WORD = { optimal = "|cffff8040orange|r", medium = "|cffffff00yellow|r", easy = "|cff40c040green|r" }
+function H.CheapRows(list, max)
+    local money = (ns.auction and ns.auction.Money) or tostring
+    local out = {}
+    for i, c in ipairs(list or {}) do
+        if i > (max or 3) then break end
+        local tag = c.unpriced and "some material prices unknown"
+            or ("about " .. money(math.ceil(c.perPoint)) .. " a skill point")
+        out[#out + 1] = { recipe = c.recipe, reagents = c.reagents, tag = tag,
+            line = string.format("%d. %s (%s): %s", i, c.recipe, DIFF_WORD[c.diff] or c.diff or "?", tag),
+            note = "Cost: auction prices Flow has seen, else vendor prices. Orange always gives a point, yellow most times, green now and then." }
+    end
+    return out
+end
+
 function H.ToggleUpgrades()
     H.upgradesOpen = not H.upgradesOpen
     if panel and panel:IsShown() then H:Refresh() end
@@ -254,6 +272,9 @@ local function build()
     panel.upBtn.label:SetPoint("LEFT")
     panel.upBtn:SetScript("OnClick", function() H.ToggleUpgrades() end)
     panel.upRows = {}   -- one row per upgrade: hover for its materials, click to show it
+    panel.cheapHdr = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    panel.cheapHdr:SetText("Cheapest for a skill point")
+    panel.cheapHdr:Hide()
     panel.btn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     panel.btn:SetSize(84, 24); panel.btn:SetPoint("TOPRIGHT", -6, -6)
     panel.btn:SetScript("OnClick", function(self)
@@ -293,6 +314,7 @@ local function upgradeTip(row)
     if u.unread then
         GameTooltip:AddLine("Flow couldn't read all its materials yet. Close and open this window.", 0.8, 0.8, 0.8, true)
     end
+    if u.note then GameTooltip:AddLine(u.note, 0.8, 0.8, 0.8, true) end
     GameTooltip:AddLine("Click to show it in the profession window.", 0.6, 0.9, 1, true)
     GameTooltip:Show()
 end
@@ -323,12 +345,35 @@ end
 
 -- Lays out the material lines and the fold-out, and sizes the panel.
 -- ups: the upgrades behind upLines, same order.
-local function layout(matLines, upLines, ups)
+-- cheap: the cheapest recipes for a skill point (H.CheapRows), shown first.
+local function layout(matLines, upLines, ups, cheap)
     panel.mats:SetText(table.concat(matLines, "\n"))
     local h = 7 + panel.text:GetStringHeight() + 3 + panel.sub:GetStringHeight() + 4
     if #matLines > 0 then h = h + panel.mats:GetStringHeight() + 4 end
     panel.upBtn:ClearAllPoints()
     local shown = 0
+    local function place(u, line)
+        shown = shown + 1
+        local row = upRow(shown)
+        row.u = u
+        row.label:SetText(line)
+        local rh = math.max(10, row.label:GetStringHeight())
+        row:SetHeight(rh)
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -h)
+        row:Show()
+        h = h + rh + 2
+    end
+    if cheap and #cheap > 0 then
+        panel.cheapHdr:ClearAllPoints()
+        panel.cheapHdr:SetPoint("TOPLEFT", panel, "TOPLEFT", 8, -h)
+        panel.cheapHdr:Show()
+        h = h + 14
+        for _, c in ipairs(cheap) do place(c, c.line) end
+        h = h + 2
+    else
+        panel.cheapHdr:Hide()
+    end
     if #upLines > 0 then
         panel.upBtn:SetPoint("TOPLEFT", panel, "TOPLEFT", 8, -h)
         panel.upBtn.label:SetText(string.format("%s Upgrades you lack materials for (%d)",
@@ -336,18 +381,7 @@ local function layout(matLines, upLines, ups)
         panel.upBtn:Show()
         h = h + 16
         if H.upgradesOpen then
-            for i, line in ipairs(upLines) do
-                local row = upRow(i)
-                row.u = ups and ups[i]
-                row.label:SetText(line)
-                local rh = math.max(10, row.label:GetStringHeight())
-                row:SetHeight(rh)
-                row:ClearAllPoints()
-                row:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -h)
-                row:Show()
-                h = h + rh + 2
-                shown = i
-            end
+            for i, line in ipairs(upLines) do place(ups and ups[i], line) end
             h = h + 2
         end
     else
@@ -375,7 +409,10 @@ function H:Refresh()
     -- Planned for the skill, but you hold nothing to make it from yet.
     local waiting = not g and prof and ns.skillPlan and ns.skillPlan.lastWaiting
         and ns.skillPlan.lastWaiting[prof] and ns.skillPlan.lastWaiting[prof][1] or nil
-    if not (frame and (g or waiting or #upLines > 0)) then
+    local SPm = ns.skillPlan
+    local cheap = (prof and SPm and SPm.CheapSkillUps and ns.recipes)
+        and H.CheapRows(SPm.CheapSkillUps((ns.recipes:Known(prof))), 3) or {}
+    if not (frame and (g or waiting or #upLines > 0 or #cheap > 0)) then
         if panel then panel:Hide() end
         return
     end
@@ -420,7 +457,7 @@ function H:Refresh()
         panel.btn:SetText("Make " .. now)
         panel.btn:SetEnabled(now > 0)
     end
-    layout(matLines, upLines, ups)
+    layout(matLines, upLines, ups, cheap)
     panel:Show()
 end
 
