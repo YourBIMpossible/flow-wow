@@ -15,7 +15,8 @@
   all its objectives are in there. Scarlet Monastery, Blackrock Spire (Lower / Upper) and
   Stratholme (Live / Undead) are split by their bosses: a quest that targets a boss, or an item
   a boss drops, is that boss's wing; other creatures go by the bosses' levels. A breadcrumb to a
-  run quest goes on the route when its giver is within 150 yd of a stop you make anyway.
+  run quest goes on the route when its giver is within 150 yd of a stop you make anyway. It's
+  optional: dropped if it's a detour, and it never holds back the real quest or the entrance.
 - **Your weapon stone goes on with one press, and food that makes you Well Fed too.** When
   you're about to kill a lot (at a kill or loot stop, or right after a fight) and your main hand
   has no sharpening stone, weightstone or oil on it, the Flow key (out of combat, not in inns or

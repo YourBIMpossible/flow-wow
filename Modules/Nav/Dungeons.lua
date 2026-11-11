@@ -1046,27 +1046,31 @@ ns:Register("navGoal", "dungeon", {
         local run = D:Run(key)
         if not run then return nil end
         local goals = {}
-        local function pickup(id, why)
+        local required = 0
+        local function pickup(id, why, optional)
             local q = quest(id)
             if not q or ns.quests:InLog(id) then return end
             local pts = starterPoints(q)
             if #pts == 0 then return end
             local g = starterNPC(q)
             goals[#goals + 1] = {
-                key = "pickup:" .. id, weight = 1.0, level = q.level,
+                key = "pickup:" .. id, weight = optional and 1.2 or 1.0, optional = optional or nil, level = q.level,
                 npcs = g and g.name and { g.name } or nil, kind = "accept", points = pts,
                 title = q.name, text = "Accept: " .. (q.name or "quest") .. " (" .. why .. ")",
                 details = { string.format("Level %d quest from %s.", q.level or 0, g and g.name or "?"),
-                            "For your " .. run.name .. " run." },
+                            optional and "Optional: only if you pass by. Skipping it never blocks the run."
+                                or ("For your " .. run.name .. " run.") },
             }
+            if not optional then required = required + 1 end
         end
         for _, id in ipairs(run.pickups) do pickup(id, "for " .. run.name) end
         for _, st in ipairs(run.leadIns) do pickup(st.id, "unlocks " .. (st.unlocks or "a dungeon quest")) end
-        for _, b in ipairs(run.breadcrumbs or {}) do pickup(b.id, "leads to " .. (b.leadsTo or "a dungeon quest")) end
-        -- The entrance, last; not while you're in there or just came out.
+        -- Breadcrumbs: picked up only on the way, never part of the chain.
+        for _, b in ipairs(run.breadcrumbs or {}) do pickup(b.id, "leads to " .. (b.leadsTo or "a dungeon quest"), true) end
+        -- The entrance, last (optional breadcrumbs don't hold it back); not while you're in there or just came out.
         local been = ns.db.nav.dungeonIn
-        if #goals == 0 and run.entrance and not currentDungeon() and not (been and been.key == run.dungeon) then
-            goals[1] = {
+        if required == 0 and run.entrance and not currentDungeon() and not (been and been.key == run.dungeon) then
+            goals[#goals + 1] = {
                 key = "dungeon:" .. run.key, weight = 0.8, kind = "waypoint", points = { run.entrance },
                 title = run.name, text = "Enter " .. run.name,
                 details = { string.format("%d quests for this run.", run.count) },
