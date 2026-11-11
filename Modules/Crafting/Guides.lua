@@ -8,7 +8,7 @@
 -- to grey once the guides have moved on. Skill colours (learn / yellow /
 -- green / grey) are approximate, from the same guides and the Classic Era
 -- client data; what the profession window shows in game (Recipes.lua) wins
--- whenever Flow has seen it. Recipes only a quest teaches are left out.
+-- whenever Flow has seen it.
 --
 -- Extend by registering more:
 --   ns:Register("profGuide", "<Profession>", {
@@ -18,6 +18,8 @@
 --                   use = { from, to } | { { from, to }, ... },   -- the guides' path
 --                   faction = "Horde" | "Alliance",               -- only that side
 --                   recipeItem = itemID,                          -- bought, not trained
+--                   quest = { id, npc },                          -- the recipe is that quest's reward
+--                   trainer = { Horde = "name", Alliance = "name" }, -- taught there, not by a city trainer
 --                   station = "anvil" | "forge" | "fire" | nil } } })
 --   ns:Register("itemSource", itemID, {
 --       name, gather = "<Profession>", objects = { objectIDs }, skill = n, yield = per node,
@@ -53,6 +55,8 @@ ns:Register("itemSource", 3858, { name = "Mithril Ore", gather = "Mining", objec
 ns:Register("itemSource", 7912, { name = "Solid Stone", gather = "Mining", objects = MITHRIL_VEIN, node = "Mithril Deposit", skill = 175, yield = 0.8 })
 ns:Register("itemSource", 3860, { name = "Mithril Bar", smelt = { from = 3858, n = 1, skill = 175, spell = "Smelt Mithril" } })
 ns:Register("itemSource", 12365, { name = "Dense Stone", gather = "Mining", objects = THORIUM_VEIN, node = "Thorium Vein", skill = 230, yield = 0.8 })
+ns:Register("itemSource", 10620, { name = "Thorium Ore", gather = "Mining", objects = THORIUM_VEIN, node = "Thorium Vein", skill = 230, yield = 2 })
+ns:Register("itemSource", 12359, { name = "Thorium Bar", smelt = { from = 10620, n = 1, skill = 250, spell = "Smelt Thorium" } })
 -- Made by an earlier Blacksmithing step.
 ns:Register("itemSource", 3486, { name = "Heavy Grinding Stone", made = "Blacksmithing" })
 
@@ -89,6 +93,14 @@ ns:Register("itemSource", 6291, { name = "Raw Brilliant Smallfish", fished = tru
 ns:Register("itemSource", 6289, { name = "Raw Longjaw Mud Snapper", fished = true, share = 0.6 })
 ns:Register("itemSource", 6308, { name = "Raw Bristle Whisker Catfish", fished = true, share = 0.5 })
 ns:Register("itemSource", 8365, { name = "Raw Mithril Head Trout", fished = true, share = 0.4 })
+-- Artisan Cooking: coasts and lakes of the level 40-55 zones (Tanaris,
+-- Feralas, Felwood, Azshara, Winterspring).
+ns:Register("itemSource", 4603, { name = "Raw Spotted Yellowtail", fished = true, share = 0.5 })
+ns:Register("itemSource", 13759, { name = "Raw Nightfin Snapper", fished = true, share = 0.4 })
+ns:Register("itemSource", 13760, { name = "Raw Sunscale Salmon", fished = true, share = 0.4 })
+ns:Register("itemSource", 13888, { name = "Darkclaw Lobster", fished = true, share = 0.3 })
+ns:Register("itemSource", 13889, { name = "Raw Whitescale Salmon", fished = true, share = 0.4 })
+ns:Register("itemSource", 13893, { name = "Large Raw Mightfish", fished = true, share = 0.3 })
 
 -- Bought. price: copper, approximate; replaced by the real price once you've
 -- seen it at a vendor.
@@ -97,6 +109,8 @@ ns:Register("itemSource", 2692, { name = "Hot Spices", vendor = true, price = 40
 ns:Register("itemSource", 4536, { name = "Shiny Red Apple", vendor = true, price = 25 })
 ns:Register("itemSource", 2665, { name = "Stormwind Seasoning Herbs", vendor = true, price = 20 })
 ns:Register("itemSource", 2605, { name = "Green Dye", vendor = true, price = 100 })
+ns:Register("itemSource", 3713, { name = "Soothing Spices", vendor = true, price = 160 })
+ns:Register("itemSource", 159, { name = "Refreshing Spring Water", vendor = true, price = 25 })
 -- Recipes and manuals.
 -- Expert (150 -> 225) for these three comes from a book, not a trainer (1g each).
 ns:Register("itemSource", 16072, { name = "Expert Cookbook", vendor = true, price = 10000 })
@@ -114,6 +128,14 @@ ns:Register("itemSource", 2698, { name = "Recipe: Cooked Crab Claw", vendor = tr
 ns:Register("itemSource", 2701, { name = "Recipe: Seasoned Wolf Kabob", vendor = true, price = 1600 })
 ns:Register("itemSource", 3682, { name = "Recipe: Curiously Tasty Omelet", vendor = true, price = 1600 })
 ns:Register("itemSource", 12228, { name = "Recipe: Roast Raptor", vendor = true, price = 5000 })
+ns:Register("itemSource", 16110, { name = "Recipe: Monster Omelet", vendor = true, price = 12000 })
+ns:Register("itemSource", 18046, { name = "Recipe: Tender Wolf Steak", vendor = true, price = 12000 })
+ns:Register("itemSource", 13939, { name = "Recipe: Spotted Yellowtail", vendor = true, price = 16000 })
+ns:Register("itemSource", 13945, { name = "Recipe: Nightfin Soup", vendor = true, price = 20000 })
+ns:Register("itemSource", 13946, { name = "Recipe: Poached Sunscale Salmon", vendor = true, price = 20000 })
+ns:Register("itemSource", 13947, { name = "Recipe: Lobster Stew", vendor = true, price = 20000 })
+ns:Register("itemSource", 13948, { name = "Recipe: Mightfish Steak", vendor = true, price = 20000 })
+ns:Register("itemSource", 13949, { name = "Recipe: Baked Salmon", vendor = true, price = 20000 })
 ns:Register("itemSource", 16112, { name = "Manual: Heavy Silk Bandage", vendor = true, price = 2200 })
 ns:Register("itemSource", 16113, { name = "Manual: Mageweave Bandage", vendor = true, price = 5000 })
 -- Tools.
@@ -127,8 +149,9 @@ ns:Register("itemSource", 4470, { name = "Simple Wood", vendor = true, price = 3
 -- Professions
 -------------------------------------------------------------------------------
 
--- Gaps the guides fill with plans from quests (Imperial Plate, 270+) are
--- left to "whatever still gives skill".
+-- 265-300: Imperial Plate, whose plans are quest rewards from Derotain
+-- Mudsipper in Gadgetzan (level 50; the quests ask for Thorium Bars). The
+-- gems and Rugged Leather come from the Auction House or your own mining.
 ns:Register("profGuide", "Blacksmithing", {
     kind = "craft", tool = 5956,
     steps = {
@@ -152,7 +175,16 @@ ns:Register("profGuide", "Blacksmithing", {
           mats = { [3860] = 10, [4338] = 6 }, station = "anvil", use = { 230, 250 } },
         { recipe = "Dense Sharpening Stone", item = 12404, learn = 250, yellow = 255, green = 257, grey = 260, mats = { [12365] = 1 }, use = { 250, 260 } },
         { recipe = "Heavy Mithril Boots", item = 7933, learn = 235, yellow = 255, green = 265, grey = 275,
-          mats = { [3860] = 14, [4304] = 4 }, station = "anvil", use = { 260, 270 } },
+          mats = { [3860] = 14, [4304] = 4 }, station = "anvil", use = { 260, 265 } },
+        { recipe = "Imperial Plate Belt", item = 12424, learn = 265, yellow = 285, green = 292, grey = 300,
+          mats = { [12359] = 22, [8170] = 6, [7909] = 1 }, station = "anvil", recipeItem = 12688,
+          quest = { id = 7653, npc = "Derotain Mudsipper" }, use = { 265, 270 } },
+        { recipe = "Imperial Plate Bracers", item = 12425, learn = 270, yellow = 290, green = 295, grey = 300,
+          mats = { [12359] = 20, [7910] = 1 }, station = "anvil", recipeItem = 12690,
+          quest = { id = 7655, npc = "Derotain Mudsipper" }, use = { 270, 295 } },
+        { recipe = "Imperial Plate Boots", item = 12426, learn = 295, yellow = 300, green = 300, grey = 300,
+          mats = { [12359] = 34, [7910] = 1, [7909] = 1 }, station = "anvil", recipeItem = 12700,
+          quest = { id = 7654, npc = "Derotain Mudsipper" }, use = { 295, 300 } },
     },
 })
 
@@ -163,6 +195,8 @@ ns:Register("profGuide", "Mining", {
         { item = 2770, learn = 1, yellow = 25, green = 50, grey = 100 },
         { item = 2771, learn = 65, yellow = 90, green = 115, grey = 165 },
         { item = 2772, learn = 125, yellow = 150, green = 175, grey = 225 },
+        { item = 3858, learn = 175, yellow = 200, green = 225, grey = 275 },
+        { item = 10620, learn = 230, yellow = 255, green = 280, grey = 330 },
     },
     steps = {
         { recipe = "Smelt Copper", item = 2840, learn = 1, yellow = 25, green = 47, grey = 70, mats = { [2770] = 1 }, station = "forge" },
@@ -170,6 +204,8 @@ ns:Register("profGuide", "Mining", {
     },
 })
 
+-- From 240 the Triage doctors teach the bandages, not the city trainers.
+local TRIAGE = { Horde = "Doctor Gregory Victor", Alliance = "Doctor Gustaf VanHowzen" }
 ns:Register("profGuide", "First Aid", {
     kind = "craft",
     steps = {
@@ -182,17 +218,21 @@ ns:Register("profGuide", "First Aid", {
           recipeItem = 16112, use = { 180, 210 } },
         { recipe = "Mageweave Bandage", item = 8544, learn = 210, yellow = 210, green = 240, grey = 270, mats = { [4338] = 1 },
           recipeItem = 16113, use = { 210, 240 } },
-        { recipe = "Heavy Mageweave Bandage", item = 8545, learn = 240, yellow = 240, green = 270, grey = 300, mats = { [4338] = 2 }, use = { 240, 260 } },
-        { recipe = "Runecloth Bandage", item = 14529, learn = 260, yellow = 260, green = 290, grey = 320, mats = { [14047] = 1 }, use = { 260, 290 } },
-        { recipe = "Heavy Runecloth Bandage", item = 14530, learn = 290, yellow = 290, green = 320, grey = 350, mats = { [14047] = 2 }, use = { 290, 300 } },
+        { recipe = "Heavy Mageweave Bandage", item = 8545, learn = 240, yellow = 240, green = 270, grey = 300, mats = { [4338] = 2 },
+          trainer = TRIAGE, use = { 240, 260 } },
+        { recipe = "Runecloth Bandage", item = 14529, learn = 260, yellow = 260, green = 290, grey = 320, mats = { [14047] = 1 },
+          trainer = TRIAGE, use = { 260, 290 } },
+        { recipe = "Heavy Runecloth Bandage", item = 14530, learn = 290, yellow = 290, green = 320, grey = 350, mats = { [14047] = 2 },
+          trainer = TRIAGE, use = { 290, 300 } },
     },
 })
 
 -- One path per side from 40 to 130 (the recipes and meats differ), then the
 -- same for both. Fish from your Fishing stops levels Cooking as well as the
 -- meat it matches (same colours), so the fish recipes have no path of their
--- own: they stand in for meat you'd otherwise farm. Past 225 the guides use
--- meats Flow has no drop data for yet.
+-- own: they stand in for meat you'd otherwise farm. Past 250 the guides cook
+-- fish, so there the fish recipes are the path. (Giant Egg and Tender Wolf
+-- Meat: Flow has no drop data yet, so they show as Auction House buys.)
 ns:Register("profGuide", "Cooking", {
     kind = "craft",
     steps = {
@@ -223,6 +263,23 @@ ns:Register("profGuide", "Cooking", {
           station = "fire", recipeItem = 3682, use = { 130, 175 } },
         { recipe = "Roast Raptor", item = 12210, learn = 175, yellow = 215, green = 235, grey = 255, mats = { [12184] = 1, [2692] = 1 },
           station = "fire", recipeItem = 12228, use = { 175, 225 } },
+        -- Artisan (needs the Clamlette Surprise quest).
+        { recipe = "Monster Omelet", item = 12218, learn = 225, yellow = 250, green = 262, grey = 275, mats = { [12207] = 1, [3713] = 2 },
+          station = "fire", recipeItem = 16110, use = { 225, 250 } },
+        { recipe = "Tender Wolf Steak", item = 18045, learn = 225, yellow = 250, green = 262, grey = 275, mats = { [12208] = 1, [3713] = 1 },
+          station = "fire", recipeItem = 18046, use = { 225, 250 } },
+        { recipe = "Spotted Yellowtail", item = 6887, learn = 225, yellow = 250, green = 262, grey = 275, mats = { [4603] = 1 },
+          station = "fire", recipeItem = 13939, use = { 225, 250 } },
+        { recipe = "Nightfin Soup", item = 13931, learn = 250, yellow = 275, green = 285, grey = 295, mats = { [13759] = 1, [159] = 1 },
+          station = "fire", recipeItem = 13945, use = { 250, 285 } },
+        { recipe = "Poached Sunscale Salmon", item = 13932, learn = 250, yellow = 275, green = 285, grey = 295, mats = { [13760] = 1 },
+          station = "fire", recipeItem = 13946, use = { 250, 285 } },
+        { recipe = "Mightfish Steak", item = 13934, learn = 275, yellow = 300, green = 300, grey = 300, mats = { [13893] = 1, [2692] = 1, [3713] = 1 },
+          station = "fire", recipeItem = 13948, use = { 275, 300 } },
+        { recipe = "Lobster Stew", item = 13933, learn = 275, yellow = 300, green = 300, grey = 300, mats = { [13888] = 1, [159] = 1 },
+          station = "fire", recipeItem = 13947, use = { 275, 300 } },
+        { recipe = "Baked Salmon", item = 13935, learn = 275, yellow = 300, green = 300, grey = 300, mats = { [13889] = 1, [3713] = 1 },
+          station = "fire", recipeItem = 13949, use = { 275, 300 } },
         -- Fish (no path of their own, see above).
         { recipe = "Longjaw Mud Snapper", item = 4592, learn = 50, yellow = 90, green = 110, grey = 130, mats = { [6289] = 1 },
           station = "fire", recipeItem = 6328 },

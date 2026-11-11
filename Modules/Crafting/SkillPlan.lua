@@ -568,6 +568,17 @@ function SP.Tier(prof, rank, max, level)
     return t
 end
 
+-- Where a quest's giver stands, from Questie: points (nil if unknown), the
+-- giver's name and the quest.
+local function questGiver(id)
+    local Q = ns.quests
+    local q = Q:QuestieGet("GetQuest", id)
+    local giver = q and q.Starts and q.Starts.NPC and q.Starts.NPC[1]
+    local npc = giver and Q:QuestieGet("GetNPC", giver)
+    if not (npc and npc.spawns) then return nil, nil, q end
+    return spawnPoints({ npc.spawns }), npc.name, q
+end
+
 -- The route stop that learns the next tier (key "train:<prof>"), once you
 -- can: the trainer, the book (buy it, then read it) or the quest's giver.
 -- nil while you can't yet, or while the quest is already in your log.
@@ -605,16 +616,13 @@ function SP.TierGoal(prof, level, optional)
             if Q:IsCompleted(id) or Q:InLog(id) then return nil, tier end
         end
         for _, id in ipairs(tier.quests) do
-            local q = Q:QuestieGet("GetQuest", id)
-            local giver = q and q.Starts and q.Starts.NPC and q.Starts.NPC[1]
-            local npc = giver and Q:QuestieGet("GetNPC", giver)
+            local pts, giver, q = questGiver(id)
             local fits = q and (not ns.dungeons or not ns.dungeons.Eligible or ns.dungeons.Eligible(q))
-            if fits and npc and npc.spawns then
-                local pts = spawnPoints({ npc.spawns })
-                return goal({ kind = "accept", points = pts, npcs = { npc.name },
-                              text = string.format("Accept %s (%s): %s", q.name or "the quest", npc.name, title),
-                              details = { why, string.format("No trainer teaches it: %s's quest does.", npc.name) },
-                              blockedBy = #pts == 0 and ("Flow doesn't know where " .. npc.name .. " stands") or nil }), tier
+            if fits and giver then
+                return goal({ kind = "accept", points = pts, npcs = { giver },
+                              text = string.format("Accept %s (%s): %s", q.name or "the quest", giver, title),
+                              details = { why, string.format("No trainer teaches it: %s's quest does.", giver) },
+                              blockedBy = #pts == 0 and ("Flow doesn't know where " .. giver .. " stands") or nil }), tier
             end
         end
         return goal({ kind = "skill", points = { playerPoint() },
@@ -705,6 +713,26 @@ function SP.FishAlternative(steps, id)
     end
 end
 
+-- A recipe that's a quest's reward (step `quest = { id, npc }`): accept the
+-- quest at its giver. Nothing once it's in your log (the quest's own stops
+-- take over) or done.
+local function questRecipeStop(s)
+    local Q, id = ns.quests, s.quest.id
+    if Q:IsCompleted(id) or Q:InLog(id) then return nil end
+    local pts, giver, q = questGiver(id)
+    giver = giver or s.quest.npc
+    if not pts and giver then pts = npcPoints({ giver }) end
+    pts = pts or {}
+    local who = giver or "its giver"
+    local need = q and q.requiredLevel
+    local low = need and UnitLevel and (UnitLevel("player") or 0) < need
+    return { key = "recipequest:" .. id, kind = "accept", points = pts, npcs = giver and { giver } or nil,
+             text = string.format("Accept %s (%s): %s plans", (q and q.name) or "the quest", who, s.recipe),
+             details = { string.format("The levelling guides make %s here. No vendor or trainer has it: %s's quest gives it.", s.recipe, who) },
+             blockedBy = (low and string.format("needs level %d", need))
+                 or (#pts == 0 and ("Flow doesn't know where " .. who .. " stands")) or nil }
+end
+
 -- "Buy Recipe: X" for a bought recipe you don't have (as far as Flow knows).
 local function recipeStop(prof, s, known)
     if not s.recipeItem or (known and known[s.recipe]) then return nil end
@@ -715,6 +743,7 @@ local function recipeStop(prof, s, known)
                  icon = BAG_ICON, useItem = s.recipeItem,   -- in your bags: the arrow shows a bag
                  text = "Learn " .. s.recipe .. ": use the recipe in your bags" }
     end
+    if s.quest then return questRecipeStop(s) end
     local fish = false
     for mid in pairs(s.mats or {}) do
         local ms = src(mid)
@@ -728,6 +757,21 @@ local function recipeStop(prof, s, known)
                              or ("The levelling guides make " .. s.recipe .. " here. A vendor sells it; the trainer doesn't teach it.") },
              blockedBy = #pts == 0 and ("Flow doesn't know who sells " .. name) or nil }
 end
+
+-- Who teaches a trained step: its own trainer for your side (`trainer =
+-- { Horde = .., Alliance = .. }`, the Triage doctors) or the profession's.
+--   -> names, label ("Doctor Gregory Victor" / "First Aid trainer")
+function SP.StepTrainers(prof, s)
+    local t = s and s.trainer
+    if not t then return ns.places:TrainersFor(prof), prof .. " trainer" end
+    local mine = UnitFactionGroup and UnitFactionGroup("player")
+    if mine and t[mine] then return { t[mine] }, t[mine] end
+    local both = {}
+    for _, n in pairs(t) do both[#both + 1] = n end
+    table.sort(both)
+    return both, table.concat(both, " / ")
+end
+SP._recipeStop = recipeStop  -- for /flow test
 
 -------------------------------------------------------------------------------
 -- Gear you can make: recipes you know whose item would be an upgrade for
@@ -1238,10 +1282,11 @@ local function planProfession(prof, t, out)
             local r = recipeStop(prof, s, known)
             if r then add(r) end
         elseif known and not known[s.recipe] and s.learn <= rank then
-            local pts = npcPoints(ns.places:TrainersFor(prof))
-            add({ key = "learn:" .. prof .. ":" .. s.recipe, kind = "proftrainer", points = pts, npcs = ns.places:TrainersFor(prof),
-                  text = string.format("Learn %s (%s trainer)", s.recipe, prof),
-                  blockedBy = #pts == 0 and ("no known " .. prof .. " trainer") or nil })
+            local names, who = SP.StepTrainers(prof, s)
+            local pts = npcPoints(names)
+            add({ key = "learn:" .. prof .. ":" .. s.recipe, kind = "proftrainer", points = pts, npcs = names,
+                  text = string.format("Learn %s (%s)", s.recipe, who),
+                  blockedBy = #pts == 0 and (s.trainer and ("Flow doesn't know where " .. who .. " stands") or ("no known " .. who)) or nil })
         end
     end
 
@@ -1293,7 +1338,8 @@ local function planProfession(prof, t, out)
             local pts, anywhere = stationPoints(s.station), false
             if not pts or #pts == 0 then pts, anywhere = { playerPoint() }, true end
             local blocked = toolMissing and ("needs a " .. toolMissing)
-                or (known and not known[s.recipe] and (s.recipeItem and (count(s.recipeItem) > 0 and "use the recipe in your bags first" or ("buy " .. itemName(s.recipeItem) .. " first"))
+                or (known and not known[s.recipe] and (s.recipeItem and (count(s.recipeItem) > 0 and "use the recipe in your bags first"
+                        or (s.quest and "get the plans from the quest first") or ("buy " .. itemName(s.recipeItem) .. " first"))
                     or ("learn " .. s.recipe .. " first")))
             blocked = blocked or depBlocked
             -- The count is the point: exactly what reaches your target, so

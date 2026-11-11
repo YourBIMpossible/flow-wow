@@ -1312,6 +1312,72 @@ ns:Register("test", "skillplan: fishing feeds cooking", function(t)
     t:ok(crafts[g.steps[3]] == nil, "no fish in bags: plan doesn't count on cooking fish")
 end)
 
+ns:Register("test", "skillplan: the guides' recipes to 300", function(t)
+    local SP = ns.skillPlan
+    -- Every bought recipe has a source, so its stop knows what it is and roughly costs.
+    for prof, g in ns:Each("profGuide") do
+        for _, s in ipairs(g.steps or {}) do
+            if s.recipeItem and not s.quest then
+                local src = ns:Get("itemSource", s.recipeItem)
+                t:ok(src and src.vendor, prof .. ": " .. s.recipe .. "'s recipe has a vendor source")
+            end
+        end
+    end
+    local function onPath(prof, rank, recipe)
+        for _, s in ipairs(SP._onPath(ns:Get("profGuide", prof).steps, rank)) do
+            if s.recipe == recipe then return true end
+        end
+        return false
+    end
+    t:ok(onPath("Cooking", 230, "Monster Omelet"), "Cooking 230: Monster Omelet")
+    t:ok(onPath("Cooking", 260, "Nightfin Soup"), "Cooking 260: Nightfin Soup")
+    t:ok(onPath("Cooking", 290, "Mightfish Steak"), "Cooking 290: Mightfish Steak")
+    t:ok(not onPath("Cooking", 290, "Roast Raptor"), "Cooking 290: no Roast Raptor")
+    t:ok(onPath("Blacksmithing", 280, "Imperial Plate Bracers"), "Blacksmithing 280: Imperial Plate Bracers")
+    t:ok(onPath("Blacksmithing", 297, "Imperial Plate Boots"), "Blacksmithing 297: Imperial Plate Boots")
+    t:ok(select(3, SP._simulate("Blacksmithing__test", ns:Get("profGuide", "Blacksmithing").steps, 265, 300, {})), "Blacksmithing 265 -> 300 reaches")
+    t:ok(select(3, SP._simulate("Cooking__test", ns:Get("profGuide", "Cooking").steps, 225, 300, {})), "Cooking 225 -> 300 reaches")
+
+    -- Imperial Plate plans: accept the quest at its giver, not "buy".
+    local bracers
+    for _, s in ipairs(ns:Get("profGuide", "Blacksmithing").steps) do
+        if s.recipe == "Imperial Plate Bracers" then bracers = s end
+    end
+    local Q = ns.quests
+    local old = { IsCompleted = Q.IsCompleted, InLog = Q.InLog, QuestieGet = Q.QuestieGet }
+    local state = { done = false, inLog = false }
+    Q.IsCompleted = function() return state.done end
+    Q.InLog = function() return state.inLog end
+    Q.QuestieGet = function(_, fname)
+        if fname == "GetQuest" then return { name = "Imperial Plate Bracer", requiredLevel = 1, Starts = { NPC = { 7804 } } } end
+        if fname == "GetNPC" then return { name = "Derotain Mudsipper", spawns = {} } end
+    end
+    local ok, err = pcall(function()
+        if GetItemCount(bracers.recipeItem) > 0 then return end   -- (you have the plans: it says "use")
+        local r = SP._recipeStop("Blacksmithing", bracers, {})
+        t:eq(r and r.kind, "accept", "quest plans: an accept stop")
+        t:eq(r and r.key, "recipequest:7655", "quest plans: keyed by the quest")
+        t:ok(r and r.text:find("Derotain Mudsipper", 1, true), "quest plans: names the giver")
+        state.inLog = true
+        t:eq(SP._recipeStop("Blacksmithing", bracers, {}), nil, "quest in your log: its own stops take over")
+        state.inLog, state.done = false, true
+        t:eq(SP._recipeStop("Blacksmithing", bracers, {}), nil, "quest done: nothing")
+        t:eq(SP._recipeStop("Blacksmithing", bracers, { ["Imperial Plate Bracers"] = true }), nil, "recipe known: nothing")
+    end)
+    Q.IsCompleted, Q.InLog, Q.QuestieGet = old.IsCompleted, old.InLog, old.QuestieGet
+    t:ok(ok, "quest plans test ran (" .. tostring(err) .. ")")
+
+    -- Heavy Runecloth Bandage: the Triage doctor for your side.
+    local fa
+    for _, s in ipairs(ns:Get("profGuide", "First Aid").steps) do
+        if s.recipe == "Heavy Runecloth Bandage" then fa = s end
+    end
+    local names = SP.StepTrainers("First Aid", fa)
+    t:eq(names[1], UnitFactionGroup("player") == "Horde" and "Doctor Gregory Victor" or "Doctor Gustaf VanHowzen",
+        "Heavy Runecloth Bandage: your side's Triage doctor")
+    t:eq(select(2, SP.StepTrainers("Cooking", {})), "Cooking trainer", "other steps: the profession's trainers")
+end)
+
 ns:Register("test", "skillplan: follows the levelling guides' path", function(t)
     local SP = ns.skillPlan
     local g = ns:Get("profGuide", "Cooking")
