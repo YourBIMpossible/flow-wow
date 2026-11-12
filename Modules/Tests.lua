@@ -1297,7 +1297,7 @@ ns:Register("test", "skillplan: the guides' recipes to 300", function(t)
         if fname == "GetNPC" then return { name = "Derotain Mudsipper", spawns = {} } end
     end
     local ok, err = pcall(function()
-        if GetItemCount(bracers.recipeItem) > 0 then return end   -- (you have the plans: it says "use")
+        if ns.api.Count(bracers.recipeItem) > 0 then return end   -- (you have the plans: it says "use")
         local r = SP._recipeStop("Blacksmithing", bracers, {})
         t:eq(r and r.kind, "accept", "quest plans: an accept stop")
         t:eq(r and r.key, "recipequest:7655", "quest plans: keyed by the quest")
