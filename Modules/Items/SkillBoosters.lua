@@ -6,7 +6,8 @@
 -- spots these items in your bags, tells you to hold them, and tells you the
 -- moment to use them (advisor + item tooltip).
 --
--- Recognised text (English client), e.g.:
+-- Found by item ID (registered "skillBooster" entries, any client), else
+-- from the tooltip text (English client), e.g.:
 --   "Use: Increases your Mining skill by 2, up to a maximum of 15."
 --   "+2 Mining (up to 15)"
 
@@ -23,14 +24,33 @@ local SKILLS = {
 -- both newer and classic clients.
 local function skill(name) return ns.api.Skill(name) end
 
--- Parses an item's tooltip. Returns { skill, amount, cap } or nil.
-local cache = {}
-local function booster(link)
-    local id = link and tonumber(link:match("item:(%d+)"))
-    if not id then return nil end
-    if cache[id] ~= nil then return cache[id] or nil end
+-- Boosters known by item ID, so they're found on any client language:
+--   ns:Register("skillBooster", itemID, { skill = "Mining", amount = 2, cap = 15,
+--       source = "where it was read (client and tooltip)", seen = "YYYY-MM-DD" })
+-- Only items read on a real client go here, each with where and when it was
+-- read; an entry without both is ignored. None is recorded yet. An item
+-- that's neither registered nor readable from an English tooltip is unknown:
+-- no bonus, no advice.
+local SB = {}
+ns.skillBoosters = SB
+
+-- A registered entry, if it carries its provenance.
+function SB.Known(id, get)
+    local e = (get or function(k) return ns:Get("skillBooster", k) end)(id)
+    if e and e.skill and (e.amount or 0) > 0 and e.source and e.seen then return e end
+    return nil
+end
+
+-- What this session read from English tooltips, by item ID ({ skill, amount,
+-- cap, source, seen }): the observations a new registered entry can be made
+-- from. Not saved.
+local observed = {}
+function SB.Observed() return observed end
+
+-- Parses tooltip lines ({ { left = text } }). Returns { skill, amount, cap } or nil.
+function SB.Parse(lines)
     local found = false
-    for _, l in ipairs(ns.gear:TooltipLines(link)) do
+    for _, l in ipairs(lines or {}) do
         local text = l.left or ""
         for _, s in ipairs(SKILLS) do
             if text:find(s, 1, true) then
@@ -48,8 +68,31 @@ local function booster(link)
         end
         if found then break end
     end
-    cache[id] = found
     return found or nil
+end
+
+-- Item ID first, then the tooltip. Returns { skill, amount, cap } or nil.
+--   lines: the tooltip lines (read only when the ID isn't known); get: stands
+--   in for the registry lookup.
+function SB.Find(id, lines, get)
+    local known = SB.Known(id, get)
+    if known then return known end
+    local found = SB.Parse(type(lines) == "function" and lines() or lines)
+    if found then
+        found.source, found.seen = "English tooltip", date("%Y-%m-%d")
+        observed[id] = found
+    end
+    return found
+end
+
+local cache = {}
+local function booster(link)
+    local id = link and tonumber(link:match("item:(%d+)"))
+    if not id then return nil end
+    if cache[id] ~= nil then return cache[id] or nil end
+    local found = SB.Find(id, function() return ns.gear:TooltipLines(link) end)
+    cache[id] = found or false
+    return found
 end
 
 -- What to do with it right now: "use", "hold", "late" or "learn", plus the

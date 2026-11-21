@@ -216,3 +216,36 @@ ns:Register("test", "professions: a tier estimate needs a recorded source and is
     t:eq(cost, 500, "Journeyman keeps its recorded price")
     t:ok(source and source:find("2026-11-13", 1, true), "with where and when it was read")
 end)
+
+-------------------------------------------------------------------------------
+-- F-086: skill boosters by item ID, with provenance; unknown stays unknown.
+-------------------------------------------------------------------------------
+
+local GERMAN = { { left = "Benutzen: Erh9582ht Eure Fertigkeit in Bergbau um 2." } }
+local ENGLISH = { { left = "Use: Increases your Mining skill by 2, up to a maximum of 15." } }
+
+ns:Register("test", "professions: a registered skill booster is found by item ID on any client", function(t)
+    local SB = ns.skillBoosters
+    local entry = { skill = "Mining", amount = 2, cap = 15, source = "test record", seen = "2026-11-21" }
+    local get = function(id) return id == 999001 and entry or nil end
+    local b = SB.Find(999001, GERMAN, get)
+    t:eq(b and b.skill, "Mining", "found by ID though the tooltip isn't English")
+    t:eq(b and b.amount, 2, "its bonus")
+    t:eq(b and b.cap, 15, "and its cap")
+    local bare = { skill = "Mining", amount = 2 }
+    t:eq(SB.Known(999002, function() return bare end), nil, "an entry without where and when it was read is ignored")
+end)
+
+ns:Register("test", "professions: an unknown skill booster stays unknown; an English tooltip is an observation", function(t)
+    local SB = ns.skillBoosters
+    local none = function() return nil end
+    t:eq(SB.Find(999003, GERMAN, none), nil, "not registered, not English: unknown, so no bonus")
+    t:eq(SB.Observed()[999003], nil, "and nothing observed")
+    local b = SB.Find(999004, ENGLISH, none)
+    t:eq(b and b.amount, 2, "read from the English tooltip")
+    t:eq(b and b.cap, 15, "with its cap")
+    local o = SB.Observed()[999004]
+    t:eq(o and o.source, "English tooltip", "kept as an observation, with its source")
+    t:ok(o and type(o.seen) == "string", "and when it was read")
+    SB.Observed()[999004] = nil
+end)
