@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- **Auto-sell everything at vendors is now off until you turn it on.** A choice you already saved is kept.
+- **Gear for a class Flow can't score yet is kept,** never auto-sold.
+- **If a sell rule breaks, the item is kept** and the error goes once into the diagnostics log.
+- **Hidden steps, the buyback list and set roles no longer carry over to alts.**
+- **Enchanters: an item with a clearly better auction price you've seen goes to the AH** instead of being disenchanted.
+- **Well Fed food is never sold as outgrown.**
+- **The diagnostics snapshot no longer includes your character's name or realm.**
+- **Flow Setup stays until you choose:** "Use Flow's suggestions" or "Keep my settings". It opens once each login until then, and `/flow setup` reopens it.
+- **Flow no longer changes your camera style at first login;** it is a Flow Setup suggestion.
+- **The world-map route box turns the route back on** after `/flow map off`.
+- **`/flow chat stamps` works again.**
+- **Flow Setup's "Reset" is now "Revert",** and the window has Flow's title bar.
+- **`/flow help <word>` shows only the help about that word.**
+- **A short, still login intro for less motion** (Options, or `/flow splash short`).
+- **The self button is called the self button everywhere** (`/flow selfbutton`, `/flow selfkey`).
 - **Druid: Balance and Feral talents now set your role to DPS;** tanking stays your choice.
 - **A class Flow has no rotation for still gets potions, bandages, food, drink and breaking free.**
 - **`/flow spec` always says your role and where it came from;** Flow Talents says when its build isn't for your role.

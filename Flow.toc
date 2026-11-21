@@ -177,3 +177,5 @@ Modules\Export.lua
 Modules\Tests.lua
 Modules\Tests\Professions.lua
 Modules\Tests\Class.lua
+Modules\Tests\Safety.lua
+Modules\Tests\UX.lua
