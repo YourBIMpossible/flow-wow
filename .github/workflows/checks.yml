@@ -1,0 +1,38 @@
+# Static checks on every push and pull request: the same lint a contributor
+# runs before committing (tools/lint.ps1: luacheck with .luacheckrc, texture
+# paths, game globals in tests, functions defined twice, close buttons), plus
+# tools/check-structure.ps1 (Flow.toc lists every file and only real ones; no
+# registration key used twice). Passing this is not a gameplay test: the
+# add-on's self-tests run in the game (docs/TESTING.md).
+name: Checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # The game runs Lua 5.1; luacheck pinned to the version the maintainer
+      # uses on Windows (1.2.0), so both report the same warnings.
+      - name: Install Lua 5.1 and luacheck
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends lua5.1 liblua5.1-0-dev luarocks
+          sudo luarocks --lua-version=5.1 install luacheck 1.2.0
+          luacheck --version
+
+      - name: Lint (tools/lint.ps1)
+        shell: pwsh
+        run: ./tools/lint.ps1
+
+      - name: Structure (tools/check-structure.ps1)
+        shell: pwsh
+        run: ./tools/check-structure.ps1
