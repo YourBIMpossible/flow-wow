@@ -727,14 +727,17 @@ if hooksecurefunc and type(BuybackItem) == "function" then
     end)
 end
 
-ns:OnLoad(function(saved)
-    if saved.sell.enabled == nil then saved.sell.enabled = true end
-    if saved.sell.junkAll == nil then saved.sell.junkAll = true end
-    if saved.sell.autoJunk == nil then saved.sell.autoJunk = true end
-    -- Auto-sell the rest of Flow's "sell" items too (you asked for it).
-    if saved.sell.autoAll == nil then saved.sell.autoAll = true end
-    if saved.sell.autoRepair == nil then saved.sell.autoRepair = true end
-end)
+-- Defaults for what's still unset in saved sell settings (a choice already
+-- saved is kept). Auto-selling the rest of Flow's "sell" items (gear,
+-- food...) stays off until you turn it on (F-002).
+function V.SellDefaults(sell)
+    if sell.enabled == nil then sell.enabled = true end
+    if sell.junkAll == nil then sell.junkAll = true end
+    if sell.autoJunk == nil then sell.autoJunk = true end
+    if sell.autoAll == nil then sell.autoAll = false end
+    if sell.autoRepair == nil then sell.autoRepair = true end
+end
+ns:OnLoad(function(saved) V.SellDefaults(saved.sell) end)
 
 ns:Register("setupItem", "autoRepair", {
     order = 17, label = "Auto-repair at vendors",
@@ -746,10 +749,10 @@ ns:Register("setupItem", "autoRepair", {
 
 ns:Register("setupItem", "autoAll", {
     order = 16, label = "Auto-sell everything Flow marks to sell",
-    why = "At a vendor, also sells the gear, food and other items Flow says you don't need (up to 12 a visit, so you can buy any back; Flow then never sells it again).",
+    why = "At a vendor, also sells the gear, food and other items Flow says you don't need (up to 12 a visit, so you can buy any back; Flow then never sells it again). Off unless you turn it on.",
     isOn = function() return ns.db.sell.autoAll == true end,
     set = function(on) ns.db.sell.autoAll = on end,
-    suggested = true, default = false, isNew = true,
+    suggested = false, default = false, isNew = true,
 })
 
 ns:Register("setupItem", "autoJunk", {

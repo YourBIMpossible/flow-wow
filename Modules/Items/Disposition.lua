@@ -837,6 +837,29 @@ reg("laterOrOtherRole", 40, function(i)
     end
 end)
 
+-- Pure: true when the class data has stat weights for at least one role, so
+-- Flow can tell better gear from worse (F-001).
+function D.ClassScored(d)
+    if not (d and type(d.weights) == "table") then return false end
+    for _, w in pairs(d.weights) do
+        if type(w) == "table" and next(w) ~= nil then return true end
+    end
+    return false
+end
+
+-- Pure: gear your class can wear (or train for) but Flow can't score for
+-- your class is kept, never sold as "not better" (every score would be 0).
+function D.UnscoredGearVerdict(gear, scored)
+    if scored or not gear then return nil end
+    if gear.canUse or gear.needsTraining then
+        return { action = "keep", reason = "Flow can't score gear for your class yet, so it's kept: decide yourself" }
+    end
+end
+
+reg("unscoredClass", 45, function(i)
+    return D.UnscoredGearVerdict(i.gear, D.ClassScored(ns:ClassData()))
+end)
+
 -- Unneeded gear: disenchant if you can, auction if it's worth more there,
 -- otherwise vendor.
 reg("unneededGear", 50, function(i)

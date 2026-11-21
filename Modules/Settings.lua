@@ -722,11 +722,11 @@ local function build(parent)
             function() return ns.db.loot.skipJunk == true end,
             function(on) ns.lootFilter:SetEnabled(on) end)
         _, y = check(f, y, "Flow Seller: auto-sell at vendors", "(also on the Flow Seller drawer)",
-            "When you open a vendor, sell everything Flow marks to sell: up to 12 a visit, so you can buy any back (Flow then never sells it again).",
+            "When you open a vendor, sell everything Flow marks to sell: up to 12 a visit, so you can buy any back (Flow then never sells it again). Off unless you turn it on.",
             function() return ns.db.sell.autoAll == true end,
             function(on) ns.db.sell.autoAll = on end)
         _, y = check(f, y, "Flow Seller: auto-sell grey junk", nil,
-            "Sells every grey item as soon as you open a vendor.",
+            "Sells every grey item as soon as you open a vendor. On unless you turn it off.",
             function() return ns.db.sell.autoJunk == true end,
             function(on) ns.db.sell.autoJunk = on end)
         _, y = check(f, y, "Flow Seller: auto-cleanup after selling", "(also on the Flow Seller)",
