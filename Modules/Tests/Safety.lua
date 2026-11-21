@@ -217,3 +217,21 @@ ns:Register("test", "safety: route caches follow the game: completed quests, map
         t:ok(a and a.ex == 1 and a.sy == 1, "asked again once it is, not remembered as none")
     end)
 end)
+
+ns:Register("test", "safety: learned trainer levels lie over the list, believable only, and can be forgotten (F-017)", function(t)
+    local F = ns.facts
+    t:eq(F.Plausible(24, 20), true, "a few levels off the list: used")
+    t:eq(F.Plausible(2, 40), false, "across the game: not used")
+    t:eq(F.Plausible(0, 10), false, "no level: not used")
+    local list = { { spell = "Rake", level = 20 }, { spell = "Claw", level = 40 } }
+    local lv = { Rake = 24, Claw = 2 }
+    local changed = F.FixLevels(list, function(n) return lv[n], "yours" end)
+    t:eq(#changed, 1, "only the believable one moves")
+    t:ok(list[1].level == 24 and changed[1].source == "yours", "Rake: 24, seen by you")
+    t:eq(list[2].level, 40, "Claw at 2 is a wrong line: the list's 40 stays")
+    local facts = { first = { DRUID = { Rake = 24 } }, firstAt = { DRUID = { Rake = 1 } } }
+    t:eq(F.ResetFirst(facts), 1, "reset: one first level forgotten")
+    t:ok(next(facts.first) == nil and next(facts.firstAt) == nil, "and its age with it")
+    changed = F.FixLevels(list, function() return nil end)
+    t:ok(#changed == 1 and list[1].level == 20 and changed[1].source == nil, "learned level gone: the list's own 20 comes back")
+end)
