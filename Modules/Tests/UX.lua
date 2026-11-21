@@ -183,3 +183,35 @@ ns:Register("test", "help: /flow help <word> shows only the help about that word
     t:eq(#ns.HelpFor("  SPLASH "), #ns.HelpFor("splash"), "case and spaces don't matter")
     t:eq(#ns.HelpFor("no-such-word-xq"), 0, "nothing for a word no help has")
 end)
+
+ns:Register("test", "click: the short, still intro box turns the spinning off and back on", function(t)
+    -- F-097: the login intro was 4.6 s of motion with no way to tone it down.
+    local I, db = ns.intro, ns.db.splash
+    local was = db.short
+    local ok, err = pcall(function()
+        db.short = nil
+        local spin, tail, moves = I.Times()
+        t:ok(moves and spin + tail > 4, "by default: the full spinning intro")
+        local f = ns.settings._Build and ns.settings._Build()
+        local box
+        for _, c in ipairs(f and ns.settings:Checks() or {}) do
+            local text = c.label and c.label:GetText()
+            if text and text:find("Short, still intro", 1, true) then box = c end
+        end
+        if box and not InCombatLockdown() then
+            t:ok(not box.get(), "the box starts unticked")
+            box:SetChecked(true)
+            local okc, errc = pcall(box:GetScript("OnClick"), box, "LeftButton")
+            t:ok(okc, "the box runs" .. (okc and "" or (": " .. tostring(errc))))
+        else
+            ns.commands.splash("short on")
+        end
+        spin, tail, moves = I.Times()
+        t:ok(not moves, "ticked: nothing spins")
+        t:ok(spin + tail < 2, "and it is short")
+        withFlow(ns, "Print", function() end, function() ns.commands.splash("short off") end)
+        t:ok(select(3, I.Times()), "/flow splash short off: back to the full intro")
+    end)
+    db.short = was
+    if not ok then error(err, 0) end
+end)

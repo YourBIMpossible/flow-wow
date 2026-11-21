@@ -8,7 +8,7 @@ local topics = {
     { "basics", 10, "Basics", {
         "Hold |cffffd200Ctrl|r and drag any Flow element to move it (as in Questie).",
         "/flow keys - the keys that cast a spell directly, not from a bar (the game's Key Bindings window doesn't list those)",
-        "/flow splash - replay the intro on the arrow (on/off)",
+        "/flow splash - replay the intro on the arrow (on/off); /flow splash short - a short intro with no spinning",
         "/flow api - what this game client lets addons see",
     } },
     { "rotation", 20, "Rotation (icon + glowing action button)", {

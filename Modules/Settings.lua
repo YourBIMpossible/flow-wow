@@ -773,6 +773,10 @@ local function build(parent)
                 "After logging in or /reload the arrow spins, shows FLOW in its ring, and the version and status underneath.",
                 function() return ns.db.splash.enabled ~= false end,
                 function(on) ns.db.splash.enabled = on end)
+            _, y = check(f, y, "Short, still intro", "(/flow splash short)",
+                "The intro without spinning: FLOW shows for a second and fades (1.6 seconds instead of 4.6). For less motion on screen.",
+                function() return ns.db.splash.short == true end,
+                function(on) ns.db.splash.short = on or nil end)
         end
     end
 

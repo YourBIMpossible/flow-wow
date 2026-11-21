@@ -13,6 +13,15 @@ local SPIN, TAIL = 3.2, 1.4   -- seconds: pillars spinning with FLOW, then the a
 local TURNS = 6               -- ring turns during the spin (fast, easing out)
 I.SPIN, I.TURNS = SPIN, TURNS
 
+-- The short intro (F-097, /flow splash short): no spinning, FLOW shows still
+-- and fades, 1.6 s instead of 4.6 s.
+local SHORT_SHOW, SHORT_TAIL = 1.0, 0.6
+-- Seconds of the two phases, and whether the first one moves.
+function I.Times()
+    if ns.db.splash.short then return SHORT_SHOW, SHORT_TAIL, false end
+    return SPIN, TAIL, true
+end
+
 local function version()
     local get = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
     return get and get(ns.name, "Version") or "?"
@@ -132,6 +141,7 @@ function I:Play()
     f.sub:SetText("v" .. version() .. (ok and ("  ·  " .. s) or ""))
     f.introText:SetAlpha(0)
     f.introText:Show()
+    local spin, tail, moves = I.Times()
     local t0 = GetTime()
     f.introStatusAt = nil
     local function finish()
@@ -150,17 +160,21 @@ function I:Play()
             local okS, st = pcall(I.Status)
             f.sub:SetText("v" .. version() .. (okS and ("  ·  " .. st) or ""))
         end
-        if t < SPIN then
-            if pillars then a:SetRingSpin(I.SpinAngle(t)) else a:SetRotation(I.SpinAngle(t)) end
-            f.introText:SetAlpha(math.min(1, t / 0.6))   -- FLOW fades in fast
-        elseif t < SPIN + TAIL then
+        if t < spin then
+            if moves then
+                if pillars then a:SetRingSpin(I.SpinAngle(t)) else a:SetRotation(I.SpinAngle(t)) end
+                f.introText:SetAlpha(math.min(1, t / 0.6))   -- FLOW fades in fast
+            else
+                f.introText:SetAlpha(1)   -- (short: FLOW shows at once, nothing turns)
+            end
+        elseif t < spin + tail then
             if a.spinning then
                 -- Pillars still and short again, the arrow appears over them.
                 a.spinning = nil
                 if pillars then a:SetRingSpin(0) end
                 a:SetArrived(false)
             end
-            f.introText:SetAlpha(math.max(0, 1 - (t - SPIN) / 0.4))   -- FLOW fades out
+            f.introText:SetAlpha(math.max(0, 1 - (t - spin) / 0.4))   -- FLOW fades out
         else
             finish()
         end
@@ -199,6 +213,11 @@ ns.commands.splash = function(arg)
     if arg == "on" or arg == "off" then
         ns.db.splash.enabled = (arg == "on")
         ns:Print("login intro on the arrow " .. arg)
+    elseif arg:match("^short") then
+        local v = arg:match("^short%s+(%S+)")
+        if v == "on" or v == "off" then ns.db.splash.short = (v == "on") or nil
+        else ns.db.splash.short = not ns.db.splash.short or nil end
+        ns:Print("short, still intro " .. (ns.db.splash.short and "on" or "off") .. " (/flow splash plays it)")
     else
         I:Play()
     end
