@@ -614,7 +614,7 @@ local function build(parent)
         -- Paladins: the seal Flow suggests. Two rows of buttons, one choice.
         local pal = select(2, UnitClass("player")) == "PALADIN" and ns:Get("rotation", "PALADIN")
         if pal and pal.SetSeal then
-            local tip = "Auto (the usual): by your role (\"Your role\" above). Tanking: Fury; DPS: Command once you have it; healing in a group: Wisdom; otherwise Righteousness. Pick a seal and Flow suggests that one instead (until you know it, its usual one). For one fight, just cast a different seal: Flow keeps it until the fight ends. Also /flow seal. This character only."
+            local tip = "Auto (the usual): by your role (\"Your role\" above). Tanking: Fury; DPS: Command once you have it; healing in a group: Wisdom; otherwise Righteousness. Pick a seal and Flow suggests that one instead (until you know it, its usual one). Or just cast the seal you want: in Auto, Flow suggests that one from then on while you play that role, until you cast another (with a seal picked here, a cast lasts the fight). Auto goes back to your role's and forgets the seals you cast. Also /flow seal. This character only."
             local get = function() return ns.db.paladinSeal or "auto" end
             local set = function(v) pal.SetSeal(v ~= "auto" and v or nil) end
             f.sealRow, y = choices(f, y, "Paladin seal", tip,

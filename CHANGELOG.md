@@ -29,6 +29,11 @@
   talents.
 - **Paladin: the seal follows your role.** Tanking: Fury; DPS: Command once you have it; healing in a group: Wisdom;
   otherwise Righteousness. A seal you pick (Settings, /flow seal) now goes on at once even while another seal is up.
+- **Paladin: cast the seal you want and Flow suggests it from then on.** No settings or command needed: in Auto, a
+  seal you cast yourself that differs from Flow's suggestion is kept for the role you're playing, every fight,
+  until you cast another (it used to last only until the fight ended). Casting the seal Flow suggested, or using
+  Flow's key, changes nothing. A seal you picked in Settings stays: a cast then lasts the fight. /flow seal auto
+  (or Settings, Auto) goes back to your role's seal.
 - **Paladin: the blessing follows your role, and the one you cast.** Healing: Wisdom; tanking: Kings once you have
   it; otherwise Might (it was always Might). A blessing you pick (Settings, "Paladin blessing", or /flow blessing)
   stays, and replaces the one you have up. In Auto, cast another blessing on yourself and Flow keeps that one for

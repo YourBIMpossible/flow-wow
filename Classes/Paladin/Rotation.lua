@@ -80,7 +80,8 @@ end
 
 -- The last seal you cast yourself (not with Flow's key) since your last
 -- fight ended. Flow keeps suggesting it until you leave combat, so
--- switching seals for one fight is just casting the other one.
+-- switching seals for one fight is just casting the other one, even with a
+-- seal chosen in Settings (that choice stays).
 local ownSeal
 
 -- Pure: the seal for your role. Tanking: Fury; DPS: Command (a Retribution
@@ -94,9 +95,10 @@ local function roleSeal(knows, role, grouped)
 end
 
 -- Which seal Flow puts up: the one you cast this fight; else the one you
--- chose (settings, /flow seal), if you know it; else your role's. `s` can
--- hold own / grouped (tests; false = none); missing ones are read from the
--- game. role: nil = ns:LevelingRole().
+-- chose (settings, /flow seal), if you know it; else, in Auto, the one you
+-- last cast yourself while playing this role; else your role's. `s` can
+-- hold own / grouped / learned (tests; false = none); missing ones are read
+-- from the game. role: nil = ns:LevelingRole().
 local function pickSeal(engine, role, s)
     s = s or {}
     local knows = knowsWith(engine)
@@ -104,27 +106,45 @@ local function pickSeal(engine, role, s)
     if own == nil then own = ownSeal end
     if own and knows(own) then return own end
     role = myRole(role)
-    local pref = preferred(knows, role, ns.db and ns.db.paladinSeal, nil)
+    local learned = s.learned
+    if learned == nil then learned = ns.db and ns.db.paladinSealCast end
+    local pref = preferred(knows, role, ns.db and ns.db.paladinSeal, learned or nil)
     if pref then return pref end
     local grouped = s.grouped
     if grouped == nil then grouped = inGroup() end
     return roleSeal(knows, role, grouped)
 end
 
+-- A seal you cast yourself (a seal only ever goes on you) that isn't the
+-- one Flow suggests: kept for this fight; and in Auto also remembered for
+-- the role you're playing, every fight from then on, until you cast another.
+-- "You think somebody's gonna go through all of that to change their
+-- stuff?" A seal you chose in Settings is never changed by a cast: with one
+-- chosen, a cast lasts the fight.
+ns:PerCharacter("paladinSeal")
+ns:PerCharacter("paladinSealCast")   -- { [role] = seal } you cast yourself in Auto
 ns:On("UNIT_SPELLCAST_SUCCEEDED", function(unit, _, spellID)
     if unit ~= "player" or not spellID then return end
     local name = A.SpellInfo(A.Safe(spellID) or 0)   -- (Flow's own: the bare GetSpellInfo isn't on every client)
-    if not IS_SEAL[name or ""] then return end
-    local fresh = ns.rotation and pickSeal(ns.rotation)
-    local keep = keptFromCast(name, IS_SEAL, fresh, flowPressed(name), true)
-    if keep then ownSeal = keep end
+    if not (IS_SEAL[name or ""] and ns.rotation) then return end
+    local role = myRole()
+    local keep = keptFromCast(name, IS_SEAL, pickSeal(ns.rotation, role), flowPressed(name), true)
+    if not keep then return end
+    ownSeal = keep
+    if ns.db.paladinSeal then return end
+    ns.db.paladinSealCast = ns.db.paladinSealCast or {}
+    if ns.db.paladinSealCast[role] == keep then return end
+    ns.db.paladinSealCast[role] = keep
+    ns:Print(string.format("%s: Flow suggests this seal while you play %s (Auto). Cast another to switch; /flow seal auto: back to your role's.",
+        keep, roleLabel(role)))
 end)
 ns:On("PLAYER_REGEN_ENABLED", function() ownSeal = nil end)
 
--- Your choice (a seal's name, or nil for automatic). A new choice applies
--- at once, even mid-fight.
+-- Your choice (a seal's name, or nil for Auto). A new choice applies at
+-- once, even mid-fight; either way the seals you cast are forgotten.
 local function setSeal(name)
     ns.db.paladinSeal = name
+    ns.db.paladinSealCast = nil
     ownSeal = nil
 end
 
@@ -349,7 +369,7 @@ local function guide(e)
     local blessing = pickBlessing(e)
     if k(blessing) then add("  - " .. blessing .. " (re-cast when under 30s left; change it: /flow blessing, or cast another on yourself).") end
     local seal = pickSeal(e)
-    if k(seal) then add("  - " .. seal .. ", cast just before you pull (change it: /flow seal; for one fight, cast another).") end
+    if k(seal) then add("  - " .. seal .. ", cast just before you pull (change it: cast the one you want, or /flow seal).") end
     add("Fight:")
     if k("Judgement") then
         add("  1. Judgement to open (in Forever it doesn't use up your seal), then again on every cooldown.")
@@ -383,7 +403,6 @@ local groupBuffs = {
 }
 
 -- /flow seal [name|auto]: choose the seal Flow suggests (this character only).
-ns:PerCharacter("paladinSeal")
 
 local function findSeal(text)
     text = (text or ""):lower():gsub("^seal of%s*", ""):gsub("^the%s+", "")
@@ -451,8 +470,8 @@ ns:Register("help", "blessing", { order = 33, title = "Paladin blessing", lines 
 
 ns:Register("help", "seal", { order = 32, title = "Paladin seal", lines = {
     "Automatic: by your role (Settings, \"Your role\"; Auto: your talents). Tanking: Fury; DPS: Command once you have it; healing in a group: Wisdom; otherwise Righteousness.",
-    "Cast a different seal and Flow keeps that one until the fight ends.",
-    "Settings, Easy keys: \"Paladin seal\" picks one for good; or /flow seal command (righteousness, crusader, justice, light, wisdom, fury), /flow seal auto.",
+    "To change it, just cast the seal you want: in Auto, Flow suggests that one from then on while you play that role, until you cast another. Casts from Flow's own keys don't count.",
+    "Settings, Easy keys: \"Paladin seal\" picks one for good (a cast then lasts only the fight); or /flow seal command (righteousness, crusader, justice, light, wisdom, fury). /flow seal auto: back to your role's, forgetting the seals you cast.",
 } })
 
 ns:Register("rotation", "PALADIN", {
