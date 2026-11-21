@@ -272,3 +272,14 @@ ns:Register("test", "safety: any learned NPC place can be put right, not only a 
         t:eq(P.NotRole("Gruk", "flight"), true, "Services skips a noted role for learned, shared and quest-data NPCs alike")
     end)
 end)
+
+ns:Register("test", "safety: the Flow Trader's open-with-deals choice is kept as you saved it (F-092)", function(t)
+    local T = ns.trader
+    with(ns.db, "trader", {}, function()
+        t:eq(T.OpensWithDeals(), true, "never chosen: it opens")
+        T.SetOpensWithDeals(false)
+        t:ok(ns.db.trader.quiet == true and not T.OpensWithDeals(), "off: stays closed")
+        T.SetOpensWithDeals(true)
+        t:ok(ns.db.trader.quiet == false and T.OpensWithDeals(), "on again: kept as a choice (false), not dropped")
+    end)
+end)
