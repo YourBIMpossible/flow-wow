@@ -40,8 +40,9 @@ jobs:
 
       # Flow's registered tests on plain Lua 5.1 with fixture stubs
       # (tools/offline/stubs.lua). A test that touches anything of the game
-      # client is a SKIP, never a PASS; a new FAIL or ERROR fails the job, the
-      # ones in tools/offline/known-failures.txt are reported only.
+      # client is a SKIP, never a PASS; a new FAIL or ERROR, a file that didn't load,
+      # or a stale known name fails the job; tools/offline/known-failures.txt entries
+      # are reported as known allowed.
       - name: Offline tests (tools/run-tests.ps1)
         shell: pwsh
         run: ./tools/run-tests.ps1
