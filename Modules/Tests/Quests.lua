@@ -81,3 +81,58 @@ ns:Register("test", "route: a soft need's step hidden or across the sea holds no
     t:ok(k2Keys["train:class"], "away: a soft dep doesn't hold training")
     t:ok(h2Keys["x:hard"], "away: a hard dep holds")
 end)
+
+-------------------------------------------------------------------------------
+-- F-030: a loop in the steps' deps is found, broken the same way each time,
+-- and any dep the order breaks is flagged.
+-------------------------------------------------------------------------------
+
+local function planGoal(key, x, extra)
+    local g = { key = key, text = key, points = { { cont = 0, wx = x, wy = 0 } } }
+    for k, v in pairs(extra or {}) do g[k] = v end
+    return g
+end
+
+ns:Register("test", "planner: a dependency loop is found, broken the same way each time, and flagged", function(t)
+    local P = ns.planner
+    local function stop(key, deps) return { key = key, goal = { key = key, deps = deps } } end
+    local broken, loops = P.FindCycles({ stop("b", { "a" }), stop("a", { "b" }), stop("c", { "a" }) })
+    t:eq(#loops, 1, "one loop")
+    t:ok(broken and broken.b and broken.b.a, "broken at the dep that closes it (a > b > a: b's dep on a)")
+    local broken2 = P.FindCycles({ stop("a", { "b" }), stop("c", { "a" }), stop("b", { "a" }) })
+    t:ok(broken2 and broken2.b and broken2.b.a, "the same break whatever order the steps come in")
+    local none, l0 = P.FindCycles({ stop("1:done", { "1:1" }), stop("1:1") })
+    t:eq(none, nil, "a plain chain: no loop")
+    t:eq(#l0, 0, "and none listed")
+    local selfB = P.FindCycles({ stop("x", { "x" }) })
+    t:ok(selfB and selfB.x and selfB.x.x, "a step that waits for itself: broken too")
+    -- Through the planner: it finishes, keeps every step, and says what it broke.
+    local p = { cont = 0, wx = 0, wy = 0 }
+    local plan = P:Plan(p, { planGoal("a", 100, { deps = { "b" } }), planGoal("b", 20, { deps = { "a" } }), planGoal("c", 200, { deps = { "a" } }) }, { areaFirst = false })
+    t:eq(plan and #plan, 3, "all three steps planned")
+    t:ok(plan and plan.loops and #plan.loops == 1, "the loop is on the plan")
+    local pos = {}
+    for i, e in ipairs(plan or {}) do pos[e.goal.key] = i end
+    t:ok(pos.a and pos.c and pos.a < pos.c, "the dep that isn't in the loop is still kept (a before c)")
+    local flagged = plan and plan.outOfOrder or {}
+    t:eq(#flagged, 1, "exactly one dep broken, and it's flagged")
+    t:eq(flagged[1] and flagged[1].why, "loop", "as a loop")
+    t:ok(flagged[1] and flagged[1].text:find("waits for", 1, true) ~= nil, "with words for the step list")
+    local plan2 = P:Plan(p, { planGoal("c", 200, { deps = { "a" } }), planGoal("b", 20, { deps = { "a" } }), planGoal("a", 100, { deps = { "b" } }) }, { areaFirst = false })
+    local o1, o2 = {}, {}
+    for _, e in ipairs(plan or {}) do o1[#o1 + 1] = e.goal.key end
+    for _, e in ipairs(plan2 or {}) do o2[#o2 + 1] = e.goal.key end
+    t:eq(table.concat(o2, ","), table.concat(o1, ","), "the same order whatever order the goals come in")
+end)
+
+ns:Register("test", "planner: your chosen step first, though it waits for another: planned and flagged", function(t)
+    local P = ns.planner
+    local p = { cont = 0, wx = 0, wy = 0 }
+    local plan = P:Plan(p, { planGoal("1:done", 50, { deps = { "1:1" } }), planGoal("1:1", 300) }, { first = "1:done", areaFirst = false })
+    t:eq(plan and plan[1] and plan[1].goal.key, "1:done", "your pick goes first")
+    local o = plan and plan.outOfOrder and plan.outOfOrder[1]
+    t:eq(o and o.why, "forced", "and the dep it breaks is flagged, as your pick")
+    t:ok(plan and plan[1].outOfOrder and plan[1].outOfOrder[1] == "1:1", "on its entry too")
+    local ok = P:Plan(p, { planGoal("1:done", 50, { deps = { "1:1" } }), planGoal("1:1", 300) }, { areaFirst = false })
+    t:eq(ok and ok.outOfOrder, nil, "a legal order: nothing flagged")
+end)

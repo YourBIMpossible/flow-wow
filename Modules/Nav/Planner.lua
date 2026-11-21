@@ -135,6 +135,13 @@ end
 
 local function forced(key) return OPT.first == key or (OPT.tour and OPT.tour[key]) end
 
+-- A dep the plan obeys: every one, except the dep that closes a loop
+-- (P.FindCycles: OPT.broken). The order is checked against all of them after.
+local function binds(key, dep)
+    local b = OPT.broken and OPT.broken[key]
+    return not (b and b[dep])
+end
+
 -- Finish the area first: a step outside it waits while an area step is left
 -- (your own pick and milestones like class training never wait).
 local function waitsArea(s, nearLeft)
@@ -421,7 +428,7 @@ local function valid(order)
     local lastTour, firstOther = 0, math.huge
     for i, s in ipairs(order) do
         for _, dep in ipairs(s.goal.deps or {}) do
-            if pos[dep] and pos[dep] > i then return false end
+            if pos[dep] and pos[dep] > i and binds(s.key, dep) then return false end
         end
         if OPT.tour then
             if OPT.tour[s.key] or s.key == OPT.first then lastTour = i
@@ -468,7 +475,7 @@ local function greedy(p, stops)
         local bestI, bestScore
         for i, s in ipairs(remaining) do
             local ready = true
-            for _, dep in ipairs(s.goal.deps or {}) do if left[dep] then ready = false end end
+            for _, dep in ipairs(s.goal.deps or {}) do if left[dep] and binds(s.key, dep) then ready = false end end
             -- Your chosen step first, then the rest of the tour, then the others.
             if firstLeft and s.key ~= OPT.first then ready = false end
             if tourLeft and not (OPT.tour[s.key] or s.key == OPT.first) then ready = false end
@@ -480,7 +487,21 @@ local function greedy(p, stops)
                 if not bestScore or score < bestScore then bestI, bestScore = i, score end
             end
         end
-        if not bestI then bestI = 1 end  -- broken deps: don't loop forever
+        if not bestI then
+            -- Nothing may come next (your pick, or a tour step, waits for a
+            -- step): your pick / the tour still goes first, its deps aside.
+            -- P:Plan flags each dep the order breaks ("forced").
+            for i, s in ipairs(remaining) do
+                local ready = not ((firstLeft and s.key ~= OPT.first)
+                    or (tourLeft and not (OPT.tour[s.key] or s.key == OPT.first)))
+                if ready then
+                    local _, bd = nearest(from, s)
+                    local score = bd * (s.goal.weight or 1)
+                    if not bestScore or score < bestScore then bestI, bestScore = i, score end
+                end
+            end
+        end
+        if not bestI then bestI = 1 end  -- (can't happen once loops are broken; never loop forever)
         local s = table.remove(remaining, bestI)
         order[#order + 1] = s
         from = nearest(from, s)
@@ -579,7 +600,7 @@ local function areaSet(stops)
         for _, s in ipairs(stops) do
             if near[s.key] then
                 for _, dep in ipairs(s.goal.deps or NONE) do
-                    if keyed[dep] and not near[dep] then near[s.key], changed = nil, true break end
+                    if keyed[dep] and not near[dep] and binds(s.key, dep) then near[s.key], changed = nil, true break end
                 end
             end
         end
@@ -617,7 +638,91 @@ local function build(p, stops)
     return order
 end
 
--- Returns the trip: { { goal, point, leg, cum }, ..., dropped = { text } }
+-- Pure: loops among the steps' deps (a waits for b, b waits for a: no order
+-- can keep both). Each loop is broken at one dep, the same one every time
+-- (steps and their deps are walked in key order): the dep that closes it.
+-- -> broken ({ [key] = { [dep] = true } }, or nil), loops ({ { key, dep, ..., key } }).
+function P.FindCycles(stops)
+    local deps, keys = {}, {}
+    for _, s in ipairs(stops or NONE) do
+        if not deps[s.key] then deps[s.key] = {}; keys[#keys + 1] = s.key end
+    end
+    for _, s in ipairs(stops or NONE) do
+        local list = deps[s.key]
+        for _, d in ipairs(s.goal.deps or NONE) do
+            if deps[d] then
+                local has = false
+                for _, x in ipairs(list) do if x == d then has = true end end
+                if not has then list[#list + 1] = d end
+            end
+        end
+    end
+    table.sort(keys)
+    for _, list in pairs(deps) do table.sort(list) end
+    local state, stack, broken, loops = {}, {}, nil, {}
+    local function visit(k)
+        state[k] = 1
+        stack[#stack + 1] = k
+        for _, d in ipairs(deps[k]) do
+            if state[d] == 1 then
+                local loop, on = {}, false
+                for _, x in ipairs(stack) do
+                    if x == d then on = true end
+                    if on then loop[#loop + 1] = x end
+                end
+                loop[#loop + 1] = d
+                loops[#loops + 1] = loop
+                broken = broken or {}
+                broken[k] = broken[k] or {}
+                broken[k][d] = true
+            elseif not state[d] then
+                visit(d)
+            end
+        end
+        stack[#stack] = nil
+        state[k] = 2
+    end
+    for _, k in ipairs(keys) do if not state[k] then visit(k) end end
+    return broken, loops
+end
+
+-- Pure: every dep the order breaks (a step planned before one it waits for),
+-- flagged on its entry (entry.outOfOrder = { dep, ... }) and listed on the
+-- plan (plan.outOfOrder = { { key, dep, why = "loop" | "forced", text } }).
+-- An order is never wrong in silence. byKey: key -> goal, for the names.
+function P.FlagOrder(plan, order, broken, byKey)
+    local first, last = {}, {}
+    for i, s in ipairs(order) do
+        first[s.key] = first[s.key] or i
+        last[s.key] = i
+    end
+    local function name(key)
+        local g = byKey and byKey[key]
+        return g and (g.text or g.title) or tostring(key)
+    end
+    for _, e in ipairs(plan) do
+        local key = e.goal.key
+        for _, dep in ipairs(e.goal.deps or NONE) do
+            if first[key] and last[dep] and last[dep] > first[key] then
+                local loop = broken and broken[key] and broken[key][dep]
+                e.outOfOrder = e.outOfOrder or {}
+                e.outOfOrder[#e.outOfOrder + 1] = dep
+                plan.outOfOrder = plan.outOfOrder or {}
+                plan.outOfOrder[#plan.outOfOrder + 1] = {
+                    key = key, dep = dep, why = loop and "loop" or "forced",
+                    text = string.format("%s comes before %s, which it waits for (%s)", name(key), name(dep),
+                        loop and "each waits for the other: a loop in the steps' data" or "the step you chose goes first"),
+                }
+            end
+        end
+    end
+    return plan
+end
+
+local lastFlags   -- (what was last logged, so a replan doesn't repeat it)
+
+-- Returns the trip: { { goal, point, leg, cum }, ..., dropped = { text },
+-- loops = { { key, ... } } (P.FindCycles), outOfOrder (P.FlagOrder) }
 function P:Plan(p, goals, opts)
     OPT = {}   -- (a copy: the area rule adds to it)
     for k, v in pairs(opts or {}) do OPT[k] = v end
@@ -626,6 +731,8 @@ function P:Plan(p, goals, opts)
     local stops = candidates(p, goals)
     if #stops == 0 then return nil end
     if OPT.groups ~= false and P.GroupsOn() then expand(p, stops) end
+    local loops
+    OPT.broken, loops = P.FindCycles(stops)
     local order = build(p, stops)
     -- Finish this area: if the best trip leaves the area before it's done,
     -- plan one that doesn't, and keep that unless it costs a lot more.
@@ -661,6 +768,16 @@ function P:Plan(p, goals, opts)
         end
         if s.visit then plan.hops[#plan.hops + 1] = { key = s.key, wx = s.gx, wy = s.gy, visit = s.visit } end
     end
+    local byKey = {}
+    for _, s in ipairs(stops) do byKey[s.key] = s.goal end
+    if #loops > 0 then plan.loops = loops end
+    P.FlagOrder(plan, order, OPT.broken, byKey)
+    local flags = {}
+    for _, l in ipairs(loops) do flags[#flags + 1] = "loop: " .. table.concat(l, " > ") end
+    for _, o in ipairs(plan.outOfOrder or NONE) do flags[#flags + 1] = o.text end
+    local sig = table.concat(flags, "; ")
+    if sig ~= "" and sig ~= lastFlags and ns.Log then ns:Log("route", "order: " .. sig) end
+    lastFlags = sig
     nearPt, nearD = {}, {}
     return plan
 end

@@ -4174,6 +4174,10 @@ local function showPanel()
         if N.plan.dropped and #N.plan.dropped > 0 then
             lines[#lines + 1] = "|cff888888Skipped as too far out of the way: " .. table.concat(N.plan.dropped, ", ") .. "|r"
         end
+        -- A step planned before one it waits for (a loop, or your pick): said, never silent (Planner.lua).
+        for _, o in ipairs(N.plan.outOfOrder or {}) do
+            lines[#lines + 1] = "|cffff8040Out of order:|r |cff888888" .. o.text .. "|r"
+        end
     end
     -- Things to pick up as you go, never a detour of their own.
     if N.alongGoals and #N.alongGoals > 0 then
