@@ -536,7 +536,7 @@ local function fillTooltip(tt)
     end
     local key = cfg().key
     tt:AddLine(key and ("Key: " .. ((GetBindingText and GetBindingText(key, "KEY_", true)) or key))
-        or "No key yet: /flow buffkey <key>", 0.8, 0.8, 0.8)
+        or "No key yet: /flow selfkey <key>", 0.8, 0.8, 0.8)
     if BB.handle then
         tt:AddLine("Hold Ctrl: drag to move it, turn the mouse wheel to resize it.", 0.6, 0.6, 0.6)
     end
@@ -972,14 +972,14 @@ if ns.settings and ns.settings.AddCheck then
     ns.settings:AddCheck({
         group = "key",
         label = "Self button beside Flow's icon",
-        note = "(own key: /flow buffkey <key>)",
+        note = "(own key: /flow selfkey <key>)",
         tip = "Your buffs (auras, aspects, blessings, party buffs), weapon stones and oils, your bandage and "
             .. "food after a fight, and the campfire steps (place, sit) go on a "
             .. "separate blue button left of Flow's icon, so Flow's key only does your fight: damage, heals, "
             .. "cleanses, plus seals, shouts, shields and Hunter's Mark. Out of combat it's always there and "
             .. "shows your next buff (the one due, else the one running out first, with its time left), all of "
             .. "it faded until a fight is near (an enemy targeted, a kill step, just after "
-            .. "a fight), so you can use it when you choose (hover it for why). Give it its own key with /flow buffkey Q. In a fight "
+            .. "a fight), so you can use it when you choose (hover it for why). Give it its own key with /flow selfkey Q. In a fight "
             .. "it keeps the buff you last cast from it and lights up when that buff runs out. Off: all of it "
             .. "goes back on Flow's icon and key.",
         get = function() return BB.On() end,
@@ -1019,8 +1019,8 @@ ns.commands.buffbutton = function(arg)
     end
     arg = (arg or ""):lower()
     if arg == "on" or arg == "off" then BB.Set(arg == "on") end
-    ns:Print("self button: " .. (BB.On() and "on" or "off") .. " (/flow buffbutton on|off)")
-    print("  key: " .. (cfg().key or "none (/flow buffkey <key>)"))
+    ns:Print("self button: " .. (BB.On() and "on" or "off") .. " (/flow selfbutton on|off)")
+    print("  key: " .. (cfg().key or "none (/flow selfkey <key>)"))
     print("  shows now: " .. (current and describe(current) or "nothing"))
     print("  held for fights: " .. tostring(lastCast or "nothing cast from it yet"))
 end
@@ -1028,7 +1028,7 @@ end
 ns.commands.buffkey = function(arg)
     arg = (arg or ""):gsub("%s+", ""):upper()
     if arg == "" then
-        ns:Print("self button key: " .. (cfg().key or "none") .. "  (/flow buffkey Q sets it, /flow buffkey off clears it)")
+        ns:Print("self button key: " .. (cfg().key or "none") .. "  (/flow selfkey Q sets it, /flow selfkey off clears it)")
         return
     end
     if arg == "OFF" then cfg().key = nil
@@ -1053,7 +1053,7 @@ end
 ns.commands.buffkey2 = function(arg)
     arg = (arg or ""):gsub("%s+", ""):upper()
     if arg == "" then
-        ns:Print("self button's second key: " .. (cfg().key2 or "none") .. "  (/flow buffkey2 R sets it, /flow buffkey2 off clears it)")
+        ns:Print("self button's second key: " .. (cfg().key2 or "none") .. "  (/flow selfkey2 R sets it, /flow selfkey2 off clears it)")
         return
     end
     if InCombatLockdown() then ns:Print("key bindings can't change in a fight") return end

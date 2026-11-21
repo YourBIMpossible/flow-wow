@@ -215,3 +215,24 @@ ns:Register("test", "click: the short, still intro box turns the spinning off an
     db.short = was
     if not ok then error(err, 0) end
 end)
+
+ns:Register("test", "words: the self button is called the self button, not the buff button", function(t)
+    -- F-093: "Self button", "buff button"/"buff key" and "blue button" named one control.
+    local said = {}
+    local function scan(where, text)
+        if type(text) ~= "string" then return end
+        local l = text:lower()
+        if l:find("buff key", 1, true) or l:find("buff button", 1, true) or l:find("/flow buff", 1, true) then
+            said[#said + 1] = where .. ": " .. text
+        end
+    end
+    local items = ns.menu and ns.menu.ButtonItems and ns.menu.ButtonItems() or {}
+    for _, it in ipairs(items) do scan("menu", it.text); scan("menu tip", it.tip) end
+    t:ok(items[1] and items[1].tip:find("self button", 1, true) ~= nil, "the menu's tip names it")
+    local K = ns.careKeys
+    if K and K.Lines then
+        local ok, lines = pcall(K.Lines)
+        if ok then for _, l in ipairs(lines) do scan("/flow carekeys", l) end end
+    end
+    t:eq(said[1], nil, "no other name for it")
+end)
