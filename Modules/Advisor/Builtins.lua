@@ -296,18 +296,9 @@ ns:Register("advisor", "professions", {
     check = function()
         local out = {}
         local level = UnitLevel("player")
-        -- Targets from the levelling guide: 75 by 10, 125 by 20, 175 by 30,
-        -- 200 by 35, 225 by 40, 275 by 50, 300 by 60 (straight line in between).
-        local marks = { { 1, 1 }, { 10, 75 }, { 20, 125 }, { 30, 175 }, { 35, 200 },
-                        { 40, 225 }, { 50, 275 }, { 60, 300 } }
-        local target = 300
-        for i = 2, #marks do
-            local a, b = marks[i - 1], marks[i]
-            if level <= b[1] then
-                target = math.floor(a[2] + (b[2] - a[2]) * (level - a[1]) / (b[1] - a[1]))
-                break
-            end
-        end
+        -- The target: the cap of the highest tier you can train at your level,
+        -- from what trainers showed Flow (Compat A.ProfessionTarget).
+        local target = ns.api.ProfessionTarget(level)
         local primaries = 0
         local skills, collapsed = professionSkills()
         for _, p in ipairs(skills) do
@@ -323,7 +314,7 @@ ns:Register("advisor", "professions", {
                     improves = { "Professions" }, goalKey = "train:" .. p.name }
             elseif not p.unsure and p.rank + 15 < (ns.skillPlan and ns.skillPlan.Pace(p.name, level) or target) then
                 out[#out + 1] = { importance = 30,
-                    text = string.format("%s is %d; aim for about %d at level %d", p.name, p.rank, ns.skillPlan and ns.skillPlan.Pace(p.name, level) or target, level),
+                    text = string.format("%s is %d; aim for %d at level %d (the highest cap you can train)", p.name, p.rank, ns.skillPlan and ns.skillPlan.Pace(p.name, level) or target, level),
                     improves = { "Professions" }, goalKey = "skill:" .. p.name }
             end
         end
@@ -342,7 +333,7 @@ ns:Register("advisor", "professions", {
         end
         if primaries == 0 and level >= 5 and not collapsed then
             out[#out + 1] = { importance = 40,
-                text = "No professions yet: see the professions page in your leveling guide",
+                text = "No professions yet: a profession trainer teaches one",
                 improves = { "Gold", "Gear" } }
         end
         return out

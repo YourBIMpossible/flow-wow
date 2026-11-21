@@ -398,3 +398,26 @@ ns:Register("test", "professions: a recipe seen only in the window plans from th
     local _, order, reaches, _, reached = SP._simulate("X__test", {}, 10, 20, {})
     t:eq(#order, 0, "no recipes: nothing to make"); t:ok(not reaches, "doesn't reach"); t:eq(reached, 10, "stays at 10")
 end)
+
+-------------------------------------------------------------------------------
+-- W4d: the skill to aim for at your level is a tier cap, from the level each
+-- tier asks as trainers showed Flow; no level-by-level curve from a guide.
+-------------------------------------------------------------------------------
+
+ns:Register("test", "professions: the level target is the highest tier cap the trainers' levels allow", function(t)
+    local PT = ns.api.ProfessionTarget
+    local target, unknown = PT(30, {})
+    t:eq(target, 75, "nothing read at a trainer: Apprentice's cap")
+    t:eq(unknown, 75, "and what's past 75 is unknown")
+    local seen = { Herbalism = { cap = 75, level = 0 }, Mining = { cap = 150, level = 20 } }
+    target, unknown = PT(10, seen)
+    t:eq(target, 150, "Journeyman asks no level: 150 at 10")
+    t:eq(unknown, nil, "Expert's level is known (20), just not met")
+    target, unknown = PT(25, seen)
+    t:eq(target, 225, "Expert asks 20: 225 at 25")
+    t:eq(unknown, 225, "Artisan's level never read: unknown past 225")
+    t:eq((PT(25, { Mining = { cap = 150, level = 20 } })), 75, "Journeyman's level unknown: no climb past 75")
+    t:eq((PT(60, { A = { cap = 75, level = 0 }, B = { cap = 150, level = 20 }, C = { cap = 225, level = 35 } })), 300, "all read and met: 300")
+    t:eq((PT(60, { A = { cap = 75 } })), 75, "a read with no level is not a level")
+end)
+

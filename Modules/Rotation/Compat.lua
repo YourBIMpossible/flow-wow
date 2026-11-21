@@ -274,18 +274,32 @@ function A.StanceSpells()
     return out
 end
 
--- Where a profession should be at your level (from the levelling guide):
--- 75 by 10, 125 by 20, 175 by 30, 200 by 35, 225 by 40, 275 by 50, 300 by 60.
-function A.ProfessionTarget(level)
-    local marks = { { 1, 1 }, { 10, 75 }, { 20, 125 }, { 30, 175 }, { 35, 200 },
-                    { 40, 225 }, { 50, 275 }, { 60, 300 } }
-    for i = 2, #marks do
-        local a, b = marks[i - 1], marks[i]
-        if level <= b[1] then
-            return math.floor(a[2] + (b[2] - a[2]) * (level - a[1]) / (b[1] - a[1]))
+-- The skill a profession can reach at your level: the cap of the highest
+-- tier you can train at it. Tier caps: Apprentice 75, Journeyman 150, Expert
+-- 225, Artisan 300. The character level each tier asks is only what a
+-- profession trainer showed Flow (Trainer.lua, ns.db.prof.tierSeen: { cap,
+-- level } read for the tier after `cap`; level 0 = no level asked); any
+-- profession's trainer counts, as they ask alike. A tier whose level Flow
+-- hasn't read stops the climb: what lies past it is unknown.
+--   seenAll: { [profession] = { cap, level } } (default ns.db.prof.tierSeen)
+--   -> target skill, and the cap whose next tier's level is unknown (or nil)
+A.PROFESSION_CAPS = { 75, 150, 225, 300 }
+function A.ProfessionTarget(level, seenAll)
+    seenAll = seenAll or (ns.db and ns.db.prof and ns.db.prof.tierSeen) or {}
+    level = tonumber(level) or 0
+    local caps, target = A.PROFESSION_CAPS, A.PROFESSION_CAPS[1]
+    for i = 2, #caps do
+        local asks
+        for _, s in pairs(seenAll) do
+            if type(s) == "table" and s.cap == caps[i - 1] and tonumber(s.level) then
+                asks = math.max(asks or 0, tonumber(s.level))
+            end
         end
+        if asks == nil then return target, target end
+        if level < asks then return target, nil end
+        target = caps[i]
     end
-    return 300
+    return target, nil
 end
 
 -- Skill rank and max from the skills window; nil if you don't have it.

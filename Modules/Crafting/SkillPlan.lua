@@ -644,8 +644,9 @@ end) end)
 -------------------------------------------------------------------------------
 
 
--- The skill that's right for your level, per profession. Crafting keeps pace
--- with the general curve (75 by level 10, 300 by 60). A profession can give
+-- The skill that's right for your level, per profession. Crafting aims for
+-- the cap of the highest tier you can train (A.ProfessionTarget, from what
+-- trainers showed Flow). A profession can give
 -- its own `pace` (level -> skill) when the general curve asks too much:
 -- Fishing only needs to keep up with the water you'll be fishing in.
 function SP.Pace(prof, level)
