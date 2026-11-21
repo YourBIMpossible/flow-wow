@@ -126,9 +126,31 @@ end
 ns:OnLoad(function(saved)
     saved.gear.setRoles = saved.gear.setRoles or {}
 end)
--- Equipment sets are per character. Old roles are kept: they only apply to a
--- set of that name, which only its own character has.
-ns:PerCharacter("gear.setRoles", { adopt = function(old) return old end })
+-- Pure: the old (pre-split, shared) role choices that name one of this
+-- character's own sets, added to what it has chosen since; nil = none (F-013).
+function S.AdoptSetRoles(old, names, current)
+    local have, out, any = {}, {}, false
+    for _, n in ipairs(names or {}) do have[n] = true end
+    for role, name in pairs(current or {}) do out[role] = name; any = true end
+    for role, name in pairs(old or {}) do
+        if out[role] == nil and have[name] then out[role] = name; any = true end
+    end
+    return any and out or nil
+end
+
+-- Equipment sets are per character: an alt keeps only the old roles that
+-- name a set it has (another character's "Tank" set isn't its own). At
+-- login, once the game can list its sets; no sets listed yet = try again.
+ns:PerCharacter("gear.setRoles", { later = true, adopt = function(old, _, current)
+    if not S:HasEquipmentManager() then return nil end
+    local names = {}
+    for _, id in ipairs(C_EquipmentSet.GetEquipmentSetIDs() or {}) do
+        local name = C_EquipmentSet.GetEquipmentSetInfo(id)
+        if name then names[#names + 1] = name end
+    end
+    if #names == 0 then return false end
+    return S.AdoptSetRoles(old, names, current)
+end })
 
 for _, ev in ipairs({ "PLAYER_ENTERING_WORLD", "EQUIPMENT_SETS_CHANGED",
                       "PLAYER_EQUIPMENT_CHANGED", "BAG_UPDATE_DELAYED" }) do

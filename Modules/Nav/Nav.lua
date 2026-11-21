@@ -4961,8 +4961,9 @@ end)
 
 -- Per character: the steps you hid, money-blocked steps, your Custom route
 -- pick. (Trails, cave entrances and settings stay shared: they're the same
--- for everyone.) Steps hidden before the split stay hidden for everyone.
-ns:PerCharacter("nav.hidden", { adopt = function(old) return old end })
+-- for everyone.) Steps hidden before the split stay hidden for the character
+-- loaded then; other characters start with none hidden (F-013).
+ns:PerCharacter("nav.hidden", { once = true, adopt = function(old) return old end })
 ns:PerCharacter("nav.deferred")
 ns:PerCharacter("nav.selectedKey")
 -- How many steps the map and the Flow Tracker show: each character's own, so

@@ -155,12 +155,26 @@ local function rules()
     return sorted
 end
 
--- The rules' verdict for a described item (kept under `key`).
-local function verdictFor(item, key)
-    local list = rules()
+-- A rule that errors fails safe (F-010): the item is kept, not passed on to
+-- a later rule that might sell it, and the error goes to the diagnostics
+-- log once per rule per session. D.ruleFailed: rule key -> error (tests).
+D.ruleFailed = {}
+function D.RuleError(key, err)
+    if not D.ruleFailed[key] and ns.Log and ns.db and ns.db.diag then
+        D.ruleFailed[key] = tostring(err)
+        ns:Log("error", "disposition rule '" .. tostring(key) .. "' failed: " .. tostring(err))
+    end
+    return { action = "keep", reason = "a Flow check failed (" .. tostring(key) .. "), so it's kept" }
+end
+
+-- The rules' verdict for a described item (kept under `key` when given;
+-- list = the rules to check, all of them by default).
+local function verdictFor(item, key, list)
+    list = list or rules()
     for idx, e in ipairs(list) do
         local ok, v = pcall(e.r.check, item)
-        if ok and v then
+        if not ok then v = D.RuleError(e.key, v) end
+        if v then
             v.rule = e.key
             v.item = item
             -- Keeping it: list every reason, not just the first (Linen Cloth
@@ -181,14 +195,16 @@ local function verdictFor(item, key)
                 v.reasons = reasons
                 v.reason = table.concat(reasons, "; ")
             end
-            cache[key] = v
+            if key then cache[key] = v end
             return v
         end
     end
     local v = { action = "keep", reason = "no rule matched", item = item }
-    cache[key] = v
+    if key then cache[key] = v end
     return v
 end
+-- (Tests: a verdict from a given rule list, nothing cached.)
+function D.VerdictFrom(item, list) return verdictFor(item, nil, list) end
 
 -- Verdict for the item in a bag slot (cached per link + bound state).
 function D:Decide(bag, slot, link)
@@ -241,9 +257,10 @@ ns:OnLoad(function(saved)
     saved.sell = saved.sell or {}
     saved.sell.never = saved.sell.never or {}
 end)
--- Items you bought back: per character. The old shared list is kept for
--- every character (it only ever stops a sale).
-ns:PerCharacter("sell.never", { adopt = function(old) return old end })
+-- Items you bought back: per character. The old shared list goes to the
+-- character loaded when it was parked; other characters start their own
+-- (F-013: one character's buybacks aren't an alt's).
+ns:PerCharacter("sell.never", { once = true, adopt = function(old) return old end })
 
 -- Your own choice for an item (0.35.343): "sell" or "keep", whatever Flow's
 -- rules say. "Should we have a way to set 'sell this item', just like we
@@ -678,14 +695,33 @@ function D:BestConsumableTier(kind)
     end
     return best
 end
+-- Pure (F-004): outgrown food or drink to sell, or nil. Well Fed food is
+-- never "outgrown" (the buff-food logic eats it for the buff, not the heal);
+-- food whose tooltip isn't read yet (buffFood nil) isn't sold either.
+function D.OutgrownVerdict(kind, minLevel, best, buffFood)
+    if not (kind and best and (minLevel or 0) + TIER_STEP <= best) then return nil end
+    if kind == "food" and buffFood ~= false then return nil end
+    return { action = "sell", reason = string.format("outgrown: you carry %d+ better %s", KEEP_BETTER, kind) }
+end
+-- Well Fed food, from the tooltip: true / false, nil = not readable yet.
+local function wellFed(link)
+    local BI = ns.buffItems
+    if not (link and BI and BI.IsBuffFood and ns.gear and ns.gear.TooltipLines) then return nil end
+    local ok, lines = pcall(ns.gear.TooltipLines, ns.gear, link)
+    if not ok or type(lines) ~= "table" or #lines == 0 then return nil end
+    local text = {}
+    for _, l in ipairs(lines) do text[#text + 1] = type(l) == "table" and l.left or l end
+    return BI.IsBuffFood(text)
+end
+
 reg("outgrownConsumable", 22, function(i)
     if i.classID ~= 0 or not i.id then return nil end
     local kind = consumableKind(i.id)
     if not kind then return nil end
     local best = D:BestConsumableTier(kind)
-    if best and (i.minLevel or 0) + TIER_STEP <= best then
-        return { action = "sell", reason = string.format("outgrown: you carry %d+ better %s", KEEP_BETTER, kind) }
-    end
+    local buffFood
+    if kind == "food" then buffFood = wellFed(i.link) end
+    return D.OutgrownVerdict(kind, i.minLevel, best, buffFood)
 end)
 
 -- Only another class can use it (0.35.270). "I have a ton of these mage
@@ -837,10 +873,51 @@ reg("laterOrOtherRole", 40, function(i)
     end
 end)
 
--- Unneeded gear: disenchant if you can, auction if it's worth more there,
--- otherwise vendor.
+-- Pure: true when the class data has stat weights for at least one role, so
+-- Flow can tell better gear from worse (F-001).
+function D.ClassScored(d)
+    if not (d and type(d.weights) == "table") then return false end
+    for _, w in pairs(d.weights) do
+        if type(w) == "table" and next(w) ~= nil then return true end
+    end
+    return false
+end
+
+-- Pure: gear your class can wear (or train for) but Flow can't score for
+-- your class is kept, never sold as "not better" (every score would be 0).
+function D.UnscoredGearVerdict(gear, scored)
+    if scored or not gear then return nil end
+    if gear.canUse or gear.needsTraining then
+        return { action = "keep", reason = "Flow can't score gear for your class yet, so it's kept: decide yourself" }
+    end
+end
+
+reg("unscoredClass", 45, function(i)
+    return D.UnscoredGearVerdict(i.gear, D.ClassScored(ns:ClassData()))
+end)
+
+-- Pure (F-003): a seen auction price clearly worth more than disenchanting.
+-- Flow has no price for the dust and shards an item gives, so "clearly" is a
+-- stated margin: after the cut and the fee, at least AH_OVER_DE times the
+-- vendor price and at least AH_OVER_DE_MIN copper (1 gold).
+D.AH_OVER_DE, D.AH_OVER_DE_MIN = 3, 10000
+function D.AuctionBeatsDisenchant(ahPrice, vendorPrice)
+    if type(ahPrice) ~= "number" or ahPrice <= 0 then return false end
+    vendorPrice = vendorPrice or 0
+    local net = ahPrice * (1 - D.AH_CUT) - vendorPrice * D.AH_FEE
+    return net >= vendorPrice * D.AH_OVER_DE and net >= D.AH_OVER_DE_MIN
+end
+
+-- Unneeded gear: disenchant if you can (unless a seen auction price is
+-- clearly worth more), auction if it's worth more there, otherwise vendor.
 reg("unneededGear", 50, function(i)
     if ns.api.Skill("Enchanting") and i.quality >= 2 then
+        local ah = i.bound == false and D:AuctionPrice(i.link) or nil
+        if ah and D.AuctionBeatsDisenchant(ah, i.sellPrice) then
+            return { action = "ah", ahCandidate = true,
+                     reason = string.format("tradeable gear; about %s at the auction house, worth more than disenchanting",
+                         (ns.auction and ns.auction.Money or ns.Money)(math.floor(ah))) }
+        end
         return { action = "de", reason = "you can disenchant it" }
     end
     if i.bound == false and i.quality >= 3 and not D:AuctionPrice(i.link) then
