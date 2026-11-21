@@ -176,3 +176,19 @@ ns:Register("test", "dungeons: a quest Flow can't check is unknown, kept, and ra
     ctx.eligible = function() return false, "needs Mining" end
     t:eq(D.State({ Id = 9003, name = "Mining quest", level = 18 }, ctx), "notforyou", "a definite no: not for you")
 end)
+
+-------------------------------------------------------------------------------
+-- F-046: a member ready to hand in is told to, though you have the quest too.
+-------------------------------------------------------------------------------
+
+ns:Register("test", "party quests: a member ready to hand in keeps their turn-in, though you're not ready", function(t)
+    local H = ns.partyHelp
+    local mineNotReady = { [86] = { complete = false, objectives = { { finished = false } } } }
+    local mineReady = { [86] = { complete = true, objectives = { { finished = true } } } }
+    local theirsReady = { complete = true, objectives = { { finished = true } } }
+    local theirsNot = { complete = false, objectives = { { finished = false } } }
+    t:ok(not H.Skip("help:86:done", mineNotReady, theirsReady), "they're ready, you aren't: their turn-in stays")
+    t:ok(H.Skip("help:86:done", mineReady, theirsReady), "both ready: your own turn-in covers the trip")
+    t:ok(H.Skip("help:86:done", mineNotReady, theirsNot), "neither ready: your own turn-in covers it")
+    t:ok(not H.Skip("help:90:done", mineNotReady, theirsReady), "a quest only they have: theirs stays")
+end)
