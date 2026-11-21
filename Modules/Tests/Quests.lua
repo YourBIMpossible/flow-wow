@@ -294,3 +294,58 @@ ns:Register("test", "dungeons: the entrance step says Flow can't check attunemen
     t:ok(D.ENTRY_UNKNOWN:find("keys") ~= nil, "it names keys")
     t:eq(#D.EntranceDetails({ count = 1 }, 0, {}), 2, "no pickups, all placed: the count and the warning")
 end)
+
+-------------------------------------------------------------------------------
+-- F-032 / F-033 / F-048: one travel cost for pruning, the shown yards, the
+-- profession route and the dungeon prep detour.
+-------------------------------------------------------------------------------
+
+ns:Register("test", "route: an optional detour a flight makes cheap is kept, and the shown yards are the travel yards", function(t)
+    local P = ns.planner
+    local p = { cont = 0, wx = 0, wy = 0 }
+    local A = { key = "w2:a", text = "a", points = { { cont = 0, wx = 100, wy = 0 } } }
+    local O = { key = "w2:o", text = "o", optional = true, points = { { cont = 0, wx = 3000, wy = 0 } } }
+    local oPt = O.points[1]
+    local air = function(a, b) if a == oPt or b == oPt then return 50 end end
+    local plan = P:Plan(p, { A, O }, { groups = false })
+    t:eq(plan and #plan, 1, "no flights: the far optional step is dropped")
+    t:eq(plan and plan.dropped and plan.dropped[1], "o", "and named as dropped")
+    plan = P:Plan(p, { A, O }, { groups = false, air = air })
+    t:eq(plan and #plan, 2, "a flight makes it a short detour: kept (prune counts the planner's own yards)")
+    -- The shown yards: the travel yards the order was chosen by; leg stays straight.
+    local flyTo = { cont = 0, wx = 3000, wy = 0 }
+    local forge = { key = "w2:smelt", text = "smelt", points = { flyTo } }
+    plan = P:Plan(p, { forge }, { groups = false, air = function(_, b) if b == flyTo then return 500 end end })
+    t:eq(plan and math.floor(plan[1].trip + 0.5), 500, "trip: the flight's yards")
+    t:eq(plan and math.floor(plan[1].tripCum + 0.5), 500, "tripCum adds them up")
+    t:eq(plan and math.floor(plan[1].leg + 0.5), 3000, "leg: still the straight line")
+    -- One public answer for other panels, same as the optimiser's.
+    t:eq(P.TravelYards(p, flyTo, { air = function() return 500 end }), 500, "TravelYards: the planner's far()")
+    t:eq(P.TravelYards(p, flyTo, { air = function() error("x") end }), 3000, "a failing lookup: the straight line")
+    t:eq(P.TravelYards(p, flyTo, nil), 3000, "no options: the straight line")
+end)
+
+ns:Register("test", "route: the travel options are one table for every route, the quest route's extras on top", function(t)
+    local N = ns.nav
+    local o = N.TravelOptions()
+    t:eq(type(o), "table", "a table")
+    t:eq(o.first, nil, "no quest-route fields in the shared part")
+    t:eq(o.tour, nil, "(no tour)")
+end)
+
+ns:Register("test", "dungeons: the prep detour is charged by the travel cost given, and the run's worth includes it", function(t)
+    local D = ns.dungeons
+    local from = { cont = 1, wx = 0, wy = 0 }
+    local stops = { { cont = 1, wx = 3000, wy = 0 } }
+    local entrance = { cont = 1, wx = 3000, wy = 0 }
+    local straight = D.GatherMinutes(from, stops, entrance)
+    local flown = D.GatherMinutes(from, stops, entrance, function(a) return a == from and 300 or 0 end)
+    t:ok(flown < straight, "a flight shortens the gathering")
+    t:near(flown, D.STOP_MINUTES + 300 / D.RUN_SPEED / 60, 1e-6, "by exactly the travel yards given")
+    t:near(D.GatherMinutes(from, stops, entrance, function() error("x") end), straight, 1e-6, "a failing cost: the straight line")
+    local far = D.GatherMinutes(from, { { cont = 2, wx = 0, wy = 0 } }, nil, function() return 1 end)
+    t:near(far, D.STOP_MINUTES + 1500 / D.RUN_SPEED / 60, 1e-6, "another continent stays a long trip")
+    local run = { quests = {}, levels = {}, leadIns = {} }
+    local w = D.Worth(run, { level = 20, rate = 1000, runMinutes = 30, gatherMinutes = 10, estimate = function() return 0 end, share = function() return 1 end })
+    t:eq(w.minutes, 40, "worth: the gathering minutes are part of the run's time")
+end)

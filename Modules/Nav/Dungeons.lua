@@ -328,13 +328,18 @@ function D.NearStops(cands, stops, radius)
     return out
 end
 
--- Minutes to gather the pickups on foot, nearest first, ending at the
--- entrance. from, steps, entrance: { cont, wx, wy } (world yards); another
--- continent counts as a long trip.
-function D.GatherMinutes(from, stops, entrance)
+-- Minutes to gather the pickups, nearest first, ending at the entrance.
+-- from, steps, entrance: { cont, wx, wy } (world yards); another continent
+-- counts as a long trip. far(a, b): travel yards on one continent (the
+-- route's own cost, Planner.TravelYards); the straight line without it.
+function D.GatherMinutes(from, stops, entrance, far)
     local function dist(a, b)
         if not (a and b) then return 0 end
         if a.cont ~= b.cont then return 1500 end
+        if far then
+            local ok, y = pcall(far, a, b)
+            if ok and type(y) == "number" then return y end
+        end
         local dx, dy = a.wx - b.wx, a.wy - b.wy
         return math.sqrt(dx * dx + dy * dy)
     end
@@ -844,7 +849,7 @@ end
 local function world(p)
     if not (p and ns.nav and ns.nav.ToWorld) then return nil end
     local cont, wx, wy = ns.nav:ToWorld(p.map, p.x, p.y)
-    return cont and { cont = cont, wx = wx, wy = wy } or nil
+    return cont and { cont = cont, wx = wx, wy = wy, map = p.map, x = p.x, y = p.y } or nil
 end
 
 -- The run's entrance: the wing's own door, else the nearest of the dungeon's.
@@ -947,8 +952,14 @@ local function compute()
     D.finished = finished
     local rate, estimated = D.QuestingRate()
     local here = ns.nav and ns.nav:PlayerPos()
-    local from = here and { cont = here.cont, wx = here.wx, wy = here.wy }
+    local from = here and { cont = here.cont, wx = here.wx, wy = here.wy, map = here.map, x = here.x, y = here.y }
     local times = charData("dungeonTimes")
+    -- The prep detour by the route's own travel cost (flights, gates), not the crow's.
+    local travel
+    if ns.planner and ns.planner.TravelYards and ns.nav and ns.nav.TravelOptions then
+        local okOpts, opts = pcall(ns.nav.TravelOptions)
+        if okOpts and opts then travel = function(a, b) return ns.planner.TravelYards(a, b, opts) end end
+    end
     for _, run in ipairs(out) do
         run.entrance = entranceOf(run, from)
         local stops = {}
@@ -962,7 +973,7 @@ local function compute()
         end
         run.breadcrumbs = D.NearStops(breadcrumbsFor(run, ctx), stops, D.BREADCRUMB_YARDS)
         for _, b in ipairs(run.breadcrumbs) do stops[#stops + 1] = b.at end
-        run.gatherMinutes = from and D.GatherMinutes(from, stops, world(run.entrance)) or #stops * D.STOP_MINUTES
+        run.gatherMinutes = from and D.GatherMinutes(from, stops, world(run.entrance), travel) or #stops * D.STOP_MINUTES
         local t = times[run.dungeon]
         run.runMinutes = (t and t.avg) or D.RUN_MINUTES
         run.worth = D.Worth(run, { level = level, rate = rate, runMinutes = run.runMinutes,

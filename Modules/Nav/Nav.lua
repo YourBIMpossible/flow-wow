@@ -3431,7 +3431,16 @@ function N:Options(sel)
     if p and ns.hearth and ns.hearth.BeforeTrips and ns.travelSpells then
         pcall(ns.hearth.BeforeTrips, goals, function(pt) return ns.travelSpells.Spell(p, pt) ~= nil end)
     end
-    return { first = first, tour = tour, here = here, away = away, air = N.PlanAir(), walk = ns.gates and ns.gates.PlanWalk() or nil,
+    local o = N.TravelOptions()
+    o.first, o.tour, o.here, o.away = first, tour, here, away
+    return o
+end
+
+-- The travel functions every route plans by (Planner far()): flights, gates,
+-- travel spells, rides and the trips you've made. The quest, profession and
+-- dungeon choices all take these, so they name the same fastest way.
+function N.TravelOptions()
+    return { air = N.PlanAir(), walk = ns.gates and ns.gates.PlanWalk() or nil,
              port = ns.travelSpells and ns.travelSpells.PlanPort() or nil,
              ride = ns.rides and ns.rides.PlanRide() or nil,
              -- (Trips you've made, and how long they took: Legs.lua.)
@@ -3569,7 +3578,7 @@ local function chooseProf(p)
     local moved = not N.profPos or N.profPos.cont ~= p.cont
         or dist(p.wx, p.wy, N.profPos.wx, N.profPos.wy) > 30
     if N.profDirty or not profPlan or (now - profPlanAt > 8 and moved) or now - profPlanAt > 60 then
-        local ok, result = pcall(ns.planner.Plan, ns.planner, p, list, {})
+        local ok, result = pcall(ns.planner.Plan, ns.planner, p, list, N.TravelOptions())
         profPlan = ok and result or nil
         if not ok then N.lastError = "profession route: " .. tostring(result) end
         profPlanAt, N.profDirty = now, false
@@ -4170,13 +4179,13 @@ local function showPanel()
     if N.plan and #N.plan > 1 then
         lines[#lines + 1] = " "
         lines[#lines + 1] = string.format("|cffffd200Then|r |cff888888(%d steps, about %d yd)|r",
-            #N.plan - 1, N.plan[#N.plan].cum or 0)
+            #N.plan - 1, N.plan[#N.plan].tripCum or N.plan[#N.plan].cum or 0)
         local labels = N:PlanLabels(N.plan)
         for i, s in ipairs(N.plan) do
             if i > 1 then
                 if i > 10 then lines[#lines + 1] = "  ..."; break end
                 lines[#lines + 1] = "  " .. N:FormatStop(i, s.goal, labels[i])
-                    .. string.format(" |cff888888(+%d yd)|r", s.leg or 0)
+                    .. string.format(" |cff888888(+%d yd)|r", s.trip or s.leg or 0)
             end
         end
         if N.plan.dropped and #N.plan.dropped > 0 then
@@ -5201,7 +5210,7 @@ ns.commands.nav = function(arg)
         local labels = N:PlanLabels(N.plan or {})
         for i, s in ipairs(N.plan or {}) do
             if i > 25 then print("  ...") break end
-            print(string.format("  %s %s  +%d yd  [%s]", labels[i], s.goal.text or s.goal.title or "?", s.leg or 0, s.goal.key))
+            print(string.format("  %s %s  +%d yd  [%s]", labels[i], s.goal.text or s.goal.title or "?", s.trip or s.leg or 0, s.goal.key))
         end
         local p = N:PlayerPos()
         if p then print(string.format("  you: map %d at %.1f, %.1f", p.map, p.x * 100, p.y * 100)) end

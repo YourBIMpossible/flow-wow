@@ -119,6 +119,16 @@ local function far(a, b)
     end
     return d
 end
+-- The travel yards from a to b, by the planner's own cost (opts: the travel
+-- functions, N.TravelOptions()). One answer for every panel that compares trips.
+function P.TravelYards(a, b, opts)
+    local keep = OPT
+    OPT = opts or {}
+    local ok, d = pcall(far, a, b)
+    OPT = keep
+    if ok then return d end
+    return dist(a.wx, a.wy, b.wx, b.wy)
+end
 -- (for the tests)
 function P._Far(a, b, opts)
     local keep = OPT
@@ -387,18 +397,19 @@ local function expand(p, stops)
 end
 P._expand = function(p, stops) return expand(p, stops) end   -- (tests)
 
--- Walks an order from your position. Returns weighted cost, legs, points.
--- (The legs are straight yards, what the route shows; the cost counts flights.)
+-- Walks an order from your position. Returns weighted cost, legs, points,
+-- trips. (The legs are straight yards; the trips are the travel yards far()
+-- gives, flights, gates and all: what the optimiser counted, unweighted.)
 local function walk(p, order)
     local from, total = p, 0
-    local legs, pts = {}, {}
+    local legs, pts, trips = {}, {}, {}
     for i, s in ipairs(order) do
         local best, bd = nearest(from, s)
-        legs[i], pts[i] = dist(from.wx, from.wy, best.wx, best.wy), best
+        legs[i], pts[i], trips[i] = dist(from.wx, from.wy, best.wx, best.wy), best, bd
         total = total + bd * (s.goal.weight or 1)
         from = best
     end
-    return total, legs, pts
+    return total, legs, pts, trips
 end
 
 -- The same weighted cost, without the lists (the polish only needs this).
@@ -556,7 +567,8 @@ local function improve(p, order)
 end
 P._cost = function(p, order) nearPt, nearD = {}, {}; return cost(p, order) end   -- (tests)
 
--- Drop optional steps that add more than OPTIONAL_DETOUR yards.
+-- Drop optional steps that add more than OPTIONAL_DETOUR yards of travel (the
+-- same far() yards the optimiser uses: a detour a flight makes cheap stays).
 local function prune(p, order)
     local dropped = {}
     local i = 1
@@ -565,8 +577,8 @@ local function prune(p, order)
         if s.goal.optional and not forced(s.key) then
             local o = copy(order)
             table.remove(o, i)
-            local _, withLegs = walk(p, order)
-            local _, withoutLegs = walk(p, o)
+            local _, _, _, withLegs = walk(p, order)
+            local _, _, _, withoutLegs = walk(p, o)
             local with, without = 0, 0
             for _, l in ipairs(withLegs) do with = with + l end
             for _, l in ipairs(withoutLegs) do without = without + l end
@@ -721,7 +733,8 @@ end
 
 local lastFlags   -- (what was last logged, so a replan doesn't repeat it)
 
--- Returns the trip: { { goal, point, leg, cum }, ..., dropped = { text },
+-- Returns the trip: { { goal, point, leg, cum, trip, tripCum }, ... (leg/cum
+-- straight yards; trip/tripCum the travel yards the order was chosen by), dropped = { text },
 -- loops = { { key, ... } } (P.FindCycles), outOfOrder (P.FlagOrder) }
 function P:Plan(p, goals, opts)
     OPT = {}   -- (a copy: the area rule adds to it)
@@ -750,16 +763,16 @@ function P:Plan(p, goals, opts)
     end
     local dropped
     order, dropped = prune(p, order)
-    local _, legs, pts = walk(p, order)
+    local _, legs, pts, trips = walk(p, order)
     -- One line a step, at its first visit; its later visits ride on it
     -- (entry.visits) and on plan.hops, the groups in the order they're
     -- planned (the arrow leads from one to the next: AreaHop.lua).
-    local plan, cum, seen = { dropped = dropped, hops = {} }, 0, {}
+    local plan, cum, tripCum, seen = { dropped = dropped, hops = {} }, 0, 0, {}
     for i, s in ipairs(order) do
-        cum = cum + legs[i]
+        cum, tripCum = cum + legs[i], tripCum + trips[i]
         local e = seen[s.key]
         if not e then
-            e = { goal = s.goal, point = pts[i], leg = legs[i], cum = cum }
+            e = { goal = s.goal, point = pts[i], leg = legs[i], cum = cum, trip = trips[i], tripCum = tripCum }
             plan[#plan + 1] = e
             seen[s.key] = e
         else

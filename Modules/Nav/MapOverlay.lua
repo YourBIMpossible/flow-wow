@@ -1926,7 +1926,7 @@ local function updateList()
             r.go:Show()
             r.text:SetText(ns.nav:FormatStop(e.i, s.goal, labels[e.i]))
             r.leg:SetWidth(0)
-            r.leg:SetText(string.format("+%d yd", s.leg or 0))
+            r.leg:SetText(string.format("+%d yd", s.trip or s.leg or 0))
             r:Show()
         elseif e and i <= fit and e.blocked then
             local b = e.blocked
