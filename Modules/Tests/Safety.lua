@@ -235,3 +235,22 @@ ns:Register("test", "safety: learned trainer levels lie over the list, believabl
     changed = F.FixLevels(list, function() return nil end)
     t:ok(#changed == 1 and list[1].level == 20 and changed[1].source == nil, "learned level gone: the list's own 20 comes back")
 end)
+
+ns:Register("test", "safety: a learned quest spot is confirmed, can make room when stale, and can be forgotten (F-018)", function(t)
+    local LS = ns.learnedSpots
+    local day = 86400
+    local list = {}
+    LS.Add(list, 1, 0.1, 0.1, 2, nil, 0)
+    LS.Add(list, 1, 0.5, 0.5, 2, nil, 0)
+    t:eq(LS.Add(list, 1, 0.5, 0.5, 2, nil, day), false, "the same place again: not a new spot")
+    t:eq(list[2].n, 2, "but seen twice: confirmed")
+    t:eq(LS.Add(list, 1, 0.9, 0.9, 2, nil, day), false, "full, nothing stale: the new spot waits")
+    t:eq(LS.Add(list, 1, 0.9, 0.9, 2, nil, 40 * day), true, "full, a spot seen once long ago: it makes room")
+    t:ok(list[1].x == 0.9 and list[2].x == 0.5, "the stale one went, the confirmed one stays")
+    local spots = { [10] = { [1] = { { map = 1, x = 0.1, y = 0.1 } }, done = { { map = 1, x = 0.2, y = 0.2 } } } }
+    t:eq(LS.Forget(spots, 10, 1), 1, "forget one objective")
+    t:ok(spots[10] and spots[10].done and spots[10][1] == nil, "the turn-in stays")
+    t:eq(LS.Forget(spots, 10), 1, "forget the rest")
+    t:eq(spots[10], nil, "nothing left of the quest")
+    t:eq(LS.Forget(spots, 99), 0, "an unknown quest: nothing")
+end)
