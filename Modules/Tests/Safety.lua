@@ -174,3 +174,28 @@ ns:Register("test", "safety: one \"bags nearly full\" threshold for merchant, ba
     t:eq(#QG.Advice(plan, N), 1, "quest-item advice speaks at the threshold")
     t:eq(#QG.Advice(plan, N + 1), 0, "and not above it")
 end)
+
+ns:Register("test", "safety: saved-data updates run once each, in order (F-014)", function(t)
+    local runs = {}
+    local function m(key, order, fn)
+        return { key = key, value = { order = order, run = fn or function(db) runs[#runs + 1] = key; db[key] = true end } }
+    end
+    local db = {}
+    local ran = ns:RunMigrations(db, false, { m("zzB", 2), m("zzA", 1), m("zzC", 2) })
+    t:eq(table.concat(ran, ","), "zzA,zzB,zzC", "in order, then by key")
+    t:eq(db.version, 2, "the version is the highest order applied")
+    ran = ns:RunMigrations(db, false, { m("zzB", 2), m("zzA", 1), m("zzC", 2) })
+    t:eq(#ran, 0, "a second load runs none of them again")
+    ran = ns:RunMigrations(db, false, { m("zzA", 1), m("zzLate", 1) })
+    t:eq(table.concat(ran, ","), "zzLate", "one added later with a low order still runs, once")
+    local boom = m("zzBoom", 3, function() error("boom") end)
+    local _, failed = ns:RunMigrations(db, false, { boom })
+    t:eq(#failed, 1, "one that errors is reported")
+    t:ok(not db.migrations.zzBoom and db.version == 2, "and not marked done")
+    ran = ns:RunMigrations(db, false, { m("zzBoom", 3) })
+    t:eq(table.concat(ran, ","), "zzBoom", "so it's tried again next load")
+    local fresh = {}
+    ran = ns:RunMigrations(fresh, true, { m("zzFresh", 1) })
+    t:ok(#ran == 0 and fresh.migrations.zzFresh and not fresh.zzFresh, "a fresh install marks them done without running")
+    t:eq(#runs, 5, "each ran exactly once")
+end)
