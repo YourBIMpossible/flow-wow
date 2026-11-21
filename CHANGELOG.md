@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Offline tests: a test can no longer end the run or fake its result; a file that fails to load or is missing, a stale known-failure name, or a filter matching nothing now fails the run; SKIP-FAIL and known allowances are reported; -Root, -Known and -Strict added.
+- Structure check: fails on any .lua in the add-on tree that Flow.toc doesn't list; -Root added.
+- README: auto-selling non-junk items is off by default.
 - **Expert and Artisan training steps show their price and where it was read,** or say "price unknown—check the trainer" instead of guessing.
 - **Skill-boosting items can be recognised by item ID** (any client language) from a provenance-recorded list. Unknown items stay unknown.
 - **A need Flow can't check counts as not met, and the step says why;** a spell need wants the spell known.

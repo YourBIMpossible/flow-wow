@@ -2,8 +2,9 @@
 .SYNOPSIS
   Static checks of how the add-on is put together, without the game:
     1. Every file Flow.toc lists exists (WoW skips a missing file without a word).
-    2. Every .lua file under Core.lua, Modules\, Classes\ and Learned\ is listed in
-       Flow.toc (a file that isn't listed is never loaded).
+    2. Every .lua file anywhere in the add-on tree is listed in Flow.toc (a file
+       that isn't listed is never loaded). Not part of the add-on, so not checked:
+       the folders tools\, .github\, .claude\, .git\, dist\ and reports\.
     3. No registration key is used twice for the same kind. ns:Register (Core.lua)
        raises "Flow: <kind> '<key>' registered twice" on a duplicate, and the rest
        of that file stops loading, so a duplicate is always a bug: there is no
@@ -12,14 +13,21 @@
        and are listed for information only.
 
 .USAGE
-  powershell -ExecutionPolicy Bypass -File tools\check-structure.ps1
+  powershell -ExecutionPolicy Bypass -File tools\check-structure.ps1 [-Root path]
   pwsh -File tools/check-structure.ps1            # the CI job, on Linux
 
-  Exit code 0 = clean, 1 = a problem above. Runs on Windows PowerShell 5.1 and
+  -Root: the add-on checkout to check (default: the one this script is in), so
+  one copy of the checker can check another worktree.
+
+  Exit code 0 = clean, 1 = a problem above, 2 = no Flow.toc under -Root. Runs on Windows PowerShell 5.1 and
   PowerShell 7 (Windows and Linux).
 #>
+param([string]$Root)
 $ErrorActionPreference = 'Stop'
-$root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+if (-not $Root) { $Root = Join-Path $PSScriptRoot '..' }
+if (-not (Test-Path -LiteralPath (Join-Path $Root 'Flow.toc'))) { "check-structure: no Flow.toc under '$Root'"; exit 2 }
+$root = (Resolve-Path -LiteralPath $Root).Path
+"check-structure: $root"
 $fail = 0
 
 # Files Flow.toc may list that aren't in the repo: generated on the player's PC.
@@ -54,11 +62,12 @@ $tocCount = $toc.Count
 if ($fail -eq 0) { "Flow.toc: $tocCount files listed, all present" }
 
 # --- 2. Every add-on .lua file is listed ----------------------------------------
-$luaFiles = @(Get-Item (Join-Path $root 'Core.lua')) +
-    @(foreach ($d in 'Modules', 'Classes', 'Learned') {
-        $p = Join-Path $root $d
-        if (Test-Path $p) { Get-ChildItem -Path $p -Recurse -File -Filter *.lua }
-    })
+# Top-level folders that aren't the add-on (developer tools, CI, worktrees, build output).
+$notAddOn = @('tools', '.github', '.claude', '.git', 'dist', 'reports')
+"not checked for toc listing (not the add-on): $($notAddOn -join ', ')"
+$luaFiles = @(Get-ChildItem -LiteralPath $root -File -Filter *.lua) +
+    @(Get-ChildItem -LiteralPath $root -Directory -Force | Where-Object { $notAddOn -notcontains $_.Name } |
+        ForEach-Object { Get-ChildItem -LiteralPath $_.FullName -Recurse -File -Filter *.lua })
 $orphans = 0
 foreach ($f in $luaFiles) {
     $rel = Get-Rel $f.FullName
@@ -77,7 +86,7 @@ $dupes = 0
 # In Flow.toc order, so "already registered at" names the one the game loads first.
 $order = @{}
 for ($k = 0; $k -lt $toc.Count; $k++) { $order[$toc[$k].ToLowerInvariant()] = $k }
-$allLua = @(@($luaFiles) + @(Get-ChildItem -Path $root -File -Filter *.lua | Where-Object { $_.Name -ne 'Core.lua' }) |
+$allLua = @(@($luaFiles) |
     Sort-Object { $r = (Get-Rel $_.FullName).ToLowerInvariant(); if ($order.ContainsKey($r)) { $order[$r] } else { [int]::MaxValue } })
 foreach ($f in $allLua) {
     $rel = Get-Rel $f.FullName

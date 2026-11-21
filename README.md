@@ -453,8 +453,9 @@ Flow for WoW is a separate project from Flow Engine.
   loots everything but grey items and closes the window, with a note by your cursor naming what
   it left; open the corpse again to take it by hand. Not for skinners: a corpse with junk still
   on it can't be skinned, and Flow says so when you have Skinning.
-- **Flow Seller**: at a vendor Flow auto-sells grey junk and everything else it marks "sell"
-  (outgrown gear, food and drink you've outgrown...), 12 a visit, the size of the buyback tab.
+- **Flow Seller**: at a vendor Flow auto-sells grey junk. Everything else it marks "sell"
+  (outgrown gear, food and drink you've outgrown...) is sold automatically only once you turn
+  that on (off by default; a choice you already saved is kept), 12 a visit, the size of the buyback tab.
   One item at a time, all the junk first, so your own items are the last sold and the ones the
   buyback tab keeps; "Buy back" lists only what the vendor still holds.
   It never sells profession tools or materials you need. Green gear and better materials go

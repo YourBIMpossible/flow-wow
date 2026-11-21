@@ -16,7 +16,9 @@
 --     another marker, so the file can finish. While a test runs, touching a
 --     marker (reading the global, indexing or calling it, or calling a method
 --     on a fixture frame) records the name, and the test is reported SKIP
---     ("needs the client: <name>"), never PASS, whatever its checks said.
+--     ("needs the client: <name>"), never PASS, whatever its checks said
+--     (unless a check had already failed before that first touch: then it
+--     is a SKIP-FAIL, listed and counted, failing the run with --strict; see run.lua).
 --
 -- So a PASS here means: the test ran to the end on Flow's own Lua and made-up
 -- inputs, and touched nothing of the game. It is not a gameplay test.
@@ -36,6 +38,9 @@ local function touch(name)
         if not S.touched[name] then
             S.touched[name] = true
             S.touchedOrder[#S.touchedOrder + 1] = name
+            -- The runner notes how many checks had already failed at the
+            -- first touch: those failures can't be the client's doing.
+            if #S.touchedOrder == 1 and S.onFirstTouch then S.onFirstTouch(name) end
         end
     else
         S.loadTouched[name] = true

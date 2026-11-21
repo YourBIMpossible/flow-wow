@@ -1,30 +1,51 @@
 <#
 .SYNOPSIS
   Runs Flow's registered tests outside the game, with Lua 5.1 and the fixtures
-  of tools/offline/stubs.lua. Each test is PASS, FAIL, ERROR, or SKIP (it
-  touched something only the game client has; the first such name is shown).
+  of tools/offline/stubs.lua. Each test is PASS, FAIL, ERROR, SKIP (it
+  touched something only the game client has; the first such name is shown),
+  or SKIP-FAIL (a check failed before it touched the client: listed and counted,
+  failing the run with -Strict). tools/offline/run.lua's header has the exact rules.
   A PASS here is Flow's own Lua on made-up inputs: not a gameplay test, and not
   a substitute for /flow test in the game.
 
 .USAGE
-  powershell -ExecutionPolicy Bypass -File tools\run-tests.ps1 [-Filter text] [-Verbose] [-ListModules] [-NoKnown]
+  powershell -ExecutionPolicy Bypass -File tools\run-tests.ps1 [-Root path] [-Filter text] [-Verbose] [-ListModules] [-NoKnown] [-Known file] [-Strict]
   pwsh -File tools/run-tests.ps1                  # the CI job, on Linux
+
+  -Root: the add-on checkout to test (default: the one this script is in). The
+  runner (tools/offline/run.lua, stubs.lua) is always this script's own, so
+  another worktree needs no tools/offline of its own.
+  -Known: the known-failures list (default: <Root>/tools/offline/known-failures.txt
+  if it exists, else none, so every failure counts).
+  -Strict: a SKIP-FAIL (a check failed before the test touched the client)
+  fails the run too; without it, SKIP-FAILs are listed and counted only.
 
   Lua 5.1 is found in this order: $env:FLOW_LUA, then lua5.1 / lua51 on PATH,
   then %USERPROFILE%\tools\lua51\lua5.1.exe. (Lua 5.1 only: the game runs 5.1.)
   Known failures on the base branch are listed in tools/offline/known-failures.txt;
   -NoKnown counts them like any other failure.
 
-  Exit code 0 = no new FAIL or ERROR, 1 = some, 2 = the runner couldn't run.
+  Exit code 0 = every file loaded, no FAIL or ERROR (or SKIP-FAIL, with -Strict) outside the known
+  list, every known name exists, at least one test ran; 1 = not so; 2 = the runner
+  couldn't run or didn't finish (its last line "offline: done, exit <n>" missing).
 #>
 [CmdletBinding()]
 param(
+    [string]$Root,
     [string]$Filter,
+    [string]$Known,
     [switch]$ListModules,
-    [switch]$NoKnown
+    [switch]$NoKnown,
+    [switch]$Strict
 )
 $ErrorActionPreference = 'Stop'
-$root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$runner = (Resolve-Path (Join-Path $PSScriptRoot 'offline')).Path
+if (-not $Root) { $Root = Join-Path $PSScriptRoot '..' }
+if (-not (Test-Path -LiteralPath (Join-Path $Root 'Flow.toc'))) {
+    Write-Output "run-tests: no Flow.toc under '$Root'"
+    exit 2
+}
+$root = (Resolve-Path -LiteralPath $Root).Path
 
 function Find-Lua {
     if ($env:FLOW_LUA) {
@@ -54,11 +75,32 @@ if ($version -notmatch 'Lua 5\.1') {
 }
 Write-Output "run-tests: $version ($lua)"
 
-$luaArgs = @((Join-Path $root 'tools/offline/run.lua'), $root)
+Write-Output "run-tests: add-on $root; runner $runner"
+
+$luaArgs = @((Join-Path $runner 'run.lua'), $root)
 if ($PSBoundParameters.ContainsKey('Verbose')) { $luaArgs += '--verbose' }
 if ($ListModules) { $luaArgs += '--list-modules' }
 if ($Filter) { $luaArgs += @('--filter', $Filter) }
-if (-not $NoKnown) { $luaArgs += @('--known', (Join-Path $root 'tools/offline/known-failures.txt')) }
+if ($Strict) { $luaArgs += '--strict' }
+if (-not $NoKnown) {
+    if (-not $Known) {
+        $default = Join-Path $root 'tools/offline/known-failures.txt'
+        if (Test-Path -LiteralPath $default) { $Known = $default }
+    }
+    if ($Known) {
+        if (-not (Test-Path -LiteralPath $Known)) { Write-Output "run-tests: no known-failures file '$Known'"; exit 2 }
+        Write-Output "run-tests: known failures from $Known"
+        $luaArgs += @('--known', $Known)
+    } else { Write-Output "run-tests: no known-failures list in the add-on tree: every failure counts" }
+}
 
-& $lua @luaArgs
-exit $LASTEXITCODE
+# The driver's last line must be "offline: done, exit <n>", with <n> its exit code:
+# anything else (a crash, an early exit) is a broken run, never a pass.
+$last = ''
+& $lua @luaArgs | ForEach-Object { Write-Output $_; if ($_ -ne '') { $last = $_ } }
+$code = $LASTEXITCODE
+if ($last -notmatch '^offline: done, exit (\d+)$' -or [int]$Matches[1] -ne $code) {
+    Write-Output "run-tests: the driver didn't finish (exit $code, last line '$last'): the run is broken, not passed"
+    exit 2
+}
+exit $code

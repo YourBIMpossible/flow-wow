@@ -1,34 +1,62 @@
 -- Offline test driver (Lua 5.1). Started by tools/run-tests.ps1:
---   lua5.1 tools/offline/run.lua <repo root> [--verbose] [--filter <text>] [--list-modules]
+--   lua5.1 tools/offline/run.lua <add-on root> [--verbose] [--filter <text>]
+--          [--list-modules] [--known <file>] [--strict]
 --
--- 1. Installs the fixtures of tools/offline/stubs.lua on _G (read that file
---    first: anything the game provides is missing, not imitated).
+-- The fixtures (stubs.lua) always come from this file's own folder, so the
+-- runner can test another checkout of the add-on (run-tests.ps1 -Root).
+--
+-- 1. Installs the fixtures of stubs.lua on _G (read that file first: anything
+--    the game provides is missing, not imitated). The Lua libraries the game
+--    doesn't have go too: `io` is missing and `os` keeps only time, date,
+--    clock and difftime, so no test can end the run (os.exit) or write
+--    a result line of its own.
 -- 2. Loads every file of Flow.toc, in toc order, as the game does: the chunk
 --    gets ("Flow", ns). A file that errors while loading is reported and the
---    rest still load (the game does the same).
+--    rest still load (the game does the same), but the run fails: the tests
+--    of that file were never registered.
 -- 3. Fires ADDON_LOADED("Flow") once, as on a fresh install (saved data empty).
+--    Errors that Core's OnLoad loop catches are listed, always.
 -- 4. Runs each registered test through the harness's own seam,
---    ns.tests.Spread (Modules/Tests.lua), one test at a time, and reports
---    PASS, FAIL, ERROR or SKIP (it touched something only the client has).
--- Exit code: 0 = no FAIL and no ERROR outside the known list; 1 = some;
--- 2 = the runner itself broke.
+--    ns.tests.Spread (Modules/Tests.lua), one test at a time:
+--      PASS       every check held, nothing of the client touched
+--                 (one with no checks at all is still a PASS, counted apart)
+--      FAIL       a check failed, nothing of the client touched
+--      ERROR      a Lua error, nothing of the client touched
+--      SKIP       touched the client before any check failed (checks that
+--                 fail after that are counted, but can't be told apart from
+--                 the client's doing offline)
+--      SKIP-FAIL  a check failed before the test touched the client. Always
+--                 listed and counted apart. It fails the run only with
+--                 --strict: on the base branch the ones there are come from
+--                 load-time fixture effects (an ns:OnLoad that errored on a
+--                 fixture frame left state unset), which offline can't tell
+--                 apart from a real failure.
+-- 5. Prints the summary, then "offline: done, exit <n>" as its very last line.
+--    run-tests.ps1 treats a run without that line as broken (exit 2).
+--
+-- Exit code: 0 = no FAIL or ERROR (or SKIP-FAIL, with --strict) outside the known list, every
+-- file loaded, every known name still exists, at least one test ran;
+-- 1 = one of those; 2 = the runner itself broke.
 --
 -- --known <file>: tests already failing on the base branch, one exact test
--- name per line (# comments). Such a test is still reported FAIL (KNOWN), but
--- doesn't fail the run; a known test that now passes is reported so it can be
--- taken off the list. Anything else that fails, fails the run.
+-- name per line (# comments). Such a test is still reported (KNOWN) and
+-- counted as an allowance in the summary, but doesn't fail the run. A known
+-- test that now passes is reported so it can be taken off the list; a known
+-- name no registered test has (renamed, removed, misspelled) fails the run.
 
 local root = arg[1]
-if not root then io.stderr:write("usage: run.lua <repo root> [--verbose] [--filter text]\n"); os.exit(2) end
+if not root then io.stderr:write("usage: run.lua <add-on root> [--verbose] [--filter text] [--known file]\n"); os.exit(2) end
 root = root:gsub("[\\/]$", "")
-local verbose, filter, listModules, knownPath = false, nil, false, nil
+local verbose, filter, listModules, knownPath, strict = false, nil, false, nil, false
 do
     local i = 2
     while arg[i] do
         if arg[i] == "--verbose" then verbose = true
         elseif arg[i] == "--list-modules" then listModules = true
+        elseif arg[i] == "--strict" then strict = true
         elseif arg[i] == "--filter" then i = i + 1; filter = arg[i]
         elseif arg[i] == "--known" then i = i + 1; knownPath = arg[i]
+        else io.stderr:write("run.lua: unknown argument " .. tostring(arg[i]) .. "\n"); os.exit(2)
         end
         i = i + 1
     end
@@ -36,10 +64,15 @@ end
 
 local SEP = package.config:sub(1, 1)
 local function path(rel) return root .. SEP .. rel:gsub("[\\/]", SEP) end
+local here = (arg[0] or ""):match("^(.*)[\\/][^\\/]*$") or "."
 
 local G = _G
-local io_write, os_exit, string_format, print_real = io.write, os.exit, string.format, print
-local S = dofile(path("tools/offline/stubs.lua"))
+local io_write, io_open, io_stderr = io.write, io.open, io.stderr
+local os_exit, os_clock, string_format, print_real = os.exit, os.clock, string.format, print
+local S = dofile(here .. SEP .. "stubs.lua")
+
+-- Files Flow.toc may list that aren't in a checkout: generated on the player's PC.
+local MAY_BE_ABSENT = { ["Learned/ClaudeInbox.lua"] = true }
 
 -- Flow's chat output during loading and tests goes to a buffer, shown with --verbose.
 local printed = {}
@@ -52,8 +85,8 @@ end
 -- Read Flow.toc.
 local files = {}
 do
-    local fh = io.open(path("Flow.toc"), "r")
-    if not fh then io.stderr:write("no Flow.toc under " .. root .. "\n"); os_exit(2) end
+    local fh = io_open(path("Flow.toc"), "r")
+    if not fh then io_stderr:write("no Flow.toc under " .. root .. "\n"); os_exit(2) end
     for line in fh:lines() do
         line = line:gsub("\r$", ""):gsub("^%s+", ""):gsub("%s+$", "")
         if line ~= "" and not line:match("^#") then files[#files + 1] = line end
@@ -61,28 +94,35 @@ do
     fh:close()
 end
 
--- Known failures (exact names).
-local known = {}
+-- Known failures (exact names), in file order.
+local known, knownList = {}, {}
 if knownPath then
-    local fh = io.open(knownPath, "r")
-    if not fh then io.stderr:write("no known-failures file " .. knownPath .. "\n"); os_exit(2) end
+    local fh = io_open(knownPath, "r")
+    if not fh then io_stderr:write("no known-failures file " .. knownPath .. "\n"); os_exit(2) end
     for l in fh:lines() do
         l = l:gsub("\r$", ""):gsub("^%s+", ""):gsub("%s+$", "")
-        if l ~= "" and not l:match("^#") then known[l] = true end
+        if l ~= "" and not l:match("^#") and not known[l] then
+            known[l] = true
+            knownList[#knownList + 1] = l
+        end
     end
     fh:close()
 end
 
 S.Install(G)
 G.print = capture
+-- The game's Lua has no io and only these four of os.
+G.io = nil
+G.os = { time = os.time, date = os.date, clock = os.clock, difftime = os.difftime }
 
 local ns = {}
-local loaded, failed, absent, loadedClean = {}, {}, {}, 0
+local loaded, failed, absent, allowedAbsent, loadedClean = {}, {}, {}, {}, 0
 for _, rel in ipairs(files) do
     local chunk, err = loadfile(path(rel))
     if not chunk then
-        if err and err:find("No such file", 1, true) or (err and err:find("cannot open", 1, true)) then
-            absent[#absent + 1] = rel
+        if err and (err:find("No such file", 1, true) or err:find("cannot open", 1, true)) then
+            if MAY_BE_ABSENT[(rel:gsub("\\", "/"))] then allowedAbsent[#allowedAbsent + 1] = rel
+            else absent[#absent + 1] = rel end
         else
             failed[#failed + 1] = { rel, "syntax: " .. tostring(err) }
         end
@@ -103,8 +143,14 @@ for _, rel in ipairs(files) do
 end
 
 -- A fresh install's first load: empty saved data, every ns:OnLoad runs.
+-- Core prints the errors its OnLoad loop catches ("Flow load error").
 S.phase = "load"
+local printedBefore = #printed
 local delivered = S.Fire("ADDON_LOADED", "Flow")
+local onLoadErrors = {}
+for i = printedBefore + 1, #printed do
+    if printed[i]:find("Flow load error", 1, true) then onLoadErrors[#onLoadErrors + 1] = printed[i] end
+end
 
 local tests = ns.tests
 if not (tests and tests.Spread and ns.Each) then
@@ -113,19 +159,29 @@ if not (tests and tests.Spread and ns.Each) then
     os_exit(2)
 end
 
-local clock = function() return os.clock() * 1000 end
-local counts = { PASS = 0, FAIL = 0, SKIP = 0, ERROR = 0 }
+local clock = function() return os_clock() * 1000 end
+local counts = { PASS = 0, FAIL = 0, SKIP = 0, ERROR = 0, ["SKIP-FAIL"] = 0 }
 local results = {}
 local skipBy = {}
+local registered = {}
+local noChecks, skipAfterFail = 0, 0
+local markPattern = S.MARK:gsub("%p", "%%%0")
 
 for name, fn in ns:Each("test") do
+    registered[name] = true
     if not filter or name:lower():find(filter:lower(), 1, true) then
         S.ResetTouched()
         S.phase = "test"
+        -- The harness's own check object (Tests.lua's runOne makes one per test),
+        -- and how many of its checks had failed when the client was first touched.
+        local checker, failedBeforeTouch
+        S.onFirstTouch = function() failedBeforeTouch = checker and checker.fails and #checker.fails or 0 end
         local acc
         local okRun, runErr = pcall(function()
-            acc = tests.Spread({ { name, fn } }, 1e9, function() end, function() end, clock, nil)
+            acc = tests.Spread({ { name, function(t) checker = t; return fn(t) end } },
+                1e9, function() end, function() end, clock, nil)
         end)
+        S.onFirstTouch = nil
         S.phase = "load"
         local touched = S.Touched()
         local status, detail
@@ -134,11 +190,26 @@ for name, fn in ns:Each("test") do
         if not okRun then
             status, detail = "ERROR", "runner: " .. tostring(runErr)
         elseif #touched > 0 or text:find(S.MARK, 1, true) then
-            local first = touched[1] or text:match(S.MARK:gsub("%p", "%%%0") .. "([^\n]*)") or "?"
-            status, detail = "SKIP", "needs the client: " .. first
-            skipBy[first] = (skipBy[first] or 0) + 1
-        elseif acc.passed == 1 then
+            local first = touched[1] or text:match(markPattern .. "([^\n]*)") or "?"
+            local fails = checker and checker.fails or {}
+            local before = {}
+            for i = 1, math.min(failedBeforeTouch or 0, #fails) do before[#before + 1] = fails[i] end
+            if #before > 0 then
+                -- Failed on Flow's own Lua before anything of the client was touched.
+                status, detail = "SKIP-FAIL", "failed before touching the client (" .. first .. "): " .. table.concat(before, "\n")
+            else
+                local after = 0
+                for _, f in ipairs(fails) do if not tostring(f):find(S.MARK, 1, true) then after = after + 1 end end
+                status, detail = "SKIP", "needs the client: " .. first
+                if after > 0 then
+                    skipAfterFail = skipAfterFail + 1
+                    detail = detail .. string_format(" (%d check(s) failed after that; can't tell offline whether the client caused them)", after)
+                end
+                skipBy[first] = (skipBy[first] or 0) + 1
+            end
+        elseif acc.passed == 1 and #out == 0 then
             status = "PASS"
+            if acc.checks == 0 then noChecks = noChecks + 1; detail = "no checks ran" end
         elseif text:find("\n    error: ", 1, true) then
             status, detail = "ERROR", (text:match("\n    error: ([^\n]*)"))
         else
@@ -149,27 +220,34 @@ for name, fn in ns:Each("test") do
     end
 end
 
+-- Listed in full, always; SKIP-FAIL fails the run only with --strict.
+local SHOWN = { FAIL = true, ERROR = true, ["SKIP-FAIL"] = true }
+local BAD = { FAIL = true, ERROR = true, ["SKIP-FAIL"] = strict }
+
 -- Report.
 local function line(s) io_write(s, "\n") end
 for _, r in ipairs(results) do
-    if verbose or r[1] == "FAIL" or r[1] == "ERROR" then
+    if SHOWN[r[1]] then
         line(r[1] .. (known[r[2]] and " (KNOWN)" or "") .. " " .. r[2] .. (r[3] and (": " .. r[3]:gsub("\n", "\n      ")) or ""))
-    elseif r[1] == "SKIP" and verbose then
-        line("SKIP " .. r[2] .. ": " .. r[3])
+    elseif verbose then
+        line(r[1] .. " " .. r[2] .. (r[3] and (": " .. r[3]) or ""))
     end
 end
 
 line("")
-line(string_format("modules: %d of %d files in Flow.toc loaded (%d without touching any client global), %d failed, %d absent",
-    #loaded, #files, loadedClean, #failed, #absent))
-for _, f in ipairs(failed) do line("  did not load: " .. f[1] .. " (" .. f[2] .. ")") end
+line(string_format("modules: %d of %d files in Flow.toc loaded (%d without touching any client global), %d failed, %d absent (%d allowed: generated on the player's PC)",
+    #loaded, #files, loadedClean, #failed, #absent + #allowedAbsent, #allowedAbsent))
+for _, f in ipairs(failed) do line("  did not load (its tests never registered): " .. f[1] .. " (" .. f[2] .. ")") end
 for _, a in ipairs(absent) do line("  absent: " .. a) end
+for _, a in ipairs(allowedAbsent) do line("  absent (allowed): " .. a) end
 if listModules then
     for _, m in ipairs(loaded) do
         line(string_format("  loaded: %s%s", m[1], #m[2] > 0 and (" (touched at load: " .. #m[2] .. " client names)") or " (pure)"))
     end
 end
-line(string_format("ADDON_LOADED delivered to %d frame(s)", delivered))
+line(string_format("ADDON_LOADED delivered to %d frame(s); %d OnLoad error(s) caught by Core (fixture frames return nil, so these don't fail the run; check new ones):",
+    delivered, #onLoadErrors))
+for _, e in ipairs(onLoadErrors) do line("  " .. e:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
 
 local skips = {}
 for k, v in pairs(skipBy) do skips[#skips + 1] = { k, v } end
@@ -182,17 +260,39 @@ if verbose then
     for _, p in ipairs(printed) do line("  | " .. p) end
 end
 
-local newBad, knownBad = 0, 0
+local newBad, knownUsed, knownPassing, knownMissing = 0, 0, 0, {}
 for _, r in ipairs(results) do
-    if r[1] == "FAIL" or r[1] == "ERROR" then
-        if known[r[2]] then knownBad = knownBad + 1 else newBad = newBad + 1 end
+    if BAD[r[1]] then
+        if known[r[2]] then knownUsed = knownUsed + 1 else newBad = newBad + 1 end
     elseif known[r[2]] then
+        knownPassing = knownPassing + 1
         line(string_format("known failure no longer fails (%s): take it off the list: %s", r[1], r[2]))
     end
 end
+for _, k in ipairs(knownList) do
+    if not registered[k] then
+        knownMissing[#knownMissing + 1] = k
+        line("known-failures lists a test that doesn't exist (renamed, removed or misspelled): " .. k)
+    end
+end
 
-local total = counts.PASS + counts.FAIL + counts.SKIP + counts.ERROR
-line(string_format("offline tests: %d run, %d pass, %d fail, %d skip (need the client), %d error%s",
-    total, counts.PASS, counts.FAIL, counts.SKIP, counts.ERROR,
-    knownPath and string_format(" (%d of the fails/errors known, %d new)", knownBad, newBad) or ""))
-os_exit(newBad > 0 and 1 or 0)
+local total = 0
+for _, n in pairs(counts) do total = total + n end
+line(string_format("offline tests: %d run: %d pass (%d with no checks), %d fail, %d error, %d skip (need the client; %d of them with checks failing after that), %d skip-fail (a check failed before it touched the client; %s)",
+    total, counts.PASS, noChecks, counts.FAIL, counts.ERROR, counts.SKIP, skipAfterFail, counts["SKIP-FAIL"],
+    strict and "counted against the run: --strict" or "listed above, not counted against the run without -Strict"))
+line(knownPath
+    and string_format("known failures: %d listed, %d known allowed (failing, not counted against the run), %d now passing, %d not found; %d new failure(s)",
+        #knownList, knownUsed, knownPassing, #knownMissing, newBad)
+    or string_format("known failures: none used (-NoKnown or no list), 0 known allowed; %d failure(s)", newBad))
+
+local reasons = {}
+if newBad > 0 then reasons[#reasons + 1] = newBad .. " new FAIL/ERROR" .. (strict and "/SKIP-FAIL" or "") end
+if #failed > 0 then reasons[#reasons + 1] = #failed .. " file(s) did not load" end
+if #absent > 0 then reasons[#reasons + 1] = #absent .. " file(s) in Flow.toc absent" end
+if #knownMissing > 0 then reasons[#reasons + 1] = #knownMissing .. " known-failures name(s) not found" end
+if total == 0 then reasons[#reasons + 1] = "no test ran" .. (filter and (" (filter '" .. filter .. "' matched none)") or "") end
+local code = #reasons > 0 and 1 or 0
+line(code == 0 and "result: OK" or ("result: FAILED: " .. table.concat(reasons, "; ")))
+line("offline: done, exit " .. code)
+os_exit(code)
