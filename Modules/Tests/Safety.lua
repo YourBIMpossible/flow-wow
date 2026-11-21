@@ -120,3 +120,9 @@ ns:Register("test", "safety: Well Fed food is never sold as outgrown (F-004)", f
     t:eq(v and v.action, "sell", "outgrown drink: sold")
     t:eq(D.OutgrownVerdict("food", 44, 45, false), nil, "not outgrown: kept")
 end)
+
+ns:Register("test", "safety: the diagnostics header doesn't name the character (F-021)", function(t)
+    local line = ns.diag.HeaderLine("PALADIN", "1.0", 12, "Elwynn Forest")
+    t:ok(line:find("PALADIN", 1, true) and line:find("level 12", 1, true), "class and level are there")
+    t:eq(line:match("^character %((.-)%),"), "PALADIN", "no name or realm before the class")
+end)

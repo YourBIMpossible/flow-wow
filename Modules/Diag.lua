@@ -55,6 +55,14 @@ local clock = debugprofilestop
 -- the game (all 13 checks plus the self-tests in one frame did). At logout
 -- it runs all at once: the game writes the saved data straight after.
 -- Each check's time goes in its heading, and a slow snapshot is logged.
+-- Pure: the snapshot's second line. No character name or realm (F-021): the
+-- diagnostics get shared, and class and level are enough to read them.
+function D.HeaderLine(class, version, level, zone)
+    return "character (" .. tostring(class) .. ")"
+        .. ", version " .. tostring(version or "?") .. ", level " .. tostring(level)
+        .. ", zone " .. tostring(zone)
+end
+
 function D:Snapshot(reason, spread)
     local d = db()
     if not d then return end
@@ -63,9 +71,8 @@ function D:Snapshot(reason, spread)
     local c = ns.commands
     local _, class = UnitClass("player")
     local out = { "taken " .. date("%Y-%m-%d %H:%M:%S") .. " (" .. (reason or "?") .. ")",
-                  "character " .. tostring(UnitName("player")) .. " (" .. tostring(class) .. ")"
-                      .. ", version " .. (ns.Version and ns.Version() or "?") .. ", level " .. tostring(UnitLevel("player"))
-                      .. ", zone " .. tostring(GetZoneText and GetZoneText()) }
+                  D.HeaderLine(class, ns.Version and ns.Version() or "?", UnitLevel("player"),
+                      GetZoneText and GetZoneText()) }
     local checks = {
         { "api", function() c.api("") end },
         { "nav why", function() c.nav("why") end },
