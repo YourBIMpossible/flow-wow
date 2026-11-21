@@ -50,11 +50,149 @@ function ns:ClassSpellSet(class)
     return set
 end
 
--- The role you're levelling as: your own choice (/flow spec dps|heal|tank)
--- or the class recommendation.
-function ns:LevelingRole()
+-- Pure: the talent tree with the most points: its place (1 = leftmost) and
+-- the tree. nil when no points are spent yet or two trees share the most
+-- (a tie is no answer: never the leftmost by accident).
+function ns.DominantTree(trees)
+    local best, at, most, tie = nil, nil, 0, false
+    for i, t in ipairs(trees or {}) do
+        local p = tonumber(t.points) or 0
+        if p > most then
+            best, at, most, tie = t, i, p, false
+        elseif p == most and p > 0 then
+            tie = true
+        end
+    end
+    if not best or tie then return nil end
+    return at, best
+end
+
+-- Pure: the role whose spec is your talent tree with the most points.
+-- specs: class data's { dps = { name = "Retribution" }, ... }; trees:
+-- { { name = "Holy", points = 5 }, ... }. nil: no points yet, a tie, or a
+-- tree no role is named after (a druid's Feral Combat is cat and bear).
+function ns.RoleFromTrees(specs, trees)
+    local _, best = ns.DominantTree(trees)
+    if not best then return nil end
+    for role, s in pairs(specs or {}) do
+        if s.name == best.name then return role end
+    end
+    return nil
+end
+
+-- The trees on a class's talent sheet, left to right. WoW: Forever's
+-- talents are one sheet (C_Traits) with no tree names, so a tree is named by
+-- where it sits.
+ns.TALENT_TREES = {
+    PALADIN = { "Holy", "Protection", "Retribution" },
+    DRUID   = { "Balance", "Feral Combat", "Restoration" },
+}
+
+-- Pure: talents from one sheet ({ x, y, rank }, as ns.talents.Read gives
+-- them) into { { name, points } } per tree, left to right. nil when the
+-- sheet doesn't split into as many trees as `names`.
+function ns.TreesFromNodes(nodes, names)
+    if not (ns.talents and ns.talents.Arrange) or #(nodes or {}) == 0 then return nil end
+    local arranged = ns.talents.Arrange(nodes)
+    if #arranged ~= #(names or {}) then return nil end
+    local out = {}
+    for i, tr in ipairs(arranged) do
+        local points = 0
+        for _, n in ipairs(tr.nodes) do points = points + (tonumber(n.rank) or 0) end
+        out[i] = { name = names[i], points = points }
+    end
+    return out
+end
+
+-- A remembered talent read. A good read (the trees, even with no points
+-- spent) is kept until your talents change (Forget). A read that found
+-- nothing (at login the game often has no talent loadout yet) is tried
+-- again `retry` seconds later instead of being kept for the session: Flow
+-- once kept "no talents" until the next /reload.
+-- read: () -> trees or nil (nil = the game couldn't say); clock: () -> seconds.
+-- Its own functions are passed in, so the tests can run it.
+function ns.TalentCache(read, clock, retry)
+    local cache = { trees = nil, retryAt = nil }
+    function cache:Get()
+        if self.trees then return self.trees end
+        local now = clock()
+        if self.retryAt and now < self.retryAt then return {} end
+        local ok, trees = pcall(read)
+        if ok and type(trees) == "table" and #trees > 0 then
+            self.trees, self.retryAt = trees, nil
+            return trees
+        end
+        self.retryAt = now + (retry or 5)
+        return {}
+    end
+    function cache:Forget() self.trees, self.retryAt = nil, nil end
+    return cache
+end
+
+-- Your talent trees, read through Flow Talents' reader (ns.talents.Read: the
+-- client's talent sheet, C_ClassTalents / C_Traits, or the classic talent
+-- API where that's all there is). "Still not suggesting Righteous Fury":
+-- Forever has no classic talent API, so Flow saw no talents at all.
+local function readTrees()
+    local class = UnitClass and select(2, UnitClass("player"))
+    local names = ns.TALENT_TREES[class or ""]
+    if not (names and ns.talents and ns.talents.Read) then return nil end
+    return ns.TreesFromNodes((ns.talents.Read()), names)
+end
+local talents = ns.TalentCache(readTrees, function() return GetTime() end, 5)
+for _, event in ipairs({ "CHARACTER_POINTS_CHANGED", "PLAYER_TALENT_UPDATE", "PLAYER_ENTERING_WORLD",
+                         "TRAIT_CONFIG_UPDATED", "TRAIT_NODE_CHANGED" }) do
+    ns:On(event, function() talents:Forget() end)
+end
+
+-- Your talent trees, { { name, points } } (empty when Flow can't read them yet).
+function ns:TalentTrees() return talents:Get() end
+
+-- The talent tree you've put the most points in ("Protection"), or nil (none
+-- yet, a tie, unreadable). Your talents as they are, whatever role you chose:
+-- for a mechanic that only a talent gives. What Flow plays you as is
+-- ns:LevelingRole().
+function ns:TalentTree()
+    local _, best = ns.DominantTree(self:TalentTrees())
+    return best and best.name or nil
+end
+
+-- The role your talents say (dps/heal/tank), or nil.
+function ns:TalentRole()
     local d = self:ClassData()
-    return (ns.db.spec and ns.db.spec.role) or (d and d.leveling.role) or "dps"
+    return ns.RoleFromTrees(d and d.specs, self:TalentTrees())
+end
+
+-- Pure: the role Flow plays you as, and why. chosen: your own choice (or
+-- nil for Auto); talent: the role your talents say (or nil); default: your
+-- class's recommended levelling role. Returns role, "chosen" | "talents" |
+-- "class".
+function ns.ResolveRole(chosen, talent, default)
+    if chosen == "dps" or chosen == "heal" or chosen == "tank" then return chosen, "chosen" end
+    if talent then return talent, "talents" end
+    return default or "dps", "class"
+end
+
+-- THE role Flow plays you as: gear, food, fight records, a paladin's seal,
+-- blessing and Righteous Fury, a druid's Bear Form. Everything that depends
+-- on your role asks this (one answer everywhere): your own choice
+-- (Settings, Easy keys, "Your role"; /flow spec dps|heal|tank) beats your
+-- talents (the tree with the most points), which beat your class's
+-- recommended levelling role. One value: callers pass it straight on.
+-- "Why don't we have an option to set your spec?"
+local function resolveMine()
+    local d = ns:ClassData()
+    return ns.ResolveRole(ns.db and ns.db.spec and ns.db.spec.role, ns:TalentRole(),
+        d and d.leveling and d.leveling.role)
+end
+function ns:LevelingRole()
+    return (resolveMine())
+end
+
+-- Where ns:LevelingRole() came from: "chosen", "talents" or "class".
+function ns:RoleSource()
+    local _, source = resolveMine()
+    return source
 end
 
 local function unspentPoints()
@@ -71,9 +209,10 @@ local function describe()
     ns:Print(string.format("recommended levelling spec: |cff%s%s|r (%s)",
         ns.ROLE_COLOR[rec], d.specs[rec].name, ns.ROLE_LABEL[rec]))
     for _, line in ipairs(d.leveling.why) do print("  - " .. line) end
-    local mine = ns:LevelingRole()
-    if mine ~= rec then
-        print(string.format("  You chose |cff%s%s|r: gear advice uses that.", ns.ROLE_COLOR[mine], d.specs[mine].name))
+    local mine, source = ns:LevelingRole(), ns:RoleSource()
+    if mine ~= rec and d.specs[mine] then
+        print(string.format("  Your role: |cff%s%s|r (%s, %s).", ns.ROLE_COLOR[mine], ns.ROLE_LABEL[mine],
+            d.specs[mine].name, source == "chosen" and "your choice" or "your talents"))
     end
     local _, class = UnitClass("player")
     print(ns:Get("talentBuild", class or "")
@@ -101,13 +240,13 @@ ns.commands.spec = function(arg)
     arg = (arg or ""):lower()
     if arg == "dps" or arg == "heal" or arg == "tank" then
         ns.db.spec.role = arg
-        ns:Print("gear advice will favour " .. ns.ROLE_LABEL[arg])
+        ns:Print("role: " .. ns.ROLE_LABEL[arg] .. " (" .. ns:RoleName(arg) .. "), whatever your talents: gear, food, seals...")
     elseif arg == "auto" then
         ns.db.spec.role = nil
-        ns:Print("gear advice follows the recommended levelling spec")
+        ns:Print("role: automatic (your talents; before talents, the recommended levelling spec)")
     else
         describe()
-        print("  /flow spec dps|heal|tank|auto to choose which role gear advice favours")
+        print("  Your role: /flow spec dps|heal|tank|auto, or Settings, Easy keys, \"Your role\"")
     end
 end
 

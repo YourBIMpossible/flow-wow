@@ -592,10 +592,29 @@ local function build(parent)
             "Out of combat at a fishing or gathering step, the key equips your pole, puts on a lure, casts and reels in; at veins and herbs it gathers.",
             function() return ns.db.actions.enabled ~= false end,
             function(on) ns.db.actions.enabled = on end)
+        -- Your role: what Flow plays you as (dps / heal / tank: one of your
+        -- class's specs each). "Why don't we have a section or an option to
+        -- set your spec?"
+        local cd = ns:ClassData()
+        if cd and cd.specs then
+            local opts, specNames = { { "Auto", "auto", 46 } }, {}
+            for _, role in ipairs({ "dps", "heal", "tank" }) do
+                local sp = cd.specs[role]
+                if sp then
+                    local label = ns.ROLE_LABEL and ns.ROLE_LABEL[role] or role
+                    opts[#opts + 1] = { label, role, math.max(46, #label * 7 + 16) }
+                    specNames[#specNames + 1] = label .. ": " .. sp.name
+                end
+            end
+            local tip = "The role Flow plays you as (" .. table.concat(specNames, ", ") .. "): the gear it suggests, the food, a paladin's seal, blessing and Righteous Fury, a druid's Bear Form. Auto (the usual): by your talents, the tree you've put the most points in; before talents (or with two trees tied), your class's usual levelling role. Also /flow spec. This character only."
+            f.specRow, y = choices(f, y, "Your role", tip, opts,
+                function() return (ns.db.spec and ns.db.spec.role) or "auto" end,
+                function(v) ns.db.spec.role = v ~= "auto" and v or nil end)
+        end
         -- Paladins: the seal Flow suggests. Two rows of buttons, one choice.
         local pal = select(2, UnitClass("player")) == "PALADIN" and ns:Get("rotation", "PALADIN")
         if pal and pal.SetSeal then
-            local tip = "Auto (the usual): by your talents. Retribution: Command; Protection (or tanking): Fury; Holy in a group: Wisdom; otherwise Righteousness. Pick a seal and Flow suggests that one instead (until you know it, its usual one). For one fight, just cast a different seal: Flow keeps it until the fight ends. Also /flow seal. This character only."
+            local tip = "Auto (the usual): by your role (\"Your role\" above). Tanking: Fury; DPS: Command once you have it; healing in a group: Wisdom; otherwise Righteousness. Pick a seal and Flow suggests that one instead (until you know it, its usual one). For one fight, just cast a different seal: Flow keeps it until the fight ends. Also /flow seal. This character only."
             local get = function() return ns.db.paladinSeal or "auto" end
             local set = function(v) pal.SetSeal(v ~= "auto" and v or nil) end
             f.sealRow, y = choices(f, y, "Paladin seal", tip,
@@ -604,6 +623,12 @@ local function build(parent)
             f.sealRow2, y = choices(f, y, "", tip,
                 { { "Light", "Seal of Light", 50 }, { "Justice", "Seal of Justice", 60 },
                   { "Crusader", "Seal of the Crusader", 70 }, { "Fury", "Seal of Fury", 46 } }, get, set, "Paladin seal")
+            local btip = "The blessing Flow keeps on you. Auto (the usual): by your role (\"Your role\" above). Healing: Wisdom; tanking: Kings once you have it; otherwise Might. In Auto you can also just cast the blessing you want on yourself: Flow keeps that one for the role you're playing (Salvation, Light and Sanctuary too); Auto here forgets it. Pick one here and it stays, whatever you cast. Blessings on your group are separate. Also /flow blessing. This character only."
+            f.blessRow, y = choices(f, y, "Paladin blessing", btip,
+                { { "Auto", "auto", 46 }, { "Might", "Blessing of Might", 54 },
+                  { "Wisdom", "Blessing of Wisdom", 62 }, { "Kings", "Blessing of Kings", 50 } },
+                function() return ns.db.paladinBlessing or "auto" end,
+                function(v) pal.SetBlessing(v ~= "auto" and v or nil) end)
         end
     end
 

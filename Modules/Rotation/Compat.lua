@@ -105,9 +105,11 @@ end
 -- Your own buffs from what you cast, for when the game won't let addons read
 -- auras (Forever hides them, often in combat: "Auras cannot be accessed when
 -- secret"). Seals and blessings are timed; auras last until changed.
--- Druid: Mark of the Wild 30 min, Thorns 10 min.
+-- Righteous Fury 30 min (without it, hidden auras read it as missing and
+-- Flow asked for it again after every cast). Druid: Mark of the Wild 30 min,
+-- Thorns 10 min.
 local DURATION = { ["^Seal of"] = 30, ["^Blessing of"] = 300, [" Aura$"] = math.huge,
-                   ["^Mark of the Wild$"] = 1800, ["^Thorns$"] = 600 }
+                   ["^Righteous Fury$"] = 1800, ["^Mark of the Wild$"] = 1800, ["^Thorns$"] = 600 }
 local cast = {}   -- [spell name] = { at, ends }
 local function remember(name)
     for pat, d in pairs(DURATION) do

@@ -25,9 +25,9 @@ local ROWS = 22        -- most talents in one tree
 -- The game's trees
 -------------------------------------------------------------------------------
 
--- Every talent the game shows you: { id, name, x, y, rank, max, spellID,
--- needs = { node ids it's linked from } }, and your unspent points.
-function T.Read()
+-- The talent sheet (C_ClassTalents / C_Traits, as on WoW: Forever), or nil
+-- when this client hasn't got it.
+local function readSheet()
     local out = {}
     if C_ClassTalents and C_Traits and C_ClassTalents.GetActiveConfigID then
         local cfg = C_ClassTalents.GetActiveConfigID()
@@ -56,6 +56,12 @@ function T.Read()
         end
         return out, unspent
     end
+    return nil
+end
+
+-- The classic talent API (tabs), or nil when this client hasn't got it.
+local function readTabs()
+    local out = {}
     if GetNumTalentTabs and GetNumTalents and GetTalentInfo then
         for tab = 1, GetNumTalentTabs() or 0 do
             for i = 1, GetNumTalents(tab) or 0 do
@@ -68,7 +74,31 @@ function T.Read()
         end
         return out, UnitCharacterPoints and UnitCharacterPoints("player") or 0
     end
-    return out, 0
+    return nil
+end
+
+-- Pure: the first reader that finds talents; else what the first one that
+-- works at all said (no talents: none spent yet, or none loaded), else
+-- nothing. A reader that errors or isn't on this client (nil) is passed
+-- over: a client can carry an old talent function that answers nothing.
+-- readers: { function() -> nodes, unspent }.
+function T.ReadWith(readers)
+    local firstNodes, firstUnspent
+    for _, read in ipairs(readers) do
+        local ok, nodes, unspent = pcall(read)
+        if ok and type(nodes) == "table" then
+            if #nodes > 0 then return nodes, unspent or 0 end
+            if not firstNodes then firstNodes, firstUnspent = nodes, unspent end
+        end
+    end
+    return firstNodes or {}, firstUnspent or 0
+end
+
+-- Every talent the game shows you: { id, name, x, y, rank, max, spellID,
+-- leads = { node ids it leads to } }, and your unspent points. The talent
+-- sheet first, then the classic tabs.
+function T.Read()
+    return T.ReadWith({ readSheet, readTabs })
 end
 
 -- Your unspent talent points (0 when the game won't say).

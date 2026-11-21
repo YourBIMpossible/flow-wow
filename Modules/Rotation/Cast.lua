@@ -22,6 +22,23 @@ C.KEY_FONT = 11   -- the bind above the icon (the queue's CTRL / SHIFT / ALT are
 function C._KeyText() return keyText end
 local macro, lockedSpell = nil, nil
 
+-- Flow's own presses: the spell one of Flow's keys was set to cast, and
+-- when. A cast of yours then isn't a choice of yours: a paladin's seal or
+-- blessing (Paladin Rotation.lua) is learned only from casts you made
+-- yourself, never from Flow's own suggestion.
+C.PRESS_WINDOW = 2   -- seconds: a press to its cast (a blessing casts at once)
+local presses = {}   -- [spell] = when (one entry per spell)
+function C.NotePress(spell, now)
+    if type(spell) == "string" and spell ~= "" then presses[spell] = now or GetTime() end
+end
+-- Pure: `log` ({ [spell] = when }) has a press of `spell` within `window`
+-- seconds before `now`.
+function C.PressedFor(log, spell, now, window)
+    local at = spell and log and log[spell]
+    return at ~= nil and now >= at and now - at <= (window or C.PRESS_WINDOW)
+end
+function C.FlowPressed(spell) return C.PressedFor(presses, spell, GetTime()) end
+
 -- Who the press casts on. A step that names its own person (s.unit: a group
 -- buff, a heal for the friend you've targeted) goes on them; any other heal
 -- and your own buffs go on you (with a friend targeted, a buff meant for you
@@ -1141,6 +1158,7 @@ ns:OnLoad(function()
         if mod then
             if down ~= false then
                 local step = slotView[mod]
+                if step then C.NotePress(step.spell) end
                 ns:Log(mod == "shift" and "heal" or "cast", string.format("%s + key pressed: %s, hurt %.0f, in a fight %s",
                     mod, tostring(step and (step.spell or step.item)), E.hurt or 0, tostring(InCombatLockdown())))
                 if fight then
@@ -1156,6 +1174,7 @@ ns:OnLoad(function()
         -- Press audit (Audit.lua): what the icon showed and what the key was
         -- really set to cast, at this press. (Key down only; a game command
         -- on the key, like Interact, has nothing to compare.)
+        if down ~= false and button == "LeftButton" then C.NotePress(btn:GetAttribute("spell")) end
         if down ~= false and button == "LeftButton" and ns.audit and not keyCommand then
             pcall(ns.audit.Press, E.iconShows, btn:GetAttribute("spell") or btn:GetAttribute("item"),
                 InCombatLockdown() and true or false, fight and (GetTime() - fight.at) or nil, lockedSpell)

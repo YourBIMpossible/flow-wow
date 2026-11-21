@@ -44,6 +44,11 @@ local function missingOnTarget(spell)
     return not up
 end
 
+-- Pure: a tank, a fight to take (hostile target or in combat), not in Bear yet.
+function ns.DruidWantsBear(role, fight, bear)
+    return role == "tank" and fight and not bear
+end
+
 local buffs = {
     { spell = "Mark of the Wild", kind = "buff", reason = "Mark of the Wild missing or running out",
       when = function(c) return not c.inCombat and caster() and needBuff("Mark of the Wild", 60) end },
@@ -53,6 +58,16 @@ local buffs = {
     -- buttons were suggesting to use stealth"). Only with an enemy targeted:
     -- prowling slows you, so it isn't asked for while you travel. Once you
     -- prowl, the target key holds your opener (the cat list below).
+    -- Tanking (your role: "Your role" Tank, /flow spec tank, or Auto with
+    -- tank talents; ns:LevelingRole()): into Bear Form
+    -- when there's a fight to take, the druid's Righteous Fury. Dire Bear
+    -- Form first once you know it. Not while you travel with nothing targeted.
+    { spell = "Dire Bear Form", kind = "buff", reason = "Tanking: Bear Form",
+      when = function(c) return ns.DruidWantsBear(c.role, c.hostile or c.inCombat, inBear()) end },
+    { spell = "Bear Form", kind = "buff", reason = "Tanking: Bear Form",
+      when = function(c)
+          return ns.DruidWantsBear(c.role, c.hostile or c.inCombat, inBear()) and not c.engine:Knows("Dire Bear Form")
+      end },
     { spell = "Prowl", kind = "buff", reason = "Prowl before you pull: your key then holds your opener from stealth",
       when = function(c) return not c.inCombat and c.hostile and inCat() and not stealthed() end },
 }

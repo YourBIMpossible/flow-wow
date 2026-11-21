@@ -670,6 +670,8 @@ local function build()
     end)
     btn:HookScript("PostClick", function(self, _, down)
         if down == false then return end
+        -- (A cast from it is Flow's suggestion, not a choice of yours: Cast.lua.)
+        if current and ns.cast and ns.cast.NotePress then ns.cast.NotePress(current.spell) end
         -- By mouse (the pointer is on it) or by its key: counted, and said in the log.
         local mouse = self:IsMouseOver() and true or false
         if mouse then BB.byMouse = (BB.byMouse or 0) + 1 else BB.byKey = (BB.byKey or 0) + 1 end

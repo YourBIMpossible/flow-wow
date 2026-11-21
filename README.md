@@ -426,8 +426,10 @@ Flow for WoW is a separate project from Flow Engine.
   back: what's parked for a quest across the sea stays parked until you're there.
 - **Materials go to the auction house, never a vendor**; an item bought back from the vendor's own
   Buyback tab isn't sold again.
-- **Paladin seal**: by your role or talents, your pick in Settings (`/flow seal`), or the seal you
-  cast this fight.
+- **Paladin seal and blessing**: your pick in Settings (`/flow seal`, `/flow blessing`); in Auto,
+  the one you last cast on yourself for your role, else your role's own. Your role is the one you
+  chose under Your role, else your talents, else your class. A seal you cast in a fight counts for
+  that fight.
 - **Flow Trader**: when Flow reads the auction house's listings it looks for deals: listed under what
   a vendor pays (a certain gain), or at half an item's usual price or less (buy and post again: a
   guess). Its tab on the auction house lists them, each with a button; every payment is your click

@@ -3789,36 +3789,224 @@ ns:Register("test", "paladin: a seal goes on whenever you have none", function(t
     end)
 end)
 
-ns:Register("test", "paladin: the seal Flow suggests (talents, your choice, the seal you cast)", function(t)
+ns:Register("test", "spec: your talents set the role Flow plays you as, ties and all", function(t)
+    -- "Why isn't it suggesting Righteous Fury if I'm prot? Why don't we have an option to set your spec?"
+    local specs = { dps = { name = "Retribution" }, heal = { name = "Holy" }, tank = { name = "Protection" } }
+    local function tr(h, p, r)
+        return { { name = "Holy", points = h }, { name = "Protection", points = p }, { name = "Retribution", points = r } }
+    end
+    t:eq(ns.RoleFromTrees(specs, tr(0, 11, 2)), "tank", "most points in Protection: tank")
+    t:eq(ns.RoleFromTrees(specs, tr(5, 0, 9)), "dps", "most in Retribution: dps")
+    t:eq(ns.RoleFromTrees(specs, tr(8, 1, 0)), "heal", "most in Holy: heal")
+    t:eq(ns.RoleFromTrees(specs, tr(0, 0, 0)), nil, "no points yet: nothing (the recommended role)")
+    t:eq(ns.RoleFromTrees(specs, tr(5, 5, 0)), nil, "a tie: nothing")
+    t:eq(ns.RoleFromTrees(specs, tr(1, 7, 7)), nil, "a tie for the most, not the leftmost: nothing")
+    t:eq(ns.RoleFromTrees({ dps = { name = "Feral (Cat)" } }, { { name = "Feral Combat", points = 9 } }), nil,
+        "a tree no role is named after: nothing")
+    t:eq(ns.RoleFromTrees(specs, {}), nil, "no talent trees: nothing")
+    t:eq((ns.DominantTree(tr(7, 3, 0))), 1, "the leftmost tree when it has the most")
+    t:eq((ns.DominantTree(tr(3, 3, 9))), 3, "a tie below the most doesn't matter")
+    t:eq((ns.DominantTree(tr(4, 4, 0))), nil, "a tie for the most: no tree")
+    t:eq((ns.DominantTree(nil)), nil, "no trees: no tree")
+    -- "Still not suggesting Righteous Fury": Forever's one talent sheet (x far apart per tree).
+    local sheet = {
+        { x = 1020, y = 2730, rank = 0 }, { x = 2820, y = 2730, rank = 0 },             -- Holy
+        { x = 5020, y = 2730, rank = 1 }, { x = 6220, y = 2130, rank = 5 },             -- Protection
+        { x = 9080, y = 2730, rank = 0 }, { x = 10880, y = 3330, rank = 0 },            -- Retribution
+    }
+    local fromSheet = ns.TreesFromNodes(sheet, ns.TALENT_TREES.PALADIN)
+    t:eq(fromSheet and fromSheet[2].points, 6, "Forever's sheet: 6 points in the middle tree")
+    t:eq(ns.RoleFromTrees(specs, fromSheet), "tank", "6 points in Protection on Forever: tank")
+    t:eq(ns.TreesFromNodes({ { x = 1, y = 1, rank = 1 } }, ns.TALENT_TREES.PALADIN), nil,
+        "a sheet that isn't three trees: nothing (never a guess)")
+    t:ok(ns.DruidWantsBear("tank", true, false), "druid tank, a fight: Bear Form")
+    t:ok(not ns.DruidWantsBear("tank", true, true), "already a bear: nothing")
+    t:ok(not ns.DruidWantsBear("tank", false, false), "travelling, nothing targeted: nothing")
+    t:ok(not ns.DruidWantsBear("dps", true, false), "not tanking: the form you're in")
+end)
+
+ns:Register("test", "spec: your chosen role beats your talents, which beat your class's", function(t)
+    local function both(...) local r, s = ns.ResolveRole(...) return r .. "/" .. s end
+    t:eq(both("dps", "tank", "heal"), "dps/chosen", "chose DPS, Protection talents: DPS")
+    t:eq(both("tank", nil, "dps"), "tank/chosen", "chose Tank before any talents: Tank")
+    t:eq(both(nil, "tank", "dps"), "tank/talents", "Auto, Protection talents: Tank")
+    t:eq(both(nil, nil, "heal"), "heal/class", "Auto, no talents: your class's role")
+    t:eq(both("auto", nil, nil), "dps/class", "not a role: Auto")
+    t:eq(type(ns:LevelingRole()), "string", "ns:LevelingRole: one role")
+    t:ok(({ chosen = true, talents = true, class = true })[ns:RoleSource()] == true, "ns:RoleSource: where it came from")
+end)
+
+ns:Register("test", "spec: a talent read that found nothing is tried again, not kept", function(t)
+    local now, reads, answer = 100, 0, nil
+    local cache = ns.TalentCache(function() reads = reads + 1 return answer end, function() return now end, 5)
+    t:eq(#cache:Get(), 0, "talents not loaded yet: none for now")
+    t:eq(reads, 1, "read once")
+    now = 102
+    cache:Get()
+    t:eq(reads, 1, "two seconds later: not read again yet")
+    answer = { { name = "Holy", points = 0 }, { name = "Protection", points = 3 } }
+    now = 106
+    t:eq(#cache:Get(), 2, "five seconds later: read again, and found")
+    cache:Get()
+    t:eq(reads, 2, "a good read is kept")
+    answer = { { name = "Holy", points = 9 } }
+    cache:Forget()
+    t:eq(cache:Get()[1].points, 9, "your talents changed: read afresh")
+    local failing = ns.TalentCache(function() error("no talent API") end, function() return now end, 5)
+    t:eq(#failing:Get(), 0, "a reader that errors: none, no error")
+end)
+
+ns:Register("test", "talents: the classic talent API when the talent sheet has nothing", function(t)
+    local T = ns.talents
+    local node = { { x = 1, y = 1, rank = 1 } }
+    local nodes, unspent = T.ReadWith({ function() return {}, 0 end, function() return node, 2 end })
+    t:eq(#nodes, 1, "the sheet empty (no loadout yet): the classic API's talents")
+    t:eq(unspent, 2, "and its unspent points")
+    nodes = T.ReadWith({ function() return nil end, function() return node, 0 end })
+    t:eq(#nodes, 1, "no talent sheet on this client: the classic API")
+    nodes = T.ReadWith({ function() error("present but unusable") end, function() return node, 0 end })
+    t:eq(#nodes, 1, "a talent function that errors: the next one")
+    nodes, unspent = T.ReadWith({ function() return {}, 4 end, function() return nil end })
+    t:eq(#nodes, 0, "nothing anywhere: no talents")
+    t:eq(unspent, 4, "the first answer that worked is kept")
+    nodes, unspent = T.ReadWith({})
+    t:eq(#nodes + unspent, 0, "no talent API at all: nothing")
+end)
+
+ns:Register("test", "paladin: seal, blessing and Righteous Fury follow your role, not your talent tree", function(t)
+    local def = ns:Get("rotation", "PALADIN")
+    local knowsAll = { Knows = function() return true end }
+    local noKings = { Knows = function(_, s) return s ~= "Blessing of Kings" end }
+    local savedB, savedCast, savedSeal = ns.db.paladinBlessing, ns.db.paladinBlessingCast, ns.db.paladinSeal
+    ns.db.paladinBlessing, ns.db.paladinBlessingCast, ns.db.paladinSeal = nil, nil, nil
+    local ok, err = pcall(function()
+        t:ok(def.wantFury("tank"), "tanking: Righteous Fury")
+        t:ok(not def.wantFury("dps"), "DPS (even with Protection talents): no Righteous Fury")
+        t:ok(not def.wantFury("heal"), "healing: no Righteous Fury")
+        t:eq(def.pickSeal(knowsAll, "dps", { grouped = false, own = false }), "Seal of Command",
+            "DPS, knowing Seal of Fury too: Command, not Fury")
+        t:eq(def.pickSeal(knowsAll, "tank", { grouped = false, own = false }), "Seal of Fury", "tanking: Fury")
+        t:eq(def.pickBlessing(knowsAll, "dps", {}), "Blessing of Might", "DPS: Might")
+        t:eq(def.pickBlessing(knowsAll, "tank", {}), "Blessing of Kings", "tanking: Kings")
+        t:eq(def.pickBlessing(noKings, "tank", {}), "Blessing of Might", "tanking without Kings yet: Might")
+        t:eq(def.pickBlessing(knowsAll, "heal", {}), "Blessing of Wisdom", "healing: Wisdom")
+        local learned = { tank = "Blessing of Wisdom" }
+        t:eq(def.pickBlessing(knowsAll, "tank", learned), "Blessing of Wisdom", "Auto: the one you cast as a tank")
+        t:eq(def.pickBlessing(knowsAll, "dps", learned), "Blessing of Might", "...only while you tank")
+        ns.db.paladinBlessing = "Blessing of Salvation"
+        t:eq(def.pickBlessing(knowsAll, "tank", learned), "Blessing of Salvation", "your choice beats what you cast")
+        ns.db.paladinBlessingCast = { dps = "Blessing of Light" }
+        def.SetBlessing("Blessing of Kings")
+        t:eq(ns.db.paladinBlessing, "Blessing of Kings", "the settings row sets your choice")
+        t:eq(ns.db.paladinBlessingCast, nil, "and forgets the ones you cast")
+        ns.db.paladinBlessingCast = { dps = "Blessing of Light" }
+        def.SetBlessing(nil)
+        t:eq(ns.db.paladinBlessing, nil, "Auto clears your choice")
+        t:eq(ns.db.paladinBlessingCast, nil, "and the ones you cast")
+    end)
+    ns.db.paladinBlessing, ns.db.paladinBlessingCast, ns.db.paladinSeal = savedB, savedCast, savedSeal
+    if not ok then error(err, 0) end
+end)
+
+ns:Register("test", "paladin: what you cast becomes a preference only when it's yours, on you, and new", function(t)
+    local def = ns:Get("rotation", "PALADIN")
+    local IS_B, IS_S = def.IS_BLESSING, def.IS_SEAL
+    local K = def.KeptFromCast
+    t:eq(K("Blessing of Wisdom", IS_B, "Blessing of Might", false, true), "Blessing of Wisdom",
+        "a different blessing you cast on yourself: kept")
+    t:eq(K("Blessing of Wisdom", IS_B, "Blessing of Might", true, true), nil,
+        "cast with Flow's key: Flow's suggestion, Auto stays")
+    t:eq(K("Blessing of Might", IS_B, "Blessing of Might", false, true), nil, "the one Flow would put up: Auto stays")
+    t:eq(K("Blessing of Wisdom", IS_B, "Blessing of Might", false, false), nil, "on someone else: nothing")
+    t:eq(K("Blessing of Wisdom", IS_B, "Blessing of Might", false, nil), nil, "can't tell who it went on: nothing")
+    t:eq(K("Blessing of Protection", IS_B, "Blessing of Might", false, true), nil, "Protection is a moment, not a choice")
+    t:eq(K("Seal of Justice", IS_S, "Seal of Righteousness", false, true), "Seal of Justice", "a seal of yours: kept")
+    t:eq(K("Seal of Justice", IS_B, "Blessing of Might", false, true), nil, "a seal isn't a blessing")
+    local P = def.Preferred
+    local all = function() return true end
+    t:eq(P(all, "tank", "Blessing of Kings", { tank = "Blessing of Wisdom" }), "Blessing of Kings",
+        "your setting beats what you cast")
+    t:eq(P(all, "tank", nil, { tank = "Blessing of Wisdom" }), "Blessing of Wisdom", "Auto: what you cast for this role")
+    t:eq(P(all, "dps", nil, { tank = "Blessing of Wisdom" }), nil, "another role's: not this one")
+    t:eq(P(function(s) return s ~= "Blessing of Kings" end, "tank", "Blessing of Kings", { tank = "Blessing of Wisdom" }),
+        "Blessing of Wisdom", "a setting you don't know yet: the next one")
+    t:eq(P(all, "dps", nil, nil), nil, "nothing set or cast: by your role")
+    local R = def.RecipientIsYou
+    t:eq(R("Yang", "Yang", { exists = true, friendly = true }), true, "named you: you")
+    t:eq(R("Yang-Forever", "Yang", nil), true, "named you with a realm: you")
+    t:eq(R("Bob", "Yang", { exists = false }), false, "named someone else: not you")
+    t:eq(R("", "Yang", { exists = false }), true, "no name, nothing targeted: you")
+    t:eq(R(nil, "Yang", { exists = true, isYou = true }), true, "no name, targeting yourself: you")
+    t:eq(R(nil, "Yang", { exists = true, friendly = false }), true, "no name, an enemy targeted: you")
+    t:eq(R(nil, "Yang", { exists = true, friendly = true }), nil, "no name, a friend or pet targeted: can't tell")
+    t:eq(R(nil, "Yang", { exists = true }), nil, "no name, can't read the target: can't tell")
+    local C = ns.cast
+    local log = { ["Blessing of Might"] = 10 }
+    t:ok(C.PressedFor(log, "Blessing of Might", 11, 2), "Flow's key cast it a second ago: Flow's")
+    t:ok(not C.PressedFor(log, "Blessing of Might", 13, 2), "three seconds later: yours")
+    t:ok(not C.PressedFor(log, "Blessing of Wisdom", 11, 2), "another spell: yours")
+    t:ok(not C.PressedFor(log, "Blessing of Might", 9, 2), "before the press: yours")
+end)
+
+ns:Register("test", "paladin: a new seal or blessing goes on while another is up", function(t)
+    local def = ns:Get("rotation", "PALADIN")
+    local A = ns.api
+    local function up(name, left)
+        return function(_, match)
+            if match(name) then return true, left end
+            return false, 0
+        end
+    end
+    with(A, "Buff", up("Blessing of Might", 200), function()
+        t:ok(def.needBlessing("Blessing of Wisdom"), "Might up, Wisdom wanted: Wisdom")
+        t:ok(not def.needBlessing("Blessing of Might"), "Might up and wanted: nothing")
+    end)
+    with(A, "Buff", up("Greater Blessing of Might", 200), function()
+        t:ok(not def.needBlessing("Blessing of Might"), "a Greater Blessing of Might counts as Might")
+    end)
+    with(A, "Buff", up("Blessing of Might", 10), function()
+        t:ok(def.needBlessing("Blessing of Might"), "Might running out: again")
+    end)
+    with(A, "Buff", up("Seal of Righteousness", 20), function()
+        t:ok(def.wantSeal({ hostile = true, inCombat = true }, "Seal of Command"),
+            "in a fight with Righteousness up, Command wanted: Command")
+        t:ok(not def.wantSeal({ hostile = true, inCombat = true }, "Seal of Righteousness"), "the one wanted, 20 s left: nothing")
+        t:ok(not def.wantSeal({ hostile = false, inCombat = false }, "Seal of Command"),
+            "out of combat with a seal up: no recasting between pulls")
+    end)
+end)
+
+ns:Register("test", "paladin: the seal Flow suggests (your role, your choice, the seal you cast)", function(t)
     local def = ns:Get("rotation", "PALADIN")
     local knowsAll = { Knows = function() return true end }
     local noFury = { Knows = function(_, s) return s ~= "Seal of Fury" end }
     local noCommand = { Knows = function(_, s) return s ~= "Seal of Command" end }
-    local function at(tree, grouped, own) return { tree = tree or false, grouped = grouped or false, own = own or false } end
+    local function at(grouped, own) return { grouped = grouped or false, own = own or false } end
     local saved = ns.db.paladinSeal
     ns.db.paladinSeal = nil
-    t:eq(def.pickSeal(knowsAll, "dps", at()), "Seal of Righteousness", "automatic, no talents yet: Righteousness")
-    t:eq(def.pickSeal(knowsAll, "tank", at()), "Seal of Fury", "tanking: Fury")
-    t:eq(def.pickSeal(noFury, "tank", at()), "Seal of Righteousness", "tanking without Fury yet: Righteousness")
-    t:eq(def.pickSeal(knowsAll, "dps", at("ret")), "Seal of Command", "Retribution: Command")
-    t:eq(def.pickSeal(noCommand, "dps", at("ret")), "Seal of Righteousness", "Retribution without Command yet: Righteousness")
-    t:eq(def.pickSeal(knowsAll, "dps", at("prot")), "Seal of Fury", "Protection: Fury")
-    t:eq(def.pickSeal(knowsAll, "dps", at("holy", true)), "Seal of Wisdom", "Holy in a group: Wisdom")
-    t:eq(def.pickSeal(knowsAll, "dps", at("holy", false)), "Seal of Righteousness", "Holy on your own: Righteousness")
-    t:eq(def.pickSeal(knowsAll, "dps", at("ret", false, "Seal of Justice")), "Seal of Justice",
-        "a seal you cast yourself is kept for the fight")
-    ns.db.paladinSeal = "Seal of Wisdom"
-    t:eq(def.pickSeal(knowsAll, "dps", at("ret")), "Seal of Wisdom", "your choice wins over your talents")
-    t:eq(def.pickSeal(noFury, "tank", at()), "Seal of Wisdom", "your choice wins over tanking")
-    t:eq(def.pickSeal(knowsAll, "dps", at("ret", false, "Seal of Light")), "Seal of Light",
-        "a different seal cast mid-fight wins over your choice")
-    ns.db.paladinSeal = "Seal of Fury"
-    t:eq(def.pickSeal(noFury, "dps", at()), "Seal of Righteousness", "a seal you don't know yet: the usual one")
-    def.SetSeal("Seal of Light")
-    t:eq(ns.db.paladinSeal, "Seal of Light", "the settings row sets your choice")
-    def.SetSeal(nil)
-    t:eq(ns.db.paladinSeal, nil, "Auto clears it")
+    local ok, err = pcall(function()
+        t:eq(def.pickSeal(noCommand, "dps", at()), "Seal of Righteousness", "DPS without Command: Righteousness")
+        t:eq(def.pickSeal(knowsAll, "tank", at()), "Seal of Fury", "tanking: Fury")
+        t:eq(def.pickSeal(noFury, "tank", at()), "Seal of Righteousness", "tanking without Fury yet: Righteousness")
+        t:eq(def.pickSeal(knowsAll, "dps", at()), "Seal of Command", "DPS: Command")
+        t:eq(def.pickSeal(knowsAll, "heal", at(true)), "Seal of Wisdom", "healing in a group: Wisdom")
+        t:eq(def.pickSeal(knowsAll, "heal", at(false)), "Seal of Righteousness", "healing on your own: Righteousness")
+        t:eq(def.pickSeal(knowsAll, "dps", at(false, "Seal of Justice")), "Seal of Justice",
+            "a seal you cast yourself is kept for the fight")
+        ns.db.paladinSeal = "Seal of Wisdom"
+        t:eq(def.pickSeal(knowsAll, "dps", at()), "Seal of Wisdom", "your choice wins over your role")
+        t:eq(def.pickSeal(noFury, "tank", at()), "Seal of Wisdom", "your choice wins over tanking")
+        t:eq(def.pickSeal(knowsAll, "dps", at(false, "Seal of Light")), "Seal of Light",
+            "a different seal cast mid-fight wins over your choice")
+        ns.db.paladinSeal = "Seal of Fury"
+        t:eq(def.pickSeal(noFury, "dps", at()), "Seal of Righteousness", "a seal you don't know yet: the usual one")
+        def.SetSeal("Seal of Light")
+        t:eq(ns.db.paladinSeal, "Seal of Light", "the settings row sets your choice")
+        def.SetSeal(nil)
+        t:eq(ns.db.paladinSeal, nil, "Auto clears it")
+    end)
     ns.db.paladinSeal = saved
+    if not ok then error(err, 0) end
     t:ok(type(ns.commands.seal) == "function", "/flow seal exists")
     for _, s in ipairs(def.SEALS) do t:ok(s:find("^Seal of ") ~= nil, s .. " is a seal") end
 end)

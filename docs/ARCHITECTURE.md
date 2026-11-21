@@ -208,8 +208,8 @@ with `cost`); the price is the test that the item can be bought. Setting `ns.db.
 - Route files from RestedXP (CC BY-NC-SA), Guidelime (all rights reserved) and similar guides
   can't be bundled either. They're for reference only, or for reading at runtime if you have
   that addon installed.
-- If Flow is open-sourced, MIT works as long as the repo contains no third-party data or
-  route text.
+- Flow is licensed under the GPLv3 (`LICENSE`). That holds only while the repo contains no
+  third-party data or route text.
 
 Missed quests today: doable quests in zones you've already completed quests in, that you
 haven't done and aren't on. **Next step:** route steps (quest ID, NPC, coordinates) so it can
@@ -220,5 +220,4 @@ givers from `QUEST_ACCEPTED`, for Forever-only quests that no database covers ye
 
 - `gearAnalyzer`s: sockets, set bonuses, equip effects, enchants, armor type, resistances,
   unique, combos, and valuing weapon speed (see `docs/GEAR_PLAN.md`).
-- Talent plan per class in `class.leveling.talentPlan`.
 - Per-fight-type rotation lists for boss/elite once there's data showing they should differ.
