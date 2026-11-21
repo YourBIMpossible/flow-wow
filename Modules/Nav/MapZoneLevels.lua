@@ -20,9 +20,9 @@
 --
 -- Holding Shift adds what the zone's waters give and how often ("I think
 -- your shift idea's probably the best"); a grey "Shift" after the fishing
--- line says so. Catches: Wowhead's Classic zone fishing records, as each
--- item's share of the recorded catches (MapZoneFish.lua); open water and
--- pools together, any skill.
+-- line says so. Flow ships no catch records (ZL.FISH is empty), so the list
+-- says the catches are unknown. ZL.FISH's shape, for records Flow gets from
+-- the game: [uiMapID] = { records, { itemID, percent, "English name" }, ... }.
 --
 -- Flow's own frames only. It reads the cursor and C_Map; it never changes
 -- the game's map, its labels or its highlight, and its card takes no mouse.
@@ -36,7 +36,8 @@ ZL.FISH_SIZE = 12
 ZL.FISH_COLOR = { 0.36, 0.88, 0.95 }   -- light tropical-water blue
 ZL.LIST_SIZE = 11
 ZL.FEW = 300                            -- fewer records than this: "few catches recorded"
-ZL.FISH = ZL.FISH or {}                 -- filled by MapZoneFish.lua
+ZL.FISH = ZL.FISH or {}                 -- no catch records shipped: unknown
+ZL.FISH_UNKNOWN = "catches unknown"
 
 -- [uiMapID] = { name, min, max, fish, fishTop }. A city has no range; a zone
 -- with no water no fishing.
@@ -158,6 +159,11 @@ local function makeCard()
     f.few:SetShadowOffset(1, -1)
     f.few:SetTextColor(0.6, 0.6, 0.6)
     f.few:SetText("few catches recorded")
+    f.unknown = f:CreateFontString(nil, "ARTWORK")
+    f.unknown:SetFont(STANDARD_TEXT_FONT, ZL.LIST_SIZE, "OUTLINE")
+    f.unknown:SetShadowOffset(1, -1)
+    f.unknown:SetTextColor(0.6, 0.6, 0.6)
+    f.unknown:SetText(ZL.FISH_UNKNOWN)
     f:Hide()
     return f
 end
@@ -207,16 +213,23 @@ local function layout(c, zoneID)
         card.fish:SetText(c.fish)
         list, few = ZL.FishList(zoneID)
     end
-    local open = list ~= nil and ZL.FishOpen()
-    -- The hint only while there's a list and it isn't showing.
-    card.hint:SetShown(list ~= nil and not open)
+    local open = c.fish ~= nil and ZL.FishOpen()
+    -- The hint while the list (or the word that it's unknown) isn't showing.
+    card.hint:SetShown(c.fish ~= nil and not open)
     for _, r in ipairs(card.rows) do r.n:Hide(); r.p:Hide() end
     card.few:Hide()
+    card.unknown:Hide()
     if c.fish then
-        w = math.max(w, card.fish:GetStringWidth() + (list and 6 + card.hint:GetStringWidth() or 0))
+        w = math.max(w, card.fish:GetStringWidth() + 6 + card.hint:GetStringWidth())
         h = h + 3 + card.fish:GetStringHeight()
     end
-    if open then
+    if open and not list then
+        card.unknown:ClearAllPoints()
+        card.unknown:SetPoint("TOPLEFT", card.fish, "BOTTOMLEFT", 0, -5)
+        card.unknown:Show()
+        w = math.max(w, card.unknown:GetStringWidth())
+        h = h + 5 + card.unknown:GetStringHeight()
+    elseif open then
         local nameW, pctW = 0, 0
         for i, f in ipairs(list) do
             local r = row(card, i)
@@ -337,7 +350,7 @@ end)
 if ns.settings and ns.settings.AddCheck then
     ns.settings:AddCheck{ group = "route", label = "Zone info when hovering the world map",
         tip = "On the continent map, the zone under the cursor shows, in the map's top left corner, its name, level range (coloured against "
-            .. "your level) and the fishing skill its waters need. Hold Shift for the fish its waters give, and how often.",
+            .. "your level) and the fishing skill its waters need. Hold Shift for the fish its waters give: Flow has no record of them, so it says they're unknown.",
         get = ZL.On, set = ZL.Set }
     ns.settings:AddCheck{ group = "route", label = "World map: your zone's info without hovering",
         tip = "With nothing hovered, the card shows the zone you're in, on the continent map "

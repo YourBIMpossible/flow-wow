@@ -14543,27 +14543,23 @@ ns:Register("test", "map zone info: hovering a zone gives its name, level range 
     end
     t:eq(n, 40, "every levelling zone in the Classic list")
     -- "Can I click on something, like click on the fishing number": the fish
-    -- a zone's waters give, and how often.
-    local fish, few = ZL.FishList(1429, function() return nil end)
-    t:ok(fish and fish[1].name == "Raw Brilliant Smallfish" and fish[1].pct == 54, "Elwynn: mostly smallfish")
-    t:eq(few, false, "Elwynn has plenty of catches recorded")
-    t:eq(ZL.FishList(1429, function(id) return id == 6291 and "Petit poisson brillant" or nil end)[1].name,
-         "Petit poisson brillant", "the item's local name when the game has it")
-    t:eq(ZL.FishList(1418), nil, "no water: no list")
-    t:eq(ZL.FishList(1, function() return nil end), nil, "a zone Flow doesn't know: no list")
-    local listed = 0
-    for id, f in pairs(ZL.FISH) do
-        listed = listed + 1
-        t:ok(ZL.ZONES[id] and ZL.ZONES[id][4], (ZL.ZONES[id] and ZL.ZONES[id][1] or id) .. ": a zone with water")
-        local sum, last = 0, 101
-        for i = 2, #f do
-            sum = sum + f[i][2]
-            t:ok(f[i][2] >= 3 and f[i][2] <= last, tostring(f[i][3]) .. ": listed most common first")
-            last = f[i][2]
-        end
-        t:ok(sum <= 101 and #f >= 2, tostring(id) .. ": shares that add up")
-    end
-    t:ok(listed >= 35, "most zones have their catches")
+    -- a zone's waters give, and how often. Flow ships no catch records
+    -- (W4d: they were Wowhead's), so every zone's list is unknown.
+    t:eq(next(ZL.FISH), nil, "no catch records shipped")
+    t:eq(ZL.FishList(1429, function() return nil end), nil, "Elwynn: no list, so the card says the catches are unknown")
+    t:eq(ZL.FISH_UNKNOWN, "catches unknown", "and says so in those words")
+    -- The list itself, from records of the shape Flow would keep.
+    with(ZL, "FISH", { [1429] = { 1000, { 6291, 54, "Raw Brilliant Smallfish" }, { 6289, 35, "Raw Longjaw Mud Snapper" } },
+                       [1436] = { 20, { 6358, 60, "Oily Blackmouth" } } }, function()
+        local fish, few = ZL.FishList(1429, function() return nil end)
+        t:ok(fish and fish[1].name == "Raw Brilliant Smallfish" and fish[1].pct == 54, "a record: its share")
+        t:eq(few, false, "plenty of catches recorded")
+        t:eq(select(2, ZL.FishList(1436, function() return nil end)), true, "few recorded: says so")
+        t:eq(ZL.FishList(1429, function(id) return id == 6291 and "Petit poisson brillant" or nil end)[1].name,
+             "Petit poisson brillant", "the item's local name when the game has it")
+        t:eq(ZL.FishList(1418), nil, "no water: no list")
+        t:eq(ZL.FishList(1, function() return nil end), nil, "a zone Flow doesn't know: no list")
+    end)
 end)
 
 ns:Register("test", "map flights: flight paths you have, ones to learn, and your next step's flight", function(t)
@@ -17253,10 +17249,12 @@ end)
 
 ns:Register("test", "review 23-28: item and spell names come through Flow's own calls", function(t)
     local ZL = ns.mapZoneLevels
-    local rows = ZL.FishList(1413)
-    t:ok(rows and #rows > 0 and type(rows[1].name) == "string" and rows[1].name ~= "", "the zone card's fish have names (the game's, or the English one until it loads)")
-    local named = ZL.FishList(1413, function() return nil end)
-    t:eq(named[1].name, "Oily Blackmouth", "with no name from the game: the English one")
+    with(ZL, "FISH", { [1413] = { 500, { 6358, 35, "Oily Blackmouth" } } }, function()
+        local rows = ZL.FishList(1413)
+        t:ok(rows and #rows > 0 and type(rows[1].name) == "string" and rows[1].name ~= "", "the zone card's fish have names (the game's, or the English one until it loads)")
+        local named = ZL.FishList(1413, function() return nil end)
+        t:eq(named[1].name, "Oily Blackmouth", "with no name from the game: the English one")
+    end)
     local V = ns.vendor
     t:eq(V.BoughtBackId(2, { [2] = "|cffffffff|Hitem:2589::|h[Linen Cloth]|h|r" }, nil), 2589, "the item bought back from the vendor's own tab is read from the tab")
     t:eq(V.BoughtBackId(9, {}, function() return nil end), nil, "nothing there: nothing remembered")
