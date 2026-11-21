@@ -474,3 +474,71 @@ ns:Register("test", "quests: a failed quest scan is shown as failed and a retry 
     Q.scanStats = keep
     t:ok(ok, "ran: " .. tostring(err))
 end)
+
+-------------------------------------------------------------------------------
+-- F-038 / F-039: custom (Focus) lines say what's missing and survive a sorter switch.
+-------------------------------------------------------------------------------
+
+ns:Register("test", "focus: a prerequisite the quest data lacks is listed as missing, not skipped silently", function(t)
+    local F = ns.focus
+    local data = {
+        [999401] = { id = 999401, raw = { preQuestGroup = { 999402, 999499 } } },   -- 999499: not in the data
+        [999402] = { id = 999402, raw = {} },
+    }
+    local get = function(id) return data[id] end
+    local isDone = function() return false end
+    local before = F.Before(999401, get, isDone)
+    t:eq(#before, 1, "the known prerequisite is in the line")
+    t:eq(before[1], 999402, "(that one)")
+    local missing = F.Missing(999401, get, isDone)
+    t:eq(#missing, 1, "the unknown one is reported")
+    t:eq(missing[1], 999499, "(that one)")
+    t:eq(#F.Missing(999401, get, function() return true end), 0, "all done: nothing missing")
+end)
+
+ns:Register("test", "focus: choosing Shortest keeps the custom lines, and Custom route brings them back", function(t)
+    local F, X, db = ns.focus, ns.xpValue, ns.db.nav
+    local saved = { focus = db.focus, sorter = db.sorter, base = db.baseSorter, sel = ns.nav.selection }
+    local ok, err = pcall(function()
+        db.focus = { { key = "w2:focus-step", title = "A Test Step" } }
+        db.sorter = "distance"
+        t:eq(#F.Filter({ { key = "bank" } }, true), 1, "off Custom: the route isn't cut down")
+        t:eq(#db.focus, 1, "the lines wait, not wiped")
+        t:ok(not F.Active(), "and aren't in force")
+        X:SetMode("custom")
+        t:eq(db.sorter, "custom", "Custom route with lines waiting: back on")
+        t:ok(F.Active(), "the lines in force again")
+        db.sorter = "distance"
+        F.AddKey("w2:other-step", "Other")
+        t:eq(#db.focus, 1, "a new pick off Custom starts a new custom route")
+        t:eq(db.focus[1].key, "w2:other-step", "(with just the new pick)")
+        db.focus, db.sorter = {}, "distance"
+        X:SetMode("custom")
+        t:eq(db.sorter, "distance", "nothing waiting: the radio alone still can't start one")
+    end)
+    db.focus, db.sorter, db.baseSorter, ns.nav.selection = saved.focus, saved.sorter, saved.base, saved.sel
+    t:ok(ok, "ran: " .. tostring(err))
+end)
+
+ns:Register("test", "focus: the Flow Router's Custom route radio ungreys with lines waiting, and its click brings them back", function(t)
+    local f = _G.FlowMapRoute
+    local rb
+    for _, b in ipairs(f and f.sorts or {}) do if b.mode == "custom" then rb = b end end
+    if not rb then t:ok(true, "(Flow Router not built yet)") return end
+    local db = ns.db.nav
+    local saved = { sorter = db.sorter, focus = db.focus, shown = f:IsShown() }
+    local ok, err = pcall(function()
+        db.focus = { { key = "w2:focus-step", title = "A Test Step" } }
+        db.sorter = "distance"
+        ns.mapOverlay._updateList()
+        if f:IsShown() then
+            t:ok(rb:IsEnabled(), "lines waiting: the radio can be clicked")
+            rb:Click()
+            t:eq(db.sorter, "custom", "its click: Custom route again")
+        end
+    end)
+    db.sorter, db.focus = saved.sorter, saved.focus
+    pcall(ns.mapOverlay._updateList)
+    if not saved.shown then f:Hide() end
+    t:ok(ok, "ran: " .. tostring(err))
+end)

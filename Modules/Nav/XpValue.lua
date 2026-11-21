@@ -118,8 +118,16 @@ end
 function X:On() return (self:Objective()) == "xp" end
 function X:SetMode(m)
     if m == "custom" or m == "selected" then
-        -- Custom route starts by picking a step; the radio alone can't.
+        -- Custom route starts by picking a step; the radio alone can't, unless
+        -- your lines are waiting from before you chose Shortest or Most XP.
         if not self:IsCustom() then
+            local focus = ns.db.nav.focus
+            if type(focus) == "table" and #focus > 0 then
+                ns.db.nav.sorter = "custom"
+                if ns.nav.RequestCollect then ns.nav.RequestCollect("custom route back") end
+                if ns.focus and ns.focus.UpdateBar then ns.focus.UpdateBar() end
+                return
+            end
             ns:Print("Custom route: pick your next step with its ^ in the Flow Router (or right-click a step: Go here next).")
         end
         return

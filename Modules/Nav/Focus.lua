@@ -53,7 +53,9 @@ end
 
 -- The quests to do before `id` that aren't done, the earliest first.
 --   get(id) -> { id, name, raw = { preQuestGroup, preQuestSingle, nextQuestInChain } } or nil
-function F.Before(id, get, isDone, out, seen, depth)
+--   missing: (optional) filled with the prerequisites the quest data names
+--            but doesn't have: the line can't route them (F.Missing says so)
+function F.Before(id, get, isDone, out, seen, depth, missing)
     out, seen, depth = out or {}, seen or {}, depth or 0
     local q = get(id)
     if not q or depth >= F.MAX_BACK then return out end
@@ -67,13 +69,25 @@ function F.Before(id, get, isDone, out, seen, depth)
     for _, p in ipairs(single) do if isDone(p) then any = true end end
     if not any and #single > 0 then pres[#pres + 1] = single[1] end   -- and one of these
     for _, p in ipairs(pres) do
-        if not seen[p] and get(p) then
+        if not seen[p] then
             seen[p] = true
-            F.Before(p, get, isDone, out, seen, depth + 1)
-            out[#out + 1] = p
+            if get(p) then
+                F.Before(p, get, isDone, out, seen, depth + 1, missing)
+                out[#out + 1] = p
+            elseif missing then
+                missing[#missing + 1] = p
+            end
         end
     end
     return out
+end
+
+-- The prerequisites of `id` (not done) the quest data names but can't give:
+-- a custom line that needs them is blocked there, not silently short.
+function F.Missing(id, get, isDone)
+    local missing = {}
+    F.Before(id, get, isDone, nil, nil, nil, missing)
+    return missing
 end
 
 -- The quests the quest data chains after `id`, in order.
@@ -304,6 +318,9 @@ end
 -- A step picked: its line joins your custom route. -> the line's name, or nil when it was there already
 function F.AddKey(key, text)
     if type(key) ~= "string" then return nil end
+    -- Lines waiting from before you chose Shortest or Most XP: a new pick
+    -- starts a new custom route (as it always did), not the old one plus this.
+    if not F.Custom() and #lines() > 0 then wipe(lines()) end
     local qid = F.QuestOf(key)
     local quests, keys = F.Sets()
     if (qid and quests[qid]) or keys[key] then return nil end
@@ -375,9 +392,8 @@ end
 function F.Filter(list, quiet)   -- (quiet: no chat line, for the self-tests)
     local mine = lines()
     if #mine == 0 then return list end
-    if not F.Custom() then          -- you chose Shortest or Most XP: the lines go
-        wipe(mine)
-        F.UpdateBar()
+    if not F.Custom() then          -- you chose Shortest or Most XP: the lines wait
+        F.UpdateBar()               -- (kept: the Custom route radio brings them back)
         return list
     end
     local get, isDone = source()
@@ -543,11 +559,18 @@ ns:PerCharacter("nav.focus")
 
 function F.DumpLines()
     local mine = lines()
-    local out = { string.format("custom route lines: %d%s", #mine, F.Active() and "" or (#mine > 0 and " (not in force: the order isn't Custom)" or "")) }
+    local out = { string.format("custom route lines: %d%s", #mine, F.Active() and "" or (#mine > 0 and " (waiting: pick Custom route to bring them back)" or "")) }
+    local get, isDone = source()
     for i, line in ipairs(mine) do
         local ids = F.IdsOf(line)
         out[#out + 1] = string.format("  %d. %s: %s%s", i, tostring(line.title or "?"),
             ids and ("quests " .. table.concat(ids, ", ")) or ("step " .. tostring(line.key)), line.stop and (" (ends before " .. line.stop .. ")") or "")
+        if line.quest and get then
+            local okM, missing = pcall(F.Missing, line.quest, get, isDone)
+            if okM and #missing > 0 then
+                out[#out + 1] = "     blocked: needs quest(s) " .. table.concat(missing, ", ") .. " first, which the quest data doesn't have (not routed)"
+            end
+        end
     end
     if F.of then out[#out + 1] = string.format("  the last gathering kept %d of %d step(s), %d of them errands", F.kept or 0, F.of, F.errands or 0) end
     local ticks = {}

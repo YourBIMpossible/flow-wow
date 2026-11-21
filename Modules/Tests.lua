@@ -1270,8 +1270,9 @@ ns:Register("test", "router: Custom route button greyed out on Most XP or Shorte
     for _, b in ipairs(f and f.sorts or {}) do if b.mode == "custom" then rb = b end end
     if not rb then t:ok(true, "(Flow Router not built yet)") return end
     local db = ns.db.nav
-    local saved = { sorter = db.sorter, shown = f:IsShown() }
+    local saved = { sorter = db.sorter, shown = f:IsShown(), focus = db.focus }
     local ok, err = pcall(function()
+        db.focus = {}   -- (no custom lines waiting: those ungrey it, F-039)
         for _, mode in ipairs({ "xp", "distance", "custom" }) do
             db.sorter = mode
             ns.mapOverlay._updateList()
@@ -1281,7 +1282,7 @@ ns:Register("test", "router: Custom route button greyed out on Most XP or Shorte
             end
         end
     end)
-    db.sorter = saved.sorter
+    db.sorter, db.focus = saved.sorter, saved.focus
     pcall(ns.mapOverlay._updateList)
     if not saved.shown then f:Hide() end
     t:ok(ok, "ran" .. (ok and "" or (": " .. tostring(err))))
@@ -17239,11 +17240,11 @@ ns:Register("test", "click: a custom route's lines are added, cut and cleared fr
     t:eq(#ns.db.nav.focus, 0, "none left")
     local okD, lines = pcall(F.DumpLines)
     t:ok(okD and #lines >= 1, "/flow focus lists them" .. (okD and "" or (": " .. tostring(lines))))
-    -- Shortest or Most XP chosen: the lines go by themselves.
+    -- Shortest or Most XP chosen: the lines wait (F-039: kept, not dropped).
     ns.db.nav.focus = { { key = "test:focus-step", title = "A Test Step" } }
     ns.db.nav.sorter = "distance"
     t:eq(#F.Filter({ { key = "bank" } }), 1, "off Custom, the route isn't cut down")
-    t:eq(#ns.db.nav.focus, 0, "and the lines are dropped")
+    t:eq(#ns.db.nav.focus, 1, "and the lines wait")
     ns.db.nav.focus, ns.db.nav.sorter, N.selection = saved, sorter, sel
     F.idle, F.stuck = nil, nil
     if ns.theme and ns.theme.UpdateRoute then ns.theme:UpdateRoute() end

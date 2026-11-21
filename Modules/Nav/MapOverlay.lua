@@ -1667,7 +1667,7 @@ local function buildList()
     local SORTS = {
         { "distance", "Shortest", 6, "A short route by travel time (default), XP ignored. A quick plan over your nearest steps, not a guaranteed shortest." },
         { "xp", "Most XP", 92, "XP-weighted: a short route, but quests are weighed by XP and level. More XP is worth a longer walk; quests 3+ levels above you wait. Not a guaranteed most-XP order." },
-        { "custom", "Custom route", 172, "On when you pick the next step yourself (its ^ below): the route goes there first and is orange, not optimised, until you choose Most XP or Shortest again. Greyed out while you're on one of those." },
+        { "custom", "Custom route", 172, "On when you pick the next step yourself (its ^ below): the route goes there first and is orange, not optimised, until you choose Most XP or Shortest again (your lines wait; click this to bring them back). Greyed out while you're on one of those with none waiting." },
     }
     for _, sdef in ipairs(SORTS) do
         local rb = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
@@ -1848,8 +1848,11 @@ local function updateList()
         if rb.mode == "custom" then
             -- Greyed out on Most XP or Shortest: a Custom route starts by
             -- picking a step (its ^), not here. (Its tooltip still says how.)
-            rb:SetEnabled(on)
-            rb.label:SetText(on and ns.theme:ModeText("custom", "Custom route") or "|cff777777Custom route|r")
+            -- Not while your lines wait from before: a click brings them back.
+            local focus = ns.db.nav.focus
+            local waiting = type(focus) == "table" and #focus > 0
+            rb:SetEnabled(on or waiting)
+            rb.label:SetText((on or waiting) and ns.theme:ModeText("custom", "Custom route") or "|cff777777Custom route|r")
         end
     end
     if hidden then
