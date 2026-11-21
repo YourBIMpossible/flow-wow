@@ -96,6 +96,15 @@ function ns:Print(msg)
     print("|cff66ccffFlow|r: " .. tostring(msg))
 end
 
+-- "Bags nearly full" (F-008): one threshold for every module that advises
+-- about bag space (the merchant and bank steps, quest-item advice), so the
+-- same screen never gives different answers. free: free bag slots, or nil
+-- (not known: not nearly full).
+ns.BAGS_NEARLY_FULL = 3
+function ns.BagsNearlyFull(free)
+    return free ~= nil and free <= ns.BAGS_NEARLY_FULL
+end
+
 -------------------------------------------------------------------------------
 -- Per-character data. FlowDB is shared by every character on the account
 -- (settings, learned trails, NPC places). Anything about one character (its

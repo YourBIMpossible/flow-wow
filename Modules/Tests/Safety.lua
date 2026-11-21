@@ -156,3 +156,21 @@ ns:Register("test", "safety: a dual wielder's one-hander is compared with the of
     t:ok(same(W("INVTYPE_WEAPONOFFHAND", true, true, "INVTYPE_WEAPON"), { 17 }), "an off-hand weapon: the off hand")
     t:ok(same(W("INVTYPE_SHIELD", true, true, "INVTYPE_WEAPON"), { 17 }), "a shield: the off hand")
 end)
+
+ns:Register("test", "safety: one \"bags nearly full\" threshold for merchant, bank and quest items (F-008)", function(t)
+    local N, B, QG = ns.BAGS_NEARLY_FULL, ns.banker, ns.questBags
+    t:eq(ns.BagsNearlyFull(N), true, "at the threshold: nearly full")
+    t:eq(ns.BagsNearlyFull(N + 1), false, "one more free: not")
+    t:eq(ns.BagsNearlyFull(nil), false, "not known: not nearly full")
+    t:eq(B.WorthAStop(1, N), true, "the bank step agrees at the threshold")
+    t:eq(B.WorthAStop(1, N + 1), false, "and above it")
+    local g = { key = "1:done", weight = 1 }
+    QG.MarkStep(g, 2, N)
+    t:eq(g.keep, true, "a quest hand-in is pulled forward at the threshold")
+    g = { key = "1:done", weight = 1 }
+    QG.MarkStep(g, 2, N + 1)
+    t:ok(not g.keep, "and not above it")
+    local plan = { slots = 2, turnin = { { title = "Q", slots = 2 } }, bank = {}, sell = {} }
+    t:eq(#QG.Advice(plan, N), 1, "quest-item advice speaks at the threshold")
+    t:eq(#QG.Advice(plan, N + 1), 0, "and not above it")
+end)

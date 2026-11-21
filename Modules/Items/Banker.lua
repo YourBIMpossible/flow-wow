@@ -1189,7 +1189,7 @@ ns:OnLoad(function(saved) saved.banker = saved.banker or {} end)
 -- Pure: worth a step? stacks to put away; free: bag slots left (nil: unknown).
 function B.WorthAStop(stacks, free, min)
     if (stacks or 0) >= (min or B.MIN_STACKS) then return true end
-    return (stacks or 0) > 0 and free ~= nil and free <= 2
+    return (stacks or 0) > 0 and ns.BagsNearlyFull(free)
 end
 
 -- Pure: the step's words.
