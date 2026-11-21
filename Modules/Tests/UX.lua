@@ -162,3 +162,24 @@ ns:Register("test", "click: Flow Setup's Revert puts the boxes back to the setti
     end
     t:ok(same, "every box matches the setting as it is now")
 end)
+
+ns:Register("test", "help: /flow help <word> shows only the help about that word", function(t)
+    -- F-098: /flow help was one long dump.
+    local all = ns.HelpFor("")
+    t:ok(#all > 3, "no word: every topic")
+    local nav = ns:Get("help", "nav")
+    local got = ns.HelpFor("nav")
+    local whole
+    for _, e in ipairs(got) do if nav and e.title == nav.title then whole = e end end
+    t:ok(whole ~= nil and #whole.lines == #nav.lines, "a topic's own name: the whole topic")
+    local lines, others = 0, true
+    for _, e in ipairs(ns.HelpFor("splash")) do
+        for _, l in ipairs(e.lines) do
+            lines = lines + 1
+            if not l:lower():find("splash", 1, true) then others = false end
+        end
+    end
+    t:ok(lines >= 1 and others, "any other word: only the lines that have it")
+    t:eq(#ns.HelpFor("  SPLASH "), #ns.HelpFor("splash"), "case and spaces don't matter")
+    t:eq(#ns.HelpFor("no-such-word-xq"), 0, "nothing for a word no help has")
+end)
