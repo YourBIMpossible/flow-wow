@@ -1,7 +1,7 @@
 -- Setup table (/flow setup; opens once on first run). Each row is a setting
 -- with a tick box showing its CURRENT state (ticked = on). Change any of them
 -- and click Apply: it turns things on or off to match. Quick picks:
---   All / None / Flow suggests / WoW default / Reset (back to current)
+--   All / None / Flow suggests / WoW default / Revert (back to how they are now)
 -- Rows are registered, so features can add their own:
 --   ns:Register("setupItem", key, { order, label, why, available = fn,
 --       isOn = fn() -> bool, set = fn(on), suggested = bool, default = bool })
@@ -262,14 +262,9 @@ local function build()
     f.bg = f:CreateTexture(nil, "BACKGROUND")
     f.bg:SetAllPoints()
     f.bg:SetColorTexture(0.05, 0.05, 0.08, 0.95)
-    local top = f:CreateTexture(nil, "BORDER")
-    top:SetPoint("TOPLEFT"); top:SetPoint("TOPRIGHT"); top:SetHeight(2)
-    top:SetColorTexture(1, 0.82, 0.25, 0.9)
+    f.head = ns.theme:TitleBar(f, "Flow Setup", "Interface\\Icons\\INV_Misc_Gear_01")
     ns:MakeMovable(f, ns.db.setup, true)
 
-    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOPLEFT", 16, -14)
-    title:SetText("Flow Setup")
     local sub = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     sub:SetPoint("TOPLEFT", 16, -36)
     sub:SetText("Ticked = on. Change what you like and click Apply. Hover a row for why. /flow setup reopens this.")
@@ -324,8 +319,10 @@ local function build()
 
     -- Quick picks + apply.
     local x = 12
+    f.picks = {}
     local function pick(text, w, fn)
         local b = button(f, text, w)
+        f.picks[text] = b
         b:SetPoint("BOTTOMLEFT", x, 12)
         x = x + w + 4
         b:SetScript("OnClick", function() fn(); S:RefreshText() end)
@@ -334,7 +331,9 @@ local function build()
     pick("None", 56, function() each(function(r) r.check:SetChecked(false) end) end)
     pick("Flow suggests", 104, function() each(function(r) r.check:SetChecked(r.item.suggested and true or false) end) end)
     pick("WoW default", 96, function() each(function(r) r.check:SetChecked(val(r.item.default) and true or false) end) end)
-    pick("Reset", 60, function() each(function(r) r.check:SetChecked(r.item.isOn() and true or false) end) end)
+    -- "Revert", not "Reset": it puts the boxes back to how the settings are
+    -- now, not to any defaults (F-090; "WoW default" is the defaults).
+    pick("Revert", 60, function() each(function(r) r.check:SetChecked(r.item.isOn() and true or false) end) end)
 
     local apply = button(f, "Apply", 90)
     apply:SetPoint("BOTTOMRIGHT", -12, 12)
@@ -345,12 +344,18 @@ local function build()
             local want = r.check:GetChecked() and true or false
             if want ~= (r.item.isOn() and true or false) then pcall(r.item.set, want); n = n + 1 end
         end)
-        ns.db.setup.done = true
+        S:Finish()
         ns:Print(n .. " setting(s) changed.")
         S:Refresh()
     end)
     f:Hide()
     return f
+end
+
+-- (Tests) the stand-alone table, built but not shown.
+function S._Table()
+    frame = frame or build()
+    return frame
 end
 
 -- Updates the "Now" column (and marks rows you've changed but not applied).

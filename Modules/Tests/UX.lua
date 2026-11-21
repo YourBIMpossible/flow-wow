@@ -139,3 +139,26 @@ ns:Register("test", "commands: /flow chat stamps still reaches the timestamps co
     end)
     t:eq(got, "stamps short", "passed on to it")
 end)
+
+ns:Register("test", "click: Flow Setup's Revert puts the boxes back to the settings as they are now", function(t)
+    -- F-090: the button said "Reset", which reads as "back to defaults".
+    if InCombatLockdown() then t:ok(true, "(in a fight: skipped)") return end
+    local f = ns.setup._Table and ns.setup._Table()
+    if not f then t:ok(true, "(no Flow Setup table)") return end
+    t:ok(f.head and f.head.flowTitleBar == true, "a Flow title bar")
+    t:eq(f.head and f.head.text:GetText(), "Flow Setup", "named Flow Setup")
+    t:ok(f.picks.Reset == nil, "no Reset button")
+    local b = f.picks.Revert
+    t:ok(b ~= nil, "a Revert button")
+    if not b then return end
+    local rows = {}
+    for _, r in ipairs(f.rows) do if r.check and r.item.isOn then rows[#rows + 1] = r end end
+    for _, r in ipairs(rows) do r.check:SetChecked(not r.item.isOn()) end
+    local ok, err = pcall(b:GetScript("OnClick"), b, "LeftButton")
+    t:ok(ok, "the button runs" .. (ok and "" or (": " .. tostring(err))))
+    local same = true
+    for _, r in ipairs(rows) do
+        if (r.check:GetChecked() and true or false) ~= (r.item.isOn() and true or false) then same = false end
+    end
+    t:ok(same, "every box matches the setting as it is now")
+end)
