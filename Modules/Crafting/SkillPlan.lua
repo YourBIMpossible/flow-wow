@@ -348,21 +348,26 @@ end
 -- Skill-up maths
 -------------------------------------------------------------------------------
 
--- Chance of a skill point per craft at `rank`. The colour your profession
--- window showed wins when Flow saw it at this same skill.
+-- Chance of a skill point per craft at `rank`: only from the colour your
+-- profession window showed (GetTradeSkillInfo's difficulty, Recipes.lua) at
+-- the skill Flow saw it at. Flow has no colour thresholds of its own: the
+-- game doesn't say at which skill a recipe turns yellow, green or grey, so at
+-- any other skill the chance is unknown and the step isn't a choice (0).
 local CHANCE = { optimal = 1, medium = 0.6, easy = 0.2, trivial = 0 }
 local function chance(prof, step, rank)
     local known, seenRank = ns.recipes:Known(prof)
     local r = known and known[step.recipe]
-    if r and seenRank == math.floor(rank) and CHANCE[r.diff] then return CHANCE[r.diff] end
-    -- A recipe known only from the window: its colour is known only at the
-    -- skill Flow saw it at (the game doesn't say where it turns).
-    if not step.learn then return 0 end
-    if rank < step.learn then return 0 end
-    if rank < step.yellow then return 1 end
-    if rank < step.green then return 0.6 end
-    if rank < step.grey then return 0.2 end
-    return 0
+    if not (r and seenRank and seenRank == math.floor(rank)) then return 0 end
+    if step.learn and rank < step.learn then return 0 end
+    return CHANCE[r.diff] or 0
+end
+
+-- Two steps skill up alike at `rank` when the profession window showed both
+-- at the same colour at that skill. No colour seen: not known to be alike.
+local function alike(prof, a, b, rank)
+    if not (prof and rank) then return false end
+    local c = chance(prof, a, rank)
+    return c > 0 and c == chance(prof, b, rank)
 end
 
 -- What one of an item costs (copper): the auction house price Flow last saw,
@@ -554,9 +559,9 @@ function simulate(prof, steps, rank, target, have, goal)
 end
 
 -- Materials that stand in for `id`: dropped materials of other steps that
--- skill up exactly like the step using `id` (same colours, one material each).
--- `id` itself comes first.
-function SP.Alternatives(steps, id)
+-- skill up like the step using `id` at `rank` (the window showed both at the
+-- same colour there, one material each). `id` itself comes first.
+function SP.Alternatives(steps, id, prof, rank)
     local mine
     for _, s in ipairs(steps or {}) do
         if s.mats and s.mats[id] then mine = s break end
@@ -572,8 +577,7 @@ function SP.Alternatives(steps, id)
     for _, s in ipairs(steps) do
         local other = single(s)
         local os = other and src(other)
-        if s ~= mine and other and other ~= id and os and os.drops
-            and s.learn == mine.learn and s.yellow == mine.yellow and s.green == mine.green and s.grey == mine.grey then
+        if s ~= mine and other and other ~= id and os and os.drops and alike(prof, s, mine, rank) then
             out[#out + 1] = other
         end
     end
@@ -1000,9 +1004,10 @@ function SP.PlannedCatch(targets)
     return math.floor((t.target - rank) * CATCH_PER_POINT)
 end
 
--- A fished material whose step skills up exactly like the step using `id`.
--- Returns the step, the fish's source entry and its item ID.
-function SP.FishAlternative(steps, id)
+-- A fished material whose step skills up like the step using `id` at `rank`
+-- (same colour in the window there). Returns the step, the fish's source
+-- entry and its item ID.
+function SP.FishAlternative(steps, id, prof, rank)
     local mine
     for _, s in ipairs(steps or {}) do
         if s.mats and s.mats[id] then mine = s break end
@@ -1011,8 +1016,7 @@ function SP.FishAlternative(steps, id)
     for _, s in ipairs(steps) do
         for mid in pairs(s.mats or {}) do
             local ms = src(mid)
-            if s ~= mine and ms and ms.fished and s.learn == mine.learn and s.yellow == mine.yellow
-                and s.green == mine.green and s.grey == mine.grey then
+            if s ~= mine and ms and ms.fished and alike(prof, s, mine, rank) then
                 return s, ms, mid
             end
         end
@@ -1139,6 +1143,16 @@ SP._recipeStop = recipeStop  -- for /flow test
 -- role, and wearable at your level). Shown beside the skill plan, never
 -- instead of it: the fastest way up stays the route either way.
 -------------------------------------------------------------------------------
+
+-- Pure: the node (profGuide nodes = { { item, learn } }) with the highest
+-- skill requirement `rank` meets; nil when it meets none.
+function SP.BestNode(nodes, rank)
+    local best
+    for _, nd in ipairs(nodes or {}) do
+        if rank >= nd.learn and (not best or nd.learn > best.learn) then best = nd end
+    end
+    return best
+end
 
 -- Blacksmithing gear is made at an anvil. (Recipes Flow read from your
 -- profession window don't say where; the steps in Guides.lua do.)
@@ -2055,7 +2069,7 @@ local function planProfession(prof, t, out)
         elseif s and s.drops then
             -- Fish you'll catch levelling Fishing anyway cook just as well:
             -- they come off the meat to farm (and the recipe goes on the route).
-            local fishStep, fishSrc, fishId = SP.FishAlternative(steps, id)
+            local fishStep, fishSrc, fishId = SP.FishAlternative(steps, id, prof, rank)
             local fromFish = 0
             if fishStep then
                 fromFish = math.min(n, math.floor(SP.PlannedCatch(SP.lastTargets) * (fishSrc.share or 0.7)))
@@ -2070,7 +2084,7 @@ local function planProfession(prof, t, out)
             if n > 0 then
             -- Other materials that level the same (wolf meat or boar meat): any of them will
             -- do, so their mobs count too.
-            local ids = SP.Alternatives(steps, id)
+            local ids = SP.Alternatives(steps, id, prof, rank)
             local names, mobs, rates = {}, {}, 0
             for _, aid in ipairs(ids) do
                 local as = src(aid)
@@ -2160,18 +2174,18 @@ local function planProfession(prof, t, out)
     end
 
     -- Gathering profession with nodes (Mining): the veins themselves skill up.
+    -- The vein with the highest skill you meet; how many it takes is unknown
+    -- (the game doesn't say when a vein stops giving skill), so no count.
     if g.nodes then
-        local best
-        for _, nd in ipairs(g.nodes) do
-            if rank >= nd.learn and rank < nd.grey then best = nd end
-        end
+        local best = SP.BestNode(g.nodes, rank)
         if best and not nodes[src(best.item).node] then
             local s = src(best.item)
-            local c = rank < best.yellow and 1 or (rank < best.green and 0.6 or 0.2)
             local pts = objectPoints(s.objects)
             add({ key = "gather:" .. s.node, kind = "gather", prof = "Mining", points = pts,
-                  text = string.format("Mine %s (about %d) for skill", s.node, math.ceil((t.target - rank) / c)),
-                  details = { "Smelting the ore at a forge raises Mining too." },
+                  text = string.format("Mine %s for skill", s.node),
+                  details = { string.format("How many it takes to reach %d is unknown: Flow doesn't know when %s stops giving skill.",
+                                  t.target, s.node),
+                              "Smelting the ore at a forge raises Mining too." },
                   blockedBy = (not hasTool("Mining", 2901) and "needs a Mining Pick")
                       or (#pts == 0 and ("no known " .. s.node .. " in Flow's data")) or nil })
         end

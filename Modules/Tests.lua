@@ -266,14 +266,20 @@ end)
 
 ns:Register("test", "skill plan: most skill per material", function(t)
     local g = ns:Get("profGuide", "Blacksmithing")
-    local crafts, order, reaches = ns.skillPlan._simulate("Blacksmithing__test", g.steps, 1, 20, {})
-    t:ok(reaches, "guide reaches 20")
-    t:eq(order[1] and order[1].recipe, "Rough Sharpening Stone", "starts with sharpening stones")
-    local total = 0
-    for _, s in ipairs(order) do total = total + crafts[s] end
-    t:ok(total >= 19 and total <= 25, "about one craft per point while orange (" .. total .. ")")
-    order = select(2, ns.skillPlan._simulate("Blacksmithing__test", g.steps, 30, 50, {}))
-    for _, s in ipairs(order) do t:ok(s.recipe ~= "Coarse Sharpening Stone", "no coarse stones below 65") end
+    -- A colour is only what the profession window showed, at the skill Flow
+    -- saw it at (no colour thresholds in Flow's data).
+    local rank, seen = 1, {
+        ["Rough Sharpening Stone"] = { diff = "optimal", reagents = { [2835] = 1 } },
+        ["Coarse Sharpening Stone"] = { diff = "optimal", reagents = { [2836] = 1 } } }
+    with(ns.recipes, "Known", function(_, prof) if prof == "Blacksmithing__test" then return seen, rank end end, function()
+        local crafts, order, reaches = ns.skillPlan._simulate("Blacksmithing__test", g.steps, 1, 20, {})
+        t:eq(order[1] and order[1].recipe, "Rough Sharpening Stone", "starts with sharpening stones")
+        t:eq(order[1] and crafts[order[1]], 1, "orange at 1: one craft for that point")
+        t:ok(not reaches, "past the skill Flow saw, the colour is unknown: the plan stops")
+        rank = 30
+        order = select(2, ns.skillPlan._simulate("Blacksmithing__test", g.steps, 30, 50, {}))
+        for _, s in ipairs(order) do t:ok(s.recipe ~= "Coarse Sharpening Stone", "no coarse stones below 65") end
+    end)
 end)
 
 ns:Register("test", "xp: share and estimate", function(t)
@@ -633,10 +639,10 @@ ns:Register("test", "skill plan: gear you can make that's an upgrade, beside the
         t:eq(#ups, 1, "only the recipe that makes an upgrade")
         t:eq(ups[1] and ups[1].station, "anvil", "Blacksmithing gear: at an anvil")
         t:eq(ups[1] and ups[1].reagents[2840], 6, "its materials come along")
-        -- The fastest path is worked out from the guide alone: the upgrade
-        -- doesn't change what it makes.
+        -- The fastest path is worked out from the profession's steps alone (at
+        -- the skill the window was seen at): the upgrade doesn't change it.
         local g = ns:Get("profGuide", "Blacksmithing")
-        local _, order = SP._simulate("Blacksmithing", g.steps, 1, 20, {})
+        local _, order = SP._simulate("Blacksmithing", g.steps, 30, 31, {})
         for _, st in ipairs(order) do t:ok(st.recipe ~= "Belt B", "the fastest path doesn't make the belt") end
         t:ok(#order > 0, "the fastest path still has its steps")
     end)
@@ -932,14 +938,19 @@ end)
 ns:Register("test", "cooking: meat you carry is used first, either meat will do", function(t)
     local SP = ns.skillPlan
     local g = ns:Get("profGuide", "Cooking")
-    local crafts, order = SP._simulate("Cooking__test", g.steps, 1, 10, { [769] = 4 })
-    t:eq(order[1] and order[1].recipe, "Roasted Boar Meat", "boar meat in bags goes first")
-    local boar
-    for _, s in ipairs(order) do if s.recipe == "Roasted Boar Meat" then boar = crafts[s] end end
-    t:eq(boar, 4, "all 4 boar meat used, then wolf")
-    local alts = SP.Alternatives(g.steps, 2672)
-    t:eq(alts[1], 2672, "wolf meat first"); t:eq(alts[2], 769, "boar meat stands in")
-    t:eq(#SP.Alternatives(g.steps, 99999), 1, "unknown item: just itself")
+    -- Both seen green in the window at 1 (a point now and then).
+    local seen = { ["Charred Wolf Meat"] = { diff = "easy", reagents = { [2672] = 1 } },
+                   ["Roasted Boar Meat"] = { diff = "easy", reagents = { [769] = 1 } } }
+    with(ns.recipes, "Known", function(_, prof) if prof == "Cooking__test" then return seen, 1 end end, function()
+        local crafts, order = SP._simulate("Cooking__test", g.steps, 1, 10, { [769] = 4 })
+        t:eq(order[1] and order[1].recipe, "Roasted Boar Meat", "boar meat in bags goes first")
+        local boar
+        for _, s in ipairs(order) do if s.recipe == "Roasted Boar Meat" then boar = crafts[s] end end
+        t:eq(boar, 4, "all 4 boar meat used, then wolf")
+        local alts = SP.Alternatives(g.steps, 2672, "Cooking__test", 1)
+        t:eq(alts[1], 2672, "wolf meat first"); t:eq(alts[2], 769, "boar meat stands in")
+        t:eq(#SP.Alternatives(g.steps, 99999, "Cooking__test", 1), 1, "unknown item: just itself")
+    end)
 end)
 
 ns:Register("test", "profession route: map path skips 'anywhere' steps, capped", function(t)
@@ -1566,7 +1577,13 @@ end)
 ns:Register("test", "skillplan: fishing feeds cooking", function(t)
     local SP = ns.skillPlan
     local g = ns:Get("profGuide", "Cooking")
-    local step, fish, id = SP.FishAlternative(g.steps, 2672)
+    -- Both seen orange in the window at 1: they skill up alike there.
+    local seen = { ["Charred Wolf Meat"] = { diff = "optimal", reagents = { [2672] = 1 } },
+                   ["Brilliant Smallfish"] = { diff = "optimal", reagents = { [6291] = 1 } } }
+    local step, fish, id
+    with(ns.recipes, "Known", function(_, prof) if prof == "Cooking__test" then return seen, 1 end end, function()
+        step, fish, id = SP.FishAlternative(g.steps, 2672, "Cooking__test", 1)
+    end)
     t:eq(id, 6291, "wolf meat's stand-in from fishing: Raw Brilliant Smallfish")
     t:ok(step and step.recipeItem == 6325, "its recipe is bought")
     t:ok(fish and fish.share > 0, "share of catches")
@@ -1632,7 +1649,7 @@ ns:Register("test", "skillplan: the profession data's recipes and trainers", fun
     t:eq(select(2, SP.StepTrainers("Cooking", {})), "Cooking trainer", "other steps: the profession's trainers")
 end)
 
-ns:Register("test", "skillplan: works out each step from its colours, not a fixed path", function(t)
+ns:Register("test", "skillplan: works out each step from the window's colours, not a fixed path", function(t)
     local SP = ns.skillPlan
     local bs = ns:Get("profGuide", "Blacksmithing").steps
     -- Every bought recipe has a source, so its step knows what it is and roughly costs.
@@ -1645,33 +1662,36 @@ ns:Register("test", "skillplan: works out each step from its colours, not a fixe
             t:eq(s.use, nil, prof .. ": " .. s.recipe .. " has no fixed range of its own (SP.Score decides)")
         end
     end
-    -- The computed plan climbs as far as the recipes Flow has go, and stops there.
-    t:ok(select(3, SP._simulate("Blacksmithing__test", bs, 1, 270, {})), "Blacksmithing 1 -> 270 reaches")
-    local _, _, reaches, _, reached = SP._simulate("Blacksmithing__test", bs, 265, 300, {})
-    t:ok(not reaches, "Blacksmithing 265 -> 300: no recipe Flow has gives skill that far")
-    t:ok(reached >= 274 and reached < 300, "stops where the last recipe turns grey (" .. tostring(reached) .. ")")
-    local function first(rank)
-        local _, order = SP._simulate("Blacksmithing__test", bs, rank, rank + 1, {})
-        return order[1] and order[1].recipe
-    end
-    -- At each skill, the step SP.Score rates best of all of them.
-    for _, rank in ipairs({ 30, 130, 210 }) do
-        local at, step, best = first(rank), nil, 0
+    -- Nothing seen in the window: no colour, so nothing is planned.
+    local _, none, reaches, _, reached = SP._simulate("Blacksmithing__test", bs, 1, 270, {})
+    t:eq(#none, 0, "no colour seen: nothing planned"); t:ok(not reaches, "doesn't reach"); t:eq(reached, 1, "stays at 1")
+    -- At the skill Flow saw, the step SP.Score rates best of all of them.
+    local seen = {
+        ["Rough Sharpening Stone"] = { diff = "easy", reagents = { [2835] = 1 } },
+        ["Rough Grinding Stone"] = { diff = "medium", reagents = { [2835] = 2 } },
+        ["Runed Copper Belt"] = { diff = "trivial", reagents = { [2840] = 10 } } }
+    with(ns.recipes, "Known", function(_, prof) if prof == "Blacksmithing__test" then return seen, 30 end end, function()
+        local _, order = SP._simulate("Blacksmithing__test", bs, 30, 31, {})
+        local at, step, best = order[1] and order[1].recipe, nil, 0
         for _, s in ipairs(bs) do
-            local v = SP.Score(s, rank, { prof = "Blacksmithing__test" })
+            local v = SP.Score(s, 30, { prof = "Blacksmithing__test" })
             if v > best then best = v end
             if s.recipe == at then step = s end
         end
-        t:ok(step and rank >= step.learn and rank < step.grey, rank .. ": a step that still gives skill (" .. tostring(at) .. ")")
-        t:near(step and SP.Score(step, rank, { prof = "Blacksmithing__test" }) or -1, best, 1e-9, rank .. ": the best-rated step")
-    end
-    -- Nothing gives skill: no step.
-    t:eq(first(400), nil, "past every recipe's grey: nothing to make")
+        t:eq(at, "Rough Grinding Stone", "30: yellow for 2 stones beats green for 1")
+        t:near(step and SP.Score(step, 30, { prof = "Blacksmithing__test" }) or -1, best, 1e-9, "30: the best-rated step")
+        t:eq((SP.Score(bs[5], 30, { prof = "Blacksmithing__test" })), 0, "grey in the window: not a choice")
+    end)
     -- Fish recipes stand in only while you carry the fish.
     local cooking = {}
     for _, s in ipairs(ns:Get("profGuide", "Cooking").steps) do if not s.faction then cooking[#cooking + 1] = s end end
-    local _, order = SP._simulate("Cooking__test", cooking, 60, 70, {})
-    for _, s in ipairs(order) do t:ok(not s.recipe:find("Mud Snapper"), "60, no fish in bags: no fish recipe (" .. s.recipe .. ")") end
+    local fishSeen = { ["Charred Wolf Meat"] = { diff = "optimal", reagents = { [2672] = 1 } },
+                       ["Longjaw Mud Snapper"] = { diff = "optimal", reagents = { [6289] = 1 } } }
+    with(ns.recipes, "Known", function(_, prof) if prof == "Cooking__test" then return fishSeen, 60 end end, function()
+        local _, order = SP._simulate("Cooking__test", cooking, 60, 70, {})
+        t:ok(#order > 0, "60: the meat recipe is planned")
+        for _, s in ipairs(order) do t:ok(not s.recipe:find("Mud Snapper"), "60, no fish in bags: no fish recipe (" .. s.recipe .. ")") end
+    end)
 end)
 
 ns:Register("test", "perf: Flow's update loops are timed", function(t)
