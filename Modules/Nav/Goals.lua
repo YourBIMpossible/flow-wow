@@ -947,6 +947,7 @@ ns:Register("routeKind", "quests", { order = 10, default = true, custom = "lines
         if battleground(g) then return false end
         return g.provider == "questie" or g.provider == "native"   -- (no source: a quest step made by hand, as tests do)
             or (g.provider == nil and type(g.key) == "string" and g.key:find("^%d+:") ~= nil)
+            or g.forQuest ~= nil   -- (a skill a quest asks for, SkillPlan: kept with Professions off)
     end })
 
 ns:Register("routeKind", "newQuests", { order = 20, default = true, custom = "lines",

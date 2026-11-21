@@ -635,9 +635,11 @@ function SP.Pace(prof, level)
     return marks[#marks][2]
 end
 function SP:Targets()
-    -- Professions switched off (map list, arrow menu): no profession steps at all,
-    -- not even for quests that ask for a skill, nor tools to buy.
-    if not ns.nav:Includes("professions") then return {} end
+    -- A quest that asks for a skill keeps its step even with Professions
+    -- switched off (map list, arrow menu): the quest can't be finished without
+    -- it. Its step names the quest (forQuest) and counts as that quest's step
+    -- (the "quests" route kind), not as a profession stop. Professions off:
+    -- nothing else, no skill-ups for your level.
     local out = {}
     for _, q in ipairs(ns.quests.LogEntries and ns.quests.LogEntries() or {}) do
         for _, o in ipairs(q.objectives or {}) do
@@ -711,7 +713,7 @@ end
 -------------------------------------------------------------------------------
 
 local function why(t, prof, rank)
-    if t.quest then return string.format("%s: %s %d -> %d", t.quest, prof, rank, t.target) end
+    if t.quest then return string.format("%s %d -> %d (needed for quest %s)", prof, rank, t.target, t.quest) end
     return string.format("%s %d -> %d (right for your level)", prof, rank, t.target)
 end
 
@@ -1483,7 +1485,9 @@ local function planProfession(prof, t, out)
     local rank, max, unsure = A.Skill(prof)
     local label = why(t, prof, rank or 0)
     local weight = t.optional and 1.5 or 1.0
-    local base = { title = t.quest or prof, optional = t.optional, weight = weight }
+    -- (forQuest: a quest needs this skill; the step stays with Professions off.)
+    local base = { title = t.quest or prof, optional = t.optional, weight = weight,
+                   forQuest = t.required and t.quest or nil }
     local function add(goal)
         for k, v in pairs(base) do if goal[k] == nil then goal[k] = v end end
         goal.details = goal.details or {}
@@ -2139,3 +2143,4 @@ function SP:Explain()
 end
 
 SP._simulate = simulate  -- for /flow test
+SP._planProfession = planProfession  -- (tests)
