@@ -399,12 +399,15 @@ local function carried()
 end
 carriedForWhy = carried
 
--- About to kill a lot: at a kill / loot step, or just after a fight.
+-- About to kill a lot: at a kill / loot step, at a dungeon's entrance (the
+-- step that walks you in: get ready before the run, F-069), or just after a
+-- fight.
 function BI.Killing(ctx, now)
     if IsResting and IsResting() then return false end
     local g = ctx and ctx.goal
     local kind = g and (g.kind or (ns.nav and ns.nav:StopKind(g)))
     if ctx and ctx.at and (kind == "kill" or kind == "collect") then return true end
+    if ctx and ctx.at and type(g.key) == "string" and g.key:find("^dungeon:") then return true end
     return (now or GetTime()) - lastFight < RECENT_FIGHT
 end
 

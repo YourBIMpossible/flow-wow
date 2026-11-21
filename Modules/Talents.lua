@@ -143,6 +143,18 @@ function T.Build()
     return ns:Get("talentBuild", class or "")
 end
 
+-- Pure: true when the build isn't for the role Flow plays you as (F-060:
+-- "/flow spec heal" still got the Feral build, with nothing said). A build
+-- names its role, and alsoFor the other roles it serves. No role or no
+-- build: nothing to say.
+function T.BuildMismatch(bld, role)
+    if not (bld and bld.role and role) or bld.role == role then return false end
+    for _, r in ipairs(bld.alsoFor or {}) do
+        if r == role then return false end
+    end
+    return true
+end
+
 -- One entry per talent point, in order: { name, rank (this point makes it
 -- rank N), level (the level that point comes at), why }.
 function T.Picks(build)
@@ -413,8 +425,9 @@ end
 
 -- Everything the view shows, worked out from the game's trees and the build
 -- (the tests pass their own): { what, now, soon, trees = { { title, rows = {
--- { node, state, text, plan } } } } }.
-function T.View(nodes, unspent, bld, level)
+-- { node, state, text, plan } } } } }. role: the role Flow plays you as
+-- (optional): a build for another role says so.
+function T.View(nodes, unspent, bld, level, role)
     local trees = T.Arrange(nodes)
     local picks = T.Picks(bld)
     local plan = T.Plan(picks)
@@ -447,6 +460,11 @@ function T.View(nodes, unspent, bld, level)
         return v
     end
     v.what = string.format("%s  |cff888888(%s at level 60)|r", bld.name or "Levelling build", table.concat(ends, " / "))
+    if T.BuildMismatch(bld, role) then
+        local label = ns.ROLE_LABEL and ns.ROLE_LABEL[role] or role
+        v.what = v.what .. string.format("\n|cffff8800Written for %s, and you play %s: no build for your role yet.|r",
+            ns.ROLE_LABEL and ns.ROLE_LABEL[bld.role] or bld.role, label)
+    end
     if #nowList > 0 then
         v.now = string.format("|cffffd200Take now (%d point%s): %s|r", #nowList, #nowList == 1 and "" or "s", T.Names(nowList))
     elseif (unspent or 0) > 0 then
@@ -467,7 +485,7 @@ function T:Refresh()
     if not (frame and frame:IsShown()) then return end
     local ok, nodes, unspent = pcall(T.Read)
     if not ok then nodes, unspent = {}, 0 end
-    local v = T.View(nodes, unspent, T.Build(), UnitLevel("player"))
+    local v = T.View(nodes, unspent, T.Build(), UnitLevel("player"), ns.LevelingRole and ns:LevelingRole())
     frame.what:SetText(#nodes > 0 and v.what or "The game hasn't given you talents yet (they start at level 10).")
     frame.now:SetText(v.now or "")
     frame.soon:SetText(v.soon or "")

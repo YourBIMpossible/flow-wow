@@ -3808,11 +3808,15 @@ ns:Register("test", "spec: your talents set the role Flow plays you as, ties and
     t:eq((ns.DominantTree(tr(3, 3, 9))), 3, "a tie below the most doesn't matter")
     t:eq((ns.DominantTree(tr(4, 4, 0))), nil, "a tie for the most: no tree")
     t:eq((ns.DominantTree(nil)), nil, "no trees: no tree")
-    -- "Still not suggesting Righteous Fury": Forever's one talent sheet (x far apart per tree).
+    -- "Still not suggesting Righteous Fury": Forever's one talent sheet (x far apart per tree;
+    -- a tree's four columns 600 apart, every column holding a talent).
     local sheet = {
-        { x = 1020, y = 2730, rank = 0 }, { x = 2820, y = 2730, rank = 0 },             -- Holy
+        { x = 1020, y = 2730, rank = 0 }, { x = 1620, y = 2130, rank = 0 },             -- Holy
+        { x = 2220, y = 2130, rank = 0 }, { x = 2820, y = 2730, rank = 0 },
         { x = 5020, y = 2730, rank = 1 }, { x = 6220, y = 2130, rank = 5 },             -- Protection
-        { x = 9080, y = 2730, rank = 0 }, { x = 10880, y = 3330, rank = 0 },            -- Retribution
+        { x = 5620, y = 2130, rank = 0 },
+        { x = 9080, y = 2730, rank = 0 }, { x = 9680, y = 2130, rank = 0 },             -- Retribution
+        { x = 10280, y = 2130, rank = 0 }, { x = 10880, y = 3330, rank = 0 },
     }
     local fromSheet = ns.TreesFromNodes(sheet, ns.TALENT_TREES.PALADIN)
     t:eq(fromSheet and fromSheet[2].points, 6, "Forever's sheet: 6 points in the middle tree")
@@ -4011,7 +4015,7 @@ ns:Register("test", "paladin: the seal Flow suggests (your role, your choice, th
         t:eq(def.pickSeal(knowsAll, "dps", at(false, "Seal of Light")), "Seal of Light",
             "a different seal cast mid-fight wins over your choice")
         ns.db.paladinSeal = "Seal of Fury"
-        t:eq(def.pickSeal(noFury, "dps", at()), "Seal of Righteousness", "a seal you don't know yet: the usual one")
+        t:eq(def.pickSeal(noFury, "dps", at()), "Seal of Command", "a seal you don't know yet: your role's")
         def.SetSeal("Seal of Light")
         t:eq(ns.db.paladinSeal, "Seal of Light", "the settings row sets your choice")
         def.SetSeal(nil)

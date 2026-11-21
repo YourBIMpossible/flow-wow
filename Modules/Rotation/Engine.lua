@@ -29,6 +29,17 @@ function E:Definition()
     return ns:Get("rotation", class)
 end
 
+-- A class with no rotation yet still gets the help that needs no class
+-- spells: breaking free, healthstones and potions, your recovery order
+-- (bandage, food, drink), interrupts with a racial. No class rules.
+E.NO_CLASS = "NOCLASS"
+ns:Register("rotation", E.NO_CLASS, { noClass = true, priority = {} })
+
+-- What the engine chooses from: your class's rotation, or the class-agnostic one.
+function E:Rules()
+    return self:Definition() or ns:Get("rotation", E.NO_CLASS)
+end
+
 function E:KnownSpells() return known end
 
 function E:RefreshSpells()
@@ -868,8 +879,7 @@ function E:EngageStep(ctx)
 end
 
 function E:Choose()
-    local def = self:Definition()
-    if not def then return nil end
+    local def = self:Rules()
 
     pcall(T.SampleTarget, T)
     local ctx = self:Context()
@@ -1413,8 +1423,10 @@ end)
 -- Diagnostics for /flow rot why: why each rule is or isn't suggested.
 function E:Explain()
     local out = {}
-    local def = self:Definition()
-    if not def then return { "No rotation registered for your class." } end
+    local def = self:Rules()
+    if def.noClass then
+        out[#out + 1] = "No rotation for your class yet: only help that needs no class spells (breaking free, potions, bandage, food, drink)."
+    end
     local n = 0
     for _ in pairs(known) do n = n + 1 end
     out[#out + 1] = string.format("Known spells: %d. Last error: %s", n, tostring(self.lastError or "none"))

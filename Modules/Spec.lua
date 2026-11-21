@@ -69,11 +69,13 @@ end
 
 -- Pure: the role whose spec is your talent tree with the most points.
 -- specs: class data's { dps = { name = "Retribution" }, ... }; trees:
--- { { name = "Holy", points = 5 }, ... }. nil: no points yet, a tie, or a
--- tree no role is named after (a druid's Feral Combat is cat and bear).
-function ns.RoleFromTrees(specs, trees)
+-- { { name = "Holy", points = 5 }, ... }; treeRoles (optional): the role of
+-- a tree no spec is named after (ns.TREE_ROLES). nil: no points yet, a tie,
+-- or a tree with no role.
+function ns.RoleFromTrees(specs, trees, treeRoles)
     local _, best = ns.DominantTree(trees)
     if not best then return nil end
+    if treeRoles and treeRoles[best.name] then return treeRoles[best.name] end
     for role, s in pairs(specs or {}) do
         if s.name == best.name then return role end
     end
@@ -86,6 +88,14 @@ end
 ns.TALENT_TREES = {
     PALADIN = { "Holy", "Protection", "Retribution" },
     DRUID   = { "Balance", "Feral Combat", "Restoration" },
+}
+
+-- Trees no role's spec is named after, and the role each plays. A druid's
+-- Balance is caster dps; Feral Combat is cat (melee dps) and bear (tank),
+-- and talents can't tell which: dps. Tanking is your own choice (/flow spec
+-- tank, "Your role"), which beats your talents anyway.
+ns.TREE_ROLES = {
+    DRUID = { Balance = "dps", ["Feral Combat"] = "dps" },
 }
 
 -- Pure: talents from one sheet ({ x, y, rank }, as ns.talents.Read gives
@@ -160,7 +170,8 @@ end
 -- The role your talents say (dps/heal/tank), or nil.
 function ns:TalentRole()
     local d = self:ClassData()
-    return ns.RoleFromTrees(d and d.specs, self:TalentTrees())
+    local class = UnitClass and select(2, UnitClass("player"))
+    return ns.RoleFromTrees(d and d.specs, self:TalentTrees(), ns.TREE_ROLES[class or ""])
 end
 
 -- Pure: the role Flow plays you as, and why. chosen: your own choice (or
@@ -195,6 +206,12 @@ function ns:RoleSource()
     return source
 end
 
+-- Pure: where the role came from, in words.
+local SOURCE_WORDS = { chosen = "your choice", talents = "your talents", class = "your class's usual role" }
+function ns.RoleSourceWords(source)
+    return SOURCE_WORDS[source] or SOURCE_WORDS.class
+end
+
 local function unspentPoints()
     -- (Flow Talents reads the game's own count, whichever talent system the client has.)
     if ns.talents and ns.talents.Unspent then return ns.talents.Unspent() end
@@ -209,11 +226,12 @@ local function describe()
     ns:Print(string.format("recommended levelling spec: |cff%s%s|r (%s)",
         ns.ROLE_COLOR[rec], d.specs[rec].name, ns.ROLE_LABEL[rec]))
     for _, line in ipairs(d.leveling.why) do print("  - " .. line) end
+    -- Always the role Flow plays you as, and why (F-058: it showed only when
+    -- it differed from the recommended one).
     local mine, source = ns:LevelingRole(), ns:RoleSource()
-    if mine ~= rec and d.specs[mine] then
-        print(string.format("  Your role: |cff%s%s|r (%s, %s).", ns.ROLE_COLOR[mine], ns.ROLE_LABEL[mine],
-            d.specs[mine].name, source == "chosen" and "your choice" or "your talents"))
-    end
+    local spec = d.specs[mine]
+    print(string.format("  Your role: |cff%s%s|r (%s%s).", ns.ROLE_COLOR[mine] or "ffffff", ns.ROLE_LABEL[mine] or mine,
+        spec and (spec.name .. ", ") or "", ns.RoleSourceWords(source)))
     local _, class = UnitClass("player")
     print(ns:Get("talentBuild", class or "")
         and "  Point by point: /flow talents (Flow Talents: what to take now and at each level)."
