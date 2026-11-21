@@ -10,7 +10,8 @@ local _, ns = ...
 --   * a need you already meet: nothing to do;
 --   * a step on the route provides it: this step goes after that one
 --     (goal.deps, which the planner keeps; goal.after names it, "after Bear
---     Form", on the map, the Flow Tracker and the arrow);
+--     Form", on the map, the Flow Tracker and the arrow; a soft need's dep
+--     is also in goal.softDeps, { [key] = true }: it orders, never holds);
 --   * nothing on the route provides it: a hard need blocks the step, with
 --     the reason (listed with a lock, like a step you can't pay for yet); a
 --     soft need only orders, it never blocks.
@@ -90,6 +91,19 @@ function N.ResolveNeeds(list, met, label)
                         local has = false
                         for _, d in ipairs(g.deps) do if d == p.key then has = true end end
                         if not has then g.deps[#g.deps + 1] = p.key end
+                        -- A soft need only orders: goal.softDeps names the deps
+                        -- that are there for no other reason, so a step that's
+                        -- off the route never holds this one back
+                        -- (N.HoldForDropped). A hard need, or a dep the step had
+                        -- already, binds.
+                        if soft then
+                            if not has then
+                                g.softDeps = g.softDeps or {}
+                                g.softDeps[p.key] = true
+                            end
+                        elseif g.softDeps then
+                            g.softDeps[p.key] = nil
+                        end
                         after[#after + 1] = label(token)
                     elseif not soft and not g.blockedBy then
                         g.blockedBy = "needs " .. label(token) .. " first"

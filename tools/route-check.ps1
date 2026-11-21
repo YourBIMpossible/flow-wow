@@ -242,6 +242,7 @@ if ($unplaced.Count -gt 0) {
             elseif ($b -match "has no spot for|a kind Flow can't place") { 'TO FIX: objective with no place in the quest data (learned when done once)' }
             elseif ($b -match "doesn't know where .* comes from|doesn't know who sells") { 'TO FIX: no source known for the item' }
             elseif ($b -match ' first$|^needs |^buy |^learn |^use ') { 'waits for another step (expected)' }
+            elseif ($b -match '^first: ') { 'waits for a step that is off the route (expected)' }
             else { 'CHECK: other reason' }
         Write-Output ("{0}: {1} [{2}] - {3}" -f $class, $g.text, $g.key, $b)
     }

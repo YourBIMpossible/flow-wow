@@ -662,6 +662,21 @@ function N:Collect(gathered)
             end
         end
     end
+    -- And one that waits for any step left off the route for another reason:
+    -- held (a quest 3+ levels above you, an elite), blocked, in a zone you
+    -- didn't pick, filtered out. "Flow is telling me to turn in quests I have
+    -- that are incomplete": "Turn in: Deepmoss Spider Eggs" at 0/15, its
+    -- collect step held until level 20, so the hand-in had nothing left to
+    -- wait for and looked ready.
+    do
+        local okD, keptD, heldD = pcall(N.HoldForDropped, shown, present)
+        if okD then
+            shown = keptD
+            for _, g in ipairs(heldD) do blockedGoals[#blockedGoals + 1] = g end
+        else
+            ns:Log("nav", "hold for dropped: " .. tostring(keptD))
+        end
+    end
     -- "Along the way" goals (loot meat for an optional profession): never a
     -- step of their own, so the route never sends you off to grind them.
     -- They're listed in the arrow panel and step cards, and their mobs are
@@ -746,11 +761,12 @@ function N.HoldCrafts(shown, all)
     end
 end
 
--- Pure: steps that come after a step you hid (goal.deps) leave the route
--- too, blocked with the reason; and so on down the chain. Returns kept, held.
-function N.HoldForHidden(shown, hiddenGoals)
-    local off = {}
-    for _, g in ipairs(hiddenGoals or {}) do off[g.key] = g end
+-- Pure: steps in `shown` that wait (goal.deps) for a step in `off`
+-- ({ [key] = goal }) leave the route too, blocked (a copy: the step itself
+-- isn't marked); and so on down the chain. why(wait) -> blockedBy,
+-- blockedShort. binds(g, dep) -> false for a dep that only orders (optional:
+-- every dep binds). Returns kept, held.
+local function holdChain(shown, off, why, binds)
     local kept, held = shown, {}
     if not next(off) then return kept, held end
     while true do
@@ -758,13 +774,12 @@ function N.HoldForHidden(shown, hiddenGoals)
         for _, g in ipairs(kept) do
             local wait
             for _, dep in ipairs(g.deps or {}) do
-                if off[dep] then wait = off[dep] break end
+                if off[dep] and (not binds or binds(g, dep)) then wait = off[dep] break end
             end
             if wait then
                 local c = {}
                 for k, v in pairs(g) do c[k] = v end
-                c.blockedBy = "first: " .. (wait.text or wait.title or wait.key) .. " (you hid that step: unhide it in the Flow Router)"
-                c.blockedShort = "its step is hidden"
+                c.blockedBy, c.blockedShort = why(wait)
                 held[#held + 1] = c
                 off[g.key] = c
                 changed = true
@@ -775,6 +790,38 @@ function N.HoldForHidden(shown, hiddenGoals)
         kept = nextKept
         if not changed then return kept, held end
     end
+end
+
+local function stepName(g) return g.text or g.title or g.key end
+
+-- Pure: steps that come after a step you hid (goal.deps) leave the route
+-- too, blocked with the reason; and so on down the chain. Returns kept, held.
+function N.HoldForHidden(shown, hiddenGoals)
+    local off = {}
+    for _, g in ipairs(hiddenGoals or {}) do off[g.key] = g end
+    return holdChain(shown, off, function(wait)
+        return "first: " .. stepName(wait) .. " (you hid that step: unhide it in the Flow Router)", "its step is hidden"
+    end)
+end
+
+-- Pure: steps that wait for one Flow knows (known: { [key] = goal }: N:Collect's
+-- `present`, every step of the kinds you ticked, blocked and hidden ones too)
+-- that isn't on the route (`shown`) leave it too: a hand-in whose objective is
+-- held, blocked or in a zone you left out can't be done yet, so it isn't
+-- "Turn in". A step that is done is in neither, so what waits for it stays.
+-- A dep that only orders (goal.softDeps, a soft need: class training after
+-- the quest that teaches Bear Form) never holds: training doesn't wait for a
+-- quest you can't do yet. Returns kept, held.
+function N.HoldForDropped(shown, known)
+    local on, off = {}, {}
+    for _, g in ipairs(shown) do on[g.key] = true end
+    for key, g in pairs(known or {}) do
+        if not on[key] then off[key] = g end
+    end
+    return holdChain(shown, off, function(wait)
+        local reason = wait.blockedBy and (" (" .. wait.blockedBy .. ")") or " (not on your route)"
+        return "first: " .. stepName(wait) .. reason, "waits for another step"
+    end, function(g, dep) return not (g.softDeps and g.softDeps[dep]) end)
 end
 
 -- Quests by zone (0.35.293). "Quests are starting to pull me into the
