@@ -66,6 +66,8 @@ N._gameToWorld = gameToWorld   -- (tests)
 -- Gathering the route turns thousands of spawn spots into world positions,
 -- so this matters. Each map is checked against the game on two more points
 -- first; a map that doesn't fit keeps asking the game (as before).
+-- Cache: for the session (F-016). A map's shape never changes, and a map
+-- marked false still gets exact answers from the game, so nothing goes stale.
 local flatMaps = {}
 local CHECKS = { { 1, 1 }, { 0.37, 0.71 } }
 local function flatMap(map)
@@ -101,6 +103,9 @@ end
 
 -- East/south unit vectors of a map in world space, so world offsets can be
 -- turned into a compass bearing without caring how world axes are oriented.
+-- Cache: for the session, but only answers (F-016). A map the game couldn't
+-- place yet (world still loading) is asked again next time, not remembered as
+-- "no axes" for the rest of the session.
 local axes = {}
 local function mapAxes(map)
     if not map then return nil end   -- (a spot with no map: no axes, and no nil table key)
@@ -109,13 +114,14 @@ local function mapAxes(map)
     local _, ox, oy = N:ToWorld(map, 0, 0)
     local _, ex, ey = N:ToWorld(map, 1, 0)
     local _, sx, sy = N:ToWorld(map, 0, 1)
-    if not (ox and ex and sx) then axes[map] = false return nil end
+    if not (ox and ex and sx) then return nil end
     local el, sl = dist(ex, ey, ox, oy), dist(sx, sy, ox, oy)
     if el == 0 or sl == 0 then axes[map] = false return nil end
     a = { ex = (ex - ox) / el, ey = (ey - oy) / el, sx = (sx - ox) / sl, sy = (sy - oy) / sl }
     axes[map] = a
     return a
 end
+N._mapAxes = mapAxes   -- (tests)
 
 -- The arrow turns with your character: up = the way you face. (Map-style
 -- north-up and "like my minimap" were tried in 0.35.51-0.35.54 and removed:

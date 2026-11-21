@@ -199,3 +199,21 @@ ns:Register("test", "safety: saved-data updates run once each, in order (F-014)"
     t:ok(#ran == 0 and fresh.migrations.zzFresh and not fresh.zzFresh, "a fresh install marks them done without running")
     t:eq(#runs, 5, "each ran exactly once")
 end)
+
+ns:Register("test", "safety: route caches follow the game: completed quests, map axes (F-016)", function(t)
+    local Q, N = ns.quests, ns.nav
+    t:eq(Q.LeftLog({ [1] = true, [2] = true }, { [1] = true }), true, "a quest left the log: completed quests reload")
+    t:eq(Q.LeftLog({ [1] = true }, { [1] = true, [3] = true }), false, "only a new quest: no reload")
+    t:eq(Q.LeftLog({}, {}), false, "nothing changed: no reload")
+    local map, ready = 999901, false
+    local function toWorld(_, m, x, y)
+        if m ~= map or not ready then return nil end
+        return 1, x * 100, y * 100
+    end
+    with(N, "ToWorld", toWorld, function()
+        t:eq(N._mapAxes(map), nil, "the world isn't ready: no axes yet")
+        ready = true
+        local a = N._mapAxes(map)
+        t:ok(a and a.ex == 1 and a.sy == 1, "asked again once it is, not remembered as none")
+    end)
+end)
