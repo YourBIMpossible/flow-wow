@@ -794,14 +794,18 @@ end
 
 local function stepName(g) return g.text or g.title or g.key end
 
+-- A dep that only orders (goal.softDeps: a soft need) never holds a step.
+local function bindsHard(g, dep) return not (g.softDeps and g.softDeps[dep]) end
+
 -- Pure: steps that come after a step you hid (goal.deps) leave the route
--- too, blocked with the reason; and so on down the chain. Returns kept, held.
+-- too, blocked with the reason; and so on down the chain. A soft dep only
+-- orders, so it never holds. Returns kept, held.
 function N.HoldForHidden(shown, hiddenGoals)
     local off = {}
     for _, g in ipairs(hiddenGoals or {}) do off[g.key] = g end
     return holdChain(shown, off, function(wait)
         return "first: " .. stepName(wait) .. " (you hid that step: unhide it in the Flow Router)", "its step is hidden"
-    end)
+    end, bindsHard)
 end
 
 -- Pure: steps that wait for one Flow knows (known: { [key] = goal }: N:Collect's
@@ -821,7 +825,7 @@ function N.HoldForDropped(shown, known)
     return holdChain(shown, off, function(wait)
         local reason = wait.blockedBy and (" (" .. wait.blockedBy .. ")") or " (not on your route)"
         return "first: " .. stepName(wait) .. reason, "waits for another step"
-    end, function(g, dep) return not (g.softDeps and g.softDeps[dep]) end)
+    end, bindsHard)
 end
 
 -- Quests by zone (0.35.293). "Quests are starting to pull me into the
@@ -1180,7 +1184,8 @@ function N.HoldForAway(shown, awayOf, words)
             local wait
             if not away[g.key] then
                 for _, dep in ipairs(g.deps or {}) do
-                    if off[dep] then wait = off[dep] break end
+                    -- (A soft dep only orders: it never holds.)
+                    if off[dep] and not (g.softDeps and g.softDeps[dep]) then wait = off[dep] break end
                 end
             end
             if wait then
