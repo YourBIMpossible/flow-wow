@@ -63,11 +63,24 @@ function ns:On(event, fn)
     table.insert(handlers[event], fn)
 end
 
+-- An error in a handler or loader goes to chat and, once per distinct
+-- message a session, to the diagnostics log (F-010: not lost on /reload).
+local logged = {}
+local function logError(where, err)
+    local msg = where .. ": " .. tostring(err)
+    if ns.Log and ns.db and ns.db.diag and not logged[msg] then
+        logged[msg] = true
+        ns:Log("error", msg)
+    end
+end
+ns._logError = logError   -- (tests)
+
 frame:SetScript("OnEvent", function(_, event, ...)
     for _, fn in ipairs(handlers[event] or {}) do
         local ok, err = pcall(fn, ...)
         if not ok then
             print("|cffff5555Flow error|r (" .. event .. "): " .. tostring(err))
+            logError(event, err)
         end
     end
     -- After every module's own logout work: this character's data goes back
@@ -220,6 +233,7 @@ ns:On("ADDON_LOADED", function(name)
         local ok, err = pcall(fn, ns.db)
         if not ok then
             print("|cffff5555Flow load error|r: " .. tostring(err))
+            logError("load", err)
         end
     end
 end)

@@ -4,6 +4,23 @@
 
 local _, ns = ...
 
+local function with(tbl, key, value, fn)
+    local old = tbl[key]
+    tbl[key] = value
+    local ok, err = pcall(fn)
+    tbl[key] = old
+    if not ok then error(err, 0) end
+end
+
+-- Lines in a log list that contain `text`.
+local function count(log, text)
+    local n = 0
+    for _, l in ipairs(log) do
+        if tostring(l):find(text, 1, true) then n = n + 1 end
+    end
+    return n
+end
+
 ns:Register("test", "safety: auto-sell at vendors is off until you turn it on (F-002)", function(t)
     local V = ns.vendor
     local fresh = {}
@@ -34,5 +51,30 @@ ns:Register("test", "safety: gear Flow can't score for your class is kept (F-001
         ns:Get("disposition", "laterOrOtherRole"), ns:Get("disposition", "unneededGear")
     t:ok(r and before and after and before.order < r.order and r.order < after.order,
         "checked after upgrades and before \"not better: sell\"")
+end)
+
+ns:Register("test", "safety: a sell rule that errors keeps the item, logged once (F-010)", function(t)
+    local D = ns.disposition
+    local list = {
+        { key = "zzBoom", r = { check = function() error("boom") end } },
+        { key = "zzSellIt", r = { check = function() return { action = "sell", reason = "sell it" } end } },
+    }
+    -- Flow's own log, caught for the test (and put back).
+    local log = {}
+    local function catch(_, _, msg) log[#log + 1] = msg end
+    if not (ns.db and ns.db.diag) then t:ok(true, "no diagnostics yet"); return end
+    with(ns, "Log", catch, function()
+        with(D, "ruleFailed", {}, function()
+            local v = D.VerdictFrom({ id = 1 }, list)
+            t:eq(v.action, "keep", "the item is kept, not passed to a rule that sells it")
+            t:eq(v.rule, "zzBoom", "the failed rule's verdict")
+            D.VerdictFrom({ id = 2 }, list)
+            t:eq(count(log, "zzBoom"), 1, "the error is in the diagnostics log once")
+        end)
+        local err = "zz test error " .. tostring(log)   -- (new each run: logged once a session)
+        ns._logError("ZZ_TEST_EVENT", err)
+        ns._logError("ZZ_TEST_EVENT", err)
+        t:eq(count(log, err), 1, "an event handler's error is logged once")
+    end)
 end)
 

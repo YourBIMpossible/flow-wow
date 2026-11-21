@@ -155,12 +155,26 @@ local function rules()
     return sorted
 end
 
--- The rules' verdict for a described item (kept under `key`).
-local function verdictFor(item, key)
-    local list = rules()
+-- A rule that errors fails safe (F-010): the item is kept, not passed on to
+-- a later rule that might sell it, and the error goes to the diagnostics
+-- log once per rule per session. D.ruleFailed: rule key -> error (tests).
+D.ruleFailed = {}
+function D.RuleError(key, err)
+    if not D.ruleFailed[key] and ns.Log and ns.db and ns.db.diag then
+        D.ruleFailed[key] = tostring(err)
+        ns:Log("error", "disposition rule '" .. tostring(key) .. "' failed: " .. tostring(err))
+    end
+    return { action = "keep", reason = "a Flow check failed (" .. tostring(key) .. "), so it's kept" }
+end
+
+-- The rules' verdict for a described item (kept under `key` when given;
+-- list = the rules to check, all of them by default).
+local function verdictFor(item, key, list)
+    list = list or rules()
     for idx, e in ipairs(list) do
         local ok, v = pcall(e.r.check, item)
-        if ok and v then
+        if not ok then v = D.RuleError(e.key, v) end
+        if v then
             v.rule = e.key
             v.item = item
             -- Keeping it: list every reason, not just the first (Linen Cloth
@@ -181,14 +195,16 @@ local function verdictFor(item, key)
                 v.reasons = reasons
                 v.reason = table.concat(reasons, "; ")
             end
-            cache[key] = v
+            if key then cache[key] = v end
             return v
         end
     end
     local v = { action = "keep", reason = "no rule matched", item = item }
-    cache[key] = v
+    if key then cache[key] = v end
     return v
 end
+-- (Tests: a verdict from a given rule list, nothing cached.)
+function D.VerdictFrom(item, list) return verdictFor(item, nil, list) end
 
 -- Verdict for the item in a bag slot (cached per link + bound state).
 function D:Decide(bag, slot, link)
