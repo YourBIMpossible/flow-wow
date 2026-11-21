@@ -402,3 +402,75 @@ ns:Register("test", "near-first: on the default Shortest route it says it does n
     t:eq(F.Note("distance", false), nil, "off: nothing to explain")
     t:eq(F.Applies("distance"), false, "(and it really doesn't apply to Shortest)")
 end)
+
+-------------------------------------------------------------------------------
+-- F-037 / F-040 / F-042: quest availability says why, refreshes, and retries.
+-------------------------------------------------------------------------------
+
+ns:Register("test", "quests: a quest skipped as not offered says why and can be cleared", function(t)
+    local Q = ns.quests
+    local keep = ns.db.quests.notOffered
+    local ok, err = pcall(function()
+        ns.db.quests.notOffered = {}
+        local now = 100000
+        t:eq(Q.NotOfferedReason(999301, now), nil, "never judged: no reason")
+        Q.NoteOffer(999301, false, now)
+        local why = Q.NotOfferedReason(999301, now + 60)
+        t:ok(why and why:find("last talked", 1, true) ~= nil, "one visit: the ten-minute skip, said")
+        ns.db.quests.notOffered[999301].firstAt = now - 3600
+        Q.NoteOffer(999301, false, now)
+        why = Q.NotOfferedReason(999301, now + 3600)
+        t:ok(why and why:find("two visits", 1, true) ~= nil, "two visits: the day's skip, said")
+        t:ok(why and why:find("23 more hour", 1, true) ~= nil, "with the time left")
+        ns.db.quests.notOffered[999302] = { firstAt = now }
+        t:eq(Q.ClearNotOffered(999301), 1, "clear one: one cleared")
+        t:eq(ns.db.quests.notOffered[999301], nil, "its record gone")
+        t:ok(ns.db.quests.notOffered[999302] ~= nil, "the other kept")
+        t:eq(Q.ClearNotOffered(), 1, "clear all: the rest")
+        t:eq(next(ns.db.quests.notOffered), nil, "none left")
+        t:ok(type(ns.commands.notoffered) == "function", "/flow notoffered exists")
+    end)
+    ns.db.quests.notOffered = keep
+    t:ok(ok, "ran: " .. tostring(err))
+end)
+
+ns:Register("test", "quests: the holiday list is re-read on a new day and the active events every time", function(t)
+    local Q = ns.quests
+    local keep = Q.EventModule
+    local ok, err = pcall(function()
+        local QE = { eventQuests = { { "Hallow", 999311 } }, activeQuests = {} }
+        Q.EventModule = function() return QE end
+        local set, active = Q.Events("2026-10-17")
+        t:ok(set and set[999311], "an event quest")
+        t:ok(not active[999311], "its event is off")
+        QE.activeQuests = { [999311] = true }   -- (the event starts: a new table)
+        active = select(2, Q.Events("2026-10-17"))
+        t:ok(active[999311], "same day, event on: seen at once")
+        QE.eventQuests = { { "Winter", 999312 } }
+        set = Q.Events("2026-10-17")
+        t:ok(set[999311] and not set[999312], "the event list is kept for the day")
+        set = Q.Events("2026-10-18")
+        t:ok(set[999312] and not set[999311], "a new day: read again")
+        Q.EventModule = function() return nil end
+        t:eq(Q.Events("2026-10-18"), nil, "no Questie: nothing")
+    end)
+    Q.EventModule = keep
+    t:ok(ok, "ran: " .. tostring(err))
+end)
+
+ns:Register("test", "quests: a failed quest scan is shown as failed and a retry is scheduled", function(t)
+    local Q = ns.quests
+    local keep = Q.scanStats
+    local ok, err = pcall(function()
+        local waited, fn
+        Q._ScanFailed("boom", function(s, f) waited, fn = s, f end)
+        t:eq(Q.scanStats.failed, "boom", "the reason is kept")
+        t:eq(Q:MissedState(), "failed", "state: failed (not 'still checking')")
+        t:eq(waited, Q.SCAN_RETRY, "a retry is scheduled")
+        t:eq(type(fn), "function", "with something to run")
+        Q.scanStats = { scanned = 1 }
+        t:ok(Q:MissedState() ~= "failed", "a good scan clears it")
+    end)
+    Q.scanStats = keep
+    t:ok(ok, "ran: " .. tostring(err))
+end)
