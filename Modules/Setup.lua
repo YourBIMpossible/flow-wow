@@ -178,15 +178,8 @@ ns:Register("setupItem", "cameraStays", {
     default = function() return cvarDefault("cameraSmoothStyle") == "0" end,
     isNew = true,
 })
--- You asked for it (2026-11-06): switched once, then it's yours to change.
-ns:On("PLAYER_LOGIN", function()
-    ns.db.setup = ns.db.setup or {}
-    if not ns.db.setup.cameraStaysOnce and cvar("cameraSmoothStyle") and cvar("cameraSmoothStyle") ~= "0" then
-        SetCVar("cameraSmoothStyle", "0")
-        ns:Print("the camera now stays where you put it (Options > AddOns > Flow to change).")
-    end
-    ns.db.setup.cameraStaysOnce = true
-end)
+-- (Until F-089 this was switched on silently at the first login. A game
+-- setting changes only from this row now: Flow Setup suggests it.)
 
 ns:Register("setupItem", "stamps", {
     order = 70, label = "Chat timestamps", why = "See when each chat line arrived.",

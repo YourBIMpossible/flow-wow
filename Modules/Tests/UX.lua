@@ -88,3 +88,13 @@ ns:Register("test", "click: Keep my settings finishes Flow Setup without changin
         t:ok(same, "no setting changed")
     end)
 end)
+
+ns:Register("test", "setup: the camera style is a suggestion in Flow Setup, not switched at login", function(t)
+    -- F-089: Flow used to set the game's Camera Following Style at the first login, unasked.
+    local row = ns:Get("setupItem", "cameraStays")
+    t:ok(row ~= nil, "a Flow Setup row")
+    if not row then return end
+    t:ok(row.suggested == true, "Flow suggests it (so a new player is offered it)")
+    t:ok(row.isNew == true, "shown once to players who finished setup before it existed")
+    t:ok(type(row.set) == "function", "changed only from the row")
+end)
