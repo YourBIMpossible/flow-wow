@@ -192,3 +192,27 @@ ns:Register("test", "party quests: a member ready to hand in keeps their turn-in
     t:ok(H.Skip("help:86:done", mineNotReady, theirsNot), "neither ready: your own turn-in covers it")
     t:ok(not H.Skip("help:90:done", mineNotReady, theirsReady), "a quest only they have: theirs stays")
 end)
+
+-------------------------------------------------------------------------------
+-- F-056: costs are paid for together, not each against all your money.
+-------------------------------------------------------------------------------
+
+ns:Register("test", "route: steps that cost money are paid for together, not each on its own", function(t)
+    local N = ns.nav
+    local train = { key = "train:class", cost = 800, milestone = true }
+    local riding = { key = "mount:riding", cost = 600 }
+    local cheap = { key = "train:Cooking", cost = 100 }
+    local over, total = N.CommitCosts({ riding, cheap, train }, 1000)
+    t:eq(over["train:class"], nil, "class training first: it fits")
+    t:eq(over["train:Cooking"], nil, "then the cheaper one: still fits")
+    t:eq(over["mount:riding"], 900, "riding doesn't fit after them (900 set aside)")
+    t:eq(total, 900, "900 committed")
+    local o2 = N.CommitCosts({ riding, cheap, train }, 5000)
+    t:eq(next(o2), nil, "enough for all: nothing over")
+    local held = { key = "x", cost = 900, blockedBy = "needs Mining" }
+    local o3, t3 = N.CommitCosts({ held, cheap }, 200)
+    t:eq(o3.x, nil, "a step already held doesn't take money")
+    t:eq(t3, 100, "only the step you can do counts")
+    local o4 = N.CommitCosts({ { key = "a", cost = 700 }, { key = "b", cost = 700 } }, 1000)
+    t:ok(o4.a == nil and o4.b == 700, "two the same price: the same one wins every time (by key)")
+end)

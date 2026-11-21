@@ -158,6 +158,31 @@ function N.SpellNeedMet(name, known, asked)
     return nil
 end
 
+-- Pure: the steps that cost money, paid for together, not each on its own
+-- (two trainers at 8g each with 10g in your bags: one fits). Committed in
+-- order: milestones (class training) first, then the cheaper, then by key.
+-- Steps already blocked are left out. -> over ({ [key] = copper already set
+-- aside for the steps before it } for each step that doesn't fit), total
+-- (the copper committed to the steps that do).
+function N.CommitCosts(list, money)
+    local costed = {}
+    for _, g in ipairs(list or {}) do
+        if type(g.cost) == "number" and g.cost > 0 and not g.blockedBy then costed[#costed + 1] = g end
+    end
+    table.sort(costed, function(a, b)
+        local ma, mb = a.milestone and 1 or 0, b.milestone and 1 or 0
+        if ma ~= mb then return ma > mb end
+        if a.cost ~= b.cost then return a.cost < b.cost end
+        return tostring(a.key) < tostring(b.key)
+    end)
+    local total, over = 0, {}
+    for _, g in ipairs(costed) do
+        if total + g.cost <= (money or 0) then total = total + g.cost
+        else over[g.key] = total end
+    end
+    return over, total
+end
+
 -- The game's answer for a spell by its number, or nil.
 local function askKnown(name)
     local _, _, _, id = ns.api.SpellInfo(name)

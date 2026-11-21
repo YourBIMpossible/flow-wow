@@ -572,15 +572,23 @@ function N:Collect(gathered)
     local deferred = ns.db.nav.deferred or {}
     ns.db.nav.deferred = deferred
     local present, kept, blockedGoals = {}, {}, {}
+    -- Costs add up: a step is paid for only from what the steps before it
+    -- (Needs.lua N.CommitCosts) leave over.
+    local over, committed = N.CommitCosts(list, money)
+    N.moneyCommitted = committed
     for _, g in ipairs(list) do
         present[g.key] = g
-        if g.cost and g.cost > money then
+        local setAside = g.cost and over[g.key]
+        if setAside then
+            local have = setAside > 0
+                and string.format("you have %s, %s of it for other steps", N:Coin(money), N:Coin(setAside))
+                or string.format("you have %s", N:Coin(money))
             if not deferred[g.key] then
-                ns:Print(string.format("skipping %s for now: it costs %s and you have %s. It comes back on the route once you can pay.",
-                    g.title or g.text or g.key, N:Coin(g.cost), N:Coin(money)))
+                ns:Print(string.format("skipping %s for now: it costs %s and %s. It comes back on the route once you can pay.",
+                    g.title or g.text or g.key, N:Coin(g.cost), have))
             end
             deferred[g.key] = { text = g.title or g.text, cost = g.cost, since = deferred[g.key] and deferred[g.key].since or time() }
-            g.blockedBy = string.format("needs %s (you have %s)", N:Coin(g.cost), N:Coin(money))
+            g.blockedBy = string.format("needs %s (%s)", N:Coin(g.cost), have)
             g.blockedShort = "needs " .. N:Coin(g.cost)
             g.blockIcon = "Interface\\MoneyFrame\\UI-GoldIcon"
         elseif deferred[g.key] then
@@ -4960,11 +4968,10 @@ function N.RequestCollect(why) collectSoon(false, type(why) == "string" and why 
 -- comes back) or drops below a planned step's cost (so it's skipped).
 ns:On("PLAYER_MONEY", function()
     local money = GetMoney()
+    local committed = N.moneyCommitted or 0   -- (what the planned steps cost together)
+    if money < committed then scheduleCollect("money") return end
     for _, d in pairs(ns.db.nav.deferred or {}) do
-        if d.cost and d.cost <= money then scheduleCollect("money") return end
-    end
-    for _, g in ipairs(goals or {}) do
-        if g.cost and g.cost > money then scheduleCollect("money") return end
+        if d.cost and d.cost <= money - committed then scheduleCollect("money") return end
     end
 end)
 
