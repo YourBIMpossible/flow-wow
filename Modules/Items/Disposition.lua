@@ -257,9 +257,10 @@ ns:OnLoad(function(saved)
     saved.sell = saved.sell or {}
     saved.sell.never = saved.sell.never or {}
 end)
--- Items you bought back: per character. The old shared list is kept for
--- every character (it only ever stops a sale).
-ns:PerCharacter("sell.never", { adopt = function(old) return old end })
+-- Items you bought back: per character. The old shared list goes to the
+-- character loaded when it was parked; other characters start their own
+-- (F-013: one character's buybacks aren't an alt's).
+ns:PerCharacter("sell.never", { once = true, adopt = function(old) return old end })
 
 -- Your own choice for an item (0.35.343): "sell" or "keep", whatever Flow's
 -- rules say. "Should we have a way to set 'sell this item', just like we

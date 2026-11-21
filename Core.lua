@@ -114,7 +114,9 @@ end
 -- ctx = { class, level, name }. later = true: adopt runs at PLAYER_LOGIN
 -- instead, as adopt(old, ctx, current), for checks that need the game ready
 -- (which professions you have); returning false there means "can't tell
--- yet", and it's tried again at the next login.
+-- yet", and it's tried again at the next login. once = true: only the
+-- character loaded when the old data is parked adopts it; the rest start
+-- fresh (one character's hidden steps and never-sell list aren't an alt's).
 -------------------------------------------------------------------------------
 
 local function getPath(t, path)
@@ -174,16 +176,22 @@ function ns:SplitCharacterData(account, char, ctx)
     char.data = char.data or {}
     char.adopted = char.adopted or {}
     local legacy, store = account.legacyShared, char.data
+    local firstHere = {}   -- paths parked by this very load
     for path in self:Each("charData") do
         if not account.charSplit[path] then
             local v = getPath(account, path)
             if v ~= nil then legacy[path] = v; setPath(account, path, nil) end
             account.charSplit[path] = true
+            firstHere[path] = true
         end
     end
     for path, def in self:Each("charData") do
         if not char.adopted[path] and not def.later then
-            if store[path] == nil then store[path] = adoptOne(path, def, legacy[path], ctx) end
+            -- once = true: only the character loaded when the old shared data
+            -- was parked takes it (whose hides and keeps they were); every
+            -- other character starts fresh. The parked copy stays as it was.
+            local adoptable = not def.once or firstHere[path]
+            if store[path] == nil and adoptable then store[path] = adoptOne(path, def, legacy[path], ctx) end
             char.adopted[path] = true
         end
         setPath(account, path, store[path])

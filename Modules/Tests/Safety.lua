@@ -78,3 +78,26 @@ ns:Register("test", "safety: a sell rule that errors keeps the item, logged once
     end)
 end)
 
+ns:Register("test", "safety: one character's hides and buybacks don't go to alts (F-013)", function(t)
+    local account = { nav = { hidden = { ["7:1"] = true } }, sell = { never = { [123] = true } } }
+    local main, alt = {}, {}
+    ns:SplitCharacterData(account, main, { class = "PALADIN" })
+    t:ok(account.nav.hidden and account.nav.hidden["7:1"], "the character loaded at the split keeps its hidden step")
+    t:ok(account.sell.never and account.sell.never[123], "and its buyback list")
+    ns:StoreCharacterData(account, main)
+    ns:SplitCharacterData(account, alt, { class = "DRUID" })
+    t:ok(not (account.nav.hidden and account.nav.hidden["7:1"]), "an alt starts with no hidden steps")
+    t:ok(not (account.sell.never and account.sell.never[123]), "and its own buyback list")
+    ns:StoreCharacterData(account, alt)
+    t:ok(account.legacyShared["nav.hidden"]["7:1"], "the parked old data is untouched")
+    ns:SplitCharacterData(account, main, { class = "PALADIN" })
+    t:ok(account.nav.hidden and account.nav.hidden["7:1"], "the first character's data is still its own")
+
+    local S = ns.gear.sets
+    local got = S.AdoptSetRoles({ tank = "Tank", dps = "Ret" }, { "Ret" }, nil)
+    t:ok(got and got.dps == "Ret" and got.tank == nil, "set roles: only sets this character has")
+    got = S.AdoptSetRoles({ tank = "Tank", heal = "Old" }, { "Tank" }, { heal = "Holy" })
+    t:ok(got and got.tank == "Tank" and got.heal == "Holy", "a role chosen since wins")
+    t:eq(S.AdoptSetRoles({ tank = "Tank" }, { "Mine" }, nil), nil, "none of its sets: nothing adopted")
+end)
+
