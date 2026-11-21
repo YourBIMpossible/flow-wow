@@ -127,3 +127,15 @@ ns:Register("test", "click: the world-map route box turns the route back on afte
     n.mapRoute, n.mapLines = route, lines
     if not ok then error(err, 0) end
 end)
+
+ns:Register("test", "commands: /flow chat stamps still reaches the timestamps command", function(t)
+    -- F-100: AskClaude.lua's /flow chat replaced Chat.lua's, so "stamps" did nothing.
+    local AC = ns.askClaude
+    t:ok(AC and AC._chatStamps ~= nil, "Chat.lua's command is kept")
+    if not (AC and AC._chatStamps) then return end
+    local got
+    withFlow(AC, "_chatStamps", function(arg) got = arg end, function()
+        ns.commands.chat("stamps short")
+    end)
+    t:eq(got, "stamps short", "passed on to it")
+end)

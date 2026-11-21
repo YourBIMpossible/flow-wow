@@ -517,7 +517,11 @@ end
 ns.commands.ask = command
 
 -- /flow chat live on|off: send by a screenshot (no reload) or by reloading.
+-- /flow chat stamps ... is Chat.lua's (loaded earlier): passed on to it, which
+-- this replacing it silently stopped (F-100).
+AC._chatStamps = ns.commands.chat
 ns.commands.chat = function(arg)
+    if AC._chatStamps and (arg or ""):lower():match("^%s*stamps") then return AC._chatStamps(arg) end
     local on = (arg or ""):lower():match("^live%s+(o[nf]f?)$")
     if on == "on" or on == "off" then ns.db.chat.live = (on == "on") end
     ns:Print(string.format("Flow Chat sends %s. Claude connected (as of your last reload): %s. /flow chat live on|off",
