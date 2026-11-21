@@ -271,7 +271,7 @@ local function paint()
             ic:EnableMouse(true)
             ic:SetScript("OnEnter", function(self)
                 ns.Tip(self, "ANCHOR_LEFT")
-                GameTooltip:AddLine(K.NAME[self.slot] .. " + your buff key: " .. nameOf(self.step), 1, 0.82, 0)
+                GameTooltip:AddLine(K.NAME[self.slot] .. " + your self button key: " .. nameOf(self.step), 1, 0.82, 0)
                 if self.step and self.step.reason then GameTooltip:AddLine(self.step.reason, 1, 1, 1, true) end
                 GameTooltip:AddLine("Click the icon to cast it. Set before the pull; it can't change in a fight.", 0.6, 0.6, 0.6, true)
                 GameTooltip:Show()
@@ -453,16 +453,16 @@ ns:On("PLAYER_REGEN_DISABLED", function() pcall(K.Apply) end)
 function K.Lines()
     local out = {}
     if not BB.On() then
-        out[1] = "the second key is off: /flow buffbutton on, then /flow buffkey <key> (heals and potions go on its modifiers)"
+        out[1] = "the second key is off: /flow selfbutton on, then /flow selfkey <key> (heals and potions go on its modifiers)"
         return out
     end
     if #BB.Keys() == 0 then
-        out[1] = "the self button has no key yet: /flow buffkey <key> (heals and potions go on its modifiers)"
+        out[1] = "the self button has no key yet: /flow selfkey <key> (heals and potions go on its modifiers)"
         return out
     end
-    if not K.Wanted() then out[1] = "heals and potions on the buff key: off" return out end
+    if not K.Wanted() then out[1] = "heals and potions on the self button key: off" return out end
     local plan = K.plan or {}
-    out[1] = string.format("buff key %s in a fight: %s", table.concat(BB.Keys(), " / "), nameOf(plan.key))
+    out[1] = string.format("self button key %s in a fight: %s", table.concat(BB.Keys(), " / "), nameOf(plan.key))
     for _, slot in ipairs(K.SLOTS) do
         local modKey = K.KeyFor(BB.Keys()[1], slot)
         out[#out + 1] = string.format("  %s (%s): %s%s", K.NAME[slot], tostring(modKey), nameOf(plan[slot]),
@@ -477,7 +477,7 @@ ns.commands.carekeys = function()
     for i, l in ipairs(K.Lines()) do if i == 1 then ns:Print(l) else print(l) end end
 end
 ns:Register("help", "carekeys", { order = 31, title = "The second key: heals and potions", lines = {
-    "Turn on the self button and give it a key (/flow buffbutton on, /flow buffkey <key>): in a fight that key is your quickest heal,",
+    "Turn on the self button and give it a key (/flow selfbutton on, /flow selfkey <key>): in a fight that key is your quickest heal,",
     "Shift + it your heal over time, Ctrl + it your other heal, Alt + it your healthstone or potion, Ctrl + Shift + it your bandage.",
     "Out of a fight the two keys split the same way: the self button's key is for you (heal up, eat, drink, bandage, cure, buffs),",
     "Flow's key is for your target (attacks on an enemy; heals, buffs and cures on a friendly player you target).",

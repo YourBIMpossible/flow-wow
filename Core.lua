@@ -255,7 +255,9 @@ end)
 -- interface options (bottom right by default, or at the cursor), not beside
 -- whatever you hovered. Setting: "Tooltips where WoW shows them" (on); off,
 -- each one opens next to what you hover (`anchor`, e.g. "ANCHOR_RIGHT").
+-- Saved inverted (settings.tipsBeside, unset = on): read and write it only here.
 function ns.TipsAtGameSpot() return not (ns.db and ns.db.settings and ns.db.settings.tipsBeside) end
+function ns.SetTipsAtGameSpot(on) ns.db.settings.tipsBeside = not on end
 
 -- Room for the words (0.35.261). Flow's longer explanations are wrapped
 -- lines, and the game wraps those to a narrow box: a column of short ragged

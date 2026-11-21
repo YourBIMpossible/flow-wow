@@ -678,8 +678,8 @@ local function build(parent)
             function() return ns.nav:AreaMode() and "area" or ns.nav:StopsShown() or 0 end,
             function(v) if v == "area" then ns.nav:SetArea(true) else ns.nav:SetStopsShown(v) end end)
         _, y = check(f, y, "Show the route on the world map", nil, nil,
-            function() return ns.db.nav.mapLines ~= false end,
-            function(on) ns.db.nav.mapLines = on end)
+            function() return ns.mapOverlay:RouteShown() end,
+            function(on) ns.mapOverlay:SetRouteShown(on) end)
         f.pathAlpha, y = slider(f, y, "Path opacity",
             "How strongly the dotted path between your steps is drawn on the world map. 50% is the usual look (the stretch to your next step a little stronger than the rest); 100% is solid, 10% barely there. Also /flow map opacity 10-100.",
             0.1, 1, 0.05,
@@ -768,11 +768,15 @@ local function build(parent)
             _, y = check(f, y, "Tooltips where WoW shows them", "(and the step card)",
                 "Flow's tooltips and its step card open where WoW shows its own tooltips (the spot you set in Edit Mode or the interface options). Off: next to what you hover or click. A step card you dragged somewhere stays there. (The arrow's drawer opens beside the arrow, or where you Ctrl-dragged it.)",
                 function() return ns.TipsAtGameSpot() end,
-                function(on) ns.db.settings.tipsBeside = not on end)
+                function(on) ns.SetTipsAtGameSpot(on) end)
             _, y = check(f, y, "Intro on the arrow when you log in", "(/flow splash replays it)",
                 "After logging in or /reload the arrow spins, shows FLOW in its ring, and the version and status underneath.",
                 function() return ns.db.splash.enabled ~= false end,
                 function(on) ns.db.splash.enabled = on end)
+            _, y = check(f, y, "Short, still intro", "(/flow splash short)",
+                "The intro without spinning: FLOW shows for a second and fades (1.6 seconds instead of 4.6). For less motion on screen.",
+                function() return ns.db.splash.short == true end,
+                function(on) ns.db.splash.short = on or nil end)
         end
     end
 
@@ -886,10 +890,20 @@ local function build(parent)
             local want = item.suggested and true or false
             if want ~= (item.isOn() and true or false) then pcall(item.set, want); n = n + 1 end
         end
-        ns.db.setup.done = true
+        ns.setup:Finish()
         ns:Print(n .. " setting(s) changed to Flow's suggestions.")
         refresh()
     end)
+    f.useSuggestions = all
+    -- The other way to finish Flow Setup: leave every row as it is. Until one
+    -- of these two is clicked, Setup opens once each login (Setup.lua).
+    local keep = button(f, "Keep my settings", 160)
+    keep:SetPoint("LEFT", all, "RIGHT", 8, 0)
+    keep:SetScript("OnClick", function()
+        ns.setup:Finish()
+        ns:Print("Flow Setup done: your settings stay as they are. /flow setup reopens it.")
+    end)
+    f.keepSettings = keep
     y = y - 44
     f:SetHeight(-y + 20)
 
@@ -1047,16 +1061,9 @@ ns:OnLoad(function(saved)
     pcall(register)
 end)
 
--- First run: open the page once so the key can be set.
-ns:On("PLAYER_ENTERING_WORLD", function()
-    if ns.db.cast.key or ns.db.settings.prompted then return end
-    ns.db.settings.prompted = true
-    C_Timer.After(7, function()
-        if not InCombatLockdown() and S:Open() and frame then
-            frame.status:SetText("First setting: pick the key that casts Flow's suggestion.")
-        end
-    end)
-end)
+-- First run: Flow Setup (Setup.lua) is the one prompt, and it opens this
+-- page. (This page had its own first-run prompt 7 s after login as well,
+-- F-095; the two could stack, so it's gone.)
 
 ns.commands.settings = function() if not S:Open() then ns:Print("this client has no add-on options page") end end
 ns.commands.key = function(arg)

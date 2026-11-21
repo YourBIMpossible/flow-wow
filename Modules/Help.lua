@@ -8,7 +8,7 @@ local topics = {
     { "basics", 10, "Basics", {
         "Hold |cffffd200Ctrl|r and drag any Flow element to move it (as in Questie).",
         "/flow keys - the keys that cast a spell directly, not from a bar (the game's Key Bindings window doesn't list those)",
-        "/flow splash - replay the intro on the arrow (on/off)",
+        "/flow splash - replay the intro on the arrow (on/off); /flow splash short - a short intro with no spinning",
         "/flow api - what this game client lets addons see",
     } },
     { "rotation", 20, "Rotation (icon + glowing action button)", {
@@ -67,15 +67,44 @@ local function version()
 end
 ns.Version = version
 
-ns.commands.help = function()
+-- The help topics to print for "/flow help <word>" (F-098): a topic whose key
+-- or title has the word comes whole; otherwise only its lines that have it.
+-- No word: every topic. Returns { { title, lines }, ... } in order.
+function ns.HelpFor(word)
     local list = {}
-    for _, t in ns:Each("help") do list[#list + 1] = t end
-    table.sort(list, function(a, b) return (a.order or 100) < (b.order or 100) end)
-    ns:Print("v" .. version() .. " help")
-    for _, t in ipairs(list) do
+    for key, t in ns:Each("help") do list[#list + 1] = { key = key, t = t } end
+    table.sort(list, function(a, b) return (a.t.order or 100) < (b.t.order or 100) end)
+    word = (word or ""):lower():match("^%s*(.-)%s*$")
+    local out = {}
+    for _, e in ipairs(list) do
+        local t = e.t
+        if word == "" or tostring(e.key):lower():find(word, 1, true)
+            or (t.title or ""):lower():find(word, 1, true) then
+            out[#out + 1] = { title = t.title, lines = t.lines }
+        else
+            local lines = {}
+            for _, l in ipairs(t.lines) do
+                if l:lower():find(word, 1, true) then lines[#lines + 1] = l end
+            end
+            if #lines > 0 then out[#out + 1] = { title = t.title, lines = lines } end
+        end
+    end
+    return out
+end
+
+ns.commands.help = function(arg)
+    local word = (arg or ""):match("^%s*(.-)%s*$")
+    local found = ns.HelpFor(word)
+    if word ~= "" and #found == 0 then
+        ns:Print("no help has \"" .. word .. "\". /flow help lists everything.")
+        return
+    end
+    ns:Print("v" .. version() .. " help" .. (word ~= "" and (" about \"" .. word .. "\"") or ""))
+    for _, t in ipairs(found) do
         print("|cffffd200" .. t.title .. "|r")
         for _, l in ipairs(t.lines) do print("   " .. l) end
     end
+    if word == "" then print("   /flow help <word> shows only the help about that word.") end
 end
 
 -- The three words Flow uses for places (docs/ARCHITECTURE.md, "Words").

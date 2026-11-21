@@ -1,7 +1,7 @@
 -- Setup table (/flow setup; opens once on first run). Each row is a setting
 -- with a tick box showing its CURRENT state (ticked = on). Change any of them
 -- and click Apply: it turns things on or off to match. Quick picks:
---   All / None / Flow suggests / WoW default / Reset (back to current)
+--   All / None / Flow suggests / WoW default / Revert (back to how they are now)
 -- Rows are registered, so features can add their own:
 --   ns:Register("setupItem", key, { order, label, why, available = fn,
 --       isOn = fn() -> bool, set = fn(on), suggested = bool, default = bool })
@@ -178,15 +178,8 @@ ns:Register("setupItem", "cameraStays", {
     default = function() return cvarDefault("cameraSmoothStyle") == "0" end,
     isNew = true,
 })
--- You asked for it (2026-11-06): switched once, then it's yours to change.
-ns:On("PLAYER_LOGIN", function()
-    ns.db.setup = ns.db.setup or {}
-    if not ns.db.setup.cameraStaysOnce and cvar("cameraSmoothStyle") and cvar("cameraSmoothStyle") ~= "0" then
-        SetCVar("cameraSmoothStyle", "0")
-        ns:Print("the camera now stays where you put it (Options > AddOns > Flow to change).")
-    end
-    ns.db.setup.cameraStaysOnce = true
-end)
+-- (Until F-089 this was switched on silently at the first login. A game
+-- setting changes only from this row now: Flow Setup suggests it.)
 
 ns:Register("setupItem", "stamps", {
     order = 70, label = "Chat timestamps", why = "See when each chat line arrived.",
@@ -269,14 +262,9 @@ local function build()
     f.bg = f:CreateTexture(nil, "BACKGROUND")
     f.bg:SetAllPoints()
     f.bg:SetColorTexture(0.05, 0.05, 0.08, 0.95)
-    local top = f:CreateTexture(nil, "BORDER")
-    top:SetPoint("TOPLEFT"); top:SetPoint("TOPRIGHT"); top:SetHeight(2)
-    top:SetColorTexture(1, 0.82, 0.25, 0.9)
+    f.head = ns.theme:TitleBar(f, "Flow Setup", "Interface\\Icons\\INV_Misc_Gear_01")
     ns:MakeMovable(f, ns.db.setup, true)
 
-    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOPLEFT", 16, -14)
-    title:SetText("Flow Setup")
     local sub = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     sub:SetPoint("TOPLEFT", 16, -36)
     sub:SetText("Ticked = on. Change what you like and click Apply. Hover a row for why. /flow setup reopens this.")
@@ -331,8 +319,10 @@ local function build()
 
     -- Quick picks + apply.
     local x = 12
+    f.picks = {}
     local function pick(text, w, fn)
         local b = button(f, text, w)
+        f.picks[text] = b
         b:SetPoint("BOTTOMLEFT", x, 12)
         x = x + w + 4
         b:SetScript("OnClick", function() fn(); S:RefreshText() end)
@@ -341,7 +331,9 @@ local function build()
     pick("None", 56, function() each(function(r) r.check:SetChecked(false) end) end)
     pick("Flow suggests", 104, function() each(function(r) r.check:SetChecked(r.item.suggested and true or false) end) end)
     pick("WoW default", 96, function() each(function(r) r.check:SetChecked(val(r.item.default) and true or false) end) end)
-    pick("Reset", 60, function() each(function(r) r.check:SetChecked(r.item.isOn() and true or false) end) end)
+    -- "Revert", not "Reset": it puts the boxes back to how the settings are
+    -- now, not to any defaults (F-090; "WoW default" is the defaults).
+    pick("Revert", 60, function() each(function(r) r.check:SetChecked(r.item.isOn() and true or false) end) end)
 
     local apply = button(f, "Apply", 90)
     apply:SetPoint("BOTTOMRIGHT", -12, 12)
@@ -352,12 +344,18 @@ local function build()
             local want = r.check:GetChecked() and true or false
             if want ~= (r.item.isOn() and true or false) then pcall(r.item.set, want); n = n + 1 end
         end)
-        ns.db.setup.done = true
+        S:Finish()
         ns:Print(n .. " setting(s) changed.")
         S:Refresh()
     end)
     f:Hide()
     return f
+end
+
+-- (Tests) the stand-alone table, built but not shown.
+function S._Table()
+    frame = frame or build()
+    return frame
 end
 
 -- Updates the "Now" column (and marks rows you've changed but not applied).
@@ -402,7 +400,6 @@ end
 
 ns:OnLoad(function(saved)
     saved.setup = saved.setup or {}
-    if saved.settings then saved.settings.prompted = true end
 end)
 
 -- Suggested rows you've never been shown that are still off (e.g. a row added in an update).
@@ -428,20 +425,65 @@ function S:MarkSeen()
     for _, r in ipairs(rows()) do ns.db.setup.seen[r.key] = true end
 end
 
--- First run, or once when an update adds a suggestion you haven't seen.
+-- Setup counts as done only once you've chosen: Apply here, or "Use Flow's
+-- suggestions" / "Keep my settings" on Flow's page. Opening it isn't
+-- choosing (F-094: it used to be marked done before it opened, so a player
+-- who closed it, or never saw it, kept defaults they'd never been shown).
+function S:Done() return ns.db.setup.done == true end
+function S:Finish()
+    ns.db.setup.done = true
+end
+
+-- Pure: what the first-run offer does now. -> "open", "wait" (try again
+-- shortly: in a fight, or the rest of Flow isn't on screen yet) or "no".
+-- Until you've chosen it's offered once each session; after that, once
+-- when an update adds a suggestion you haven't seen.
+function S.OfferState(done, unseen, inCombat, adviceShown, offeredThisSession)
+    if offeredThisSession then return "no" end
+    if done and unseen == 0 then return "no" end
+    if inCombat or not adviceShown then return "wait" end
+    return "open"
+end
+
+S.FIRST_RUN_TEXT = "Flow Setup is open: choose your settings, then click \"Use Flow's suggestions\" or \"Keep my settings\". "
+    .. "Until you do, it opens once each login. /flow setup reopens it any time."
+
+local offered, waiting = false, false
+
+-- One go at the offer; `later` schedules the next go (C_Timer.After in game).
+function S:TryOffer(later)
+    waiting = false
+    local unseen = S:Unseen()
+    local state = S.OfferState(self:Done(), #unseen, InCombatLockdown(),
+        not ns.reveal or ns.reveal:Shown("advice"), offered)
+    if state == "wait" then
+        -- New to Flow: once the rest is on screen (Reveal.lua), not next login.
+        waiting = true
+        if later then later(30, function() S:TryOffer(later) end) end
+        return state
+    end
+    if state ~= "open" then return state end
+    offered = true
+    local wasDone = self:Done()
+    S:MarkSeen()
+    if wasDone then ns:Print("new in the setup table: " .. table.concat(unseen, ", "))
+    else ns:Print(S.FIRST_RUN_TEXT) end
+    S:Open()
+    return state
+end
+
+-- (Tests) sets this session's offer flags; returns the old ones to put back.
+function S._OfferFlags(o, w)
+    local oldO, oldW = offered, waiting
+    offered, waiting = o and true or false, w and true or false
+    return oldO, oldW
+end
+
 ns:On("PLAYER_ENTERING_WORLD", function()
-    if ns.db.setup.done and #S:Unseen() == 0 then return end
-    C_Timer.After(30, function()  -- well after the splash, so new players aren't swamped
-        if InCombatLockdown() then return end
-        -- New to Flow: not until the rest is on screen (Reveal.lua); next login.
-        if ns.reveal and not ns.reveal:Shown("advice") then return end
-        local new = ns.db.setup.done and S:Unseen() or nil
-        if new and #new == 0 then return end
-        ns.db.setup.done = true
-        S:MarkSeen()
-        if new then ns:Print("new in the setup table: " .. table.concat(new, ", ")) end
-        S:Open()
-    end)
+    if offered or waiting then return end
+    if S:Done() and #S:Unseen() == 0 then return end
+    waiting = true
+    C_Timer.After(30, function() S:TryOffer(C_Timer.After) end)  -- well after the splash, so new players aren't swamped
 end)
 
 ns.commands.setup = function() S:Open() end

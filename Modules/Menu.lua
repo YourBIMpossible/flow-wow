@@ -449,13 +449,13 @@ function Menu.ButtonItems()
     return {
         { text = "Self button: a second button and key, for you", stay = true, disabled = InCombatLockdown(),
           checked = ns.buffButton ~= nil and ns.buffButton.On(),
-          tip = "A blue button with its own key. Out of a fight: your next buff, bandage or food. In a fight: your heal; with Shift, Ctrl, Alt or Ctrl + Shift: your other heals, your potion and your bandage. Its keys are set in Flow Settings.",
+          tip = "The self button: a blue button with its own key. Out of a fight: your next buff, bandage or food. In a fight: your heal; with Shift, Ctrl, Alt or Ctrl + Shift: your other heals, your potion and your bandage. Its keys are set in Flow Settings.",
           refresh = function(it) it.checked = ns.buffButton ~= nil and ns.buffButton.On() end,
           func = function()
               local BB = ns.buffButton
               if not BB or InCombatLockdown() then return end
               BB.Set(not BB.On())
-              if BB.On() and not BB.Key() then ns:Print("self button on. It has no key yet: set one in Flow Settings (or /flow buffkey <key>).") end
+              if BB.On() and not BB.Key() then ns:Print("self button on. It has no key yet: set one in Flow Settings (or /flow selfkey <key>).") end
           end },
         { text = "   Dock it under Flow's icon", stay = true, disabled = InCombatLockdown(),
           checked = ns.buffButton ~= nil and ns.buffButton.Docked ~= nil and ns.buffButton.Docked(),

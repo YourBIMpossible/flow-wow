@@ -1,0 +1,256 @@
+-- Self-tests for lane W5 (arrows, settings, UX). Same style as Modules/Tests.lua:
+--   ns:Register("test", "area: what it checks", function(t) ... end)
+-- They stand in only for Flow's own functions (never a game global) and put
+-- back any saved data they change.
+
+local _, ns = ...
+
+-- Runs fn with ns[tbl][name] replaced by stand-in, then puts it back.
+local function withFlow(tbl, name, standIn, fn)
+    local old = tbl[name]
+    tbl[name] = standIn
+    local ok, err = pcall(fn)
+    tbl[name] = old
+    if not ok then error(err, 0) end
+end
+
+-- Puts ns.db.setup's done / seen back after fn.
+local function keepSetup(fn)
+    local db = ns.db.setup
+    local done, seen = db.done, db.seen
+    local o, w = ns.setup._OfferFlags(false, false)
+    local ok, err = pcall(fn)
+    db.done, db.seen = done, seen
+    ns.setup._OfferFlags(o, w)
+    if not ok then error(err, 0) end
+end
+
+ns:Register("test", "setup: the first-run offer waits for the rest of Flow, then opens once a session", function(t)
+    local O = ns.setup.OfferState
+    t:eq(O(false, 0, false, true, false), "open", "never chosen: it opens")
+    t:eq(O(false, 0, true, true, false), "wait", "in a fight: later, not never")
+    t:eq(O(false, 0, false, false, false), "wait", "the rest of Flow isn't on screen yet: later this session, not next login")
+    t:eq(O(false, 0, false, true, true), "no", "once a session")
+    t:eq(O(true, 0, false, true, false), "no", "chosen, nothing new: nothing")
+    t:eq(O(true, 2, false, true, false), "open", "chosen, a new suggestion: it opens")
+end)
+
+ns:Register("test", "setup: opening Flow Setup doesn't count as done; choosing does", function(t)
+    if InCombatLockdown() then t:ok(true, "(in a fight: skipped)") return end
+    local S = ns.setup
+    keepSetup(function()
+        ns.db.setup.done = nil
+        local opened, printed, retries = 0, {}, 0
+        local function later() retries = retries + 1 end
+        withFlow(S, "Open", function() opened = opened + 1 end, function()
+        withFlow(ns, "Print", function(_, m) printed[#printed + 1] = tostring(m) end, function()
+            -- Not on screen yet: it waits and tries again, and isn't done.
+            if ns.reveal then
+                withFlow(ns.reveal, "Shown", function() return false end, function()
+                    t:eq(S:TryOffer(later), "wait", "waits for the rest of Flow")
+                end)
+                t:eq(retries, 1, "tries again shortly")
+                t:eq(opened, 0, "not opened yet")
+            end
+            withFlow(ns.reveal or {}, "Shown", function() return true end, function()
+                t:eq(S:TryOffer(later), "open", "then opens")
+                t:eq(S:TryOffer(later), "no", "only once a session")
+            end)
+        end)
+        end)
+        t:eq(opened, 1, "opened once")
+        t:ok(not S:Done(), "opening it isn't choosing")
+        t:ok(printed[1] and printed[1]:find("/flow setup", 1, true) ~= nil, "says how to reopen it")
+        S:Finish()
+        t:ok(S:Done(), "choosing marks it done")
+    end)
+end)
+
+ns:Register("test", "click: Keep my settings finishes Flow Setup without changing a setting", function(t)
+    local f = ns.settings._Build and ns.settings._Build()
+    if not f then t:ok(true, "(no Options page on this client)") return end
+    t:ok(f.useSuggestions ~= nil, "Use Flow's suggestions is on the page")
+    t:ok(f.keepSettings ~= nil, "Keep my settings is on the page")
+    if not f.keepSettings then return end
+    keepSetup(function()
+        ns.db.setup.done = nil
+        local before = {}
+        for _, r in ipairs(ns.setup:Rows()) do if r.item.isOn then before[r.key] = r.item.isOn() and true or false end end
+        withFlow(ns, "Print", function() end, function()
+            local ok, err = pcall(f.keepSettings:GetScript("OnClick"), f.keepSettings, "LeftButton")
+            t:ok(ok, "the button runs" .. (ok and "" or (": " .. tostring(err))))
+        end)
+        t:ok(ns.setup:Done(), "Flow Setup is done")
+        local same = true
+        for _, r in ipairs(ns.setup:Rows()) do
+            if r.item.isOn and before[r.key] ~= (r.item.isOn() and true or false) then same = false end
+        end
+        t:ok(same, "no setting changed")
+    end)
+end)
+
+ns:Register("test", "setup: the camera style is a suggestion in Flow Setup, not switched at login", function(t)
+    -- F-089: Flow used to set the game's Camera Following Style at the first login, unasked.
+    local row = ns:Get("setupItem", "cameraStays")
+    t:ok(row ~= nil, "a Flow Setup row")
+    if not row then return end
+    t:ok(row.suggested == true, "Flow suggests it (so a new player is offered it)")
+    t:ok(row.isNew == true, "shown once to players who finished setup before it existed")
+    t:ok(type(row.set) == "function", "changed only from the row")
+end)
+
+ns:Register("test", "click: the world-map route box turns the route back on after /flow map off", function(t)
+    local M, n = ns.mapOverlay, ns.db.nav
+    local route, lines = n.mapRoute, n.mapLines
+    local ok, err = pcall(function()
+        n.mapRoute, n.mapLines = false, nil      -- /flow map off
+        t:ok(not M:RouteShown(), "hidden after /flow map off")
+        local f = ns.settings._Build and ns.settings._Build()
+        local box
+        for _, c in ipairs(f and ns.settings:Checks() or {}) do
+            local text = c.label and c.label:GetText()
+            if text and text:find("Show the route on the world map", 1, true) then box = c end
+        end
+        if box and not InCombatLockdown() then
+            if box.get then t:ok(not box.get(), "the box shows it hidden") end
+            box:SetChecked(true)
+            local okc, errc = pcall(box:GetScript("OnClick"), box, "LeftButton")
+            t:ok(okc, "the box runs" .. (okc and "" or (": " .. tostring(errc))))
+        else
+            M:SetRouteShown(true)
+        end
+        t:ok(M:RouteShown(), "ticking it shows the route again")
+        M:SetRouteShown(false)
+        t:ok(not M:RouteShown(), "unticking hides it")
+        t:eq(n.mapRoute, true, "and /flow map stays on (only the route is off)")
+    end)
+    n.mapRoute, n.mapLines = route, lines
+    if not ok then error(err, 0) end
+end)
+
+ns:Register("test", "commands: /flow chat stamps still reaches the timestamps command", function(t)
+    -- F-100: AskClaude.lua's /flow chat replaced Chat.lua's, so "stamps" did nothing.
+    local AC = ns.askClaude
+    t:ok(AC and AC._chatStamps ~= nil, "Chat.lua's command is kept")
+    if not (AC and AC._chatStamps) then return end
+    local got
+    withFlow(AC, "_chatStamps", function(arg) got = arg end, function()
+        ns.commands.chat("stamps short")
+    end)
+    t:eq(got, "stamps short", "passed on to it")
+end)
+
+ns:Register("test", "click: Flow Setup's Revert puts the boxes back to the settings as they are now", function(t)
+    -- F-090: the button said "Reset", which reads as "back to defaults".
+    if InCombatLockdown() then t:ok(true, "(in a fight: skipped)") return end
+    local f = ns.setup._Table and ns.setup._Table()
+    if not f then t:ok(true, "(no Flow Setup table)") return end
+    t:ok(f.head and f.head.flowTitleBar == true, "a Flow title bar")
+    t:eq(f.head and f.head.text:GetText(), "Flow Setup", "named Flow Setup")
+    t:ok(f.picks.Reset == nil, "no Reset button")
+    local b = f.picks.Revert
+    t:ok(b ~= nil, "a Revert button")
+    if not b then return end
+    local rows = {}
+    for _, r in ipairs(f.rows) do if r.check and r.item.isOn then rows[#rows + 1] = r end end
+    for _, r in ipairs(rows) do r.check:SetChecked(not r.item.isOn()) end
+    local ok, err = pcall(b:GetScript("OnClick"), b, "LeftButton")
+    t:ok(ok, "the button runs" .. (ok and "" or (": " .. tostring(err))))
+    local same = true
+    for _, r in ipairs(rows) do
+        if (r.check:GetChecked() and true or false) ~= (r.item.isOn() and true or false) then same = false end
+    end
+    t:ok(same, "every box matches the setting as it is now")
+end)
+
+ns:Register("test", "help: /flow help <word> shows only the help about that word", function(t)
+    -- F-098: /flow help was one long dump.
+    local all = ns.HelpFor("")
+    t:ok(#all > 3, "no word: every topic")
+    local nav = ns:Get("help", "nav")
+    local got = ns.HelpFor("nav")
+    local whole
+    for _, e in ipairs(got) do if nav and e.title == nav.title then whole = e end end
+    t:ok(whole ~= nil and #whole.lines == #nav.lines, "a topic's own name: the whole topic")
+    local lines, others = 0, true
+    for _, e in ipairs(ns.HelpFor("splash")) do
+        for _, l in ipairs(e.lines) do
+            lines = lines + 1
+            if not l:lower():find("splash", 1, true) then others = false end
+        end
+    end
+    t:ok(lines >= 1 and others, "any other word: only the lines that have it")
+    t:eq(#ns.HelpFor("  SPLASH "), #ns.HelpFor("splash"), "case and spaces don't matter")
+    t:eq(#ns.HelpFor("no-such-word-xq"), 0, "nothing for a word no help has")
+end)
+
+ns:Register("test", "click: the short, still intro box turns the spinning off and back on", function(t)
+    -- F-097: the login intro was 4.6 s of motion with no way to tone it down.
+    local I, db = ns.intro, ns.db.splash
+    local was = db.short
+    local ok, err = pcall(function()
+        db.short = nil
+        local spin, tail, moves = I.Times()
+        t:ok(moves and spin + tail > 4, "by default: the full spinning intro")
+        local f = ns.settings._Build and ns.settings._Build()
+        local box
+        for _, c in ipairs(f and ns.settings:Checks() or {}) do
+            local text = c.label and c.label:GetText()
+            if text and text:find("Short, still intro", 1, true) then box = c end
+        end
+        if box and not InCombatLockdown() then
+            t:ok(not box.get(), "the box starts unticked")
+            box:SetChecked(true)
+            local okc, errc = pcall(box:GetScript("OnClick"), box, "LeftButton")
+            t:ok(okc, "the box runs" .. (okc and "" or (": " .. tostring(errc))))
+        else
+            ns.commands.splash("short on")
+        end
+        spin, tail, moves = I.Times()
+        t:ok(not moves, "ticked: nothing spins")
+        t:ok(spin + tail < 2, "and it is short")
+        withFlow(ns, "Print", function() end, function() ns.commands.splash("short off") end)
+        t:ok(select(3, I.Times()), "/flow splash short off: back to the full intro")
+    end)
+    db.short = was
+    if not ok then error(err, 0) end
+end)
+
+ns:Register("test", "words: the self button is called the self button, not the buff button", function(t)
+    -- F-093: "Self button", "buff button"/"buff key" and "blue button" named one control.
+    local said = {}
+    local function scan(where, text)
+        if type(text) ~= "string" then return end
+        local l = text:lower()
+        if l:find("buff key", 1, true) or l:find("buff button", 1, true) or l:find("/flow buff", 1, true) then
+            said[#said + 1] = where .. ": " .. text
+        end
+    end
+    local items = ns.menu and ns.menu.ButtonItems and ns.menu.ButtonItems() or {}
+    for _, it in ipairs(items) do scan("menu", it.text); scan("menu tip", it.tip) end
+    t:ok(items[1] and items[1].tip:find("self button", 1, true) ~= nil, "the menu's tip names it")
+    local K = ns.careKeys
+    if K and K.Lines then
+        local ok, lines = pcall(K.Lines)
+        if ok then for _, l in ipairs(lines) do scan("/flow carekeys", l) end end
+    end
+    t:eq(said[1], nil, "no other name for it")
+end)
+
+ns:Register("test", "settings: the tooltip spot is saved inverted and only through its accessor", function(t)
+    -- F-092: settings.tipsBeside is "off" saved as true; Settings wrote it by hand.
+    local s = ns.db.settings
+    local was = s.tipsBeside
+    local ok, err = pcall(function()
+        s.tipsBeside = nil
+        t:ok(ns.TipsAtGameSpot(), "unset: where WoW shows them (the default)")
+        ns.SetTipsAtGameSpot(false)
+        t:ok(not ns.TipsAtGameSpot(), "off: beside what you hover")
+        t:eq(s.tipsBeside, true, "saved inverted")
+        ns.SetTipsAtGameSpot(true)
+        t:ok(ns.TipsAtGameSpot(), "back on")
+        t:eq(s.tipsBeside, false, "the player's choice is kept, not cleared")
+    end)
+    s.tipsBeside = was
+    if not ok then error(err, 0) end
+end)
