@@ -678,8 +678,8 @@ local function build(parent)
             function() return ns.nav:AreaMode() and "area" or ns.nav:StopsShown() or 0 end,
             function(v) if v == "area" then ns.nav:SetArea(true) else ns.nav:SetStopsShown(v) end end)
         _, y = check(f, y, "Show the route on the world map", nil, nil,
-            function() return ns.db.nav.mapLines ~= false end,
-            function(on) ns.db.nav.mapLines = on end)
+            function() return ns.mapOverlay:RouteShown() end,
+            function(on) ns.mapOverlay:SetRouteShown(on) end)
         f.pathAlpha, y = slider(f, y, "Path opacity",
             "How strongly the dotted path between your steps is drawn on the world map. 50% is the usual look (the stretch to your next step a little stronger than the rest); 100% is solid, 10% barely there. Also /flow map opacity 10-100.",
             0.1, 1, 0.05,

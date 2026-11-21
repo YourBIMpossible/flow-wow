@@ -98,3 +98,32 @@ ns:Register("test", "setup: the camera style is a suggestion in Flow Setup, not 
     t:ok(row.isNew == true, "shown once to players who finished setup before it existed")
     t:ok(type(row.set) == "function", "changed only from the row")
 end)
+
+ns:Register("test", "click: the world-map route box turns the route back on after /flow map off", function(t)
+    local M, n = ns.mapOverlay, ns.db.nav
+    local route, lines = n.mapRoute, n.mapLines
+    local ok, err = pcall(function()
+        n.mapRoute, n.mapLines = false, nil      -- /flow map off
+        t:ok(not M:RouteShown(), "hidden after /flow map off")
+        local f = ns.settings._Build and ns.settings._Build()
+        local box
+        for _, c in ipairs(f and ns.settings:Checks() or {}) do
+            local text = c.label and c.label:GetText()
+            if text and text:find("Show the route on the world map", 1, true) then box = c end
+        end
+        if box and not InCombatLockdown() then
+            if box.get then t:ok(not box.get(), "the box shows it hidden") end
+            box:SetChecked(true)
+            local okc, errc = pcall(box:GetScript("OnClick"), box, "LeftButton")
+            t:ok(okc, "the box runs" .. (okc and "" or (": " .. tostring(errc))))
+        else
+            M:SetRouteShown(true)
+        end
+        t:ok(M:RouteShown(), "ticking it shows the route again")
+        M:SetRouteShown(false)
+        t:ok(not M:RouteShown(), "unticking hides it")
+        t:eq(n.mapRoute, true, "and /flow map stays on (only the route is off)")
+    end)
+    n.mapRoute, n.mapLines = route, lines
+    if not ok then error(err, 0) end
+end)

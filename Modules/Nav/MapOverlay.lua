@@ -11,6 +11,25 @@ local _, ns = ...
 local M = {}
 ns.mapOverlay = M
 
+-- "Show the route on the world map" is two saved keys: nav.mapRoute (/flow
+-- map on|off: the whole overlay) and nav.mapLines (the route itself: Flow
+-- Settings' box and the Flow Router's buttons). /flow map off used to leave
+-- the box ticked, and ticking it did nothing (F-091). Shown = both on;
+-- turning it on from any of them turns both on.
+function M:RouteShown()
+    local n = ns.db.nav
+    return n.mapRoute ~= false and n.mapLines ~= false
+end
+function M:SetRouteShown(on)
+    local n = ns.db.nav
+    if on then
+        if n.mapRoute == false then n.mapRoute = true end
+        n.mapLines = true
+    else
+        n.mapLines = false
+    end
+end
+
 -- The trail's `live` flag: false = your next step (the arrow's colour, by
 -- its distance), nil = a plain route leg (its own colour). Written out:
 -- `x and false or nil` is always nil in Lua, which kept the next step's
@@ -1258,7 +1277,7 @@ local function buildButton()
     r.slash = r:CreateLine(nil, "OVERLAY", nil, 2)
     r.slash:SetThickness(2)
     function r:Draw()
-        local on = ns.db.nav.mapLines ~= false
+        local on = M:RouteShown()
         local c, hot = theme().route, self:IsMouseOver()
         local w, h = self:GetWidth(), self:GetHeight()
         self.bg:SetColorTexture(0.05, 0.05, 0.08, 0.92)
@@ -1280,7 +1299,7 @@ local function buildButton()
         self.slash:SetColorTexture(1, 0.3, 0.3, 1)
     end
     r:SetScript("OnClick", function(self)
-        ns.db.nav.mapLines = ns.db.nav.mapLines == false
+        M:SetRouteShown(not M:RouteShown())
         self:Draw()
         M:Redraw()
         if GameTooltip:IsOwned(self) then self:GetScript("OnEnter")(self) end
@@ -1288,8 +1307,8 @@ local function buildButton()
     r:SetScript("OnEnter", function(self)
         self:Draw()
         ns.Tip(self, "ANCHOR_LEFT")
-        GameTooltip:AddLine("Flow route on the map: " .. (ns.db.nav.mapLines ~= false and "shown" or "hidden"))
-        GameTooltip:AddLine("Click to " .. (ns.db.nav.mapLines ~= false and "hide" or "show") .. " it.", 1, 1, 1)
+        GameTooltip:AddLine("Flow route on the map: " .. (M:RouteShown() and "shown" or "hidden"))
+        GameTooltip:AddLine("Click to " .. (M:RouteShown() and "hide" or "show") .. " it.", 1, 1, 1)
         GameTooltip:Show()
     end)
     r:SetScript("OnLeave", function(self) self:Draw(); GameTooltip:Hide() end)
@@ -1593,7 +1612,7 @@ local function buildList()
     rc.label = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     rc.label:SetPoint("LEFT", rc, "RIGHT", 2, 0)
     rc.label:SetText("Show route on map")
-    rc:SetScript("OnClick", function(self) ns.db.nav.mapLines = self:GetChecked() and true or false; M:Redraw() end)
+    rc:SetScript("OnClick", function(self) M:SetRouteShown(self:GetChecked() and true or false); M:Redraw() end)
     f.showLines = rc
     hc:Hide(); hc.label:Hide()  -- hidden steps are always listed now
 
@@ -2269,6 +2288,7 @@ ns.commands.map = function(arg)
     end
     if arg == "on" or arg == "off" then
         ns.db.nav.mapRoute = (arg == "on")
+        if arg == "on" then M:SetRouteShown(true) end   -- (the route too, if a box had hidden it)
         if arg == "off" then
             for i = 1, nLines do lines[i]:Hide() end
             for i = 1, nPins do pins[i]:Hide() end
