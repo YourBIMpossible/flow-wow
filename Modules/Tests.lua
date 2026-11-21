@@ -1443,6 +1443,99 @@ ns:Register("test", "class training fits into the route, after the quests where 
     end
 end)
 
+ns:Register("test", "actions: gathering tracking turned on anywhere, never over your own", function(t)
+    -- "If I have mining/herb why doesn't it automatically turn on tracking them?"
+    local X = ns.actions
+    local both = function() return true end
+    local minerOnly = function(s) return s == "Find Minerals" end
+    local off = function() return false end
+    t:eq(X.TrackPick(minerOnly, off, false), "Find Minerals", "a miner, nothing tracked: Find Minerals")
+    t:eq(X.TrackPick(function(s) return s == "Find Herbs" end, off, false), "Find Herbs", "an herbalist: Find Herbs")
+    t:eq(X.TrackPick(both, off, false), "Find Minerals", "both: Find Minerals")
+    t:eq(X.TrackPick(both, off, false, "Herbalism"), "Find Herbs", "both, an herb step on the route: Find Herbs")
+    t:eq(X.TrackPick(minerOnly, off, true), nil, "something else tracked (Find Fish, Track Beasts): left alone")
+    t:eq(X.TrackPick(minerOnly, off, nil), nil, "can't tell what's tracked: nothing")
+    t:eq(X.TrackPick(function() return false end, off, false), nil, "no gathering skill: nothing")
+    t:eq(X.TrackPick(minerOnly, function() return nil end, false), nil, "can't tell if it's on: nothing")
+end)
+
+ns:Register("test", "actions: reading the minimap's tracking, either client's way", function(t)
+    local A, X = ns.api, ns.actions
+    -- Newer clients: one table per entry; older ones: name, texture, active, category.
+    local e = A.TrackingEntry({ name = "Find Minerals", active = true, type = "spell" })
+    t:ok(e and e.name == "Find Minerals" and e.active == true and e.town == false, "a table entry: name and on")
+    e = A.TrackingEntry("Find Fish", 133888, false, "spell")
+    t:ok(e and e.name == "Find Fish" and e.active == false and e.town == false, "an older client's values: name and off")
+    t:eq(A.TrackingEntry("Flight Master", 1, true, "townsfolk").town, true, "a town kind is marked")
+    t:eq(A.TrackingEntry({ name = "Repair", active = true, type = "other" }).town, true, "an 'other' kind is marked")
+    t:eq(A.TrackingEntry("Track Beasts", 1, true).town, false, "no kind given: counts as yours")
+    t:eq(A.TrackingEntry(nil), nil, "a nameless entry: none")
+    -- The list from a count and a reader (stand-ins for the client's, passed in).
+    local rows = { { name = "Find Herbs", active = false }, { name = "Flight Master", active = true, type = "townsfolk" } }
+    local list = A.ReadTracking(function() return #rows end, function(i) return rows[i] end)
+    t:eq(list and #list, 2, "two entries read")
+    t:eq(A.ReadTracking(function() return 0 end, function() end), nil, "lists nothing: can't tell")
+    t:eq(A.ReadTracking(nil, nil), nil, "no reader: can't tell")
+    t:eq(A.ReadTracking(function() return 1 end, function() error("x") end), nil, "the reader errors: can't tell")
+
+    -- Is anything you chose tracked?
+    local town = { name = "Flight Master", active = true, town = true }
+    t:eq(X.AnyTracked({ town, { name = "Find Herbs", active = false } }, false), false, "only a town kind on: nothing of yours")
+    t:eq(X.AnyTracked({ town, { name = "Find Fish", active = true } }, false), true, "Find Fish on: yours")
+    t:eq(X.AnyTracked({ { name = "Track Beasts", active = nil } }, false), nil, "an entry hidden: can't tell")
+    t:eq(X.AnyTracked(nil, nil), false, "the one-at-a-time icon says nothing tracked")
+    t:eq(X.AnyTracked(nil, "Interface\\Icons\\Spell_Nature_Earthquake"), true, "the icon shows something")
+    t:eq(X.AnyTracked(nil, false), nil, "no list, no icon: can't tell")
+    t:eq(X.AnyTracked({}, false), nil, "an empty list: can't tell")
+    local miner, off = function(sp) return sp == "Find Minerals" end, function() return false end
+    t:eq(X.TrackPick(miner, off, X.AnyTracked({ town }, false)), "Find Minerals", "a miner with only Flight Master on: Find Minerals")
+    t:eq(X.TrackPick(miner, off, X.AnyTracked({ town, { name = "Find Fish", active = true } }, false)), nil,
+        "a miner who chose Find Fish: left alone")
+
+    -- Is this one on?
+    local icon = function() return 136025 end
+    t:eq(X.TrackState("Find Minerals", { { name = "Find Minerals", active = true } }, false, icon), true, "on (list)")
+    t:eq(X.TrackState("Find Minerals", { { name = "Find Minerals", active = false } }, false, icon), false, "off (list)")
+    t:eq(X.TrackState("Find Minerals", { { name = "Find Minerals", active = nil } }, false, icon), nil, "hidden (list): can't tell")
+    t:eq(X.TrackState("Find Minerals", { { name = "Find Fish", active = true } }, false, icon), nil, "not listed, no icon: can't tell")
+    t:eq(X.TrackState("Find Minerals", nil, nil, icon), false, "nothing tracked (icon): off")
+    t:eq(X.TrackState("Find Minerals", nil, 136025, icon), true, "its icon shows: on")
+    t:eq(X.TrackState("Find Minerals", nil, 999, icon), false, "another icon shows: off")
+    t:eq(X.TrackState("Find Minerals", nil, false, icon), nil, "no list, no icon: can't tell")
+end)
+
+ns:Register("test", "actions: turning tracking on waits for a quiet moment and never loops", function(t)
+    local X = ns.actions
+    -- Never in a fight, mounted, on a flight or while eating; nil (hidden) means no.
+    t:eq(X.TrackAllowed(false, false, false, false), true, "out of a fight, on foot, not eating: offered")
+    t:eq(X.TrackAllowed(true, false, false, false), false, "in a fight: not offered")
+    t:eq(X.TrackAllowed(false, true, false, false), false, "mounted: not offered")
+    t:eq(X.TrackAllowed(false, false, true, false), false, "on a flight: not offered")
+    t:eq(X.TrackAllowed(false, false, false, true), false, "eating or drinking: not offered (a cast stands you up)")
+    t:eq(X.TrackAllowed(false, nil, false, false), false, "the game hides whether you're mounted: not offered")
+    -- The key's own priority: after every other out-of-fight step, before only travel.
+    local track, trav = ns:Get("action", "gather:track"), ns:Get("action", "travel:go")
+    t:ok(track and track.order == 75, "registered at order 75")
+    for _, key in ipairs({ "gather:find", "gather:interact", "fish:restore", "quest:heal", "res:target", "loot:corpse" }) do
+        local a = ns:Get("action", key)
+        t:ok(a and a.order < track.order, key .. " comes first")
+    end
+    t:ok(not trav or trav.order > track.order, "travel:go comes after")
+    -- A reading that stays off after you cast it: no asking again.
+    local s, wrong = X.TrackTrust(false, nil, false)
+    t:ok(s == false and wrong == false, "off, not cast: off")
+    s, wrong = X.TrackTrust(false, 1, false)
+    t:ok(s == nil and wrong == false, "off 1 s after the cast: wait, nothing offered")
+    s, wrong = X.TrackTrust(false, 4, false)
+    t:ok(s == nil and wrong == true, "still off 4 s after: the reading is wrong, can't tell")
+    s, wrong = X.TrackTrust(false, nil, true)
+    t:ok(s == nil and wrong == true, "wrong stays wrong while it reads off")
+    s, wrong = X.TrackTrust(true, nil, true)
+    t:ok(s == true and wrong == false, "reads on again: trusted")
+    s, wrong = X.TrackTrust(nil, nil, false)
+    t:ok(s == nil and wrong == false, "can't tell stays can't tell")
+end)
+
 ns:Register("test", "actions: fishing steps on the Flow key", function(t)
     local X = ns.actions
     t:ok(X.IsPole(6256), "Fishing Pole is a pole")

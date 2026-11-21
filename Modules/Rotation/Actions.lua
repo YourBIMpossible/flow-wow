@@ -95,25 +95,74 @@ local function spellIcon(spell)
     return icon
 end
 
--- Is this minimap tracking (Find Minerals, Find Herbs) on? nil = can't tell.
-local function tracking(spell)
-    local M = C_Minimap
-    if M and M.GetNumTrackingTypes and M.GetTrackingInfo then
-        for i = 1, (M.GetNumTrackingTypes() or 0) do
-            local a, _, c = M.GetTrackingInfo(i)
-            local name, active
-            if type(a) == "table" then name, active = a.name, a.active else name, active = a, c end
-            if name == spell then return active and true or false end
+-- Pure: is this minimap tracking (Find Minerals, Find Herbs) on? true/false,
+-- nil = can't tell. list: A.Tracking() (nil = no list); tex:
+-- A.TrackingTexture() (an icon, nil = nothing tracked, false = can't say);
+-- iconFn(spell): the spell's icon, asked only when the icon is all there is.
+function X.TrackState(spell, list, tex, iconFn)
+    if list then
+        for _, e in ipairs(list) do
+            if e.name == spell then return e.active end
         end
     end
-    if GetTrackingTexture then
-        local cur = GetTrackingTexture()
-        if not cur then return false end            -- nothing tracked
-        local icon = spellIcon(spell)
-        if icon then return cur == icon end
+    if tex == nil then return false end             -- nothing tracked
+    if tex then
+        local icon = iconFn(spell)
+        if icon then return tex == icon end
     end
     return nil
 end
+
+-- Pure: is the minimap tracking something you chose? Town kinds (Flight
+-- Master, Repair) don't count: they're no spell and Find Minerals doesn't
+-- turn them off. nil = can't tell (an entry hidden, no list and no icon).
+function X.AnyTracked(list, tex)
+    if list and #list > 0 then
+        local hidden = false
+        for _, e in ipairs(list) do
+            if not e.town then
+                if e.active then return true end
+                if e.active == nil then hidden = true end
+            end
+        end
+        if hidden then return nil end
+        return false
+    end
+    if tex == false then return nil end
+    return tex ~= nil
+end
+
+-- Pure: what a reading is worth, so the key can't ask for the same cast
+-- forever when this client reads tracking wrong. st: the reading
+-- (true/false/nil); castAgo: seconds since you last cast that spell (nil =
+-- not since it last read on); wrong: it already read off after a cast.
+-- Off within 3 s of the cast: the game hasn't caught up, nothing to offer.
+-- Still off after: the reading is wrong, so "can't tell" until it reads on.
+-- Returns the state to go by and whether the reading is wrong now.
+function X.TrackTrust(st, castAgo, wrong)
+    if st == true then return true, false end
+    if st == false and (wrong or castAgo) then return nil, (wrong or castAgo >= 3) and true or false end
+    return st, wrong and true or false
+end
+
+local trackCastAt, trackWrong = {}, {}   -- [spell] = GetTime() of your cast / true
+local function tracking(spell)
+    local st = X.TrackState(spell, A.Tracking(), A.TrackingTexture(), spellIcon)
+    local at = trackCastAt[spell]
+    local s, wrong = X.TrackTrust(st, at and (GetTime() - at), trackWrong[spell])
+    trackWrong[spell] = wrong or nil
+    if wrong or st == true then trackCastAt[spell] = nil end
+    return s
+end
+ns:On("UNIT_SPELLCAST_SUCCEEDED", function(unit, _, spellID)
+    if unit ~= "player" then return end
+    local id = A.Safe(spellID)
+    local name = id and A.SpellInfo(id)
+    if name == "Find Minerals" or name == "Find Herbs" then
+        trackCastAt[name] = GetTime()
+        A.ForgetTracking()
+    end
+end)
 
 -- The game's Interact key reaches the nearest bobber / vein / herb once
 -- "soft target interact" is on (a suggested WoW setting).
@@ -658,6 +707,55 @@ ns:Register("action", "gather:interact", { order = 60, get = function(ctx)
     return { type = "interact", icon = spellIcon(ctx.prof == "Mining" and "Mining" or "Herb Gathering")
                  or "Interface\\Icons\\Trade_Mining",
              label = verb .. " (stand next to it and press)" }
+end })
+
+-- Anywhere, not just at a gathering step: you know Find Minerals or Find
+-- Herbs and the minimap tracks nothing, so the key turns it on (one press;
+-- the game lets an add-on cast only from a key press, so Flow can't switch
+-- it on by itself). "If I have mining/herb why doesn't it automatically
+-- turn on tracking them?" Dying turns tracking off, too.
+-- Never over tracking you chose (Find Fish, Track Beasts, the other one).
+-- Pure: knows(spell), tracking(spell) -> true/false/nil (can't tell),
+-- anyTracked: true/false/nil; prof: the route's gathering profession, if
+-- any. Returns the spell to turn on, or nil.
+local HERBS_FIRST, MINERALS_FIRST = { "Find Herbs", "Find Minerals" }, { "Find Minerals", "Find Herbs" }
+function X.TrackPick(knowsFn, trackingFn, anyTracked, prof)
+    if anyTracked ~= false then return nil end
+    for _, spell in ipairs(prof == "Herbalism" and HERBS_FIRST or MINERALS_FIRST) do
+        if knowsFn(spell) then
+            if trackingFn(spell) ~= false then return nil end
+            return spell
+        end
+    end
+    return nil
+end
+
+-- Pure: may the key offer it now? Not in a fight (X:Current already
+-- refuses, and the key is locked to the pull), not mounted or on a flight,
+-- and not while eating or drinking: a cast stands you up and ends it, and
+-- after a death that's what you'd be doing. Each true/false/nil (nil =
+-- the game won't say, so no).
+function X.TrackAllowed(combat, mounted, taxi, eating)
+    return combat == false and mounted == false and taxi == false and eating == false
+end
+
+-- The game's yes/no (nil when it hides it); false when this client lacks it.
+local function ask(fn, ...)
+    if type(fn) ~= "function" then return false end
+    return ns.rotation.Yes(fn(...), nil)
+end
+-- Last of the key's steps (order 75: before only travel:go), and only when
+-- the rotation has nothing to cast (Display.lua): it never takes the place
+-- of a pull, a heal, food or drink.
+-- (The tracking list is read at most twice a second, A.Tracking; your auras,
+-- for eating, only when there's a spell to offer.)
+ns:Register("action", "gather:track", { order = 75, get = function(ctx)
+    local list, tex = A.Tracking(), A.TrackingTexture()
+    local spell = X.TrackPick(knows, tracking, X.AnyTracked(list, tex), ctx.prof)
+    if not spell then return nil end
+    if not X.TrackAllowed(ask(InCombatLockdown), ask(IsMounted), ask(UnitOnTaxi, "player"),
+        ask(ns.rotation.EatingNow)) then return nil end
+    return { type = "spell", spell = spell, unit = "player", icon = spellIcon(spell), label = "Turn on " .. spell }
 end })
 
 -- Upgrades in your bags: what Flow's gear check says to wear now for your

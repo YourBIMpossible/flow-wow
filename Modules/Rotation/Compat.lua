@@ -582,6 +582,63 @@ function A.Form()
     end
 end
 
+-- Minimap tracking (Find Minerals, Find Fish, Track Beasts...), as the client
+-- lists it. Newer clients' C_Minimap.GetTrackingInfo(i) returns one table
+-- ({ name, active, type }), older ones name, texture, active, category.
+-- town = the town kinds (Flight Master, Repair, Mailbox): no spell you cast,
+-- and on by themselves on clients that have them, so they aren't tracking
+-- you chose. Only a kind the client names as one is counted out; anything
+-- it doesn't name counts as yours (Flow then leaves it alone).
+local TOWN = { townsfolk = true, other = true }
+-- Pure: one entry from what GetTrackingInfo(i) returned, or nil.
+-- active: true/false, nil when the game hides it.
+function A.TrackingEntry(a, _, c, cat)
+    local name, raw, kind
+    if type(a) == "table" then name, raw, kind = Safe(a.name), a.active, Safe(a.type)
+    else name, raw, kind = Safe(a), c, Safe(cat) end
+    if type(name) ~= "string" then return nil end
+    local active
+    if not (issecret and issecret(raw)) then active = raw and true or false end
+    return { name = name, active = active, town = TOWN[kind] == true }
+end
+-- Pure: the list from a count and a reader (C_Minimap's two functions, or a
+-- test's). nil = can't tell (no reader, it errored, or it lists nothing).
+function A.ReadTracking(num, info)
+    if type(num) ~= "function" or type(info) ~= "function" then return nil end
+    local ok, n = pcall(num)
+    n = ok and tonumber(Safe(n)) or 0
+    if n <= 0 then return nil end
+    local list = {}
+    for i = 1, n do
+        local okI, a, b, c, d = pcall(info, i)
+        if not okI then return nil end
+        list[#list + 1] = A.TrackingEntry(a, b, c, d)
+    end
+    return list
+end
+-- The list now, read at most twice a second (the Flow key asks ten times a
+-- second, and each read builds a table per entry on newer clients), and
+-- again as soon as the game says tracking changed.
+local trackList, trackAt = nil, -1
+function A.Tracking(now)
+    now = now or GetTime()
+    if now - trackAt >= 0.5 or now < trackAt then
+        local M = C_Minimap
+        trackList, trackAt = A.ReadTracking(M and M.GetNumTrackingTypes, M and M.GetTrackingInfo), now
+    end
+    return trackList
+end
+function A.ForgetTracking() trackAt = -1 end
+ns:On("MINIMAP_UPDATE_TRACKING", A.ForgetTracking)
+-- The one-at-a-time clients' tracking icon: the icon, nil when nothing is
+-- tracked, false when this client can't say (no such function, or hidden).
+function A.TrackingTexture()
+    if type(GetTrackingTexture) ~= "function" then return false end
+    local ok, tex = pcall(GetTrackingTexture)
+    if not ok or (issecret and issecret(tex)) then return false end
+    return tex
+end
+
 -- Feeds A.Buff's and A.Debuff's fallbacks: your successful casts.
 ns:On("UNIT_SPELLCAST_SUCCEEDED", function(unit, _, spellID)
     if unit ~= "player" then return end
