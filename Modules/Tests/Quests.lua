@@ -349,3 +349,34 @@ ns:Register("test", "dungeons: the prep detour is charged by the travel cost giv
     local w = D.Worth(run, { level = 20, rate = 1000, runMinutes = 30, gatherMinutes = 10, estimate = function() return 0 end, share = function() return 1 end })
     t:eq(w.minutes, 40, "worth: the gathering minutes are part of the run's time")
 end)
+
+-------------------------------------------------------------------------------
+-- F-027: the Compat wrappers say when they can't tell.
+-------------------------------------------------------------------------------
+
+ns:Register("test", "compat: a bag count the client can't give is unknown, and an item need on it is never met", function(t)
+    local A = ns.api
+    local keep = A.ItemCount
+    local ok, err = pcall(function()
+        A.ItemCount = function() return 3 end
+        local n, known = A.Count(123)
+        t:eq(n, 3, "a count: the number")
+        t:eq(known, true, "and known")
+        A.ItemCount = function() error("client broke") end
+        n, known = A.Count(123)
+        t:eq(n, 0, "a failing count: 0 for old callers")
+        t:eq(known, false, "but not known")
+        A.ItemCount = function() return nil end
+        t:eq(select(2, A.Count(123)), false, "no answer: not known")
+        A.ItemCount = nil
+        t:eq(select(2, A.Count(123)), false, "no API: not known")
+        t:eq(select(2, A.Count(nil)), false, "no item: not known")
+        A.ItemCount = function() error("client broke") end
+        t:eq((ns.nav.NeedState("item:123")), "unknown", "an item need Flow can't count: unknown")
+        t:eq(ns.nav.NeedMet("item:123"), false, "and not met")
+        A.ItemCount = function() return 1 end
+        t:eq((ns.nav.NeedState("item:123")), "yes", "counted and carried: met")
+    end)
+    A.ItemCount = keep
+    t:ok(ok, "ran: " .. tostring(err))
+end)
