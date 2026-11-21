@@ -421,3 +421,14 @@ ns:Register("test", "professions: the level target is the highest tier cap the t
     t:eq((PT(60, { A = { cap = 75 } })), 75, "a read with no level is not a level")
 end)
 
+
+ns:Register("test", "professions: a material is outgrown only once the window showed its recipe grey", function(t)
+    local D = ns.disposition
+    local guide = { steps = { { recipe = "Lin__test", mats = { [MAT_A] = 1 } }, { recipe = "Wool__test", mats = { [MAT_B] = 1 } } } }
+    local seen = { Lin__test = { diff = "trivial" }, Wool__test = { diff = "easy" } }
+    t:eq(D.OutgrownBy(MAT_A, 80, guide, seen, 80), "Lin__test", "grey in the window at 80: past it")
+    t:eq(D.OutgrownBy(MAT_A, 79, guide, seen, 80), nil, "below the skill it was seen grey at: not known")
+    t:eq(D.OutgrownBy(MAT_B, 80, guide, seen, 80), nil, "green: still wanted")
+    t:eq(D.OutgrownBy(MAT_A, 300, guide), nil, "no window seen: never outgrown")
+    t:ok(not D.StepPast({ recipe = "Lin__test", use = { 1, 40 }, grey = 60 }, 300), "a fixed range or grey level is not read")
+end)

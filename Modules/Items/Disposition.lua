@@ -407,21 +407,26 @@ end)
 
 -- A material your skill has moved past (0.35.262). "I have Linen Cloth,
 -- which says to keep for First Aid, but I'm past that and on the wool: it
--- should tell me to auction or vendor it." A levelling guide's step says the
--- skill range it's made in (use = { from, to }); once you're at the end of
--- every step that takes the item, that profession no longer wants it.
--- Pure: is this step behind you? (No range given: when it goes grey.)
-function D.StepPast(step, rank)
-    local to = (step.use and step.use[2]) or step.grey
-    return to ~= nil and (rank or 0) >= to
+-- should tell me to auction or vendor it." A step is behind you once your
+-- profession window showed its recipe grey (no more skill) at a skill at or
+-- below yours: a recipe's colour only gets easier as your skill rises. Flow
+-- has no skill ranges of its own; a recipe the window never showed grey is
+-- never past.
+--   known, seenRank: ns.recipes:Known(prof) (the window's recipes and the
+--                    skill Flow saw them at)
+-- Pure: is this step behind you?
+function D.StepPast(step, rank, known, seenRank)
+    local r = known and step.recipe and known[step.recipe]
+    return r ~= nil and r.diff == "trivial" and seenRank ~= nil and (rank or 0) >= seenRank
 end
--- Pure: the recipe that used to take the item, when every step of the guide
--- that takes it is behind you; nil while one still wants it, or none does.
-function D.OutgrownBy(itemId, rank, guide)
+-- Pure: the recipe that used to take the item, when every step of the
+-- profession's data that takes it is behind you; nil while one still wants
+-- it, or none does.
+function D.OutgrownBy(itemId, rank, guide, known, seenRank)
     local last
     for _, step in ipairs((guide and guide.steps) or {}) do
         if step.mats and step.mats[itemId] then
-            if not D.StepPast(step, rank) then return nil end
+            if not D.StepPast(step, rank, known, seenRank) then return nil end
             last = step.recipe
         end
     end
@@ -433,13 +438,13 @@ end
 reg("professionMaterial", 25, function(i)
     i.outgrown = nil
     -- Every profession you have that uses it (recipes you've seen in a
-    -- profession window, Flow's levelling guides, then by kind of material).
+    -- profession window, Flow's profession data, then by kind of material).
     local found, order, planned = {}, {}, {}
     for _, p in ipairs(ns:ProfessionPlan() or {}) do planned[p.name] = true end
     local function add(prof, what)
         -- Professions you have, and ones in your plan you haven't learned yet.
         if not (ns.api.Skill(prof) or planned[prof]) or found[prof] then return end
-        local past = D.OutgrownBy(i.id, ns.api.Skill(prof) or 0, ns:Get("profGuide", prof))
+        local past = D.OutgrownBy(i.id, ns.api.Skill(prof) or 0, ns:Get("profGuide", prof), ns.recipes:Known(prof))
         if past then
             i.outgrown = i.outgrown or {}
             i.outgrown[prof] = past

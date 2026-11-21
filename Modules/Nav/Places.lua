@@ -12,8 +12,8 @@ local _, ns = ...
 local P = {}
 ns.places = P
 
--- Alliance starting-area trainers (from the levelling guide; not verified
--- in game). Nearest known one wins.
+-- Alliance starting-area trainers. Not from a guide, and not yet verified
+-- in game: each name needs checking at the trainer. Nearest known one wins.
 ns:Register("trainerNames", "alliance-elwynn", {
     ["Mining"]        = { "Kelsey Fargo", "Gelman Stonehand" },
     ["Blacksmithing"] = { "Smith Argus", "Therum Deepforge" },

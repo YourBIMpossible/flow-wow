@@ -758,7 +758,7 @@ ns:Register("test", "bags: profession materials name every profession that uses 
     -- Past every guide step that takes it (Blacksmithing 65+): outgrown, and
     -- not named for Blacksmithing any more.
     local D = ns.disposition
-    local past = D and D.OutgrownBy and D.OutgrownBy(2835, ns.api.Skill("Blacksmithing") or 0, ns:Get("profGuide", "Blacksmithing"))
+    local past = D and D.OutgrownBy and D.OutgrownBy(2835, ns.api.Skill("Blacksmithing") or 0, ns:Get("profGuide", "Blacksmithing"), ns.recipes:Known("Blacksmithing"))
     if past then
         t:ok(not (v and v.reason:find("for Blacksmithing", 1, true)),
             "Rough Stone outgrown for Blacksmithing (" .. tostring(v and v.reason) .. ")")
@@ -12889,19 +12889,26 @@ end)
 ns:Register("test", "bags: a material your skill has moved past is no longer kept for that profession", function(t)
     local D = ns.disposition
     local guide = { steps = {
-        { recipe = "Linen Bandage", mats = { [2589] = 1 }, use = { 1, 40 }, grey = 60 },
-        { recipe = "Heavy Linen Bandage", mats = { [2589] = 2 }, use = { 40, 80 }, grey = 100 },
-        { recipe = "Wool Bandage", mats = { [2592] = 1 }, use = { 80, 115 }, grey = 150 },
+        { recipe = "Linen Bandage", mats = { [2589] = 1 } },
+        { recipe = "Heavy Linen Bandage", mats = { [2589] = 2 } },
+        { recipe = "Wool Bandage", mats = { [2592] = 1 } },
     } }
-    t:ok(D.StepPast(guide.steps[2], 80), "Heavy Linen Bandage at 80: behind you")
-    t:ok(not D.StepPast(guide.steps[2], 79), "at 79: still the one to make")
-    t:ok(D.StepPast({ grey = 100 }, 100) and not D.StepPast({ grey = 100 }, 99), "no range given: when it goes grey")
-    t:ok(not D.StepPast({}, 300), "nothing known about it: never past")
-    t:eq(D.OutgrownBy(2589, 80, guide), "Heavy Linen Bandage", "Linen Cloth at First Aid 80: past it")
-    t:eq(D.OutgrownBy(2589, 60, guide), nil, "at 60: Heavy Linen Bandage still wants it")
-    t:eq(D.OutgrownBy(2592, 80, guide), nil, "Wool Cloth at 80: wanted now")
-    t:eq(D.OutgrownBy(9999, 80, guide), nil, "something the guide never uses: not this rule's")
-    t:eq(D.OutgrownBy(2589, 80, nil), nil, "no guide: not this rule's")
+    -- What the First Aid window showed at 80 (W4d: no skill ranges of Flow's own).
+    local seen = { ["Linen Bandage"] = { diff = "trivial" }, ["Heavy Linen Bandage"] = { diff = "trivial" },
+                   ["Wool Bandage"] = { diff = "optimal" } }
+    t:ok(D.StepPast(guide.steps[2], 80, seen, 80), "Heavy Linen Bandage grey in the window at 80: behind you")
+    t:ok(D.StepPast(guide.steps[2], 90, seen, 80), "and at any skill above")
+    t:ok(not D.StepPast(guide.steps[2], 79, seen, 80), "at 79: below where it was seen grey, not known to be past")
+    t:ok(not D.StepPast(guide.steps[3], 80, seen, 80), "orange in the window: not past")
+    t:ok(not D.StepPast(guide.steps[2], 300), "never seen in the window: never past")
+    t:ok(not D.StepPast({}, 300, seen, 80), "nothing known about it: never past")
+    t:eq(D.OutgrownBy(2589, 80, guide, seen, 80), "Heavy Linen Bandage", "Linen Cloth at First Aid 80: past it")
+    local mid = { ["Linen Bandage"] = { diff = "trivial" }, ["Heavy Linen Bandage"] = { diff = "medium" } }
+    t:eq(D.OutgrownBy(2589, 60, guide, mid, 60), nil, "at 60: Heavy Linen Bandage still wants it")
+    t:eq(D.OutgrownBy(2592, 80, guide, seen, 80), nil, "Wool Cloth at 80: wanted now")
+    t:eq(D.OutgrownBy(9999, 80, guide, seen, 80), nil, "something the profession never uses: not this rule's")
+    t:eq(D.OutgrownBy(2589, 80, nil, seen, 80), nil, "no profession data: not this rule's")
+    t:eq(D.OutgrownBy(2589, 80, guide), nil, "no window seen: nothing outgrown")
     t:eq(D.OutgrownText({ ["First Aid"] = "Heavy Linen Bandage" }), "your First Aid is past it (Heavy Linen Bandage)", "said in words")
     t:eq(D.OutgrownText(nil), nil, "nothing outgrown: nothing said")
     -- Spare bags.
