@@ -69,11 +69,13 @@ end
 
 -- Pure: the role whose spec is your talent tree with the most points.
 -- specs: class data's { dps = { name = "Retribution" }, ... }; trees:
--- { { name = "Holy", points = 5 }, ... }. nil: no points yet, a tie, or a
--- tree no role is named after (a druid's Feral Combat is cat and bear).
-function ns.RoleFromTrees(specs, trees)
+-- { { name = "Holy", points = 5 }, ... }; treeRoles (optional): the role of
+-- a tree no spec is named after (ns.TREE_ROLES). nil: no points yet, a tie,
+-- or a tree with no role.
+function ns.RoleFromTrees(specs, trees, treeRoles)
     local _, best = ns.DominantTree(trees)
     if not best then return nil end
+    if treeRoles and treeRoles[best.name] then return treeRoles[best.name] end
     for role, s in pairs(specs or {}) do
         if s.name == best.name then return role end
     end
@@ -86,6 +88,14 @@ end
 ns.TALENT_TREES = {
     PALADIN = { "Holy", "Protection", "Retribution" },
     DRUID   = { "Balance", "Feral Combat", "Restoration" },
+}
+
+-- Trees no role's spec is named after, and the role each plays. A druid's
+-- Balance is caster dps; Feral Combat is cat (melee dps) and bear (tank),
+-- and talents can't tell which: dps. Tanking is your own choice (/flow spec
+-- tank, "Your role"), which beats your talents anyway.
+ns.TREE_ROLES = {
+    DRUID = { Balance = "dps", ["Feral Combat"] = "dps" },
 }
 
 -- Pure: talents from one sheet ({ x, y, rank }, as ns.talents.Read gives
@@ -160,7 +170,8 @@ end
 -- The role your talents say (dps/heal/tank), or nil.
 function ns:TalentRole()
     local d = self:ClassData()
-    return ns.RoleFromTrees(d and d.specs, self:TalentTrees())
+    local class = UnitClass and select(2, UnitClass("player"))
+    return ns.RoleFromTrees(d and d.specs, self:TalentTrees(), ns.TREE_ROLES[class or ""])
 end
 
 -- Pure: the role Flow plays you as, and why. chosen: your own choice (or
