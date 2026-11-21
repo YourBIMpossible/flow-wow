@@ -137,3 +137,82 @@ ns:Register("test", "professions: the Skinning step is along the way, never a de
         end
     end)
 end)
+
+-------------------------------------------------------------------------------
+-- F-085: Expert and Artisan steps say what they cost, or that it's unknown.
+-------------------------------------------------------------------------------
+
+local function coins(c) return c .. "c" end
+local function hasLine(details, pat)
+    for _, d in ipairs(details or {}) do
+        if type(d) == "string" and d:find(pat, 1, true) then return true end
+    end
+    return false
+end
+-- Mining 130 of 150 at level 25: Expert, from the Mining trainer.
+local function expertStep(tierSeen, fn)
+    local SP = ns.skillPlan
+    local made = ns.db.prof == nil
+    if made then ns.db.prof = {} end
+    local ok, err = pcall(with, ns.db.prof, "tierSeen", tierSeen, function()
+    with(ns.quests, "NPCsByName", false, function()
+    with(ns.api, "Skill", function(name) if name == "Mining" then return 130, 150 end end, function()
+    with(ns.places, "TrainersFor", function() return { "Test Trainer" } end, function()
+    with(ns.places, "Points", function() return {} end, function()
+        fn(SP.TierGoal("Mining", 25, false))
+    end) end) end) end) end)
+    if made then ns.db.prof = nil end
+    if not ok then error(err, 0) end
+end
+
+ns:Register("test", "professions: an Expert tier nobody has priced says so and waits on no price", function(t)
+    expertStep({}, function(g)
+        t:ok(g ~= nil, "the Expert step is built")
+        t:eq(g and g.cost, nil, "no made-up price to wait for")
+        t:ok(g and g.costUnknown, "marked as price unknown")
+        t:eq(g and g.costEstimate, nil, "and no estimate without a recorded source")
+        t:ok(g and hasLine(g.details, "Price unknown"), "the step says: price unknown, check the trainer")
+    end)
+end)
+
+ns:Register("test", "professions: an Expert price read at a trainer is the step's cost, with its source", function(t)
+    expertStep({ Mining = { cap = 150, cost = 50000 } }, function(g)
+        t:eq(g and g.cost, 50000, "the trainer's price")
+        t:eq(g and g.costUnknown, nil, "not unknown")
+        t:ok(g and hasLine(g.details, "the Mining trainer's price"), "says where the price came from")
+    end)
+end)
+
+ns:Register("test", "professions: an Expert step with a recorded estimate carries it, and the route doesn't wait on it", function(t)
+    with(ns.skillPlan, "TIER_ESTIMATE", { [150] = { cost = 10000, source = "test record" } }, function()
+        expertStep({}, function(g)
+            t:eq(g and g.cost, nil, "no certain cost")
+            t:eq(g and g.costEstimate, 10000, "carried as an estimate")
+            t:ok(g and hasLine(g.details, "about"), "and shown as 'about'")
+        end)
+    end)
+end)
+
+ns:Register("test", "professions: a tier estimate needs a recorded source and is never a certain cost", function(t)
+    local SP = ns.skillPlan
+    local text, est = SP.TierPriceLine(150, nil, nil, coins)
+    t:eq(est, nil, "nothing recorded: no estimate")
+    t:ok(text:find("Price unknown", 1, true), "price unknown")
+    with(SP, "TIER_ESTIMATE", { [150] = { cost = 10000 } }, function()
+        local _, e = SP.TierPriceLine(150, nil, nil, coins)
+        t:eq(e, nil, "an estimate without a source is ignored")
+    end)
+    with(SP, "TIER_ESTIMATE", { [150] = { cost = 10000, source = "test record" } }, function()
+        local line, e = SP.TierPriceLine(150, nil, nil, coins)
+        t:eq(e, 10000, "a recorded estimate")
+        t:ok(line:find("about 10000c (test record)", 1, true), "labelled 'about', with its source")
+    end)
+    local line = SP.TierPriceLine(150, 50000, "the Mining trainer's price", coins)
+    t:eq(line, "Costs 50000c (the Mining trainer's price).", "a seen price is stated plainly")
+    local cost, source = SP.TierCost("Mining", 150, { Mining = { cap = 150, cost = 50000 } })
+    t:eq(cost, 50000, "Expert from its own trainer")
+    t:eq(source, "the Mining trainer's price", "named as such")
+    cost, source = SP.TierCost("Mining", 75, nil)
+    t:eq(cost, 500, "Journeyman keeps its recorded price")
+    t:ok(source and source:find("2026-11-13", 1, true), "with where and when it was read")
+end)

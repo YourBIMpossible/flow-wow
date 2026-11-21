@@ -781,15 +781,36 @@ end
 -- profession's trainer said, else what any profession's trainer said for the
 -- same tier (they charge alike), else the one price Flow has seen for itself
 -- (Journeyman, 5 silver). nil: not known, so nothing to wait for.
+-- The second value says where the price came from.
 --   seenAll: ns.db.prof.tierSeen ({ [profession] = { cap, cost } })
 SP.TIER_COST = { [75] = 500 }
+SP.TIER_COST_SOURCE = { [75] = "read at a WoW: Forever Herbalism trainer, 2026-11-13" }
 function SP.TierCost(prof, max, seenAll)
     local mine = seenAll and seenAll[prof]
-    if mine and mine.cap == max and (mine.cost or 0) > 0 then return mine.cost end
-    for _, s in pairs(seenAll or {}) do
-        if s.cap == max and (s.cost or 0) > 0 then return s.cost end
+    if mine and mine.cap == max and (mine.cost or 0) > 0 then return mine.cost, "the " .. prof .. " trainer's price" end
+    for other, s in pairs(seenAll or {}) do
+        if s.cap == max and (s.cost or 0) > 0 then return s.cost, "what the " .. tostring(other) .. " trainer asked for this tier" end
     end
-    return SP.TIER_COST[max]
+    return SP.TIER_COST[max], SP.TIER_COST_SOURCE[max]
+end
+-- Estimates for a tier nobody has priced yet (Expert, Artisan): only with a
+-- recorded source ({ cost = copper, source = "where and when it was read" }).
+-- None is recorded, so this is empty: Flow doesn't invent prices. An
+-- estimate is shown as "about", never waited on as if certain.
+SP.TIER_ESTIMATE = {}
+-- The line a trainer tier step shows about its price:
+--   cost, source: from SP.TierCost (cost nil when unknown).
+--   -> text, estimate (copper, or nil)
+function SP.TierPriceLine(max, cost, source, money)
+    money = money or ns.Money
+    if cost then
+        return string.format("Costs %s (%s).", money(cost), source or "seen at a trainer"), nil
+    end
+    local e = SP.TIER_ESTIMATE[max]
+    if e and (e.cost or 0) > 0 and e.source then
+        return string.format("Costs about %s (%s): check the trainer.", money(e.cost), e.source), e.cost
+    end
+    return "Price unknown\226\128\148check the trainer.", nil
 end
 function SP.Tier(prof, rank, max, level, seen)
     if not (rank and max and max > 0 and max < 300) then return nil end
@@ -839,8 +860,15 @@ function SP.TierGoal(prof, level, optional)
     local why = string.format("%s %d of %d: %s raises the cap to %d.", prof, rank, max, title, max + 75)
     -- (cost: what a trainer charges for this tier; the route waits until you can pay.
     -- A book or a quest has its own price or none.)
-    local cost = tier.how == "trainer" and SP.TierCost(prof, max, ns.db and ns.db.prof and ns.db.prof.tierSeen) or nil
-    local base = { key = key, title = title, optional = optional, weight = optional and 1.4 or 1.0, cost = cost }
+    -- Unknown (no trainer read yet, nothing recorded): the step says so
+    -- (costUnknown) instead of waiting on a made-up price.
+    local cost, source, priceLine, estimate
+    if tier.how == "trainer" then
+        cost, source = SP.TierCost(prof, max, ns.db and ns.db.prof and ns.db.prof.tierSeen)
+        priceLine, estimate = SP.TierPriceLine(max, cost, source)
+    end
+    local base = { key = key, title = title, optional = optional, weight = optional and 1.4 or 1.0, cost = cost,
+                   costEstimate = estimate, costUnknown = (tier.how == "trainer" and not cost) or nil }
     local function goal(g)
         for k, v in pairs(base) do if g[k] == nil then g[k] = v end end
         return g
@@ -889,7 +917,7 @@ function SP.TierGoal(prof, level, optional)
     local pts = npcPoints(names)
     return goal({ points = pts, npcs = names,
                   text = string.format("Train %s (%s)", title, #names > 0 and table.concat(names, " / ") or "trainer"),
-                  details = { why, #names > 0 and ("At " .. table.concat(names, " or ") .. ".") or nil },
+                  details = { why, priceLine, #names > 0 and ("At " .. table.concat(names, " or ") .. ".") or nil },
                   blockedBy = #pts == 0 and ("no known " .. prof .. " trainer") or nil }), tier
 end
 
