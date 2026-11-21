@@ -77,3 +77,28 @@ ns:Register("test", "spec: a druid's chosen role beats Feral talents, which beat
     t:eq(both(nil, nil), "dps/class", "Auto, no talents: the class's role")
     t:ok(not ns.DruidWantsBear(both(nil, talent):match("^(%a+)"), true, false), "Auto Feral: no Bear Form asked for")
 end)
+
+ns:Register("test", "spec: /flow spec always says where your role came from", function(t)
+    -- F-058: the role showed only when it differed from the recommended one.
+    t:eq(ns.RoleSourceWords("chosen"), "your choice", "a role you chose")
+    t:eq(ns.RoleSourceWords("talents"), "your talents", "a role from your talents")
+    t:eq(ns.RoleSourceWords("class"), "your class's usual role", "no choice, no talents")
+    t:eq(ns.RoleSourceWords(nil), "your class's usual role", "nothing known: the class's role")
+end)
+
+ns:Register("test", "talents: a build for another role says so", function(t)
+    -- F-060: "/flow spec heal" still got the Feral build, with nothing said.
+    local T = ns.talents
+    local druid = ns:Get("talentBuild", "DRUID")
+    t:ok(T.BuildMismatch(druid, "heal"), "druid healing, Feral build: a mismatch")
+    t:ok(not T.BuildMismatch(druid, "dps"), "druid dps: the build's own role")
+    t:ok(not T.BuildMismatch(druid, "tank"), "druid tank: the Feral tree serves Bear too")
+    t:ok(not T.BuildMismatch(nil, "heal"), "no build: nothing to say")
+    t:ok(not T.BuildMismatch(druid, nil), "no role: nothing to say")
+    local bld = { name = "Test", role = "dps", trees = { "A" }, order = { { "Claws", 1 } } }
+    local nodes = { { name = "Claws", x = 100, y = 10, rank = 0, max = 1 } }
+    t:ok(T.View(nodes, 0, bld, 10, "heal").what:find("no build for your role", 1, true) ~= nil,
+        "the view says the build is for another role")
+    t:ok(T.View(nodes, 0, bld, 10, "dps").what:find("no build for your role", 1, true) == nil,
+        "and says nothing when it fits")
+end)

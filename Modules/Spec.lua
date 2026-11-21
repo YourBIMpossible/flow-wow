@@ -206,6 +206,12 @@ function ns:RoleSource()
     return source
 end
 
+-- Pure: where the role came from, in words.
+local SOURCE_WORDS = { chosen = "your choice", talents = "your talents", class = "your class's usual role" }
+function ns.RoleSourceWords(source)
+    return SOURCE_WORDS[source] or SOURCE_WORDS.class
+end
+
 local function unspentPoints()
     -- (Flow Talents reads the game's own count, whichever talent system the client has.)
     if ns.talents and ns.talents.Unspent then return ns.talents.Unspent() end
@@ -220,11 +226,12 @@ local function describe()
     ns:Print(string.format("recommended levelling spec: |cff%s%s|r (%s)",
         ns.ROLE_COLOR[rec], d.specs[rec].name, ns.ROLE_LABEL[rec]))
     for _, line in ipairs(d.leveling.why) do print("  - " .. line) end
+    -- Always the role Flow plays you as, and why (F-058: it showed only when
+    -- it differed from the recommended one).
     local mine, source = ns:LevelingRole(), ns:RoleSource()
-    if mine ~= rec and d.specs[mine] then
-        print(string.format("  Your role: |cff%s%s|r (%s, %s).", ns.ROLE_COLOR[mine], ns.ROLE_LABEL[mine],
-            d.specs[mine].name, source == "chosen" and "your choice" or "your talents"))
-    end
+    local spec = d.specs[mine]
+    print(string.format("  Your role: |cff%s%s|r (%s%s).", ns.ROLE_COLOR[mine] or "ffffff", ns.ROLE_LABEL[mine] or mine,
+        spec and (spec.name .. ", ") or "", ns.RoleSourceWords(source)))
     local _, class = UnitClass("player")
     print(ns:Get("talentBuild", class or "")
         and "  Point by point: /flow talents (Flow Talents: what to take now and at each level)."

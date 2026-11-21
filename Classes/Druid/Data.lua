@@ -105,6 +105,7 @@ ns:Register("class", "DRUID", {
 ns:Register("talentBuild", "DRUID", {
     name = "Feral (Cat) levelling build",
     role = "dps",
+    alsoFor = { "tank" },   -- the Feral tree serves Cat and Bear alike
     trees = { "Balance", "Feral", "Restoration" },
     order = {
         { "Improved Wrath", 5, why = "Until Cat Form at 20 you kill with Wrath: this makes it quicker to cast." },
