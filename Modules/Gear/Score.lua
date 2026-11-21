@@ -12,8 +12,8 @@ local SLOTS = {
     INVTYPE_CHEST = { 5 }, INVTYPE_ROBE = { 5 }, INVTYPE_WAIST = { 6 },
     INVTYPE_LEGS = { 7 }, INVTYPE_FEET = { 8 }, INVTYPE_WRIST = { 9 },
     INVTYPE_HAND = { 10 }, INVTYPE_FINGER = { 11, 12 }, INVTYPE_TRINKET = { 13, 14 },
-    -- One-handers compare against the main hand only (paladins can't dual wield).
-    -- PLACEHOLDER: dual-wield classes will need { 16, 17 }.
+    -- One-handers compare against the main hand; a character that can dual
+    -- wield also against a weapon (or nothing) in the off hand (G.WeaponSlots).
     INVTYPE_CLOAK = { 15 }, INVTYPE_WEAPON = { 16 }, INVTYPE_SHIELD = { 17 },
     INVTYPE_2HWEAPON = { 16 }, INVTYPE_WEAPONMAINHAND = { 16 },
     INVTYPE_WEAPONOFFHAND = { 17 }, INVTYPE_HOLDABLE = { 17 },
@@ -286,6 +286,25 @@ function G:CompareLink(role, slot)
     return GetInventoryItemLink("player", slot)
 end
 
+-- Can this character dual wield? (The game says so once it has trained Dual
+-- Wield; a client without the question: no.)
+function G.CanDualWield()
+    if not CanDualWield then return false end
+    local ok, can = pcall(CanDualWield)
+    return ok and ns.api.Safe(can) and true or false
+end
+
+-- Pure (F-006): the slots a one-hander is compared against. A dual wielder's
+-- one-hander can go in either hand, so the weaker of main and off hand,
+-- unless the off hand holds a shield or held item (then it's the main hand's).
+--   offFilled: something is in the off hand; offLoc: its equipLoc, if known.
+function G.WeaponSlots(equipLoc, dualWield, offFilled, offLoc)
+    local slots = SLOTS[equipLoc]
+    if equipLoc ~= "INVTYPE_WEAPON" or not dualWield then return slots end
+    if offFilled and offLoc ~= "INVTYPE_WEAPON" and offLoc ~= "INVTYPE_WEAPONOFFHAND" then return slots end
+    return { 16, 17 }
+end
+
 -- Score of what you'd be replacing: the weaker of two ring/trinket slots;
 -- main + off hand when looking at a two-hander. Empty slots score 0.
 -- Returns score, and what it was compared with (a link, or text such as
@@ -312,8 +331,14 @@ function G:EquippedScore(item, role)
     if mhItem and mhItem.equipLoc == "INVTYPE_2HWEAPON" and (item.slots[1] == 16 or item.slots[1] == 17) then
         return slotScore(16)
     end
+    local slots = item.slots
+    if item.equipLoc == "INVTYPE_WEAPON" then
+        local off = self:CompareLink(role, 17)
+        local offItem = off and self:Describe(off)
+        slots = G.WeaponSlots(item.equipLoc, G.CanDualWield(), off ~= nil, offItem and offItem.equipLoc)
+    end
     local worst, worstLink
-    for _, slot in ipairs(item.slots) do
+    for _, slot in ipairs(slots) do
         local s, l = slotScore(slot)
         if not worst or s < worst then worst, worstLink = s, l end
     end

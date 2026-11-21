@@ -144,3 +144,15 @@ ns:Register("test", "safety: an upgrade once you train its weapon skill is Need,
     t:eq(MM.Diffs({ canUse = false }), nil, "unwearable gear: no badge")
     t:eq(G.MarkDiffs({ canUse = true }), nil, "no scores: no badge")
 end)
+
+ns:Register("test", "safety: a dual wielder's one-hander is compared with the off hand too (F-006)", function(t)
+    local W = ns.gear.WeaponSlots
+    local function same(a, b) return table.concat(a, ",") == table.concat(b, ",") end
+    t:ok(same(W("INVTYPE_WEAPON", false, true, "INVTYPE_WEAPON"), { 16 }), "can't dual wield: the main hand only")
+    t:ok(same(W("INVTYPE_WEAPON", true, true, "INVTYPE_WEAPON"), { 16, 17 }), "dual wielding: the weaker of both hands")
+    t:ok(same(W("INVTYPE_WEAPON", true, false, nil), { 16, 17 }), "dual wielder with an empty off hand: it fills it")
+    t:ok(same(W("INVTYPE_WEAPON", true, true, "INVTYPE_SHIELD"), { 16 }), "a shield in the off hand: the main hand only")
+    t:ok(same(W("INVTYPE_WEAPON", true, true, nil), { 16 }), "off hand not loaded yet: the main hand only")
+    t:ok(same(W("INVTYPE_WEAPONOFFHAND", true, true, "INVTYPE_WEAPON"), { 17 }), "an off-hand weapon: the off hand")
+    t:ok(same(W("INVTYPE_SHIELD", true, true, "INVTYPE_WEAPON"), { 17 }), "a shield: the off hand")
+end)
