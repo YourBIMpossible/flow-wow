@@ -176,3 +176,4 @@ Modules\Export.lua
 # Self-tests (/flow test; also saved in the diagnostics on every /reload)
 Modules\Tests.lua
 Modules\Tests\Professions.lua
+Modules\Tests\Class.lua

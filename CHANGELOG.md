@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Druid: Balance and Feral talents now set your role to DPS;** tanking stays your choice.
+- **A class Flow has no rotation for still gets potions, bandages, food, drink and breaking free.**
+- **`/flow spec` always says your role and where it came from;** Flow Talents says when its build isn't for your role.
+- **Stones, oils, elixirs and Well Fed food now come up at a dungeon's entrance.**
 - **With Professions off, a skill a quest asks for stays on the route.** The step reads "needed for quest <name>";
   plain skill-ups still drop.
 - **Skinning gets a levelling plan.** Skin beasts of the level your skill allows, along the way (never a detour),
