@@ -886,10 +886,20 @@ local function build(parent)
             local want = item.suggested and true or false
             if want ~= (item.isOn() and true or false) then pcall(item.set, want); n = n + 1 end
         end
-        ns.db.setup.done = true
+        ns.setup:Finish()
         ns:Print(n .. " setting(s) changed to Flow's suggestions.")
         refresh()
     end)
+    f.useSuggestions = all
+    -- The other way to finish Flow Setup: leave every row as it is. Until one
+    -- of these two is clicked, Setup opens once each login (Setup.lua).
+    local keep = button(f, "Keep my settings", 160)
+    keep:SetPoint("LEFT", all, "RIGHT", 8, 0)
+    keep:SetScript("OnClick", function()
+        ns.setup:Finish()
+        ns:Print("Flow Setup done: your settings stay as they are. /flow setup reopens it.")
+    end)
+    f.keepSettings = keep
     y = y - 44
     f:SetHeight(-y + 20)
 
@@ -1047,16 +1057,9 @@ ns:OnLoad(function(saved)
     pcall(register)
 end)
 
--- First run: open the page once so the key can be set.
-ns:On("PLAYER_ENTERING_WORLD", function()
-    if ns.db.cast.key or ns.db.settings.prompted then return end
-    ns.db.settings.prompted = true
-    C_Timer.After(7, function()
-        if not InCombatLockdown() and S:Open() and frame then
-            frame.status:SetText("First setting: pick the key that casts Flow's suggestion.")
-        end
-    end)
-end)
+-- First run: Flow Setup (Setup.lua) is the one prompt, and it opens this
+-- page. (This page had its own first-run prompt 7 s after login as well,
+-- F-095; the two could stack, so it's gone.)
 
 ns.commands.settings = function() if not S:Open() then ns:Print("this client has no add-on options page") end end
 ns.commands.key = function(arg)

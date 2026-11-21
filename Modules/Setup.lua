@@ -402,7 +402,6 @@ end
 
 ns:OnLoad(function(saved)
     saved.setup = saved.setup or {}
-    if saved.settings then saved.settings.prompted = true end
 end)
 
 -- Suggested rows you've never been shown that are still off (e.g. a row added in an update).
@@ -428,20 +427,65 @@ function S:MarkSeen()
     for _, r in ipairs(rows()) do ns.db.setup.seen[r.key] = true end
 end
 
--- First run, or once when an update adds a suggestion you haven't seen.
+-- Setup counts as done only once you've chosen: Apply here, or "Use Flow's
+-- suggestions" / "Keep my settings" on Flow's page. Opening it isn't
+-- choosing (F-094: it used to be marked done before it opened, so a player
+-- who closed it, or never saw it, kept defaults they'd never been shown).
+function S:Done() return ns.db.setup.done == true end
+function S:Finish()
+    ns.db.setup.done = true
+end
+
+-- Pure: what the first-run offer does now. -> "open", "wait" (try again
+-- shortly: in a fight, or the rest of Flow isn't on screen yet) or "no".
+-- Until you've chosen it's offered once each session; after that, once
+-- when an update adds a suggestion you haven't seen.
+function S.OfferState(done, unseen, inCombat, adviceShown, offeredThisSession)
+    if offeredThisSession then return "no" end
+    if done and unseen == 0 then return "no" end
+    if inCombat or not adviceShown then return "wait" end
+    return "open"
+end
+
+S.FIRST_RUN_TEXT = "Flow Setup is open: choose your settings, then click \"Use Flow's suggestions\" or \"Keep my settings\". "
+    .. "Until you do, it opens once each login. /flow setup reopens it any time."
+
+local offered, waiting = false, false
+
+-- One go at the offer; `later` schedules the next go (C_Timer.After in game).
+function S:TryOffer(later)
+    waiting = false
+    local unseen = S:Unseen()
+    local state = S.OfferState(self:Done(), #unseen, InCombatLockdown(),
+        not ns.reveal or ns.reveal:Shown("advice"), offered)
+    if state == "wait" then
+        -- New to Flow: once the rest is on screen (Reveal.lua), not next login.
+        waiting = true
+        if later then later(30, function() S:TryOffer(later) end) end
+        return state
+    end
+    if state ~= "open" then return state end
+    offered = true
+    local wasDone = self:Done()
+    S:MarkSeen()
+    if wasDone then ns:Print("new in the setup table: " .. table.concat(unseen, ", "))
+    else ns:Print(S.FIRST_RUN_TEXT) end
+    S:Open()
+    return state
+end
+
+-- (Tests) sets this session's offer flags; returns the old ones to put back.
+function S._OfferFlags(o, w)
+    local oldO, oldW = offered, waiting
+    offered, waiting = o and true or false, w and true or false
+    return oldO, oldW
+end
+
 ns:On("PLAYER_ENTERING_WORLD", function()
-    if ns.db.setup.done and #S:Unseen() == 0 then return end
-    C_Timer.After(30, function()  -- well after the splash, so new players aren't swamped
-        if InCombatLockdown() then return end
-        -- New to Flow: not until the rest is on screen (Reveal.lua); next login.
-        if ns.reveal and not ns.reveal:Shown("advice") then return end
-        local new = ns.db.setup.done and S:Unseen() or nil
-        if new and #new == 0 then return end
-        ns.db.setup.done = true
-        S:MarkSeen()
-        if new then ns:Print("new in the setup table: " .. table.concat(new, ", ")) end
-        S:Open()
-    end)
+    if offered or waiting then return end
+    if S:Done() and #S:Unseen() == 0 then return end
+    waiting = true
+    C_Timer.After(30, function() S:TryOffer(C_Timer.After) end)  -- well after the splash, so new players aren't swamped
 end)
 
 ns.commands.setup = function() S:Open() end
