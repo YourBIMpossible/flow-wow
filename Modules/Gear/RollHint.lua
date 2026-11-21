@@ -26,12 +26,19 @@ function R.On() return not (ns.db.gear and ns.db.gear.rollHints == false) end
 -- or nil (not gear, or not loaded). -> { roll = "need" | "greed", text, r, g, b } or nil.
 function R.Verdict(cmp, role, minGain)
     if not cmp then return nil end
-    if not cmp.canUse then
+    if not (cmp.canUse or cmp.needsTraining) then
         return { roll = "greed", text = "you can't wear it: Greed", r = 0.7, g = 0.7, b = 0.7 }
     end
     local gain = cmp.diffs and cmp.diffs[role or "dps"]
     if gain and gain >= (minGain or R.MIN_GAIN) then
-        return { roll = "need", text = string.format("upgrade +%.1f: Need", gain), gain = gain, r = 0.3, g = 1, b = 0.3 }
+        -- (F-005) An upgrade once you train its weapon skill: the bags keep
+        -- it for the weapon master, so the roll says Need too.
+        local train = (not cmp.canUse) and (" once you train " .. (cmp.skill or "its weapon skill")) or ""
+        return { roll = "need", text = string.format("upgrade +%.1f%s: Need", gain, train), gain = gain,
+                 needsTraining = not cmp.canUse or nil, r = 0.3, g = 1, b = 0.3 }
+    end
+    if not cmp.canUse then
+        return { roll = "greed", text = "you can't wear it yet: Greed", r = 0.7, g = 0.7, b = 0.7 }
     end
     return { roll = "greed", text = "not an upgrade: Greed", r = 0.7, g = 0.7, b = 0.7 }
 end
@@ -150,7 +157,8 @@ function R.Paint(f, v, fate, cmp)
     local letters = (fate == "de" and "DE") or (fate == "ah" and not o.ahOk and "AH") or ""
     o.letters:SetText(letters)
     if fate == "de" then o.letters:SetTextColor(0.75, 0.5, 1.0) else o.letters:SetTextColor(0.4, 0.8, 1.0) end
-    if cmp and cmp.canUse and cmp.diffs then o.specs:Set(cmp.diffs) else o.specs:Hide() end
+    local diffs = ns.gear.MarkDiffs(cmp)
+    if diffs then o.specs:Set(diffs) else o.specs:Hide() end
     return o
 end
 
@@ -194,7 +202,8 @@ local function onRoll(rollID)
         #frames, o and (" on " .. tostring(o.which)) or ""))
     if v and v.roll == "need" and not R.said[rollID] then
         R.said[rollID] = true
-        ns:Print(string.format("%s is an upgrade for you (+%.1f): Flow suggests Need. (It never rolls for you.)", tostring(link), v.gain or 0))
+        ns:Print(string.format("%s is an upgrade for you (+%.1f%s): Flow suggests Need. (It never rolls for you.)", tostring(link),
+            v.gain or 0, v.needsTraining and (", once you train " .. tostring(cmp and cmp.skill or "its weapon skill")) or ""))
     end
 end
 ns:On("START_LOOT_ROLL", function(rollID)

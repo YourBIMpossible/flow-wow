@@ -126,3 +126,21 @@ ns:Register("test", "safety: the diagnostics header doesn't name the character (
     t:ok(line:find("PALADIN", 1, true) and line:find("level 12", 1, true), "class and level are there")
     t:eq(line:match("^character %((.-)%),"), "PALADIN", "no name or realm before the class")
 end)
+
+ns:Register("test", "safety: an upgrade once you train its weapon skill is Need, with a vendor badge (F-005)", function(t)
+    local R, G, MM = ns.rollHint, ns.gear, ns.merchantMarks
+    local trainable = { canUse = false, needsTraining = true, skill = "Swords", diffs = { dps = 3.2, tank = -1 } }
+    local v = R.Verdict(trainable, "dps")
+    t:eq(v and v.roll, "need", "a trainable upgrade: Need, as the bags keep it")
+    t:ok(v and v.text:find("once you train Swords", 1, true), "and it says which skill to train")
+    t:eq((R.ArrowFor(v)), true, "the roll window gets the upgrade arrow")
+    t:eq(R.Fate(v, true, true), "need", "not sent to disenchant or the vendor")
+    v = R.Verdict({ canUse = false, needsTraining = true, diffs = { dps = 0.1 } }, "dps")
+    t:eq(v and v.roll, "greed", "trainable but not better: Greed")
+    t:eq(R.Verdict({ canUse = false }, "dps").roll, "greed", "can't wear it at all: still Greed")
+    t:eq(G.MarkDiffs(trainable), trainable.diffs, "bag and roll marks show the trainable item's scores")
+    t:eq(MM.Diffs(trainable), trainable.diffs, "the vendor badge shows them too")
+    t:eq(MM.UpgradeFor(trainable, "dps"), 3.2, "and the vendor calls it an upgrade")
+    t:eq(MM.Diffs({ canUse = false }), nil, "unwearable gear: no badge")
+    t:eq(G.MarkDiffs({ canUse = true }), nil, "no scores: no badge")
+end)

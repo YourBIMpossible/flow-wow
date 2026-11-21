@@ -66,6 +66,15 @@ function G:Compare(link)
     return { item = item, canUse = true, scores = scores, diffs = diffs, notes = notes }
 end
 
+-- Pure (F-005): the per-role differences every upgrade mark shows (bags,
+-- vendor, loot roll), or nil. Gear you can wear and gear your class can
+-- wear once it trains the weapon skill both count, so the roll window and
+-- the vendor agree with the bags ("upgrade once you train Swords").
+function G.MarkDiffs(cmp)
+    if not (cmp and cmp.diffs and (cmp.canUse or cmp.needsTraining)) then return nil end
+    return cmp.diffs
+end
+
 -- "Simply better": at least as good in every stat (armor included) and
 -- better in at least one. Then it's an upgrade for every role, whatever the
 -- weights say (e.g. a belt with only more armor).

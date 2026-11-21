@@ -255,8 +255,8 @@ local function paint(button, bag, slot)
             r:SetShown(on)
         end
     end
-    local g = v.item.gear
-    if g and g.canUse then m.specs:Set(g.diffs) else m.specs:Hide() end
+    local diffs = ns.gear.MarkDiffs(v.item.gear)
+    if diffs then m.specs:Set(diffs) else m.specs:Hide() end
 end
 
 -- Calls fn(button, bag, slot) for every visible Blizzard bag slot button.
