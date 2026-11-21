@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Changed: route yards and detours now use real travel cost (flights, portals).
+- Changed: your Custom route lines wait while you try Shortest or Most XP.
+- Added: `/flow notoffered`; failed quest and dungeon reads say so and retry.
+- Added: missing prerequisites and unreachable continents are named.
 - Fixed: a weapon upgrade you can't wear until you train its skill is rated Need, with a badge at vendors.
 - Fixed: a dual wielder's one-handers are compared with the off hand too.
 - Fixed: merchant, bank and quest-item advice share one "bags nearly full" threshold.

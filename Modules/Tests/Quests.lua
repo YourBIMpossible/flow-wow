@@ -294,3 +294,310 @@ ns:Register("test", "dungeons: the entrance step says Flow can't check attunemen
     t:ok(D.ENTRY_UNKNOWN:find("keys") ~= nil, "it names keys")
     t:eq(#D.EntranceDetails({ count = 1 }, 0, {}), 2, "no pickups, all placed: the count and the warning")
 end)
+
+-------------------------------------------------------------------------------
+-- F-032 / F-033 / F-048: one travel cost for pruning, the shown yards, the
+-- profession route and the dungeon prep detour.
+-------------------------------------------------------------------------------
+
+ns:Register("test", "route: an optional detour a flight makes cheap is kept, and the shown yards are the travel yards", function(t)
+    local P = ns.planner
+    local p = { cont = 0, wx = 0, wy = 0 }
+    local A = { key = "w2:a", text = "a", points = { { cont = 0, wx = 100, wy = 0 } } }
+    local O = { key = "w2:o", text = "o", optional = true, points = { { cont = 0, wx = 3000, wy = 0 } } }
+    local oPt = O.points[1]
+    local air = function(a, b) if a == oPt or b == oPt then return 50 end end
+    local plan = P:Plan(p, { A, O }, { groups = false })
+    t:eq(plan and #plan, 1, "no flights: the far optional step is dropped")
+    t:eq(plan and plan.dropped and plan.dropped[1], "o", "and named as dropped")
+    plan = P:Plan(p, { A, O }, { groups = false, air = air })
+    t:eq(plan and #plan, 2, "a flight makes it a short detour: kept (prune counts the planner's own yards)")
+    -- The shown yards: the travel yards the order was chosen by; leg stays straight.
+    local flyTo = { cont = 0, wx = 3000, wy = 0 }
+    local forge = { key = "w2:smelt", text = "smelt", points = { flyTo } }
+    plan = P:Plan(p, { forge }, { groups = false, air = function(_, b) if b == flyTo then return 500 end end })
+    t:eq(plan and math.floor(plan[1].trip + 0.5), 500, "trip: the flight's yards")
+    t:eq(plan and math.floor(plan[1].tripCum + 0.5), 500, "tripCum adds them up")
+    t:eq(plan and math.floor(plan[1].leg + 0.5), 3000, "leg: still the straight line")
+    -- One public answer for other panels, same as the optimiser's.
+    t:eq(P.TravelYards(p, flyTo, { air = function() return 500 end }), 500, "TravelYards: the planner's far()")
+    t:eq(P.TravelYards(p, flyTo, { air = function() error("x") end }), 3000, "a failing lookup: the straight line")
+    t:eq(P.TravelYards(p, flyTo, nil), 3000, "no options: the straight line")
+end)
+
+ns:Register("test", "route: the travel options are one table for every route, the quest route's extras on top", function(t)
+    local N = ns.nav
+    local o = N.TravelOptions()
+    t:eq(type(o), "table", "a table")
+    t:eq(o.first, nil, "no quest-route fields in the shared part")
+    t:eq(o.tour, nil, "(no tour)")
+end)
+
+ns:Register("test", "dungeons: the prep detour is charged by the travel cost given, and the run's worth includes it", function(t)
+    local D = ns.dungeons
+    local from = { cont = 1, wx = 0, wy = 0 }
+    local stops = { { cont = 1, wx = 3000, wy = 0 } }
+    local entrance = { cont = 1, wx = 3000, wy = 0 }
+    local straight = D.GatherMinutes(from, stops, entrance)
+    local flown = D.GatherMinutes(from, stops, entrance, function(a) return a == from and 300 or 0 end)
+    t:ok(flown < straight, "a flight shortens the gathering")
+    t:near(flown, D.STOP_MINUTES + 300 / D.RUN_SPEED / 60, 1e-6, "by exactly the travel yards given")
+    t:near(D.GatherMinutes(from, stops, entrance, function() error("x") end), straight, 1e-6, "a failing cost: the straight line")
+    local far = D.GatherMinutes(from, { { cont = 2, wx = 0, wy = 0 } }, nil, function() return 1 end)
+    t:near(far, D.STOP_MINUTES + 1500 / D.RUN_SPEED / 60, 1e-6, "another continent stays a long trip")
+    local run = { quests = {}, levels = {}, leadIns = {} }
+    local w = D.Worth(run, { level = 20, rate = 1000, runMinutes = 30, gatherMinutes = 10, estimate = function() return 0 end, share = function() return 1 end })
+    t:eq(w.minutes, 40, "worth: the gathering minutes are part of the run's time")
+end)
+
+-------------------------------------------------------------------------------
+-- F-027: the Compat wrappers say when they can't tell.
+-------------------------------------------------------------------------------
+
+ns:Register("test", "compat: a bag count the client can't give is unknown, and an item need on it is never met", function(t)
+    local A = ns.api
+    local keep = A.ItemCount
+    local ok, err = pcall(function()
+        A.ItemCount = function() return 3 end
+        local n, known = A.Count(123)
+        t:eq(n, 3, "a count: the number")
+        t:eq(known, true, "and known")
+        A.ItemCount = function() error("client broke") end
+        n, known = A.Count(123)
+        t:eq(n, 0, "a failing count: 0 for old callers")
+        t:eq(known, false, "but not known")
+        A.ItemCount = function() return nil end
+        t:eq(select(2, A.Count(123)), false, "no answer: not known")
+        A.ItemCount = nil
+        t:eq(select(2, A.Count(123)), false, "no API: not known")
+        t:eq(select(2, A.Count(nil)), false, "no item: not known")
+        A.ItemCount = function() error("client broke") end
+        t:eq((ns.nav.NeedState("item:123")), "unknown", "an item need Flow can't count: unknown")
+        t:eq(ns.nav.NeedMet("item:123"), false, "and not met")
+        A.ItemCount = function() return 1 end
+        t:eq((ns.nav.NeedState("item:123")), "yes", "counted and carried: met")
+    end)
+    A.ItemCount = keep
+    t:ok(ok, "ran: " .. tostring(err))
+end)
+
+-------------------------------------------------------------------------------
+-- F-035 / F-036: the route labels don't promise a best order; near-first says
+-- when it can't change your route.
+-------------------------------------------------------------------------------
+
+ns:Register("test", "route labels: Shortest and Most XP describe a quick plan, not a guaranteed best", function(t)
+    local short, xp = ns:Get("routeObjective", "distance"), ns:Get("routeObjective", "xp")
+    t:ok(short and short.tip:find("not a guaranteed", 1, true) ~= nil, "Shortest's tip says it's a quick plan")
+    t:ok(short and short.tip:find("Shortest path", 1, true) == nil, "and doesn't claim the shortest path")
+    t:ok(xp and xp.tip:find("not a guaranteed", 1, true) ~= nil, "Most XP's tip too")
+    t:eq(ns.xpValue.DEFAULT, "distance", "the default the header names: Shortest")
+end)
+
+ns:Register("test", "near-first: on the default Shortest route it says it does nothing, and why", function(t)
+    local F = ns.nearFirst
+    t:ok(F.Note("distance", true) ~= nil, "Shortest: a note")
+    t:ok(F.Note("distance", true):find("Most XP", 1, true) ~= nil, "naming where it does apply")
+    t:eq(F.Note("xp", true), nil, "Most XP: it applies, no note")
+    t:eq(F.Note("distance", false), nil, "off: nothing to explain")
+    t:eq(F.Applies("distance"), false, "(and it really doesn't apply to Shortest)")
+end)
+
+-------------------------------------------------------------------------------
+-- F-037 / F-040 / F-042: quest availability says why, refreshes, and retries.
+-------------------------------------------------------------------------------
+
+ns:Register("test", "quests: a quest skipped as not offered says why and can be cleared", function(t)
+    local Q = ns.quests
+    local keep = ns.db.quests.notOffered
+    local ok, err = pcall(function()
+        ns.db.quests.notOffered = {}
+        local now = 100000
+        t:eq(Q.NotOfferedReason(999301, now), nil, "never judged: no reason")
+        Q.NoteOffer(999301, false, now)
+        local why = Q.NotOfferedReason(999301, now + 60)
+        t:ok(why and why:find("last talked", 1, true) ~= nil, "one visit: the ten-minute skip, said")
+        ns.db.quests.notOffered[999301].firstAt = now - 3600
+        Q.NoteOffer(999301, false, now)
+        why = Q.NotOfferedReason(999301, now + 3600)
+        t:ok(why and why:find("two visits", 1, true) ~= nil, "two visits: the day's skip, said")
+        t:ok(why and why:find("23 more hour", 1, true) ~= nil, "with the time left")
+        ns.db.quests.notOffered[999302] = { firstAt = now }
+        t:eq(Q.ClearNotOffered(999301), 1, "clear one: one cleared")
+        t:eq(ns.db.quests.notOffered[999301], nil, "its record gone")
+        t:ok(ns.db.quests.notOffered[999302] ~= nil, "the other kept")
+        t:eq(Q.ClearNotOffered(), 1, "clear all: the rest")
+        t:eq(next(ns.db.quests.notOffered), nil, "none left")
+        t:ok(type(ns.commands.notoffered) == "function", "/flow notoffered exists")
+    end)
+    ns.db.quests.notOffered = keep
+    t:ok(ok, "ran: " .. tostring(err))
+end)
+
+ns:Register("test", "quests: the holiday list is re-read on a new day and the active events every time", function(t)
+    local Q = ns.quests
+    local keep = Q.EventModule
+    local ok, err = pcall(function()
+        local QE = { eventQuests = { { "Hallow", 999311 } }, activeQuests = {} }
+        Q.EventModule = function() return QE end
+        local set, active = Q.Events("2026-10-17")
+        t:ok(set and set[999311], "an event quest")
+        t:ok(not active[999311], "its event is off")
+        QE.activeQuests = { [999311] = true }   -- (the event starts: a new table)
+        active = select(2, Q.Events("2026-10-17"))
+        t:ok(active[999311], "same day, event on: seen at once")
+        QE.eventQuests = { { "Winter", 999312 } }
+        set = Q.Events("2026-10-17")
+        t:ok(set[999311] and not set[999312], "the event list is kept for the day")
+        set = Q.Events("2026-10-18")
+        t:ok(set[999312] and not set[999311], "a new day: read again")
+        Q.EventModule = function() return nil end
+        t:eq(Q.Events("2026-10-18"), nil, "no Questie: nothing")
+    end)
+    Q.EventModule = keep
+    t:ok(ok, "ran: " .. tostring(err))
+end)
+
+ns:Register("test", "quests: a failed quest scan is shown as failed and a retry is scheduled", function(t)
+    local Q = ns.quests
+    local keep = Q.scanStats
+    local ok, err = pcall(function()
+        local waited, fn
+        Q._ScanFailed("boom", function(s, f) waited, fn = s, f end)
+        t:eq(Q.scanStats.failed, "boom", "the reason is kept")
+        t:eq(Q:MissedState(), "failed", "state: failed (not 'still checking')")
+        t:eq(waited, Q.SCAN_RETRY, "a retry is scheduled")
+        t:eq(type(fn), "function", "with something to run")
+        Q.scanStats = { scanned = 1 }
+        t:ok(Q:MissedState() ~= "failed", "a good scan clears it")
+    end)
+    Q.scanStats = keep
+    t:ok(ok, "ran: " .. tostring(err))
+end)
+
+-------------------------------------------------------------------------------
+-- F-038 / F-039: custom (Focus) lines say what's missing and survive a sorter switch.
+-------------------------------------------------------------------------------
+
+ns:Register("test", "focus: a prerequisite the quest data lacks is listed as missing, not skipped silently", function(t)
+    local F = ns.focus
+    local data = {
+        [999401] = { id = 999401, raw = { preQuestGroup = { 999402, 999499 } } },   -- 999499: not in the data
+        [999402] = { id = 999402, raw = {} },
+    }
+    local get = function(id) return data[id] end
+    local isDone = function() return false end
+    local before = F.Before(999401, get, isDone)
+    t:eq(#before, 1, "the known prerequisite is in the line")
+    t:eq(before[1], 999402, "(that one)")
+    local missing = F.Missing(999401, get, isDone)
+    t:eq(#missing, 1, "the unknown one is reported")
+    t:eq(missing[1], 999499, "(that one)")
+    t:eq(#F.Missing(999401, get, function() return true end), 0, "all done: nothing missing")
+end)
+
+ns:Register("test", "focus: choosing Shortest keeps the custom lines, and Custom route brings them back", function(t)
+    local F, X, db = ns.focus, ns.xpValue, ns.db.nav
+    local saved = { focus = db.focus, sorter = db.sorter, base = db.baseSorter, sel = ns.nav.selection }
+    local ok, err = pcall(function()
+        db.focus = { { key = "w2:focus-step", title = "A Test Step" } }
+        db.sorter = "distance"
+        t:eq(#F.Filter({ { key = "bank" } }, true), 1, "off Custom: the route isn't cut down")
+        t:eq(#db.focus, 1, "the lines wait, not wiped")
+        t:ok(not F.Active(), "and aren't in force")
+        X:SetMode("custom")
+        t:eq(db.sorter, "custom", "Custom route with lines waiting: back on")
+        t:ok(F.Active(), "the lines in force again")
+        db.sorter = "distance"
+        F.AddKey("w2:other-step", "Other")
+        t:eq(#db.focus, 1, "a new pick off Custom starts a new custom route")
+        t:eq(db.focus[1].key, "w2:other-step", "(with just the new pick)")
+        db.focus, db.sorter = {}, "distance"
+        X:SetMode("custom")
+        t:eq(db.sorter, "distance", "nothing waiting: the radio alone still can't start one")
+    end)
+    db.focus, db.sorter, db.baseSorter, ns.nav.selection = saved.focus, saved.sorter, saved.base, saved.sel
+    t:ok(ok, "ran: " .. tostring(err))
+end)
+
+ns:Register("test", "focus: the Flow Router's Custom route radio ungreys with lines waiting, and its click brings them back", function(t)
+    local f = _G.FlowMapRoute
+    local rb
+    for _, b in ipairs(f and f.sorts or {}) do if b.mode == "custom" then rb = b end end
+    if not rb then t:ok(true, "(Flow Router not built yet)") return end
+    local db = ns.db.nav
+    local saved = { sorter = db.sorter, focus = db.focus, shown = f:IsShown() }
+    local ok, err = pcall(function()
+        db.focus = { { key = "w2:focus-step", title = "A Test Step" } }
+        db.sorter = "distance"
+        ns.mapOverlay._updateList()
+        if f:IsShown() then
+            t:ok(rb:IsEnabled(), "lines waiting: the radio can be clicked")
+            rb:Click()
+            t:eq(db.sorter, "custom", "its click: Custom route again")
+        end
+    end)
+    db.sorter, db.focus = saved.sorter, saved.focus
+    pcall(ns.mapOverlay._updateList)
+    if not saved.shown then f:Hide() end
+    t:ok(ok, "ran: " .. tostring(err))
+end)
+
+-------------------------------------------------------------------------------
+-- F-050 / F-051: the dungeon index says when it failed and tries again; an
+-- unfiltered route inside a dungeon says so.
+-------------------------------------------------------------------------------
+
+ns:Register("test", "dungeons: a failed read of Questie's dungeons says failed, and is tried again", function(t)
+    local D = ns.dungeons
+    if not (D and D.IndexState and D._IndexFailed) then t:ok(false, "no index state") return end
+    local savedRetry = D.INDEX_RETRY
+    local ok, err = pcall(function()
+        D._IndexFailed("test error")
+        local state, why, wait = D.IndexState()
+        t:eq(state, "failed", "shown as failed")
+        t:eq(why, "test error", "with why")
+        t:ok(wait and wait > 0 and wait <= D.INDEX_RETRY, "and when it tries again")
+        if not D:Available() then
+            t:ok(true, "(no Questie: /flow dungeons says so instead)")
+        elseif D:Runs() == nil then
+            local lines = D.Lines()
+            t:ok(lines[1]:find("failed", 1, true) ~= nil, "/flow dungeons says it failed, not still reading")
+        end
+        D.INDEX_RETRY = 0
+        D:Runs()
+        t:ok((D.IndexState()) ~= "failed", "after the wait, it reads again")
+    end)
+    D.INDEX_RETRY = savedRetry
+    t:ok(ok, "ran: " .. tostring(err))
+end)
+
+ns:Register("test", "dungeons: outside a dungeon the route isn't cut, and there is no inside note", function(t)
+    local D = ns.dungeons
+    local list = { { key = "100:1" }, { key = "user:wp" } }
+    if IsInInstance and select(2, IsInInstance()) == "party" then
+        t:ok(true, "(inside a dungeon: the note is the in-game check)")
+        return
+    end
+    t:eq(#D:FilterInside(list), 2, "the whole route")
+    t:eq(D.InsideNote(), nil, "nothing to explain")
+end)
+
+-------------------------------------------------------------------------------
+-- F-053: steps across the sea no crossing reaches say what's missing.
+-------------------------------------------------------------------------------
+
+ns:Register("test", "crossings: steps no crossing reaches are named, with what's missing", function(t)
+    local C = ns.crossings
+    local me = { cont = 1, wx = 0, wy = 0 }
+    local waiting = { [0] = { goals = { { key = "a" }, { key = "b" } }, targets = { { cont = 0, wx = 500, wy = 500 } } } }
+    local none = C.Unjoined(waiting, {}, me)
+    t:eq(#none, 1, "no crossing known: one line for the continent")
+    t:ok(none[1]:find("2 steps in the Eastern Kingdoms", 1, true) ~= nil, "it says how many and where")
+    t:ok(none[1]:find("no crossing your faction can use is known", 1, true) ~= nil, "and what's missing")
+    local list = { { key = "x", cr = { how = "boat" }, a = { cont = 1, wx = 10, wy = 0 }, b = { cont = 0, wx = 400, wy = 400 } } }
+    t:eq(#C.Unjoined(waiting, list, me), 0, "a crossing joins them: nothing to explain")
+    local noSpot = { [0] = { goals = { { key = "a" } }, targets = {} } }
+    local l = C.Unjoined(noSpot, list, me)
+    t:ok(l[1] and l[1]:find("no place on the map", 1, true) ~= nil, "steps without a map spot say that")
+end)

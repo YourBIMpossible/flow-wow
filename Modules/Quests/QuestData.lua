@@ -1,9 +1,11 @@
 -- Quest data layer. Flow ships no quest database of its own (licensing:
--- see docs/ARCHITECTURE.md). It asks registered quest sources, best first:
+-- see docs/ARCHITECTURE.md). It asks registered quest sources, best first.
+-- The only one registered today:
 --   questie : Questie + QuestieDB, if you have them installed (read at runtime,
 --             nothing copied), full quest/NPC data for Forever's classic content
---   native  : the game's own API; always there, but only knows completed quests
---             and your quest log
+-- Without Questie there is no source: Q:Source() is nil and the quest route,
+-- missed list and dungeon quests say Questie is needed. (No "native" source
+-- exists yet; the game API alone only knows completed quests and the log.)
 --
 -- Add a source:
 --   ns:Register("questSource", key, { order = n, available = fn() -> bool,
@@ -389,20 +391,31 @@ local NOT_OFFERED_PAUSE = 600    -- seconds a quest stays skipped after one visi
 local DIRECT_AFTER_LIST = 30     -- a quest window this soon after the NPC's list came from that list
 local QUIET_AFTER = 5            -- seconds after you accept / turn in: the list is changing
 
-local eventSet, eventActive
-local function events()
-    if eventSet then return eventSet, eventActive end
+-- Questie's event module (holidays), or nil. (A seam: the tests swap it.)
+function Q.EventModule()
     if not (QuestieLoader and QuestieLoader.ImportModule) then return nil end
     local ok, QE = pcall(QuestieLoader.ImportModule, QuestieLoader, "QuestieEvent")
-    if not ok or not QE then return nil end
-    local set = {}
-    for _, e in ipairs(QE.eventQuests or {}) do
-        local id = type(e) == "table" and (e[2] or e.questId)
-        if id then set[id] = true end
-    end
-    eventSet, eventActive = set, QE.activeQuests or {}
-    return eventSet, eventActive
+    return ok and QE or nil
 end
+-- Which quests are event quests, and which events are on. The event list is
+-- read once a day (an event starts or ends at a day change); the active
+-- ones are read every time, so a holiday's quests come and go with it.
+local eventSet, eventDay, eventSrc
+function Q.Events(day)
+    local QE = Q.EventModule()
+    if not QE then return nil end
+    day = day or date("%Y-%m-%d")
+    if not eventSet or eventDay ~= day or eventSrc ~= QE then
+        local set = {}
+        for _, e in ipairs(QE.eventQuests or {}) do
+            local id = type(e) == "table" and (e[2] or e.questId)
+            if id then set[id] = true end
+        end
+        eventSet, eventDay, eventSrc = set, day, QE
+    end
+    return eventSet, QE.activeQuests or {}
+end
+local function events() return Q.Events() end
 
 function Q:Offered(id, q)
     if not id then return true end
@@ -455,6 +468,38 @@ function Q.OfferedNow(event, direct)
         any = true   -- handing one in, nothing new
     end
     return any and offered or nil
+end
+
+-- Why quest `id` is skipped as not offered at time `now`, or nil when it isn't.
+function Q.NotOfferedReason(id, now)
+    local no = ns.db.quests and ns.db.quests.notOffered and ns.db.quests.notOffered[id]
+    if type(no) ~= "table" then return nil end
+    now = now or time()
+    if no.hiddenAt and now - no.hiddenAt < NOT_OFFERED_HIDE then
+        return string.format("its giver didn't offer it on two visits: skipped for %d more hour(s)",
+            math.ceil((NOT_OFFERED_HIDE - (now - no.hiddenAt)) / 3600))
+    end
+    if no.firstAt and now - no.firstAt < NOT_OFFERED_PAUSE then
+        return string.format("its giver didn't offer it when you last talked: skipped for %d more minute(s)",
+            math.ceil((NOT_OFFERED_PAUSE - (now - no.firstAt)) / 60))
+    end
+    return nil
+end
+
+-- Forget the "not offered" verdicts: one quest's, or all (id nil). Returns
+-- how many were cleared. The quest is routed again; a later visit judges anew.
+function Q.ClearNotOffered(id)
+    local list = ns.db.quests and ns.db.quests.notOffered
+    if not list then return 0 end
+    local n = 0
+    for k in pairs(list) do
+        if id == nil or k == id then list[k] = nil; n = n + 1 end
+    end
+    if n > 0 then
+        if Q.MarkMissedDirty then Q.MarkMissedDirty() end
+        if ns.nav and ns.nav.RequestCollect then ns.nav.RequestCollect("not offered cleared") end
+    end
+    return n
 end
 
 -- One visit's verdict for quest `id` (seen on offer or not) at time `now`.
@@ -783,8 +828,8 @@ function Q.GameWaypoint(id)
     return nil
 end
 
--- LibQuestDB-1.0 (MIT, also covers Forever-only quests by name/level).
--- PLACEHOLDER: wire up once we confirm its API in game.
+-- Not a source yet: LibQuestDB-1.0 (MIT, also covers Forever-only quests by
+-- name/level) could register one here once its API is confirmed in game.
 
 -------------------------------------------------------------------------------
 -- Picking a source
@@ -942,10 +987,8 @@ local function scan(src)
             running = false
             -- (Always logged: a failed scan means no quests to pick up at all.)
             ns:Log("quests", "quest scan failed: " .. tostring(result))
-            Q.scanStats = { failed = tostring(result) }
             if ns.db.rotation.debug then ns:Print("missed quests: " .. tostring(result)) end
-            -- Try again in a while (it used to stay empty until a turn-in).
-            C_Timer.After(30, function() dirty = true end)
+            Q._ScanFailed(result)
             return
         end
         if coroutine.status(co) == "dead" then
@@ -982,6 +1025,28 @@ function Q:Missed()
 end
 
 function Q:MissedScanning() return running end
+
+Q.SCAN_RETRY = 30   -- seconds before a failed scan is tried again
+-- A scan that failed: said (Q.MissedState), and tried again in a while, with
+-- a re-plan so the retry actually runs (it used to wait for something else
+-- to ask). The last good list stays, marked as old. after: the timer (seam).
+function Q._ScanFailed(err, after)
+    Q.scanStats = { failed = tostring(err), at = time() }
+    after = after or (C_Timer and C_Timer.After)
+    if not after then return end
+    after(Q.SCAN_RETRY, function()
+        dirty = true
+        if ns.nav and ns.nav.RequestCollect then pcall(ns.nav.RequestCollect, "quest scan retry") end
+    end)
+end
+
+-- "scanning", "failed" (the last scan failed: what you see is old or none),
+-- "ready" or "none" (no list yet).
+function Q:MissedState()
+    if running then return "scanning" end
+    if Q.scanStats and Q.scanStats.failed then return "failed" end
+    return missedCache and "ready" or "none"
+end
 
 -------------------------------------------------------------------------------
 -- Quests that start from an item a mob drops ("This item begins a quest").
@@ -1062,10 +1127,34 @@ function Q:DropNear(map, centres, radius)
 end
 
 local function invalidate() dirty = true end
+Q.MarkMissedDirty = invalidate
 ns:On("QUEST_TURNED_IN", invalidate)
 ns:On("QUEST_ACCEPTED", invalidate)
 ns:On("PLAYER_LEVEL_UP", invalidate)
 ns:On("ZONE_CHANGED_NEW_AREA", invalidate)   -- a new zone's quest givers count while you're there
+
+-- /flow notoffered: the quests skipped because their giver didn't offer them,
+-- and why; "clear" (all) or "clear <id>" routes them again.
+ns.commands.notoffered = function(arg)
+    arg = (arg or ""):lower()
+    local cmd, rest = arg:match("^(%S*)%s*(.-)$")
+    if cmd == "clear" then
+        local id = tonumber(rest)
+        local n = Q.ClearNotOffered(id)
+        ns:Print(string.format("cleared %d quest(s) skipped as not offered%s.", n, id and (" (quest " .. id .. ")") or ""))
+        return
+    end
+    local list, now, ids = ns.db.quests and ns.db.quests.notOffered or {}, time(), {}
+    for id in pairs(list) do if Q.NotOfferedReason(id, now) then ids[#ids + 1] = id end end
+    table.sort(ids)
+    if #ids == 0 then ns:Print("no quests are skipped as not offered.") return end
+    ns:Print(string.format("%d quest(s) skipped as not offered (/flow notoffered clear [id] routes them again):", #ids))
+    for i = 1, math.min(15, #ids) do
+        local id = ids[i]
+        local qd = Q.QuestieGet and Q:QuestieGet("GetQuest", id)
+        print(string.format("  [%d] %s - %s", id, qd and qd.name or ("quest " .. id), Q.NotOfferedReason(id, now)))
+    end
+end
 
 ns.commands.missed = function()
     local src = Q:Source()
@@ -1074,6 +1163,11 @@ ns.commands.missed = function()
         return
     end
     local list = Q:Missed()
+    if Q:MissedState() == "failed" then
+        ns:Print(string.format("the last quest scan failed (%s); trying again in %d s.%s", Q.scanStats.failed, Q.SCAN_RETRY,
+            list and " These are from an older scan:" or " Nothing to show until it works."))
+        if not list then return end
+    end
     if not list then
         ns:Print("checking your quest history in the background... try again in a few seconds.")
         return

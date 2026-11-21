@@ -1,5 +1,7 @@
--- XP-first route sorting (the default; "Shortest path" switches it off).
--- The planner minimises sum(distance x weight). This scales each quest
+-- XP-weighted route sorting ("Most XP"; a new character starts on
+-- "Shortest", X.DEFAULT below). The planner looks for a low
+-- sum(travel x weight) over your nearest steps: a quick search, not a proven
+-- shortest or most-XP order (Planner.lua). This scales each quest
 -- step's weight by how much it's worth to you right now:
 --   more XP              -> lighter (worth walking further for)
 --   quest above you      -> heavier (slower kills, more deaths): 3+ levels up
@@ -66,7 +68,7 @@ end
 
 ns:Register("routeObjective", "xp", {
     label = "Most XP",
-    tip = "Shortest path, with quests weighed by XP and level: more XP is worth a longer walk; quests 3+ levels above you wait.",
+    tip = "A short route, with quests weighed by XP and level: more XP is worth a longer walk; quests 3+ levels above you wait. A quick plan over your nearest steps, not a guaranteed best.",
     weigh = function(g, ctx)
         if not g.xp then return nil end
         local m = math.sqrt(ctx.ref / math.max(g.xp, 1))
@@ -82,7 +84,7 @@ ns:Register("routeObjective", "xp", {
     end,
 })
 ns:Register("routeObjective", "distance", {
-    label = "Shortest", tip = "Shortest path: nearest steps first, XP ignored.",
+    label = "Shortest", tip = "A short route by travel time (flights counted), XP ignored. A quick plan over your nearest steps, not a guaranteed shortest.",
 })
 
 -- Route states (map list, arrow right-click, /flow nav xp|distance|custom|sort):
@@ -116,8 +118,16 @@ end
 function X:On() return (self:Objective()) == "xp" end
 function X:SetMode(m)
     if m == "custom" or m == "selected" then
-        -- Custom route starts by picking a step; the radio alone can't.
+        -- Custom route starts by picking a step; the radio alone can't, unless
+        -- your lines are waiting from before you chose Shortest or Most XP.
         if not self:IsCustom() then
+            local focus = ns.db.nav.focus
+            if type(focus) == "table" and #focus > 0 then
+                ns.db.nav.sorter = "custom"
+                if ns.nav.RequestCollect then ns.nav.RequestCollect("custom route back") end
+                if ns.focus and ns.focus.UpdateBar then ns.focus.UpdateBar() end
+                return
+            end
             ns:Print("Custom route: pick your next step with its ^ in the Flow Router (or right-click a step: Go here next).")
         end
         return

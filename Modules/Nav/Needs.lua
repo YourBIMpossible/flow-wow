@@ -212,7 +212,12 @@ ns:Register("need", "quest", {
     end,
 })
 ns:Register("need", "item", {
-    met = function(id) return ns.api.Count(tonumber(id)) > 0 end,
+    -- (nil when the client can't count your bags: unknown, never met: F-027)
+    met = function(id)
+        local n, known = ns.api.Count(tonumber(id))
+        if not known then return nil end
+        return n > 0
+    end,
     label = function(id)
         local name = ns.api.ItemInfo and ns.api.ItemInfo(tonumber(id))
         return name or ("item " .. id)

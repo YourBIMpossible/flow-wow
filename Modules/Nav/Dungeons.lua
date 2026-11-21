@@ -328,13 +328,18 @@ function D.NearStops(cands, stops, radius)
     return out
 end
 
--- Minutes to gather the pickups on foot, nearest first, ending at the
--- entrance. from, steps, entrance: { cont, wx, wy } (world yards); another
--- continent counts as a long trip.
-function D.GatherMinutes(from, stops, entrance)
+-- Minutes to gather the pickups, nearest first, ending at the entrance.
+-- from, steps, entrance: { cont, wx, wy } (world yards); another continent
+-- counts as a long trip. far(a, b): travel yards on one continent (the
+-- route's own cost, Planner.TravelYards); the straight line without it.
+function D.GatherMinutes(from, stops, entrance, far)
     local function dist(a, b)
         if not (a and b) then return 0 end
         if a.cont ~= b.cont then return 1500 end
+        if far then
+            local ok, y = pcall(far, a, b)
+            if ok and type(y) == "number" then return y end
+        end
         local dx, dy = a.wx - b.wx, a.wy - b.wy
         return math.sqrt(dx * dx + dy * dy)
     end
@@ -529,14 +534,31 @@ end
 -- Which quests belong to which dungeon: the quest's zone, else where all
 -- its objectives are (a quest filed under the giver's zone). Built once, in
 -- the background, a few hundred quests a frame.
+-- A failed read is tried again after D.INDEX_RETRY seconds (F-050), from scratch.
 local indexState = "none"   -- none | building | ready | failed
 local dungeonOfId, wingOfZone = {}, {}
+local indexFailedAt, indexError
+D.INDEX_RETRY = 30
+local function indexFailed(err)
+    indexState, indexFailedAt, indexError = "failed", GetTime(), tostring(err)
+    ns:Log("quests", "dungeon index failed: " .. indexError)
+end
+D._IndexFailed = indexFailed   -- (tests)
+-- none | building | ready | failed, and for failed the error and seconds to the retry.
+function D.IndexState()
+    if indexState ~= "failed" then return indexState end
+    return "failed", indexError, math.max(0, math.ceil(D.INDEX_RETRY - (GetTime() - (indexFailedAt or 0))))
+end
 local function buildIndex()
+    if indexState == "failed" and GetTime() - (indexFailedAt or 0) >= D.INDEX_RETRY then
+        indexState = "none"
+    end
     if indexState ~= "none" then return end
     local src = ns:Get("questSource", "questie")
     if not (src and src.available()) then return end
-    if not buildDungeons() then indexState = "failed" return end
+    if not buildDungeons() then indexFailed("Questie's dungeon list couldn't be read") return end
     indexState = "building"
+    dungeonOfId, wingOfZone = {}, {}
     local qdb = db()
     local query = qdb and qdb.QueryQuestSingle
     local co = coroutine.create(function()
@@ -582,11 +604,7 @@ local function buildIndex()
     local function step()
         if InCombatLockdown() then C_Timer.After(1, step) return end
         local ok, err = coroutine.resume(co)
-        if not ok then
-            indexState = "failed"
-            ns:Log("quests", "dungeon index failed: " .. tostring(err))
-            return
-        end
+        if not ok then indexFailed(err) return end
         if coroutine.status(co) == "dead" then
             indexState = "ready"
             D.dirty = true
@@ -844,7 +862,7 @@ end
 local function world(p)
     if not (p and ns.nav and ns.nav.ToWorld) then return nil end
     local cont, wx, wy = ns.nav:ToWorld(p.map, p.x, p.y)
-    return cont and { cont = cont, wx = wx, wy = wy } or nil
+    return cont and { cont = cont, wx = wx, wy = wy, map = p.map, x = p.x, y = p.y } or nil
 end
 
 -- The run's entrance: the wing's own door, else the nearest of the dungeon's.
@@ -947,8 +965,14 @@ local function compute()
     D.finished = finished
     local rate, estimated = D.QuestingRate()
     local here = ns.nav and ns.nav:PlayerPos()
-    local from = here and { cont = here.cont, wx = here.wx, wy = here.wy }
+    local from = here and { cont = here.cont, wx = here.wx, wy = here.wy, map = here.map, x = here.x, y = here.y }
     local times = charData("dungeonTimes")
+    -- The prep detour by the route's own travel cost (flights, gates), not the crow's.
+    local travel
+    if ns.planner and ns.planner.TravelYards and ns.nav and ns.nav.TravelOptions then
+        local okOpts, opts = pcall(ns.nav.TravelOptions)
+        if okOpts and opts then travel = function(a, b) return ns.planner.TravelYards(a, b, opts) end end
+    end
     for _, run in ipairs(out) do
         run.entrance = entranceOf(run, from)
         local stops = {}
@@ -962,7 +986,7 @@ local function compute()
         end
         run.breadcrumbs = D.NearStops(breadcrumbsFor(run, ctx), stops, D.BREADCRUMB_YARDS)
         for _, b in ipairs(run.breadcrumbs) do stops[#stops + 1] = b.at end
-        run.gatherMinutes = from and D.GatherMinutes(from, stops, world(run.entrance)) or #stops * D.STOP_MINUTES
+        run.gatherMinutes = from and D.GatherMinutes(from, stops, world(run.entrance), travel) or #stops * D.STOP_MINUTES
         local t = times[run.dungeon]
         run.runMinutes = (t and t.avg) or D.RUN_MINUTES
         run.worth = D.Worth(run, { level = level, rate = rate, runMinutes = run.runMinutes,
@@ -979,7 +1003,7 @@ local timedCompute = (ns.perf and ns.perf.Wrap) and ns.perf.Wrap("dungeon runs",
 -- The runs at your level (best first), or nil while Questie's data is read.
 function D:Runs()
     if not self:Available() then return nil end
-    if indexState == "none" then buildIndex() end
+    if indexState == "none" or indexState == "failed" then buildIndex() end
     if indexState ~= "ready" then return nil end
     if (self.dirty or not runs) and not InCombatLockdown() and GetTime() - lastCompute > 3 then
         lastCompute = GetTime()
@@ -1175,7 +1199,11 @@ function D.KeepInside(g, here, dungeonOf)
         or k:find("^party:") ~= nil
 end
 
+-- Why the last route inside a dungeon wasn't cut to it (F-051); nil when it was, or outside.
+local insideNote
+function D.InsideNote() return insideNote end
 function D:FilterInside(list)
+    insideNote = nil
     local here = currentDungeon()
     if not here then return list end
     local out = {}
@@ -1188,6 +1216,9 @@ function D:FilterInside(list)
         local id = g.key and questOf(g.key)
         if id then return out end
     end
+    insideNote = indexState == "ready"
+        and "inside a dungeon, but none of your quests are filed under it: the whole route is shown, not cut to it"
+        or "inside a dungeon, but its quests aren't read yet: the whole route is shown, not cut to it"
     return list
 end
 
@@ -1741,9 +1772,16 @@ end
 function D.Lines()
     if not D:Available() then return { "dungeon runs: Questie isn't loaded (Flow reads the dungeon quests from it)" } end
     local list = D:Runs()
-    if not list then return { "dungeon runs: still reading Questie's dungeons; ask again in a moment" } end
+    if not list then
+        local state, err, wait = D.IndexState()
+        if state == "failed" then
+            return { string.format("dungeon runs: reading Questie's dungeons failed (%s); trying again in %ds", err or "?", wait or 0) }
+        end
+        return { "dungeon runs: still reading Questie's dungeons; ask again in a moment" }
+    end
     if #list == 0 then return { "dungeon runs: no dungeon quests at your level" } end
     local out = { string.format("dungeon runs at your level: %d (/flow dungeons <name> prepares one, /flow dungeons off cancels)", #list) }
+    if insideNote then out[#out + 1] = "  " .. insideNote end
     local prepared = D:Prepared()
     for i, run in ipairs(list) do
         if i > 6 then break end

@@ -27,11 +27,15 @@ A.ItemCount   = GetItemCount or CI.GetItemCount
 A.ItemInfo    = GetItemInfo or CI.GetItemInfo
 A.ItemIcon    = GetItemIcon or CI.GetItemIconByID
 A.IsUsableItem = IsUsableItem or CI.IsUsableItem
--- How many you carry (bags; 0 if the client can't say).
+-- How many you carry (bags), and whether the client said: n, true; or
+-- 0, false when it can't say (no API, it failed). Callers that gate on a
+-- count treat "false" as unknown, never as "you have none" or "you have it".
 function A.Count(id)
-    if not (A.ItemCount and id) then return 0 end
+    if not (A.ItemCount and id) then return 0, false end
     local ok, n = pcall(A.ItemCount, id)
-    return ok and tonumber(n) or 0
+    n = ok and tonumber(n) or nil
+    if n == nil then return 0, false end
+    return n, true
 end
 local Safe = A.Safe
 
@@ -66,8 +70,9 @@ function A.Cooldown(spell)
     return math.max(0, start + dur - GetTime())
 end
 
--- usable, notEnoughMana
+-- usable, notEnoughMana, unknown
 -- Unknown (secret) counts as usable: better to suggest than to go silent.
+-- The third return says so (true): a caller that must not act on a guess checks it.
 function A.Usable(spell)
     local usable, noMana
     if C_Spell and C_Spell.IsSpellUsable then
@@ -75,11 +80,12 @@ function A.Usable(spell)
     else
         usable, noMana = IsUsableSpell(spell)
     end
-    if usable ~= nil and Safe(usable) == nil then return true, false end
-    return usable, Safe(noMana)
+    if usable ~= nil and Safe(usable) == nil then return true, false, true end
+    return usable, Safe(noMana), false
 end
 
--- true when in range, or when the spell has no range to check.
+-- inRange, known: true when in range, or when the spell has no range to
+-- check or the client won't say (then known is false: in range by default).
 function A.InRange(spell, unit)
     local r
     if C_Spell and C_Spell.IsSpellInRange then
@@ -88,8 +94,8 @@ function A.InRange(spell, unit)
         r = IsSpellInRange(spell, unit)
     end
     r = Safe(r)
-    if r == nil then return true end
-    return r == true or r == 1
+    if r == nil then return true, false end
+    return r == true or r == 1, true
 end
 
 function A.Description(spell)
