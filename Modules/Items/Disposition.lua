@@ -877,10 +877,28 @@ reg("unscoredClass", 45, function(i)
     return D.UnscoredGearVerdict(i.gear, D.ClassScored(ns:ClassData()))
 end)
 
--- Unneeded gear: disenchant if you can, auction if it's worth more there,
--- otherwise vendor.
+-- Pure (F-003): a seen auction price clearly worth more than disenchanting.
+-- Flow has no price for the dust and shards an item gives, so "clearly" is a
+-- stated margin: after the cut and the fee, at least AH_OVER_DE times the
+-- vendor price and at least AH_OVER_DE_MIN copper (1 gold).
+D.AH_OVER_DE, D.AH_OVER_DE_MIN = 3, 10000
+function D.AuctionBeatsDisenchant(ahPrice, vendorPrice)
+    if type(ahPrice) ~= "number" or ahPrice <= 0 then return false end
+    vendorPrice = vendorPrice or 0
+    local net = ahPrice * (1 - D.AH_CUT) - vendorPrice * D.AH_FEE
+    return net >= vendorPrice * D.AH_OVER_DE and net >= D.AH_OVER_DE_MIN
+end
+
+-- Unneeded gear: disenchant if you can (unless a seen auction price is
+-- clearly worth more), auction if it's worth more there, otherwise vendor.
 reg("unneededGear", 50, function(i)
     if ns.api.Skill("Enchanting") and i.quality >= 2 then
+        local ah = i.bound == false and D:AuctionPrice(i.link) or nil
+        if ah and D.AuctionBeatsDisenchant(ah, i.sellPrice) then
+            return { action = "ah", ahCandidate = true,
+                     reason = string.format("tradeable gear; about %s at the auction house, worth more than disenchanting",
+                         (ns.auction and ns.auction.Money or ns.Money)(math.floor(ah))) }
+        end
         return { action = "de", reason = "you can disenchant it" }
     end
     if i.bound == false and i.quality >= 3 and not D:AuctionPrice(i.link) then

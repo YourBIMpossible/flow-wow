@@ -101,3 +101,12 @@ ns:Register("test", "safety: one character's hides and buybacks don't go to alts
     t:eq(S.AdoptSetRoles({ tank = "Tank" }, { "Mine" }, nil), nil, "none of its sets: nothing adopted")
 end)
 
+ns:Register("test", "safety: a clearly better auction price beats disenchanting (F-003)", function(t)
+    local D = ns.disposition
+    t:eq(D.AuctionBeatsDisenchant(50000, 2000), true, "5 gold seen, 20 silver vendor: auction")
+    t:eq(D.AuctionBeatsDisenchant(5000, 2000), false, "little more than vendor: disenchant")
+    t:eq(D.AuctionBeatsDisenchant(9000, 0), false, "under a gold after the cut: disenchant")
+    t:eq(D.AuctionBeatsDisenchant(12000, 0), true, "over a gold after the cut: auction")
+    t:eq(D.AuctionBeatsDisenchant(nil, 2000), false, "no price seen: disenchant")
+end)
+
