@@ -542,3 +542,43 @@ ns:Register("test", "focus: the Flow Router's Custom route radio ungreys with li
     if not saved.shown then f:Hide() end
     t:ok(ok, "ran: " .. tostring(err))
 end)
+
+-------------------------------------------------------------------------------
+-- F-050 / F-051: the dungeon index says when it failed and tries again; an
+-- unfiltered route inside a dungeon says so.
+-------------------------------------------------------------------------------
+
+ns:Register("test", "dungeons: a failed read of Questie's dungeons says failed, and is tried again", function(t)
+    local D = ns.dungeons
+    if not (D and D.IndexState and D._IndexFailed) then t:ok(false, "no index state") return end
+    local savedRetry = D.INDEX_RETRY
+    local ok, err = pcall(function()
+        D._IndexFailed("test error")
+        local state, why, wait = D.IndexState()
+        t:eq(state, "failed", "shown as failed")
+        t:eq(why, "test error", "with why")
+        t:ok(wait and wait > 0 and wait <= D.INDEX_RETRY, "and when it tries again")
+        if not D:Available() then
+            t:ok(true, "(no Questie: /flow dungeons says so instead)")
+        elseif D:Runs() == nil then
+            local lines = D.Lines()
+            t:ok(lines[1]:find("failed", 1, true) ~= nil, "/flow dungeons says it failed, not still reading")
+        end
+        D.INDEX_RETRY = 0
+        D:Runs()
+        t:ok((D.IndexState()) ~= "failed", "after the wait, it reads again")
+    end)
+    D.INDEX_RETRY = savedRetry
+    t:ok(ok, "ran: " .. tostring(err))
+end)
+
+ns:Register("test", "dungeons: outside a dungeon the route isn't cut, and there is no inside note", function(t)
+    local D = ns.dungeons
+    local list = { { key = "100:1" }, { key = "user:wp" } }
+    if IsInInstance and select(2, IsInInstance()) == "party" then
+        t:ok(true, "(inside a dungeon: the note is the in-game check)")
+        return
+    end
+    t:eq(#D:FilterInside(list), 2, "the whole route")
+    t:eq(D.InsideNote(), nil, "nothing to explain")
+end)
