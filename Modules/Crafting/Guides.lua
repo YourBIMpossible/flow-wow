@@ -299,3 +299,12 @@ ns:Register("profGuide", "Fishing", { kind = "gather", spots = true, tool = 6256
     tip = "Tip: a Shiny Bauble (+25 Fishing for 10 minutes) catches more while your skill is low. Flow's key puts it on your pole." })
 
 ns:Register("profGuide", "Herbalism", { kind = "gather", spots = true })
+
+-- Skinning has no nodes or spots: you skin the beasts you kill, and what you
+-- can skin follows from the beast's level (SP.SkinSkill: the game's general
+-- rule, which the corpse's own tooltip, "Requires Skinning N", confirms in
+-- game). No mob or zone lists: the plan is the skill band for your level and
+-- the beasts your quests bring you to. The knife is the one Disposition.lua
+-- already knows (7005).
+ns:Register("profGuide", "Skinning", { kind = "gather", skin = true, tool = 7005,
+    tip = "Loot a beast first, then skin it: the game lets you skin only an empty corpse." })

@@ -634,10 +634,31 @@ function SP.Pace(prof, level)
     end
     return marks[#marks][2]
 end
+
+-- Skinning by beast level (the general rule of the game; a corpse's tooltip,
+-- "Requires Skinning N", is the truth in game): level 10 and under needs 1,
+-- 11 to 20 need (level - 10) x 10, above 20 level x 5 (60 -> 300).
+-- Pure: the skill a beast of that level needs.
+function SP.SkinSkill(level)
+    level = math.floor(tonumber(level) or 1)
+    if level <= 10 then return 1 end
+    if level <= 20 then return (level - 10) * 10 end
+    return level * 5
+end
+-- Pure: the highest beast level that skill can skin (the inverse of SkinSkill).
+function SP.SkinMaxLevel(rank)
+    rank = math.floor(tonumber(rank) or 0)
+    if rank < 10 then return 10 end
+    if rank < 100 then return 10 + math.floor(rank / 10) end
+    return math.floor(rank / 5)
+end
+
 function SP:Targets()
-    -- Professions switched off (map list, arrow menu): no profession steps at all,
-    -- not even for quests that ask for a skill, nor tools to buy.
-    if not ns.nav:Includes("professions") then return {} end
+    -- A quest that asks for a skill keeps its step even with Professions
+    -- switched off (map list, arrow menu): the quest can't be finished without
+    -- it. Its step names the quest (forQuest) and counts as that quest's step
+    -- (the "quests" route kind), not as a profession stop. Professions off:
+    -- nothing else, no skill-ups for your level.
     local out = {}
     for _, q in ipairs(ns.quests.LogEntries and ns.quests.LogEntries() or {}) do
         for _, o in ipairs(q.objectives or {}) do
@@ -683,6 +704,12 @@ function SP:Targets()
                     end
                 end
             end
+            -- Skinning: enough to skin the beasts of your own level. Optional:
+            -- it's done on the beasts your quests bring you to, never a detour.
+            if g and g.skin and rank and not out[p.name] then
+                local wantSkin = math.min(SP.SkinSkill(level), 300)
+                if rank < wantSkin then out[p.name] = { target = wantSkin, optional = true } end
+            end
             if g and g.kind == "craft" and rank and not out[p.name] then
                 if rank + 10 < want then
                     out[p.name] = { target = want, optional = true }
@@ -711,7 +738,7 @@ end
 -------------------------------------------------------------------------------
 
 local function why(t, prof, rank)
-    if t.quest then return string.format("%s: %s %d -> %d", t.quest, prof, rank, t.target) end
+    if t.quest then return string.format("%s %d -> %d (needed for quest %s)", prof, rank, t.target, t.quest) end
     return string.format("%s %d -> %d (right for your level)", prof, rank, t.target)
 end
 
@@ -1483,7 +1510,9 @@ local function planProfession(prof, t, out)
     local rank, max, unsure = A.Skill(prof)
     local label = why(t, prof, rank or 0)
     local weight = t.optional and 1.5 or 1.0
-    local base = { title = t.quest or prof, optional = t.optional, weight = weight }
+    -- (forQuest: a quest needs this skill; the step stays with Professions off.)
+    local base = { title = t.quest or prof, optional = t.optional, weight = weight,
+                   forQuest = t.required and t.quest or nil }
     local function add(goal)
         for k, v in pairs(base) do if goal[k] == nil then goal[k] = v end end
         goal.details = goal.details or {}
@@ -1543,6 +1572,24 @@ local function planProfession(prof, t, out)
         return
     end
     handled[prof] = true
+
+    -- Skinning: nowhere to go. The beasts you kill on your way are the skill-up,
+    -- so the step is "along the way" (Nav.lua: listed, never a detour); only
+    -- the knife, when you have none, is a stop of its own.
+    if g.skin then
+        local tool, missing = SP:ToolGoal(prof)
+        if tool then add(tool) end
+        local top = SP.SkinMaxLevel(rank)
+        add({ key = "skill:" .. prof, kind = "skill", prof = prof, points = { playerPoint() }, anywhere = true,
+              along = true,
+              text = string.format("Skin beasts up to level %d: %s %d -> %d", top, prof, rank, t.target),
+              details = { "Skinning has no spots to go to: skin the beasts you kill on your way.",
+                  string.format("At %d you can skin beasts up to level %d; level %d needs %d.",
+                      rank, top, top + 1, SP.SkinSkill(top + 1)),
+                  g.tip },
+              blockedBy = missing and ("needs a " .. missing) or nil })
+        return
+    end
 
     -- Fishing, Herbalism: go to the known spots.
     if g.spots then
@@ -2139,3 +2186,4 @@ function SP:Explain()
 end
 
 SP._simulate = simulate  -- for /flow test
+SP._planProfession = planProfession  -- (tests)
