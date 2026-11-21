@@ -41,6 +41,23 @@
   auto, or Auto in Settings, forgets it.
 - **Druid: Bear Form when tanking.** With your role Tank, Flow suggests Bear Form (Dire Bear Form once known) when
   you target an enemy or are in a fight.
+- **Food no longer jumps ahead of your buffs and rotation.** The self button put Well Fed food before your aura,
+  seal and blessing, and the Flow key put it before the rotation's own suggestion. Now your buff spells come first
+  and food comes when they're up. The food is scored for the spec Flow plays you as at that moment (it used to be
+  scored once, when your bags were read, so a spec or talent change kept the old pick). Healing up still comes
+  before both on the self button: a cure, a drink, a heal spell or food that heals you shows before the Well Fed
+  food and your buff spells (only a bandage waits, since the Well Fed food heals you too). `/flow rot why` lists
+  your Well Fed foods best first, what each gives, Flow's pick, which ones are skipped and why, and says when
+  you're already Well Fed.
+
+- **Flow now suggests the Well Fed food that's best for your fights.** It used to suggest the first Well Fed food
+  in your bags, so Smoked Sagefish (mana every 5 seconds) could come before Dry Pork Ribs (Stamina and Spirit).
+  Now it reads what each food's buff gives (Stamina, Strength, Agility, Intellect, Spirit, mana or health every
+  5 seconds, attack power, spell damage and healing, alone or several at once) and picks by your class: Stamina
+  first for everyone, Strength and Agility for those who hit, mana and Intellect only for those with mana. For
+  paladins and druids the stats that count are the ones Flow's gear advice weighs for your spec. Food whose buff
+  does nothing for you (mana food on a warrior or rogue) isn't suggested for the buff. Two foods that score the
+  same: the higher level one, then always the same one, whatever order your bags are in.
 
 ## 0.35.377
 

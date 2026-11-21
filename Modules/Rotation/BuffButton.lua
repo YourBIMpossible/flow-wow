@@ -93,14 +93,20 @@ end
 -- then a buff spell. Before them, hurt after a fight: your bandage or food.
 -- After them, by a campfire: place your camp objects, sit for the camp buffs.
 -- An item that's only a preview (soon: no fight near yet) goes last.
--- Not Well Fed and carrying the food for it: that food comes first, before
--- the bandage (one meal heals you and buffs you; bandaging first would waste
--- the bandage) and before your buff spells, a fight near or not.
+-- Not Well Fed and carrying the food for it: your buff spells (aura, seal,
+-- blessing, Righteous Fury) first, then that food. "The food buff is always
+-- first... it's overriding everything I need to use." Hurt or out of mana
+-- after a fight, healing up still comes first (a cure, a drink, a heal
+-- spell, the food that heals you), except a bandage: then the Well Fed food
+-- (one meal heals you and buffs you; bandaging first would waste the bandage).
 -- Fishing (at a fishing step without your pole on, or your pole on with no
 -- lure): equip the pole / put on the lure, right after healing up.
 function BB.Pick(spellBuff, itemBuff, recover, camp, fish)
     if fish then return recover or fish end
-    if itemBuff and itemBuff.wellFed then return itemBuff end
+    if itemBuff and itemBuff.wellFed then
+        if recover then return recover.bandage and itemBuff or recover end
+        return spellBuff or itemBuff
+    end
     if itemBuff and itemBuff.soon then return recover or spellBuff or camp or itemBuff end
     return recover or itemBuff or spellBuff or camp
 end

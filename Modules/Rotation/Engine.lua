@@ -1434,6 +1434,9 @@ function E:Explain()
     do
         local okD, drink = pcall(self.DrinkWhy, self, ctx)
         out[#out + 1] = okD and drink or ("Drink: " .. tostring(drink))
+        local BI = ns.buffItems
+        local okF, food = pcall(function() return BI and BI.FoodWhy and BI.FoodWhy() end)
+        if food or not okF then out[#out + 1] = okF and food or ("Well Fed food: " .. tostring(food)) end
     end
     local hl = E._health or {}
     out[#out + 1] = string.format("Full-health check: your health changed %d time(s) out of a fight this session, and cleared the estimate %d time(s). Auto attack at the pull: %s; swinging now: %s",
