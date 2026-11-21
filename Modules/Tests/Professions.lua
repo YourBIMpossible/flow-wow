@@ -67,3 +67,73 @@ ns:Register("test", "professions: a quest's skill step reads 'needed for quest' 
         t:eq(out[1] and out[1].forQuest, nil, "a skill-up for your level isn't marked for a quest")
     end)
 end)
+
+-------------------------------------------------------------------------------
+-- F-079: a Skinning guide, from the game's level rule (no mob or zone data).
+-------------------------------------------------------------------------------
+
+ns:Register("test", "professions: Skinning has a guide, shaped like the other gathering guides", function(t)
+    local g = ns:Get("profGuide", "Skinning")
+    t:ok(g ~= nil, "Skinning is registered")
+    t:eq(g and g.kind, "gather", "a gathering profession")
+    t:eq(g and g.tool, 7005, "the Skinning Knife is its tool")
+    t:ok(g and g.skin == true, "planned from the beasts you kill, not from spots")
+    t:eq(ns.disposition and ns.disposition.ToolProfession and ns.disposition:ToolProfession(7005) or "Skinning",
+        "Skinning", "the knife is the one the bags already treat as Skinning's")
+end)
+
+ns:Register("test", "professions: the skill a beast's level needs to skin, and back", function(t)
+    local SP = ns.skillPlan
+    t:eq(SP.SkinSkill(5), 1, "level 5: anyone with Skinning")
+    t:eq(SP.SkinSkill(10), 1, "level 10: still 1")
+    t:eq(SP.SkinSkill(15), 50, "level 15: 50")
+    t:eq(SP.SkinSkill(20), 100, "level 20: 100")
+    t:eq(SP.SkinSkill(21), 105, "level 21: 105")
+    t:eq(SP.SkinSkill(60), 300, "level 60: 300")
+    t:eq(SP.SkinMaxLevel(1), 10, "skill 1: up to level 10")
+    t:eq(SP.SkinMaxLevel(55), 15, "skill 55: up to 15")
+    t:eq(SP.SkinMaxLevel(100), 20, "skill 100: up to 20")
+    t:eq(SP.SkinMaxLevel(104), 20, "skill 104: not yet 21")
+    t:eq(SP.SkinMaxLevel(300), 60, "skill 300: up to 60")
+    for level = 1, 60 do
+        local need = SP.SkinSkill(level)
+        if SP.SkinMaxLevel(need) < level then t:ok(false, "level " .. level .. " can't be skinned at its own need") end
+    end
+end)
+
+ns:Register("test", "professions: Skinning behind your beasts' level gets an optional target", function(t)
+    local SP = ns.skillPlan
+    local want = math.min(SP.SkinSkill(UnitLevel("player")), 300)
+    with(ns.nav, "Includes", function() return true end, function()
+    with(ns.quests, "LogEntries", function() return {} end, function()
+    with(ns, "ProfessionPlan", function() return { { name = "Skinning" } } end, function()
+    with(ns.api, "Skill", function(name) if name == "Skinning" then return 0, 75 end end, function()
+        local s = SP:Targets().Skinning
+        t:ok(s ~= nil, "a target to skin beasts of your level")
+        t:eq(s and s.target, want, "the skill your level's beasts need")
+        t:ok(s and s.optional == true, "optional: done on the way, behind your quests")
+    end) end) end) end)
+    with(ns.nav, "Includes", function() return true end, function()
+    with(ns.quests, "LogEntries", function() return {} end, function()
+    with(ns, "ProfessionPlan", function() return { { name = "Skinning" } } end, function()
+    with(ns.api, "Skill", function(name) if name == "Skinning" then return want, 300 end end, function()
+        t:eq(SP:Targets().Skinning, nil, "already there: nothing to plan")
+    end) end) end) end)
+end)
+
+ns:Register("test", "professions: the Skinning step is along the way, never a detour", function(t)
+    local SP = ns.skillPlan
+    with(ns.api, "Skill", function(name) if name == "Skinning" then return 55, 75 end end, function()
+        local out = {}
+        local ok, err = pcall(SP._planProfession, "Skinning", { target = 100, optional = true }, out)
+        t:ok(ok, "planning it runs: " .. tostring(err))
+        local step
+        for _, g in ipairs(out) do if g.key == "skill:Skinning" then step = g end end
+        t:ok(step ~= nil, "a Skinning step")
+        t:ok(step and step.along == true, "listed along the way, not routed")
+        t:ok(step and (step.text or ""):find("up to level 15", 1, true) ~= nil, "names the beasts you can skin: " .. tostring(step and step.text))
+        for _, g in ipairs(out) do
+            t:ok(g.key ~= "skillplan:Skinning", "no 'no levelling data' step any more")
+        end
+    end)
+end)
