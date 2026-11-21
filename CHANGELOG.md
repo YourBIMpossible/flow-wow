@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **A need Flow can't check counts as not met, and the step says why;** a spell need wants the spell known.
+- **A dependency loop in the route is broken the same way every time** and listed as "Out of order".
+- **A quest giver who may not offer you the quest is ranked after the sure ones** and says why.
+- **A party member ready to hand in keeps their hand-in step.**
+- **Steps that cost money are paid for together:** one that doesn't fit says what's set aside.
+- **Learned trip times: a character who can't ride isn't timed by a ridden trip,** and bests older than 30 days give way.
+- **Flow doesn't hand in for you a quest your route holds,** and says why.
+- **The dungeon entrance step says Flow can't check attunements, keys or the instance limit.**
 - **Auto-sell everything at vendors is now off until you turn it on.** A choice you already saved is kept.
 - **Gear for a class Flow can't score yet is kept,** never auto-sold.
 - **If a sell rule breaks, the item is kept** and the error goes once into the diagnostics log.

@@ -179,3 +179,4 @@ Modules\Tests\Professions.lua
 Modules\Tests\Class.lua
 Modules\Tests\Safety.lua
 Modules\Tests\UX.lua
+Modules\Tests\Quests.lua
