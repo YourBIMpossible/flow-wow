@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **With Professions off, a skill a quest asks for stays on the route.** The step reads "needed for quest <name>";
+  plain skill-ups still drop.
+- **Skinning gets a levelling plan.** Skin beasts of the level your skill allows, along the way (never a detour),
+  plus a stop to buy a Skinning Knife when you carry none.
+- **Checks on every push and pull request:** lint, toc/file structure, and the self-tests that need nothing of the
+  game, run offline on Lua 5.1 (`tools/run-tests.ps1`; tests that need the game are reported as skipped).
+  `check-paths` now catches single-backslash texture paths. New docs: `docs/TESTING.md`, `docs/PERFORMANCE.md`;
+  README covers installing, troubleshooting and rollback.
 - **Flow no longer says "Turn in" for a quest you haven't finished.** When a quest's objective was off the route
   (a quest 3 or more levels above you held until you level, an elite, a zone you didn't pick), its hand-in had
   nothing left to wait for, so "Turn in: Deepmoss Spider Eggs" showed at 0/15. Now the hand-in waits off the
