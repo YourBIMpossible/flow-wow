@@ -1,0 +1,14 @@
+# Tests that already fail offline on the program base (integ-review d356a8f).
+# One exact test name per line. tools/run-tests.ps1 still prints them as
+# FAIL (KNOWN), but they don't fail CI; any other FAIL or ERROR does.
+# Take a line off as soon as its test is fixed (the runner says when).
+# Each one fails on Flow's own Lua with no client global touched.
+
+# Modules/Tests.lua: "a seal you don't know yet: the usual one": got Seal of
+# Command, expected Seal of Righteousness (owner: W3, seals).
+paladin: the seal Flow suggests (your role, your choice, the seal you cast)
+
+# Modules/Tests.lua:3812: the sample sheet has x gaps of 1800 inside one tree,
+# more than T.TREE_GAP = 1500 (Modules/Talents.lua:21), so ns.TreesFromNodes
+# sees 5 trees and returns nil (owner: W3, talents).
+spec: your talents set the role Flow plays you as, ties and all
