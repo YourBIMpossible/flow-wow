@@ -216,3 +216,35 @@ ns:Register("test", "route: steps that cost money are paid for together, not eac
     local o4 = N.CommitCosts({ { key = "a", cost = 700 }, { key = "b", cost = 700 } }, 1000)
     t:ok(o4.a == nil and o4.b == 700, "two the same price: the same one wins every time (by key)")
 end)
+
+-------------------------------------------------------------------------------
+-- F-055: a trip learned riding doesn't time it for a character who can't
+-- ride, and a best that's old gives way.
+-------------------------------------------------------------------------------
+
+ns:Register("test", "legs: a character without a mount isn't timed by a trip made riding, and old bests age out", function(t)
+    local L = ns.legs
+    local store = {}
+    local leg = { cont = 1, ax = 10, ay = 10, bx = 610, by = 10, sec = 200, d = 600, mode = "foot" }
+    L.Keep(store, leg, 1000)
+    leg.sec, leg.mode = 80, "mount"
+    local e, best = L.Keep(store, leg, 2000)
+    t:ok(best and e.s == 80 and e.m == "mount", "riding was quicker: the best")
+    t:eq(e.f, 200, "the quickest on foot is kept beside it")
+    local a, b = { wx = 20, wy = 20 }, { wx = 600, wy = 20 }
+    local rider = L.Lookup(store, {}, a, b, 580, { ride = true })
+    local walker = L.Lookup(store, {}, a, b, 580, { ride = false })
+    t:near(rider, L.YardsOf({ s = 80, d = 600 }, 580), 0.01, "a character who rides: the riding time")
+    t:near(walker, L.YardsOf({ s = 200, d = 600 }, 580), 0.01, "one who can't: the time on foot")
+    t:ok(walker > rider, "and it's the longer")
+    -- Only ever ridden: nothing exact for a character who can't ride.
+    local only = {}
+    L.Keep(only, { cont = 1, ax = 10, ay = 10, bx = 610, by = 10, sec = 80, d = 600, mode = "mount" }, 1000)
+    t:eq(L.Lookup(only, {}, a, b, 580, { ride = false }), nil, "a trip only made riding: not used for a walker")
+    t:ok(L.Lookup(only, {}, a, b, 580) ~= nil, "can't tell whether you ride: as before")
+    -- Age: an old best isn't planned by, and the next trip replaces it.
+    t:eq(L.Lookup(only, {}, a, b, 580, { now = 1000 + L.AGE + 1 }), nil, "a best older than L.AGE: not planned by")
+    local e2, best2 = L.Keep(only, { cont = 1, ax = 10, ay = 10, bx = 610, by = 10, sec = 150, d = 600, mode = "foot" }, 1000 + L.AGE + 1)
+    t:ok(best2 and e2.s == 150, "and a slower trip after it replaces it")
+    t:ok(L.Lookup(only, {}, a, b, 580, { now = 1000 + L.AGE + 2 }) ~= nil, "planned by again")
+end)
