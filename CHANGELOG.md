@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Expert and Artisan training steps show their price and where it was read,** or say "price unknown—check the trainer" instead of guessing.
+- **Skill-boosting items can be recognised by item ID** (any client language) from a provenance-recorded list. Unknown items stay unknown.
 - **A need Flow can't check counts as not met, and the step says why;** a spell need wants the spell known.
 - **A dependency loop in the route is broken the same way every time** and listed as "Out of order".
 - **A quest giver who may not offer you the quest is ranked after the sure ones** and says why.
