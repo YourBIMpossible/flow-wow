@@ -136,7 +136,6 @@ Modules\Bonus.lua
 Modules\Nav\MapOverlay.lua
 Modules\Nav\MapFlights.lua
 Modules\Nav\MapZoneLevels.lua
-Modules\Nav\MapZoneFish.lua
 Modules\Nav\RouterDock.lua
 Modules\Nav\MapOpen.lua
 Modules\Nav\RouteTracker.lua
