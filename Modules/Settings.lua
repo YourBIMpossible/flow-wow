@@ -768,7 +768,7 @@ local function build(parent)
             _, y = check(f, y, "Tooltips where WoW shows them", "(and the step card)",
                 "Flow's tooltips and its step card open where WoW shows its own tooltips (the spot you set in Edit Mode or the interface options). Off: next to what you hover or click. A step card you dragged somewhere stays there. (The arrow's drawer opens beside the arrow, or where you Ctrl-dragged it.)",
                 function() return ns.TipsAtGameSpot() end,
-                function(on) ns.db.settings.tipsBeside = not on end)
+                function(on) ns.SetTipsAtGameSpot(on) end)
             _, y = check(f, y, "Intro on the arrow when you log in", "(/flow splash replays it)",
                 "After logging in or /reload the arrow spins, shows FLOW in its ring, and the version and status underneath.",
                 function() return ns.db.splash.enabled ~= false end,

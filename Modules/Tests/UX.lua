@@ -236,3 +236,21 @@ ns:Register("test", "words: the self button is called the self button, not the b
     end
     t:eq(said[1], nil, "no other name for it")
 end)
+
+ns:Register("test", "settings: the tooltip spot is saved inverted and only through its accessor", function(t)
+    -- F-092: settings.tipsBeside is "off" saved as true; Settings wrote it by hand.
+    local s = ns.db.settings
+    local was = s.tipsBeside
+    local ok, err = pcall(function()
+        s.tipsBeside = nil
+        t:ok(ns.TipsAtGameSpot(), "unset: where WoW shows them (the default)")
+        ns.SetTipsAtGameSpot(false)
+        t:ok(not ns.TipsAtGameSpot(), "off: beside what you hover")
+        t:eq(s.tipsBeside, true, "saved inverted")
+        ns.SetTipsAtGameSpot(true)
+        t:ok(ns.TipsAtGameSpot(), "back on")
+        t:eq(s.tipsBeside, false, "the player's choice is kept, not cleared")
+    end)
+    s.tipsBeside = was
+    if not ok then error(err, 0) end
+end)
