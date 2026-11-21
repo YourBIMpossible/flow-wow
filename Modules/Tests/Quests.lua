@@ -136,3 +136,43 @@ ns:Register("test", "planner: your chosen step first, though it waits for anothe
     local ok = P:Plan(p, { planGoal("1:done", 50, { deps = { "1:1" } }), planGoal("1:1", 300) }, { areaFirst = false })
     t:eq(ok and ok.outOfOrder, nil, "a legal order: nothing flagged")
 end)
+
+-------------------------------------------------------------------------------
+-- F-026: a quest Flow can't tell is offered to you is "unknown", never a
+-- confident pickup: kept, ranked after the sure ones, with its reason.
+-------------------------------------------------------------------------------
+
+ns:Register("test", "dungeons: a quest Flow can't check is unknown, kept, and ranked after the sure ones", function(t)
+    local D = ns.dungeons
+    local q = { Id = 9001, name = "Maybe", level = 20 }
+    t:eq((D.Check(q, function() return true end)), "yes", "a check that says yes: yes")
+    local s, why = D.Check(q, function() return false, "for another class" end)
+    t:eq(s, "no", "a check that says no: no")
+    t:eq(why, "for another class", "with its reason")
+    s, why = D.Check(q, function() return nil, "Flow can't check your reputation" end)
+    t:eq(s, "unknown", "a check that can't tell: unknown, not yes")
+    t:eq(why, "Flow can't check your reputation", "with its reason")
+    s, why = D.Check(q, function() error("module broke") end)
+    t:eq(s, "unknown", "a check that errors: unknown, not yes")
+    t:ok(why ~= nil, "with a reason")
+    -- On the route: weighted after the sure pickups, and it says why.
+    local g = D.Unsure({ key = "pickup:9001", weight = 0.9, text = "Accept: Maybe", details = { "Level 20 quest." } }, why)
+    t:ok(g.weight > 0.9, "ranked after a sure pickup of the same kind")
+    t:ok(g.text:find("may not be offered", 1, true) ~= nil, "the step says it may not be offered")
+    t:eq(g.details[#g.details], "May not be offered to you: " .. why .. ".", "and why, in its details")
+    -- Through the planner: two givers the same way off, the sure one first.
+    local p = { cont = 0, wx = 0, wy = 0 }
+    local sure = { key = "pickup:1", text = "Accept: Sure", weight = 0.9, points = { { cont = 0, wx = 100, wy = 0 } } }
+    local maybe = D.Unsure({ key = "pickup:2", text = "Accept: Maybe", weight = 0.9, points = { { cont = 0, wx = 90, wy = 0 } } }, why)
+    local plan = ns.planner:Plan(p, { maybe, sure }, { areaFirst = false })
+    t:eq(plan and plan[1] and plan[1].goal.key, "pickup:1", "the sure giver comes first, though the other is on the way")
+    -- A dungeon quest's state: only a definite no rules it out.
+    local ctx
+    ctx = {
+        get = function() return nil end, done = {}, log = {}, level = 20,
+        eligible = function() return nil, "Flow can't check your professions" end,
+    }
+    t:ok(D.State({ Id = 9002, name = "Skill quest", level = 18 }, ctx) ~= "notforyou", "can't tell: not ruled out as not for you")
+    ctx.eligible = function() return false, "needs Mining" end
+    t:eq(D.State({ Id = 9003, name = "Mining quest", level = 18 }, ctx), "notforyou", "a definite no: not for you")
+end)

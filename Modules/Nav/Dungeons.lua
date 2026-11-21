@@ -110,7 +110,7 @@ function D.Trace(q, ctx)
         local p = ctx.get(id)
         if not p then return nil, "notforyou", "an earlier quest Flow can't find" end
         local ok, why = ctx.eligible(p)
-        if not ok then return nil, "notforyou", why end
+        if ok == false then return nil, "notforyou", why end   -- (nil: can't tell; kept)
         for _, ex in ipairs(p.exclusiveTo or {}) do
             if ctx.done[ex] or ctx.log[ex] then return nil, "notforyou", "ruled out by a quest you did" end
         end
@@ -160,7 +160,7 @@ function D.State(q, ctx)
     if ctx.done[id] then return "done" end
     if ctx.log[id] then return "ready" end
     local ok, why = ctx.eligible(q)
-    if not ok then return "notforyou", why end
+    if ok == false then return "notforyou", why end   -- (nil: can't tell; kept)
     for _, ex in ipairs(q.exclusiveTo or {}) do
         if ctx.done[ex] or ctx.log[ex] then return "notforyou", "ruled out by a quest you did" end
     end
@@ -618,41 +618,57 @@ end
 
 local function starterNPC(q) return q.Starts and q.Starts.NPC and npc(q.Starts.NPC[1]) end
 
+-- -> true; false, why (not for you); or nil, why: a requirement Flow can't
+-- check (the Questie module for it missing or failing, no spell API). An
+-- unknown is never "yes": D.Check, D.Unsure.
 function D.Eligible(q)
-    if band then
+    local unsure
+    local function cant(what) unsure = unsure or ("Flow can't check " .. what) end
+    if (q.requiredRaces and q.requiredRaces ~= 0) or (q.requiredClasses and q.requiredClasses ~= 0) then
         local _, _, raceID = UnitRace("player")
         local _, _, classID = UnitClass("player")
-        if q.requiredRaces and q.requiredRaces ~= 0 and raceID
-            and band(q.requiredRaces, 2 ^ (raceID - 1)) == 0 then return false, "for another race or faction" end
-        if q.requiredClasses and q.requiredClasses ~= 0 and classID
-            and band(q.requiredClasses, 2 ^ (classID - 1)) == 0 then return false, "for another class" end
+        if not (band and raceID and classID) then cant("your race and class")
+        else
+            if q.requiredRaces and q.requiredRaces ~= 0
+                and band(q.requiredRaces, 2 ^ (raceID - 1)) == 0 then return false, "for another race or faction" end
+            if q.requiredClasses and q.requiredClasses ~= 0
+                and band(q.requiredClasses, 2 ^ (classID - 1)) == 0 then return false, "for another class" end
+        end
     end
     if q.requiredMinRep or q.requiredMaxRep then
         local rep = module("QuestieReputation")
+        local ok, aboveMin, hasMin, belowMax, hasMax = false, nil, nil, nil, nil
         if rep and rep.HasFactionAndReputationLevel then
-            local ok, aboveMin, hasMin, belowMax, hasMax = pcall(rep.HasFactionAndReputationLevel, rep,
+            ok, aboveMin, hasMin, belowMax, hasMax = pcall(rep.HasFactionAndReputationLevel, rep,
                 q.requiredMinRep, q.requiredMaxRep)
-            if ok and not (aboveMin and hasMin and belowMax and hasMax) then
-                local fid = (q.requiredMinRep or q.requiredMaxRep)[1]
-                local name = fid and GetFactionInfoByID and GetFactionInfoByID(fid)
-                return false, "needs reputation" .. (name and (" with " .. name) or "")
-            end
+        end
+        if not ok then cant("your reputation")
+        elseif not (aboveMin and hasMin and belowMax and hasMax) then
+            local fid = (q.requiredMinRep or q.requiredMaxRep)[1]
+            local name = fid and GetFactionInfoByID and GetFactionInfoByID(fid)
+            return false, "needs reputation" .. (name and (" with " .. name) or "")
         end
     end
     if q.requiredSkill then
         local prof = module("QuestieProfessions")
+        local ok, has, level = false, nil, nil
         if prof and prof.HasProfessionAndSkillLevel then
-            local ok, has, level = pcall(prof.HasProfessionAndSkillLevel, prof, q.requiredSkill)
-            if ok and not (has and level) then
-                local name = PROFESSION[q.requiredSkill[1]] or "a profession"
-                return false, "needs " .. name .. ((q.requiredSkill[2] or 0) > 0 and (" " .. q.requiredSkill[2]) or "")
-            end
+            ok, has, level = pcall(prof.HasProfessionAndSkillLevel, prof, q.requiredSkill)
+        end
+        if not ok then cant("your professions")
+        elseif not (has and level) then
+            local name = PROFESSION[q.requiredSkill[1]] or "a profession"
+            return false, "needs " .. name .. ((q.requiredSkill[2] or 0) > 0 and (" " .. q.requiredSkill[2]) or "")
         end
     end
-    if q.requiredSpell and q.requiredSpell ~= 0 and IsSpellKnown then
-        local known = IsSpellKnown(math.abs(q.requiredSpell))
-        if q.requiredSpell > 0 and not known then return false, "needs a spell you don't have" end
-        if q.requiredSpell < 0 and known then return false, "ruled out by a spell you know" end
+    if q.requiredSpell and q.requiredSpell ~= 0 then
+        local ok, known = false, nil
+        if IsSpellKnown then ok, known = pcall(IsSpellKnown, math.abs(q.requiredSpell)) end
+        if not ok then cant("your spells")
+        else
+            if q.requiredSpell > 0 and not known then return false, "needs a spell you don't have" end
+            if q.requiredSpell < 0 and known then return false, "ruled out by a spell you know" end
+        end
     end
     local giver = starterNPC(q)
     local mine = UnitFactionGroup and UnitFactionGroup("player")
@@ -660,7 +676,31 @@ function D.Eligible(q)
     if f and ((mine == "Alliance" and f == "H") or (mine == "Horde" and f == "A")) then
         return false, "the other faction's quest"
     end
+    if unsure then return nil, unsure end
     return true
+end
+
+-- Pure: D.Eligible (or eligible, for a test) as a state: "yes", "no", or
+-- "unknown" (it can't tell, or the check itself failed), with its reason.
+function D.Check(q, eligible)
+    local ok, fits, why = pcall(eligible or D.Eligible, q)
+    if not ok then return "unknown", "Flow couldn't check whether it's offered to you" end
+    if fits == true then return "yes" end
+    if fits == false then return "no", why end
+    return "unknown", why or "Flow can't tell whether it's offered to you"
+end
+
+D.UNSURE_WEIGHT = 1.5   -- a giver who may not offer it: after the sure ones
+
+-- Pure: a pickup step whose giver may not offer the quest (D.Check "unknown"):
+-- ranked after the sure ones (weighted, as the planner reads it) and says why.
+function D.Unsure(g, why)
+    g.unsure = why or "Flow can't tell whether it's offered to you"
+    g.weight = (g.weight or 1) * D.UNSURE_WEIGHT
+    g.text = (g.text or "") .. " (may not be offered)"
+    g.details = g.details or {}
+    g.details[#g.details + 1] = "May not be offered to you: " .. g.unsure .. "."
+    return g
 end
 
 -- Where a quest's giver is: inside the dungeon, or at its entrance (within
@@ -859,7 +899,7 @@ local function breadcrumbsFor(run, ctx)
         for _, b in ipairs(list) do
             local bq = not seen[b] and not ctx.done[b] and quest(b)
             seen[b] = true
-            if bq and (bq.requiredLevel or 0) <= ctx.level and open(bq) and D.Eligible(bq) then
+            if bq and (bq.requiredLevel or 0) <= ctx.level and open(bq) and D.Eligible(bq) ~= false then
                 local at = world(starterPoints(bq)[1])
                 if at then
                     out[#out + 1] = { id = b, name = bq.name, level = bq.level, leadsTo = target.name, at = at }
@@ -1094,7 +1134,7 @@ function D.HereLines()
         return { name = q.name, level = q.level, requiredLevel = q.requiredLevel, raw = q, from = giver and giver.name or nil }
     end
     local have, missing = D.EnterSplit(d.ids, get, Q:LogIds(), function(id) return Q:IsCompleted(id) end,
-        function(q) local ok, yes = pcall(D.Eligible, q.raw); return ok and yes == true end, UnitLevel("player"))
+        function(q) return D.Check(q.raw) ~= "no" end, UnitLevel("player"))
     return D.EnterLines(d.name, have, missing), here
 end
 
@@ -1334,6 +1374,7 @@ ns:Register("navGoal", "dungeon", {
             -- (the giver doesn't offer it yet), and quests not offered to you
             -- (an event's, another race's or class's) stay off the route.
             if not D.TakeNow(q) then return end
+            local sure, unsureWhy = D.Check(q)
             local pts = starterPoints(q)
             local g = starterNPC(q)
             if #pts == 0 then
@@ -1351,6 +1392,7 @@ ns:Register("navGoal", "dungeon", {
                             optional and "Optional: only if you pass by. Skipping it never blocks the run."
                                 or ("For your " .. run.name .. " run.") },
             }
+            if sure == "unknown" then D.Unsure(goals[#goals], unsureWhy) end
             if not optional then needed[#needed + 1] = "pickup:" .. id end
         end
         for _, id in ipairs(run.pickups) do pickup(id, "for " .. run.name) end
