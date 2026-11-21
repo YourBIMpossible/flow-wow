@@ -86,6 +86,44 @@ ns:Register("test", "spec: /flow spec always says where your role came from", fu
     t:eq(ns.RoleSourceWords(nil), "your class's usual role", "nothing known: the class's role")
 end)
 
+ns:Register("test", "rotation: dispel help follows your effective role and your form", function(t)
+    -- F-077: a resto druid at the default dps role got none in a fight; a cat gets none (can't cast it).
+    local E = ns.rotation
+    local caster = true
+    local def = { dispels = { canCast = function() return caster end,
+                              { spell = "Remove Curse", types = { Curse = true } } } }
+    local friend = { { unit = "party1", name = "Mo", kind = "dps" } }
+    local function cursed(u) return u == "party1" and { Curse = "Curse of Weakness" } or {} end
+    local s
+    with(E, "GroupUnits", function() return { friend[1] } end, function()
+        with(E, "Knows", function() return true end, function()
+            with(E, "Ready", function() return true end, function()
+                s = E:Dispel({ inCombat = true, role = "heal" }, def, 1, cursed)
+                t:eq(s and s.spell, "Remove Curse", "healing (from your talents or your choice), a fight: your group's curse")
+                t:eq(E:Dispel({ inCombat = true, role = "dps" }, def, 1, cursed), nil,
+                    "dps in a fight: your attacks stay on the icon")
+                s = E:Dispel({ inCombat = false, role = "dps" }, def, 1, cursed)
+                t:eq(s and s.unit, "party1", "out of a fight: any role")
+                caster = false
+                t:eq(E:Dispel({ inCombat = false, role = "heal" }, def, 1, cursed), nil,
+                    "in Cat or Bear Form: nothing (it can't be cast there)")
+            end)
+        end)
+    end)
+end)
+
+ns:Register("test", "buff items: at a dungeon's entrance you get ready for the run", function(t)
+    -- F-069: buff items came up only at kill / loot steps or just after a fight.
+    local BI = ns.buffItems
+    if not (BI and BI.Killing) then t:ok(false, "BuffItems.lua not loaded") return end
+    local entrance = { key = "dungeon:dm:", kind = "waypoint" }
+    local far = 1e9   -- long after any fight
+    t:ok(BI.Killing({ goal = entrance, at = true }, far), "at the entrance: buff up")
+    t:ok(not BI.Killing({ goal = entrance, at = false }, far), "still on the way there: not yet (it shows faded)")
+    t:ok(not BI.Killing({ goal = { key = "user:wp", kind = "waypoint" }, at = true }, far), "any other waypoint: no")
+    t:ok(BI.Killing({ goal = { key = "q:1", kind = "kill" }, at = true }, far), "a kill step: as before")
+end)
+
 ns:Register("test", "talents: a build for another role says so", function(t)
     -- F-060: "/flow spec heal" still got the Feral build, with nothing said.
     local T = ns.talents
