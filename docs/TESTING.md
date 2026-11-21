@@ -41,7 +41,8 @@ commands to refresh them; don't edit the numbers by hand.
 ### Categories (by the name before the first colon)
 
 The name's first part is the area. There are 212 such prefixes; the largest, with their
-offline results:
+offline results as counted at 640 tests (today's totals are in the runner section below;
+`-Verbose` gives each test's status):
 
 | prefix | tests | offline PASS | offline SKIP | offline FAIL |
 |---|---:|---:|---:|---:|
@@ -83,10 +84,10 @@ grep -ohE 'ns:Register\("test", "[^":]+:' Modules/Tests.lua | sort | uniq -c | s
 
 ### Three kinds of test
 
-- **Pure logic** (282 pass offline, plus the 2 known failures): Flow's own functions with
+- **Pure logic** (306 pass offline today): Flow's own functions with
   inputs passed in, such as the planner's order, a seal choice from a role, or a talent sheet split into
   trees. They touch no game global, so they run the same offline as in the game.
-- **Game API** (356 skip offline): they read the client (`UnitLevel`, `C_Map`,
+- **Game API** (365 skip offline today): they read the client (`UnitLevel`, `C_Map`,
   `GetItemCount`, Questie's data), build or click real frames (the `click` tests), or depend
   on timing (`GetTime`). Only the game can answer these. Offline they are SKIP, never PASS.
 - **Secure and taint** (the `taint` prefix, 5 tests, all SKIP offline): what happens when a
@@ -136,7 +137,14 @@ tools\run-tests.ps1 -Filter route      # only tests whose name contains "route"
 tools\run-tests.ps1 -Verbose           # every test's status, and what Flow printed
 tools\run-tests.ps1 -ListModules       # which files loaded, and which touched the client
 tools\run-tests.ps1 -NoKnown           # count the known failures too
+tools\run-tests.ps1 -Known file.txt    # another known-failures list
+tools\run-tests.ps1 -Strict            # a SKIP-FAIL fails the run too
+tools\run-tests.ps1 -Root F:\other\worktree   # test another checkout with this runner
 ```
+
+`-Root` tests another checkout's `Flow.toc` and files with this script's own
+`tools/offline` (runner and stubs), so the other checkout needs no tools of its own. Its
+known-failures list is `<Root>/tools/offline/known-failures.txt` if that exists, else none.
 
 Lua 5.1 is searched for in this order: `$env:FLOW_LUA`, then `lua5.1` / `lua51` on PATH,
 then `%USERPROFILE%\tools\lua51\lua5.1.exe`. Only 5.1 is accepted, because it is the game's
@@ -148,41 +156,55 @@ What it does (`tools/offline/run.lua`):
    library helpers the game also has (`strsplit`, `wipe`, `tinsert`, ...) are plain-Lua
    equivalents. `CreateFrame` gives inert frames, so files that build windows at load time can
    finish. Every other client global is missing: reading it gives a marker, which does nothing
-   while files load.
-2. Loads every file of `Flow.toc` in toc order with `("Flow", ns)`, as the game does.
-3. Fires `ADDON_LOADED("Flow")` once, with empty saved data, like a fresh install.
+   while files load. `io` is missing and `os` has only `time`, `date`, `clock` and
+   `difftime`, so no test can end the run or print the runner's own lines.
+2. Loads every file of `Flow.toc` in toc order with `("Flow", ns)`, as the game does. A file
+   that fails to load (syntax error, runtime error, a key registered twice) or is listed but
+   absent fails the run, since its tests would otherwise just be missing. The one allowed
+   absence is `Learned/ClaudeInbox.lua`, generated on the player's PC.
+3. Fires `ADDON_LOADED("Flow")` once, with empty saved data, like a fresh install. Errors
+   Core catches there are always listed; they don't fail the run (fixture frames return nil,
+   so `GetFrameLevel() + 2` fails), but a new one should be looked at.
 4. Runs each test alone through the harness's own `ns.tests.Spread`, and reports one of:
-   - **PASS**: ran to the end on Flow's own Lua and touched nothing of the client.
-   - **SKIP** (`needs the client: <name>`): touched any client global or frame method, whatever
-     its checks said.
+   - **PASS**: ran to the end on Flow's own Lua and touched nothing of the client. A test
+     that made no check at all is counted as "with no checks".
    - **FAIL**: a check failed, and nothing of the client was touched.
-   - **ERROR**: a Lua error, and nothing of the client was touched.
+   - **ERROR**: a Lua error (or a call to `os.exit`), and nothing of the client was touched.
+   - **SKIP** (`needs the client: <name>`): touched a client global or frame method first.
+     The summary counts how many of them had a check fail after that touch: offline that
+     can't be told apart from the client's absence.
+   - **SKIP-FAIL**: a check failed *before* the first client touch, so the client can't be
+     the cause. Always listed and counted; it fails the run only with `-Strict`.
 
-Result on 2026-11-21 (about 0.15 s):
+The driver's last line is `offline: done, exit <n>`. If it is missing or `<n>` differs from
+the exit code, `run-tests.ps1` reports a broken run (exit 2), never a pass. Exit 1: a FAIL or
+ERROR outside the known list (or a SKIP-FAIL with `-Strict`), a file that didn't load, a
+known name no test has, or no test run (a `-Filter` that matches nothing included).
+
+Result on 2026-11-21, program-integ 560ba1c (about 0.2 s):
 
 ```
-modules: 147 of 148 files in Flow.toc loaded (105 without touching any client global), 0 failed, 1 absent
-  absent: Learned\ClaudeInbox.lua
-offline tests: 640 run, 282 pass, 2 fail, 356 skip (need the client), 0 error (2 of the fails/errors known, 0 new)
+modules: 151 of 152 files in Flow.toc loaded (109 without touching any client global), 0 failed, 1 absent (1 allowed: generated on the player's PC)
+offline tests: 673 run: 306 pass (1 with no checks), 0 fail, 0 error, 365 skip (need the client; 74 of them with checks failing after that), 2 skip-fail (...)
+known failures: 0 listed, 0 known allowed (failing, not counted against the run), 0 now passing, 0 not found; 0 new failure(s)
+result: OK
 ```
 
-- **Modules.** Every file in the repo loads. 105 of them touch no client global even at load
-  time. `Learned\ClaudeInbox.lua` is generated on the player's PC and isn't in git.
-  `-ListModules` names each file and how many client names it touched while loading.
+- **Modules.** 109 files touch no client global even at load time. `-ListModules` names each
+  file and how many client names it touched while loading. 3 OnLoad errors (Display.lua:89,
+  Nav.lua:4342, Advisor.lua:242), all fixture frames returning nil.
+- **SKIP-FAIL today:** `perf: Flow's update loops are timed` and `click: the icons beside the
+  Flow icon and the auto-attack badge take clicks`. Both check something the failed OnLoad
+  (above) never built, so they are fixture effects, not Flow bugs; `/flow test perf` and
+  `/flow test click` in the game decide.
 - **The most common reasons to skip** (the first client name each test touched): QuestieLoader
-  36, GetTime 33, UIParent 31, InCombatLockdown 28, UnitClass 24, C_Map 17, WorldMapFrame 13,
-  CreateFrame 10, GameTooltip 10, UnitLevel 10.
-- **Known failures.** `tools/offline/known-failures.txt` lists tests that already failed when
-  the runner was added. They are printed as `FAIL (KNOWN)`, but they don't fail the run. Any
-  other FAIL or ERROR fails the run (exit 1). A known test that passes again is reported, so
-  its line can be removed. The 2 today are real failures of Flow's logic, not fixture effects:
-  - `paladin: the seal Flow suggests ...`: "a seal you don't know yet" gets Seal of Command,
-    but the test expects Seal of Righteousness.
-  - `spec: your talents set the role ...`: the test's sample sheet has gaps of 1800 between
-    talents of one tree, more than `T.TREE_GAP = 1500` (Modules/Talents.lua:21). The sheet
-    splits into 5 trees, so `ns.TreesFromNodes` returns nil.
-
-  They should be confirmed with `/flow test paladin` and `/flow test spec` in the game.
+  36, GetTime 32, UIParent 31, InCombatLockdown 30, UnitClass 25, C_Map 17, CreateFrame 13,
+  WorldMapFrame 13, UnitLevel 11, GameTooltip 10.
+- **Known failures.** `tools/offline/known-failures.txt` lists tests that fail on the base
+  branch. They print as `FAIL (KNOWN)` and the summary counts them as "known allowed", apart
+  from the passes. Any other FAIL or ERROR fails the run. A known test that passes again is
+  reported, so its line can be removed; a known name that no test has fails the run. The list
+  is empty today.
 
 **Limits, plainly.** An offline PASS proves the logic on made-up inputs, nothing about the
 client. A SKIP proves nothing either way. A file that loads offline could still fail in the
@@ -195,7 +217,8 @@ game, for example on an API Forever doesn't have. The offline run doesn't replac
   global swapped inside a test, a function defined twice, and a close button without its own
   OnClick. It must say `lint OK`.
 - `tools/check-structure.ps1`: every file `Flow.toc` lists exists, in the same case, and every
-  add-on `.lua` file is listed. No registration key is used twice. It also lists registrations
+  `.lua` file of the add-on tree is listed (everything but `tools`, `.github`, `.claude`,
+  `.git`, `dist` and `reports`, which it prints). `-Root path` checks another checkout. No registration key is used twice. It also lists registrations
   inside comments that name a real key (advisor `trainer`, mountRule `default`, talentBuild
   `DRUID`). Those are examples, not duplicates.
 
