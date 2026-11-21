@@ -253,7 +253,7 @@ end
 -- Buffs for your group stay with Flow's key ("Target button buffs your group"). The definition is put back whatever happens.
 local origChoose = E.Choose
 function E:Choose()
-    local def = BB.On() and self:Definition()
+    local def = BB.On() and self:Rules()
     if not def then return origChoose(self) end
     local p, ps = def.priority, def.priorities
     local hs, dp = self.HealStep, self.Dispel

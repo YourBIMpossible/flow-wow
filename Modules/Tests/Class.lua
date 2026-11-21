@@ -4,6 +4,50 @@
 
 local _, ns = ...
 
+-- Puts obj[key] = value for the length of fn, then back (Flow's own tables only).
+local function with(obj, key, value, fn)
+    local old = obj[key]
+    obj[key] = value
+    local ok, err = pcall(fn)
+    obj[key] = old
+    if not ok then error(err, 0) end
+end
+
+ns:Register("test", "rotation: a class with no rotation gets the class-agnostic rules", function(t)
+    -- F-063: Choose returned nil before healing, recovery, interrupts and dispels.
+    local E = ns.rotation
+    local fallback = ns:Get("rotation", E.NO_CLASS)
+    t:ok(fallback and fallback.noClass, "the class-agnostic rules are registered")
+    t:eq(fallback and #fallback.priority, 0, "with no class rules")
+    with(E, "Definition", function() return nil end, function()
+        t:eq(E:Rules(), fallback, "no class rotation: the class-agnostic rules")
+    end)
+    with(E, "Definition", function() return { priority = {} } end, function()
+        t:ok(not E:Rules().noClass, "a class with a rotation: its own rules")
+    end)
+end)
+
+ns:Register("test", "rotation: a class with no rotation still gets a potion when hurt in a fight", function(t)
+    local E = ns.rotation
+    local fallback = ns:Get("rotation", E.NO_CLASS)
+    with(E, "Definition", function() return nil end, function()
+        local seen
+        local ctx = { inCombat = true, hostile = false, fightType = "normal" }
+        with(E, "Context", function() return ctx end, function()
+            with(E, "BreakFree", function() return nil end, function()
+                with(E, "HealStep", function(_, _, def) seen = def return { label = "Healing Potion", kind = "emergency" } end, function()
+                    local s
+                    with(E, "lastCtx", E.lastCtx, function()
+                        with(E, "lastEarlyLog", E.lastEarlyLog, function() s = E:Choose() end)
+                    end)
+                    t:eq(s and s.label, "Healing Potion", "no class rotation, hurt in a fight: the potion is still suggested")
+                    t:eq(seen, fallback, "healing is asked with the class-agnostic rules")
+                end)
+            end)
+        end)
+    end)
+end)
+
 ns:Register("test", "spec: every druid tree gives a role (Balance, Feral Combat, Restoration)", function(t)
     -- F-059: #33 matched the tree name to a spec name, and only Restoration has one.
     local druid = ns:Get("class", "DRUID")
