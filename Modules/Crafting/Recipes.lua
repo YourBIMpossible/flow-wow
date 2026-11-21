@@ -1,6 +1,6 @@
 -- Remembers what your profession windows show: each recipe you know, its
 -- colour (difficulty) at your skill then, and its reagents. The planner
--- prefers this over the guide data, because it's this client's real list.
+-- prefers this over the steps in Guides.lua, because it's this client's real list.
 --   ns.db.crafting[<profession>] = { rank, seenAt, recipes = { [name] = {
 --       item, diff = "optimal"|"medium"|"easy"|"trivial", reagents = { [itemID] = n } } } }
 

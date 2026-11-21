@@ -1591,74 +1591,32 @@ ns:Register("test", "skillplan: stops stay on your continent", function(t)
     t:eq(pts[1].x, 1, "the one on your continent stays")
 end)
 
-ns:Register("test", "skillplan: the guides' recipes to 300", function(t)
+ns:Register("test", "skillplan: the profession data's recipes and trainers", function(t)
     local SP = ns.skillPlan
-    -- Every bought recipe has a source, so its step knows what it is and roughly costs.
-    for prof, g in ns:Each("profGuide") do
-        for _, s in ipairs(g.steps or {}) do
-            if s.recipeItem and not s.quest then
-                local src = ns:Get("itemSource", s.recipeItem)
-                t:ok(src and src.vendor, prof .. ": " .. s.recipe .. "'s recipe has a vendor source")
-            end
-        end
-    end
-    local function onPath(prof, rank, recipe)
-        for _, s in ipairs(SP._onPath(ns:Get("profGuide", prof).steps, rank)) do
-            if s.recipe == recipe then return true end
-        end
-        return false
-    end
-    t:ok(onPath("Cooking", 230, "Monster Omelet"), "Cooking 230: Monster Omelet")
-    t:ok(onPath("Cooking", 260, "Nightfin Soup"), "Cooking 260: Nightfin Soup")
-    t:ok(onPath("Cooking", 290, "Mightfish Steak"), "Cooking 290: Mightfish Steak")
-    t:ok(not onPath("Cooking", 290, "Roast Raptor"), "Cooking 290: no Roast Raptor")
-    t:ok(onPath("Blacksmithing", 280, "Imperial Plate Bracers"), "Blacksmithing 280: Imperial Plate Bracers")
-    t:ok(onPath("Blacksmithing", 297, "Imperial Plate Boots"), "Blacksmithing 297: Imperial Plate Boots")
-    t:ok(select(3, SP._simulate("Blacksmithing__test", ns:Get("profGuide", "Blacksmithing").steps, 265, 300, {})), "Blacksmithing 265 -> 300 reaches")
-    t:ok(select(3, SP._simulate("Cooking__test", ns:Get("profGuide", "Cooking").steps, 225, 300, {})), "Cooking 225 -> 300 reaches")
-    -- The crafting guides in GuidesCrafting.lua: each one's path runs 1 -> 300 with no gap.
-    for _, prof in ipairs({ "Tailoring", "Leatherworking", "Alchemy", "Enchanting", "Engineering" }) do
-        local g = ns:Get("profGuide", prof)
-        t:ok(g and g.artisan and g.artisan.Horde and g.artisan.Alliance, prof .. ": has an Artisan trainer for each side")
-        t:ok(g and select(3, SP._simulate(prof .. "__test", g.steps, 1, 300, {})), prof .. " 1 -> 300 reaches")
-    end
-    t:ok(onPath("Tailoring", 290, "Runecloth Gloves"), "Tailoring 290: Runecloth Gloves")
-    t:ok(onPath("Leatherworking", 295, "Runic Leather Headband"), "Leatherworking 295: Runic Leather Headband")
-    t:ok(onPath("Alchemy", 290, "Major Healing Potion"), "Alchemy 290: Major Healing Potion")
-    t:ok(onPath("Enchanting", 240, "Enchant Chest - Superior Health"), "Enchanting 240: Enchant Chest - Superior Health")
-    t:ok(onPath("Enchanting", 210, "Enchant Bracer - Strength"), "Enchanting 210: back on Bracer - Strength after the rod")
-    t:ok(not onPath("Enchanting", 200, "Enchant Bracer - Strength"), "Enchanting 200: the Truesilver Rod, not another bracer")
-    t:ok(onPath("Engineering", 290, "Thorium Tube"), "Engineering 290: Thorium Tube")
-    -- Each enchant names the rod it needs in your bags.
-    for _, s in ipairs(ns:Get("profGuide", "Enchanting").steps) do
-        if s.recipe:find("^Enchant ") then t:ok(s.tool, "Enchanting: " .. s.recipe .. " names its rod") end
-    end
 
-    -- Imperial Plate plans: accept the quest at its giver, not "buy".
-    local bracers
-    for _, s in ipairs(ns:Get("profGuide", "Blacksmithing").steps) do
-        if s.recipe == "Imperial Plate Bracers" then bracers = s end
-    end
+
+    -- Plans that are a quest's reward: accept the quest at its giver, not "buy".
+    local plans = { recipe = "Test Plans__test", recipeItem = 2, learn = 1, quest = { id = 99901, npc = 7804 } }
     local Q = ns.quests
     local old = { IsCompleted = Q.IsCompleted, InLog = Q.InLog, QuestieGet = Q.QuestieGet }
     local state = { done = false, inLog = false }
     Q.IsCompleted = function() return state.done end
     Q.InLog = function() return state.inLog end
     Q.QuestieGet = function(_, fname)
-        if fname == "GetQuest" then return { name = "Imperial Plate Bracer", requiredLevel = 1, Starts = { NPC = { 7804 } } } end
-        if fname == "GetNPC" then return { name = "Derotain Mudsipper", spawns = {} } end
+        if fname == "GetQuest" then return { name = "Test Plans Quest", requiredLevel = 1, Starts = { NPC = { 7804 } } } end
+        if fname == "GetNPC" then return { name = "Test Giver", spawns = {} } end
     end
     local ok, err = pcall(function()
-        if ns.api.Count(bracers.recipeItem) > 0 then return end   -- (you have the plans: it says "use")
-        local r = SP._recipeStop("Blacksmithing", bracers, {})
+        if ns.api.Count(plans.recipeItem) > 0 then return end   -- (you have the plans: it says "use")
+        local r = SP._recipeStop("Test__test", plans, {})
         t:eq(r and r.kind, "accept", "quest plans: an accept step")
-        t:eq(r and r.key, "recipequest:7655", "quest plans: keyed by the quest")
-        t:ok(r and r.text:find("Derotain Mudsipper", 1, true), "quest plans: names the giver")
+        t:eq(r and r.key, "recipequest:99901", "quest plans: keyed by the quest")
+        t:ok(r and r.text:find("Test Giver", 1, true), "quest plans: names the giver")
         state.inLog = true
-        t:eq(SP._recipeStop("Blacksmithing", bracers, {}), nil, "quest in your log: its own steps take over")
+        t:eq(SP._recipeStop("Test__test", plans, {}), nil, "quest in your log: its own steps take over")
         state.inLog, state.done = false, true
-        t:eq(SP._recipeStop("Blacksmithing", bracers, {}), nil, "quest done: nothing")
-        t:eq(SP._recipeStop("Blacksmithing", bracers, { ["Imperial Plate Bracers"] = true }), nil, "recipe known: nothing")
+        t:eq(SP._recipeStop("Test__test", plans, {}), nil, "quest done: nothing")
+        t:eq(SP._recipeStop("Test__test", plans, { ["Test Plans__test"] = true }), nil, "recipe known: nothing")
     end)
     Q.IsCompleted, Q.InLog, Q.QuestieGet = old.IsCompleted, old.InLog, old.QuestieGet
     t:ok(ok, "quest plans test ran (" .. tostring(err) .. ")")
@@ -1674,28 +1632,46 @@ ns:Register("test", "skillplan: the guides' recipes to 300", function(t)
     t:eq(select(2, SP.StepTrainers("Cooking", {})), "Cooking trainer", "other steps: the profession's trainers")
 end)
 
-ns:Register("test", "skillplan: follows the levelling guides' path", function(t)
+ns:Register("test", "skillplan: works out each step from its colours, not a fixed path", function(t)
     local SP = ns.skillPlan
-    local g = ns:Get("profGuide", "Cooking")
-    -- Owner: at Cooking 62 the plan said 105 Charred Wolf Meat to 100.
-    local path = SP._onPath(g.steps, 62)
-    t:ok(#path > 0, "the guide has a step for Cooking 62")
-    local mine = UnitFactionGroup("player")
-    for _, s in ipairs(path) do
-        t:ok(s.recipe ~= "Charred Wolf Meat", "62: not Charred Wolf Meat (" .. s.recipe .. ")")
-        t:ok(not s.faction or s.faction == mine, "62: your side's recipe (" .. s.recipe .. ")")
+    local bs = ns:Get("profGuide", "Blacksmithing").steps
+    -- Every bought recipe has a source, so its step knows what it is and roughly costs.
+    for prof, g in ns:Each("profGuide") do
+        for _, s in ipairs(g.steps or {}) do
+            if s.recipeItem and not s.quest then
+                local src = ns:Get("itemSource", s.recipeItem)
+                t:ok(src and src.vendor, prof .. ": " .. s.recipe .. "'s recipe has a vendor source")
+            end
+            t:eq(s.use, nil, prof .. ": " .. s.recipe .. " has no fixed range of its own (SP.Score decides)")
+        end
     end
-    local _, order, reaches = SP._simulate("Cooking__test", g.steps, 62, 100, {})
-    t:ok(reaches, "62 -> 100 reaches")
-    for _, s in ipairs(order) do t:ok(s.recipe ~= "Charred Wolf Meat", "62 -> 100 makes no Charred Wolf Meat") end
-    t:eq(order[1] and order[1].recipe, mine == "Horde" and "Strider Stew" or "Smoked Bear Meat", "62: the guides' recipe first")
-    -- Fish recipes have no path of their own.
-    for _, s in ipairs(SP._onPath(g.steps, 60)) do t:ok(not s.recipe:find("Mud Snapper"), "60: fish only stands in") end
-    -- A step the guides use twice (Rough Bronze Leggings 110-125, 140-160).
-    local bs = ns:Get("profGuide", "Blacksmithing")
-    local at145 = SP._onPath(bs.steps, 145)
-    t:eq(#at145, 1, "145: one step"); t:eq(at145[1] and at145[1].recipe, "Rough Bronze Leggings", "145: back to bronze leggings")
-    t:eq(SP._onPath(bs.steps, 130)[1].recipe, "Heavy Grinding Stone", "130: heavy grinding stones in between")
+    -- The computed plan climbs as far as the recipes Flow has go, and stops there.
+    t:ok(select(3, SP._simulate("Blacksmithing__test", bs, 1, 270, {})), "Blacksmithing 1 -> 270 reaches")
+    local _, _, reaches, _, reached = SP._simulate("Blacksmithing__test", bs, 265, 300, {})
+    t:ok(not reaches, "Blacksmithing 265 -> 300: no recipe Flow has gives skill that far")
+    t:ok(reached >= 274 and reached < 300, "stops where the last recipe turns grey (" .. tostring(reached) .. ")")
+    local function first(rank)
+        local _, order = SP._simulate("Blacksmithing__test", bs, rank, rank + 1, {})
+        return order[1] and order[1].recipe
+    end
+    -- At each skill, the step SP.Score rates best of all of them.
+    for _, rank in ipairs({ 30, 130, 210 }) do
+        local at, step, best = first(rank), nil, 0
+        for _, s in ipairs(bs) do
+            local v = SP.Score(s, rank, { prof = "Blacksmithing__test" })
+            if v > best then best = v end
+            if s.recipe == at then step = s end
+        end
+        t:ok(step and rank >= step.learn and rank < step.grey, rank .. ": a step that still gives skill (" .. tostring(at) .. ")")
+        t:near(step and SP.Score(step, rank, { prof = "Blacksmithing__test" }) or -1, best, 1e-9, rank .. ": the best-rated step")
+    end
+    -- Nothing gives skill: no step.
+    t:eq(first(400), nil, "past every recipe's grey: nothing to make")
+    -- Fish recipes stand in only while you carry the fish.
+    local cooking = {}
+    for _, s in ipairs(ns:Get("profGuide", "Cooking").steps) do if not s.faction then cooking[#cooking + 1] = s end end
+    local _, order = SP._simulate("Cooking__test", cooking, 60, 70, {})
+    for _, s in ipairs(order) do t:ok(not s.recipe:find("Mud Snapper"), "60, no fish in bags: no fish recipe (" .. s.recipe .. ")") end
 end)
 
 ns:Register("test", "perf: Flow's update loops are timed", function(t)

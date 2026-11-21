@@ -112,7 +112,6 @@ Modules\Nav\Goals.lua
 Modules\Nav\Needs.lua
 Modules\Nav\Mounts.lua
 Modules\Crafting\Guides.lua
-Modules\Crafting\GuidesCrafting.lua
 Modules\Crafting\Recipes.lua
 Modules\Crafting\SkillPlan.lua
 Modules\Quests\QuestBuy.lua

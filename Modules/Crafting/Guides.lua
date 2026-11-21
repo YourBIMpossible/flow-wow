@@ -3,12 +3,12 @@
 -- this plus what you have right now (skill, bags, quests, position) to put
 -- gather / smelt / craft steps on the route.
 --
--- `use` is the path the public levelling guides take: at each skill, which
--- recipe they make. The planner sticks to it, so it never grinds a recipe on
--- to grey once the guides have moved on. Skill colours (learn / yellow /
--- green / grey) are approximate, from the same guides and the Classic Era
--- client data; what the profession window shows in game (Recipes.lua) wins
--- whenever Flow has seen it.
+-- There is no fixed path here: which recipe to make at each skill is worked
+-- out by SkillPlan.lua (SP.Score) from the chance of a skill point, what the
+-- materials cost and what's in your bags, over these recipes and the ones
+-- your profession window showed (Recipes.lua). Skill colours (yellow / green
+-- / grey) are approximate; what the profession window shows in game wins
+-- whenever Flow has seen it, and `learn` is what the trainer asks.
 --
 -- Extend by registering more:
 --   ns:Register("profGuide", "<Profession>", {
@@ -16,7 +16,6 @@
 --       tool = itemID,                       -- needed in your bags (craft)
 --       artisan = { Horde = "name", Alliance = "name" }, -- teaches Artisan (225 -> 300) instead of the city trainers
 --       steps = { { recipe, item, learn, yellow, green, grey, mats = { [itemID] = n },
---                   use = { from, to } | { { from, to }, ... },   -- the guides' path
 --                   faction = "Horde" | "Alliance",               -- only that side
 --                   recipeItem = itemID,                          -- bought, not trained
 --                   quest = { id, npc },                          -- the recipe is that quest's reward
@@ -95,8 +94,6 @@ ns:Register("itemSource", 6291, { name = "Raw Brilliant Smallfish", fished = tru
 ns:Register("itemSource", 6289, { name = "Raw Longjaw Mud Snapper", fished = true, share = 0.6 })
 ns:Register("itemSource", 6308, { name = "Raw Bristle Whisker Catfish", fished = true, share = 0.5 })
 ns:Register("itemSource", 8365, { name = "Raw Mithril Head Trout", fished = true, share = 0.4 })
--- Artisan Cooking: coasts and lakes of the level 40-55 zones (Tanaris,
--- Feralas, Felwood, Azshara, Winterspring).
 ns:Register("itemSource", 4603, { name = "Raw Spotted Yellowtail", fished = true, share = 0.5 })
 ns:Register("itemSource", 13759, { name = "Raw Nightfin Snapper", fished = true, share = 0.4 })
 ns:Register("itemSource", 13760, { name = "Raw Sunscale Salmon", fished = true, share = 0.4 })
@@ -130,14 +127,6 @@ ns:Register("itemSource", 2698, { name = "Recipe: Cooked Crab Claw", vendor = tr
 ns:Register("itemSource", 2701, { name = "Recipe: Seasoned Wolf Kabob", vendor = true, price = 1600 })
 ns:Register("itemSource", 3682, { name = "Recipe: Curiously Tasty Omelet", vendor = true, price = 1600 })
 ns:Register("itemSource", 12228, { name = "Recipe: Roast Raptor", vendor = true, price = 5000 })
-ns:Register("itemSource", 16110, { name = "Recipe: Monster Omelet", vendor = true, price = 12000 })
-ns:Register("itemSource", 18046, { name = "Recipe: Tender Wolf Steak", vendor = true, price = 12000 })
-ns:Register("itemSource", 13939, { name = "Recipe: Spotted Yellowtail", vendor = true, price = 16000 })
-ns:Register("itemSource", 13945, { name = "Recipe: Nightfin Soup", vendor = true, price = 20000 })
-ns:Register("itemSource", 13946, { name = "Recipe: Poached Sunscale Salmon", vendor = true, price = 20000 })
-ns:Register("itemSource", 13947, { name = "Recipe: Lobster Stew", vendor = true, price = 20000 })
-ns:Register("itemSource", 13948, { name = "Recipe: Mightfish Steak", vendor = true, price = 20000 })
-ns:Register("itemSource", 13949, { name = "Recipe: Baked Salmon", vendor = true, price = 20000 })
 ns:Register("itemSource", 16112, { name = "Manual: Heavy Silk Bandage", vendor = true, price = 2200 })
 ns:Register("itemSource", 16113, { name = "Manual: Mageweave Bandage", vendor = true, price = 5000 })
 -- Tools.
@@ -151,42 +140,30 @@ ns:Register("itemSource", 4470, { name = "Simple Wood", vendor = true, price = 3
 -- Professions
 -------------------------------------------------------------------------------
 
--- 265-300: Imperial Plate, whose plans are quest rewards from Derotain
--- Mudsipper in Gadgetzan (level 50; the quests ask for Thorium Bars). The
--- gems and Rugged Leather come from the Auction House or your own mining.
 ns:Register("profGuide", "Blacksmithing", {
     kind = "craft", tool = 5956,
     steps = {
-        { recipe = "Rough Sharpening Stone", item = 2862, learn = 1, yellow = 15, green = 35, grey = 55, mats = { [2835] = 1 }, use = { 1, 30 } },
-        { recipe = "Rough Grinding Stone", item = 3470, learn = 25, yellow = 45, green = 65, grey = 85, mats = { [2835] = 2 }, use = { 30, 65 } },
-        { recipe = "Coarse Sharpening Stone", item = 2863, learn = 65, yellow = 65, green = 72, grey = 80, mats = { [2836] = 1 }, use = { 65, 75 } },
-        { recipe = "Coarse Grinding Stone", item = 3478, learn = 75, yellow = 75, green = 87, grey = 100, mats = { [2836] = 2 }, use = { 75, 90 } },
+        { recipe = "Rough Sharpening Stone", item = 2862, learn = 1, yellow = 15, green = 35, grey = 55, mats = { [2835] = 1 } },
+        { recipe = "Rough Grinding Stone", item = 3470, learn = 25, yellow = 45, green = 65, grey = 85, mats = { [2835] = 2 } },
+        { recipe = "Coarse Sharpening Stone", item = 2863, learn = 65, yellow = 65, green = 72, grey = 80, mats = { [2836] = 1 } },
+        { recipe = "Coarse Grinding Stone", item = 3478, learn = 75, yellow = 75, green = 87, grey = 100, mats = { [2836] = 2 } },
         { recipe = "Runed Copper Belt", item = 2857, learn = 70, yellow = 110, green = 130, grey = 150, mats = { [2840] = 10 },
-          station = "anvil", use = { 90, 110 } },
+          station = "anvil" },
         { recipe = "Rough Bronze Leggings", item = 2865, learn = 105, yellow = 145, green = 160, grey = 175, mats = { [2841] = 6 },
-          station = "anvil", use = { { 110, 125 }, { 140, 160 } } },
-        { recipe = "Heavy Grinding Stone", item = 3486, learn = 125, yellow = 125, green = 137, grey = 150, mats = { [2838] = 3 }, use = { 125, 140 } },
+          station = "anvil" },
+        { recipe = "Heavy Grinding Stone", item = 3486, learn = 125, yellow = 125, green = 137, grey = 150, mats = { [2838] = 3 } },
         { recipe = "Green Iron Leggings", item = 3842, learn = 155, yellow = 180, green = 192, grey = 205,
-          mats = { [3575] = 8, [3486] = 1, [2605] = 1 }, station = "anvil", use = { 160, 165 } },
+          mats = { [3575] = 8, [3486] = 1, [2605] = 1 }, station = "anvil" },
         { recipe = "Green Iron Bracers", item = 3835, learn = 165, yellow = 190, green = 202, grey = 215,
-          mats = { [3575] = 6, [2605] = 1 }, station = "anvil", use = { 165, 200 } },
-        { recipe = "Solid Grinding Stone", item = 7966, learn = 200, yellow = 200, green = 205, grey = 210, mats = { [7912] = 4 }, use = { 200, 210 } },
+          mats = { [3575] = 6, [2605] = 1 }, station = "anvil" },
+        { recipe = "Solid Grinding Stone", item = 7966, learn = 200, yellow = 200, green = 205, grey = 210, mats = { [7912] = 4 } },
         { recipe = "Heavy Mithril Gauntlet", item = 7919, learn = 205, yellow = 225, green = 235, grey = 245,
-          mats = { [3860] = 6, [4338] = 4 }, station = "anvil", use = { 210, 230 } },
+          mats = { [3860] = 6, [4338] = 4 }, station = "anvil" },
         { recipe = "Mithril Coif", item = 7931, learn = 230, yellow = 250, green = 260, grey = 270,
-          mats = { [3860] = 10, [4338] = 6 }, station = "anvil", use = { 230, 250 } },
-        { recipe = "Dense Sharpening Stone", item = 12404, learn = 250, yellow = 255, green = 257, grey = 260, mats = { [12365] = 1 }, use = { 250, 260 } },
+          mats = { [3860] = 10, [4338] = 6 }, station = "anvil" },
+        { recipe = "Dense Sharpening Stone", item = 12404, learn = 250, yellow = 255, green = 257, grey = 260, mats = { [12365] = 1 } },
         { recipe = "Heavy Mithril Boots", item = 7933, learn = 235, yellow = 255, green = 265, grey = 275,
-          mats = { [3860] = 14, [4304] = 4 }, station = "anvil", use = { 260, 265 } },
-        { recipe = "Imperial Plate Belt", item = 12424, learn = 265, yellow = 285, green = 292, grey = 300,
-          mats = { [12359] = 22, [8170] = 6, [7909] = 1 }, station = "anvil", recipeItem = 12688,
-          quest = { id = 7653, npc = "Derotain Mudsipper" }, use = { 265, 270 } },
-        { recipe = "Imperial Plate Bracers", item = 12425, learn = 270, yellow = 290, green = 295, grey = 300,
-          mats = { [12359] = 20, [7910] = 1 }, station = "anvil", recipeItem = 12690,
-          quest = { id = 7655, npc = "Derotain Mudsipper" }, use = { 270, 295 } },
-        { recipe = "Imperial Plate Boots", item = 12426, learn = 295, yellow = 300, green = 300, grey = 300,
-          mats = { [12359] = 34, [7910] = 1, [7909] = 1 }, station = "anvil", recipeItem = 12700,
-          quest = { id = 7654, npc = "Derotain Mudsipper" }, use = { 295, 300 } },
+          mats = { [3860] = 14, [4304] = 4 }, station = "anvil" },
     },
 })
 
@@ -211,78 +188,58 @@ local TRIAGE = { Horde = "Doctor Gregory Victor", Alliance = "Doctor Gustaf VanH
 ns:Register("profGuide", "First Aid", {
     kind = "craft",
     steps = {
-        { recipe = "Linen Bandage", item = 1251, learn = 1, yellow = 30, green = 45, grey = 60, mats = { [2589] = 1 }, use = { 1, 40 } },
-        { recipe = "Heavy Linen Bandage", item = 2581, learn = 40, yellow = 50, green = 75, grey = 100, mats = { [2589] = 2 }, use = { 40, 80 } },
-        { recipe = "Wool Bandage", item = 3530, learn = 80, yellow = 80, green = 115, grey = 150, mats = { [2592] = 1 }, use = { 80, 115 } },
-        { recipe = "Heavy Wool Bandage", item = 3531, learn = 115, yellow = 115, green = 150, grey = 185, mats = { [2592] = 2 }, use = { 115, 150 } },
-        { recipe = "Silk Bandage", item = 6450, learn = 150, yellow = 150, green = 180, grey = 210, mats = { [4306] = 1 }, use = { 150, 180 } },
+        { recipe = "Linen Bandage", item = 1251, learn = 1, yellow = 30, green = 45, grey = 60, mats = { [2589] = 1 } },
+        { recipe = "Heavy Linen Bandage", item = 2581, learn = 40, yellow = 50, green = 75, grey = 100, mats = { [2589] = 2 } },
+        { recipe = "Wool Bandage", item = 3530, learn = 80, yellow = 80, green = 115, grey = 150, mats = { [2592] = 1 } },
+        { recipe = "Heavy Wool Bandage", item = 3531, learn = 115, yellow = 115, green = 150, grey = 185, mats = { [2592] = 2 } },
+        { recipe = "Silk Bandage", item = 6450, learn = 150, yellow = 150, green = 180, grey = 210, mats = { [4306] = 1 } },
         { recipe = "Heavy Silk Bandage", item = 6451, learn = 180, yellow = 180, green = 210, grey = 240, mats = { [4306] = 2 },
-          recipeItem = 16112, use = { 180, 210 } },
+          recipeItem = 16112 },
         { recipe = "Mageweave Bandage", item = 8544, learn = 210, yellow = 210, green = 240, grey = 270, mats = { [4338] = 1 },
-          recipeItem = 16113, use = { 210, 240 } },
+          recipeItem = 16113 },
         { recipe = "Heavy Mageweave Bandage", item = 8545, learn = 240, yellow = 240, green = 270, grey = 300, mats = { [4338] = 2 },
-          trainer = TRIAGE, use = { 240, 260 } },
+          trainer = TRIAGE },
         { recipe = "Runecloth Bandage", item = 14529, learn = 260, yellow = 260, green = 290, grey = 320, mats = { [14047] = 1 },
-          trainer = TRIAGE, use = { 260, 290 } },
+          trainer = TRIAGE },
         { recipe = "Heavy Runecloth Bandage", item = 14530, learn = 290, yellow = 290, green = 320, grey = 350, mats = { [14047] = 2 },
-          trainer = TRIAGE, use = { 290, 300 } },
+          trainer = TRIAGE },
     },
 })
 
--- One path per side from 40 to 130 (the recipes and meats differ), then the
--- same for both. Fish from your Fishing steps levels Cooking as well as the
--- meat it matches (same colours), so the fish recipes have no path of their
--- own: they stand in for meat you'd otherwise farm. Past 250 the guides cook
--- fish, so there the fish recipes are the path. (Giant Egg and Tender Wolf
--- Meat: Flow has no drop data yet, so they show as Auction House buys.)
+-- Some recipes and meats are one side's only (`faction`). Fish you catch
+-- levels Cooking as well as meat, but Flow doesn't send you fishing for
+-- Cooking: a fish recipe counts only when the fish is already in your bags.
 ns:Register("profGuide", "Cooking", {
     kind = "craft",
     steps = {
         { recipe = "Charred Wolf Meat", item = 2679, learn = 1, yellow = 45, green = 65, grey = 85, mats = { [2672] = 1 },
-          station = "fire", use = { 1, 40 } },
+          station = "fire" },
         { recipe = "Roasted Boar Meat", item = 2681, learn = 1, yellow = 45, green = 65, grey = 85, mats = { [769] = 1 },
-          station = "fire", use = { 1, 40 } },
+          station = "fire" },
         { recipe = "Brilliant Smallfish", item = 6290, learn = 1, yellow = 45, green = 65, grey = 85, mats = { [6291] = 1 },
-          station = "fire", recipeItem = 6325, use = { 1, 40 } },
+          station = "fire", recipeItem = 6325 },
         -- Horde.
         { recipe = "Roasted Kodo Meat", item = 5474, learn = 35, yellow = 75, green = 95, grey = 115, mats = { [5467] = 1, [2678] = 1 },
-          station = "fire", recipeItem = 5484, faction = "Horde", use = { 40, 50 } },
+          station = "fire", recipeItem = 5484, faction = "Horde" },
         { recipe = "Strider Stew", item = 5477, learn = 50, yellow = 90, green = 110, grey = 130, mats = { [5469] = 1, [4536] = 1 },
-          station = "fire", recipeItem = 5486, faction = "Horde", use = { 50, 100 } },
+          station = "fire", recipeItem = 5486, faction = "Horde" },
         { recipe = "Crispy Lizard Tail", item = 5479, learn = 100, yellow = 140, green = 160, grey = 180, mats = { [5470] = 1, [2692] = 1 },
-          station = "fire", recipeItem = 5488, faction = "Horde", use = { 100, 130 } },
+          station = "fire", recipeItem = 5488, faction = "Horde" },
         -- Alliance.
         { recipe = "Smoked Bear Meat", item = 6890, learn = 40, yellow = 80, green = 100, grey = 120, mats = { [3173] = 1 },
-          station = "fire", recipeItem = 6892, faction = "Alliance", use = { 40, 75 } },
+          station = "fire", recipeItem = 6892, faction = "Alliance" },
         { recipe = "Crab Cake", item = 2683, learn = 75, yellow = 115, green = 135, grey = 155, mats = { [2674] = 1, [2678] = 1 },
-          station = "fire", faction = "Alliance", use = { 75, 85 } },
+          station = "fire", faction = "Alliance" },
         { recipe = "Cooked Crab Claw", item = 2682, learn = 85, yellow = 125, green = 145, grey = 165, mats = { [2675] = 1, [2678] = 1 },
-          station = "fire", recipeItem = 2698, faction = "Alliance", use = { 85, 100 } },
+          station = "fire", recipeItem = 2698, faction = "Alliance" },
         { recipe = "Seasoned Wolf Kabob", item = 1017, learn = 100, yellow = 140, green = 160, grey = 180, mats = { [1015] = 2, [2665] = 1 },
-          station = "fire", recipeItem = 2701, faction = "Alliance", use = { 100, 130 } },
+          station = "fire", recipeItem = 2701, faction = "Alliance" },
         -- Both.
         { recipe = "Curiously Tasty Omelet", item = 3665, learn = 130, yellow = 170, green = 190, grey = 210, mats = { [3685] = 1, [2692] = 1 },
-          station = "fire", recipeItem = 3682, use = { 130, 175 } },
+          station = "fire", recipeItem = 3682 },
         { recipe = "Roast Raptor", item = 12210, learn = 175, yellow = 215, green = 235, grey = 255, mats = { [12184] = 1, [2692] = 1 },
-          station = "fire", recipeItem = 12228, use = { 175, 225 } },
-        -- Artisan (needs the Clamlette Surprise quest).
-        { recipe = "Monster Omelet", item = 12218, learn = 225, yellow = 250, green = 262, grey = 275, mats = { [12207] = 1, [3713] = 2 },
-          station = "fire", recipeItem = 16110, use = { 225, 250 } },
-        { recipe = "Tender Wolf Steak", item = 18045, learn = 225, yellow = 250, green = 262, grey = 275, mats = { [12208] = 1, [3713] = 1 },
-          station = "fire", recipeItem = 18046, use = { 225, 250 } },
-        { recipe = "Spotted Yellowtail", item = 6887, learn = 225, yellow = 250, green = 262, grey = 275, mats = { [4603] = 1 },
-          station = "fire", recipeItem = 13939 },   -- (not on the path: its one fished material made it beat Tender Wolf Steak and Monster Omelet every time, and fished materials get no step)
-        { recipe = "Nightfin Soup", item = 13931, learn = 250, yellow = 275, green = 285, grey = 295, mats = { [13759] = 1, [159] = 1 },
-          station = "fire", recipeItem = 13945, use = { 250, 285 } },
-        { recipe = "Poached Sunscale Salmon", item = 13932, learn = 250, yellow = 275, green = 285, grey = 295, mats = { [13760] = 1 },
-          station = "fire", recipeItem = 13946, use = { 250, 285 } },
-        { recipe = "Mightfish Steak", item = 13934, learn = 275, yellow = 300, green = 300, grey = 300, mats = { [13893] = 1, [2692] = 1, [3713] = 1 },
-          station = "fire", recipeItem = 13948, use = { 275, 300 } },
-        { recipe = "Lobster Stew", item = 13933, learn = 275, yellow = 300, green = 300, grey = 300, mats = { [13888] = 1, [159] = 1 },
-          station = "fire", recipeItem = 13947, use = { 275, 300 } },
-        { recipe = "Baked Salmon", item = 13935, learn = 275, yellow = 300, green = 300, grey = 300, mats = { [13889] = 1, [3713] = 1 },
-          station = "fire", recipeItem = 13949, use = { 275, 300 } },
-        -- Fish (no path of their own, see above).
+          station = "fire", recipeItem = 12228 },
+        -- Fish: candidates only while you carry the fish (SP.Candidates).
         { recipe = "Longjaw Mud Snapper", item = 4592, learn = 50, yellow = 90, green = 110, grey = 130, mats = { [6289] = 1 },
           station = "fire", recipeItem = 6328 },
         { recipe = "Bristle Whisker Catfish", item = 4593, learn = 100, yellow = 140, green = 160, grey = 180, mats = { [6308] = 1 },

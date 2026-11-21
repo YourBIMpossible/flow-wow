@@ -1,8 +1,9 @@
 -- Profession skill plans as route steps. For each profession you need to
 -- raise (a quest such as "Raise your blacksmithing skill to 20", or a planned
 -- profession that's behind your level) it works out, from what you have NOW:
---   what to make     cheapest skill-ups per material at your skill (Guides.lua,
---                    corrected by your real profession window, Recipes.lua)
+--   what to make     the best skill-up per copper or per material at your
+--                    skill (SP.Score), from Guides.lua's recipes and the ones
+--                    your profession window showed (Recipes.lua)
 --   what that needs  materials, minus what's in your bags and your bank
 --   how to get them  take them out of the bank, smelt the ore you have, mine
 --                    veins / kill mobs on this map, buy from a vendor
@@ -61,7 +62,7 @@ local function haveStepTool(id)
 end
 SP._haveStepTool = haveStepTool   -- (tests)
 
--- Profession name as the guides spell it ("first aid" -> "First Aid").
+-- Profession name as Flow's profession data spells it ("first aid" -> "First Aid").
 local function profName(lower)
     for name in ns:Each("profGuide") do
         if name:lower() == lower then return name end
@@ -260,7 +261,7 @@ local function npcPoints(names)
 end
 
 -- What an item costs at a vendor (copper): the price you last saw there,
--- else the guide's estimate. Buy steps carry it as `cost`, so the route
+-- else the estimate in Guides.lua. Buy steps carry it as `cost`, so the route
 -- lists them as blocked until you can pay (Nav.lua).
 function SP.Price(id)
     local seen = ns.db.prices and ns.db.prices[id]
@@ -354,6 +355,9 @@ local function chance(prof, step, rank)
     local known, seenRank = ns.recipes:Known(prof)
     local r = known and known[step.recipe]
     if r and seenRank == math.floor(rank) and CHANCE[r.diff] then return CHANCE[r.diff] end
+    -- A recipe known only from the window: its colour is known only at the
+    -- skill Flow saw it at (the game doesn't say where it turns).
+    if not step.learn then return 0 end
     if rank < step.learn then return 0 end
     if rank < step.yellow then return 1 end
     if rank < step.green then return 0.6 end
@@ -442,84 +446,103 @@ local function matUnits(step)
     return math.max(n, 1)
 end
 
--- A step your faction can use (a guide step may name one: its recipe or
--- meat is only sold or found on that side).
+-- A step your faction can use (a step may name one: its recipe or meat is
+-- only sold or found on that side).
 local function forYou(s)
     if not s.faction then return true end
     local mine = UnitFactionGroup and UnitFactionGroup("player")
     return not mine or mine == s.faction
 end
 
--- The guide's own path: the steps it says to use at this skill (`use =
--- { from, to }`, from public levelling guides). Only where the guide says
--- nothing does any recipe that still gives skill count, so the plan never
--- grinds a recipe on to grey when the proven path has moved on (owner: 105
--- Charred Wolf Meat for Cooking 62 -> 100).
--- `use` is one range or a list of them ({ { 110, 125 }, { 140, 160 } }).
-local function inUse(use, rank)
-    if type(use[1]) == "table" then
-        for _, u in ipairs(use) do if rank >= u[1] and rank < u[2] then return true end end
-        return false
+-- What one craft of a step costs (copper), or nil when a material has no price.
+local function perCraft(step, costOf)
+    local total = 0
+    for id, q in pairs(step.mats or {}) do
+        local p = costOf(id)
+        if not p then return nil end
+        total = total + p * q
     end
-    return rank >= use[1] and rank < use[2]
+    return total
 end
-local function onPath(steps, rank)
-    local out, any = {}, false
-    for _, s in ipairs(steps) do
-        if s.use and forYou(s) then
-            any = true
-            if inUse(s.use, rank) then out[#out + 1] = s end
+
+-- How good a step is at `rank` for what you want, worked out from the step
+-- itself: the chance of a skill point (the colour your window showed, else
+-- the step's colours), what its materials cost, what's in your bags.
+--   goal = { prof, prefer = "cheap" | "materials" | "use-bags",
+--            costOf = function(itemID) -> copper or nil (SP.MatCost unless given) }
+--     cheap: skill per copper of materials (priced = false when a material
+--            has no price; then it's skill per material, as "materials")
+--     materials: skill per material (fewest to gather or buy)
+--     use-bags: as materials; simulate puts what you can make now first
+--   have = function(itemID) -> count in bags (nil: nothing counts as carried)
+-- A recipe made from fish is worth nothing unless you carry the fish: Flow
+-- doesn't send you fishing for another profession.
+-- -> value (0: not a choice), chance, priced, makeable
+function SP.Score(step, rank, goal, have)
+    goal = goal or {}
+    if not forYou(step) then return 0, 0, false, false end
+    local c = chance(goal.prof, step, rank)
+    if c <= 0 then return 0, 0, false, false end
+    local makeable = true
+    for id, q in pairs(step.mats or {}) do
+        if ((have and have(id)) or 0) < q then
+            makeable = false
+            local s = src(id)
+            if s and s.fished then return 0, c, false, false end
         end
     end
-    if #out > 0 then return out end
-    if any then
-        -- Past what the guide covers, or a gap: whatever still gives skill.
-        local rest = {}
-        for _, s in ipairs(steps) do if forYou(s) then rest[#rest + 1] = s end end
-        return rest
+    if goal.prefer == "cheap" then
+        local per = perCraft(step, goal.costOf or SP.MatCost)
+        if per and per > 0 then return c / per, c, true, makeable end
     end
-    return steps
+    return c / matUnits(step), c, false, makeable
 end
-SP._onPath = onPath
 
--- Expected crafts per step to go from rank to target: at each point, of the
--- steps the guide uses there, the one with the most skill per material. When
--- two are as good (Charred Wolf Meat, Roasted Boar Meat), the one whose
--- materials are in your bags wins, so what you already carry gets used before
--- anything is farmed.
+-- Expected crafts per step to go from rank to target: at each point the step
+-- SP.Score rates best. When two are as good (Charred Wolf Meat, Roasted Boar
+-- Meat), the one whose materials are in your bags wins, so what you already
+-- carry gets used before anything is farmed. With "cheap" and any choice
+-- unpriced, every choice is rated by materials instead (copper and material
+-- counts don't compare). Nothing left that gives skill: the plan stops there.
 -- `have` (optional): item ID -> count in bags; defaults to your bags.
+-- `goal` (optional): SP.Score's; prefer defaults to "materials".
+-- -> crafts, order, reaches, spans, rank reached
 local simulate
-function simulate(prof, steps, rank, target, have)
+function simulate(prof, steps, rank, target, have, goal)
+    goal = goal or {}
     local crafts, order, spans = {}, {}, {}   -- spans: step -> { from, to } skill it covers
     local left = {}
     local function bag(id)
         if left[id] == nil then left[id] = (have and have[id]) or (not have and count(id)) or 0 end
         return left[id]
     end
-    local function canMake(s)
-        for id, q in pairs(s.mats or {}) do if bag(id) < q then return false end end
-        return true
-    end
-    local guard = 0
-    local function pick(cands)
-        local best, bestV, bestC, bestHave
-        for _, s in ipairs(cands) do
-            local c = chance(prof, s, rank)
-            local v = c / matUnits(s)
-            local h = canMake(s)
-            if c > 0 and forYou(s) and (not bestV or v > bestV or (v == bestV and h and not bestHave)) then
-                best, bestV, bestC, bestHave = s, v, c, h
+    local costOf, prices = goal.costOf or SP.MatCost, {}
+    local rate = { prof = prof, costOf = function(id)
+        if prices[id] == nil then prices[id] = costOf(id) or false end
+        return prices[id] or nil
+    end }
+    local want = goal.prefer or "materials"
+    local function run(prefer)
+        rate.prefer = prefer
+        local best, bestV, bestC, bestHave, unpriced
+        for _, s in ipairs(steps) do
+            local v, c, priced, h = SP.Score(s, rank, rate, bag)
+            if v > 0 then
+                if prefer == "cheap" and not priced then unpriced = true end
+                local better
+                if not bestV then better = true
+                elseif prefer == "use-bags" and h ~= bestHave then better = h
+                else better = v > bestV or (v == bestV and h and not bestHave) end
+                if better then best, bestV, bestC, bestHave = s, v, c, h end
             end
         end
-        return best, bestC, bestHave
+        return best, bestC, bestHave, unpriced
     end
+    local guard = 0
     while rank < target and guard < 2000 do
         guard = guard + 1
-        local path = onPath(steps, rank)
-        local best, bestC, bestHave = pick(path)
-        -- The guide's step for here gives nothing (grey early in your game):
-        -- any recipe that still does.
-        if not best and path ~= steps then best, bestC, bestHave = pick(steps) end
+        local best, bestC, bestHave, unpriced = run(want)
+        if want == "cheap" and unpriced then best, bestC, bestHave = run("materials") end
         if not best then break end
         if not crafts[best] then crafts[best] = 0; order[#order + 1] = best; spans[best] = { math.floor(rank) } end
         crafts[best] = crafts[best] + 1
@@ -527,7 +550,7 @@ function simulate(prof, steps, rank, target, have)
         rank = rank + bestC
         spans[best][2] = math.min(math.floor(rank + 1e-9), target)
     end
-    return crafts, order, rank >= target, spans
+    return crafts, order, rank >= target, spans, rank
 end
 
 -- Materials that stand in for `id`: dropped materials of other steps that
@@ -559,10 +582,10 @@ end
 
 -------------------------------------------------------------------------------
 -- Drop rates: how many kills a dropped material really takes. Starts from the
--- guide's rough rate and moves to yours as you loot those mobs.
+-- listed rough rate and moves to yours as you loot those mobs.
 -------------------------------------------------------------------------------
 
-local PRIOR_KILLS = 5           -- how much the guide's rate counts, in kills
+local PRIOR_KILLS = 5           -- how much the listed rate counts, in kills
 local DEFAULT_RATE = 0.4
 
 function SP.DropRate(id)
@@ -909,7 +932,7 @@ function SP.TierGoal(prof, level, optional)
                       details = { why },
                       blockedBy = "Flow needs Questie to find the quest's giver" }), tier
     end
-    -- Artisan is taught by one trainer per side (guide `artisan`), not the
+    -- Artisan is taught by one trainer per side (`artisan`), not the
     -- city's (Enchanting: Annora, inside Uldaman).
     local g = ns:Get("profGuide", prof)
     local names = (tier.cap == 225 and g and g.artisan) and SP.StepTrainers(prof, { trainer = g.artisan })
@@ -921,7 +944,7 @@ function SP.TierGoal(prof, level, optional)
                   blockedBy = #pts == 0 and ("no known " .. prof .. " trainer") or nil }), tier
 end
 
--- The tool a profession needs (guide `tool`: Mining Pick, Blacksmith Hammer,
+-- The tool a profession needs (`tool`: Mining Pick, Blacksmith Hammer,
 -- Fishing Pole) when you don't have one: a "Buy a X" step, and X's name so
 -- the steps that need it can say "needs a X". Nothing when you have it.
 -- Also used for the optional skill-ups in Goals.lua.
@@ -939,7 +962,7 @@ function SP:ToolGoal(prof)
     }, name
 end
 
--- A lure for a profession that uses one (Fishing: guide `lure`, the Shiny
+-- A lure for a profession that uses one (Fishing: `lure`, the Shiny
 -- Bauble), when you carry none. Optional and cheap: planned when its vendor
 -- is roughly on the way (often the same one that sells the pole).
 function SP:LureGoal(prof)
@@ -1011,7 +1034,7 @@ local function questRecipeStop(s)
     local low = need and UnitLevel and (UnitLevel("player") or 0) < need
     return { key = "recipequest:" .. id, kind = "accept", points = pts, npcs = giver and { giver } or nil,
              text = string.format("Accept %s (%s): %s plans", (q and q.name) or "the quest", who, s.recipe),
-             details = { string.format("The levelling guides make %s here. No vendor or trainer has it: %s's quest gives it.", s.recipe, who) },
+             details = { string.format("Flow's plan makes %s here. No vendor or trainer has it: %s's quest gives it.", s.recipe, who) },
              blockedBy = (low and string.format("needs level %d", need))
                  or (#pts == 0 and ("Flow doesn't know where " .. who .. " stands")) or nil }
 end
@@ -1091,7 +1114,7 @@ local function recipeStop(prof, s, known, rank, banked)
              cost = SP.Price(s.recipeItem),
              text = "Buy " .. name,
              details = { fish and ("So you can cook what you catch (skip it if you already know " .. s.recipe .. ").")
-                             or ("The levelling guides make " .. s.recipe .. " here. A vendor sells it; the trainer doesn't teach it.") },
+                             or ("Flow's plan makes " .. s.recipe .. " here. A vendor sells it; the trainer doesn't teach it.") },
              blockedBy = #pts == 0 and ("Flow doesn't know who sells " .. name) or nil }
 end
 
@@ -1118,8 +1141,30 @@ SP._recipeStop = recipeStop  -- for /flow test
 -------------------------------------------------------------------------------
 
 -- Blacksmithing gear is made at an anvil. (Recipes Flow read from your
--- profession window don't say where; the guide's own steps do.)
+-- profession window don't say where; the steps in Guides.lua do.)
 local PROF_STATION = { Blacksmithing = "anvil" }
+
+-- What the planner chooses from: the profession's steps (Guides.lua), and
+-- each recipe your profession window showed that they don't have, as a step
+-- of its own: its materials and the colour it had at the skill Flow saw.
+-- (One with materials the game hadn't loaded isn't one: Recipes.lua.)
+-- known: recipes:Known(prof).
+function SP.Candidates(prof, steps, known)
+    local out, listed = {}, {}
+    for _, s in ipairs(steps or {}) do out[#out + 1] = s; listed[s.recipe] = true end
+    local names = {}
+    for name, r in pairs(known or {}) do
+        if not listed[name] and type(r) == "table" and r.reagents and next(r.reagents) and not r.partial then
+            names[#names + 1] = name
+        end
+    end
+    table.sort(names)
+    for _, name in ipairs(names) do
+        local r = known[name]
+        out[#out + 1] = { recipe = name, item = r.item, mats = r.reagents, observed = true, station = PROF_STATION[prof] }
+    end
+    return out
+end
 local gainCache = {}      -- item ID -> { gain, role, link, slot } or false (not an upgrade)
 local pendingItems = {}   -- item IDs the game hadn't loaded: re-plan once it has
 
@@ -1593,10 +1638,14 @@ local function planProfession(prof, t, out)
             return
         end
     end
+    -- A craft with no steps in Guides.lua plans from the recipes your
+    -- profession window showed; until Flow has seen it, it can't plan.
+    local known = ns.recipes:Known(prof)
+    if not g and known and next(known) then g = { kind = "craft", steps = {} } end
     if not g then
         add({ key = "skillplan:" .. prof, kind = "skill", points = { playerPoint() },
               text = string.format("Raise %s to %d", prof, t.target),
-              blockedBy = "Flow has no levelling data for " .. prof .. " yet" })
+              blockedBy = "open the " .. prof .. " window once so Flow can plan from your recipes" })
         return
     end
     handled[prof] = true
@@ -1667,8 +1716,11 @@ local function planProfession(prof, t, out)
 
     -- Mining also levels from the veins themselves.
     local steps = g.steps or {}
-    local crafts, order, reaches, spans = simulate(prof, steps, rank, t.target)
-    -- Each step's share of the climb, and what the guide does after it.
+    -- Optional skill-ups use what you carry first; the rest go by price
+    -- (SP.Score; by materials while something has no price).
+    local crafts, order, reaches, spans, reached = simulate(prof, SP.Candidates(prof, steps, known), rank, t.target, nil,
+        { prefer = t.optional and "use-bags" or "cheap" })
+    -- Each step's share of the climb, and what the plan makes after it.
     local function stepTo(s) return spans[s] and spans[s][2] or t.target end
     local function after(s)
         for i, o in ipairs(order) do if o == s then return order[i + 1] end end
@@ -1745,7 +1797,6 @@ local function planProfession(prof, t, out)
     local raw = {}
 
     -- Learn recipes the plan uses that your profession window doesn't list.
-    local known = ns.recipes:Known(prof)
     for _, s in ipairs(order) do
         if s.recipeItem then
             -- Bought, not trained (Recipe: Brilliant Smallfish).
@@ -1844,7 +1895,7 @@ local function planProfession(prof, t, out)
                 string.format("%d takes %s %d -> %d: %s.", planned, prof, from, stepTo(s),
                     c >= 1 and "each one gives a skill point while it's orange"
                     or "it isn't orange, so only some give a point (Flow counted on that)"),
-                nx and string.format("Then the levelling guides switch to %s: past %d this one gives too little.", nx.recipe, stepTo(s))
+                nx and string.format("Then %s: past %d it gives more skill for what it takes.", nx.recipe, stepTo(s))
                     or "More than that won't raise the skill further for now, so it'd be wasted materials.",
             }
             if n < planned then
@@ -2127,9 +2178,15 @@ local function planProfession(prof, t, out)
     end
 
     if not reaches then
+        -- Past what Flow can work out: a window recipe's colour is known only
+        -- at the skill Flow saw it, so after those crafts it needs a fresh look.
+        local past = math.floor(reached + 1e-9)
+        local seenOnly = false
+        for _, s in ipairs(order) do if s.observed then seenOnly = true end end
         add({ key = "skillplan:more:" .. prof, kind = "skill", points = { playerPoint() },
-              text = string.format("%s past %d: open the %s window so Flow learns your recipes", prof, rank, prof),
-              blockedBy = "Flow's guide data runs out here" })
+              text = string.format("%s past %d: open the %s window so Flow reads your recipes", prof, past, prof),
+              blockedBy = seenOnly and string.format("Flow knows your recipes' colours only at %s %d: open the window again after these crafts", prof, rank)
+                  or string.format("no recipe Flow knows gives %s skill past %d (learn one at the trainer)", prof, past) })
     end
 end
 
@@ -2196,8 +2253,10 @@ function SP:Explain()
         ns:Print(string.format("%s %s -> %d%s%s", prof, tostring(rank), to, to < t.target and (" (cap; wants " .. t.target .. ")") or "",
             t.quest and (" (" .. t.quest .. ")") or ""))
         local g = ns:Get("profGuide", prof)
-        if g and g.steps and rank then
-            local crafts, order = simulate(prof, g.steps, rank, to)
+        local known = ns.recipes:Known(prof)
+        if rank and ((g and g.steps) or known) then
+            local crafts, order = simulate(prof, SP.Candidates(prof, g and g.steps, known), rank, to, nil,
+                { prefer = t.optional and "use-bags" or "cheap" })
             for _, s in ipairs(order) do
                 local mats = {}
                 for id, q in pairs(s.mats or {}) do

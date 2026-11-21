@@ -249,3 +249,95 @@ ns:Register("test", "professions: an unknown skill booster stays unknown; an Eng
     t:ok(o and type(o.seen) == "string", "and when it was read")
     SB.Observed()[999004] = nil
 end)
+
+-------------------------------------------------------------------------------
+-- W4c: the skill-up plan is worked out (SP.Score), not a fixed path: from a
+-- recipe's colours, what its materials cost, and what's in your bags.
+-------------------------------------------------------------------------------
+
+local MAT_A, MAT_B, FISH = 990001, 990002, 6289   -- (6289: Raw Longjaw Mud Snapper, fished)
+local function step(name, mats) return { recipe = name, learn = 1, yellow = 50, green = 60, grey = 70, mats = mats } end
+local function priced(list) return function(id) return list[id] end end
+
+ns:Register("test", "professions: SP.Score rates a step by skill per copper, else per material", function(t)
+    local SP = ns.skillPlan
+    local s = step("A__test", { [MAT_A] = 2 })
+    local v, c, isPriced = SP.Score(s, 10, { prof = "X__test", prefer = "cheap", costOf = priced({ [MAT_A] = 50 }) })
+    t:near(v, 1 / 100, 1e-12, "orange, 100c a craft: 1 point per 100c")
+    t:eq(c, 1, "orange: a point every craft"); t:ok(isPriced, "priced")
+    v, c = SP.Score(s, 55, { prof = "X__test", prefer = "cheap", costOf = priced({ [MAT_A] = 50 }) })
+    t:near(v, 0.6 / 100, 1e-12, "yellow: 0.6 of a point per 100c"); t:eq(c, 0.6, "yellow chance")
+    v, _, isPriced = SP.Score(s, 10, { prof = "X__test", prefer = "cheap", costOf = priced({}) })
+    t:near(v, 1 / 2, 1e-12, "no price: per material"); t:ok(not isPriced, "and says it isn't priced")
+    t:eq((SP.Score(s, 70, { prof = "X__test" })), 0, "grey: not a choice")
+    t:eq((SP.Score({ recipe = "Seen__test", mats = { [MAT_A] = 1 } }, 10, { prof = "X__test" })), 0,
+        "no colours and not seen at this skill: not a choice")
+end)
+
+ns:Register("test", "professions: cheap goes by price, and by materials while one has no price", function(t)
+    local SP = ns.skillPlan
+    local a, b = step("A__test", { [MAT_A] = 1 }), step("B__test", { [MAT_B] = 3 })
+    local cheap = { prefer = "cheap", costOf = priced({ [MAT_A] = 100, [MAT_B] = 10 }) }
+    local _, order, reaches = SP._simulate("X__test", { a, b }, 1, 20, {}, cheap)
+    t:eq(order[1], b, "B costs 30c a point, A 100c: B"); t:ok(reaches, "1 -> 20 reaches")
+    _, order = SP._simulate("X__test", { a, b }, 1, 20, {}, { prefer = "materials" })
+    t:eq(order[1], a, "by materials: A (one each)")
+    _, order = SP._simulate("X__test", { a, b }, 1, 20, {}, { prefer = "cheap", costOf = priced({ [MAT_B] = 10 }) })
+    t:eq(order[1], a, "A unpriced: copper and counts don't compare, so by materials")
+end)
+
+ns:Register("test", "professions: use-bags makes what you carry first", function(t)
+    local SP = ns.skillPlan
+    local a, b = step("A__test", { [MAT_A] = 1 }), step("B__test", { [MAT_B] = 3 })
+    local crafts, order = SP._simulate("X__test", { a, b }, 1, 20, { [MAT_B] = 30 }, { prefer = "use-bags" })
+    t:eq(order[1], b, "B's materials are in your bags: B first")
+    t:eq(crafts[b], 10, "as many as your bags make (30 / 3)")
+    t:eq(order[2], a, "then the one with fewest materials")
+end)
+
+ns:Register("test", "professions: a fish recipe counts only while you carry the fish", function(t)
+    local SP = ns.skillPlan
+    local f, a = step("Fish__test", { [FISH] = 1 }), step("A__test", { [MAT_A] = 2 })
+    local _, order = SP._simulate("X__test", { f, a }, 1, 5, {})
+    for _, s in ipairs(order) do t:ok(s ~= f, "no fish in your bags: no fish recipe") end
+    t:eq(order[1], a, "the other recipe instead")
+    local crafts
+    crafts, order = SP._simulate("X__test", { f, a }, 1, 5, { [FISH] = 2 })
+    t:eq(order[1], f, "fish in your bags: the fish recipe")
+    t:eq(crafts[f], 2, "as many as you carry")
+end)
+
+ns:Register("test", "professions: the window's recipes join the steps, sorted, whole ones only", function(t)
+    local SP = ns.skillPlan
+    local a = step("A__test", { [MAT_A] = 1 })
+    local known = {
+        ["A__test"] = { diff = "optimal", reagents = { [MAT_A] = 1 } },
+        ["Zeta__test"] = { diff = "optimal", item = 7, reagents = { [MAT_B] = 1 } },
+        ["Alpha__test"] = { diff = "medium", reagents = { [MAT_A] = 2 } },
+        ["Part__test"] = { diff = "optimal", reagents = { [MAT_A] = 1 }, partial = true },
+        ["Empty__test"] = { diff = "optimal", reagents = {} },
+    }
+    local out = SP.Candidates("Blacksmithing", { a }, known)
+    t:eq(#out, 3, "the step, then two whole window recipes")
+    t:eq(out[1], a, "the profession's own step first, once")
+    t:eq(out[2].recipe, "Alpha__test", "then by name"); t:eq(out[3].recipe, "Zeta__test", "")
+    t:ok(out[3].observed, "marked as seen in the window"); t:eq(out[3].item, 7, "with its item")
+    t:eq(out[3].mats[MAT_B], 1, "and its materials"); t:eq(out[3].station, "anvil", "and the profession's station")
+    t:eq(#SP.Candidates("X__test", nil, nil), 0, "nothing known: nothing")
+end)
+
+ns:Register("test", "professions: a recipe seen only in the window plans from the skill Flow saw it at", function(t)
+    local SP = ns.skillPlan
+    local known = { ["Obs__test"] = { diff = "optimal", reagents = { [MAT_A] = 1 } } }
+    with(ns.recipes, "Known", function(_, prof) if prof == "X__test" then return known, 50 end end, function()
+        local list = SP.Candidates("X__test", {}, known)
+        local crafts, order, reaches, _, reached = SP._simulate("X__test", list, 50, 60, {})
+        t:eq(order[1] and order[1].recipe, "Obs__test", "planned at the skill it was seen at")
+        t:eq(crafts[order[1]], 1, "for that point: past it Flow doesn't know its colour")
+        t:ok(not reaches, "so the plan stops"); t:eq(reached, 51, "at 51")
+        local _, none = SP._simulate("X__test", list, 52, 60, {})
+        t:eq(#none, 0, "not seen at 52: not planned")
+    end)
+    local _, order, reaches, _, reached = SP._simulate("X__test", {}, 10, 20, {})
+    t:eq(#order, 0, "no recipes: nothing to make"); t:ok(not reaches, "doesn't reach"); t:eq(reached, 10, "stays at 10")
+end)

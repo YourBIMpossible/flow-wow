@@ -274,7 +274,7 @@ end
 -- The legendary item colour (|cffff8000): the goal box's border.
 H.GOAL_BORDER = { 1, 0.5, 0 }
 
--- ", then Smoked Bear Meat": what the levelling guides make after this step
+-- ", then Smoked Bear Meat": what Flow's plan makes after this step
 -- (the planner's `nextRecipe`), so the goal shows it's one leg of the climb.
 function H.ThenText(g)
     return (g and g.nextRecipe) and (", then " .. g.nextRecipe) or ""
