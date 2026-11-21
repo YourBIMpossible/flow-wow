@@ -110,3 +110,13 @@ ns:Register("test", "safety: a clearly better auction price beats disenchanting 
     t:eq(D.AuctionBeatsDisenchant(nil, 2000), false, "no price seen: disenchant")
 end)
 
+ns:Register("test", "safety: Well Fed food is never sold as outgrown (F-004)", function(t)
+    local D = ns.disposition
+    t:eq(D.OutgrownVerdict("food", 1, 45, true), nil, "Well Fed food: kept")
+    t:eq(D.OutgrownVerdict("food", 1, 45, nil), nil, "tooltip not read yet: kept")
+    local v = D.OutgrownVerdict("food", 1, 45, false)
+    t:eq(v and v.action, "sell", "plain outgrown food: sold")
+    v = D.OutgrownVerdict("drink", 1, 45, nil)
+    t:eq(v and v.action, "sell", "outgrown drink: sold")
+    t:eq(D.OutgrownVerdict("food", 44, 45, false), nil, "not outgrown: kept")
+end)

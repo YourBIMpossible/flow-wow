@@ -695,14 +695,33 @@ function D:BestConsumableTier(kind)
     end
     return best
 end
+-- Pure (F-004): outgrown food or drink to sell, or nil. Well Fed food is
+-- never "outgrown" (the buff-food logic eats it for the buff, not the heal);
+-- food whose tooltip isn't read yet (buffFood nil) isn't sold either.
+function D.OutgrownVerdict(kind, minLevel, best, buffFood)
+    if not (kind and best and (minLevel or 0) + TIER_STEP <= best) then return nil end
+    if kind == "food" and buffFood ~= false then return nil end
+    return { action = "sell", reason = string.format("outgrown: you carry %d+ better %s", KEEP_BETTER, kind) }
+end
+-- Well Fed food, from the tooltip: true / false, nil = not readable yet.
+local function wellFed(link)
+    local BI = ns.buffItems
+    if not (link and BI and BI.IsBuffFood and ns.gear and ns.gear.TooltipLines) then return nil end
+    local ok, lines = pcall(ns.gear.TooltipLines, ns.gear, link)
+    if not ok or type(lines) ~= "table" or #lines == 0 then return nil end
+    local text = {}
+    for _, l in ipairs(lines) do text[#text + 1] = type(l) == "table" and l.left or l end
+    return BI.IsBuffFood(text)
+end
+
 reg("outgrownConsumable", 22, function(i)
     if i.classID ~= 0 or not i.id then return nil end
     local kind = consumableKind(i.id)
     if not kind then return nil end
     local best = D:BestConsumableTier(kind)
-    if best and (i.minLevel or 0) + TIER_STEP <= best then
-        return { action = "sell", reason = string.format("outgrown: you carry %d+ better %s", KEEP_BETTER, kind) }
-    end
+    local buffFood
+    if kind == "food" then buffFood = wellFed(i.link) end
+    return D.OutgrownVerdict(kind, i.minLevel, best, buffFood)
 end)
 
 -- Only another class can use it (0.35.270). "I have a ton of these mage
