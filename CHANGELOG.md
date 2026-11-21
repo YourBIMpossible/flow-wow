@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Fixed: a weapon upgrade you can't wear until you train its skill is rated Need, with a badge at vendors.
+- Fixed: a dual wielder's one-handers are compared with the off hand too.
+- Fixed: merchant, bank and quest-item advice share one "bags nearly full" threshold.
+- Fixed: completed quests and map positions no longer go stale during a session.
+- Changed: spell levels learned from trainers are sanity-checked against Flow's list and show their source; `/flow facts reset` forgets them.
+- Added: `/flow spots forget` and `/flow places forget`; wrong learned spots and NPC roles can be corrected.
+- Fixed: the Flow Trader auto-open setting keeps your explicit choice.
 - Offline tests: a test can no longer end the run or fake its result; a file that fails to load or is missing, a stale known-failure name, or a filter matching nothing now fails the run; SKIP-FAIL and known allowances are reported; -Root, -Known and -Strict added.
 - Structure check: fails on any .lua in the add-on tree that Flow.toc doesn't list; -Root added.
 - README: auto-selling non-junk items is off by default.

@@ -30,10 +30,10 @@ function MM.Index(page, perPage, i)
 end
 
 -- What to put on a button: the score differences per spec, or nil for no
--- badge (not gear, not loaded yet, or gear you can't use).
+-- badge (not gear, not loaded yet, or gear you can't use even once you
+-- train a weapon skill: F-005).
 function MM.Diffs(cmp)
-    if not (cmp and cmp.canUse and cmp.diffs) then return nil end
-    return cmp.diffs
+    return G.MarkDiffs(cmp)
 end
 
 -- Is it an upgrade for the spec you level as? The gain, or nil.

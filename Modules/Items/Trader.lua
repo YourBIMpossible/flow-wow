@@ -258,7 +258,7 @@ function T.ReadDone()
     if #T.deals > 0 and T.On() then
         local best = T.deals[1]
         ns:Print(string.format("Flow Trader: %d deal(s) on the auction house; the best: %s", #T.deals, T.Line(best)))
-        if not (ns.db.trader and ns.db.trader.quiet) then T:Show() end
+        if T.OpensWithDeals() then T:Show() end
     end
     if T.frame and T.frame:IsShown() then T:Fill() end
 end
@@ -423,7 +423,7 @@ ns:On("AUCTION_HOUSE_SHOW", function()
     ahOpen = true
     -- Your route sent you here to buy something: the window opens on it.
     C_Timer.After(0.8, function()
-        if ahOpen and T.On() and ns.db.trader and not ns.db.trader.quiet and #T.Needs() > 0 then T:Show() end
+        if ahOpen and T.On() and T.OpensWithDeals() and #T.Needs() > 0 then T:Show() end
     end)
 end)
 ns:On("AUCTION_HOUSE_CLOSED", function()
@@ -570,6 +570,15 @@ ns:Register("gameButton", "auctiontrader", {
 
 ns:OnLoad(function(saved) saved.trader = saved.trader or {} end)
 
+-- Does the window open with the deals it finds? (Your choice, as you saved
+-- it: "on" is kept as quiet = false, not dropped, so a later default can't
+-- take it from you. Unset: it opens.)
+function T.OpensWithDeals() return not (ns.db and ns.db.trader and ns.db.trader.quiet) end
+function T.SetOpensWithDeals(on)
+    ns.db.trader = ns.db.trader or {}
+    ns.db.trader.quiet = not on
+end
+
 function T.Lines()
     local has = T.Has()
     local out = { string.format("Flow Trader%s: %d deal(s)%s", T.On() and "" or " (off)", #T.deals,
@@ -610,7 +619,7 @@ if ns.settings and ns.settings.AddCheck then
         note = "(at the auction house)",
         tip = "After Flow reads the auction house's listings, the Flow Trader window opens when it found deals: listings under a vendor's price, or at half an item's usual price or less. "
             .. "Off: it stays closed (its tab on the auction house opens it), and Flow still says in chat how many it found.",
-        get = function() return not (ns.db.trader and ns.db.trader.quiet) end,
-        set = function(on) ns.db.trader.quiet = (not on) or nil end,
+        get = T.OpensWithDeals,
+        set = T.SetOpensWithDeals,
     })
 end

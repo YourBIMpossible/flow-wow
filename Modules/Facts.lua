@@ -39,6 +39,7 @@ ns:OnLoad(function(saved)
     saved.facts.spells = saved.facts.spells or {}
     saved.facts.lacks = saved.facts.lacks or {}
     saved.facts.first = saved.facts.first or {}
+    saved.facts.firstAt = saved.facts.firstAt or {}
 end)
 
 -- A spell's key: its name, with its rank where the game gives one.
@@ -94,31 +95,47 @@ function F.FirstFromSeen(spells, first, class, known)
 end
 
 -- The level a trainer first teaches a spell: the lowest of yours and what
--- came with Flow. nil: no trainer was seen with it.
+-- came with Flow, and where it came from ("yours" or "shared"). nil: no
+-- trainer was seen with it.
 function F.FirstLevel(class, name, own, sharedFacts)
     own = own or (ns.db and ns.db.facts) or {}
     sharedFacts = sharedFacts or F.Shared()
-    local best
-    for _, src in ipairs({ own, sharedFacts }) do
+    local best, from
+    for i, src in ipairs({ own, sharedFacts }) do
         local lv = src.first and src.first[class] and src.first[class][name]
-        if lv and (not best or lv < best) then best = lv end
+        if lv and (not best or lv < best) then best, from = lv, (i == 1 and "yours" or "shared") end
     end
-    return best
+    return best, from
 end
 
--- Pure: the class list's levels put right by what trainers teach, in place
--- (the list is Flow's guess from Classic; the trainer is the truth). The
--- list's own level is kept as listLevel. Spells from a quest or with a note
--- of their own aren't a trainer's. firstOf(name) -> level or nil.
--- -> what changed: { { spell, from, to } }.
+-- Pure: is a learned level believable for a spell the list puts at listLevel?
+-- A trainer moves a spell a few levels on WoW: Forever (Rake 20 -> 24), not
+-- across the game: a wrong or old line farther than this is not used.
+F.MAX_SHIFT = 10
+function F.Plausible(level, listLevel)
+    level, listLevel = tonumber(level), tonumber(listLevel)
+    if not level or level < 1 or level > 60 then return false end
+    return not listLevel or math.abs(level - listLevel) <= F.MAX_SHIFT
+end
+
+-- Pure: the class list's levels put right by what trainers teach (the list
+-- is Flow's guess from Classic; the trainer is the truth). The list's own
+-- level is kept as listLevel and is always the base: a learned level is laid
+-- over it only while it is believable (F.Plausible), and when the learned
+-- level is gone (/flow facts reset) the list's own comes back. Spells from a
+-- quest or with a note of their own aren't a trainer's.
+-- firstOf(name) -> level, from or nil.
+-- -> what changed: { { spell, from, to, source } } (source nil: back to the list).
 function F.FixLevels(list, firstOf)
     local changed = {}
     for _, s in ipairs(list or {}) do
         if s.spell and not s.quest and not s.note then
-            local lv = firstOf(s.spell)
-            if lv and lv ~= s.level then
-                s.listLevel = s.listLevel or s.level
-                changed[#changed + 1] = { spell = s.spell, from = s.level, to = lv }
+            local base = s.listLevel or s.level
+            local lv, from = firstOf(s.spell)
+            if not (lv and F.Plausible(lv, base)) then lv, from = base, nil end
+            if lv ~= s.level then
+                s.listLevel = base
+                changed[#changed + 1] = { spell = s.spell, from = s.level, to = lv, source = from }
                 s.level = lv
             end
         end
@@ -133,8 +150,16 @@ function F.Apply(class)
     if not list then return 0 end
     local changed = F.FixLevels(list, function(name) return F.FirstLevel(class, name) end)
     for _, c in ipairs(changed) do
-        F.fixed[c.spell] = c
-        ns:Log("facts", string.format("%s: trainers teach it at level %d (Flow's list said %d)", c.spell, c.to, c.from))
+        if c.source then
+            local at = c.source == "yours" and ns.db.facts.firstAt and ns.db.facts.firstAt[class]
+            c.at = at and at[c.spell] or nil
+            F.fixed[c.spell] = c
+            ns:Log("facts", string.format("%s: trainers teach it at level %d (Flow's list said %d; %s)", c.spell, c.to, c.from,
+                c.source == "yours" and "seen by you" or "came with Flow"))
+        else
+            F.fixed[c.spell] = nil
+            ns:Log("facts", string.format("%s: back to Flow's list, level %d", c.spell, c.to))
+        end
     end
     return #changed
 end
@@ -234,6 +259,9 @@ function F.TrainerRead(class, services, level, known)
         if known and not known[s.name] and (s.sub == nil or s.sub == "" or s.sub == "Rank 1")
             and F.NoteFirst(ns.db.facts.first, class, s.name, s.level) then
             n, firsts = n + 1, firsts + 1
+            ns.db.facts.firstAt = ns.db.facts.firstAt or {}
+            ns.db.facts.firstAt[class] = ns.db.facts.firstAt[class] or {}
+            ns.db.facts.firstAt[class][s.name] = time()
         end
     end
     if firsts > 0 and class == select(2, UnitClass("player")) then F.Apply(class) end
@@ -310,10 +338,15 @@ function F.Lines()
         end
     end
     local fixed = {}
-    for _, c in pairs(F.fixed) do fixed[#fixed + 1] = string.format("%s %d -> %d", c.spell, c.from, c.to) end
+    for _, c in pairs(F.fixed) do
+        local age = c.at and math.floor((time() - c.at) / 86400)
+        fixed[#fixed + 1] = string.format("%s %d -> %d (%s%s)", c.spell, c.from, c.to,
+            c.source == "yours" and "seen by you" or "came with Flow", age and string.format(", %d day(s) ago", age) or "")
+    end
     table.sort(fixed)
     if #fixed > 0 then out[#out + 1] = "  your class list put right by trainers: " .. table.concat(fixed, ", ") end
     out[#out + 1] = "  share them with every Flow player: /flow places share (game facts only, nothing about you)"
+    out[#out + 1] = "  a level wrong? /flow facts reset forgets the first levels you learned; the list's own come back"
     return out
 end
 -- At login: "first" filled from trainer lines read before it existed (once
@@ -332,10 +365,26 @@ ns:On("PLAYER_LOGIN", function()
     end)
 end)
 
-ns.commands.facts = function()
+-- Pure: forget the first levels this account learned (what came with Flow
+-- stays: it is in the addon). -> how many were forgotten.
+function F.ResetFirst(facts)
+    local n = 0
+    if not facts then return n end
+    for _, list in pairs(facts.first or {}) do for _ in pairs(list) do n = n + 1 end end
+    facts.first, facts.firstAt = {}, {}
+    return n
+end
+
+ns.commands.facts = function(arg)
+    if arg == "reset" then
+        local n = F.ResetFirst(ns.db.facts)
+        F.Apply(select(2, UnitClass("player")))
+        ns:Print(string.format("forgot %d first level(s) you learned; your class list uses its own levels again (what came with Flow still applies)", n))
+        return
+    end
     for i, l in ipairs(F.Lines()) do if i == 1 then ns:Print(l) else print(l) end end
 end
 ns:Register("help", "facts", { order = 61, title = "What Flow learns from the game", lines = {
     "What trainers really teach, which listed spells they don't have, and where unplaced quests were done: kept and used at once.",
-    "/flow facts: the count. /flow places share lists them for sharing (docs/SHARE-PLACES.md).",
+    "/flow facts: the count. /flow facts reset: forget the first levels you learned. /flow places share lists them for sharing (docs/SHARE-PLACES.md).",
 } })

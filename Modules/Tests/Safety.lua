@@ -126,3 +126,160 @@ ns:Register("test", "safety: the diagnostics header doesn't name the character (
     t:ok(line:find("PALADIN", 1, true) and line:find("level 12", 1, true), "class and level are there")
     t:eq(line:match("^character %((.-)%),"), "PALADIN", "no name or realm before the class")
 end)
+
+ns:Register("test", "safety: an upgrade once you train its weapon skill is Need, with a vendor badge (F-005)", function(t)
+    local R, G, MM = ns.rollHint, ns.gear, ns.merchantMarks
+    local trainable = { canUse = false, needsTraining = true, skill = "Swords", diffs = { dps = 3.2, tank = -1 } }
+    local v = R.Verdict(trainable, "dps")
+    t:eq(v and v.roll, "need", "a trainable upgrade: Need, as the bags keep it")
+    t:ok(v and v.text:find("once you train Swords", 1, true), "and it says which skill to train")
+    t:eq((R.ArrowFor(v)), true, "the roll window gets the upgrade arrow")
+    t:eq(R.Fate(v, true, true), "need", "not sent to disenchant or the vendor")
+    v = R.Verdict({ canUse = false, needsTraining = true, diffs = { dps = 0.1 } }, "dps")
+    t:eq(v and v.roll, "greed", "trainable but not better: Greed")
+    t:eq(R.Verdict({ canUse = false }, "dps").roll, "greed", "can't wear it at all: still Greed")
+    t:eq(G.MarkDiffs(trainable), trainable.diffs, "bag and roll marks show the trainable item's scores")
+    t:eq(MM.Diffs(trainable), trainable.diffs, "the vendor badge shows them too")
+    t:eq(MM.UpgradeFor(trainable, "dps"), 3.2, "and the vendor calls it an upgrade")
+    t:eq(MM.Diffs({ canUse = false }), nil, "unwearable gear: no badge")
+    t:eq(G.MarkDiffs({ canUse = true }), nil, "no scores: no badge")
+end)
+
+ns:Register("test", "safety: a dual wielder's one-hander is compared with the off hand too (F-006)", function(t)
+    local W = ns.gear.WeaponSlots
+    local function same(a, b) return table.concat(a, ",") == table.concat(b, ",") end
+    t:ok(same(W("INVTYPE_WEAPON", false, true, "INVTYPE_WEAPON"), { 16 }), "can't dual wield: the main hand only")
+    t:ok(same(W("INVTYPE_WEAPON", true, true, "INVTYPE_WEAPON"), { 16, 17 }), "dual wielding: the weaker of both hands")
+    t:ok(same(W("INVTYPE_WEAPON", true, false, nil), { 16, 17 }), "dual wielder with an empty off hand: it fills it")
+    t:ok(same(W("INVTYPE_WEAPON", true, true, "INVTYPE_SHIELD"), { 16 }), "a shield in the off hand: the main hand only")
+    t:ok(same(W("INVTYPE_WEAPON", true, true, nil), { 16 }), "off hand not loaded yet: the main hand only")
+    t:ok(same(W("INVTYPE_WEAPONOFFHAND", true, true, "INVTYPE_WEAPON"), { 17 }), "an off-hand weapon: the off hand")
+    t:ok(same(W("INVTYPE_SHIELD", true, true, "INVTYPE_WEAPON"), { 17 }), "a shield: the off hand")
+end)
+
+ns:Register("test", "safety: one \"bags nearly full\" threshold for merchant, bank and quest items (F-008)", function(t)
+    local N, B, QG = ns.BAGS_NEARLY_FULL, ns.banker, ns.questBags
+    t:eq(ns.BagsNearlyFull(N), true, "at the threshold: nearly full")
+    t:eq(ns.BagsNearlyFull(N + 1), false, "one more free: not")
+    t:eq(ns.BagsNearlyFull(nil), false, "not known: not nearly full")
+    t:eq(B.WorthAStop(1, N), true, "the bank step agrees at the threshold")
+    t:eq(B.WorthAStop(1, N + 1), false, "and above it")
+    local g = { key = "1:done", weight = 1 }
+    QG.MarkStep(g, 2, N)
+    t:eq(g.keep, true, "a quest hand-in is pulled forward at the threshold")
+    g = { key = "1:done", weight = 1 }
+    QG.MarkStep(g, 2, N + 1)
+    t:ok(not g.keep, "and not above it")
+    local plan = { slots = 2, turnin = { { title = "Q", slots = 2 } }, bank = {}, sell = {} }
+    t:eq(#QG.Advice(plan, N), 1, "quest-item advice speaks at the threshold")
+    t:eq(#QG.Advice(plan, N + 1), 0, "and not above it")
+end)
+
+ns:Register("test", "safety: saved-data updates run once each, in order (F-014)", function(t)
+    local runs = {}
+    local function m(key, order, fn)
+        return { key = key, value = { order = order, run = fn or function(db) runs[#runs + 1] = key; db[key] = true end } }
+    end
+    local db = {}
+    local ran = ns:RunMigrations(db, false, { m("zzB", 2), m("zzA", 1), m("zzC", 2) })
+    t:eq(table.concat(ran, ","), "zzA,zzB,zzC", "in order, then by key")
+    t:eq(db.version, 2, "the version is the highest order applied")
+    ran = ns:RunMigrations(db, false, { m("zzB", 2), m("zzA", 1), m("zzC", 2) })
+    t:eq(#ran, 0, "a second load runs none of them again")
+    ran = ns:RunMigrations(db, false, { m("zzA", 1), m("zzLate", 1) })
+    t:eq(table.concat(ran, ","), "zzLate", "one added later with a low order still runs, once")
+    local boom = m("zzBoom", 3, function() error("boom") end)
+    local _, failed = ns:RunMigrations(db, false, { boom })
+    t:eq(#failed, 1, "one that errors is reported")
+    t:ok(not db.migrations.zzBoom and db.version == 2, "and not marked done")
+    ran = ns:RunMigrations(db, false, { m("zzBoom", 3) })
+    t:eq(table.concat(ran, ","), "zzBoom", "so it's tried again next load")
+    local fresh = {}
+    ran = ns:RunMigrations(fresh, true, { m("zzFresh", 1) })
+    t:ok(#ran == 0 and fresh.migrations.zzFresh and not fresh.zzFresh, "a fresh install marks them done without running")
+    t:eq(#runs, 5, "each ran exactly once")
+end)
+
+ns:Register("test", "safety: route caches follow the game: completed quests, map axes (F-016)", function(t)
+    local Q, N = ns.quests, ns.nav
+    t:eq(Q.LeftLog({ [1] = true, [2] = true }, { [1] = true }), true, "a quest left the log: completed quests reload")
+    t:eq(Q.LeftLog({ [1] = true }, { [1] = true, [3] = true }), false, "only a new quest: no reload")
+    t:eq(Q.LeftLog({}, {}), false, "nothing changed: no reload")
+    local map, ready = 999901, false
+    local function toWorld(_, m, x, y)
+        if m ~= map or not ready then return nil end
+        return 1, x * 100, y * 100
+    end
+    with(N, "ToWorld", toWorld, function()
+        t:eq(N._mapAxes(map), nil, "the world isn't ready: no axes yet")
+        ready = true
+        local a = N._mapAxes(map)
+        t:ok(a and a.ex == 1 and a.sy == 1, "asked again once it is, not remembered as none")
+    end)
+end)
+
+ns:Register("test", "safety: learned trainer levels lie over the list, believable only, and can be forgotten (F-017)", function(t)
+    local F = ns.facts
+    t:eq(F.Plausible(24, 20), true, "a few levels off the list: used")
+    t:eq(F.Plausible(2, 40), false, "across the game: not used")
+    t:eq(F.Plausible(0, 10), false, "no level: not used")
+    local list = { { spell = "Rake", level = 20 }, { spell = "Claw", level = 40 } }
+    local lv = { Rake = 24, Claw = 2 }
+    local changed = F.FixLevels(list, function(n) return lv[n], "yours" end)
+    t:eq(#changed, 1, "only the believable one moves")
+    t:ok(list[1].level == 24 and changed[1].source == "yours", "Rake: 24, seen by you")
+    t:eq(list[2].level, 40, "Claw at 2 is a wrong line: the list's 40 stays")
+    local facts = { first = { DRUID = { Rake = 24 } }, firstAt = { DRUID = { Rake = 1 } } }
+    t:eq(F.ResetFirst(facts), 1, "reset: one first level forgotten")
+    t:ok(next(facts.first) == nil and next(facts.firstAt) == nil, "and its age with it")
+    changed = F.FixLevels(list, function() return nil end)
+    t:ok(#changed == 1 and list[1].level == 20 and changed[1].source == nil, "learned level gone: the list's own 20 comes back")
+end)
+
+ns:Register("test", "safety: a learned quest spot is confirmed, can make room when stale, and can be forgotten (F-018)", function(t)
+    local LS = ns.learnedSpots
+    local day = 86400
+    local list = {}
+    LS.Add(list, 1, 0.1, 0.1, 2, nil, 0)
+    LS.Add(list, 1, 0.5, 0.5, 2, nil, 0)
+    t:eq(LS.Add(list, 1, 0.5, 0.5, 2, nil, day), false, "the same place again: not a new spot")
+    t:eq(list[2].n, 2, "but seen twice: confirmed")
+    t:eq(LS.Add(list, 1, 0.9, 0.9, 2, nil, day), false, "full, nothing stale: the new spot waits")
+    t:eq(LS.Add(list, 1, 0.9, 0.9, 2, nil, 40 * day), true, "full, a spot seen once long ago: it makes room")
+    t:ok(list[1].x == 0.9 and list[2].x == 0.5, "the stale one went, the confirmed one stays")
+    local spots = { [10] = { [1] = { { map = 1, x = 0.1, y = 0.1 } }, done = { { map = 1, x = 0.2, y = 0.2 } } } }
+    t:eq(LS.Forget(spots, 10, 1), 1, "forget one objective")
+    t:ok(spots[10] and spots[10].done and spots[10][1] == nil, "the turn-in stays")
+    t:eq(LS.Forget(spots, 10), 1, "forget the rest")
+    t:eq(spots[10], nil, "nothing left of the quest")
+    t:eq(LS.Forget(spots, 99), 0, "an unknown quest: nothing")
+end)
+
+ns:Register("test", "safety: any learned NPC place can be put right, not only a bank (F-019)", function(t)
+    local P = ns.places
+    local places = {}
+    P.Learn(places, "Gruk", { map = 1, x = 0.1, y = 0.1 }, "vendor", { repair = true }, 0)
+    P.Learn(places, "Gruk", { map = 1, x = 0.1, y = 0.1 }, "flight", nil, 0)
+    local store = {}
+    t:eq(P.Forget(places, store, "Gruk", "repair"), "not repair", "they don't repair")
+    t:ok(not P.HasRole(places.Gruk, "repair") and store.Gruk.repair, "the role goes, and is noted for every source")
+    t:eq(P.Forget(places, store, "Gruk", "vendor"), "not vendor", "nor sell")
+    t:eq(places.Gruk.kind, "flight", "what they are is worked out again")
+    t:eq(P.Forget(places, store, "Gruk"), "forgot", "where they stand: forgotten")
+    t:eq(places.Gruk, nil, "the next visit learns it again")
+    t:eq(P.Forget(places, store, "Nobody"), nil, "an NPC never learned: nothing")
+    with(ns.db, "placesNot", { Gruk = { flight = true } }, function()
+        t:eq(P.NotRole("Gruk", "flight"), true, "Services skips a noted role for learned, shared and quest-data NPCs alike")
+    end)
+end)
+
+ns:Register("test", "safety: the Flow Trader's open-with-deals choice is kept as you saved it (F-092)", function(t)
+    local T = ns.trader
+    with(ns.db, "trader", {}, function()
+        t:eq(T.OpensWithDeals(), true, "never chosen: it opens")
+        T.SetOpensWithDeals(false)
+        t:ok(ns.db.trader.quiet == true and not T.OpensWithDeals(), "off: stays closed")
+        T.SetOpensWithDeals(true)
+        t:ok(ns.db.trader.quiet == false and T.OpensWithDeals(), "on again: kept as a choice (false), not dropped")
+    end)
+end)

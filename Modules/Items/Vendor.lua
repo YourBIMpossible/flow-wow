@@ -783,7 +783,7 @@ end
 -------------------------------------------------------------------------------
 -- Merchant step on the route, only when it's worth it:
 --   what Flow would sell is worth at least ~5 silver per character level, or
---   your bags are nearly full (3 or fewer free slots) and there's something
+--   your bags are nearly full (ns.BagsNearlyFull) and there's something
 --   to sell.
 -- It's an optional step, so the planner only keeps it when a merchant is
 -- roughly on your way (and drops it otherwise). Merchants come from the ones
@@ -810,7 +810,8 @@ ns:Register("navGoal", "merchant", {
         for _, e in ipairs(proposed) do value = value + e.price end
         if count == 0 then return nil end
         local free = freeBagSlots()
-        local worth = value >= UnitLevel("player") * 500 or free <= 3
+        local nearlyFull = ns.BagsNearlyFull(free)
+        local worth = value >= UnitLevel("player") * 500 or nearlyFull
         if not worth then return nil end
         local points = {}
         for name, spot in pairs(ns.db.places or {}) do
@@ -827,7 +828,7 @@ ns:Register("navGoal", "merchant", {
             key = "merchant", optional = not full or nil, weight = full and 0.8 or 1.2, points = points,
             title = "Merchant",
             text = string.format("%sSell %d item(s) (%s) at a merchant", full and "Bags full: " or "", count, money(value)),
-            details = { free <= 3 and string.format("Your bags are nearly full (%d free).", free)
+            details = { nearlyFull and string.format("Your bags are nearly full (%d free).", free)
                             or "Enough to sell to be worth a short detour.",
                         full and "Full bags lose loot: planned even if it's a detour."
                             or "Only planned when a merchant is roughly on your way (passing a town)." },

@@ -37,7 +37,7 @@ local _, ns = ...
 local QG = {}
 ns.questBags = QG
 
-QG.TIGHT = 4        -- "nearly full": this many free slots or fewer
+-- "Nearly full": ns.BagsNearlyFull (Core.lua), shared with the merchant and bank steps.
 QG.ORDER = { "turnin", "sell", "bank", "finish", "stuck" }
 QG.HEAD = {
     turnin = "Hand in (finished)",
@@ -214,7 +214,7 @@ end
 -- Pure: what Flow Improvements says: nothing with room to spare.
 function QG.Advice(plan, free)
     local out = {}
-    if free == nil or free > QG.TIGHT or (plan.slots or 0) == 0 then return out end
+    if not ns.BagsNearlyFull(free) or (plan.slots or 0) == 0 then return out end
     local tight = free <= 1 and 90 or 80
     -- (Full bags lose loot: red. Nearly full: yellow.)
     local urgency = free <= 1 and "now" or "soon"
@@ -242,7 +242,7 @@ function QG.MarkStep(goal, slots, free)
     goal.frees = slots
     goal.details = goal.details or {}
     goal.details[#goal.details + 1] = string.format("Handing it in frees %d bag slot(s) of its quest items.", slots)
-    if free ~= nil and free <= QG.TIGHT then
+    if ns.BagsNearlyFull(free) then
         goal.keep = true   -- (Planner.lua: never cut as "too far")
         goal.weight = math.min(goal.weight or 1, 0.5)
         goal.text = (goal.text or "") .. string.format(" (frees %d bag slot%s)", slots, slots == 1 and "" or "s")

@@ -49,6 +49,10 @@ ns:On("PLAYER_ENTERING_WORLD", groupChanged)
 -- Native game API: completed quests and quest log (always works)
 -------------------------------------------------------------------------------
 
+-- Caches (F-016): `completed` is loaded at login and again whenever a quest
+-- leaves your log (handed in, or completed another way that QUEST_TURNED_IN
+-- doesn't report), so it never lags the game for the session. `inLog` is
+-- reloaded at every QUEST_LOG_UPDATE.
 local completed = {}
 local inLog = {}
 
@@ -89,8 +93,21 @@ function Q:InLog(id) return inLog[id] == true end
 function Q:LogIds() return inLog end  -- { [questID] = true }
 function Q:CompletedIds() return completed end
 
+-- Pure: did any quest leave the log? before, after: { [questID] = true }.
+function Q.LeftLog(before, after)
+    for id in pairs(before) do
+        if not after[id] then return true end
+    end
+    return false
+end
+
 ns:On("PLAYER_LOGIN", function() loadCompleted(); loadLog() end)
-ns:On("QUEST_LOG_UPDATE", loadLog)
+ns:On("QUEST_LOG_UPDATE", function()
+    local before = {}
+    for id in pairs(inLog) do before[id] = true end
+    loadLog()
+    if Q.LeftLog(before, inLog) then loadCompleted() end
+end)
 ns:On("QUEST_TURNED_IN", function(id) if id then completed[id] = true end end)
 
 -------------------------------------------------------------------------------

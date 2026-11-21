@@ -96,6 +96,15 @@ function ns:Print(msg)
     print("|cff66ccffFlow|r: " .. tostring(msg))
 end
 
+-- "Bags nearly full" (F-008): one threshold for every module that advises
+-- about bag space (the merchant and bank steps, quest-item advice), so the
+-- same screen never gives different answers. free: free bag slots, or nil
+-- (not known: not nearly full).
+ns.BAGS_NEARLY_FULL = 3
+function ns.BagsNearlyFull(free)
+    return free ~= nil and free <= ns.BAGS_NEARLY_FULL
+end
+
 -------------------------------------------------------------------------------
 -- Per-character data. FlowDB is shared by every character on the account
 -- (settings, learned trails, NPC places). Anything about one character (its
@@ -223,6 +232,50 @@ function ns:StoreCharacterData(account, char)
 end
 ns._getPath, ns._setPath = getPath, setPath   -- (tests)
 
+-------------------------------------------------------------------------------
+-- Saved-data migrations (F-014). A change to the shape of saved data is a
+-- registration, not an ad hoc "if old then" in a module's OnLoad:
+--   ns:Register("migration", "0.36-nav-arrows", { order = 3, run = function(db) ... end })
+-- Each runs once per account, in `order` (then key), before any module's
+-- OnLoad, on FlowDB as saved. FlowDB.migrations[key] = true once it has run,
+-- so it never runs twice, and one added out of order still runs. A key is
+-- never reused or renamed. One that errors isn't marked: it's logged and
+-- tried again at the next load. A fresh install has nothing to convert: every
+-- migration is marked done without running. FlowDB.version: the highest
+-- `order` applied (for the diagnostics).
+-------------------------------------------------------------------------------
+
+-- Pure apart from the registrations: returns the keys it ran, in order, and
+-- "key: error" for each that failed.
+-- list: { { key, value = { order, run } } } (default: the registrations).
+function ns:RunMigrations(db, fresh, list)
+    db.migrations = db.migrations or {}
+    if not list then
+        list = {}
+        for key, m in self:Each("migration") do list[#list + 1] = { key = key, value = m } end
+    end
+    table.sort(list, function(a, b)
+        local oa, ob = a.value.order or 0, b.value.order or 0
+        if oa ~= ob then return oa < ob end
+        return tostring(a.key) < tostring(b.key)
+    end)
+    local ran, failed = {}, {}
+    for _, e in ipairs(list) do
+        if not db.migrations[e.key] then
+            local ok, err = true, nil
+            if not fresh then ok, err = pcall(e.value.run, db) end
+            if ok then
+                db.migrations[e.key] = true
+                db.version = math.max(db.version or 0, e.value.order or 0)
+                if not fresh then ran[#ran + 1] = e.key end
+            else
+                failed[#failed + 1] = tostring(e.key) .. ": " .. tostring(err)
+            end
+        end
+    end
+    return ran, failed
+end
+
 -- ns:OnLoad(fn): run fn once saved variables (ns.db) are available.
 local loaders = {}
 function ns:OnLoad(fn)
@@ -237,6 +290,11 @@ ns:On("ADDON_LOADED", function(name)
     ns.db, ns.charDb = FlowDB, FlowCharDB
     local splitOk, splitErr = pcall(ns.SplitCharacterData, ns, FlowDB, FlowCharDB, context())
     if not splitOk then print("|cffff5555Flow load error|r (character data): " .. tostring(splitErr)) end
+    local migOk, ranOrErr, failed = pcall(ns.RunMigrations, ns, FlowDB, ns.freshInstall)
+    for _, f in ipairs(migOk and failed or { tostring(ranOrErr) }) do
+        print("|cffff5555Flow load error|r (saved data update): " .. f)
+        logError("migration", f)
+    end
     for _, fn in ipairs(loaders) do
         local ok, err = pcall(fn, ns.db)
         if not ok then
