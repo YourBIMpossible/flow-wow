@@ -1,9 +1,11 @@
 -- Quest data layer. Flow ships no quest database of its own (licensing:
--- see docs/ARCHITECTURE.md). It asks registered quest sources, best first:
+-- see docs/ARCHITECTURE.md). It asks registered quest sources, best first.
+-- The only one registered today:
 --   questie : Questie + QuestieDB, if you have them installed (read at runtime,
 --             nothing copied), full quest/NPC data for Forever's classic content
---   native  : the game's own API; always there, but only knows completed quests
---             and your quest log
+-- Without Questie there is no source: Q:Source() is nil and the quest route,
+-- missed list and dungeon quests say Questie is needed. (No "native" source
+-- exists yet; the game API alone only knows completed quests and the log.)
 --
 -- Add a source:
 --   ns:Register("questSource", key, { order = n, available = fn() -> bool,
@@ -809,8 +811,8 @@ function Q.GameWaypoint(id)
     return nil
 end
 
--- LibQuestDB-1.0 (MIT, also covers Forever-only quests by name/level).
--- PLACEHOLDER: wire up once we confirm its API in game.
+-- Not a source yet: LibQuestDB-1.0 (MIT, also covers Forever-only quests by
+-- name/level) could register one here once its API is confirmed in game.
 
 -------------------------------------------------------------------------------
 -- Picking a source
