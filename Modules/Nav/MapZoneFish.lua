@@ -1,3 +1,3 @@
--- Empty: the zone catch records that were here came from Wowhead and may not
--- ship. ZL.FISH (MapZoneLevels.lua) stays empty, so the zone card says the
+-- Empty: the zone catch records that were here came from a third-party site and
+-- may not ship. ZL.FISH (MapZoneLevels.lua) stays empty, so the zone card says the
 -- catches are unknown. This file goes once its Flow.toc line is removed.

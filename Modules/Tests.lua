@@ -14551,7 +14551,7 @@ ns:Register("test", "map zone info: hovering a zone gives its name, level range 
     t:eq(n, 40, "every levelling zone in the Classic list")
     -- "Can I click on something, like click on the fishing number": the fish
     -- a zone's waters give, and how often. Flow ships no catch records
-    -- (W4d: they were Wowhead's), so every zone's list is unknown.
+    -- (W4d: they were third-party), so every zone's list is unknown.
     t:eq(next(ZL.FISH), nil, "no catch records shipped")
     t:eq(ZL.FishList(1429, function() return nil end), nil, "Elwynn: no list, so the card says the catches are unknown")
     t:eq(ZL.FISH_UNKNOWN, "catches unknown", "and says so in those words")
