@@ -248,3 +248,33 @@ ns:Register("test", "legs: a character without a mount isn't timed by a trip mad
     t:ok(best2 and e2.s == 150, "and a slower trip after it replaces it")
     t:ok(L.Lookup(only, {}, a, b, 580, { now = 1000 + L.AGE + 2 }) ~= nil, "planned by again")
 end)
+
+-------------------------------------------------------------------------------
+-- F-029: a hand-in the route holds isn't handed in for you at the NPC.
+-------------------------------------------------------------------------------
+
+ns:Register("test", "quests: a hand-in your route holds isn't turned in for you, the next finished one is", function(t)
+    local AT = ns.autoTurnIn
+    local blocked = {
+        { key = "22:done", title = "Held Quest", blockedBy = "first: Kill Boars (not on your route)" },
+        { key = "44:done", title = "Theirs", blockedBy = "needs level 20 first", helping = "Ann" },
+        { key = "55:obj:1", title = "An objective", blockedBy = "needs level 20 first" },
+        { key = "66:done", title = "Not blocked" },
+    }
+    local held = AT.Held(blocked)
+    t:eq(held.ids[22], "first: Kill Boars (not on your route)", "a held hand-in, with its reason")
+    t:eq(held.ids[44], nil, "a party member's hand-in: not yours to hold")
+    t:eq(held.ids[55], nil, "an objective: not a hand-in")
+    t:eq(held.ids[66], nil, "a hand-in on the route: not held")
+    local list = { { id = 22, qid = 22, complete = true, title = "Held Quest" },
+                   { id = 33, qid = 33, complete = true, title = "Ready Quest" } }
+    local i, id = AT.PickFinished(list, held)
+    t:eq(i, 2, "the held one is passed over")
+    t:eq(id, 33, "the next finished one is opened")
+    t:eq(AT.PickFinished({ list[1] }, held), nil, "only the held one: nothing opened")
+    -- Older clients and plain quest lists give a position, not the quest id: by title.
+    t:eq(AT.PickFinished({ { id = 1, complete = true, title = "Held Quest" } }, held), nil, "no quest id: matched by title")
+    t:eq(AT.HeldWhy({ qid = 22 }, held), "first: Kill Boars (not on your route)", "the reason the NPC page says")
+    t:eq(AT.HeldWhy({ qid = 33, title = "Ready Quest" }, held), nil, "a ready one: handed in")
+    t:eq(AT.PickFinished(list), 1, "no route (nothing held): as before")
+end)
