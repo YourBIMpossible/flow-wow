@@ -582,3 +582,22 @@ ns:Register("test", "dungeons: outside a dungeon the route isn't cut, and there 
     t:eq(#D:FilterInside(list), 2, "the whole route")
     t:eq(D.InsideNote(), nil, "nothing to explain")
 end)
+
+-------------------------------------------------------------------------------
+-- F-053: steps across the sea no crossing reaches say what's missing.
+-------------------------------------------------------------------------------
+
+ns:Register("test", "crossings: steps no crossing reaches are named, with what's missing", function(t)
+    local C = ns.crossings
+    local me = { cont = 1, wx = 0, wy = 0 }
+    local waiting = { [0] = { goals = { { key = "a" }, { key = "b" } }, targets = { { cont = 0, wx = 500, wy = 500 } } } }
+    local none = C.Unjoined(waiting, {}, me)
+    t:eq(#none, 1, "no crossing known: one line for the continent")
+    t:ok(none[1]:find("2 steps in the Eastern Kingdoms", 1, true) ~= nil, "it says how many and where")
+    t:ok(none[1]:find("no crossing your faction can use is known", 1, true) ~= nil, "and what's missing")
+    local list = { { key = "x", cr = { how = "boat" }, a = { cont = 1, wx = 10, wy = 0 }, b = { cont = 0, wx = 400, wy = 400 } } }
+    t:eq(#C.Unjoined(waiting, list, me), 0, "a crossing joins them: nothing to explain")
+    local noSpot = { [0] = { goals = { { key = "a" } }, targets = {} } }
+    local l = C.Unjoined(noSpot, list, me)
+    t:ok(l[1] and l[1]:find("no place on the map", 1, true) ~= nil, "steps without a map spot say that")
+end)

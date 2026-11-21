@@ -224,16 +224,39 @@ function C.Waiting(me)
     return by
 end
 
+-- Steps that wait on a continent no crossing you can use joins (F-053): one
+-- line each, naming what's missing, for /flow crossings. Pure.
+--   waiting: C.Waiting's shape; list: C.List's; me: { cont, wx, wy }
+function C.Unjoined(waiting, list, me)
+    local out = {}
+    for cont, e in pairs(waiting or {}) do
+        if not C.Best(list, me, e.targets) then
+            local n = #(e.goals or {})
+            local why = #(list or {}) == 0
+                and "no crossing your faction can use is known, or none of their map spots could be read"
+                or (#(e.targets or {}) == 0 and "those steps have no place on the map to aim for"
+                    or "no known crossing joins your continent to that one")
+            out[#out + 1] = string.format("%d step%s in %s can't be routed: %s", n, n == 1 and "" or "s",
+                C.NAMES[cont] or "another continent", why)
+        end
+    end
+    table.sort(out)
+    return out
+end
+
 ns:Register("navGoal", "crossing", {
     collect = function()
+        C.unjoined = nil
         if not C.On() then return nil end
         local N = ns.nav
         local me = N and N.PlayerPos and N:PlayerPos()
         if not (me and me.cont ~= nil and me.wx) then return nil end
         local list = C.List()
-        if #list == 0 then return nil end
+        local waiting = C.Waiting(me)
+        C.unjoined = C.Unjoined(waiting, list, me)
+        if #list == 0 then C.last = {} return nil end
         local goals = {}
-        for cont, e in pairs(C.Waiting(me)) do
+        for cont, e in pairs(waiting) do
             local best = C.Best(list, me, e.targets)
             if best then
                 local n = #e.goals
@@ -337,7 +360,8 @@ function C.Lines()
         out[#out + 1] = string.format("  %s: %s %s <-> %s%s", e.key, tostring(e.cr.how), tostring(e.cr.a.name), tostring(e.cr.b.name), e.learned and " (corrected from a trip of yours)" or "")
     end
     for _, g in ipairs(C.last or {}) do out[#out + 1] = "  on your route: " .. tostring(g.text) end
-    if #(C.last or {}) == 0 then out[#out + 1] = "  nothing of yours waits on another continent (or no crossing joins them)" end
+    for _, l in ipairs(C.unjoined or {}) do out[#out + 1] = "  " .. l end
+    if #(C.last or {}) == 0 and #(C.unjoined or {}) == 0 then out[#out + 1] = "  nothing of yours waits on another continent" end
     return out
 end
 ns.commands.crossings = function(arg)
