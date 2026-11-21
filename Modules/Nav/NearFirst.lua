@@ -30,8 +30,9 @@ local NEAR, SPAN, MAX_MUL = 300, 700, 3
 local DROP_MUL, DROP_NEAR = 1.5, 150
 
 function F.On() return not (ns.db and ns.db.nearFirst == false) end
--- "Shortest" (and the completionist route, which plans by distance) asks for
--- the shortest path: near-first leaves that alone.
+-- "Shortest" (the default, and the completionist route, which plans by
+-- distance) asks for the shortest path: near-first leaves that alone, and
+-- says so (F.Note, /flow nearfirst).
 function F.Applies(objective)
     if not F.On() then return false end
     if objective == nil then
@@ -81,10 +82,26 @@ function P.Plan(self, p, goals, opts)
     return result
 end
 
+-- Why near-first isn't changing your route right now, or nil when it is
+-- (on, on a weighted objective). Shortest already plans by travel alone.
+function F.Note(objective, on)
+    if on == nil then on = F.On() end
+    if not on then return nil end
+    if objective == nil then
+        local X = ns.xpValue
+        objective = X and X.Objective and (X:Objective()) or "distance"
+    end
+    if objective == "distance" then
+        return "it only reweighs Most XP and other weighted routes; Shortest (your route now) already goes by travel alone"
+    end
+    return nil
+end
+
 ns.commands.nearfirst = function(arg)
     arg = (arg or ""):lower()
     local set = arg == "on" or arg == "off"
     if set then ns.db.nearFirst = (arg == "on") end
-    ns:Print("route finishes steps near you first: " .. (F.On() and "on" or "off") .. " (/flow nearfirst on|off)")
+    local note = F.Note()
+    ns:Print("route finishes steps near you first: " .. (F.On() and "on" or "off") .. (note and (" - " .. note) or "") .. " (/flow nearfirst on|off)")
     if set and ns.nav and ns.nav.Collect then ns.nav:Collect() end
 end

@@ -380,3 +380,25 @@ ns:Register("test", "compat: a bag count the client can't give is unknown, and a
     A.ItemCount = keep
     t:ok(ok, "ran: " .. tostring(err))
 end)
+
+-------------------------------------------------------------------------------
+-- F-035 / F-036: the route labels don't promise a best order; near-first says
+-- when it can't change your route.
+-------------------------------------------------------------------------------
+
+ns:Register("test", "route labels: Shortest and Most XP describe a quick plan, not a guaranteed best", function(t)
+    local short, xp = ns:Get("routeObjective", "distance"), ns:Get("routeObjective", "xp")
+    t:ok(short and short.tip:find("not a guaranteed", 1, true) ~= nil, "Shortest's tip says it's a quick plan")
+    t:ok(short and short.tip:find("Shortest path", 1, true) == nil, "and doesn't claim the shortest path")
+    t:ok(xp and xp.tip:find("not a guaranteed", 1, true) ~= nil, "Most XP's tip too")
+    t:eq(ns.xpValue.DEFAULT, "distance", "the default the header names: Shortest")
+end)
+
+ns:Register("test", "near-first: on the default Shortest route it says it does nothing, and why", function(t)
+    local F = ns.nearFirst
+    t:ok(F.Note("distance", true) ~= nil, "Shortest: a note")
+    t:ok(F.Note("distance", true):find("Most XP", 1, true) ~= nil, "naming where it does apply")
+    t:eq(F.Note("xp", true), nil, "Most XP: it applies, no note")
+    t:eq(F.Note("distance", false), nil, "off: nothing to explain")
+    t:eq(F.Applies("distance"), false, "(and it really doesn't apply to Shortest)")
+end)

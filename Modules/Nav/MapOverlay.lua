@@ -1665,8 +1665,8 @@ local function buildList()
     -- optimised route.
     f.sorts = {}
     local SORTS = {
-        { "distance", "Shortest", 6, "Shortest path (default): nearest steps first, XP ignored." },
-        { "xp", "Most XP", 92, "Most XP first: the shortest path, but quests are weighed by XP and level. More XP is worth a longer walk; quests 3+ levels above you wait." },
+        { "distance", "Shortest", 6, "A short route by travel time (default), XP ignored. A quick plan over your nearest steps, not a guaranteed shortest." },
+        { "xp", "Most XP", 92, "XP-weighted: a short route, but quests are weighed by XP and level. More XP is worth a longer walk; quests 3+ levels above you wait. Not a guaranteed most-XP order." },
         { "custom", "Custom route", 172, "On when you pick the next step yourself (its ^ below): the route goes there first and is orange, not optimised, until you choose Most XP or Shortest again. Greyed out while you're on one of those." },
     }
     for _, sdef in ipairs(SORTS) do
