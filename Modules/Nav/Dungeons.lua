@@ -1405,9 +1405,7 @@ ns:Register("navGoal", "dungeon", {
         -- your log: until then the route didn't say where the run went.)
         local been = ns.db.nav.dungeonIn
         if run.entrance and not currentDungeon() and not (been and been.key == run.dungeon) then
-            local details = { string.format("%d quests for this run.", run.count) }
-            if #needed > 0 then details[#details + 1] = string.format("After the %d pickup%s.", #needed, #needed > 1 and "s" or "") end
-            for _, u in ipairs(unplaced) do details[#details + 1] = "Not on the map (find the giver yourself): " .. u .. "." end
+            local details = D.EntranceDetails(run, #needed, unplaced)
             goals[#goals + 1] = {
                 key = "dungeon:" .. run.key, weight = 0.8, kind = "waypoint", points = { run.entrance },
                 title = run.name, text = "Enter " .. run.name, deps = #needed > 0 and needed or nil,
@@ -1417,6 +1415,20 @@ ns:Register("navGoal", "dungeon", {
         return goals
     end,
 })
+
+-- What Flow can't check before it sends you to a dungeon's door: said on
+-- the entrance step, never taken as "you can go in".
+D.ENTRY_UNKNOWN = "Flow doesn't check attunements, keys or the instance limit: make sure you can get in before you travel."
+
+-- Pure: the entrance step's lines. nNeeded: pickups before it; unplaced:
+-- givers Questie doesn't place.
+function D.EntranceDetails(run, nNeeded, unplaced)
+    local details = { string.format("%d quests for this run.", run.count or 0) }
+    if (nNeeded or 0) > 0 then details[#details + 1] = string.format("After the %d pickup%s.", nNeeded, nNeeded > 1 and "s" or "") end
+    for _, u in ipairs(unplaced or {}) do details[#details + 1] = "Not on the map (find the giver yourself): " .. u .. "." end
+    details[#details + 1] = D.ENTRY_UNKNOWN
+    return details
+end
 
 -------------------------------------------------------------------------------
 -- In a group: the run's quests your party is missing

@@ -278,3 +278,19 @@ ns:Register("test", "quests: a hand-in your route holds isn't turned in for you,
     t:eq(AT.HeldWhy({ qid = 33, title = "Ready Quest" }, held), nil, "a ready one: handed in")
     t:eq(AT.PickFinished(list), 1, "no route (nothing held): as before")
 end)
+
+-------------------------------------------------------------------------------
+-- F-047: Flow doesn't know your attunements, keys or the instance limit; the
+-- entrance step says so instead of implying you can go in.
+-------------------------------------------------------------------------------
+
+ns:Register("test", "dungeons: the entrance step says Flow can't check attunements, keys or the instance limit", function(t)
+    local D = ns.dungeons
+    local lines = D.EntranceDetails({ count = 3 }, 2, { "Gerald" })
+    t:eq(lines[1], "3 quests for this run.", "the run's quests")
+    t:eq(lines[2], "After the 2 pickups.", "after its pickups")
+    t:eq(lines[3], "Not on the map (find the giver yourself): Gerald.", "an unplaced giver")
+    t:eq(lines[#lines], D.ENTRY_UNKNOWN, "and what Flow can't check, last")
+    t:ok(D.ENTRY_UNKNOWN:find("keys") ~= nil, "it names keys")
+    t:eq(#D.EntranceDetails({ count = 1 }, 0, {}), 2, "no pickups, all placed: the count and the warning")
+end)
