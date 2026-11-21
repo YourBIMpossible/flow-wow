@@ -21,7 +21,8 @@ local _, ns = ...
 -- trip trains everything.
 --
 -- Registry kinds (extend by registering):
---   ns:Register("need", kind, { met = fn(arg) -> bool, label = fn(arg) -> text })
+--   ns:Register("need", kind, { met = fn(arg) -> true / false / nil (can't tell), label = fn(arg) -> text })
+-- A need Flow can't check (no such kind, an error, nil) is unknown: never met.
 --   ns:Register("needProvider", key, { provides = fn(goal) -> { token, ... } })
 -------------------------------------------------------------------------------
 
@@ -32,12 +33,29 @@ function N.ParseNeed(token)
     return kind, arg
 end
 
-function N.NeedMet(token)
+-- Is a need met? "yes", "no" or "unknown", and for "unknown" the reason.
+-- A need Flow can't check (a kind nobody registered, a check that errors or
+-- answers nil) is "unknown", never "yes": the step it guards is held with the
+-- reason rather than suggested on a guess (a travel spell you don't know).
+function N.NeedState(token)
     local kind, arg = N.ParseNeed(token)
     local def = kind and ns:Get("need", kind)
-    if not def then return true end   -- (a need Flow can't check never blocks)
+    if not def or type(def.met) ~= "function" then
+        return "unknown", "Flow can't check " .. tostring(token)
+    end
     local ok, met = pcall(def.met, arg)
-    return not ok or met == true
+    if not ok then
+        ns:Log("nav", "need " .. tostring(token) .. ": " .. tostring(met))
+        return "unknown", "Flow couldn't check " .. tostring(arg)
+    end
+    if met == true then return "yes" end
+    if met == nil then return "unknown", "Flow can't tell yet whether you have " .. tostring(arg) end
+    return "no"
+end
+
+-- Met for sure (an unknown need is not met).
+function N.NeedMet(token)
+    return (N.NeedState(token)) == "yes"
 end
 
 function N.NeedLabel(token)
@@ -71,8 +89,10 @@ local function dependsOn(from, key, byKey, depth)
     return false
 end
 
+-- met(token) -> true / "yes" (met), "unknown" [, reason], anything else: not
+-- met. Default N.NeedState.
 function N.ResolveNeeds(list, met, label)
-    met, label = met or N.NeedMet, label or N.NeedLabel
+    met, label = met or N.NeedState, label or N.NeedLabel
     local providers, byKey = {}, {}
     for _, g in ipairs(list or {}) do
         byKey[g.key] = g
@@ -84,7 +104,8 @@ function N.ResolveNeeds(list, met, label)
             for _, n in ipairs(g.needs) do
                 local token, soft = n, false
                 if type(n) == "table" then token, soft = n[1], n.soft == true end
-                if not met(token) then
+                local state, why = met(token)
+                if state ~= true and state ~= "yes" then
                     local p = providers[token]
                     if p and p ~= g and not dependsOn(p, g.key, byKey, 0) then
                         g.deps = g.deps or {}
@@ -106,7 +127,13 @@ function N.ResolveNeeds(list, met, label)
                         end
                         after[#after + 1] = label(token)
                     elseif not soft and not g.blockedBy then
-                        g.blockedBy = "needs " .. label(token) .. " first"
+                        if state == "unknown" then
+                            g.blockedBy = "needs " .. label(token) .. " first, and "
+                                .. (why or ("Flow can't tell whether you have " .. label(token)))
+                            g.blockedShort = "can't check " .. label(token)
+                        else
+                            g.blockedBy = "needs " .. label(token) .. " first"
+                        end
                     end
                 end
             end
@@ -119,8 +146,58 @@ end
 -- The kinds of need Flow can check
 -------------------------------------------------------------------------------
 
+-- Pure: do you know the spell? known: your spellbook ({ [name] = true }, as
+-- the rotation read it); asked: the game's "do you know spell <id>" answer
+-- (true / false / nil when it can't be asked). A spell's name resolving is not
+-- knowing it. true, false, or nil (unknown: the spellbook isn't read yet and
+-- the game can't be asked).
+function N.SpellNeedMet(name, known, asked)
+    if type(known) == "table" and known[name] == true then return true end
+    if asked ~= nil then return asked == true end
+    if type(known) == "table" and next(known) ~= nil then return false end
+    return nil
+end
+
+-- Pure: the steps that cost money, paid for together, not each on its own
+-- (two trainers at 8g each with 10g in your bags: one fits). Committed in
+-- order: milestones (class training) first, then the cheaper, then by key.
+-- Steps already blocked are left out. -> over ({ [key] = copper already set
+-- aside for the steps before it } for each step that doesn't fit), total
+-- (the copper committed to the steps that do).
+function N.CommitCosts(list, money)
+    local costed = {}
+    for _, g in ipairs(list or {}) do
+        if type(g.cost) == "number" and g.cost > 0 and not g.blockedBy then costed[#costed + 1] = g end
+    end
+    table.sort(costed, function(a, b)
+        local ma, mb = a.milestone and 1 or 0, b.milestone and 1 or 0
+        if ma ~= mb then return ma > mb end
+        if a.cost ~= b.cost then return a.cost < b.cost end
+        return tostring(a.key) < tostring(b.key)
+    end)
+    local total, over = 0, {}
+    for _, g in ipairs(costed) do
+        if total + g.cost <= (money or 0) then total = total + g.cost
+        else over[g.key] = total end
+    end
+    return over, total
+end
+
+-- The game's answer for a spell by its number, or nil.
+local function askKnown(name)
+    local _, _, _, id = ns.api.SpellInfo(name)
+    if not id then return nil end
+    for _, fn in ipairs({ C_SpellBook and C_SpellBook.IsSpellKnown or false, IsPlayerSpell or false, IsSpellKnown or false }) do
+        if fn then
+            local ok, yes = pcall(fn, id)
+            if ok and yes ~= nil then return yes and true or false end
+        end
+    end
+    return nil
+end
+
 ns:Register("need", "spell", {
-    met = function(name) return ns.rotation:KnownSpells()[name] == true or ns.api.SpellInfo(name) ~= nil end,
+    met = function(name) return N.SpellNeedMet(name, ns.rotation:KnownSpells(), askKnown(name)) end,
     label = function(name) return name end,
 })
 ns:Register("need", "level", {

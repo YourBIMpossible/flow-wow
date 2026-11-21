@@ -662,6 +662,12 @@ ns:Register("navGoal", "pickups", {
                 -- with someone else), and what they want you to have first
                 -- (Modules/Quests/QuestNeeds.lua).
                 if ns.quests.PickupNeed then ns.quests:PickupNeed(g, q.id, q.raw, q.starter.name) end
+                -- A giver who may not offer it: after the sure ones, and says why.
+                local D = ns.dungeons
+                if D and D.Check and q.raw then
+                    local sure, why = D.Check(q.raw)
+                    if sure == "unknown" then D.Unsure(g, why) end
+                end
                 goals[#goals + 1] = g
             end
         end

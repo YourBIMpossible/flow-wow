@@ -572,15 +572,23 @@ function N:Collect(gathered)
     local deferred = ns.db.nav.deferred or {}
     ns.db.nav.deferred = deferred
     local present, kept, blockedGoals = {}, {}, {}
+    -- Costs add up: a step is paid for only from what the steps before it
+    -- (Needs.lua N.CommitCosts) leave over.
+    local over, committed = N.CommitCosts(list, money)
+    N.moneyCommitted = committed
     for _, g in ipairs(list) do
         present[g.key] = g
-        if g.cost and g.cost > money then
+        local setAside = g.cost and over[g.key]
+        if setAside then
+            local have = setAside > 0
+                and string.format("you have %s, %s of it for other steps", N:Coin(money), N:Coin(setAside))
+                or string.format("you have %s", N:Coin(money))
             if not deferred[g.key] then
-                ns:Print(string.format("skipping %s for now: it costs %s and you have %s. It comes back on the route once you can pay.",
-                    g.title or g.text or g.key, N:Coin(g.cost), N:Coin(money)))
+                ns:Print(string.format("skipping %s for now: it costs %s and %s. It comes back on the route once you can pay.",
+                    g.title or g.text or g.key, N:Coin(g.cost), have))
             end
             deferred[g.key] = { text = g.title or g.text, cost = g.cost, since = deferred[g.key] and deferred[g.key].since or time() }
-            g.blockedBy = string.format("needs %s (you have %s)", N:Coin(g.cost), N:Coin(money))
+            g.blockedBy = string.format("needs %s (%s)", N:Coin(g.cost), have)
             g.blockedShort = "needs " .. N:Coin(g.cost)
             g.blockIcon = "Interface\\MoneyFrame\\UI-GoldIcon"
         elseif deferred[g.key] then
@@ -794,14 +802,18 @@ end
 
 local function stepName(g) return g.text or g.title or g.key end
 
+-- A dep that only orders (goal.softDeps: a soft need) never holds a step.
+local function bindsHard(g, dep) return not (g.softDeps and g.softDeps[dep]) end
+
 -- Pure: steps that come after a step you hid (goal.deps) leave the route
--- too, blocked with the reason; and so on down the chain. Returns kept, held.
+-- too, blocked with the reason; and so on down the chain. A soft dep only
+-- orders, so it never holds. Returns kept, held.
 function N.HoldForHidden(shown, hiddenGoals)
     local off = {}
     for _, g in ipairs(hiddenGoals or {}) do off[g.key] = g end
     return holdChain(shown, off, function(wait)
         return "first: " .. stepName(wait) .. " (you hid that step: unhide it in the Flow Router)", "its step is hidden"
-    end)
+    end, bindsHard)
 end
 
 -- Pure: steps that wait for one Flow knows (known: { [key] = goal }: N:Collect's
@@ -821,7 +833,7 @@ function N.HoldForDropped(shown, known)
     return holdChain(shown, off, function(wait)
         local reason = wait.blockedBy and (" (" .. wait.blockedBy .. ")") or " (not on your route)"
         return "first: " .. stepName(wait) .. reason, "waits for another step"
-    end, function(g, dep) return not (g.softDeps and g.softDeps[dep]) end)
+    end, bindsHard)
 end
 
 -- Quests by zone (0.35.293). "Quests are starting to pull me into the
@@ -1180,7 +1192,8 @@ function N.HoldForAway(shown, awayOf, words)
             local wait
             if not away[g.key] then
                 for _, dep in ipairs(g.deps or {}) do
-                    if off[dep] then wait = off[dep] break end
+                    -- (A soft dep only orders: it never holds.)
+                    if off[dep] and not (g.softDeps and g.softDeps[dep]) then wait = off[dep] break end
                 end
             end
             if wait then
@@ -4169,6 +4182,10 @@ local function showPanel()
         if N.plan.dropped and #N.plan.dropped > 0 then
             lines[#lines + 1] = "|cff888888Skipped as too far out of the way: " .. table.concat(N.plan.dropped, ", ") .. "|r"
         end
+        -- A step planned before one it waits for (a loop, or your pick): said, never silent (Planner.lua).
+        for _, o in ipairs(N.plan.outOfOrder or {}) do
+            lines[#lines + 1] = "|cffff8040Out of order:|r |cff888888" .. o.text .. "|r"
+        end
     end
     -- Things to pick up as you go, never a detour of their own.
     if N.alongGoals and #N.alongGoals > 0 then
@@ -4951,11 +4968,10 @@ function N.RequestCollect(why) collectSoon(false, type(why) == "string" and why 
 -- comes back) or drops below a planned step's cost (so it's skipped).
 ns:On("PLAYER_MONEY", function()
     local money = GetMoney()
+    local committed = N.moneyCommitted or 0   -- (what the planned steps cost together)
+    if money < committed then scheduleCollect("money") return end
     for _, d in pairs(ns.db.nav.deferred or {}) do
-        if d.cost and d.cost <= money then scheduleCollect("money") return end
-    end
-    for _, g in ipairs(goals or {}) do
-        if g.cost and g.cost > money then scheduleCollect("money") return end
+        if d.cost and d.cost <= money - committed then scheduleCollect("money") return end
     end
 end)
 

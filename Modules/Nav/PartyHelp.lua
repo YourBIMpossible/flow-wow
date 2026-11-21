@@ -295,12 +295,14 @@ end
 -------------------------------------------------------------------------------
 
 -- Leave out what your own quests already cover: an objective you still need
--- yourself (your own step is there) and the turn-in of a quest you have too.
-function H.Skip(key, mine)
+-- yourself (your own step is there) and the turn-in of a quest you have too,
+-- unless they're ready to hand it in and you aren't (your turn-in waits for
+-- your objectives; theirs mustn't). theirs: their entry for that quest.
+function H.Skip(key, mine, theirs)
     local id, rest = key:match("^help:(%d+):(.+)$")
     local own = mine[tonumber(id)]
     if not own then return false end
-    if rest == "done" then return true end
+    if rest == "done" then return not (theirs and theirs.complete and not own.complete) end
     local o = own.objectives[tonumber(rest)]
     return o ~= nil and not o.finished
 end
@@ -346,7 +348,7 @@ ns:Register("navGoal", "partyhelp", {
             local list = {}
             for id, e in pairs(who[name]) do
                 ns.quests.QuestGoals(db, { id = id, complete = e.complete, objectives = e.objectives }, list,
-                    { prefix = "help:", who = name, skip = function(key) return H.Skip(key, mine) end })
+                    { prefix = "help:", who = name, skip = function(key) return H.Skip(key, mine, e) end })
             end
             for _, g in ipairs(list) do
                 local had = byKey[g.key]

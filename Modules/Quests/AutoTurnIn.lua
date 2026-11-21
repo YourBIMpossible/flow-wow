@@ -3,6 +3,8 @@
 --   * Several rewards to choose from: Flow stops and lets you pick (the big
 --     green arrow marks its pick, Gear/QuestRewards.lua).
 --   * A quest that takes gold from you: left to you.
+--   * A hand-in your route holds (it waits for a step off the route, or a
+--     need you don't have yet): left to you, saying why.
 --   * Hold Shift while you talk to the NPC to do it yourself this time.
 -- On by default; the box in /flow settings, or /flow turnin on|off.
 --
@@ -56,13 +58,38 @@ function AT.Reward(nChoices)
     return nil
 end
 
--- The first finished quest in an NPC's list ({ { id, complete }, ... }):
--- its position and id, or nil.
-function AT.PickFinished(list)
+-- Pure: the hand-ins your route holds (N.blockedGoals: a hand-in waiting for
+-- a hard need, or for a step that's off the route; a soft need never holds)
+-- -> { ids = { [questID] = why }, titles = { [title] = why } }. Not your
+-- party's hand-ins (helping): those are theirs.
+function AT.Held(blocked)
+    local held = { ids = {}, titles = {} }
+    for _, g in ipairs(blocked or {}) do
+        local id = type(g.key) == "string" and g.key:match("(%d+):done$")
+        if id and g.blockedBy and not g.helping then
+            held.ids[tonumber(id)] = g.blockedBy
+            if g.title then held.titles[g.title] = g.blockedBy end
+        end
+    end
+    return held
+end
+
+-- Pure: why the route holds this quest's hand-in, or nil.
+--   q: { qid (the quest's id, when the client gives it), title }
+function AT.HeldWhy(q, held)
+    if not (q and held) then return nil end
+    return (q.qid and held.ids[q.qid]) or (q.title and held.titles[q.title]) or nil
+end
+
+-- The first finished quest in an NPC's list ({ { id, complete, qid, title }, ... })
+-- that your route doesn't hold (held: AT.Held): its position and id, or nil.
+function AT.PickFinished(list, held)
     for i, q in ipairs(list or {}) do
-        if q.complete then return i, q.id end
+        if q.complete and not AT.HeldWhy(q, held) then return i, q.id end
     end
 end
+
+local function routeHeld() return AT.Held(ns.nav and ns.nav.blockedGoals) end
 
 local function log(what) ns:Log("quests", "auto turn-in: " .. what) end
 
@@ -74,15 +101,15 @@ local function gossipTurnIn(G)
     if G and G.GetActiveQuests and G.SelectActiveQuest then
         local list = {}
         for _, q in ipairs(G.GetActiveQuests() or {}) do
-            list[#list + 1] = { id = q.questID, complete = q.isComplete, title = q.title }
+            list[#list + 1] = { id = q.questID, qid = q.questID, complete = q.isComplete, title = q.title }
         end
-        local i, id = AT.PickFinished(list)
+        local i, id = AT.PickFinished(list, routeHeld())
         if id then log("opening " .. tostring(list[i].title)); G.SelectActiveQuest(id); return true end
     elseif GetGossipActiveQuests and SelectGossipActiveQuest then
         -- Older clients: name, level, trivial, complete, ... (6 values per quest).
         local raw, list = { GetGossipActiveQuests() }, {}
         for k = 1, #raw, 6 do list[#list + 1] = { id = (k + 5) / 6, complete = raw[k + 3], title = raw[k] } end
-        local i = AT.PickFinished(list)
+        local i = AT.PickFinished(list, routeHeld())
         if i then log("opening " .. tostring(list[i].title)); SelectGossipActiveQuest(i); return true end
     end
 end
@@ -119,7 +146,7 @@ ns:On("QUEST_GREETING", function()
             local title, complete = GetActiveTitle(i)
             list[#list + 1] = { id = i, complete = complete, title = title }
         end
-        local i = AT.PickFinished(list)
+        local i = AT.PickFinished(list, routeHeld())
         if i then log("opening " .. tostring(list[i].title)); SelectActiveQuest(i); return end
     end
     if not (canTakeMore() and GetNumAvailableQuests and GetAvailableTitle and SelectAvailableQuest) then return end
@@ -146,6 +173,13 @@ end)
 -- "Have you finished?": press Complete (not for quests that take your gold).
 ns:On("QUEST_PROGRESS", function()
     if not (AT.Enabled() and IsQuestCompletable and IsQuestCompletable()) then return end
+    -- A hand-in your route holds (an NPC with one quest opens it straight away): left to you.
+    local why = AT.HeldWhy({ qid = GetQuestID and GetQuestID() or nil, title = GetTitleText and GetTitleText() }, routeHeld())
+    if why then
+        ns:Print("not handing in " .. tostring(GetTitleText and GetTitleText()) .. " for you: your route holds it (" .. why .. ")")
+        log("left to you (the route holds it): " .. tostring(GetTitleText and GetTitleText()))
+        return
+    end
     if GetQuestMoneyToGet and (GetQuestMoneyToGet() or 0) > 0 then
         log("left to you (it takes gold): " .. tostring(GetTitleText and GetTitleText()))
         return

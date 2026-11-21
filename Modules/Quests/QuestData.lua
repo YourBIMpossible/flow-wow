@@ -585,10 +585,8 @@ function Q:Available(q, levelSlack)
         if done(ex) or inLog[ex] then return false end
     end
     local D = ns.dungeons
-    if D and D.Eligible then
-        local ok, fits = pcall(D.Eligible, q)
-        if ok and fits == false then return false end
-    end
+    -- (Can't tell: still offered, ranked after the sure ones; D.Unsure.)
+    if D and D.Check and D.Check(q) == "no" then return false end
     return true
 end
 

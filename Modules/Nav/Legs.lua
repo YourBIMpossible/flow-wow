@@ -54,6 +54,7 @@ L.FASTEST = 0.12     -- a learned leg counts as at least this share of the strai
 L.SLOWEST = 5        -- and at most this many times it
 L.COARSE_MIN = 150   -- only trips this long say something about a neighbourhood
 L.MAX = 3000         -- legs kept a continent
+L.AGE = 30 * 86400   -- seconds: a best older than this gives way to the next trip, and isn't planned by
 
 function L.On() return not (ns.db and ns.db.nav and ns.db.nav.learnLegs == false) end
 
@@ -114,25 +115,45 @@ function L.Look(st, s)
     return leg
 end
 
--- Keeps a leg in a continent's store: the quickest wins, the count goes up.
---   store: { [cellA] = { [cellB] = { s, d, n, m, at } } }   -> the entry, and whether it's a new best
+-- Keeps a leg in a continent's store: the quickest wins (until it's older
+-- than L.AGE: then the next trip replaces it), the count goes up. The
+-- quickest on foot is kept too (f, ft), for a character who can't ride: a
+-- trip learned riding mustn't time it (the store is shared by your characters).
+--   store: { [cellA] = { [cellB] = { s, d, n, m, at, bt, f, ft } } }
+--   (at: last trip; bt: when the best was set)  -> the entry, and whether it's a new best
 function L.Keep(store, leg, now)
     local ka, kb = L.Cell(leg.ax, leg.ay), L.Cell(leg.bx, leg.by)
     if ka == kb then return nil, false end
     store[ka] = store[ka] or {}
     local e = store[ka][kb]
     local sec = floor(leg.sec * 10 + 0.5) / 10
+    local function stale(t) return now and t and now - t > L.AGE end
+    if leg.mode == "foot" and e and (not e.f or sec < e.f or stale(e.ft)) then e.f, e.ft = sec, now end
     if not e then
-        e = { s = sec, d = floor(leg.d + 0.5), n = 1, m = leg.mode, at = now }
+        e = { s = sec, d = floor(leg.d + 0.5), n = 1, m = leg.mode, at = now, bt = now }
+        if leg.mode == "foot" then e.f, e.ft = sec, now end
         store[ka][kb] = e
         return e, true
     end
     e.n, e.at = (e.n or 1) + 1, now
-    if sec < e.s then
-        e.s, e.d, e.m = sec, floor(leg.d + 0.5), leg.mode
+    if sec < e.s or stale(e.bt or e.at) then
+        e.s, e.d, e.m, e.bt = sec, floor(leg.d + 0.5), leg.mode, now
         return e, true
     end
     return e, false
+end
+
+-- Pure: the seconds an entry gives the planner, or nil. how (optional):
+-- { ride = false } for a character who can't ride (only a trip made on foot
+-- or by flight times it), { now = time } to leave out a best past L.AGE.
+function L.SecondsFor(e, how)
+    if not e then return nil end
+    local now = how and how.now
+    local function stale(t) return now and t and now - t > L.AGE end
+    local s, t = e.s, e.bt
+    if how and how.ride == false and e.m == "mount" then s, t = e.f, e.ft end
+    if not s or stale(t) then return nil end
+    return s
 end
 
 -- Pure: what a leg counts as for the planner, in yards at running speed,
@@ -162,14 +183,17 @@ end
 
 -- Pure: the planner's answer for a trip from a to b ({ wx, wy }) of d
 -- straight yards. -> yards, and "exact" | "area"; nil when nothing is known.
---   store, coarse: one continent's
-function L.Lookup(store, coarse, a, b, d)
+--   store, coarse: one continent's; how: as L.SecondsFor
+function L.Lookup(store, coarse, a, b, d, how)
     if not (store and a and b and d and d >= L.MIN_YARDS) then return nil end
     local ka, kb = L.Cell(a.wx, a.wy), L.Cell(b.wx, b.wy)
-    local e = store[ka] and store[ka][kb]
+    local fw = store[ka] and store[ka][kb]
+    local s = L.SecondsFor(fw, how)
+    local e = s and { s = s, d = fw.d } or nil
     -- (The way back, when it wasn't a flight: a path is the same both ways.)
     local back = store[kb] and store[kb][ka]
-    if back and back.m ~= "taxi" and (not e or back.s < e.s) then e = back end
+    local sb = back and back.m ~= "taxi" and L.SecondsFor(back, how)
+    if sb and (not e or sb < e.s) then e = { s = sb, d = back.d } end
     if e then return L.YardsOf(e, d), "exact" end
     if coarse and d >= L.COARSE_MIN then
         local KA, KB = L.Cell(a.wx, a.wy, L.COARSE), L.Cell(b.wx, b.wy, L.COARSE)
@@ -238,13 +262,24 @@ end
 
 -- The planner's option (Nav.lua: N:Options): a trip from spot a to spot b of
 -- d straight yards -> yards as you travel it, and how it's known.
+local planHow = {}   -- this plan's { ride, now } (L.PlanLegs: once a plan, not once a leg)
 function L.Yards(a, b, d)
     if not (a and b and a.cont ~= nil and a.cont == b.cont and a.wx and b.wx) then return nil end
-    local yards, how = L.Lookup(storeOf(a.cont), coarse[a.cont], a, b, d)
+    local yards, how = L.Lookup(storeOf(a.cont), coarse[a.cont], a, b, d, planHow)
     L.used[how or "none"] = (L.used[how or "none"] or 0) + 1
     return yards, how
 end
-function L.PlanLegs() return L.On() and L.Yards or nil end
+function L.PlanLegs()
+    if not L.On() then return nil end
+    -- Can this character ride? (Unknown: as before, any trip counts.)
+    local MT, ride = ns.mounts, nil
+    if MT and MT.HasRiding and MT.HasMount then
+        local ok, yes = pcall(function() return MT:HasRiding() and MT:HasMount() end)
+        if ok then ride = yes and true or false end
+    end
+    planHow.ride, planHow.now = ride, time and time() or nil
+    return L.Yards
+end
 
 -- A second has passed: where you are, where you're headed.
 function L.Tick()
