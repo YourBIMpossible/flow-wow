@@ -519,7 +519,8 @@ Flow for WoW is a separate project from Flow Engine.
 - **Tooltips with room**: a tooltip Flow opens is wide enough for its sentences.
 - A short intro on the arrow at login (version and status), `/flow help`, `/flow settings`, chat timestamps, and Ctrl-drag to move
   any Flow element.
-- **Self-tests**: `/flow test` runs Flow's built-in checks; they also run on every `/reload`.
+- **Self-tests**: `/flow test` runs Flow's built-in checks; on a developer install they also run
+  on every `/reload`.
 - **Ask Claude from the game** (optional): `/claude make the arrow green`. A Claude session on
   your PC (Claude desktop or Claude Code, told to "watch Flow's in-game chat") picks it up through
   a small script, can answer and change Flow itself, and the answer shows in chat after
@@ -531,6 +532,44 @@ Flow for WoW is a separate project from Flow Engine.
 - Recommended: **Questie** + **QuestieDB**. Flow reads their quest and NPC data at runtime for
   the arrow, map route, missed quests and quest-item keeping. Nothing is copied from them.
 - Optional: **Auctionator**, for auction house prices in sell decisions.
+
+## Installing
+- **CurseForge:** install "Flow (unfettered)".
+- **By hand:** download the zip from the GitHub release. It holds one `Flow` folder; unzip it
+  into `_forever_\Interface\AddOns` in your WoW folder, so you get
+  `_forever_\Interface\AddOns\Flow\Flow.toc`. Then restart the game or `/reload`.
+- Questie and QuestieDB are optional dependencies: Flow loads without them, but the arrow, map
+  route and quest features read their data.
+
+## Troubleshooting
+- **See Lua errors:** `/console scriptErrors 1`, then `/reload`.
+- **What Flow saw:** after a `/reload`, `tools\read-diag.ps1` prints the diagnostics snapshot,
+  Flow's log, every blocked action ("only available to the Blizzard UI") and Flow's lines in
+  the taint log. Attach its output to a bug report.
+- **Which game calls work on your client:** `/flow api`.
+- **Run the self-tests:** `/flow test` (not in a fight), or `/flow test <text>` for some.
+- **No route, no quest arrow:** check that Questie and QuestieDB are installed and enabled.
+- **Slow or hitching:** `/flow perf` shows what Flow costs; see
+  [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+
+## Upgrade and rollback
+Flow keeps your data in two places:
+
+- `FlowDB` (account-wide): `WTF\Account\<account>\SavedVariables\Flow.lua`.
+- `FlowCharDB` (one per character): `WTF\Account\<account>\<realm>\<character>\SavedVariables\Flow.lua`.
+
+Before switching to another version, either way:
+
+1. Log out or close the game. The game writes these files when you log out or `/reload`, and
+   would overwrite a copy you put back while it runs.
+2. Back up the account's `Flow.lua` and every character's `Flow.lua`.
+3. Replace the `Interface\AddOns\Flow` folder with the other version.
+
+A newer Flow may reshape saved data when it first loads (for example, data once shared by
+every character is parked in `FlowDB.legacyShared`, and each character takes its own copy).
+An older Flow may not understand the new shape. To go back, put back the older version
+**and** the backup you made with it. Never delete Flow's saved data without a backup: it
+holds your settings and what Flow has learned about each character (fights, route, recipes).
 
 ## Commands
 `/flow help` lists everything. The main ones: `/flow settings`, `/flow rot why`,
@@ -558,11 +597,17 @@ talk to Claude from inside the game and get updates by themselves:
   rotation.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) lists every extension point and how to add a
   class; [docs/GEAR_PLAN.md](docs/GEAR_PLAN.md) covers gear scoring.
-- **Tests:** `Modules/Tests.lua` registers self-tests (`ns:Register("test", name, fn)`). There's
-  no Lua interpreter here, so they run in game: `/flow test`, and in the diagnostics on every
-  `/reload` (`tools/read-diag.ps1` prints them).
+- **Tests:** `Modules/Tests.lua` registers self-tests (`ns:Register("test", name, fn)`). The
+  real run is in game: `/flow test`, and on a developer install in the diagnostics on every
+  `/reload` (`tools/read-diag.ps1` prints them). `tools/run-tests.ps1` runs them offline with
+  Lua 5.1: tests that need the game are reported SKIP, never PASS. See
+  [docs/TESTING.md](docs/TESTING.md).
 - **Lint:** `tools/lint.ps1` checks the Lua before you `/reload` (luacheck with
   `.luacheckrc`, plus texture paths): missing `local`s, typos, values never used.
+  `tools/check-structure.ps1` checks that `Flow.toc` and the files agree and that no
+  registration key is used twice. CI runs all three on every push and pull request.
+- **Performance:** how to take a baseline with `/flow perf`, and where Flow's regular work
+  runs: [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 - **Debugging:** `/console scriptErrors 1`, `/flow rot why` and `/flow api`.
 - **Looking at the game:** `tools/look.ps1` saves a picture of the game's window (only that
   window, on your own machine) so an AI assistant can check how something looks while you play.

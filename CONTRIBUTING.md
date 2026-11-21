@@ -56,6 +56,9 @@ Before starting a new change, bring your copy up to date: `git checkout main`,
 - `powershell -ExecutionPolicy Bypass -File tools\lint.ps1` must say "lint OK" (needs
   [luacheck.exe](https://github.com/lunarmodules/luacheck/releases); the script says where to
   put it).
+- `tools\check-structure.ps1` must say "structure OK", and `tools\run-tests.ps1` (Lua 5.1)
+  must report no new FAIL or ERROR. CI runs all three on your PR. An offline PASS isn't a
+  game test; see [docs/TESTING.md](docs/TESTING.md).
 - **Don't bump the version** in `Flow.toc`. Add a player-facing line under `## Unreleased` at
   the top of `CHANGELOG.md` (add that heading if it isn't there). The maintainer gives it a
   version number when merging, so PRs don't collide over the version line.
