@@ -206,6 +206,8 @@ local function remember(role, extra)
     extra.id = extra.id or P.NpcIdOf(UnitGUID("npc"))
     extra.faction = UnitFactionGroup and UnitFactionGroup("player")
     P.Learn(ns.db.places, name, p, role, extra)
+    -- Seen doing it: an earlier "isn't one" (yours or /flow places forget) is dropped.
+    if role ~= "npc" and ns.db.placesNot and ns.db.placesNot[name] then ns.db.placesNot[name][role] = nil end
 end
 P._remember = remember
 
@@ -380,7 +382,27 @@ function P:Summary()
     return total, counts, #(ns.db.mailboxes or {})
 end
 ns.commands.places = function(arg)
-    arg = (arg or ""):lower()
+    local raw = arg or ""
+    arg = raw:lower()
+    local what = raw:match("^[Ff][Oo][Rr][Gg][Ee][Tt]%s+(.+)$")
+    if what then
+        local first, after = what:match("^(%S+)%s+(.+)$")
+        local role, rest = nil, what
+        for _, r in ipairs(SHARE_ROLES) do
+            if first and first:lower() == r then role, rest = r, after end
+        end
+        local name = rest
+        for n in pairs(ns.db.places or {}) do if n:lower() == rest:lower() then name = n end end
+        local done = P.Forget(ns.db.places, ns.db.placesNot, name, role)
+        if done then
+            ns:Print(role and string.format("%s: noted as not a %s; Flow won't send you there for it (seen doing it again undoes this).", name, role)
+                or string.format("%s: forgot where you learned them; your next visit learns it again.", name))
+            if ns.nav and ns.nav.RequestCollect then ns.nav.RequestCollect("a place put right") end
+        else
+            ns:Print(string.format("no NPC called %s learned. /flow places forget [vendor|repair|trainer|flight|inn|bank|auction|quest] <name>", rest))
+        end
+        return
+    end
     if arg == "share" then return P:Share(true) end
     if arg == "share off" or arg == "unshare" then return P:Share(false) end
     local total, c, mail = P:Summary()
@@ -392,6 +414,7 @@ ns.commands.places = function(arg)
     local s = ns.db.share
     print(s and string.format("  you're sharing: %d spots (listed %s). /flow places share refreshes it, /flow places share off steps.", #(s.places or {}), tostring(s.at))
         or "  share yours with every Flow player: /flow places share (NPCs only, nothing about you)")
+    print("  one wrong? /flow places forget <name> (where), /flow places forget <role> <name> (they aren't one)")
 end
 
 -- An innkeeper's chat offers to make the inn your home.
@@ -441,6 +464,31 @@ end
 function P.NotRole(name, role)
     local d = ns.db and ns.db.placesNot
     return (d and name and d[name] and d[name][role]) and true or false
+end
+
+-- Pure: put a wrongly learned NPC right (F-019). No role: forget where you
+-- learned them (the next visit learns it again; the quest data and what
+-- players shared still count). A role: they aren't one: the role goes from
+-- what you learned and is noted in `store`, so no source sends you to them
+-- for it until the game shows otherwise. -> what changed (nil: nothing).
+function P.Forget(places, store, name, role)
+    if not (places and name) then return nil end
+    if not role then
+        if not places[name] then return nil end
+        places[name] = nil
+        return "forgot"
+    end
+    P.NoteNot(store, name, role)
+    local spot = places[name]
+    if spot then
+        if spot.roles then spot.roles[role] = nil end
+        if role == "repair" then spot.repair = nil end
+        spot.kind = "npc"
+        for _, k in ipairs(KIND_ORDER) do
+            if spot.roles and spot.roles[k] then spot.kind = k break end
+        end
+    end
+    return "not " .. role
 end
 ns:OnLoad(function(saved) saved.placesNot = saved.placesNot or {} end)
 local bankOpenedAt

@@ -254,3 +254,21 @@ ns:Register("test", "safety: a learned quest spot is confirmed, can make room wh
     t:eq(spots[10], nil, "nothing left of the quest")
     t:eq(LS.Forget(spots, 99), 0, "an unknown quest: nothing")
 end)
+
+ns:Register("test", "safety: any learned NPC place can be put right, not only a bank (F-019)", function(t)
+    local P = ns.places
+    local places = {}
+    P.Learn(places, "Gruk", { map = 1, x = 0.1, y = 0.1 }, "vendor", { repair = true }, 0)
+    P.Learn(places, "Gruk", { map = 1, x = 0.1, y = 0.1 }, "flight", nil, 0)
+    local store = {}
+    t:eq(P.Forget(places, store, "Gruk", "repair"), "not repair", "they don't repair")
+    t:ok(not P.HasRole(places.Gruk, "repair") and store.Gruk.repair, "the role goes, and is noted for every source")
+    t:eq(P.Forget(places, store, "Gruk", "vendor"), "not vendor", "nor sell")
+    t:eq(places.Gruk.kind, "flight", "what they are is worked out again")
+    t:eq(P.Forget(places, store, "Gruk"), "forgot", "where they stand: forgotten")
+    t:eq(places.Gruk, nil, "the next visit learns it again")
+    t:eq(P.Forget(places, store, "Nobody"), nil, "an NPC never learned: nothing")
+    with(ns.db, "placesNot", { Gruk = { flight = true } }, function()
+        t:eq(P.NotRole("Gruk", "flight"), true, "Services skips a noted role for learned, shared and quest-data NPCs alike")
+    end)
+end)

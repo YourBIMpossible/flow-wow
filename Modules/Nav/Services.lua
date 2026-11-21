@@ -111,7 +111,7 @@ function S:Nearest(kind)
     end
     -- What you've learned yourself.
     for name, spot in pairs(ns.db.places or {}) do
-        if spot.map and ns.places.HasRole(spot, kind) then pcall(consider, name, spot.map, spot.x, spot.y, "you") end
+        if spot.map and ns.places.HasRole(spot, kind) and not ns.places.NotRole(name, kind) then pcall(consider, name, spot.map, spot.x, spot.y, "you") end
     end
     if kind == "mail" then
         for _, m in ipairs(ns.db.mailboxes or {}) do pcall(consider, "Mailbox", m.map, m.x, m.y, "you") end
@@ -120,7 +120,7 @@ function S:Nearest(kind)
     local faction = UnitFactionGroup and UnitFactionGroup("player")
     local sh = ns.places.Shared()
     for name, s in pairs(sh.npcs) do
-        if s.roles[kind] and not (ns.db.places or {})[name] and ns.places.FriendlyTo(s.f, faction) then
+        if s.roles[kind] and not (ns.db.places or {})[name] and ns.places.FriendlyTo(s.f, faction) and not ns.places.NotRole(name, kind) then
             pcall(consider, name, s.map, s.x, s.y, "shared")
         end
     end
@@ -170,12 +170,12 @@ function S:All(kind, max)
                           yards = math.sqrt((wx - p.wx) ^ 2 + (wy - p.wy) ^ 2) }
     end
     for name, spot in pairs(ns.db.places or {}) do
-        if spot.map and ns.places.HasRole(spot, kind) then pcall(consider, name, spot.map, spot.x, spot.y, "you") end
+        if spot.map and ns.places.HasRole(spot, kind) and not ns.places.NotRole(name, kind) then pcall(consider, name, spot.map, spot.x, spot.y, "you") end
     end
     local faction = UnitFactionGroup and UnitFactionGroup("player")
     local sh = ns.places.Shared()
     for name, s in pairs(sh.npcs) do
-        if s.roles[kind] and not (ns.db.places or {})[name] and ns.places.FriendlyTo(s.f, faction) then
+        if s.roles[kind] and not (ns.db.places or {})[name] and ns.places.FriendlyTo(s.f, faction) and not ns.places.NotRole(name, kind) then
             pcall(consider, name, s.map, s.x, s.y, "shared")
         end
     end
