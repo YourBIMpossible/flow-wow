@@ -238,11 +238,15 @@ end
 
 local function tick(c) c.advance(D.EVERY + 0.05, 1) end
 
--- A fight with the rotation's view up before and in it.
+-- A fight with the rotation's view up before and in it. The advice first
+-- showed at the first tick; the wait puts that change further back than
+-- Ch.LOOKBACK, so an instant is judged against the advice showing now and
+-- not against the nothing that showed before the first tick.
 local function fight(w)
     tick(w.c)
     w.c.setCombat(true)
     tick(w.c)
+    w.c.advance(Ch.LOOKBACK + 0.2, 1)
 end
 
 local function land(w, id, guid, unit) w.c.fire(Ch.DONE, unit or "player", guid, id) end
@@ -498,6 +502,15 @@ tests["choices module: a tally brought over from Flow is added to"] = function(t
     t.eq(d.kinds, { advice = 11 })
     t.eq(d.since, 100, "the first day is kept")
     t.eq(d.fights, {}, "the fight list is added when missing")
+end
+
+tests["choices module: an instant in the moment the advice first showed is judged against nothing"] = function(t)
+    local w = start()
+    tick(w.c)
+    w.c.setCombat(true)
+    land(w, MOONFIRE)
+    t.eq(w.api.data().kinds, { own = 1 }, "nothing showed a moment before")
+    t.ok(w.api.data().list["own: Moonfire < nothing"] ~= nil)
 end
 
 return tests
