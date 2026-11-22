@@ -1340,6 +1340,18 @@ function ns.make.fakeClient(opts)
     function c.setMounted(v)
         if v == nil then s.mounted = nil else s.mounted = v and true or false end
     end
+
+    -- S44: mapCorners(map) is unknown (nil) until set.
+    --   c.setMapCorners(map, { cont, ox, oy, ex, ey, sx, sy })  nil: not known
+    function c.mapCorners(map)
+        local m = s.mapCorners and s.mapCorners[map] or nil
+        if type(m) ~= "table" then return nil end
+        return { cont = m.cont, ox = m.ox, oy = m.oy, ex = m.ex, ey = m.ey, sx = m.sx, sy = m.sy }
+    end
+    function c.setMapCorners(map, corners)
+        s.mapCorners = s.mapCorners or {}
+        s.mapCorners[map] = type(corners) == "table" and corners or nil
+    end
     return c
 end
 
