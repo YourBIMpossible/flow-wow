@@ -897,7 +897,9 @@ return {
         t.ok(skipped["account.settings.sell.autoAll"], "skipped lists every imported value that was not written")
         t.ok(skipped["account.settings.sell.autoRepair"], "the unconfirmed automation among them")
         t.ok(not kept["account.settings.sell.repairWarn"], "an equal value is not a conflict")
-        t.eq(report.counts, { added = #report.added, kept = #report.kept, skipped = #report.skipped, incompatible = 0 })
+        -- The stored bare number meets a price entry, which is a table (D8).
+        t.eq(report.incompatible, { "account.learned.prices.vendor.2589" })
+        t.eq(report.counts, { added = #report.added, kept = #report.kept, skipped = #report.skipped, incompatible = 1 })
         t.eq(#newAccount.imports, 1)
 
         t.eq(account, beforeAccount, "the existing account data is unchanged")

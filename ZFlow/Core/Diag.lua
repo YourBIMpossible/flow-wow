@@ -395,8 +395,12 @@ function Diag.Save(k, snap)
 end
 
 -- What an import left behind or changed, as lines to print.
---   Diag.ImportReport(result) -> lines, counts
+--   Diag.ImportReport(result [, merge]) -> lines, counts
 --     result  what Import.FromFlow returned (Import/FromFlow.lua)
+--     merge   the report Import.Merge returned, when there was a merge. Its
+--             incompatible list (a source table that met a stored single
+--             value; the stored value was kept) gets a count line and one
+--             line for each place. Only a path that is text is named.
 --     lines   the counts of dropped, adjusted and malformed entries, then one
 --             line for each adjusted value: its key, what Flow had, what was
 --             kept and why. Entries left behind for another reason (no row
@@ -405,7 +409,8 @@ end
 --             had on (result.vendorToConfirm): a count and one line each,
 --             since each stays off until the player confirms it; entries
 --             without a key get one count line and are never named.
---     counts  { dropped, adjusted, malformed, unknown, superseded, other, vendor }
+--     counts  { dropped, adjusted, malformed, unknown, superseded, other, vendor,
+--               incompatible }
 --             (vendor counts only the entries with a key)
 -- The entries are counted from the lists themselves. Pure: it reads only
 -- what it is given, and a result that is not one gives a line saying so.
@@ -420,8 +425,9 @@ local function shown(v)
     return tostring(v)
 end
 
-function Diag.ImportReport(result)
-    local counts = { dropped = 0, adjusted = 0, malformed = 0, unknown = 0, superseded = 0, other = 0, vendor = 0 }
+function Diag.ImportReport(result, merge)
+    local counts = { dropped = 0, adjusted = 0, malformed = 0, unknown = 0, superseded = 0, other = 0, vendor = 0,
+                     incompatible = 0 }
     if type(result) ~= "table" then
         return { "import: there is no result to report." }, counts
     end
@@ -482,6 +488,19 @@ function Diag.ImportReport(result)
         lines[#lines + 1] = "import: " .. unreadable .. " vendor "
             .. (unreadable == 1 and "entry" or "entries") .. " could not be read; "
             .. (unreadable == 1 and "it stays" or "each stays") .. " off."
+    end
+    local misfits = type(merge) == "table" and type(merge.incompatible) == "table" and merge.incompatible or {}
+    local named = {}
+    for i = 1, #misfits do
+        if type(misfits[i]) == "string" and misfits[i] ~= "" then named[#named + 1] = misfits[i] end
+    end
+    counts.incompatible = #named
+    if #named > 0 then
+        lines[#lines + 1] = "import: " .. #named
+            .. (#named == 1 and " source value was" or " source values were")
+            .. " incompatible with what is stored; "
+            .. (#named == 1 and "the stored value was" or "each stored value was") .. " kept."
+        for i = 1, #named do lines[#lines + 1] = "import: incompatible " .. text(named[i]) end
     end
     return lines, counts
 end
