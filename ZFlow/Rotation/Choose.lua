@@ -30,6 +30,8 @@ local _, ns = ...
 --   debuffTypes   { [type] = debuffName }            on you ("Poison", "Curse")
 --   current       { [spell] = true }                 queued or toggled on (Attack, Maul)
 --   spells        { [name] = { known, usable, onCooldown, inRange, noPower, castMs } }
+--     onCooldown not known (nil): the spell is not castable; it is not read
+--       as off cooldown.
 --
 -- No field is a health or power amount, or made from one: this client hides
 -- those from addon code. See R.FROM_AMOUNT in Snapshot.lua.
@@ -72,11 +74,19 @@ function R.Knows(s, name)
     return (r and r.known) and true or false
 end
 
--- Castable now: known, usable, off cooldown. needRange: and not out of range
--- (a range the snapshot does not give counts as in range).
+-- Castable now: known, usable, off cooldown. A cooldown nobody read
+-- (onCooldown nil) is not "off cooldown": the spell is not castable, and a
+-- second result gives the reason, R.COOLDOWN_UNKNOWN. That reason comes
+-- only when the cooldown alone is in the way; every other no is a bare
+-- false. needRange (R.Ready): and not out of range (a range the snapshot
+-- does not give counts as in range).
+R.COOLDOWN_UNKNOWN = "not known whether it is ready"
+
 function R.Castable(s, name)
     local r = row(s, name)
-    return (r and r.known and r.usable ~= false and not r.onCooldown) and true or false
+    if not (r and r.known and r.usable ~= false) then return false end
+    if r.onCooldown == nil then return false, R.COOLDOWN_UNKNOWN end
+    return not r.onCooldown
 end
 
 function R.Ready(s, name, needRange)
