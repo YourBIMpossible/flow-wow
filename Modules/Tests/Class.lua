@@ -170,3 +170,20 @@ ns:Register("test", "paladin: the class list has no guide-reported Forever rows;
     t:eq(T.Improves(nil, true)[1], "Stronger rank", "no row, known: a later rank")
     t:eq(T.Improves({ improves = { "DPS" } }, false)[1], "DPS", "a row's own words win")
 end)
+
+ns:Register("test", "paladin: no profession picks come with Flow; the choice is the player's", function(t)
+    -- prov-guides-2: the paladin's list was a guide's pick ("see the guide's Professions page").
+    local pal = ns:Get("class", "PALADIN")
+    t:ok(pal and pal.leveling and pal.leveling.role == "dps", "the paladin's class data is there")
+    t:eq(pal and pal.leveling and pal.leveling.professions, nil, "no professions suggested for a paladin")
+    -- With nothing suggested and nothing chosen the plan is empty; a plan you chose is used as it is.
+    local mine = { { name = "Mining" } }
+    with(ns, "ClassData", function() return pal end, function()
+        with(ns.db, "prof", { plan = mine }, function()
+            t:eq(ns:ProfessionPlan(), mine, "a plan you chose: kept")
+        end)
+        with(ns.db, "prof", {}, function()
+            t:eq(#ns:ProfessionPlan(), 0, "nothing chosen: an empty plan, no trainer steps of Flow's own")
+        end)
+    end)
+end)
