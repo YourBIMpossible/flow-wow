@@ -160,7 +160,10 @@ function N.ArrowView(state)
     local pText
     if under then
         -- One stack of lines on the quest arrow: same side, same first gap.
-        pText = textOps(lp.text, "quest", lq.position, size, sw, sh, stackClear, qNeed + pNeed, travel)
+        -- The needle's lines take room only while the needle is drawn: not
+        -- drawn, none of them is shown, and the side is the quest's own.
+        local stackNeed = profMode ~= "off" and qNeed + pNeed or qNeed
+        pText = textOps(lp.text, "quest", lq.position, size, sw, sh, stackClear, stackNeed, travel)
     else
         local clear = lp.look == "needle" and N.NeedleClearance(size) or nil
         pText = textOps(lp.shown and lp.text, "prof", lp.position, size, sw, sh, clear, pNeed, false)

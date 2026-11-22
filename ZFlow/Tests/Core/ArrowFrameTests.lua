@@ -477,4 +477,31 @@ return {
         L.call("k", 3)
         t.eq(log, { "a1", "a2", "b2", "a3", "b3" })
     end,
+
+    ["c.arrow: the text frame is told to take no mouse (LD2)"] = function(t)
+        local _, f, _, top = arrow()
+        t.ok(top ~= nil, "a text frame is made")
+        if top == nil then return end
+        local calls = called(top, "EnableMouse")
+        t.eq(#calls, 1, "said once, not left to the client's default")
+        t.eq(calls[1] and calls[1][1], false)
+        t.eq(lastCall(f, "EnableMouse")[1], true, "the placed frame still takes the mouse")
+    end,
+
+    ["c.arrow: without a text frame the placed frame keeps the mouse (LD2)"] = function(t)
+        local e = { UIParent = stub("UIParent") }
+        local n, made = 0, {}
+        e.CreateFrame = function(kind)
+            n = n + 1
+            if n > 2 then return nil end
+            made[n] = stub(kind)
+            return made[n]
+        end
+        local h = ns.make.client(e).arrow({ level = 6 })
+        t.ok(h ~= nil)
+        for _, cl in ipairs(called(made[1], "EnableMouse")) do
+            t.eq(cl[1], true, "never switched off for the label's sake")
+        end
+        t.ok(#called(made[1], "EnableMouse") > 0, "the placed frame takes the mouse")
+    end,
 }

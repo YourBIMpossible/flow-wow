@@ -471,7 +471,9 @@ function ns.make.client(env)
         local ok, point = mapCall("GetUserWaypoint")
         if not ok or hidden(point) or type(point) ~= "table" then return nil end
         local map, pos = point.uiMapID, point.position
-        if hidden(map) or type(map) ~= "number" or type(pos) ~= "table" then return nil end
+        -- The position is checked itself, not only what it holds: a hidden
+        -- table may answer its fields with plain-looking numbers (IT3).
+        if hidden(map) or type(map) ~= "number" or hidden(pos) or type(pos) ~= "table" then return nil end
         local okXY, x, y = call(pos.GetXY, pos)
         if not okXY then x, y = pos.x, pos.y end
         if hidden(x) or hidden(y) or type(x) ~= "number" or type(y) ~= "number" then return nil end
@@ -899,7 +901,12 @@ function ns.make.client(env)
         -- frame and takes no mouse.
         local okT, textFrame = call(env.CreateFrame, "Frame", nil, f)
         if not okT or textFrame == nil then textFrame = f end
-        if textFrame ~= f then method(textFrame, "SetAllPoints", f) end
+        if textFrame ~= f then
+            method(textFrame, "SetAllPoints", f)
+            -- Said, not left to the client's default: it covers the placed
+            -- frame, and a click or drag there must reach that frame.
+            method(textFrame, "EnableMouse", false)
+        end
         -- The levels for the placed frame at `to`: the holder one up, the
         -- text frame one above the holder.
         local function levels(to)

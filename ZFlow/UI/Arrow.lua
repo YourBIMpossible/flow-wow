@@ -141,9 +141,11 @@ local function corpseStep(client)
     local ok, at = false, nil
     if type(client.corpse) == "function" then ok, at = pcall(client.corpse) end
     if not ok then return step end
-    if type(at) == "table" and at.map ~= nil and type(at.x) == "number" and type(at.y) == "number" then
+    if type(at) == "table" and type(at.map) == "number" and type(at.x) == "number" and type(at.y) == "number" then
         local zone = ask(client, "zone")
-        -- The player's continent is safe to give: c.corpse answers only for the player's own map (R5).
+        -- The player's continent is given on the word of the real client's
+        -- c.corpse, which answers only for the player's own map (R5). A
+        -- client.corpse put in its place is not held to that here.
         step.place = { cont = type(zone) == "table" and zone.cont or nil, map = at.map, x = at.x, y = at.y }
     elseif at == false and ghost == true then
         step.lines = { Arrow.CORPSE_LABEL, Arrow.CORPSE_ELSEWHERE }

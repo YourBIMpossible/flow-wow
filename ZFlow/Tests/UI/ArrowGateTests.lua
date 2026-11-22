@@ -410,4 +410,22 @@ return {
         a.relayout()
         t.eq(q.lines, { "Corpse", "200 yd" })
     end,
+
+    ["dead: a corpse answer whose map is not a number is no place (IT4)"] = function(t)
+        local c = start()
+        c.setDead(true)
+        c.setGhost(true)
+        c.corpse = function() return { map = 1411, x = 0.5, y = 0.3 } end
+        local src = source(c)
+        t.ok(type(src.view.quest.distance) == "number", "a numbered map: a place")
+        local none = { "1411", true, {}, function() end }
+        for i = 1, #none do
+            c.corpse = function() return { map = none[i], x = 0.5, y = 0.3 } end
+            src = source(c)
+            t.eq(src.view.gate, "corpse")
+            t.eq(src.lines.quest, { "Corpse", ns.Arrow.UNKNOWN_TURN }, "direction unknown: answer " .. i)
+            t.eq(src.view.quest.distance, nil, "no distance: answer " .. i)
+            t.eq(src.turns.quest, nil, "no turn: answer " .. i)
+        end
+    end,
 }

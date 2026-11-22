@@ -150,4 +150,21 @@ return {
         c.setWaypoint(nil)
         t.eq(c.waypoint(), nil)
     end,
+
+    ["waypoint: a hidden position is nil, whatever its fields look like (IT3)"] = function(t)
+        local pos = { x = 0.25, y = 0.75 }
+        local point = { uiMapID = 1411, position = pos }
+        local function env(secret)
+            return { C_Map = { HasUserWaypoint = function() return true end,
+                               GetUserWaypoint = function() return point end },
+                     issecretvalue = secret }
+        end
+        t.eq(ns.make.client(env(function() return false end)).waypoint(), { map = 1411, x = 0.25, y = 0.75 },
+            "nothing hidden: the place")
+        t.eq(ns.make.client(env(function(v) return v == pos end)).waypoint(), nil, "the position is hidden")
+        t.eq(ns.make.client(env(function(v)
+            if v == pos then error("the client refused") end
+            return false
+        end)).waypoint(), nil, "the hidden check fails on the position: treated as hidden")
+    end,
 }
