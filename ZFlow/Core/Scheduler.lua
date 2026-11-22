@@ -25,7 +25,10 @@ function ns.make.sched(k)
     local tickCount = 0
 
     local function run(job)
-        k.meter:run(job.owner, "tick", job.label, job.fn)
+        -- An error is counted against the owner (Core/Module.lua), which
+        -- may switch the owner off: sched:off is safe during a tick.
+        local ok, err = k.meter:run(job.owner, "tick", job.label, job.fn)
+        if not ok and k.fault then k.fault(job.owner, err) end
     end
 
     local tick

@@ -85,7 +85,11 @@ function ns.make.bus(k)
         for i = 1, #snapshot do
             local entry = snapshot[i]
             if not entry.dead then
-                k.meter:run(entry.owner, "handler", event, entry.fn, ...)
+                -- An error is counted against the owner (Core/Module.lua).
+                -- That may switch the owner off, which marks the rest of
+                -- its handlers in this snapshot dead.
+                local ok, err = k.meter:run(entry.owner, "handler", event, entry.fn, ...)
+                if not ok and k.fault then k.fault(entry.owner, err) end
                 ran = ran + 1
             end
         end
