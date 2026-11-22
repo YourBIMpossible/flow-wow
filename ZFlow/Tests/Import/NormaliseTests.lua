@@ -152,7 +152,7 @@ return {
                 end
             end
         end
-        t.ok(rows >= 14, "expected the position rows of the mapping, found " .. rows)
+        t.eq(rows, 15, "the position rows of the mapping")
     end,
 
     ["normalise: every position row keeps each of the nine anchors"] = function(t)
@@ -170,7 +170,7 @@ return {
                 end
             end
         end
-        t.ok(rows >= 14, "expected the position rows of the mapping, found " .. rows)
+        t.eq(rows, 15, "the position rows of the mapping")
     end,
 
     ["normalise: every kept position reads back through the reader unchanged"] = function(t)
@@ -183,7 +183,7 @@ return {
                 t.eq(S.Point(stored), stored, row[1])
             end
         end
-        t.ok(rows >= 14, "expected the position rows of the mapping, found " .. rows)
+        t.eq(rows, 15, "the position rows of the mapping")
     end,
 
     ["normalise: an arrow place with an anchor no frame has is left out, the others kept"] = function(t)

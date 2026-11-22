@@ -813,4 +813,64 @@ return {
         t.eq(merge.vendorAlreadyOn, adopt.vendorAlreadyOn)
         t.eq(merge.vendorLeftOff, adopt.vendorLeftOff)
     end,
+    -- ------------------------------------------------------------ guards TG1
+    ["guards TG1: with no model row a stored value that is no plain on or off is not said to stay off"] = function(t)
+        local model = (ns.Settings.Model.New({ { key = "buffButton.enabled", type = "bool", default = false } }))
+        local want = "a vendor automation Flow had on; the player did not confirm it."
+            .. " The stored value is not a plain on or off; it is left as stored"
+        local mine = { settings = { sell = { autoJunk = "yes", autoRepair = 1 } } }
+        local account, _, report = Import.Merge(mine, nil, Import.FromFlow(sellDb(), {}), nil, nil, model)
+        t.eq(report.ok, true, tostring(report.reason))
+        t.eq(account.settings.sell.autoJunk, "yes", "the stored text was changed")
+        t.eq(account.settings.sell.autoRepair, 1, "the stored number was changed")
+        local reason = {}
+        for _, entry in ipairs(report.skipped) do reason[entry.path] = entry.reason end
+        t.eq(reason["account.settings.sell.autoJunk"], want)
+        t.eq(reason["account.settings.sell.autoRepair"], want)
+        t.eq(report.vendorNotPlain, { "sell.autoJunk", "sell.autoRepair" })
+        t.eq(report.vendorLeftOff, {}, "a value left as stored is listed as off")
+        t.eq(report.vendorAlreadyOn, {}, "a value that is no true is listed as on")
+        t.eq(report.vendorConfirmed, {})
+    end,
+
+    ["guards TG1: a character's stored value that is no plain on or off is not said to stay off"] = function(t)
+        local want = "a vendor automation Flow had on; the player did not confirm it."
+            .. " The stored value is not a plain on or off; it is left as stored"
+        local mine = { settings = { sell = { autoJunk = "yes", autoRepair = 1 } } }
+        local _, char, report = Import.Merge(nil, mine, Import.FromFlow(sellDb(), {}), nil, nil, shipped())
+        t.eq(report.ok, true, tostring(report.reason))
+        t.eq(char.settings.sell.autoJunk, "yes", "the stored text was changed")
+        t.eq(char.settings.sell.autoRepair, 1, "the stored number was changed")
+        local reason = {}
+        for _, entry in ipairs(report.skipped) do reason[entry.path] = entry.reason end
+        t.eq(reason["account.settings.sell.autoJunk"], want)
+        t.eq(reason["account.settings.sell.autoRepair"], want)
+        t.eq(report.vendorNotPlain, { "sell.autoJunk", "sell.autoRepair" })
+        t.eq(report.vendorLeftOff, {})
+        t.eq(report.vendorAlreadyOn, {})
+    end,
+
+    ["guards TG1: a plain off, an absent value and a true keep the reasons they had"] = function(t)
+        local model = (ns.Settings.Model.New({ { key = "buffButton.enabled", type = "bool", default = false } }))
+        local mine = { settings = { sell = { autoJunk = false } } }
+        local _, _, report = Import.Merge(mine, { settings = { sell = { autoRepair = true } } },
+            Import.FromFlow(sellDb(), {}), nil, nil, model)
+        t.eq(report.ok, true, tostring(report.reason))
+        t.eq(report.vendorNotPlain, {})
+        t.eq(report.vendorLeftOff, { "sell.autoJunk" })
+        t.eq(report.vendorAlreadyOn, { "sell.autoRepair" })
+        local reason = {}
+        for _, entry in ipairs(report.skipped) do reason[entry.path] = entry.reason end
+        local off = reason["account.settings.sell.autoJunk"]
+        t.ok(type(off) == "string" and off:find("stays off", 1, true) ~= nil, "a plain off is not said to stay off")
+        local _, _, empty = Import.Merge(nil, nil, Import.FromFlow(sellDb(), {}), nil, nil, model)
+        t.eq(empty.vendorNotPlain, {})
+        t.eq(empty.vendorLeftOff, { "sell.autoJunk", "sell.autoRepair" })
+    end,
+
+    ["guards TG1: a merge that is refused still has the list"] = function(t)
+        local _, _, report = Import.Merge(nil, nil, nil)
+        t.eq(report.ok, false)
+        t.eq(report.vendorNotPlain, {})
+    end,
 }

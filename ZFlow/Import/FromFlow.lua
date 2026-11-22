@@ -56,10 +56,12 @@
 --     it reached the result. A confirmed one still never replaces a choice
 --     the player already has.
 --     report = { ok, reason, added, kept, skipped, counts, vendorConfirmed,
---     vendorLeftOff, vendorAlreadyOn }, three sorted lists. Their key kinds:
+--     vendorLeftOff, vendorAlreadyOn, vendorNotPlain }, four sorted lists.
+--     Their key kinds:
 --       vendorConfirmed   Flow keys (the left column of the mapping)
 --       vendorLeftOff     model keys (the path below settings)
 --       vendorAlreadyOn   model keys
+--       vendorNotPlain    model keys
 --     The saved record keeps vendorConfirmed only, by Flow key. For every
 --     vendor row there is today the two kinds spell the same key.
 --
@@ -1270,6 +1272,8 @@ end
 
 local NOT_CONFIRMED_OWN = "a vendor automation Flow had on; the player did not confirm it."
     .. " The player's own stored on was kept"
+local NOT_PLAIN = "a vendor automation Flow had on; the player did not confirm it."
+    .. " The stored value is not a plain on or off; it is left as stored"
 local SCOPES = { "account", "char" }
 
 -- The settings model's key for a gate entry: where it sits, below settings.
@@ -1320,6 +1324,21 @@ local function storedOn(result, entry, model)
     return getPath(result.char, entry.to) == true
 end
 
+local function notPlain(value)
+    return value ~= nil and value ~= true and value ~= false
+end
+
+-- Whether what is stored for an automation left unconfirmed is neither an
+-- on nor an off: a text, a number, a table. Only a value read as it is
+-- stored can be one: the character's, and the account's where no settings
+-- model reads it (the model reads a value it does not accept as its
+-- default, which is a plain off).
+local function storedNotPlain(result, entry, model)
+    local viaModel = model and model:row(modelKey(entry)) and entry.to:match("^settings%.")
+    if not viaModel and notPlain(getPath(result.account, entry.to)) then return true end
+    return notPlain(getPath(result.char, entry.to))
+end
+
 -- The gate as the merge reports it, written once the merge is done so it
 -- says what ended up stored.
 --   vendorConfirmed   Flow keys: a confirmed on that this merge stored. One
@@ -1327,10 +1346,13 @@ end
 --   vendorLeftOff     model keys: found on, not confirmed, and off now.
 --   vendorAlreadyOn   model keys: found on, not confirmed, and on all the
 --                     same because the player's own data has it on.
+--   vendorNotPlain    model keys: found on, not confirmed, and what the
+--                     player's own data holds is neither an on nor an off.
+--                     It is left as stored and is in neither list above.
 -- Returns the confirmed ones for the saved record.
 local function reportVendor(report, on, off, before, result, model)
     if model and type(model.get) ~= "function" then model = nil end
-    local landed, left, already = {}, {}, {}
+    local landed, left, already, odd = {}, {}, {}, {}
     for _, scope in ipairs(SCOPES) do
         for _, entry in ipairs(on[scope]) do
             if getPath(before[scope], entry.to) ~= true and getPath(result[scope], entry.to) == true then
@@ -1340,23 +1362,28 @@ local function reportVendor(report, on, off, before, result, model)
     end
     for _, scope in ipairs(SCOPES) do
         for _, entry in ipairs(off[scope]) do
-            local own = storedOn(result, entry, model)
-            if own then already[modelKey(entry)] = true else left[modelKey(entry)] = true end
-            report.skipped[#report.skipped + 1] = {
-                path = scope .. "." .. entry.to, reason = own and NOT_CONFIRMED_OWN or NOT_CONFIRMED,
-            }
+            local key, reason = modelKey(entry), NOT_CONFIRMED
+            if storedOn(result, entry, model) then
+                already[key], reason = true, NOT_CONFIRMED_OWN
+            elseif storedNotPlain(result, entry, model) then
+                odd[key], reason = true, NOT_PLAIN
+            else
+                left[key] = true
+            end
+            report.skipped[#report.skipped + 1] = { path = scope .. "." .. entry.to, reason = reason }
         end
     end
     report.vendorConfirmed = sortedKeys(landed)
     report.vendorLeftOff = sortedKeys(left)
     report.vendorAlreadyOn = sortedKeys(already)
+    report.vendorNotPlain = sortedKeys(odd)
     return landed
 end
 
 local function Merge(existingAccount, existingChar, imported, defaults, confirmed, model)
     local report = {
         ok = true, added = {}, kept = {}, skipped = {}, counts = { added = 0, kept = 0, skipped = 0 },
-        vendorConfirmed = {}, vendorLeftOff = {}, vendorAlreadyOn = {},
+        vendorConfirmed = {}, vendorLeftOff = {}, vendorAlreadyOn = {}, vendorNotPlain = {},
     }
     local problem
     if type(imported) ~= "table" then
