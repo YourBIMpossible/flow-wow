@@ -232,3 +232,19 @@ The owner's operating correction of 2026-11-21 settled most of the earlier quest
 | 12 | Tables with no recorded origin (innkeepers, crossings, rides, mounts) | B | Undocumented origin is not proof of copying. Each is checked against client reads and given a note, or re-read. Tables whose own header names a third-party source (zone fish, zone levels, guide notes, Questie IDs) are replaced by client reads or authored models. Nothing unresolved enters a public release. |
 
 Open for the owner (class D): none at this revision.
+
+## 11. Kernel as built (revision 3, 2026-11-22)
+
+The kernel is merged on `zflow`. Where it differs from section 4, this section is the contract.
+
+- `store:watch(scope, path, fn)`: the scope is the first argument.
+- `store:get` returns the stored value only. Defaults come from settings rows.
+- Event handlers and ticks receive `ctx` as their first argument. `bus:on` returns a cancel function.
+- Ticks have no `when = "visible"` yet. It is added with the first frame code.
+- The client surface has no bind, hook, unit or bag calls yet. The module that first needs one adds it to Core/Client.lua and Core/ClientFake.lua through the kernel owner (White).
+- The load guard also treats an existing `FlowDB` table as "Flow is loaded".
+- Not built yet: switching a module off after repeated errors; test tiers.
+- Structure rule: no `print`, `_G`, `os` or `io` outside Core/Client.lua, tests included.
+- To add a file: add its path to `files` in ZFlow/manifest.lua, then run tools/zflow-toc.ps1. Tests go under ZFlow/Tests/<Area>/ and build a fresh kernel with `ns.Kernel({}, ns.make.fakeClient())`.
+- Checks: tools/zflow-tests.ps1 and tools/zflow-structure.ps1. tools/zflow-boot.lua stays usable for branches that have not merged the kernel yet.
+- Not confirmed in the game client: which add-on-loaded query exists, debugprofilestop, the order of PLAYER_LOGIN against saved variables, InCombatLockdown, and that the generated TOC loads.

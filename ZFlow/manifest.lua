@@ -1,0 +1,35 @@
+-- The load order of every Lua file in this folder. The TOC is generated from
+-- it (tools/zflow-toc.ps1), the offline runner loads from it
+-- (tools/zflow-tests.ps1) and the structure check compares the folder with
+-- it (tools/zflow-structure.ps1).
+--
+-- To add a file: put its path, relative to this folder, with forward
+-- slashes, where it should load. Kernel first; a feature file may then use
+-- anything on ns. A file marked dev = true is loaded by the offline runner
+-- but never listed in the TOC. Test files (Tests/**) are not listed here:
+-- the runner finds them itself.
+return {
+    interface = 16001,
+    version = "0.1.0",
+    files = {
+        -- Kernel
+        "Core/Identity.lua",
+        "Core/Client.lua",
+        { "Core/ClientFake.lua", dev = true },
+        "Core/Report.lua",
+        "Core/Store.lua",
+        "Core/Settings.lua",
+        "Core/Bus.lua",
+        "Core/Scheduler.lua",
+        "Core/Kinds.lua",
+        "Core/Guard.lua",
+        "Core/Module.lua",
+        "Core/Kernel.lua",
+
+        -- Items
+
+        -- Rotation and classes
+
+        -- Navigation
+    },
+}
