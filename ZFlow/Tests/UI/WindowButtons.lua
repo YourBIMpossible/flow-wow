@@ -36,7 +36,8 @@ end
 
 -- opts: rows (false: none declared), on = { worldMap = bool, merchant = bool }
 -- (saved before login), windows = { [frame] = { protected } } (default both,
--- unprotected), combat (in combat at login), providers (false: none).
+-- unprotected), combat (in combat at login), providers (false: none),
+-- id (an identity for the kernel; default ns.id).
 local function start(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
@@ -47,7 +48,7 @@ local function start(opts)
     local wins = opts.windows or { WorldMapFrame = {}, MerchantFrame = {} }
     for name, w in pairs(wins) do c.setWindow(name, w) end
     if opts.combat then c.setCombat(true) end
-    local k = ns.Kernel({}, c)
+    local k = ns.Kernel({}, c, opts.id)
     ns.Diag.Start(k)
     if opts.rows ~= false then
         for _, win in ipairs(W.WINDOWS) do
@@ -177,6 +178,26 @@ tests["window buttons: look only - plain buttons, no secure fields, no acting fu
     for name in pairs(W) do
         local n = tostring(name):lower()
         t.ok(not (n:find("sell") or n:find("buy") or n:find("cast") or n:find("secure")), "no acting function: " .. n)
+    end
+end
+
+tests["window buttons: the button's text and tooltip name the addon from the identity"] = function(t)
+    local id = {}
+    for key, v in pairs(ns.id) do id[key] = v end
+    id.title = "Test-Addon"
+    local _, c = start({ on = { worldMap = true, merchant = true }, id = id })
+    t.eq(#c.windowButtons, 2)
+    for _, h in ipairs(c.windowButtons) do
+        t.eq(h.spec.text, "Test-Addon", "the title from the identity")
+        t.ok(h.spec.tip:find("Test-Addon", 1, true) == 1, "the tooltip starts with it")
+        t.ok(not h.spec.tip:find(ns.id.title, 1, true), "nothing written in")
+    end
+    for _, win in ipairs(W.WINDOWS) do
+        for field, v in pairs(win) do
+            if type(v) == "string" then
+                t.ok(not v:find(ns.id.title, 1, true) and not v:find(ns.id.slash, 1, true), "no identity in " .. field)
+            end
+        end
     end
 end
 
