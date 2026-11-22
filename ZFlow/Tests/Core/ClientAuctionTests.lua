@@ -96,6 +96,97 @@ return {
         t.eq(bare.taken(COMMODITY), false)
     end,
 
+    -- PA2: more of the real client's watchAuctionResults, over the same
+    -- hand-built environment.
+    ["client auction: a second watcher shares the one event, and each is told once"] = function(t)
+        local env = auctionEnv({ [2589] = { { unitPrice = 30 } } })
+        local c = ns.make.client(env)
+        local a, b = {}, {}
+        t.eq(c.watchAuctionResults(function(id) a[#a + 1] = id end), true)
+        t.eq(c.watchAuctionResults(function(id) b[#b + 1] = id end), true, "already followed: true")
+        local listening = 0
+        for _, f in ipairs(env.frames) do
+            if f.events[COMMODITY] then listening = listening + 1 end
+        end
+        t.eq(listening, 1, "the event is asked for once")
+        env.send(COMMODITY, 2589)
+        t.eq(a, { 2589 })
+        t.eq(b, { 2589 })
+    end,
+
+    ["client auction: a watcher that raises does not stop the others"] = function(t)
+        local env = auctionEnv({ [2589] = { { unitPrice = 30 } } })
+        local c = ns.make.client(env)
+        local got = {}
+        c.watchAuctionResults(function() error("watcher boom") end)
+        c.watchAuctionResults(function(id, r) got[#got + 1] = { id = id, row = r } end)
+        t.ok(pcall(env.send, COMMODITY, 2589), "the event does not raise")
+        t.eq(got, { { id = 2589, row = { unitPrice = 30 } } })
+    end,
+
+    ["client auction: hidden values are left out; a hidden item is not told"] = function(t)
+        local env = auctionEnv({
+            [2589] = { { unitPrice = 999, buyoutAmount = 40, quantity = 2 } },
+            [999] = { { unitPrice = 5 } },
+        })
+        env.issecretvalue = function(v) return v == 999 end
+        local _, got = watch(env)
+        env.send(COMMODITY, 2589)
+        t.eq(got, { { id = 2589, row = { buyoutAmount = 40, quantity = 2 } } }, "the hidden price is dropped, the buyout prices it")
+        env.send(COMMODITY, 999)
+        t.eq(#got, 1, "a hidden item ID: nothing told")
+    end,
+
+    ["client auction: a row that cannot be read is passed over, not the search"] = function(t)
+        local env = auctionEnv({})
+        local rows = {
+            { unitPrice = 50 },
+            "raise",
+            setmetatable({}, { __index = function() error("field boom") end }),
+            { unitPrice = "10", buyoutAmount = 60, quantity = 2 },
+        }
+        env.C_AuctionHouse.GetCommoditySearchResultInfo = function(_, i)
+            if rows[i] == "raise" then error("row boom") end
+            return rows[i]
+        end
+        env.C_AuctionHouse.GetNumCommoditySearchResults = function() return #rows end
+        local _, got = watch(env)
+        env.send(COMMODITY, 2589)
+        t.eq(got, { { id = 2589, row = { buyoutAmount = 60, quantity = 2 } } },
+            "a raising row and a raising field are skipped; a price that is not a number is dropped")
+    end,
+
+    ["client auction: an item search with no readable key tells nothing"] = function(t)
+        local env = auctionEnv({ [7] = { { unitPrice = 5 } } })
+        local _, got = watch(env)
+        env.send(ITEM, 7)
+        env.send(ITEM, setmetatable({}, { __index = function() error("key boom") end }))
+        t.eq(got, {})
+        env.send(ITEM, { itemID = 7 })
+        t.eq(got, { { id = 7, row = { unitPrice = 5 } } })
+    end,
+
+    ["client auction: a count that is not a whole number is read safely"] = function(t)
+        local nan = auctionEnv({ [1] = { { unitPrice = 5 }, { unitPrice = 4 } } }, { count = 0 / 0 })
+        watch(nan)
+        nan.send(COMMODITY, 1)
+        t.eq(nan.asked, { 1 }, "not a number: row 1 alone")
+        local part = auctionEnv({ [1] = { { unitPrice = 5 }, { unitPrice = 4 }, { unitPrice = 3 } } }, { count = 2.7 })
+        local _, got = watch(part)
+        part.send(COMMODITY, 1)
+        t.eq(part.asked, { 1, 2 }, "a fraction is rounded down")
+        t.eq(got[1].row, { unitPrice = 4 })
+    end,
+
+    ["client auction: no watcher function, nothing followed"] = function(t)
+        local env = auctionEnv({})
+        local c = ns.make.client(env)
+        t.eq(c.watchAuctionResults(nil), nil)
+        t.eq(c.watchAuctionResults("not a function"), nil)
+        t.eq(env.taken(COMMODITY), false)
+        t.eq(env.taken(ITEM), false)
+    end,
+
     ["client realm: the realm's name, or nil"] = function(t)
         t.eq(ns.make.client({ GetRealmName = function() return "Old Blanchy" end }).realm(), "Old Blanchy")
         t.eq(ns.make.client({ GetRealmName = function() return "" end }).realm(), nil)
