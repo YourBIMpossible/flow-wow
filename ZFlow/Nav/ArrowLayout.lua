@@ -30,6 +30,26 @@ N.ARROW_PALETTE = {
     colourBlind = { away = rgb("9EA0A8"), far = rgb("E69F00"), mid = rgb("F0E442"),
                     near = rgb("009E73"), here = rgb("56B4E9") },
 }
+-- The palettes a player can pick (G56), in order: { key, label }. The first
+-- is the one in use until another is picked. Each key is a row of
+-- N.ARROW_PALETTE with a colour for every meaning: picking one changes the
+-- colours only, never what a colour means.
+N.ARROW_PALETTES = { { "standard", "Standard" }, { "colourBlind", "Colour-blind" } }
+
+-- The key of a saved palette word: the word when it is one of
+-- N.ARROW_PALETTES, else the first.
+function N.ArrowPaletteKey(v)
+    for i = 1, #N.ARROW_PALETTES do
+        if N.ARROW_PALETTES[i][1] == v then return v end
+    end
+    return N.ARROW_PALETTES[1][1]
+end
+
+-- The colours of a saved palette word: the N.ARROW_PALETTE row that
+-- N.ArrowColor and N.ArrowPaint take.
+function N.ArrowPaletteOf(v)
+    return N.ARROW_PALETTE[N.ArrowPaletteKey(v)]
+end
 
 -- ---------------------------------------------------------------- helpers
 local SPOT = {

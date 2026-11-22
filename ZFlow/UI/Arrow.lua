@@ -96,6 +96,40 @@ function Arrow.StyleRow(k)
     return row
 end
 
+-- The palette of the arrow colours (G56): a setting row of its own. It
+-- picks which colours stand for the meanings (N.ARROW_PALETTES); what each
+-- colour means does not change.
+Arrow.PALETTE = "arrow.palette"
+Arrow.PALETTE_PATH = "layout.arrowPalette"
+
+local paletteRefused = setmetatable({}, { __mode = "k" })
+
+-- The palette row on kernel k, declared the first time it is asked for; nil
+-- when the kernel refused it (asked once, one problem of the arrow).
+function Arrow.PaletteRow(k)
+    local row = k.settings:row(Arrow.PALETTE)
+    if row or paletteRefused[k] then return row end
+    local choices = {}
+    for i = 1, #ns.Nav.ARROW_PALETTES do choices[i] = ns.Nav.ARROW_PALETTES[i][1] end
+    row = k:Setting({
+        key = Arrow.PALETTE, scope = "account", type = "choice", choices = choices,
+        default = choices[1], path = Arrow.PALETTE_PATH,
+        label = "Arrow colours", group = "Arrows",
+        help = "The colours the arrow uses: the standard ones, or ones picked to be told apart by colour-blind players.",
+    })
+    if not row then
+        paletteRefused[k] = true
+        k.problems:add("arrow", "row", "the palette row was refused; the palette is not kept")
+    end
+    return row
+end
+
+-- The colours picked on kernel k: the N.ARROW_PALETTE row of the saved
+-- word, the standard one for no word or a word that is no choice.
+function Arrow.Palette(k)
+    return ns.Nav.ArrowPaletteOf(k.store:get("account", Arrow.PALETTE_PATH))
+end
+
 -- The styles for a menu, in order: { key, label, on } with `on` the one
 -- named by `using`.
 function Arrow.Styles(using)
@@ -114,8 +148,9 @@ function Arrow.Saved(k)
 end
 
 -- The demo's arrow source: ArrowView's state plus the turns and lines.
--- near: the quest step reached.
-function Arrow.DemoSource(client, layout, near)
+-- near: the quest step reached. palette (optional): the N.ARROW_PALETTE row
+-- the arrows are painted from; none is the standard one.
+function Arrow.DemoSource(client, layout, near, palette)
     local D, N = Arrow.DEMO, ns.Nav
     local here = client.zone()
     local facing = client.facing()
@@ -128,7 +163,7 @@ function Arrow.DemoSource(client, layout, near)
     local pLines = { "Demo: east" }
     return {
         view = {
-            layout = layout, screenW = w, screenH = h, gate = "open",
+            layout = layout, screenW = w, screenH = h, gate = "open", palette = palette,
             player = here, facingKnown = facing ~= nil,
             quest = { hasStep = true, target = here, distance = qd,
                       textHeight = #qLines * Arrow.LINE_HEIGHT },
@@ -243,11 +278,14 @@ Arrow.CORPSE_ELSEWHERE = "corpse is on another map"
 -- N.ArrowGate as its intro argument. While the gate it gives is "intro" the
 -- quest arrow stands upright with the title as its one line. A guide's own
 -- gate still wins.
-function Arrow.GuideSource(client, layout, guide, intro)
+-- palette (optional): the N.ARROW_PALETTE row the arrows are painted from,
+-- used where the guide names none of its own.
+function Arrow.GuideSource(client, layout, guide, intro, palette)
     local N = ns.Nav
     local w, h = client.screen()
     local view = {}
     for key, v in pairs(type(guide.view) == "table" and guide.view or {}) do view[key] = v end
+    if view.palette == nil then view.palette = palette end
     view.layout, view.screenW, view.screenH = layout, w, h
     local given = { quest = guide.quest, prof = guide.prof, separate = guide.separate,
                     link = guide.link, view = view }
@@ -421,7 +459,7 @@ function Arrow.Start(k, diag, own)
     local mine = false
     local function source()
         mine = false
-        if demo then return Arrow.DemoSource(client, Arrow.Saved(k), near) end
+        if demo then return Arrow.DemoSource(client, Arrow.Saved(k), near, Arrow.Palette(k)) end
         local playing = intro()
         local guide
         if guideFn then
@@ -438,7 +476,7 @@ function Arrow.Start(k, diag, own)
             if not playing then return nil end
             guide = {}
         end
-        return Arrow.GuideSource(client, Arrow.Saved(k), guide, playing)
+        return Arrow.GuideSource(client, Arrow.Saved(k), guide, playing, Arrow.Palette(k))
     end
 
     local function hideAll()
@@ -898,6 +936,7 @@ function Arrow.Declare(k, diag)
     local api = {}
     Arrow.Row(k)
     Arrow.StyleRow(k)
+    Arrow.PaletteRow(k)
     -- Before the start the style in use is the modern one and none is set.
     function api.style()
         if inner then return inner.style() end
