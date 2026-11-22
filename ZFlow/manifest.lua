@@ -120,6 +120,7 @@ return {
         "Nav/ServiceNearest.lua",
         "Nav/ServiceSeen.lua",
         "Nav/Errand.lua",
+        "Nav/RepairStep.lua",
         "Nav/QuestSource.lua",
         "Nav/QuestRead.lua",
         "Nav/Rides.lua",
