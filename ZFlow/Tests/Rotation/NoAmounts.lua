@@ -9,7 +9,7 @@ local R = ns.Rotation
 
 local function known(list, into)
     into = into or {}
-    for _, name in ipairs(list or {}) do into[name] = { known = true } end
+    for _, name in ipairs(list or {}) do into[name] = { known = true, onCooldown = false } end
     return into
 end
 
@@ -108,14 +108,14 @@ return {
         local function caster(wrath, over)
             local f = { role = "dps", hostile = true, inCombat = true, dead = false, targetNear = true,
                         targetDebuffs = { Moonfire = true },
-                        spells = { Wrath = wrath, Moonfire = { known = true }, Attack = { known = true } } }
+                        spells = { Wrath = wrath, Moonfire = { known = true, onCooldown = false }, Attack = { known = true, onCooldown = false } } }
             for k, v in pairs(over or {}) do f[k] = v end
             return spellOf(f, ns.Packs.DRUID)
         end
-        t.eq(caster({ known = true, usable = true }), "Wrath", "Wrath is usable")
-        t.eq(caster({ known = true, usable = true }, { outOfMana = true }), "Wrath", "a mana flag handed in is not read")
-        t.eq(caster({ known = true, usable = false, noPower = true }), "Attack", "the game says Wrath lacks power: weapon")
-        t.ok(caster({ known = true, usable = false }) ~= "Attack", "refused for another reason: no out-of-power advice")
+        t.eq(caster({ known = true, onCooldown = false, usable = true }), "Wrath", "Wrath is usable")
+        t.eq(caster({ known = true, onCooldown = false, usable = true }, { outOfMana = true }), "Wrath", "a mana flag handed in is not read")
+        t.eq(caster({ known = true, onCooldown = false, usable = false, noPower = true }), "Attack", "the game says Wrath lacks power: weapon")
+        t.ok(caster({ known = true, onCooldown = false, usable = false }) ~= "Attack", "refused for another reason: no out-of-power advice")
         t.ok(caster({ known = true }) ~= "Attack", "nothing read: no out-of-power advice")
     end,
 
@@ -131,9 +131,9 @@ return {
         local function grasp(row)
             return spellOf({ role = "dps", hostile = true, inCombat = true, dead = false, targetMelee = true,
                              targetOnYou = true, hittingYou = true, targetNear = true,
-                             spells = { ["Nature's Grasp"] = row, Wrath = { known = true } } }, ns.Packs.DRUID)
+                             spells = { ["Nature's Grasp"] = row, Wrath = { known = true, onCooldown = false } } }, ns.Packs.DRUID)
         end
-        t.eq(grasp({ known = true }), "Nature's Grasp", "castable: suggested")
-        t.ok(grasp({ known = true, usable = false, noPower = true }) ~= "Nature's Grasp", "the game refuses it: not suggested")
+        t.eq(grasp({ known = true, onCooldown = false }), "Nature's Grasp", "castable: suggested")
+        t.ok(grasp({ known = true, onCooldown = false, usable = false, noPower = true }) ~= "Nature's Grasp", "the game refuses it: not suggested")
     end,
 }

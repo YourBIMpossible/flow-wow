@@ -119,4 +119,137 @@ return {
         t.eq(s.spells.Moonfire.noPower, nil)
         t.eq(s.finisherReady, nil, "no source yet: not known, not no")
     end,
+
+    ["cooldown: fields: the row may carry onCooldown"] = function(t)
+        local has = false
+        for _, f in ipairs(ns.RotationReader.FIELDS) do has = has or f == "onCooldown" end
+        t.ok(has, "onCooldown is a row field")
+    end,
+
+    ["cooldown: the client's yes, no and not known are each kept"] = function(t)
+        local c = ns.make.fakeClient()
+        c.setSpell(1, { known = true, usable = true })
+        c.setSpell(2, { known = true, usable = true })
+        c.setSpell(3, { known = true, usable = true })
+        local answers = { [1] = false, [2] = true }
+        local r = ns.RotationReader.SpellRows(pack({ "Wrath", "Moonfire", "Attack" }), { Wrath = 1, Moonfire = 2, Attack = 3 },
+            reader(c), function(id) return answers[id] end)
+        t.eq(r.rows, {
+            Wrath = { known = true, usable = true, onCooldown = false },
+            Moonfire = { known = true, usable = true, onCooldown = true },
+            Attack = { known = true, usable = true },
+        })
+        t.eq(r.rows.Attack.onCooldown, nil, "not known stays nil, never false")
+        t.eq(r.unread, {}, "a cooldown not known does not make the spell unread")
+    end,
+
+    ["cooldown: no cooldown reader: nothing is said about it"] = function(t)
+        local c = ns.make.fakeClient()
+        c.setSpell(1, { known = true, usable = true })
+        local r = ns.RotationReader.SpellRows(pack({ "Wrath" }), { Wrath = 1 }, reader(c))
+        t.eq(r.rows, { Wrath = { known = true, usable = true } })
+        r = ns.RotationReader.SpellRows(pack({ "Wrath" }), { Wrath = 1 }, reader(c), "not a function")
+        t.eq(r.rows, { Wrath = { known = true, usable = true } }, "not a function: not asked")
+    end,
+
+    ["cooldown: a read that fails or answers oddly is not known, not ready"] = function(t)
+        local c = ns.make.fakeClient()
+        for id = 1, 5 do c.setSpell(id, { known = true }) end
+        local r = ns.RotationReader.SpellRows(pack({ "A", "B", "C", "D", "E" }), { A = 1, B = 2, C = 3, D = 4, E = 5 },
+            reader(c), function(id)
+                if id == 1 then error("the client refused") end
+                if id == 2 then return 0 end
+                if id == 3 then return "no" end
+                if id == 4 then return {} end
+                return false
+            end)
+        t.eq(r.rows, {
+            A = { known = true }, B = { known = true }, C = { known = true }, D = { known = true },
+            E = { known = true, onCooldown = false },
+        }, "only a plain true or false is kept")
+        t.eq(r.unread, {})
+    end,
+
+    ["cooldown: asked by spell id alone, once for each spell that was read"] = function(t)
+        local c = ns.make.fakeClient()
+        c.setSpell(5176, { known = true })
+        local args = {}
+        local r = ns.RotationReader.SpellRows(pack({ "Wrath", "Moonfire", "Attack" }), { Wrath = 5176, Moonfire = 8921 },
+            function(id)
+                if id == 8921 then error("the client refused") end
+                return c.spell(id)
+            end,
+            function(...)
+                args[#args + 1] = { n = select("#", ...), ... }
+                return false
+            end)
+        t.eq(#args, 1, "not asked for a spell with no id, nor for one whose read failed")
+        t.eq(args[1].n, 1, "one argument: no unit is ever named")
+        t.eq(args[1][1], 5176)
+        t.eq(r.rows, { Wrath = { known = true, onCooldown = false } })
+        t.eq(r.unread, { "Attack", "Moonfire" })
+    end,
+
+    ["cooldown: the cooldown reader decides, whatever the spell's own answer carried"] = function(t)
+        local function rowsWith(cooldown)
+            return ns.RotationReader.SpellRows(pack({ "Wrath" }), { Wrath = 1 },
+                function() return { known = true, onCooldown = true } end, cooldown).rows
+        end
+        t.eq(rowsWith(nil), { Wrath = { known = true, onCooldown = true } }, "no cooldown reader: the answer's own")
+        t.eq(rowsWith(function() return false end), { Wrath = { known = true, onCooldown = false } }, "the reader says ready")
+        t.eq(rowsWith(function() return nil end), { Wrath = { known = true } }, "the reader does not know: not known")
+    end,
+
+    ["cooldown: read rows make a spell castable, not castable, or not known, and the trace says which"] = function(t)
+        local R = ns.Rotation
+        local c = ns.make.fakeClient()
+        c.setSpell(133, { known = true, usable = true, noPower = false })
+        local p = { spells = { Bolt = { evidence = "first guess" } },
+                    lists = { default = { { spell = "Bolt", target = true, evidence = "first guess" } } } }
+        local function fight(cooldown)
+            local r = ns.RotationReader.SpellRows(p, { Bolt = 133 }, reader(c), function() return cooldown end)
+            return ns.SnapshotOf({ inCombat = true, dead = false, hostile = true, spells = r.rows })
+        end
+        local function listNote(trace)
+            for _, row in ipairs(trace) do
+                if row.step == "list" then return row.note end
+            end
+        end
+        local function says(note)
+            return type(note) == "string" and string.find(note, R.COOLDOWN_UNKNOWN, 1, true) ~= nil
+        end
+
+        local s = fight(false)
+        local ok, why = R.Castable(s, "Bolt")
+        t.eq(ok, true, "read, ready: castable")
+        t.eq(why, nil)
+        local got = ns.Choose(s, p)
+        t.eq(got and got.spell, "Bolt", "and suggested")
+
+        s = fight(true)
+        ok, why = R.Castable(s, "Bolt")
+        t.eq(ok, false, "read, on cooldown: not castable")
+        t.eq(why, nil, "a plain no")
+        local trace
+        got, trace = ns.Choose(s, p)
+        t.eq(got, nil, "not suggested")
+        t.eq(listNote(trace), "no rule ready", "on cooldown is not 'not known'")
+
+        s = fight(nil)
+        t.eq(s.spells.Bolt.onCooldown, nil, "not known reaches the snapshot as nil")
+        ok, why = R.Castable(s, "Bolt")
+        t.eq(ok, false, "not known: not castable")
+        t.eq(why, R.COOLDOWN_UNKNOWN, "with its own reason")
+        ok, why = R.Ready(s, "Bolt", true)
+        t.eq(ok, false, "Ready follows")
+        t.eq(why, R.COOLDOWN_UNKNOWN, "and hands the reason on")
+        got, trace = ns.Choose(s, p)
+        t.eq(got, nil, "not suggested")
+        local note = listNote(trace)
+        t.ok(says(note), "the trace gives the reason")
+        t.ok(type(note) == "string" and string.find(note, "Bolt", 1, true) ~= nil, "and names the spell")
+        for _, row in ipairs(trace) do
+            if row.step ~= "list" then t.ok(not says(row.note), row.step .. ": no such note where the spell was not weighed") end
+        end
+    end,
 }

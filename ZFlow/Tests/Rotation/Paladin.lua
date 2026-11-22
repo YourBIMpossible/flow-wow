@@ -13,7 +13,7 @@ local READY = { ["Devotion Aura"] = true, ["Blessing of Might"] = true, ["Seal o
 local function snap(over, knows, buffs)
     local s = { role = "dps", hostile = true, inCombat = true, dead = false, attacking = true,
                 current = { Attack = true, ["Auto Attack"] = true }, spells = {}, buffs = buffs or READY }
-    for _, name in ipairs(knows or ALL) do s.spells[name] = { known = true } end
+    for _, name in ipairs(knows or ALL) do s.spells[name] = { known = true, onCooldown = false } end
     for k, v in pairs(over or {}) do s[k] = v end
     return s
 end
