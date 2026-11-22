@@ -290,16 +290,19 @@ function L.Prune(store, limit)
     for ka, row in pairs(store) do
         if type(row) == "table" then
             for kb, e in pairs(row) do
-                all[#all + 1] = { ka, kb, type(e) == "table" and e.at or 0 }
+                local at = type(e) == "table" and e.at or nil
+                all[#all + 1] = { ka, kb, finite(at) and at or 0 }
             end
         end
     end
     if #all <= limit then return 0 end
-    -- (Equal times: by the keys, so the same store always loses the same legs.)
+    -- (Equal times: by the keys, so the same store always loses the same legs.
+    -- Keys are compared as text: saved data may hold keys of another kind.)
     table.sort(all, function(x, y)
         if x[3] ~= y[3] then return x[3] < y[3] end
-        if x[1] ~= y[1] then return x[1] < y[1] end
-        return x[2] < y[2]
+        local a1, b1 = tostring(x[1]), tostring(y[1])
+        if a1 ~= b1 then return a1 < b1 end
+        return tostring(x[2]) < tostring(y[2])
     end)
     local gone = #all - limit
     for i = 1, gone do
@@ -427,7 +430,12 @@ function L.Declare(k, diag)
             target = target,
         })
         if not leg then return nil end
-        local all = ctx.store:table("account", L.PATH)
+        -- Made at the first leg; saved data of another shape is replaced.
+        local all = saved()
+        if not all then
+            ctx.store:set("account", L.PATH, {})
+            all = saved()
+        end
         if not all then return nil end
         all[leg.map] = type(all[leg.map]) == "table" and all[leg.map] or {}
         local store = all[leg.map]
