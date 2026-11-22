@@ -194,4 +194,24 @@ tests["legs module: legs in another shape in the saved data do no harm"] = funct
     t.eq(k.problems:count(), 0)
 end
 
+tests["legs module: saved legs that are no table are replaced at the first leg"] = function(t)
+    local k, c, _, heading = start({ saved = { learned = { legs = "junk" } } })
+    runAtoB(c, heading)
+    t.ok(type(only(c)) == "table", "kept in a fresh table")
+    t.eq(k.problems:count(), 0)
+end
+
+tests["legs prune: saved times and keys of another kind do not stop it"] = function(t)
+    local store = {
+        ["1:0"] = { ["1:9"] = { s = 9, d = 400, at = "old" } },
+        [5] = { [7] = { s = 9, d = 400, at = 3 } },
+        ["2:0"] = { ["2:9"] = { s = 9, d = 400, at = 2 } },
+    }
+    local ok, gone = pcall(L.Prune, store, 1)
+    t.ok(ok, tostring(gone))
+    t.eq(gone, 2)
+    t.eq(L.Count(store), 1)
+    t.ok(store[5] ~= nil, "the newest kept")
+end
+
 return tests
