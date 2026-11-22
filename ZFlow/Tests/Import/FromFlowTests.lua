@@ -1068,7 +1068,10 @@ return {
         local out, _, report = Import.Merge(account, emptyChar(), flow(), nil, nil, model)
         t.eq(out.settings.nav.pathAlpha, 0.5, "a stored number the model refuses was kept as a choice")
         t.eq(out.settings.nav.mapLines, true, "a stored value that fits was replaced")
-        t.eq(report.added, { "account.settings.nav.pathAlpha" })
+        local added = {}
+        for _, at in ipairs(report.added) do added[at] = true end
+        t.eq(added["account.settings.nav.pathAlpha"], true, "the replaced setting is not reported as added")
+        t.eq(added["account.settings.nav.mapLines"], nil, "the kept setting is reported as added")
         t.eq(report.kept, { "account.settings.nav.mapLines" })
         t.eq(account.settings.nav, { pathAlpha = 7, mapLines = true }, "the existing data was changed")
 
