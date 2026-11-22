@@ -1085,9 +1085,37 @@ local function givesWay(choice, at, have, value)
     return type(have) ~= type(value)
 end
 
+local REFUSED = "the settings model refuses this value; it was not added"
+
+-- What may be added at `at` where nothing is stored: a copy of the import's
+-- value without anything the settings model refuses. Each refused value is
+-- reported as skipped. nil when nothing is left to add.
+local function fitting(choice, at, value, report, seen)
+    local model = choice.model
+    if not (model and choice.prefix and at:sub(1, #choice.prefix) == choice.prefix) then return copy(value) end
+    local key = at:sub(#choice.prefix + 1)
+    if model:row(key) ~= nil then
+        if model:check(key, value) == true then return copy(value) end
+        report.skipped[#report.skipped + 1] = { path = at, reason = REFUSED }
+        return nil
+    end
+    if type(value) ~= "table" or isList(value) or next(value) == nil then return copy(value) end
+    seen = seen or {}
+    if seen[value] then return nil end
+    seen[value] = true
+    local out = {}
+    for _, name in ipairs(sortedKeys(value)) do
+        out[name] = fitting(choice, at .. "." .. tostring(name), value[name], report, seen)
+    end
+    seen[value] = nil
+    if next(out) == nil then return nil end
+    return out
+end
+
 -- choice: a table for settings (see givesWay), nil otherwise. A stored
 -- setting is the player's choice and is kept even when it equals the
--- default; one that does not fit is no choice and gives way.
+-- default; one that does not fit is no choice and gives way. Where nothing
+-- is stored the model is asked too: a value it refuses is not added.
 local function fill(dst, src, defaults, path, report, choice)
     for _, key in ipairs(sortedKeys(src)) do
         local value, have = src[key], dst[key]
@@ -1095,8 +1123,12 @@ local function fill(dst, src, defaults, path, report, choice)
         local default
         if type(defaults) == "table" then default = defaults[key] end
         if have == nil or (type(have) == "table" and next(have) == nil and type(value) == "table") then
-            dst[key] = copy(value)
-            report.added[#report.added + 1] = at
+            local fit
+            if choice then fit = fitting(choice, at, value, report) else fit = copy(value) end
+            if fit ~= nil then
+                dst[key] = fit
+                report.added[#report.added + 1] = at
+            end
         elseif type(have) == "table" and type(value) == "table" and not isList(have) and not isList(value) then
             fill(have, value, default, at, report, choice)
         elseif same(have, value) then
@@ -1146,7 +1178,9 @@ local NOT_CONFIRMED = "a vendor automation Flow had on; the player did not confi
 --   { key = Flow key, to = where it sits }, each sorted by key: the ones
 --   switched on and the ones left off. An on counts as found whether it is
 --   in the list FromFlow made or was written into the settings some other
---   way. What it is given is not changed.
+--   way. Any value at a vendor path that is not an off counts as an on: a
+--   true, and a value of another type that a reader might take for one.
+--   What it is given is not changed.
 local function vendorGate(account, listed, confirmed)
     account = type(account) == "table" and copy(account) or {}
     local found = {}
@@ -1164,7 +1198,9 @@ local function vendorGate(account, listed, confirmed)
                 at = type(at) == "table" and at[parts[depth]] or nil
                 chain[depth] = at
             end
-            if type(at) == "table" and at[parts[#parts]] == true then
+            local value
+            if type(at) == "table" then value = at[parts[#parts]] end
+            if value ~= nil and value ~= false then
                 found[row[1]] = true
                 at[parts[#parts]] = nil
                 -- Leave no empty table behind, below the section itself.
@@ -1190,25 +1226,82 @@ local function vendorGate(account, listed, confirmed)
     return account, on, off
 end
 
--- The gate as the merge reports it.
-local function gateVendor(imported, confirmed, report)
-    local account, on, off = vendorGate(imported.account, imported.vendorToConfirm, confirmed)
-    local record = {}
-    for i = 1, #on do
-        record[on[i].key] = true
-        report.vendorConfirmed[#report.vendorConfirmed + 1] = on[i].key
+local NOT_CONFIRMED_OWN = "a vendor automation Flow had on; the player did not confirm it."
+    .. " The player's own stored on was kept"
+local SCOPES = { "account", "char" }
+
+-- The settings model's key for a gate entry: where it sits, below settings.
+local function modelKey(entry)
+    return entry.to:match("^settings%.(.+)$") or entry.key
+end
+
+local function entries(list)
+    local out = {}
+    if type(list) == "table" then
+        for _, entry in ipairs(list) do
+            if type(entry) == "table" and type(entry.key) == "string" and type(entry.to) == "string" then
+                out[#out + 1] = entry
+            end
+        end
     end
-    for i = 1, #off do
-        report.vendorLeftOff[#report.vendorLeftOff + 1] = off[i].key
-        report.skipped[#report.skipped + 1] = { path = "account." .. off[i].to, reason = NOT_CONFIRMED }
+    return out
+end
+
+-- Both scopes go through the gate: the character's settings like the
+-- account's. The list FromFlow made names account settings only.
+local function gateScopes(gate, imported, confirmed)
+    local source, on, off = {}, {}, {}
+    for _, scope in ipairs(SCOPES) do
+        local listed
+        if scope == "account" then listed = imported.vendorToConfirm end
+        local data, switched, left = gate(imported[scope], listed, confirmed)
+        source[scope] = type(data) == "table" and data or {}
+        on[scope], off[scope] = entries(switched), entries(left)
     end
-    return account, record
+    return source, on, off
+end
+
+local function switchedOn(db, to)
+    local value = getPath(db, to)
+    return value ~= nil and value ~= false
+end
+
+-- The gate as the merge reports it, written once the merge is done so it
+-- says what ended up stored.
+--   vendorConfirmed   Flow keys: a confirmed on that this merge stored. One
+--                     the player's own stored value held back is in kept.
+--   vendorLeftOff     model keys: found on, not confirmed, and off now.
+--   vendorAlreadyOn   model keys: found on, not confirmed, and on all the
+--                     same because the player's own data has it on.
+-- Returns the confirmed ones for the saved record.
+local function reportVendor(report, on, off, before, result)
+    local landed, left, already = {}, {}, {}
+    for _, scope in ipairs(SCOPES) do
+        for _, entry in ipairs(on[scope]) do
+            if getPath(before[scope], entry.to) ~= true and getPath(result[scope], entry.to) == true then
+                landed[entry.key] = true
+            end
+        end
+    end
+    for _, scope in ipairs(SCOPES) do
+        for _, entry in ipairs(off[scope]) do
+            local own = switchedOn(result.account, entry.to) or switchedOn(result.char, entry.to)
+            if own then already[modelKey(entry)] = true else left[modelKey(entry)] = true end
+            report.skipped[#report.skipped + 1] = {
+                path = scope .. "." .. entry.to, reason = own and NOT_CONFIRMED_OWN or NOT_CONFIRMED,
+            }
+        end
+    end
+    report.vendorConfirmed = sortedKeys(landed)
+    report.vendorLeftOff = sortedKeys(left)
+    report.vendorAlreadyOn = sortedKeys(already)
+    return landed
 end
 
 local function Merge(existingAccount, existingChar, imported, defaults, confirmed, model)
     local report = {
         ok = true, added = {}, kept = {}, skipped = {}, counts = { added = 0, kept = 0, skipped = 0 },
-        vendorConfirmed = {}, vendorLeftOff = {},
+        vendorConfirmed = {}, vendorLeftOff = {}, vendorAlreadyOn = {},
     }
     local problem
     if type(imported) ~= "table" then
@@ -1218,6 +1311,10 @@ local function Merge(existingAccount, existingChar, imported, defaults, confirme
     else
         problem = shapeProblem(existingAccount, "account") or shapeProblem(existingChar, "char")
     end
+    -- Looked up when called: the gate Stored.Adopt asks, not a copy of it.
+    -- With no gate nothing is merged.
+    local gate = ns.Import and ns.Import.VendorGate
+    if not problem and type(gate) ~= "function" then problem = "the vendor gate is not loaded" end
     if problem then
         report.ok, report.reason = false, problem .. "; nothing was merged"
         return copy(existingAccount), copy(existingChar), report
@@ -1233,8 +1330,7 @@ local function Merge(existingAccount, existingChar, imported, defaults, confirme
         model = nil
     end
 
-    local gated, vendorConfirmed = gateVendor(imported, confirmed, report)
-    local source = { account = gated, char = imported.char }
+    local source, on, off = gateScopes(gate, imported, confirmed)
     local result = { account = copy(existingAccount) or {}, char = copy(existingChar) or {} }
     for _, scope in ipairs({ "account", "char" }) do
         local db, base = result[scope], skeleton(scope)
@@ -1256,6 +1352,8 @@ local function Merge(existingAccount, existingChar, imported, defaults, confirme
             end
         end
     end
+    local vendorConfirmed = reportVendor(report, on, off,
+        { account = existingAccount, char = existingChar }, result)
     report.counts.added = #report.added
     report.counts.kept = #report.kept
     report.counts.skipped = #report.skipped

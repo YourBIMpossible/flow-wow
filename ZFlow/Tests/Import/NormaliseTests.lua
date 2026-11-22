@@ -274,6 +274,7 @@ return {
         t.eq(result.ok, true)
         t.eq(db, dbBefore)
         t.eq(charDb, charBefore)
+        t.eq(type(result.account.layout.rotation.frame), "table", "no position was stored")
         t.ok(result.account.layout.rotation.frame ~= db.rotation.point, "the stored position is Flow's own table")
     end,
 
