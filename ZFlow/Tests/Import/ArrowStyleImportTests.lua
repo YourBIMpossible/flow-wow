@@ -231,4 +231,38 @@ return {
         t.eq(lines(report, "char.layout.arrowModern").skipped, 1)
         t.eq(lines(report, MARK).skipped, 0)
     end,
+
+    -- ---------------------------------------------------------------- IQ1
+    ["mark typed: a held mark that is a string gives way to the imported mark, and is reported"] = function(t)
+        local account, _, report = Import.Merge(marked("yes"), emptyChar(), from({ arrowStyle = "flat", arrowModern = true }))
+        t.eq(account.layout.arrowModern, true, "a string is no mark; the imported one lands")
+        local n = lines(report, MARK)
+        t.eq(n.added, 1, "listed as added")
+        t.eq(n.kept, 0)
+        t.eq(n.skipped, 0)
+
+        account, _, report = Import.Merge(marked("true"), emptyChar(), from({ arrowStyle = "flat", arrowModern = false }))
+        t.eq(account.layout.arrowModern, false)
+        t.eq(lines(report, MARK).added, 1)
+    end,
+
+    ["mark typed: a held mark that is a number or a table gives way too"] = function(t)
+        local account, _, report = Import.Merge(marked(1), emptyChar(), from({ arrowStyle = "flat", arrowModern = true }))
+        t.eq(account.layout.arrowModern, true)
+        t.eq(lines(report, MARK).added, 1)
+
+        account, _, report = Import.Merge(marked({ on = true }), emptyChar(), from({ arrowStyle = "flat", arrowModern = true }))
+        t.eq(account.layout.arrowModern, true)
+        t.eq(lines(report, MARK).added, 1)
+    end,
+
+    ["mark typed: a held boolean, true or false, stays quiet"] = function(t)
+        for _, held in ipairs({ true, false }) do
+            local account, _, report = Import.Merge(marked(held), emptyChar(),
+                from({ arrowStyle = "flat", arrowModern = not held }))
+            t.eq(account.layout.arrowModern, held)
+            local n = lines(report, MARK)
+            t.eq(n.added + n.kept + n.skipped, 0, "no report line")
+        end
+    end,
 }
