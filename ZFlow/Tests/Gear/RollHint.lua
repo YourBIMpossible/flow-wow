@@ -3,8 +3,8 @@ local _, ns = ...
 -- Tests for ZFlow/Gear/RollHint.lua (S21): the hint on a loot roll. It says
 -- upgrade, no upgrade or unknown, and never rolls.
 --
--- The loot-roll hook is not in Core/Client.lua yet (a CLIENT NEED). The fake
--- client is given it by hand here, in the shape asked for:
+-- The fake client has the loot-roll hook (F4); the tests replace it with a
+-- hand-made one so each test controls its own rolls, in the same shape:
 --   c.onLootRoll(fn) -> cancel     fn(rollId, link, show); show(text, r, g, b)
 -- c.roll(rollId, link) plays the game offering a roll and returns what was shown.
 
@@ -55,6 +55,8 @@ local function client(opts)
                 end
             end
         end
+    else
+        c.onLootRoll = nil   -- a client that offers no roll hook
     end
     c.roll = function(rollId, link)
         local shown = {}

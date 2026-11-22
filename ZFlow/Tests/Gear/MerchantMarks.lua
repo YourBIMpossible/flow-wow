@@ -4,7 +4,7 @@ local _, ns = ...
 -- are upgrades, by the same verdict the item tooltip gives. Look only.
 --
 -- The fake client's gear answer is given what the game marks on each item
--- (gear.unmet, a CLIENT NEED) by hand, as in Tests/Gear/TooltipModule.lua.
+-- (gear.unmet) by hand, as in Tests/Gear/TooltipModule.lua.
 
 local M = ns.GearMerchantMarks
 local tests = {}
