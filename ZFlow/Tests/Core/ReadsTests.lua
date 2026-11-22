@@ -138,24 +138,22 @@ return {
         t.eq(rows[1].family, nil)
     end,
 
-    ["bags: the bare globals serve when C_Container is not there"] = function(t)
+    ["bags: only C_Container is asked; the bare globals are not a fallback"] = function(t)
         local env = bagEnv(twoBags())
         local group = env.C_Container
         env.C_Container = nil
         env.GetContainerNumSlots = group.GetContainerNumSlots
         env.GetContainerNumFreeSlots = group.GetContainerNumFreeSlots
-        -- the older list form: texture, count, locked, quality, readable,
-        -- lootable, link, filtered, noValue, id
-        env.GetContainerItemInfo = function(bag, slot)
-            local s = env.bags[bag] and env.bags[bag][slot]
-            if not s then return nil end
-            return "tex", s.count, false, 1, false, false, s.link, false, false, s.id
-        end
+        env.GetContainerItemInfo = group.GetContainerItemInfo
         local c = ns.make.client(env)
-        t.eq(#c.bags(), 2)
-        t.eq(c.bagItems(), {
-            { item = LEATHER, count = 4 }, { item = 2318, count = 3 }, { item = BEAR, count = 1 },
-        })
+        t.eq(c.bags(), nil)
+        t.eq(c.bagItems(), nil)
+    end,
+
+    ["bag items: a slot answer that is not a table makes the reading unknown"] = function(t)
+        local env = bagEnv(twoBags())
+        env.C_Container.GetContainerItemInfo = function() return "tex", 4 end
+        t.eq(ns.make.client(env).bagItems(), nil, "the older list form is not read")
     end,
 
     ["bags: NUM_BAG_SLOTS widens the range when the client has it"] = function(t)

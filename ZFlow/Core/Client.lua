@@ -143,13 +143,12 @@ function ns.make.client(env)
     -- could not be read in full is never returned as a smaller count or 0.
     ---------------------------------------------------------------------
 
-    -- A container call: C_Container.<name> when the client has it, else the
-    -- bare global of the same name (the older form). Flow uses this pair.
+    -- A container call: C_Container.<name>. Seen in game on 16001: the bare
+    -- globals of the same names are not there, so they are not tried.
     local function container(name)
         local group = env.C_Container
         local fn = type(group) == "table" and group[name] or nil
-        if type(fn) ~= "function" then fn = env[name] end
-        return fn
+        return type(fn) == "function" and fn or nil
     end
 
     local function mapCall(name, ...)
@@ -168,8 +167,8 @@ function ns.make.client(env)
         return nil
     end
 
-    -- The backpack (0) and the bags worn after it. NUM_BAG_SLOTS is a first
-    -- guess on 16001; Flow reads bags 0 to 4.
+    -- The backpack (0) and the bags worn after it. Seen in game on 16001:
+    -- NUM_BAG_SLOTS is a number and bags 0 to 4 read.
     local function bagIds()
         local last = env.NUM_BAG_SLOTS
         if not wholeCount(last) then last = 4 end
@@ -202,22 +201,13 @@ function ns.make.client(env)
     -- What is in one slot: item (a link, else an item ID) and its count;
     -- nil for an empty slot; false when the slot could not be read.
     -- C_Container.GetContainerItemInfo answers with a table (hyperlink,
-    -- itemID, stackCount); the bare global answers with a list where the
-    -- count is 2nd, the link 7th and the ID 10th. Both as Flow reads them.
+    -- itemID, stackCount). Anything else is not read.
     local function slotItem(bag, slot)
-        local ok, a, n, _, _, _, _, link, _, _, id = call(container("GetContainerItemInfo"), bag, slot)
+        local ok, info = call(container("GetContainerItemInfo"), bag, slot)
         if not ok then return false end
-        if a == nil then return nil end
-        local item, count
-        if type(a) == "table" then
-            item, count = a.hyperlink or a.itemID, a.stackCount
-        else
-            item, count = link or id, n
-            if item == nil then
-                local okLink, l = call(container("GetContainerItemLink"), bag, slot)
-                item = okLink and l or nil
-            end
-        end
+        if info == nil then return nil end
+        if type(info) ~= "table" then return false end
+        local item, count = info.hyperlink or info.itemID, info.stackCount
         if (type(item) ~= "string" and type(item) ~= "number") or not wholeCount(count) then return false end
         return item, count
     end
