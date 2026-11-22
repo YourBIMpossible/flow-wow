@@ -1,0 +1,2 @@
+# an entry the manifest also lists
+Core/A.lua
