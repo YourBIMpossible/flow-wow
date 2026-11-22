@@ -64,7 +64,22 @@ tests["away: with points on several other maps, the same one every time"] = func
     t.eq(spot.away, { map = 1412, x = 0.5, y = 0.5 }, "the lowest map, whatever order the areas come in")
 end
 
+tests["away: with the player's map not known, no point is away (section 175)"] = function(t)
+    local c = ns.make.fakeClient()
+    c.questieModule = questie()
+    local spot = N.QuestiePlaces(c, { wolves() }, nil)[303].objectives[1]
+    t.eq(spot.away, nil, "every point is 'another map' only against a known one")
+end
+
 -- ---------------------------------------------------------- 2. QuestSource
+
+tests["away: the player's map not known, the words as before (section 175)"] = function(t)
+    local places = { [303] = { objectives = { { points = {}, elsewhere = true, away = { map = 1412, x = 0.5, y = 0.5 } } } } }
+    local step = Q.Pick({ wolves() }, places, {})
+    t.eq(step.place, nil)
+    t.eq(step.lines, { "Wolves", "Wolves slain: 0/4", Q.UNKNOWN_PLACE })
+    t.eq(step.still, true)
+end
 
 local HERE = { map = 1411, x = 0.5, y = 0.5, cont = 1, size = { w = 1000, h = 500 } }
 
