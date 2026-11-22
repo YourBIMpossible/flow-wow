@@ -78,7 +78,8 @@ end
 -- The loot note (L6-E): one looted item the sell rules would sell, as a
 -- text. "Junk" only when that is the rule's own reason; a price nobody saw
 -- is said, with no figure.
-Present.VENDOR_PRICE_UNKNOWN = Present.VENDOR_PRICE_UNKNOWN or "price unknown - check vendor"
+-- F-085's words, with its em dash.
+Present.VENDOR_PRICE_UNKNOWN = "price unknown—check vendor"
 
 function Present.LootNoteText(entry, part)
     local name = type(entry.name) == "string" and entry.name ~= "" and entry.name or Present.Name(entry.key)

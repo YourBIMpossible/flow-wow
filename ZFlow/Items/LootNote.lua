@@ -31,6 +31,7 @@ ns.LootNote = LootNote
 LootNote.NAME = "lootNote"
 LootNote.SETTING = "loot.junkNote"
 LootNote.EVENT = "CHAT_MSG_LOOT"
+LootNote.REPEAT_S = 60     -- the same item is noted again only after this long; a first guess
 
 local function isCount(n)
     return type(n) == "number" and n == n and n >= 0 and n < math.huge
@@ -71,8 +72,15 @@ local function neverOf(store)
     if type(store) == "table" and type(store.get) == "function" then
         local ok, raw = pcall(store.get, store, "char", "settings.sell.never")
         if ok and type(raw) == "table" then
+            -- A set ({ [item] = true }) or a list ({ item, ... }), as
+            -- the sell list reads it.
             for k, v in pairs(raw) do
-                local key = v and ns.Items.Key(k) or nil
+                local key
+                if type(k) == "number" and k == math.floor(k) and k >= 1 and k <= #raw and v ~= true then
+                    key = ns.Items.Key(v)
+                elseif v then
+                    key = ns.Items.Key(k)
+                end
                 if key ~= nil then never[key] = true end
             end
         end
@@ -87,14 +95,20 @@ function LootNote.FromClient(client, store, chatText)
     local ok, item, count = pcall(own, chatText)
     if not ok or item == nil then return nil end
     local read = client.itemInfo
-    return LootNote.Note(item, count, type(read) == "function" and read or nil,
+    local text = LootNote.Note(item, count, type(read) == "function" and read or nil,
         { choices = { never = neverOf(store) } })
+    if not text then return nil end
+    return text, ns.Items.Key(item)
 end
 
 function LootNote.Declare(k)
     local api = {}
-    local printed = 0
+    local printed, quiet = 0, 0
+    -- When each item was last noted: [key] = the client's uptime, or true
+    -- when the client gave no time. In memory only.
+    local notedAt = {}
     function api.notes() return printed end
+    function api.quieted() return quiet end
     k:Module({
         name = LootNote.NAME,
         needs = { "client", "store", "bus", "settings" },
@@ -102,8 +116,18 @@ function LootNote.Declare(k)
         start = function(ctx)
             ctx.bus:on(LootNote.NAME, LootNote.EVENT, function(chatText)
                 if ctx.settings:get(LootNote.SETTING) == false then return end
-                local text = LootNote.FromClient(ctx.client, ctx.store, chatText)
+                local text, key = LootNote.FromClient(ctx.client, ctx.store, chatText)
                 if not text then return end
+                -- No flood while grinding: one note per item per REPEAT_S
+                -- seconds; with no time from the client, once a session.
+                local now = type(ctx.client.uptime) == "function" and ctx.client.uptime() or nil
+                if type(now) ~= "number" or now ~= now then now = nil end
+                local last = key ~= nil and notedAt[key] or nil
+                if last ~= nil and (now == nil or last == true or now - last < LootNote.REPEAT_S) then
+                    quiet = quiet + 1
+                    return
+                end
+                if key ~= nil then notedAt[key] = now or true end
                 printed = printed + 1
                 local id = k.id or ns.id
                 ctx.client.print(id.title .. ": " .. text)
