@@ -12,6 +12,8 @@
 --
 --   <slash> diag          take a snapshot now and say where it went
 --   <slash> diag clear    forget every snapshot
+--   <slash> help          list every word of the slash command, one line
+--                         each (G54)
 --   <slash> import        read the predecessor's saved data, when the client
 --                         has loaded any, and say what an import would leave
 --                         behind or change. Nothing is imported or written.
@@ -506,7 +508,7 @@ function Diag.ImportReport(result, merge)
 end
 
 -- Starts collecting on kernel k: the timing marks, the window snapshots and
--- the slash command. Returns { timing =, snapshot =, commands = }.
+-- the slash command. Returns { timing =, snapshot =, commands =, help = }.
 -- The rotation driver's view as diag lines. Pure: the module's state, the
 -- view it holds and whether its setting is on come in; text goes out.
 --
@@ -615,6 +617,37 @@ function Diag.RotationStealthLine(view)
     if s.stealthed == false then return "rotation: not stealthed." end
     return "rotation: " .. (s.stealthed == nil and "not known whether you are stealthed" or "stealthed")
         .. "; the attack is not started for you."
+end
+
+-- What a word says of itself when no help text was given for it.
+Diag.NO_HELP = "no description given"
+
+-- The lines of the help word: a count, then one line for each word in
+-- commands that can run, a to z, with its text from help (G54).
+--
+--   Diag.HelpLines(commands, help, slash) -> lines
+--     commands  { [word] = function }: the slash command's one table. Only
+--               a text word with a function is listed.
+--     help      { [word] = text }: what each word does. A word without text
+--               gets NO_HELP; a text without a word lists nothing. A line
+--               break in a text becomes a space: a word is one line.
+--     slash     the slash command as typed, put in front of each word.
+function Diag.HelpLines(commands, help, slash)
+    local words = {}
+    if type(commands) == "table" then
+        for word, fn in pairs(commands) do
+            if type(word) == "string" and type(fn) == "function" then words[#words + 1] = word end
+        end
+    end
+    table.sort(words)
+    local lines = { "commands (" .. #words .. "):" }
+    for i = 1, #words do
+        local said = type(help) == "table" and help[words[i]] or nil
+        if type(said) ~= "string" or said == "" then said = Diag.NO_HELP end
+        said = said:gsub("[\r\n]+", " ")
+        lines[#lines + 1] = tostring(slash) .. " " .. words[i] .. " - " .. said
+    end
+    return lines
 end
 
 function Diag.Start(k)
@@ -756,13 +789,19 @@ function Diag.Start(k)
         return out
     end
 
-    -- Other files add a word of their own after the slash command here:
-    -- commands[word] = function(rest) end, rest lower-cased and trimmed.
+    -- The one table of the slash command's words. Other files add a word
+    -- of their own here: commands[word] = function(rest) end, rest
+    -- lower-cased and trimmed, and help[word] = what it does, in one line.
+    -- The help word lists every word in commands, so a word is listed from
+    -- the moment it is added; one without a help text is listed as such.
     local commands = {}
+    local help = {}
 
     -- The import report. The import itself loads after this file, so it is
     -- looked up when the word is typed. The predecessor's tables are read
     -- only when the client already has them: none is created here.
+    help.import = "say what an import of the earlier addon's saved data would leave behind or change;"
+        .. " nothing is imported or written"
     commands.import = function()
         local Import = ns.Import
         if not (Import and type(Import.FromFlow) == "function") then
@@ -839,80 +878,101 @@ function Diag.Start(k)
         return lines
     end
 
+    -- The snapshot word. "diag clear" forgets every snapshot instead.
+    help.diag = "take a diagnostic snapshot and say what is not working; diag clear forgets every snapshot"
+    commands.diag = function(more)
+        if tostring(more):find("clear", 1, true) then
+            client.saved(id.accountDB).diag = nil
+            client.print(id.title .. ": diagnostics cleared.")
+            return
+        end
+        -- Each line after the snapshot's own is made under a pcall:
+        -- one that raises is a "diag" problem and one line in its
+        -- place, and the lines after it are still said.
+        local function say(what, make)
+            local ok, line = pcall(make)
+            if not ok then
+                k.problems:add("diag", what, line)
+                client.print(id.title .. ": the " .. what .. " line failed; it is kept as a problem.")
+            elseif line then
+                client.print(id.title .. ": " .. line)
+            end
+        end
+        local d = snapshot("asked")
+        client.print(id.title .. ": " .. (d and ("snapshot " .. d.count
+            .. " kept. Reload or log out to write it to disk.") or "the snapshot failed."))
+        local okFaults, faults = pcall(client.listenFaults)
+        if not okFaults then
+            say("listening", function() error(faults, 0) end)
+            faults = {}
+        end
+        say("event frame", function()
+            return faults.noEventFrame and "event frame not made; no event reaches the addon." or nil
+        end)
+        say("tick frame", function()
+            return faults.noTickFrame and "tick frame not made; nothing that runs each frame runs." or nil
+        end)
+        say("events", function()
+            if type(faults.notRegistered) ~= "table" or #faults.notRegistered == 0 then return nil end
+            return "events not registered: " .. table.concat(faults.notRegistered, ", ") .. "."
+        end)
+        say("time", function()
+            if client.uptime() ~= nil then return nil end
+            return "the client gives no time; nothing that waits for a time runs."
+        end)
+        say("held jobs", function()
+            if type(k.sched) ~= "table" or type(k.sched.held) ~= "function" then return nil end
+            local held, unknown = k.sched:held()
+            if not unknown then return nil end
+            return "combat is not known; " .. held
+                .. (held == 1 and " job is" or " jobs are") .. " held until it is."
+        end)
+        say("price watch", priceWatchLine)
+        local rotation
+        say("rotation", function()
+            rotation = rotationLines()
+            return rotation[1]
+        end)
+        for i = 2, rotation and #rotation or 0 do
+            local line = rotation[i]
+            say("rotation", function() return line end)
+        end
+    end
+
+    -- The help word: every word in commands, one line each. It reads the
+    -- table when it is typed, so a word another file adds is listed and
+    -- there is no second list to keep.
+    help.help = "list these commands"
+    commands.help = function()
+        local lines = Diag.HelpLines(commands, help, id.slash)
+        for i = 1, #lines do client.print(id.title .. ": " .. lines[i]) end
+    end
+
     client.slash(id.bindingHeader, id.slash, function(rest)
         local text = tostring(rest):lower()
         local word, more = text:match("^%s*(%S+)%s*(.-)%s*$")
+        -- A word that only starts with diag is read as diag, as it always
+        -- was ("diagclear" clears).
+        if word and not commands[word] and commands.diag and word:find("^diag") then
+            word, more = "diag", word:sub(5) .. " " .. more
+        end
         if word and commands[word] then
-            -- A word runs under a pcall, as the diag lines below do: one
-            -- that raises is a "diag" problem under the word and one line
-            -- here. It never ends the slash command.
+            -- A word runs under a pcall: one that raises is a "diag"
+            -- problem under the word and one line here. It never ends the
+            -- slash command.
             local ok, problem = pcall(commands[word], more)
             if not ok then
                 k.problems:add("diag", word, problem)
                 client.print(id.title .. ": the " .. word .. " command failed; it is kept as a problem.")
             end
-        elseif not text:find("^%s*diag") then
-            client.print(id.title .. ": " .. (k.paused and "paused" or tostring(k.phase))
-                .. ". Type " .. id.slash .. " diag for a diagnostic snapshot, or "
-                .. id.slash .. " import to see what an import would do.")
-        elseif text:find("clear", 1, true) then
-            client.saved(id.accountDB).diag = nil
-            client.print(id.title .. ": diagnostics cleared.")
         else
-            -- Each line after the snapshot's own is made under a pcall:
-            -- one that raises is a "diag" problem and one line in its
-            -- place, and the lines after it are still said.
-            local function say(what, make)
-                local ok, line = pcall(make)
-                if not ok then
-                    k.problems:add("diag", what, line)
-                    client.print(id.title .. ": the " .. what .. " line failed; it is kept as a problem.")
-                elseif line then
-                    client.print(id.title .. ": " .. line)
-                end
-            end
-            local d = snapshot("asked")
-            client.print(id.title .. ": " .. (d and ("snapshot " .. d.count
-                .. " kept. Reload or log out to write it to disk.") or "the snapshot failed."))
-            local okFaults, faults = pcall(client.listenFaults)
-            if not okFaults then
-                say("listening", function() error(faults, 0) end)
-                faults = {}
-            end
-            say("event frame", function()
-                return faults.noEventFrame and "event frame not made; no event reaches the addon." or nil
-            end)
-            say("tick frame", function()
-                return faults.noTickFrame and "tick frame not made; nothing that runs each frame runs." or nil
-            end)
-            say("events", function()
-                if type(faults.notRegistered) ~= "table" or #faults.notRegistered == 0 then return nil end
-                return "events not registered: " .. table.concat(faults.notRegistered, ", ") .. "."
-            end)
-            say("time", function()
-                if client.uptime() ~= nil then return nil end
-                return "the client gives no time; nothing that waits for a time runs."
-            end)
-            say("held jobs", function()
-                if type(k.sched) ~= "table" or type(k.sched.held) ~= "function" then return nil end
-                local held, unknown = k.sched:held()
-                if not unknown then return nil end
-                return "combat is not known; " .. held
-                    .. (held == 1 and " job is" or " jobs are") .. " held until it is."
-            end)
-            say("price watch", priceWatchLine)
-            local rotation
-            say("rotation", function()
-                rotation = rotationLines()
-                return rotation[1]
-            end)
-            for i = 2, rotation and #rotation or 0 do
-                local line = rotation[i]
-                say("rotation", function() return line end)
-            end
+            client.print(id.title .. ": " .. (k.paused and "paused" or tostring(k.phase))
+                .. ". Type " .. id.slash .. " help for every command, "
+                .. id.slash .. " diag for a diagnostic snapshot, or "
+                .. id.slash .. " import to see what an import would do.")
         end
     end)
-    return { timing = timing, snapshot = snapshot, commands = commands }
+    return { timing = timing, snapshot = snapshot, commands = commands, help = help }
 end
 
 -- The addon's own kernel collects from the moment this file loads.
