@@ -50,6 +50,10 @@ M.ROWS = {
     { key = "sell.vendorUnpriced", type = "bool", default = false, vendor = true },
     -- vendor.list: the look-only sell list at a merchant (UI/SellList.lua).
     { key = "vendor.list", type = "bool", default = true },
+    -- repair.warnBelow: durability share for the repair warning (Items/Repair.lua) (lead)
+    { key = "repair.warnBelow", type = "number", default = 0.20, bounds = { min = 0, max = 1 } },
+    -- bank.list: the look-only banker list (UI/BankList.lua) (lead)
+    { key = "bank.list", type = "bool", default = true },
     { key = "auction.chartClick", type = "bool", default = true },
     { key = "buffButton.enabled", type = "bool", default = false },
     { key = "buffButton.dock", type = "bool", default = true },

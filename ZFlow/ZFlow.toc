@@ -29,6 +29,7 @@ Items\Prices.lua
 Items\PriceObserve.lua
 Items\PriceWatch.lua
 Items\Disposition.lua
+Items\Bank.lua
 Items\Plan.lua
 Items\Present.lua
 Items\CraftHint.lua
@@ -67,5 +68,6 @@ UI\DevPanel.lua
 UI\SettingsSlash.lua
 UI\ArrowMenu.lua
 UI\SellList.lua
+UI\BankList.lua
 UI\Arrow.lua
 UI\RotationIcon.lua

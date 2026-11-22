@@ -77,7 +77,7 @@ function Bank.Entries(stacks, itemInfo)
 end
 
 function Bank.Banks(row, needed, rules, waits)
-    if type(row) ~= "table" or row.action ~= "keep" then return false, "not something Z-Flow keeps" end
+    if type(row) ~= "table" or row.action ~= "keep" then return false, "not something kept for you" end
     local key = row.key
     local mine = type(rules) == "table" and key ~= nil and rules[key] or nil
     if mine == "carry" then return false, "you chose to carry it" end
