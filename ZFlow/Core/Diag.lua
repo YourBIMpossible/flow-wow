@@ -503,7 +503,8 @@ end
 --   one line when no spell can be cast and at least one is held back only
 --   because nobody read its cooldown (R.COOLDOWN_UNKNOWN).
 -- Diag.RotationStealthLine(view) -> line or nil
---   one line when stealth was not read: the attack is not started then.
+--   stealth as it was read: stealthed, not stealthed, or not known. The
+--   attack is started only on a known "no" (see Choose.lua).
 -- The last two say nothing with no view, no pack, or unless dead is a
 -- known "no": nothing is chosen then for a reason the first line gives.
 local function plural(n, one, many) return n .. " " .. (n == 1 and one or many) end
@@ -581,8 +582,10 @@ end
 
 function Diag.RotationStealthLine(view)
     local s = choosing(view)
-    if s == nil or s.stealthed ~= nil then return nil end
-    return "rotation: not known whether you are stealthed; the attack is not started for you."
+    if s == nil then return nil end
+    if s.stealthed == false then return "rotation: not stealthed." end
+    return "rotation: " .. (s.stealthed == nil and "not known whether you are stealthed" or "stealthed")
+        .. "; the attack is not started for you."
 end
 
 function Diag.Start(k)
