@@ -135,5 +135,6 @@ return {
     "UI/RotationIcon.lua",
     "Rotation/Pulse.lua",
     "Rotation/CastEdge.lua",
+    "Rotation/Audit.lua",
     },
 }
