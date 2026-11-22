@@ -3836,6 +3836,35 @@ function ns.make.client(env)
         end)
     end
 
+    -- S35 (LEDGER 150/153; WoW/from-zen/RESEARCH-S35.md): the two reads
+    -- Nav/Gates.lua needs before it may learn a gate. Both only read.
+    --   c.worldPosition() -> { cont, wx, wy }: the continent and the world
+    --     position in yards of where the player stands, or nil when the
+    --     client gives no map, no position, no world point, or marks any of
+    --     it secret. C_Map.GetWorldPosFromMapPos(map, position) is the call
+    --     legacy Flow's N:PlayerPos uses (Modules/Nav/Nav.lua:40-52), asked
+    --     with the client's own position value; a first guess on 16001.
+    --   c.onTaxi() -> true / false, or nil when the client gives no plain
+    --     yes or no. UnitOnTaxi("player") is the call legacy Flow uses
+    --     (Modules/Nav/Nav.lua:4688); a first guess on 16001. nil is "not
+    --     known", never "not on a taxi": Gates learns only on a plain false.
+    function c.worldPosition()
+        local map, _, _, pos = playerPoint()
+        if not map then return nil end
+        local ok, cont, world = mapCall("GetWorldPosFromMapPos", map, pos)
+        if not ok or type(world) ~= "table" then return nil end
+        if type(cont) ~= "number" or hidden(cont) then return nil end
+        local okXY, wx, wy = call(world.GetXY, world)
+        if not okXY then wx, wy = world.x, world.y end
+        if type(wx) ~= "number" or type(wy) ~= "number" then return nil end
+        if hidden(wx) or hidden(wy) then return nil end
+        if wx ~= wx or wy ~= wy then return nil end
+        return { cont = cont, wx = wx, wy = wy }
+    end
+    function c.onTaxi()
+        return flag(call(env.UnitOnTaxi, "player"))
+    end
+
     return c
 end
 

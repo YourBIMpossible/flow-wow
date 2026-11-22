@@ -225,3 +225,120 @@ function N.GateTracker()
     end
     return tr
 end
+
+-- ---------------------------------------------------------------- module
+-- The watcher and the step kind (LEDGER 150/153). Now that the client gives
+-- a world position and a taxi read (Core/Client.lua: c.worldPosition,
+-- c.onTaxi), learning can run: every N.Gates.EVERY seconds the tracker is
+-- fed where the player is, and a crossing it reports goes to N.GateLearn.
+-- Everything N.GateLearn and the tracker refuse is still refused: with
+-- either read unknown nothing is learned, and nothing is ever guessed.
+--
+-- LOOK ONLY. It reads the player's place and writes Z-Flow's own saved
+-- data (account "learned.places.gates", where Flow's imported gates also
+-- are). It never moves, flies, clicks or casts for the player.
+--
+--   N.Gates.Declare(k) -> api
+--     api.sample()       one watcher tick now -> report, or nil when no
+--                        crossing was seen: { added, reason, cross }. Asked
+--                        twice at one moment it answers once.
+--     api.step(target)   target = { map }: the way to it -> step, reason
+--     api.count()        how many learned gates name both their maps
+--   ns.use("gates") -> { Step = api.step, Count = api.count }
+--   step = { kind = "gate", label, place = { cont, map, x, y }, radius } in
+--          the shape Nav/ProfStep.lua gives the guide (a new step kind), or
+--          for a walled map with no gate known the text step
+--          { kind = "gate", label = N.GATE_UNKNOWN, text = true, detail }.
+--   Nav/RoutePlan.lua and Nav/Guide.lua are not changed: whoever plans or
+--   draws takes the step from ns.use("gates").Step(target).
+-- No setting is read here. A row to turn learning off ("nav.gates") is the
+-- lead's to add with the settings model; until then it runs whenever both
+-- reads answer.
+N.Gates = N.Gates or {}
+local Gates = N.Gates
+
+Gates.NAME = "gates"
+Gates.KIND = "gate"
+Gates.PATH = "learned.places.gates"
+Gates.EVERY = 0.5      -- seconds between watcher ticks (a first guess)
+Gates.NEAR = 10        -- yards from the gate that count as there (as N.PROF_NEAR)
+
+-- One read of the client, or nil when it has no such read or it fails.
+local function ask(client, name, ...)
+    if type(client) ~= "table" or type(client[name]) ~= "function" then return nil end
+    local ok, v = pcall(client[name], ...)
+    if not ok then return nil end
+    return v
+end
+
+function Gates.Declare(k)
+    local api = {}
+    local ctx
+    local tracker = N.GateTracker()
+    local sampledAt, lastReport = nil, nil
+
+    local function saved()
+        local ok, list = pcall(ctx.store.get, ctx.store, "account", Gates.PATH)
+        if ok and type(list) == "table" then return list end
+        return nil
+    end
+
+    function api.sample()
+        if not ctx then return nil end
+        local now = ask(ctx.client, "uptime")
+        -- Asked again at the same moment: the same answer, no second sample.
+        if now ~= nil and now == sampledAt then return lastReport end
+        sampledAt, lastReport = now, nil
+        local cross = tracker:Sample(ask(ctx.client, "position"), ask(ctx.client, "worldPosition"),
+            ask(ctx.client, "onTaxi"), now)
+        if not cross then return nil end
+        local list = saved()
+        local made = list == nil
+        local into, added, reason = N.GateLearn(list or {}, cross, cross.rode, cross.onTaxi)
+        -- The saved table is made only when there is a gate to put in it.
+        if added and made then
+            local ok = ctx.store:set("account", Gates.PATH, into)
+            if not ok then added, reason = false, "not saved" end
+        end
+        lastReport = { added = added and true or false, reason = reason, cross = cross }
+        return lastReport
+    end
+
+    function api.step(target)
+        if not ctx then return nil, "not started" end
+        local here = { position = ask(ctx.client, "position") }
+        local step, reason = N.GateStep(saved(), target, here, function(map) return ask(ctx.client, "mapSize", map) end)
+        if not step then return nil, reason end
+        if step.text then
+            return { kind = Gates.KIND, label = step.label, text = true, detail = step.detail }, reason
+        end
+        local zone = ask(ctx.client, "zone")
+        return {
+            kind = Gates.KIND, label = step.label,
+            place = { cont = type(zone) == "table" and zone.cont or nil,
+                      map = step.point.map, x = step.point.x, y = step.point.y },
+            radius = Gates.NEAR,
+        }, reason
+    end
+
+    function api.count()
+        local n = 0
+        for _, g in ipairs(ctx and saved() or {}) do
+            if type(g) == "table" and type(g.a) == "number" and type(g.b) == "number" then n = n + 1 end
+        end
+        return n
+    end
+
+    k:Module({
+        name = Gates.NAME,
+        needs = { "client", "store", "sched" },
+        provides = { Step = function(target) return api.step(target) end, Count = function() return api.count() end },
+        ticks = { { every = Gates.EVERY, when = "always", run = function() api.sample() end } },
+        start = function(c) ctx = c end,
+        stop = function() tracker = N.GateTracker() end,
+    })
+    return api
+end
+
+-- The addon's own: declared when this file loads, started at login.
+ns.gates = Gates.Declare(ns)
