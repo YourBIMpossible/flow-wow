@@ -90,7 +90,7 @@ tests["intro: shown on a character's first login, in plain words, naming /zflow 
     local p = panelOf(c)
     t.ok(p ~= nil, "the panel is made")
     t.eq(p.shown, true, "shown at the first login")
-    t.eq(p.lines, I.LINES, "the intro's lines")
+    t.eq(p.lines, I.Lines(ns.id), "the intro's lines")
     t.ok(has(p.lines, "/zflow help"), "names /zflow help")
     t.ok(has(p.lines, "/zflow intro"), "says how to see it again")
     t.ok(has(p.lines, "arrow"), "the arrows")
@@ -101,7 +101,7 @@ tests["intro: shown on a character's first login, in plain words, naming /zflow 
 end
 
 tests["intro: the lines are plain text"] = function(t)
-    for _, l in ipairs(I.LINES) do
+    for _, l in ipairs(I.Lines(ns.id)) do
         t.ok(type(l) == "string" and l ~= "", "a line")
         t.ok(not l:find("|c", 1, true) and not l:find("|r", 1, true) and not l:find("|T", 1, true), "no markup: " .. l)
     end
@@ -171,7 +171,7 @@ tests["intro: a client that cannot draw prints the lines when asked"] = function
     t.eq(k.store:get("char", I.SEEN_PATH), nil, "nothing shown, so not seen")
     local before = #c.printed
     diag.commands[I.WORD]("")
-    t.eq(#c.printed - before, #I.LINES, "the lines in chat")
+    t.eq(#c.printed - before, #I.Lines(ns.id), "the lines in chat")
     t.eq(api.shows(), 1)
 end
 
@@ -203,11 +203,20 @@ tests["intro: a panel the player cannot close is not shown at login; /zflow intr
 end
 
 tests["intro: the profession arrow is described as it looks in every mode"] = function(t)
-    for _, l in ipairs(I.LINES) do
+    for _, l in ipairs(I.Lines(ns.id)) do
         t.ok(not l:lower():find("see-through", 1, true) and not l:lower():find("faint", 1, true)
             and not l:lower():find("translucent", 1, true), "no look that holds only in one mode: " .. l)
     end
-    t.ok(has(I.LINES, "a second arrow points to your next profession step"), "the profession arrow, plainly")
+    t.ok(has(I.Lines(ns.id), "a second arrow points to your next profession step"), "the profession arrow, plainly")
+end
+
+tests["intro: the addon's name and slash word come from ns.id"] = function(t)
+    local id = { title = "Test-Addon", slash = "/testaddon" }
+    local lines = I.Lines(id)
+    t.ok(has(lines, "Test-Addon"), "the title from the identity")
+    t.ok(has(lines, "/testaddon help"), "the help command from the identity")
+    t.ok(has(lines, "/testaddon intro"), "the intro command from the identity")
+    t.ok(not has(lines, ns.id.title) and not has(lines, ns.id.slash), "nothing written in")
 end
 
 return tests
