@@ -19,6 +19,7 @@
 --   c.setZone(1, 1411); c.setPosition(1411, 0.5, 0.25); c.setLockdown(true)
 --   c.setScreen(1024, 768); c.setVersion("0.1.0"); c.setFrames(false)
 --   c.panels[1].lines / .point / .shown / .spec; c.panels[1].drag({ "CENTER", "CENTER", 0, 0 })
+--   c.arrows[1].point / .attached / .shown / .drawn / .lines; c.arrows[1].drag(point)
 -- What a test has not set is unknown (nil), as on a client that won't say.
 local _, ns = ...
 ns.make = ns.make or {}
@@ -175,6 +176,41 @@ function ns.make.fakeClient(opts)
             if moved then moved({ point[1], point[2], point[3], point[4] }) end
         end
         c.panels[#c.panels + 1] = h
+        return h
+    end
+
+    -- Every arrow made is in c.arrows, in order. A handle keeps what it
+    -- was last told: point or attached (the other handle), shown, lookIs,
+    -- drawn (the last draw table), scaled, faded (alpha), under (behind),
+    -- lines and textPoint.
+    c.arrows = {}
+    function c.arrow(spec)
+        if s.noFrames then return nil end
+        local h = { spec = spec, shown = false, lookIs = "pointer", draws = 0, lines = {} }
+        local moved
+        function h.place(point)
+            if type(point) ~= "table" then return end
+            h.point, h.attached = { point[1], point[2], point[3], point[4] }, nil
+        end
+        function h.attach(other) h.attached, h.point = other, nil end
+        function h.show(on) h.shown = on and true or false end
+        function h.look(look) h.lookIs = look == "needle" and "needle" or "pointer" end
+        function h.draw(d) h.drawn, h.draws = d, h.draws + 1 end
+        function h.scale(n) h.scaled = n end
+        function h.alpha(n) h.faded = n end
+        function h.behind(on) h.under = on and true or false end
+        function h.text(lines, point)
+            h.lines = {}
+            for i = 1, #(type(lines) == "table" and lines or {}) do h.lines[i] = tostring(lines[i]) end
+            h.textPoint = (#h.lines > 0 and type(point) == "table") and { point[1], point[2], point[3], point[4] } or nil
+        end
+        function h.onMoved(fn) moved = fn end
+        -- The test's control: the player let the arrow go at this point.
+        function h.drag(point)
+            h.point, h.attached = { point[1], point[2], point[3], point[4] }, nil
+            if moved then moved({ point[1], point[2], point[3], point[4] }) end
+        end
+        c.arrows[#c.arrows + 1] = h
         return h
     end
 

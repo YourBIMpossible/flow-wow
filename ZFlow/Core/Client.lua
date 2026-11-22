@@ -707,6 +707,222 @@ function ns.make.client(env)
         return h
     end
 
+    -- Arrow frames, by handle: attach() needs the other arrow's frame.
+    local arrowFrames = setmetatable({}, { __mode = "k" })
+
+    -- A movable guide arrow, or nil when the client cannot make one.
+    --   spec = { name = global frame name or nil, size = n (the frame),
+    --            art = n (the drawn body), artPath = folder of the arrow
+    --            textures ending in a separator, needle = { w, h } (the
+    --            profession needle's body), level = frame level }
+    -- The handle:
+    --   h.place({ anchor, relative anchor, x, y })   against the screen
+    --   h.attach(other)        centred on another arrow handle, following it
+    --   h.show(on)
+    --   h.look("pointer" | "needle")
+    --   h.draw(d)              one frame of Nav/ArrowMotion's ArrowStep table
+    --   h.scale(n), h.alpha(n), h.behind(on)   behind: under the other arrow
+    --   h.text(lines, point)   lines under / over it, point { a, r, x, y }
+    --                          against the arrow; no lines: hidden
+    --   h.onMoved(fn)          fn(point) after the player drags it
+    -- A new arrow is hidden and has no place until told.
+    function c.arrow(spec)
+        spec = type(spec) == "table" and spec or {}
+        local parent = env.UIParent
+        local ok, f = call(env.CreateFrame, "Frame", spec.name, parent)
+        if not ok or f == nil then return nil end
+        local h, moved = {}, nil
+        local size = tonumber(spec.size) or 56
+        local art = tonumber(spec.art) or 64
+        local path = type(spec.artPath) == "string" and spec.artPath or ""
+        local needle = type(spec.needle) == "table" and spec.needle or {}
+        local needleW, needleH = tonumber(needle[1]) or art * 0.4, tonumber(needle[2]) or art
+        local level = tonumber(spec.level) or 5
+
+        method(f, "Hide")
+        if not method(f, "SetSize", size, size) then
+            method(f, "SetWidth", size)
+            method(f, "SetHeight", size)
+        end
+        method(f, "SetFrameStrata", "HIGH")
+        method(f, "SetFrameLevel", level)
+        method(f, "SetClampedToScreen", true)
+
+        local function sized(t, w, ht)
+            if not method(t, "SetSize", w, ht) then
+                method(t, "SetWidth", w)
+                method(t, "SetHeight", ht)
+            end
+        end
+        local function tex(file, layer, sub, blend)
+            local okT, t = method(f, "CreateTexture", nil, layer, nil, sub)
+            if not okT or t == nil then return nil end
+            method(t, "SetTexture", path .. file)
+            if blend then method(t, "SetBlendMode", blend) end
+            return t
+        end
+        local shadow = tex("ArrowShadow", "BACKGROUND", 1)
+        local pool = tex("ArrowGlow", "BACKGROUND", 2, "ADD")
+        local body = tex("ArrowBody", "ARTWORK", 1)
+        local shine = tex("ArrowShine", "ARTWORK", 2, "ADD")
+        local halo = tex("ArrowRing", "BACKGROUND", 3, "ADD")
+        local ripple = tex("ArrowRing", "BACKGROUND", 4, "ADD")
+        local beam = tex("ArrowBeam", "ARTWORK", 3, "ADD")
+        local beamDown = tex("ArrowBeam", "ARTWORK", 3, "ADD")
+        if body == nil then return nil end
+        sized(pool, 60, 36)
+        method(pool, "SetPoint", "CENTER", f, "CENTER", 0, -3)
+        sized(halo, 58, 42)
+        method(halo, "SetPoint", "CENTER", f, "CENTER", 0, -4)
+        method(ripple, "SetPoint", "CENTER", f, "CENTER", 0, -4)
+        method(beam, "SetTexCoord", 0, 1, 0, 1 - 1.5 / 128)
+        method(beam, "SetPoint", "BOTTOM", f, "CENTER", 0, -4)
+        method(beamDown, "SetTexCoord", 0, 1, 1 - 1.5 / 128, 0)
+        method(beamDown, "SetPoint", "TOP", f, "CENTER", 0, -4)
+        for _, t in ipairs({ halo, ripple, beam, beamDown }) do method(t, "Hide") end
+
+        local okText, label = method(f, "CreateFontString", nil, "OVERLAY", "GameFontNormal")
+        if not okText then label = nil end
+        if label ~= nil then
+            method(label, "SetJustifyH", "CENTER")
+            method(label, "Hide")
+        end
+
+        -- The needle turns its one upright cell where the client can turn a
+        -- texture; elsewhere it takes the sheet's cells as the pointer does.
+        local current, turns = "pointer", false
+        local function shape(look)
+            current = look == "needle" and "needle" or "pointer"
+            turns = false
+            if current == "needle" then
+                turns = method(body, "SetRotation", 0) and true or false
+            else
+                method(body, "SetRotation", 0)
+                method(shine, "SetRotation", 0)
+                method(shadow, "SetRotation", 0)
+            end
+            local w, ht = art, art
+            if current == "needle" then w, ht = (turns and needleW or needleH), needleH end
+            for _, t in ipairs({ shadow, body, shine }) do
+                sized(t, w, ht)
+                method(t, "ClearAllPoints")
+                method(t, "SetPoint", "CENTER", f, "CENTER", 0, 0)
+            end
+            if turns then
+                for _, t in ipairs({ shadow, body, shine }) do method(t, "SetTexCoord", 0, 1 / 16, 0, 1 / 8) end
+            end
+            method(pool, current == "needle" and "Hide" or "Show")
+        end
+        shape("pointer")
+
+        local function standing()
+            local okP, a, _, r, x, y = method(f, "GetPoint", 1)
+            if okP and type(a) == "string" and type(x) == "number" and type(y) == "number" then
+                return { a, type(r) == "string" and r or a, x, y }
+            end
+            local okL, left = method(f, "GetLeft")
+            local okB, bottom = method(f, "GetBottom")
+            if okL and okB and type(left) == "number" and type(bottom) == "number" then
+                return { "BOTTOMLEFT", "BOTTOMLEFT", left, bottom }
+            end
+            return nil
+        end
+
+        method(f, "SetMovable", true)
+        method(f, "EnableMouse", true)
+        method(f, "RegisterForDrag", "LeftButton")
+        method(f, "SetScript", "OnDragStart", function() method(f, "StartMoving") end)
+        method(f, "SetScript", "OnDragStop", function()
+            method(f, "StopMovingOrSizing")
+            method(f, "SetUserPlaced", false)
+            local point = standing()
+            if point and moved then pcall(moved, point) end
+        end)
+
+        function h.place(point)
+            if type(point) ~= "table" then return end
+            method(f, "ClearAllPoints")
+            method(f, "SetPoint", point[1], parent, point[2], point[3], point[4])
+        end
+        function h.attach(other)
+            local to = arrowFrames[other]
+            if to == nil then return end
+            method(f, "ClearAllPoints")
+            method(f, "SetPoint", "CENTER", to, "CENTER", 0, 0)
+        end
+        function h.show(on)
+            method(f, on and "Show" or "Hide")
+        end
+        function h.look(look)
+            if look ~= current then shape(look) end
+        end
+        function h.draw(d)
+            if type(d) ~= "table" then return end
+            local col = d.colour or {}
+            local r, g, b = col[1] or 1, col[2] or 1, col[3] or 1
+            if turns then
+                for _, t in ipairs({ shadow, body, shine }) do method(t, "SetRotation", d.turn or 0) end
+            elseif type(d.cell) == "table" then
+                local cl = d.cell
+                for _, t in ipairs({ shadow, body, shine }) do method(t, "SetTexCoord", cl[1], cl[2], cl[3], cl[4]) end
+            end
+            for _, t in ipairs({ body, pool, halo, ripple, beam, beamDown }) do method(t, "SetVertexColor", r, g, b) end
+            local on = d.body or 1
+            if current == "needle" then
+                -- The needle is the quieter arrow: lower opacities, no float.
+                method(body, "SetAlpha", on * 0.9)
+                method(shine, "SetAlpha", on * 0.55)
+                method(shadow, "SetAlpha", on * 0.45)
+            else
+                method(body, "SetAlpha", on)
+                method(shine, "SetAlpha", d.shine or 0.9)
+                method(shadow, "SetAlpha", d.shadow or 0.75)
+                method(pool, "SetAlpha", d.pool or 0.35)
+                method(body, "SetPoint", "CENTER", f, "CENTER", 0, d.bodyY or 0)
+            end
+            local arrived = d.arrived and true or false
+            for _, t in ipairs({ halo, ripple, beam, beamDown }) do method(t, arrived and "Show" or "Hide") end
+            if arrived then
+                method(halo, "SetAlpha", d.halo or 0)
+                local rp, bm = d.ripple or {}, d.beam or {}
+                sized(ripple, rp[1] or 58, rp[2] or 42)
+                method(ripple, "SetAlpha", rp[3] or 0)
+                for _, t in ipairs({ beam, beamDown }) do
+                    sized(t, bm[1] or 18, bm[2] or 50)
+                    method(t, "SetAlpha", bm[3] or 0)
+                end
+            end
+        end
+        function h.scale(n)
+            if type(n) == "number" and n > 0 then method(f, "SetScale", n) end
+        end
+        function h.alpha(n)
+            if type(n) == "number" then method(f, "SetAlpha", n) end
+        end
+        function h.behind(on)
+            method(f, "SetFrameLevel", on and math.max(level - 2, 0) or level)
+            method(f, "EnableMouse", not on)
+        end
+        function h.text(lines, point)
+            if label == nil then return end
+            local out = {}
+            for i = 1, #(type(lines) == "table" and lines or {}) do out[i] = tostring(lines[i]) end
+            if #out == 0 or type(point) ~= "table" then
+                method(label, "Hide")
+                return
+            end
+            method(label, "SetText", table.concat(out, "\n"))
+            method(label, "ClearAllPoints")
+            method(label, "SetPoint", point[1], f, point[2], point[3], point[4])
+            method(label, "Show")
+        end
+        function h.onMoved(fn)
+            moved = fn
+        end
+        arrowFrames[h] = f
+        return h
+    end
+
     return c
 end
 
