@@ -1,0 +1,491 @@
+# Every global of the game client that Flow's Lua reads by name. One list,
+# two readers:
+#   * .luacheckrc (tools/lint.ps1): reading a global that is not here, not a
+#     Lua 5.1 global and not one of Flow's own is a lint warning.
+#   * tools/offline/stubs.lua (tools/run-tests.ps1): the same, at run time: an
+#     unknown global is an ERROR (or a file that did not load), never a
+#     "needs the client" SKIP.
+# So a typo (UnitLevle) or a missing "ns." (Distance instead of ns.Distance)
+# fails both checks instead of passing as "the game must have that".
+#
+# The list is what Flow's source refers to, not a list of the game's API, and
+# nothing here says the client really has a name: that is checked in the game.
+# Adding a line is a statement that you looked the name up. One name per line,
+# sorted, exact case. tools/lint.ps1 fails on a name no Lua file uses any more.
+#
+# A line with * is a pattern for names Flow builds at run time and looks up
+# through _G (_G["ContainerFrame" .. i]): * stands for any run of letters,
+# digits and underscores, spaces too. luacheck doesn't read those lines.
+ACCEPT
+AcceptGroup
+AcceptQuest
+Ambiguate
+Auctionator
+BANK_CONTAINER
+BNGetNumFriends
+BOOKTYPE_SPELL
+BackdropTemplateMixin
+BuybackItem
+CANCEL
+C_AddOns
+C_AssistedCombat
+C_AuctionHouse
+C_BattleNet
+C_CVar
+C_ChatInfo
+C_ClassTalents
+C_ClickBindings
+C_Container
+C_CreatureInfo
+C_DamageMeter
+C_DeathInfo
+C_EquipmentSet
+C_FriendList
+C_GossipInfo
+C_Item
+C_LossOfControl
+C_Map
+C_MerchantFrame
+C_Minimap
+C_MountJournal
+C_NamePlate
+C_QuestLog
+C_Secrets
+C_Spell
+C_SpellBook
+C_SuperTrack
+C_TaxiMap
+C_Texture
+C_Timer
+C_TooltipInfo
+C_TradeSkillUI
+C_Traits
+C_UnitAuras
+C_VoiceChat
+CanDualWield
+CanLootUnit
+CanMerchantRepair
+CanSendAuctionQuery
+ChatFontNormal
+CheckInteractDistance
+ClearCursor
+ClearOverrideBindings
+CloseLoot
+CombatLogGetCurrentEventInfo
+CompleteQuest
+ConfirmAcceptQuest
+ContainerFrame1
+ContainerFrameCombinedBags
+CreateFrame
+CreateVector2D
+DoTradeSkill
+ERR_LEARN_RECIPE_S
+ERR_LEARN_SPELL_S
+Enum
+EnumerateFrames
+EquipItemByName
+GameFontHighlightSmall
+GameTooltip
+GameTooltip_SetDefaultAnchor
+GetActionInfo
+GetActionTexture
+GetActiveTitle
+GetAddOnMemoryUsage
+GetAddOnMetadata
+GetAuctionItemInfo
+GetAvailableQuestInfo
+GetAvailableTitle
+GetBindLocation
+GetBinding
+GetBindingAction
+GetBindingKey
+GetBindingName
+GetBindingText
+GetBonusBarOffset
+GetBuildInfo
+GetBuybackItemLink
+GetCVar
+GetCVarBool
+GetCVarDefault
+GetComboPoints
+GetContainerItemID
+GetContainerItemInfo
+GetContainerItemLink
+GetContainerNumFreeSlots
+GetContainerNumSlots
+GetCurrentBindingSet
+GetCurrentKeyBoardFocus
+GetCursorInfo
+GetCursorPosition
+GetFactionInfoByID
+GetFileIDFromPath
+GetFriendInfo
+GetGossipActiveQuests
+GetGossipAvailableQuests
+GetGossipText
+GetGreetingText
+GetInstanceInfo
+GetInventoryItemDurability
+GetInventoryItemID
+GetInventoryItemLink
+GetInventoryItemQuality
+GetInventoryItemTexture
+GetItemCooldown
+GetItemCount
+GetItemIcon
+GetItemInfo
+GetItemInfoInstant
+GetItemSpell
+GetItemStats
+GetLFGRoles
+GetLootRollItemInfo
+GetLootRollItemLink
+GetLootSlotInfo
+GetLootSlotLink
+GetLootSlotType
+GetLootSourceInfo
+GetMerchantItemID
+GetMerchantItemInfo
+GetMerchantItemLink
+GetMerchantNumItems
+GetModifiedClick
+GetMoney
+GetMouseFoci
+GetMouseFocus
+GetNetStats
+GetNormalizedRealmName
+GetNumActiveQuests
+GetNumAuctionItems
+GetNumAvailableQuests
+GetNumBindings
+GetNumBuybackItems
+GetNumFriends
+GetNumGroupMembers
+GetNumLootItems
+GetNumPartyMembers
+GetNumQuestChoices
+GetNumQuestLeaderBoards
+GetNumQuestLogEntries
+GetNumShapeshiftForms
+GetNumSkillLines
+GetNumSpellTabs
+GetNumSubgroupMembers
+GetNumTalentTabs
+GetNumTalents
+GetNumTradeSkills
+GetNumTrainerServices
+GetObjectiveText
+GetPhysicalScreenSize
+GetPlayerFacing
+GetPowerRegen
+GetProfessionInfo
+GetProfessions
+GetProgressText
+GetQuestID
+GetQuestItemLink
+GetQuestLogIndexByID
+GetQuestLogLeaderBoard
+GetQuestLogRewardXP
+GetQuestLogSelection
+GetQuestLogSpecialItemInfo
+GetQuestLogTitle
+GetQuestMoneyToGet
+GetQuestReward
+GetQuestText
+GetQuestsCompleted
+GetRealmName
+GetRepairAllCost
+GetRewardText
+GetScreenHeight
+GetScreenWidth
+GetShapeshiftForm
+GetShapeshiftFormInfo
+GetSkillLineInfo
+GetSpellBookItemInfo
+GetSpellBookItemName
+GetSpellCooldown
+GetSpellDescription
+GetSpellInfo
+GetSpellPowerCost
+GetSpellTabInfo
+GetTalentInfo
+GetTalentTabInfo
+GetTaxiMapID
+GetTime
+GetTitleText
+GetTrackingTexture
+GetTradeSkillIcon
+GetTradeSkillInfo
+GetTradeSkillItemLink
+GetTradeSkillLine
+GetTradeSkillNumReagents
+GetTradeSkillReagentInfo
+GetTradeSkillReagentItemLink
+GetTradeSkillTools
+GetTrainerServiceCost
+GetTrainerServiceInfo
+GetTrainerServiceLevelReq
+GetTrainerServiceSkillLine
+GetTrainerServiceSkillReq
+GetUnitName
+GetUnitSpeed
+GetWeaponEnchantInfo
+GetZoneText
+HandleModifiedItemClick
+HasAction
+ITEM_MIN_SKILL
+ITEM_QUALITY_COLORS
+ITEM_REQ_SKILL
+ITEM_SPELL_KNOWN
+InCombatLockdown
+InterfaceOptionsFrame_OpenToCategory
+InterfaceOptions_AddCategory
+IsAddOnLoaded
+IsAltKeyDown
+IsControlKeyDown
+IsCurrentSpell
+IsEncounterInProgress
+IsEquippedItem
+IsFlying
+IsInGroup
+IsInInstance
+IsInRaid
+IsIndoors
+IsModifiedClick
+IsMounted
+IsPassiveSpell
+IsPlayerSpell
+IsQuestCompletable
+IsResting
+IsShiftKeyDown
+IsSpellInRange
+IsSpellKnown
+IsStealthed
+IsTradeskillTrainer
+IsUsableItem
+IsUsableSpell
+ItemLocation
+ItemRefTooltip
+LE_PARTY_CATEGORY_INSTANCE
+LOOT_SLOT_ITEM
+LoggingChat
+LoggingCombat
+LootSlot
+MAX_QUESTLOG_QUESTS
+MERCHANT_ITEMS_PER_PAGE
+MerchantFrame
+MerchantFrame_Update
+Minimap
+NUM_BAG_SLOTS
+NUM_BANKBAGSLOTS
+NUM_CONTAINER_FRAMES
+NUM_GROUP_LOOT_FRAMES
+NUM_TOTAL_EQUIPPED_BAG_SLOTS
+NumTaxiNodes
+PickupAction
+PickupSpell
+PlaceAction
+PlaySound
+PlayerFrame
+ProfessionsFrame
+QueryAuctionItems
+QuestFrame
+QuestGetAutoAccept
+QuestInfoRewardsFrame
+QuestInfo_Display
+QuestLogPushQuest
+QuestMapFrame
+QuestScrollFrame
+Questie
+QuestieLoader
+RAID_CLASS_COLORS
+REAGENTBANK_CONTAINER
+RegisterAddonMessagePrefix
+RegisterStateDriver
+ReloadUI
+RepairAllItems
+ResetCursor
+SOUNDKIT
+STANDARD_TEXT_FONT
+STATICPOPUP_NUMDIALOGS
+SaveBindings
+Screenshot
+SelectActiveQuest
+SelectAvailableQuest
+SelectGossipActiveQuest
+SelectGossipAvailableQuest
+SelectQuestLogEntry
+SelectTradeSkill
+SendAddonMessage
+SendChatMessage
+SetBinding
+SetBindingSpell
+SetCVar
+SetCursor
+SetModifiedClick
+SetOverrideBinding
+SetOverrideBindingClick
+Settings
+StaticPopup_Hide
+StaticPopup_Show
+TakeTaxiNode
+TargetFrameToT
+TargetofTarget_Update
+TaxiNodeGetType
+TaxiNodeName
+TaxiNodePosition
+TextToSpeech_Speak
+TooltipDataProcessor
+TradeSkillFrame
+TradeSkillFrame_SetSelection
+TradeSkillFrame_Update
+UIErrorsFrame
+UIParent
+UNIT_SKINNABLE_BOLTS
+UNIT_SKINNABLE_HERB
+UNIT_SKINNABLE_LEATHER
+UNIT_SKINNABLE_ROCK
+UiMapPoint
+UnitAffectingCombat
+UnitBuff
+UnitCanAssist
+UnitCanAttack
+UnitCastingInfo
+UnitChannelInfo
+UnitCharacterPoints
+UnitClass
+UnitClassification
+UnitCreatureType
+UnitDebuff
+UnitDetailedThreatSituation
+UnitExists
+UnitFactionGroup
+UnitGUID
+UnitGroupRolesAssigned
+UnitHealth
+UnitHealthMax
+UnitHealthPercent
+UnitInParty
+UnitInRaid
+UnitInRange
+UnitIsConnected
+UnitIsDead
+UnitIsDeadOrGhost
+UnitIsFriend
+UnitIsGhost
+UnitIsGroupLeader
+UnitIsPlayer
+UnitIsTapDenied
+UnitIsUnit
+UnitIsVisible
+UnitLevel
+UnitName
+UnitOnTaxi
+UnitPosition
+UnitPower
+UnitPowerMax
+UnitPowerType
+UnitRace
+UnitSex
+UnitThreatSituation
+UnitXP
+UnitXPMax
+UnregisterStateDriver
+UpdateAddOnMemoryUsage
+UseContainerItem
+WorldFrame
+WorldMapFrame
+abs
+bit
+ceil
+date
+debugprofilestop
+floor
+format
+geterrorhandler
+getprinthandler
+hash_SlashCmdList
+hooksecurefunc
+issecret
+issecretvalue
+issecurevariable
+max
+min
+seterrorhandler
+setprinthandler
+sqrt
+strsplit
+time
+tinsert
+wipe
+
+# Looked up through _G only (_G.Name, _G[name]): asking whether the game has
+# it. Not read by luacheck; tools/lint.ps1 checks every _G.Name is here.
+_G: ActionButton*
+_G: AuctionHouseFrame
+_G: C_Console
+_G: C_DeathRecap
+_G: C_LFGInfo
+_G: C_LFGList
+_G: C_Navigation
+_G: C_PartyInfo
+_G: C_TaskQuest
+_G: CastingBarFrame
+_G: ConsoleExec
+_G: ContainerFrame*
+_G: ContainerFrame*Item*
+_G: DeathRecap_GetEvents
+_G: ERR_AUCTION_EXPIRED_S
+_G: ERR_AUCTION_SOLD_S
+_G: FlightMapFrame
+_G: GameMenuFrame
+_G: GameTooltipTextLeft*
+_G: GameTooltipTextLeft2
+_G: GameTooltipTextLeft3
+_G: GetLFDChoiceEnabledState
+_G: GetNumRFDungeons
+_G: GroupFinderFrame
+_G: GroupLootContainer
+_G: GroupLootFrame*
+_G: JoinLFG
+_G: JoinSingleLFG
+_G: LFDParentFrame
+_G: LFGBrowseFrame
+_G: LFGListFrame
+_G: LFGParentFrame
+_G: LowHealthFrame
+_G: MerchantFrameTab1
+_G: MerchantFrameTab2
+_G: MerchantItem*ItemButton
+_G: MerchantNextPageButton
+_G: MerchantPrevPageButton
+_G: MiniMapWorldMapButton
+_G: MinimapCluster
+_G: MinimapZoneTextButton
+_G: MultiBar*Button*
+_G: ObjectiveTrackerFrame
+_G: PVEFrame
+_G: PlayerCastingBarFrame
+_G: PowerBarColor
+_G: QuestInfoItem*
+_G: QuestInfoRewardsFrameQuestInfoItem*
+_G: QuestLogFrame
+_G: QuestLogMicroButton
+_G: QuestWatchFrame
+_G: Questie_BaseFrame
+_G: SPELL_FAILED_AURA_BOUNCED
+_G: SPELL_FAILED_NOT_FISHABLE
+_G: SetLFGRoles
+_G: SettingsPanel
+_G: ShapeshiftButton*
+_G: SortBags
+_G: SortBankBags
+_G: Sound_GameSystem_RestartSoundSystem
+_G: StanceButton*
+_G: StaticPopup*
+_G: TaxiButton*
+_G: TaxiFrame
+_G: WatchFrame
+_G: WorldMapContinentDropDown
+_G: WorldMapZoneDropDown
+_G: WorldMapZoomOutButton

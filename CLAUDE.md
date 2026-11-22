@@ -29,8 +29,14 @@ registry first, or add one.
 | `Modules/Tests.lua` | Self-tests. |
 | `tools/` | PowerShell: read the in-game diagnostics, look at the game's window, analyse combat logs, package a release, render the CurseForge graphics, save the day's public auction prices (`save-prices.ps1`). |
 
-## Testing: there is no Lua interpreter, tests run in the game
+## Testing: the real check is in the game; the pure tests also run offline
 
+- `powershell -ExecutionPolicy Bypass -File tools\run-tests.ps1` runs the registered tests
+  outside the game, on Lua 5.1 with fixtures. Only tests that touch nothing of the client can
+  PASS there; the rest are SKIP. A FAIL, ERROR or SKIP-FAIL, a file that doesn't load and a
+  global that is neither Flow's nor in `tools/offline/client-globals.txt` each fail it. CI
+  runs it, with `tools\lint.ps1` and `tools\check-structure.ps1`: run all three before a
+  commit. It is not a test in the game and never stands in for one (`docs/TESTING.md`).
 - Add a test for every behaviour you change: `ns:Register("test", "area: what it checks", function(t) ... end)`
   in `Modules/Tests.lua`, using `t:ok(cond, msg)`, `t:eq(a, b, msg)`, `t:near(a, b, tol, msg)`.
   Restore any saved data you change inside a test.

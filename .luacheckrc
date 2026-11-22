@@ -1,8 +1,10 @@
 -- luacheck config for Flow (WoW: Forever, Lua 5.1). Run: tools\lint.ps1
--- The game's API is thousands of globals, so reading a capitalised global
--- (UnitHealth, C_Map, GameTooltip...) is allowed. What's flagged:
---   * reading an unknown lowercase global (usually a local used before it's
---     declared, or a typo)
+-- (from the add-on's root: the list below is read from a path under it).
+-- What's flagged:
+--   * reading a global that is not Lua 5.1's, not Flow's and not one of the
+--     game's that tools/offline/client-globals.txt lists: a typo
+--     (UnitLevle), a missing "ns." (Distance for ns.Distance), or a local
+--     used before it's declared. A new game API gets one line in that list.
 --   * setting ANY global Flow doesn't mean to (a missing "local")
 --   * unused variables and values, shadowing, unreachable code
 std = "lua51"
@@ -11,8 +13,6 @@ codes = true
 exclude_files = { "dist/**" }   -- release staging copies
 
 ignore = {
-    "113/[A-Z].*",   -- reading a capitalised global: the WoW API
-    "113/_G",
     "143/[A-Z].*",   -- reading fields of WoW API tables (C_Map.Foo, string.bar...)
     "212",           -- unused argument (event handlers get more than they use)
     "213",           -- unused loop variable
@@ -20,14 +20,22 @@ ignore = {
     "431", "432",    -- a nested function reusing an outer name (common, and harmless here)
 }
 
--- Lowercase globals the game provides.
-read_globals = {
-    "bit", "date", "time", "tinsert", "tremove", "wipe", "strsplit", "strtrim", "strjoin",
-    "strlower", "strupper", "format", "floor", "ceil", "max", "min", "abs", "sqrt",
-    "issecretvalue", "issecret", "issecurevariable", "hooksecurefunc", "debugprofilestop",
-    "getprinthandler", "setprinthandler", "geterrorhandler", "seterrorhandler", "securecall",
-    "debugstack", "tContains", "hash_SlashCmdList",
-}
+-- The game's globals Flow reads: one name per line in
+-- tools/offline/client-globals.txt, which the offline test runner reads too
+-- (tools/offline/stubs.lua). "#" lines are comments; "_G:" lines are names
+-- only ever looked up through _G, which luacheck doesn't follow.
+do
+    local list = "tools/offline/client-globals.txt"
+    local fh = io.open(list, "r")
+    if not fh then error("can't read " .. list .. ": run luacheck from the add-on's root (tools/lint.ps1 does)") end
+    local names = {}
+    for l in fh:lines() do
+        l = l:gsub("\r$", ""):gsub("^%s+", ""):gsub("%s+$", "")
+        if l:match("^[%a_][%w_]*$") then names[#names + 1] = l end
+    end
+    fh:close()
+    read_globals = names
+end
 
 -- Globals Flow sets on purpose (slash commands, key binding names, saved
 -- variables) and Blizzard tables it adds its own entries to.
@@ -36,4 +44,5 @@ globals = {
     "SLASH_FLOW1", "SLASH_FLOW2", "SLASH_FLOWWAY1",
     "BINDING_HEADER_FLOW",
     "SlashCmdList", "StaticPopupDialogs", "UISpecialFrames",
+    "Questie",   -- Modules/Setup.lua switches one of Questie's own options (its db.profile)
 }

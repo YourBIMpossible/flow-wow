@@ -135,6 +135,8 @@ dungeon or raid, in a raid group, a battleground or an arena, or during a boss f
 - The route is gathered at most every 20 s.
 - The arrow and minimap run 2 times a second.
 - The map and tracker refresh every 2 s, and the meters once a second.
-- Trips aren't timed, and the self-tests don't run.
+- Trips aren't timed, and the self-tests don't start after login. (On a developer install
+  they still run at every `/reload` and at logout, lite mode or not: about 3 s of work, so
+  don't take "scene D" figures across a `/reload`.)
 
 The rotation, both buttons and the bags run as normal. Scene D above measures it.
