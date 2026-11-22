@@ -63,6 +63,7 @@ return {
         "Gear/Read.lua",
         "Gear/CanUse.lua",
         "Gear/Usable.lua",
+        "Gear/WeaponSpeed.lua",
         "Gear/Verdict.lua",
         "Gear/Tooltip.lua",
         "Gear/TooltipModule.lua",
