@@ -3,10 +3,18 @@
   Z-Flow text check (F-A). Reads every ZFlow/**/*.lua except ZFlow/Tests/**
   and fails on user-facing strings that break the price and chat rules:
 
-    F085   the F-085 fallback is written any way but "price unknown<em dash>check vendor"
-           (U+2014, no spaces). Flagged: a string with "price unknown" /
-           "prices unknown", or "unknown - check vendor|trainer|merchant" with
-           any dash or colon, that does not contain that exact text.
+    F085   the F-085 fallback is written any way but the allowed forms (LEDGER
+           113 Decision 2), em dash (U+2014) always, no spaces around it:
+             "price unknown<em dash>check vendor"     an item's price
+             "price unknown<em dash>check trainer"    a training cost
+             "<n> prices unknown<em dash>check vendor" / "... trainer"   a count line
+           Flagged: a string with "price unknown" / "prices unknown", or
+           "unknown - check vendor|trainer|merchant" with any dash or colon,
+           that contains none of the allowed texts. So the hyphen form,
+           "unknown - check trainer" without "price" and a bare
+           "price unknown" all fail. A count line carries "prices
+           unknown<em dash>check ..." in one string (the number may be
+           concatenated in front).
     PRICE  a price that is not labelled: a money figure in a string ("12s 40c",
            "5g", "3c", or a %d/%s format followed by g or c), unless the same
            string says "estimate"; or coin text built by concatenating "g", "s"
@@ -40,7 +48,16 @@ if (-not (Test-Path -LiteralPath $zflow -PathType Container)) {
 $zflow = (Resolve-Path -LiteralPath $zflow).Path
 
 $EM = [string][char]0x2014
-$CANON = 'price unknown' + $EM + 'check vendor'
+$ALLOWED = @(
+    ('price unknown' + $EM + 'check vendor'),
+    ('price unknown' + $EM + 'check trainer'),
+    ('prices unknown' + $EM + 'check vendor'),
+    ('prices unknown' + $EM + 'check trainer')
+)
+function Test-Allowed([string]$v) {
+    foreach ($a in $ALLOWED) { if ($v.IndexOf($a, [StringComparison]::Ordinal) -ge 0) { return $true } }
+    return $false
+}
 
 # ------------------------------------------------------------------ scanner
 # Splits Lua 5.1 source into code (comments blanked, each string replaced by
@@ -162,8 +179,8 @@ foreach ($f in $files) {
 
     foreach ($s in $scan.Strings) {
         $v = $s.Value
-        if ($v -match $reFallback -and $v.IndexOf($CANON, [StringComparison]::Ordinal) -lt 0) {
-            $problems.Add(("{0}:{1}: F085: write the fallback as 'price unknown{2}check vendor': {3}" -f $where, $s.Line, $EM, (Show $v)))
+        if ($v -match $reFallback -and -not (Test-Allowed $v)) {
+            $problems.Add(("{0}:{1}: F085: use 'price unknown{2}check vendor', 'price unknown{2}check trainer' or a count line '<n> prices unknown{2}check ...': {3}" -f $where, $s.Line, $EM, (Show $v)))
         }
         if (-not $isPrices -and $v -notmatch '(?i)estimate') {
             $money = $false
