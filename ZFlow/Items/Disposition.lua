@@ -22,6 +22,16 @@ local _, ns = ...
 --     tools      = { [key] = "Mining" }      a tool of a profession you have or plan
 --     classKeep  = { [key] = { why = "...", untilLevel = n } }
 --     level      = the player's level
+--     the keep rules ported from Flow (L6-B) read, each only when given:
+--     sets       = { [key] = { "Feral", ... } }     sets you keep it in
+--     materials  = { [key] = { { prof, what }, ... } }  professions that use it
+--     bagSize    = { [key] = slots }; wornBags = { slots, ... } (0: empty slot)
+--     recipes    = { [key] = { prof, rank, need, known } }
+--     gearRead   = true once gear is read; gear = { [key] = { canUse,
+--                  needsTraining, skill, diffs = { [role] = n } } }
+--     role       = your levelling role; keptRoles = { [role] = true };
+--                  roleNames = { [role] = "Balance" }
+--     classScored = false when your class has no stat weights
 --     rules      = a rule list to use instead of the built-in one
 --     onError    = fn(ruleKey, err)          told once per failing rule call;
 --                                            err is "not a verdict" when a
@@ -57,6 +67,25 @@ local BASES = { choice = true, fact = true, recommendation = true, unknown = tru
 
 local function isCount(n)
     return type(n) == "number" and n == n and n >= 0 and n < math.huge
+end
+
+-- A fact the context gives for one item: context[field][key], or nil.
+local function factOf(c, field, key)
+    local t = type(c) == "table" and c[field] or nil
+    if type(t) ~= "table" or key == nil then return nil end
+    return t[key]
+end
+
+local function isList(v)
+    return type(v) == "table"
+end
+
+-- How much better gear is for a role (gear.diffs[role]); nil when not known.
+local function diffFor(g, role)
+    if role == nil or type(g.diffs) ~= "table" then return nil end
+    local d = g.diffs[role]
+    if type(d) ~= "number" or d ~= d or d == math.huge or d == -math.huge then return nil end
+    return d
 end
 
 Disposition.QUEST_CLASS = 12     -- the game's item class for quest items
@@ -122,6 +151,144 @@ Disposition.RULES = {
         if i.quality == 0 and isCount(i.sellPrice) and i.sellPrice > 0 then
             return { action = "sell", reason = "junk", basis = "recommendation" }
         end
+    end },
+
+    -- The eight keep rules ported from Flow (L6-B, G5), at Flow's order. Only
+    -- their keep: where Flow's rule also sells or sends to the auction house,
+    -- that half is not ported. Each takes its facts from the context (below
+    -- each rule); a fact that is missing or the wrong shape decides nothing.
+
+    -- Flow Modules/Items/Disposition.lua:637-648. context.sets[key] = the
+    -- names of the sets you keep it in ({ "Feral", "Balance" }).
+    { key = "inSet", order = 15, check = function(i, c)
+        local names = factOf(c, "sets", i.key)
+        if not isList(names) then return nil end
+        local out = {}
+        for idx = 1, #names do
+            if type(names[idx]) == "string" and names[idx] ~= "" then out[#out + 1] = names[idx] end
+        end
+        if #out == 0 then return nil end
+        return { action = "keep", reason = "in your " .. table.concat(out, " / ") .. " set", basis = "fact" }
+    end },
+    -- Flow Modules/Items/Disposition.lua:431-469. context.materials[key] =
+    -- the professions you have or plan that still use it (not past it), in
+    -- order: { { prof = "First Aid", what = "Linen Bandage" or nil }, ... }.
+    { key = "professionMaterial", order = 25, check = function(i, c)
+        local uses = factOf(c, "materials", i.key)
+        if not isList(uses) then return nil end
+        local parts = {}
+        for idx = 1, #uses do
+            local u = uses[idx]
+            if type(u) == "table" and type(u.prof) == "string" and u.prof ~= "" then
+                local what = type(u.what) == "string" and u.what ~= "" and (": " .. u.what) or ""
+                parts[#parts + 1] = "for " .. u.prof .. what
+            end
+        end
+        if #parts == 0 then return nil end
+        return { action = "keep", reason = table.concat(parts, "; "), basis = "fact" }
+    end },
+    -- Flow Modules/Items/Disposition.lua:807-841, the keep half. A bag (class
+    -- 1) bigger than one you wear, or with a bag slot empty. context.bagSize[key]
+    -- = its slots; context.wornBags = the worn bags' slots, 0 for an empty slot.
+    { key = "spareBag", order = 28, check = function(i, c)
+        if i.classID ~= 1 then return nil end
+        local size, worn = factOf(c, "bagSize", i.key), type(c.wornBags) == "table" and c.wornBags or nil
+        if not isCount(size) or size <= 0 or not isList(worn) or #worn == 0 then return nil end
+        for idx = 1, #worn do
+            if not isCount(worn[idx]) then return nil end
+        end
+        for idx = 1, #worn do
+            if worn[idx] < size then
+                return { action = "keep", basis = "fact",
+                         reason = string.format("a %d-slot bag, bigger than one you wear (or a bag slot is empty): put it on", size) }
+            end
+        end
+        return nil
+    end },
+    -- Flow Modules/Items/Disposition.lua:762-805, the keep branches. A recipe
+    -- (class 9). context.recipes[key] = { prof, rank = your skill (nil: you
+    -- don't have it), need = the skill it asks (nil: not read), known = the
+    -- game says you know it }.
+    { key = "recipe", order = 29.5, check = function(i, c)
+        if i.classID ~= 9 then return nil end
+        local r = factOf(c, "recipes", i.key)
+        if type(r) ~= "table" or type(r.prof) ~= "string" or r.prof == "" then return nil end
+        local prof, rank, need = r.prof, isCount(r.rank) and r.rank or nil, isCount(r.need) and r.need or nil
+        local why
+        if rank == nil then
+            why = string.format("a %s recipe, and you don't have %s", prof, prof)
+        elseif r.known == true then
+            why = string.format("a %s recipe you already know", prof)
+        elseif need and rank > 0 and rank < need then
+            return { action = "keep", basis = "fact",
+                     reason = string.format("a %s recipe: learn it at %s %d (you have %d)", prof, prof, need, rank) }
+        else
+            return { action = "keep", basis = "fact", reason = string.format("a %s recipe you can learn: right-click it", prof) }
+        end
+        -- No use to you: Flow sells it or sends it to the auction house (not
+        -- ported), except one that is bound and that vendors won't take.
+        if i.bound == true and isCount(i.sellPrice) and i.sellPrice <= 0 then
+            return { action = "keep", basis = "fact", reason = why .. ", and vendors won't take it" }
+        end
+        return nil
+    end },
+    -- Flow Modules/Items/Disposition.lua:843-847. Not gear: kept. Only once the
+    -- gear read has run (context.gearRead = true, context.gear a table of the
+    -- gear facts by key): an item it did not list is not gear. A fallback.
+    { key = "notGear", order = 30, generic = true, check = function(i, c)
+        if c.gearRead ~= true or type(c.gear) ~= "table" then return nil end
+        if c.gear[i.key] ~= nil then return nil end
+        return { action = "keep", reason = "not gear (materials, food, potions...)", basis = "fact" }
+    end },
+    -- Flow Modules/Items/Disposition.lua:849-858. context.gear[key] =
+    -- { needsTraining, skill, diffs = { [role] = n } }; context.role = your
+    -- levelling role.
+    { key = "needsTraining", order = 35, check = function(i, c)
+        local g = factOf(c, "gear", i.key)
+        if type(g) ~= "table" or g.needsTraining ~= true then return nil end
+        local diff = diffFor(g, c.role)
+        if diff == nil or diff < 0.5 then return nil end
+        local skill = type(g.skill) == "string" and g.skill ~= "" and g.skill or "its weapon skill"
+        return { action = "keep", basis = "recommendation",
+                 reason = "upgrade once you train " .. skill .. " (weapon master)" }
+    end },
+    -- Flow Modules/Items/Disposition.lua:860-874. An upgrade you can use at a
+    -- later level, or better for another role whose set you keep
+    -- (context.keptRoles = { [role] = true }, context.roleNames = { [role] = "Balance" }).
+    { key = "laterOrOtherRole", order = 40, check = function(i, c)
+        local g = factOf(c, "gear", i.key)
+        if type(g) ~= "table" or g.canUse ~= true then return nil end
+        local main = diffFor(g, c.role)
+        if main ~= nil and main >= 0.5 then
+            local at = isCount(i.minLevel) and ("upgrade at level " .. i.minLevel) or "upgrade at a later level"
+            return { action = "keep", reason = at, basis = "recommendation" }
+        end
+        if type(c.keptRoles) ~= "table" then return nil end
+        local roles = {}
+        for role, kept in pairs(c.keptRoles) do
+            if kept == true and role ~= c.role then roles[#roles + 1] = role end
+        end
+        table.sort(roles, function(a, b) return tostring(a) < tostring(b) end)
+        for idx = 1, #roles do
+            local d = diffFor(g, roles[idx])
+            if d ~= nil and d >= 0.5 then
+                local names = type(c.roleNames) == "table" and c.roleNames or {}
+                local name = type(names[roles[idx]]) == "string" and names[roles[idx]] or tostring(roles[idx])
+                return { action = "keep", reason = "better for " .. name, basis = "recommendation" }
+            end
+        end
+        return nil
+    end },
+    -- Flow Modules/Items/Disposition.lua:876-897. Gear your class can wear (or
+    -- train for) but no stat weights score for it: kept, never sold as "not
+    -- better". context.classScored = false when the class has no weights;
+    -- nil (not known) decides nothing.
+    { key = "unscoredClass", order = 45, check = function(i, c)
+        if c.classScored ~= false then return nil end
+        local g = factOf(c, "gear", i.key)
+        if type(g) ~= "table" or not (g.canUse == true or g.needsTraining == true) then return nil end
+        return { action = "keep", basis = "recommendation",
+                 reason = "gear for your class can't be scored yet, so it's kept: decide yourself" }
     end },
 }
 
