@@ -82,5 +82,6 @@ return {
         "UI/DevPanel.lua",
         "UI/ArrowMenu.lua",
     "UI/Arrow.lua",
+    "UI/RotationIcon.lua",
     },
 }
