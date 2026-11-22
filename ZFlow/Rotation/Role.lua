@@ -6,10 +6,11 @@ local _, ns = ...
 -- suggests as before, and no talent, form or gear is touched.
 --
 -- No talents are read. What the rotation plays you as is taken only from
--- the driver's view (view.snapshot.role). Today no reader fills that in, so
--- it is "not known" and nothing is compared; a role the class's pack has no
--- part for is the one reminder that can show until a readable talent API
--- is seen in this client.
+-- the driver's view (view.snapshot.role). The driver plays the role chosen
+-- here when the class's pack has a part for it, and none otherwise, so the
+-- two are the same or what it plays is "not known"; a role the pack has no
+-- part for is the one reminder that shows until a readable talent API is
+-- seen in this client.
 --
 --   Ro.Check(chosen, pack, played) -> check
 --     chosen  the setting: "dps", "heal", "tank"; anything else: none chosen

@@ -5,10 +5,14 @@ local _, ns = ...
 -- nothing: no attribute, binding, cast or frame is touched here, and the
 -- key plan is only worked out, never applied.
 --
---   D.Read(client, pack, ids) -> read(field)
+--   D.Read(client, pack, ids[, role]) -> read(field)
 --     the reader ns.Snapshot takes. dead, inCombat, stealthed, hostile and
---     spells are asked of the client; every other field answers nil (not
---     known), never a guess.
+--     spells are asked of the client; role is the one handed in; every
+--     other field answers nil (not known), never a guess.
+--       role       the role you chose (the setting D.ROLE), when it is
+--                  "dps", "heal" or "tank" and the pack has a part for it;
+--                  anything else: nil. No talent is read: the rotation
+--                  plays the role you say, or none.
 --       stealthed  client.stealthed() as it answered; nil when the client
 --                  has no such read
 --       hostile    from client.target() -> { exists, hostile, dead } or nil:
@@ -18,7 +22,7 @@ local _, ns = ...
 --       spells     each row also gets inRange = client.inRange(spell id)
 --                  when the client has that read and the answer is true or
 --                  false; otherwise range stays not known
---   D.Step(client, pack[, prefs, bias, applied]) -> view
+--   D.Step(client, pack[, prefs, bias, applied, role]) -> view
 --     one read and one choice. A read that fails is an error (not caught
 --     here; the tick catches it).
 --   D.Why(snapshot, trace, keys, lockdown) -> why
@@ -68,6 +72,8 @@ ns.RotationDriver = D
 D.NAME = "rotationDriver"
 D.EVENT = "rotation.suggested"
 D.SETTING = "rotation.enabled"
+-- The role you chose (Rotation/Role.lua declares the row).
+D.ROLE = "spec.role"
 D.EVERY = 0.2
 
 local RR = ns.RotationReader
@@ -93,8 +99,16 @@ local function spellRows(client, pack, ids)
     return rows
 end
 
-function D.Read(client, pack, ids)
+local ROLES = { dps = true, heal = true, tank = true }
+local function roleIn(pack, role)
+    if type(role) ~= "string" or not ROLES[role] then return nil end
+    if type(pack) ~= "table" or type(pack.roles) ~= "table" or type(pack.roles[role]) ~= "table" then return nil end
+    return role
+end
+
+function D.Read(client, pack, ids, role)
     return function(field)
+        if field == "role" then return roleIn(pack, role) end
         if field == "dead" then return client.dead() end
         if field == "inCombat" then return client.inCombat() end
         if field == "stealthed" then
@@ -139,12 +153,12 @@ function D.Why(snapshot, trace, keys, lockdown)
     return why
 end
 
-function D.Step(client, pack, prefs, bias, applied)
+function D.Step(client, pack, prefs, bias, applied, role)
     if type(pack) ~= "table" then
         return { pack = false, trace = {}, why = { pack = false } }
     end
     local ids, missing = RR.SpellIds(pack, client.spellId)
-    local snapshot = ns.Snapshot(D.Read(client, pack, ids))
+    local snapshot = ns.Snapshot(D.Read(client, pack, ids, role))
     local suggestion, trace = ns.Choose(snapshot, pack, prefs, bias)
     local passed = passedIn(trace)
     if suggestion and #passed > 0 then suggestion.passed = passed end
@@ -177,10 +191,10 @@ function D.Step(client, pack, prefs, bias, applied)
 end
 
 -- One tick's work: the class's pack, then a step.
-local function work(client, packs)
+local function work(client, packs, role)
     local class = type(client.class) == "function" and client.class() or nil
     local pack = type(class) == "string" and type(packs) == "table" and packs[class] or nil
-    return D.Step(client, pack)
+    return D.Step(client, pack, nil, nil, nil, role)
 end
 
 function D.Declare(k, packs)
@@ -198,7 +212,7 @@ function D.Declare(k, packs)
             end
             return
         end
-        local ok, got = pcall(work, ctx.client, packs or ns.Packs)
+        local ok, got = pcall(work, ctx.client, packs or ns.Packs, ctx.settings:get(D.ROLE))
         if ok then
             view = got
         else
