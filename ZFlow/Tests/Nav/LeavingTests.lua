@@ -148,4 +148,12 @@ T["the constants Flow used"] = function(t)
     t.eq(N.LEAVING_SETTING, "nav.zoneFirst", "the setting row (the lead adds it; on by default)")
 end
 
+T["the reason is for diagnostics only: no player text carries it"] = function(t)
+    local step, why = N.LeavingStep(nil)
+    t.eq(why, "zone name unknown", "the reason comes back as a second value")
+    t.ok(not step.label:find("unknown", 1, true), "the label shown to the player never says unknown")
+    t.ok(not N.LeavingWaits(nil):find("unknown", 1, true), "nor the waiting text")
+    t.eq(step.reason, nil, "the step table carries no reason field a caller could show")
+end
+
 return T

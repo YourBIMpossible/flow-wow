@@ -52,7 +52,9 @@ local _, ns = ...
 -- N.LeavingStep(zoneName) -> { label = "Finishing <zone> first", text = true }
 --   A text step: no place, no arrow. With no name, or a label over
 --   N.Waypoint.LABEL_MAX bytes (never cut): "Finishing this zone first",
---   and with no name the reason "zone name unknown" comes with it.
+--   and with no name the reason "zone name unknown" comes with it. The
+--   reason is for diagnostics only: a caller never shows it to the player
+--   (the label already reads plainly without it).
 -- N.LeavingWaits(zoneName) -> "(<zone>, after this zone)", the words after a
 --   waiting stop; "(after this zone)" when the name is not known.
 ns.Nav = ns.Nav or {}
