@@ -1,0 +1,183 @@
+local _, ns = ...
+
+-- Tests for ZFlow/UI/WindowButtons.lua (U-E, S22): one Z-Flow button on the
+-- world map and one on the merchant window, both off by default. A button
+-- only shows a Z-Flow panel: the world map's shows the arrow menu, the
+-- merchant's shows the sell list. Fake client; not tested in game.
+--
+-- The window read is a CLIENT NEED: client.windowButton(frameName, spec)
+-- answers a handle or nil (the window missing, protected, or the player in
+-- combat), and the fake's setWindow(frameName, { protected = bool }) says
+-- which windows exist. Until the fake has them, these tests put them on the
+-- fake in the same shape. The panels are reached through two PROVIDER
+-- NEEDs: the "arrow" module's OpenMenu() and the "sellList" module's Show();
+-- fake modules stand in for both here.
+
+local W = ns.WindowButtons
+local tests = {}
+
+local function windows(c)
+    c.windowButtons = c.windowButtons or {}
+    if type(c.windowButton) == "function" and type(c.setWindow) == "function" then return end
+    local wins = {}
+    function c.setWindow(name, w) wins[name] = w or {} end
+    function c.windowButton(frameName, spec)
+        local w = wins[frameName]
+        if not w or w.protected or c.inCombat() ~= false then return nil end
+        local h = { frame = frameName, spec = spec, shown = false }
+        local fn
+        function h.onClick(f) fn = f end
+        function h.show(on) h.shown = on and true or false end
+        function h.click() if fn then fn() end end
+        c.windowButtons[#c.windowButtons + 1] = h
+        return h
+    end
+end
+
+-- opts: rows (false: none declared), on = { worldMap = bool, merchant = bool }
+-- (saved before login), windows = { [frame] = { protected } } (default both,
+-- unprotected), combat (in combat at login), providers (false: none).
+local function start(opts)
+    opts = opts or {}
+    local c = ns.make.fakeClient()
+    local account = {}
+    if opts.on then account.settings = { buttons = { worldMap = opts.on.worldMap, merchant = opts.on.merchant } } end
+    c.setSaved(ns.id.accountDB, account)
+    windows(c)
+    local wins = opts.windows or { WorldMapFrame = {}, MerchantFrame = {} }
+    for name, w in pairs(wins) do c.setWindow(name, w) end
+    if opts.combat then c.setCombat(true) end
+    local k = ns.Kernel({}, c)
+    ns.Diag.Start(k)
+    if opts.rows ~= false then
+        for _, win in ipairs(W.WINDOWS) do
+            k:Setting({ key = win.setting, scope = "account", type = "bool", default = false, label = win.label })
+        end
+    end
+    local opened = { menu = 0, sell = 0 }
+    if opts.providers ~= false then
+        k:Module({ name = "arrow", provides = { OpenMenu = function() opened.menu = opened.menu + 1 end } })
+        k:Module({ name = "sellList", provides = { Show = function() opened.sell = opened.sell + 1 end } })
+    end
+    local api = W.Declare(k)
+    k:Boot()
+    c.fire("ADDON_LOADED", ns.id.addon)
+    c.fire("PLAYER_LOGIN")
+    c.fire("PLAYER_ENTERING_WORLD")
+    return k, c, api, opened
+end
+
+local function buttonOn(c, frame)
+    for _, h in ipairs(c.windowButtons) do
+        if h.frame == frame then return h end
+    end
+    return nil
+end
+
+tests["window buttons: only the world map and the merchant window, each with its own row"] = function(t)
+    t.eq(#W.WINDOWS, 2)
+    local seen = {}
+    for _, win in ipairs(W.WINDOWS) do seen[win.frame] = win.setting end
+    t.eq(seen, { WorldMapFrame = "buttons.worldMap", MerchantFrame = "buttons.merchant" })
+end
+
+tests["window buttons: off by default - no button is made"] = function(t)
+    local k, c, api = start()
+    t.eq((k:ModuleState(W.NAME)), "started")
+    t.eq(#c.windowButtons, 0, "no button")
+    t.eq(api.state(), { worldMap = "off", merchant = "off" })
+    t.ok(type(ns.windowButtons) == "table", "the addon's own is declared")
+end
+
+tests["window buttons: a missing row is off too"] = function(t)
+    local _, c = start({ rows = false, on = { worldMap = true, merchant = true } })
+    t.eq(#c.windowButtons, 0, "no row, no button")
+end
+
+tests["window buttons: the world map button shows the arrow menu, and only that"] = function(t)
+    local _, c, api, opened = start({ on = { worldMap = true } })
+    local h = buttonOn(c, "WorldMapFrame")
+    t.ok(h ~= nil, "a button on the world map")
+    t.eq(h.shown, true)
+    t.eq(buttonOn(c, "MerchantFrame"), nil, "none on the merchant window")
+    h.click()
+    t.eq(opened, { menu = 1, sell = 0 }, "the arrow menu, once")
+    t.eq(api.state().worldMap, "shown")
+end
+
+tests["window buttons: the merchant button shows the sell list, and only that"] = function(t)
+    local _, c, _, opened = start({ on = { merchant = true } })
+    local h = buttonOn(c, "MerchantFrame")
+    t.ok(h ~= nil, "a button on the merchant window")
+    h.click()
+    t.eq(opened, { menu = 0, sell = 1 }, "the sell list, once")
+end
+
+tests["window buttons: a missing or protected window gets no button"] = function(t)
+    local _, c, api = start({ on = { worldMap = true, merchant = true },
+        windows = { MerchantFrame = { protected = true } } })
+    t.eq(#c.windowButtons, 0, "none")
+    t.eq(api.state(), { worldMap = "not made", merchant = "not made" })
+end
+
+tests["window buttons: none is made in combat; it is made when combat ends"] = function(t)
+    local _, c, api = start({ on = { worldMap = true }, combat = true })
+    t.eq(#c.windowButtons, 0, "none in combat")
+    t.eq(api.state().worldMap, "waiting for combat to end")
+    c.setCombat(false)
+    t.ok(buttonOn(c, "WorldMapFrame") ~= nil, "made after combat")
+    t.eq(api.state().worldMap, "shown")
+end
+
+tests["window buttons: turning a row on makes the button; off hides it; on again reuses it"] = function(t)
+    local k, c, api = start()
+    k.settings:set("buttons.merchant", true)
+    local h = buttonOn(c, "MerchantFrame")
+    t.ok(h ~= nil, "made when turned on")
+    t.eq(h.shown, true)
+    k.settings:set("buttons.merchant", false)
+    t.eq(h.shown, false, "hidden when turned off")
+    t.eq(api.state().merchant, "off")
+    k.settings:set("buttons.merchant", true)
+    t.eq(h.shown, true, "shown again")
+    t.eq(#c.windowButtons, 1, "the same button, not a second one")
+end
+
+tests["window buttons: with no panel to open, a click does nothing and is recorded"] = function(t)
+    local k, c = start({ on = { worldMap = true }, providers = false })
+    local h = buttonOn(c, "WorldMapFrame")
+    local before = #k.problems:list()
+    h.click()
+    t.ok(#k.problems:list() > before, "recorded as a problem")
+end
+
+tests["window buttons: a client without the window read makes nothing and does not fail"] = function(t)
+    local c = ns.make.fakeClient()
+    c.setSaved(ns.id.accountDB, { settings = { buttons = { worldMap = true } } })
+    local k = ns.Kernel({}, c)
+    ns.Diag.Start(k)
+    k:Setting({ key = "buttons.worldMap", scope = "account", type = "bool", default = false, label = "x" })
+    local api = W.Declare(k)
+    k:Boot()
+    c.fire("ADDON_LOADED", ns.id.addon)
+    c.fire("PLAYER_LOGIN")
+    t.eq((k:ModuleState(W.NAME)), "started", "still started")
+    t.eq(api.state().worldMap, "not made")
+end
+
+tests["window buttons: look only - plain buttons, no secure fields, no acting functions"] = function(t)
+    local _, c = start({ on = { worldMap = true, merchant = true } })
+    for _, h in ipairs(c.windowButtons) do
+        for field in pairs(h.spec) do
+            local f = tostring(field):lower()
+            t.ok(not (f:find("secure") or f:find("macro") or f:find("spell") or f:find("attribute") or f:find("action")),
+                "no acting field: " .. f)
+        end
+    end
+    for name in pairs(W) do
+        local n = tostring(name):lower()
+        t.ok(not (n:find("sell") or n:find("buy") or n:find("cast") or n:find("secure")), "no acting function: " .. n)
+    end
+end
+
+return tests
