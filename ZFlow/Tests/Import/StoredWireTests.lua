@@ -2,10 +2,10 @@
 -- stored paths is what the readers read, and what the import leaves behind
 -- reads as the default. Every table below is made up.
 --
--- At fork zflow 26d61e6 the import drops none of these paths (each has a
--- keeping row in the map), so there is nothing in FromFlow to wire a reader
--- into. These tests hold that fact in place: if a row for one of these paths
--- is ever turned into a drop, the first test fails.
+-- The import drops none of these paths (each has a keeping row in the map).
+-- These tests hold that fact in place: if a row for one of these paths is
+-- ever turned into a drop, the first test fails. The import also makes each
+-- value safe on the way in, so what is stored is what the reader hands out.
 local _, ns = ...
 
 local Import = ns.Import
@@ -144,33 +144,35 @@ return {
         t.eq(s.keepOnMain, false)
     end,
 
-    -- The import keeps a little more than the readers accept. The stored
-    -- value is left as Flow had it; the reader is where it is made safe.
-    ["stored wire: a size outside the limits is kept as it was and read within them"] = function(t)
+    -- The import stores nothing the readers would refuse or change, apart
+    -- from the rounding of a size, which stays with the reader.
+    ["stored wire: a size outside the limits is stored within them and reads the same"] = function(t)
         local result = Import.FromFlow({ buffButton = { scale = 9, dockScale = 0.1 }, rotation = { scale = 40 } }, {})
         local layout = result.account.layout
-        t.eq(layout.buffButton.scale, 9)
-        t.eq(layout.buffButton.dockScale, 0.1)
-        t.eq(layout.rotation.scale, 40)
+        t.eq(layout.buffButton.scale, 2)
+        t.eq(layout.buffButton.dockScale, 0.5)
+        t.eq(layout.rotation.scale, 2)
         local b = S.BuffButtonLayout(layout)
         near(t, b.scale, 2)
         near(t, b.dockScale, 0.5)
         near(t, S.RotationScale(layout), 2)
     end,
 
-    ["stored wire: a point with an anchor no frame has is kept and read as no point"] = function(t)
+    ["stored wire: a point with an anchor no frame has is left behind and reads as no point"] = function(t)
         local result = Import.FromFlow({ ah = { chartPoint = { "MIDDLE", "TOP", 1, 2 } } }, {})
-        t.eq(result.account.layout.auction.chart, { "MIDDLE", "TOP", 1, 2 })
-        t.eq(droppedFor(result, "ah.chartPoint"), nil)
+        t.eq(result.account.layout, {})
+        local entry = droppedFor(result, "ah.chartPoint")
+        t.ok(entry and entry.why == "malformed", "ah.chartPoint is not listed as malformed")
         t.eq(S.AuctionChart(result.account.layout), nil)
     end,
 
-    ["stored wire: a companion switch of the wrong type is kept and read as its default"] = function(t)
+    ["stored wire: a companion switch of the wrong type is left behind and reads as its default"] = function(t)
         local result = Import.FromFlow({ buffButton = { enabled = "yes", dock = 0, key = 7 } }, {})
-        local stored = result.account.settings.buffButton
-        t.eq(stored.enabled, "yes")
-        t.eq(stored.dock, 0)
-        t.eq(stored.key, 7)
+        t.eq(result.account.settings, {})
+        for _, key in ipairs({ "buffButton.enabled", "buffButton.dock", "buffButton.key" }) do
+            local entry = droppedFor(result, key)
+            t.ok(entry and entry.why == "malformed", key .. " is not listed as malformed")
+        end
         local s = S.BuffButtonSettings(result.account.settings)
         t.eq(s.enabled, false)
         t.eq(s.dock, true)
