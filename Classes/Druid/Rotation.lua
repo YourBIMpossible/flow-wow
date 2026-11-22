@@ -49,6 +49,26 @@ function ns.DruidWantsBear(role, fight, bear)
     return role == "tank" and fight and not bear
 end
 
+-- Pure: dps, a fight to take, in no form at all, and not a caster build.
+-- form: A.Form() (nil = no form); tree: ns:TalentTree() (nil = unknown).
+--
+-- Provenance (class B, an independently authored recommendation):
+--   Authored by Flow, 2026-11-21. No guide, database or other addon used.
+--   Facts used, all already in Flow's code: the role Flow plays you as
+--   (ns:LevelingRole(), Modules/Spec.lua); the form the game reports
+--   (A.Form()); the tree with most of your talent points (ns:TalentTree());
+--   that the cat list below needs Cat Form and the caster list needs no form
+--   or Moonkin Form (caster(), druidForms()).
+--   Method: the mirror of DruidWantsBear. Flow's own cat list is what a dps
+--   druid who knows Cat Form is given, so with a fight to take it asks for
+--   the form that list needs. Left alone: any form you're already in (Travel,
+--   Aquatic, Moonkin, Bear: your choice), and a druid whose talents are mostly
+--   Balance (the caster list is theirs). Talents unread or tied: not Balance.
+--   A recommendation, not a game fact; open to correction from fight records.
+function ns.DruidWantsCat(role, fight, form, tree)
+    return (role == "dps" and fight and form == nil and tree ~= "Balance") and true or false
+end
+
 local buffs = {
     { spell = "Mark of the Wild", kind = "buff", reason = "Mark of the Wild missing or running out",
       when = function(c) return not c.inCombat and caster() and needBuff("Mark of the Wild", 60) end },
@@ -67,6 +87,13 @@ local buffs = {
     { spell = "Bear Form", kind = "buff", reason = "Tanking: Bear Form",
       when = function(c)
           return ns.DruidWantsBear(c.role, c.hostile or c.inCombat, inBear()) and not c.engine:Knows("Dire Bear Form")
+      end },
+    -- DPS (not a Balance build): into Cat Form when there's a fight to take,
+    -- under the same conditions as Bear Form for a tank (ns.DruidWantsCat,
+    -- with its provenance note). Before Prowl: that needs the form first.
+    { spell = "Cat Form", kind = "buff", reason = "Suggested for DPS: Cat Form",
+      when = function(c)
+          return ns.DruidWantsCat(c.role, c.hostile or c.inCombat, A.Form(), ns.TalentTree and ns:TalentTree() or nil)
       end },
     { spell = "Prowl", kind = "buff", reason = "Prowl before you pull: your key then holds your opener from stealth",
       when = function(c) return not c.inCombat and c.hostile and inCat() and not stealthed() end },

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Druid: playing DPS and knowing Cat Form, Flow now suggests Cat Form when there's a fight to take (not for a Balance build, a healer, or when you're already in a form).
 - Fixed: `/flow notoffered clear` with a mistyped quest ID no longer clears the whole list. It says the ID isn't one and clears nothing.
 - Paladin: Holy Strike, Seal of Fury, Consecration and Blessing of Kings are no longer listed with levels taken from guides; Flow advises them from what your trainer shows.
 - Paladin: Flow no longer suggests professions taken from a guide; pick yours in `/flow prof` (a plan you already chose is kept).
