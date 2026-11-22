@@ -42,20 +42,22 @@ ns.WindowButtons = WB
 
 WB.NAME = "windowButtons"
 
--- The button points are first guesses, not seen in game.
+-- The button points are first guesses, not seen in game. The button text
+-- and the start of its tooltip are the addon's title from the identity
+-- (Core/Identity.lua is the only file that may hold it).
 WB.WINDOWS = {
     {
         key = "worldMap", frame = "WorldMapFrame", setting = "buttons.worldMap",
-        label = "Z-Flow button on the world map",
+        label = "Button on the world map",
         opens = "arrow", call = "OpenMenu",
-        text = "Z-Flow", tip = "Z-Flow: open the arrow menu",
+        tip = "open the arrow menu",
         point = { "TOPRIGHT", "TOPRIGHT", -60, -30 },
     },
     {
         key = "merchant", frame = "MerchantFrame", setting = "buttons.merchant",
-        label = "Z-Flow button on the merchant window",
+        label = "Button on the merchant window",
         opens = "sellList", call = "Show",
-        text = "Z-Flow", tip = "Z-Flow: show the sell list",
+        tip = "show the sell list",
         point = { "TOPRIGHT", "TOPRIGHT", -40, -40 },
     },
 }
@@ -103,9 +105,10 @@ function WB.Declare(k)
             return
         end
         local make = ctx.client.windowButton
+        local id = k.id or ns.id
         h = type(make) == "function" and make(win.frame, {
-            name = (k.id or ns.id).framePrefix .. "Button" .. win.frame,
-            text = win.text, tip = win.tip,
+            name = id.framePrefix .. "Button" .. win.frame,
+            text = id.title, tip = id.title .. ": " .. win.tip,
             point = { win.point[1], win.point[2], win.point[3], win.point[4] },
         }) or nil
         if not h then
