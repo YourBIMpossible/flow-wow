@@ -284,11 +284,12 @@ function ItemPlan.Build(goal, context)
                 if price.basis == "estimated" and price.source == nil then price = { basis = "unknown" } end
                 s.price, s.basis = price, price.basis
                 s.text = Prices and Prices.Text(price) or "price unknown - check trainer"
+                -- Counted in whole stacks where the price has a stack size.
                 if price.basis == "observed" then
-                    s.cost = price.value * s.count
+                    s.cost = Prices.Cost(price, s.count)
                     plan.cost.known = plan.cost.known + s.cost
                 elseif price.basis == "estimated" then
-                    s.estimate = price.value * s.count
+                    s.estimate = Prices.Cost(price, s.count)
                     plan.cost.estimated = plan.cost.estimated + s.estimate
                 else
                     plan.cost.unknown = plan.cost.unknown + 1

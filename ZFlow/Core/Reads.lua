@@ -10,6 +10,7 @@
 --       read.bank()   -> { [itemKey] = count } or nil (never seen), and the
 --                        time it was last seen
 --       read.now()    -> the time
+--       read.clock()  -> the wall-clock time, or nil when not known
 --     and one more for the caller:
 --       read.seeBank() -> true when the bank was open and was read just now.
 --     The bank can only be read while its window is open. read keeps the
@@ -68,6 +69,7 @@ function ns.make.resourceRead(client, keyOf)
     function read.bags() return ask("bags") end
     function read.items() return sum(ask("bagItems"), key) end
     function read.now() return ask("now") end
+    function read.clock() return ask("clock") end
 
     function read.seeBank()
         if ask("bankOpen") ~= true then return false end

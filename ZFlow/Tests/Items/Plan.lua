@@ -289,4 +289,30 @@ tests["plan: the claims it makes, and they resolve"] = function(t)
     t.eq(free[1].bank, nil, "and no bank flag when nothing comes from the bank")
 end
 
+tests["plan: a merchant's stack is paid for whole"] = function(t)
+    local shot = R.Fake({ bags = {}, bank = {}, money = 1000 })
+    local book = {}
+    -- A stack of 5 thread for 1c: a fifth of a copper for one.
+    Prices.Record(book, "thread", "vendor", 0.2, { per = 5 })
+    local one = build({ recipe = "make:kit", count = 1 }, shot, book)
+    local v = from(rowsByKey(one).thread, "vendor")
+    t.eq(v.count, 1, "1 needed")
+    t.eq(v.cost, 1, "one whole stack: 1c, not a fifth of one")
+    t.eq(v.text, "under 1c", "the price of one is never shown as 0c")
+    t.eq(one.cost.known, 1)
+    local six = build({ recipe = "make:kit", count = 6 }, shot, book)
+    t.eq(from(rowsByKey(six).thread, "vendor").cost, 2, "6 needed: two stacks, 2c")
+    t.eq(six.cost.known, 2)
+    local five = build({ recipe = "make:kit", count = 5 }, shot, book)
+    t.eq(five.cost.known, 1, "5 needed: the one stack")
+    -- An estimate is counted the same way, and stays an estimate.
+    local guess = {}
+    Prices.Record(guess, "thread", "vendor", 0.2, { basis = "estimated", source = "price at another merchant", per = 5 })
+    local est = build({ recipe = "make:kit", count = 6 }, shot, guess)
+    t.eq(from(rowsByKey(est).thread, "vendor").estimate, 2)
+    t.eq(from(rowsByKey(est).thread, "vendor").cost, nil, "an estimate is no known cost")
+    t.eq(est.cost.estimated, 2)
+    t.eq(est.cost.known, 0)
+end
+
 return tests

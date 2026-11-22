@@ -376,6 +376,14 @@ function ns.make.client(env)
         return shown and true or false
     end
 
+    -- True when the client marks a value secret (issecretvalue), or will
+    -- not say: such a value is "not known", never read as false or as 0.
+    local function hidden(v)
+        if env.issecretvalue == nil then return false end
+        local okSecret, secret = call(env.issecretvalue, v)
+        return not okSecret or secret ~= false
+    end
+
     -- What the window shows for one item on sale: read?, price, stack,
     -- other currency. First guesses, neither seen in game on 16001:
     -- C_MerchantFrame.GetItemInfo(index) answering a table (price,
@@ -386,12 +394,13 @@ function ns.make.client(env)
         local api = env.C_MerchantFrame
         if type(api) == "table" and type(api.GetItemInfo) == "function" then
             local ok, info = call(api.GetItemInfo, index)
-            if not ok then return false end
+            if not ok or hidden(info) then return false end
             if type(info) ~= "table" then return true end
+            if hidden(info.price) or hidden(info.stackCount) then return false end
             return true, info.price, info.stackCount, info.hasExtendedCost
         end
         local ok, _, _, price, quantity, _, _, _, extended = call(env.GetMerchantItemInfo, index)
-        if not ok then return false end
+        if not ok or hidden(price) or hidden(quantity) then return false end
         return true, price, quantity, extended
     end
 
@@ -402,17 +411,19 @@ function ns.make.client(env)
     -- no price (never 0 in its place), no stack. other = true says the
     -- item costs something that is not coin; left out when not known.
     -- nil unless the window is known to be open, and nil when the count or
-    -- any one item could not be read: never a shorter list. This only
+    -- any one item could not be read: never a shorter list. A count, link,
+    -- price or stack the client marks secret is "could not be read" too:
+    -- the whole reading is nil. This only
     -- reads. Nothing here buys, sells or picks anything up.
     -- First guesses: GetMerchantNumItems, GetMerchantItemLink(index).
     function c.merchantItems()
         if c.merchantOpen() ~= true then return nil end
         local ok, count = call(env.GetMerchantNumItems)
-        if not ok or not wholeCount(count) then return nil end
+        if not ok or hidden(count) or not wholeCount(count) then return nil end
         local out = {}
         for index = 1, count do
             local okLink, link = call(env.GetMerchantItemLink, index)
-            if not okLink then return nil end
+            if not okLink or hidden(link) then return nil end
             local okPrice, price, stack, other = merchantPrice(index)
             if not okPrice then return nil end
             local row = { index = index }
@@ -455,15 +466,6 @@ function ns.make.client(env)
             rows[i] = { id = ids[i], name = type(info.name) == "string" and info.name or nil, learned = info.learned }
         end
         return { profession = line, skill = base.skillLevel, max = base.maxSkillLevel, recipes = rows }
-    end
-
-    -- A plain true / false the client lets this code see, else nil. The
-    -- client can hand back a value it marks secret (issecretvalue); that is
-    -- "not known", never read as false.
-    local function hidden(v)
-        if env.issecretvalue == nil then return false end
-        local okSecret, secret = call(env.issecretvalue, v)
-        return not okSecret or secret ~= false
     end
 
     local function flag(ok, v)

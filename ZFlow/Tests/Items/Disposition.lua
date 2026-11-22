@@ -108,6 +108,24 @@ tests["disposition: what claims hold is kept by count, the rest goes on"] = func
     t.eq(D.CountOf(blind, "keep"), nil, "and no number is given")
 end
 
+tests["disposition: a later keep rule that fails while reasons are gathered is reported"] = function(t)
+    local seen = {}
+    local rules = {
+        { key = "first", order = 1, check = function() return { action = "keep", reason = "needed", basis = "fact" } end },
+        { key = "broken", order = 2, check = function() error("boom") end },
+        { key = "third", order = 3, check = function() return { action = "keep", reason = "liked", basis = "fact" } end },
+    }
+    local d = D.Decide(leather(3), { rules = rules, onError = function(key, err) seen[#seen + 1] = key .. "|" .. tostring(err) end })
+    t.eq(d.action, "keep")
+    t.eq(d.rule, "first")
+    t.eq(d.reasons, { "needed", "liked" }, "the failing rule adds no reason and stops no later one")
+    t.eq(#seen, 1, "the failing check was not reported, or more than once")
+    t.ok(seen[1]:find("broken|", 1, true) == 1 and seen[1]:find("boom", 1, true) ~= nil, "with the rule and the error")
+    local quiet = D.Decide(leather(3), { rules = rules, onError = function() error("again") end })
+    t.eq(quiet.reasons, { "needed", "liked" }, "a failing error handler changes nothing")
+    t.eq(D.Decide(leather(3), { rules = rules }).reasons, { "needed", "liked" }, "nor does having none")
+end
+
 tests["disposition: a rule that fails keeps the item"] = function(t)
     local seen = {}
     local rules = {

@@ -215,7 +215,7 @@ local MAP = {
 
     -- Learned: prices
     { "prices", to = "learned.prices.vendor", as = "prices" },
-    { "ah.prices", to = "learned.prices.auction" },
+    { "ah.prices", to = "learned.prices.auction", as = "realmPrices" },
 
     -- Learned: facts
     { "facts.spells", to = "learned.facts.spells" },
@@ -813,11 +813,24 @@ function KIND.times(v, label, note)
     end)
 end
 
+-- Flow kept a bare number of copper per item. Each becomes an entry of the
+-- price book (Items/Prices.lua): an estimate, since Z-Flow did not see it,
+-- with no date. A price Z-Flow reads in game replaces it.
+local IMPORTED_BASIS, IMPORTED_SOURCE = "estimated", "imported from Flow"
+
 function KIND.prices(v, label, note)
     return map(v, label, note, isId, "a price key that is not an item id", function(copper)
-        if finite(copper) and copper >= 0 then return copper end
+        if finite(copper) and copper >= 0 then
+            return { value = copper, basis = IMPORTED_BASIS, source = IMPORTED_SOURCE }
+        end
         return nil, "a price that is not zero or more"
     end)
+end
+
+-- Auction prices: [realm and faction][item id] = copper. The realm level is
+-- kept; each number under it becomes an entry as above.
+function KIND.realmPrices(v, label, note)
+    return map(v, label, note, isName, "a realm without a name", KIND.prices)
 end
 
 local ARROW_MODES = { stacked = true, separate = true }
@@ -1094,6 +1107,12 @@ local function isList(t)
     return t[1] ~= nil
 end
 
+-- A price book entry (Items/Prices.lua) is one reading: kept or added whole,
+-- never mixed field by field with another.
+local function isPrice(t)
+    return type(t.basis) == "string" and t.value ~= nil
+end
+
 -- True when the stored setting at path `at` is no choice of the player's and
 -- the import's value may take its place. choice = { model, prefix }: the
 -- settings model to ask and the part of the path before its keys; a choice
@@ -1162,7 +1181,8 @@ local function fill(dst, src, defaults, path, report, choice)
                 dst[key] = fit
                 report.added[#report.added + 1] = at
             end
-        elseif type(have) == "table" and type(value) == "table" and not isList(have) and not isList(value) then
+        elseif type(have) == "table" and type(value) == "table" and not isList(have) and not isList(value)
+            and not isPrice(have) and not isPrice(value) then
             fill(have, value, default, at, report, choice)
         elseif same(have, value) then
             report.skipped[#report.skipped + 1] = { path = at, reason = "the same value is already there" }

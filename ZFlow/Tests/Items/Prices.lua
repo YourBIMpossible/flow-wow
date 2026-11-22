@@ -133,6 +133,10 @@ tests["prices: copper as text"] = function(t)
     t.eq(P.Coin(10003), "1g 3c", "no silver: left out")
     t.eq(P.Coin(1234567), "123g 45s 67c", "a large sum")
     t.eq(P.Coin(12.4), "12c", "a part of a copper is rounded")
+    t.eq(P.Coin(0.2), "under 1c", "a price that is not zero never reads 0c")
+    t.eq(P.Coin(0.5), "under 1c", "nor is it rounded up to a copper it does not cost")
+    t.eq(P.Coin(0.999), "under 1c")
+    t.eq(P.Coin(1), "1c", "one copper is one copper")
     t.eq(P.Coin(-1), nil, "not a count: no text")
     t.eq(P.Coin(nil), nil, "nothing given: no text")
     t.eq(P.Coin("12"), nil, "text is not a count")
@@ -206,6 +210,41 @@ tests["prices: what a money claim asks for"] = function(t)
     t.eq(by["train:guess"].estimate, 450, "its estimate rides along")
     t.eq(by["train:seen"].short, 500, "the observed one is known to be short")
     t.eq(g:Held("money"), 0, "and nothing is held on the strength of an estimate")
+end
+
+tests["prices: the entry keeps the stack size it was seen sold in"] = function(t)
+    local book = {}
+    local p = P.Record(book, 2320, "vendor", 0.2, { source = "merchant window", seenAt = 100, per = 5 })
+    t.eq(p, { value = 0.2, basis = "observed", source = "merchant window", seenAt = 100, per = 5 })
+    t.eq(book.vendor[2320].per, 5, "the stack size is in the book")
+    t.eq(P.Get(book, 2320, "vendor").per, 5)
+    t.eq(P.Text(P.Get(book, 2320, "vendor")), "under 1c", "a fifth of a copper for one is not 0c")
+    t.eq(P.Record(book, "one", "vendor", 7).per, nil, "no stack size given: none made up")
+    for _, bad in ipairs({ 0, -5, 2.5, "5", true, 0 / 0, math.huge }) do
+        t.eq(P.Record(book, "bad", "vendor", 7, { per = bad }).per, nil, "taken for a stack size: " .. tostring(bad))
+    end
+    book.vendor.odd = { value = 7, basis = "observed", per = 2.5 }
+    t.eq(P.Get(book, "odd", "vendor").per, nil, "a stored stack size that is none is left out")
+    t.eq(P.Get(book, "odd", "vendor").value, 7, "and the price is still read")
+    -- A later reading with another stack size replaces it with the price.
+    P.Record(book, 2320, "vendor", 3, { seenAt = 200, per = 1 })
+    t.eq(P.Get(book, 2320, "vendor").per, 1)
+end
+
+tests["prices: what a number of them costs is counted in whole stacks"] = function(t)
+    local five = { value = 0.2, basis = "observed", per = 5 }
+    t.eq(P.Cost(five, 1), 1, "a stack of 5 for 1c with 1 needed costs 1c")
+    t.eq(P.Cost(five, 5), 1)
+    t.eq(P.Cost(five, 6), 2, "with 6 needed it costs 2c")
+    t.eq(P.Cost(five, 0), 0, "none needed costs nothing")
+    t.eq(P.Cost({ value = 10, basis = "observed", per = 5 }, 7), 100, "two stacks of 5 at 50c the stack")
+    t.eq(P.Cost({ value = 10, basis = "observed" }, 7), 70, "no stack size: each one at its price")
+    t.eq(P.Cost({ value = 10, basis = "observed", per = 1 }, 7), 70)
+    t.eq(P.Cost({ value = 10, basis = "estimated", per = 5 }, 1), 50, "the basis is the caller's to read")
+    t.eq(P.Cost({ basis = "unknown" }, 3), nil, "no price: no cost, never 0")
+    t.eq(P.Cost(nil, 3), nil)
+    t.eq(P.Cost(five, nil), nil, "no count: no cost")
+    t.eq(P.Cost(five, -1), nil)
 end
 
 return tests
