@@ -1139,6 +1139,35 @@ function ns.make.fakeClient(opts)
     function c.setGuideLines(on) s.noGuideLines = not on end
     function c.guideShows() return guideShows end
     function c.guidesUp() return guidesUp end
+    -- S20 merchant button marks. markMerchantButtons keeps the item numbers
+    -- it was given (merchantMarked()) and answers how many, or nil (and
+    -- keeps none) while no merchant is open. merchantRedraw() calls every
+    -- onMerchantRedraw listener, as the window drawing a new page would.
+    local merchantRedrawFns, merchantMarkedNow = {}, nil
+    function c.markMerchantButtons(indexes)
+        if s.merchantOpen ~= true then
+            merchantMarkedNow = nil
+            return nil
+        end
+        merchantMarkedNow = {}
+        local n = 0
+        for index, on in pairs(type(indexes) == "table" and indexes or {}) do
+            if on then
+                merchantMarkedNow[index] = true
+                n = n + 1
+            end
+        end
+        return n
+    end
+    function c.merchantMarked() return merchantMarkedNow end
+    function c.onMerchantRedraw(fn)
+        if type(fn) ~= "function" then return nil end
+        merchantRedrawFns[#merchantRedrawFns + 1] = fn
+        return true
+    end
+    function c.merchantRedraw()
+        for _, fn in ipairs({ unpack(merchantRedrawFns) }) do fn() end
+    end
     return c
 end
 
