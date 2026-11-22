@@ -162,5 +162,6 @@ return {
     "UI/RotationQueue.lua",
     "Items/Banker.lua",
     "Items/Posting.lua",
+    "Items/Trader.lua",
     },
 }
