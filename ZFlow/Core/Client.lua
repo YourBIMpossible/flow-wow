@@ -2462,6 +2462,69 @@ function ns.make.client(env)
         return h
     end
 
+    ---------------------------------------------------------------------
+    -- F6, the rotation helper: its reads and its one secure frame, kept
+    -- together. All first guesses: not seen in game on 16001.
+    ---------------------------------------------------------------------
+
+    -- The form you are in: a number (0 is no form), or nil when not known
+    -- (no call, a failed call, a secret answer, or anything but a number).
+    -- GetShapeshiftForm(). It names no unit and only reads.
+    function c.form()
+        local ok, n = call(env.GetShapeshiftForm)
+        if not ok or n == nil or hidden(n) or type(n) ~= "number" then return nil end
+        return n
+    end
+
+    -- In a pet battle: true, false, or nil when not known. A client with
+    -- no C_PetBattles.IsInBattle does not say. It only reads.
+    function c.petBattle()
+        local api = env.C_PetBattles
+        if type(api) ~= "table" then return nil end
+        return yesNo(call(api.IsInBattle))
+    end
+
+    -- In a vehicle: true, false, or nil when not known.
+    -- UnitInVehicle("player"): no unit but you is asked about.
+    function c.vehicle()
+        return yesNo(call(env.UnitInVehicle, "player"))
+    end
+
+    -- A secure button for the key frame (Rotation/KeyFrame.lua), or nil
+    -- when the client made none. It is made from the client's own
+    -- SecureActionButtonTemplate: with no size and no art it takes no
+    -- mouse click, and it is hidden when it is made outside a fight (in
+    -- one, hiding it is the client's to refuse, so it is not asked).
+    --   h.set(attr, value) -> true, or false and why. It asks
+    --                   InCombatLockdown() first: anything but a plain
+    --                   false is "lockdown" and the frame is not touched.
+    --                   A SetAttribute that fails is "refused".
+    --   h.get(attr) -> what the frame holds for it, or nil.
+    -- Nothing here binds a key, registers a state driver, clicks the
+    -- button, or casts: it holds attributes, and only you press the key.
+    function c.secureButton(spec)
+        spec = type(spec) == "table" and spec or {}
+        local ok, f = call(env.CreateFrame, "Button", spec.name, env.UIParent, "SecureActionButtonTemplate")
+        if not ok or f == nil then return nil end
+        local function unlocked()
+            local okLock, locked = call(env.InCombatLockdown)
+            return okLock and locked == false
+        end
+        if unlocked() then method(f, "Hide") end
+        local h = {}
+        function h.set(attr, value)
+            if not unlocked() then return false, "lockdown" end
+            if not method(f, "SetAttribute", attr, value) then return false, "refused" end
+            return true
+        end
+        function h.get(attr)
+            local okGet, v = method(f, "GetAttribute", attr)
+            if not okGet then return nil end
+            return v
+        end
+        return h
+    end
+
     return c
 end
 

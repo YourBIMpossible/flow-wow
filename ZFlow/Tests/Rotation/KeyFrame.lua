@@ -407,6 +407,9 @@ local function start(opts)
     c.setDead(false)
     c.setClass(CLASS)
     local made = {}
+    -- The fake has a secure button of its own (Core/ClientFake.lua); these
+    -- tests put their own in its place, or none.
+    c.secureButton = nil
     if not opts.noSecure then
         c.secureButton = function(spec)
             local h = button(c.combatLockdown)

@@ -717,6 +717,42 @@ function ns.make.fakeClient(opts)
     -- True while something is subscribed to the frame tick.
     function c.ticking() return s.frames == 1 end
 
+    -- F6, the rotation helper. form(): what setForm gave (a number, or nil
+    -- for not known: the start). petBattle() and vehicle(): true, false, or
+    -- nil for not known (the start).
+    function c.form() return s.form end
+    function c.setForm(n) s.form = type(n) == "number" and n or nil end
+    function c.petBattle() return s.petBattle end
+    function c.setPetBattle(on)
+        if on == nil then s.petBattle = nil else s.petBattle = on and true or false end
+    end
+    function c.vehicle() return s.vehicle end
+    function c.setVehicle(on)
+        if on == nil then s.vehicle = nil else s.vehicle = on and true or false end
+    end
+    -- Every secure button made is in c.secureButtons, in order: .spec and
+    -- .attrs (what it holds). set refuses with "lockdown" while
+    -- combatLockdown() is not false (it follows setCombat / setLockdown).
+    -- failSecureAttr(attr, true): setting that one is "refused".
+    -- dropSecureAttr(attr, true): setting it answers true and keeps nothing.
+    c.secureButtons = {}
+    local secureFail, secureDrop = {}, {}
+    function c.secureButton(spec)
+        if s.noFrames then return nil end
+        local h = { spec = spec, attrs = {} }
+        function h.set(attr, value)
+            if c.combatLockdown() ~= false then return false, "lockdown" end
+            if secureFail[attr] then return false, "refused" end
+            if not secureDrop[attr] then h.attrs[attr] = value end
+            return true
+        end
+        function h.get(attr) return h.attrs[attr] end
+        c.secureButtons[#c.secureButtons + 1] = h
+        return h
+    end
+    function c.failSecureAttr(attr, on) secureFail[attr] = on and true or nil end
+    function c.dropSecureAttr(attr, on) secureDrop[attr] = on and true or nil end
+
     return c
 end
 
