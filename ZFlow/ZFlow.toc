@@ -99,6 +99,10 @@ UI\ProfCard.lua
 UI\DevPanel.lua
 UI\SettingsSlash.lua
 UI\SettingsPage.lua
+UI\SettingsPanel.lua
+UI\Rows.lua
+UI\Intro.lua
+UI\WindowButtons.lua
 UI\ArrowMenu.lua
 UI\SellList.lua
 UI\BankList.lua

@@ -2462,6 +2462,84 @@ function ns.make.client(env)
         return h
     end
 
+    -- F9 window buttons: the one read UI/WindowButtons.lua asks for.
+    --
+    -- c.windowButton(frameName, spec) -> h, or nil. A plain button on one
+    -- of the game's own windows. spec = { name, text, tip, point = { anchor,
+    -- relAnchor, x, y } }. nil, and nothing is made, when the window is not
+    -- there, when the client does not say plainly that the window is not
+    -- protected, or when the client does not say plainly that the player
+    -- is out of combat. The button is an ordinary Button: no secure
+    -- template, no attribute, no action. It only tells its caller.
+    --   h.onClick(fn, failed)  fn() on a left click; failed(err) is told the
+    --                          error of an fn that failed.
+    --   h.show(on)
+    -- First guesses, none seen in game: IsProtected on the window frame,
+    -- the UIPanelButtonTemplate look, GameTooltip for the tip.
+    function c.windowButton(frameName, spec)
+        if type(frameName) ~= "string" or frameName == "" or type(spec) ~= "table" then return nil end
+        local frame = env[frameName]
+        if type(frame) ~= "table" then return nil end
+        local okP, protected = method(frame, "IsProtected")
+        if not okP or hidden(protected) or protected ~= false then return nil end
+        if c.inCombat() ~= false then return nil end
+
+        local name = spec.name
+        if type(name) ~= "string" or name == "" or env[name] ~= nil then name = nil end
+        local ok, b = call(env.CreateFrame, "Button", name, frame, "UIPanelButtonTemplate")
+        if not ok or b == nil then
+            ok, b = call(env.CreateFrame, "Button", name, frame)
+            if ok and b ~= nil then method(b, "SetNormalFontObject", "GameFontNormalSmall") end
+        end
+        if not ok or b == nil then return nil end
+
+        local label = type(spec.text) == "string" and spec.text or ""
+        method(b, "Hide")
+        method(b, "SetText", label)
+        local width = 24 + 7 * #label
+        if not method(b, "SetSize", width, 22) then
+            method(b, "SetWidth", width)
+            method(b, "SetHeight", 22)
+        end
+        local p = type(spec.point) == "table" and spec.point or {}
+        method(b, "SetPoint", type(p[1]) == "string" and p[1] or "TOPRIGHT", frame,
+            type(p[2]) == "string" and p[2] or "TOPRIGHT", tonumber(p[3]) or 0, tonumber(p[4]) or 0)
+        method(b, "RegisterForClicks", "LeftButtonUp")
+
+        local h, clicked, clickFailed = {}, nil, nil
+        -- The handlers close over the button: they use none of the
+        -- arguments the client passes.
+        method(b, "SetScript", "OnClick", function()
+            if not clicked then return end
+            -- An error in fn must not reach the click handler of the client.
+            local okC, err = pcall(clicked)
+            if not okC and clickFailed then pcall(clickFailed, err) end
+        end)
+        if type(spec.tip) == "string" and spec.tip ~= "" then
+            method(b, "SetScript", "OnEnter", function()
+                local tip = env.GameTooltip
+                if tip == nil then return end
+                if not method(tip, "SetOwner", b, "ANCHOR_RIGHT") then return end
+                method(tip, "SetText", spec.tip)
+                method(tip, "Show")
+            end)
+            method(b, "SetScript", "OnLeave", function()
+                local tip = env.GameTooltip
+                if tip == nil then return end
+                local okO, mine = method(tip, "IsOwned", b)
+                -- Hidden only when the tooltip says it is this button that owns it.
+                if okO and mine == true then method(tip, "Hide") end
+            end)
+        end
+
+        function h.onClick(fn, failed)
+            clicked = type(fn) == "function" and fn or nil
+            clickFailed = type(failed) == "function" and failed or nil
+        end
+        function h.show(on) method(b, on and "Show" or "Hide") end
+        return h
+    end
+
     ---------------------------------------------------------------------
     -- F6, the rotation helper: its reads and its one secure frame, kept
     -- together. All first guesses: not seen in game on 16001.
