@@ -39,6 +39,7 @@ return {
         "Items/Key.lua",
         "Items/Resources.lua",
         "Items/Prices.lua",
+        "Items/PriceObserve.lua",
         "Items/Disposition.lua",
         "Items/Plan.lua",
         "Items/Present.lua",
