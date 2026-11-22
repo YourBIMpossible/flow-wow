@@ -167,18 +167,32 @@ end
 --   changes nothing.
 --   A vendor automation Flow had off is stored off. One Flow had on is
 --   stored on only when the player confirmed that one; unconfirmed it is
---   not stored and reads as off. An on counts as found whether it is in
---   result.vendorToConfirm or was written into the settings some other way.
---   Only settings the model has a row for are landed.
--- report = { ok, reason, taken, kept, refused, vendorConfirmed, vendorLeftOff }
+--   not stored and reads as off. The gate is Import.VendorGate
+--   (Import/FromFlow.lua), the one the merge uses; none is kept here. The
+--   model holds off any other vendor row that is on in the settings
+--   (Settings/Model.lua, adopt).
+--   Only settings the model has a row for are landed. Every other setting
+--   the import holds is listed in dropped.
+-- report = { ok, reason, taken, kept, refused, dropped,
+--            vendorConfirmed, vendorLeftOff }
 --   taken, kept       model keys, in row order
 --   refused           { { key, reason }, ... }: values that did not fit
---   vendorConfirmed, vendorLeftOff   sorted lists of Flow keys
+--   dropped           { { key, reason = "no model row" }, ... } sorted by
+--                     key: where each setting sits in the settings. A
+--                     setting the import maps is listed once, whole; any
+--                     other table is listed value by value.
+--   vendorConfirmed   sorted Flow keys: the confirmed automations whose on
+--                     was stored by this call. One the player had already
+--                     chosen is in kept, not here.
+--   vendorLeftOff     sorted Flow keys: the automations found on and not
+--                     confirmed, and the confirmed ones the model has no
+--                     row for. A vendor row Flow has no key for is listed
+--                     by its model key.
 -- When there is nothing to land (no model, or an import that did not
 -- succeed) ok is false, reason says why and the settings come back as given.
 function S.Adopt(settings, result, confirmed, model)
     local report = {
-        ok = true, taken = {}, kept = {}, refused = {},
+        ok = true, taken = {}, kept = {}, refused = {}, dropped = {},
         vendorConfirmed = {}, vendorLeftOff = {},
     }
     local function fail(reason)
@@ -197,44 +211,65 @@ function S.Adopt(settings, result, confirmed, model)
         return fail("the import did not succeed: " .. tostring(result.reason or "no reason given"))
     end
 
-    local imported = copy(sub(result.account, "settings") or {})
+    -- Looked up when called: the gate is the import's, not a copy of it.
+    local Import = ns.Import
+    local gate = Import and Import.VendorGate
+    if type(gate) ~= "function" then return fail("the import is not loaded") end
 
-    -- The vendor gate. found[Flow key] = model key, or false when the model
-    -- has no vendor row for it.
-    local found = {}
-    if type(result.vendorToConfirm) == "table" then
-        for _, entry in ipairs(result.vendorToConfirm) do
-            if type(entry) == "table" and type(entry.key) == "string" then
-                local key = type(entry.to) == "string" and entry.to:match("^settings%.(.+)$") or nil
-                local row = key and model:row(key) or nil
-                found[entry.key] = (row and row.vendor) and key or false
+    local gated, on, off = gate({ settings = sub(result.account, "settings") or {} },
+        result.vendorToConfirm, confirmed)
+    local imported = sub(gated, "settings") or {}
+
+    local leftOff = {}
+    for i = 1, #off do leftOff[off[i].key] = true end
+    -- agreed[model key] = true is what the model may switch on;
+    -- flowKeyOf[model key] names it in the report.
+    local agreed, flowKeyOf = {}, {}
+    for i = 1, #on do
+        local key = type(on[i].to) == "string" and on[i].to:match("^settings%.(.+)$") or nil
+        if key and model:row(key) then
+            agreed[key], flowKeyOf[key] = true, on[i].key
+        else
+            leftOff[on[i].key] = true
+        end
+    end
+
+    local out, landed = model:adopt(settings, imported, agreed)
+    report.taken, report.kept, report.refused = landed.taken, landed.kept, landed.refused
+    for i = 1, #landed.taken do
+        local flowKey = flowKeyOf[landed.taken[i]]
+        if flowKey then report.vendorConfirmed[#report.vendorConfirmed + 1] = flowKey end
+    end
+    if type(landed.gated) == "table" then
+        for i = 1, #landed.gated do leftOff[landed.gated[i]] = true end
+    end
+    for key in pairs(leftOff) do report.vendorLeftOff[#report.vendorLeftOff + 1] = key end
+    table.sort(report.vendorConfirmed)
+    table.sort(report.vendorLeftOff)
+
+    -- What the import holds and the model has no row for.
+    local mapped = {}
+    if type(Import.flowMap) == "table" then
+        for i = 1, #Import.flowMap do
+            local row = Import.flowMap[i]
+            local to = type(row) == "table" and row.to or nil
+            local key = type(to) == "string" and to:match("^settings%.(.+)$") or nil
+            if key then mapped[key] = true end
+        end
+    end
+    local function walk(t, prefix)
+        for name, value in pairs(t) do
+            local key = prefix and (prefix .. "." .. tostring(name)) or tostring(name)
+            if not model:row(key) then
+                if type(value) == "table" and not mapped[key] then
+                    walk(value, key)
+                else
+                    report.dropped[#report.dropped + 1] = { key = key, reason = "no model row" }
+                end
             end
         end
     end
-    local keys = model:keys()
-    for i = 1, #keys do
-        local key = keys[i]
-        if model:row(key).vendor and model:explicit(imported, key) and model:get(imported, key) == true then
-            -- On in the settings themselves: taken out, and gated like the rest.
-            if not found[key] then found[key] = key end
-            imported = model:reset(imported, key)
-        end
-    end
-    local flowKeys = {}
-    for flowKey in pairs(found) do flowKeys[#flowKeys + 1] = flowKey end
-    table.sort(flowKeys)
-    for i = 1, #flowKeys do
-        local flowKey = flowKeys[i]
-        local key = found[flowKey]
-        if key and type(confirmed) == "table" and confirmed[flowKey] == true then
-            imported = model:set(imported, key, true)
-            report.vendorConfirmed[#report.vendorConfirmed + 1] = flowKey
-        else
-            report.vendorLeftOff[#report.vendorLeftOff + 1] = flowKey
-        end
-    end
-
-    local out, landed = model:adopt(settings, imported)
-    report.taken, report.kept, report.refused = landed.taken, landed.kept, landed.refused
+    walk(imported, nil)
+    table.sort(report.dropped, function(a, b) return a.key < b.key end)
     return out, report
 end
