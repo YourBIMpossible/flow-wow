@@ -680,6 +680,9 @@ function Diag.Start(k)
             if faults.noEventFrame then
                 client.print(id.title .. ": event frame not made; no event reaches the addon.")
             end
+            if faults.noTickFrame then
+                client.print(id.title .. ": tick frame not made; nothing that runs each frame runs.")
+            end
             if #faults.notRegistered > 0 then
                 client.print(id.title .. ": events not registered: "
                     .. table.concat(faults.notRegistered, ", ") .. ".")

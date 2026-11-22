@@ -59,7 +59,9 @@ function DevPanel.Lines(k, diag)
         lines[#lines + 1] = "Snapshots: " .. (tonumber(k.store:get("account", "diag.count")) or 0)
     end
     lines[#lines + 1] = "Problems: " .. k.problems:count()
-    lines[#lines + 1] = client.inCombat() and "In combat" or "Out of combat"
+    -- nil: the client could not tell. That is not "out of combat".
+    local combat = client.inCombat()
+    lines[#lines + 1] = combat == nil and "Combat unknown" or (combat and "In combat" or "Out of combat")
     return lines
 end
 

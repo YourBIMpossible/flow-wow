@@ -155,6 +155,19 @@ return {
         t.eq(printedHas(c, "event frame not made"), true)
     end,
 
+    ["diag: the diag command says when the tick frame was not made"] = function(t)
+        local k, c = started()
+        c.slashes[ns.id.slash]("diag")
+        t.eq(printedHas(c, "tick frame"), false, "nothing to say when it was made")
+        t.ok(type(c.setTickFrame) == "function", "the fake can lose its tick frame")
+        if type(c.setTickFrame) ~= "function" then return end
+        c.setTickFrame(false)
+        t.eq(ns.Diag.Collect(k, "test").kernel.tickFrameNotMade, true)
+        c.slashes[ns.id.slash]("diag")
+        t.eq(printedHas(c, "tick frame not made"), true)
+        t.eq(printedHas(c, "event frame not made"), false, "the event frame is its own line")
+    end,
+
     -- SF4 --------------------------------------------------------------
     ["panel: a failing moved callback is handed to its caller"] = function(t)
         local env = gameEnv()

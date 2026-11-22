@@ -72,7 +72,8 @@ function ns.make.fakeClient(opts)
         local names = {}
         for event in pairs(s.eventFaults) do names[#names + 1] = event end
         table.sort(names)
-        return { notRegistered = names, noEventFrame = s.noEventFrame and true or false, noTickFrame = false }
+        return { notRegistered = names, noEventFrame = s.noEventFrame and true or false,
+            noTickFrame = s.noTickFrame and true or false }
     end
     function c.saved(name)
         if type(s.saved[name]) ~= "table" then s.saved[name] = {} end
@@ -275,6 +276,9 @@ function ns.make.fakeClient(opts)
     -- an event frame that was not made. Events still fire here either way.
     function c.setEventFault(event, on) s.eventFaults[event] = on and true or nil end
     function c.setEventFrame(on) s.noEventFrame = not on end
+    -- false: listenFaults() says the tick frame was not made. Frames still
+    -- tick here either way.
+    function c.setTickFrame(on) s.noTickFrame = not on end
     -- The key that lets an arrow be dragged (Ctrl): held until told not.
     function c.setMoveKey(on) s.noMoveKey = not on end
     -- Moves the clock by `seconds`, drawing `frames` frames (default 1).
