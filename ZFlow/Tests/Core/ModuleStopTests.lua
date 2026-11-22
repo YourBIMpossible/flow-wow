@@ -102,7 +102,7 @@ return {
         t.ok(type(reason) == "string" and reason:find("prices broke", 1, true) ~= nil, "the reason stays the switch-off's")
     end,
 
-    ["stop: never called for a module that never started"] = function(t)
+    ["stop: never called for a module that never started; once for one switched off in a start that returned"] = function(t)
         local k = kernel()
         local log = {}
         mod(k, log, {}, "lost", { "nothing" })                      -- a missing need
@@ -115,7 +115,7 @@ return {
         k:Load()
         t.eq({ k:ModuleState("lost"), k:ModuleState("failing"), k:ModuleState("after"), (k:ModuleState("self")) },
             { "off", "off", "off", "off" })
-        t.eq(#log, 0)
+        t.eq({ log[1], #log }, { "self", 1 }, "only the one whose start returned without error (SO2)")
         t.eq(k.problems:count("stop"), 0)
     end,
 

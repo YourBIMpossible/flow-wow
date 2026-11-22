@@ -672,4 +672,33 @@ return {
         c.slashes[ns.id.slash]("diag")
         t.eq(said(c, ns.id.title .. ": combat is not known; 0 jobs are held until it is."), 1)
     end,
+
+    -- DV2
+    ["slash: a diag line that raises is a problem and one line; the snapshot line still comes"] = function(t)
+        local c = ns.make.fakeClient({ env = env() })
+        c.setClock(5000)
+        local k = ns.Kernel({}, c)
+        ns.Diag.Start(k)
+        ns.PriceWatch.Declare(k)
+        k:Boot()
+        login(c)
+        local got = k.use(ns.PriceWatch.NAME)
+        t.ok(type(got) == "table" and type(got.Shows) == "function", "the price watch answers Shows")
+        if type(got) ~= "table" then return end
+        got.Shows = function() error("shows broke") end
+        c.setTime(false)
+        local before = k.problems:count("diag")
+        local ok, err = pcall(c.slashes[ns.id.slash], "diag")
+        t.ok(ok, "the command does not raise: " .. tostring(err))
+        t.eq(said(c, "kept. Reload or log out to write it to disk."), 1, "the snapshot line")
+        t.eq(said(c, ns.id.title .. ": the client gives no time; nothing that waits for a time runs."), 1,
+            "the lines before it are still said")
+        t.eq(said(c, ns.id.title .. ": the price watch line failed; it is kept as a problem."), 1, "one line instead")
+        t.eq(said(c, "price watch: "), 0, "and no half line")
+        t.eq(k.problems:count("diag"), before + 1)
+        local p = k.problems:list("diag")
+        local last = p[#p]
+        t.ok(last ~= nil and last.owner == "price watch" and tostring(last.text):find("shows broke", 1, true) ~= nil,
+            "the problem row names the line and carries the error")
+    end,
 }

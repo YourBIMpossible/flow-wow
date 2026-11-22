@@ -19,7 +19,9 @@
 -- and nothing is kept under "settings." for it. Two rows cannot have one
 -- place in one scope, and no row's place may lie above or below another's
 -- there ("layout.arrows" and "layout.arrows.points" cannot both be rows). A
--- path has at least two parts: a row never names a whole section.
+-- path has at least two parts: a row never names a whole section. And it
+-- starts with "settings." or "layout.": no row may sit in learned, imports,
+-- schema or any other section, so no reset can reach them.
 --
 -- A "table" row holds the table as it is stored: the same table is given
 -- back, not a copy, and what is in it is not checked. It is the one type
@@ -67,6 +69,9 @@ local function rowProblem(row)
             return "bad path"
         end
         if not path:find(".", 1, true) then return "a path needs two parts" end
+        if path:sub(1, 9) ~= "settings." and path:sub(1, 7) ~= "layout." then
+            return "a path must start with settings. or layout."
+        end
     end
     if row.default == nil then
         if row.type ~= "table" then return "no default" end

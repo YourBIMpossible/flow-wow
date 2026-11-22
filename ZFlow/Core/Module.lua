@@ -23,7 +23,14 @@
 --          module it needs was switched off) its stop runs once, after its
 --          handlers, ticks and jobs are cut. An error in stop is a recorded
 --          problem, kind "stop", and is not thrown and not counted towards
---          anything. A module that never started gets no stop.
+--          anything. A module switched off during its own start gets
+--          its stop too, once, when that start returns without error: a
+--          start should make its frames last, after everything that can
+--          switch the module off, or its stop must be able to undo them.
+--          A start that raises gets no stop, and neither does a module
+--          that never started.
+-- A module switched off before Load (k:SwitchOff) stays off: it is not
+-- wired or started, and what needs it is off too.
 local _, ns = ...
 ns.make = ns.make or {}
 
@@ -162,6 +169,13 @@ function ns.make.modules(k)
         local function visit(mod)
             local name = mod.spec.name
             if mark[name] == "done" then return mod.state ~= "off" end
+            -- Switched off before Load: not sorted, so never wired or
+            -- started, and its first reason stands.
+            if mod.state == "off" then
+                mark[name] = "done"
+                mod.offBeforeLoad = true
+                return false
+            end
             if mark[name] == "open" then
                 local from = 1
                 for i = 1, #path do
@@ -180,7 +194,8 @@ function ns.make.modules(k)
                     if not other then
                         fault = fault or ("needs " .. need .. ", which is missing")
                     elseif not visit(other) then
-                        fault = fault or ("needs " .. need .. ", which did not start")
+                        fault = fault or ("needs " .. need .. (other.offBeforeLoad
+                            and ", which was switched off" or ", which did not start"))
                     end
                 end
             end
@@ -253,9 +268,14 @@ function ns.make.modules(k)
                         mod.state = "started"
                     else
                         -- Switched off during its own start: what it
-                        -- registered after that is cut now.
+                        -- registered after that is cut now, and then its
+                        -- stop runs, once, for what that start made.
                         k.bus:off(name)
                         k.sched:off(name)
+                        if not mod.stopped and type(mod.spec.stop) == "function" then
+                            mod.stopped = true
+                            k.meter:run(name, "stop", nil, mod.spec.stop, mod.ctx)
+                        end
                     end
                 else
                     mod.state = "started"
