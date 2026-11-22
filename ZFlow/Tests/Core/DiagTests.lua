@@ -410,7 +410,7 @@ return {
         t.eq(#c.printed, before + 1)
         t.ok(c.printed[#c.printed]:find("nothing to read", 1, true), c.printed[#c.printed])
         t.eq(c.savedExists(ns.id.predecessorDB), false)
-        t.eq(c.savedExists(ns.id.predecessor .. "CharDB"), false)
+        t.eq(c.savedExists(ns.id.predecessorCharDB), false)
     end,
 
     ["slash: import prints the report and writes nothing"] = function(t)
@@ -418,8 +418,8 @@ return {
         login(c)
         local flow = c.saved(ns.id.predecessorDB)
         flow.buffButton = { scale = 9, enabled = "yes" }
-        local snaps = c.saved(ns.id.accountDB).diag.count
         local own0 = copy(c.saved(ns.id.accountDB))
+        local char0 = copy(c.saved(ns.id.charDB))
         local before = #c.printed
         c.slashes[ns.id.slash](" IMPORT ")
         local expected = ns.Diag.ImportReport(ns.Import.FromFlow({ buffButton = { scale = 9, enabled = "yes" } }, nil))
@@ -428,23 +428,47 @@ return {
             t.eq(c.printed[before + i], ns.id.title .. ": " .. expected[i])
         end
         t.eq(flow, { buffButton = { scale = 9, enabled = "yes" } })
-        local own = c.saved(ns.id.accountDB)
-        -- The store makes its sections at login; the slash must change none.
-        t.eq(own.settings, own0.settings, "settings unchanged")
-        t.eq(own.layout, own0.layout, "layout unchanged")
-        t.eq(own.imports, own0.imports, "no import recorded")
-        t.eq(own.diag.count, snaps, "a snapshot was taken")
-        t.eq(c.savedExists(ns.id.predecessor .. "CharDB"), false)
+        -- The store makes its tables at login; the slash changes nothing in
+        -- either, not even the snapshot count (R3).
+        t.eq(c.saved(ns.id.accountDB), own0, "account table unchanged")
+        t.eq(c.saved(ns.id.charDB), char0, "character table unchanged")
+        t.eq(c.savedExists(ns.id.predecessorCharDB), false)
     end,
 
     ["slash: import reads the predecessor's character data when the client has it"] = function(t)
         local _, c = start()
         login(c)
         c.saved(ns.id.predecessorDB)
-        c.saved(ns.id.predecessor .. "CharDB").stray = 1
+        c.saved(ns.id.predecessorCharDB).stray = 1
         local before = #c.printed
         c.slashes[ns.id.slash]("import")
         t.ok(c.printed[before + 2] and c.printed[before + 2]:find("1 with no row", 1, true),
             tostring(c.printed[before + 2]))
+    end,
+
+    ["slash: import hands the import copies, so the predecessor's live tables cannot change (R4)"] = function(t)
+        local _, c = start()
+        login(c)
+        local flow = c.saved(ns.id.predecessorDB)
+        flow.buffButton = { scale = 9 }
+        c.saved(ns.id.predecessorCharDB).note = { text = "kept" }
+        local real = ns.Import.FromFlow
+        local seenA, seenC
+        ns.Import.FromFlow = function(a, ch)
+            seenA, seenC = a, ch
+            a.buffButton.scale = 1
+            ch.note.text = "changed"
+            return real(a, ch)
+        end
+        c.slashes[ns.id.slash]("import")
+        ns.Import.FromFlow = real
+        t.ok(seenA ~= nil and seenA ~= flow, "the account table handed in is a copy")
+        t.ok(seenC ~= nil and seenC ~= c.saved(ns.id.predecessorCharDB), "the character table handed in is a copy")
+        t.eq(flow, { buffButton = { scale = 9 } })
+        t.eq(c.saved(ns.id.predecessorCharDB), { note = { text = "kept" } })
+    end,
+
+    ["identity: the predecessor's character table name is read from Core/Identity.lua (R6)"] = function(t)
+        t.eq(ns.id.predecessorCharDB, "FlowCharDB")
     end,
 }

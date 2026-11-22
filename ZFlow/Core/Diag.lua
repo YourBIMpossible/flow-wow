@@ -565,6 +565,18 @@ function Diag.Start(k)
         end)
     end
 
+    -- A deep copy of saved data. A table met again inside itself is copied
+    -- once and shared, so a loop cannot run forever.
+    local function plainCopy(v, seen)
+        if type(v) ~= "table" then return v end
+        seen = seen or {}
+        if seen[v] then return seen[v] end
+        local out = {}
+        seen[v] = out
+        for key, x in pairs(v) do out[plainCopy(key, seen)] = plainCopy(x, seen) end
+        return out
+    end
+
     -- Other files add a word of their own after the slash command here:
     -- commands[word] = function(rest) end, rest lower-cased and trimmed.
     local commands = {}
@@ -582,9 +594,13 @@ function Diag.Start(k)
             client.print(id.title .. ": no " .. id.predecessor .. " data is loaded, so there is nothing to read.")
             return
         end
-        local charDB = id.predecessor .. "CharDB"
-        local ok, result = pcall(Import.FromFlow, client.saved(id.predecessorDB),
-            client.savedExists(charDB) and client.saved(charDB) or nil)
+        -- Copies: the predecessor may be loaded and using these tables, and
+        -- a dry run must not be able to change them.
+        local charDB = id.predecessorCharDB
+        local ok, result = pcall(function()
+            return Import.FromFlow(plainCopy(client.saved(id.predecessorDB)),
+                client.savedExists(charDB) and plainCopy(client.saved(charDB)) or nil)
+        end)
         if not ok then
             k.problems:add("diag", "import", result)
             client.print(id.title .. ": the import could not be read.")

@@ -16,4 +16,5 @@ ns.id = {
     charDB = "ZFlowCharDB",       -- SavedVariablesPerCharacter
     predecessor = "Flow",         -- the addon this one replaces; never loaded alongside
     predecessorDB = "FlowDB",     -- its account table: a second sign that it is loaded
+    predecessorCharDB = "FlowCharDB", -- its character table (read by the import only)
 }

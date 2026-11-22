@@ -37,10 +37,14 @@ end
 
 local function build(client, position, given, maps)
     local link = {}
+    local framed = false
     if type(given) == "table" then
         for zone, e in pairs(given) do
             -- Offsets are the caller's; a size is never taken from them.
-            if type(e) == "table" then link[zone] = { x = e.x, y = e.y } end
+            if type(e) == "table" then
+                link[zone] = { x = e.x, y = e.y }
+                framed = true
+            end
         end
     end
     local want = {}
@@ -52,11 +56,13 @@ local function build(client, position, given, maps)
     for _, map in ipairs(want) do
         local size = sizeOf(client, map)
         if size then
-            -- Only the player's map sits at 0, 0 by default. Any other map
-            -- gets its size but no offset unless the caller gives one, so
-            -- N.Bearing answers "zone" rather than treat two maps as sharing
-            -- one corner.
-            local e = link[map] or (map == here and { x = 0, y = 0 } or {})
+            -- Only the player's map sits at 0, 0 by default, and only when the
+            -- caller gives no offsets at all: a caller's offsets are in the
+            -- caller's frame, where the player's map has no known place. Any
+            -- other map gets its size but no offset unless the caller gives
+            -- one, so N.Bearing answers "zone" rather than treat two maps as
+            -- sharing one corner.
+            local e = link[map] or ((map == here and not framed) and { x = 0, y = 0 } or {})
             e.w, e.h = size.w, size.h
             link[map] = e
         end
@@ -72,7 +78,10 @@ end
 -- -> { [map] = { x, y, w, h } }. A map the client gives no size for gets no
 --    w and h; with no `given` entry it is left out altogether. With no
 --    `given`, the player's map sits at offset 0, 0; any further map gets
---    w and h only, so it cannot be related to the player's map.
+--    w and h only, so it cannot be related to the player's map. With a
+--    `given` that does not name the player's map, that map too gets w and h
+--    only. The answer is for the map the player stood on when it was made:
+--    handed back in after the player has moved, it names that old map.
 function N.GuideLink(client, given, maps)
     return build(client, ask(client, "position"), given, maps)
 end

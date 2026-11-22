@@ -60,9 +60,10 @@ return {
         local step = N.WaypointStep(c)
         t.eq(step, { label = "Waypoint", place = { map = 1412, x = 0.5, y = 0.5 } },
             "the player's continent is not given to a map the player is not on")
-        local state = N.ViewState(c, { quest = step })
+        local state, more = N.ViewState(c, { quest = step })
         t.eq(state.quest.distance, nil, "no distance from a guessed offset")
-        t.eq(state.quest.turn, nil, "no turn from a guessed offset")
+        t.eq(more.quest.turn, nil, "no turn from a guessed offset")
+        t.eq(more.quest.why, "zone")
     end,
 
     ["waypoint set, zone unknown: the place has no continent"] = function(t)
