@@ -278,4 +278,40 @@ return {
         t.eq(state, "off")
         t.ok(type(reason) == "string" and reason:find("poke broke", 1, true), "the reason is kept")
     end,
+
+    -- KF1: the emit that brings the fifth error stops there for the module
+    -- and for what needs it.
+    ["fault: in the emit of the fifth error, a later handler of the owner and a dependant's later handler are not called"] = function(t)
+        local k, c = kernel()
+        local n = { first = 0, dependant = 0, later = 0, other = 0 }
+        -- The handlers on SHARED, in the order they are registered:
+        -- prices' first (raises), sell's, other's, prices' later.
+        k:Module({
+            name = "prices",
+            events = { SHARED = function()
+                n.first = n.first + 1
+                error("prices broke")
+            end },
+            start = function(ctx)
+                ctx.bus:on("prices", "SHARED", function() n.later = n.later + 1 end)
+            end,
+        })
+        k:Module({ name = "sell", needs = { "prices" }, events = { SHARED = function() n.dependant = n.dependant + 1 end } })
+        k:Module({ name = "other", events = { SHARED = function() n.other = n.other + 1 end } })
+        k:Load()
+        for _ = 1, LIMIT - 1 do c.fire("SHARED") end
+        t.eq(n, { first = 4, dependant = 4, later = 4, other = 4 }, "four errors: every handler still runs")
+        t.eq({ k:ModuleState("prices"), k:ModuleState("sell") }, { "started", "started" })
+        c.fire("SHARED")
+        t.eq(k:ModuleState("prices"), "off")
+        t.eq({ k:ModuleState("sell") }, { "off", "needs prices, which was switched off" })
+        t.eq(n.first, 5)
+        t.eq(n.later, 4, "the owner's later handler is not called in that emit")
+        t.eq(n.dependant, 4, "nor the dependant's, later in the same snapshot")
+        t.eq(n.other, 5, "a module that needs neither is still called")
+        t.eq(#c.printed, 0, "and nothing is said in chat")
+        c.fire("SHARED")
+        t.eq(n, { first = 5, dependant = 4, later = 4, other = 6 })
+        t.eq(#c.printed, 0)
+    end,
 }
