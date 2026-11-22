@@ -1091,7 +1091,16 @@ return {
         t.eq(imported.account.settings.nav.pathAlpha, 9, "the fixture did not reach the import")
         local out, _, report = Import.Merge(account, emptyChar(), imported, nil, nil, model)
         t.eq(out.settings.nav.pathAlpha, "yes", "one value the model refuses replaced another")
-        t.eq(report.kept, { "account.settings.nav.pathAlpha" })
+        local reason
+        for _, entry in ipairs(report.skipped) do
+            if entry.path == "account.settings.nav.pathAlpha" then reason = entry.reason end
+        end
+        t.eq(reason, "neither value fits the setting; nothing was changed")
+        for _, list in ipairs({ report.kept, report.added }) do
+            for _, at in ipairs(list) do
+                t.ok(at ~= "account.settings.nav.pathAlpha", "a value that is no choice is listed as kept or added")
+            end
+        end
     end,
 
     ["merge: a setting the model has no row for still compares types"] = function(t)
