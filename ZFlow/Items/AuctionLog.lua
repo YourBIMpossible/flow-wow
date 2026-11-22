@@ -38,6 +38,7 @@ AL.COLOUR = { 1, 0.82, 0 }
 AL.HELP = "auction prices seen in your own searches; auction probe: which auction calls this game has"
 AL.PROBE = {
     "C_AuctionHouse", "C_AuctionHouse.GetCommoditySearchResultInfo", "C_AuctionHouse.GetItemSearchResultInfo",
+    "C_AuctionHouse.GetNumCommoditySearchResults", "C_AuctionHouse.GetNumItemSearchResults",
     "C_AuctionHouse.SendSearchQuery", "C_AuctionHouse.MakeItemKey", "C_AuctionHouse.ReplicateItems",
     "QueryAuctionItems", "GetRealmName",
 }
