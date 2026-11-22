@@ -26,6 +26,8 @@
 --   c.setWaypoint(1411, 0.4, 0.2)   -- c.setWaypoint(nil): none set
 --   c.setScreen(1024, 768); c.setVersion("0.1.0"); c.setFrames(false)
 --   c.panels[1].lines / .point / .shown / .spec; c.panels[1].drag({ "CENTER", "CENTER", 0, 0 })
+--   c.panel({ closable = true }) has h.onClose(fn, failed); h.close() is the
+--   player closing it. c.setCloseRoute(false): a client with no close route.
 --   c.arrows[1].point / .attached / .shown / .drawn / .lines; c.arrows[1].drag(point)
 -- What a test has not set is unknown (nil), as on a client that won't say.
 local _, ns = ...
@@ -279,6 +281,26 @@ function ns.make.fakeClient(opts)
                 if not ok and movedFailed then movedFailed(err) end
             end
         end
+        -- A closable panel, as on the real client: onClose only when
+        -- there is a close route. close() is the test's control: the
+        -- player closed it by the button or Escape. Nothing on a panel
+        -- that is not shown.
+        if type(spec) == "table" and spec.closable == true and not s.noCloseRoute then
+            local closed = type(spec.onClose) == "function" and spec.onClose or nil
+            local closedFailed
+            function h.onClose(fn, failed)
+                closed = type(fn) == "function" and fn or nil
+                closedFailed = type(failed) == "function" and failed or nil
+            end
+            function h.close()
+                if not h.shown then return end
+                h.shown = false
+                if closed then
+                    local ok, err = pcall(closed)
+                    if not ok and closedFailed then closedFailed(err) end
+                end
+            end
+        end
         c.panels[#c.panels + 1] = h
         return h
     end
@@ -417,6 +439,9 @@ function ns.make.fakeClient(opts)
     function c.setVersion(text) s.version = text end
     -- false: a client that cannot make frames (panel() answers nil).
     function c.setFrames(on) s.noFrames = not on end
+    -- false: a client where a closable panel gets neither a close button
+    -- nor the Escape route (panel() answers a handle with no onClose).
+    function c.setCloseRoute(on) s.noCloseRoute = not on end
     -- false: a client that will not say the time (uptime() nil, now() 0).
     function c.setTime(on) s.noTime = not on end
     -- What listenFaults() answers: an event the client refused, and (false)
