@@ -78,6 +78,85 @@ ns:Register("test", "spec: a druid's chosen role beats Feral talents, which beat
     t:ok(not ns.DruidWantsBear(both(nil, talent):match("^(%a+)"), true, false), "Auto Feral: no Bear Form asked for")
 end)
 
+-- The first form rule of the druid's list that would be asked for: unknown
+-- spells skipped, as the engine does (Engine ruleReady), then the rule's own
+-- `when`. form: what A.Form() says; tree: what ns:TalentTree() says.
+local FORM_SPELLS = { ["Cat Form"] = true, ["Bear Form"] = true, ["Dire Bear Form"] = true }
+local function druidFormAdvice(role, form, tree, knows, ctx)
+    local def = ns:Get("rotation", "DRUID")
+    local engine = { Knows = function(_, s) return knows[s] == true end }
+    ctx = ctx or { hostile = true, inCombat = false }
+    ctx.role, ctx.engine = role, engine
+    local found
+    with(ns.api, "Form", function() return form end, function()
+        with(ns, "TalentTree", function() return tree end, function()
+            for _, rule in ipairs(def and def.priority or {}) do
+                if FORM_SPELLS[rule.spell] and knows[rule.spell] and rule.when(ctx) then
+                    found = rule.spell
+                    break
+                end
+            end
+        end)
+    end)
+    return found
+end
+
+ns:Register("test", "druid: dps out of form with a fight to take is advised Cat Form", function(t)
+    -- A dps druid who knew Cat Form was never told to enter it: the cat list sat unused.
+    local all = { ["Cat Form"] = true, ["Bear Form"] = true, ["Dire Bear Form"] = true }
+    t:eq(druidFormAdvice("dps", nil, "Feral Combat", all), "Cat Form", "dps, Feral talents, an enemy targeted: Cat Form")
+    t:eq(druidFormAdvice("dps", nil, nil, all), "Cat Form", "dps, talents unread or tied: Cat Form")
+    t:eq(druidFormAdvice("dps", nil, "Feral Combat", all, { hostile = false, inCombat = true }), "Cat Form",
+        "dps, in a fight with nothing targeted: Cat Form (as Bear Form for a tank)")
+    t:eq(druidFormAdvice("dps", nil, "Feral Combat", all, { hostile = false, inCombat = false }), nil,
+        "nothing to fight (travelling): no form asked for")
+    local def = ns:Get("rotation", "DRUID")
+    local rule
+    for _, r in ipairs(def and def.priority or {}) do if r.spell == "Cat Form" then rule = r end end
+    t:ok(rule ~= nil, "the rule is in the druid's default list")
+    t:eq(rule and rule.kind, "buff", "as a buff (so not asked for while resting, like Bear Form)")
+    t:ok(rule and rule.reason and rule.reason:find("Suggested", 1, true) ~= nil, "worded as a suggestion, not a game fact")
+    local aoe
+    for _, r in ipairs(def and def.priorities and def.priorities.aoe or {}) do if r.spell == "Cat Form" then aoe = r end end
+    t:eq(aoe, rule, "and the same rule in the several-mobs list")
+end)
+
+ns:Register("test", "druid: a tank is still advised Bear Form, never Cat Form", function(t)
+    local all = { ["Cat Form"] = true, ["Bear Form"] = true, ["Dire Bear Form"] = true }
+    t:eq(druidFormAdvice("tank", nil, "Feral Combat", all), "Dire Bear Form", "tank knowing Dire Bear Form: that")
+    t:eq(druidFormAdvice("tank", nil, "Feral Combat", { ["Cat Form"] = true, ["Bear Form"] = true }), "Bear Form",
+        "tank without Dire Bear Form: Bear Form")
+    t:eq(druidFormAdvice("tank", "Bear Form", "Feral Combat", all), nil, "tank already in Bear Form: nothing")
+    t:ok(not ns.DruidWantsCat("tank", true, nil, "Feral Combat"), "a tank is never asked into Cat Form")
+    t:eq(druidFormAdvice("dps", nil, "Feral Combat", all), "Cat Form", "and dps is never asked into Bear Form")
+end)
+
+ns:Register("test", "druid: no Cat Form advice when you don't know Cat Form", function(t)
+    t:eq(druidFormAdvice("dps", nil, "Feral Combat", { ["Bear Form"] = true }), nil,
+        "dps knowing only Bear Form: no form asked for")
+    t:eq(druidFormAdvice("dps", nil, nil, {}), nil, "dps knowing no form: nothing")
+end)
+
+ns:Register("test", "druid: a healer or a caster-build druid is not pushed into Cat Form", function(t)
+    local all = { ["Cat Form"] = true, ["Bear Form"] = true, ["Dire Bear Form"] = true }
+    t:eq(druidFormAdvice("dps", nil, "Balance", all), nil, "dps with most talents in Balance: the caster list is theirs")
+    t:eq(druidFormAdvice("dps", "Moonkin Form", "Balance", all), nil, "in Moonkin Form: left there")
+    t:eq(druidFormAdvice("dps", "Moonkin Form", nil, all), nil, "in Moonkin Form, talents unread: left there")
+    t:eq(druidFormAdvice("heal", nil, "Restoration", all), nil, "healing: no form asked for")
+    t:eq(druidFormAdvice("heal", nil, "Feral Combat", all), nil, "chose Heal over Feral talents: no form asked for")
+    t:eq(druidFormAdvice("dps", "Travel Form", "Feral Combat", all), nil, "in Travel Form: left there")
+    t:eq(druidFormAdvice("dps", "Aquatic Form", "Feral Combat", all), nil, "in Aquatic Form (swimming): left there")
+    t:eq(druidFormAdvice("dps", "Bear Form", "Feral Combat", all), nil, "dps who chose Bear Form: left there")
+end)
+
+ns:Register("test", "druid: already in Cat Form, Cat Form isn't asked for again", function(t)
+    local all = { ["Cat Form"] = true, ["Bear Form"] = true, ["Dire Bear Form"] = true }
+    t:eq(druidFormAdvice("dps", "Cat Form", "Feral Combat", all), nil, "in Cat Form with an enemy targeted: no repeat")
+    t:eq(druidFormAdvice("dps", "Cat Form", "Feral Combat", all, { hostile = true, inCombat = true }), nil,
+        "in Cat Form in a fight: no repeat")
+    t:eq(ns.DruidWantsCat("dps", true, "Cat Form", nil), false, "the pure rule says no")
+end)
+
 ns:Register("test", "spec: /flow spec always says where your role came from", function(t)
     -- F-058: the role showed only when it differed from the recommended one.
     t:eq(ns.RoleSourceWords("chosen"), "your choice", "a role you chose")
