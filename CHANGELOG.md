@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Flow no longer lists trainer names, NPC IDs or gathering spots of its own: trainers are the ones you've trained with or that Questie titles; otherwise Flow says it doesn't know.
+- The last three bandages no longer name a doctor, and the Shiny Bauble tip no longer quotes numbers Flow never read.
+- A material you loot now remembers which mobs you got it from; its farm step names them and counts kills on them.
 - Recipe learn skills, tier levels, vendor prices and drop rates now come only from what the game showed you; until then Flow says unknown.
 - The world map card no longer lists zone levels or fishing skills of its own: it shows the game's range or 'Level unknown'.
 - Alliance starting-area profession trainers are no longer named by Flow.
