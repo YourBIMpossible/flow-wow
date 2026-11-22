@@ -31,6 +31,7 @@ return {
         "UI/Perf.lua",
         "Core/Sound.lua",
         "UI/MoveGuides.lua",
+        "Core/Facts.lua",
         "UI/CopyBox.lua",
         "UI/Advisor.lua",
         "UI/Setup.lua",
