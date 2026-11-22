@@ -1,0 +1,1 @@
+A stand-in path for Lua 5.1 and luacheck: the stubs never run it.
