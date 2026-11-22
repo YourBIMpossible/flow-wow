@@ -243,6 +243,9 @@ local function start(cooldown)
     c.setSpell(MOONFIRE, { known = true, usable = true, noPower = false })
     c.setSpellCooldown(WRATH, cooldown)
     c.setSpellCooldown(MOONFIRE, cooldown)
+    -- A living enemy targeted: since DRIVER-2 a list rule that needs a
+    -- target is suggested only when the target is read as hostile.
+    c.setTarget({ exists = true, hostile = true, dead = false })
     local k = ns.Kernel({}, c)
     Diag.Start(k)
     D.Declare(k, { [CLASS] = pack() })
