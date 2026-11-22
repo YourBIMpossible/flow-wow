@@ -344,6 +344,10 @@ local function start(cooldown)
     -- A living enemy targeted: since DRIVER-2 a list rule that needs a
     -- target is suggested only when the target is read as hostile.
     c.setTarget({ exists = true, hostile = true, dead = false })
+    -- Since RANGE-UNKNOWN a range not read is not ready: both spells are
+    -- read as in range, so the suggestion these tests name still stands.
+    c.setInRange(WRATH, true)
+    c.setInRange(MOONFIRE, true)
     local k = ns.Kernel({}, c)
     Diag.Start(k)
     D.Declare(k, { [CLASS] = pack() })
