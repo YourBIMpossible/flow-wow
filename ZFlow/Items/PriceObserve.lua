@@ -18,7 +18,8 @@ local _, ns = ...
 --     skipped   { { index =, item =, reason = }, ... } one per row left out
 --
 -- The price recorded is for one of the item: what the window shows for the
--- stack, divided by the size of the stack. Unknown stays unknown: a row
+-- stack, divided by the size of the stack; the size of the stack is kept
+-- with it (the entry's `per`), since only whole stacks are sold. Unknown stays unknown: a row
 -- with no item, no price, no stack size or a price that is not coin is left
 -- out and the report says why. A price of 0 is left out too: the window
 -- shows 0 coin for what is paid for in something else, and whether the
@@ -57,7 +58,7 @@ local function priced(row)
     if not isCount(row.price) then return nil, "no price was read for this row" end
     if row.price == 0 then return nil, "the window shows no price in coin" end
     if not isCount(row.stack) or row.stack < 1 then return nil, "no stack size was read for this row" end
-    return key, row.price / row.stack
+    return key, row.price / row.stack, row.stack
 end
 
 function PriceObserve.Read(book, rows, seenAt)
@@ -68,7 +69,7 @@ function PriceObserve.Read(book, rows, seenAt)
     local seen = {}
     for index = 1, #rows do
         local row = rows[index]
-        local key, value = priced(row)
+        local key, value, per = priced(row)
         local why
         if key == nil then
             why = value
@@ -76,7 +77,7 @@ function PriceObserve.Read(book, rows, seenAt)
             why = "the item is listed twice in one reading; its first price was kept"
         else
             local price, refused = ns.Prices.Record(book, key, PriceObserve.KIND, value,
-                { basis = ns.Prices.OBSERVED, source = PriceObserve.SOURCE, seenAt = seenAt })
+                { basis = ns.Prices.OBSERVED, source = PriceObserve.SOURCE, seenAt = seenAt, per = per })
             if price then
                 seen[key] = true
                 report.recorded[#report.recorded + 1] = { index = index, key = key, value = value }

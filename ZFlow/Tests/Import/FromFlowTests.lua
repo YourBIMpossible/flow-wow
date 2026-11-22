@@ -6,6 +6,11 @@ local Import = ns.Import
 local copy = ns.make.deepCopy
 local NAN = 0 / 0
 
+-- What the import makes of one Flow price: an estimate with no date.
+local function est(copper)
+    return { value = copper, basis = "estimated", source = "imported from Flow" }
+end
+
 local function emptyAccount(record)
     return {
         schema = 1, settings = {}, layout = {}, imports = { record },
@@ -160,8 +165,8 @@ return {
         t.eq(learned.places.gates[1].b, 1412)
         t.eq(learned.flights.times, { ["Stonegate>Rivermouth"] = 142.5 })
         t.eq(learned.flights.rate, 31.5)
-        t.eq(learned.prices.vendor, { [2589] = 13, [4306] = 150 })
-        t.eq(learned.prices.auction, { ["Emberfall-Alliance"] = { [2589] = 40 } })
+        t.eq(learned.prices.vendor, { [2589] = est(13), [4306] = est(150) })
+        t.eq(learned.prices.auction, { ["Emberfall-Alliance"] = { [2589] = est(40) } })
         t.eq(learned.facts.spells, { [116] = true })
         t.eq(learned.facts.lacks, { [118] = true })
         t.eq(learned.facts.questDrops, { [101] = { [2589] = 3 } })
@@ -341,7 +346,7 @@ return {
         t.eq(result.ok, true)
         t.eq(result.account.learned.places.npcs, { Good = { map = 1, x = 0.5, y = 0.5 } })
         t.eq(result.account.learned.places.mailboxes, { { map = 1, x = 0.1, y = 0.1 }, { map = 1, x = 0.3, y = 0.3 } })
-        t.eq(result.account.learned.prices.vendor, { [10] = 5 })
+        t.eq(result.account.learned.prices.vendor, { [10] = est(5) })
         t.eq(result.account.learned.flights.times, { ["A>B"] = 60 })
         t.eq(result.account.learned.flights.rate, nil)
         t.eq(result.account.learned.places.questSpots, nil)
@@ -378,7 +383,7 @@ return {
     ["import: a character table that is not a table is reported, the account still imports"] = function(t)
         local result = Import.FromFlow({ prices = { [10] = 5 } }, "garbage")
         t.eq(result.ok, true)
-        t.eq(result.account.learned.prices.vendor, { [10] = 5 })
+        t.eq(result.account.learned.prices.vendor, { [10] = est(5) })
         t.eq(droppedFor(result, "FlowCharDB").why, "malformed")
     end,
 
@@ -867,7 +872,7 @@ return {
         t.eq(newAccount.learned.places.npcs["Mara Stonehand"], { map = 1412, x = 0.1, y = 0.1, n = 9, kind = "vendor", roles = { repair = true }, seen = 1700000000 })
         t.eq(newAccount.learned.places.npcs["Wren Dell"], { map = 3, x = 0.2, y = 0.2 })
         t.eq(newAccount.learned.places.npcs["Old Tobb"].kind, "trainer")
-        t.eq(newAccount.learned.prices.vendor, { [2589] = 99, [4306] = 150 })
+        t.eq(newAccount.learned.prices.vendor, { [2589] = 99, [4306] = est(150) })
         t.eq(newAccount.learned.places.mailboxes, { { map = 9, x = 0.9, y = 0.9 } }, "a list is kept whole")
         t.eq(newChar.settings.spec.role, "healer")
         t.eq(newChar.learned.flights.nodes.Stonegate, { cont = 1, wx = 7, wy = 7 })
@@ -1293,5 +1298,36 @@ return {
         for _, at in ipairs(report.kept) do kept[at] = true end
         t.eq(kept["char.settings.sell"], true)
         t.eq(kept["char.layout.profFrame"], true)
+    end,
+    ["import: a Flow price is an estimate in the price book, and a price seen in game replaces it"] = function(t)
+        local P = ns.Prices
+        local result = Import.FromFlow(fullDb(), fullCharDb())
+        local book = result.account.learned.prices
+        local got = P.Get(book, 2589, "vendor")
+        t.eq(got.basis, "estimated", "an imported price was not taken as an estimate")
+        t.eq(got.value, 13)
+        t.eq(got.source, "imported from Flow")
+        t.eq(got.seenAt, nil, "an imported price has no date")
+        t.eq(P.Text(got), "about 13c (estimate)")
+        t.eq(P.Get(book, 9999, "vendor").basis, "unknown", "an item Flow had no price for stays unknown")
+        t.eq(P.Get(book["auction"], 2589, "Emberfall-Alliance").basis, "estimated", "the auction numbers too, under their realm")
+        local price, why = P.Record(book, 2589, "vendor", 20, { seenAt = 100, source = "merchant window" })
+        t.ok(price, tostring(why))
+        t.eq(P.Get(book, 2589, "vendor").basis, "observed")
+        t.eq(P.Get(book, 2589, "vendor").value, 20)
+    end,
+
+    ["merge: a price entry is kept or added whole, never mixed"] = function(t)
+        local imported = Import.FromFlow({ prices = { [10] = 5, [11] = 7 } }, nil)
+        local account = emptyAccount()
+        local seen = { value = 60, basis = "observed", seenAt = 100 }
+        account.learned.prices.vendor = { [10] = copy(seen) }
+        local newAccount, _, report = Import.Merge(account, emptyChar(), imported)
+        t.eq(report.ok, true)
+        t.eq(newAccount.learned.prices.vendor[10], seen, "the import wrote into a price seen in game")
+        t.eq(newAccount.learned.prices.vendor[11], est(7))
+        local kept = {}
+        for _, path in ipairs(report.kept) do kept[path] = true end
+        t.ok(kept["account.learned.prices.vendor.10"], "kept: the price seen in game")
     end,
 }

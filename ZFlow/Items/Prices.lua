@@ -41,6 +41,11 @@ local function isName(k)
     return type(k) == "string" or type(k) == "number"
 end
 
+-- A stack size: a whole number of one or more.
+local function isPer(n)
+    return isCount(n) and n >= 1 and n == math.floor(n)
+end
+
 local function unknown()
     return { value = nil, basis = Prices.UNKNOWN, source = nil, seenAt = nil }
 end
@@ -60,12 +65,19 @@ end
 function Prices.Get(book, key, kind)
     local e = stored(book, key, kind)
     if not e then return unknown() end
-    return { value = e.value, basis = e.basis, source = e.source, seenAt = e.seenAt }
+    return {
+        value = e.value, basis = e.basis, source = e.source, seenAt = e.seenAt,
+        per = isPer(e.per) and e.per or nil,
+    }
 end
 
 -- Writes a price into the book.
 --   info = { basis = "observed" (default) or "estimated",
---            source = "trainer window", seenAt = time }
+--            source = "trainer window", seenAt = time,
+--            per = how many one purchase gives (a merchant's stack) }
+-- The value is always the price of one; `per` says it is only sold `per`
+-- at a time, so what is paid is counted in whole stacks (Prices.Cost).
+-- Left out when not given or not a whole number of one or more.
 -- -> the price as Get would give it, or nil and why it was not written.
 -- Rules:
 --   - the value must be a count; "unknown" can't be recorded (leave it out)
@@ -92,7 +104,10 @@ function Prices.Record(book, key, kind, value, info)
         end
     end
     if type(book[kind]) ~= "table" then book[kind] = {} end
-    book[kind][key] = { value = value, basis = basis, source = info.source, seenAt = seenAt }
+    book[kind][key] = {
+        value = value, basis = basis, source = info.source, seenAt = seenAt,
+        per = isPer(info.per) and info.per or nil,
+    }
     return Prices.Get(book, key, kind)
 end
 
@@ -105,9 +120,12 @@ function Prices.Forget(book, key, kind)
 end
 
 -- Copper as text: "1g 2s 3c", leaving out the parts that are zero ("5s",
--- "1g 3c"); "0c" for nothing. nil when `copper` is not a count.
+-- "1g 3c"); "0c" for nothing, and "under 1c" for anything more than
+-- nothing that is less than one copper (the price of one out of a stack):
+-- never "0c" for a price that is not zero. nil when `copper` is not a count.
 function Prices.Coin(copper)
     if not isCount(copper) then return nil end
+    if copper > 0 and copper < 1 then return "under 1c" end
     copper = math.floor(copper + 0.5)
     local g = math.floor(copper / 10000)
     local s = math.floor((copper % 10000) / 100)
@@ -129,6 +147,17 @@ function Prices.Text(price)
     if price.basis == Prices.OBSERVED then return Prices.Coin(price.value) end
     if price.basis == Prices.ESTIMATED then return "about " .. Prices.Coin(price.value) .. " (estimate)" end
     return Prices.UNKNOWN_TEXT
+end
+
+-- What `count` of the item costs at `price`, in copper. Where the price
+-- has a stack size (`per`), only whole stacks can be bought: a stack of 5
+-- for 1c costs 1c with 1 needed and 2c with 6 needed. nil when the price
+-- has no value or `count` is not a count; the basis is the caller's to read.
+function Prices.Cost(price, count)
+    if type(price) ~= "table" or not isCount(price.value) or not isCount(count) then return nil end
+    if not isPer(price.per) or price.per == 1 then return price.value * count end
+    local stack = math.floor(price.value * price.per + 0.5)
+    return math.ceil(count / price.per) * stack
 end
 
 -- Can the player pay it with `money` copper?

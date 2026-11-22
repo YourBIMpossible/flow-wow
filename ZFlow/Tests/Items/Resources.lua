@@ -474,7 +474,7 @@ tests["resources: a snapshot is a copy, and resolving spends nothing"] = functio
     local again = R.Resolve(shot, claims)
     t.eq(line(again), line(g), "resolving again gives the same: nothing was spent")
     t.eq(R.Resolve(R.Fake({ money = 9000 }), claims):Free(R.MONEY), 8600, "a new snapshot reads again")
-    t.eq(shot.takenAt, 0, "a made-up snapshot has no time unless one is given")
+    t.eq(shot.takenAt, nil, "a made-up snapshot has no time unless one is given: unknown, never 0")
     t.eq(R.Fake({ takenAt = 77 }).takenAt, 77, "a given time is kept")
 end
 

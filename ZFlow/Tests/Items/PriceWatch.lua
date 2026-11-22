@@ -80,8 +80,8 @@ tests["price watch: a merchant show gives observed book entries"] = function(t)
     t.eq(report.seenAt, 5000)
     t.eq(report.recorded, { { index = 1, key = 2318, value = 60 }, { index = 2, key = 2320, value = 10 } })
     t.eq(book(c), { vendor = {
-        [2318] = { value = 60, basis = "observed", source = "merchant window", seenAt = 5000 },
-        [2320] = { value = 10, basis = "observed", source = "merchant window", seenAt = 5000 },
+        [2318] = { value = 60, basis = "observed", source = "merchant window", seenAt = 5000, per = 1 },
+        [2320] = { value = 10, basis = "observed", source = "merchant window", seenAt = 5000, per = 5 },
     } })
     t.eq(P.Get(book(c), 2320, "vendor").basis, "observed")
     t.eq(#c.printed, said, "something was printed")
@@ -125,8 +125,8 @@ tests["price watch: the same rows on a later date move only the date"] = functio
     c.setMerchantOpen(true)
     t.eq(w.last().seenAt, 7000)
     t.eq(book(c), { vendor = {
-        [2318] = { value = 60, basis = "observed", source = "merchant window", seenAt = 7000 },
-        [2320] = { value = 10, basis = "observed", source = "merchant window", seenAt = 7000 },
+        [2318] = { value = 60, basis = "observed", source = "merchant window", seenAt = 7000, per = 1 },
+        [2320] = { value = 10, basis = "observed", source = "merchant window", seenAt = 7000, per = 5 },
     } })
 end
 
@@ -309,7 +309,7 @@ tests["price watch: over the real client the window is known open when the show 
     local saved = real[ns.id.accountDB]
     local prices = type(saved) == "table" and type(saved.learned) == "table" and saved.learned.prices or {}
     t.eq(P.Get(prices, 2318, "vendor"),
-        { value = 60, basis = "observed", source = "merchant window", seenAt = 1700000000 })
+        { value = 60, basis = "observed", source = "merchant window", seenAt = 1700000000, per = 1 })
     t.eq(real.acted, 0, "a buy, sell or pick-up function was called")
     for _, name in ipairs(acts) do
         t.eq(asked[name], nil, name .. " was looked up")

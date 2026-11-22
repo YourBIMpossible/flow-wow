@@ -176,6 +176,9 @@ local function decide(list, from, item, context, count)
                         local e2 = list[j]
                         if not e2.r.generic then
                             local ok, w = pcall(e2.r.check, item, context)
+                            if not ok and type(context.onError) == "function" then
+                                pcall(context.onError, e2.r.key, w)
+                            end
                             if ok and type(w) == "table" and w.action == "keep" and w.reason and not seen[w.reason] then
                                 reasons[#reasons + 1], seen[w.reason] = w.reason, true
                             end
