@@ -16,7 +16,7 @@ T["action: a known travel spell comes first"] = function(t)
 end
 
 T["action: the hearthstone when no spell is a cast away"] = function(t)
-    t.eq(N.TravelAction(nil, HEARTH, false), { kind = "hearth", text = "Hearth to Goldshire" })
+    t.eq(N.TravelAction(nil, HEARTH, false), { kind = "hearth", text = "Hearth to Goldshire", saves = 400 })
     t.eq(N.TravelAction(LEARN, HEARTH, false).kind, "hearth", "a spell to learn is not an icon")
 end
 
@@ -40,6 +40,15 @@ end
 T["advisory: the action names no cast and no item to use"] = function(t)
     local a = N.TravelAction(SPELL, nil, false)
     t.eq(a.type, nil); t.eq(a.item, nil); t.eq(a.macrotext, nil)
+end
+
+T["hearth: shown only when the saving is a known number (review d46a60a)"] = function(t)
+    t.eq(N.TravelAction(nil, { label = "Use your hearthstone", text = true }, false), nil, "bind place unknown: no saving known")
+    t.eq(N.TravelAction(nil, { label = "Hearth to Goldshire", text = true, lands = { map = 1, x = 0.1, y = 0.1 } }, false), nil,
+        "other map: how much is not known")
+    t.eq(N.TravelAction(nil, { label = "Hearth to Goldshire", text = true, saves = 0 }, false), nil, "saves nothing")
+    t.eq(N.TravelAction(nil, { label = "Hearth to Goldshire", text = true, saves = 400 }, false),
+        { kind = "hearth", text = "Hearth to Goldshire", saves = 400 })
 end
 
 return T

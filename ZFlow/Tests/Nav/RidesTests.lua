@@ -55,4 +55,32 @@ T["no ride: step in the same zone, player elsewhere, no target, position unknown
     t.eq(why(STEP_TB, {}), "position unknown")
 end
 
+T["yards: to the npc on this map when its size is known, and the legacy text"] = function(t)
+    local npcs = { ["Bunthen Plainswind"] = { map = MOONGLADE, x = 0.5, y = 0.64 } }
+    local size = function(m) return m == MOONGLADE and { w = 1000, h = 1000 } or nil end
+    local step = N.RideStep(N.RIDES, STEP_TB, IN_MOONGLADE, "DRUID", "Horde", npcs, size)
+    t.eq(step.yards, 140)
+    t.eq(N.RideText(step), "140 yd to Bunthen Plainswind: he flies druids to Thunder Bluff, free")
+    local unsized = N.RideStep(N.RIDES, STEP_TB, IN_MOONGLADE, "DRUID", "Horde", npcs, nil)
+    t.eq(unsized.yards, nil, "no size: no yards, never guessed")
+    t.eq(N.RideText(unsized), "Bunthen Plainswind: he flies druids to Thunder Bluff, free")
+    t.eq(N.RideText(nil), "")
+end
+
+T["is ride: a ride master by name, for Flight paths (S30)"] = function(t)
+    t.eq(N.IsRide("Bunthen Plainswind"), true)
+    t.eq(N.IsRide("Silva Fil'naveth"), true)
+    t.eq(N.IsRide("Tal"), false)
+    t.eq(N.IsRide(nil), false)
+end
+
+T["module: 'rides' provides IsRide through ns.use"] = function(t)
+    local spec
+    local k = { Module = function(_, s) spec = s end }
+    N.RidesDeclare(k)
+    t.eq(spec.name, "rides")
+    t.eq(type(spec.provides.IsRide), "function")
+    t.eq(spec.provides.IsRide("Bunthen Plainswind"), true)
+end
+
 return T

@@ -71,4 +71,8 @@ T["from client: class, position, spell id and known are read"] = function(t)
     t.eq(none, "class unknown")
 end
 
+T["planner: a step a cast away counts as legacy's ten-second cast"] = function(t)
+    t.eq(N.TRAVEL_SPELL_YARDS, 120)
+end
+
 return T
