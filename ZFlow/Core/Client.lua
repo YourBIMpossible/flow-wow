@@ -567,6 +567,46 @@ function ns.make.client(env)
         return on
     end
 
+    -- True or false as the client gave it, else nil: a failed or missing
+    -- call, no answer, a secret answer, or anything but true or false.
+    local function yesNo(ok, v)
+        if not ok or v == nil or hidden(v) or type(v) ~= "boolean" then return nil end
+        return v
+    end
+
+    -- Your target: { exists, hostile, dead }, or nil when the client does
+    -- not say whether you have one. With no target the table holds only
+    -- exists = false and nothing more is asked. hostile and dead are each
+    -- true, false, or nil when not known: no answer is never "friendly" or
+    -- "alive". First guesses, not seen in game on 16001:
+    -- UnitExists("target"), UnitCanAttack("player", "target") and
+    -- UnitIsDead("target"). Only "player" and "target" are named, and
+    -- nothing is changed: the target is read, never chosen.
+    function c.target()
+        local exists = yesNo(call(env.UnitExists, "target"))
+        if exists == nil then return nil end
+        if not exists then return { exists = false } end
+        return {
+            exists = true,
+            hostile = yesNo(call(env.UnitCanAttack, "player", "target")),
+            dead = yesNo(call(env.UnitIsDead, "target")),
+        }
+    end
+
+    -- Does one of your spells reach your target: true, false, or nil when
+    -- not known (no call, a failed call, no answer, a secret answer,
+    -- anything but true or false, or an id that is not a number: then the
+    -- client is not asked). C_Spell.IsSpellInRange(id, "target"), a first
+    -- guess: not seen in game on 16001. It is thought to give no answer
+    -- with no target, or for a spell that has no range; that is nil here,
+    -- never "out of range".
+    function c.inRange(spellId)
+        if type(spellId) ~= "number" then return nil end
+        local group = env.C_Spell
+        if type(group) ~= "table" then return nil end
+        return yesNo(call(group.IsSpellInRange, spellId, "target"))
+    end
+
     -- One spell's cooldown as the client gives it: read?, start, length,
     -- the client's own "this is the global cooldown" mark (true, false, or
     -- nil where it gives none), and waiting: true when the client marks
