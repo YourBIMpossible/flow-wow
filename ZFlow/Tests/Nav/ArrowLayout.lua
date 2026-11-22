@@ -45,7 +45,7 @@ local function colour(t, r, g, b, want, msg)
 end
 
 local FIELDS = { "shown", "anchor", "look", "behind", "small", "scale", "alpha", "tint",
-                 "faint", "emphasis", "text", "pinTint" }
+                 "faint", "emphasis", "text" }
 local function sameLayout(t, got, want, msg)
     t.eq(got.stacked, want.stacked, msg .. ": stacked")
     for _, key in ipairs({ "quest", "prof" }) do
@@ -251,7 +251,7 @@ return {
 
     ["O7 separated profession arrow wears the quest arrow's colour meanings"] = function(t)
         local L = N.ArrowLayout(state(separated()))
-        t.eq(L.prof.tint, "quest", "tint"); t.eq(L.prof.pinTint, "quest", "minimap dot and map path too")
+        t.eq(L.prof.tint, "quest", "tint"); t.eq(L.prof.pinTint, nil, "map and path styling is not changed by the layout")
         local own = { 0.9, 0.1, 0.9 }
         local P = N.ARROW_PALETTE.standard
         local r, g, b, a = N.ArrowPaint(L.prof, "zone", 40, nil, own)
@@ -264,7 +264,7 @@ return {
         colour(t, r, g, b, { qr, qg, qb }, "same colour as the quest arrow would be"); t.eq(qa, 1, "quest at full opacity")
         -- Stacked, the needle keeps its own colour.
         local S = N.ArrowLayout(state(nil))
-        t.eq(S.prof.tint, "own", "stacked tint"); t.eq(S.prof.pinTint, "own", "stacked pin tint")
+        t.eq(S.prof.tint, "own", "stacked tint")
         r, g, b, a = N.ArrowPaint(S.prof, "zone", 40, nil, own)
         colour(t, r, g, b, own, "stacked needle own colour"); t.eq(a, 0.85, "stacked needle alpha")
     end,

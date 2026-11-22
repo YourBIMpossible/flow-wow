@@ -160,7 +160,7 @@ function N.ArrowPaint(entry, state, d, palette, own)
 end
 
 -- ------------------------------------------------------------ saved layout
--- Shape, under ZFlowDB.layout (or ZFlowCharDB.layout):
+-- Shape, under ZFlowDB.layout (arrow places are per account):
 --   layout.arrows = {
 --     mode   = "stacked" | "separate",        -- nil = stacked
 --     points = { quest = { a, r, x, y }, prof = { a, r, x, y } },
@@ -212,8 +212,8 @@ end
 -- -> { quest = {...}, prof = {...}, stacked = bool }, each arrow:
 --   shown, anchor ("screen" or "quest"), position { a, r, x, y } on the
 --   screen, look ("pointer" or "needle"), behind, small, scale, alpha,
---   tint ("quest" or "own"), faint, emphasis, text, pinTint (the colour
---   rule for its minimap dot and map path).
+--   tint ("quest" or "own"), faint, emphasis, text. Map and path styling is
+--   not decided here: it does not change when the arrows are separated.
 function N.ArrowLayout(state)
     state = type(state) == "table" and state or {}
     local saved = N.ArrowSaved(state.layout)
@@ -234,7 +234,7 @@ function N.ArrowLayout(state)
         shown = questShown, anchor = "screen", position = stackPoint, look = "pointer",
         behind = false, small = false, scale = 1, alpha = 1,
         tint = "quest", faint = false, emphasis = "primary",
-        text = saved.text.quest ~= false, pinTint = "quest",
+        text = saved.text.quest ~= false,
     }
     local prof = {
         shown = profShown, position = stackPoint, behind = false, small = false,
@@ -245,14 +245,14 @@ function N.ArrowLayout(state)
     local separate = saved.mode == "separate"
     if separate then
         -- On its own: still the needle, still faint, quest colour meanings.
-        prof.anchor, prof.look, prof.tint, prof.pinTint = "screen", "needle", "quest", "quest"
+        prof.anchor, prof.look, prof.tint = "screen", "needle", "quest"
         prof.position = N.ClampPoint(saved.points.prof, size, sw, sh)
             or N.ArrowBeside(stackPoint, size, sw, sh) or stackPoint
     elseif not questShown then
         -- Nothing to stand under: the profession step takes the stack's place.
-        prof.anchor, prof.look, prof.tint, prof.pinTint = "screen", "pointer", "quest", "own"
+        prof.anchor, prof.look, prof.tint = "screen", "pointer", "quest"
     else
-        prof.anchor, prof.look, prof.tint, prof.pinTint = "quest", "needle", "own", "own"
+        prof.anchor, prof.look, prof.tint = "quest", "needle", "own"
         prof.behind = true
         if profShown and (p.mode == nil or p.mode == "arrow") then
             quest.small, quest.scale, quest.alpha = true, N.ON_NEEDLE_SCALE, N.ON_NEEDLE_ALPHA
