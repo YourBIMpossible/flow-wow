@@ -146,6 +146,8 @@ end
 -- line is the unknown-direction line (GuideSource's lost). That line is left
 -- out for an arrow drawn as the ring, which points nowhere, and where the
 -- stack it would join already has one: once per stack of text.
+-- The lines of a profession needle that is bare (off, with a step: owner
+-- decision D2) are shown like those of one that is drawn.
 -- -> out, kept. kept = { quest = n, prof = n }: how many of each arrow's own
 -- lines are in out, wherever they are drawn; no entry for an arrow whose
 -- text is not shown.
@@ -168,7 +170,9 @@ function Arrow.Lines(view, lines, lost)
     end
     if view.quest.shown and view.quest.text.shown then add("quest", "quest") end
     local pt = view.prof.text
-    if view.prof.shown and pt.shown then add("prof", pt.to == "quest" and "quest" or "prof") end
+    if (view.prof.shown or view.prof.bare) and pt.shown then
+        add("prof", pt.to == "quest" and "quest" or "prof")
+    end
     return out, kept
 end
 
@@ -417,6 +421,10 @@ function Arrow.Start(k, diag, own)
         handles.prof.show(false)
     end
 
+    -- Which frames are up: an arrow that is shown, or a bare one (D2) that
+    -- has lines of its own to show.
+    local up = { quest = false, prof = false }
+
     -- A fresh layout: what is shown, where, at what scale and opacity.
     local function relayout()
         if not handles or not ready then return end
@@ -457,8 +465,13 @@ function Arrow.Start(k, diag, own)
         end
         for _, key in ipairs(N.ARROW_KEYS) do
             local ops, h = view[key], handles[key]
-            h.show(ops.shown)
-            if ops.shown then
+            -- A bare needle keeps its frame for its text when the lines are
+            -- its own: stacked under a shown quest arrow they are in that
+            -- arrow's stack, and no second frame is put up.
+            local shown = (ops.shown or (ops.bare and #lines[key] > 0)) and true or false
+            up[key] = shown
+            h.show(shown)
+            if shown then
                 h.look(ops.look)
                 -- An arrow the player is dragging is left where the hand has it.
                 local held = type(h.dragging) == "function" and h.dragging() == true
@@ -474,12 +487,16 @@ function Arrow.Start(k, diag, own)
                 h.alpha(lost and type(ops.alpha) == "number" and ops.alpha * Arrow.LOST_ALPHA or ops.alpha)
                 h.behind(ops.behind)
                 local textPoint = ops.text.point
-                if key == "quest" and view.prof.shown and view.prof.text.shown and view.prof.text.to == "quest" then
+                if key == "quest" and (view.prof.shown or view.prof.bare) and view.prof.text.shown
+                    and view.prof.text.to == "quest" then
                     textPoint = view.prof.text.point   -- one stack of lines: the stack's gap
                 end
                 h.text(lines[key], textPoint)
+                -- Direction unknown, or a needle that is off: the art is
+                -- not drawn (D2). The faded frame and the text stay.
                 N.ArrowAim(motion[key], { turn = src.turns[key], colour = ops.colour,
-                                          arrived = ops.mode == "ring" })
+                                          arrived = ops.mode == "ring",
+                                          bare = (lost or ops.bare) and true or false })
             end
         end
         current = view
@@ -513,7 +530,7 @@ function Arrow.Start(k, diag, own)
         if not current then return end
         local now = client.now()
         for _, key in ipairs(N.ARROW_KEYS) do
-            if current[key].shown then
+            if up[key] then
                 local h = handles[key]
                 if key == "quest" and drawn ~= "modern" then
                     shaped = true

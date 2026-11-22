@@ -284,7 +284,10 @@ function N.ArrowShapes(style, m, _, now)
     if style == "modern" then return nil end
     now = finite(now) and now or 0
     local s = begin(m)
-    if style == "flat" then flat(s, m, now) else solid(s, m, now) end
+    -- A bare arrow (D2) draws nothing: no lines and no dots.
+    if not m.bare then
+        if style == "flat" then flat(s, m, now) else solid(s, m, now) end
+    end
     m.at = m.want
     m.fade = m.arrived and 1 or 0
     m.shown[1], m.shown[2], m.shown[3] = m.colour[1], m.colour[2], m.colour[3]
