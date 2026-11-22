@@ -38,6 +38,17 @@ end
 
 local function style(k) return k.store:get("account", "layout.arrowStyle") end
 
+-- The account as it is saved after Flow's nav table was imported and merged
+-- into an install whose layout is `layout` (nothing: a fresh one).
+local function imported(nav, layout)
+    local account = {
+        schema = 1, settings = {}, layout = layout or {}, imports = {},
+        learned = { places = {}, flights = {}, prices = {}, facts = {}, fights = {} },
+    }
+    local char = { schema = 1, settings = {}, layout = {}, learned = {}, state = {} }
+    return (ns.Import.Merge(account, char, ns.Import.FromFlow({ nav = nav }, {})))
+end
+
 -- The tests below need the style answers; without them each fails here.
 local function has(t, a)
     local ok = type(a) == "table" and type(a.style) == "function" and type(a.styles) == "function"
@@ -185,6 +196,50 @@ return {
         local k2, _, a2 = start({ saved = { layout = { arrowStyle = "flat" } } })
         t.eq(a2.style(), "flat")
         t.eq(k2.store:get("account", "layout.arrowModern"), true)
+    end,
+
+    -- AS1: the style as it comes in from Flow, through the import and the
+    -- merge, then the arrow started on what was saved.
+    ["import: a flat arrow from Flow draws flat"] = function(t)
+        local k, c, a, d = start({ saved = imported({ arrowStyle = "flat" }) })
+        if not has(t, a) then return end
+        t.eq(a.style(), "flat")
+        d.commands.arrow("demo")
+        c.advance(0.1, 2)
+        t.ok(c.arrows[1].shaped ~= nil, "drawn from lines")
+        t.eq(k.problems:count(), 0)
+    end,
+
+    ["import: an unmarked 3d from Flow becomes the modern arrow"] = function(t)
+        local k, _, a = start({ saved = imported({ arrowStyle = "3d" }) })
+        if not has(t, a) then return end
+        t.eq(a.style(), "modern")
+        t.eq(style(k), nil)
+        t.eq(k.store:get("account", "layout.arrowModern"), true, "marked")
+        t.eq(k.problems:count(), 0)
+    end,
+
+    ["import: a marked 3d from Flow stays 3d"] = function(t)
+        local k, _, a = start({ saved = imported({ arrowStyle = "3d", arrowModern = true }) })
+        if not has(t, a) then return end
+        t.eq(a.style(), "3d")
+        t.eq(style(k), "3d")
+        t.eq(k.problems:count(), 0)
+    end,
+
+    ["import: an unmarked 3d imported after the arrow has run is still modern"] = function(t)
+        local k, _, a = start({ saved = imported({ arrowStyle = "3d" }, { arrowModern = true }) })
+        if not has(t, a) then return end
+        t.eq(a.style(), "modern")
+        t.eq(style(k), nil)
+    end,
+
+    ["import: the style the player set in Z-Flow is the one drawn"] = function(t)
+        local k, _, a = start({ saved = imported({ arrowStyle = "flat", arrowModern = true },
+            { arrowStyle = "3d", arrowModern = true }) })
+        if not has(t, a) then return end
+        t.eq(a.style(), "3d")
+        t.eq(style(k), "3d")
     end,
 
     ["style: on a kernel that never starts the arrows, the answers are safe"] = function(t)
