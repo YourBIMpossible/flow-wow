@@ -160,5 +160,7 @@ return {
     "Fight/Choices.lua",
     "Rotation/Queue.lua",
     "UI/RotationQueue.lua",
+    "Items/Banker.lua",
+    "Items/Posting.lua",
     },
 }
