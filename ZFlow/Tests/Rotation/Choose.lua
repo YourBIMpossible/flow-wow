@@ -25,7 +25,7 @@ local function pack()
 end
 
 local function snap(known, over)
-    local s = { spells = {} }
+    local s = { dead = false, inCombat = false, spells = {} }
     for _, name in ipairs(known or {}) do s.spells[name] = { known = true } end
     for k, v in pairs(over or {}) do s[k] = v end
     return s
@@ -56,8 +56,8 @@ return {
         t.eq(s, nil, "no pack")
     end,
 
-    ["an empty snapshot gives nothing and a row per step, in order"] = function(t)
-        local s, trace = ns.Choose({}, pack())
+    ["alive with nothing else known gives nothing and a row per step, in order"] = function(t)
+        local s, trace = ns.Choose({ dead = false }, pack())
         t.eq(s, nil, "nothing")
         t.eq(#trace, #ns.Rotation.STEPS, "one row per step")
         for i, name in ipairs(ns.Rotation.STEPS) do

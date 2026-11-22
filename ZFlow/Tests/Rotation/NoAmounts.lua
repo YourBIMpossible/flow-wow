@@ -56,8 +56,8 @@ return {
     ["no amounts: a snapshot table carrying them does not change the choice"] = function(t)
         -- Even a caller that skips SnapshotOf gets the same answer.
         local pack = ns.Packs.DRUID
-        local plain = { lowHealth = true, spells = heals(pack) }
-        local loud = { lowHealth = true, spells = heals(pack) }
+        local plain = { lowHealth = true, inCombat = false, dead = false, spells = heals(pack) }
+        local loud = { lowHealth = true, inCombat = false, dead = false, spells = heals(pack) }
         for k, v in pairs(AMOUNTS) do loud[k] = v end
         local a, b = ns.Choose(plain, pack), ns.Choose(loud, pack)
         t.ok(a and a.kind == "heal", "a heal")
@@ -67,9 +67,10 @@ return {
     ["no amounts: the game's low-health warning alone still gets a heal"] = function(t)
         for _, class in ipairs({ "DRUID", "PALADIN" }) do
             local pack = ns.Packs[class]
-            local s = ns.Choose(ns.SnapshotOf({ lowHealth = true, spells = heals(pack) }), pack)
+            local s = ns.Choose(ns.SnapshotOf({ lowHealth = true, inCombat = false, dead = false, spells = heals(pack) }), pack)
             t.ok(s and s.kind == "heal", class .. ": a heal")
-            t.ok(ns.Choose(ns.SnapshotOf({ lowHealth = true, inCombat = true, hostile = true, spells = heals(pack) }), pack)
+            t.ok(ns.Choose(ns.SnapshotOf({ lowHealth = true, inCombat = true, dead = false, hostile = true,
+                                           spells = heals(pack) }), pack)
                 .kind == "emergency", class .. ": an emergency in a fight")
         end
     end,
@@ -77,7 +78,7 @@ return {
     ["no amounts: the estimate from being hit alone still gets a heal"] = function(t)
         for _, class in ipairs({ "DRUID", "PALADIN" }) do
             local pack = ns.Packs[class]
-            local s = ns.Choose(ns.SnapshotOf({ hurt = R.HURT.outBig + 5, spells = heals(pack) }), pack)
+            local s = ns.Choose(ns.SnapshotOf({ hurt = R.HURT.outBig + 5, inCombat = false, dead = false, spells = heals(pack) }), pack)
             t.ok(s and s.kind == "heal", class .. ": a heal")
         end
     end,
@@ -85,14 +86,14 @@ return {
     ["no amounts: with neither sign no heal is suggested"] = function(t)
         for _, class in ipairs({ "DRUID", "PALADIN" }) do
             local pack = ns.Packs[class]
-            local s = ns.Choose(ns.SnapshotOf({ spells = heals(pack) }), pack)
+            local s = ns.Choose(ns.SnapshotOf({ inCombat = false, dead = false, spells = heals(pack) }), pack)
             t.ok(not s or (s.kind ~= "heal" and s.kind ~= "emergency"), class .. ": no heal")
         end
     end,
 
     ["no amounts: a finisher only on the reader's say-so, never on a count"] = function(t)
         local spells = known({ "Ferocious Bite", "Rip", "Claw", "Cat Form" })
-        local base = { role = "dps", hostile = true, inCombat = true, form = "Cat Form",
+        local base = { role = "dps", hostile = true, inCombat = true, dead = false, form = "Cat Form",
                        attacking = true, targetNear = true, spells = spells }
         local got = spellOf(base, ns.Packs.DRUID)
         t.ok(got ~= "Ferocious Bite" and got ~= "Rip", "nothing said: no finisher")
@@ -105,7 +106,7 @@ return {
 
     ["no amounts: out of power is the game refusing the spell, not a mana figure"] = function(t)
         local function caster(wrath, over)
-            local f = { role = "dps", hostile = true, inCombat = true, targetNear = true,
+            local f = { role = "dps", hostile = true, inCombat = true, dead = false, targetNear = true,
                         targetDebuffs = { Moonfire = true },
                         spells = { Wrath = wrath, Moonfire = { known = true }, Attack = { known = true } } }
             for k, v in pairs(over or {}) do f[k] = v end
@@ -128,8 +129,8 @@ return {
 
     ["no amounts: Nature's Grasp needs no mana figure, only to be castable"] = function(t)
         local function grasp(row)
-            return spellOf({ role = "dps", hostile = true, inCombat = true, targetMelee = true, targetOnYou = true,
-                             hittingYou = true, targetNear = true,
+            return spellOf({ role = "dps", hostile = true, inCombat = true, dead = false, targetMelee = true,
+                             targetOnYou = true, hittingYou = true, targetNear = true,
                              spells = { ["Nature's Grasp"] = row, Wrath = { known = true } } }, ns.Packs.DRUID)
         end
         t.eq(grasp({ known = true }), "Nature's Grasp", "castable: suggested")

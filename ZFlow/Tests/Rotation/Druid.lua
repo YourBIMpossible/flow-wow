@@ -8,7 +8,8 @@ local FORMS = { "Dire Bear Form", "Bear Form", "Cat Form" }
 -- An enemy targeted, not fighting yet, already swinging (so the engage step
 -- stays out of the way), knowing only the form spells named.
 local function snap(role, form, tree, knows, over)
-    local s = { role = role, form = form, tree = tree, hostile = true, inCombat = false, attacking = true, spells = {} }
+    local s = { role = role, form = form, tree = tree, hostile = true, inCombat = false, dead = false,
+                attacking = true, spells = {} }
     for _, name in ipairs(knows or FORMS) do s.spells[name] = { known = true } end
     for k, v in pairs(over or {}) do s[k] = v end
     return s
