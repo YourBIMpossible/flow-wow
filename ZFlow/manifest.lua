@@ -50,6 +50,9 @@ return {
         -- Gear
         "Gear/Score.lua",
         "Gear/Read.lua",
+        "Gear/CanUse.lua",
+        "Gear/Verdict.lua",
+        "Gear/Tooltip.lua",
 
         -- Rotation and classes
         "Rotation/Pack.lua",

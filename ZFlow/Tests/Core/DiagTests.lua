@@ -351,7 +351,8 @@ return {
                 { key = "x.name", from = "Long", to = "L", reason = "cut" },
             },
         })
-        t.eq(counts, { dropped = 2, adjusted = 2, malformed = 1, unknown = 0, superseded = 0, other = 0, vendor = 0 })
+        t.eq(counts, { dropped = 2, adjusted = 2, malformed = 1, unknown = 0, superseded = 0, other = 0, vendor = 0,
+            incompatible = 0 })
         t.eq(lines, {
             "import: 2 dropped, 2 adjusted, 1 malformed.",
             "import: adjusted buffButton.scale: 9 to 2 (outside the sizes a frame can take)",
@@ -362,7 +363,8 @@ return {
     ["import report: nothing left behind or changed is three zeroes"] = function(t)
         local lines, counts = ns.Diag.ImportReport({ ok = true, dropped = {}, adjusted = {} })
         t.eq(lines, { "import: 0 dropped, 0 adjusted, 0 malformed." })
-        t.eq(counts, { dropped = 0, adjusted = 0, malformed = 0, unknown = 0, superseded = 0, other = 0, vendor = 0 })
+        t.eq(counts, { dropped = 0, adjusted = 0, malformed = 0, unknown = 0, superseded = 0, other = 0, vendor = 0,
+            incompatible = 0 })
     end,
 
     ["import report: entries left behind for another reason are not counted as dropped"] = function(t)
@@ -375,7 +377,8 @@ return {
             },
             adjusted = {},
         })
-        t.eq(counts, { dropped = 1, adjusted = 0, malformed = 0, unknown = 2, superseded = 1, other = 2, vendor = 0 })
+        t.eq(counts, { dropped = 1, adjusted = 0, malformed = 0, unknown = 2, superseded = 1, other = 2, vendor = 0,
+            incompatible = 0 })
         t.eq(lines, {
             "import: 1 dropped, 0 adjusted, 0 malformed.",
             "import: also left behind: 2 with no row, 1 superseded, 2 with no category.",
@@ -506,6 +509,35 @@ return {
         local lines, counts = ns.Diag.ImportReport({ ok = true, dropped = {}, adjusted = {}, vendorToConfirm = {} })
         t.eq(lines, { "import: 0 dropped, 0 adjusted, 0 malformed." })
         t.eq(counts.vendor, 0)
+    end,
+
+    ["import report D8: the incompatible entries of a merge are counted and each is listed"] = function(t)
+        local lines, counts = ns.Diag.ImportReport({ ok = true, dropped = {}, adjusted = {} },
+            { ok = true, incompatible = { "account.settings.nav", "account.layout.a|b" } })
+        t.eq(lines, {
+            "import: 0 dropped, 0 adjusted, 0 malformed.",
+            "import: 2 source values were incompatible with what is stored; each stored value was kept.",
+            "import: incompatible account.settings.nav",
+            "import: incompatible account.layout.a||b",
+        })
+        t.eq(counts.incompatible, 2)
+        local one = ns.Diag.ImportReport({ ok = true }, { incompatible = { "char.layout.x" } })
+        t.eq(one[2], "import: 1 source value was incompatible with what is stored; the stored value was kept.")
+        t.eq(one[3], "import: incompatible char.layout.x")
+    end,
+
+    ["import report D8: no merge report, an empty one or a broken one adds no line"] = function(t)
+        local base = { "import: 0 dropped, 0 adjusted, 0 malformed." }
+        for _, merge in ipairs({ false, "x", {}, { incompatible = {} }, { incompatible = "all" } }) do
+            local lines, counts = ns.Diag.ImportReport({ ok = true }, merge or nil)
+            t.eq(lines, base)
+            t.eq(counts.incompatible, 0)
+        end
+        -- Only a path that is text can be named; anything else is not printed.
+        local lines, counts = ns.Diag.ImportReport({ ok = true }, { incompatible = { 4, "", "char.layout.x", {} } })
+        t.eq(counts.incompatible, 1)
+        t.eq(lines[3], "import: incompatible char.layout.x")
+        t.eq(#lines, 3)
     end,
 
     ["import report: a | from saved data is doubled, so chat shows it as typed (IR13)"] = function(t)
