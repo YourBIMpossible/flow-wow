@@ -144,3 +144,49 @@ function Q.Place(point, size, side)
     end
     return out
 end
+
+-- The same points with every slot moved onto the screen: a slot whose box
+-- would cross an edge is moved in by just that much. Points against a
+-- screen that is not known, or that cannot be read, come back as they are.
+function Q.Clamp(points, screenW, screenH)
+    if type(points) ~= "table" then return points end
+    if not finite(screenW) or not finite(screenH) or screenW <= 0 or screenH <= 0 then return points end
+    local out = {}
+    for i, p in ipairs(points) do
+        local w = Q.SIZES[i]
+        local a = type(p) == "table" and SPOT[p[1]] or nil
+        local r = type(p) == "table" and SPOT[p[2]] or nil
+        if not w or not a or not r or not finite(p[3]) or not finite(p[4]) then
+            out[i] = p
+        else
+            local left = r[1] * screenW + p[3] - a[1] * w
+            local bottom = r[2] * screenH + p[4] - a[2] * w
+            local dx = math.max(0, math.min(left, screenW - w)) - left
+            local dy = math.max(0, math.min(bottom, screenH - w)) - bottom
+            out[i] = { p[1], p[2], p[3] + dx, p[4] + dy }
+        end
+    end
+    return out
+end
+
+-- Does the whole run of slots fit on the screen out to `side`? true or
+-- false; nil when the screen or the point is not known.
+function Q.Fits(point, size, side, screenW)
+    if type(point) ~= "table" or not finite(size) or not finite(screenW) or screenW <= 0 then return nil end
+    local a, r = SPOT[point[1]], SPOT[point[2]]
+    if not a or not r or not finite(point[3]) then return nil end
+    local run = Q.GAP_FIRST
+    for i, w in ipairs(Q.SIZES) do run = run + w + (i > 1 and Q.GAP or 0) end
+    local left = r[1] * screenW + point[3] - a[1] * size
+    if side == "right" then return left + size + run <= screenW end
+    return left - run >= 0
+end
+
+-- The side the slots run to: `side` when they fit there or the screen is
+-- not known, else the other side when they fit there, else `side`.
+function Q.FitSide(point, size, side, screenW)
+    if Q.Fits(point, size, side, screenW) ~= false then return side end
+    local other = side == "right" and "left" or "right"
+    if Q.Fits(point, size, other, screenW) == true then return other end
+    return side
+end

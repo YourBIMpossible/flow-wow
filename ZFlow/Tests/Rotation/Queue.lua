@@ -198,4 +198,53 @@ tests["queue place: a point that cannot be used gives nothing"] = function(t)
     t.eq(Q.Place({ "CENTER", "CENTER", 0, 0 }, nil, "left"), nil)
 end
 
+tests["queue clamp: slots on the screen are left where they are"] = function(t)
+    local points = Q.Place({ "CENTER", "CENTER", 0, -160 }, 48, "left")
+    t.eq(Q.Clamp(points, 1024, 768), points)
+end
+
+tests["queue clamp: a slot past an edge is moved in by just that much"] = function(t)
+    -- Left of a big icon standing at the left edge: every slot starts below 0.
+    local out = Q.Clamp(Q.Place({ "BOTTOMLEFT", "BOTTOMLEFT", 0, 0 }, 48, "left"), 1024, 768)
+    for i = 1, 4 do t.eq(out[i], { "BOTTOMLEFT", "BOTTOMLEFT", 0, 0 }, "slot " .. i) end
+    -- Right of one at the right edge: each ends with its right edge on the screen edge.
+    out = Q.Clamp(Q.Place({ "BOTTOMLEFT", "BOTTOMLEFT", 976, 0 }, 48, "right"), 1024, 768)
+    for i, w in ipairs(Q.SIZES) do t.eq(out[i][3] + w, 1024, "slot " .. i) end
+    -- Against a centre anchor, above the top: the top edge comes down to the screen top.
+    out = Q.Clamp({ { "CENTER", "CENTER", 0, 500 } }, 1024, 768)
+    t.eq(out[1], { "CENTER", "CENTER", 0, 384 - 18 })
+    out = Q.Clamp({ { "TOPRIGHT", "TOPRIGHT", 40, 10 } }, 1024, 768)
+    t.eq(out[1], { "TOPRIGHT", "TOPRIGHT", 0, 0 })
+end
+
+tests["queue clamp: a screen or a point that is not known changes nothing"] = function(t)
+    local points = Q.Place({ "BOTTOMLEFT", "BOTTOMLEFT", 0, 0 }, 48, "left")
+    t.eq(Q.Clamp(points, nil, 768), points)
+    t.eq(Q.Clamp(points, 1024, nil), points)
+    t.eq(Q.Clamp(points, 0, 768), points)
+    t.eq(Q.Clamp(nil, 1024, 768), nil)
+    local odd = { { "NOWHERE", "CENTER", -5000, 0 }, "x" }
+    t.eq(Q.Clamp(odd, 1024, 768), odd)
+end
+
+tests["queue fits: the whole run on one side of the big icon"] = function(t)
+    local run = 10 + 36 + 6 + 30 + 6 + 25 + 6 + 22
+    t.eq(Q.Fits({ "BOTTOMLEFT", "BOTTOMLEFT", run, 0 }, 48, "left", 1024), true, "just fits")
+    t.eq(Q.Fits({ "BOTTOMLEFT", "BOTTOMLEFT", run - 1, 0 }, 48, "left", 1024), false)
+    t.eq(Q.Fits({ "BOTTOMLEFT", "BOTTOMLEFT", 1024 - 48 - run, 0 }, 48, "right", 1024), true, "just fits")
+    t.eq(Q.Fits({ "BOTTOMLEFT", "BOTTOMLEFT", 1024 - 48 - run + 1, 0 }, 48, "right", 1024), false)
+    t.eq(Q.Fits({ "CENTER", "CENTER", 0, 0 }, 48, "left", 1024), true)
+    t.eq(Q.Fits({ "CENTER", "CENTER", 0, 0 }, 48, "left", nil), nil, "the screen is not known")
+    t.eq(Q.Fits(nil, 48, "left", 1024), nil)
+    t.eq(Q.Fits({ "NOWHERE", "CENTER", 0, 0 }, 48, "left", 1024), nil)
+end
+
+tests["queue fit side: the other side only when this one does not fit and that one does"] = function(t)
+    t.eq(Q.FitSide({ "CENTER", "CENTER", 0, 0 }, 48, "left", 1024), "left")
+    t.eq(Q.FitSide({ "BOTTOMLEFT", "BOTTOMLEFT", 20, 0 }, 48, "left", 1024), "right")
+    t.eq(Q.FitSide({ "BOTTOMLEFT", "BOTTOMLEFT", 960, 0 }, 48, "right", 1024), "left")
+    t.eq(Q.FitSide({ "BOTTOMLEFT", "BOTTOMLEFT", 20, 0 }, 48, "left", 200), "left", "fits on neither side")
+    t.eq(Q.FitSide({ "BOTTOMLEFT", "BOTTOMLEFT", 20, 0 }, 48, "left", nil), "left", "the screen is not known")
+end
+
 return tests

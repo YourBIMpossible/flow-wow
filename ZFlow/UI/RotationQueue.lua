@@ -72,7 +72,7 @@ function U.Declare(k)
         } },
         start = function(ctx)
             local client = ctx.client
-            local plan, stealthForm, lastView, placed
+            local plan, stealthForm, lastView, placed, side
 
             if type(client.slotIcon) ~= "function" then
                 k.problems:add(U.NAME, "frame", "the client has no slot icon; the modifier queue is not shown")
@@ -120,16 +120,21 @@ function U.Declare(k)
                 local point = ns.Nav.ClampPoint(type(saved) == "table" and saved.point or nil, I.SIZE, w, h)
                     or ns.Nav.ClampPoint(I.DEFAULT_POINT, I.SIZE, w, h)
                     or I.DEFAULT_POINT
-                return point, w
+                return point, w, h
             end
             -- Puts the slots beside the big icon; only when it has moved.
-            local function place()
-                local point, w = mainPoint()
-                local side = Q.Side(point, I.SIZE, w)
+            -- In a fight the side they run to stays the one they had (as
+            -- Flow froze it): they do not jump across the icon mid-fight.
+            -- A run that would leave the screen goes to the other side,
+            -- and each slot is kept on the screen.
+            local function place(inCombat)
+                local point, w, h = mainPoint()
+                if not (inCombat == true and side) then side = Q.Side(point, I.SIZE, w) end
+                side = Q.FitSide(point, I.SIZE, side, w)
                 local mark = table.concat({ tostring(point[1]), tostring(point[2]),
-                    tostring(point[3]), tostring(point[4]), side }, "|")
+                    tostring(point[3]), tostring(point[4]), side, tostring(w), tostring(h) }, "|")
                 if mark == placed then return true end
-                local points = Q.Place(point, I.SIZE, side)
+                local points = Q.Clamp(Q.Place(point, I.SIZE, side), w, h)
                 if not points then return false end
                 for i, h in ipairs(slots) do h.place(points[i]) end
                 placed = mark
@@ -154,7 +159,7 @@ function U.Declare(k)
                 local snapshot = type(view.snapshot) == "table" and view.snapshot or {}
                 local row = Q.Row(plan, form(snapshot), snapshot.stealthed, stealthForm)
                 local mod = held()
-                if not row or not Q.Shows(snapshot.inCombat, snapshot.hostile, mod) or not place() then
+                if not row or not Q.Shows(snapshot.inCombat, snapshot.hostile, mod) or not place(snapshot.inCombat) then
                     hideAll()
                     return
                 end

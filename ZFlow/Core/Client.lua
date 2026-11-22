@@ -4158,7 +4158,11 @@ function ns.make.client(env)
     --                   grey; answers false.
     -- It takes no mouse, no click and no drag, and holds no secure action.
     -- The frame calls are the ones the icon and the panel above already
-    -- make; no doc page was read for this one.
+    -- make. Checked against the API pages (see RESEARCH-modifier-queue.md):
+    -- a plain Frame takes no mouse unless asked, so EnableMouse(false) only
+    -- says so; BACKGROUND draws behind ARTWORK, OVERLAY in front; a flat
+    -- colour is SetColorTexture since 7.0.3 and was SetTexture(r, g, b, a)
+    -- before it, so both are tried.
     function c.slotIcon(spec)
         spec = type(spec) == "table" and spec or {}
         local parent = env.UIParent
@@ -4226,10 +4230,11 @@ function ns.make.client(env)
 
     -- Which modifier keys are down now: ctrl, shift, alt, each true or false,
     -- or nil for one the client has no read for or whose read raised (not
-    -- known, never "up"). A read only: nothing is bound or pressed. First
-    -- guess, not seen in game; no doc page was read. Older clients answer 1
-    -- or nil where newer ones answer true or false, so a nil from a read
-    -- that ran is "up".
+    -- known, never "up"). A read only: nothing is bound or pressed. Not seen
+    -- in game. The API page gives a boolean answer; 1 is also taken as down
+    -- in case this client answers the old way (not confirmed either way),
+    -- so a nil from a read that ran is "up". Flow 0.35.377 uses all three
+    -- as plain truth tests (Modules/BindMode.lua).
     function c.modifiers()
         local function down(fn)
             if type(fn) ~= "function" then return nil end

@@ -283,6 +283,53 @@ tests["rotation queue: placed once, and again only when the big icon has moved"]
     for i = 1, 4 do t.eq(c.slotIcons[i].point, want[i], "right of centre runs right") end
 end
 
+tests["rotation queue: in a fight the side is frozen; after it the slots follow the big icon"] = function(t)
+    local k, c = start()
+    local fight = { form = 0, inCombat = true, hostile = true }
+    give(k, view(nil))
+    local left = Q.Place(I.DEFAULT_POINT, I.SIZE, "left")
+    t.eq(c.slotIcons[1].point, left[1])
+    local point = { "CENTER", "CENTER", 200, 0 }
+    k.settings:set(I.SETTING, { point = point })
+    give(k, view(nil, fight))
+    local kept = Q.Place(point, I.SIZE, "left")
+    for i = 1, 4 do t.eq(c.slotIcons[i].point, kept[i], "moved with the icon, still to its left") end
+    give(k, view(nil))
+    local right = Q.Place(point, I.SIZE, "right")
+    for i = 1, 4 do t.eq(c.slotIcons[i].point, right[i], "the fight is over: right of centre runs right") end
+end
+
+tests["rotation queue: a first view in a fight still picks a side"] = function(t)
+    local k, c = start()
+    local point = { "CENTER", "CENTER", 200, 0 }
+    k.settings:set(I.SETTING, { point = point })
+    give(k, view(nil, { form = 0, inCombat = true, hostile = true }))
+    local want = Q.Place(point, I.SIZE, "right")
+    for i = 1, 4 do t.eq(c.slotIcons[i].point, want[i]) end
+end
+
+tests["rotation queue: a run that would leave the screen goes to the other side"] = function(t)
+    local k, c = start()
+    -- Left half, hard against the left edge: the run to the left does not fit.
+    local point = { "BOTTOMLEFT", "BOTTOMLEFT", 20, 300 }
+    k.settings:set(I.SETTING, { point = point })
+    give(k, view(nil))
+    local want = Q.Place(point, I.SIZE, "right")
+    for i = 1, 4 do t.eq(c.slotIcons[i].point, want[i]) end
+end
+
+tests["rotation queue: every slot stands on the screen"] = function(t)
+    local k, c = start({ before = function(client) client.setScreen(200, 150) end })
+    k.settings:set(I.SETTING, { point = { "BOTTOMLEFT", "BOTTOMLEFT", 20, 50 } })
+    give(k, view(nil))
+    for i, w in ipairs(Q.SIZES) do
+        local p = c.slotIcons[i].point
+        t.eq(p[1], "BOTTOMLEFT")
+        t.eq(p[3] >= 0 and p[3] + w <= 200, true, "slot " .. i .. " across")
+        t.eq(p[4] >= 0 and p[4] + w <= 150, true, "slot " .. i .. " up")
+    end
+end
+
 -- ------------------------------------------------------------ the modifier event
 tests["rotation queue: a modifier pressed between two views redraws the last one"] = function(t)
     local k, c = start()
