@@ -114,6 +114,7 @@ Nav\FlightPaths.lua
 Nav\MapFlights.lua
 Nav\TaxiMark.lua
 Nav\Gates.lua
+Nav\Travel.lua
 UI\ProfCard.lua
 UI\DevPanel.lua
 UI\SettingsSlash.lua
