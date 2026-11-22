@@ -1,4 +1,3 @@
-local _, ns = ...
 local X = {}
 X.SETTING = "b.two"
 -- settings:get("nope") in a comment is not a call
