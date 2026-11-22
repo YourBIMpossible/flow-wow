@@ -46,9 +46,13 @@ end
 local function readings(c) return at(c.saved(ns.id.charDB), "learned", "facts", "profSkill") end
 local function npcs(c) return at(c.saved(ns.id.accountDB), "learned", "places", "npcs") end
 
--- Everything saved, both scopes, as it is now.
+-- Everything saved, both scopes, as it is now, less the diag module's own
+-- record (it keeps a snapshot per event it hears; that is not this module).
 local function all(c)
-    return { account = copy(c.saved(ns.id.accountDB)), char = copy(c.saved(ns.id.charDB)) }
+    local account, char = copy(c.saved(ns.id.accountDB)), copy(c.saved(ns.id.charDB))
+    if type(account) == "table" then account.diag = nil end
+    if type(char) == "table" then char.diag = nil end
+    return { account = account, char = char }
 end
 
 local function smithing(skill, max)
