@@ -10,8 +10,9 @@ local _, ns = ...
 -- nothing. It does not change the plan it is given.
 --
 -- What it must never blur:
---   * a price nobody has seen reads "price unknown - check trainer", and no
---     figure (not 0 either) is shown in its place;
+--   * a price nobody has seen reads "price unknown—check vendor" (a plan
+--     buys items from a merchant; F-085), and no figure (not 0 either) is
+--     shown in its place;
 --   * an estimate is always labelled "(estimate)", is never added to an
 --     observed figure, and never makes the money line say yes;
 --   * a bank that was never seen is said on the row that might be helped by
@@ -46,7 +47,8 @@ Present.BANK_UNSEEN = "the bank has not been seen yet"
 Present.BANK_NOTE = "bank not seen yet: some may be there"
 Present.CYCLE_NOTE = "can only be made from itself"
 
-local UNKNOWN_PRICE = "price unknown - check trainer"
+-- F-085: a merchant's price for an item that nobody has seen.
+local UNKNOWN_PRICE = "price unknown—check vendor"
 
 local function isCount(n)
     return type(n) == "number" and n == n and n >= 0 and n < math.huge
@@ -73,6 +75,23 @@ function Present.Name(key, names)
     end
     if type(name) == "string" and name ~= "" then return name end
     return "item " .. tostring(key)
+end
+
+-- The loot note (L6-E): one looted item the sell rules would sell, as a
+-- text. "Junk" only when that is the rule's own reason; a price nobody saw
+-- is said, with no figure.
+-- F-085's words, with its em dash.
+Present.VENDOR_PRICE_UNKNOWN = "price unknown—check vendor"
+
+function Present.LootNoteText(entry, part)
+    local name = type(entry.name) == "string" and entry.name ~= "" and entry.name or Present.Name(entry.key)
+    local head = (type(part) == "table" and part.reason == "junk") and "Junk: " or "To sell: "
+    if isCount(entry.count) and entry.count > 0 then name = entry.count .. " x " .. name end
+    local price = Present.VENDOR_PRICE_UNKNOWN
+    if isCount(entry.sellPrice) and entry.sellPrice > 0 then
+        price = tostring(coin(entry.sellPrice)) .. " each at a vendor"
+    end
+    return head .. name .. " (" .. price .. ")"
 end
 
 -- One source of a plan row, as a text.
@@ -122,6 +141,42 @@ function Present.Row(r, names)
     return out
 end
 
+-- The loot record (L6-J): one creature's entry of Drops' book as lines.
+-- Counts are what this character saw. A share is shown only from
+-- `minSamples` loots on, and then as a share "of yours": it is an observed
+-- count, never a drop rate claimed for the game.
+function Present.DropLines(entry, names, minSamples)
+    local who = type(entry.name) == "string" and entry.name ~= "" and entry.name or "creature"
+    local looted = isCount(entry.looted) and entry.looted or 0
+    local lines = { who .. ": looted " .. looted .. (looted == 1 and " time" or " times") }
+    local rows = {}
+    for key, e in pairs(type(entry.items) == "table" and entry.items or {}) do
+        if type(e) == "table" and isCount(e.count) and isCount(e.times) then
+            rows[#rows + 1] = { name = Present.Name(key, names), count = e.count, times = e.times }
+        end
+    end
+    if #rows == 0 then
+        lines[#lines + 1] = "Nothing dropped yet."
+        return lines
+    end
+    table.sort(rows, function(a, b)
+        if a.times ~= b.times then return a.times > b.times end
+        return a.name < b.name
+    end)
+    local enough = isCount(minSamples) and looted >= minSamples
+    for _, r in ipairs(rows) do
+        local text = r.name .. ": " .. r.count .. " seen, in " .. r.times .. " of " .. looted .. " loots"
+        if enough and looted > 0 then
+            text = text .. " (" .. math.floor(r.times / looted * 100 + 0.5) .. "% of yours)"
+        end
+        lines[#lines + 1] = text
+    end
+    if not enough and isCount(minSamples) then
+        lines[#lines + 1] = "Too few loots to call these rates (" .. minSamples .. " needed)."
+    end
+    return lines
+end
+
 local function costOf(plan)
     local c = type(plan.cost) == "table" and plan.cost or {}
     return isCount(c.known) and c.known or 0, isCount(c.estimated) and c.estimated or 0,
@@ -136,7 +191,8 @@ function Present.Cost(plan)
     if known > 0 then parts[#parts + 1] = tostring(coin(known)) end
     if estimated > 0 then parts[#parts + 1] = tostring(estimateText(estimated)) end
     if unknown > 0 then
-        parts[#parts + 1] = unknown .. (unknown == 1 and " price " or " prices ") .. "unknown - check trainer"
+        -- The count line ends in the same phrase (F-085).
+        parts[#parts + 1] = unknown .. (unknown == 1 and " price " or " prices ") .. "unknown—check vendor"
     end
     if #parts == 0 then return "Nothing to buy" end
     return "To buy: " .. (plan.unknown == "bags" and "at most " or "") .. table.concat(parts, ", plus ")
@@ -166,11 +222,12 @@ end
 
 -- ---------------------------------------------------------------- sell list
 -- The vendor sell list (L6-A): ItemSell.List and SellView.Kept as lines.
--- The same rules as above: a price nobody has seen is "price unknown -
--- check vendor" and no figure; an estimate is labelled and never added to
--- an observed figure; a count that is not known is said, not guessed.
+-- The same rules as above: a price nobody has seen is "price unknown—check
+-- vendor" (F-085's words, with its em dash) and no figure; an estimate is
+-- labelled and never added to an observed figure; a count that is not known
+-- is said, not guessed.
 
-Present.VENDOR_PRICE_UNKNOWN = "price unknown - check vendor"
+Present.VENDOR_PRICE_UNKNOWN = "price unknown—check vendor"
 Present.SELL_HEADER = "Would sell (nothing is sold for you):"
 Present.KEPT_HEADER = "Kept, never sold:"
 Present.NOTHING_TO_SELL = "Nothing to sell"
@@ -198,6 +255,40 @@ function Present.SellRowText(r, names)
     return head .. ": " .. price
 end
 
+-- The price lookup (L6-H): PriceLookup.Find's result as lines. One line for
+-- what a vendor pays; a second only when a merchant was seen selling it.
+function Present.PriceLines(result, names)
+    local Prices = ns.Prices
+    local name = type(result.name) == "string" and result.name ~= "" and result.name
+        or Present.Name(result.key, names)
+    local sell = type(result.sell) == "table" and result.sell or {}
+    local first
+    if sell.unsellable then
+        first = "can't be sold to a merchant"
+    elseif sell.basis == Prices.OBSERVED and isCount(sell.unit) then
+        first = "a vendor pays " .. coin(sell.unit) .. " each"
+        if type(sell.source) == "string" and sell.source ~= "" then first = first .. " (" .. sell.source .. ")" end
+    elseif sell.basis == Prices.ESTIMATED and isCount(sell.unit) and type(sell.source) == "string" and sell.source ~= "" then
+        first = "a vendor pays about " .. coin(sell.unit) .. " each (estimate, " .. sell.source .. ")"
+    else
+        first = Present.VENDOR_PRICE_UNKNOWN
+    end
+    local lines = { name .. ": " .. first }
+    local buy = type(result.buy) == "table" and result.buy or {}
+    if isCount(buy.unit) and (buy.basis == Prices.OBSERVED or buy.basis == Prices.ESTIMATED) then
+        local text = "A merchant sells it for " .. (buy.basis == Prices.ESTIMATED and "about " or "") .. coin(buy.unit) .. " each"
+        if isCount(buy.per) and buy.per > 1 then text = text .. ", " .. buy.per .. " at a time" end
+        local source = type(buy.source) == "string" and buy.source ~= "" and buy.source or nil
+        if buy.basis == Prices.ESTIMATED then
+            text = text .. " (estimate" .. (source and (", " .. source) or "") .. ")"
+        elseif source then
+            text = text .. " (" .. source .. ")"
+        end
+        lines[#lines + 1] = text
+    end
+    return lines
+end
+
 -- What the list comes to: the observed figure and the estimate apart, and
 -- the rows with no price counted, not priced.
 function Present.SellTotal(list)
@@ -209,7 +300,7 @@ function Present.SellTotal(list)
     if known > 0 then parts[#parts + 1] = coin(known) end
     if estimated > 0 then parts[#parts + 1] = "about " .. coin(estimated) .. " (estimate)" end
     if unknown > 0 then
-        parts[#parts + 1] = plural(unknown, "price", "prices") .. " unknown - check vendor"
+        parts[#parts + 1] = plural(unknown, "price", "prices") .. " unknown—check vendor"
     end
     if #parts == 0 then return nil end
     return "Would sell for: " .. table.concat(parts, ", plus ")
@@ -219,6 +310,29 @@ end
 function Present.KeptText(k, names)
     local name = type(k.name) == "string" and k.name ~= "" and k.name or Present.Name(k.key, names)
     return name .. ": " .. tostring(k.reason or "kept")
+end
+
+-- The never-sell command's words (L6-G, Items/Keep.lua).
+Present.KEEP_NOT_LOADED = "Your saved data is not loaded yet; try again after login."
+Present.KEEP_EMPTY = "Your never-sell list is empty."
+Present.KEEP_ONE_AT_A_TIME = "One item at a time, please: nothing was changed."
+
+-- How to use it, with the whole command as it is typed.
+function Present.KeepUsage(slash)
+    local cmd = tostring(slash or "") .. " keep"
+    return "Say " .. cmd .. " <item link>, " .. cmd .. " remove <item link>, or " .. cmd .. " for the list."
+end
+
+-- One answer of the command. what: "added", "removed", "already", "absent"
+-- (each with the item's name), "failed" (the write was refused; no internal
+-- reason is shown), or "header" (with how many are on the list).
+function Present.KeepText(what, value)
+    if what == "added" then return tostring(value) .. " is now on your never-sell list." end
+    if what == "removed" then return tostring(value) .. " is off your never-sell list." end
+    if what == "already" then return tostring(value) .. " is already on your never-sell list." end
+    if what == "absent" then return tostring(value) .. " is not on your never-sell list." end
+    if what == "header" then return "Never sold (" .. tostring(value) .. "):" end
+    return "That could not be saved, so nothing was changed."
 end
 
 -- The whole list, top to bottom: what would be sold, its total, notes on
@@ -285,4 +399,58 @@ function Present.View(plan, opts)
         view.lines[#view.lines + 1] = "Problem: " .. tostring(p)
     end
     return view
+end
+
+-- ---------------------------------------------------------------- bank list
+-- The banker list (L6-D): Bank.Pick as lines. A count that is not known is
+-- left out, not guessed; a name that was not read is "item <key>".
+
+Present.BANK_HEADER = "To bank (nothing is moved for you):"
+Present.HELD_HEADER = "Staying with you, held for your steps:"
+Present.NOTHING_TO_BANK = "Nothing to bank"
+
+local function bankHead(r, names)
+    local name = type(r.name) == "string" and r.name ~= "" and r.name or Present.Name(r.key, names)
+    return isCount(r.count) and (r.count .. " x " .. name) or name
+end
+
+function Present.BankLines(pick, names)
+    if type(pick) ~= "table" or not pick.ok then
+        return { "Can't list what to bank: " .. Present.BAGS_UNREAD }
+    end
+    local lines = {}
+    local rows = type(pick.rows) == "table" and pick.rows or {}
+    -- Items whose kind was not read are not "nothing to bank": they are said.
+    local unread = isCount(pick.unread) and pick.unread or 0
+    if #rows == 0 and unread > 0 then
+        lines[#lines + 1] = "Can't tell what to bank: " .. unread
+            .. (unread == 1 and " item was" or " items were") .. " not read yet."
+    elseif #rows == 0 then
+        lines[#lines + 1] = Present.NOTHING_TO_BANK
+    else
+        lines[#lines + 1] = Present.BANK_HEADER
+        for _, r in ipairs(rows) do
+            lines[#lines + 1] = bankHead(r, names) .. ": " .. tostring(r.reason or "kept for later")
+        end
+        if unread > 0 then
+            lines[#lines + 1] = unread .. (unread == 1 and " more item was not read yet, so it is not listed."
+                or " more items were not read yet, so they are not listed.")
+        end
+    end
+    local held = type(pick.held) == "table" and pick.held or {}
+    if #held > 0 then
+        lines[#lines + 1] = Present.HELD_HEADER
+        for _, h in ipairs(held) do lines[#lines + 1] = bankHead(h, names) end
+    end
+    return lines
+end
+
+-- The advisor's one-line prompt for the same pick, or nil when there is
+-- nothing to say: nothing to bank, or it can't be told (bags or item facts
+-- not read). A count is only given for what was read.
+function Present.BankPrompt(pick)
+    if type(pick) ~= "table" or not pick.ok or type(pick.rows) ~= "table" then return nil end
+    local n = #pick.rows
+    if n == 0 then return nil end
+    return n .. (n == 1 and " kind" or " kinds") .. " of item to put in the bank."
 end

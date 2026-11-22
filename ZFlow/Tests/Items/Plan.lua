@@ -108,13 +108,13 @@ tests["plan: an observed price can say no, an estimate can't say yes"] = functio
     local bp = build(goal, R.Fake({ bags = { hide = 10 }, money = 99999 }), bare)
     local bv = from(rowsByKey(bp).thread, "vendor")
     t.eq(bv.basis, "unknown", "no source recorded: treated as no price")
-    t.eq(bv.text, "price unknown - check trainer", "and it reads as unknown")
+    t.eq(bv.text, "price unknown—check vendor", "and it reads as unknown")
     t.eq(bp.cost.estimated, 0, "not added up as an estimate")
     t.eq(bp.cost.unknown, 1, "counted as a row with no price")
     t.eq(bp.afford, "unknown", "so affordability is unknown")
     -- No price at all.
     local np = build(goal, R.Fake({ bags = { hide = 10 }, money = 99999 }), {})
-    t.eq(from(rowsByKey(np).thread, "vendor").text, "price unknown - check trainer", "no price: unknown")
+    t.eq(from(rowsByKey(np).thread, "vendor").text, "price unknown—check vendor", "no price: unknown")
     t.eq(np.afford, "unknown", "unknown price: unknown")
     -- Part observed and already too dear: that is a certain no.
     local mixed = { recipes = { r = { makes = "x", mats = { a = 1, b = 1 } } }, sources = { a = { vendor = true }, b = { vendor = true } },

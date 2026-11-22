@@ -481,16 +481,16 @@ return {
         end
     end,
 
-    ["wiring PS1: a trainer on another map has that map's size asked for"] = function(t)
+    -- Was PS1 (the other map's size is asked for). Owner decision D10: a
+    -- trainer on another map is text only, so no distance is worked out and
+    -- that size is not needed.
+    ["wiring D10: a trainer on another map is one line of text, with no distance"] = function(t)
         local c, a = profStart(75, 75, nil, 1412)
         c.setMapSize(1412, 800, 400)
-        local asked, real = {}, c.mapSize
-        c.mapSize = function(map)
-            asked[map] = (asked[map] or 0) + 1
-            return real(map)
-        end
         login(c)
         a.relayout()
-        t.ok((asked[1412] or 0) > 0, "the trainer's map is in the list of maps asked")
+        local q, p = c.arrows[1], c.arrows[2]
+        t.eq(q.lines, { N.WAYPOINT_LABEL, "100 yd", "Mining trainer \226\128\148 other map" })
+        t.eq(p.shown, false, "no needle")
     end,
 }

@@ -96,6 +96,40 @@ function Arrow.StyleRow(k)
     return row
 end
 
+-- The palette of the arrow colours (G56): a setting row of its own. It
+-- picks which colours stand for the meanings (N.ARROW_PALETTES); what each
+-- colour means does not change.
+Arrow.PALETTE = "arrow.palette"
+Arrow.PALETTE_PATH = "layout.arrowPalette"
+
+local paletteRefused = setmetatable({}, { __mode = "k" })
+
+-- The palette row on kernel k, declared the first time it is asked for; nil
+-- when the kernel refused it (asked once, one problem of the arrow).
+function Arrow.PaletteRow(k)
+    local row = k.settings:row(Arrow.PALETTE)
+    if row or paletteRefused[k] then return row end
+    local choices = {}
+    for i = 1, #ns.Nav.ARROW_PALETTES do choices[i] = ns.Nav.ARROW_PALETTES[i][1] end
+    row = k:Setting({
+        key = Arrow.PALETTE, scope = "account", type = "choice", choices = choices,
+        default = choices[1], path = Arrow.PALETTE_PATH,
+        label = "Arrow colours", group = "Arrows",
+        help = "The colours the arrow uses: the standard ones, or ones picked to be told apart by colour-blind players.",
+    })
+    if not row then
+        paletteRefused[k] = true
+        k.problems:add("arrow", "row", "the palette row was refused; the palette is not kept")
+    end
+    return row
+end
+
+-- The colours picked on kernel k: the N.ARROW_PALETTE row of the saved
+-- word, the standard one for no word or a word that is no choice.
+function Arrow.Palette(k)
+    return ns.Nav.ArrowPaletteOf(k.store:get("account", Arrow.PALETTE_PATH))
+end
+
 -- The styles for a menu, in order: { key, label, on } with `on` the one
 -- named by `using`.
 function Arrow.Styles(using)
@@ -114,8 +148,9 @@ function Arrow.Saved(k)
 end
 
 -- The demo's arrow source: ArrowView's state plus the turns and lines.
--- near: the quest step reached.
-function Arrow.DemoSource(client, layout, near)
+-- near: the quest step reached. palette (optional): the N.ARROW_PALETTE row
+-- the arrows are painted from; none is the standard one.
+function Arrow.DemoSource(client, layout, near, palette)
     local D, N = Arrow.DEMO, ns.Nav
     local here = client.zone()
     local facing = client.facing()
@@ -128,7 +163,7 @@ function Arrow.DemoSource(client, layout, near)
     local pLines = { "Demo: east" }
     return {
         view = {
-            layout = layout, screenW = w, screenH = h, gate = "open",
+            layout = layout, screenW = w, screenH = h, gate = "open", palette = palette,
             player = here, facingKnown = facing ~= nil,
             quest = { hasStep = true, target = here, distance = qd,
                       textHeight = #qLines * Arrow.LINE_HEIGHT },
@@ -146,6 +181,8 @@ end
 -- line is the unknown-direction line (GuideSource's lost). That line is left
 -- out for an arrow drawn as the ring, which points nowhere, and where the
 -- stack it would join already has one: once per stack of text.
+-- The lines of a profession needle that is bare (off, with a step: owner
+-- decision D2) are shown like those of one that is drawn.
 -- -> out, kept. kept = { quest = n, prof = n }: how many of each arrow's own
 -- lines are in out, wherever they are drawn; no entry for an arrow whose
 -- text is not shown.
@@ -168,7 +205,9 @@ function Arrow.Lines(view, lines, lost)
     end
     if view.quest.shown and view.quest.text.shown then add("quest", "quest") end
     local pt = view.prof.text
-    if view.prof.shown and pt.shown then add("prof", pt.to == "quest" and "quest" or "prof") end
+    if (view.prof.shown or view.prof.bare) and pt.shown then
+        add("prof", pt.to == "quest" and "quest" or "prof")
+    end
     return out, kept
 end
 
@@ -247,11 +286,14 @@ Arrow.HERE_TEXT = "you're here"
 -- N.ArrowGate as its intro argument. While the gate it gives is "intro" the
 -- quest arrow stands upright with the title as its one line. A guide's own
 -- gate still wins.
-function Arrow.GuideSource(client, layout, guide, intro)
+-- palette (optional): the N.ARROW_PALETTE row the arrows are painted from,
+-- used where the guide names none of its own.
+function Arrow.GuideSource(client, layout, guide, intro, palette)
     local N = ns.Nav
     local w, h = client.screen()
     local view = {}
     for key, v in pairs(type(guide.view) == "table" and guide.view or {}) do view[key] = v end
+    if view.palette == nil then view.palette = palette end
     view.layout, view.screenW, view.screenH = layout, w, h
     local given = { quest = guide.quest, prof = guide.prof, separate = guide.separate,
                     link = guide.link, view = view }
@@ -280,6 +322,8 @@ function Arrow.GuideSource(client, layout, guide, intro)
         else
             local label = more[key].label or step.label
             if label ~= nil then out[#out + 1] = tostring(label) end
+            -- A step may say one more line of its own under its label (S43).
+            if step.detail ~= nil then out[#out + 1] = tostring(step.detail) end
             local d = state[key] and state[key].distance
             if type(d) == "number" then
                 local word = more[key].compass
@@ -325,6 +369,17 @@ end
 -- the loading screen. Needs an in-game check (MR2-1).
 Arrow.INTRO_PATH = "layout.arrowIntroSeen"
 Arrow.INTRO_SECONDS = 3
+
+-- Whether the player's own quests may be the quest step (S43): the
+-- setting row N.QuestSource.SETTING, on unless it says a plain false (the
+-- row is the lead's to add; with no such row the answer is on).
+function Arrow.QuestArrowOn(k)
+    local s = type(k) == "table" and k.settings or nil
+    local Q = ns.Nav and ns.Nav.QuestSource
+    if type(s) ~= "table" or type(s.get) ~= "function" or not Q then return true end
+    local ok, v = pcall(s.get, s, Q.SETTING)
+    return not (ok and v == false)
+end
 
 -- The name the arrows are declared under as a module.
 Arrow.NAME = "arrow"
@@ -384,6 +439,9 @@ function Arrow.Start(k, diag, own)
     local shownLines, drawer = nil, nil
     local stop
     local guideFn = nil
+    -- The player's own quests (S43, Nav/QuestRead.lua): the quest step when
+    -- there is no waypoint. Read-only; nil when that file is not loaded.
+    local quests = N.QuestWatch and N.QuestSource and N.QuestWatch(client) or nil
     -- introWanted: this install has not seen the intro and it has not ended.
     -- entered: the world has been entered. introShown: the last layout had
     -- the intro on the quest arrow. introUntil: when it ends, nil until the
@@ -410,14 +468,24 @@ function Arrow.Start(k, diag, own)
     -- never takes the waypoint's place. A guide that was set wins whole,
     -- even when it answers nothing: nothing is added to it. The intro
     -- plays over whichever it is.
+    -- The player's own waypoint (G35, Nav/Waypoint.lua) is the quest step
+    -- while it is set: it wins over the pin on the game's map. It is only
+    -- read here: looking makes no saved table. mine: the quest step of the
+    -- last source was the player's own waypoint.
+    local W = N.Waypoint
+    local mine = false
     local function source()
-        if demo then return Arrow.DemoSource(client, Arrow.Saved(k), near) end
+        mine = false
+        if demo then return Arrow.DemoSource(client, Arrow.Saved(k), near, Arrow.Palette(k)) end
         local playing = intro()
         local guide
         if guideFn then
             guide = guideFn()
         else
-            local step = N.WaypointStep(client)
+            local step = W and W.Step(k.store:get(W.SCOPE, W.PATH), ask(client, "position"), ask(client, "zone"))
+            if step then mine = true else step = N.WaypointStep(client) end
+            -- The player's own pin (/way, then the map pin) wins over the player's quests.
+            if step == nil and quests and Arrow.QuestArrowOn(k) then step = quests.step() end
             local prof = N.ProfStepFrom(client, k.store)
             guide = (step or prof) and { quest = step, prof = prof } or nil
         end
@@ -425,7 +493,7 @@ function Arrow.Start(k, diag, own)
             if not playing then return nil end
             guide = {}
         end
-        return Arrow.GuideSource(client, Arrow.Saved(k), guide, playing)
+        return Arrow.GuideSource(client, Arrow.Saved(k), guide, playing, Arrow.Palette(k))
     end
 
     local function hideAll()
@@ -433,6 +501,10 @@ function Arrow.Start(k, diag, own)
         handles.quest.show(false)
         handles.prof.show(false)
     end
+
+    -- Which frames are up: an arrow that is shown, or a bare one (D2) that
+    -- has lines of its own to show.
+    local up = { quest = false, prof = false }
 
     -- A fresh layout: what is shown, where, at what scale and opacity.
     local function relayout()
@@ -448,6 +520,16 @@ function Arrow.Start(k, diag, own)
             return
         end
         local src = source()
+        -- Arrival at the player's own waypoint: it is cleared, that is said
+        -- once, and the layout is made from what is left. Not while the
+        -- corpse stands in for the quest step: that distance is not the
+        -- waypoint's. A distance that is not known clears nothing.
+        if src and mine and type(src.view) == "table" and src.view.gate ~= "corpse"
+            and type(src.view.quest) == "table"
+            and W.Arrive(k.store:get(W.SCOPE, W.PATH), src.view.quest.distance) == W.ARRIVED then
+            client.print(id.title .. ": waypoint reached.")
+            src = source()
+        end
         if not src then
             current = nil
             hideAll()
@@ -474,8 +556,13 @@ function Arrow.Start(k, diag, own)
         end
         for _, key in ipairs(N.ARROW_KEYS) do
             local ops, h = view[key], handles[key]
-            h.show(ops.shown)
-            if ops.shown then
+            -- A bare needle keeps its frame for its text when the lines are
+            -- its own: stacked under a shown quest arrow they are in that
+            -- arrow's stack, and no second frame is put up.
+            local shown = (ops.shown or (ops.bare and #lines[key] > 0)) and true or false
+            up[key] = shown
+            h.show(shown)
+            if shown then
                 h.look(ops.look)
                 -- An arrow the player is dragging is left where the hand has it.
                 local held = type(h.dragging) == "function" and h.dragging() == true
@@ -491,12 +578,16 @@ function Arrow.Start(k, diag, own)
                 h.alpha(lost and type(ops.alpha) == "number" and ops.alpha * Arrow.LOST_ALPHA or ops.alpha)
                 h.behind(ops.behind)
                 local textPoint = ops.text.point
-                if key == "quest" and view.prof.shown and view.prof.text.shown and view.prof.text.to == "quest" then
+                if key == "quest" and (view.prof.shown or view.prof.bare) and view.prof.text.shown
+                    and view.prof.text.to == "quest" then
                     textPoint = view.prof.text.point   -- one stack of lines: the stack's gap
                 end
                 h.text(lines[key], textPoint)
+                -- Direction unknown, or a needle that is off: the art is
+                -- not drawn (D2). The faded frame and the text stay.
                 N.ArrowAim(motion[key], { turn = src.turns[key], colour = ops.colour,
-                                          arrived = ops.mode == "ring" })
+                                          arrived = ops.mode == "ring",
+                                          bare = (lost or ops.bare) and true or false })
             end
         end
         current = view
@@ -530,7 +621,7 @@ function Arrow.Start(k, diag, own)
         if not current then return end
         local now = client.now()
         for _, key in ipairs(N.ARROW_KEYS) do
-            if current[key].shown then
+            if up[key] then
                 local h = handles[key]
                 if key == "quest" and drawn ~= "modern" then
                     shaped = true
@@ -703,6 +794,15 @@ function Arrow.Start(k, diag, own)
         end
         if own.loaded then apply() else listen("PLAYER_LOGIN", apply) end
         listen("PLAYER_ENTERING_WORLD", guarded(enterWorld))
+        if quests then
+            -- The quest log or the zone changed: read both again, then lay out.
+            local changed = guarded(function()
+                quests.refresh()
+                relayout()
+            end)
+            listen("QUEST_LOG_UPDATE", changed)
+            listen("ZONE_CHANGED_NEW_AREA", changed)
+        end
     end
 
     local USAGE = id.slash .. " arrow demo | near | separate | stack | reset | hide quest|prof | text quest|prof"
@@ -768,6 +868,43 @@ function Arrow.Start(k, diag, own)
         end
     end
 
+    -- The player's own waypoint (G35): "/way x y [label]", "/way clear",
+    -- and the same after the addon's own command and the word "way" (there
+    -- the text arrives lower-cased, so a label typed that way is too).
+    -- Nothing is saved until one is set. Look-only: it points, no more.
+    local function way(rest)
+        local text = type(rest) == "string" and rest:match("^%s*(.-)%s*$") or ""
+        local HOW = "/way x y [label] sets a waypoint on the map you are on; /way clear removes it."
+        if not W then
+            say("waypoints are not loaded.")
+        elseif not ready then
+            say("waypoints are not ready until login.")
+        elseif text == "" then
+            local wp = W.Get(k.store:get(W.SCOPE, W.PATH))
+            local at = wp and W.Text(wp) or nil
+            say(at and ("waypoint: " .. at .. ". " .. HOW) or HOW)
+        elseif text:lower() == "clear" then
+            if W.Clear(k.store:get(W.SCOPE, W.PATH)) then
+                relayout()
+                say("waypoint cleared.")
+            else
+                say(W.REASON.unset .. ".")
+            end
+        else
+            local wp, why = W.Set(W.Slot(k.store), ask(client, "position"), text)
+            if wp then
+                say("waypoint set: " .. tostring(W.Text(wp)) .. ".")
+                relayout()
+            else
+                say(tostring(why) .. "; nothing changed.")
+            end
+        end
+    end
+    if diag and type(diag.commands) == "table" then diag.commands.way = way end
+    if type(client.slash) == "function" then
+        client.slash(id.bindingHeader .. "WAY", "/way", way)
+    end
+
     local function setGuide(fn)
         guideFn = type(fn) == "function" and fn or nil
         relayout()
@@ -816,6 +953,7 @@ function Arrow.Declare(k, diag)
     local api = {}
     Arrow.Row(k)
     Arrow.StyleRow(k)
+    Arrow.PaletteRow(k)
     -- Before the start the style in use is the modern one and none is set.
     function api.style()
         if inner then return inner.style() end
