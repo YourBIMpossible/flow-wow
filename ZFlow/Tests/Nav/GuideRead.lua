@@ -136,6 +136,23 @@ T["read: a step given as shares of a map uses the client's size for it"] = funct
     t.eq(s.quest.why, "size")
 end
 
+T["link: a further map gets its size but no offset unless one is given (W1)"] = function(t)
+    local c = client()
+    c.setMapSize(1412, 2000, 1000)
+    local link = N.GuideLink(c, nil, { 1412 })
+    t.eq(link[1411], { x = 0, y = 0, w = 1000, h = 500 }, "the player's map sits at 0, 0")
+    t.eq(link[1412], { w = 2000, h = 1000 }, "no offset is made up for another map")
+end
+
+T["read: a step on another map with a size but no link: no distance, no turn (W1)"] = function(t)
+    local c = client()
+    c.setMapSize(1412, 2000, 1000)
+    local s = N.GuideRead(c, { quest = { place = { map = 1412, x = 0.5, y = 0.5 } } })
+    t.eq(s.quest.distance, nil, "no distance from a guessed offset")
+    t.eq(s.quest.turn, nil, "no turn from a guessed offset")
+    t.eq(s.quest.why, "zone")
+end
+
 T["read: no steps: no arrows"] = function(t)
     local s = N.GuideRead(client(), nil)
     t.eq(s.quest, { hasStep = false })

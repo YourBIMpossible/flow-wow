@@ -44,14 +44,19 @@ local function build(client, position, given, maps)
         end
     end
     local want = {}
-    if type(position) == "table" and position.map ~= nil then want[#want + 1] = position.map end
+    local here = type(position) == "table" and position.map or nil
+    if here ~= nil then want[#want + 1] = here end
     if type(maps) == "table" then
         for _, m in ipairs(maps) do want[#want + 1] = m end
     end
     for _, map in ipairs(want) do
         local size = sizeOf(client, map)
         if size then
-            local e = link[map] or { x = 0, y = 0 }
+            -- Only the player's map sits at 0, 0 by default. Any other map
+            -- gets its size but no offset unless the caller gives one, so
+            -- N.Bearing answers "zone" rather than treat two maps as sharing
+            -- one corner.
+            local e = link[map] or (map == here and { x = 0, y = 0 } or {})
             e.w, e.h = size.w, size.h
             link[map] = e
         end
@@ -66,7 +71,8 @@ end
 --   maps: optional list of further maps to ask the size of.
 -- -> { [map] = { x, y, w, h } }. A map the client gives no size for gets no
 --    w and h; with no `given` entry it is left out altogether. With no
---    `given`, the player's map sits at offset 0, 0.
+--    `given`, the player's map sits at offset 0, 0; any further map gets
+--    w and h only, so it cannot be related to the player's map.
 function N.GuideLink(client, given, maps)
     return build(client, ask(client, "position"), given, maps)
 end

@@ -11,8 +11,9 @@ local _, ns = ...
 --
 -- nil when the client has no waypoint read, the read fails, no waypoint is
 -- set, or the answer is not a map with two finite numbers. cont is the
--- continent of the zone the player is in, as the corpse step has it; it is
--- left out when the client does not say. Nothing is guessed.
+-- continent of the zone the player is in, as the corpse step has it, and only
+-- when the waypoint is on the player's own map (client.position().map); it is
+-- left out otherwise or when the client does not say. Nothing is guessed.
 ns.Nav = ns.Nav or {}
 local N = ns.Nav
 
@@ -33,9 +34,17 @@ end
 function N.WaypointStep(client)
     local at = ask(client, "waypoint")
     if type(at) ~= "table" or at.map == nil or not finite(at.x) or not finite(at.y) then return nil end
-    local zone = ask(client, "zone")
+    -- The player's continent is given only to a waypoint on the player's own
+    -- map: the client has no read of an arbitrary map's continent, and a
+    -- borrowed one would hide a real continent difference from N.Bearing.
+    local cont
+    local here = ask(client, "position")
+    if type(here) == "table" and here.map ~= nil and here.map == at.map then
+        local zone = ask(client, "zone")
+        cont = type(zone) == "table" and zone.cont or nil
+    end
     return {
         label = N.WAYPOINT_LABEL,
-        place = { cont = type(zone) == "table" and zone.cont or nil, map = at.map, x = at.x, y = at.y },
+        place = { cont = cont, map = at.map, x = at.x, y = at.y },
     }
 end

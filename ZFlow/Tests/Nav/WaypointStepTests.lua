@@ -53,6 +53,18 @@ return {
         t.eq(more.quest.label, "Waypoint")
     end,
 
+    ["waypoint on another map: the place has no continent, and no distance or turn (W1, W2)"] = function(t)
+        local c = start()
+        c.setMapSize(1412, 2000, 1000)
+        c.setWaypoint(1412, 0.5, 0.5)
+        local step = N.WaypointStep(c)
+        t.eq(step, { label = "Waypoint", place = { map = 1412, x = 0.5, y = 0.5 } },
+            "the player's continent is not given to a map the player is not on")
+        local state = N.ViewState(c, { quest = step })
+        t.eq(state.quest.distance, nil, "no distance from a guessed offset")
+        t.eq(state.quest.turn, nil, "no turn from a guessed offset")
+    end,
+
     ["waypoint set, zone unknown: the place has no continent"] = function(t)
         local c = ns.make.fakeClient()
         c.setWaypoint(1411, 0.3, 0.5)
