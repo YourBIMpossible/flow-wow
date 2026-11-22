@@ -44,10 +44,10 @@ R.SNAPSHOT_FIELDS = {
 --                 a hidden amount, that a finisher is due. Not given, no
 --                 finisher is suggested.
 R.FROM_AMOUNT = { hpPct = "health", outOfMana = "power", canSpareMana = "power", combo = "power" }
--- A spell row: known and onCooldown are flags, but usable, inRange and noPower
+-- A spell row: onCooldown is a flag, but known, usable, inRange and noPower
 -- keep "not read" (nil) apart from "no" (false): the chooser treats a range
--- or a usable state nobody read as fine, and never reads "lacks power" into
--- a row nobody read.
+-- or a usable state nobody read as fine, never reads "lacks power" into a
+-- row nobody read, and does not suggest a spell whose known nobody read.
 R.SPELL_FIELDS = { "known", "usable", "onCooldown", "inRange", "noPower", "castMs" }
 
 local kindOf = {}
@@ -68,7 +68,8 @@ local function copySpells(t)
     if type(t) ~= "table" then return out end
     for name, row in pairs(t) do
         if type(name) == "string" and type(row) == "table" then
-            local r = { known = row.known and true or false, onCooldown = row.onCooldown and true or false }
+            local r = { onCooldown = row.onCooldown and true or false }
+            if row.known ~= nil then r.known = row.known and true or false end
             if row.usable ~= nil then r.usable = row.usable and true or false end
             if row.inRange ~= nil then r.inRange = row.inRange and true or false end
             if row.noPower ~= nil then r.noPower = row.noPower and true or false end

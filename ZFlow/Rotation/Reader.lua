@@ -59,3 +59,23 @@ function RR.SpellRows(pack, ids, spell)
     end
     return out
 end
+
+-- The ids table SpellRows takes, built by asking `idOf` (a function of one
+-- spell name, meant to be client.spellId) for each spell the pack names.
+-- -> ids, missing
+--   ids: { [name] = spell id }, only where the answer was a number.
+--   missing (sorted): the pack's spells with no id: no function, an ask that
+--   failed, or any other answer. They get no id and so are not read.
+function RR.SpellIds(pack, idOf)
+    local ids, missing = {}, {}
+    for _, name in ipairs(RR.SpellNames(pack)) do
+        local ok, id = false, nil
+        if type(idOf) == "function" then ok, id = pcall(idOf, name) end
+        if ok and type(id) == "number" and id == id then
+            ids[name] = id
+        else
+            missing[#missing + 1] = name
+        end
+    end
+    return ids, missing
+end
