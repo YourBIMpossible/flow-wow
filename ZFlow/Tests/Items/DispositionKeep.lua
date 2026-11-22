@@ -130,7 +130,10 @@ tests["keep rules: an upgrade at a later level, or for a role you keep, is kept"
     local below = D.Decide(gearItem({ minLevel = 24 }),
         { gearRead = true, gear = { [1000] = { canUse = true, diffs = { feral = 2 } } }, role = "feral", level = 20 })
     t.eq(below.reason, "upgrade at level 24", "below it: later")
-    local unknownLevel = D.Decide(gearItem({ minLevel = nil }),
+    -- pairs() skips a nil, so { minLevel = nil } kept the helper's 20 (lead, L6-B merge).
+    local noLevel = gearItem()
+    noLevel.minLevel = nil
+    local unknownLevel = D.Decide(noLevel,
         { gearRead = true, gear = { [1000] = { canUse = true, diffs = { feral = 2 } } }, role = "feral" })
     t.eq(unknownLevel.reason, "upgrade at a later level", "no level made up")
     local other = D.Decide(gearItem(), { gearRead = true, role = "feral",
