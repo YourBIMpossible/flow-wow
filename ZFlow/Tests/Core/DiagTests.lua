@@ -129,14 +129,14 @@ return {
         t.eq(snaps[4].reads.bankOpen, true)
     end,
 
-    ["save: only the newest forty are kept, the count keeps rising"] = function(t)
+    ["save: only the newest twenty are kept, the count keeps rising"] = function(t)
         local _, c, d = start()
         login(c)
         for _ = 1, 50 do d.snapshot("again") end
         local saved = c.saved(ns.id.accountDB).diag
-        t.eq(#saved.snaps, 40)
+        t.eq(#saved.snaps, 20)
         t.eq(saved.count, 51)
-        t.eq(saved.snaps[40].why, "again")
+        t.eq(saved.snaps[20].why, "again")
     end,
 
     ["windows: a repeated event is one opening; a later one is another"] = function(t)

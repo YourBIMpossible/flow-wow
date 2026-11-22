@@ -153,8 +153,21 @@ function ns.make.client(env)
         return c.now() * 1000
     end
 
+    -- Every line said also goes to the onPrint listeners (the copy box). A
+    -- listener that raises misses that line and no more: saying a line
+    -- never fails because of who listens, and the others still hear it.
+    -- A client with no print still feeds them.
+    local prints = Listeners(function() end, function() end)
     function c.print(text)
-        call(env.print, tostring(text))
+        text = tostring(text)
+        call(env.print, text)
+        prints.call("print", text)
+    end
+
+    -- fn(text) for every line c.print says. Returns a cancel function.
+    function c.onPrint(fn)
+        if type(fn) ~= "function" then return function() end end
+        return prints.add("print", function(text) pcall(fn, text) end)
     end
 
     -- fn(...) is called with the event's arguments. Returns a cancel function.
@@ -1967,6 +1980,126 @@ function ns.make.client(env)
             end
         end
         return { source = source, items = items }
+    end
+    -- A box of text the player can select and copy (L6-K, with the focus
+    -- rules of L6-N), or nil when the client cannot make one. First guess,
+    -- not seen in game.
+    --   spec = { name = global frame name or nil, width, height, title }
+    --   h.setText(text), h.show(on)
+    -- The box never takes the keyboard by itself: auto-focus is off, so it
+    -- has focus only after the player clicks in the text. It gives focus
+    -- back whenever it is hidden, however that happens, and on Escape,
+    -- which also hides it. A client that will not turn auto-focus off gets
+    -- no box. It is its own edit box: the chat edit box is not used and no
+    -- chat frame is hooked. Its length is not limited. Typing in it changes
+    -- nothing: the text is put back. A new box is hidden.
+    function c.copyBox(spec)
+        spec = type(spec) == "table" and spec or {}
+        local parent = env.UIParent
+        -- A name is used only when no global has it already.
+        local name = type(spec.name) == "string" and spec.name ~= "" and env[spec.name] == nil and spec.name or nil
+        local okF, f = call(env.CreateFrame, "Frame", name, parent)
+        if not okF or f == nil then return nil end
+        local width, height = tonumber(spec.width) or 520, tonumber(spec.height) or 320
+        method(f, "Hide")
+
+        -- The template draws the scroll bar and needs a name for it; a
+        -- client without it, or a box without a name, gets a plain one.
+        local okS, scroll = false, nil
+        if name then okS, scroll = call(env.CreateFrame, "ScrollFrame", name .. "Scroll", f, "UIPanelScrollFrameTemplate") end
+        if not okS or scroll == nil then okS, scroll = call(env.CreateFrame, "ScrollFrame", nil, f) end
+        if not okS then scroll = nil end
+
+        local okE, edit = call(env.CreateFrame, "EditBox", nil, scroll or f)
+        if not okE or edit == nil then return nil end
+        -- First, before the box can be shown: no focus unless clicked.
+        if not method(edit, "SetAutoFocus", false) then return nil end
+        method(edit, "ClearFocus")
+        method(edit, "SetMultiLine", true)
+        method(edit, "SetMaxLetters", 0)
+        method(edit, "SetFontObject", "ChatFontNormal")
+        method(edit, "SetWidth", width - 44)
+
+        if not method(f, "SetSize", width, height) then
+            method(f, "SetWidth", width)
+            method(f, "SetHeight", height)
+        end
+        method(f, "SetPoint", "CENTER", parent, "CENTER", 0, 0)
+        method(f, "SetFrameStrata", "DIALOG")
+        method(f, "SetClampedToScreen", true)
+        method(f, "EnableMouse", true)
+
+        local okBg, bg = method(f, "CreateTexture", nil, "BACKGROUND")
+        if okBg and bg ~= nil then
+            method(bg, "SetAllPoints", f)
+            if not method(bg, "SetColorTexture", 0, 0, 0, 0.85) then method(bg, "SetTexture", 0, 0, 0, 0.85) end
+        end
+
+        local okT, title = method(f, "CreateFontString", nil, "OVERLAY", "GameFontNormalSmall")
+        if okT and title ~= nil then
+            method(title, "SetPoint", "TOPLEFT", f, "TOPLEFT", 8, -8)
+            method(title, "SetText", type(spec.title) == "string" and spec.title or "")
+        end
+
+        if scroll ~= nil then
+            method(scroll, "SetPoint", "TOPLEFT", f, "TOPLEFT", 8, -26)
+            method(scroll, "SetPoint", "BOTTOMRIGHT", f, "BOTTOMRIGHT", -30, 8)
+            method(scroll, "SetScrollChild", edit)
+        else
+            method(edit, "SetPoint", "TOPLEFT", f, "TOPLEFT", 8, -26)
+            method(edit, "SetPoint", "BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 8)
+        end
+
+        local h = {}
+        local held, setting = "", false
+        local function release() method(edit, "ClearFocus") end
+        local function put(text)
+            setting = true
+            method(edit, "SetText", text)
+            setting = false
+        end
+
+        -- The handlers close over the frames: they use none of the
+        -- arguments the client passes.
+        method(f, "SetScript", "OnHide", release)
+        method(edit, "SetScript", "OnEscapePressed", function()
+            release()
+            method(f, "Hide")
+        end)
+        method(edit, "SetScript", "OnTextChanged", function()
+            if setting then return end
+            local okG, now = method(edit, "GetText")
+            if okG and now ~= held then put(held) end
+        end)
+
+        local okB, button = call(env.CreateFrame, "Button", nil, f, "UIPanelCloseButton")
+        if okB and button ~= nil then
+            method(button, "SetPoint", "TOPRIGHT", f, "TOPRIGHT", 0, 0)
+            method(button, "SetScript", "OnClick", function()
+                release()
+                method(f, "Hide")
+            end)
+        end
+
+        function h.setText(text)
+            held = tostring(text == nil and "" or text)
+            put(held)
+            -- What the client holds is what a later change is told from.
+            local okG, now = method(edit, "GetText")
+            if okG and type(now) == "string" then held = now end
+            method(edit, "SetCursorPosition", 0)
+        end
+
+        function h.show(on)
+            if on then
+                method(f, "Show")
+            else
+                -- Not left to OnHide alone: a client may not run it.
+                release()
+                method(f, "Hide")
+            end
+        end
+        return h
     end
 
     -- One movable icon, or nil when the client cannot make a frame. First

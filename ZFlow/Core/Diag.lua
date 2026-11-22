@@ -22,14 +22,18 @@
 -- ready at login is by then), and when the bank, a vendor, a trainer, a
 -- profession window or the flight map opens; a trainer and a profession
 -- window get a second one when the client says their list has arrived. The
--- newest KEEP are kept. Each start also saves `api`: the names inside the
--- client's namespaces, so the next build is written from what is there.
+-- newest KEEP are kept, and the count of snapshots and of starts is kept
+-- beside them. The names table is the same in every snapshot of one client
+-- build, so it is saved once, with its build, not in each snapshot. Each
+-- start also saves `api`: the names inside the client's namespaces, so the
+-- next build is written from what is there.
 local _, ns = ...
 
 local Diag = {}
 ns.Diag = Diag
 
-local KEEP = 40
+local KEEP = 20
+Diag.KEEP = KEEP
 local SHAPE_KEYS = 60
 -- Seconds after login for the "settled" snapshot, and the gap inside which
 -- the same window event again takes no second snapshot.
@@ -113,27 +117,66 @@ end
 -- types, and the values that are numbers, strings or booleans. A table
 -- answer is listed by key, one level deep (plain values kept, others by
 -- type), SHAPE_KEYS keys at most.
-local function shape(ok, ...)
+--
+-- Secret values (L6-R). This client marks some values secret (the player's
+-- health is one): comparing one, or doing arithmetic on it, raises and
+-- taints. isSecret(v), when given, is asked before a value is looked at in
+-- any other way: a secret one is recorded as the type "secret" with no
+-- value, inside a table answer too, and is never kept in the snapshot.
+local SECRET = "secret"
+
+local function shapeWith(isSecret, ok, ...)
     local n = select("#", ...)
     local row = { ok = ok and true or false, n = n, types = {}, values = {} }
     for i = 1, n do
         local v = select(i, ...)
-        row.types[i] = type(v)
-        if plain(v) then
-            row.values["v" .. i] = v
-        elseif type(v) == "table" then
-            local keys, kept = {}, 0
-            for key, value in pairs(v) do
-                if kept >= SHAPE_KEYS then break end
-                keys[tostring(key)] = plain(value) and value or type(value)
-                kept = kept + 1
+        -- type() first: it is the one thing known to be safe on a secret.
+        if type(v) ~= "nil" and isSecret and isSecret(v) then
+            row.types[i] = SECRET
+        else
+            row.types[i] = type(v)
+            if plain(v) then
+                row.values["v" .. i] = v
+            elseif type(v) == "table" then
+                local keys, kept = {}, 0
+                for key, value in pairs(v) do
+                    if kept >= SHAPE_KEYS then break end
+                    if type(value) ~= "nil" and isSecret and isSecret(value) then
+                        keys[tostring(key)] = SECRET
+                    else
+                        keys[tostring(key)] = plain(value) and value or type(value)
+                    end
+                    kept = kept + 1
+                end
+                row.values["v" .. i] = keys
             end
-            row.values["v" .. i] = keys
         end
     end
     return row
 end
+
+local function shape(ok, ...)
+    return shapeWith(nil, ok, ...)
+end
 Diag.Shape = shape
+Diag.ShapeWith = shapeWith
+
+-- Does the client call this value secret? False on a client with no
+-- issecretvalue (it has no secret values). On one that has it: true unless
+-- it answers exactly false, so a client that raises or will not say is
+-- treated as "secret". nil is never asked about (the client raises on it).
+function Diag.IsSecret(client, v)
+    if type(v) == "nil" then return false end
+    if client.typeOf("issecretvalue") ~= "function" then return false end
+    local ok, answer = client.raw("issecretvalue", v)
+    return not ok or answer ~= false
+end
+
+-- The row recorded in place of a probe that would have to look at a secret
+-- value (print it, compare it): one answer of type "secret", no value.
+local function secretRow()
+    return { ok = true, n = 1, types = { SECRET }, values = {} }
+end
 
 -- { profession, skill, max, total, learned } of a recipes() reading, or nil.
 local function recipeCounts(r)
@@ -151,8 +194,9 @@ local function mapSizeHere(client)
     return at and client.mapSize(at.map) or nil
 end
 
+-- What a game call answered, with every answer checked for secrecy first.
 local function ask(client, path, ...)
-    return shape(client.raw(path, ...))
+    return shapeWith(function(v) return Diag.IsSecret(client, v) end, client.raw(path, ...))
 end
 
 -- The first bag slot with something in it, by whichever call exists.
@@ -179,6 +223,10 @@ end
 -- the kernel it is handed, so it runs the same over the fake client.
 function Diag.Collect(k, why)
     local client = k.client
+    -- Every shape made in here checks its values for secrecy first: this
+    -- shadows the plain shape() for the rest of the function.
+    local function isSecret(v) return Diag.IsSecret(client, v) end
+    local function shape(ok, ...) return shapeWith(isSecret, ok, ...) end
     -- at: session seconds, left out when the client gives no time. clock:
     -- the wall clock, which still means something after a reload, on a
     -- client that has one.
@@ -276,10 +324,17 @@ function Diag.Collect(k, why)
     -- Health was saved with a type and no value: ask how the client prints
     -- it and whether it calls it a secret.
     local okHealth, health = client.raw("UnitHealth", "player")
-    if okHealth and health ~= nil then
-        S.healthText = shape(pcall(tostring, health))
+    if okHealth and type(health) ~= "nil" then
         S.healthSecret = ask(client, "issecretvalue", health)
-        S.healthIsItself = shape(pcall(function() return health == health end))
+        -- A secret health is never printed or compared: either raises and
+        -- taints on this client. "secret" is recorded in its place.
+        if Diag.IsSecret(client, health) then
+            S.healthText = secretRow()
+            S.healthIsItself = secretRow()
+        else
+            S.healthText = shape(pcall(tostring, health))
+            S.healthIsItself = shape(pcall(function() return health == health end))
+        end
     end
     S.healthMax = ask(client, "UnitHealthMax", "player")
     S.questEntries = ask(client, "C_QuestLog.GetNumQuestLogEntries")
@@ -384,12 +439,32 @@ function Diag.Api(client)
     return api
 end
 
--- Puts a snapshot in the saved table and trims to the newest KEEP.
+-- The client build as one text, "1.16.1 (7777)", to say which build a saved
+-- names table is of. "unknown" when the client does not say, or hides it.
+function Diag.BuildKey(client)
+    local ok, version, build = client.raw("GetBuildInfo")
+    if not ok or Diag.IsSecret(client, version) or Diag.IsSecret(client, build) then return "unknown" end
+    local kind = type(version)
+    if kind ~= "string" and kind ~= "number" then return "unknown" end
+    local text = tostring(version)
+    kind = type(build)
+    if kind == "string" or kind == "number" then text = text .. " (" .. tostring(build) .. ")" end
+    return text
+end
+
+-- Puts a snapshot in the saved table and trims to the newest KEEP. The names
+-- table of the snapshot is taken out of it and saved once, as
+-- diag.names = { build =, names = }: the newest one, of the build it was
+-- read on. The snapshot handed in is the one changed.
 function Diag.Save(k, snap)
     local db = k.client.saved(k.id.accountDB)
     if type(db.diag) ~= "table" then db.diag = {} end
     local d = db.diag
     if type(d.snaps) ~= "table" then d.snaps = {} end
+    if type(snap) == "table" and type(snap.names) == "table" then
+        d.names = { build = Diag.BuildKey(k.client), names = snap.names }
+        snap.names = nil
+    end
     d.snaps[#d.snaps + 1] = snap
     while #d.snaps > KEEP do table.remove(d.snaps, 1) end
     d.count = (tonumber(d.count) or 0) + 1
