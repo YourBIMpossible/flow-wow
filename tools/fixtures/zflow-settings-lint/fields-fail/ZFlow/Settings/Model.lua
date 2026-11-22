@@ -1,4 +1,3 @@
-local _, ns = ...
 local M = {}
 -- a comment row: { key = "ghost" } is not a row
 M.ROWS = {
