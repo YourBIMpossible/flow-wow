@@ -100,6 +100,9 @@ Nav\ServiceSeen.lua
 Nav\Errand.lua
 Nav\QuestSource.lua
 Nav\QuestRead.lua
+Nav\Rides.lua
+Nav\TravelSpells.lua
+Nav\TravelIcon.lua
 UI\ProfCard.lua
 UI\DevPanel.lua
 UI\SettingsSlash.lua

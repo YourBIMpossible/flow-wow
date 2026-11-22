@@ -119,6 +119,9 @@ return {
         "Nav/Errand.lua",
         "Nav/QuestSource.lua",
         "Nav/QuestRead.lua",
+        "Nav/Rides.lua",
+        "Nav/TravelSpells.lua",
+        "Nav/TravelIcon.lua",
         "UI/ProfCard.lua",
 
         -- On screen (after Nav: the panel uses its saved-point rules)
