@@ -159,6 +159,14 @@ return {
         t.eq(r and r.source and r.source.name, nil)
     end,
 
+    -- Build 1.60.1 hides the server and spawn parts of a GUID (the public
+    -- API page for UnitGUID says so): what they look like is not known.
+    ["client loot window: the id is read whatever the server and spawn parts hold"] = function(t)
+        local hiddenParts = "Creature-0-xQ9z-0-55-299-ZZ01xy"
+        local r = ns.make.client(lootEnv({ { link = LINK, name = "x", count = 1 } }, hiddenParts)).lootWindow()
+        t.eq(r and r.source, { kind = "creature", guid = hiddenParts, id = 299 })
+    end,
+
     ["client loot window: a source that is not a creature has no kind"] = function(t)
         local chest = "GameObject-0-4444-0-55-2843-00001A2B3C"
         local r = ns.make.client(lootEnv({ { link = LINK, name = "x", count = 1 } }, chest)).lootWindow()

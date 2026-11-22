@@ -23,6 +23,8 @@ local _, ns = ...
 --
 -- This only reads. Nothing here or in what it calls buys, sells or clicks.
 -- Not tested in game: MERCHANT_SHOW and the clock read are first guesses.
+-- Docs (warcraft.wiki.gg): Event MERCHANT_SHOW, told nothing, and API time; both
+-- names match.
 
 local PriceWatch = ns.PriceWatch or {}
 ns.PriceWatch = PriceWatch

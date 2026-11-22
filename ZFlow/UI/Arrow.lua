@@ -370,6 +370,9 @@ end
 -- First guess on 16001, not observed in a client: that the event is named
 -- PLAYER_ENTERING_WORLD, and that no frame is drawn to this add-on under
 -- the loading screen. Needs an in-game check (MR2-1).
+-- Docs (warcraft.wiki.gg, Event PLAYER_ENTERING_WORLD): the name matches; it is
+-- told isInitialLogin, isReloadingUi. What is drawn under the loading screen
+-- is not in the docs.
 Arrow.INTRO_PATH = "layout.arrowIntroSeen"
 Arrow.INTRO_SECONDS = 3
 
