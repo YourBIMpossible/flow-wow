@@ -1183,6 +1183,41 @@ function ns.make.fakeClient(opts)
     function c.merchantRedraw()
         for _, fn in ipairs({ unpack(merchantRedrawFns) }) do fn() end
     end
+    -- Every slot icon made (S13) is in c.slotIcons, in order: .spec, .shown,
+    -- .texture, .point, .places, .marked ({ r, g, b } or nil).
+    c.slotIcons = {}
+    function c.slotIcon(spec)
+        if s.noFrames then return nil end
+        local h = { spec = spec, shown = false, places = 0 }
+        function h.setTexture(tex)
+            h.texture = tex
+            return tex ~= nil
+        end
+        function h.place(point)
+            if type(point) ~= "table" then return end
+            h.point = { point[1], point[2], point[3], point[4] }
+            h.places = h.places + 1
+        end
+        function h.show(on) h.shown = on and true or false end
+        function h.mark(r, g, b)
+            if type(r) == "number" and type(g) == "number" and type(b) == "number" then
+                h.marked = { r, g, b }
+                return true
+            end
+            h.marked = nil
+            return false
+        end
+        c.slotIcons[#c.slotIcons + 1] = h
+        return h
+    end
+    -- modifiers(): what setModifiers gave (ctrl, shift, alt); nil each until
+    -- told: not known.
+    function c.modifiers()
+        local m = s.modifiers
+        if not m then return nil, nil, nil end
+        return m[1], m[2], m[3]
+    end
+    function c.setModifiers(ctrl, shift, alt) s.modifiers = { ctrl, shift, alt } end
     return c
 end
 

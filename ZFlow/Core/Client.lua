@@ -4073,6 +4073,100 @@ function ns.make.client(env)
         end
         return merchantFollowed or nil
     end
+
+    -- One small picture with a word over it and a coloured edge (S13, the
+    -- modifier queue), or nil when the client cannot make a frame. First
+    -- guess, not seen in game.
+    --   spec = { name = global frame name or nil, size = n, label = text }
+    --   h.setTexture(tex) -> true when the client took it; nil clears the
+    --                   picture and answers false.
+    --   h.place(point), h.show(on): as the icon's.
+    --   h.mark(r, g, b) -> true when an edge was drawn: the edge and the
+    --                   word in that colour. h.mark(nil): no edge, the word
+    --                   grey; answers false.
+    -- It takes no mouse, no click and no drag, and holds no secure action.
+    -- The frame calls are the ones the icon and the panel above already
+    -- make; no doc page was read for this one.
+    function c.slotIcon(spec)
+        spec = type(spec) == "table" and spec or {}
+        local parent = env.UIParent
+        local ok, f = call(env.CreateFrame, "Frame", spec.name, parent)
+        if not ok or f == nil then return nil end
+        local h = {}
+        local size = tonumber(spec.size) or 30
+
+        method(f, "Hide")
+        if not method(f, "SetSize", size, size) then
+            method(f, "SetWidth", size)
+            method(f, "SetHeight", size)
+        end
+        method(f, "SetFrameStrata", "MEDIUM")
+        method(f, "EnableMouse", false)
+
+        -- The edge: a flat square two wider all round, behind the picture.
+        local okRing, ring = method(f, "CreateTexture", nil, "BACKGROUND")
+        if not okRing then ring = nil end
+        if ring ~= nil then
+            method(ring, "SetPoint", "TOPLEFT", f, "TOPLEFT", -2, 2)
+            method(ring, "SetPoint", "BOTTOMRIGHT", f, "BOTTOMRIGHT", 2, -2)
+            method(ring, "Hide")
+        end
+
+        local okTex, tex = method(f, "CreateTexture", nil, "ARTWORK")
+        if not okTex then tex = nil end
+        if tex ~= nil then method(tex, "SetAllPoints", f) end
+
+        local okText, text = method(f, "CreateFontString", nil, "OVERLAY", "GameFontNormalSmall")
+        if not okText then text = nil end
+        if text ~= nil then
+            method(text, "SetPoint", "BOTTOM", f, "TOP", 0, 2)
+            method(text, "SetText", type(spec.label) == "string" and spec.label or "")
+            method(text, "SetTextColor", 0.85, 0.85, 0.85)
+        end
+
+        function h.setTexture(value)
+            if tex == nil then return false end
+            local okSet = method(tex, "SetTexture", value)
+            return okSet and value ~= nil
+        end
+        function h.place(point)
+            if type(point) ~= "table" then return end
+            method(f, "ClearAllPoints")
+            method(f, "SetPoint", point[1], parent, point[2], point[3], point[4])
+        end
+        function h.show(on)
+            method(f, on and "Show" or "Hide")
+        end
+        function h.mark(r, g, b)
+            if type(r) == "number" and type(g) == "number" and type(b) == "number" then
+                if text ~= nil then method(text, "SetTextColor", r, g, b) end
+                if ring == nil then return false end
+                if not method(ring, "SetColorTexture", r, g, b, 1) then method(ring, "SetTexture", r, g, b, 1) end
+                method(ring, "Show")
+                return true
+            end
+            if ring ~= nil then method(ring, "Hide") end
+            if text ~= nil then method(text, "SetTextColor", 0.85, 0.85, 0.85) end
+            return false
+        end
+        return h
+    end
+
+    -- Which modifier keys are down now: ctrl, shift, alt, each true or false,
+    -- or nil for one the client has no read for or whose read raised (not
+    -- known, never "up"). A read only: nothing is bound or pressed. First
+    -- guess, not seen in game; no doc page was read. Older clients answer 1
+    -- or nil where newer ones answer true or false, so a nil from a read
+    -- that ran is "up".
+    function c.modifiers()
+        local function down(fn)
+            if type(fn) ~= "function" then return nil end
+            local ok, v = pcall(fn)
+            if not ok then return nil end
+            return v == true or v == 1
+        end
+        return down(env.IsControlKeyDown), down(env.IsShiftKeyDown), down(env.IsAltKeyDown)
+    end
     return c
 end
 
