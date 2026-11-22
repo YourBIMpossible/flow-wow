@@ -1,14 +1,15 @@
 # P5: one arrow per activity (design)
 
-Status: design only, no code. Written for WOW-3 on base `program-integ` a529eea.
-File and line references are to that commit. Lines listed under "Checked by hand" (1.8) were
+Status: design only, no code. Revision 2 (WOW-8), after the lead's round-2 review
+(findings P5-1 to P5-12). Written for WOW-3 on `program-integ` a529eea; this branch now
+sits on `wow-p2-design` (c36ca7d), so the P2 document it cites is in the same tree.
+File and line references are to source at a529eea. Lines listed under "Checked by hand" (1.8) were
 read line by line; the rest come from a grep pass and should be re-read by whoever builds each PR.
 Nothing here was run in the game.
 
 It builds on the P2 activity contract (`docs/design/P2-activity-contract.md`, branch
-`wow-p2-design`). It was started against ed8142c and aligned with the WOW-5 revision,
-c36ca7d, whose section 6 "What P5 needs from this contract" this design relies on.
-Section 5 says what is used and the one place this design asks for more.
+`wow-p2-design`, c36ca7d), whose section 6 "What P5 needs from this contract" this design relies on.
+Section 5 says what is used and the places this design asks for more.
 
 ## 0. What this is for
 
@@ -20,7 +21,7 @@ Section 5 says what is used and the one place this design asks for more.
   **This is a mandatory acceptance requirement** (section 7.1).
 - **Position and state survive /reload** (and a relog).
 - **Each arrow has its own controls**: its own click, its own right-click menu, its own
-  "separate / stack", its own text switch, its own off switch.
+  "separate / stack", its own text switch, its own hide switch.
 
 Words: *step* is Flow's word for a route entry; in code it is a *goal* table
 (docs/ARCHITECTURE.md "Words"). An *arrow* here is the whole on-screen thing: the pointer,
@@ -165,6 +166,10 @@ V:Show(choice, p) / V:Hide()
   or separate, as the needle does today. If the quest lane has no step and no overlay the
   leader hides and the other arrows stay (P2 6.5); whether a profession step then moves
   onto it is P2's Q7, an owner decision, and does not change the frames.
+- **Siblings, not children.** Every view's frame is parented to `UIParent`. A stacked
+  arrow is *anchored* to the leader (`SetAllPoints`), never parented to it, so hiding the
+  leader does not hide it by accident; what shows is decided by 2.6, in one place. (Today
+  the needle is drawn inside the main arrow's frame and disappears with it.)
 
 ### 2.2 Stacked and separate
 
@@ -175,17 +180,27 @@ changes if there are ever more than two.
 | State of a non-leader arrow | Anchor | Drawn as | Text | Hidden while on the main step's point |
 |---|---|---|---|---|
 | **stacked** (default) | `SetAllPoints(leader)`, one frame level lower | `needle` + `ring`, as today | where it is today | yes (`N.ProfArrowMode`, as today) |
-| **separate** | `UIParent` at its saved point | `pointer`, full size, the activity's colour | under it, laid out by `N.LayoutLines` | no: it has its own place |
+| **separate** | `UIParent` at its saved point | `pointer`, full size, the activity's colour | under it, laid out by `N.LayoutLines`: the same words as stacked, travel text included | no: it has its own place |
 
 - The leader shrinks (`N.SetOverNeedle`) only while at least one stacked needle shows.
-- With more than one stacked needle (Q1 answered "one per profession"), only the first by
+- With more than one stacked needle (AQ1 answered "one per profession"), only the first by
   activity `order` draws its needle; the others show as one line of text each. A stack must
   stay readable; five needles would not. Each can still be separated.
 - First separation with no saved point: the arrow lands beside the leader on the side with
-  room (the pure `N.DrawerSide`, Nav.lua:4080, reused), not on top of it.
+  room (the pure `N.DrawerSide`, Nav.lua:4080, reused), not on top of it. That point is
+  **written to `nav.arrows.points[key]` at once**, not at the first drag, so a /reload
+  straight after separating finds the arrow where it was.
+- Text is not lost by separating. The stacked needle's line today is the step's name, the
+  distance and `N.TravelText(p, pt, d)` (Nav.lua:4698); the separated arrow shows the same
+  line. Only the travel *icon* and the "fly now" overlay stay on the leader (section 5
+  need 4).
 - Stack again: the arrow returns to the leader; its saved point is **kept**, so separating
   again puts it back where it was.
-- A separated arrow dropped within `N.STACK_SNAP` (40 pixels) of the leader's centre stacks.
+- A separated arrow dropped within `N.STACK_SNAP` of the leader's centre stacks.
+  `N.STACK_SNAP` is 40, in `UIParent` units (the units `GetCenter()` returns for a frame
+  parented to `UIParent`), measured centre to centre. The arrows have no scale of their
+  own, so no conversion is needed; if AQ6 ever adds one, the distance is taken after
+  multiplying each centre by its frame's `GetScale()`.
   Pure: `N.StackSnap(dx, dy, snap) -> bool`.
 
 The arrows are ordinary (non-secure) frames, so moving, showing and re-anchoring them in
@@ -201,22 +216,29 @@ New keys only; nothing existing is renamed or moved, so no migration.
 | `nav.arrows.mode` | account | nil = "stacked" | "separate": every other arrow stands on its own. |
 | `nav.arrows.points[key] = { a, r, x, y }` | account | nil | That arrow's own position; kept while stacked. |
 | `nav.arrows.hidden[key]` | account | nil = shown | The arrow hidden, **the lane still planned** (P2 6.1). |
-| `nav.arrows.text[key]` | account | nil = shown | Its text. **Not in P2's reserved shape; P5 adds it.** For `professions`, `nav.profArrowText` is read as the fallback and written through for one release. |
+| `nav.arrows.text[key]` | account | nil = shown | Its text. **Not in P2's reserved shape at c36ca7d; P5 asks P2 to reserve it (WOW-7).** For `professions`, `nav.profArrowText` is **read** as the fallback when this key is nil. P5 never writes `nav.profArrowText`. |
 
 `mode`, `points` and `hidden` are exactly the shape P2 6.2 reserves; `nav.arrows` absent
 means stacked at `nav.point`. An arrow with no saved point starts beside the stack.
 
-- Account scope on purpose: `nav.point` and every other Flow window position is shared
-  across characters (1.3). A per-character arrow layout would be the odd one out.
-  P2 6.2 says the same. The alternative, named so it can be rejected:
-  `ns:PerCharacter("nav.arrows")` (Q3).
+- Account scope on purpose: the arrow's own place, `nav.point`, is account-wide today
+  (Nav.lua:4419), and P2 6.2 reserves `nav.arrows` the same way, so the new keys follow
+  the arrow. Not every Flow window is account-wide: Flow Professions saves its place per
+  character (Professions.lua:50 with `ns:PerCharacter("prof")` at :152). The alternative,
+  named so it can be rejected: `ns:PerCharacter("nav.arrows")` (AQ3).
 - Written at the moment of the change (drag stop, menu click), never on logout, so /reload
   cannot lose it. Read in `N:ArrowView` when the frame is built.
 - A key for an activity that is no longer registered is left alone (the player may have
   the profession back later).
-- A saved point off screen (resolution changed): `SetClampedToScreen(true)` on every
-  separated arrow, as `ns:MakeMovable` does. Whether today's arrow is clamped was not
-  confirmed.
+- A saved point off screen (resolution changed): `SetClampedToScreen(true)` on **every**
+  arrow frame, the leader included. The leader is not clamped today: `buildArrow` sets
+  movable and drag at Nav.lua:4413-4420 and never clamps, so a smaller resolution can put
+  the whole stack out of reach. Clamping the leader is a small behaviour change, made in
+  PR B. The pure `N.ClampPoint` (2.6) does the same sum offline so it can be tested.
+- **Reset.** `N:ResetArrows()` clears `nav.point`, `nav.arrows.points`, `nav.arrows.hidden`
+  and sets `mode` to nil: the arrows are stacked at the default place and all shown. Text
+  switches are kept. Reached from `/flow nav arrows reset` and the menu row "Put the arrows
+  back" (2.4).
 
 ### 2.4 Controls, per arrow
 
@@ -231,34 +253,126 @@ A non-leader arrow's menu, built by `N:ArrowItems(key)` and opened with `ns.menu
 
 1. Title: the step. "Open it". "Hide this step".
 2. "Go here next" on another step of this activity: only once P2 PR 5 exists.
-3. "On its own (separate from the main arrow)" / "Stacked on the main arrow": a tick.
+3. "Each arrow on its own": a tick (on = separate, off = stacked).
 4. "Text by this arrow": a tick.
 5. "Hide this arrow": sets `hidden`; the Flow menu's hidden-windows list offers it back.
 
-`ns.menu:RouteItems()` stays on the leader's menu only. The leader's menu gains one row
-while separate: "Stack the arrows again". `N:ArrowMenuItems` (the Flow menu's "Arrow"
-section) carries the same separate / stacked tick, so the choice is reachable without
-finding the arrow. Settings: one `S:AddCheck{ group = "route", label = "Each arrow on its
-own" }` beside the existing "Faint profession arrow" (`AddCheck` only makes ticks, which is
-all this needs). Slash: `/flow nav arrows stack | separate`.
+`ns.menu:RouteItems()` stays on the leader's menu only.
+
+**One label, everywhere: "Each arrow on its own"**, a tick. It is on every arrow's menu
+(the leader's too), in `N:ArrowMenuItems` (the Flow menu's "Arrow" section, so the choice
+is reachable without finding the arrow), and on the settings page as
+`S:AddCheck{ group = "route", label = "Each arrow on its own" }` beside the existing "Faint
+profession arrow" (`AddCheck` only makes ticks, which is all this needs). There is no
+second wording such as "Stack the arrows again": unticking is how you stack. Next to it,
+in the same three menus, one row: "Put the arrows back" (reset, 2.3).
+
+Slash, all four forms:
+
+| Command | Does |
+|---|---|
+| `/flow nav arrows` | Status: the mode, then one line per arrow: shown or hidden, text on or off, stacked or its own place. Changes nothing. |
+| `/flow nav arrows stack` | `mode = "stacked"`. |
+| `/flow nav arrows separate` | `mode = "separate"`; any arrow with no saved point gets one at once (2.2). |
+| `/flow nav arrows reset` | `N:ResetArrows()` (2.3). |
 
 Dropping a separated arrow on the leader to stack has a precedent: the Flow Tracker
 re-docks when dropped within 40 pixels of its dock (RouteTracker.lua:289-299).
 
 Every one of these goes through a named function (`N:SetArrowsMode(mode)`,
-`N:SetArrowText(key, on)`, `N:SetArrowHidden(key, on)`), so the menu, the
+`N:SetArrowText(key, on)`, `N:SetArrowHidden(key, on)`, `N:ResetArrows()`), each a thin
+wrapper over the pure `N.ArrowApply` (2.6), so the menu, the
 settings page, the slash command and the drag all do the same thing and one test covers it.
 
 ### 2.5 The other surfaces
 
-- Minimap: P2 6.4 gives `ns.minimapPin:UpdateLane(key, p, point, goal)`; P5 gives it
+- Minimap: P2 6.4 gives `ns.minimapPin:UpdateLane(key, p, point, goal)`, and says `Update`
+  and `UpdateProf` become calls to it. Ownership as this design reads it, for WOW-7 to
+  confirm: **P2 owns `UpdateLane` and the call for each lane from the nav update** (its
+  PR that introduces lanes); **P5 PR D owns only what is drawn**:
   one pin per key and the lane's colour (`FlowMinimapPin_<key>`; `FlowMinimapProfPin` kept as the professions
   pin's name). It follows the lane, not the arrow: a `hidden` arrow keeps its dot
   unless `nav.minimapPin` is off.
 - World map: `drawProf` becomes `drawLane(key, ...)` over `A:State(key).plan`, same dotted path.
 - Colour: `ns.theme.profPointer` stays the professions colour. A new activity names a theme
   key in its registration (`color = "profPointer"`); no hex values outside Theme.lua.
-- Flow Tracker: unchanged in P5. Listing a second lane's steps there is a product question (Q4).
+- Flow Tracker: unchanged in P5. Listing a second lane's steps there is a product question (AQ4).
+
+### 2.6 Pure layout functions (required for acceptance)
+
+The offline runner skips any test that touches a frame: every fixture frame method and
+`CreateFrame` itself mark the test "needs the client" (tools/offline/stubs.lua:114-127,
+161-162; docs/TESTING.md:173). So the mandatory behaviour must not live in frame code. It
+lives in three pure functions (plain tables in, plain tables out, no client global), and
+the frame code only carries out what they return.
+
+```lua
+-- What is on screen. Called on every arrow update.
+-- saved = { point = nav.point, arrows = nav.arrows }          (read only)
+-- lanes = { { key, order, hasStep, overlay }, ... }           (from A:Each / A:Target)
+-- ctx   = { gate, screenW, screenH, size, defaultPoint }      (gate: see 2.7)
+N.ArrowLayout(saved, lanes, ctx) -> {
+    [key] = {
+        shown  = bool,
+        anchor = "screen" | "leader",     -- "leader": SetAllPoints(leader's frame)
+        point  = { a, r, x, y } | nil,    -- when anchor == "screen", already clamped
+        look   = "pointer" | "needle" | "text",
+        small  = bool,                    -- the leader, shrunk over a stacked needle
+        text   = bool,
+    }, ...
+}
+
+-- What a control does. Returns a NEW saved table; never touches a frame or ns.db.
+N.ArrowApply(saved, action, ctx) -> saved2
+--   { type = "mode", mode = "stacked" | "separate" }  separate: fills missing points
+--   { type = "move", key = k, point = {a,r,x,y} }      drag stop, away from the leader
+--   { type = "drop", key = k, point = ..., leader = {x,y} }  inside STACK_SNAP: stacks
+--   { type = "hide", key = k, on = bool }
+--   { type = "text", key = k, on = bool }
+--   { type = "reset" }
+
+-- A saved point brought back on screen. Used by ArrowLayout for every "screen" point.
+N.ClampPoint(point, size, screenW, screenH) -> point
+```
+
+- The frame side is then one loop: `for key, L in pairs(N.ArrowLayout(...))` show or hide
+  the view, anchor it, pick the look. The control side is one line:
+  `saved = N.ArrowApply(saved, action, ctx)`, write the result to `ns.db.nav`, redraw.
+- /reload is, for these functions, "call `ArrowLayout` again on the same saved table".
+  That is what makes S4 and S5 testable offline.
+- `N.StackSnap` and `N.DrawerSide` are used inside `ArrowApply`; they stay public and pure.
+
+### 2.7 When the leader is not showing
+
+Today the arrow update returns before `updateProf(p)` (Nav.lua:4893) in four cases, all
+near its top: nav switched off (Nav.lua:4714), the new-player reveal gate closed (:4716),
+the login intro playing (:4717) and no player position (:4719). The first, second and
+fourth hide the main frame; the intro returns and leaves it as it is. The needle is inside
+that frame, so it goes with it. With sibling frames (2.1) that no longer happens by
+itself, so it is specified here. The gate is worked out first, by the pure
+`N.ArrowGate(enabled, revealShown, intro, hasPos, dead) -> "off" | "intro" | "corpse" | "open"`,
+and handed to `ArrowLayout` as `ctx.gate`, so **the early returns hide every view, not
+only the leader**.
+
+| Case (`gate`) | Leader (quest) | Other arrow, stacked | Other arrow, separate |
+|---|---|---|---|
+| Nav off, `nav.enabled` false (`off`) | hidden | hidden | hidden. "Arrow off" means every arrow; pins hidden as today. |
+| Reveal gate closed (`off`) | hidden | hidden | hidden. A new player sees no arrow of any kind until Flow reveals the first. |
+| Login intro playing (`intro`) | the intro draws on it | hidden until the intro ends | hidden until the intro ends |
+| No player position (`off`) | hidden | hidden | hidden. Nothing can be pointed at. |
+| Dead (`corpse`) | points at the corpse | hidden | hidden (P2 6.5) |
+| Open, quest lane has a step or an overlay | shown; small if a needle is stacked under it | needle behind it (or hidden on the same point, `N.ProfArrowMode`) | full pointer at its own place |
+| Open, quest lane has no step and no overlay | hidden (P2 6.5) | **shown as a full pointer at the stack's place** (`nav.point`): there is nothing to stand behind | full pointer at its own place |
+| Open, the leader hidden by the player (`hidden.quest`) | hidden | as the row above | full pointer at its own place |
+| Open, the other arrow hidden by the player (`hidden[key]`) | shown, full size | hidden | hidden |
+
+- In the two "leader hidden, others stay" rows a stacked arrow is still **stacked** in the
+  saved data: `mode` does not change and nothing is written. When the leader comes back it
+  goes behind it again. Ctrl-dragging it there moves the stack (`nav.point`).
+- The follow toggle, travel icon and drawer hang off the leader's frame (1.6) and go with it.
+- Whether a profession step should instead *move onto* the leader when the quest lane is
+  empty is P2's Q7 (owner). This table is the behaviour if the answer is "no"; if "yes",
+  the two rows marked P2 6.5 cannot occur and the rest is unchanged.
 
 ## 3. "Flow <Name>" and `ns.theme:TitleBar`
 
@@ -277,7 +391,7 @@ from `ns.theme`.
   itself is clickable. No hand-made header, no copied colours.
 - **Finding, not a P5 change:** today's arrow drawer has a hand-built "hero" header, not
   `TitleBar`. PR F must not copy that. Whether the existing drawer is brought under the
-  rule is its own item (Q5).
+  rule is its own item (AQ5).
 - P5 adds no "Flow Arrows" management window. The controls in 2.4 cover it; a window for
   two arrows would be more surface than the feature.
 
@@ -290,16 +404,16 @@ only visible once the player separates an arrow or opens its menu.
 ## 5. Dependency on WOW-2 / WOW-5 (the P2 contract)
 
 P5 draws what P2 exposes: **one selected step per activity**. It reads only `A:Each()`,
-`A:Target(key)`, `A:State(key)` and `A.version`, and writes only `nav.arrows` and
-`A:Select`. References are to the contract at c36ca7d.
+`A:Target(key)`, `A:State(key)` and `A.version`, and writes only `nav.arrows`, `nav.point`
+(already the arrow's own key) and `A:Select`. It does not write `nav.profArrowText`. References are to the contract at c36ca7d.
 
 | # | P5 needs | P2 provides (c36ca7d) | P5's side |
 |---|---|---|---|
 | 1 | Lane existence separate from arrow display | 6.1: `exists(ctx)` / `ns.nav:ProfLaneOn()`; `nav.profArrow` now means "professions have their own lane" | `nav.arrows.hidden[key]` hides an arrow without touching the lane. |
-| 2 | A saved display mode and a per-activity arrow position | 6.2: `nav.arrows = { mode, points, hidden }` reserved for P5 | Used as reserved (2.3). **Asks for more in one case:** `mode` is one switch for all arrows. That is right for two. If Q1 is answered "one per profession", pulling one arrow out of five needs a per-arrow flag (`nav.arrows.apart[key]`, with `mode` then meaning "all"). Not built unless Q1 goes that way. Also adds `nav.arrows.text`. |
+| 2 | A saved display mode and a per-activity arrow position | 6.2: `nav.arrows = { mode, points, hidden }` reserved for P5 | Used as reserved (2.3). **Asks for more in one case:** `mode` is one switch for all arrows. That is right for two. If Q1 is answered "one per profession", pulling one arrow out of five needs a per-arrow flag (`nav.arrows.apart[key]`, with `mode` then meaning "all"). Not built unless P2 Q1 goes that way (deferred with P2 Q1, review P5-12). Also asks P2 to reserve `nav.arrows.text` (2.3). |
 | 3 | A per-lane change signal | 6.3: `A:State(key).version` (plan, choice, selection, existence), `A.version` (set of lanes) | Each view redraws when its lane's version moves; views are built or dropped when `A.version` moves. |
-| 4 | A per-lane travel route and minimap pin | 6.4: `A:State(key).route`; `ns.minimapPin:UpdateLane`; flight, taxi and area-hop helpers **stay on the quest lane** | A separated profession arrow follows its own path but shows no "fly to" text and no travel icon. A stated limit, not a defect (Q7 in section 8). |
-| 5 | Which arrow carries follow, waypoint and corpse | 6.5: the quest arrow; others hide while dead | The leader (2.1). |
+| 4 | A per-lane travel route and minimap pin | 6.4: `A:State(key).route`; `ns.minimapPin:UpdateLane`; flight, taxi and area-hop helpers **stay on the quest lane** | A separated profession arrow follows its own path and keeps the travel words it has today as a stacked needle (`N.TravelText`, Nav.lua:4698). It gets no travel *icon* and no "fly now" overlay: those stay on the leader. A stated limit, not a defect (AQ7 in section 8). Minimap: P2 owns `UpdateLane` and its calls, P5 the extra pins (2.5). |
+| 5 | Which arrow carries follow, waypoint and corpse | 6.5: the quest arrow; others hide while dead; quest lane with no step and no overlay: its arrow hides, the others stay | The leader (2.1), in P2's words; every other leader-hidden case is 2.7. |
 | 6 | Per-arrow selection | 6.6 and PR 5: `A:Select(key, stepKey)` | "Go here next" on a non-quest arrow's menu (2.4). |
 | 7 | Stable order and a label per activity | `order`, `label` on the activity | Stack order; the "Flow <label> Arrow" names. |
 
@@ -320,11 +434,11 @@ contributor.
 | # | PR | Changes | Needs | Player sees |
 |---|---|---|---|---|
 | A | Arrow views | `Modules/Nav/Arrows.lua`: `N:ArrowView(key)`; `buildArrow` and `updateProf` use it; `N.arrowFrame` and `.prof` kept; no new behaviour | nothing | nothing |
-| B | Stack and separate | `nav.arrows` keys; `N:SetArrowsMode`, `N.StackSnap`; Ctrl-drag out of and into the stack; the separate look (2.2); positions restored on load | A | **the mandatory behaviour**, on quest + professions |
-| C | Per-arrow controls | `N:ArrowItems(key)`; text and off switches; `window` entries; Flow menu rows; settings check; slash command | B; "Hide this arrow" needs P2 6.1, else leave that row out | each arrow has its own menu |
-| D | Pins and map per lane | `P:UpdateLane`, `drawLane`, theme colour by key | A | nothing new for two lanes |
+| B | Stack and separate | the pure `N.ArrowLayout`, `N.ArrowApply`, `N.ArrowGate`, `N.ClampPoint`, `N.StackSnap` with their offline tests first; then `nav.arrows` keys; `N:SetArrowsMode`, `N:ResetArrows`; sibling frames and the 2.7 table; every arrow clamped; Ctrl-drag out of and into the stack; the separate look (2.2); positions restored on load | A | **the mandatory behaviour**, on quest + professions |
+| C | Per-arrow controls | `N:ArrowItems(key)`; text and hide switches; `window` entries; Flow menu rows; settings check; the four slash forms | B; "Hide this arrow" needs P2 6.1, else leave that row out | each arrow has its own menu |
+| D | Pins and map per lane | a pin per key behind `UpdateLane` (the function and its calls are P2's, 2.5), `drawLane`, theme colour by key | A | nothing new for two lanes |
 | E | Read from the contract | views built from `A:Each()`, steps from `A:Target(key)`, redraw on `version` | P2 PR 3, needs 3 and 6 | nothing (or more arrows, per Q1) |
-| F | Per-arrow selection, travel and drawer | "Go here next" on any arrow; travel text per lane; a drawer per arrow with `TitleBar` | P2 PR 5, need 4 | pick a profession step from its arrow |
+| F | Per-arrow selection and drawer | "Go here next" on any arrow; a drawer per arrow with `TitleBar` | P2 PR 5, need 4 | pick a profession step from its arrow |
 
 A, B and D can start now. C can start after B. E and F wait for P2.
 
@@ -332,19 +446,26 @@ A, B and D can start now. C can start after B. E and F wait for P2.
 
 ### 7.1 Mandatory acceptance: stacked and separated arrows
 
-P5 is not accepted unless every row holds, checked by the named test and by the owner in
-the game. (This document makes no in-game claim.)
+P5 is not accepted unless every row holds. Each row has an **offline** test on the pure
+functions of 2.6, which runs in CI (`pwsh tools/run-tests.ps1`) and is the acceptance
+evidence the contributor can produce, and, where a frame is involved, a client test or a
+line of the in-game checklist (7.4), which only the owner can run. This document makes no
+in-game claim.
 
-| # | Must hold | Test |
-|---|---|---|
-| S1 | With the profession arrow on and nothing saved, the arrows are stacked: one place, needle behind the main arrow. | `arrows: stacked by default` |
-| S2 | An arrow can be separated from its menu and by Ctrl-drag; it then draws as a full arrow at its own place and the main arrow returns to full size. | `click: an arrow separates` |
-| S3 | A separated arrow can be stacked again from its menu, from "Stack the arrows again", and by dropping it on the main arrow. | `click: an arrow stacks again` |
-| S4 | Separate, move, /reload: same place, still separate. Stack, /reload: still stacked. | `arrows: place and state survive a reload` (build the view twice over the same saved table) |
-| S5 | Stack then separate again: it returns to its last own place. | same test |
-| S6 | Moving the main arrow moves everything stacked on it and nothing separated. | `arrows: the stack moves as one` |
-| S7 | Each arrow's click, menu, text switch and hide switch act on that arrow only. | `click: each arrow has its own menu` |
-| S8 | Separating never changes what either arrow points at, the route, or the other arrow's selection. | `arrows: separating changes no step` |
+| # | Must hold | Offline test (pure, 2.6) | In the client |
+|---|---|---|---|
+| S1 | With the profession lane on and nothing saved, the arrows are stacked: one place, needle behind the main arrow. | `arrows: stacked by default`: `ArrowLayout` on an empty saved table | checklist |
+| S2 | The arrows can be separated from any arrow's menu and by Ctrl-drag; the other arrow then draws as a full arrow at its own place and the main arrow returns to full size. | `arrows: separating gives each a place`: `ArrowApply` mode and move, then `ArrowLayout` | `click: an arrow separates` |
+| S3 | They can be stacked again by unticking "Each arrow on its own" and by dropping the arrow on the main arrow. | `arrows: stack again by tick and by drop`: `ArrowApply` mode and drop, inside and outside the snap | `click: an arrow stacks again` |
+| S4 | Separate, move, /reload: same place, still separate. Stack, /reload: still stacked. Separate with no drag, /reload: same place. | `arrows: place and state survive a reload`: `ArrowLayout` twice on the same saved table, and on a copy made through a plain-table round trip | checklist |
+| S5 | Stack then separate again: it returns to its last own place. | same test: `points` survive mode "stacked" | checklist |
+| S6 | Moving the main arrow moves everything stacked on it and nothing separated. | `arrows: the stack moves as one`: change `saved.point`, compare layouts in both modes | checklist |
+| S7 | Each arrow's click, menu, text switch and hide switch act on that arrow only. | `arrows: a control changes one arrow`: `ArrowApply` hide and text for one key leave the other key's layout equal | `click: each arrow has its own menu` |
+| S8 | Separating never changes what either arrow points at, the route, or the other arrow's selection. | `arrows: separating changes no step`: `ArrowApply` returns a table whose only changed keys are under `arrows`; `ArrowLayout` takes no step as input beyond `hasStep` | none needed |
+| S9 | Hide an arrow, switch the mode, show it again: it comes back in the current mode, at its saved place if separate. The profession lane switched off and on again (`nav.profArrow`): same mode, same place, saved keys untouched while it was off. | `arrows: hide, switch, unhide` and `arrows: a lane off and on keeps its keys` | checklist |
+| S10 | A second character sees the same layout (account-wide). A character with no profession lane sees one arrow, and the other arrow's saved keys are left alone. | `arrows: a missing lane leaves its keys`: `ArrowLayout` with one lane over a saved table that has two | checklist |
+| S11 | Every row of the 2.7 table: nav off, reveal gate, intro, no position, dead, quest lane empty, either arrow hidden, each in both modes. Dead while separate: one arrow, on the corpse; on release the others return to their places. | `arrows: what shows when the leader does not`: one check per cell of 2.7; `N.ArrowGate` for each early return | checklist |
+| S12 | A saved place off screen comes back on screen, for the leader and for a separated arrow. Reset puts the arrows back, stacked, at the default place, all shown. Ctrl-drag during a fight raises no error and is saved. | `arrows: clamped to the screen` (`N.ClampPoint`, and through `ArrowLayout`); `arrows: reset` (`ArrowApply`) | `click: put the arrows back`; drag in a fight: checklist only |
 
 ### 7.2 Click tests (the repo rule: anything clickable gets a "click:" test, OnClick in a `pcall`)
 
@@ -353,7 +474,7 @@ Registered as `ns:Register("test", "click: ...", function(t) ... end)`:
 - every view's `frame` and `hit`: left and right button, `pcall`, the menu or card shows;
 - each row of `N:ArrowItems(key)`: call its `func` in a `pcall`, then check the saved key
   and the frame's anchor (separate tick, text tick, hide, "Open it", "Hide this step");
-- "Stack the arrows again" on the leader's menu;
+- "Each arrow on its own" and "Put the arrows back" on the leader's menu;
 - the Flow menu "Arrow" rows and the settings check, found the way Tests.lua:2407 finds
   today's;
 - the drag handlers: call `OnDragStart` / `OnDragStop` in a `pcall` with the move key
@@ -362,24 +483,66 @@ Registered as `ns:Register("test", "click: ...", function(t) ... end)`:
 - PR F: the drawer's X and its title bar (`TitleBar` sets `h.flowTitleBar`: assert it, so a
   hand-made header fails the test).
 
-Most "click:" tests skip offline today (docs/TESTING.md); these will too. They run in the
-client's self-test, which only the owner can run.
+Most "click:" tests skip offline today (docs/TESTING.md:173: a test that touches a frame
+method is reported SKIP, "needs the client"); these will too. They run in the client's
+self-test, which only the owner can run. That is why none of S1 to S12 rests on a click
+test alone: each has an offline test in 7.1.
 
 ### 7.3 Pure tests (run offline, `pwsh tools/run-tests.ps1`)
 
-`N.StackSnap`; the anchor chosen for a first separation; the stack order from a list of
-activity defs; `N.ProfArrowMode` unchanged for stacked and never "off" for separate; the
-saved table round trip (2.3) including the `nav.profArrowText` fallback; the old test at
-Tests.lua:3140 still passing through the compatibility names.
+The twelve tests named in 7.1, over `N.ArrowLayout`, `N.ArrowApply`, `N.ArrowGate` and
+`N.ClampPoint`. They must be written so nothing of the client is touched (no frame, no
+`ns.db` read through a client call), or the runner reports them SKIP and they prove
+nothing; the PR shows them in the PASS count. Also: `N.StackSnap` at, inside and outside
+40; the side chosen for a first separation; the stack order from a list of activity defs;
+`N.ProfArrowMode` unchanged for stacked and never "off" for separate; the
+`nav.profArrowText` read-only fallback (2.3); the old test at Tests.lua:3140 still passing
+through the compatibility names (in the client).
+
+### 7.4 In-game checklist (owner; nothing here has been run)
+
+1. S1 to S6 and S9 to S12 by hand, once each, with a real /reload.
+2. **Moving in a fight.** The arrow holds no secure frame today (`buildArrow` makes a plain
+   `Button`, Nav.lua:4363; the follow toggle is a plain `Button` on it, Follow.lua:238), so
+   moving, showing and re-anchoring arrows in combat should be allowed. This is read from
+   source, not seen in the game: Ctrl-drag each arrow, stack and separate, during a fight,
+   and watch for a blocked-action message.
+3. Change the resolution or UI scale with an arrow near an edge: both arrows stay reachable.
+4. Die while separate; release; both arrows return.
+5. Log a second character: same layout.
 
 ## 8. Open questions
 
+Numbered AQ ("arrow question") so they cannot be mistaken for P2's Q1 to Q9. Revision 1
+called these Q1 to Q7; the old number is in brackets.
+
 | # | Question | Whose |
 |---|---|---|
-| Q1 | One profession arrow, or one per profession (P2 Q1)? The frames allow either; per profession needs the per-arrow flag in section 5 need 2. | owner |
-| Q2 | No quest step left (P2 Q7): does the profession step move to the main arrow, or does the main arrow go quiet? | owner |
-| Q3 | Arrow layout shared across characters (recommended, like every other Flow position) or per character? | owner |
-| Q4 | Should the Flow Tracker list the other lane's steps once its arrow stands alone? | owner |
-| Q5 | Bring the existing arrow drawer's header under `ns.theme:TitleBar`? | owner |
-| Q7 | Should a separated non-quest arrow get flight and travel text? P2 6.4 keeps those on the quest lane. | owner, then P2 |
-| Q6 | Should a separated arrow be resizable (mouse wheel, as `ns:MoveHandle` gives other Flow frames)? Not in P5 unless asked. | owner |
+| AQ1 (Q1) | One profession arrow, or one per profession (**P2 Q1**)? The frames allow either; per profession needs the per-arrow flag in section 5 need 2. | owner |
+| AQ2 (Q2) | No quest step left (**P2 Q7**): does the profession step move to the main arrow, or does the main arrow hide (2.7)? | owner |
+| AQ3 (Q3) | Arrow layout shared across characters (recommended: the arrow's place already is, Nav.lua:4419) or per character (as Flow Professions' window is)? | owner |
+| AQ4 (Q4) | Should the Flow Tracker list the other lane's steps once its arrow stands alone? | owner |
+| AQ5 (Q5) | Bring the existing arrow drawer's header under `ns.theme:TitleBar`? | owner |
+| AQ6 (Q6) | Should an arrow be resizable? There is no scale today and none is designed (review P5-11, closed without change). Not in P5 unless asked. | owner |
+| AQ7 (Q7) | Should a separated non-quest arrow get the travel icon and "fly now" overlay? P2 6.4 keeps those on the quest lane. Its travel words are kept either way (2.2). | owner, then P2 |
+
+## 9. Round-2 review: what changed in revision 2
+
+Cited source lines were re-read at a529eea before each change.
+
+| Finding | Disposition | Where |
+|---|---|---|
+| P5-1 | Applied. Pure `ArrowLayout`, `ArrowApply`, `ArrowGate`, `ClampPoint`; every S row has an offline test. Skip rule confirmed at stubs.lua:114-127, 161-162 and TESTING.md:173. | 2.6, 7.1, 7.3 |
+| P5-2 | Applied. Sibling frames; a table for each leader-hidden case in each mode. Early returns confirmed at Nav.lua:4714-4719, `updateProf` at :4893. | 2.1, 2.7 |
+| P5-3 | Applied. Every arrow clamped, leader included; reset command and menu row; test S12. No clamp in Nav.lua:4413-4420 confirmed. | 2.3, 2.4, 7.1 |
+| P5-4 | Applied. The wrong sentence is replaced; Professions.lua:50 and :152 confirmed per character, Nav.lua:4419 account-wide. | 2.3, AQ3 |
+| P5-5 | Applied. Status and reset forms; one label; first separation saved at once; the 40 given a unit. | 2.2, 2.4 |
+| P5-6 | Applied. S9 to S12. | 7.1 |
+| P5-7 | Applied. In-game check added; the source lines confirmed (Nav.lua:4363, Follow.lua:238). | 7.4 |
+| P5-8 | Applied on P5's side: `nav.profArrowText` is read only; the leader rule uses P2 6.5's words; the questions are renamed AQ. Two points need WOW-7: reserving `nav.arrows.text`, and confirming the minimap owner as read in 2.5. | 2.3, 2.5, 5, 8 |
+| P5-9 | Applied. Rebased on `wow-p2-design` c36ca7d; pushed as `wow-p5-design-r2`. | header |
+| P5-10 | Applied. The separated arrow keeps the travel words (Nav.lua:4698 confirmed). | 2.2, 5 |
+| P5-11 | No change, as the review disposed; recorded as AQ6. The cited file is `Modules/Nav/Party.lua` (:405-408: the party toggle is anchored under the arrow at a fixed size; nothing scales the arrow). | 8 |
+| P5-12 | No change; deferred with P2 Q1. | 5 |
+
+Nothing rejected.
