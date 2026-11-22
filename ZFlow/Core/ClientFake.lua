@@ -1112,6 +1112,31 @@ function ns.make.fakeClient(opts)
         return true
     end
     function c.setCombatLog(on) s.noCombatLog = not on end
+    -- Slash commands another addon owns: setSlashTaken(command, on) says
+    -- so, slashTaken answers as the real boundary does, and unslash gives a
+    -- command back.
+    local slashTags, slashOthers = {}, {}
+    local plainSlash = c.slash
+    function c.slash(tag, command, fn)
+        slashTags[tag] = command
+        return plainSlash(tag, command, fn)
+    end
+    function c.setSlashTaken(command, on) slashOthers[command] = on and true or nil end
+    function c.slashTaken(command, ownTag)
+        if type(command) ~= "string" then return nil end
+        if slashOthers[command] then return true end
+        for tag, held in pairs(slashTags) do
+            if tag ~= ownTag and held == command then return true end
+        end
+        return false
+    end
+    function c.unslash(tag)
+        local command = slashTags[tag]
+        if command == nil then return false end
+        slashTags[tag] = nil
+        c.slashes[command] = nil
+        return true
+    end
     function c.combatLog(...)
         for i = 1, #logWatchers do logWatchers[i](...) end
     end
