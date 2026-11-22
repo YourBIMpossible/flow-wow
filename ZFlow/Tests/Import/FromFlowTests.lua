@@ -41,13 +41,18 @@ local function fullDb()
             enabled = true,
             arrowStyle = "modern",
             arrowModern = true,
+            -- Flow keeps the quest arrow's place here, and only the other
+            -- arrows' places under arrows.points (Modules/Nav/Arrows.lua:387-391).
             point = { "TOP", "TOP", 0, -120 },
             arrows = {
                 mode = "separate",
-                points = { quest = { "CENTER", "CENTER", -40, 12 }, professions = { "TOP", "TOP", 80, -90 } },
+                points = { professions = { "TOP", "TOP", 80, -90 } },
                 hidden = { professions = true },
                 text = { quest = false },
             },
+            profArrowText = false,
+            mode = "optimal",
+            professions = false,
             cardPoint = { "LEFT", "LEFT", 20, 0 },
             kinds = { quest = true, professions = false },
             waypoint = { map = 1412, x = 0.25, y = 0.75 },
@@ -56,7 +61,11 @@ local function fullDb()
             taxiTrip = { from = "Stonegate", at = 1700000300 },
         },
         ah = { prices = { ["Emberfall-Alliance"] = { [2589] = 40 } }, watch = { [4306] = { name = "Silk Cloth", max = 900 } }, lastScan = 1700000400 },
-        rotation = { enabled = true, panicPct = 35, point = { "CENTER", "CENTER", 0, -200 }, debug = true },
+        rotation = {
+            enabled = true, panicPct = 35, point = { "CENTER", "CENTER", 0, -200 }, debug = true,
+            recoverBandage = false, recoverFood = true, recoverBuffFood = false, recoverHeal = true, bandageRank = "low",
+        },
+        bonus = { enabled = true, spoken = false },
         quests = { enabled = true, autoAccept = false, drops = { [101] = { [2589] = 3 } } },
         settings = { tipsBeside = true },
         colorblind = false,
@@ -167,13 +176,16 @@ return {
     ["import: settings and arrow positions land per account"] = function(t)
         local result = Import.FromFlow(fullDb(), fullCharDb())
         local account = result.account
-        t.eq(account.layout.arrows, {
-            point = { "TOP", "TOP", 0, -120 },
+        local arrows = {
             mode = "separate",
-            points = { quest = { "CENTER", "CENTER", -40, 12 }, professions = { "TOP", "TOP", 80, -90 } },
-            hidden = { professions = true },
-            text = { quest = false },
-        })
+            points = { quest = { "TOP", "TOP", 0, -120 }, prof = { "TOP", "TOP", 80, -90 } },
+            hidden = { prof = true },
+            text = { quest = false, prof = false },
+        }
+        t.eq(account.layout.arrows, arrows)
+        -- The reader itself (Nav/ArrowLayout.lua) finds every part of it.
+        t.eq(ns.Nav.ArrowSaved(account.layout), arrows, "Z-Flow reads back what was imported")
+        t.eq(account.settings.nav.profArrowText, nil, "the profession arrow's text choice is layout, not a setting")
         t.eq(result.char.layout, {}, "no arrow position is per character")
         t.eq(account.layout.nav.card, { "LEFT", "LEFT", 20, 0 })
         t.eq(account.layout.rotation.frame, { "CENTER", "CENTER", 0, -200 })
@@ -199,6 +211,13 @@ return {
         end
         t.eq(result.account.settings.rotation.debug, nil)
         t.eq(result.account.settings.nav.taxiTrip, nil)
+        for _, key in ipairs({ "nav.mode", "nav.professions" }) do
+            local entry = droppedFor(result, key)
+            t.ok(entry and entry.why == "dropped", key .. " is listed as dropped")
+            local reason = entry and entry.reason or ""
+            t.ok(reason:find("nav.kinds", 1, true), key .. ": the reason names the key that carries the choice")
+            t.ok(not reason:find("no longer reads", 1, true), key .. ": Flow still reads it; the reason does not say otherwise")
+        end
         t.eq(result.record.counts.unknown, 0, "the full fixture has no unknown key")
         t.eq(result.record.counts.malformed, 0, "the full fixture has no malformed value")
     end,
@@ -207,7 +226,7 @@ return {
         local result = Import.FromFlow(fullDb(), fullCharDb())
         local counts = result.record.counts
         t.eq(counts.prices, 3, "two vendor prices and one realm of auction prices")
-        t.eq(counts.dropped, 12)
+        t.eq(counts.dropped, 14)
         t.ok(counts.places > 0 and counts.flights > 0 and counts.facts > 0 and counts.fights > 0, "every learned category counted")
         t.ok(counts.settings > 0 and counts.layout > 0 and counts.state > 0, "settings, layout and state counted")
         t.eq(result.account.imports, { result.record }, "the record is ready for the imports list")
@@ -286,7 +305,7 @@ return {
         t.eq(result.account.learned.places.questSpots, nil)
         t.eq(result.account.learned.facts, { spells = { [1] = true } }, "a table left empty by the checks is not written")
         t.eq(result.account.settings.sell, nil, "a vendor choice that is not true or false is not a choice")
-        t.eq(result.account.layout.arrows, { points = { professions = { "TOP", "TOP", 1, 2 } } })
+        t.eq(result.account.layout.arrows, { points = { prof = { "TOP", "TOP", 1, 2 } } })
         t.eq(result.account.layout.nav, nil)
         t.eq(result.account.settings.nav, nil)
         t.eq(result.account.settings.rotation, nil)
@@ -329,10 +348,16 @@ return {
         t.eq(result.char, nil)
     end,
 
-    ["vendor: explicit choices on are preserved"] = function(t)
+    ["vendor: a stored on is listed for the player to confirm, and is not switched on"] = function(t)
         local result = Import.FromFlow({ sell = { autoJunk = true, autoAll = true, autoRepair = true, autoCleanup = true, vendorUnpriced = true } }, nil)
-        t.eq(result.account.settings.sell,
-            { autoJunk = true, autoAll = true, autoRepair = true, autoCleanup = true, vendorUnpriced = true })
+        t.eq(result.account.settings.sell, nil, "no automation is on in the imported settings")
+        t.eq(result.vendorToConfirm, {
+            { key = "sell.autoAll", to = "settings.sell.autoAll", sameAsFlowDefault = false },
+            { key = "sell.autoCleanup", to = "settings.sell.autoCleanup", sameAsFlowDefault = false },
+            { key = "sell.autoJunk", to = "settings.sell.autoJunk", sameAsFlowDefault = true },
+            { key = "sell.autoRepair", to = "settings.sell.autoRepair", sameAsFlowDefault = true },
+            { key = "sell.vendorUnpriced", to = "settings.sell.vendorUnpriced", sameAsFlowDefault = false },
+        }, "every automation it would switch on, in a fixed order")
         t.eq(result.record.vendorChoices, {
             ["sell.autoJunk"] = true, ["sell.autoAll"] = true, ["sell.autoRepair"] = true,
             ["sell.autoCleanup"] = true, ["sell.vendorUnpriced"] = true,
@@ -347,12 +372,160 @@ return {
         t.eq(result.record.vendorChoices,
             { ["sell.autoJunk"] = false, ["sell.autoAll"] = false, ["sell.autoRepair"] = false })
         t.eq(result.record.vendorSameAsFlowDefault, { ["sell.autoAll"] = true })
+        t.eq(result.vendorToConfirm, {}, "an off needs no confirmation")
+    end,
+
+    ["vendor: merge switches an automation on only when the player confirmed that one"] = function(t)
+        local imported = Import.FromFlow({ sell = { autoJunk = true, autoRepair = true, autoAll = true, repairWarn = 0.25 } }, nil)
+        local snapshot = copy(imported)
+
+        local account, _, report = Import.Merge(nil, nil, imported)
+        t.eq(account.settings.sell, { repairWarn = 0.25 }, "no confirmation: every automation stays off")
+        t.eq(report.vendorLeftOff, { "sell.autoAll", "sell.autoJunk", "sell.autoRepair" })
+        t.eq(report.vendorConfirmed, {})
+        local skipped = {}
+        for _, entry in ipairs(report.skipped) do skipped[entry.path] = entry.reason end
+        for _, name in ipairs({ "autoAll", "autoJunk", "autoRepair" }) do
+            local reason = skipped["account.settings.sell." .. name]
+            t.ok(type(reason) == "string" and reason:find("confirm", 1, true), name .. " is listed as skipped: not confirmed")
+        end
+        t.eq(account.imports[1].vendorConfirmed, {}, "the record says none was confirmed")
+
+        local one, _, oneReport = Import.Merge(nil, nil, imported, nil, { ["sell.autoRepair"] = true })
+        t.eq(one.settings.sell, { autoRepair = true, repairWarn = 0.25 }, "only the confirmed one is on")
+        t.eq(oneReport.vendorConfirmed, { "sell.autoRepair" })
+        t.eq(oneReport.vendorLeftOff, { "sell.autoAll", "sell.autoJunk" })
+        t.eq(one.imports[1].vendorConfirmed, { ["sell.autoRepair"] = true })
+
+        local loose = Import.Merge(nil, nil, imported, nil, { ["sell.autoRepair"] = "yes", ["sell.autoJunk"] = 1, ["sell.autoCleanup"] = true })
+        t.eq(loose.settings.sell, { repairWarn = 0.25 },
+            "only true confirms, and confirming one the import did not find on switches nothing on")
+
+        local own = emptyAccount()
+        own.imports = {}
+        own.settings.sell = { autoRepair = false }
+        local kept = Import.Merge(own, nil, imported, nil, { ["sell.autoRepair"] = true })
+        t.eq(kept.settings.sell.autoRepair, false, "confirmed, but the player's own off is never overwritten")
+        t.eq(imported, snapshot, "the import result is unchanged")
+    end,
+
+    ["vendor: an on written straight into the imported settings is still gated"] = function(t)
+        local imported = Import.FromFlow({ sell = { repairWarn = 0.25 } }, nil)
+        imported.account.settings.sell.autoJunk = true    -- not through the list
+        imported.account.settings.sell.autoAll = false
+        local account, _, report = Import.Merge(nil, nil, imported)
+        t.eq(account.settings.sell, { autoAll = false, repairWarn = 0.25 }, "not confirmed: left off")
+        t.eq(report.vendorLeftOff, { "sell.autoJunk" })
+        local only = Import.FromFlow(nil, nil)
+        only.account.settings.sell = { autoRepair = true }
+        local bare = Import.Merge(nil, nil, only)
+        t.eq(bare.settings.sell, nil, "no empty table is left where the automation was")
+        local yes = Import.Merge(nil, nil, imported, nil, { ["sell.autoJunk"] = true })
+        t.eq(yes.settings.sell.autoJunk, true, "confirmed: on")
+    end,
+
+    ["arrows: the quest arrow's place is nav.point; a place under arrows.points.quest is listed, not used"] = function(t)
+        local result = Import.FromFlow({ nav = {
+            point = { "TOP", "TOP", 0, -120 },
+            arrows = { points = { quest = { "CENTER", "CENTER", -40, 12 } } },
+        } }, nil)
+        t.eq(result.account.layout.arrows, { points = { quest = { "TOP", "TOP", 0, -120 } } })
+        local entry = droppedFor(result, "nav.arrows.points.quest")
+        t.ok(entry and entry.why == "dropped", "the place Flow never reads is listed as dropped")
+        t.ok(entry and entry.reason:find("nav.point", 1, true), "and the reason names where Flow keeps it")
+        local alone = Import.FromFlow({ nav = { arrows = { points = { quest = { "CENTER", "CENTER", -40, 12 } } } } }, nil)
+        t.eq(alone.account.layout.arrows, nil, "with no nav.point Flow shows the default place, so nothing is written")
+        t.ok(droppedFor(alone, "nav.arrows.points.quest"), "still listed")
+    end,
+
+    ["arrows: Flow's professions arrow becomes Z-Flow's prof in places, hidden and text"] = function(t)
+        local result = Import.FromFlow({ nav = { arrows = {
+            mode = "stacked",
+            points = { professions = { "LEFT", "LEFT", 5, 6 } },
+            hidden = { professions = true, quest = false },
+            text = { professions = false, quest = true },
+        } } }, nil)
+        t.eq(result.account.layout.arrows, {
+            mode = "stacked",
+            points = { prof = { "LEFT", "LEFT", 5, 6 } },
+            hidden = { prof = true, quest = false },
+            text = { prof = false, quest = true },
+        })
+        t.eq(result.record.counts.malformed, 0)
+        t.eq(ns.Nav.ArrowSaved(result.account.layout),
+            { mode = "stacked", points = { prof = { "LEFT", "LEFT", 5, 6 } }, hidden = { prof = true }, text = { prof = false } })
+    end,
+
+    ["arrows: an arrow Z-Flow does not have is left out with a reason"] = function(t)
+        local result = Import.FromFlow({ nav = { arrows = {
+            points = { pet = { "TOP", "TOP", 1, 2 } }, hidden = { pet = true }, text = { pet = false },
+        } } }, nil)
+        t.eq(result.account.layout.arrows, nil)
+        for _, key in ipairs({ "nav.arrows.points.pet", "nav.arrows.hidden.pet", "nav.arrows.text.pet" }) do
+            local entry = droppedFor(result, key)
+            t.ok(entry and entry.reason ~= "", key .. " is listed with a reason")
+        end
+    end,
+
+    ["arrows: nav.profArrowText is the profession arrow's text, unless the arrow has its own choice"] = function(t)
+        local off = Import.FromFlow({ nav = { profArrowText = false } }, nil)
+        t.eq(off.account.layout.arrows, { text = { prof = false } })
+        t.eq(off.account.settings.nav, nil)
+        t.eq(ns.Nav.ArrowSaved(off.account.layout).text, { prof = false }, "Z-Flow reads it as text off")
+        local on = Import.FromFlow({ nav = { profArrowText = true } }, nil)
+        t.eq(on.account.layout.arrows, { text = { prof = true } })
+        -- Flow: arrows.text[key] wins when set (Modules/Nav/Arrows.lua:243-245).
+        local own = Import.FromFlow({ nav = { profArrowText = false, arrows = { text = { professions = true } } } }, nil)
+        t.eq(own.account.layout.arrows, { text = { prof = true } }, "the arrow's own choice wins, as in Flow")
+        local entry = droppedFor(own, "nav.profArrowText")
+        t.ok(entry and entry.why == "superseded", "the older key is listed as superseded")
+        local broken = Import.FromFlow({ nav = { profArrowText = "no" } }, nil)
+        t.eq(broken.account.layout.arrows, nil)
+        t.ok(droppedFor(broken, "nav.profArrowText").why == "malformed", "not true or false: malformed")
+    end,
+
+    ["settings: the speech toggle bonus.spoken is kept"] = function(t)
+        for _, spoken in ipairs({ true, false }) do
+            local result = Import.FromFlow({ bonus = { enabled = true, spoken = spoken } }, nil)
+            t.eq(result.account.settings.bonus, { enabled = true, spoken = spoken })
+            t.eq(droppedFor(result, "bonus.spoken"), nil, "not listed as left behind")
+        end
+    end,
+
+    ["settings: the rotation recovery choices are kept"] = function(t)
+        local result = Import.FromFlow({ rotation = {
+            recoverBandage = false, recoverFood = false, recoverBuffFood = true, recoverHeal = false, bandageRank = "low",
+        } }, nil)
+        t.eq(result.account.settings.rotation,
+            { recoverBandage = false, recoverFood = false, recoverBuffFood = true, recoverHeal = false, bandageRank = "low" })
+        t.eq(result.record.counts.unknown, 0, "none of them is an unknown key")
+        t.eq(result.dropped, {})
+    end,
+
+    ["dropped: nav.mode and nav.professions say truly why"] = function(t)
+        -- Beside nav.kinds they are its older saved names, kept in step by Flow
+        -- (Modules/Nav/Nav.lua:1372, 1386, 1445-1446).
+        local beside = Import.FromFlow({ nav = { kinds = { quest = true }, mode = "quests", professions = true } }, nil)
+        -- Without nav.kinds they are the only record of the choice (Nav.lua:4983).
+        local alone = Import.FromFlow({ nav = { mode = "quests", professions = true } }, nil)
+        for _, key in ipairs({ "nav.mode", "nav.professions" }) do
+            local a, b = droppedFor(beside, key), droppedFor(alone, key)
+            t.ok(a and a.why == "dropped" and b and b.why == "dropped", key .. " is listed as dropped both times")
+            t.ok(a.reason:find("nav.kinds", 1, true) and a.reason:find("imported", 1, true),
+                key .. " beside nav.kinds: the choice is imported from there")
+            t.ok(b.reason:find("not carried over", 1, true), key .. " alone: says the choice is not carried over")
+            t.ok(a.reason ~= b.reason, key .. ": two cases, two reasons")
+            t.ok(not a.reason:find("no longer reads", 1, true) and not b.reason:find("no longer reads", 1, true),
+                key .. ": Flow still reads it")
+        end
+        t.eq(alone.account.settings.nav, nil, "nothing is made up from them")
     end,
 
     ["vendor: an absent choice stays absent, so the automation stays off"] = function(t)
         local result = Import.FromFlow({ sell = { repairWarn = 0.25 }, nav = { enabled = true } }, nil)
         t.eq(result.account.settings.sell, { repairWarn = 0.25 })
         t.eq(result.record.vendorChoices, {})
+        t.eq(result.vendorToConfirm, {})
         local bare = Import.FromFlow({ nav = { enabled = true } }, nil)
         t.eq(bare.account.settings.sell, nil)
         t.eq(bare.record.vendorChoices, {})
@@ -377,7 +550,7 @@ return {
         t.eq(db, before)
         t.eq(charDb, beforeChar)
         result.account.learned.places.npcs["Mara Stonehand"].x = 0.99
-        result.account.layout.arrows.point[3] = 500
+        result.account.layout.arrows.points.quest[3] = 500
         result.char.learned.flights.nodes.Stonegate.wx = 1
         result.char.settings.sell.never[4306] = nil
         t.eq(db, before, "writing to the result does not reach the account input")
@@ -470,11 +643,19 @@ return {
             t.eq(account.schema, 1)
             t.eq(char.schema, 1)
             t.eq(report.kept, {})
-            t.eq(report.skipped, {})
-            t.ok(#report.added > 0, "everything was added")
+            -- All of it but the two vendor automations Flow had on: nobody confirmed them.
+            t.eq(report.vendorLeftOff, { "sell.autoJunk", "sell.autoRepair" })
+            t.eq(#report.skipped, 2, "nothing else was skipped")
+            for i, name in ipairs({ "autoJunk", "autoRepair" }) do
+                t.eq(report.skipped[i].path, "account.settings.sell." .. name)
+                t.ok(report.skipped[i].reason:find("confirm", 1, true), name .. ": skipped because it was not confirmed")
+            end
+            t.eq(account.settings.sell.autoJunk, nil, "and they are not on")
+            t.eq(account.settings.sell.autoRepair, nil)
+            t.ok(#report.added > 0, "everything else was added")
             t.eq(#account.imports, 1)
             t.eq(account.imports[1].source, "Flow")
-            t.eq(account.imports[1].merge, { added = #report.added, kept = 0, skipped = 0 })
+            t.eq(account.imports[1].merge, { added = #report.added, kept = 0, skipped = 2 })
             t.ok(account.learned ~= imported.account.learned, "the merged data shares no table with the import")
         end
         t.eq(imported, snapshot, "the import result is unchanged")
@@ -484,9 +665,9 @@ return {
         local imported = Import.FromFlow(fullDb(), fullCharDb())
         local account = emptyAccount()
         account.imports = {}
-        account.settings.sell = { autoJunk = false, repairWarn = 0.3 }
+        account.settings.sell = { autoAll = true, repairWarn = 0.3 }
         account.settings.nav = { arrowStyle = "flat" }
-        account.layout.arrows = { point = { "BOTTOM", "BOTTOM", 0, 90 } }
+        account.layout.arrows = { points = { quest = { "BOTTOM", "BOTTOM", 0, 90 } } }
         account.learned.places.npcs = { ["Mara Stonehand"] = { map = 1412, x = 0.1, y = 0.1, n = 9 }, ["Wren Dell"] = { map = 3, x = 0.2, y = 0.2 } }
         account.learned.prices.vendor = { [2589] = 99 }
         account.learned.places.mailboxes = { { map = 9, x = 0.9, y = 0.9 } }
@@ -497,12 +678,15 @@ return {
 
         local newAccount, newChar, report = Import.Merge(account, char, imported)
         t.eq(report.ok, true)
-        t.eq(newAccount.settings.sell.autoJunk, false, "the player's off stays off")
-        t.eq(newAccount.settings.sell.autoRepair, true, "an absent choice is filled in")
+        t.eq(newAccount.settings.sell.autoAll, true, "the player's own choice stays")
+        t.eq(newAccount.settings.sell.autoRepair, nil, "an absent automation is not filled in on: nobody confirmed it")
+        t.eq(newAccount.settings.sell.autoJunk, nil, "nor is the other one")
         t.eq(newAccount.settings.nav.arrowStyle, "flat")
         t.eq(newAccount.settings.nav.enabled, true)
-        t.eq(newAccount.layout.arrows.point, { "BOTTOM", "BOTTOM", 0, 90 }, "a position is kept whole, never mixed")
+        t.eq(newAccount.layout.arrows.points.quest, { "BOTTOM", "BOTTOM", 0, 90 }, "a position is kept whole, never mixed")
+        t.eq(newAccount.layout.arrows.points.prof, { "TOP", "TOP", 80, -90 }, "the arrow with no place yet gets the imported one")
         t.eq(newAccount.layout.arrows.mode, "separate")
+        t.eq(ns.Nav.ArrowSaved(newAccount.layout).points.quest, { "BOTTOM", "BOTTOM", 0, 90 }, "and that is the place Z-Flow reads")
         t.eq(newAccount.learned.places.npcs["Mara Stonehand"], { map = 1412, x = 0.1, y = 0.1, n = 9, kind = "vendor", roles = { repair = true }, seen = 1700000000 })
         t.eq(newAccount.learned.places.npcs["Wren Dell"], { map = 3, x = 0.2, y = 0.2 })
         t.eq(newAccount.learned.places.npcs["Old Tobb"].kind, "trainer")
@@ -516,17 +700,19 @@ return {
         for _, path in ipairs(report.kept) do kept[path] = true end
         for _, entry in ipairs(report.skipped) do skipped[entry.path] = entry.reason end
         for _, path in ipairs(report.added) do added[path] = true end
-        t.ok(kept["account.settings.sell.autoJunk"], "kept: the vendor choice")
-        t.ok(kept["account.layout.arrows.point"], "kept: the arrow position")
+        t.ok(kept["account.settings.sell.autoAll"], "kept: the vendor choice")
+        t.ok(kept["account.layout.arrows.points.quest"], "kept: the arrow position")
         t.ok(kept["account.learned.prices.vendor.2589"], "kept: the price")
         t.ok(kept["account.learned.places.mailboxes"], "kept: the mailbox list")
         t.ok(kept["char.settings.spec.role"], "kept: the role")
         t.ok(kept["char.learned.flights.nodes.Stonegate.wx"], "kept: the flight point")
-        t.ok(added["account.settings.sell.autoRepair"], "added: the absent vendor choice")
+        t.ok(not added["account.settings.sell.autoRepair"], "not added: the unconfirmed automation")
+        t.ok(added["account.layout.arrows.points.prof"], "added: the other arrow's place")
         t.ok(added["account.learned.prices.vendor.4306"], "added: the new price")
         t.ok(added["account.learned.places.npcs.Old Tobb"], "added: the new place")
         t.eq(skipped["account.settings.sell.repairWarn"], "the same value is already there")
-        t.ok(skipped["account.settings.sell.autoJunk"], "skipped lists every imported value that was not written")
+        t.ok(skipped["account.settings.sell.autoAll"], "skipped lists every imported value that was not written")
+        t.ok(skipped["account.settings.sell.autoRepair"], "the unconfirmed automation among them")
         t.ok(not kept["account.settings.sell.repairWarn"], "an equal value is not a conflict")
         t.eq(report.counts, { added = #report.added, kept = #report.kept, skipped = #report.skipped })
         t.eq(#newAccount.imports, 1)
@@ -547,13 +733,16 @@ return {
             account = { settings = { sell = { autoRepair = false }, nav = { arrowStyle = "3d" } } },
             char = { settings = { spec = { role = "damage" } } },
         }
-        local newAccount, newChar, report = Import.Merge(account, char, imported, defaults)
-        t.eq(newAccount.settings.sell.autoRepair, true, "still the default: the import is used")
+        local confirmed = { ["sell.autoRepair"] = true, ["sell.autoJunk"] = true }
+        local unconfirmed = Import.Merge(account, char, imported, defaults)
+        t.eq(unconfirmed.settings.sell.autoRepair, false, "still the default, but not confirmed: it stays off")
+        local newAccount, newChar, report = Import.Merge(account, char, imported, defaults, confirmed)
+        t.eq(newAccount.settings.sell.autoRepair, true, "still the default and confirmed: the import is used")
         t.eq(newAccount.settings.sell.autoJunk, false, "no default given: the existing value is kept")
         t.eq(newAccount.settings.nav.arrowStyle, "flat", "not the default: the player changed it, so it is kept")
         t.eq(newChar.settings.spec.role, "tank")
         t.eq(report.counts.kept, 2)
-        local without = Import.Merge(account, char, imported)
+        local without = Import.Merge(account, char, imported, nil, confirmed)
         t.eq(without.settings.sell.autoRepair, false, "without defaults nothing existing is replaced")
     end,
 
