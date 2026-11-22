@@ -7,10 +7,11 @@ local UNKNOWN = "price unknown—check trainer"
 
 local ALL = { available = true, unavailable = true, known = true }
 
--- filter: which row states the trainer window showed (the window's own
--- filter); ALL when not given.
+-- A reading has c.trainer()'s shape, { npc =, profession = }, plus the two
+-- fields it lacks (CLIENT NEED, A-F): services (the rows) and filter (which
+-- row states the window showed; ALL when not given).
 local function reading(rows, npc, profession, filter)
-    return { npc = npc or "Loganaar", profession = profession, rows = rows, filter = filter or ALL, faction = "Alliance" }
+    return { npc = npc or "Loganaar", profession = profession, services = rows, filter = filter or ALL }
 end
 
 local function rows()
@@ -124,10 +125,9 @@ return {
     end,
 
     ["faction: the visiting character's faction is kept on the entry"] = function(t)
-        local e = ns.TrainerList.Record({}, reading(rows()), 1)["Loganaar|class"]
-        t.eq(e.faction, "Alliance")
-        local r = reading(rows()); r.faction = nil
-        t.eq(ns.TrainerList.Record({}, r, 1)["Loganaar|class"].faction, nil, "unknown stays nil")
+        local e = ns.TrainerList.Record({}, reading(rows()), 1, "Alliance")["Loganaar|class"]
+        t.eq(e.faction, "Alliance", "from c.faction(), passed in")
+        t.eq(ns.TrainerList.Record({}, reading(rows()), 1)["Loganaar|class"].faction, nil, "unknown stays nil")
     end,
 
     ["cost: zero is a known cost, not unknown"] = function(t)
@@ -160,5 +160,10 @@ return {
         end
         t.eq(seen["Moonfire/Rank 2"], "known", "the new state wins")
         t.eq(seen["Wrath/Rank 3"], "unavailable", "an untouched row of another state is kept")
+    end,
+
+    ["shape: c.trainer()'s own answer with no services is not a list"] = function(t)
+        t.eq(ns.TrainerList.Record({}, { npc = "Loganaar", profession = nil }, 1), {})
+        t.eq(ns.TrainerList.Record({}, { npc = "Loganaar", rows = rows(), filter = ALL }, 1), {}, "the old rows field is not read")
     end,
 }
