@@ -384,8 +384,12 @@ function Arrow.Start(k, diag, own)
     end
 
     -- The demo, else the guide that was set, else the player's own map
-    -- waypoint as the quest step. A guide that was set wins even when it
-    -- answers nothing. The intro plays over whichever it is.
+    -- waypoint as the quest step together with the profession step this
+    -- player's saved readings give (Nav/ProfStep.lua; none: the needle is
+    -- off). The two are handed in as one guide, so the profession step
+    -- never takes the waypoint's place. A guide that was set wins whole,
+    -- even when it answers nothing: nothing is added to it. The intro
+    -- plays over whichever it is.
     local function source()
         if demo then return Arrow.DemoSource(client, Arrow.Saved(k), near) end
         local playing = intro()
@@ -394,7 +398,8 @@ function Arrow.Start(k, diag, own)
             guide = guideFn()
         else
             local step = N.WaypointStep(client)
-            guide = step and { quest = step } or nil
+            local prof = N.ProfStepFrom(client, k.store)
+            guide = (step or prof) and { quest = step, prof = prof } or nil
         end
         if type(guide) ~= "table" then
             if not playing then return nil end

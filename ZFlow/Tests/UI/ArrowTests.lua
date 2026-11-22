@@ -492,6 +492,5 @@ return {
         login(c)
         a.relayout()
         t.ok((asked[1412] or 0) > 0, "the trainer's map is in the list of maps asked")
-        t.ok(a.state().view.prof.mode ~= "off")
     end,
 }
