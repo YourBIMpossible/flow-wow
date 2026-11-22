@@ -319,4 +319,122 @@ return {
         t.eq(snap.shapes.build.ok, false)
         t.eq(snap.shapes.slotInfo, nil)
     end,
+
+    -- ------------------------------------------------------ import report
+    ["import report: the counts, then each adjusted value with its reason"] = function(t)
+        local lines, counts = ns.Diag.ImportReport({
+            ok = true,
+            dropped = {
+                { key = "a.one", why = "dropped", reason = "on purpose" },
+                { key = "a.two", why = "dropped", reason = "on purpose" },
+                { key = "b.bad", why = "malformed", reason = "expected a number" },
+            },
+            adjusted = {
+                { key = "buffButton.scale", from = 9, to = 2, reason = "outside the sizes a frame can take" },
+                { key = "x.name", from = "Long", to = "L", reason = "cut" },
+            },
+        })
+        t.eq(counts, { dropped = 2, adjusted = 2, malformed = 1, unknown = 0, superseded = 0, other = 0 })
+        t.eq(lines, {
+            "import: 2 dropped, 2 adjusted, 1 malformed.",
+            "import: adjusted buffButton.scale: 9 to 2 (outside the sizes a frame can take)",
+            'import: adjusted x.name: "Long" to "L" (cut)',
+        })
+    end,
+
+    ["import report: nothing left behind or changed is three zeroes"] = function(t)
+        local lines, counts = ns.Diag.ImportReport({ ok = true, dropped = {}, adjusted = {} })
+        t.eq(lines, { "import: 0 dropped, 0 adjusted, 0 malformed." })
+        t.eq(counts, { dropped = 0, adjusted = 0, malformed = 0, unknown = 0, superseded = 0, other = 0 })
+    end,
+
+    ["import report: entries left behind for another reason are not counted as dropped"] = function(t)
+        local lines, counts = ns.Diag.ImportReport({
+            ok = true,
+            dropped = {
+                { key = "a", why = "unknown" }, { key = "b", why = "unknown" },
+                { key = "c", why = "superseded" }, { key = "d", why = "dropped" },
+                { key = "e" }, "not an entry",
+            },
+            adjusted = {},
+        })
+        t.eq(counts, { dropped = 1, adjusted = 0, malformed = 0, unknown = 2, superseded = 1, other = 2 })
+        t.eq(lines, {
+            "import: 1 dropped, 0 adjusted, 0 malformed.",
+            "import: also left behind: 2 with no row, 1 superseded, 2 with no category.",
+        })
+    end,
+
+    ["import report: an import that did not succeed says why and counts nothing"] = function(t)
+        local lines, counts = ns.Diag.ImportReport({ ok = false, reason = "too new", dropped = { { why = "dropped" } } })
+        t.eq(lines, { "import: nothing was read: too new" })
+        t.eq(counts.dropped, 0)
+        t.eq((ns.Diag.ImportReport(nil)), { "import: there is no result to report." })
+        t.eq((ns.Diag.ImportReport("x")), { "import: there is no result to report." })
+    end,
+
+    ["import report: missing lists and a broken adjusted entry do not raise"] = function(t)
+        local lines, counts = ns.Diag.ImportReport({ ok = true, adjusted = { "broken", { key = "k", from = false, to = true } } })
+        t.eq(counts.adjusted, 2)
+        t.eq(lines, {
+            "import: 0 dropped, 2 adjusted, 0 malformed.",
+            "import: adjusted nil: nil to nil (no reason given)",
+            "import: adjusted k: false to true (no reason given)",
+        })
+    end,
+
+    ["import report: what the import itself returns is reported as it lists it"] = function(t)
+        local result = ns.Import.FromFlow({ buffButton = { scale = 9, enabled = "yes" } }, nil)
+        local lines, counts = ns.Diag.ImportReport(result)
+        t.eq(counts.adjusted, #result.adjusted)
+        t.eq(counts.adjusted, 1)
+        t.eq(counts.malformed, 1)
+        t.eq(counts.dropped + counts.malformed + counts.unknown + counts.superseded + counts.other, #result.dropped)
+        local entry = result.adjusted[1]
+        t.eq(lines[#lines], "import: adjusted buffButton.scale: 9 to 2 (" .. entry.reason .. ")")
+    end,
+
+    ["slash: import with no predecessor data says so and creates none"] = function(t)
+        local _, c = start()
+        login(c)
+        local before = #c.printed
+        c.slashes[ns.id.slash]("import")
+        t.eq(#c.printed, before + 1)
+        t.ok(c.printed[#c.printed]:find("nothing to read", 1, true), c.printed[#c.printed])
+        t.eq(c.savedExists(ns.id.predecessorDB), false)
+        t.eq(c.savedExists(ns.id.predecessor .. "CharDB"), false)
+    end,
+
+    ["slash: import prints the report and writes nothing"] = function(t)
+        local _, c = start()
+        login(c)
+        local flow = c.saved(ns.id.predecessorDB)
+        flow.buffButton = { scale = 9, enabled = "yes" }
+        local snaps = c.saved(ns.id.accountDB).diag.count
+        local before = #c.printed
+        c.slashes[ns.id.slash](" IMPORT ")
+        local expected = ns.Diag.ImportReport(ns.Import.FromFlow({ buffButton = { scale = 9, enabled = "yes" } }, nil))
+        t.eq(#c.printed, before + #expected)
+        for i = 1, #expected do
+            t.eq(c.printed[before + i], ns.id.title .. ": " .. expected[i])
+        end
+        t.eq(flow, { buffButton = { scale = 9, enabled = "yes" } })
+        local own = c.saved(ns.id.accountDB)
+        t.eq(own.settings, nil)
+        t.eq(own.layout, nil)
+        t.eq(own.imports, nil)
+        t.eq(own.diag.count, snaps, "a snapshot was taken")
+        t.eq(c.savedExists(ns.id.predecessor .. "CharDB"), false)
+    end,
+
+    ["slash: import reads the predecessor's character data when the client has it"] = function(t)
+        local _, c = start()
+        login(c)
+        c.saved(ns.id.predecessorDB)
+        c.saved(ns.id.predecessor .. "CharDB").stray = 1
+        local before = #c.printed
+        c.slashes[ns.id.slash]("import")
+        t.ok(c.printed[before + 2] and c.printed[before + 2]:find("1 with no row", 1, true),
+            tostring(c.printed[before + 2]))
+    end,
 }
