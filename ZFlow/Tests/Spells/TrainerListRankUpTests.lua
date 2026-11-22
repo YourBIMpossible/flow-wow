@@ -83,4 +83,22 @@ return {
         local ok, shown = pcall(ns.TrainerListRankUp.Sync, nil, lists(), {}, 10, nil)
         t.ok(ok); t.eq(shown, {})
     end,
+
+    ["refresh: the player's level comes from client.level, one read"] = function(t)
+        local a, asked = fakeAdvisor(), 0
+        local client = { level = function() asked = asked + 1; return 10 end }
+        local shown = ns.TrainerListRankUp.Refresh(client, a, lists(), {}, nil)
+        t.eq(asked, 1, "client.level read once")
+        t.eq(shown, { ["aps.rankup.Moonfire"] = true })
+        t.eq(a.List()[1].text, "Moonfire Rank 2 can be learned at Loganaar.")
+    end,
+
+    ["refresh: no client.level, or no answer, removes this module's prompts"] = function(t)
+        local a = fakeAdvisor()
+        local shown = ns.TrainerListRankUp.Refresh({ level = function() return 10 end }, a, lists(), {}, nil)
+        shown = ns.TrainerListRankUp.Refresh({ level = function() return nil end }, a, lists(), {}, shown)
+        t.eq(a.List(), {}, "level not known: nothing claimed")
+        t.eq(ns.TrainerListRankUp.Refresh({}, a, lists(), {}, nil), {})
+        t.eq(ns.TrainerListRankUp.Refresh(nil, a, lists(), {}, nil), {})
+    end,
 }
