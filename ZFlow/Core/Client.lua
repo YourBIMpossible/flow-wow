@@ -1253,6 +1253,93 @@ function ns.make.client(env)
                 end
             end
         end
+        -- The older styles (Nav/ArrowStyles.lua): the arrow drawn from lines
+        -- and dots in place of its pictures. First guess: the calls are the
+        -- ones the predecessor's arrow made; none was checked on the client
+        -- from here.
+        local MASK = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
+        local pictures = list(shadow, pool, body, shine, halo, ripple, beam, beamDown)
+        local lineList, dotList, dotKind = {}, {}, {}
+        local linesUp, dotsUp, shapesOn = 0, 0, false
+        -- True when this client can draw them.
+        function h.canShapes()
+            return lookup(holder, "CreateLine") ~= false
+        end
+        -- s: what Nav.ArrowShapes answers; nil: back to the pictures. A line
+        -- or dot the client did not make is left out.
+        function h.shapes(s)
+            if type(s) ~= "table" then
+                if not shapesOn then return end
+                shapesOn = false
+                for i = 1, linesUp do if lineList[i] then fast(lineList[i], "Hide") end end
+                for i = 1, dotsUp do if dotList[i] then fast(dotList[i], "Hide") end end
+                linesUp, dotsUp = 0, 0
+                for i = 1, #cut do fast(cut[i], "Show") end
+                fast(pool, current == "needle" and "Hide" or "Show")
+                return
+            end
+            if not shapesOn then
+                shapesOn = true
+                for i = 1, #pictures do fast(pictures[i], "Hide") end
+            end
+            local lines, nl = s.lines, tonumber(s.nl) or 0
+            for i = 1, nl do
+                local e = lines[i]
+                local l = lineList[i]
+                if l == nil then
+                    local okL, made = method(holder, "CreateLine", nil, e.layer)
+                    l = okL and made or false
+                    lineList[i] = l
+                end
+                if l then
+                    fast(l, "SetDrawLayer", e.layer, e.sub)
+                    fast(l, "SetThickness", e.thick)
+                    fast(l, "SetStartPoint", "CENTER", holder, e.x1, e.y1)
+                    fast(l, "SetEndPoint", "CENTER", holder, e.x2, e.y2)
+                    fast(l, "SetColorTexture", e.r, e.g, e.b, e.a)
+                    fast(l, "Show")
+                end
+            end
+            for i = nl + 1, linesUp do if lineList[i] then fast(lineList[i], "Hide") end end
+            linesUp = nl
+            local dots, nd = s.dots, tonumber(s.nd) or 0
+            for i = 1, nd do
+                local e = dots[i]
+                local d = dotList[i]
+                if d == nil then
+                    local okD, made = method(holder, "CreateTexture", nil, e.layer, nil, e.sub)
+                    d = okD and made or false
+                    dotList[i] = d
+                end
+                if d then
+                    -- A disc is the round mask, tinted; a picture is cut in
+                    -- from its border; a square is a plain colour.
+                    local kind = e.tex ~= nil and e.tex or (e.round and "round" or "square")
+                    if dotKind[i] ~= kind then
+                        dotKind[i] = kind
+                        if e.tex ~= nil then
+                            fast(d, "SetTexture", e.tex)
+                            fast(d, "SetTexCoord", 0.08, 0.92, 0.08, 0.92)
+                        else
+                            fast(d, "SetTexCoord", 0, 1, 0, 1)
+                            if e.round then fast(d, "SetTexture", MASK) end
+                        end
+                    end
+                    if kind == "square" then
+                        fast(d, "SetColorTexture", e.r, e.g, e.b, e.a)
+                        fast(d, "SetVertexColor", 1, 1, 1, 1)
+                    else
+                        fast(d, "SetVertexColor", e.r, e.g, e.b, e.a)
+                    end
+                    fast(d, "SetDrawLayer", e.layer, e.sub)
+                    sized(d, e.w, e.h)
+                    fast(d, "SetPoint", "CENTER", holder, "CENTER", e.x, e.y)
+                    fast(d, "Show")
+                end
+            end
+            for i = nd + 1, dotsUp do if dotList[i] then fast(dotList[i], "Hide") end end
+            dotsUp = nd
+        end
         function h.scale(n)
             if type(n) ~= "number" or n <= 0 then return end
             -- The frame keeps its size: resizing it would move a point

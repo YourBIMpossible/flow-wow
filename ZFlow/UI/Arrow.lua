@@ -6,7 +6,9 @@
 -- shows and where; Nav/ArrowLayout.lua's ArrowApply turns a drag or a
 -- command into the next saved layout; Nav/ArrowMotion.lua turns and fades
 -- the drawn arrow. What it saves, per account:
---   layout.arrows   (the shape is in Nav/ArrowLayout.lua)
+--   layout.arrows       (the shape is in Nav/ArrowLayout.lua)
+--   layout.arrowStyle   "3d" or "flat"; nothing: the modern arrow
+--   layout.arrowModern  true once the one-time move to the modern arrow ran
 --
 -- A guide hands its current steps in with setGuide(fn): fn() returns what
 -- Nav/ViewState.lua takes ({ quest, prof, view, link }; a step may carry
@@ -19,6 +21,7 @@
 --   <slash> arrow near             demo: the quest step reached / not
 --   <slash> arrow separate | stack | reset
 --   <slash> arrow hide quest|prof  <slash> arrow text quest|prof   (toggles)
+--   <slash> arrow modern | 3d | flat   the quest arrow's style
 local _, ns = ...
 
 local Arrow = {}
@@ -62,6 +65,46 @@ function Arrow.Row(k)
         k.problems:add("arrow", "row", "the layout row was refused; the layout is not kept")
     end
     return row
+end
+
+-- The quest arrow's style (Nav/ArrowStyles.lua): a setting row of its own.
+-- The needle keeps its pictures in every style. Both places are authored
+-- here; the mark is not a setting, it is written once.
+Arrow.STYLE = "arrow.style"
+Arrow.STYLE_PATH = "layout.arrowStyle"
+Arrow.STYLE_MARK_PATH = "layout.arrowModern"
+
+local styleRefused = setmetatable({}, { __mode = "k" })
+
+-- The style row on kernel k, declared the first time it is asked for; nil
+-- when the kernel refused it (asked once, one problem of the arrow).
+function Arrow.StyleRow(k)
+    local row = k.settings:row(Arrow.STYLE)
+    if row or styleRefused[k] then return row end
+    local choices = {}
+    for i = 1, #ns.Nav.ARROW_STYLES do choices[i] = ns.Nav.ARROW_STYLES[i][1] end
+    row = k:Setting({
+        key = Arrow.STYLE, scope = "account", type = "choice", choices = choices,
+        default = choices[1], path = Arrow.STYLE_PATH,
+        label = "Arrow style", group = "Arrows",
+        help = "How the quest arrow is drawn: the modern arrow, the 3D arrow with pillars, or flat lines.",
+    })
+    if not row then
+        styleRefused[k] = true
+        k.problems:add("arrow", "row", "the style row was refused; the style is not kept")
+    end
+    return row
+end
+
+-- The styles for a menu, in order: { key, label, on } with `on` the one
+-- named by `using`.
+function Arrow.Styles(using)
+    local out = {}
+    for i = 1, #ns.Nav.ARROW_STYLES do
+        local s = ns.Nav.ARROW_STYLES[i]
+        out[i] = { key = s[1], label = s[2], on = s[1] == using }
+    end
+    return out
 end
 
 -- The saved layout, as ArrowView and ArrowApply take it: { arrows = ... }.
@@ -304,6 +347,20 @@ function Arrow.Start(k, diag, own)
     local handles = (quest and prof) and { quest = quest, prof = prof } or nil
     local motion = { quest = N.ArrowMotion(), prof = N.ArrowMotion() }
     local ready, demo, near = false, false, false
+    -- drawn: the style the quest arrow is drawn in, read again at each
+    -- layout. shaped: its handle holds lines. moved: the one-time move to
+    -- the modern arrow was looked at.
+    local drawn, shaped, moved = "modern", false, false
+    local function canShapes()
+        local q = handles and handles.quest
+        return q ~= nil and type(q.shapes) == "function"
+            and type(q.canShapes) == "function" and q.canShapes() == true
+    end
+    -- The style in use: the saved one where this client can draw it.
+    local function style()
+        if not ready or not canShapes() then return "modern" end
+        return N.ArrowStyle(k.store:get("account", Arrow.STYLE_PATH))
+    end
     local current, cancelTick, since = nil, nil, 0
     local stop
     local guideFn = nil
@@ -356,6 +413,7 @@ function Arrow.Start(k, diag, own)
     local function relayout()
         if not handles or not ready then return end
         introShown = false
+        drawn = style()
         -- A frame error stops the arrows for the session, and so does the
         -- kernel switching them off: nothing here, a loading screen or a
         -- command, shows them again.
@@ -447,7 +505,17 @@ function Arrow.Start(k, diag, own)
         local now = client.now()
         for _, key in ipairs(N.ARROW_KEYS) do
             if current[key].shown then
-                handles[key].draw(N.ArrowStep(motion[key], elapsed, now))
+                local h = handles[key]
+                if key == "quest" and drawn ~= "modern" then
+                    shaped = true
+                    h.shapes(N.ArrowShapes(drawn, motion[key], elapsed, now))
+                else
+                    if key == "quest" and shaped then
+                        shaped = false
+                        h.shapes(nil)
+                    end
+                    h.draw(N.ArrowStep(motion[key], elapsed, now))
+                end
             end
         end
     end
@@ -504,6 +572,21 @@ function Arrow.Start(k, diag, own)
             introWanted = k.store:get("account", Arrow.INTRO_PATH) ~= true
         end
         ready = true
+        if not moved then
+            -- Once per install: a "3d" saved before the modern arrow was the
+            -- default of its day, not a choice.
+            moved = true
+            local was = k.store:get("account", Arrow.STYLE_PATH)
+            local now, mark = N.ArrowStyleMigrate(was, k.store:get("account", Arrow.STYLE_MARK_PATH))
+            if mark then
+                local ok, reason = true, nil
+                if was ~= nil and now ~= N.ArrowStyle(was) then
+                    ok, reason = k.store:set("account", Arrow.STYLE_PATH, nil)
+                end
+                if ok then ok, reason = k.store:set("account", Arrow.STYLE_MARK_PATH, true) end
+                if not ok then k.problems:add("arrow", "save", reason) end
+            end
+        end
         relayout()
         tick(true)
     end
@@ -545,6 +628,28 @@ function Arrow.Start(k, diag, own)
 
     local function say(text) client.print(id.title .. ": " .. text) end
     local USAGE = id.slash .. " arrow demo | near | separate | stack | reset | hide quest|prof | text quest|prof"
+        .. " | modern | 3d | flat"
+
+    -- Saves the style and draws in it. true, or false and why.
+    local function setStyle(key)
+        if not handles then return false, "this client cannot draw the arrows" end
+        if not ready then return false, "the arrows are not ready until login" end
+        if not live() then return false, "the arrows are switched off until the next reload" end
+        if key ~= "modern" and key ~= "3d" and key ~= "flat" then return false, "no such arrow style" end
+        if key ~= "modern" and not canShapes() then return false, "this client cannot draw that style" end
+        local ok, reason
+        if Arrow.StyleRow(k) then
+            ok, reason = k.settings:set(Arrow.STYLE, key)
+        else
+            ok, reason = k.store:set("account", Arrow.STYLE_PATH, key)
+        end
+        if not ok then
+            k.problems:add("arrow", "save", reason)
+            return false, tostring(reason)
+        end
+        relayout()
+        return true
+    end
 
     if diag and type(diag.commands) == "table" then
         diag.commands.arrow = function(rest)
@@ -569,6 +674,9 @@ function Arrow.Start(k, diag, own)
             elseif word == "reset" then
                 act({ op = "reset" })
                 say("arrows back to their first place.")
+            elseif word == "modern" or word == "3d" or word == "flat" then
+                local ok, reason = setStyle(word)
+                say(ok and ("arrow style: " .. N.ArrowStyleLabel(word) .. ".") or (reason .. "."))
             elseif (word == "hide" or word == "text") and (key == "quest" or key == "prof") then
                 local saved = N.ArrowSaved(Arrow.Saved(k))
                 local on
@@ -599,6 +707,8 @@ function Arrow.Start(k, diag, own)
     end
 
     return { handles = handles, relayout = relayout, setGuide = setGuide, stop = stop,
+             style = style, setStyle = setStyle,
+             styles = function() return Arrow.Styles(style()) end,
              state = function() return { ready = ready, demo = demo, near = near, view = current } end }
 end
 
@@ -615,11 +725,26 @@ end
 -- one record that the arrows are off, and its stop is what stops them.
 -- Returns what Arrow.Start returns, usable at once: before the start (and
 -- for a declaration the kernel refused) relayout does nothing, state is
--- not ready, handles is nil, and a guide that is set is kept for the start.
+-- not ready, handles is nil, and a guide that is set is kept for the start;
+-- style is "modern" and setStyle answers false.
 function Arrow.Declare(k, diag)
     local inner, pending = nil, nil
     local api = {}
     Arrow.Row(k)
+    Arrow.StyleRow(k)
+    -- Before the start the style in use is the modern one and none is set.
+    function api.style()
+        if inner then return inner.style() end
+        return "modern"
+    end
+    function api.styles()
+        if inner then return inner.styles() end
+        return Arrow.Styles("modern")
+    end
+    function api.setStyle(key)
+        if inner then return inner.setStyle(key) end
+        return false, "the arrows are not started"
+    end
     function api.relayout()
         if inner then inner.relayout() end
     end
