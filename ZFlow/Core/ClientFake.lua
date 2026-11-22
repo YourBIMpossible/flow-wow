@@ -120,6 +120,7 @@ function ns.make.fakeClient(opts)
     end
     function c.faction() return s.faction end
     function c.class() return s.class end
+    function c.stealthed() return s.stealthed end
     function c.spellCooldown(id)
         if type(id) ~= "number" or not s.cooldowns then return nil end
         return s.cooldowns[id]
@@ -372,6 +373,10 @@ function ns.make.fakeClient(opts)
     function c.setFaction(group) s.faction = group end
     -- The class token ("DRUID"), or nil for not known.
     function c.setClass(token) s.class = token end
+    -- Stealthed: true, false, or nil for not known (the start).
+    function c.setStealthed(on)
+        if on == nil then s.stealthed = nil else s.stealthed = on and true or false end
+    end
     -- One spell's cooldown: true (on cooldown), false (ready), nil for
     -- not known. A spell never set is not known.
     function c.setSpellCooldown(id, on)
