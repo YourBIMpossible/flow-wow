@@ -8,9 +8,16 @@
 # end do the same for ZFlow/.
 name: Checks
 
+# Pushes run the checks only on the integration branches. Worker branches
+# (zflow-<lane>-<item>) start with a tests-only red commit and leave the
+# manifest and TOC lines to the lead, so they cannot pass on their own; the
+# lead runs the full set on each delivered head before merging it. A worker
+# branch can still be checked on demand with workflow_dispatch.
 on:
   push:
+    branches: [main, zflow]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
