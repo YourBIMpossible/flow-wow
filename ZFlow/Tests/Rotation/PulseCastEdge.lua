@@ -233,6 +233,9 @@ local function start(opts)
     c.setSpell(MOONFIRE, { known = true, usable = true, noPower = false })
     c.setSpellCooldown(WRATH, false)
     c.setSpellCooldown(MOONFIRE, false)
+    -- In range, read: with the range not read the driver suggests nothing.
+    c.setInRange(WRATH, true)
+    c.setInRange(MOONFIRE, true)
     local hasTarget = opts.target ~= false
     c.target = function()
         if not hasTarget then return nil end
