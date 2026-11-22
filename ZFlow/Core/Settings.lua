@@ -17,12 +17,15 @@
 --               path = "layout.arrows", label = "Arrow positions" }
 -- Reads, writes and resets of that row go to scope + path; nothing is moved
 -- and nothing is kept under "settings." for it. Two rows cannot have one
--- place in one scope.
+-- place in one scope, and no row's place may lie above or below another's
+-- there ("layout.arrows" and "layout.arrows.points" cannot both be rows). A
+-- path has at least two parts: a row never names a whole section.
 --
 -- A "table" row holds the table as it is stored: the same table is given
 -- back, not a copy, and what is in it is not checked. It is the one type
 -- that may go without a default: such a row reads nil while nothing (or
--- something that is no table) is stored, and set(key, nil) clears it.
+-- something that is no table) is stored, and set(key, nil) clears it. A
+-- table default is handed out as a copy, a new one for each get.
 local _, ns = ...
 ns.make = ns.make or {}
 
@@ -63,6 +66,7 @@ local function rowProblem(row)
         if type(path) ~= "string" or path == "" or path:find("^%.") or path:find("%.$") or path:find("%.%.") then
             return "bad path"
         end
+        if not path:find(".", 1, true) then return "a path needs two parts" end
     end
     if row.default == nil then
         if row.type ~= "table" then return "no default" end
@@ -72,22 +76,42 @@ local function rowProblem(row)
     return nil
 end
 
+-- True when place a is b or lies above it ("layout" above "layout.arrows").
+local function above(a, b)
+    return a == b or b:sub(1, #a + 1) == a .. "."
+end
+
+local function copy(v)
+    if type(v) ~= "table" then return v end
+    local out = {}
+    for key, value in pairs(v) do out[key] = copy(value) end
+    return out
+end
+
 function ns.make.settings(k)
     local settings = {}
     local rows, order = {}, {}
-    local places = {}   -- scope .. ":" .. place -> true, for the rows taken
+    local places = { account = {}, char = {} }   -- scope -> the places taken there
 
     function k:Setting(row)
         local problem = rowProblem(row)
         if not problem and rows[row.key] then problem = "duplicate key" end
-        local at = not problem and (row.scope .. ":" .. place(row)) or nil
-        if at and places[at] then problem = "duplicate path" end
+        local at = not problem and place(row) or nil
+        local taken = at and places[row.scope]
+        for i = 1, taken and #taken or 0 do
+            if taken[i] == at then
+                problem = "duplicate path"
+            elseif above(taken[i], at) or above(at, taken[i]) then
+                problem = "the path overlaps " .. taken[i]
+            end
+            if problem then break end
+        end
         if problem then
             local key = type(row) == "table" and row.key or nil
             k.problems:add("setting", tostring(key), problem)
             return nil
         end
-        places[at] = true
+        taken[#taken + 1] = at
         rows[row.key] = row
         order[#order + 1] = row
         return row
@@ -103,7 +127,7 @@ function ns.make.settings(k)
         if not row then return nil end
         local v = k.store:get(row.scope, place(row))
         if v ~= nil and TYPES[row.type](row, v) then return v end
-        return row.default
+        return copy(row.default)
     end
 
     function settings:set(key, value)
