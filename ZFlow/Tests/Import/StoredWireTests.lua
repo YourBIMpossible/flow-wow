@@ -226,8 +226,9 @@ return {
         t.eq(out, {})
         t.eq(report.taken, {})
         -- 12 since L6-A added vendor.list (lead); 19 with T-E spec.role;
-        -- 20 with nav.flightPaths (lead section 151).
-        t.eq(#model:keys(), 20, "the shipped model changed its number of rows")
+        -- 20 with nav.flightPaths (lead section 151); 21 with
+        -- general.groupTip (S17, RESEARCH-S17 section 5).
+        t.eq(#model:keys(), 21, "the shipped model changed its number of rows")
         for _, key in ipairs(model:keys()) do
             t.ok(not model:explicit(out, key), key .. " counts as chosen")
             t.eq((model:get(out, key)), model:default(key), key)
