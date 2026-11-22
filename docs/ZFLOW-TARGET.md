@@ -248,3 +248,11 @@ The kernel is merged on `zflow`. Where it differs from section 4, this section i
 - To add a file: add its path to `files` in ZFlow/manifest.lua, then run tools/zflow-toc.ps1. Tests go under ZFlow/Tests/<Area>/ and build a fresh kernel with `ns.Kernel({}, ns.make.fakeClient())`.
 - Checks: tools/zflow-tests.ps1 and tools/zflow-structure.ps1. tools/zflow-boot.lua stays usable for branches that have not merged the kernel yet.
 - Not confirmed in the game client: which add-on-loaded query exists, debugprofilestop, the order of PLAYER_LOGIN against saved variables, InCombatLockdown, and that the generated TOC loads.
+
+## 12. Navigation inventory and the "solid" quest arrow (revision 4, 2026-11-22)
+
+- The full behaviour inventory is F:\flow-wow-program\arch\B-nav-inventory.md: 113 behaviours, about 60 saved keys, with a proposed Z-Flow home and test kind for each. No navigation source is retired until its rows there are built or deliberately dropped with a reason.
+- Decision 3 is reconciled with the source. The quest arrow is drawn at full alpha and full scale by default. It is drawn at scale 0.8 and alpha 0.7 only while the profession needle is shown under it. That needs all of: the profession arrow setting on; a profession step chosen; the player more than 24 yd from that step and not inside it; more than 24 yd from the main step's own point; bearing and facing known. This holds in all three arrow styles. This is the approved stacked look and is kept. It is still in the first in-game batch to look at.
+- When the arrows are separated there is no needle under the quest arrow, so the quest arrow is always at full alpha and scale.
+- Faults in the source that Z-Flow must not copy (each is a required test): the corpse arrow keeps 0.8 / 0.7 if the player dies while the needle shows; the arrived ring is drawn at 0.8 / 0.7 inside a main step's area but off its point; the travel icon changes the arrow's scale and can leave scale 1.0 with alpha 0.7. Rule: scale and alpha are computed from the current state on every update, never left over from the last one.
+- Source fact: the pure layout functions and saved `nav.arrows` on the Flow line are used only by tests, not by live frames; the live arrow is not clamped to the screen and has no reset. Z-Flow drives the live frames from the layout data, clamps to the screen, and has a reset.
