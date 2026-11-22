@@ -268,6 +268,8 @@ function ns.make.fakeClient(opts)
         end
         return rows
     end
+    -- Each focus read on its own, as setQuestFocusReads was given it.
+    function c.questFocusReads() return s.questFocusReads end
     -- Which quest the player follows: a copy of what setQuestFocus was
     -- given, or nil for no such read.
     function c.questFocus()
@@ -805,6 +807,7 @@ function ns.make.fakeClient(opts)
     -- The quest the player picked out, and the watch list ({ id, ... }), as
     -- client.questFocus() gives them. Both nil: no such read on this client.
     -- quest nil with a list: a read, and no quest picked out.
+    function c.setQuestFocusReads(reads) s.questFocusReads = reads end
     function c.setQuestFocus(quest, watched)
         if quest == nil and watched == nil then s.questFocus = nil return end
         s.questFocus = { quest = quest, watched = watched }

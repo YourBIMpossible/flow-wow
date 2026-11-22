@@ -207,6 +207,9 @@ local function byRules(rows, places, here, canPoint)
     return nil
 end
 
+-- Answers the step, and where it came from: "picked" (the quest the
+-- player picked out), "watched" (the watch list) or "log" (the whole
+-- log). No step: nil alone.
 function Q.Pick(rows, places, here, focus)
     if type(rows) ~= "table" then return nil end
     here = type(here) == "table" and here or {}
@@ -218,7 +221,7 @@ function Q.Pick(rows, places, here, focus)
             for _, row in ipairs(rows) do
                 if usable(row) and row.id == focus.quest then
                     local step = ofQuest(row, places, here, canPoint)
-                    if step then return step end
+                    if step then return step, "picked" end
                     break
                 end
             end
@@ -233,9 +236,11 @@ function Q.Pick(rows, places, here, focus)
             end
             if #mine > 0 then
                 local step = byRules(mine, places, here, canPoint)
-                if step then return step end
+                if step then return step, "watched" end
             end
         end
     end
-    return byRules(rows, places, here, canPoint)
+    local step = byRules(rows, places, here, canPoint)
+    if step then return step, "log" end
+    return nil
 end

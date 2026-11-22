@@ -378,4 +378,28 @@ return {
         t.eq(c.minimapPin({}), nil)
         t.eq(#c.minimapPins, 0)
     end,
+
+    ["client questFocusReads: each read on its own"] = function(t)
+        t.eq(ns.make.client({}).questFocusReads(), {}, "no read at all")
+        local env = {
+            C_SuperTrack = { GetSuperTrackedQuestID = function() return 0 end },
+            Questie = { db = { char = { TrackerFocus = 404 } } },
+            C_QuestLog = {
+                GetNumQuestWatches = function() return 2 end,
+                GetQuestIDForQuestWatchIndex = function(i) return ({ 101, 404 })[i] end,
+            },
+        }
+        local c = ns.make.client(env)
+        t.eq(c.questFocusReads(), { superTrack = false, questie = 404, watched = { 101, 404 } })
+        t.eq(c.questFocus(), { quest = 404, watched = { 101, 404 } }, "the same reads, as one answer")
+        env.C_SuperTrack.GetSuperTrackedQuestID = function() return 101 end
+        t.eq(c.questFocusReads().superTrack, 101)
+        t.eq(c.questFocusReads().questie, 404, "both are said, though the first one wins")
+        t.eq(c.questFocus().quest, 101)
+        env.C_SuperTrack.GetSuperTrackedQuestID = function() error("no") end
+        env.Questie.db.char.TrackerFocus = nil
+        local r = c.questFocusReads()
+        t.eq(r.superTrack, nil, "a failed call is no read")
+        t.eq(r.questie, false, "Questie is there and has no focus")
+    end,
 }

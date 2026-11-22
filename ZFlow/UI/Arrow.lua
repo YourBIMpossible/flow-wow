@@ -480,21 +480,38 @@ function Arrow.Start(k, diag, own)
     -- last source was the player's own waypoint.
     local W = N.Waypoint
     local mine = false
+    -- from: where the quest step of the last source came from, for the
+    -- arrow's own report (arrow why).
+    local from = "not asked yet"
     local function source()
         mine = false
+        from = "demo"
         if demo then return Arrow.DemoSource(client, Arrow.Saved(k), near, Arrow.Palette(k)) end
         local playing = intro()
         local guide
         if guideFn then
             guide = guideFn()
+            from = "a guide"
         else
             local step = W and W.Step(k.store:get(W.SCOPE, W.PATH), ask(client, "position"), ask(client, "zone"))
-            if step then mine = true else step = N.WaypointStep(client) end
+            from = "nothing"
+            if step then
+                mine, from = true, "your own waypoint"
+            else
+                step = N.WaypointStep(client)
+                if step then from = "the map pin" end
+            end
             -- Then the errand stop the player asked for (Nav/Errand.lua), when there is one.
             local errand = k.use and k.use("errand")
-            if step == nil and errand and errand.Step then step = errand.Step() end
+            if step == nil and errand and errand.Step then
+                step = errand.Step()
+                if step then from = "an errand stop" end
+            end
             -- The player's own pin (/way, then the map pin) wins over the player's quests.
-            if step == nil and quests and Arrow.QuestArrowOn(k) then step = quests.step() end
+            if step == nil and quests and Arrow.QuestArrowOn(k) then
+                step = quests.step()
+                if step then from = "your quests" end
+            end
             local prof = N.ProfStepFrom(client, k.store)
             guide = (step or prof) and { quest = step, prof = prof } or nil
         end
@@ -841,7 +858,43 @@ function Arrow.Start(k, diag, own)
     end
 
     local USAGE = id.slash .. " arrow demo | near | separate | stack | reset | hide quest|prof | text quest|prof"
-        .. " | modern | 3d | flat"
+        .. " | modern | 3d | flat | why"
+
+    -- arrow why: says what the quest arrow is made from right now. It only
+    -- reads and prints; nothing is changed. Each read it names needs game
+    -- test: this is how they get seen.
+    local function one(v)
+        if v == nil then return "no such read" end
+        if v == false then return "none" end
+        return tostring(v)
+    end
+    local function why()
+        say("quest step from " .. from .. "; quest arrow setting " .. (Arrow.QuestArrowOn(k) and "on" or "off") .. ".")
+        local st = quests and quests.state and quests.state() or nil
+        if type(st) ~= "table" or st.rows == nil then
+            say("quest log: not read.")
+        else
+            say("quest log: " .. st.rows .. " read; Questie places " .. (st.places and "ready" or "not ready")
+                .. "; map " .. one(st.map) .. ".")
+            say(st.quest and ("quest " .. tostring(st.quest) .. ", chosen from "
+                .. (st.from == "picked" and "your focus" or st.from == "watched" and "your watch list" or "the whole log")
+                .. ".") or "no quest step.")
+        end
+        local reads = ask(client, "questFocusReads")
+        if type(reads) ~= "table" then
+            say("focus reads: none on this client.")
+        else
+            say("focus reads: super track " .. one(reads.superTrack) .. "; Questie focus " .. one(reads.questie)
+                .. "; watch list " .. (type(reads.watched) == "table" and (#reads.watched .. " quests") or "no such read")
+                .. ".")
+        end
+        local faults = ask(client, "listenFaults")
+        local missing = type(faults) == "table" and type(faults.notRegistered) == "table" and faults.notRegistered or {}
+        local names = {}
+        for _, name in ipairs(missing) do names[#names + 1] = tostring(name) end
+        say(#names > 0 and ("events the client refused: " .. table.concat(names, ", ") .. ".")
+            or "events: none refused.")
+    end
 
     -- Saves the style and draws in it. true, or false and why.
     function setStyle(key)
@@ -867,7 +920,9 @@ function Arrow.Start(k, diag, own)
     if diag and type(diag.commands) == "table" then
         diag.commands.arrow = function(rest)
             local word, key = (rest or ""):match("^(%S*)%s*(%S*)")
-            if not handles then
+            if word == "why" then
+                why()
+            elseif not handles then
                 say("this client cannot draw the arrows.")
             elseif not live() then
                 say("the arrows are switched off until the next reload.")

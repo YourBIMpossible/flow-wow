@@ -1903,8 +1903,12 @@ function ns.make.client(env)
     -- Modules/Tracker/TrackerUtils.lua (FocusQuest sets it to the quest id,
     -- UnFocus clears it); a text answer starting with the id is read too,
     -- as a guess. Every call here needs game test.
-    function c.questFocus()
-        local out, known = {}, false
+    -- Each focus read on its own, for questFocus and for the arrow's own
+    -- report (arrow why): superTrack and questie are nil for no such read or
+    -- a failed one, false for a read that named no quest, else the quest
+    -- id; watched is the watch list, or nil for no such read.
+    local function focusReads()
+        local reads = {}
         local function questId(v)
             if hidden(v) then return nil end
             if type(v) == "string" then v = tonumber(v:match("^(%d+)")) end
@@ -1914,17 +1918,9 @@ function ns.make.client(env)
         local track = type(env.C_SuperTrack) == "table" and env.C_SuperTrack or {}
         local okQ, q = call(track.GetSuperTrackedQuestID)
         if not okQ then okQ, q = call(env.GetSuperTrackedQuestID) end
-        if okQ then
-            known = true
-            out.quest = questId(q)
-        end
-        if out.quest == nil then
-            local okF, f = call(function() return env.Questie.db.char.TrackerFocus end)
-            if okF then
-                known = true
-                out.quest = questId(f)
-            end
-        end
+        if okQ then reads.superTrack = questId(q) or false end
+        local okF, f = call(function() return env.Questie.db.char.TrackerFocus end)
+        if okF then reads.questie = questId(f) or false end
         local group = type(env.C_QuestLog) == "table" and env.C_QuestLog or {}
         local okN, n = call(group.GetNumQuestWatches)
         if okN and not hidden(n) and type(n) == "number" then
@@ -1933,7 +1929,7 @@ function ns.make.client(env)
                 local okI, id = call(group.GetQuestIDForQuestWatchIndex, i)
                 if okI then list[#list + 1] = questId(id) end
             end
-            out.watched, known = list, true
+            reads.watched = list
         else
             okN, n = call(env.GetNumQuestWatches)
             if okN and not hidden(n) and type(n) == "number" then
@@ -1945,12 +1941,18 @@ function ns.make.client(env)
                         if okT then list[#list + 1] = questId(id) end
                     end
                 end
-                out.watched, known = list, true
+                reads.watched = list
             end
         end
-        if not known then return nil end
-        return out
+        return reads
     end
+    function c.questFocus()
+        local r = focusReads()
+        if r.superTrack == nil and r.questie == nil and r.watched == nil then return nil end
+        return { quest = r.superTrack or r.questie or nil, watched = r.watched }
+    end
+    -- The same reads, each on its own (see focusReads). Read only.
+    function c.questFocusReads() return focusReads() end
 
     -- A module of the installed Questie by name, or nil: Questie is not
     -- there, or its loader gave none. Asked of Questie at runtime through

@@ -33,6 +33,13 @@ N.QUEST_POINTS_MAX = 200
 N.QUEST_SOURCES_MAX = 20
 -- While Questie is not ready, it is asked again after this many steps.
 N.QUEST_RETRY_STEPS = 20
+-- Every this many steps the quest log is read again, quietly, and the
+-- places are asked again only when the log is not as it was. So the
+-- arrow follows the log even when no event came. The idea (a quiet
+-- read on a timer, compared with the last one) is the one our own older
+-- addon used; the code is new. Whether the events alone are enough on
+-- this client has not been seen: needs game test.
+N.QUEST_REREAD_STEPS = 20
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -185,10 +192,25 @@ function N.QuestiePlaces(client, rows, map)
     return places
 end
 
+-- The log rows as one text: two logs with the same text need no new
+-- places. nil for no rows.
+local function signature(rows)
+    if type(rows) ~= "table" then return nil end
+    local parts = {}
+    for _, row in ipairs(rows) do
+        parts[#parts + 1] = tostring(row.id) .. (row.complete and " c" or "") .. (row.failed and " f" or "")
+        for _, o in ipairs(row.objectives) do
+            parts[#parts + 1] = (o.done and "+" or "-") .. (o.text or "")
+        end
+    end
+    return table.concat(parts, "\n")
+end
+
 function N.QuestWatch(client)
     local Q = N.QuestSource
     local rows, places, map
-    local stale, waited = true, 0
+    local stale, waited, since = true, 0, 0
+    local last = {}
 
     local function refresh() stale = true end
 
@@ -201,11 +223,17 @@ function N.QuestWatch(client)
             waited = waited + 1
             if waited >= N.QUEST_RETRY_STEPS then stale = true end
         end
+        since = since + 1
+        if not stale and since >= N.QUEST_REREAD_STEPS then
+            since = 0
+            if signature(N.QuestLogRows(client)) ~= signature(rows) then stale = true end
+        end
         if stale then
-            stale, waited, map = false, 0, here.map
+            stale, waited, since, map = false, 0, 0, here.map
             rows = N.QuestLogRows(client)
             places = rows and N.QuestiePlaces(client, rows, map) or nil
         end
+        last = {}
         if rows == nil then return nil end
         local zone = ask(client, "zone")
         here.cont = type(zone) == "table" and zone.cont or nil
@@ -217,8 +245,18 @@ function N.QuestWatch(client)
         -- read, so a change shows on the next step with no event needed.
         -- The log and the places stay as read until said to have changed.
         local focus = ask(client, "questFocus")
-        return Q.Pick(rows, places, here, type(focus) == "table" and focus or nil)
+        local picked, from = Q.Pick(rows, places, here, type(focus) == "table" and focus or nil)
+        last = { quest = picked and picked.quest or nil, from = from }
+        return picked
     end
 
-    return { step = step, refresh = refresh }
+    -- What the last step was made from, for the arrow's own report: how
+    -- many log rows (nil: the log was not read), whether Questie gave
+    -- places, the map, the quest of the step and where it came from.
+    local function state()
+        return { rows = rows and #rows or nil, places = places ~= nil, map = map,
+                 quest = last.quest, from = last.from }
+    end
+
+    return { step = step, refresh = refresh, state = state }
 end

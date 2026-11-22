@@ -52,7 +52,7 @@ local function start(log, module)
     c.fire("ADDON_LOADED", ns.id.addon)
     c.fire("PLAYER_LOGIN")
     c.fire("PLAYER_ENTERING_WORLD")
-    return c, a, k, held
+    return c, a, k, held, d
 end
 
 return {
@@ -185,5 +185,48 @@ return {
         t.eq(A.QuestArrowOn(k(true)), true)
         t.eq(A.QuestArrowOn(k(false)), false)
         t.eq(A.QuestArrowOn({}), true)
+    end,
+
+    ["quest arrow why: says the source, the log, the pick, the reads and the events"] = function(t)
+        local c, _, _, _, d = start({ boars(), wolves() }, questie())
+        c.setQuestFocusReads({ superTrack = false, questie = 202, watched = { 101, 202 } })
+        c.setQuestFocus(202, { 101, 202 })
+        c.advance(1, 4)
+        local n = #c.printed
+        d.commands.arrow("why")
+        local said = {}
+        for i = n + 1, #c.printed do said[#said + 1] = c.printed[i] end
+        t.eq(#said, 5)
+        local title = ns.id.title .. ": "
+        t.eq(said[1], title .. "quest step from your quests; quest arrow setting on.")
+        t.eq(said[2], title .. "quest log: 2 read; Questie places ready; map 1411.")
+        t.eq(said[3], title .. "quest 202, chosen from your focus.")
+        t.eq(said[4], title .. "focus reads: super track none; Questie focus 202; watch list 2 quests.")
+        t.eq(said[5], title .. "events: none refused.")
+    end,
+
+    ["quest arrow why: no focus read, no log"] = function(t)
+        local c, _, _, held, d = start({ boars() }, questie())
+        held.log = nil
+        c.fire("QUEST_LOG_UPDATE")
+        c.advance(1, 4)
+        local n = #c.printed
+        d.commands.arrow("why")
+        t.eq(#c.printed, n + 4)
+        local title = ns.id.title .. ": "
+        t.eq(c.printed[n + 1], title .. "quest step from nothing; quest arrow setting on.")
+        t.eq(c.printed[n + 2], title .. "quest log: not read.")
+        t.eq(c.printed[n + 3], title .. "focus reads: none on this client.")
+        t.eq(c.printed[n + 4], title .. "events: none refused.")
+    end,
+
+    ["quest arrow why: reads and prints only"] = function(t)
+        local c, _, _, _, d = start({ boars() }, questie())
+        c.advance(1, 4)
+        local before = c.arrows[1].lines[1]
+        d.commands.arrow("why")
+        c.advance(1, 4)
+        t.eq(c.arrows[1].lines[1], before)
+        t.eq(c.arrows[1].lines[1], "Boar Trouble")
     end,
 }

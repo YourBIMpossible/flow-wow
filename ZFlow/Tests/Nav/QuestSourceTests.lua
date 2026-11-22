@@ -269,6 +269,22 @@ T["quest focus: watched quests come before the rest of the log"] = function(t)
     t.eq(Q.Pick(rows, spots(), HERE, { quest = 999, watched = { 303 } }).quest, 303, "a picked quest that is gone: the watched")
 end
 
+T["quest focus: Pick says where the step came from"] = function(t)
+    local rows = { boars(), scout() }
+    local _, from = Q.Pick(rows, spots(), HERE, nil)
+    t.eq(from, "log")
+    _, from = Q.Pick(rows, spots(), HERE, { quest = 303 })
+    t.eq(from, "picked")
+    _, from = Q.Pick(rows, spots(), HERE, { watched = { 303 } })
+    t.eq(from, "watched")
+    _, from = Q.Pick(rows, spots(), HERE, { quest = 999, watched = { 999 } })
+    t.eq(from, "log", "neither is in the log")
+    local step
+    step, from = Q.Pick({}, spots(), HERE, { quest = 303 })
+    t.eq(step, nil)
+    t.eq(from, nil, "no step: no source")
+end
+
 T["quest focus: the focus handed in is not changed"] = function(t)
     local focus = { quest = 303, watched = { 303, 101 } }
     Q.Pick({ boars(), scout() }, spots(), HERE, focus)
