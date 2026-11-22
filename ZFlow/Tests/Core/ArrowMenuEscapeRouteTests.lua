@@ -10,6 +10,9 @@ local _, ns = ...
 local function stub(kind)
     local o = { kind = kind, calls = {} }
     return setmetatable(o, { __index = function(_, name)
+        -- Fields a test reads (a frame's name and parent) are data, not
+        -- methods: an unset one reads as nil, as on a game frame.
+        if name == "name" or name == "parent" then return nil end
         return function(self, ...)
             self.calls[#self.calls + 1] = { name = name, ... }
             if name == "CreateTexture" or name == "CreateFontString" then return stub(name) end
