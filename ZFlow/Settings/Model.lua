@@ -74,6 +74,10 @@ M.ROWS = {
     -- nav.flightPaths: flight paths, learned from the player's own flight
     -- maps and shown as route steps (Nav/FlightPaths.lua). On by default.
     { key = "nav.flightPaths", type = "bool", default = true },
+    -- nav.learnLegs: time the player's own trips from step to step and keep
+    -- the quickest (Nav/Legs.lua, S34). On by default, as in legacy Flow.
+    -- Off: nothing is timed, and routes go by the straight line.
+    { key = "nav.learnLegs", type = "bool", default = true },
 }
 
 -- ---------------------------------------------------------------- helpers

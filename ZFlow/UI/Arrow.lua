@@ -483,9 +483,21 @@ function Arrow.Start(k, diag, own)
     -- from: where the quest step of the last source came from, for the
     -- arrow's own report (arrow why).
     local from = "not asked yet"
+    -- heading: the place of the quest arrow's step in the last source, as
+    -- { cont, map, x, y }, or nil (none, the demo, or a step with no map
+    -- place). Heading() gives a copy (lead section 169 B: Nav/Legs.lua
+    -- reads it to know which step the player is going to).
+    local heading = nil
+    local function placeOf(step)
+        local p = type(step) == "table" and step.place or nil
+        if type(p) ~= "table" or p.map == nil or type(p.x) ~= "number" or type(p.y) ~= "number" then return nil end
+        if p.x ~= p.x or p.y ~= p.y then return nil end
+        return { cont = p.cont, map = p.map, x = p.x, y = p.y }
+    end
     local function source()
         mine = false
         from = "demo"
+        heading = nil
         if demo then return Arrow.DemoSource(client, Arrow.Saved(k), near, Arrow.Palette(k)) end
         local playing = intro()
         local guide
@@ -542,6 +554,7 @@ function Arrow.Start(k, diag, own)
             if not playing then return nil end
             guide = {}
         end
+        heading = placeOf(guide.quest)
         return Arrow.GuideSource(client, Arrow.Saved(k), guide, playing, Arrow.Palette(k))
     end
 
@@ -1060,7 +1073,11 @@ function Arrow.Start(k, diag, own)
              tip = tip,
              openMenu = openMenu,
              setDrawer = function(fn) drawer = type(fn) == "function" and fn or nil end,
-             state = function() return { ready = ready, demo = demo, near = near, view = current } end }
+             state = function() return { ready = ready, demo = demo, near = near, view = current } end,
+             heading = function()
+                 if not heading then return nil end
+                 return { cont = heading.cont, map = heading.map, x = heading.x, y = heading.y }
+             end }
 end
 
 -- Declares the arrows on kernel k as the module Arrow.NAME. Nothing is made
@@ -1134,10 +1151,18 @@ function Arrow.Declare(k, diag)
         if inner then return inner.state() end
         return { ready = false, demo = false, near = false }
     end
+    -- The place the quest arrow points the player to now, { cont, map, x,
+    -- y } (shares of map), or nil: before the start, with nothing shown,
+    -- in the demo, or for a step with no map place. A copy each time.
+    function api.heading()
+        if inner and inner.heading then return inner.heading() end
+        return nil
+    end
     k:Module({
         name = Arrow.NAME,
         needs = { "client", "store", "bus", "sched" },
-        provides = { OpenMenu = function() return api.openMenu() end },
+        provides = { OpenMenu = function() return api.openMenu() end,
+                     Heading = function() return api.heading() end },
         start = function(ctx)
             local own = { loaded = true }
             function own.listen(event, fn) ctx.bus:on(Arrow.NAME, event, fn) end
