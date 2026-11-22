@@ -1374,12 +1374,31 @@ function ns.make.client(env)
         menu.owner, menu.pick = nil, nil
         if menu.catcher then method(menu.catcher, "Hide") end
     end
-    local function menuFrames()
+    -- Escape (owner decision D9, route a): the catcher has a global name,
+    -- `name` .. "Menu" from the first arrow that opens the menu, and that
+    -- name is put in the game list UISpecialFrames once. The game hides a
+    -- listed frame that is shown at Escape and takes the key only then, so
+    -- with no menu open the key stays with the game. Hidden by the game or
+    -- by us, OnHide leaves the menu closed: no owner, nothing to choose.
+    -- A name that is already a global is not taken over, and without a name
+    -- or without the list the menu opens as before, with no Escape route.
+    -- A first guess throughout: not seen in game on 16001.
+    local function menuFrames(name)
         if menu.panel then return true end
         if not menu.catcher then
-            local ok, catcher = call(env.CreateFrame, "Button", nil, env.UIParent)
+            local global = type(name) == "string" and name ~= "" and (name .. "Menu") or nil
+            if global ~= nil and env[global] ~= nil then global = nil end
+            local ok, catcher = call(env.CreateFrame, "Button", global, env.UIParent)
             if not ok or catcher == nil then return false end
             menu.catcher = catcher
+            local special = env.UISpecialFrames
+            if global ~= nil and type(special) == "table" then
+                local there = false
+                for i = 1, #special do
+                    if special[i] == global then there = true end
+                end
+                if not there then special[#special + 1] = global end
+            end
             -- The game makes a frame shown. Hidden at once (AI1): only a
             -- menu that has opened fully shows it, so a panel that cannot
             -- be made leaves nothing over the screen.
@@ -1389,6 +1408,9 @@ function ns.make.client(env)
             method(catcher, "EnableMouse", true)
             method(catcher, "RegisterForClicks", "AnyUp")
             method(catcher, "SetScript", "OnClick", menuClose)
+            method(catcher, "SetScript", "OnHide", function()
+                menu.owner, menu.pick = nil, nil
+            end)
         end
         local ok, panel = call(env.CreateFrame, "Frame", nil, menu.catcher)
         if not ok or panel == nil then return false end
@@ -1432,8 +1454,8 @@ function ns.make.client(env)
     end
     -- Opens the menu for the arrow handle `owner` (frame f) with `items`
     -- (UI/ArrowMenu's rows); pick(key) is told the row chosen.
-    local function menuOpen(owner, f, items, pick)
-        if type(items) ~= "table" or #items == 0 or not menuFrames() then
+    local function menuOpen(owner, f, items, pick, name)
+        if type(items) ~= "table" or #items == 0 or not menuFrames(name) then
             menuClose()
             return
         end
@@ -1982,7 +2004,7 @@ function ns.make.client(env)
                 if menu.owner == h then menuClose() end
                 return
             end
-            menuOpen(h, f, items, pick)
+            menuOpen(h, f, items, pick, spec.name)
         end
         arrowFrames[h] = f
         return h
