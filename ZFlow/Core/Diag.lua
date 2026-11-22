@@ -68,6 +68,7 @@ Diag.NAMES = {
     "C_TradeSkillUI.GetAllRecipeIDs", "GetNumCrafts", "GetCraftInfo",
     "GetNumTrainerServices", "GetTrainerServiceInfo", "GetTrainerServiceCost", "GetTrainerServiceSkillReq",
     "GetMerchantNumItems", "GetMerchantItemInfo", "GetMerchantItemLink", "C_MerchantFrame.GetItemInfo",
+    "IsControlKeyDown",
     "CanMerchantRepair", "GetRepairAllCost",
     "NumTaxiNodes", "TaxiNodeName", "TaxiNodeGetType", "TaxiNodeCost",
     "C_ChatInfo.RegisterAddonMessagePrefix", "C_ChatInfo.SendAddonMessage", "SendAddonMessage",

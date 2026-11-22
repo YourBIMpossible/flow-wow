@@ -265,15 +265,21 @@ Arrow.NAME = "arrow"
 -- module's. { listen = fn(event, fn), frame = fn(fn) -> cancel,
 -- live = fn() -> false once the arrows are switched off, loaded = true when
 -- the login is already under way, script = fn(label, fn) -> fn: what a frame
--- script runs of the arrows, run as the owner's work, fault = fn(err): an
--- error the arrows caught themselves, for the owner to count }. Without it the arrows register with
--- the client themselves, wait for the login, and are never switched off.
+-- script runs of the arrows, run as the owner's work, off = fn(err):
+-- a frame error, for the owner to switch the arrows off (it calls stop) }.
+-- Whether the arrows are off is the owner's to say, through live: they keep
+-- no flag of their own beside it. Without an owner the arrows register with
+-- the client themselves, wait for the login, and a frame error stops them
+-- for the session.
 function Arrow.Start(k, diag, own)
     local client, id, N = k.client, k.id, ns.Nav
     own = type(own) == "table" and own or {}
     local listen = own.listen or client.listen
     local onFrame = own.frame or client.onFrame
-    local live = own.live or function() return true end
+    -- Only arrows without an owner stop themselves; with one, live is the
+    -- owner's answer and nothing here is kept beside it.
+    local stopped = false
+    local live = own.live or function() return not stopped end
     local script = own.script or function(_, fn) return fn end
     local spec = function(name, level)
         return { name = id.framePrefix .. name, size = N.ARROW_SIZE, art = N.ARROW_ART,
@@ -287,7 +293,8 @@ function Arrow.Start(k, diag, own)
     local handles = (quest and prof) and { quest = quest, prof = prof } or nil
     local motion = { quest = N.ArrowMotion(), prof = N.ArrowMotion() }
     local ready, demo, near = false, false, false
-    local current, cancelTick, since, broken = nil, nil, 0, false
+    local current, cancelTick, since = nil, nil, 0
+    local stop
     local guideFn = nil
     -- introWanted: this install has not seen the intro and it has not ended.
     -- entered: the world has been entered. introShown: the last layout had
@@ -341,7 +348,7 @@ function Arrow.Start(k, diag, own)
         -- A frame error stops the arrows for the session, and so does the
         -- kernel switching them off: nothing here, a loading screen or a
         -- command, shows them again.
-        if broken or not live() then
+        if not live() then
             current = nil
             hideAll()
             return
@@ -435,21 +442,21 @@ function Arrow.Start(k, diag, own)
     end
 
     local function frame(elapsed)
-        if broken then return end
+        if not live() then return end
         local ok, err = pcall(step, elapsed)
         if not ok then
             -- A broken arrow is taken off the screen, not left frozen on it.
-            broken = true
             current = nil
             pcall(hideAll)
             k.problems:add("arrow", "frame", err)
-            -- An owner that runs the frames is asked for no more of them.
-            if own.frame and cancelTick then
-                cancelTick()
-                cancelTick = nil
+            -- The owner switches the arrows off, and its switch is what
+            -- stops them. Without an owner they stop themselves.
+            if own.off then
+                own.off(err)
+            else
+                stopped = true
+                stop()
             end
-            -- The frame error is one of the owner's errors.
-            if own.fault then own.fault(err) end
         end
     end
 
@@ -571,7 +578,7 @@ function Arrow.Start(k, diag, own)
 
     -- What the owner calls when the arrows are switched off: off the screen,
     -- and no more frames asked for.
-    local function stop()
+    function stop()
         current = nil
         if handles then pcall(hideAll) end
         if cancelTick then
@@ -592,8 +599,9 @@ end
 -- off they stop with it, and the module's stop hides the frames. What a
 -- frame script runs of the arrows (the end of a drag) is run through the
 -- kernel's meter under the module's name, and its error is one of the
--- module's: five switch the arrows off. A frame error still stops the
--- arrows at once, and is counted as one of the five.
+-- module's: five switch the arrows off. A frame error switches the module
+-- off at once, through the kernel (k:SwitchOff): the kernel's state is the
+-- one record that the arrows are off, and its stop is what stops them.
 -- Returns what Arrow.Start returns, usable at once: before the start (and
 -- for a declaration the kernel refused) relayout does nothing, state is
 -- not ready, handles is nil, and a guide that is set is kept for the start.
@@ -628,6 +636,8 @@ function Arrow.Declare(k, diag)
                     local now = ctx.client.now()
                     local elapsed = 0
                     if type(now) == "number" and type(last) == "number" then elapsed = now - last end
+                    -- A clock that steps back gives the frame no time.
+                    if elapsed < 0 then elapsed = 0 end
                     last = now
                     ctx.sched:nextFrame(Arrow.NAME, run)
                     fn(elapsed)
@@ -636,7 +646,7 @@ function Arrow.Declare(k, diag)
                 return function() on = false end
             end
             function own.live() return k:ModuleState(Arrow.NAME) ~= "off" end
-            function own.fault(err) k.fault(Arrow.NAME, err) end
+            function own.off(err) k:SwitchOff(Arrow.NAME, "frame error: " .. tostring(err)) end
             function own.script(label, fn)
                 return function(...)
                     if not own.live() then return end

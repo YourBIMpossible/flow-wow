@@ -112,6 +112,19 @@ function ns.make.modules(k)
         switchOff(mod, "switched off after " .. n .. " errors; last: " .. tostring(err))
     end
 
+    -- Switches the module off now, for a module that knows it cannot go on
+    -- (the arrows after a frame error). As at the fault limit: the bus and
+    -- the scheduler are cut, stop runs once if it had started, and every
+    -- module that needs it goes off too. true when this call switched it
+    -- off; false for an unknown name or a module already off, whose first
+    -- reason stands.
+    function k:SwitchOff(name, reason)
+        local mod = mods[name]
+        if not mod or mod.state == "off" then return false end
+        switchOff(mod, type(reason) == "string" and reason or "switched off")
+        return true
+    end
+
     function k:Module(spec)
         local problem = specProblem(spec)
         if not problem and mods[spec.name] then problem = "duplicate module" end
@@ -238,6 +251,11 @@ function ns.make.modules(k)
                         turnOff(mod, "start failed: " .. tostring(err))
                     elseif mod.state ~= "off" then
                         mod.state = "started"
+                    else
+                        -- Switched off during its own start: what it
+                        -- registered after that is cut now.
+                        k.bus:off(name)
+                        k.sched:off(name)
                     end
                 else
                     mod.state = "started"

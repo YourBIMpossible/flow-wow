@@ -263,11 +263,13 @@ return {
         local q = c.arrows[1]
         q.draw = function() error("boom") end
         c.advance(0.1, 5)
-        t.eq(k.problems:count(), 1)
         t.eq(k.problems:count("arrow"), 1)
         t.eq({ q.shown, c.arrows[2].shown }, { false, false })
         t.eq(a.state().view, nil)
-        t.eq(k:ModuleState(A.NAME), "started", "the arrow stops itself at its first frame error")
+        -- LEDGER 50, Q2: the kernel switches it off; that is its second problem.
+        t.eq(k:ModuleState(A.NAME), "off", "the kernel switches the arrow off at its first frame error")
+        t.eq(k.problems:count("module"), 1)
+        t.eq(k.problems:count(), 2)
     end,
 
     ["module: the intro plays once and is saved as seen at its first frame"] = function(t)
