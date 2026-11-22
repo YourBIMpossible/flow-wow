@@ -8,7 +8,12 @@ local A, N = ns.Arrow, ns.Nav
 local function start(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
-    if opts.saved then c.setSaved(ns.id.accountDB, opts.saved) end
+    -- An install that has seen the intro (Tests/UI/ArrowIntroTests.lua has
+    -- the intro itself), so login shows only what each test sets up.
+    local saved = opts.saved or {}
+    if type(saved.layout) ~= "table" then saved.layout = {} end
+    if saved.layout.arrowIntroSeen == nil then saved.layout.arrowIntroSeen = true end
+    c.setSaved(ns.id.accountDB, saved)
     c.setScreen(1024, 768)
     c.setZone(1, 1411)
     if opts.facing ~= false then c.setFacing(opts.facing or 0) end

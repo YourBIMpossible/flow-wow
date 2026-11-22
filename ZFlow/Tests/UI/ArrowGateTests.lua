@@ -9,6 +9,9 @@ local A, N = ns.Arrow, ns.Nav
 -- with a quest step 100 yards north and a vein 300 yards east.
 local function start()
     local c = ns.make.fakeClient()
+    -- An install that has seen the intro (Tests/UI/ArrowIntroTests.lua has
+    -- the intro itself).
+    c.setSaved(ns.id.accountDB, { layout = { arrowIntroSeen = true } })
     c.setScreen(1024, 768)
     c.setZone(1, 1411)
     c.setFacing(0)
