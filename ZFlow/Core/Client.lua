@@ -401,6 +401,32 @@ function ns.make.client(env)
         return { map = map, x = x, y = y }
     end
 
+    -- Whether the player is dead or a ghost: true, false, or nil when the
+    -- client gives no plain yes or no. Only "player" is ever asked about.
+    -- UnitIsDeadOrGhost is the call Flow's Nav.lua uses; a first guess on
+    -- 16001, its answer has not been seen there.
+    function c.dead()
+        return flag(call(env.UnitIsDeadOrGhost, "player"))
+    end
+
+    -- Where the player's corpse is on the map the client picks for the
+    -- player: { map = uiMapID, x = 0..1, y = 0..1 }, or nil (no map, no
+    -- corpse, or a corpse the client places on no position of that map).
+    -- C_DeathInfo.GetCorpseMapPosition is the call Flow's Nav.lua uses; a
+    -- first guess on 16001, its answer has not been seen there.
+    function c.corpse()
+        local map = playerMap()
+        if not map then return nil end
+        local group = env.C_DeathInfo
+        local ok, pos = call(type(group) == "table" and group.GetCorpseMapPosition or nil, map)
+        if not ok or type(pos) ~= "table" then return nil end
+        local okXY, x, y = call(pos.GetXY, pos)
+        if not okXY then x, y = pos.x, pos.y end
+        if hidden(x) or hidden(y) or type(x) ~= "number" or type(y) ~= "number" then return nil end
+        if x ~= x or y ~= y then return nil end
+        return { map = map, x = x, y = y }
+    end
+
     -- The world place of one corner of a map, as two numbers, or nil.
     local function corner(map, x, y)
         local okVec, vec = call(env.CreateVector2D, x, y)
