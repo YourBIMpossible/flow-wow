@@ -141,4 +141,41 @@ return {
         c.learnSpell({ name = "Moonfire", rank = "Rank 2" })
         t.eq(got, { name = "Moonfire", rank = "Rank 2" })
     end,
+    ["API check: the newer answer order (name, category, icon) is read, with no rank"] = function(t)
+        local env = trainerEnv({})
+        env.GetNumTrainerServices = function() return 3 end
+        local modern = {
+            { "Druid", "header", 1 },
+            { "Moonfire", "available", 136096 },
+            { "Thorns", "used", 136104 },
+        }
+        env.GetTrainerServiceInfo = function(i) local r = modern[i]; return r[1], r[2], r[3] end
+        env.GetTrainerServiceCost = function(i) return i * 100 end
+        env.GetTrainerServiceLevelReq = function() return 4 end
+        local r = opened(env).trainer()
+        t.eq(r.services, {
+            { name = "Moonfire", state = "available", cost = 200, level = 4 },
+            { name = "Thorns", state = "known", cost = 300, level = 4 },
+        })
+    end,
+
+    ["API check: LEARNED_SPELL_IN_SKILL_LINE is followed, with C_Spell's name, and a double event tells once"] = function(t)
+        local env = trainerEnv({})
+        local clock = 100
+        env.GetTime = function() return clock end
+        env.C_Spell = {
+            GetSpellInfo = function(id) if id == 8921 then return { name = "Moonfire" } end end,
+            GetSpellSubtext = function(id) if id == 8921 then return "Rank 2" end end,
+        }
+        local c = ns.make.client(env)
+        local told = {}
+        c.onSpellLearned(function(s) told[#told + 1] = s end)
+        env.fire("LEARNED_SPELL_IN_SKILL_LINE", 8921, 2)
+        env.fire("LEARNED_SPELL_IN_TAB", 8921, 2)
+        t.eq(told, { { id = 8921, name = "Moonfire", rank = "Rank 2" } })
+        clock = 105
+        env.fire("LEARNED_SPELL_IN_SKILL_LINE", 8921, 2)
+        t.eq(#told, 2, "a second later it is a new event")
+    end,
+
 }
