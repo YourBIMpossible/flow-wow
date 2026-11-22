@@ -1193,6 +1193,16 @@ end
 -- setting is the player's choice and is kept even when it equals the
 -- default; one that does not fit is no choice and gives way. Where nothing
 -- is stored the model is asked too: a value it refuses is not added.
+--
+-- QUIET: places that are the addon's own bookkeeping, not a setting the
+-- player chose. Where such a place already holds a value the imported one
+-- is dropped as for any other row, but with no report line: a line there
+-- would read to the player as a setting that was not taken. Where nothing
+-- is held yet the value is added and listed like any other.
+local QUIET = {
+    ["account.layout.arrowModern"] = true,
+}
+
 local function fill(dst, src, defaults, path, report, choice)
     for _, key in ipairs(sortedKeys(src)) do
         local value, have = src[key], dst[key]
@@ -1206,6 +1216,8 @@ local function fill(dst, src, defaults, path, report, choice)
                 dst[key] = fit
                 report.added[#report.added + 1] = at
             end
+        elseif QUIET[at] then -- luacheck: ignore 542
+            -- Already held: kept as it is, and not reported.
         elseif type(have) == "table" and type(value) == "table" and not isList(have) and not isList(value)
             and not isPrice(have) and not isPrice(value) then
             fill(have, value, default, at, report, choice)
