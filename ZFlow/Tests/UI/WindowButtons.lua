@@ -114,11 +114,94 @@ tests["window buttons: the merchant button shows the sell list, and only that"] 
     t.eq(opened, { menu = 0, sell = 1 }, "the sell list, once")
 end
 
-tests["window buttons: a missing or protected window gets no button"] = function(t)
+-- Section 132: the rule changed. A protected window gets its button (made
+-- out of combat); only a missing window gets none.
+tests["window buttons: a missing window gets no button; a protected one gets its button"] = function(t)
     local _, c, api = start({ on = { worldMap = true, merchant = true },
         windows = { MerchantFrame = { protected = true } } })
-    t.eq(#c.windowButtons, 0, "none")
-    t.eq(api.state(), { worldMap = "not made", merchant = "not made" })
+    t.eq(#c.windowButtons, 1, "one")
+    t.ok(buttonOn(c, "MerchantFrame") ~= nil, "on the protected merchant window")
+    t.eq(api.state(), { worldMap = "not made", merchant = "shown" })
+    t.eq(api.reasons(), { worldMap = "no window" })
+end
+
+tests["window buttons: a window that is not there at login gets its button when it opens"] = function(t)
+    local _, c, api = start({ on = { merchant = true }, windows = {} })
+    t.eq(api.state().merchant, "not made")
+    t.eq(api.reasons().merchant, "no window")
+    c.setWindow("MerchantFrame", {})
+    c.fire("MERCHANT_SHOW")
+    local h = buttonOn(c, "MerchantFrame")
+    t.ok(h ~= nil, "made when the window opened")
+    t.eq(h and h.shown, true)
+    t.eq(api.state().merchant, "shown")
+    t.eq(api.reasons().merchant, nil, "no reason is left")
+    c.fire("MERCHANT_SHOW")
+    t.eq(#c.windowButtons, 1, "not a second one")
+end
+
+tests["window buttons: the world map button is tried again on entering the world"] = function(t)
+    local _, c, api = start({ on = { worldMap = true }, windows = {} })
+    t.eq(api.state().worldMap, "not made")
+    c.setWindow("WorldMapFrame", {})
+    c.fire("PLAYER_ENTERING_WORLD")
+    t.ok(buttonOn(c, "WorldMapFrame") ~= nil, "made")
+    t.eq(api.state().worldMap, "shown")
+end
+
+tests["window buttons: a button that is off is not made when its window opens"] = function(t)
+    local _, c, api = start({ windows = {} })
+    c.setWindow("MerchantFrame", {})
+    c.fire("MERCHANT_SHOW")
+    t.eq(#c.windowButtons, 0)
+    t.eq(api.state().merchant, "off")
+end
+
+tests["window buttons: a window that opens in combat waits for combat to end"] = function(t)
+    local _, c, api = start({ on = { merchant = true }, windows = {} })
+    c.setWindow("MerchantFrame", {})
+    c.setCombat(true)
+    c.fire("MERCHANT_SHOW")
+    t.eq(#c.windowButtons, 0, "none in combat")
+    t.eq(api.state().merchant, "waiting for combat to end")
+    c.setCombat(false)
+    t.ok(buttonOn(c, "MerchantFrame") ~= nil, "made after combat")
+end
+
+tests["window buttons: the lines say each state, and why one was not made"] = function(t)
+    local _, _, api = start({ on = { worldMap = true, merchant = true },
+        windows = { MerchantFrame = { protected = true } } })
+    t.eq(api.lines(), {
+        "button on the world map: not made (no window).",
+        "button on the merchant window: shown; its window is protected.",
+    })
+    local _, _, off = start()
+    t.eq(off.lines(), { "button on the world map: off.", "button on the merchant window: off." })
+end
+
+tests["window buttons: the word prints the lines"] = function(t)
+    local c = ns.make.fakeClient()
+    c.setSaved(ns.id.accountDB, { settings = { buttons = { merchant = true } } })
+    local k = ns.Kernel({}, c)
+    local diag = ns.Diag.Start(k)
+    for _, win in ipairs(W.WINDOWS) do
+        k:Setting({ key = win.setting, scope = "account", type = "bool", default = false, label = win.label })
+    end
+    local api = W.Declare(k, diag)
+    k:Boot()
+    c.fire("ADDON_LOADED", ns.id.addon)
+    c.fire("PLAYER_LOGIN")
+    c.fire("PLAYER_ENTERING_WORLD")
+    t.eq(type(diag.commands[W.WORD]), "function")
+    t.eq(diag.help[W.WORD], W.HELP)
+    local n = #c.printed
+    diag.commands[W.WORD]("")
+    local lines = api.lines()
+    t.eq(#c.printed, n + #lines)
+    t.eq(c.printed[n + 2], ns.id.title .. ": button on the merchant window: not made (no window).")
+    for i = 1, #lines do
+        t.ok(not lines[i]:find("Flow", 1, true), "no name spelled out: " .. lines[i])
+    end
 end
 
 tests["window buttons: none is made in combat; it is made when combat ends"] = function(t)
@@ -164,6 +247,7 @@ tests["window buttons: a client without the window read makes nothing and does n
     c.fire("PLAYER_LOGIN")
     t.eq((k:ModuleState(W.NAME)), "started", "still started")
     t.eq(api.state().worldMap, "not made")
+    t.eq(api.reasons().worldMap, c.windowButton and "no window" or W.NO_READ)
 end
 
 tests["window buttons: look only - plain buttons, no secure fields, no acting functions"] = function(t)

@@ -874,10 +874,14 @@ function ns.make.fakeClient(opts)
         gameWindows[frameName] = type(w) == "table" and w or {}
     end
     function c.windowButton(frameName, spec)
-        if s.noFrames or type(spec) ~= "table" then return nil end
+        if type(spec) ~= "table" then return nil, "bad ask" end
         local w = gameWindows[frameName]
-        if not w or w.protected or c.inCombat() ~= false then return nil end
-        local h = { frame = frameName, spec = spec, shown = false }
+        if not w then return nil, "no window" end
+        if c.inCombat() ~= false then return nil, "in combat" end
+        if s.noFrames then return nil, "no frame" end
+        local protected = w.protected
+        if type(protected) ~= "boolean" then protected = nil end
+        local h = { frame = frameName, spec = spec, shown = false, parentProtected = protected }
         local clicked, clickFailed
         function h.onClick(fn, failed)
             clicked = type(fn) == "function" and fn or nil
