@@ -394,13 +394,15 @@ function ns.make.client(env)
         local api = env.C_MerchantFrame
         if type(api) == "table" and type(api.GetItemInfo) == "function" then
             local ok, info = call(api.GetItemInfo, index)
-            if not ok or hidden(info) then return false end
+            if not ok or (info ~= nil and hidden(info)) then return false end
             if type(info) ~= "table" then return true end
-            if hidden(info.price) or hidden(info.stackCount) then return false end
+            if (info.price ~= nil and hidden(info.price)) or (info.stackCount ~= nil and hidden(info.stackCount)) then
+                return false
+            end
             return true, info.price, info.stackCount, info.hasExtendedCost
         end
         local ok, _, _, price, quantity, _, _, _, extended = call(env.GetMerchantItemInfo, index)
-        if not ok or hidden(price) or hidden(quantity) then return false end
+        if not ok or (price ~= nil and hidden(price)) or (quantity ~= nil and hidden(quantity)) then return false end
         return true, price, quantity, extended
     end
 
@@ -416,6 +418,9 @@ function ns.make.client(env)
     -- the whole reading is nil. This only
     -- reads. Nothing here buys, sells or picks anything up.
     -- First guesses: GetMerchantNumItems, GetMerchantItemLink(index).
+    -- A link, price or stack the client did not give at all (nil: an item
+    -- not cached yet, say) is never asked about for secrecy, because the
+    -- client raises when asked about nil. That row only loses the field.
     function c.merchantItems()
         if c.merchantOpen() ~= true then return nil end
         local ok, count = call(env.GetMerchantNumItems)
@@ -423,7 +428,7 @@ function ns.make.client(env)
         local out = {}
         for index = 1, count do
             local okLink, link = call(env.GetMerchantItemLink, index)
-            if not okLink or hidden(link) then return nil end
+            if not okLink or (link ~= nil and hidden(link)) then return nil end
             local okPrice, price, stack, other = merchantPrice(index)
             if not okPrice then return nil end
             local row = { index = index }
@@ -465,7 +470,122 @@ function ns.make.client(env)
             if not okInfo or type(info) ~= "table" or type(info.learned) ~= "boolean" then return nil end
             rows[i] = { id = ids[i], name = type(info.name) == "string" and info.name or nil, learned = info.learned }
         end
-        return { profession = line, skill = base.skillLevel, max = base.maxSkillLevel, recipes = rows }
+        local out = { profession = line, skill = base.skillLevel, max = base.maxSkillLevel, recipes = rows }
+        -- The profession's name as the client spells it (professionName, a
+        -- first guess on 16001): given only when it is a plain string.
+        local name = base.professionName
+        if type(name) == "string" and not hidden(name) then out.name = name end
+        return out
+    end
+
+    -- A string the client gave and did not mark secret, or nil.
+    local function text(ok, v)
+        if not ok or v == nil or hidden(v) or type(v) ~= "string" or v == "" then return nil end
+        return v
+    end
+
+    -- Starts following the trainer window (TRAINER_SHOW / TRAINER_CLOSED,
+    -- first guesses: not seen in game on 16001). trainer() calls it too.
+    local trainerState, trainerWatched
+    function c.watchTrainer()
+        if trainerWatched then return end
+        trainerWatched = true
+        events.add("TRAINER_SHOW", function() trainerState = true end)
+        events.add("TRAINER_CLOSED", function() trainerState = false end)
+    end
+
+    -- true / false, or nil when not known: the last trainer event, and
+    -- before any event ClassTrainerFrame:IsShown(), a first guess.
+    local function trainerOpen()
+        if trainerState ~= nil then return trainerState end
+        local frame = env.ClassTrainerFrame
+        if type(frame) ~= "table" then return nil end
+        local ok, shown = call(frame.IsShown, frame)
+        if not ok then return nil end
+        return shown and true or false
+    end
+
+    -- The trainer whose window is open:
+    --   { profession = name or nil, npc = name }
+    -- nil unless the window is known to be open, nil for a player, and nil
+    -- when the client will not say whether it is a player or what it is
+    -- called. profession is the trainer's first skill line as the client
+    -- spells it, left out when it is not said. Only the unit "npc" is
+    -- asked about. Every call here is a first guess, not seen in game on
+    -- 16001: UnitIsPlayer("npc"), UnitName("npc"),
+    -- GetTrainerServiceSkillLine(1).
+    function c.trainer()
+        c.watchTrainer()
+        if trainerOpen() ~= true then return nil end
+        local okPlayer, player = call(env.UnitIsPlayer, "npc")
+        if not okPlayer or player == nil or hidden(player) or player ~= false then return nil end
+        local npc = text(call(env.UnitName, "npc"))
+        if not npc then return nil end
+        return { profession = text(call(env.GetTrainerServiceSkillLine, 1)), npc = npc }
+    end
+
+    -- "Horde", "Alliance", or nil when not known (any other answer, no
+    -- answer, a secret one). UnitFactionGroup("player"), a first guess:
+    -- not seen in game on 16001.
+    function c.faction()
+        local group = text(call(env.UnitFactionGroup, "player"))
+        if group == "Horde" or group == "Alliance" then return group end
+        return nil
+    end
+
+    -- Your class token ("DRUID"), the same in every language, or nil when
+    -- not known. The second answer of UnitClass("player"), a first guess:
+    -- not seen in game on 16001.
+    function c.class()
+        local ok, _, token = call(env.UnitClass, "player")
+        return text(ok, token)
+    end
+
+    -- One spell's cooldown as the client gives it: read?, start, length,
+    -- and the client's own "this is the global cooldown" mark (true,
+    -- false, or nil where it gives none). First guesses, not seen in game
+    -- on 16001: C_Spell.GetSpellCooldown(id) answering a table (startTime,
+    -- duration, isOnGCD) where the client has it, else GetSpellCooldown(id)
+    -- answering start, duration.
+    local function cooldownTimes(id)
+        local group = env.C_Spell
+        local start, length, mark
+        if type(group) == "table" and type(group.GetSpellCooldown) == "function" then
+            local ok, info = call(group.GetSpellCooldown, id)
+            if not ok or info == nil or hidden(info) or type(info) ~= "table" then return false end
+            start, length, mark = info.startTime, info.duration, info.isOnGCD
+            if mark ~= nil and (hidden(mark) or type(mark) ~= "boolean") then mark = nil end
+        else
+            local ok, s, d = call(env.GetSpellCooldown, id)
+            if not ok then return false end
+            start, length = s, d
+        end
+        if start == nil or length == nil or hidden(start) or hidden(length) then return false end
+        if type(start) ~= "number" or type(length) ~= "number" then return false end
+        return true, start, length, mark
+    end
+
+    -- The spell the client keeps the global cooldown on (61304), a first
+    -- guess: not seen in game on 16001.
+    local GLOBAL_COOLDOWN = 61304
+
+    -- Is one of your spells on cooldown, by spell id: true (on its own
+    -- cooldown), false (ready, or only the global cooldown is running),
+    -- nil when not known: no such spell, no call, an odd or secret answer.
+    -- Where the client does not mark the global cooldown itself, a running
+    -- cooldown is compared with the global cooldown's start and length; if
+    -- that cannot be read either, the answer is nil, never "ready".
+    -- This only reads. Nothing here casts.
+    function c.spellCooldown(id)
+        if type(id) ~= "number" then return nil end
+        local ok, start, length, mark = cooldownTimes(id)
+        if not ok then return nil end
+        if start <= 0 or length <= 0 then return false end
+        if mark ~= nil then return not mark end
+        local okGlobal, gStart, gLength = cooldownTimes(GLOBAL_COOLDOWN)
+        if not okGlobal then return nil end
+        if gLength > 0 and gStart == start and gLength == length then return false end
+        return true
     end
 
     local function flag(ok, v)
