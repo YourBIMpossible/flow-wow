@@ -779,6 +779,25 @@ function ns.make.fakeClient(opts)
     function c.hearthCooldown() return s.hearthCooldown end
     function c.setHearthCooldown(v) s.hearthCooldown = type(v) == "number" and v >= 0 and v or nil end
 
+    -- F7, the fight log. guid(unit): what setGuid gave for "player", "pet"
+    -- or "target" (nil, the start: not known); any other unit is nil.
+    -- targetRank(): what setTargetRank gave. watchCombatLog(fn) answers
+    -- true and combatLog(...) hands its values to every watcher; after
+    -- setCombatLog(false) it answers nil and takes no watcher.
+    -- guid, setGuid, playerGUID and petGUID are above, with the errand reads.
+    local logWatchers = {}
+    function c.targetRank() return s.targetRank end
+    function c.setTargetRank(rank) s.targetRank = type(rank) == "string" and rank ~= "" and rank or nil end
+    function c.watchCombatLog(fn)
+        if s.noCombatLog or type(fn) ~= "function" then return nil end
+        logWatchers[#logWatchers + 1] = fn
+        return true
+    end
+    function c.setCombatLog(on) s.noCombatLog = not on end
+    function c.combatLog(...)
+        for i = 1, #logWatchers do logWatchers[i](...) end
+    end
+
     return c
 end
 

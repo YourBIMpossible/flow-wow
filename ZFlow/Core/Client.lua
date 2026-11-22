@@ -2594,6 +2594,54 @@ function ns.make.client(env)
         return left
     end
 
+    ---------------------------------------------------------------------
+    -- F7, the fight log and death report: its reads, kept together. All
+    -- first guesses: not seen in game on 16001.
+    ---------------------------------------------------------------------
+
+    -- c.guid(unit), c.playerGUID() and c.petGUID() are above, with the
+    -- errand reads: one read, shared.
+
+    -- The rank word of your target as the client gives it ("elite",
+    -- "normal", ...), or nil when not known or with no word.
+    -- UnitClassification("target").
+    function c.targetRank()
+        local ok, rank = call(env.UnitClassification, "target")
+        if not ok or rank == nil or hidden(rank) or type(rank) ~= "string" or rank == "" then return nil end
+        return rank
+    end
+
+    -- Calls fn with the values of each combat-log event, in the client's
+    -- own order: COMBAT_LOG_EVENT_UNFILTERED, read with
+    -- CombatLogGetCurrentEventInfo(). Answers true when the feed was taken;
+    -- nil when the client has no such read or did not take the event (fn
+    -- is then never called). A read that fails does not call fn that
+    -- time. A secret value is handed over as nil, never as it is. It only
+    -- reads: the log is not filtered, cleared or written to.
+    local logBuf = {}
+    function c.watchCombatLog(fn)
+        if type(fn) ~= "function" or type(env.CombatLogGetCurrentEventInfo) ~= "function" then return nil end
+        local function pass(ok, ...)
+            if not ok then return end
+            local n = select("#", ...)
+            for i = 1, n do
+                local v = select(i, ...)
+                if v ~= nil and hidden(v) then v = nil end
+                logBuf[i] = v
+            end
+            for i = n + 1, #logBuf do logBuf[i] = nil end
+            fn(unpack(logBuf, 1, n))
+        end
+        local cancel = events.add("COMBAT_LOG_EVENT_UNFILTERED", function()
+            pass(pcall(env.CombatLogGetCurrentEventInfo))
+        end)
+        if unregistered["COMBAT_LOG_EVENT_UNFILTERED"] then
+            cancel()
+            return nil
+        end
+        return true
+    end
+
     return c
 end
 

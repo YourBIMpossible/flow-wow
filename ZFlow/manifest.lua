@@ -83,6 +83,8 @@ return {
         "Rotation/Driver.lua",
         "Rotation/KeyFrame.lua",
         "Rotation/Role.lua",
+        "Rotation/Fights.lua",
+        "UI/FightLog.lua",
         "Classes/Druid.lua",
         "Classes/Paladin.lua",
         "Classes/Priest.lua",
