@@ -12,6 +12,9 @@
 --
 --   <slash> diag          take a snapshot now and say where it went
 --   <slash> diag clear    forget every snapshot
+--   <slash> import        read the predecessor's saved data, when the client
+--                         has loaded any, and say what an import would leave
+--                         behind or change. Nothing is imported or written.
 --
 -- Snapshots are also taken at login, a few seconds after it (what was not
 -- ready at login is by then), and when the bank, a vendor, a trainer, a
@@ -379,6 +382,61 @@ function Diag.Save(k, snap)
     return d
 end
 
+-- What an import left behind or changed, as lines to print.
+--   Diag.ImportReport(result) -> lines, counts
+--     result  what Import.FromFlow returned (Import/FromFlow.lua)
+--     lines   the counts of dropped, adjusted and malformed entries, then one
+--             line for each adjusted value: its key, what Flow had, what was
+--             kept and why. Entries left behind for another reason (no row
+--             for the key, or a newer key held the same choice) get a line of
+--             their own when there are any.
+--     counts  { dropped, adjusted, malformed, unknown, superseded, other }
+-- The entries are counted from the lists themselves. Pure: it reads only
+-- what it is given, and a result that is not one gives a line saying so.
+local function shown(v)
+    if type(v) == "string" then return '"' .. v .. '"' end
+    return tostring(v)
+end
+
+function Diag.ImportReport(result)
+    local counts = { dropped = 0, adjusted = 0, malformed = 0, unknown = 0, superseded = 0, other = 0 }
+    if type(result) ~= "table" then
+        return { "import: there is no result to report." }, counts
+    end
+    if result.ok ~= true then
+        return { "import: nothing was read: " .. tostring(result.reason or "no reason given") }, counts
+    end
+
+    if type(result.dropped) == "table" then
+        for i = 1, #result.dropped do
+            local entry = result.dropped[i]
+            local why = type(entry) == "table" and entry.why or nil
+            if why == "dropped" or why == "malformed" or why == "unknown" or why == "superseded" then
+                counts[why] = counts[why] + 1
+            else
+                counts.other = counts.other + 1
+            end
+        end
+    end
+    local adjusted = type(result.adjusted) == "table" and result.adjusted or {}
+    counts.adjusted = #adjusted
+
+    local lines = {
+        "import: " .. counts.dropped .. " dropped, " .. counts.adjusted .. " adjusted, "
+            .. counts.malformed .. " malformed.",
+    }
+    if counts.unknown + counts.superseded + counts.other > 0 then
+        lines[#lines + 1] = "import: also left behind: " .. counts.unknown .. " with no row, "
+            .. counts.superseded .. " superseded, " .. counts.other .. " with no category."
+    end
+    for i = 1, #adjusted do
+        local entry = type(adjusted[i]) == "table" and adjusted[i] or {}
+        lines[#lines + 1] = "import: adjusted " .. tostring(entry.key) .. ": " .. shown(entry.from)
+            .. " to " .. shown(entry.to) .. " (" .. tostring(entry.reason or "no reason given") .. ")"
+    end
+    return lines, counts
+end
+
 -- Starts collecting on kernel k: the timing marks, the window snapshots and
 -- the slash command. Returns { timing =, snapshot =, commands = }.
 function Diag.Start(k)
@@ -510,6 +568,31 @@ function Diag.Start(k)
     -- Other files add a word of their own after the slash command here:
     -- commands[word] = function(rest) end, rest lower-cased and trimmed.
     local commands = {}
+
+    -- The import report. The import itself loads after this file, so it is
+    -- looked up when the word is typed. The predecessor's tables are read
+    -- only when the client already has them: none is created here.
+    commands.import = function()
+        local Import = ns.Import
+        if not (Import and type(Import.FromFlow) == "function") then
+            client.print(id.title .. ": the import is not loaded.")
+            return
+        end
+        if not client.savedExists(id.predecessorDB) then
+            client.print(id.title .. ": no " .. id.predecessor .. " data is loaded, so there is nothing to read.")
+            return
+        end
+        local charDB = id.predecessor .. "CharDB"
+        local ok, result = pcall(Import.FromFlow, client.saved(id.predecessorDB),
+            client.savedExists(charDB) and client.saved(charDB) or nil)
+        if not ok then
+            k.problems:add("diag", "import", result)
+            client.print(id.title .. ": the import could not be read.")
+            return
+        end
+        local lines = Diag.ImportReport(result)
+        for i = 1, #lines do client.print(id.title .. ": " .. lines[i]) end
+    end
 
     client.slash(id.bindingHeader, id.slash, function(rest)
         local text = tostring(rest):lower()
