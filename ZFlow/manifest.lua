@@ -16,6 +16,7 @@ return {
         "Core/Identity.lua",
         "Core/Client.lua",
         { "Core/ClientFake.lua", dev = true },
+        "Core/Reads.lua",
         "Core/Report.lua",
         "Core/Store.lua",
         "Core/Settings.lua",
