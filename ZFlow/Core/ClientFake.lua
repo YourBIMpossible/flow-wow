@@ -398,6 +398,20 @@ function ns.make.fakeClient(opts)
     end
 
     -- the test's controls
+    -- The player presses Escape: an open arrow menu closes and nothing is
+    -- chosen. -> true when a menu closed (the key was taken, as the game
+    -- does for a listed frame that is shown), false when none was open.
+    function c.escape()
+        local taken = false
+        for i = 1, #c.arrows do
+            local h = c.arrows[i]
+            if h.menuItems ~= nil then
+                h.menu(nil)
+                taken = true
+            end
+        end
+        return taken
+    end
     -- nil: the client will not say how big the screen is.
     function c.setScreen(w, h) s.screen = (w and h) and { w, h } or nil end
     function c.setVersion(text) s.version = text end
