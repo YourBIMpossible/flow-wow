@@ -1,0 +1,428 @@
+-- The client reads added for the profession step and the rotation reader:
+-- merchant rows with a field the client did not give (PF1), trainer(),
+-- faction(), the profession's name in recipes(), spellCooldown() and
+-- class(). No game client is involved: `env` stands in for its globals.
+local _, ns = ...
+
+local LEATHER = "|cffffffff|Hitem:2318:0:0:0:0:0:0:0|h[Light Leather]|h|r"
+local GCD = 61304
+
+local function boom() error("the client refused") end
+
+-- An environment with frames, so events can be fired at the client.
+local function frameEnv()
+    local env = { frames = {} }
+    function env.CreateFrame()
+        local f = { scripts = {}, events = {} }
+        function f:SetScript(name, fn) self.scripts[name] = fn end
+        function f:RegisterEvent(event) self.events[event] = true end
+        function f:UnregisterEvent(event) self.events[event] = nil end
+        env.frames[#env.frames + 1] = f
+        return f
+    end
+    function env.fire(event, ...)
+        for _, f in ipairs(env.frames) do
+            if f.events[event] then f.scripts.OnEvent(f, event, ...) end
+        end
+    end
+    return env
+end
+
+-- The client as it is in game: asked about nil, issecretvalue raises.
+local function strictSecret(env, secret)
+    env.issecretvalue = function(v)
+        if v == nil then error("issecretvalue: nil") end
+        return secret ~= nil and secret(v) or false
+    end
+end
+
+-- A merchant selling `rows` through the bare globals, its window open.
+local function openMerchant(rows)
+    local env = frameEnv()
+    env.GetMerchantNumItems = function() return #rows end
+    env.GetMerchantItemLink = function(index) return rows[index].link end
+    env.GetMerchantItemInfo = function(index)
+        local row = rows[index]
+        return "name", 1, row.price, row.stack, -1, true, true, row.other and true or false
+    end
+    local c = ns.make.client(env)
+    c.watchMerchant()
+    env.fire("MERCHANT_SHOW")
+    return c, env
+end
+
+-- A trainer window: who = { name =, player =, line = }.
+local function trainerEnv(who)
+    local env = frameEnv()
+    env.asked = {}
+    env.UnitName = function(unit)
+        env.asked[#env.asked + 1] = unit
+        return unit == "npc" and who.name or nil
+    end
+    env.UnitIsPlayer = function(unit)
+        env.asked[#env.asked + 1] = unit
+        if unit ~= "npc" then return nil end
+        return who.player
+    end
+    env.GetTrainerServiceSkillLine = function(index) return index == 1 and who.line or nil end
+    return env
+end
+
+-- A profession window with no recipes; `base` is GetBaseProfessionInfo's answer.
+local function recipeEnv(base)
+    local env = frameEnv()
+    env.C_TradeSkillUI = {
+        IsTradeSkillReady = function() return true end,
+        IsDataSourceChanging = function() return false end,
+        GetBaseProfessionInfo = function() return base end,
+        GetAllRecipeIDs = function() return {} end,
+        GetRecipeInfo = function() return nil end,
+    }
+    return env
+end
+
+-- Spell cooldowns through the table answer: rows[id] = { startTime =, duration =, isOnGCD = }.
+local function tableCooldowns(rows)
+    local env = frameEnv()
+    env.C_Spell = { GetSpellCooldown = function(id) return rows[id] end }
+    return env
+end
+
+-- Spell cooldowns through the bare global: rows[id] = { start, duration }.
+local function bareCooldowns(rows)
+    local env = frameEnv()
+    env.GetSpellCooldown = function(id)
+        local r = rows[id]
+        if not r then return nil end
+        return r[1], r[2], 1
+    end
+    return env
+end
+
+return {
+    -- ---------------------------------------------------------------- PF1
+    ["PF1: an uncached link loses its own item only, never the merchant reading"] = function(t)
+        local c, env = openMerchant({
+            { link = nil, price = 60, stack = 1 },
+            { link = LEATHER, price = 50, stack = 5 },
+        })
+        strictSecret(env)
+        t.eq(c.merchantItems(), {
+            { index = 1, price = 60, stack = 1, other = false },
+            { index = 2, item = LEATHER, price = 50, stack = 5, other = false },
+        })
+    end,
+
+    ["PF1: a price or stack the bare answer leaves out is left out of its row"] = function(t)
+        local c, env = openMerchant({
+            { link = LEATHER, price = nil, stack = nil },
+            { link = "item:2320", price = 50, stack = 5 },
+        })
+        strictSecret(env)
+        t.eq(c.merchantItems(), {
+            { index = 1, item = LEATHER, other = false },
+            { index = 2, item = "item:2320", price = 50, stack = 5, other = false },
+        })
+    end,
+
+    ["PF1: the table answer may leave out the price, the stack or the whole item"] = function(t)
+        local c, env = openMerchant({
+            { link = LEATHER, price = 1, stack = 1 },
+            { link = "item:2320", price = 1, stack = 1 },
+            { link = "item:2321", price = 1, stack = 1 },
+        })
+        strictSecret(env)
+        env.C_MerchantFrame = { GetItemInfo = function(index)
+            if index == 1 then return { hasExtendedCost = false } end
+            if index == 2 then return nil end
+            return { price = 10, stackCount = 1, hasExtendedCost = true }
+        end }
+        t.eq(c.merchantItems(), {
+            { index = 1, item = LEATHER, other = false },
+            { index = 2, item = "item:2320" },
+            { index = 3, item = "item:2321", price = 10, stack = 1, other = true },
+        })
+    end,
+
+    ["PF1: a value the client does mark secret still voids the reading"] = function(t)
+        local c, env = openMerchant({ { link = LEATHER, price = 60, stack = 1 } })
+        strictSecret(env, function(v) return v == LEATHER end)
+        t.eq(c.merchantItems(), nil, "a secret link")
+        strictSecret(env, function(v) return v == 60 end)
+        t.eq(c.merchantItems(), nil, "a secret price")
+        strictSecret(env)
+        t.eq(c.merchantItems(), { { index = 1, item = LEATHER, price = 60, stack = 1, other = false } })
+    end,
+
+    -- ----------------------------------------------------------------- C1
+    ["C1: trainer() is nil when the window is closed or not known"] = function(t)
+        local env = trainerEnv({ name = "Bena Winterhoof", player = false, line = "Alchemy" })
+        local c = ns.make.client(env)
+        c.watchTrainer()
+        t.eq(c.trainer(), nil, "no event and no frame: not known")
+        env.fire("TRAINER_SHOW")
+        t.eq(c.trainer(), { profession = "Alchemy", npc = "Bena Winterhoof" })
+        env.fire("TRAINER_CLOSED")
+        t.eq(c.trainer(), nil, "closed")
+        t.eq(env.frames[1].events.TRAINER_SHOW, true)
+        t.eq(env.frames[1].events.TRAINER_CLOSED, true)
+    end,
+
+    ["C1: trainer() is nil for a player, and when the client will not say"] = function(t)
+        local who = { name = "Someone", player = true, line = "Alchemy" }
+        local env = trainerEnv(who)
+        local c = ns.make.client(env)
+        c.watchTrainer()
+        env.fire("TRAINER_SHOW")
+        t.eq(c.trainer(), nil, "a player")
+        who.player = nil
+        t.eq(c.trainer(), nil, "player or not: not said")
+        who.player = false
+        t.eq(c.trainer(), { profession = "Alchemy", npc = "Someone" })
+        env.UnitIsPlayer = boom
+        t.eq(c.trainer(), nil, "the call fails")
+        env.UnitIsPlayer = nil
+        t.eq(c.trainer(), nil, "the call is missing")
+    end,
+
+    ["C1: trainer() needs the npc's name; the profession may be left out"] = function(t)
+        local who = { name = "Bena Winterhoof", player = false, line = nil }
+        local env = trainerEnv(who)
+        local c = ns.make.client(env)
+        c.watchTrainer()
+        env.fire("TRAINER_SHOW")
+        t.eq(c.trainer(), { npc = "Bena Winterhoof" }, "no skill line: a trainer with no profession said")
+        who.line = ""
+        t.eq(c.trainer(), { npc = "Bena Winterhoof" }, "an empty line is not a profession")
+        who.line = 7
+        t.eq(c.trainer(), { npc = "Bena Winterhoof" }, "a number is not a profession name")
+        env.GetTrainerServiceSkillLine = boom
+        t.eq(c.trainer(), { npc = "Bena Winterhoof" }, "the line call fails")
+        env.GetTrainerServiceSkillLine = nil
+        t.eq(c.trainer(), { npc = "Bena Winterhoof" }, "the line call is missing")
+        who.name = nil
+        t.eq(c.trainer(), nil, "no name")
+        who.name = ""
+        t.eq(c.trainer(), nil, "an empty name")
+        env.UnitName = boom
+        t.eq(c.trainer(), nil, "the name call fails")
+    end,
+
+    ["C1: before any event the trainer window's own frame is the first guess"] = function(t)
+        local env = trainerEnv({ name = "Bena Winterhoof", player = false, line = "Alchemy" })
+        env.ClassTrainerFrame = { IsShown = function() return env.shown end }
+        local c = ns.make.client(env)
+        env.shown = true
+        t.eq(c.trainer(), { profession = "Alchemy", npc = "Bena Winterhoof" })
+        env.shown = false
+        t.eq(c.trainer(), nil)
+        env.ClassTrainerFrame = { IsShown = boom }
+        t.eq(c.trainer(), nil)
+    end,
+
+    ["C1: trainer() asks about no unit but the npc"] = function(t)
+        local env = trainerEnv({ name = "Bena Winterhoof", player = false, line = "Alchemy" })
+        local c = ns.make.client(env)
+        c.watchTrainer()
+        env.fire("TRAINER_SHOW")
+        c.trainer()
+        t.ok(#env.asked > 0, "the client was asked")
+        for _, unit in ipairs(env.asked) do t.eq(unit, "npc") end
+    end,
+
+    -- ----------------------------------------------------------------- C2
+    ["C2: faction() is Horde or Alliance, and nil on any other answer"] = function(t)
+        local env = frameEnv()
+        local asked = {}
+        env.UnitFactionGroup = function(unit)
+            asked[#asked + 1] = unit
+            return env.group, "localised"
+        end
+        local c = ns.make.client(env)
+        env.group = "Horde"
+        t.eq(c.faction(), "Horde")
+        env.group = "Alliance"
+        t.eq(c.faction(), "Alliance")
+        env.group = "Neutral"
+        t.eq(c.faction(), nil, "an answer that is neither")
+        env.group = nil
+        t.eq(c.faction(), nil, "no answer")
+        env.group = 1
+        t.eq(c.faction(), nil, "a number")
+        for _, unit in ipairs(asked) do t.eq(unit, "player") end
+        env.UnitFactionGroup = boom
+        t.eq(c.faction(), nil, "the call fails")
+        env.UnitFactionGroup = nil
+        t.eq(c.faction(), nil, "the call is missing")
+    end,
+
+    -- ----------------------------------------------------------------- C3
+    ["C3: recipes() carries the profession's name when the client gives a string"] = function(t)
+        local base = { professionID = 164, skillLevel = 104, maxSkillLevel = 150, professionName = "Blacksmithing" }
+        local c = ns.make.client(recipeEnv(base))
+        t.eq(c.recipes(), { profession = 164, skill = 104, max = 150, name = "Blacksmithing", recipes = {} })
+    end,
+
+    ["C3: with no name string the field is absent and the reading is unchanged"] = function(t)
+        local base = { professionID = 164, skillLevel = 104, maxSkillLevel = 150 }
+        local c = ns.make.client(recipeEnv(base))
+        local plain = { profession = 164, skill = 104, max = 150, recipes = {} }
+        t.eq(c.recipes(), plain, "no name given")
+        base.professionName = 164
+        t.eq(c.recipes(), plain, "a number is not a name")
+        base.professionName = false
+        t.eq(c.recipes(), plain, "false is not a name")
+    end,
+
+    -- ----------------------------------------------------------------- C4
+    ["C4: a secret trainer name gives nil; a secret skill line leaves the profession out"] = function(t)
+        local env = trainerEnv({ name = "Bena Winterhoof", player = false, line = "Alchemy" })
+        local c = ns.make.client(env)
+        c.watchTrainer()
+        env.fire("TRAINER_SHOW")
+        strictSecret(env, function(v) return v == "Bena Winterhoof" end)
+        t.eq(c.trainer(), nil, "a secret name")
+        strictSecret(env, function(v) return v == "Alchemy" end)
+        t.eq(c.trainer(), { npc = "Bena Winterhoof" }, "a secret skill line")
+        strictSecret(env, function(v) return v == false end)
+        t.eq(c.trainer(), nil, "player or not is secret")
+        strictSecret(env)
+        t.eq(c.trainer(), { profession = "Alchemy", npc = "Bena Winterhoof" })
+    end,
+
+    ["C4: a secret faction, class or profession name gives nil"] = function(t)
+        local env = recipeEnv({ professionID = 164, skillLevel = 104, maxSkillLevel = 150, professionName = "Blacksmithing" })
+        env.UnitFactionGroup = function() return "Horde" end
+        env.UnitClass = function() return "Druid", "DRUID", 11 end
+        local c = ns.make.client(env)
+        strictSecret(env, function(v) return type(v) == "string" end)
+        t.eq(c.faction(), nil)
+        t.eq(c.class(), nil)
+        t.eq(c.recipes(), { profession = 164, skill = 104, max = 150, recipes = {} }, "the name alone is left out")
+        strictSecret(env)
+        t.eq(c.faction(), "Horde")
+        t.eq(c.class(), "DRUID")
+        t.eq(c.recipes().name, "Blacksmithing")
+    end,
+
+    ["C4: a secret cooldown start or length is not known, never ready"] = function(t)
+        local env = tableCooldowns({ [8921] = { startTime = 100, duration = 30, isOnGCD = false } })
+        local c = ns.make.client(env)
+        strictSecret(env, function(v) return v == 30 end)
+        t.eq(c.spellCooldown(8921), nil, "a secret length")
+        strictSecret(env, function(v) return v == 100 end)
+        t.eq(c.spellCooldown(8921), nil, "a secret start")
+        strictSecret(env, function(v) return type(v) == "table" end)
+        t.eq(c.spellCooldown(8921), nil, "a secret answer")
+        strictSecret(env)
+        t.eq(c.spellCooldown(8921), true)
+    end,
+
+    -- ----------------------------------------------------------------- C5
+    ["C5a: a spell on its own cooldown is true"] = function(t)
+        local c = ns.make.client(tableCooldowns({ [8921] = { startTime = 100, duration = 30, isOnGCD = false } }))
+        t.eq(c.spellCooldown(8921), true)
+        local bare = ns.make.client(bareCooldowns({ [8921] = { 90, 30 }, [GCD] = { 100, 1.5 } }))
+        t.eq(bare.spellCooldown(8921), true, "the bare answer, not the global cooldown's times")
+        bare = ns.make.client(bareCooldowns({ [8921] = { 90, 30 }, [GCD] = { 0, 0 } }))
+        t.eq(bare.spellCooldown(8921), true, "the bare answer, no global cooldown running")
+    end,
+
+    ["C5b: a ready spell is false"] = function(t)
+        local c = ns.make.client(tableCooldowns({ [5176] = { startTime = 0, duration = 0, isOnGCD = false } }))
+        t.eq(c.spellCooldown(5176), false)
+        local bare = ns.make.client(bareCooldowns({ [5176] = { 0, 0 } }))
+        t.eq(bare.spellCooldown(5176), false, "the bare answer")
+    end,
+
+    ["C5c: the global cooldown alone is not a cooldown"] = function(t)
+        local c = ns.make.client(tableCooldowns({ [5176] = { startTime = 100, duration = 1.5, isOnGCD = true } }))
+        t.eq(c.spellCooldown(5176), false, "the client marks it the global cooldown")
+        local bare = ns.make.client(bareCooldowns({ [5176] = { 100, 1.5 }, [GCD] = { 100, 1.5 } }))
+        t.eq(bare.spellCooldown(5176), false, "the same start and length as the global cooldown")
+        local unmarked = ns.make.client(tableCooldowns({
+            [5176] = { startTime = 100, duration = 1.5 },
+            [GCD] = { startTime = 100, duration = 1.5 },
+        }))
+        t.eq(unmarked.spellCooldown(5176), false, "no mark: compared with the global cooldown")
+    end,
+
+    ["C5d: no spell, a missing call or an odd answer is not known"] = function(t)
+        local env = tableCooldowns({ [8921] = { startTime = 100, duration = 30, isOnGCD = false } })
+        local c = ns.make.client(env)
+        t.eq(c.spellCooldown(nil), nil, "no id")
+        t.eq(c.spellCooldown("8921"), nil, "a name is not an id")
+        t.eq(c.spellCooldown(1), nil, "the client has no such spell")
+        env.C_Spell.GetSpellCooldown = function() return { startTime = "soon", duration = 30 } end
+        t.eq(c.spellCooldown(8921), nil, "a start that is not a number")
+        env.C_Spell.GetSpellCooldown = function() return { startTime = 100 } end
+        t.eq(c.spellCooldown(8921), nil, "no length")
+        env.C_Spell.GetSpellCooldown = boom
+        t.eq(c.spellCooldown(8921), nil, "the call fails")
+        env.C_Spell = nil
+        t.eq(c.spellCooldown(8921), nil, "no call at all")
+        local bare = ns.make.client(bareCooldowns({ [8921] = { 90, 30 } }))
+        t.eq(bare.spellCooldown(8921), nil, "running, and the global cooldown cannot be read: not known")
+        t.eq(bare.spellCooldown(5176), nil, "the bare call has no such spell")
+    end,
+
+    -- ----------------------------------------------------------------- C6
+    ["C6: class() is the class token, or nil when not known"] = function(t)
+        local env = frameEnv()
+        local asked = {}
+        env.UnitClass = function(unit)
+            asked[#asked + 1] = unit
+            return "Druide", env.token, 11
+        end
+        local c = ns.make.client(env)
+        env.token = "DRUID"
+        t.eq(c.class(), "DRUID", "the second answer, not the localised name")
+        env.token = nil
+        t.eq(c.class(), nil, "no token")
+        env.token = ""
+        t.eq(c.class(), nil, "an empty token")
+        env.token = 11
+        t.eq(c.class(), nil, "a number")
+        for _, unit in ipairs(asked) do t.eq(unit, "player") end
+        env.UnitClass = boom
+        t.eq(c.class(), nil, "the call fails")
+        env.UnitClass = nil
+        t.eq(c.class(), nil, "the call is missing")
+    end,
+
+    -- --------------------------------------------------------------- fake
+    ["fake: trainer, faction, class and spell cooldown are nil until set"] = function(t)
+        local c = ns.make.fakeClient()
+        t.eq(c.trainer(), nil)
+        t.eq(c.faction(), nil)
+        t.eq(c.class(), nil)
+        t.eq(c.spellCooldown(8921), nil)
+        t.eq(c.spellCooldown("8921"), nil)
+        c.setTrainer({ profession = "Alchemy", npc = "Bena Winterhoof" })
+        c.setFaction("Horde")
+        c.setClass("DRUID")
+        c.setSpellCooldown(8921, true)
+        c.setSpellCooldown(5176, false)
+        t.eq(c.trainer(), { profession = "Alchemy", npc = "Bena Winterhoof" })
+        t.eq(c.faction(), "Horde")
+        t.eq(c.class(), "DRUID")
+        t.eq(c.spellCooldown(8921), true)
+        t.eq(c.spellCooldown(5176), false)
+        t.eq(c.spellCooldown(1), nil, "a spell never set is not known")
+        c.setTrainer(nil)
+        c.setSpellCooldown(8921, nil)
+        t.eq(c.trainer(), nil)
+        t.eq(c.spellCooldown(8921), nil)
+    end,
+
+    ["fake: trainer() hands out a copy, and recipes() passes the name through"] = function(t)
+        local c = ns.make.fakeClient()
+        c.setTrainer({ npc = "Bena Winterhoof" })
+        c.trainer().npc = "changed"
+        t.eq(c.trainer(), { npc = "Bena Winterhoof" })
+        c.setRecipes({ profession = 164, skill = 1, max = 75, recipes = {} })
+        t.eq(c.recipes(), { profession = 164, skill = 1, max = 75, recipes = {} }, "no name set: none given")
+        c.setRecipes({ profession = 164, name = "Blacksmithing", skill = 1, max = 75, recipes = {} })
+        t.eq(c.recipes().name, "Blacksmithing")
+    end,
+}
