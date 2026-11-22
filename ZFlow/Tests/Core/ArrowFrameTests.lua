@@ -683,6 +683,8 @@ return {
     ["c.arrow: tip puts the lines on the client's tooltip, owned by the arrow; no lines hides it (AM5)"] = function(t)
         local e = env()
         e.GameTooltip = stub("GameTooltip")
+        -- The tooltip says it is the arrow's: only then is it hidden (AI2).
+        e.GameTooltip.answers = { IsOwned = function() return true end }
         local c = ns.make.client(e)
         local h = c.arrow(SPEC)
         if not interactive(t, h) then return end
@@ -797,6 +799,8 @@ return {
     ["c.arrow: menu(nil) and hiding the arrow close its menu and its tooltip (AM5)"] = function(t)
         local e, made = env()
         e.GameTooltip = stub("GameTooltip")
+        -- The tooltip says it is the arrow's: only then is it hidden (AI2).
+        e.GameTooltip.answers = { IsOwned = function() return true end }
         local c = ns.make.client(e)
         local h = c.arrow(SPEC)
         if not interactive(t, h) then return end
