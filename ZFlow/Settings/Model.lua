@@ -26,7 +26,8 @@ local _, ns = ...
 --   model:explicit(values, key)   true when a fitting value is stored
 --   model:set(values, key, value) a new settings table, or nil and why
 --   model:reset(values, key)      a new settings table without the key, or nil and why
---   model:adopt(values, imported) a new settings table, and a report
+--   model:adopt(values, imported [, confirmed])
+--                                 a new settings table, and a report
 --
 -- A choice the player made is kept apart from a default: get() reads a
 -- default without storing it, so a later change of a default never passes
@@ -278,12 +279,20 @@ function M.New(rows)
     --   A key the import does not hold stays unchosen and reads as its
     --   default, so a vendor automation the import does not carry stays off.
     --   A value that does not fit its row is refused and reported.
+    --   A vendor automation the import holds on is stored only when
+    --   confirmed[key] is true for that key; otherwise it is not stored,
+    --   reads as off and is reported as gated. This holds for every caller:
+    --   the model never takes an unconfirmed on. One the import holds off is
+    --   stored off, as any other choice is.
+    --     confirmed  { ["sell.autoRepair"] = true, ... } by model key, or
+    --                nil. Only a true counts. It is not changed.
     -- report = { taken = { key, ... }, kept = { key, ... },
-    --            refused = { { key, reason }, ... } }, each in row order.
+    --            refused = { { key, reason }, ... }, gated = { key, ... } },
+    -- each in row order.
     -- Only the model's own keys are read from the import.
-    function model:adopt(values, imported)
+    function model:adopt(values, imported, confirmed)
         local out = asTable(values)
-        local report = { taken = {}, kept = {}, refused = {} }
+        local report = { taken = {}, kept = {}, refused = {}, gated = {} }
         for i = 1, #order do
             local key = order[i]
             local found = getPath(imported, paths[key])
@@ -293,6 +302,9 @@ function M.New(rows)
                     report.refused[#report.refused + 1] = { key = key, reason = why }
                 elseif model:explicit(out, key) then
                     report.kept[#report.kept + 1] = key
+                elseif byKey[key].vendor and found == true
+                    and not (type(confirmed) == "table" and confirmed[key] == true) then
+                    report.gated[#report.gated + 1] = key
                 else
                     putPath(out, paths[key], found)
                     report.taken[#report.taken + 1] = key

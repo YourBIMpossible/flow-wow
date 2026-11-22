@@ -1104,15 +1104,24 @@ end
 
 local NOT_CONFIRMED = "a vendor automation Flow had on; the player did not confirm it, so it stays off"
 
--- The import's account data with the vendor gate applied: a copy in which a
--- vendor automation is on only where the player confirmed that one. An on
--- counts as found whether it is in the list FromFlow made or was written
--- into the settings some other way.
-local function gateVendor(imported, confirmed, report)
-    local account = copy(imported.account)
+-- The vendor gate. There is one: the merge below and Stored.Adopt
+-- (Import/Stored.lua) both go through it.
+--   Import.VendorGate(account, listed, confirmed) -> account, on, off
+--     account    the import's account data ({ settings = { ... }, ... })
+--     listed     the import's vendorToConfirm list, or nil
+--     confirmed  { ["sell.autoRepair"] = true, ... }: the vendor automations
+--                the player confirmed, by Flow key. Only a true counts.
+--   Returns a copy of the account data in which a vendor automation is on
+--   only where the player confirmed that one, and two lists of
+--   { key = Flow key, to = where it sits }, each sorted by key: the ones
+--   switched on and the ones left off. An on counts as found whether it is
+--   in the list FromFlow made or was written into the settings some other
+--   way. What it is given is not changed.
+local function vendorGate(account, listed, confirmed)
+    account = type(account) == "table" and copy(account) or {}
     local found = {}
-    if type(imported.vendorToConfirm) == "table" then
-        for _, entry in ipairs(imported.vendorToConfirm) do
+    if type(listed) == "table" then
+        for _, entry in ipairs(listed) do
             if type(entry) == "table" and type(entry.key) == "string" then found[entry.key] = true end
         end
     end
@@ -1136,19 +1145,32 @@ local function gateVendor(imported, confirmed, report)
             end
         end
     end
-    local record = {}
+    local on, off = {}, {}
     for _, key in ipairs(sortedKeys(found)) do
         local row = ROW[key]
         if row and row.vendor then
             if type(confirmed) == "table" and confirmed[key] == true then
                 put(account, row.to, true)
-                record[key] = true
-                report.vendorConfirmed[#report.vendorConfirmed + 1] = key
+                on[#on + 1] = { key = key, to = row.to }
             else
-                report.vendorLeftOff[#report.vendorLeftOff + 1] = key
-                report.skipped[#report.skipped + 1] = { path = "account." .. row.to, reason = NOT_CONFIRMED }
+                off[#off + 1] = { key = key, to = row.to }
             end
         end
+    end
+    return account, on, off
+end
+
+-- The gate as the merge reports it.
+local function gateVendor(imported, confirmed, report)
+    local account, on, off = vendorGate(imported.account, imported.vendorToConfirm, confirmed)
+    local record = {}
+    for i = 1, #on do
+        record[on[i].key] = true
+        report.vendorConfirmed[#report.vendorConfirmed + 1] = on[i].key
+    end
+    for i = 1, #off do
+        report.vendorLeftOff[#report.vendorLeftOff + 1] = off[i].key
+        report.skipped[#report.skipped + 1] = { path = "account." .. off[i].to, reason = NOT_CONFIRMED }
     end
     return account, record
 end
@@ -1207,6 +1229,7 @@ end
 ns.Import = ns.Import or {}
 ns.Import.FromFlow = FromFlow
 ns.Import.Merge = Merge
+ns.Import.VendorGate = vendorGate
 ns.Import.flowMap = MAP
 ns.Import.flowImporterVersion = IMPORTER_VERSION
 ns.Import.flowKnownVersion = KNOWN_FLOW_VERSION

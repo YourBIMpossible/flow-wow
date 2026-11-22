@@ -338,11 +338,13 @@ return {
     -- ------------------------------------------------------------ import
     ["settings model: an import fills what the player has not chosen"] = function(t)
         local model = sample()
-        local after, report = model:adopt({}, { sell = { autoRepair = true }, frame = { size = 1.75 } })
+        local after, report = model:adopt({}, { sell = { autoRepair = true }, frame = { size = 1.75 } },
+            { ["sell.autoRepair"] = true })
         t.eq(after, { sell = { autoRepair = true }, frame = { size = 1.75 } })
         t.eq(report.taken, { "sell.autoRepair", "frame.size" })
         t.eq(report.kept, {})
         t.eq(report.refused, {})
+        t.eq(report.gated, {})
     end,
 
     ["settings model: an import never replaces a choice the player made"] = function(t)
@@ -368,13 +370,71 @@ return {
         t.eq(model:get(again, "sell.autoJunk"), false)
     end,
 
-    ["settings model: a vendor automation the import does not hold stays off and unchosen"] = function(t)
+    ["settings model: a vendor automation the import holds on is not stored unconfirmed"] = function(t)
         local model = Model.Default()
-        local after = adopted(model, {}, { sell = { autoRepair = true } })
+        local after, report = model:adopt({}, { sell = { autoRepair = true, autoJunk = true } })
+        t.eq(after, {})
+        for _, key in ipairs(VENDOR) do
+            t.eq(model:get(after, key), false, key)
+            t.eq(model:explicit(after, key), false, key)
+        end
+        t.eq(report.taken, {})
+        t.eq(report.gated, { "sell.autoJunk", "sell.autoRepair" })
+    end,
+
+    ["settings model: confirming one vendor automation stores that one only"] = function(t)
+        local model = Model.Default()
+        local confirmed = { ["sell.autoRepair"] = true }
+        local after, report = model:adopt({}, { sell = { autoRepair = true, autoJunk = true } }, confirmed)
         for _, key in ipairs(VENDOR) do
             t.eq(model:get(after, key), key == "sell.autoRepair", key)
             t.eq(model:explicit(after, key), key == "sell.autoRepair", key)
         end
+        t.eq(report.taken, { "sell.autoRepair" })
+        t.eq(report.gated, { "sell.autoJunk" })
+        t.eq(confirmed, { ["sell.autoRepair"] = true })
+    end,
+
+    ["settings model: only a true confirms a vendor automation"] = function(t)
+        local model = sample()
+        local imported = { sell = { autoJunk = true, autoRepair = true } }
+        for _, confirmed in ipairs({
+            { ["sell.autoJunk"] = "yes", ["sell.autoRepair"] = 1 },
+            { sell = { autoJunk = true, autoRepair = true } },
+            { "sell.autoJunk", "sell.autoRepair" },
+        }) do
+            local after, report = model:adopt({}, imported, confirmed)
+            t.eq(after, {})
+            t.eq(report.gated, { "sell.autoJunk", "sell.autoRepair" })
+        end
+        local after, report = model:adopt({}, imported, "sell.autoJunk")
+        t.eq(after, {})
+        t.eq(report.gated, { "sell.autoJunk", "sell.autoRepair" })
+    end,
+
+    ["settings model: a confirmation switches on nothing the import does not hold on"] = function(t)
+        local model = sample()
+        local confirmed = { ["sell.autoJunk"] = true, ["sell.autoRepair"] = true }
+        local after, report = model:adopt({}, { sell = { autoJunk = false } }, confirmed)
+        t.eq(after, { sell = { autoJunk = false } })
+        t.eq(report.taken, { "sell.autoJunk" })
+        t.eq(report.gated, {})
+    end,
+
+    ["settings model: the gate holds only vendor automations"] = function(t)
+        local model = sample()
+        local after, report = model:adopt({}, { chart = { click = true }, sell = { autoJunk = false } })
+        t.eq(after, { chart = { click = true }, sell = { autoJunk = false } })
+        t.eq(report.gated, {})
+    end,
+
+    ["settings model: a vendor automation the player chose is kept, not gated"] = function(t)
+        local model = sample()
+        local mine = { sell = { autoJunk = true, autoRepair = false } }
+        local after, report = model:adopt(mine, { sell = { autoJunk = true, autoRepair = true } })
+        t.eq(after, mine)
+        t.eq(report.kept, { "sell.autoJunk", "sell.autoRepair" })
+        t.eq(report.gated, {})
     end,
 
     ["settings model: an import value that does not fit is refused and reported"] = function(t)
@@ -402,7 +462,7 @@ return {
         local model = sample()
         local after, report = model:adopt({ other = { a = 1 } }, { unknown = { b = 2 }, frame = { extra = true } })
         t.eq(after, { other = { a = 1 } })
-        t.eq(report, { taken = {}, kept = {}, refused = {} })
+        t.eq(report, { taken = {}, kept = {}, refused = {}, gated = {} })
     end,
 
     ["settings model: adopt changes neither table it is given"] = function(t)
