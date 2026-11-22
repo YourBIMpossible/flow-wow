@@ -62,6 +62,7 @@ return {
         "Gear/CanUse.lua",
         "Gear/Verdict.lua",
         "Gear/Tooltip.lua",
+        "Gear/TooltipModule.lua",
 
         -- Rotation and classes
         "Rotation/Pack.lua",

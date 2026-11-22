@@ -47,6 +47,7 @@ Gear\Read.lua
 Gear\CanUse.lua
 Gear\Verdict.lua
 Gear\Tooltip.lua
+Gear\TooltipModule.lua
 Rotation\Pack.lua
 Rotation\Snapshot.lua
 Rotation\Choose.lua
