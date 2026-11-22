@@ -23,6 +23,8 @@
 --
 -- The places of the values in an event are a FIRST GUESS for this client
 -- (the layout CombatLogGetCurrentEventInfo has had since the 8.0 client):
+-- (warcraft.wiki.gg does not list that read for this client, and lists
+-- the combat-log event as closed to addons since 12.0.0: needs game test)
 --   1 time, 2 subevent, 4 source id, 5 source name, 8 target id, 9 target
 --   name; then for SWING_DAMAGE 12 amount; for ENVIRONMENTAL_DAMAGE 12 what
 --   it was, 13 amount; for every other ..._DAMAGE and ..._HEAL 12 spell id,

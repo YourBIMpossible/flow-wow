@@ -42,6 +42,8 @@ local _, ns = ...
 --
 -- Not tested in game: the event names and every client read used here are
 -- first guesses.
+-- The event names are on warcraft.wiki.gg (BANKFRAME_OPENED,
+-- CONFIRM_BINDER, MAIL_SHOW, MERCHANT_SHOW, TAXIMAP_OPENED).
 
 local ServiceSeen = ns.ServiceSeen or {}
 ns.ServiceSeen = ServiceSeen

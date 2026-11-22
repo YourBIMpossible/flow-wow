@@ -30,6 +30,7 @@ local _, ns = ...
 --
 -- Not tested in game: the event name and every client read used here are
 -- first guesses.
+-- The event name is on warcraft.wiki.gg (HEARTHSTONE_BOUND).
 
 local HearthSeen = ns.HearthSeen or {}
 ns.HearthSeen = HearthSeen

@@ -1250,10 +1250,16 @@ function ns.make.client(env)
     -- noPower is the client's own "not enough power" answer, not an amount.
     -- Seen in game on 16001, out of a fight: C_Spell.IsSpellUsable gives two
     -- plain booleans. In a fight it has not been observed.
+    -- known asks C_SpellBook.IsSpellKnown (the name on warcraft.wiki.gg,
+    -- Patch 1.60.1/API changes), then the bare IsPlayerSpell, which is not
+    -- listed for this client. Neither has been seen in game.
     function c.spell(id)
         if type(id) ~= "number" then return nil end
         local group = type(env.C_Spell) == "table" and env.C_Spell or {}
-        local row = { known = flag(call(env.IsPlayerSpell, id)) }
+        local book = type(env.C_SpellBook) == "table" and env.C_SpellBook or {}
+        local okKnown, known = call(book.IsSpellKnown, id)
+        if not okKnown then okKnown, known = call(env.IsPlayerSpell, id) end
+        local row = { known = flag(okKnown, known) }
         local ok, usable, noPower = call(group.IsSpellUsable, id)
         row.usable = flag(ok, usable)
         row.noPower = flag(ok, noPower)
@@ -1292,6 +1298,7 @@ function ns.make.client(env)
     -- client gives no plain yes or no. Only "player" is ever asked about.
     -- UnitIsDeadOrGhost is the call Flow's Nav.lua uses; a first guess on
     -- 16001, its answer has not been seen there.
+    -- Name and argument checked on warcraft.wiki.gg (API UnitIsDeadOrGhost).
     function c.dead()
         return flag(call(env.UnitIsDeadOrGhost, "player"))
     end
@@ -1316,6 +1323,8 @@ function ns.make.client(env)
     -- number). A hidden answer is asked about before it is compared or read.
     -- C_DeathInfo.GetCorpseMapPosition is the call Flow's Nav.lua uses; a
     -- first guess on 16001, its answer has not been seen there.
+    -- Name checked on warcraft.wiki.gg (API
+    -- C_DeathInfo.GetCorpseMapPosition).
     function c.corpse()
         local map = playerMap()
         if not map then return nil end
@@ -1340,6 +1349,8 @@ function ns.make.client(env)
     -- C_Map.HasUserWaypoint, where the client has it, then
     -- C_Map.GetUserWaypoint. Both are the retail names; a first guess on
     -- 16001, where neither has been seen to exist or answer.
+    -- Both names checked on warcraft.wiki.gg (API C_Map.HasUserWaypoint,
+    -- API C_Map.GetUserWaypoint).
     function c.waypoint()
         local group = env.C_Map
         if type(group) ~= "table" then return nil end
@@ -1376,6 +1387,9 @@ function ns.make.client(env)
     -- addon. In the world's own numbers the first runs north to south and
     -- the second east to west, so the width is the second. A first guess on
     -- 16001: the calls exist there, the corner answers have not been seen.
+    -- Name and arguments checked on warcraft.wiki.gg (API
+    -- C_Map.GetWorldPosFromMapPos). Which of the two numbers runs which
+    -- way is not stated there: needs game test.
     function c.mapSize(map)
         if type(map) ~= "number" then return nil end
         local x0, y0 = corner(map, 0, 0)
@@ -2351,6 +2365,8 @@ function ns.make.client(env)
     -- A name that is already a global is not taken over, and without a name
     -- or without the list the menu opens as before, with no Escape route.
     -- A first guess throughout: not seen in game on 16001.
+    -- UISpecialFrames could not be confirmed from public docs: needs game
+    -- test.
     local function menuFrames(name)
         if menu.panel then return true end
         if not menu.catcher then
@@ -3012,6 +3028,9 @@ function ns.make.client(env)
     --   h.show(on)
     -- First guesses, none seen in game: IsProtected on the window frame,
     -- the UIPanelButtonTemplate look, GameTooltip for the tip.
+    -- IsProtected and UIPanelButtonTemplate checked on warcraft.wiki.gg and
+    -- in the public name lists of Ketho/BlizzardInterfaceResources (forever
+    -- branch). The GameTooltip methods need game test.
     function c.windowButton(frameName, spec)
         if type(frameName) ~= "string" or frameName == "" or type(spec) ~= "table" then return nil end
         local frame = env[frameName]
@@ -3079,6 +3098,10 @@ function ns.make.client(env)
     ---------------------------------------------------------------------
     -- F6, the rotation helper: its reads and its one secure frame, kept
     -- together. All first guesses: not seen in game on 16001.
+    -- Names checked on warcraft.wiki.gg (API GetShapeshiftForm, API
+    -- UnitInVehicle, API C_PetBattles.IsInBattle, API InCombatLockdown,
+    -- SecureActionButtonTemplate). What IsInBattle answers with, and which
+    -- click (key down or key up) the template acts on, need game test.
     ---------------------------------------------------------------------
 
     -- The form you are in: a number (0 is no form), or nil when not known
@@ -3144,6 +3167,12 @@ function ns.make.client(env)
     -- answer the client hides, or one of the wrong kind, is "not known".
     -- First guesses, none seen in game: UnitGUID, CanMerchantRepair,
     -- GetBindLocation, GetItemCount and GetItemCooldown.
+    -- Checked on warcraft.wiki.gg (the API pages, and Patch 1.60.1/API
+    -- changes): UnitGUID, CanMerchantRepair and GetBindLocation are there by
+    -- those names. The item count and the item cooldown are there as
+    -- C_Item.GetItemCount and C_Container.GetItemCooldown; the bare names
+    -- are not listed for this client and are asked second. What
+    -- CanMerchantRepair answers with needs game test.
     --
     -- c.guid(unit) -> text or nil. Only the player, the pet and the target;
     -- any other unit is nil and the client is not asked. Shared with F7,
@@ -3193,9 +3222,13 @@ function ns.make.client(env)
     -- uses the stone.
     local HEARTHSTONE = 6948
     function c.hearthCooldown()
-        local okN, n = call(env.GetItemCount, HEARTHSTONE)
+        local items = type(env.C_Item) == "table" and env.C_Item or {}
+        local bags = type(env.C_Container) == "table" and env.C_Container or {}
+        local okN, n = call(items.GetItemCount, HEARTHSTONE)
+        if not okN then okN, n = call(env.GetItemCount, HEARTHSTONE) end
         if not okN or n == nil or hidden(n) or type(n) ~= "number" or n < 1 then return nil end
-        local ok, start, duration = call(env.GetItemCooldown, HEARTHSTONE)
+        local ok, start, duration = call(bags.GetItemCooldown, HEARTHSTONE)
+        if not ok then ok, start, duration = call(env.GetItemCooldown, HEARTHSTONE) end
         if not ok or start == nil or duration == nil or hidden(start) or hidden(duration) then return nil end
         if type(start) ~= "number" or type(duration) ~= "number" then return nil end
         if start ~= start or duration ~= duration or start < 0 or duration < 0 then return nil end
@@ -3211,6 +3244,10 @@ function ns.make.client(env)
     ---------------------------------------------------------------------
     -- F7, the fight log and death report: its reads, kept together. All
     -- first guesses: not seen in game on 16001.
+    -- Checked on warcraft.wiki.gg: UnitClassification is there by that
+    -- name. CombatLogGetCurrentEventInfo is not listed for this client, and
+    -- the combat-log event is listed as closed to addons since 12.0.0.
+    -- With no such read watchCombatLog answers nil and registers nothing.
     ---------------------------------------------------------------------
 
     -- c.guid(unit), c.playerGUID() and c.petGUID() are above, with the
