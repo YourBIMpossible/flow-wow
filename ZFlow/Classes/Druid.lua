@@ -34,6 +34,9 @@ local function inBear(s) return BEAR[s.form or ""] == true end
 local function caster(s) return s.form == nil or s.form == "Moonkin Form" end
 local function inAnimal(s) return inCat(s) or inBear(s) end
 local function stealthed(s) return s.stealthed == true end
+-- Read as not stealthed. A stealth nobody read (nil) is neither: Prowl and
+-- the swing wait for the reader's no.
+local function unstealthed(s) return s.stealthed == false end
 -- Combo points are a hidden amount here: a finisher waits for the reader's say-so.
 local function finisher(s) return s.finisherReady == true end
 -- The game refuses the spell for lack of power (read, not guessed).
@@ -96,14 +99,14 @@ local buffs = tag({
       evidence = "authored", provenance = CAT_PROVENANCE,
       when = function(s) return ns.DruidWantsCat(s.role, fight(s), s.form, s.tree) end },
     { spell = "Prowl", kind = "buff", reason = "Prowl before you pull: your key then holds your opener from stealth",
-      when = function(s) return outOfFight(s) and s.hostile and inCat(s) and not stealthed(s) end },
+      when = function(s) return outOfFight(s) and s.hostile and inCat(s) and unstealthed(s) end },
 })
 
 local melee = tag({
     { spell = "Attack", target = true, reason = "Start attacking",
-      when = function(s) return s.hostile and inAnimal(s) and not stealthed(s) and not current(s, "Attack") end },
+      when = function(s) return s.hostile and inAnimal(s) and unstealthed(s) and not current(s, "Attack") end },
     { spell = "Auto Attack", target = true, reason = "Start attacking",
-      when = function(s) return s.hostile and inAnimal(s) and not stealthed(s) and not current(s, "Auto Attack") end },
+      when = function(s) return s.hostile and inAnimal(s) and unstealthed(s) and not current(s, "Auto Attack") end },
 })
 
 local cat = tag({

@@ -690,7 +690,14 @@ function Diag.Start(k)
         local text = tostring(rest):lower()
         local word, more = text:match("^%s*(%S+)%s*(.-)%s*$")
         if word and commands[word] then
-            commands[word](more)
+            -- A word runs under a pcall, as the diag lines below do: one
+            -- that raises is a "diag" problem under the word and one line
+            -- here. It never ends the slash command.
+            local ok, problem = pcall(commands[word], more)
+            if not ok then
+                k.problems:add("diag", word, problem)
+                client.print(id.title .. ": the " .. word .. " command failed; it is kept as a problem.")
+            end
         elseif not text:find("^%s*diag") then
             client.print(id.title .. ": " .. (k.paused and "paused" or tostring(k.phase))
                 .. ". Type " .. id.slash .. " diag for a diagnostic snapshot, or "
