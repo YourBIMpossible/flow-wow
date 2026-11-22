@@ -30,6 +30,7 @@ return {
         "UI/Perf.lua",
         "UI/CopyBox.lua",
         "UI/Advisor.lua",
+        "UI/Setup.lua",
 
         -- Import
         "Import/FromFlow.lua",
