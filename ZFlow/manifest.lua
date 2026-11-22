@@ -95,6 +95,7 @@ return {
         -- On screen (after Nav: the panel uses its saved-point rules)
         "UI/DevPanel.lua",
         "UI/SettingsSlash.lua",
+        "UI/SettingsPage.lua",
         "UI/ArrowMenu.lua",
         "UI/SellList.lua",
         "UI/BankList.lua",

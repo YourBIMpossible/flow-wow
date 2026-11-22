@@ -74,6 +74,7 @@ Nav\ProfSeen.lua
 UI\ProfCard.lua
 UI\DevPanel.lua
 UI\SettingsSlash.lua
+UI\SettingsPage.lua
 UI\ArrowMenu.lua
 UI\SellList.lua
 UI\BankList.lua
