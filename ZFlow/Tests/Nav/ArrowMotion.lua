@@ -25,6 +25,11 @@ return {
         t.eq({ N.BeamCoords(true) }, { 0, 1, edge, 0 })
     end,
 
+    ["halo and beam: one set of sizes, and the step draws from it"] = function(t)
+        t.eq({ N.HALO_W, N.HALO_H, N.HALO_Y }, { 58, 42, -4 })
+        t.eq({ N.BEAM_W, N.BEAM_H }, { 18, 50 })
+    end,
+
     ["turn: the shortest way round, eased, never past"] = function(t)
         local at = N.TurnToward(0.1, -0.1 + 2 * math.pi, 0.05)
         t.ok(at < 0.1 and at > -0.1, "goes down through zero, not the long way up")

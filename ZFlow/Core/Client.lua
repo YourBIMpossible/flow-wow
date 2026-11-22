@@ -773,16 +773,34 @@ function ns.make.client(env)
     --   spec = { name = global frame name or nil, size = n (the frame),
     --            art = n (the drawn body), artPath = folder of the arrow
     --            textures ending in a separator, needle = { w, h } (the
-    --            profession needle's body), level = frame level }
+    --            profession needle's body), level = frame level,
+    --            halo = { w, h, y } (the arrived ring: its size, and the
+    --            height of the ring, ripple and beams against the centre),
+    --            beam = { w, h } (the beams before their first draw),
+    --            beamUp = { l, r, t, b }, beamDown = { l, r, t, b } (the
+    --            beams' texcoords) }
+    -- The halo, beam and texcoord numbers are Nav/ArrowMotion's, handed in
+    -- by the caller: there is no copy of them here, and a spec without them
+    -- gets no size, height or texcoord made up.
+    -- Two frames: the frame that is placed, dragged and shown (scale 1), and
+    -- on it a holder that carries the art and takes the scale. The text is
+    -- the placed frame's, so its offsets are screen units at every scale.
     -- The handle:
     --   h.place({ anchor, relative anchor, x, y })   against the screen
     --   h.attach(other)        centred on another arrow handle, following it
-    --   h.show(on)
+    --   h.show(on)             hiding ends a drag in progress
     --   h.look("pointer" | "needle")
-    --   h.draw(d)              one frame of Nav/ArrowMotion's ArrowStep table
-    --   h.scale(n), h.alpha(n), h.behind(on)   behind: under the other arrow
+    --   h.draw(d)              one frame of Nav/ArrowMotion's ArrowStep table.
+    --                          Makes no table or function, and looks no
+    --                          method up, after the arrow is made. The ripple
+    --                          and beams are sized only from d.ripple / d.beam.
+    --   h.scale(n), h.alpha(n)
+    --   h.behind(on)           under the other arrow: the frame and its
+    --                          holder go down two levels and take no mouse;
+    --                          ends a drag in progress
+    --   h.dragging()           true while the player is dragging it
     --   h.text(lines, point)   lines under / over it, point { a, r, x, y }
-    --                          against the arrow; no lines: hidden
+    --                          against the placed frame; no lines: hidden
     --   h.onMoved(fn)          fn(point) after the player drags it
     -- A new arrow is hidden and has no place until told.
     function c.arrow(spec)
@@ -797,6 +815,9 @@ function ns.make.client(env)
         local needle = type(spec.needle) == "table" and spec.needle or {}
         local needleW, needleH = tonumber(needle[1]) or art * 0.4, tonumber(needle[2]) or art
         local level = tonumber(spec.level) or 5
+        local haloSpec = type(spec.halo) == "table" and spec.halo or nil
+        local beamSpec = type(spec.beam) == "table" and spec.beam or nil
+        local haloY = haloSpec and tonumber(haloSpec[3]) or nil
 
         method(f, "Hide")
         if not method(f, "SetSize", size, size) then
@@ -807,16 +828,40 @@ function ns.make.client(env)
         method(f, "SetFrameLevel", level)
         method(f, "SetClampedToScreen", true)
 
+        -- This arrow's methods, looked up once per object and name (false:
+        -- the object has none), so a frame's draw looks nothing up and makes
+        -- nothing. `method` makes a function on every call.
+        local known = {}
+        local function lookup(obj, name)
+            local of = known[obj]
+            if of == nil then
+                of = {}
+                known[obj] = of
+            end
+            local fn = of[name]
+            if fn == nil then
+                local okF, got = pcall(function() return obj[name] end)
+                fn = okF and type(got) == "function" and got or false
+                of[name] = fn
+            end
+            return fn
+        end
+        local function fast(obj, name, ...)
+            if obj == nil then return false end
+            local fn = lookup(obj, name)
+            if not fn then return false end
+            return pcall(fn, obj, ...)
+        end
         local function sized(t, w, ht)
-            if not method(t, "SetSize", w, ht) then
-                method(t, "SetWidth", w)
-                method(t, "SetHeight", ht)
+            if not fast(t, "SetSize", w, ht) then
+                fast(t, "SetWidth", w)
+                fast(t, "SetHeight", ht)
             end
         end
-        -- The art and text sit on a holder centred on the frame. Scale is
-        -- the holder's: the frame that is placed stays at scale 1, so a
-        -- saved point means the same place at every scale. Without a holder
-        -- the frame itself is scaled.
+        -- The art sits on a holder centred on the frame. Scale is the
+        -- holder's: the frame that is placed stays at scale 1, so a saved
+        -- point means the same place at every scale. Without a holder the
+        -- frame itself is scaled.
         local okH, holder = call(env.CreateFrame, "Frame", nil, f)
         if not okH or holder == nil then holder = f end
         if holder ~= f then
@@ -839,18 +884,50 @@ function ns.make.client(env)
         local beam = tex("ArrowBeam", "ARTWORK", 3, "ADD")
         local beamDown = tex("ArrowBeam", "ARTWORK", 3, "ADD")
         if body == nil then return nil end
+
+        -- The texture lists a draw walks, made once; a texture the client
+        -- did not make is left out.
+        local function list(...)
+            local out = {}
+            for i = 1, select("#", ...) do
+                local t = select(i, ...)
+                if t ~= nil then out[#out + 1] = t end
+            end
+            return out
+        end
+        local cut = list(shadow, body, shine)                           -- cut from the sheet, or turned
+        local tinted = list(body, pool, halo, ripple, beam, beamDown)   -- take the colour
+        local ring = list(halo, ripple, beam, beamDown)                 -- shown on arrival
+        local beams = list(beam, beamDown)
+        local DRAWN = { "SetRotation", "SetTexCoord", "SetVertexColor", "SetAlpha", "SetPoint",
+                        "Show", "Hide", "SetSize", "SetWidth", "SetHeight" }
+        for _, t in ipairs(list(shadow, pool, body, shine, halo, ripple, beam, beamDown)) do
+            for i = 1, #DRAWN do lookup(t, DRAWN[i]) end
+        end
+
         sized(pool, 60, 36)
         method(pool, "SetPoint", "CENTER", holder, "CENTER", 0, -3)
-        sized(halo, 58, 42)
-        method(halo, "SetPoint", "CENTER", holder, "CENTER", 0, -4)
-        method(ripple, "SetPoint", "CENTER", holder, "CENTER", 0, -4)
-        method(beam, "SetTexCoord", 0, 1, 0, 1 - 1.5 / 128)
-        method(beam, "SetPoint", "BOTTOM", holder, "CENTER", 0, -4)
-        method(beamDown, "SetTexCoord", 0, 1, 1 - 1.5 / 128, 0)
-        method(beamDown, "SetPoint", "TOP", holder, "CENTER", 0, -4)
-        for _, t in ipairs({ halo, ripple, beam, beamDown }) do method(t, "Hide") end
+        if haloSpec and tonumber(haloSpec[1]) and tonumber(haloSpec[2]) then
+            sized(halo, tonumber(haloSpec[1]), tonumber(haloSpec[2]))
+        end
+        if beamSpec and tonumber(beamSpec[1]) and tonumber(beamSpec[2]) then
+            for i = 1, #beams do sized(beams[i], tonumber(beamSpec[1]), tonumber(beamSpec[2])) end
+        end
+        if haloY then
+            method(halo, "SetPoint", "CENTER", holder, "CENTER", 0, haloY)
+            method(ripple, "SetPoint", "CENTER", holder, "CENTER", 0, haloY)
+            method(beam, "SetPoint", "BOTTOM", holder, "CENTER", 0, haloY)
+            method(beamDown, "SetPoint", "TOP", holder, "CENTER", 0, haloY)
+        end
+        local function coords(t, tc)
+            if type(tc) == "table" then method(t, "SetTexCoord", tc[1], tc[2], tc[3], tc[4]) end
+        end
+        coords(beam, spec.beamUp)
+        coords(beamDown, spec.beamDown)
+        for i = 1, #ring do fast(ring[i], "Hide") end
 
-        local okText, label = method(holder, "CreateFontString", nil, "OVERLAY", "GameFontNormal")
+        -- The text is the placed frame's, not the holder's: unscaled.
+        local okText, label = method(f, "CreateFontString", nil, "OVERLAY", "GameFontNormal")
         if not okText then label = nil end
         if label ~= nil then
             method(label, "SetJustifyH", "CENTER")
@@ -864,23 +941,24 @@ function ns.make.client(env)
             current = look == "needle" and "needle" or "pointer"
             turns = false
             if current == "needle" then
-                turns = method(body, "SetRotation", 0) and true or false
+                turns = fast(body, "SetRotation", 0) and true or false
             else
-                method(body, "SetRotation", 0)
-                method(shine, "SetRotation", 0)
-                method(shadow, "SetRotation", 0)
+                fast(body, "SetRotation", 0)
+                fast(shine, "SetRotation", 0)
+                fast(shadow, "SetRotation", 0)
             end
             local w, ht = art, art
             if current == "needle" then w, ht = (turns and needleW or needleH), needleH end
-            for _, t in ipairs({ shadow, body, shine }) do
+            for i = 1, #cut do
+                local t = cut[i]
                 sized(t, w, ht)
                 method(t, "ClearAllPoints")
-                method(t, "SetPoint", "CENTER", holder, "CENTER", 0, 0)
+                fast(t, "SetPoint", "CENTER", holder, "CENTER", 0, 0)
             end
             if turns then
-                for _, t in ipairs({ shadow, body, shine }) do method(t, "SetTexCoord", 0, 1 / 16, 0, 1 / 8) end
+                for i = 1, #cut do fast(cut[i], "SetTexCoord", 0, 1 / 16, 0, 1 / 8) end
             end
-            method(pool, current == "needle" and "Hide" or "Show")
+            fast(pool, current == "needle" and "Hide" or "Show")
         end
         shape("pointer")
 
@@ -897,6 +975,15 @@ function ns.make.client(env)
             return nil
         end
 
+        -- Ends a drag that will get no OnDragStop: the arrow was hidden or
+        -- sent behind with the button still down. The place is not saved.
+        local function letGo()
+            if not dragging then return end
+            dragging = false
+            method(f, "StopMovingOrSizing")
+            method(f, "SetUserPlaced", false)
+        end
+
         method(f, "SetMovable", true)
         method(f, "EnableMouse", true)
         method(f, "RegisterForDrag", "LeftButton")
@@ -911,6 +998,7 @@ function ns.make.client(env)
             local point = standing()
             if point and moved then pcall(moved, point) end
         end)
+        method(f, "SetScript", "OnHide", letGo)
 
         function h.place(point)
             if type(point) ~= "table" then return end
@@ -924,6 +1012,7 @@ function ns.make.client(env)
             method(f, "SetPoint", "CENTER", to, "CENTER", 0, 0)
         end
         function h.show(on)
+            if not on then letGo() end
             method(f, on and "Show" or "Hide")
         end
         function h.look(look)
@@ -931,38 +1020,43 @@ function ns.make.client(env)
         end
         function h.draw(d)
             if type(d) ~= "table" then return end
-            local col = d.colour or {}
-            local r, g, b = col[1] or 1, col[2] or 1, col[3] or 1
+            local r, g, b = 1, 1, 1
+            local col = d.colour
+            if type(col) == "table" then r, g, b = col[1] or 1, col[2] or 1, col[3] or 1 end
             if turns then
-                for _, t in ipairs({ shadow, body, shine }) do method(t, "SetRotation", d.turn or 0) end
+                local turn = d.turn or 0
+                for i = 1, #cut do fast(cut[i], "SetRotation", turn) end
             elseif type(d.cell) == "table" then
                 local cl = d.cell
-                for _, t in ipairs({ shadow, body, shine }) do method(t, "SetTexCoord", cl[1], cl[2], cl[3], cl[4]) end
+                for i = 1, #cut do fast(cut[i], "SetTexCoord", cl[1], cl[2], cl[3], cl[4]) end
             end
-            for _, t in ipairs({ body, pool, halo, ripple, beam, beamDown }) do method(t, "SetVertexColor", r, g, b) end
+            for i = 1, #tinted do fast(tinted[i], "SetVertexColor", r, g, b) end
             local on = d.body or 1
             if current == "needle" then
                 -- The needle is the quieter arrow: lower opacities, no float.
-                method(body, "SetAlpha", on * 0.9)
-                method(shine, "SetAlpha", on * 0.55)
-                method(shadow, "SetAlpha", on * 0.45)
+                fast(body, "SetAlpha", on * 0.9)
+                fast(shine, "SetAlpha", on * 0.55)
+                fast(shadow, "SetAlpha", on * 0.45)
             else
-                method(body, "SetAlpha", on)
-                method(shine, "SetAlpha", d.shine or 0.9)
-                method(shadow, "SetAlpha", d.shadow or 0.75)
-                method(pool, "SetAlpha", d.pool or 0.35)
-                method(body, "SetPoint", "CENTER", holder, "CENTER", 0, d.bodyY or 0)
+                fast(body, "SetAlpha", on)
+                fast(shine, "SetAlpha", d.shine or 0.9)
+                fast(shadow, "SetAlpha", d.shadow or 0.75)
+                fast(pool, "SetAlpha", d.pool or 0.35)
+                fast(body, "SetPoint", "CENTER", holder, "CENTER", 0, d.bodyY or 0)
             end
             local arrived = d.arrived and true or false
-            for _, t in ipairs({ halo, ripple, beam, beamDown }) do method(t, arrived and "Show" or "Hide") end
+            for i = 1, #ring do fast(ring[i], arrived and "Show" or "Hide") end
             if arrived then
-                method(halo, "SetAlpha", d.halo or 0)
-                local rp, bm = d.ripple or {}, d.beam or {}
-                sized(ripple, rp[1] or 58, rp[2] or 42)
-                method(ripple, "SetAlpha", rp[3] or 0)
-                for _, t in ipairs({ beam, beamDown }) do
-                    sized(t, bm[1] or 18, bm[2] or 50)
-                    method(t, "SetAlpha", bm[3] or 0)
+                fast(halo, "SetAlpha", d.halo or 0)
+                local rp, bm = d.ripple, d.beam
+                local rw, rh, ra, bw, bh, ba
+                if type(rp) == "table" then rw, rh, ra = rp[1], rp[2], rp[3] end
+                if type(bm) == "table" then bw, bh, ba = bm[1], bm[2], bm[3] end
+                if type(rw) == "number" and type(rh) == "number" then sized(ripple, rw, rh) end
+                fast(ripple, "SetAlpha", ra or 0)
+                for i = 1, #beams do
+                    if type(bw) == "number" and type(bh) == "number" then sized(beams[i], bw, bh) end
+                    fast(beams[i], "SetAlpha", ba or 0)
                 end
             end
         end
@@ -980,7 +1074,12 @@ function ns.make.client(env)
             if type(n) == "number" then method(f, "SetAlpha", n) end
         end
         function h.behind(on)
-            method(f, "SetFrameLevel", on and math.max(level - 2, 0) or level)
+            if on then letGo() end
+            local to = on and math.max(level - 2, 0) or level
+            method(f, "SetFrameLevel", to)
+            -- The holder is a frame of its own: left at its level it would
+            -- keep the art above the arrow this one is meant to be under.
+            if holder ~= f then method(holder, "SetFrameLevel", to + 1) end
             method(f, "EnableMouse", not on)
         end
         function h.text(lines, point)
@@ -993,7 +1092,7 @@ function ns.make.client(env)
             end
             method(label, "SetText", table.concat(out, "\n"))
             method(label, "ClearAllPoints")
-            method(label, "SetPoint", point[1], holder, point[2], point[3], point[4])
+            method(label, "SetPoint", point[1], f, point[2], point[3], point[4])
             method(label, "Show")
         end
         function h.onMoved(fn)

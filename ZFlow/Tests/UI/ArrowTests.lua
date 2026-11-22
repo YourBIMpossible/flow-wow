@@ -279,4 +279,92 @@ return {
         t.eq(c.arrows[2].shown, false)
         t.eq(a.state().view, nil)
     end,
+
+    -- AF1
+    ["a broken arrow stays hidden: a loading screen, the demo and a guide do not bring it back"] = function(t)
+        local k, c, a, d = start()
+        c.setPosition(1411, 0.5, 0.5)
+        c.setMapSize(1411, 1000, 500)
+        login(c)
+        cmd(d, "demo")
+        local q, p = c.arrows[1], c.arrows[2]
+        q.draw = function() error("boom") end
+        c.advance(0.1, 5)
+        t.eq(k.problems:count(), 1)
+        c.fire("PLAYER_ENTERING_WORLD")
+        t.eq(q.shown, false, "after the next loading screen")
+        t.eq(p.shown, false)
+        cmd(d, "demo")
+        t.eq(q.shown, false, "after the demo command")
+        t.eq(p.shown, false)
+        cmd(d, "demo")
+        t.eq(q.shown, false, "after the demo command again")
+        t.eq(p.shown, false)
+        a.setGuide(function()
+            return { quest = { place = { cont = 1, map = 1411, x = 0.5, y = 0.3 }, label = "Kill boars" } }
+        end)
+        a.relayout()
+        c.advance(1, 10)
+        t.eq(q.shown, false, "after a guide and more frames")
+        t.eq(p.shown, false)
+        t.eq(a.state().view, nil)
+        t.eq(k.problems:count(), 1, "still the one problem")
+    end,
+
+    -- AR13
+    ["the halo, beam and beam texcoords go to the client from Nav/ArrowMotion"] = function(t)
+        local _, c = start()
+        for i = 1, 2 do
+            local spec = c.arrows[i].spec
+            t.eq(spec.halo, { N.HALO_W, N.HALO_H, N.HALO_Y })
+            t.eq(spec.beam, { N.BEAM_W, N.BEAM_H })
+            t.eq(spec.beamUp, { N.BeamCoords(false) })
+            t.eq(spec.beamDown, { N.BeamCoords(true) })
+        end
+    end,
+
+    -- AF6
+    ["at the step with facing unknown: the ring, no unknown-direction line and no fade"] = function(t)
+        local _, c, a = start()
+        c.setPosition(1411, 0.5, 0.5)
+        c.setMapSize(1411, 1000, 500)
+        c.setFacing(nil)
+        login(c)
+        a.setGuide(function()
+            return { quest = { place = { cont = 1, map = 1411, x = 0.5, y = 0.5 }, label = "Kill boars" } }
+        end)
+        local q = c.arrows[1]
+        t.eq(q.shown, true)
+        t.eq(a.state().view.quest.mode, "ring")
+        for i = 1, #(q.lines or {}) do
+            t.ok(q.lines[i] ~= A.UNKNOWN_TURN, "a ring points nowhere: nothing to call unknown")
+        end
+        t.eq(q.faded, a.state().view.quest.alpha, "the view's own alpha, not the lost fade")
+    end,
+
+    ["Lines: the unknown-direction line is once per stack and never on a ring"] = function(t)
+        local U = A.UNKNOWN_TURN
+        local function view(qMode, pMode, to)
+            return { quest = { shown = true, mode = qMode, text = { shown = true } },
+                     prof = { shown = true, mode = pMode, text = { shown = true, to = to } } }
+        end
+        local function lines() return { quest = { "Q", U }, prof = { "P", U } } end
+        local both = { quest = true, prof = true }
+        local out = A.Lines(view("arrow", "arrow", "quest"), lines(), both)
+        t.eq(out.quest, { "Q", U, "P" }, "one stack: said once")
+        t.eq(out.prof, {})
+        out = A.Lines(view("arrow", "arrow", "prof"), lines(), both)
+        t.eq(out.quest, { "Q", U })
+        t.eq(out.prof, { "P", U }, "two stacks: once each")
+        out = A.Lines(view("ring", "arrow", "quest"), lines(), both)
+        t.eq(out.quest, { "Q", "P", U }, "the ring's is left out, the needle's stays")
+        out = A.Lines(view("arrow", "ring", "prof"), lines(), both)
+        t.eq(out.prof, { "P" })
+        out = A.Lines(view("ring", "ring", "quest"), lines(), both)
+        t.eq(out.quest, { "Q", "P" })
+        out = A.Lines(view("ring", "ring", "quest"), lines())
+        t.eq(out.quest, { "Q", U, "P", U }, "lines not marked as the unknown line are a guide's own: kept")
+        out = A.Lines(view("ring", "arrow", "quest"), lines(), { prof = true })
+        t.eq(out.quest, { "Q", U, "P", U }, "only a marked arrow's last line is the unknown line")
+    end,
 }
