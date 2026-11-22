@@ -3,4 +3,4 @@
 # registering would otherwise look like a smaller, greener run.
 # Raise it when tests are added (the run prints "registered tests: <n>");
 # lower it only when tests were removed on purpose.
-717
+757
