@@ -532,7 +532,13 @@ return {
 
     ["gate: nothing the shipped model lands is reported as dropped"] = function(t)
         local model = shipped()
-        local _, report = S.Adopt(nil, Import.FromFlow(sellDb(), {}), { ["sell.autoRepair"] = true })
+        local out, report = S.Adopt(nil, Import.FromFlow(sellDb(), {}), { ["sell.autoRepair"] = true })
+        t.eq(type(report.dropped), "table")
+        t.eq((model:get(out, "sell.autoRepair")), true, "the confirmed automation did not land")
+        t.eq(report.vendorConfirmed, { "sell.autoRepair" })
+        for _, key in ipairs(report.taken) do
+            t.ok(model:row(key) ~= nil, tostring(key) .. " was taken and has no row")
+        end
         for _, entry in ipairs(report.dropped) do
             t.ok(model:row(entry.key) == nil, tostring(entry.key) .. " has a row and is reported as dropped")
             t.eq(entry.reason, "no model row")
