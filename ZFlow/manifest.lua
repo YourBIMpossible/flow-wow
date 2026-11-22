@@ -69,6 +69,7 @@ return {
         "Nav/ViewState.lua",
         "Nav/WaypointStep.lua",
         "Nav/Waypoint.lua",
+        "Nav/ProfStep.lua",
 
         -- On screen (after Nav: the panel uses its saved-point rules)
         "UI/DevPanel.lua",
