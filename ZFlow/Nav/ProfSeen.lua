@@ -8,8 +8,8 @@ local _, ns = ...
 --   "learned.facts.profSkill"[name] = { line, skill, max, at }
 -- name is the profession as the client spells it, line its skill line, at
 -- client.clock() (left out when the clock is not known). A visit already
--- marked on the entry is kept. No answer, no name, or a skill or max that is
--- not a number: nothing is written.
+-- marked on the entry is kept. No answer, no name, a skill or max that is
+-- not a number, or a max that is not above 0: nothing is written.
 --
 -- Trainers. When a trainer window opens and client.trainer() names the npc
 -- and its profession, and client.position() gives a map and x, y, account
@@ -123,7 +123,7 @@ function ProfSeen.Reading(client, store)
     if type(r) ~= "table" then return refuse(report, "no profession window answered") end
     if not name(r.name) then return refuse(report, "the profession has no name") end
     report.name = r.name
-    if not (finite(r.skill) and finite(r.max)) then return refuse(report, "the skill is not known") end
+    if not (finite(r.skill) and finite(r.max) and r.max > 0) then return refuse(report, "the skill is not known") end
     local now = clock(client)
 
     local cur, usable = tableAt(store, "char", ProfSeen.READINGS)
