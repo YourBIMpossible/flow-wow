@@ -9,6 +9,7 @@
 
 Core\Identity.lua
 Core\Client.lua
+Core\Reads.lua
 Core\Report.lua
 Core\Store.lua
 Core\Settings.lua
