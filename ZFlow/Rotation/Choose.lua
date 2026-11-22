@@ -9,20 +9,23 @@ local _, ns = ...
 -- snapshot (every field is optional; a missing field reads as "not so"):
 --   inCombat, hostile, resting, dead      booleans
 --   role, tree, fightType                 "dps" / "heal" / "tank"; talent tree name; "aoe" or nil
---   form, stealthed, combo, outOfMana     shapeshift form name or nil; boolean; number; boolean
+--   form, stealthed                       shapeshift form name or nil; boolean
+--   finisherReady                         true when the reader can tell a finisher is due
 --   casting, targetCasting                the spell you are casting; the spell your target is casting
 --   targetNear                            true when the target is within a few yards
 --   targetMelee, targetOnYou, hittingYou  target has no mana; target is on you; it hit you just now
---   canSpareMana                          true when mana allows an optional cast
 --   attacking, canStartAttack             you are swinging; the key can start a swing
 --   engageGaveUp                          starting the attack was tried and did not take
 --   loc                                   the loss-of-control type holding you ("ROOT"), or nil
---   lowHealth, hpPct, hurt                the game's warning; health share where shown; seconds of hits (estimate)
+--   lowHealth, hurt                       the game's warning; seconds of hits (estimate)
 --   buffs         { [name] = secondsLeft or true }   on you
 --   targetDebuffs { [name] = true }                  yours, on the target
 --   debuffTypes   { [type] = debuffName }            on you ("Poison", "Curse")
 --   current       { [spell] = true }                 queued or toggled on (Attack, Maul)
---   spells        { [name] = { known, usable, onCooldown, inRange, castMs } }
+--   spells        { [name] = { known, usable, onCooldown, inRange, noPower, castMs } }
+--
+-- No field is a health or power amount, or made from one: this client hides
+-- those from addon code. See R.FROM_AMOUNT in Snapshot.lua.
 --
 -- prefs: { autoAttack = false to never suggest starting the attack,
 --          skip = { [spell] = true } spells never to suggest }
@@ -43,8 +46,6 @@ local R = ns.Rotation
 
 -- Seconds of being hit (Flow's estimate) at which a heal is suggested.
 R.HURT = { outStart = 6, outBig = 15, inHot = 8, inHeal = 20 }
--- Health share above which no heal is suggested, where the game shows health.
-R.FINE_PCT = 0.8
 -- How much more a neighbouring adaptive rule must have been pressed to win.
 R.BIAS_EDGE = 0.05
 
@@ -121,7 +122,6 @@ end
 function steps.heal(s, pack, prefs)
     local heals = pack.heals and pack.heals.self
     if not heals or s.dead then return nil, "no heals" end
-    if type(s.hpPct) == "number" and s.hpPct > R.FINE_PCT then return nil, "health is fine" end
     for _, h in ipairs(heals) do
         if h == s.casting then return nil, "already casting a heal" end
     end

@@ -34,7 +34,13 @@ local function inBear(s) return BEAR[s.form or ""] == true end
 local function caster(s) return s.form == nil or s.form == "Moonkin Form" end
 local function inAnimal(s) return inCat(s) or inBear(s) end
 local function stealthed(s) return s.stealthed == true end
-local function combo(s) return type(s.combo) == "number" and s.combo or 0 end
+-- Combo points are a hidden amount here: a finisher waits for the reader's say-so.
+local function finisher(s) return s.finisherReady == true end
+-- The game refuses the spell for lack of power (read, not guessed).
+local function lacksPower(s, name)
+    local r = s.spells and s.spells[name]
+    return (r and r.known and r.noPower == true) and true or false
+end
 local function current(s, name) return (s.current and s.current[name]) and true or false end
 -- Missing, or with less than secs left (a buff the snapshot gives as true has time left).
 local function needBuff(s, name, secs)
@@ -104,11 +110,11 @@ local cat = tag({
       when = function(s) return s.hostile and inCat(s) and stealthed(s) end },
     { spell = "Shred", target = true, reason = "Open from stealth (from behind the mob)",
       when = function(s) return s.hostile and inCat(s) and stealthed(s) end },
-    { spell = "Ferocious Bite", target = true, reason = "Spend 4+ combo points",
-      when = function(s) return s.hostile and inCat(s) and combo(s) >= 4 end },
+    { spell = "Ferocious Bite", target = true, reason = "Spend your combo points",
+      when = function(s) return s.hostile and inCat(s) and finisher(s) end },
     { spell = "Rip", target = true, reason = "Spend combo points (bleed)",
       when = function(s)
-          return s.hostile and inCat(s) and combo(s) >= 4 and not knows(s, "Ferocious Bite")
+          return s.hostile and inCat(s) and finisher(s) and not knows(s, "Ferocious Bite")
               and missingOnTarget(s, "Rip")
       end },
     { spell = "Rake", target = true, reason = "Rake bleed missing",
@@ -134,7 +140,6 @@ local roots = tag({
       when = function(s)
           return s.inCombat and s.hostile and caster(s) and s.targetMelee and s.targetOnYou and s.hittingYou
               and missingOnTarget(s, "Entangling Roots") and needBuff(s, "Nature's Grasp", 0)
-              and s.canSpareMana
       end },
     { spell = "Entangling Roots", target = true, reason = "Root it before it reaches you, then cast",
       when = function(s)
@@ -149,9 +154,9 @@ local casterDamage = tag({
     { spell = "Wrath", target = true, reason = "Wrath",
       when = function(s) return s.hostile and caster(s) end },
     { spell = "Attack", target = true, reason = "Out of mana: hit it with your weapon",
-      when = function(s) return s.hostile and caster(s) and s.outOfMana and not current(s, "Attack") end },
+      when = function(s) return s.hostile and caster(s) and lacksPower(s, "Wrath") and not current(s, "Attack") end },
     { spell = "Auto Attack", target = true, reason = "Out of mana: hit it with your weapon",
-      when = function(s) return s.hostile and caster(s) and s.outOfMana and not current(s, "Auto Attack") end },
+      when = function(s) return s.hostile and caster(s) and lacksPower(s, "Wrath") and not current(s, "Auto Attack") end },
 })
 
 local function join(...)

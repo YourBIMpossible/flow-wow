@@ -1,7 +1,9 @@
 local _, ns = ...
 
--- A client that hides health and power amounts: the snapshot carries none of
--- the fields made from them, and the chooser still answers from the rest.
+-- Health and power amounts are hidden from addon code on this client, so the
+-- snapshot has no field made from one, and the chooser and the packs decide
+-- from what the game does say: its low-health warning, the estimate from
+-- being hit, whether a spell is usable, and whether it lacks power.
 
 local R = ns.Rotation
 
@@ -16,17 +18,50 @@ local function heals(pack)
     return known(pack.heals.hots, spells)
 end
 
+local function spellOf(snapshot, pack)
+    local s = ns.Choose(ns.SnapshotOf(snapshot), pack)
+    return s and s.spell or nil
+end
+
+local AMOUNTS = { hpPct = 0.95, combo = 5, outOfMana = true, canSpareMana = true }
+
 return {
     ["no amounts: the fields made from health and power are named"] = function(t)
         t.eq(R.FROM_AMOUNT, { hpPct = "health", outOfMana = "power", canSpareMana = "power", combo = "power" }, "list")
     end,
 
-    ["no amounts: left out, numbers stay unknown and flags read no"] = function(t)
-        local s = ns.SnapshotOf({ inCombat = true })
-        t.eq(s.hpPct, nil, "health share unknown, not 0 and not 1")
-        t.eq(s.combo, nil, "combo points unknown, not 0")
-        t.eq(s.outOfMana, false, "not out of mana")
-        t.eq(s.canSpareMana, false, "no mana to spare")
+    ["no amounts: the snapshot has no such field"] = function(t)
+        for _, f in ipairs(R.SNAPSHOT_FIELDS) do
+            t.eq(R.FROM_AMOUNT[f[1]], nil, f[1] .. " is not made from an amount")
+        end
+    end,
+
+    ["no amounts: handed in anyway, they are left out and reported"] = function(t)
+        local s, ignored = ns.SnapshotOf(AMOUNTS)
+        for name in pairs(R.FROM_AMOUNT) do
+            t.eq(s[name], nil, name .. " is not kept")
+        end
+        t.eq(ignored, { "canSpareMana", "combo", "hpPct", "outOfMana" }, "ignored")
+    end,
+
+    ["no amounts: the reader is never asked for one"] = function(t)
+        local asked = {}
+        ns.Snapshot(function(name) asked[name] = true end)
+        for name in pairs(R.FROM_AMOUNT) do
+            t.eq(asked[name], nil, name .. " is not asked for")
+        end
+        t.ok(asked.lowHealth, "the game's warning is asked for")
+    end,
+
+    ["no amounts: a snapshot table carrying them does not change the choice"] = function(t)
+        -- Even a caller that skips SnapshotOf gets the same answer.
+        local pack = ns.Packs.DRUID
+        local plain = { lowHealth = true, spells = heals(pack) }
+        local loud = { lowHealth = true, spells = heals(pack) }
+        for k, v in pairs(AMOUNTS) do loud[k] = v end
+        local a, b = ns.Choose(plain, pack), ns.Choose(loud, pack)
+        t.ok(a and a.kind == "heal", "a heal")
+        t.eq(b and b.spell, a and a.spell, "the same heal with a health share of 95% handed in")
     end,
 
     ["no amounts: the game's low-health warning alone still gets a heal"] = function(t)
@@ -55,13 +90,49 @@ return {
         end
     end,
 
-    ["no amounts: unknown combo points never spend a finisher"] = function(t)
+    ["no amounts: a finisher only on the reader's say-so, never on a count"] = function(t)
         local spells = known({ "Ferocious Bite", "Rip", "Claw", "Cat Form" })
-        local s = ns.Choose(ns.SnapshotOf({ role = "dps", hostile = true, inCombat = true, form = "Cat Form",
-                                         attacking = true, targetNear = true, spells = spells }), ns.Packs.DRUID)
-        t.ok(not s or (s.spell ~= "Ferocious Bite" and s.spell ~= "Rip"), "no finisher")
-        local five = ns.Choose(ns.SnapshotOf({ role = "dps", hostile = true, inCombat = true, form = "Cat Form", combo = 5,
-                                            attacking = true, targetNear = true, spells = spells }), ns.Packs.DRUID)
-        t.eq(five and five.spell, "Ferocious Bite", "with a count given it still does")
+        local base = { role = "dps", hostile = true, inCombat = true, form = "Cat Form",
+                       attacking = true, targetNear = true, spells = spells }
+        local got = spellOf(base, ns.Packs.DRUID)
+        t.ok(got ~= "Ferocious Bite" and got ~= "Rip", "nothing said: no finisher")
+        base.combo = 5
+        got = spellOf(base, ns.Packs.DRUID)
+        t.ok(got ~= "Ferocious Bite" and got ~= "Rip", "a count handed in is not read")
+        base.combo, base.finisherReady = nil, true
+        t.eq(spellOf(base, ns.Packs.DRUID), "Ferocious Bite", "the reader says a finisher is due")
+    end,
+
+    ["no amounts: out of power is the game refusing the spell, not a mana figure"] = function(t)
+        local function caster(wrath, over)
+            local f = { role = "dps", hostile = true, inCombat = true, targetNear = true,
+                        targetDebuffs = { Moonfire = true },
+                        spells = { Wrath = wrath, Moonfire = { known = true }, Attack = { known = true } } }
+            for k, v in pairs(over or {}) do f[k] = v end
+            return spellOf(f, ns.Packs.DRUID)
+        end
+        t.eq(caster({ known = true, usable = true }), "Wrath", "Wrath is usable")
+        t.eq(caster({ known = true, usable = true }, { outOfMana = true }), "Wrath", "a mana flag handed in is not read")
+        t.eq(caster({ known = true, usable = false, noPower = true }), "Attack", "the game says Wrath lacks power: weapon")
+        t.ok(caster({ known = true, usable = false }) ~= "Attack", "refused for another reason: no out-of-power advice")
+        t.ok(caster({ known = true }) ~= "Attack", "nothing read: no out-of-power advice")
+    end,
+
+    ["no amounts: a spell row keeps lacks-power apart from not read"] = function(t)
+        local s = ns.SnapshotOf({ spells = { A = { known = true, noPower = 1 }, B = { known = true, noPower = false },
+                                             C = { known = true } } })
+        t.eq(s.spells.A.noPower, true, "lacks power")
+        t.eq(s.spells.B.noPower, false, "has the power")
+        t.eq(s.spells.C.noPower, nil, "not read")
+    end,
+
+    ["no amounts: Nature's Grasp needs no mana figure, only to be castable"] = function(t)
+        local function grasp(row)
+            return spellOf({ role = "dps", hostile = true, inCombat = true, targetMelee = true, targetOnYou = true,
+                             hittingYou = true, targetNear = true,
+                             spells = { ["Nature's Grasp"] = row, Wrath = { known = true } } }, ns.Packs.DRUID)
+        end
+        t.eq(grasp({ known = true }), "Nature's Grasp", "castable: suggested")
+        t.ok(grasp({ known = true, usable = false, noPower = true }) ~= "Nature's Grasp", "the game refuses it: not suggested")
     end,
 }

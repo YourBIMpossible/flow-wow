@@ -124,7 +124,7 @@ return {
         t.eq(pick({ "Renew" }, { lowHealth = true }), "Renew", "only a heal over time known: that one")
         t.eq(pick({ "Mend" }, { lowHealth = true, dead = true }), nil, "not when dead")
         t.eq(pick({ "Mend" }, { lowHealth = true, casting = "Mend" }), nil, "not while already casting a heal")
-        t.eq(pick({ "Mend" }, { lowHealth = true, hpPct = 0.9 }), nil, "not when health reads fine")
+        t.eq(pick({ "Mend" }, { lowHealth = true, hpPct = 0.9 }), "Mend", "a health amount handed in is not read")
     end,
 
     ["heal: the hurt estimate, out of a fight and in one"] = function(t)

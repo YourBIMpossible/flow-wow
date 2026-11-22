@@ -156,10 +156,10 @@ return {
         local all = { "Cat Form", "Prowl", "Ravage", "Pounce", "Shred", "Ferocious Bite", "Rip", "Rake", "Claw" }
         t.eq(cat({}, all), "Prowl", "before the pull, not stealthed")
         t.eq(cat({ stealthed = true }, all), "Ravage", "from stealth")
-        t.eq(cat({ inCombat = true, combo = 4 }, all), "Ferocious Bite", "4 combo points")
-        t.eq(cat({ inCombat = true, combo = 4 }, { "Cat Form", "Rip", "Rake", "Claw" }), "Rip", "no Ferocious Bite: Rip")
-        t.eq(cat({ inCombat = true, combo = 1 }, all), "Rake", "Rake missing")
-        t.eq(cat({ inCombat = true, combo = 1, targetDebuffs = { Rake = true } }, all), "Claw", "Rake is on it")
+        t.eq(cat({ inCombat = true, finisherReady = true }, all), "Ferocious Bite", "the reader says a finisher is due")
+        t.eq(cat({ inCombat = true, finisherReady = true }, { "Cat Form", "Rip", "Rake", "Claw" }), "Rip", "no Ferocious Bite: Rip")
+        t.eq(cat({ inCombat = true }, all), "Rake", "Rake missing")
+        t.eq(cat({ inCombat = true, targetDebuffs = { Rake = true } }, all), "Claw", "Rake is on it")
     end,
 
     ["caster list: buffs out of a fight, then moonfire, then wrath"] = function(t)
