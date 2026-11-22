@@ -146,17 +146,12 @@ Disposition.RULES = {
         if isCount(k.untilLevel) and isCount(c.level) and c.level >= k.untilLevel then return nil end
         return { action = "keep", reason = tostring(k.why or "kept for your class"), basis = "recommendation" }
     end },
-    -- Grey items with a known price. A price that isn't known decides nothing.
-    { key = "junk", order = 20, check = function(i)
-        if i.quality == 0 and isCount(i.sellPrice) and i.sellPrice > 0 then
-            return { action = "sell", reason = "junk", basis = "recommendation" }
-        end
-    end },
-
-    -- The eight keep rules ported from Flow (L6-B, G5), at Flow's order. Only
-    -- their keep: where Flow's rule also sells or sends to the auction house,
-    -- that half is not ported. Each takes its facts from the context (below
-    -- each rule); a fact that is missing or the wrong shape decides nothing.
+    -- The eight keep rules ported from Flow (L6-B, G5), at Flow's order: this
+    -- one before junk, the other seven after it. Only their keep: where
+    -- Flow's rule also sells or sends to the auction house, that half is not
+    -- ported. Each takes its facts from the context (below each rule); a fact
+    -- that is missing or the wrong shape decides nothing. The list stays in
+    -- rising order.
 
     -- Flow Modules/Items/Disposition.lua:637-648. context.sets[key] = the
     -- names of the sets you keep it in ({ "Feral", "Balance" }).
@@ -169,6 +164,12 @@ Disposition.RULES = {
         end
         if #out == 0 then return nil end
         return { action = "keep", reason = "in your " .. table.concat(out, " / ") .. " set", basis = "fact" }
+    end },
+    -- Grey items with a known price. A price that isn't known decides nothing.
+    { key = "junk", order = 20, check = function(i)
+        if i.quality == 0 and isCount(i.sellPrice) and i.sellPrice > 0 then
+            return { action = "sell", reason = "junk", basis = "recommendation" }
+        end
     end },
     -- Flow Modules/Items/Disposition.lua:431-469. context.materials[key] =
     -- the professions you have or plan that still use it (not past it), in
@@ -260,7 +261,17 @@ Disposition.RULES = {
         if type(g) ~= "table" or g.canUse ~= true then return nil end
         local main = diffFor(g, c.role)
         if main ~= nil and main >= 0.5 then
-            local at = isCount(i.minLevel) and ("upgrade at level " .. i.minLevel) or "upgrade at a later level"
+            -- Flow's own "wear it now" rule (equip, order 10) is not ported, so
+            -- an upgrade whose level you have reached is said as that, not as
+            -- "later". A level that is not known is not guessed.
+            local at
+            if isCount(i.minLevel) and isCount(c.level) and i.minLevel <= c.level then
+                at = "an upgrade you can wear now"
+            elseif isCount(i.minLevel) then
+                at = "upgrade at level " .. i.minLevel
+            else
+                at = "upgrade at a later level"
+            end
             return { action = "keep", reason = at, basis = "recommendation" }
         end
         if type(c.keptRoles) ~= "table" then return nil end
