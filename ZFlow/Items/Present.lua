@@ -164,6 +164,95 @@ function Present.Ready(plan)
     return "Can't tell if it is ready: " .. (plan.unknown == "bags" and Present.BAGS_UNREAD or Present.BANK_UNSEEN)
 end
 
+-- ---------------------------------------------------------------- sell list
+-- The vendor sell list (L6-A): ItemSell.List and SellView.Kept as lines.
+-- The same rules as above: a price nobody has seen is "price unknown -
+-- check vendor" and no figure; an estimate is labelled and never added to
+-- an observed figure; a count that is not known is said, not guessed.
+
+Present.VENDOR_PRICE_UNKNOWN = "price unknown - check vendor"
+Present.SELL_HEADER = "Would sell (nothing is sold for you):"
+Present.KEPT_HEADER = "Kept, never sold:"
+Present.NOTHING_TO_SELL = "Nothing to sell"
+
+local function plural(n, one, many)
+    return n .. " " .. (n == 1 and one or many)
+end
+
+-- One row of ItemSell.List, as a text.
+function Present.SellRowText(r, names)
+    local name = type(r.name) == "string" and r.name ~= "" and r.name or Present.Name(r.key, names)
+    local head = isCount(r.count) and (r.count .. " x " .. name) or (name .. " (how many not known)")
+    local Prices = ns.Prices
+    local price
+    if r.basis == Prices.OBSERVED and isCount(r.unit) then
+        price = coin(r.unit) .. " each"
+        if isCount(r.total) then price = price .. ", " .. coin(r.total) end
+        if type(r.source) == "string" and r.source ~= "" then price = price .. " (" .. r.source .. ")" end
+    elseif r.basis == Prices.ESTIMATED and isCount(r.unit) and type(r.source) == "string" and r.source ~= "" then
+        price = "about " .. coin(r.unit) .. " each (estimate, " .. r.source .. ")"
+        if isCount(r.total) then price = price .. ", about " .. coin(r.total) end
+    else
+        price = Present.VENDOR_PRICE_UNKNOWN
+    end
+    return head .. ": " .. price
+end
+
+-- What the list comes to: the observed figure and the estimate apart, and
+-- the rows with no price counted, not priced.
+function Present.SellTotal(list)
+    local t = type(list.total) == "table" and list.total or {}
+    local known = isCount(t.known) and t.known or 0
+    local estimated = isCount(t.estimated) and t.estimated or 0
+    local unknown = isCount(t.unknown) and t.unknown or 0
+    local parts = {}
+    if known > 0 then parts[#parts + 1] = coin(known) end
+    if estimated > 0 then parts[#parts + 1] = "about " .. coin(estimated) .. " (estimate)" end
+    if unknown > 0 then
+        parts[#parts + 1] = plural(unknown, "price", "prices") .. " unknown - check vendor"
+    end
+    if #parts == 0 then return nil end
+    return "Would sell for: " .. table.concat(parts, ", plus ")
+end
+
+-- One row of SellView.Kept, as a text.
+function Present.KeptText(k, names)
+    local name = type(k.name) == "string" and k.name ~= "" and k.name or Present.Name(k.key, names)
+    return name .. ": " .. tostring(k.reason or "kept")
+end
+
+-- The whole list, top to bottom: what would be sold, its total, notes on
+-- what could not be listed, then what is kept and why.
+function Present.SellLines(list, kept, names)
+    if type(list) ~= "table" or not list.ok then
+        local why = type(list) == "table" and type(list.problem) == "string" and list.problem
+            or ns.ItemSell.BAGS_UNREAD
+        return { "Can't list what to sell: " .. why }
+    end
+    local lines = {}
+    local rows = type(list.rows) == "table" and list.rows or {}
+    if #rows == 0 then
+        lines[#lines + 1] = Present.NOTHING_TO_SELL
+    else
+        lines[#lines + 1] = Present.SELL_HEADER
+        for _, r in ipairs(rows) do lines[#lines + 1] = Present.SellRowText(r, names) end
+        local total = Present.SellTotal(list)
+        if total then lines[#lines + 1] = total end
+    end
+    if isCount(list.unread) and list.unread > 0 then
+        lines[#lines + 1] = plural(list.unread, "bag slot", "bag slots") .. " could not be read"
+    end
+    if isCount(list.unsellable) and list.unsellable > 0 then
+        lines[#lines + 1] = plural(list.unsellable, "item", "items") .. " to sell can't be sold to a merchant"
+    end
+    local keptRows = type(kept) == "table" and type(kept.rows) == "table" and kept.rows or {}
+    if #keptRows > 0 then
+        lines[#lines + 1] = Present.KEPT_HEADER
+        for _, k in ipairs(keptRows) do lines[#lines + 1] = Present.KeptText(k, names) end
+    end
+    return lines
+end
+
 function Present.View(plan, opts)
     opts = type(opts) == "table" and opts or {}
     local view = { ok = false, rows = {}, crafts = {}, problems = {}, lines = {} }
