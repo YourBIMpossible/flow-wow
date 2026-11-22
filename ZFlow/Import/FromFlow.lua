@@ -1203,6 +1203,7 @@ end
 -- is listed as added. Should the imported value be of the wrong type too,
 -- the row falls to the ordinary rules below and is reported by them. Where
 -- nothing is held yet the value is added and listed like any other.
+-- Entries live outside account.settings: the model is not asked here, so one under settings would need the model check.
 local QUIET = {
     ["account.layout.arrowModern"] = "boolean",
 }
