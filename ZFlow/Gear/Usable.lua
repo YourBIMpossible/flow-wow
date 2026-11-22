@@ -30,7 +30,9 @@ local _, ns = ...
 --
 -- Best: which answer the verdict goes by. The game's own, when it was read
 -- (yes or no); else the class pack's table (Gear/CanUse.lua), which is a
--- first guess and is labelled so on the line; else "not known".
+-- first guess: its no is shown, labelled so on the line; its yes is not
+-- taken (it cannot know a skill you have not trained) and reads "not
+-- confirmed by the game"; else "not known".
 
 local U = {}
 ns.GearUsable = U
@@ -42,6 +44,7 @@ U.REASON = {
     unmet = "the game marks in red",
     marked = "the game marks a requirement you do not meet",
     unread = "what the game requires for it was not read",
+    unconfirmed = "not confirmed by the game: what it marks on the item was not read",
 }
 local R = U.REASON
 
@@ -83,7 +86,15 @@ end
 
 function U.Best(clientAnswer, packAnswer)
     if type(clientAnswer) == "table" and clientAnswer.can ~= nil then return clientAnswer end
-    if type(packAnswer) == "table" then return packAnswer end
+    if type(packAnswer) == "table" then
+        -- The table says what a class can ever equip. It does not know a
+        -- weapon skill you have not trained, or armour you learn later, so
+        -- its yes alone is not a yes. Its no stands, with its label.
+        if packAnswer.can == true then
+            return { can = nil, why = "unknown", reason = R.unconfirmed }
+        end
+        return packAnswer
+    end
     if type(clientAnswer) == "table" then return clientAnswer end
     return { can = nil, why = "unknown", reason = R.unread }
 end
