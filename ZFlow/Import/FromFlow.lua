@@ -1195,12 +1195,16 @@ end
 -- is stored the model is asked too: a value it refuses is not added.
 --
 -- QUIET: places that are the addon's own bookkeeping, not a setting the
--- player chose. Where such a place already holds a value the imported one
--- is dropped as for any other row, but with no report line: a line there
--- would read to the player as a setting that was not taken. Where nothing
--- is held yet the value is added and listed like any other.
+-- player chose, each with the type its value has. Where such a place
+-- already holds a value of that type the imported one is dropped as for
+-- any other row, but with no report line: a line there would read to the
+-- player as a setting that was not taken. A held value of any other type
+-- is not held: it gives way to an imported value of the right type, which
+-- is listed as added. Should the imported value be of the wrong type too,
+-- the row falls to the ordinary rules below and is reported by them. Where
+-- nothing is held yet the value is added and listed like any other.
 local QUIET = {
-    ["account.layout.arrowModern"] = true,
+    ["account.layout.arrowModern"] = "boolean",
 }
 
 local function fill(dst, src, defaults, path, report, choice)
@@ -1216,8 +1220,12 @@ local function fill(dst, src, defaults, path, report, choice)
                 dst[key] = fit
                 report.added[#report.added + 1] = at
             end
-        elseif QUIET[at] then -- luacheck: ignore 542
-            -- Already held: kept as it is, and not reported.
+        elseif QUIET[at] ~= nil and type(have) == QUIET[at] then -- luacheck: ignore 542
+            -- Already held, in its own type: kept as it is, and not reported.
+        elseif QUIET[at] ~= nil and type(value) == QUIET[at] then
+            -- What is held is no value for this place: the imported one lands.
+            dst[key] = copy(value)
+            report.added[#report.added + 1] = at
         elseif type(have) == "table" and type(value) == "table" and not isList(have) and not isList(value)
             and not isPrice(have) and not isPrice(value) then
             fill(have, value, default, at, report, choice)
