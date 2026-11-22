@@ -666,9 +666,12 @@ function ns.make.client(env)
 
     -- What the client says about one item and about what you wear, as the
     -- raw tables ns.GearRead.Shapes takes:
-    --   { kind, stats, worn, dualWield }
+    --   { kind, stats, classID, subclassID, minLevel, unmet, speed, worn, dualWield }
     -- kind, stats   the item `link` names (see the two reads above); both
     --               left out when link is not a non-empty string.
+    -- classID, subclassID, minLevel, unmet, speed   the same item (the F3
+    --               block below); minLevel, unmet and speed only once it is
+    --               loaded. Worn items carry kind and stats only.
     -- worn          { [inventory slot number] = { kind, stats } for an item,
     --                 false for a slot the client says holds nothing }.
     --               A slot is false only when GetInventoryItemID("player",
@@ -683,10 +686,163 @@ function ns.make.client(env)
     -- slot 18 (ranged) exists on this client. Before your character's items
     -- are loaded the client may give no id for any slot; this cannot tell
     -- that from empty slots, so it is to be asked after login.
+    -- ---------------------------------------------------------------- F3
+    -- Gear advice on hover (FEATURE-PLAN F3, owner Plexy): the item's class
+    -- and level, what the game marks on it, its speed, your level, and the
+    -- item tooltip hook. Every call here is a first guess, not seen in game
+    -- on 16001; each answer that cannot be read is left out, never a default.
+
+    -- A whole number of zero or more the client gave, not secret, or nil.
+    local function whole(ok, v)
+        if not ok or v == nil or hidden(v) or type(v) ~= "number" or v ~= v then return nil end
+        if v < 0 or v == math.huge or v ~= math.floor(v) then return nil end
+        return v
+    end
+
+    -- The item's class and subclass numbers (armor 4, weapons 2), in the
+    -- client's own spelling: the sixth and seventh answers of the same
+    -- GetItemInfoInstant call itemKind makes.
+    local function itemType(link)
+        local group = env.C_Item
+        local fn = env.GetItemInfoInstant
+        if type(group) == "table" and type(group.GetItemInfoInstant) == "function" then
+            fn = group.GetItemInfoInstant
+        end
+        local ok, _, _, _, _, _, class, subclass = call(fn, link)
+        return whole(ok, class), whole(ok, subclass)
+    end
+
+    -- Whether the item is loaded, and the level it needs: GetItemInfo's
+    -- first answer (its name: nil while the item is not loaded) and fifth.
+    -- C_Item.GetItemInfo where the client has it.
+    local function itemLoaded(link)
+        local group = env.C_Item
+        local fn = env.GetItemInfo
+        if type(group) == "table" and type(group.GetItemInfo) == "function" then fn = group.GetItemInfo end
+        local ok, name, _, _, _, minLevel = call(fn, link)
+        if not text(ok, name) then return false, nil end
+        return true, whole(ok, minLevel)
+    end
+
+    -- The game's red for "you do not meet this" (RED_FONT_COLOR, 1 / 0.125 /
+    -- 0.125), read off a line's colour table.
+    local function isRed(colour)
+        if type(colour) ~= "table" or hidden(colour) then return false end
+        local r, g, b = colour.r, colour.g, colour.b
+        if type(r) ~= "number" or type(g) ~= "number" or type(b) ~= "number" then return false end
+        if hidden(r) or hidden(g) or hidden(b) then return false end
+        return r > 0.95 and g < 0.25 and b < 0.25
+    end
+
+    -- A weapon's speed from a tooltip text: the client's own SPEED word, a
+    -- space, and a number with a point or a comma ("Speed 2.60").
+    local function speedOf(s)
+        local word = env.SPEED
+        if type(s) ~= "string" or hidden(s) or type(word) ~= "string" or word == "" then return nil end
+        if s:sub(1, #word + 1) ~= word .. " " then return nil end
+        local digits = s:sub(#word + 2):match("^(%d+[%.,]%d+)$") or s:sub(#word + 2):match("^(%d+)$")
+        local n = digits and tonumber((digits:gsub(",", "."))) or nil
+        if not n or n <= 0 then return nil end
+        return n
+    end
+
+    -- From the item's tooltip data (C_TooltipInfo.GetHyperlink(link)):
+    -- unmet, the lines the game draws in red, left and right, in its own
+    -- words (a red text that cannot be read is false: still a mark); and the
+    -- weapon's speed. nil, nil when the data cannot be read.
+    local function itemTooltip(link)
+        local group = env.C_TooltipInfo
+        if type(group) ~= "table" then return nil, nil end
+        local ok, data = call(group.GetHyperlink, link)
+        if not ok or type(data) ~= "table" or hidden(data) or type(data.lines) ~= "table" then return nil, nil end
+        local unmet, speed = {}, nil
+        for i = 1, #data.lines do
+            local line = data.lines[i]
+            if type(line) == "table" then
+                for _, side in ipairs({ "left", "right" }) do
+                    local s = line[side .. "Text"]
+                    if isRed(line[side .. "Color"]) then
+                        unmet[#unmet + 1] = text(true, s) or false
+                    end
+                    speed = speed or speedOf(s)
+                end
+            end
+        end
+        return unmet, speed
+    end
+
+    -- Your level: UnitLevel("player"), a whole number above 0, or nil.
+    function c.level()
+        local n = whole(call(env.UnitLevel, "player"))
+        if not n or n < 1 then return nil end
+        return n
+    end
+
+    -- Told each time the game's item tooltip has been filled for an item:
+    --   client.onItemTooltip(fn) -> cancel;  fn(link, add);  add(text, r, g, b)
+    -- add appends one line to that tooltip. fn's errors stay here. Route A:
+    -- GameTooltip:HookScript("OnTooltipSetItem") where the tooltip has that
+    -- script; route B: TooltipDataProcessor.AddTooltipPostCall for item data,
+    -- GameTooltip only. Neither replaces a script or a function of the game;
+    -- a hook cannot be taken back, so cancel only stops fn being told. nil
+    -- when the client offers neither. No link, or a secret one: fn is not told.
+    local tooltipListeners, tooltipHooked = {}, false
+    local function tooltipFilled(tip)
+        if type(tip) ~= "table" or type(tip.GetItem) ~= "function" then return end
+        local ok, _, link = pcall(tip.GetItem, tip)
+        link = text(ok, link)
+        if not link then return end
+        local function add(s, r, g, b)
+            if type(s) ~= "string" or type(tip.AddLine) ~= "function" then return end
+            pcall(tip.AddLine, tip, s, r, g, b)
+        end
+        for _, fn in ipairs({ unpack(tooltipListeners) }) do pcall(fn, link, add) end
+    end
+    local function hookTooltip()
+        if tooltipHooked then return true end
+        local tip = env.GameTooltip
+        if type(tip) == "table" and type(tip.HookScript) == "function" then
+            local okHas, has = call(tip.HasScript, tip, "OnTooltipSetItem")
+            if okHas and has == true and call(tip.HookScript, tip, "OnTooltipSetItem", tooltipFilled) then
+                tooltipHooked = true
+                return true
+            end
+        end
+        local proc, enum = env.TooltipDataProcessor, env.Enum
+        local itemData = type(enum) == "table" and type(enum.TooltipDataType) == "table"
+            and enum.TooltipDataType.Item or nil
+        if type(proc) == "table" and itemData ~= nil
+            and call(proc.AddTooltipPostCall, itemData, function(t2)
+                if t2 == env.GameTooltip then tooltipFilled(t2) end
+            end) then
+            tooltipHooked = true
+            return true
+        end
+        return false
+    end
+    function c.onItemTooltip(fn)
+        if type(fn) ~= "function" or not hookTooltip() then return nil end
+        tooltipListeners[#tooltipListeners + 1] = fn
+        return function()
+            for i = #tooltipListeners, 1, -1 do
+                if tooltipListeners[i] == fn then table.remove(tooltipListeners, i) end
+            end
+        end
+    end
+    -- -------------------------------------------------------------- end F3
+
     function c.gear(link)
         local out = { worn = {} }
         if type(link) == "string" and link ~= "" then
             out.kind, out.stats = itemKind(link), itemStats(link)
+            out.classID, out.subclassID = itemType(link)
+            -- What needs the item loaded is left out until it is: an item
+            -- not loaded must not read as "the game marks nothing".
+            local loaded, minLevel = itemLoaded(link)
+            if loaded then
+                out.minLevel = minLevel
+                out.unmet, out.speed = itemTooltip(link)
+            end
         end
         for i = 1, #GEAR_SLOTS do
             local slot = GEAR_SLOTS[i]

@@ -131,6 +131,19 @@ function ns.make.fakeClient(opts)
         if type(id) ~= "number" or not s.ranges then return nil end
         return s.ranges[id]
     end
+    function c.level() return s.level end
+    -- As the real client's: fn(link, add) for each item tooltip shown with
+    -- showItemTooltip; the answer takes the listener back.
+    function c.onItemTooltip(fn)
+        if type(fn) ~= "function" then return nil end
+        s.tooltipListeners = s.tooltipListeners or {}
+        table.insert(s.tooltipListeners, fn)
+        return function()
+            for i = #s.tooltipListeners, 1, -1 do
+                if s.tooltipListeners[i] == fn then table.remove(s.tooltipListeners, i) end
+            end
+        end
+    end
     -- A copy of a flat table, or nil for anything else.
     local function copyFlat(t)
         if type(t) ~= "table" then return nil end
@@ -145,12 +158,19 @@ function ns.make.fakeClient(opts)
         if not item then return {} end
         return { kind = item.kind, stats = copyFlat(item.stats) }
     end
-    -- As the real client's gear(): { kind, stats, worn, dualWield }.
+    -- As the real client's gear(): { kind, stats, classID, subclassID,
+    -- minLevel, unmet, speed, worn, dualWield }. Worn items carry kind and
+    -- stats only, as the real client's do.
     function c.gear(link)
         local out = { worn = {}, dualWield = s.dualWield }
         if type(link) == "string" and link ~= "" then
             local item = gearItem(link)
             out.kind, out.stats = item.kind, item.stats
+            local more = s.items and s.items[link] or nil
+            if more then
+                out.classID, out.subclassID, out.minLevel = more.classID, more.subclassID, more.minLevel
+                out.unmet, out.speed = copyFlat(more.unmet), more.speed
+            end
         end
         for slot, worn in pairs(s.worn or {}) do
             if worn == false then
@@ -533,7 +553,20 @@ function ns.make.fakeClient(opts)
             s.items[link] = nil
             return
         end
-        s.items[link] = { kind = item.kind, stats = copyFlat(item.stats) }
+        s.items[link] = { kind = item.kind, stats = copyFlat(item.stats),
+                          classID = item.classID, subclassID = item.subclassID, minLevel = item.minLevel,
+                          unmet = copyFlat(item.unmet), speed = item.speed }
+    end
+    -- Your level for level(): a number, or nil for not known (the start).
+    function c.setLevel(n) s.level = n end
+    -- Plays the game filling its item tooltip for `link`: every onItemTooltip
+    -- listener is told, and what they added comes back as
+    -- { { text, r, g, b } ... }.
+    function c.showItemTooltip(link)
+        local added = {}
+        local function add(text, r, g, b) added[#added + 1] = { text = text, r = r, g = g, b = b } end
+        for _, fn in ipairs({ unpack(s.tooltipListeners or {}) }) do fn(link, add) end
+        return added
     end
     -- What one inventory slot holds: a link (an item worn), false (read and
     -- empty), or nil (not read).
