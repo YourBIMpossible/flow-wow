@@ -177,6 +177,50 @@ tests["repair module: repaired gear clears the warning, and a new drop warns aga
     t.eq(printedWith(c, "5% durability"), 1, "warned again")
 end
 
+-- Review of ce71380, finding 3 (F-086): a read that fails is not "fine".
+tests["repair module: a failed read between two low reads leaves the warning as it is"] = function(t)
+    local _, c, api = start({ durability = { [5] = { cur = 10, max = 100 } } })
+    t.eq(printedWith(c, "10% durability"), 1)
+    setDurability(c, nil)
+    c.fire(R.EVENT)
+    t.ok(api.current() ~= nil and has(api.current().lines, "An item you wear is at 10% durability."),
+        "not read: the last known warning stays for the guide")
+    setDurability(c, { [5] = { cur = 10, max = 100 } })
+    c.fire(R.EVENT)
+    t.eq(printedWith(c, "10% durability"), 1, "low, unread, low: one line, not two")
+end
+
+tests["repair: a check says whether gear is low, fine, or was not read"] = function(t)
+    local function client(readings) return { durability = function() return readings end } end
+    local w, state = R.Check(client({ [5] = { cur = 10, max = 100 } }), nil, 0.2)
+    t.eq(state, "low")
+    t.ok(w ~= nil)
+    w, state = R.Check(client({ [5] = { cur = 90, max = 100 } }), nil, 0.2)
+    t.eq({ w, state }, { nil, "fine" })
+    w, state = R.Check(client(nil), nil, 0.2)
+    t.eq({ w, state }, { nil, "unread" })
+    w, state = R.Check(client({}), nil, 0.2)
+    t.eq({ w, state }, { nil, "fine" }, "read, and nothing worn has durability: nothing to warn about")
+    w, state = R.Check({}, nil, 0.2)
+    t.eq({ w, state }, { nil, "unread" }, "no durability read on the client")
+end
+
+-- Finding 1: the no-vendor line must not promise learning that nothing does.
+tests["repair: the no-vendor line claims nothing that is not true"] = function(t)
+    t.eq(R.NO_VENDOR, "No repair vendor is known yet.")
+end
+
+-- Finding 5: a threshold of 0 means never warn; it is not turned into 20%.
+tests["repair: a threshold of 0 turns the warning off"] = function(t)
+    t.eq(R.Low(0.01, 0), false, "nothing is under 0")
+    t.eq(R.Worst({ [5] = { cur = 1, max = 100 } }, 0).low, 0)
+    t.eq(R.Lines({ pct = 0.01, slot = 5, low = 0 }, 0, nil), {})
+    local _, c, api = start({ durability = { [5] = { cur = 1, max = 100 } }, threshold = 0 })
+    t.eq(#c.printed, 0, "no chat line")
+    t.eq(api.current(), nil)
+    t.eq(R.Low(0.1, 7), true, "a threshold that is no share at all still falls back to the default")
+end
+
 tests["repair module: durability not read says nothing"] = function(t)
     local _, c, api = start({ durability = nil })
     c.fire(R.EVENT)
