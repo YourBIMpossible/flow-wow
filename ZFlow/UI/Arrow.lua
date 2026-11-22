@@ -512,6 +512,22 @@ function Arrow.Start(k, diag, own)
                 step = quests.step()
                 if step then from = "your quests" end
             end
+            -- The way there, when it is a cast, the hearthstone, a ride or a
+            -- gate (Nav/Travel.lua, S33 + S35): that takes the step's place
+            -- and the step is said next. A step it puts in is not the
+            -- player's own waypoint: reaching a gate clears nothing.
+            local travel = k.use and k.use("travel")
+            if step ~= nil and travel and type(travel.Via) == "function" then
+                local ok, via = pcall(travel.Via, step)
+                if ok and type(via) == "table" and via ~= step then
+                    step = via
+                    -- (A step that only gained a line is still the waypoint.)
+                    if via.travel ~= nil then
+                        mine = false
+                        from = from .. ", by way of travel"
+                    end
+                end
+            end
             local prof = N.ProfStepFrom(client, k.store)
             guide = (step or prof) and { quest = step, prof = prof } or nil
         end
