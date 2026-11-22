@@ -24,10 +24,15 @@ local function pack()
     }
 end
 
+-- A range a row does not give is read as in range here: what a range
+-- nobody read does is in RangeUnknown.lua.
 local function snap(known, over)
     local s = { dead = false, inCombat = false, spells = {} }
     for _, name in ipairs(known or {}) do s.spells[name] = { known = true, onCooldown = false } end
     for k, v in pairs(over or {}) do s[k] = v end
+    for _, row in pairs(s.spells) do
+        if row.inRange == nil then row.inRange = true end
+    end
     return s
 end
 
