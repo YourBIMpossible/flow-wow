@@ -232,7 +232,8 @@ tests["disposition: deciding changes neither the item nor the context"] = functi
     t.eq(D.RULES, rowsWas, "and no rule row was written to")
     t.ok(item.count == 12 and item.key == 2318 and item.rule == nil and item.action == nil, "the item is as it was")
     t.ok(c.level == 10 and c.rules == nil and next(c.choices.keep) == nil, "the context too")
-    t.eq(#D.RULES, 9, "and the built-in list has its nine rules")
+    -- 17 since L6-B ported Flow's eight keep rules (nine before).
+    t.eq(#D.RULES, 17, "and the built-in list has its seventeen rules")
 end
 
 return tests

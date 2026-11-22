@@ -124,6 +124,12 @@ tests["keep rules: an upgrade at a later level, or for a role you keep, is kept"
         { gearRead = true, gear = { [1000] = { canUse = true, diffs = { feral = 2 } } }, role = "feral" })
     t.eq(later.rule, "laterOrOtherRole")
     t.eq(later.reason, "upgrade at level 24")
+    local now = D.Decide(gearItem({ minLevel = 24 }),
+        { gearRead = true, gear = { [1000] = { canUse = true, diffs = { feral = 2 } } }, role = "feral", level = 30 })
+    t.eq(now.reason, "an upgrade you can wear now", "your level has reached it: not called 'later'")
+    local below = D.Decide(gearItem({ minLevel = 24 }),
+        { gearRead = true, gear = { [1000] = { canUse = true, diffs = { feral = 2 } } }, role = "feral", level = 20 })
+    t.eq(below.reason, "upgrade at level 24", "below it: later")
     local unknownLevel = D.Decide(gearItem({ minLevel = nil }),
         { gearRead = true, gear = { [1000] = { canUse = true, diffs = { feral = 2 } } }, role = "feral" })
     t.eq(unknownLevel.reason, "upgrade at a later level", "no level made up")
