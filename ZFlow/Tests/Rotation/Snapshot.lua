@@ -49,7 +49,7 @@ return {
         fields.spells.Wrath.known = false
         fields.spells.Moonfire = { known = true }
         t.eq(s.buffs, { Thorns = true }, "buffs")
-        t.eq(s.spells, { Wrath = { known = true, onCooldown = false } }, "spells")
+        t.eq(s.spells, { Wrath = { known = true } }, "spells")
         t.ok(s.buffs ~= fields.buffs, "buffs is a copy")
     end,
 
@@ -60,10 +60,40 @@ return {
             [7] = { known = true },
             Rip = "yes",
         } })
-        t.eq(s.spells.Wrath, { known = true, onCooldown = false, usable = false, inRange = false, castMs = 2000 }, "Wrath")
+        t.eq(s.spells.Wrath, { known = true, usable = false, inRange = false, castMs = 2000 },
+            "Wrath: cooldown not read")
         t.eq(s.spells.Moonfire, { known = true, onCooldown = true }, "Moonfire: usable and range not read")
         t.eq(s.spells[7], nil, "a row without a spell name is left out")
         t.eq(s.spells.Rip, nil, "a row that is not a table is left out")
+    end,
+
+    ["spell rows: a cooldown nobody read stays nil, no stays false, yes stays true"] = function(t)
+        local s = ns.SnapshotOf({ spells = {
+            Unread = { known = true },
+            Ready = { known = true, onCooldown = false },
+            Waiting = { known = true, onCooldown = true },
+            Truthy = { known = true, onCooldown = 1 },
+            Empty = {},
+        } })
+        t.eq(s.spells.Unread.onCooldown, nil, "not read: not known, not ready")
+        t.eq(s.spells.Ready.onCooldown, false, "read: ready")
+        t.eq(s.spells.Waiting.onCooldown, true, "read: on cooldown")
+        t.eq(s.spells.Truthy.onCooldown, true, "any other yes")
+        t.eq(s.spells.Empty, {}, "an empty row stays empty")
+        local again = ns.SnapshotOf({ spells = s.spells })
+        t.eq(again.spells, s.spells, "building from built rows keeps all three")
+    end,
+
+    ["a cooldown nobody read: the built snapshot gives no suggestion for that spell"] = function(t)
+        local function tank(row)
+            local built = ns.SnapshotOf({ role = "tank", hostile = true, attacking = true, dead = false,
+                inCombat = false, spells = { ["Bear Form"] = row } })
+            local pick = ns.Choose(built, ns.Packs.DRUID, {}, nil)
+            return pick and pick.spell or nil
+        end
+        t.eq(tank({ known = true, onCooldown = false }), "Bear Form", "read, ready")
+        t.ok(tank({ known = true }) ~= "Bear Form", "not read: not suggested")
+        t.ok(tank({ known = true, onCooldown = true }) ~= "Bear Form", "read, on cooldown")
     end,
 
     ["fields it does not know are left out and named, sorted"] = function(t)
@@ -149,7 +179,7 @@ return {
             "and that is the refusal the empty snapshot did not get")
         -- A built snapshot with something to do gives a suggestion.
         local built = ns.SnapshotOf({ role = "tank", hostile = true, attacking = true, dead = false, inCombat = false,
-            spells = { ["Bear Form"] = { known = true } } })
+            spells = { ["Bear Form"] = { known = true, onCooldown = false } } })
         local pick, why = ns.Choose(built, ns.Packs.DRUID, {}, nil)
         t.ok(type(pick) == "table", "a tank with an enemy targeted is given something")
         t.eq(pick and pick.spell, "Bear Form", "Bear Form")
