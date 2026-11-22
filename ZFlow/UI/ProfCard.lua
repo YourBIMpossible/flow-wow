@@ -13,6 +13,12 @@ local _, ns = ...
 -- tests) and needs only Add(id, text, priority) and Remove(id). Sync adds
 -- and removes only ids it added itself ("aps.prof.<profession>").
 --
+-- Faction (review zflow-aps-a-b-0c77057): the same rule as
+-- Nav/ProfStep.lua: a trainer is named only when the player's faction is
+-- a known string and the npc's saved factions mark it true. Another
+-- faction's trainer, an npc with no factions and an unknown player faction
+-- name nobody.
+--
 -- Not wired yet: U-A's Advisor is not merged on fork/zflow, so the module
 -- declaration (needs = { "advisor", "profSeen" }) and the events that call
 -- Sync are left for the merge after U-A (see the delivery note). Look-only:
@@ -27,10 +33,11 @@ P.PRIORITY = 1
 local function num(v) return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge end
 
 -- Sorted names of the trainers seen for one profession.
-local function trainersFor(npcs, profession)
+local function trainersFor(npcs, profession, faction)
     local names = {}
     for npc, e in pairs(npcs) do
-        if type(npc) == "string" and npc ~= "" and type(e) == "table" and type(e.trains) == "table" and e.trains[profession] == true then
+        if type(npc) == "string" and npc ~= "" and type(e) == "table" and type(e.trains) == "table" and e.trains[profession] == true
+            and type(e.factions) == "table" and e.factions[faction] == true then
             names[#names + 1] = npc
         end
     end
@@ -39,13 +46,14 @@ local function trainersFor(npcs, profession)
 end
 
 -- { { id =, text =, priority = }, ... } sorted by id.
-function P.Prompts(readings, npcs)
+function P.Prompts(readings, npcs, faction)
     local out = {}
     if type(readings) ~= "table" or type(npcs) ~= "table" then return out end
+    if type(faction) ~= "string" or faction == "" then return out end
     for name, r in pairs(readings) do
         if type(name) == "string" and name ~= "" and type(r) == "table"
             and num(r.skill) and num(r.max) and r.max > 0 and r.skill >= r.max then
-            local seen = trainersFor(npcs, name)
+            local seen = trainersFor(npcs, name, faction)
             if #seen > 0 then
                 local who = seen[1]
                 if #seen > 1 then who = who .. ", and " .. (#seen - 1) .. " more" end
@@ -62,14 +70,15 @@ function P.Prompts(readings, npcs)
 end
 
 -- Puts the current prompts in the advisor and removes the ones this card
--- added before that no longer apply. shown: { [id] = true } from the last
--- call (nil the first time). Returns the new shown set.
-function P.Sync(advisor, readings, npcs, shown)
+-- added before that no longer apply. faction: the player's faction.
+-- shown: { [id] = true } from the last call (nil the first time). Returns
+-- the new shown set.
+function P.Sync(advisor, readings, npcs, faction, shown)
     local now = {}
     if type(advisor) ~= "table" or type(advisor.Add) ~= "function" or type(advisor.Remove) ~= "function" then
         return now
     end
-    for _, p in ipairs(P.Prompts(readings, npcs)) do
+    for _, p in ipairs(P.Prompts(readings, npcs, faction)) do
         if advisor.Add(p.id, p.text, p.priority) then now[p.id] = true end
     end
     if type(shown) == "table" then
