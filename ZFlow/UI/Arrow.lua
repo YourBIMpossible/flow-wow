@@ -43,14 +43,25 @@ Arrow.DEMO = {
 -- Arrow.PATH as its place: the layout stays where it always was.
 Arrow.SETTING = "arrow.layout"
 
+-- The kernels that refused the row, so each is asked once.
+local refused = setmetatable({}, { __mode = "k" })
+
 -- The row on kernel k, declared the first time it is asked for. nil when the
--- kernel refused it (a problem of kind "setting" says why).
+-- kernel refused it: a problem of kind "setting" says why, one problem of
+-- the arrow says the layout is not kept, and that kernel is not asked again.
 function Arrow.Row(k)
-    return k.settings:row(Arrow.SETTING) or k:Setting({
+    local row = k.settings:row(Arrow.SETTING)
+    if row or refused[k] then return row end
+    row = k:Setting({
         key = Arrow.SETTING, scope = "account", type = "table", path = Arrow.PATH,
         label = "Arrow positions", group = "Arrows",
         help = "Where the arrows stand and whether they are stacked. Resetting puts them back.",
     })
+    if not row then
+        refused[k] = true
+        k.problems:add("arrow", "row", "the layout row was refused; the layout is not kept")
+    end
+    return row
 end
 
 -- The saved layout, as ArrowView and ArrowApply take it: { arrows = ... }.

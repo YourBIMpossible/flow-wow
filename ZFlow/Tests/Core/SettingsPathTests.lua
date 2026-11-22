@@ -84,7 +84,8 @@ return {
         local k = kernel()
         local default = { mode = "stacked" }
         t.ok(k:Setting({ key = "a", scope = "char", type = "table", default = default, label = "A" }) ~= nil)
-        t.ok(k.settings:get("a") == default, "the row's default, as it is")
+        t.eq(k.settings:get("a"), { mode = "stacked" }, "the row's default")
+        t.ok(k.settings:get("a") ~= default, "as a copy (LEDGER 54, T3)")
         t.eq(k.settings:set("a", nil), false, "a row with a default is not cleared by nil")
         t.eq(k.settings:set("a", { mode = "separate" }), true)
         t.eq(k.store:get("char", "settings.a"), { mode = "separate" }, "no path: under settings")
