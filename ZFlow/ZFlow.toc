@@ -45,5 +45,6 @@ Nav\ArrowView.lua
 Nav\ArrowMotion.lua
 Nav\Guide.lua
 Nav\GuideRead.lua
+Nav\ViewState.lua
 UI\DevPanel.lua
 UI\Arrow.lua
