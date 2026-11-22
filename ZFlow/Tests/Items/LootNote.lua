@@ -51,8 +51,10 @@ tests["loot note: the same rule as the sell list"] = function(t)
     end } } }
     t.eq(N.Note("item:2318", 2, info, sellLeather), "To sell: 2 x Light Leather (15c each at a vendor)",
         "anything the rules sell is noted; only a 'junk' reason is called junk")
-    t.eq(N.Note("item:3000", 1, info, sellLeather), "To sell: 1 x Grey Mystery (" .. Present.VENDOR_PRICE_UNKNOWN .. ")",
+    -- The F-085 words themselves, with the em dash: not the constant restated.
+    t.eq(N.Note("item:3000", 1, info, sellLeather), "To sell: 1 x Grey Mystery (price unknown—check vendor)",
         "no price seen: said, no figure")
+    t.eq(Present.VENDOR_PRICE_UNKNOWN, "price unknown—check vendor")
 end
 
 -- ---------------------------------------------------------------- module
@@ -101,6 +103,42 @@ tests["loot note module: your own junk loot prints one note"] = function(t)
     t.eq(#got, 1)
     t.eq(got[1], ns.id.title .. ": Junk: 2 x Broken Fang (4c each at a vendor)")
     t.eq(api.notes(), 1)
+end
+
+-- Review of 122e59a, finding 3: no flood of notes while grinding greys.
+tests["loot note module: the same item is noted once a minute, not on every loot"] = function(t)
+    local _, c, api = start()
+    t.eq(N.REPEAT_S, 60)
+    c.fire(N.EVENT, "you:item:97:2")
+    c.fire(N.EVENT, "you:item:97:1")
+    c.advance(30)
+    c.fire(N.EVENT, "you:item:97:1")
+    t.eq(#notes(c), 1, "three loots of it inside a minute: one note")
+    t.eq(api.quieted(), 2, "and it counts the ones it kept quiet")
+    c.advance(31)
+    c.fire(N.EVENT, "you:item:97:1")
+    t.eq(#notes(c), 2, "after the minute it is noted again")
+end
+
+tests["loot note module: another item is still noted, and with no time each item is noted once"] = function(t)
+    local sellAll = { settings = {} }
+    local _, c = start({ char = sellAll })
+    INFO[98] = { name = "Bent Claw", quality = 0, sellPrice = 3 }
+    c.fire(N.EVENT, "you:item:97:1")
+    c.fire(N.EVENT, "you:item:98:1")
+    t.eq(#notes(c), 2, "a different item has its own minute")
+    local _, c2 = start()
+    c2.uptime = function() return nil end
+    c2.fire(N.EVENT, "you:item:97:1")
+    c2.fire(N.EVENT, "you:item:97:1")
+    t.eq(#notes(c2), 1, "no time: once for the session, never a flood")
+    INFO[98] = nil
+end
+
+tests["loot note module: a never-sell list saved as a list is honoured too"] = function(t)
+    local _, c = start({ char = { settings = { sell = { never = { "item:97" } } } } })
+    c.fire(N.EVENT, "you:item:97:2")
+    t.eq(#notes(c), 0)
 end
 
 tests["loot note module: someone else's loot, and non-junk, print nothing"] = function(t)
