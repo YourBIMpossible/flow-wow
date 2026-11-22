@@ -136,7 +136,7 @@ function U.Declare(k)
                 if mark == placed then return true end
                 local points = Q.Clamp(Q.Place(point, I.SIZE, side), w, h)
                 if not points then return false end
-                for i, h in ipairs(slots) do h.place(points[i]) end
+                for i, slot in ipairs(slots) do slot.place(points[i]) end
                 placed = mark
                 return true
             end
