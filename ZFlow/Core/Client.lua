@@ -3382,6 +3382,37 @@ function ns.make.client(env)
         return true
     end
 
+    -- F7 probe (Plexy, LEDGER 134; WoW/from-plexy/RESEARCH-fight-log.md): two
+    -- narrow reads for /zflow fights probe, so one game session settles what
+    -- this client gives the fight log instead of the combat log.
+    --   c.apiPresent(path) -> true / false: whether the dotted global path
+    --     ("C_DamageMeter", "C_DeathRecap.GetRecapEvents") names a function or
+    --     a table. It only looks; nothing is called.
+    --   c.watchUnitCombat(fn) -> cancel: fn(unit, readable) for each UNIT_COMBAT
+    --     event; unit nil when secret or not text; readable true only for an
+    --     amount that is a plain, non-secret number. The amount itself is not
+    --     handed on. UNIT_COMBAT is an event legacy Flow listened to on this
+    --     client (Modules/Rotation/Engine.lua); its payload is a first guess.
+    function c.apiPresent(path)
+        if type(path) ~= "string" or path == "" then return false end
+        local v = env
+        for part in path:gmatch("[^%.]+") do
+            if type(v) ~= "table" then return false end
+            local ok, nextV = pcall(function() return v[part] end)
+            if not ok then return false end
+            v = nextV
+        end
+        return type(v) == "function" or type(v) == "table"
+    end
+    function c.watchUnitCombat(fn)
+        if type(fn) ~= "function" then return nil end
+        return events.add("UNIT_COMBAT", function(unit, _, _, amount)
+            local who = (type(unit) == "string" and not hidden(unit)) and unit or nil
+            local readable = amount ~= nil and not hidden(amount) and type(amount) == "number" and amount == amount
+            pcall(fn, who, readable)
+        end)
+    end
+
     return c
 end
 
