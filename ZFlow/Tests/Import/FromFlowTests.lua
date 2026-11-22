@@ -1103,6 +1103,7 @@ return {
                 t.ok(at ~= "account.settings.nav.pathAlpha", "a value that is no choice is listed as kept or added")
             end
         end
+        t.eq(report.kept, {})
     end,
 
     ["merge: a setting the model has no row for still compares types"] = function(t)
@@ -1225,5 +1226,72 @@ return {
         for _, at in ipairs(report.kept) do kept[at] = true end
         t.eq(kept["account.settings.sell"], true)
         t.eq(kept["account.layout.rotation"], true)
+    end,
+    -- ------------------------------------------------------ review GH1, GH4
+    ["review GH1: an account setting with no model row that is no table is not replaced by a table"] = function(t)
+        local result = Import.FromFlow({}, {})
+        result.account.settings = { madeUp = { a = 1 }, other = { b = 2 } }
+        local mine = { settings = { madeUp = "mine", other = false } }
+        local account, _, report = Import.Merge(mine, nil, result)
+        t.eq(report.ok, true, tostring(report.reason))
+        t.eq(account.settings.madeUp, "mine", "a stored text was replaced by a table")
+        t.eq(account.settings.other, false, "a stored off was replaced by a table")
+        local kept = {}
+        for _, at in ipairs(report.kept) do kept[at] = true end
+        t.eq(kept["account.settings.madeUp"], true)
+        t.eq(kept["account.settings.other"], true)
+        for _, at in ipairs(report.added) do
+            t.ok(at ~= "account.settings.madeUp" and at ~= "account.settings.other", at .. " is reported as added")
+        end
+        t.eq(mine, { settings = { madeUp = "mine", other = false } }, "the existing data is unchanged")
+    end,
+
+    ["review GH1: a character setting that is no table is not replaced by a table"] = function(t)
+        local result = Import.FromFlow({}, {})
+        result.char.settings = { madeUp = { a = 1 }, count = { 1, 2 } }
+        local mine = { settings = { madeUp = "mine", count = 5 } }
+        local _, char, report = Import.Merge(nil, mine, result)
+        t.eq(report.ok, true, tostring(report.reason))
+        t.eq(char.settings.madeUp, "mine", "a stored text was replaced by a table")
+        t.eq(char.settings.count, 5, "a stored number was replaced by a list")
+        local kept = {}
+        for _, at in ipairs(report.kept) do kept[at] = true end
+        t.eq(kept["char.settings.madeUp"], true)
+        t.eq(kept["char.settings.count"], true)
+    end,
+
+    ["review GH4: a saved list with a gap keeps what is past the gap at its own key"] = function(t)
+        local result = Import.FromFlow({}, {})
+        result.record = { list = { "a", "b", nil, "d" } }
+        local account = Import.Merge(nil, nil, result)
+        local record = account.imports[1]
+        t.eq(type(record), "table")
+        local list = type(record) == "table" and record.list or nil
+        t.eq(type(list), "table")
+        if type(list) == "table" then
+            t.eq(list[1], "a")
+            t.eq(list[2], "b")
+            t.eq(list[3], nil, "the gap was filled")
+            t.eq(list[4], "d", "the entry past the gap was moved or lost")
+            local count = 0
+            for _ in pairs(list) do count = count + 1 end
+            t.eq(count, 3)
+        end
+    end,
+
+    ["review GH4: a character's stored table is never replaced by a value that is no table"] = function(t)
+        local result = Import.FromFlow({}, {})
+        result.char.settings = { sell = "x" }
+        result.char.layout = { profFrame = "x" }
+        local mine = { settings = { sell = { autoAll = false } }, layout = { profFrame = { scale = 2 } } }
+        local defaults = { char = { layout = { profFrame = { scale = 2 } } } }
+        local _, char, report = Import.Merge(nil, mine, result, defaults)
+        t.eq(report.ok, true, tostring(report.reason))
+        t.eq(char.settings.sell, { autoAll = false }, "the stored settings table was replaced")
+        t.eq(char.layout.profFrame, { scale = 2 }, "a stored table still at its default was replaced")
+        local kept = {}
+        for _, at in ipairs(report.kept) do kept[at] = true end
+        t.eq(kept["char.settings.sell"], true)
+        t.eq(kept["char.layout.profFrame"], true)
     end,
 }
