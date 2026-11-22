@@ -43,11 +43,13 @@ local function start(opts)
         local add, remove = provided.Add, provided.Remove
         provided.Add = function(...)
             calls.add = calls.add + 1
+            if opts.raise then error("advisor add failed") end
             if opts.refuse then return false, "refused" end
             return add(...)
         end
         provided.Remove = function(...)
             calls.remove = calls.remove + 1
+            if opts.raise then error("advisor remove failed") end
             return remove(...)
         end
     end
@@ -125,6 +127,24 @@ tests["repair prompt: an advisor that refuses or raises does not stop the warnin
     local k, _, api = start({ durability = { [5] = { cur = 10, max = 100 } }, refuse = true })
     t.eq((k:ModuleState(R.NAME)), "started")
     t.ok(api.current() ~= nil)
+end
+
+tests["repair prompt: an advisor that raises on Add and on Remove costs the module nothing"] = function(t)
+    local k, c, api, _, calls = start({ durability = { [5] = { cur = 10, max = 100 } }, raise = true })
+    t.eq(calls.add, 1, "Add was reached, and raised")
+    t.eq((k:ModuleState(R.NAME)), "started", "the error did not switch the module off")
+    t.eq(k.problems:count("handler"), 0, "nor count as a handler error")
+    t.ok(api.current() ~= nil, "the warning is kept")
+    local said = 0
+    for _, p in ipairs(c.printed) do
+        if p:find("10% durability", 1, true) then said = said + 1 end
+    end
+    t.eq(said, 1, "and said in chat, once")
+    setDurability(c, { [5] = { cur = 100, max = 100 } })
+    c.fire(R.EVENT)
+    t.eq(calls.remove, 1, "Remove was reached, and raised")
+    t.eq(api.current(), nil, "repaired gear still clears the warning")
+    t.eq((k:ModuleState(R.NAME)), "started")
 end
 
 return tests
