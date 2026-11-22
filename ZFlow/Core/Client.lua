@@ -3836,6 +3836,154 @@ function ns.make.client(env)
         end)
     end
 
+    -- S29 alignment guides (UI/MoveGuides.lua). New reads, added at the end
+    -- (lead section 150): no handle above is changed. They find a frame of ours by
+    -- the name its handle gave it, and work in UIParent's units (a frame's
+    -- own sides times its scale over UIParent's).
+    -- Docs (warcraft.wiki.gg): API hooksecurefunc([table,] name, hook), the
+    -- hook runs after the original with its arguments; ScriptRegion GetLeft,
+    -- GetRight, GetBottom, GetTop, IsVisible; Region GetEffectiveScale;
+    -- Region GetPoint(index) -> point, relativeTo, relativePoint, x, y.
+    -- First guesses, none seen in game on 16001.
+    local function guideScale(f)
+        local okS, s = method(f, "GetEffectiveScale")
+        local okU, u = method(env.UIParent, "GetEffectiveScale")
+        if okS and okU and type(s) == "number" and type(u) == "number" and s > 0 and u > 0 then return s / u end
+        return nil
+    end
+    local function guideFrame(name)
+        if type(name) ~= "string" or name == "" then return nil end
+        local okG, f = pcall(function() return env[name] end)
+        if okG and type(f) == "table" then return f end
+        return nil
+    end
+    local GUIDE_SIDES = { { "l", "GetLeft" }, { "r", "GetRight" }, { "b", "GetBottom" }, { "t", "GetTop" } }
+
+    -- Our named frame's rectangle: { l =, r =, b =, t =, dockedTo = the name
+    -- of the frame it hangs from, or nil }. nil when there is no such frame,
+    -- it is not on the screen, or a side is not read.
+    function c.frameRect(name)
+        local f = guideFrame(name)
+        if not f then return nil end
+        local okV, shown = method(f, "IsVisible")
+        if not okV or shown ~= true then return nil end
+        local s = guideScale(f)
+        if not s then return nil end
+        local out = {}
+        for _, side in ipairs(GUIDE_SIDES) do
+            local okR, v = method(f, side[2])
+            if not okR or hidden(v) or type(v) ~= "number" or v ~= v then return nil end
+            out[side[1]] = v * s
+        end
+        local okP, _, rel = method(f, "GetPoint", 1)
+        if okP and type(rel) == "table" and rel ~= env.UIParent then
+            local okN, relName = method(rel, "GetName")
+            if okN and type(relName) == "string" then out.dockedTo = relName end
+        end
+        return out
+    end
+
+    -- Told when the player moves our named frame: its own StartMoving and
+    -- StopMovingOrSizing are hooked (after them), so the handle that moves
+    -- it is not changed. onMove(rect) every frame while it moves. onDrop(rect)
+    -- when it is let go, inside StopMovingOrSizing, so before the handle
+    -- reads the place it saves: onDrop answers dx, dy and the frame is
+    -- shifted by them, so the place saved is the lined-up one. A frame let
+    -- go while hidden is not shifted. Watching a name again replaces its
+    -- callbacks. true when watched; nil with no such frame or no hook.
+    local guideWatch, guideMoving, guideTicker = {}, nil, nil
+    function c.watchMoves(name, onMove, onDrop)
+        local f = guideFrame(name)
+        if not f or type(env.hooksecurefunc) ~= "function" then return nil end
+        if guideWatch[name] then
+            guideWatch[name].onMove, guideWatch[name].onDrop = onMove, onDrop
+            return true
+        end
+        if not guideTicker then
+            local okF, w = call(env.CreateFrame, "Frame", nil, env.UIParent)
+            if not okF or w == nil then return nil end
+            guideTicker = w
+            method(w, "Hide")
+            method(w, "SetScript", "OnUpdate", function()
+                local m = guideMoving and guideWatch[guideMoving]
+                if not m then method(w, "Hide") return end
+                local r = c.frameRect(guideMoving)
+                if r and type(m.onMove) == "function" then pcall(m.onMove, r) end
+            end)
+        end
+        local watch = { onMove = onMove, onDrop = onDrop }
+        local okA = pcall(env.hooksecurefunc, f, "StartMoving", function()
+            guideMoving = name
+            method(guideTicker, "Show")
+        end)
+        if not okA then return nil end
+        local okB = pcall(env.hooksecurefunc, f, "StopMovingOrSizing", function()
+            if guideMoving ~= name then return end
+            guideMoving = nil
+            method(guideTicker, "Hide")
+            local r = c.frameRect(name)
+            if not r or type(watch.onDrop) ~= "function" then return end
+            local okD, dx, dy = pcall(watch.onDrop, r)
+            if not okD then return end
+            dx, dy = tonumber(dx) or 0, tonumber(dy) or 0
+            if dx == 0 and dy == 0 then return end
+            local s = guideScale(f)
+            local okP, a, rel, ra, x, y = method(f, "GetPoint", 1)
+            if not (s and okP and type(a) == "string" and type(x) == "number" and type(y) == "number") then return end
+            method(f, "ClearAllPoints")
+            method(f, "SetPoint", a, rel, ra, x + dx / s, y + dy / s)
+        end)
+        if not okB then return nil end
+        guideWatch[name] = watch
+        return true
+    end
+
+    -- Two thin lines of ours over the screen, in UIParent's units:
+    --   h.show(x, ylo, yhi, y, xlo, xhi)   a line up at x from ylo to yhi and
+    --                                      one across at y from xlo to xhi;
+    --                                      either is left out when its x or y is nil
+    --   h.hide()
+    -- They take no clicks. nil when the client gives no frame.
+    function c.guideLines()
+        local okF, f = call(env.CreateFrame, "Frame", nil, env.UIParent)
+        if not okF or f == nil then return nil end
+        method(f, "SetAllPoints", env.UIParent)
+        method(f, "SetFrameStrata", "TOOLTIP")
+        method(f, "EnableMouse", false)
+        local function line()
+            local okT, t = method(f, "CreateTexture", nil, "OVERLAY")
+            if not okT or t == nil then return nil end
+            method(t, "SetColorTexture", 1, 0.82, 0, 0.9)
+            method(t, "Hide")
+            return t
+        end
+        local up, across = line(), line()
+        local function put(t, x, y, w, hgt)
+            if t == nil then return end
+            if x == nil then method(t, "Hide") return end
+            method(t, "ClearAllPoints")
+            method(t, "SetPoint", "BOTTOMLEFT", f, "BOTTOMLEFT", x, y)
+            method(t, "SetSize", w, hgt)
+            method(t, "Show")
+        end
+        local h = {}
+        function h.show(x, ylo, yhi, y, xlo, xhi)
+            if type(x) == "number" and type(ylo) == "number" and type(yhi) == "number" then
+                put(up, x - 0.5, ylo, 1, math.max(1, yhi - ylo))
+            else
+                put(up, nil)
+            end
+            if type(y) == "number" and type(xlo) == "number" and type(xhi) == "number" then
+                put(across, xlo, y - 0.5, math.max(1, xhi - xlo), 1)
+            else
+                put(across, nil)
+            end
+            method(f, "Show")
+        end
+        function h.hide() method(f, "Hide") end
+        method(f, "Hide")
+        return h
+    end
     return c
 end
 

@@ -1116,6 +1116,44 @@ function ns.make.fakeClient(opts)
         for i = 1, #logWatchers do logWatchers[i](...) end
     end
 
+    -- S29 alignment guides. setFrameRect(name, rect or nil); the screen is
+    -- setScreen's, above; watchMoves takes callbacks for a name that has a
+    -- rect set (any other name: nil, as the client with no such frame);
+    -- moveFrame(name, rect) calls onMove, dropFrame(name, rect) calls onDrop
+    -- and answers its dx, dy. guideLines() keeps every show in guideShows()
+    -- ({ x, ylo, yhi, y, xlo, xhi }) and whether they are up in guidesUp().
+    local frameRects, moveWatch, guideShows, guidesUp = {}, {}, {}, false
+    function c.setFrameRect(name, rect) frameRects[name] = rect end
+    function c.frameRect(name)
+        local r = frameRects[name]
+        if type(r) ~= "table" then return nil end
+        return { l = r.l, r = r.r, b = r.b, t = r.t, dockedTo = r.dockedTo }
+    end
+    function c.watchMoves(name, onMove, onDrop)
+        if type(frameRects[name]) ~= "table" then return nil end
+        moveWatch[name] = { onMove = onMove, onDrop = onDrop }
+        return true
+    end
+    function c.watched(name) return moveWatch[name] ~= nil end
+    function c.moveFrame(name, rect)
+        local w = moveWatch[name]
+        if w and type(w.onMove) == "function" then w.onMove(rect) end
+    end
+    function c.dropFrame(name, rect)
+        local w = moveWatch[name]
+        if w and type(w.onDrop) == "function" then return w.onDrop(rect) end
+        return nil
+    end
+    function c.guideLines()
+        if s.noGuideLines then return nil end
+        return {
+            show = function(...) guideShows[#guideShows + 1] = { ... }; guidesUp = true end,
+            hide = function() guidesUp = false end,
+        }
+    end
+    function c.setGuideLines(on) s.noGuideLines = not on end
+    function c.guideShows() return guideShows end
+    function c.guidesUp() return guidesUp end
     return c
 end
 
