@@ -12,9 +12,11 @@
            "unknown - check vendor|trainer|merchant" with any dash or colon,
            that contains none of the allowed texts. So the hyphen form,
            "unknown - check trainer" without "price" and a bare
-           "price unknown" all fail. A count line carries "prices
-           unknown<em dash>check ..." in one string (the number may be
-           concatenated in front).
+           "price unknown" all fail. A count line may also be built by
+           concatenation: a string that is exactly "unknown<em dash>check vendor"
+           or "... trainer" (leading spaces allowed) passes when it is the
+           right operand of "..", as in n .. " prices " .. "unknown<em dash>check vendor".
+           On its own it fails.
     PRICE  a price that is not labelled: a money figure in a string ("12s 40c",
            "5g", "3c", or a %d/%s format followed by g or c), unless the same
            string says "estimate"; or coin text built by concatenating "g", "s"
@@ -53,6 +55,12 @@ $ALLOWED = @(
     ('price unknown' + $EM + 'check trainer'),
     ('prices unknown' + $EM + 'check vendor'),
     ('prices unknown' + $EM + 'check trainer')
+)
+# The tail of a count line built by concatenation (n .. " prices " .. "unknown<em dash>check vendor"),
+# allowed only as the right operand of "..".
+$FRAGMENTS = @(
+    ('unknown' + $EM + 'check vendor'),
+    ('unknown' + $EM + 'check trainer')
 )
 function Test-Allowed([string]$v) {
     foreach ($a in $ALLOWED) { if ($v.IndexOf($a, [StringComparison]::Ordinal) -ge 0) { return $true } }
@@ -177,9 +185,16 @@ foreach ($f in $files) {
     $where = 'ZFlow/' + $rel
     $isPrices = ($rel -eq 'Items/Prices.lua')
 
-    foreach ($s in $scan.Strings) {
+    # Strings that are the right operand of "..": the tail of a built count line.
+    $tails = @{}
+    foreach ($m in [regex]::Matches($scan.Code, $reConcat)) { $tails[[int]$m.Groups[1].Value] = $true }
+
+    for ($si = 0; $si -lt $scan.Strings.Count; $si++) {
+        $s = $scan.Strings[$si]
         $v = $s.Value
-        if ($v -match $reFallback -and -not (Test-Allowed $v)) {
+        # n .. " prices " .. "unknown<em dash>check vendor": the shown line is an allowed count line.
+        $countTail = $tails.ContainsKey($si) -and ($FRAGMENTS -contains $v.TrimStart(' '))
+        if ($v -match $reFallback -and -not (Test-Allowed $v) -and -not $countTail) {
             $problems.Add(("{0}:{1}: F085: use 'price unknown{2}check vendor', 'price unknown{2}check trainer' or a count line '<n> prices unknown{2}check ...': {3}" -f $where, $s.Line, $EM, (Show $v)))
         }
         if (-not $isPrices -and $v -notmatch '(?i)estimate') {
