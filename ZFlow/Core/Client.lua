@@ -1352,8 +1352,11 @@ function ns.make.client(env)
     --                          and beams are sized only from d.ripple / d.beam.
     --   h.scale(n), h.alpha(n)
     --   h.behind(on)           under the other arrow: the frame and its
-    --                          holder go down two levels and take no mouse;
-    --                          ends a drag in progress
+    --                          holder go down two levels. It keeps the mouse
+    --                          on a rim past the arrow on top, for a
+    --                          Ctrl-drag only: clicks and the pointer there
+    --                          tell nothing. Going under ends a drag in
+    --                          progress; staying under does not.
     --   h.dragging()           true while the player is dragging it
     --   h.text(lines, point)   lines under / over it, point { a, r, x, y }
     --                          against the placed frame; no lines: hidden
@@ -1367,6 +1370,9 @@ function ns.make.client(env)
     -- no protected call is made. Every call is a first guess, not seen in
     -- game on 16001. owner is the arrow handle the menu is open for.
     local MENU_ROW, MENU_PAD, MENU_MARK, MENU_WIDTH = 18, 6, 22, 170
+    -- How far past its art the arrow under the other one can be grabbed for
+    -- a Ctrl-drag, in screen units. A first guess, not seen in game.
+    local BEHIND_GRAB = 8
     local menu = { rows = {}, keys = {} }
     -- A made catcher is hidden here whether or not a menu is open (AI1): it
     -- covers the screen, so it must never outlive the menu it is under.
@@ -1519,6 +1525,8 @@ function ns.make.client(env)
         -- button now down has moved the arrow. tipped: the client's tooltip
         -- was last filled by this arrow.
         local clicked, hovered, dragged, tipped = nil, nil, false, false
+        -- under: this arrow is behind the other one (h.behind).
+        local under = false
         local size = tonumber(spec.size) or 56
         local art = tonumber(spec.art) or 64
         local path = type(spec.artPath) == "string" and spec.artPath or ""
@@ -1755,6 +1763,8 @@ function ns.make.client(env)
                 dragged = false
                 return
             end
+            -- Under the other arrow only a Ctrl-drag is heard.
+            if under then return end
             local which = (button == "LeftButton" and "left") or (button == "RightButton" and "right") or nil
             if not which or not clicked then return end
             local okOver, over = method(f, "IsMouseOver")
@@ -1762,10 +1772,10 @@ function ns.make.client(env)
             pcall(clicked, which)
         end)
         method(f, "SetScript", "OnEnter", function()
-            if hovered then pcall(hovered, true) end
+            if hovered and not under then pcall(hovered, true) end
         end)
         method(f, "SetScript", "OnLeave", function()
-            if hovered then pcall(hovered, false) end
+            if hovered and not under then pcall(hovered, false) end
         end)
         -- Hidden: a drag is let go, and this arrow's menu and tooltip go
         -- with it.
@@ -1936,12 +1946,28 @@ function ns.make.client(env)
             if type(n) == "number" then method(f, "SetAlpha", n) end
         end
         function h.behind(on)
-            if on then letGo() end
+            on = on and true or false
+            -- Going under ends a drag. Told again while already under (the
+            -- caller says it at every update) it must not: that drag began
+            -- on this arrow while it was under, and is how it is pulled
+            -- out of the stack.
+            if on and not under then letGo() end
             -- The holder and the text frame are frames of their own: left at
             -- their levels they would keep the art and the text above the
             -- arrow this one is meant to be under.
             levels(on and math.max(level - 2, 0) or level)
-            method(f, "EnableMouse", not on)
+            -- Under, the arrow on top covers this frame and takes the
+            -- mouse there. The hit rectangle is widened so that a rim
+            -- stays reachable: where the art shows past the frame, and
+            -- BEHIND_GRAB more. In front it is the frame itself. First
+            -- guess, not seen in game: SetHitRectInsets with negative
+            -- insets, and the frame on top winning where the two overlap.
+            if on ~= under then
+                local rim = on and -((math.max(art - size, 0)) / 2 + BEHIND_GRAB) or 0
+                method(f, "SetHitRectInsets", rim, rim, rim, rim)
+            end
+            under = on
+            method(f, "EnableMouse", true)
         end
         function h.text(lines, point)
             if label == nil then return end
