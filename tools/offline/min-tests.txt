@@ -1,0 +1,6 @@
+# The fewest tests Flow may register (tools/run-tests.ps1 passes it to the
+# runner as --min-tests). Below it the run fails: tests that silently stop
+# registering would otherwise look like a smaller, greener run.
+# Raise it when tests are added (the run prints "registered tests: <n>");
+# lower it only when tests were removed on purpose.
+717

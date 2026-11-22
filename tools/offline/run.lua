@@ -39,13 +39,15 @@
 --    run-tests.ps1 treats a run without that line as broken (exit 2).
 --
 -- Exit code: 0 = no FAIL or ERROR (or SKIP-FAIL, with --strict) outside the known list, every
--- file loaded, every known name still exists, at least one test ran;
+-- file loaded, every known name still exists, at least one test ran, and at
+-- least --min-tests tests are registered (counted before --filter);
 -- 1 = one of those; 2 = the runner itself broke.
 --
 -- --known <file>: tests already failing on the base branch, one exact test
 -- name per line (# comments). Such a test is still reported (KNOWN) and
 -- counted as an allowance in the summary, but doesn't fail the run. A known
--- test that now passes is reported so it can be taken off the list; a known
+-- test that now passes is reported so it can be taken off the list (one that
+-- now SKIPs is reported too, but stays: offline can't judge it); a known
 -- name no registered test has (renamed, removed, misspelled) fails the run.
 
 local root = arg[1]
@@ -331,13 +333,20 @@ if verbose then
     for _, p in ipairs(printed) do line("  | " .. p) end
 end
 
-local newBad, knownUsed, knownPassing, knownMissing = 0, 0, 0, {}
+local newBad, knownUsed, knownPassing, knownSkipped, knownMissing = 0, 0, 0, 0, {}
 for _, r in ipairs(results) do
     if BAD[r[1]] then
         if known[r[2]] then knownUsed = knownUsed + 1 else newBad = newBad + 1 end
-    elseif known[r[2]] then
+    elseif known[r[2]] and r[1] == "PASS" then
         knownPassing = knownPassing + 1
-        line(string_format("known failure no longer fails (%s): take it off the list: %s", r[1], r[2]))
+        line("known failure now passes: take it off the list: " .. r[2])
+    elseif known[r[2]] and r[1] == "SKIP-FAIL" then
+        -- Still failing on Flow's own Lua; only not counted because --strict is off.
+        knownUsed = knownUsed + 1
+    elseif known[r[2]] then
+        -- SKIP: it touched the client first, so offline can't say whether it still fails.
+        knownSkipped = knownSkipped + 1
+        line("known failure now skips (needs the client), so offline can't say whether it still fails: leave it on the list until it passes: " .. r[2])
     end
 end
 for _, k in ipairs(knownList) do
@@ -359,11 +368,23 @@ line(globalsPath
 line(string_format("timing fixture (debugprofilestop): %d passing test(s) read it through timed code and pass on both made-up clocks too; %d depend on what it said (SKIP)",
     timerPass, timerSkip))
 line(knownPath
-    and string_format("known failures: %d listed, %d known allowed (failing, not counted against the run), %d now passing, %d not found; %d new failure(s)",
-        #knownList, knownUsed, knownPassing, #knownMissing, newBad)
+    and string_format("known failures: %d listed, %d known allowed (failing, not counted against the run), %d now passing, %d now skipping (can't be judged offline), %d not found; %d new failure(s)",
+        #knownList, knownUsed, knownPassing, knownSkipped, #knownMissing, newBad)
     or string_format("known failures: none used (-NoKnown or no list), 0 known allowed; %d failure(s)", newBad))
 
+-- The floor: every registered test, whatever --filter ran. A file that stops
+-- registering its tests (an early return, a toc line dropped, a guard that
+-- skips the whole file) loads without an error; only the count shows it.
+local registeredCount = 0
+for _ in pairs(registered) do registeredCount = registeredCount + 1 end
+line(minTests
+    and string_format("registered tests: %d (floor %d: --min-tests)", registeredCount, minTests)
+    or string_format("registered tests: %d (no floor: --min-tests not given)", registeredCount))
+
 local reasons = {}
+if minTests and registeredCount < minTests then
+    reasons[#reasons + 1] = string_format("only %d test(s) registered, the floor is %d (tests lost? If they were removed on purpose, lower tools/offline/min-tests.txt)", registeredCount, minTests)
+end
 if newBad > 0 then reasons[#reasons + 1] = newBad .. " new FAIL/ERROR" .. (strict and "/SKIP-FAIL" or "") end
 if #failed > 0 then reasons[#reasons + 1] = #failed .. " file(s) did not load" end
 if #absent > 0 then reasons[#reasons + 1] = #absent .. " file(s) in Flow.toc absent" end

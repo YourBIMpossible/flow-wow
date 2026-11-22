@@ -9,7 +9,7 @@
   a substitute for /flow test in the game.
 
 .USAGE
-  powershell -ExecutionPolicy Bypass -File tools\run-tests.ps1 [-Root path] [-Filter text] [-Verbose] [-ListModules] [-NoKnown] [-Known file] [-Strict]
+  powershell -ExecutionPolicy Bypass -File tools\run-tests.ps1 [-Root path] [-Filter text] [-Verbose] [-ListModules] [-NoKnown] [-Known file] [-Strict] [-MinTests n] [-NoSelfCheck]
   pwsh -File tools/run-tests.ps1                  # the CI job, on Linux
 
   -Root: the add-on checkout to test (default: the one this script is in). The
@@ -19,6 +19,15 @@
   if it exists, else none, so every failure counts).
   -Strict: a SKIP-FAIL (a check failed before the test touched the client)
   fails the run too; without it, SKIP-FAILs are listed and counted only.
+  -MinTests: the fewest tests the add-on may register (default: the number in
+  <Root>/tools/offline/min-tests.txt, else this runner's). Fewer fails the run,
+  so tests that silently stop registering can't pass as a smaller green run.
+  The count is taken before -Filter.
+  -NoSelfCheck: skip tools/offline/self-check.ps1, which first proves on
+  made-up add-ons that the runner fails when it should (a file that doesn't
+  load, a mistyped global, too few tests). It runs on every run without -Filter.
+  The game's globals come from <Root>/tools/offline/client-globals.txt (else
+  this runner's): a missing global not on that list is an ERROR, not a SKIP.
 
   Lua 5.1 is found in this order: $env:FLOW_LUA, then lua5.1 / lua51 on PATH,
   then %USERPROFILE%\tools\lua51\lua5.1.exe. (Lua 5.1 only: the game runs 5.1.)
@@ -26,8 +35,9 @@
   -NoKnown counts them like any other failure.
 
   Exit code 0 = every file loaded, no FAIL or ERROR (or SKIP-FAIL, with -Strict) outside the known
-  list, every known name exists, at least one test ran; 1 = not so; 2 = the runner
-  couldn't run or didn't finish (its last line "offline: done, exit <n>" missing).
+  list, every known name exists, at least one test ran, at least -MinTests are
+  registered; 1 = not so; 2 = the runner couldn't run, didn't finish (its last
+  line "offline: done, exit <n>" missing) or failed its own self-check.
 #>
 [CmdletBinding()]
 param(
@@ -36,7 +46,9 @@ param(
     [string]$Known,
     [switch]$ListModules,
     [switch]$NoKnown,
-    [switch]$Strict
+    [switch]$Strict,
+    [int]$MinTests = -1,
+    [switch]$NoSelfCheck
 )
 $ErrorActionPreference = 'Stop'
 $runner = (Resolve-Path (Join-Path $PSScriptRoot 'offline')).Path
@@ -89,6 +101,21 @@ $globals = Join-Path $root 'tools/offline/client-globals.txt'
 if (-not (Test-Path -LiteralPath $globals)) { $globals = Join-Path $runner 'client-globals.txt' }
 if (-not (Test-Path -LiteralPath $globals)) { Write-Output "run-tests: no tools/offline/client-globals.txt"; exit 2 }
 $luaArgs += @('--client-globals', $globals)
+if ($MinTests -lt 0) {
+    $floorFile = Join-Path $root 'tools/offline/min-tests.txt'
+    if (-not (Test-Path -LiteralPath $floorFile)) { $floorFile = Join-Path $runner 'min-tests.txt' }
+    if (-not (Test-Path -LiteralPath $floorFile)) { Write-Output "run-tests: no tools/offline/min-tests.txt"; exit 2 }
+    $floorLines = @(Get-Content -LiteralPath $floorFile | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' -and -not $_.StartsWith('#') })
+    if ($floorLines.Count -ne 1 -or $floorLines[0] -notmatch '^\d+$') { Write-Output "run-tests: $floorFile must hold one number"; exit 2 }
+    $MinTests = [int]$floorLines[0]
+}
+$luaArgs += @('--min-tests', "$MinTests")
+
+# First the runner proves, on made-up add-ons, that it fails when it should.
+if (-not $NoSelfCheck -and -not $Filter -and -not $ListModules) {
+    & (Join-Path $runner 'self-check.ps1') -Lua $lua -Root $root | ForEach-Object { Write-Output "run-tests: $_" }
+    if ($LASTEXITCODE -ne 0) { Write-Output "run-tests: the runner failed its own self-check: nothing below it could be trusted, so nothing was run"; exit 2 }
+}
 if (-not $NoKnown) {
     if (-not $Known) {
         $default = Join-Path $root 'tools/offline/known-failures.txt'
