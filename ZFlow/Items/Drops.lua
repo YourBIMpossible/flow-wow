@@ -12,11 +12,15 @@ local _, ns = ...
 --   api     = Drops.Declare(k, diag)                api.recorded()
 --
 -- reading: what client.lootWindow() gives (CLIENT NEED), or nil:
---   { source = { kind = "creature", guid = "...", id = npc id, name = "..." },
+--   { source = { kind = "creature", how = "corpse", guid = "...",
+--                id = npc id, name = "..." },
 --     items  = { { item = link or ID, count = n }, ... } }
---   Only a creature's corpse is recorded: a chest, a fished-up item, a
---   pickpocket or a window whose source was not read is left alone, because
---   whose loot it is would be a guess.
+--   Only a creature's corpse is recorded: source.kind "creature" AND
+--   source.how "corpse". A chest, a fished-up item, a pickpocket or a
+--   skinning window (both carry the creature's GUID), or a window whose
+--   source or `how` was not read, is left alone: whose loot it is, or
+--   whether it is a drop at all, would be a guess.
+--   source.name is given only when the client can tie it to this GUID.
 -- book:   the character's "learned.drops":
 --   { [npc id] = { name, looted = how many corpses, unread = entries that
 --                  could not be read (left out when none),
@@ -45,6 +49,7 @@ Drops.PATH = "learned.drops"
 Drops.MIN_SAMPLES = 30
 Drops.LIST_MAX = 15
 Drops.EMPTY = "No loot recorded yet."
+Drops.CORPSE = "corpse"     -- source.how for a dead creature's own loot
 
 local function isCount(n)
     return type(n) == "number" and n == n and n >= 0 and n < math.huge
@@ -55,6 +60,10 @@ function Drops.Record(book, seen, reading)
     if type(reading) ~= "table" then return false, "no reading" end
     local src = reading.source
     if type(src) ~= "table" or src.kind ~= "creature" then return false, "not a creature" end
+    -- A creature's GUID is also the source of a pickpocket and of a skinning
+    -- window. Only a window the client says is the corpse's loot counts; any
+    -- other answer, or none, records nothing and marks nothing as looted.
+    if src.how ~= Drops.CORPSE then return false, "not corpse loot" end
     if type(src.guid) ~= "string" or src.guid == "" then return false, "no guid" end
     if not isCount(src.id) or src.id ~= math.floor(src.id) or src.id == 0 then return false, "no creature id" end
     if type(reading.items) ~= "table" then return false, "items not read" end
@@ -67,7 +76,12 @@ function Drops.Record(book, seen, reading)
         book[src.id] = entry
     end
     if type(entry.items) ~= "table" then entry.items = {} end
-    if type(src.name) == "string" and src.name ~= "" then entry.name = src.name end
+    -- A name fills a gap only: one already saved for this creature id is
+    -- never replaced (the client gives a name only when it is tied to this
+    -- GUID, and even then the first one stands).
+    if (type(entry.name) ~= "string" or entry.name == "") and type(src.name) == "string" and src.name ~= "" then
+        entry.name = src.name
+    end
     entry.looted = (isCount(entry.looted) and entry.looted or 0) + 1
 
     local inThis, unread = {}, 0
