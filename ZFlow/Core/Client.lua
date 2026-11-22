@@ -71,6 +71,11 @@ function ns.make.client(env)
     local c = {}
     local eventFrame, tickFrame
     local events, ticks
+    -- What the client itself does with an event before any listener hears
+    -- of it: event name -> fn(...). A listener that asks the client about
+    -- the thing the event is about then gets today's answer, whichever
+    -- order the listeners were added in (CR1).
+    local first = {}
 
     local function call(fn, ...)
         if type(fn) ~= "function" then return false end
@@ -92,7 +97,11 @@ function ns.make.client(env)
         if not eventFrame then
             eventFrame = newFrame()
             if eventFrame then
-                eventFrame:SetScript("OnEvent", function(_, name, ...) events.call(name, ...) end)
+                eventFrame:SetScript("OnEvent", function(_, name, ...)
+                    local own = first[name]
+                    if own then own(...) end
+                    events.call(name, ...)
+                end)
             end
         end
         noEventFrame = eventFrame == nil
@@ -486,12 +495,19 @@ function ns.make.client(env)
 
     -- Starts following the trainer window (TRAINER_SHOW / TRAINER_CLOSED,
     -- first guesses: not seen in game on 16001). trainer() calls it too.
+    -- The window's state is set before any listener of either event runs
+    -- (`first`), so trainer() answers inside a TRAINER_SHOW listener that
+    -- was added before this was first called, or that is the first to call
+    -- it (CR1). The two listeners here only make the client take the
+    -- events.
     local trainerState, trainerWatched
+    first.TRAINER_SHOW = function() trainerState = true end
+    first.TRAINER_CLOSED = function() trainerState = false end
     function c.watchTrainer()
         if trainerWatched then return end
         trainerWatched = true
-        events.add("TRAINER_SHOW", function() trainerState = true end)
-        events.add("TRAINER_CLOSED", function() trainerState = false end)
+        events.add("TRAINER_SHOW", function() end)
+        events.add("TRAINER_CLOSED", function() end)
     end
 
     -- true / false, or nil when not known: the last trainer event, and
