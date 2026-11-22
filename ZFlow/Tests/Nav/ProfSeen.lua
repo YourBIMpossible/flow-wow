@@ -121,6 +121,21 @@ tests["prof seen R1: no answer, or no name, writes nothing"] = function(t)
     t.eq(all(c), before, "a reading with no max was written")
 end
 
+tests["prof seen A3: a reading whose max is not above zero writes nothing"] = function(t)
+    local saved = { line = 164, skill = 60, max = 75, at = 100 }
+    local _, c, w = start({ char = { learned = { facts = { profSkill = { Blacksmithing = copy(saved) } } } } })
+    login(c)
+    recipesSeen(c, smithing(0, 0))
+    t.eq(readings(c), { Blacksmithing = saved }, "a max of 0 was written")
+    t.eq(w.last().ok, false, "a max of 0")
+    recipesSeen(c, smithing(5, -1))
+    t.eq(readings(c), { Blacksmithing = saved }, "a max below 0 was written")
+    t.eq(w.last().ok, false, "a max below 0")
+    recipesSeen(c, smithing(0, 75))
+    t.eq(readings(c).Blacksmithing.skill, 0, "a skill of 0 under a real max is still a reading")
+    t.eq(w.last().ok, true, tostring(w.last().reason))
+end
+
 -- R2 ------------------------------------------------------------------
 
 tests["prof seen R2: a trainer show adds the trainer"] = function(t)

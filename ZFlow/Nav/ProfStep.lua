@@ -25,7 +25,7 @@ local _, ns = ...
 --
 -- A profession gets a step when all of these hold; the reason names the
 -- first that does not:
---   "no reading"   skill and max are both finite numbers
+--   "no reading"   skill and max are both finite numbers, max above 0
 --   "not capped"   skill has reached max
 --   "visited"      visitedAtCap is not this max (the player was already
 --                  taken to a trainer at this cap)
@@ -142,7 +142,7 @@ function N.ProfStep(readings, npcs, tierSeen, here)
     local names = {}
     if type(readings) == "table" then
         for prof, r in pairs(readings) do
-            if type(prof) == "string" and type(r) == "table" and finite(r.skill) and finite(r.max) then
+            if type(prof) == "string" and type(r) == "table" and finite(r.skill) and finite(r.max) and r.max > 0 then
                 names[#names + 1] = prof
             end
         end
