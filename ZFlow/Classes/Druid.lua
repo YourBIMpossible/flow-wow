@@ -281,6 +281,14 @@ local pack = {
         { spell = "Thorns", minutes = 10, rebuff = 30, evidence = GUESS },
     },
 
+    -- Read on another player's tooltip (Rotation/GroupTip.lua): text only,
+    -- nothing is cast. aura: the buffs that count as this one. who: "all",
+    -- or the kinds and classes it is worth having on. First guesses.
+    groupBuffs = {
+        { spell = "Mark of the Wild", aura = { "Mark of the Wild", "Gift of the Wild" }, who = "all", evidence = GUESS },
+        { spell = "Thorns", who = { "tank", "WARRIOR" }, evidence = GUESS },
+    },
+
     heals = {
         self = { "Regrowth", "Healing Touch", "Rejuvenation" },
         hots = { "Rejuvenation" },

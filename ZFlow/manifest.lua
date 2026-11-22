@@ -97,6 +97,7 @@ return {
         "Classes/Paladin.lua",
         "Classes/Priest.lua",
         "Classes/Shaman.lua",
+        "Rotation/GroupTip.lua",
 
         -- Navigation
         "Nav/ArrowLayout.lua",

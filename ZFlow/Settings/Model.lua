@@ -74,6 +74,9 @@ M.ROWS = {
     -- nav.flightPaths: flight paths, learned from the player's own flight
     -- maps and shown as route steps (Nav/FlightPaths.lua). On by default.
     { key = "nav.flightPaths", type = "bool", default = true },
+    -- general.groupTip: on another friendly player's tooltip, which of your
+    -- group buffs they have (Rotation/GroupTip.lua). On by default.
+    { key = "general.groupTip", type = "bool", default = true },
 }
 
 -- ---------------------------------------------------------------- helpers
