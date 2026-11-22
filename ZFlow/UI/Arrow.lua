@@ -96,19 +96,43 @@ local function ask(client, name)
     return nil
 end
 
--- The step that stands in for the quest step while the gate is "corpse":
--- the corpse where the client says where it is, else a step with no place
--- (no distance, no turn). Never the quest step: that is not where to go.
+-- The step that stands in for the quest step while the gate is "corpse".
+-- Never the quest step: that is not where to go. By client.ghost (only a
+-- plain true or false counts):
+--   false (dead, not released): no place, and the one line is the release
+--     label. A corpse place the client gives is not pointed at.
+--   true: the corpse where the client says where it is. Where the corpse
+--     read itself answers nil (the corpse is not on the map the client
+--     picks for the player), no place, and the lines are the label and
+--     the other-map line.
+--   not known: the corpse where the client says where it is, else a step
+--     with no place (no distance, no turn). Nothing is guessed.
+-- A corpse read that is absent, fails or is no place is not known, never
+-- "another map". step.still: the step has nowhere to turn to, so no
+-- unknown-direction line is added.
 local function corpseStep(client)
+    local ghost = ask(client, "ghost")
+    if ghost == false then
+        return { label = Arrow.RELEASE_LABEL, lines = { Arrow.RELEASE_LABEL }, still = true }
+    end
     local step = { label = Arrow.CORPSE_LABEL }
-    local at, zone = ask(client, "corpse"), ask(client, "zone")
+    local ok, at = false, nil
+    if type(client.corpse) == "function" then ok, at = pcall(client.corpse) end
+    if not ok then return step end
     if type(at) == "table" and at.map ~= nil and type(at.x) == "number" and type(at.y) == "number" then
+        local zone = ask(client, "zone")
         step.place = { cont = type(zone) == "table" and zone.cont or nil, map = at.map, x = at.x, y = at.y }
+    elseif at == nil and ghost == true then
+        step.lines = { Arrow.CORPSE_LABEL, Arrow.CORPSE_ELSEWHERE }
+        step.still = true
     end
     return step
 end
 
+-- Player-visible words, authored here (not taken from the game or from Flow).
 Arrow.CORPSE_LABEL = "Corpse"
+Arrow.RELEASE_LABEL = "Release your spirit"
+Arrow.CORPSE_ELSEWHERE = "corpse is on another map"
 
 -- The arrow source for a guide's steps: ViewState's state and turns, with
 -- this install's saved layout and screen. A step's lines are its own lines,
@@ -157,7 +181,8 @@ function Arrow.GuideSource(client, layout, guide, intro)
             local d = state[key] and state[key].distance
             if type(d) == "number" then out[#out + 1] = ("%d yd"):format(math.floor(d + 0.5)) end
         end
-        if type(given[key]) == "table" and more[key].turn == nil and not (playing and key == "quest") then
+        if type(given[key]) == "table" and more[key].turn == nil and not step.still
+            and not (playing and key == "quest") then
             out[#out + 1] = Arrow.UNKNOWN_TURN
         end
         lines[key] = out
