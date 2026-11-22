@@ -110,8 +110,10 @@ local function addSpawns(spot, spawns, zones, map, areaMap)
                         -- in no set order, so the one on the lowest map is
                         -- kept (its first point): the same one every time.
                         -- Which is nearest is not known here.
+                        -- (With no map asked for, nothing is "another map":
+                        -- no away point then, section 175.)
                         local a = spot.away
-                        if a == nil or (type(m) == "number" and type(a.map) == "number" and m < a.map) then
+                        if map ~= nil and (a == nil or (type(m) == "number" and type(a.map) == "number" and m < a.map)) then
                             spot.away = { map = m, x = pt[1] / 100, y = pt[2] / 100 }
                         end
                     end

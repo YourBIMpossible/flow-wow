@@ -134,7 +134,9 @@ local function worded(row, i, detail, spot, here)
     -- S44 (lead section 173): a point on another map is the step's place,
     -- with no `still`, so the arrow can turn to it and ask for a way there
     -- (Nav/Travel.lua). Its continent is not known here and is left out.
-    local away = type(spot) == "table" and spot.away or nil
+    -- Only while the player's own map is known (section 175): with it not
+    -- known, the words as before.
+    local away = here.map ~= nil and type(spot) == "table" and spot.away or nil
     if type(away) == "table" and away.map ~= nil and finite(away.x) and finite(away.y) then
         return { quest = row.id, objective = i, turnIn = i == nil, label = row.title, detail = detail,
                  place = { map = away.map, x = away.x, y = away.y } }
