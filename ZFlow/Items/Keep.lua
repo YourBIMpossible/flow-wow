@@ -28,10 +28,11 @@ ns.ItemKeep = Keep
 
 Keep.WORD = "keep"
 Keep.PATH = "settings.sell.never"
-Keep.NOT_LOADED = "your saved data is not loaded yet; try again after login."
-Keep.EMPTY = "Your never-sell list is empty."
-Keep.ONE_AT_A_TIME = "one item at a time, please: nothing was changed."
-Keep.USAGE ="say keep <item link>, keep remove <item link>, or keep alone for the list."
+-- The words are ItemPresent's (the Items text path); these are their names here.
+Keep.NOT_LOADED = ns.ItemPresent.KEEP_NOT_LOADED
+Keep.EMPTY = ns.ItemPresent.KEEP_EMPTY
+Keep.ONE_AT_A_TIME = ns.ItemPresent.KEEP_ONE_AT_A_TIME
+Keep.USAGE = ns.ItemPresent.KeepUsage(ns.id.slash)
 
 local function trim(text)
     return (tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", ""))
@@ -80,7 +81,7 @@ function Keep.Run(k, rest)
         for key in pairs(list) do names[#names + 1] = nameOf(k, key) end
         if #names == 0 then return { Keep.EMPTY }, false end
         table.sort(names)
-        local lines = { "Never sold (" .. #names .. "):" }
+        local lines = { ns.ItemPresent.KeepText("header", #names) }
         for i = 1, #names do lines[#lines + 1] = names[i] end
         return lines, false
     end
@@ -94,17 +95,22 @@ function Keep.Run(k, rest)
     if key == nil then return { Keep.USAGE }, false end
     local name = nameOf(k, key)
 
+    local say = ns.ItemPresent.KeepText
     if remove then
-        if not list[key] then return { name .. " is not on your never-sell list." }, false end
+        if not list[key] then return { say("absent", name) }, false end
         list[key] = nil
     else
-        if list[key] then return { name .. " is already on your never-sell list." }, false end
+        if list[key] then return { say("already", name) }, false end
         list[key] = true
     end
     local ok, reason = k.store:set("char", Keep.PATH, list)
-    if not ok then return { "could not save that: " .. tostring(reason) }, false end
-    if remove then return { name .. " is off your never-sell list." }, true end
-    return { name .. " is now on your never-sell list." }, true
+    if not ok then
+        -- The store's own reason names internal paths: kept as a problem
+        -- for diagnostics, and the player is told only what it means.
+        if type(k.problems) == "table" then k.problems:add("keep", "save", tostring(reason)) end
+        return { say("failed") }, false
+    end
+    return { say(remove and "removed" or "added", name) }, true
 end
 
 function Keep.Start(k, diag, sellList)

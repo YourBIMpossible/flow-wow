@@ -221,6 +221,29 @@ function Present.KeptText(k, names)
     return name .. ": " .. tostring(k.reason or "kept")
 end
 
+-- The never-sell command's words (L6-G, Items/Keep.lua).
+Present.KEEP_NOT_LOADED = "Your saved data is not loaded yet; try again after login."
+Present.KEEP_EMPTY = "Your never-sell list is empty."
+Present.KEEP_ONE_AT_A_TIME = "One item at a time, please: nothing was changed."
+
+-- How to use it, with the whole command as it is typed.
+function Present.KeepUsage(slash)
+    local cmd = tostring(slash or "") .. " keep"
+    return "Say " .. cmd .. " <item link>, " .. cmd .. " remove <item link>, or " .. cmd .. " for the list."
+end
+
+-- One answer of the command. what: "added", "removed", "already", "absent"
+-- (each with the item's name), "failed" (the write was refused; no internal
+-- reason is shown), or "header" (with how many are on the list).
+function Present.KeepText(what, value)
+    if what == "added" then return tostring(value) .. " is now on your never-sell list." end
+    if what == "removed" then return tostring(value) .. " is off your never-sell list." end
+    if what == "already" then return tostring(value) .. " is already on your never-sell list." end
+    if what == "absent" then return tostring(value) .. " is not on your never-sell list." end
+    if what == "header" then return "Never sold (" .. tostring(value) .. "):" end
+    return "That could not be saved, so nothing was changed."
+end
+
 -- The whole list, top to bottom: what would be sold, its total, notes on
 -- what could not be listed, then what is kept and why.
 function Present.SellLines(list, kept, names)
