@@ -401,6 +401,35 @@ function ns.make.client(env)
         return { map = map, x = x, y = y }
     end
 
+    -- The world place of one corner of a map, as two numbers, or nil.
+    local function corner(map, x, y)
+        local okVec, vec = call(env.CreateVector2D, x, y)
+        if not okVec or vec == nil then return nil end
+        local ok, _, world = mapCall("GetWorldPosFromMapPos", map, vec)
+        if not ok or type(world) ~= "table" then return nil end
+        local okXY, wx, wy = call(world.GetXY, world)
+        if not okXY then wx, wy = world.x, world.y end
+        if hidden(wx) or hidden(wy) or type(wx) ~= "number" or type(wy) ~= "number" then return nil end
+        if wx ~= wx or wy ~= wy then return nil end
+        return wx, wy
+    end
+
+    -- How wide and tall a map is, in yards: { w = n, h = n }, or nil. Only
+    -- the client is asked (the world places of the map's two corners, by
+    -- C_Map.GetWorldPosFromMapPos); no size comes from a table in this
+    -- addon. In the world's own numbers the first runs north to south and
+    -- the second east to west, so the width is the second. A first guess on
+    -- 16001: the calls exist there, the corner answers have not been seen.
+    function c.mapSize(map)
+        if type(map) ~= "number" then return nil end
+        local x0, y0 = corner(map, 0, 0)
+        local x1, y1 = corner(map, 1, 1)
+        if not x0 or not x1 then return nil end
+        local w, h = math.abs(y0 - y1), math.abs(x0 - x1)
+        if not (w > 0 and h > 0) or w == math.huge or h == math.huge then return nil end
+        return { w = w, h = h }
+    end
+
     -- The zone a map belongs to: the map itself or the nearest parent that
     -- is a zone or wider (Flow's N.ZoneOf). nil when the client won't say.
     local function zoneOf(map)

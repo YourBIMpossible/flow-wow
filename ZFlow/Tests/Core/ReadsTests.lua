@@ -468,6 +468,48 @@ return {
         t.eq(c.position(), nil)
     end,
 
+    ["map size: yards from the world places of the two corners"] = function(t)
+        local env = mapEnv()
+        env.CreateVector2D = function(x, y) return { x = x, y = y } end
+        -- north-west corner at (1000, 500); 300 yards wide, 200 tall
+        env.C_Map.GetWorldPosFromMapPos = function(map, pos)
+            if map ~= 1411 then return nil end
+            local wx, wy = 1000 - 200 * pos.y, 500 - 300 * pos.x
+            return 1, { GetXY = function() return wx, wy end }
+        end
+        local c = ns.make.client(env)
+        t.eq(c.mapSize(1411), { w = 300, h = 200 })
+        t.eq(c.mapSize(9), nil, "a map the client gives nothing for")
+        t.eq(c.mapSize("1411"), nil)
+        env.C_Map.GetWorldPosFromMapPos = function(_, pos) return 1, { x = 7 - pos.y, y = 7 - pos.x } end
+        t.eq(c.mapSize(1411), { w = 1, h = 1 }, "plain fields serve when there is no GetXY")
+    end,
+
+    ["map size: unknown rather than guessed"] = function(t)
+        local env = mapEnv()
+        env.CreateVector2D = function(x, y) return { x = x, y = y } end
+        local c = ns.make.client(env)
+        env.C_Map.GetWorldPosFromMapPos = function() return 1, { x = 5, y = 5 } end
+        t.eq(c.mapSize(1411), nil, "both corners in one place: no size")
+        env.C_Map.GetWorldPosFromMapPos = function(_, pos) return 1, { x = pos.x, y = "a" } end
+        t.eq(c.mapSize(1411), nil)
+        env.C_Map.GetWorldPosFromMapPos = function(_, pos) return 1, { x = pos.x, y = pos.y } end
+        env.issecretvalue = function() return true end
+        t.eq(c.mapSize(1411), nil, "hidden")
+        env.issecretvalue = nil
+        env.C_Map.GetWorldPosFromMapPos = boom
+        t.eq(c.mapSize(1411), nil)
+        env.CreateVector2D = nil
+        t.eq(c.mapSize(1411), nil, "no way to name a corner")
+        t.eq(ns.make.client({}).mapSize(1411), nil)
+        local f = ns.make.fakeClient()
+        t.eq(f.mapSize(1411), nil)
+        f.setMapSize(1411, 300, 200)
+        t.eq(f.mapSize(1411), { w = 300, h = 200 })
+        f.setMapSize(1411)
+        t.eq(f.mapSize(1411), nil)
+    end,
+
     ["zone: continent and zone, the zone found through the map's parents"] = function(t)
         local env = mapEnv()
         local c = ns.make.client(env)

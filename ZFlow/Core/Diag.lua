@@ -139,6 +139,12 @@ local function recipeCounts(r)
     return { profession = r.profession, skill = r.skill, max = r.max, total = #r.recipes, learned = learned }
 end
 
+-- The size of the map the player is on, or nil.
+local function mapSizeHere(client)
+    local at = client.position()
+    return at and client.mapSize(at.map) or nil
+end
+
 local function ask(client, path, ...)
     return shape(client.raw(path, ...))
 end
@@ -179,6 +185,7 @@ function Diag.Collect(k, why)
         bags = client.bags(), bagStacks = count(client.bagItems()),
         bankOpen = client.bankOpen(), bankStacks = count(client.bankItems()),
         position = client.position(), zone = client.zone(),
+        mapSize = mapSizeHere(client),
         recipes = recipeCounts(client.recipes()),
         predecessorLoaded = client.addonLoaded(k.id.predecessor),
         predecessorData = client.savedExists(k.id.predecessorDB),
@@ -285,7 +292,6 @@ function Diag.Collect(k, why)
         S.spellKnown = ask(client, "IsPlayerSpell", spellID)
     end
     S.spellByName = ask(client, "C_Spell.GetSpellInfo", "Attack")
-    S.facing = ask(client, "GetPlayerFacing")
     S.aura1 = ask(client, "C_UnitAuras.GetAuraDataByIndex", "player", 1, "HELPFUL")
     S.professions = ask(client, "GetProfessions")
     if S.professions.ok and type(S.professions.values.v1) == "number" then

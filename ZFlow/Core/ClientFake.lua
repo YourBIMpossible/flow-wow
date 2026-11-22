@@ -13,6 +13,7 @@
 --   c.setRecipes{ profession = 164, skill = 104, max = 150, recipes = { ... } }
 --   c.setSpell(5176, { known = true, usable = false, noPower = true })
 --   c.setSpellId("Wrath", 5176)   c.setFacing(1.57)
+--   c.setMapSize(1411, 5287.5, 3525)
 --   c.setBankOpen(true)     -- also fires the bank opened / closed event
 --   ns.make.fakeClient{ env = { GetMoney = function() return 5 end } }; c.slashes["/x"]("rest")
 --   c.setZone(1, 1411); c.setPosition(1411, 0.5, 0.25); c.setLockdown(true)
@@ -80,6 +81,10 @@ function ns.make.fakeClient(opts)
     end
     function c.spellId(name) return s.spellIds and s.spellIds[name] or nil end
     function c.facing() return s.facing end
+    function c.mapSize(map)
+        local r = s.mapSizes and s.mapSizes[map]
+        return r and { w = r.w, h = r.h } or nil
+    end
     function c.position()
         if not s.position then return nil end
         return { map = s.position.map, x = s.position.x, y = s.position.y }
@@ -226,6 +231,11 @@ function ns.make.fakeClient(opts)
     end
     -- Radians, 0 = north; nil for not known.
     function c.setFacing(f) s.facing = f end
+    -- A map's width and height in yards; leave both out for not known.
+    function c.setMapSize(map, w, h)
+        s.mapSizes = s.mapSizes or {}
+        s.mapSizes[map] = w and h and { w = w, h = h } or nil
+    end
     function c.setZone(cont, zone)
         s.zone = (cont ~= nil or zone ~= nil) and { cont = cont, zone = zone } or nil
     end
