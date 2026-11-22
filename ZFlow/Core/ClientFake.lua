@@ -18,6 +18,7 @@
 --   ns.make.fakeClient{ env = { GetMoney = function() return 5 end } }; c.slashes["/x"]("rest")
 --   c.setZone(1, 1411); c.setPosition(1411, 0.5, 0.25); c.setLockdown(true)
 --   c.setDead(true); c.setCorpse(1411, 0.3, 0.6)
+--   c.setCorpse(false)               on no position of the player's map; nil: not known
 --   c.setGhost(true)                 false: dead, not released; nil: not known
 --   c.setWaypoint(1411, 0.4, 0.2)   -- c.setWaypoint(nil): none set
 --   c.setScreen(1024, 768); c.setVersion("0.1.0"); c.setFrames(false)
@@ -96,6 +97,7 @@ function ns.make.fakeClient(opts)
     function c.dead() return s.dead end
     function c.ghost() return s.ghost end
     function c.corpse()
+        if s.corpse == false then return false end
         if not s.corpse then return nil end
         return { map = s.corpse.map, x = s.corpse.x, y = s.corpse.y }
     end
@@ -301,8 +303,13 @@ function ns.make.fakeClient(opts)
     function c.setGhost(v)
         if v == nil then s.ghost = nil else s.ghost = v and true or false end
     end
-    -- The corpse, as shares of a map; leave the map out for not known.
+    -- The corpse, as shares of a map; false for "the client answered: on no
+    -- position of the player's map"; leave the map out for not known.
     function c.setCorpse(map, x, y)
+        if map == false then
+            s.corpse = false
+            return
+        end
         s.corpse = map and { map = map, x = x, y = y } or nil
     end
     -- The player's own map waypoint, as shares of a map; leave the map out

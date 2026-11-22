@@ -216,11 +216,13 @@ return {
         local c = start()
         c.setDead(true)
         c.setGhost(true)
+        c.setCorpse(false)          -- the client answered: on no position of this map
         local src = source(c)
         t.eq(src.view.gate, "corpse")
         t.eq(src.view.quest.distance, nil)
         t.eq(src.turns.quest, nil)
         t.eq(src.lines.quest, { "Corpse", A.CORPSE_ELSEWHERE })
+        t.eq(src.still.quest, true, "nowhere to turn to")
     end,
 
     ["a ghost: a corpse read that fails, is absent or is no place is unknown, not elsewhere"] = function(t)
@@ -249,13 +251,77 @@ return {
         t.eq(source(c).lines.quest, { "Corpse", "200 yd" }, "no ghost read")
     end,
 
-    ["alive: the ghost read changes nothing"] = function(t)
+    ["alive: a ghost read of false or unknown changes nothing"] = function(t)
         local c = start()
         c.setDead(false)
-        c.setGhost(true)
+        c.setGhost(false)
         local src = source(c)
         t.eq(src.view.gate, "open")
         t.eq(src.lines.quest, { "Kill boars", "100 yd" })
+        c.setGhost(nil)
+        t.eq(source(c).view.gate, "open")
+        c.ghost = function() return 1 end
+        t.eq(source(c).view.gate, "open", "only a plain true counts")
+    end,
+
+    ["a plain true from either read opens the corpse gate (C3)"] = function(t)
+        local c = start()
+        c.setGhost(true)                    -- dead: unknown
+        c.setCorpse(1411, 0.3, 0.5)
+        local src = source(c)
+        t.eq(src.view.gate, "corpse", "dead unknown, ghost true")
+        t.eq(src.lines.quest, { "Corpse", "200 yd" })
+        c.dead = function() error("the client refused") end
+        t.eq(source(c).view.gate, "corpse", "the dead read fails, ghost true")
+        c.dead = nil
+        t.eq(source(c).view.gate, "corpse", "no dead read, ghost true")
+        c = start()
+        c.setDead(false)
+        c.setGhost(true)
+        t.eq(source(c).view.gate, "corpse", "dead false, ghost true")
+        c = start()
+        c.setDead(true)
+        t.eq(source(c).view.gate, "corpse", "dead true, ghost unknown")
+        c = start()
+        t.eq(source(c).view.gate, "open", "neither known")
+    end,
+
+    ["a ghost, cannot tell where the corpse is: Corpse and direction unknown, not still (C1)"] = function(t)
+        local c = start()
+        c.setDead(true)
+        c.setGhost(true)                    -- the corpse read answers nil
+        local src = source(c)
+        t.eq(src.lines.quest, { "Corpse", A.UNKNOWN_TURN })
+        t.eq(src.still.quest, nil)
+        t.eq(src.lost.quest, true)
+    end,
+
+    ["ghost unknown: the other-map line only on the client's own answer (C1)"] = function(t)
+        local c = start()
+        c.setDead(true)
+        c.setCorpse(false)
+        t.eq(source(c).lines.quest, { "Corpse", A.CORPSE_ELSEWHERE })
+        c.setGhost(false)
+        t.eq(source(c).lines.quest, { A.RELEASE_LABEL }, "not released: the release label still wins")
+    end,
+
+    ["on the frames: a still step is not faded; an unknown direction is (C2)"] = function(t)
+        local c, a = start()
+        c.setDead(true)
+        c.setGhost(false)
+        a.setGuide(function() return steps() end)
+        local q = c.arrows[1]
+        t.eq(q.lines, { A.RELEASE_LABEL })
+        t.eq(q.faded, a.state().view.quest.alpha, "release: the view's own alpha")
+        c.setGhost(true)
+        c.setCorpse(false)
+        a.relayout()
+        t.eq(q.lines, { "Corpse", A.CORPSE_ELSEWHERE })
+        t.eq(q.faded, a.state().view.quest.alpha, "another map: the view's own alpha")
+        c.setCorpse(nil)
+        a.relayout()
+        t.eq(q.lines, { "Corpse", A.UNKNOWN_TURN })
+        t.eq(q.faded, a.state().view.quest.alpha * A.LOST_ALPHA, "direction unknown: faded")
     end,
 
     ["dead, not a ghost, on the frames: shown with the release label, then the corpse once a ghost"] = function(t)

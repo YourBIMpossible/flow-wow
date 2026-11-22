@@ -422,8 +422,10 @@ function ns.make.client(env)
     end
 
     -- Where the player's corpse is on the map the client picks for the
-    -- player: { map = uiMapID, x = 0..1, y = 0..1 }, or nil (no map, no
-    -- corpse, or a corpse the client places on no position of that map).
+    -- player: { map = uiMapID, x = 0..1, y = 0..1 }; false when the client
+    -- answered and gave no position on that map; nil when it cannot be told
+    -- (no map for the player, no such read, the read raised, an answer that
+    -- is no position, or x or y hidden or no number).
     -- C_DeathInfo.GetCorpseMapPosition is the call Flow's Nav.lua uses; a
     -- first guess on 16001, its answer has not been seen there.
     function c.corpse()
@@ -431,7 +433,12 @@ function ns.make.client(env)
         if not map then return nil end
         local group = env.C_DeathInfo
         local ok, pos = call(type(group) == "table" and group.GetCorpseMapPosition or nil, map)
-        if not ok or type(pos) ~= "table" then return nil end
+        if not ok then return nil end
+        -- false: the client answered, and gave no position on this map. That
+        -- a plain nil from the read means "not on this map" is a first guess
+        -- on 16001, not observed in a client.
+        if pos == nil then return false end
+        if type(pos) ~= "table" then return nil end
         local okXY, x, y = call(pos.GetXY, pos)
         if not okXY then x, y = pos.x, pos.y end
         if hidden(x) or hidden(y) or type(x) ~= "number" or type(y) ~= "number" then return nil end
