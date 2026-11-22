@@ -4490,7 +4490,7 @@ ns:Register("test", "trainers and pickups: your faction, your level, chains in o
     t:ok(P.FriendlyTo("H", "Horde") and P.FriendlyTo("AH", "Horde"), "Horde NPCs for Horde")
     t:ok(not P.FriendlyTo("A", "Horde"), "no Alliance trainer for a tauren")
     t:ok(P.FriendlyTo(nil, "Horde"), "unknown: counts as friendly")
-    t:ok(#P:TrainersFor("Herbalism") >= 4, "Horde Herbalism trainers listed too")
+    t:ok(#P:TrainersFor("Herbalism") >= 3, "Horde Herbalism trainers listed")
     local Q = ns.quests
     local kept = Q.WithoutBlocked({ { id = 752 }, { id = 753 }, { id = 747 } }, { [753] = true })
     t:eq(#kept, 2, "part 2 of a chain waits for part 1")

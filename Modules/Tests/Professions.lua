@@ -390,6 +390,14 @@ ns:Register("test", "professions: kills and node counts are said only when your 
     t:ok(SP.GATHER_UNKNOWN:find("unknown to Flow", 1, true) ~= nil, "and the step says what Flow doesn't know")
 end)
 
+ns:Register("test", "professions: no Alliance starting-area profession trainer names are listed", function(t)
+    local list = ns:Get("trainerNames", "alliance-elwynn")
+    t:ok(type(list) == "table", "the list is still registered (class trainers)")
+    for _, prof in ipairs({ "Mining", "Blacksmithing", "First Aid", "Cooking", "Fishing", "Skinning", "Herbalism" }) do
+        t:eq((list or {})[prof], nil, prof .. ": no names of Flow's own")
+    end
+end)
+
 ns:Register("test", "professions: the map card lists no zone levels or fishing skills of Flow's own", function(t)
     local ZL = ns.mapZoneLevels
     if not ZL then t:ok(false, "MapZoneLevels.lua not loaded") return end

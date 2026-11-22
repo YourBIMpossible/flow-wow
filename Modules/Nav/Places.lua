@@ -12,17 +12,14 @@ local _, ns = ...
 local P = {}
 ns.places = P
 
--- Alliance starting-area trainers. Not from a guide, and not yet verified
--- in game: each name needs checking at the trainer. Nearest known one wins.
+-- Alliance starting area. No profession trainer names are listed for it:
+-- Flow never read them from the game. A profession's trainers there are the
+-- ones you've trained with (ns.db.places) and the ones Questie titles
+-- "<Profession> Trainer" (P:TrainersFor below); with neither, the trainer is
+-- unknown to Flow.
 ns:Register("trainerNames", "alliance-elwynn", {
-    ["Mining"]        = { "Kelsey Fargo", "Gelman Stonehand" },
-    ["Blacksmithing"] = { "Smith Argus", "Therum Deepforge" },
-    ["First Aid"]     = { "Michelle Belle" },
-    ["Cooking"]       = { "Tomas" },
-    ["Fishing"]       = { "Lee Brown" },
-    ["Skinning"]      = { "Helene Peltskinner" },
-    ["Herbalism"]     = { "Herbalist Pomeroy", "Nancy Songflower" },
-    -- Class trainers (Northshire, Goldshire, Stormwind Cathedral).
+    -- Class trainers (Northshire, Goldshire, Stormwind Cathedral). Not read
+    -- from the game by Flow either; where the names came from isn't recorded.
     ["class:PALADIN"] = { "Brother Sammuel", "Brother Wilhelm", "Arthur the Faithful",
                           "Lord Grayson Shadowbreaker" },
 })
