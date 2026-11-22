@@ -537,8 +537,68 @@ function ns.make.client(env)
         return shown and true or false
     end
 
+    -- ---------------------------------------------------------------- F8
+    -- Trainer and spell learning (FEATURE-PLAN F8, owner Plexy since LEDGER
+    -- 125): the service rows and the window's filter, added to the one
+    -- trainer read below (no second trainer read). First guesses, not seen in
+    -- game on 16001: GetNumTrainerServices(), GetTrainerServiceInfo(i) (name,
+    -- rank, category "available" / "unavailable" / "used" / "header"),
+    -- GetTrainerServiceCost(i), GetTrainerServiceLevelReq(i) and
+    -- GetTrainerServiceTypeFilter("available" / "unavailable" / "used").
+    --
+    -- services { { name, rank, state, cost, level } ... } in the window's order:
+    --          state "available", "unavailable" or "known" (the game's
+    --          "used"); header rows are left out. rank, cost and level are
+    --          left out of a row when not read. One row whose name or state
+    --          cannot be read drops the whole list (never a shorter list).
+    -- filter   { available, unavailable, known }, each true or false; nil
+    --          when any of the three cannot be read.
+    -- Look-only: nothing is trained or bought.
+    local SERVICE_STATE = { available = "available", unavailable = "unavailable", used = "known" }
+    local function wholeOrNil(ok, v)
+        if not ok or v == nil or hidden(v) or type(v) ~= "number" or v ~= v then return nil end
+        if v < 0 or v == math.huge or v ~= math.floor(v) then return nil end
+        return v
+    end
+    local function trainerFilter()
+        local out = {}
+        for game, ours in pairs({ available = "available", unavailable = "unavailable", used = "known" }) do
+            -- Older clients answer 1 for shown and nothing for hidden: an
+            -- answer of nothing from a call that ran is "not shown".
+            local ok, on = call(env.GetTrainerServiceTypeFilter, game)
+            if not ok then return nil end
+            if on == nil then on = false end
+            if hidden(on) then return nil end
+            if on == 1 then on = true elseif on == 0 then on = false end
+            if type(on) ~= "boolean" then return nil end
+            out[ours] = on
+        end
+        return out
+    end
+    local function trainerServices()
+        local n = wholeOrNil(call(env.GetNumTrainerServices))
+        if not n then return nil, trainerFilter() end
+        local rows = {}
+        for i = 1, n do
+            local ok, name, rank, category = call(env.GetTrainerServiceInfo, i)
+            if not ok or (category ~= nil and hidden(category)) then return nil, trainerFilter() end
+            if category ~= "header" then
+                local state = SERVICE_STATE[category]
+                name = text(ok, name)
+                if not state or not name then return nil, trainerFilter() end
+                rows[#rows + 1] = {
+                    name = name, rank = text(ok, rank), state = state,
+                    cost = wholeOrNil(call(env.GetTrainerServiceCost, i)),
+                    level = wholeOrNil(call(env.GetTrainerServiceLevelReq, i)),
+                }
+            end
+        end
+        return rows, trainerFilter()
+    end
+
     -- The trainer whose window is open:
-    --   { profession = name or nil, npc = name }
+    --   { profession = name or nil, npc = name, services, filter }
+    -- services and filter as above (F8).
     -- nil unless the window is known to be open, nil for a player, and nil
     -- when the client will not say whether it is a player or what it is
     -- called. profession is the trainer's first skill line as the client
@@ -553,8 +613,43 @@ function ns.make.client(env)
         if not okPlayer or player == nil or hidden(player) or player ~= false then return nil end
         local npc = text(call(env.UnitName, "npc"))
         if not npc then return nil end
-        return { profession = text(call(env.GetTrainerServiceSkillLine, 1)), npc = npc }
+        local out = { profession = text(call(env.GetTrainerServiceSkillLine, 1)), npc = npc }
+        out.services, out.filter = trainerServices()
+        return out
     end
+
+    -- F8: told when you learn a spell.
+    --   client.onSpellLearned(fn) -> cancel;  fn({ id, name, rank })
+    -- LEARNED_SPELL_IN_TAB (spellID, ...); the name is the first answer of
+    -- GetSpellInfo(spellID), the rank GetSpellSubtext(spellID) where the
+    -- client has it, else GetSpellInfo's second answer when that is text.
+    -- A spell with no readable name tells nobody; a rank not read is left
+    -- out. First guesses, not seen in game on 16001. fn's errors stay here.
+    local learnedListeners, learnedWatched = {}, false
+    local function spellLearned(id)
+        if type(id) ~= "number" or hidden(id) then return end
+        local ok, name, oldRank = call(env.GetSpellInfo, id)
+        name = text(ok, name)
+        if not name then return end
+        local rank = text(call(env.GetSpellSubtext, id)) or text(ok, oldRank)
+        for _, fn in ipairs({ unpack(learnedListeners) }) do
+            pcall(fn, { id = id, name = name, rank = rank })
+        end
+    end
+    function c.onSpellLearned(fn)
+        if type(fn) ~= "function" then return nil end
+        if not learnedWatched then
+            learnedWatched = true
+            events.add("LEARNED_SPELL_IN_TAB", spellLearned)
+        end
+        learnedListeners[#learnedListeners + 1] = fn
+        return function()
+            for i = #learnedListeners, 1, -1 do
+                if learnedListeners[i] == fn then table.remove(learnedListeners, i) end
+            end
+        end
+    end
+    -- -------------------------------------------------------------- end F8
 
     -- "Horde", "Alliance", or nil when not known (any other answer, no
     -- answer, a secret one). UnitFactionGroup("player"), a first guess:
@@ -2514,6 +2609,138 @@ function ns.make.client(env)
         end
         arrowFrames[h] = f
         return h
+    end
+
+    ---------------------------------------------------------------------
+    -- F6, the rotation helper: its reads and its one secure frame, kept
+    -- together. All first guesses: not seen in game on 16001.
+    ---------------------------------------------------------------------
+
+    -- The form you are in: a number (0 is no form), or nil when not known
+    -- (no call, a failed call, a secret answer, or anything but a number).
+    -- GetShapeshiftForm(). It names no unit and only reads.
+    function c.form()
+        local ok, n = call(env.GetShapeshiftForm)
+        if not ok or n == nil or hidden(n) or type(n) ~= "number" then return nil end
+        return n
+    end
+
+    -- In a pet battle: true, false, or nil when not known. A client with
+    -- no C_PetBattles.IsInBattle does not say. It only reads.
+    function c.petBattle()
+        local api = env.C_PetBattles
+        if type(api) ~= "table" then return nil end
+        return yesNo(call(api.IsInBattle))
+    end
+
+    -- In a vehicle: true, false, or nil when not known.
+    -- UnitInVehicle("player"): no unit but you is asked about.
+    function c.vehicle()
+        return yesNo(call(env.UnitInVehicle, "player"))
+    end
+
+    -- A secure button for the key frame (Rotation/KeyFrame.lua), or nil
+    -- when the client made none. It is made from the client's own
+    -- SecureActionButtonTemplate: with no size and no art it takes no
+    -- mouse click, and it is hidden when it is made outside a fight (in
+    -- one, hiding it is the client's to refuse, so it is not asked).
+    --   h.set(attr, value) -> true, or false and why. It asks
+    --                   InCombatLockdown() first: anything but a plain
+    --                   false is "lockdown" and the frame is not touched.
+    --                   A SetAttribute that fails is "refused".
+    --   h.get(attr) -> what the frame holds for it, or nil.
+    -- Nothing here binds a key, registers a state driver, clicks the
+    -- button, or casts: it holds attributes, and only you press the key.
+    function c.secureButton(spec)
+        spec = type(spec) == "table" and spec or {}
+        local ok, f = call(env.CreateFrame, "Button", spec.name, env.UIParent, "SecureActionButtonTemplate")
+        if not ok or f == nil then return nil end
+        local function unlocked()
+            local okLock, locked = call(env.InCombatLockdown)
+            return okLock and locked == false
+        end
+        if unlocked() then method(f, "Hide") end
+        local h = {}
+        function h.set(attr, value)
+            if not unlocked() then return false, "lockdown" end
+            if not method(f, "SetAttribute", attr, value) then return false, "refused" end
+            return true
+        end
+        function h.get(attr)
+            local okGet, v = method(f, "GetAttribute", attr)
+            if not okGet then return nil end
+            return v
+        end
+        return h
+    end
+
+    -- F2 errand stops: the reads Nav/ServiceSeen.lua, Nav/HearthSeen.lua,
+    -- Nav/HearthStep.lua and Nav/Errand.lua ask for. Each only reads. An
+    -- answer the client hides, or one of the wrong kind, is "not known".
+    -- First guesses, none seen in game: UnitGUID, CanMerchantRepair,
+    -- GetBindLocation, GetItemCount and GetItemCooldown.
+    --
+    -- c.guid(unit) -> text or nil. Only the player, the pet and the target;
+    -- any other unit is nil and the client is not asked. Shared with F7,
+    -- which carries the same lines.
+    local GUID_UNITS = { player = true, pet = true, target = true }
+    function c.guid(unit)
+        if type(unit) ~= "string" or not GUID_UNITS[unit] then return nil end
+        local ok, id = call(env.UnitGUID, unit)
+        if not ok or id == nil or hidden(id) or type(id) ~= "string" or id == "" then return nil end
+        return id
+    end
+    function c.playerGUID() return c.guid("player") end
+    function c.petGUID() return c.guid("pet") end
+
+    -- c.serviceNpc() -> { guid, name } or nil: the npc whose window is
+    -- open (unit "npc", as c.trainer reads it). Nil unless the client says
+    -- plainly that it is no player. A part not known is left out; nil when
+    -- neither is known.
+    function c.serviceNpc()
+        local okP, isPlayer = call(env.UnitIsPlayer, "npc")
+        if not okP or hidden(isPlayer) or isPlayer ~= false then return nil end
+        local name = text(call(env.UnitName, "npc"))
+        local guid
+        local okG, id = call(env.UnitGUID, "npc")
+        if okG and id ~= nil and not hidden(id) and type(id) == "string" and id ~= "" then guid = id end
+        if name == nil and guid == nil then return nil end
+        return { guid = guid, name = name }
+    end
+
+    -- c.merchantRepairs() -> true, false, or nil when not known.
+    function c.merchantRepairs()
+        local ok, v = call(env.CanMerchantRepair)
+        if not ok or v == nil or hidden(v) then return nil end
+        if v == true or v == 1 then return true end
+        if v == false or v == 0 then return false end
+        return nil
+    end
+
+    -- c.bindLocation() -> the name of the place the hearthstone is set to,
+    -- or nil.
+    function c.bindLocation()
+        return text(call(env.GetBindLocation))
+    end
+
+    -- c.hearthCooldown() -> seconds until the hearthstone is ready, 0 when
+    -- ready, nil when not known or the player carries no stone. It never
+    -- uses the stone.
+    local HEARTHSTONE = 6948
+    function c.hearthCooldown()
+        local okN, n = call(env.GetItemCount, HEARTHSTONE)
+        if not okN or n == nil or hidden(n) or type(n) ~= "number" or n < 1 then return nil end
+        local ok, start, duration = call(env.GetItemCooldown, HEARTHSTONE)
+        if not ok or start == nil or duration == nil or hidden(start) or hidden(duration) then return nil end
+        if type(start) ~= "number" or type(duration) ~= "number" then return nil end
+        if start ~= start or duration ~= duration or start < 0 or duration < 0 then return nil end
+        if start == 0 or duration == 0 then return 0 end
+        local okT, now = call(env.GetTime)
+        if not okT or now == nil or hidden(now) or type(now) ~= "number" then return nil end
+        local left = start + duration - now
+        if left ~= left or left == math.huge then return nil end
+        if left < 0 then return 0 end
+        return left
     end
 
     return c

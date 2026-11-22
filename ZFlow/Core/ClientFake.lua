@@ -118,10 +118,42 @@ function ns.make.fakeClient(opts)
     end
     function c.spellId(name) return s.spellIds and s.spellIds[name] or nil end
     function c.watchTrainer() end
+    -- A copy of the service rows, or nil.
+    local function copyRowsOf(rows)
+        if type(rows) ~= "table" then return nil end
+        local out = {}
+        for i = 1, #rows do
+            local r = {}
+            for k, v in pairs(rows[i]) do r[k] = v end
+            out[i] = r
+        end
+        return out
+    end
     function c.trainer()
         local r = s.trainer
         if type(r) ~= "table" then return nil end
-        return { profession = r.profession, npc = r.npc }
+        local filter = nil
+        if type(r.filter) == "table" then
+            filter = { available = r.filter.available, unavailable = r.filter.unavailable, known = r.filter.known }
+        end
+        return { profession = r.profession, npc = r.npc, services = copyRowsOf(r.services), filter = filter }
+    end
+    -- As the real client's (F8): fn({ id, name, rank }) for each spell learned
+    -- with learnSpell; the answer takes the listener back.
+    function c.onSpellLearned(fn)
+        if type(fn) ~= "function" then return nil end
+        s.learnedListeners = s.learnedListeners or {}
+        table.insert(s.learnedListeners, fn)
+        return function()
+            for i = #s.learnedListeners, 1, -1 do
+                if s.learnedListeners[i] == fn then table.remove(s.learnedListeners, i) end
+            end
+        end
+    end
+    -- Plays the game telling that a spell was learned.
+    function c.learnSpell(spell)
+        local copy = { id = spell and spell.id, name = spell and spell.name, rank = spell and spell.rank }
+        for _, fn in ipairs({ unpack(s.learnedListeners or {}) }) do fn(copy) end
     end
     function c.faction() return s.faction end
     function c.class() return s.class end
@@ -608,7 +640,11 @@ function ns.make.fakeClient(opts)
     end
     -- The open trainer window: { profession = name or nil, npc = name };
     -- nil for closed or not known.
-    function c.setTrainer(r) s.trainer = r and { profession = r.profession, npc = r.npc } or nil end
+    -- { profession, npc, services, filter }; services and filter as the real
+    -- client gives them (F8). The table is kept as given; trainer() copies.
+    function c.setTrainer(r)
+        s.trainer = r and { profession = r.profession, npc = r.npc, services = r.services, filter = r.filter } or nil
+    end
     -- "Horde", "Alliance", or nil for not known.
     function c.setFaction(group) s.faction = group end
     -- The class token ("DRUID"), or nil for not known.
@@ -737,6 +773,68 @@ function ns.make.fakeClient(opts)
     end
     -- True while something is subscribed to the frame tick.
     function c.ticking() return s.frames == 1 end
+
+    -- F6, the rotation helper. form(): what setForm gave (a number, or nil
+    -- for not known: the start). petBattle() and vehicle(): true, false, or
+    -- nil for not known (the start).
+    function c.form() return s.form end
+    function c.setForm(n) s.form = type(n) == "number" and n or nil end
+    function c.petBattle() return s.petBattle end
+    function c.setPetBattle(on)
+        if on == nil then s.petBattle = nil else s.petBattle = on and true or false end
+    end
+    function c.vehicle() return s.vehicle end
+    function c.setVehicle(on)
+        if on == nil then s.vehicle = nil else s.vehicle = on and true or false end
+    end
+    -- Every secure button made is in c.secureButtons, in order: .spec and
+    -- .attrs (what it holds). set refuses with "lockdown" while
+    -- combatLockdown() is not false (it follows setCombat / setLockdown).
+    -- failSecureAttr(attr, true): setting that one is "refused".
+    -- dropSecureAttr(attr, true): setting it answers true and keeps nothing.
+    c.secureButtons = {}
+    local secureFail, secureDrop = {}, {}
+    function c.secureButton(spec)
+        if s.noFrames then return nil end
+        local h = { spec = spec, attrs = {} }
+        function h.set(attr, value)
+            if c.combatLockdown() ~= false then return false, "lockdown" end
+            if secureFail[attr] then return false, "refused" end
+            if not secureDrop[attr] then h.attrs[attr] = value end
+            return true
+        end
+        function h.get(attr) return h.attrs[attr] end
+        c.secureButtons[#c.secureButtons + 1] = h
+        return h
+    end
+    function c.failSecureAttr(attr, on) secureFail[attr] = on and true or nil end
+    function c.dropSecureAttr(attr, on) secureDrop[attr] = on and true or nil end
+
+    -- F2 errand stops: the same reads as Core/Client.lua, set by a test.
+    local guids = {}
+    function c.guid(unit)
+        if unit ~= "player" and unit ~= "pet" and unit ~= "target" then return nil end
+        return guids[unit]
+    end
+    function c.setGuid(unit, id) guids[unit] = type(id) == "string" and id ~= "" and id or nil end
+    function c.playerGUID() return c.guid("player") end
+    function c.petGUID() return c.guid("pet") end
+    function c.serviceNpc()
+        local n = s.serviceNpc
+        return n and { guid = n.guid, name = n.name } or nil
+    end
+    function c.setServiceNpc(guid, name)
+        if guid == nil and name == nil then s.serviceNpc = nil return end
+        s.serviceNpc = { guid = guid, name = name }
+    end
+    function c.merchantRepairs() return s.merchantRepairs end
+    function c.setMerchantRepairs(v)
+        if v == true or v == false then s.merchantRepairs = v else s.merchantRepairs = nil end
+    end
+    function c.bindLocation() return s.bindLocation end
+    function c.setBindLocation(name) s.bindLocation = type(name) == "string" and name ~= "" and name or nil end
+    function c.hearthCooldown() return s.hearthCooldown end
+    function c.setHearthCooldown(v) s.hearthCooldown = type(v) == "number" and v >= 0 and v or nil end
 
     return c
 end
