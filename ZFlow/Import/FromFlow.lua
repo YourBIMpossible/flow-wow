@@ -16,13 +16,24 @@
 --     result.record    the import record: source, sourceVersion, importer,
 --                      counts per category, vendor choices found. The caller
 --                      stamps the date (a pure function has no clock).
+--     result.vendorToConfirm   list of { key, to, sameAsFlowDefault }, sorted
+--                      by key: every vendor automation Flow had on. None of
+--                      them is on in result.account. The import screen shows
+--                      this list and the player confirms each one.
 --
---   Import.Merge(account, char, result [, defaults]) -> account, char, report
+--   Import.Merge(account, char, result [, defaults [, confirmed]])
+--       -> account, char, report
 --     New tables: the player's existing data plus whatever of the import it
 --     does not already have. An existing value is never replaced, unless it
 --     is absent, an empty table, or equal to the default given for its path
 --     in defaults = { account = {...}, char = {...} }.
---     report = { ok, reason, added, kept, skipped, counts }.
+--     confirmed = { ["sell.autoRepair"] = true, ... }: the vendor automations
+--     the player confirmed, by Flow key. Only a true counts. An automation
+--     the import found on and the player did not confirm stays off, however
+--     it reached the result. A confirmed one still never replaces a choice
+--     the player already has.
+--     report = { ok, reason, added, kept, skipped, counts, vendorConfirmed,
+--     vendorLeftOff }; the last two are sorted lists of Flow keys.
 --
 -- Where each Flow key was read from (Flow source, file:line):
 --   saved-data layout, per-character split   Core.lua:182-232
@@ -101,6 +112,14 @@ local ONCE = "a one-time notice flag"
 local DIAGNOSTIC = "diagnostic output, not player data"
 local SESSION = "state of one play session; stale once imported"
 local OLD = "an old Flow setting that Flow itself no longer reads"
+-- nav.mode and nav.professions: Flow still reads and writes both. They are
+-- the older saved names of the choice in nav.kinds, kept in step with it
+-- (Modules/Nav/Nav.lua:1372, :1386, :1445-1446), and the only record of it
+-- when nav.kinds is absent (Nav.lua:4983).
+local OLDER_NAME = "the older saved name of the choice Flow keeps in nav.kinds; Flow writes both together,"
+    .. " and nav.kinds is imported"
+local OLDER_NAME_ALONE = "the older saved name of the choice Flow now keeps in nav.kinds; this data has no nav.kinds,"
+    .. " and the importer does not rebuild one from the old name, so this choice was not carried over"
 
 -- THE MAPPING. One row per Flow key: "section" or "section.key".
 --   to    the path it lands on (in the account data, or the character's
@@ -109,7 +128,10 @@ local OLD = "an old Flow setting that Flow itself no longer reads"
 --         learned data is "tree" (a table, copied with bad parts left out),
 --         anything else is "any" (a plain value, or such a table)
 --   drop  it is left behind on purpose, and why
---   vendor      a vendor automation: off unless the player's data says so
+--   beside, dropAlone   the reason is dropAlone instead when Flow's data has
+--         no value at the path named by beside
+--   yield it gives way when an earlier row already put a value where it lands
+--   vendor      a vendor automation: off unless the player confirms it
 --   flowDefault Flow itself writes this value at load, so finding it does
 --               not prove the player chose it
 -- A "section" row beside "section.key" rows takes the keys no row names.
@@ -173,7 +195,10 @@ local MAP = {
     { "deathNext", drop = BOOKKEEPING },
 
     -- Arrows (per account) and other window positions
-    { "nav.point", to = "layout.arrows.point", as = "point" },
+    -- Flow keeps the quest arrow's place in nav.point and only the other
+    -- arrows' places in nav.arrows.points (Modules/Nav/Arrows.lua:387-391).
+    -- Z-Flow reads every place from layout.arrows.points (Nav/ArrowLayout.lua).
+    { "nav.point", to = "layout.arrows.points.quest", as = "point" },
     { "nav.arrows", to = "layout.arrows", as = "arrows" },
     { "nav.cardPoint", to = "layout.nav.card", as = "point" },
     { "nav.drawerPoint", to = "layout.nav.drawer", as = "point" },
@@ -189,7 +214,9 @@ local MAP = {
     { "tracker.point", to = "layout.tracker.frame", as = "point" },
     { "trader.point", to = "layout.trader.frame", as = "point" },
 
-    -- Vendor automations: off in Z-Flow unless the player's data says on
+    -- Vendor automations: off in Z-Flow. One that Flow had on is listed in
+    -- result.vendorToConfirm and written nowhere; Merge switches it on only
+    -- when the player confirmed that one.
     { "sell.autoJunk", to = "settings.sell.autoJunk", as = "bool", vendor = true, flowDefault = true },
     { "sell.autoAll", to = "settings.sell.autoAll", as = "bool", vendor = true, flowDefault = false },
     { "sell.autoRepair", to = "settings.sell.autoRepair", as = "bool", vendor = true, flowDefault = true },
@@ -210,7 +237,9 @@ local MAP = {
     { "nav.arrowPaths", to = "settings.nav.arrowPaths" },
     { "nav.arrowTurn", to = "settings.nav.arrowTurn" },
     { "nav.profArrow", to = "settings.nav.profArrow" },
-    { "nav.profArrowText", to = "settings.nav.profArrowText" },
+    -- The profession arrow's text. In Flow nav.arrows.text.professions wins
+    -- when it is set (Modules/Nav/Arrows.lua:243-245); so it does here.
+    { "nav.profArrowText", to = "layout.arrows.text.prof", as = "bool", yield = true },
     { "nav.kinds", to = "settings.nav.kinds" },
     { "nav.sorter", to = "settings.nav.sorter" },
     { "nav.baseSorter", to = "settings.nav.baseSorter" },
@@ -258,8 +287,8 @@ local MAP = {
     { "nav.stopsArea", to = "state.nav.stopsArea", char = true },
     { "nav.arrowModern", drop = BOOKKEEPING },
     { "nav.gatesRule", drop = BOOKKEEPING },
-    { "nav.mode", drop = OLD },
-    { "nav.professions", drop = OLD },
+    { "nav.mode", drop = OLDER_NAME, beside = "nav.kinds", dropAlone = OLDER_NAME_ALONE },
+    { "nav.professions", drop = OLDER_NAME, beside = "nav.kinds", dropAlone = OLDER_NAME_ALONE },
     { "nav.taxiTrip", drop = SESSION },
     { "nav.deferred", drop = SESSION },
     { "nav.dungeonRun", drop = SESSION },
@@ -293,7 +322,8 @@ local MAP = {
     { "banker.off", to = "settings.banker.off" },
     { "banker.parked", to = "state.banker.parked", char = true },
     { "bonus.enabled", to = "settings.bonus.enabled" },
-    { "bonus.spoken", drop = ONCE },
+    -- The speech toggle (Modules/Bonus.lua): a choice, not a notice flag.
+    { "bonus.spoken", to = "settings.bonus.spoken" },
     { "camera.maxZoom", to = "settings.camera.maxZoom" },
     { "cast.key", to = "settings.cast.key" },
     { "cast.key2", to = "settings.cast.key2" },
@@ -359,6 +389,12 @@ local MAP = {
     { "rotation.recoverSmart", to = "settings.rotation.recoverSmart" },
     { "rotation.recoverDrink", to = "settings.rotation.recoverDrink" },
     { "rotation.recoverOrder", to = "settings.rotation.recoverOrder" },
+    -- Modules/BuffItems.lua:1140-1152, Modules/Rotation/Engine.lua:669-673
+    { "rotation.recoverBandage", to = "settings.rotation.recoverBandage" },
+    { "rotation.recoverFood", to = "settings.rotation.recoverFood" },
+    { "rotation.recoverBuffFood", to = "settings.rotation.recoverBuffFood" },
+    { "rotation.recoverHeal", to = "settings.rotation.recoverHeal" },
+    { "rotation.bandageRank", to = "settings.rotation.bandageRank" },
     { "rotation.emergencyItems", to = "settings.rotation.emergencyItems" },
     { "rotation.statusIcons", to = "settings.rotation.statusIcons" },
     { "rotation.deck", to = "settings.rotation.deck" },
@@ -486,8 +522,9 @@ end
 --------------------------------------------------------------------------------
 -- KIND: how a value is checked and copied. Each is
 --   fn(value, label, note) -> the clean copy, or nil and a reason
--- note(label, reason) records a part that was left out of an otherwise
--- good value. Nothing here keeps a reference to the input.
+-- note(label, reason [, why]) records a part that was left out of an
+-- otherwise good value; why is "malformed" unless given. Nothing here keeps
+-- a reference to the input.
 --------------------------------------------------------------------------------
 local KIND = {}
 
@@ -642,6 +679,31 @@ end
 
 local ARROW_MODES = { stacked = true, separate = true }
 
+-- Flow's name for each arrow, and Z-Flow's (Nav/ArrowLayout.lua ARROW_KEYS).
+local ARROW_NAMES = { quest = "quest", professions = "prof" }
+local NOT_AN_ARROW = "not an arrow this importer carries over; left behind"
+local QUEST_PLACE = "Flow keeps the quest arrow's place in nav.point and never reads this one;"
+    .. " nav.point is what is imported"
+
+-- One part of the arrow layout (places, hidden or text), keyed by Z-Flow's
+-- arrow names. Empty when nothing in it could be kept.
+local function arrowPart(v, at, note, one, isPlaces)
+    local checked, why = map(v, at, note, isName, "an arrow without a name", one)
+    if checked == nil then return nil, why end
+    local out = {}
+    for _, name in ipairs(sortedKeys(checked)) do
+        local label = at .. "." .. name
+        if not ARROW_NAMES[name] then
+            note(label, NOT_AN_ARROW, "dropped")
+        elseif isPlaces and name == "quest" then
+            note(label, QUEST_PLACE, "dropped")
+        else
+            out[ARROW_NAMES[name]] = checked[name]
+        end
+    end
+    return out
+end
+
 function KIND.arrows(v, label, note)
     if type(v) ~= "table" then return nil, "expected a table, found a " .. type(v) end
     local out = {}
@@ -649,12 +711,9 @@ function KIND.arrows(v, label, note)
         local value, at = v[key], label .. "." .. tostring(key)
         if key == "mode" then
             if ARROW_MODES[value] then out.mode = value else note(at, "not an arrow layout this importer knows") end
-        elseif key == "points" then
-            local points, why = map(value, at, note, isName, "an arrow without a name", KIND.point)
-            if points == nil then note(at, why) else out.points = points end
-        elseif key == "hidden" or key == "text" then
-            local flags, why = map(value, at, note, isName, "an arrow without a name", KIND.bool)
-            if flags == nil then note(at, why) else out[key] = flags end
+        elseif key == "points" or key == "hidden" or key == "text" then
+            local part, why = arrowPart(value, at, note, key == "points" and KIND.point or KIND.bool, key == "points")
+            if part == nil then note(at, why) elseif next(part) ~= nil then out[key] = part end
         else
             note(at, "not a part of the arrow layout this importer knows")
         end
@@ -734,23 +793,35 @@ local function FromFlow(flowDb, flowCharDb)
         dropped[#dropped + 1] = { key = label, why = why, reason = reason }
         record.counts[why] = record.counts[why] + 1
     end
-    local function note(label, reason) leave("malformed", label, reason) end
+    local function note(label, reason, why) leave(why or "malformed", label, reason) end
+    local vendorToConfirm = {}
 
     local function apply(row, value, label)
         if row.meta then return end
-        if row.drop then return leave("dropped", label, row.drop) end
+        if row.drop then
+            local alone = row.beside and getPath(flowDb, row.beside) == nil
+            return leave("dropped", label, alone and row.dropAlone or row.drop)
+        end
         local cleaned, why = KIND[row.as or (row.to:find("^learned%.") and "tree" or "any")](value, label, note)
         if cleaned == nil then return leave("malformed", label, why) end
         if type(cleaned) == "table" and next(cleaned) == nil then return end
-        put(row.char and out.char or out.account, row.to, cleaned)
-        local category = categoryOf(row.to)
-        record.counts[category] = record.counts[category] + size(cleaned)
+        local root = row.char and out.char or out.account
+        if row.yield and getPath(root, row.to) ~= nil then
+            return leave("superseded", label, "a newer Flow key holds this same choice; that one was used")
+        end
         if row.vendor then
             record.vendorChoices[row[1]] = cleaned
-            if row.flowDefault ~= nil and cleaned == row.flowDefault then
-                record.vendorSameAsFlowDefault[row[1]] = true
+            local sameAsDefault = row.flowDefault ~= nil and cleaned == row.flowDefault
+            if sameAsDefault then record.vendorSameAsFlowDefault[row[1]] = true end
+            if cleaned == true then
+                -- Found on: listed for the player to confirm, written nowhere.
+                vendorToConfirm[#vendorToConfirm + 1] = { key = row[1], to = row.to, sameAsFlowDefault = sameAsDefault }
+                return
             end
         end
+        put(root, row.to, cleaned)
+        local category = categoryOf(row.to)
+        record.counts[category] = record.counts[category] + size(cleaned)
     end
 
     -- One Flow path ("section" or "section.key") and the value found there.
@@ -825,8 +896,12 @@ local function FromFlow(flowDb, flowCharDb)
         if a.why ~= b.why then return a.why < b.why end
         return a.reason < b.reason
     end)
+    table.sort(vendorToConfirm, function(a, b) return a.key < b.key end)
     out.account.imports[1] = copy(record)
-    return { ok = true, account = out.account, char = out.char, dropped = dropped, record = record }
+    return {
+        ok = true, account = out.account, char = out.char, dropped = dropped, record = record,
+        vendorToConfirm = vendorToConfirm,
+    }
 end
 
 --------------------------------------------------------------------------------
@@ -884,8 +959,62 @@ local function shapeProblem(db, scope)
     return nil
 end
 
-local function Merge(existingAccount, existingChar, imported, defaults)
-    local report = { ok = true, added = {}, kept = {}, skipped = {}, counts = { added = 0, kept = 0, skipped = 0 } }
+local NOT_CONFIRMED = "a vendor automation Flow had on; the player did not confirm it, so it stays off"
+
+-- The import's account data with the vendor gate applied: a copy in which a
+-- vendor automation is on only where the player confirmed that one. An on
+-- counts as found whether it is in the list FromFlow made or was written
+-- into the settings some other way.
+local function gateVendor(imported, confirmed, report)
+    local account = copy(imported.account)
+    local found = {}
+    if type(imported.vendorToConfirm) == "table" then
+        for _, entry in ipairs(imported.vendorToConfirm) do
+            if type(entry) == "table" and type(entry.key) == "string" then found[entry.key] = true end
+        end
+    end
+    for i = 1, #MAP do
+        local row = MAP[i]
+        if row.vendor then
+            local parts = split(row.to)
+            local chain, at = {}, account
+            for depth = 1, #parts - 1 do
+                at = type(at) == "table" and at[parts[depth]] or nil
+                chain[depth] = at
+            end
+            if type(at) == "table" and at[parts[#parts]] == true then
+                found[row[1]] = true
+                at[parts[#parts]] = nil
+                -- Leave no empty table behind, below the section itself.
+                for depth = #parts - 1, 2, -1 do
+                    if next(chain[depth]) ~= nil then break end
+                    chain[depth - 1][parts[depth]] = nil
+                end
+            end
+        end
+    end
+    local record = {}
+    for _, key in ipairs(sortedKeys(found)) do
+        local row = ROW[key]
+        if row and row.vendor then
+            if type(confirmed) == "table" and confirmed[key] == true then
+                put(account, row.to, true)
+                record[key] = true
+                report.vendorConfirmed[#report.vendorConfirmed + 1] = key
+            else
+                report.vendorLeftOff[#report.vendorLeftOff + 1] = key
+                report.skipped[#report.skipped + 1] = { path = "account." .. row.to, reason = NOT_CONFIRMED }
+            end
+        end
+    end
+    return account, record
+end
+
+local function Merge(existingAccount, existingChar, imported, defaults, confirmed)
+    local report = {
+        ok = true, added = {}, kept = {}, skipped = {}, counts = { added = 0, kept = 0, skipped = 0 },
+        vendorConfirmed = {}, vendorLeftOff = {},
+    }
     local problem
     if type(imported) ~= "table" then
         problem = "there is no import result to merge"
@@ -899,6 +1028,8 @@ local function Merge(existingAccount, existingChar, imported, defaults)
         return copy(existingAccount), copy(existingChar), report
     end
 
+    local gated, vendorConfirmed = gateVendor(imported, confirmed, report)
+    local source = { account = gated, char = imported.char }
     local result = { account = copy(existingAccount) or {}, char = copy(existingChar) or {} }
     for _, scope in ipairs({ "account", "char" }) do
         local db, base = result[scope], skeleton(scope)
@@ -907,7 +1038,7 @@ local function Merge(existingAccount, existingChar, imported, defaults)
         end
         local scopeDefaults = type(defaults) == "table" and defaults[scope] or nil
         for _, name in ipairs(MERGED[scope]) do
-            local from = imported[scope][name]
+            local from = source[scope][name]
             if type(from) == "table" then
                 local sectionDefaults
                 if type(scopeDefaults) == "table" then sectionDefaults = scopeDefaults[name] end
@@ -921,6 +1052,7 @@ local function Merge(existingAccount, existingChar, imported, defaults)
 
     local record = copy(imported.record) or {}
     record.merge = copy(report.counts)
+    record.vendorConfirmed = vendorConfirmed
     local imports = result.account.imports
     imports[#imports + 1] = record
     return result.account, result.char, report
