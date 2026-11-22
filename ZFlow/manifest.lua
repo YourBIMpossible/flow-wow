@@ -33,6 +33,9 @@ return {
         "UI/MoveGuides.lua",
         "Core/Facts.lua",
         "UI/Export.lua",
+        "Items/PriceChart.lua",
+        "Items/HaveTip.lua",
+        "Gear/MerchantButtons.lua",
         "UI/CopyBox.lua",
         "UI/Advisor.lua",
         "UI/Setup.lua",
@@ -123,6 +126,9 @@ return {
         "Nav/TravelSpells.lua",
         "Nav/TravelIcon.lua",
         "Nav/Leaving.lua",
+        "Nav/FlightPaths.lua",
+        "Nav/MapFlights.lua",
+        "Nav/TaxiMark.lua",
         "UI/ProfCard.lua",
 
         -- On screen (after Nav: the panel uses its saved-point rules)
@@ -141,5 +147,9 @@ return {
     "UI/Arrow.lua",
     "UI/MinimapPin.lua",
     "UI/RotationIcon.lua",
+    "Rotation/Pulse.lua",
+    "Rotation/CastEdge.lua",
+    "Rotation/Audit.lua",
+    "Rotation/FormSpells.lua",
     },
 }
