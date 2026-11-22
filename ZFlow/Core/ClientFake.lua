@@ -1340,6 +1340,38 @@ function ns.make.fakeClient(opts)
     function c.setMounted(v)
         if v == nil then s.mounted = nil else s.mounted = v and true or false end
     end
+
+    -- S42: questItem(questID), itemCount(item), itemUse(item), all unknown
+    -- (nil) until set.
+    --   c.setQuestItem(questID, id, link)  id nil: the quest has none; link
+    --                                      defaults to "item:<id>"
+    --   c.setItemCount(item, n)            n nil: not known
+    --   c.setItemUse(item, true / false)   nil: not known
+    function c.questItem(questID)
+        local q = s.questItems and s.questItems[questID] or nil
+        if type(q) ~= "table" then return nil end
+        return { id = q.id, link = q.link }
+    end
+    function c.setQuestItem(questID, id, link)
+        s.questItems = s.questItems or {}
+        s.questItems[questID] = id and { id = id, link = link or ("item:" .. tostring(id)) } or nil
+    end
+    function c.itemCount(item)
+        if not s.itemCounts then return nil end
+        return s.itemCounts[item]
+    end
+    function c.setItemCount(item, n)
+        s.itemCounts = s.itemCounts or {}
+        s.itemCounts[item] = n
+    end
+    function c.itemUse(item)
+        if not s.itemUses then return nil end
+        return s.itemUses[item]
+    end
+    function c.setItemUse(item, v)
+        s.itemUses = s.itemUses or {}
+        if v == nil then s.itemUses[item] = nil else s.itemUses[item] = v and true or false end
+    end
     return c
 end
 
