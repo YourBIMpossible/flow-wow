@@ -118,4 +118,30 @@ return {
         c.setCorpse(nil)
         t.eq(c.corpse(), nil)
     end,
+
+    -- H3: the answer itself may be hidden. It is asked about before it is
+    -- compared or read.
+    ["corpse: a hidden answer is nil, and is not looked into (H3)"] = function(t)
+        local read = 0
+        local pos = setmetatable({}, { __index = function(_, k)
+            read = read + 1
+            if k == "x" then return 0.25 end
+            if k == "y" then return 0.75 end
+            return nil
+        end })
+        local env = corpseEnv(pos)
+        t.eq(ns.make.client(env).corpse(), { map = 1411, x = 0.25, y = 0.75 }, "not hidden: the place")
+        read = 0
+        env.issecretvalue = function(v) return v == pos end
+        t.eq(ns.make.client(env).corpse(), nil, "hidden: cannot tell")
+        t.eq(read, 0, "nothing of a hidden answer is read")
+        env.issecretvalue = function(v)
+            if v == pos then error("the client refused") end
+            return false
+        end
+        t.eq(ns.make.client(env).corpse(), nil, "the hidden check itself fails: treated as hidden")
+        env = corpseEnv(nil)
+        env.issecretvalue = function() return false end
+        t.eq(ns.make.client(env).corpse(), false, "a plain nothing, not hidden, is still false")
+    end,
 }
