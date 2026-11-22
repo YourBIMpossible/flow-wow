@@ -46,6 +46,10 @@ local function specProblem(spec)
     return nil
 end
 
+-- How many errors from one module's handlers, ticks and jobs, in one
+-- session, switch it off. A first guess, not a measured number.
+ns.FAULT_LIMIT = 5
+
 function ns.make.modules(k)
     local mods, order = {}, {}
     k.phase = "declare"
@@ -56,6 +60,42 @@ function ns.make.modules(k)
         k.bus:off(mod.spec.name)
         k.sched:off(mod.spec.name)
         k.problems:add("module", mod.spec.name, reason)
+    end
+
+    -- Repeated errors. The bus and the scheduler report each error of a
+    -- handler, tick or job here with its owner. The count is per owner, for
+    -- the session, and a success never lowers it. At FAULT_LIMIT a module
+    -- that is not already off is switched off, as turnOff does, and so is
+    -- every module that needs it, and theirs. It stays off until the next
+    -- load of the interface. An owner that is no module is counted only.
+    -- Nothing is said in chat: the reason is in k:ModuleState(name) and in
+    -- the problems list, kind "module".
+    local faults = {}
+
+    local function switchOff(mod, reason)
+        turnOff(mod, reason)
+        local name = mod.spec.name
+        for i = 1, #order do
+            local other = order[i]
+            if other.state ~= "off" then
+                local needs = other.spec.needs or {}
+                for j = 1, #needs do
+                    if needs[j] == name then
+                        switchOff(other, "needs " .. name .. ", which was switched off")
+                        break
+                    end
+                end
+            end
+        end
+    end
+
+    function k.fault(owner, err)
+        local n = (faults[owner] or 0) + 1
+        faults[owner] = n
+        if n ~= ns.FAULT_LIMIT then return end
+        local mod = mods[owner]
+        if not mod or mod.state == "off" then return end
+        switchOff(mod, "switched off after " .. n .. " errors; last: " .. tostring(err))
     end
 
     function k:Module(spec)
@@ -172,13 +212,22 @@ function ns.make.modules(k)
             for _, need in ipairs(mod.spec.needs or {}) do
                 if mods[need] and mods[need].state == "off" then blocked = need end
             end
-            if blocked then
-                turnOff(mod, "needs " .. blocked .. ", which did not start")
-            elseif mod.spec.start then
-                local ok, err = k.meter:run(name, "start", nil, mod.spec.start, mod.ctx)
-                if ok then mod.state = "started" else turnOff(mod, "start failed: " .. tostring(err)) end
-            else
-                mod.state = "started"
+            -- A module already off was switched off by its errors while
+            -- earlier modules started: it is not started, and its reason
+            -- stands. The same if that happens during its own start.
+            if mod.state ~= "off" then
+                if blocked then
+                    turnOff(mod, "needs " .. blocked .. ", which did not start")
+                elseif mod.spec.start then
+                    local ok, err = k.meter:run(name, "start", nil, mod.spec.start, mod.ctx)
+                    if not ok then
+                        turnOff(mod, "start failed: " .. tostring(err))
+                    elseif mod.state ~= "off" then
+                        mod.state = "started"
+                    end
+                else
+                    mod.state = "started"
+                end
             end
         end
 
