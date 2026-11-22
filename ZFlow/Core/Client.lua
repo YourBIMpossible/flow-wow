@@ -111,12 +111,12 @@ function ns.make.client(env)
         return ok and tonumber(t) or 0
     end
 
-    -- The date: seconds since 1970 by the server's clock, the same clock in
-    -- every session (now() starts again with the client). nil when not
-    -- known, never now() in its place. GetServerTime is a first guess on
-    -- 16001: not seen in game.
-    function c.date()
-        local ok, t = call(env.GetServerTime)
+    -- The wall clock: seconds since 1970, the same clock in every session
+    -- (now() starts again with the client), so a time that is saved comes
+    -- from here. nil when not known, never now() or 0 in its place. time()
+    -- is a first guess on 16001: not seen in game.
+    function c.clock()
+        local ok, t = call(env.time)
         if not ok or type(t) ~= "number" or t ~= t or t <= 0 or t == math.huge then return nil end
         return t
     end

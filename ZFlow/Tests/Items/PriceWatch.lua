@@ -2,7 +2,7 @@ local _, ns = ...
 
 -- Tests for ZFlow/Items/PriceWatch.lua: the module over the fake client,
 -- one run over the real client with a hand-built environment, and the
--- client's date read. Not tested in game.
+-- client's clock read. Not tested in game.
 
 local W = ns.PriceWatch
 local P = ns.Prices
@@ -28,7 +28,7 @@ local function start(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
     c.setSaved(ns.id.accountDB, opts.saved or {})
-    if opts.date ~= false then c.setDate(opts.date or 5000) end
+    if opts.date ~= false then c.setClock(opts.date or 5000) end
     c.setMerchant(opts.rows or stock())
     if opts.predecessor then c.setLoaded(ns.id.predecessor, true) end
     local k = ns.Kernel({}, opts.wrap and opts.wrap(c) or c)
@@ -101,7 +101,7 @@ tests["price watch: a second show without new rows changes nothing"] = function(
 
     -- A merchant with nothing on sale, and a window that cannot be read.
     c.setMerchantOpen(false)
-    c.setDate(6000)
+    c.setClock(6000)
     c.setMerchant({})
     c.setMerchantOpen(true)
     t.eq(book(c), before, "an empty window changed the book")
@@ -121,7 +121,7 @@ tests["price watch: the same rows on a later date move only the date"] = functio
     login(c)
     c.setMerchantOpen(true)
     c.setMerchantOpen(false)
-    c.setDate(7000)
+    c.setClock(7000)
     c.setMerchantOpen(true)
     t.eq(w.last().seenAt, 7000)
     t.eq(book(c), { vendor = {
@@ -167,7 +167,7 @@ tests["price watch: no date records nothing and the kept report says why"] = fun
     -- The uptime clock is there (1000 on the fake) and was not used in its place.
     t.eq(c.now(), 1000)
     c.setMerchantOpen(false)
-    c.setDate(5000)
+    c.setClock(5000)
     c.setMerchantOpen(true)
     t.eq(w.last().ok, true, "the next show, with a date, was not read")
     t.eq(P.Get(book(c), 2318, "vendor").seenAt, 5000)
@@ -189,7 +189,7 @@ tests["price watch: one reading, without the kernel"] = function(t)
     local c = ns.make.fakeClient()
     c.setMerchant(stock())
     c.setMerchantOpen(true)
-    c.setDate(5000)
+    c.setClock(5000)
     local saved = {}
     local store = { table = function() return saved end }
     local report = W.Show(c, store)
@@ -209,12 +209,12 @@ tests["price watch: one reading, without the kernel"] = function(t)
     end })
     t.eq(W.Show(noBook, { table = function() return nil end }).reason, "no price book")
     t.eq(W.Show(noBook, nil).reason, "no price book")
-    c.setDate(nil)
+    c.setClock(nil)
     t.eq(W.Show(noBook, store).reason, "no date for the reading")
-    c.setDate("today")
+    c.setClock("today")
     t.eq(W.Show(noBook, store).reason, "no date for the reading")
     t.eq(asked, 0, "the window was read with no book or no date to take it")
-    t.eq(W.Show({ merchantItems = c.merchantItems }, store).reason, "this client has no date read")
+    t.eq(W.Show({ merchantItems = c.merchantItems }, store).reason, "this client has no clock read")
     t.eq(W.Show(nil, store).reason, "this client has no merchant read")
     t.eq(W.Show({}, store).ok, false)
 end
@@ -243,7 +243,7 @@ tests["price watch: no buy or sell name is looked up"] = function(t)
     c.setMerchantOpen(true)
     t.eq(#w.last().recorded, 2, "the read did not go through the watcher")
     t.eq(asked.merchantItems, true)
-    t.eq(asked.date, true)
+    t.eq(asked.clock, true)
     for name in pairs(asked) do
         local lower = tostring(name):lower()
         for _, word in ipairs({ "buy", "sell", "pickup", "repair", "click" }) do
@@ -258,7 +258,7 @@ tests["price watch: no buy or sell name is looked up"] = function(t)
 end
 
 -- A hand-built game environment: frames for events, a merchant selling
--- one item, a server clock, and buy / sell functions that count calls.
+-- one item, a wall clock, and buy / sell functions that count calls.
 local function gameEnv()
     local env = { frames = {}, acted = 0 }
     function env.CreateFrame()
@@ -274,7 +274,7 @@ local function gameEnv()
             if f.events[event] and f.scripts.OnEvent then f.scripts.OnEvent(f, event, ...) end
         end
     end
-    env.GetServerTime = function() return 1700000000 end
+    env.time = function() return 1700000000 end
     env.GetMerchantNumItems = function() return 1 end
     env.GetMerchantItemLink = function() return "item:2318" end
     env.GetMerchantItemInfo = function() return "name", 1, 60, 1, -1, true, true, false end
@@ -318,33 +318,33 @@ tests["price watch: over the real client the window is known open when the show 
     t.eq(w.shows(), 1, "the close was read as a show")
 end
 
-tests["client: the date is the server's clock, or not known"] = function(t)
+tests["client: the wall clock is time(), or not known"] = function(t)
     local env = {}
     local c = ns.make.client(env)
-    t.eq(c.date(), nil, "a client with no clock gave a date")
-    env.GetServerTime = function() return 1700000000 end
-    t.eq(c.date(), 1700000000)
+    t.eq(c.clock(), nil, "a client with no clock gave a time")
+    env.time = function() return 1700000000 end
+    t.eq(c.clock(), 1700000000)
     env.GetTime = function() return 12.5 end
-    t.eq(c.date(), 1700000000, "the uptime clock was taken for the date")
+    t.eq(c.clock(), 1700000000, "the uptime clock was taken for the wall clock")
     for _, bad in ipairs({ 0, -5, "1700000000", 0 / 0, math.huge, true }) do
-        env.GetServerTime = function() return bad end
-        t.eq(c.date(), nil, "taken for a date: " .. tostring(bad))
+        env.time = function() return bad end
+        t.eq(c.clock(), nil, "taken for a time: " .. tostring(bad))
     end
-    env.GetServerTime = function() return nil end
-    t.eq(c.date(), nil)
-    env.GetServerTime = function() error("no") end
-    t.eq(c.date(), nil)
+    env.time = function() return nil end
+    t.eq(c.clock(), nil)
+    env.time = function() error("no") end
+    t.eq(c.clock(), nil)
 end
 
-tests["fake client: the date is what the test set, and not known before"] = function(t)
+tests["fake client: the wall clock is what the test set, and not known before"] = function(t)
     local c = ns.make.fakeClient()
-    t.eq(c.date(), nil)
-    c.setDate(5000)
-    t.eq(c.date(), 5000)
+    t.eq(c.clock(), nil)
+    c.setClock(5000)
+    t.eq(c.clock(), 5000)
     c.advance(10)
-    t.eq(c.date(), 5000, "the date moved with the uptime clock")
-    c.setDate(nil)
-    t.eq(c.date(), nil)
+    t.eq(c.clock(), 5000, "the wall clock moved with the uptime clock")
+    c.setClock(nil)
+    t.eq(c.clock(), nil)
 end
 
 return tests

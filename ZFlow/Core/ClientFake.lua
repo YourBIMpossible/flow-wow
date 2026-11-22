@@ -5,7 +5,7 @@
 --
 --   local c = ns.make.fakeClient{ now = 50 }
 --   c.advance(1.0, 10)      -- one second in ten frames
---   c.setDate(1700000000)   -- the date; not known until set
+--   c.setClock(1700000000)  -- the wall clock; not known until set
 --   c.fire("SOME_EVENT", 1) -- to everything that listens
 --   c.setCombat(true)       -- also fires the combat start / end event
 --   c.setLoaded("Name", true); c.setSaved("NameDB", {...}); c.burn(5)
@@ -57,7 +57,7 @@ function ns.make.fakeClient(opts)
 
     -- the client surface
     function c.now() return s.t end
-    function c.date() return s.date end
+    function c.clock() return s.clock end
     function c.clockMs() return s.ms end
     function c.print(text) c.printed[#c.printed + 1] = tostring(text) end
     function c.listen(event, fn) return events.add(event, fn) end
@@ -257,9 +257,9 @@ function ns.make.fakeClient(opts)
         end
     end
     function c.fire(event, ...) events.call(event, ...) end
-    -- The date date() gives; nil: the client will not say. advance() does
-    -- not move it.
-    function c.setDate(seconds) s.date = seconds end
+    -- What clock() gives; nil: the client will not say. advance() does not
+    -- move it.
+    function c.setClock(seconds) s.clock = seconds end
     function c.setCombat(on)
         on = on and true or false
         if on == s.combat then return end

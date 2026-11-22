@@ -3,9 +3,9 @@ local _, ns = ...
 -- PriceWatch: the module that reads a merchant window when it opens.
 --
 -- On each MERCHANT_SHOW (through the kernel's bus) the open window is read
--- once into the saved price book, stamped with the client's date:
--- PriceObserve.FromClient(client, PriceObserve.Book(store), client.date()).
--- Nothing is printed. With no book or no date nothing is recorded, and the
+-- once into the saved price book, dated with the client's wall clock:
+-- PriceObserve.FromClient(client, PriceObserve.Book(store), client.clock()).
+-- Nothing is printed. With no book or no clock nothing is recorded, and the
 -- report kept here says why.
 --
 --   PriceWatch.Show(client, store) -> report     one reading; what the module runs
@@ -17,12 +17,12 @@ local _, ns = ...
 --   report = what PriceObserve.FromClient gives ({ ok, reason, recorded,
 --            skipped }) plus seenAt, the date stamped (nil when not known).
 --
--- The date is client.date(): the same clock in every session, so a reading
+-- The date is client.clock(): the same clock in every session, so a reading
 -- of a later session is never taken for an older one. client.now() starts
 -- again with the client and is not used.
 --
 -- This only reads. Nothing here or in what it calls buys, sells or clicks.
--- Not tested in game: MERCHANT_SHOW and the date read are first guesses.
+-- Not tested in game: MERCHANT_SHOW and the clock read are first guesses.
 
 local PriceWatch = ns.PriceWatch or {}
 ns.PriceWatch = PriceWatch
@@ -30,7 +30,7 @@ ns.PriceWatch = PriceWatch
 PriceWatch.NAME = "priceWatch"
 PriceWatch.EVENT = "MERCHANT_SHOW"
 
-local NO_DATE_READ = "this client has no date read"
+local NO_DATE_READ = "this client has no clock read"
 local NO_OBSERVE = "the price reading is not loaded"
 
 -- One reading of the open merchant window into the store's price book.
@@ -40,8 +40,8 @@ function PriceWatch.Show(client, store)
         return { ok = false, reason = NO_OBSERVE, recorded = {}, skipped = {} }
     end
     local seenAt
-    if type(client) == "table" and type(client.date) == "function" then
-        seenAt = client.date()
+    if type(client) == "table" and type(client.clock) == "function" then
+        seenAt = client.clock()
         if type(seenAt) ~= "number" or seenAt ~= seenAt then seenAt = nil end
     elseif type(client) == "table" and type(client.merchantItems) == "function" then
         return { ok = false, reason = NO_DATE_READ, recorded = {}, skipped = {} }
