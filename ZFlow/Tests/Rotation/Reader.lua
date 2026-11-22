@@ -117,6 +117,6 @@ return {
         t.eq(s.spells.Wrath.usable, false)
         t.eq(s.spells.Moonfire.usable, nil)
         t.eq(s.spells.Moonfire.noPower, nil)
-        t.eq(s.finisherReady, false, "no source yet")
+        t.eq(s.finisherReady, nil, "no source yet: not known, not no")
     end,
 }

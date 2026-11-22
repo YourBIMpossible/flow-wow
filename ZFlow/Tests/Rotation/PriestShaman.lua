@@ -22,7 +22,7 @@ local function asSet(list)
 end
 
 local function snap()
-    return { role = "dps", hostile = true, inCombat = true, attacking = true, health = 0.2, mana = 1,
+    return { role = "dps", hostile = true, inCombat = true, dead = false, attacking = true, health = 0.2, mana = 1,
              current = {}, spells = {}, buffs = {}, debuffs = {} }
 end
 

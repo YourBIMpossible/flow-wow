@@ -11,7 +11,7 @@ local READY = { ["Devotion Aura"] = true, ["Blessing of Might"] = true, ["Seal o
 
 -- An enemy targeted, in the fight, already swinging, aura, blessing and seal up.
 local function snap(over, knows, buffs)
-    local s = { role = "dps", hostile = true, inCombat = true, attacking = true,
+    local s = { role = "dps", hostile = true, inCombat = true, dead = false, attacking = true,
                 current = { Attack = true, ["Auto Attack"] = true }, spells = {}, buffs = buffs or READY }
     for _, name in ipairs(knows or ALL) do s.spells[name] = { known = true } end
     for k, v in pairs(over or {}) do s[k] = v end
@@ -156,6 +156,8 @@ return {
         local s = snap({ fightType = "aoe" })
         s.spells["Hammer of Wrath"].usable = false
         t.eq(ns.Choose(s, ns.Packs.PALADIN).spell, "Holy Wrath", "fighting")
+        s.inCombat = nil
+        t.eq(ns.Choose(s, ns.Packs.PALADIN).spell, "Holy Wrath", "not known whether the fight is on: as in the fight")
         s.inCombat = false
         t.eq(ns.Choose(s, ns.Packs.PALADIN).spell, "Judgement", "before the pull")
     end,

@@ -5,7 +5,7 @@ local _, ns = ...
 --
 --   ns.SnapshotOf(fields) -> snapshot, ignored
 --     A complete snapshot from a table of fields. Missing fields take the
---     default below; tables are copied, so the snapshot shares nothing with
+--     default below (a flag not given stays nil: not known is not "no"); tables are copied, so the snapshot shares nothing with
 --     what it was given. ignored: the sorted names of fields it does not
 --     know (they are left out, not guessed at).
 --
@@ -19,7 +19,7 @@ local _, ns = ...
 ns.Rotation = ns.Rotation or {}
 local R = ns.Rotation
 
--- kind: "flag" (true or false), "value" (kept as given, nil when not given),
+-- kind: "flag" (true or false, nil when not given), "value" (kept as given, nil when not given),
 -- "number" (a number, else nil: an unread number stays unknown, never 0),
 -- "map" (a table of plain values, copied), "spells" (the spell rows).
 R.SNAPSHOT_FIELDS = {
@@ -81,7 +81,10 @@ local function copySpells(t)
 end
 
 local function shape(kind, v)
-    if kind == "flag" then return v and true or false end
+    if kind == "flag" then
+        if v == nil then return nil end
+        return v and true or false
+    end
     if kind == "number" then return type(v) == "number" and v or nil end
     if kind == "map" then return copyMap(v) end
     if kind == "spells" then return copySpells(v) end

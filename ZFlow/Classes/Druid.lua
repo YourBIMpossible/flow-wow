@@ -51,7 +51,10 @@ end
 local function missingOnTarget(s, name)
     return not (s.targetDebuffs and s.targetDebuffs[name])
 end
-local function fight(s) return (s.hostile or s.inCombat) and true or false end
+-- A fight on, or not known (ns.Rotation.InFight); known to be out of one.
+local function inFight(s) return ns.Rotation.InFight(s) end
+local function outOfFight(s) return ns.Rotation.OutOfFight(s) end
+local function fight(s) return (s.hostile == true or inFight(s)) and true or false end
 
 -- A tank, a fight to take (enemy targeted or in combat), not in Bear yet.
 function ns.DruidWantsBear(role, fightNow, bear)
@@ -80,9 +83,9 @@ end
 
 local buffs = tag({
     { spell = "Mark of the Wild", kind = "buff", reason = "Mark of the Wild missing or running out",
-      when = function(s) return not s.inCombat and caster(s) and needBuff(s, "Mark of the Wild", 60) end },
+      when = function(s) return outOfFight(s) and caster(s) and needBuff(s, "Mark of the Wild", 60) end },
     { spell = "Thorns", kind = "buff", reason = "Thorns missing or running out",
-      when = function(s) return not s.inCombat and caster(s) and needBuff(s, "Thorns", 30) end },
+      when = function(s) return outOfFight(s) and caster(s) and needBuff(s, "Thorns", 30) end },
     { spell = "Dire Bear Form", kind = "buff", reason = "Tanking: Bear Form",
       when = function(s) return ns.DruidWantsBear(s.role, fight(s), inBear(s)) end },
     { spell = "Bear Form", kind = "buff", reason = "Tanking: Bear Form",
@@ -93,7 +96,7 @@ local buffs = tag({
       evidence = "authored", provenance = CAT_PROVENANCE,
       when = function(s) return ns.DruidWantsCat(s.role, fight(s), s.form, s.tree) end },
     { spell = "Prowl", kind = "buff", reason = "Prowl before you pull: your key then holds your opener from stealth",
-      when = function(s) return not s.inCombat and s.hostile and inCat(s) and not stealthed(s) end },
+      when = function(s) return outOfFight(s) and s.hostile and inCat(s) and not stealthed(s) end },
 })
 
 local melee = tag({
@@ -125,7 +128,7 @@ local cat = tag({
 
 local bear = tag({
     { spell = "Demoralizing Roar", reason = "Weaken what is hitting you",
-      when = function(s) return s.inCombat and s.hostile and inBear(s) and missingOnTarget(s, "Demoralizing Roar") end },
+      when = function(s) return inFight(s) and s.hostile and inBear(s) and missingOnTarget(s, "Demoralizing Roar") end },
     { spell = "Maul", target = true, reason = "Maul on your next swing",
       when = function(s) return s.hostile and inBear(s) and not current(s, "Maul") end },
 })
@@ -138,13 +141,13 @@ local bearAoe = tag({
 local roots = tag({
     { spell = "Nature's Grasp", kind = "buff", reason = "It is hitting you: Nature's Grasp may root it on its next hit",
       when = function(s)
-          return s.inCombat and s.hostile and caster(s) and s.targetMelee and s.targetOnYou and s.hittingYou
+          return inFight(s) and s.hostile and caster(s) and s.targetMelee and s.targetOnYou and s.hittingYou
               and missingOnTarget(s, "Entangling Roots") and needBuff(s, "Nature's Grasp", 0)
       end },
     { spell = "Entangling Roots", target = true, reason = "Root it before it reaches you, then cast",
       when = function(s)
           return s.hostile and caster(s) and s.targetMelee and missingOnTarget(s, "Entangling Roots")
-              and (not s.inCombat or s.targetOnYou)
+              and (outOfFight(s) or s.targetOnYou == true)
       end },
 })
 

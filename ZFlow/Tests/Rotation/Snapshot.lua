@@ -1,12 +1,13 @@
 local _, ns = ...
 
 return {
-    ["nothing given: flags are false, maps are empty, numbers stay unknown"] = function(t)
+    ["nothing given: flags and numbers stay unknown, maps are empty"] = function(t)
         local s, ignored = ns.SnapshotOf(nil)
-        t.eq(s.inCombat, false, "inCombat")
-        t.eq(s.stealthed, false, "stealthed")
-        t.eq(s.lowHealth, false, "lowHealth")
-        t.eq(s.finisherReady, false, "finisherReady")
+        t.eq(s.inCombat, nil, "inCombat is unknown, not no")
+        t.eq(s.dead, nil, "dead is unknown, not no")
+        t.eq(s.stealthed, nil, "stealthed")
+        t.eq(s.lowHealth, nil, "lowHealth")
+        t.eq(s.finisherReady, nil, "finisherReady")
         t.eq(s.hurt, nil, "hurt is unknown, not 0")
         t.eq(s.form, nil, "form")
         t.eq(s.buffs, {}, "buffs")
@@ -89,14 +90,14 @@ return {
         t.eq(s.inCombat, true, "inCombat")
         t.eq(s.hurt, 8, "hurt")
         t.eq(s.buffs, { Thorns = true }, "buffs")
-        t.eq(s.hostile, false, "a field the reader did not answer")
+        t.eq(s.hostile, nil, "a field the reader did not answer stays unknown")
     end,
 
     ["Snapshot without a reader is the empty snapshot"] = function(t)
         t.eq(ns.Snapshot(nil), ns.SnapshotOf({}), "no reader")
         t.eq(ns.Snapshot("reader"), ns.SnapshotOf({}), "not a function")
         -- The empty snapshot spelled out here, field by field, from the kinds.
-        local empty = { flag = false, map = {}, spells = {} }   -- value and number: nil
+        local empty = { map = {}, spells = {} }   -- flag, value and number: nil
         for _, reader in ipairs({ false, "reader" }) do
             local s = ns.Snapshot(reader or nil)
             local label = reader and "not a function" or "no reader"
@@ -130,8 +131,8 @@ return {
     end,
 
     ["the chooser takes a built snapshot"] = function(t)
-        local suggestion, trace = ns.Choose(ns.SnapshotOf({}), ns.Packs.DRUID, {}, nil)
-        t.eq(suggestion, nil, "nothing to suggest from an empty snapshot")
+        local suggestion, trace = ns.Choose(ns.SnapshotOf({ dead = false }), ns.Packs.DRUID, {}, nil)
+        t.eq(suggestion, nil, "nothing to suggest when alive is all that is known")
         t.ok(type(trace) == "table" and #trace > 0, "a trace comes back")
         -- Taken, not refused: every step looked at it. A refused input gives
         -- one "input" row instead.
@@ -147,7 +148,7 @@ return {
         t.eq(refused, { { step = "input", result = "skip", note = "no snapshot or no pack" } },
             "and that is the refusal the empty snapshot did not get")
         -- A built snapshot with something to do gives a suggestion.
-        local built = ns.SnapshotOf({ role = "tank", hostile = true, attacking = true,
+        local built = ns.SnapshotOf({ role = "tank", hostile = true, attacking = true, dead = false, inCombat = false,
             spells = { ["Bear Form"] = { known = true } } })
         local pick, why = ns.Choose(built, ns.Packs.DRUID, {}, nil)
         t.ok(type(pick) == "table", "a tank with an enemy targeted is given something")

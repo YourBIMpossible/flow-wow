@@ -63,6 +63,7 @@ return {
         "Nav/Bearing.lua",
         "Nav/ArrowView.lua",
         "Nav/ArrowMotion.lua",
+        "Nav/ArrowStyles.lua",
         "Nav/Guide.lua",
         "Nav/GuideRead.lua",
         "Nav/ViewState.lua",
