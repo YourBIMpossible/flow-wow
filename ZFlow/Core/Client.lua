@@ -3085,7 +3085,26 @@ function ns.make.client(env)
     -- the UIPanelButtonTemplate look, GameTooltip for the tip.
     -- IsProtected and UIPanelButtonTemplate checked on warcraft.wiki.gg and
     -- in the public name lists of Ketho/BlizzardInterfaceResources (forever
-    -- branch). The GameTooltip methods need game test.
+    -- branch).
+    -- Section 130, each name and its arguments read on warcraft.wiki.gg:
+    --   CreateFrame(frameType, name, parent, template)   (API CreateFrame)
+    --   ScriptRegion:IsProtected() -> isProtected, isProtectedExplicitly
+    --   InCombatLockdown() -> a true / false
+    --   Button:RegisterForClicks("LeftButtonUp"): a listed word, and the
+    --     one a button has when never told
+    --   Button:SetText(text); SetSize(width, height), SetWidth, SetHeight
+    --   SetPoint(point, relativeTo, relativePoint, offsetX, offsetY)
+    --   OnClick(self, button, down); OnEnter and OnLeave(self, motion)
+    --   GameTooltip:SetOwner(owner, anchor), "ANCHOR_RIGHT" a listed word
+    --   GameTooltip:SetText(text)
+    -- The template has no page of its own there; the pages for CreateFrame
+    -- and RegisterForClicks use it by this name.
+    -- Needs game test: GameTooltip:IsOwned (no page; named only as
+    -- IsOwned(frame) -> true / false on the SetOwner page); whether
+    -- IsProtected answers plainly on this client (its page marks the answer
+    -- as one the client may hide, and a hidden answer makes no button);
+    -- SetNormalFontObject with a font name (the page lists string or Font,
+    -- no more; used only when the template is missing).
     function c.windowButton(frameName, spec)
         if type(frameName) ~= "string" or frameName == "" or type(spec) ~= "table" then return nil end
         local frame = env[frameName]
