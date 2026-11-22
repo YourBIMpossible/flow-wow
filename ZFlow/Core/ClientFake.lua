@@ -789,6 +789,30 @@ function ns.make.fakeClient(opts)
     function c.optionsAct(key, value)
         if s.options and type(s.options.act) == "function" then return s.options.act(key, value) end
     end
+    -- S28 sound restart: setSound{ ways = { name, ... }, fail = text or nil,
+    -- noEvent = true } and speakersChanged() to play the game's event.
+    -- restarted() counts the restarts made, with byHand for each.
+    function c.setSound(cfg) s.sound = cfg or {} end
+    function c.soundWays() return (s.sound and s.sound.ways) or {} end
+    function c.restartSound(byHand)
+        s.restarts = s.restarts or {}
+        local cfg = s.sound or {}
+        if cfg.fail then return false, cfg.fail end
+        local ways = cfg.ways or {}
+        if #ways == 0 then return false, "this game gives add-ons no way to restart its sound" end
+        s.restarts[#s.restarts + 1] = { byHand = byHand == true }
+        return true, ways[1]
+    end
+    function c.restarted() return s.restarts or {} end
+    function c.watchSoundDevices(fn)
+        if type(fn) ~= "function" or (s.sound and s.sound.noEvent) then return nil end
+        s.soundWatchers = s.soundWatchers or {}
+        table.insert(s.soundWatchers, fn)
+        return true
+    end
+    function c.speakersChanged()
+        for _, fn in ipairs(s.soundWatchers or {}) do fn() end
+    end
     function c.setTrainer(r)
         s.trainer = r and { profession = r.profession, npc = r.npc, services = r.services, filter = r.filter } or nil
     end

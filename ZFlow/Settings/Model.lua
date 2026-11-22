@@ -71,6 +71,9 @@ M.ROWS = {
     -- spec.role: the role the player chose (Rotation/Role.lua): "", "dps",
     -- "heal" or "tank". Empty: none chosen.
     { key = "spec.role", type = "string", default = "" },
+    -- nav.flightPaths: flight paths, learned from the player's own flight
+    -- maps and shown as route steps (Nav/FlightPaths.lua). On by default.
+    { key = "nav.flightPaths", type = "bool", default = true },
 }
 
 -- ---------------------------------------------------------------- helpers

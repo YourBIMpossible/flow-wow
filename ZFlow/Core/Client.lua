@@ -3754,6 +3754,57 @@ function ns.make.client(env)
         return h
     end
 
+    ---------------------------------------------------------------------
+    -- S28 sound restart (Plexy, LEDGER 143; WoW/from-plexy/
+    -- RESEARCH-sound-restart.md). Ported from legacy Flow's Modules/Sound.lua,
+    -- which ran on this client: Sound_GameSystem_RestartSoundSystem, and
+    -- ConsoleExec("Sound_RestartSoundSystem") only when the player asked by
+    -- hand (a console the game keeps for itself gives one "blocked" message
+    -- the player asked for, never one each time the screen sleeps); the
+    -- SOUND_DEVICE_UPDATE event when the speakers change. Not seen by Z-Flow
+    -- in game: needs a game test.
+    --
+    --   c.soundWays(byHand) -> { name, ... }   the ways this client offers
+    --   c.restartSound(byHand) -> true, how | false, why
+    --   c.watchSoundDevices(fn) -> true when the client takes the event, else
+    --     nil; fn() each time the game says its list of speakers changed
+    local function soundWays(byHand)
+        local out = {}
+        if type(env.Sound_GameSystem_RestartSoundSystem) == "function" then
+            out[#out + 1] = { name = "Sound_GameSystem_RestartSoundSystem", fn = env.Sound_GameSystem_RestartSoundSystem }
+        end
+        if byHand and type(env.ConsoleExec) == "function" then
+            local exec = env.ConsoleExec
+            out[#out + 1] = { name = "the console's Sound_RestartSoundSystem",
+                fn = function() return exec("Sound_RestartSoundSystem") end }
+        end
+        return out
+    end
+    function c.soundWays(byHand)
+        local names = {}
+        for i, w in ipairs(soundWays(byHand)) do names[i] = w.name end
+        return names
+    end
+    function c.restartSound(byHand)
+        local tried = {}
+        for _, w in ipairs(soundWays(byHand)) do
+            local ok, err = pcall(w.fn)
+            if ok then return true, w.name end
+            tried[#tried + 1] = w.name .. ": " .. tostring(err)
+        end
+        if #tried > 0 then return false, table.concat(tried, "; ") end
+        return false, "this game gives add-ons no way to restart its sound"
+    end
+    function c.watchSoundDevices(fn)
+        if type(fn) ~= "function" then return nil end
+        local cancel = events.add("SOUND_DEVICE_UPDATE", function() pcall(fn) end)
+        if unregistered["SOUND_DEVICE_UPDATE"] then
+            cancel()
+            return nil
+        end
+        return true
+    end
+
     -- F7 probe (Plexy, LEDGER 134; WoW/from-plexy/RESEARCH-fight-log.md): two
     -- narrow reads for /zflow fights probe, so one game session settles what
     -- this client gives the fight log instead of the combat log.
