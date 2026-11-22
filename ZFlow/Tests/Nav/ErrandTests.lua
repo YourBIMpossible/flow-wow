@@ -173,7 +173,7 @@ T["errand: stop vendor points the quest arrow at the nearest vendor seen"] = fun
     say(c, "vendor")
     t.eq(e.stop().name, "Kaita Deepforge")
     t.eq(c.arrows[1].shown, true)
-    t.eq(c.arrows[1].lines, { "Vendor: Kaita Deepforge", "100 yd" })
+    t.eq(c.arrows[1].lines, { "Vendor: Kaita Deepforge", "100 yd N" })
     t.ok(has(last(c), "Vendor Kaita Deepforge"), last(c))
     t.ok(has(last(c), "100 yd"), last(c))
     t.eq(k.use(E.NAME).Stop().kind, "vendor")
@@ -184,17 +184,17 @@ T["errand: each word asks for its kind"] = function(t)
     local _, c, e = start({ services = services() })
     say(c, "bank")
     t.eq(e.stop().name, "Banker Olivia")
-    t.eq(c.arrows[1].lines, { "Bank: Banker Olivia", "250 yd" })
+    t.eq(c.arrows[1].lines, { "Bank: Banker Olivia", "250 yd E" })
     say(c, "REPAIR")
     t.eq(e.stop().kind, "repair")
-    t.eq(c.arrows[1].lines, { "Repair: Kaita Deepforge", "100 yd" })
+    t.eq(c.arrows[1].lines, { "Repair: Kaita Deepforge", "100 yd N" })
 end
 
 T["errand: stop trainer points at the nearest trainer seen"] = function(t)
     local _, c, e = start({ npcs = { ["Tognus Flintfire"] = trainer(0.5, 0.3, { trains = { Blacksmithing = true } }) } })
     say(c, "trainer")
     t.eq(e.stop().key, "Tognus Flintfire")
-    t.eq(c.arrows[1].lines, { "Trainer: Tognus Flintfire", "100 yd" })
+    t.eq(c.arrows[1].lines, { "Trainer: Tognus Flintfire", "100 yd N" })
 end
 
 T["errand: a kind never seen on this map changes nothing and says so"] = function(t)
@@ -204,7 +204,7 @@ T["errand: a kind never seen on this map changes nothing and says so"] = functio
     t.eq(e.stop().kind, "vendor", "the stop chosen before stays")
     t.ok(has(last(c), "no flight"), last(c))
     t.ok(has(last(c), "Nothing changed"), last(c))
-    t.eq(c.arrows[1].lines, { "Vendor: Kaita Deepforge", "100 yd" })
+    t.eq(c.arrows[1].lines, { "Vendor: Kaita Deepforge", "100 yd N" })
 end
 
 T["errand: stop off takes the stop off the arrow"] = function(t)
@@ -238,9 +238,9 @@ T["errand: the own waypoint of the player wins over the stop"] = function(t)
     local _, c = start({ services = services() })
     say(c, "bank")
     c.slashes[ns.id.slash]("way 50 30 mine")
-    t.eq(c.arrows[1].lines, { "mine", "100 yd" })
+    t.eq(c.arrows[1].lines, { "mine", "100 yd N" })
     c.slashes[ns.id.slash]("way clear")
-    t.eq(c.arrows[1].lines, { "Bank: Banker Olivia", "250 yd" }, "the stop again")
+    t.eq(c.arrows[1].lines, { "Bank: Banker Olivia", "250 yd E" }, "the stop again")
 end
 
 T["errand: the stop is kept in memory only"] = function(t)

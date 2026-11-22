@@ -56,6 +56,22 @@ function N.Bearing(from, to, link)
     return { known = true, distance = distance, bearing = bearing, east = east, south = south }
 end
 
+-- The compass word for a bearing (G40): which of eight points it is nearest.
+-- Each point takes the eighth of the circle around it. These are the words
+-- a player reads beside a distance; authored here.
+N.COMPASS = { "N", "NE", "E", "SE", "S", "SW", "W", "NW" }
+
+-- bearing: radians clockwise from north, as N.Bearing gives it. Any whole
+-- turns over are taken off.
+-- -> one of N.COMPASS; nil when the bearing is not a finite number (so a
+-- place with no direction to it has no word).
+function N.Compass(bearing)
+    if not finite(bearing) then return nil end
+    local eighth = math.pi / 4
+    local i = math.floor(bearing / eighth + 0.5) % 8
+    return N.COMPASS[i + 1]
+end
+
 -- How far an arrow turns to point along a bearing, for a player facing
 -- `facing` (radians anticlockwise from north, as the client reports it).
 -- -> radians anticlockwise from straight up, in (-pi, pi]; nil when either

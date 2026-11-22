@@ -53,7 +53,7 @@ return {
         way(c, "50 30")
         local q = c.arrows[1]
         t.eq(q.shown, true)
-        t.eq(q.lines, { N.WAYPOINT_LABEL, "100 yd" })
+        t.eq(q.lines, { N.WAYPOINT_LABEL, "100 yd N" })
         t.eq(saved(k), { map = 1411, x = 0.5, y = 0.3 })
         t.ok(has(last(c), "waypoint set: 50.0, 30.0"), last(c))
         t.ok(has(last(c), ns.id.title), "said under the addon's title")
@@ -64,7 +64,7 @@ return {
         local k, c = start()
         if type(c.slashes["/way"]) ~= "function" then t.ok(false, "no /way") return end
         way(c, "50 30 Bank Vault")
-        t.eq(c.arrows[1].lines, { "Bank Vault", "100 yd" })
+        t.eq(c.arrows[1].lines, { "Bank Vault", "100 yd N" })
         t.eq(saved(k).label, "Bank Vault")
     end,
 
@@ -72,7 +72,7 @@ return {
         local k, c = start()
         c.slashes[ns.id.slash]("way 50 30")
         t.eq(saved(k), { map = 1411, x = 0.5, y = 0.3 })
-        t.eq(c.arrows[1].lines, { N.WAYPOINT_LABEL, "100 yd" })
+        t.eq(c.arrows[1].lines, { N.WAYPOINT_LABEL, "100 yd N" })
     end,
 
     ["way: text that is turned down says why and changes nothing"] = function(t)
@@ -87,7 +87,7 @@ return {
         t.ok(has(last(c), "x is outside 0 to 100"), last(c))
         way(c, "50")
         t.ok(has(last(c), W.REASON.usage), last(c))
-        t.eq(c.arrows[1].lines, { "Bank", "100 yd" })
+        t.eq(c.arrows[1].lines, { "Bank", "100 yd N" })
     end,
 
     ["way: the map the player is on is not known, so none is set"] = function(t)
@@ -139,11 +139,11 @@ return {
         if type(c.slashes["/way"]) ~= "function" then t.ok(false, "no /way") return end
         c.setWaypoint(1411, 0.5, 0.1)
         a.relayout()
-        t.eq(c.arrows[1].lines, { N.WAYPOINT_LABEL, "200 yd" }, "the pin")
+        t.eq(c.arrows[1].lines, { N.WAYPOINT_LABEL, "200 yd N" }, "the pin")
         way(c, "50 30 Mine")
-        t.eq(c.arrows[1].lines, { "Mine", "100 yd" })
+        t.eq(c.arrows[1].lines, { "Mine", "100 yd N" })
         way(c, "clear")
-        t.eq(c.arrows[1].lines, { N.WAYPOINT_LABEL, "200 yd" }, "the pin again")
+        t.eq(c.arrows[1].lines, { N.WAYPOINT_LABEL, "200 yd N" }, "the pin again")
     end,
 
     ["way: a guide that was set still wins whole"] = function(t)
@@ -151,7 +151,7 @@ return {
         if type(c.slashes["/way"]) ~= "function" then t.ok(false, "no /way") return end
         way(c, "50 30 Mine")
         a.setGuide(function() return { quest = { place = { cont = 1, map = 1411, x = 0.5, y = 0.4 }, label = "Kill boars" } } end)
-        t.eq(c.arrows[1].lines, { "Kill boars", "50 yd" })
+        t.eq(c.arrows[1].lines, { "Kill boars", "50 yd N" })
     end,
 
     ["way: on arrival it is cleared and that is said once"] = function(t)
