@@ -4,6 +4,13 @@
 --
 --   <slash> fights            the fights of this session, newest first
 --   <slash> fights <number>   that fight, with its spells
+--   <slash> fights death      what hit you before your last death (G30)
+--
+-- At your death (PLAYER_DEAD) the damage you took in the seconds before is
+-- printed, as text. Each fight row also says its type (G28): solo, elite,
+-- group, or "type unknown" when it was not read. The elite read needs one
+-- more client read (CLIENT NEED), absent until the lead adds it:
+--   client.targetRank() -> text | nil   the rank word of your target
 --
 -- A fight is the time between the combat start and the combat end events.
 -- The fights are kept in memory only: a fixed number of them (Fights.KEEP),
@@ -21,8 +28,9 @@
 -- Your id and your pet's are read when a fight starts. A pet called or
 -- changed in the middle of a fight is counted from the next fight on.
 --
---   FightLog.Start(k, diag) -> { fights = fn, feed = fn, recorder = rec }
+--   FightLog.Start(k, diag) -> { fights = fn, feed = fn, death = fn, recorder = rec }
 --     fights()  the kept fights, newest first, as fresh copies
+--     death()   the last death, nil before any
 --     feed()    true when the client's combat-log read was taken
 local _, ns = ...
 
@@ -31,7 +39,7 @@ ns.FightLog = L
 
 L.WORD = "fights"
 L.HELP = "show the last fights of this session: what you dealt, took and healed;"
-    .. " fights <number> lists that fight's spells"
+    .. " fights <number> lists that fight's spells; fights death shows what hit you before your last death"
 L.NO_FEED = "this client build has no combat-log read yet, so no fight can be recorded."
 L.NO_ME = "the client did not say who you are, so nothing in these fights could be counted as yours."
 
@@ -61,8 +69,19 @@ function L.Start(k, diag)
         rec:setMe(me, read(client.petGUID))
     end
 
+    local function say(text) client.print(k.id.title .. ": " .. text) end
+
+    -- The rank word of the target you have now, for the fight type. The
+    -- reader takes it only while a fight is open.
+    local function rank()
+        if type(client.targetRank) == "function" then rec:sawRank(client.targetRank()) end
+    end
+
     if type(client.watchCombatLog) == "function" then
         feed = client.watchCombatLog(function(...)
+            -- A hit outside a fight is kept for the death report, so your
+            -- id is asked for here too until it is known.
+            if not rec:knowsMe() then who() end
             rec:event(now(), ...)
         end) == true
     end
@@ -70,16 +89,26 @@ function L.Start(k, diag)
         client.listen("PLAYER_REGEN_DISABLED", function()
             who()
             rec:enter(now())
+            rank()
         end)
         client.listen("PLAYER_REGEN_ENABLED", function()
             rec:leave(now())
         end)
+        client.listen("PLAYER_TARGET_CHANGED", rank)
+        client.listen("PLAYER_DEAD", function()
+            local lines = ns.Fights.DeathLines(rec:died(now()))
+            for i = 1, #lines do say(lines[i]) end
+        end)
     end
 
     local function run(rest)
-        local function say(text) client.print(k.id.title .. ": " .. text) end
         if not feed then
             say(L.NO_FEED)
+            return
+        end
+        if tostring(rest):lower():find("death", 1, true) then
+            local lines = ns.Fights.DeathLines(rec:death())
+            for i = 1, #lines do say(lines[i]) end
             return
         end
         local list = rec:list()
@@ -96,6 +125,7 @@ function L.Start(k, diag)
     return {
         fights = function() return rec:list() end,
         feed = function() return feed end,
+        death = function() return rec:death() end,
         recorder = rec,
     }
 end
