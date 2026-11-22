@@ -125,13 +125,16 @@ end
 
 tests["sell list panel: vendor.list off shows nothing and reads nothing"] = function(t)
     local _, c, api = start({ setting = false })
+    -- Count the list's own read only: Diag's merchant snapshot also reads
+    -- the bags at MERCHANT_SHOW, and that is not this module (lead, L6-A merge).
     local reads = 0
-    local bagItems = c.bagItems
-    c.bagItems = function(...) reads = reads + 1 return bagItems(...) end
+    local lines = L.Lines
+    L.Lines = function(...) reads = reads + 1 return lines(...) end
     c.setMerchantOpen(true)
     t.eq(panelOf(c).shown, false, "not shown")
     t.eq(reads, 0, "the bags were not read")
     t.eq(api.shows(), 0, "nothing listed")
+    L.Lines = lines
     t.eq(L.SETTING, "vendor.list", "the settings row's name")
 end
 

@@ -225,7 +225,8 @@ return {
         t.eq(report.ok, true)
         t.eq(out, {})
         t.eq(report.taken, {})
-        t.eq(#model:keys(), 11, "the shipped model changed its number of rows")
+        -- 12 since L6-A added vendor.list (lead).
+        t.eq(#model:keys(), 12, "the shipped model changed its number of rows")
         for _, key in ipairs(model:keys()) do
             t.ok(not model:explicit(out, key), key .. " counts as chosen")
             t.eq((model:get(out, key)), model:default(key), key)

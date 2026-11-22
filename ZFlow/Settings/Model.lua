@@ -48,6 +48,8 @@ M.ROWS = {
     { key = "sell.autoRepair", type = "bool", default = false, vendor = true },
     { key = "sell.autoCleanup", type = "bool", default = false, vendor = true },
     { key = "sell.vendorUnpriced", type = "bool", default = false, vendor = true },
+    -- vendor.list: the look-only sell list at a merchant (UI/SellList.lua).
+    { key = "vendor.list", type = "bool", default = true },
     { key = "auction.chartClick", type = "bool", default = true },
     { key = "buffButton.enabled", type = "bool", default = false },
     { key = "buffButton.dock", type = "bool", default = true },

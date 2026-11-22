@@ -46,6 +46,7 @@ return {
         "Items/Present.lua",
         "Items/CraftHint.lua",
         "Items/Sell.lua",
+        "Items/SellView.lua",
 
         -- Gear
         "Gear/Score.lua",
@@ -85,6 +86,7 @@ return {
         "UI/DevPanel.lua",
         "UI/SettingsSlash.lua",
         "UI/ArrowMenu.lua",
+        "UI/SellList.lua",
     "UI/Arrow.lua",
     "UI/RotationIcon.lua",
     },
