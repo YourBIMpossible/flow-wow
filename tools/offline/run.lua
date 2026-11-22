@@ -1,6 +1,6 @@
 -- Offline test driver (Lua 5.1). Started by tools/run-tests.ps1:
 --   lua5.1 tools/offline/run.lua <add-on root> [--verbose] [--filter <text>]
---          [--list-modules] [--known <file>] [--strict]
+--          [--list-modules] [--known <file>] [--allow-skip-fail]
 --          [--client-globals <file>] [--min-tests <n>]
 --
 -- The fixtures (stubs.lua) always come from this file's own folder, so the
@@ -16,7 +16,11 @@
 --    rest still load (the game does the same), but the run fails: the tests
 --    of that file were never registered.
 -- 3. Fires ADDON_LOADED("Flow") once, as on a fresh install (saved data empty).
---    Errors that Core's OnLoad loop catches are listed, always.
+--    An error that Core's OnLoad loop catches ("Flow load error") is listed
+--    and fails the run: the ns:OnLoad that broke left Flow's state half set
+--    up, and tests of that state then pass because there is nothing to check.
+--    If the cause is a fixture frame (a getter that gave nil where the game
+--    gives a number), the fix is in stubs.lua (NUMBER), not in Flow.
 -- 4. Runs each registered test through the harness's own seam,
 --    ns.tests.Spread (Modules/Tests.lua), one test at a time:
 --      PASS       every check held, nothing of the client touched
@@ -29,17 +33,20 @@
 --      SKIP       touched the client before any check failed (checks that
 --                 fail after that are counted, but can't be told apart from
 --                 the client's doing offline)
---      SKIP-FAIL  a check failed before the test touched the client. Always
---                 listed and counted apart. It fails the run only with
---                 --strict: on the base branch the ones there are come from
---                 load-time fixture effects (an ns:OnLoad that errored on a
---                 fixture frame left state unset), which offline can't tell
---                 apart from a real failure.
+--      SKIP-FAIL  a check failed before the test touched the client, so
+--                 the client can't be the cause: it failed on Flow's own Lua.
+--                 Always listed, counted apart, and it FAILS THE RUN, like a
+--                 FAIL (the base branch has none). --allow-skip-fail lists
+--                 and counts them without failing the run: for looking at a
+--                 branch, never for a check that gates a commit. One that is
+--                 accepted for now goes on the known-failures list, by name.
+--                 (--strict, the old switch for this, is accepted and does
+--                 nothing: it is the default.)
 -- 5. Prints the summary, then "offline: done, exit <n>" as its very last line.
 --    run-tests.ps1 treats a run without that line as broken (exit 2).
 --
--- Exit code: 0 = no FAIL or ERROR (or SKIP-FAIL, with --strict) outside the known list, every
--- file loaded, every known name still exists, at least one test ran, and at
+-- Exit code: 0 = no FAIL, ERROR or SKIP-FAIL (unless --allow-skip-fail) outside the known list, every
+-- file loaded, no OnLoad error, every known name still exists, at least one test ran, and at
 -- least --min-tests tests are registered (counted before --filter);
 -- 1 = one of those; 2 = the runner itself broke.
 --
@@ -53,14 +60,15 @@
 local root = arg[1]
 if not root then io.stderr:write("usage: run.lua <add-on root> [--verbose] [--filter text] [--known file]\n"); os.exit(2) end
 root = root:gsub("[\\/]$", "")
-local verbose, filter, listModules, knownPath, strict = false, nil, false, nil, false
+local verbose, filter, listModules, knownPath, strict = false, nil, false, nil, true
 local globalsPath, minTests
 do
     local i = 2
     while arg[i] do
         if arg[i] == "--verbose" then verbose = true
         elseif arg[i] == "--list-modules" then listModules = true
-        elseif arg[i] == "--strict" then strict = true
+        elseif arg[i] == "--strict" then strict = true   -- (the default; kept so old command lines work)
+        elseif arg[i] == "--allow-skip-fail" then strict = false
         elseif arg[i] == "--filter" then i = i + 1; filter = arg[i]
         elseif arg[i] == "--known" then i = i + 1; knownPath = arg[i]
         elseif arg[i] == "--client-globals" then i = i + 1; globalsPath = arg[i]
@@ -293,7 +301,7 @@ for name, fn in ns:Each("test") do
     end
 end
 
--- Listed in full, always; SKIP-FAIL fails the run only with --strict.
+-- Listed in full, always; SKIP-FAIL fails the run unless --allow-skip-fail.
 local SHOWN = { FAIL = true, ERROR = true, ["SKIP-FAIL"] = true }
 local BAD = { FAIL = true, ERROR = true, ["SKIP-FAIL"] = strict }
 
@@ -318,8 +326,8 @@ if listModules then
         line(string_format("  loaded: %s%s", m[1], #m[2] > 0 and (" (touched at load: " .. #m[2] .. " client names)") or " (pure)"))
     end
 end
-line(string_format("ADDON_LOADED delivered to %d frame(s); %d OnLoad error(s) caught by Core (fixture frames return nil, so these don't fail the run; check new ones):",
-    delivered, #onLoadErrors))
+line(string_format("ADDON_LOADED delivered to %d frame(s); %d OnLoad error(s) caught by Core%s",
+    delivered, #onLoadErrors, #onLoadErrors > 0 and " (each fails the run: Flow's state is half set up. A fixture frame's getter giving nil? See NUMBER in stubs.lua):" or ""))
 for _, e in ipairs(onLoadErrors) do line("  " .. e:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
 
 local skips = {}
@@ -341,7 +349,7 @@ for _, r in ipairs(results) do
         knownPassing = knownPassing + 1
         line("known failure now passes: take it off the list: " .. r[2])
     elseif known[r[2]] and r[1] == "SKIP-FAIL" then
-        -- Still failing on Flow's own Lua; only not counted because --strict is off.
+        -- Still failing on Flow's own Lua; only not counted because of --allow-skip-fail.
         knownUsed = knownUsed + 1
     elseif known[r[2]] then
         -- SKIP: it touched the client first, so offline can't say whether it still fails.
@@ -360,7 +368,7 @@ local total = 0
 for _, n in pairs(counts) do total = total + n end
 line(string_format("offline tests: %d run: %d pass (%d with no checks), %d fail, %d error, %d skip (need the client; %d of them with checks failing after that), %d skip-fail (a check failed before it touched the client; %s)",
     total, counts.PASS, noChecks, counts.FAIL, counts.ERROR, counts.SKIP, skipAfterFail, counts["SKIP-FAIL"],
-    strict and "counted against the run: --strict" or "listed above, not counted against the run without -Strict"))
+    strict and "each fails the run" or "listed above, NOT counted against the run: --allow-skip-fail"))
 line(globalsPath
     and string_format("client globals: %d names and patterns in %s; unknown globals read: %d while loading, %d test(s)",
         clientCount, globalsPath, unknownAtLoad, unknownInTests)
@@ -387,6 +395,7 @@ if minTests and registeredCount < minTests then
 end
 if newBad > 0 then reasons[#reasons + 1] = newBad .. " new FAIL/ERROR" .. (strict and "/SKIP-FAIL" or "") end
 if #failed > 0 then reasons[#reasons + 1] = #failed .. " file(s) did not load" end
+if #onLoadErrors > 0 then reasons[#reasons + 1] = #onLoadErrors .. " OnLoad error(s)" end
 if #absent > 0 then reasons[#reasons + 1] = #absent .. " file(s) in Flow.toc absent" end
 if #knownMissing > 0 then reasons[#reasons + 1] = #knownMissing .. " known-failures name(s) not found" end
 if total == 0 then reasons[#reasons + 1] = "no test ran" .. (filter and (" (filter '" .. filter .. "' matched none)") or "") end

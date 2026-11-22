@@ -3,13 +3,13 @@
   Runs Flow's registered tests outside the game, with Lua 5.1 and the fixtures
   of tools/offline/stubs.lua. Each test is PASS, FAIL, ERROR, SKIP (it
   touched something only the game client has; the first such name is shown),
-  or SKIP-FAIL (a check failed before it touched the client: listed and counted,
-  failing the run with -Strict). tools/offline/run.lua's header has the exact rules.
+  or SKIP-FAIL (a check failed before it touched the client: listed, counted, and
+  failing the run like a FAIL). tools/offline/run.lua's header has the exact rules.
   A PASS here is Flow's own Lua on made-up inputs: not a gameplay test, and not
   a substitute for /flow test in the game.
 
 .USAGE
-  powershell -ExecutionPolicy Bypass -File tools\run-tests.ps1 [-Root path] [-Filter text] [-Verbose] [-ListModules] [-NoKnown] [-Known file] [-Strict] [-MinTests n] [-NoSelfCheck]
+  powershell -ExecutionPolicy Bypass -File tools\run-tests.ps1 [-Root path] [-Filter text] [-Verbose] [-ListModules] [-NoKnown] [-Known file] [-AllowSkipFail] [-MinTests n] [-NoSelfCheck]
   pwsh -File tools/run-tests.ps1                  # the CI job, on Linux
 
   -Root: the add-on checkout to test (default: the one this script is in). The
@@ -17,8 +17,10 @@
   another worktree needs no tools/offline of its own.
   -Known: the known-failures list (default: <Root>/tools/offline/known-failures.txt
   if it exists, else none, so every failure counts).
-  -Strict: a SKIP-FAIL (a check failed before the test touched the client)
-  fails the run too; without it, SKIP-FAILs are listed and counted only.
+  -AllowSkipFail: a SKIP-FAIL (a check failed before the test touched the
+  client) is listed and counted but doesn't fail the run. The default is that
+  it does: use this to look at a branch, never before a commit. (-Strict, the
+  old switch that made SKIP-FAILs count, is accepted and does nothing now.)
   -MinTests: the fewest tests the add-on may register (default: the number in
   <Root>/tools/offline/min-tests.txt, else this runner's). Fewer fails the run,
   so tests that silently stop registering can't pass as a smaller green run.
@@ -34,8 +36,8 @@
   Known failures on the base branch are listed in tools/offline/known-failures.txt;
   -NoKnown counts them like any other failure.
 
-  Exit code 0 = every file loaded, no FAIL or ERROR (or SKIP-FAIL, with -Strict) outside the known
-  list, every known name exists, at least one test ran, at least -MinTests are
+  Exit code 0 = every file loaded, no FAIL, ERROR or SKIP-FAIL outside the known
+  list, no OnLoad error, every known name exists, at least one test ran, at least -MinTests are
   registered; 1 = not so; 2 = the runner couldn't run, didn't finish (its last
   line "offline: done, exit <n>" missing) or failed its own self-check.
 #>
@@ -47,6 +49,7 @@ param(
     [switch]$ListModules,
     [switch]$NoKnown,
     [switch]$Strict,
+    [switch]$AllowSkipFail,
     [int]$MinTests = -1,
     [switch]$NoSelfCheck
 )
@@ -93,7 +96,8 @@ $luaArgs = @((Join-Path $runner 'run.lua'), $root)
 if ($PSBoundParameters.ContainsKey('Verbose')) { $luaArgs += '--verbose' }
 if ($ListModules) { $luaArgs += '--list-modules' }
 if ($Filter) { $luaArgs += @('--filter', $Filter) }
-if ($Strict) { $luaArgs += '--strict' }
+if ($Strict -and $AllowSkipFail) { Write-Output "run-tests: -Strict and -AllowSkipFail contradict each other"; exit 2 }
+if ($AllowSkipFail) { $luaArgs += '--allow-skip-fail' }
 # The game's globals Flow may read: the add-on's own list, else this runner's.
 # Without one, a mistyped global would be a SKIP ("needs the client"), so
 # there is always one.

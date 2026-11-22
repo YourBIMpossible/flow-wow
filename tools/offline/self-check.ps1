@@ -35,6 +35,14 @@ local _, ns = ...
 ns:Register("test", "selfcheck: control", function(t) t:eq(1 + 1, 2, "adds") end)
 '@
 
+$skipFail = @'
+
+ns:Register("test", "selfcheck: wrong, then the game", function(t)
+    t:eq(1 + 1, 3, "adds")
+    t:eq(UnitLevel("player"), 60, "level")
+end)
+'@
+
 $cases = @(
     @{  name = 'a good add-on passes (the control)'
         lua = $control
@@ -139,6 +147,22 @@ ns:Register("test", "selfcheck: wrong", function(t) t:eq(1 + 1, 3, "adds") end)
         exit = 1
         want = @('^FAIL selfcheck: wrong', 'offline tests: 2 run: 1 pass \(0 with no checks\), 1 fail, 0 error, 0 skip ')
         never = @('^result: OK$') },
+    @{  name = 'a check that fails before the test touches the game (SKIP-FAIL) fails the run'
+        lua = $control + $skipFail
+        exit = 1
+        want = @('^SKIP-FAIL selfcheck: wrong, then the game', '0 fail, 0 error, 0 skip \(.*\), 1 skip-fail \(.*each fails the run\)', '^result: FAILED: 1 new FAIL/ERROR/SKIP-FAIL')
+        never = @('^result: OK$') },
+    @{  name = 'with --allow-skip-fail a SKIP-FAIL is still listed and counted, and the run says it was not counted'
+        lua = $control + $skipFail
+        args = @('--allow-skip-fail')
+        exit = 0
+        want = @('^SKIP-FAIL selfcheck: wrong, then the game', '1 skip-fail \(.*NOT counted against the run: --allow-skip-fail\)')
+        never = @() },
+    @{  name = 'an ns:OnLoad that errors fails the run'
+        lua = $control + "`nns:OnLoad(function() error(`"selfcheck: this OnLoad breaks`") end)`n"
+        exit = 1
+        want = @('1 OnLoad error\(s\) caught by Core', 'Flow load error: .*selfcheck: this OnLoad breaks', '^result: FAILED: .*1 OnLoad error\(s\)')
+        never = @('^result: OK$') },
     @{  name = 'a known failure that now skips is not reported as fixed'
         lua = $control + @'
 
@@ -184,5 +208,5 @@ try {
     if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Recurse -Force }
 }
 if ($bad -gt 0) { "runner self-check: $bad of $($cases.Count) case(s) FAILED: the runner can't be trusted until this is fixed"; exit 1 }
-"runner self-check: $($cases.Count) of $($cases.Count) cases OK (load failure, absent file, mistyped global, test-count floor, timer, known list)"
+"runner self-check: $($cases.Count) of $($cases.Count) cases OK (load failure, OnLoad error, absent file, mistyped global, test-count floor, timer, SKIP-FAIL, known list)"
 exit 0
