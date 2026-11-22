@@ -718,6 +718,26 @@ function ns.make.fakeClient(opts)
     -- nil for closed or not known.
     -- { profession, npc, services, filter }; services and filter as the real
     -- client gives them (F8). The table is kept as given; trainer() copies.
+    -- F7 probe: which dotted paths apiPresent answers true for, and the
+    -- UNIT_COMBAT watchers; unitCombat(unit, readable) plays one event.
+    function c.setApi(path, on)
+        s.apis = s.apis or {}
+        s.apis[path] = on and true or nil
+    end
+    function c.apiPresent(path) return (s.apis and s.apis[path]) == true end
+    function c.watchUnitCombat(fn)
+        if type(fn) ~= "function" then return nil end
+        s.unitCombat = s.unitCombat or {}
+        table.insert(s.unitCombat, fn)
+        return function()
+            for i = #s.unitCombat, 1, -1 do
+                if s.unitCombat[i] == fn then table.remove(s.unitCombat, i) end
+            end
+        end
+    end
+    function c.unitCombat(unit, readable)
+        for _, fn in ipairs({ unpack(s.unitCombat or {}) }) do fn(unit, readable and true or false) end
+    end
     function c.setTrainer(r)
         s.trainer = r and { profession = r.profession, npc = r.npc, services = r.services, filter = r.filter } or nil
     end
