@@ -86,6 +86,14 @@ tests["bank list panel: bags not read say so"] = function(t)
     t.eq(panelOf(c).lines, { "Can't list what to bank: the bags have not been read yet" })
 end
 
+tests["bank list panel: without the item read it says so, not 'nothing to bank'"] = function(t)
+    local _, c = start()
+    c.itemInfo = nil
+    if type(c.setItemInfo) == "function" then c.setItemInfo(nil) end
+    c.setBankOpen(true)
+    t.eq(panelOf(c).lines, { "Can't tell what to bank: 2 items were not read yet." })
+end
+
 tests["bank list panel: the player's carry choice is honoured"] = function(t)
     local _, c = start({ saved = { settings = { banker = { rules = { [2589] = "carry" } } } } })
     c.setBankOpen(true)

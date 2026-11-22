@@ -159,6 +159,34 @@ tests["bank words: nothing to bank says so; bags not read say so"] = function(t)
     t.eq(Present.BankLines(B.Pick(nil, {})), { "Can't list what to bank: the bags have not been read yet" })
 end
 
+-- Review of 78d94fc, finding 1 (F-086): item facts that were not read are
+-- not "nothing to bank".
+tests["bank pick: items whose kind was not read are counted, not passed over"] = function(t)
+    local none = B.Pick(B.Entries({ { item = 2589, count = 20 }, { item = 2318, count = 4 } }, nil), {})
+    t.eq(#none.rows, 0, "nothing can be picked without the item read")
+    t.eq(none.unread, 2, "and both are counted as not read")
+    local nilRead = B.Pick(B.Entries({ { item = 2589, count = 20 } }, function() return nil end), {})
+    t.eq(nilRead.unread, 1, "an item read that answers nothing: the same")
+    local mixed = pick({ { item = 2589, count = 20 }, { item = 4444, count = 1 }, { item = 858, count = 2 } })
+    t.eq(#mixed.rows, 1)
+    t.eq(mixed.unread, 1, "only the one with no facts; a potion that was read is simply carried")
+    local chosen = B.Pick(B.Entries({ { item = 2589, count = 20 } }, nil), { bankRules = { [2589] = "bank" } })
+    t.eq(chosen.unread, 0, "your own choice needs no item read")
+    t.eq(#chosen.rows, 1)
+    t.eq(pick({ { item = 858, count = 1 } }).unread, 0, "everything read: nothing unread")
+end
+
+tests["bank words: unread items are said, and 'nothing to bank' is only said when all were read"] = function(t)
+    local none = Present.BankLines(B.Pick(B.Entries({ { item = 2589, count = 20 }, { item = 2318, count = 4 } }, nil), {}))
+    t.eq(none, { "Can't tell what to bank: 2 items were not read yet." })
+    local one = Present.BankLines(B.Pick(B.Entries({ { item = 2589, count = 20 } }, nil), {}))
+    t.eq(one, { "Can't tell what to bank: 1 item was not read yet." })
+    local mixed = Present.BankLines(pick({ { item = 2589, count = 20 }, { item = 4444, count = 1 } }))
+    t.ok(has(mixed, "20 x Linen Cloth: kept for later"), "what was read is listed")
+    t.ok(has(mixed, "1 more item was not read yet, so it is not listed."), "and the rest is said")
+    t.ok(not has(mixed, Present.NOTHING_TO_BANK))
+end
+
 tests["bank: nothing in here deposits, withdraws or moves anything"] = function(t)
     for name in pairs(B) do
         local n = tostring(name):lower()
