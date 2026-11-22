@@ -87,4 +87,18 @@ return {
         local d = N.ArrowStep(m, 0, 0.25)
         t.ok(near(d.ripple[3], (1 - 0.35) * 0.9), "the wave ripple runs faster and brighter")
     end,
+
+    ["step: one draw table per motion, refilled each frame (AR9)"] = function(t)
+        local m = N.ArrowAim(N.ArrowMotion(), { turn = 1 })
+        local a = N.ArrowStep(m, 0.05, 0)
+        local cell, colour, ripple, beam = a.cell, a.colour, a.ripple, a.beam
+        local firstTurn = a.turn
+        local b = N.ArrowStep(m, 0.05, 0.5)
+        t.ok(rawequal(a, b), "the same table comes back")
+        t.ok(rawequal(b.cell, cell) and rawequal(b.colour, colour)
+            and rawequal(b.ripple, ripple) and rawequal(b.beam, beam), "and the same inner tables")
+        t.ok(b.turn > firstTurn, "refilled with the new frame")
+        local other = N.ArrowStep(N.ArrowMotion(), 0.05, 0)
+        t.ok(not rawequal(other, b), "each motion has its own")
+    end,
 }

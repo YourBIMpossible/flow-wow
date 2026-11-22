@@ -79,7 +79,8 @@ function N.ArrowAim(m, aim)
 end
 
 -- One drawn frame: moves m on by dt seconds (clock `now`, seconds) and
--- returns what to draw:
+-- returns what to draw. The table is the motion's own and is refilled on
+-- the next step: read it now, do not keep it.
 --   { turn, cell = { l, r, t, b }, colour = { r, g, b },
 --     body, shine, shadow, pool  (alphas), bodyY (the float),
 --     arrived (ring, ripple and beams shown), halo (alpha),
@@ -107,15 +108,24 @@ function N.ArrowStep(m, dt, now)
     local _, l, r, t, b = N.ArrowCell(m.at)
     local pulse = 0.5 + 0.5 * math.sin(now * 4)
     local u = (now * (m.wave and 1.4 or 0.7)) % 1
-    local beamW, beamH = 18 + 4 * pulse, 50 + 8 * pulse
-    return {
-        turn = m.at, cell = { l, r, t, b }, colour = { s[1], s[2], s[3] },
-        body = on, shine = on * 0.9, shadow = on * 0.75, pool = 0.35 * on,
-        bodyY = (f < 1) and 1.5 * math.sin(now * 2.4) or 0,
-        arrived = f > 0.01,
-        halo = f * (0.6 + 0.4 * pulse),
-        ripple = { N.HALO_W * (0.55 + 0.75 * u), N.HALO_H * (0.55 + 0.75 * u),
-                   f * (1 - u) * (m.wave and 0.9 or 0.6) },
-        beam = { beamW, beamH, f * (0.45 + 0.25 * pulse) },
-    }
+
+    -- One draw table per motion, refilled each frame: this runs for every
+    -- arrow on every frame, so it makes no new tables after the first.
+    local d = m.out
+    if not d then
+        d = { cell = {}, colour = {}, ripple = {}, beam = {} }
+        m.out = d
+    end
+    d.turn = m.at
+    d.cell[1], d.cell[2], d.cell[3], d.cell[4] = l, r, t, b
+    d.colour[1], d.colour[2], d.colour[3] = s[1], s[2], s[3]
+    d.body, d.shine, d.shadow, d.pool = on, on * 0.9, on * 0.75, 0.35 * on
+    d.bodyY = (f < 1) and 1.5 * math.sin(now * 2.4) or 0
+    d.arrived = f > 0.01
+    d.halo = f * (0.6 + 0.4 * pulse)
+    d.ripple[1] = N.HALO_W * (0.55 + 0.75 * u)
+    d.ripple[2] = N.HALO_H * (0.55 + 0.75 * u)
+    d.ripple[3] = f * (1 - u) * (m.wave and 0.9 or 0.6)
+    d.beam[1], d.beam[2], d.beam[3] = 18 + 4 * pulse, 50 + 8 * pulse, f * (0.45 + 0.25 * pulse)
+    return d
 end
