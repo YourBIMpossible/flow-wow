@@ -39,7 +39,7 @@ Intro.DEFAULT_POINT = { "CENTER", "CENTER", 0, 120 }
 
 Intro.LINES = {
     "Welcome to Z-Flow.",
-    "The arrow points to your next quest step; a second, see-through arrow points to your next profession step. Right-click an arrow for its menu.",
+    "The arrow points to your next quest step, and a second arrow points to your next profession step. Right-click an arrow for its menu.",
     "At a merchant, a list shows what Z-Flow would sell, what it keeps, and why. Z-Flow sells nothing by itself.",
     "Hover a piece of gear: a line in its tooltip gives Z-Flow's verdict on it for you.",
     "Type /zflow help to see every command, and /zflow intro to read this again.",
@@ -82,12 +82,15 @@ function Intro.Declare(k, diag)
             if panel then
                 panel.show(false)
                 panel.place(Intro.DEFAULT_POINT)
+                -- Shown at login only when the player can close it: a client
+                -- without the close route (h.onClose) would leave a panel
+                -- that comes back at every login. /zflow intro still shows it.
                 if type(panel.onClose) == "function" then
                     panel.onClose(function() c.store:set("char", Intro.SEEN_PATH, true) end)
-                end
-                -- Off only when the player turned it off; a missing row is on.
-                if c.store:get("char", Intro.SEEN_PATH) ~= true and c.settings:get(Intro.SETTING) ~= false then
-                    show()
+                    -- Off only when the player turned it off; a missing row is on.
+                    if c.store:get("char", Intro.SEEN_PATH) ~= true and c.settings:get(Intro.SETTING) ~= false then
+                        show()
+                    end
                 end
             end
         end,
