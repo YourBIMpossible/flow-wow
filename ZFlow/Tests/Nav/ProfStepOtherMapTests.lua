@@ -43,7 +43,7 @@ end
 
 T["other map: the dash is the one long dash, three bytes"] = function(t)
     t.eq(N.PROF_OTHER_MAP, " " .. DASH .. " other map")
-    t.eq(#N.PROF_OTHER_MAP, 15)
+    t.eq(#N.PROF_OTHER_MAP, 14)
 end
 
 T["other map: the step shares nothing with the saved entry"] = function(t)
@@ -76,15 +76,15 @@ T["other map: the map the player is on is not known, so it is not said"] = funct
 end
 
 T["other map: a label over the limit is left out, never cut, and the step is still text only"] = function(t)
-    local long = ("Tinkering"):rep(3)        -- 27 bytes; with " trainer" and the rest: 50
+    local long = ("Tinkering"):rep(3)        -- 27 bytes; with " trainer" and the rest: 49
     local npcs = { Aska = trainer(1412, 0.3, 0.4, long) }
     local step = N.ProfStep({ [long] = capped() }, npcs, {}, here())
     t.eq(step, { still = true, elsewhere = { map = 1412, x = 0.3, y = 0.4 } })
 end
 
 T["other map: a label that just fits is kept whole"] = function(t)
-    -- 17 + 8 (" trainer") + 15 = 40 bytes, the limit.
-    local name = ("A"):rep(17)
+    -- 18 + 8 (" trainer") + 14 = 40 bytes, the limit.
+    local name = ("A"):rep(18)
     local step = N.ProfStep({ [name] = capped() }, { Aska = trainer(1412, 0.3, 0.4, name) }, {}, here())
     t.eq(step.label, name .. " trainer " .. DASH .. " other map")
     t.eq(#step.label, 40)
