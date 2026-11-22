@@ -56,7 +56,13 @@ local function tooltipEnv(route)
     env.GameTooltip = tip
     -- Plays the game filling the tooltip.
     env.fill = function()
-        if route == "A" then tip.hooked.OnTooltipSetItem(tip) else env.postCalls[0](tip, {}) end
+        if route == "A" then
+            -- The game clears the tooltip before it fills it again.
+            if tip.hooked.OnTooltipCleared then tip.hooked.OnTooltipCleared(tip) end
+            tip.hooked.OnTooltipSetItem(tip)
+        else
+            env.postCalls[0](tip, {})
+        end
         return tip.lines
     end
     return env, tip
@@ -155,7 +161,9 @@ return {
         t.eq(ns.make.client(env).gear(SWORD).speed, nil, "not the word itself")
         it.lines[2].rightText = "Speed 2.60"
         env.SPEED = nil
-        t.eq(ns.make.client(env).gear(SWORD).speed, nil, "no word to read it by: not read")
+        t.eq(ns.make.client(env).gear(SWORD).speed, 2.6, "no SPEED string: the word Flow matched, Speed")
+        env.SPEED = "Tempo"
+        t.eq(ns.make.client(env).gear(SWORD).speed, nil, "the client's own word when it has one")
         t.eq(ns.make.client(itemEnv({ [HELM] = helm() })).gear(HELM).speed, nil, "no speed line")
     end,
 
@@ -224,7 +232,10 @@ return {
         local env, tip = tooltipEnv("A")
         local hooks = 0
         local hook = tip.HookScript
-        tip.HookScript = function(...) hooks = hooks + 1; return hook(...) end
+        tip.HookScript = function(self, name, fn)
+            if name == "OnTooltipSetItem" then hooks = hooks + 1 end
+            return hook(self, name, fn)
+        end
         local c = ns.make.client(env)
         local a, b = 0, 0
         local cancelA = c.onItemTooltip(function() a = a + 1 end)
@@ -287,4 +298,28 @@ return {
         cancel()
         t.eq(c.showItemTooltip(HELM), {})
     end,
+    ["API check: with both routes, tooltip data post calls are used and the old script is not hooked"] = function(t)
+        local env, tip = tooltipEnv("B")
+        function tip.HasScript(_, name) return name == "OnTooltipSetItem" end
+        function tip.HookScript(self, name, fn) self.hooked = self.hooked or {}; self.hooked[name] = fn end
+        local c = ns.make.client(env)
+        local told = 0
+        c.onItemTooltip(function() told = told + 1 end)
+        t.eq(tip.hooked, nil, "OnTooltipSetItem not hooked")
+        env.fill()
+        t.eq(told, 1)
+    end,
+
+    ["API check: route A adds lines once when the game fires OnTooltipSetItem twice for one hover"] = function(t)
+        local env, tip = tooltipEnv("A")
+        local c = ns.make.client(env)
+        c.onItemTooltip(function(_, add) add("Same") end)
+        tip.hooked.OnTooltipSetItem(tip)
+        tip.hooked.OnTooltipSetItem(tip)
+        t.eq(#tip.lines, 1)
+        tip.hooked.OnTooltipCleared(tip)
+        tip.hooked.OnTooltipSetItem(tip)
+        t.eq(#tip.lines, 2, "the next hover adds again")
+    end,
+
 }
