@@ -24,6 +24,7 @@ local BankList = ns.BankList or {}
 ns.BankList = BankList
 
 BankList.NAME = "bankList"
+BankList.BAG_EVENT = "BAG_UPDATE_DELAYED"
 BankList.SETTING = "bank.list"
 BankList.WIDTH, BankList.HEIGHT = 340, 260
 BankList.DEFAULT_POINT = { "TOPLEFT", "TOPLEFT", 360, -120 }
@@ -131,6 +132,12 @@ function BankList.Declare(k)
             ctx.bus:on(BankList.NAME, "BANKFRAME_CLOSED", function()
                 hide()
                 prompt()      -- the bags may have changed at the bank
+            end)
+            -- The bags changed away from the bank too: the prompt follows
+            -- them, and goes when there is nothing left to bank. A first
+            -- guess: not seen in game.
+            ctx.bus:on(BankList.NAME, BankList.BAG_EVENT, function()
+                prompt()
             end)
             local id = k.id or ns.id
             panel = client.panel({ name = id.framePrefix .. "BankList",

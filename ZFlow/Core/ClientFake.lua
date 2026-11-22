@@ -29,6 +29,9 @@
 --   c.panel({ closable = true }) has h.onClose(fn, failed); h.close() is the
 --   player closing it. c.setCloseRoute(false): a client with no close route.
 --   c.arrows[1].point / .attached / .shown / .drawn / .lines; c.arrows[1].drag(point)
+--   c.setItemInfo{ [2318] = { name = "Light Leather", quality = 1, sellPrice = 15, classID = 7 } }
+--   c.setDurability{ [5] = { cur = 40, max = 100 } }; c.setOwnLoot(function(line) return link, count end)
+--   c.setLootWindow{ source = { kind = "creature", guid = "...", id = 1 }, items = { { item = 97, count = 1 } } }
 -- What a test has not set is unknown (nil), as on a client that won't say.
 local _, ns = ...
 ns.make = ns.make or {}
@@ -208,6 +211,48 @@ function ns.make.fakeClient(opts)
         return s.cooldowns[id]
     end
     function c.facing() return s.facing end
+    -- The facts of one item: a copy of the row setItemInfo has for its ID,
+    -- or nil. item: a link or an ID.
+    function c.itemInfo(item)
+        if type(s.itemInfo) ~= "table" then return nil end
+        local id = item
+        if ns.Items and type(ns.Items.Id) == "function" then id = ns.Items.Id(item) or item end
+        local row = s.itemInfo[id]
+        if type(row) ~= "table" then return nil end
+        local out = {}
+        for k, v in pairs(row) do out[k] = v end
+        return out
+    end
+    -- { [slot] = { cur =, max = } }: a copy of what setDurability was given,
+    -- or nil.
+    function c.durability()
+        if type(s.durability) ~= "table" then return nil end
+        local out = {}
+        for slot, r in pairs(s.durability) do
+            if type(r) == "table" then out[slot] = { cur = r.cur, max = r.max } end
+        end
+        return out
+    end
+    -- Whose loot a chat line is: what the function given to setOwnLoot
+    -- answers (item, count), or nil when none was given.
+    function c.ownLoot(line)
+        if type(s.ownLoot) ~= "function" then return nil end
+        return s.ownLoot(line)
+    end
+    -- The open loot window: a copy of what setLootWindow was given, or nil.
+    function c.lootWindow()
+        local r = s.lootWindow
+        if type(r) ~= "table" then return nil end
+        local out = { items = {} }
+        for i, row in ipairs(type(r.items) == "table" and r.items or {}) do
+            out.items[i] = { item = row.item, count = row.count }
+        end
+        if type(r.source) == "table" then
+            out.source = {}
+            for k, v in pairs(r.source) do out.source[k] = v end
+        end
+        return out
+    end
     function c.mapSize(map)
         local r = s.mapSizes and s.mapSizes[map]
         return r and { w = r.w, h = r.h } or nil
@@ -631,6 +676,18 @@ function ns.make.fakeClient(opts)
     end
     -- Radians, 0 = north; nil for not known.
     function c.setFacing(f) s.facing = f end
+    -- Item facts by item ID, each as client.itemInfo() gives it; nil: the
+    -- client says nothing about any item.
+    function c.setItemInfo(map) s.itemInfo = map end
+    -- { [slot] = { cur =, max = } } as client.durability() gives it; nil:
+    -- not known.
+    function c.setDurability(readings) s.durability = readings end
+    -- fn(line) answering item, count for the player's own loot line and nil
+    -- for any other; nil: whose loot a line is cannot be told.
+    function c.setOwnLoot(fn) s.ownLoot = fn end
+    -- { source =, items = } as client.lootWindow() gives it; nil: not known.
+    -- It fires nothing: a test fires the loot event itself.
+    function c.setLootWindow(r) s.lootWindow = r end
     -- A map's width and height in yards; leave both out for not known.
     function c.setMapSize(map, w, h)
         s.mapSizes = s.mapSizes or {}
