@@ -322,4 +322,78 @@ return {
         k.settings:reset("all")
         t.eq(values(), { 1, 2, 3 })
     end,
+
+    -- CU5: a saved section that is not a table is replaced, and what was
+    -- there is kept once under recovered.<key> of the same scope's data.
+    ["skeleton: a section that is not a table is replaced, and its old value is kept under recovered"] = function(t)
+        local k, c = kernel()
+        c.setSaved("ZFlowDB", { learned = "oops", imports = 7 })
+        c.setSaved("ZFlowCharDB", { state = false })
+        t.eq(k.store:open(), true)
+        local account, char = c.saved("ZFlowDB"), c.saved("ZFlowCharDB")
+        t.eq(account.learned, {})
+        t.eq(account.imports, {})
+        t.eq(account.recovered, { learned = "oops", imports = 7 })
+        t.eq(char.state, {})
+        t.eq(char.recovered, { state = false })
+        t.eq(k.store:get("account", "recovered.learned"), "oops", "read through the store")
+        local p = k.problems:list("store")
+        t.eq(#p, 3)
+        local said = {}
+        for i = 1, #p do said[p[i].owner .. ":" .. p[i].text] = true end
+        t.ok(said["account:learned was a string, not a table; it was replaced with an empty table;"
+            .. " the old value is kept under recovered.account.learned"], "learned")
+        t.ok(said["account:imports was a number, not a table; it was replaced with an empty table;"
+            .. " the old value is kept under recovered.account.imports"], "imports")
+        t.ok(said["char:state was a boolean, not a table; it was replaced with an empty table;"
+            .. " the old value is kept under recovered.char.state"], "state")
+    end,
+
+    ["skeleton: a value already kept under recovered is never overwritten"] = function(t)
+        local k, c = kernel()
+        c.setSaved("ZFlowDB", { learned = "second", recovered = { learned = "first", imports = false } })
+        k.store:open()
+        local account = c.saved("ZFlowDB")
+        t.eq(account.learned, {})
+        t.eq(account.recovered, { learned = "first", imports = false }, "the first kept value stands")
+        local p = k.problems:list("store")
+        t.eq(#p, 1)
+        t.eq(p[1].text, "learned was a string, not a table; it was replaced with an empty table;"
+            .. " the old value is lost: recovered.account.learned already holds an older one")
+        -- A kept false counts as kept: it is not overwritten either.
+        local k2, c2 = kernel()
+        c2.setSaved("ZFlowDB", { imports = "later", recovered = { imports = false } })
+        k2.store:open()
+        t.eq(c2.saved("ZFlowDB").recovered, { imports = false })
+    end,
+
+    ["skeleton: a recovered that is not a table is left as it is, and the problem says the value is lost"] = function(t)
+        local k, c = kernel()
+        c.setSaved("ZFlowDB", { learned = "oops", recovered = "mine" })
+        t.eq(k.store:open(), true)
+        local account = c.saved("ZFlowDB")
+        t.eq(account.learned, {})
+        t.eq(account.recovered, "mine")
+        local p = k.problems:list("store")
+        t.eq(#p, 1)
+        t.eq(p[1].text, "learned was a string, not a table; it was replaced with an empty table;"
+            .. " the old value is lost: recovered is not a table")
+    end,
+
+    ["skeleton: nothing is kept, and no recovered table is made, when nothing was replaced"] = function(t)
+        local k, c = kernel()
+        c.setSaved("ZFlowDB", { learned = { a = 1 } })
+        k.store:open()
+        t.eq(c.saved("ZFlowDB").recovered, nil)
+        t.eq(c.saved("ZFlowCharDB").recovered, nil)
+        t.eq(c.saved("ZFlowDB").learned, { a = 1 })
+        t.eq(k.problems:count(), 0)
+        -- Opened a second time: what was kept is still there, once.
+        local k2, c2 = kernel()
+        c2.setSaved("ZFlowDB", { learned = 3 })
+        k2.store:open()
+        k2.store:open()
+        t.eq(c2.saved("ZFlowDB").recovered, { learned = 3 })
+        t.eq(k2.problems:count("store"), 1)
+    end,
 }

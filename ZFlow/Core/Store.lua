@@ -13,6 +13,12 @@
 -- a copy of the data at schema n and returns it at schema n + 1. It is empty
 -- at schema 1. A missing or failing step leaves the saved table exactly as
 -- it was and blocks writes to that scope for the session.
+--
+-- A skeleton section that holds something other than a table is replaced
+-- with an empty table when the store opens. What was there is kept once,
+-- in the same scope's saved data under recovered.<key> (so
+-- store:get(scope, "recovered.<key>") reads it), and the problem row says
+-- where. A value already kept there is never overwritten.
 local _, ns = ...
 ns.make = ns.make or {}
 
@@ -132,6 +138,24 @@ function ns.make.store(k)
         k.problems:add("schema", scope, reason)
     end
 
+    -- Keeps what a skeleton section held before it is replaced. Answers the
+    -- end of the problem text: where the old value is, or why it is lost.
+    local function keep(scope, db, key)
+        local at = "recovered." .. scope .. "." .. key
+        local kept = db.recovered
+        if kept == nil then
+            kept = {}
+            db.recovered = kept
+        elseif type(kept) ~= "table" then
+            return "the old value is lost: recovered is not a table"
+        end
+        if kept[key] ~= nil then
+            return "the old value is lost: " .. at .. " already holds an older one"
+        end
+        kept[key] = db[key]
+        return "the old value is kept under " .. at
+    end
+
     local function migrate(scope, db)
         local have, want = db.schema, store.schema
         if have == nil then
@@ -176,10 +200,12 @@ function ns.make.store(k)
                     local key = tables[i]
                     local was = type(db[key])
                     if was ~= "table" then
-                        -- Something else saved there is lost by this: say so.
+                        -- Something else was saved there: keep it once, and
+                        -- say where it is (or that it is lost).
                         if was ~= "nil" then
                             k.problems:add("store", scope, key .. " was a " .. was
-                                .. ", not a table; it was replaced with an empty table")
+                                .. ", not a table; it was replaced with an empty table; "
+                                .. keep(scope, db, key))
                         end
                         db[key] = {}
                     end

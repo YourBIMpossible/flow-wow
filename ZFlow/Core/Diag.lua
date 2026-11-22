@@ -660,6 +660,32 @@ function Diag.Start(k)
         for i = 1, #lines do client.print(id.title .. ": " .. lines[i]) end
     end
 
+    -- The price watch's show count and what its last reading said, read
+    -- through what the module provides. nil on a kernel without the module.
+    local function priceWatchLine()
+        local watch = ns.PriceWatch
+        local name = type(watch) == "table" and watch.NAME or nil
+        local state = name and k:ModuleState(name) or nil
+        if state == nil then return nil end
+        local got = k.use(name)
+        if state ~= "started" or type(got) ~= "table" or type(got.Shows) ~= "function"
+            or type(got.Last) ~= "function" then
+            return "price watch: not running (" .. tostring(state) .. ")."
+        end
+        local shows, last = got.Shows(), got.Last()
+        local said
+        if type(last) ~= "table" then
+            said = "none yet"
+        elseif last.ok then
+            said = "read, " .. (type(last.recorded) == "table" and #last.recorded or 0) .. " recorded"
+            if last.reason ~= nil then said = said .. ", " .. tostring(last.reason) end
+        else
+            said = "refused, " .. tostring(last.reason or "no reason given")
+        end
+        return "price watch: " .. tostring(shows) .. (shows == 1 and " show" or " shows")
+            .. "; last: " .. said .. "."
+    end
+
     client.slash(id.bindingHeader, id.slash, function(rest)
         local text = tostring(rest):lower()
         local word, more = text:match("^%s*(%S+)%s*(.-)%s*$")
@@ -687,6 +713,18 @@ function Diag.Start(k)
                 client.print(id.title .. ": events not registered: "
                     .. table.concat(faults.notRegistered, ", ") .. ".")
             end
+            if client.uptime() == nil then
+                client.print(id.title .. ": the client gives no time; nothing that waits for a time runs.")
+            end
+            if type(k.sched) == "table" and type(k.sched.held) == "function" then
+                local held, unknown = k.sched:held()
+                if unknown then
+                    client.print(id.title .. ": combat is not known; " .. held
+                        .. (held == 1 and " job is" or " jobs are") .. " held until it is.")
+                end
+            end
+            local line = priceWatchLine()
+            if line then client.print(id.title .. ": " .. line) end
         end
     end)
     return { timing = timing, snapshot = snapshot, commands = commands }
