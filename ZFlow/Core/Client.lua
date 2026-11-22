@@ -111,6 +111,16 @@ function ns.make.client(env)
         return ok and tonumber(t) or 0
     end
 
+    -- The wall clock: seconds since 1970, the same clock in every session
+    -- (now() starts again with the client), so a time that is saved comes
+    -- from here. nil when not known, never now() or 0 in its place. time()
+    -- is a first guess on 16001: not seen in game.
+    function c.clock()
+        local ok, t = call(env.time)
+        if not ok or type(t) ~= "number" or t ~= t or t <= 0 or t == math.huge then return nil end
+        return t
+    end
+
     -- Milliseconds, fine-grained, for timing work. debugprofilestop is a
     -- first guess on 16001; falls back to GetTime, which only moves per frame.
     function c.clockMs()
