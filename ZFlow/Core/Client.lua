@@ -558,6 +558,11 @@ function ns.make.client(env)
     -- rank, category "available" / "unavailable" / "used" / "header"),
     -- GetTrainerServiceCost(i), GetTrainerServiceLevelReq(i) and
     -- GetTrainerServiceTypeFilter("available" / "unavailable" / "used").
+    -- Checked (LEDGER 129) against Flow, which used them on this client:
+    -- GetNumTrainerServices, GetTrainerServiceInfo (newer answer order, no
+    -- rank), GetTrainerServiceCost, GetTrainerServiceLevelReq (Modules/Trainer.lua),
+    -- GetTrainerServiceSkillLine(1) (Modules/Nav/Places.lua). Still a first
+    -- guess: GetTrainerServiceTypeFilter (Flow never called it).
     --
     -- services { { name, rank, state, cost, level } ... } in the window's order:
     --          state "available", "unavailable" or "known" (the game's
@@ -593,8 +598,19 @@ function ns.make.client(env)
         if not n then return nil, trainerFilter() end
         local rows = {}
         for i = 1, n do
-            local ok, name, rank, category = call(env.GetTrainerServiceInfo, i)
-            if not ok or (category ~= nil and hidden(category)) then return nil, trainerFilter() end
+            -- Two answer orders (source: Flow's Modules/Trainer.lua serviceInfo,
+            -- used on this client): classic clients give (name, rankText,
+            -- category); newer ones, WoW: Forever included, (name, category,
+            -- icon) and no rank. The category word tells them apart.
+            local ok, name, a, b = call(env.GetTrainerServiceInfo, i)
+            local rank, category
+            if not ok then return nil, trainerFilter() end
+            if type(a) == "string" and not hidden(a) and (SERVICE_STATE[a] or a == "header") then
+                category = a
+            else
+                rank, category = a, b
+            end
+            if category ~= nil and hidden(category) then return nil, trainerFilter() end
             if category ~= "header" then
                 local state = SERVICE_STATE[category]
                 name = text(ok, name)
@@ -633,18 +649,45 @@ function ns.make.client(env)
 
     -- F8: told when you learn a spell.
     --   client.onSpellLearned(fn) -> cancel;  fn({ id, name, rank })
-    -- LEARNED_SPELL_IN_TAB (spellID, ...); the name is the first answer of
-    -- GetSpellInfo(spellID), the rank GetSpellSubtext(spellID) where the
-    -- client has it, else GetSpellInfo's second answer when that is text.
-    -- A spell with no readable name tells nobody; a rank not read is left
-    -- out. First guesses, not seen in game on 16001. fn's errors stay here.
+    -- Events: LEARNED_SPELL_IN_SKILL_LINE (spellID, ...) and
+    -- LEARNED_SPELL_IN_TAB (spellID, ...). Source: Flow's Modules/NewSpell.lua
+    -- found on this client that LEARNED_SPELL_IN_TAB does not exist and the
+    -- event is LEARNED_SPELL_IN_SKILL_LINE; both are followed, and the same
+    -- spell told twice within a second is told once. That the first argument
+    -- is the spell id is a first guess (Flow did not read the arguments).
+    -- Name: C_Spell.GetSpellInfo(id).name where the client has it (Flow's
+    -- Modules/Rotation/Compat.lua SpellInfo prefers it), else GetSpellInfo's
+    -- first answer. Rank: C_Spell.GetSpellSubtext or GetSpellSubtext where
+    -- present, else GetSpellInfo's second answer when that is text; a first
+    -- guess. A spell with no readable name tells nobody; a rank not read is
+    -- left out. fn's errors stay here.
     local learnedListeners, learnedWatched = {}, false
+    local lastLearned, lastLearnedAt
+    local function spellName(id)
+        local group = env.C_Spell
+        if type(group) == "table" and type(group.GetSpellInfo) == "function" then
+            local ok, info = call(group.GetSpellInfo, id)
+            if not ok or type(info) ~= "table" or hidden(info) then return nil end
+            return text(true, info.name), nil
+        end
+        local ok, name, oldRank = call(env.GetSpellInfo, id)
+        return text(ok, name), text(ok, oldRank)
+    end
     local function spellLearned(id)
         if type(id) ~= "number" or hidden(id) then return end
-        local ok, name, oldRank = call(env.GetSpellInfo, id)
-        name = text(ok, name)
+        local now = c.uptime()   -- nil when the client gives no time: then nothing is held back
+        if lastLearned == id and type(now) == "number" and type(lastLearnedAt) == "number"
+            and now - lastLearnedAt < 1 then
+            return
+        end
+        lastLearned, lastLearnedAt = id, now
+        local name, oldRank = spellName(id)
         if not name then return end
-        local rank = text(call(env.GetSpellSubtext, id)) or text(ok, oldRank)
+        local subtext = env.GetSpellSubtext
+        if type(env.C_Spell) == "table" and type(env.C_Spell.GetSpellSubtext) == "function" then
+            subtext = env.C_Spell.GetSpellSubtext
+        end
+        local rank = text(call(subtext, id)) or oldRank
         for _, fn in ipairs({ unpack(learnedListeners) }) do
             pcall(fn, { id = id, name = name, rank = rank })
         end
@@ -653,6 +696,7 @@ function ns.make.client(env)
         if type(fn) ~= "function" then return nil end
         if not learnedWatched then
             learnedWatched = true
+            events.add("LEARNED_SPELL_IN_SKILL_LINE", spellLearned)
             events.add("LEARNED_SPELL_IN_TAB", spellLearned)
         end
         learnedListeners[#learnedListeners + 1] = fn
@@ -799,6 +843,17 @@ function ns.make.client(env)
     -- and level, what the game marks on it, its speed, your level, and the
     -- item tooltip hook. Every call here is a first guess, not seen in game
     -- on 16001; each answer that cannot be read is left out, never a default.
+    -- Checked (LEDGER 129) against the predecessor Flow, which called these on
+    -- this client: C_Item.GetItemStats / GetItemStats (Modules/Gear/Score.lua),
+    -- C_Item.GetItemInfoInstant / GetItemInfoInstant with classID and subclassID
+    -- as the 6th and 7th answers (Score.lua), C_Item.GetItemInfo / GetItemInfo
+    -- with minLevel 5th (Score.lua), C_TooltipInfo.GetHyperlink lines with
+    -- leftText and rightText (Modules/Gear/Analyzers.lua), TooltipDataProcessor
+    -- with Enum.TooltipDataType.Item, tooltip:GetItem(), OnTooltipSetItem
+    -- (Score.lua, Modules/Items/HaveCount.lua), UnitLevel, GetInventoryItemID,
+    -- GetInventoryItemLink, CanDualWield. Not seen used anywhere, so still a
+    -- first guess: the lines' leftColor / rightColor and the red they carry,
+    -- and the SPEED string.
 
     -- A whole number of zero or more the client gave, not secret, or nil.
     local function whole(ok, v)
@@ -844,8 +899,11 @@ function ns.make.client(env)
 
     -- A weapon's speed from a tooltip text: the client's own SPEED word, a
     -- space, and a number with a point or a comma ("Speed 2.60").
+    -- The word is the client's SPEED string; where it is missing, "Speed",
+    -- the word Flow's Modules/Gear/Analyzers.lua matched on this client.
     local function speedOf(s)
         local word = env.SPEED
+        if type(word) ~= "string" or word == "" then word = "Speed" end
         if type(s) ~= "string" or hidden(s) or type(word) ~= "string" or word == "" then return nil end
         if s:sub(1, #word + 1) ~= word .. " " then return nil end
         local digits = s:sub(#word + 2):match("^(%d+[%.,]%d+)$") or s:sub(#word + 2):match("^(%d+)$")
@@ -906,16 +964,13 @@ function ns.make.client(env)
         end
         for _, fn in ipairs({ unpack(tooltipListeners) }) do pcall(fn, link, add) end
     end
+    -- Order and guard (source: Flow's Modules/Gear/Score.lua hookTooltips,
+    -- used on this client): TooltipDataProcessor first where the client has
+    -- it; OnTooltipSetItem only otherwise, because it can fire twice for one
+    -- hover, so lines are added once per fill and the mark is cleared on
+    -- OnTooltipCleared.
     local function hookTooltip()
         if tooltipHooked then return true end
-        local tip = env.GameTooltip
-        if type(tip) == "table" and type(tip.HookScript) == "function" then
-            local okHas, has = call(tip.HasScript, tip, "OnTooltipSetItem")
-            if okHas and has == true and call(tip.HookScript, tip, "OnTooltipSetItem", tooltipFilled) then
-                tooltipHooked = true
-                return true
-            end
-        end
         local proc, enum = env.TooltipDataProcessor, env.Enum
         local itemData = type(enum) == "table" and type(enum.TooltipDataType) == "table"
             and enum.TooltipDataType.Item or nil
@@ -925,6 +980,20 @@ function ns.make.client(env)
             end) then
             tooltipHooked = true
             return true
+        end
+        local tip = env.GameTooltip
+        if type(tip) == "table" and type(tip.HookScript) == "function" then
+            local okHas, has = call(tip.HasScript, tip, "OnTooltipSetItem")
+            local filled = false
+            if okHas and has == true and call(tip.HookScript, tip, "OnTooltipSetItem", function(t2)
+                if filled then return end
+                filled = true
+                tooltipFilled(t2)
+            end) then
+                call(tip.HookScript, tip, "OnTooltipCleared", function() filled = false end)
+                tooltipHooked = true
+                return true
+            end
         end
         return false
     end
@@ -946,6 +1015,11 @@ function ns.make.client(env)
     -- START_LOOT_ROLL (rollID) and CANCEL_LOOT_ROLL (rollID),
     -- GetLootRollItemLink(rollID), and the roll frames GroupLootFrame1..4
     -- with their rollID field.
+    -- Checked (LEDGER 129) against Flow, which used them on this client:
+    -- START_LOOT_ROLL (rollID), GetLootRollItemLink(rollID), GroupLootFrame1..4
+    -- and GroupLootContainer children with rollID (Modules/Gear/RollHint.lua).
+    -- Still a first guess: CANCEL_LOOT_ROLL, and a child frame of ours on the
+    -- roll frame staying free of taint.
     --
     --   client.onLootRoll(fn) -> cancel;  fn(rollID, link, show);  show(text, r, g, b)
     -- show puts one short text above that roll's frame, on a frame of ours
@@ -955,12 +1029,28 @@ function ns.make.client(env)
     -- once instead. No link, or a secret one: fn is not told.
     local rollListeners, rollWatched = {}, false
     local rollMarks = {}      -- roll frame -> { holder, text, rollID }
+    -- Source: Flow's Modules/Gear/RollHint.lua framesFor, used on this
+    -- client: GroupLootFrame1..NUM_GROUP_LOOT_FRAMES (4 when not given), and
+    -- on newer clients the children of GroupLootContainer, each with rollID.
+    local function rollMatches(f, rollID)
+        if type(f) ~= "table" then return false end
+        local ok, id = pcall(function() return f.rollID end)
+        return ok and id ~= nil and not hidden(id) and id == rollID
+    end
     local function rollFrame(rollID)
-        for i = 1, 4 do
+        local count = env.NUM_GROUP_LOOT_FRAMES
+        if type(count) ~= "number" or count < 1 or count > 20 then count = 4 end
+        for i = 1, count do
             local f = env["GroupLootFrame" .. i]
-            if type(f) == "table" then
-                local ok, id = pcall(function() return f.rollID end)
-                if ok and id ~= nil and not hidden(id) and id == rollID then return f end
+            if rollMatches(f, rollID) then return f end
+        end
+        local box = env.GroupLootContainer
+        if type(box) == "table" then
+            local ok, kids = pcall(function() return { box:GetChildren() } end)
+            if ok then
+                for _, f in ipairs(kids) do
+                    if rollMatches(f, rollID) then return f end
+                end
             end
         end
         return nil
