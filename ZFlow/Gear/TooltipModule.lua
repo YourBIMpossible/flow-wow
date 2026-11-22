@@ -25,7 +25,7 @@ local _, ns = ...
 --   gear.tooltip   "Gear verdict on item tooltips"
 -- At start it asks the client to be told about item tooltips:
 --   client.onItemTooltip(fn) -> cancel;  fn(link, add);  add(text, r, g, b)
--- A client without that hook (Core/Client.lua has none yet), or one that
+-- A client without that hook (none of its two routes works), or one that
 -- refuses it, leaves the module started and quiet: hooked() is false. With
 -- the setting off nothing is worked out and nothing is added. An error
 -- while working a tooltip out adds nothing to that tooltip, is counted, and

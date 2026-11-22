@@ -5,7 +5,7 @@ local _, ns = ...
 --
 --   answer = GearCanUse.Check(item, who)
 --
---   item  { classId, subclassId, minLevel }: the item's class and subclass
+--   item  { classID, subclassID, minLevel }: the item's class and subclass
 --         numbers as the client gives them (armor is class 4, weapons class
 --         2) and the level it needs (0 for none). Each as read; a field that
 --         is not a plain number was not read.
@@ -55,12 +55,12 @@ function U.Check(item, who)
         return { can = can, why = why, reason = reason, evidence = evidence }
     end
 
-    if type(item) ~= "table" or not finite(item.classId) or not finite(item.subclassId) then
+    if type(item) ~= "table" or not finite(item.classID) or not finite(item.subclassID) then
         return answer(nil, "unknown", R.type)
     end
-    local kinds = type(proficiency) == "table" and proficiency[item.classId] or nil
+    local kinds = type(proficiency) == "table" and proficiency[item.classID] or nil
     if type(kinds) ~= "table" then return answer(nil, "unknown", R.proficiency) end
-    if kinds[item.subclassId] ~= true then return answer(false, "class", R.class) end
+    if kinds[item.subclassID] ~= true then return answer(false, "class", R.class) end
 
     if not finite(item.minLevel) then return answer(nil, "unknown", R.minLevel) end
     if not finite(who.level) then return answer(nil, "unknown", R.yourLevel) end

@@ -28,6 +28,10 @@ local _, ns = ...
 local T = {}
 ns.GearTooltip = T
 
+-- A gain or loss smaller than this is shown as the same: it would print as
+-- +0.0 or -0.0, and fractional weights leave residues that small.
+T.SAME = 0.05
+
 T.REASON = {
     result = "the item could not be compared",
     use = "not known whether you can use it",
@@ -77,6 +81,11 @@ function T.Lines(result, use, opts)
 
     result = type(result) == "table" and result or {}
     local verdict = result.verdict
+    -- A gain or loss that would print as 0.0 is the same, not an upgrade.
+    if (verdict == "upgrade" or verdict == "worse") and finite(result.delta)
+        and math.abs(result.delta) < T.SAME then
+        verdict = "same"
+    end
     local known = (verdict == "upgrade" or verdict == "same" or verdict == "worse") and finite(result.delta)
     local lines = {}
     if not known then

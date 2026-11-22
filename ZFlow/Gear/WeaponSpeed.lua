@@ -22,7 +22,7 @@ local _, ns = ...
 --   line    { text, tone = "none" }, or nil: not a weapon, or no speed read.
 --           "Speed 3.40 (slow), 60.0 damage per second; good for dps"
 --   gear    what client.gear(link) answers. From takes kind, `speed` (a
---           field the client does not give yet) and the damage per second
+--           field client.gear gives for a weapon) and the damage per second
 --           from the stats, when it is a plain number.
 --
 -- The two marks, 3.3 and 2.0 seconds, are carried over from the

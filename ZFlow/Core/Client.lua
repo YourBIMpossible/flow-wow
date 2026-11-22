@@ -537,8 +537,68 @@ function ns.make.client(env)
         return shown and true or false
     end
 
+    -- ---------------------------------------------------------------- F8
+    -- Trainer and spell learning (FEATURE-PLAN F8, owner Plexy since LEDGER
+    -- 125): the service rows and the window's filter, added to the one
+    -- trainer read below (no second trainer read). First guesses, not seen in
+    -- game on 16001: GetNumTrainerServices(), GetTrainerServiceInfo(i) (name,
+    -- rank, category "available" / "unavailable" / "used" / "header"),
+    -- GetTrainerServiceCost(i), GetTrainerServiceLevelReq(i) and
+    -- GetTrainerServiceTypeFilter("available" / "unavailable" / "used").
+    --
+    -- services { { name, rank, state, cost, level } ... } in the window's order:
+    --          state "available", "unavailable" or "known" (the game's
+    --          "used"); header rows are left out. rank, cost and level are
+    --          left out of a row when not read. One row whose name or state
+    --          cannot be read drops the whole list (never a shorter list).
+    -- filter   { available, unavailable, known }, each true or false; nil
+    --          when any of the three cannot be read.
+    -- Look-only: nothing is trained or bought.
+    local SERVICE_STATE = { available = "available", unavailable = "unavailable", used = "known" }
+    local function wholeOrNil(ok, v)
+        if not ok or v == nil or hidden(v) or type(v) ~= "number" or v ~= v then return nil end
+        if v < 0 or v == math.huge or v ~= math.floor(v) then return nil end
+        return v
+    end
+    local function trainerFilter()
+        local out = {}
+        for game, ours in pairs({ available = "available", unavailable = "unavailable", used = "known" }) do
+            -- Older clients answer 1 for shown and nothing for hidden: an
+            -- answer of nothing from a call that ran is "not shown".
+            local ok, on = call(env.GetTrainerServiceTypeFilter, game)
+            if not ok then return nil end
+            if on == nil then on = false end
+            if hidden(on) then return nil end
+            if on == 1 then on = true elseif on == 0 then on = false end
+            if type(on) ~= "boolean" then return nil end
+            out[ours] = on
+        end
+        return out
+    end
+    local function trainerServices()
+        local n = wholeOrNil(call(env.GetNumTrainerServices))
+        if not n then return nil, trainerFilter() end
+        local rows = {}
+        for i = 1, n do
+            local ok, name, rank, category = call(env.GetTrainerServiceInfo, i)
+            if not ok or (category ~= nil and hidden(category)) then return nil, trainerFilter() end
+            if category ~= "header" then
+                local state = SERVICE_STATE[category]
+                name = text(ok, name)
+                if not state or not name then return nil, trainerFilter() end
+                rows[#rows + 1] = {
+                    name = name, rank = text(ok, rank), state = state,
+                    cost = wholeOrNil(call(env.GetTrainerServiceCost, i)),
+                    level = wholeOrNil(call(env.GetTrainerServiceLevelReq, i)),
+                }
+            end
+        end
+        return rows, trainerFilter()
+    end
+
     -- The trainer whose window is open:
-    --   { profession = name or nil, npc = name }
+    --   { profession = name or nil, npc = name, services, filter }
+    -- services and filter as above (F8).
     -- nil unless the window is known to be open, nil for a player, and nil
     -- when the client will not say whether it is a player or what it is
     -- called. profession is the trainer's first skill line as the client
@@ -553,8 +613,43 @@ function ns.make.client(env)
         if not okPlayer or player == nil or hidden(player) or player ~= false then return nil end
         local npc = text(call(env.UnitName, "npc"))
         if not npc then return nil end
-        return { profession = text(call(env.GetTrainerServiceSkillLine, 1)), npc = npc }
+        local out = { profession = text(call(env.GetTrainerServiceSkillLine, 1)), npc = npc }
+        out.services, out.filter = trainerServices()
+        return out
     end
+
+    -- F8: told when you learn a spell.
+    --   client.onSpellLearned(fn) -> cancel;  fn({ id, name, rank })
+    -- LEARNED_SPELL_IN_TAB (spellID, ...); the name is the first answer of
+    -- GetSpellInfo(spellID), the rank GetSpellSubtext(spellID) where the
+    -- client has it, else GetSpellInfo's second answer when that is text.
+    -- A spell with no readable name tells nobody; a rank not read is left
+    -- out. First guesses, not seen in game on 16001. fn's errors stay here.
+    local learnedListeners, learnedWatched = {}, false
+    local function spellLearned(id)
+        if type(id) ~= "number" or hidden(id) then return end
+        local ok, name, oldRank = call(env.GetSpellInfo, id)
+        name = text(ok, name)
+        if not name then return end
+        local rank = text(call(env.GetSpellSubtext, id)) or text(ok, oldRank)
+        for _, fn in ipairs({ unpack(learnedListeners) }) do
+            pcall(fn, { id = id, name = name, rank = rank })
+        end
+    end
+    function c.onSpellLearned(fn)
+        if type(fn) ~= "function" then return nil end
+        if not learnedWatched then
+            learnedWatched = true
+            events.add("LEARNED_SPELL_IN_TAB", spellLearned)
+        end
+        learnedListeners[#learnedListeners + 1] = fn
+        return function()
+            for i = #learnedListeners, 1, -1 do
+                if learnedListeners[i] == fn then table.remove(learnedListeners, i) end
+            end
+        end
+    end
+    -- -------------------------------------------------------------- end F8
 
     -- "Horde", "Alliance", or nil when not known (any other answer, no
     -- answer, a secret one). UnitFactionGroup("player"), a first guess:
@@ -666,9 +761,12 @@ function ns.make.client(env)
 
     -- What the client says about one item and about what you wear, as the
     -- raw tables ns.GearRead.Shapes takes:
-    --   { kind, stats, worn, dualWield }
+    --   { kind, stats, classID, subclassID, minLevel, unmet, speed, worn, dualWield }
     -- kind, stats   the item `link` names (see the two reads above); both
     --               left out when link is not a non-empty string.
+    -- classID, subclassID, minLevel, unmet, speed   the same item (the F3
+    --               block below); minLevel, unmet and speed only once it is
+    --               loaded. Worn items carry kind and stats only.
     -- worn          { [inventory slot number] = { kind, stats } for an item,
     --                 false for a slot the client says holds nothing }.
     --               A slot is false only when GetInventoryItemID("player",
@@ -683,10 +781,250 @@ function ns.make.client(env)
     -- slot 18 (ranged) exists on this client. Before your character's items
     -- are loaded the client may give no id for any slot; this cannot tell
     -- that from empty slots, so it is to be asked after login.
+    -- ---------------------------------------------------------------- F3
+    -- Gear advice on hover (FEATURE-PLAN F3, owner Plexy): the item's class
+    -- and level, what the game marks on it, its speed, your level, and the
+    -- item tooltip hook. Every call here is a first guess, not seen in game
+    -- on 16001; each answer that cannot be read is left out, never a default.
+
+    -- A whole number of zero or more the client gave, not secret, or nil.
+    local function whole(ok, v)
+        if not ok or v == nil or hidden(v) or type(v) ~= "number" or v ~= v then return nil end
+        if v < 0 or v == math.huge or v ~= math.floor(v) then return nil end
+        return v
+    end
+
+    -- The item's class and subclass numbers (armor 4, weapons 2), in the
+    -- client's own spelling: the sixth and seventh answers of the same
+    -- GetItemInfoInstant call itemKind makes.
+    local function itemType(link)
+        local group = env.C_Item
+        local fn = env.GetItemInfoInstant
+        if type(group) == "table" and type(group.GetItemInfoInstant) == "function" then
+            fn = group.GetItemInfoInstant
+        end
+        local ok, _, _, _, _, _, class, subclass = call(fn, link)
+        return whole(ok, class), whole(ok, subclass)
+    end
+
+    -- Whether the item is loaded, and the level it needs: GetItemInfo's
+    -- first answer (its name: nil while the item is not loaded) and fifth.
+    -- C_Item.GetItemInfo where the client has it.
+    local function itemLoaded(link)
+        local group = env.C_Item
+        local fn = env.GetItemInfo
+        if type(group) == "table" and type(group.GetItemInfo) == "function" then fn = group.GetItemInfo end
+        local ok, name, _, _, _, minLevel = call(fn, link)
+        if not text(ok, name) then return false, nil end
+        return true, whole(ok, minLevel)
+    end
+
+    -- The game's red for "you do not meet this" (RED_FONT_COLOR, 1 / 0.125 /
+    -- 0.125), read off a line's colour table.
+    local function isRed(colour)
+        if type(colour) ~= "table" or hidden(colour) then return false end
+        local r, g, b = colour.r, colour.g, colour.b
+        if type(r) ~= "number" or type(g) ~= "number" or type(b) ~= "number" then return false end
+        if hidden(r) or hidden(g) or hidden(b) then return false end
+        return r > 0.95 and g < 0.25 and b < 0.25
+    end
+
+    -- A weapon's speed from a tooltip text: the client's own SPEED word, a
+    -- space, and a number with a point or a comma ("Speed 2.60").
+    local function speedOf(s)
+        local word = env.SPEED
+        if type(s) ~= "string" or hidden(s) or type(word) ~= "string" or word == "" then return nil end
+        if s:sub(1, #word + 1) ~= word .. " " then return nil end
+        local digits = s:sub(#word + 2):match("^(%d+[%.,]%d+)$") or s:sub(#word + 2):match("^(%d+)$")
+        local n = digits and tonumber((digits:gsub(",", "."))) or nil
+        if not n or n <= 0 then return nil end
+        return n
+    end
+
+    -- From the item's tooltip data (C_TooltipInfo.GetHyperlink(link)):
+    -- unmet, the lines the game draws in red, left and right, in its own
+    -- words (a red text that cannot be read is false: still a mark); and the
+    -- weapon's speed. nil, nil when the data cannot be read.
+    local function itemTooltip(link)
+        local group = env.C_TooltipInfo
+        if type(group) ~= "table" then return nil, nil end
+        local ok, data = call(group.GetHyperlink, link)
+        if not ok or type(data) ~= "table" or hidden(data) or type(data.lines) ~= "table" then return nil, nil end
+        local unmet, speed = {}, nil
+        for i = 1, #data.lines do
+            local line = data.lines[i]
+            if type(line) == "table" then
+                for _, side in ipairs({ "left", "right" }) do
+                    local s = line[side .. "Text"]
+                    if isRed(line[side .. "Color"]) then
+                        unmet[#unmet + 1] = text(true, s) or false
+                    end
+                    speed = speed or speedOf(s)
+                end
+            end
+        end
+        return unmet, speed
+    end
+
+    -- Your level: UnitLevel("player"), a whole number above 0, or nil.
+    function c.level()
+        local n = whole(call(env.UnitLevel, "player"))
+        if not n or n < 1 then return nil end
+        return n
+    end
+
+    -- Told each time the game's item tooltip has been filled for an item:
+    --   client.onItemTooltip(fn) -> cancel;  fn(link, add);  add(text, r, g, b)
+    -- add appends one line to that tooltip. fn's errors stay here. Route A:
+    -- GameTooltip:HookScript("OnTooltipSetItem") where the tooltip has that
+    -- script; route B: TooltipDataProcessor.AddTooltipPostCall for item data,
+    -- GameTooltip only. Neither replaces a script or a function of the game;
+    -- a hook cannot be taken back, so cancel only stops fn being told. nil
+    -- when the client offers neither. No link, or a secret one: fn is not told.
+    local tooltipListeners, tooltipHooked = {}, false
+    local function tooltipFilled(tip)
+        if type(tip) ~= "table" or type(tip.GetItem) ~= "function" then return end
+        local ok, _, link = pcall(tip.GetItem, tip)
+        link = text(ok, link)
+        if not link then return end
+        local function add(s, r, g, b)
+            if type(s) ~= "string" or type(tip.AddLine) ~= "function" then return end
+            pcall(tip.AddLine, tip, s, r, g, b)
+        end
+        for _, fn in ipairs({ unpack(tooltipListeners) }) do pcall(fn, link, add) end
+    end
+    local function hookTooltip()
+        if tooltipHooked then return true end
+        local tip = env.GameTooltip
+        if type(tip) == "table" and type(tip.HookScript) == "function" then
+            local okHas, has = call(tip.HasScript, tip, "OnTooltipSetItem")
+            if okHas and has == true and call(tip.HookScript, tip, "OnTooltipSetItem", tooltipFilled) then
+                tooltipHooked = true
+                return true
+            end
+        end
+        local proc, enum = env.TooltipDataProcessor, env.Enum
+        local itemData = type(enum) == "table" and type(enum.TooltipDataType) == "table"
+            and enum.TooltipDataType.Item or nil
+        if type(proc) == "table" and itemData ~= nil
+            and call(proc.AddTooltipPostCall, itemData, function(t2)
+                if t2 == env.GameTooltip then tooltipFilled(t2) end
+            end) then
+            tooltipHooked = true
+            return true
+        end
+        return false
+    end
+    function c.onItemTooltip(fn)
+        if type(fn) ~= "function" or not hookTooltip() then return nil end
+        tooltipListeners[#tooltipListeners + 1] = fn
+        return function()
+            for i = #tooltipListeners, 1, -1 do
+                if tooltipListeners[i] == fn then table.remove(tooltipListeners, i) end
+            end
+        end
+    end
+    -- -------------------------------------------------------------- end F3
+
+    -- ---------------------------------------------------------------- F4
+    -- Merchant and roll marks (FEATURE-PLAN F4, owner Plexy): the loot-roll
+    -- hook. The merchant reads F4 uses (merchantItems, watchMerchant) are
+    -- above and unchanged. First guesses, not seen in game on 16001:
+    -- START_LOOT_ROLL (rollID) and CANCEL_LOOT_ROLL (rollID),
+    -- GetLootRollItemLink(rollID), and the roll frames GroupLootFrame1..4
+    -- with their rollID field.
+    --
+    --   client.onLootRoll(fn) -> cancel;  fn(rollID, link, show);  show(text, r, g, b)
+    -- show puts one short text above that roll's frame, on a frame of ours
+    -- made as a child of it, so it hides with it; one per roll frame, reused.
+    -- Nothing of the game's frame is called or written, and nothing rolls.
+    -- When the roll frame cannot be found, show prints the link and the text
+    -- once instead. No link, or a secret one: fn is not told.
+    local rollListeners, rollWatched = {}, false
+    local rollMarks = {}      -- roll frame -> { holder, text, rollID }
+    local function rollFrame(rollID)
+        for i = 1, 4 do
+            local f = env["GroupLootFrame" .. i]
+            if type(f) == "table" then
+                local ok, id = pcall(function() return f.rollID end)
+                if ok and id ~= nil and not hidden(id) and id == rollID then return f end
+            end
+        end
+        return nil
+    end
+    local function rollMark(frame)
+        local m = rollMarks[frame]
+        if m then return m end
+        local ok, holder = call(env.CreateFrame, "Frame", nil, frame)
+        if not ok or type(holder) ~= "table" then return nil end
+        local okText, fs = call(holder.CreateFontString, holder, nil, "OVERLAY", "GameFontNormalSmall")
+        if not okText or type(fs) ~= "table" then return nil end
+        call(holder.SetSize, holder, 1, 1)
+        call(holder.SetPoint, holder, "BOTTOM", frame, "TOP", 0, 2)
+        call(fs.SetPoint, fs, "BOTTOM", holder, "BOTTOM", 0, 0)
+        m = { holder = holder, text = fs }
+        rollMarks[frame] = m
+        return m
+    end
+    local function rollStarted(rollID)
+        if type(rollID) ~= "number" or hidden(rollID) then return end
+        local link = text(call(env.GetLootRollItemLink, rollID))
+        if not link then return end
+        local printed = false
+        local function show(s, r, g, b)
+            if type(s) ~= "string" or s == "" then return end
+            local frame = rollFrame(rollID)
+            local m = frame and rollMark(frame) or nil
+            if not m then
+                if not printed then
+                    printed = true
+                    c.print((ns.id and ns.id.title or "") .. ": " .. link .. " " .. s)
+                end
+                return
+            end
+            m.rollID = rollID
+            call(m.text.SetText, m.text, s)
+            if type(r) == "number" then call(m.text.SetTextColor, m.text, r, g, b) end
+            call(m.holder.Show, m.holder)
+        end
+        for _, fn in ipairs({ unpack(rollListeners) }) do pcall(fn, rollID, link, show) end
+    end
+    local function rollCancelled(rollID)
+        for _, m in pairs(rollMarks) do
+            if m.rollID == rollID then
+                m.rollID = nil
+                call(m.holder.Hide, m.holder)
+            end
+        end
+    end
+    function c.onLootRoll(fn)
+        if type(fn) ~= "function" then return nil end
+        if not rollWatched then
+            rollWatched = true
+            events.add("START_LOOT_ROLL", rollStarted)
+            events.add("CANCEL_LOOT_ROLL", rollCancelled)
+        end
+        rollListeners[#rollListeners + 1] = fn
+        return function()
+            for i = #rollListeners, 1, -1 do
+                if rollListeners[i] == fn then table.remove(rollListeners, i) end
+            end
+        end
+    end
+    -- -------------------------------------------------------------- end F4
+
     function c.gear(link)
         local out = { worn = {} }
         if type(link) == "string" and link ~= "" then
             out.kind, out.stats = itemKind(link), itemStats(link)
+            out.classID, out.subclassID = itemType(link)
+            -- What needs the item loaded is left out until it is: an item
+            -- not loaded must not read as "the game marks nothing".
+            local loaded, minLevel = itemLoaded(link)
+            if loaded then
+                out.minLevel = minLevel
+                out.unmet, out.speed = itemTooltip(link)
+            end
         end
         for i = 1, #GEAR_SLOTS do
             local slot = GEAR_SLOTS[i]
@@ -1129,7 +1467,8 @@ function ns.make.client(env)
     end
 
     -- A small movable text panel, or nil when the client cannot make one.
-    --   spec = { name = global frame name or nil, width = n, height = n }
+    --   spec = { name = global frame name or nil, width = n, height = n,
+    --            closable = true or nil, onClose = fn or nil }
     -- The handle:
     --   h.setLines({ "text", ... })   the lines shown, top to bottom
     --   h.place({ anchor, relative anchor, x, y })   against the screen
@@ -1138,9 +1477,25 @@ function ns.make.client(env)
     --                   data in the shape place() takes. Not called when the
     --                   client will not say where the panel now stands.
     -- A new panel is hidden and has no place until told.
+    --
+    -- spec.closable = true: the player can close the panel. Two routes, each
+    -- made when the client allows it: a close button in the top right
+    -- corner, and Escape (the name of the frame goes in the game list
+    -- UISpecialFrames once, as for the arrow menu; only with a name that was
+    -- not already a global, and only when the client has the list).
+    --   h.onClose(fn, failed)   fn() once each time the player closes the
+    --                   panel by the button or by Escape. Not for
+    --                   h.show(false), and not when the whole interface is
+    --                   hidden. spec.onClose is the fn until this is called.
+    --                   failed(err) as for onMoved.
+    -- h.onClose is there only when at least one route was made: a caller
+    -- that must not show what cannot be closed asks type(h.onClose).
+    -- A first guess throughout: not seen in game.
     function c.panel(spec)
         spec = type(spec) == "table" and spec or {}
         local parent = env.UIParent
+        -- Asked before the frame is made: making it takes the name.
+        local nameFree = type(spec.name) == "string" and spec.name ~= "" and env[spec.name] == nil
         local ok, f = call(env.CreateFrame, "Frame", spec.name, parent)
         if not ok or f == nil then return nil end
         local h, moved, movedFailed = {}, nil, nil
@@ -1218,7 +1573,11 @@ function ns.make.client(env)
             method(f, "ClearAllPoints")
             method(f, "SetPoint", point[1], parent, point[2], point[3], point[4])
         end
+        -- open: shown by show(true) and not yet hidden by show(false) or
+        -- closed by the player. Only a hide while open is the player's.
+        local open = false
         function h.show(on)
+            open = on and true or false
             method(f, on and "Show" or "Hide")
         end
         -- failed(err), when given, is called with the error of an fn that
@@ -1226,6 +1585,73 @@ function ns.make.client(env)
         function h.onMoved(fn, failed)
             moved = fn
             movedFailed = type(failed) == "function" and failed or nil
+        end
+
+        if spec.closable == true then
+            local closed = type(spec.onClose) == "function" and spec.onClose or nil
+            local closedFailed
+            local function playerClosed()
+                if not open then return end
+                open = false
+                if closed then
+                    local okC, err = pcall(closed)
+                    if not okC and closedFailed then pcall(closedFailed, err) end
+                end
+            end
+
+            -- The button. The game template draws the usual cross; a client
+            -- without it gets a plain button with an x.
+            local okB, button = call(env.CreateFrame, "Button", nil, f, "UIPanelCloseButton")
+            if not okB or button == nil then
+                okB, button = call(env.CreateFrame, "Button", nil, f)
+                if okB and button ~= nil then
+                    method(button, "SetNormalFontObject", "GameFontNormalSmall")
+                    method(button, "SetText", "x")
+                end
+            end
+            if not okB then button = nil end
+            if button ~= nil then
+                if not method(button, "SetSize", 20, 20) then
+                    method(button, "SetWidth", 20)
+                    method(button, "SetHeight", 20)
+                end
+                method(button, "SetPoint", "TOPRIGHT", f, "TOPRIGHT", 0, 0)
+                -- The text keeps clear of the button.
+                if text ~= nil then method(text, "SetPoint", "BOTTOMRIGHT", f, "BOTTOMRIGHT", -22, 6) end
+                method(button, "SetScript", "OnClick", function()
+                    if not open then return end
+                    method(f, "Hide")
+                    -- OnHide has told it already on a client that runs it.
+                    playerClosed()
+                end)
+            end
+
+            -- Escape.
+            local special = env.UISpecialFrames
+            local escape = false
+            if nameFree and type(special) == "table" then
+                local there = false
+                for i = 1, #special do
+                    if special[i] == spec.name then there = true end
+                end
+                if not there then special[#special + 1] = spec.name end
+                escape = true
+            end
+
+            if button ~= nil or escape then
+                -- The game also runs OnHide when something the panel stands
+                -- on is hidden (the whole interface, Alt-Z): the panel
+                -- itself is then still shown, and that is not a close.
+                method(f, "SetScript", "OnHide", function()
+                    local okS, shown = method(f, "IsShown")
+                    if okS and shown then return end
+                    playerClosed()
+                end)
+                function h.onClose(fn, failed)
+                    closed = type(fn) == "function" and fn or nil
+                    closedFailed = type(failed) == "function" and failed or nil
+                end
+            end
         end
         return h
     end
@@ -2199,6 +2625,138 @@ function ns.make.client(env)
         end
         arrowFrames[h] = f
         return h
+    end
+
+    ---------------------------------------------------------------------
+    -- F6, the rotation helper: its reads and its one secure frame, kept
+    -- together. All first guesses: not seen in game on 16001.
+    ---------------------------------------------------------------------
+
+    -- The form you are in: a number (0 is no form), or nil when not known
+    -- (no call, a failed call, a secret answer, or anything but a number).
+    -- GetShapeshiftForm(). It names no unit and only reads.
+    function c.form()
+        local ok, n = call(env.GetShapeshiftForm)
+        if not ok or n == nil or hidden(n) or type(n) ~= "number" then return nil end
+        return n
+    end
+
+    -- In a pet battle: true, false, or nil when not known. A client with
+    -- no C_PetBattles.IsInBattle does not say. It only reads.
+    function c.petBattle()
+        local api = env.C_PetBattles
+        if type(api) ~= "table" then return nil end
+        return yesNo(call(api.IsInBattle))
+    end
+
+    -- In a vehicle: true, false, or nil when not known.
+    -- UnitInVehicle("player"): no unit but you is asked about.
+    function c.vehicle()
+        return yesNo(call(env.UnitInVehicle, "player"))
+    end
+
+    -- A secure button for the key frame (Rotation/KeyFrame.lua), or nil
+    -- when the client made none. It is made from the client's own
+    -- SecureActionButtonTemplate: with no size and no art it takes no
+    -- mouse click, and it is hidden when it is made outside a fight (in
+    -- one, hiding it is the client's to refuse, so it is not asked).
+    --   h.set(attr, value) -> true, or false and why. It asks
+    --                   InCombatLockdown() first: anything but a plain
+    --                   false is "lockdown" and the frame is not touched.
+    --                   A SetAttribute that fails is "refused".
+    --   h.get(attr) -> what the frame holds for it, or nil.
+    -- Nothing here binds a key, registers a state driver, clicks the
+    -- button, or casts: it holds attributes, and only you press the key.
+    function c.secureButton(spec)
+        spec = type(spec) == "table" and spec or {}
+        local ok, f = call(env.CreateFrame, "Button", spec.name, env.UIParent, "SecureActionButtonTemplate")
+        if not ok or f == nil then return nil end
+        local function unlocked()
+            local okLock, locked = call(env.InCombatLockdown)
+            return okLock and locked == false
+        end
+        if unlocked() then method(f, "Hide") end
+        local h = {}
+        function h.set(attr, value)
+            if not unlocked() then return false, "lockdown" end
+            if not method(f, "SetAttribute", attr, value) then return false, "refused" end
+            return true
+        end
+        function h.get(attr)
+            local okGet, v = method(f, "GetAttribute", attr)
+            if not okGet then return nil end
+            return v
+        end
+        return h
+    end
+
+    -- F2 errand stops: the reads Nav/ServiceSeen.lua, Nav/HearthSeen.lua,
+    -- Nav/HearthStep.lua and Nav/Errand.lua ask for. Each only reads. An
+    -- answer the client hides, or one of the wrong kind, is "not known".
+    -- First guesses, none seen in game: UnitGUID, CanMerchantRepair,
+    -- GetBindLocation, GetItemCount and GetItemCooldown.
+    --
+    -- c.guid(unit) -> text or nil. Only the player, the pet and the target;
+    -- any other unit is nil and the client is not asked. Shared with F7,
+    -- which carries the same lines.
+    local GUID_UNITS = { player = true, pet = true, target = true }
+    function c.guid(unit)
+        if type(unit) ~= "string" or not GUID_UNITS[unit] then return nil end
+        local ok, id = call(env.UnitGUID, unit)
+        if not ok or id == nil or hidden(id) or type(id) ~= "string" or id == "" then return nil end
+        return id
+    end
+    function c.playerGUID() return c.guid("player") end
+    function c.petGUID() return c.guid("pet") end
+
+    -- c.serviceNpc() -> { guid, name } or nil: the npc whose window is
+    -- open (unit "npc", as c.trainer reads it). Nil unless the client says
+    -- plainly that it is no player. A part not known is left out; nil when
+    -- neither is known.
+    function c.serviceNpc()
+        local okP, isPlayer = call(env.UnitIsPlayer, "npc")
+        if not okP or hidden(isPlayer) or isPlayer ~= false then return nil end
+        local name = text(call(env.UnitName, "npc"))
+        local guid
+        local okG, id = call(env.UnitGUID, "npc")
+        if okG and id ~= nil and not hidden(id) and type(id) == "string" and id ~= "" then guid = id end
+        if name == nil and guid == nil then return nil end
+        return { guid = guid, name = name }
+    end
+
+    -- c.merchantRepairs() -> true, false, or nil when not known.
+    function c.merchantRepairs()
+        local ok, v = call(env.CanMerchantRepair)
+        if not ok or v == nil or hidden(v) then return nil end
+        if v == true or v == 1 then return true end
+        if v == false or v == 0 then return false end
+        return nil
+    end
+
+    -- c.bindLocation() -> the name of the place the hearthstone is set to,
+    -- or nil.
+    function c.bindLocation()
+        return text(call(env.GetBindLocation))
+    end
+
+    -- c.hearthCooldown() -> seconds until the hearthstone is ready, 0 when
+    -- ready, nil when not known or the player carries no stone. It never
+    -- uses the stone.
+    local HEARTHSTONE = 6948
+    function c.hearthCooldown()
+        local okN, n = call(env.GetItemCount, HEARTHSTONE)
+        if not okN or n == nil or hidden(n) or type(n) ~= "number" or n < 1 then return nil end
+        local ok, start, duration = call(env.GetItemCooldown, HEARTHSTONE)
+        if not ok or start == nil or duration == nil or hidden(start) or hidden(duration) then return nil end
+        if type(start) ~= "number" or type(duration) ~= "number" then return nil end
+        if start ~= start or duration ~= duration or start < 0 or duration < 0 then return nil end
+        if start == 0 or duration == 0 then return 0 end
+        local okT, now = call(env.GetTime)
+        if not okT or now == nil or hidden(now) or type(now) ~= "number" then return nil end
+        local left = start + duration - now
+        if left ~= left or left == math.huge then return nil end
+        if left < 0 then return 0 end
+        return left
     end
 
     return c

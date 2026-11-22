@@ -487,6 +487,9 @@ function Arrow.Start(k, diag, own)
         else
             local step = W and W.Step(k.store:get(W.SCOPE, W.PATH), ask(client, "position"), ask(client, "zone"))
             if step then mine = true else step = N.WaypointStep(client) end
+            -- Then the errand stop the player asked for (Nav/Errand.lua), when there is one.
+            local errand = k.use and k.use("errand")
+            if step == nil and errand and errand.Step then step = errand.Step() end
             -- The player's own pin (/way, then the map pin) wins over the player's quests.
             if step == nil and quests and Arrow.QuestArrowOn(k) then step = quests.step() end
             local prof = N.ProfStepFrom(client, k.store)
