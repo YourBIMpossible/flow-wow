@@ -18,6 +18,7 @@
 --   ns.make.fakeClient{ env = { GetMoney = function() return 5 end } }; c.slashes["/x"]("rest")
 --   c.setZone(1, 1411); c.setPosition(1411, 0.5, 0.25); c.setLockdown(true)
 --   c.setDead(true); c.setCorpse(1411, 0.3, 0.6)
+--   c.setGhost(true)                 false: dead, not released; nil: not known
 --   c.setWaypoint(1411, 0.4, 0.2)   -- c.setWaypoint(nil): none set
 --   c.setScreen(1024, 768); c.setVersion("0.1.0"); c.setFrames(false)
 --   c.panels[1].lines / .point / .shown / .spec; c.panels[1].drag({ "CENTER", "CENTER", 0, 0 })
@@ -93,6 +94,7 @@ function ns.make.fakeClient(opts)
         return { map = s.position.map, x = s.position.x, y = s.position.y }
     end
     function c.dead() return s.dead end
+    function c.ghost() return s.ghost end
     function c.corpse()
         if not s.corpse then return nil end
         return { map = s.corpse.map, x = s.corpse.x, y = s.corpse.y }
@@ -294,6 +296,10 @@ function ns.make.fakeClient(opts)
     -- Dead or a ghost: true or false; nil for not known.
     function c.setDead(v)
         if v == nil then s.dead = nil else s.dead = v and true or false end
+    end
+    -- A ghost: true or false; nil for not known.
+    function c.setGhost(v)
+        if v == nil then s.ghost = nil else s.ghost = v and true or false end
     end
     -- The corpse, as shares of a map; leave the map out for not known.
     function c.setCorpse(map, x, y)

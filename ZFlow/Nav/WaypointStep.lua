@@ -4,8 +4,8 @@ local _, ns = ...
 -- Pure given a client: no frames, nothing remembered.
 --
 -- N.WaypointStep(client) -> step or nil
---   step = { label = N.WAYPOINT_LABEL,
---            place = { cont = client.zone().cont, map, x, y } }
+--   step = { label = N.WAYPOINT_LABEL, place = { cont, map, x, y } }
+--   cont only as the next paragraph says; it may be absent.
 --   the shape Arrow.GuideSource takes as given.quest (the corpse step's
 --   shape in UI/Arrow.lua). x and y are shares 0..1 of map.
 --

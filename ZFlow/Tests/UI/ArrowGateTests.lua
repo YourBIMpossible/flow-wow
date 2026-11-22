@@ -172,4 +172,104 @@ return {
         t.eq(c.arrows[1].lines[1], "Corpse")
         t.eq(c.arrows[1].lines[2], "200 yd")
     end,
+    -- ------------------------------------------------- dead, ghost, elsewhere
+    ["the two authored lines"] = function(t)
+        t.ok(type(A.RELEASE_LABEL) == "string" and A.RELEASE_LABEL ~= "", "a release label")
+        t.eq(A.CORPSE_ELSEWHERE, "corpse is on another map")
+    end,
+
+    ["dead, not a ghost: no place, and the one line is the release label"] = function(t)
+        local c = start()
+        c.setDead(true)
+        c.setGhost(false)
+        local src = source(c)
+        t.eq(src.view.gate, "corpse")
+        t.eq(src.view.quest.distance, nil)
+        t.eq(src.turns.quest, nil)
+        t.eq(src.lines.quest, { A.RELEASE_LABEL })
+    end,
+
+    ["dead, not a ghost: a corpse place the client gives is not pointed at"] = function(t)
+        local c = start()
+        c.setDead(true)
+        c.setGhost(false)
+        c.setCorpse(1411, 0.3, 0.5)
+        local src = source(c)
+        t.eq(src.view.quest.distance, nil)
+        t.eq(src.turns.quest, nil)
+        t.eq(src.lines.quest, { A.RELEASE_LABEL })
+    end,
+
+    ["a ghost on the corpse's map: pointed at the corpse"] = function(t)
+        local c = start()
+        c.setDead(true)
+        c.setGhost(true)
+        c.setCorpse(1411, 0.3, 0.5)
+        local src = source(c)
+        t.eq(src.view.gate, "corpse")
+        near(t, src.view.quest.distance, 200, "distance to the corpse")
+        near(t, src.turns.quest, math.pi / 2, "the corpse is west")
+        t.eq(src.lines.quest, { "Corpse", "200 yd" })
+    end,
+
+    ["a ghost, the corpse not on this map: the label and the other-map line"] = function(t)
+        local c = start()
+        c.setDead(true)
+        c.setGhost(true)
+        local src = source(c)
+        t.eq(src.view.gate, "corpse")
+        t.eq(src.view.quest.distance, nil)
+        t.eq(src.turns.quest, nil)
+        t.eq(src.lines.quest, { "Corpse", A.CORPSE_ELSEWHERE })
+    end,
+
+    ["a ghost: a corpse read that fails, is absent or is no place is unknown, not elsewhere"] = function(t)
+        local c = start()
+        c.setDead(true)
+        c.setGhost(true)
+        c.corpse = function() error("the client refused") end
+        t.eq(source(c).lines.quest, { "Corpse", A.UNKNOWN_TURN })
+        c.corpse = nil
+        t.eq(source(c).lines.quest, { "Corpse", A.UNKNOWN_TURN })
+        c.corpse = function() return { map = 1411, x = "left", y = 0.5 } end
+        t.eq(source(c).lines.quest, { "Corpse", A.UNKNOWN_TURN })
+    end,
+
+    ["ghost unknown: as before, nothing guessed"] = function(t)
+        local c = start()
+        c.setDead(true)
+        t.eq(source(c).lines.quest, { "Corpse", A.UNKNOWN_TURN }, "no corpse place")
+        c.setCorpse(1411, 0.3, 0.5)
+        t.eq(source(c).lines.quest, { "Corpse", "200 yd" }, "a corpse place")
+        c.ghost = function() error("the client refused") end
+        t.eq(source(c).lines.quest, { "Corpse", "200 yd" }, "the ghost read fails")
+        c.ghost = function() return 1 end
+        t.eq(source(c).lines.quest, { "Corpse", "200 yd" }, "only a plain true or false counts here")
+        c.ghost = nil
+        t.eq(source(c).lines.quest, { "Corpse", "200 yd" }, "no ghost read")
+    end,
+
+    ["alive: the ghost read changes nothing"] = function(t)
+        local c = start()
+        c.setDead(false)
+        c.setGhost(true)
+        local src = source(c)
+        t.eq(src.view.gate, "open")
+        t.eq(src.lines.quest, { "Kill boars", "100 yd" })
+    end,
+
+    ["dead, not a ghost, on the frames: shown with the release label, then the corpse once a ghost"] = function(t)
+        local c, a = start()
+        c.setDead(true)
+        c.setGhost(false)
+        c.setCorpse(1411, 0.3, 0.5)
+        a.setGuide(function() return steps() end)
+        local q = c.arrows[1]
+        t.eq(q.shown, true)
+        t.eq(q.lines, { A.RELEASE_LABEL })
+        t.eq(a.state().view.quest.mode, "corpse")
+        c.setGhost(true)
+        a.relayout()
+        t.eq(q.lines, { "Corpse", "200 yd" })
+    end,
 }

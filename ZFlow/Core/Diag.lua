@@ -389,22 +389,30 @@ end
 --             line for each adjusted value: its key, what Flow had, what was
 --             kept and why. Entries left behind for another reason (no row
 --             for the key, or a newer key held the same choice) get a line of
---             their own when there are any.
---     counts  { dropped, adjusted, malformed, unknown, superseded, other }
+--             their own when there are any. Then the vendor automations Flow
+--             had on (result.vendorToConfirm): a count and one line each,
+--             since each stays off until the player confirms it.
+--     counts  { dropped, adjusted, malformed, unknown, superseded, other, vendor }
 -- The entries are counted from the lists themselves. Pure: it reads only
 -- what it is given, and a result that is not one gives a line saying so.
+-- Text from saved data has each "|" doubled, so chat prints it as typed
+-- instead of reading it as a colour or link code.
+local function text(v)
+    return (tostring(v):gsub("|", "||"))
+end
+
 local function shown(v)
-    if type(v) == "string" then return '"' .. v .. '"' end
+    if type(v) == "string" then return '"' .. text(v) .. '"' end
     return tostring(v)
 end
 
 function Diag.ImportReport(result)
-    local counts = { dropped = 0, adjusted = 0, malformed = 0, unknown = 0, superseded = 0, other = 0 }
+    local counts = { dropped = 0, adjusted = 0, malformed = 0, unknown = 0, superseded = 0, other = 0, vendor = 0 }
     if type(result) ~= "table" then
         return { "import: there is no result to report." }, counts
     end
     if result.ok ~= true then
-        return { "import: nothing was read: " .. tostring(result.reason or "no reason given") }, counts
+        return { "import: nothing was read: " .. text(result.reason or "no reason given") }, counts
     end
 
     if type(result.dropped) == "table" then
@@ -431,8 +439,20 @@ function Diag.ImportReport(result)
     end
     for i = 1, #adjusted do
         local entry = type(adjusted[i]) == "table" and adjusted[i] or {}
-        lines[#lines + 1] = "import: adjusted " .. tostring(entry.key) .. ": " .. shown(entry.from)
-            .. " to " .. shown(entry.to) .. " (" .. tostring(entry.reason or "no reason given") .. ")"
+        lines[#lines + 1] = "import: adjusted " .. text(entry.key) .. ": " .. shown(entry.from)
+            .. " to " .. shown(entry.to) .. " (" .. text(entry.reason or "no reason given") .. ")"
+    end
+    local vendor = type(result.vendorToConfirm) == "table" and result.vendorToConfirm or {}
+    counts.vendor = #vendor
+    if counts.vendor > 0 then
+        lines[#lines + 1] = "import: " .. counts.vendor .. " vendor automation"
+            .. (counts.vendor == 1 and " was" or "s were")
+            .. " on in Flow; each stays off until you confirm it."
+        for i = 1, #vendor do
+            local entry = type(vendor[i]) == "table" and vendor[i] or {}
+            lines[#lines + 1] = "import: confirm " .. text(entry.key)
+                .. (entry.sameAsFlowDefault and " (it is Flow's own default, so it may not be a choice you made)" or "")
+        end
     end
     return lines, counts
 end
@@ -565,6 +585,18 @@ function Diag.Start(k)
         end)
     end
 
+    -- A deep copy of saved data. A table met again inside itself is copied
+    -- once and shared, so a loop cannot run forever.
+    local function plainCopy(v, seen)
+        if type(v) ~= "table" then return v end
+        seen = seen or {}
+        if seen[v] then return seen[v] end
+        local out = {}
+        seen[v] = out
+        for key, x in pairs(v) do out[plainCopy(key, seen)] = plainCopy(x, seen) end
+        return out
+    end
+
     -- Other files add a word of their own after the slash command here:
     -- commands[word] = function(rest) end, rest lower-cased and trimmed.
     local commands = {}
@@ -582,9 +614,13 @@ function Diag.Start(k)
             client.print(id.title .. ": no " .. id.predecessor .. " data is loaded, so there is nothing to read.")
             return
         end
-        local charDB = id.predecessor .. "CharDB"
-        local ok, result = pcall(Import.FromFlow, client.saved(id.predecessorDB),
-            client.savedExists(charDB) and client.saved(charDB) or nil)
+        -- Copies: the predecessor may be loaded and using these tables, and
+        -- a dry run must not be able to change them.
+        local charDB = id.predecessorCharDB
+        local ok, result = pcall(function()
+            return Import.FromFlow(plainCopy(client.saved(id.predecessorDB)),
+                client.savedExists(charDB) and plainCopy(client.saved(charDB)) or nil)
+        end)
         if not ok then
             k.problems:add("diag", "import", result)
             client.print(id.title .. ": the import could not be read.")
@@ -601,7 +637,8 @@ function Diag.Start(k)
             commands[word](more)
         elseif not text:find("^%s*diag") then
             client.print(id.title .. ": " .. (k.paused and "paused" or tostring(k.phase))
-                .. ". Type " .. id.slash .. " diag for a diagnostic snapshot.")
+                .. ". Type " .. id.slash .. " diag for a diagnostic snapshot, or "
+                .. id.slash .. " import to see what an import would do.")
         elseif text:find("clear", 1, true) then
             client.saved(id.accountDB).diag = nil
             client.print(id.title .. ": diagnostics cleared.")

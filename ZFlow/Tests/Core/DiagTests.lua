@@ -342,7 +342,7 @@ return {
                 { key = "x.name", from = "Long", to = "L", reason = "cut" },
             },
         })
-        t.eq(counts, { dropped = 2, adjusted = 2, malformed = 1, unknown = 0, superseded = 0, other = 0 })
+        t.eq(counts, { dropped = 2, adjusted = 2, malformed = 1, unknown = 0, superseded = 0, other = 0, vendor = 0 })
         t.eq(lines, {
             "import: 2 dropped, 2 adjusted, 1 malformed.",
             "import: adjusted buffButton.scale: 9 to 2 (outside the sizes a frame can take)",
@@ -353,7 +353,7 @@ return {
     ["import report: nothing left behind or changed is three zeroes"] = function(t)
         local lines, counts = ns.Diag.ImportReport({ ok = true, dropped = {}, adjusted = {} })
         t.eq(lines, { "import: 0 dropped, 0 adjusted, 0 malformed." })
-        t.eq(counts, { dropped = 0, adjusted = 0, malformed = 0, unknown = 0, superseded = 0, other = 0 })
+        t.eq(counts, { dropped = 0, adjusted = 0, malformed = 0, unknown = 0, superseded = 0, other = 0, vendor = 0 })
     end,
 
     ["import report: entries left behind for another reason are not counted as dropped"] = function(t)
@@ -366,7 +366,7 @@ return {
             },
             adjusted = {},
         })
-        t.eq(counts, { dropped = 1, adjusted = 0, malformed = 0, unknown = 2, superseded = 1, other = 2 })
+        t.eq(counts, { dropped = 1, adjusted = 0, malformed = 0, unknown = 2, superseded = 1, other = 2, vendor = 0 })
         t.eq(lines, {
             "import: 1 dropped, 0 adjusted, 0 malformed.",
             "import: also left behind: 2 with no row, 1 superseded, 2 with no category.",
@@ -410,7 +410,7 @@ return {
         t.eq(#c.printed, before + 1)
         t.ok(c.printed[#c.printed]:find("nothing to read", 1, true), c.printed[#c.printed])
         t.eq(c.savedExists(ns.id.predecessorDB), false)
-        t.eq(c.savedExists(ns.id.predecessor .. "CharDB"), false)
+        t.eq(c.savedExists(ns.id.predecessorCharDB), false)
     end,
 
     ["slash: import prints the report and writes nothing"] = function(t)
@@ -418,8 +418,8 @@ return {
         login(c)
         local flow = c.saved(ns.id.predecessorDB)
         flow.buffButton = { scale = 9, enabled = "yes" }
-        local snaps = c.saved(ns.id.accountDB).diag.count
         local own0 = copy(c.saved(ns.id.accountDB))
+        local char0 = copy(c.saved(ns.id.charDB))
         local before = #c.printed
         c.slashes[ns.id.slash](" IMPORT ")
         local expected = ns.Diag.ImportReport(ns.Import.FromFlow({ buffButton = { scale = 9, enabled = "yes" } }, nil))
@@ -428,23 +428,125 @@ return {
             t.eq(c.printed[before + i], ns.id.title .. ": " .. expected[i])
         end
         t.eq(flow, { buffButton = { scale = 9, enabled = "yes" } })
-        local own = c.saved(ns.id.accountDB)
-        -- The store makes its sections at login; the slash must change none.
-        t.eq(own.settings, own0.settings, "settings unchanged")
-        t.eq(own.layout, own0.layout, "layout unchanged")
-        t.eq(own.imports, own0.imports, "no import recorded")
-        t.eq(own.diag.count, snaps, "a snapshot was taken")
-        t.eq(c.savedExists(ns.id.predecessor .. "CharDB"), false)
+        -- The store makes its tables at login; the slash changes nothing in
+        -- either, not even the snapshot count (R3).
+        t.eq(c.saved(ns.id.accountDB), own0, "account table unchanged")
+        t.eq(c.saved(ns.id.charDB), char0, "character table unchanged")
+        t.eq(c.savedExists(ns.id.predecessorCharDB), false)
     end,
 
     ["slash: import reads the predecessor's character data when the client has it"] = function(t)
         local _, c = start()
         login(c)
         c.saved(ns.id.predecessorDB)
-        c.saved(ns.id.predecessor .. "CharDB").stray = 1
+        c.saved(ns.id.predecessorCharDB).stray = 1
         local before = #c.printed
         c.slashes[ns.id.slash]("import")
         t.ok(c.printed[before + 2] and c.printed[before + 2]:find("1 with no row", 1, true),
             tostring(c.printed[before + 2]))
+    end,
+
+    ["slash: import hands the import copies, so the predecessor's live tables cannot change (R4)"] = function(t)
+        local _, c = start()
+        login(c)
+        local flow = c.saved(ns.id.predecessorDB)
+        flow.buffButton = { scale = 9 }
+        c.saved(ns.id.predecessorCharDB).note = { text = "kept" }
+        local real = ns.Import.FromFlow
+        local seenA, seenC
+        ns.Import.FromFlow = function(a, ch)
+            seenA, seenC = a, ch
+            a.buffButton.scale = 1
+            ch.note.text = "changed"
+            return real(a, ch)
+        end
+        local ran, err = pcall(c.slashes[ns.id.slash], "import")
+        ns.Import.FromFlow = real
+        t.ok(ran, tostring(err))
+        t.ok(seenA ~= nil and seenA ~= flow, "the account table handed in is a copy")
+        t.ok(seenC ~= nil and seenC ~= c.saved(ns.id.predecessorCharDB), "the character table handed in is a copy")
+        t.eq(flow, { buffButton = { scale = 9 } })
+        t.eq(c.saved(ns.id.predecessorCharDB), { note = { text = "kept" } })
+    end,
+
+    ["import report: each vendor automation Flow had on gets a line; it stays off (IR8)"] = function(t)
+        local lines, counts = ns.Diag.ImportReport({ ok = true, dropped = {}, adjusted = {},
+            vendorToConfirm = { { key = "autoRepair", to = true, sameAsFlowDefault = true },
+                                { key = "autoSell", to = true }, "broken" } })
+        t.eq(counts.vendor, 3)
+        t.eq(lines, {
+            "import: 0 dropped, 0 adjusted, 0 malformed.",
+            "import: 3 vendor automations were on in Flow; each stays off until you confirm it.",
+            "import: confirm autoRepair (it is Flow's own default, so it may not be a choice you made)",
+            "import: confirm autoSell",
+            "import: confirm nil",
+        })
+    end,
+
+    ["import report: no vendor list, or an empty one, adds no line (IR8)"] = function(t)
+        local lines, counts = ns.Diag.ImportReport({ ok = true, dropped = {}, adjusted = {}, vendorToConfirm = {} })
+        t.eq(lines, { "import: 0 dropped, 0 adjusted, 0 malformed." })
+        t.eq(counts.vendor, 0)
+    end,
+
+    ["import report: a | from saved data is doubled, so chat shows it as typed (IR13)"] = function(t)
+        local lines = ns.Diag.ImportReport({ ok = true, dropped = {},
+            adjusted = { { key = "a|cff", from = "x|r", to = "y", reason = "r|n" } } })
+        t.eq(lines[2], 'import: adjusted a||cff: "x||r" to "y" (r||n)')
+        t.eq((ns.Diag.ImportReport({ ok = false, reason = "bad|r" })), { "import: nothing was read: bad||r" })
+    end,
+
+    ["slash: an import that raises is recorded as a problem and said in one line (IR13)"] = function(t)
+        local k, c = start()
+        login(c)
+        c.saved(ns.id.predecessorDB).x = 1
+        local real = ns.Import.FromFlow
+        ns.Import.FromFlow = function() error("boom") end
+        local before = #c.printed
+        local ran, err = pcall(c.slashes[ns.id.slash], "import")
+        ns.Import.FromFlow = real
+        t.ok(ran, tostring(err))
+        t.eq(#c.printed, before + 1)
+        t.eq(c.printed[#c.printed], ns.id.title .. ": the import could not be read.")
+        local p = k.problems:list("diag")
+        t.eq(#p, 1)
+        t.eq(p[1].owner, "import")
+    end,
+
+    ["slash: the help line names both words (IR13)"] = function(t)
+        local _, c = start()
+        login(c)
+        c.slashes[ns.id.slash]("")
+        local line = c.printed[#c.printed]
+        t.ok(line:find(ns.id.slash .. " diag", 1, true), line)
+        t.ok(line:find(ns.id.slash .. " import", 1, true), line)
+    end,
+
+    ["slash: import's copy closes a loop, keeps sharing and copies table keys (C6)"] = function(t)
+        local _, c = start()
+        login(c)
+        local flow = c.saved(ns.id.predecessorDB)
+        local shared, key = { n = 1 }, { k = 1 }
+        flow.self = flow
+        flow.a, flow.b = shared, shared
+        flow[key] = "by table"
+        local real = ns.Import.FromFlow
+        local seen
+        ns.Import.FromFlow = function(a) seen = a; return { ok = false, reason = "stub" } end
+        local ran, err = pcall(c.slashes[ns.id.slash], "import")
+        ns.Import.FromFlow = real
+        t.ok(ran, tostring(err))
+        t.ok(type(seen) == "table" and seen ~= flow, "a copy is handed in")
+        t.ok(seen.self == seen, "the loop closes on the copy")
+        t.ok(seen.a == seen.b and seen.a ~= shared, "one copy, shared where the original shares")
+        t.eq(seen.a, { n = 1 })
+        local copiedKey
+        for k2, v in pairs(seen) do if type(k2) == "table" then copiedKey = k2; t.eq(v, "by table") end end
+        t.ok(copiedKey ~= nil and copiedKey ~= key, "a table key is copied")
+        t.eq(copiedKey, { k = 1 })
+    end,
+
+    ["identity: the predecessor's character table name is read from Core/Identity.lua (R6)"] = function(t)
+        t.eq(ns.id.predecessorCharDB, "FlowCharDB")
     end,
 }

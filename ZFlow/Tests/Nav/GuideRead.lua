@@ -153,6 +153,29 @@ T["read: a step on another map with a size but no link: no distance, no turn (W1
     t.eq(s.quest.why, "zone")
 end
 
+T["read: a handed-in link that does not name the player's map makes up no offset for it (R1)"] = function(t)
+    local c = client()
+    c.setPosition(1412, 0.5, 0.5)
+    c.setZone(1, 1412)
+    c.setMapSize(1412, 2000, 1000)
+    local s = N.GuideRead(c, { quest = { place = { map = 1411, x = 0.5, y = 0.5 } },
+                               link = { [1411] = { x = 0, y = 0 } } })
+    t.eq(s.quest.distance, nil, "no distance from a guessed offset")
+    t.eq(s.quest.why, "zone")
+    local link = N.GuideLink(c, { [1411] = { x = 0, y = 0 } })
+    t.eq(link[1412], { w = 2000, h = 1000 }, "the player's map gets its size and no offset")
+end
+
+T["link: a handed-in entry with no offsets does not frame the link (C5)"] = function(t)
+    local c = client()
+    c.setMapSize(1412, 2000, 1000)
+    local link = N.GuideLink(c, { [1412] = { w = 2000, h = 1000 } }, { 1412 })
+    t.eq(link[1411], { x = 0, y = 0, w = 1000, h = 500 }, "the player's map keeps 0, 0")
+    t.eq(link[1412], { w = 2000, h = 1000 })
+    link = N.GuideLink(c, { [1412] = {} })
+    t.eq(link[1411], { x = 0, y = 0, w = 1000, h = 500 }, "an empty entry frames nothing")
+end
+
 T["read: no steps: no arrows"] = function(t)
     local s = N.GuideRead(client(), nil)
     t.eq(s.quest, { hasStep = false })
