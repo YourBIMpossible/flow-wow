@@ -92,6 +92,9 @@ function Bank.Banks(row, needed, rules, waits)
     if row.classID ~= nil and Bank.STAYS[row.classID] then return false, "you carry it" end
     if Bank.LATER_RULES[row.rule or ""] then return true, "kept for later" end
     if row.classID == Bank.TRADE_GOODS then return true, "kept for later" end
+    -- Its kind was not read: that is not an answer. The third value says so,
+    -- and Pick counts it instead of passing over it (F-086).
+    if row.classID == nil then return false, "its kind was not read", true end
     return false, "you carry it"
 end
 
@@ -134,10 +137,11 @@ local function heldOf(grants, key)
 end
 
 function Bank.Pick(bag, context)
-    if type(bag) ~= "table" then return { ok = false, rows = {}, held = {} } end
+    if type(bag) ~= "table" then return { ok = false, rows = {}, held = {}, unread = nil } end
     context = type(context) == "table" and context or {}
     local D = ns.Disposition
     local rows, held, needed = {}, {}, {}
+    local unread = 0
     local items = gather(bag)
     for idx = 1, #items do
         local item = items[idx]
@@ -151,9 +155,11 @@ function Bank.Pick(bag, context)
         local item = items[idx]
         local d = D.Decide(item, context)
         local row = { key = item.key, action = d.action, rule = d.rule, reason = d.reason, classID = item.classID }
-        local yes, why = Bank.Banks(row, needed, context.bankRules, context.questWaits)
+        local yes, why, notRead = Bank.Banks(row, needed, context.bankRules, context.questWaits)
         if yes then
             rows[#rows + 1] = { key = item.key, name = item.name, count = item.count, reason = why }
+        elseif notRead then
+            unread = unread + 1
         end
     end
     table.sort(rows, function(a, b)
@@ -161,5 +167,5 @@ function Bank.Pick(bag, context)
         if ca ~= cb then return ca > cb end
         return tostring(a.name or a.key) < tostring(b.name or b.key)
     end)
-    return { ok = true, rows = rows, held = held }
+    return { ok = true, rows = rows, held = held, unread = unread }
 end

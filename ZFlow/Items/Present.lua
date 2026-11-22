@@ -217,12 +217,21 @@ function Present.BankLines(pick, names)
     end
     local lines = {}
     local rows = type(pick.rows) == "table" and pick.rows or {}
-    if #rows == 0 then
+    -- Items whose kind was not read are not "nothing to bank": they are said.
+    local unread = isCount(pick.unread) and pick.unread or 0
+    if #rows == 0 and unread > 0 then
+        lines[#lines + 1] = "Can't tell what to bank: " .. unread
+            .. (unread == 1 and " item was" or " items were") .. " not read yet."
+    elseif #rows == 0 then
         lines[#lines + 1] = Present.NOTHING_TO_BANK
     else
         lines[#lines + 1] = Present.BANK_HEADER
         for _, r in ipairs(rows) do
             lines[#lines + 1] = bankHead(r, names) .. ": " .. tostring(r.reason or "kept for later")
+        end
+        if unread > 0 then
+            lines[#lines + 1] = unread .. (unread == 1 and " more item was not read yet, so it is not listed."
+                or " more items were not read yet, so they are not listed.")
         end
     end
     local held = type(pick.held) == "table" and pick.held or {}
