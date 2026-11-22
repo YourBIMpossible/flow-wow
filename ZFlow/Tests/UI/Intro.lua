@@ -9,27 +9,11 @@ local _, ns = ...
 --
 -- The close button and the Escape route are a CLIENT NEED: client.panel(spec)
 -- with spec.closable = true, and the handle's h.onClose(fn), fn() when the
--- player closes it. Until the fake has them, these tests add them to the
--- fake's panels in the same shape: h.close() is the player closing it.
+-- player closes it. The fake has both: h.close() is the player closing it,
+-- and c.setCloseRoute(false) is a client without them.
 
 local I = ns.Intro
 local tests = {}
-
-local function closable(c)
-    local panel = c.panel
-    c.panel = function(spec)
-        local h = panel(spec)
-        if h and type(h.onClose) ~= "function" then
-            local fn
-            function h.onClose(f) fn = f end
-            function h.close()
-                h.shown = false
-                if fn then fn() end
-            end
-        end
-        return h
-    end
-end
 
 -- opts: setting (true / false / nil: no row declared), char (saved data),
 -- noFrames, countSettings, noClose (a client whose panels cannot be closed).
@@ -46,7 +30,7 @@ local function start(opts)
     end
     if char then c.setSaved(ns.id.charDB, char) end
     if opts.noFrames then c.setFrames(false) end
-    if not opts.noClose then closable(c) end
+    if opts.noClose then c.setCloseRoute(false) end
     local k = ns.Kernel({}, c)
     local diag = ns.Diag.Start(k)
     if opts.setting ~= nil then

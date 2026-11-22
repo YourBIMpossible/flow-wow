@@ -628,6 +628,38 @@ function ns.make.fakeClient(opts)
     -- True while something is subscribed to the frame tick.
     function c.ticking() return s.frames == 1 end
 
+    -- F9 window buttons: the same read as Core/Client.lua. A window is
+    -- there only when a test says so: c.setWindow(frameName, { protected =
+    -- bool }); c.setWindow(frameName, false) takes it away. Every button
+    -- made is in c.windowButtons, in order: .frame, .spec, .shown.
+    -- click() is the control of the test: the player clicked it (nothing
+    -- on a button that is not shown).
+    c.windowButtons = {}
+    local gameWindows = {}
+    function c.setWindow(frameName, w)
+        if w == false then gameWindows[frameName] = nil return end
+        gameWindows[frameName] = type(w) == "table" and w or {}
+    end
+    function c.windowButton(frameName, spec)
+        if s.noFrames or type(spec) ~= "table" then return nil end
+        local w = gameWindows[frameName]
+        if not w or w.protected or c.inCombat() ~= false then return nil end
+        local h = { frame = frameName, spec = spec, shown = false }
+        local clicked, clickFailed
+        function h.onClick(fn, failed)
+            clicked = type(fn) == "function" and fn or nil
+            clickFailed = type(failed) == "function" and failed or nil
+        end
+        function h.show(on) h.shown = on and true or false end
+        function h.click()
+            if not h.shown or not clicked then return end
+            local ok, err = pcall(clicked)
+            if not ok and clickFailed then clickFailed(err) end
+        end
+        c.windowButtons[#c.windowButtons + 1] = h
+        return h
+    end
+
     return c
 end
 

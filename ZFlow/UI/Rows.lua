@@ -1,0 +1,33 @@
+local _, ns = ...
+
+-- The setting rows of the first-login welcome and the window buttons (F9).
+-- UI/Intro.lua and UI/WindowButtons.lua read these rows and declare none:
+-- a kernel without them shows the welcome and makes no button.
+--
+--   ui.intro           bool, this character, on: the welcome at first login
+--   buttons.worldMap   bool, account, off: a button on the world map
+--   buttons.merchant   bool, account, off: a button on the merchant window
+--
+--   UIRows.Declare(k) -> how many rows the kernel took. A row it refuses
+--   is a problem of kind "setting" there (Core/Settings.lua).
+local R = {}
+ns.UIRows = R
+
+R.GROUP = "Windows" -- authored
+
+function R.Declare(k)
+    local made = 0
+    if k:Setting({ key = "ui.intro", scope = "char", type = "bool", default = true,
+        label = "Welcome at first login", group = R.GROUP,
+        help = "Shows the welcome once, the first time this character logs in." }) then made = made + 1 end
+    if k:Setting({ key = "buttons.worldMap", scope = "account", type = "bool", default = false,
+        label = "Button on the world map", group = R.GROUP,
+        help = "A button on the world map that opens the arrow menu." }) then made = made + 1 end
+    if k:Setting({ key = "buttons.merchant", scope = "account", type = "bool", default = false,
+        label = "Button on the merchant window", group = R.GROUP,
+        help = "A button on the merchant window that shows the sell list." }) then made = made + 1 end
+    return made
+end
+
+-- The addon's own: declared when this file loads.
+R.made = R.Declare(ns)

@@ -742,6 +742,21 @@ function Arrow.Start(k, diag, own)
         end
     end
 
+    -- Opens the menu on the first arrow that has one, as a right click on
+    -- it does (the world-map button asks for this). false when there is
+    -- no arrow to open it on.
+    local function openMenu()
+        if not handles or not ready or not live() then return false end
+        for _, key in ipairs(N.ARROW_KEYS) do
+            local h = handles[key]
+            if h and type(h.menu) == "function" then
+                h.menu(M.Items(menuState()), script("menu", guarded(choose)))
+                return true
+            end
+        end
+        return false
+    end
+
     if handles then
         hideAll()
         for _, key in ipairs(N.ARROW_KEYS) do
@@ -909,6 +924,7 @@ function Arrow.Start(k, diag, own)
              styles = function() return Arrow.Styles(style()) end,
              menu = function() return M.Items(menuState()) end,
              tip = tip,
+             openMenu = openMenu,
              setDrawer = function(fn) drawer = type(fn) == "function" and fn or nil end,
              state = function() return { ready = ready, demo = demo, near = near, view = current } end }
 end
@@ -967,6 +983,12 @@ function Arrow.Declare(k, diag)
         pendingDrawer = type(fn) == "function" and fn or nil
         if inner then inner.setDrawer(pendingDrawer) end
     end
+    -- Opens the right-click menu without a click on an arrow. false before
+    -- the start and when there is no arrow to open it on.
+    function api.openMenu()
+        if inner then return inner.openMenu() end
+        return false
+    end
     function api.relayout()
         if inner then inner.relayout() end
     end
@@ -981,6 +1003,7 @@ function Arrow.Declare(k, diag)
     k:Module({
         name = Arrow.NAME,
         needs = { "client", "store", "bus", "sched" },
+        provides = { OpenMenu = function() return api.openMenu() end },
         start = function(ctx)
             local own = { loaded = true }
             function own.listen(event, fn) ctx.bus:on(Arrow.NAME, event, fn) end
