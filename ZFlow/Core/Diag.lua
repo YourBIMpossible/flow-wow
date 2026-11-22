@@ -488,6 +488,103 @@ end
 
 -- Starts collecting on kernel k: the timing marks, the window snapshots and
 -- the slash command. Returns { timing =, snapshot =, commands = }.
+-- The rotation driver's view as diag lines. Pure: the module's state, the
+-- view it holds and whether its setting is on come in; text goes out.
+--
+-- Diag.RotationLine(state, view, enabled) -> line or nil
+--   nil when there is no driver (state nil). Otherwise the first row that
+--   holds: not running; no view held (switched off, or no reading yet); no
+--   pack; dead not known; dead; fight not known; lockdown not known;
+--   lockdown; spells not read; and last the suggestion, or why there is
+--   none. A fight not known is said as the chooser counts it (R.InFight:
+--   as a fight). The two lockdown rows say the key refusal's own reason
+--   (ns.cast.REFUSED). A view kept from an earlier tick says so.
+-- Diag.RotationCooldownLine(view) -> line or nil
+--   one line when no spell can be cast and at least one is held back only
+--   because nobody read its cooldown (R.COOLDOWN_UNKNOWN).
+-- Diag.RotationStealthLine(view) -> line or nil
+--   one line when stealth was not read: the attack is not started then.
+-- The last two say nothing with no view, no pack, or unless dead is a
+-- known "no": nothing is chosen then for a reason the first line gives.
+local function plural(n, one, many) return n .. " " .. (n == 1 and one or many) end
+
+local function lowerFirst(text) return text:sub(1, 1):lower() .. text:sub(2) end
+
+local function refusal(view, why, fallback)
+    local reason = type(view.why) == "table" and view.why.reason or nil
+    if type(reason) ~= "string" then
+        local texts = type(ns.cast) == "table" and ns.cast.REFUSED or nil
+        reason = type(texts) == "table" and texts[why] or nil
+    end
+    if type(reason) ~= "string" or reason == "" then return fallback end
+    return lowerFirst(reason)
+end
+
+local function rotationRow(view)
+    if view.pack ~= true then return "class not known, or no spell list for it; nothing suggested." end
+    local s = type(view.snapshot) == "table" and view.snapshot or {}
+    if s.dead == nil then return "not known whether you are dead; nothing suggested." end
+    if s.dead ~= false then return "dead; nothing suggested." end
+    if s.inCombat == nil then return "fight not known; counted as a fight." end
+    if view.lockdown == nil then
+        return refusal(view, "lockdownUnknown", "not known whether you are in a fight; keys unchanged") .. "."
+    end
+    if view.lockdown ~= false then
+        return refusal(view, "lockdown", "in a fight; keys change when it ends") .. "."
+    end
+    local unread = type(view.unread) == "table" and #view.unread or 0
+    if unread > 0 then
+        return plural(unread, "spell", "spells") .. " not read; "
+            .. (unread == 1 and "it is" or "they are") .. " skipped."
+    end
+    local why = type(view.why) == "table" and view.why or {}
+    local picked = type(view.suggestion) == "table" and view.suggestion.spell or nil
+    if picked ~= nil then
+        return "suggesting " .. tostring(picked) .. " (" .. tostring(why.step or "step not known") .. ")."
+    end
+    return "nothing to suggest (" .. tostring(why.note or "no reason given") .. ")."
+end
+
+function Diag.RotationLine(state, view, enabled)
+    if state == nil then return nil end
+    if state ~= "started" then return "rotation: not running (" .. tostring(state) .. ")." end
+    if type(view) ~= "table" then
+        return enabled == true and "rotation: no reading yet." or "rotation: switched off; nothing suggested."
+    end
+    local line = "rotation: " .. rotationRow(view)
+    if view.stale == true then line = line .. " An earlier reading: the last read failed." end
+    return line
+end
+
+-- The snapshot of a view in which something could be chosen at all.
+local function choosing(view)
+    if type(view) ~= "table" or view.pack ~= true then return nil end
+    local s = view.snapshot
+    if type(s) ~= "table" or s.dead ~= false then return nil end
+    return s
+end
+
+function Diag.RotationCooldownLine(view)
+    local s = choosing(view)
+    local R = ns.Rotation
+    if s == nil or type(s.spells) ~= "table" or type(R) ~= "table" then return nil end
+    local held = 0
+    for name in pairs(s.spells) do
+        local can, why = R.Castable(s, name)
+        if can then return nil end
+        if why == R.COOLDOWN_UNKNOWN then held = held + 1 end
+    end
+    if held == 0 then return nil end
+    return "rotation: nothing can be chosen; " .. plural(held, "spell", "spells") .. ": "
+        .. R.COOLDOWN_UNKNOWN .. "."
+end
+
+function Diag.RotationStealthLine(view)
+    local s = choosing(view)
+    if s == nil or s.stealthed ~= nil then return nil end
+    return "rotation: not known whether you are stealthed; the attack is not started for you."
+end
+
 function Diag.Start(k)
     local client, id = k.client, k.id
 
@@ -686,6 +783,30 @@ function Diag.Start(k)
             .. "; last: " .. said .. "."
     end
 
+    -- The rotation driver's lines, read through what the module provides.
+    -- The view is asked for once for the three of them: a driver that
+    -- raises is one problem and one line, not three.
+    local function rotationLines()
+        local driver = ns.RotationDriver
+        local name = type(driver) == "table" and driver.NAME or nil
+        local state = name and k:ModuleState(name) or nil
+        if state == nil then return {} end
+        local view, enabled
+        if state == "started" then
+            local got = k.use(name)
+            if type(got) ~= "table" or type(got.View) ~= "function" then
+                return { "rotation: not running (" .. tostring(state) .. ")." }
+            end
+            view = got.View()
+            enabled = type(k.settings) == "table" and k.settings:get(driver.SETTING) == true
+        end
+        local lines = {}
+        lines[#lines + 1] = Diag.RotationLine(state, view, enabled)
+        lines[#lines + 1] = Diag.RotationCooldownLine(view)
+        lines[#lines + 1] = Diag.RotationStealthLine(view)
+        return lines
+    end
+
     client.slash(id.bindingHeader, id.slash, function(rest)
         local text = tostring(rest):lower()
         local word, more = text:match("^%s*(%S+)%s*(.-)%s*$")
@@ -748,6 +869,15 @@ function Diag.Start(k)
                     .. (held == 1 and " job is" or " jobs are") .. " held until it is."
             end)
             say("price watch", priceWatchLine)
+            local rotation
+            say("rotation", function()
+                rotation = rotationLines()
+                return rotation[1]
+            end)
+            for i = 2, rotation and #rotation or 0 do
+                local line = rotation[i]
+                say("rotation", function() return line end)
+            end
         end
     end)
     return { timing = timing, snapshot = snapshot, commands = commands }
