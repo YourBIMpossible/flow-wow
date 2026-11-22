@@ -1,0 +1,934 @@
+-- Import from Flow: a deliberate, versioned, non-destructive copy of what a
+-- player chose and what their client observed in Flow, into Z-Flow's shape.
+-- Pure: two plain tables in, new plain tables out. It reads no global, no
+-- saved variable and no clock, and never changes what it is given. Nothing
+-- here runs unless a caller hands it Flow's tables on purpose.
+--
+--   Import.FromFlow(flowDb, flowCharDb) -> result
+--     result.ok        true, or false with result.reason (nothing imported)
+--     result.account   data in the account shape (schema, settings, layout,
+--                      learned = places/flights/prices/facts/fights, imports)
+--     result.char      data in the character shape (schema, settings,
+--                      layout, learned, state)
+--     result.dropped   list of { key, why, reason }, sorted by key. why is
+--                      "dropped" (on purpose), "unknown" (no row in MAP),
+--                      "malformed" or "superseded". Nothing is lost silently.
+--     result.record    the import record: source, sourceVersion, importer,
+--                      counts per category, vendor choices found. The caller
+--                      stamps the date (a pure function has no clock).
+--
+--   Import.Merge(account, char, result [, defaults]) -> account, char, report
+--     New tables: the player's existing data plus whatever of the import it
+--     does not already have. An existing value is never replaced, unless it
+--     is absent, an empty table, or equal to the default given for its path
+--     in defaults = { account = {...}, char = {...} }.
+--     report = { ok, reason, added, kept, skipped, counts }.
+--
+-- Where each Flow key was read from (Flow source, file:line):
+--   saved-data layout, per-character split   Core.lua:182-232
+--   version, migrations                      Core.lua:251-276
+--   actions      Modules/Rotation/Actions.lua:1280
+--   advisor      Modules/Advisor/Advisor.lua:318, :323
+--   ah           Modules/Items/Auction.lua:454, Modules/Items/Posting.lua:37
+--   api          Compat.lua:264
+--   audit        Modules/Rotation/Audit.lua:136, :140
+--   autopush     Modules/AutoPush.lua:76-81
+--   bags         Modules/Items/BagIcons.lua:298
+--   bank         Modules/Crafting/SkillPlan.lua:1214-1215
+--   banker       Modules/Items/Banker.lua:1184, Modules/Quests/QuestBags.lua:430
+--   bonus        Modules/Bonus.lua:121
+--   camera       Modules/Camera.lua:41
+--   cast         Modules/Rotation/Cast.lua:757
+--   chat         Modules/AskClaude.lua:492, Modules/Chat.lua:22
+--   choices      Modules/Fight/Choices.lua:260, :264
+--   colorblind   Theme.lua:128
+--   crafting     Modules/Crafting/Recipes.lua:105-108, SkillPlan.lua:585
+--   deathReports, deathNext   Modules/Rotation/Engine.lua:1811-1812
+--   deaths       Modules/Deaths.lua:425
+--   diag         Diag.lua:194
+--   facts        Modules/Facts.lua:38, Modules/FormSpells.lua:30
+--   flightNone, flightTalked  Modules/Nav/FlightPaths.lua:122-150
+--   flights, flightTimes, flightRate   Modules/Nav/Nav.lua:2709-2712, :2921
+--   gear         Modules/Gear/KeepSets.lua:343, Score.lua:482,
+--                SetRecipes.lua:314, Sets.lua:144
+--   hearth       Modules/Hearth.lua:349
+--   invites      Modules/Invites.lua:91
+--   learnedSpots Modules/Quests/LearnedSpots.lua:36
+--   log          Modules/CombatLogFile.lua:27
+--   loot         Modules/Items/LootFilter.lua:187
+--   mailboxes, places, placesNot, share   Modules/Nav/Places.lua:142, :257,
+--                :369-370, :493
+--   meters       Modules/Meters.lua:46
+--   nav          Modules/Nav/Nav.lua:939, :3659, :4175, :4399, :4962-4983,
+--                Arrows.lua:94, :161-164, Crossings.lua:343-351, Gates.lua:177,
+--                Legs.lua:238, :319, Focus.lua:532, :558, ZoneNotice.lua:220,
+--                :223, Dungeons.lua:840-845, Waypoint.lua:90
+--   nearFirst    Modules/Nav/NearFirst.lua:32
+--   paladin*     Classes/Paladin/Rotation.lua:124-125, :239-240
+--   perf         Perf.lua:183
+--   plateCombo   Modules/PlateCombo.lua:45
+--   plateThreat  Modules/PlateThreat.lua:30
+--   prices       Modules/Crafting/SkillPlan.lua:274-282
+--   prof         Modules/Professions.lua:151-152
+--   profiler     Modules/Fight/Profiler.lua:409-418
+--   quests       Modules/QuestMarks.lua:383, Modules/Quests/QuestData.lua:580, :588
+--   reagents     Modules/Items/Reagents.lua:66-69
+--   rotation     Modules/Rotation/Tracker.lua:235-243, Engine.lua:1531
+--   sell         Modules/Items/Disposition.lua:257-272, :499,
+--                Vendor.lua:272, :734-738, Repair.lua:55, :110
+--   settings     Settings.lua:1060, Core.lua:317-318
+--   setup        Setup.lua:402
+--   sound        Sound.lua
+--   spec         Modules/Spec.lua:241-242
+--   spellbar     Modules/NewSpell.lua:518, :521
+--   splash       Splash.lua:185
+--   tracker      Modules/Nav/RouteTracker.lua:581
+--   trader       Modules/Items/Trader.lua:571
+--   trainer      Modules/Trainer.lua:101-104
+local _, ns = ...
+
+local IMPORTER_VERSION = 1
+-- The highest Flow data version this importer understands. Flow's version is
+-- the highest migration it has run (Core.lua:251-276) and Flow registers no
+-- migration, so every known Flow data set is at 0 (or carries no version).
+local KNOWN_FLOW_VERSION = 0
+local SCHEMA = 1
+
+-- Reasons used by more than one row.
+local BOOKKEEPING = "Flow's own bookkeeping; means nothing outside Flow"
+local CACHE = "a cache; rebuilt from the game as you play"
+local ONCE = "a one-time notice flag"
+local DIAGNOSTIC = "diagnostic output, not player data"
+local SESSION = "state of one play session; stale once imported"
+local OLD = "an old Flow setting that Flow itself no longer reads"
+
+-- THE MAPPING. One row per Flow key: "section" or "section.key".
+--   to    the path it lands on (in the account data, or the character's
+--         when char = true)
+--   as    how the value is checked and copied (see KIND below). When absent:
+--         learned data is "tree" (a table, copied with bad parts left out),
+--         anything else is "any" (a plain value, or such a table)
+--   drop  it is left behind on purpose, and why
+--   vendor      a vendor automation: off unless the player's data says so
+--   flowDefault Flow itself writes this value at load, so finding it does
+--               not prove the player chose it
+-- A "section" row beside "section.key" rows takes the keys no row names.
+-- A key under a section that has rows but no row for it is "unknown".
+local MAP = {
+    -- Flow bookkeeping
+    { "version", meta = "read as the source version on the import record" },
+    { "migrations", drop = BOOKKEEPING },
+    { "charSplit", drop = BOOKKEEPING },
+    { "legacyShared", drop = BOOKKEEPING },
+
+    -- Learned: places
+    { "places", to = "learned.places.npcs", as = "places" },
+    { "placesNot", to = "learned.places.notRoles" },
+    { "mailboxes", to = "learned.places.mailboxes", as = "spots" },
+    { "learnedSpots", to = "learned.places.questSpots", as = "questSpots" },
+    { "hearth.binds", to = "learned.places.innBinds" },
+    { "nav.graphs", to = "learned.places.trails" },
+    { "nav.entrances", to = "learned.places.entrances", as = "worldList" },
+    { "nav.gates", to = "learned.places.gates", as = "worldList" },
+    { "nav.legs", to = "learned.places.legs" },
+    { "nav.crossingEnds", to = "learned.places.crossings" },
+    { "share", drop = "an export built from the places above; derived" },
+
+    -- Learned: flights
+    { "flights", to = "learned.flights.nodes", as = "flights", char = true },
+    { "flightTalked", to = "learned.flights.talked", char = true },
+    { "flightNone", to = "learned.flights.none", char = true },
+    { "flightTimes", to = "learned.flights.times", as = "times" },
+    { "flightRate", to = "learned.flights.rate", as = "positive" },
+
+    -- Learned: prices
+    { "prices", to = "learned.prices.vendor", as = "prices" },
+    { "ah.prices", to = "learned.prices.auction" },
+
+    -- Learned: facts
+    { "facts.spells", to = "learned.facts.spells" },
+    { "facts.lacks", to = "learned.facts.lacks" },
+    { "facts.first", to = "learned.facts.first" },
+    { "facts.firstAt", to = "learned.facts.firstAt" },
+    { "facts.forms", to = "learned.facts.forms" },
+    { "quests.drops", to = "learned.facts.questDrops" },
+    { "quests.notOffered", to = "learned.facts.notOffered", char = true },
+    { "crafting", to = "learned.facts.recipes", char = true },
+    { "crafting.drops", to = "learned.facts.craftDrops", char = true },
+    { "crafting.active", to = "state.crafting.active", char = true },
+    { "reagents", to = "learned.facts.reagents", char = true },
+    { "trainer", to = "learned.facts.trainer", char = true },
+    { "prof.tierSeen", to = "learned.facts.tierSeen", char = true },
+    { "nav.dungeonTimes", to = "learned.facts.dungeonTimes", char = true },
+    { "nav.xpSamples", to = "learned.facts.xpSamples", char = true },
+
+    -- Learned: fights
+    { "profiler.fights", to = "learned.fights.records", char = true },
+    { "profiler.bias", to = "learned.fights.bias", char = true },
+    { "profiler.report", drop = "a report built from the fight records; derived" },
+    { "choices", to = "learned.fights.choices", char = true },
+    { "rotation.mobs", to = "learned.fights.mobs", char = true },
+    { "rotation.heals", to = "learned.fights.heals", char = true },
+    { "deathReports", to = "learned.fights.deaths" },
+    { "deathNext", drop = BOOKKEEPING },
+
+    -- Arrows (per account) and other window positions
+    { "nav.point", to = "layout.arrows.point", as = "point" },
+    { "nav.arrows", to = "layout.arrows", as = "arrows" },
+    { "nav.cardPoint", to = "layout.nav.card", as = "point" },
+    { "nav.drawerPoint", to = "layout.nav.drawer", as = "point" },
+    { "nav.zoneNoteSpot", to = "layout.nav.zoneNote" },
+    { "nav.panelPoint", drop = OLD },
+    { "advisor.point", to = "layout.advisor.frame", as = "point" },
+    { "advisor.panelPoint", to = "layout.advisor.panel", as = "point" },
+    { "ah.postPoint", to = "layout.auction.post", as = "point" },
+    { "banker.point", to = "layout.banker.frame", as = "point" },
+    { "deaths.point", to = "layout.deaths.frame", as = "point" },
+    { "meters.point", to = "layout.meters.frame", as = "point" },
+    { "rotation.point", to = "layout.rotation.frame", as = "point" },
+    { "tracker.point", to = "layout.tracker.frame", as = "point" },
+    { "trader.point", to = "layout.trader.frame", as = "point" },
+
+    -- Vendor automations: off in Z-Flow unless the player's data says on
+    { "sell.autoJunk", to = "settings.sell.autoJunk", as = "bool", vendor = true, flowDefault = true },
+    { "sell.autoAll", to = "settings.sell.autoAll", as = "bool", vendor = true, flowDefault = false },
+    { "sell.autoRepair", to = "settings.sell.autoRepair", as = "bool", vendor = true, flowDefault = true },
+    { "sell.autoCleanup", to = "settings.sell.autoCleanup", as = "bool", vendor = true },
+    { "sell.vendorUnpriced", to = "settings.sell.vendorUnpriced", as = "bool", vendor = true },
+    -- The rest of selling
+    { "sell.enabled", to = "settings.sell.enabled", as = "bool" },
+    { "sell.junkAll", to = "settings.sell.junkAll", as = "bool" },
+    { "sell.repairWarn", to = "settings.sell.repairWarn" },
+    { "sell.repairStop", to = "settings.sell.repairStop" },
+    { "sell.never", to = "settings.sell.never", char = true },
+    { "sell.mine", to = "settings.sell.mine", char = true },
+
+    -- Navigation choices
+    { "nav.enabled", to = "settings.nav.enabled" },
+    { "nav.arrowStyle", to = "settings.nav.arrowStyle" },
+    { "nav.arrowColor", to = "settings.nav.arrowColor" },
+    { "nav.arrowPaths", to = "settings.nav.arrowPaths" },
+    { "nav.arrowTurn", to = "settings.nav.arrowTurn" },
+    { "nav.profArrow", to = "settings.nav.profArrow" },
+    { "nav.profArrowText", to = "settings.nav.profArrowText" },
+    { "nav.kinds", to = "settings.nav.kinds" },
+    { "nav.sorter", to = "settings.nav.sorter" },
+    { "nav.baseSorter", to = "settings.nav.baseSorter" },
+    { "nav.learn", to = "settings.nav.learn" },
+    { "nav.learnLegs", to = "settings.nav.learnLegs" },
+    { "nav.crossings", to = "settings.nav.crossings" },
+    { "nav.areaFirst", to = "settings.nav.areaFirst" },
+    { "nav.areaHop", to = "settings.nav.areaHop" },
+    { "nav.zoneFirst", to = "settings.nav.zoneFirst" },
+    { "nav.zonesFirst", to = "settings.nav.zonesFirst" },
+    { "nav.zonesOff", to = "settings.nav.zonesOff" },
+    { "nav.zoneNotice", to = "settings.nav.zoneNotice" },
+    { "nav.mapFlights", to = "settings.nav.mapFlights" },
+    { "nav.mapLines", to = "settings.nav.mapLines" },
+    { "nav.mapRoute", to = "settings.nav.mapRoute" },
+    { "nav.mapListCollapsed", to = "settings.nav.mapListCollapsed" },
+    { "nav.mapWaypointOnly", to = "settings.nav.mapWaypointOnly" },
+    { "nav.mapZoneHere", to = "settings.nav.mapZoneHere" },
+    { "nav.mapZoneLevels", to = "settings.nav.mapZoneLevels" },
+    { "nav.minimapAreas", to = "settings.nav.minimapAreas" },
+    { "nav.minimapPin", to = "settings.nav.minimapPin" },
+    { "nav.nearbyNodes", to = "settings.nav.nearbyNodes" },
+    { "nav.northUp", to = "settings.nav.northUp" },
+    { "nav.pathAlpha", to = "settings.nav.pathAlpha" },
+    { "nav.pathMotion", to = "settings.nav.pathMotion" },
+    { "nav.questBuy", to = "settings.nav.questBuy" },
+    { "nav.showHidden", to = "settings.nav.showHidden" },
+    { "nav.taxiMark", to = "settings.nav.taxiMark" },
+    { "nav.groupVisits", to = "settings.nav.groupVisits" },
+    { "nav.holdHard", to = "settings.nav.holdHard" },
+    { "nav.dungeonPrep", to = "settings.nav.dungeonPrep" },
+    { "nav.dungeonSuggest", to = "settings.nav.dungeonSuggest" },
+    { "nav.drawerOpen", to = "settings.nav.drawerOpen" },
+    { "nav.focusKinds", to = "settings.nav.focusKinds" },
+    { "nav.waypoint", to = "settings.nav.waypoint", as = "spot" },
+    { "nav.waypointNote", to = "settings.nav.waypointNote" },
+    { "nav.hidden", to = "settings.nav.hidden", char = true },
+    { "nav.zonesOn", to = "settings.nav.zonesOn", char = true },
+    { "nav.zoneNo", to = "settings.nav.zoneNo", char = true },
+    { "nav.dungeonLong", to = "settings.nav.dungeonLong", char = true },
+    { "nav.dungeonOnly", to = "settings.nav.dungeonOnly", char = true },
+    { "nav.selectedKey", to = "state.nav.selectedKey", char = true },
+    { "nav.focus", to = "state.nav.focus", char = true },
+    { "nav.stopsShown", to = "state.nav.stopsShown", char = true },
+    { "nav.stopsArea", to = "state.nav.stopsArea", char = true },
+    { "nav.arrowModern", drop = BOOKKEEPING },
+    { "nav.gatesRule", drop = BOOKKEEPING },
+    { "nav.mode", drop = OLD },
+    { "nav.professions", drop = OLD },
+    { "nav.taxiTrip", drop = SESSION },
+    { "nav.deferred", drop = SESSION },
+    { "nav.dungeonRun", drop = SESSION },
+    { "nav.dungeonIn", drop = SESSION },
+    { "nav.wayTips", drop = ONCE },
+    { "nearFirst", to = "settings.nav.nearFirst" },
+
+    -- Other choices, kept under the name of the Flow section they came from
+    { "actions.enabled", to = "settings.actions.enabled" },
+    { "actions.loot", to = "settings.actions.loot" },
+    { "actions.questItem", to = "settings.actions.questItem" },
+    { "actions.res", to = "settings.actions.res" },
+    { "actions.skin", to = "settings.actions.skin" },
+    { "actions.stations", to = "settings.actions.stations" },
+    { "actions.travel", to = "settings.actions.travel" },
+    { "actions.weapons", to = "settings.actions.weapons" },
+    { "actions.dryAt", drop = CACHE },
+    { "actions.fishedAt", drop = CACHE },
+    { "actions.friendPlatesByFlow", drop = BOOKKEEPING },
+    { "advisor.enabled", to = "settings.advisor.enabled" },
+    { "advisor.hidden", to = "settings.advisor.hidden", char = true },
+    { "ah.duration", to = "settings.auction.duration" },
+    { "ah.postOff", to = "settings.auction.postOff" },
+    { "ah.watch", to = "settings.auction.watch" },
+    { "ah.posts", drop = CACHE },
+    { "ah.lastFull", drop = CACHE },
+    { "ah.lastScan", drop = CACHE },
+    { "bags.enabled", to = "settings.bags.enabled" },
+    { "banker.rules", to = "settings.banker.rules" },
+    { "banker.autoCleanup", to = "settings.banker.autoCleanup" },
+    { "banker.off", to = "settings.banker.off" },
+    { "banker.parked", to = "state.banker.parked", char = true },
+    { "bonus.enabled", to = "settings.bonus.enabled" },
+    { "bonus.spoken", drop = ONCE },
+    { "camera.maxZoom", to = "settings.camera.maxZoom" },
+    { "cast.key", to = "settings.cast.key" },
+    { "cast.key2", to = "settings.cast.key2" },
+    { "cast.altItem", to = "settings.cast.altItem" },
+    { "cast.ctrlTarget", to = "settings.cast.ctrlTarget" },
+    { "cast.shiftHeal", to = "settings.cast.shiftHeal" },
+    { "cast.formKey", to = "settings.cast.formKey" },
+    { "cast.clickSlots", to = "settings.cast.clickSlots" },
+    { "cast.healTipShown", drop = ONCE },
+    { "colorblind", to = "settings.general.colorblind" },
+    { "gear.enabled", to = "settings.gear.enabled" },
+    { "gear.keepBar", to = "settings.gear.keepBar" },
+    { "gear.keepOffspec", to = "settings.gear.keepOffspec" },
+    { "gear.rollHints", to = "settings.gear.rollHints" },
+    { "gear.setDefault", to = "settings.gear.setDefault" },
+    { "gear.setIconSize", to = "settings.gear.setIconSize" },
+    { "gear.setIcons", to = "settings.gear.setIcons" },
+    { "gear.mySets", to = "settings.gear.mySets" },
+    { "gear.keepSet", to = "settings.gear.keepSet", char = true },
+    { "gear.setIcon", to = "settings.gear.setIcon", char = true },
+    { "gear.setRoles", to = "settings.gear.setRoles", char = true },
+    { "hearth.off", to = "settings.hearth.off" },
+    { "invites.friends", to = "settings.invites.friends" },
+    { "log.auto", to = "settings.log.auto" },
+    { "loot.auto", to = "settings.loot.auto" },
+    { "loot.skipJunk", to = "settings.loot.skipJunk" },
+    { "loot.skinWarned", drop = ONCE },
+    { "meters.always", to = "settings.meters.always" },
+    { "meters.decimals", to = "settings.meters.decimals" },
+    { "meters.mode", to = "settings.meters.mode" },
+    { "meters.off", to = "settings.meters.off" },
+    { "meters.rows", to = "settings.meters.rows" },
+    { "meters.span", to = "settings.meters.span" },
+    { "meters.when", to = "settings.meters.when" },
+    { "meters.whenBefore", to = "settings.meters.whenBefore" },
+    { "paladinSeal", to = "settings.paladin.seal", char = true },
+    { "paladinSealCast", to = "settings.paladin.sealCast", char = true },
+    { "paladinBlessing", to = "settings.paladin.blessing", char = true },
+    { "paladinBlessingCast", to = "settings.paladin.blessingCast", char = true },
+    { "perf.lite", to = "settings.perf.lite" },
+    { "plateCombo.off", to = "settings.plateCombo.off" },
+    { "plateThreat.always", to = "settings.plateThreat.always" },
+    { "plateThreat.off", to = "settings.plateThreat.off" },
+    { "prof.chosen", to = "settings.prof.chosen", char = true },
+    { "prof.plan", to = "settings.prof.plan", char = true },
+    { "prof.remind", to = "settings.prof.remind", char = true },
+    { "prof.snoozeLevel", to = "settings.prof.snoozeLevel", char = true },
+    { "prof.lastKey", drop = BOOKKEEPING },
+    { "quests.enabled", to = "settings.quests.enabled" },
+    { "quests.autoAccept", to = "settings.quests.autoAccept" },
+    { "quests.autoTurnIn", to = "settings.quests.autoTurnIn" },
+    { "quests.share", to = "settings.quests.share" },
+    { "rotation.enabled", to = "settings.rotation.enabled" },
+    { "rotation.locked", to = "settings.rotation.locked" },
+    { "rotation.overheal", to = "settings.rotation.overheal" },
+    { "rotation.panicPct", to = "settings.rotation.panicPct" },
+    { "rotation.autoAttack", to = "settings.rotation.autoAttack" },
+    { "rotation.campKits", to = "settings.rotation.campKits" },
+    { "rotation.campSit", to = "settings.rotation.campSit" },
+    { "rotation.friendTarget", to = "settings.rotation.friendTarget" },
+    { "rotation.groupBuffs", to = "settings.rotation.groupBuffs" },
+    { "rotation.recoverCannibalize", to = "settings.rotation.recoverCannibalize" },
+    { "rotation.recoverSmart", to = "settings.rotation.recoverSmart" },
+    { "rotation.recoverDrink", to = "settings.rotation.recoverDrink" },
+    { "rotation.recoverOrder", to = "settings.rotation.recoverOrder" },
+    { "rotation.emergencyItems", to = "settings.rotation.emergencyItems" },
+    { "rotation.statusIcons", to = "settings.rotation.statusIcons" },
+    { "rotation.deck", to = "settings.rotation.deck" },
+    { "rotation.debug", drop = DIAGNOSTIC },
+    { "settings.gameButtons", to = "settings.general.gameButtons" },
+    { "settings.groupTip", to = "settings.general.groupTip" },
+    { "settings.haveCount", to = "settings.general.haveCount" },
+    { "settings.moveGuides", to = "settings.general.moveGuides" },
+    { "settings.tipsBeside", to = "settings.general.tipsBeside" },
+    { "sound.auto", to = "settings.sound.auto" },
+    { "spec.role", to = "settings.spec.role", char = true },
+    { "spellbar.offer", to = "settings.spellbar.offer" },
+    { "spellbar.upgradeRanks", to = "settings.spellbar.upgradeRanks" },
+    { "spellbar.muted", to = "settings.spellbar.muted", char = true },
+    { "splash.enabled", to = "settings.splash.enabled" },
+    { "splash.short", to = "settings.splash.short" },
+    { "tracker.enabled", to = "settings.tracker.enabled" },
+    { "tracker.dock", to = "settings.tracker.dock" },
+    { "tracker.gameTracker", to = "settings.tracker.gameTracker" },
+    { "tracker.open", to = "settings.tracker.open" },
+    { "tracker.hereInit", drop = ONCE },
+    { "tracker.init", drop = ONCE },
+    { "tracker.questieSeen", drop = ONCE },
+    { "trader.off", to = "settings.trader.off" },
+    { "trader.quiet", to = "settings.trader.quiet" },
+    { "trader.share", to = "settings.trader.share" },
+
+    -- Whole sections left behind
+    { "api", drop = "what the game client can do; found again at every login" },
+    { "audit", drop = DIAGNOSTIC },
+    { "autopush", drop = "a record of Flow's own action bar moves; means nothing without Flow" },
+    { "bank", drop = CACHE },
+    { "chat", drop = "the chat bridge's queue and session state; no successor" },
+    { "diag", drop = DIAGNOSTIC },
+    { "reveal", drop = "Flow's feature-reveal progress; no successor" },
+    { "setup", drop = "Flow's first-run progress and its window; no successor" },
+}
+
+local ROW, HAS_KEYS = {}, {}
+for i = 1, #MAP do
+    local row = MAP[i]
+    ROW[row[1]] = row
+    local section = row[1]:match("^(.-)%.")
+    if section then HAS_KEYS[section] = true end
+end
+
+--------------------------------------------------------------------------------
+-- Small pure helpers
+--------------------------------------------------------------------------------
+local function finite(v)
+    return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
+end
+
+local function sortedKeys(t)
+    local keys = {}
+    for key in pairs(t) do keys[#keys + 1] = key end
+    table.sort(keys, function(a, b)
+        local ta, tb = type(a), type(b)
+        if ta ~= tb then return ta < tb end
+        if ta == "number" or ta == "string" then return a < b end
+        return tostring(a) < tostring(b)
+    end)
+    return keys
+end
+
+local function copy(v)
+    if type(v) ~= "table" then return v end
+    local out = {}
+    for key, value in pairs(v) do out[key] = copy(value) end
+    return out
+end
+
+local function same(a, b)
+    if type(a) ~= "table" or type(b) ~= "table" then return a == b end
+    for key, value in pairs(a) do
+        if not same(value, b[key]) then return false end
+    end
+    for key in pairs(b) do
+        if a[key] == nil then return false end
+    end
+    return true
+end
+
+local function split(path)
+    local parts = {}
+    for seg in (path .. "."):gmatch("(.-)%.") do parts[#parts + 1] = seg end
+    return parts
+end
+
+local function getPath(root, path)
+    local at = root
+    for _, seg in ipairs(split(path)) do
+        if type(at) ~= "table" then return nil end
+        at = at[seg]
+    end
+    return at
+end
+
+local function mergeInto(dst, src)
+    for key, value in pairs(src) do
+        if type(value) == "table" and type(dst[key]) == "table" then
+            mergeInto(dst[key], value)
+        else
+            dst[key] = value
+        end
+    end
+end
+
+-- Two rows may land in one table (nav.point and nav.arrows): tables merge.
+local function put(root, path, value)
+    local parts = split(path)
+    local at = root
+    for i = 1, #parts - 1 do
+        if type(at[parts[i]]) ~= "table" then at[parts[i]] = {} end
+        at = at[parts[i]]
+    end
+    local last = parts[#parts]
+    if type(value) == "table" and type(at[last]) == "table" then
+        mergeInto(at[last], value)
+    else
+        at[last] = value
+    end
+end
+
+--------------------------------------------------------------------------------
+-- KIND: how a value is checked and copied. Each is
+--   fn(value, label, note) -> the clean copy, or nil and a reason
+-- note(label, reason) records a part that was left out of an otherwise
+-- good value. Nothing here keeps a reference to the input.
+--------------------------------------------------------------------------------
+local KIND = {}
+
+local function clean(v, label, note, seen)
+    local kind = type(v)
+    if kind == "boolean" or kind == "string" then return v end
+    if kind == "number" then
+        if finite(v) then return v end
+        return nil, "not a finite number"
+    end
+    if kind ~= "table" then return nil, "a " .. kind .. " cannot be saved data" end
+    if seen[v] then return nil, "a table that contains itself" end
+    seen[v] = true
+    local out = {}
+    for _, key in ipairs(sortedKeys(v)) do
+        local at = label .. "." .. tostring(key)
+        if type(key) == "string" or finite(key) then
+            local value, why = clean(v[key], at, note, seen)
+            if value == nil then note(at, why) else out[key] = value end
+        else
+            note(at, "a key that is not a name or a number")
+        end
+    end
+    seen[v] = nil
+    return out
+end
+
+function KIND.any(v, label, note)
+    return clean(v, label, note, {})
+end
+
+-- Learned data is always a table of entries; a lone value there is damage.
+function KIND.tree(v, label, note)
+    if type(v) ~= "table" then return nil, "expected a table, found a " .. type(v) end
+    return clean(v, label, note, {})
+end
+
+function KIND.bool(v)
+    if type(v) == "boolean" then return v end
+    return nil, "expected true or false, found a " .. type(v)
+end
+
+function KIND.positive(v)
+    if finite(v) and v > 0 then return v end
+    return nil, "expected a number above zero"
+end
+
+-- A frame position: { anchor, relative anchor, x, y }. Offsets may be negative.
+function KIND.point(v)
+    if type(v) ~= "table" then return nil, "expected a position, found a " .. type(v) end
+    if type(v[1]) ~= "string" or type(v[2]) ~= "string" then return nil, "a position without its two anchors" end
+    if not finite(v[3]) or not finite(v[4]) then return nil, "a position whose offsets are not numbers" end
+    return { v[1], v[2], v[3], v[4] }
+end
+
+-- A spot on a map: map id plus x, y as fractions of the map (0 to 1).
+local function spotProblem(v)
+    if type(v) ~= "table" then return "expected a spot, found a " .. type(v) end
+    if not finite(v.map) then return "a spot without a map" end
+    if not finite(v.x) or not finite(v.y) then return "a spot whose coordinates are not numbers" end
+    if v.x < 0 or v.x > 1 or v.y < 0 or v.y > 1 then return "a coordinate outside the map (0 to 1)" end
+    return nil
+end
+
+function KIND.spot(v, label, note)
+    local problem = spotProblem(v)
+    if problem then return nil, problem end
+    return clean(v, label, note, {})
+end
+
+-- A spot in the world: continent plus world x, y (either sign).
+local function worldSpot(v, label, note)
+    if type(v) ~= "table" then return nil, "expected a world spot, found a " .. type(v) end
+    if not finite(v.wx) or not finite(v.wy) then return nil, "a world spot whose coordinates are not numbers" end
+    if v.cont ~= nil and not finite(v.cont) then return nil, "a world spot whose continent is not a number" end
+    return clean(v, label, note, {})
+end
+
+-- A table of entries: each key checked by keyOk, each value by one(...).
+local function map(v, label, note, keyOk, keyWhy, one)
+    if type(v) ~= "table" then return nil, "expected a table, found a " .. type(v) end
+    local out = {}
+    for _, key in ipairs(sortedKeys(v)) do
+        local at = label .. "." .. tostring(key)
+        if keyOk(key) then
+            local value, why = one(v[key], at, note)
+            if value == nil then note(at, why) else out[key] = value end
+        else
+            note(at, keyWhy)
+        end
+    end
+    return out
+end
+
+-- A list: entries kept in order, bad ones left out, no holes.
+local function list(v, label, note, one)
+    if type(v) ~= "table" then return nil, "expected a list, found a " .. type(v) end
+    local out = {}
+    for _, key in ipairs(sortedKeys(v)) do
+        local at = label .. "." .. tostring(key)
+        if finite(key) then
+            local value, why = one(v[key], at, note)
+            if value == nil then note(at, why) else out[#out + 1] = value end
+        else
+            note(at, "a name in a list")
+        end
+    end
+    return out
+end
+
+local function isName(key) return type(key) == "string" and key ~= "" end
+local function isId(key) return finite(key) and key > 0 end
+
+function KIND.places(v, label, note)
+    return map(v, label, note, isName, "a place without a name", KIND.spot)
+end
+
+function KIND.spots(v, label, note)
+    return list(v, label, note, KIND.spot)
+end
+
+function KIND.worldList(v, label, note)
+    return list(v, label, note, worldSpot)
+end
+
+-- [quest id][objective index] = list of spots
+function KIND.questSpots(v, label, note)
+    return map(v, label, note, isId, "a quest key that is not an id", function(quest, questLabel)
+        return map(quest, questLabel, note, finite, "an objective key that is not a number", function(spots, at)
+            return list(spots, at, note, KIND.spot)
+        end)
+    end)
+end
+
+function KIND.flights(v, label, note)
+    return map(v, label, note, isName, "a flight point without a name", worldSpot)
+end
+
+function KIND.times(v, label, note)
+    return map(v, label, note, isName, "a flight without its two ends", function(seconds)
+        if finite(seconds) and seconds > 0 then return seconds end
+        return nil, "a flight time that is not above zero"
+    end)
+end
+
+function KIND.prices(v, label, note)
+    return map(v, label, note, isId, "a price key that is not an item id", function(copper)
+        if finite(copper) and copper >= 0 then return copper end
+        return nil, "a price that is not zero or more"
+    end)
+end
+
+local ARROW_MODES = { stacked = true, separate = true }
+
+function KIND.arrows(v, label, note)
+    if type(v) ~= "table" then return nil, "expected a table, found a " .. type(v) end
+    local out = {}
+    for _, key in ipairs(sortedKeys(v)) do
+        local value, at = v[key], label .. "." .. tostring(key)
+        if key == "mode" then
+            if ARROW_MODES[value] then out.mode = value else note(at, "not an arrow layout this importer knows") end
+        elseif key == "points" then
+            local points, why = map(value, at, note, isName, "an arrow without a name", KIND.point)
+            if points == nil then note(at, why) else out.points = points end
+        elseif key == "hidden" or key == "text" then
+            local flags, why = map(value, at, note, isName, "an arrow without a name", KIND.bool)
+            if flags == nil then note(at, why) else out[key] = flags end
+        else
+            note(at, "not a part of the arrow layout this importer knows")
+        end
+    end
+    return out
+end
+
+--------------------------------------------------------------------------------
+-- FromFlow
+--------------------------------------------------------------------------------
+local CATEGORIES = { "places", "flights", "prices", "facts", "fights", "settings", "layout", "state" }
+
+local function categoryOf(path)
+    local first, second = path:match("^([^.]+)%.?([^.]*)")
+    if first == "learned" then return second end
+    return first
+end
+
+local function size(v)
+    if type(v) ~= "table" then return 1 end
+    local n = 0
+    for _ in pairs(v) do n = n + 1 end
+    return n
+end
+
+local function skeleton(scope)
+    if scope == "account" then
+        return {
+            schema = SCHEMA, settings = {}, layout = {}, imports = {},
+            learned = { places = {}, flights = {}, prices = {}, facts = {}, fights = {} },
+        }
+    end
+    return { schema = SCHEMA, settings = {}, layout = {}, learned = {}, state = {} }
+end
+
+local function newRecord(sourceVersion)
+    local counts = { dropped = 0, unknown = 0, malformed = 0, superseded = 0 }
+    for _, name in ipairs(CATEGORIES) do counts[name] = 0 end
+    return {
+        source = "Flow",
+        sourceVersion = sourceVersion,
+        importer = IMPORTER_VERSION,
+        schema = SCHEMA,
+        counts = counts,
+        vendorChoices = {},
+        vendorSameAsFlowDefault = {},
+    }
+end
+
+local function refuse(reason, sourceVersion)
+    local record = newRecord(sourceVersion)
+    record.refused = reason
+    return { ok = false, reason = reason, dropped = {}, record = record }
+end
+
+local function FromFlow(flowDb, flowCharDb)
+    if flowDb ~= nil and type(flowDb) ~= "table" then
+        return refuse("Flow's account data is a " .. type(flowDb) .. ", not a table; nothing was imported")
+    end
+    flowDb = flowDb or {}
+    local version = flowDb.version
+    if version == nil then version = 0 end
+    if not finite(version) or version < 0 or version % 1 ~= 0 then
+        return refuse("Flow's data version is not a version number (" .. tostring(version) .. "); nothing was imported")
+    end
+    if version > KNOWN_FLOW_VERSION then
+        return refuse("Flow's data is at version " .. version .. " and this importer (version " .. IMPORTER_VERSION
+            .. ") knows Flow data up to version " .. KNOWN_FLOW_VERSION
+            .. "; nothing was imported, so nothing could be imported wrongly", version)
+    end
+
+    local out = { account = skeleton("account"), char = skeleton("char") }
+    local record = newRecord(version)
+    local dropped = {}
+
+    local function leave(why, label, reason)
+        dropped[#dropped + 1] = { key = label, why = why, reason = reason }
+        record.counts[why] = record.counts[why] + 1
+    end
+    local function note(label, reason) leave("malformed", label, reason) end
+
+    local function apply(row, value, label)
+        if row.meta then return end
+        if row.drop then return leave("dropped", label, row.drop) end
+        local cleaned, why = KIND[row.as or (row.to:find("^learned%.") and "tree" or "any")](value, label, note)
+        if cleaned == nil then return leave("malformed", label, why) end
+        if type(cleaned) == "table" and next(cleaned) == nil then return end
+        put(row.char and out.char or out.account, row.to, cleaned)
+        local category = categoryOf(row.to)
+        record.counts[category] = record.counts[category] + size(cleaned)
+        if row.vendor then
+            record.vendorChoices[row[1]] = cleaned
+            if row.flowDefault ~= nil and cleaned == row.flowDefault then
+                record.vendorSameAsFlowDefault[row[1]] = true
+            end
+        end
+    end
+
+    -- One Flow path ("section" or "section.key") and the value found there.
+    local function take(path, value, label)
+        local row = ROW[path]
+        if not HAS_KEYS[path] then
+            if row then return apply(row, value, label) end
+            return leave("unknown", label, "no row for this key in the mapping; left behind untouched")
+        end
+        if type(value) ~= "table" then
+            return leave("malformed", label, "expected a table, found a " .. type(value))
+        end
+        local rest
+        for _, key in ipairs(sortedKeys(value)) do
+            local keyRow = type(key) == "string" and ROW[path .. "." .. key] or nil
+            if keyRow then
+                apply(keyRow, value[key], label .. "." .. key)
+            elseif row then
+                rest = rest or {}
+                rest[key] = value[key]
+            else
+                leave("unknown", label .. "." .. tostring(key), "no row for this key in the mapping; left behind untouched")
+            end
+        end
+        if rest then apply(row, rest, label) end
+    end
+
+    for _, key in ipairs(sortedKeys(flowDb)) do
+        if type(key) == "string" and not key:find(".", 1, true) then
+            take(key, flowDb[key], key)
+        elseif type(key) == "string" then
+            leave("unknown", key, "no row for this key in the mapping; left behind untouched")
+        else
+            leave("unknown", tostring(key), "a key that is not a name")
+        end
+    end
+
+    -- The character's own values. While Flow is loaded they sit at their
+    -- path in the account table; at logout Flow parks them under
+    -- FlowCharDB.data[path] (Core.lua:182-232). A live value wins.
+    if flowCharDb ~= nil and type(flowCharDb) ~= "table" then
+        leave("malformed", "FlowCharDB", "expected a table, found a " .. type(flowCharDb))
+    elseif flowCharDb then
+        for _, key in ipairs(sortedKeys(flowCharDb)) do
+            local label = "FlowCharDB." .. tostring(key)
+            local value = flowCharDb[key]
+            if key == "adopted" then
+                leave("dropped", label, BOOKKEEPING)
+            elseif key ~= "data" then
+                leave("unknown", label, "no row for this key in the mapping; left behind untouched")
+            elseif type(value) ~= "table" then
+                leave("malformed", label, "expected a table, found a " .. type(value))
+            else
+                for _, path in ipairs(sortedKeys(value)) do
+                    local at = label .. "." .. tostring(path)
+                    if type(path) ~= "string" then
+                        leave("unknown", at, "a key that is not a name")
+                    elseif getPath(flowDb, path) ~= nil then
+                        leave("superseded", at, "the account table holds a live value at this path; that one was used")
+                    elseif ROW[path] or HAS_KEYS[path] then
+                        take(path, value[path], at)
+                    else
+                        leave("unknown", at, "no row for this key in the mapping; left behind untouched")
+                    end
+                end
+            end
+        end
+    end
+
+    table.sort(dropped, function(a, b)
+        if a.key ~= b.key then return a.key < b.key end
+        if a.why ~= b.why then return a.why < b.why end
+        return a.reason < b.reason
+    end)
+    out.account.imports[1] = copy(record)
+    return { ok = true, account = out.account, char = out.char, dropped = dropped, record = record }
+end
+
+--------------------------------------------------------------------------------
+-- Merge
+--------------------------------------------------------------------------------
+local MERGED = {
+    account = { "settings", "layout", "learned" },
+    char = { "settings", "layout", "learned", "state" },
+}
+
+-- A table of named or numbered entries merges entry by entry; a list (a
+-- position, a list of spots) is one value and is kept or added whole.
+local function isList(t)
+    return t[1] ~= nil
+end
+
+local function fill(dst, src, defaults, path, report)
+    for _, key in ipairs(sortedKeys(src)) do
+        local value, have = src[key], dst[key]
+        local at = path .. "." .. tostring(key)
+        local default
+        if type(defaults) == "table" then default = defaults[key] end
+        if have == nil or (type(have) == "table" and next(have) == nil and type(value) == "table") then
+            dst[key] = copy(value)
+            report.added[#report.added + 1] = at
+        elseif type(have) == "table" and type(value) == "table" and not isList(have) and not isList(value) then
+            fill(have, value, default, at, report)
+        elseif same(have, value) then
+            report.skipped[#report.skipped + 1] = { path = at, reason = "the same value is already there" }
+        elseif default ~= nil and same(have, default) then
+            dst[key] = copy(value)
+            report.added[#report.added + 1] = at
+        else
+            report.kept[#report.kept + 1] = at
+            report.skipped[#report.skipped + 1] = { path = at, reason = "the player already has a value here; it was kept" }
+        end
+    end
+end
+
+local function shapeProblem(db, scope)
+    if db == nil then return nil end
+    if type(db) ~= "table" then return "the existing " .. scope .. " data is not a table" end
+    if db.schema ~= nil and db.schema ~= SCHEMA then
+        return "the existing " .. scope .. " data is at schema " .. tostring(db.schema)
+            .. " and this importer writes schema " .. SCHEMA
+    end
+    for _, name in ipairs(MERGED[scope]) do
+        if db[name] ~= nil and type(db[name]) ~= "table" then
+            return "the existing " .. scope .. " data has a " .. name .. " that is not a table"
+        end
+    end
+    if scope == "account" and db.imports ~= nil and type(db.imports) ~= "table" then
+        return "the existing account data has an imports entry that is not a table"
+    end
+    return nil
+end
+
+local function Merge(existingAccount, existingChar, imported, defaults)
+    local report = { ok = true, added = {}, kept = {}, skipped = {}, counts = { added = 0, kept = 0, skipped = 0 } }
+    local problem
+    if type(imported) ~= "table" then
+        problem = "there is no import result to merge"
+    elseif imported.ok ~= true or type(imported.account) ~= "table" or type(imported.char) ~= "table" then
+        problem = "the import did not succeed: " .. tostring(imported.reason or "no reason given")
+    else
+        problem = shapeProblem(existingAccount, "account") or shapeProblem(existingChar, "char")
+    end
+    if problem then
+        report.ok, report.reason = false, problem .. "; nothing was merged"
+        return copy(existingAccount), copy(existingChar), report
+    end
+
+    local result = { account = copy(existingAccount) or {}, char = copy(existingChar) or {} }
+    for _, scope in ipairs({ "account", "char" }) do
+        local db, base = result[scope], skeleton(scope)
+        for key, value in pairs(base) do
+            if db[key] == nil then db[key] = value end
+        end
+        local scopeDefaults = type(defaults) == "table" and defaults[scope] or nil
+        for _, name in ipairs(MERGED[scope]) do
+            local from = imported[scope][name]
+            if type(from) == "table" then
+                local sectionDefaults
+                if type(scopeDefaults) == "table" then sectionDefaults = scopeDefaults[name] end
+                fill(db[name], from, sectionDefaults, scope .. "." .. name, report)
+            end
+        end
+    end
+    report.counts.added = #report.added
+    report.counts.kept = #report.kept
+    report.counts.skipped = #report.skipped
+
+    local record = copy(imported.record) or {}
+    record.merge = copy(report.counts)
+    local imports = result.account.imports
+    imports[#imports + 1] = record
+    return result.account, result.char, report
+end
+
+ns.Import = ns.Import or {}
+ns.Import.FromFlow = FromFlow
+ns.Import.Merge = Merge
+ns.Import.flowMap = MAP
+ns.Import.flowImporterVersion = IMPORTER_VERSION
+ns.Import.flowKnownVersion = KNOWN_FLOW_VERSION

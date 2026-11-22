@@ -256,3 +256,17 @@ The kernel is merged on `zflow`. Where it differs from section 4, this section i
 - When the arrows are separated there is no needle under the quest arrow, so the quest arrow is always at full alpha and scale.
 - Faults in the source that Z-Flow must not copy (each is a required test): the corpse arrow keeps 0.8 / 0.7 if the player dies while the needle shows; the arrived ring is drawn at 0.8 / 0.7 inside a main step's area but off its point; the travel icon changes the arrow's scale and can leave scale 1.0 with alpha 0.7. Rule: scale and alpha are computed from the current state on every update, never left over from the last one.
 - Source fact: the pure layout functions and saved `nav.arrows` on the Flow line are used only by tests, not by live frames; the live arrow is not clamped to the screen and has no reset. Z-Flow drives the live frames from the layout data, clamps to the screen, and has a reset.
+
+## 13. Checkpoint 1: interface decisions (lead, 2026-11-22)
+
+Merged at tag `zflow-cp1` plus the import module: Items (Key, Resources, Prices, Disposition), Rotation (Pack, Snapshot, Choose, KeyPlan), Classes/Druid, Nav/ArrowLayout, Import/FromFlow. All pure; nothing is wired to the client yet.
+
+- `Prices.Get(book, key, kind)`: book first. Accepted.
+- Disposition `basis` is one of "choice", "fact", "recommendation", "unknown"; actions keep, sell, auction, disenchant, equip. Accepted.
+- `Resources.Take(read)` with `read.money()`, `read.bags()`, `read.items()`, `read.bank()`. Accepted; the adapter is built in Core/Client.lua (White).
+- The "classPack" kind stays declared in Rotation/Pack.lua. Core owns only kinds used by more than one area.
+- The binding list from KeyPlan is the input of `ns.cast.Apply(plan)`; shape as Twin proposed, final when Rotation/Cast.lua is built.
+- Saved arrow layout: account scope, `layout.arrows = { mode, points = { quest, prof }, hidden, text }`, point `{ anchor, relativeAnchor, x, y }`. Accepted.
+- Zones reach Nav as `{ cont, zone }` from Core/Client.lua (White).
+- Player messages never spell the product name; they read it from `ns.id`.
+- Import: `Import.FromFlow` and `Import.Merge` are pure and nothing calls them. Flow writes its vendor defaults into saved data, so a stored "on" for auto-junk or auto-repair cannot be told from a choice. Rule: the import screen lists every vendor automation it would switch on and the player confirms each; without that confirmation it stays off. The caller stamps the import date. Settings paths are provisional until setting rows exist.

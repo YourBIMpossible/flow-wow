@@ -26,6 +26,9 @@ return {
         "Core/Module.lua",
         "Core/Kernel.lua",
 
+        -- Import
+        "Import/FromFlow.lua",
+
         -- Items
         "Items/Key.lua",
         "Items/Resources.lua",

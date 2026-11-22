@@ -18,6 +18,7 @@ Core\Kinds.lua
 Core\Guard.lua
 Core\Module.lua
 Core\Kernel.lua
+Import\FromFlow.lua
 Items\Key.lua
 Items\Resources.lua
 Items\Prices.lua
