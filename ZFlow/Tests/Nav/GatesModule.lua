@@ -137,7 +137,13 @@ tests["gates module: imported entries of another shape are left alone"] = functi
     local list = gates(c)
     t.eq(#list, 2, "appended")
     t.eq(list[1], { cont = 1, wx = 5, wy = 5 }, "the imported one is untouched")
-    t.eq(api.step({ map = 1454 }).place.map, 1411, "and the step uses the one that names its maps")
+    -- walkIn leaves the player inside Orgrimmar, where there is no way to
+    -- ask for ("same map"). Back outside, the step is asked from Durotar.
+    t.eq({ api.step({ map = 1454 }) }, { nil, "same map" }, "inside the walls: no step")
+    c.setPosition(1411, 0.50, 0.10)
+    local step = api.step({ map = 1454 })
+    t.ok(type(step) == "table" and type(step.place) == "table", "a step with a place")
+    t.eq(step.place.map, 1411, "and the step uses the one that names its maps")
 end
 
 tests["gates: look only - nothing moves, flies or clicks for you"] = function(t)
