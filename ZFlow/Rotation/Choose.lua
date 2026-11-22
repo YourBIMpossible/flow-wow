@@ -11,7 +11,8 @@ local _, ns = ...
 --   inCombat, hostile, resting, dead      booleans
 --     hostile not known (nil): a list rule that needs a target is not
 --       suggested (R.TARGET_UNKNOWN); the list's note names the spells
---       passed by for it.
+--       passed by for it, and says so once without a name when only the
+--       rules' own conditions turned such a rule down.
 --     dead not known (nil), or true: nothing is suggested, and the trace is
 --       one "dead" row.
 --     inCombat not known (nil) counts as a fight (R.InFight): no dispel, no
@@ -35,6 +36,11 @@ local _, ns = ...
 --   spells        { [name] = { known, usable, onCooldown, inRange, noPower, castMs } }
 --     onCooldown not known (nil): the spell is not castable; it is not read
 --       as off cooldown.
+--     inRange not known (nil): a rule that needs range (a list rule that
+--       needs a target, an interrupt that is not a near one) is not
+--       suggested (R.RANGE_UNKNOWN); it is not read as in range, and not as
+--       out of range. The step's note names the spells passed by for it,
+--       after the cooldown and target reasons.
 --
 -- No field is a health or power amount, or made from one: this client hides
 -- those from addon code. See R.FROM_AMOUNT in Snapshot.lua.
@@ -83,10 +89,13 @@ end
 -- (onCooldown nil) is not "off cooldown": the spell is not castable, and a
 -- second result gives the reason, R.COOLDOWN_UNKNOWN. That reason comes
 -- only when the cooldown alone is in the way; every other no is a bare
--- false. needRange (R.Ready): and not out of range (a range the snapshot
--- does not give counts as in range). R.Ready hands the reason on, and a
--- step that passed a spell by for it says so in its trace note.
+-- false. needRange (R.Ready): and read as in range. A range nobody read
+-- (inRange nil) is not "in range": not ready, with the reason
+-- R.RANGE_UNKNOWN; read as out of range is a bare false. The cooldown is
+-- asked first. R.Ready hands either reason on, and a step that passed a
+-- spell by for one says so in its trace note.
 R.COOLDOWN_UNKNOWN = "not known whether it is ready"
+R.RANGE_UNKNOWN = "not known whether it is in range"
 
 function R.Castable(s, name)
     local r = row(s, name)
@@ -98,16 +107,29 @@ end
 function R.Ready(s, name, needRange)
     local ok, why = R.Castable(s, name)
     if not ok then return false, why end
-    return not (needRange and row(s, name).inRange == false)
+    if not needRange then return true end
+    local near = row(s, name).inRange
+    if near == nil then return false, R.RANGE_UNKNOWN end
+    return near and true or false
+end
+
+-- Adds a name to a list of names, once.
+local function remember(names, name)
+    if not names[name] then
+        names[name] = true
+        names[#names + 1] = name
+    end
 end
 
 -- R.Ready for a step. A spell stopped only by a cooldown nobody read is
--- remembered in `unread` (each name once) for the step's note.
-local function ready(s, name, needRange, unread)
+-- remembered in `unread` (each name once) for the step's note; one stopped
+-- only by a range nobody read, in `noRange` when the step gives one.
+local function ready(s, name, needRange, unread, noRange)
     local ok, why = R.Ready(s, name, needRange)
-    if why == R.COOLDOWN_UNKNOWN and not unread[name] then
-        unread[name] = true
-        unread[#unread + 1] = name
+    if why == R.COOLDOWN_UNKNOWN then
+        remember(unread, name)
+    elseif why == R.RANGE_UNKNOWN and noRange then
+        remember(noRange, name)
     end
     return ok
 end
@@ -124,14 +146,29 @@ local function sorted(names)
     return out
 end
 
+-- What a step could not tell, beside cooldowns: `target`, the spells passed
+-- by for a target not read; `range`, those passed by for a range not read;
+-- `declined`, true when the target was not read and a rule that needs one
+-- was turned down by its own condition.
+local function newGaps()
+    return { target = {}, range = {}, declined = false }
+end
+
 -- The step's note, with the spells it passed by for a cooldown not read,
--- then (noTarget, the list step) those passed by for a target not read.
-local function noteWith(note, unread, noTarget)
+-- then (gaps) the target not read, then the range not read. The target
+-- reason is said once: with its spells, or alone when no spell is named.
+local function noteWith(note, unread, gaps)
     if #unread > 0 then
         note = note .. "; " .. R.COOLDOWN_UNKNOWN .. ": " .. table.concat(sorted(unread), ", ")
     end
-    if noTarget and #noTarget > 0 then
-        note = note .. "; " .. R.TARGET_UNKNOWN .. ": " .. table.concat(sorted(noTarget), ", ")
+    if not gaps then return note end
+    if #gaps.target > 0 then
+        note = note .. "; " .. R.TARGET_UNKNOWN .. ": " .. table.concat(sorted(gaps.target), ", ")
+    elseif gaps.declined then
+        note = note .. "; " .. R.TARGET_UNKNOWN
+    end
+    if #gaps.range > 0 then
+        note = note .. "; " .. R.RANGE_UNKNOWN .. ": " .. table.concat(sorted(gaps.range), ", ")
     end
     return note
 end
@@ -262,15 +299,16 @@ end
 function steps.interrupt(s, pack, prefs, _, unread)
     if not (R.InFight(s) and s.hostile == true and s.targetCasting) then return nil, "target is not casting" end
     unread = unread or {}
+    local gaps = newGaps()
     for _, r in ipairs(pack.interrupts or {}) do
         local reach = true
         if r.near then reach = s.targetNear == true end
-        if reach and allowed(prefs, r.spell) and ready(s, r.spell, not r.near, unread) then
+        if reach and allowed(prefs, r.spell) and ready(s, r.spell, not r.near, unread, gaps.range) then
             return { spell = r.spell, kind = "damage",
                      reason = string.format("Stop its %s: %s", tostring(s.targetCasting), r.spell) }
         end
     end
-    return nil, noteWith("no interrupt ready", unread)
+    return nil, noteWith("no interrupt ready", unread, gaps)
 end
 
 -- 4. Something on you that you can remove: out of a fight, yourself only.
@@ -317,26 +355,35 @@ local function listFor(s, pack)
     return (s.fightType and lists[s.fightType]) or lists.default or {}
 end
 
+-- Is the rule wanted? A second result, true, when the no came from the
+-- rule's own condition (when) and nothing before it.
 local function ruleWants(s, rule, prefs)
     if rule.kind == "buff" and R.OutOfFight(s) and s.resting == true then return false end
     if not allowed(prefs, rule.spell) or not R.Knows(s, rule.spell) then return false end
-    return not rule.when or (rule.when(s) and true or false)
+    if not rule.when or rule.when(s) then return true end
+    return false, true
 end
 
--- Wanted and ready. A rule that needs a target, with the target not read
--- (hostile nil), is not ready: it is remembered in `noTarget` (each name
--- once) for the step's note. Asked after the cooldown, so a spell whose
--- cooldown nobody read is named for that and not for this.
-local function ruleReady(s, rule, prefs, unread, noTarget)
-    if not (ruleWants(s, rule, prefs) and ready(s, rule.spell, rule.target, unread)) then return false end
-    if rule.target and s.hostile == nil then
-        if not noTarget[rule.spell] then
-            noTarget[rule.spell] = true
-            noTarget[#noTarget + 1] = rule.spell
-        end
+-- Wanted and ready. Asked in this order, so a spell is named for the first
+-- thing nobody read and for nothing after it: the cooldown; then, for a
+-- rule that needs a target, the target (hostile nil: remembered in
+-- gaps.target); then its range (inRange nil: remembered in gaps.range).
+-- With the target not read, a rule that needs one and was turned down by
+-- its own condition sets gaps.declined: the condition may have read "not
+-- known" as "no".
+local function ruleReady(s, rule, prefs, unread, gaps)
+    local wants, declined = ruleWants(s, rule, prefs)
+    if not wants then
+        if declined and rule.target and s.hostile == nil then gaps.declined = true end
         return false
     end
-    return true
+    if not ready(s, rule.spell, nil, unread) then return false end
+    if not rule.target then return true end
+    if s.hostile == nil then
+        remember(gaps.target, rule.spell)
+        return false
+    end
+    return ready(s, rule.spell, true, unread, gaps.range)
 end
 
 local function suggest(rule, learned)
@@ -351,7 +398,7 @@ function steps.list(s, pack, prefs, bias, unread)
     local list = listFor(s, pack)
     bias = bias or {}
     unread = unread or {}
-    local noTarget = {}
+    local gaps = newGaps()
     local i, n = 1, #list
     while i <= n do
         local rule = list[i]
@@ -359,7 +406,7 @@ function steps.list(s, pack, prefs, bias, unread)
             local best, bestBias
             while i <= n and list[i].adaptive do
                 local r = list[i]
-                if ruleReady(s, r, prefs, unread, noTarget) then
+                if ruleReady(s, r, prefs, unread, gaps) then
                     local b = bias[r.spell] or 0
                     if not best or b > bestBias + R.BIAS_EDGE then best, bestBias = r, b end
                 end
@@ -367,11 +414,11 @@ function steps.list(s, pack, prefs, bias, unread)
             end
             if best then return suggest(best, bestBias > R.BIAS_EDGE) end
         else
-            if ruleReady(s, rule, prefs, unread, noTarget) then return suggest(rule) end
+            if ruleReady(s, rule, prefs, unread, gaps) then return suggest(rule) end
             i = i + 1
         end
     end
-    return nil, noteWith("no rule ready", unread, noTarget)
+    return nil, noteWith("no rule ready", unread, gaps)
 end
 
 -- 7. An enemy targeted and the first rule that wants it is only out of range.

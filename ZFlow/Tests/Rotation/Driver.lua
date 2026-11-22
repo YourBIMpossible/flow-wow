@@ -23,7 +23,7 @@ local function pack()
     }
 end
 
--- The fake client with both spells known, usable and ready.
+-- The fake client with both spells known, usable, ready and in range.
 local function spellsOn(c, cooldowns)
     cooldowns = cooldowns or { Wrath = false, Moonfire = false }
     c.setSpellId("Wrath", WRATH)
@@ -32,6 +32,8 @@ local function spellsOn(c, cooldowns)
     c.setSpell(MOONFIRE, { known = true, usable = true, noPower = false })
     c.setSpellCooldown(WRATH, cooldowns.Wrath)
     c.setSpellCooldown(MOONFIRE, cooldowns.Moonfire)
+    c.setInRange(WRATH, true)
+    c.setInRange(MOONFIRE, true)
     return c
 end
 
@@ -47,7 +49,7 @@ local function enemy() return { exists = true, hostile = true, dead = false } en
 -- in (nil included), reads spells from the fake client, and records every
 -- call by name. `other` gets every name asked for that it does not have.
 -- extra: target, stealthed, inRange  the read to use in place of the usual
---          one (a live enemy targeted; stealth not known; range not known)
+--          one (a live enemy targeted; stealth not known; every spell in range)
 --        without = { name, ... }     reads this client does not have
 local function stub(dead, inCombat, lockdown, cooldowns, extra)
     extra = extra or {}
@@ -68,7 +70,7 @@ local function stub(dead, inCombat, lockdown, cooldowns, extra)
         spellCooldown = rec("spellCooldown", c.spellCooldown),
         target = rec("target", extra.target or enemy),
         stealthed = rec("stealthed", extra.stealthed or function() return nil end),
-        inRange = rec("inRange", extra.inRange or function() return nil end),
+        inRange = rec("inRange", extra.inRange or function() return true end),
     }
     for _, name in ipairs(extra.without or {}) do client[name] = nil end
     for _, name in ipairs(FORBIDDEN) do
@@ -431,7 +433,8 @@ tests["rotation driver F-086: range is read through client.inRange when the clie
     local ok, got = pcall(step, { [MOONFIRE] = false }, { "inRange" })
     t.ok(ok, "a client with no inRange read: the step ran: " .. tostring(got))
     t.ok(ok and got.snapshot.spells.Moonfire.inRange == nil, "and range is not known")
-    t.eq(ok and got.suggestion and got.suggestion.spell, "Moonfire")
+    t.eq(ok and got.suggestion, nil, "range not known: nothing that needs it is suggested")
+    t.eq(ok and noteOf(got.trace, "list"), "no rule ready; " .. R.RANGE_UNKNOWN .. ": Moonfire, Wrath")
 end
 
 -- RD11 ----------------------------------------------------------------

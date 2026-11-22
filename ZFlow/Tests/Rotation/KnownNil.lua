@@ -15,7 +15,10 @@ local function fightPack()
     return { lists = { default = { { spell = "Bolt", target = true, evidence = "first guess" } } } }
 end
 
+-- In a fight with an enemy targeted; a range the row does not give is read
+-- as in range.
 local function fight(row)
+    if row.inRange == nil then row.inRange = true end
     return ns.SnapshotOf({ inCombat = true, dead = false, hostile = true, spells = { Bolt = row } })
 end
 

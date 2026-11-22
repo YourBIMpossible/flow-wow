@@ -208,6 +208,7 @@ return {
                     lists = { default = { { spell = "Bolt", target = true, evidence = "first guess" } } } }
         local function fight(cooldown)
             local r = ns.RotationReader.SpellRows(p, { Bolt = 133 }, reader(c), function() return cooldown end)
+            r.rows.Bolt.inRange = true
             return ns.SnapshotOf({ inCombat = true, dead = false, hostile = true, spells = r.rows })
         end
         local function listNote(trace)

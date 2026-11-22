@@ -36,7 +36,7 @@ local ALL = { "Shield", "Bolt", "Mend", "Big Mend", "Renew", "Kick", "Silence", 
 -- Alive, every spell known; inCombat is left out unless `over` gives it.
 local function snap(over, known)
     local s = { dead = false, spells = {} }
-    for _, name in ipairs(known or ALL) do s.spells[name] = { known = true, onCooldown = false } end
+    for _, name in ipairs(known or ALL) do s.spells[name] = { known = true, onCooldown = false, inRange = true } end
     for k, v in pairs(over or {}) do s[k] = v end
     return s
 end
@@ -242,7 +242,7 @@ end
 T["druid: combat not known, no out-of-fight buff and no Prowl"] = function(t)
     local function druid(over, role, form, tree, known)
         local s = { dead = false, role = role, form = form, tree = tree, hostile = true, attacking = true, spells = {} }
-        for _, name in ipairs(known) do s.spells[name] = { known = true, onCooldown = false } end
+        for _, name in ipairs(known) do s.spells[name] = { known = true, onCooldown = false, inRange = true } end
         for k, v in pairs(over or {}) do s[k] = v end
         local got = ns.Choose(s, ns.Packs.DRUID)
         return got and got.spell or nil
