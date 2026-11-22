@@ -82,6 +82,13 @@ if ($PSBoundParameters.ContainsKey('Verbose')) { $luaArgs += '--verbose' }
 if ($ListModules) { $luaArgs += '--list-modules' }
 if ($Filter) { $luaArgs += @('--filter', $Filter) }
 if ($Strict) { $luaArgs += '--strict' }
+# The game's globals Flow may read: the add-on's own list, else this runner's.
+# Without one, a mistyped global would be a SKIP ("needs the client"), so
+# there is always one.
+$globals = Join-Path $root 'tools/offline/client-globals.txt'
+if (-not (Test-Path -LiteralPath $globals)) { $globals = Join-Path $runner 'client-globals.txt' }
+if (-not (Test-Path -LiteralPath $globals)) { Write-Output "run-tests: no tools/offline/client-globals.txt"; exit 2 }
+$luaArgs += @('--client-globals', $globals)
 if (-not $NoKnown) {
     if (-not $Known) {
         $default = Join-Path $root 'tools/offline/known-failures.txt'
