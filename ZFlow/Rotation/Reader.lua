@@ -3,7 +3,9 @@ local _, ns = ...
 -- The rotation reader: builds the snapshot's spell rows from what the client
 -- says about each spell a class pack names. Pure: the client's answer comes
 -- in through `spell`, a function of one spell id (Core/Client.lua's
--- client.spell), and nothing else is asked of the game.
+-- client.spell), and through `cooldown`, a function of one spell id
+-- (client.spellCooldown: true on cooldown, false ready, nil not known);
+-- nothing else is asked of the game.
 --
 -- A spell is asked about by id alone, so no unit is ever named: not the
 -- player's, and nobody else's. No health or power amount is read; noPower is
@@ -18,9 +20,10 @@ local _, ns = ...
 ns.RotationReader = {}
 local RR = ns.RotationReader
 
--- The fields taken from the client's answer. Each is true, false or nil;
--- nil means the client did not say.
-RR.FIELDS = { "known", "usable", "noPower" }
+-- The fields of a row. Each is true, false or nil; nil means the client did
+-- not say. onCooldown not known stays nil: it is never read as "ready"
+-- (see R.COOLDOWN_UNKNOWN in Choose.lua).
+RR.FIELDS = { "known", "usable", "noPower", "onCooldown" }
 
 -- Every spell name in pack.spells, sorted.
 function RR.SpellNames(pack)
@@ -34,11 +37,16 @@ function RR.SpellNames(pack)
     return names
 end
 
--- { rows = { [name] = { known =, usable =, noPower = } }, unread = { name, ... } }
+-- { rows = { [name] = { known =, usable =, noPower =, onCooldown = } },
+--   unread = { name, ... } }
 -- rows go straight into the snapshot's `spells`. unread (sorted) names the
 -- pack's spells that could not be asked about: no id, no reader, or a read
 -- that failed.
-function RR.SpellRows(pack, ids, spell)
+-- cooldown (optional): asked once, by id alone, for each spell that was
+-- read. When it is given it alone decides onCooldown: a plain true or
+-- false is kept; no answer, a failed ask or any other answer leaves
+-- onCooldown nil (not known). A spell is not made unread by it.
+function RR.SpellRows(pack, ids, spell, cooldown)
     local out = { rows = {}, unread = {} }
     ids = type(ids) == "table" and ids or {}
     for _, name in ipairs(RR.SpellNames(pack)) do
@@ -51,6 +59,11 @@ function RR.SpellRows(pack, ids, spell)
             local row = {}
             for _, f in ipairs(RR.FIELDS) do
                 if type(answer[f]) == "boolean" then row[f] = answer[f] end
+            end
+            if type(cooldown) == "function" then
+                local asked, on = pcall(cooldown, id)
+                row.onCooldown = nil
+                if asked and type(on) == "boolean" then row.onCooldown = on end
             end
             out.rows[name] = row
         else

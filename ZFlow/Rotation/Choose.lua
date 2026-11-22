@@ -79,7 +79,8 @@ end
 -- second result gives the reason, R.COOLDOWN_UNKNOWN. That reason comes
 -- only when the cooldown alone is in the way; every other no is a bare
 -- false. needRange (R.Ready): and not out of range (a range the snapshot
--- does not give counts as in range).
+-- does not give counts as in range). R.Ready hands the reason on, and a
+-- step that passed a spell by for it says so in its trace note.
 R.COOLDOWN_UNKNOWN = "not known whether it is ready"
 
 function R.Castable(s, name)
@@ -90,8 +91,27 @@ function R.Castable(s, name)
 end
 
 function R.Ready(s, name, needRange)
-    if not R.Castable(s, name) then return false end
+    local ok, why = R.Castable(s, name)
+    if not ok then return false, why end
     return not (needRange and row(s, name).inRange == false)
+end
+
+-- R.Ready for a step. A spell stopped only by a cooldown nobody read is
+-- remembered in `unread` (each name once) for the step's note.
+local function ready(s, name, needRange, unread)
+    local ok, why = R.Ready(s, name, needRange)
+    if why == R.COOLDOWN_UNKNOWN and not unread[name] then
+        unread[name] = true
+        unread[#unread + 1] = name
+    end
+    return ok
+end
+
+-- The step's note, with the spells it passed by for that reason (sorted).
+local function noteWith(note, unread)
+    if #unread == 0 then return note end
+    table.sort(unread)
+    return note .. "; " .. R.COOLDOWN_UNKNOWN .. ": " .. table.concat(unread, ", ")
 end
 
 local function allowed(prefs, name)
@@ -131,14 +151,15 @@ local steps = {}
 function steps.breakFree(s, pack, prefs)
     local t = s.loc
     if not t then return nil, "not held" end
+    local unread = {}
     for _, b in ipairs(pack.breakers or {}) do
         if (b.any or (b.types and b.types[t])) and not (b.form and s.form == b.spell)
-            and allowed(prefs, b.spell) and R.Ready(s, b.spell) then
+            and allowed(prefs, b.spell) and ready(s, b.spell, nil, unread) then
             return { spell = b.spell, kind = "emergency",
                      reason = string.format("You are held (%s): break free", (string.gsub(string.lower(t), "_", " "))) }
         end
     end
-    return nil, "nothing ready breaks " .. tostring(t)
+    return nil, noteWith("nothing ready breaks " .. tostring(t), unread)
 end
 
 -- 2. Healing yourself. Only yourself: pack.heals.self.
@@ -149,7 +170,8 @@ function steps.heal(s, pack, prefs)
         if h == s.casting then return nil, "already casting a heal" end
     end
     local buffs = s.buffs or {}
-    local function ok(sp) return allowed(prefs, sp) and R.Ready(s, sp) end
+    local unread = {}
+    local function ok(sp) return allowed(prefs, sp) and ready(s, sp, nil, unread) end
     local function ms(sp) return castMs(s, sp) end
 
     if s.lowHealth then
@@ -158,7 +180,7 @@ function steps.heal(s, pack, prefs)
             return { spell = best, kind = R.InFight(s) and "emergency" or "heal",
                      reason = "Low health (the game's warning is on): heal now" }
         end
-        return nil, "low health, no heal ready"
+        return nil, noteWith("low health, no heal ready", unread)
     end
 
     local hurt = s.hurt
@@ -188,7 +210,7 @@ function steps.heal(s, pack, prefs)
         end
     end
     local function heal(spell, why)
-        if not spell then return nil, "hurt, no heal ready" end
+        if not spell then return nil, noteWith("hurt, no heal ready", unread) end
         return { spell = spell, kind = "heal", early = true,
                  reason = string.format("%s (Flow's estimate: about %d s of hits since you last healed)", why, hurt) }
     end
@@ -215,15 +237,16 @@ end
 -- 3. Your target is casting: stop it. Your own target only.
 function steps.interrupt(s, pack, prefs)
     if not (R.InFight(s) and s.hostile == true and s.targetCasting) then return nil, "target is not casting" end
+    local unread = {}
     for _, r in ipairs(pack.interrupts or {}) do
         local reach = true
         if r.near then reach = s.targetNear == true end
-        if reach and allowed(prefs, r.spell) and R.Ready(s, r.spell, not r.near) then
+        if reach and allowed(prefs, r.spell) and ready(s, r.spell, not r.near, unread) then
             return { spell = r.spell, kind = "damage",
                      reason = string.format("Stop its %s: %s", tostring(s.targetCasting), r.spell) }
         end
     end
-    return nil, "no interrupt ready"
+    return nil, noteWith("no interrupt ready", unread)
 end
 
 -- 4. Something on you that you can remove: out of a fight, yourself only.
@@ -235,17 +258,18 @@ function steps.dispel(s, pack, prefs)
     end
     local types = s.debuffTypes
     if not types then return nil, "nothing to remove" end
+    local unread = {}
     for _, rule in ipairs(list) do
         if R.Knows(s, rule.spell) and allowed(prefs, rule.spell) and (not rule.when or rule.when(s)) then
             for kind in pairs(rule.types or {}) do
-                if types[kind] and R.Ready(s, rule.spell) then
+                if types[kind] and ready(s, rule.spell, nil, unread) then
                     return { spell = rule.spell, kind = "buff", unit = "player",
                              reason = string.format("%s on you: %s (%s)", rule.spell, string.lower(kind), tostring(types[kind])) }
                 end
             end
         end
     end
-    return nil, "nothing ready removes it"
+    return nil, noteWith("nothing ready removes it", unread)
 end
 
 -- 5. An enemy targeted, not fighting yet: start the attack first.
@@ -271,8 +295,8 @@ local function ruleWants(s, rule, prefs)
     return not rule.when or (rule.when(s) and true or false)
 end
 
-local function ruleReady(s, rule, prefs)
-    return ruleWants(s, rule, prefs) and R.Ready(s, rule.spell, rule.target)
+local function ruleReady(s, rule, prefs, unread)
+    return ruleWants(s, rule, prefs) and ready(s, rule.spell, rule.target, unread)
 end
 
 local function suggest(rule, learned)
@@ -286,6 +310,7 @@ end
 function steps.list(s, pack, prefs, bias)
     local list = listFor(s, pack)
     bias = bias or {}
+    local unread = {}
     local i, n = 1, #list
     while i <= n do
         local rule = list[i]
@@ -293,7 +318,7 @@ function steps.list(s, pack, prefs, bias)
             local best, bestBias
             while i <= n and list[i].adaptive do
                 local r = list[i]
-                if ruleReady(s, r, prefs) then
+                if ruleReady(s, r, prefs, unread) then
                     local b = bias[r.spell] or 0
                     if not best or b > bestBias + R.BIAS_EDGE then best, bestBias = r, b end
                 end
@@ -301,24 +326,25 @@ function steps.list(s, pack, prefs, bias)
             end
             if best then return suggest(best, bestBias > R.BIAS_EDGE) end
         else
-            if ruleReady(s, rule, prefs) then return suggest(rule) end
+            if ruleReady(s, rule, prefs, unread) then return suggest(rule) end
             i = i + 1
         end
     end
-    return nil, "no rule ready"
+    return nil, noteWith("no rule ready", unread)
 end
 
 -- 7. An enemy targeted and the first rule that wants it is only out of range.
 function steps.farOpener(s, pack, prefs)
     if not s.hostile then return nil, "no enemy targeted" end
+    local unread = {}
     for _, rule in ipairs(listFor(s, pack)) do
-        if rule.target and ruleWants(s, rule, prefs) and R.Castable(s, rule.spell)
-            and row(s, rule.spell).inRange == false then
+        if rule.target and ruleWants(s, rule, prefs) and row(s, rule.spell).inRange == false
+            and ready(s, rule.spell, nil, unread) then
             return { spell = rule.spell, kind = rule.kind or "damage", label = "Out of range",
                      reason = (rule.reason or rule.spell) .. " (out of range)" }
         end
     end
-    return nil, "nothing out of range"
+    return nil, noteWith("nothing out of range", unread)
 end
 
 R.STEPS = { "breakFree", "heal", "interrupt", "dispel", "engage", "list", "farOpener" }
