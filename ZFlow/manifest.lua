@@ -151,5 +151,6 @@ return {
     "Rotation/CastEdge.lua",
     "Rotation/Audit.lua",
     "Rotation/FormSpells.lua",
+    "Fight/Choices.lua",
     },
 }
