@@ -40,6 +40,23 @@ end
 
 local function last(c) return c.printed[#c.printed] or "" end
 
+-- The wiring (G1, G2, PS1): what a character has saved about a profession
+-- and its trainer, as Nav/ProfSeen.lua writes it. Made-up rows, test only.
+local function profStart(skill, max, visitedAtCap, trainerMap)
+    local _, c, a = start({ saved = { learned = { places = { npcs = {
+        ["Test Trainer"] = { map = trainerMap or 1411, x = 0.8, y = 0.5, trains = { Mining = true },
+                             factions = { Horde = true }, seen = 10 },
+    } } } } })
+    c.setSaved(ns.id.charDB, { learned = { facts = { profSkill = {
+        Mining = { skill = skill, max = max, visitedAtCap = visitedAtCap },
+    } } } })
+    c.setFaction("Horde")
+    c.setPosition(1411, 0.5, 0.5)
+    c.setMapSize(1411, 1000, 500)
+    c.setWaypoint(1411, 0.5, 0.3)
+    return c, a
+end
+
 return {
     ["two arrows are made, hidden, with the art path and sizes"] = function(t)
         local _, c, a = start()
@@ -420,5 +437,60 @@ return {
         t.eq(kept, { quest = 2, prof = 2 })
         _, kept = A.Lines(view("ring", "ring", "prof", false, true), lines(), both)
         t.eq(kept, { prof = 1 }, "text not shown: no count")
+    end,
+
+    ["wiring G1: a capped profession adds the trainer needle and the waypoint stays the quest arrow"] = function(t)
+        local c, a = profStart(75, 75)
+        login(c)
+        a.relayout()
+        local q, p = c.arrows[1], c.arrows[2]
+        t.eq(q.shown, true, "the waypoint is still the quest arrow")
+        t.eq(p.shown, true, "the profession needle is shown")
+        t.eq(q.lines, { N.WAYPOINT_LABEL, "100 yd", "Mining trainer", "300 yd" })
+        t.ok(a.state().view.prof.mode ~= "off")
+        c.setWaypoint(nil)
+        a.relayout()
+        t.eq(q.shown, false, "no waypoint: no quest arrow")
+        t.eq(p.shown, true, "the needle does not need a waypoint")
+        a.setGuide(function() return { quest = { place = { cont = 1, map = 1411, x = 0.5, y = 0.3 }, label = "Own" } } end)
+        t.eq(q.lines, { "Own", "100 yd" }, "a guide that was set is taken whole: nothing is added to it")
+        t.eq(p.shown, false)
+    end,
+
+    ["wiring G2: with no profession step the needle is off and the quest arrow is unchanged"] = function(t)
+        local plain = select(2, start())
+        plain.setPosition(1411, 0.5, 0.5)
+        plain.setMapSize(1411, 1000, 500)
+        plain.setWaypoint(1411, 0.5, 0.3)
+        login(plain)
+        local want = plain.arrows[1]
+        t.eq(want.lines, { N.WAYPOINT_LABEL, "100 yd" })
+        for name, given in pairs({ ["not capped"] = { 50, 75 }, ["visited"] = { 75, 75, 75 } }) do
+            local c, a = profStart(given[1], given[2], given[3])
+            login(c)
+            a.relayout()
+            local q, p = c.arrows[1], c.arrows[2]
+            t.eq(a.state().view.prof.mode, "off", name)
+            t.eq(p.shown, false, name)
+            t.eq(q.shown, true, name)
+            t.eq(q.lines, want.lines, name)
+            t.eq(q.point, want.point, name)
+            t.eq(q.faded, want.faded, name)
+            t.eq(q.scaled, want.scaled, name)
+            t.eq(q.textPoint, want.textPoint, name)
+        end
+    end,
+
+    ["wiring PS1: a trainer on another map has that map's size asked for"] = function(t)
+        local c, a = profStart(75, 75, nil, 1412)
+        c.setMapSize(1412, 800, 400)
+        local asked, real = {}, c.mapSize
+        c.mapSize = function(map)
+            asked[map] = (asked[map] or 0) + 1
+            return real(map)
+        end
+        login(c)
+        a.relayout()
+        t.ok((asked[1412] or 0) > 0, "the trainer's map is in the list of maps asked")
     end,
 }
