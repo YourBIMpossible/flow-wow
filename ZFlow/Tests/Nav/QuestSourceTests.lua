@@ -173,4 +173,122 @@ T["quest source: nothing handed in is changed"] = function(t)
     t.eq(HERE.x, 0.5)
 end
 
+-- Section 131: the quest the player picked out. Boars (101) are 25 yd
+-- away, the scouting (303) 400 yd away, the letter (202) is handed in 50 yd
+-- away.
+local function scout(more)
+    local row = { id = 303, title = "Scout the Ridge", objectives = { { text = "Ridge scouted: 0/1", done = false } } }
+    for key, v in pairs(more or {}) do row[key] = v end
+    return row
+end
+
+local function spots()
+    return {
+        [101] = { objectives = { { points = { pt(0.5, 0.45) } } } },
+        [202] = { turnIn = { points = { pt(0.5, 0.6) }, name = "Marshal Dughan" } },
+        [303] = { objectives = { { points = { pt(0.9, 0.5) } } } },
+    }
+end
+
+T["quest focus: the picked quest wins over a nearer one"] = function(t)
+    local rows = { boars(), scout() }
+    t.eq(Q.Pick(rows, spots(), HERE).quest, 101, "nothing picked: the nearest")
+    local step = Q.Pick(rows, spots(), HERE, { quest = 303 })
+    t.eq(step.quest, 303)
+    t.eq(step.objective, 1)
+    t.eq(step.detail, "Ridge scouted: 0/1")
+    t.eq(step.place, { cont = 1, map = 1411, x = 0.9, y = 0.5 })
+end
+
+T["quest focus: nothing picked is the old answer"] = function(t)
+    local rows = { boars(), scout(), letter() }
+    local old = Q.Pick(rows, spots(), HERE)
+    t.eq(old.quest, 101)
+    t.eq(Q.Pick(rows, spots(), HERE, nil), old)
+    t.eq(Q.Pick(rows, spots(), HERE, {}), old, "a read that says none")
+    t.eq(Q.Pick(rows, spots(), HERE, { watched = {} }), old, "nothing watched")
+    t.eq(Q.Pick(rows, spots(), HERE, "junk"), old)
+    t.eq(Q.Pick(rows, nil, {}, {}), Q.Pick(rows, nil, {}), "words only too")
+end
+
+T["quest focus: a picked quest that is handed in or abandoned falls back"] = function(t)
+    local rows = { boars(), scout() }
+    local old = Q.Pick(rows, spots(), HERE)
+    t.eq(Q.Pick(rows, spots(), HERE, { quest = 999 }), old, "not in the log")
+    t.eq(Q.Pick({ boars(), scout({ failed = true }) }, spots(), HERE, { quest = 303 }), old, "failed")
+    local done = scout({ objectives = { { text = "Ridge scouted: 1/1", done = true } } })
+    t.eq(Q.Pick({ boars(), done }, spots(), HERE, { quest = 303 }), old, "nothing left and not ready to hand in")
+    t.eq(Q.Pick({}, spots(), HERE, { quest = 303 }), nil, "an empty log has no step")
+end
+
+T["quest focus: a picked quest that is complete points at its turn-in"] = function(t)
+    local rows = { boars(), letter() }
+    t.eq(Q.Pick(rows, spots(), HERE).quest, 101, "nothing picked: an objective wins over a turn-in")
+    local step = Q.Pick(rows, spots(), HERE, { quest = 202 })
+    t.eq(step.quest, 202)
+    t.eq(step.turnIn, true)
+    t.eq(step.detail, "Turn in: Marshal Dughan")
+    t.eq(step.place, { cont = 1, map = 1411, x = 0.5, y = 0.6 })
+end
+
+T["quest focus: a picked quest with no place on this map is that quest in words"] = function(t)
+    local rows = { boars(), scout() }
+    local places = spots()
+    places[303] = { objectives = { { points = {}, elsewhere = true } } }
+    local step = Q.Pick(rows, places, HERE, { quest = 303 })
+    t.eq(step.place, nil)
+    t.eq(step.lines, { "Scout the Ridge", "Ridge scouted: 0/1", Q.ELSEWHERE })
+    places[303] = nil
+    t.eq(Q.Pick(rows, places, HERE, { quest = 303 }).lines, { "Scout the Ridge", "Ridge scouted: 0/1", Q.UNKNOWN_PLACE })
+    t.eq(Q.Pick(rows, spots(), {}, { quest = 303 }).lines, { "Scout the Ridge", "Ridge scouted: 0/1", Q.UNKNOWN_PLACE },
+        "where the player is not known")
+    places[202] = nil
+    t.eq(Q.Pick({ boars(), letter() }, places, HERE, { quest = 202 }).lines, { "A Letter Home", "Turn in", Q.UNKNOWN_PLACE })
+end
+
+T["quest focus: of the picked quest, the nearest unfinished objective"] = function(t)
+    local row = { id = 404, title = "Two Things", objectives = {
+        { text = "Far: 0/1" }, { text = "Near: 0/1" }, { text = "Done: 1/1", done = true } } }
+    local places = spots()
+    places[404] = { objectives = {
+        { points = { pt(0.1, 0.5) } }, { points = { pt(0.6, 0.5) } }, { points = { pt(0.5, 0.5) } } } }
+    local step = Q.Pick({ boars(), row }, places, HERE, { quest = 404 })
+    t.eq(step.objective, 2)
+    t.eq(step.place, { cont = 1, map = 1411, x = 0.6, y = 0.5 })
+end
+
+T["quest focus: watched quests come before the rest of the log"] = function(t)
+    local rows = { boars(), scout(), letter() }
+    t.eq(Q.Pick(rows, spots(), HERE, { watched = { 303 } }).quest, 303)
+    t.eq(Q.Pick(rows, spots(), HERE, { watched = { 303, 202 } }).quest, 303, "an objective before a turn-in, among the watched")
+    t.eq(Q.Pick(rows, spots(), HERE, { watched = { 202 } }).quest, 202)
+    t.eq(Q.Pick(rows, spots(), HERE, { watched = { 999 } }).quest, 101, "none of the watched is in the log: the whole log")
+    local done = scout({ objectives = { { text = "Ridge scouted: 1/1", done = true } } })
+    t.eq(Q.Pick({ boars(), done }, spots(), HERE, { watched = { 303 } }).quest, 101, "the watched have nothing left: the whole log")
+    t.eq(Q.Pick(rows, spots(), HERE, { quest = 101, watched = { 303 } }).quest, 101, "the picked quest before the watched")
+    t.eq(Q.Pick(rows, spots(), HERE, { quest = 999, watched = { 303 } }).quest, 303, "a picked quest that is gone: the watched")
+end
+
+T["quest focus: Pick says where the step came from"] = function(t)
+    local rows = { boars(), scout() }
+    local _, from = Q.Pick(rows, spots(), HERE, nil)
+    t.eq(from, "log")
+    _, from = Q.Pick(rows, spots(), HERE, { quest = 303 })
+    t.eq(from, "picked")
+    _, from = Q.Pick(rows, spots(), HERE, { watched = { 303 } })
+    t.eq(from, "watched")
+    _, from = Q.Pick(rows, spots(), HERE, { quest = 999, watched = { 999 } })
+    t.eq(from, "log", "neither is in the log")
+    local step
+    step, from = Q.Pick({}, spots(), HERE, { quest = 303 })
+    t.eq(step, nil)
+    t.eq(from, nil, "no step: no source")
+end
+
+T["quest focus: the focus handed in is not changed"] = function(t)
+    local focus = { quest = 303, watched = { 303, 101 } }
+    Q.Pick({ boars(), scout() }, spots(), HERE, focus)
+    t.eq(focus, { quest = 303, watched = { 303, 101 } })
+end
+
 return T

@@ -52,7 +52,7 @@ local function start(log, module)
     c.fire("ADDON_LOADED", ns.id.addon)
     c.fire("PLAYER_LOGIN")
     c.fire("PLAYER_ENTERING_WORLD")
-    return c, a, k, held
+    return c, a, k, held, d
 end
 
 return {
@@ -130,6 +130,42 @@ return {
         t.eq(c.arrows[1].lines[1], "Boar Trouble")
     end,
 
+    ["quest arrow: the quest the player picks out is the one shown"] = function(t)
+        local c = start({ boars(), wolves() }, questie())
+        t.eq(c.arrows[1].lines[1], "Boar Trouble", "nothing picked: the one on this map")
+        c.setQuestFocus(202)
+        c.fire("SUPER_TRACKING_CHANGED")
+        t.eq(c.arrows[1].lines[1], "Wolves")
+        t.eq(c.arrows[1].lines[2], "Wolves slain: 0/4")
+        c.setQuestFocus(101)
+        c.fire("SUPER_TRACKING_CHANGED")
+        t.eq(c.arrows[1].lines[1], "Boar Trouble")
+    end,
+
+    ["quest arrow: a change of the watch list is shown"] = function(t)
+        local c = start({ boars(), wolves() }, questie())
+        c.setQuestFocus(nil, { 202 })
+        c.fire("QUEST_WATCH_LIST_CHANGED", 202, true)
+        t.eq(c.arrows[1].lines[1], "Wolves")
+        c.setQuestFocus(nil, {})
+        c.fire("QUEST_WATCH_LIST_CHANGED", 202, false)
+        t.eq(c.arrows[1].lines[1], "Boar Trouble")
+    end,
+
+    ["quest arrow: a quest taken, dropped or handed in reads the log again"] = function(t)
+        for _, event in ipairs({ "QUEST_ACCEPTED", "QUEST_REMOVED", "QUEST_TURNED_IN", "UNIT_QUEST_LOG_CHANGED" }) do
+            local c, _, _, held = start({ boars() }, questie())
+            c.setQuestFocus(202)
+            t.eq(c.arrows[1].lines[1], "Boar Trouble", "the picked quest is not in the log yet")
+            held.log = { boars(), wolves() }
+            c.fire(event, "player")
+            t.eq(c.arrows[1].lines[1], "Wolves", event)
+            held.log = { boars() }
+            c.fire(event, "player")
+            t.eq(c.arrows[1].lines[1], "Boar Trouble", event .. ", gone again")
+        end
+    end,
+
     ["quest arrow: the player's own pin wins over the quest"] = function(t)
         local c, a = start({ boars() }, questie())
         c.setWaypoint(1411, 0.5, 0.1)
@@ -149,5 +185,48 @@ return {
         t.eq(A.QuestArrowOn(k(true)), true)
         t.eq(A.QuestArrowOn(k(false)), false)
         t.eq(A.QuestArrowOn({}), true)
+    end,
+
+    ["quest arrow why: says the source, the log, the pick, the reads and the events"] = function(t)
+        local c, _, _, _, d = start({ boars(), wolves() }, questie())
+        c.setQuestFocusReads({ superTrack = false, questie = 202, watched = { 101, 202 } })
+        c.setQuestFocus(202, { 101, 202 })
+        c.advance(1, 4)
+        local n = #c.printed
+        d.commands.arrow("why")
+        local said = {}
+        for i = n + 1, #c.printed do said[#said + 1] = c.printed[i] end
+        t.eq(#said, 5)
+        local title = ns.id.title .. ": "
+        t.eq(said[1], title .. "quest step from your quests; quest arrow setting on.")
+        t.eq(said[2], title .. "quest log: 2 read; Questie places ready; map 1411.")
+        t.eq(said[3], title .. "quest 202, chosen from your focus.")
+        t.eq(said[4], title .. "focus reads: super track none; Questie focus 202; watch list 2 quests.")
+        t.eq(said[5], title .. "events: none refused.")
+    end,
+
+    ["quest arrow why: no focus read, no log"] = function(t)
+        local c, _, _, held, d = start({ boars() }, questie())
+        held.log = nil
+        c.fire("QUEST_LOG_UPDATE")
+        c.advance(1, 4)
+        local n = #c.printed
+        d.commands.arrow("why")
+        t.eq(#c.printed, n + 4)
+        local title = ns.id.title .. ": "
+        t.eq(c.printed[n + 1], title .. "quest step from nothing; quest arrow setting on.")
+        t.eq(c.printed[n + 2], title .. "quest log: not read.")
+        t.eq(c.printed[n + 3], title .. "focus reads: none on this client.")
+        t.eq(c.printed[n + 4], title .. "events: none refused.")
+    end,
+
+    ["quest arrow why: reads and prints only"] = function(t)
+        local c, _, _, _, d = start({ boars() }, questie())
+        c.advance(1, 4)
+        local before = c.arrows[1].lines[1]
+        d.commands.arrow("why")
+        c.advance(1, 4)
+        t.eq(c.arrows[1].lines[1], before)
+        t.eq(c.arrows[1].lines[1], "Boar Trouble")
     end,
 }
