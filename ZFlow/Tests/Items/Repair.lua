@@ -84,7 +84,10 @@ end
 tests["repair: no known repair vendor, or no faction known, is none"] = function(t)
     t.eq(R.Vendor(nil, here()), nil, "no places saved")
     t.eq(R.Vendor({ ["Trainer"] = NPCS["Trainer"] }, here()), nil, "no repairer known")
-    t.eq(R.Vendor(NPCS, here({ faction = nil })), nil, "faction not known: no target")
+    -- pairs() skips a nil, so here({ faction = nil }) kept "Horde" (lead, L6-C merge).
+    local noFaction = here()
+    noFaction.faction = nil
+    t.eq(R.Vendor(NPCS, noFaction), nil, "faction not known: no target")
 end
 
 tests["repair: the guide step goes to the vendor, labelled"] = function(t)

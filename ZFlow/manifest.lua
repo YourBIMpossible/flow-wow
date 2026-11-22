@@ -46,6 +46,7 @@ return {
         "Items/Present.lua",
         "Items/CraftHint.lua",
         "Items/Sell.lua",
+        "Items/Repair.lua",
         "Items/SellView.lua",
 
         -- Gear
