@@ -25,23 +25,30 @@ local R = ns.Rotation
 R.SNAPSHOT_FIELDS = {
     { "inCombat", "flag" }, { "hostile", "flag" }, { "resting", "flag" }, { "dead", "flag" },
     { "role", "value" }, { "tree", "value" }, { "fightType", "value" },
-    { "form", "value" }, { "stealthed", "flag" }, { "combo", "number" }, { "outOfMana", "flag" },
+    { "form", "value" }, { "stealthed", "flag" }, { "finisherReady", "flag" },
     { "casting", "value" }, { "targetCasting", "value" },
     { "targetNear", "flag" }, { "targetMelee", "flag" }, { "targetOnYou", "flag" }, { "hittingYou", "flag" },
-    { "canSpareMana", "flag" }, { "attacking", "flag" }, { "canStartAttack", "flag" }, { "engageGaveUp", "flag" },
-    { "loc", "value" }, { "lowHealth", "flag" }, { "hpPct", "number" }, { "hurt", "number" },
+    { "attacking", "flag" }, { "canStartAttack", "flag" }, { "engageGaveUp", "flag" },
+    { "loc", "value" }, { "lowHealth", "flag" }, { "hurt", "number" },
     { "buffs", "map" }, { "targetDebuffs", "map" }, { "debuffTypes", "map" }, { "current", "map" },
     { "spells", "spells" },
 }
--- Fields that come from a health or power amount. On a client that hides
--- those amounts from addon code (comparing one raises an error) the reader
--- must leave these out: never pass the hidden amount in, never guess one.
--- Left out, the number fields stay unknown and the flag fields read "no".
+-- Names that would be made from a health or power amount. This client hides
+-- those amounts from addon code (comparing one raises an error), so the
+-- snapshot has no such field: the reader is never asked for one, and one
+-- handed in is left out and named in `ignored`. What stands in for them:
+--   health        lowHealth (the game's own warning) and hurt (our estimate)
+--   out of power  spells[name].noPower (the game refuses the spell for power)
+--   mana to spare the spell's own usable flag
+--   combo points  finisherReady: true only when the reader can tell, without
+--                 a hidden amount, that a finisher is due. Not given, no
+--                 finisher is suggested.
 R.FROM_AMOUNT = { hpPct = "health", outOfMana = "power", canSpareMana = "power", combo = "power" }
--- A spell row: known, usable and onCooldown are flags, but usable and inRange
+-- A spell row: known and onCooldown are flags, but usable, inRange and noPower
 -- keep "not read" (nil) apart from "no" (false): the chooser treats a range
--- or a usable state nobody read as fine.
-R.SPELL_FIELDS = { "known", "usable", "onCooldown", "inRange", "castMs" }
+-- or a usable state nobody read as fine, and never reads "lacks power" into
+-- a row nobody read.
+R.SPELL_FIELDS = { "known", "usable", "onCooldown", "inRange", "noPower", "castMs" }
 
 local kindOf = {}
 for _, f in ipairs(R.SNAPSHOT_FIELDS) do kindOf[f[1]] = f[2] end
@@ -64,6 +71,7 @@ local function copySpells(t)
             local r = { known = row.known and true or false, onCooldown = row.onCooldown and true or false }
             if row.usable ~= nil then r.usable = row.usable and true or false end
             if row.inRange ~= nil then r.inRange = row.inRange and true or false end
+            if row.noPower ~= nil then r.noPower = row.noPower and true or false end
             if type(row.castMs) == "number" then r.castMs = row.castMs end
             out[name] = r
         end

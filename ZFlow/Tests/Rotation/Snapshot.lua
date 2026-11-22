@@ -6,8 +6,7 @@ return {
         t.eq(s.inCombat, false, "inCombat")
         t.eq(s.stealthed, false, "stealthed")
         t.eq(s.lowHealth, false, "lowHealth")
-        t.eq(s.hpPct, nil, "hpPct is unknown, not 0")
-        t.eq(s.combo, nil, "combo is unknown, not 0")
+        t.eq(s.finisherReady, false, "finisherReady")
         t.eq(s.hurt, nil, "hurt is unknown, not 0")
         t.eq(s.form, nil, "form")
         t.eq(s.buffs, {}, "buffs")
@@ -18,22 +17,20 @@ return {
 
     ["given fields are kept, by kind"] = function(t)
         local s = ns.SnapshotOf({
-            inCombat = 1, role = "dps", form = "Cat Form", combo = 3, hpPct = 42,
+            inCombat = 1, role = "dps", form = "Cat Form", finisherReady = 1, hurt = 4.5,
             buffs = { ["Mark of the Wild"] = true }, debuffTypes = { Poison = true },
         })
         t.eq(s.inCombat, true, "a flag becomes true or false")
         t.eq(s.role, "dps", "role")
         t.eq(s.form, "Cat Form", "form")
-        t.eq(s.combo, 3, "combo")
-        t.eq(s.hpPct, 42, "hpPct")
+        t.eq(s.finisherReady, true, "finisherReady")
+        t.eq(s.hurt, 4.5, "hurt")
         t.eq(s.buffs, { ["Mark of the Wild"] = true }, "buffs")
         t.eq(s.debuffTypes, { Poison = true }, "debuffTypes")
     end,
 
     ["a number that is not a number stays unknown"] = function(t)
-        local s = ns.SnapshotOf({ hpPct = "low", combo = true, hurt = {} })
-        t.eq(s.hpPct, nil, "hpPct")
-        t.eq(s.combo, nil, "combo")
+        local s = ns.SnapshotOf({ hurt = {} })
         t.eq(s.hurt, nil, "hurt")
     end,
 
@@ -82,7 +79,7 @@ return {
             asked[name] = (asked[name] or 0) + 1
             count = count + 1
             if name == "inCombat" then return true end
-            if name == "hpPct" then return 80 end
+            if name == "hurt" then return 8 end
             if name == "buffs" then return { Thorns = true } end
         end)
         t.eq(count, #ns.Rotation.SNAPSHOT_FIELDS, "one question per field")
@@ -90,7 +87,7 @@ return {
             t.eq(asked[f[1]], 1, f[1])
         end
         t.eq(s.inCombat, true, "inCombat")
-        t.eq(s.hpPct, 80, "hpPct")
+        t.eq(s.hurt, 8, "hurt")
         t.eq(s.buffs, { Thorns = true }, "buffs")
         t.eq(s.hostile, false, "a field the reader did not answer")
     end,
@@ -116,11 +113,11 @@ return {
     end,
 
     ["the same fields give the same snapshot"] = function(t)
-        local fields = { inCombat = true, combo = 2, spells = { Claw = { known = true, usable = true } } }
+        local fields = { inCombat = true, hurt = 2, spells = { Claw = { known = true, usable = true } } }
         t.eq(ns.SnapshotOf(fields), ns.SnapshotOf(fields), "same answer")
-        t.eq(fields, { inCombat = true, combo = 2, spells = { Claw = { known = true, usable = true } } }, "fields not changed")
+        t.eq(fields, { inCombat = true, hurt = 2, spells = { Claw = { known = true, usable = true } } }, "fields not changed")
         -- Two tables built apart with the same fields: equal, and nothing shared.
-        local twin = { inCombat = true, combo = 2, spells = { Claw = { known = true, usable = true } } }
+        local twin = { inCombat = true, hurt = 2, spells = { Claw = { known = true, usable = true } } }
         local a, b = ns.SnapshotOf(fields), ns.SnapshotOf(twin)
         t.eq(a, b, "equal fields in two tables give equal snapshots")
         t.ok(a ~= b and a.spells ~= b.spells, "each call builds its own tables")
