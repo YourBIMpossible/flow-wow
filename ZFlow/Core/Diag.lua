@@ -716,6 +716,13 @@ function Diag.Start(k)
             if client.uptime() == nil then
                 client.print(id.title .. ": the client gives no time; nothing that waits for a time runs.")
             end
+            if type(k.sched) == "table" and type(k.sched.held) == "function" then
+                local held, unknown = k.sched:held()
+                if unknown then
+                    client.print(id.title .. ": combat is not known; " .. held
+                        .. (held == 1 and " job is" or " jobs are") .. " held until it is.")
+                end
+            end
             local line = priceWatchLine()
             if line then client.print(id.title .. ": " .. line) end
         end

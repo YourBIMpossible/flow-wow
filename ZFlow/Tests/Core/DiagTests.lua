@@ -623,4 +623,53 @@ return {
         t.eq(said(c, "price watch"), 0)
         t.ok(#c.printed > 0, "the snapshot line is printed")
     end,
+
+    ["sched: held counts the work that waits for combat to end, and says when combat is not known (CU6)"] = function(t)
+        local k, c = start()
+        login(c)
+        t.ok(type(k.sched.held) == "function", "sched:held exists")
+        if type(k.sched.held) ~= "function" then return end
+        local ran = 0
+        local function work() ran = ran + 1 end
+        t.eq({ k.sched:held() }, { 0, false })
+        k.sched:afterCombat("x", work)
+        t.eq(ran, 1, "out of combat it runs at once")
+        t.eq({ k.sched:held() }, { 0, false })
+        c.inCombat = function() return nil end
+        local cancel = k.sched:afterCombat("x", work)
+        k.sched:afterCombat("x", work)
+        k.sched:every("x", 1, work, { when = "outOfCombat" })
+        k.sched:every("x", 1, function() end)
+        t.eq({ k.sched:held() }, { 2, true }, "the timed job is not due yet")
+        c.advance(2, 4)
+        t.eq(ran, 1, "nothing of it ran")
+        t.eq({ k.sched:held() }, { 3, true })
+        cancel()
+        t.eq({ k.sched:held() }, { 2, true }, "a cancelled job is not counted")
+        c.inCombat = function() return true end
+        t.eq({ k.sched:held() }, { 2, false }, "in a fight they are held, and combat is known")
+        c.inCombat = function() return false end
+        t.eq({ k.sched:held() }, { 0, false }, "out of combat nothing is held")
+    end,
+
+    ["slash: diag counts the jobs held because combat is not known (CU6)"] = function(t)
+        local k, c = start()
+        login(c)
+        local function work() end
+        c.slashes[ns.id.slash]("diag")
+        t.eq(said(c, "combat is not known"), 0, "no line while combat is known")
+        c.inCombat = function() return true end
+        k.sched:afterCombat("x", work)
+        c.slashes[ns.id.slash]("diag")
+        t.eq(said(c, "combat is not known"), 0, "a fight is not an unknown")
+        c.inCombat = function() return nil end
+        c.slashes[ns.id.slash]("diag")
+        t.eq(said(c, ns.id.title .. ": combat is not known; 1 job is held until it is."), 1)
+        k.sched:afterCombat("x", work)
+        c.slashes[ns.id.slash]("diag")
+        t.eq(said(c, ns.id.title .. ": combat is not known; 2 jobs are held until it is."), 1)
+        k.sched:off("x")
+        c.slashes[ns.id.slash]("diag")
+        t.eq(said(c, ns.id.title .. ": combat is not known; 0 jobs are held until it is."), 1)
+    end,
 }
