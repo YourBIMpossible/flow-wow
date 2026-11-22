@@ -123,6 +123,9 @@ return {
         "Nav/TravelSpells.lua",
         "Nav/TravelIcon.lua",
         "Nav/Leaving.lua",
+        "Nav/FlightPaths.lua",
+        "Nav/MapFlights.lua",
+        "Nav/TaxiMark.lua",
         "UI/ProfCard.lua",
 
         -- On screen (after Nav: the panel uses its saved-point rules)
