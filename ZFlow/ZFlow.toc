@@ -36,3 +36,4 @@ Classes\Paladin.lua
 Nav\ArrowLayout.lua
 Nav\Bearing.lua
 Nav\ArrowView.lua
+UI\DevPanel.lua

@@ -446,6 +446,137 @@ function ns.make.client(env)
         return true
     end
 
+    ---------------------------------------------------------------------
+    -- Drawing. Thin on purpose: what a panel says and where it stands is
+    -- decided by the caller (UI/DevPanel.lua). No frame method here has
+    -- been seen on 16001, so each is looked up and called under pcall: one
+    -- the client lacks is skipped and the rest still run.
+    ---------------------------------------------------------------------
+
+    -- obj:name(...) under pcall. ok is false when obj has no such method.
+    local function method(obj, name, ...)
+        if obj == nil then return false end
+        local ok, fn = pcall(function() return obj[name] end)
+        if not ok or type(fn) ~= "function" then return false end
+        return pcall(fn, obj, ...)
+    end
+
+    -- The version text the client read from this addon's TOC, or nil.
+    -- GetAddOnMetadata (C_AddOns or bare) is a first guess on 16001.
+    function c.version(name)
+        local group = env.C_AddOns
+        local fn = (type(group) == "table" and group.GetAddOnMetadata) or env.GetAddOnMetadata
+        local ok, text = call(fn, name, "Version")
+        if ok and type(text) == "string" and text ~= "" then return text end
+        return nil
+    end
+
+    -- Width and height of the area frames are placed in (UIParent, in its
+    -- own units), or nil when the client will not say.
+    function c.screen()
+        local parent = env.UIParent
+        local okW, w = method(parent, "GetWidth")
+        local okH, h = method(parent, "GetHeight")
+        if okW and okH and type(w) == "number" and type(h) == "number" and w > 0 and h > 0 then
+            return w, h
+        end
+        return nil
+    end
+
+    -- A small movable text panel, or nil when the client cannot make one.
+    --   spec = { name = global frame name or nil, width = n, height = n }
+    -- The handle:
+    --   h.setLines({ "text", ... })   the lines shown, top to bottom
+    --   h.place({ anchor, relative anchor, x, y })   against the screen
+    --   h.show(on)
+    --   h.onMoved(fn)   fn(point) after the player drags it; point is plain
+    --                   data in the shape place() takes. Not called when the
+    --                   client will not say where the panel now stands.
+    -- A new panel is hidden and has no place until told.
+    function c.panel(spec)
+        spec = type(spec) == "table" and spec or {}
+        local parent = env.UIParent
+        local ok, f = call(env.CreateFrame, "Frame", spec.name, parent)
+        if not ok or f == nil then return nil end
+        local h, moved = {}, nil
+        local width, height = tonumber(spec.width) or 200, tonumber(spec.height) or 80
+
+        method(f, "Hide")
+        if not method(f, "SetSize", width, height) then
+            method(f, "SetWidth", width)
+            method(f, "SetHeight", height)
+        end
+        method(f, "SetFrameStrata", "MEDIUM")
+        method(f, "SetClampedToScreen", true)
+
+        -- A dark backing. SetColorTexture is the newer call; the older
+        -- SetTexture took the same four numbers.
+        local okBg, bg = method(f, "CreateTexture", nil, "BACKGROUND")
+        if okBg and bg ~= nil then
+            method(bg, "SetAllPoints", f)
+            if not method(bg, "SetColorTexture", 0, 0, 0, 0.6) then method(bg, "SetTexture", 0, 0, 0, 0.6) end
+        end
+
+        local okText, text = method(f, "CreateFontString", nil, "OVERLAY", "GameFontNormalSmall")
+        if not okText then text = nil end
+        if text ~= nil then
+            method(text, "SetPoint", "TOPLEFT", f, "TOPLEFT", 6, -6)
+            method(text, "SetPoint", "BOTTOMRIGHT", f, "BOTTOMRIGHT", -6, 6)
+            method(text, "SetJustifyH", "LEFT")
+            method(text, "SetJustifyV", "TOP")
+        end
+
+        -- Where the frame stands now, as plain data, or nil. GetPoint gives
+        -- anchor, relative frame, relative anchor, x, y; the frame's left and
+        -- bottom edge is the fallback.
+        local function standing()
+            local okP, a, _, r, x, y = method(f, "GetPoint", 1)
+            if okP and type(a) == "string" and type(x) == "number" and type(y) == "number" then
+                return { a, type(r) == "string" and r or a, x, y }
+            end
+            local okL, left = method(f, "GetLeft")
+            local okB, bottom = method(f, "GetBottom")
+            if okL and okB and type(left) == "number" and type(bottom) == "number" then
+                return { "BOTTOMLEFT", "BOTTOMLEFT", left, bottom }
+            end
+            return nil
+        end
+
+        -- The handlers close over the frame: they use none of the arguments
+        -- the client passes, so it does not matter whether `self` is one.
+        method(f, "SetMovable", true)
+        method(f, "EnableMouse", true)
+        method(f, "RegisterForDrag", "LeftButton")
+        method(f, "SetScript", "OnDragStart", function() method(f, "StartMoving") end)
+        method(f, "SetScript", "OnDragStop", function()
+            method(f, "StopMovingOrSizing")
+            -- The client would otherwise keep a moved named frame's place
+            -- in its own layout cache and put it back there itself.
+            method(f, "SetUserPlaced", false)
+            local point = standing()
+            if point and moved then pcall(moved, point) end
+        end)
+
+        function h.setLines(lines)
+            if text == nil then return end
+            local out = {}
+            for i = 1, #(lines or {}) do out[i] = tostring(lines[i]) end
+            method(text, "SetText", table.concat(out, "\n"))
+        end
+        function h.place(point)
+            if type(point) ~= "table" then return end
+            method(f, "ClearAllPoints")
+            method(f, "SetPoint", point[1], parent, point[2], point[3], point[4])
+        end
+        function h.show(on)
+            method(f, on and "Show" or "Hide")
+        end
+        function h.onMoved(fn)
+            moved = fn
+        end
+        return h
+    end
+
     return c
 end
 

@@ -65,10 +65,11 @@ local function goodPoint(p)
     return { p[1], r, x, y }
 end
 
--- Left and bottom edge of a size-square box standing at a point.
-local function corner(point, size, screenW, screenH)
+-- Left and bottom edge of a box standing at a point: size wide and height
+-- tall (size-square when no height is given).
+local function corner(point, size, screenW, screenH, height)
     local a, r = SPOT[point[1]], SPOT[point[2]]
-    return r[1] * screenW + point[3] - a[1] * size, r[2] * screenH + point[4] - a[2] * size
+    return r[1] * screenW + point[3] - a[1] * size, r[2] * screenH + point[4] - a[2] * (height or size)
 end
 
 -- Left and bottom edge of a box at a point, for the other Nav files.
@@ -96,14 +97,16 @@ end
 
 -- A point moved back so the whole box is on the screen. A new table; the
 -- same place when the screen size is unknown; nil for an unusable point.
-function N.ClampPoint(point, size, screenW, screenH)
+-- The box is size-square unless a height is given (size is then its width).
+function N.ClampPoint(point, size, screenW, screenH, height)
     local p = goodPoint(point)
     if not p then return nil end
     if not knownScreen(screenW, screenH) then return p end
     size = size or N.ARROW_SIZE
-    local left, bottom = corner(p, size, screenW, screenH)
+    height = finite(height) and height or size
+    local left, bottom = corner(p, size, screenW, screenH, height)
     local cl = math.min(math.max(left, 0), math.max(screenW - size, 0))
-    local cb = math.min(math.max(bottom, 0), math.max(screenH - size, 0))
+    local cb = math.min(math.max(bottom, 0), math.max(screenH - height, 0))
     p[3], p[4] = p[3] + (cl - left), p[4] + (cb - bottom)
     return p
 end

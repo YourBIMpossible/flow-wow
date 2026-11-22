@@ -5,8 +5,8 @@
 --
 -- It only reads. It never buys, sells, casts, moves an item or changes a
 -- setting. It runs even when the load guard has paused the addon, because
--- the guard's verdict is one of the things it records; it is the one
--- listener a paused addon keeps.
+-- the guard's verdict is one of the things it records; with the dev panel
+-- (UI/DevPanel.lua) it is all a paused addon keeps listening with.
 --
 -- Lua errors the client reports are kept with each snapshot.
 --
@@ -229,7 +229,7 @@ function Diag.Save(k, snap)
 end
 
 -- Starts collecting on kernel k: the timing marks, the window snapshots and
--- the slash command. Returns { timing =, snapshot = }.
+-- the slash command. Returns { timing =, snapshot =, commands = }.
 function Diag.Start(k)
     local client, id = k.client, k.id
 
@@ -302,9 +302,16 @@ function Diag.Start(k)
         client.listen(event, function() snapshot(why) end)
     end
 
+    -- Other files add a word of their own after the slash command here:
+    -- commands[word] = function(rest) end, rest lower-cased and trimmed.
+    local commands = {}
+
     client.slash(id.bindingHeader, id.slash, function(rest)
         local text = tostring(rest):lower()
-        if not text:find("^%s*diag") then
+        local word, more = text:match("^%s*(%S+)%s*(.-)%s*$")
+        if word and commands[word] then
+            commands[word](more)
+        elseif not text:find("^%s*diag") then
             client.print(id.title .. ": " .. (k.paused and "paused" or tostring(k.phase))
                 .. ". Type " .. id.slash .. " diag for a diagnostic snapshot.")
         elseif text:find("clear", 1, true) then
@@ -316,7 +323,7 @@ function Diag.Start(k)
                 .. " kept. Reload or log out to write it to disk.") or "the snapshot failed."))
         end
     end)
-    return { timing = timing, snapshot = snapshot }
+    return { timing = timing, snapshot = snapshot, commands = commands }
 end
 
 -- The addon's own kernel collects from the moment this file loads.

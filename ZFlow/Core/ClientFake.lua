@@ -13,6 +13,8 @@
 --   c.setBankOpen(true)     -- also fires the bank opened / closed event
 --   ns.make.fakeClient{ env = { GetMoney = function() return 5 end } }; c.slashes["/x"]("rest")
 --   c.setZone(1, 1411); c.setPosition(1411, 0.5, 0.25); c.setLockdown(true)
+--   c.setScreen(1024, 768); c.setVersion("0.1.0"); c.setFrames(false)
+--   c.panels[1].lines / .point / .shown / .spec; c.panels[1].drag({ "CENTER", "CENTER", 0, 0 })
 -- What a test has not set is unknown (nil), as on a client that won't say.
 local _, ns = ...
 ns.make = ns.make or {}
@@ -102,7 +104,43 @@ function ns.make.fakeClient(opts)
         return true
     end
 
+    -- Drawing. Every panel made is in c.panels, in order.
+    c.panels = {}
+    function c.version() return s.version end
+    function c.screen()
+        if not s.screen then return nil end
+        return s.screen[1], s.screen[2]
+    end
+    function c.panel(spec)
+        if s.noFrames then return nil end
+        local h = { spec = spec, lines = {}, shown = false, places = 0 }
+        local moved
+        function h.setLines(lines)
+            h.lines = {}
+            for i = 1, #(lines or {}) do h.lines[i] = tostring(lines[i]) end
+        end
+        function h.place(point)
+            if type(point) ~= "table" then return end
+            h.point = { point[1], point[2], point[3], point[4] }
+            h.places = h.places + 1
+        end
+        function h.show(on) h.shown = on and true or false end
+        function h.onMoved(fn) moved = fn end
+        -- The test's control: the player let the panel go at this point.
+        function h.drag(point)
+            h.point = { point[1], point[2], point[3], point[4] }
+            if moved then moved({ point[1], point[2], point[3], point[4] }) end
+        end
+        c.panels[#c.panels + 1] = h
+        return h
+    end
+
     -- the test's controls
+    -- nil: the client will not say how big the screen is.
+    function c.setScreen(w, h) s.screen = (w and h) and { w, h } or nil end
+    function c.setVersion(text) s.version = text end
+    -- false: a client that cannot make frames (panel() answers nil).
+    function c.setFrames(on) s.noFrames = not on end
     -- Moves the clock by `seconds`, drawing `frames` frames (default 1).
     function c.advance(seconds, frames)
         frames = frames or 1
