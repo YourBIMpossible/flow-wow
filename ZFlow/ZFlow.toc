@@ -29,6 +29,7 @@ Import\Stored.lua
 Settings\Model.lua
 Items\Key.lua
 Items\Resources.lua
+Items\TooltipHave.lua
 Items\Prices.lua
 Items\PriceObserve.lua
 Items\PriceWatch.lua
