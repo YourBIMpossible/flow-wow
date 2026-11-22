@@ -43,4 +43,5 @@ Nav\ArrowLayout.lua
 Nav\Bearing.lua
 Nav\ArrowView.lua
 Nav\Guide.lua
+Nav\GuideRead.lua
 UI\DevPanel.lua
