@@ -4647,7 +4647,8 @@ ns:Register("test", "professions: what to do next, and when the reminder opens",
     t:eq(steps[1].text, "Learn Herbalism", "a main profession to learn comes first")
     t:eq(steps[2].kind, "train", "Skinning at its cap: train the next tier")
     t:eq(steps[#steps].name, "Fishing", "optional ones last")
-    t:eq(#P.NextSteps(plan, skill, 8), 2, "not at level 8: Journeyman needs level 10 (Herbalism + Fishing left)")
+    local asks10 = function(n, max) if n == "Skinning" and max == 75 then return { cap = 75, level = 10, skill = 50 } end end
+    t:eq(#P.NextSteps(plan, skill, 8, asks10), 2, "not at level 8: the trainer said Journeyman asks level 10 (Herbalism + Fishing left)")
     ranks.Skinning = { 55, 75 }
     t:eq(P.NextSteps(plan, skill, 12)[2].kind, "train", "25 below the cap: the trainer teaches the next tier already")
     ranks.Skinning = { 75, 75 }
@@ -4655,7 +4656,7 @@ ns:Register("test", "professions: what to do next, and when the reminder opens",
     local tier = SP.Tier("Cooking", 62, 75, 12)
     t:ok(tier and tier.ready and tier.name == "Journeyman" and tier.how == "trainer", "Cooking 62 of 75 at level 12: Journeyman, ready")
     t:ok(not SP.Tier("Cooking", 45, 75, 12).ready, "Cooking 45 of 75: Journeyman needs 50 first")
-    t:ok(not SP.Tier("Cooking", 70, 75, 8).ready, "level 8: Journeyman needs level 10")
+    t:ok(not SP.Tier("Cooking", 70, 75, 8, { cap = 75, level = 10, skill = 50 }).ready, "level 8: the trainer said Journeyman asks level 10")
     t:eq(SP.Tier("Cooking", 140, 150, 25).how, "book", "Expert Cooking: from the book")
     t:eq(SP.Tier("First Aid", 210, 225, 35).how, "quest", "Artisan First Aid: from the quest")
     t:eq(SP.Tier("Mining", 210, 225, 35).how, "trainer", "Artisan Mining: from a trainer")
@@ -8114,7 +8115,7 @@ ns:Register("test", "professions: the trainer's own word on the next tier beats 
     -- the route. What the trainer says now decides.
     local SP, TR, P = ns.skillPlan, ns.trainer, ns.professions
     local classic = SP.Tier("Skinning", 58, 75, 12)
-    t:ok(classic and classic.ready, "never looked at the trainer: classic's rule (skill 50, level 10)")
+    t:ok(classic and classic.ready, "never looked at the trainer: 25 below the cap, and no level known to wait for")
     local seen = { cap = 75, category = "unavailable", level = 50, skill = 50, cost = 500, atLevel = 12, atRank = 58 }
     local tier = SP.Tier("Skinning", 58, 75, 12, seen)
     t:ok(tier and not tier.ready and tier.level == 50, "the trainer asks for level 50: not on the route at level 12")

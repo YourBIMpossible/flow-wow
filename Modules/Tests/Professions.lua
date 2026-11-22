@@ -390,6 +390,31 @@ ns:Register("test", "professions: kills and node counts are said only when your 
     t:ok(SP.GATHER_UNKNOWN:find("unknown to Flow", 1, true) ~= nil, "and the step says what Flow doesn't know")
 end)
 
+ns:Register("test", "professions: a tier's level is only what a trainer's window said", function(t)
+    local SP, P = ns.skillPlan, ns.professions
+    t:eq(SP.TIER_LEVEL, nil, "no list of tier levels");
+    local tier = SP.Tier("Mining", 60, 75, 3)
+    t:eq(tier.level, nil, "never read at a trainer: the level is unknown")
+    t:eq(tier.skill, 50, "25 below the cap"); t:ok(tier.ready, "unknown holds nothing back: go and see the trainer")
+    t:eq(SP.TierNeeds(SP.Tier("Mining", 40, 75, 3)), "needs skill 50; level unknown: check the trainer", "and the step says it is unknown")
+    for _, cap in ipairs({ 75, 150, 225 }) do
+        t:eq(SP.Tier("Mining", cap - 30, cap, 60).level, nil, cap .. ": no level of Flow's own")
+    end
+    local seen = { cap = 75, level = 10, skill = 50 }
+    tier = SP.Tier("Mining", 60, 75, 8, seen)
+    t:eq(tier.level, 10, "read at the trainer: that level"); t:ok(not tier.ready, "level 8 of 10: not yet")
+    t:eq(SP.TierNeeds(tier), "needs level 10 and skill 50", "said as the trainer said it")
+    t:ok(SP.Tier("Mining", 60, 75, 10, seen).ready, "at 10: ready")
+    tier = SP.Tier("Mining", 40, 75, 1, { cap = 75, level = 0, skill = 50 })
+    t:eq(tier.level, 0, "the trainer asked no level: 0, known"); t:eq(SP.TierNeeds(tier), "needs skill 50", "so none is named")
+    t:eq(SP.TierBlock("Journeyman Mining", SP.Tier("Mining", 75, 75, 8, seen), 8), "Journeyman Mining needs level 10", "capped, level short: says the level read")
+    t:eq(SP.TierBlock("Artisan Cooking", { skill = 225 }, 60), "Artisan Cooking: needs skill 225; level unknown: check the trainer", "no level read: unknown, no number")
+    t:eq(SP.TierBlock("X", { skill = 50, level = 0, wait = "it was red at the trainer" }, 5), "X: it was red at the trainer", "a wait is said as it is")
+    t:ok(P.TierReady("Mining", 60, 75, 3), "P.TierReady: no level known, nothing held back")
+    t:ok(not P.TierReady("Mining", 60, 75, 8, function() return seen end), "the trainer's level holds it back")
+    t:ok(not P.TierReady("Mining", 40, 75, 60), "below 25 under the cap: not yet")
+end)
+
 ns:Register("test", "professions: a trainer's window is where a recipe's learn skill comes from", function(t)
     local TR, SP = ns.trainer, ns.skillPlan
     local into = {}

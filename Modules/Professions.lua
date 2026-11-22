@@ -193,19 +193,17 @@ ns:Register("setupItem", "professions", {
 -------------------------------------------------------------------------------
 
 local SHOW = 8
--- The level each next tier needs (by the skill cap you're at now).
-local TIER_LEVEL = { [75] = 10, [150] = 20, [225] = 35 }
-
--- Can the next tier be learned now? The classic rule (25 below the cap, and
--- the level the tier needs), unless the trainer said otherwise (seenOf).
+-- Can the next tier be learned now? From 25 below the cap, and at the level
+-- the trainer's window said the tier asks (seenOf). Flow lists no tier levels
+-- of its own: one it hasn't read is unknown and holds nothing back.
 function P.TierReady(name, rank, max, level, seenOf)
     local seen = seenOf and seenOf(name, max) or nil
     local SP = ns.skillPlan
-    if seen and SP and SP.Tier then
+    if SP and SP.Tier then
         local tier = SP.Tier(name, rank, max, level, seen)
         return tier ~= nil and tier.ready == true
     end
-    return rank >= max - 25 and (level or 0) >= (TIER_LEVEL[max] or 0)
+    return rank >= max - 25
 end
 
 -- What to do next for the professions in a plan, primaries first, optional

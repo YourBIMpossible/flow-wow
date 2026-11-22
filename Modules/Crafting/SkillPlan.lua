@@ -844,12 +844,14 @@ end
 local watched = {}  -- item IDs whose counts change the plan
 
 -- The next skill tier: how you learn it, and whether you can now.
--- Journeyman (cap 75 -> 150) needs level 10 and skill 50, Expert (150 -> 225)
--- level 20 and 125, Artisan (225 -> 300) level 35 and 200: the trainer teaches
--- it from 25 below the cap, so it goes on the route then, not once you're stuck.
+-- The trainer teaches it from 25 below the cap, so it goes on the route then,
+-- not once you're stuck. The character level a tier asks is NOT listed here:
+-- it is only what a profession trainer's window said (GetTrainerServiceLevelReq,
+-- Trainer.lua -> ns.db.prof.tierSeen). Until Flow has read it the level is
+-- unknown (tier.level nil): it holds nothing back, and the step says to check
+-- the trainer.
 -- Cooking, First Aid and Fishing learn Expert from a book and Artisan from a
 -- quest; everything else from its trainer.
-SP.TIER_LEVEL = { [75] = 10, [150] = 20, [225] = 35 }
 local TIER_NAME = { [75] = "Journeyman", [150] = "Expert", [225] = "Artisan" }
 local TIER_BOOK = { Cooking = 16072, ["First Aid"] = 16084, Fishing = 16083 }
 -- Clamlette Surprise; Triage (Horde, Alliance); Nat Pagle, Angler Extreme.
@@ -870,7 +872,7 @@ local TIER_QUEST = { Cooking = { 6610 }, ["First Aid"] = { 6622, 6624 }, Fishing
 -- profession list and 0.35.174 a level rule; both were wrong.)
 --   seen: { cap, level, skill, cost, category, atLevel, atRank } as read at
 --         the trainer for this cap, or nil / false (never looked).
---   -> { name, cap, level, skill, cost, how = "trainer" | "book" | "quest", book, quests, ready, wait } or nil
+--   -> { name, cap, level (nil: unknown), skill, cost, how = "trainer" | "book" | "quest", book, quests, ready, wait } or nil
 function SP.TierName(max) return max and TIER_NAME[max] or nil end
 function SP.TierSeen(prof, max)
     local s = ns.db and ns.db.prof and ns.db.prof.tierSeen and ns.db.prof.tierSeen[prof]
@@ -913,19 +915,19 @@ function SP.TierPriceLine(max, cost, source, money)
 end
 function SP.Tier(prof, rank, max, level, seen)
     if not (rank and max and max > 0 and max < 300) then return nil end
-    local t = { name = TIER_NAME[max] or "next", cap = max, level = SP.TIER_LEVEL[max] or 0, skill = max - 25 }
+    local t = { name = TIER_NAME[max] or "next", cap = max, skill = max - 25 }
     if max == 150 and TIER_BOOK[prof] then t.how, t.book = "book", TIER_BOOK[prof]
     elseif max == 225 and TIER_QUEST[prof] then
         -- (The Artisan quests ask for the cap itself, 225, not 25 below it.)
         t.how, t.quests, t.skill = "quest", TIER_QUEST[prof], max
     else t.how = "trainer" end
     if seen and t.how == "trainer" then
-        if (seen.level or 0) > 0 then t.level = seen.level end
+        t.level = tonumber(seen.level) or 0   -- (0: the trainer asked no level)
         if (seen.skill or 0) > 0 then t.skill = seen.skill end
         if (seen.cost or 0) > 0 then t.cost = seen.cost end
         t.seen = true
     end
-    t.ready = rank >= t.skill and (level or 0) >= t.level
+    t.ready = rank >= t.skill and (t.level == nil or (level or 0) >= t.level)
     -- Red at the trainer although the level and skill it named were met:
     -- something else is in the way. Not on the route again until you've
     -- gained a level or five skill points since.
@@ -934,6 +936,21 @@ function SP.Tier(prof, rank, max, level, seen)
         t.ready, t.wait = false, "it was red at the trainer"
     end
     return t
+end
+-- Pure: what a tier that isn't ready yet asks, in words. A level only when a
+-- trainer's window gave one; unknown is said as unknown.
+function SP.TierNeeds(tier)
+    if not tier then return "check the trainer" end
+    local skill = string.format("skill %d", tier.skill or 0)
+    if tier.level == nil then return "needs " .. skill .. "; level unknown: check the trainer" end
+    if tier.level > 0 then return string.format("needs level %d and %s", tier.level, skill) end
+    return "needs " .. skill
+end
+-- Pure: why a capped profession's next tier can't be learned yet.
+function SP.TierBlock(after, tier, level)
+    if tier and tier.wait then return after .. ": " .. tier.wait end
+    if tier and tier.level and tier.level > (level or 0) then return string.format("%s needs level %d", after, tier.level) end
+    return after .. ": " .. SP.TierNeeds(tier)
 end
 
 -- Where a quest's giver stands, from Questie: points (nil if unknown), the
@@ -1727,7 +1744,7 @@ local function planProfession(prof, t, out)
         t = setmetatable({ target = max }, { __index = t })
         label = string.format("%s%s %d -> %d, then %s", t.quest and (t.quest .. ": ") or "", prof, rank, max, after)
         if tier and not tier.ready then
-            label = label .. string.format(" (needs level %d and skill %d)", tier.level, tier.skill)
+            label = label .. " (" .. SP.TierNeeds(tier) .. ")"
         end
         if rank >= max then
             -- Capped and the next tier can't be learned yet: say why. (When it
@@ -1735,7 +1752,7 @@ local function planProfession(prof, t, out)
             if tier and not tier.ready then
                 add({ key = "skillplan:cap:" .. prof, kind = "skill", points = { playerPoint() }, anywhere = true,
                       text = string.format("%s is capped at %d: %s next", prof, max, after),
-                      blockedBy = string.format("%s needs level %d", after, tier.level) })
+                      blockedBy = SP.TierBlock(after, tier, UnitLevel("player")) })
             end
             return
         end
