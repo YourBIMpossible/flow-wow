@@ -197,3 +197,38 @@ function Present.View(plan, opts)
     end
     return view
 end
+
+-- ---------------------------------------------------------------- bank list
+-- The banker list (L6-D): Bank.Pick as lines. A count that is not known is
+-- left out, not guessed; a name that was not read is "item <key>".
+
+Present.BANK_HEADER = "To bank (nothing is moved for you):"
+Present.HELD_HEADER = "Staying with you, held for your steps:"
+Present.NOTHING_TO_BANK = "Nothing to bank"
+
+local function bankHead(r, names)
+    local name = type(r.name) == "string" and r.name ~= "" and r.name or Present.Name(r.key, names)
+    return isCount(r.count) and (r.count .. " x " .. name) or name
+end
+
+function Present.BankLines(pick, names)
+    if type(pick) ~= "table" or not pick.ok then
+        return { "Can't list what to bank: " .. Present.BAGS_UNREAD }
+    end
+    local lines = {}
+    local rows = type(pick.rows) == "table" and pick.rows or {}
+    if #rows == 0 then
+        lines[#lines + 1] = Present.NOTHING_TO_BANK
+    else
+        lines[#lines + 1] = Present.BANK_HEADER
+        for _, r in ipairs(rows) do
+            lines[#lines + 1] = bankHead(r, names) .. ": " .. tostring(r.reason or "kept for later")
+        end
+    end
+    local held = type(pick.held) == "table" and pick.held or {}
+    if #held > 0 then
+        lines[#lines + 1] = Present.HELD_HEADER
+        for _, h in ipairs(held) do lines[#lines + 1] = bankHead(h, names) end
+    end
+    return lines
+end
