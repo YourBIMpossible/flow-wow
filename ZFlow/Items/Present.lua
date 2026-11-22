@@ -408,3 +408,13 @@ function Present.BankLines(pick, names)
     end
     return lines
 end
+
+-- The advisor's one-line prompt for the same pick, or nil when there is
+-- nothing to say: nothing to bank, or it can't be told (bags or item facts
+-- not read). A count is only given for what was read.
+function Present.BankPrompt(pick)
+    if type(pick) ~= "table" or not pick.ok or type(pick.rows) ~= "table" then return nil end
+    local n = #pick.rows
+    if n == 0 then return nil end
+    return n .. (n == 1 and " kind" or " kinds") .. " of item to put in the bank."
+end
