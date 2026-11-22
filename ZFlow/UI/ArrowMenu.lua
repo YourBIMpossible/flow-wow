@@ -108,6 +108,39 @@ function M.Action(key, state)
     return nil
 end
 
+-- Escape (owner default N1): Escape closes an open menu and does nothing
+-- else. With no menu open the key is not taken, so the game's own Escape
+-- (its windows, its game menu) goes on as before.
+--
+-- Only the decision and the close are here. No key reaches this yet:
+--   the client's menu (Core/Client.lua) is an unnamed full-screen catcher
+--     with a panel on it. It listens to no key, and without a name it
+--     cannot be listed in the game's UISpecialFrames, which is how the
+--     game closes a window at Escape and leaves the key alone otherwise.
+--   an arrow handle has no way to be told of a key and does not say
+--     whether its menu is open.
+--   the fake client (Core/ClientFake.lua) has no key press for a handle.
+-- Whoever hears the key (the catcher is shown only while a menu is open)
+-- hands it to OnKey with the handle the menu is open for.
+M.ESCAPE = "ESCAPE"
+
+-- What the key asks of the menu: { close = true }, or nil for a key that
+-- is not the menu's. open is true only while a menu is open.
+function M.Key(key, open)
+    if key == M.ESCAPE and open == true then return { close = true } end
+    return nil
+end
+
+-- A key was pressed. h is the arrow handle the menu is open for; open as
+-- for Key. -> true when the key was the menu's and the menu was closed
+-- (the key is taken: the game must not see it), false otherwise (the key
+-- is the game's). Closing chooses no row and changes nothing else.
+function M.OnKey(h, key, open)
+    if M.Key(key, open) == nil then return false end
+    if type(h) ~= "table" or type(h.menu) ~= "function" then return false end
+    return (pcall(h.menu, nil))
+end
+
 local function add(out, lines)
     if type(lines) ~= "table" then return end
     for i = 1, #lines do out[#out + 1] = tostring(lines[i]) end
