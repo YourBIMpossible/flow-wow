@@ -310,6 +310,9 @@ ns:Register("advisor", "professions", {
                     urgency = ns.advisor.CapUrgency(p.rank, p.max),
                     text = p.rank >= p.max
                         and string.format("%s is capped at %d: learn %s %s", p.name, p.max, tier.name, p.name)
+                        -- (The level the tier asks is only what a trainer showed: unread, say so.)
+                        or (tier.level == nil and tier.how == "trainer")
+                            and string.format("%s %d of %d: %s %s may be yours to learn (the level it asks is unknown: check the trainer)", p.name, p.rank, p.max, tier.name, p.name)
                         or string.format("%s %d of %d: you can learn %s %s now", p.name, p.rank, p.max, tier.name, p.name),
                     improves = { "Professions" }, goalKey = "train:" .. p.name }
             elseif not p.unsure and p.rank + 15 < (ns.skillPlan and ns.skillPlan.Pace(p.name, level) or target) then

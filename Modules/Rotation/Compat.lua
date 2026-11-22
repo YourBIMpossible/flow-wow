@@ -280,7 +280,8 @@ end
 -- profession trainer showed Flow (Trainer.lua, ns.db.prof.tierSeen: { cap,
 -- level } read for the tier after `cap`; level 0 = no level asked); any
 -- profession's trainer counts, as they ask alike. A tier whose level Flow
--- hasn't read stops the climb: what lies past it is unknown.
+-- hasn't read stops the climb: what lies past it is unknown. A tier you have
+-- already trained in any profession (a read at its cap or higher) is passed.
 --   seenAll: { [profession] = { cap, level } } (default ns.db.prof.tierSeen)
 --   -> target skill, and the cap whose next tier's level is unknown (or nil)
 A.PROFESSION_CAPS = { 75, 150, 225, 300 }
@@ -289,14 +290,25 @@ function A.ProfessionTarget(level, seenAll)
     level = tonumber(level) or 0
     local caps, target = A.PROFESSION_CAPS, A.PROFESSION_CAPS[1]
     for i = 2, #caps do
-        local asks
+        -- (Trainer.lua keeps one read per profession, for its current cap. So
+        -- a read at a higher cap means that tier was trained: it is passed,
+        -- whatever it asked. Without this a tailor at 150 fell back to 75
+        -- once the cap-75 read was replaced by the cap-150 one.)
+        local asks, passed
         for _, s in pairs(seenAll) do
-            if type(s) == "table" and s.cap == caps[i - 1] and tonumber(s.level) then
-                asks = math.max(asks or 0, tonumber(s.level))
+            if type(s) == "table" then
+                local cap = tonumber(s.cap)
+                if cap and cap >= caps[i] then
+                    passed = true
+                elseif cap == caps[i - 1] and tonumber(s.level) then
+                    asks = math.max(asks or 0, tonumber(s.level))
+                end
             end
         end
-        if asks == nil then return target, target end
-        if level < asks then return target, nil end
+        if not passed then
+            if asks == nil then return target, target end
+            if level < asks then return target, nil end
+        end
         target = caps[i]
     end
     return target, nil

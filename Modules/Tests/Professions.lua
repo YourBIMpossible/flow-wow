@@ -670,7 +670,14 @@ ns:Register("test", "professions: the level target is the highest tier cap the t
     target, unknown = PT(25, seen)
     t:eq(target, 225, "Expert asks 20: 225 at 25")
     t:eq(unknown, 225, "Artisan's level never read: unknown past 225")
-    t:eq((PT(25, { Mining = { cap = 150, level = 20 } })), 75, "Journeyman's level unknown: no climb past 75")
+    -- (A read at cap 150 means Journeyman was trained. The cap-75 read it
+    -- replaced is gone, and the target must not fall back to 75 with it.)
+    target, unknown = PT(25, { Mining = { cap = 150, level = 20 } })
+    t:eq(target, 225, "trained to 150, Expert asks 20: 225 at 25")
+    t:eq(unknown, 225, "Artisan's level never read: unknown past 225")
+    t:eq((PT(15, { Mining = { cap = 150, level = 20 } })), 150, "trained to 150, Expert's 20 not met: 150")
+    t:eq((PT(30, { Tailoring = { cap = 150 } })), 150, "trained to 150, Expert's level not read: 150, never 75")
+    t:eq((PT(60, { Mining = { cap = 225, level = 35 } })), 300, "trained to 225 and Artisan's level met: 300")
     t:eq((PT(60, { A = { cap = 75, level = 0 }, B = { cap = 150, level = 20 }, C = { cap = 225, level = 35 } })), 300, "all read and met: 300")
     t:eq((PT(60, { A = { cap = 75 } })), 75, "a read with no level is not a level")
 end)
@@ -754,4 +761,34 @@ ns:Register("test", "professions: a mob is remembered for a material only when y
     t:eq(c.dropMobs[900003]["Wolf__test"], 1, "and is made again")
     local ok = pcall(SP.CountLoot, nil, srcs, "Wolf__test", {})
     t:ok(ok, "no data table: nothing counted, no error")
+end)
+
+-------------------------------------------------------------------------------
+-- Review of W4e: with no guide colours the climb orders only recipes the
+-- window showed, so an unlearned recipe never got its learn or buy step.
+-------------------------------------------------------------------------------
+
+ns:Register("test", "professions: when the plan stops short, the recipe to learn next is one whose learn skill Flow has read", function(t)
+    local SP = ns.skillPlan
+    local a = { recipe = "A__test", mats = { [MAT_A] = 1 } }
+    local b = { recipe = "B__test", mats = { [MAT_A] = 1 } }
+    local c = { recipe = "C__test", mats = { [MAT_A] = 1 } }
+    local d = { recipe = "D__test", mats = { [MAT_A] = 1 } }
+    local bought = { recipe = "E__test", recipeItem = 99999002, mats = { [MAT_A] = 1 } }
+    local learn = { A__test = 1, B__test = 40, C__test = 90, E__test = 55 }
+    local function learnOf(s) return learn[s.recipe] end
+    local steps = { a, b, c, d, bought }
+    local out = SP.LearnNext(steps, {}, 50, learnOf)
+    t:ok(#out == 2 and out[1] == b and out[2] == bought, "at 50: the trained recipe learned latest that your skill meets (40, not the one from 1), and the bought one within 10 points (55)")
+    out = SP.LearnNext(steps, {}, 44, learnOf)
+    t:ok(#out == 1 and out[1] == b, "at 44: the bought recipe is more than 10 away, so only the trained one")
+    out = SP.LearnNext(steps, {}, 95, learnOf)
+    t:ok(#out == 2 and out[1] == c, "at 95: the trained one from 90")
+    out = SP.LearnNext(steps, { B__test = {}, E__test = {} }, 50, learnOf)
+    t:ok(#out == 1 and out[1] == a, "what you know is never suggested")
+    out = SP.LearnNext({ d }, {}, 300, learnOf)
+    t:eq(#out, 0, "a learn skill Flow hasn't read: not suggested")
+    t:eq(#SP.LearnNext(steps, nil, 50, learnOf), 0, "window never seen: nothing suggested")
+    t:eq(#SP.LearnNext(steps, {}, nil, learnOf), 0, "skill not read: nothing suggested")
+    t:ok(type(SP.LEARN_GAIN_UNKNOWN) == "string" and SP.LEARN_GAIN_UNKNOWN:find("unknown", 1, true) ~= nil, "the step says the gain is unknown")
 end)

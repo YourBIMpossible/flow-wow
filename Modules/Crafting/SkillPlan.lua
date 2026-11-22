@@ -1312,6 +1312,43 @@ function SP.StepTrainers(prof, s)
 end
 SP._recipeStop = recipeStop  -- for /flow test
 
+-- The recipe to learn next, when the climb stops short of the target. The
+-- climb (simulate) only orders recipes whose colour your profession window
+-- showed, so a recipe you haven't learned is never in it and its learn or
+-- buy step never came up. Chosen from the unlearned steps whose learn skill
+-- Flow has read (a trainer's window or the recipe's tooltip) and your skill
+-- meets (a bought recipe: from SP.BUY_AHEAD below it): of the trained ones
+-- and of the bought ones, the one learned latest, as an older one is
+-- likelier grey already. That last part is Flow's own reasoning, not a game value; how much skill the recipe gives is unknown
+-- until the window shows it. A learn skill Flow hasn't read: not suggested.
+--   known: recipes:Known(prof) (nil: window never seen, nothing suggested)
+--   learnOf(step) -> skill or nil
+--   -> { step, ... } (ties: every step learned at that skill)
+function SP.LearnNext(steps, known, rank, learnOf)
+    if type(known) ~= "table" or type(rank) ~= "number" or type(learnOf) ~= "function" then return {} end
+    -- (Trained and bought are picked apart: a bought recipe is due ahead of
+    -- its skill and must not hide a trained one you can learn today.)
+    local best, picks = {}, { trained = {}, bought = {} }
+    for _, s in ipairs(steps or {}) do
+        if s.recipe and not known[s.recipe] and forYou(s) then
+            local learn = learnOf(s)
+            local kind = s.recipeItem and "bought" or "trained"
+            if type(learn) == "number" and rank >= learn - (s.recipeItem and SP.BUY_AHEAD or 0) then
+                if not best[kind] or learn > best[kind] then
+                    best[kind], picks[kind] = learn, { s }
+                elseif learn == best[kind] then
+                    table.insert(picks[kind], s)
+                end
+            end
+        end
+    end
+    local out = {}
+    for _, s in ipairs(picks.trained) do out[#out + 1] = s end
+    for _, s in ipairs(picks.bought) do out[#out + 1] = s end
+    return out
+end
+SP.LEARN_GAIN_UNKNOWN = "Flow's plan from the recipes you know stops short. How much skill this one gives is unknown until your profession window shows it."
+
 -------------------------------------------------------------------------------
 -- Gear you can make: recipes you know whose item would be an upgrade for
 -- you (the same verdict as your bags: at least +0.5 score for your levelling
@@ -1994,17 +2031,31 @@ local function planProfession(prof, t, out)
     local raw = {}
 
     -- Learn recipes the plan uses that your profession window doesn't list.
-    for _, s in ipairs(order) do
+    -- (The climb orders only recipes the window showed, so when it stops short
+    -- the recipe to learn next comes from SP.LearnNext.)
+    local toLearn, stopsShort = {}, {}
+    for _, s in ipairs(order) do toLearn[#toLearn + 1] = s end
+    if not reaches then
+        for _, s in ipairs(SP.LearnNext(steps, known, rank, function(st) return SP.LearnSkill(prof, st) end)) do
+            toLearn[#toLearn + 1] = s
+            stopsShort[s] = true
+        end
+    end
+    for _, s in ipairs(toLearn) do
         if s.recipeItem then
             -- Bought, not trained (Recipe: Brilliant Smallfish).
             local r = recipeStop(prof, s, known, rank)
-            if r then add(r) end
+            if r then
+                if stopsShort[s] then r.details = r.details or {}; r.details[#r.details + 1] = SP.LEARN_GAIN_UNKNOWN end
+                add(r)
+            end
         elseif known and not known[s.recipe] and SP.TrainNow(SP.LearnSkill(prof, s), rank) then
             local names, who = SP.StepTrainers(prof, s)
             local pts = npcPoints(names)
             add({ key = "learn:" .. prof .. ":" .. s.recipe, kind = "proftrainer", points = pts, npcs = names,
                   text = string.format("Learn %s (%s)", s.recipe, who),
-                  details = (not SP.LearnSkill(prof, s)) and { s.recipe .. ": " .. SP.LEARN_UNKNOWN .. "." } or nil,
+                  details = (not SP.LearnSkill(prof, s)) and { s.recipe .. ": " .. SP.LEARN_UNKNOWN .. "." }
+                      or (stopsShort[s] and { SP.LEARN_GAIN_UNKNOWN }) or nil,
                   blockedBy = #pts == 0 and (s.trainer and (#names == 0 and "who teaches it is unknown to Flow" or ("Flow doesn't know where " .. who .. " stands")) or ("no known " .. who)) or nil })
         end
     end

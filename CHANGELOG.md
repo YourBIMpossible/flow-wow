@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Fixed: the profession skill Flow aims for no longer drops back to 75 once you have trained past Journeyman. A tier you have already trained counts as passed.
+- Fixed: when the craft plan stops short, Flow again suggests a recipe to learn or buy. It picks only from recipes whose learn skill it has read at a trainer or in the recipe's tooltip, and says the skill gain is unknown until your profession window shows it.
+- Changed: the advisor says a profession tier "may be yours to learn" when no trainer has shown Flow the level it asks.
 - Flow no longer lists trainer names, NPC IDs or gathering spots of its own: trainers are the ones you've trained with or that Questie titles; otherwise Flow says it doesn't know.
 - The last three bandages no longer name a doctor, and the Shiny Bauble tip no longer quotes numbers Flow never read.
 - A material you loot now remembers which mobs you got it from; its farm step names them and counts kills on them.
