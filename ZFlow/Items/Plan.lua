@@ -283,7 +283,9 @@ function ItemPlan.Build(goal, context)
                 -- is treated as no price at all.
                 if price.basis == "estimated" and price.source == nil then price = { basis = "unknown" } end
                 s.price, s.basis = price, price.basis
-                s.text = Prices and Prices.Text(price) or "price unknown - check trainer"
+                -- A merchant's price is an item's price: when nobody saw it,
+                -- the text names the vendor (F-085).
+                s.text = Prices and Prices.Text(price, ItemPlan.VENDOR) or "price unknown—check vendor"
                 -- Counted in whole stacks where the price has a stack size.
                 if price.basis == "observed" then
                     s.cost = Prices.Cost(price, s.count)

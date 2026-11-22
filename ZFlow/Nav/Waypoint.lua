@@ -12,6 +12,7 @@ local _, ns = ...
 --   W.Step(slot, position, zone)   -> step or nil
 --   W.Arrive(slot, distance)       -> "arrived" or nil, reason
 --   W.Slot(store)                  -> the saved table or nil
+--   W.Text(waypoint)               -> "45.2, 61.8 label" or nil
 --
 --   text: "way x y [label]"; the word "way" (or "/way") may be left out.
 --     x and y are percents, 0 to 100, on the map the player is on, written
@@ -156,6 +157,15 @@ function W.Arrive(slot, distance)
     if distance > W.NEAR then return nil, R.far end
     slot.waypoint = nil
     return W.ARRIVED
+end
+
+-- The waypoint as it is said to the player: the percents as they are
+-- typed, one decimal, then the label. nil for one that cannot be used.
+function W.Text(wp)
+    if not usable(wp) then return nil end
+    local text = ("%.1f, %.1f"):format(wp.x * 100, wp.y * 100)
+    if wp.label and wp.label ~= "" then text = text .. " " .. wp.label end
+    return text
 end
 
 function W.Slot(store)

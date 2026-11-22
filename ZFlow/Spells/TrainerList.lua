@@ -5,13 +5,12 @@ local _, ns = ...
 -- closes). Plexy's P-I shows the list live at the open window; this keeps
 -- the last list seen at each trainer.
 --
--- Pure. A reading comes in as the CLIENT NEED read c.trainerServices()
--- would return it:
---   { npc =, profession = (nil for a class trainer), faction = (the
---     visiting character's, nil when not known),
---     filter = { available = bool, unavailable = bool, known = bool },
---     rows = { { name =, rank =, state = "available" | "unavailable" | "known",
---                cost = copper, level = n }, ... } }
+-- Pure. A reading is c.trainer()'s answer (Core/Client.lua: { npc =,
+-- profession = }) with the two fields it lacks today (CLIENT NEED, A-F):
+--   services = { { name =, rank =, state = "available" | "unavailable" | "known",
+--                  cost = copper, level = n }, ... }
+--   filter   = { available = bool, unavailable = bool, known = bool }
+-- The visiting character's faction is c.faction(), passed to Record.
 -- filter is the window's own filter: which row states it showed. The
 -- client maps the game's "used" rows to "known" and leaves out "header"
 -- rows (CLIENT NEED).
@@ -85,16 +84,16 @@ end
 
 -- Returns lists with this reading recorded; lists is unchanged (and
 -- returned as is) when the reading cannot be read.
-function T.Record(lists, reading, when)
+function T.Record(lists, reading, when, faction)
     if type(lists) ~= "table" then lists = {} end
-    if type(reading) ~= "table" or type(reading.rows) ~= "table" then return lists end
+    if type(reading) ~= "table" or type(reading.services) ~= "table" then return lists end
     local npc = text(reading.npc)
     if not npc then return lists end
     local shown = shownBy(reading.filter)
     if not shown then return lists end
     local rows = {}
-    for i = 1, #reading.rows do
-        local r = row(reading.rows[i])
+    for i = 1, #reading.services do
+        local r = row(reading.services[i])
         if not r or not shown[r.state] then return lists end
         rows[i] = r
     end
@@ -126,7 +125,7 @@ function T.Record(lists, reading, when)
     lists[key] = {
         npc = npc,
         profession = text(reading.profession),
-        faction = text(reading.faction),
+        faction = text(faction),
         seen = count(when) and when or nil,
         shown = seenStates,
         complete = complete,

@@ -97,10 +97,12 @@ T["T2 nothing handed in is changed"] = function(t)
     t.eq(npcs.Aska.x, 0.6, "the step shares nothing with the saved entry")
 end
 
-T["T3 the trainer is on another map: a step with no cont"] = function(t)
+-- Owner decision D10: text only. More of it in ProfStepOtherMapTests.lua.
+T["T3 the trainer is on another map: text only, no place (D10)"] = function(t)
     local npcs = { Aska = trainer(1412, 0.3, 0.4) }
     local step, why = N.ProfStep({ Cooking = capped() }, npcs, {}, here())
-    t.eq(step, cooking({ map = 1412, x = 0.3, y = 0.4 }))
+    t.eq(step, { label = "Cooking trainer \226\128\148 other map", still = true,
+                 elsewhere = { map = 1412, x = 0.3, y = 0.4 } })
     t.eq(why, nil)
 
     local state = N.Guide({
@@ -109,8 +111,7 @@ T["T3 the trainer is on another map: a step with no cont"] = function(t)
         prof = step,
     })
     t.eq(state.prof.hasStep, true)
-    t.eq(state.prof.label, "Cooking trainer")
-    t.eq(state.prof.why, "zone", "the honest answer: another zone")
+    t.eq(state.prof.label, "Cooking trainer \226\128\148 other map")
     t.eq(state.prof.distance, nil, "no distance")
     t.eq(state.prof.turn, nil, "no turn")
 end
@@ -257,9 +258,10 @@ end
 T["T8 none on the map the player is on: the most recently seen, then the lowest name"] = function(t)
     local readings = { Cooking = capped() }
     local npcs = { Aska = trainer(1412, 0.1, 0.1, nil, { seen = 5 }), Zed = trainer(1413, 0.2, 0.2, nil, { seen = 9 }) }
-    t.eq(N.ProfStep(readings, npcs, {}, here()).place, { map = 1413, x = 0.2, y = 0.2 }, "seen last; no cont")
+    t.eq(N.ProfStep(readings, npcs, {}, here()).elsewhere, { map = 1413, x = 0.2, y = 0.2 }, "seen last")
     npcs.Zed.seen = 5
-    t.eq(N.ProfStep(readings, npcs, {}, here()).place, { map = 1412, x = 0.1, y = 0.1 }, "a tie: the lowest name")
+    t.eq(N.ProfStep(readings, npcs, {}, here()).elsewhere, { map = 1412, x = 0.1, y = 0.1 }, "a tie: the lowest name")
+    t.eq(N.ProfStep(readings, npcs, {}, here()).place, nil, "on another map there is no place to point at (D10)")
 end
 
 T["T9 two capped professions: the one whose trainer is on the map the player is on"] = function(t)
@@ -274,7 +276,7 @@ T["T9 two capped professions, neither or both on this map: the lowest name"] = f
     local npcs = { Aska = trainer(1411, 0.1, 0.1, "Fishing"), Zed = trainer(1411, 0.2, 0.2, "Cooking") }
     t.eq(N.ProfStep(readings, npcs, {}, here()).label, "Cooking trainer", "both here")
     npcs.Aska.map, npcs.Zed.map = 1412, 1413
-    t.eq(N.ProfStep(readings, npcs, {}, here()).label, "Cooking trainer", "neither here")
+    t.eq(N.ProfStep(readings, npcs, {}, here()).label, "Cooking trainer \226\128\148 other map", "neither here (D10)")
     t.eq(N.ProfStep(readings, npcs, {}, here({ position = NONE })).label, "Cooking trainer", "this map not known")
 end
 
@@ -420,7 +422,8 @@ T["from the client and the store: the saved answers decide"] = function(t)
 
     step = N.ProfStepFrom(standing({ position = function() return { map = 1412, x = 0.5, y = 0.5 } end }),
         savedStore(char, account))
-    t.eq(step, cooking({ map = 1411, x = 0.7, y = 0.5 }), "the player is on another map: no cont")
+    t.eq(step, { label = "Cooking trainer \226\128\148 other map", still = true,
+                 elsewhere = { map = 1411, x = 0.7, y = 0.5 } }, "the player is on another map: text only (D10)")
 
     step = N.ProfStepFrom(standing({ position = function() error("the client refused") end }), savedStore(char, account))
     t.eq(step, cooking({ map = 1411, x = 0.7, y = 0.5 }), "a position read that fails: still a step, no cont")

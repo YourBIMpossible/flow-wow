@@ -142,8 +142,8 @@ tests["sell list: a price nobody saw reads price unknown, never 0"] = function(t
     t.eq(r.unit, nil, "no figure")
     t.eq(r.basis, P.UNKNOWN, "the basis says so")
     t.eq(r.source, nil, "no source")
-    t.eq(r.priceText, "price unknown", "the words")
-    t.eq(S.PRICE_UNKNOWN, "price unknown", "kept in one place")
+    t.eq(r.priceText, "price unknown—check vendor", "the words")
+    t.eq(S.PRICE_UNKNOWN, "price unknown—check vendor", "kept in one place")
     t.eq(r.total, nil, "no total for the row")
     t.eq(l.total, { known = 0, estimated = 0, unknown = 1 }, "counted as unknown, not as 0")
 end
@@ -188,7 +188,7 @@ tests["sell list: an estimate with no source is price unknown"] = function(t)
     local l = S.List({ { key = 50, count = 3 } }, { rules = sellAll(), book = book })
     t.eq(l.rows[1].unit, nil, "no figure")
     t.eq(l.rows[1].basis, P.UNKNOWN, "unknown")
-    t.eq(l.rows[1].priceText, "price unknown", "the words")
+    t.eq(l.rows[1].priceText, "price unknown—check vendor", "the words")
     t.eq(l.total, { known = 0, estimated = 0, unknown = 1 }, "counted as unknown")
 end
 

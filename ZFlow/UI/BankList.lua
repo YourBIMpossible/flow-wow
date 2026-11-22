@@ -27,6 +27,12 @@ BankList.NAME = "bankList"
 BankList.SETTING = "bank.list"
 BankList.WIDTH, BankList.HEIGHT = 340, 260
 BankList.DEFAULT_POINT = { "TOPLEFT", "TOPLEFT", 360, -120 }
+-- The advisor prompt (UI/Advisor.lua: Add(id, text, priority), Remove(id)):
+-- "N kinds of item to put in the bank." while there is something to bank.
+-- A low priority, a first guess: it is a chore, not a warning.
+BankList.ADVISOR = "advisor"
+BankList.PROMPT_ID = "l6d.bank"
+BankList.PROMPT_PRIORITY = 10
 
 local function saved(store, scope, path)
     if type(store) ~= "table" or type(store.get) ~= "function" then return nil end
@@ -47,7 +53,8 @@ local function byKey(raw, want)
     return out
 end
 
-function BankList.Lines(client, store, grants)
+-- What to bank, worked out from the bags now: Bank.Pick's result.
+function BankList.Pick(client, store, grants)
     local stacks = type(client) == "table" and type(client.bagItems) == "function" and client.bagItems() or nil
     local read = type(client) == "table" and type(client.itemInfo) == "function" and client.itemInfo or nil
     local never = byKey(saved(store, "char", "settings.sell.never"), function(v) return v and true or false end)
@@ -58,7 +65,11 @@ function BankList.Lines(client, store, grants)
         bankRules = byKey(saved(store, "account", "settings.banker.rules"),
             function(v) return v == "bank" or v == "carry" end),
     }
-    return ns.ItemPresent.BankLines(ns.Bank.Pick(ns.Bank.Entries(stacks, read), context))
+    return ns.Bank.Pick(ns.Bank.Entries(stacks, read), context)
+end
+
+function BankList.Lines(client, store, grants)
+    return ns.ItemPresent.BankLines(BankList.Pick(client, store, grants))
 end
 
 function BankList.Declare(k)
@@ -79,7 +90,32 @@ function BankList.Declare(k)
         start = function(ctx)
             local client = ctx.client
             if type(client.watchBank) == "function" then client.watchBank() end
+            -- The advisor prompt. The advisor is looked up each time and never
+            -- needed: without it, or when it raises, the list works as before.
+            -- Given only on a change of the text, so nothing is re-added on
+            -- every check and nothing is removed that was never added.
+            local prompted = nil
+            local function prompt()
+                local text = nil
+                if ctx.settings:get(BankList.SETTING) ~= false then
+                    local ok, pick = pcall(BankList.Pick, client, ctx.store, nil)
+                    text = ok and ns.ItemPresent.BankPrompt(pick) or nil
+                end
+                if text == prompted then return end
+                prompted = text
+                local ok, advisor = pcall(ctx.use, BankList.ADVISOR)
+                if not ok or type(advisor) ~= "table" then return end
+                if text then
+                    if type(advisor.Add) == "function" then
+                        pcall(advisor.Add, BankList.PROMPT_ID, text, BankList.PROMPT_PRIORITY)
+                    end
+                elseif type(advisor.Remove) == "function" then
+                    pcall(advisor.Remove, BankList.PROMPT_ID)
+                end
+            end
+            ctx.bus:on(BankList.NAME, "PLAYER_ENTERING_WORLD", prompt)
             ctx.bus:on(BankList.NAME, "BANKFRAME_OPENED", function()
+                prompt()
                 if ctx.settings:get(BankList.SETTING) == false then
                     hide()
                     return
@@ -92,7 +128,10 @@ function BankList.Declare(k)
                     panel.show(true)
                 end
             end)
-            ctx.bus:on(BankList.NAME, "BANKFRAME_CLOSED", hide)
+            ctx.bus:on(BankList.NAME, "BANKFRAME_CLOSED", function()
+                hide()
+                prompt()      -- the bags may have changed at the bank
+            end)
             local id = k.id or ns.id
             panel = client.panel({ name = id.framePrefix .. "BankList",
                 width = BankList.WIDTH, height = BankList.HEIGHT })

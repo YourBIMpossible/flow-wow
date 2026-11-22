@@ -30,7 +30,20 @@ ns.Prices = Prices
 Prices.OBSERVED = "observed"
 Prices.ESTIMATED = "estimated"
 Prices.UNKNOWN = "unknown"
-Prices.UNKNOWN_TEXT = "price unknown - check trainer"
+-- F-085, the only two ways an unknown price is worded (em dash always):
+-- a training cost names the trainer, an item's price names the vendor.
+Prices.UNKNOWN_TEXT = "price unknown—check trainer"
+Prices.UNKNOWN_VENDOR_TEXT = "price unknown—check vendor"
+-- The price kinds that are training costs. Every other kind (a merchant's
+-- price, what a merchant pays, an auction) is an item's price.
+Prices.TRAINING_KINDS = { trainer = true }
+
+-- The unknown-price words for a price kind; no kind is a training cost, as
+-- Prices.Text has always read.
+function Prices.UnknownText(kind)
+    if kind == nil or Prices.TRAINING_KINDS[kind] then return Prices.UNKNOWN_TEXT end
+    return Prices.UNKNOWN_VENDOR_TEXT
+end
 
 -- A count: a number that is not negative, not NaN and not endless.
 local function isCount(n)
@@ -123,6 +136,10 @@ end
 -- "1g 3c"); "0c" for nothing, and "under 1c" for anything more than
 -- nothing that is less than one copper (the price of one out of a stack):
 -- never "0c" for a price that is not zero. nil when `copper` is not a count.
+-- This is the one money text of the Items surfaces (A5): the price texts
+-- here, the sell list, the plan and the price lookup all call it, so a
+-- change to how money reads is made once. Each part is written as plain
+-- digits, however large the sum: never "2e+14g".
 function Prices.Coin(copper)
     if not isCount(copper) then return nil end
     if copper > 0 and copper < 1 then return "under 1c" end
@@ -131,22 +148,24 @@ function Prices.Coin(copper)
     local s = math.floor((copper % 10000) / 100)
     local c = copper % 100
     local parts = {}
-    if g > 0 then parts[#parts + 1] = g .. "g" end
-    if s > 0 then parts[#parts + 1] = s .. "s" end
-    if c > 0 or #parts == 0 then parts[#parts + 1] = c .. "c" end
+    if g > 0 then parts[#parts + 1] = string.format("%.0f", g) .. "g" end
+    if s > 0 then parts[#parts + 1] = string.format("%.0f", s) .. "s" end
+    if c > 0 or #parts == 0 then parts[#parts + 1] = string.format("%.0f", c) .. "c" end
     return table.concat(parts, " ")
 end
 
 -- The price for the player to read.
 --   observed   "12s 40c"
 --   estimated  "about 12s 40c (estimate)": an estimate is always labelled
---   unknown    "price unknown - check trainer"
+--   unknown    "price unknown—check trainer" for a training cost (and when
+--              no kind is given); "price unknown—check vendor" for an
+--              item's price (kind "vendor", "sell", "auction", ...)
 -- Anything that isn't a well-formed price reads as unknown.
-function Prices.Text(price)
-    if type(price) ~= "table" or not isCount(price.value) then return Prices.UNKNOWN_TEXT end
+function Prices.Text(price, kind)
+    if type(price) ~= "table" or not isCount(price.value) then return Prices.UnknownText(kind) end
     if price.basis == Prices.OBSERVED then return Prices.Coin(price.value) end
     if price.basis == Prices.ESTIMATED then return "about " .. Prices.Coin(price.value) .. " (estimate)" end
-    return Prices.UNKNOWN_TEXT
+    return Prices.UnknownText(kind)
 end
 
 -- What `count` of the item costs at `price`, in copper. Where the price
