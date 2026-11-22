@@ -31,7 +31,10 @@ $cases = @(
     @{ Name = 'count-concat-pass';    Exit = 0 },
     @{ Name = 'concat-hyphen-fail';   Exit = 1; Tag = 'F085' },
     @{ Name = 'fragment-alone-fail';  Exit = 1; Tag = 'F085'; Has = 'unknown<U+2014>check vendor' },
-    @{ Name = 'price-format-fail';    Exit = 1; Tag = 'PRICE' }
+    @{ Name = 'price-format-fail';    Exit = 1; Tag = 'PRICE' },
+    @{ Name = 'seconds-pass';         Exit = 0 },
+    @{ Name = 'silver-concat-fail';   Exit = 1; Tag = 'PRICE' },
+    @{ Name = 'silver-name-fail';     Exit = 1; Tag = 'PRICE' }
 )
 $bad = 0
 foreach ($c in $cases) {
