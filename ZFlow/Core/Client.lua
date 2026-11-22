@@ -623,6 +623,87 @@ function ns.make.client(env)
         return yesNo(call(group.IsSpellInRange, spellId, "target"))
     end
 
+    -- An item's stats by its link, as the client keys them: a copy, or nil
+    -- when not read (no call, a failed call, no answer, a secret answer, or
+    -- an answer that is no table). A stat whose value is secret is kept as
+    -- false: on the item, not read. First guesses, not seen in game on
+    -- 16001: C_Item.GetItemStats(link) where the client has it, else
+    -- GetItemStats(link).
+    local function itemStats(link)
+        local group = env.C_Item
+        local ok, raw
+        if type(group) == "table" and type(group.GetItemStats) == "function" then
+            ok, raw = call(group.GetItemStats, link)
+        else
+            ok, raw = call(env.GetItemStats, link)
+        end
+        if not ok or raw == nil or hidden(raw) or type(raw) ~= "table" then return nil end
+        local out = {}
+        for key, value in pairs(raw) do
+            if hidden(value) then out[key] = false else out[key] = value end
+        end
+        return out
+    end
+
+    -- An item's equip location by its link ("INVTYPE_HEAD"), or nil when
+    -- not said: no call, a failed call, a secret answer, or anything but a
+    -- non-empty string. First guesses, not seen in game on 16001: the
+    -- fourth answer of C_Item.GetItemInfoInstant(link) where the client has
+    -- it, else of GetItemInfoInstant(link).
+    local function itemKind(link)
+        local group = env.C_Item
+        local fn = env.GetItemInfoInstant
+        if type(group) == "table" and type(group.GetItemInfoInstant) == "function" then
+            fn = group.GetItemInfoInstant
+        end
+        local ok, _, _, _, where = call(fn, link)
+        return text(ok, where)
+    end
+
+    -- The inventory slots that are compared: Gear/Read.lua's SLOT_OF. Not
+    -- the shirt (4), not the tabard (19).
+    local GEAR_SLOTS = { 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18 }
+
+    -- What the client says about one item and about what you wear, as the
+    -- raw tables ns.GearRead.Shapes takes:
+    --   { kind, stats, worn, dualWield }
+    -- kind, stats   the item `link` names (see the two reads above); both
+    --               left out when link is not a non-empty string.
+    -- worn          { [inventory slot number] = { kind, stats } for an item,
+    --                 false for a slot the client says holds nothing }.
+    --               A slot is false only when GetInventoryItemID("player",
+    --               slot) answers with no id at all. A slot whose id cannot
+    --               be asked for, or is secret or no number, and a slot with
+    --               an id but no link yet (the item is not loaded), have no
+    --               entry: not read, which is never the same as empty.
+    -- dualWield     true or false from CanDualWield(); left out otherwise.
+    -- This only reads, and names no unit but "player". Nothing is equipped,
+    -- moved or picked up. First guesses, not seen in game on 16001:
+    -- GetInventoryItemID, GetInventoryItemLink, CanDualWield, and whether
+    -- slot 18 (ranged) exists on this client. Before your character's items
+    -- are loaded the client may give no id for any slot; this cannot tell
+    -- that from empty slots, so it is to be asked after login.
+    function c.gear(link)
+        local out = { worn = {} }
+        if type(link) == "string" and link ~= "" then
+            out.kind, out.stats = itemKind(link), itemStats(link)
+        end
+        for i = 1, #GEAR_SLOTS do
+            local slot = GEAR_SLOTS[i]
+            local ok, id = call(env.GetInventoryItemID, "player", slot)
+            if ok then
+                if id == nil then
+                    out.worn[slot] = false
+                elseif not hidden(id) and type(id) == "number" then
+                    local worn = text(call(env.GetInventoryItemLink, "player", slot))
+                    if worn then out.worn[slot] = { kind = itemKind(worn), stats = itemStats(worn) } end
+                end
+            end
+        end
+        out.dualWield = yesNo(call(env.CanDualWield))
+        return out
+    end
+
     -- One spell's cooldown as the client gives it: read?, start, length,
     -- the client's own "this is the global cooldown" mark (true, false, or
     -- nil where it gives none), and waiting: true when the client marks
