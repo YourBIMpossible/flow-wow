@@ -253,6 +253,42 @@ function ns.make.fakeClient(opts)
         return h
     end
 
+    -- Every icon made is in c.icons, in order: .spec, .shown, .texture,
+    -- .point, .places. setTexture(nil) clears and answers false, as on the
+    -- client. drag(point) is the test's control: the player let it go
+    -- there; without the move key (c.setMoveKey(false)) nothing happens.
+    c.icons = {}
+    function c.icon(spec)
+        if s.noFrames then return nil end
+        local h = { spec = spec, shown = false, places = 0 }
+        local moved, movedFailed
+        function h.setTexture(tex)
+            h.texture = tex
+            return tex ~= nil
+        end
+        function h.place(point)
+            if type(point) ~= "table" then return end
+            h.point = { point[1], point[2], point[3], point[4] }
+            h.places = h.places + 1
+        end
+        function h.show(on) h.shown = on and true or false end
+        function h.onMoved(fn, failed)
+            moved = fn
+            movedFailed = type(failed) == "function" and failed or nil
+        end
+        function h.drag(point)
+            if s.noMoveKey then return end
+            h.point = { point[1], point[2], point[3], point[4] }
+            if moved then
+                local ok, err = pcall(moved, { point[1], point[2], point[3], point[4] })
+                if not ok and movedFailed then movedFailed(err) end
+            end
+        end
+        c.icons[#c.icons + 1] = h
+        return h
+    end
+    function c.spellTexture(id) return s.spellTextures and s.spellTextures[id] or nil end
+
     -- Every arrow made is in c.arrows, in order. A handle keeps what it
     -- was last told: point or attached (the other handle), shown, lookIs,
     -- drawn (the last draw table), scaled, faded (alpha), under (behind),
@@ -410,6 +446,11 @@ function ns.make.fakeClient(opts)
     function c.setSpellId(name, id)
         s.spellIds = s.spellIds or {}
         s.spellIds[name] = id
+    end
+    -- nil: the client gives no texture for this spell.
+    function c.setSpellTexture(id, tex)
+        s.spellTextures = s.spellTextures or {}
+        s.spellTextures[id] = tex
     end
     -- The open trainer window: { profession = name or nil, npc = name };
     -- nil for closed or not known.

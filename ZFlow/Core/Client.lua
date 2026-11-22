@@ -696,6 +696,24 @@ function ns.make.client(env)
         return id
     end
 
+    -- The texture of a spell by id (a file id or a path), or nil. Only the
+    -- client is asked: C_Spell.GetSpellTexture, then the older
+    -- GetSpellTexture. First guess, not seen in game; no texture comes from
+    -- a table in this addon.
+    function c.spellTexture(id)
+        if type(id) ~= "number" then return nil end
+        local group = env.C_Spell
+        local reads = { type(group) == "table" and group.GetSpellTexture or nil, env.GetSpellTexture }
+        for i = 1, 2 do
+            local ok, tex = call(reads[i], id)
+            if ok and not hidden(tex) then
+                if type(tex) == "number" and tex > 0 then return tex end
+                if type(tex) == "string" and tex ~= "" then return tex end
+            end
+        end
+        return nil
+    end
+
     -- Which way you face, in radians (0 = north, turning left adds), or nil.
     -- GetPlayerFacing; the client gives nothing where it hides facing.
     function c.facing()
@@ -1124,6 +1142,90 @@ function ns.make.client(env)
         end
         -- failed(err), when given, is called with the error of an fn that
         -- failed; without it the error is dropped.
+        function h.onMoved(fn, failed)
+            moved = fn
+            movedFailed = type(failed) == "function" and failed or nil
+        end
+        return h
+    end
+
+    -- One movable icon, or nil when the client cannot make a frame. First
+    -- guess, not seen in game (WOW-ROTATION-ICON).
+    --   spec = { name = global frame name or nil, size = n }
+    --   h.setTexture(tex) -> true when the client took it. tex is what
+    --                   spellTexture gave (a file id or a path); nil clears
+    --                   the picture and answers false.
+    --   h.place(point), h.show(on), h.onMoved(fn, failed): as the panel's.
+    -- It moves only while Ctrl is held, like the arrows; a client that will
+    -- not say whether Ctrl is held starts no drag. It takes no click and
+    -- holds no secure action. A new icon is hidden and has no place.
+    function c.icon(spec)
+        spec = type(spec) == "table" and spec or {}
+        local parent = env.UIParent
+        local ok, f = call(env.CreateFrame, "Frame", spec.name, parent)
+        if not ok or f == nil then return nil end
+        local h, moved, movedFailed, dragging = {}, nil, nil, false
+        local size = tonumber(spec.size) or 48
+
+        method(f, "Hide")
+        if not method(f, "SetSize", size, size) then
+            method(f, "SetWidth", size)
+            method(f, "SetHeight", size)
+        end
+        method(f, "SetFrameStrata", "MEDIUM")
+        method(f, "SetClampedToScreen", true)
+
+        local okTex, tex = method(f, "CreateTexture", nil, "ARTWORK")
+        if not okTex then tex = nil end
+        if tex ~= nil then method(tex, "SetAllPoints", f) end
+
+        local function standing()
+            local okP, a, _, r, x, y = method(f, "GetPoint", 1)
+            if okP and type(a) == "string" and type(x) == "number" and type(y) == "number" then
+                return { a, type(r) == "string" and r or a, x, y }
+            end
+            local okL, left = method(f, "GetLeft")
+            local okB, bottom = method(f, "GetBottom")
+            if okL and okB and type(left) == "number" and type(bottom) == "number" then
+                return { "BOTTOMLEFT", "BOTTOMLEFT", left, bottom }
+            end
+            return nil
+        end
+
+        method(f, "SetMovable", true)
+        method(f, "EnableMouse", true)
+        method(f, "RegisterForDrag", "LeftButton")
+        method(f, "SetScript", "OnDragStart", function()
+            local okKey, held = call(env.IsControlKeyDown)
+            if not (okKey and held == true) then return end
+            dragging = true
+            method(f, "StartMoving")
+        end)
+        method(f, "SetScript", "OnDragStop", function()
+            if not dragging then return end
+            dragging = false
+            method(f, "StopMovingOrSizing")
+            method(f, "SetUserPlaced", false)
+            local point = standing()
+            if point and moved then
+                local okM, err = pcall(moved, point)
+                if not okM and movedFailed then pcall(movedFailed, err) end
+            end
+        end)
+
+        function h.setTexture(value)
+            if tex == nil then return false end
+            local okSet = method(tex, "SetTexture", value)
+            return okSet and value ~= nil
+        end
+        function h.place(point)
+            if type(point) ~= "table" then return end
+            method(f, "ClearAllPoints")
+            method(f, "SetPoint", point[1], parent, point[2], point[3], point[4])
+        end
+        function h.show(on)
+            method(f, on and "Show" or "Hide")
+        end
         function h.onMoved(fn, failed)
             moved = fn
             movedFailed = type(failed) == "function" and failed or nil
