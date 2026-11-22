@@ -14529,39 +14529,34 @@ end)
 -- 0.35.314: flight masters on the world map.
 -------------------------------------------------------------------------------
 
-ns:Register("test", "map zone info: hovering a zone gives its name, level range and fishing skill", function(t)
+ns:Register("test", "map zone info: hovering a zone gives its name, and its level range when the game gives one", function(t)
     local ZL = ns.mapZoneLevels
     if not ZL then t:ok(false, "MapZoneLevels.lua not loaded") return end
-    local w = ZL.Card(1436, "Westfall", 15)
-    t:ok(w and w.name == "Westfall" and w.level == "Level 10-20" and w.fish == "Fishing 1", "Westfall's card")
+    -- (Flow lists no zone levels or fishing skills: the range is the client's, given here by a made-up reader.)
+    local says = function(lo, hi) return function() return lo, hi end end
+    local none = function() return nil end
+    local w = ZL.Card(1436, "Westfall", 15, says(10, 20))
+    t:ok(w and w.name == "Westfall" and w.level == "Level 10-20" and w.fish == nil, "Westfall's card: the range the game gave, no fishing skill")
     t:ok(w and w.r == 1 and w.g == 0.82, "its range coloured by your level (yellow: yours)")
-    t:eq(ZL.Card(1434, "Stranglethorn Vale", 30).fish, "Fishing 130 (205)", "some waters need more")
-    local city = ZL.Card(1453, "Stormwind City", 15)
-    t:ok(city and city.level == nil and city.fish == "Fishing 1", "a city: fishing, no range")
-    t:ok(ZL.Card(1418, "Badlands", 40).fish == nil, "no water: no fishing line")
-    t:eq(ZL.Card(1, "Nowhere", 15), nil, "a zone Flow doesn't know: no card")
-    t:eq(ZL.Card(1436, "Marche de l'Ouest", 15).name, "Marche de l'Ouest", "the map's own (local) name")
+    local city = ZL.Card(1453, "Stormwind City", 15, none)
+    t:ok(city and city.level == ZL.LEVEL_UNKNOWN and city.fish == nil, "no range from the game: the level is unknown, and said so")
+    t:ok(ZL.Card(1418, "Badlands", 40, none).fish == nil, "no catch records: no fishing line")
+    t:eq(ZL.Card(1, nil, 15, none), nil, "no zone name from the map: no card")
+    t:eq(ZL.Card(1436, "Marche de l'Ouest", 15, none).name, "Marche de l'Ouest", "the map's own (local) name")
     -- Not hovering: the zone you're in, from a cave or town map up to its zone.
     local parents = { [9001] = 9000, [9000] = 1436, [1436] = 1415, [1415] = 947 }
     local up = function(id) return parents[id] end
-    t:eq(ZL.PlayerZone(1436, up), 1436, "in Westfall: Westfall")
-    t:eq(ZL.PlayerZone(9001, up), 1436, "in a mine in Westfall: Westfall")
-    t:eq(ZL.PlayerZone(9999, up), nil, "somewhere Flow doesn't know: nothing")
-    t:eq(ZL.PlayerZone(nil, up), nil, "no map: nothing")
+    local isZone = function(id) return id == 1436 end
+    t:eq(ZL.PlayerZone(1436, up, isZone), 1436, "in Westfall: Westfall")
+    t:eq(ZL.PlayerZone(9001, up, isZone), 1436, "in a mine in Westfall: Westfall")
+    t:eq(ZL.PlayerZone(9999, up, isZone), nil, "somewhere with no zone above it: nothing")
+    t:eq(ZL.PlayerZone(nil, up, isZone), nil, "no map: nothing")
     t:eq(select(4, ZL.Color(10, 20, 15)), "yellow", "your level: yellow")
     t:eq(select(4, ZL.Color(18, 30, 15)), "orange", "a little above you: orange")
     t:eq(select(4, ZL.Color(30, 40, 15)), "red", "well above you: red")
     t:eq(select(4, ZL.Color(1, 10, 15)), "green", "just outgrown: green")
     t:eq(select(4, ZL.Color(1, 10, 30)), "grey", "long outgrown: grey")
-    local n = 0
-    for _, z in pairs(ZL.ZONES) do
-        if z[2] then
-            n = n + 1
-            t:ok(z[2] >= 1 and z[3] <= 60 and z[2] < z[3], z[1] .. ": a sane range")
-        end
-        t:ok(z[4] == nil or (z[4] >= 1 and z[4] <= 330 and (z[5] == nil or z[5] > z[4])), z[1] .. ": a sane fishing skill")
-    end
-    t:eq(n, 40, "every levelling zone in the Classic list")
+    t:eq(ZL.ZONES, nil, "no list of zone levels or fishing skills")
     -- "Can I click on something, like click on the fishing number": the fish
     -- a zone's waters give, and how often. Flow ships no catch records
     -- (W4d: they were third-party), so every zone's list is unknown.

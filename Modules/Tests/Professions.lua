@@ -390,6 +390,30 @@ ns:Register("test", "professions: kills and node counts are said only when your 
     t:ok(SP.GATHER_UNKNOWN:find("unknown to Flow", 1, true) ~= nil, "and the step says what Flow doesn't know")
 end)
 
+ns:Register("test", "professions: the map card lists no zone levels or fishing skills of Flow's own", function(t)
+    local ZL = ns.mapZoneLevels
+    if not ZL then t:ok(false, "MapZoneLevels.lua not loaded") return end
+    t:eq(ZL.ZONES, nil, "no zone table")
+    local none = function() return nil end
+    for _, id in ipairs({ 1436, 1434, 1453, 1418 }) do
+        local c = ZL.Card(id, "Zone__test", 30, none)
+        t:eq(c.level, "Level unknown", id .. ": the game gave no range: unknown, no number")
+        t:eq(c.fish, nil, id .. ": no fishing skill line")
+        t:ok(c.r == c.g and c.g == c.b, id .. ": unknown is grey, not a difficulty colour")
+    end
+    t:eq(ZL.Levels(1436, function() return 10, 20, 0, 0 end), 10, "the client's range is read as given")
+    t:eq(select(2, ZL.Levels(1436, function() return 10, 20 end)), 20, "both ends")
+    t:eq(ZL.Levels(1436, function() return 0, 0 end), nil, "0-0 is no range: unknown")
+    t:eq(ZL.Levels(1436, function() return 20, 10 end), nil, "an upside-down range: unknown")
+    t:eq(ZL.Levels(1436, function() error("no such map") end), nil, "the call failing: unknown")
+    t:eq(ZL.Levels(nil, function() return 10, 20 end), nil, "no zone: unknown")
+    t:eq(ZL.Card(1436, "Zone__test", 12, function() return 12, 12 end).level, "Level 12", "one level: said once")
+    with(ZL, "FISH", { [1436] = { 20, { 6358, 60, "Fish__test" } } }, function()
+        t:eq(ZL.Card(1436, "Zone__test", 12, none).fish, "Fishing", "catch records: a fishing line (for the Shift list), still no skill")
+        t:eq(ZL.Card(1429, "Zone__test", 12, none).fish, nil, "none for a zone without records")
+    end)
+end)
+
 ns:Register("test", "professions: a tier's level is only what a trainer's window said", function(t)
     local SP, P = ns.skillPlan, ns.professions
     t:eq(SP.TIER_LEVEL, nil, "no list of tier levels");

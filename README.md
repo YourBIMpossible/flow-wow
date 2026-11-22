@@ -215,8 +215,8 @@ Flow for WoW is a separate project from Flow Engine.
   arrow can be built; nothing is shown yet.
 - **Trips Flow learns**: each trip from one step to the next is timed, your quickest is kept, and
   the route is ordered by those times instead of the straight line (`/flow legs`).
-- **Zone info on the world map**: hover a zone on a continent map for its name, level range (coloured
-  against your level) and the fishing skill its waters need; hold Shift for the fish and how often.
+- **Zone info on the world map**: hover a zone on a continent map for its name and, when the game
+  gives one, its level range (coloured against your level); otherwise it says the level is unknown.
 - **Hard and elite quests wait while you're solo**: a quest 3 or more levels above you, or an elite
   one, is held off the route (listed, locked) until you can do it or you're in a group.
 - **Quest levels beside steps** follow the game's own map filter (Show quest levels, Quest difficulty

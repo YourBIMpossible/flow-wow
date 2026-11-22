@@ -6,23 +6,25 @@
 -- small card in the map's top left corner (by the cursor it covered too much:
 -- "The card ends up blocking too many things"):
 --   Westfall
---   Level 10-20        (coloured against your level)
---   Fishing 1
+--   Level 10-20        (coloured against your level), or "Level unknown"
 -- The game's own zone highlight shows which zone it is. With nothing
 -- hovered, the card shows the zone you're in, in the same corner ("Can we
 -- have it still show when you're in the zone by default?"). Settings: "Zone info when hovering the world map",
 -- "World map: your zone's info without hovering". Both on by default.
 --
--- Level ranges: warcraft.wiki.gg "Zones by level (Classic)". Fishing: the
--- skill to fish the zone's waters without the catch getting away, as the
--- Classic fishing tables give it; "130 (205)" means most waters need 130 and
--- some need 205. Keyed by the map's own zone ID (locale-proof).
+-- Flow lists no zone level ranges and no fishing skills of its own: neither
+-- was read from the game by Flow. The range is asked of the client
+-- (ZL.Levels: C_Map.GetMapLevels, where the client has it and gives a range);
+-- otherwise the card says "Level unknown". The skill a zone's waters ask is
+-- not shown at all. Not yet checked in game:
+--   /dump C_Map.GetMapLevels(C_Map.GetBestMapForUnit("player"))
 --
--- Holding Shift adds what the zone's waters give and how often ("I think
--- your shift idea's probably the best"); a grey "Shift" after the fishing
--- line says so. Flow ships no catch records (ZL.FISH is empty), so the list
--- says the catches are unknown. ZL.FISH's shape, for records Flow gets from
--- the game: [uiMapID] = { records, { itemID, percent, "English name" }, ... }.
+-- A zone Flow has catch records for gets a "Fishing" line, and holding Shift
+-- adds what its waters give and how often ("I think your shift idea's
+-- probably the best"); a grey "Shift" after the line says so. Flow ships no
+-- catch records (ZL.FISH is empty), so no zone has the line today.
+-- ZL.FISH's shape, for records Flow gets from the game:
+-- [uiMapID] = { records, { itemID, percent, "English name" }, ... }.
 --
 -- Flow's own frames only. It reads the cursor and C_Map; it never changes
 -- the game's map, its labels or its highlight, and its card takes no mouse.
@@ -38,39 +40,7 @@ ZL.LIST_SIZE = 11
 ZL.FEW = 300                            -- fewer records than this: "few catches recorded"
 ZL.FISH = ZL.FISH or {}                 -- no catch records shipped: unknown
 ZL.FISH_UNKNOWN = "catches unknown"
-
--- [uiMapID] = { name, min, max, fish, fishTop }. A city has no range; a zone
--- with no water no fishing.
-ZL.ZONES = {
-    -- Eastern Kingdoms
-    [1426] = { "Dun Morogh", 1, 10, 1 },           [1429] = { "Elwynn Forest", 1, 10, 1 },
-    [1420] = { "Tirisfal Glades", 1, 10, 1 },       [1436] = { "Westfall", 10, 20, 1 },
-    [1432] = { "Loch Modan", 10, 20, 1 },           [1421] = { "Silverpine Forest", 10, 20, 1 },
-    [1433] = { "Redridge Mountains", 15, 25, 55 },  [1431] = { "Duskwood", 18, 30, 55 },
-    [1437] = { "Wetlands", 20, 30, 55 },            [1424] = { "Hillsbrad Foothills", 20, 35, 55 },
-    [1416] = { "Alterac Mountains", 30, 40, 130 },  [1417] = { "Arathi Highlands", 30, 40, 130 },
-    [1434] = { "Stranglethorn Vale", 30, 45, 130, 205 },
-    [1418] = { "Badlands", 35, 45 },                [1435] = { "Swamp of Sorrows", 35, 45, 130 },
-    [1425] = { "The Hinterlands", 40, 50, 205 },    [1427] = { "Searing Gorge", 45, 50 },
-    [1419] = { "Blasted Lands", 45, 55 },           [1428] = { "Burning Steppes", 50, 58, 330 },
-    [1422] = { "Western Plaguelands", 51, 58, 205 },
-    [1423] = { "Eastern Plaguelands", 53, 60, 330 },
-    [1430] = { "Deadwind Pass", 55, 60, 330 },
-    [1453] = { "Stormwind City", nil, nil, 1 },     [1455] = { "Ironforge", nil, nil, 1 },
-    [1458] = { "Undercity", nil, nil, 1 },
-    -- Kalimdor
-    [1438] = { "Teldrassil", 1, 10, 1 },            [1411] = { "Durotar", 1, 10, 1 },
-    [1412] = { "Mulgore", 1, 10, 1 },               [1439] = { "Darkshore", 10, 20, 1 },
-    [1413] = { "The Barrens", 10, 25, 1 },          [1442] = { "Stonetalon Mountains", 15, 27, 55 },
-    [1440] = { "Ashenvale", 18, 30, 55 },           [1441] = { "Thousand Needles", 25, 35, 130 },
-    [1443] = { "Desolace", 30, 40, 130 },           [1445] = { "Dustwallow Marsh", 35, 45, 130 },
-    [1444] = { "Feralas", 40, 50, 205, 330 },       [1446] = { "Tanaris", 40, 50, 205 },
-    [1447] = { "Azshara", 45, 55, 205, 330 },       [1449] = { "Un'Goro Crater", 48, 55, 205 },
-    [1448] = { "Felwood", 48, 55, 205 },            [1452] = { "Winterspring", 53, 60, 330 },
-    [1450] = { "Moonglade", 55, 60, 205 },          [1451] = { "Silithus", 55, 60, 330 },
-    [1454] = { "Orgrimmar", nil, nil, 1 },          [1456] = { "Thunder Bluff", nil, nil, 1 },
-    [1457] = { "Darnassus", nil, nil, 1 },
-}
+ZL.LEVEL_UNKNOWN = "Level unknown"
 
 function ZL.On() return not (ns.db and ns.db.nav and ns.db.nav.mapZoneLevels == false) end
 
@@ -83,20 +53,35 @@ function ZL.Color(min, max, level)
     return 0.62, 0.62, 0.62, "grey"
 end
 
+-- The zone's level range as the client gives it: min, max, or nil when it
+-- gives none (no such call on this client, an error, or no real range).
+-- `levelsOf(zoneID)` -> min, max stands in for C_Map.GetMapLevels in tests.
+function ZL.Levels(zoneID, levelsOf)
+    levelsOf = levelsOf or (C_Map and C_Map.GetMapLevels)
+    if not (zoneID and levelsOf) then return nil end
+    local ok, lo, hi = pcall(levelsOf, zoneID)
+    if not ok then return nil end
+    lo, hi = tonumber(lo), tonumber(hi)
+    if not (lo and hi) or lo < 1 or hi < lo then return nil end
+    return lo, hi
+end
+
 -- The card for the zone `zoneID` (named `name` by the map) for someone of
--- `level`: { name, level = "Level 10-20" or nil, r, g, b, fish = "Fishing
--- 130 (205)" or nil }, or nil when Flow knows nothing about it.
-function ZL.Card(zoneID, name, level)
-    local z = ZL.ZONES[zoneID]
-    if not z then return nil end
-    local card = { name = name or z[1] }
-    if z[2] then
-        card.level = z[2] == z[3] and ("Level " .. z[2]) or string.format("Level %d-%d", z[2], z[3])
-        card.r, card.g, card.b = ZL.Color(z[2], z[3], level)
+-- `level`: { name, level = "Level 10-20" or "Level unknown", r, g, b,
+-- fish = "Fishing" (only with catch records) }, or nil when the map gave no
+-- zone or no name.
+function ZL.Card(zoneID, name, level, levelsOf)
+    if not zoneID or not name or name == "" then return nil end
+    local card = { name = name }
+    local lo, hi = ZL.Levels(zoneID, levelsOf)
+    if lo then
+        card.level = lo == hi and ("Level " .. lo) or string.format("Level %d-%d", lo, hi)
+        card.r, card.g, card.b = ZL.Color(lo, hi, level or 1)
+    else
+        card.level = ZL.LEVEL_UNKNOWN
+        card.r, card.g, card.b = 0.62, 0.62, 0.62
     end
-    if z[4] then
-        card.fish = "Fishing " .. z[4] .. (z[5] and string.format(" (%d)", z[5]) or "")
-    end
+    if ZL.FISH[zoneID] then card.fish = "Fishing" end
     return card
 end
 
@@ -276,17 +261,21 @@ local function showCard(c, zoneID)
     card:Show()
 end
 
--- The zone you're in (one Flow knows), or nil: from a sub-zone, cave or
--- town map up to its zone.
-function ZL.PlayerZone(best, parentOf)
+-- The zone you're in, or nil: from a sub-zone, cave or town map up to the
+-- first map the client calls a zone (`isZone(id)`; Flow keeps no list).
+function ZL.PlayerZone(best, parentOf, isZone)
     parentOf = parentOf or function(id)
         local info = C_Map.GetMapInfo(id)
         return info and info.parentMapID
     end
+    isZone = isZone or function(id)
+        local info = C_Map.GetMapInfo(id)
+        return info ~= nil and Enum.UIMapType ~= nil and info.mapType == Enum.UIMapType.Zone
+    end
     local id = best
     for _ = 1, 6 do
         if not id or id == 0 then return nil end
-        if ZL.ZONES[id] then return id end
+        if isZone(id) then return id end
         id = parentOf(id)
     end
     return nil
@@ -349,8 +338,8 @@ end)
 
 if ns.settings and ns.settings.AddCheck then
     ns.settings:AddCheck{ group = "route", label = "Zone info when hovering the world map",
-        tip = "On the continent map, the zone under the cursor shows, in the map's top left corner, its name, level range (coloured against "
-            .. "your level) and the fishing skill its waters need. Hold Shift for the fish its waters give: Flow has no record of them, so it says they're unknown.",
+        tip = "On the continent map, the zone under the cursor shows, in the map's top left corner, its name and its level range (coloured against "
+            .. "your level) when the game gives one; otherwise it says the level is unknown. Flow lists no zone levels or fishing skills of its own.",
         get = ZL.On, set = ZL.Set }
     ns.settings:AddCheck{ group = "route", label = "World map: your zone's info without hovering",
         tip = "With nothing hovered, the card shows the zone you're in, on the continent map "
