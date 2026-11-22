@@ -131,4 +131,17 @@ return {
         cancel()
         t.eq(c.offerRoll(7, LINK), {})
     end,
+    ["API check: a roll frame among GroupLootContainer's children is found"] = function(t)
+        local env = rollEnv()
+        local frame = { rollID = 7 }
+        env.GroupLootFrame1 = nil
+        env.GroupLootContainer = { GetChildren = function() return { rollID = 3 }, frame end }
+        local c = ns.make.client(env)
+        c.onLootRoll(function(_, _, show) show("Upgrade") end)
+        env.fire("START_LOOT_ROLL", 7, 60000)
+        t.eq(#env.made, 1)
+        t.ok(env.made[1].parent == frame)
+        t.eq(#env.printed, 0)
+    end,
+
 }
