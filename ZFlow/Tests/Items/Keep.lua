@@ -123,6 +123,34 @@ tests["keep: something that is no item is refused and nothing is written"] = fun
     t.eq(K.Run(k, "remove"), { K.USAGE }, "remove with no item: the same")
 end
 
+-- Review of fec9e2e, finding 2: more than one item in a line is not guessed at.
+tests["keep: more than one item in one line is refused, and nothing is written"] = function(t)
+    local k, c = start()
+    local lines, changed = K.Run(k, LINK .. " |cffffffff|hitem:2318:0:0:0:0:0:0:0|h[light leather]|h|r")
+    t.eq(changed, false)
+    t.eq(lines, { K.ONE_AT_A_TIME })
+    t.eq(next(never(c)), nil, "neither was stored")
+    t.eq(K.Run(k, "remove item:97 item:2318"), { K.ONE_AT_A_TIME })
+end
+
+-- Finding 3: the list is read the way the sell list reads it (a set or a
+-- list), so a write never loses what was saved in the other shape.
+tests["keep: a list saved as a list is kept whole when one more is added"] = function(t)
+    local k, c = start({ char = { settings = { sell = { never = { 97, "item:2318" } } } } })
+    local lines, changed = K.Run(k, "4444")
+    t.eq(changed, true)
+    t.eq(never(c), { [97] = true, [2318] = true, [4444] = true }, "both old entries are still there, as a set")
+    t.eq(K.Run(k, "")[1], "Never sold (3):")
+    t.eq(lines, { "item 4444 is now on your never-sell list." })
+end
+
+tests["keep: the kept line says what is true: it is on your list"] = function(t)
+    local d = ns.Disposition.Decide({ key = 97, count = 1, quality = 0, sellPrice = 4 },
+        { choices = { never = { [97] = true } } })
+    t.eq(d.reason, "on your never-sell list", "no buyback is claimed: the list is also filled by hand")
+    t.eq(d.basis, "choice")
+end
+
 tests["keep: saved data not loaded is said, and nothing is written"] = function(t)
     local k = start({ char = false })
     local lines, changed = K.Run(k, "97")
@@ -141,7 +169,7 @@ tests["keep: an open sell list shows the change at once"] = function(t)
     c.setMerchantOpen(true)
     t.ok(has(sell.last(), "3 x Broken Fang: 4c each, 12c (the item's own sell price)"), "listed to sell first")
     diag.commands[K.WORD]("97")
-    t.ok(has(sell.last(), "Broken Fang: you bought it back, so it's never sold"), "now listed as kept")
+    t.ok(has(sell.last(), "Broken Fang: on your never-sell list"), "now listed as kept")
     t.eq(sell.shows(), 2, "listed again")
     diag.commands[K.WORD]("remove 97")
     t.ok(has(sell.last(), "3 x Broken Fang: 4c each, 12c (the item's own sell price)"), "and back")
