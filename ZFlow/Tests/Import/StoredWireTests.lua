@@ -63,6 +63,7 @@ return {
     ["stored wire: the import leaves none of the readers' paths behind"] = function(t)
         local result = Import.FromFlow(goodDb(), {})
         t.eq(result.ok, true)
+        t.eq(#FLOW_KEYS, 14, "the list of reader paths changed size")
         for _, key in ipairs(FLOW_KEYS) do
             t.eq(droppedFor(result, key), nil, key .. " was left behind")
         end
@@ -106,6 +107,10 @@ return {
         local layout = result.account.layout
         local frame = S.BuffButtonLayout(layout).frame
         local chart = S.AuctionChart(layout)
+        t.eq(type(frame), "table", "no frame point was read")
+        t.eq(type(chart), "table", "no chart point was read")
+        t.eq(type(layout.buffButton.frame), "table", "no frame point was imported")
+        t.eq(type(layout.auction.chart), "table", "no chart point was imported")
         t.ok(frame ~= layout.buffButton.frame, "the imported frame point itself was returned")
         t.ok(chart ~= layout.auction.chart, "the imported chart point itself was returned")
         frame[3], chart[3] = -1, -1
@@ -220,6 +225,7 @@ return {
         t.eq(report.ok, true)
         t.eq(out, {})
         t.eq(report.taken, {})
+        t.eq(#model:keys(), 11, "the shipped model changed its number of rows")
         for _, key in ipairs(model:keys()) do
             t.ok(not model:explicit(out, key), key .. " counts as chosen")
             t.eq((model:get(out, key)), model:default(key), key)
@@ -474,13 +480,14 @@ return {
     end,
 
     ["gate: the adopt asks the shared gate and keeps none of its own"] = function(t)
+        local result = Import.FromFlow(sellDb(), {})
         local real = Import.VendorGate
         local calls = 0
         Import.VendorGate = function(account, listed)
             calls = calls + 1
             return real(account, listed, nil)
         end
-        local ok, out, report = pcall(S.Adopt, nil, Import.FromFlow(sellDb(), {}), { ["sell.autoRepair"] = true })
+        local ok, out, report = pcall(S.Adopt, nil, result, { ["sell.autoRepair"] = true })
         Import.VendorGate = real
         t.ok(ok, tostring(out))
         t.eq(calls, 1)
@@ -546,6 +553,7 @@ return {
         }))
         local out, report = S.Adopt(nil, Import.FromFlow(sellDb(), {}), { ["sell.autoRepair"] = true }, model)
         t.eq(out, { buffButton = { enabled = true } })
+        t.ok(#report.dropped >= 3, "too little is reported as dropped")
         local seen = {}
         for i, entry in ipairs(report.dropped) do
             t.eq(entry.reason, "no model row", tostring(entry.key))
@@ -553,11 +561,12 @@ return {
             seen[entry.key] = true
             if i > 1 then t.ok(report.dropped[i - 1].key < entry.key, "the list is not sorted") end
         end
-        for _, key in ipairs({ "auction.chartClick", "buffButton.dock", "sell.autoAll", "sell.autoRepair" }) do
+        for _, key in ipairs({ "auction.chartClick", "buffButton.dock", "sell.autoAll" }) do
             t.ok(seen[key], key .. " is not reported")
         end
         t.ok(not seen["buffButton.enabled"], "a landed setting is reported as dropped")
         t.ok(not seen["sell.autoJunk"], "an automation left off is reported as dropped")
+        t.ok(not seen["sell.autoRepair"], "a confirmed automation with no row is reported twice: left off and dropped")
         t.eq(report.vendorLeftOff, { "sell.autoJunk", "sell.autoRepair" })
     end,
 
@@ -565,15 +574,28 @@ return {
         local model = shipped()
         local out, report = S.Adopt(nil, Import.FromFlow(sellDb(), {}), { ["sell.autoRepair"] = true })
         t.eq(type(report.dropped), "table")
-        t.eq((model:get(out, "sell.autoRepair")), true, "the confirmed automation did not land")
-        t.eq(report.vendorConfirmed, { "sell.autoRepair" })
-        for _, key in ipairs(report.taken) do
-            t.ok(model:row(key) ~= nil, tostring(key) .. " was taken and has no row")
-        end
+        local dropped = {}
         for _, entry in ipairs(report.dropped) do
+            dropped[entry.key] = true
             t.ok(model:row(entry.key) == nil, tostring(entry.key) .. " has a row and is reported as dropped")
             t.eq(entry.reason, "no model row")
         end
+        t.ok(#report.taken >= 4, "too little landed to say anything")
+        for _, key in ipairs(report.taken) do
+            t.ok(model:row(key) ~= nil, tostring(key) .. " was taken and has no row")
+            t.ok(model:explicit(out, key), tostring(key) .. " is reported as taken and is not stored")
+            t.ok(not dropped[key], tostring(key) .. " landed and is reported as dropped")
+        end
+        local landed = 0
+        for _, key in ipairs(model:keys()) do
+            if model:explicit(out, key) then
+                landed = landed + 1
+                t.ok(not dropped[key], key .. " is stored and is reported as dropped")
+            end
+        end
+        t.eq(landed, #report.taken, "what is stored is not what is reported as taken")
+        t.eq((model:get(out, "sell.autoRepair")), true, "the confirmed automation did not land")
+        t.eq(report.vendorConfirmed, { "sell.autoRepair" })
     end,
 
     ["gate: a mapped setting is dropped whole, any other table value by value"] = function(t)
@@ -600,5 +622,168 @@ return {
         local _, report = S.Adopt(nil, { ok = false, reason = "no Flow data" })
         t.eq(report.ok, false)
         t.eq(report.dropped, {})
+    end,
+    -- ------------------------------------------------------ gate honesty
+    ["honesty G1: the merge lists as confirmed only an on that landed"] = function(t)
+        local confirmed = { ["sell.autoRepair"] = true, ["sell.autoJunk"] = true }
+        local mine = { settings = { sell = { autoRepair = false } } }
+        local account, _, report = Import.Merge(mine, nil, Import.FromFlow(sellDb(), {}), nil, confirmed)
+        t.eq(account.settings.sell.autoRepair, false, "the player's own off was overwritten")
+        t.eq(account.settings.sell.autoJunk, true)
+        t.eq(report.vendorConfirmed, { "sell.autoJunk" })
+        t.eq(account.imports[#account.imports].vendorConfirmed, { ["sell.autoJunk"] = true })
+
+        local again, _, second = Import.Merge(account, nil, Import.FromFlow(sellDb(), {}), nil, confirmed)
+        t.eq(again.settings.sell.autoJunk, true)
+        t.eq(second.vendorConfirmed, {}, "an on already stored is listed as confirmed again")
+        t.eq(again.imports[#again.imports].vendorConfirmed, {})
+    end,
+
+    ["honesty G2: the merge never lists as left off an automation the player has on"] = function(t)
+        local mine = { settings = { sell = { autoJunk = true } } }
+        local account, _, report = Import.Merge(mine, nil, Import.FromFlow(sellDb(), {}))
+        t.eq(account.settings.sell.autoJunk, true, "the player's own on was lost")
+        t.eq(account.settings.sell.autoRepair, nil)
+        t.eq(report.vendorLeftOff, { "sell.autoRepair" })
+        t.eq(report.vendorAlreadyOn, { "sell.autoJunk" })
+        t.eq(report.vendorConfirmed, {})
+        local reason = {}
+        for _, entry in ipairs(report.skipped) do reason[entry.path] = entry.reason end
+        local own, off = reason["account.settings.sell.autoJunk"], reason["account.settings.sell.autoRepair"]
+        t.ok(type(own) == "string" and not own:find("stays off", 1, true), "an automation that is on is said to stay off")
+        t.ok(type(off) == "string" and off:find("stays off", 1, true) ~= nil, "the one left off is not said to stay off")
+    end,
+
+    ["honesty G2: the adopt never lists as left off an automation the player has on"] = function(t)
+        local mine = { sell = { autoJunk = true } }
+        local out, report = S.Adopt(mine, Import.FromFlow(sellDb(), {}))
+        t.eq(out.sell, { autoAll = false, autoJunk = true })
+        t.eq(report.vendorLeftOff, { "sell.autoRepair" })
+        t.eq(report.vendorAlreadyOn, { "sell.autoJunk" })
+        t.eq(report.vendorConfirmed, {})
+    end,
+
+    ["honesty G3: the character's settings are gated like the account's"] = function(t)
+        local result = Import.FromFlow({}, {})
+        result.char.settings = { sell = { autoJunk = true, autoAll = false } }
+        local _, char, report = Import.Merge(nil, nil, result)
+        t.eq(char.settings.sell, { autoAll = false }, "an unconfirmed on reached the character's settings")
+        t.eq(report.vendorLeftOff, { "sell.autoJunk" })
+        t.eq(report.vendorConfirmed, {})
+        local listed = false
+        for _, entry in ipairs(report.skipped) do
+            if entry.path == "char.settings.sell.autoJunk" then listed = true end
+        end
+        t.ok(listed, "the automation held back is not listed as skipped")
+
+        local account, yes, agreed = Import.Merge(nil, nil, result, nil, { ["sell.autoJunk"] = true })
+        t.eq(yes.settings.sell, { autoAll = false, autoJunk = true })
+        t.eq(agreed.vendorConfirmed, { "sell.autoJunk" })
+        t.eq(agreed.vendorLeftOff, {})
+        t.eq(account.imports[1].vendorConfirmed, { ["sell.autoJunk"] = true })
+        t.eq(result.char.settings, { sell = { autoJunk = true, autoAll = false } }, "the import was changed")
+    end,
+
+    ["honesty G4: any value but an off at a vendor path is gated"] = function(t)
+        local written = { settings = { sell = { autoJunk = "yes", autoAll = 1, autoRepair = {}, autoCleanup = false } } }
+        local account, on, off = Import.VendorGate(written, nil, { ["sell.autoAll"] = true })
+        t.eq(account, { settings = { sell = { autoAll = true, autoCleanup = false } } })
+        t.eq(on, { { key = "sell.autoAll", to = "settings.sell.autoAll" } })
+        t.eq(off, {
+            { key = "sell.autoJunk", to = "settings.sell.autoJunk" },
+            { key = "sell.autoRepair", to = "settings.sell.autoRepair" },
+        })
+        t.eq(written, { settings = { sell = { autoJunk = "yes", autoAll = 1, autoRepair = {}, autoCleanup = false } } })
+
+        local result = Import.FromFlow({}, {})
+        result.account.settings = { sell = { autoJunk = "yes", autoAll = 1 } }
+        local out, report = S.Adopt(nil, result)
+        t.eq(out, {})
+        t.eq(report.vendorLeftOff, { "sell.autoAll", "sell.autoJunk" })
+        t.eq(report.refused, {})
+        local merged, _, mergeReport = Import.Merge(nil, nil, result)
+        t.eq(merged.settings.sell, nil, "a value that is not an off was merged at a vendor path")
+        t.eq(mergeReport.vendorLeftOff, { "sell.autoAll", "sell.autoJunk" })
+    end,
+
+    ["honesty G6: an automation left off is named by its model key, never a Flow key"] = function(t)
+        local result = Import.FromFlow(sellDb(), {})
+        local real = Import.VendorGate
+        Import.VendorGate = function(account, listed)
+            local data, _, off = real(account, listed, nil)
+            for i = 1, #off do off[i] = { key = "flow name " .. i, to = off[i].to } end
+            return data, {}, off
+        end
+        local okAdopt, a1, adopted = pcall(S.Adopt, nil, result)
+        local okMerge, m1, _, merged = pcall(Import.Merge, nil, nil, result)
+        Import.VendorGate = real
+        t.ok(okAdopt, tostring(a1))
+        t.ok(okMerge, tostring(m1))
+        if okAdopt then t.eq(adopted.vendorLeftOff, { "sell.autoJunk", "sell.autoRepair" }) end
+        if okMerge then t.eq(merged.vendorLeftOff, { "sell.autoJunk", "sell.autoRepair" }) end
+    end,
+
+    ["honesty: the merge asks the model before adding a setting where nothing is stored"] = function(t)
+        local model = (ns.Settings.Model.New({
+            { key = "buffButton.enabled", type = "bool", default = false },
+            { key = "auction.chartClick", type = "bool", default = true },
+        }))
+        local result = Import.FromFlow({}, {})
+        result.account.settings = {
+            auction = { chartClick = "sometimes" },
+            buffButton = { enabled = "sometimes", dock = false },
+            stray = { flat = "x" },
+        }
+        local account, _, report = Import.Merge(nil, nil, result, nil, nil, model)
+        t.eq(account.settings, { buffButton = { dock = false }, stray = { flat = "x" } })
+        local skipped, added = {}, {}
+        for _, entry in ipairs(report.skipped) do skipped[entry.path] = entry.reason end
+        for _, at in ipairs(report.added) do added[at] = true end
+        t.ok(skipped["account.settings.buffButton.enabled"] ~= nil, "the refused value is not listed as skipped")
+        t.ok(skipped["account.settings.auction.chartClick"] ~= nil, "the refused value is not listed as skipped")
+        t.eq(added["account.settings.buffButton"], true)
+        t.eq(added["account.settings.stray"], true)
+        t.eq(added["account.settings.auction"], nil, "a section with nothing left in it is reported as added")
+
+        local good = Import.FromFlow({}, {})
+        good.account.settings = { buffButton = { enabled = true } }
+        local fits = Import.Merge(nil, nil, good, nil, nil, model)
+        t.eq(fits.settings, { buffButton = { enabled = true } }, "a value the model accepts was not added")
+    end,
+
+    ["honesty T2: the merge asks the shared gate and keeps none of its own"] = function(t)
+        local result = Import.FromFlow(sellDb(), {})
+        local real = Import.VendorGate
+        local calls = 0
+        Import.VendorGate = function(account, listed)
+            calls = calls + 1
+            return real(account, listed, nil)
+        end
+        local ok, account, _, report = pcall(Import.Merge, nil, nil, result, nil, { ["sell.autoRepair"] = true })
+        Import.VendorGate = real
+        t.ok(ok, tostring(account))
+        t.eq(calls, 2, "the gate is asked once for the account and once for the character")
+        if ok then
+            t.eq(account.settings.sell, { autoAll = false })
+            t.eq(report.vendorConfirmed, {})
+            t.eq(report.vendorLeftOff, { "sell.autoJunk", "sell.autoRepair" })
+        end
+    end,
+
+    ["honesty T2: with no gate loaded the merge lands nothing"] = function(t)
+        local result = Import.FromFlow(sellDb(), {})
+        local mine = { settings = { sell = { autoAll = true } } }
+        local real = Import.VendorGate
+        Import.VendorGate = nil
+        local ok, account, _, report = pcall(Import.Merge, mine, nil, result, nil, { ["sell.autoRepair"] = true })
+        Import.VendorGate = real
+        t.ok(ok, tostring(account))
+        t.eq(type(Import.VendorGate), "function")
+        if ok then
+            t.eq(report.ok, false)
+            t.ok(type(report.reason) == "string" and report.reason:find("nothing was merged", 1, true) ~= nil,
+                "does not say nothing was merged")
+            t.eq(account, { settings = { sell = { autoAll = true } } })
+        end
     end,
 }

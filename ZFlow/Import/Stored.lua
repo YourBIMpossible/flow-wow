@@ -174,26 +174,30 @@ end
 --   Only settings the model has a row for are landed. Every other setting
 --   the import holds is listed in dropped.
 -- report = { ok, reason, taken, kept, refused, dropped,
---            vendorConfirmed, vendorLeftOff }
+--            vendorConfirmed, vendorLeftOff, vendorAlreadyOn }
 --   taken, kept       model keys, in row order
 --   refused           { { key, reason }, ... }: values that did not fit
 --   dropped           { { key, reason = "no model row" }, ... } sorted by
 --                     key: where each setting sits in the settings. A
 --                     setting the import maps is listed once, whole; any
---                     other table is listed value by value.
+--                     other table is listed value by value. A vendor
+--                     automation named in vendorLeftOff or vendorAlreadyOn
+--                     is not listed here as well.
 --   vendorConfirmed   sorted Flow keys: the confirmed automations whose on
 --                     was stored by this call. One the player had already
 --                     chosen is in kept, not here.
---   vendorLeftOff     sorted Flow keys: the automations found on and not
---                     confirmed, and the confirmed ones the model has no
---                     row for. A vendor row Flow has no key for is listed
---                     by its model key.
+--   vendorLeftOff     sorted model keys, never a Flow key: the automations
+--                     found on and not confirmed, and the confirmed ones
+--                     the model has no row for. None of them is on in the
+--                     settings returned.
+--   vendorAlreadyOn   sorted model keys: found on, not confirmed, and on
+--                     all the same because the player had chosen it on.
 -- When there is nothing to land (no model, or an import that did not
 -- succeed) ok is false, reason says why and the settings come back as given.
 function S.Adopt(settings, result, confirmed, model)
     local report = {
         ok = true, taken = {}, kept = {}, refused = {}, dropped = {},
-        vendorConfirmed = {}, vendorLeftOff = {},
+        vendorConfirmed = {}, vendorLeftOff = {}, vendorAlreadyOn = {},
     }
     local function fail(reason)
         report.ok, report.reason = false, reason .. "; nothing was changed"
@@ -220,17 +224,22 @@ function S.Adopt(settings, result, confirmed, model)
         result.vendorToConfirm, confirmed)
     local imported = sub(gated, "settings") or {}
 
+    -- Everything below names an automation by its model key.
+    local function modelKey(entry)
+        local key = type(entry.to) == "string" and entry.to:match("^settings%.(.+)$") or nil
+        return key or entry.key
+    end
     local leftOff = {}
-    for i = 1, #off do leftOff[off[i].key] = true end
+    for i = 1, #off do leftOff[modelKey(off[i])] = true end
     -- agreed[model key] = true is what the model may switch on;
     -- flowKeyOf[model key] names it in the report.
     local agreed, flowKeyOf = {}, {}
     for i = 1, #on do
-        local key = type(on[i].to) == "string" and on[i].to:match("^settings%.(.+)$") or nil
-        if key and model:row(key) then
+        local key = modelKey(on[i])
+        if model:row(key) then
             agreed[key], flowKeyOf[key] = true, on[i].key
         else
-            leftOff[on[i].key] = true
+            leftOff[key] = true
         end
     end
 
@@ -243,9 +252,27 @@ function S.Adopt(settings, result, confirmed, model)
     if type(landed.gated) == "table" then
         for i = 1, #landed.gated do leftOff[landed.gated[i]] = true end
     end
-    for key in pairs(leftOff) do report.vendorLeftOff[#report.vendorLeftOff + 1] = key end
+    -- An automation the player had chosen on is on whatever the import
+    -- did: it is reported apart, never as left off.
+    local function isOn(key)
+        if model:row(key) then return (model:get(out, key)) == true end
+        local at = out
+        for name in key:gmatch("[^.]+") do
+            if type(at) ~= "table" then return false end
+            at = at[name]
+        end
+        return at ~= nil and at ~= false
+    end
+    for key in pairs(leftOff) do
+        if isOn(key) then
+            report.vendorAlreadyOn[#report.vendorAlreadyOn + 1] = key
+        else
+            report.vendorLeftOff[#report.vendorLeftOff + 1] = key
+        end
+    end
     table.sort(report.vendorConfirmed)
     table.sort(report.vendorLeftOff)
+    table.sort(report.vendorAlreadyOn)
 
     -- What the import holds and the model has no row for.
     local mapped = {}
@@ -260,7 +287,7 @@ function S.Adopt(settings, result, confirmed, model)
     local function walk(t, prefix)
         for name, value in pairs(t) do
             local key = prefix and (prefix .. "." .. tostring(name)) or tostring(name)
-            if not model:row(key) then
+            if not model:row(key) and not leftOff[key] then
                 if type(value) == "table" and not mapped[key] then
                     walk(value, key)
                 else
