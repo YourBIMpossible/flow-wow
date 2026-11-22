@@ -3,8 +3,9 @@ local _, ns = ...
 -- Tests for the bank list's advisor prompt (L6-D follow-up, §111): when
 -- there is something to bank, ZFlow/UI/BankList.lua registers one prompt
 -- with the advisor (UI/Advisor.lua, U-A) and takes it away when there is
--- nothing, or when that can't be told. The advisor here is a stand-in with
--- the posted API: UI/Advisor.lua itself is not on this branch.
+-- nothing, or when that can't be told. The advisor is the real one
+-- (Advisor.Declare(k)); the tests read its List() and count the calls that
+-- reach its Add and Remove.
 
 local L, Present = ns.BankList, ns.ItemPresent
 local tests = {}
@@ -34,21 +35,31 @@ local function start(opts)
     end
     local k = ns.Kernel({}, c)
     ns.Diag.Start(k)
-    local prompts, calls = {}, { add = 0, remove = 0 }
+    -- The real advisor (UI/Advisor.lua). `prompts[id]` reads its List() live;
+    -- `calls` counts what reaches its Add and Remove.
+    local calls = { add = 0, remove = 0 }
+    local advisor
+    local prompts = setmetatable({}, { __index = function(_, id)
+        for _, p in ipairs(advisor and advisor.List() or {}) do
+            if p.id == id then return { text = p.text, priority = p.priority } end
+        end
+        return nil
+    end })
     if opts.advisor ~= false then
-        k:Module({ name = "advisor", needs = { "client" }, provides = {
-            Add = function(id, text, priority)
-                calls.add = calls.add + 1
-                prompts[id] = { text = text, priority = priority }
-                return true
-            end,
-            Remove = function(id)
-                calls.remove = calls.remove + 1
-                local was = prompts[id] ~= nil
-                prompts[id] = nil
-                return was
-            end,
-        } })
+        advisor = ns.Advisor.Declare(k)
+        local provided = k.use(ns.Advisor.NAME)
+        local add, remove = provided.Add, provided.Remove
+        provided.Add = function(...)
+            calls.add = calls.add + 1
+            if opts.raise then error("advisor add failed") end
+            if opts.refuse then return false, "refused" end
+            return add(...)
+        end
+        provided.Remove = function(...)
+            calls.remove = calls.remove + 1
+            if opts.raise then error("advisor remove failed") end
+            return remove(...)
+        end
     end
     if opts.setting ~= nil then
         k:Setting({ key = L.SETTING, scope = "char", type = "bool", default = true, label = "Bank list" })
@@ -117,6 +128,28 @@ tests["bank prompt: with no advisor the list still works"] = function(t)
     t.eq((k:ModuleState(L.NAME)), "started")
     c.setBankOpen(true)
     t.eq(api.shows(), 1)
+end
+
+tests["bank prompt: an advisor that refuses leaves the list working and no prompt behind"] = function(t)
+    local k, c, api, prompts, calls = start({ refuse = true })
+    t.eq(calls.add, 1, "Add was reached, and refused")
+    t.eq(prompts[L.PROMPT_ID], nil, "nothing was registered")
+    t.eq((k:ModuleState(L.NAME)), "started")
+    c.setBankOpen(true)
+    t.eq(api.shows(), 1, "the bank list still shows")
+end
+
+tests["bank prompt: an advisor that raises on Add and on Remove costs the module nothing"] = function(t)
+    local k, c, api, _, calls = start({ raise = true })
+    t.eq(calls.add, 1, "Add was reached, and raised")
+    t.eq((k:ModuleState(L.NAME)), "started", "the error did not switch the module off")
+    t.eq(k.problems:count("handler"), 0, "nor count as a handler error")
+    c.setBankOpen(true)
+    t.eq(api.shows(), 1, "the bank list still shows")
+    c.setBagItems({ { item = 858, count = 5 } })
+    c.setBankOpen(false)
+    t.eq(calls.remove, 1, "Remove was reached, and raised")
+    t.eq((k:ModuleState(L.NAME)), "started")
 end
 
 return tests
