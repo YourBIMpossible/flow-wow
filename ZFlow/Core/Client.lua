@@ -393,6 +393,45 @@ function ns.make.client(env)
         return type(env[name]) == "table"
     end
 
+    ---------------------------------------------------------------------
+    -- Diagnostics only (Core/Diag.lua). Not for feature code: a feature
+    -- gets a named read above.
+    ---------------------------------------------------------------------
+
+    -- The value at a dotted client name ("GetMoney", "C_Map.GetMapInfo"),
+    -- or nil.
+    local function lookup(path)
+        local at = env
+        for seg in tostring(path):gmatch("[^%.]+") do
+            if type(at) ~= "table" then return nil end
+            at = at[seg]
+        end
+        return at
+    end
+
+    -- The Lua type of that name: "function", "table", "number", "nil" ...
+    function c.typeOf(path)
+        return type(lookup(path))
+    end
+
+    -- Calls that name under pcall. Returns ok, then what it returned (or
+    -- the error text). ok is false when the name is not a function.
+    function c.raw(path, ...)
+        local fn = lookup(path)
+        if type(fn) ~= "function" then return false, "not a function" end
+        return pcall(fn, ...)
+    end
+
+    -- Registers a slash command. tag is the client's key for it, command
+    -- the text the player types; fn(rest) gets what follows it. Returns
+    -- false when the client has no slash table.
+    function c.slash(tag, command, fn)
+        if type(env.SlashCmdList) ~= "table" then return false end
+        env["SLASH_" .. tag .. "1"] = command
+        env.SlashCmdList[tag] = function(rest) fn(rest or "") end
+        return true
+    end
+
     return c
 end
 

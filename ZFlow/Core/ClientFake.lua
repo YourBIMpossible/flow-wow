@@ -11,6 +11,7 @@
 --   c.setMoney(12345); c.setBags{ { free = 3, total = 16, family = 0 } }
 --   c.setBagItems{ { item = 2318, count = 4 } }; c.setBank{ ... }
 --   c.setBankOpen(true)     -- also fires the bank opened / closed event
+--   ns.make.fakeClient{ env = { GetMoney = function() return 5 end } }; c.slashes["/x"]("rest")
 --   c.setZone(1, 1411); c.setPosition(1411, 0.5, 0.25); c.setLockdown(true)
 -- What a test has not set is unknown (nil), as on a client that won't say.
 local _, ns = ...
@@ -73,6 +74,28 @@ function ns.make.fakeClient(opts)
     function c.combatLockdown()
         if s.lockdownSet then return s.lockdown end
         return s.combat
+    end
+
+    -- Diagnostics: names resolve in opts.env, a table the test hands over.
+    local env = opts.env or {}
+    local function lookup(path)
+        local at = env
+        for seg in tostring(path):gmatch("[^%.]+") do
+            if type(at) ~= "table" then return nil end
+            at = at[seg]
+        end
+        return at
+    end
+    function c.typeOf(path) return type(lookup(path)) end
+    function c.raw(path, ...)
+        local fn = lookup(path)
+        if type(fn) ~= "function" then return false, "not a function" end
+        return pcall(fn, ...)
+    end
+    c.slashes = {}
+    function c.slash(tag, command, fn)
+        c.slashes[command] = function(rest) fn(rest or "") end
+        return true
     end
 
     -- the test's controls

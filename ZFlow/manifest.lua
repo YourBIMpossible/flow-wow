@@ -26,6 +26,7 @@ return {
         "Core/Guard.lua",
         "Core/Module.lua",
         "Core/Kernel.lua",
+        "Core/Diag.lua",
 
         -- Import
         "Import/FromFlow.lua",
@@ -35,15 +36,20 @@ return {
         "Items/Resources.lua",
         "Items/Prices.lua",
         "Items/Disposition.lua",
+        "Items/Plan.lua",
 
         -- Rotation and classes
         "Rotation/Pack.lua",
         "Rotation/Snapshot.lua",
         "Rotation/Choose.lua",
         "Rotation/KeyPlan.lua",
+        "Rotation/Cast.lua",
         "Classes/Druid.lua",
+        "Classes/Paladin.lua",
 
         -- Navigation
         "Nav/ArrowLayout.lua",
+        "Nav/Bearing.lua",
+        "Nav/ArrowView.lua",
     },
 }
