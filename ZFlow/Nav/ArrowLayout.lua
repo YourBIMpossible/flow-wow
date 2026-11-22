@@ -71,6 +71,9 @@ local function corner(point, size, screenW, screenH)
     return r[1] * screenW + point[3] - a[1] * size, r[2] * screenH + point[4] - a[2] * size
 end
 
+-- Left and bottom edge of a box at a point, for the other Nav files.
+N.ArrowCorner = corner
+
 local function knownScreen(w, h)
     return finite(w) and finite(h) and w > 0 and h > 0
 end
