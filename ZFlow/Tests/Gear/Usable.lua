@@ -4,8 +4,8 @@ local _, ns = ...
 -- for Gear/Verdict.lua taking that answer ahead of the class pack's table.
 --
 -- `unmet` is the list of requirement lines the game itself marks as not met
--- on an item's tooltip, in the game's own words. client.gear does not give
--- it yet (a CLIENT NEED); the tests add it to the fake's answer by hand.
+-- on an item's tooltip, in the game's own words (client.gear gives it, F3);
+-- the tests set it on the fake's answer by hand.
 
 local U = ns.GearUsable
 local tests = {}
@@ -126,16 +126,16 @@ end
 tests["verdict G12: the game's answer overrules the class table, both ways"] = function(t)
     local who = { pack = pack(), role = "dps", level = 10 }
     -- The table says plate (4/4) cannot be worn; the game marks nothing.
-    local lines = ns.GearVerdict.Lines(gear({ unmet = {}, classId = 4, subclassId = 4, minLevel = 1 }), who)
+    local lines = ns.GearVerdict.Lines(gear({ unmet = {}, classID = 4, subclassID = 4, minLevel = 1 }), who)
     t.eq(lines[1].text, "Upgrade for your head piece (+4, dps)")
     -- The table says leather (4/2) can be worn; the game marks it.
-    lines = ns.GearVerdict.Lines(gear({ unmet = { "Leather" }, classId = 4, subclassId = 2, minLevel = 1 }), who)
+    lines = ns.GearVerdict.Lines(gear({ unmet = { "Leather" }, classID = 4, subclassID = 2, minLevel = 1 }), who)
     t.eq(lines[1].text, "Can't use: " .. U.REASON.unmet .. ": Leather")
 end
 
 tests["verdict G12: with the game's marks not read, the class table still answers, with its label"] = function(t)
     local who = { pack = pack(), role = "dps", level = 10 }
-    local lines, detail = ns.GearVerdict.Lines(gear({ classId = 4, subclassId = 4, minLevel = 1 }), who)
+    local lines, detail = ns.GearVerdict.Lines(gear({ classID = 4, subclassID = 4, minLevel = 1 }), who)
     t.eq(lines, { { text = "Can't use: your class cannot use this kind of item (first guess)", tone = "bad" } })
     t.eq(detail.use.source, nil, "not the client's answer")
     lines = ns.GearVerdict.Lines(gear(), who)
@@ -150,6 +150,19 @@ tests["usable: no reason names the product, and nothing handed in is changed"] =
         t.ok(type(text) == "string" and text ~= "")
         t.ok(not text:lower():find("flow", 1, true))
     end
+end
+
+tests["usable P-Q: a class-table yes is not a yes until the game confirms it"] = function(t)
+    local yes = { can = true, why = "ok", reason = "you can use it", evidence = "first guess" }
+    local a = U.Best(U.Check(nil), yes)
+    t.eq(a.can, nil, "the game's marks were not read")
+    t.eq(a.why, "unknown")
+    t.eq(a.reason, U.REASON.unconfirmed)
+    t.eq(yes.can, true, "the table's answer is not changed")
+    t.eq(U.Best(nil, yes).can, nil)
+    t.eq(U.Best(U.Check({}), yes).can, true, "the game marks nothing: yes")
+    local no = { can = false, why = "class", reason = "x", evidence = "first guess" }
+    t.ok(U.Best(U.Check(nil), no) == no, "a table no still stands, with its label")
 end
 
 return tests

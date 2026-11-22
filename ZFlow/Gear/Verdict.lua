@@ -9,9 +9,9 @@ local _, ns = ...
 --   lines, detail = GearVerdict.Lines(gear, who)
 --
 --   gear   what client.gear(link) answers: { kind, stats, worn, dualWield }.
---          The item's classId, subclassId and minLevel are read from the
---          same table when they are there; the client does not give them
---          yet, and without them the answer is "No verdict", never a yes.
+--          The item's classID, subclassID and minLevel are read from the
+--          same table (client.gear gives them once the item is loaded);
+--          without them the answer is "No verdict", never a yes.
 --          `unmet`, when it is there, is the list of requirements the game
 --          itself marks as not met on the item (Gear/Usable.lua). It goes
 --          ahead of the class pack's table: the game's yes or no stands.
@@ -59,7 +59,7 @@ function V.Lines(gear, who)
     -- (gear.unmet, Gear/Usable.lua) when that was read; else the class
     -- pack's table, a first guess that says so on the line.
     local packUse = ns.GearCanUse.Check(
-        { classId = gear.classId, subclassId = gear.subclassId, minLevel = gear.minLevel },
+        { classID = gear.classID, subclassID = gear.subclassID, minLevel = gear.minLevel },
         { proficiency = pack.proficiency, level = who.level })
     local use = ns.GearUsable.Best(ns.GearUsable.Check(gear.unmet), packUse)
     local lines = ns.GearTooltip.Lines(result, use, { role = who.role })

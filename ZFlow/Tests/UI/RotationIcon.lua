@@ -331,16 +331,34 @@ tests["rotation icon: hidden in a pet battle or a vehicle where the client can s
     end
 end
 
-tests["rotation icon: with no such read the icon shows; a read that raises is no answer"] = function(t)
+tests["rotation icon: a read that is not known shows the icon; a read that raises is no answer"] = function(t)
     local k, c = start({ enabled = true })
-    t.eq(c.petBattle, nil, "the fake has no pet battle read")
-    t.eq(c.vehicle, nil, "nor a vehicle read")
+    t.eq(c.petBattle(), nil, "the pet battle read starts not known")
+    t.eq(c.vehicle(), nil, "so does the vehicle read")
     suggest(k, "Wrath")
     t.eq(c.icons[1].shown, true)
     k, c = start({ enabled = true, before = function(c) c.vehicle = function() error("no") end end })
     suggest(k, "Wrath")
     t.eq(c.icons[1].shown, true)
     t.eq(k:ModuleState(I.NAME), "started")
+end
+
+tests["rotation icon: it follows the fake's own pet battle and vehicle reads"] = function(t)
+    local k, c = start({ enabled = true })
+    suggest(k, "Wrath")
+    t.eq(c.icons[1].shown, true)
+    c.setPetBattle(true)
+    suggest(k, "Wrath")
+    t.eq(c.icons[1].shown, false, "in a pet battle")
+    c.setPetBattle(false)
+    suggest(k, "Wrath")
+    t.eq(c.icons[1].shown, true, "out of it")
+    c.setVehicle(true)
+    suggest(k, "Wrath")
+    t.eq(c.icons[1].shown, false, "in a vehicle")
+    c.setVehicle(nil)
+    suggest(k, "Wrath")
+    t.eq(c.icons[1].shown, true, "not known shows it")
 end
 
 -- ------------------------------------------------------ the client's reads
