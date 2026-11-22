@@ -541,28 +541,43 @@ function ns.make.client(env)
         return text(ok, token)
     end
 
+    -- Are you stealthed: true, false, or nil when not known (no call, a
+    -- failed call, a secret answer, or anything but true or false: no
+    -- answer is not "not stealthed"). IsStealthed(), a first guess: not
+    -- seen in game on 16001. It names no unit and only reads.
+    function c.stealthed()
+        local ok, on = call(env.IsStealthed)
+        if not ok or on == nil or hidden(on) or type(on) ~= "boolean" then return nil end
+        return on
+    end
+
     -- One spell's cooldown as the client gives it: read?, start, length,
-    -- and the client's own "this is the global cooldown" mark (true,
-    -- false, or nil where it gives none). First guesses, not seen in game
-    -- on 16001: C_Spell.GetSpellCooldown(id) answering a table (startTime,
-    -- duration, isOnGCD) where the client has it, else GetSpellCooldown(id)
-    -- answering start, duration.
+    -- the client's own "this is the global cooldown" mark (true, false, or
+    -- nil where it gives none), and waiting: true when the client marks
+    -- the cooldown as not started yet (it starts when something else ends,
+    -- as Prowl's does), nil otherwise. First guesses, not seen in game on
+    -- 16001: C_Spell.GetSpellCooldown(id) answering a table (startTime,
+    -- duration, isOnGCD, isEnabled) where the client has it, else
+    -- GetSpellCooldown(id) answering start, duration, enabled (1 or 0, or
+    -- true or false).
     local function cooldownTimes(id)
         local group = env.C_Spell
-        local start, length, mark
+        local start, length, mark, enabled
         if type(group) == "table" and type(group.GetSpellCooldown) == "function" then
             local ok, info = call(group.GetSpellCooldown, id)
             if not ok or info == nil or hidden(info) or type(info) ~= "table" then return false end
-            start, length, mark = info.startTime, info.duration, info.isOnGCD
+            start, length, mark, enabled = info.startTime, info.duration, info.isOnGCD, info.isEnabled
             if mark ~= nil and (hidden(mark) or type(mark) ~= "boolean") then mark = nil end
         else
-            local ok, s, d = call(env.GetSpellCooldown, id)
+            local ok, s, d, e = call(env.GetSpellCooldown, id)
             if not ok then return false end
-            start, length = s, d
+            start, length, enabled = s, d, e
         end
+        local waiting = nil
+        if enabled ~= nil and not hidden(enabled) and (enabled == false or enabled == 0) then waiting = true end
         if start == nil or length == nil or hidden(start) or hidden(length) then return false end
         if type(start) ~= "number" or type(length) ~= "number" then return false end
-        return true, start, length, mark
+        return true, start, length, mark, waiting
     end
 
     -- The spell the client keeps the global cooldown on (61304), a first
@@ -574,12 +589,14 @@ function ns.make.client(env)
     -- nil when not known: no such spell, no call, an odd or secret answer.
     -- Where the client does not mark the global cooldown itself, a running
     -- cooldown is compared with the global cooldown's start and length; if
-    -- that cannot be read either, the answer is nil, never "ready".
+    -- that cannot be read either, the answer is nil, never "ready". A
+    -- cooldown the client marks as waiting to start is nil too (CR2): its
+    -- start reads 0, and the spell is not ready.
     -- This only reads. Nothing here casts.
     function c.spellCooldown(id)
         if type(id) ~= "number" then return nil end
-        local ok, start, length, mark = cooldownTimes(id)
-        if not ok then return nil end
+        local ok, start, length, mark, waiting = cooldownTimes(id)
+        if not ok or waiting then return nil end
         if start <= 0 or length <= 0 then return false end
         if mark ~= nil then return not mark end
         local okGlobal, gStart, gLength = cooldownTimes(GLOBAL_COOLDOWN)

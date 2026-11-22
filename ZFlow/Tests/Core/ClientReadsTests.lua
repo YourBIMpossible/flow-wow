@@ -460,7 +460,10 @@ return {
     end,
 
     ["CR2: a secret enabled mark is no mark"] = function(t)
-        local env = tableCooldowns({ [5215] = { startTime = 100, duration = 10, isOnGCD = false, isEnabled = false } })
+        local env = tableCooldowns({
+            [5215] = { startTime = 100, duration = 10, isOnGCD = false, isEnabled = false },
+            [GCD] = { startTime = 0, duration = 0 },
+        })
         local c = ns.make.client(env)
         strictSecret(env, function(v) return v == false end)
         t.eq(c.spellCooldown(5215), true, "isOnGCD and isEnabled both secret: the times decide")
