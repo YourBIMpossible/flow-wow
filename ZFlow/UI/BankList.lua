@@ -54,19 +54,24 @@ local function byKey(raw, want)
     return out
 end
 
--- What to bank, worked out from the bags now: Bank.Pick's result.
-function BankList.Pick(client, store, grants)
-    local stacks = type(client) == "table" and type(client.bagItems) == "function" and client.bagItems() or nil
-    local read = type(client) == "table" and type(client.itemInfo) == "function" and client.itemInfo or nil
+-- The decision context from the player's saved choices: the never-sell list
+-- and the bank rules. Items/Banker.lua decides the bank's items with it too.
+function BankList.Context(store, grants)
     local never = byKey(saved(store, "char", "settings.sell.never"), function(v) return v and true or false end)
     for key in pairs(never) do never[key] = true end
-    local context = {
+    return {
         grants = grants,
         choices = { never = never },
         bankRules = byKey(saved(store, "account", "settings.banker.rules"),
             function(v) return v == "bank" or v == "carry" end),
     }
-    return ns.Bank.Pick(ns.Bank.Entries(stacks, read), context)
+end
+
+-- What to bank, worked out from the bags now: Bank.Pick's result.
+function BankList.Pick(client, store, grants)
+    local stacks = type(client) == "table" and type(client.bagItems) == "function" and client.bagItems() or nil
+    local read = type(client) == "table" and type(client.itemInfo) == "function" and client.itemInfo or nil
+    return ns.Bank.Pick(ns.Bank.Entries(stacks, read), BankList.Context(store, grants))
 end
 
 function BankList.Lines(client, store, grants)
