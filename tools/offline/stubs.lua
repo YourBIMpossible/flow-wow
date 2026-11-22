@@ -125,6 +125,12 @@ local makeFrame
 local CHILD = { CreateTexture = true, CreateFontString = true, CreateAnimationGroup = true,
                 CreateAnimation = true, CreateLine = true, CreateMaskTexture = true }
 
+-- Getters whose number Flow does arithmetic on while it builds its windows
+-- (f:GetFrameLevel() + 2). They give 0: a made-up number, there only so an
+-- ns:OnLoad can finish and leave Flow's own state set up as in the game.
+-- No test can pass on it: in a test, any frame method is a touch (SKIP).
+local NUMBER = { GetFrameLevel = true }
+
 local function method(name)
     return function(self, a, b)
         if S.phase == "test" then needs("CreateFrame:" .. name) end
@@ -138,6 +144,7 @@ local function method(name)
         if name == "UnregisterEvent" then d.events[a] = nil; return end
         if name == "GetName" then return d.name end
         if name == "GetParent" then return d.parent end
+        if NUMBER[name] then return 0 end
         return nil
     end
 end
