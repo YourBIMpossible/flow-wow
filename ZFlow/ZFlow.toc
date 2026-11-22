@@ -103,6 +103,7 @@ Nav\QuestRead.lua
 Nav\Rides.lua
 Nav\TravelSpells.lua
 Nav\TravelIcon.lua
+Nav\Leaving.lua
 UI\ProfCard.lua
 UI\DevPanel.lua
 UI\SettingsSlash.lua
