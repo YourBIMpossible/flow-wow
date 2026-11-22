@@ -10,7 +10,7 @@
 std = "lua51"
 max_line_length = false
 codes = true
-exclude_files = { "dist/**" }   -- release staging copies
+exclude_files = { "dist/**", "tools/fixtures/**" }   -- release staging copies; check-tool fixtures (deliberately bad Lua)
 
 ignore = {
     "143/[A-Z].*",   -- reading fields of WoW API tables (C_Map.Foo, string.bar...)
