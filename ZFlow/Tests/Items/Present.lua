@@ -88,10 +88,10 @@ tests["present: an observed part and an estimated part are never added together"
     t.eq(V.Cost(plan), "To buy: 2s 50c, plus about 1s 20c (estimate)", "two figures")
 end
 
-tests["present: an unknown price reads price unknown - check trainer"] = function(t)
+tests["present: an unknown price reads price unknown—check vendor"] = function(t)
     local v = view({ recipe = "make:kit", count = 3 }, R.Fake({ bags = { hide = 6 }, bank = {}, money = 100000 }))
-    t.eq(rowOf(v, "thread").text, "3 x Thread: buy 3 from a merchant, price unknown - check trainer", "the row")
-    t.eq(v.cost, "To buy: 1 price unknown - check trainer", "cost says so and shows no 0")
+    t.eq(rowOf(v, "thread").text, "3 x Thread: buy 3 from a merchant, price unknown—check vendor", "the row")
+    t.eq(v.cost, "To buy: 1 price unknown—check vendor", "cost says so and shows no 0")
     t.ok(not has(v.cost, "0c"), "no zero")
     t.eq(v.afford, "Can't tell if you have the money: a price is an estimate or unknown", "afford")
 end
@@ -99,7 +99,7 @@ end
 tests["present: an estimate with no recorded source is shown as unknown"] = function(t)
     local book = { vendor = { thread = { value = 120, basis = "estimated" } } }
     local v = view({ recipe = "make:kit", count = 1 }, R.Fake({ bags = { hide = 2 }, bank = {}, money = 0 }), book)
-    t.ok(has(rowOf(v, "thread").text, "price unknown - check trainer"), "unknown")
+    t.ok(has(rowOf(v, "thread").text, "price unknown—check vendor"), "unknown")
     t.ok(not has(rowOf(v, "thread").text, "1s 20c"), "the figure is not shown")
 end
 
