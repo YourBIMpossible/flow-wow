@@ -50,6 +50,20 @@ tests["away: QuestRead keeps the first point seen on another map, and only then"
     t.eq(#there.points, 2)
 end
 
+tests["away: with points on several other maps, the same one every time"] = function(t)
+    local db = {}
+    function db.GetQuest() return { ObjectiveData = { { Type = "monster", Id = 9002 } } } end
+    function db.GetNPC()
+        return { name = "Far Wolf", spawns = { [50] = { { 30, 30 } }, [40] = { { 50, 50 } }, [60] = { { 10, 10 } } } }
+    end
+    local zones = {}
+    function zones.GetUiMapIdByAreaId(area) return ({ [40] = 1412, [50] = 1413, [60] = 1420 })[area] end
+    local c = ns.make.fakeClient()
+    c.questieModule = function(name) return ({ QuestieDB = db, ZoneDB = zones })[name] end
+    local spot = N.QuestiePlaces(c, { wolves() }, 1411)[303].objectives[1]
+    t.eq(spot.away, { map = 1412, x = 0.5, y = 0.5 }, "the lowest map, whatever order the areas come in")
+end
+
 -- ---------------------------------------------------------- 2. QuestSource
 
 local HERE = { map = 1411, x = 0.5, y = 0.5, cont = 1, size = { w = 1000, h = 500 } }
