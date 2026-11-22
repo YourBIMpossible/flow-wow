@@ -17,7 +17,7 @@ local _, ns = ...
 --
 -- N.QuestiePlaces(client, rows, map) -> places or nil
 --   places as Q.Pick takes them, with the points on map only; a spot with
---   none there keeps the first point seen on another map as `away`
+--   none there keeps one point on another map (the lowest map) as `away`
 --   ({ map, x, y }, S44, lead section 173). nil when
 --   Questie is not there or not ready. A quest Questie fails on has no
 --   entry. Objective i of the log is taken to be Questie's ObjectiveData[i].
@@ -105,9 +105,15 @@ local function addSpawns(spot, spawns, zones, map, areaMap)
                         end
                     else
                         spot.other = true
-                        -- S44: the first point seen on another map, kept so
-                        -- the step has a place to point and travel to.
-                        if spot.away == nil then spot.away = { map = m, x = pt[1] / 100, y = pt[2] / 100 } end
+                        -- S44: one point on another map, kept so the step
+                        -- has a place to point and travel to. The areas come
+                        -- in no set order, so the one on the lowest map is
+                        -- kept (its first point): the same one every time.
+                        -- Which is nearest is not known here.
+                        local a = spot.away
+                        if a == nil or (type(m) == "number" and type(a.map) == "number" and m < a.map) then
+                            spot.away = { map = m, x = pt[1] / 100, y = pt[2] / 100 }
+                        end
                     end
                 end
             end

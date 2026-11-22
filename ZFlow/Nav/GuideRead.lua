@@ -112,14 +112,17 @@ local function build(client, position, given, maps)
 end
 
 -- The link the guide takes, for the player's map.
---   client: asked for position() and mapSize(map).
+--   client: asked for position() and mapSize(map), and for mapCorners(map)
+--     when a further map has a size and no offset (S44).
 --   given: optional link of offsets, { [zone] = { x, y } } (as N.Bearing).
 --     Its offsets are kept; any w and h in it are dropped.
 --   maps: optional list of further maps to ask the size of.
 -- -> { [map] = { x, y, w, h } }. A map the client gives no size for gets no
 --    w and h; with no `given` entry it is left out altogether. With no
---    `given`, the player's map sits at offset 0, 0; any further map gets
---    w and h only, so it cannot be related to the player's map. With a
+--    `given`, the player's map sits at offset 0, 0; a further map on the
+--    same continent is placed beside it when the client gives both maps'
+--    corners (placeByWorld), else it gets w and h only, so it cannot be
+--    related to the player's map. With a
 --    `given` that does not name the player's map, that map too gets w and h
 --    only. The answer is for the map the player stood on when it was made:
 --    handed back in after the player has moved, it names that old map.
@@ -134,7 +137,8 @@ end
 
 -- The arrow view's state, read from the client.
 --   client: asked for position(), zone(), facing() and mapSize(map), each
---     once per map, and for nothing else.
+--     once per map, and for mapCorners(map) only when a step is on a map
+--     other than the player's (S44); for nothing else.
 --   steps = { quest, prof, separate, view, link }: as N.Guide's input; link
 --     is optional and carries only offsets between zones (see N.GuideLink).
 -- -> what N.Guide gives.
