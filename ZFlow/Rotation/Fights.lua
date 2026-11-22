@@ -1,0 +1,274 @@
+-- Fights: turns combat-log events into fight records (G29). Pure: no client
+-- read, no frame, nothing saved. The caller hands over each event's values
+-- and says when combat starts and ends.
+--
+-- A fight record:
+--   open       true while the fight is going
+--   started    when it started, in the caller's seconds (nil: not known)
+--   ended      when it ended (nil while open, or not known)
+--   dealt      damage you or your pet did
+--   taken      damage you took
+--   healed     healing you did
+--   received   healing you got (a heal on yourself is in both)
+-- Each of the four is { total, hits, unread, over, spells }:
+--   total, hits  the amounts that were numbers, and how many there were
+--   unread       events whose amount was not a number. They are not hits
+--                and add nothing: an amount that could not be read is not 0.
+--   over         overhealing, where the event gave it (healing only)
+--   spells       { [name] = { total, hits } }
+--
+-- Only an event whose source is you or your pet, or whose target is you,
+-- is counted, and "you" is the id given to setMe, never a name. What other
+-- players do to other things is not read at all.
+--
+-- The places of the values in an event are a FIRST GUESS for this client
+-- (the layout CombatLogGetCurrentEventInfo has had since the 8.0 client):
+--   1 time, 2 subevent, 4 source id, 5 source name, 8 target id, 9 target
+--   name; then for SWING_DAMAGE 12 amount; for ENVIRONMENTAL_DAMAGE 12 what
+--   it was, 13 amount; for every other ..._DAMAGE and ..._HEAL 12 spell id,
+--   13 spell name, 15 amount, and for a heal 16 overhealing.
+-- If the client's layout differs, amounts stop being numbers and show up as
+-- "not read"; nothing is made up to fill them.
+--
+--   Fights.New(keep) -> rec        keep: how many fights are kept (KEEP)
+--   rec:setMe(player, pet)         your id and your pet's; nil: not known
+--   rec:knowsMe() -> bool
+--   rec:enter(at)                  combat started; no second fight is
+--                                  opened while one is open
+--   rec:leave(at)                  combat ended
+--   rec:event(at, ...) -> bool     one event's values; true when counted
+--   rec:outside() -> n             events about you that came while no
+--                                  fight was open (they are in no fight)
+--   rec:list() -> fights           newest first, as fresh copies
+--   Fights.Lines(fights, now, n) -> lines
+--     the text for the list, or for fight n with its spells
+local _, ns = ...
+
+local Fights = {}
+ns.Fights = Fights
+
+Fights.KEEP = 10
+Fights.MELEE = "melee"
+Fights.PET = "pet: "
+Fights.UNKNOWN = "unknown"
+Fights.NONE = "no fights recorded yet this session."
+
+local SIDES = { "dealt", "taken", "healed", "received" }
+
+local function bucket()
+    return { total = 0, hits = 0, unread = 0, over = 0, spells = {} }
+end
+
+local function add(b, name, amount, over)
+    if type(amount) ~= "number" or amount ~= amount then
+        b.unread = b.unread + 1
+        return
+    end
+    b.total = b.total + amount
+    b.hits = b.hits + 1
+    local s = b.spells[name]
+    if not s then
+        s = { total = 0, hits = 0 }
+        b.spells[name] = s
+    end
+    s.total = s.total + amount
+    s.hits = s.hits + 1
+    if type(over) == "number" and over == over and over > 0 then b.over = b.over + over end
+end
+
+local function spellName(id, name)
+    if type(name) == "string" and name ~= "" then return name end
+    if type(id) == "number" then return "spell " .. id end
+    return Fights.UNKNOWN
+end
+
+-- What one event is: "damage" or "heal", the spell's name, the amount and
+-- the overhealing. nil for anything else.
+local function parse(sub, a12, a13, a15, a16)
+    if type(sub) ~= "string" then return nil end
+    if sub == "SWING_DAMAGE" then return "damage", Fights.MELEE, a12 end
+    if sub == "ENVIRONMENTAL_DAMAGE" then
+        return "damage", (type(a12) == "string" and a12 ~= "") and a12:lower() or Fights.UNKNOWN, a13
+    end
+    if sub:sub(-7) == "_DAMAGE" then return "damage", spellName(a12, a13), a15 end
+    if sub:sub(-5) == "_HEAL" then return "heal", spellName(a12, a13), a15, a16 end
+    return nil
+end
+
+local function newFight(at)
+    local f = { open = true, started = at }
+    for i = 1, #SIDES do f[SIDES[i]] = bucket() end
+    return f
+end
+
+local function copyFight(f)
+    local out = { open = f.open, started = f.started, ended = f.ended }
+    for i = 1, #SIDES do
+        local b = f[SIDES[i]]
+        local spells = {}
+        for name, s in pairs(b.spells) do spells[name] = { total = s.total, hits = s.hits } end
+        out[SIDES[i]] = { total = b.total, hits = b.hits, unread = b.unread, over = b.over, spells = spells }
+    end
+    return out
+end
+
+local function id(value)
+    return (type(value) == "string" and value ~= "") and value or nil
+end
+
+function Fights.New(keep)
+    if type(keep) ~= "number" or keep < 1 then keep = Fights.KEEP end
+    keep = math.floor(keep)
+    local rec = {}
+    local kept = {}      -- ended fights, oldest first
+    local open           -- the fight that is going
+    local me, pet
+    local outside = 0
+
+    -- The open fight counts toward the fixed number.
+    local function trim()
+        local room = open and keep - 1 or keep
+        while #kept > room do table.remove(kept, 1) end
+    end
+
+    function rec:setMe(player, itsPet)
+        me, pet = id(player), id(itsPet)
+    end
+
+    function rec:knowsMe() return me ~= nil end
+
+    function rec:enter(at)
+        if open then return end
+        open = newFight(type(at) == "number" and at or nil)
+        trim()
+    end
+
+    function rec:leave(at)
+        if not open then return end
+        open.open = false
+        open.ended = type(at) == "number" and at or nil
+        kept[#kept + 1] = open
+        open = nil
+        trim()
+    end
+
+    -- The values of one event, in the order the client gives them. `at` is
+    -- kept for the readers built on this one.
+    function rec:event(_, _, sub, _, src, _, _, _, dst, _, _, _, a12, a13, _, a15, a16)
+        local kind, name, amount, over = parse(sub, a12, a13, a15, a16)
+        if not kind then return false end
+        local mine = me ~= nil and src == me
+        local pets = pet ~= nil and src == pet
+        local onMe = me ~= nil and dst == me
+        local counts
+        if kind == "damage" then
+            counts = mine or pets or onMe
+        else
+            counts = mine or onMe
+        end
+        if not counts then return false end
+        if not open then
+            outside = outside + 1
+            return false
+        end
+        if kind == "damage" then
+            if mine then add(open.dealt, name, amount) end
+            if pets then add(open.dealt, Fights.PET .. name, amount) end
+            if onMe then add(open.taken, name, amount) end
+        else
+            if mine then add(open.healed, name, amount, over) end
+            if onMe then add(open.received, name, amount, over) end
+        end
+        return true
+    end
+
+    function rec:outside() return outside end
+
+    function rec:list()
+        local out = {}
+        if open then out[1] = copyFight(open) end
+        for i = #kept, 1, -1 do out[#out + 1] = copyFight(kept[i]) end
+        return out
+    end
+
+    return rec
+end
+
+local function whole(x)
+    return tostring(math.floor(x + 0.5))
+end
+
+local function hits(n)
+    return n .. (n == 1 and " hit" or " hits")
+end
+
+local function length(f, now)
+    local known = type(f.started) == "number"
+    if f.open then
+        if known and type(now) == "number" and now >= f.started then
+            return "still going, " .. whole(now - f.started) .. "s so far"
+        end
+        return "still going, length not known"
+    end
+    if known and type(f.ended) == "number" and f.ended >= f.started then
+        return whole(f.ended - f.started) .. "s"
+    end
+    return "length not known"
+end
+
+local function row(i, f, now)
+    local function damage(label, b)
+        if b.hits == 0 then return label .. " 0" end
+        return label .. " " .. whole(b.total) .. " in " .. hits(b.hits)
+    end
+    local text = i .. ". " .. length(f, now) .. ": " .. damage("dealt", f.dealt) .. ", " .. damage("taken", f.taken)
+        .. ", healing done " .. whole(f.healed.total) .. ", healing received " .. whole(f.received.total)
+    local unread = 0
+    for s = 1, #SIDES do unread = unread + f[SIDES[s]].unread end
+    if unread > 0 then
+        text = text .. ", " .. unread .. (unread == 1 and " amount" or " amounts") .. " not read"
+    end
+    return text
+end
+
+local LABELS = { dealt = "dealt", taken = "taken", healed = "healing done", received = "healing received" }
+
+local function spellLine(side, b)
+    local names = {}
+    for name in pairs(b.spells) do names[#names + 1] = name end
+    if #names == 0 then return nil end
+    table.sort(names, function(x, y)
+        if b.spells[x].total ~= b.spells[y].total then return b.spells[x].total > b.spells[y].total end
+        return x < y
+    end)
+    local parts = {}
+    for i = 1, #names do
+        local s = b.spells[names[i]]
+        parts[i] = names[i] .. " " .. whole(s.total) .. " (" .. hits(s.hits) .. ")"
+    end
+    local text = LABELS[side] .. ": " .. table.concat(parts, ", ")
+    if b.over > 0 then text = text .. ", " .. whole(b.over) .. " of it overhealing" end
+    return text
+end
+
+-- The text of the fights. fights is what rec:list() gave; now is the
+-- caller's time, for the length of a fight that is still going; n (optional)
+-- picks one fight and lists its spells.
+function Fights.Lines(fights, now, n)
+    if type(fights) ~= "table" or #fights == 0 then return { Fights.NONE } end
+    if n ~= nil then
+        local f = fights[n]
+        if not f then
+            return { "there is no fight " .. tostring(n) .. "; " .. #fights
+                .. (#fights == 1 and " is" or " are") .. " kept." }
+        end
+        local lines = { row(n, f, now) }
+        for i = 1, #SIDES do
+            lines[#lines + 1] = spellLine(SIDES[i], f[SIDES[i]])
+        end
+        return lines
+    end
+    local lines = { "fights (" .. #fights .. " kept, newest first):" }
+    for i = 1, #fights do lines[#lines + 1] = row(i, fights[i], now) end
+    return lines
+end

@@ -227,7 +227,7 @@ return {
         for i = 1, 5 do small:enter(i) small:leave(i + 0.5) end
         t.eq(#small:list(), 2)
         small:enter(99)
-        t.eq(#small:list(), 2, "an open fight is kept on top of the fixed number")
+        t.eq(#small:list(), 2, "the open fight does not count toward the fixed number")
     end,
 
     ["fights: the list is a copy: changing it changes no record"] = function(t)
