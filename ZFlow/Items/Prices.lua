@@ -123,6 +123,10 @@ end
 -- "1g 3c"); "0c" for nothing, and "under 1c" for anything more than
 -- nothing that is less than one copper (the price of one out of a stack):
 -- never "0c" for a price that is not zero. nil when `copper` is not a count.
+-- This is the one money text of the Items surfaces (A5): the price texts
+-- here, the sell list, the plan and the price lookup all call it, so a
+-- change to how money reads is made once. Each part is written as plain
+-- digits, however large the sum: never "2e+14g".
 function Prices.Coin(copper)
     if not isCount(copper) then return nil end
     if copper > 0 and copper < 1 then return "under 1c" end
@@ -131,9 +135,9 @@ function Prices.Coin(copper)
     local s = math.floor((copper % 10000) / 100)
     local c = copper % 100
     local parts = {}
-    if g > 0 then parts[#parts + 1] = g .. "g" end
-    if s > 0 then parts[#parts + 1] = s .. "s" end
-    if c > 0 or #parts == 0 then parts[#parts + 1] = c .. "c" end
+    if g > 0 then parts[#parts + 1] = string.format("%.0f", g) .. "g" end
+    if s > 0 then parts[#parts + 1] = string.format("%.0f", s) .. "s" end
+    if c > 0 or #parts == 0 then parts[#parts + 1] = string.format("%.0f", c) .. "c" end
     return table.concat(parts, " ")
 end
 

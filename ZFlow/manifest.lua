@@ -27,6 +27,10 @@ return {
         "Core/Module.lua",
         "Core/Kernel.lua",
         "Core/Diag.lua",
+        "UI/Perf.lua",
+        "UI/CopyBox.lua",
+        "UI/Advisor.lua",
+        "UI/Setup.lua",
 
         -- Import
         "Import/FromFlow.lua",
@@ -42,11 +46,15 @@ return {
         "Items/PriceObserve.lua",
         "Items/PriceWatch.lua",
         "Items/Disposition.lua",
+        "Items/Bank.lua",
+        "Items/LootNote.lua",
         "Items/Plan.lua",
         "Items/Present.lua",
         "Items/CraftHint.lua",
         "Items/Sell.lua",
+        "Items/Repair.lua",
         "Items/SellView.lua",
+        "Items/PriceLookup.lua",
 
         -- Gear
         "Gear/Score.lua",
@@ -62,6 +70,7 @@ return {
         "Rotation/KeyPlan.lua",
         "Rotation/Cast.lua",
         "Rotation/Reader.lua",
+        "UI/SpellCard.lua",
         "Rotation/Driver.lua",
         "Classes/Druid.lua",
         "Classes/Paladin.lua",
@@ -81,12 +90,15 @@ return {
         "Nav/Waypoint.lua",
         "Nav/ProfStep.lua",
         "Nav/ProfSeen.lua",
+        "UI/ProfCard.lua",
 
         -- On screen (after Nav: the panel uses its saved-point rules)
         "UI/DevPanel.lua",
         "UI/SettingsSlash.lua",
         "UI/ArrowMenu.lua",
         "UI/SellList.lua",
+        "UI/BankList.lua",
+        "Items/Keep.lua",
     "UI/Arrow.lua",
     "UI/RotationIcon.lua",
     },

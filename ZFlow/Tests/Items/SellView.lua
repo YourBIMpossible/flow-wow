@@ -115,7 +115,7 @@ tests["sell view: the player's never-sell list is shown as kept"] = function(t)
     local kept = V.Kept(bag, { choices = { never = { [97] = true } } })
     local fang = find(kept.rows, 97)
     t.ok(fang ~= nil, "a never-sell item is listed as kept")
-    t.eq(fang.reason, "you bought it back, so it's never sold", "with the choice as the reason")
+    t.eq(fang.reason, "on your never-sell list", "with the choice as the reason")
     t.eq(fang.basis, "choice", "it rests on the player's choice")
 end
 
@@ -169,8 +169,10 @@ tests["sell words: an unknown price says so and shows no figure"] = function(t)
     local list = { ok = true, rows = rows, total = { known = 0, estimated = 0, unknown = 1 } }
     local lines = Present.SellLines(list, { ok = true, rows = {} })
     t.ok(has(lines, "2 x Grey Mystery: " .. Present.VENDOR_PRICE_UNKNOWN), "the row")
-    t.eq(Present.VENDOR_PRICE_UNKNOWN, "price unknown - check vendor", "the F-085 words")
-    t.ok(has(lines, "Would sell for: 1 price unknown - check vendor"), "counted, not priced")
+    t.eq(Present.VENDOR_PRICE_UNKNOWN, "price unknown—check vendor", "the F-085 words, with the em dash (L6-H)")
+    t.ok(has(lines, "Would sell for: 1 price unknown—check vendor"), "counted, not priced")
+    local two = { ok = true, rows = {}, total = { known = 0, estimated = 0, unknown = 2 } }
+    t.eq(Present.SellTotal(two), "Would sell for: 2 prices unknown—check vendor", "the plural keeps the same words")
     t.ok(not contains(lines, "0c"), "never a 0 for a price nobody saw")
 end
 
