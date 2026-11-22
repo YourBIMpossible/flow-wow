@@ -98,17 +98,64 @@ return {
     ["Snapshot without a reader is the empty snapshot"] = function(t)
         t.eq(ns.Snapshot(nil), ns.SnapshotOf({}), "no reader")
         t.eq(ns.Snapshot("reader"), ns.SnapshotOf({}), "not a function")
+        -- The empty snapshot spelled out here, field by field, from the kinds.
+        local empty = { flag = false, map = {}, spells = {} }   -- value and number: nil
+        for _, reader in ipairs({ false, "reader" }) do
+            local s = ns.Snapshot(reader or nil)
+            local label = reader and "not a function" or "no reader"
+            t.eq(type(s), "table", label .. ": a table")
+            local names = {}
+            for _, f in ipairs(ns.Rotation.SNAPSHOT_FIELDS) do
+                names[f[1]] = true
+                t.eq(s[f[1]], empty[f[2]], label .. ": " .. f[1])
+            end
+            for key in pairs(s) do
+                t.ok(names[key] == true, label .. ": no field outside the list (" .. tostring(key) .. ")")
+            end
+        end
     end,
 
     ["the same fields give the same snapshot"] = function(t)
         local fields = { inCombat = true, combo = 2, spells = { Claw = { known = true, usable = true } } }
         t.eq(ns.SnapshotOf(fields), ns.SnapshotOf(fields), "same answer")
         t.eq(fields, { inCombat = true, combo = 2, spells = { Claw = { known = true, usable = true } } }, "fields not changed")
+        -- Two tables built apart with the same fields: equal, and nothing shared.
+        local twin = { inCombat = true, combo = 2, spells = { Claw = { known = true, usable = true } } }
+        local a, b = ns.SnapshotOf(fields), ns.SnapshotOf(twin)
+        t.eq(a, b, "equal fields in two tables give equal snapshots")
+        t.ok(a ~= b and a.spells ~= b.spells, "each call builds its own tables")
+        t.ok(a.spells ~= fields.spells and a.spells.Claw ~= fields.spells.Claw, "none of them the caller's")
+        -- Nothing is kept between calls: writing to one answer reaches no other.
+        a.spells.Claw.known = false
+        a.inCombat = false
+        t.eq(fields, twin, "the fields are untouched by a write to the snapshot")
+        t.eq(ns.SnapshotOf(fields), b, "and the next snapshot is the same as before")
     end,
 
     ["the chooser takes a built snapshot"] = function(t)
         local suggestion, trace = ns.Choose(ns.SnapshotOf({}), ns.Packs.DRUID, {}, nil)
         t.eq(suggestion, nil, "nothing to suggest from an empty snapshot")
         t.ok(type(trace) == "table" and #trace > 0, "a trace comes back")
+        -- Taken, not refused: every step looked at it. A refused input gives
+        -- one "input" row instead.
+        local steps = ns.Rotation.STEPS
+        t.eq(#trace, #steps, "one trace row for every step")
+        for i, name in ipairs(steps) do
+            local row = trace[i] or {}
+            t.eq(row.step, name, "row " .. i .. " is the " .. name .. " step")
+            t.eq(row.result, "skip", name .. " had nothing to pick")
+        end
+        local none, refused = ns.Choose(nil, ns.Packs.DRUID, {}, nil)
+        t.eq(none, nil, "no snapshot: nothing")
+        t.eq(refused, { { step = "input", result = "skip", note = "no snapshot or no pack" } },
+            "and that is the refusal the empty snapshot did not get")
+        -- A built snapshot with something to do gives a suggestion.
+        local built = ns.SnapshotOf({ role = "tank", hostile = true, attacking = true,
+            spells = { ["Bear Form"] = { known = true } } })
+        local pick, why = ns.Choose(built, ns.Packs.DRUID, {}, nil)
+        t.ok(type(pick) == "table", "a tank with an enemy targeted is given something")
+        t.eq(pick and pick.spell, "Bear Form", "Bear Form")
+        t.eq(why[#why].result, "pick", "the trace ends in the pick")
+        t.ok(why[#why].step ~= "input", "from a step, not the input check")
     end,
 }

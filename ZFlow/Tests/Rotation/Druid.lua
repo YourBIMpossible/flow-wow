@@ -81,6 +81,12 @@ return {
 
     ["cat form: not in the default rest state"] = function(t)
         t.eq(advice("dps", nil, "Feral", nil, { hostile = false, resting = true }), nil, "resting in town")
+        -- Resting decides on its own: the same enemy targeted, resting or not.
+        t.eq(advice("dps", nil, "Feral", nil, { hostile = true, resting = true }), nil, "an enemy targeted while resting: still nothing")
+        t.eq(advice("dps", nil, "Feral", nil, { hostile = true, resting = false }), "Cat Form", "the same enemy, not resting: Cat Form")
+        t.eq(advice("dps", nil, "Feral", nil, { hostile = false, resting = false }), nil, "no enemy and not resting: nothing either")
+        t.eq(advice("dps", nil, "Feral", nil, { hostile = false, inCombat = true, resting = true }), "Cat Form",
+            "in a fight while resting: Cat Form")
     end,
 
     ["bear form: a tank gets dire bear form when known"] = function(t)
@@ -99,6 +105,12 @@ return {
     ["cat form: never for a tank"] = function(t)
         t.eq(advice("tank", nil, "Feral", { "Cat Form" }), nil, "a tank knowing only Cat Form")
         t.ok(advice("tank", nil, nil) ~= "Cat Form", "a tank knowing all forms")
+        t.eq(advice("tank", nil, "Feral", { "Cat Form" }, { inCombat = true }), nil, "nor in a fight already under way")
+        t.eq(advice("tank", nil, "Feral", { "Cat Form" }, { fightType = "aoe" }), nil, "nor against several")
+        -- The same call with the role changed does give Cat Form: the role decides.
+        t.eq(advice("dps", nil, "Feral", { "Cat Form" }), "Cat Form", "a dps knowing only Cat Form gets it")
+        t.eq(ns.DruidWantsCat("tank", true, nil, "Feral"), false, "the cat rule says no to a tank in a fight")
+        t.eq(ns.DruidWantsCat("dps", true, nil, "Feral"), true, "and yes to a dps in the same fight")
     end,
 
     ["cat form: a dps who knows only bear form gets nothing"] = function(t)

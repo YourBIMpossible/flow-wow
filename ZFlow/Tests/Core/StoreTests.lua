@@ -138,8 +138,14 @@ return {
             db.newName = db.newName * 10
             return db
         end
+        -- The character scope is already at 3: its steps must not be called.
+        local charRan = {}
+        k.store.steps.char[1] = function(db) charRan[#charRan + 1] = 1; db.state = "step 1 ran"; return db end
+        k.store.steps.char[2] = function(db) charRan[#charRan + 1] = 2; db.state = "step 2 ran"; return db end
         t.eq(k.store:open(), true)
         t.eq(order, { 1, 2 })
+        t.eq(charRan, {}, "no step was called for the scope already at the target")
+        t.eq(c.saved("ZFlowCharDB").schema, 3, "and it stays at the target")
         local db = c.saved("ZFlowDB")
         t.eq(db.schema, 3)
         t.eq(db.newName, 50)

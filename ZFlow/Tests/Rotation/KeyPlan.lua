@@ -44,6 +44,13 @@ return {
         local plan = ns.KeyPlan(pack(), { forms = { { name = "Cat", index = 2 } } })
         t.eq(plan.condition, "[form:2,stealth] 9; [form:2] 2; 0", "condition")
         t.eq(ns.Rotation.STEALTH_STATE, ns.Rotation.FORM_STATES + 1, "one past the form states")
+        t.eq(ns.Rotation.STEALTH_STATE, 9, "the stealth state is 9, the number in the condition")
+        for state = 0, ns.Rotation.FORM_STATES do
+            t.ok(state ~= ns.Rotation.STEALTH_STATE, "form state " .. state .. " is not the stealth state")
+        end
+        local first = string.find(plan.condition, "[form:2,stealth]", 1, true)
+        local second = string.find(plan.condition, "[form:2]", 1, true)
+        t.ok(first ~= nil and second ~= nil and first < second, "the stealth clause is written before the plain form clause")
     end,
 
     ["a form the pack has no row for keeps its state and gets no row"] = function(t)

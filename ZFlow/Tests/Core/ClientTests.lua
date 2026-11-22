@@ -4,15 +4,20 @@ local _, ns = ...
 
 -- A stand-in for the client's globals with one kind of frame.
 local function gameEnv()
-    local env = { frames = {}, clock = 12.5, printed = {} }
+    -- registerCalls / unregisterCalls: how often each event name was asked for.
+    local env = { frames = {}, clock = 12.5, printed = {}, registerCalls = {}, unregisterCalls = {} }
     function env.CreateFrame(kind)
         local f = { kind = kind, scripts = {}, events = {} }
         function f:SetScript(name, fn) self.scripts[name] = fn end
         function f:RegisterEvent(event)
+            env.registerCalls[event] = (env.registerCalls[event] or 0) + 1
             if event == "NO_SUCH_EVENT" then error("unknown event") end
             self.events[event] = true
         end
-        function f:UnregisterEvent(event) self.events[event] = nil end
+        function f:UnregisterEvent(event)
+            env.unregisterCalls[event] = (env.unregisterCalls[event] or 0) + 1
+            self.events[event] = nil
+        end
         env.frames[#env.frames + 1] = f
         return f
     end
@@ -49,13 +54,18 @@ return {
         t.eq(c.clockMs(), 0)
         t.eq(c.addonLoaded("Anything"), false)
         t.eq(c.inCombat(), false)
-        c.print("hello")
+        t.ok((pcall(c.print, "hello")), "print does not raise with no print to call")
         local ran = false
-        local cancel = c.listen("PLAYER_LOGIN", function() ran = true end)
-        local cancelFrame = c.onFrame(function() ran = true end)
-        cancel()
-        cancelFrame()
-        t.eq(ran, false)
+        local ok, cancel = pcall(c.listen, "PLAYER_LOGIN", function() ran = true end)
+        t.ok(ok, "listen does not raise with no frame to make")
+        t.eq(type(cancel), "function", "and still hands back a cancel")
+        local okFrame, cancelFrame = pcall(c.onFrame, function() ran = true end)
+        t.ok(okFrame, "onFrame does not raise either")
+        t.eq(type(cancelFrame), "function", "and hands back a cancel")
+        t.ok((pcall(cancel)), "cancelling the listener does not raise")
+        t.ok((pcall(cancelFrame)), "cancelling the frame tick does not raise")
+        t.ok((pcall(cancel)) and (pcall(cancelFrame)), "nor does cancelling twice")
+        t.eq(ran, false, "nothing ran: there is no client to fire anything")
     end,
 
     ["client: time, the fine clock and print"] = function(t)
@@ -79,13 +89,18 @@ return {
         t.eq(#env.frames, 1)
         local f = env.frames[1]
         t.eq(f.events, { BAG_UPDATE = true })
+        t.eq(env.registerCalls, { BAG_UPDATE = 1 }, "two listeners, the client asked once")
         f.scripts.OnEvent(f, "BAG_UPDATE", 3)
         t.eq(got, { { "a", 3 }, { "b", 3 } })
         stopA()
         t.eq(f.events, { BAG_UPDATE = true }, "still one listener")
+        t.eq(env.unregisterCalls, {}, "not unregistered while one listener is left")
         stopB()
         t.eq(f.events, {}, "unregistered with the last listener")
+        t.eq(env.unregisterCalls, { BAG_UPDATE = 1 }, "unregistered once")
         stopB()
+        t.eq(env.unregisterCalls, { BAG_UPDATE = 1 }, "a second cancel does not unregister again")
+        t.eq(env.registerCalls, { BAG_UPDATE = 1 }, "and nothing registered it again")
         f.scripts.OnEvent(f, "BAG_UPDATE", 4)
         t.eq(#got, 2, "nothing runs after cancel")
     end,
@@ -93,10 +108,19 @@ return {
     ["client: an event name the client refuses does not error"] = function(t)
         local env = gameEnv()
         local c = ns.make.client(env)
-        local cancel = c.listen("NO_SUCH_EVENT", function() end)
+        local ok, cancel = pcall(c.listen, "NO_SUCH_EVENT", function() end)
+        t.ok(ok, "listen does not raise")
+        t.eq(type(cancel), "function", "and hands back a cancel")
+        t.eq(env.registerCalls.NO_SUCH_EVENT, 1, "the client was asked, and refused")
         t.eq(env.frames[1].events, {})
-        cancel()
-        t.ok(true, "listen and cancel both returned")
+        t.ok((pcall(cancel)), "cancel does not raise")
+        -- The refusal broke nothing: a name the client does have still works.
+        local got = 0
+        local stop = c.listen("BAG_UPDATE", function() got = got + 1 end)
+        t.eq(env.frames[1].events, { BAG_UPDATE = true }, "a good event registers afterwards")
+        env.frames[1].scripts.OnEvent(env.frames[1], "BAG_UPDATE")
+        t.eq(got, 1, "and reaches its listener")
+        stop()
     end,
 
     ["client: the frame tick runs only while something is subscribed"] = function(t)

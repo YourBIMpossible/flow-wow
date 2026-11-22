@@ -251,7 +251,20 @@ return {
 
     ["O7 separated profession arrow wears the quest arrow's colour meanings"] = function(t)
         local L = N.ArrowLayout(state(separated()))
-        t.eq(L.prof.tint, "quest", "tint"); t.eq(L.prof.pinTint, nil, "map and path styling is not changed by the layout")
+        t.eq(L.prof.tint, "quest", "tint"); t.eq(L.prof.pinTint, nil, "the layout has no pinTint field")
+        -- Neither entry has a field for map pins or paths, stacked or
+        -- separated: the layout says nothing about them.
+        for name, layout in pairs({ separated = L, stacked = N.ArrowLayout(state(nil)) }) do
+            for _, key in ipairs({ "quest", "prof" }) do
+                t.eq(type(layout[key]), "table", name .. ": an entry for " .. key)
+                for field in pairs(layout[key]) do
+                    local lower = string.lower(tostring(field))
+                    t.ok(string.find(lower, "pin", 1, true) == nil and string.find(lower, "path", 1, true) == nil
+                        and string.find(lower, "map", 1, true) == nil,
+                        name .. ": " .. key .. "." .. tostring(field) .. " is not map or path styling")
+                end
+            end
+        end
         local own = { 0.9, 0.1, 0.9 }
         local P = N.ARROW_PALETTE.standard
         local r, g, b, a = N.ArrowPaint(L.prof, "zone", 40, nil, own)
@@ -295,6 +308,18 @@ return {
         t.eq(a.points.prof[1], "TOPRIGHT", "saved anchor"); t.eq(a.points.prof[3], -80, "saved x")
         t.eq(a.points.prof[4], -300, "saved y"); t.eq(a.points.quest[1], "CENTER", "quest anchor")
         t.eq(type(a.mode), "string", "plain values only")
+        local function plain(v, path)
+            local kind = type(v)
+            if kind == "table" then
+                for key, value in pairs(v) do
+                    t.ok(type(key) == "string" or type(key) == "number", path .. ": a plain key")
+                    plain(value, path .. "." .. tostring(key))
+                end
+            else
+                t.ok(kind == "string" or kind == "number" or kind == "boolean", path .. " is a plain value, not a " .. kind)
+            end
+        end
+        plain(db.layout, "layout")
         -- A second pass through read and write changes nothing.
         local again = N.ArrowApply(db.layout, {}, CTX)
         sameLayout(t, N.ArrowLayout(state(again)), before, "idempotent")
@@ -309,6 +334,8 @@ return {
         local L = N.ArrowLayout(nil)
         t.eq(L.quest.shown, false, "no state: nothing shown"); t.eq(L.stacked, true, "no state: stacked")
         t.ok(L.quest.position ~= nil, "no state: still a position")
+        t.eq(L.quest.position, { "TOP", "TOP", 0, -120 }, "no state: the default place")
+        t.eq(L.quest.position, N.ARROW_DEFAULT_POINT, "which is the default point of the module")
         local s = N.ArrowSaved(nil)
         t.eq(s.mode, "stacked", "default mode"); t.eq(next(s.points), nil, "no points")
         t.eq(N.ArrowApply(nil, nil, nil).arrows, nil, "apply with nothing at all")

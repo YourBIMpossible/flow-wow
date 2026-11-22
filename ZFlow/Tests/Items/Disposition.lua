@@ -165,9 +165,26 @@ tests["disposition: rules run in order, whatever the list's order"] = function(t
 end
 
 tests["disposition: deciding changes neither the item nor the context"] = function(t)
+    local function deepCopy(v)
+        if type(v) ~= "table" then return v end
+        local out = {}
+        for k, x in pairs(v) do out[k] = deepCopy(x) end
+        return out
+    end
     local item = leather(12)
     local c = { choices = { keep = {} }, questItems = { [2318] = { quest = "Q", inLog = true } }, level = 10 }
-    D.Decide(item, c)
+    local itemWas, cWas = deepCopy(item), deepCopy(c)
+    local rulesWas, rowsWas = {}, deepCopy(D.RULES)
+    for i, r in ipairs(D.RULES) do rulesWas[i] = r end
+    local verdict = D.Decide(item, c)
+    t.ok(verdict ~= nil, "a decision came back")
+    t.eq(item, itemWas, "the whole item is as it was, nothing added")
+    t.eq(c, cWas, "the whole context is as it was, the quest items it read included")
+    t.eq(#D.RULES, #rulesWas, "the built-in list is no longer or shorter")
+    for i, r in ipairs(rulesWas) do
+        t.ok(D.RULES[i] == r, "rule " .. i .. " is the same row in the same place")
+    end
+    t.eq(D.RULES, rowsWas, "and no rule row was written to")
     t.ok(item.count == 12 and item.key == 2318 and item.rule == nil and item.action == nil, "the item is as it was")
     t.ok(c.level == 10 and c.rules == nil and next(c.choices.keep) == nil, "the context too")
     t.eq(#D.RULES, 9, "and the built-in list has its nine rules")
