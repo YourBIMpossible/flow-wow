@@ -10,8 +10,8 @@ local tests = {}
 -- (2), and uses staves (10) and daggers (15).
 local PROF = { evidence = "first guess", [4] = { [1] = true, [2] = true }, [2] = { [10] = true, [15] = true } }
 
-local function item(classId, subclassId, minLevel)
-    return { classId = classId, subclassId = subclassId, minLevel = minLevel }
+local function item(classID, subclassID, minLevel)
+    return { classID = classID, subclassID = subclassID, minLevel = minLevel }
 end
 
 tests["can use: a kind the class wears, at a level you have reached"] = function(t)
@@ -100,7 +100,7 @@ end
 tests["can use: nothing handed in is changed, and no reason names the product"] = function(t)
     local it, who = item(4, 1, 5), { proficiency = { [4] = { [1] = true } }, level = 9 }
     U.Check(it, who)
-    t.eq(it, { classId = 4, subclassId = 1, minLevel = 5 })
+    t.eq(it, { classID = 4, subclassID = 1, minLevel = 5 })
     t.eq(who, { proficiency = { [4] = { [1] = true } }, level = 9 })
     for _, text in pairs(U.REASON) do
         t.ok(type(text) == "string" and text ~= "")
