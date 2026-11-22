@@ -56,7 +56,16 @@ local function arrow(spec)
     local e, made = env()
     local c = ns.make.client(e)
     local h = c.arrow(spec or SPEC)
-    return h, made[1], made[2]
+    return h, made[1], made[2], made[3]
+end
+
+-- The last frame level a frame was given, or nil when it was given none.
+local function levelOf(o)
+    local all = {}
+    for _, cl in ipairs(o.calls) do
+        if cl.name == "SetFrameLevel" then all[#all + 1] = cl end
+    end
+    return all[#all] and all[#all][1] or nil
 end
 
 -- The holder's textures by what they are, in the order c.arrow makes them.
@@ -117,14 +126,16 @@ end
 
 return {
     ["c.arrow: the art sits on a holder centred on the placed frame"] = function(t)
-        local h, f, holder = arrow()
+        local h, f, holder, top = arrow()
         t.ok(h ~= nil)
         t.eq(f.name, "TestArrow")
         t.eq(holder.parent, f, "the holder is the placed frame's child")
         t.eq(#called(f, "CreateTexture"), 0, "no texture on the placed frame")
         t.ok(#called(holder, "CreateTexture") > 0, "the textures are the holder's")
         t.eq(#called(holder, "CreateFontString"), 0, "no text on the scaled holder")
-        t.eq(#called(f, "CreateFontString"), 1, "the text is the placed frame's, unscaled (AF3)")
+        t.eq(#called(f, "CreateFontString"), 0, "nor on the placed frame, which is under the art (ACB1)")
+        t.eq(#called(top, "CreateFontString"), 1, "the text is the text frame's, unscaled (AF3)")
+        t.eq(top.parent, f, "and the text frame is the placed frame's child, not the holder's")
         local at = called(holder, "SetPoint")[1]
         t.eq({ at[1], at[2], at[3] }, { "CENTER", f, "CENTER" })
     end,
@@ -282,8 +293,10 @@ return {
     end,
 
     ["c.arrow: the text is placed against the unscaled frame (AF3)"] = function(t)
-        local h, f = arrow()
-        local label = rawget(f, "made")[1]
+        local h, f, _, top = arrow()
+        local label = top and (rawget(top, "made") or {})[1]
+        t.ok(label ~= nil, "the label is on the text frame")
+        if label == nil then return end
         h.text({ "one", "two" }, { "TOP", "BOTTOM", 0, -4 })
         local at = lastCall(label, "SetPoint")
         t.eq({ at[1], at[2], at[3], at[4], at[5] }, { "TOP", f, "BOTTOM", 0, -4 })
@@ -319,5 +332,149 @@ return {
         t.eq(moved, 0, "a drag cut short saves no place")
         h.show(true)
         t.eq(h.dragging(), false)
+    end,
+
+    -- ------------------------------------------- ACB1: the text above the art
+    -- A stub cannot see layering. These check the frame levels c.arrow asks
+    -- for, and which frame owns the label: what the game then draws on top
+    -- is a client check.
+    ["c.arrow: the text has a frame of its own, one level above the holder, in both stack orders (ACB1)"] = function(t)
+        local e, made = env()
+        local h = ns.make.client(e).arrow({ name = "Lv", size = 56, art = 64, artPath = "x\\", level = 6 })
+        local f, holder, top = made[1], made[2], made[3]
+        t.ok(top ~= nil, "a third frame is made")
+        if top == nil then return end
+        t.eq(top.parent, f, "a child of the placed frame, not of the scaled holder")
+        t.eq(#(rawget(top, "made") or {}), 1, "the label is the text frame's")
+        t.eq(rawget(f, "made"), nil, "the placed frame draws nothing itself")
+        t.eq(#rawget(holder, "made"), 8, "the holder has the art and no text")
+        t.eq({ levelOf(f), levelOf(holder), levelOf(top) }, { 6, 7, 8 }, "in front: frame, art, text")
+        h.behind(true)
+        t.eq({ levelOf(f), levelOf(holder), levelOf(top) }, { 4, 5, 6 }, "behind: the text goes down with them, still on top")
+        h.behind(false)
+        t.eq({ levelOf(f), levelOf(holder), levelOf(top) }, { 6, 7, 8 }, "and back")
+        h.scale(0.5)
+        t.eq(#called(top, "SetScale"), 0, "the text frame is never scaled")
+        t.eq(#called(f, "SetScale"), 0)
+    end,
+
+    ["c.arrow: without a text frame the label is the placed frame's, as before (ACB1)"] = function(t)
+        local e = { UIParent = stub("UIParent") }
+        local n, made = 0, {}
+        e.CreateFrame = function(kind)
+            n = n + 1
+            if n > 2 then return nil end
+            made[n] = stub(kind)
+            return made[n]
+        end
+        local h = ns.make.client(e).arrow({ level = 6 })
+        t.ok(h ~= nil)
+        t.eq(n, 3, "a text frame was asked for")
+        local label = (rawget(made[1], "made") or {})[1]
+        t.ok(label ~= nil, "the label falls back to the placed frame")
+        if label == nil then return end
+        h.text({ "one" }, { "TOP", "BOTTOM", 0, -4 })
+        t.eq(lastCall(label, "SetText")[1], "one")
+        h.behind(true)
+        t.eq({ levelOf(made[1]), levelOf(made[2]) }, { 4, 5 })
+    end,
+
+    ["c.arrow: without a holder the text frame is one level above the placed frame (ACB1)"] = function(t)
+        local e = { UIParent = stub("UIParent") }
+        local n, made = 0, {}
+        e.CreateFrame = function(kind)
+            n = n + 1
+            if n == 2 then return nil end
+            made[#made + 1] = stub(kind)
+            return made[#made]
+        end
+        local h = ns.make.client(e).arrow({ level = 6 })
+        t.ok(h ~= nil)
+        local f, top = made[1], made[2]
+        t.ok(top ~= nil, "a text frame is still made")
+        if top == nil then return end
+        t.eq({ levelOf(f), levelOf(top) }, { 6, 7 })
+        h.behind(true)
+        t.eq({ levelOf(f), levelOf(top) }, { 4, 5 })
+    end,
+
+    -- ------------------------------------- ACB2, ACB9: a drag stop with no drag
+    ["c.arrow: a drag stop with no drag in progress does nothing and saves nothing (ACB2, ACB9)"] = function(t)
+        local h, f = arrow()
+        f.answers = { GetPoint = function() return "CENTER", nil, "CENTER", 10, 20 end }
+        local on = scripts(f)
+        local moved = {}
+        h.onMoved(function(point) moved[#moved + 1] = point end)
+
+        on.OnDragStop()
+        t.eq(#moved, 0, "never dragged: nothing saved")
+        t.eq(#called(f, "StopMovingOrSizing"), 0, "and nothing stopped")
+
+        on.OnDragStart()
+        h.show(false)                               -- hidden mid-drag: the drag is let go
+        local stops, placed = #called(f, "StopMovingOrSizing"), #called(f, "SetUserPlaced")
+        on.OnDragStop()                             -- the client fires it late
+        t.eq(#moved, 0, "hidden mid-drag, then a drag stop: nothing saved")
+        t.eq(#called(f, "StopMovingOrSizing"), stops, "nothing stopped twice")
+        t.eq(#called(f, "SetUserPlaced"), placed)
+
+        h.show(true)
+        on.OnDragStart()
+        h.behind(true)                              -- sent behind mid-drag
+        on.OnDragStop()
+        t.eq(#moved, 0, "sent behind mid-drag, then a drag stop: nothing saved")
+
+        h.behind(false)
+        on.OnDragStart()
+        on.OnDragStop()
+        t.eq(moved, { { "CENTER", "CENTER", 10, 20 } }, "a drag that ends by itself is still saved")
+        on.OnDragStop()
+        t.eq(#moved, 1, "and only once")
+    end,
+
+    -- ------------------------------------------------ ACB3: one snapshot table
+    -- What a reused snapshot must not change. (That it is reused is not
+    -- measured here: a test may not read collectgarbage.)
+    ["listeners: a call inside a call, and listeners added or removed during it (ACB3)"] = function(t)
+        local L = ns.make.listeners(function() end, function() end)
+        local log = {}
+        local cancelB, inner = nil, false
+        L.add("k", function(v)
+            log[#log + 1] = "a" .. v
+            if not inner then
+                inner = true
+                L.call("k", 2)                      -- the same key, inside its own call
+                L.call("other", 9)
+                cancelB()                           -- b is removed before its turn
+                L.add("k", function(w) log[#log + 1] = "late" .. w end)
+            end
+        end)
+        cancelB = L.add("k", function(v) log[#log + 1] = "b" .. v end)
+        L.add("k", function(v) log[#log + 1] = "c" .. v end)
+        L.add("other", function(v) log[#log + 1] = "o" .. v end)
+        L.call("k", 1)
+        t.eq(log, { "a1", "a2", "b2", "c2", "o9", "c1" },
+            "the inner call is whole; the outer one goes on where it was, without the removed b or the late one")
+        log = {}
+        L.call("k", 3)
+        t.eq(log, { "a3", "c3", "late3" })
+        log = {}
+        L.call("other", 4)
+        t.eq(log, { "o4" }, "nothing of one key is left over in another's call")
+    end,
+
+    ["listeners: a listener that fails does not spoil the next call (ACB3)"] = function(t)
+        local L = ns.make.listeners(function() end, function() end)
+        local log, fail = {}, true
+        L.add("k", function(v)
+            log[#log + 1] = "a" .. v
+            if fail then error("boom") end
+        end)
+        L.add("k", function(v) log[#log + 1] = "b" .. v end)
+        t.eq(pcall(L.call, "k", 1), false, "the failure reaches the caller, as before")
+        fail = false
+        L.call("k", 2)
+        L.call("k", 3)
+        t.eq(log, { "a1", "a2", "b2", "a3", "b3" })
     end,
 }

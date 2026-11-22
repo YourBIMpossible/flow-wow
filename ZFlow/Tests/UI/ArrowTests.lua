@@ -367,4 +367,58 @@ return {
         out = A.Lines(view("ring", "arrow", "quest"), lines(), { prof = true })
         t.eq(out.quest, { "Q", U, "P", U }, "only a marked arrow's last line is the unknown line")
     end,
+
+    -- ACB6: the height the text needs is that of the lines kept.
+    ["the text side is chosen from the lines that are shown, not from a dropped one (ACB6)"] = function(t)
+        -- Arrow top at 728 of 768: two lines (28 + 4) fit above it, three (42 + 4) do not.
+        local saved = { layout = { arrows = { points = { quest = { "TOP", "TOP", 0, -40 } } } } }
+        local _, c, a = start({ saved = saved })
+        c.setPosition(1411, 0.5, 0.5)
+        c.setMapSize(1411, 1000, 500)
+        c.setFacing(nil)
+        login(c)
+        a.setGuide(function()
+            return { quest = { place = { cont = 1, map = 1411, x = 0.5, y = 0.5 }, label = "Kill boars" } }
+        end)
+        local q = c.arrows[1]
+        t.eq(a.state().view.quest.mode, "ring")
+        t.eq(#q.lines, 2, "the unknown-direction line is dropped on the ring")
+        t.eq(a.state().view.quest.text.side, "above", "two lines fit above")
+        t.eq(q.textPoint, { "BOTTOM", "TOP", 0, N.TEXT_GAP_ABOVE })
+
+        -- Three lines shown: they do not fit, and that is still seen.
+        a.setGuide(function()
+            return { quest = { place = { cont = 1, map = 1411, x = 0.5, y = 0.5 }, lines = { "a", "b", "c" } } }
+        end)
+        t.eq(#q.lines, 3)
+        t.eq(a.state().view.quest.text.side, "below")
+
+        -- A height the step gives is the guide's: left alone.
+        a.setGuide(function()
+            return { quest = { place = { cont = 1, map = 1411, x = 0.5, y = 0.5 }, label = "Kill boars",
+                               textHeight = 3 * A.LINE_HEIGHT } }
+        end)
+        t.eq(#q.lines, 2)
+        t.eq(a.state().view.quest.text.side, "below", "the given height stands")
+    end,
+
+    ["Lines: the second answer is how many of each arrow's own lines are kept (ACB6)"] = function(t)
+        local U = A.UNKNOWN_TURN
+        local function view(qMode, pMode, to, qText, pText)
+            return { quest = { shown = true, mode = qMode, text = { shown = qText ~= false } },
+                     prof = { shown = true, mode = pMode, text = { shown = pText ~= false, to = to } } }
+        end
+        local function lines() return { quest = { "Q", U }, prof = { "P", U } } end
+        local both = { quest = true, prof = true }
+        local _, kept = A.Lines(view("ring", "arrow", "quest"), lines(), both)
+        t.eq(kept, { quest = 1, prof = 2 })
+        _, kept = A.Lines(view("arrow", "arrow", "quest"), lines(), both)
+        t.eq(kept, { quest = 2, prof = 1 }, "said once in the stack: the second is not counted")
+        _, kept = A.Lines(view("arrow", "arrow", "prof"), lines(), both)
+        t.eq(kept, { quest = 2, prof = 2 })
+        _, kept = A.Lines(view("arrow", "arrow", "prof"), lines())
+        t.eq(kept, { quest = 2, prof = 2 })
+        _, kept = A.Lines(view("ring", "ring", "prof", false, true), lines(), both)
+        t.eq(kept, { prof = 1 }, "text not shown: no count")
+    end,
 }
