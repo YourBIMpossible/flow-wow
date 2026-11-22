@@ -1,8 +1,9 @@
 # P2: the shared activity contract (design)
 
 Status: design only, no code. Written for WOW-2 on base `program-integ` a529eea (Flow 0.35.377)
-and revised for WOW-5 after the lead review (findings P2-1 to P2-12; section 9 says where each
-one landed). File and line references are to a529eea. The ones under "Checked by hand" in
+and revised twice after lead reviews: for WOW-5 (findings P2-1 to P2-12) and for WOW-7
+(round 2, R2-1 to R2-11, and P5-8). Section 9 says where each finding landed. File and line
+references are to a529eea. The ones under "Checked by hand" in
 section 1.7 were re-read line by line; the rest come from a read-only mapping pass over the
 listed files and should be re-checked by whoever builds each PR. Nothing here is tested in
 game.
@@ -113,14 +114,15 @@ What the second lane lacks today:
 
 ### 1.3 Who reads the step list and the plan from outside Nav.lua
 
-`N:Goals()` returns the quest lane only once the arrow is on. Its outside readers:
+`N:Goals()` returns the quest lane only once the arrow is on. Its eleven outside call sites:
 
 | Reader | What it does with the list | Sees the profession lane today (arrow on)? |
 |---|---|---|
 | Banker.lua:123 (`B.NeededBy`; also reads blocked and hidden) | which items steps need, so the bank keeps or hands them out | no |
 | Banker.lua:240 (`B.FetchBy`) | what to take out of the bank for a step's `fetch` | no; the `bank:<prof>` step is a profession step |
 | Trader.lua:171 (`T.RouteNeeds`) | what the route needs, to buy from a trade | no |
-| Professions.lua:282 | the profession panel's steps | no |
+| Professions.lua:278-285 (`P.RouteStatus(name, nav)`) | is `train:<name>` in `nav.plan` ("planned"), else in `nav:Goals()` ("later"), else "unplaced" | no: with the arrow on, a profession's training step is in neither, so it reads "unplaced" |
+| Focus.lua:548 (inside the `N:Select` hook) | finds the picked step's text for the new custom-route line | no (wanted: quest lane only; the hook runs for quest picks only) |
 | QuestBags.lua:309 (also blocked and hidden) | bag advice for steps | no |
 | Advisor.lua:388 (`Adv.FindGoal`, also blocked and hidden) | find a step by key | no |
 | Export.lua:183 | the diagnostics export | no |
@@ -161,7 +163,7 @@ Professions.lua, QuestMarks.lua, Actions.lua and Splash.lua.
 
 | Resource | Consumer | How it counts today |
 |---|---|---|
-| Items | Quest objectives | the quest log's own `have`/`need` (Goals.lua:206, :287); `Q.StillToGet(itemId, ns.api.Count(id))` (Goals.lua:337) |
+| Items | Quest objectives | the quest log's own `have`/`need` (Goals.lua:206, :287); `Q.StillToGet(itemId, ns.api.Count(id))` (Goals.lua:337). The log entry has no item ID (`objectives = { { text, finished, have, need } }`, Goals.lua:100); the ID is Questie's `quest.ObjectiveData[i].Id` where `Type == "item"`, read inside the questie provider (Goals.lua:194, :206). |
 | Items | One profession's plan | `SP.Stock(count, bankOf, smeltOf)` (SkillPlan.lua:1339-1382), created per profession (:1687), inside the provider. `Take` draws bags, then bank, then smeltable ore. "Shared by its steps so nothing is counted twice" holds inside that one plan only. |
 | Items | A second profession's plan | its own `SP.Stock`, seeded again from the raw bag and bank counts. Two plans that emit the same key are merged, first one's counts kept (:2160-2162). |
 | Items | CraftHint | a fresh `SP.Stock` (CraftHint.lua:90) |
@@ -210,6 +212,12 @@ For WOW-5 (each line the review cites): Nav.lua:545-568, 606-612, 622-626, 698-7
 Vendor.lua:793-802; Export.lua:94-103; Goals.lua:956; every `N:Goals()` call and every
 `N.plan` / `N.selection` / `N.prof*` read outside Nav.lua (by grep, tests left out).
 
+For WOW-7 (each line the round-2 review cites): SkillPlan.lua:1772-1784, 1900-1936;
+Goals.lua:96-102, 190-207; Nav.lua:3181-3193, 3366-3377, 4966-4973; Focus.lua:268-287,
+449-454, 548; BagIcons.lua:22-30; Crossings.lua:205-211, 244-249; Professions.lua:276-286;
+CraftHint.lua:86-92; and, in the P5 document on `wow-p5-design` (43d3e15), its key table
+(2.3) and minimap lines (2.5).
+
 ## 2. The contract
 
 Three parts: an activity registry, per-activity lane state, and one reservation ledger.
@@ -217,6 +225,9 @@ Everything is a registration or a pure function, so it can be tested offline
 (`tools/run-tests.ps1`).
 
 ### 2.1 `activity` registry
+
+The two registrations below are the **final form (PR 6)**. PR 1 registers the same two
+activities with today's behaviour instead; the differences are listed under the table.
 
 ```lua
 ns:Register("activity", "quest", {
@@ -257,15 +268,35 @@ ns:Register("activity", "professions", {
 
 `ctx` is built once per collect: `{ customKeys, level, includes = fn(kind) }`.
 
+- **`ctx.customKeys`** is the second return of `F.Sets()` (Focus.lua:277-286): the keys of
+  custom-route lines that are a single step (`line.key`), not quest lines. It is filled
+  only while the custom route is in force, `F.Active() and not F.idle` (Focus.lua:272,
+  :449-453), the same test Nav.lua:719 makes today, and is empty otherwise. So a step
+  picked into a custom route stays with it only while that route is the one showing.
+- **PR 1 form (no behaviour change).** `professions.owns = N.IsProfessionStop(goal)`;
+  `professions.exists = N:ProfPointerOn() and not (F.Active() and not F.idle)`, which is
+  today's split condition word for word; the "no quest step left" fallback
+  (Nav.lua:1284) stays. PR 6 replaces `owns` and `exists` with the forms above.
+
 The contract allows any number of activities. P2 ships two, `quest` and `professions`,
 because that is exactly today's split and keeps the first PRs free of behaviour change.
 One activity per profession is open question Q1; the contract does not change if the
 answer is yes, only the registrations do.
 
-**When a step is assigned.** `goal.activity = <key>` is set once per collect, right after
-`N.FilterKinds` (Nav.lua:549), before the blocked, hidden and along steps are set apart.
-So `N.blockedGoals`, `N.hiddenGoals` and `N.alongGoals` stay single lists, but every step
-in them says which lane it belongs to. Providers do not set it and do not change.
+**Owner and lane are two fields.** A step's owner (who it belongs to by definition) and
+the lane it actually sits in differ whenever a lane is folded into another.
+
+- `goal.owner = A.Of(goal, defs, ctx)` is stamped once per collect, right after
+  `N.FilterKinds` (Nav.lua:549), before the blocked, hidden and along steps are set apart.
+  It never changes afterwards. Claims take their priority from it (2.4).
+- `goal.activity` is the lane the step sits in. It is stamped **at the split**
+  (Nav.lua:719), after the fallback has been decided: equal to `owner` when that lane is
+  split off, and the lane it fell through to otherwise (for example `quest` when "no
+  quest step left" folds the profession steps back, Nav.lua:1278-1285). The same pass
+  stamps the steps in `N.blockedGoals`, `N.hiddenGoals` and `N.alongGoals`, which never
+  reach the split, with the lane their owner ended up in.
+- Clicks, selection and `A:Goals` go by `goal.activity`, so a click never routes to an
+  empty lane. Providers set neither field and do not change.
 
 **The split condition, redefined (Nav.lua:719).** Today: arrow on, and not on an active
 custom route. New: the `professions` lane exists whenever `exists(ctx)` says so, custom
@@ -299,7 +330,8 @@ A:Select(key, stepKey)      -- the player's pick, saved per character; nil clear
 A:Goals(key)                -- its routed steps
 A:AllGoals()                -- the routed steps of every lane, each with goal.activity
 A:Each()                    -- activities that have steps, in order
-A:At(p, near)               -- the choice the player is standing at, or nil
+A:At(p, near)               -- the choice the player is standing at, or nil when at none
+A:Choices()                 -- every lane's choice, quest lane first, then by order
 ```
 
 Rules:
@@ -321,10 +353,17 @@ Rules:
 4. **Selecting never moves a step between activities.** Ownership comes from `owns`. The
    one case where a profession step is on the quest lane's custom route is an existing
    custom-route line (2.1).
-5. **"Which step am I at?" is `A:At(p, near)`, for two readers only.** It returns the
-   choice whose step is within `near`; if several are, the one the player selected, then
-   the nearest, then activity order. Users: Flow Actions (Actions.lua:259-268, which has
-   this patched in today) and the bag marks (BagIcons.lua:27).
+5. **"Which step am I at?" is `A:At(p, near)`, for one reader: Flow Actions.** It returns
+   the choice whose step is within `near`, or **nil when you stand at none**. Tie order,
+   chosen to match Actions.lua:261-269 today: the quest lane's choice wins when you are
+   near it; otherwise, among the other lanes near you, the one whose step the player
+   selected, then the nearest, then activity order. Flow Actions calls
+   `A:At(p, NEAR) or N.current`, so away from every step it still gets the main arrow's
+   target, as now.
+   **The bag marks are not a "standing at" reader.** `B.FocusItem` (BagIcons.lua:25-28)
+   marks the item the current step wants used, wherever you stand. It reads
+   `A:Choices()` and takes the first choice with a `useItem`, quest lane first. (With the
+   arrow on today, a profession lane's `use:<recipe>` step gets no mark; this fixes it.)
    **TaxiMark.lua:163, MapFlights.lua:164 and :330 and AreaHop.lua:190 keep reading the
    main arrow's target** (`N.current`): they answer "where is the main arrow taking me",
    and a flight or an area hop toward a profession step would be wrong for them.
@@ -339,6 +378,12 @@ Rules:
    party's shared plan and its publishing (Nav.lua:3542-3548), and the sticky
    nearest-step fallback when there is no plan (:3558-3570). Other lanes get neither
    (`chooseProf` has neither today).
+10. **A pick whose step is gone is dropped the way the quest pick is today**: not at the
+    next collect, but when the lane's planner options are built and the key is in none
+    of its steps, and only once 20 seconds have passed since login
+    (`GetTime() - N.loadedAt > 20`, Nav.lua:3369-3376), because quest and profession data
+    may not be in yet right after a reload. Every lane uses the same rule and the same
+    grace.
 
 ### 2.3 Who reads which list (finding P2-3)
 
@@ -351,8 +396,9 @@ Rules:
 | QuestBags.lua:309 | all lanes | bag advice counts every step that will add or free items |
 | Advisor.lua:388 `Adv.FindGoal` | all lanes | finds a step by key, whichever lane has it |
 | Export.lua:183 | all lanes, each step tagged with its lane | diagnostics and `tools/route-check.ps1` |
-| Crossings.lua:208 | all lanes | a profession step across a crossing needs it as well; the crossing step joins the lane of the step that needs it |
-| Professions.lua:282 | `A:Goals("professions")` plus profession steps on the quest lane | the profession panel lists profession steps wherever they are |
+| Crossings.lua:208 (`C.Waiting`) | all lanes | a profession step across a crossing needs one as well. The crossing step itself (provider `crossing`, Crossings.lua:247) is owned by the quest lane, by the pure `owns` rule: no profession rule claims it. A profession step waiting on it shows it as `after` (2.2 rule 7). |
+| Professions.lua:278-285 `P.RouteStatus` | every lane's plan for "planned", then `A:AllGoals()` for "later" | a profession's training step is in whichever lane owns it |
+| Focus.lua:548 | quest lane (`N:Goals()`) | the hook runs for quest picks only (2.2 rule 2) |
 | Party.lua:269 | quest lane | the shared party route is the quest route (Q9, deferred) |
 | MapOverlay.lua:1102 `ns.dungeons.AwayGoals` | quest lane | a dungeon run is a quest-lane notion |
 
@@ -371,9 +417,10 @@ steps, inside its provider, before `N:Collect` has any steps to read claims from
 
 ```lua
 snapshot = {
-    bags = fn(id) -> n,  bank = fn(id) -> n,     -- ns.api.Count, SP.BankCount
-    money = copper,
-    slots = { general = n, all = n },            -- 2.5
+    money = copper,                              -- read once, in R.Begin
+    slots = { general = n, all = n },            -- read once, in R.Begin (2.5)
+    bags = fn(id) -> n,  bank = fn(id) -> n,     -- ns.api.Count, SP.BankCount; each id is read
+                                                 -- at most once per refresh and then fixed
 }
 claim = {
     activity = "professions", step = "craft:Leatherworking:Light Armor Kit",
@@ -391,22 +438,52 @@ grant = { claim = claim, got = 4, short = 6, from = { bags = 4, bank = 0 } }
 **Phase 1, before any provider runs** (at the start of `collectSpread`, and of a direct
 `N:Collect()` gather): `R.Begin(snapshot)`.
 
-- It takes the snapshot once. Bags changing while the sources are gathered, a frame at a
-  time, do not change it; the existing `again` flag (Nav.lua:4921-4926) runs the refresh
-  once more.
+- **What "snapshot" means.** Money and free slots are read once, here. Item counts are
+  not: the set of item IDs is not known until the providers ask. Each ID is read the
+  first time it is asked for and its value is then fixed for the rest of the refresh (as
+  `SP.Stock`'s `left` already does, SkillPlan.lua:1341-1344). The sources run on
+  different frames, so two IDs can be read a frame or more apart: the snapshot is
+  consistent per item, not across items. A bag change while gathering must therefore run
+  the refresh again. Today `again` is only set for a change that is not `quiet`
+  (Nav.lua:4971), so PR 9 makes the bag and bank events that SkillPlan watches
+  (SkillPlan.lua:2177-2186, :1316) call `N.MarkAgain()` (Nav.lua:4921) whenever a refresh
+  is gathering.
 - It resolves the claims that do not depend on any provider's output: **quest item
-  claims, read straight from the quest log** (`ns.quests.LogEntries()` objectives:
-  `min(have, need)` of each objective's item), not from quest steps.
+  claims**, `min(have, need)` of each unfinished objective's item.
+  - The quest log gives the counts but **no item ID** (Goals.lua:100). The ID comes from
+    Questie, read at runtime, never copied: `quest.ObjectiveData[i]` with
+    `Type == "item"` and its `Id`, the same lookup the questie provider makes
+    (Goals.lua:194, :206). Phase 1 gets it through one helper,
+    `ns.quests.ItemObjectives() -> { { quest, item, have, need } }`, which the provider
+    then uses too, so the two cannot disagree.
+  - **Without Questie** (or for an objective Questie has no data for) there is no ID, so
+    there is no quest item claim: professions see those items as free, which is today's
+    behaviour. The ledger records `R.questItems = "unknown"` and reason texts then do
+    not say "for your quest". Nothing is guessed from the objective's text.
 - It hands out `R.Stock()`: one stock object with `SP.Stock`'s interface (`Avail`, `Take`,
   `Fork`), seeded with the snapshot minus phase 1's grants.
 
-**Inside the skillplan provider.** `planProfession` no longer builds its own stock
-(SkillPlan.lua:1687): every profession takes from the one `R.Stock()`. Because taking is
-order-dependent, the professions run in a **fixed order**, replacing `pairs`
-(:2150): targets with `required` (a quest asks for the skill) first, then the order of
-`ns:ProfessionPlan()`, then by name. Each `Take` records an item claim (activity, step,
-`required`), so the ledger knows who holds what. Smelting stays inside the stock: taking
-bars may draw ore, and the claim records both.
+**Inside the skillplan provider: two passes.** `planProfession` no longer builds its own
+stock (SkillPlan.lua:1687): every profession takes from the one `R.Stock()`. Taking is
+order-dependent, and today each profession makes its required takes (the crafts on its
+path, :1777, and what it sets aside for crafts that wait, :1782) and then its optional
+ones (upgrade crafts, :1905-1935) before the next profession starts. With one shared
+stock, the first profession's optional upgrade could take the leather the second
+profession needs for its path. So the provider runs:
+
+1. **Pass A, required**, for every profession: path crafts, crafts that wait, smelting
+   for them, bank pulls for them.
+2. **Pass B, optional**, for every profession: upgrade crafts and anything else marked
+   optional (`pull(..., true)`, :1935). An optional take only ever sees what pass A left.
+
+`planProfession` is split accordingly into its required part and a continuation for its
+optional part; steps come out in the same shape. In both passes the professions run in a
+**fixed order**, replacing `pairs` (:2150): the profession that holds the player's
+selected profession step first (see the order below), then targets with `required` (a
+quest asks for the skill), then the order of `ns:ProfessionPlan()`, then by name. Each
+`Take` records an item claim (activity, step, `required`), so the ledger knows who holds
+what. Smelting stays inside the stock: taking bars may draw ore, and the claim records
+both.
 
 **Phase 2, in `N:Collect`** where `N.CommitCosts` is today (Nav.lua:577): `R.Finish(list)`.
 
@@ -419,7 +496,8 @@ bars may draw ore, and the claim records both.
 
 Where claims come from, in full:
 
-- **Quest objectives**: phase 1, from the quest log.
+- **Quest objectives**: phase 1, counts from the quest log, item IDs through
+  `ns.quests.ItemObjectives()` (above).
 - **Profession steps**: recorded by `Take` in the provider. A step may also carry
   `goal.claims` to say it exactly.
 - **Other steps**, by a default reader in phase 2, so providers need not change at first:
@@ -430,15 +508,32 @@ Where claims come from, in full:
   owner decides Q5 that way. The trader's share and the mount's saving do **not** reserve
   (Q6, settled: advise only).
 
-Resolution order, the same for all three resources, total and deterministic:
+**Resolution order.** It is not the same for every resource, because items are granted
+as they are taken, in two places, while money and slots are resolved in one pass over
+finished steps.
+
+*Money and bag slots* (phase 2, one sorted pass, total and deterministic):
 
 1. Claims of the step the player selected in its activity.
 2. `required` before optional; for money, `milestone` first (keeps `CommitCosts` as it is).
-3. Priority: the claim's own `priority`, else its activity's. Default: `quest` before
-   `professions` (settled by the foreman; the per-item flip is Q2, owner decision). A quest
-   turn-in can't be done with fewer, a craft can be made later.
+3. Priority: the claim's own `priority`, else its owner activity's. Default: `quest`
+   before `professions` (settled by the foreman).
 4. For money only: cheaper first (again `CommitCosts`).
 5. Step key, as the last tie-break.
+
+*Items* (granted in this fixed sequence; a later stage only sees what earlier ones left):
+
+1. Quest item claims, in phase 1. Nothing outranks them, **not even a selected
+   profession step**: the game takes those items at turn-in whatever Flow thinks, so
+   promising them to a craft would be promising something the player can't keep. Rule 1
+   above ("the selected step first") therefore covers money and slots only. The per-item
+   flip that would let a player put a craft first is Q2, owner decision.
+2. Pass A, required takes, professions in the fixed order. A selected profession step
+   moves its profession to the front of that order, in both passes; that is all a
+   selection does for items. Takes for a target a quest asks for (`required = true`)
+   come next.
+3. Pass B, optional takes, same profession order.
+4. Within one profession and pass: the order `planProfession` makes its takes in today.
 
 **A skill a quest asks for ranks with the quest (finding P2-8).** Its steps live in the
 profession lane (`N.IsProfessionStop` does not look at `forQuest`), which would give them
@@ -455,11 +550,16 @@ Rules:
   farms or buys 6, not 0. The quest objective keeps reading the game's own count, which is
   why quest claims are resolved first, in phase 1: the game will take those items at
   turn-in whatever Flow thinks.
-- **The same grants whatever the order of registration.** With the fixed profession order
-  and phase 1 before all providers, two professions give the same grants whichever is
-  registered or saved first.
-- **CraftHint reads the last finished ledger** (`R.StockView()`), not a fresh `SP.Stock`
-  (CraftHint.lua:90), so its "have 4 of 10" agrees with the route.
+- **The same grants whatever the order of registration.** With the fixed profession order,
+  the two passes and phase 1 before all providers, two professions give the same grants
+  whichever is registered or saved first, and no optional take can starve a required
+  one.
+- **CraftHint keeps live counts and subtracts what others hold.** It builds its stock as
+  now (CraftHint.lua:90) from the live bag and bank counts, minus `R.HeldByOthers(id,
+  step)`: what the last finished ledger granted to claims that outrank this step. The
+  ledger is only as fresh as the last refresh, so reading "have" from it would lag the
+  bags after every craft; reading only the others' holdings from it means the lag can
+  at worst show a few too many or too few for one refresh, never a stale own count.
 - **Money: one number for "free to spend".** `R.MoneyFree(activity)` = money minus grants
   that outrank the asker. `N.moneyCommitted` becomes `R.Committed("money")`. In P2 only
   the route reads it. Whether `V.RepairDecision` reads it is Q5.
@@ -517,29 +617,46 @@ Nothing a player has is dropped, moved or rewritten. There is **no migration**.
   way. So the character-scoped migration and its PR are dropped.
 - **Downgrade.** An older Flow ignores `activity` and leaves it in `FlowCharDB`. A
   profession pick made before the downgrade is still there after the upgrade; if its step
-  is gone it is dropped at the next collect, as `nav.selectedKey` is today.
+  is gone it is dropped by the rule in 2.2 (rule 10), 20-second login grace included, as
+  `nav.selectedKey` is today (Nav.lua:3369-3376).
 - No learned data (places, trails, recipes, facts) is touched by any PR in section 4.
 
 ## 4. Build order (small PRs, each behaviour-neutral unless it says otherwise)
 
 | # | PR | Changes | Player sees | Was |
 |---|---|---|---|---|
-| 1 | `activity` registry | `Modules/Nav/Activities.lua`: `A.Of`, `A.Split`; register `quest`, `professions`; `N.SplitProfessions` delegates; `goal.activity` set after `FilterKinds`; ARCHITECTURE.md row | nothing | 2 |
+| 1 | `activity` registry | `Modules/Nav/Activities.lua`: `A.Of`, `A.Split`; register `quest`, `professions` in the **PR 1 form** (2.1: today's split condition and the Nav.lua:1284 fallback, unchanged); `N.SplitProfessions` delegates; `goal.owner` set after `FilterKinds`, `goal.activity` at the split; ARCHITECTURE.md row | nothing | 2 |
 | 2 | Lane state, moved | the quest lane's `goals` / `plan` / dirty / pos and the `N.prof*` fields move into `A:State`, same writers, same readers; `N.plan` and friends become views. **No chooser logic changes.** Remove dead `pinnedKey`. | nothing | 3 (first half) |
 | 3 | One chooser | `choose` and `chooseProf` become one function over a lane; the shared party plan and the sticky fallback become quest-lane options (2.2 rule 9); `A:Choice` / `A:Target` split from the overlays. Gate: the golden plan-order test (section 5) passes before and after. | nothing | 3 (second half) |
 | 4 | All-lanes readers | `A:AllGoals()`; the readers in 2.3 move to the list the table names | with the arrow on, the bank and trades take profession steps into account | new (P2-3) |
-| 5 | `A:At` | Actions.lua:259-268 and BagIcons.lua:27 only | the Flow key and bag marks agree when two steps are close | 4 |
-| 6 | Per-activity selection | `A:Select` for non-quest lanes (bypassing the Focus hook), the `activity` saved section, "Go here next" on profession steps, the new split condition (2.1) | a profession step can be picked without changing the quest route, and a custom route no longer swallows the profession lane | 5 |
-| 7 | Ledger, pure | `Modules/Reserve.lua`: snapshot, `R.Begin`, `R.Finish`, `R.Resolve`; no callers | nothing | 6 |
+| 5 | `A:At` and `A:Choices` | Actions.lua:259-268 uses `A:At(p, NEAR) or N.current`; BagIcons.lua:25-28 reads `A:Choices()` | the Flow key behaves as now; a profession lane's "use this item" step gets its bag mark | 4 |
+| 6 | Per-activity selection | `A:Select` for non-quest lanes (bypassing the Focus hook), the `activity` saved section, "Go here next" on profession steps, the PR 6 form of `owns` and `exists` (2.1), the gone-pick rule with its login grace (2.2 rule 10) | a profession step can be picked without changing the quest route, and a custom route no longer swallows the profession lane | 5 |
+| 7 | Ledger, pure: snapshot, money, slots | `Modules/Reserve.lua`: the snapshot, `R.Begin`, `R.Finish`, and `R.Resolve` for money and slots; no callers. **No item API yet**: `R.Stock`, the two passes and quest item claims come with PR 9. | nothing | 6 |
 | 8 | Money through the ledger | `N.CommitCosts` becomes phase 2's money pass. Golden test: same `over` and `total` for the existing cases. | nothing | 7 (first half) |
-| 9 | Items through the ledger | phase 1 quest claims; one `R.Stock()` for all professions, fixed order; `forQuest` priority; merged same-key steps sum their counts; CraftHint reads the view | "have enough" is right when a quest and a craft, or two professions, want the same item | 8 |
+| 9 | Items through the ledger | `ns.quests.ItemObjectives()` and phase 1 quest claims; one `R.Stock()` for all professions; `planProfession` split into its required and optional parts, run as two passes in the fixed order; `forQuest` priority; merged same-key steps sum their counts; bag and bank events mark the refresh `again`; CraftHint subtracts `R.HeldByOthers` | "have enough" is right when a quest and a craft, or two professions, want the same item | 8 |
 | 10 | Bag slots | `R.FreeSlots` with both counts; slot claims; sell or bank step ordered before steps that need room | a sell stop comes before a buy that wouldn't fit | 9 |
 | 11 | Repair and the ledger | `reserveSource` for auto repair; `V.RepairDecision` reads `R.MoneyFree` | player-visible. **Waits for the owner's decision on Q5.** | 7 (second half) |
 | 12 | Counts in keep rules | `disposition` reasons with counts; Vendor / Banker / Posting act on the surplus | **Waits for the owner's decision on Q4.** | 10 |
 
 - The old PR 1 (character-scoped migrations) is dropped (section 3).
-- PRs 1 and 7 can be built now and in parallel (the review's "PR 2 and PR 6").
+- PRs 1 and 7 can be built now and in parallel. PRs 2 and 3 follow PR 1.
 - P5 needs PRs 2, 3 and 6, plus the additions in section 6. It does not need the ledger.
+
+**PR 3: what differs between the two choosers today.** The merged function must keep each
+of these as a per-lane option, and the golden plan-order test covers each:
+
+| | `choose` (quest, Nav.lua:3522) | `chooseProf` (Nav.lua:3577) |
+|---|---|---|
+| Nothing reachable | clears `N.plan` and returns nil (:3527, `anyReachable`) | no reachability check |
+| No planner, or an empty list | no planner: falls back to the nearest step, sticky (:3558-3570) | returns nil and clears its plan (:3579) |
+| Planner options | `N:Options()` (first, tour, here, away, travel) | `N.TravelOptions()` only |
+| Party | takes the shared plan, else plans and publishes (:3542-3548) | none |
+| Version | `N.planVersion` goes up on each new plan (:3551) | no counter (6.3 adds one) |
+| Planner call | guarded by `ns.planner and` in the replan condition (:3539) | guarded at the top (:3579) |
+| Error text | `"planner: ..."` | `"profession route: ..."` |
+| Dead state | the `pinnedKey` branch (:3528-3531), removed in PR 2 | none |
+
+The replan rule itself (dirty, or moved 30 yd after 8 s, or 60 s) is the same in both.
 
 Each PR: tests as in section 5, lint at 0 warnings, CHANGELOG under `## Unreleased`, and
 ARCHITECTURE.md when it adds a registry kind (`activity`, `reserveSource`).
@@ -562,12 +679,26 @@ Pure, so they must pass offline (`tools/run-tests.ps1`) as well as in game:
   hook, finding P2-2: with the hook installed, `A:Select("professions", key)` leaves
   `nav.focus` and `nav.sorter` as they were, and the next split still has the lane).
 - `activity: a profession step that is a custom-route line stays on the custom route`.
-- `activity: Select while following a party` (the quest pick is saved and adds no line, as
-  Focus.lua:540-542 does today; a profession pick is unaffected by following).
-- `activity: At picks the selected step, then the nearest, then by order`.
+- `activity: Select while following a party` (a quest pick edits the shared party route
+  and returns before anything is saved: `N:Select` moves a `party:` step first or adds
+  the step, Nav.lua:3184-3193, so `nav.selectedKey`, `N.selection` and `nav.sorter` are
+  unchanged and Focus adds no line, Focus.lua:540-542; a profession pick through
+  `A:Select` is saved in `activity.professions` as when not following).
+- `activity: owner and lane differ after the fallback` (no quest step left: profession
+  steps have `owner = "professions"` and `activity = "quest"`, blocked and hidden ones
+  too, and a pick on one goes to the quest lane).
+- `activity: the PR 1 form splits exactly as N.SplitProfessions did` (arrow on and off,
+  custom route active, idle, and no quest step left).
+- `activity: customKeys is empty unless the custom route is in force`.
+- `activity: At prefers the quest step when near both, then the selected step, the
+  nearest, the order; it is nil away from every step`.
+- `activity: the bag mark comes from any lane's choice, quest lane first`.
+- `activity: a gone pick is kept for the first 20 seconds after login, then dropped, in
+  every lane`.
+- `activity: a crossing step is owned by the quest lane`.
+- `activity: RouteStatus finds a training step in the profession lane`.
 - `activity: Choice never returns a follow or waypoint overlay; Target does for the lane
   that carries it`.
-- `activity: a pick whose step is gone is dropped`.
 - `activity: a downgrade round trip keeps both picks` (saved data with `activity` present,
   loaded by a stand-in for the old shape that only touches `nav.selectedKey`, then loaded
   again: the quest pick is the newer one, the profession pick is intact).
@@ -587,7 +718,18 @@ Pure, so they must pass offline (`tools/run-tests.ps1`) as well as in game:
   at the smelt ratio, the ore is then not available to a second claim, and bars plus ore
   never grant more than the ore allows).
 - `reserve: a skill a quest asks for outranks an ordinary craft for the same item`.
-- `reserve: the selected step's claims come first`; `...required before optional`.
+- `reserve: one profession's optional upgrade cannot starve another's required craft`
+  (two passes: with stock for one, the required craft gets it in either profession order).
+- `reserve: a selected profession step never outranks a quest's items` and `...moves its
+  profession to the front of both passes`.
+- `reserve: no quest item claim without an item ID` (Questie absent or no data: the
+  professions see the full count, and `R.questItems` says "unknown").
+- `reserve: an item is read once per refresh` (a second read of the same ID returns the
+  first value even if the stand-in count changed).
+- `reserve: the selected step's money and slot claims come first`; `...required before
+  optional`.
+- `crafthint: live counts minus what others hold` (the own count follows the bags at
+  once; the others' share comes from the last ledger).
 - `reserve: money keeps CommitCosts' order` (the existing CommitCosts tests, unchanged
   expectations, run against the ledger).
 - `reserve: bank stock is only granted to claims that may use the bank`.
@@ -646,8 +788,16 @@ ns.db.nav.arrows = {
     mode = "stacked",                      -- or "separate"; default "stacked"
     points = { [activity] = { a, r, x, y } },   -- each arrow's own place when separate
     hidden = { [activity] = true },        -- an arrow the player turned off; the lane stays
+    text = { [activity] = false },         -- that arrow's text turned off; nil = shown
 }
 ```
+
+- `nav.arrows.text` is accepted from the P5 document (its 2.3) and reserved here. For
+  `professions`, P5 reads the existing `nav.profArrowText` as the fallback and writes it
+  through for one release; P2 leaves `nav.profArrowText` alone.
+- If Q1 is answered "one activity per profession", P5 asks for a per-arrow flag
+  (`nav.arrows.apart[key]`, with `mode` then meaning "all"). Not reserved until Q1 is
+  decided.
 
 - `nav.point` (Nav.lua:4366, :4419) stays the place of the stack, and of the quest arrow
   when separate. No migration: `nav.arrows` absent means stacked at `nav.point`.
@@ -674,24 +824,31 @@ pattern:
   the same leg builder with that lane's `Target`. Flight, area-hop and taxi helpers
   (TaxiMark, MapFlights, AreaHop) stay on the quest lane's route (2.2 rule 5).
 - The minimap pin has two hard-wired entry points today, `P:Update` and `P:UpdateProf`
-  (MinimapPin.lua:415). The contract gives P5 one call per lane:
-  `ns.minimapPin:UpdateLane(key, p, point, goal)`; `Update` and `UpdateProf` become calls
-  of it for `quest` and `professions`.
+  (MinimapPin.lua:415). The per-lane call is
+  `ns.minimapPin:UpdateLane(key, p, point, goal)`. **Who owns what:** P2 fixes that
+  signature and supplies its inputs (each lane's `Target` and `route`, PRs 2 and 3), and
+  keeps calling `Update` and `UpdateProf` as now. **P5 builds `UpdateLane`** (its PR D:
+  one pin per key, the lane's colour) and turns `Update` and `UpdateProf` into calls of
+  it. The pin follows the lane, not the arrow: a hidden arrow keeps its dot.
 - The world map's profession route (MapOverlay.lua:1028-1063) reads
   `A:State("professions").plan` instead of `N.profPlan`; drawing more lanes is P5's.
 
 ### 6.5 Which arrow carries follow, waypoint and corpse
 
+One rule, in the P5 document's word: **the leader is the quest arrow.** It carries the
+stack when stacked and stands alone when separate; it is the leader in both modes, whether
+or not the quest lane has a step.
+
 - **Follow** (a party member you follow) and **your own waypoint** are carried by the
-  **quest arrow**: `A:Target("quest")` returns the overlay, as `N.current` does today
+  leader: `A:Target("quest")` returns the overlay, as `N.current` does today
   (Nav.lua:4738). Other lanes' arrows keep pointing at their own steps.
-- **Stacked**: the stack shows the carrying lane's target on top, so a waypoint or a
-  followed member is what the stack points at, as now.
-- **Corpse**: while dead, one arrow (the stack, or the quest arrow when separate) turns
-  red and points at the corpse; every other lane's arrow hides until you are alive, as
-  the profession arrow does today (Nav.lua:4731-4734). No lane replans while dead.
-- A lane other than `quest` never carries an overlay. If the quest lane has no steps and
-  no overlay, its arrow hides and the others stay.
+- **Stacked**: the leader is drawn on top, so a waypoint or a followed member is what the
+  stack points at, as now.
+- **Corpse**: while dead, the leader turns red and points at the corpse; every other
+  lane's arrow hides until you are alive, stacked or separate, as the profession arrow
+  does today (Nav.lua:4731-4734). No lane replans while dead.
+- A lane other than `quest` never carries an overlay. If the leader has no step and no
+  overlay, it hides and the other arrows stay.
 - `A:At` ignores overlays: standing at your waypoint is not standing at a step.
 
 ### 6.6 Per-arrow controls
@@ -702,11 +859,13 @@ off), and `nav.arrows` (mode, place, hide). Each control gets a click test (P5).
 
 ## 7. Open product questions
 
+The numbers Q1 to Q9 are those of the first draft and do not change; other documents
+refer to them.
+
 | # | Question | Status |
 |---|---|---|
 | Q1 | One profession activity, or one per profession? Per profession gives each its own selected step and, in P5, its own arrow (up to five lanes with the secondary professions). The contract supports both. Shapes P5. | **Owner decision** |
-| Q2 | Who wins a shared item by default? | **Settled by the foreman**: quests, then professions, with the player's selected step above both |
-| Q2b | May a player flip that per item ("keep my leather for Leatherworking")? | **Owner decision** |
+| Q2 | Who wins a shared item by default, and may a player flip it per item ("keep my leather for Leatherworking")? | Default order **settled by the foreman**: quests, then professions (a selected step comes first for money and slots; for items it only orders the professions, 2.4). The per-item flip: **owner decision** |
 | Q3 | Can the player set a profession's target (skill level or a recipe), or does it stay derived from pace and quests? A set target needs UI in Flow Professions and uses `activity.<key>.aim`. | **Owner decision** |
 | Q4 | Counts in keep rules: may Flow sell or bank the surplus of an item a quest or a craft needs some of? Today it keeps every stack. Gates PR 12. | **Owner decision** |
 | Q5 | Does repair take part in the money ledger, and does it outrank route steps? Gates PR 11, which is player-visible (finding P2-7). | **Owner decision** |
@@ -741,4 +900,23 @@ off), and `nav.arrows` (mode, place, hide). Each control gets a click test (P5).
 | P2-11 three free-slot readers; general-only changes behaviour; bag families | Actions.lua:678-685; Vendor.lua:793-802; Export.lua:94-103: confirmed | 1.5, 2.5 |
 | P2-12 wrong or incomplete references; test placement | `N.current` is Nav.lua:4739-4740; pipeline order 549 / 556 / 558 / 565 / 577 / 708 / 714 / 719; `professionMaterial` at Disposition.lua:433: confirmed | 1.1, 1.2, 1.3, 1.5, section 5 |
 
-No finding was rejected.
+No round-1 finding was rejected.
+
+Round 2 (WOW-7):
+
+| Finding | Re-read in source | Result |
+|---|---|---|
+| R2-1 item order cannot hold; optional takes can starve required ones | SkillPlan.lua:1687, 1772-1784, 1900-1936, 2150: confirmed | 2.4: two passes, fixed order, separate order for items; "selected step first" covers money and slots only |
+| R2-2 the quest log has no item ID | Goals.lua:100, 194, 206: confirmed | 1.5, 2.4 (`ns.quests.ItemObjectives()`, and what happens without Questie) |
+| R2-3 `goal.activity` stamped before the fallback | Nav.lua:549, 698-719, 1278-1285: confirmed | 2.1: `goal.owner` and `goal.activity` |
+| R2-4 wrong expectation in "Select while following a party" | Nav.lua:3184-3193: confirmed | section 5, test rewritten |
+| R2-5 the snippet is the PR 6 form; `ctx.customKeys` scope | Nav.lua:719; Focus.lua:272, 277-286, 449-453: confirmed | 2.1 (PR 1 form, scope), PR 1 and PR 6 rows |
+| R2-6 `A:At` has no fallback; BagIcons is not a "standing at" reader; tie order flips | BagIcons.lua:25-28; Actions.lua:261-269: confirmed | 2.2 rule 5, `A:Choices`, PR 5 |
+| R2-7 crossing step and the pure `owns` rule | Crossings.lua:208-210, 247; Nav.lua:729-733: confirmed | 2.3: the crossing step is the quest lane's |
+| R2-8 Professions.lua:282 misdescribed; Focus.lua:548 missing | Professions.lua:278-285; Focus.lua:548: confirmed | 1.3, 2.3 |
+| R2-9 a gone pick is dropped in `N:Options` with a 20-second grace | Nav.lua:3369-3376: confirmed | 2.2 rule 10, section 3, PR 6 |
+| R2-10 "taken once" versus lazy reads | SkillPlan.lua:1341-1344; Nav.lua:4927-4946, 4971: confirmed | 2.4 (what "snapshot" means; `again` on bag events) |
+| R2-11 chooser differences unlisted; CraftHint would lag | Nav.lua:3527, 3539, 3551, 3579; CraftHint.lua:90: confirmed | section 4 (table under the build order), 2.4 (CraftHint) |
+| P5-8 mismatches with P5 | P5 document 2.1, 2.3, 2.5 on `wow-p5-design` 43d3e15 | 6.2 (`nav.arrows.text` reserved), 6.4 (P5 builds `UpdateLane`), 6.5 (leader), section 7 (numbers kept; Q2b folded back into Q2) |
+
+No round-2 finding was rejected.
