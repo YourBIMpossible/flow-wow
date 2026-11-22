@@ -62,8 +62,9 @@ function N.ArrowMotion()
              arrived = false, fade = 0, wave = false }
 end
 
--- What the arrow should show: turn (radians, clockwise on screen from up;
--- nil keeps the last), colour { r, g, b } (nil keeps it), arrived, wave
+-- What the arrow should show: turn (radians, anticlockwise on screen from
+-- up, as N.ArrowTurn gives it; nil keeps the last), colour { r, g, b }
+-- (nil keeps it), arrived, wave
 -- (right on the spot: faster, brighter ripples), snap (jump there now),
 -- icon (the step's picture, for the styles that show one; nil: none),
 -- bare (owner decision D2: the arrow art is not drawn, the frame and its
