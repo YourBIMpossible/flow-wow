@@ -98,6 +98,8 @@ return {
         "Nav/Waypoint.lua",
         "Nav/ProfStep.lua",
         "Nav/ProfSeen.lua",
+        "Nav/HearthStep.lua",
+        "Nav/HearthSeen.lua",
         "Nav/ServiceNearest.lua",
         "Nav/ServiceSeen.lua",
         "Nav/QuestSource.lua",
