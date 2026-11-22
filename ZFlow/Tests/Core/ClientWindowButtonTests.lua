@@ -11,7 +11,8 @@ local _, ns = ...
 -- protected (what IsProtected answers; "error": it fails;
 -- "none": the window has no such method), combat (what InCombatLockdown
 -- answers; "none": the client has neither combat read), noTemplate (a
--- template makes CreateFrame fail), noFrames (CreateFrame always fails).
+-- template makes CreateFrame fail), noFrames (CreateFrame always fails),
+-- parts (field names of the window that are frames of their own).
 local function gameEnv(opts)
     opts = opts or {}
     local env = { frames = {}, tip = { calls = {} } }
@@ -29,6 +30,7 @@ local function gameEnv(opts)
                 return opts.shown
             end
         end
+        for _, field in ipairs(opts.parts or {}) do w[field] = { name = field } end
         env.TestWindow = w
     end
     if opts.combat ~= "none" then
@@ -43,6 +45,7 @@ local function gameEnv(opts)
         function f:SetText(text) self.text = text end
         function f:SetSize(w, h) self.width, self.height = w, h end
         function f:SetPoint(...) self.point = { ... } end
+        function f:SetFrameStrata(s) self.strata = s end
         function f:RegisterForClicks(...) self.clicks = { ... } end
         function f:SetAttribute() self.attributes = self.attributes + 1 end
         function f:Show() self.shown = true end
@@ -87,6 +90,52 @@ return {
         t.eq(b.point[4], -40)
         t.eq(b.point[5], -4)
         t.eq(b.clicks, { "LeftButtonUp" })
+    end,
+
+    ["window button: asked inside a part of the window, it is placed against that part"] = function(t)
+        local spec = { name = "TestWindowButton", text = "Menu", inside = { "Gone", "Canvas" },
+            strata = "HIGH", point = { "BOTTOMRIGHT", "BOTTOMRIGHT", -44, 4 } }
+        local h, env = make({ parts = { "Canvas" } }, spec)
+        t.ok(h ~= nil, "a handle")
+        local b = env.frames[1]
+        t.eq(b.parent, env.TestWindow, "still a child of the window")
+        t.eq(b.point[1], "BOTTOMRIGHT")
+        t.eq(b.point[2], env.TestWindow.Canvas, "against the part, not the window")
+        t.eq(b.point[3], "BOTTOMRIGHT")
+        t.eq(b.point[4], -44)
+        t.eq(b.point[5], 4)
+        t.eq(b.strata, "HIGH")
+        t.eq(h.placedOn, "Canvas", "the handle says which part")
+    end,
+
+    ["window button: asked inside a part the window does not have, none is made and it says why"] = function(t)
+        local spec = { name = "TestWindowButton", text = "Menu", inside = { "Canvas" },
+            point = { "BOTTOMRIGHT", "BOTTOMRIGHT", -44, 4 } }
+        local h, env = make({}, spec)
+        t.eq(h, nil, "no guess at another place")
+        t.eq(#env.frames, 0, "no frame made")
+        t.eq(select(2, ns.make.client(env).windowButton("TestWindow", spec)),
+            "its place inside the window was not found")
+    end,
+
+    ["window button: with no part asked for it is against the window and says no part"] = function(t)
+        local h, env = make({ parts = { "Canvas" } })
+        t.eq(env.frames[1].point[2], env.TestWindow)
+        t.eq(env.frames[1].strata, nil, "no strata unless asked")
+        t.eq(h.placedOn, nil)
+    end,
+
+    ["window button: the fake places inside a part the same way"] = function(t)
+        local spec = { text = "Menu", inside = { "Canvas" } }
+        local c = ns.make.fakeClient()
+        c.setWindow("TestWindow", {})
+        t.eq(c.windowButton("TestWindow", spec).placedOn, "Canvas", "parts left out: every part is there")
+        c.setWindow("TestWindow", { parts = { "Other" } })
+        t.eq(c.windowButton("TestWindow", spec), nil)
+        t.eq(select(2, c.windowButton("TestWindow", spec)), "its place inside the window was not found")
+        c.setWindow("TestWindow", { parts = { "Other", "Canvas" } })
+        t.eq(c.windowButton("TestWindow", spec).placedOn, "Canvas")
+        t.eq(c.windowButton("TestWindow", SPEC).placedOn, nil)
     end,
 
     ["window button: it is a plain button: no secure template, no attribute"] = function(t)
