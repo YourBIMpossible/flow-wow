@@ -77,6 +77,7 @@ Nav\GuideRead.lua
 Nav\ViewState.lua
 Nav\WaypointStep.lua
 Nav\Waypoint.lua
+Nav\MinimapPin.lua
 Nav\ProfStep.lua
 Nav\ProfSeen.lua
 Nav\RoutePlan.lua
@@ -95,4 +96,5 @@ UI\SellList.lua
 UI\BankList.lua
 Items\Keep.lua
 UI\Arrow.lua
+UI\MinimapPin.lua
 UI\RotationIcon.lua

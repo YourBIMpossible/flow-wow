@@ -254,6 +254,10 @@ local function start(opts)
             }
         end
         seen.mini = { size = 140, radius = 100, rotates = false }
+    else
+        -- The fake has both reads; this is a client without them.
+        c.minimap = nil
+        c.minimapPin = nil
     end
     local k = ns.Kernel({}, c)
     local api = P.Declare(k)

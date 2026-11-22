@@ -27,6 +27,9 @@
 --   c.setScreen(1024, 768); c.setVersion("0.1.0"); c.setFrames(false)
 --   c.panels[1].lines / .point / .shown / .spec; c.panels[1].drag({ "CENTER", "CENTER", 0, 0 })
 --   c.arrows[1].point / .attached / .shown / .drawn / .lines; c.arrows[1].drag(point)
+--   c.setQuestLog({ { id = 1, title = "A", objectives = { { text = "x", done = false } } } })
+--   c.setQuestieModule("QuestieDB", { GetQuest = fn }); c.setMinimap({ size = 140, radius = 100, rotates = false })
+--   c.minimapPins[1].x / .y / .edge / .shown / .places / .hides / .spec
 -- What a test has not set is unknown (nil), as on a client that won't say.
 local _, ns = ...
 ns.make = ns.make or {}
@@ -166,6 +169,43 @@ function ns.make.fakeClient(opts)
         return s.cooldowns[id]
     end
     function c.facing() return s.facing end
+    -- The quest log: a copy of what setQuestLog was given, or nil.
+    function c.questLog()
+        if type(s.questLog) ~= "table" then return nil end
+        local rows = {}
+        for i, r in ipairs(s.questLog) do
+            local row = { id = r.id, title = r.title, complete = r.complete, failed = r.failed, objectives = {} }
+            for j, o in ipairs(r.objectives or {}) do row.objectives[j] = { text = o.text, done = o.done } end
+            rows[i] = row
+        end
+        return rows
+    end
+    -- The Questie module of that name as set, itself (not a copy), or nil.
+    function c.questieModule(name)
+        return s.questie and s.questie[name] or nil
+    end
+    function c.minimap()
+        local r = s.minimap
+        if type(r) ~= "table" then return nil end
+        return { size = r.size, radius = r.radius, rotates = r.rotates, square = r.square }
+    end
+    -- Every minimap pin made is in c.minimapPins, in order.
+    c.minimapPins = {}
+    function c.minimapPin(spec)
+        if s.noFrames then return nil end
+        local h = { spec = spec, shown = false, places = 0, hides = 0 }
+        function h.place(x, y, edge)
+            if type(x) ~= "number" or type(y) ~= "number" then return end
+            h.x, h.y, h.edge, h.shown = x, y, edge and true or false, true
+            h.places = h.places + 1
+        end
+        function h.hide()
+            h.shown = false
+            h.hides = h.hides + 1
+        end
+        c.minimapPins[#c.minimapPins + 1] = h
+        return h
+    end
     function c.mapSize(map)
         local r = s.mapSizes and s.mapSizes[map]
         return r and { w = r.w, h = r.h } or nil
@@ -553,6 +593,17 @@ function ns.make.fakeClient(opts)
     end
     -- Radians, 0 = north; nil for not known.
     function c.setFacing(f) s.facing = f end
+    -- The quest log rows as client.questLog() gives them; nil: not known.
+    function c.setQuestLog(rows) s.questLog = rows end
+    -- A Questie module by name; mod nil takes it away. With none set,
+    -- Questie is not there.
+    function c.setQuestieModule(name, mod)
+        s.questie = s.questie or {}
+        s.questie[name] = mod
+    end
+    -- { size, radius, rotates, square } as client.minimap() gives it; a
+    -- field left out is not known. nil: no minimap.
+    function c.setMinimap(r) s.minimap = r end
     -- A map's width and height in yards; leave both out for not known.
     function c.setMapSize(map, w, h)
         s.mapSizes = s.mapSizes or {}

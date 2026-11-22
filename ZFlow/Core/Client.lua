@@ -1230,6 +1230,171 @@ function ns.make.client(env)
         return h
     end
 
+    -- The quest log of the player (F1), or nil when the client will not
+    -- say:
+    --   { { id =, title =, complete =, failed =,
+    --       objectives = { { text =, done = } } } }
+    -- Headers are left out. complete and failed are true, false, or nil
+    -- when the client did not say; an objective has done = true or false
+    -- and text or nil. Read only: nothing is accepted, handed in or
+    -- abandoned. First guesses, none seen in game on 16001:
+    -- C_QuestLog.GetNumQuestLogEntries, GetInfo(index) answering a table
+    -- (title, questID, isHeader), IsComplete(id), IsFailed(id) and
+    -- GetQuestObjectives(id) answering { { text, finished } }; else the
+    -- older GetNumQuestLogEntries, GetQuestLogTitle(index) (title, level,
+    -- group, header, collapsed, complete 1 / -1, frequency, id) and
+    -- GetQuestLogLeaderBoard(objective, index) (text, kind, finished).
+    local function questFlag(fn, id)
+        local ok, v = call(fn, id)
+        if not ok or hidden(v) then return nil end
+        if v == true then return true end
+        if v == false then return false end
+        return nil
+    end
+    function c.questLog()
+        local rows = {}
+        local group = env.C_QuestLog
+        if type(group) == "table" and type(group.GetNumQuestLogEntries) == "function"
+            and type(group.GetInfo) == "function" then
+            local okN, n = call(group.GetNumQuestLogEntries)
+            if not okN or hidden(n) or type(n) ~= "number" then return nil end
+            for i = 1, n do
+                local okI, info = call(group.GetInfo, i)
+                if okI and type(info) == "table" and not hidden(info.questID) and not hidden(info.title)
+                    and info.isHeader ~= true and type(info.questID) == "number" and info.questID > 0
+                    and type(info.title) == "string" then
+                    local objectives = {}
+                    local okO, list = call(group.GetQuestObjectives, info.questID)
+                    if okO and type(list) == "table" then
+                        for j = 1, #list do
+                            local o = list[j]
+                            local text = type(o) == "table" and not hidden(o.text)
+                                and type(o.text) == "string" and o.text or nil
+                            objectives[j] = { text = text, done = type(o) == "table" and o.finished == true }
+                        end
+                    end
+                    rows[#rows + 1] = {
+                        id = info.questID, title = info.title,
+                        complete = questFlag(group.IsComplete, info.questID),
+                        failed = questFlag(group.IsFailed, info.questID),
+                        objectives = objectives,
+                    }
+                end
+            end
+            return rows
+        end
+        local okN, n = call(env.GetNumQuestLogEntries)
+        if not okN or hidden(n) or type(n) ~= "number" then return nil end
+        for i = 1, n do
+            local okT, title, _, _, header, _, state, _, id = call(env.GetQuestLogTitle, i)
+            if okT and not header and type(title) == "string" and type(id) == "number" and id > 0 then
+                local objectives = {}
+                local okC, count = call(env.GetNumQuestLeaderBoards, i)
+                if okC and type(count) == "number" then
+                    for j = 1, count do
+                        local okO, text, _, finished = call(env.GetQuestLogLeaderBoard, j, i)
+                        objectives[j] = {
+                            text = okO and type(text) == "string" and text or nil,
+                            done = okO and (finished == true or finished == 1) or false,
+                        }
+                    end
+                end
+                rows[#rows + 1] = {
+                    id = id, title = title,
+                    complete = state == 1 or state == true,
+                    failed = state == -1,
+                    objectives = objectives,
+                }
+            end
+        end
+        return rows
+    end
+
+    -- A module of the installed Questie by name, or nil: Questie is not
+    -- there, or its loader gave none. Asked of Questie at runtime through
+    -- its own loader (QuestieLoader:ImportModule); nothing of Questie is
+    -- copied into this addon or changed. A first guess: not seen in game.
+    function c.questieModule(name)
+        if type(name) ~= "string" or name == "" then return nil end
+        local loader = env.QuestieLoader
+        if type(loader) ~= "table" then return nil end
+        local ok, mod = method(loader, "ImportModule", name)
+        if not ok or type(mod) ~= "table" then return nil end
+        return mod
+    end
+
+    -- The minimap as the client says it is (F1), or nil without one:
+    --   { size =, radius =, rotates =, square = }
+    -- size: how wide the frame is. radius: yards from the middle to the
+    -- edge at the zoom now, only when the client itself says it
+    -- (C_Minimap.GetViewRadius); no table of yards per zoom step is in this
+    -- addon, so on a client without that call it is nil. rotates: true or
+    -- false from the rotateMinimap setting, nil when not said. square: true
+    -- when GetMinimapShape says "SQUARE", else nil. First guesses, none
+    -- seen in game on 16001.
+    function c.minimap()
+        local frame = env.Minimap
+        if frame == nil then return nil end
+        local out = {}
+        local okW, w = method(frame, "GetWidth")
+        if okW and not hidden(w) and type(w) == "number" and w == w and w > 0 then out.size = w end
+        local group = env.C_Minimap
+        if type(group) == "table" then
+            local okR, r = call(group.GetViewRadius)
+            if okR and not hidden(r) and type(r) == "number" and r == r and r > 0 then out.radius = r end
+        end
+        local okC, v = call(env.GetCVar, "rotateMinimap")
+        if not okC and type(env.C_CVar) == "table" then okC, v = call(env.C_CVar.GetCVar, "rotateMinimap") end
+        if okC and not hidden(v) then
+            if v == "1" or v == 1 or v == true then
+                out.rotates = true
+            elseif v == "0" or v == 0 or v == false then
+                out.rotates = false
+            end
+        end
+        local okS, shape = call(env.GetMinimapShape)
+        if okS and shape == "SQUARE" then out.square = true end
+        return out
+    end
+
+    -- One small mark on the minimap (F1), or nil when the client cannot
+    -- make it. Hidden when made; it takes no mouse and holds no action.
+    --   spec = { name = global frame name or nil, size = n }
+    --   h.place(x, y, edge)   shows it, its middle x to the right and y up
+    --                   from the middle of the minimap; edge true (the place
+    --                   is off the minimap) draws it fainter
+    --   h.hide()
+    -- A first guess: not seen in game.
+    function c.minimapPin(spec)
+        spec = type(spec) == "table" and spec or {}
+        local map = env.Minimap
+        if map == nil then return nil end
+        local ok, f = call(env.CreateFrame, "Frame", spec.name, map)
+        if not ok or f == nil then return nil end
+        local size = tonumber(spec.size) or 12
+        method(f, "Hide")
+        if not method(f, "SetSize", size, size) then
+            method(f, "SetWidth", size)
+            method(f, "SetHeight", size)
+        end
+        method(f, "EnableMouse", false)
+        local okTex, tex = method(f, "CreateTexture", nil, "OVERLAY")
+        if okTex and tex ~= nil then
+            method(tex, "SetAllPoints", f)
+            if not method(tex, "SetColorTexture", 1, 0.82, 0, 1) then method(tex, "SetTexture", 1, 0.82, 0, 1) end
+        end
+        local h = {}
+        function h.place(x, y, edge)
+            if type(x) ~= "number" or type(y) ~= "number" or x ~= x or y ~= y then return end
+            method(f, "ClearAllPoints")
+            method(f, "SetPoint", "CENTER", map, "CENTER", x, y)
+            method(f, "SetAlpha", edge and 0.6 or 1)
+            method(f, "Show")
+        end
+        function h.hide() method(f, "Hide") end
+        return h
+    end
+
     -- One movable icon, or nil when the client cannot make a frame. First
     -- guess, not seen in game (WOW-ROTATION-ICON).
     --   spec = { name = global frame name or nil, size = n }

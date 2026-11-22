@@ -96,6 +96,7 @@ return {
         "Nav/ViewState.lua",
         "Nav/WaypointStep.lua",
         "Nav/Waypoint.lua",
+        "Nav/MinimapPin.lua",
         "Nav/ProfStep.lua",
         "Nav/ProfSeen.lua",
         "Nav/RoutePlan.lua",
@@ -116,6 +117,7 @@ return {
         "UI/BankList.lua",
         "Items/Keep.lua",
     "UI/Arrow.lua",
+    "UI/MinimapPin.lua",
     "UI/RotationIcon.lua",
     },
 }
