@@ -133,6 +133,7 @@ local function corpseStep(client)
     if not ok then return step end
     if type(at) == "table" and at.map ~= nil and type(at.x) == "number" and type(at.y) == "number" then
         local zone = ask(client, "zone")
+        -- The player's continent is safe to give: c.corpse answers only for the player's own map (R5).
         step.place = { cont = type(zone) == "table" and zone.cont or nil, map = at.map, x = at.x, y = at.y }
     elseif at == false then
         step.lines = { Arrow.CORPSE_LABEL, Arrow.CORPSE_ELSEWHERE }
@@ -210,10 +211,15 @@ function Arrow.GuideSource(client, layout, guide, intro)
              lines = lines, lost = lost, still = still, intro = playing }
 end
 
--- The intro: the quest arrow upright with the addon's title, once, at the
--- first login of an install that has not seen it. Seen is a plain true saved
--- at Arrow.INTRO_PATH the first time the intro is on the screen. Both
--- values are authored here, not taken from the game.
+-- The intro: the quest arrow upright with the addon's title, once, for an
+-- install that has not seen it. It waits for the loading screen to end: it
+-- is shown only once PLAYER_ENTERING_WORLD has been seen, and its clock
+-- starts, and seen is saved, at the first frame drawn with it shown, so
+-- none of it plays out unseen. Seen is a plain true saved at
+-- Arrow.INTRO_PATH. Both values are authored here, not taken from the game.
+-- First guess on 16001, not observed in a client: that the event is named
+-- PLAYER_ENTERING_WORLD, and that no frame is drawn to this add-on under
+-- the loading screen. Needs an in-game check (MR2-1).
 Arrow.INTRO_PATH = "layout.arrowIntroSeen"
 Arrow.INTRO_SECONDS = 3
 
@@ -236,14 +242,20 @@ function Arrow.Start(k, diag)
     local ready, demo, near = false, false, false
     local current, cancelTick, since, broken = nil, nil, 0, false
     local guideFn = nil
-    local introAsked, introUntil, introSaved = false, nil, false
+    -- introWanted: this install has not seen the intro and it has not ended.
+    -- entered: the world has been entered. introShown: the last layout had
+    -- the intro on the quest arrow. introUntil: when it ends, nil until the
+    -- first frame with it shown.
+    local introAsked, introWanted, entered, introShown, introUntil = false, false, false, false, nil
 
-    -- { title } while the intro is playing, else nil. It ends by the clock.
+    -- { title } while the intro is waiting for its first frame or playing,
+    -- else nil. Once started it ends by the clock.
     local function intro()
-        if not introUntil then return nil end
+        if not introWanted or not entered then return nil end
+        if introUntil == nil then return { title = id.title } end
         local now = client.now()
         if type(now) ~= "number" or now >= introUntil then
-            introUntil = nil
+            introWanted = false
             return nil
         end
         return { title = id.title }
@@ -278,6 +290,7 @@ function Arrow.Start(k, diag)
     -- A fresh layout: what is shown, where, at what scale and opacity.
     local function relayout()
         if not handles or not ready then return end
+        introShown = false
         -- A frame error stops the arrows for the session: nothing here,
         -- a loading screen or a command, shows them again.
         if broken then
@@ -321,16 +334,27 @@ function Arrow.Start(k, diag)
             end
         end
         current = view
-        if src.intro == true and view.quest.shown and not introSaved then
-            introSaved = true
-            local ok, reason = k.store:set("account", Arrow.INTRO_PATH, true)
-            if not ok then k.problems:add("arrow", "save", reason) end
+        introShown = src.intro == true and view.quest.shown == true
+    end
+
+    -- The first frame drawn with the intro shown: its clock starts and it is
+    -- saved as seen. Without a clock it is dropped, and not saved.
+    local function startIntro()
+        local now = client.now()
+        if type(now) ~= "number" then
+            introWanted = false
+            relayout()
+            return
         end
+        introUntil = now + Arrow.INTRO_SECONDS
+        local ok, reason = k.store:set("account", Arrow.INTRO_PATH, true)
+        if not ok then k.problems:add("arrow", "save", reason) end
     end
 
     local function frame(elapsed)
         if broken then return end
         local ok, err = pcall(function()
+            if introWanted and introShown and introUntil == nil then startIntro() end
             since = since + (tonumber(elapsed) or 0)
             if since >= Arrow.RELAYOUT then
                 since = 0
@@ -382,14 +406,16 @@ function Arrow.Start(k, diag)
     local function apply()
         if not introAsked then
             introAsked = true
-            local now = client.now()
-            if k.store:get("account", Arrow.INTRO_PATH) ~= true and type(now) == "number" then
-                introUntil = now + Arrow.INTRO_SECONDS
-            end
+            introWanted = k.store:get("account", Arrow.INTRO_PATH) ~= true
         end
         ready = true
         relayout()
         tick(true)
+    end
+    -- The loading screen is over, or about to be: the intro may show.
+    local function enterWorld()
+        entered = true
+        apply()
     end
 
     if handles then
@@ -401,7 +427,7 @@ function Arrow.Start(k, diag)
             end)
         end
         client.listen("PLAYER_LOGIN", apply)
-        client.listen("PLAYER_ENTERING_WORLD", apply)
+        client.listen("PLAYER_ENTERING_WORLD", enterWorld)
     end
 
     local function say(text) client.print(id.title .. ": " .. text) end
