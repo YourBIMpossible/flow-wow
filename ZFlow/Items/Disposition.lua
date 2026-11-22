@@ -145,13 +145,13 @@ local function ask(e, item, context)
     if not ok then
         if type(context.onError) == "function" then pcall(context.onError, e.r.key, v) end
         return { action = "keep", basis = "unknown", failed = true,
-                 reason = "a Z-Flow check failed (" .. tostring(e.r.key) .. "), so it's kept" }
+                 reason = "a check failed (" .. tostring(e.r.key) .. "), so it's kept" }
     end
     if v == nil then return nil end
     if type(v) ~= "table" or not ACTIONS[v.action] then
         if type(context.onError) == "function" then pcall(context.onError, e.r.key, "not a verdict") end
         return { action = "keep", basis = "unknown", failed = true,
-                 reason = "a Z-Flow check gave no clear answer (" .. tostring(e.r.key) .. "), so it's kept" }
+                 reason = "a check gave no clear answer (" .. tostring(e.r.key) .. "), so it's kept" }
     end
     return v
 end
@@ -202,8 +202,8 @@ end
 function Disposition.Decide(item, context)
     context = type(context) == "table" and context or {}
     if type(item) ~= "table" then
-        return { action = "keep", rule = nil, reason = "not an item Z-Flow can read", basis = "unknown",
-                 reasons = { "not an item Z-Flow can read" } }
+        return { action = "keep", rule = nil, reason = "not a readable item", basis = "unknown",
+                 reasons = { "not a readable item" } }
     end
     local list = sortedRules(type(context.rules) == "table" and context.rules or Disposition.RULES)
     return decide(list, 1, item, context, isCount(item.count) and item.count or nil)

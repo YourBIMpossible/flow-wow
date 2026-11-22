@@ -27,9 +27,19 @@ return {
         "Core/Kernel.lua",
 
         -- Items
+        "Items/Key.lua",
+        "Items/Resources.lua",
+        "Items/Prices.lua",
+        "Items/Disposition.lua",
 
         -- Rotation and classes
+        "Rotation/Pack.lua",
+        "Rotation/Snapshot.lua",
+        "Rotation/Choose.lua",
+        "Rotation/KeyPlan.lua",
+        "Classes/Druid.lua",
 
         -- Navigation
+        "Nav/ArrowLayout.lua",
     },
 }

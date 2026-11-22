@@ -18,3 +18,13 @@ Core\Kinds.lua
 Core\Guard.lua
 Core\Module.lua
 Core\Kernel.lua
+Items\Key.lua
+Items\Resources.lua
+Items\Prices.lua
+Items\Disposition.lua
+Rotation\Pack.lua
+Rotation\Snapshot.lua
+Rotation\Choose.lua
+Rotation\KeyPlan.lua
+Classes\Druid.lua
+Nav\ArrowLayout.lua
