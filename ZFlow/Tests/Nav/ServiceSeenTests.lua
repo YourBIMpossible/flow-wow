@@ -85,7 +85,10 @@ tests["service seen: saved for the character, not the account"] = function(t)
     local _, c = start({ npc = VENDOR })
     c.fire("MERCHANT_SHOW")
     local account = c.saved(ns.id.accountDB)
-    t.eq(type(account) == "table" and account.learned or nil, nil)
+    -- The store's skeleton always makes account.learned; nothing of the
+    -- places may land in it.
+    local learned = type(account) == "table" and account.learned or nil
+    t.eq(type(learned) == "table" and learned.places or nil, nil)
 end
 
 tests["service seen: a merchant that repairs is a repair vendor too"] = function(t)
