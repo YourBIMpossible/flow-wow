@@ -45,6 +45,10 @@ return {
         "Items/Plan.lua",
         "Items/Present.lua",
         "Items/CraftHint.lua",
+        "Items/Sell.lua",
+
+        -- Gear
+        "Gear/Score.lua",
 
         -- Rotation and classes
         "Rotation/Pack.lua",
