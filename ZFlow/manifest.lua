@@ -58,6 +58,7 @@ return {
         "Nav/Bearing.lua",
         "Nav/ArrowView.lua",
         "Nav/Guide.lua",
+        "Nav/GuideRead.lua",
 
         -- On screen (after Nav: the panel uses its saved-point rules)
         "UI/DevPanel.lua",
