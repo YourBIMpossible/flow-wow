@@ -47,6 +47,15 @@ local function login(c)
     c.fire("PLAYER_ENTERING_WORLD")
 end
 
+-- How many printed lines hold the text.
+local function said(c, text)
+    local n = 0
+    for i = 1, #c.printed do
+        if c.printed[i]:find(text, 1, true) then n = n + 1 end
+    end
+    return n
+end
+
 return {
     ["shape: values, types and one level of a table answer"] = function(t)
         local row = ns.Diag.Shape(true, 5, "a", nil, { x = 1, y = {} })
@@ -558,5 +567,60 @@ return {
 
     ["identity: the predecessor's character table name is read from Core/Identity.lua (R6)"] = function(t)
         t.eq(ns.id.predecessorCharDB, "FlowCharDB")
+    end,
+
+    -- WOW-DIAG-VISIBILITY
+    ["slash: diag says when the client gives no time (CU7)"] = function(t)
+        local _, c = start()
+        login(c)
+        c.slashes[ns.id.slash]("diag")
+        t.eq(said(c, "the client gives no time"), 0, "a client with time gets no such line")
+        c.setTime(false)
+        c.slashes[ns.id.slash]("diag")
+        t.eq(said(c, ns.id.title .. ": the client gives no time; nothing that waits for a time runs."), 1)
+    end,
+
+    ["slash: diag gives the price watch's show count and last reason (PW1)"] = function(t)
+        local c = ns.make.fakeClient({ env = env() })
+        c.setClock(5000)
+        local k = ns.Kernel({}, c)
+        ns.Diag.Start(k)
+        local w = ns.PriceWatch.Declare(k)
+        k:Boot()
+        login(c)
+        local line = ns.id.title .. ": price watch: "
+        c.slashes[ns.id.slash]("diag")
+        t.eq(said(c, line .. "0 shows; last: none yet."), 1)
+        -- A window that cannot be read: the refusal is said.
+        c.setMerchant(nil)
+        c.setMerchantOpen(true)
+        t.eq(w.last().ok, false)
+        c.slashes[ns.id.slash]("diag")
+        t.eq(said(c, line .. "1 show; last: refused, the merchant window could not be read."), 1)
+        -- A window that is read.
+        c.setMerchantOpen(false)
+        c.setMerchant({ { index = 1, item = "item:2318", price = 60, stack = 1 } })
+        c.setMerchantOpen(true)
+        t.eq(w.last().ok, true, tostring(w.last().reason))
+        c.slashes[ns.id.slash]("diag")
+        t.eq(said(c, line .. "2 shows; last: read, 1 recorded."), 1)
+        -- Read, with a remark of the reading.
+        c.setMerchantOpen(false)
+        c.setMerchant({})
+        c.setMerchantOpen(true)
+        c.slashes[ns.id.slash]("diag")
+        t.eq(said(c, line .. "3 shows; last: read, 0 recorded, nothing with a price in coin was read."), 1)
+        -- Switched off: said, with no count.
+        k:SwitchOff(ns.PriceWatch.NAME, "test")
+        c.slashes[ns.id.slash]("diag")
+        t.eq(said(c, line .. "not running (off)."), 1)
+    end,
+
+    ["slash: diag has no price watch line on a kernel that has no price watch (PW1)"] = function(t)
+        local _, c = start()
+        login(c)
+        c.slashes[ns.id.slash]("diag")
+        t.eq(said(c, "price watch"), 0)
+        t.ok(#c.printed > 0, "the snapshot line is printed")
     end,
 }
