@@ -43,7 +43,9 @@ local function build(client, position, given, maps)
             -- Offsets are the caller's; a size is never taken from them.
             if type(e) == "table" then
                 link[zone] = { x = e.x, y = e.y }
-                framed = true
+                -- Only an entry with an offset puts the link in the caller's
+                -- frame; one with none (or only a size) says nothing of it.
+                if finite(e.x) and finite(e.y) then framed = true end
             end
         end
     end

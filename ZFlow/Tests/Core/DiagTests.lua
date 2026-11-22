@@ -460,8 +460,9 @@ return {
             ch.note.text = "changed"
             return real(a, ch)
         end
-        c.slashes[ns.id.slash]("import")
+        local ran, err = pcall(c.slashes[ns.id.slash], "import")
         ns.Import.FromFlow = real
+        t.ok(ran, tostring(err))
         t.ok(seenA ~= nil and seenA ~= flow, "the account table handed in is a copy")
         t.ok(seenC ~= nil and seenC ~= c.saved(ns.id.predecessorCharDB), "the character table handed in is a copy")
         t.eq(flow, { buffButton = { scale = 9 } })
@@ -502,8 +503,9 @@ return {
         local real = ns.Import.FromFlow
         ns.Import.FromFlow = function() error("boom") end
         local before = #c.printed
-        c.slashes[ns.id.slash]("import")
+        local ran, err = pcall(c.slashes[ns.id.slash], "import")
         ns.Import.FromFlow = real
+        t.ok(ran, tostring(err))
         t.eq(#c.printed, before + 1)
         t.eq(c.printed[#c.printed], ns.id.title .. ": the import could not be read.")
         local p = k.problems:list("diag")
@@ -518,6 +520,30 @@ return {
         local line = c.printed[#c.printed]
         t.ok(line:find(ns.id.slash .. " diag", 1, true), line)
         t.ok(line:find(ns.id.slash .. " import", 1, true), line)
+    end,
+
+    ["slash: import's copy closes a loop, keeps sharing and copies table keys (C6)"] = function(t)
+        local _, c = start()
+        login(c)
+        local flow = c.saved(ns.id.predecessorDB)
+        local shared, key = { n = 1 }, { k = 1 }
+        flow.self = flow
+        flow.a, flow.b = shared, shared
+        flow[key] = "by table"
+        local real = ns.Import.FromFlow
+        local seen
+        ns.Import.FromFlow = function(a) seen = a; return { ok = false, reason = "stub" } end
+        local ran, err = pcall(c.slashes[ns.id.slash], "import")
+        ns.Import.FromFlow = real
+        t.ok(ran, tostring(err))
+        t.ok(type(seen) == "table" and seen ~= flow, "a copy is handed in")
+        t.ok(seen.self == seen, "the loop closes on the copy")
+        t.ok(seen.a == seen.b and seen.a ~= shared, "one copy, shared where the original shares")
+        t.eq(seen.a, { n = 1 })
+        local copiedKey
+        for k2, v in pairs(seen) do if type(k2) == "table" then copiedKey = k2; t.eq(v, "by table") end end
+        t.ok(copiedKey ~= nil and copiedKey ~= key, "a table key is copied")
+        t.eq(copiedKey, { k = 1 })
     end,
 
     ["identity: the predecessor's character table name is read from Core/Identity.lua (R6)"] = function(t)
