@@ -3169,6 +3169,22 @@ function ns.make.client(env)
     -- for this client, and other addons put plain buttons on it with no
     -- such check. None of that has been seen in game. c.windowState below
     -- lets one look in game settle it. Needs game test.
+    --
+    -- Section 142: spec.inside = { field name, ... } places the button
+    -- against a part of the window instead of the window itself: the
+    -- first named field of the window that is a frame. The button is
+    -- still a child of the window. When none of the named fields is
+    -- there, nothing is made: nil and
+    -- "its place inside the window was not found" (a guess at
+    -- another place could sit under something again). spec.strata is
+    -- given to SetFrameStrata when it is a string. h.placedOn is the
+    -- field name used, nil for the window itself. Why: the owner saw the
+    -- world map button under the quest log header at the top right of
+    -- the window. The map window field ScrollContainer (the map
+    -- itself) is named in the public UI source for this client family
+    -- and used by two installed addons
+    -- (WoW\from-twin\RESEARCH-worldmap-button.md). Frame:SetFrameStrata
+    -- (warcraft.wiki.gg). Not seen in game. Needs game test.
     --   h.onClick(fn, failed)  fn() on a left click; failed(err) is told the
     --                          error of an fn that failed.
     --   h.show(on)
@@ -3209,6 +3225,21 @@ function ns.make.client(env)
         end
         if protected then return nil, "its window is protected" end
 
+        local against, placedOn = frame, nil
+        if type(spec.inside) == "table" then
+            against = nil
+            for _, field in ipairs(spec.inside) do
+                if type(field) == "string" then
+                    local okF, part = pcall(function() return frame[field] end)
+                    if okF and not hidden(part) and type(part) == "table" then
+                        against, placedOn = part, field
+                        break
+                    end
+                end
+            end
+            if against == nil then return nil, "its place inside the window was not found" end
+        end
+
         local name = spec.name
         if type(name) ~= "string" or name == "" or env[name] ~= nil then name = nil end
         local ok, b = call(env.CreateFrame, "Button", name, frame, "UIPanelButtonTemplate")
@@ -3227,11 +3258,12 @@ function ns.make.client(env)
             method(b, "SetHeight", 22)
         end
         local p = type(spec.point) == "table" and spec.point or {}
-        method(b, "SetPoint", type(p[1]) == "string" and p[1] or "TOPRIGHT", frame,
+        if type(spec.strata) == "string" then method(b, "SetFrameStrata", spec.strata) end
+        method(b, "SetPoint", type(p[1]) == "string" and p[1] or "TOPRIGHT", against,
             type(p[2]) == "string" and p[2] or "TOPRIGHT", tonumber(p[3]) or 0, tonumber(p[4]) or 0)
         method(b, "RegisterForClicks", "LeftButtonUp")
 
-        local h, clicked, clickFailed = {}, nil, nil
+        local h, clicked, clickFailed = { placedOn = placedOn }, nil, nil
         -- The handlers close over the button: they use none of the
         -- arguments the client passes.
         method(b, "SetScript", "OnClick", function()
@@ -3720,6 +3752,57 @@ function ns.make.client(env)
             return false
         end
         return h
+    end
+
+    ---------------------------------------------------------------------
+    -- S28 sound restart (Plexy, LEDGER 143; WoW/from-plexy/
+    -- RESEARCH-sound-restart.md). Ported from legacy Flow's Modules/Sound.lua,
+    -- which ran on this client: Sound_GameSystem_RestartSoundSystem, and
+    -- ConsoleExec("Sound_RestartSoundSystem") only when the player asked by
+    -- hand (a console the game keeps for itself gives one "blocked" message
+    -- the player asked for, never one each time the screen sleeps); the
+    -- SOUND_DEVICE_UPDATE event when the speakers change. Not seen by Z-Flow
+    -- in game: needs a game test.
+    --
+    --   c.soundWays(byHand) -> { name, ... }   the ways this client offers
+    --   c.restartSound(byHand) -> true, how | false, why
+    --   c.watchSoundDevices(fn) -> true when the client takes the event, else
+    --     nil; fn() each time the game says its list of speakers changed
+    local function soundWays(byHand)
+        local out = {}
+        if type(env.Sound_GameSystem_RestartSoundSystem) == "function" then
+            out[#out + 1] = { name = "Sound_GameSystem_RestartSoundSystem", fn = env.Sound_GameSystem_RestartSoundSystem }
+        end
+        if byHand and type(env.ConsoleExec) == "function" then
+            local exec = env.ConsoleExec
+            out[#out + 1] = { name = "the console's Sound_RestartSoundSystem",
+                fn = function() return exec("Sound_RestartSoundSystem") end }
+        end
+        return out
+    end
+    function c.soundWays(byHand)
+        local names = {}
+        for i, w in ipairs(soundWays(byHand)) do names[i] = w.name end
+        return names
+    end
+    function c.restartSound(byHand)
+        local tried = {}
+        for _, w in ipairs(soundWays(byHand)) do
+            local ok, err = pcall(w.fn)
+            if ok then return true, w.name end
+            tried[#tried + 1] = w.name .. ": " .. tostring(err)
+        end
+        if #tried > 0 then return false, table.concat(tried, "; ") end
+        return false, "this game gives add-ons no way to restart its sound"
+    end
+    function c.watchSoundDevices(fn)
+        if type(fn) ~= "function" then return nil end
+        local cancel = events.add("SOUND_DEVICE_UPDATE", function() pcall(fn) end)
+        if unregistered["SOUND_DEVICE_UPDATE"] then
+            cancel()
+            return nil
+        end
+        return true
     end
 
     -- F7 probe (Plexy, LEDGER 134; WoW/from-plexy/RESEARCH-fight-log.md): two

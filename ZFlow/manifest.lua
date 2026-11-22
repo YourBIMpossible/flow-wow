@@ -29,6 +29,10 @@ return {
         "Core/Diag.lua",
         "Items/Drops.lua",
         "UI/Perf.lua",
+        "Core/Sound.lua",
+        "UI/MoveGuides.lua",
+        "Core/Facts.lua",
+        "UI/Export.lua",
         "UI/CopyBox.lua",
         "UI/Advisor.lua",
         "UI/Setup.lua",
@@ -115,6 +119,10 @@ return {
         "Nav/Errand.lua",
         "Nav/QuestSource.lua",
         "Nav/QuestRead.lua",
+        "Nav/Rides.lua",
+        "Nav/TravelSpells.lua",
+        "Nav/TravelIcon.lua",
+        "Nav/Leaving.lua",
         "UI/ProfCard.lua",
 
         -- On screen (after Nav: the panel uses its saved-point rules)

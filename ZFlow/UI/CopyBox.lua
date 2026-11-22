@@ -4,6 +4,9 @@
 --   <slash> copy        the last thing said (the lines of one command)
 --   <slash> copy all    everything kept (the last CopyBox.MAX lines)
 --
+-- What it holds is plain text: the game's colour and link codes are taken
+-- out (CopyBox.Plain), so a pasted line reads as it looked.
+--
 -- It replaces nothing: every line still goes to chat as before. The box
 -- only listens to the addon's own print (client.onPrint) and keeps the
 -- lines in memory; nothing is saved and nothing in the game is touched.
@@ -36,6 +39,19 @@ CopyBox.NOTHING = "nothing to copy yet. Run a command first, then copy."
 CopyBox.NO_FEED = "this client gives no print feed, so there is nothing to copy."
 CopyBox.NO_BOX = "this client cannot draw the copy box."
 
+-- Text without the game's colour, link, icon and atlas codes: what a player
+-- wants to paste. A link keeps its name ("[Linen Cloth]"); an escaped bar
+-- ("||") becomes one bar. Ported from legacy Flow's Modules/CopyBox.lua
+-- (C.Plain), which ran on this client (S24; WoW/from-plexy/
+-- RESEARCH-copy-window.md). Pure.
+function CopyBox.Plain(s)
+    s = tostring(s or "")
+    s = s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    s = s:gsub("|H.-|h(.-)|h", "%1"):gsub("|T.-|t", ""):gsub("|A.-|a", "")
+    s = s:gsub("||", "|")
+    return s
+end
+
 -- The lines kept, oldest first, each with the run it belongs to.
 function CopyBox.Log(max)
     max = type(max) == "number" and max >= 1 and math.floor(max) or CopyBox.MAX
@@ -48,7 +64,7 @@ function CopyBox.Log(max)
         -- A new run when the time is known and is not the last line's time.
         if #lines == 0 or (at ~= nil and at ~= lastAt) then run = run + 1 end
         lastAt = at
-        lines[#lines + 1] = { text = text, run = run }
+        lines[#lines + 1] = { text = CopyBox.Plain(text), run = run }
         while #lines > max do table.remove(lines, 1) end
     end
 

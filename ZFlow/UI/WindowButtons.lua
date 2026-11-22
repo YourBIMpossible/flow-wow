@@ -43,7 +43,11 @@
 -- Reads (through the injected client):
 --   client.windowButton(frameName, spec) -> h | nil    CLIENT NEED
 --     spec = { name = global name, text = short label, tip = tooltip line,
---              point = { anchor, relative anchor, x, y } against the window }
+--              point = { anchor, relative anchor, x, y } against the window,
+--              inside = { field name, ... } (optional): the point is
+--              against the first of these parts of the window instead;
+--              none there: nil and why. strata (optional) }
+--     h.placedOn: the part used, nil for the window itself
 --     nil and why when _G[frameName] is missing or InCombatLockdown() is
 --     not a plain false. h is a plain Button, a child of the window
 --     (shown only while the window is): h.onClick(fn) fn() on a left click,
@@ -65,7 +69,13 @@ WB.WORD = "buttons"
 WB.HELP = "say whether each window button is shown, and why not"
 WB.NO_READ = "no window read"
 
--- The button points are first guesses, not seen in game. The button text
+-- The merchant point was seen in game (section 142): top right of the
+-- merchant window, nothing over it. The world map point is a first
+-- guess, not seen in game: the owner saw the first one (top right of the
+-- window) under the quest log header, so it is now on the map itself,
+-- bottom right, left of the game's own quest log toggle. Why there, and
+-- what sits in the other corners: WoW\from-twin\RESEARCH-worldmap-button.md.
+-- Needs game test. The button text
 -- and the start of its tooltip are the addon's title from the identity
 -- (Core/Identity.lua is the only file that may hold it).
 WB.WINDOWS = {
@@ -75,7 +85,9 @@ WB.WINDOWS = {
         retry = "PLAYER_ENTERING_WORLD",
         opens = "arrow", call = "OpenMenu",
         tip = "open the arrow menu",
-        point = { "TOPRIGHT", "TOPRIGHT", -60, -30 },
+        inside = { "ScrollContainer" }, insideSays = "on the map itself",
+        strata = "HIGH",
+        point = { "BOTTOMRIGHT", "BOTTOMRIGHT", -44, 4 },
     },
     {
         key = "merchant", frame = "MerchantFrame", setting = "buttons.merchant",
@@ -133,6 +145,9 @@ function WB.Declare(k, diag)
                 if okV and v == true then line = line .. "; button can be seen" end
                 if okV and v == false then line = line .. "; button cannot be seen" end
             end
+            if s == "shown" and h and win.insideSays and h.placedOn ~= nil then
+                line = line .. "; placed " .. win.insideSays
+            end
             out[#out + 1] = line .. "."
         end
         return out
@@ -177,6 +192,7 @@ function WB.Declare(k, diag)
                 name = id.framePrefix .. "Button" .. win.frame,
                 text = id.title, tip = id.title .. ": " .. win.tip,
                 point = { win.point[1], win.point[2], win.point[3], win.point[4] },
+                inside = win.inside, strata = win.strata,
             })
         end
         if type(h) ~= "table" then
