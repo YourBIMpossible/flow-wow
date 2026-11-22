@@ -270,6 +270,27 @@ return {
         t.eq(c.spell("Wrath"), nil, "by id only")
     end,
 
+    ["spell: known asks the spell book first, the bare name second"] = function(t)
+        local asked = {}
+        local env = {
+            C_SpellBook = { IsSpellKnown = function(id) asked[#asked + 1] = "book" return id == 5176 end },
+            IsPlayerSpell = function() asked[#asked + 1] = "bare" return true end,
+        }
+        local c = ns.make.client(env)
+        t.eq(c.spell(5176).known, true)
+        t.eq(c.spell(1).known, false, "the book says no: the bare name is not asked")
+        t.eq(asked, { "book", "book" })
+        env.C_SpellBook.IsSpellKnown = boom
+        t.eq(c.spell(1).known, true, "a failed book call: the bare name")
+        env.C_SpellBook = nil
+        t.eq(c.spell(1).known, true, "no book: the bare name")
+        env.C_SpellBook = { IsSpellKnown = function() return 1 end }
+        t.eq(c.spell(1).known, nil, "not a true / false stays unknown")
+        env.C_SpellBook = "x"
+        env.IsPlayerSpell = nil
+        t.eq(c.spell(1).known, nil, "neither: not known")
+    end,
+
     ["spell: an answer the client hides or does not give stays unknown"] = function(t)
         local env = {
             IsPlayerSpell = function() return true end,

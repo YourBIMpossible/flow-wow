@@ -168,6 +168,39 @@ return {
         t.eq(ns.make.client(stoneEnv(2, 0, 0, 1600)).hearthCooldown(), 0)
     end,
 
+    ["client hearthCooldown: the item and bag groups are asked first"] = function(t)
+        local env = stoneEnv(0, 0, 0, 1600)
+        local asked = {}
+        env.C_Item = { GetItemCount = function(id) asked[#asked + 1] = { "count", id } return 1 end }
+        env.C_Container = { GetItemCooldown = function(id)
+            asked[#asked + 1] = { "cooldown", id }
+            return 1000, 3600, 1
+        end }
+        t.eq(ns.make.client(env).hearthCooldown(), 3000)
+        t.eq(asked, { { "count", 6948 }, { "cooldown", 6948 } })
+        t.eq(env.asked, {}, "the bare names are not asked")
+    end,
+
+    ["client hearthCooldown: with only the groups it still answers"] = function(t)
+        local env = stoneEnv(1, 0, 0, 1600)
+        env.GetItemCount, env.GetItemCooldown = nil, nil
+        t.eq(ns.make.client(env).hearthCooldown(), nil, "neither name: not known")
+        env.C_Item = { GetItemCount = function() return 1 end }
+        env.C_Container = { GetItemCooldown = function() return 0, 0, 1 end }
+        t.eq(ns.make.client(env).hearthCooldown(), 0)
+        env.C_Item.GetItemCount = function() return 0 end
+        t.eq(ns.make.client(env).hearthCooldown(), nil, "no stone")
+    end,
+
+    ["client hearthCooldown: a group call that fails falls to the bare name"] = function(t)
+        local env = stoneEnv(1, 1000, 3600, 1600)
+        env.C_Item = { GetItemCount = boom }
+        env.C_Container = { GetItemCooldown = boom }
+        t.eq(ns.make.client(env).hearthCooldown(), 3000)
+        env.C_Item, env.C_Container = "x", 7
+        t.eq(ns.make.client(env).hearthCooldown(), 3000, "a group that is no table")
+    end,
+
     ["client hearthCooldown: no stone is not known, never ready"] = function(t)
         t.eq(ns.make.client(stoneEnv(0, 0, 0, 1600)).hearthCooldown(), nil)
         t.eq(ns.make.client(stoneEnv(nil, 0, 0, 1600)).hearthCooldown(), nil)

@@ -52,6 +52,8 @@ local _, ns = ...
 --
 -- Not tested in game: the template, the attribute names and the two client
 -- needs are first guesses until seen in this client.
+-- The template and the attribute names type, spell and macrotext are on
+-- warcraft.wiki.gg (SecureActionButtonTemplate).
 local K = {}
 ns.KeyFrame = K
 

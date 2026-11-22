@@ -41,6 +41,8 @@ local _, ns = ...
 --
 -- This only reads the client. Not tested in game: the two event names and
 -- every client read used here are first guesses.
+-- Both event names are on warcraft.wiki.gg (TRAINER_SHOW,
+-- TRADE_SKILL_LIST_UPDATE).
 
 local ProfSeen = ns.ProfSeen or {}
 ns.ProfSeen = ProfSeen
