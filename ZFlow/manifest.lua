@@ -92,6 +92,7 @@ return {
         "UI/ArrowMenu.lua",
         "UI/SellList.lua",
         "UI/BankList.lua",
+        "Items/Keep.lua",
     "UI/Arrow.lua",
     "UI/RotationIcon.lua",
     },

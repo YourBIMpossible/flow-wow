@@ -53,7 +53,14 @@ end
 -- The saved list, with every entry under its item key. nil when the
 -- character's saved data is not there.
 local function listOf(k)
-    if type(k.client.saved(k.id.charDB)) ~= "table" then return nil end
+    -- saved() makes the table when it is missing, so ask whether it exists
+    -- (lead, L6-G merge: the check never failed before).
+    local c = k.client
+    if type(c.savedExists) == "function" then
+        if not c.savedExists(k.id.charDB) then return nil end
+    elseif type(c.saved(k.id.charDB)) ~= "table" then
+        return nil
+    end
     -- Read as the sell list reads it (a set or a list), so what is written
     -- back never loses an entry saved in the other shape.
     local never = ns.SellList.Choices(k.store).never

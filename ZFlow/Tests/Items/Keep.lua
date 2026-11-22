@@ -34,6 +34,7 @@ local function start(opts)
     local sell = ns.SellList.Declare(k)
     local keep = K.Start(k, diag, sell)
     k:Boot()
+    if opts.beforeLoad then return k, c, keep, diag, sell end
     c.fire("ADDON_LOADED", ns.id.addon)
     c.fire("PLAYER_LOGIN")
     c.fire("PLAYER_ENTERING_WORLD")
@@ -152,7 +153,9 @@ tests["keep: the kept line says what is true: it is on your list"] = function(t)
 end
 
 tests["keep: saved data not loaded is said, and nothing is written"] = function(t)
-    local k = start({ char = false })
+    -- At ADDON_LOADED the kernel makes a new character table when none is
+    -- saved, so "not loaded" is the time before it (lead, L6-G merge).
+    local k = start({ char = false, beforeLoad = true })
     local lines, changed = K.Run(k, "97")
     t.eq(changed, false)
     t.eq(lines, { K.NOT_LOADED })
