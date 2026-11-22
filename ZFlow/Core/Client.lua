@@ -1616,6 +1616,13 @@ function ns.make.client(env)
     -- h.onClose is there only when at least one route was made: a caller
     -- that must not show what cannot be closed asks type(h.onClose).
     -- A first guess throughout: not seen in game.
+    -- Docs (warcraft.wiki.gg), names and arguments match: API Frame
+    -- SetMovable, RegisterForDrag, StartMoving, StopMovingOrSizing,
+    -- SetUserPlaced, SetClampedToScreen, SetFrameStrata; GetPoint answers
+    -- anchor, relative frame, relative anchor, x, y; SetSize(width, height);
+    -- UIHANDLER OnDragStart, OnDragStop; UIHANDLER OnHide, which that page
+    -- says also runs when a frame it stands on is hidden. UISpecialFrames
+    -- and the UIPanelCloseButton template have no page: needs a game test.
     function c.panel(spec)
         spec = type(spec) == "table" and spec or {}
         local parent = env.UIParent
@@ -1795,6 +1802,14 @@ function ns.make.client(env)
     -- older GetNumQuestLogEntries, GetQuestLogTitle(index) (title, level,
     -- group, header, collapsed, complete 1 / -1, frequency, id) and
     -- GetQuestLogLeaderBoard(objective, index) (text, kind, finished).
+    -- Docs (warcraft.wiki.gg), names, arguments and fields match: API
+    -- C_QuestLog.GetNumQuestLogEntries, GetInfo, IsComplete, IsFailed and
+    -- GetQuestObjectives, all listed for build 1.60.1. The older
+    -- GetNumQuestLogEntries and GetQuestLogTitle (complete 6th as 1 / -1,
+    -- id 8th) match too but are not listed for 1.60.1, so the first path
+    -- is the likely one here. API GetQuestLogLeaderBoard matches. The page
+    -- for GetNumQuestLeaderBoards names its argument a quest id where this
+    -- passes the place in the log: needs a game test.
     local function questFlag(fn, id)
         local ok, v = call(fn, id)
         if not ok or hidden(v) then return nil end
@@ -1865,6 +1880,9 @@ function ns.make.client(env)
     -- there, or its loader gave none. Asked of Questie at runtime through
     -- its own loader (QuestieLoader:ImportModule); nothing of Questie is
     -- copied into this addon or changed. A first guess: not seen in game.
+    -- Source: Questie's public repository, Modules/Libs/QuestieLoader.lua:
+    -- a global QuestieLoader with the method ImportModule(name); matches.
+    -- Whether Questie loads on this client needs a game test.
     function c.questieModule(name)
         if type(name) ~= "string" or name == "" then return nil end
         local loader = env.QuestieLoader
