@@ -1333,6 +1333,13 @@ function ns.make.fakeClient(opts)
         for _, fn in ipairs({ unpack(s.unitTooltipListeners or {}) }) do fn(unit, add) end
         return added
     end
+
+    -- S34: mounted() is unknown (nil) until set.
+    --   c.setMounted(true / false)   c.setMounted(nil): not known
+    function c.mounted() return s.mounted end
+    function c.setMounted(v)
+        if v == nil then s.mounted = nil else s.mounted = v and true or false end
+    end
     return c
 end
 

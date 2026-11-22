@@ -4,33 +4,48 @@ local _, ns = ...
 -- nothing printed, no UI. It only orders what it is handed: places this
 -- player learned. Nothing is authored here.
 --
--- STRAIGHT LINES ONLY. There is no path data: every distance is the
--- straight line between two places on the flat map, in yards. Walls,
--- water, hills and roads are not known and not guessed. Every route says
--- so (route.straight, route.label) and whoever shows a route must show
--- that too. The order is a short one, not promised to be the shortest.
+-- STRAIGHT LINES, unless the caller hands in the player's own trip times
+-- (legs, S34). There is no path data: a distance is the straight line
+-- between two places on the flat map, in yards, or what the player's own
+-- trip between those two places took. Walls, water, hills and roads are
+-- not known and not guessed. Every route says which (route.straight,
+-- route.label) and whoever shows a route must show that too. The order is a short one, not promised to be the shortest.
 -- Not tested in game.
 --
--- N.ROUTE_STRAIGHT  the words that go with every route
+-- N.ROUTE_STRAIGHT  the words that go with a straight-line route
+-- N.ROUTE_LEARNED   the words when any leg was measured by a trip the
+--                   player made (legs, below)
 -- N.ROUTE_MAX       the most places one route takes
 --
--- N.RoutePlan(places, map, size, from) -> route, reason
+-- N.RoutePlan(places, map, size, from, legs) -> route, reason
 --   places  a list; each { map, x, y, ... } with x, y shares 0..1 of map.
 --           Read only: it is not changed and not copied.
 --   map     the one map the route is on
 --   size    { w, h }: the size of that map in yards
 --   from    optional { map, x, y }: where the route starts (the player).
 --           Not on this map, or with no x, y: the start is not known.
+--   legs    optional (S34, lead section 169 A): the player's own trip
+--           times, legs(a, b, d) -> yards, how, with a and b { x, y } in
+--           yards on this map and d the straight yards between them
+--           (Nav/Legs.lua). how "exact" (a trip made) is taken as it is;
+--           how "area" (its neighbourhood) only ever stretches the line.
+--           nil, another how, or an error: the straight line. Without
+--           legs every distance is the straight line, as before.
 --
 --   route = {
---     map, straight = true, label = N.ROUTE_STRAIGHT,
+--     map, straight, label,
+--                  -- straight is true, and label N.ROUTE_STRAIGHT, when
+--                  -- no leg was measured by legs; else false and
+--                  -- N.ROUTE_LEARNED
 --     fromKnown,   -- true when the route starts at `from`
---     stops = { { index, place, leg }, ... }   in the order to visit
+--     stops = { { index, place, leg, how }, ... }   in the order to visit
 --                  -- index: where the place is in `places`
 --                  -- place: places[index] itself
---                  -- leg: yards in a straight line from the stop before
---                  --   (from `from` for the first). Absent for the first
---                  --   stop when the start is not known: never 0 for that.
+--                  -- leg: yards from the stop before (from `from` for the
+--                  --   first): the straight line, or what legs gave.
+--                  --   Absent for the first stop when the start is not
+--                  --   known: never 0 for that.
+--                  -- how: "exact" or "area" when legs measured it, else nil
 --     total,       -- the legs added up, in yards
 --     left = { { index, reason }, ... }   places not in the route:
 --                  -- "no place"   not a table, or no x, y in 0..1
@@ -52,6 +67,7 @@ ns.Nav = ns.Nav or {}
 local N = ns.Nav
 
 N.ROUTE_STRAIGHT = "straight lines, not paths"
+N.ROUTE_LEARNED = "your own trip times where known, straight lines elsewhere"
 N.ROUTE_MAX = 40
 
 local EPS = 1e-9
@@ -72,12 +88,12 @@ local function apart(a, b)
 end
 
 -- The length of an order of points: from the start when there is one,
--- then stop to stop.
-local function length(order, pts, start)
+-- then stop to stop. far(p, q) is the cost of one leg.
+local function length(order, pts, start, far)
     local sum, last = 0, start
     for i = 1, #order do
         local p = pts[order[i]]
-        if last then sum = sum + apart(last, p) end
+        if last then sum = sum + far(last, p) end
         last = p
     end
     return sum
@@ -108,7 +124,7 @@ local function moved(order, i, j)
 end
 
 -- The nearest place next. Ties go to the place earlier in the list.
-local function nearestFirst(pts, start)
+local function nearestFirst(pts, start, far)
     local n = #pts
     local used, order = {}, {}
     local last = start
@@ -119,7 +135,7 @@ local function nearestFirst(pts, start)
         local best, bestD
         for i = 1, n do
             if not used[i] then
-                local d = apart(last, pts[i])
+                local d = far(last, pts[i])
                 if bestD == nil or d < bestD - EPS then best, bestD = i, d end
             end
         end
@@ -130,15 +146,15 @@ end
 
 -- While it makes the whole shorter: the best single change. The first
 -- found wins a tie.
-local function shorten(order, pts, start)
+local function shorten(order, pts, start, far)
     local n = #order
-    local len = length(order, pts, start)
+    local len = length(order, pts, start, far)
     for _ = 1, ROUNDS do
         local best, bestLen = nil, len
         for i = 1, n - 1 do
             for j = i + 1, n do
                 local try = turned(order, i, j)
-                local l = length(try, pts, start)
+                local l = length(try, pts, start, far)
                 if l < bestLen - EPS then best, bestLen = try, l end
             end
         end
@@ -146,7 +162,7 @@ local function shorten(order, pts, start)
             for j = 1, n do
                 if i ~= j then
                     local try = moved(order, i, j)
-                    local l = length(try, pts, start)
+                    local l = length(try, pts, start, far)
                     if l < bestLen - EPS then best, bestLen = try, l end
                 end
             end
@@ -157,7 +173,40 @@ local function shorten(order, pts, start)
     return order
 end
 
-function N.RoutePlan(places, map, size, from)
+-- The cost of a leg from p to q with the player's own trips (S34): what
+-- legs(p, q, d) answers, asked once per pair and kept. An "exact" answer
+-- (a trip the player made) is taken as it is, quicker than the line too
+-- (a flight); an "area" answer only ever stretches the line. Anything
+-- else, an error included: the straight line, and no how.
+local function costs(legs)
+    local memo, hows = {}, {}
+    local function far(p, q)
+        local row = memo[p]
+        if not row then
+            row = {}
+            memo[p] = row
+        end
+        local v = row[q]
+        if v ~= nil then return v end
+        local d = apart(p, q)
+        v = d
+        local ok, yards, how = pcall(legs, { x = p.x, y = p.y }, { x = q.x, y = q.y }, d)
+        if ok and finite(yards) and yards > 0 and (how == "exact" or how == "area") then
+            if how == "area" then yards = math.max(d, yards) end
+            v = yards
+            hows[p] = hows[p] or {}
+            hows[p][q] = how
+        end
+        row[q] = v
+        return v
+    end
+    local function howOf(p, q)
+        return hows[p] and hows[p][q] or nil
+    end
+    return far, howOf
+end
+
+function N.RoutePlan(places, map, size, from, legs)
     if map == nil then return nil, "no map" end
     if type(size) ~= "table" or not (finite(size.w) and finite(size.h) and size.w > 0 and size.h > 0) then
         return nil, "size unknown"
@@ -184,20 +233,26 @@ function N.RoutePlan(places, map, size, from)
         start = { x = from.x * size.w, y = from.y * size.h }
     end
 
-    local order = shorten(nearestFirst(pts, start), pts, start)
+    local far, howOf = apart, nil
+    if type(legs) == "function" then far, howOf = costs(legs) end
+
+    local order = shorten(nearestFirst(pts, start, far), pts, start, far)
 
     local stops, total, last = {}, 0, start
+    local straight = true
     for i = 1, #order do
         local p = pts[order[i]]
         local stop = { index = p.index, place = places[p.index] }
         if last then
-            stop.leg = apart(last, p)
+            stop.leg = far(last, p)
+            stop.how = howOf and howOf(last, p) or nil
+            if stop.how then straight = false end
             total = total + stop.leg
         end
         stops[i], last = stop, p
     end
     return {
-        map = map, straight = true, label = N.ROUTE_STRAIGHT,
+        map = map, straight = straight, label = straight and N.ROUTE_STRAIGHT or N.ROUTE_LEARNED,
         fromKnown = start ~= nil, stops = stops, total = total, left = left,
     }
 end
