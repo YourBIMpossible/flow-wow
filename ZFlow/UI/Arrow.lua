@@ -226,10 +226,18 @@ end
 Arrow.CORPSE_LABEL = "Corpse"
 Arrow.RELEASE_LABEL = "Release your spirit"
 Arrow.CORPSE_ELSEWHERE = "corpse is on another map"
+-- The distance line (G40): the yards, then the compass word when there is
+-- one. Inside the arrival radius the line is HERE_TEXT and no distance.
+Arrow.DISTANCE_TEXT = "%d yd"
+Arrow.DISTANCE_COMPASS_TEXT = "%d yd %s"
+Arrow.HERE_TEXT = "you're here"
 
 -- The arrow source for a guide's steps: ViewState's state and turns, with
 -- this install's saved layout and screen. A step's lines are its own lines,
--- else its label and distance. The gate is the guide's own, else
+-- else its label and its distance line: the yards and the compass word of
+-- where the step lies ("100 yd N"; the word does not turn with the player),
+-- or Arrow.HERE_TEXT inside the arrival radius (the step's own radius, else
+-- N.AT_POINT: where the arrow becomes the ring). No distance: no such line. The gate is the guide's own, else
 -- N.ArrowGate over what the client says: shut with no position, "corpse"
 -- while the player is dead or a ghost (a plain true from client.dead or
 -- from client.ghost; either read may be the one that answers), else open. While the gate is "corpse" the quest arrow's step is
@@ -273,7 +281,16 @@ function Arrow.GuideSource(client, layout, guide, intro)
             local label = more[key].label or step.label
             if label ~= nil then out[#out + 1] = tostring(label) end
             local d = state[key] and state[key].distance
-            if type(d) == "number" then out[#out + 1] = ("%d yd"):format(math.floor(d + 0.5)) end
+            if type(d) == "number" then
+                local word = more[key].compass
+                if state[key].here or N.AtPoint(d) then
+                    out[#out + 1] = Arrow.HERE_TEXT
+                elseif word ~= nil then
+                    out[#out + 1] = Arrow.DISTANCE_COMPASS_TEXT:format(math.floor(d + 0.5), word)
+                else
+                    out[#out + 1] = Arrow.DISTANCE_TEXT:format(math.floor(d + 0.5))
+                end
+            end
         end
         -- still is honoured only on a step with no place.
         local isStill = step.still and step.place == nil

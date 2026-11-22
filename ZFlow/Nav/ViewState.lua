@@ -42,6 +42,7 @@ local function beside(leg)
     if finite(leg.turn) then out.turn = leg.turn end
     if leg.why ~= nil then out.why = leg.why end
     if leg.label ~= nil then out.label = leg.label end
+    if leg.compass ~= nil then out.compass = leg.compass end
     return out
 end
 
@@ -53,9 +54,9 @@ end
 --   link: optional, N.GuideLink's answer or any link of offsets.
 -- -> state, more
 --   state: exactly what N.ArrowView(state) takes.
---   more = { quest = { turn, why, label }, prof = { turn, why, label } }:
+--   more = { quest = { turn, why, label, compass }, prof = { the same } }:
 --     turn in radians (N.ArrowTurn), nil = unknown; why = the guide's reason
---     for no distance.
+--     for no distance; compass = the guide's compass word, nil = none.
 function N.ViewState(client, guide)
     guide = type(guide) == "table" and guide or {}
     local g = N.GuideRead(client, guide)

@@ -105,9 +105,11 @@ end
 --     radius: yards; inside it the player is "here". Optional.
 -- -> the state N.ArrowView takes:
 --   player = { cont, zone } or nil, facingKnown,
---   quest = { hasStep, label, target, distance, turn, here, why },
---   prof  = { hasStep, label, target, distance, turn, here, why,
+--   quest = { hasStep, label, target, distance, turn, here, why, compass },
+--   prof  = { hasStep, label, target, distance, turn, here, why, compass,
 --             bearingKnown, mode },
+--   compass: N.Compass of the bearing to the step ("N", "NE", ...); nil
+--     with no distance, and at the very spot. It needs no facing.
 --   plus the fields of `view`.
 --   turn: radians anticlockwise from straight up (N.ArrowTurn); nil = unknown.
 --   why: "place", "size", "zone" or "continent" when there is no distance.
@@ -132,6 +134,8 @@ function N.Guide(input)
     local from, fromWhy = N.GuidePlace(position, zone, input.link)
     local q = leg(input.quest, from, fromWhy, facing, input.link)
     local p = leg(input.prof, from, fromWhy, facing, input.link)
+    -- The compass word (G40) is said from the bearing before it is dropped.
+    q.compass, p.compass = N.Compass(q.bearing), N.Compass(p.bearing)
     q.bearing = nil
     p.bearingKnown = p.bearing ~= nil
     p.bearing = nil
