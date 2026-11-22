@@ -12,82 +12,23 @@ local _, ns = ...
 local P = {}
 ns.places = P
 
--- Alliance starting area. No profession trainer names are listed for it:
--- Flow never read them from the game. A profession's trainers there are the
--- ones you've trained with (ns.db.places) and the ones Questie titles
--- "<Profession> Trainer" (P:TrainersFor below); with neither, the trainer is
--- unknown to Flow.
-ns:Register("trainerNames", "alliance-elwynn", {
-    -- Class trainers (Northshire, Goldshire, Stormwind Cathedral). Not read
-    -- from the game by Flow either; where the names came from isn't recorded.
-    ["class:PALADIN"] = { "Brother Sammuel", "Brother Wilhelm", "Arthur the Faithful",
-                          "Lord Grayson Shadowbreaker" },
-})
-
--- Druid trainers: night elves (Shadowglen, Dolanaar, Darnassus' Cenarion
--- Enclave) and tauren (Camp Narache, Bloodhoof Village, Thunder Bluff).
-ns:Register("trainerNames", "druid", {
-    ["class:DRUID"] = { "Mardant Strongoak", "Kal", "Denatharion", "Fylerian Nightwing",
-                        "Mathrengyl Bearwalker", "Gart Mistrunner", "Gennia Runetotem",
-                        "Turak Runetotem", "Sheal Runetotem" },
-})
-ns:Register("npcIds", "druid", {
-    ["Mardant Strongoak"] = 3597, ["Kal"] = 3602, ["Denatharion"] = 4218,
-    ["Fylerian Nightwing"] = 4219, ["Mathrengyl Bearwalker"] = 4217,
-    ["Gart Mistrunner"] = 3060, ["Gennia Runetotem"] = 3064,
-    ["Turak Runetotem"] = 3033, ["Sheal Runetotem"] = 3034,
-})
-
--- Horde profession trainers (Thunder Bluff, Orgrimmar, Undercity), so a
--- tauren, orc, troll or undead isn't sent to Elwynn Forest. Names are looked
--- up in Questie (a name it doesn't know is just skipped), and a trainer of
--- the other faction is never used (P:Points checks who they're friendly to).
-ns:Register("trainerNames", "horde", {
-    ["Alchemy"]        = { "Bena Winterhoof", "Yelmak", "Doctor Herbert Halsey" },
-    ["Herbalism"]      = { "Komin Winterhoof", "Jandi", "Martha Alliestar" },
-    ["Mining"]         = { "Brek Stonehoof", "Makaru", "Brom Killian" },
-    ["Blacksmithing"]  = { "Karn Stonehoof", "Saru Steelfury", "James Van Brunt" },
-    ["Skinning"]       = { "Mooranta", "Thuwd" },
-    ["Leatherworking"] = { "Una", "Karolek" },
-    ["First Aid"]      = { "Pand Stonebinder", "Arnok", "Mary Edras" },
-    ["Cooking"]        = { "Aska Mistrunner", "Zamja", "Eunice Burch" },
-    ["Fishing"]        = { "Kah Mistrunner", "Lumak", "Armand Cromwell" },
-})
-
--- NPC IDs (stable since vanilla) so Questie can be asked directly. The
--- lookup checks the name matches, so a wrong ID is ignored, not followed.
-ns:Register("npcIds", "alliance-elwynn", {
-    ["Smith Argus"] = 514, ["Michelle Belle"] = 2329, ["Tomas"] = 1430, ["Lee Brown"] = 1651,
-    ["Herbalist Pomeroy"] = 1218, ["Gelman Stonehand"] = 5513, ["Therum Deepforge"] = 5511,
-    ["Brother Sammuel"] = 925, ["Brother Wilhelm"] = 927, ["Lord Grayson Shadowbreaker"] = 928,
-    ["Arthur the Faithful"] = 5491,
-})
-
--- Horde city trainers (Thunder Bluff, Orgrimmar, Undercity): found by name
--- they never got a place (0.35.83 diagnostics), so ask Questie by ID too.
-ns:Register("npcIds", "horde-cities", {
-    ["Bena Winterhoof"] = 3009, ["Aska Mistrunner"] = 3026, ["Kah Mistrunner"] = 3028,
-    ["Pand Stonebinder"] = 3373, ["Yelmak"] = 3347, ["Zamja"] = 3399, ["Lumak"] = 3332,
-    ["Arnok"] = 5943, ["Doctor Herbert Halsey"] = 4611, ["Eunice Burch"] = 4552,
-    ["Armand Cromwell"] = 4573, ["Mary Edras"] = 4591,
-})
+-- Flow lists no trainer names, NPC IDs or gathering spots of its own here.
+-- The lists this file used to carry (Alliance starting-area and Horde city
+-- profession trainers, paladin and druid class trainers, their NPC IDs, and
+-- the Elwynn fishing/mining/herb spots) were never read from the game by
+-- Flow and where they came from isn't recorded, so they're gone. A trainer
+-- is one you've trained with (ns.db.places) or one Questie titles
+-- "<Profession> Trainer" / "<Class> Trainer" (P:TrainersFor below); with
+-- neither, the trainer is unknown to Flow. The registry kinds stay for other
+-- modules: "trainerNames" { [profession or "class:X"] = { names } },
+-- "npcIds" { [name] = id } (Hearth.lua's innkeepers), "skillSpots"
+-- { [profession] = { npcs = { names }, objects = { { id, skill } } } }.
 
 local function npcId(name)
     for _, t in ns:Each("npcIds") do
         if t[name] then return t[name] end
     end
 end
-
--- Where to raise a gathering/secondary skill. objects = Questie object IDs
--- (with the skill needed), npcs = stand near this NPC (e.g. the fishing
--- trainer at Crystal Lake). Unverified IDs; extend per zone as needed.
-ns:Register("skillSpots", "alliance-elwynn", {
-    ["Fishing"] = { npcs = { "Lee Brown" }, text = "Fish at the lake" },
-    ["Mining"]  = { objects = { { id = 1731, skill = 1, name = "Copper Vein" },
-                                { id = 1732, skill = 65, name = "Tin Vein" } }, text = "Mine" },
-    ["Herbalism"] = { objects = { { id = 1617, skill = 1, name = "Silverleaf" },
-                                  { id = 1618, skill = 1, name = "Peacebloom" } }, text = "Pick herbs" },
-})
 
 function P:SpotsFor(profession)
     local out = {}
@@ -97,7 +38,7 @@ function P:SpotsFor(profession)
     return out
 end
 
--- Trainers for a profession (or "class:DRUID"): Flow's own list, the ones
+-- Trainers for a profession (or "class:DRUID"): any registered list, the ones
 -- Questie titles "<Profession> Trainer" (WoW: Forever's own, like Pyall
 -- Silentstride in Bloodhoof Village), and the ones you've trained with.
 function P:TrainersFor(profession)

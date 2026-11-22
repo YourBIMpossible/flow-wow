@@ -404,12 +404,29 @@ ns:Register("test", "professions: Flow's own Fishing estimate is said as about",
     end
 end)
 
-ns:Register("test", "professions: no Alliance starting-area profession trainer names are listed", function(t)
-    local list = ns:Get("trainerNames", "alliance-elwynn")
-    t:ok(type(list) == "table", "the list is still registered (class trainers)")
-    for _, prof in ipairs({ "Mining", "Blacksmithing", "First Aid", "Cooking", "Fishing", "Skinning", "Herbalism" }) do
-        t:eq((list or {})[prof], nil, prof .. ": no names of Flow's own")
+ns:Register("test", "professions: Places lists no trainer names, NPC IDs or spots of its own", function(t)
+    for _, key in ipairs({ "alliance-elwynn", "druid", "horde" }) do
+        t:eq(ns:Get("trainerNames", key), nil, "trainerNames " .. key .. ": gone")
     end
+    for _, key in ipairs({ "alliance-elwynn", "druid", "horde-cities" }) do
+        t:eq(ns:Get("npcIds", key), nil, "npcIds " .. key .. ": gone")
+    end
+    t:eq(ns:Get("skillSpots", "alliance-elwynn"), nil, "skillSpots alliance-elwynn: gone")
+    t:eq(#ns.places:SpotsFor("Fishing"), 0, "no fishing spot of Flow's own")
+    -- A list another module registers is still used.
+    local P = ns.places
+    with(ns, "Each", function(_, kind)
+        if kind == "trainerNames" then return pairs({ t__test = { ["Test__test"] = { "Somebody__test" } } }) end
+        return pairs({})
+    end, function()
+        with(ns.db, "places", {}, function()
+            with(ns, "services", nil, function()
+                local names = P:TrainersFor("Test__test")
+                t:eq(#names, 1, "a registered list is read"); t:eq(names[1], "Somebody__test", "its name")
+                t:eq(#P:TrainersFor("Other__test"), 0, "nothing registered, trained with or titled: none")
+            end)
+        end)
+    end)
 end)
 
 ns:Register("test", "professions: the map card lists no zone levels or fishing skills of Flow's own", function(t)

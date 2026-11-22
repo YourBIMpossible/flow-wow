@@ -3393,7 +3393,7 @@ ns:Register("test", "druid: class data, spells, trainers and a rotation", functi
     t:ok(d and d.specs.dps and d.specs.heal and d.specs.tank, "three roles")
     t:ok(d and d.weights[d.leveling.role], "stat weights for the levelling role")
     t:ok(#(ns:Get("classSpells", "DRUID") or {}) > 10, "trainer spells")
-    t:ok(#ns.places:TrainersFor("class:DRUID") > 0, "class trainers by name")
+    t:eq(ns:Get("trainerNames", "druid"), nil, "no druid trainer names of Flow's own (origin never recorded)")
     t:ok(ns:Get("rotation", "DRUID") ~= nil, "a rotation")
 end)
 
@@ -4490,7 +4490,7 @@ ns:Register("test", "trainers and pickups: your faction, your level, chains in o
     t:ok(P.FriendlyTo("H", "Horde") and P.FriendlyTo("AH", "Horde"), "Horde NPCs for Horde")
     t:ok(not P.FriendlyTo("A", "Horde"), "no Alliance trainer for a tauren")
     t:ok(P.FriendlyTo(nil, "Horde"), "unknown: counts as friendly")
-    t:ok(#P:TrainersFor("Herbalism") >= 3, "Horde Herbalism trainers listed")
+    t:eq(ns:Get("trainerNames", "horde"), nil, "no Horde trainer names of Flow's own (origin never recorded)")
     local Q = ns.quests
     local kept = Q.WithoutBlocked({ { id = 752 }, { id = 753 }, { id = 747 } }, { [753] = true })
     t:eq(#kept, 2, "part 2 of a chain waits for part 1")
