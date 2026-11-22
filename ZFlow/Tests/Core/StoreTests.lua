@@ -342,11 +342,11 @@ return {
         local said = {}
         for i = 1, #p do said[p[i].owner .. ":" .. p[i].text] = true end
         t.ok(said["account:learned was a string, not a table; it was replaced with an empty table;"
-            .. " the old value is kept under recovered.account.learned"], "learned")
+            .. " the old value is kept under recovered.learned in the account data"], "learned")
         t.ok(said["account:imports was a number, not a table; it was replaced with an empty table;"
-            .. " the old value is kept under recovered.account.imports"], "imports")
+            .. " the old value is kept under recovered.imports in the account data"], "imports")
         t.ok(said["char:state was a boolean, not a table; it was replaced with an empty table;"
-            .. " the old value is kept under recovered.char.state"], "state")
+            .. " the old value is kept under recovered.state in the char data"], "state")
     end,
 
     ["skeleton: a value already kept under recovered is never overwritten"] = function(t)
@@ -359,7 +359,7 @@ return {
         local p = k.problems:list("store")
         t.eq(#p, 1)
         t.eq(p[1].text, "learned was a string, not a table; it was replaced with an empty table;"
-            .. " the old value is lost: recovered.account.learned already holds an older one")
+            .. " the old value is lost: recovered.learned in the account data already holds an older one")
         -- A kept false counts as kept: it is not overwritten either.
         local k2, c2 = kernel()
         c2.setSaved("ZFlowDB", { imports = "later", recovered = { imports = false } })
@@ -395,5 +395,24 @@ return {
         k2.store:open()
         t.eq(c2.saved("ZFlowDB").recovered, { learned = 3 })
         t.eq(k2.problems:count("store"), 1)
+    end,
+
+    -- DV1: the place named in the text is the place the store reads.
+    ["skeleton: the problem text names recovered.<key> and the scope's data, kept or lost"] = function(t)
+        local k, c = kernel()
+        c.setSaved("ZFlowCharDB", { state = "old", layout = 4, recovered = { layout = "older" } })
+        k.store:open()
+        local said = {}
+        local p = k.problems:list("store")
+        for i = 1, #p do said[#said + 1] = p[i].owner .. ":" .. p[i].text end
+        table.sort(said)
+        t.eq(said, {
+            "char:layout was a number, not a table; it was replaced with an empty table;"
+                .. " the old value is lost: recovered.layout in the char data already holds an older one",
+            "char:state was a string, not a table; it was replaced with an empty table;"
+                .. " the old value is kept under recovered.state in the char data",
+        })
+        t.eq(k.store:get("char", "recovered.state"), "old", "and that path reads it")
+        t.eq(k.store:get("char", "recovered.char.state"), nil, "the scope is no part of the path")
     end,
 }

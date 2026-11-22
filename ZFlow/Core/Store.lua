@@ -141,7 +141,7 @@ function ns.make.store(k)
     -- Keeps what a skeleton section held before it is replaced. Answers the
     -- end of the problem text: where the old value is, or why it is lost.
     local function keep(scope, db, key)
-        local at = "recovered." .. scope .. "." .. key
+        local at = "recovered." .. key .. " in the " .. scope .. " data"
         local kept = db.recovered
         if kept == nil then
             kept = {}

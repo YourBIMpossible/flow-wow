@@ -15,13 +15,26 @@ local function start(direct, own)
     c.setMapSize(1411, 1000, 500)
     local k = ns.Kernel({}, c)
     local d = ns.Diag.Start(k)
+    -- Counts the calls of the arrow module's own stop, as the kernel makes
+    -- them: the spec is wrapped on its way into k:Module.
+    local stops, declare = 0, k.Module
+    k.Module = function(self, spec)
+        if type(spec) == "table" and spec.name == A.NAME and type(spec.stop) == "function" then
+            local stop = spec.stop
+            spec.stop = function(...)
+                stops = stops + 1
+                return stop(...)
+            end
+        end
+        return declare(self, spec)
+    end
     local a
     if direct then a = A.Start(k, d, own) else a = A.Declare(k, d) end
     k:Boot()
     c.fire("ADDON_LOADED", ns.id.addon)
     c.fire("PLAYER_LOGIN")
     c.fire("PLAYER_ENTERING_WORLD")
-    return k, c, a, d
+    return k, c, a, d, function() return stops end
 end
 
 -- Runs fn with every elapsed time the arrows hand to their motion noted.
@@ -100,11 +113,13 @@ return {
 
     -- Q2
     ["frame error: the module is switched off through the kernel, and its stop ran once"] = function(t)
-        local k, c, a, d = start()
+        local k, c, a, d, stops = start()
         d.commands.arrow("demo")
         local q, p = c.arrows[1], c.arrows[2]
+        t.eq(stops(), 0, "no stop while it runs")
         q.draw = function() error("boom") end
         c.advance(0.1, 1)
+        t.eq(stops(), 1, "its stop ran once")
         local state, reason = k:ModuleState(A.NAME)
         t.ok(state ~= "started", "not started after a frame error")
         t.eq(state, "off")
@@ -121,6 +136,8 @@ return {
         t.eq(k.problems:count("module"), 1)
         d.commands.arrow("demo")
         t.eq({ q.shown, p.shown }, { false, false }, "the demo does not bring it back")
+        t.eq(k:SwitchOff(A.NAME, "again"), false)
+        t.eq(stops(), 1, "and no second stop, whatever came after")
     end,
 
     ["frame error: the arrows ask their owner once to switch them off, and keep no state of their own"] = function(t)

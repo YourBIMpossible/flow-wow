@@ -99,4 +99,38 @@ return {
             "the next caller gets the default as it was declared")
         t.ok(k.settings:get(r.key) ~= k.settings:get(r.key), "each caller its own")
     end,
+
+    -- PG1
+    ["path guard: a row's place starts with settings. or layout., and nothing else"] = function(t)
+        local k = kernel()
+        local bad = { "learned.prices", "imports.flow", "schema.n", "state.seen", "recovered.learned",
+            "diag.count", "layouts.arrows", "settingsx.a" }
+        for i = 1, #bad do
+            t.eq(k:Setting(row(bad[i])), nil, bad[i])
+            t.eq(k:Setting(row(bad[i], "char")), nil, bad[i] .. " (char)")
+        end
+        local p = k.problems:list("setting")
+        t.eq(#p, 2 * #bad)
+        for i = 1, #p do t.eq(p[i].text, "a path must start with settings. or layout.") end
+        t.ok(k:Setting(row("layout.fine")) ~= nil, "layout is a row's place")
+        t.ok(k:Setting(row("settings.fine")) ~= nil, "and so is settings")
+        t.eq(k.problems:count("setting"), 2 * #bad)
+    end,
+
+    ["path guard: reset all leaves learned.prices, with a row asked for it or not"] = function(t)
+        local k = kernel()
+        local prices = { ["item:1"] = 5 }
+        t.eq(k.store:set("account", "learned.prices", prices), true)
+        local asked = row("learned.prices")
+        t.eq(k:Setting(asked), nil, "refused")
+        t.eq(k.settings:row(asked.key), nil)
+        t.eq(k.settings:set(asked.key, {}), false, "no row, no write")
+        local fine = row("layout.fine")
+        t.ok(k:Setting(fine) ~= nil)
+        t.eq(k.settings:set(fine.key, { 1 }), true)
+        t.eq(k.settings:reset("all"), 1, "the one real row")
+        t.eq(k.store:get("account", "layout.fine"), nil)
+        t.ok(k.store:get("account", "learned.prices") == prices, "the same table, untouched")
+        t.eq(prices, { ["item:1"] = 5 })
+    end,
 }

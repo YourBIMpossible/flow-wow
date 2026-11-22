@@ -699,32 +699,48 @@ function Diag.Start(k)
             client.saved(id.accountDB).diag = nil
             client.print(id.title .. ": diagnostics cleared.")
         else
+            -- Each line after the snapshot's own is made under a pcall:
+            -- one that raises is a "diag" problem and one line in its
+            -- place, and the lines after it are still said.
+            local function say(what, make)
+                local ok, line = pcall(make)
+                if not ok then
+                    k.problems:add("diag", what, line)
+                    client.print(id.title .. ": the " .. what .. " line failed; it is kept as a problem.")
+                elseif line then
+                    client.print(id.title .. ": " .. line)
+                end
+            end
             local d = snapshot("asked")
             client.print(id.title .. ": " .. (d and ("snapshot " .. d.count
                 .. " kept. Reload or log out to write it to disk.") or "the snapshot failed."))
-            local faults = client.listenFaults()
-            if faults.noEventFrame then
-                client.print(id.title .. ": event frame not made; no event reaches the addon.")
+            local okFaults, faults = pcall(client.listenFaults)
+            if not okFaults then
+                say("listening", function() error(faults, 0) end)
+                faults = {}
             end
-            if faults.noTickFrame then
-                client.print(id.title .. ": tick frame not made; nothing that runs each frame runs.")
-            end
-            if #faults.notRegistered > 0 then
-                client.print(id.title .. ": events not registered: "
-                    .. table.concat(faults.notRegistered, ", ") .. ".")
-            end
-            if client.uptime() == nil then
-                client.print(id.title .. ": the client gives no time; nothing that waits for a time runs.")
-            end
-            if type(k.sched) == "table" and type(k.sched.held) == "function" then
+            say("event frame", function()
+                return faults.noEventFrame and "event frame not made; no event reaches the addon." or nil
+            end)
+            say("tick frame", function()
+                return faults.noTickFrame and "tick frame not made; nothing that runs each frame runs." or nil
+            end)
+            say("events", function()
+                if type(faults.notRegistered) ~= "table" or #faults.notRegistered == 0 then return nil end
+                return "events not registered: " .. table.concat(faults.notRegistered, ", ") .. "."
+            end)
+            say("time", function()
+                if client.uptime() ~= nil then return nil end
+                return "the client gives no time; nothing that waits for a time runs."
+            end)
+            say("held jobs", function()
+                if type(k.sched) ~= "table" or type(k.sched.held) ~= "function" then return nil end
                 local held, unknown = k.sched:held()
-                if unknown then
-                    client.print(id.title .. ": combat is not known; " .. held
-                        .. (held == 1 and " job is" or " jobs are") .. " held until it is.")
-                end
-            end
-            local line = priceWatchLine()
-            if line then client.print(id.title .. ": " .. line) end
+                if not unknown then return nil end
+                return "combat is not known; " .. held
+                    .. (held == 1 and " job is" or " jobs are") .. " held until it is."
+            end)
+            say("price watch", priceWatchLine)
         end
     end)
     return { timing = timing, snapshot = snapshot, commands = commands }
