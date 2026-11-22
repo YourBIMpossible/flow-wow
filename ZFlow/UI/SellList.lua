@@ -90,8 +90,11 @@ function SellList.Declare(k)
     function api.shows() return shows end
     -- Lists again while a merchant window is open (the never-sell list
     -- changed: Items/Keep.lua). Does nothing when none is open.
+    -- A list the player asked for (Show()) stays asked for until the merchant
+    -- window closes, so a refresh keeps it shown with "vendor.list" off too.
+    local asked = false
     function api.refresh()
-        if open and relist then relist() end
+        if open and relist then relist(asked) end
     end
     -- Asked for (the merchant window's button): lists now and shows the
     -- panel, whatever "vendor.list" says. Only while a merchant window is
@@ -101,6 +104,7 @@ function SellList.Declare(k)
         if not started or not relist then return false, SellList.NOT_STARTED end
         if not open then return false, SellList.NO_MERCHANT end
         if not panel then return false, SellList.NO_PANEL end
+        asked = true
         relist(true)
         return true
     end
@@ -117,11 +121,11 @@ function SellList.Declare(k)
             local client = ctx.client
             if type(client.watchMerchant) == "function" then client.watchMerchant() end
             started = true
-            -- asked: true when the player asked for the list (Show()).
-            relist = function(asked)
+            -- byAsk: true when the player asked for the list (Show()).
+            relist = function(byAsk)
                 -- Off only when the player turned it off; a missing row is on.
                 -- The setting governs showing by itself, not an ask.
-                if not asked and ctx.settings:get(SellList.SETTING) == false then
+                if not byAsk and ctx.settings:get(SellList.SETTING) == false then
                     hide()
                     return
                 end
@@ -135,10 +139,12 @@ function SellList.Declare(k)
             end
             ctx.bus:on(SellList.NAME, "MERCHANT_SHOW", function()
                 open = true
+                asked = false       -- a new window: nothing was asked for yet
                 relist()
             end)
             ctx.bus:on(SellList.NAME, "MERCHANT_CLOSED", function()
                 open = false
+                asked = false
                 hide()
             end)
             -- The frame last, after everything that can switch the module off.
@@ -154,6 +160,7 @@ function SellList.Declare(k)
         -- refresh() lists nothing.
         stop = function()
             open = false
+            asked = false
             started = false
             hide()
         end,
