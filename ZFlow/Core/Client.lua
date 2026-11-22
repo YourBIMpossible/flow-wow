@@ -831,6 +831,93 @@ function ns.make.client(env)
     end
     -- -------------------------------------------------------------- end F3
 
+    -- ---------------------------------------------------------------- F4
+    -- Merchant and roll marks (FEATURE-PLAN F4, owner Plexy): the loot-roll
+    -- hook. The merchant reads F4 uses (merchantItems, watchMerchant) are
+    -- above and unchanged. First guesses, not seen in game on 16001:
+    -- START_LOOT_ROLL (rollID) and CANCEL_LOOT_ROLL (rollID),
+    -- GetLootRollItemLink(rollID), and the roll frames GroupLootFrame1..4
+    -- with their rollID field.
+    --
+    --   client.onLootRoll(fn) -> cancel;  fn(rollID, link, show);  show(text, r, g, b)
+    -- show puts one short text above that roll's frame, on a frame of ours
+    -- made as a child of it, so it hides with it; one per roll frame, reused.
+    -- Nothing of the game's frame is called or written, and nothing rolls.
+    -- When the roll frame cannot be found, show prints the link and the text
+    -- once instead. No link, or a secret one: fn is not told.
+    local rollListeners, rollWatched = {}, false
+    local rollMarks = {}      -- roll frame -> { holder, text, rollID }
+    local function rollFrame(rollID)
+        for i = 1, 4 do
+            local f = env["GroupLootFrame" .. i]
+            if type(f) == "table" then
+                local ok, id = pcall(function() return f.rollID end)
+                if ok and id ~= nil and not hidden(id) and id == rollID then return f end
+            end
+        end
+        return nil
+    end
+    local function rollMark(frame)
+        local m = rollMarks[frame]
+        if m then return m end
+        local ok, holder = call(env.CreateFrame, "Frame", nil, frame)
+        if not ok or type(holder) ~= "table" then return nil end
+        local okText, fs = call(holder.CreateFontString, holder, nil, "OVERLAY", "GameFontNormalSmall")
+        if not okText or type(fs) ~= "table" then return nil end
+        call(holder.SetSize, holder, 1, 1)
+        call(holder.SetPoint, holder, "BOTTOM", frame, "TOP", 0, 2)
+        call(fs.SetPoint, fs, "BOTTOM", holder, "BOTTOM", 0, 0)
+        m = { holder = holder, text = fs }
+        rollMarks[frame] = m
+        return m
+    end
+    local function rollStarted(rollID)
+        if type(rollID) ~= "number" or hidden(rollID) then return end
+        local link = text(call(env.GetLootRollItemLink, rollID))
+        if not link then return end
+        local printed = false
+        local function show(s, r, g, b)
+            if type(s) ~= "string" or s == "" then return end
+            local frame = rollFrame(rollID)
+            local m = frame and rollMark(frame) or nil
+            if not m then
+                if not printed then
+                    printed = true
+                    c.print((ns.id and ns.id.title or "") .. ": " .. link .. " " .. s)
+                end
+                return
+            end
+            m.rollID = rollID
+            call(m.text.SetText, m.text, s)
+            if type(r) == "number" then call(m.text.SetTextColor, m.text, r, g, b) end
+            call(m.holder.Show, m.holder)
+        end
+        for _, fn in ipairs({ unpack(rollListeners) }) do pcall(fn, rollID, link, show) end
+    end
+    local function rollCancelled(rollID)
+        for _, m in pairs(rollMarks) do
+            if m.rollID == rollID then
+                m.rollID = nil
+                call(m.holder.Hide, m.holder)
+            end
+        end
+    end
+    function c.onLootRoll(fn)
+        if type(fn) ~= "function" then return nil end
+        if not rollWatched then
+            rollWatched = true
+            events.add("START_LOOT_ROLL", rollStarted)
+            events.add("CANCEL_LOOT_ROLL", rollCancelled)
+        end
+        rollListeners[#rollListeners + 1] = fn
+        return function()
+            for i = #rollListeners, 1, -1 do
+                if rollListeners[i] == fn then table.remove(rollListeners, i) end
+            end
+        end
+    end
+    -- -------------------------------------------------------------- end F4
+
     function c.gear(link)
         local out = { worn = {} }
         if type(link) == "string" and link ~= "" then

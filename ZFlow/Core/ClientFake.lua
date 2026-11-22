@@ -133,6 +133,26 @@ function ns.make.fakeClient(opts)
         if type(id) ~= "number" or not s.ranges then return nil end
         return s.ranges[id]
     end
+    -- As the real client's (F4): fn(rollID, link, show) for each roll offered
+    -- with offerRoll; the answer takes the listener back.
+    function c.onLootRoll(fn)
+        if type(fn) ~= "function" then return nil end
+        s.rollListeners = s.rollListeners or {}
+        table.insert(s.rollListeners, fn)
+        return function()
+            for i = #s.rollListeners, 1, -1 do
+                if s.rollListeners[i] == fn then table.remove(s.rollListeners, i) end
+            end
+        end
+    end
+    -- Plays the game offering a roll on `link`: every onLootRoll listener is
+    -- told, and what they showed comes back as { { text, r, g, b } ... }.
+    function c.offerRoll(rollID, link)
+        local shown = {}
+        local function show(text, r, g, b) shown[#shown + 1] = { text = text, r = r, g = g, b = b } end
+        for _, fn in ipairs({ unpack(s.rollListeners or {}) }) do fn(rollID, link, show) end
+        return shown
+    end
     function c.level() return s.level end
     -- As the real client's: fn(link, add) for each item tooltip shown with
     -- showItemTooltip; the answer takes the listener back.
