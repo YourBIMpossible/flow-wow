@@ -238,6 +238,7 @@ tests["legs lookup: a trip made, either way; then its neighbourhood; else nothin
     near(t, yards, 600 * ratio, 0.001)
     yards, how = L.Lookup(store, coarse, { x = 700, y = 120 }, { x = 100, y = 100 }, 600)
     t.eq(how, "area", "either way")
+    near(t, yards, 600 * ratio, 0.001, "the same stretch both ways")
     t.eq({ L.Lookup(store, coarse, { x = 100, y = 100 }, { x = 700, y = 120 }, 120) }, {}, "too short for an area")
 end
 
