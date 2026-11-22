@@ -1,0 +1,209 @@
+<#
+.SYNOPSIS
+  Z-Flow text check (F-A). Reads every ZFlow/**/*.lua except ZFlow/Tests/**
+  and fails on user-facing strings that break the price and chat rules:
+
+    F085   the F-085 fallback is written any way but "price unknown<em dash>check vendor"
+           (U+2014, no spaces). Flagged: a string with "price unknown" /
+           "prices unknown", or "unknown - check vendor|trainer|merchant" with
+           any dash or colon, that does not contain that exact text.
+    PRICE  a price that is not labelled: a money figure in a string ("12s 40c",
+           "5g", "3c", or a %d/%s format followed by g or c), unless the same
+           string says "estimate"; or coin text built by concatenating "g", "s"
+           or "c". ZFlow/Items/Prices.lua is exempt: it is the one place that
+           builds coin text and labels it (Prices.Text: observed, "about ...
+           (estimate)", or unknown). A lone "5s" is read as seconds, not money.
+    PRINT  an empty string handed to the chat print: print(""), print('')
+           print([[]]) or print() with no argument, on any receiver
+           (client.print, c.print, print).
+
+  Comments are not user text and are skipped. Strings are read as Lua 5.1
+  reads them, so "\226\128\148" is the em dash. Pure PowerShell (Windows
+  PowerShell 5.1 or later); no Lua needed.
+
+.USAGE
+  powershell -ExecutionPolicy Bypass -File tools\zflow-text.ps1 [-Root path]
+
+  -Root  the folder that holds ZFlow/ (default: this checkout).
+  Exit code 0 = clean, 1 = a problem above, 2 = could not run.
+  Fixtures: tools\fixtures\zflow-text\run.ps1.
+#>
+param([string]$Root)
+$ErrorActionPreference = 'Stop'
+
+if (-not $Root) { $Root = Join-Path $PSScriptRoot '..' }
+$zflow = Join-Path $Root 'ZFlow'
+if (-not (Test-Path -LiteralPath $zflow -PathType Container)) {
+    Write-Output "zflow-text: no ZFlow folder under '$Root'"
+    exit 2
+}
+$zflow = (Resolve-Path -LiteralPath $zflow).Path
+
+$EM = [string][char]0x2014
+$CANON = 'price unknown' + $EM + 'check vendor'
+
+# ------------------------------------------------------------------ scanner
+# Splits Lua 5.1 source into code (comments blanked, each string replaced by
+# "@<index>", line breaks kept so line numbers hold) and the decoded strings.
+function Get-LuaScan([string]$text) {
+    $code = New-Object System.Text.StringBuilder
+    $strings = New-Object System.Collections.Generic.List[object]
+    $line = 1
+    $i = 0
+    $n = $text.Length
+
+    # The level of a long bracket at $at ("[[" = 0, "[==[" = 2), or -1.
+    function LongLevel([int]$at) {
+        if ($at -ge $n -or $text[$at] -ne '[') { return -1 }
+        $j = $at + 1
+        while ($j -lt $n -and $text[$j] -eq '=') { $j++ }
+        if ($j -lt $n -and $text[$j] -eq '[') { return ($j - $at - 1) }
+        return -1
+    }
+
+    while ($i -lt $n) {
+        $ch = $text[$i]
+        if ($ch -eq '-' -and $i + 1 -lt $n -and $text[$i + 1] -eq '-') {
+            $lvl = LongLevel ($i + 2)
+            if ($lvl -ge 0) {
+                $close = ']' + ('=' * $lvl) + ']'
+                $end = $text.IndexOf($close, $i + 4 + $lvl, [StringComparison]::Ordinal)
+                if ($end -lt 0) { $end = $n } else { $end += $close.Length }
+                $body = $text.Substring($i, $end - $i)
+                foreach ($c in $body.ToCharArray()) { if ($c -eq "`n") { [void]$code.Append("`n"); $line++ } }
+                $i = $end
+            } else {
+                while ($i -lt $n -and $text[$i] -ne "`n") { $i++ }
+            }
+            continue
+        }
+        if ($ch -eq '"' -or $ch -eq "'") {
+            $q = $ch
+            $start = $line
+            $bytes = New-Object System.Collections.Generic.List[byte]
+            $i++
+            while ($i -lt $n -and $text[$i] -ne $q -and $text[$i] -ne "`n") {
+                $c = $text[$i]
+                if ($c -eq '\' -and $i + 1 -lt $n) {
+                    $e = $text[$i + 1]
+                    if ($e -match '[0-9]') {
+                        $j = $i + 1; $digits = ''
+                        while ($j -lt $n -and $digits.Length -lt 3 -and $text[$j] -match '[0-9]') { $digits += $text[$j]; $j++ }
+                        $bytes.Add([byte]([int]$digits -band 0xFF)); $i = $j; continue
+                    }
+                    $map = @{ 'n' = 10; 't' = 9; 'r' = 13; 'a' = 7; 'b' = 8; 'f' = 12; 'v' = 11 }
+                    $key = [string]$e
+                    if ($map.ContainsKey($key)) { $bytes.Add([byte]$map[$key]) }
+                    elseif ($e -eq "`n") { $bytes.Add([byte]10); [void]$code.Append("`n"); $line++ }
+                    else { foreach ($b in [Text.Encoding]::UTF8.GetBytes($key)) { $bytes.Add($b) } }
+                    $i += 2; continue
+                }
+                if ([char]::IsHighSurrogate($c) -and $i + 1 -lt $n) {
+                    foreach ($b in [Text.Encoding]::UTF8.GetBytes($text.Substring($i, 2))) { $bytes.Add($b) }
+                    $i += 2; continue
+                }
+                foreach ($b in [Text.Encoding]::UTF8.GetBytes([string]$c)) { $bytes.Add($b) }
+                $i++
+            }
+            $i++   # the closing quote
+            $strings.Add([pscustomobject]@{ Line = $start; Value = [Text.Encoding]::UTF8.GetString($bytes.ToArray()) })
+            [void]$code.Append('"@' + ($strings.Count - 1) + '"')
+            continue
+        }
+        if ($ch -eq '[') {
+            $lvl = LongLevel $i
+            if ($lvl -ge 0) {
+                $open = $i + 2 + $lvl
+                $close = ']' + ('=' * $lvl) + ']'
+                $end = $text.IndexOf($close, $open, [StringComparison]::Ordinal)
+                if ($end -lt 0) { $end = $n }
+                $body = $text.Substring($open, $end - $open)
+                if ($body.StartsWith("`r`n")) { $body = $body.Substring(2) } elseif ($body.StartsWith("`n")) { $body = $body.Substring(1) }
+                $strings.Add([pscustomobject]@{ Line = $line; Value = $body.Replace("`r", '') })
+                [void]$code.Append('"@' + ($strings.Count - 1) + '"')
+                foreach ($c in $text.Substring($i, [Math]::Min($n, $end + $close.Length) - $i).ToCharArray()) {
+                    if ($c -eq "`n") { [void]$code.Append("`n"); $line++ }
+                }
+                $i = [Math]::Min($n, $end + $close.Length)
+                continue
+            }
+        }
+        if ($ch -eq "`n") { $line++ }
+        [void]$code.Append($ch)
+        $i++
+    }
+    return [pscustomobject]@{ Code = $code.ToString(); Strings = $strings }
+}
+
+function Show([string]$s) {
+    $t = $s.Replace("`n", '\n')
+    if ($t.Length -gt 80) { $t = $t.Substring(0, 77) + '...' }
+    return '"' + $t + '"'
+}
+
+# -------------------------------------------------------------------- rules
+$reFallback = '(?i)\bprices?\s+unknown\b|unknown\s*[-:\u2013\u2014]+\s*check\s+(vendor|trainer|merchant)\b'
+$reFigure = '(?<![\w.])\d+\s?([gsc])(?!\w)'
+$reFormat = '%[ds]\s?[gc](?!\w)'
+$reCoinPiece = '^\s?[gsc]\s?$'
+$reConcat = '\.\.\s*"@(\d+)"'
+$rePrint = '(?<![\w])print\s*\(\s*(?:"@(\d+)")?\s*\)'
+
+$problems = New-Object System.Collections.Generic.List[string]
+$files = @(Get-ChildItem -LiteralPath $zflow -Recurse -File -Filter *.lua |
+    Where-Object { -not $_.FullName.Substring($zflow.Length + 1).Replace('\', '/').StartsWith('Tests/') } |
+    Sort-Object { $_.FullName.Substring($zflow.Length + 1).Replace('\', '/') })
+
+foreach ($f in $files) {
+    $rel = $f.FullName.Substring($zflow.Length + 1).Replace('\', '/')
+    $scan = Get-LuaScan ([IO.File]::ReadAllText($f.FullName, [Text.Encoding]::UTF8))
+    $where = 'ZFlow/' + $rel
+    $isPrices = ($rel -eq 'Items/Prices.lua')
+
+    foreach ($s in $scan.Strings) {
+        $v = $s.Value
+        if ($v -match $reFallback -and $v.IndexOf($CANON, [StringComparison]::Ordinal) -lt 0) {
+            $problems.Add(("{0}:{1}: F085: write the fallback as 'price unknown{2}check vendor': {3}" -f $where, $s.Line, $EM, (Show $v)))
+        }
+        if (-not $isPrices -and $v -notmatch '(?i)estimate') {
+            $money = $false
+            $figures = [regex]::Matches($v, $reFigure)
+            foreach ($m in $figures) { if ($m.Groups[1].Value -ne 's') { $money = $true } }
+            if ($figures.Count -ge 2) { $money = $true }
+            if ($v -match $reFormat) { $money = $true }
+            if ($money) {
+                $problems.Add(("{0}:{1}: PRICE: a money figure with no label; show prices through Prices.Text: {2}" -f $where, $s.Line, (Show $v)))
+            }
+        }
+    }
+
+    $lines = $scan.Code.Split("`n")
+    for ($k = 0; $k -lt $lines.Length; $k++) {
+        $ln = $lines[$k]
+        if (-not $isPrices) {
+            foreach ($m in [regex]::Matches($ln, $reConcat)) {
+                $v = $scan.Strings[[int]$m.Groups[1].Value].Value
+                if ($v -match $reCoinPiece) {
+                    $problems.Add(("{0}:{1}: PRICE: coin text built outside Items/Prices.lua; use Prices.Text: .. {2}" -f $where, ($k + 1), (Show $v)))
+                }
+            }
+        }
+        foreach ($m in [regex]::Matches($ln, $rePrint)) {
+            $before = $ln.Substring(0, $m.Index)
+            if ($before -match '\bfunction\s+[\w.:]*$') { continue }   # a definition, not a call
+            $empty = $true
+            if ($m.Groups[1].Success) { $empty = ($scan.Strings[[int]$m.Groups[1].Value].Value -eq '') }
+            if ($empty) {
+                $problems.Add(("{0}:{1}: PRINT: an empty string to the chat print" -f $where, ($k + 1)))
+            }
+        }
+    }
+}
+
+foreach ($p in $problems) { Write-Output $p }
+if ($problems.Count -gt 0) {
+    Write-Output ("zflow-text: {0} problem(s) in {1} file(s) read" -f $problems.Count, $files.Count)
+    exit 1
+}
+Write-Output ("zflow-text: clean ({0} file(s) read)" -f $files.Count)
+exit 0
