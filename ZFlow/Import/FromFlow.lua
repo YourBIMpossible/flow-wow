@@ -34,6 +34,13 @@
 --     does not already have. An existing value is never replaced, unless it
 --     is absent, an empty table, or equal to the default given for its path
 --     in defaults = { account = {...}, char = {...} }.
+--     Settings follow the stricter rule the settings model's adopt uses: a
+--     stored setting is the player's choice and is kept, also when it equals
+--     the default, so defaults are not read for settings. Only a stored
+--     setting of another type than the import's checked value (text where a
+--     yes-or-no belongs) does not count as a choice and gives way.
+--     The record added to account.imports carries copies of result.dropped
+--     and result.adjusted (record.dropped, record.adjusted).
 --     confirmed = { ["sell.autoRepair"] = true, ... }: the vendor automations
 --     the player confirmed, by Flow key. Only a true counts. An automation
 --     the import found on and the player did not confirm stays off, however
@@ -111,7 +118,10 @@ local _, ns = ...
 --    the limits, a position keeps only anchors a frame has, and the companion
 --    button's switches and keys are checked by type. Version 1 stored all of
 --    those as Flow had them and left the checking to the readers.
-local IMPORTER_VERSION = 2
+-- 3: the stored record carries its own copies of what was left behind and
+--    what was adjusted (record.dropped, record.adjusted), and a merge keeps a
+--    setting the player has stored even when it equals the default.
+local IMPORTER_VERSION = 3
 -- The highest Flow data version this importer understands. Flow's version is
 -- the highest migration it has run (Core.lua:251-276) and Flow registers no
 -- migration, so every known Flow data set is at 0 (or carries no version).
@@ -508,6 +518,24 @@ local function copy(v)
     if type(v) ~= "table" then return v end
     local out = {}
     for key, value in pairs(v) do out[key] = copy(value) end
+    return out
+end
+
+-- A copy fit to be saved: numbers, text, true/false and tables of those.
+-- Anything else is left out, and so is a table that holds itself.
+local function plain(v, seen)
+    local kind = type(v)
+    if kind == "number" or kind == "string" or kind == "boolean" then return v end
+    if kind ~= "table" then return nil end
+    seen = seen or {}
+    if seen[v] then return nil end
+    seen[v] = true
+    local out = {}
+    for key, value in pairs(v) do
+        local keyKind = type(key)
+        if keyKind == "number" or keyKind == "string" then out[key] = plain(value, seen) end
+    end
+    seen[v] = nil
     return out
 end
 
@@ -1002,6 +1030,10 @@ local function FromFlow(flowDb, flowCharDb)
     end)
     table.sort(vendorToConfirm, function(a, b) return a.key < b.key end)
     table.sort(adjusted, function(a, b) return a.key < b.key end)
+    -- The record keeps its own copies of both lists, so what an import left
+    -- behind or changed can still be read after the result is gone.
+    record.dropped = plain(dropped)
+    record.adjusted = plain(adjusted)
     out.account.imports[1] = copy(record)
     return {
         ok = true, account = out.account, char = out.char, dropped = dropped, adjusted = adjusted, record = record,
@@ -1023,7 +1055,10 @@ local function isList(t)
     return t[1] ~= nil
 end
 
-local function fill(dst, src, defaults, path, report)
+-- choice: true for settings. A stored setting is the player's choice and is
+-- kept even when it equals the default; one of another type than the import's
+-- checked value does not fit, is no choice and gives way.
+local function fill(dst, src, defaults, path, report, choice)
     for _, key in ipairs(sortedKeys(src)) do
         local value, have = src[key], dst[key]
         local at = path .. "." .. tostring(key)
@@ -1033,10 +1068,13 @@ local function fill(dst, src, defaults, path, report)
             dst[key] = copy(value)
             report.added[#report.added + 1] = at
         elseif type(have) == "table" and type(value) == "table" and not isList(have) and not isList(value) then
-            fill(have, value, default, at, report)
+            fill(have, value, default, at, report, choice)
         elseif same(have, value) then
             report.skipped[#report.skipped + 1] = { path = at, reason = "the same value is already there" }
-        elseif default ~= nil and same(have, default) then
+        elseif choice and type(have) ~= type(value) then
+            dst[key] = copy(value)
+            report.added[#report.added + 1] = at
+        elseif not choice and default ~= nil and same(have, default) then
             dst[key] = copy(value)
             report.added[#report.added + 1] = at
         else
@@ -1147,7 +1185,7 @@ local function Merge(existingAccount, existingChar, imported, defaults, confirme
             if type(from) == "table" then
                 local sectionDefaults
                 if type(scopeDefaults) == "table" then sectionDefaults = scopeDefaults[name] end
-                fill(db[name], from, sectionDefaults, scope .. "." .. name, report)
+                fill(db[name], from, sectionDefaults, scope .. "." .. name, report, name == "settings")
             end
         end
     end
@@ -1155,7 +1193,10 @@ local function Merge(existingAccount, existingChar, imported, defaults, confirme
     report.counts.kept = #report.kept
     report.counts.skipped = #report.skipped
 
-    local record = copy(imported.record) or {}
+    local record = copy(imported.record)
+    if type(record) ~= "table" then record = {} end
+    if type(record.dropped) ~= "table" then record.dropped = plain(imported.dropped) end
+    if type(record.adjusted) ~= "table" then record.adjusted = plain(imported.adjusted) end
     record.merge = copy(report.counts)
     record.vendorConfirmed = vendorConfirmed
     local imports = result.account.imports

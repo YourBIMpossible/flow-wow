@@ -373,4 +373,36 @@ return {
         t.eq(report.vendorConfirmed, {})
         t.eq(report.vendorLeftOff, { "sell.autoJunk", "sell.autoRepair" })
     end,
+
+    -- ------------------------------------------------- adopt beside merge
+    ["adopt and merge: the same input gives the same settings"] = function(t)
+        local model = shipped()
+        local function mine()
+            return {
+                auction = { chartClick = true },
+                buffButton = { enabled = "yes", care = false },
+                sell = { autoJunk = false },
+            }
+        end
+        local function flow()
+            local db = sellDb()
+            db.ah.chartClick = false
+            db.buffButton.care = true
+            return db
+        end
+        local confirmed = { ["sell.autoJunk"] = true, ["sell.autoRepair"] = true }
+        local adopted = (S.Adopt(mine(), Import.FromFlow(flow(), {}), confirmed))
+        local merged = (Import.Merge({ settings = mine() }, nil, Import.FromFlow(flow(), {}),
+            { account = { settings = model:defaults() } }, confirmed)).settings
+        for _, key in ipairs(model:keys()) do
+            t.eq((model:get(merged, key)), (model:get(adopted, key)), key)
+            t.eq(model:explicit(merged, key), model:explicit(adopted, key), key .. " chosen")
+        end
+        t.eq((model:get(merged, "auction.chartClick")), true, "a stored value equal to the default was overwritten")
+        t.eq((model:get(merged, "sell.autoJunk")), false, "a stored off was switched on by a confirmation")
+        t.eq((model:get(merged, "sell.autoRepair")), true, "a confirmed automation with nothing stored is off")
+        t.eq((model:get(merged, "buffButton.enabled")), true, "a stored value of the wrong type was kept")
+        t.eq((model:get(merged, "buffButton.care")), false, "a stored choice was overwritten")
+        t.eq((model:get(merged, "buffButton.dock")), false, "a value with nothing stored was not taken")
+    end,
 }
