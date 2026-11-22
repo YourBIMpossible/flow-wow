@@ -119,4 +119,54 @@ tests["sell list Show: look only"] = function(t)
     end
 end
 
+-- Asked for by the U-E review: Show() only shows the panel. No sell, no
+-- merchant call, no store write.
+tests["sell list Show: it reads the bags and the item facts, draws, and does nothing else"] = function(t)
+    local function deepCopy(v)
+        if type(v) ~= "table" then return v end
+        local out = {}
+        for key, x in pairs(v) do out[key] = deepCopy(x) end
+        return out
+    end
+    local k, c = start()
+    c.setSaved(ns.id.charDB, { settings = { sell = { never = { [5] = true } } } })
+    c.setMerchantOpen(true)
+    local p = panelOf(c)
+
+    -- Every call on the client from here on, by name.
+    local called = {}
+    for name, fn in pairs(c) do
+        if type(fn) == "function" then
+            c[name] = function(...)
+                called[name] = (called[name] or 0) + 1
+                return fn(...)
+            end
+        end
+    end
+    -- Every write to the store, and the saved data as it was.
+    local writes = 0
+    local set, tableOf = k.store.set, k.store.table
+    k.store.set = function(...) writes = writes + 1 return set(...) end
+    k.store.table = function(...) writes = writes + 1 return tableOf(...) end
+    local accountWas, charWas = deepCopy(c.saved(ns.id.accountDB)), deepCopy(c.saved(ns.id.charDB))
+    called = {}
+
+    t.eq(k.use(L.NAME).Show(), true)
+
+    k.store.set, k.store.table = set, tableOf
+    local readsAllowed = { bagItems = true, itemInfo = true, saved = true }
+    for name in pairs(called) do
+        t.ok(readsAllowed[name], "Show() called client." .. name .. ", which is not one of its reads")
+    end
+    t.ok((called.bagItems or 0) >= 1, "it read the bags")
+    t.eq(called.merchantItems, nil, "no merchant read")
+    t.eq(called.raw, nil, "no raw game call")
+    t.eq(called.print, nil, "nothing printed")
+    t.eq(called.panel, nil, "no new frame: the one panel is reused")
+    t.eq(writes, 0, "no store write")
+    t.eq(c.saved(ns.id.accountDB), accountWas, "the account's saved data is as it was")
+    t.eq(c.saved(ns.id.charDB), charWas, "and the character's")
+    t.eq(p.shown, true, "and the panel is shown: that is all it does")
+end
+
 return tests
