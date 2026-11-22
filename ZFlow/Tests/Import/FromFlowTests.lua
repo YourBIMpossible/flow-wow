@@ -1050,4 +1050,108 @@ return {
         local _, _, second = Import.Merge(broken, emptyChar(), imported)
         t.eq(second.ok, false)
     end,
+
+    -- ------------------------------------------- merge asks the model
+    ["merge: a stored number outside the model's bounds is no choice and gives way"] = function(t)
+        local model, problems = ns.Settings.Model.New({
+            { key = "nav.pathAlpha", type = "number", default = 1, bounds = { min = 0, max = 1 } },
+            { key = "nav.mapLines", type = "bool", default = true },
+        })
+        t.eq(problems, {})
+        local function flow()
+            return Import.FromFlow({ nav = { pathAlpha = 0.5, mapLines = false } }, {})
+        end
+        t.eq(flow().account.settings.nav, { pathAlpha = 0.5, mapLines = false }, "the fixture did not reach the import")
+
+        local account = emptyAccount()
+        account.settings.nav = { pathAlpha = 7, mapLines = true }
+        local out, _, report = Import.Merge(account, emptyChar(), flow(), nil, nil, model)
+        t.eq(out.settings.nav.pathAlpha, 0.5, "a stored number the model refuses was kept as a choice")
+        t.eq(out.settings.nav.mapLines, true, "a stored value that fits was replaced")
+        local added = {}
+        for _, at in ipairs(report.added) do added[at] = true end
+        t.eq(added["account.settings.nav.pathAlpha"], true, "the replaced setting is not reported as added")
+        t.eq(added["account.settings.nav.mapLines"], nil, "the kept setting is reported as added")
+        t.eq(report.kept, { "account.settings.nav.mapLines" })
+        t.eq(account.settings.nav, { pathAlpha = 7, mapLines = true }, "the existing data was changed")
+
+        local inside = emptyAccount()
+        inside.settings.nav = { pathAlpha = 0.25 }
+        local kept = (Import.Merge(inside, emptyChar(), flow(), nil, nil, model))
+        t.eq(kept.settings.nav.pathAlpha, 0.25, "a stored number inside the bounds is a choice")
+    end,
+
+    ["merge: an import value the model refuses does not replace a stored one"] = function(t)
+        local model = (ns.Settings.Model.New({
+            { key = "nav.pathAlpha", type = "bool", default = true },
+        }))
+        local account = emptyAccount()
+        account.settings.nav = { pathAlpha = "yes" }
+        local imported = Import.FromFlow({ nav = { pathAlpha = 9 } }, {})
+        t.eq(imported.account.settings.nav.pathAlpha, 9, "the fixture did not reach the import")
+        local out, _, report = Import.Merge(account, emptyChar(), imported, nil, nil, model)
+        t.eq(out.settings.nav.pathAlpha, "yes", "one value the model refuses replaced another")
+        t.eq(report.kept, { "account.settings.nav.pathAlpha" })
+    end,
+
+    ["merge: a setting the model has no row for still compares types"] = function(t)
+        local model = (ns.Settings.Model.New({
+            { key = "nav.pathAlpha", type = "number", default = 1, bounds = { min = 0, max = 1 } },
+        }))
+        local account = emptyAccount()
+        account.settings.nav = { arrowStyle = 4, mapLines = true }
+        local imported = Import.FromFlow({ nav = { arrowStyle = "modern", mapLines = false } }, {})
+        local out = (Import.Merge(account, emptyChar(), imported, nil, nil, model))
+        t.eq(out.settings.nav.arrowStyle, "modern", "a stored value of another type was kept")
+        t.eq(out.settings.nav.mapLines, true, "a stored value of the same type was replaced")
+        local odd = (Import.Merge(account, emptyChar(), imported, nil, nil, "not a model"))
+        t.eq(odd.settings.nav.arrowStyle, "modern")
+        t.eq(odd.settings.nav.mapLines, true, "something that is no model changed what is kept")
+    end,
+
+    -- ------------------------------------------- the stored record
+    ["merge: a record that holds itself or a function is stored without them"] = function(t)
+        local imported = Import.FromFlow({}, {})
+        local record = { source = "Flow", importer = Import.flowImporterVersion, counts = { places = 0 } }
+        record.again = record
+        record.counts.back = record
+        record.call = function() end
+        imported.record = record
+        local ok, account = pcall(Import.Merge, nil, nil, imported)
+        t.ok(ok, "the merge raised: " .. tostring(account))
+        if not ok then return end
+        local stored = account.imports[#account.imports]
+        t.eq(stored.source, "Flow")
+        t.eq(stored.importer, Import.flowImporterVersion)
+        t.eq(stored.counts.places, 0)
+        t.eq(stored.again, nil, "the record still holds itself")
+        t.eq(stored.counts.back, nil, "a table inside the record still holds the record")
+        t.eq(stored.call, nil, "a function was stored")
+        t.ok(stored ~= record, "the stored record is the caller's own table")
+        t.eq(type(stored.merge), "table")
+        t.eq(stored.vendorConfirmed, {})
+    end,
+
+    ["merge: numbers that are not finite are left out of the stored record"] = function(t)
+        local imported = Import.FromFlow({}, {})
+        imported.record = { source = "Flow", fine = 1.5, bad = NAN, big = math.huge, small = -math.huge }
+        imported.dropped = { { key = "a", value = math.huge }, { key = "b", value = -math.huge }, { key = "c", value = NAN } }
+        imported.adjusted = { { key = "d", from = math.huge, to = 2 } }
+        local account = (Import.Merge(nil, nil, imported))
+        local stored = account.imports[#account.imports]
+        t.eq(stored.fine, 1.5)
+        t.eq(stored.bad, nil, "a number that is not a number was stored")
+        t.eq(stored.big, nil, "infinity was stored")
+        t.eq(stored.small, nil, "minus infinity was stored")
+        t.eq(stored.dropped, { { key = "a" }, { key = "b" }, { key = "c" } })
+        t.eq(stored.adjusted, { { key = "d", to = 2 } })
+    end,
+
+    ["import: the importer version is 3"] = function(t)
+        t.eq(Import.flowImporterVersion, 3, "the importer version moved; say why in the version notes and here")
+        local result = Import.FromFlow({}, {})
+        t.eq(result.record.importer, 3)
+        local account = (Import.Merge(nil, nil, result))
+        t.eq(account.imports[#account.imports].importer, 3, "the merged record lost its importer version")
+    end,
 }

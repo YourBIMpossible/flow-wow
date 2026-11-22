@@ -404,6 +404,37 @@ return {
         t.eq((model:get(merged, "buffButton.enabled")), true, "a stored value of the wrong type was kept")
         t.eq((model:get(merged, "buffButton.care")), false, "a stored choice was overwritten")
         t.eq((model:get(merged, "buffButton.dock")), false, "a value with nothing stored was not taken")
+
+        -- The same with a model of the test's own that bounds a number: a
+        -- stored number outside the bounds is the right type and still no
+        -- choice, for the adopt and for the merge alike.
+        local custom, problems = ns.Settings.Model.New({
+            { key = "nav.pathAlpha", type = "number", default = 1, bounds = { min = 0, max = 1 } },
+            { key = "nav.pathMotion", type = "number", default = 1, bounds = { min = 0, max = 4 } },
+            { key = "nav.mapLines", type = "bool", default = true },
+            { key = "buffButton.enabled", type = "bool", default = false },
+        })
+        t.eq(problems, {})
+        local function mineToo()
+            return {
+                nav = { pathAlpha = 7, pathMotion = 3, mapLines = "yes" },
+                buffButton = { enabled = false },
+            }
+        end
+        local function flowToo()
+            return { nav = { pathAlpha = 0.5, pathMotion = 2, mapLines = false }, buffButton = { enabled = true } }
+        end
+        local adoptedToo = (S.Adopt(mineToo(), Import.FromFlow(flowToo(), {}), nil, custom))
+        local mergedToo = (Import.Merge({ settings = mineToo() }, nil, Import.FromFlow(flowToo(), {}),
+            { account = { settings = custom:defaults() } }, nil, custom)).settings
+        for _, key in ipairs(custom:keys()) do
+            t.eq((custom:get(mergedToo, key)), (custom:get(adoptedToo, key)), key)
+            t.eq(custom:explicit(mergedToo, key), custom:explicit(adoptedToo, key), key .. " chosen")
+        end
+        t.eq((custom:get(mergedToo, "nav.pathAlpha")), 0.5, "a stored number outside the bounds was kept")
+        t.eq((custom:get(mergedToo, "nav.pathMotion")), 3, "a stored number inside the bounds was overwritten")
+        t.eq((custom:get(mergedToo, "nav.mapLines")), false, "a stored value of the wrong type was kept")
+        t.eq((custom:get(mergedToo, "buffButton.enabled")), false, "a stored choice was overwritten")
     end,
 
     -- ------------------------------------------------------- import gate
