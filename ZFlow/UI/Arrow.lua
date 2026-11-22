@@ -507,6 +507,13 @@ function Arrow.Start(k, diag, own)
                 step = errand.Step()
                 if step then from = "an errand stop" end
             end
+            -- Then the repair stop (Nav/RepairStep.lua), while the gear is low and a
+            -- repair vendor is known. Look only: it points, it never repairs.
+            local repair = k.use and k.use("repairStep")
+            if step == nil and repair and repair.Step then
+                step = repair.Step()
+                if step then from = "a repair stop" end
+            end
             -- The player's own pin (/way, then the map pin) wins over the player's quests.
             if step == nil and quests and Arrow.QuestArrowOn(k) then
                 step = quests.step()
