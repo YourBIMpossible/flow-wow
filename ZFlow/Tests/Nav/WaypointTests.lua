@@ -7,6 +7,10 @@ local N = ns.Nav
 local W = N.Waypoint
 local R = W.REASON
 
+-- Bytes that cannot be typed here are built, never written with an escape.
+local SOH, ESC, DEL = string.char(1), string.char(27), string.char(127)
+local TAB, NL = string.char(9), string.char(10)
+
 local HERE = { map = 1411, x = 0.1, y = 0.9 }
 
 local function near(t, got, want, what)
@@ -36,7 +40,8 @@ return {
     end,
 
     ["parse: the word way may be left out, in any case, with or without the slash"] = function(t)
-        for _, text in ipairs({ "50 25 inn", "WAY 50 25 inn", "/way 50 25 inn", "Way\t50\t25\tinn" }) do
+        for _, text in ipairs({ "50 25 inn", "WAY 50 25 inn", "/way 50 25 inn",
+                                "Way" .. TAB .. "50" .. TAB .. "25" .. TAB .. "inn" }) do
             local got, why = W.Parse(text)
             t.ok(got ~= nil, "turned down: " .. text .. " (" .. tostring(why) .. ")")
             if got then
@@ -85,10 +90,11 @@ return {
     ["parse: a reason never repeats a token that holds a bar or a control character"] = function(t)
         refused(t, "way |cffff0000x 25", "x is not a number")
         refused(t, "way 50 a|nb", "y is not a number")
-        refused(t, "way 5 25", "x is not a number")
-        refused(t, "way 50 2W", "y is not a number")
-        refused(t, "way [0m 25", "x is not a number")
-        local bad = { "|", "||", "|cffff0000red|r", "|Hitem:1|h[x]|h", "|T0:0|t", "5|", "", "ab", "[2J", "W" }
+        refused(t, "way 5" .. SOH .. " 25", "x is not a number")
+        refused(t, "way 50 2" .. DEL, "y is not a number")
+        refused(t, "way " .. ESC .. "[0m 25", "x is not a number")
+        local bad = { "|", "||", "|cffff0000red|r", "|Hitem:1|h[x]|h", "|T0:0|t", "5|", SOH, "a" .. SOH .. "b",
+                      ESC .. "[2J", DEL }
         for _, token in ipairs(bad) do
             for _, text in ipairs({ "way " .. token .. " 25", "way 50 " .. token, token .. " " .. token,
                                     "way " .. token .. " " .. token .. " label" }) do
@@ -120,8 +126,8 @@ return {
     ["parse: a label that cannot be shown or is too long is turned down, never cut"] = function(t)
         refused(t, "way 50 25 |cffff0000red", R.label)
         refused(t, "way 50 25 a|nb", R.label)
-        refused(t, "way 50 25 a\nb", R.label)
-        refused(t, "way 50 25 a\tb", R.label)
+        refused(t, "way 50 25 a" .. NL .. "b", R.label)
+        refused(t, "way 50 25 a" .. TAB .. "b", R.label)
         local longest = string.rep("a", W.LABEL_MAX)
         t.eq(W.Parse("way 50 25 " .. longest).label, longest)
         refused(t, "way 50 25 " .. longest .. "a", R.long)
@@ -131,7 +137,7 @@ return {
         t.eq(W.LABEL_MAX, 40)
         t.eq(R.long, "the label is too long (40 bytes at most)")
         t.ok(not R.long:find("character", 1, true), "a letter outside ASCII is more than one byte")
-        local e = "959"   -- one letter, two bytes
+        local e = string.char(195, 169)   -- one letter, two bytes
         local fits = string.rep(e, 20)
         t.eq(#fits, 40)
         t.eq(W.Parse("way 50 25 " .. fits).label, fits, "40 bytes, 20 letters")
