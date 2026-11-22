@@ -19,7 +19,15 @@ $cases = @(
     @{ Name = 'price-fail';       Exit = 1; Tag = 'PRICE' },
     @{ Name = 'price-build-fail'; Exit = 1; Tag = 'PRICE' },
     @{ Name = 'print-pass';       Exit = 0 },
-    @{ Name = 'print-fail';       Exit = 1; Tag = 'PRINT' }
+    @{ Name = 'print-fail';       Exit = 1; Tag = 'PRINT' },
+    @{ Name = 'allowed-vendor-pass';  Exit = 0 },
+    @{ Name = 'allowed-trainer-pass'; Exit = 0 },
+    @{ Name = 'count-vendor-pass';    Exit = 0 },
+    @{ Name = 'count-trainer-pass';   Exit = 0 },
+    @{ Name = 'hyphen-fail';          Exit = 1; Tag = 'F085' },
+    @{ Name = 'nopricetrainer-fail';  Exit = 1; Tag = 'F085' },
+    @{ Name = 'bare-fail';            Exit = 1; Tag = 'F085' },
+    @{ Name = 'merchant-fail';        Exit = 1; Tag = 'F085' }
 )
 $bad = 0
 foreach ($c in $cases) {
