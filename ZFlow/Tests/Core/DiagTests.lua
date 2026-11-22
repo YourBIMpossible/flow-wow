@@ -32,6 +32,14 @@ local function start(opts)
     return k, c, d
 end
 
+-- A plain deep copy, to compare saved data before and after a command.
+local function copy(v)
+    if type(v) ~= "table" then return v end
+    local out = {}
+    for k, x in pairs(v) do out[k] = copy(x) end
+    return out
+end
+
 local function login(c)
     c.fire("ADDON_LOADED", ns.id.addon)
     c.fire("VARIABLES_LOADED")
@@ -411,6 +419,7 @@ return {
         local flow = c.saved(ns.id.predecessorDB)
         flow.buffButton = { scale = 9, enabled = "yes" }
         local snaps = c.saved(ns.id.accountDB).diag.count
+        local own0 = copy(c.saved(ns.id.accountDB))
         local before = #c.printed
         c.slashes[ns.id.slash](" IMPORT ")
         local expected = ns.Diag.ImportReport(ns.Import.FromFlow({ buffButton = { scale = 9, enabled = "yes" } }, nil))
@@ -420,9 +429,10 @@ return {
         end
         t.eq(flow, { buffButton = { scale = 9, enabled = "yes" } })
         local own = c.saved(ns.id.accountDB)
-        t.eq(own.settings, nil)
-        t.eq(own.layout, nil)
-        t.eq(own.imports, nil)
+        -- The store makes its sections at login; the slash must change none.
+        t.eq(own.settings, own0.settings, "settings unchanged")
+        t.eq(own.layout, own0.layout, "layout unchanged")
+        t.eq(own.imports, own0.imports, "no import recorded")
         t.eq(own.diag.count, snaps, "a snapshot was taken")
         t.eq(c.savedExists(ns.id.predecessor .. "CharDB"), false)
     end,
