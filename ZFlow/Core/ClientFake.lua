@@ -1101,8 +1101,8 @@ function ns.make.fakeClient(opts)
         for i = 1, #logWatchers do logWatchers[i](...) end
     end
 
-    -- S29 alignment guides. setFrameRect(name, rect or nil); setScreen(w, h)
-    -- (nil, nil: not read); watchMoves takes callbacks for a name that has a
+    -- S29 alignment guides. setFrameRect(name, rect or nil); the screen is
+    -- setScreen's, above; watchMoves takes callbacks for a name that has a
     -- rect set (any other name: nil, as the client with no such frame);
     -- moveFrame(name, rect) calls onMove, dropFrame(name, rect) calls onDrop
     -- and answers its dx, dy. guideLines() keeps every show in guideShows()
@@ -1113,11 +1113,6 @@ function ns.make.fakeClient(opts)
         local r = frameRects[name]
         if type(r) ~= "table" then return nil end
         return { l = r.l, r = r.r, b = r.b, t = r.t, dockedTo = r.dockedTo }
-    end
-    function c.setScreen(w, h) s.screen = (w and h) and { w = w, h = h } or nil end
-    function c.screenSize()
-        if not s.screen then return nil end
-        return { w = s.screen.w, h = s.screen.h }
     end
     function c.watchMoves(name, onMove, onDrop)
         if type(frameRects[name]) ~= "table" then return nil end

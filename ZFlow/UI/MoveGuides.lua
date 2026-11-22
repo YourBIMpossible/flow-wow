@@ -10,8 +10,8 @@ local _, ns = ...
 -- same nearest rule, the same snap and line reach. Research:
 -- WoW/from-plexy/RESEARCH-move-guides.md. The module at the end draws the
 -- lines while the rotation icon or an arrow is Ctrl-dragged and snaps at the
--- release, through four client reads added at the end of Core/Client.lua
--- (frameRect, screenSize, watchMoves, guideLines); the handles that move
+-- release, through three client reads added at the end of Core/Client.lua
+-- (frameRect, watchMoves, guideLines; the screen from client.screen); the handles that move
 -- the frames are not changed. Setting ui.moveGuides, on by default.
 --
 --   MoveGuides.Lines(snap, screen) -> x, ylo, yhi, y, xlo, xhi
@@ -177,6 +177,12 @@ function G.Declare(k)
         return out
     end
 
+    local function screen()
+        local w, h = ctx.client.screen()
+        if type(w) == "number" and type(h) == "number" then return { w = w, h = h } end
+        return nil
+    end
+
     local function snap(name, rect)
         local all = rects()
         local mine = all[name]
@@ -189,14 +195,14 @@ function G.Declare(k)
             end
             others = kept
         end
-        return G.Snap(rect, ctx.client.screenSize(), others)
+        return G.Snap(rect, screen(), others)
     end
 
     local function moved(name, rect)
         if not lines then return end
         if not on() then lines.hide() return end
         local s = snap(name, rect)
-        local x, ylo, yhi, y, xlo, xhi = G.Lines(s, ctx.client.screenSize())
+        local x, ylo, yhi, y, xlo, xhi = G.Lines(s, screen())
         if x == nil and y == nil then lines.hide() return end
         lines.show(x, ylo, yhi, y, xlo, xhi)
     end

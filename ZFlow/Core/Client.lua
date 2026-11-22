@@ -3851,16 +3851,6 @@ function ns.make.client(env)
         return out
     end
 
-    -- UIParent's size: { w =, h = }, or nil.
-    function c.screenSize()
-        local okW, w = method(env.UIParent, "GetWidth")
-        local okH, h = method(env.UIParent, "GetHeight")
-        if okW and okH and type(w) == "number" and type(h) == "number" and w > 0 and h > 0 then
-            return { w = w, h = h }
-        end
-        return nil
-    end
-
     -- Told when the player moves our named frame: its own StartMoving and
     -- StopMovingOrSizing are hooked (after them), so the handle that moves
     -- it is not changed. onMove(rect) every frame while it moves. onDrop(rect)
