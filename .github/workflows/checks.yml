@@ -16,7 +16,10 @@ name: Checks
 on:
   push:
     branches: [main, zflow]
+  # Feature PRs into zflow on the fork stay draft while their owner builds
+  # them; the job is skipped for a draft and runs once the PR is marked ready.
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 permissions:
@@ -24,6 +27,7 @@ permissions:
 
 jobs:
   lint:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
