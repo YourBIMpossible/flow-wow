@@ -88,5 +88,60 @@ foreach ($f in $luaFiles) {
 }
 if ($closes -eq 0) { "every close button has its own handler" }
 
-if ($lua -ne 0 -or $tex -ne 0 -or $taint -ne 0 -or $dupes -ne 0 -or $closes -ne 0) { "LINT FAILED: fix the lines above before committing."; exit 1 }
+# tools/offline/client-globals.txt is the one list of the game's globals Flow
+# reads (luacheck and the offline runner both use it). Two things luacheck
+# can't see: a name on the list that no Lua file uses any more (the list must
+# not grow into "anything goes"), and a global read as _G.Name, which luacheck
+# takes for a table field: such a name must be on the list too (a plain line
+# or a "_G:" line), or be one of Flow's own.
+$names = 0
+$listPath = Join-Path $root 'tools/offline/client-globals.txt'
+if (-not (Test-Path -LiteralPath $listPath)) {
+    "tools/offline/client-globals.txt is missing: luacheck and the offline runner both need it"
+    $names = 1
+} else {
+    $plain = New-Object 'System.Collections.Generic.HashSet[string]'
+    $viaG = New-Object 'System.Collections.Generic.HashSet[string]'
+    $patterns = @()
+    $prev = ''
+    $prevG = ''
+    foreach ($raw in (Get-Content -LiteralPath $listPath)) {
+        $l = $raw.Trim()
+        if ($l -eq '' -or $l.StartsWith('#')) { continue }
+        if ($l -cmatch '^_G:\s*(.+)$') {
+            $n = $Matches[1]
+            if ($n.Contains('*')) { $patterns += '^' + ([regex]::Escape($n) -replace '\\\*', '[\w ]*') + '$' }
+            else { [void]$viaG.Add($n) }
+            if ([string]::CompareOrdinal($n, $prevG) -le 0) { "client-globals.txt: '_G: $n' is out of order or listed twice (keep the _G: lines sorted)"; $names = 1 }
+            $prevG = $n
+        } elseif ($l -cmatch '^[A-Za-z_]\w*$') {
+            [void]$plain.Add($l)
+            if ([string]::CompareOrdinal($l, $prev) -le 0) { "client-globals.txt: '$l' is out of order or listed twice (keep the list sorted)"; $names = 1 }
+            $prev = $l
+        } else { "client-globals.txt: not a global's name: $l"; $names = 1 }
+    }
+    $words = New-Object 'System.Collections.Generic.HashSet[string]'
+    $readViaG = @{}
+    foreach ($f in (@($luaFiles) + @(Get-ChildItem -Path $root -Filter *.lua))) {
+        $text = [IO.File]::ReadAllText($f.FullName)
+        foreach ($m in [regex]::Matches($text, '[A-Za-z_]\w*')) { [void]$words.Add($m.Value) }
+        foreach ($m in [regex]::Matches($text, '(?<![\w.])_G\.([A-Za-z_]\w*)')) {
+            $n = $m.Groups[1].Value
+            if (-not $readViaG.ContainsKey($n)) { $readViaG[$n] = $f.FullName.Substring($root.Length + 1) }
+        }
+    }
+    foreach ($n in ($plain | Sort-Object)) {
+        if (-not $words.Contains($n)) { "client-globals.txt: no Lua file uses '$n' any more: take the line off"; $names = 1 }
+    }
+    foreach ($n in ($readViaG.Keys | Sort-Object)) {
+        if ($n -cmatch '^(Flow|SLASH_FLOW|BINDING_)') { continue }
+        if ($plain.Contains($n) -or $viaG.Contains($n)) { continue }
+        if ($patterns | Where-Object { $n -cmatch $_ }) { continue }
+        "{0}: reads _G.{1}, which is not in tools/offline/client-globals.txt: a typo, or add a line `"_G: {1}`"" -f $readViaG[$n], $n
+        $names = 1
+    }
+    if ($names -eq 0) { "client globals: every listed name is used, every _G.Name is listed" }
+}
+
+if ($lua -ne 0 -or $tex -ne 0 -or $taint -ne 0 -or $dupes -ne 0 -or $closes -ne 0 -or $names -ne 0) { "LINT FAILED: fix the lines above before committing."; exit 1 }
 "lint OK"
