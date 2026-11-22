@@ -838,7 +838,7 @@ return {
             t.ok(#report.added > 0, "everything else was added")
             t.eq(#account.imports, 1)
             t.eq(account.imports[1].source, "Flow")
-            t.eq(account.imports[1].merge, { added = #report.added, kept = 0, skipped = 2 })
+            t.eq(account.imports[1].merge, { added = #report.added, kept = 0, skipped = 2, incompatible = 0 })
             t.ok(account.learned ~= imported.account.learned, "the merged data shares no table with the import")
         end
         t.eq(imported, snapshot, "the import result is unchanged")
@@ -897,7 +897,7 @@ return {
         t.ok(skipped["account.settings.sell.autoAll"], "skipped lists every imported value that was not written")
         t.ok(skipped["account.settings.sell.autoRepair"], "the unconfirmed automation among them")
         t.ok(not kept["account.settings.sell.repairWarn"], "an equal value is not a conflict")
-        t.eq(report.counts, { added = #report.added, kept = #report.kept, skipped = #report.skipped })
+        t.eq(report.counts, { added = #report.added, kept = #report.kept, skipped = #report.skipped, incompatible = 0 })
         t.eq(#newAccount.imports, 1)
 
         t.eq(account, beforeAccount, "the existing account data is unchanged")
@@ -1165,12 +1165,63 @@ return {
         t.eq(stored.adjusted, { { key = "d", to = 2 } })
     end,
 
-    ["import: the importer version is 3"] = function(t)
-        t.eq(Import.flowImporterVersion, 3, "the importer version moved; say why in the version notes and here")
+    -- ------------------------------------------- D8 (GH1): incompatible
+    ["merge D8: a table that meets a stored single value is reported as incompatible, and the stored value stays"] = function(t)
+        local account = emptyAccount()
+        account.settings.nav = "mine"
+        account.layout.thing = 5
+        local imported = Import.FromFlow({ nav = { arrowColor = "modern" } }, {})
+        imported.account.layout.thing = { a = 1 }
+        local snapshot = copy(imported)
+        local before = copy(account)
+        local out, _, report = Import.Merge(account, emptyChar(), imported)
+        t.eq(report.ok, true)
+        t.eq(out.settings.nav, "mine", "the stored single value was replaced")
+        t.eq(out.layout.thing, 5, "the stored single value was replaced")
+        t.eq(report.incompatible, { "account.settings.nav", "account.layout.thing" })
+        local kept, reasons = {}, {}
+        for _, path in ipairs(report.kept) do kept[path] = true end
+        for _, entry in ipairs(report.skipped) do reasons[entry.path] = entry.reason end
+        for _, path in ipairs(report.incompatible or {}) do
+            t.ok(kept[path], path .. ": the stored value is still listed as kept")
+            t.ok(type(reasons[path]) == "string" and reasons[path]:find("incompatible", 1, true) ~= nil,
+                path .. ": the reason does not say the source value was incompatible")
+        end
+        t.eq(report.counts.incompatible, 2)
+        t.eq(report.counts, { added = #report.added, kept = #report.kept, skipped = #report.skipped, incompatible = 2 })
+        t.eq(out.imports[#out.imports].merge.incompatible, 2, "the saved record does not carry the count")
+        t.eq(imported, snapshot, "the import result is unchanged")
+        t.eq(account, before, "the data handed in is unchanged")
+    end,
+
+    ["merge D8: a stored value of the same shape is kept as before, and is not called incompatible"] = function(t)
+        local account = emptyAccount()
+        account.settings.nav = { arrowColor = "flat" }
+        local imported = Import.FromFlow({ nav = { arrowColor = "modern" } }, {})
+        local out, _, report = Import.Merge(account, emptyChar(), imported)
+        t.eq(out.settings.nav.arrowColor, "flat")
+        t.eq(report.incompatible, {})
+        t.eq(report.counts.incompatible, 0)
+        local reason
+        for _, entry in ipairs(report.skipped) do
+            if entry.path == "account.settings.nav.arrowColor" then reason = entry.reason end
+        end
+        t.eq(reason, "the player already has a value here; it was kept")
+    end,
+
+    ["merge D8: a merge that is refused still has an empty incompatible list"] = function(t)
+        local _, _, report = Import.Merge(nil, nil, nil)
+        t.eq(report.ok, false)
+        t.eq(report.incompatible, {})
+        t.eq(report.counts.incompatible, 0)
+    end,
+
+    ["import: the importer version is 4"] = function(t)
+        t.eq(Import.flowImporterVersion, 4, "the importer version moved; say why in the version notes and here")
         local result = Import.FromFlow({}, {})
-        t.eq(result.record.importer, 3)
+        t.eq(result.record.importer, 4)
         local account = (Import.Merge(nil, nil, result))
-        t.eq(account.imports[#account.imports].importer, 3, "the merged record lost its importer version")
+        t.eq(account.imports[#account.imports].importer, 4, "the merged record lost its importer version")
     end,
     -- ------------------------------------------------- merge-model review
     ["review M2: a saved list has no hole where a value was left out"] = function(t)
