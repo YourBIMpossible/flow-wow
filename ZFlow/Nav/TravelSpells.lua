@@ -39,6 +39,9 @@ local N = ns.Nav
 N.TRAVEL_SPELLS = {
     { name = "Teleport: Moonglade", map = 1450, class = "DRUID", from = "your class trainer, from level 10" },
 }
+-- What a ten-second cast is worth in running yards, for a planner that
+-- measures a step a cast away (legacy TS.YARDS).
+N.TRAVEL_SPELL_YARDS = 120
 N.TRAVEL_PLAIN = "Use your travel spell"
 N.TRAVEL_LEARN_PLAIN = "Learn a travel spell"
 

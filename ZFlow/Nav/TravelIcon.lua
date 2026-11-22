@@ -16,7 +16,10 @@ local _, ns = ...
 --   spellStep   from N.TravelSpellStep (a "learn" step is not an icon)
 --   hearthStep  from N.HearthStep
 --   skipped     true when the player chose to walk to this step
---   action = { kind = "spell", spell, text } or { kind = "hearth", text }
+--   action = { kind = "spell", spell, text } or { kind = "hearth", text, saves }
+--   The hearthstone shows only when its saving is a known number above 0
+--   (legacy Flow's H:Saves check; review d46a60a): a "bind place unknown"
+--   step, or one on another map with no saves, is no icon.
 --   The spell comes first, then the hearthstone, as in legacy Flow.
 --
 -- N.TravelSkip(skips, key, on)  sets or clears skips[key] (this session)
@@ -29,8 +32,11 @@ function N.TravelAction(spellStep, hearthStep, skipped)
         and type(spellStep.label) == "string" then
         return { kind = "spell", spell = spellStep.spell, text = spellStep.label }
     end
-    if type(hearthStep) == "table" and type(hearthStep.label) == "string" then
-        return { kind = "hearth", text = hearthStep.label }
+    local saves = type(hearthStep) == "table" and hearthStep.saves or nil
+    if type(hearthStep) == "table" and type(hearthStep.label) == "string"
+        and type(saves) == "number" and saves == saves
+        and saves > 0 and saves ~= math.huge then
+        return { kind = "hearth", text = hearthStep.label, saves = saves }
     end
     return nil
 end
