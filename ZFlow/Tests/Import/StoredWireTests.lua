@@ -16,6 +16,20 @@ local function near(t, got, want)
         "expected " .. tostring(want) .. ", got " .. tostring(got))
 end
 
+-- The shipped settings model. Looked up when a test runs.
+local function shipped()
+    return ns.Settings.Model.Default()
+end
+
+-- A vendor automation on in Flow, one off, and two plain choices.
+local function sellDb()
+    return {
+        sell = { autoJunk = true, autoRepair = true, autoAll = false },
+        ah = { chartClick = true },
+        buffButton = { enabled = true, dock = false },
+    }
+end
+
 local function droppedFor(result, key)
     for _, entry in ipairs(result.dropped) do
         if entry.key == key then return entry end
@@ -178,5 +192,185 @@ return {
         t.eq(s.dock, true)
         t.eq(s.key, nil)
         t.eq(s.keys, {})
+    end,
+
+    -- ------------------------------------------------------------ adopt
+    ["adopt: a value Flow held is stored as found and counts as chosen"] = function(t)
+        local model = shipped()
+        local out, report = S.Adopt(nil, Import.FromFlow(sellDb(), {}))
+        t.eq(report.ok, true)
+        t.eq(out.buffButton, { enabled = true, dock = false })
+        t.eq(model:get(out, "buffButton.enabled"), true)
+        t.eq(model:get(out, "buffButton.dock"), false)
+        t.ok(model:explicit(out, "buffButton.enabled"), "buffButton.enabled is not chosen")
+        t.ok(model:explicit(out, "buffButton.dock"), "buffButton.dock is not chosen")
+    end,
+
+    ["adopt: a value Flow held that equals the default is still stored"] = function(t)
+        local model = shipped()
+        t.eq(model:default("auction.chartClick"), true)
+        local out = (S.Adopt(nil, Import.FromFlow(sellDb(), {})))
+        t.eq(out.auction, { chartClick = true })
+        t.ok(model:explicit(out, "auction.chartClick"), "auction.chartClick is not chosen")
+    end,
+
+    ["adopt: a value Flow did not hold is not stored and reads as the default"] = function(t)
+        local model = shipped()
+        local out, report = S.Adopt(nil, Import.FromFlow({}, {}))
+        t.eq(report.ok, true)
+        t.eq(out, {})
+        t.eq(report.taken, {})
+        for _, key in ipairs(model:keys()) do
+            t.ok(not model:explicit(out, key), key .. " counts as chosen")
+            t.eq((model:get(out, key)), model:default(key), key)
+        end
+    end,
+
+    ["adopt: every vendor automation is off when Flow held none"] = function(t)
+        local model = shipped()
+        local out = (S.Adopt(nil, Import.FromFlow({ buffButton = { enabled = true } }, {})))
+        t.eq(out.sell, nil)
+        local seen = 0
+        for _, key in ipairs(model:keys()) do
+            if model:row(key).vendor then
+                seen = seen + 1
+                t.eq((model:get(out, key)), false, key)
+            end
+        end
+        t.eq(seen, 5)
+    end,
+
+    ["adopt: a vendor automation Flow had on stays off until that one is confirmed"] = function(t)
+        local model = shipped()
+        local out, report = S.Adopt(nil, Import.FromFlow(sellDb(), {}))
+        t.eq(out.sell, { autoAll = false })
+        t.eq((model:get(out, "sell.autoJunk")), false)
+        t.eq((model:get(out, "sell.autoRepair")), false)
+        t.ok(not model:explicit(out, "sell.autoJunk"), "sell.autoJunk counts as chosen")
+        t.eq(report.vendorLeftOff, { "sell.autoJunk", "sell.autoRepair" })
+        t.eq(report.vendorConfirmed, {})
+    end,
+
+    ["adopt: a vendor automation Flow had off is stored off"] = function(t)
+        local model = shipped()
+        local out = (S.Adopt(nil, Import.FromFlow(sellDb(), {})))
+        t.eq((model:get(out, "sell.autoAll")), false)
+        t.ok(model:explicit(out, "sell.autoAll"), "sell.autoAll is not chosen")
+    end,
+
+    ["adopt: confirming one vendor automation switches on that one only"] = function(t)
+        local model = shipped()
+        local out, report = S.Adopt(nil, Import.FromFlow(sellDb(), {}), { ["sell.autoRepair"] = true })
+        t.eq(out.sell, { autoAll = false, autoRepair = true })
+        t.eq((model:get(out, "sell.autoJunk")), false)
+        t.eq(report.vendorConfirmed, { "sell.autoRepair" })
+        t.eq(report.vendorLeftOff, { "sell.autoJunk" })
+    end,
+
+    ["adopt: only a true confirms, and only what Flow had on"] = function(t)
+        local result = Import.FromFlow(sellDb(), {})
+        local out, report = S.Adopt(nil, result,
+            { ["sell.autoJunk"] = "yes", ["sell.autoRepair"] = 1, ["sell.autoCleanup"] = true, ["sell.autoAll"] = true })
+        t.eq(out.sell, { autoAll = false })
+        t.eq(report.vendorConfirmed, {})
+        t.eq(report.vendorLeftOff, { "sell.autoJunk", "sell.autoRepair" })
+    end,
+
+    ["adopt: a vendor automation written on in the settings is gated the same way"] = function(t)
+        local result = Import.FromFlow({}, {})
+        result.account.settings = { sell = { autoCleanup = true, vendorUnpriced = true } }
+        local out, report = S.Adopt(nil, result, { ["sell.vendorUnpriced"] = true })
+        t.eq(out.sell, { vendorUnpriced = true })
+        t.eq(report.vendorLeftOff, { "sell.autoCleanup" })
+        t.eq(report.vendorConfirmed, { "sell.vendorUnpriced" })
+    end,
+
+    ["adopt: a value the player already chose is kept"] = function(t)
+        local mine = {
+            auction = { chartClick = false },
+            buffButton = { enabled = false, key = "G" },
+            sell = { autoRepair = false, autoAll = true },
+        }
+        local out, report = S.Adopt(mine, Import.FromFlow(sellDb(), {}), { ["sell.autoRepair"] = true })
+        t.eq(out.auction.chartClick, false)
+        t.eq(out.buffButton.enabled, false)
+        t.eq(out.buffButton.key, "G", "a setting with no row was lost")
+        t.eq(out.sell.autoRepair, false)
+        t.eq(out.sell.autoAll, true)
+        t.eq(out.buffButton.dock, false, "an unchosen setting was not taken")
+        t.eq(report.kept, { "sell.autoAll", "sell.autoRepair", "auction.chartClick", "buffButton.enabled" })
+        t.eq(report.taken, { "buffButton.dock" })
+    end,
+
+    ["adopt: neither table given is changed"] = function(t)
+        local mine = { auction = { chartClick = false } }
+        local result = Import.FromFlow(sellDb(), {})
+        local confirmed = { ["sell.autoRepair"] = true }
+        local before = Import.FromFlow(sellDb(), {})
+        local out = (S.Adopt(mine, result, confirmed))
+        t.eq(mine, { auction = { chartClick = false } })
+        t.eq(result.account.settings, before.account.settings)
+        t.eq(result.vendorToConfirm, before.vendorToConfirm)
+        t.eq(confirmed, { ["sell.autoRepair"] = true })
+        t.ok(out ~= mine, "the settings given were handed back")
+        out.auction.chartClick = true
+        t.eq(mine.auction.chartClick, false)
+    end,
+
+    ["adopt: landing the same import again changes nothing"] = function(t)
+        local confirmed = { ["sell.autoRepair"] = true }
+        local once = (S.Adopt(nil, Import.FromFlow(sellDb(), {}), confirmed))
+        local twice, report = S.Adopt(once, Import.FromFlow(sellDb(), {}), confirmed)
+        t.eq(twice, once)
+        t.eq(report.taken, {})
+        t.eq(report.refused, {})
+        local thrice = (S.Adopt(twice, Import.FromFlow(sellDb(), {})))
+        t.eq(thrice, once, "a confirmed automation was switched off by a later import")
+    end,
+
+    ["adopt: an import without the confirmation, then with it, switches the one on"] = function(t)
+        local first = (S.Adopt(nil, Import.FromFlow(sellDb(), {})))
+        local second = (S.Adopt(first, Import.FromFlow(sellDb(), {}), { ["sell.autoJunk"] = true }))
+        t.eq(second.sell, { autoAll = false, autoJunk = true })
+    end,
+
+    ["adopt: a value that does not fit its row is refused and reported"] = function(t)
+        local result = Import.FromFlow({}, {})
+        result.account.settings = { buffButton = { enabled = "yes", dock = false } }
+        local out, report = S.Adopt(nil, result)
+        t.eq(out, { buffButton = { dock = false } })
+        t.eq(#report.refused, 1)
+        t.eq(report.refused[1].key, "buffButton.enabled")
+        t.ok(type(report.refused[1].reason) == "string", "no reason given")
+    end,
+
+    ["adopt: an import that did not succeed lands nothing"] = function(t)
+        local mine = { auction = { chartClick = false } }
+        local out, report = S.Adopt(mine, { ok = false, reason = "no Flow data" })
+        t.eq(report.ok, false)
+        t.ok(type(report.reason) == "string" and report.reason ~= "", "no reason given")
+        t.eq(out, mine)
+        t.ok(out ~= mine, "the settings given were handed back")
+        local none, why = S.Adopt(nil, nil)
+        t.eq(none, {})
+        t.eq(why.ok, false)
+        t.eq(why.taken, {})
+    end,
+
+    ["adopt: settings that are not a table are treated as none"] = function(t)
+        local out, report = S.Adopt("broken", Import.FromFlow(sellDb(), {}))
+        t.eq(report.ok, true)
+        t.eq(out.buffButton, { enabled = true, dock = false })
+    end,
+
+    ["adopt: a model handed in is the one used"] = function(t)
+        local model = (ns.Settings.Model.New({
+            { key = "buffButton.enabled", type = "bool", default = false },
+        }))
+        local out, report = S.Adopt(nil, Import.FromFlow(sellDb(), {}), { ["sell.autoRepair"] = true }, model)
+        t.eq(out, { buffButton = { enabled = true } })
+        t.eq(report.taken, { "buffButton.enabled" })
+        t.eq(report.vendorConfirmed, {})
+        t.eq(report.vendorLeftOff, { "sell.autoJunk", "sell.autoRepair" })
     end,
 }
