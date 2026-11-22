@@ -74,6 +74,8 @@ Nav\WaypointStep.lua
 Nav\Waypoint.lua
 Nav\ProfStep.lua
 Nav\ProfSeen.lua
+Nav\QuestSource.lua
+Nav\QuestRead.lua
 UI\ProfCard.lua
 UI\DevPanel.lua
 UI\SettingsSlash.lua

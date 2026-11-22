@@ -58,6 +58,8 @@ M.ROWS = {
     { key = "loot.junkNote", type = "bool", default = true },
     -- advisor.panel: the advisor prompt panel (UI/Advisor.lua). (lead)
     { key = "advisor.panel", type = "bool", default = true },
+    -- Q-A: point the quest arrow at the player's quests (lead)
+    { key = "quest.arrow", type = "bool", default = true },
     { key = "auction.chartClick", type = "bool", default = true },
     { key = "buffButton.enabled", type = "bool", default = false },
     { key = "buffButton.dock", type = "bool", default = true },

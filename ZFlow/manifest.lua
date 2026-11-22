@@ -93,6 +93,8 @@ return {
         "Nav/Waypoint.lua",
         "Nav/ProfStep.lua",
         "Nav/ProfSeen.lua",
+        "Nav/QuestSource.lua",
+        "Nav/QuestRead.lua",
         "UI/ProfCard.lua",
 
         -- On screen (after Nav: the panel uses its saved-point rules)
