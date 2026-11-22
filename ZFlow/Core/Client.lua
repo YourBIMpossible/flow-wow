@@ -3147,13 +3147,26 @@ function ns.make.client(env)
 
     -- F9 window buttons: the one read UI/WindowButtons.lua asks for.
     --
-    -- c.windowButton(frameName, spec) -> h, or nil. A plain button on one
-    -- of the game's own windows. spec = { name, text, tip, point = { anchor,
-    -- relAnchor, x, y } }. nil, and nothing is made, when the window is not
-    -- there, when the client does not say plainly that the window is not
-    -- protected, or when the client does not say plainly that the player
-    -- is out of combat. The button is an ordinary Button: no secure
-    -- template, no attribute, no action. It only tells its caller.
+    -- c.windowButton(frameName, spec) -> h, or nil and why. A plain button
+    -- on one of the game's own windows. spec = { name, text, tip, point =
+    -- { anchor, relAnchor, x, y } }. nil, and nothing is made, when the
+    -- window is not there ("no window"), when the client does not say
+    -- plainly that the player is out of combat ("in combat"), when no
+    -- frame could be made ("no frame"), or on a bad ask ("bad ask"). The
+    -- button is an ordinary Button: no secure template, no attribute, no
+    -- action. It only tells its caller.
+    --
+    -- A protected window no longer stops it (section 132; the owner turned
+    -- the merchant button on and saw none). Why that is safe: by the
+    -- public pages (warcraft.wiki.gg, API InCombatLockdown and
+    -- ScriptRegion:IsProtected) the limits of a fight fall on a protected
+    -- frame, on its parents, and on a frame it is anchored to. This button
+    -- is a child of the window and is anchored to it, not the other way
+    -- round, so it does not become protected and the window is not
+    -- touched: nothing here shows, hides, moves or sizes the window. It is
+    -- still made only out of combat. What IsProtected answered is kept as
+    -- h.parentProtected (true, false, or nil for not said) so it can be
+    -- reported. Needs game test.
     --   h.onClick(fn, failed)  fn() on a left click; failed(err) is told the
     --                          error of an fn that failed.
     --   h.show(on)
@@ -3182,12 +3195,14 @@ function ns.make.client(env)
     -- SetNormalFontObject with a font name (the page lists string or Font,
     -- no more; used only when the template is missing).
     function c.windowButton(frameName, spec)
-        if type(frameName) ~= "string" or frameName == "" or type(spec) ~= "table" then return nil end
+        if type(frameName) ~= "string" or frameName == "" or type(spec) ~= "table" then
+            return nil, "bad ask"
+        end
         local frame = env[frameName]
-        if type(frame) ~= "table" then return nil end
+        if type(frame) ~= "table" then return nil, "no window" end
+        if c.inCombat() ~= false then return nil, "in combat" end
         local okP, protected = method(frame, "IsProtected")
-        if not okP or hidden(protected) or protected ~= false then return nil end
-        if c.inCombat() ~= false then return nil end
+        if not okP or hidden(protected) or type(protected) ~= "boolean" then protected = nil end
 
         local name = spec.name
         if type(name) ~= "string" or name == "" or env[name] ~= nil then name = nil end
@@ -3196,7 +3211,7 @@ function ns.make.client(env)
             ok, b = call(env.CreateFrame, "Button", name, frame)
             if ok and b ~= nil then method(b, "SetNormalFontObject", "GameFontNormalSmall") end
         end
-        if not ok or b == nil then return nil end
+        if not ok or b == nil then return nil, "no frame" end
 
         local label = type(spec.text) == "string" and spec.text or ""
         method(b, "Hide")
@@ -3211,7 +3226,7 @@ function ns.make.client(env)
             type(p[2]) == "string" and p[2] or "TOPRIGHT", tonumber(p[3]) or 0, tonumber(p[4]) or 0)
         method(b, "RegisterForClicks", "LeftButtonUp")
 
-        local h, clicked, clickFailed = {}, nil, nil
+        local h, clicked, clickFailed = { parentProtected = protected }, nil, nil
         -- The handlers close over the button: they use none of the
         -- arguments the client passes.
         method(b, "SetScript", "OnClick", function()
