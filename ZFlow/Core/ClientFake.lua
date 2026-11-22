@@ -98,7 +98,13 @@ function ns.make.fakeClient(opts)
     function c.recipes()
         local r = s.recipes
         if type(r) ~= "table" then return nil end
-        return { profession = r.profession, skill = r.skill, max = r.max, recipes = copyRows(r.recipes) or {} }
+        return {
+            profession = r.profession,
+            name = type(r.name) == "string" and r.name or nil,
+            skill = r.skill,
+            max = r.max,
+            recipes = copyRows(r.recipes) or {},
+        }
     end
     function c.spell(id)
         if type(id) ~= "number" then return nil end
@@ -106,6 +112,18 @@ function ns.make.fakeClient(opts)
         return { known = r.known, usable = r.usable, noPower = r.noPower }
     end
     function c.spellId(name) return s.spellIds and s.spellIds[name] or nil end
+    function c.watchTrainer() end
+    function c.trainer()
+        local r = s.trainer
+        if type(r) ~= "table" then return nil end
+        return { profession = r.profession, npc = r.npc }
+    end
+    function c.faction() return s.faction end
+    function c.class() return s.class end
+    function c.spellCooldown(id)
+        if type(id) ~= "number" or not s.cooldowns then return nil end
+        return s.cooldowns[id]
+    end
     function c.facing() return s.facing end
     function c.mapSize(map)
         local r = s.mapSizes and s.mapSizes[map]
@@ -346,6 +364,19 @@ function ns.make.fakeClient(opts)
     function c.setSpellId(name, id)
         s.spellIds = s.spellIds or {}
         s.spellIds[name] = id
+    end
+    -- The open trainer window: { profession = name or nil, npc = name };
+    -- nil for closed or not known.
+    function c.setTrainer(r) s.trainer = r and { profession = r.profession, npc = r.npc } or nil end
+    -- "Horde", "Alliance", or nil for not known.
+    function c.setFaction(group) s.faction = group end
+    -- The class token ("DRUID"), or nil for not known.
+    function c.setClass(token) s.class = token end
+    -- One spell's cooldown: true (on cooldown), false (ready), nil for
+    -- not known. A spell never set is not known.
+    function c.setSpellCooldown(id, on)
+        s.cooldowns = s.cooldowns or {}
+        s.cooldowns[id] = on
     end
     -- Radians, 0 = north; nil for not known.
     function c.setFacing(f) s.facing = f end
