@@ -83,6 +83,34 @@ tests["sell list Show: it lists again each time, with the bags as they are now"]
     t.ok(has(panelOf(c).lines, ns.ItemPresent.NOTHING_TO_SELL), "the bags were read again")
 end
 
+-- Review of 8f5e861 (low): a list opened by the button stays open when the
+-- never-sell list changes, also with vendor.list off.
+tests["sell list Show: a list the player asked for survives a refresh, with vendor.list off"] = function(t)
+    local k, c, api = start({ setting = false })
+    c.setMerchantOpen(true)
+    local p = panelOf(c)
+    k.use(L.NAME).Show()
+    t.eq(p.shown, true)
+    c.setBagItems({})                      -- something changed (as after <slash> keep)
+    api.refresh()
+    t.eq(p.shown, true, "still shown: it was asked for")
+    t.ok(has(p.lines, ns.ItemPresent.NOTHING_TO_SELL), "and listed again")
+    t.eq(api.shows(), 2)
+end
+
+tests["sell list Show: the ask ends with the merchant window"] = function(t)
+    local k, c, api = start({ setting = false })
+    c.setMerchantOpen(true)
+    k.use(L.NAME).Show()
+    c.setMerchantOpen(false)
+    c.setMerchantOpen(true)
+    local p = panelOf(c)
+    t.eq(p.shown, false, "a new merchant window: off again until asked")
+    api.refresh()
+    t.eq(p.shown, false, "and a refresh does not bring it back")
+    t.eq(api.shows(), 1, "nothing was read for it")
+end
+
 tests["sell list Show: with no merchant window open it shows nothing and says why"] = function(t)
     local k, c, api = start()
     local ok, why = k.use(L.NAME).Show()
