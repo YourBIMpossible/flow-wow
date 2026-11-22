@@ -899,7 +899,7 @@ return {
         t.eq(imported, beforeImport, "the import result is unchanged")
     end,
 
-    ["merge: a value still at its default gives way to the import"] = function(t)
+    ["merge: a setting already stored is a choice and is kept, also at its default"] = function(t)
         local imported = Import.FromFlow({ sell = { autoRepair = true, autoJunk = true }, nav = { arrowStyle = "modern" } }, { data = { spec = { role = "tank" } } })
         local account = emptyAccount()
         account.settings.sell = { autoRepair = false, autoJunk = false }
@@ -911,16 +911,102 @@ return {
             char = { settings = { spec = { role = "damage" } } },
         }
         local confirmed = { ["sell.autoRepair"] = true, ["sell.autoJunk"] = true }
-        local unconfirmed = Import.Merge(account, char, imported, defaults)
-        t.eq(unconfirmed.settings.sell.autoRepair, false, "still the default, but not confirmed: it stays off")
+        local unconfirmed = (Import.Merge(account, char, imported, defaults))
+        t.eq(unconfirmed.settings.sell.autoRepair, false, "stored and not confirmed: it stays off")
         local newAccount, newChar, report = Import.Merge(account, char, imported, defaults, confirmed)
-        t.eq(newAccount.settings.sell.autoRepair, true, "still the default and confirmed: the import is used")
+        t.eq(newAccount.settings.sell.autoRepair, false, "stored, equal to the default and confirmed: still the player's choice")
         t.eq(newAccount.settings.sell.autoJunk, false, "no default given: the existing value is kept")
         t.eq(newAccount.settings.nav.arrowStyle, "flat", "not the default: the player changed it, so it is kept")
-        t.eq(newChar.settings.spec.role, "tank")
-        t.eq(report.counts.kept, 2)
-        local without = Import.Merge(account, char, imported, nil, confirmed)
-        t.eq(without.settings.sell.autoRepair, false, "without defaults nothing existing is replaced")
+        t.eq(newChar.settings.spec.role, "damage", "a character setting equal to the default is a choice too")
+        t.eq(report.counts.kept, 4)
+        local without, withoutChar = Import.Merge(account, char, imported, nil, confirmed)
+        t.eq(without.settings, newAccount.settings, "the defaults given make no difference to settings")
+        t.eq(withoutChar.settings, newChar.settings)
+    end,
+
+    ["merge: a layout value still at its default gives way to the import"] = function(t)
+        local imported = Import.FromFlow({ buffButton = { scale = 1.5, dockScale = 0.8 } }, {})
+        local account = emptyAccount()
+        account.layout.buffButton = { scale = 1, dockScale = 1.2 }
+        local defaults = { account = { layout = { buffButton = { scale = 1, dockScale = 1 } } } }
+        local newAccount = (Import.Merge(account, emptyChar(), imported, defaults))
+        t.eq(newAccount.layout.buffButton.scale, 1.5, "still the default: the import is used")
+        t.eq(newAccount.layout.buffButton.dockScale, 1.2, "not the default: it is kept")
+        local without = (Import.Merge(account, emptyChar(), imported))
+        t.eq(without.layout.buffButton.scale, 1, "without defaults nothing existing is replaced")
+    end,
+
+    ["merge: a stored setting of the wrong type is no choice and gives way"] = function(t)
+        local imported = Import.FromFlow({ buffButton = { enabled = true, dock = false } }, {})
+        local account = emptyAccount()
+        account.settings.buffButton = { enabled = "yes", dock = true }
+        local newAccount, _, report = Import.Merge(account, emptyChar(), imported)
+        t.eq(newAccount.settings.buffButton.enabled, true)
+        t.eq(newAccount.settings.buffButton.dock, true, "a stored yes-or-no is a choice")
+        t.eq(report.kept, { "account.settings.buffButton.dock" })
+        t.eq(account.settings.buffButton, { enabled = "yes", dock = true }, "the existing data is unchanged")
+    end,
+
+    ["import: the stored record keeps what was left behind and what was adjusted"] = function(t)
+        local result = Import.FromFlow({ buffButton = { scale = 9, enabled = "yes" }, rotation = { scale = 40 }, madeUp = 1 }, {})
+        local stored = result.account.imports[1]
+        t.ok(#result.adjusted >= 2, "the fixture adjusts fewer than two values")
+        t.ok(#result.dropped >= 2, "the fixture leaves fewer than two values behind")
+        t.eq(stored.adjusted, result.adjusted)
+        t.eq(stored.dropped, result.dropped)
+        t.ok(stored.adjusted ~= result.adjusted and stored.adjusted[1] ~= result.adjusted[1],
+            "the stored adjusted list is the result's own table")
+        t.ok(stored.dropped ~= result.dropped and stored.dropped[1] ~= result.dropped[1],
+            "the stored dropped list is the result's own table")
+        t.ok(stored.adjusted ~= result.record.adjusted, "the stored record shares a list with the result's record")
+        local was = result.adjusted[1].to
+        stored.adjusted[1].to = "changed"
+        stored.dropped[1].reason = "changed"
+        t.eq(result.adjusted[1].to, was)
+        t.eq(result.record.adjusted[1].to, was)
+        t.ok(result.dropped[1].reason ~= "changed", "changing the stored record changed the result")
+    end,
+
+    ["import: an import with nothing left behind stores two empty lists"] = function(t)
+        local result = Import.FromFlow({}, {})
+        t.eq(result.dropped, {})
+        t.eq(result.account.imports[1].dropped, {})
+        t.eq(result.account.imports[1].adjusted, {})
+    end,
+
+    ["merge: the record merged in keeps both lists as its own copies"] = function(t)
+        local result = Import.FromFlow({ buffButton = { scale = 9, enabled = "yes" }, rotation = { scale = 40 }, madeUp = 1 }, {})
+        local before = copy(result)
+        local account = (Import.Merge(nil, nil, result))
+        local stored = account.imports[#account.imports]
+        t.eq(stored.adjusted, result.adjusted)
+        t.eq(stored.dropped, result.dropped)
+        t.ok(stored.adjusted ~= result.adjusted and stored.adjusted ~= result.record.adjusted,
+            "the merged record shares its adjusted list")
+        t.ok(stored.dropped ~= result.dropped and stored.dropped ~= result.record.dropped,
+            "the merged record shares its dropped list")
+        stored.adjusted[1].to = "changed"
+        t.eq(result, before, "the import result is unchanged")
+    end,
+
+    ["merge: a result whose record has no lists still stores them from the result"] = function(t)
+        local result = Import.FromFlow({ buffButton = { scale = 9 }, madeUp = 1 }, {})
+        result.record.dropped, result.record.adjusted = nil, nil
+        local account = (Import.Merge(nil, nil, result))
+        local stored = account.imports[#account.imports]
+        t.eq(stored.adjusted, result.adjusted)
+        t.eq(stored.dropped, result.dropped)
+        t.ok(stored.adjusted ~= result.adjusted, "the merged record shares its adjusted list")
+    end,
+
+    ["merge: a list that holds itself is stored without hanging"] = function(t)
+        local result = Import.FromFlow({ buffButton = { scale = 9 } }, {})
+        result.record.dropped, result.record.adjusted = nil, nil
+        local loop = { key = "x" }
+        loop.from = loop
+        result.adjusted = { loop }
+        local account = (Import.Merge(nil, nil, result))
+        t.eq(account.imports[#account.imports].adjusted, { { key = "x" } })
     end,
 
     ["merge: merging the same import twice adds nothing the second time"] = function(t)
