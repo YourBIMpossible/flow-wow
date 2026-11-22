@@ -117,6 +117,7 @@ return {
         "Nav/RoutePlan.lua",
         "Nav/HearthStep.lua",
         "Nav/HearthSeen.lua",
+        "Nav/Crossings.lua",
         "Nav/ServiceNearest.lua",
         "Nav/ServiceSeen.lua",
         "Nav/Errand.lua",
