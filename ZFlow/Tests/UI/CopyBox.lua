@@ -156,4 +156,24 @@ tests["copy box: chat is still printed as before"] = function(t)
     t.eq(c.printed[#c.printed], "a line", "unchanged")
 end
 
+-- S24: what the box holds is plain text (legacy Flow C.Plain).
+local BAR = string.char(124)
+tests["copy box S24: colour, link, icon and atlas codes are taken out"] = function(t)
+    local P = ns.CopyBox.Plain
+    t.eq(P(BAR .. "cffff2020Red" .. BAR .. "r text"), "Red text")
+    t.eq(P("Loot: " .. BAR .. "cff9d9d9d" .. BAR .. "Hitem:2589::::::::1:::::::" .. BAR .. "h[Linen Cloth]" .. BAR .. "h" .. BAR .. "r"),
+        "Loot: [Linen Cloth]", "a link keeps its name")
+    t.eq(P("a " .. BAR .. "TInterface\Icons\X:0" .. BAR .. "t b"), "a  b", "an icon goes")
+    t.eq(P("a " .. BAR .. "Aatlas-name:0:0" .. BAR .. "a b"), "a  b", "an atlas goes")
+    t.eq(P("one " .. BAR .. BAR .. " two"), "one " .. BAR .. " two", "an escaped bar is one bar")
+    t.eq(P("plain"), "plain")
+    t.eq(P(nil), "")
+end
+
+tests["copy box S24: the log keeps the plain text"] = function(t)
+    local log = ns.CopyBox.Log(5)
+    log.add(BAR .. "cff00ff00Green" .. BAR .. "r", 1)
+    t.eq(log.last(), { "Green" })
+end
+
 return tests
