@@ -144,5 +144,6 @@ return {
     "Rotation/Pulse.lua",
     "Rotation/CastEdge.lua",
     "Rotation/Audit.lua",
+    "Rotation/FormSpells.lua",
     },
 }
