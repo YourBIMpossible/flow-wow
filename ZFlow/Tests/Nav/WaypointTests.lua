@@ -82,6 +82,26 @@ return {
         refused(t, "way way 50 25", "x is not a number: way")
     end,
 
+    ["parse: a reason never repeats a token that holds a bar or a control character"] = function(t)
+        refused(t, "way |cffff0000x 25", "x is not a number")
+        refused(t, "way 50 a|nb", "y is not a number")
+        refused(t, "way 5 25", "x is not a number")
+        refused(t, "way 50 2W", "y is not a number")
+        refused(t, "way [0m 25", "x is not a number")
+        local bad = { "|", "||", "|cffff0000red|r", "|Hitem:1|h[x]|h", "|T0:0|t", "5|", "", "ab", "[2J", "W" }
+        for _, token in ipairs(bad) do
+            for _, text in ipairs({ "way " .. token .. " 25", "way 50 " .. token, token .. " " .. token,
+                                    "way " .. token .. " " .. token .. " label" }) do
+                local got, why = W.Parse(text)
+                t.eq(got, nil, "taken")
+                t.ok(type(why) == "string" and why ~= "", "a reason")
+                t.ok(not why:find("[%c|]"), "the reason repeats what cannot be shown")
+            end
+        end
+        -- A plain token is still named, so the player sees what was wrong.
+        refused(t, "way fifty 25", "x is not a number: fifty")
+    end,
+
     ["parse: a number off the map is turned down, never clamped"] = function(t)
         refused(t, "way 100.1 25", "x is outside 0 to 100: 100.1")
         refused(t, "way 50 101", "y is outside 0 to 100: 101")
@@ -105,6 +125,18 @@ return {
         local longest = string.rep("a", W.LABEL_MAX)
         t.eq(W.Parse("way 50 25 " .. longest).label, longest)
         refused(t, "way 50 25 " .. longest .. "a", R.long)
+    end,
+
+    ["parse: the label limit is counted, and told, in bytes"] = function(t)
+        t.eq(W.LABEL_MAX, 40)
+        t.eq(R.long, "the label is too long (40 bytes at most)")
+        t.ok(not R.long:find("character", 1, true), "a letter outside ASCII is more than one byte")
+        local e = "959"   -- one letter, two bytes
+        local fits = string.rep(e, 20)
+        t.eq(#fits, 40)
+        t.eq(W.Parse("way 50 25 " .. fits).label, fits, "40 bytes, 20 letters")
+        refused(t, "way 50 25 " .. fits .. "a", R.long)
+        refused(t, "way 50 25 " .. string.rep(e, 21), R.long)
     end,
 
     ["no reason spells a product name"] = function(t)
@@ -256,7 +288,9 @@ return {
         t.ok(type(W.NEAR) == "number" and W.NEAR > 0 and W.NEAR < math.huge)
     end,
 
-    ["slot: one table per character under nav, asked of the store as a method"] = function(t)
+    ["slot: one table per character under state.nav, asked of the store as a method"] = function(t)
+        t.eq(W.SCOPE, "char")
+        t.eq(W.PATH, "state.nav")
         local saved, asked = {}, {}
         local store = { table = function(self, scope, path)
             asked[#asked + 1] = { self = self, scope = scope, path = path }
@@ -266,7 +300,7 @@ return {
         t.eq(#asked, 1)
         t.ok(asked[1].self == store, "the store was not called as a method")
         t.eq(asked[1].scope, "char")
-        t.eq(asked[1].path, "nav")
+        t.eq(asked[1].path, "state.nav", "what changes while playing is kept under state")
         t.eq(W.Slot(nil), nil)
         t.eq(W.Slot({}), nil)
         t.eq(W.Slot({ table = function() return nil end }), nil, "a store that gives no table gives no slot")

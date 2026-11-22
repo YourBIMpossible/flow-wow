@@ -126,6 +126,33 @@ tests["disposition: a later keep rule that fails while reasons are gathered is r
     t.eq(D.Decide(leather(3), { rules = rules }).reasons, { "needed", "liked" }, "nor does having none")
 end
 
+tests["disposition: a later rule that gives no verdict while reasons are gathered is reported"] = function(t)
+    local seen = {}
+    local rules = {
+        { key = "first", order = 1, check = function() return { action = "keep", reason = "needed", basis = "fact" } end },
+        { key = "word", order = 2, check = function() return "keep" end },
+        { key = "odd", order = 3, check = function() return { action = "fly", reason = "why not" } end },
+        { key = "bare", order = 4, check = function() return { reason = "no action" } end },
+        { key = "silent", order = 5, check = function() return nil end },
+        { key = "seller", order = 6, check = function() return { action = "sell", reason = "junk", basis = "recommendation" } end },
+        { key = "third", order = 7, check = function() return { action = "keep", reason = "liked", basis = "fact" } end },
+    }
+    local d = D.Decide(leather(3), { rules = rules, onError = function(key, err) seen[#seen + 1] = key .. "|" .. tostring(err) end })
+    t.eq(d.action, "keep")
+    t.eq(d.rule, "first")
+    t.eq(d.reasons, { "needed", "liked" }, "what is not a verdict adds no reason and stops no later rule")
+    t.eq(seen, { "word|not a verdict", "odd|not a verdict", "bare|not a verdict" },
+        "each one told once, as when it is the deciding rule; no opinion and a real verdict are not errors")
+    local quiet = D.Decide(leather(3), { rules = rules, onError = function() error("again") end })
+    t.eq(quiet.reasons, { "needed", "liked" }, "a failing error handler changes nothing")
+    t.eq(D.Decide(leather(3), { rules = rules }).reasons, { "needed", "liked" }, "nor does having none")
+
+    -- The same rule, deciding: the same words.
+    local first = {}
+    D.Decide(leather(3), { rules = { rules[2] }, onError = function(key, err) first[#first + 1] = key .. "|" .. tostring(err) end })
+    t.eq(first, { "word|not a verdict" })
+end
+
 tests["disposition: a rule that fails keeps the item"] = function(t)
     local seen = {}
     local rules = {
