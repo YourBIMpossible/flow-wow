@@ -18,8 +18,12 @@ NB.MINIMAP_YARDS = 15    -- cloud size around each spawn spot on the minimap
 NB.COLOR = { Mining = { 0.85, 0.65, 0.35 }, Herbalism = { 0.35, 0.9, 0.4 } }
 NB.ICON = { Mining = "Interface\\Icons\\Trade_Mining", Herbalism = "Interface\\Icons\\Trade_Herbalism" }
 
--- Nodes: the skill to gather them (classic) and Questie object IDs. An ID
--- whose Questie name doesn't match is ignored, so a wrong one does no harm.
+-- Nodes: the skill to gather them and Questie object IDs. An ID whose Questie
+-- name doesn't match is ignored, so a wrong one does no harm.
+-- Origin not established: no record says where these skill numbers (or the
+-- "+100" in NB.SkillUp below) came from, and Flow never read them from the
+-- game. Kept because the node filter, the zone targets and the pick names
+-- have nothing else to go on; a node's own tooltip is the truth in game.
 -- Extend with ns:Register("gatherNode", "<name>", { prof, skill, objects }).
 local function node(name, prof, skill, objects)
     ns:Register("gatherNode", name, { prof = prof, skill = skill, objects = objects })
@@ -66,7 +70,8 @@ node("Plaguebloom", "Herbalism", 285, { 176587 })
 node("Icecap", "Herbalism", 290, { 176588 })
 node("Black Lotus", "Herbalism", 300, { 176589 })
 
--- A node still raises your skill until about 100 points past where it opens.
+-- A node still raises your skill until about 100 points past where it opens
+-- (origin not established, as above).
 function NB.SkillUp(skill, rank) return rank < skill + 100 end
 
 function NB.Enabled() return ns.db.nav.nearbyNodes ~= false end

@@ -747,9 +747,11 @@ function SP.Pace(prof, level)
     return marks[#marks][2]
 end
 
--- Skinning by beast level (the general rule of the game; a corpse's tooltip,
--- "Requires Skinning N", is the truth in game): level 10 and under needs 1,
--- 11 to 20 need (level - 10) x 10, above 20 level x 5 (60 -> 300).
+-- Skinning by beast level: level 10 and under needs 1, 11 to 20 need
+-- (level - 10) x 10, above 20 level x 5 (60 -> 300). Origin not established:
+-- no record says where this rule came from and Flow never read it from the
+-- game (a corpse's tooltip, "Requires Skinning N", is the truth there). Kept
+-- because the Skinning plan has nothing else to go on.
 -- Pure: the skill a beast of that level needs.
 function SP.SkinSkill(level)
     level = math.floor(tonumber(level) or 1)
@@ -1235,8 +1237,10 @@ local function recipeStop(prof, s, known, rank, banked)
 end
 
 -- Who teaches a trained step: its own trainer for your side (`trainer =
--- { Horde = .., Alliance = .. }`, the Triage doctors) or the profession's.
---   -> names, label ("Doctor Gregory Victor" / "First Aid trainer")
+-- { Horde = .., Alliance = .. }`) or the profession's. A step marked with an
+-- empty `trainer = {}` has a trainer of its own that Flow can't name.
+--   -> names, label ("<name>" / "First Aid trainer")
+SP.OWN_TRAINER_UNKNOWN = "a trainer of its own, unknown to Flow"
 function SP.StepTrainers(prof, s)
     local t = s and s.trainer
     if not t then return ns.places:TrainersFor(prof), prof .. " trainer" end
@@ -1244,6 +1248,7 @@ function SP.StepTrainers(prof, s)
     if mine and t[mine] then return { t[mine] }, t[mine] end
     local both = {}
     for _, n in pairs(t) do both[#both + 1] = n end
+    if #both == 0 then return both, SP.OWN_TRAINER_UNKNOWN end
     table.sort(both)
     return both, table.concat(both, " / ")
 end
@@ -1942,7 +1947,7 @@ local function planProfession(prof, t, out)
             add({ key = "learn:" .. prof .. ":" .. s.recipe, kind = "proftrainer", points = pts, npcs = names,
                   text = string.format("Learn %s (%s)", s.recipe, who),
                   details = (not SP.LearnSkill(prof, s)) and { s.recipe .. ": " .. SP.LEARN_UNKNOWN .. "." } or nil,
-                  blockedBy = #pts == 0 and (s.trainer and ("Flow doesn't know where " .. who .. " stands") or ("no known " .. who)) or nil })
+                  blockedBy = #pts == 0 and (s.trainer and (#names == 0 and "who teaches it is unknown to Flow" or ("Flow doesn't know where " .. who .. " stands")) or ("no known " .. who)) or nil })
         end
     end
 

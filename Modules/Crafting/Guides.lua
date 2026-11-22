@@ -183,8 +183,12 @@ ns:Register("profGuide", "Mining", {
     },
 })
 
--- From 240 the Triage doctors teach the bandages, not the city trainers.
-local TRIAGE = { Horde = "Doctor Gregory Victor", Alliance = "Doctor Gustaf VanHowzen" }
+-- The last three bandages are marked as taught by a trainer of their own,
+-- not the profession's (origin not established: Flow never read it from the
+-- game). Flow names nobody for it: the names it used to carry had no recorded
+-- origin and are gone, so the step says the trainer is unknown to Flow. Names
+-- would go in as { Horde = "..", Alliance = ".." } once read in game.
+local TRIAGE = {}
 ns:Register("profGuide", "First Aid", {
     kind = "craft",
     steps = {
@@ -255,14 +259,15 @@ ns:Register("profGuide", "Fishing", { kind = "gather", spots = true, tool = 6256
     -- guess, not read from the game: it says nothing about what any water
     -- asks, and what uses it says "about" (SkillPlan.lua: SP.AimText).
     pace = { { 1, 1 }, { 10, 25 }, { 20, 75 }, { 30, 150 }, { 40, 225 }, { 50, 300 } },
-    tip = "Tip: a Shiny Bauble (+25 Fishing for 10 minutes) catches more while your skill is low. Flow's key puts it on your pole." })
+    tip = "Tip: a Shiny Bauble on your pole raises your Fishing for a while (its tooltip says by how much). Flow's key puts it on." })
 
 ns:Register("profGuide", "Herbalism", { kind = "gather", spots = true })
 
 -- Skinning has no nodes or spots: you skin the beasts you kill, and what you
--- can skin follows from the beast's level (SP.SkinSkill: the game's general
--- rule, which the corpse's own tooltip, "Requires Skinning N", confirms in
--- game). No mob or zone lists: the plan is the skill band for your level and
+-- can skin follows from the beast's level (SP.SkinSkill: origin not
+-- established, Flow never read it from the game; the corpse's own tooltip,
+-- "Requires Skinning N", is the truth). No mob or zone lists: the plan is
+-- the skill band for your level and
 -- the beasts your quests bring you to. The knife is the one Disposition.lua
 -- already knows (7005).
 ns:Register("profGuide", "Skinning", { kind = "gather", skin = true, tool = 7005,

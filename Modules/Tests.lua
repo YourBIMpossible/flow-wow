@@ -1642,14 +1642,16 @@ ns:Register("test", "skillplan: the profession data's recipes and trainers", fun
     Q.IsCompleted, Q.InLog, Q.QuestieGet = old.IsCompleted, old.InLog, old.QuestieGet
     t:ok(ok, "quest plans test ran (" .. tostring(err) .. ")")
 
-    -- Heavy Runecloth Bandage: the Triage doctor for your side.
+    -- Heavy Runecloth Bandage: a trainer of its own, whom Flow doesn't name.
     local fa
     for _, s in ipairs(ns:Get("profGuide", "First Aid").steps) do
         if s.recipe == "Heavy Runecloth Bandage" then fa = s end
     end
-    local names = SP.StepTrainers("First Aid", fa)
-    t:eq(names[1], UnitFactionGroup("player") == "Horde" and "Doctor Gregory Victor" or "Doctor Gustaf VanHowzen",
-        "Heavy Runecloth Bandage: your side's Triage doctor")
+    local names, who = SP.StepTrainers("First Aid", fa)
+    t:eq(#names, 0, "Heavy Runecloth Bandage: no trainer name of Flow's own")
+    t:eq(who, SP.OWN_TRAINER_UNKNOWN, "and it says so, not the city trainer")
+    local mine = UnitFactionGroup("player")
+    t:eq(SP.StepTrainers("First Aid", { trainer = { [mine] = "Somebody__test" } })[1], "Somebody__test", "a named one for your side is used")
     t:eq(select(2, SP.StepTrainers("Cooking", {})), "Cooking trainer", "other steps: the profession's trainers")
 end)
 
