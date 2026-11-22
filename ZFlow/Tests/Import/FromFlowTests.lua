@@ -1091,7 +1091,16 @@ return {
         t.eq(imported.account.settings.nav.pathAlpha, 9, "the fixture did not reach the import")
         local out, _, report = Import.Merge(account, emptyChar(), imported, nil, nil, model)
         t.eq(out.settings.nav.pathAlpha, "yes", "one value the model refuses replaced another")
-        t.eq(report.kept, { "account.settings.nav.pathAlpha" })
+        local reason
+        for _, entry in ipairs(report.skipped) do
+            if entry.path == "account.settings.nav.pathAlpha" then reason = entry.reason end
+        end
+        t.eq(reason, "neither value fits the setting; nothing was changed")
+        for _, list in ipairs({ report.kept, report.added }) do
+            for _, at in ipairs(list) do
+                t.ok(at ~= "account.settings.nav.pathAlpha", "a value that is no choice is listed as kept or added")
+            end
+        end
     end,
 
     ["merge: a setting the model has no row for still compares types"] = function(t)
@@ -1153,5 +1162,66 @@ return {
         t.eq(result.record.importer, 3)
         local account = (Import.Merge(nil, nil, result))
         t.eq(account.imports[#account.imports].importer, 3, "the merged record lost its importer version")
+    end,
+    -- ------------------------------------------------- merge-model review
+    ["review M2: a saved list has no hole where a value was left out"] = function(t)
+        local result = Import.FromFlow({}, {})
+        result.record = { list = { "a", function() end, "c" }, named = { x = 1, [7] = "seven" } }
+        local account = Import.Merge(nil, nil, result)
+        local record = account.imports[1]
+        t.eq(type(record), "table")
+        t.eq(record.list, { "a", "c" }, "the kept entries are not numbered 1, 2 in order")
+        t.eq(#record.list, 2)
+        t.eq(record.list[3], nil)
+        t.eq(record.named, { x = 1, [7] = "seven" }, "a numbered key outside the list was moved")
+    end,
+
+    ["review M3: a saved table has no key that is an infinity"] = function(t)
+        local result = Import.FromFlow({}, {})
+        result.record = { map = { [math.huge] = "up", [-math.huge] = "down", [2.5] = "half", name = "n" } }
+        local account = Import.Merge(nil, nil, result)
+        local map = account.imports[1].map
+        t.eq(type(map), "table")
+        if type(map) == "table" then
+            t.eq(map[math.huge], nil, "an infinite key was saved")
+            t.eq(map[-math.huge], nil, "an infinite key was saved")
+            t.eq(map, { [2.5] = "half", name = "n" })
+        end
+    end,
+
+    ["review M4: when neither value fits the setting nothing changes and nothing is called kept"] = function(t)
+        local model = (ns.Settings.Model.New({ { key = "buffButton.enabled", type = "bool", default = false } }))
+        local result = Import.FromFlow({}, {})
+        result.account.settings = { buffButton = { enabled = "sometimes" } }
+        local mine = { settings = { buffButton = { enabled = "old" } } }
+        local account, _, report = Import.Merge(mine, nil, result, nil, nil, model)
+        t.eq(account.settings.buffButton.enabled, "old", "the stored value was changed")
+        local reason
+        for _, entry in ipairs(report.skipped) do
+            if entry.path == "account.settings.buffButton.enabled" then reason = entry.reason end
+        end
+        t.eq(reason, "neither value fits the setting; nothing was changed")
+        for _, at in ipairs(report.kept) do
+            t.ok(at ~= "account.settings.buffButton.enabled", "a value that is no choice is reported as kept")
+        end
+        for _, at in ipairs(report.added) do
+            t.ok(at ~= "account.settings.buffButton.enabled", "it is reported as added")
+        end
+        t.eq(report.counts.kept, #report.kept)
+    end,
+
+    ["review M5: a stored table is never replaced by a value that is no table"] = function(t)
+        local result = Import.FromFlow({}, {})
+        result.account.settings = { sell = "x" }
+        result.account.layout = { rotation = "x" }
+        local mine = { settings = { sell = { autoJunk = false } }, layout = { rotation = { scale = 2 } } }
+        local defaults = { account = { layout = { rotation = { scale = 2 } } } }
+        local account, _, report = Import.Merge(mine, nil, result, defaults)
+        t.eq(account.settings.sell, { autoJunk = false }, "the stored settings table was replaced")
+        t.eq(account.layout.rotation, { scale = 2 }, "a stored table still at its default was replaced")
+        local kept = {}
+        for _, at in ipairs(report.kept) do kept[at] = true end
+        t.eq(kept["account.settings.sell"], true)
+        t.eq(kept["account.layout.rotation"], true)
     end,
 }
