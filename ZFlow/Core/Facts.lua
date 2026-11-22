@@ -38,7 +38,7 @@ ns.Facts = F
 F.NAME = "facts"
 F.WORD = "facts"
 F.PATH = "learned.facts"
-F.HELP = "what Z-Flow has learned from class trainers on this game"
+F.HELP = "what " .. ns.id.title .. " has learned from class trainers on this game"
 
 local function whole(v)
     return type(v) == "number" and v == v and v >= 0 and v ~= math.huge and v == math.floor(v)

@@ -163,7 +163,7 @@ tests["copy box S24: colour, link, icon and atlas codes are taken out"] = functi
     t.eq(P(BAR .. "cffff2020Red" .. BAR .. "r text"), "Red text")
     t.eq(P("Loot: " .. BAR .. "cff9d9d9d" .. BAR .. "Hitem:2589::::::::1:::::::" .. BAR .. "h[Linen Cloth]" .. BAR .. "h" .. BAR .. "r"),
         "Loot: [Linen Cloth]", "a link keeps its name")
-    t.eq(P("a " .. BAR .. "TInterface\Icons\X:0" .. BAR .. "t b"), "a  b", "an icon goes")
+    t.eq(P("a " .. BAR .. "TInterface\\Icons\\X:0" .. BAR .. "t b"), "a  b", "an icon goes")
     t.eq(P("a " .. BAR .. "Aatlas-name:0:0" .. BAR .. "a b"), "a  b", "an atlas goes")
     t.eq(P("one " .. BAR .. BAR .. " two"), "one " .. BAR .. " two", "an escaped bar is one bar")
     t.eq(P("plain"), "plain")

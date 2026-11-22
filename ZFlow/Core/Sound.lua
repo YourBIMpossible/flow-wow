@@ -121,7 +121,7 @@ function Sound.Declare(k, diag)
             key = Sound.SETTING, scope = "account", type = "bool", default = true,
             label = "Restart the game's sound when your speakers change",
             help = "When your speakers come back after a sleeping screen or Remote Desktop and the game stays silent, "
-                .. "restart its sound a few seconds later. The sound may cut out for a moment. /zflow audioreset does it by hand.",
+                .. "restart its sound a few seconds later. The sound may cut out for a moment. " .. k.id.slash .. " audioreset does it by hand.",
             group = "Other",
         } },
         provides = { Changes = api.changes },
