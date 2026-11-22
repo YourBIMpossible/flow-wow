@@ -7,7 +7,8 @@ local function env()
     return {
         GetMoney = function() return 12345 end,
         GetBuildInfo = function() return "1.16.1", "7777", "Nov 1 2026", 16001 end,
-        UnitClass = function(unit) return "Paladin", "PALADIN", 2 end,
+        UnitClass = function() return "Paladin", "PALADIN", 2 end,
+        GetRealmName = function() return "Testrealm" end,
         GetNumSpellTabs = function() error("not now") end,
         NUM_BAG_SLOTS = 4,
         C_Map = { GetBestMapForUnit = function() return 1411 end },
