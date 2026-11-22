@@ -393,14 +393,22 @@ function Arrow.Start(k, diag, own)
     -- never takes the waypoint's place. A guide that was set wins whole,
     -- even when it answers nothing: nothing is added to it. The intro
     -- plays over whichever it is.
+    -- The player's own waypoint (G35, Nav/Waypoint.lua) is the quest step
+    -- while it is set: it wins over the pin on the game's map. It is only
+    -- read here: looking makes no saved table. mine: the quest step of the
+    -- last source was the player's own waypoint.
+    local W = N.Waypoint
+    local mine = false
     local function source()
+        mine = false
         if demo then return Arrow.DemoSource(client, Arrow.Saved(k), near) end
         local playing = intro()
         local guide
         if guideFn then
             guide = guideFn()
         else
-            local step = N.WaypointStep(client)
+            local step = W and W.Step(k.store:get(W.SCOPE, W.PATH), ask(client, "position"), ask(client, "zone"))
+            if step then mine = true else step = N.WaypointStep(client) end
             local prof = N.ProfStepFrom(client, k.store)
             guide = (step or prof) and { quest = step, prof = prof } or nil
         end
@@ -431,6 +439,16 @@ function Arrow.Start(k, diag, own)
             return
         end
         local src = source()
+        -- Arrival at the player's own waypoint: it is cleared, that is said
+        -- once, and the layout is made from what is left. Not while the
+        -- corpse stands in for the quest step: that distance is not the
+        -- waypoint's. A distance that is not known clears nothing.
+        if src and mine and type(src.view) == "table" and src.view.gate ~= "corpse"
+            and type(src.view.quest) == "table"
+            and W.Arrive(k.store:get(W.SCOPE, W.PATH), src.view.quest.distance) == W.ARRIVED then
+            client.print(id.title .. ": waypoint reached.")
+            src = source()
+        end
         if not src then
             current = nil
             hideAll()
@@ -749,6 +767,43 @@ function Arrow.Start(k, diag, own)
                 say(USAGE)
             end
         end
+    end
+
+    -- The player's own waypoint (G35): "/way x y [label]", "/way clear",
+    -- and the same after the addon's own command and the word "way" (there
+    -- the text arrives lower-cased, so a label typed that way is too).
+    -- Nothing is saved until one is set. Look-only: it points, no more.
+    local function way(rest)
+        local text = type(rest) == "string" and rest:match("^%s*(.-)%s*$") or ""
+        local HOW = "/way x y [label] sets a waypoint on the map you are on; /way clear removes it."
+        if not W then
+            say("waypoints are not loaded.")
+        elseif not ready then
+            say("waypoints are not ready until login.")
+        elseif text == "" then
+            local wp = W.Get(k.store:get(W.SCOPE, W.PATH))
+            local at = wp and W.Text(wp) or nil
+            say(at and ("waypoint: " .. at .. ". " .. HOW) or HOW)
+        elseif text:lower() == "clear" then
+            if W.Clear(k.store:get(W.SCOPE, W.PATH)) then
+                relayout()
+                say("waypoint cleared.")
+            else
+                say(W.REASON.unset .. ".")
+            end
+        else
+            local wp, why = W.Set(W.Slot(k.store), ask(client, "position"), text)
+            if wp then
+                say("waypoint set: " .. tostring(W.Text(wp)) .. ".")
+                relayout()
+            else
+                say(tostring(why) .. "; nothing changed.")
+            end
+        end
+    end
+    if diag and type(diag.commands) == "table" then diag.commands.way = way end
+    if type(client.slash) == "function" then
+        client.slash(id.bindingHeader .. "WAY", "/way", way)
     end
 
     local function setGuide(fn)
