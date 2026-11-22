@@ -250,4 +250,122 @@ T["quest watch: the player is nowhere known: words only, nothing thrown"] = func
     t.eq(N.QuestWatch(c).step().lines, { "Boar Trouble", "Boars slain: 2/8", Q.UNKNOWN_PLACE })
 end
 
+-- Sections 131 and 133. The scouting (404) is at 0.2, 0.8; the nearest
+-- boar objective at 0.55, 0.5.
+local function scouting() return { id = 404, title = "Scout", objectives = { { text = "Scout the camp" } } } end
+
+T["quest watch: the quest the player picked out is the step"] = function(t)
+    local c = client({ boars(), scouting() }, (questie()))
+    local w = N.QuestWatch(c)
+    t.eq(w.step().quest, 101, "nothing picked: the nearest")
+    c.setQuestFocus(404)
+    local step = w.step()
+    t.eq(step.quest, 404)
+    t.eq(step.place, { cont = 1, map = 1411, x = 0.2, y = 0.8 })
+end
+
+T["quest watch: the focus changes, so the step changes on the next step"] = function(t)
+    local module, calls = questie()
+    local c = client({ boars(), scouting() }, module)
+    local w = N.QuestWatch(c)
+    c.setQuestFocus(101)
+    t.eq(w.step().quest, 101)
+    local n = calls.n
+    c.setQuestFocus(404)
+    t.eq(w.step().quest, 404, "no refresh and no event in between")
+    c.setQuestFocus(101)
+    t.eq(w.step().quest, 101)
+    c.setQuestFocus(nil, { 404 })
+    t.eq(w.step().quest, 404, "the watch list alone")
+    c.setQuestFocus(nil)
+    t.eq(w.step().quest, 101, "nothing picked again: the nearest")
+    t.eq(calls.n, n, "Questie is not asked again for a change of focus")
+end
+
+T["quest watch: a picked quest that left the log falls back"] = function(t)
+    local log = { boars(), scouting() }
+    local c = client(log, (questie()))
+    local w = N.QuestWatch(c)
+    c.setQuestFocus(404)
+    t.eq(w.step().quest, 404)
+    log[2] = nil
+    w.refresh()
+    t.eq(w.step().quest, 101, "abandoned or handed in: the old rules")
+end
+
+T["quest watch: no focus read, or one that fails: the old answer"] = function(t)
+    local c = client({ boars(), scouting() }, (questie()))
+    c.questFocus = nil
+    t.eq(N.QuestWatch(c).step().quest, 101)
+    c.questFocus = function() error("no") end
+    t.eq(N.QuestWatch(c).step().quest, 101)
+    c.questFocus = function() return "junk" end
+    t.eq(N.QuestWatch(c).step().quest, 101)
+end
+
+T["quest watch: the log is read again after a wait, with no event"] = function(t)
+    local log = { boars() }
+    local c = client(log, (questie()))
+    local w = N.QuestWatch(c)
+    t.eq(w.step().quest, 101)
+    log[1] = scouting()
+    t.eq(w.step().quest, 101, "not before the wait")
+    local step
+    for _ = 1, N.QUEST_REREAD_STEPS do step = w.step() end
+    t.eq(step.quest, 404, "the new log, with no refresh and no event")
+end
+
+T["quest watch: progress on an objective is seen by the quiet read"] = function(t)
+    local log = { boars(), scouting() }
+    local c = client(log, (questie()))
+    local w = N.QuestWatch(c)
+    t.eq(w.step().quest, 101)
+    for _, o in ipairs(log[1].objectives) do o.done = true end
+    local step
+    for _ = 1, N.QUEST_REREAD_STEPS + 1 do step = w.step() end
+    t.eq(step.quest, 404, "quest 101 has nothing left: the next quest")
+end
+
+T["quest watch: a log that did not change does not ask Questie again"] = function(t)
+    local module, calls = questie()
+    local c = client({ boars(), scouting() }, module)
+    local w = N.QuestWatch(c)
+    w.step()
+    local n = calls.n
+    t.ok(n > 0, "Questie was asked once")
+    for _ = 1, N.QUEST_REREAD_STEPS * 3 do w.step() end
+    t.eq(calls.n, n)
+end
+
+T["quest watch: state says what the last step was made from"] = function(t)
+    local c = client({ boars(), scouting() }, (questie()))
+    local w = N.QuestWatch(c)
+    t.eq(w.state().rows, nil, "before any step: the log is not read")
+    t.eq(w.state().places, false)
+    w.step()
+    local s = w.state()
+    t.eq(s.rows, 2)
+    t.eq(s.places, true)
+    t.eq(s.quest, 101)
+    t.eq(s.from, "log")
+    c.setQuestFocus(404)
+    w.step()
+    t.eq(w.state().quest, 404)
+    t.eq(w.state().from, "picked")
+    c.setQuestFocus(nil, { 404 })
+    w.step()
+    t.eq(w.state().from, "watched")
+end
+
+T["quest watch: state with no Questie and with no log"] = function(t)
+    local w = N.QuestWatch(client({ boars() }, nil))
+    w.step()
+    t.eq(w.state().rows, 1)
+    t.eq(w.state().places, false, "no Questie: no places")
+    local none = N.QuestWatch(client(nil, nil))
+    t.eq(none.step(), nil)
+    t.eq(none.state().rows, nil)
+    t.eq(none.state().quest, nil)
+end
+
 return T

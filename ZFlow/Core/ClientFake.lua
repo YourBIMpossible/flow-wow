@@ -268,6 +268,20 @@ function ns.make.fakeClient(opts)
         end
         return rows
     end
+    -- Each focus read on its own, as setQuestFocusReads was given it.
+    function c.questFocusReads() return s.questFocusReads end
+    -- Which quest the player follows: a copy of what setQuestFocus was
+    -- given, or nil for no such read.
+    function c.questFocus()
+        local f = s.questFocus
+        if type(f) ~= "table" then return nil end
+        local out = { quest = f.quest }
+        if type(f.watched) == "table" then
+            out.watched = {}
+            for i, id in ipairs(f.watched) do out.watched[i] = id end
+        end
+        return out
+    end
     -- The Questie module of that name as set, itself (not a copy), or nil.
     function c.questieModule(name)
         return s.questie and s.questie[name] or nil
@@ -847,6 +861,14 @@ function ns.make.fakeClient(opts)
     function c.setFacing(f) s.facing = f end
     -- The quest log rows as client.questLog() gives them; nil: not known.
     function c.setQuestLog(rows) s.questLog = rows end
+    -- The quest the player picked out, and the watch list ({ id, ... }), as
+    -- client.questFocus() gives them. Both nil: no such read on this client.
+    -- quest nil with a list: a read, and no quest picked out.
+    function c.setQuestFocusReads(reads) s.questFocusReads = reads end
+    function c.setQuestFocus(quest, watched)
+        if quest == nil and watched == nil then s.questFocus = nil return end
+        s.questFocus = { quest = quest, watched = watched }
+    end
     -- A Questie module by name; mod nil takes it away. With none set,
     -- Questie is not there.
     function c.setQuestieModule(name, mod)
