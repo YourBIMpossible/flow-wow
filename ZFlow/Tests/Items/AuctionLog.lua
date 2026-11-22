@@ -37,6 +37,7 @@ tests["auction log: the probe says what the client has and lacks"] = function(t)
     local lines = AL.ProbeLines(function(n) return n == "C_AuctionHouse" or n == "GetRealmName" end)
     t.eq(lines[1], "auction probe: has C_AuctionHouse, GetRealmName")
     t.eq(lines[2], "auction probe: lacks C_AuctionHouse.GetCommoditySearchResultInfo, C_AuctionHouse.GetItemSearchResultInfo, "
+        .. "C_AuctionHouse.GetNumCommoditySearchResults, C_AuctionHouse.GetNumItemSearchResults, "
         .. "C_AuctionHouse.SendSearchQuery, C_AuctionHouse.MakeItemKey, C_AuctionHouse.ReplicateItems, QueryAuctionItems")
 end
 
