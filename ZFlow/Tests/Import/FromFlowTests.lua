@@ -211,7 +211,9 @@ return {
         t.eq(account.layout.nav.card, { "LEFT", "LEFT", 20, 0 })
         t.eq(account.layout.rotation.frame, { "CENTER", "CENTER", 0, -200 })
         t.eq(account.settings.nav.enabled, true)
-        t.eq(account.settings.nav.arrowStyle, "modern")
+        t.eq(account.layout.arrowStyle, "modern", "the arrow reads its style from the layout")
+        t.eq(account.layout.arrowModern, true, "with the mark of its one-time move")
+        t.eq(account.settings.nav.arrowStyle, nil)
         t.eq(account.settings.nav.kinds, { quest = true, professions = false })
         t.eq(account.settings.nav.waypoint, { map = 1412, x = 0.25, y = 0.75 })
         t.eq(account.settings.rotation.panicPct, 35)
@@ -230,7 +232,6 @@ return {
             ["charSplit"] = "bookkeeping",
             ["migrations"] = "bookkeeping",
             ["deathNext"] = "bookkeeping",
-            ["nav.arrowModern"] = "bookkeeping",
             ["FlowCharDB.adopted"] = "bookkeeping",
             ["FlowCharDB.data.prof.suggestKey"] = "bookkeeping",
             ["diag"] = "diagnostic",
@@ -273,7 +274,7 @@ return {
         local result = Import.FromFlow(fullDb(), fullCharDb())
         local counts = result.record.counts
         t.eq(counts.prices, 3, "two vendor prices and one realm of auction prices")
-        t.eq(counts.dropped, 20)
+        t.eq(counts.dropped, 19)
         t.ok(counts.places > 0 and counts.flights > 0 and counts.facts > 0 and counts.fights > 0, "every learned category counted")
         t.ok(counts.settings > 0 and counts.layout > 0 and counts.state > 0, "settings, layout and state counted")
         t.eq(result.account.imports, { result.record }, "the record is ready for the imports list")
@@ -848,7 +849,7 @@ return {
         local account = emptyAccount()
         account.imports = {}
         account.settings.sell = { autoAll = true, repairWarn = 0.3 }
-        account.settings.nav = { arrowStyle = "flat" }
+        account.layout.arrowStyle = "flat"
         account.layout.arrows = { points = { quest = { "BOTTOM", "BOTTOM", 0, 90 } } }
         account.learned.places.npcs = { ["Mara Stonehand"] = { map = 1412, x = 0.1, y = 0.1, n = 9 }, ["Wren Dell"] = { map = 3, x = 0.2, y = 0.2 } }
         account.learned.prices.vendor = { [2589] = 99 }
@@ -863,7 +864,7 @@ return {
         t.eq(newAccount.settings.sell.autoAll, true, "the player's own choice stays")
         t.eq(newAccount.settings.sell.autoRepair, nil, "an absent automation is not filled in on: nobody confirmed it")
         t.eq(newAccount.settings.sell.autoJunk, nil, "nor is the other one")
-        t.eq(newAccount.settings.nav.arrowStyle, "flat")
+        t.eq(newAccount.layout.arrowStyle, "flat")
         t.eq(newAccount.settings.nav.enabled, true)
         t.eq(newAccount.layout.arrows.points.quest, { "BOTTOM", "BOTTOM", 0, 90 }, "a position is kept whole, never mixed")
         t.eq(newAccount.layout.arrows.points.prof, { "TOP", "TOP", 80, -90 }, "the arrow with no place yet gets the imported one")
@@ -905,14 +906,14 @@ return {
     end,
 
     ["merge: a setting already stored is a choice and is kept, also at its default"] = function(t)
-        local imported = Import.FromFlow({ sell = { autoRepair = true, autoJunk = true }, nav = { arrowStyle = "modern" } }, { data = { spec = { role = "tank" } } })
+        local imported = Import.FromFlow({ sell = { autoRepair = true, autoJunk = true }, nav = { arrowColor = "modern" } }, { data = { spec = { role = "tank" } } })
         local account = emptyAccount()
         account.settings.sell = { autoRepair = false, autoJunk = false }
-        account.settings.nav = { arrowStyle = "flat" }
+        account.settings.nav = { arrowColor = "flat" }
         local char = emptyChar()
         char.settings.spec = { role = "damage" }
         local defaults = {
-            account = { settings = { sell = { autoRepair = false }, nav = { arrowStyle = "3d" } } },
+            account = { settings = { sell = { autoRepair = false }, nav = { arrowColor = "3d" } } },
             char = { settings = { spec = { role = "damage" } } },
         }
         local confirmed = { ["sell.autoRepair"] = true, ["sell.autoJunk"] = true }
@@ -921,7 +922,7 @@ return {
         local newAccount, newChar, report = Import.Merge(account, char, imported, defaults, confirmed)
         t.eq(newAccount.settings.sell.autoRepair, false, "stored, equal to the default and confirmed: still the player's choice")
         t.eq(newAccount.settings.sell.autoJunk, false, "no default given: the existing value is kept")
-        t.eq(newAccount.settings.nav.arrowStyle, "flat", "not the default: the player changed it, so it is kept")
+        t.eq(newAccount.settings.nav.arrowColor, "flat", "not the default: the player changed it, so it is kept")
         t.eq(newChar.settings.spec.role, "damage", "a character setting equal to the default is a choice too")
         t.eq(report.counts.kept, 4)
         local without, withoutChar = Import.Merge(account, char, imported, nil, confirmed)
@@ -1116,13 +1117,13 @@ return {
             { key = "nav.pathAlpha", type = "number", default = 1, bounds = { min = 0, max = 1 } },
         }))
         local account = emptyAccount()
-        account.settings.nav = { arrowStyle = 4, mapLines = true }
-        local imported = Import.FromFlow({ nav = { arrowStyle = "modern", mapLines = false } }, {})
+        account.settings.nav = { arrowColor = 4, mapLines = true }
+        local imported = Import.FromFlow({ nav = { arrowColor = "modern", mapLines = false } }, {})
         local out = (Import.Merge(account, emptyChar(), imported, nil, nil, model))
-        t.eq(out.settings.nav.arrowStyle, "modern", "a stored value of another type was kept")
+        t.eq(out.settings.nav.arrowColor, "modern", "a stored value of another type was kept")
         t.eq(out.settings.nav.mapLines, true, "a stored value of the same type was replaced")
         local odd = (Import.Merge(account, emptyChar(), imported, nil, nil, "not a model"))
-        t.eq(odd.settings.nav.arrowStyle, "modern")
+        t.eq(odd.settings.nav.arrowColor, "modern")
         t.eq(odd.settings.nav.mapLines, true, "something that is no model changed what is kept")
     end,
 

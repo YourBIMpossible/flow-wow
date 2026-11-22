@@ -293,7 +293,10 @@ local MAP = {
 
     -- Navigation choices
     { "nav.enabled", to = "settings.nav.enabled" },
-    { "nav.arrowStyle", to = "settings.nav.arrowStyle" },
+    -- The arrow reads its style and the mark of its one-time move to the
+    -- modern arrow from the layout (UI/Arrow.lua), so both land there.
+    { "nav.arrowStyle", to = "layout.arrowStyle", as = "arrowStyle" },
+    { "nav.arrowModern", to = "layout.arrowModern", as = "bool" },
     { "nav.arrowColor", to = "settings.nav.arrowColor" },
     { "nav.arrowPaths", to = "settings.nav.arrowPaths" },
     { "nav.arrowTurn", to = "settings.nav.arrowTurn" },
@@ -346,7 +349,6 @@ local MAP = {
     { "nav.focus", to = "state.nav.focus", char = true },
     { "nav.stopsShown", to = "state.nav.stopsShown", char = true },
     { "nav.stopsArea", to = "state.nav.stopsArea", char = true },
-    { "nav.arrowModern", drop = BOOKKEEPING },
     { "nav.gatesRule", drop = BOOKKEEPING },
     { "nav.mode", drop = OLDER_NAME, beside = "nav.kinds", dropAlone = OLDER_NAME_ALONE },
     { "nav.professions", drop = OLDER_NAME, beside = "nav.kinds", dropAlone = OLDER_NAME_ALONE },
@@ -678,6 +680,12 @@ end
 function KIND.bool(v)
     if type(v) == "boolean" then return v end
     return nil, "expected true or false, found a " .. type(v)
+end
+
+-- One of the arrow styles the arrow knows (Nav/ArrowStyles.lua).
+function KIND.arrowStyle(v)
+    if v == "modern" or v == "3d" or v == "flat" then return v end
+    return nil, "not an arrow style this importer knows"
 end
 
 function KIND.positive(v)
@@ -1073,6 +1081,23 @@ local function FromFlow(flowDb, flowCharDb)
                 end
             end
         end
+    end
+
+    -- The one-time move to the modern arrow. A "3d" that Flow never marked
+    -- was the default of its day, not a choice: it comes in as the modern
+    -- arrow (nothing saved) with the move marked as made. It is done here
+    -- and not left to the arrow, whose own move has already run on an
+    -- install that imports after its first login.
+    local arrowLayout = out.account.layout
+    if arrowLayout.arrowStyle == "3d" and arrowLayout.arrowModern ~= true then
+        if arrowLayout.arrowModern == nil then record.counts.layout = record.counts.layout + 1 end
+        arrowLayout.arrowStyle, arrowLayout.arrowModern = nil, true
+        record.counts.layout = record.counts.layout - 1
+        adjusted[#adjusted + 1] = {
+            key = "nav.arrowStyle", from = "3d", to = "modern",
+            reason = "a 3d arrow from before the modern arrow was the default of its day, not a choice",
+        }
+        record.counts.adjusted = record.counts.adjusted + 1
     end
 
     table.sort(dropped, function(a, b)
