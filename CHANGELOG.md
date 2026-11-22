@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Recipe learn skills, tier levels, vendor prices and drop rates now come only from what the game showed you; until then Flow says unknown.
+- The world map card no longer lists zone levels or fishing skills of its own: it shows the game's range or 'Level unknown'.
+- Alliance starting-area profession trainers are no longer named by Flow.
+- Fishing's skill-to-aim-for is said as 'about' and named as Flow's own estimate.
 - **Expert and Artisan training steps show their price and where it was read,** or say "price unknown—check the trainer" instead of guessing.
 - **Skill-boosting items can be recognised by item ID** (any client language) from a provenance-recorded list. Unknown items stay unknown.
 - **A need Flow can't check counts as not met, and the step says why;** a spell need wants the spell known.

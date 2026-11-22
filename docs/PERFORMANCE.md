@@ -87,7 +87,7 @@ shown. The ones that run all the time:
 - While the world map is open: Modules/Nav/MapOverlay.lua:2238. Its rows are "world map
   (keeping up with you)" (:2165), "world map (full redraw)" (:2288) and "world map (route
   dots)" (:410). Also "world map (flight masters)" (Modules/Nav/MapFlights.lua:707, driver
-  :720) and "world map (zone info)" (Modules/Nav/MapZoneLevels.lua:322, :331).
+  :720) and "world map (zone info)" (Modules/Nav/MapZoneLevels.lua:324, :334).
 - While it's shown: Modules/Nav/RouteTracker.lua:604, "Flow Tracker" (:641).
 - During a fight: Modules/Fight/Profiler.lua:450, probe ticks every 0.25 s.
 - Others: "minimap areas" (Modules/Nav/MinimapPin.lua:372), "legs" (Modules/Nav/Legs.lua:288),
