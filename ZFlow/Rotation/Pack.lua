@@ -187,3 +187,12 @@ function ns.PackCheck(pack)
     table.sort(problems)
     return #problems == 0, problems
 end
+
+-- With the kernel loaded, class packs are a declared kind: a pack that does
+-- not pass PackCheck is recorded as a problem and not registered.
+if type(ns.Kind) == "function" then
+    ns:Kind{ name = "classPack", row = function(row)
+        local ok, problems = ns.PackCheck(row)
+        return ok, ok and nil or table.concat(problems, "; ")
+    end }
+end

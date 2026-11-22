@@ -359,3 +359,4 @@ local pack = {
 
 ns.Packs = ns.Packs or {}
 ns.Packs.DRUID = pack
+if type(ns.Register) == "function" then ns:Register("classPack", "DRUID", pack) end

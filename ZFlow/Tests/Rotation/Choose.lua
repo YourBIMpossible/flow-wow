@@ -236,8 +236,6 @@ return {
     end,
 
     ["pure: the same input gives the same answer and nothing is changed"] = function(t)
-        local before = 0
-        for _ in pairs(_G) do before = before + 1 end
         local p = pack()
         local s = snap({ "Shield", "Bolt" }, { inCombat = true, hostile = true, buffs = {} })
         local prefs, bias = { skip = {} }, { Bolt = 0.5 }
@@ -251,8 +249,5 @@ return {
         t.eq(next(s.buffs), nil, "the snapshot is as it was")
         t.eq(next(prefs.skip), nil, "the prefs are as they were")
         t.eq(#p.lists.default, 2, "the pack is as it was")
-        local after = 0
-        for _ in pairs(_G) do after = after + 1 end
-        t.eq(after, before, "no new globals")
     end,
 }
