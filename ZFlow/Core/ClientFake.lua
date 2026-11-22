@@ -1112,6 +1112,31 @@ function ns.make.fakeClient(opts)
         return true
     end
     function c.setCombatLog(on) s.noCombatLog = not on end
+    -- Slash commands another addon owns: setSlashTaken(command, on) says
+    -- so, slashTaken answers as the real boundary does, and unslash gives a
+    -- command back.
+    local slashTags, slashOthers = {}, {}
+    local plainSlash = c.slash
+    function c.slash(tag, command, fn)
+        slashTags[tag] = command
+        return plainSlash(tag, command, fn)
+    end
+    function c.setSlashTaken(command, on) slashOthers[command] = on and true or nil end
+    function c.slashTaken(command, ownTag)
+        if type(command) ~= "string" then return nil end
+        if slashOthers[command] then return true end
+        for tag, held in pairs(slashTags) do
+            if tag ~= ownTag and held == command then return true end
+        end
+        return false
+    end
+    function c.unslash(tag)
+        local command = slashTags[tag]
+        if command == nil then return false end
+        slashTags[tag] = nil
+        c.slashes[command] = nil
+        return true
+    end
     function c.combatLog(...)
         for i = 1, #logWatchers do logWatchers[i](...) end
     end
@@ -1198,6 +1223,58 @@ function ns.make.fakeClient(opts)
     function c.onTaxi() return s.onTaxi end
     function c.setOnTaxi(v)
         if v == nil then s.onTaxi = nil else s.onTaxi = v and true or false end
+    end
+
+    -- Every slot icon made (S13) is in c.slotIcons, in order: .spec, .shown,
+    -- .texture, .point, .places, .marked ({ r, g, b } or nil).
+    c.slotIcons = {}
+    function c.slotIcon(spec)
+        if s.noFrames then return nil end
+        local h = { spec = spec, shown = false, places = 0 }
+        function h.setTexture(tex)
+            h.texture = tex
+            return tex ~= nil
+        end
+        function h.place(point)
+            if type(point) ~= "table" then return end
+            h.point = { point[1], point[2], point[3], point[4] }
+            h.places = h.places + 1
+        end
+        function h.show(on) h.shown = on and true or false end
+        function h.mark(r, g, b)
+            if type(r) == "number" and type(g) == "number" and type(b) == "number" then
+                h.marked = { r, g, b }
+                return true
+            end
+            h.marked = nil
+            return false
+        end
+        c.slotIcons[#c.slotIcons + 1] = h
+        return h
+    end
+    -- modifiers(): what setModifiers gave (ctrl, shift, alt); nil each until
+    -- told: not known.
+    function c.modifiers()
+        local m = s.modifiers
+        if not m then return nil, nil, nil end
+        return m[1], m[2], m[3]
+    end
+    function c.setModifiers(ctrl, shift, alt) s.modifiers = { ctrl, shift, alt } end
+
+    -- S4 auction prices. setRealm(name or nil). watchAuctionResults takes
+    -- listeners (nil after setAuctionHouse(false)); auctionResult(id, row)
+    -- tells them, as a search the player ran would.
+    local auctionFns = {}
+    function c.setRealm(name) s.realm = name end
+    function c.realm() return s.realm end
+    function c.setAuctionHouse(on) s.noAuctionHouse = not on end
+    function c.watchAuctionResults(fn)
+        if s.noAuctionHouse or type(fn) ~= "function" then return nil end
+        auctionFns[#auctionFns + 1] = fn
+        return true
+    end
+    function c.auctionResult(id, row)
+        for _, fn in ipairs({ unpack(auctionFns) }) do fn(id, row) end
     end
     return c
 end

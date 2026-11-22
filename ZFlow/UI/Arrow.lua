@@ -507,6 +507,13 @@ function Arrow.Start(k, diag, own)
                 step = errand.Step()
                 if step then from = "an errand stop" end
             end
+            -- Then the repair stop (Nav/RepairStep.lua), while the gear is low and a
+            -- repair vendor is known. Look only: it points, it never repairs.
+            local repair = k.use and k.use("repairStep")
+            if step == nil and repair and repair.Step then
+                step = repair.Step()
+                if step then from = "a repair stop" end
+            end
             -- The player's own pin (/way, then the map pin) wins over the player's quests.
             if step == nil and quests and Arrow.QuestArrowOn(k) then
                 step = quests.step()
@@ -978,9 +985,13 @@ function Arrow.Start(k, diag, own)
     -- and the same after the addon's own command and the word "way" (there
     -- the text arrives lower-cased, so a label typed that way is too).
     -- Nothing is saved until one is set. Look-only: it points, no more.
+    -- "/way" is claimed only while no other addon owns it; wayHeld says
+    -- whether it is ours. The addon's own command works either way.
+    local wayHeld = false
     local function way(rest)
         local text = type(rest) == "string" and rest:match("^%s*(.-)%s*$") or ""
-        local HOW = "/way x y [label] sets a waypoint on the map you are on; /way clear removes it."
+        local cmd = wayHeld and "/way" or (id.slash .. " way")
+        local HOW = cmd .. " x y [label] sets a waypoint on the map you are on; " .. cmd .. " clear removes it."
         if not W then
             say("waypoints are not loaded.")
         elseif not ready then
@@ -1007,9 +1018,24 @@ function Arrow.Start(k, diag, own)
         end
     end
     if diag and type(diag.commands) == "table" then diag.commands.way = way end
-    if type(client.slash) == "function" then
-        client.slash(id.bindingHeader .. "WAY", "/way", way)
+    -- Only when free, as legacy Flow did (Modules/Nav/Waypoint.lua:260-262):
+    -- another addon's "/way" (TomTom, legacy Flow) is never overwritten.
+    -- Asked when this file loads and again at login, since an addon may
+    -- claim it in between; then ours is given back. A client that cannot
+    -- say who owns it is treated as before. Needs game test.
+    local WAY_TAG = id.bindingHeader .. "WAY"
+    local function claimWay()
+        if type(client.slash) ~= "function" then return end
+        local taken = type(client.slashTaken) == "function" and client.slashTaken("/way", WAY_TAG) == true
+        if taken then
+            if wayHeld and type(client.unslash) == "function" then client.unslash(WAY_TAG) end
+            wayHeld = false
+        elseif not wayHeld then
+            wayHeld = client.slash(WAY_TAG, "/way", way) ~= false
+        end
     end
+    claimWay()
+    listen("PLAYER_LOGIN", claimWay)
 
     local function setGuide(fn)
         guideFn = type(fn) == "function" and fn or nil
