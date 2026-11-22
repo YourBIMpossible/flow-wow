@@ -45,32 +45,32 @@ T["rode: still as the map changed, or a long standstill just ended"] = function(
 end
 
 T["learn: refused while the world position is not known"] = function(t)
-    local list, added, why = N.GateLearn({}, cross(MULGORE, BARRENS, nil, nil), false)
+    local list, added, why = N.GateLearn({}, cross(MULGORE, BARRENS, nil, nil), false, false)
     t.eq(added, false); t.eq(why, "world unknown"); t.eq(#list, 0)
 end
 
 T["learn: a jump over 60 world yards is a teleport, not a walk"] = function(t)
-    local _, added, why = N.GateLearn({}, cross(MULGORE, BARRENS, w(1, 0, 0), w(1, 100, 0)), false)
+    local _, added, why = N.GateLearn({}, cross(MULGORE, BARRENS, w(1, 0, 0), w(1, 100, 0)), false, false)
     t.eq(added, false); t.eq(why, "teleport")
-    local _, a2, why2 = N.GateLearn({}, cross(MULGORE, BARRENS, w(1, 0, 0), w(0, 1, 0)), false)
+    local _, a2, why2 = N.GateLearn({}, cross(MULGORE, BARRENS, w(1, 0, 0), w(0, 1, 0)), false, false)
     t.eq(a2, false); t.eq(why2, "teleport", "another continent")
 end
 
 T["learn: a good crossing keeps both sides"] = function(t)
-    local list, added = N.GateLearn({}, cross(MULGORE, BARRENS, w(1, 100, 200), w(1, 105, 200)), false)
+    local list, added = N.GateLearn({}, cross(MULGORE, BARRENS, w(1, 100, 200), w(1, 105, 200)), false, false)
     t.eq(added, true)
     t.eq(list[1], { a = MULGORE, b = BARRENS, ax = 0.40, ay = 0.50, bx = 0.60, by = 0.55, cont = 1, wx = 105, wy = 200 })
 end
 
 T["learn: not learnable, a duplicate within 60 yards, and the cap"] = function(t)
-    local _, a1, why1 = N.GateLearn({}, cross(1454, MULGORE, w(1, 0, 0), w(1, 5, 0)), false)
+    local _, a1, why1 = N.GateLearn({}, cross(1454, MULGORE, w(1, 0, 0), w(1, 5, 0)), false, false)
     t.eq(a1, false); t.eq(why1, "not learnable")
-    local list = N.GateLearn({}, cross(MULGORE, BARRENS, w(1, 100, 200), w(1, 105, 200)), false)
-    local _, a2, why2 = N.GateLearn(list, cross(BARRENS, MULGORE, w(1, 120, 200), w(1, 125, 200)), false)
+    local list = N.GateLearn({}, cross(MULGORE, BARRENS, w(1, 100, 200), w(1, 105, 200)), false, false)
+    local _, a2, why2 = N.GateLearn(list, cross(BARRENS, MULGORE, w(1, 120, 200), w(1, 125, 200)), false, false)
     t.eq(a2, false); t.eq(why2, "known")
     local full = {}
     for i = 1, N.GATE_MAX do full[i] = { a = 1, b = 2, cont = 9, wx = i * 1000, wy = 0 } end
-    local _, a3, why3 = N.GateLearn(full, cross(MULGORE, BARRENS, w(1, 0, 0), w(1, 5, 0)), false)
+    local _, a3, why3 = N.GateLearn(full, cross(MULGORE, BARRENS, w(1, 0, 0), w(1, 5, 0)), false, false)
     t.eq(a3, false); t.eq(why3, "full")
 end
 
@@ -100,6 +100,57 @@ T["step: none for open zones, the same map, or unknown places"] = function(t)
     t.eq(select(2, N.GateStep(GATES, { map = MULGORE, x = 0.1, y = 0.1 }, here, nil)), "same map")
     t.eq(select(2, N.GateStep(GATES, { x = 0.5 }, here, nil)), "no target")
     t.eq(select(2, N.GateStep(GATES, { map = TB, x = 0.5, y = 0.5 }, {}, nil)), "position unknown")
+end
+
+T["learn: refused while the taxi read is missing, or on a taxi (review F1, code review MEDIUM)"] = function(t)
+    local c = cross(MULGORE, BARRENS, w(1, 0, 0), w(1, 5, 0))
+    local _, a1, why1 = N.GateLearn({}, c, false, nil)
+    t.eq(a1, false); t.eq(why1, "taxi unknown")
+    local _, a2, why2 = N.GateLearn({}, c, false, true)
+    t.eq(a2, false); t.eq(why2, "carried")
+    local _, a3 = N.GateLearn({}, c, false, false)
+    t.eq(a3, true, "only a plain false lets it learn")
+end
+
+T["learn: a world point missing on only one side is refused"] = function(t)
+    local _, a1, why1 = N.GateLearn({}, cross(MULGORE, BARRENS, w(1, 0, 0), nil), false, false)
+    t.eq(a1, false); t.eq(why1, "world unknown")
+    local _, a2, why2 = N.GateLearn({}, cross(MULGORE, BARRENS, nil, w(1, 0, 0)), false, false)
+    t.eq(a2, false); t.eq(why2, "world unknown")
+end
+
+T["tracker: a map change after standing still is a ride (legacy G.Track)"] = function(t)
+    local tr = N.GateTracker()
+    t.eq(tr:Sample({ map = MULGORE, x = 0.40, y = 0.50 }, w(1, 100, 200), false, 0), nil)
+    t.eq(tr:Sample({ map = MULGORE, x = 0.40, y = 0.50 }, w(1, 100, 200), false, 1), nil, "standing")
+    local c = tr:Sample({ map = TB, x = 0.60, y = 0.55 }, w(1, 100.5, 200), false, 3)
+    t.eq(c.from, { map = MULGORE, x = 0.40, y = 0.50 })
+    t.eq(c.to, { map = TB, x = 0.60, y = 0.55 })
+    t.eq(c.onTaxi, false)
+    t.eq(c.rode, true, "still for 2 s as the map changed")
+end
+
+T["tracker: a walk across a map edge is not a ride"] = function(t)
+    local tr = N.GateTracker()
+    tr:Sample({ map = MULGORE, x = 0.40, y = 0.50 }, w(1, 100, 200), false, 0)
+    local c = tr:Sample({ map = BARRENS, x = 0.01, y = 0.50 }, w(1, 107, 200), false, 1)
+    t.eq(c.rode, false)
+    t.eq(c.fromWorld, w(1, 100, 200)); t.eq(c.toWorld, w(1, 107, 200))
+end
+
+T["tracker: a taxi, an unknown taxi or a missing read resets it"] = function(t)
+    local tr = N.GateTracker()
+    tr:Sample({ map = MULGORE, x = 0.40, y = 0.50 }, w(1, 100, 200), false, 0)
+    t.eq(tr:Sample({ map = BARRENS, x = 0.5, y = 0.5 }, w(1, 105, 200), true, 1), nil, "on a taxi")
+    t.eq(tr:Sample({ map = MULGORE, x = 0.40, y = 0.50 }, w(1, 100, 200), nil, 2), nil, "taxi unknown")
+    t.eq(tr:Sample({ map = BARRENS, x = 0.5, y = 0.5 }, w(1, 105, 200), false, 3), nil, "nothing before it to compare")
+    t.eq(tr:Sample({ map = MULGORE, x = 0.4, y = 0.5 }, nil, false, 4), nil, "no world point")
+end
+
+T["forget: empties the learned list (legacy /flow gates forget)"] = function(t)
+    local list = { { a = 1, b = 2 }, { a = 3, b = 4 } }
+    N.GateForget(list)
+    t.eq(list, {})
 end
 
 return T
