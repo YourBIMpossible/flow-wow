@@ -44,7 +44,7 @@ end
 
 function ns.make.fakeClient(opts)
     opts = opts or {}
-    local s = { t = opts.now or 1000, ms = 0, combat = false, bankOpen = false, merchantOpen = false, loaded = {}, saved = {}, listening = {}, frames = 0 }
+    local s = { t = opts.now or 1000, ms = 0, combat = false, bankOpen = false, merchantOpen = false, loaded = {}, saved = {}, listening = {}, eventFaults = {}, frames = 0 }
     local c = { printed = {} }
 
     local events = ns.make.listeners(
@@ -55,13 +55,23 @@ function ns.make.fakeClient(opts)
         function() s.frames = 0 end)
 
     -- the client surface
-    function c.now() return s.t end
+    function c.now() return s.noTime and 0 or s.t end
     function c.clockMs() return s.ms end
     function c.print(text) c.printed[#c.printed + 1] = tostring(text) end
     function c.listen(event, fn) return events.add(event, fn) end
     function c.onFrame(fn) return ticks.add("frame", fn) end
     function c.addonLoaded(name) return s.loaded[name] == true end
     function c.inCombat() return s.combat end
+    function c.uptime()
+        if s.noTime then return nil end
+        return s.t
+    end
+    function c.listenFaults()
+        local names = {}
+        for event in pairs(s.eventFaults) do names[#names + 1] = event end
+        table.sort(names)
+        return { notRegistered = names, noEventFrame = s.noEventFrame and true or false, noTickFrame = false }
+    end
     function c.saved(name)
         if type(s.saved[name]) ~= "table" then s.saved[name] = {} end
         return s.saved[name]
@@ -192,11 +202,20 @@ function ns.make.fakeClient(opts)
             h.places = h.places + 1
         end
         function h.show(on) h.shown = on and true or false end
-        function h.onMoved(fn) moved = fn end
+        local movedFailed
+        function h.onMoved(fn, failed)
+            moved = fn
+            movedFailed = type(failed) == "function" and failed or nil
+        end
         -- The test's control: the player let the panel go at this point.
+        -- As on the real client, an error in the moved callback goes to
+        -- `failed` when one was given and is dropped otherwise.
         function h.drag(point)
             h.point = { point[1], point[2], point[3], point[4] }
-            if moved then moved({ point[1], point[2], point[3], point[4] }) end
+            if moved then
+                local ok, err = pcall(moved, { point[1], point[2], point[3], point[4] })
+                if not ok and movedFailed then movedFailed(err) end
+            end
         end
         c.panels[#c.panels + 1] = h
         return h
@@ -248,6 +267,12 @@ function ns.make.fakeClient(opts)
     function c.setVersion(text) s.version = text end
     -- false: a client that cannot make frames (panel() answers nil).
     function c.setFrames(on) s.noFrames = not on end
+    -- false: a client that will not say the time (uptime() nil, now() 0).
+    function c.setTime(on) s.noTime = not on end
+    -- What listenFaults() answers: an event the client refused, and (false)
+    -- an event frame that was not made. Events still fire here either way.
+    function c.setEventFault(event, on) s.eventFaults[event] = on and true or nil end
+    function c.setEventFrame(on) s.noEventFrame = not on end
     -- The key that lets an arrow be dragged (Ctrl): held until told not.
     function c.setMoveKey(on) s.noMoveKey = not on end
     -- Moves the clock by `seconds`, drawing `frames` frames (default 1).

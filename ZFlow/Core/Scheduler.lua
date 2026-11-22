@@ -49,6 +49,13 @@ function ns.make.sched(k)
         end
     end
 
+    -- true unless the client says plainly that the player is out of combat.
+    -- The client answers nil when it could not read combat; work that has to
+    -- wait for combat to end waits then too.
+    local function inCombat()
+        return k.client.inCombat() ~= false
+    end
+
     local function sweep(list)
         local kept = 0
         for i = 1, #list do
@@ -75,7 +82,7 @@ function ns.make.sched(k)
                         run(job)
                     end
                 elseif now >= job.due - 1e-9 then
-                    if job.when == "outOfCombat" and k.client.inCombat() then
+                    if job.when == "outOfCombat" and inCombat() then
                         -- held: it runs on the first frame after combat
                     elseif job.interval then
                         job.due = now + job.interval
@@ -134,7 +141,7 @@ function ns.make.sched(k)
 
     function sched:afterCombat(owner, fn)
         local job = { owner = owner, fn = fn, label = "afterCombat" }
-        if self.enabled and not k.client.inCombat() and type(owner) == "string" and owner ~= "" and type(fn) == "function" then
+        if self.enabled and not inCombat() and type(owner) == "string" and owner ~= "" and type(fn) == "function" then
             run(job)
             return function() end
         end
@@ -144,7 +151,7 @@ function ns.make.sched(k)
     -- Runs the afterCombat queue; the kernel does not call this, the combat
     -- end event does.
     function sched:flushCombat()
-        if not self.enabled or k.client.inCombat() then return end
+        if not self.enabled or inCombat() then return end
         local batch = waiting
         waiting = {}
         for i = 1, #batch do

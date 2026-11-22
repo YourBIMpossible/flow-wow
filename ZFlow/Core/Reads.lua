@@ -73,7 +73,8 @@ function ns.make.resourceRead(client, keyOf)
         if ask("bankOpen") ~= true then return false end
         local counts = sum(ask("bankItems"), key)
         if not counts then return false end
-        bank, bankSeenAt = counts, ask("now")
+        -- uptime, not now: no time is kept when the client gives none.
+        bank, bankSeenAt = counts, ask("uptime")
         return true
     end
 

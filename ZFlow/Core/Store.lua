@@ -173,7 +173,16 @@ function ns.make.store(k)
             migrate(scope, db)
             if not self.blocked[scope] then
                 for i = 1, #tables do
-                    if type(db[tables[i]]) ~= "table" then db[tables[i]] = {} end
+                    local key = tables[i]
+                    local was = type(db[key])
+                    if was ~= "table" then
+                        -- Something else saved there is lost by this: say so.
+                        if was ~= "nil" then
+                            k.problems:add("store", scope, key .. " was a " .. was
+                                .. ", not a table; it was replaced with an empty table")
+                        end
+                        db[key] = {}
+                    end
                 end
             end
         end

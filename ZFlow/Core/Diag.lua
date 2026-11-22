@@ -176,7 +176,12 @@ end
 -- the kernel it is handed, so it runs the same over the fake client.
 function Diag.Collect(k, why)
     local client = k.client
-    local snap = { why = tostring(why), at = client.now(), names = {}, shapes = {}, kernel = {} }
+    -- at: session seconds, left out when the client gives no time. clock:
+    -- the wall clock, which still means something after a reload, on a
+    -- client that has one.
+    local snap = { why = tostring(why), at = client.uptime(), names = {}, shapes = {}, kernel = {} }
+    local clock = type(client.clock) == "function" and client.clock() or nil
+    snap.clock = type(clock) == "number" and clock or nil
 
     for i = 1, #Diag.NAMES do
         local name = Diag.NAMES[i]
@@ -353,6 +358,12 @@ function Diag.Collect(k, why)
     for _, p in ipairs(k.problems:list()) do
         K.problems[#K.problems + 1] = { kind = p.kind, owner = p.owner, text = p.text, count = p.count }
     end
+    -- Listeners that will never be called: the client refused the event
+    -- name, or the frame that receives events was not made.
+    local faults = client.listenFaults()
+    K.eventsNotRegistered = faults.notRegistered
+    K.eventFrameNotMade = faults.noEventFrame
+    K.tickFrameNotMade = faults.noTickFrame
     K.meter = k.meter:report()
     return snap
 end
@@ -480,7 +491,7 @@ function Diag.Start(k)
     local client, id = k.client, k.id
 
     local function dataNow()
-        return { at = client.now(), accountData = client.savedExists(id.accountDB),
+        return { at = client.uptime(), accountData = client.savedExists(id.accountDB),
             charData = client.savedExists(id.charDB), phase = k.phase }
     end
 
@@ -513,7 +524,7 @@ function Diag.Start(k)
         local row = seen[text]
         if row then row.count = row.count + 1 return end
         if #errors >= ERRORS_KEPT then return end
-        row = { text = text, count = 1, at = client.now(), phase = k.phase,
+        row = { text = text, count = 1, at = client.uptime(), phase = k.phase,
             ours = text:find(id.addon, 1, true) ~= nil }
         seen[text], errors[#errors + 1] = row, row
     end)
@@ -577,7 +588,8 @@ function Diag.Start(k)
     local ready = { trainer = "TRAINER_UPDATE", profession = "TRADE_SKILL_LIST_UPDATE" }
     for event, why in pairs(windows) do
         client.listen(event, function()
-            local now = client.now()
+            -- Without a time two events cannot be called one opening.
+            local now = client.uptime()
             if last[why] and type(now) == "number" and now - last[why] < SAME_WINDOW then return end
             last[why] = type(now) == "number" and now or nil
             waiting[why] = ready[why] ~= nil
@@ -663,6 +675,14 @@ function Diag.Start(k)
             local d = snapshot("asked")
             client.print(id.title .. ": " .. (d and ("snapshot " .. d.count
                 .. " kept. Reload or log out to write it to disk.") or "the snapshot failed."))
+            local faults = client.listenFaults()
+            if faults.noEventFrame then
+                client.print(id.title .. ": event frame not made; no event reaches the addon.")
+            end
+            if #faults.notRegistered > 0 then
+                client.print(id.title .. ": events not registered: "
+                    .. table.concat(faults.notRegistered, ", ") .. ".")
+            end
         end
     end)
     return { timing = timing, snapshot = snapshot, commands = commands }
