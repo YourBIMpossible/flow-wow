@@ -532,7 +532,9 @@ end
 
 -- A copy fit to be saved: finite numbers, text, true/false and tables of
 -- those. Anything else is left out (a number that is not a number, and
--- either infinity, too), and so is a table that holds itself.
+-- either infinity, too), and so is a table that holds itself. A list stays
+-- a list: what is kept of 1, 2, 3... is numbered again with no gap. A key
+-- that is an infinity is left out with its value.
 local function plain(v, seen)
     local kind = type(v)
     if kind == "number" then
@@ -544,10 +546,23 @@ local function plain(v, seen)
     seen = seen or {}
     if seen[v] then return nil end
     seen[v] = true
-    local out = {}
+    local out, length, count = {}, 0, 0
+    while v[length + 1] ~= nil do
+        length = length + 1
+        local kept = plain(v[length], seen)
+        if kept ~= nil then
+            count = count + 1
+            out[count] = kept
+        end
+    end
     for key, value in pairs(v) do
         local keyKind = type(key)
-        if keyKind == "number" or keyKind == "string" then out[key] = plain(value, seen) end
+        if keyKind == "string" then
+            out[key] = plain(value, seen)
+        elseif keyKind == "number" and key ~= math.huge and key ~= -math.huge
+            and not (key >= 1 and key <= length and key % 1 == 0) then
+            out[key] = plain(value, seen)
+        end
     end
     seen[v] = nil
     return out
@@ -1072,20 +1087,25 @@ end
 -- True when the stored setting at path `at` is no choice of the player's and
 -- the import's value may take its place. choice = { model, prefix }: the
 -- settings model to ask and the part of the path before its keys; a choice
--- with no model, or a key the model has no row for, compares types.
+-- with no model, or a key the model has no row for, compares types. A
+-- stored table never gives way to a value that is no table. The second
+-- result is true when the model accepts neither value.
 local function givesWay(choice, at, have, value)
+    if type(have) == "table" and type(value) ~= "table" then return false end
     local model = choice.model
     if model and choice.prefix and at:sub(1, #choice.prefix) == choice.prefix then
         local key = at:sub(#choice.prefix + 1)
         if model:row(key) ~= nil then
             if model:check(key, have) == true then return false end
-            return model:check(key, value) == true
+            if model:check(key, value) == true then return true end
+            return false, true
         end
     end
     return type(have) ~= type(value)
 end
 
 local REFUSED = "the settings model refuses this value; it was not added"
+local NEITHER = "neither value fits the setting; nothing was changed"
 
 -- What may be added at `at` where nothing is stored: a copy of the import's
 -- value without anything the settings model refuses. Each refused value is
@@ -1133,15 +1153,26 @@ local function fill(dst, src, defaults, path, report, choice)
             fill(have, value, default, at, report, choice)
         elseif same(have, value) then
             report.skipped[#report.skipped + 1] = { path = at, reason = "the same value is already there" }
-        elseif choice and givesWay(choice, at, have, value) then
-            dst[key] = copy(value)
-            report.added[#report.added + 1] = at
-        elseif not choice and default ~= nil and same(have, default) then
-            dst[key] = copy(value)
-            report.added[#report.added + 1] = at
         else
-            report.kept[#report.kept + 1] = at
-            report.skipped[#report.skipped + 1] = { path = at, reason = "the player already has a value here; it was kept" }
+            local gives, neither = false, false
+            if choice then
+                gives, neither = givesWay(choice, at, have, value)
+            elseif type(have) == "table" and type(value) ~= "table" then
+                gives = false
+            elseif default ~= nil and same(have, default) then
+                gives = true
+            end
+            if gives then
+                dst[key] = copy(value)
+                report.added[#report.added + 1] = at
+            elseif neither then
+                report.skipped[#report.skipped + 1] = { path = at, reason = NEITHER }
+            else
+                report.kept[#report.kept + 1] = at
+                report.skipped[#report.skipped + 1] = {
+                    path = at, reason = "the player already has a value here; it was kept",
+                }
+            end
         end
     end
 end
