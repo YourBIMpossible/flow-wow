@@ -74,7 +74,9 @@ function ns.make.client(env)
     -- What the client itself does with an event before any listener hears
     -- of it: event name -> fn(...). A listener that asks the client about
     -- the thing the event is about then gets today's answer, whichever
-    -- order the listeners were added in (CR1).
+    -- order the listeners were added in (CR1). A step runs unguarded, so
+    -- one that raised would stop every listener of its event: each step
+    -- is one plain assignment and nothing else (CT3).
     local first = {}
 
     local function call(fn, ...)
@@ -330,13 +332,20 @@ function ns.make.client(env)
 
     -- Starts following the bank window (BANKFRAME_OPENED / BANKFRAME_CLOSED,
     -- the events Flow uses). Call once, early: before it, bankOpen() only
-    -- has the first guess below.
+    -- has the first guess below, unless something else listens to these
+    -- events. The window's state is set before any listener of either
+    -- event runs (`first`, as for the trainer window), so bankOpen()
+    -- answers inside a BANKFRAME_OPENED listener whichever order the
+    -- listeners were added in. The two listeners here only make the client
+    -- take the events.
     local bankState, bankWatched
+    first.BANKFRAME_OPENED = function() bankState = true end
+    first.BANKFRAME_CLOSED = function() bankState = false end
     function c.watchBank()
         if bankWatched then return end
         bankWatched = true
-        events.add("BANKFRAME_OPENED", function() bankState = true end)
-        events.add("BANKFRAME_CLOSED", function() bankState = false end)
+        events.add("BANKFRAME_OPENED", function() end)
+        events.add("BANKFRAME_CLOSED", function() end)
     end
 
     -- true / false, or nil when not known. Known from the last bank event
@@ -364,13 +373,20 @@ function ns.make.client(env)
 
     -- Starts following the merchant window (MERCHANT_SHOW / MERCHANT_CLOSED,
     -- first guesses: not seen in game on 16001). Call once, early: before
-    -- it, merchantOpen() only has the first guess below.
+    -- it, merchantOpen() only has the first guess below, unless something
+    -- else listens to these events. The window's state is set before any
+    -- listener of either event runs (`first`), so merchantOpen() answers
+    -- inside a MERCHANT_SHOW listener whichever order the listeners were
+    -- added in. The two listeners here only make the client take the
+    -- events.
     local merchantState, merchantWatched
+    first.MERCHANT_SHOW = function() merchantState = true end
+    first.MERCHANT_CLOSED = function() merchantState = false end
     function c.watchMerchant()
         if merchantWatched then return end
         merchantWatched = true
-        events.add("MERCHANT_SHOW", function() merchantState = true end)
-        events.add("MERCHANT_CLOSED", function() merchantState = false end)
+        events.add("MERCHANT_SHOW", function() end)
+        events.add("MERCHANT_CLOSED", function() end)
     end
 
     -- true / false, or nil when not known. Known from the last merchant
@@ -565,6 +581,46 @@ function ns.make.client(env)
         local ok, on = call(env.IsStealthed)
         if not ok or on == nil or hidden(on) or type(on) ~= "boolean" then return nil end
         return on
+    end
+
+    -- True or false as the client gave it, else nil: a failed or missing
+    -- call, no answer, a secret answer, or anything but true or false.
+    local function yesNo(ok, v)
+        if not ok or v == nil or hidden(v) or type(v) ~= "boolean" then return nil end
+        return v
+    end
+
+    -- Your target: { exists, hostile, dead }, or nil when the client does
+    -- not say whether you have one. With no target the table holds only
+    -- exists = false and nothing more is asked. hostile and dead are each
+    -- true, false, or nil when not known: no answer is never "friendly" or
+    -- "alive". First guesses, not seen in game on 16001:
+    -- UnitExists("target"), UnitCanAttack("player", "target") and
+    -- UnitIsDead("target"). Only "player" and "target" are named, and
+    -- nothing is changed: the target is read, never chosen.
+    function c.target()
+        local exists = yesNo(call(env.UnitExists, "target"))
+        if exists == nil then return nil end
+        if not exists then return { exists = false } end
+        return {
+            exists = true,
+            hostile = yesNo(call(env.UnitCanAttack, "player", "target")),
+            dead = yesNo(call(env.UnitIsDead, "target")),
+        }
+    end
+
+    -- Does one of your spells reach your target: true, false, or nil when
+    -- not known (no call, a failed call, no answer, a secret answer,
+    -- anything but true or false, or an id that is not a number: then the
+    -- client is not asked). C_Spell.IsSpellInRange(id, "target"), a first
+    -- guess: not seen in game on 16001. It is thought to give no answer
+    -- with no target, or for a spell that has no range; that is nil here,
+    -- never "out of range".
+    function c.inRange(spellId)
+        if type(spellId) ~= "number" then return nil end
+        local group = env.C_Spell
+        if type(group) ~= "table" then return nil end
+        return yesNo(call(group.IsSpellInRange, spellId, "target"))
     end
 
     -- One spell's cooldown as the client gives it: read?, start, length,

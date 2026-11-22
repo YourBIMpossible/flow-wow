@@ -121,6 +121,16 @@ function ns.make.fakeClient(opts)
     function c.faction() return s.faction end
     function c.class() return s.class end
     function c.stealthed() return s.stealthed end
+    function c.target()
+        local r = s.target
+        if type(r) ~= "table" then return nil end
+        if not r.exists then return { exists = false } end
+        return { exists = true, hostile = r.hostile, dead = r.dead }
+    end
+    function c.inRange(id)
+        if type(id) ~= "number" or not s.ranges then return nil end
+        return s.ranges[id]
+    end
     function c.spellCooldown(id)
         if type(id) ~= "number" or not s.cooldowns then return nil end
         return s.cooldowns[id]
@@ -411,6 +421,23 @@ function ns.make.fakeClient(opts)
     -- Stealthed: true, false, or nil for not known (the start).
     function c.setStealthed(on)
         if on == nil then s.stealthed = nil else s.stealthed = on and true or false end
+    end
+    -- Your target: { exists = true or false, hostile = ..., dead = ... },
+    -- or nil for not known (the start). hostile and dead are true, false,
+    -- or left out for not known; with exists false they are dropped.
+    function c.setTarget(r)
+        if type(r) ~= "table" or type(r.exists) ~= "boolean" then
+            s.target = nil
+            return
+        end
+        local function yesNo(v) if type(v) == "boolean" then return v end return nil end
+        s.target = { exists = r.exists, hostile = yesNo(r.hostile), dead = yesNo(r.dead) }
+    end
+    -- Whether one spell reaches the target: true, false, or nil for not
+    -- known. A spell never set is not known.
+    function c.setInRange(id, on)
+        s.ranges = s.ranges or {}
+        if on == nil then s.ranges[id] = nil else s.ranges[id] = on and true or false end
     end
     -- One spell's cooldown: true (on cooldown), false (ready), nil for
     -- not known. A spell never set is not known.
