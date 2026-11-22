@@ -113,27 +113,66 @@ end
 -- types, and the values that are numbers, strings or booleans. A table
 -- answer is listed by key, one level deep (plain values kept, others by
 -- type), SHAPE_KEYS keys at most.
-local function shape(ok, ...)
+--
+-- Secret values (L6-R). This client marks some values secret (the player's
+-- health is one): comparing one, or doing arithmetic on it, raises and
+-- taints. isSecret(v), when given, is asked before a value is looked at in
+-- any other way: a secret one is recorded as the type "secret" with no
+-- value, inside a table answer too, and is never kept in the snapshot.
+local SECRET = "secret"
+
+local function shapeWith(isSecret, ok, ...)
     local n = select("#", ...)
     local row = { ok = ok and true or false, n = n, types = {}, values = {} }
     for i = 1, n do
         local v = select(i, ...)
-        row.types[i] = type(v)
-        if plain(v) then
-            row.values["v" .. i] = v
-        elseif type(v) == "table" then
-            local keys, kept = {}, 0
-            for key, value in pairs(v) do
-                if kept >= SHAPE_KEYS then break end
-                keys[tostring(key)] = plain(value) and value or type(value)
-                kept = kept + 1
+        -- type() first: it is the one thing known to be safe on a secret.
+        if type(v) ~= "nil" and isSecret and isSecret(v) then
+            row.types[i] = SECRET
+        else
+            row.types[i] = type(v)
+            if plain(v) then
+                row.values["v" .. i] = v
+            elseif type(v) == "table" then
+                local keys, kept = {}, 0
+                for key, value in pairs(v) do
+                    if kept >= SHAPE_KEYS then break end
+                    if type(value) ~= "nil" and isSecret and isSecret(value) then
+                        keys[tostring(key)] = SECRET
+                    else
+                        keys[tostring(key)] = plain(value) and value or type(value)
+                    end
+                    kept = kept + 1
+                end
+                row.values["v" .. i] = keys
             end
-            row.values["v" .. i] = keys
         end
     end
     return row
 end
+
+local function shape(ok, ...)
+    return shapeWith(nil, ok, ...)
+end
 Diag.Shape = shape
+Diag.ShapeWith = shapeWith
+
+-- Does the client call this value secret? False on a client with no
+-- issecretvalue (it has no secret values). On one that has it: true unless
+-- it answers exactly false, so a client that raises or will not say is
+-- treated as "secret". nil is never asked about (the client raises on it).
+function Diag.IsSecret(client, v)
+    if type(v) == "nil" then return false end
+    if client.typeOf("issecretvalue") ~= "function" then return false end
+    local ok, answer = client.raw("issecretvalue", v)
+    return not ok or answer ~= false
+end
+
+-- The row recorded in place of a probe that would have to look at a secret
+-- value (print it, compare it): one answer of type "secret", no value.
+local function secretRow()
+    return { ok = true, n = 1, types = { SECRET }, values = {} }
+end
 
 -- { profession, skill, max, total, learned } of a recipes() reading, or nil.
 local function recipeCounts(r)
@@ -151,8 +190,9 @@ local function mapSizeHere(client)
     return at and client.mapSize(at.map) or nil
 end
 
+-- What a game call answered, with every answer checked for secrecy first.
 local function ask(client, path, ...)
-    return shape(client.raw(path, ...))
+    return shapeWith(function(v) return Diag.IsSecret(client, v) end, client.raw(path, ...))
 end
 
 -- The first bag slot with something in it, by whichever call exists.
@@ -179,6 +219,10 @@ end
 -- the kernel it is handed, so it runs the same over the fake client.
 function Diag.Collect(k, why)
     local client = k.client
+    -- Every shape made in here checks its values for secrecy first: this
+    -- shadows the plain shape() for the rest of the function.
+    local function isSecret(v) return Diag.IsSecret(client, v) end
+    local function shape(ok, ...) return shapeWith(isSecret, ok, ...) end
     -- at: session seconds, left out when the client gives no time. clock:
     -- the wall clock, which still means something after a reload, on a
     -- client that has one.
@@ -276,10 +320,17 @@ function Diag.Collect(k, why)
     -- Health was saved with a type and no value: ask how the client prints
     -- it and whether it calls it a secret.
     local okHealth, health = client.raw("UnitHealth", "player")
-    if okHealth and health ~= nil then
-        S.healthText = shape(pcall(tostring, health))
+    if okHealth and type(health) ~= "nil" then
         S.healthSecret = ask(client, "issecretvalue", health)
-        S.healthIsItself = shape(pcall(function() return health == health end))
+        -- A secret health is never printed or compared: either raises and
+        -- taints on this client. "secret" is recorded in its place.
+        if Diag.IsSecret(client, health) then
+            S.healthText = secretRow()
+            S.healthIsItself = secretRow()
+        else
+            S.healthText = shape(pcall(tostring, health))
+            S.healthIsItself = shape(pcall(function() return health == health end))
+        end
     end
     S.healthMax = ask(client, "UnitHealthMax", "player")
     S.questEntries = ask(client, "C_QuestLog.GetNumQuestLogEntries")
