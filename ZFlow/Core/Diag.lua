@@ -501,9 +501,12 @@ end
 --   not known, or lockdown. "(keys unchanged)" goes with it whenever
 --   lockdown is not a known "no". A view kept from an earlier tick says so.
 -- Diag.RotationCooldownLine(view) -> line or nil
---   one line when at least one spell is held back only because nobody read
---   its cooldown (R.COOLDOWN_UNKNOWN): the count, and, while another spell
---   can still be cast, the names in order.
+--   one line about cooldowns nobody read (R.COOLDOWN_UNKNOWN). With no
+--   spell that can be cast: how many are held back only for that. Otherwise
+--   the spells the chooser's steps passed by for it, counted and named in
+--   order: the driver's own list (view.passed), and nothing when that is
+--   empty. A spell with an unread cooldown that no step came to is not said
+--   to be passed by.
 -- Diag.RotationStealthLine(view) -> line or nil
 --   stealth as it was read: stealthed, not stealthed, or not known. The
 --   attack is started only on a known "no" (see Choose.lua).
@@ -563,23 +566,28 @@ function Diag.RotationCooldownLine(view)
     local s = choosing(view)
     local R = ns.Rotation
     if s == nil or type(s.spells) ~= "table" or type(R) ~= "table" then return nil end
-    local held, castable = {}, false
+    local held, castable = 0, false
     for name in pairs(s.spells) do
         local can, why = R.Castable(s, name)
         if can then
             castable = true
         elseif why == R.COOLDOWN_UNKNOWN then
-            held[#held + 1] = tostring(name)
+            held = held + 1
         end
     end
-    if #held == 0 then return nil end
     if not castable then
-        return "rotation: nothing can be chosen; " .. plural(#held, "spell", "spells") .. ": "
+        if held == 0 then return nil end
+        return "rotation: nothing can be chosen; " .. plural(held, "spell", "spells") .. ": "
             .. R.COOLDOWN_UNKNOWN .. "."
     end
-    table.sort(held)
-    return "rotation: " .. plural(#held, "spell", "spells") .. " passed by: "
-        .. R.COOLDOWN_UNKNOWN .. ": " .. table.concat(held, ", ") .. "."
+    local passed = {}
+    if type(view.passed) == "table" then
+        for _, name in ipairs(view.passed) do passed[#passed + 1] = tostring(name) end
+    end
+    if #passed == 0 then return nil end
+    table.sort(passed)
+    return "rotation: " .. plural(#passed, "spell", "spells") .. " passed by: "
+        .. R.COOLDOWN_UNKNOWN .. ": " .. table.concat(passed, ", ") .. "."
 end
 
 function Diag.RotationStealthLine(view)
