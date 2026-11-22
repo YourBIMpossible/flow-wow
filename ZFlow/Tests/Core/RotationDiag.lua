@@ -205,10 +205,15 @@ tests["rotation diag ST1: stealth not known is said, and what it holds back"] = 
         "rotation: not known whether you are stealthed; the attack is not started for you.")
 end
 
-tests["rotation diag ST1: no stealth line when stealth was read, or nothing was"] = function(t)
-    t.eq(stealthLine(view()), nil, "read: not stealthed")
-    t.eq(stealthLine(view({ snapshot = snap({ stealthed = true }) })), nil, "read: stealthed")
+tests["rotation diag ST1: stealth that was read is said as read"] = function(t)
+    t.eq(stealthLine(view()), "rotation: not stealthed.")
+    t.eq(stealthLine(view({ snapshot = snap({ stealthed = true }) })),
+        "rotation: stealthed; the attack is not started for you.")
+end
+
+tests["rotation diag ST1: no stealth line when nothing is chosen anyway"] = function(t)
     t.eq(stealthLine(view({ snapshot = snap({ stealthed = "nil", dead = true }) })), nil, "dead")
+    t.eq(stealthLine(view({ snapshot = snap({ dead = "nil" }) })), nil, "dead not known")
     t.eq(stealthLine({ pack = false, trace = {}, why = { pack = false } }), nil, "no pack")
     t.eq(stealthLine(nil), nil, "no view")
 end
