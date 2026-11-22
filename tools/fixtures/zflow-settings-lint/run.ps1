@@ -17,7 +17,8 @@ $cases = @(
     @{ Name = 'dup-fail';     Exit = 1; Tag = 'DUPKEY' },
     @{ Name = 'fields-fail';  Exit = 1; Tag = 'ROWFIELDS' },
     @{ Name = 'key-fail';     Exit = 1; Tag = 'UNKNOWNKEY' },
-    @{ Name = 'testkey-fail'; Exit = 1; Tag = 'UNKNOWNKEY' }
+    @{ Name = 'testkey-fail'; Exit = 1; Tag = 'UNKNOWNKEY' },
+    @{ Name = 'testprobe-pass'; Exit = 0 }
 )
 $bad = 0
 foreach ($c in $cases) {
