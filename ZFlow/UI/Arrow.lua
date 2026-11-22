@@ -276,6 +276,8 @@ function Arrow.GuideSource(client, layout, guide, intro)
         else
             local label = more[key].label or step.label
             if label ~= nil then out[#out + 1] = tostring(label) end
+            -- A step may say one more line of its own under its label (S43).
+            if step.detail ~= nil then out[#out + 1] = tostring(step.detail) end
             local d = state[key] and state[key].distance
             if type(d) == "number" then out[#out + 1] = ("%d yd"):format(math.floor(d + 0.5)) end
         end
@@ -312,6 +314,17 @@ end
 -- the loading screen. Needs an in-game check (MR2-1).
 Arrow.INTRO_PATH = "layout.arrowIntroSeen"
 Arrow.INTRO_SECONDS = 3
+
+-- Whether the player's own quests may be the quest step (S43): the
+-- setting row N.QuestSource.SETTING, on unless it says a plain false (the
+-- row is the lead's to add; with no such row the answer is on).
+function Arrow.QuestArrowOn(k)
+    local s = type(k) == "table" and k.settings or nil
+    local Q = ns.Nav and ns.Nav.QuestSource
+    if type(s) ~= "table" or type(s.get) ~= "function" or not Q then return true end
+    local ok, v = pcall(s.get, s, Q.SETTING)
+    return not (ok and v == false)
+end
 
 -- The name the arrows are declared under as a module.
 Arrow.NAME = "arrow"
@@ -371,6 +384,9 @@ function Arrow.Start(k, diag, own)
     local shownLines, drawer = nil, nil
     local stop
     local guideFn = nil
+    -- The player's own quests (S43, Nav/QuestRead.lua): the quest step when
+    -- there is no waypoint. Read-only; nil when that file is not loaded.
+    local quests = N.QuestWatch and N.QuestSource and N.QuestWatch(client) or nil
     -- introWanted: this install has not seen the intro and it has not ended.
     -- entered: the world has been entered. introShown: the last layout had
     -- the intro on the quest arrow. introUntil: when it ends, nil until the
@@ -405,6 +421,8 @@ function Arrow.Start(k, diag, own)
             guide = guideFn()
         else
             local step = N.WaypointStep(client)
+            -- The player's own pin wins over the player's quests.
+            if step == nil and quests and Arrow.QuestArrowOn(k) then step = quests.step() end
             local prof = N.ProfStepFrom(client, k.store)
             guide = (step or prof) and { quest = step, prof = prof } or nil
         end
@@ -703,6 +721,15 @@ function Arrow.Start(k, diag, own)
         end
         if own.loaded then apply() else listen("PLAYER_LOGIN", apply) end
         listen("PLAYER_ENTERING_WORLD", guarded(enterWorld))
+        if quests then
+            -- The quest log or the zone changed: read both again, then lay out.
+            local changed = guarded(function()
+                quests.refresh()
+                relayout()
+            end)
+            listen("QUEST_LOG_UPDATE", changed)
+            listen("ZONE_CHANGED_NEW_AREA", changed)
+        end
     end
 
     local USAGE = id.slash .. " arrow demo | near | separate | stack | reset | hide quest|prof | text quest|prof"
