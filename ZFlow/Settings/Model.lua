@@ -56,6 +56,8 @@ M.ROWS = {
     { key = "bank.list", type = "bool", default = true },
     -- loot.junkNote: the look-only grey loot note (Items/LootNote.lua) (lead)
     { key = "loot.junkNote", type = "bool", default = true },
+    -- advisor.panel: the advisor prompt panel (UI/Advisor.lua). (lead)
+    { key = "advisor.panel", type = "bool", default = true },
     { key = "auction.chartClick", type = "bool", default = true },
     { key = "buffButton.enabled", type = "bool", default = false },
     { key = "buffButton.dock", type = "bool", default = true },

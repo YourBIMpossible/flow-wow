@@ -22,6 +22,7 @@ Core\Kernel.lua
 Core\Diag.lua
 UI\Perf.lua
 UI\CopyBox.lua
+UI\Advisor.lua
 Import\FromFlow.lua
 Import\Stored.lua
 Settings\Model.lua
