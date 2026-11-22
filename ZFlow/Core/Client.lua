@@ -422,6 +422,20 @@ function ns.make.client(env)
         return pcall(fn, ...)
     end
 
+    -- Calls fn(text) for every Lua error the client reports, from any
+    -- addon, then hands the error on to whatever handled it before. Returns
+    -- false when the client has no error handler to chain to.
+    function c.onError(fn)
+        local get, set = env.geterrorhandler, env.seterrorhandler
+        if type(get) ~= "function" or type(set) ~= "function" then return false end
+        local before = get()
+        set(function(err, ...)
+            pcall(fn, tostring(err))
+            if type(before) == "function" then return before(err, ...) end
+        end)
+        return true
+    end
+
     -- Registers a slash command. tag is the client's key for it, command
     -- the text the player types; fn(rest) gets what follows it. Returns
     -- false when the client has no slash table.

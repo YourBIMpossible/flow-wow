@@ -92,6 +92,10 @@ function ns.make.fakeClient(opts)
         if type(fn) ~= "function" then return false, "not a function" end
         return pcall(fn, ...)
     end
+    local errorFns = {}
+    function c.onError(fn) errorFns[#errorFns + 1] = fn return true end
+    -- The test's control: a Lua error reported by the client.
+    function c.raise(text) for i = 1, #errorFns do errorFns[i](text) end end
     c.slashes = {}
     function c.slash(tag, command, fn)
         c.slashes[command] = function(rest) fn(rest or "") end

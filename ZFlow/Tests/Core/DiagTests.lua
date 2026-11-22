@@ -147,6 +147,29 @@ return {
         t.eq(type(snap.kernel.pauseText), "string")
     end,
 
+    ["errors: kept once with a count, marked ours or not, saved with the snapshot"] = function(t)
+        local _, c, d = start()
+        c.raise("Interface/AddOns/" .. ns.id.addon .. "/Core/X.lua:5: boom")
+        c.raise("Interface/AddOns/" .. ns.id.addon .. "/Core/X.lua:5: boom")
+        c.raise("Interface/AddOns/Other/y.lua:1: theirs")
+        login(c)
+        local e = c.saved(ns.id.accountDB).diag.snaps[1].timing.errors
+        t.eq(#e, 2)
+        t.eq({ e[1].count, e[1].ours, e[2].count, e[2].ours }, { 2, true, 1, false })
+        for i = 1, 100 do c.raise("different " .. i) end
+        t.eq(#d.timing.errors, 40, "the list is capped")
+    end,
+
+    ["session: each login counts a start and names the character when the client says"] = function(t)
+        local _, c = start()
+        login(c)
+        local d = c.saved(ns.id.accountDB).diag
+        t.eq(d.starts, 1)
+        t.eq(d.snaps[1].timing.start, 1)
+        t.eq(d.snaps[1].timing.realm, "Testrealm")
+        t.eq(d.snaps[1].timing.character, nil, "a client that will not name the character leaves it unknown")
+    end,
+
     ["collect: a client that answers nothing still gives a snapshot"] = function(t)
         local c = ns.make.fakeClient()
         local k = ns.Kernel({}, c)

@@ -8,6 +8,8 @@
 -- the guard's verdict is one of the things it records; it is the one
 -- listener a paused addon keeps.
 --
+-- Lua errors the client reports are kept with each snapshot.
+--
 --   <slash> diag          take a snapshot now and say where it went
 --   <slash> diag clear    forget every snapshot
 --
@@ -19,6 +21,7 @@ local Diag = {}
 ns.Diag = Diag
 
 local KEEP = 12
+local ERRORS_KEPT = 40
 
 -- Client names whose presence decides how the boundary is written.
 Diag.NAMES = {
@@ -256,13 +259,42 @@ function Diag.Start(k)
         return Diag.Save(k, snap)
     end
 
+    -- Lua errors, ours and other addons': kept here, written with each
+    -- snapshot. The same text again raises its count; ERRORS_KEPT at most.
+    local errors, seen = {}, {}
+    timing.errors = errors
+    client.onError(function(text)
+        local row = seen[text]
+        if row then row.count = row.count + 1 return end
+        if #errors >= ERRORS_KEPT then return end
+        row = { text = text, count = 1, at = client.now(), phase = k.phase,
+            ours = text:find(id.addon, 1, true) ~= nil }
+        seen[text], errors[#errors + 1] = row, row
+    end)
+
+    -- A reload or a character change starts the files again: count the
+    -- starts this account has seen, so sessions can be told apart.
+    local function session()
+        local d = client.saved(id.accountDB)
+        if type(d.diag) ~= "table" then d.diag = {} end
+        d.diag.starts = (tonumber(d.diag.starts) or 0) + 1
+        timing.start = d.diag.starts
+        local okName, name = client.raw("UnitName", "player")
+        local okRealm, realm = client.raw("GetRealmName")
+        timing.character = okName and name or nil
+        timing.realm = okRealm and realm or nil
+    end
+
     client.listen("ADDON_LOADED", function(name)
         if name == id.addon then mark("ADDON_LOADED") end
     end)
     client.listen("VARIABLES_LOADED", function() mark("VARIABLES_LOADED") end)
     client.listen("PLAYER_LOGIN", function() mark("PLAYER_LOGIN") end)
     client.listen("PLAYER_ENTERING_WORLD", function()
-        if mark("PLAYER_ENTERING_WORLD") then snapshot("login") end
+        if mark("PLAYER_ENTERING_WORLD") then
+            session()
+            snapshot("login")
+        end
     end)
     local windows = { BANKFRAME_OPENED = "bank", MERCHANT_SHOW = "vendor", TRAINER_SHOW = "trainer",
         TRADE_SKILL_SHOW = "profession", CRAFT_SHOW = "craft", TAXIMAP_OPENED = "flight" }
