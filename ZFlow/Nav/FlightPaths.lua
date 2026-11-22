@@ -290,8 +290,11 @@ function FP.Declare(k)
             c.bus:on(FP.NAME, "TAXIMAP_OPENED", function()
                 if not on() then return end
                 local name = npcName()
+                -- A flight map opened, so whoever was being waited on does
+                -- have one: every wait ends here, also when the NPC read
+                -- gives nothing. An unread NPC is not "no flight path".
+                pending = {}
                 if not name then return end
-                pending[name] = nil
                 note(FP.TALKED, name, true)
             end)
             local function talked()
