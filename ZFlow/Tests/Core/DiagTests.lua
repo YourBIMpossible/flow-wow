@@ -180,6 +180,19 @@ return {
         t.eq(c2.saved(ns.id.accountDB).diag.snaps[1].timing.realm, "Other")
     end,
 
+    ["session: with both realm calls empty, the realm comes from the full name"] = function(t)
+        local e = env()
+        e.GetRealmName = function() return "" end
+        e.GetNormalizedRealmName = function() return "" end
+        e.UnitFullName = function() return "Tester", "Fullrealm" end
+        local c = ns.make.fakeClient({ env = e })
+        local k = ns.Kernel({}, c)
+        ns.Diag.Start(k)
+        k:Boot()
+        login(c)
+        t.eq(c.saved(ns.id.accountDB).diag.snaps[1].timing.realm, "Fullrealm")
+    end,
+
     ["api: namespace members and matching global names are saved at each start"] = function(t)
         local _, c = start()
         login(c)

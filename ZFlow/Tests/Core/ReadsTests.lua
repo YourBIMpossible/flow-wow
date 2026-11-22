@@ -47,6 +47,17 @@ local function bagEnv(bags)
     return env
 end
 
+-- Gives env a character bank with these tabs, as the client lists them;
+-- env.asked is the bank type the list was last asked for.
+local function bankTabs(env, tabs)
+    env.Enum = env.Enum or {}
+    env.Enum.BankType = { Character = 0, Guild = 1, Account = 2 }
+    env.C_Bank = { FetchPurchasedBankTabIDs = function(kind)
+        env.asked = kind
+        return tabs
+    end }
+end
+
 local function twoBags()
     return {
         [0] = { family = 0, size = 16, { link = LEATHER, id = 2318, count = 4 }, { id = 2318, count = 3 } },
@@ -252,44 +263,47 @@ return {
     ["bank: contents only while the bank is open"] = function(t)
         local env = bagEnv({
             [0] = { family = 0, size = 16, { id = 2318, count = 1 } },
-            [-1] = { family = 0, size = 24, { link = LEATHER, id = 2318, count = 20 } },
-            [5] = { family = 0, size = 8, [3] = { id = 2589, count = 7 } },
-            [11] = { family = 0, size = 8, { id = 2589, count = 2 } },
+            [-1] = { family = 0, size = 24, { id = 9, count = 9 } },
+            [5] = { family = 0, size = 8, { id = 8, count = 8 } },
+            [6] = { family = 0, size = 24, { link = LEATHER, id = 2318, count = 20 }, [3] = { id = 2589, count = 7 } },
+            [7] = { family = 0, size = 8, { id = 2589, count = 2 } },
+            [15] = { family = 0, size = 8, { id = 7, count = 7 } },
         })
+        bankTabs(env, { 6, 7 })
         local c = ns.make.client(env)
         c.watchBank()
         t.eq(c.bankItems(), nil, "not known to be open")
         env.fire("BANKFRAME_OPENED")
         t.eq(c.bankItems(), { { item = LEATHER, count = 20 }, { item = 2589, count = 7 }, { item = 2589, count = 2 } },
-            "main bank (-1) and bank bags 5 to 11; the backpack is not the bank")
+            "the character's tabs; not the backpack, the keyring (-1), the reagent bag (5) or an account tab (15)")
+        t.eq(env.asked, 0, "asked for the character bank's tabs")
         env.fire("BANKFRAME_CLOSED")
         t.eq(c.bankItems(), nil, "closed: nil, not an empty bank")
     end,
 
-    ["bank: the client's own container numbers are used when it has them"] = function(t)
-        local env = bagEnv({
-            [-1] = { family = 0, size = 4, { id = 1, count = 1 } },
-            [-3] = { family = 0, size = 4, { id = 2, count = 2 } },
-            [7] = { family = 0, size = 4, { id = 3, count = 3 } },
-            [8] = { family = 0, size = 4, { id = 4, count = 4 } },
-            [20] = { family = 0, size = 4, { id = 5, count = 5 } },
-            [30] = { family = 0, size = 4, { id = 6, count = 6 } },
-        })
-        env.BANK_CONTAINER, env.REAGENTBANK_CONTAINER = -1, -3
-        env.NUM_TOTAL_EQUIPPED_BAG_SLOTS, env.NUM_BANKBAGSLOTS = 6, 1
-        env.Enum = { BagIndex = { Bank = -1, CharacterBankTab_1 = 20, AccountBankTab_1 = 30, Backpack = 0 } }
+    ["bank: a client that will not list its tabs leaves the bank unknown"] = function(t)
+        local env = bagEnv({ [6] = { family = 0, size = 4, { id = 1, count = 1 } } })
         env.BankFrame = { IsShown = function() return true end }
-        t.eq(ns.make.client(env).bankItems(), {
-            { item = 1, count = 1 }, { item = 2, count = 2 }, { item = 3, count = 3 }, { item = 5, count = 5 },
-        }, "bank, reagent bank, the one bank bag (7), the character tab; not bag 8, not the account tab")
+        t.eq(ns.make.client(env).bankItems(), nil, "no C_Bank: no guessed container numbers")
+        bankTabs(env, { 6 })
+        t.eq(ns.make.client(env).bankItems(), { { item = 1, count = 1 } })
+        env.C_Bank.FetchPurchasedBankTabIDs = boom
+        t.eq(ns.make.client(env).bankItems(), nil, "the list errored")
+        env.C_Bank.FetchPurchasedBankTabIDs = function() return { 6, "x" } end
+        t.eq(ns.make.client(env).bankItems(), nil, "a list that is not all numbers")
+        env.C_Bank.FetchPurchasedBankTabIDs = function() return {} end
+        t.eq(ns.make.client(env).bankItems(), {}, "no tab bought: an empty bank, and known")
+        env.Enum.BankType = nil
+        t.eq(ns.make.client(env).bankItems(), nil, "no name for the character bank")
     end,
 
     ["bank: an erroring container makes the bank unknown, not smaller"] = function(t)
-        local env = bagEnv({ [-1] = { family = 0, size = 4, { id = 1, count = 1 } } })
+        local env = bagEnv({ [6] = { family = 0, size = 4, { id = 1, count = 1 } } })
         env.BankFrame = { IsShown = function() return true end }
+        bankTabs(env, { 6, 7 })
         local slots = env.C_Container.GetContainerNumSlots
         env.C_Container.GetContainerNumSlots = function(bag)
-            if bag == 6 then boom() end
+            if bag == 7 then boom() end
             return slots(bag)
         end
         t.eq(ns.make.client(env).bankItems(), nil)
@@ -577,7 +591,8 @@ return {
 
     ["adapter: runs over the real client boundary too"] = function(t)
         local env = bagEnv(twoBags())
-        env.bags[-1] = { family = 0, size = 4, { id = 2589, count = 9 } }
+        env.bags[6] = { family = 0, size = 4, { id = 2589, count = 9 } }
+        bankTabs(env, { 6 })
         env.GetMoney = function() return 42 end
         env.GetTime = function() return 3 end
         local read = ns.make.resourceRead(ns.make.client(env))

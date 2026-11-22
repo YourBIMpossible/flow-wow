@@ -2,10 +2,11 @@
 -- else calls ns.client.* (or the client handed to its kernel), so the same
 -- code runs offline against Core/ClientFake.lua.
 --
--- Nothing here has been run in the game. Every client name is looked up in
--- `env` when it is needed and a missing one never errors: the call returns
--- the documented fallback instead. Names marked "first guess" are not
--- confirmed to exist on interface 16001.
+-- Every client name is looked up in `env` when it is needed and a missing
+-- one never errors: the call returns the documented fallback instead.
+-- Seen working in the game on interface 16001 (build 1.60.1): money, bags,
+-- bag contents, position, zone, the combat lock and the bank events. Names
+-- still marked "first guess" have not been seen there.
 local _, ns = ...
 ns.make = ns.make or {}
 
@@ -244,33 +245,22 @@ function ns.make.client(env)
         return stacks(bagIds())
     end
 
-    -- The bank's containers: the main bank, the reagent bank, the bank bags
-    -- and the character bank tabs; never the account-wide bank. Flow's list
-    -- (Crafting/SkillPlan.lua). Every constant here is a first guess on
-    -- 16001; one the client does not have is left out, and -1 and 7 stand
-    -- in for the main bank and the number of bank bags.
+    -- The character's bank tabs, as the client lists them:
+    -- C_Bank.FetchPurchasedBankTabIDs(Enum.BankType.Character). Never the
+    -- account-wide bank. On 16001 the bank is tabs only (seen in game: one
+    -- tab, container 6); the old main bank, bank bag and reagent bank
+    -- numbers are not there (-1 is the keyring, 5 the reagent bag).
+    -- nil when the client will not list them.
     local function bankIds()
-        local ids, seen = {}, {}
-        local function add(bag)
-            if type(bag) == "number" and not seen[bag] then
-                seen[bag] = true
-                ids[#ids + 1] = bag
-            end
-        end
-        add(env.BANK_CONTAINER or -1)
-        add(env.REAGENTBANK_CONTAINER)
-        local first = (tonumber(env.NUM_TOTAL_EQUIPPED_BAG_SLOTS) or tonumber(env.NUM_BAG_SLOTS) or 4) + 1
-        for bag = first, first + (tonumber(env.NUM_BANKBAGSLOTS) or 7) - 1 do add(bag) end
-        local index = type(env.Enum) == "table" and env.Enum.BagIndex
-        if type(index) == "table" then
-            local names = {}
-            for name in pairs(index) do
-                if type(name) == "string" and (name == "Bank" or name == "Reagentbank" or name:find("^CharacterBankTab")) then
-                    names[#names + 1] = name
-                end
-            end
-            table.sort(names)
-            for _, name in ipairs(names) do add(index[name]) end
+        local bank, enum = env.C_Bank, env.Enum
+        local kind = type(enum) == "table" and type(enum.BankType) == "table" and enum.BankType.Character
+        if type(bank) ~= "table" or type(kind) ~= "number" then return nil end
+        local ok, tabs = call(bank.FetchPurchasedBankTabIDs, kind)
+        if not ok or type(tabs) ~= "table" then return nil end
+        local ids = {}
+        for i = 1, #tabs do
+            if type(tabs[i]) ~= "number" then return nil end
+            ids[i] = tabs[i]
         end
         return ids
     end
@@ -304,7 +294,9 @@ function ns.make.client(env)
     -- saw and when.
     function c.bankItems()
         if c.bankOpen() ~= true then return nil end
-        return stacks(bankIds())
+        local ids = bankIds()
+        if not ids then return nil end
+        return stacks(ids)
     end
 
     local function playerMap()
