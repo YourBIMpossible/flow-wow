@@ -109,6 +109,13 @@ return {
         t.eq(ns.make.client(env).corpse(), nil)
     end,
 
+    ["corpse: a hidden position is unknown, its numbers plain or not (H3)"] = function(t)
+        local env = deathEnv()
+        t.ok(ns.make.client(env).corpse() ~= nil, "plain: a place")
+        env.issecretvalue = function(v) return type(v) == "table" end
+        t.eq(ns.make.client(env).corpse(), nil)
+    end,
+
     ["fake: dead and corpse are unknown until set, and can be unset"] = function(t)
         local c = ns.make.fakeClient()
         t.eq(c.dead(), nil)

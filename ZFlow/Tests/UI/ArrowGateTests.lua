@@ -296,13 +296,85 @@ return {
         t.eq(src.lost.quest, true)
     end,
 
-    ["ghost unknown: the other-map line only on the client's own answer (C1)"] = function(t)
+    -- H1 changes C1's rule here: with the ghost read unknown, a corpse read
+    -- of false is no longer shown as another map.
+    ["ghost unknown: no position on this map is direction unknown, not another map (H1)"] = function(t)
         local c = start()
         c.setDead(true)
         c.setCorpse(false)
-        t.eq(source(c).lines.quest, { "Corpse", A.CORPSE_ELSEWHERE })
+        local src = source(c)
+        t.eq(src.lines.quest, { "Corpse", A.UNKNOWN_TURN }, "the body may lie at the player's feet")
+        t.eq(src.still.quest, nil, "not still")
+        t.eq(src.lost.quest, true)
+        t.eq(src.view.quest.distance, nil)
+        local unknown = { function() error("the client refused") end, function() return 1 end,
+                          function() return nil end, function() return "yes" end }
+        for i = 1, #unknown do
+            c.ghost = unknown[i]
+            t.eq(source(c).lines.quest, { "Corpse", A.UNKNOWN_TURN }, "ghost read " .. i)
+        end
+        c.ghost = nil
+        t.eq(source(c).lines.quest, { "Corpse", A.UNKNOWN_TURN }, "no ghost read")
+    end,
+
+    ["the other-map line needs a plain true from the ghost read (H1)"] = function(t)
+        local c = start()
+        c.setDead(true)
+        c.setCorpse(false)
+        c.setGhost(true)
+        local src = source(c)
+        t.eq(src.lines.quest, { "Corpse", A.CORPSE_ELSEWHERE })
+        t.eq(src.still.quest, true)
         c.setGhost(false)
         t.eq(source(c).lines.quest, { A.RELEASE_LABEL }, "not released: the release label still wins")
+        c.setGhost(nil)
+        t.eq(source(c).lines.quest, { "Corpse", A.UNKNOWN_TURN }, "unknown again")
+    end,
+
+    ["on the frames: ghost unknown and no position on this map is faded, with the line (H1)"] = function(t)
+        local c, a = start()
+        c.setDead(true)
+        c.setCorpse(false)
+        a.setGuide(function() return steps() end)
+        local q = c.arrows[1]
+        t.eq(q.lines, { "Corpse", A.UNKNOWN_TURN })
+        t.eq(q.faded, a.state().view.quest.alpha * A.LOST_ALPHA, "direction unknown: faded")
+        c.setGhost(true)
+        a.relayout()
+        t.eq(q.lines, { "Corpse", A.CORPSE_ELSEWHERE })
+        t.eq(q.faded, a.state().view.quest.alpha, "a ghost, another map: the view's own alpha")
+    end,
+
+    -- H2: still is for a step with nowhere to go. A step with a place has a
+    -- direction, and when that is unknown it is said.
+    ["still on a step with a place silences nothing (H2)"] = function(t)
+        local c = start()
+        c.setFacing(nil)
+        local guide = steps()
+        guide.quest.still = true
+        local src = source(c, guide)
+        t.eq(src.turns.quest, nil, "no facing: no turn")
+        t.eq(src.lines.quest, { "Kill boars", "100 yd", A.UNKNOWN_TURN })
+        t.eq(src.lost.quest, true)
+        t.eq(src.still.quest, nil, "a step with a place is not still")
+        guide.quest.place = nil
+        src = source(c, guide)
+        t.eq(src.lines.quest, { "Kill boars" }, "no place: still, as before")
+        t.eq(src.still.quest, true)
+        t.eq(src.lost.quest, nil)
+    end,
+
+    ["on the frames: a still step with a place and no facing is faded (H2)"] = function(t)
+        local c, a = start()
+        c.setFacing(nil)
+        c.setPosition(1411, 0.5, 0.9)       -- far from the step: not the ring
+        local guide = steps()
+        guide.quest.still = true
+        a.setGuide(function() return guide end)
+        local q = c.arrows[1]
+        t.ok(a.state().view.quest.mode ~= "ring", "an arrow, not the ring")
+        t.eq(q.lines[#q.lines], A.UNKNOWN_TURN)
+        t.eq(q.faded, a.state().view.quest.alpha * A.LOST_ALPHA)
     end,
 
     ["on the frames: a still step is not faded; an unknown direction is (C2)"] = function(t)

@@ -120,13 +120,18 @@ end
 --     pointed at. The step is still.
 --   otherwise (a ghost, or not known), by client.corpse:
 --     a place: the corpse there.
---     false (the client answered: on no position of the player's map): no
---       place, the lines are the label and the other-map line, and the
---       step is still.
+--     false (the client answered: on no position of the player's map) and
+--       client.ghost a plain true: no place, the lines are the label and
+--       the other-map line, and the step is still.
+--     false with the ghost read not known: the same as cannot tell. The
+--       other-map line is not said on a read that may be of a player who
+--       has not released, whose body is where they stand.
 --     nil, absent, failing or no place (cannot tell): the label alone, no
 --       place and not still, so the unknown-direction line is added.
 -- Nothing is guessed. step.still: the step has nowhere to turn to, so no
--- unknown-direction line is added and the frame is not faded.
+-- unknown-direction line is added and the frame is not faded. It counts
+-- only on a step with no place: a step with a place has a direction, and
+-- when that is unknown it is said and the frame is faded.
 local function corpseStep(client)
     local ghost = ask(client, "ghost")
     if ghost == false then
@@ -140,7 +145,7 @@ local function corpseStep(client)
         local zone = ask(client, "zone")
         -- The player's continent is safe to give: c.corpse answers only for the player's own map (R5).
         step.place = { cont = type(zone) == "table" and zone.cont or nil, map = at.map, x = at.x, y = at.y }
-    elseif at == false then
+    elseif at == false and ghost == true then
         step.lines = { Arrow.CORPSE_LABEL, Arrow.CORPSE_ELSEWHERE }
         step.still = true
     end
@@ -200,13 +205,15 @@ function Arrow.GuideSource(client, layout, guide, intro)
             local d = state[key] and state[key].distance
             if type(d) == "number" then out[#out + 1] = ("%d yd"):format(math.floor(d + 0.5)) end
         end
-        if type(given[key]) == "table" and more[key].turn == nil and not step.still
+        -- still is honoured only on a step with no place.
+        local isStill = step.still and step.place == nil
+        if type(given[key]) == "table" and more[key].turn == nil and not isStill
             and not (playing and key == "quest") then
             out[#out + 1] = Arrow.UNKNOWN_TURN
             lost[key] = true          -- the last line is the unknown-direction line
         end
         -- A still step has nowhere to turn to: its missing turn is not "lost".
-        if step.still and not (playing and key == "quest") then still[key] = true end
+        if isStill and not (playing and key == "quest") then still[key] = true end
         lines[key] = out
         -- No height given: the height of these lines. That is a first
         -- count: Arrow.Lines may leave the unknown-direction line out, and
