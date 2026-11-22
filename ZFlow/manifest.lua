@@ -126,6 +126,7 @@ return {
         "Nav/FlightPaths.lua",
         "Nav/MapFlights.lua",
         "Nav/TaxiMark.lua",
+        "Nav/Gates.lua",
         "UI/ProfCard.lua",
 
         -- On screen (after Nav: the panel uses its saved-point rules)
