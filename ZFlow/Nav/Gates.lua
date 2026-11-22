@@ -11,25 +11,38 @@ local _, ns = ...
 -- kept in map shares, so Z-Flow can lead to the gate on the player's own
 -- map without world coordinates.
 --
--- LEARNING IS OFF until the client gives a world position (CLIENT NEED
--- c.worldPosition()): legacy Flow told a walk from a teleport by the world
--- distance between the two positions, and without it a hearthstone or a
--- portal would be learned as a gate. N.GateLearn refuses with
--- "world unknown" until then.
+-- LEARNING IS OFF until the client gives a world position and a taxi
+-- read (CLIENT NEEDs c.worldPosition() and c.onTaxi()): legacy Flow told a
+-- walk from a teleport by the world distance between the two positions,
+-- and never took a flight for a walk. Without them a hearthstone, a portal
+-- or a flight path would be learned as a gate, so N.GateLearn refuses with
+-- "world unknown" or "taxi unknown" until then.
 --
 -- N.GATE_WALLED  [uiMapID] = { why, lift } for the six capitals, as legacy
---                Flow has them; lift = true: reached only by lift
+--                Flow has them; lift = true: reached only by lift. Only
+--                Thunder Bluff's number (1456) was seen in play by legacy
+--                Flow; 1453, 1454, 1455, 1457 and 1458 are inferred from
+--                its data and need the client to confirm.
 -- N.GATE_SAME, N.GATE_MAX_STEP, N.GATE_MAX  60 yd, 60 yd, 300 (legacy)
 -- N.GATE_RIDE_STILL, N.GATE_RIDE_SPAN, N.GATE_RIDE_AFTER  1.5, 3, 2.5 s
 --
 -- N.GateLearnable(from, to, walledFrom, walledTo, liftOnly, rode) -> bool
 -- N.GateRode(now, stillSince, lastSpan, endedAt) -> bool
--- N.GateLearn(list, cross, rode) -> list, added, reason
+-- N.GateLearn(list, cross, rode, onTaxi) -> list, added, reason
 --   cross = { from = { map, x, y }, to = { map, x, y },
 --             fromWorld = { cont, wx, wy }, toWorld = { cont, wx, wy } }
+--   onTaxi: client.onTaxi(); only a plain false lets it learn (true:
+--   "carried", nil: "taxi unknown")
 --   kept: { a, b, ax, ay, bx, by, cont, wx, wy } appended to list
---   reasons: "no place", "world unknown", "teleport", "not learnable",
---            "full", "known"
+--   reasons: "no place", "world unknown", "taxi unknown", "carried",
+--            "teleport", "not learnable", "full", "known"
+-- N.GateTracker() -> tracker; tracker:Sample(p, world, onTaxi, now) -> cross
+--   or nil. The legacy G.Track sampler: fed each position tick, it returns
+--   a cross (with rode, from N.GateRode) when the map changed since the
+--   last sample. A taxi, an unknown taxi, no position or no world point
+--   resets it. The caller hands it on: N.GateLearn(list, cross, cross.rode,
+--   cross.onTaxi).
+-- N.GateForget(list)  empties the learned list (legacy /flow gates forget)
 -- N.GateStep(gates, target, here, mapSize) -> step, reason
 --   step = { label = "Way to <name>", point = { map, x, y } (the gate's
 --            side on the player's map), gate = true }, or for a walled map
@@ -56,6 +69,7 @@ N.GATE_MAX = 300
 N.GATE_RIDE_STILL = 1.5
 N.GATE_RIDE_SPAN = 3
 N.GATE_RIDE_AFTER = 2.5
+N.GATE_STILL_SPEED = 1   -- world yards a second: slower is standing
 N.GATE_PLAIN = "Way to your next step"
 N.GATE_UNKNOWN = "No way in known yet"
 
@@ -93,7 +107,7 @@ function N.GateRode(now, stillSince, lastSpan, endedAt)
         and finite(endedAt) and now - endedAt <= N.GATE_RIDE_AFTER
 end
 
-function N.GateLearn(list, cross, rode)
+function N.GateLearn(list, cross, rode, onTaxi)
     if type(list) ~= "table" then list = {} end
     if type(cross) ~= "table" then return list, false, "no place" end
     local f, t = cross.from, cross.to
@@ -103,6 +117,8 @@ function N.GateLearn(list, cross, rode)
     end
     local fw, tw = cross.fromWorld, cross.toWorld
     if not (world(fw) and world(tw)) then return list, false, "world unknown" end
+    if onTaxi == true then return list, false, "carried" end
+    if onTaxi ~= false then return list, false, "taxi unknown" end
     if fw.cont ~= tw.cont or dist(fw.wx, fw.wy, tw.wx, tw.wy) > N.GATE_MAX_STEP then
         return list, false, "teleport"
     end
@@ -168,4 +184,44 @@ function N.GateStep(gates, target, here, mapSize)
         return { label = N.GATE_UNKNOWN, text = true, detail = w.why }, "no gate known"
     end
     return nil, "straight line"
+end
+
+function N.GateForget(list)
+    if type(list) ~= "table" then return end
+    for i = #list, 1, -1 do list[i] = nil end
+    for key in pairs(list) do list[key] = nil end
+end
+
+function N.GateTracker()
+    local tr = { last = nil, still = { since = nil, lastSpan = 0, endedAt = nil } }
+    local function reset()
+        tr.last = nil
+        tr.still.since, tr.still.lastSpan, tr.still.endedAt = nil, 0, nil
+    end
+    function tr:Sample(p, w, onTaxi, now)
+        if type(p) ~= "table" or type(p.map) ~= "number" or not share(p.x) or not share(p.y)
+            or not world(w) or onTaxi ~= false or not finite(now) then
+            reset()
+            return nil
+        end
+        local last, cross = self.last, nil
+        if last and last.world.cont == w.cont then
+            local moved = dist(w.wx, w.wy, last.world.wx, last.world.wy)
+            local dt = math.max(now - last.t, 0.01)
+            if moved / dt < N.GATE_STILL_SPEED then
+                self.still.since = self.still.since or now
+            else
+                if self.still.since then self.still.lastSpan, self.still.endedAt = now - self.still.since, now end
+                self.still.since = nil
+            end
+            if last.map ~= p.map then
+                cross = { from = { map = last.map, x = last.x, y = last.y }, to = { map = p.map, x = p.x, y = p.y },
+                          fromWorld = last.world, toWorld = { cont = w.cont, wx = w.wx, wy = w.wy }, onTaxi = false,
+                          rode = N.GateRode(now, self.still.since, self.still.lastSpan, self.still.endedAt) }
+            end
+        end
+        self.last = { map = p.map, x = p.x, y = p.y, t = now, world = { cont = w.cont, wx = w.wx, wy = w.wy } }
+        return cross
+    end
+    return tr
 end
