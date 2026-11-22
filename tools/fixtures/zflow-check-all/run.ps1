@@ -32,10 +32,10 @@ function Invoke-Case([string]$root, [string[]]$extra) {
 }
 
 function Report([string]$name, [bool]$ok, $r, [string]$why) {
-    if ($ok) { Write-Output ("PASS {0} (exit {1})" -f $name, $r.Code); return 0 }
+    if ($ok) { Write-Output ("PASS {0} (exit {1})" -f $name, $r.Code); return }
     Write-Output ("FAIL {0}: {1} (exit {2})" -f $name, $why, $r.Code)
     Write-Output ($r.Out.TrimEnd())
-    return 1
+    $script:bad++
 }
 
 if (-not (Test-Path -LiteralPath $tool)) {
@@ -49,12 +49,12 @@ $r = Invoke-Case 'all-pass' @('-LuaPath', $fake, '-LuacheckPath', $fake)
 $passLines = ([regex]::Matches($r.Out, '(?m)^PASS\s')).Count
 $logCount = @(Get-ChildItem -LiteralPath $r.Logs -Filter *.log -ErrorAction SilentlyContinue).Count
 $summary = Test-Path -LiteralPath (Join-Path $r.Logs 'summary.txt')
-$bad += Report 'all-pass' (($r.Code -eq 0) -and $passLines -eq 9 -and $logCount -eq 9 -and $summary) $r ("wanted exit 0, 9 PASS, 9 logs and summary.txt; got {0} PASS, {1} logs, summary {2}" -f $passLines, $logCount, $summary)
+Report 'all-pass' (($r.Code -eq 0) -and $passLines -eq 9 -and $logCount -eq 9 -and $summary) $r ("wanted exit 0, 9 PASS, 9 logs and summary.txt; got {0} PASS, {1} logs, summary {2}" -f $passLines, $logCount, $summary)
 Remove-Item -LiteralPath $r.Logs -Recurse -Force -ErrorAction SilentlyContinue
 
 # one-fail
 $r = Invoke-Case 'one-fail' @('-LuaPath', $fake, '-LuacheckPath', $fake)
-$bad += Report 'one-fail' (($r.Code -eq 1) -and ($r.Out -match '(?m)^FAIL\s+zflow-text\b')) $r 'wanted exit 1 and a FAIL line for zflow-text'
+Report 'one-fail' (($r.Code -eq 1) -and ($r.Out -match '(?m)^FAIL\s+zflow-text\b')) $r 'wanted exit 1 and a FAIL line for zflow-text'
 Remove-Item -LiteralPath $r.Logs -Recurse -Force -ErrorAction SilentlyContinue
 
 # no-lua
@@ -65,12 +65,12 @@ foreach ($c in $luaChecks) {
     if ($r.Out -match ('(?m)^PASS\s+' + [regex]::Escape($c) + '\b')) { $ok = $false }
 }
 if ($r.Out -notmatch 'not run \(no Lua\)') { $ok = $false }
-$bad += Report 'no-lua' $ok $r 'wanted exit 2, the five Lua checks NOT RUN and none PASS'
+Report 'no-lua' $ok $r 'wanted exit 2, the five Lua checks NOT RUN and none PASS'
 Remove-Item -LiteralPath $r.Logs -Recurse -Force -ErrorAction SilentlyContinue
 
 # missing-tool
 $r = Invoke-Case 'missing-tool' @('-LuaPath', $fake, '-LuacheckPath', $fake)
-$bad += Report 'missing-tool' (($r.Code -eq 2) -and ($r.Out -match '(?m)^NOT RUN\s+zflow-coverage\b.*missing')) $r 'wanted exit 2 and NOT RUN zflow-coverage (missing)'
+Report 'missing-tool' (($r.Code -eq 2) -and ($r.Out -match '(?m)^NOT RUN\s+zflow-coverage\b.*missing')) $r 'wanted exit 2 and NOT RUN zflow-coverage (missing)'
 Remove-Item -LiteralPath $r.Logs -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Output ("zflow-check-all fixtures: 4 case(s), {0} not as expected" -f $bad)
