@@ -1,0 +1,246 @@
+local _, ns = ...
+
+-- Tests for ZFlow/Gear/TooltipModule.lua: the module that puts the gear
+-- verdict on the game's item tooltip.
+--
+-- The client reads it needs beyond client.gear are not in Core/Client.lua
+-- yet (a patch asked for): the item-tooltip hook, your level, and the
+-- item's class, subclass and needed level. `client` below is the fake
+-- client with those three added by hand, in the shapes asked for:
+--   c.onItemTooltip(fn) -> cancel       fn(link, add); add(text, r, g, b)
+--   c.level() -> number or nil
+--   c.gear(link) also carrying classId, subclassId, minLevel
+-- c.hover(link) plays the game filling a tooltip and returns what was added.
+
+local M = ns.GearTooltipModule
+local tests = {}
+
+local STR, STA = "ITEM_MOD_STRENGTH_SHORT", "ITEM_MOD_STAMINA_SHORT"
+local HELM, PLATE, POTION = "item:1", "item:2", "item:6"
+
+local function packs()
+    return { DRUID = {
+        weights = {
+            tank = { evidence = "first guess", values = { [STA] = 3 } },
+            dps = { evidence = "first guess", values = { [STR] = 2, [STA] = 1 } },
+        },
+        proficiency = { evidence = "first guess", [4] = { [2] = true }, [2] = { [7] = true } },
+    } }
+end
+
+-- opts.hook = false: a client with no tooltip hook (today's).
+local function client(opts)
+    opts = opts or {}
+    local c = ns.make.fakeClient()
+    c.setSaved(ns.id.accountDB, {})
+    c.setSaved(ns.id.charDB, {})
+    c.setClass("DRUID")
+    c.setItem(HELM, { kind = "INVTYPE_HEAD", stats = { [STA] = 4 } })
+    c.setItem(PLATE, { kind = "INVTYPE_HEAD", stats = { [STA] = 40 } })
+    c.setItem(POTION, { stats = {} })
+    c.setWorn(1, false)
+    local types = { [HELM] = { 4, 2, 1 }, [PLATE] = { 4, 4, 1 } }
+    local gear = c.gear
+    c.gear = function(link)
+        local g = gear(link)
+        local ty = types[link]
+        if ty then g.classId, g.subclassId, g.minLevel = ty[1], ty[2], ty[3] end
+        return g
+    end
+    c.myLevel = 10
+    c.level = function() return c.myLevel end
+    c.hooks, c.cancelled = {}, 0
+    if opts.hook ~= false then
+        c.onItemTooltip = function(fn)
+            c.hooks[#c.hooks + 1] = fn
+            return function()
+                c.cancelled = c.cancelled + 1
+                for i = #c.hooks, 1, -1 do
+                    if c.hooks[i] == fn then table.remove(c.hooks, i) end
+                end
+            end
+        end
+    end
+    c.hover = function(link)
+        local added = {}
+        for i = 1, #c.hooks do
+            c.hooks[i](link, function(text, r, g, b) added[#added + 1] = { text = text, r = r, g = g, b = b } end)
+        end
+        return added
+    end
+    return c
+end
+
+local function start(c, thePacks)
+    local k = ns.Kernel({}, c)
+    local api = M.Declare(k, thePacks or packs())
+    k:Boot()
+    c.fire("ADDON_LOADED", ns.id.addon)
+    c.fire("PLAYER_LOGIN")
+    c.fire("PLAYER_ENTERING_WORLD")
+    return k, api
+end
+
+local function texts(added)
+    local out = {}
+    for i = 1, #added do out[i] = added[i].text end
+    return out
+end
+
+-- Lines: client reads to lines ---------------------------------------------
+
+tests["gear tooltip lines: one line for each role the pack has weights for, in name order"] = function(t)
+    local c = client()
+    local lines = M.Lines(c, packs(), HELM)
+    t.eq(lines, {
+        { text = "Upgrade for your head piece (+4, dps)", tone = "good" },
+        { text = "Upgrade for your head piece (+12, tank)", tone = "good" },
+    })
+end
+
+tests["gear tooltip lines: can't use is said once, not once for each role"] = function(t)
+    local c = client()
+    local lines = M.Lines(c, packs(), PLATE)
+    t.eq(lines, { { text = "Can't use: your class cannot use this kind of item (first guess)", tone = "bad" } })
+end
+
+tests["gear tooltip lines: what is not gear gets nothing"] = function(t)
+    local c = client()
+    t.eq(M.Lines(c, packs(), POTION), nil)
+    t.eq(M.Lines(c, packs(), "item:999"), nil)
+    t.eq(M.Lines(c, packs(), nil), nil)
+end
+
+tests["gear tooltip lines: a class with no pack, or a class not known, is no verdict"] = function(t)
+    local c = client()
+    c.setClass("ROGUE")
+    local lines = M.Lines(c, packs(), HELM)
+    t.eq(lines, { { text = "No verdict: " .. ns.GearCanUse.REASON.proficiency, tone = "none" } })
+    c.setClass(nil)
+    t.eq(M.Lines(c, packs(), HELM), lines)
+end
+
+tests["gear tooltip lines: your level not known is no verdict"] = function(t)
+    local c = client()
+    c.myLevel = nil
+    t.eq(M.Lines(c, packs(), HELM), { { text = "No verdict: " .. ns.GearCanUse.REASON.yourLevel, tone = "none" } })
+    c.level = nil
+    t.eq(M.Lines(c, packs(), HELM), { { text = "No verdict: " .. ns.GearCanUse.REASON.yourLevel, tone = "none" } },
+        "a client with no level read")
+end
+
+tests["gear tooltip lines: a pack with no weights says so once"] = function(t)
+    local c = client()
+    local p = packs()
+    p.DRUID.weights = nil
+    t.eq(M.Lines(c, p, HELM), { { text = "No verdict: " .. ns.GearScore.REASON.weights, tone = "none" } })
+end
+
+tests["gear tooltip lines: the same no-verdict for every role is said once"] = function(t)
+    local c = client()
+    c.setWorn(1, nil)
+    t.eq(M.Lines(c, packs(), HELM),
+        { { text = "No verdict: " .. ns.GearScore.REASON.worn .. ": head", tone = "none" } })
+end
+
+tests["gear tooltip lines: a client with no gear read says nothing"] = function(t)
+    local c = client()
+    c.gear = nil
+    t.eq(M.Lines(c, packs(), HELM), nil)
+end
+
+-- The module ------------------------------------------------------------------
+
+tests["gear tooltip: hovering gear adds its lines to the tooltip, coloured by tone"] = function(t)
+    local c = client()
+    local k = start(c)
+    t.eq(k:ModuleState(M.NAME), "started")
+    local added = c.hover(HELM)
+    t.eq(texts(added), { "Upgrade for your head piece (+4, dps)", "Upgrade for your head piece (+12, tank)" })
+    t.eq({ added[1].r, added[1].g, added[1].b }, M.COLOUR.good)
+    added = c.hover(PLATE)
+    t.eq(texts(added), { "Can't use: your class cannot use this kind of item (first guess)" })
+    t.eq({ added[1].r, added[1].g, added[1].b }, M.COLOUR.bad)
+end
+
+tests["gear tooltip: what is not gear adds nothing"] = function(t)
+    local c = client()
+    start(c)
+    t.eq(c.hover(POTION), {})
+    t.eq(c.hover("item:999"), {})
+end
+
+tests["gear tooltip: the setting is on by default, and off adds nothing"] = function(t)
+    local c = client()
+    local k = start(c)
+    t.eq(k.settings:get(M.SETTING), true, "on by default")
+    t.eq(#c.hover(HELM), 2)
+    t.eq(k.settings:set(M.SETTING, false), true)
+    t.eq(c.hover(HELM), {}, "switched off")
+    t.eq(k.settings:set(M.SETTING, true), true)
+    t.eq(#c.hover(HELM), 2, "and on again, with no reload")
+end
+
+tests["gear tooltip: the row is a bool named gear.tooltip"] = function(t)
+    local c = client()
+    local k = start(c)
+    t.eq(M.SETTING, "gear.tooltip")
+    local row = k.settings:row(M.SETTING)
+    t.eq(type(row), "table")
+    t.eq(row.type, "bool")
+    t.eq(row.default, true)
+end
+
+tests["gear tooltip: on a client with no tooltip hook it starts, hooks nothing and says so"] = function(t)
+    local c = client({ hook = false })
+    local k, api = start(c)
+    t.eq(k:ModuleState(M.NAME), "started")
+    t.eq(api.hooked(), false)
+    t.eq(c.hover(HELM), {})
+    local with = client()
+    local _, apiWith = start(with)
+    t.eq(apiWith.hooked(), true)
+    t.eq(#with.hooks, 1, "hooked once")
+end
+
+tests["gear tooltip: a hook the client refuses is not hooked"] = function(t)
+    local c = client()
+    c.onItemTooltip = function() return nil end
+    local _, api = start(c)
+    t.eq(api.hooked(), false)
+end
+
+tests["gear tooltip: an error while working a line out adds nothing and is counted"] = function(t)
+    local c = client()
+    local k, api = start(c)
+    c.gear = function() error("the read broke") end
+    t.eq(c.hover(HELM), {}, "nothing half-written on the tooltip")
+    t.eq(api.errors(), 1)
+    t.eq(k:ModuleState(M.NAME), "started", "one bad tooltip does not stop the module")
+    t.eq(k.problems:count("gear"), 1, "and it is kept as a problem")
+    c.hover(HELM)
+    t.eq(api.errors(), 2)
+    t.eq(k.problems:count("gear"), 1, "the same error is one problem, not one per hover")
+end
+
+tests["gear tooltip: switched off by the kernel, the hook is given back"] = function(t)
+    local c = client()
+    local k = start(c)
+    t.eq(k:SwitchOff(M.NAME, "test"), true)
+    t.eq(c.cancelled, 1)
+    t.eq(c.hover(HELM), {})
+end
+
+tests["gear tooltip: it only reads; nothing is equipped or picked up"] = function(t)
+    local c = client()
+    local calls = 0
+    for _, name in ipairs({ "EquipItemByName", "PickupContainerItem", "UseContainerItem", "PickupInventoryItem" }) do
+        c[name] = function() calls = calls + 1 end
+    end
+    start(c)
+    c.hover(HELM)
+    c.hover(PLATE)
+    t.eq(calls, 0)
+end
+
+return tests

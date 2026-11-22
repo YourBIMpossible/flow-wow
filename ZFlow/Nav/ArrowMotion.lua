@@ -62,10 +62,13 @@ function N.ArrowMotion()
              arrived = false, fade = 0, wave = false }
 end
 
--- What the arrow should show: turn (radians, clockwise on screen from up;
--- nil keeps the last), colour { r, g, b } (nil keeps it), arrived, wave
+-- What the arrow should show: turn (radians, anticlockwise on screen from
+-- up, as N.ArrowTurn gives it; nil keeps the last), colour { r, g, b }
+-- (nil keeps it), arrived, wave
 -- (right on the spot: faster, brighter ripples), snap (jump there now),
--- icon (the step's picture, for the styles that show one; nil: none).
+-- icon (the step's picture, for the styles that show one; nil: none),
+-- bare (owner decision D2: the arrow art is not drawn, the frame and its
+-- text stay; said afresh at each aim, the last turn is kept under it).
 function N.ArrowAim(m, aim)
     aim = type(aim) == "table" and aim or {}
     if finite(aim.turn) then m.want = aim.turn end
@@ -76,6 +79,7 @@ function N.ArrowAim(m, aim)
     m.arrived = aim.arrived and true or false
     m.wave = (aim.wave and m.arrived) and true or false
     m.icon = aim.icon
+    m.bare = aim.bare and true or false
     if aim.snap then
         m.at = m.want
         m.shown = { m.colour[1], m.colour[2], m.colour[3] }
@@ -127,6 +131,9 @@ function N.ArrowStep(m, dt, now)
     d.colour[1], d.colour[2], d.colour[3] = s[1], s[2], s[3]
     d.body, d.shine, d.shadow, d.pool = on, on * 0.9, on * 0.75, 0.35 * on
     d.bodyY = (f < 1) and 1.5 * math.sin(now * 2.4) or 0
+    -- Bare: no arrow to mislead. The glow under it stays, so the place of
+    -- the frame is still seen.
+    if m.bare then d.body, d.shine, d.shadow, d.bodyY = 0, 0, 0, 0 end
     d.arrived = f > 0.01
     d.halo = f * (0.6 + 0.4 * pulse)
     d.ripple[1] = N.HALO_W * (0.55 + 0.75 * u)

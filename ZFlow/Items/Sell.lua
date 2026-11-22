@@ -29,7 +29,8 @@ local _, ns = ...
 --       basis      "observed", "estimated" or "unknown" (as in Prices)
 --       source     where the price is from; nil when unknown
 --       priceText  "12s 40c", "about 12s (estimate, <source>)" or
---                  "price unknown"; never a 0 for a price nobody saw
+--                  "price unknown—check vendor"; never a 0 for a price
+--                  nobody saw
 --       total      count x unit; nil when either is not known
 --       reason, rule   from the decision that sells it }
 --   total     { known     = copper on observed prices
@@ -59,7 +60,7 @@ ns.ItemSell = Sell
 
 Sell.KIND = "sell"     -- the price kind for what a merchant pays for one
 Sell.BAGS_UNREAD = "the bags have not been read yet"
-Sell.PRICE_UNKNOWN = "price unknown"
+Sell.PRICE_UNKNOWN = "price unknown—check vendor"     -- F-085: never the bare "price unknown"
 Sell.ITEM_SOURCE = "the item's own sell price"
 
 local function isCount(n)
@@ -140,12 +141,19 @@ Sell.PriceOf = priceOf
 
 local function priceText(price)
     local Prices = ns.Prices
-    if price.basis == Prices.OBSERVED then return Prices.Coin(price.unit) end
-    if price.basis == Prices.ESTIMATED then
-        return "about " .. Prices.Coin(price.unit) .. " (estimate, " .. price.source .. ")"
+    -- A unit the money text can't word (not a count) reads as unknown: it
+    -- never raises and never shows a figure nobody has.
+    local coin = Prices.Coin(price.unit)
+    if coin == nil then return Sell.PRICE_UNKNOWN end
+    if price.basis == Prices.OBSERVED then return coin end
+    if price.basis == Prices.ESTIMATED and type(price.source) == "string" then
+        return "about " .. coin .. " (estimate, " .. price.source .. ")"
     end
     return Sell.PRICE_UNKNOWN
 end
+
+-- The same text, for tests and other Items surfaces: price = { unit, basis, source }.
+Sell.PriceText = priceText
 
 -- The part of a decision (or of its rest) that sells.
 local function sellPart(decision)
