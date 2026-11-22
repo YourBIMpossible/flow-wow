@@ -326,7 +326,7 @@ Arrow.NAME = "arrow"
 -- the client themselves, wait for the login, and a frame error stops them
 -- for the session.
 function Arrow.Start(k, diag, own)
-    local client, id, N = k.client, k.id, ns.Nav
+    local client, id, N, M = k.client, k.id, ns.Nav, ns.ArrowMenu
     own = type(own) == "table" and own or {}
     local listen = own.listen or client.listen
     local onFrame = own.frame or client.onFrame
@@ -362,6 +362,9 @@ function Arrow.Start(k, diag, own)
         return N.ArrowStyle(k.store:get("account", Arrow.STYLE_PATH))
     end
     local current, cancelTick, since = nil, nil, 0
+    -- shownLines: each arrow's lines as the source gave them at the last
+    -- layout, for the tooltip. drawer: what a left click opens, when set.
+    local shownLines, drawer = nil, nil
     local stop
     local guideFn = nil
     -- introWanted: this install has not seen the intro and it has not ended.
@@ -475,6 +478,7 @@ function Arrow.Start(k, diag, own)
             end
         end
         current = view
+        shownLines = src.lines
         introShown = src.intro == true and view.quest.shown == true
     end
 
@@ -611,27 +615,79 @@ function Arrow.Start(k, diag, own)
         end
     end
 
+    local function say(text) client.print(id.title .. ": " .. text) end
+    local setStyle
+
+    -- What the menu and the tooltip are made from (UI/ArrowMenu.lua).
+    local function menuState()
+        local saved = N.ArrowSaved(Arrow.Saved(k))
+        return { stacked = saved.mode ~= "separate", hidden = saved.hidden, text = saved.text,
+                 styles = Arrow.Styles(style()), canShapes = canShapes() }
+    end
+    -- The tooltip's lines for one arrow, or nil when none is on the screen.
+    -- The lines are the step's own, also for an arrow whose text is off.
+    local function tip(key)
+        if not handles or not ready or not live() or not current then return nil end
+        return M.Tip({ key = key, stacked = current.prof.behind == true,
+                       both = current.quest.shown == true and current.prof.shown == true,
+                       drawer = drawer ~= nil, lines = shownLines })
+    end
+    -- The menu row with this key was clicked. A row that is not there or
+    -- not offered asks for nothing.
+    local function choose(key)
+        if not ready or not live() then return end
+        local action = M.Action(key, menuState())
+        if not action then return end
+        if action.style then
+            local ok, reason = setStyle(action.style)
+            if not ok then say(tostring(reason) .. ".") end
+        else
+            act(action)
+        end
+    end
+
     if handles then
         hideAll()
         for _, key in ipairs(N.ARROW_KEYS) do
-            -- The one frame script that runs the arrows' own code: the end
-            -- of a drag. (There is no click handler, and the start of a drag
-            -- runs only the client's code.)
-            handles[key].onMoved(script("drag", guarded(function(point)
+            local h = handles[key]
+            -- The frame scripts that run the arrows' own code: the end of a
+            -- drag, a click, the pointer coming and going, and a menu row.
+            -- (The start of a drag runs only the client's code.)
+            h.onMoved(script("drag", guarded(function(point)
                 if not ready or not live() then return end
                 act({ op = "drop", key = key, point = point })
             end)))
+            -- AM5. A right click opens the menu. A left click opens the
+            -- drawer when one was set (setDrawer); there is none yet, so it
+            -- does nothing that can be seen. No click acts on the game
+            -- world. A drawer that breaks is listed and the arrows stay.
+            if type(h.onClick) == "function" and type(h.menu) == "function" and type(h.tip) == "function" then
+                h.onClick(script("click", guarded(function(button)
+                    if not ready or not live() then return end
+                    if button == "right" then
+                        h.tip(nil)
+                        h.menu(M.Items(menuState()), script("menu", guarded(choose)))
+                    elseif button == "left" and drawer then
+                        local ok, err = pcall(drawer, key)
+                        if not ok then k.problems:add("arrow", "drawer", err) end
+                    end
+                end)))
+            end
+            if type(h.onHover) == "function" and type(h.tip) == "function" then
+                h.onHover(script("hover", guarded(function(on)
+                    if on then h.tip(tip(key)) else h.tip(nil) end
+                end)))
+            end
         end
         if own.loaded then apply() else listen("PLAYER_LOGIN", apply) end
         listen("PLAYER_ENTERING_WORLD", guarded(enterWorld))
     end
 
-    local function say(text) client.print(id.title .. ": " .. text) end
     local USAGE = id.slash .. " arrow demo | near | separate | stack | reset | hide quest|prof | text quest|prof"
         .. " | modern | 3d | flat"
 
     -- Saves the style and draws in it. true, or false and why.
-    local function setStyle(key)
+    function setStyle(key)
         if not handles then return false, "this client cannot draw the arrows" end
         if not ready then return false, "the arrows are not ready until login" end
         if not live() then return false, "the arrows are switched off until the next reload" end
@@ -709,6 +765,9 @@ function Arrow.Start(k, diag, own)
     return { handles = handles, relayout = relayout, setGuide = setGuide, stop = stop,
              style = style, setStyle = setStyle,
              styles = function() return Arrow.Styles(style()) end,
+             menu = function() return M.Items(menuState()) end,
+             tip = tip,
+             setDrawer = function(fn) drawer = type(fn) == "function" and fn or nil end,
              state = function() return { ready = ready, demo = demo, near = near, view = current } end }
 end
 
@@ -718,7 +777,8 @@ end
 -- no module starts) there is none of them. The event and the frame work are
 -- registered under the module's name: when the kernel switches the module
 -- off they stop with it, and the module's stop hides the frames. What a
--- frame script runs of the arrows (the end of a drag) is run through the
+-- frame script runs of the arrows (the end of a drag, a click, the pointer
+-- coming and going, a menu row) is run through the
 -- kernel's meter under the module's name, and its error is one of the
 -- module's: five switch the arrows off. A frame error switches the module
 -- off at once, through the kernel (k:SwitchOff): the kernel's state is the
@@ -726,9 +786,11 @@ end
 -- Returns what Arrow.Start returns, usable at once: before the start (and
 -- for a declaration the kernel refused) relayout does nothing, state is
 -- not ready, handles is nil, and a guide that is set is kept for the start;
--- style is "modern" and setStyle answers false.
+-- style is "modern" and setStyle answers false; menu gives the rows of a
+-- fresh layout, tip gives nil, and a drawer that is set is kept for the
+-- start.
 function Arrow.Declare(k, diag)
-    local inner, pending = nil, nil
+    local inner, pending, pendingDrawer = nil, nil, nil
     local api = {}
     Arrow.Row(k)
     Arrow.StyleRow(k)
@@ -744,6 +806,23 @@ function Arrow.Declare(k, diag)
     function api.setStyle(key)
         if inner then return inner.setStyle(key) end
         return false, "the arrows are not started"
+    end
+    -- The right-click menu's rows as they would be now (UI/ArrowMenu.lua).
+    function api.menu()
+        if inner then return inner.menu() end
+        return ns.ArrowMenu.Items({ styles = Arrow.Styles("modern") })
+    end
+    -- The tooltip's lines for "quest" or "prof", or nil when that arrow is
+    -- not on the screen.
+    function api.tip(key)
+        if inner then return inner.tip(key) end
+        return nil
+    end
+    -- fn(key) is what a left click on an arrow opens; nil takes it away.
+    -- Until one is set a left click does nothing that can be seen.
+    function api.setDrawer(fn)
+        pendingDrawer = type(fn) == "function" and fn or nil
+        if inner then inner.setDrawer(pendingDrawer) end
     end
     function api.relayout()
         if inner then inner.relayout() end
@@ -793,6 +872,7 @@ function Arrow.Declare(k, diag)
             inner = Arrow.Start(k, diag, own)
             api.handles = inner.handles
             if pending then inner.setGuide(pending) end
+            if pendingDrawer then inner.setDrawer(pendingDrawer) end
         end,
         stop = function()
             if inner then inner.stop() end

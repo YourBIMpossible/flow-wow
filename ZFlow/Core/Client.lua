@@ -1087,12 +1087,139 @@ function ns.make.client(env)
     --                          against the placed frame; no lines: hidden
     --   h.onMoved(fn)          fn(point) after the player drags it
     -- A new arrow is hidden and has no place until told.
+    -- The arrows' one menu (AM5): made at the first right click and used by
+    -- both arrows after that. A full-screen catcher under the panel closes
+    -- it at a click anywhere else. Rows are plain buttons: a click tells
+    -- the key of its row to whoever opened the menu, and does nothing else.
+    -- Nothing here is a secure frame, nothing acts on the game world, and
+    -- no protected call is made. Every call is a first guess, not seen in
+    -- game on 16001. owner is the arrow handle the menu is open for.
+    local MENU_ROW, MENU_PAD, MENU_MARK, MENU_WIDTH = 18, 6, 22, 170
+    local menu = { rows = {}, keys = {} }
+    local function menuClose()
+        local open = menu.owner ~= nil
+        menu.owner, menu.pick = nil, nil
+        if open and menu.catcher then method(menu.catcher, "Hide") end
+    end
+    local function menuFrames()
+        if menu.panel then return true end
+        if not menu.catcher then
+            local ok, catcher = call(env.CreateFrame, "Button", nil, env.UIParent)
+            if not ok or catcher == nil then return false end
+            menu.catcher = catcher
+            method(catcher, "SetFrameStrata", "FULLSCREEN_DIALOG")
+            method(catcher, "SetAllPoints", env.UIParent)
+            method(catcher, "EnableMouse", true)
+            method(catcher, "RegisterForClicks", "AnyUp")
+            method(catcher, "SetScript", "OnClick", menuClose)
+        end
+        local ok, panel = call(env.CreateFrame, "Frame", nil, menu.catcher)
+        if not ok or panel == nil then return false end
+        menu.panel = panel
+        -- The panel takes the mouse: a click between two rows closes nothing.
+        method(panel, "EnableMouse", true)
+        local okB, back = method(panel, "CreateTexture", nil, "BACKGROUND")
+        if okB and back ~= nil then
+            method(back, "SetAllPoints", panel)
+            method(back, "SetColorTexture", 0.05, 0.05, 0.05, 0.92)
+        end
+        return true
+    end
+    local function menuRow(i)
+        local r = menu.rows[i]
+        if r then return r end
+        local ok, button = call(env.CreateFrame, "Button", nil, menu.panel)
+        if not ok or button == nil then return nil end
+        r = { button = button }
+        local okM, mark = method(button, "CreateTexture", nil, "ARTWORK")
+        if okM and mark ~= nil then
+            r.mark = mark
+            method(mark, "SetTexture", "Interface\\Buttons\\UI-CheckBox-Check")
+            method(mark, "SetSize", MENU_ROW - 4, MENU_ROW - 4)
+            method(mark, "SetPoint", "LEFT", button, "LEFT", 4, 0)
+        end
+        local okT, text = method(button, "CreateFontString", nil, "OVERLAY", "GameFontHighlightSmall")
+        if okT and text ~= nil then
+            r.text = text
+            method(text, "SetPoint", "LEFT", button, "LEFT", MENU_MARK, 0)
+        end
+        method(button, "RegisterForClicks", "AnyUp")
+        method(button, "SetScript", "OnClick", function()
+            local key, pick = menu.keys[i], menu.pick
+            if key == nil or menu.owner == nil then return end
+            menuClose()
+            if pick then pcall(pick, key) end
+        end)
+        menu.rows[i] = r
+        return r
+    end
+    -- Opens the menu for the arrow handle `owner` (frame f) with `items`
+    -- (UI/ArrowMenu's rows); pick(key) is told the row chosen.
+    local function menuOpen(owner, f, items, pick)
+        if type(items) ~= "table" or #items == 0 or not menuFrames() then
+            menuClose()
+            return
+        end
+        local panel, widest = menu.panel, 0
+        for i = 1, #items do
+            local item = type(items[i]) == "table" and items[i] or {}
+            local r = menuRow(i)
+            menu.keys[i] = nil
+            if r then
+                local plain = not item.title and not item.sep and not item.disabled
+                if plain and type(item.key) == "string" then menu.keys[i] = item.key end
+                method(r.button, "ClearAllPoints")
+                method(r.button, "SetPoint", "TOPLEFT", panel, "TOPLEFT", MENU_PAD, -MENU_PAD - (i - 1) * MENU_ROW)
+                if r.text then
+                    method(r.text, "SetText", type(item.text) == "string" and item.text or "")
+                    if item.title then
+                        method(r.text, "SetTextColor", 1, 0.82, 0)
+                    elseif item.disabled then
+                        method(r.text, "SetTextColor", 0.5, 0.5, 0.5)
+                    else
+                        method(r.text, "SetTextColor", 1, 1, 1)
+                    end
+                    local okW, w = method(r.text, "GetStringWidth")
+                    if okW and type(w) == "number" and not hidden(w) and w > widest then widest = w end
+                end
+                if r.mark then method(r.mark, item.checked == true and "Show" or "Hide") end
+                method(r.button, "Show")
+            end
+        end
+        for i = #items + 1, #menu.rows do
+            menu.keys[i] = nil
+            method(menu.rows[i].button, "Hide")
+        end
+        local width = math.max(MENU_WIDTH, widest + MENU_MARK + MENU_PAD)
+        for i = 1, #items do
+            if menu.rows[i] then method(menu.rows[i].button, "SetSize", width, MENU_ROW) end
+        end
+        method(panel, "SetSize", width + 2 * MENU_PAD, #items * MENU_ROW + 2 * MENU_PAD)
+        -- At the pointer where the client says where that is, else under
+        -- the arrow.
+        method(panel, "ClearAllPoints")
+        local okC, x, y = call(env.GetCursorPosition)
+        local okS, scale = method(env.UIParent, "GetEffectiveScale")
+        local at = false
+        if okC and okS and type(x) == "number" and type(y) == "number" and type(scale) == "number"
+            and not hidden(x) and not hidden(y) and not hidden(scale) and scale > 0 then
+            at = method(panel, "SetPoint", "TOPLEFT", env.UIParent, "BOTTOMLEFT", x / scale, y / scale)
+        end
+        if not at then method(panel, "SetPoint", "TOPLEFT", f, "BOTTOMLEFT", 0, 0) end
+        menu.owner, menu.pick = owner, type(pick) == "function" and pick or nil
+        method(menu.catcher, "Show")
+    end
+
     function c.arrow(spec)
         spec = type(spec) == "table" and spec or {}
         local parent = env.UIParent
         local ok, f = call(env.CreateFrame, "Frame", spec.name, parent)
         if not ok or f == nil then return nil end
         local h, moved, dragging = {}, nil, false
+        -- clicked, hovered: what the caller wants told (AM5). dragged: the
+        -- button now down has moved the arrow. tipped: the client's tooltip
+        -- was last filled by this arrow.
+        local clicked, hovered, dragged, tipped = nil, nil, false, false
         local size = tonumber(spec.size) or 56
         local art = tonumber(spec.art) or 64
         local path = type(spec.artPath) == "string" and spec.artPath or ""
@@ -1300,6 +1427,7 @@ function ns.make.client(env)
             local okKey, held = call(env.IsControlKeyDown)
             if not (okKey and held == true) then return end
             dragging = true
+            dragged = true
             method(f, "StartMoving")
         end)
         method(f, "SetScript", "OnDragStop", function()
@@ -1313,7 +1441,40 @@ function ns.make.client(env)
             local point = standing()
             if point and moved then pcall(moved, point) end
         end)
-        method(f, "SetScript", "OnHide", letGo)
+        -- Clicks and the pointer (AM5). A click is a left or right button
+        -- let go over the arrow that did not move it: the client may fire
+        -- the end of a drag before or after the button's release, so the
+        -- mark is cleared by the release and again by the next press. A
+        -- client that cannot say whether the pointer is still over the
+        -- arrow counts the click. The caller's handler is only told; an
+        -- error in it stays here. First guesses, not seen in game on 16001:
+        -- OnMouseDown / OnMouseUp(button) on a plain frame, IsMouseOver,
+        -- OnEnter / OnLeave.
+        method(f, "SetScript", "OnMouseDown", function() dragged = false end)
+        method(f, "SetScript", "OnMouseUp", function(_, button)
+            if dragged then
+                dragged = false
+                return
+            end
+            local which = (button == "LeftButton" and "left") or (button == "RightButton" and "right") or nil
+            if not which or not clicked then return end
+            local okOver, over = method(f, "IsMouseOver")
+            if okOver and over == false then return end
+            pcall(clicked, which)
+        end)
+        method(f, "SetScript", "OnEnter", function()
+            if hovered then pcall(hovered, true) end
+        end)
+        method(f, "SetScript", "OnLeave", function()
+            if hovered then pcall(hovered, false) end
+        end)
+        -- Hidden: a drag is let go, and this arrow's menu and tooltip go
+        -- with it.
+        method(f, "SetScript", "OnHide", function()
+            letGo()
+            if menu.owner == h then menuClose() end
+            h.tip(nil)
+        end)
 
         function h.place(point)
             if type(point) ~= "table" then return end
@@ -1498,6 +1659,51 @@ function ns.make.client(env)
         end
         function h.onMoved(fn)
             moved = fn
+        end
+        -- fn("left" | "right") at a click on the arrow; nil: no one is told.
+        function h.onClick(fn)
+            clicked = type(fn) == "function" and fn or nil
+        end
+        -- fn(true) when the pointer comes over the arrow, fn(false) when it
+        -- leaves; nil: no one is told.
+        function h.onHover(fn)
+            hovered = type(fn) == "function" and fn or nil
+        end
+        -- The client's own tooltip beside the arrow with these lines, the
+        -- first as its title; nil or no lines takes it away, unless this
+        -- arrow did not fill it or another frame has taken it since.
+        -- First guesses, not seen in game on 16001: GameTooltip with
+        -- SetOwner(frame, "ANCHOR_RIGHT"), ClearLines, AddLine(text, r, g,
+        -- b, wrap), Show, Hide, IsOwned(frame).
+        function h.tip(lines)
+            local tip = env.GameTooltip
+            if tip == nil then return end
+            local out = {}
+            for i = 1, #(type(lines) == "table" and lines or {}) do out[i] = tostring(lines[i]) end
+            if #out == 0 then
+                if not tipped then return end
+                tipped = false
+                local okOwned, owned = method(tip, "IsOwned", f)
+                if okOwned and owned == false then return end
+                method(tip, "Hide")
+                return
+            end
+            method(tip, "SetOwner", f, "ANCHOR_RIGHT")
+            method(tip, "ClearLines")
+            method(tip, "AddLine", out[1], 1, 1, 1)
+            for i = 2, #out do method(tip, "AddLine", out[i], 0.8, 0.8, 0.8, true) end
+            method(tip, "Show")
+            tipped = true
+        end
+        -- The menu at the pointer with these rows (UI/ArrowMenu's);
+        -- pick(key) is told the row chosen, once, after the menu has
+        -- closed. nil or no rows closes this arrow's menu.
+        function h.menu(items, pick)
+            if type(items) ~= "table" or #items == 0 then
+                if menu.owner == h then menuClose() end
+                return
+            end
+            menuOpen(h, f, items, pick)
         end
         arrowFrames[h] = f
         return h

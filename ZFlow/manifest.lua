@@ -72,6 +72,7 @@ return {
 
         -- On screen (after Nav: the panel uses its saved-point rules)
         "UI/DevPanel.lua",
-        "UI/Arrow.lua",
+        "UI/ArrowMenu.lua",
+    "UI/Arrow.lua",
     },
 }

@@ -246,18 +246,23 @@ function ns.make.fakeClient(opts)
     -- was last told: point or attached (the other handle), shown, lookIs,
     -- drawn (the last draw table), scaled, faded (alpha), under (behind),
     -- lines and textPoint, and shaped (the last shapes table; nil: the
-    -- arrow is drawn from its pictures).
+    -- arrow is drawn from its pictures), tipLines (the tooltip's lines;
+    -- nil: none) and menuItems (the open menu's rows; nil: closed).
     c.arrows = {}
     function c.arrow(spec)
         if s.noFrames then return nil end
         local h = { spec = spec, shown = false, lookIs = "pointer", draws = 0, lines = {} }
-        local moved
+        local moved, clicked, hovered, pick
         function h.place(point)
             if type(point) ~= "table" then return end
             h.point, h.attached = { point[1], point[2], point[3], point[4] }, nil
         end
         function h.attach(other) h.attached, h.point = other, nil end
-        function h.show(on) h.shown = on and true or false end
+        function h.show(on)
+            h.shown = on and true or false
+            -- As the client: a hidden arrow keeps no menu and no tooltip.
+            if not h.shown then h.menuItems, pick, h.tipLines = nil, nil, nil end
+        end
         function h.look(look) h.lookIs = look == "needle" and "needle" or "pointer" end
         function h.draw(d) h.drawn, h.draws = d, h.draws + 1 end
         function h.shapes(shapes) h.shaped = shapes end
@@ -271,6 +276,36 @@ function ns.make.fakeClient(opts)
             h.textPoint = (#h.lines > 0 and type(point) == "table") and { point[1], point[2], point[3], point[4] } or nil
         end
         function h.onMoved(fn) moved = fn end
+        function h.onClick(fn) clicked = type(fn) == "function" and fn or nil end
+        function h.onHover(fn) hovered = type(fn) == "function" and fn or nil end
+        function h.tip(lines)
+            local out = {}
+            for i = 1, #(type(lines) == "table" and lines or {}) do out[i] = tostring(lines[i]) end
+            h.tipLines = #out > 0 and out or nil
+        end
+        function h.menu(items, fn)
+            if type(items) ~= "table" or #items == 0 then
+                h.menuItems, pick = nil, nil
+                return
+            end
+            h.menuItems, pick = items, type(fn) == "function" and fn or nil
+        end
+        -- The test's controls. click: a button let go over the arrow
+        -- ("left", "right", or anything else to see it ignored). hover: the
+        -- pointer comes (true) or goes. choose: the player clicks the menu
+        -- row with this key; the menu closes first, as on the client. The
+        -- fake does not refuse a row that is not offered: the caller must.
+        function h.click(button)
+            if clicked then clicked(button) end
+        end
+        function h.hover(on)
+            if hovered then hovered(on and true or false) end
+        end
+        function h.choose(key)
+            local fn = pick
+            h.menuItems, pick = nil, nil
+            if fn then fn(key) end
+        end
         -- The test's control: h.held = true while the player holds it.
         function h.dragging() return h.held == true end
         -- The test's control: the player let the arrow go at this point.
