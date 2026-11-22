@@ -11,6 +11,8 @@ local _, ns = ...
 -- moves or deletes anything. What it needs from the game arrives as an
 -- argument: a snapshot, a plain table.
 --
+--   snapshot = Resources.Take(read)                 a snapshot from the game,
+--                                                   through functions passed in
 --   snapshot = Resources.Fake(t)                    a snapshot for tests
 --   ok, why  = Resources.CheckClaim(claim)          is this claim well formed?
 --   grants   = Resources.Resolve(snapshot, claims)  pure
@@ -177,6 +179,40 @@ function Resources.Fake(t)
         slots = copySlots(t.slots),
         takenAt = type(t.takenAt) == "number" and t.takenAt or 0,
     }
+end
+
+-- A real snapshot, from whatever reads the game. Resources itself never does:
+-- the caller passes `read`, a table of plain functions (the kernel's client
+-- boundary, or a fake in tests):
+--   read.money()  -> copper, or nil when it can't be read
+--   read.bags()   -> { { free = n, total = n, family = n or nil }, ... } or nil
+--   read.items()  -> { [itemKey] = count } for the bags, or nil
+--   read.bank()   -> { [itemKey] = count } or nil (never seen), and the time
+--                    it was last seen
+--   read.now()    -> the time
+-- Each is called once, here. One that is missing, errors or answers with
+-- something that isn't what it should be leaves that part unknown; it is
+-- never turned into 0. What comes back is a copy.
+function Resources.Take(read)
+    read = type(read) == "table" and read or {}
+    local function call(name)
+        local fn = read[name]
+        if type(fn) ~= "function" then return nil end
+        local ok, a, b = pcall(fn)
+        if not ok then return nil end
+        return a, b
+    end
+    local bank, bankSeenAt = call("bank")
+    local now = call("now")
+    return Resources.Fake({
+        money = call("money"),
+        slots = Resources.Slots(call("bags")),
+        bags = call("items"),
+        bank = bank,
+        bankKnown = type(bank) == "table",
+        bankSeenAt = bankSeenAt,
+        takenAt = now,
+    })
 end
 
 -------------------------------------------------------------------------------
