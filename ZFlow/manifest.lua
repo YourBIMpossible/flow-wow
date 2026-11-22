@@ -48,6 +48,7 @@ return {
         "Items/PriceObserve.lua",
         "Items/PriceWatch.lua",
         "Items/Disposition.lua",
+        "Items/TooltipDisposition.lua",
         "Items/Bank.lua",
         "Items/LootNote.lua",
         "Items/Plan.lua",
