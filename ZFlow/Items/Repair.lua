@@ -44,6 +44,8 @@ Repair.THRESHOLD = 0.20      -- Flow's Repair.lua:13
 Repair.NEAR = 10             -- yards from the vendor that count as there (as N.PROF_NEAR)
 Repair.NAME = "repairWarn"
 Repair.SETTING = "repair.warnBelow"
+-- Docs (warcraft.wiki.gg, Event UPDATE_INVENTORY_DURABILITY): the name matches;
+-- it is told nothing. Not tested in game.
 Repair.EVENT = "UPDATE_INVENTORY_DURABILITY"
 -- The advisor prompt (UI/Advisor.lua: Add(id, text, priority), Remove(id)).
 -- Shown while gear is low; a first guess at a priority above routine prompts.

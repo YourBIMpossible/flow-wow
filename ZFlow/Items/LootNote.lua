@@ -24,6 +24,8 @@ local _, ns = ...
 -- Setting: "loot.junkNote" (bool, on by default); the row is the lead's to
 -- add. Until it is there the note is on.
 -- Not tested in game: the event and both reads are first guesses.
+-- Docs (warcraft.wiki.gg, Event CHAT_MSG_LOOT): the name matches; the line is
+-- its first value. The reads: see Core/Client.lua.
 
 local LootNote = {}
 ns.LootNote = LootNote

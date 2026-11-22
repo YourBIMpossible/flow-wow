@@ -37,6 +37,8 @@ local _, ns = ...
 --
 -- Setting: "loot.record" (bool, on by default); the row is the lead's to add.
 -- Not tested in game: LOOT_OPENED and the loot read are first guesses.
+-- Docs (warcraft.wiki.gg, Event LOOT_OPENED): the name matches; it is told
+-- autoLoot, isFromItem. The loot read: see Core/Client.lua.
 
 local Drops = {}
 ns.Drops = Drops

@@ -316,6 +316,9 @@ function Diag.Collect(k, why)
     S.crafts = ask(client, "GetNumCrafts")
     S.taxiNodes = ask(client, "NumTaxiNodes")
 
+    -- Docs (warcraft.wiki.gg, API GetRealmName and API UnitName): GetRealmName()
+    -- and GetNormalizedRealmName() take nothing; UnitFullName(unit) answers
+    -- name, realm. Those three match.
     -- The namespaced calls. Arguments here are first guesses: a wrong one
     -- is recorded as an error or an empty answer, which is the finding.
     S.realm = ask(client, "GetRealmName")

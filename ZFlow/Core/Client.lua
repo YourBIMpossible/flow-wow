@@ -139,6 +139,8 @@ function ns.make.client(env)
     -- (now() starts again with the client), so a time that is saved comes
     -- from here. nil when not known, never now() or 0 in its place. time()
     -- is a first guess on 16001: not seen in game.
+    -- Docs (warcraft.wiki.gg, API time): timestamp = time([dateTable]); name and
+    -- arguments match.
     function c.clock()
         local ok, t = call(env.time)
         if not ok or type(t) ~= "number" or t ~= t or t <= 0 or t == math.huge then return nil end
@@ -147,6 +149,8 @@ function ns.make.client(env)
 
     -- Milliseconds, fine-grained, for timing work. debugprofilestop is a
     -- first guess on 16001; falls back to GetTime, which only moves per frame.
+    -- Docs (warcraft.wiki.gg, API debugprofilestop): elapsedMilliseconds =
+    -- debugprofilestop(), listed for the 1.x clients; name and arguments match.
     function c.clockMs()
         local ok, ms = call(env.debugprofilestop)
         if ok and tonumber(ms) then return tonumber(ms) end
@@ -270,6 +274,8 @@ function ns.make.client(env)
     -- family is the second value of GetContainerNumFreeSlots (0: takes
     -- anything); nil when the client does not give one (first guess that it
     -- does on 16001). nil when any bag could not be read.
+    -- Docs (warcraft.wiki.gg, API C_Container.GetContainerNumFreeSlots):
+    -- numFreeSlots, bagFamily = ...(bagIndex); the second value matches.
     function c.bags()
         local slotsOf, freeOf = container("GetContainerNumSlots"), container("GetContainerNumFreeSlots")
         local out = {}
@@ -1459,6 +1465,8 @@ function ns.make.client(env)
 
     -- The version text the client read from this addon's TOC, or nil.
     -- GetAddOnMetadata (C_AddOns or bare) is a first guess on 16001.
+    -- Docs (warcraft.wiki.gg, API C_AddOns.GetAddOnMetadata): value =
+    -- C_AddOns.GetAddOnMetadata(name, variable), text or nil; matches.
     function c.version(name)
         local group = env.C_AddOns
         local fn = (type(group) == "table" and group.GetAddOnMetadata) or env.GetAddOnMetadata
@@ -1771,6 +1779,11 @@ function ns.make.client(env)
     -- false from the rotateMinimap setting, nil when not said. square: true
     -- when GetMinimapShape says "SQUARE", else nil. First guesses, none
     -- seen in game on 16001.
+    -- Docs (warcraft.wiki.gg): API C_Minimap.GetViewRadius answers yards, no
+    -- arguments (added in 9.0.1; not listed for the 1.x clients, so it may
+    -- be absent here). No page for the rotateMinimap setting or for
+    -- GetMinimapShape, which the client's own docs do not list: other addons
+    -- that square the minimap define it. Needs a game test.
     function c.minimap()
         local frame = env.Minimap
         if frame == nil then return nil end
@@ -1804,6 +1817,9 @@ function ns.make.client(env)
     --                   is off the minimap) draws it fainter
     --   h.hide()
     -- A first guess: not seen in game.
+    -- Docs (warcraft.wiki.gg, API TextureBase SetColorTexture): (r, g, b [, a]),
+    -- added in 7.0.3 and listed for the 1.x clients; matches. How the pin
+    -- looks on the minimap needs a game test.
     function c.minimapPin(spec)
         spec = type(spec) == "table" and spec or {}
         local map = env.Minimap
@@ -1838,6 +1854,13 @@ function ns.make.client(env)
     -- loot window holds. Read only: nothing is sold, bought, repaired,
     -- looted or moved. Every call here is a first guess, not seen in game on
     -- 16001; an answer that cannot be read is left out, never a default.
+    -- Docs (warcraft.wiki.gg), names, arguments and positions match: API
+    -- C_Item.GetItemInfo (quality 3rd, sell price 11th, class 12th, subclass
+    -- 13th), API GetInventoryItemDurability (current, maximum), API
+    -- GetNumLootItems, API GetLootSlotLink, API GetLootSlotInfo (quantity
+    -- 3rd), API GetLootSourceInfo (guid 1st), API UnitGUID. The texts
+    -- LOOT_ITEM_SELF and LOOT_ITEM_SELF_MULTIPLE have no page: needs a game
+    -- test.
 
     -- One item's facts, or nil when the client says nothing about it:
     --   { name =, quality =, sellPrice =, classID =, subclassID = }
@@ -1970,7 +1993,11 @@ function ns.make.client(env)
         local source
         if guid then
             source = { guid = guid }
-            local kind, id = guid:match("^(%a+)%-%d+%-%d+%-%d+%-%d+%-(%d+)%-%x+$")
+            -- Docs (warcraft.wiki.gg, API UnitGUID): type, 0, server, instance,
+            -- zone, id, spawn. That page says build 1.60.1 hides the server
+            -- and spawn parts, so only the type and the id are read here;
+            -- the other parts may hold anything.
+            local kind, id = guid:match("^(%a+)%-[^-]*%-[^-]*%-[^-]*%-[^-]*%-(%d+)%-[^-]*$")
             if kind == "Creature" then
                 source.kind = "creature"
                 source.id = tonumber(id)
@@ -1993,6 +2020,11 @@ function ns.make.client(env)
     -- no box. It is its own edit box: the chat edit box is not used and no
     -- chat frame is hooked. Its length is not limited. Typing in it changes
     -- nothing: the text is put back. A new box is hidden.
+    -- Docs (warcraft.wiki.gg), names and arguments match: API EditBox
+    -- SetAutoFocus([autoFocus]), UIHANDLER OnTextChanged (self, userInput),
+    -- UIHANDLER OnEscapePressed (self), API TextureBase SetColorTexture.
+    -- The page for EditBox SetMaxLetters does not say that 0 is no limit:
+    -- needs a game test.
     function c.copyBox(spec)
         spec = type(spec) == "table" and spec or {}
         local parent = env.UIParent
@@ -2629,6 +2661,9 @@ function ns.make.client(env)
         -- error in it stays here. First guesses, not seen in game on 16001:
         -- OnMouseDown / OnMouseUp(button) on a plain frame, IsMouseOver,
         -- OnEnter / OnLeave.
+        -- Docs (warcraft.wiki.gg): UIHANDLER OnMouseUp (self, button, upInside);
+        -- API ScriptRegion IsMouseOver answers true or false; names and
+        -- arguments match.
         method(f, "SetScript", "OnMouseDown", function() dragged = false end)
         method(f, "SetScript", "OnMouseUp", function(_, button)
             if dragged then
@@ -2872,6 +2907,8 @@ function ns.make.client(env)
         -- First guesses, not seen in game on 16001: GameTooltip with
         -- SetOwner(frame, "ANCHOR_RIGHT"), ClearLines, AddLine(text, r, g,
         -- b, wrap), Show, Hide, IsOwned(frame).
+        -- Docs (warcraft.wiki.gg, API GameTooltip SetOwner): (owner, anchor [, x,
+        -- y]); matches. IsOwned has no page: needs a game test.
         function h.tip(lines)
             local tip = env.GameTooltip
             if tip == nil then return end
