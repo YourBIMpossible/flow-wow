@@ -1,7 +1,7 @@
 local _, ns = ...
 
 -- Tests for the "rotation" lines of the diag command (RD15, CD2, ST1, RG1,
--- RG2): the
+-- RG2, DF1): the
 -- line made from a driver view, one test for each row and the order of the
 -- rows, then the lines as the slash command says them over the fake client.
 -- Not tested in game.
@@ -249,13 +249,37 @@ tests["rotation diag CD2: one line when no cooldown was read and nothing can be 
         "a spell that is not known is not counted")
 end
 
-tests["rotation diag RG2: spells passed by are counted and named while another can be cast"] = function(t)
-    t.eq(cooldownLine(view({ snapshot = snap({ spells = spells(nil, false) }) })),
-        "rotation: 1 spell passed by: " .. R.COOLDOWN_UNKNOWN .. ": Wrath.")
-    local three = spells(nil, nil)
-    three.Starfire = { known = true, usable = true, noPower = false, onCooldown = false }
-    t.eq(cooldownLine(view({ snapshot = snap({ spells = three }) })),
+-- Three spells nobody read the cooldown of, and one that can be cast.
+local function threeUnread()
+    local rows = spells(nil, nil)
+    rows.Starfire = { known = true, usable = true, noPower = false, onCooldown = nil }
+    rows.Thorns = { known = true, usable = true, noPower = false, onCooldown = false }
+    return rows
+end
+
+tests["rotation diag DF1: passed by is the driver's own list, not every spell with an unread cooldown"] = function(t)
+    local s = snap({ spells = threeUnread() })
+    t.eq(cooldownLine(view({ snapshot = s, passed = { "Moonfire" } })),
+        "rotation: 1 spell passed by: " .. R.COOLDOWN_UNKNOWN .. ": Moonfire.")
+    t.eq(cooldownLine(view({ snapshot = s, passed = { "Moonfire", "Wrath" } })),
         "rotation: 2 spells passed by: " .. R.COOLDOWN_UNKNOWN .. ": Moonfire, Wrath.")
+end
+
+tests["rotation diag DF1: no passed-by line when the driver passed nothing by"] = function(t)
+    local s = snap({ spells = threeUnread() })
+    t.eq(cooldownLine(view({ snapshot = s, passed = {} })), nil, "an empty list")
+    t.eq(cooldownLine(view({ snapshot = s, passed = "nil" })), nil, "no list")
+    t.eq(cooldownLine(view({ snapshot = s, passed = "Moonfire" })), nil, "not a list")
+end
+
+tests["rotation diag DF1: the list is said as the driver holds it, for a spell the snapshot reads as ready too"] = function(t)
+    t.eq(cooldownLine(view({ passed = { "Wrath" } })),
+        "rotation: 1 spell passed by: " .. R.COOLDOWN_UNKNOWN .. ": Wrath.")
+end
+
+tests["rotation diag DF1: with nothing to cast the old sentence stays, whatever was passed by"] = function(t)
+    local v = view({ snapshot = snap({ spells = spells(nil, nil) }), suggestion = "nil", passed = { "Wrath" } })
+    t.eq(cooldownLine(v), "rotation: nothing can be chosen; 2 spells: " .. R.COOLDOWN_UNKNOWN .. ".")
 end
 
 tests["rotation diag CD2: no line with every cooldown read, or with nothing to say it of"] = function(t)
