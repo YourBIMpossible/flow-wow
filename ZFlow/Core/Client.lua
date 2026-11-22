@@ -6,7 +6,10 @@
 -- one never errors: the call returns the documented fallback instead.
 -- Seen working in the game on interface 16001 (build 1.60.1): money, bags,
 -- bag contents, position, zone, the combat lock and the bank events. Names
--- still marked "first guess" have not been seen there.
+-- still marked "first guess" have not been seen there. Every name the
+-- merchant read uses is a first guess: MERCHANT_SHOW, MERCHANT_CLOSED,
+-- MerchantFrame:IsShown, GetMerchantNumItems, GetMerchantItemLink,
+-- C_MerchantFrame.GetItemInfo and GetMerchantItemInfo.
 local _, ns = ...
 ns.make = ns.make or {}
 
@@ -298,6 +301,78 @@ function ns.make.client(env)
         local ids = bankIds()
         if not ids then return nil end
         return stacks(ids)
+    end
+
+    -- Starts following the merchant window (MERCHANT_SHOW / MERCHANT_CLOSED,
+    -- first guesses: not seen in game on 16001). Call once, early: before
+    -- it, merchantOpen() only has the first guess below.
+    local merchantState, merchantWatched
+    function c.watchMerchant()
+        if merchantWatched then return end
+        merchantWatched = true
+        events.add("MERCHANT_SHOW", function() merchantState = true end)
+        events.add("MERCHANT_CLOSED", function() merchantState = false end)
+    end
+
+    -- true / false, or nil when not known. Known from the last merchant
+    -- event once watchMerchant() has seen one; before that from
+    -- MerchantFrame:IsShown(), a first guess on 16001.
+    function c.merchantOpen()
+        if merchantState ~= nil then return merchantState end
+        local frame = env.MerchantFrame
+        if type(frame) ~= "table" then return nil end
+        local ok, shown = call(frame.IsShown, frame)
+        if not ok then return nil end
+        return shown and true or false
+    end
+
+    -- What the window shows for one item on sale: read?, price, stack,
+    -- other currency. First guesses, neither seen in game on 16001:
+    -- C_MerchantFrame.GetItemInfo(index) answering a table (price,
+    -- stackCount, hasExtendedCost) where the client has it, else
+    -- GetMerchantItemInfo(index) answering name, texture, price, quantity,
+    -- numAvailable, isPurchasable, isUsable, extendedCost.
+    local function merchantPrice(index)
+        local api = env.C_MerchantFrame
+        if type(api) == "table" and type(api.GetItemInfo) == "function" then
+            local ok, info = call(api.GetItemInfo, index)
+            if not ok then return false end
+            if type(info) ~= "table" then return true end
+            return true, info.price, info.stackCount, info.hasExtendedCost
+        end
+        local ok, _, _, price, quantity, _, _, _, extended = call(env.GetMerchantItemInfo, index)
+        if not ok then return false end
+        return true, price, quantity, extended
+    end
+
+    -- Every item the open merchant has on sale, in the window's order:
+    --   { { index = n, item = link, price = copper for the stack shown,
+    --       stack = how many that price buys, other = true / false }, ... }
+    -- A field the client did not give is left out, never guessed: no item,
+    -- no price (never 0 in its place), no stack. other = true says the
+    -- item costs something that is not coin; left out when not known.
+    -- nil unless the window is known to be open, and nil when the count or
+    -- any one item could not be read: never a shorter list. This only
+    -- reads. Nothing here buys, sells or picks anything up.
+    -- First guesses: GetMerchantNumItems, GetMerchantItemLink(index).
+    function c.merchantItems()
+        if c.merchantOpen() ~= true then return nil end
+        local ok, count = call(env.GetMerchantNumItems)
+        if not ok or not wholeCount(count) then return nil end
+        local out = {}
+        for index = 1, count do
+            local okLink, link = call(env.GetMerchantItemLink, index)
+            if not okLink then return nil end
+            local okPrice, price, stack, other = merchantPrice(index)
+            if not okPrice then return nil end
+            local row = { index = index }
+            if type(link) == "string" then row.item = link end
+            if wholeCount(price) then row.price = price end
+            if wholeCount(stack) and stack > 0 then row.stack = stack end
+            if other ~= nil then row.other = other and true or false end
+            out[index] = row
+        end
+        return out
     end
 
     -- The profession whose window is open, and every recipe in it:
