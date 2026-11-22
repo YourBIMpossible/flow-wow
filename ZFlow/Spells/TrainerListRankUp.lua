@@ -82,6 +82,19 @@ function R.Prompts(lists, knownRanks, playerLevel)
     return out
 end
 
+-- Sync with the player's level read through the one shared client.level()
+-- (CLIENT NEED, shared with Plexy; A-F). No client, no level function, a
+-- failed read or no answer means no level: no prompt is claimed, and this
+-- module's earlier prompts are removed.
+function R.Refresh(client, advisor, lists, knownRanks, shown)
+    local level
+    if type(client) == "table" and type(client.level) == "function" then
+        local ok, v = pcall(client.level)
+        if ok then level = v end
+    end
+    return R.Sync(advisor, lists, knownRanks, level, shown)
+end
+
 -- Puts the current prompts in the advisor and removes the ones this module
 -- added before that no longer apply. Returns the new shown set.
 function R.Sync(advisor, lists, knownRanks, playerLevel, shown)
