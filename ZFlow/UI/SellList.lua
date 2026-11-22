@@ -76,8 +76,14 @@ function SellList.Declare(k)
     local api = {}
     local last, shows = nil, 0
     local panel
+    local open, relist = false, nil
     function api.last() return last end
     function api.shows() return shows end
+    -- Lists again while a merchant window is open (the never-sell list
+    -- changed: Items/Keep.lua). Does nothing when none is open.
+    function api.refresh()
+        if open and relist then relist() end
+    end
 
     local function hide()
         if panel then panel.show(false) end
@@ -90,7 +96,7 @@ function SellList.Declare(k)
         start = function(ctx)
             local client = ctx.client
             if type(client.watchMerchant) == "function" then client.watchMerchant() end
-            ctx.bus:on(SellList.NAME, "MERCHANT_SHOW", function()
+            relist = function()
                 -- Off only when the player turned it off; a missing row is on.
                 if ctx.settings:get(SellList.SETTING) == false then
                     hide()
@@ -103,8 +109,15 @@ function SellList.Declare(k)
                     panel.setLines(lines)
                     panel.show(true)
                 end
+            end
+            ctx.bus:on(SellList.NAME, "MERCHANT_SHOW", function()
+                open = true
+                relist()
             end)
-            ctx.bus:on(SellList.NAME, "MERCHANT_CLOSED", hide)
+            ctx.bus:on(SellList.NAME, "MERCHANT_CLOSED", function()
+                open = false
+                hide()
+            end)
             -- The frame last, after everything that can switch the module off.
             local id = k.id or ns.id
             panel = client.panel({ name = id.framePrefix .. "SellList",
