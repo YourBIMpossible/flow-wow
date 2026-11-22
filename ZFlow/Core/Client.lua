@@ -1129,7 +1129,8 @@ function ns.make.client(env)
     end
 
     -- A small movable text panel, or nil when the client cannot make one.
-    --   spec = { name = global frame name or nil, width = n, height = n }
+    --   spec = { name = global frame name or nil, width = n, height = n,
+    --            closable = true or nil, onClose = fn or nil }
     -- The handle:
     --   h.setLines({ "text", ... })   the lines shown, top to bottom
     --   h.place({ anchor, relative anchor, x, y })   against the screen
@@ -1138,9 +1139,25 @@ function ns.make.client(env)
     --                   data in the shape place() takes. Not called when the
     --                   client will not say where the panel now stands.
     -- A new panel is hidden and has no place until told.
+    --
+    -- spec.closable = true: the player can close the panel. Two routes, each
+    -- made when the client allows it: a close button in the top right
+    -- corner, and Escape (the name of the frame goes in the game list
+    -- UISpecialFrames once, as for the arrow menu; only with a name that was
+    -- not already a global, and only when the client has the list).
+    --   h.onClose(fn, failed)   fn() once each time the player closes the
+    --                   panel by the button or by Escape. Not for
+    --                   h.show(false), and not when the whole interface is
+    --                   hidden. spec.onClose is the fn until this is called.
+    --                   failed(err) as for onMoved.
+    -- h.onClose is there only when at least one route was made: a caller
+    -- that must not show what cannot be closed asks type(h.onClose).
+    -- A first guess throughout: not seen in game.
     function c.panel(spec)
         spec = type(spec) == "table" and spec or {}
         local parent = env.UIParent
+        -- Asked before the frame is made: making it takes the name.
+        local nameFree = type(spec.name) == "string" and spec.name ~= "" and env[spec.name] == nil
         local ok, f = call(env.CreateFrame, "Frame", spec.name, parent)
         if not ok or f == nil then return nil end
         local h, moved, movedFailed = {}, nil, nil
@@ -1218,7 +1235,11 @@ function ns.make.client(env)
             method(f, "ClearAllPoints")
             method(f, "SetPoint", point[1], parent, point[2], point[3], point[4])
         end
+        -- open: shown by show(true) and not yet hidden by show(false) or
+        -- closed by the player. Only a hide while open is the player's.
+        local open = false
         function h.show(on)
+            open = on and true or false
             method(f, on and "Show" or "Hide")
         end
         -- failed(err), when given, is called with the error of an fn that
@@ -1226,6 +1247,73 @@ function ns.make.client(env)
         function h.onMoved(fn, failed)
             moved = fn
             movedFailed = type(failed) == "function" and failed or nil
+        end
+
+        if spec.closable == true then
+            local closed = type(spec.onClose) == "function" and spec.onClose or nil
+            local closedFailed
+            local function playerClosed()
+                if not open then return end
+                open = false
+                if closed then
+                    local okC, err = pcall(closed)
+                    if not okC and closedFailed then pcall(closedFailed, err) end
+                end
+            end
+
+            -- The button. The game template draws the usual cross; a client
+            -- without it gets a plain button with an x.
+            local okB, button = call(env.CreateFrame, "Button", nil, f, "UIPanelCloseButton")
+            if not okB or button == nil then
+                okB, button = call(env.CreateFrame, "Button", nil, f)
+                if okB and button ~= nil then
+                    method(button, "SetNormalFontObject", "GameFontNormalSmall")
+                    method(button, "SetText", "x")
+                end
+            end
+            if not okB then button = nil end
+            if button ~= nil then
+                if not method(button, "SetSize", 20, 20) then
+                    method(button, "SetWidth", 20)
+                    method(button, "SetHeight", 20)
+                end
+                method(button, "SetPoint", "TOPRIGHT", f, "TOPRIGHT", 0, 0)
+                -- The text keeps clear of the button.
+                if text ~= nil then method(text, "SetPoint", "BOTTOMRIGHT", f, "BOTTOMRIGHT", -22, 6) end
+                method(button, "SetScript", "OnClick", function()
+                    if not open then return end
+                    method(f, "Hide")
+                    -- OnHide has told it already on a client that runs it.
+                    playerClosed()
+                end)
+            end
+
+            -- Escape.
+            local special = env.UISpecialFrames
+            local escape = false
+            if nameFree and type(special) == "table" then
+                local there = false
+                for i = 1, #special do
+                    if special[i] == spec.name then there = true end
+                end
+                if not there then special[#special + 1] = spec.name end
+                escape = true
+            end
+
+            if button ~= nil or escape then
+                -- The game also runs OnHide when something the panel stands
+                -- on is hidden (the whole interface, Alt-Z): the panel
+                -- itself is then still shown, and that is not a close.
+                method(f, "SetScript", "OnHide", function()
+                    local okS, shown = method(f, "IsShown")
+                    if okS and shown then return end
+                    playerClosed()
+                end)
+                function h.onClose(fn, failed)
+                    closed = type(fn) == "function" and fn or nil
+                    closedFailed = type(failed) == "function" and failed or nil
+                end
+            end
         end
         return h
     end
