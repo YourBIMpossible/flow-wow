@@ -16,6 +16,14 @@ local function brief(ops)
     return out
 end
 
+local function attrs(list)
+    local out = {}
+    for i, a in ipairs(list) do
+        out[i] = a.attr .. "=" .. tostring(a.value)
+    end
+    return out
+end
+
 return {
     ["nothing bound yet: every filled slot is a set, in state then slot order"] = function(t)
         local r = ns.cast.Apply(plan(), nil, false)
@@ -128,5 +136,141 @@ return {
         t.eq(r.condition, kp.condition, "condition carried")
         local again = ns.cast.Apply(kp, r.plan, false)
         t.eq(again.changed, false, "applied, then nothing to do")
+    end,
+
+    -- ns.cast.Attributes: a suggestion plus a key plan, as secure attributes.
+
+    ["attributes: a suggestion on the key, the no-form row on the modifiers"] = function(t)
+        local r = ns.cast.Attributes({ spell = "Moonfire", kind = "damage" }, plan(), nil, false)
+        t.eq(r.ok, true, "ok")
+        t.eq(r.source, "suggestion", "source")
+        t.eq(r.spell, "Moonfire", "spell")
+        t.eq(r.form, 0, "form")
+        t.eq(attrs(r.button), {
+            "type=spell", "spell=Moonfire", "unit=nil", "macrotext=nil",
+            "*type-ctrl=spell", "*spell-ctrl=B", "*unit-ctrl=target",
+            "*type-shift=nil", "*spell-shift=nil", "*unit-shift=nil",
+            "*type-alt=nil", "*spell-alt=nil", "*unit-alt=nil",
+            "*type-more=nil", "*spell-more=nil", "*unit-more=nil",
+        }, "button")
+    end,
+
+    ["attributes: a heal, an emergency or your own buff goes on you"] = function(t)
+        for _, kind in ipairs({ "heal", "emergency", "buff" }) do
+            local r = ns.cast.Attributes({ spell = "Rejuvenation", kind = kind }, plan(), nil, false)
+            t.eq(attrs(r.button)[3], "unit=player", kind)
+        end
+        local r = ns.cast.Attributes({ spell = "Rejuvenation", kind = "heal", unit = "pet" }, plan(), nil, false)
+        t.eq(attrs(r.button)[3], "unit=pet", "a unit the suggestion names is kept")
+    end,
+
+    ["attributes: Attack is the start-attack macro"] = function(t)
+        for _, name in ipairs({ "Attack", "Auto Attack" }) do
+            local r = ns.cast.Attributes({ spell = name, kind = "damage" }, plan(), nil, false)
+            t.eq({ attrs(r.button)[1], attrs(r.button)[2], attrs(r.button)[3], attrs(r.button)[4] },
+                { "type=macro", "spell=nil", "unit=nil", "macrotext=/startattack" }, name)
+        end
+    end,
+
+    ["attributes: no suggestion, the key holds the form's own spell"] = function(t)
+        local r = ns.cast.Attributes(nil, plan(), nil, false, 3)
+        t.eq(r.source, "plan", "source")
+        t.eq(r.spell, "G", "spell")
+        t.eq(r.form, 3, "form")
+        local a = attrs(r.button)
+        t.eq({ a[1], a[2], a[3] }, { "type=spell", "spell=G", "unit=target" }, "key")
+        t.eq({ a[14], a[15], a[16] }, { "*type-more=spell", "*spell-more=J", "*unit-more=target" }, "more")
+        t.eq(a[5], "*type-ctrl=nil", "form 3 has no ctrl")
+    end,
+
+    ["attributes: nothing to cast clears the key"] = function(t)
+        local r = ns.cast.Attributes(nil, { states = {}, condition = "0" }, nil, false)
+        t.eq(r.ok, true, "ok")
+        t.eq(r.source, nil, "source")
+        t.eq(r.spell, nil, "spell")
+        for i, a in ipairs(attrs(r.button)) do
+            t.ok(string.sub(a, -4) == "=nil", "cleared " .. i)
+        end
+        t.eq(#r.button, 16, "every attribute named")
+    end,
+
+    ["attributes: a form with no row, or not a form number, reads as described"] = function(t)
+        local r = ns.cast.Attributes(nil, plan(), nil, false, 5)
+        t.eq(r.form, 5, "an empty form stays that form")
+        t.eq(r.spell, nil, "and casts nothing")
+        t.eq(ns.cast.Attributes(nil, plan(), nil, false, 42).form, 0, "out of range: no form")
+        t.eq(ns.cast.Attributes(nil, plan(), nil, false, "cat").form, 0, "not a number: no form")
+        t.eq(ns.cast.Attributes(nil, plan(), nil, false, 9).spell, "M", "the stealth state")
+    end,
+
+    ["attributes: the header carries every state, empty ones as empty text"] = function(t)
+        local r = ns.cast.Attributes(nil, plan(), nil, false)
+        t.eq(#r.header, (ns.Rotation.STEALTH_STATE + 1) * 5, "five per state")
+        t.eq(r.header[1], { attr = "key-0", value = "A" }, "key-0")
+        t.eq(r.header[2], { attr = "ctrl-0", value = "B" }, "ctrl-0")
+        t.eq(r.header[3], { attr = "shift-0", value = "" }, "shift-0")
+        t.eq(r.header[6], { attr = "key-1", value = "" }, "key-1")
+        t.eq(r.header[16], { attr = "key-3", value = "G" }, "key-3")
+        t.eq(r.header[20], { attr = "more-3", value = "J" }, "more-3")
+        t.eq(r.header[46], { attr = "key-9", value = "M" }, "key-9")
+    end,
+
+    ["attributes: the state driver carries the condition and says when it is new"] = function(t)
+        local r = ns.cast.Attributes(nil, plan(), nil, false)
+        t.eq(r.driver, { state = ns.cast.STATE, condition = "[form:3,stealth] 9; [form:3] 3; 0", changed = true }, "first time")
+        local again = ns.cast.Attributes(nil, plan(), r.plan, false)
+        t.eq(again.driver.changed, false, "same condition")
+        t.eq(again.apply.changed, false, "nothing to rebind")
+        t.ok(type(ns.cast.STATE) == "string" and not string.find(string.lower(ns.cast.STATE), "flow", 1, true), "state name")
+    end,
+
+    ["attributes: the cast plan rides along"] = function(t)
+        local r = ns.cast.Attributes({ spell = "X" }, plan(), nil, false)
+        t.eq(r.apply, ns.cast.Apply(plan(), nil, false), "apply")
+        t.eq(r.plan, r.apply.plan, "the plan to remember")
+    end,
+
+    ["attributes: in combat lockdown nothing is given"] = function(t)
+        local r = ns.cast.Attributes({ spell = "Moonfire" }, plan(), nil, true)
+        t.eq(r.ok, false, "not ok")
+        t.eq(r.refused, "lockdown", "why")
+        t.eq(r.button, {}, "no button attributes")
+        t.eq(r.header, {}, "no header attributes")
+        t.eq(r.driver, nil, "no driver")
+        t.eq(r.plan, nil, "no plan")
+        t.ok(type(r.reason) == "string" and #r.reason > 0, "a reason to show")
+    end,
+
+    ["attributes: not a key plan is refused, before the lockdown"] = function(t)
+        t.eq(ns.cast.Attributes({ spell = "X" }, nil, nil, false).refused, "plan", "nil")
+        t.eq(ns.cast.Attributes({ spell = "X" }, "x", nil, true).refused, "plan", "text")
+    end,
+
+    ["attributes: a suggestion that is not one is ignored"] = function(t)
+        t.eq(ns.cast.Attributes("Moonfire", plan(), nil, false).source, "plan", "text")
+        t.eq(ns.cast.Attributes({ spell = 7 }, plan(), nil, false).source, "plan", "a number for a spell")
+        t.eq(ns.cast.Attributes({ spell = "" }, plan(), nil, false).source, "plan", "an empty name")
+    end,
+
+    ["attributes: pure, and the inputs are left alone"] = function(t)
+        local s, p = { spell = "Moonfire", kind = "damage" }, plan()
+        local r = ns.cast.Attributes(s, p, nil, false, 3)
+        t.eq(r, ns.cast.Attributes(s, p, nil, false, 3), "same answer")
+        t.eq(p, plan(), "plan not changed")
+        t.eq(s, { spell = "Moonfire", kind = "damage" }, "suggestion not changed")
+    end,
+
+    ["attributes: the chooser and the druid key plan go straight in"] = function(t)
+        local kp = ns.KeyPlan(ns.Packs.DRUID, { forms = {
+            { name = "Bear Form", index = 1 }, { name = "Cat Form", index = 3 },
+        } })
+        local s = ns.Choose({ role = "dps", hostile = true, inCombat = false, spells = { Wrath = { known = true } } },
+            ns.Packs.DRUID)
+        t.ok(s and type(s.spell) == "string", "a suggestion")
+        local r = ns.cast.Attributes(s, kp, nil, false)
+        t.eq(r.ok, true, "ok")
+        t.eq(r.spell, s.spell, "the suggestion is on the key")
+        t.eq(r.header[1], { attr = "key-0", value = "Wrath" }, "the caster key in the header")
+        t.eq(r.driver.condition, kp.condition, "condition carried")
     end,
 }

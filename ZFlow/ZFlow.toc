@@ -33,6 +33,8 @@ Rotation\KeyPlan.lua
 Rotation\Cast.lua
 Classes\Druid.lua
 Classes\Paladin.lua
+Classes\Priest.lua
+Classes\Shaman.lua
 Nav\ArrowLayout.lua
 Nav\Bearing.lua
 Nav\ArrowView.lua

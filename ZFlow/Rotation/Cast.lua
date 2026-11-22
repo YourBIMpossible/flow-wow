@@ -117,3 +117,113 @@ function C.Apply(plan, applied, lockdown)
         plan = new,
     }
 end
+
+-- The secure attributes: what the one button and the state handler have to
+-- hold for a suggestion and a key plan. Pure, like Apply: it names every
+-- attribute and its value as plain data and sets nothing. The frame layer
+-- walks the lists out of a fight and calls SetAttribute for each row.
+--
+--   ns.cast.Attributes(suggestion, plan, applied, lockdown, form) -> result
+--
+-- suggestion  what ns.Choose returned ({ spell, kind, unit }), or nil
+-- plan, applied, lockdown   as for Apply
+-- form        the state you are in now (0 = no form; the stealth state while
+--             stealthed in the stealth form); anything else reads as 0
+--
+-- result, when it can be done:
+--   ok        true
+--   button    an ordered list of { attr, value } for the button; a row with
+--             no value clears that attribute. First the key itself (type,
+--             spell, unit, macrotext), then three per modifier slot
+--             ("*type-ctrl", "*spell-ctrl", "*unit-ctrl", ...).
+--             The key casts the suggestion: a heal, an emergency or your own
+--             buff on you, Attack as "/startattack", anything else with no
+--             unit (the game's own target rules). With no suggestion it holds
+--             the form's own key spell on your target. The modifier slots
+--             always hold the form's row, on your target.
+--   header    an ordered list of { attr, value } for the state handler: for
+--             each state 0 .. the stealth state, "key-N" then "ctrl-N",
+--             "shift-N", "alt-N", "more-N"; "" where the plan has nothing.
+--             In a fight the handler copies the row of the state you enter
+--             onto the button (the game allows that; this code may not).
+--   driver    { state, condition, changed }: the state name to watch, the
+--             condition string, and whether it differs from the one in place
+--   source    "suggestion", "plan" or nil: where the key's spell came from
+--   spell     what the key casts, or nil
+--   form      the state the button rows were taken from
+--   apply     the Apply result for the same plan (ops, counts, changed)
+--   plan      a copy of the plan: hand it back as `applied` next time
+--
+-- result, when it is refused: { ok = false, refused, reason, ops = {},
+-- button = {}, header = {} } with the same two reasons as Apply.
+
+C.STATE = "castform"
+C.MODIFIERS = { "ctrl", "shift", "alt", "more" }
+C.ON_YOU = { heal = true, emergency = true, buff = true }
+C.ATTACK = { ["Attack"] = true, ["Auto Attack"] = true }
+
+local function row(list, attr, value)
+    list[#list + 1] = { attr = attr, value = value }
+end
+
+local function spellOf(suggestion)
+    if type(suggestion) ~= "table" then return nil end
+    local s = suggestion.spell
+    return type(s) == "string" and s ~= "" and s or nil
+end
+
+function C.Attributes(suggestion, plan, applied, lockdown, form)
+    local apply = C.Apply(plan, applied, lockdown)
+    if not apply.ok then
+        apply.button, apply.header = {}, {}
+        return apply
+    end
+    local states = apply.plan.states
+    if type(form) ~= "number" or form < 0 or form > lastState() or form % 1 ~= 0 then form = 0 end
+
+    local button = {}
+    local spell, source = spellOf(suggestion), "suggestion"
+    local kind, unit, macro
+    if spell and C.ATTACK[spell] then
+        kind, macro = "macro", "/startattack"
+    elseif spell then
+        kind = "spell"
+        unit = type(suggestion.unit) == "string" and suggestion.unit or (C.ON_YOU[suggestion.kind] and "player") or nil
+    else
+        spell, source = slotOf(states, form, "key"), "plan"
+        if spell then
+            kind, unit = "spell", "target"
+        else
+            source = nil
+        end
+    end
+    row(button, "type", kind)
+    row(button, "spell", kind == "spell" and spell or nil)
+    row(button, "unit", unit)
+    row(button, "macrotext", macro)
+    for _, slot in ipairs(C.MODIFIERS) do
+        local v = slotOf(states, form, slot)
+        row(button, "*type-" .. slot, v and "spell" or nil)
+        row(button, "*spell-" .. slot, v)
+        row(button, "*unit-" .. slot, v and "target" or nil)
+    end
+
+    local header = {}
+    for state = 0, lastState() do
+        for _, slot in ipairs(C.SLOTS) do
+            row(header, slot .. "-" .. state, slotOf(states, state, slot) or "")
+        end
+    end
+
+    return {
+        ok = true,
+        button = button,
+        header = header,
+        driver = { state = C.STATE, condition = apply.condition, changed = apply.conditionChanged },
+        source = source,
+        spell = spell,
+        form = form,
+        apply = apply,
+        plan = apply.plan,
+    }
+end

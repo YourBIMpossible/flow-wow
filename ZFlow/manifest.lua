@@ -46,6 +46,8 @@ return {
         "Rotation/Cast.lua",
         "Classes/Druid.lua",
         "Classes/Paladin.lua",
+        "Classes/Priest.lua",
+        "Classes/Shaman.lua",
 
         -- Navigation
         "Nav/ArrowLayout.lua",
