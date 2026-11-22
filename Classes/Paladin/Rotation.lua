@@ -359,6 +359,21 @@ local function join(...)
     return out
 end
 
+-- The spell names of lists of names or of rules, once each, in order.
+local function castNames(...)
+    local out, seen = {}, {}
+    for _, list in ipairs({ ... }) do
+        for _, entry in ipairs(list) do
+            local name = type(entry) == "table" and entry.spell or entry
+            if type(name) == "string" and not seen[name] then
+                seen[name] = true
+                out[#out + 1] = name
+            end
+        end
+    end
+    return out
+end
+
 -- Plain-language rotation for /flow rot guide, using only spells you know.
 local function guide(e)
     local k = function(s) return e:Knows(s) end
@@ -497,6 +512,12 @@ ns:Register("rotation", "PALADIN", {
 
     -- Self-heals, considered before anything else (see Engine HealDecision).
     heals = { "Flash of Light", "Holy Light", "Word of Glory" },
+
+    -- The seals, blessings and strikes the rules above cast, by name
+    -- (ns:ClassSpellSet): a paladin's spells whether or not the class list
+    -- (Spells.lua) has a row for them. A cast of Holy Strike counts as yours
+    -- in a fight record although no trainer level is known for it.
+    spells = castNames(SEALS, BLESSINGS, execute, singleTarget, aoe),
 
     -- What the cast key stays on for a fight (it can't change in combat).
     -- The pull suggestion if it's a real attack; a seal only if you have none

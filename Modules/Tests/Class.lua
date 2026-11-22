@@ -140,3 +140,33 @@ ns:Register("test", "talents: a build for another role says so", function(t)
     t:ok(T.View(nodes, 0, bld, 10, "dps").what:find("no build for your role", 1, true) == nil,
         "and says nothing when it fits")
 end)
+
+ns:Register("test", "paladin: the class list has no guide-reported Forever rows; the trainer teaches them", function(t)
+    -- prov-guides-2: Holy Strike, Seal of Fury, Consecration and Blessing of
+    -- Kings had levels reported by guides and never checked in the game.
+    local removed = { "Holy Strike", "Seal of Fury", "Consecration", "Blessing of Kings" }
+    local list = ns:Get("classSpells", "PALADIN") or {}
+    t:ok(#list > 10, "the paladin list is still there")
+    local row = {}
+    for _, s in ipairs(list) do
+        row[s.spell] = s
+        t:ok(not (s.note and s.note:find("Forever", 1, true)), s.spell .. ": no row marked as a Forever change")
+    end
+    local set = ns:ClassSpellSet("PALADIN")
+    for _, name in ipairs(removed) do
+        t:eq(row[name], nil, name .. ": no row, so no level is claimed for it")
+        t:ok(set[name], name .. ": still a paladin's spell (the rotation casts it)")
+    end
+    t:ok(not set.Attack and not set["Auto Attack"], "Attack is still nobody's")
+    -- A trainer's level for a spell with no row adds nothing to the list and moves no other row.
+    local copy = {}
+    for i, s in ipairs(list) do copy[i] = { spell = s.spell, level = s.listLevel or s.level, quest = s.quest, note = s.note } end
+    local changed = ns.facts.FixLevels(copy, function(name) if name == "Holy Strike" then return 6, "yours" end end)
+    t:eq(#changed, 0, "a learned level for Holy Strike changes no row of the list")
+    t:eq(#copy, #list, "and adds none: the trainer's own line is what gets advised")
+    -- The trainer's line for it: a new spell, not a "stronger rank".
+    local T = ns.trainerAdvice
+    t:eq(T.Improves(nil, false)[1], "New spell", "no row, not known: a new spell")
+    t:eq(T.Improves(nil, true)[1], "Stronger rank", "no row, known: a later rank")
+    t:eq(T.Improves({ improves = { "DPS" } }, false)[1], "DPS", "a row's own words win")
+end)
