@@ -63,7 +63,7 @@ if ($fail -eq 0) { "Flow.toc: $tocCount files listed, all present" }
 
 # --- 2. Every add-on .lua file is listed ----------------------------------------
 # Top-level folders that aren't the add-on (developer tools, CI, worktrees, build output).
-$notAddOn = @('tools', '.github', '.claude', '.git', 'dist', 'reports')
+$notAddOn = @('tools', '.github', '.claude', '.git', 'dist', 'reports', 'ZFlow')
 "not checked for toc listing (not the add-on): $($notAddOn -join ', ')"
 $luaFiles = @(Get-ChildItem -LiteralPath $root -File -Filter *.lua) +
     @(Get-ChildItem -LiteralPath $root -Directory -Force | Where-Object { $notAddOn -notcontains $_.Name } |
