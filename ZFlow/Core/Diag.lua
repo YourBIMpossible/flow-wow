@@ -391,8 +391,10 @@ end
 --             for the key, or a newer key held the same choice) get a line of
 --             their own when there are any. Then the vendor automations Flow
 --             had on (result.vendorToConfirm): a count and one line each,
---             since each stays off until the player confirms it.
+--             since each stays off until the player confirms it; entries
+--             without a key get one count line and are never named.
 --     counts  { dropped, adjusted, malformed, unknown, superseded, other, vendor }
+--             (vendor counts only the entries with a key)
 -- The entries are counted from the lists themselves. Pure: it reads only
 -- what it is given, and a result that is not one gives a line saying so.
 -- Text from saved data has each "|" doubled, so chat prints it as typed
@@ -442,17 +444,32 @@ function Diag.ImportReport(result)
         lines[#lines + 1] = "import: adjusted " .. text(entry.key) .. ": " .. shown(entry.from)
             .. " to " .. shown(entry.to) .. " (" .. text(entry.reason or "no reason given") .. ")"
     end
-    local vendor = type(result.vendorToConfirm) == "table" and result.vendorToConfirm or {}
+    -- Only an entry with a key can be named; any other is counted apart and
+    -- never printed as a key, so nothing reads "confirm nil" (DI1, DI2).
+    local vendorList = type(result.vendorToConfirm) == "table" and result.vendorToConfirm or {}
+    local vendor, unreadable = {}, 0
+    for i = 1, #vendorList do
+        local entry = vendorList[i]
+        if type(entry) == "table" and type(entry.key) == "string" and entry.key ~= "" then
+            vendor[#vendor + 1] = entry
+        else
+            unreadable = unreadable + 1
+        end
+    end
     counts.vendor = #vendor
     if counts.vendor > 0 then
         lines[#lines + 1] = "import: " .. counts.vendor .. " vendor automation"
             .. (counts.vendor == 1 and " was" or "s were")
             .. " on in Flow; each stays off until you confirm it."
-        for i = 1, #vendor do
-            local entry = type(vendor[i]) == "table" and vendor[i] or {}
+        for _, entry in ipairs(vendor) do
             lines[#lines + 1] = "import: confirm " .. text(entry.key)
                 .. (entry.sameAsFlowDefault and " (it is Flow's own default, so it may not be a choice you made)" or "")
         end
+    end
+    if unreadable > 0 then
+        lines[#lines + 1] = "import: " .. unreadable .. " vendor "
+            .. (unreadable == 1 and "entry" or "entries") .. " could not be read; "
+            .. (unreadable == 1 and "it stays" or "each stays") .. " off."
     end
     return lines, counts
 end

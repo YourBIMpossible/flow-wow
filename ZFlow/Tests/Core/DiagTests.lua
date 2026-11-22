@@ -473,13 +473,23 @@ return {
         local lines, counts = ns.Diag.ImportReport({ ok = true, dropped = {}, adjusted = {},
             vendorToConfirm = { { key = "autoRepair", to = true, sameAsFlowDefault = true },
                                 { key = "autoSell", to = true }, "broken" } })
-        t.eq(counts.vendor, 3)
+        t.eq(counts.vendor, 2)
         t.eq(lines, {
             "import: 0 dropped, 0 adjusted, 0 malformed.",
-            "import: 3 vendor automations were on in Flow; each stays off until you confirm it.",
+            "import: 2 vendor automations were on in Flow; each stays off until you confirm it.",
             "import: confirm autoRepair (it is Flow's own default, so it may not be a choice you made)",
             "import: confirm autoSell",
-            "import: confirm nil",
+            "import: 1 vendor entry could not be read; it stays off.",
+        })
+    end,
+
+    ["import report: unreadable vendor entries are counted apart, never named (DI1, DI2)"] = function(t)
+        local lines, counts = ns.Diag.ImportReport({ ok = true, dropped = {}, adjusted = {},
+            vendorToConfirm = { "broken", {}, { key = false } } })
+        t.eq(counts.vendor, 0)
+        t.eq(lines, {
+            "import: 0 dropped, 0 adjusted, 0 malformed.",
+            "import: 3 vendor entries could not be read; each stays off.",
         })
     end,
 
