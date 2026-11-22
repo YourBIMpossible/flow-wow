@@ -94,6 +94,29 @@ function ns.make.fakeClient(opts)
         if type(fn) ~= "function" then return false, "not a function" end
         return pcall(fn, ...)
     end
+    function c.peek(path, limit)
+        local v = lookup(path)
+        local kind = type(v)
+        if kind == "number" or kind == "string" or kind == "boolean" then return v end
+        if kind ~= "table" then return nil end
+        local out, n = {}, 0
+        for key, value in pairs(v) do
+            if n >= (limit or 300) then break end
+            local vk = type(value)
+            out[tostring(key)] = (vk == "number" or vk == "string" or vk == "boolean") and value or vk
+            n = n + 1
+        end
+        return out
+    end
+    function c.globalNames(pattern, limit)
+        local out = {}
+        for name in pairs(env) do
+            if type(name) == "string" and name:find(pattern) then out[#out + 1] = name end
+        end
+        table.sort(out)
+        for i = #out, (limit or 300) + 1, -1 do out[i] = nil end
+        return out
+    end
     local errorFns = {}
     function c.onError(fn) errorFns[#errorFns + 1] = fn return true end
     -- The test's control: a Lua error reported by the client.

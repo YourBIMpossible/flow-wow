@@ -112,14 +112,115 @@ return {
         t.eq(snaps[4].reads.bankOpen, true)
     end,
 
-    ["save: only the newest twelve are kept, the count keeps rising"] = function(t)
+    ["save: only the newest forty are kept, the count keeps rising"] = function(t)
         local _, c, d = start()
         login(c)
-        for _ = 1, 20 do d.snapshot("again") end
+        for _ = 1, 50 do d.snapshot("again") end
         local saved = c.saved(ns.id.accountDB).diag
-        t.eq(#saved.snaps, 12)
-        t.eq(saved.count, 21)
-        t.eq(saved.snaps[12].why, "again")
+        t.eq(#saved.snaps, 40)
+        t.eq(saved.count, 51)
+        t.eq(saved.snaps[40].why, "again")
+    end,
+
+    ["windows: a repeated event is one opening; a later one is another"] = function(t)
+        local _, c = start()
+        login(c)
+        for _ = 1, 4 do c.fire("TRADE_SKILL_SHOW") end
+        local d = c.saved(ns.id.accountDB).diag
+        t.eq(d.count, 2, "four events inside the gap take one snapshot")
+        c.advance(6)
+        c.fire("TRADE_SKILL_SHOW")
+        t.eq(d.count, 3)
+    end,
+
+    ["windows: the list arriving takes one more snapshot, once per opening"] = function(t)
+        local _, c = start()
+        login(c)
+        c.fire("TRAINER_UPDATE")
+        local d = c.saved(ns.id.accountDB).diag
+        t.eq(d.count, 1, "no trainer window was opened")
+        c.fire("TRAINER_SHOW")
+        c.fire("TRAINER_UPDATE")
+        c.fire("TRAINER_UPDATE")
+        t.eq(d.count, 3)
+        t.eq({ d.snaps[2].why, d.snaps[3].why }, { "trainer", "trainer-ready" })
+        c.fire("TRADE_SKILL_SHOW")
+        c.fire("TRADE_SKILL_LIST_UPDATE")
+        t.eq(d.snaps[5].why, "profession-ready")
+    end,
+
+    ["login: one settled snapshot a few seconds later, then no more listening"] = function(t)
+        local _, c = start()
+        login(c)
+        local d = c.saved(ns.id.accountDB).diag
+        c.advance(4)
+        t.eq(d.count, 1)
+        c.advance(5)
+        t.eq(d.count, 2)
+        t.eq(d.snaps[2].why, "settled")
+        c.advance(30, 3)
+        t.eq(d.count, 2)
+    end,
+
+    ["session: an empty realm is unknown, the other realm call is asked"] = function(t)
+        local e = env()
+        e.GetRealmName = function() return "" end
+        local c = ns.make.fakeClient({ env = e })
+        local k = ns.Kernel({}, c)
+        ns.Diag.Start(k)
+        k:Boot()
+        login(c)
+        t.eq(c.saved(ns.id.accountDB).diag.snaps[1].timing.realm, nil)
+        e.GetNormalizedRealmName = function() return "Other" end
+        local c2 = ns.make.fakeClient({ env = e })
+        local k2 = ns.Kernel({}, c2)
+        ns.Diag.Start(k2)
+        k2:Boot()
+        login(c2)
+        t.eq(c2.saved(ns.id.accountDB).diag.snaps[1].timing.realm, "Other")
+    end,
+
+    ["api: namespace members and matching global names are saved at each start"] = function(t)
+        local _, c = start()
+        login(c)
+        local api = c.saved(ns.id.accountDB).diag.api
+        t.eq(api.namespaces["C_Map"], { GetBestMapForUnit = "function" })
+        t.eq(api.namespaces["C_Bank"], false, "a namespace the client lacks is recorded as absent")
+        t.eq(api.globals["^C_"], { "C_Container", "C_Map" })
+        t.eq(api.globals["Realm"], { "GetRealmName" })
+    end,
+
+    ["collect: the namespaced calls are asked and chained from what they answer"] = function(t)
+        local e = env()
+        e.UnitHealth = function() return 120 end
+        e.issecretvalue = function() return false end
+        e.C_QuestLog = { GetInfo = function(i) return { questID = 40 + i, title = "Q" } end,
+            GetQuestObjectives = function(id) return { { text = "obj " .. id } } end }
+        e.C_SpellBook = { GetSpellBookItemInfo = function() return { spellID = 635 } end }
+        e.C_Spell = { GetSpellInfo = function(id) return { name = "Holy Light", spellID = id } end }
+        local big = {}
+        for i = 1, 200 do big[i] = 1000 + i end
+        e.C_TradeSkillUI = { GetAllRecipeIDs = function() return big end,
+            GetRecipeInfo = function(id) return { recipeID = id, name = "R" } end }
+        local c = ns.make.fakeClient({ env = e })
+        local snap = ns.Diag.Collect(ns.Kernel({}, c), "test")
+        local S = snap.shapes
+        t.eq(S.healthText.values.v1, "120")
+        t.eq(S.healthSecret.values.v1, false)
+        t.eq(S.healthIsItself.values.v1, true)
+        t.eq(S.questObjectives.ok, true)
+        t.eq(S.spellInfo.values.v1.name, "Holy Light")
+        t.eq(S.recipeCount.values.v1, 200)
+        t.eq(S.recipeInfo.values.v1.recipeID, 1001)
+        t.eq(S.recipeSchematic.ok, false)
+    end,
+
+    ["shape: a big table answer is cut to sixty keys"] = function(t)
+        local big = {}
+        for i = 1, 500 do big[i] = i end
+        local n = 0
+        for _ in pairs(ns.Diag.Shape(true, big).values.v1) do n = n + 1 end
+        t.eq(n, 60)
     end,
 
     ["slash: diag saves and says so, clear forgets, anything else reports state"] = function(t)

@@ -189,7 +189,8 @@ function ns.make.modules(k)
 
     -- Loads at login, when every enabled addon and all saved data are in.
     -- This one listener is the kernel's own and is dropped before the guard
-    -- decides, so a paused addon listens to nothing.
+    -- decides, so a paused addon listens to nothing of its own (the diagnostics and
+    -- the dev panel keep theirs).
     function k:Boot()
         local cancel
         cancel = k.client.listen("PLAYER_LOGIN", function()

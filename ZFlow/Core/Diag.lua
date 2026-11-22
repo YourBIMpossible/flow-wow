@@ -13,14 +13,22 @@
 --   <slash> diag          take a snapshot now and say where it went
 --   <slash> diag clear    forget every snapshot
 --
--- Snapshots are also taken at login and when the bank, a vendor, a trainer,
--- a profession window or the flight map opens. The newest KEEP are kept.
+-- Snapshots are also taken at login, a few seconds after it (what was not
+-- ready at login is by then), and when the bank, a vendor, a trainer, a
+-- profession window or the flight map opens; a trainer and a profession
+-- window get a second one when the client says their list has arrived. The
+-- newest KEEP are kept. Each start also saves `api`: the names inside the
+-- client's namespaces, so the next build is written from what is there.
 local _, ns = ...
 
 local Diag = {}
 ns.Diag = Diag
 
-local KEEP = 12
+local KEEP = 40
+local SHAPE_KEYS = 60
+-- Seconds after login for the "settled" snapshot, and the gap inside which
+-- the same window event again takes no second snapshot.
+local SETTLE, SAME_WINDOW = 8, 5
 local ERRORS_KEPT = 40
 
 -- Client names whose presence decides how the boundary is written.
@@ -62,7 +70,33 @@ Diag.NAMES = {
     "C_ChatInfo.RegisterAddonMessagePrefix", "C_ChatInfo.SendAddonMessage", "SendAddonMessage",
     "hooksecurefunc", "GameTooltip", "WorldMapFrame", "Minimap", "UIParent",
     "C_Timer.NewTicker", "GetCVar", "GetLocale", "GetRealmName", "UnitName",
+    -- Asked after the first real-client session: that client has the
+    -- namespaced calls and lacks most of the bare ones above.
+    "GetNormalizedRealmName", "UnitFullName", "issecretvalue", "canaccessvalue",
+    "C_SpellBook.GetSpellBookSkillLineInfo", "C_SpellBook.GetSpellBookItemInfo",
+    "C_SpellBook.GetSpellBookItemName", "C_SpellBook.IsSpellKnown", "Enum.SpellBookSpellBank",
+    "C_Spell.GetSpellName", "C_Spell.IsSpellInRange", "C_Spell.GetSpellTexture",
+    "C_QuestLog.GetTitleForLogIndex", "C_QuestLog.GetQuestIDForLogIndex", "C_QuestLog.IsComplete",
+    "C_TradeSkillUI.GetRecipeInfo", "C_TradeSkillUI.GetRecipeSchematic", "C_TradeSkillUI.GetBaseProfessionInfo",
+    "C_TradeSkillUI.GetChildProfessionInfo", "C_TradeSkillUI.GetProfessionInfoBySkillLineID",
+    "C_TradeSkillUI.GetAllProfessionTradeSkillLines", "C_TradeSkillUI.IsTradeSkillReady",
+    "C_TradeSkillUI.GetRecipeItemLink", "C_TradeSkillUI.GetTradeSkillLine",
+    "C_Traits.GetConfigInfo", "C_ClassTalents.GetActiveConfigID", "C_SpecializationInfo.GetTalentInfo",
+    "C_Bank.CanViewBank", "C_Bank.FetchPurchasedBankTabIDs", "C_Bank.FetchNumPurchasedBankTabs",
+    "Enum.BankType", "C_PlayerInteractionManager.IsInteractingWithNpcOfType", "Enum.PlayerInteractionType",
+    "C_UnitAuras.GetBuffDataByIndex", "C_UnitAuras.GetPlayerAuraBySpellID",
+    "C_Item.GetItemInfoInstant", "C_Item.GetItemNameByID", "C_Container.GetBagName",
 }
+
+-- Namespaces whose member names are saved once per start, and the patterns
+-- of bare global names saved with them.
+Diag.NAMESPACES = {
+    "C_TradeSkillUI", "C_SpellBook", "C_Spell", "C_QuestLog", "C_Container", "C_Item", "C_MerchantFrame",
+    "C_Bank", "C_Traits", "C_ClassTalents", "C_SpecializationInfo", "C_UnitAuras", "C_Map", "C_AddOns",
+    "C_Timer", "C_ChatInfo", "C_PlayerInteractionManager", "C_TaxiMap", "C_SkillInfo", "C_PlayerInfo",
+    "Enum.BagIndex", "Enum.BankType", "Enum.SpellBookSpellBank", "Enum.PlayerInteractionType",
+}
+Diag.GLOBALS = { "^C_", "Talent", "Skill", "Trainer", "Craft", "Profession", "Bank", "Realm", "Taxi" }
 
 local function plain(v)
     local t = type(v)
@@ -71,7 +105,8 @@ end
 
 -- What a call answered, as plain saveable data: ok, how many values, their
 -- types, and the values that are numbers, strings or booleans. A table
--- answer is listed by key, one level deep (plain values kept, others by type).
+-- answer is listed by key, one level deep (plain values kept, others by
+-- type), SHAPE_KEYS keys at most.
 local function shape(ok, ...)
     local n = select("#", ...)
     local row = { ok = ok and true or false, n = n, types = {}, values = {} }
@@ -81,9 +116,11 @@ local function shape(ok, ...)
         if plain(v) then
             row.values["v" .. i] = v
         elseif type(v) == "table" then
-            local keys = {}
+            local keys, kept = {}, 0
             for key, value in pairs(v) do
+                if kept >= SHAPE_KEYS then break end
                 keys[tostring(key)] = plain(value) and value or type(value)
+                kept = kept + 1
             end
             row.values["v" .. i] = keys
         end
@@ -202,6 +239,65 @@ function Diag.Collect(k, why)
     S.crafts = ask(client, "GetNumCrafts")
     S.taxiNodes = ask(client, "NumTaxiNodes")
 
+    -- The namespaced calls. Arguments here are first guesses: a wrong one
+    -- is recorded as an error or an empty answer, which is the finding.
+    S.realm = ask(client, "GetRealmName")
+    S.realmNormalized = ask(client, "GetNormalizedRealmName")
+    S.fullName = ask(client, "UnitFullName", "player")
+    -- Health was saved with a type and no value: ask how the client prints
+    -- it and whether it calls it a secret.
+    local okHealth, health = client.raw("UnitHealth", "player")
+    if okHealth and health ~= nil then
+        S.healthText = shape(pcall(tostring, health))
+        S.healthSecret = ask(client, "issecretvalue", health)
+        S.healthIsItself = shape(pcall(function() return health == health end))
+    end
+    S.healthMax = ask(client, "UnitHealthMax", "player")
+    S.questEntries = ask(client, "C_QuestLog.GetNumQuestLogEntries")
+    S.questInfo1 = ask(client, "C_QuestLog.GetInfo", 1)
+    S.questInfo2 = ask(client, "C_QuestLog.GetInfo", 2)
+    local questID = S.questInfo2.ok and type(S.questInfo2.values.v1) == "table" and S.questInfo2.values.v1.questID
+    if type(questID) == "number" then
+        S.questObjectives = ask(client, "C_QuestLog.GetQuestObjectives", questID)
+    end
+    S.bookLines = ask(client, "C_SpellBook.GetNumSpellBookSkillLines")
+    S.bookLine1 = ask(client, "C_SpellBook.GetSpellBookSkillLineInfo", 1)
+    S.bookLine2 = ask(client, "C_SpellBook.GetSpellBookSkillLineInfo", 2)
+    S.bookItem1 = ask(client, "C_SpellBook.GetSpellBookItemInfo", 1, 0)
+    S.bookItemName1 = ask(client, "C_SpellBook.GetSpellBookItemName", 1, 0)
+    local spellID = S.bookItem1.ok and type(S.bookItem1.values.v1) == "table"
+        and (S.bookItem1.values.v1.spellID or S.bookItem1.values.v1.actionID)
+    if type(spellID) == "number" then
+        S.spellInfo = ask(client, "C_Spell.GetSpellInfo", spellID)
+        S.spellCooldown = ask(client, "C_Spell.GetSpellCooldown", spellID)
+        S.spellUsable = ask(client, "C_Spell.IsSpellUsable", spellID)
+        S.spellKnown = ask(client, "IsPlayerSpell", spellID)
+    end
+    S.aura1 = ask(client, "C_UnitAuras.GetAuraDataByIndex", "player", 1, "HELPFUL")
+    S.professions = ask(client, "GetProfessions")
+    if S.professions.ok and type(S.professions.values.v1) == "number" then
+        S.profession1 = ask(client, "GetProfessionInfo", S.professions.values.v1)
+    end
+    S.tradeLines = ask(client, "C_TradeSkillUI.GetAllProfessionTradeSkillLines")
+    S.tradeBase = ask(client, "C_TradeSkillUI.GetBaseProfessionInfo")
+    S.tradeChild = ask(client, "C_TradeSkillUI.GetChildProfessionInfo")
+    S.tradeReady = ask(client, "C_TradeSkillUI.IsTradeSkillReady")
+    local okRecipes, recipes = client.raw("C_TradeSkillUI.GetAllRecipeIDs")
+    S.recipeCount = shape(okRecipes, type(recipes) == "table" and #recipes or recipes)
+    local recipe = okRecipes and type(recipes) == "table" and recipes[1]
+    if type(recipe) == "number" then
+        S.recipeInfo = ask(client, "C_TradeSkillUI.GetRecipeInfo", recipe)
+        S.recipeSchematic = ask(client, "C_TradeSkillUI.GetRecipeSchematic", recipe, false)
+        S.recipeItemLink = ask(client, "C_TradeSkillUI.GetRecipeItemLink", recipe)
+    end
+    S.trainer1Req = ask(client, "GetTrainerServiceSkillReq", 1)
+    S.merchant1Link = ask(client, "GetMerchantItemLink", 1)
+    S.taxi1 = ask(client, "TaxiNodeName", 1)
+    S.taxi1Type = ask(client, "TaxiNodeGetType", 1)
+    S.bankCanView = ask(client, "C_Bank.CanViewBank", 0)
+    S.bankTabs = ask(client, "C_Bank.FetchPurchasedBankTabIDs", 0)
+    S.activeTalentConfig = ask(client, "C_ClassTalents.GetActiveConfigID")
+
     local K = snap.kernel
     K.phase, K.paused = k.phase, k.paused and true or false
     K.pauseText = k.pausePanel and k.pausePanel.text or nil
@@ -214,6 +310,19 @@ function Diag.Collect(k, why)
     end
     K.meter = k.meter:report()
     return snap
+end
+
+-- The member names of the client's namespaces and the bare global names
+-- that matter here, as plain data. Saved once per start.
+function Diag.Api(client)
+    local api = { namespaces = {}, globals = {} }
+    for _, name in ipairs(Diag.NAMESPACES) do
+        api.namespaces[name] = client.peek(name) or false
+    end
+    for _, pattern in ipairs(Diag.GLOBALS) do
+        api.globals[pattern] = client.globalNames(pattern)
+    end
+    return api
 end
 
 -- Puts a snapshot in the saved table and trims to the newest KEEP.
@@ -282,7 +391,24 @@ function Diag.Start(k)
         local okName, name = client.raw("UnitName", "player")
         local okRealm, realm = client.raw("GetRealmName")
         timing.character = okName and name or nil
-        timing.realm = okRealm and realm or nil
+        -- The real client answered an empty realm at login: that is unknown.
+        if not (okRealm and type(realm) == "string" and realm ~= "") then
+            okRealm, realm = client.raw("GetNormalizedRealmName")
+        end
+        timing.realm = okRealm and type(realm) == "string" and realm ~= "" and realm or nil
+        local okApi, api = pcall(Diag.Api, client)
+        d.diag.api = okApi and api or nil
+    end
+
+    -- One more snapshot SETTLE seconds after login, then stop listening.
+    local function settle()
+        local waited, cancel = 0, nil
+        cancel = client.onFrame(function(elapsed)
+            waited = waited + (tonumber(elapsed) or 0)
+            if waited < SETTLE then return end
+            if cancel then cancel() end
+            snapshot("settled")
+        end)
     end
 
     client.listen("ADDON_LOADED", function(name)
@@ -294,12 +420,33 @@ function Diag.Start(k)
         if mark("PLAYER_ENTERING_WORLD") then
             session()
             snapshot("login")
+            settle()
         end
     end)
+    -- The bank's own listener goes first, so the bank snapshot sees it open.
+    client.watchBank()
     local windows = { BANKFRAME_OPENED = "bank", MERCHANT_SHOW = "vendor", TRAINER_SHOW = "trainer",
         TRADE_SKILL_SHOW = "profession", CRAFT_SHOW = "craft", TAXIMAP_OPENED = "flight" }
+    -- A window event that repeats inside SAME_WINDOW seconds is one opening.
+    -- `ready` is the client saying the window's list has arrived, which on
+    -- the real client is after the window event: one more snapshot then.
+    local last, waiting = {}, {}
+    local ready = { trainer = "TRAINER_UPDATE", profession = "TRADE_SKILL_LIST_UPDATE" }
     for event, why in pairs(windows) do
-        client.listen(event, function() snapshot(why) end)
+        client.listen(event, function()
+            local now = client.now()
+            if last[why] and type(now) == "number" and now - last[why] < SAME_WINDOW then return end
+            last[why] = type(now) == "number" and now or nil
+            waiting[why] = ready[why] ~= nil
+            snapshot(why)
+        end)
+    end
+    for why, event in pairs(ready) do
+        client.listen(event, function()
+            if not waiting[why] then return end
+            waiting[why] = false
+            snapshot(why .. "-ready")
+        end)
     end
 
     -- Other files add a word of their own after the slash command here:

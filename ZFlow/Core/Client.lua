@@ -422,6 +422,41 @@ function ns.make.client(env)
         return pcall(fn, ...)
     end
 
+    -- What is at that name, as plain data: a number, string or boolean as
+    -- it is; a table as { key = plain value or type name }, one level deep
+    -- and `limit` keys at most (default 300); anything else nil.
+    function c.peek(path, limit)
+        local v = lookup(path)
+        local kind = type(v)
+        if kind == "number" or kind == "string" or kind == "boolean" then return v end
+        if kind ~= "table" then return nil end
+        local out, n = {}, 0
+        local ok = pcall(function()
+            for key, value in pairs(v) do
+                if n >= (limit or 300) then break end
+                local vk = type(value)
+                out[tostring(key)] = (vk == "number" or vk == "string" or vk == "boolean") and value or vk
+                n = n + 1
+            end
+        end)
+        if not ok then return nil end
+        return out
+    end
+
+    -- The client's global names that match a Lua pattern, sorted, `limit`
+    -- at most (default 300).
+    function c.globalNames(pattern, limit)
+        local out = {}
+        pcall(function()
+            for name in pairs(env) do
+                if type(name) == "string" and name:find(pattern) then out[#out + 1] = name end
+            end
+        end)
+        table.sort(out)
+        for i = #out, (limit or 300) + 1, -1 do out[i] = nil end
+        return out
+    end
+
     -- Calls fn(text) for every Lua error the client reports, from any
     -- addon, then hands the error on to whatever handled it before. Returns
     -- false when the client has no error handler to chain to.
