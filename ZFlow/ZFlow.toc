@@ -42,4 +42,5 @@ Classes\Shaman.lua
 Nav\ArrowLayout.lua
 Nav\Bearing.lua
 Nav\ArrowView.lua
+Nav\Guide.lua
 UI\DevPanel.lua
