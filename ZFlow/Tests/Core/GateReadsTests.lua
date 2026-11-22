@@ -81,7 +81,7 @@ return {
         local env = deathEnv()
         local c = ns.make.client(env)
         env.x = nil
-        t.eq(c.corpse(), nil, "the client gives no corpse here")
+        t.eq(c.corpse(), false, "the client answers: no corpse position here (C1)")
         env.x = 0.25
         env.C_DeathInfo.GetCorpseMapPosition = function() return { GetXY = function() return 0 / 0, 0.5 end } end
         t.eq(c.corpse(), nil, "not a number")

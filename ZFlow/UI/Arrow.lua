@@ -109,19 +109,19 @@ local function ask(client, name)
 end
 
 -- The step that stands in for the quest step while the gate is "corpse".
--- Never the quest step: that is not where to go. By client.ghost (only a
--- plain true or false counts):
---   false (dead, not released): no place, and the one line is the release
---     label. A corpse place the client gives is not pointed at.
---   true: the corpse where the client says where it is. Where the corpse
---     read itself answers nil (the corpse is not on the map the client
---     picks for the player), no place, and the lines are the label and
---     the other-map line.
---   not known: the corpse where the client says where it is, else a step
---     with no place (no distance, no turn). Nothing is guessed.
--- A corpse read that is absent, fails or is no place is not known, never
--- "another map". step.still: the step has nowhere to turn to, so no
--- unknown-direction line is added.
+-- Never the quest step: that is not where to go.
+--   client.ghost a plain false (dead, not released): no place, and the one
+--     line is the release label. A corpse place the client gives is not
+--     pointed at. The step is still.
+--   otherwise (a ghost, or not known), by client.corpse:
+--     a place: the corpse there.
+--     false (the client answered: on no position of the player's map): no
+--       place, the lines are the label and the other-map line, and the
+--       step is still.
+--     nil, absent, failing or no place (cannot tell): the label alone, no
+--       place and not still, so the unknown-direction line is added.
+-- Nothing is guessed. step.still: the step has nowhere to turn to, so no
+-- unknown-direction line is added and the frame is not faded.
 local function corpseStep(client)
     local ghost = ask(client, "ghost")
     if ghost == false then
@@ -134,7 +134,7 @@ local function corpseStep(client)
     if type(at) == "table" and at.map ~= nil and type(at.x) == "number" and type(at.y) == "number" then
         local zone = ask(client, "zone")
         step.place = { cont = type(zone) == "table" and zone.cont or nil, map = at.map, x = at.x, y = at.y }
-    elseif at == nil and ghost == true then
+    elseif at == false then
         step.lines = { Arrow.CORPSE_LABEL, Arrow.CORPSE_ELSEWHERE }
         step.still = true
     end
@@ -150,8 +150,8 @@ Arrow.CORPSE_ELSEWHERE = "corpse is on another map"
 -- this install's saved layout and screen. A step's lines are its own lines,
 -- else its label and distance. The gate is the guide's own, else
 -- N.ArrowGate over what the client says: shut with no position, "corpse"
--- while the player is dead or a ghost (only a plain true from client.dead
--- counts), else open. While the gate is "corpse" the quest arrow's step is
+-- while the player is dead or a ghost (a plain true from client.dead or
+-- from client.ghost; either read may be the one that answers), else open. While the gate is "corpse" the quest arrow's step is
 -- the corpse.
 --
 -- intro (optional): { title } while the intro is playing, fed to
@@ -171,7 +171,8 @@ function Arrow.GuideSource(client, layout, guide, intro)
     local playing = false
     if gate == nil then
         local hasPos = state.player ~= nil and client.position() ~= nil
-        gate = N.ArrowGate(true, true, type(intro) == "table", hasPos, ask(client, "dead") == true)
+        gate = N.ArrowGate(true, true, type(intro) == "table", hasPos,
+            ask(client, "dead") == true or ask(client, "ghost") == true)
         playing = gate == "intro"
     end
     if gate == "corpse" then
@@ -179,7 +180,7 @@ function Arrow.GuideSource(client, layout, guide, intro)
         state, more = N.ViewState(client, given)
     end
     state.gate = gate
-    local lines, lost = {}, {}
+    local lines, lost, still = {}, {}, {}
     for _, key in ipairs(N.ARROW_KEYS) do
         local step = type(given[key]) == "table" and given[key] or {}
         local out = {}
@@ -198,13 +199,15 @@ function Arrow.GuideSource(client, layout, guide, intro)
             out[#out + 1] = Arrow.UNKNOWN_TURN
             lost[key] = true          -- the last line is the unknown-direction line
         end
+        -- A still step has nowhere to turn to: its missing turn is not "lost".
+        if step.still and not (playing and key == "quest") then still[key] = true end
         lines[key] = out
         if state[key] and state[key].textHeight == nil then
             state[key].textHeight = #out * Arrow.LINE_HEIGHT
         end
     end
     return { view = state, turns = { quest = playing and 0 or more.quest.turn, prof = more.prof.turn },
-             lines = lines, lost = lost, intro = playing }
+             lines = lines, lost = lost, still = still, intro = playing }
 end
 
 -- The intro: the quest arrow upright with the addon's title, once, at the
@@ -301,8 +304,11 @@ function Arrow.Start(k, diag)
                     if ops.anchor == "quest" then h.attach(handles.quest) else h.place(ops.point) end
                 end
                 h.scale(ops.scale)
-                -- The ring points nowhere: an unknown turn takes nothing from it.
+                -- Faded means only "direction unknown". The ring points
+                -- nowhere and a still step has nowhere to turn to: neither
+                -- is faded.
                 local lost = src.turns[key] == nil and ops.mode ~= "ring"
+                    and not (type(src.still) == "table" and src.still[key])
                 h.alpha(lost and type(ops.alpha) == "number" and ops.alpha * Arrow.LOST_ALPHA or ops.alpha)
                 h.behind(ops.behind)
                 local textPoint = ops.text.point
