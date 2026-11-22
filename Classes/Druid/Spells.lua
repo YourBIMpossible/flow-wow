@@ -1,9 +1,14 @@
 -- Druid trainer spells: the level each first becomes trainable, and what it
 -- improves. Used by the advisor to say "go train X, it improves A, B".
 --
--- Levels are from Classic Era (1.12-style); not checked against Forever. The
--- advisor also learns the real list every time you open the trainer, and
--- that learned list wins over this one.
+-- Levels are meant as the Classic Era (1.12) trainer levels. The commit that
+-- added them (6ee995a) names no source, and they were not checked against a
+-- WoW: Forever trainer: every level here is a first guess, and some are
+-- known to differ there (CHANGELOG.md records a Forever trainer teaching
+-- Rake at 24, not 20). The truth is read from the trainer: each visit records the level
+-- a spell is first taught at, and that level is laid over this one while it
+-- is within F.MAX_SHIFT levels of it (Modules/Facts.lua, F.FixLevels). A
+-- spell the trainer doesn't list at all is no longer advised (F.NotTaught).
 -- needs = "Bear Form": the trainer won't teach it until you know that spell
 -- (it shows red there). Flow then doesn't count it as "to train" and says
 -- what it waits for. quest / questName: the class quest that teaches a spell.
