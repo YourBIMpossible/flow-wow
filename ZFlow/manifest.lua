@@ -34,6 +34,7 @@ return {
         "Core/Facts.lua",
         "UI/Export.lua",
         "Items/PriceChart.lua",
+        "Items/HaveTip.lua",
         "UI/CopyBox.lua",
         "UI/Advisor.lua",
         "UI/Setup.lua",
