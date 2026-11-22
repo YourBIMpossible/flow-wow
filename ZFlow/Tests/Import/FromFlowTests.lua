@@ -991,6 +991,8 @@ return {
 
     ["merge: a result whose record has no lists still stores them from the result"] = function(t)
         local result = Import.FromFlow({ buffButton = { scale = 9 }, madeUp = 1 }, {})
+        t.ok(type(result.adjusted) == "table" and #result.adjusted > 0, "the fixture adjusted nothing")
+        t.ok(type(result.dropped) == "table" and #result.dropped > 0, "the fixture dropped nothing")
         result.record.dropped, result.record.adjusted = nil, nil
         local account = (Import.Merge(nil, nil, result))
         local stored = account.imports[#account.imports]

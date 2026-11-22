@@ -56,7 +56,12 @@
 --     it reached the result. A confirmed one still never replaces a choice
 --     the player already has.
 --     report = { ok, reason, added, kept, skipped, counts, vendorConfirmed,
---     vendorLeftOff }; the last two are sorted lists of Flow keys.
+--     vendorLeftOff, vendorAlreadyOn }, three sorted lists. Their key kinds:
+--       vendorConfirmed   Flow keys (the left column of the mapping)
+--       vendorLeftOff     model keys (the path below settings)
+--       vendorAlreadyOn   model keys
+--     The saved record keeps vendorConfirmed only, by Flow key. For every
+--     vendor row there is today the two kinds spell the same key.
 --
 -- Where each Flow key was read from (Flow source, file:line):
 --   saved-data layout, per-character split   Core.lua:182-232
@@ -535,6 +540,9 @@ end
 -- either infinity, too), and so is a table that holds itself. A list stays
 -- a list: what is kept of 1, 2, 3... is numbered again with no gap. A key
 -- that is an infinity is left out with its value.
+-- Because a list is numbered again, adjusted[i] and dropped[i] in a saved
+-- record mean something by their position in that record only: entry i
+-- there need not be entry i of the result the record was made from.
 local function plain(v, seen)
     local kind = type(v)
     if kind == "number" then
@@ -1292,9 +1300,21 @@ local function gateScopes(gate, imported, confirmed)
     return source, on, off
 end
 
-local function switchedOn(db, to)
-    local value = getPath(db, to)
-    return value ~= nil and value ~= false
+-- Whether an automation left unconfirmed is on in what the merge stored.
+-- The account settings are read as the settings model reads them when one
+-- is loaded and has a row for the key, so a stored value the model does
+-- not accept reads as its default, as Stored.Adopt has it. Anything else
+-- is on only when it is a true.
+local function storedOn(result, entry, model)
+    local key = modelKey(entry)
+    local account = result.account
+    if model and model:row(key) and entry.to:match("^settings%.") then
+        local settings = type(account) == "table" and account.settings or nil
+        if (model:get(settings, key)) == true then return true end
+    elseif getPath(account, entry.to) == true then
+        return true
+    end
+    return getPath(result.char, entry.to) == true
 end
 
 -- The gate as the merge reports it, written once the merge is done so it
@@ -1305,7 +1325,8 @@ end
 --   vendorAlreadyOn   model keys: found on, not confirmed, and on all the
 --                     same because the player's own data has it on.
 -- Returns the confirmed ones for the saved record.
-local function reportVendor(report, on, off, before, result)
+local function reportVendor(report, on, off, before, result, model)
+    if model and type(model.get) ~= "function" then model = nil end
     local landed, left, already = {}, {}, {}
     for _, scope in ipairs(SCOPES) do
         for _, entry in ipairs(on[scope]) do
@@ -1316,7 +1337,7 @@ local function reportVendor(report, on, off, before, result)
     end
     for _, scope in ipairs(SCOPES) do
         for _, entry in ipairs(off[scope]) do
-            local own = switchedOn(result.account, entry.to) or switchedOn(result.char, entry.to)
+            local own = storedOn(result, entry, model)
             if own then already[modelKey(entry)] = true else left[modelKey(entry)] = true end
             report.skipped[#report.skipped + 1] = {
                 path = scope .. "." .. entry.to, reason = own and NOT_CONFIRMED_OWN or NOT_CONFIRMED,
@@ -1384,7 +1405,7 @@ local function Merge(existingAccount, existingChar, imported, defaults, confirme
         end
     end
     local vendorConfirmed = reportVendor(report, on, off,
-        { account = existingAccount, char = existingChar }, result)
+        { account = existingAccount, char = existingChar }, result, model)
     report.counts.added = #report.added
     report.counts.kept = #report.kept
     report.counts.skipped = #report.skipped
