@@ -32,7 +32,7 @@ local function closable(c)
 end
 
 -- opts: setting (true / false / nil: no row declared), char (saved data),
--- noFrames, countSettings.
+-- noFrames, countSettings, noClose (a client whose panels cannot be closed).
 local function start(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
@@ -46,7 +46,7 @@ local function start(opts)
     end
     if char then c.setSaved(ns.id.charDB, char) end
     if opts.noFrames then c.setFrames(false) end
-    closable(c)
+    if not opts.noClose then closable(c) end
     local k = ns.Kernel({}, c)
     local diag = ns.Diag.Start(k)
     if opts.setting ~= nil then
@@ -189,6 +189,25 @@ tests["intro: look only - no secure frame, no acting functions"] = function(t)
                 "no acting function: " .. n)
         end
     end
+end
+
+tests["intro: a panel the player cannot close is not shown at login; /zflow intro still shows it"] = function(t)
+    local k, c, api, diag = start({ noClose = true })
+    local p = panelOf(c)
+    t.ok(p ~= nil, "the panel is made")
+    t.eq(p.shown, false, "not shown at login without a close route")
+    t.eq(api.shows(), 0)
+    diag.commands[I.WORD]("")
+    t.eq(p.shown, true, "shown when asked for")
+    t.eq(k.store:get("char", I.SEEN_PATH), nil, "not marked seen")
+end
+
+tests["intro: the profession arrow is described as it looks in every mode"] = function(t)
+    for _, l in ipairs(I.LINES) do
+        t.ok(not l:lower():find("see-through", 1, true) and not l:lower():find("faint", 1, true)
+            and not l:lower():find("translucent", 1, true), "no look that holds only in one mode: " .. l)
+    end
+    t.ok(has(I.LINES, "a second arrow points to your next profession step"), "the profession arrow, plainly")
 end
 
 return tests
