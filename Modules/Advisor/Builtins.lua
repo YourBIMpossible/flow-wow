@@ -109,7 +109,7 @@ ns:Register("advisor", "trainer", {
             end
         end
 
-        -- 2. Flow's shipped spell list (the "classSpells" registry) for spells you've never seen at a trainer yet.
+        -- 2. Flow's class list (classSpells) for spells you've never seen at a trainer yet.
         for _, s in ipairs(ns:Get("classSpells", classToken()) or {}) do
             local waitFor = s.needs and not known[s.needs] and s.needs or nil
             if s.level <= level and not known[s.spell] and not listed[s.spell] and waitFor then
