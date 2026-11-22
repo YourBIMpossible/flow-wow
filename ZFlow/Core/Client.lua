@@ -74,7 +74,9 @@ function ns.make.client(env)
     -- What the client itself does with an event before any listener hears
     -- of it: event name -> fn(...). A listener that asks the client about
     -- the thing the event is about then gets today's answer, whichever
-    -- order the listeners were added in (CR1).
+    -- order the listeners were added in (CR1). A step runs unguarded, so
+    -- one that raised would stop every listener of its event: each step
+    -- is one plain assignment and nothing else (CT3).
     local first = {}
 
     local function call(fn, ...)
