@@ -49,6 +49,7 @@ return {
 
         -- Gear
         "Gear/Score.lua",
+        "Gear/Read.lua",
 
         -- Rotation and classes
         "Rotation/Pack.lua",
