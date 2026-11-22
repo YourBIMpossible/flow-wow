@@ -9,6 +9,9 @@ local _, ns = ...
 -- snapshot (every field is optional; a missing flag is unknown, and reads as
 -- "not so" but for dead and inCombat):
 --   inCombat, hostile, resting, dead      booleans
+--     hostile not known (nil): a list rule that needs a target is not
+--       suggested (R.TARGET_UNKNOWN); the list's note names the spells
+--       passed by for it.
 --     dead not known (nil), or true: nothing is suggested, and the trace is
 --       one "dead" row.
 --     inCombat not known (nil) counts as a fight (R.InFight): no dispel, no
@@ -42,8 +45,10 @@ local _, ns = ...
 --        between neighbouring rules marked adaptive).
 --
 -- suggestion: { spell, kind, reason, fightType, step } or nil.
--- trace: a list of { step, result, spell, note }, one row per step looked at,
--- in order; the last row is the step that answered (result "pick").
+-- trace: a list of { step, result, spell, note, passed }, one row per step
+-- looked at, in order; the last row is the step that answered (result
+-- "pick"). passed: the spells that step passed by only because nobody read
+-- their cooldown (sorted); absent when there were none.
 --
 -- The steps, in the order Modules/Rotation/Engine.lua E:Choose runs them:
 --   1 breakFree  2 heal  3 interrupt  4 dispel  5 engage  6 list  7 farOpener
@@ -107,11 +112,28 @@ local function ready(s, name, needRange, unread)
     return ok
 end
 
--- The step's note, with the spells it passed by for that reason (sorted).
-local function noteWith(note, unread)
-    if #unread == 0 then return note end
-    table.sort(unread)
-    return note .. "; " .. R.COOLDOWN_UNKNOWN .. ": " .. table.concat(unread, ", ")
+-- A spell that needs a target is not suggested while nobody read whether
+-- there is one (hostile nil). Not read is not "no target".
+R.TARGET_UNKNOWN = "not known whether you have a target"
+
+-- The names in a list filled by ready (or the list step), sorted.
+local function sorted(names)
+    local out = {}
+    for i, name in ipairs(names) do out[i] = name end
+    table.sort(out)
+    return out
+end
+
+-- The step's note, with the spells it passed by for a cooldown not read,
+-- then (noTarget, the list step) those passed by for a target not read.
+local function noteWith(note, unread, noTarget)
+    if #unread > 0 then
+        note = note .. "; " .. R.COOLDOWN_UNKNOWN .. ": " .. table.concat(sorted(unread), ", ")
+    end
+    if noTarget and #noTarget > 0 then
+        note = note .. "; " .. R.TARGET_UNKNOWN .. ": " .. table.concat(sorted(noTarget), ", ")
+    end
+    return note
 end
 
 local function allowed(prefs, name)
@@ -142,16 +164,18 @@ function R.DirectHeal(heals, hots, ok, ms)
 end
 
 -------------------------------------------------------------------------------
--- The steps. Each: (s, pack, prefs, bias) -> suggestion or nil, note
+-- The steps. Each: (s, pack, prefs, bias, unread) -> suggestion or nil, note
+-- unread: a table the step fills with the spells it passed by only because
+-- nobody read their cooldown (see ready); a fresh one when left out.
 -------------------------------------------------------------------------------
 
 local steps = {}
 
 -- 1. Held in place: break free (not by shifting into the form you are in).
-function steps.breakFree(s, pack, prefs)
+function steps.breakFree(s, pack, prefs, _, unread)
     local t = s.loc
     if not t then return nil, "not held" end
-    local unread = {}
+    unread = unread or {}
     for _, b in ipairs(pack.breakers or {}) do
         if (b.any or (b.types and b.types[t])) and not (b.form and s.form == b.spell)
             and allowed(prefs, b.spell) and ready(s, b.spell, nil, unread) then
@@ -163,14 +187,14 @@ function steps.breakFree(s, pack, prefs)
 end
 
 -- 2. Healing yourself. Only yourself: pack.heals.self.
-function steps.heal(s, pack, prefs)
+function steps.heal(s, pack, prefs, _, unread)
     local heals = pack.heals and pack.heals.self
     if not heals or s.dead then return nil, "no heals" end
     for _, h in ipairs(heals) do
         if h == s.casting then return nil, "already casting a heal" end
     end
     local buffs = s.buffs or {}
-    local unread = {}
+    unread = unread or {}
     local function ok(sp) return allowed(prefs, sp) and ready(s, sp, nil, unread) end
     local function ms(sp) return castMs(s, sp) end
 
@@ -235,9 +259,9 @@ function steps.heal(s, pack, prefs)
 end
 
 -- 3. Your target is casting: stop it. Your own target only.
-function steps.interrupt(s, pack, prefs)
+function steps.interrupt(s, pack, prefs, _, unread)
     if not (R.InFight(s) and s.hostile == true and s.targetCasting) then return nil, "target is not casting" end
-    local unread = {}
+    unread = unread or {}
     for _, r in ipairs(pack.interrupts or {}) do
         local reach = true
         if r.near then reach = s.targetNear == true end
@@ -250,7 +274,7 @@ function steps.interrupt(s, pack, prefs)
 end
 
 -- 4. Something on you that you can remove: out of a fight, yourself only.
-function steps.dispel(s, pack, prefs)
+function steps.dispel(s, pack, prefs, _, unread)
     local list = pack.dispels
     if not list or #list == 0 then return nil, "no dispels" end
     if not R.OutOfFight(s) then
@@ -258,7 +282,7 @@ function steps.dispel(s, pack, prefs)
     end
     local types = s.debuffTypes
     if not types then return nil, "nothing to remove" end
-    local unread = {}
+    unread = unread or {}
     for _, rule in ipairs(list) do
         if R.Knows(s, rule.spell) and allowed(prefs, rule.spell) and (not rule.when or rule.when(s)) then
             for kind in pairs(rule.types or {}) do
@@ -299,8 +323,20 @@ local function ruleWants(s, rule, prefs)
     return not rule.when or (rule.when(s) and true or false)
 end
 
-local function ruleReady(s, rule, prefs, unread)
-    return ruleWants(s, rule, prefs) and ready(s, rule.spell, rule.target, unread)
+-- Wanted and ready. A rule that needs a target, with the target not read
+-- (hostile nil), is not ready: it is remembered in `noTarget` (each name
+-- once) for the step's note. Asked after the cooldown, so a spell whose
+-- cooldown nobody read is named for that and not for this.
+local function ruleReady(s, rule, prefs, unread, noTarget)
+    if not (ruleWants(s, rule, prefs) and ready(s, rule.spell, rule.target, unread)) then return false end
+    if rule.target and s.hostile == nil then
+        if not noTarget[rule.spell] then
+            noTarget[rule.spell] = true
+            noTarget[#noTarget + 1] = rule.spell
+        end
+        return false
+    end
+    return true
 end
 
 local function suggest(rule, learned)
@@ -311,10 +347,11 @@ end
 -- 6. The priority list for this kind of fight: the first ready rule wins.
 -- Neighbouring rules marked adaptive are one group: the first ready one
 -- wins unless a later ready one has been pressed clearly more (bias).
-function steps.list(s, pack, prefs, bias)
+function steps.list(s, pack, prefs, bias, unread)
     local list = listFor(s, pack)
     bias = bias or {}
-    local unread = {}
+    unread = unread or {}
+    local noTarget = {}
     local i, n = 1, #list
     while i <= n do
         local rule = list[i]
@@ -322,7 +359,7 @@ function steps.list(s, pack, prefs, bias)
             local best, bestBias
             while i <= n and list[i].adaptive do
                 local r = list[i]
-                if ruleReady(s, r, prefs, unread) then
+                if ruleReady(s, r, prefs, unread, noTarget) then
                     local b = bias[r.spell] or 0
                     if not best or b > bestBias + R.BIAS_EDGE then best, bestBias = r, b end
                 end
@@ -330,17 +367,18 @@ function steps.list(s, pack, prefs, bias)
             end
             if best then return suggest(best, bestBias > R.BIAS_EDGE) end
         else
-            if ruleReady(s, rule, prefs, unread) then return suggest(rule) end
+            if ruleReady(s, rule, prefs, unread, noTarget) then return suggest(rule) end
             i = i + 1
         end
     end
-    return nil, noteWith("no rule ready", unread)
+    return nil, noteWith("no rule ready", unread, noTarget)
 end
 
 -- 7. An enemy targeted and the first rule that wants it is only out of range.
-function steps.farOpener(s, pack, prefs)
+function steps.farOpener(s, pack, prefs, _, unread)
+    if s.hostile == nil then return nil, R.TARGET_UNKNOWN end
     if not s.hostile then return nil, "no enemy targeted" end
-    local unread = {}
+    unread = unread or {}
     for _, rule in ipairs(listFor(s, pack)) do
         if rule.target and ruleWants(s, rule, prefs) and row(s, rule.spell).inRange == false
             and ready(s, rule.spell, nil, unread) then
@@ -366,14 +404,16 @@ function ns.Choose(snapshot, pack, prefs, bias)
         return nil, trace
     end
     for _, name in ipairs(R.STEPS) do
-        local s, note = steps[name](snapshot, pack, prefs, bias)
+        local unread = {}
+        local s, note = steps[name](snapshot, pack, prefs, bias, unread)
+        local passed = #unread > 0 and sorted(unread) or nil
         if s then
             s.fightType = snapshot.fightType
             s.step = name
-            trace[#trace + 1] = { step = name, result = "pick", spell = s.spell, note = s.reason }
+            trace[#trace + 1] = { step = name, result = "pick", spell = s.spell, note = s.reason, passed = passed }
             return s, trace
         end
-        trace[#trace + 1] = { step = name, result = "skip", note = note }
+        trace[#trace + 1] = { step = name, result = "skip", note = note, passed = passed }
     end
     return nil, trace
 end

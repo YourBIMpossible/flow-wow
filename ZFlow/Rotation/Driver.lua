@@ -6,8 +6,18 @@ local _, ns = ...
 -- key plan is only worked out, never applied.
 --
 --   D.Read(client, pack, ids) -> read(field)
---     the reader ns.Snapshot takes. dead, inCombat and spells are asked of
---     the client; every other field answers nil (not known), never a guess.
+--     the reader ns.Snapshot takes. dead, inCombat, stealthed, hostile and
+--     spells are asked of the client; every other field answers nil (not
+--     known), never a guess.
+--       stealthed  client.stealthed() as it answered; nil when the client
+--                  has no such read
+--       hostile    from client.target() -> { exists, hostile, dead } or nil:
+--                  true for a target that is there, hostile and alive; false
+--                  when any of the three was read the other way; nil for
+--                  anything else, or when the client has no such read
+--       spells     each row also gets inRange = client.inRange(spell id)
+--                  when the client has that read and the answer is true or
+--                  false; otherwise range stays not known
 --   D.Step(client, pack[, prefs, bias, applied]) -> view
 --     one read and one choice. A read that fails is an error (not caught
 --     here; the tick catches it).
@@ -32,9 +42,10 @@ local _, ns = ...
 --     attrs       ns.cast.Attributes(suggestion, plan, applied, lockdown)
 --     unread      the pack's spells that could not be read (sorted)
 --     missing     the pack's spells with no id (sorted)
---     passed      the spells, other than the suggested one, that are known
---                 and usable but whose cooldown nobody read (sorted): they
---                 could not be chosen for that reason alone
+--     passed      the spells the chooser's steps passed by only because
+--                 nobody read their cooldown (sorted, each once): the trace
+--                 rows' own passed lists put together. A spell no step came
+--                 to is not in it
 --     why         the plain reasons, see below
 --     stale       true on a view kept from an earlier tick because this
 --                 tick's read failed; absent on a fresh view
@@ -59,27 +70,53 @@ D.EVENT = "rotation.suggested"
 D.SETTING = "rotation.enabled"
 D.EVERY = 0.2
 
-local R = ns.Rotation
 local RR = ns.RotationReader
+
+-- Is an enemy targeted? Yes or no only from what the target read gave.
+local function hostileOf(client)
+    if type(client.target) ~= "function" then return nil end
+    local target = client.target()
+    if type(target) ~= "table" then return nil end
+    if target.exists == false or target.hostile == false or target.dead == true then return false end
+    if target.exists == true and target.hostile == true and target.dead == false then return true end
+    return nil
+end
+
+-- The pack's spell rows, each with its range when the client can tell.
+local function spellRows(client, pack, ids)
+    local rows = RR.SpellRows(pack, ids, client.spell, client.spellCooldown).rows
+    if type(client.inRange) ~= "function" then return rows end
+    for name, row in pairs(rows) do
+        local asked, near = pcall(client.inRange, ids[name])
+        if asked and type(near) == "boolean" then row.inRange = near end
+    end
+    return rows
+end
 
 function D.Read(client, pack, ids)
     return function(field)
         if field == "dead" then return client.dead() end
         if field == "inCombat" then return client.inCombat() end
-        if field == "spells" then
-            return RR.SpellRows(pack, ids, client.spell, client.spellCooldown).rows
+        if field == "stealthed" then
+            if type(client.stealthed) ~= "function" then return nil end
+            return client.stealthed()
         end
+        if field == "hostile" then return hostileOf(client) end
+        if field == "spells" then return spellRows(client, pack, ids) end
         return nil
     end
 end
 
--- The spells that are known and usable but whose cooldown was not read.
-local function passedBy(snapshot, pack, chosen)
-    local out = {}
-    for _, name in ipairs(RR.SpellNames(pack)) do
-        if name ~= chosen then
-            local _, why = R.Castable(snapshot, name)
-            if why == R.COOLDOWN_UNKNOWN then out[#out + 1] = name end
+-- The spells the steps passed by for a cooldown nobody read: the trace
+-- rows' passed lists as one (sorted, each once).
+local function passedIn(trace)
+    local seen, out = {}, {}
+    for _, row in ipairs(trace) do
+        for _, name in ipairs(row.passed or {}) do
+            if not seen[name] then
+                seen[name] = true
+                out[#out + 1] = name
+            end
         end
     end
     table.sort(out)
@@ -109,7 +146,7 @@ function D.Step(client, pack, prefs, bias, applied)
     local ids, missing = RR.SpellIds(pack, client.spellId)
     local snapshot = ns.Snapshot(D.Read(client, pack, ids))
     local suggestion, trace = ns.Choose(snapshot, pack, prefs, bias)
-    local passed = passedBy(snapshot, pack, suggestion and suggestion.spell or nil)
+    local passed = passedIn(trace)
     if suggestion and #passed > 0 then suggestion.passed = passed end
 
     local lockdown = client.combatLockdown()

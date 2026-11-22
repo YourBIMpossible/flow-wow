@@ -1,8 +1,8 @@
 local _, ns = ...
 
--- Tests for ZFlow/Rotation/Driver.lua (RD1-RD14, the cooldown line and
--- CD1): the driver over a recording client and over the fake client in a
--- kernel. Not tested in game.
+-- Tests for ZFlow/Rotation/Driver.lua (RD1-RD14, the cooldown line, CD1,
+-- stealth and F-086): the driver over a recording client and over the fake
+-- client in a kernel. Not tested in game.
 
 local D = ns.RotationDriver
 local R = ns.Rotation
@@ -40,10 +40,17 @@ local FORBIDDEN = { "SetAttribute", "SetBinding", "SetBindingClick", "SetOverrid
     "SetOverrideBindingClick", "CastSpell", "CastSpellByName", "CastSpellByID", "UseAction",
     "RunMacroText", "SecureCmdOptionParse", "RegisterStateDriver", "CreateFrame", "frame" }
 
+-- What client.target answers for a live enemy.
+local function enemy() return { exists = true, hostile = true, dead = false } end
+
 -- A client that gives dead, inCombat and combatLockdown exactly as handed
 -- in (nil included), reads spells from the fake client, and records every
 -- call by name. `other` gets every name asked for that it does not have.
-local function stub(dead, inCombat, lockdown, cooldowns)
+-- extra: target, stealthed, inRange  the read to use in place of the usual
+--          one (a live enemy targeted; stealth not known; range not known)
+--        without = { name, ... }     reads this client does not have
+local function stub(dead, inCombat, lockdown, cooldowns, extra)
+    extra = extra or {}
     local c = spellsOn(ns.make.fakeClient(), cooldowns)
     local calls, other = {}, {}
     local function rec(name, fn)
@@ -59,7 +66,11 @@ local function stub(dead, inCombat, lockdown, cooldowns)
         spell = rec("spell", c.spell),
         spellId = rec("spellId", c.spellId),
         spellCooldown = rec("spellCooldown", c.spellCooldown),
+        target = rec("target", extra.target or enemy),
+        stealthed = rec("stealthed", extra.stealthed or function() return nil end),
+        inRange = rec("inRange", extra.inRange or function() return nil end),
     }
+    for _, name in ipairs(extra.without or {}) do client[name] = nil end
     for _, name in ipairs(FORBIDDEN) do
         client[name] = rec(name, function() return nil end)
     end
@@ -77,6 +88,17 @@ local function pressed(calls)
 end
 
 local function lastOf(trace) return trace[#trace] end
+
+local function noteOf(trace, step)
+    for _, row in ipairs(trace) do
+        if row.step == step then return row.note end
+    end
+end
+
+-- A stub, alive and out of a fight, whose target read answers `answer`.
+local function aiming(answer)
+    return stub(false, false, false, nil, { target = function() return answer end })
+end
 
 -- RD1-RD3 -------------------------------------------------------------
 
@@ -202,10 +224,10 @@ end
 
 -- RD10 ----------------------------------------------------------------
 
-tests["rotation driver RD10: the read answers nil for every field but dead, inCombat and spells"] = function(t)
+tests["rotation driver RD10: the read answers nil for every field it does not ask the client"] = function(t)
     local client = stub(false, true, false)
     local read = D.Read(client, pack(), { Wrath = WRATH, Moonfire = MOONFIRE })
-    local own = { dead = true, inCombat = true, spells = true }
+    local own = { dead = true, inCombat = true, spells = true, stealthed = true, hostile = true }
     local asked = 0
     for _, f in ipairs(R.SNAPSHOT_FIELDS) do
         if not own[f[1]] then
@@ -218,11 +240,13 @@ tests["rotation driver RD10: the read answers nil for every field but dead, inCo
     t.ok(read(nil) == nil, "no field is nil")
     t.eq(read("dead"), false)
     t.eq(read("inCombat"), true)
+    t.eq(read("hostile"), true, "the target read: a live enemy")
+    t.ok(read("stealthed") == nil, "stealth as the client answered: not known")
 end
 
 tests["rotation driver RD10: no flag, value or number is invented in the snapshot"] = function(t)
     local v = D.Step(stub(false, false, false), pack())
-    local own = { dead = true, inCombat = true }
+    local own = { dead = true, inCombat = true, hostile = true }
     for _, f in ipairs(R.SNAPSHOT_FIELDS) do
         local name, kind = f[1], f[2]
         if (kind == "flag" or kind == "value" or kind == "number") and not own[name] then
@@ -232,6 +256,7 @@ tests["rotation driver RD10: no flag, value or number is invented in the snapsho
         end
     end
     t.ok(v.snapshot.stealthed == nil, "stealthed is nil, never false")
+    t.eq(v.snapshot.hostile, true, "hostile is what the target read gave")
 end
 
 -- The cooldown line -----------------------------------------------------
@@ -258,7 +283,7 @@ tests["rotation driver: a spell with no id is not read, and is named"] = functio
     c.setSpellCooldown(WRATH, false)
     local client = { dead = function() return false end, inCombat = function() return false end,
         combatLockdown = function() return false end, spell = c.spell, spellId = c.spellId,
-        spellCooldown = c.spellCooldown }
+        spellCooldown = c.spellCooldown, target = enemy }
     local v = D.Step(client, pack())
     t.eq(v.missing, { "Moonfire" }, "no id")
     t.eq(v.unread, { "Moonfire" }, "not read")
@@ -300,9 +325,118 @@ tests["rotation driver CD1: a spell on cooldown is not passed by for that reason
     t.eq(v.suggestion.passed, nil)
 end
 
+tests["rotation driver CD1: a spell no step weighed is not named"] = function(t)
+    -- Moonfire is picked first; Wrath's cooldown was not read, but the list
+    -- never came to Wrath.
+    local v = D.Step(stub(false, false, false, { Moonfire = false }), pack())
+    t.eq(v.suggestion and v.suggestion.spell, "Moonfire")
+    t.eq(v.suggestion.passed, nil, "nothing was passed by")
+    t.eq(v.passed, {}, "Wrath was never weighed")
+    t.eq(lastOf(v.trace).passed, nil, "and the pick's row names none")
+end
+
+tests["rotation driver CD1: the passed list is the one the steps gave in the trace"] = function(t)
+    local v = D.Step(stub(false, false, false, { Wrath = false }), pack())
+    t.eq(lastOf(v.trace).step, "list")
+    t.eq(lastOf(v.trace).passed, { "Moonfire" }, "the list's row names what it passed by")
+    t.eq(v.passed, { "Moonfire" })
+    for i = 1, #v.trace - 1 do
+        t.eq(v.trace[i].passed, nil, v.trace[i].step .. ": passed nothing by")
+    end
+end
+
+-- Stealth -------------------------------------------------------------
+
+tests["rotation driver: stealthed is read through client.stealthed"] = function(t)
+    local function step(answer)
+        local client, calls = stub(false, false, false, nil, { stealthed = function() return answer end })
+        return D.Step(client, pack()), calls
+    end
+    local v, calls = step(true)
+    t.eq(v.snapshot.stealthed, true, "stealthed")
+    t.eq(calls.stealthed, 1, "asked once")
+    v = step(false)
+    t.eq(v.snapshot.stealthed, false, "read: not stealthed")
+    v = step(nil)
+    t.ok(v.snapshot.stealthed == nil, "not known stays nil, never false")
+end
+
+tests["rotation driver: a client with no stealthed read leaves it not known"] = function(t)
+    local ok, v = pcall(D.Step, stub(false, false, false, nil, { without = { "stealthed" } }), pack())
+    t.ok(ok, "the step ran: " .. tostring(v))
+    t.ok(ok and v.snapshot.stealthed == nil, "nil, never false")
+    t.eq(ok and v.suggestion and v.suggestion.spell, "Moonfire", "and the rest is as usual")
+end
+
+-- F-086 ---------------------------------------------------------------
+
+tests["rotation driver F-086: hostile is yes only for an enemy that is there, hostile and alive"] = function(t)
+    local function hostile(answer) return D.Step(aiming(answer), pack()).snapshot.hostile end
+    t.eq(hostile(enemy()), true, "there, hostile, alive")
+    t.eq(hostile({ exists = false }), false, "read: no target")
+    t.eq(hostile({ exists = true, hostile = false, dead = false }), false, "read: not hostile")
+    t.eq(hostile({ exists = true, hostile = true, dead = true }), false, "read: dead")
+    t.ok(hostile(nil) == nil, "no answer: not known")
+    t.ok(hostile({}) == nil, "an empty answer: not known")
+    t.ok(hostile({ exists = true }) == nil, "hostile not read: not known")
+    t.ok(hostile({ exists = true, hostile = true }) == nil, "dead not read: not known")
+    t.ok(hostile({ exists = true, dead = false }) == nil, "hostile not read, alive: not known")
+    t.ok(hostile("yes") == nil, "an answer that is no table: not known")
+end
+
+tests["rotation driver F-086: target not known, no spell that needs one is suggested"] = function(t)
+    local client, calls = aiming(nil)
+    local v = D.Step(client, pack())
+    t.ok(v.snapshot.hostile == nil, "hostile is nil in the snapshot, not false")
+    t.eq(v.suggestion, nil, "nothing is suggested")
+    t.eq(noteOf(v.trace, "list"), "no rule ready; not known whether you have a target: Moonfire, Wrath")
+    t.eq(noteOf(v.trace, "farOpener"), "not known whether you have a target")
+    t.eq(v.why.note, "not known whether you have a target", "the plain reason follows the trace")
+    t.eq(v.passed, {}, "no cooldown was in the way")
+    t.eq(calls.target, 1, "the target was asked once")
+    t.eq(pressed(calls), 0, "nothing pressed")
+end
+
+tests["rotation driver F-086: a client with no target read leaves the target not known"] = function(t)
+    local ok, v = pcall(D.Step, stub(false, false, false, nil, { without = { "target" } }), pack())
+    t.ok(ok, "the step ran: " .. tostring(v))
+    t.ok(ok and v.snapshot.hostile == nil, "hostile is nil, never false")
+    t.eq(ok and v.suggestion, nil, "nothing that needs a target is suggested")
+    t.eq(ok and noteOf(v.trace, "list"), "no rule ready; not known whether you have a target: Moonfire, Wrath")
+end
+
+tests["rotation driver F-086: range is read through client.inRange when the client has it"] = function(t)
+    local function step(answers, without)
+        local client = stub(false, false, false, nil,
+            { inRange = function(id) return answers[id] end, without = without })
+        return D.Step(client, pack())
+    end
+    local v = step({ [MOONFIRE] = false, [WRATH] = true })
+    t.eq(v.snapshot.spells.Moonfire.inRange, false, "read: out of range")
+    t.eq(v.snapshot.spells.Wrath.inRange, true, "read: in range")
+    t.eq(v.suggestion and v.suggestion.spell, "Wrath", "the list goes on to the spell in range")
+    t.eq(v.suggestion and v.suggestion.step, "list")
+
+    v = step({ [MOONFIRE] = false, [WRATH] = false })
+    t.eq(v.suggestion and v.suggestion.spell, "Moonfire", "both out of range: the far opener")
+    t.eq(v.suggestion and v.suggestion.step, "farOpener")
+
+    v = step({})
+    t.ok(v.snapshot.spells.Moonfire.inRange == nil, "no answer: range stays not known")
+    t.ok(v.snapshot.spells.Wrath.inRange == nil)
+    v = step({ [MOONFIRE] = "far", [WRATH] = 0 })
+    t.ok(v.snapshot.spells.Moonfire.inRange == nil, "an answer that is no yes or no: not known")
+    t.ok(v.snapshot.spells.Wrath.inRange == nil)
+
+    local ok, got = pcall(step, { [MOONFIRE] = false }, { "inRange" })
+    t.ok(ok, "a client with no inRange read: the step ran: " .. tostring(got))
+    t.ok(ok and got.snapshot.spells.Moonfire.inRange == nil, "and range is not known")
+    t.eq(ok and got.suggestion and got.suggestion.spell, "Moonfire")
+end
+
 -- RD11 ----------------------------------------------------------------
 
-tests["rotation driver RD11: a step presses nothing and asks only its six reads"] = function(t)
+tests["rotation driver RD11: a step presses nothing and asks only its nine reads"] = function(t)
     for _, fight in ipairs({ false, true }) do
         local client, calls, other = stub(false, fight, fight)
         local v = D.Step(client, pack())
@@ -312,20 +446,25 @@ tests["rotation driver RD11: a step presses nothing and asks only its six reads"
         local names = {}
         for name in pairs(calls) do names[#names + 1] = name end
         table.sort(names)
-        t.eq(names, { "combatLockdown", "dead", "inCombat", "spell", "spellCooldown", "spellId" })
+        t.eq(names, { "combatLockdown", "dead", "inCombat", "inRange", "spell", "spellCooldown", "spellId",
+            "stealthed", "target" })
         t.eq(calls.dead, 1)
         t.eq(calls.inCombat, 1)
         t.eq(calls.combatLockdown, 1)
+        t.eq(calls.target, 1)
+        t.eq(calls.stealthed, 1)
+        t.eq(calls.inRange, 2, "once for each spell with an id")
     end
 end
 
 -- The driver in a kernel ------------------------------------------------
 
 -- opts: class (false: not known), cooldowns, enabled (true: switched on
--- after login).
+-- after login). A live enemy is targeted.
 local function start(opts)
     opts = opts or {}
     local c = spellsOn(ns.make.fakeClient(), opts.cooldowns)
+    c.target = enemy
     c.setSaved(ns.id.accountDB, {})
     c.setSaved(ns.id.charDB, {})
     c.setDead(false)
