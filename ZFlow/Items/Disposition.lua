@@ -74,7 +74,9 @@ Disposition.RULES = {
     { key = "neverSell", order = 1, check = function(i, c)
         local never = type(c.choices) == "table" and c.choices.never
         if type(never) == "table" and never[i.key] then
-            return { action = "keep", reason = "you bought it back, so it's never sold", basis = "choice" }
+            -- The list is filled by hand too (<slash> keep), so the reason
+            -- claims no buyback.
+            return { action = "keep", reason = "on your never-sell list", basis = "choice" }
         end
     end },
     { key = "unsellable", order = 2, check = function(i)

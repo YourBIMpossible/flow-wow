@@ -30,7 +30,8 @@ Keep.WORD = "keep"
 Keep.PATH = "settings.sell.never"
 Keep.NOT_LOADED = "your saved data is not loaded yet; try again after login."
 Keep.EMPTY = "Your never-sell list is empty."
-Keep.USAGE = "say keep <item link>, keep remove <item link>, or keep alone for the list."
+Keep.ONE_AT_A_TIME = "one item at a time, please: nothing was changed."
+Keep.USAGE ="say keep <item link>, keep remove <item link>, or keep alone for the list."
 
 local function trim(text)
     return (tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", ""))
@@ -53,15 +54,20 @@ end
 -- character's saved data is not there.
 local function listOf(k)
     if type(k.client.saved(k.id.charDB)) ~= "table" then return nil end
-    local raw = k.store:get("char", Keep.PATH)
+    -- Read as the sell list reads it (a set or a list), so what is written
+    -- back never loses an entry saved in the other shape.
+    local never = ns.SellList.Choices(k.store).never
     local out = {}
-    if type(raw) == "table" then
-        for item, on in pairs(raw) do
-            local key = on and ns.Items.Key(item) or nil
-            if key ~= nil then out[key] = true end
-        end
-    end
+    for key in pairs(never) do out[key] = true end
     return out
+end
+
+-- How many items a line names: each "item:<n>" in it, or one for a bare ID.
+local function itemsIn(text)
+    local n = 0
+    for _ in tostring(text):gmatch("item:%d+") do n = n + 1 end
+    if n == 0 and tostring(text):match("^%d+$") then n = 1 end
+    return n
 end
 
 function Keep.Run(k, rest)
@@ -83,6 +89,7 @@ function Keep.Run(k, rest)
     local what = rest
     local word, more = rest:match("^(%S+)%s*(.*)$")
     if word == "remove" then remove, what = true, trim(more) end
+    if itemsIn(what) > 1 then return { Keep.ONE_AT_A_TIME }, false end
     local key = ns.Items.Key(what)
     if key == nil then return { Keep.USAGE }, false end
     local name = nameOf(k, key)

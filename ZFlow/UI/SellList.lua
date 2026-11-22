@@ -127,7 +127,12 @@ function SellList.Declare(k)
                 panel.place(SellList.DEFAULT_POINT)
             end
         end,
-        stop = hide,
+        -- Stopped: nothing is open as far as this module goes, so a later
+        -- refresh() lists nothing.
+        stop = function()
+            open = false
+            hide()
+        end,
     })
     return api
 end
