@@ -3,10 +3,20 @@
   Z-Flow text check (F-A). Reads every ZFlow/**/*.lua except ZFlow/Tests/**
   and fails on user-facing strings that break the price and chat rules:
 
-    F085   the F-085 fallback is written any way but "price unknown<em dash>check vendor"
-           (U+2014, no spaces). Flagged: a string with "price unknown" /
-           "prices unknown", or "unknown - check vendor|trainer|merchant" with
-           any dash or colon, that does not contain that exact text.
+    F085   the F-085 fallback is written any way but the allowed forms (LEDGER
+           113 Decision 2), em dash (U+2014) always, no spaces around it:
+             "price unknown<em dash>check vendor"     an item's price
+             "price unknown<em dash>check trainer"    a training cost
+             "<n> prices unknown<em dash>check vendor" / "... trainer"   a count line
+           Flagged: a string with "price unknown" / "prices unknown", or
+           "unknown - check vendor|trainer|merchant" with any dash or colon,
+           that contains none of the allowed texts. So the hyphen form,
+           "unknown - check trainer" without "price" and a bare
+           "price unknown" all fail. A count line may also be built by
+           concatenation: a string that is exactly "unknown<em dash>check vendor"
+           or "... trainer" (leading spaces allowed) passes when it is the
+           right operand of "..", as in n .. " prices " .. "unknown<em dash>check vendor".
+           On its own it fails.
     PRICE  a price that is not labelled: a money figure in a string ("12s 40c",
            "5g", "3c", or a %d/%s format followed by g or c), unless the same
            string says "estimate"; or coin text built by concatenating "g", "s"
@@ -40,7 +50,22 @@ if (-not (Test-Path -LiteralPath $zflow -PathType Container)) {
 $zflow = (Resolve-Path -LiteralPath $zflow).Path
 
 $EM = [string][char]0x2014
-$CANON = 'price unknown' + $EM + 'check vendor'
+$ALLOWED = @(
+    ('price unknown' + $EM + 'check vendor'),
+    ('price unknown' + $EM + 'check trainer'),
+    ('prices unknown' + $EM + 'check vendor'),
+    ('prices unknown' + $EM + 'check trainer')
+)
+# The tail of a count line built by concatenation (n .. " prices " .. "unknown<em dash>check vendor"),
+# allowed only as the right operand of "..".
+$FRAGMENTS = @(
+    ('unknown' + $EM + 'check vendor'),
+    ('unknown' + $EM + 'check trainer')
+)
+function Test-Allowed([string]$v) {
+    foreach ($a in $ALLOWED) { if ($v.IndexOf($a, [StringComparison]::Ordinal) -ge 0) { return $true } }
+    return $false
+}
 
 # ------------------------------------------------------------------ scanner
 # Splits Lua 5.1 source into code (comments blanked, each string replaced by
@@ -136,7 +161,9 @@ function Get-LuaScan([string]$text) {
 }
 
 function Show([string]$s) {
-    $t = $s.Replace("`n", '\n')
+    # Name dashes in ASCII: a default Windows console prints U+2014 and U+2013 as "-", which would
+    # make a correct string look like the hyphen form the rule rejects.
+    $t = $s.Replace("`n", '\n').Replace([string][char]0x2014, '<U+2014>').Replace([string][char]0x2013, '<U+2013>')
     if ($t.Length -gt 80) { $t = $t.Substring(0, 77) + '...' }
     return '"' + $t + '"'
 }
@@ -160,10 +187,17 @@ foreach ($f in $files) {
     $where = 'ZFlow/' + $rel
     $isPrices = ($rel -eq 'Items/Prices.lua')
 
-    foreach ($s in $scan.Strings) {
+    # Strings that are the right operand of "..": the tail of a built count line.
+    $tails = @{}
+    foreach ($m in [regex]::Matches($scan.Code, $reConcat)) { $tails[[int]$m.Groups[1].Value] = $true }
+
+    for ($si = 0; $si -lt $scan.Strings.Count; $si++) {
+        $s = $scan.Strings[$si]
         $v = $s.Value
-        if ($v -match $reFallback -and $v.IndexOf($CANON, [StringComparison]::Ordinal) -lt 0) {
-            $problems.Add(("{0}:{1}: F085: write the fallback as 'price unknown{2}check vendor': {3}" -f $where, $s.Line, $EM, (Show $v)))
+        # n .. " prices " .. "unknown<em dash>check vendor": the shown line is an allowed count line.
+        $countTail = $tails.ContainsKey($si) -and ($FRAGMENTS -contains $v.TrimStart(' '))
+        if ($v -match $reFallback -and -not (Test-Allowed $v) -and -not $countTail) {
+            $problems.Add(("{0}:{1}: F085: use 'price unknown{2}check vendor', 'price unknown{2}check trainer' or a count line '<n> prices unknown{2}check ...' ({2} = em dash, no spaces): {3}" -f $where, $s.Line, '<U+2014>', (Show $v)))
         }
         if (-not $isPrices -and $v -notmatch '(?i)estimate') {
             $money = $false

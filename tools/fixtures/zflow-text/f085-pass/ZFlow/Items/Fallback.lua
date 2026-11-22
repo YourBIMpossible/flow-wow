@@ -1,4 +1,3 @@
-local _, ns = ...
 -- A comment may say price unknown - check vendor; comments are not user text.
 local F = {}
 F.TEXT = "price unknown—check vendor"

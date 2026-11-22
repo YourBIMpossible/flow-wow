@@ -14,12 +14,24 @@ $ErrorActionPreference = 'Stop'
 $tool = Join-Path $PSScriptRoot '..\..\zflow-text.ps1'
 $cases = @(
     @{ Name = 'f085-pass';        Exit = 0 },
-    @{ Name = 'f085-fail';        Exit = 1; Tag = 'F085' },
+    @{ Name = 'f085-fail';        Exit = 1; Tag = 'F085'; Has = 'U+2014' },
     @{ Name = 'price-pass';       Exit = 0 },
     @{ Name = 'price-fail';       Exit = 1; Tag = 'PRICE' },
     @{ Name = 'price-build-fail'; Exit = 1; Tag = 'PRICE' },
     @{ Name = 'print-pass';       Exit = 0 },
-    @{ Name = 'print-fail';       Exit = 1; Tag = 'PRINT' }
+    @{ Name = 'print-fail';       Exit = 1; Tag = 'PRINT' },
+    @{ Name = 'allowed-vendor-pass';  Exit = 0 },
+    @{ Name = 'allowed-trainer-pass'; Exit = 0 },
+    @{ Name = 'count-vendor-pass';    Exit = 0 },
+    @{ Name = 'count-trainer-pass';   Exit = 0 },
+    @{ Name = 'hyphen-fail';          Exit = 1; Tag = 'F085' },
+    @{ Name = 'nopricetrainer-fail';  Exit = 1; Tag = 'F085' },
+    @{ Name = 'bare-fail';            Exit = 1; Tag = 'F085' },
+    @{ Name = 'merchant-fail';        Exit = 1; Tag = 'F085' },
+    @{ Name = 'count-concat-pass';    Exit = 0 },
+    @{ Name = 'concat-hyphen-fail';   Exit = 1; Tag = 'F085' },
+    @{ Name = 'fragment-alone-fail';  Exit = 1; Tag = 'F085'; Has = 'unknown<U+2014>check vendor' },
+    @{ Name = 'price-format-fail';    Exit = 1; Tag = 'PRICE' }
 )
 $bad = 0
 foreach ($c in $cases) {
@@ -33,6 +45,8 @@ foreach ($c in $cases) {
     $code = $LASTEXITCODE
     $ok = ($code -eq $c.Exit)
     if ($ok -and $c.Tag) { $ok = ($out -match (': ' + $c.Tag + ': ')) }
+    # Has: text the output must carry as is (the em dash is named in ASCII so any console shows it)
+    if ($ok -and $c.Has) { $ok = ($out.IndexOf($c.Has, [StringComparison]::Ordinal) -ge 0) }
     if ($ok) {
         Write-Output ("PASS {0} (exit {1})" -f $c.Name, $code)
     } else {
