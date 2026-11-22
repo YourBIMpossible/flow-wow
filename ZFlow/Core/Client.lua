@@ -3080,17 +3080,17 @@ function ns.make.client(env)
     -- button is an ordinary Button: no secure template, no attribute, no
     -- action. It only tells its caller.
     --
-    -- A protected window no longer stops it (section 132; the owner turned
-    -- the merchant button on and saw none). Why that is safe: by the
-    -- public pages (warcraft.wiki.gg, API InCombatLockdown and
-    -- ScriptRegion:IsProtected) the limits of a fight fall on a protected
-    -- frame, on its parents, and on a frame it is anchored to. This button
-    -- is a child of the window and is anchored to it, not the other way
-    -- round, so it does not become protected and the window is not
-    -- touched: nothing here shows, hides, moves or sizes the window. It is
-    -- still made only out of combat. What IsProtected answered is kept as
-    -- h.parentProtected (true, false, or nil for not said) so it can be
-    -- reported. Needs game test.
+    -- A protected window stops it again (section 134): nil and
+    -- "its window is protected" when IsProtected answers true, nil and
+    -- "its window will not say whether it is protected" when it
+    -- gives no plain true / false. Section 132 took this check away on a
+    -- guess; what stopped the button the owner did not see was never
+    -- found, so the check is back and the reason is now said. What the
+    -- public sources say (WoW\from-twin\RESEARCH-merchant-button.md): the
+    -- merchant window is not declared protected in the public UI source
+    -- for this client, and other addons put plain buttons on it with no
+    -- such check. None of that has been seen in game. c.windowState below
+    -- lets one look in game settle it. Needs game test.
     --   h.onClick(fn, failed)  fn() on a left click; failed(err) is told the
     --                          error of an fn that failed.
     --   h.show(on)
@@ -3126,7 +3126,10 @@ function ns.make.client(env)
         if type(frame) ~= "table" then return nil, "no window" end
         if c.inCombat() ~= false then return nil, "in combat" end
         local okP, protected = method(frame, "IsProtected")
-        if not okP or hidden(protected) or type(protected) ~= "boolean" then protected = nil end
+        if not okP or hidden(protected) or type(protected) ~= "boolean" then
+            return nil, "its window will not say whether it is protected"
+        end
+        if protected then return nil, "its window is protected" end
 
         local name = spec.name
         if type(name) ~= "string" or name == "" or env[name] ~= nil then name = nil end
@@ -3150,7 +3153,7 @@ function ns.make.client(env)
             type(p[2]) == "string" and p[2] or "TOPRIGHT", tonumber(p[3]) or 0, tonumber(p[4]) or 0)
         method(b, "RegisterForClicks", "LeftButtonUp")
 
-        local h, clicked, clickFailed = { parentProtected = protected }, nil, nil
+        local h, clicked, clickFailed = {}, nil, nil
         -- The handlers close over the button: they use none of the
         -- arguments the client passes.
         method(b, "SetScript", "OnClick", function()
@@ -3181,7 +3184,32 @@ function ns.make.client(env)
             clickFailed = type(failed) == "function" and failed or nil
         end
         function h.show(on) method(b, on and "Show" or "Hide") end
+        -- true / false: whether the button can be seen now (it is shown and
+        -- so is every parent); nil when the client does not say plainly.
+        -- Region:IsVisible (warcraft.wiki.gg). Needs game test.
+        function h.visible()
+            local okV, v = method(b, "IsVisible")
+            if not okV or hidden(v) or type(v) ~= "boolean" then return nil end
+            return v
+        end
         return h
+    end
+
+    -- c.windowState(frameName) -> nil when there is no such window, else
+    -- { shown = true / false / nil, protected = true / false / nil }; nil
+    -- inside is an answer the client did not give plainly. It only reads.
+    -- UI/WindowButtons.lua prints it, so one look in game says what the
+    -- window is on this client. Region:IsShown and
+    -- ScriptRegion:IsProtected (warcraft.wiki.gg). Needs game test.
+    function c.windowState(frameName)
+        local frame = type(frameName) == "string" and env[frameName] or nil
+        if type(frame) ~= "table" then return nil end
+        local function plain(name)
+            local ok, v = method(frame, name)
+            if not ok or hidden(v) or type(v) ~= "boolean" then return nil end
+            return v
+        end
+        return { shown = plain("IsShown"), protected = plain("IsProtected") }
     end
 
     ---------------------------------------------------------------------

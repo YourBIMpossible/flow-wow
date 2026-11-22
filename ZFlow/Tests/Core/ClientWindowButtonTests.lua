@@ -5,7 +5,10 @@
 -- hand-written stand-in for the globals of the client, and the fake.
 local _, ns = ...
 
--- opts: noWindow, protected (what IsProtected answers; "error": it fails;
+-- opts: noWindow, shown (what IsShown of the window answers; "error": it
+-- fails; left out: the window has no such method), visible (what IsVisible
+-- of a button answers; left out: no such method),
+-- protected (what IsProtected answers; "error": it fails;
 -- "none": the window has no such method), combat (what InCombatLockdown
 -- answers; "none": the client has neither combat read), noTemplate (a
 -- template makes CreateFrame fail), noFrames (CreateFrame always fails).
@@ -18,6 +21,12 @@ local function gameEnv(opts)
             function w:IsProtected()
                 if opts.protected == "error" then error("no") end
                 return opts.protected or false
+            end
+        end
+        if opts.shown ~= nil then
+            function w:IsShown()
+                if opts.shown == "error" then error("no") end
+                return opts.shown
             end
         end
         env.TestWindow = w
@@ -38,6 +47,9 @@ local function gameEnv(opts)
         function f:SetAttribute() self.attributes = self.attributes + 1 end
         function f:Show() self.shown = true end
         function f:Hide() self.shown = false end
+        if opts.visible ~= nil then
+            function f:IsVisible() return opts.visible end
+        end
         env.frames[#env.frames + 1] = f
         return f
     end
@@ -91,26 +103,55 @@ return {
         t.eq(#env.frames, 0, "nothing is made")
     end,
 
-    -- Section 132: the rule changed. A protected window, or one that will
-    -- not say, no longer stops a plain button made out of combat.
-    ["window button: a protected window gets one, and the handle says so"] = function(t)
-        local h, env = make({ protected = true })
-        t.ok(h ~= nil, "a handle")
-        t.eq(#env.frames, 1)
-        t.eq(h and h.parentProtected, true)
-        t.eq(env.frames[1].attributes, 0, "still a plain button")
-        t.eq(env.frames[1].template, "UIPanelButtonTemplate")
-        local h2 = make()
-        t.eq(h2 and h2.parentProtected, false, "a plain no is kept as said")
+    -- Section 134: the rule of section 132 is taken back. A protected
+    -- window, or one that will not say, gets no button, and the reason
+    -- is said.
+    ["window button: a protected window gets none, and it says why"] = function(t)
+        local env = gameEnv({ protected = true })
+        local h, why = ns.make.client(env).windowButton("TestWindow", SPEC)
+        t.eq(h, nil)
+        t.eq(#env.frames, 0, "nothing is made")
+        t.eq(why, "its window is protected")
     end,
 
-    ["window button: a window that will not say whether it is protected gets one"] = function(t)
+    ["window button: a window that will not say whether it is protected gets none, and it says why"] = function(t)
         for _, how in ipairs({ "error", "none", "yes", 1 }) do
-            local h, env = make({ protected = how })
-            t.ok(h ~= nil, tostring(how))
-            t.eq(#env.frames, 1, tostring(how))
-            t.eq(h and h.parentProtected, nil, "not said: " .. tostring(how))
+            local env = gameEnv({ protected = how })
+            local h, why = ns.make.client(env).windowButton("TestWindow", SPEC)
+            t.eq(h, nil, tostring(how))
+            t.eq(#env.frames, 0, tostring(how))
+            t.eq(why, "its window will not say whether it is protected", tostring(how))
         end
+    end,
+
+    ["window button: combat is said before protection"] = function(t)
+        local env = gameEnv({ protected = true, combat = true })
+        local h, why = ns.make.client(env).windowButton("TestWindow", SPEC)
+        t.eq(h, nil)
+        t.eq(why, "in combat")
+    end,
+
+    ["window state: what the client says of the window, read only"] = function(t)
+        local function state(opts)
+            local env = gameEnv(opts)
+            return ns.make.client(env).windowState("TestWindow"), env
+        end
+        t.eq(state({ noWindow = true }), nil, "no window")
+        t.eq(state({ shown = true }), { shown = true, protected = false })
+        t.eq(state({ shown = false, protected = true }), { shown = false, protected = true })
+        t.eq(state({}), { protected = false }, "no IsShown: not said")
+        t.eq(state({ shown = "error", protected = "error" }), {}, "failed reads: not said")
+        t.eq(state({ shown = "yes", protected = "none" }), {}, "not a plain answer: not said")
+        local _, env = state({ shown = true })
+        t.eq(#env.frames, 0, "nothing is made")
+        t.eq(ns.make.client(gameEnv()).windowState(nil), nil, "a bad ask")
+    end,
+
+    ["window button: the handle says whether the button can be seen"] = function(t)
+        t.eq(make({ visible = true }).visible(), true)
+        t.eq(make({ visible = false }).visible(), false)
+        t.eq(make().visible(), nil, "no such read: not said")
+        t.eq(make({ visible = "yes" }).visible(), nil, "not a plain answer")
     end,
 
     ["window button: a protected window still gets none in combat"] = function(t)
@@ -254,12 +295,22 @@ return {
         h.onClick(function() error("broke") end, function(err) told = err end)
         h.click()
         t.ok(told ~= nil, "failed is told")
-        -- Section 132: a protected window gets its button, as in the client.
+        -- Section 134: a protected window gets none, as in the client.
         c.setWindow("Guarded", { protected = true })
-        local g = c.windowButton("Guarded", SPEC)
-        t.ok(g ~= nil, "protected: a handle")
-        t.eq(g and g.parentProtected, true)
-        t.eq(h.parentProtected, nil, "not said")
+        local g, gWhy = c.windowButton("Guarded", SPEC)
+        t.eq(g, nil, "protected")
+        t.eq(gWhy, "its window is protected")
+        c.setWindow("Mute", { protected = "unsaid" })
+        t.eq(select(2, c.windowButton("Mute", SPEC)), "its window will not say whether it is protected")
+        t.eq(c.windowState("Guarded"), { protected = true })
+        t.eq(c.windowState("Mute"), {})
+        t.eq(c.windowState("Gone"), nil)
+        t.eq(h.visible(), nil, "the window does not say whether it is open")
+        c.setWindow("TestWindow", { shown = true })
+        t.eq(c.windowState("TestWindow"), { shown = true, protected = false })
+        t.eq(h.visible(), true)
+        c.setWindow("TestWindow", { shown = false })
+        t.eq(h.visible(), false)
         c.setCombat(true)
         t.eq(c.windowButton("TestWindow", SPEC), nil, "in combat")
         t.eq(select(2, c.windowButton("TestWindow", SPEC)), "in combat")
@@ -271,6 +322,6 @@ return {
         c.setFrames(false)
         t.eq(c.windowButton("TestWindow", SPEC), nil, "a client with no frames")
         t.eq(select(2, c.windowButton("TestWindow", SPEC)), "no frame")
-        t.eq(#c.windowButtons, 2)
+        t.eq(#c.windowButtons, 1)
     end,
 }

@@ -114,15 +114,33 @@ tests["window buttons: the merchant button shows the sell list, and only that"] 
     t.eq(opened, { menu = 0, sell = 1 }, "the sell list, once")
 end
 
--- Section 132: the rule changed. A protected window gets its button (made
--- out of combat); only a missing window gets none.
-tests["window buttons: a missing window gets no button; a protected one gets its button"] = function(t)
+-- Section 134: the rule of section 132 is taken back. A missing window
+-- and a protected one both get none, each with its own reason.
+tests["window buttons: a missing window and a protected one get no button, each with its reason"] = function(t)
     local _, c, api = start({ on = { worldMap = true, merchant = true },
         windows = { MerchantFrame = { protected = true } } })
-    t.eq(#c.windowButtons, 1, "one")
-    t.ok(buttonOn(c, "MerchantFrame") ~= nil, "on the protected merchant window")
-    t.eq(api.state(), { worldMap = "not made", merchant = "shown" })
-    t.eq(api.reasons(), { worldMap = "no window" })
+    t.eq(#c.windowButtons, 0, "none")
+    t.eq(api.state(), { worldMap = "not made", merchant = "not made" })
+    t.eq(api.reasons(), { worldMap = "no window", merchant = "its window is protected" })
+end
+
+tests["window buttons: a window that will not say whether it is protected gets none, and says so"] = function(t)
+    local _, c, api = start({ on = { merchant = true },
+        windows = { MerchantFrame = { protected = "unsaid" } } })
+    t.eq(#c.windowButtons, 0, "none")
+    t.eq(api.reasons().merchant, "its window will not say whether it is protected")
+end
+
+tests["window buttons: a protected window is asked again when it opens"] = function(t)
+    local _, c, api = start({ on = { merchant = true },
+        windows = { MerchantFrame = { protected = true } } })
+    c.fire("MERCHANT_SHOW")
+    t.eq(#c.windowButtons, 0, "still protected: still none")
+    t.eq(api.reasons().merchant, "its window is protected")
+    c.setWindow("MerchantFrame", { shown = true })
+    c.fire("MERCHANT_SHOW")
+    t.ok(buttonOn(c, "MerchantFrame") ~= nil, "made once the window is not protected")
+    t.eq(api.state().merchant, "shown")
 end
 
 tests["window buttons: a window that is not there at login gets its button when it opens"] = function(t)
@@ -172,11 +190,28 @@ tests["window buttons: the lines say each state, and why one was not made"] = fu
     local _, _, api = start({ on = { worldMap = true, merchant = true },
         windows = { MerchantFrame = { protected = true } } })
     t.eq(api.lines(), {
-        "button on the world map: not made (no window).",
-        "button on the merchant window: shown; its window is protected.",
+        "button on the world map: not made (no window); window not there.",
+        "button on the merchant window: not made (its window is protected); window there, protected.",
     })
     local _, _, off = start()
-    t.eq(off.lines(), { "button on the world map: off.", "button on the merchant window: off." })
+    t.eq(off.lines(), {
+        "button on the world map: off; window there, not protected.",
+        "button on the merchant window: off; window there, not protected.",
+    })
+end
+
+tests["window buttons: the lines say what the window is, and whether a shown button can be seen"] = function(t)
+    local _, c, api = start({ on = { merchant = true },
+        windows = { WorldMapFrame = { protected = "unsaid", shown = false }, MerchantFrame = { shown = true } } })
+    t.eq(api.lines(), {
+        "button on the world map: off; window there, closed, will not say whether it is protected.",
+        "button on the merchant window: shown; window there, open, not protected; button can be seen.",
+    })
+    c.setWindow("MerchantFrame", { shown = false })
+    t.eq(api.lines()[2],
+        "button on the merchant window: shown; window there, closed, not protected; button cannot be seen.")
+    c.windowState = nil
+    t.eq(api.lines()[1], "button on the world map: off; window not read.")
 end
 
 tests["window buttons: the word prints the lines"] = function(t)
@@ -198,7 +233,7 @@ tests["window buttons: the word prints the lines"] = function(t)
     diag.commands[W.WORD]("")
     local lines = api.lines()
     t.eq(#c.printed, n + #lines)
-    t.eq(c.printed[n + 2], ns.id.title .. ": button on the merchant window: not made (no window).")
+    t.eq(c.printed[n + 2], ns.id.title .. ": button on the merchant window: not made (no window); window not there.")
     for i = 1, #lines do
         t.ok(not lines[i]:find("Flow", 1, true), "no name spelled out: " .. lines[i])
     end
