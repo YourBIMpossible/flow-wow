@@ -16,7 +16,10 @@ $cases = @(
     @{ Name = 'pass';          Exit = 0 },
     @{ Name = 'unlisted-fail'; Exit = 1; Tag = 'UNLISTED' },
     @{ Name = 'missing-fail';  Exit = 1; Tag = 'MISSING' },
-    @{ Name = 'case-fail';     Exit = 1; Tag = 'MISSING' }
+    @{ Name = 'case-fail';     Exit = 1; Tag = 'MISSING' },
+    @{ Name = 'notloaded-stale-fail';  Exit = 1; Tag = 'NOTLOADED' },
+    @{ Name = 'notloaded-listed-fail'; Exit = 1; Tag = 'NOTLOADED' },
+    @{ Name = 'badlist';               Exit = 2; List = 'no-such-list.txt'; Has = 'no not-loaded list' }
 )
 $bad = 0
 foreach ($c in $cases) {
@@ -28,11 +31,13 @@ foreach ($c in $cases) {
     }
     $toolArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $tool, '-Root', $dir)
     $list = Join-Path $dir 'not-loaded.txt'
-    if (Test-Path -LiteralPath $list) { $toolArgs += @('-NotLoaded', $list) }
+    if ($c.List) { $toolArgs += @('-NotLoaded', (Join-Path $dir $c.List)) }
+    elseif (Test-Path -LiteralPath $list) { $toolArgs += @('-NotLoaded', $list) }
     $out = (& powershell.exe @toolArgs 2>&1 | Out-String)
     $code = $LASTEXITCODE
     $ok = ($code -eq $c.Exit)
     if ($ok -and $c.Tag) { $ok = ($out -match (': ' + $c.Tag + ': ')) }
+    if ($ok -and $c.Has) { $ok = ($out.IndexOf($c.Has, [StringComparison]::Ordinal) -ge 0) }
     if ($ok) {
         Write-Output ("PASS {0} (exit {1})" -f $c.Name, $code)
     } else {
