@@ -33,6 +33,7 @@ return {
         "UI/MoveGuides.lua",
         "Core/Facts.lua",
         "UI/Export.lua",
+        "Items/PriceChart.lua",
         "UI/CopyBox.lua",
         "UI/Advisor.lua",
         "UI/Setup.lua",
