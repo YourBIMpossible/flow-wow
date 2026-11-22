@@ -18,7 +18,7 @@
 --     on a fixture frame) records the name, and the test is reported SKIP
 --     ("needs the client: <name>"), never PASS, whatever its checks said
 --     (unless a check had already failed before that first touch: then it
---     is a SKIP-FAIL, listed and counted, failing the run with --strict; see run.lua).
+--     is a SKIP-FAIL, listed, counted and failing the run; see run.lua).
 --   * debugprofilestop is the one exception: a timing fixture, with rules of
 --     its own so that no test passes on what it measured (see below).
 --
@@ -91,11 +91,29 @@ Marker.__call = function(self, ...)
     return marker(name .. "()")
 end
 Marker.__tostring = function(self) touch(markerName[self]); return "<missing " .. markerName[self] .. ">" end
--- Arithmetic, joining and comparing: in a test, the test needs the client.
--- While files load (a pattern built from one of the game's strings at file
--- level), the result is one more marker, so the file finishes loading; a
--- comparison is false. Whatever a file keeps from it stays a marker, and a
--- test that touches it later is a SKIP.
+-- Arithmetic and joining: in a test, the test needs the client. While files
+-- load (a pattern built from one of the game's strings at file level), the
+-- result is one more marker, so the file finishes loading. Whatever a file
+-- keeps from it stays a marker, and a test that indexes, calls or does
+-- arithmetic on it later is a SKIP.
+--
+-- WHAT A MARKER CAN'T CATCH (Lua 5.1 never calls a table's metamethod for
+-- these, so a marker kept from load time passes through them untouched):
+--   * #marker is 0, and ipairs(marker) / pairs(marker) / next(marker) run
+--     zero times: 5.1 has no __len for tables and its ipairs is raw. Code
+--     that takes its "the game returned nothing" branch on that is not a
+--     SKIP, and a test of it can PASS offline on the wrong branch.
+--   * type(marker) is "table", a marker is true in an "if", and rawget and
+--     rawequal see a plain empty table.
+--   * marker == x is plain identity (__eq is only called for two tables
+--     with the same __eq).
+--   * marker < 5 (a marker against a number or string) is a plain Lua error,
+--     "attempt to compare", with no needs-the-client mark: a file that does
+--     it while loading doesn't load, and a test that does it is an ERROR,
+--     not a SKIP. Only marker < marker reaches __lt / __le below (false at
+--     load, needs-the-client in a test).
+-- Reading the global afresh in a test is always caught (the read itself is
+-- the touch); the gaps are only for a value a file kept at load time.
 local function opMarker(a, b)
     local m = (S.IsMarker(a) and a) or b
     if S.phase == "test" then needs(markerName[m]) end
@@ -108,7 +126,7 @@ local function cmpMarker(a, b)
     touch(markerName[m])
     return false
 end
-for _, op in ipairs({ "__add", "__sub", "__mul", "__div", "__mod", "__pow", "__unm", "__concat", "__len" }) do
+for _, op in ipairs({ "__add", "__sub", "__mul", "__div", "__mod", "__pow", "__unm", "__concat" }) do
     Marker[op] = opMarker
 end
 Marker.__lt, Marker.__le = cmpMarker, cmpMarker
