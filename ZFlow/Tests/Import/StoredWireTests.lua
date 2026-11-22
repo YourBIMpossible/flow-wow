@@ -400,7 +400,9 @@ return {
         local adopted = (S.Adopt(mine(), Import.FromFlow(flow(), {}), confirmed))
         local merged = (Import.Merge({ settings = mine() }, nil, Import.FromFlow(flow(), {}),
             { account = { settings = model:defaults() } }, confirmed)).settings
-        for _, key in ipairs(model:keys()) do
+        local keys = model:keys()
+        t.ok(type(keys) == "table" and #keys > 0, "the shipped model names no setting, so nothing was compared")
+        for _, key in ipairs(keys) do
             t.eq((model:get(merged, key)), (model:get(adopted, key)), key)
             t.eq(model:explicit(merged, key), model:explicit(adopted, key), key .. " chosen")
         end
@@ -785,5 +787,30 @@ return {
                 "does not say nothing was merged")
             t.eq(account, { settings = { sell = { autoAll = true } } })
         end
+    end,
+    ["guards P2: the merge and the adopt agree on a stored on that is no true"] = function(t)
+        local model = shipped()
+        local adopted, adopt = S.Adopt({ sell = { autoJunk = "yes" } }, Import.FromFlow(sellDb(), {}), nil, model)
+        local account, _, merge = Import.Merge({ settings = { sell = { autoJunk = "yes" } } }, nil,
+            Import.FromFlow(sellDb(), {}), nil, nil, model)
+        t.eq(merge.ok, true, tostring(merge.reason))
+        t.eq(adopt.ok, true, tostring(adopt.reason))
+        t.eq(merge.vendorAlreadyOn, adopt.vendorAlreadyOn, "already on differs")
+        t.eq(merge.vendorLeftOff, adopt.vendorLeftOff, "left off differs")
+        t.eq(merge.vendorConfirmed, adopt.vendorConfirmed, "confirmed differs")
+        t.eq(merge.vendorAlreadyOn, {}, "a stored value that is no true is reported as on")
+        t.eq(merge.vendorLeftOff, { "sell.autoJunk", "sell.autoRepair" })
+        t.eq((model:get(account.settings, "sell.autoJunk")), (model:get(adopted, "sell.autoJunk")))
+        t.ok((model:get(account.settings, "sell.autoJunk")) ~= true, "the model reads the stored value as on")
+    end,
+
+    ["guards P2: a stored true is already on for the merge and the adopt alike"] = function(t)
+        local model = shipped()
+        local _, adopt = S.Adopt({ sell = { autoJunk = true } }, Import.FromFlow(sellDb(), {}), nil, model)
+        local _, _, merge = Import.Merge({ settings = { sell = { autoJunk = true } } }, nil,
+            Import.FromFlow(sellDb(), {}), nil, nil, model)
+        t.eq(merge.vendorAlreadyOn, { "sell.autoJunk" })
+        t.eq(merge.vendorAlreadyOn, adopt.vendorAlreadyOn)
+        t.eq(merge.vendorLeftOff, adopt.vendorLeftOff)
     end,
 }

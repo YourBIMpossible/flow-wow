@@ -156,8 +156,11 @@ return {
     end,
 
     ["normalise: every position row keeps each of the nine anchors"] = function(t)
+        local rows = 0
+        t.eq(#ANCHORS, 9, "the test does not hold nine anchors")
         for _, row in ipairs(Import.flowMap) do
             if row.as == "point" then
+                rows = rows + 1
                 local key = row[1]
                 for i, anchor in ipairs(ANCHORS) do
                     local other = ANCHORS[#ANCHORS + 1 - i]
@@ -167,15 +170,20 @@ return {
                 end
             end
         end
+        t.ok(rows >= 14, "expected the position rows of the mapping, found " .. rows)
     end,
 
     ["normalise: every kept position reads back through the reader unchanged"] = function(t)
+        local rows = 0
         for _, row in ipairs(Import.flowMap) do
             if row.as == "point" then
+                rows = rows + 1
                 local stored = storedFor(Import.FromFlow(dbWith(row[1], { "TOPLEFT", "BOTTOMRIGHT", 12, -7 }), {}), row[1])
+                t.ok(stored ~= nil, row[1] .. " was not stored, so nothing was read back")
                 t.eq(S.Point(stored), stored, row[1])
             end
         end
+        t.ok(rows >= 14, "expected the position rows of the mapping, found " .. rows)
     end,
 
     ["normalise: an arrow place with an anchor no frame has is left out, the others kept"] = function(t)
