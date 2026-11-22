@@ -4145,6 +4145,102 @@ function ns.make.client(env)
         env["SLASH_" .. tag .. "1"] = nil
         return true
     end
+    -- S4 auction prices, read passively (L6-F option A): only the answers to
+    -- searches the player runs in the auction window. Nothing here sends a
+    -- search, posts, bids or buys. New reads, added at the end (lead
+    -- section 150). First guesses, none seen in game on 16001 (legacy Flow
+    -- 0.35.202: "This client only has the newer auction house"):
+    -- GetRealmName; events COMMODITY_SEARCH_RESULTS_UPDATED(itemID) and
+    -- ITEM_SEARCH_RESULTS_UPDATED(itemKey); C_AuctionHouse
+    -- GetCommoditySearchResultInfo(itemID, 1) and GetItemSearchResultInfo(
+    -- itemKey, 1) answering a table (unitPrice, buyoutAmount, quantity).
+    -- Docs (warcraft.wiki.gg): the same names and fields. `/zflow auction
+    -- probe` (Items/AuctionLog.lua) says which of them this client has.
+
+    -- The realm's name, or nil.
+    function c.realm()
+        local ok, name = call(env.GetRealmName)
+        if ok and not hidden(name) and type(name) == "string" and name ~= "" then return name end
+        return nil
+    end
+
+    -- fn(itemID, row) for the cheapest row (PA1, below) of each search the player runs:
+    -- row = { unitPrice =, buyoutAmount =, quantity = }, each a number or
+    -- nil. Rows that cannot be read are not told. true when followed; nil
+    -- when the client has neither result read (no event is then asked for).
+    local auctionFns, auctionFollowed = {}, false
+    -- One delivered row, its numbers only, or nil.
+    local function auctionRowAt(read, what, i)
+        local house = env.C_AuctionHouse
+        if type(house) ~= "table" then return nil end
+        local ok, row = call(house[read], what, i)
+        if not ok or type(row) ~= "table" then return nil end
+        local out = {}
+        for _, f in ipairs({ "unitPrice", "buyoutAmount", "quantity" }) do
+            local okF, v = pcall(function() return row[f] end)
+            if okF and not hidden(v) and type(v) == "number" and v == v then out[f] = v end
+        end
+        return out
+    end
+    -- The price for one a row asks (legacy Flow's AH.UnitFrom), or nil.
+    local function auctionUnit(row)
+        if type(row) ~= "table" then return nil end
+        if type(row.unitPrice) == "number" and row.unitPrice > 0 then return row.unitPrice end
+        local n = row.quantity or 1
+        if type(row.buyoutAmount) == "number" and row.buyoutAmount > 0 and type(n) == "number" and n > 0 then
+            return row.buyoutAmount / n
+        end
+        return nil
+    end
+    -- PA1 (lead section 164): the row with the lowest price for one among
+    -- the rows the client has already delivered for this search, read up to
+    -- AUCTION_ROWS of them; row 1 alone when the client will not say how
+    -- many. No further rows are asked of the server.
+    -- Docs (warcraft.wiki.gg): C_AuctionHouse.GetNumCommoditySearchResults(
+    -- itemID) and GetNumItemSearchResults(itemKey) -> the rows received.
+    local AUCTION_ROWS = 50
+    local function auctionRow(read, count, what)
+        local house = env.C_AuctionHouse
+        if type(house) ~= "table" then return nil end
+        local okN, n = call(house[count], what)
+        if not okN or hidden(n) or type(n) ~= "number" or n ~= n or n < 1 then n = 1 end
+        n = math.min(math.floor(n), AUCTION_ROWS)
+        local best, bestUnit = nil, nil
+        for i = 1, n do
+            local row = auctionRowAt(read, what, i)
+            local unit = auctionUnit(row)
+            if unit and (bestUnit == nil or unit < bestUnit) then best, bestUnit = row, unit end
+        end
+        return best
+    end
+    local function auctionTell(id, row)
+        if type(id) ~= "number" or row == nil then return end
+        for _, fn in ipairs({ unpack(auctionFns) }) do pcall(fn, id, row) end
+    end
+    function c.watchAuctionResults(fn)
+        if type(fn) ~= "function" then return nil end
+        auctionFns[#auctionFns + 1] = fn
+        if auctionFollowed then return true end
+        local house = env.C_AuctionHouse
+        if type(house) ~= "table" then return nil end
+        if type(house.GetCommoditySearchResultInfo) == "function" then
+            events.add("COMMODITY_SEARCH_RESULTS_UPDATED", function(itemID)
+                if hidden(itemID) then return end
+                auctionTell(itemID, auctionRow("GetCommoditySearchResultInfo", "GetNumCommoditySearchResults", itemID))
+            end)
+            auctionFollowed = true
+        end
+        if type(house.GetItemSearchResultInfo) == "function" then
+            events.add("ITEM_SEARCH_RESULTS_UPDATED", function(itemKey)
+                if type(itemKey) ~= "table" then return end
+                local okI, id = pcall(function() return itemKey.itemID end)
+                if not okI or hidden(id) then return end
+                auctionTell(id, auctionRow("GetItemSearchResultInfo", "GetNumItemSearchResults", itemKey))
+            end)
+            auctionFollowed = true
+        end
+        return auctionFollowed or nil
+    end
 
     -- One small picture with a word over it and a coloured edge (S13, the
     -- modifier queue), or nil when the client cannot make a frame. First

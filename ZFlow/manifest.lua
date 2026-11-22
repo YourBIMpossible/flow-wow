@@ -36,6 +36,7 @@ return {
         "Items/PriceChart.lua",
         "Items/HaveTip.lua",
         "Gear/MerchantButtons.lua",
+        "Items/AuctionLog.lua",
         "UI/CopyBox.lua",
         "UI/Advisor.lua",
         "UI/Setup.lua",

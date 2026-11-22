@@ -1260,6 +1260,22 @@ function ns.make.fakeClient(opts)
         return m[1], m[2], m[3]
     end
     function c.setModifiers(ctrl, shift, alt) s.modifiers = { ctrl, shift, alt } end
+
+    -- S4 auction prices. setRealm(name or nil). watchAuctionResults takes
+    -- listeners (nil after setAuctionHouse(false)); auctionResult(id, row)
+    -- tells them, as a search the player ran would.
+    local auctionFns = {}
+    function c.setRealm(name) s.realm = name end
+    function c.realm() return s.realm end
+    function c.setAuctionHouse(on) s.noAuctionHouse = not on end
+    function c.watchAuctionResults(fn)
+        if s.noAuctionHouse or type(fn) ~= "function" then return nil end
+        auctionFns[#auctionFns + 1] = fn
+        return true
+    end
+    function c.auctionResult(id, row)
+        for _, fn in ipairs({ unpack(auctionFns) }) do fn(id, row) end
+    end
     return c
 end
 
