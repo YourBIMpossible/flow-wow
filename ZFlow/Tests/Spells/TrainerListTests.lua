@@ -5,8 +5,12 @@ local _, ns = ...
 
 local UNKNOWN = "price unknown—check trainer"
 
-local function reading(rows, npc, profession)
-    return { npc = npc or "Loganaar", profession = profession, rows = rows }
+local ALL = { available = true, unavailable = true, known = true }
+
+-- filter: which row states the trainer window showed (the window's own
+-- filter); ALL when not given.
+local function reading(rows, npc, profession, filter)
+    return { npc = npc or "Loganaar", profession = profession, rows = rows, filter = filter or ALL, faction = "Alliance" }
 end
 
 local function rows()
@@ -78,5 +82,66 @@ return {
 
     ["the unknown-cost text is exactly the F-085 trainer wording"] = function(t)
         t.eq(ns.TrainerList.PRICE_UNKNOWN, UNKNOWN)
+    end,
+
+    ["filter: a reading without filter state is not stored"] = function(t)
+        local r = reading(rows()); r.filter = nil
+        t.eq(ns.TrainerList.Record({}, r, 1), {})
+        local none = reading(rows(), nil, nil, { available = false, unavailable = false, known = false })
+        t.eq(ns.TrainerList.Record({}, none, 1), {}, "a window that showed nothing")
+    end,
+
+    ["filter: a full visit is complete"] = function(t)
+        local e = ns.TrainerList.Record({}, reading(rows()), 1)["Loganaar|class"]
+        t.eq(e.complete, true)
+        t.eq(e.shown, { available = true, unavailable = true, known = true })
+    end,
+
+    ["filter: a filtered visit does not wipe the states it did not show"] = function(t)
+        local lists = ns.TrainerList.Record({}, reading(rows()), 1)
+        local only = { available = true, unavailable = false, known = false }
+        lists = ns.TrainerList.Record(lists, reading({ { name = "Moonfire", rank = "Rank 3", state = "available", cost = 300, level = 16 } }, nil, nil, only), 2)
+        local e = lists["Loganaar|class"]
+        local names = {}
+        for _, r in ipairs(e.rows) do names[#names + 1] = r.name .. "/" .. (r.rank or "") .. "/" .. r.state end
+        table.sort(names)
+        t.eq(names, { "Moonfire/Rank 3/available", "Rejuvenation/Rank 1/known", "Wrath/Rank 3/unavailable" },
+            "available rows replaced; unavailable and known kept from the full visit")
+        t.eq(e.complete, true, "every state has been seen at some visit")
+    end,
+
+    ["filter: a first visit that was filtered is marked, and says so"] = function(t)
+        local only = { available = true, unavailable = false, known = false }
+        local e = ns.TrainerList.Record({}, reading({ { name = "Wrath", rank = "Rank 2", state = "available", level = 6 } }, nil, nil, only), 1)["Loganaar|class"]
+        t.eq(e.complete, false)
+        local lines = ns.TrainerList.Lines(e)
+        t.eq(lines[#lines], "Not every row seen: the trainer window was filtered.")
+    end,
+
+    ["filter: a row whose state the window did not show is a broken reading"] = function(t)
+        local only = { available = true, unavailable = false, known = false }
+        t.eq(ns.TrainerList.Record({}, reading(rows(), nil, nil, only), 1), {})
+    end,
+
+    ["faction: the visiting character's faction is kept on the entry"] = function(t)
+        local e = ns.TrainerList.Record({}, reading(rows()), 1)["Loganaar|class"]
+        t.eq(e.faction, "Alliance")
+        local r = reading(rows()); r.faction = nil
+        t.eq(ns.TrainerList.Record({}, r, 1)["Loganaar|class"].faction, nil, "unknown stays nil")
+    end,
+
+    ["cost: zero is a known cost, not unknown"] = function(t)
+        local e = ns.TrainerList.Record({}, reading({ { name = "Attack", state = "available", cost = 0, level = 1 } }), 1)["Loganaar|class"]
+        t.eq(e.rows[1].cost, 0)
+        t.eq(ns.TrainerList.Lines(e)[1], "Attack, level 1, 0c: can learn")
+    end,
+
+    ["key: an npc name with a dot gives a key without a dot"] = function(t)
+        local key = ns.TrainerList.Key("Mr. Smith", "Cooking")
+        t.ok(not key:find(".", 1, true), "no dot")
+        t.ok(key ~= ns.TrainerList.Key("Mr, Smith", "Cooking"), "not merged with a similar name")
+        local lists = ns.TrainerList.Record({}, reading(rows(), "Mr. Smith"), 1)
+        t.eq(lists[key] and lists[key].npc, nil, "class trainer key differs")
+        t.eq(lists[ns.TrainerList.Key("Mr. Smith")].npc, "Mr. Smith", "the real name stays on the entry")
     end,
 }
