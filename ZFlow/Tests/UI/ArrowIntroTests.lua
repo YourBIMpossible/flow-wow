@@ -421,4 +421,37 @@ return {
         t.eq(seen(c), nil)
         t.eq(k.problems:count(), 1)
     end,
+
+    -- AH1: a corpse place whose map is not a number is no place.
+    ["no corpse place is built from a map that is not a number (AH1)"] = function(t)
+        local c = start({ saved = seenSaved() })
+        login(c)
+        c.setDead(true)
+        c.setGhost(true)
+        c.corpse = function() return {} end
+        local none = A.GuideSource(c, {}, {})
+        t.eq(none.view.quest.distance, nil, "no place: no distance")
+        local maps = { "1411", true, {}, function() return 1411 end }
+        for i = 1, #maps do
+            local asked = {}
+            local size = c.mapSize
+            c.mapSize = function(map, ...)
+                asked[#asked + 1] = map
+                return size(map, ...)
+            end
+            c.corpse = function() return { map = maps[i], x = 0.5, y = 0.3 } end
+            local ok, src = pcall(A.GuideSource, c, {}, {})
+            c.mapSize = size
+            t.ok(ok, "it does not fail: map " .. i)
+            if ok then
+                t.eq(src.view.quest.distance, nil, "no distance: map " .. i)
+                t.eq(src.turns.quest, nil, "no turn: map " .. i)
+                t.eq(src.lines, none.lines, "the lines of a corpse with no place: map " .. i)
+                t.eq(src.lost, none.lost, "direction unknown, as with no place: map " .. i)
+            end
+            for j = 1, #asked do
+                t.ok(type(asked[j]) == "number", "the client is asked about no such map: map " .. i)
+            end
+        end
+    end,
 }
