@@ -82,9 +82,36 @@ function Arrow.Lines(view, lines)
     return out
 end
 
+-- One read of the client: nil when there is no such read or it fails.
+local function ask(client, name)
+    local f = client[name]
+    if type(f) ~= "function" then return nil end
+    local ok, v = pcall(f)
+    if ok then return v end
+    return nil
+end
+
+-- The step that stands in for the quest step while the gate is "corpse":
+-- the corpse where the client says where it is, else a step with no place
+-- (no distance, no turn). Never the quest step: that is not where to go.
+local function corpseStep(client)
+    local step = { label = Arrow.CORPSE_LABEL }
+    local at, zone = ask(client, "corpse"), ask(client, "zone")
+    if type(at) == "table" and at.map ~= nil and type(at.x) == "number" and type(at.y) == "number" then
+        step.place = { cont = type(zone) == "table" and zone.cont or nil, map = at.map, x = at.x, y = at.y }
+    end
+    return step
+end
+
+Arrow.CORPSE_LABEL = "Corpse"
+
 -- The arrow source for a guide's steps: ViewState's state and turns, with
 -- this install's saved layout and screen. A step's lines are its own lines,
--- else its label and distance.
+-- else its label and distance. The gate is the guide's own, else
+-- N.ArrowGate over what the client says: shut with no position, "corpse"
+-- while the player is dead or a ghost (only a plain true from client.dead
+-- counts), else open. While the gate is "corpse" the quest arrow's step is
+-- the corpse. No intro gate yet.
 function Arrow.GuideSource(client, layout, guide)
     local N = ns.Nav
     local w, h = client.screen()
@@ -94,15 +121,19 @@ function Arrow.GuideSource(client, layout, guide)
     local given = { quest = guide.quest, prof = guide.prof, separate = guide.separate,
                     link = guide.link, view = view }
     local state, more = N.ViewState(client, given)
-    -- The guide's own gate, else open wherever the player's position is known.
-    -- No corpse or intro gate yet: those need reads this file does not have.
-    if state.gate == nil then
+    local gate = state.gate
+    if gate == nil then
         local hasPos = state.player ~= nil and client.position() ~= nil
-        state.gate = N.ArrowGate(true, true, false, hasPos, false)
+        gate = N.ArrowGate(true, true, false, hasPos, ask(client, "dead") == true)
     end
+    if gate == "corpse" then
+        given.quest = corpseStep(client)
+        state, more = N.ViewState(client, given)
+    end
+    state.gate = gate
     local lines = {}
     for _, key in ipairs(N.ARROW_KEYS) do
-        local step = type(guide[key]) == "table" and guide[key] or {}
+        local step = type(given[key]) == "table" and given[key] or {}
         local out = {}
         if type(step.lines) == "table" then
             for i = 1, #step.lines do out[i] = tostring(step.lines[i]) end
