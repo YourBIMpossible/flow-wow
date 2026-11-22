@@ -320,6 +320,18 @@ T["T10 a reading that is not numbers says nothing"] = function(t)
     end
 end
 
+T["A3 a reading whose max is not above zero says nothing"] = function(t)
+    local npcs = { Aska = trainer(1411, 0.6, 0.25), Zed = trainer(1411, 0.6, 0.25, "Fishing") }
+    local step, why = N.ProfStep({ Cooking = capped({ skill = 0, max = 0 }) }, npcs, {}, here())
+    t.eq(step, nil, "max 0")
+    t.eq(why, "no reading", "max 0")
+    step, why = N.ProfStep({ Cooking = capped({ skill = 5, max = -1 }) }, npcs, {}, here())
+    t.eq(step, nil, "max below 0")
+    t.eq(why, "no reading", "max below 0")
+    step = N.ProfStep({ Cooking = capped({ skill = 0, max = 0 }), Fishing = capped() }, npcs, {}, here())
+    t.eq(step and step.label, "Fishing trainer", "the other profession still gets its step")
+end
+
 T["the reason given is the one nearest to a step"] = function(t)
     local npcs = { Aska = trainer(1411, 0.1, 0.1, "Fishing", { factions = NONE }) }
     local step, why = N.ProfStep({ Alchemy = capped({ skill = 1 }), Cooking = capped() }, npcs, {}, here())
