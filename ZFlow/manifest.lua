@@ -133,5 +133,7 @@ return {
     "UI/Arrow.lua",
     "UI/MinimapPin.lua",
     "UI/RotationIcon.lua",
+    "Rotation/Pulse.lua",
+    "Rotation/CastEdge.lua",
     },
 }
