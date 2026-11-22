@@ -161,7 +161,9 @@ function Get-LuaScan([string]$text) {
 }
 
 function Show([string]$s) {
-    $t = $s.Replace("`n", '\n')
+    # Name dashes in ASCII: a default Windows console prints U+2014 and U+2013 as "-", which would
+    # make a correct string look like the hyphen form the rule rejects.
+    $t = $s.Replace("`n", '\n').Replace([string][char]0x2014, '<U+2014>').Replace([string][char]0x2013, '<U+2013>')
     if ($t.Length -gt 80) { $t = $t.Substring(0, 77) + '...' }
     return '"' + $t + '"'
 }
@@ -195,7 +197,7 @@ foreach ($f in $files) {
         # n .. " prices " .. "unknown<em dash>check vendor": the shown line is an allowed count line.
         $countTail = $tails.ContainsKey($si) -and ($FRAGMENTS -contains $v.TrimStart(' '))
         if ($v -match $reFallback -and -not (Test-Allowed $v) -and -not $countTail) {
-            $problems.Add(("{0}:{1}: F085: use 'price unknown{2}check vendor', 'price unknown{2}check trainer' or a count line '<n> prices unknown{2}check ...': {3}" -f $where, $s.Line, $EM, (Show $v)))
+            $problems.Add(("{0}:{1}: F085: use 'price unknown{2}check vendor', 'price unknown{2}check trainer' or a count line '<n> prices unknown{2}check ...' ({2} = em dash, no spaces): {3}" -f $where, $s.Line, '<U+2014>', (Show $v)))
         }
         if (-not $isPrices -and $v -notmatch '(?i)estimate') {
             $money = $false
