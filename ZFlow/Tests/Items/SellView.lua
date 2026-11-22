@@ -115,7 +115,7 @@ tests["sell view: the player's never-sell list is shown as kept"] = function(t)
     local kept = V.Kept(bag, { choices = { never = { [97] = true } } })
     local fang = find(kept.rows, 97)
     t.ok(fang ~= nil, "a never-sell item is listed as kept")
-    t.eq(fang.reason, "you bought it back, so it's never sold", "with the choice as the reason")
+    t.eq(fang.reason, "on your never-sell list", "with the choice as the reason")
     t.eq(fang.basis, "choice", "it rests on the player's choice")
 end
 
