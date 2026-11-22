@@ -2,10 +2,10 @@ local _, ns = ...
 -- A flag nobody read is not "no". The snapshot keeps it nil, and the chooser
 -- and the cast plan take the careful side of each one:
 --   dead not known       nothing is suggested
---   inCombat not known   what a fight forbids is not suggested (a dispel,
---                        starting the attack, a top-up heal, a buff kept for
---                        out of a fight), and neither is what only a fight
---                        allows (an interrupt)
+--   inCombat not known   counts as a fight: what a fight forbids is not
+--                        suggested (a dispel, starting the attack, a top-up
+--                        heal, a buff kept for out of a fight); an interrupt
+--                        is allowed
 --   lockdown not known   the keys are not changed
 -- Tests not executed where they were written.
 local R = ns.Rotation
@@ -75,6 +75,7 @@ T["snapshot: a flag not given stays nil, no stays false, yes stays true"] = func
             t.eq(none[f[1]], nil, f[1] .. " not given")
             t.eq(saidNo[f[1]], false, f[1] .. " given as no")
             t.eq(saidYes[f[1]], true, f[1] .. " given as yes")
+            t.eq(ns.SnapshotOf({ [f[1]] = "x" })[f[1]], true, f[1] .. " given as some other value")
         end
     end
 end
@@ -122,15 +123,26 @@ T["chooser: an empty snapshot gives nothing and the one row"] = function(t)
     t.eq(none, nil)
     t.eq(#trace, 1)
     t.eq(trace[1].step, "dead", "not the bad-input row")
+    t.eq(R.InFight({}), true, "not known counts as a fight")
+    t.eq(R.OutOfFight({}), false, "and not as out of one")
+    t.eq(R.InFight({ inCombat = false }), false)
+    t.eq(R.OutOfFight({ inCombat = false }), true)
+    t.eq(R.InFight({ inCombat = true }), true)
+    t.eq(R.OutOfFight({ inCombat = true }), false)
 end
 
 T["chooser: combat not known, no dispel"] = function(t)
     local over = { debuffTypes = { Poison = "Venom" } }
     t.eq(stepOf(with(over, "inCombat", false)), "dispel", "out of a fight")
     t.ok(stepOf(with(over, "inCombat", true)) ~= "dispel", "in a fight")
-    local step, s = stepOf(over)
-    t.ok(step ~= "dispel", "not known")
+    local s, trace = ns.Choose(snap(over), pack())
+    t.ok(not s or s.step ~= "dispel", "not known")
     t.ok(not s or s.spell ~= "Cleanse", "Cleanse is not suggested")
+    local note
+    for _, row in ipairs(trace) do
+        if row.step == "dispel" then note = row.note end
+    end
+    t.ok(type(note) == "string" and string.find(note, "not known", 1, true) ~= nil, "the trace says it is not known")
 end
 
 T["chooser: combat not known, the attack is not started"] = function(t)
@@ -142,13 +154,16 @@ T["chooser: combat not known, the attack is not started"] = function(t)
     t.ok(stepOf(over) ~= "engage", "not known")
 end
 
-T["chooser: combat not known, no interrupt"] = function(t)
+T["chooser: combat not known, an interrupt is allowed"] = function(t)
     local over = { hostile = true, attacking = true, targetCasting = "Fireball", targetNear = true }
     local step, s = stepOf(with(over, "inCombat", true))
     t.eq(step, "interrupt", "in a fight")
     t.eq(s and s.spell, "Kick")
     t.ok(stepOf(with(over, "inCombat", false)) ~= "interrupt", "out of a fight")
-    t.ok(stepOf(over) ~= "interrupt", "not known")
+    local unknownStep, got = stepOf(over)
+    t.eq(unknownStep, "interrupt", "not known: counts as a fight")
+    t.eq(got and got.spell, "Kick")
+    t.ok(stepOf({ targetCasting = "Fireball", targetNear = true }) ~= "interrupt", "enemy not known: no interrupt")
 end
 
 T["chooser: combat not known, no top-up heal, a needed heal all the same"] = function(t)
@@ -164,7 +179,20 @@ T["chooser: combat not known, no top-up heal, a needed heal all the same"] = fun
 
     local step, s = stepOf({ lowHealth = true })
     t.eq(step, "heal", "the game's warning gets a heal, combat known or not")
-    t.ok(s and (s.kind == "heal" or s.kind == "emergency"), "a heal kind")
+    t.eq(s and s.kind, "emergency", "not known: as in a fight")
+    local _, calm = stepOf({ lowHealth = true, inCombat = false })
+    t.eq(calm and calm.kind, "heal", "out of a fight")
+end
+
+T["chooser: resting holds a buff back only when known to be out of a fight"] = function(t)
+    local function spell(over)
+        local s = ns.Choose(snap(over, { "Shield" }), pack())
+        return s and s.spell or nil
+    end
+    t.eq(spell({ resting = true, inCombat = false }), nil, "resting, out of a fight: held back")
+    t.eq(spell({ resting = true, inCombat = true }), "Shield", "resting, in a fight")
+    t.eq(spell({ resting = true }), "Shield", "resting, combat not known: not held back")
+    t.eq(spell({ inCombat = false }), "Shield", "resting not known: not held back")
 end
 
 T["druid: combat not known, no out-of-fight buff and no Prowl"] = function(t)
@@ -184,6 +212,12 @@ T["druid: combat not known, no out-of-fight buff and no Prowl"] = function(t)
     local cat = { "Cat Form", "Prowl", "Rake", "Claw" }
     t.eq(druid({ inCombat = false }, "dps", "Cat Form", "Feral", cat), "Prowl", "before the pull")
     t.ok(druid({}, "dps", "Cat Form", "Feral", cat) ~= "Prowl", "not known: no Prowl")
+
+    local buffs = { "Mark of the Wild", "Thorns", "Wrath" }
+    local thorns = druid({ targetDebuffs = { Moonfire = true } }, "heal", nil, "Restoration", buffs)
+    t.ok(thorns ~= "Thorns" and thorns ~= "Mark of the Wild", "not known: no Thorns either")
+    local roots = druid({ targetMelee = true }, "heal", nil, "Restoration", { "Entangling Roots", "Wrath" })
+    t.ok(roots ~= "Entangling Roots", "not known, and not known whether it is on you: no root")
 end
 
 T["paladin: combat not known, no blessing, and the seal by the in-fight rule"] = function(t)
@@ -210,19 +244,19 @@ T["cast: lockdown not known is refused, with its own reason"] = function(t)
 
     local r = C.Apply(keyPlan(), nil, nil)
     t.eq(r.ok, false, "not known: refused")
-    t.eq(r.refused, "unknown")
+    t.eq(r.refused, "lockdownUnknown")
     t.eq(r.ops, {}, "no ops")
     t.ok(type(r.reason) == "string" and r.reason ~= "", "a reason")
     t.ok(r.reason ~= locked.reason, "not the in-a-fight reason")
-    t.eq(r.reason, C.REFUSED.unknown)
-    t.eq(C.Apply(keyPlan(), keyPlan(), nil).refused, "unknown", "refused even when nothing would change")
-    t.eq(C.Apply(keyPlan(), nil).refused, "unknown", "left out")
-    for _, odd in ipairs({ 0, 1, "", "false", "no" }) do
+    t.eq(r.reason, C.REFUSED.lockdownUnknown)
+    t.eq(C.Apply(keyPlan(), keyPlan(), nil).refused, "lockdownUnknown", "refused even when nothing would change")
+    t.eq(C.Apply(keyPlan(), nil).refused, "lockdownUnknown", "left out")
+    for _, odd in ipairs({ 0, 1, "", "false", "no", "yes" }) do
         local got = C.Apply(keyPlan(), nil, odd)
         t.eq(got.ok, false, "not a plain false: " .. tostring(odd))
-        t.eq(got.refused, "unknown", tostring(odd))
+        t.eq(got.refused, "lockdownUnknown", tostring(odd))
     end
-    t.eq(C.Apply(keyPlan(), nil, {}).refused, "unknown", "a table")
+    t.eq(C.Apply(keyPlan(), nil, {}).refused, "lockdownUnknown", "a table")
     t.eq(C.Apply(nil, nil, nil).refused, "plan", "a bad plan comes first")
 end
 
@@ -236,7 +270,7 @@ end
 T["attributes: lockdown not known, nothing is given"] = function(t)
     local r = ns.cast.Attributes({ spell = "Moonfire" }, keyPlan(), nil, nil)
     t.eq(r.ok, false)
-    t.eq(r.refused, "unknown")
+    t.eq(r.refused, "lockdownUnknown")
     t.eq(r.button, {}, "no button attributes")
     t.eq(r.header, {}, "no header attributes")
     t.eq(ns.cast.Attributes({ spell = "Moonfire" }, keyPlan(), nil, false).ok, true, "a plain false: given")

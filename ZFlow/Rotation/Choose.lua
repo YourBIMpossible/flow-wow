@@ -6,15 +6,15 @@ local _, ns = ...
 --
 --   ns.Choose(snapshot, pack, prefs, bias) -> suggestion, trace
 --
--- snapshot (every field is optional; a missing field reads as "not so",
--- but for dead and inCombat):
+-- snapshot (every field is optional; a missing flag is unknown, and reads as
+-- "not so" but for dead and inCombat):
 --   inCombat, hostile, resting, dead      booleans
 --     dead not known (nil), or true: nothing is suggested, and the trace is
 --       one "dead" row.
---     inCombat not known (nil): read as a fight for what a fight forbids
---       (a dispel, starting the attack, a top-up heal), and what a pack
---       keeps for out of a fight is not suggested; what only a fight
---       allows (an interrupt) is not suggested either.
+--     inCombat not known (nil) counts as a fight (R.InFight): no dispel, no
+--       starting the attack, no top-up heal, nothing a pack keeps for out
+--       of a fight (R.OutOfFight is a known "no" only); an interrupt is
+--       allowed.
 --   role, tree, fightType                 "dps" / "heal" / "tank"; talent tree name; "aoe" or nil
 --   form, stealthed                       shapeshift form name or nil; boolean
 --   finisherReady                         true when the reader can tell a finisher is due
@@ -60,6 +60,12 @@ local function row(s, name)
     local spells = s.spells
     return spells and spells[name] or nil
 end
+
+-- Is a fight on? Not known (inCombat nil) counts as a fight. Use InFight
+-- where a fight forbids or changes something, OutOfFight for what is only
+-- for out of a fight; never the bare flag.
+function R.InFight(s) return s.inCombat ~= false end
+function R.OutOfFight(s) return s.inCombat == false end
 
 function R.Knows(s, name)
     local r = row(s, name)
@@ -139,7 +145,7 @@ function steps.heal(s, pack, prefs)
     if s.lowHealth then
         local best = R.DirectHeal(heals, pack.heals.hots, ok, ms)
         if best then
-            return { spell = best, kind = s.inCombat and "emergency" or "heal",
+            return { spell = best, kind = R.InFight(s) and "emergency" or "heal",
                      reason = "Low health (the game's warning is on): heal now" }
         end
         return nil, "low health, no heal ready"
@@ -178,7 +184,7 @@ function steps.heal(s, pack, prefs)
     end
 
     local H = R.HURT
-    if s.inCombat ~= false then   -- in a fight, or not known: no top-up
+    if R.InFight(s) then   -- in a fight, or not known: no top-up
         if hurt >= H.inHeal then
             local direct = R.DirectHeal(heals, pack.heals.hots, function(sp) return not lingering[sp] and ok(sp) end, ms)
             return heal(direct or fast or again, "You have been hit a lot: heal now")
@@ -198,7 +204,7 @@ end
 
 -- 3. Your target is casting: stop it. Your own target only.
 function steps.interrupt(s, pack, prefs)
-    if not (s.inCombat and s.hostile and s.targetCasting) then return nil, "target is not casting" end
+    if not (R.InFight(s) and s.hostile == true and s.targetCasting) then return nil, "target is not casting" end
     for _, r in ipairs(pack.interrupts or {}) do
         local reach = true
         if r.near then reach = s.targetNear == true end
@@ -214,7 +220,7 @@ end
 function steps.dispel(s, pack, prefs)
     local list = pack.dispels
     if not list or #list == 0 then return nil, "no dispels" end
-    if s.inCombat ~= false then
+    if not R.OutOfFight(s) then
         return nil, s.inCombat and "in a fight" or "not known whether you are in a fight"
     end
     local types = s.debuffTypes
@@ -234,7 +240,7 @@ end
 
 -- 5. An enemy targeted, not fighting yet: start the attack first.
 function steps.engage(s, pack, prefs)
-    if not s.hostile or s.inCombat ~= false then return nil, "not a pull" end
+    if s.hostile ~= true or not R.OutOfFight(s) then return nil, "not a pull" end
     if prefs and prefs.autoAttack == false then return nil, "switched off" end
     if s.engageGaveUp then return nil, "gave up starting the attack" end
     if s.attacking or not s.canStartAttack then return nil, "already swinging, or the key cannot start it" end
@@ -250,7 +256,7 @@ local function listFor(s, pack)
 end
 
 local function ruleWants(s, rule, prefs)
-    if rule.kind == "buff" and not s.inCombat and s.resting then return false end
+    if rule.kind == "buff" and R.OutOfFight(s) and s.resting == true then return false end
     if not allowed(prefs, rule.spell) or not R.Knows(s, rule.spell) then return false end
     return not rule.when or (rule.when(s) and true or false)
 end
@@ -316,7 +322,7 @@ function ns.Choose(snapshot, pack, prefs, bias)
     end
     if snapshot.dead ~= false then
         trace[1] = { step = "dead", result = "skip",
-                     note = snapshot.dead == nil and "not known whether you are alive" or "you are dead" }
+                     note = snapshot.dead and "dead" or "not known whether you are dead" }
         return nil, trace
     end
     for _, name in ipairs(R.STEPS) do

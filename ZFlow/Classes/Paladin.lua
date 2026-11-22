@@ -43,7 +43,10 @@ local function knows(s, name)
     return (r and r.known) and true or false
 end
 local function current(s, name) return (s.current and s.current[name]) and true or false end
-local function fight(s) return (s.hostile or s.inCombat) and true or false end
+-- A fight on, or not known (ns.Rotation.InFight); known to be out of one.
+local function inFight(s) return ns.Rotation.InFight(s) end
+local function outOfFight(s) return ns.Rotation.OutOfFight(s) end
+local function fight(s) return (s.hostile == true or inFight(s)) and true or false end
 
 local function hasAura(s)
     if AURAS[s.form or ""] then return true end
@@ -72,7 +75,7 @@ end
 -- A blessing is wanted out of a fight, with none up or the one up nearly out.
 -- Not known whether a fight is on: not wanted.
 function ns.PaladinWantsBlessing(s)
-    if s.inCombat ~= false then return false end
+    if not outOfFight(s) then return false end
     local left = longest(s, "Blessing of ")
     if left == nil then return true end
     return type(left) == "number" and left < 30
@@ -85,7 +88,7 @@ function ns.PaladinWantsSeal(s)
     local left = longest(s, "Seal of ")
     if left == nil then return true end
     if not fight(s) or type(left) ~= "number" then return false end
-    return left < (s.inCombat ~= false and 3 or 8)
+    return left < (inFight(s) and 3 or 8)
 end
 
 local function sealUp(s) return longest(s, "Seal of ") ~= nil end
@@ -136,7 +139,7 @@ local single = tag({
 
 local aoe = tag({
     { spell = "Holy Wrath", reason = "Several enemies",
-      when = function(s) return s.inCombat end },
+      when = inFight },
 })
 
 local function join(...)

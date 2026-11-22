@@ -156,6 +156,8 @@ return {
         local s = snap({ fightType = "aoe" })
         s.spells["Hammer of Wrath"].usable = false
         t.eq(ns.Choose(s, ns.Packs.PALADIN).spell, "Holy Wrath", "fighting")
+        s.inCombat = nil
+        t.eq(ns.Choose(s, ns.Packs.PALADIN).spell, "Holy Wrath", "not known whether the fight is on: as in the fight")
         s.inCombat = false
         t.eq(ns.Choose(s, ns.Packs.PALADIN).spell, "Judgement", "before the pull")
     end,

@@ -32,7 +32,7 @@ local _, ns = ...
 -- result, when it is refused: { ok = false, refused, reason, ops = {} }
 --   refused = "lockdown"  in combat: nothing may change; keep `applied` and
 --                         ask again when the fight is over
---   refused = "unknown"   lockdown was not a plain true or false: it is not
+--   refused = "lockdownUnknown"  lockdown was not a plain true or false: it is not
 --                         known whether the game takes changes; keep
 --                         `applied` and ask again once it is known
 --   refused = "plan"      the plan is not a key plan
@@ -44,7 +44,7 @@ local C, R = ns.cast, ns.Rotation
 C.SLOTS = { "key", "ctrl", "shift", "alt", "more" }
 C.REFUSED = {
     lockdown = "In a fight: your keys change when it ends",
-    unknown = "Not known whether you are in a fight: your keys stay as they are",
+    lockdownUnknown = "Not known whether you are in a fight: your keys change once that is known",
     plan = "No key plan to apply",
 }
 
@@ -91,7 +91,7 @@ end
 function C.Apply(plan, applied, lockdown)
     if not isPlan(plan) then return refuse("plan") end
     if lockdown == true then return refuse("lockdown") end
-    if lockdown ~= false then return refuse("unknown") end
+    if lockdown ~= false then return refuse("lockdownUnknown") end
     local new = copyPlan(plan)
     local old = isPlan(applied) and copyPlan(applied) or { states = {} }
     local ops, counts = {}, { set = 0, clear = 0, unchanged = 0 }
