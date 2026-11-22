@@ -71,6 +71,7 @@ Nav\WaypointStep.lua
 Nav\Waypoint.lua
 Nav\ProfStep.lua
 Nav\ProfSeen.lua
+UI\ProfCard.lua
 UI\DevPanel.lua
 UI\SettingsSlash.lua
 UI\ArrowMenu.lua
