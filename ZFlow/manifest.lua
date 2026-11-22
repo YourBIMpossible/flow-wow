@@ -77,6 +77,7 @@ return {
         "UI/SpellCard.lua",
         "Rotation/Driver.lua",
         "Rotation/KeyFrame.lua",
+        "Rotation/Role.lua",
         "Classes/Druid.lua",
         "Classes/Paladin.lua",
         "Classes/Priest.lua",
