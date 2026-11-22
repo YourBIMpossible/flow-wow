@@ -54,6 +54,8 @@ M.ROWS = {
     { key = "repair.warnBelow", type = "number", default = 0.20, bounds = { min = 0, max = 1 } },
     -- bank.list: the look-only banker list (UI/BankList.lua) (lead)
     { key = "bank.list", type = "bool", default = true },
+    -- loot.junkNote: the look-only grey loot note (Items/LootNote.lua) (lead)
+    { key = "loot.junkNote", type = "bool", default = true },
     { key = "auction.chartClick", type = "bool", default = true },
     { key = "buffButton.enabled", type = "bool", default = false },
     { key = "buffButton.dock", type = "bool", default = true },

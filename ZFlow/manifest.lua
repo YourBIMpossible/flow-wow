@@ -43,6 +43,7 @@ return {
         "Items/PriceWatch.lua",
         "Items/Disposition.lua",
         "Items/Bank.lua",
+        "Items/LootNote.lua",
         "Items/Plan.lua",
         "Items/Present.lua",
         "Items/CraftHint.lua",
