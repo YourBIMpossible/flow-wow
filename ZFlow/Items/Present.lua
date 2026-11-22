@@ -183,11 +183,12 @@ end
 
 -- ---------------------------------------------------------------- sell list
 -- The vendor sell list (L6-A): ItemSell.List and SellView.Kept as lines.
--- The same rules as above: a price nobody has seen is "price unknown -
--- check vendor" and no figure; an estimate is labelled and never added to
--- an observed figure; a count that is not known is said, not guessed.
+-- The same rules as above: a price nobody has seen is "price unknown—check
+-- vendor" (F-085's words, with its em dash) and no figure; an estimate is
+-- labelled and never added to an observed figure; a count that is not known
+-- is said, not guessed.
 
-Present.VENDOR_PRICE_UNKNOWN = "price unknown - check vendor"
+Present.VENDOR_PRICE_UNKNOWN = "price unknown—check vendor"
 Present.SELL_HEADER = "Would sell (nothing is sold for you):"
 Present.KEPT_HEADER = "Kept, never sold:"
 Present.NOTHING_TO_SELL = "Nothing to sell"
@@ -215,6 +216,40 @@ function Present.SellRowText(r, names)
     return head .. ": " .. price
 end
 
+-- The price lookup (L6-H): PriceLookup.Find's result as lines. One line for
+-- what a vendor pays; a second only when a merchant was seen selling it.
+function Present.PriceLines(result, names)
+    local Prices = ns.Prices
+    local name = type(result.name) == "string" and result.name ~= "" and result.name
+        or Present.Name(result.key, names)
+    local sell = type(result.sell) == "table" and result.sell or {}
+    local first
+    if sell.unsellable then
+        first = "can't be sold to a merchant"
+    elseif sell.basis == Prices.OBSERVED and isCount(sell.unit) then
+        first = "a vendor pays " .. coin(sell.unit) .. " each"
+        if type(sell.source) == "string" and sell.source ~= "" then first = first .. " (" .. sell.source .. ")" end
+    elseif sell.basis == Prices.ESTIMATED and isCount(sell.unit) and type(sell.source) == "string" and sell.source ~= "" then
+        first = "a vendor pays about " .. coin(sell.unit) .. " each (estimate, " .. sell.source .. ")"
+    else
+        first = Present.VENDOR_PRICE_UNKNOWN
+    end
+    local lines = { name .. ": " .. first }
+    local buy = type(result.buy) == "table" and result.buy or {}
+    if isCount(buy.unit) and (buy.basis == Prices.OBSERVED or buy.basis == Prices.ESTIMATED) then
+        local text = "A merchant sells it for " .. (buy.basis == Prices.ESTIMATED and "about " or "") .. coin(buy.unit) .. " each"
+        if isCount(buy.per) and buy.per > 1 then text = text .. ", " .. buy.per .. " at a time" end
+        local source = type(buy.source) == "string" and buy.source ~= "" and buy.source or nil
+        if buy.basis == Prices.ESTIMATED then
+            text = text .. " (estimate" .. (source and (", " .. source) or "") .. ")"
+        elseif source then
+            text = text .. " (" .. source .. ")"
+        end
+        lines[#lines + 1] = text
+    end
+    return lines
+end
+
 -- What the list comes to: the observed figure and the estimate apart, and
 -- the rows with no price counted, not priced.
 function Present.SellTotal(list)
@@ -226,7 +261,7 @@ function Present.SellTotal(list)
     if known > 0 then parts[#parts + 1] = coin(known) end
     if estimated > 0 then parts[#parts + 1] = "about " .. coin(estimated) .. " (estimate)" end
     if unknown > 0 then
-        parts[#parts + 1] = plural(unknown, "price", "prices") .. " unknown - check vendor"
+        parts[#parts + 1] = plural(unknown, "price", "prices") .. " unknown—check vendor"
     end
     if #parts == 0 then return nil end
     return "Would sell for: " .. table.concat(parts, ", plus ")
