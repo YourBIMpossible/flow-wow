@@ -75,6 +75,22 @@ function Present.Name(key, names)
     return "item " .. tostring(key)
 end
 
+-- The loot note (L6-E): one looted item the sell rules would sell, as a
+-- text. "Junk" only when that is the rule's own reason; a price nobody saw
+-- is said, with no figure.
+Present.VENDOR_PRICE_UNKNOWN = Present.VENDOR_PRICE_UNKNOWN or "price unknown - check vendor"
+
+function Present.LootNoteText(entry, part)
+    local name = type(entry.name) == "string" and entry.name ~= "" and entry.name or Present.Name(entry.key)
+    local head = (type(part) == "table" and part.reason == "junk") and "Junk: " or "To sell: "
+    if isCount(entry.count) and entry.count > 0 then name = entry.count .. " x " .. name end
+    local price = Present.VENDOR_PRICE_UNKNOWN
+    if isCount(entry.sellPrice) and entry.sellPrice > 0 then
+        price = tostring(coin(entry.sellPrice)) .. " each at a vendor"
+    end
+    return head .. name .. " (" .. price .. ")"
+end
+
 -- One source of a plan row, as a text.
 function Present.SourceText(s)
     if type(s) ~= "table" or not isCount(s.count) then return "source unknown" end
