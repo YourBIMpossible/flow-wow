@@ -1,6 +1,6 @@
 # Z-Flow target architecture
 
-Status: version 1, 2026-11-21, written by the WoW foreman on White. Working name Z-Flow; the public name is not settled.
+Status: revision 2, 2026-11-21, written by the WoW foreman on White. Working name Z-Flow; the public name is not settled.
 Authority: the owner's "Architectural direction correction" and "Working product name: Z-Flow" messages (recorded verbatim in F:\flow-wow-program\ANCHOR.md).
 Detail behind every verdict here: F:\flow-wow-program\arch\A-core.md, C-items-crafting.md, D-rotation-class.md, B-nav.md (B is not delivered yet; section 6 is delivered).
 Nothing in this document has been run in the game.
@@ -83,12 +83,12 @@ K = keep, F = refactor, R = replace, X = remove.
 |---|---|---|
 | Reserve (branch p2-pr7-resources) | K with four changes | Becomes the Resources resolver; see section 4 |
 | Disposition engine | K | One Decide(item, context) with a reason and a basis |
-| Vendor | F | Acts only on a decision from Disposition; automations default off (owner question 6) |
+| Vendor | F | Acts only on a decision from Disposition; each automation defaults off |
 | Banker | F | Drops its private "needed by" list; asks the resolver |
 | Trader | F | Budget comes from the resolver |
 | Quest bags | F | Becomes a claim producer |
 | Skill planner file | R | Split into planner (pure) and presenter; the pure functions are kept |
-| Profession guide data | R | Paths and colours are third-party with no documented rights; planning runs on observed recipes (owner question 7) |
+| Profession guide data | R | Paths and colours are third-party with no documented rights; planning runs on observed recipes until the team authors its own model |
 | Craft hint | F | Its second stock count is removed; uses the snapshot |
 | Professions | F | Each profession registers as an activity |
 | Prices | R | One service that always says observed, estimated or unknown (F-085) |
@@ -108,7 +108,7 @@ K = keep, F = refactor, R = replace, X = remove.
 | Client compatibility | K, extended | Power, pet, totem, weapon coating, item counts |
 | Class packs | R format, content ported | One declared pack per class with a provenance block and a structure check |
 | Advisor | F | Items get a stable id and an evidence tag: fact, recommendation or first guess (F-099) |
-| Group dispel advice in combat | Out until the owner decides | Owner question 8 |
+| Group dispel advice in combat | X | Helping other players in combat stays out |
 
 ### Navigation and arrows (from arch\B-nav.md)
 | Subsystem | Verdict | Reason |
@@ -167,7 +167,7 @@ Rotation and class
 
 Navigation and arrows
 - Activity: the shape in branch p2-pr1-activity (ns.activities).
-- N.ArrowLayout(state) -> { quest = {...}, prof = {...} } with fields for position, alpha, scale, tint and faint; N.ArrowGate, N.ClampPoint, N.StackSnap, N.ArrowBeside.
+- N.ArrowLayout(state) -> { quest = {...}, prof = {...} } with fields for position, alpha, scale, tint and faint (no scale control is added); N.ArrowGate, N.ClampPoint, N.StackSnap, N.ArrowBeside.
 - Arrow positions are saved under layout; stacked is the default; restacking happens by snap when one arrow is dropped on the other, and from a menu item.
 - Goal: immutable, with `known` = yes, no or unknown.
 - Plans.Each, Plans.Get, Plans.Choice, Plans.Target, Plans.At, Plans.AllGoals, Plans.Select; bus events PLAN_CHANGED, TARGET_CHANGED, GOALS_CHANGED.
@@ -212,18 +212,23 @@ Shared quest and profession goals; dungeon preparation; goal-driven crafting; cl
 
 Each step ends in a commit on zflow with lint, structure and test counts reported separately, and a line for what still needs the game.
 
-## 10. Owner questions, each with a recommended default
+## 10. Decisions (revision 2, 2026-11-21)
 
-The work proceeds on the default until the owner says otherwise.
+The owner's operating correction of 2026-11-21 settled most of the earlier questions. Classes: A = answered by the owner; B = engineering choice made by the lead; C = reversible product default chosen by the lead; D = open for the owner.
 
-1. First separation: where does the profession arrow go the first time it is separated? Default: directly below the quest arrow, one arrow-height away.
-2. When separated, does the profession arrow's minimap dot and map path take the quest colours too? Default: yes, same meanings, lower opacity.
-3. "Solid" quest arrow: today the quest arrow draws at 0.7 opacity and 0.8 scale while the profession needle is under it. Keep that exactly? Default: yes, unchanged, because the instruction is to preserve the current look.
-4. Arrow positions: per account or per character? Default: per account, with a per-character override setting.
-5. Arrow scale control: one for both or one each? Default: one each once separated; the quest arrow's default size is unchanged.
-6. Vendor automations (sell junk, repair, and the third in Vendor): on or off for a new install? Default: off until the player turns each on; imported choices are honoured.
-7. Profession planning without the third-party guide paths: plans are built only from recipes the character has seen. Accept thinner early plans? Default: yes; an independently authored model may be added later under the evidence policy.
-8. In combat, may Z-Flow show a healer an icon suggesting a cure on a group member (no cast, no target change)? Default: no, until you change the rule on helping other players in combat.
-9. Existing Druid and Paladin weights and talent order (authorship unrecorded): keep with a recorded note, or re-derive? Default: re-derive from tooltip and character-sheet reads; keep the old values only as a labelled first guess meanwhile.
-11. Does "the current quest arrow graphic" include the optional 3D and flat arrow styles? Default: yes, all existing styles are carried unchanged.
-10. Running Flow and Z-Flow together: confirm it is not supported and Z-Flow pauses itself. Default: as section 2.
+| # | Subject | Class | Decision |
+|---|---|---|---|
+| 1 | Where the profession arrow goes on first separation | C | Directly below the quest arrow, one arrow-height away. The player then drags it anywhere. |
+| 2 | Minimap dot and map path colour when separated | A | No change. Separating the arrows does not alter map or path styling. |
+| 3 | Quest arrow at 0.7 opacity and 0.8 scale while the profession needle is under it | C | Kept exactly as the source draws it today. The owner called the quest arrow "solid"; the source draws it slightly faded when stacked. Nothing is changed until this difference is looked at in the game (one line in the first in-game batch). |
+| 4 | Arrow positions per account or per character | C | Per account. |
+| 5 | Arrow scale control | A | None added. Not a prerequisite. |
+| 6 | Vendor automations | A | Each defaults off for a new install; a deliberate import keeps the player's explicit choices. |
+| 7 | Profession planning without third-party guide paths | A | Observed-only planning is an intermediate limitation. The team authors its own planning model under the evidence policy; the finished product is not observed-only. |
+| 8 | Group cure icon in combat | A | Not shown. The restriction on helping other players in combat stands. |
+| 9 | Existing Druid and Paladin weights and talent order | B | Re-derived by the team from client reads with a provenance note; the old values ship meanwhile labelled first guess. |
+| 10 | Flow and Z-Flow loaded together | B | Not supported; Z-Flow pauses itself (section 2). |
+| 11 | 3D and flat arrow styles | C | Carried unchanged. They are part of the current quest arrow. Inventory of both styles is part of the navigation behaviour inventory. |
+| 12 | Tables with no recorded origin (innkeepers, crossings, rides, mounts) | B | Undocumented origin is not proof of copying. Each is checked against client reads and given a note, or re-read. Tables whose own header names a third-party source (zone fish, zone levels, guide notes, Questie IDs) are replaced by client reads or authored models. Nothing unresolved enters a public release. |
+
+Open for the owner (class D): none at this revision.
