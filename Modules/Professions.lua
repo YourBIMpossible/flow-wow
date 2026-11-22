@@ -140,7 +140,9 @@ function P:Open()
     for _, s in ipairs(suggested()) do names[#names + 1] = s.name .. (s.optional and " (optional)" or "") end
     local d = ns:ClassData()
     local why = d and d.leveling and d.leveling.professionsWhy
-    frame.note:SetText("Flow suggests: " .. table.concat(names, ", ") .. "." .. (why and (" " .. why) or "")
+    -- (A class with no suggestion: say so, rather than "Flow suggests: .")
+    local lead = #names > 0 and ("Flow suggests: " .. table.concat(names, ", ") .. ".") or "Flow has no suggestion for your class: tick the professions you want."
+    frame.note:SetText(lead .. (why and (" " .. why) or "")
         .. " Untick what you don't want; the route only takes you to trainers for what's ticked.")
     self:Fill(ns:ProfessionPlan())
     frame:Show()

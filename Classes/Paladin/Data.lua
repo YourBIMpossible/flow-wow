@@ -14,13 +14,9 @@ ns:Register("class", "PALADIN", {
     -- Recommended spec while levelling, and why.
     leveling = {
         role = "dps",
-        -- Professions to pick up early (see the guide's Professions page).
-        -- optional ones get a lower priority on the arrow.
-        professions = {
-            { name = "Mining" }, { name = "Blacksmithing" },
-            { name = "First Aid" }, { name = "Cooking" },
-            { name = "Fishing", optional = true },
-        },
+        -- No professions are suggested for a paladin: the list this had was a
+        -- guide's pick and was removed. The choice is yours (/flow prof); the
+        -- route takes you to trainers for what you tick there.
         why = {
             "Kills fastest solo: big two-handed weapon hits plus Seal and Judgement damage.",
             "Paladin self-heals and armor already make you hard to kill, so you don't need Protection to survive.",

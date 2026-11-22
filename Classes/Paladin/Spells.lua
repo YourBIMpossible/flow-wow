@@ -1,11 +1,19 @@
 -- Paladin trainer spells: the level each first becomes trainable, and what it
 -- improves. Used by the advisor to say "go train X, it improves A, B".
 --
--- Levels are from Classic Era (1.12-style) plus Forever changes reported by
--- guides; not checked against the live game. The advisor also learns the real
--- list every time you open the trainer, and that learned list wins over this one.
--- Forever notes: Judgement no longer consumes your seal; Consecration hits only
--- 4 targets at full damage; dual spec at 40.
+-- Levels are meant as the Classic Era (1.12) trainer levels. The commit that
+-- added them (2337db1) names no source, and none was checked against a
+-- WoW: Forever trainer, so every level here is a first guess. The truth is
+-- read from the trainer: each visit records the level a spell is first
+-- taught at (Modules/Facts.lua, F.FixLevels) and that level is laid over
+-- this one.
+--
+-- Spells WoW: Forever adds or teaches differently are not listed: the rows
+-- this file had for them (Holy Strike, Seal of Fury, Consecration, Blessing
+-- of Kings) were reported by guides, never checked in the game, and were
+-- removed. Such a spell is advised once a trainer has been read with it on
+-- its list, at the level and cost that trainer shows; until then Flow says
+-- nothing about its level.
 
 local _, ns = ...
 
@@ -17,11 +25,6 @@ ns:Register("classSpells", "PALADIN", {
     { level = 4,  spell = "Judgement",               improves = { "DPS" } },
     { level = 6,  spell = "Divine Protection",       improves = { "Survival" } },
     { level = 6,  spell = "Seal of the Crusader",    improves = { "DPS" } },
-    -- Forever additions/changes (from Forever guides; [F] in the levelling notes):
-    { level = 6,  spell = "Holy Strike",             improves = { "DPS" }, note = "new in Forever" },
-    { level = 10, spell = "Seal of Fury",            improves = { "Threat" }, note = "new in Forever, tanking seal" },
-    { level = 20, spell = "Consecration",            improves = { "DPS", "Threat" }, note = "baseline in Forever" },
-    { level = 20, spell = "Blessing of Kings",       improves = { "Stats" }, note = "baseline in Forever" },
     { level = 8,  spell = "Hammer of Justice",       improves = { "Survival", "Control" } },
     { level = 8,  spell = "Purify",                  improves = { "Survival" } },
     { level = 10, spell = "Lay on Hands",            improves = { "Survival" } },

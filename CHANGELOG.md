@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Paladin: Holy Strike, Seal of Fury, Consecration and Blessing of Kings are no longer listed with levels taken from guides; Flow advises them from what your trainer shows.
+- Paladin: Flow no longer suggests professions taken from a guide; pick yours in `/flow prof` (a plan you already chose is kept).
+- Paladin: `/flow rot guide` no longer states unchecked rules about Judgement and Consecration.
+- Class spell lists now say their levels are unchecked Classic levels, corrected by the trainer.
 - Changed: route yards and detours now use real travel cost (flights, portals).
 - Changed: your Custom route lines wait while you try Shortest or Most XP.
 - Added: `/flow notoffered`; failed quest and dungeon reads say so and retry.

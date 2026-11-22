@@ -49,6 +49,15 @@ function T.TrainerLacks(spell, services, seenAt, level)
     return true
 end
 
+-- Pure: what a trainer's line improves. info: its row in the class list (or
+-- nil: Flow's list has none, as for a spell only WoW: Forever teaches);
+-- isKnown: you know the spell already, so the line is a later rank. A spell
+-- with no row that you don't know is new to you, not a "stronger rank".
+function T.Improves(info, isKnown)
+    if info and info.improves then return info.improves end
+    return { isKnown and "Stronger rank" or "New spell" }
+end
+
 function T.WaitsFor(needs, known, category, level, seenAt)
     if needs and not known[needs] then return needs end
     if needs then return nil end   -- (you have what it needs now)
@@ -90,7 +99,7 @@ ns:Register("advisor", "trainer", {
                 out[#out + 1] = {
                     importance = 40,
                     text = string.format("%s: after %s", s.name, waitFor),
-                    improves = info and info.improves or { "Stronger rank" },
+                    improves = T.Improves(info, known[s.name]),
                     waitsFor = waitFor,
                 }
                 listed[s.name] = true
@@ -101,7 +110,7 @@ ns:Register("advisor", "trainer", {
                     importance = 80,
                     text = string.format("Train %s%s at your class trainer", s.name,
                         s.sub ~= "" and (" (" .. s.sub .. ")") or ""),
-                    improves = info and info.improves or { "Stronger rank" },
+                    improves = T.Improves(info, known[s.name]),
                     goalKey = "train:class",
                     cost = s.cost,  -- copper, from your last visit (route skips it until you can pay)
                 }
@@ -109,7 +118,7 @@ ns:Register("advisor", "trainer", {
             end
         end
 
-        -- 2. Guide data for spells you've never seen at a trainer yet.
+        -- 2. Flow's class list (classSpells) for spells you've never seen at a trainer yet.
         for _, s in ipairs(ns:Get("classSpells", classToken()) or {}) do
             local waitFor = s.needs and not known[s.needs] and s.needs or nil
             if s.level <= level and not known[s.spell] and not listed[s.spell] and waitFor then
