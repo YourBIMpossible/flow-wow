@@ -28,7 +28,7 @@
 --                      them is on in result.account. The import screen shows
 --                      this list and the player confirms each one.
 --
---   Import.Merge(account, char, result [, defaults [, confirmed]])
+--   Import.Merge(account, char, result [, defaults [, confirmed [, model]]])
 --       -> account, char, report
 --     New tables: the player's existing data plus whatever of the import it
 --     does not already have. An existing value is never replaced, unless it
@@ -37,10 +37,19 @@
 --     Settings follow the stricter rule the settings model's adopt uses: a
 --     stored setting is the player's choice and is kept, also when it equals
 --     the default, so defaults are not read for settings. Only a stored
---     setting of another type than the import's checked value (text where a
---     yes-or-no belongs) does not count as a choice and gives way.
---     The record added to account.imports carries copies of result.dropped
---     and result.adjusted (record.dropped, record.adjusted).
+--     setting that does not fit does not count as a choice and gives way.
+--     What fits is the settings model's own check (model:check, the one
+--     its adopt runs): the wrong type, and also a number outside the row's
+--     bounds. model is the settings model to ask; left out, the shipped one
+--     is used (looked up when Merge is called). The import's value replaces
+--     a stored one that does not fit only when it fits itself. An account
+--     setting the model has no row for, every character setting, and every
+--     setting when no model is loaded fall back to comparing types: text
+--     where a yes-or-no belongs gives way.
+--     The record added to account.imports is a copy fit to be saved (no
+--     functions, no table that holds itself, no number that is not finite)
+--     and carries copies of result.dropped and result.adjusted
+--     (record.dropped, record.adjusted).
 --     confirmed = { ["sell.autoRepair"] = true, ... }: the vendor automations
 --     the player confirmed, by Flow key. Only a true counts. An automation
 --     the import found on and the player did not confirm stays off, however
@@ -521,11 +530,16 @@ local function copy(v)
     return out
 end
 
--- A copy fit to be saved: numbers, text, true/false and tables of those.
--- Anything else is left out, and so is a table that holds itself.
+-- A copy fit to be saved: finite numbers, text, true/false and tables of
+-- those. Anything else is left out (a number that is not a number, and
+-- either infinity, too), and so is a table that holds itself.
 local function plain(v, seen)
     local kind = type(v)
-    if kind == "number" or kind == "string" or kind == "boolean" then return v end
+    if kind == "number" then
+        if v ~= v or v == math.huge or v == -math.huge then return nil end
+        return v
+    end
+    if kind == "string" or kind == "boolean" then return v end
     if kind ~= "table" then return nil end
     seen = seen or {}
     if seen[v] then return nil end
@@ -1055,9 +1069,25 @@ local function isList(t)
     return t[1] ~= nil
 end
 
--- choice: true for settings. A stored setting is the player's choice and is
--- kept even when it equals the default; one of another type than the import's
--- checked value does not fit, is no choice and gives way.
+-- True when the stored setting at path `at` is no choice of the player's and
+-- the import's value may take its place. choice = { model, prefix }: the
+-- settings model to ask and the part of the path before its keys; a choice
+-- with no model, or a key the model has no row for, compares types.
+local function givesWay(choice, at, have, value)
+    local model = choice.model
+    if model and choice.prefix and at:sub(1, #choice.prefix) == choice.prefix then
+        local key = at:sub(#choice.prefix + 1)
+        if model:row(key) ~= nil then
+            if model:check(key, have) == true then return false end
+            return model:check(key, value) == true
+        end
+    end
+    return type(have) ~= type(value)
+end
+
+-- choice: a table for settings (see givesWay), nil otherwise. A stored
+-- setting is the player's choice and is kept even when it equals the
+-- default; one that does not fit is no choice and gives way.
 local function fill(dst, src, defaults, path, report, choice)
     for _, key in ipairs(sortedKeys(src)) do
         local value, have = src[key], dst[key]
@@ -1071,7 +1101,7 @@ local function fill(dst, src, defaults, path, report, choice)
             fill(have, value, default, at, report, choice)
         elseif same(have, value) then
             report.skipped[#report.skipped + 1] = { path = at, reason = "the same value is already there" }
-        elseif choice and type(have) ~= type(value) then
+        elseif choice and givesWay(choice, at, have, value) then
             dst[key] = copy(value)
             report.added[#report.added + 1] = at
         elseif not choice and default ~= nil and same(have, default) then
@@ -1175,7 +1205,7 @@ local function gateVendor(imported, confirmed, report)
     return account, record
 end
 
-local function Merge(existingAccount, existingChar, imported, defaults, confirmed)
+local function Merge(existingAccount, existingChar, imported, defaults, confirmed, model)
     local report = {
         ok = true, added = {}, kept = {}, skipped = {}, counts = { added = 0, kept = 0, skipped = 0 },
         vendorConfirmed = {}, vendorLeftOff = {},
@@ -1193,6 +1223,16 @@ local function Merge(existingAccount, existingChar, imported, defaults, confirme
         return copy(existingAccount), copy(existingChar), report
     end
 
+    -- The settings model loads after this file, so the shipped one is looked
+    -- up here. Only a table that can be asked counts as a model.
+    if model == nil then
+        local Model = ns.Settings and ns.Settings.Model
+        if Model and type(Model.Default) == "function" then model = Model.Default() end
+    end
+    if type(model) ~= "table" or type(model.row) ~= "function" or type(model.check) ~= "function" then
+        model = nil
+    end
+
     local gated, vendorConfirmed = gateVendor(imported, confirmed, report)
     local source = { account = gated, char = imported.char }
     local result = { account = copy(existingAccount) or {}, char = copy(existingChar) or {} }
@@ -1207,7 +1247,12 @@ local function Merge(existingAccount, existingChar, imported, defaults, confirme
             if type(from) == "table" then
                 local sectionDefaults
                 if type(scopeDefaults) == "table" then sectionDefaults = scopeDefaults[name] end
-                fill(db[name], from, sectionDefaults, scope .. "." .. name, report, name == "settings")
+                local choice
+                if name == "settings" then
+                    choice = {}
+                    if scope == "account" then choice.model, choice.prefix = model, "account.settings." end
+                end
+                fill(db[name], from, sectionDefaults, scope .. "." .. name, report, choice)
             end
         end
     end
@@ -1215,7 +1260,8 @@ local function Merge(existingAccount, existingChar, imported, defaults, confirme
     report.counts.kept = #report.kept
     report.counts.skipped = #report.skipped
 
-    local record = copy(imported.record)
+    -- plain, not copy: what the caller hands in may hold itself or a function.
+    local record = plain(imported.record)
     if type(record) ~= "table" then record = {} end
     if type(record.dropped) ~= "table" then record.dropped = plain(imported.dropped) end
     if type(record.adjusted) ~= "table" then record.adjusted = plain(imported.adjusted) end
