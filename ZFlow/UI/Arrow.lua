@@ -8,8 +8,10 @@
 -- the drawn arrow. What it saves, per account:
 --   layout.arrows   (the shape is in Nav/ArrowLayout.lua)
 --
--- Until the guide reads its steps into an arrow source (Nav ViewState) the
--- arrows have nothing to point at and stay hidden. The demo is for checking
+-- A guide hands its current steps in with setGuide(fn): fn() returns what
+-- Nav/ViewState.lua takes ({ quest, prof, view, link }; a step may carry
+-- lines = { ... } to show). With no guide the arrows have nothing to point
+-- at and stay hidden. The demo is for checking
 -- the frames by eye on the real client: the quest arrow points north, the
 -- needle east, both from the player's real facing.
 --
@@ -80,8 +82,47 @@ function Arrow.Lines(view, lines)
     return out
 end
 
+-- The arrow source for a guide's steps: ViewState's state and turns, with
+-- this install's saved layout and screen. A step's lines are its own lines,
+-- else its label and distance.
+function Arrow.GuideSource(client, layout, guide)
+    local N = ns.Nav
+    local w, h = client.screen()
+    local view = {}
+    for key, v in pairs(type(guide.view) == "table" and guide.view or {}) do view[key] = v end
+    view.layout, view.screenW, view.screenH = layout, w, h
+    local given = { quest = guide.quest, prof = guide.prof, separate = guide.separate,
+                    link = guide.link, view = view }
+    local state, more = N.ViewState(client, given)
+    -- The guide's own gate, else open wherever the player's position is known.
+    -- No corpse or intro gate yet: those need reads this file does not have.
+    if state.gate == nil then
+        local hasPos = state.player ~= nil and client.position() ~= nil
+        state.gate = N.ArrowGate(true, true, false, hasPos, false)
+    end
+    local lines = {}
+    for _, key in ipairs(N.ARROW_KEYS) do
+        local step = type(guide[key]) == "table" and guide[key] or {}
+        local out = {}
+        if type(step.lines) == "table" then
+            for i = 1, #step.lines do out[i] = tostring(step.lines[i]) end
+        else
+            local label = more[key].label or step.label
+            if label ~= nil then out[#out + 1] = tostring(label) end
+            local d = state[key] and state[key].distance
+            if type(d) == "number" then out[#out + 1] = ("%d yd"):format(math.floor(d + 0.5)) end
+        end
+        lines[key] = out
+        if state[key] and state[key].textHeight == nil then
+            state[key].textHeight = #out * Arrow.LINE_HEIGHT
+        end
+    end
+    return { view = state, turns = { quest = more.quest.turn, prof = more.prof.turn }, lines = lines }
+end
+
 -- Starts the arrows on kernel k; diag (optional) gains the word "arrow".
--- Returns { handles = { quest, prof } or nil, relayout = fn, state = fn }.
+-- Returns { handles = { quest, prof } or nil, relayout = fn, state = fn,
+--           setGuide = fn(fn or nil) }.
 function Arrow.Start(k, diag)
     local client, id, N = k.client, k.id, ns.Nav
     local spec = function(name, level)
@@ -95,10 +136,14 @@ function Arrow.Start(k, diag)
     local motion = { quest = N.ArrowMotion(), prof = N.ArrowMotion() }
     local ready, demo, near = false, false, false
     local current, cancelTick, since, broken = nil, nil, 0, false
+    local guideFn = nil
 
     local function source()
         if demo then return Arrow.DemoSource(client, Arrow.Saved(k), near) end
-        return nil
+        if not guideFn then return nil end
+        local guide = guideFn()
+        if type(guide) ~= "table" then return nil end
+        return Arrow.GuideSource(client, Arrow.Saved(k), guide)
     end
 
     local function hideAll()
@@ -242,7 +287,12 @@ function Arrow.Start(k, diag)
         end
     end
 
-    return { handles = handles, relayout = relayout,
+    local function setGuide(fn)
+        guideFn = type(fn) == "function" and fn or nil
+        relayout()
+    end
+
+    return { handles = handles, relayout = relayout, setGuide = setGuide,
              state = function() return { ready = ready, demo = demo, near = near, view = current } end }
 end
 

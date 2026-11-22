@@ -190,6 +190,37 @@ return {
         t.ok(last(c2):find("cannot draw", 1, true) ~= nil)
     end,
 
+    ["a guide's steps: shown where it says, label and yards, demo wins while on"] = function(t)
+        local _, c, a, d = start()
+
+        c.setPosition(1411, 0.5, 0.5)
+        c.setMapSize(1411, 1000, 500)
+        login(c)
+        local steps = {
+            quest = { place = { cont = 1, map = 1411, x = 0.5, y = 0.3 }, label = "Kill boars" },
+            prof = { place = { cont = 1, map = 1411, x = 0.8, y = 0.5 }, label = "Copper vein", on = true },
+        }
+        a.setGuide(function() return steps end)
+        local q, p = c.arrows[1], c.arrows[2]
+        t.eq(q.shown, true)
+        t.eq(p.shown, true)
+        t.eq(q.lines, { "Kill boars", "100 yd", "Copper vein", "300 yd" })
+        c.advance(3, 300)
+        t.ok(math.abs(q.drawn.turn - N.ArrowTurn(0, 0)) < 1e-3, "the boars are north")
+        cmd(d, "demo")
+        t.eq(q.lines[1], "Demo: north")
+        cmd(d, "demo")
+        t.eq(q.lines[1], "Kill boars")
+        steps.quest.lines = { "Own line" }
+        a.relayout()
+        t.eq(q.lines[1], "Own line")
+        c.setPosition(nil)
+        a.relayout()
+        t.eq(q.shown, false, "the player's place unknown: the gate is shut")
+        a.setGuide(nil)
+        t.eq(q.shown, false, "no guide: nothing to point at")
+    end,
+
     ["a frame error is one problem, and the arrows stop drawing"] = function(t)
         local k, c, _, d = start()
         login(c)
