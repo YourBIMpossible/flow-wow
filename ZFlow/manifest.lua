@@ -37,6 +37,8 @@ return {
         "Items/Prices.lua",
         "Items/Disposition.lua",
         "Items/Plan.lua",
+        "Items/Present.lua",
+        "Items/CraftHint.lua",
 
         -- Rotation and classes
         "Rotation/Pack.lua",
