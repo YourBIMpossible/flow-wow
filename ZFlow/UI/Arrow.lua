@@ -116,8 +116,13 @@ Arrow.CORPSE_LABEL = "Corpse"
 -- N.ArrowGate over what the client says: shut with no position, "corpse"
 -- while the player is dead or a ghost (only a plain true from client.dead
 -- counts), else open. While the gate is "corpse" the quest arrow's step is
--- the corpse. No intro gate yet.
-function Arrow.GuideSource(client, layout, guide)
+-- the corpse.
+--
+-- intro (optional): { title } while the intro is playing, fed to
+-- N.ArrowGate as its intro argument. While the gate it gives is "intro" the
+-- quest arrow stands upright with the title as its one line. A guide's own
+-- gate still wins.
+function Arrow.GuideSource(client, layout, guide, intro)
     local N = ns.Nav
     local w, h = client.screen()
     local view = {}
@@ -127,9 +132,11 @@ function Arrow.GuideSource(client, layout, guide)
                     link = guide.link, view = view }
     local state, more = N.ViewState(client, given)
     local gate = state.gate
+    local playing = false
     if gate == nil then
         local hasPos = state.player ~= nil and client.position() ~= nil
-        gate = N.ArrowGate(true, true, false, hasPos, ask(client, "dead") == true)
+        gate = N.ArrowGate(true, true, type(intro) == "table", hasPos, ask(client, "dead") == true)
+        playing = gate == "intro"
     end
     if gate == "corpse" then
         given.quest = corpseStep(client)
@@ -140,7 +147,9 @@ function Arrow.GuideSource(client, layout, guide)
     for _, key in ipairs(N.ARROW_KEYS) do
         local step = type(given[key]) == "table" and given[key] or {}
         local out = {}
-        if type(step.lines) == "table" then
+        if playing and key == "quest" then
+            if intro.title ~= nil then out[1] = tostring(intro.title) end
+        elseif type(step.lines) == "table" then
             for i = 1, #step.lines do out[i] = tostring(step.lines[i]) end
         else
             local label = more[key].label or step.label
@@ -148,7 +157,7 @@ function Arrow.GuideSource(client, layout, guide)
             local d = state[key] and state[key].distance
             if type(d) == "number" then out[#out + 1] = ("%d yd"):format(math.floor(d + 0.5)) end
         end
-        if type(given[key]) == "table" and more[key].turn == nil then
+        if type(given[key]) == "table" and more[key].turn == nil and not (playing and key == "quest") then
             out[#out + 1] = Arrow.UNKNOWN_TURN
         end
         lines[key] = out
@@ -156,8 +165,16 @@ function Arrow.GuideSource(client, layout, guide)
             state[key].textHeight = #out * Arrow.LINE_HEIGHT
         end
     end
-    return { view = state, turns = { quest = more.quest.turn, prof = more.prof.turn }, lines = lines }
+    return { view = state, turns = { quest = playing and 0 or more.quest.turn, prof = more.prof.turn },
+             lines = lines, intro = playing }
 end
+
+-- The intro: the quest arrow upright with the addon's title, once, at the
+-- first login of an install that has not seen it. Seen is a plain true saved
+-- at Arrow.INTRO_PATH the first time the intro is on the screen. Both
+-- values are authored here, not taken from the game.
+Arrow.INTRO_PATH = "layout.arrowIntroSeen"
+Arrow.INTRO_SECONDS = 3
 
 -- Starts the arrows on kernel k; diag (optional) gains the word "arrow".
 -- Returns { handles = { quest, prof } or nil, relayout = fn, state = fn,
@@ -176,13 +193,37 @@ function Arrow.Start(k, diag)
     local ready, demo, near = false, false, false
     local current, cancelTick, since, broken = nil, nil, 0, false
     local guideFn = nil
+    local introAsked, introUntil, introSaved = false, nil, false
 
+    -- { title } while the intro is playing, else nil. It ends by the clock.
+    local function intro()
+        if not introUntil then return nil end
+        local now = client.now()
+        if type(now) ~= "number" or now >= introUntil then
+            introUntil = nil
+            return nil
+        end
+        return { title = id.title }
+    end
+
+    -- The demo, else the guide that was set, else the player's own map
+    -- waypoint as the quest step. A guide that was set wins even when it
+    -- answers nothing. The intro plays over whichever it is.
     local function source()
         if demo then return Arrow.DemoSource(client, Arrow.Saved(k), near) end
-        if not guideFn then return nil end
-        local guide = guideFn()
-        if type(guide) ~= "table" then return nil end
-        return Arrow.GuideSource(client, Arrow.Saved(k), guide)
+        local playing = intro()
+        local guide
+        if guideFn then
+            guide = guideFn()
+        else
+            local step = N.WaypointStep(client)
+            guide = step and { quest = step } or nil
+        end
+        if type(guide) ~= "table" then
+            if not playing then return nil end
+            guide = {}
+        end
+        return Arrow.GuideSource(client, Arrow.Saved(k), guide, playing)
     end
 
     local function hideAll()
@@ -226,6 +267,11 @@ function Arrow.Start(k, diag)
             end
         end
         current = view
+        if src.intro == true and view.quest.shown and not introSaved then
+            introSaved = true
+            local ok, reason = k.store:set("account", Arrow.INTRO_PATH, true)
+            if not ok then k.problems:add("arrow", "save", reason) end
+        end
     end
 
     local function frame(elapsed)
@@ -280,6 +326,13 @@ function Arrow.Start(k, diag)
     end
 
     local function apply()
+        if not introAsked then
+            introAsked = true
+            local now = client.now()
+            if k.store:get("account", Arrow.INTRO_PATH) ~= true and type(now) == "number" then
+                introUntil = now + Arrow.INTRO_SECONDS
+            end
+        end
         ready = true
         relayout()
         tick(true)
