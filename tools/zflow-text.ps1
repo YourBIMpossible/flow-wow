@@ -17,12 +17,17 @@
            or "... trainer" (leading spaces allowed) passes when it is the
            right operand of "..", as in n .. " prices " .. "unknown<em dash>check vendor".
            On its own it fails.
+           (A lone "s" joined after a duration is seconds, see PRICE.)
     PRICE  a price that is not labelled: a money figure in a string ("12s 40c",
            "5g", "3c", or a %d/%s format followed by g or c), unless the same
            string says "estimate"; or coin text built by concatenating "g", "s"
            or "c". ZFlow/Items/Prices.lua is exempt: it is the one place that
            builds coin text and labels it (Prices.Text: observed, "about ...
-           (estimate)", or unknown). A lone "5s" is read as seconds, not money.
+           (estimate)", or unknown). A lone "5s" is read as seconds, not money,
+           and so is a lone "s" joined after a duration (whole(f.ended -
+           f.started) .. "s"). An "s" piece still counts as silver when the
+           same line also joins "g" or "c", or when it follows a variable
+           named s or silver.
     PRINT  an empty string handed to the chat print: print(""), print('')
            print([[]]) or print() with no argument, on any receiver
            (client.print, c.print, print).
@@ -215,9 +220,22 @@ foreach ($f in $files) {
     for ($k = 0; $k -lt $lines.Length; $k++) {
         $ln = $lines[$k]
         if (-not $isPrices) {
-            foreach ($m in [regex]::Matches($ln, $reConcat)) {
-                $v = $scan.Strings[[int]$m.Groups[1].Value].Value
-                if ($v -match $reCoinPiece) {
+            # The coin pieces this line joins: a "g" or "c" piece makes it coin text, and so does an
+            # "s" piece in a line that also joins "g" or "c". A lone "s" joined after anything else
+            # (a duration: whole(f.ended - f.started) .. "s") is seconds, unless what it follows is a
+            # variable named s or silver.
+            $pieces = @([regex]::Matches($ln, $reConcat) | ForEach-Object {
+                    [pscustomobject]@{ M = $_; V = $scan.Strings[[int]$_.Groups[1].Value].Value }
+                })
+            $coinLine = @($pieces | Where-Object { $_.V -match $reCoinPiece -and $_.V.Trim() -ne 's' }).Count -gt 0
+            foreach ($piece in $pieces) {
+                $v = $piece.V
+                $isCoin = $v -match $reCoinPiece
+                if ($isCoin -and $v.Trim() -eq 's' -and -not $coinLine) {
+                    $left = $ln.Substring(0, $piece.M.Index).TrimEnd()
+                    $isCoin = $left -match '(?i)(?<![\w.:])(s|silver)$'
+                }
+                if ($isCoin) {
                     $problems.Add(("{0}:{1}: PRICE: coin text built outside Items/Prices.lua; use Prices.Text: .. {2}" -f $where, ($k + 1), (Show $v)))
                 }
             }
