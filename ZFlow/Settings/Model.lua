@@ -68,6 +68,9 @@ M.ROWS = {
     { key = "buffButton.always", type = "bool", default = false },
     { key = "buffButton.care", type = "bool", default = true },
     { key = "buffButton.keepOnMain", type = "bool", default = false },
+    -- spec.role: the role the player chose (Rotation/Role.lua): "", "dps",
+    -- "heal" or "tank". Empty: none chosen.
+    { key = "spec.role", type = "string", default = "" },
 }
 
 -- ---------------------------------------------------------------- helpers
