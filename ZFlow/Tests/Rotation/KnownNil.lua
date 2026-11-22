@@ -64,7 +64,7 @@ T["chooser: the attack is not started on a known nobody read"] = function(t)
     local s = ns.SnapshotOf({ inCombat = false, dead = false, hostile = true, canStartAttack = true,
                                spells = { Attack = {} } })
     t.eq(ns.Choose(s, fightPack()), nil)
-    s = ns.SnapshotOf({ inCombat = false, dead = false, hostile = true, canStartAttack = true,
+    s = ns.SnapshotOf({ inCombat = false, dead = false, hostile = true, canStartAttack = true, stealthed = false,
                          spells = { Attack = { known = true } } })
     local pick = ns.Choose(s, fightPack())
     t.eq(pick and pick.spell, "Attack")

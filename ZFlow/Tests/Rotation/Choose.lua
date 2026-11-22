@@ -90,7 +90,7 @@ return {
         t.eq(s.step, "list", "step")
         t.eq(#trace, 6, "five skipped rows and the pick")
         -- out of a fight: dispel before engage before the list
-        local pull = { hostile = true, canStartAttack = true, debuffTypes = { Poison = "Venom" } }
+        local pull = { hostile = true, canStartAttack = true, stealthed = false, debuffTypes = { Poison = "Venom" } }
         _, s = pick(ALL, pull)
         t.eq(s.step, "dispel", "dispel before engage")
         pull.debuffTypes = nil
@@ -185,14 +185,14 @@ return {
     end,
 
     ["engage: start the attack on a pull, unless told not to"] = function(t)
-        local pull = { hostile = true, canStartAttack = true }
+        local pull = { hostile = true, canStartAttack = true, stealthed = false }
         t.eq(pick({ "Attack", "Bolt" }, pull), "Attack", "Attack")
         t.eq(pick({ "Attack", "Auto Attack", "Bolt" }, pull), "Auto Attack", "Auto Attack when known")
         t.eq(pick({ "Attack", "Bolt" }, pull, { autoAttack = false }), "Bolt", "switched off")
-        t.eq(pick({ "Attack", "Bolt" }, { hostile = true, canStartAttack = true, attacking = true }), "Bolt", "already swinging")
-        t.eq(pick({ "Attack", "Bolt" }, { hostile = true }), "Bolt", "the key cannot start it")
-        t.eq(pick({ "Attack", "Bolt" }, { hostile = true, canStartAttack = true, engageGaveUp = true }), "Bolt", "gave up")
-        t.eq(pick({ "Attack", "Bolt" }, { hostile = true, canStartAttack = true, inCombat = true }), "Bolt", "already fighting")
+        t.eq(pick({ "Attack", "Bolt" }, { hostile = true, stealthed = false, canStartAttack = true, attacking = true }), "Bolt", "already swinging")
+        t.eq(pick({ "Attack", "Bolt" }, { hostile = true, stealthed = false }), "Bolt", "the key cannot start it")
+        t.eq(pick({ "Attack", "Bolt" }, { hostile = true, stealthed = false, canStartAttack = true, engageGaveUp = true }), "Bolt", "gave up")
+        t.eq(pick({ "Attack", "Bolt" }, { hostile = true, stealthed = false, canStartAttack = true, inCombat = true }), "Bolt", "already fighting")
         t.eq(pick({ "Bolt" }, pull), "Bolt", "no attack known")
     end,
 
