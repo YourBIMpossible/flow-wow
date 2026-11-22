@@ -258,7 +258,7 @@ end)
 -------------------------------------------------------------------------------
 
 local MAT_A, MAT_B, FISH = 990001, 990002, 6289   -- (6289: Raw Longjaw Mud Snapper, fished)
-local function step(name, mats) return { recipe = name, learn = 1, mats = mats } end
+local function step(name, mats) return { recipe = name, mats = mats } end
 local function priced(list) return function(id) return list[id] end end
 -- The profession window seen at `rank`, each recipe at the colour given.
 local function seenAt(rank, diffs, fn)
@@ -299,14 +299,134 @@ ns:Register("test", "professions: no step carries a colour threshold; chance is 
     end
 end)
 
-ns:Register("test", "professions: SP.BestNode is the vein with the highest skill you meet", function(t)
+-------------------------------------------------------------------------------
+-- W4e (prov-guides-2): nothing a guide or site listed. What a recipe is
+-- learned at, a vein's skill, prices, drops and tier levels come from what
+-- the game showed this character, and are unknown until it has.
+-------------------------------------------------------------------------------
+
+-- ns.db.prof with `fields` set, put back after.
+local function withProf(fields, fn)
+    local made = ns.db.prof == nil
+    if made then ns.db.prof = {} end
+    local old = {}
+    for k, v in pairs(fields) do old[k] = ns.db.prof[k]; ns.db.prof[k] = v end
+    local ok, err = pcall(fn)
+    for k in pairs(fields) do ns.db.prof[k] = old[k] end
+    if made then ns.db.prof = nil end
+    if not ok then error(err, 0) end
+end
+
+ns:Register("test", "professions: the guides list no learn skill, for recipes or veins", function(t)
+    local steps, nodes = 0, 0
+    for prof, g in ns:Each("profGuide") do
+        for _, s in ipairs(g.steps or {}) do
+            steps = steps + 1
+            t:eq(s.learn, nil, prof .. ": " .. tostring(s.recipe) .. " lists no learn skill")
+        end
+        for _, nd in ipairs(g.nodes or {}) do
+            nodes = nodes + 1
+            t:eq(nd.learn, nil, prof .. ": node " .. tostring(nd.item) .. " lists no skill")
+        end
+    end
+    t:ok(steps > 0 and nodes > 0, "the guides are still there to check")
+end)
+
+ns:Register("test", "professions: SP.VeinsHere is the veins on this map, with no skill pick", function(t)
     local SP = ns.skillPlan
-    local nodes = { { item = 1, learn = 1 }, { item = 2, learn = 65 }, { item = 3, learn = 125 } }
-    t:eq(SP.BestNode(nodes, 1).item, 1, "1: the first")
-    t:eq(SP.BestNode(nodes, 100).item, 2, "100: the one at 65")
-    t:eq(SP.BestNode(nodes, 300).item, 3, "300: the highest")
-    t:eq(SP.BestNode({ { item = 4, learn = 50 } }, 10), nil, "below every one: none")
-    t:eq(SP.BestNode(nil, 10), nil, "no nodes: none")
+    local where = { [1] = { { { x = 1 } }, true, "Vein A" }, [2] = { { { x = 2 }, { x = 3 } }, false, "Vein B" },
+                    [3] = { { { x = 4 } }, true, "Vein C" }, [4] = { {}, true, "Vein D" } }
+    local pts, names = SP.VeinsHere({ { item = 1 }, { item = 2 }, { item = 3 }, { item = 4 }, { item = 5 } },
+        function(item) local w = where[item]; if w then return w[1], w[2], w[3] end end)
+    t:eq(#pts, 2, "only the spots on this map")
+    t:eq(table.concat(names, ","), "Vein A,Vein C", "every vein here, in the guide's order: none picked by skill")
+    pts, names = SP.VeinsHere(nil, function() end)
+    t:eq(#pts + #names, 0, "no nodes: nothing")
+    t:eq(SP.BestNode, nil, "the pick by a listed vein skill is gone")
+end)
+
+ns:Register("test", "professions: a trainer's window is where a recipe's learn skill comes from", function(t)
+    local TR, SP = ns.trainer, ns.skillPlan
+    local into = {}
+    t:ok(TR.RecordLearn(into, "A__test", "available", 50), "a number the game gave: kept")
+    t:eq(into.A__test, 50, "under the name the trainer showed")
+    t:ok(TR.RecordLearn(into, "A__test", "used", 55), "read again: the newer read wins")
+    t:eq(into.A__test, 55, "the newer value")
+    t:ok(not TR.RecordLearn(into, "B__test", "header", 10), "a header: not a recipe")
+    t:ok(not TR.RecordLearn(into, "C__test", "available", nil), "no number from the game: nothing kept")
+    t:ok(not TR.RecordLearn(into, "", "available", 10) and not TR.RecordLearn(into, nil, "available", 10), "no name: nothing kept")
+    t:ok(not TR.RecordLearn(nil, "D__test", "available", 10), "nowhere to keep it: no error")
+    t:eq(into.B__test, nil, "the header left nothing"); t:eq(into.C__test, nil, "the unread row left nothing")
+
+    local s = { recipe = "A__test", mats = {} }
+    withProf({ recipeLearn = { X__test = { A__test = 55 } } }, function()
+        t:eq(SP.LearnSkill("X__test", s), 55, "SP.LearnSkill: what the trainer asked")
+        t:eq(SP.LearnSkill("Y__test", s), nil, "another profession: unknown")
+        t:eq(SP.LearnSkill("X__test", { recipe = "Never__test", mats = {} }), nil, "not seen at a trainer: unknown, not a guess")
+    end)
+    withProf({ recipeLearn = false }, function()
+        t:eq(SP.LearnSkill("X__test", s), nil, "nothing saved: unknown")
+    end)
+    t:eq(SP.LearnSkill("X__test", nil), nil, "no step: unknown")
+end)
+
+ns:Register("test", "professions: a recipe item's own Requires line gives its learn skill", function(t)
+    local SP = ns.skillPlan
+    -- (The pattern Actions.lua builds from the game's ITEM_MIN_SKILL on an
+    -- English client, as its comment gives it; the game's own text isn't stood in for.)
+    local pattern = "^Requires (.-) %((%d+)%)$"
+    local lines = { { left = "Recipe: Test__test" }, { left = "Requires Cooking (50)" }, { left = "Use: Teaches you..." } }
+    t:eq(SP.LearnFromLines("Cooking", lines, pattern), 50, "Requires Cooking (50): 50")
+    t:eq(SP.LearnFromLines("Tailoring", lines, pattern), nil, "another profession's line: unknown")
+    t:eq(SP.LearnFromLines("Cooking", { { left = "Requires Level 20" }, { left = 5 }, "x" }, pattern), nil, "no such line: unknown")
+    t:eq(SP.LearnFromLines("Cooking", nil, pattern), nil, "no tooltip: unknown")
+    t:eq(SP.LearnFromLines("Cooking", lines, nil), nil, "no pattern: unknown")
+end)
+
+ns:Register("test", "professions: unknown learn skill holds nothing back and says so", function(t)
+    local SP = ns.skillPlan
+    t:eq(SP.TrainNow(nil, 10), true, "unknown: go and see the trainer")
+    t:eq(SP.TrainNow(50, 49), false, "the trainer asked 50, you have 49: not yet")
+    t:eq(SP.TrainNow(50, 50), true, "at 50: now")
+    t:eq(SP.TrainNow(50, nil), false, "asked 50, skill not known: not yet")
+    t:eq(SP.LEARN_UNKNOWN, "learn skill unknown: check the trainer", "the words the step shows")
+    t:eq(SP.RecipeDue(nil, 10), true, "a bought recipe with no known skill isn't held back")
+    t:eq(SP.RecipeWait(true, false, false, "Recipe__test", "X__test", nil, 10), "use the recipe in your bags first",
+        "in your bags, skill unknown: no made-up number in the wait")
+end)
+
+ns:Register("test", "professions: window reads bound a recipe's colour between two skills", function(t)
+    local R, SP = ns.recipes, ns.skillPlan
+    local h = R.Observe(nil, { A__test = { diff = "optimal" }, B__test = { diff = "medium" } }, 10)
+    t:eq(h.A__test.optimal[1], 10, "first read: from 10"); t:eq(h.A__test.optimal[2], 10, "to 10")
+    t:eq(R.Observe(h, { A__test = { diff = "optimal" }, B__test = { diff = "easy" } }, 20.7), h, "the same history, added to")
+    t:eq(h.A__test.optimal[2], 20, "orange again at 20: seen from 10 to 20")
+    t:eq(h.B__test.medium[2], 10, "yellow only at 10"); t:eq(h.B__test.easy[1], 20, "green from 20")
+    R.Observe(h, { A__test = { diff = "optimal" } }, 5)
+    t:eq(h.A__test.optimal[1], 5, "a lower read widens it down")
+    R.Observe(h, { A__test = { diff = "trivial" } }, nil)
+    t:eq(h.A__test.trivial, nil, "no skill with the read: nothing kept")
+    R.Observe(h, { C__test = { reagents = {} } }, 30)
+    t:eq(h.C__test, nil, "no colour in the read: nothing kept")
+
+    t:eq(R.ColourAt(h, "A__test", 15), "optimal", "between two orange reads: orange")
+    t:eq(R.ColourAt(h, "A__test", 5), "optimal", "at a read: that colour")
+    t:eq(R.ColourAt(h, "A__test", 21), nil, "past the highest read: unknown, never carried on")
+    t:eq(R.ColourAt(h, "A__test", 4), nil, "below the lowest read: unknown")
+    t:eq(R.ColourAt(h, "B__test", 15), nil, "between yellow at 10 and green at 20: unknown")
+    t:eq(R.ColourAt(h, "Never__test", 15), nil, "never read: unknown")
+    t:eq(R.ColourAt(nil, "A__test", 15), nil, "no history: unknown")
+
+    -- chance() reads it: the window was last seen at 20, the plan asks about 15.
+    local s = step("A__test", { [MAT_A] = 1 })
+    with(R, "History", function(_, prof) if prof == "X__test" then return h end end, function()
+        seenAt(20, { A__test = "optimal", B__test = "easy" }, function()
+            local _, c = SP.Score(s, 15, { prof = "X__test" })
+            t:eq(c, 1, "15, between orange reads at 5 and 20: a point a craft")
+            t:eq((SP.Score(s, 21, { prof = "X__test" })), 0, "21, past every read: unknown, not a choice")
+            t:eq((SP.Score(step("B__test", { [MAT_A] = 1 }), 15, { prof = "X__test" })), 0, "between two colours: not a choice")
+        end)
+    end)
 end)
 
 ns:Register("test", "professions: materials stand in only when the window showed both at one colour", function(t)

@@ -7833,12 +7833,20 @@ ns:Register("test", "professions: a recipe isn't bought long before you can lear
     t:eq(SP.RecipeDue(50, 49, 0), false, "in your bags at 49: the game won't let you learn it yet")
     t:eq(SP.RecipeDue(50, 50, 0), true, "at 50: use it")
     t:eq(SP.RecipeDue(50, nil), true, "skill not looked at: as before")
-    local step = { recipe = "Flow Test Fish", recipeItem = 99999001, learn = 50, mats = {} }
+    -- (The 50 is what a trainer's window showed, kept by Trainer.lua: the
+    -- step itself lists no learn skill any more. SP.LearnSkill reads it.)
+    local step = { recipe = "Flow Test Fish", recipeItem = 99999001, mats = {} }
+    local hadProf = ns.db.prof ~= nil
+    ns.db.prof = ns.db.prof or {}
+    local was = ns.db.prof.recipeLearn
+    ns.db.prof.recipeLearn = { Cooking = { ["Flow Test Fish"] = 50 } }
     local ok, early = pcall(SP._recipeStop, "Cooking", step, {}, 32)
-    t:ok(ok and early == nil, "the buy step at 32: none")
     local ok2, due = pcall(SP._recipeStop, "Cooking", step, {}, 45)
-    t:ok(ok2 and due and due.key == "buy:99999001", "at 45: Buy Recipe is on the route")
     local ok3, asBefore = pcall(SP._recipeStop, "Cooking", step, {})
+    ns.db.prof.recipeLearn = was
+    if not hadProf then ns.db.prof = nil end
+    t:ok(ok and early == nil, "the buy step at 32: none")
+    t:ok(ok2 and due and due.key == "buy:99999001", "at 45: Buy Recipe is on the route")
     t:ok(ok3 and asBefore and asBefore.key == "buy:99999001", "no skill given: as before")
 end)
 

@@ -88,11 +88,59 @@ local function readModern()
     return prof, rank, recipes
 end
 
+-- Pure: add one profession-window read to what Flow has seen of each
+-- recipe's colour. history[recipe][colour] = { lo, hi }: the lowest and
+-- highest skill the window showed that colour at. Only what was seen goes in;
+-- SkillPlan's chance() reads a colour off it between those two skills and
+-- nowhere else. Returns the history (a new table when there was none).
+function R.Observe(history, recipes, rank)
+    history = type(history) == "table" and history or {}
+    if type(rank) ~= "number" then return history end
+    rank = math.floor(rank)
+    for name, r in pairs(recipes or {}) do
+        local diff = type(r) == "table" and r.diff
+        if type(name) == "string" and type(diff) == "string" then
+            local h = history[name]
+            if type(h) ~= "table" then h = {}; history[name] = h end
+            local span = h[diff]
+            if type(span) == "table" and type(span[1]) == "number" and type(span[2]) == "number" then
+                if rank < span[1] then span[1] = rank end
+                if rank > span[2] then span[2] = rank end
+            else
+                h[diff] = { rank, rank }
+            end
+        end
+    end
+    return history
+end
+
+-- Pure: the colour a recipe had at `rank`, from that history: the one seen
+-- at a skill at or below and at a skill at or above `rank`. Colours only get
+-- easier as skill rises, so between two reads of one colour it was that
+-- colour. Outside what was seen: nil (unknown).
+function R.ColourAt(history, name, rank)
+    local h = type(history) == "table" and history[name]
+    if type(h) ~= "table" or type(rank) ~= "number" then return nil end
+    rank = math.floor(rank)
+    for diff, span in pairs(h) do
+        if type(span) == "table" and type(span[1]) == "number" and type(span[2]) == "number"
+            and span[1] <= rank and rank <= span[2] then return diff end
+    end
+    return nil
+end
+
+function R:History(prof)
+    local d = ns.db.crafting and ns.db.crafting[prof]
+    return type(d) == "table" and d.history or nil
+end
+
 function R:Record()
     local ok, prof, rank, recipes = pcall(readClassic)
     if not (ok and prof) then ok, prof, rank, recipes = pcall(readModern) end
     if not (ok and prof and recipes and next(recipes)) then return end
-    ns.db.crafting[prof] = { rank = rank, seenAt = time(), recipes = recipes }
+    local was = ns.db.crafting[prof]
+    ns.db.crafting[prof] = { rank = rank, seenAt = time(), recipes = recipes,
+                             history = R.Observe(type(was) == "table" and was.history or nil, recipes, rank) }
     if ns.nav and ns.nav.RequestCollect then ns.nav.RequestCollect("profession window read") end
 end
 

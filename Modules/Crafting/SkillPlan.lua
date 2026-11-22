@@ -349,18 +349,54 @@ end
 -------------------------------------------------------------------------------
 
 -- Chance of a skill point per craft at `rank`: only from the colour your
--- profession window showed (GetTradeSkillInfo's difficulty, Recipes.lua) at
--- the skill Flow saw it at. Flow has no colour thresholds of its own: the
--- game doesn't say at which skill a recipe turns yellow, green or grey, so at
--- any other skill the chance is unknown and the step isn't a choice (0).
+-- profession window showed (GetTradeSkillInfo's difficulty, Recipes.lua): at
+-- the skill Flow last saw it at, or between two skills it showed the same
+-- colour at (Recipes.lua keeps those: R.Observe; a colour only gets easier as
+-- skill rises). Flow has no colour thresholds of its own: the game doesn't
+-- say at which skill a recipe turns yellow, green or grey, so anywhere else
+-- the chance is unknown and the step isn't a choice (0). How likely each
+-- colour is to give a point is Flow's own estimate, not a game value.
 local CHANCE = { optimal = 1, medium = 0.6, easy = 0.2, trivial = 0 }
 local function chance(prof, step, rank)
-    local known, seenRank = ns.recipes:Known(prof)
+    local R = ns.recipes
+    local known, seenRank = R:Known(prof)
     local r = known and known[step.recipe]
-    if not (r and seenRank and seenRank == math.floor(rank)) then return 0 end
-    if step.learn and rank < step.learn then return 0 end
-    return CHANCE[r.diff] or 0
+    if not r then return 0 end
+    local diff
+    if seenRank and seenRank == math.floor(rank) then
+        diff = r.diff
+    elseif R.ColourAt and R.History then
+        diff = R.ColourAt(R:History(prof), step.recipe, rank)
+    end
+    return CHANCE[diff] or 0
 end
+
+-- The skill a recipe is learned at: what a trainer's window asked for it
+-- (Trainer.lua keeps it), else the "Requires <profession> (N)" line of the
+-- recipe item's own tooltip. nil: unknown. Flow lists none of its own.
+-- Pure: lines = { { left = .. } }, pattern = Actions.lua's _MIN_SKILL.
+function SP.LearnFromLines(prof, lines, pattern)
+    if type(pattern) ~= "string" then return nil end
+    for _, l in ipairs(lines or {}) do
+        if type(l) == "table" and type(l.left) == "string" then
+            local p, need = l.left:match(pattern)
+            if p == prof and tonumber(need) then return tonumber(need) end
+        end
+    end
+    return nil
+end
+function SP.LearnSkill(prof, s)
+    if not s then return nil end
+    local seen = ns.db and ns.db.prof and ns.db.prof.recipeLearn and ns.db.prof.recipeLearn[prof]
+    local n = type(seen) == "table" and seen[s.recipe] or nil
+    if type(n) == "number" then return n end
+    if s.recipeItem and ns.gear and ns.gear.TooltipLines and ns.actions and ns.actions._MIN_SKILL then
+        local ok, lines = pcall(ns.gear.TooltipLines, ns.gear, "item:" .. s.recipeItem)
+        if ok then return SP.LearnFromLines(prof, lines, ns.actions._MIN_SKILL) end
+    end
+    return nil
+end
+SP.LEARN_UNKNOWN = "learn skill unknown: check the trainer"
 
 -- Two steps skill up alike at `rank` when the profession window showed both
 -- at the same colour at that skill. No colour seen: not known to be alike.
@@ -1053,6 +1089,13 @@ function SP.RecipeDue(learn, rank, ahead)
     if not (learn and rank) then return true end
     return rank >= learn - (ahead or SP.BUY_AHEAD)
 end
+-- Pure: send you to the trainer for a recipe now? Yes once your skill meets
+-- what the trainer asked for it; also when Flow hasn't seen what it asks
+-- (learn nil: the step says so, and the trainer's window settles it).
+function SP.TrainNow(learn, rank)
+    if type(learn) ~= "number" then return true end
+    return type(rank) == "number" and rank >= learn
+end
 
 -- Pure: buy a craft's vendor materials now? Only when the craft is
 -- otherwise ready: you know the recipe and nothing else is missing.
@@ -1087,10 +1130,11 @@ end
 local function recipeStop(prof, s, known, rank, banked)
     if not s.recipeItem or (known and known[s.recipe]) then return nil end
     local name = itemName(s.recipeItem)
+    local learn = SP.LearnSkill(prof, s)   -- (nil: unknown, so nothing holds the step back)
     watched[s.recipeItem] = true
     if count(s.recipeItem) > 0 then
         -- In your bags but your skill is too low to learn it: nothing to do yet.
-        if not SP.RecipeDue(s.learn, rank, 0) then return nil end
+        if not SP.RecipeDue(learn, rank, 0) then return nil end
         return { key = "use:" .. s.recipeItem, kind = "craft", points = { playerPoint() }, anywhere = true,
                  icon = BAG_ICON, useItem = s.recipeItem,   -- in your bags: the arrow shows a bag
                  text = "Learn " .. s.recipe .. ": use the recipe in your bags" }
@@ -1100,15 +1144,16 @@ local function recipeStop(prof, s, known, rank, banked)
     -- Nothing until you can learn it, then a step at the bank to fetch it.
     banked = banked or SP.BankCount(s.recipeItem)
     if banked > 0 then
-        if not SP.RecipeDue(s.learn, rank, 0) then return nil end
+        if not SP.RecipeDue(learn, rank, 0) then return nil end
         local pts, names = SP.BankerPoints()
         return { key = "bankget:" .. s.recipeItem, kind = "merchant", points = pts, npcs = names, fetch = { [s.recipeItem] = 1 },
                  text = "Bank: take out " .. name,
-                 details = { "It's in your bank and your skill is high enough to learn " .. s.recipe .. " now." },
+                 details = { learn and ("It's in your bank and your skill is high enough to learn " .. s.recipe .. " now.")
+                                 or ("It's in your bank. " .. s.recipe .. ": learn skill unknown: the recipe's tooltip says.") },
                  blockedBy = #pts == 0 and "Flow doesn't know where a bank is" or nil }
     end
     if s.quest then return questRecipeStop(s) end
-    if not SP.RecipeDue(s.learn, rank) then return nil end   -- (too early to buy: it waits until you're nearly there)
+    if not SP.RecipeDue(learn, rank) then return nil end   -- (too early to buy: it waits until you're nearly there)
     local fish = false
     for mid in pairs(s.mats or {}) do
         local ms = src(mid)
@@ -1119,7 +1164,8 @@ local function recipeStop(prof, s, known, rank, banked)
              cost = SP.Price(s.recipeItem),
              text = "Buy " .. name,
              details = { fish and ("So you can cook what you catch (skip it if you already know " .. s.recipe .. ").")
-                             or ("Flow's plan makes " .. s.recipe .. " here. A vendor sells it; the trainer doesn't teach it.") },
+                             or ("Flow's plan makes " .. s.recipe .. " here. A vendor sells it; the trainer doesn't teach it."),
+                         (not learn) and (s.recipe .. ": learn skill unknown: the recipe's tooltip says.") or nil },
              blockedBy = #pts == 0 and ("Flow doesn't know who sells " .. name) or nil }
 end
 
@@ -1145,14 +1191,20 @@ SP._recipeStop = recipeStop  -- for /flow test
 -- instead of it: the fastest way up stays the route either way.
 -------------------------------------------------------------------------------
 
--- Pure: the node (profGuide nodes = { { item, learn } }) with the highest
--- skill requirement `rank` meets; nil when it meets none.
-function SP.BestNode(nodes, rank)
-    local best
+-- Pure: the veins to mine for skill (profGuide nodes = { { item } }): the
+-- ones with a known spot on the map you're on. Flow doesn't list the skill a
+-- vein asks, so it can't pick the best one for you: the vein's tooltip says.
+--   pointsOf(item) -> points, onMap, node name.  -> points, names
+function SP.VeinsHere(nodes, pointsOf)
+    local pts, names = {}, {}
     for _, nd in ipairs(nodes or {}) do
-        if rank >= nd.learn and (not best or nd.learn > best.learn) then best = nd end
+        local p, onMap, name = pointsOf(nd.item)
+        if onMap and p and #p > 0 then
+            for _, pt in ipairs(p) do pts[#pts + 1] = pt end
+            names[#names + 1] = name
+        end
     end
-    return best
+    return pts, names
 end
 
 -- Blacksmithing gear is made at an anvil. (Recipes Flow read from your
@@ -1817,11 +1869,12 @@ local function planProfession(prof, t, out)
             -- Bought, not trained (Recipe: Brilliant Smallfish).
             local r = recipeStop(prof, s, known, rank)
             if r then add(r) end
-        elseif known and not known[s.recipe] and s.learn <= rank then
+        elseif known and not known[s.recipe] and SP.TrainNow(SP.LearnSkill(prof, s), rank) then
             local names, who = SP.StepTrainers(prof, s)
             local pts = npcPoints(names)
             add({ key = "learn:" .. prof .. ":" .. s.recipe, kind = "proftrainer", points = pts, npcs = names,
                   text = string.format("Learn %s (%s)", s.recipe, who),
+                  details = (not SP.LearnSkill(prof, s)) and { s.recipe .. ": " .. SP.LEARN_UNKNOWN .. "." } or nil,
                   blockedBy = #pts == 0 and (s.trainer and ("Flow doesn't know where " .. who .. " stands") or ("no known " .. who)) or nil })
         end
     end
@@ -1897,7 +1950,7 @@ local function planProfession(prof, t, out)
             local blocked = toolMissing and ("needs a " .. toolMissing)
                 or (s.tool and not haveStepTool(s.tool) and ("needs a " .. itemName(s.tool) .. " (make it first)"))
                 or (known and not known[s.recipe] and ((s.recipeItem and SP.RecipeWait(count(s.recipeItem) > 0, SP.BankCount(s.recipeItem) > 0,
-                        s.quest ~= nil, itemName(s.recipeItem), prof, s.learn, rank))
+                        s.quest ~= nil, itemName(s.recipeItem), prof, SP.LearnSkill(prof, s), rank))
                     or ("learn " .. s.recipe .. " first")))
             blocked = blocked or depBlocked
             -- The count is the point: exactly what reaches your target, so
@@ -2175,21 +2228,28 @@ local function planProfession(prof, t, out)
     end
 
     -- Gathering profession with nodes (Mining): the veins themselves skill up.
-    -- The vein with the highest skill you meet; how many it takes is unknown
-    -- (the game doesn't say when a vein stops giving skill), so no count.
-    if g.nodes then
-        local best = SP.BestNode(g.nodes, rank)
-        if best and not nodes[src(best.item).node] then
-            local s = src(best.item)
-            local pts = objectPoints(s.objects)
-            add({ key = "gather:" .. s.node, kind = "gather", prof = "Mining", points = pts,
-                  text = string.format("Mine %s for skill", s.node),
-                  details = { string.format("How many it takes to reach %d is unknown: Flow doesn't know when %s stops giving skill.",
-                                  t.target, s.node),
-                              "Smelting the ore at a forge raises Mining too." },
-                  blockedBy = (not hasTool("Mining", 2901) and "needs a Mining Pick")
-                      or (#pts == 0 and ("no known " .. s.node .. " in Flow's data")) or nil })
-        end
+    -- Which vein your skill can mine, and how many it takes, are unknown (Flow
+    -- lists no vein skills, and the game doesn't say when a vein stops giving
+    -- skill): the veins on this map, no count, and the step says so.
+    -- (Not when the plan already sends you to a vein for its ore, above.)
+    local mining = false
+    for _, nd in pairs(nodes) do if nd.src.gather == prof then mining = true end end
+    if g.nodes and not mining then
+        local pts, names = SP.VeinsHere(g.nodes, function(item)
+            local s = src(item)
+            if not s then return nil end
+            local p, onMap = objectPoints(s.objects)
+            return p, onMap, s.node
+        end)
+        local details = {}
+        if #names > 0 then details[#details + 1] = "On this map: " .. table.concat(names, ", ") .. "." end
+        details[#details + 1] = "Which of them your skill can mine is unknown to Flow: a vein's tooltip says what it asks."
+        details[#details + 1] = string.format("How many it takes to reach %d is unknown too.", t.target)
+        details[#details + 1] = "Smelting the ore at a forge raises Mining too."
+        add({ key = "gather:veins:" .. prof, kind = "gather", prof = prof, points = pts,
+              text = "Mine veins for skill", details = details,
+              blockedBy = (not hasTool("Mining", 2901) and "needs a Mining Pick")
+                  or (#pts == 0 and "no known veins on this map in Flow's data") or nil })
     end
 
     if not reaches then

@@ -9,14 +9,17 @@
 -- your profession window showed (Recipes.lua). There are no colour
 -- thresholds here: a recipe's colour (and so its chance of a skill point) is
 -- only what the profession window reported at the skill Flow saw it at.
--- `learn` is the skill the trainer asks before teaching the recipe.
+-- The skill a recipe is learned at isn't listed here either: Flow reads it
+-- from the trainer's window (Trainer.lua) or the recipe item's tooltip, and
+-- until then it is unknown (SkillPlan.lua: SP.LearnSkill).
 --
 -- Extend by registering more:
 --   ns:Register("profGuide", "<Profession>", {
 --       kind = "craft" | "gather",
 --       tool = itemID,                       -- needed in your bags (craft)
 --       artisan = { Horde = "name", Alliance = "name" }, -- teaches Artisan (225 -> 300) instead of the city trainers
---       steps = { { recipe, item, learn, mats = { [itemID] = n },
+--       nodes = { { item = itemID } },       -- gathered for skill (Mining's veins); no skill listed
+--       steps = { { recipe, item, mats = { [itemID] = n },
 --                   faction = "Horde" | "Alliance",               -- only that side
 --                   recipeItem = itemID,                          -- bought, not trained
 --                   quest = { id, npc },                          -- the recipe is that quest's reward
@@ -144,26 +147,26 @@ ns:Register("itemSource", 4470, { name = "Simple Wood", vendor = true, price = 3
 ns:Register("profGuide", "Blacksmithing", {
     kind = "craft", tool = 5956,
     steps = {
-        { recipe = "Rough Sharpening Stone", item = 2862, learn = 1, mats = { [2835] = 1 } },
-        { recipe = "Rough Grinding Stone", item = 3470, learn = 25, mats = { [2835] = 2 } },
-        { recipe = "Coarse Sharpening Stone", item = 2863, learn = 65, mats = { [2836] = 1 } },
-        { recipe = "Coarse Grinding Stone", item = 3478, learn = 75, mats = { [2836] = 2 } },
-        { recipe = "Runed Copper Belt", item = 2857, learn = 70, mats = { [2840] = 10 },
+        { recipe = "Rough Sharpening Stone", item = 2862, mats = { [2835] = 1 } },
+        { recipe = "Rough Grinding Stone", item = 3470, mats = { [2835] = 2 } },
+        { recipe = "Coarse Sharpening Stone", item = 2863, mats = { [2836] = 1 } },
+        { recipe = "Coarse Grinding Stone", item = 3478, mats = { [2836] = 2 } },
+        { recipe = "Runed Copper Belt", item = 2857, mats = { [2840] = 10 },
           station = "anvil" },
-        { recipe = "Rough Bronze Leggings", item = 2865, learn = 105, mats = { [2841] = 6 },
+        { recipe = "Rough Bronze Leggings", item = 2865, mats = { [2841] = 6 },
           station = "anvil" },
-        { recipe = "Heavy Grinding Stone", item = 3486, learn = 125, mats = { [2838] = 3 } },
-        { recipe = "Green Iron Leggings", item = 3842, learn = 155,
+        { recipe = "Heavy Grinding Stone", item = 3486, mats = { [2838] = 3 } },
+        { recipe = "Green Iron Leggings", item = 3842,
           mats = { [3575] = 8, [3486] = 1, [2605] = 1 }, station = "anvil" },
-        { recipe = "Green Iron Bracers", item = 3835, learn = 165,
+        { recipe = "Green Iron Bracers", item = 3835,
           mats = { [3575] = 6, [2605] = 1 }, station = "anvil" },
-        { recipe = "Solid Grinding Stone", item = 7966, learn = 200, mats = { [7912] = 4 } },
-        { recipe = "Heavy Mithril Gauntlet", item = 7919, learn = 205,
+        { recipe = "Solid Grinding Stone", item = 7966, mats = { [7912] = 4 } },
+        { recipe = "Heavy Mithril Gauntlet", item = 7919,
           mats = { [3860] = 6, [4338] = 4 }, station = "anvil" },
-        { recipe = "Mithril Coif", item = 7931, learn = 230,
+        { recipe = "Mithril Coif", item = 7931,
           mats = { [3860] = 10, [4338] = 6 }, station = "anvil" },
-        { recipe = "Dense Sharpening Stone", item = 12404, learn = 250, mats = { [12365] = 1 } },
-        { recipe = "Heavy Mithril Boots", item = 7933, learn = 235,
+        { recipe = "Dense Sharpening Stone", item = 12404, mats = { [12365] = 1 } },
+        { recipe = "Heavy Mithril Boots", item = 7933,
           mats = { [3860] = 14, [4304] = 4 }, station = "anvil" },
     },
 })
@@ -172,15 +175,15 @@ ns:Register("profGuide", "Mining", {
     kind = "gather", tool = 2901,
     -- Nodes raise Mining; smelting does too (craft-like steps below).
     nodes = {
-        { item = 2770, learn = 1 },
-        { item = 2771, learn = 65 },
-        { item = 2772, learn = 125 },
-        { item = 3858, learn = 175 },
-        { item = 10620, learn = 245 },
+        { item = 2770 },
+        { item = 2771 },
+        { item = 2772 },
+        { item = 3858 },
+        { item = 10620 },
     },
     steps = {
-        { recipe = "Smelt Copper", item = 2840, learn = 1, mats = { [2770] = 1 }, station = "forge" },
-        { recipe = "Smelt Tin", item = 3576, learn = 65, mats = { [2771] = 1 }, station = "forge" },
+        { recipe = "Smelt Copper", item = 2840, mats = { [2770] = 1 }, station = "forge" },
+        { recipe = "Smelt Tin", item = 3576, mats = { [2771] = 1 }, station = "forge" },
     },
 })
 
@@ -189,20 +192,20 @@ local TRIAGE = { Horde = "Doctor Gregory Victor", Alliance = "Doctor Gustaf VanH
 ns:Register("profGuide", "First Aid", {
     kind = "craft",
     steps = {
-        { recipe = "Linen Bandage", item = 1251, learn = 1, mats = { [2589] = 1 } },
-        { recipe = "Heavy Linen Bandage", item = 2581, learn = 40, mats = { [2589] = 2 } },
-        { recipe = "Wool Bandage", item = 3530, learn = 80, mats = { [2592] = 1 } },
-        { recipe = "Heavy Wool Bandage", item = 3531, learn = 115, mats = { [2592] = 2 } },
-        { recipe = "Silk Bandage", item = 6450, learn = 150, mats = { [4306] = 1 } },
-        { recipe = "Heavy Silk Bandage", item = 6451, learn = 180, mats = { [4306] = 2 },
+        { recipe = "Linen Bandage", item = 1251, mats = { [2589] = 1 } },
+        { recipe = "Heavy Linen Bandage", item = 2581, mats = { [2589] = 2 } },
+        { recipe = "Wool Bandage", item = 3530, mats = { [2592] = 1 } },
+        { recipe = "Heavy Wool Bandage", item = 3531, mats = { [2592] = 2 } },
+        { recipe = "Silk Bandage", item = 6450, mats = { [4306] = 1 } },
+        { recipe = "Heavy Silk Bandage", item = 6451, mats = { [4306] = 2 },
           recipeItem = 16112 },
-        { recipe = "Mageweave Bandage", item = 8544, learn = 210, mats = { [4338] = 1 },
+        { recipe = "Mageweave Bandage", item = 8544, mats = { [4338] = 1 },
           recipeItem = 16113 },
-        { recipe = "Heavy Mageweave Bandage", item = 8545, learn = 240, mats = { [4338] = 2 },
+        { recipe = "Heavy Mageweave Bandage", item = 8545, mats = { [4338] = 2 },
           trainer = TRIAGE },
-        { recipe = "Runecloth Bandage", item = 14529, learn = 260, mats = { [14047] = 1 },
+        { recipe = "Runecloth Bandage", item = 14529, mats = { [14047] = 1 },
           trainer = TRIAGE },
-        { recipe = "Heavy Runecloth Bandage", item = 14530, learn = 290, mats = { [14047] = 2 },
+        { recipe = "Heavy Runecloth Bandage", item = 14530, mats = { [14047] = 2 },
           trainer = TRIAGE },
     },
 })
@@ -213,39 +216,39 @@ ns:Register("profGuide", "First Aid", {
 ns:Register("profGuide", "Cooking", {
     kind = "craft",
     steps = {
-        { recipe = "Charred Wolf Meat", item = 2679, learn = 1, mats = { [2672] = 1 },
+        { recipe = "Charred Wolf Meat", item = 2679, mats = { [2672] = 1 },
           station = "fire" },
-        { recipe = "Roasted Boar Meat", item = 2681, learn = 1, mats = { [769] = 1 },
+        { recipe = "Roasted Boar Meat", item = 2681, mats = { [769] = 1 },
           station = "fire" },
-        { recipe = "Brilliant Smallfish", item = 6290, learn = 1, mats = { [6291] = 1 },
+        { recipe = "Brilliant Smallfish", item = 6290, mats = { [6291] = 1 },
           station = "fire", recipeItem = 6325 },
         -- Horde.
-        { recipe = "Roasted Kodo Meat", item = 5474, learn = 35, mats = { [5467] = 1, [2678] = 1 },
+        { recipe = "Roasted Kodo Meat", item = 5474, mats = { [5467] = 1, [2678] = 1 },
           station = "fire", recipeItem = 5484, faction = "Horde" },
-        { recipe = "Strider Stew", item = 5477, learn = 50, mats = { [5469] = 1, [4536] = 1 },
+        { recipe = "Strider Stew", item = 5477, mats = { [5469] = 1, [4536] = 1 },
           station = "fire", recipeItem = 5486, faction = "Horde" },
-        { recipe = "Crispy Lizard Tail", item = 5479, learn = 100, mats = { [5470] = 1, [2692] = 1 },
+        { recipe = "Crispy Lizard Tail", item = 5479, mats = { [5470] = 1, [2692] = 1 },
           station = "fire", recipeItem = 5488, faction = "Horde" },
         -- Alliance.
-        { recipe = "Smoked Bear Meat", item = 6890, learn = 40, mats = { [3173] = 1 },
+        { recipe = "Smoked Bear Meat", item = 6890, mats = { [3173] = 1 },
           station = "fire", recipeItem = 6892, faction = "Alliance" },
-        { recipe = "Crab Cake", item = 2683, learn = 75, mats = { [2674] = 1, [2678] = 1 },
+        { recipe = "Crab Cake", item = 2683, mats = { [2674] = 1, [2678] = 1 },
           station = "fire", faction = "Alliance" },
-        { recipe = "Cooked Crab Claw", item = 2682, learn = 85, mats = { [2675] = 1, [2678] = 1 },
+        { recipe = "Cooked Crab Claw", item = 2682, mats = { [2675] = 1, [2678] = 1 },
           station = "fire", recipeItem = 2698, faction = "Alliance" },
-        { recipe = "Seasoned Wolf Kabob", item = 1017, learn = 100, mats = { [1015] = 2, [2665] = 1 },
+        { recipe = "Seasoned Wolf Kabob", item = 1017, mats = { [1015] = 2, [2665] = 1 },
           station = "fire", recipeItem = 2701, faction = "Alliance" },
         -- Both.
-        { recipe = "Curiously Tasty Omelet", item = 3665, learn = 130, mats = { [3685] = 1, [2692] = 1 },
+        { recipe = "Curiously Tasty Omelet", item = 3665, mats = { [3685] = 1, [2692] = 1 },
           station = "fire", recipeItem = 3682 },
-        { recipe = "Roast Raptor", item = 12210, learn = 175, mats = { [12184] = 1, [2692] = 1 },
+        { recipe = "Roast Raptor", item = 12210, mats = { [12184] = 1, [2692] = 1 },
           station = "fire", recipeItem = 12228 },
         -- Fish: candidates only while you carry the fish (SP.Candidates).
-        { recipe = "Longjaw Mud Snapper", item = 4592, learn = 50, mats = { [6289] = 1 },
+        { recipe = "Longjaw Mud Snapper", item = 4592, mats = { [6289] = 1 },
           station = "fire", recipeItem = 6328 },
-        { recipe = "Bristle Whisker Catfish", item = 4593, learn = 100, mats = { [6308] = 1 },
+        { recipe = "Bristle Whisker Catfish", item = 4593, mats = { [6308] = 1 },
           station = "fire", recipeItem = 6330 },
-        { recipe = "Mithril Head Trout", item = 8364, learn = 175, mats = { [8365] = 1 },
+        { recipe = "Mithril Head Trout", item = 8364, mats = { [8365] = 1 },
           station = "fire", recipeItem = 17062 },
     },
 })

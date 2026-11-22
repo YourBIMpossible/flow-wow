@@ -138,6 +138,16 @@ function TR.TierAsks(prof, level, skill)
     return #bits > 0 and table.concat(bits, " and ") or nil
 end
 
+-- Pure: keep the skill a trainer asked for each thing it teaches, as read
+-- from its window. into: { [service name] = skill }. Only what the game gave
+-- as a number is kept; headers and unreadable rows change nothing.
+function TR.RecordLearn(into, name, category, need)
+    if type(into) ~= "table" or type(name) ~= "string" or name == "" or category == "header" then return false end
+    if type(need) ~= "number" or need < 0 then return false end
+    into[name] = need
+    return true
+end
+
 function TR.ReadTier()
     if not GetNumTrainerServices then return end
     local prof = ns.places and ns.places.TrainerProfession and ns.places.TrainerProfession()
@@ -145,19 +155,31 @@ function TR.ReadTier()
     local rank, max = ns.api.Skill(prof)
     local SP = ns.skillPlan
     local tierName = SP and SP.TierName and SP.TierName(max)
-    if not (rank and tierName) then return end
+    -- What each recipe asks, as this trainer shows it (the skill plan's only
+    -- source for it: SP.LearnSkill). Read before the tier check below, so a
+    -- profession at its last tier still records.
+    local learn
+    if ns.db and type(ns.db.prof) == "table" then
+        ns.db.prof.recipeLearn = ns.db.prof.recipeLearn or {}
+        ns.db.prof.recipeLearn[prof] = ns.db.prof.recipeLearn[prof] or {}
+        learn = ns.db.prof.recipeLearn[prof]
+    end
     local list = {}
     for i = 1, GetNumTrainerServices() do
         local name, category, sub = serviceInfo(i)
         local skill = 0
         if GetTrainerServiceSkillReq then
             local ok, _, need = pcall(GetTrainerServiceSkillReq, i)
-            if ok and type(need) == "number" then skill = need end
+            if ok and type(need) == "number" then
+                skill = need
+                TR.RecordLearn(learn, name, category, need)
+            end
         end
         list[#list + 1] = { name = name, sub = sub, category = category, skill = skill,
                             level = GetTrainerServiceLevelReq and GetTrainerServiceLevelReq(i) or 0,
                             cost = GetTrainerServiceCost and GetTrainerServiceCost(i) or 0 }
     end
+    if not (rank and tierName) then return end
     local s = TR.TierService(list, tierName)
     if not s then return end
     ns.db.prof.tierSeen = ns.db.prof.tierSeen or {}
