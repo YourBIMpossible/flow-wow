@@ -146,12 +146,56 @@ T["chooser: combat not known, no dispel"] = function(t)
 end
 
 T["chooser: combat not known, the attack is not started"] = function(t)
-    local over = { hostile = true, canStartAttack = true }
+    local over = { hostile = true, canStartAttack = true, stealthed = false }
     local step, s = stepOf(with(over, "inCombat", false))
     t.eq(step, "engage", "before the pull")
     t.eq(s and s.spell, "Attack")
     t.ok(stepOf(with(over, "inCombat", true)) ~= "engage", "in a fight")
     t.ok(stepOf(over) ~= "engage", "not known")
+end
+
+T["chooser: stealth not known, the attack is not started"] = function(t)
+    local function engage(stealthed)
+        local s, trace = ns.Choose(snap({ inCombat = false, hostile = true, canStartAttack = true, stealthed = stealthed },
+            { "Attack", "Auto Attack" }), pack())
+        local note
+        for _, row in ipairs(trace or {}) do
+            if row.step == "engage" then note = row.note end
+        end
+        return s and s.step or nil, s and s.spell or nil, note
+    end
+    local step, spell = engage(false)
+    t.eq(step, "engage", "read, not stealthed: the attack starts")
+    t.eq(spell, "Auto Attack")
+
+    local note
+    step, spell, note = engage(nil)
+    t.ok(step ~= "engage", "not read: stealth is not assumed off")
+    t.ok(spell ~= "Attack" and spell ~= "Auto Attack", "not read: no swing")
+    t.eq(note, "not known whether you are stealthed", "the trace says it is not known")
+
+    step, spell, note = engage(true)
+    t.ok(step ~= "engage", "stealthed: the attack is not started")
+    t.ok(spell ~= "Attack" and spell ~= "Auto Attack", "stealthed: no swing")
+    t.eq(note, "stealthed", "the trace says why")
+end
+
+T["chooser: stealth not known, the engage step itself says no"] = function(t)
+    local R = ns.Rotation
+    local function ask(stealthed)
+        local s = snap({ inCombat = false, hostile = true, canStartAttack = true, stealthed = stealthed }, { "Attack" })
+        local got, why = R._steps.engage(s, pack(), nil)
+        return got and got.spell or nil, why
+    end
+    local spell, why = ask(false)
+    t.eq(spell, "Attack", "read, not stealthed")
+    t.eq(why, nil)
+    spell, why = ask(nil)
+    t.eq(spell, nil, "not read")
+    t.eq(why, "not known whether you are stealthed")
+    spell, why = ask(true)
+    t.eq(spell, nil, "stealthed")
+    t.eq(why, "stealthed")
 end
 
 T["chooser: combat not known, an interrupt is allowed"] = function(t)
@@ -210,7 +254,7 @@ T["druid: combat not known, no out-of-fight buff and no Prowl"] = function(t)
     t.eq(druid(onIt, "heal", nil, "Restoration", caster), "Wrath", "not known: no buff")
 
     local cat = { "Cat Form", "Prowl", "Rake", "Claw" }
-    t.eq(druid({ inCombat = false }, "dps", "Cat Form", "Feral", cat), "Prowl", "before the pull")
+    t.eq(druid({ inCombat = false, stealthed = false }, "dps", "Cat Form", "Feral", cat), "Prowl", "before the pull")
     t.ok(druid({}, "dps", "Cat Form", "Feral", cat) ~= "Prowl", "not known: no Prowl")
 
     local buffs = { "Mark of the Wild", "Thorns", "Wrath" }

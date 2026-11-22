@@ -155,12 +155,59 @@ return {
             return got and got.spell or nil
         end
         local all = { "Cat Form", "Prowl", "Ravage", "Pounce", "Shred", "Ferocious Bite", "Rip", "Rake", "Claw" }
-        t.eq(cat({}, all), "Prowl", "before the pull, not stealthed")
+        t.eq(cat({ stealthed = false }, all), "Prowl", "before the pull, read as not stealthed")
         t.eq(cat({ stealthed = true }, all), "Ravage", "from stealth")
         t.eq(cat({ inCombat = true, finisherReady = true }, all), "Ferocious Bite", "the reader says a finisher is due")
         t.eq(cat({ inCombat = true, finisherReady = true }, { "Cat Form", "Rip", "Rake", "Claw" }), "Rip", "no Ferocious Bite: Rip")
         t.eq(cat({ inCombat = true }, all), "Rake", "Rake missing")
         t.eq(cat({ inCombat = true, targetDebuffs = { Rake = true } }, all), "Claw", "Rake is on it")
+    end,
+
+    ["stealth not known: no Prowl"] = function(t)
+        local known = { "Cat Form", "Prowl" }
+        local function cat(over)
+            local got = ns.Choose(snap("dps", "Cat Form", "Feral", known, over), ns.Packs.DRUID)
+            return got and got.spell or nil
+        end
+        t.eq(cat({ stealthed = false }), "Prowl", "read: not stealthed")
+        t.eq(cat({}), nil, "not read: stealth is not assumed off")
+        t.eq(cat({ stealthed = true }), nil, "read: already stealthed")
+    end,
+
+    ["stealth not known: neither attack rule starts the swing"] = function(t)
+        for _, swing in ipairs({ "Attack", "Auto Attack" }) do
+            for _, form in ipairs({ "Cat Form", "Bear Form", "Dire Bear Form" }) do
+                local function animal(over)
+                    local s = snap("dps", form, "Feral", { swing }, over)
+                    s.inCombat, s.current = true, {}
+                    local got = ns.Choose(s, ns.Packs.DRUID)
+                    return got and got.spell or nil
+                end
+                local what = swing .. " in " .. form
+                t.eq(animal({ stealthed = false }), swing, what .. ": read, not stealthed")
+                t.eq(animal({}), nil, what .. ": not read, no swing")
+                t.eq(animal({ stealthed = true }), nil, what .. ": stealthed, no swing")
+            end
+        end
+    end,
+
+    ["stealth not known: the rules themselves say no"] = function(t)
+        local function when(list, spell, s)
+            local rule = find(list, spell)
+            return rule and rule.when(s) and true or false
+        end
+        local list = ns.Packs.DRUID.lists.default
+        local function pull(stealthed)
+            return { dead = false, inCombat = false, hostile = true, form = "Cat Form", stealthed = stealthed }
+        end
+        t.eq(when(list, "Prowl", pull(false)), true, "Prowl: read, not stealthed")
+        t.eq(when(list, "Prowl", pull(nil)), false, "Prowl: not read")
+        t.eq(when(list, "Prowl", pull(true)), false, "Prowl: stealthed")
+        for _, swing in ipairs({ "Attack", "Auto Attack" }) do
+            t.eq(when(list, swing, pull(false)), true, swing .. ": read, not stealthed")
+            t.eq(when(list, swing, pull(nil)), false, swing .. ": not read")
+            t.eq(when(list, swing, pull(true)), false, swing .. ": stealthed")
+        end
     end,
 
     ["caster list: buffs out of a fight, then moonfire, then wrath"] = function(t)

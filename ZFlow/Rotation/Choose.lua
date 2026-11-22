@@ -278,6 +278,10 @@ function steps.engage(s, pack, prefs)
     if prefs and prefs.autoAttack == false then return nil, "switched off" end
     if s.engageGaveUp then return nil, "gave up starting the attack" end
     if s.attacking or not s.canStartAttack then return nil, "already swinging, or the key cannot start it" end
+    -- Starting the swing breaks stealth, so it is started only when stealth
+    -- was read and the answer was no. Not read is not "not stealthed".
+    if s.stealthed == nil then return nil, "not known whether you are stealthed" end
+    if s.stealthed ~= false then return nil, "stealthed" end
     local spell = (R.Knows(s, "Auto Attack") and "Auto Attack") or (R.Knows(s, "Attack") and "Attack") or nil
     if not spell then return nil, "no attack known" end
     return { spell = spell, kind = "damage", engage = true,
