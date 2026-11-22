@@ -10,8 +10,9 @@ local _, ns = ...
 -- nothing. It does not change the plan it is given.
 --
 -- What it must never blur:
---   * a price nobody has seen reads "price unknown - check trainer", and no
---     figure (not 0 either) is shown in its place;
+--   * a price nobody has seen reads "price unknown—check vendor" (a plan
+--     buys items from a merchant; F-085), and no figure (not 0 either) is
+--     shown in its place;
 --   * an estimate is always labelled "(estimate)", is never added to an
 --     observed figure, and never makes the money line say yes;
 --   * a bank that was never seen is said on the row that might be helped by
@@ -46,7 +47,8 @@ Present.BANK_UNSEEN = "the bank has not been seen yet"
 Present.BANK_NOTE = "bank not seen yet: some may be there"
 Present.CYCLE_NOTE = "can only be made from itself"
 
-local UNKNOWN_PRICE = "price unknown - check trainer"
+-- F-085: a merchant's price for an item that nobody has seen.
+local UNKNOWN_PRICE = "price unknown—check vendor"
 
 local function isCount(n)
     return type(n) == "number" and n == n and n >= 0 and n < math.huge
@@ -136,7 +138,8 @@ function Present.Cost(plan)
     if known > 0 then parts[#parts + 1] = tostring(coin(known)) end
     if estimated > 0 then parts[#parts + 1] = tostring(estimateText(estimated)) end
     if unknown > 0 then
-        parts[#parts + 1] = unknown .. (unknown == 1 and " price " or " prices ") .. "unknown - check trainer"
+        -- The count line ends in the same phrase (F-085).
+        parts[#parts + 1] = unknown .. (unknown == 1 and " price " or " prices ") .. "unknown—check vendor"
     end
     if #parts == 0 then return "Nothing to buy" end
     return "To buy: " .. (plan.unknown == "bags" and "at most " or "") .. table.concat(parts, ", plus ")
