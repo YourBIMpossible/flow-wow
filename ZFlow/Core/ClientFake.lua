@@ -1112,6 +1112,31 @@ function ns.make.fakeClient(opts)
         return true
     end
     function c.setCombatLog(on) s.noCombatLog = not on end
+    -- Slash commands another addon owns: setSlashTaken(command, on) says
+    -- so, slashTaken answers as the real boundary does, and unslash gives a
+    -- command back.
+    local slashTags, slashOthers = {}, {}
+    local plainSlash = c.slash
+    function c.slash(tag, command, fn)
+        slashTags[tag] = command
+        return plainSlash(tag, command, fn)
+    end
+    function c.setSlashTaken(command, on) slashOthers[command] = on and true or nil end
+    function c.slashTaken(command, ownTag)
+        if type(command) ~= "string" then return nil end
+        if slashOthers[command] then return true end
+        for tag, held in pairs(slashTags) do
+            if tag ~= ownTag and held == command then return true end
+        end
+        return false
+    end
+    function c.unslash(tag)
+        local command = slashTags[tag]
+        if command == nil then return false end
+        slashTags[tag] = nil
+        c.slashes[command] = nil
+        return true
+    end
     function c.combatLog(...)
         for i = 1, #logWatchers do logWatchers[i](...) end
     end
@@ -1183,6 +1208,23 @@ function ns.make.fakeClient(opts)
     function c.merchantRedraw()
         for _, fn in ipairs({ unpack(merchantRedrawFns) }) do fn() end
     end
+
+    -- S35: worldPosition() and onTaxi(), both unknown (nil) until set.
+    --   c.setWorldPosition(cont, wx, wy)   c.setWorldPosition(nil): not known
+    --   c.setOnTaxi(true / false)          c.setOnTaxi(nil): not known
+    function c.worldPosition()
+        local w = s.world
+        if not w then return nil end
+        return { cont = w.cont, wx = w.wx, wy = w.wy }
+    end
+    function c.setWorldPosition(cont, wx, wy)
+        s.world = cont ~= nil and { cont = cont, wx = wx, wy = wy } or nil
+    end
+    function c.onTaxi() return s.onTaxi end
+    function c.setOnTaxi(v)
+        if v == nil then s.onTaxi = nil else s.onTaxi = v and true or false end
+    end
+
     -- Every slot icon made (S13) is in c.slotIcons, in order: .spec, .shown,
     -- .texture, .point, .places, .marked ({ r, g, b } or nil).
     c.slotIcons = {}

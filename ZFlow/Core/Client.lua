@@ -4074,6 +4074,78 @@ function ns.make.client(env)
         return merchantFollowed or nil
     end
 
+    -- S35 (LEDGER 150/153; WoW/from-zen/RESEARCH-S35.md): the two reads
+    -- Nav/Gates.lua needs before it may learn a gate. Both only read.
+    --   c.worldPosition() -> { cont, wx, wy }: the continent and the world
+    --     position in yards of where the player stands, or nil when the
+    --     client gives no map, no position, no world point, or marks any of
+    --     it secret. C_Map.GetWorldPosFromMapPos(map, position) is the call
+    --     legacy Flow's N:PlayerPos uses (Modules/Nav/Nav.lua:40-52), asked
+    --     with the client's own position value; a first guess on 16001.
+    --   c.onTaxi() -> true / false, or nil when the client gives no plain
+    --     yes or no. UnitOnTaxi("player") is the call legacy Flow uses
+    --     (Modules/Nav/Nav.lua:4688); a first guess on 16001. nil is "not
+    --     known", never "not on a taxi": Gates learns only on a plain false.
+    function c.worldPosition()
+        local map, _, _, pos = playerPoint()
+        if not map then return nil end
+        local ok, cont, world = mapCall("GetWorldPosFromMapPos", map, pos)
+        if not ok or type(world) ~= "table" then return nil end
+        if type(cont) ~= "number" or hidden(cont) then return nil end
+        local okXY, wx, wy = call(world.GetXY, world)
+        if not okXY then wx, wy = world.x, world.y end
+        if type(wx) ~= "number" or type(wy) ~= "number" then return nil end
+        if hidden(wx) or hidden(wy) then return nil end
+        if wx ~= wx or wy ~= wy then return nil end
+        return { cont = cont, wx = wx, wy = wy }
+    end
+    function c.onTaxi()
+        return flag(call(env.UnitOnTaxi, "player"))
+    end
+    -- Whether a slash command already belongs to someone else.
+    --   c.slashTaken(command, ownTag) -> true when a tag other than ownTag
+    --     lists the command (any case) or the client has already looked it
+    --     up for another handler; false when it is free or ownTag's; nil
+    --     when there is no slash table to read (unknown, not free).
+    --   c.unslash(tag) -> true when the tag held a command and it was given
+    --     back; false when there was nothing to give back.
+    -- Legacy Flow asked the same before claiming "/way"
+    -- (Modules/Nav/Waypoint.lua:260-262: SlashCmdList.TOMTOM_WAY or
+    -- hash_SlashCmdList["/WAY"]). Reading every tag's SLASH_<tag><n> texts
+    -- is the general form of that; needs game test.
+    function c.slashTaken(command, ownTag)
+        local list = env.SlashCmdList
+        if type(list) ~= "table" or type(command) ~= "string" or command == "" then return nil end
+        local hash = env.hash_SlashCmdList
+        if type(hash) == "table" then
+            local held = hash[command:upper()]
+            if held ~= nil and (ownTag == nil or held ~= list[ownTag]) then return true end
+        end
+        local want = command:lower()
+        for tag in pairs(list) do
+            if tag ~= ownTag and type(tag) == "string" then
+                for n = 1, 20 do
+                    local text = env["SLASH_" .. tag .. n]
+                    if type(text) ~= "string" then break end
+                    if text:lower() == want then return true end
+                end
+            end
+        end
+        return false
+    end
+    function c.unslash(tag)
+        local list = env.SlashCmdList
+        if type(list) ~= "table" or type(tag) ~= "string" or list[tag] == nil then return false end
+        local fn, text = list[tag], env["SLASH_" .. tag .. "1"]
+        local hash = env.hash_SlashCmdList
+        if type(hash) == "table" and type(text) == "string" and hash[text:upper()] == fn then
+            hash[text:upper()] = nil
+        end
+        list[tag] = nil
+        env["SLASH_" .. tag .. "1"] = nil
+        return true
+    end
+
     -- One small picture with a word over it and a coloured edge (S13, the
     -- modifier queue), or nil when the client cannot make a frame. First
     -- guess, not seen in game.

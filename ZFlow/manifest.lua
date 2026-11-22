@@ -117,9 +117,11 @@ return {
         "Nav/RoutePlan.lua",
         "Nav/HearthStep.lua",
         "Nav/HearthSeen.lua",
+        "Nav/Crossings.lua",
         "Nav/ServiceNearest.lua",
         "Nav/ServiceSeen.lua",
         "Nav/Errand.lua",
+        "Nav/RepairStep.lua",
         "Nav/QuestSource.lua",
         "Nav/QuestRead.lua",
         "Nav/Rides.lua",
@@ -129,6 +131,7 @@ return {
         "Nav/FlightPaths.lua",
         "Nav/MapFlights.lua",
         "Nav/TaxiMark.lua",
+        "Nav/Gates.lua",
         "UI/ProfCard.lua",
 
         -- On screen (after Nav: the panel uses its saved-point rules)
