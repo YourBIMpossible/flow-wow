@@ -53,7 +53,8 @@ local function start(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
     c.setSaved(ns.id.accountDB, {})
-    local boxes = {}
+    -- The fake's own list when it makes the boxes itself.
+    local boxes = type(c.copyBoxes) == "table" and c.copyBoxes or {}
     if opts.onPrint ~= false and type(c.onPrint) ~= "function" then
         local fns, real = {}, c.print
         c.print = function(text)

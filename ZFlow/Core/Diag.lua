@@ -22,14 +22,18 @@
 -- ready at login is by then), and when the bank, a vendor, a trainer, a
 -- profession window or the flight map opens; a trainer and a profession
 -- window get a second one when the client says their list has arrived. The
--- newest KEEP are kept. Each start also saves `api`: the names inside the
--- client's namespaces, so the next build is written from what is there.
+-- newest KEEP are kept, and the count of snapshots and of starts is kept
+-- beside them. The names table is the same in every snapshot of one client
+-- build, so it is saved once, with its build, not in each snapshot. Each
+-- start also saves `api`: the names inside the client's namespaces, so the
+-- next build is written from what is there.
 local _, ns = ...
 
 local Diag = {}
 ns.Diag = Diag
 
-local KEEP = 40
+local KEEP = 20
+Diag.KEEP = KEEP
 local SHAPE_KEYS = 60
 -- Seconds after login for the "settled" snapshot, and the gap inside which
 -- the same window event again takes no second snapshot.
@@ -435,12 +439,32 @@ function Diag.Api(client)
     return api
 end
 
--- Puts a snapshot in the saved table and trims to the newest KEEP.
+-- The client build as one text, "1.16.1 (7777)", to say which build a saved
+-- names table is of. "unknown" when the client does not say, or hides it.
+function Diag.BuildKey(client)
+    local ok, version, build = client.raw("GetBuildInfo")
+    if not ok or Diag.IsSecret(client, version) or Diag.IsSecret(client, build) then return "unknown" end
+    local kind = type(version)
+    if kind ~= "string" and kind ~= "number" then return "unknown" end
+    local text = tostring(version)
+    kind = type(build)
+    if kind == "string" or kind == "number" then text = text .. " (" .. tostring(build) .. ")" end
+    return text
+end
+
+-- Puts a snapshot in the saved table and trims to the newest KEEP. The names
+-- table of the snapshot is taken out of it and saved once, as
+-- diag.names = { build =, names = }: the newest one, of the build it was
+-- read on. The snapshot handed in is the one changed.
 function Diag.Save(k, snap)
     local db = k.client.saved(k.id.accountDB)
     if type(db.diag) ~= "table" then db.diag = {} end
     local d = db.diag
     if type(d.snaps) ~= "table" then d.snaps = {} end
+    if type(snap) == "table" and type(snap.names) == "table" then
+        d.names = { build = Diag.BuildKey(k.client), names = snap.names }
+        snap.names = nil
+    end
     d.snaps[#d.snaps + 1] = snap
     while #d.snaps > KEEP do table.remove(d.snaps, 1) end
     d.count = (tonumber(d.count) or 0) + 1

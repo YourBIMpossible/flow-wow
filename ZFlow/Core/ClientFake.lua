@@ -61,7 +61,18 @@ function ns.make.fakeClient(opts)
     function c.now() return s.noTime and 0 or s.t end
     function c.clock() return s.clock end
     function c.clockMs() return s.ms end
-    function c.print(text) c.printed[#c.printed + 1] = tostring(text) end
+    -- As on the real client: every line said goes to the onPrint listeners,
+    -- and one that raises does not stop the line being said.
+    local prints = ns.make.listeners(function() end, function() end)
+    function c.print(text)
+        text = tostring(text)
+        c.printed[#c.printed + 1] = text
+        prints.call("print", text)
+    end
+    function c.onPrint(fn)
+        if type(fn) ~= "function" then return function() end end
+        return prints.add("print", function(text) pcall(fn, text) end)
+    end
     function c.listen(event, fn) return events.add(event, fn) end
     function c.onFrame(fn) return ticks.add("frame", fn) end
     function c.addonLoaded(name) return s.loaded[name] == true end
@@ -319,6 +330,31 @@ function ns.make.fakeClient(opts)
 
     -- Drawing. Every panel made is in c.panels, in order.
     c.panels = {}
+    -- The copy box, with the focus rules of the real one (L6-N). Every box
+    -- made is in c.copyBoxes, in order: { spec, text, shown, focused } and
+    -- the test's controls click() (the player clicks in the text) and
+    -- escape() (the player presses Escape). Showing a box never focuses
+    -- it; hiding it and Escape always release focus.
+    c.copyBoxes = {}
+    function c.copyBox(spec)
+        if s.noFrames then return nil end
+        local box = { spec = spec, text = "", shown = false, focused = false }
+        local h = {}
+        function h.setText(text) box.text = tostring(text == nil and "" or text) end
+        function h.show(on)
+            box.shown = on and true or false
+            if not box.shown then box.focused = false end
+        end
+        function box.click()
+            if box.shown then box.focused = true end
+        end
+        function box.escape()
+            box.focused = false
+            box.shown = false
+        end
+        c.copyBoxes[#c.copyBoxes + 1] = box
+        return h
+    end
     function c.version() return s.version end
     function c.screen()
         if not s.screen then return nil end
