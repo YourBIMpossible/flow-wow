@@ -315,6 +315,10 @@ function Arrow.GuideSource(client, layout, guide, intro, palette)
     for _, key in ipairs(N.ARROW_KEYS) do
         local step = type(given[key]) == "table" and given[key] or {}
         local out = {}
+        -- At the step (inside its arrival radius) the arrow is the ring,
+        -- which points nowhere: there is no direction to call unknown.
+        local d = state[key] and state[key].distance
+        local arrived = type(d) == "number" and (state[key].here or N.AtPoint(d)) and true or false
         if playing and key == "quest" then
             if intro.title ~= nil then out[1] = tostring(intro.title) end
         elseif type(step.lines) == "table" then
@@ -324,10 +328,9 @@ function Arrow.GuideSource(client, layout, guide, intro, palette)
             if label ~= nil then out[#out + 1] = tostring(label) end
             -- A step may say one more line of its own under its label (S43).
             if step.detail ~= nil then out[#out + 1] = tostring(step.detail) end
-            local d = state[key] and state[key].distance
             if type(d) == "number" then
                 local word = more[key].compass
-                if state[key].here or N.AtPoint(d) then
+                if arrived then
                     out[#out + 1] = Arrow.HERE_TEXT
                 elseif word ~= nil then
                     out[#out + 1] = Arrow.DISTANCE_COMPASS_TEXT:format(math.floor(d + 0.5), word)
@@ -338,7 +341,7 @@ function Arrow.GuideSource(client, layout, guide, intro, palette)
         end
         -- still is honoured only on a step with no place.
         local isStill = step.still and step.place == nil
-        if type(given[key]) == "table" and more[key].turn == nil and not isStill
+        if type(given[key]) == "table" and more[key].turn == nil and not isStill and not arrived
             and not (playing and key == "quest") then
             out[#out + 1] = Arrow.UNKNOWN_TURN
             lost[key] = true          -- the last line is the unknown-direction line
