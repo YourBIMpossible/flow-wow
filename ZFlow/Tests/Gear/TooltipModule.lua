@@ -40,11 +40,15 @@ local function client(opts)
     c.setItem(POTION, { stats = {} })
     c.setWorn(1, false)
     local types = { [HELM] = { 4, 2, 1 }, [PLATE] = { 4, 4, 1 } }
+    -- What the game marks as not met on each item (gear.unmet). A test
+    -- takes an entry out to play the marks not having been read.
+    c.unmet = { [HELM] = {}, [PLATE] = { "Plate" } }
     local gear = c.gear
     c.gear = function(link)
         local g = gear(link)
         local ty = types[link]
         if ty then g.classId, g.subclassId, g.minLevel = ty[1], ty[2], ty[3] end
+        if c.unmet[link] ~= nil then g.unmet = c.unmet[link] end
         return g
     end
     c.myLevel = 10
@@ -101,7 +105,7 @@ end
 tests["gear tooltip lines: can't use is said once, not once for each role"] = function(t)
     local c = client()
     local lines = M.Lines(c, packs(), PLATE)
-    t.eq(lines, { { text = "Can't use: your class cannot use this kind of item (first guess)", tone = "bad" } })
+    t.eq(lines, { { text = "Can't use: " .. ns.GearUsable.REASON.unmet .. ": Plate", tone = "bad" } })
 end
 
 tests["gear tooltip lines: what is not gear gets nothing"] = function(t)
@@ -115,13 +119,14 @@ tests["gear tooltip lines: a class with no pack, or a class not known, is no ver
     local c = client()
     c.setClass("ROGUE")
     local lines = M.Lines(c, packs(), HELM)
-    t.eq(lines, { { text = "No verdict: " .. ns.GearCanUse.REASON.proficiency, tone = "none" } })
+    t.eq(lines, { { text = "No verdict: " .. ns.GearScore.REASON.weights, tone = "none" } })
     c.setClass(nil)
     t.eq(M.Lines(c, packs(), HELM), lines)
 end
 
 tests["gear tooltip lines: your level not known is no verdict"] = function(t)
     local c = client()
+    c.unmet[HELM] = nil   -- the marks not read: the class table and your level decide
     c.myLevel = nil
     t.eq(M.Lines(c, packs(), HELM), { { text = "No verdict: " .. ns.GearCanUse.REASON.yourLevel, tone = "none" } })
     c.level = nil
@@ -149,6 +154,20 @@ tests["gear tooltip lines: a client with no gear read says nothing"] = function(
     t.eq(M.Lines(c, packs(), HELM), nil)
 end
 
+tests["gear tooltip lines P-Q: a class-table yes with the game's marks not read is no verdict, said once"] = function(t)
+    local c = client()
+    c.unmet[HELM] = nil
+    t.eq(M.Lines(c, packs(), HELM),
+        { { text = "No verdict: " .. ns.GearUsable.REASON.unconfirmed, tone = "none" } })
+end
+
+tests["gear tooltip lines P-Q: with the marks not read, the class table's no still shows, labelled"] = function(t)
+    local c = client()
+    c.unmet[PLATE] = nil
+    t.eq(M.Lines(c, packs(), PLATE),
+        { { text = "Can't use: your class cannot use this kind of item (first guess)", tone = "bad" } })
+end
+
 -- The module ------------------------------------------------------------------
 
 tests["gear tooltip: hovering gear adds its lines to the tooltip, coloured by tone"] = function(t)
@@ -159,7 +178,7 @@ tests["gear tooltip: hovering gear adds its lines to the tooltip, coloured by to
     t.eq(texts(added), { "Upgrade for your head piece (+4, dps)", "Upgrade for your head piece (+12, tank)" })
     t.eq({ added[1].r, added[1].g, added[1].b }, M.COLOUR.good)
     added = c.hover(PLATE)
-    t.eq(texts(added), { "Can't use: your class cannot use this kind of item (first guess)" })
+    t.eq(texts(added), { "Can't use: " .. ns.GearUsable.REASON.unmet .. ": Plate" })
     t.eq({ added[1].r, added[1].g, added[1].b }, M.COLOUR.bad)
 end
 
