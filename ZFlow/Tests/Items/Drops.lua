@@ -12,7 +12,59 @@ local D, Present = ns.Drops, ns.ItemPresent
 local tests = {}
 
 local function reading(guid, id, name, items)
-    return { source = { kind = "creature", guid = guid, id = id, name = name }, items = items }
+    return { source = { kind = "creature", how = "corpse", guid = guid, id = id, name = name }, items = items }
+end
+
+-- Review of 50a474d (blocker): a pickpocket or skinning window has a
+-- creature's GUID too. Only a window the client says is corpse loot counts.
+tests["drops: a pickpocket or skinning window is not a corpse's loot"] = function(t)
+    local book, seen = {}, {}
+    for _, how in ipairs({ "pickpocket", "skinning", "gather", "something new" }) do
+        local r = reading("g1", 40, "Kobold Miner", { { item = 97, count = 1 } })
+        r.source.how = how
+        local ok, why = D.Record(book, seen, r)
+        t.eq(ok, false, how .. " is not recorded")
+        t.eq(why, "not corpse loot")
+    end
+    t.eq(next(book), nil, "nothing written")
+    t.eq(next(seen), nil, "and the creature is not marked as looted")
+end
+
+tests["drops: when the client can't say how the window was opened, nothing is recorded"] = function(t)
+    local book, seen = {}, {}
+    local r = reading("g1", 40, "Kobold Miner", { { item = 97, count = 1 } })
+    r.source.how = nil
+    local ok, why = D.Record(book, seen, r)
+    t.eq({ ok, why }, { false, "not corpse loot" }, "not known is not 'a corpse'")
+    t.eq(next(book), nil)
+end
+
+tests["drops: picking a pocket first does not hide the corpse's loot later"] = function(t)
+    local book, seen = {}, {}
+    local pick = reading("g1", 40, "Kobold Miner", { { item = 2589, count = 1 } })
+    pick.source.how = "pickpocket"
+    D.Record(book, seen, pick)
+    local ok = D.Record(book, seen, reading("g1", 40, "Kobold Miner", { { item = 97, count = 2 } }))
+    t.eq(ok, true, "the same creature's corpse is still counted")
+    t.eq(book[40].looted, 1)
+    t.eq(book[40].items[97].count, 2)
+    t.eq(book[40].items[2589], nil, "what was pickpocketed is not a drop")
+    local skin = reading("g1", 40, "Kobold Miner", { { item = 2318, count = 1 } })
+    skin.source.how = "skinning"
+    t.eq((D.Record(book, seen, skin)), false, "skinning it afterwards adds nothing")
+    t.eq(book[40].items[2318], nil)
+end
+
+-- Review finding 2 (F-086): a saved name is not replaced by a later one.
+tests["drops: a creature's saved name is kept, and a missing name stays missing"] = function(t)
+    local book, seen = {}, {}
+    D.Record(book, seen, reading("g1", 40, "Kobold Miner", {}))
+    D.Record(book, seen, reading("g2", 40, "Some Other Target", {}))
+    t.eq(book[40].name, "Kobold Miner", "the first name tied to this creature id stays")
+    D.Record(book, seen, reading("g3", 41, nil, {}))
+    t.eq(book[41].name, nil, "no name read: none made up")
+    D.Record(book, seen, reading("g4", 41, "Kobold Tunneler", {}))
+    t.eq(book[41].name, "Kobold Tunneler", "a name that arrives later fills the gap")
 end
 
 local function has(lines, text)
