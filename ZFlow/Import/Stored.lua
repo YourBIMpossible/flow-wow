@@ -7,6 +7,10 @@ local _, ns = ...
 -- table as stored, tolerates a missing or half-written one, never raises,
 -- and returns new tables with every default filled in. A value that cannot
 -- be used reads as its default (or nil where there is no default).
+--
+-- And the one writer: Stored.Adopt lands an import's settings in the
+-- player's, through the settings model (Settings/Model.lua, which loads
+-- after this file and is looked up when Adopt is called).
 ns.Import = ns.Import or {}
 local S = {}
 ns.Import.Stored = S
@@ -137,4 +141,100 @@ function S.BuffButtonSettings(settings)
         care = b.care ~= false,
         keepOnMain = b.keepOnMain == true,
     }
+end
+
+-- ---------------------------------------------------------------- adopt
+local function copy(v)
+    if type(v) ~= "table" then return v end
+    local out = {}
+    for k, one in pairs(v) do out[k] = copy(one) end
+    return out
+end
+
+-- Stored.Adopt(settings, result [, confirmed [, model]]) -> settings, report
+-- Lands the settings of an import in the player's settings. This is the
+-- deliberate import call: nothing else writes an imported setting.
+--   settings   the player's account settings as stored, or nil
+--   result     what Import.FromFlow returned
+--   confirmed  { ["sell.autoRepair"] = true, ... }: the vendor automations
+--              the player confirmed, by Flow key. Only a true counts.
+--   model      the settings model; the shipped rows when left out
+-- Returns a new settings table; neither table given is changed.
+--   A value Flow held is stored as found and counts as chosen, also when it
+--   equals the default.
+--   A value Flow did not hold is not stored: it reads as the model default.
+--   A value the player already chose is kept. Landing the same import again
+--   changes nothing.
+--   A vendor automation Flow had off is stored off. One Flow had on is
+--   stored on only when the player confirmed that one; unconfirmed it is
+--   not stored and reads as off. An on counts as found whether it is in
+--   result.vendorToConfirm or was written into the settings some other way.
+--   Only settings the model has a row for are landed.
+-- report = { ok, reason, taken, kept, refused, vendorConfirmed, vendorLeftOff }
+--   taken, kept       model keys, in row order
+--   refused           { { key, reason }, ... }: values that did not fit
+--   vendorConfirmed, vendorLeftOff   sorted lists of Flow keys
+-- When there is nothing to land (no model, or an import that did not
+-- succeed) ok is false, reason says why and the settings come back as given.
+function S.Adopt(settings, result, confirmed, model)
+    local report = {
+        ok = true, taken = {}, kept = {}, refused = {},
+        vendorConfirmed = {}, vendorLeftOff = {},
+    }
+    local function fail(reason)
+        report.ok, report.reason = false, reason .. "; nothing was changed"
+        if type(settings) == "table" then return copy(settings), report end
+        return {}, report
+    end
+
+    if model == nil then
+        local Model = ns.Settings and ns.Settings.Model
+        if not Model then return fail("the settings model is not loaded") end
+        model = Model.Default()
+    end
+    if type(result) ~= "table" then return fail("there is no import result") end
+    if result.ok ~= true or type(result.account) ~= "table" then
+        return fail("the import did not succeed: " .. tostring(result.reason or "no reason given"))
+    end
+
+    local imported = copy(sub(result.account, "settings") or {})
+
+    -- The vendor gate. found[Flow key] = model key, or false when the model
+    -- has no vendor row for it.
+    local found = {}
+    if type(result.vendorToConfirm) == "table" then
+        for _, entry in ipairs(result.vendorToConfirm) do
+            if type(entry) == "table" and type(entry.key) == "string" then
+                local key = type(entry.to) == "string" and entry.to:match("^settings%.(.+)$") or nil
+                local row = key and model:row(key) or nil
+                found[entry.key] = (row and row.vendor) and key or false
+            end
+        end
+    end
+    local keys = model:keys()
+    for i = 1, #keys do
+        local key = keys[i]
+        if model:row(key).vendor and model:explicit(imported, key) and model:get(imported, key) == true then
+            -- On in the settings themselves: taken out, and gated like the rest.
+            if not found[key] then found[key] = key end
+            imported = model:reset(imported, key)
+        end
+    end
+    local flowKeys = {}
+    for flowKey in pairs(found) do flowKeys[#flowKeys + 1] = flowKey end
+    table.sort(flowKeys)
+    for i = 1, #flowKeys do
+        local flowKey = flowKeys[i]
+        local key = found[flowKey]
+        if key and type(confirmed) == "table" and confirmed[flowKey] == true then
+            imported = model:set(imported, key, true)
+            report.vendorConfirmed[#report.vendorConfirmed + 1] = flowKey
+        else
+            report.vendorLeftOff[#report.vendorLeftOff + 1] = flowKey
+        end
+    end
+
+    local out, landed = model:adopt(settings, imported)
+    report.taken, report.kept, report.refused = landed.taken, landed.kept, landed.refused
+    return out, report
 end
