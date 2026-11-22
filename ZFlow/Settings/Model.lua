@@ -59,6 +59,8 @@ M.ROWS = {
     -- advisor.panel: the advisor prompt panel (UI/Advisor.lua). (lead)
     { key = "advisor.panel", type = "bool", default = true },
     -- Q-A: point the quest arrow at the player's quests (lead)
+    -- L6-J: record what the player's own loot windows show (Items/Drops.lua) (lead)
+    { key = "loot.record", type = "bool", default = true },
     { key = "quest.arrow", type = "bool", default = true },
     { key = "auction.chartClick", type = "bool", default = true },
     { key = "buffButton.enabled", type = "bool", default = false },

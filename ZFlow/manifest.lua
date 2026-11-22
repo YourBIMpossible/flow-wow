@@ -27,6 +27,7 @@ return {
         "Core/Module.lua",
         "Core/Kernel.lua",
         "Core/Diag.lua",
+        "Items/Drops.lua",
         "UI/Perf.lua",
         "UI/CopyBox.lua",
         "UI/Advisor.lua",
