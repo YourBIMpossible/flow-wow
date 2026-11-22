@@ -280,6 +280,49 @@ return {
         t.eq(c.spell(5176), {})
     end,
 
+    ["spell id: asked of the client by name, never guessed"] = function(t)
+        local env = { C_Spell = { GetSpellInfo = function(name)
+            if name == "Wrath" then return { name = "Wrath", spellID = 5176 } end
+            return nil
+        end } }
+        local c = ns.make.client(env)
+        t.eq(c.spellId("Wrath"), 5176)
+        t.eq(c.spellId("Nope"), nil)
+        t.eq(c.spellId(""), nil)
+        t.eq(c.spellId(5176), nil, "a name only")
+        env.issecretvalue = function() return true end
+        t.eq(c.spellId("Wrath"), nil, "hidden")
+        env.issecretvalue = nil
+        env.C_Spell.GetSpellInfo = function() return { spellID = 0 } end
+        t.eq(c.spellId("Wrath"), nil)
+        env.C_Spell.GetSpellInfo = boom
+        t.eq(c.spellId("Wrath"), nil)
+        t.eq(ns.make.client({}).spellId("Wrath"), nil)
+        local f = ns.make.fakeClient()
+        t.eq(f.spellId("Wrath"), nil)
+        f.setSpellId("Wrath", 5176)
+        t.eq(f.spellId("Wrath"), 5176)
+    end,
+
+    ["facing: radians, or unknown"] = function(t)
+        local env = { GetPlayerFacing = function() return 1.5 end }
+        local c = ns.make.client(env)
+        t.eq(c.facing(), 1.5)
+        env.GetPlayerFacing = function() return nil end
+        t.eq(c.facing(), nil, "the client gave nothing")
+        env.GetPlayerFacing = function() return 1.5 end
+        env.issecretvalue = function() return true end
+        t.eq(c.facing(), nil, "hidden")
+        env.issecretvalue = nil
+        env.GetPlayerFacing = boom
+        t.eq(c.facing(), nil)
+        t.eq(ns.make.client({}).facing(), nil)
+        local f = ns.make.fakeClient()
+        t.eq(f.facing(), nil)
+        f.setFacing(0)
+        t.eq(f.facing(), 0)
+    end,
+
     ["bag items: every stack, link first, empty slots skipped"] = function(t)
         local c = ns.make.client(bagEnv(twoBags()))
         t.eq(c.bagItems(), {

@@ -334,14 +334,37 @@ function ns.make.client(env)
     -- A plain true / false the client lets this code see, else nil. The
     -- client can hand back a value it marks secret (issecretvalue); that is
     -- "not known", never read as false.
+    local function hidden(v)
+        if env.issecretvalue == nil then return false end
+        local okSecret, secret = call(env.issecretvalue, v)
+        return not okSecret or secret ~= false
+    end
+
     local function flag(ok, v)
-        if not ok then return nil end
-        if env.issecretvalue ~= nil then
-            local okSecret, secret = call(env.issecretvalue, v)
-            if not okSecret or secret ~= false then return nil end
-        end
-        if type(v) ~= "boolean" then return nil end
+        if not ok or hidden(v) or type(v) ~= "boolean" then return nil end
         return v
+    end
+
+    -- The id of one of your spells, by its name as the client spells it, or
+    -- nil. Only the client is asked (C_Spell.GetSpellInfo): no id comes from
+    -- a table in this addon. Asking by name is a first guess on 16001; by id
+    -- it was seen in game to answer with a table holding spellID.
+    function c.spellId(name)
+        if type(name) ~= "string" or name == "" then return nil end
+        local group = env.C_Spell
+        local ok, info = call(type(group) == "table" and group.GetSpellInfo or nil, name)
+        if not ok or type(info) ~= "table" then return nil end
+        local id = info.spellID
+        if hidden(id) or type(id) ~= "number" or id <= 0 then return nil end
+        return id
+    end
+
+    -- Which way you face, in radians (0 = north, turning left adds), or nil.
+    -- GetPlayerFacing; the client gives nothing where it hides facing.
+    function c.facing()
+        local ok, f = call(env.GetPlayerFacing)
+        if not ok or hidden(f) or type(f) ~= "number" or f ~= f then return nil end
+        return f
     end
 
     -- What the client says about one of your spells, by spell id:

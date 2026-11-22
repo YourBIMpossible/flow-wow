@@ -284,6 +284,8 @@ function Diag.Collect(k, why)
         S.spellUsable = ask(client, "C_Spell.IsSpellUsable", spellID)
         S.spellKnown = ask(client, "IsPlayerSpell", spellID)
     end
+    S.spellByName = ask(client, "C_Spell.GetSpellInfo", "Attack")
+    S.facing = ask(client, "GetPlayerFacing")
     S.aura1 = ask(client, "C_UnitAuras.GetAuraDataByIndex", "player", 1, "HELPFUL")
     S.professions = ask(client, "GetProfessions")
     if S.professions.ok and type(S.professions.values.v1) == "number" then

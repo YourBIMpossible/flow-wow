@@ -12,6 +12,7 @@
 --   c.setBagItems{ { item = 2318, count = 4 } }; c.setBank{ ... }
 --   c.setRecipes{ profession = 164, skill = 104, max = 150, recipes = { ... } }
 --   c.setSpell(5176, { known = true, usable = false, noPower = true })
+--   c.setSpellId("Wrath", 5176)   c.setFacing(1.57)
 --   c.setBankOpen(true)     -- also fires the bank opened / closed event
 --   ns.make.fakeClient{ env = { GetMoney = function() return 5 end } }; c.slashes["/x"]("rest")
 --   c.setZone(1, 1411); c.setPosition(1411, 0.5, 0.25); c.setLockdown(true)
@@ -77,6 +78,8 @@ function ns.make.fakeClient(opts)
         local r = s.spells and s.spells[id] or {}
         return { known = r.known, usable = r.usable, noPower = r.noPower }
     end
+    function c.spellId(name) return s.spellIds and s.spellIds[name] or nil end
+    function c.facing() return s.facing end
     function c.position()
         if not s.position then return nil end
         return { map = s.position.map, x = s.position.x, y = s.position.y }
@@ -217,6 +220,12 @@ function ns.make.fakeClient(opts)
         s.spells = s.spells or {}
         s.spells[id] = row and { known = row.known, usable = row.usable, noPower = row.noPower } or nil
     end
+    function c.setSpellId(name, id)
+        s.spellIds = s.spellIds or {}
+        s.spellIds[name] = id
+    end
+    -- Radians, 0 = north; nil for not known.
+    function c.setFacing(f) s.facing = f end
     function c.setZone(cont, zone)
         s.zone = (cont ~= nil or zone ~= nil) and { cont = cont, zone = zone } or nil
     end
