@@ -2,7 +2,7 @@
 
 Status: version 1, 2026-11-21, written by the WoW foreman on White. Working name Z-Flow; the public name is not settled.
 Authority: the owner's "Architectural direction correction" and "Working product name: Z-Flow" messages (recorded verbatim in F:\flow-wow-program\ANCHOR.md).
-Detail behind every verdict here: F:\flow-wow-program\arch\A-core.md, C-items-crafting.md, D-rotation-class.md, B-nav.md (B is not delivered yet; section 6 is provisional until it is).
+Detail behind every verdict here: F:\flow-wow-program\arch\A-core.md, C-items-crafting.md, D-rotation-class.md, B-nav.md (B is not delivered yet; section 6 is delivered).
 Nothing in this document has been run in the game.
 
 ## 1. What is fixed and what is free
@@ -110,13 +110,29 @@ K = keep, F = refactor, R = replace, X = remove.
 | Advisor | F | Items get a stable id and an evidence tag: fact, recommendation or first guess (F-099) |
 | Group dispel advice in combat | Out until the owner decides | Owner question 8 |
 
-### Navigation and arrows (provisional until arch\B-nav.md)
+### Navigation and arrows (from arch\B-nav.md)
 | Subsystem | Verdict | Reason |
 |---|---|---|
-| Activity contract (branch p2-pr1-activity) | K | Pure; quest and profession goals share one shape |
-| Arrow layout (branch p5-pra-arrowviews) | K | Pure layout, clamp, snap and gate functions with 13 offline tests |
-| Arrow drawing | K appearance, F wiring | The approved look is fixed; the frames are driven by the layout function |
-| Route building, travel options, map pins | pending B | |
+| Nav.lua (5,326 lines) | R by decomposition | One file holds goals, planning, plan state and arrow frames; split into the parts below |
+| Planner | F | Pure function over a context; fixes F-030, F-032, F-033 |
+| NearFirst, XpValue | R | They patch the planner at run time and mutate goals |
+| Needs | K | |
+| Goals, Focus | F | Goals become immutable with a three-valued `known`; Focus stops wrapping selection |
+| Legs, Crossings, Gates | K pure cores | Storage moves to the store |
+| Places, Services, learned spots | F | Keys by id and faction; a learned spot can be corrected |
+| Flight code (four files) | F, merged | One Travel layer |
+| Party, party help, dungeons | F | Become activity policies; no in-combat help for other players |
+| Quest modules | F | One QuestData reader; auto turn-in, quest levels, quest bags kept |
+| Minimap pin | R | |
+| Map overlay, route tracker, other readers | F | Read the plan store only |
+| Zone fish and zone level tables | X or re-source | Marked as taken from Wowhead and a wiki; no rights recorded |
+| Activity contract (branch p2-pr1-activity) | K registry kind, A.Of, A.Split and tests | The interim `exists` rule, the fallback and the compatibility views are not carried; `exists` never depends on arrow display |
+| Arrow layout (branch p5-pra-arrowviews) | K four pure functions and tests | Views that wrap the old frame and its child are not carried |
+| Arrow frames | R frames, K art | New frames driven by the layout function; art, sizes and colours fixed by section 5 |
+
+Provenance to clear before these tables enter Z-Flow (class C or unsourced): zone fish, zone levels, Places notes taken from a levelling guide, skill spots carrying Questie object IDs, exported Questie-derived coordinates, and the unsourced innkeeper, crossing, ride and mount tables. Each is removed, re-read from the client, or re-authored with a note.
+
+One correction to the P5 design: a separated profession arrow uses the quest arrow's colour meanings at lower opacity, not "the activity's colour".
 
 ## 4. Shared contracts
 
@@ -153,7 +169,11 @@ Navigation and arrows
 - Activity: the shape in branch p2-pr1-activity (ns.activities).
 - N.ArrowLayout(state) -> { quest = {...}, prof = {...} } with fields for position, alpha, scale, tint and faint; N.ArrowGate, N.ClampPoint, N.StackSnap, N.ArrowBeside.
 - Arrow positions are saved under layout; stacked is the default; restacking happens by snap when one arrow is dropped on the other, and from a menu item.
-- Remaining nav contracts follow B.
+- Goal: immutable, with `known` = yes, no or unknown.
+- Plans.Each, Plans.Get, Plans.Choice, Plans.Target, Plans.At, Plans.AllGoals, Plans.Select; bus events PLAN_CHANGED, TARGET_CHANGED, GOALS_CHANGED.
+- Position.Get, Position.ToWorld and a position-changed signal.
+- Signatures: arch\B-nav.md section 5. Exact arrow values with source lines: arch\B-nav.md section 3.1 (56x56 button, 64x64 art, six textures, easing 14; grey away, orange at 600 yd through yellow to green at 40 yd, blue in area, red corpse; needle 25.6x109.1 at holder alpha 0.85; quest arrow 0.8 scale and 0.7 alpha over the needle).
+- Navigation build order: provenance cleanup, golden fixtures, services, goal and activity model, planner, plan store, arrows (pure first), readers, party and dungeon policies, import, then Nav.lua is deleted.
 
 ## 5. Arrow acceptance (owner's words govern; F:\flow-wow-program\ANCHOR.md)
 
@@ -205,4 +225,5 @@ The work proceeds on the default until the owner says otherwise.
 7. Profession planning without the third-party guide paths: plans are built only from recipes the character has seen. Accept thinner early plans? Default: yes; an independently authored model may be added later under the evidence policy.
 8. In combat, may Z-Flow show a healer an icon suggesting a cure on a group member (no cast, no target change)? Default: no, until you change the rule on helping other players in combat.
 9. Existing Druid and Paladin weights and talent order (authorship unrecorded): keep with a recorded note, or re-derive? Default: re-derive from tooltip and character-sheet reads; keep the old values only as a labelled first guess meanwhile.
+11. Does "the current quest arrow graphic" include the optional 3D and flat arrow styles? Default: yes, all existing styles are carried unchanged.
 10. Running Flow and Z-Flow together: confirm it is not supported and Z-Flow pauses itself. Default: as section 2.
