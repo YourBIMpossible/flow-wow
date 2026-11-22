@@ -16,13 +16,18 @@ local _, ns = ...
 --   text: "way x y [label]"; the word "way" (or "/way") may be left out.
 --     x and y are percents, 0 to 100, on the map the player is on, written
 --     with digits and at most one point: 45, 45.2. Anything else is turned
---     down with a reason: nothing is rounded, cut or guessed.
+--     down with a reason: nothing is rounded, cut or guessed. A reason
+--     names the token that was wrong, but never one holding "|" or a
+--     control character: a reason is shown as it is.
 --   waypoint = { map, x, y, label }: x and y are shares 0..1 of map, the
 --     shape client.position() has; label is left out when none was typed.
+--     A label is W.LABEL_MAX bytes at most (a letter outside ASCII is more
+--     than one).
 --   position: client.position(), { map, x, y }. Only map is used.
 --   slot: a table; the waypoint is slot.waypoint. One per character: where
 --     this character is heading is not where the others are (scope "char",
---     path "nav"; W.Slot asks the store for it).
+--     path "state.nav", with the rest of what changes while playing;
+--     W.Slot asks the store for it).
 --   step: { label, place = { cont, map, x, y }, radius = W.NEAR }, the shape
 --     N.Guide takes as a step and N.WaypointStep gives. cont as there: the
 --     player's continent, only for a waypoint on the player's own map.
@@ -36,16 +41,16 @@ local W = N.Waypoint or {}
 N.Waypoint = W
 
 W.NEAR = 10            -- yards. A first guess, not a measured number.
-W.LABEL_MAX = 40       -- characters
+W.LABEL_MAX = 40       -- bytes
 W.ARRIVED = "arrived"
-W.SCOPE, W.PATH = "char", "nav"
+W.SCOPE, W.PATH = "char", "state.nav"
 
 W.REASON = {
     none = "no waypoint text",
     usage = "give x and y, as in: way 45.2 61.8 label",
     comma = "use a point for decimals and a space between x and y",
     label = "the label has a character that cannot be shown",
-    long = "the label is too long (" .. W.LABEL_MAX .. " characters at most)",
+    long = "the label is too long (" .. W.LABEL_MAX .. " bytes at most)",
     map = "the map you are on is not known",
     slot = "no saved table for the waypoint",
     unset = "no waypoint is set",
@@ -67,6 +72,7 @@ end
 local function share(token, axis)
     if token:find(",", 1, true) then return nil, R.comma end
     if not (token:find("^%d+$") or token:find("^%d+%.%d+$")) then
+        if token:find("[%c|]") then return nil, axis .. " is not a number" end
         return nil, axis .. " is not a number: " .. token
     end
     local n = tonumber(token)

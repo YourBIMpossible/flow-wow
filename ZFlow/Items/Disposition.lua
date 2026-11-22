@@ -23,7 +23,9 @@ local _, ns = ...
 --     classKeep  = { [key] = { why = "...", untilLevel = n } }
 --     level      = the player's level
 --     rules      = a rule list to use instead of the built-in one
---     onError    = fn(ruleKey, err)          told once per failing rule call }
+--     onError    = fn(ruleKey, err)          told once per failing rule call;
+--                                            err is "not a verdict" when a
+--                                            check gave something that isn't one }
 --
 -- A decision:
 --   action   "keep", "sell", "auction", "disenchant" or "equip"
@@ -176,8 +178,12 @@ local function decide(list, from, item, context, count)
                         local e2 = list[j]
                         if not e2.r.generic then
                             local ok, w = pcall(e2.r.check, item, context)
-                            if not ok and type(context.onError) == "function" then
-                                pcall(context.onError, e2.r.key, w)
+                            if type(context.onError) == "function" then
+                                if not ok then
+                                    pcall(context.onError, e2.r.key, w)
+                                elseif w ~= nil and (type(w) ~= "table" or not ACTIONS[w.action]) then
+                                    pcall(context.onError, e2.r.key, "not a verdict")
+                                end
                             end
                             if ok and type(w) == "table" and w.action == "keep" and w.reason and not seen[w.reason] then
                                 reasons[#reasons + 1], seen[w.reason] = w.reason, true
