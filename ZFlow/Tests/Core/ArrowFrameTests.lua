@@ -26,9 +26,11 @@ local function stub(kind, log)
     end })
 end
 
+-- Ctrl is held unless e.ctrl is false: a drag in these tests is a Ctrl-drag.
 local function env()
     local made = {}
     local e = { UIParent = stub("UIParent") }
+    e.IsControlKeyDown = function() return e.ctrl ~= false end
     e.CreateFrame = function(kind, name, parent)
         local f = stub(kind)
         f.name, f.parent = name, parent
@@ -56,7 +58,7 @@ local function arrow(spec)
     local e, made = env()
     local c = ns.make.client(e)
     local h = c.arrow(spec or SPEC)
-    return h, made[1], made[2], made[3]
+    return h, made[1], made[2], made[3], e
 end
 
 -- The last frame level a frame was given, or nil when it was given none.
@@ -503,5 +505,44 @@ return {
             t.eq(cl[1], true, "never switched off for the label's sake")
         end
         t.ok(#called(made[1], "EnableMouse") > 0, "the placed frame takes the mouse")
+    end,
+
+    -- N1: as in the predecessor, the arrow moves only while Ctrl is held.
+    ["c.arrow: a plain left drag does nothing; a drag starts only while Ctrl is held (N1)"] = function(t)
+        local h, f, _, _, e = arrow()
+        local on = scripts(f)
+        local moved = 0
+        h.onMoved(function() moved = moved + 1 end)
+        e.ctrl = false
+        on.OnDragStart()
+        t.eq(h.dragging(), false, "no drag without Ctrl")
+        t.eq(#called(f, "StartMoving"), 0, "the frame is not moved")
+        on.OnDragStop()
+        t.eq(moved, 0, "and no place is saved")
+        t.eq(#called(f, "StopMovingOrSizing"), 0)
+
+        e.ctrl = true
+        on.OnDragStart()
+        t.eq(h.dragging(), true, "with Ctrl held it drags")
+        t.eq(#called(f, "StartMoving"), 1)
+        e.ctrl = false
+        t.eq(h.dragging(), true, "Ctrl let go mid-drag: the drag goes on to its stop")
+        on.OnDragStop()
+        t.eq(h.dragging(), false)
+        t.eq(#called(f, "StopMovingOrSizing"), 1)
+    end,
+
+    ["c.arrow: a client that cannot say whether Ctrl is held starts no drag (N1)"] = function(t)
+        local h, f, _, _, e = arrow()
+        local on = scripts(f)
+        e.IsControlKeyDown = nil
+        on.OnDragStart()
+        t.eq({ h.dragging(), #called(f, "StartMoving") }, { false, 0 }, "no such call")
+        e.IsControlKeyDown = function() error("no") end
+        t.ok(pcall(on.OnDragStart), "an error in the call is not thrown")
+        t.eq({ h.dragging(), #called(f, "StartMoving") }, { false, 0 }, "the call fails")
+        e.IsControlKeyDown = function() return 1 end
+        on.OnDragStart()
+        t.eq({ h.dragging(), #called(f, "StartMoving") }, { false, 0 }, "only true counts")
     end,
 }
