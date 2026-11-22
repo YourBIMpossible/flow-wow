@@ -28,6 +28,13 @@ local function line(grants)
     return table.concat(parts, " ")
 end
 local SLOTS = R.SlotKey(0)
+-- A copy all the way down (functions are kept as they are).
+local function deepCopy(v)
+    if type(v) ~= "table" then return v end
+    local out = {}
+    for k, x in pairs(v) do out[k] = deepCopy(x) end
+    return out
+end
 
 tests["resources: the selected step's money and slot claims come first"] = function(t)
     local function claims(pick)
@@ -145,7 +152,9 @@ tests["resources: money keeps the order route costs were paid in"] = function(t)
     t.eq(over.b, 700, "the later key is over")
     g, over = run({ { key = "big", cost = 900 }, { key = "small", cost = 50 }, { key = "mid", cost = 400 } }, 500)
     t.eq(g:Held(R.MONEY), 450, "a later one fits after one that didn't")
-    t.eq(over.big, 450, "the dear one is over, behind the two cheaper")
+    t.eq(over.big, 450, "the dear one is over, with the 450 of the two cheaper held ahead of it")
+    t.eq(over.small, nil, "the cheapest is paid")
+    t.eq(over.mid, nil, "and so is the one after the dear one: it still fits")
     g = run({ { key = "free", cost = 0 }, { key = "odd", cost = -5 }, cheap }, 100)
     t.eq(g:Held(R.MONEY), 100, "no cost and a negative cost ask for nothing")
     t.eq(#g, 1, "one grant")
@@ -203,6 +212,7 @@ tests["resources: a unit is granted once"] = function(t)
         if sum.ore ~= g:Held("ore") or sum.leather ~= g:Held("leather") then bad = bad + 1 end
         if g:Free(R.MONEY) ~= money - sum.money or g:Free(SLOTS) ~= general - sum.slots then bad = bad + 1 end
         if g:Free("ore") ~= bags.ore + bank.ore - sum.ore then bad = bad + 1 end
+        if g:Free("leather") ~= bags.leather + bank.leather - sum.leather then bad = bad + 1 end
     end
     t.eq(bad, 0, "60 made-up sets: never more granted than there is, every claim answered once, got + short = asked")
 end
@@ -301,6 +311,8 @@ tests["resources: zero, negative and broken amounts hold nothing"] = function(t)
     })
     local by = byOwner(g)
     t.ok(by.zero.got == 0 and by.zero.short == 0 and not by.zero.invalid, "nothing asked: nothing held, nothing short")
+    t.ok(by.zeroslot.got == 0 and by.zeroslot.short == 0 and not by.zeroslot.invalid,
+        "no slot asked: nothing held, nothing short, not refused")
     for _, k in ipairs({ "neg", "text", "nan", "inf", "negslot" }) do
         t.ok(by[k].invalid == true and by[k].got == 0 and by[k].short == 0, k .. ": not a count, holds nothing")
     end
@@ -509,12 +521,33 @@ tests["resources: resolving changes neither the snapshot nor the claims"] = func
         { owner = "s", activity = "quest", kind = "slots", amount = 5 },
         { owner = "i", activity = "quest", kind = "item", key = "ore", amount = 7, bank = true },
     }
+    local shotWas, claimsWas = deepCopy(shot), deepCopy(claims)
+    local rows = {}
+    for i, claim in ipairs(claims) do rows[i] = claim end
     local g = R.Resolve(shot, claims)
+    t.eq(shot, shotWas, "the whole snapshot is as it was, nothing added or taken")
+    t.eq(claims, claimsWas, "every claim is as it was, nothing added or taken")
+    for i, claim in ipairs(rows) do
+        t.ok(claims[i] == claim, "claim " .. i .. " is the same table in the same place")
+    end
+    -- Every grant points at one of the claims handed in, each claim once.
+    t.eq(#g, #claims, "one grant for each claim")
+    local seen = {}
+    for _, grant in ipairs(g) do
+        local at
+        for i, claim in ipairs(claims) do
+            if grant.claim == claim then at = i end
+        end
+        t.ok(at ~= nil, "a grant points at a claim table that was handed in, not a copy")
+        t.ok(at == nil or not seen[at], "and no claim is pointed at twice")
+        if at then seen[at] = true end
+    end
     t.ok(shot.money == 300 and shot.slots[0].free == 2 and shot.slots[0].total == 6, "the snapshot is as it was")
     t.ok(shot.bags.ore == 3 and shot.bank.ore == 9, "bags and bank too")
     t.ok(claims[1].owner == "b" and claims[2].owner == "a" and claims[3].owner == "s", "the list keeps its order")
     t.ok(claims[1].amount == 200 and claims[1].got == nil, "a claim is not written to")
     t.eq(g[1].claim, claims[2], "a grant points at its claim")
+    t.ok(g[1].claim == claims[2], "the very table")
 end
 
 tests["resources: items come from the bags, then the bank when the claim may use it"] = function(t)

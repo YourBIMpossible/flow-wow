@@ -268,6 +268,23 @@ return {
         t.eq(verdict.panel.actions[2].id, "disable-flow-and-reload")
         t.eq(type(verdict.panel.actions[1].label), "string")
         t.eq(type(verdict.panel.actions[2].label), "string")
+        t.eq(verdict.panel.actions[1].label, "Import from Flow", "the words on the import action")
+        t.eq(verdict.panel.actions[2].label, "Turn Flow off and reload", "the words on the turn-off action")
+        -- Plain data all the way down: strings, numbers, true/false and tables.
+        local function plain(v, path)
+            local kind = type(v)
+            if kind == "table" then
+                for key, value in pairs(v) do
+                    t.ok(type(key) == "string" or type(key) == "number", path .. ": a plain key")
+                    plain(value, path .. "." .. tostring(key))
+                end
+            else
+                t.ok(kind == "string" or kind == "number" or kind == "boolean", path .. " is plain data, not a " .. kind)
+            end
+        end
+        plain(verdict, "verdict")
+        t.eq(ns.Guard.Decide(c, ns.id), verdict, "asked again with the same client: the same verdict")
+        t.ok(ns.Guard.Decide(c, ns.id) ~= verdict, "in a table of its own")
         for key, value in pairs(verdict.panel) do
             t.ok(type(value) == "string" or type(value) == "table", key .. " is plain data")
         end

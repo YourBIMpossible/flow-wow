@@ -108,7 +108,7 @@ tests["prices: the newer observation wins"] = function(t)
     P.Record(book, "a", "vendor", 600, { seenAt = 20 })
     t.eq(P.Get(book, "a", "vendor").value, 600, "seen at the same time: the later call wins")
     P.Record(book, "a", "vendor", 650)
-    t.eq(P.Get(book, "a", "vendor").value, 650, "with no time given it is taken as now")
+    t.eq(P.Get(book, "a", "vendor").value, 650, "no time given: the age check is skipped and it replaces what was there")
     t.eq(P.Get(book, "a", "vendor").seenAt, nil, "and no time is made up")
 end
 
@@ -146,6 +146,8 @@ tests["prices: an estimate is always labelled, unknown reads as unknown"] = func
     t.eq(P.Text(P.Get(book, "guess", "trainer")), "about 12s 40c (estimate)", "estimated: labelled twice over")
     t.eq(P.Text(P.Get(book, "none", "trainer")), "price unknown - check trainer", "unknown: the exact words")
     t.eq(P.UNKNOWN_TEXT, "price unknown - check trainer", "kept in one place")
+    t.eq(P.Text(P.Get(book, "none", "trainer")), P.UNKNOWN_TEXT, "an unknown price reads as that one text")
+    t.eq(P.Text(nil), P.UNKNOWN_TEXT, "and so does no price at all")
     t.eq(P.Text(nil), "price unknown - check trainer", "no price at all: unknown")
     t.eq(P.Text({ value = 500 }), "price unknown - check trainer", "a value with no basis is not shown as a price")
     t.eq(P.Text({ value = 500, basis = "guess" }), "price unknown - check trainer", "nor one with another basis")
@@ -191,19 +193,19 @@ tests["prices: what a money claim asks for"] = function(t)
     t.ok(amount == nil and estimate == nil, "no price: neither")
     -- Through the resolver: an estimated price holds no money and is not refused.
     local R = ns.Resources
-    if R then
-        local a, e = P.Amount(P.Get(book, "guess", "trainer"))
-        local g = R.Resolve(R.Fake({ money = 100 }), {
-            { owner = "train:guess", kind = "money", amount = a, estimate = e },
-            { owner = "train:seen", kind = "money", amount = (P.Amount(P.Get(book, "seen", "trainer"))) },
-        })
-        local by = {}
-        for _, x in ipairs(g) do by[x.claim.owner] = x end
-        t.eq(by["train:guess"].unknown, "price", "the estimated one stays 'price unknown'")
-        t.eq(by["train:guess"].estimate, 450, "its estimate rides along")
-        t.eq(by["train:seen"].short, 500, "the observed one is known to be short")
-        t.eq(g:Held("money"), 0, "and nothing is held on the strength of an estimate")
-    end
+    t.ok(type(R) == "table" and type(R.Resolve) == "function" and type(R.Fake) == "function",
+        "the resolver is loaded: this part is not skipped")
+    local a, e = P.Amount(P.Get(book, "guess", "trainer"))
+    local g = R.Resolve(R.Fake({ money = 100 }), {
+        { owner = "train:guess", kind = "money", amount = a, estimate = e },
+        { owner = "train:seen", kind = "money", amount = (P.Amount(P.Get(book, "seen", "trainer"))) },
+    })
+    local by = {}
+    for _, x in ipairs(g) do by[x.claim.owner] = x end
+    t.eq(by["train:guess"].unknown, "price", "the estimated one stays 'price unknown'")
+    t.eq(by["train:guess"].estimate, 450, "its estimate rides along")
+    t.eq(by["train:seen"].short, 500, "the observed one is known to be short")
+    t.eq(g:Held("money"), 0, "and nothing is held on the strength of an estimate")
 end
 
 return tests

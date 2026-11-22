@@ -31,6 +31,14 @@ local function snap(known, over)
     return s
 end
 
+-- A copy all the way down (functions are kept as they are).
+local function deepCopy(v)
+    if type(v) ~= "table" then return v end
+    local out = {}
+    for k, x in pairs(v) do out[k] = deepCopy(x) end
+    return out
+end
+
 local ALL = { "Shield", "Bolt", "Storm", "Mend", "Big Mend", "Renew", "Kick", "Silence", "Slip", "Beast", "Cleanse", "Attack" }
 
 local function pick(known, over, prefs, bias, p)
@@ -129,7 +137,7 @@ return {
             for k, v in pairs(over or {}) do o[k] = v end
             return pick(nil, o)
         end
-        t.ok(#heals == 3, "three heals")
+        t.eq(pack().heals.self, heals, "the pack offers these three heals, in this order")
         t.eq(hurt(H.outStart - 1), nil, "under the start: nothing")
         t.eq(hurt(H.outStart), "Renew", "a little hurt: the heal over time")
         t.eq(hurt(H.outStart, { buffs = { Renew = 9 } }), nil, "it is already on you")
@@ -143,7 +151,8 @@ return {
         t.ok(string.find(s.reason, "estimate", 1, true) ~= nil, "the reason says it is an estimate")
     end,
 
-    ["interrupt: only your own target, casting, in a fight"] = function(t)
+    -- The snapshot carries only targetCasting: whose target it is cannot be told here.
+    ["interrupt: only while the target is casting, in a fight"] = function(t)
         local on = { inCombat = true, hostile = true, targetCasting = "Fireball", targetNear = true }
         t.eq(pick({ "Kick", "Silence" }, on), "Kick", "near: the near interrupt")
         on.targetNear = false
@@ -239,8 +248,16 @@ return {
         local p = pack()
         local s = snap({ "Shield", "Bolt" }, { inCombat = true, hostile = true, buffs = {} })
         local prefs, bias = { skip = {} }, { Bolt = 0.5 }
-        local a = ns.Choose(s, p, prefs, bias)
-        local b = ns.Choose(s, p, prefs, bias)
+        local sWas, pWas, prefsWas, biasWas = deepCopy(s), deepCopy(p), deepCopy(prefs), deepCopy(bias)
+        local a, traceA = ns.Choose(s, p, prefs, bias)
+        local b, traceB = ns.Choose(s, p, prefs, bias)
+        t.eq(a, b, "the whole suggestion is the same")
+        t.eq(traceA, traceB, "and the whole trace")
+        t.ok(traceA ~= traceB, "each call has a trace of its own")
+        t.eq(s, sWas, "the whole snapshot is as it was")
+        t.eq(p, pWas, "the whole pack is as it was")
+        t.eq(prefs, prefsWas, "the prefs are as they were, nothing added")
+        t.eq(bias, biasWas, "the bias is as it was")
         t.eq(a.spell, b.spell, "same spell")
         t.eq(a.reason, b.reason, "same reason")
         t.ok(a ~= b, "a fresh table each call")

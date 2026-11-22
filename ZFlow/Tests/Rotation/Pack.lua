@@ -156,7 +156,16 @@ return {
         pack.roles = nil
         pack.options = nil
         pack.keys = nil
+        local function deepCopy(v)
+            if type(v) ~= "table" then return v end
+            local out = {}
+            for k, x in pairs(v) do out[k] = deepCopy(x) end
+            return out
+        end
+        local was = deepCopy(pack)
         local _, problems = ns.PackCheck(pack)
+        t.eq(pack, was, "the whole pack is as it was: nothing written, added or taken")
+        t.ok(#problems > 1, "more than one problem, so the order can be told")
         local sorted = {}
         for i, p in ipairs(problems) do sorted[i] = p end
         table.sort(sorted)
