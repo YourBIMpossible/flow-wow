@@ -26,6 +26,9 @@ Core\Sound.lua
 UI\MoveGuides.lua
 Core\Facts.lua
 UI\Export.lua
+Items\PriceChart.lua
+Items\HaveTip.lua
+Gear\MerchantButtons.lua
 UI\CopyBox.lua
 UI\Advisor.lua
 UI\Setup.lua
