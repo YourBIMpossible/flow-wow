@@ -50,6 +50,7 @@ return {
         "Items/Sell.lua",
         "Items/Repair.lua",
         "Items/SellView.lua",
+        "Items/PriceLookup.lua",
 
         -- Gear
         "Gear/Score.lua",

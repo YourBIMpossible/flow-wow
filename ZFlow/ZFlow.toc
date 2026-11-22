@@ -37,6 +37,7 @@ Items\CraftHint.lua
 Items\Sell.lua
 Items\Repair.lua
 Items\SellView.lua
+Items\PriceLookup.lua
 Gear\Score.lua
 Gear\Read.lua
 Gear\CanUse.lua
