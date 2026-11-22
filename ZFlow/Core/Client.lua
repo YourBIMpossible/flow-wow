@@ -4341,6 +4341,142 @@ function ns.make.client(env)
         return down(env.IsControlKeyDown), down(env.IsShiftKeyDown), down(env.IsAltKeyDown)
     end
 
+    -- ---------------------------------------------------------------- S17
+    -- Group buff tooltip (owner Twin): the unit tooltip hook and two reads of
+    -- the unit it shows. Every call here is a first guess, not seen in game
+    -- on this client: needs a game test. Reads only, of the hovered unit:
+    -- nothing targets, casts or clicks, and no health, power amount, name or
+    -- GUID is read.
+    --
+    -- Told each time the game's own tooltip has been filled for a unit:
+    --   client.onUnitTooltip(fn) -> cancel;  fn(unit, add);  add(text, r, g, b)
+    -- unit is the token the tooltip gives (GameTooltip:GetUnit, the second
+    -- answer). add appends one line of text. fn's errors stay here. The
+    -- routes and their order are the item hook's above: the data post call
+    -- for unit data first, GameTooltip only; else OnTooltipSetUnit where the
+    -- tooltip has that script, once per fill. Neither replaces anything of
+    -- the game; a hook cannot be taken back, so cancel only stops fn being
+    -- told. nil when the client offers neither. No token, or a secret one:
+    -- fn is not told.
+    local unitListeners, unitHooked = {}, false
+    local function unitFilled(tip)
+        if type(tip) ~= "table" or type(tip.GetUnit) ~= "function" then return end
+        local ok, _, unit = pcall(tip.GetUnit, tip)
+        unit = text(ok, unit)
+        if not unit then return end
+        local function add(s, r, g, b)
+            if type(s) ~= "string" or type(tip.AddLine) ~= "function" then return end
+            pcall(tip.AddLine, tip, s, r, g, b)
+        end
+        for _, fn in ipairs({ unpack(unitListeners) }) do pcall(fn, unit, add) end
+    end
+    local function hookUnitTooltip()
+        if unitHooked then return true end
+        local proc, enum = env.TooltipDataProcessor, env.Enum
+        local unitData = type(enum) == "table" and type(enum.TooltipDataType) == "table"
+            and enum.TooltipDataType.Unit or nil
+        if type(proc) == "table" and unitData ~= nil
+            and call(proc.AddTooltipPostCall, unitData, function(t2)
+                if t2 == env.GameTooltip then unitFilled(t2) end
+            end) then
+            unitHooked = true
+            return true
+        end
+        local tip = env.GameTooltip
+        if type(tip) == "table" and type(tip.HookScript) == "function" then
+            local okHas, has = call(tip.HasScript, tip, "OnTooltipSetUnit")
+            local filled = false
+            if okHas and has == true and call(tip.HookScript, tip, "OnTooltipSetUnit", function(t2)
+                if filled then return end
+                filled = true
+                unitFilled(t2)
+            end) then
+                call(tip.HookScript, tip, "OnTooltipCleared", function() filled = false end)
+                unitHooked = true
+                return true
+            end
+        end
+        return false
+    end
+    function c.onUnitTooltip(fn)
+        if type(fn) ~= "function" or not hookUnitTooltip() then return nil end
+        unitListeners[#unitListeners + 1] = fn
+        return function()
+            for i = #unitListeners, 1, -1 do
+                if unitListeners[i] == fn then table.remove(unitListeners, i) end
+            end
+        end
+    end
+
+    -- What the client says of a unit, for the tooltip only:
+    --   { exists, player, isSelf, friendly, class, role, power }
+    -- exists, player, isSelf and friendly are each true, false, or nil when
+    -- the read is absent, raised, was hidden or was not a yes or no: never a
+    -- guess. class is the class token (UnitClass, second answer), role the
+    -- group role as the game names it ("TANK", "HEALER", "DAMAGER", "NONE"),
+    -- power the kind of power bar (UnitPowerType, first answer: a number,
+    -- never an amount). nil when no unit is asked about.
+    function c.unitInfo(unit)
+        if type(unit) ~= "string" or unit == "" then return nil end
+        local info = {}
+        info.exists = yesNo(call(env.UnitExists, unit))
+        info.player = yesNo(call(env.UnitIsPlayer, unit))
+        info.isSelf = yesNo(call(env.UnitIsUnit, unit, "player"))
+        info.friendly = yesNo(call(env.UnitIsFriend, "player", unit))
+        local okClass, _, class = call(env.UnitClass, unit)
+        info.class = text(okClass, class)
+        info.role = text(call(env.UnitGroupRolesAssigned, unit))
+        local okPower, power = call(env.UnitPowerType, unit)
+        if okPower and power ~= nil and not hidden(power) and type(power) == "number" then
+            info.power = power
+        end
+        return info
+    end
+
+    -- Does the unit have one of these buffs?
+    --   client.unitBuff(unit, names) -> up, secondsLeft, found
+    -- up: true (found, with the name that matched), false (every buff was
+    -- read and none is one of the names), nil (not known: no read, a read
+    -- that raised, or a row or a name the client hides, met before a match).
+    -- secondsLeft: math.huge for a buff with no end, nil when not known.
+    -- C_UnitAuras.GetAuraDataByIndex(unit, i, "HELPFUL") where the client has
+    -- it, else UnitBuff(unit, i, "HELPFUL") (name first, end time sixth).
+    -- At most 40 rows are asked for.
+    function c.unitBuff(unit, names)
+        if type(unit) ~= "string" or unit == "" or type(names) ~= "table" then return nil end
+        local wanted = {}
+        for i = 1, #names do
+            if type(names[i]) == "string" then wanted[names[i]] = true end
+        end
+        local auras = env.C_UnitAuras
+        local byIndex = type(auras) == "table" and auras.GetAuraDataByIndex or nil
+        local old = env.UnitBuff
+        if type(byIndex) ~= "function" and type(old) ~= "function" then return nil end
+        for i = 1, 40 do
+            local name, expires
+            if type(byIndex) == "function" then
+                local ok, row = pcall(byIndex, unit, i, "HELPFUL")
+                if not ok then return nil end
+                if row == nil then return false end
+                if hidden(row) or type(row) ~= "table" then return nil end
+                name, expires = row.name, row.expirationTime
+            else
+                local got = { pcall(old, unit, i, "HELPFUL") }
+                if not got[1] then return nil end
+                if got[2] == nil then return false end
+                name, expires = got[2], got[7]
+            end
+            if hidden(name) or type(name) ~= "string" then return nil end
+            if wanted[name] then
+                if expires == nil or hidden(expires) or type(expires) ~= "number" then return true, nil, name end
+                if expires == 0 then return true, math.huge, name end
+                return true, expires - c.now(), name
+            end
+        end
+        return false
+    end
+    -- ------------------------------------------------------------ end S17
+
     -- S34 trip timing (LEDGER 153/169; WoW/from-zen/RESEARCH-S34.md): are
     -- you mounted. True, false, or nil when not known (no call, a failed
     -- call, a secret answer, or anything but a boolean). It only reads.

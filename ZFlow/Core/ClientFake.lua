@@ -1277,6 +1277,63 @@ function ns.make.fakeClient(opts)
         for _, fn in ipairs({ unpack(auctionFns) }) do fn(id, row) end
     end
 
+    -- S17 group buff tooltip. As the real client's: onUnitTooltip(fn) ->
+    -- cancel, fn(unit, add) for each unit tooltip shown with showUnitTooltip;
+    -- unitInfo(unit) and unitBuff(unit, names) answer from what was set.
+    function c.onUnitTooltip(fn)
+        if type(fn) ~= "function" then return nil end
+        s.unitTooltipListeners = s.unitTooltipListeners or {}
+        table.insert(s.unitTooltipListeners, fn)
+        return function()
+            for i = #s.unitTooltipListeners, 1, -1 do
+                if s.unitTooltipListeners[i] == fn then table.remove(s.unitTooltipListeners, i) end
+            end
+        end
+    end
+    -- A copy of what was set for the unit; nothing known for one not set.
+    function c.unitInfo(unit)
+        if type(unit) ~= "string" or unit == "" then return nil end
+        local out = {}
+        for key, value in pairs(s.units and s.units[unit] or {}) do out[key] = value end
+        return out
+    end
+    -- Rows in order, as the real client reads them: a name that is no text
+    -- (hidden) before a match is "not known"; buffs not set are not known.
+    function c.unitBuff(unit, names)
+        if type(unit) ~= "string" or unit == "" or type(names) ~= "table" then return nil end
+        local rows = s.unitBuffs and s.unitBuffs[unit]
+        if type(rows) ~= "table" then return nil end
+        for i = 1, #rows do
+            local row = rows[i]
+            if type(row) ~= "table" or type(row.name) ~= "string" then return nil end
+            for j = 1, #names do
+                if names[j] == row.name then return true, row.left, row.name end
+            end
+        end
+        return false
+    end
+    -- info: { exists, player, isSelf, friendly, class, role, power }, each
+    -- left out for not known; nil forgets the unit.
+    function c.setUnit(unit, info)
+        s.units = s.units or {}
+        s.units[unit] = info
+    end
+    -- rows: { { name = text or false for hidden, left = seconds, math.huge
+    -- for no end, or nil } ... }; nil for a buff list that cannot be read.
+    function c.setUnitBuffs(unit, rows)
+        s.unitBuffs = s.unitBuffs or {}
+        s.unitBuffs[unit] = rows
+    end
+    -- Plays the game filling its tooltip for `unit`: every onUnitTooltip
+    -- listener is told, and what they added comes back as
+    -- { { text, r, g, b } ... }.
+    function c.showUnitTooltip(unit)
+        local added = {}
+        local function add(text, r, g, b) added[#added + 1] = { text = text, r = r, g = g, b = b } end
+        for _, fn in ipairs({ unpack(s.unitTooltipListeners or {}) }) do fn(unit, add) end
+        return added
+    end
+
     -- S34: mounted() is unknown (nil) until set.
     --   c.setMounted(true / false)   c.setMounted(nil): not known
     function c.mounted() return s.mounted end
