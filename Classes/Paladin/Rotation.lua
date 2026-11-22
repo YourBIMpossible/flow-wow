@@ -148,10 +148,12 @@ local function setSeal(name)
     ownSeal = nil
 end
 
--- `want` missing or about to drop. In Forever, Judgement no longer uses up
--- the seal, so it only ends by running out: refresh it just before that
--- (a few seconds in combat; a little earlier right before a pull). Another
--- seal up counts as missing: a new choice applies at once.
+-- `want` missing or about to drop, read from your buffs (not from a rule
+-- about what Judgement does to a seal: whether WoW: Forever's Judgement
+-- uses the seal up was reported by guides and never checked here). A seal
+-- that is gone is put back; one still up is refreshed just before it runs
+-- out (a few seconds in combat; a little earlier right before a pull).
+-- Another seal up counts as missing: a new choice applies at once.
 local function needSeal(c, want)
     local up, left
     if want then
@@ -332,7 +334,7 @@ local execute = {
 -- Roughly equal single-target hits: the profiler may reorder these.
 local singleTarget = {
     { spell = "Judgement", target = true, reason = "Judge the seal", adaptive = true,
-      -- Needs a seal up. (In Forever judging no longer uses the seal up.)
+      -- Needs a seal up.
       when = function(c) return c.hostile and hasSeal() end },
     { spell = "Holy Strike", target = true, reason = "Holy Strike", adaptive = true,
       when = function(c) return c.hostile end },
@@ -387,13 +389,13 @@ local function guide(e)
     if k(seal) then add("  - " .. seal .. ", cast just before you pull (change it: cast the one you want, or /flow seal).") end
     add("Fight:")
     if k("Judgement") then
-        add("  1. Judgement to open (in Forever it doesn't use up your seal), then again on every cooldown.")
+        add("  1. Judgement to open, then again on every cooldown.")
     end
     add("  2. Auto attack: keep swinging (Flow suggests Attack if you aren't).")
     if k("Holy Strike") then add("  3. Holy Strike on every cooldown.") end
     if k(seal) then add("  4. Refresh " .. seal .. " when it has ~3s left.") end
     if k("Hammer of Justice") then add("  - Hammer of Justice: stun a runner or buy time to heal.") end
-    if k("Consecration") then add("  - Several enemies: Consecration (full damage on up to 4).") end
+    if k("Consecration") then add("  - Several enemies: Consecration.") end
     add("Healing:")
     if k("Holy Light") then
         add("  - Holy Light between pulls, or mid-fight only when Flow flashes gold (heal now).")

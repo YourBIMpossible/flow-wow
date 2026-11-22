@@ -187,3 +187,14 @@ ns:Register("test", "paladin: no profession picks come with Flow; the choice is 
         end)
     end)
 end)
+
+ns:Register("test", "paladin: /flow rot guide states no unchecked Forever rule", function(t)
+    -- prov-guides-2: "doesn't use up your seal" and "full damage on up to 4" were guide-reported.
+    local def = ns:Get("rotation", "PALADIN")
+    local all = { Knows = function() return true end }
+    local text = table.concat(def.guide(all), " | ")
+    t:ok(text:find("Judgement to open", 1, true) ~= nil, "Judgement is still in the guide")
+    t:ok(text:find("Consecration", 1, true) ~= nil, "and Consecration, when you know it")
+    t:ok(text:find("use up", 1, true) == nil, "nothing about what Judgement does to your seal")
+    t:ok(text:find("up to 4", 1, true) == nil, "no target count for Consecration")
+end)
