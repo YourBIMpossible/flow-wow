@@ -65,7 +65,7 @@ return {
         a.setGuide(function() return { quest = QUEST } end)
         local q = c.arrows[1]
         t.eq(q.shown, true, "the frame stays")
-        t.eq(q.lines, { "Kill boars", "100 yd", A.UNKNOWN_TURN })
+        t.eq(q.lines, { "Kill boars", "100 yd N", A.UNKNOWN_TURN })
         t.eq(q.faded, a.state().view.quest.alpha * A.LOST_ALPHA, "faded")
         c.advance(0.1, 2)
         t.ok(type(q.drawn) == "table", "a frame was drawn")
@@ -83,7 +83,7 @@ return {
         c.setFacing(0)
         a.relayout()
         c.advance(0.1, 2)
-        t.eq(q.lines, { "Kill boars", "100 yd" })
+        t.eq(q.lines, { "Kill boars", "100 yd N" })
         t.eq(q.faded, a.state().view.quest.alpha)
         t.eq(q.drawn.body, 1)
         t.ok(q.drawn.shine > 0 and q.drawn.shadow > 0)
@@ -115,7 +115,7 @@ return {
         local q, p = c.arrows[1], c.arrows[2]
         t.eq(a.state().view.prof.mode, "off", "no facing: the needle cannot point")
         t.eq(p.shown, false, "no second frame under the quest arrow")
-        t.eq(q.lines, { "Kill boars", "100 yd", A.UNKNOWN_TURN, "Copper vein", "300 yd" },
+        t.eq(q.lines, { "Kill boars", "100 yd N", A.UNKNOWN_TURN, "Copper vein", "300 yd E" },
             "its lines are there; the unknown line is said once")
     end,
 
@@ -125,7 +125,7 @@ return {
         local q, p = c.arrows[1], c.arrows[2]
         t.eq(a.state().view.prof.mode, "off")
         t.eq(p.shown, false)
-        t.eq(q.lines, { "Kill boars", "100 yd", "Vein on another map" })
+        t.eq(q.lines, { "Kill boars", "100 yd N", "Vein on another map" })
         t.eq(q.faded, a.state().view.quest.alpha, "the quest arrow knows its way: not faded")
         c.advance(0.1, 2)
         t.eq(q.drawn.body, 1, "and is drawn")
@@ -150,7 +150,7 @@ return {
         a.setGuide(function() return { prof = PROF } end)
         local p = c.arrows[2]
         t.eq(p.shown, true)
-        t.eq(p.lines, { "Copper vein", "300 yd", A.UNKNOWN_TURN })
+        t.eq(p.lines, { "Copper vein", "300 yd E", A.UNKNOWN_TURN })
         t.eq(p.faded, a.state().view.prof.alpha * A.LOST_ALPHA)
         c.advance(0.1, 2)
         t.eq(p.drawn.body, 0)
@@ -161,9 +161,9 @@ return {
             saved = { layout = { arrows = { mode = "separate" } } } })
         a.setGuide(function() return { quest = QUEST, prof = PROF } end)
         local q, p = c.arrows[1], c.arrows[2]
-        t.eq(q.lines, { "Kill boars", "100 yd", A.UNKNOWN_TURN })
+        t.eq(q.lines, { "Kill boars", "100 yd N", A.UNKNOWN_TURN })
         t.eq(p.shown, true)
-        t.eq(p.lines, { "Copper vein", "300 yd", A.UNKNOWN_TURN })
+        t.eq(p.lines, { "Copper vein", "300 yd E", A.UNKNOWN_TURN })
         t.eq(p.point, a.state().view.prof.point)
         c.advance(0.1, 2)
         t.eq(p.drawn.body, 0)
@@ -180,7 +180,7 @@ return {
         local _, c, a = start({ facing = false,
             saved = { layout = { arrows = { hidden = { prof = true } } } } })
         a.setGuide(function() return { quest = QUEST, prof = PROF } end)
-        t.eq(c.arrows[1].lines, { "Kill boars", "100 yd", A.UNKNOWN_TURN })
+        t.eq(c.arrows[1].lines, { "Kill boars", "100 yd N", A.UNKNOWN_TURN })
         t.eq(c.arrows[2].shown, false)
     end,
 
@@ -189,7 +189,7 @@ return {
         a.setGuide(function() return { quest = QUEST, prof = PROF } end)
         local q, p = c.arrows[1], c.arrows[2]
         t.eq(p.shown, true)
-        t.eq(q.lines, { "Kill boars", "100 yd", "Copper vein", "300 yd" })
+        t.eq(q.lines, { "Kill boars", "100 yd N", "Copper vein", "300 yd E" })
         c.advance(0.1, 2)
         t.eq(p.drawn.body, 1)
         t.eq(q.drawn.body, 1)
@@ -200,7 +200,7 @@ return {
         local q, p = c.arrows[1], c.arrows[2]
         t.eq(a.state().view.prof.mode, "off")
         t.eq(p.shown, false)
-        t.eq(q.lines, { N.WAYPOINT_LABEL, "100 yd", OTHER_MAP })
+        t.eq(q.lines, { N.WAYPOINT_LABEL, "100 yd N", OTHER_MAP })
         t.eq(q.faded, a.state().view.quest.alpha)
     end,
 
@@ -221,7 +221,7 @@ return {
         local c, a = capped(1412, true)
         c.setMapSize(1412, 800, 400)
         a.relayout()
-        t.eq(c.arrows[1].lines, { N.WAYPOINT_LABEL, "100 yd", OTHER_MAP }, "still no distance")
+        t.eq(c.arrows[1].lines, { N.WAYPOINT_LABEL, "100 yd N", OTHER_MAP }, "still no distance")
         t.eq(c.arrows[2].shown, false)
     end,
 
@@ -229,7 +229,7 @@ return {
         local c, a = capped(1411, true)
         local q, p = c.arrows[1], c.arrows[2]
         t.eq(p.shown, true)
-        t.eq(q.lines, { N.WAYPOINT_LABEL, "100 yd", "Mining trainer", "300 yd" })
+        t.eq(q.lines, { N.WAYPOINT_LABEL, "100 yd N", "Mining trainer", "300 yd E" })
         t.ok(a.state().view.prof.mode ~= "off")
     end,
 }

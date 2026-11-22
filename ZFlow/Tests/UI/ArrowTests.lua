@@ -490,7 +490,7 @@ return {
         login(c)
         a.relayout()
         local q, p = c.arrows[1], c.arrows[2]
-        t.eq(q.lines, { N.WAYPOINT_LABEL, "100 yd", "Mining trainer \226\128\148 other map" })
+        t.eq(q.lines, { N.WAYPOINT_LABEL, "100 yd N", "Mining trainer \226\128\148 other map" })
         t.eq(p.shown, false, "no needle")
     end,
 }

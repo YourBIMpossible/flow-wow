@@ -89,6 +89,27 @@ return {
         t.eq(lines(c, { quest = at(0.5, 0.5) }).quest, { A.HERE_TEXT })
     end,
 
+    ["arrow text: at the step nothing is unknown, so no unknown line, facing known or not"] = function(t)
+        local c = start({ facing = false })
+        local src = A.GuideSource(c, {}, { quest = at(0.5, 0.48, "Kill boars") })
+        t.eq(src.lines.quest, { "Kill boars", A.HERE_TEXT }, "10 yd, no facing")
+        t.eq(src.lost.quest, nil, "the ring points nowhere: nothing is lost")
+        src = A.GuideSource(c, {}, { quest = at(0.5, 0.5, "Kill boars") })
+        t.eq(src.lines.quest, { "Kill boars", A.HERE_TEXT }, "the very spot, no facing")
+        t.eq(src.lost.quest, nil)
+        src = A.GuideSource(c, {}, { prof = at(0.5, 0.5, "Copper vein", { on = true }) })
+        t.eq(src.lines.prof, { "Copper vein", A.HERE_TEXT })
+        t.eq(src.lost.prof, nil)
+        -- Away from it the unknown line is still said, once.
+        src = A.GuideSource(c, {}, { quest = at(0.5, 0.3, "Kill boars", { lines = { "a" } }) })
+        t.eq(src.lines.quest, { "a", A.UNKNOWN_TURN })
+        t.eq(src.lost.quest, true)
+        c.setFacing(0)
+        src = A.GuideSource(c, {}, { quest = at(0.5, 0.5, nil, { lines = { "a" } }) })
+        t.eq(src.lines.quest, { "a" }, "a step's own lines at the very spot")
+        t.eq(src.lost.quest, nil)
+    end,
+
     ["arrow text: no distance, no word and no here"] = function(t)
         local c = start()
         c.setPosition(1412, 0.5, 0.5)
