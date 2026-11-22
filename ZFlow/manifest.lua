@@ -32,6 +32,9 @@ return {
         "Import/FromFlow.lua",
         "Import/Stored.lua",
 
+        -- Settings
+        "Settings/Model.lua",
+
         -- Items
         "Items/Key.lua",
         "Items/Resources.lua",

@@ -179,11 +179,20 @@ return {
     end,
 
     ["normalise: an arrow place with an anchor no frame has is left out, the others kept"] = function(t)
-        local result = Import.FromFlow({ nav = { arrows = { points = {
-            professions = { "MIDDLE", "TOP", 1, 2 }, pet = { "TOP", "TOP", 3, 4 },
-        } } } }, {})
-        t.eq(result.account.layout.arrows, { points = { pet = { "TOP", "TOP", 3, 4 } } })
+        -- Only the profession arrow's place is read from nav.arrows.points
+        -- (the quest arrow's comes from nav.point), so the kept place is the
+        -- quest arrow's, beside the refused profession place.
+        local result = Import.FromFlow({ nav = {
+            point = { "TOP", "TOP", 3, 4 },
+            arrows = { points = { professions = { "MIDDLE", "TOP", 1, 2 } } },
+        } }, {})
+        t.eq(result.account.layout.arrows, { points = { quest = { "TOP", "TOP", 3, 4 } } })
         t.eq(result.record.counts.malformed, 1)
+        local entry
+        for _, e in ipairs(result.dropped) do
+            if e.key:find("professions", 1, true) then entry = e end
+        end
+        t.ok(entry and entry.why == "malformed", "the profession place is listed as malformed")
     end,
 
     -- (c) the companion button's rows -------------------------------------

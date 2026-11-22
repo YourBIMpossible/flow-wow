@@ -22,6 +22,7 @@ Core\Kernel.lua
 Core\Diag.lua
 Import\FromFlow.lua
 Import\Stored.lua
+Settings\Model.lua
 Items\Key.lua
 Items\Resources.lua
 Items\Prices.lua
