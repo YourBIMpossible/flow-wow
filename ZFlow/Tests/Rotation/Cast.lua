@@ -162,6 +162,10 @@ return {
         end
         local r = ns.cast.Attributes({ spell = "Rejuvenation", kind = "heal", unit = "pet" }, plan(), nil, false)
         t.eq(attrs(r.button)[3], "unit=pet", "a unit the suggestion names is kept")
+        for _, unit in ipairs({ "party1", "raid3", "focus", "mouseover", 4 }) do
+            r = ns.cast.Attributes({ spell = "Rejuvenation", kind = "heal", unit = unit }, plan(), nil, false)
+            t.eq(attrs(r.button)[3], "unit=player", "never another player: " .. tostring(unit))
+        end
     end,
 
     ["attributes: Attack is the start-attack macro"] = function(t)

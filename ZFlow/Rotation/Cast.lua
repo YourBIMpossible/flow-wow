@@ -160,6 +160,9 @@ end
 C.STATE = "castform"
 C.MODIFIERS = { "ctrl", "shift", "alt", "more" }
 C.ON_YOU = { heal = true, emergency = true, buff = true }
+-- The only units a suggestion may name. Anyone else (a party or raid member,
+-- focus, mouseover) is never cast on: Z-Flow does not help other players.
+C.UNITS = { player = true, pet = true, target = true }
 C.ATTACK = { ["Attack"] = true, ["Auto Attack"] = true }
 
 local function row(list, attr, value)
@@ -188,7 +191,7 @@ function C.Attributes(suggestion, plan, applied, lockdown, form)
         kind, macro = "macro", "/startattack"
     elseif spell then
         kind = "spell"
-        unit = type(suggestion.unit) == "string" and suggestion.unit or (C.ON_YOU[suggestion.kind] and "player") or nil
+        unit = C.UNITS[suggestion.unit] and suggestion.unit or (C.ON_YOU[suggestion.kind] and "player") or nil
     else
         spell, source = slotOf(states, form, "key"), "plan"
         if spell then
