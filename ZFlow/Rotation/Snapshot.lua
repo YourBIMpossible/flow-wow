@@ -33,6 +33,11 @@ R.SNAPSHOT_FIELDS = {
     { "buffs", "map" }, { "targetDebuffs", "map" }, { "debuffTypes", "map" }, { "current", "map" },
     { "spells", "spells" },
 }
+-- Fields that come from a health or power amount. On a client that hides
+-- those amounts from addon code (comparing one raises an error) the reader
+-- must leave these out: never pass the hidden amount in, never guess one.
+-- Left out, the number fields stay unknown and the flag fields read "no".
+R.FROM_AMOUNT = { hpPct = "health", outOfMana = "power", canSpareMana = "power", combo = "power" }
 -- A spell row: known, usable and onCooldown are flags, but usable and inRange
 -- keep "not read" (nil) apart from "no" (false): the chooser treats a range
 -- or a usable state nobody read as fine.
