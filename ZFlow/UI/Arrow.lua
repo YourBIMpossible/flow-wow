@@ -241,11 +241,26 @@ end
 Arrow.INTRO_PATH = "layout.arrowIntroSeen"
 Arrow.INTRO_SECONDS = 3
 
+-- The name the arrows are declared under as a module.
+Arrow.NAME = "arrow"
+
 -- Starts the arrows on kernel k; diag (optional) gains the word "arrow".
 -- Returns { handles = { quest, prof } or nil, relayout = fn, state = fn,
 --           setGuide = fn(fn or nil) }.
-function Arrow.Start(k, diag)
+-- own (optional) is who registers for the arrows; Arrow.Declare gives the
+-- module's. { listen = fn(event, fn), frame = fn(fn) -> cancel,
+-- live = fn() -> false once the arrows are switched off, loaded = true when
+-- the login is already under way, script = fn(label, fn) -> fn: what a frame
+-- script runs of the arrows, run as the owner's work, fault = fn(err): an
+-- error the arrows caught themselves, for the owner to count }. Without it the arrows register with
+-- the client themselves, wait for the login, and are never switched off.
+function Arrow.Start(k, diag, own)
     local client, id, N = k.client, k.id, ns.Nav
+    own = type(own) == "table" and own or {}
+    local listen = own.listen or client.listen
+    local onFrame = own.frame or client.onFrame
+    local live = own.live or function() return true end
+    local script = own.script or function(_, fn) return fn end
     local spec = function(name, level)
         return { name = id.framePrefix .. name, size = N.ARROW_SIZE, art = N.ARROW_ART,
                  artPath = "Interface\\AddOns\\" .. id.addon .. "\\Art\\",
@@ -309,9 +324,10 @@ function Arrow.Start(k, diag)
     local function relayout()
         if not handles or not ready then return end
         introShown = false
-        -- A frame error stops the arrows for the session: nothing here,
-        -- a loading screen or a command, shows them again.
-        if broken then
+        -- A frame error stops the arrows for the session, and so does the
+        -- kernel switching them off: nothing here, a loading screen or a
+        -- command, shows them again.
+        if broken or not live() then
             current = nil
             hideAll()
             return
@@ -413,12 +429,19 @@ function Arrow.Start(k, diag)
             current = nil
             pcall(hideAll)
             k.problems:add("arrow", "frame", err)
+            -- An owner that runs the frames is asked for no more of them.
+            if own.frame and cancelTick then
+                cancelTick()
+                cancelTick = nil
+            end
+            -- The frame error is one of the owner's errors.
+            if own.fault then own.fault(err) end
         end
     end
 
     local function tick(on)
         if on and not cancelTick then
-            cancelTick = client.onFrame(frame)
+            cancelTick = onFrame(frame)
         elseif not on and cancelTick then
             cancelTick()
             cancelTick = nil
@@ -457,16 +480,34 @@ function Arrow.Start(k, diag)
         apply()
     end
 
+    -- Under an owner an error in a handler is the owner's to count: the
+    -- arrows are taken off the screen first, not left frozen on it, and the
+    -- error goes on to the owner.
+    local function guarded(fn)
+        if not own.listen then return fn end
+        return function(...)
+            local ok, err = pcall(fn, ...)
+            if not ok then
+                current = nil
+                pcall(hideAll)
+                error(err, 0)
+            end
+        end
+    end
+
     if handles then
         hideAll()
         for _, key in ipairs(N.ARROW_KEYS) do
-            handles[key].onMoved(function(point)
-                if not ready then return end
+            -- The one frame script that runs the arrows' own code: the end
+            -- of a drag. (There is no click handler, and the start of a drag
+            -- runs only the client's code.)
+            handles[key].onMoved(script("drag", guarded(function(point)
+                if not ready or not live() then return end
                 act({ op = "drop", key = key, point = point })
-            end)
+            end)))
         end
-        client.listen("PLAYER_LOGIN", apply)
-        client.listen("PLAYER_ENTERING_WORLD", enterWorld)
+        if own.loaded then apply() else listen("PLAYER_LOGIN", apply) end
+        listen("PLAYER_ENTERING_WORLD", guarded(enterWorld))
     end
 
     local function say(text) client.print(id.title .. ": " .. text) end
@@ -477,6 +518,8 @@ function Arrow.Start(k, diag)
             local word, key = (rest or ""):match("^(%S*)%s*(%S*)")
             if not handles then
                 say("this client cannot draw the arrows.")
+            elseif not live() then
+                say("the arrows are switched off until the next reload.")
             elseif not ready then
                 say("the arrows are not ready until login.")
             elseif word == "demo" then
@@ -511,9 +554,91 @@ function Arrow.Start(k, diag)
         relayout()
     end
 
-    return { handles = handles, relayout = relayout, setGuide = setGuide,
+    -- What the owner calls when the arrows are switched off: off the screen,
+    -- and no more frames asked for.
+    local function stop()
+        current = nil
+        if handles then pcall(hideAll) end
+        if cancelTick then
+            cancelTick()
+            cancelTick = nil
+        end
+    end
+
+    return { handles = handles, relayout = relayout, setGuide = setGuide, stop = stop,
              state = function() return { ready = ready, demo = demo, near = near, view = current } end }
 end
 
--- The addon's own arrows, made when this file loads and placed at login.
-ns.arrow = Arrow.Start(ns, ns.diag)
+-- Declares the arrows on kernel k as the module Arrow.NAME. Nothing is made
+-- here: the frames, the event, the frame work and the word "arrow" all come
+-- with the module's start, so beside the predecessor (the load is paused and
+-- no module starts) there is none of them. The event and the frame work are
+-- registered under the module's name: when the kernel switches the module
+-- off they stop with it, and the module's stop hides the frames. What a
+-- frame script runs of the arrows (the end of a drag) is run through the
+-- kernel's meter under the module's name, and its error is one of the
+-- module's: five switch the arrows off. A frame error still stops the
+-- arrows at once, and is counted as one of the five.
+-- Returns what Arrow.Start returns, usable at once: before the start (and
+-- for a declaration the kernel refused) relayout does nothing, state is
+-- not ready, handles is nil, and a guide that is set is kept for the start.
+function Arrow.Declare(k, diag)
+    local inner, pending = nil, nil
+    local api = {}
+    function api.relayout()
+        if inner then inner.relayout() end
+    end
+    function api.setGuide(fn)
+        pending = type(fn) == "function" and fn or nil
+        if inner then inner.setGuide(pending) end
+    end
+    function api.state()
+        if inner then return inner.state() end
+        return { ready = false, demo = false, near = false }
+    end
+    k:Module({
+        name = Arrow.NAME,
+        needs = { "client", "store", "bus", "sched" },
+        start = function(ctx)
+            local own = { loaded = true }
+            function own.listen(event, fn) ctx.bus:on(Arrow.NAME, event, fn) end
+            -- The scheduler has no job for every frame and gives a job no
+            -- elapsed time: a next-frame job that asks for itself again,
+            -- with the time between two frames read from the clock.
+            function own.frame(fn)
+                local on, last = true, ctx.client.now()
+                local function run()
+                    if not on then return end
+                    local now = ctx.client.now()
+                    local elapsed = 0
+                    if type(now) == "number" and type(last) == "number" then elapsed = now - last end
+                    last = now
+                    ctx.sched:nextFrame(Arrow.NAME, run)
+                    fn(elapsed)
+                end
+                ctx.sched:nextFrame(Arrow.NAME, run)
+                return function() on = false end
+            end
+            function own.live() return k:ModuleState(Arrow.NAME) ~= "off" end
+            function own.fault(err) k.fault(Arrow.NAME, err) end
+            function own.script(label, fn)
+                return function(...)
+                    if not own.live() then return end
+                    local ok, err = k.meter:run(Arrow.NAME, "script", label, fn, ...)
+                    if not ok then k.fault(Arrow.NAME, err) end
+                end
+            end
+            inner = Arrow.Start(k, diag, own)
+            api.handles = inner.handles
+            if pending then inner.setGuide(pending) end
+        end,
+        stop = function()
+            if inner then inner.stop() end
+        end,
+    })
+    return api
+end
+
+-- The addon's own arrows: declared when this file loads, made and placed
+-- when the kernel starts the module at login.
+ns.arrow = Arrow.Declare(ns, ns.diag)
