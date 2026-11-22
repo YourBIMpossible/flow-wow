@@ -28,6 +28,7 @@ return {
         "Core/Kernel.lua",
         "Core/Diag.lua",
         "UI/Perf.lua",
+        "UI/CopyBox.lua",
 
         -- Import
         "Import/FromFlow.lua",
