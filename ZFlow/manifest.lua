@@ -53,6 +53,7 @@ return {
         "Rotation/KeyPlan.lua",
         "Rotation/Cast.lua",
         "Rotation/Reader.lua",
+        "Rotation/Driver.lua",
         "Classes/Druid.lua",
         "Classes/Paladin.lua",
         "Classes/Priest.lua",
