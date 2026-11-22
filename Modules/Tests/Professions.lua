@@ -384,7 +384,8 @@ ns:Register("test", "professions: kills and node counts are said only when your 
     t:ok(d[2]:find("unknown to Flow", 1, true) ~= nil, "mobs unknown: said so")
     d = SP.FarmDetails(20, 5, { "A__test", "B__test" })
     t:ok(d[1]:find("About 20 kills for 5", 1, true) ~= nil, "known kills: about, from your own loot")
-    t:eq(d[2], "Drops from: A__test, B__test.", "known mobs: named")
+    t:ok(d[2]:find("Drops from: A__test, B__test.", 1, true) == 1, "known mobs: named")
+    t:ok(d[2]:find("you've looted it from", 1, true) ~= nil, "and said to be the ones you've looted it from")
     t:eq(SP.GatherText("Mining", "Vein__test", { "4 Ore", "2 Stone" }), "Mine Vein__test for 4 Ore, 2 Stone", "no node count in a gather step")
     t:eq(SP.GatherText("Herbalism", "Herb__test", { "1 Leaf" }), "Gather Herb__test for 1 Leaf", "nor for herbs")
     t:ok(SP.GATHER_UNKNOWN:find("unknown to Flow", 1, true) ~= nil, "and the step says what Flow doesn't know")
@@ -684,4 +685,73 @@ ns:Register("test", "professions: a material is outgrown only once the window sh
     t:eq(D.OutgrownBy(MAT_B, 80, guide, seen, 80), nil, "green: still wanted")
     t:eq(D.OutgrownBy(MAT_A, 300, guide), nil, "no window seen: never outgrown")
     t:ok(not D.StepPast({ recipe = "Lin__test", use = { 1, 40 }, grey = 60 }, 300), "a fixed range or grey level is not read")
+end)
+
+-------------------------------------------------------------------------------
+-- prov-guides-3: the mobs a material drops from are the ones you've looted
+-- it from (ns.db.crafting.dropMobs), never a list of Flow's own.
+-------------------------------------------------------------------------------
+
+ns:Register("test", "professions: the mobs of a farm step are the ones you've looted it from", function(t)
+    local SP = ns.skillPlan
+    -- Pure parts.
+    t:eq(#SP.SeenMobsFrom(nil), 0, "nothing saved: none")
+    t:eq(#SP.SeenMobsFrom({}), 0, "nothing seen: none")
+    local order = SP.SeenMobsFrom({ ["B__test"] = 1, ["A__test"] = 1, ["C__test"] = 4, ["D__test"] = 0, [5] = 2, ["E__test"] = "x" })
+    t:eq(table.concat(order, ","), "C__test,A__test,B__test", "most often first, then by name; bad entries skipped")
+    local mobs = SP.FarmMobs({ "A__test" }, { "a__test", "B__test" })
+    t:eq(table.concat(mobs, ","), "A__test,B__test", "listed and seen, each once")
+    t:eq(#SP.FarmMobs(nil, nil), 0, "none listed, none seen: none")
+    t:ok(SP.FarmDetails(nil, 5, SP.FarmMobs(nil, {}))[2]:find("unknown to Flow", 1, true) ~= nil, "none seen: still unknown to Flow")
+    t:ok(SP.FarmDetails(nil, 5, SP.FarmMobs(nil, { "A__test" }))[2]:find("Drops from: A__test.", 1, true) == 1, "seen: named")
+end)
+
+-- Recording: your own loot only. (Made-up sources and mobs, a table of its
+-- own: nothing of yours is touched.)
+ns:Register("test", "professions: a mob is remembered for a material only when you loot it from that mob", function(t)
+    local SP = ns.skillPlan
+    local c = {}                                        -- a save from before the field
+    local srcs = { [900001] = { name = "Meat__test", looted = true },
+                   [900002] = { name = "Ore__test", gather = "Mining" },
+                   [900003] = { name = "Hide__test", looted = true },
+                   [900004] = { name = "Listed__test", drops = { "Boar__test" } },
+                   ["text"] = { name = "Bad__test", looted = true } }
+    local function rate(id)
+        local d = c.drops and c.drops[id]
+        return d and d.got / d.kills, d and d.kills or 0
+    end
+    t:eq(#SP.SeenMobs(900001, c), 0, "no field yet: none seen, no error")
+    SP.CountLoot(c, srcs, "Wolf__test", {})
+    t:eq(type(c.dropMobs), "table", "the field is made when loot is first counted")
+    t:eq(c.dropMobs[900001], nil, "a kill without it: nothing remembered")
+    t:eq(c.drops[900001], nil, "and no kill counted: the mob isn't known to drop it")
+    SP.CountLoot(c, srcs, "Wolf__test", { [900001] = true, [900002] = true })
+    t:eq(c.dropMobs[900001]["Wolf__test"], 1, "looted from it: remembered")
+    t:eq(c.dropMobs[900002], nil, "a gathered material isn't a mob's drop")
+    t:eq(c.dropMobs.text, nil, "a source without an item ID is skipped")
+    t:eq(c.drops[900001], nil, "the loot that first showed it isn't counted as a kill")
+    SP.CountLoot(c, srcs, "Wolf__test", {})
+    SP.CountLoot(c, srcs, "Wolf__test", { ["meat__test"] = true })
+    t:eq(c.dropMobs[900001]["Wolf__test"], 2, "found by name too")
+    local r, kills = rate(900001)
+    t:eq(kills, 2, "kills counted once the mob is known"); t:near(r, 0.5, 0.001, "1 of those 2")
+    SP.CountLoot(c, srcs, "Bear__test", { [900001] = true })
+    SP.CountLoot(c, srcs, "", { [900001] = true })
+    SP.CountLoot(c, srcs, nil, { [900001] = true })
+    SP.CountLoot(c, srcs, "Bear__test", nil)
+    t:eq(table.concat(SP.SeenMobs(900001, c), ","), "Wolf__test,Bear__test", "the step's mobs: yours, most often first")
+    t:eq(#SP.SeenMobs(900003, c), 0, "a material you never looted: still none")
+    -- A listed mob (a registered `drops`) counts from its first kill, as before.
+    SP.CountLoot(c, srcs, "boar__test", {})
+    SP.CountLoot(c, srcs, "Boar__test", { [900004] = true })
+    r, kills = rate(900004)
+    t:eq(kills, 2, "listed: every kill counts"); t:near(r, 0.5, 0.001, "1 of 2")
+    t:eq(table.concat(SP.FarmMobs(srcs[900004].drops, SP.SeenMobs(900004, c)), ","), "Boar__test", "listed and seen: named once")
+    -- A damaged save doesn't stop looting.
+    c.dropMobs, c.drops = "broken", 7
+    t:eq(#SP.SeenMobs(900001, c), 0, "a damaged field reads as none")
+    SP.CountLoot(c, srcs, "Wolf__test", { [900003] = true })
+    t:eq(c.dropMobs[900003]["Wolf__test"], 1, "and is made again")
+    local ok = pcall(SP.CountLoot, nil, srcs, "Wolf__test", {})
+    t:ok(ok, "no data table: nothing counted, no error")
 end)

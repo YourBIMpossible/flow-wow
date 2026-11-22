@@ -658,7 +658,7 @@ function SP.FarmDetails(kills, n, mobs)
         out[1] = "How many kills it takes is unknown: Flow counts it from your own loot once it knows the mobs."
     end
     if #(mobs or {}) > 0 then
-        out[2] = "Drops from: " .. table.concat(mobs, ", ") .. "."
+        out[2] = "Drops from: " .. table.concat(mobs, ", ") .. ". (The mobs you've looted it from; others may drop it too.)"
     else
         out[2] = "Which mobs drop it is unknown to Flow: the item's tooltip or a kill will tell you."
     end
@@ -671,8 +671,78 @@ function SP.GatherText(gather, node, items)
     return string.format("%s %s for %s", gather == "Mining" and "Mine" or "Gather", node, table.concat(items or {}, ", "))
 end
 
--- Looting a mob that's listed as dropping a material: one kill for each such
--- material, and one "got" for each that was in the loot. Once per corpse.
+-- Pure: the mobs you've looted a material from, most often first
+-- ({ [mobName] = count } -> { names }). nil or empty: none seen.
+function SP.SeenMobsFrom(seen)
+    local out = {}
+    for name, n in pairs(type(seen) == "table" and seen or {}) do
+        if type(name) == "string" and type(n) == "number" and n > 0 then out[#out + 1] = name end
+    end
+    table.sort(out, function(a, b)
+        if seen[a] ~= seen[b] then return seen[a] > seen[b] end
+        return a < b
+    end)
+    return out
+end
+-- The mobs you've looted item `id` from (ns.db.crafting.dropMobs, filled only
+-- by SP.RecordLoot from your own loot: Flow lists none of its own).
+function SP.SeenMobs(id, c)
+    c = c or (ns.db and ns.db.crafting)
+    local all = type(c) == "table" and c.dropMobs
+    return SP.SeenMobsFrom(type(all) == "table" and all[id] or nil)
+end
+-- Pure: the mobs a farm step names: the ones listed for the material (a
+-- registered `drops`) and the ones you've looted it from, each once.
+function SP.FarmMobs(listed, seen, into, have)
+    into, have = into or {}, have or {}
+    for _, list in ipairs({ listed or {}, seen or {} }) do
+        for _, m in ipairs(list) do
+            if type(m) == "string" and not have[m:lower()] then
+                have[m:lower()] = true
+                into[#into + 1] = m
+            end
+        end
+    end
+    return into, have
+end
+
+-- Looting a mob. Once per corpse:
+--   * the mob is known to drop a material (listed in its `drops`, or you've
+--     looted it from that mob before): one kill for the material, and one
+--     "got" if it was in the loot. (The loot that first showed a mob drops
+--     it isn't counted as a kill: it would count only the lucky one.)
+--   * a looted material (`looted` or `drops`) was in the loot: the mob is
+--     remembered for it, ns.db.crafting.dropMobs[itemID][mobName] = times.
+-- Pure: one corpse's loot counted into `c` (the crafting data: c.drops,
+-- c.dropMobs, made if missing or damaged). sources = { [itemID] = source }.
+function SP.CountLoot(c, sources, mob, looted)
+    if type(c) ~= "table" or type(mob) ~= "string" or mob == "" then return end
+    looted = type(looted) == "table" and looted or {}
+    if type(c.drops) ~= "table" then c.drops = {} end
+    if type(c.dropMobs) ~= "table" then c.dropMobs = {} end
+    local lower = mob:lower()
+    for id, s in pairs(sources or {}) do
+        if type(id) == "number" and type(s) == "table" and (s.drops or s.looted) then
+            local seen = type(c.dropMobs[id]) == "table" and c.dropMobs[id] or nil
+            local known = seen ~= nil and type(seen[mob]) == "number"
+            for _, n in ipairs(s.drops or {}) do
+                if n:lower() == lower then known = true break end
+            end
+            local got = (looted[id] or (s.name and looted[s.name:lower()])) and true or false
+            if known then
+                local d = c.drops[id] or { kills = 0, got = 0 }
+                c.drops[id] = d
+                d.kills = d.kills + 1
+                if got then d.got = d.got + 1 end
+            end
+            if got then
+                seen = seen or {}
+                c.dropMobs[id] = seen
+                seen[mob] = (type(seen[mob]) == "number" and seen[mob] or 0) + 1
+            end
+        end
+    end
+end
 local lastCorpse
 function SP.RecordLoot(mob, guid, looted)
     -- (In a group the game hides a corpse's name and ID: comparing a hidden
@@ -680,21 +750,9 @@ function SP.RecordLoot(mob, guid, looted)
     mob, guid = A.Safe(mob), A.Safe(guid)
     if type(mob) ~= "string" or (guid and guid == lastCorpse) then return end
     lastCorpse = guid
-    ns.db.crafting.drops = ns.db.crafting.drops or {}
-    local lower = mob:lower()
-    for id, s in ns:Each("itemSource") do
-        if type(id) == "number" and s.drops then
-            for _, n in ipairs(s.drops) do
-                if n:lower() == lower then
-                    local d = ns.db.crafting.drops[id] or { kills = 0, got = 0 }
-                    ns.db.crafting.drops[id] = d
-                    d.kills = d.kills + 1
-                    if looted[id] or (s.name and looted[s.name:lower()]) then d.got = d.got + 1 end
-                    break
-                end
-            end
-        end
-    end
+    local sources = {}
+    for id, s in ns:Each("itemSource") do sources[id] = s end
+    SP.CountLoot(ns.db.crafting, sources, mob, looted)
 end
 
 ns:On("LOOT_OPENED", function() pcall(function()
@@ -2210,11 +2268,13 @@ local function planProfession(prof, t, out)
             -- Other materials that level the same (wolf meat or boar meat): any of them will
             -- do, so their mobs count too.
             local ids = SP.Alternatives(steps, id, prof, rank)
-            local names, mobs, rates = {}, {}, {}
+            -- The mobs: any listed for the material, and the ones you've
+            -- looted it from yourself (none seen: unknown to Flow).
+            local names, mobs, rates, haveMob = {}, {}, {}, {}
             for _, aid in ipairs(ids) do
                 local as = src(aid)
                 names[#names + 1] = itemName(aid)
-                for _, m in ipairs(as.drops or {}) do mobs[#mobs + 1] = m end
+                SP.FarmMobs(as.drops, SP.SeenMobs(aid), mobs, haveMob)
                 rates[#rates + 1] = SP.DropRate(aid) or false
             end
             local kills = SP.KillsFor(n, rates)

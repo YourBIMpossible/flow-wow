@@ -1043,8 +1043,8 @@ end)
 
 ns:Register("test", "drops: the rate is only what your own loot showed", function(t)
     local SP = ns.skillPlan
-    local saved = ns.db.crafting.drops
-    ns.db.crafting.drops = {}
+    local saved, savedMobs = ns.db.crafting.drops, ns.db.crafting.dropMobs
+    ns.db.crafting.drops, ns.db.crafting.dropMobs = {}, {}
     local r0, k0 = SP.DropRate(2672)
     t:eq(r0, nil, "no kills yet: the rate is unknown, not a listed guess"); t:eq(k0, 0, "and no kills counted")
     -- (Made-up sources: Flow lists no mobs of its own for a material.)
@@ -1059,7 +1059,7 @@ ns:Register("test", "drops: the rate is only what your own loot showed", functio
         SP.RecordLoot("Boar__test", "corpse6", { ["chunk of boar meat"] = true })
         t:eq(ns.db.crafting.drops[769].got, 1, "found by name too")
     end)
-    ns.db.crafting.drops = saved
+    ns.db.crafting.drops, ns.db.crafting.dropMobs = saved, savedMobs
 end)
 
 ns:Register("test", "map areas: patches and their borders", function(t)

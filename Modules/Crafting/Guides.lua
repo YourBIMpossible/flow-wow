@@ -71,8 +71,10 @@ ns:Register("itemSource", 3486, { name = "Heavy Grinding Stone", made = "Blacksm
 
 -- Looted from mobs. Which mobs, and how often, isn't listed: Flow has no
 -- record of its own of who drops these, so the step says the source is
--- unknown. A `drops = { names }` list still works for an entry that has one,
--- and kills are then counted from your own loot (SkillPlan.lua: SP.RecordLoot).
+-- unknown until you loot one: the mobs you've looted it from are remembered
+-- (ns.db.crafting.dropMobs) and named, and kills are counted from your own
+-- loot from then on (SkillPlan.lua: SP.RecordLoot). A `drops = { names }`
+-- list still works for an entry that has one.
 ns:Register("itemSource", 2589, { name = "Linen Cloth", looted = true })
 ns:Register("itemSource", 2672, { name = "Stringy Wolf Meat", looted = true })
 ns:Register("itemSource", 769,  { name = "Chunk of Boar Meat", looted = true })
