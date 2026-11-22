@@ -42,17 +42,70 @@ tests["perf lines: each module with its time, calls and time per call"] = functi
 end
 
 tests["perf lines: one call, one error, and a time that is not known"] = function(t)
-    local lines = P.Lines({ a = { calls = 1, ms = 3, errors = 1 }, b = { calls = 2 } })
+    local lines = P.Lines({ a = { calls = 1, ms = 3, errors = 1 }, b = { calls = 2, errors = 0 } })
     t.eq(lines[2], "a: 3.0 ms in 1 call (3.000 ms each), 1 error")
     t.eq(lines[3], "b: time not known, 2 calls")
     t.eq(lines[4], "In all: 3.0 ms in 3 calls (1 module's time not known).")
 end
 
+-- L6-P (review of e1351c9, low 1; F-086): a call or error count that was not
+-- read is "not known", never 0.
+tests["perf lines: unknown call and error counts are said, never shown as 0"] = function(t)
+    local rows = P.Rows({ a = { ms = 5 }, b = { calls = 2 }, c = { ms = 1, calls = "x", errors = -1 } })
+    t.eq(rows[1], { owner = "a", ms = 5 }, "no calls and no errors made up")
+    local lines = P.Lines({ a = { ms = 5 }, b = { calls = 2 }, c = {} })
+    t.eq(lines[2], "a: 5.0 ms, calls not known, errors not known")
+    t.eq(lines[3], "b: time not known, 2 calls, errors not known")
+    t.eq(lines[4], "c: time not known, calls not known, errors not known")
+    t.eq(lines[5], "In all: 5.0 ms in 2 calls (2 modules' time not known; 2 modules' calls not known).")
+    for _, l in ipairs(lines) do
+        t.ok(not l:find(" 0 calls", 1, true), "no '0 calls' for a count nobody read: " .. l)
+    end
+    t.eq(P.Lines({ idle = { calls = 0, ms = 0, errors = 0 } })[2], "idle: 0.0 ms in 0 calls", "a read 0 is still 0")
+end
+
 tests["perf lines: a limit shows the slowest and says how many are left out"] = function(t)
     local lines = P.Lines(REPORT, 2)
     t.eq(#lines, 5)
-    t.eq(lines[4], "and 2 more; say perf all for every one.")
+    t.eq(lines[4], "and 2 more; type " .. ns.id.slash .. " perf all to see every one.", "the hint names the whole command")
     t.eq(lines[5], "In all: 274.0 ms in 1043 calls.", "the total is still of all of them")
+    t.eq(P.Lines(REPORT, 2, "/other")[4], "and 2 more; type /other perf all to see every one.", "the slash is the one given")
+end
+
+-- L6-P (lows 2 and 6): the words after perf are read whole, through the
+-- real slash command.
+local function router()
+    local c = ns.make.fakeClient()
+    c.setSaved(ns.id.accountDB, {})
+    local k = ns.Kernel({}, c)
+    local diag = ns.Diag.Start(k)
+    P.Start(k, diag)
+    for i = 1, 14 do k.meter:run("m" .. i, "handler", nil, function() end) end
+    local function count(typed)
+        local before = #c.printed
+        c.slashes[ns.id.slash](typed)
+        return #c.printed - before, c.printed[#c.printed]
+    end
+    return count, k
+end
+
+tests["perf command: 'all' is the whole word, in any capitals, through the slash command"] = function(t)
+    local count = router()
+    t.eq((count("perf")), 1 + P.DEFAULT_ROWS + 2, "the default")
+    t.eq((count("PERF ALL")), 1 + 14 + 1, "all, however it is typed")
+    t.eq((count("perf 3")), 1 + 3 + 2)
+    local n, last = count("perf small")
+    t.eq(n, 1, "a word that only contains 'all' is not 'all'")
+    t.eq(last, ns.id.title .. ": " .. P.Usage(ns.id.slash))
+    t.eq(P.Usage("/zflow"), "Type /zflow perf, /zflow perf <number>, or /zflow perf all.")
+end
+
+tests["perf command: 0, a negative number and other words are refused, not guessed"] = function(t)
+    local _, k = router()
+    for _, typed in ipairs({ "0", "-3", "3 4", "ten", "all of them", "1.5" }) do
+        t.eq(P.Run(k, typed), { P.Usage(ns.id.slash) }, "'" .. typed .. "' gets the usage line")
+    end
+    t.eq(#P.Run(k, "  2  "), 1 + 2 + 2, "spaces around a number are fine")
 end
 
 tests["perf lines: nothing measured yet"] = function(t)
