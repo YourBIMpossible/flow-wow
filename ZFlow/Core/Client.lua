@@ -330,13 +330,20 @@ function ns.make.client(env)
 
     -- Starts following the bank window (BANKFRAME_OPENED / BANKFRAME_CLOSED,
     -- the events Flow uses). Call once, early: before it, bankOpen() only
-    -- has the first guess below.
+    -- has the first guess below, unless something else listens to these
+    -- events. The window's state is set before any listener of either
+    -- event runs (`first`, as for the trainer window), so bankOpen()
+    -- answers inside a BANKFRAME_OPENED listener whichever order the
+    -- listeners were added in. The two listeners here only make the client
+    -- take the events.
     local bankState, bankWatched
+    first.BANKFRAME_OPENED = function() bankState = true end
+    first.BANKFRAME_CLOSED = function() bankState = false end
     function c.watchBank()
         if bankWatched then return end
         bankWatched = true
-        events.add("BANKFRAME_OPENED", function() bankState = true end)
-        events.add("BANKFRAME_CLOSED", function() bankState = false end)
+        events.add("BANKFRAME_OPENED", function() end)
+        events.add("BANKFRAME_CLOSED", function() end)
     end
 
     -- true / false, or nil when not known. Known from the last bank event
@@ -364,13 +371,20 @@ function ns.make.client(env)
 
     -- Starts following the merchant window (MERCHANT_SHOW / MERCHANT_CLOSED,
     -- first guesses: not seen in game on 16001). Call once, early: before
-    -- it, merchantOpen() only has the first guess below.
+    -- it, merchantOpen() only has the first guess below, unless something
+    -- else listens to these events. The window's state is set before any
+    -- listener of either event runs (`first`), so merchantOpen() answers
+    -- inside a MERCHANT_SHOW listener whichever order the listeners were
+    -- added in. The two listeners here only make the client take the
+    -- events.
     local merchantState, merchantWatched
+    first.MERCHANT_SHOW = function() merchantState = true end
+    first.MERCHANT_CLOSED = function() merchantState = false end
     function c.watchMerchant()
         if merchantWatched then return end
         merchantWatched = true
-        events.add("MERCHANT_SHOW", function() merchantState = true end)
-        events.add("MERCHANT_CLOSED", function() merchantState = false end)
+        events.add("MERCHANT_SHOW", function() end)
+        events.add("MERCHANT_CLOSED", function() end)
     end
 
     -- true / false, or nil when not known. Known from the last merchant
