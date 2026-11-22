@@ -8,7 +8,8 @@
 --
 -- LOOK ONLY, and it changes no setting. The one write is the seen mark.
 --
---   Intro.LINES                     the text, top to bottom
+--   Intro.Lines(id) -> lines        the text, top to bottom, naming the
+--                                   addon and slash word from id (ns.id)
 --   Intro.Declare(k, diag) -> api   declares the module on kernel k and adds
 --                                   the word "intro" to diag.commands
 --     api.shows()   how many times it was shown since the start
@@ -37,13 +38,19 @@ Intro.SEEN_PATH = "state.intro.seen"
 Intro.WIDTH, Intro.HEIGHT = 420, 150
 Intro.DEFAULT_POINT = { "CENTER", "CENTER", 0, 120 }
 
-Intro.LINES = {
-    "Welcome to Z-Flow.",
-    "The arrow points to your next quest step, and a second arrow points to your next profession step. Right-click an arrow for its menu.",
-    "At a merchant, a list shows what Z-Flow would sell, what it keeps, and why. Z-Flow sells nothing by itself.",
-    "Hover a piece of gear: a line in its tooltip gives Z-Flow's verdict on it for you.",
-    "Type /zflow help to see every command, and /zflow intro to read this again.",
-}
+-- The text, top to bottom. The addon's name and slash word come from the
+-- identity (Core/Identity.lua is the only file that may hold them).
+function Intro.Lines(id)
+    id = type(id) == "table" and id or ns.id
+    local name, slash = tostring(id.title), tostring(id.slash)
+    return {
+        "Welcome to " .. name .. ".",
+        "The arrow points to your next quest step, and a second arrow points to your next profession step. Right-click an arrow for its menu.",
+        "At a merchant, a list shows what " .. name .. " would sell, what it keeps, and why. " .. name .. " sells nothing by itself.",
+        "Hover a piece of gear: a line in its tooltip gives " .. name .. "'s verdict on it for you.",
+        "Type " .. slash .. " help to see every command, and " .. slash .. " " .. Intro.WORD .. " to read this again.",
+    }
+end
 
 -- Declares the module on kernel k and adds the word to diag's commands
 -- (when diag has them).
@@ -56,13 +63,14 @@ function Intro.Declare(k, diag)
     local function show()
         if not ctx then return end
         shows = shows + 1
+        local id = k.id or ns.id
+        local lines = Intro.Lines(id)
         if panel then
-            panel.setLines(Intro.LINES)
+            panel.setLines(lines)
             panel.show(true)
             return
         end
-        local title = (k.id or ns.id).title
-        for i = 1, #Intro.LINES do ctx.client.print(title .. ": " .. Intro.LINES[i]) end
+        for i = 1, #lines do ctx.client.print(id.title .. ": " .. lines[i]) end
     end
 
     if diag and type(diag.commands) == "table" then
