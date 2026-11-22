@@ -29,6 +29,7 @@ return {
         "Core/Diag.lua",
         "Items/Drops.lua",
         "UI/Perf.lua",
+        "Core/Sound.lua",
         "UI/CopyBox.lua",
         "UI/Advisor.lua",
         "UI/Setup.lua",
