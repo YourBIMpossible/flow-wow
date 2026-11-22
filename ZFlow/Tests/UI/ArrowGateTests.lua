@@ -80,7 +80,7 @@ return {
         t.eq(src.view.gate, "corpse")
         t.eq(src.view.quest.distance, nil)
         t.eq(src.turns.quest, nil)
-        t.eq(src.lines.quest, { "Corpse" })
+        t.eq(src.lines.quest, { "Corpse", ns.Arrow.UNKNOWN_TURN })
     end,
 
     ["dead: a corpse on a map with no size has no distance"] = function(t)
@@ -91,18 +91,18 @@ return {
         t.eq(src.view.gate, "corpse")
         t.eq(src.view.quest.distance, nil)
         t.eq(src.turns.quest, nil)
-        t.eq(src.lines.quest, { "Corpse" })
+        t.eq(src.lines.quest, { "Corpse", ns.Arrow.UNKNOWN_TURN })
     end,
 
     ["dead: a corpse place that is not a place is unknown"] = function(t)
         local c = start()
         c.setDead(true)
         c.corpse = function() return { map = 1411, x = "left", y = 0.5 } end
-        t.eq(source(c).lines.quest, { "Corpse" })
+        t.eq(source(c).lines.quest, { "Corpse", ns.Arrow.UNKNOWN_TURN })
         c.corpse = function() error("the client refused") end
         local src = source(c)
         t.eq(src.view.gate, "corpse")
-        t.eq(src.lines.quest, { "Corpse" })
+        t.eq(src.lines.quest, { "Corpse", ns.Arrow.UNKNOWN_TURN })
     end,
 
     ["a client without the two reads, or whose dead read fails: open"] = function(t)

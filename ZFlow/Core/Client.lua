@@ -757,7 +757,7 @@ function ns.make.client(env)
         local parent = env.UIParent
         local ok, f = call(env.CreateFrame, "Frame", spec.name, parent)
         if not ok or f == nil then return nil end
-        local h, moved = {}, nil
+        local h, moved, dragging = {}, nil, false
         local size = tonumber(spec.size) or 56
         local art = tonumber(spec.art) or 64
         local path = type(spec.artPath) == "string" and spec.artPath or ""
@@ -780,8 +780,18 @@ function ns.make.client(env)
                 method(t, "SetHeight", ht)
             end
         end
+        -- The art and text sit on a holder centred on the frame. Scale is
+        -- the holder's: the frame that is placed stays at scale 1, so a
+        -- saved point means the same place at every scale. Without a holder
+        -- the frame itself is scaled.
+        local okH, holder = call(env.CreateFrame, "Frame", nil, f)
+        if not okH or holder == nil then holder = f end
+        if holder ~= f then
+            sized(holder, size, size)
+            method(holder, "SetPoint", "CENTER", f, "CENTER", 0, 0)
+        end
         local function tex(file, layer, sub, blend)
-            local okT, t = method(f, "CreateTexture", nil, layer, nil, sub)
+            local okT, t = method(holder, "CreateTexture", nil, layer, nil, sub)
             if not okT or t == nil then return nil end
             method(t, "SetTexture", path .. file)
             if blend then method(t, "SetBlendMode", blend) end
@@ -797,17 +807,17 @@ function ns.make.client(env)
         local beamDown = tex("ArrowBeam", "ARTWORK", 3, "ADD")
         if body == nil then return nil end
         sized(pool, 60, 36)
-        method(pool, "SetPoint", "CENTER", f, "CENTER", 0, -3)
+        method(pool, "SetPoint", "CENTER", holder, "CENTER", 0, -3)
         sized(halo, 58, 42)
-        method(halo, "SetPoint", "CENTER", f, "CENTER", 0, -4)
-        method(ripple, "SetPoint", "CENTER", f, "CENTER", 0, -4)
+        method(halo, "SetPoint", "CENTER", holder, "CENTER", 0, -4)
+        method(ripple, "SetPoint", "CENTER", holder, "CENTER", 0, -4)
         method(beam, "SetTexCoord", 0, 1, 0, 1 - 1.5 / 128)
-        method(beam, "SetPoint", "BOTTOM", f, "CENTER", 0, -4)
+        method(beam, "SetPoint", "BOTTOM", holder, "CENTER", 0, -4)
         method(beamDown, "SetTexCoord", 0, 1, 1 - 1.5 / 128, 0)
-        method(beamDown, "SetPoint", "TOP", f, "CENTER", 0, -4)
+        method(beamDown, "SetPoint", "TOP", holder, "CENTER", 0, -4)
         for _, t in ipairs({ halo, ripple, beam, beamDown }) do method(t, "Hide") end
 
-        local okText, label = method(f, "CreateFontString", nil, "OVERLAY", "GameFontNormal")
+        local okText, label = method(holder, "CreateFontString", nil, "OVERLAY", "GameFontNormal")
         if not okText then label = nil end
         if label ~= nil then
             method(label, "SetJustifyH", "CENTER")
@@ -832,7 +842,7 @@ function ns.make.client(env)
             for _, t in ipairs({ shadow, body, shine }) do
                 sized(t, w, ht)
                 method(t, "ClearAllPoints")
-                method(t, "SetPoint", "CENTER", f, "CENTER", 0, 0)
+                method(t, "SetPoint", "CENTER", holder, "CENTER", 0, 0)
             end
             if turns then
                 for _, t in ipairs({ shadow, body, shine }) do method(t, "SetTexCoord", 0, 1 / 16, 0, 1 / 8) end
@@ -857,8 +867,12 @@ function ns.make.client(env)
         method(f, "SetMovable", true)
         method(f, "EnableMouse", true)
         method(f, "RegisterForDrag", "LeftButton")
-        method(f, "SetScript", "OnDragStart", function() method(f, "StartMoving") end)
+        method(f, "SetScript", "OnDragStart", function()
+            dragging = true
+            method(f, "StartMoving")
+        end)
         method(f, "SetScript", "OnDragStop", function()
+            dragging = false
             method(f, "StopMovingOrSizing")
             method(f, "SetUserPlaced", false)
             local point = standing()
@@ -904,7 +918,7 @@ function ns.make.client(env)
                 method(shine, "SetAlpha", d.shine or 0.9)
                 method(shadow, "SetAlpha", d.shadow or 0.75)
                 method(pool, "SetAlpha", d.pool or 0.35)
-                method(body, "SetPoint", "CENTER", f, "CENTER", 0, d.bodyY or 0)
+                method(body, "SetPoint", "CENTER", holder, "CENTER", 0, d.bodyY or 0)
             end
             local arrived = d.arrived and true or false
             for _, t in ipairs({ halo, ripple, beam, beamDown }) do method(t, arrived and "Show" or "Hide") end
@@ -920,7 +934,14 @@ function ns.make.client(env)
             end
         end
         function h.scale(n)
-            if type(n) == "number" and n > 0 then method(f, "SetScale", n) end
+            if type(n) ~= "number" or n <= 0 then return end
+            -- The frame keeps its size: resizing it would move a point
+            -- saved on one of its corners.
+            method(holder, "SetScale", n)
+        end
+        -- True while the player is dragging this arrow: it is not re-placed.
+        function h.dragging()
+            return dragging
         end
         function h.alpha(n)
             if type(n) == "number" then method(f, "SetAlpha", n) end
@@ -939,7 +960,7 @@ function ns.make.client(env)
             end
             method(label, "SetText", table.concat(out, "\n"))
             method(label, "ClearAllPoints")
-            method(label, "SetPoint", point[1], f, point[2], point[3], point[4])
+            method(label, "SetPoint", point[1], holder, point[2], point[3], point[4])
             method(label, "Show")
         end
         function h.onMoved(fn)

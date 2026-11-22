@@ -211,6 +211,8 @@ function ns.make.fakeClient(opts)
             h.textPoint = (#h.lines > 0 and type(point) == "table") and { point[1], point[2], point[3], point[4] } or nil
         end
         function h.onMoved(fn) moved = fn end
+        -- The test's control: h.held = true while the player holds it.
+        function h.dragging() return h.held == true end
         -- The test's control: the player let the arrow go at this point.
         function h.drag(point)
             h.point, h.attached = { point[1], point[2], point[3], point[4] }, nil

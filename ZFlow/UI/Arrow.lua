@@ -27,6 +27,11 @@ ns.Arrow = Arrow
 Arrow.PATH = "layout.arrows"
 Arrow.RELAYOUT = 0.25          -- seconds between layouts while shown
 Arrow.LINE_HEIGHT = 14
+-- With no known turn (facing or bearing unknown) an arrow still shows, but
+-- faded to this share of its opacity and with this line, so a frozen
+-- direction is never read as a live one.
+Arrow.LOST_ALPHA = 0.35
+Arrow.UNKNOWN_TURN = "direction unknown"
 Arrow.DEMO = {
     questDistance = 300, nearDistance = 10, profDistance = 150,
     own = { 0.55, 0.8, 1 },    -- the needle's own colour while stacked
@@ -143,6 +148,9 @@ function Arrow.GuideSource(client, layout, guide)
             local d = state[key] and state[key].distance
             if type(d) == "number" then out[#out + 1] = ("%d yd"):format(math.floor(d + 0.5)) end
         end
+        if type(given[key]) == "table" and more[key].turn == nil then
+            out[#out + 1] = Arrow.UNKNOWN_TURN
+        end
         lines[key] = out
         if state[key] and state[key].textHeight == nil then
             state[key].textHeight = #out * Arrow.LINE_HEIGHT
@@ -199,9 +207,14 @@ function Arrow.Start(k, diag)
             h.show(ops.shown)
             if ops.shown then
                 h.look(ops.look)
-                if ops.anchor == "quest" then h.attach(handles.quest) else h.place(ops.point) end
+                -- An arrow the player is dragging is left where the hand has it.
+                local held = type(h.dragging) == "function" and h.dragging() == true
+                if not held then
+                    if ops.anchor == "quest" then h.attach(handles.quest) else h.place(ops.point) end
+                end
                 h.scale(ops.scale)
-                h.alpha(ops.alpha)
+                local lost = src.turns[key] == nil
+                h.alpha(lost and type(ops.alpha) == "number" and ops.alpha * Arrow.LOST_ALPHA or ops.alpha)
                 h.behind(ops.behind)
                 local textPoint = ops.text.point
                 if key == "quest" and view.prof.shown and view.prof.text.shown and view.prof.text.to == "quest" then
@@ -232,7 +245,10 @@ function Arrow.Start(k, diag)
             end
         end)
         if not ok then
+            -- A broken arrow is taken off the screen, not left frozen on it.
             broken = true
+            current = nil
+            pcall(hideAll)
             k.problems:add("arrow", "frame", err)
         end
     end
