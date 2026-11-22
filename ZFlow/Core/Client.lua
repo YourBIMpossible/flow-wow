@@ -3984,6 +3984,95 @@ function ns.make.client(env)
         method(f, "Hide")
         return h
     end
+    -- S20 marks on the merchant window's own item buttons, as legacy Flow's
+    -- Modules/Gear/MerchantMarks.lua drew them: a texture of ours on each
+    -- button (nothing of the window is called), the window's redraw followed
+    -- with hooksecurefunc. New reads, added at the end (lead section 150).
+    -- First guesses, none seen in game on 16001: MerchantItem<i>ItemButton,
+    -- MerchantFrame.page and .selectedTab, MERCHANT_ITEMS_PER_PAGE,
+    -- MerchantFrame_Update, the atlas "bags-greenarrow" (else the pet
+    -- battle "strong" badge, a green arrow up).
+    -- Docs (warcraft.wiki.gg): API hooksecurefunc; Texture SetAtlas; Region
+    -- CreateTexture(name, layer, template, sublevel).
+    local MERCHANT_BUTTONS = 12 -- 10 on sale a page, 12 on the buyback tab
+    local merchantBadges = {}
+    local function merchantBadge(i)
+        if merchantBadges[i] ~= nil then return merchantBadges[i] or nil end
+        local okB, b = pcall(function() return env["MerchantItem" .. i .. "ItemButton"] end)
+        if not okB or type(b) ~= "table" then return nil end -- not kept: it may come later
+        local okT, t = method(b, "CreateTexture", nil, "OVERLAY", nil, 7)
+        if not okT or t == nil then
+            merchantBadges[i] = false
+            return nil
+        end
+        method(t, "SetSize", 14, 14)
+        method(t, "SetPoint", "TOPLEFT", b, "TOPLEFT", 1, -1)
+        local okA, set = method(t, "SetAtlas", "bags-greenarrow")
+        if not okA or set == false then
+            method(t, "SetTexture", "Interface\\PetBattles\\BattleBar-AbilityBadge-Strong")
+        end
+        method(t, "Hide")
+        merchantBadges[i] = t
+        return t
+    end
+
+    -- Marks the items of the merchant page that `indexes` names ({ [the
+    -- merchant's item number] = true }) and hides the other marks. None on
+    -- the buyback tab. How many it marked, or nil (every mark hidden) when
+    -- no merchant window is open or its page cannot be read.
+    function c.markMerchantButtons(indexes)
+        indexes = type(indexes) == "table" and indexes or {}
+        local frame = env.MerchantFrame
+        local okP, page = pcall(function() return frame.page end)
+        local okT, tab = pcall(function() return frame.selectedTab end)
+        local per = env.MERCHANT_ITEMS_PER_PAGE
+        local readable = c.merchantOpen() == true and okP and type(page) == "number" and page >= 1
+            and type(per) == "number" and per >= 1
+        local buyback = okT and tab ~= nil and tab ~= 1
+        local n = 0
+        for i = 1, MERCHANT_BUTTONS do
+            local t = merchantBadge(i)
+            if t then
+                local index = readable and (page - 1) * per + i or nil
+                if readable and not buyback and i <= per and indexes[index] then
+                    method(t, "Show")
+                    n = n + 1
+                else
+                    method(t, "Hide")
+                end
+            end
+        end
+        if not readable then return nil end
+        return n
+    end
+
+    -- fn() whenever the merchant window draws itself again (a new page, the
+    -- buyback tab): MerchantFrame_Update hooked, else its page buttons and
+    -- tabs. true when followed; nil when the client offers neither (asked
+    -- again on the next call).
+    local merchantRedraw, merchantFollowed = {}, false
+    local function merchantTell()
+        for _, fn in ipairs({ unpack(merchantRedraw) }) do pcall(fn) end
+    end
+    function c.onMerchantRedraw(fn)
+        if type(fn) ~= "function" then return nil end
+        local known = false
+        for _, f in ipairs(merchantRedraw) do
+            if f == fn then known = true end
+        end
+        if not known then merchantRedraw[#merchantRedraw + 1] = fn end
+        if merchantFollowed then return true end
+        if type(env.hooksecurefunc) == "function" and type(env.MerchantFrame_Update) == "function"
+            and pcall(env.hooksecurefunc, "MerchantFrame_Update", merchantTell) then
+            merchantFollowed = true
+            return true
+        end
+        for _, name in ipairs({ "MerchantNextPageButton", "MerchantPrevPageButton", "MerchantFrameTab1", "MerchantFrameTab2" }) do
+            local okN, b = pcall(function() return env[name] end)
+            if okN and type(b) == "table" and method(b, "HookScript", "OnClick", merchantTell) then merchantFollowed = true end
+        end
+        return merchantFollowed or nil
+    end
     return c
 end
 
