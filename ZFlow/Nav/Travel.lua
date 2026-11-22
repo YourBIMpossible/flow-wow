@@ -52,8 +52,10 @@ local _, ns = ...
 --
 -- N.Travel.Declare(k, diag) -> api
 --   api.via(step)   reads the client and the store and answers N.TravelVia.
---                   A step with no map place, or on the player's own map
---                   with no stone to save a walk, comes back as it is.
+--                   A step with no map place comes back as it is; so does
+--                   one no way applies to (on the player's own map that is
+--                   usually so, unless a provider of a crossing or a flight
+--                   answers for it: the providers judge that themselves).
 --   api.walk()      the word N.Travel.WORD: walk to this step instead, or
 --                   back to the shortcut when said again. This session only.
 --   ns.use("travel") -> { Via = api.via }
