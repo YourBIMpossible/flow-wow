@@ -110,6 +110,7 @@ Modules\Nav\XpValue.lua
 Modules\Nav\MinimapPin.lua
 Modules\Nav\Goals.lua
 Modules\Nav\Needs.lua
+Modules\Reserve.lua
 Modules\Nav\Mounts.lua
 Modules\Crafting\Guides.lua
 Modules\Crafting\GuidesCrafting.lua
