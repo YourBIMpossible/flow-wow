@@ -141,6 +141,42 @@ function Present.Row(r, names)
     return out
 end
 
+-- The loot record (L6-J): one creature's entry of Drops' book as lines.
+-- Counts are what this character saw. A share is shown only from
+-- `minSamples` loots on, and then as a share "of yours": it is an observed
+-- count, never a drop rate claimed for the game.
+function Present.DropLines(entry, names, minSamples)
+    local who = type(entry.name) == "string" and entry.name ~= "" and entry.name or "creature"
+    local looted = isCount(entry.looted) and entry.looted or 0
+    local lines = { who .. ": looted " .. looted .. (looted == 1 and " time" or " times") }
+    local rows = {}
+    for key, e in pairs(type(entry.items) == "table" and entry.items or {}) do
+        if type(e) == "table" and isCount(e.count) and isCount(e.times) then
+            rows[#rows + 1] = { name = Present.Name(key, names), count = e.count, times = e.times }
+        end
+    end
+    if #rows == 0 then
+        lines[#lines + 1] = "Nothing dropped yet."
+        return lines
+    end
+    table.sort(rows, function(a, b)
+        if a.times ~= b.times then return a.times > b.times end
+        return a.name < b.name
+    end)
+    local enough = isCount(minSamples) and looted >= minSamples
+    for _, r in ipairs(rows) do
+        local text = r.name .. ": " .. r.count .. " seen, in " .. r.times .. " of " .. looted .. " loots"
+        if enough and looted > 0 then
+            text = text .. " (" .. math.floor(r.times / looted * 100 + 0.5) .. "% of yours)"
+        end
+        lines[#lines + 1] = text
+    end
+    if not enough and isCount(minSamples) then
+        lines[#lines + 1] = "Too few loots to call these rates (" .. minSamples .. " needed)."
+    end
+    return lines
+end
+
 local function costOf(plan)
     local c = type(plan.cost) == "table" and plan.cost or {}
     return isCount(c.known) and c.known or 0, isCount(c.estimated) and c.estimated or 0,
