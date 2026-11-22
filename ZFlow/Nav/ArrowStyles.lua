@@ -123,6 +123,12 @@ local function icon(m)
     return nil
 end
 
+-- The one place the turn of a motion is read here. m.want is N.ArrowTurn:
+-- anticlockwise from straight up (a target on the right is negative), the
+-- sense the modern sheet and the needle take. The flat and 3D shapes below
+-- are worked clockwise, so it is turned over here and nowhere else.
+local function clockwise(m) return -m.want end
+
 local function flat(s, m, now)
     local col = m.colour
     local r, g, b = col[1], col[2], col[3]
@@ -142,7 +148,8 @@ local function flat(s, m, now)
         end
         return
     end
-    local c, sn = math.cos(m.want), math.sin(m.want)
+    local want = clockwise(m)
+    local c, sn = math.cos(want), math.sin(want)
     for i = 1, 4 do
         local p = FLAT[i]
         xs[i], ys[i] = p[1] * c + p[2] * sn, p[2] * c - p[1] * sn
@@ -187,9 +194,10 @@ local function solid(s, m, now)
     local arrived = m.arrived and true or false
 
     -- A turn too small to see is not taken: the lines do not shimmer.
+    local want = clockwise(m)
     local turn = m.drawn3d
-    if turn == nil or math.abs((m.want - turn + math.pi) % TWO_PI - math.pi) >= SKIP_TURN then
-        turn = m.want
+    if turn == nil or math.abs((want - turn + math.pi) % TWO_PI - math.pi) >= SKIP_TURN then
+        turn = want
         m.drawn3d = turn
     end
 
@@ -284,7 +292,10 @@ function N.ArrowShapes(style, m, _, now)
     if style == "modern" then return nil end
     now = finite(now) and now or 0
     local s = begin(m)
-    if style == "flat" then flat(s, m, now) else solid(s, m, now) end
+    -- A bare arrow (D2) draws nothing: no lines and no dots.
+    if not m.bare then
+        if style == "flat" then flat(s, m, now) else solid(s, m, now) end
+    end
     m.at = m.want
     m.fade = m.arrived and 1 or 0
     m.shown[1], m.shown[2], m.shown[3] = m.colour[1], m.colour[2], m.colour[3]

@@ -30,7 +30,20 @@ ns.Prices = Prices
 Prices.OBSERVED = "observed"
 Prices.ESTIMATED = "estimated"
 Prices.UNKNOWN = "unknown"
-Prices.UNKNOWN_TEXT = "price unknown - check trainer"
+-- F-085, the only two ways an unknown price is worded (em dash always):
+-- a training cost names the trainer, an item's price names the vendor.
+Prices.UNKNOWN_TEXT = "price unknown—check trainer"
+Prices.UNKNOWN_VENDOR_TEXT = "price unknown—check vendor"
+-- The price kinds that are training costs. Every other kind (a merchant's
+-- price, what a merchant pays, an auction) is an item's price.
+Prices.TRAINING_KINDS = { trainer = true }
+
+-- The unknown-price words for a price kind; no kind is a training cost, as
+-- Prices.Text has always read.
+function Prices.UnknownText(kind)
+    if kind == nil or Prices.TRAINING_KINDS[kind] then return Prices.UNKNOWN_TEXT end
+    return Prices.UNKNOWN_VENDOR_TEXT
+end
 
 -- A count: a number that is not negative, not NaN and not endless.
 local function isCount(n)
@@ -144,13 +157,15 @@ end
 -- The price for the player to read.
 --   observed   "12s 40c"
 --   estimated  "about 12s 40c (estimate)": an estimate is always labelled
---   unknown    "price unknown - check trainer"
+--   unknown    "price unknown—check trainer" for a training cost (and when
+--              no kind is given); "price unknown—check vendor" for an
+--              item's price (kind "vendor", "sell", "auction", ...)
 -- Anything that isn't a well-formed price reads as unknown.
-function Prices.Text(price)
-    if type(price) ~= "table" or not isCount(price.value) then return Prices.UNKNOWN_TEXT end
+function Prices.Text(price, kind)
+    if type(price) ~= "table" or not isCount(price.value) then return Prices.UnknownText(kind) end
     if price.basis == Prices.OBSERVED then return Prices.Coin(price.value) end
     if price.basis == Prices.ESTIMATED then return "about " .. Prices.Coin(price.value) .. " (estimate)" end
-    return Prices.UNKNOWN_TEXT
+    return Prices.UnknownText(kind)
 end
 
 -- What `count` of the item costs at `price`, in copper. Where the price

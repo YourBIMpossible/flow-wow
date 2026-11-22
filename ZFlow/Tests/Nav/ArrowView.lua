@@ -349,9 +349,10 @@ T["pure: the state is not changed and the same state gives the same view"] = fun
 end
 
 
--- LD1: stacked, the needle's lines count toward the room the text needs only
--- while the needle is drawn.
-T["stacked text: lines of a needle that is not drawn take no room (LD1)"] = function(t)
+-- LD1, then owner decision D2: stacked, the needle's lines count toward the
+-- room the text needs whenever they are shown, and they are shown while the
+-- needle is "off" too (it is bare: its text without its art).
+T["stacked text: lines of a needle that is off still take their room (D2)"] = function(t)
     -- Arrow top 40 under the screen top: one line (14) fits above with the
     -- needle's clearance, a line and two more (14 + 28) do not.
     local top = { arrows = { points = { quest = { "TOP", "TOP", 0, -40 } } } }
@@ -359,18 +360,18 @@ T["stacked text: lines of a needle that is not drawn take no room (LD1)"] = func
     t.eq(drawn.prof.shown, true)
     t.eq(drawn.prof.text.to, "quest")
     t.eq(drawn.prof.text.side, "below", "needle drawn: its lines count, the stack does not fit above")
-    -- The needle cannot point (no bearing): it is not drawn, its lines are not shown.
+    -- The needle cannot point (no bearing): it is not drawn, its lines still are.
     local off = N.ArrowView(state({ layout = top }, { textHeight = 14 }, { textHeight = 28, bearingKnown = false }))
     t.eq(off.prof.mode, "off")
     t.eq(off.prof.shown, false)
-    t.eq(off.quest.text.side, "above", "the quest's own line fits above")
-    t.eq(off.prof.text.side, "above", "the stack's side is the quest's: nothing of the needle is counted")
-    t.eq(off.prof.text.point, off.quest.text.point, "and the same first gap")
+    t.eq(off.prof.text.shown, true)
+    t.eq(off.prof.text.to, "quest")
+    t.eq(off.prof.text.side, "below", "its lines count as when it is drawn")
+    t.eq(off.prof.text.point, drawn.prof.text.point, "and the stack stands where it stood")
     -- Off because the quest step is at its point: the same.
     local here = N.ArrowView(state({ layout = top }, { textHeight = 14, distance = 0 }, { textHeight = 28 }))
     t.eq(here.prof.mode, "off")
-    t.eq(here.prof.text.side, here.quest.text.side, "at the quest's point: the same side")
-    t.eq(here.prof.text.point, here.quest.text.point)
+    t.eq(here.prof.text.side, "below", "at the quest's point: its lines count too")
 end
 
 return T

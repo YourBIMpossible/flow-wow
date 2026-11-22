@@ -81,9 +81,49 @@ return {
         t.eq(#dots(s, { w = 5, h = 5, round = true, r = 0.2, g = 0.4, b = 0.8, a = 1, x = 0, y = 27 }), 1, "lead dot")
     end,
 
-    ["flat: turns clockwise on screen, snaps, and does not bob"] = function(t)
+    -- Q-0: the turn is N.ArrowTurn, anticlockwise from up. Every style is
+    -- drawn from the turn N.ArrowTurn gives, never from a hand-made one.
+    ["every style: a target due east is drawn pointing right, due west left"] = function(t)
+        local east, west = N.ArrowTurn(math.pi / 2, 0), N.ArrowTurn(3 * math.pi / 2, 0)
+        t.ok(near(east, -math.pi / 2) and near(west, math.pi / 2), "anticlockwise from up")
+        -- Flat: the spine runs from the tip to the notch.
+        local s = N.ArrowShapes("flat", motion({ turn = east }), 0.01, 3)
+        local spine = lines(s, { thick = 1 })
+        t.eq(#spine, 1)
+        t.ok(spine[1].x1 > 21 and near(spine[1].y1, 0), "flat: the tip is on the right")
+        t.ok(spine[1].x2 < 0, "flat: the notch is behind it")
+        t.eq(#dots(s, { w = 5, x = 27, y = 0 }), 1, "flat: the lead dot is on the right")
+        s = N.ArrowShapes("flat", motion({ turn = west }), 0.01, 3)
+        t.ok(lines(s, { thick = 1 })[1].x1 < -21, "flat: west is on the left")
+        t.eq(#dots(s, { w = 5, x = -27, y = 0 }), 1)
+        -- 3D: the ridge runs from the tip to the notch.
+        s = N.ArrowShapes("3d", motion({ turn = east }), 0.01, 0)
+        local ridge = lines(s, { thick = 1.2 })
+        t.eq(#ridge, 1)
+        t.ok(ridge[1].x1 > 20, "3d: the tip is on the right")
+        t.ok(ridge[1].x2 < 0, "3d: the notch is behind it")
+        s = N.ArrowShapes("3d", motion({ turn = west }), 0.01, 0)
+        t.ok(lines(s, { thick = 1.2 })[1].x1 < -20, "3d: west is on the left")
+        -- Modern: the cell of the sheet is the one it always was.
+        t.eq((N.ArrowCell(east)), 96, "modern: unchanged")
+        t.eq((N.ArrowCell(west)), 32, "modern: unchanged")
+        t.eq(N.ArrowShapes("modern", motion({ turn = east }), 0.01, 0), nil)
+    end,
+
+    ["every style: north is up and south is down, as before"] = function(t)
+        local north, south = N.ArrowTurn(0, 0), N.ArrowTurn(math.pi, 0)
+        local s = N.ArrowShapes("flat", motion({ turn = north }), 0.01, 3)
+        t.eq(#lines(s, { thick = 1, x1 = 0, y1 = 22, x2 = 0, y2 = -5 }), 1)
+        s = N.ArrowShapes("flat", motion({ turn = south }), 0.01, 3)
+        t.eq(#lines(s, { thick = 1, x1 = 0, y1 = -22, x2 = 0, y2 = 5 }), 1)
+        s = N.ArrowShapes("3d", motion({ turn = south }), 0.01, 0)
+        local ridge = lines(s, { thick = 1.2 })[1]
+        t.ok(near(ridge.x1, 0) and ridge.y1 < ridge.y2, "3d: the tip is nearer the player than the notch")
+    end,
+
+    ["flat: a target due east points right, snaps, and does not bob"] = function(t)
         local m = motion({ turn = 0 })
-        N.ArrowAim(m, { turn = math.pi / 2, colour = { 1, 0, 0 } })
+        N.ArrowAim(m, { turn = N.ArrowTurn(math.pi / 2, 0), colour = { 1, 0, 0 } })
         local s = N.ArrowShapes("flat", m, 0.001, 3)
         t.eq(#lines(s, { thick = 1, x1 = 22, y1 = 0, x2 = -5, y2 = 0 }), 1, "the spine points right at once")
         t.eq(#dots(s, { w = 5, x = 27, y = 0, r = 1, g = 0, b = 0 }), 1, "the lead dot is on the right, in the new colour")
@@ -161,7 +201,7 @@ return {
 
     ["3d: it snaps to a new turn, and skips one under 0.003"] = function(t)
         local m = motion({ turn = 1 })
-        local x, y = N.Project3D(0, 26, -1)
+        local x, y = N.Project3D(0, 26, 1)
         local top = 4 + 4 * 1.4
         local s = N.ArrowShapes("3d", m, 0.01, 0)
         t.eq(#lines(s, { thick = 1.2, x1 = x, y1 = y + top }), 1)
@@ -171,7 +211,7 @@ return {
         t.eq(#lines(s, { thick = 2.6, r = 1, g = 0, b = 0 }), 28, "the colour is not blended")
         N.ArrowAim(m, { turn = 2 })
         s = N.ArrowShapes("3d", m, 0.01, 0)
-        x, y = N.Project3D(0, 26, -2)
+        x, y = N.Project3D(0, 26, 2)
         t.eq(#lines(s, { thick = 1.2, x1 = x, y1 = y + top }), 1, "a larger one is taken at once")
     end,
 

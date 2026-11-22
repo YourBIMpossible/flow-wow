@@ -152,6 +152,39 @@ tests["keep: the kept line says what is true: it is on your list"] = function(t)
     t.eq(d.basis, "choice")
 end
 
+-- Re-review of 0ea8d2e, lows 5 and 7: plain words for the player, the full
+-- command in the usage line, and every string from the Items text path.
+tests["keep: the usage line gives the whole command"] = function(t)
+    t.eq(K.USAGE, "Say " .. ns.id.slash .. " keep <item link>, " .. ns.id.slash .. " keep remove <item link>, or "
+        .. ns.id.slash .. " keep for the list.")
+end
+
+tests["keep: a write the store refuses is said plainly, and the reason kept as a problem"] = function(t)
+    local k = start()
+    local set = k.store.set
+    k.store.set = function() return false, "path settings.sell.never is blocked at settings" end
+    local before = k.problems:count("keep")
+    local lines, changed = K.Run(k, "97")
+    k.store.set = set
+    t.eq(changed, false)
+    t.eq(lines, { "That could not be saved, so nothing was changed." }, "no internal path or error text for the player")
+    t.eq(k.problems:count("keep"), before + 1, "the reason is kept where diagnostics can see it")
+end
+
+tests["keep: its words come from the Items text path"] = function(t)
+    local P = ns.ItemPresent
+    t.eq(K.NOT_LOADED, P.KEEP_NOT_LOADED)
+    t.eq(K.EMPTY, P.KEEP_EMPTY)
+    t.eq(K.ONE_AT_A_TIME, P.KEEP_ONE_AT_A_TIME)
+    t.eq(K.USAGE, P.KeepUsage(ns.id.slash))
+    t.eq(P.KeepText("added", "Broken Fang"), "Broken Fang is now on your never-sell list.")
+    t.eq(P.KeepText("removed", "Broken Fang"), "Broken Fang is off your never-sell list.")
+    t.eq(P.KeepText("already", "Broken Fang"), "Broken Fang is already on your never-sell list.")
+    t.eq(P.KeepText("absent", "Broken Fang"), "Broken Fang is not on your never-sell list.")
+    t.eq(P.KeepText("failed"), "That could not be saved, so nothing was changed.")
+    t.eq(P.KeepText("header", 3), "Never sold (3):")
+end
+
 tests["keep: saved data not loaded is said, and nothing is written"] = function(t)
     -- At ADDON_LOADED the kernel makes a new character table when none is
     -- saved, so "not loaded" is the time before it (lead, L6-G merge).

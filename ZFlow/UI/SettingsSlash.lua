@@ -30,13 +30,15 @@
 --     lines    what to say, without the title
 --     changed  true only when a value was saved
 --   SettingsSlash.Start(k, diag) -> { run = fn }
---     adds the word "setting" to diag.commands when diag has them.
+--     adds the word "setting" to diag.commands when diag has them, and
+--     its line for the help word to diag.help.
 local _, ns = ...
 
 local S = {}
 ns.SettingsSlash = S
 
 S.WORD = "setting"
+S.HELP = "list the settings, show one, or change one: setting <key> <value>"
 S.NOT_LOADED = "the saved settings are not loaded yet; try again after login."
 S.NONE = "there are no settings yet."
 S.SCOPES = { char = "this character", account = "account" }
@@ -197,6 +199,7 @@ function S.Start(k, diag)
     end
     if diag and type(diag.commands) == "table" then
         diag.commands[S.WORD] = run
+        if type(diag.help) == "table" then diag.help[S.WORD] = S.HELP end
     end
     return { run = run }
 end
