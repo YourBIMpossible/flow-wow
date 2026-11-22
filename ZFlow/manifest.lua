@@ -30,6 +30,7 @@ return {
 
         -- Import
         "Import/FromFlow.lua",
+        "Import/Stored.lua",
 
         -- Items
         "Items/Key.lua",
