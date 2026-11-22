@@ -1,6 +1,7 @@
 local _, ns = ...
 
--- Tests for the "rotation" lines of the diag command (RD15, CD2, ST1): the
+-- Tests for the "rotation" lines of the diag command (RD15, CD2, ST1, RG1,
+-- RG2): the
 -- line made from a driver view, one test for each row and the order of the
 -- rows, then the lines as the slash command says them over the fake client.
 -- Not tested in game.
@@ -94,18 +95,80 @@ end
 tests["rotation diag RD15: a fight not known counts as a fight, as the chooser counts it"] = function(t)
     local s = snap({ inCombat = "nil" })
     t.eq(R.InFight(s), true, "the chooser's own answer for not known")
-    t.eq(line(view({ snapshot = s })), "rotation: fight not known; counted as a fight.")
+    t.eq(line(view({ snapshot = s })),
+        "rotation: fight not known, counted as a fight; suggesting Moonfire (rotation).")
 end
 
 tests["rotation diag RD15: lockdown not known says the key refusal in its own words"] = function(t)
     local v = view({ lockdown = "nil", keys = refused("lockdownUnknown") })
     t.eq(v.why.reason, ns.cast.REFUSED.lockdownUnknown)
-    t.eq(line(v), "rotation: not known whether you are in a fight: your keys change once that is known.")
+    t.eq(line(v), "rotation: not known whether you are in a fight (keys unchanged); "
+        .. "suggesting Moonfire (rotation).")
 end
 
 tests["rotation diag RD15: lockdown says the key refusal in its own words"] = function(t)
     local v = view({ snapshot = snap({ inCombat = true }), lockdown = true, keys = refused("lockdown") })
-    t.eq(line(v), "rotation: in a fight: your keys change when it ends.")
+    t.eq(line(v), "rotation: in a fight (keys unchanged); suggesting Moonfire (rotation).")
+end
+
+-- RG1 -------------------------------------------------------------------
+-- A fight is when the suggestion matters most: none of the three fight
+-- rows may end the line.
+
+local NOTHING = { { step = "rotation", result = "skip", note = "nothing ready" } }
+
+tests["rotation diag RG1: a fight not known still shows the suggestion, or why there is none"] = function(t)
+    local s = snap({ inCombat = "nil" })
+    t.eq(line(view({ snapshot = s })),
+        "rotation: fight not known, counted as a fight; suggesting Moonfire (rotation).")
+    t.eq(line(view({ snapshot = s, suggestion = "nil", trace = NOTHING })),
+        "rotation: fight not known, counted as a fight; nothing to suggest (nothing ready).")
+end
+
+tests["rotation diag RG1: a fight not known with the keys held says both"] = function(t)
+    local s = snap({ inCombat = "nil" })
+    t.eq(line(view({ snapshot = s, lockdown = "nil", keys = refused("lockdownUnknown") })),
+        "rotation: fight not known, counted as a fight (keys unchanged); suggesting Moonfire (rotation).")
+    t.eq(line(view({ snapshot = s, lockdown = true, keys = refused("lockdown") })),
+        "rotation: fight not known, counted as a fight (keys unchanged); suggesting Moonfire (rotation).")
+end
+
+tests["rotation diag RG1: lockdown not known still shows the suggestion, or why there is none"] = function(t)
+    local over = { lockdown = "nil", keys = refused("lockdownUnknown") }
+    t.eq(line(view(over)),
+        "rotation: not known whether you are in a fight (keys unchanged); suggesting Moonfire (rotation).")
+    over.suggestion, over.trace = "nil", NOTHING
+    t.eq(line(view(over)),
+        "rotation: not known whether you are in a fight (keys unchanged); nothing to suggest (nothing ready).")
+end
+
+tests["rotation diag RG1: in a fight still shows the suggestion, or why there is none"] = function(t)
+    local over = { snapshot = snap({ inCombat = true }), lockdown = true, keys = refused("lockdown") }
+    t.eq(line(view(over)), "rotation: in a fight (keys unchanged); suggesting Moonfire (rotation).")
+    over.suggestion, over.trace = "nil", NOTHING
+    t.eq(line(view(over)), "rotation: in a fight (keys unchanged); nothing to suggest (nothing ready).")
+end
+
+tests["rotation diag RG1: the fight clause comes before the spells not read, and a kept view still says so"] = function(t)
+    local over = { snapshot = snap({ inCombat = true }), lockdown = true, keys = refused("lockdown"),
+        unread = { "Wrath" } }
+    t.eq(line(view(over)), "rotation: in a fight (keys unchanged); 1 spell not read; it is skipped.")
+    over.unread = {}
+    local v = view(over)
+    v.stale = true
+    t.eq(line(v), "rotation: in a fight (keys unchanged); suggesting Moonfire (rotation)."
+        .. " An earlier reading: the last read failed.")
+end
+
+tests["rotation diag RG1: dead, no pack and no view are still the whole line in a fight"] = function(t)
+    local over = { snapshot = snap({ inCombat = true, dead = true }), lockdown = true, keys = refused("lockdown"),
+        suggestion = "nil", trace = { { step = "dead", result = "stop", note = "dead" } } }
+    t.eq(line(view(over)), "rotation: dead; nothing suggested.")
+    over.snapshot = snap({ inCombat = "nil", dead = "nil" })
+    t.eq(line(view(over)), "rotation: not known whether you are dead; nothing suggested.")
+    t.eq(line({ pack = false, trace = {}, why = { pack = false }, lockdown = true }),
+        "rotation: class not known, or no spell list for it; nothing suggested.")
+    t.eq(line(nil, "started", true), "rotation: no reading yet.")
 end
 
 tests["rotation diag RD15: spells not read are counted"] = function(t)
@@ -147,13 +210,16 @@ tests["rotation diag RD15: the first row that holds is the one said"] = function
     everything.snapshot = snap({ dead = true, inCombat = "nil" })
     t.eq(line(view(everything)), "rotation: dead; nothing suggested.", "then dead")
     everything.snapshot = snap({ inCombat = "nil" })
-    t.eq(line(view(everything)), "rotation: fight not known; counted as a fight.", "then the fight not known")
+    t.eq(line(view(everything)),
+        "rotation: fight not known, counted as a fight (keys unchanged); 1 spell not read; it is skipped.",
+        "then the fight not known, as a clause")
     everything.snapshot = snap({ inCombat = true })
     t.eq(line(view(everything)),
-        "rotation: not known whether you are in a fight: your keys change once that is known.",
-        "then lockdown not known")
+        "rotation: not known whether you are in a fight (keys unchanged); 1 spell not read; it is skipped.",
+        "then lockdown not known, as a clause")
     everything.lockdown, everything.keys = true, refused("lockdown")
-    t.eq(line(view(everything)), "rotation: in a fight: your keys change when it ends.", "then lockdown")
+    t.eq(line(view(everything)), "rotation: in a fight (keys unchanged); 1 spell not read; it is skipped.",
+        "then lockdown, as a clause")
     everything.lockdown, everything.keys = false, { ok = true, ops = {} }
     everything.snapshot = snap({})
     t.eq(line(view(everything)), "rotation: 1 spell not read; it is skipped.", "then the spells not read")
@@ -183,9 +249,17 @@ tests["rotation diag CD2: one line when no cooldown was read and nothing can be 
         "a spell that is not known is not counted")
 end
 
-tests["rotation diag CD2: no line while any spell can be cast, or with nothing to say it of"] = function(t)
+tests["rotation diag RG2: spells passed by are counted and named while another can be cast"] = function(t)
+    t.eq(cooldownLine(view({ snapshot = snap({ spells = spells(nil, false) }) })),
+        "rotation: 1 spell passed by: " .. R.COOLDOWN_UNKNOWN .. ": Wrath.")
+    local three = spells(nil, nil)
+    three.Starfire = { known = true, usable = true, noPower = false, onCooldown = false }
+    t.eq(cooldownLine(view({ snapshot = snap({ spells = three }) })),
+        "rotation: 2 spells passed by: " .. R.COOLDOWN_UNKNOWN .. ": Moonfire, Wrath.")
+end
+
+tests["rotation diag CD2: no line with every cooldown read, or with nothing to say it of"] = function(t)
     t.eq(cooldownLine(view()), nil, "every cooldown read")
-    t.eq(cooldownLine(view({ snapshot = snap({ spells = spells(nil, false) }) })), nil, "one can be cast")
     t.eq(cooldownLine(view({ snapshot = snap({ spells = spells(true, true) }) })), nil, "on cooldown is known")
     t.eq(cooldownLine(view({ snapshot = snap({ spells = {} }) })), nil, "no spell rows")
     t.eq(cooldownLine(view({ snapshot = snap({ spells = spells(nil, nil), dead = true }) })), nil, "dead")
@@ -284,7 +358,8 @@ tests["rotation diag RD15: the slash command says the driver's line"] = function
     t.eq(diag(c, head .. "suggesting Moonfire ("), 1, "a reading")
     c.setCombat(true)
     tick(c)
-    t.eq(diag(c, head .. "in a fight: your keys change when it ends."), 1)
+    t.eq(diag(c, head .. "in a fight (keys unchanged); suggesting Moonfire ("), 1,
+        "in a fight the suggestion is still said")
     c.setCombat(false)
     c.setDead(true)
     tick(c)
