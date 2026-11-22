@@ -285,7 +285,8 @@ tests["rotation driver: a spell with no id is not read, and is named"] = functio
     c.setSpellCooldown(WRATH, false)
     local client = { dead = function() return false end, inCombat = function() return false end,
         combatLockdown = function() return false end, spell = c.spell, spellId = c.spellId,
-        spellCooldown = c.spellCooldown, target = enemy }
+        spellCooldown = c.spellCooldown, target = enemy,
+        inRange = function() return true end }
     local v = D.Step(client, pack())
     t.eq(v.missing, { "Moonfire" }, "no id")
     t.eq(v.unread, { "Moonfire" }, "not read")
