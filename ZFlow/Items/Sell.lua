@@ -109,6 +109,10 @@ local function gather(bag)
     return items, unread
 end
 
+-- The same gathering, for the sell list's kept part (SellView.Kept):
+-- -> items (one per key, copies), how many entries were unreadable.
+Sell.Gather = gather
+
 -- The price of one. nil when it can't be sold to a merchant at all.
 local function priceOf(item, book)
     local Prices = ns.Prices
