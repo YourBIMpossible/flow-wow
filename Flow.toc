@@ -98,6 +98,7 @@ Modules\Fight\Profiler.lua
 Modules\Fight\Choices.lua
 Modules\CombatLogFile.lua
 Modules\Nav\Nav.lua
+Modules\Nav\Activities.lua
 Modules\Nav\Gates.lua
 Modules\Nav\TravelSpells.lua
 Modules\Nav\Rides.lua
@@ -181,3 +182,4 @@ Modules\Tests\Class.lua
 Modules\Tests\Safety.lua
 Modules\Tests\UX.lua
 Modules\Tests\Quests.lua
+Modules\Tests\Activities.lua
