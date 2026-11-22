@@ -8,17 +8,16 @@
 --
 -- At your death (PLAYER_DEAD) the damage you took in the seconds before is
 -- printed, as text. Each fight row also says its type (G28): solo, elite,
--- group, or "type unknown" when it was not read. The elite read needs one
--- more client read (CLIENT NEED), absent until the lead adds it:
+-- group, or "type unknown" when it was not read. The elite read is
 --   client.targetRank() -> text | nil   the rank word of your target
 --
 -- A fight is the time between the combat start and the combat end events.
 -- The fights are kept in memory only: a fixed number of them (Fights.KEEP),
 -- gone at a reload or logout. Nothing of a fight is saved.
 --
--- It needs three client reads that Core/Client.lua does not have yet
--- (CLIENT NEED, posted with this file); until they are there the word says
--- that no fight can be recorded:
+-- It needs three client reads (Core/Client.lua, the F7 block; the ids go
+-- through client.guid). Where the client has no combat-log read the word
+-- says that no fight can be recorded:
 --   client.watchCombatLog(fn) -> true | nil
 --       calls fn with the values of each combat-log event, in the client's
 --       own order. nil when the client has no such read.

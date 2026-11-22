@@ -21,6 +21,9 @@ local function client(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
     local watchers = {}
+    -- The fake has these reads of its own now (Core/ClientFake.lua); these
+    -- tests put their own in their place, or none.
+    c.watchCombatLog = nil
     if not opts.noFeed then
         function c.watchCombatLog(fn)
             watchers[#watchers + 1] = fn

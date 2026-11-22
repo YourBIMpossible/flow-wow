@@ -603,6 +603,31 @@ function ns.make.fakeClient(opts)
     -- True while something is subscribed to the frame tick.
     function c.ticking() return s.frames == 1 end
 
+    -- F7, the fight log. guid(unit): what setGuid gave for "player", "pet"
+    -- or "target" (nil, the start: not known); any other unit is nil.
+    -- targetRank(): what setTargetRank gave. watchCombatLog(fn) answers
+    -- true and combatLog(...) hands its values to every watcher; after
+    -- setCombatLog(false) it answers nil and takes no watcher.
+    local guids, logWatchers = {}, {}
+    function c.guid(unit)
+        if unit ~= "player" and unit ~= "pet" and unit ~= "target" then return nil end
+        return guids[unit]
+    end
+    function c.setGuid(unit, id) guids[unit] = type(id) == "string" and id ~= "" and id or nil end
+    function c.playerGUID() return c.guid("player") end
+    function c.petGUID() return c.guid("pet") end
+    function c.targetRank() return s.targetRank end
+    function c.setTargetRank(rank) s.targetRank = type(rank) == "string" and rank ~= "" and rank or nil end
+    function c.watchCombatLog(fn)
+        if s.noCombatLog or type(fn) ~= "function" then return nil end
+        logWatchers[#logWatchers + 1] = fn
+        return true
+    end
+    function c.setCombatLog(on) s.noCombatLog = not on end
+    function c.combatLog(...)
+        for i = 1, #logWatchers do logWatchers[i](...) end
+    end
+
     return c
 end
 
