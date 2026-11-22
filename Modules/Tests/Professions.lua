@@ -345,6 +345,51 @@ ns:Register("test", "professions: SP.VeinsHere is the veins on this map, with no
     t:eq(SP.BestNode, nil, "the pick by a listed vein skill is gone")
 end)
 
+ns:Register("test", "professions: item sources list no skill, yield, rate, mobs or price", function(t)
+    local n, looted = 0, 0
+    for id, s in ns:Each("itemSource") do
+        n = n + 1
+        local what = tostring(s.name or id)
+        t:eq(s.skill, nil, what .. ": no node skill"); t:eq(s.yield, nil, what .. ": no yield")
+        t:eq(s.rate, nil, what .. ": no drop rate"); t:eq(s.price, nil, what .. ": no price")
+        t:eq(s.drops, nil, what .. ": no mob names")
+        if s.smelt then t:eq(s.smelt.skill, nil, what .. ": no smelting skill") end
+        if s.looted then looted = looted + 1 end
+    end
+    t:ok(n > 0 and looted > 0, "the sources are still there to check")
+end)
+
+ns:Register("test", "professions: a price is only what a vendor's window showed", function(t)
+    local SP = ns.skillPlan
+    local saved = ns.db.prices
+    ns.db.prices = nil
+    t:eq(SP.Price(2678), nil, "never seen at a vendor: unknown")
+    ns.db.prices = { [2678] = 12, [2692] = "x" }
+    t:eq(SP.Price(2678), 12, "seen at a vendor: that price")
+    t:eq(SP.Price(2692), nil, "not a number: unknown")
+    t:eq(SP.Price(999999001), nil, "an item Flow never saw sold: unknown")
+    ns.db.prices = saved
+end)
+
+ns:Register("test", "professions: kills and node counts are said only when your own loot gives them", function(t)
+    local SP = ns.skillPlan
+    t:eq(SP.KillsFor(10, { 0.5 }), 20, "half of your kills dropped one: 20 kills for 10")
+    t:eq(SP.KillsFor(10, { 0.5, 0.25 }), 27, "two materials that both do: their mean")
+    t:eq(SP.KillsFor(10, { 0.5, false }), nil, "one of them never seen to drop: unknown")
+    t:eq(SP.KillsFor(10, {}), nil, "nothing seen: unknown"); t:eq(SP.KillsFor(10, nil), nil, "no rates: unknown")
+    t:eq(SP.FarmText("Meat", "0/5", 20), "Loot Meat 0/5 (about 20 kills)", "known: said as about")
+    t:eq(SP.FarmText("Meat", "0/5", nil), "Loot Meat 0/5", "unknown: no number made up")
+    local d = SP.FarmDetails(nil, 5, {})
+    t:ok(d[1]:find("unknown", 1, true) ~= nil, "kills unknown: said so")
+    t:ok(d[2]:find("unknown to Flow", 1, true) ~= nil, "mobs unknown: said so")
+    d = SP.FarmDetails(20, 5, { "A__test", "B__test" })
+    t:ok(d[1]:find("About 20 kills for 5", 1, true) ~= nil, "known kills: about, from your own loot")
+    t:eq(d[2], "Drops from: A__test, B__test.", "known mobs: named")
+    t:eq(SP.GatherText("Mining", "Vein__test", { "4 Ore", "2 Stone" }), "Mine Vein__test for 4 Ore, 2 Stone", "no node count in a gather step")
+    t:eq(SP.GatherText("Herbalism", "Herb__test", { "1 Leaf" }), "Gather Herb__test for 1 Leaf", "nor for herbs")
+    t:ok(SP.GATHER_UNKNOWN:find("unknown to Flow", 1, true) ~= nil, "and the step says what Flow doesn't know")
+end)
+
 ns:Register("test", "professions: a trainer's window is where a recipe's learn skill comes from", function(t)
     local TR, SP = ns.trainer, ns.skillPlan
     local into = {}

@@ -12,6 +12,10 @@
 -- The skill a recipe is learned at isn't listed here either: Flow reads it
 -- from the trainer's window (Trainer.lua) or the recipe item's tooltip, and
 -- until then it is unknown (SkillPlan.lua: SP.LearnSkill).
+-- Nor are node or smelting skills, how much a node gives, which mobs drop a
+-- material or how often, or vendor prices: none of those were read from the
+-- game by Flow, so they are unknown until it sees them (prices at a vendor,
+-- drops in your own loot).
 --
 -- Extend by registering more:
 --   ns:Register("profGuide", "<Profession>", {
@@ -27,11 +31,11 @@
 --                   tool = itemID,                                -- this recipe needs it in your bags (a rod, the Spanner)
 --                   station = "anvil" | "forge" | "fire" | nil } } })
 --   ns:Register("itemSource", itemID, {
---       name, gather = "<Profession>", objects = { objectIDs }, skill = n, yield = per node,
---       smelt = { from = itemID, n = count, skill = n, spell = "Smelt X" },
---       drops = { "NPC name", ... },        -- mobs that drop it
+--       name, gather = "<Profession>", objects = { objectIDs }, node = "name",
+--       smelt = { from = itemID, n = count, spell = "Smelt X" },
+--       looted = true,                      -- comes off mobs; which ones is unknown
+--       drops = { "NPC name", ... },        -- (optional) mobs that drop it; none are listed here
 --       fished = true, share = 0.7,         -- caught while levelling Fishing
---       rate = 0.35,                        -- rough chance per kill (Flow learns yours as you loot)
 --       made = "<Profession>",              -- you make it (another step's item)
 --       vendor = true })                     -- bought (Questie lists the vendors)
 
@@ -47,49 +51,40 @@ local IRON_VEIN    = { 1735 }
 local MITHRIL_VEIN = { 2040 }
 local THORIUM_VEIN = { 324, 175404 }
 
-ns:Register("itemSource", 2770, { name = "Copper Ore", gather = "Mining", objects = COPPER_VEIN, node = "Copper Vein", skill = 1, yield = 2 })
-ns:Register("itemSource", 2835, { name = "Rough Stone", gather = "Mining", objects = COPPER_VEIN, node = "Copper Vein", skill = 1, yield = 0.8 })
-ns:Register("itemSource", 2840, { name = "Copper Bar", smelt = { from = 2770, n = 1, skill = 1, spell = "Smelt Copper" } })
-ns:Register("itemSource", 2771, { name = "Tin Ore", gather = "Mining", objects = TIN_VEIN, node = "Tin Vein", skill = 65, yield = 2 })
-ns:Register("itemSource", 2836, { name = "Coarse Stone", gather = "Mining", objects = TIN_VEIN, node = "Tin Vein", skill = 65, yield = 0.8 })
-ns:Register("itemSource", 3576, { name = "Tin Bar", smelt = { from = 2771, n = 1, skill = 65, spell = "Smelt Tin" } })
-ns:Register("itemSource", 2772, { name = "Iron Ore", gather = "Mining", objects = IRON_VEIN, node = "Iron Deposit", skill = 125, yield = 2 })
-ns:Register("itemSource", 2838, { name = "Heavy Stone", gather = "Mining", objects = IRON_VEIN, node = "Iron Deposit", skill = 125, yield = 0.8 })
-ns:Register("itemSource", 3575, { name = "Iron Bar", smelt = { from = 2772, n = 1, skill = 125, spell = "Smelt Iron" } })
-ns:Register("itemSource", 3858, { name = "Mithril Ore", gather = "Mining", objects = MITHRIL_VEIN, node = "Mithril Deposit", skill = 175, yield = 2 })
-ns:Register("itemSource", 7912, { name = "Solid Stone", gather = "Mining", objects = MITHRIL_VEIN, node = "Mithril Deposit", skill = 175, yield = 0.8 })
-ns:Register("itemSource", 3860, { name = "Mithril Bar", smelt = { from = 3858, n = 1, skill = 175, spell = "Smelt Mithril" } })
-ns:Register("itemSource", 12365, { name = "Dense Stone", gather = "Mining", objects = THORIUM_VEIN, node = "Thorium Vein", skill = 245, yield = 0.8 })
-ns:Register("itemSource", 10620, { name = "Thorium Ore", gather = "Mining", objects = THORIUM_VEIN, node = "Thorium Vein", skill = 245, yield = 2 })
-ns:Register("itemSource", 12359, { name = "Thorium Bar", smelt = { from = 10620, n = 1, skill = 250, spell = "Smelt Thorium" } })
+ns:Register("itemSource", 2770, { name = "Copper Ore", gather = "Mining", objects = COPPER_VEIN, node = "Copper Vein" })
+ns:Register("itemSource", 2835, { name = "Rough Stone", gather = "Mining", objects = COPPER_VEIN, node = "Copper Vein" })
+ns:Register("itemSource", 2840, { name = "Copper Bar", smelt = { from = 2770, n = 1, spell = "Smelt Copper" } })
+ns:Register("itemSource", 2771, { name = "Tin Ore", gather = "Mining", objects = TIN_VEIN, node = "Tin Vein" })
+ns:Register("itemSource", 2836, { name = "Coarse Stone", gather = "Mining", objects = TIN_VEIN, node = "Tin Vein" })
+ns:Register("itemSource", 3576, { name = "Tin Bar", smelt = { from = 2771, n = 1, spell = "Smelt Tin" } })
+ns:Register("itemSource", 2772, { name = "Iron Ore", gather = "Mining", objects = IRON_VEIN, node = "Iron Deposit" })
+ns:Register("itemSource", 2838, { name = "Heavy Stone", gather = "Mining", objects = IRON_VEIN, node = "Iron Deposit" })
+ns:Register("itemSource", 3575, { name = "Iron Bar", smelt = { from = 2772, n = 1, spell = "Smelt Iron" } })
+ns:Register("itemSource", 3858, { name = "Mithril Ore", gather = "Mining", objects = MITHRIL_VEIN, node = "Mithril Deposit" })
+ns:Register("itemSource", 7912, { name = "Solid Stone", gather = "Mining", objects = MITHRIL_VEIN, node = "Mithril Deposit" })
+ns:Register("itemSource", 3860, { name = "Mithril Bar", smelt = { from = 3858, n = 1, spell = "Smelt Mithril" } })
+ns:Register("itemSource", 12365, { name = "Dense Stone", gather = "Mining", objects = THORIUM_VEIN, node = "Thorium Vein" })
+ns:Register("itemSource", 10620, { name = "Thorium Ore", gather = "Mining", objects = THORIUM_VEIN, node = "Thorium Vein" })
+ns:Register("itemSource", 12359, { name = "Thorium Bar", smelt = { from = 10620, n = 1, spell = "Smelt Thorium" } })
 -- Made by an earlier Blacksmithing step.
 ns:Register("itemSource", 3486, { name = "Heavy Grinding Stone", made = "Blacksmithing" })
 
--- Mob drops (names are looked up in Questie; only spawns on your map are used).
--- Rates are rough guesses until Flow has seen your own loot.
-ns:Register("itemSource", 2589, { name = "Linen Cloth", drops = {
-    "Defias Thug", "Defias Cutpurse", "Defias Bandit", "Defias Rogue Wizard", "Defias Smuggler",
-    "Kobold Vermin", "Kobold Worker", "Kobold Laborer", "Kobold Tunneler", "Riverpaw Gnoll", "Riverpaw Runt",
-    "Murloc Streamrunner", "Murloc Forager" } })
-ns:Register("itemSource", 2672, { name = "Stringy Wolf Meat", rate = 0.35, drops = { "Young Wolf", "Timber Wolf", "Prowler", "Gray Forest Wolf" } })
-ns:Register("itemSource", 769,  { name = "Chunk of Boar Meat", rate = 0.45, drops = { "Stonetusk Boar", "Rockhide Boar", "Small Crag Boar" } })
--- Horde cooking meats (the Barrens).
-ns:Register("itemSource", 5467, { name = "Kodo Meat", rate = 0.5, drops = { "Barrens Kodo", "Greater Barrens Kodo" } })
-ns:Register("itemSource", 5469, { name = "Strider Meat", rate = 0.5, drops = {
-    "Plainstrider", "Adult Plainstrider", "Elder Plainstrider", "Fleeting Plainstrider", "Ornery Plainstrider" } })
-ns:Register("itemSource", 5470, { name = "Thunder Lizard Tail", rate = 0.5, drops = { "Thunder Lizard", "Lightning Hide", "Thunderhead", "Stormsnout" } })
--- Alliance cooking meats.
-ns:Register("itemSource", 3173, { name = "Bear Meat", rate = 0.4, drops = {
-    "Young Forest Bear", "Black Bear", "Elder Black Bear", "Grizzled Black Bear", "Thistle Bear",
-    "Ferocious Grizzled Bear", "Giant Grizzled Bear" } })
-local CRAWLERS = { "Sand Crawler", "Shore Crawler", "Pygmy Tide Crawler", "Tide Crawler", "Encrusted Tide Crawler" }
-ns:Register("itemSource", 2674, { name = "Crawler Meat", rate = 0.35, drops = CRAWLERS })
-ns:Register("itemSource", 2675, { name = "Crawler Claw", rate = 0.35, drops = CRAWLERS })
-ns:Register("itemSource", 1015, { name = "Lean Wolf Flank", rate = 0.35, drops = { "Coyote", "Coyote Packleader", "Starving Dire Wolf", "Rabid Dire Wolf" } })
--- Both sides.
-ns:Register("itemSource", 3685, { name = "Raptor Egg", rate = 0.3, drops = {
-    "Mottled Raptor", "Mottled Screecher", "Mottled Scytheclaw", "Highland Raptor", "Highland Thrasher", "Highland Strider" } })
-ns:Register("itemSource", 12184, { name = "Raptor Flesh", rate = 0.4, drops = { "Jungle Stalker", "Lashtail Raptor", "Highland Fleshstalker", "Highland Thrasher" } })
+-- Looted from mobs. Which mobs, and how often, isn't listed: Flow has no
+-- record of its own of who drops these, so the step says the source is
+-- unknown. A `drops = { names }` list still works for an entry that has one,
+-- and kills are then counted from your own loot (SkillPlan.lua: SP.RecordLoot).
+ns:Register("itemSource", 2589, { name = "Linen Cloth", looted = true })
+ns:Register("itemSource", 2672, { name = "Stringy Wolf Meat", looted = true })
+ns:Register("itemSource", 769,  { name = "Chunk of Boar Meat", looted = true })
+ns:Register("itemSource", 5467, { name = "Kodo Meat", looted = true })
+ns:Register("itemSource", 5469, { name = "Strider Meat", looted = true })
+ns:Register("itemSource", 5470, { name = "Thunder Lizard Tail", looted = true })
+ns:Register("itemSource", 3173, { name = "Bear Meat", looted = true })
+ns:Register("itemSource", 2674, { name = "Crawler Meat", looted = true })
+ns:Register("itemSource", 2675, { name = "Crawler Claw", looted = true })
+ns:Register("itemSource", 1015, { name = "Lean Wolf Flank", looted = true })
+ns:Register("itemSource", 3685, { name = "Raptor Egg", looted = true })
+ns:Register("itemSource", 12184, { name = "Raptor Flesh", looted = true })
 
 -- Caught while levelling Fishing (share: roughly how many catches are this fish
 -- in the water you fish at that skill). Counts against the meat Cooking would
@@ -105,40 +100,40 @@ ns:Register("itemSource", 13888, { name = "Darkclaw Lobster", fished = true, sha
 ns:Register("itemSource", 13889, { name = "Raw Whitescale Salmon", fished = true, share = 0.4 })
 ns:Register("itemSource", 13893, { name = "Large Raw Mightfish", fished = true, share = 0.3 })
 
--- Bought. price: copper, approximate; replaced by the real price once you've
--- seen it at a vendor.
-ns:Register("itemSource", 2678, { name = "Mild Spices", vendor = true, price = 10 })
-ns:Register("itemSource", 2692, { name = "Hot Spices", vendor = true, price = 40 })
-ns:Register("itemSource", 4536, { name = "Shiny Red Apple", vendor = true, price = 25 })
-ns:Register("itemSource", 2665, { name = "Stormwind Seasoning Herbs", vendor = true, price = 20 })
-ns:Register("itemSource", 2605, { name = "Green Dye", vendor = true, price = 100 })
-ns:Register("itemSource", 3713, { name = "Soothing Spices", vendor = true, price = 160 })
-ns:Register("itemSource", 159, { name = "Refreshing Spring Water", vendor = true, price = 25 })
+-- Bought. No price is listed: Flow keeps the price a vendor's window showed
+-- you (SkillPlan.lua: SP.Price), and until then the cost is unknown.
+ns:Register("itemSource", 2678, { name = "Mild Spices", vendor = true })
+ns:Register("itemSource", 2692, { name = "Hot Spices", vendor = true })
+ns:Register("itemSource", 4536, { name = "Shiny Red Apple", vendor = true })
+ns:Register("itemSource", 2665, { name = "Stormwind Seasoning Herbs", vendor = true })
+ns:Register("itemSource", 2605, { name = "Green Dye", vendor = true })
+ns:Register("itemSource", 3713, { name = "Soothing Spices", vendor = true })
+ns:Register("itemSource", 159, { name = "Refreshing Spring Water", vendor = true })
 -- Recipes and manuals.
--- Expert (150 -> 225) for these three comes from a book, not a trainer (1g each).
-ns:Register("itemSource", 16072, { name = "Expert Cookbook", vendor = true, price = 10000 })
-ns:Register("itemSource", 16084, { name = "Expert First Aid - Under Wraps", vendor = true, price = 10000 })
-ns:Register("itemSource", 16083, { name = "Expert Fishing - The Bass and You", vendor = true, price = 10000 })
-ns:Register("itemSource", 6325, { name = "Recipe: Brilliant Smallfish", vendor = true, price = 40 })
-ns:Register("itemSource", 6328, { name = "Recipe: Longjaw Mud Snapper", vendor = true, price = 400 })
-ns:Register("itemSource", 6330, { name = "Recipe: Bristle Whisker Catfish", vendor = true, price = 1200 })
-ns:Register("itemSource", 17062, { name = "Recipe: Mithril Head Trout", vendor = true, price = 2200 })
-ns:Register("itemSource", 5484, { name = "Recipe: Roasted Kodo Meat", vendor = true, price = 240 })
-ns:Register("itemSource", 5486, { name = "Recipe: Strider Stew", vendor = true, price = 440 })
-ns:Register("itemSource", 5488, { name = "Recipe: Crispy Lizard Tail", vendor = true, price = 400 })
-ns:Register("itemSource", 6892, { name = "Recipe: Smoked Bear Meat", vendor = true, price = 250 })
-ns:Register("itemSource", 2698, { name = "Recipe: Cooked Crab Claw", vendor = true, price = 400 })
-ns:Register("itemSource", 2701, { name = "Recipe: Seasoned Wolf Kabob", vendor = true, price = 1600 })
-ns:Register("itemSource", 3682, { name = "Recipe: Curiously Tasty Omelet", vendor = true, price = 1600 })
-ns:Register("itemSource", 12228, { name = "Recipe: Roast Raptor", vendor = true, price = 5000 })
-ns:Register("itemSource", 16112, { name = "Manual: Heavy Silk Bandage", vendor = true, price = 2200 })
-ns:Register("itemSource", 16113, { name = "Manual: Mageweave Bandage", vendor = true, price = 5000 })
+-- Expert (150 -> 225) for these three comes from a book, not a trainer.
+ns:Register("itemSource", 16072, { name = "Expert Cookbook", vendor = true })
+ns:Register("itemSource", 16084, { name = "Expert First Aid - Under Wraps", vendor = true })
+ns:Register("itemSource", 16083, { name = "Expert Fishing - The Bass and You", vendor = true })
+ns:Register("itemSource", 6325, { name = "Recipe: Brilliant Smallfish", vendor = true })
+ns:Register("itemSource", 6328, { name = "Recipe: Longjaw Mud Snapper", vendor = true })
+ns:Register("itemSource", 6330, { name = "Recipe: Bristle Whisker Catfish", vendor = true })
+ns:Register("itemSource", 17062, { name = "Recipe: Mithril Head Trout", vendor = true })
+ns:Register("itemSource", 5484, { name = "Recipe: Roasted Kodo Meat", vendor = true })
+ns:Register("itemSource", 5486, { name = "Recipe: Strider Stew", vendor = true })
+ns:Register("itemSource", 5488, { name = "Recipe: Crispy Lizard Tail", vendor = true })
+ns:Register("itemSource", 6892, { name = "Recipe: Smoked Bear Meat", vendor = true })
+ns:Register("itemSource", 2698, { name = "Recipe: Cooked Crab Claw", vendor = true })
+ns:Register("itemSource", 2701, { name = "Recipe: Seasoned Wolf Kabob", vendor = true })
+ns:Register("itemSource", 3682, { name = "Recipe: Curiously Tasty Omelet", vendor = true })
+ns:Register("itemSource", 12228, { name = "Recipe: Roast Raptor", vendor = true })
+ns:Register("itemSource", 16112, { name = "Manual: Heavy Silk Bandage", vendor = true })
+ns:Register("itemSource", 16113, { name = "Manual: Mageweave Bandage", vendor = true })
 -- Tools.
-ns:Register("itemSource", 5956, { name = "Blacksmith Hammer", vendor = true, price = 18 })
-ns:Register("itemSource", 2901, { name = "Mining Pick", vendor = true, price = 16 })
-ns:Register("itemSource", 6256, { name = "Fishing Pole", vendor = true, price = 23 })
-ns:Register("itemSource", 6529, { name = "Shiny Bauble", vendor = true, price = 100 })   -- lure: +25 Fishing
-ns:Register("itemSource", 4470, { name = "Simple Wood", vendor = true, price = 38 })      -- for Basic Campfire
+ns:Register("itemSource", 5956, { name = "Blacksmith Hammer", vendor = true })
+ns:Register("itemSource", 2901, { name = "Mining Pick", vendor = true })
+ns:Register("itemSource", 6256, { name = "Fishing Pole", vendor = true })
+ns:Register("itemSource", 6529, { name = "Shiny Bauble", vendor = true })   -- lure
+ns:Register("itemSource", 4470, { name = "Simple Wood", vendor = true })      -- for Basic Campfire
 
 -------------------------------------------------------------------------------
 -- Professions

@@ -260,14 +260,13 @@ local function npcPoints(names)
     return #mine > 0 and mine or all, #mine > 0, all
 end
 
--- What an item costs at a vendor (copper): the price you last saw there,
--- else the estimate in Guides.lua. Buy steps carry it as `cost`, so the route
--- lists them as blocked until you can pay (Nav.lua).
+-- What an item costs at a vendor (copper): the price a vendor's window last
+-- showed you (recordPrices below). nil: unknown: Flow lists no prices of its
+-- own. Buy steps carry it as `cost`, so the route lists them as blocked
+-- until you can pay (Nav.lua); with no cost known, nothing is held back.
 function SP.Price(id)
-    local seen = ns.db.prices and ns.db.prices[id]
-    if seen then return seen end
-    local s = src(id)
-    return s and s.price
+    local seen = ns.db and ns.db.prices and ns.db.prices[id]
+    return type(seen) == "number" and seen or nil
 end
 
 local function recordPrices()
@@ -613,7 +612,7 @@ function SP.Alternatives(steps, id, prof, rank)
     for _, s in ipairs(steps) do
         local other = single(s)
         local os = other and src(other)
-        if s ~= mine and other and other ~= id and os and os.drops and alike(prof, s, mine, rank) then
+        if s ~= mine and other and other ~= id and os and (os.drops or os.looted) and alike(prof, s, mine, rank) then
             out[#out + 1] = other
         end
     end
@@ -621,19 +620,55 @@ function SP.Alternatives(steps, id, prof, rank)
 end
 
 -------------------------------------------------------------------------------
--- Drop rates: how many kills a dropped material really takes. Starts from the
--- listed rough rate and moves to yours as you loot those mobs.
+-- Drop rates: how many kills a dropped material really takes. Only from your
+-- own loot (SP.RecordLoot): Flow lists no rates of its own.
 -------------------------------------------------------------------------------
 
-local PRIOR_KILLS = 5           -- how much the listed rate counts, in kills
-local DEFAULT_RATE = 0.4
-
+-- -> rate, kills. rate = what dropped / what you killed; nil until one has
+-- dropped in a counted kill (unknown, not a guess).
 function SP.DropRate(id)
-    local s = src(id)
-    local prior = (s and s.rate) or DEFAULT_RATE
-    local d = ns.db.crafting.drops and ns.db.crafting.drops[id]
+    local d = ns.db and ns.db.crafting and ns.db.crafting.drops and ns.db.crafting.drops[id]
     local kills, got = d and d.kills or 0, d and d.got or 0
-    return (got + prior * PRIOR_KILLS) / (kills + PRIOR_KILLS), kills
+    if kills > 0 and got > 0 then return got / kills, kills end
+    return nil, kills
+end
+-- Pure: how many kills for `n` of a material, from the rates seen of each
+-- material that will do ({ rate or false, ... }). nil: any of them unknown.
+function SP.KillsFor(n, rates)
+    local sum, count = 0, 0
+    for _, r in ipairs(rates or {}) do
+        if type(r) ~= "number" or r <= 0 then return nil end
+        sum = sum + r; count = count + 1
+    end
+    if count == 0 then return nil end
+    return math.ceil(n / (sum / count))
+end
+
+-- Pure: the words of a farm step. kills nil: how many it takes is unknown,
+-- and no number is made up for it. mobs empty: what drops it is unknown.
+function SP.FarmText(what, progress, kills)
+    if kills then return string.format("Loot %s %s (about %d kills)", what, progress, kills) end
+    return string.format("Loot %s %s", what, progress)
+end
+function SP.FarmDetails(kills, n, mobs)
+    local out = {}
+    if kills then
+        out[1] = string.format("About %d kills for %d, going by your own loot so far.", kills, n)
+    else
+        out[1] = "How many kills it takes is unknown: Flow counts it from your own loot once it knows the mobs."
+    end
+    if #(mobs or {}) > 0 then
+        out[2] = "Drops from: " .. table.concat(mobs, ", ") .. "."
+    else
+        out[2] = "Which mobs drop it is unknown to Flow: the item's tooltip or a kill will tell you."
+    end
+    return out
+end
+-- Pure: the words of a gather step. No node count: how much a node gives
+-- isn't something Flow has read from the game.
+SP.GATHER_UNKNOWN = "How many nodes it takes, and whether your skill is enough for them, is unknown to Flow: the node's tooltip says what it asks."
+function SP.GatherText(gather, node, items)
+    return string.format("%s %s for %s", gather == "Mining" and "Mine" or "Gather", node, table.concat(items or {}, ", "))
 end
 
 -- Looting a mob that's listed as dropping a material: one kill for each such
@@ -1598,7 +1633,7 @@ function SP.Farmable(id, env, depth)
     if not s then return false end
     if s.gather then
         local r = env.skill(s.gather)
-        if r and r >= (s.skill or 1) then return true end   -- (too low a skill: you can't gather it)
+        if r then return true end   -- (whether your skill is enough for the node is unknown to Flow: the step says so)
     end
     if s.fished and env.skill("Fishing") then return true end
     if s.drops and env.dropsHere(s.drops) then return true end
@@ -1826,7 +1861,9 @@ local function planProfession(prof, t, out)
         local sm = smeltOf(id)
         local mining = A.Skill("Mining")
         if not mining then return "needs Mining to smelt" end
-        if mining < (sm.skill or 1) then return string.format("needs Mining %d to smelt", sm.skill) end
+        -- (The skill smelting asks: only what a Mining trainer's window showed.)
+        local need = sm.spell and SP.LearnSkill("Mining", { recipe = sm.spell })
+        if need and mining < need then return string.format("needs Mining %d to smelt", need) end
         if #(stationPoints("forge") or {}) == 0 then return "no known forge" end
     end
     -- What has to happen before a craft: the bank, the smelting (and why
@@ -2113,14 +2150,13 @@ local function planProfession(prof, t, out)
         local name = itemName(id)
         if s and s.gather then
             local key = s.node or s.gather
-            local nd = nodes[key] or { src = s, items = {}, count = 0 }
+            local nd = nodes[key] or { src = s, items = {} }
             nodes[key] = nd
             nd.items[#nd.items + 1] = string.format("%d %s", n, name)
-            nd.count = math.max(nd.count, math.ceil(n / (s.yield or 1)))
         elseif s and s.fished then
             -- Comes from your Fishing step; nothing to farm for it.
             watched[id] = true
-        elseif s and s.drops then
+        elseif s and (s.drops or s.looted) then
             -- Fish you'll catch levelling Fishing anyway cook just as well:
             -- they come off the meat to farm (and the recipe goes on the route).
             local fishStep, fishSrc, fishId = SP.FishAlternative(steps, id, prof, rank)
@@ -2139,22 +2175,16 @@ local function planProfession(prof, t, out)
             -- Other materials that level the same (wolf meat or boar meat): any of them will
             -- do, so their mobs count too.
             local ids = SP.Alternatives(steps, id, prof, rank)
-            local names, mobs, rates = {}, {}, 0
+            local names, mobs, rates = {}, {}, {}
             for _, aid in ipairs(ids) do
                 local as = src(aid)
                 names[#names + 1] = itemName(aid)
-                for _, m in ipairs(as.drops) do mobs[#mobs + 1] = m end
-                rates = rates + SP.DropRate(aid)
+                for _, m in ipairs(as.drops or {}) do mobs[#mobs + 1] = m end
+                rates[#rates + 1] = SP.DropRate(aid) or false
             end
-            local rate = rates / #ids
-            local kills = math.ceil(n / math.max(rate, 0.05))
-            local _, seenKills = SP.DropRate(id)
+            local kills = SP.KillsFor(n, rates)
             local pts = npcPoints(mobs)
-            local details = {
-                string.format("About %d kills: roughly 1 in %d drops one%s.", kills, math.floor(1 / rate + 0.5),
-                    seenKills >= 5 and " (from your own loot)" or ""),
-                "Drops from: " .. table.concat(mobs, ", ") .. ".",
-            }
+            local details = SP.FarmDetails(kills, n, mobs)
             if t.optional then
                 table.insert(details, 1, prof .. " isn't needed for a quest: loot these as you quest. No need to stop just for this.")
             end
@@ -2173,9 +2203,10 @@ local function planProfession(prof, t, out)
                   -- tooltip (QuestMarks.lua, 0.35.319).
                   prof = prof, loot = table.concat(names, " or "), have = have, need = have + n,
                   -- Progress like a quest objective: what you carry / what the plan uses.
-                  text = string.format("Loot %s %s (~%d kills)", table.concat(names, " or "), ns.Progress(have, have + n), kills),
+                  text = SP.FarmText(table.concat(names, " or "), ns.Progress(have, have + n), kills),
                   details = details,
-                  blockedBy = #pts == 0 and ("no known " .. name .. " drops nearby") or nil })
+                  blockedBy = (#mobs == 0 and ("what drops " .. name .. " is unknown to Flow"))
+                      or (#pts == 0 and ("no known " .. name .. " drops nearby")) or nil })
             end
         elseif s and s.vendor then
             local pts, _, sellers = vendorPoints(id)
@@ -2214,16 +2245,15 @@ local function planProfession(prof, t, out)
         local pts, onMap = objectPoints(s.objects)
         local blocked
         if not gr then blocked = "needs " .. s.gather .. " (or buy them)"
-        elseif gr < (s.skill or 1) then blocked = string.format("needs %s %d", s.gather, s.skill)
         elseif #pts == 0 then blocked = "no known " .. node .. " in Flow's data"
         end
         if s.gather == "Mining" and not hasTool("Mining", 2901) and not blocked then blocked = "needs a Mining Pick" end
         handled[s.gather] = true
         add({ key = "gather:" .. node, kind = "gather", prof = s.gather, points = pts,
-              text = string.format("%s %s (about %d) for %s", s.gather == "Mining" and "Mine" or "Gather",
-                  node, nd.count, table.concat(nd.items, ", ")),
+              text = SP.GatherText(s.gather, node, nd.items),
               details = { onMap and "Nearest ones on this map; the route picks the ones on your way."
-                              or "None on this map: these are elsewhere." },
+                              or "None on this map: these are elsewhere.",
+                          SP.GATHER_UNKNOWN },
               blockedBy = blocked })
     end
 

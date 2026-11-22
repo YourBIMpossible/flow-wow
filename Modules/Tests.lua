@@ -1005,7 +1005,7 @@ ns:Register("test", "bank: far bank stock is skipped for mats you can farm here"
     -- Can you get it here? (made-up items; nothing is read from the game)
     local HERB, HIDE, BAR, ORE, FISH, SOLD = 1, 2, 3, 4, 5, 6
     local srcs = {
-        [HERB] = { gather = "Herbalism", skill = 50 }, [HIDE] = { drops = { "Wolf" } },
+        [HERB] = { gather = "Herbalism" }, [HIDE] = { drops = { "Wolf" } },
         [BAR] = { smelt = { from = ORE, n = 1 } }, [ORE] = { gather = "Mining", skill = 1 },
         [FISH] = { fished = true }, [SOLD] = { vendor = true },
     }
@@ -1013,11 +1013,9 @@ ns:Register("test", "bank: far bank stock is skipped for mats you can farm here"
     local env = { source = function(id) return srcs[id] end, skill = function(n) return skills[n] end,
                   dropsHere = function() return mobsHere end, soldHere = function() return soldHere end }
     t:ok(not SP.Farmable(HERB, env), "no Herbalism: can't gather it")
-    skills.Herbalism = 49
-    t:ok(not SP.Farmable(HERB, env), "Herbalism too low for this herb: can't gather it")
     t:ok(SP.UseBank(1200, SP.Farmable(HERB, env)), "so a far bank is still the way")
-    skills.Herbalism = 50
-    t:ok(SP.Farmable(HERB, env), "skill high enough: gather it")
+    skills.Herbalism = 49
+    t:ok(SP.Farmable(HERB, env), "you have Herbalism: gather it (no node skill is listed to hold it back)")
     t:ok(not SP.UseBank(1200, SP.Farmable(HERB, env)), "and the far bank is skipped")
     t:ok(not SP.Farmable(HIDE, env), "the mob isn't on this map: not farmable here")
     mobsHere = true
@@ -1043,18 +1041,24 @@ ns:Register("test", "bank: far bank stock is skipped for mats you can farm here"
     t:ok(SP.BankNote(1000, 1000 + 5 * 86400):find("5 days ago: it may have changed", 1, true) ~= nil, "read 5 days ago: says it may have changed")
 end)
 
-ns:Register("test", "drops: rate moves from the guide's to yours", function(t)
+ns:Register("test", "drops: the rate is only what your own loot showed", function(t)
     local SP = ns.skillPlan
     local saved = ns.db.crafting.drops
     ns.db.crafting.drops = {}
-    t:near(SP.DropRate(2672), 0.35, 0.001, "no kills yet: the guide's rate")
-    for i = 1, 5 do SP.RecordLoot("Young Wolf", "corpse" .. i, i == 1 and { [2672] = true } or {}) end
-    SP.RecordLoot("Young Wolf", "corpse5", {})            -- same corpse looted again: not counted
-    local r, kills = SP.DropRate(2672)
-    t:eq(kills, 5, "five kills counted")
-    t:near(r, (1 + 0.35 * 5) / 10, 0.001, "1 in 5 pulls the estimate down")
-    SP.RecordLoot("Stonetusk Boar", "corpse6", { ["chunk of boar meat"] = true })
-    t:eq(ns.db.crafting.drops[769].got, 1, "found by name too")
+    local r0, k0 = SP.DropRate(2672)
+    t:eq(r0, nil, "no kills yet: the rate is unknown, not a listed guess"); t:eq(k0, 0, "and no kills counted")
+    -- (Made-up sources: Flow lists no mobs of its own for a material.)
+    local srcs = { [2672] = { name = "Stringy Wolf Meat", drops = { "Wolf__test" } },
+                   [769] = { name = "Chunk of Boar Meat", drops = { "Boar__test" } } }
+    with(ns, "Each", function(_, kind) return pairs(kind == "itemSource" and srcs or {}) end, function()
+        for i = 1, 5 do SP.RecordLoot("Wolf__test", "corpse" .. i, i == 1 and { [2672] = true } or {}) end
+        SP.RecordLoot("Wolf__test", "corpse5", {})            -- same corpse looted again: not counted
+        local r, kills = SP.DropRate(2672)
+        t:eq(kills, 5, "five kills counted")
+        t:near(r, 1 / 5, 0.001, "1 in 5: your own loot, nothing mixed in")
+        SP.RecordLoot("Boar__test", "corpse6", { ["chunk of boar meat"] = true })
+        t:eq(ns.db.crafting.drops[769].got, 1, "found by name too")
+    end)
     ns.db.crafting.drops = saved
 end)
 
