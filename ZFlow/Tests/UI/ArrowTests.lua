@@ -135,7 +135,7 @@ return {
         end)
         local q = c.arrows[1]
         t.eq(q.shown, true)
-        t.eq(q.lines, { "Kill boars", "100 yd", A.UNKNOWN_TURN })
+        t.eq(q.lines, { "Kill boars", "100 yd N", A.UNKNOWN_TURN })
         t.eq(q.faded, 1 * A.LOST_ALPHA)
     end,
 
@@ -261,7 +261,7 @@ return {
         local q, p = c.arrows[1], c.arrows[2]
         t.eq(q.shown, true)
         t.eq(p.shown, true)
-        t.eq(q.lines, { "Kill boars", "100 yd", "Copper vein", "300 yd" })
+        t.eq(q.lines, { "Kill boars", "100 yd N", "Copper vein", "300 yd E" })
         c.advance(3, 300)
         t.ok(math.abs(q.drawn.turn - N.ArrowTurn(0, 0)) < 1e-3, "the boars are north")
         cmd(d, "demo")
@@ -446,14 +446,14 @@ return {
         local q, p = c.arrows[1], c.arrows[2]
         t.eq(q.shown, true, "the waypoint is still the quest arrow")
         t.eq(p.shown, true, "the profession needle is shown")
-        t.eq(q.lines, { N.WAYPOINT_LABEL, "100 yd", "Mining trainer", "300 yd" })
+        t.eq(q.lines, { N.WAYPOINT_LABEL, "100 yd N", "Mining trainer", "300 yd E" })
         t.ok(a.state().view.prof.mode ~= "off")
         c.setWaypoint(nil)
         a.relayout()
         t.eq(q.shown, false, "no waypoint: no quest arrow")
         t.eq(p.shown, true, "the needle does not need a waypoint")
         a.setGuide(function() return { quest = { place = { cont = 1, map = 1411, x = 0.5, y = 0.3 }, label = "Own" } } end)
-        t.eq(q.lines, { "Own", "100 yd" }, "a guide that was set is taken whole: nothing is added to it")
+        t.eq(q.lines, { "Own", "100 yd N" }, "a guide that was set is taken whole: nothing is added to it")
         t.eq(p.shown, false)
     end,
 
@@ -464,7 +464,7 @@ return {
         plain.setWaypoint(1411, 0.5, 0.3)
         login(plain)
         local want = plain.arrows[1]
-        t.eq(want.lines, { N.WAYPOINT_LABEL, "100 yd" })
+        t.eq(want.lines, { N.WAYPOINT_LABEL, "100 yd N" })
         for name, given in pairs({ ["not capped"] = { 50, 75 }, ["visited"] = { 75, 75, 75 } }) do
             local c, a = profStart(given[1], given[2], given[3])
             login(c)
@@ -490,7 +490,7 @@ return {
         login(c)
         a.relayout()
         local q, p = c.arrows[1], c.arrows[2]
-        t.eq(q.lines, { N.WAYPOINT_LABEL, "100 yd", "Mining trainer \226\128\148 other map" })
+        t.eq(q.lines, { N.WAYPOINT_LABEL, "100 yd N", "Mining trainer \226\128\148 other map" })
         t.eq(p.shown, false, "no needle")
     end,
 }

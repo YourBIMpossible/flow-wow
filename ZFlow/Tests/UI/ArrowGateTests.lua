@@ -47,13 +47,13 @@ return {
         local c = start()
         local src = source(c)
         t.eq(src.view.gate, "open", "the client does not say")
-        t.eq(src.lines.quest, { "Kill boars", "100 yd" })
+        t.eq(src.lines.quest, { "Kill boars", "100 yd N" })
         c.setDead(false)
         src = source(c)
         t.eq(src.view.gate, "open")
-        t.eq(src.lines.quest, { "Kill boars", "100 yd" })
+        t.eq(src.lines.quest, { "Kill boars", "100 yd N" })
         c.setCorpse(1411, 0.3, 0.5)
-        t.eq(source(c).lines.quest, { "Kill boars", "100 yd" }, "a corpse place is not used while alive")
+        t.eq(source(c).lines.quest, { "Kill boars", "100 yd N" }, "a corpse place is not used while alive")
     end,
 
     ["dead: the gate is corpse and the quest arrow points at the corpse"] = function(t)
@@ -64,7 +64,7 @@ return {
         t.eq(src.view.gate, "corpse")
         near(t, src.view.quest.distance, 200, "distance to the corpse")
         near(t, src.turns.quest, math.pi / 2, "the corpse is west: a quarter turn anticlockwise")
-        t.eq(src.lines.quest, { "Corpse", "200 yd" })
+        t.eq(src.lines.quest, { "Corpse", "200 yd W" })
         t.eq(src.view.quest.target, { cont = 1, zone = 1411 })
     end,
 
@@ -126,12 +126,12 @@ return {
         guide.view = { gate = "open" }
         local src = source(c, guide)
         t.eq(src.view.gate, "open")
-        t.eq(src.lines.quest, { "Kill boars", "100 yd" })
+        t.eq(src.lines.quest, { "Kill boars", "100 yd N" })
         c.setDead(false)
         guide.view = { gate = "corpse" }
         src = source(c, guide)
         t.eq(src.view.gate, "corpse")
-        t.eq(src.lines.quest, { "Corpse", "200 yd" })
+        t.eq(src.lines.quest, { "Corpse", "200 yd W" })
     end,
 
     ["dead: the profession step and the guide handed in are left alone"] = function(t)
@@ -140,7 +140,7 @@ return {
         c.setCorpse(1411, 0.3, 0.5)
         local guide = steps()
         local src = source(c, guide)
-        t.eq(src.lines.prof, { "Copper vein", "300 yd" })
+        t.eq(src.lines.prof, { "Copper vein", "300 yd E" })
         t.eq(guide, steps())
     end,
 
@@ -153,7 +153,7 @@ return {
         local q = c.arrows[1]
         t.eq(q.shown, true)
         t.eq(q.lines[1], "Corpse")
-        t.eq(q.lines[2], "200 yd")
+        t.eq(q.lines[2], "200 yd W")
         local view = a.state().view
         t.eq(view.quest.mode, "corpse")
         t.eq(view.quest.colour, { N.CORPSE_RED[1], N.CORPSE_RED[2], N.CORPSE_RED[3] })
@@ -170,7 +170,7 @@ return {
         a.setGuide(function() return {} end)
         t.eq(c.arrows[1].shown, true)
         t.eq(c.arrows[1].lines[1], "Corpse")
-        t.eq(c.arrows[1].lines[2], "200 yd")
+        t.eq(c.arrows[1].lines[2], "200 yd W")
     end,
     -- ------------------------------------------------- dead, ghost, elsewhere
     ["the two authored lines"] = function(t)
@@ -209,7 +209,7 @@ return {
         t.eq(src.view.gate, "corpse")
         near(t, src.view.quest.distance, 200, "distance to the corpse")
         near(t, src.turns.quest, math.pi / 2, "the corpse is west")
-        t.eq(src.lines.quest, { "Corpse", "200 yd" })
+        t.eq(src.lines.quest, { "Corpse", "200 yd W" })
     end,
 
     ["a ghost, the corpse not on this map: the label and the other-map line"] = function(t)
@@ -242,13 +242,13 @@ return {
         c.setDead(true)
         t.eq(source(c).lines.quest, { "Corpse", A.UNKNOWN_TURN }, "no corpse place")
         c.setCorpse(1411, 0.3, 0.5)
-        t.eq(source(c).lines.quest, { "Corpse", "200 yd" }, "a corpse place")
+        t.eq(source(c).lines.quest, { "Corpse", "200 yd W" }, "a corpse place")
         c.ghost = function() error("the client refused") end
-        t.eq(source(c).lines.quest, { "Corpse", "200 yd" }, "the ghost read fails")
+        t.eq(source(c).lines.quest, { "Corpse", "200 yd W" }, "the ghost read fails")
         c.ghost = function() return 1 end
-        t.eq(source(c).lines.quest, { "Corpse", "200 yd" }, "only a plain true or false counts here")
+        t.eq(source(c).lines.quest, { "Corpse", "200 yd W" }, "only a plain true or false counts here")
         c.ghost = nil
-        t.eq(source(c).lines.quest, { "Corpse", "200 yd" }, "no ghost read")
+        t.eq(source(c).lines.quest, { "Corpse", "200 yd W" }, "no ghost read")
     end,
 
     ["alive: a ghost read of false or unknown changes nothing"] = function(t)
@@ -257,7 +257,7 @@ return {
         c.setGhost(false)
         local src = source(c)
         t.eq(src.view.gate, "open")
-        t.eq(src.lines.quest, { "Kill boars", "100 yd" })
+        t.eq(src.lines.quest, { "Kill boars", "100 yd N" })
         c.setGhost(nil)
         t.eq(source(c).view.gate, "open")
         c.ghost = function() return 1 end
@@ -270,7 +270,7 @@ return {
         c.setCorpse(1411, 0.3, 0.5)
         local src = source(c)
         t.eq(src.view.gate, "corpse", "dead unknown, ghost true")
-        t.eq(src.lines.quest, { "Corpse", "200 yd" })
+        t.eq(src.lines.quest, { "Corpse", "200 yd W" })
         c.dead = function() error("the client refused") end
         t.eq(source(c).view.gate, "corpse", "the dead read fails, ghost true")
         c.dead = nil
@@ -354,7 +354,7 @@ return {
         guide.quest.still = true
         local src = source(c, guide)
         t.eq(src.turns.quest, nil, "no facing: no turn")
-        t.eq(src.lines.quest, { "Kill boars", "100 yd", A.UNKNOWN_TURN })
+        t.eq(src.lines.quest, { "Kill boars", "100 yd N", A.UNKNOWN_TURN })
         t.eq(src.lost.quest, true)
         t.eq(src.still.quest, nil, "a step with a place is not still")
         guide.quest.place = nil
@@ -409,7 +409,7 @@ return {
         t.eq(a.state().view.quest.mode, "corpse")
         c.setGhost(true)
         a.relayout()
-        t.eq(q.lines, { "Corpse", "200 yd" })
+        t.eq(q.lines, { "Corpse", "200 yd W" })
     end,
 
     ["dead: a corpse answer whose map is not a number is no place (IT4)"] = function(t)

@@ -181,7 +181,7 @@ return {
         t.eq(a.state().view.quest.mode, "intro")
         c.advance(A.INTRO_SECONDS + 0.5, 10)
         t.eq(q.shown, true)
-        t.eq(q.lines, { "Kill boars", "100 yd" })
+        t.eq(q.lines, { "Kill boars", "100 yd N" })
         t.eq(a.state().view.quest.mode, "arrow")
         t.eq(guide, boars(), "the guide handed in is left alone")
     end,
@@ -243,7 +243,7 @@ return {
         login(c)
         local src = A.GuideSource(c, {}, boars())
         t.eq(src.view.gate, "open")
-        t.eq(src.lines.quest, { "Kill boars", "100 yd" })
+        t.eq(src.lines.quest, { "Kill boars", "100 yd N" })
         t.eq(A.GuideSource(c, {}, boars(), false).view.gate, "open")
     end,
 
@@ -254,7 +254,7 @@ return {
         guide.view = { gate = "open" }
         local src = A.GuideSource(c, {}, guide, { title = "Hello" })
         t.eq(src.view.gate, "open")
-        t.eq(src.lines.quest, { "Kill boars", "100 yd" })
+        t.eq(src.lines.quest, { "Kill boars", "100 yd N" })
     end,
 
     ["GuideSource: an intro with no title has no line"] = function(t)
@@ -279,7 +279,7 @@ return {
         login(c)
         local q = c.arrows[1]
         t.eq(q.shown, true)
-        t.eq(q.lines, { "Waypoint", "200 yd" })
+        t.eq(q.lines, { "Waypoint", "200 yd W" })
         t.eq(a.state().view.quest.mode, "arrow")
         t.eq(c.arrows[2].shown, false, "a waypoint is no profession step")
     end,
@@ -291,10 +291,10 @@ return {
         t.eq(q.shown, false)
         c.setWaypoint(1411, 0.3, 0.5)
         c.advance(A.RELAYOUT * 2, 2)
-        t.eq(q.lines, { "Waypoint", "200 yd" })
+        t.eq(q.lines, { "Waypoint", "200 yd W" })
         c.setWaypoint(1411, 0.5, 0.3)          -- 100 yards north
         c.advance(A.RELAYOUT * 2, 2)
-        t.eq(q.lines, { "Waypoint", "100 yd" })
+        t.eq(q.lines, { "Waypoint", "100 yd N" })
         c.setWaypoint(nil)
         c.advance(A.RELAYOUT * 2, 2)
         t.eq(q.shown, false)
@@ -305,12 +305,12 @@ return {
         c.setWaypoint(1411, 0.3, 0.5)
         login(c)
         local q = c.arrows[1]
-        t.eq(q.lines, { "Waypoint", "200 yd" })
+        t.eq(q.lines, { "Waypoint", "200 yd W" })
         local guide = boars()
         a.setGuide(function() return guide end)
-        t.eq(q.lines, { "Kill boars", "100 yd" })
+        t.eq(q.lines, { "Kill boars", "100 yd N" })
         a.setGuide(nil)
-        t.eq(q.lines, { "Waypoint", "200 yd" })
+        t.eq(q.lines, { "Waypoint", "200 yd W" })
     end,
 
     ["an explicit guide wins even when it has no step"] = function(t)
@@ -330,7 +330,7 @@ return {
         c.setDead(true)
         c.setCorpse(1411, 0.5, 0.3)
         login(c)
-        t.eq(c.arrows[1].lines, { "Corpse", "100 yd" })
+        t.eq(c.arrows[1].lines, { "Corpse", "100 yd N" })
     end,
 
     ["a client with no waypoint read, or one that fails: nothing shown"] = function(t)
@@ -352,7 +352,7 @@ return {
         local q = c.arrows[1]
         t.eq(q.lines, { ns.id.title })
         c.advance(A.INTRO_SECONDS + 0.5, 10)
-        t.eq(q.lines, { "Waypoint", "200 yd" })
+        t.eq(q.lines, { "Waypoint", "200 yd W" })
     end,
 
     -- ------------------------------------------- the corpse's place (Plexy R5)
