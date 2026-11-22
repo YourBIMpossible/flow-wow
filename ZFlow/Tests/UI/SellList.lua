@@ -143,7 +143,7 @@ tests["sell list panel: the player's never-sell list is honoured and shown as ke
     c.setMerchantOpen(true)
     local p = panelOf(c)
     t.ok(not has(p.lines, "3 x Broken Fang: 4c each, 12c (the item's own sell price)"), "not on the sell list")
-    t.ok(has(p.lines, "Broken Fang: you bought it back, so it's never sold"), "listed as kept")
+    t.ok(has(p.lines, "Broken Fang: on your never-sell list"), "listed as kept")
 end
 
 tests["sell list panel: a client that cannot draw leaves nothing to do"] = function(t)

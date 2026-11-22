@@ -56,12 +56,21 @@ M.ROWS = {
     { key = "bank.list", type = "bool", default = true },
     -- loot.junkNote: the look-only grey loot note (Items/LootNote.lua) (lead)
     { key = "loot.junkNote", type = "bool", default = true },
+    -- advisor.panel: the advisor prompt panel (UI/Advisor.lua). (lead)
+    { key = "advisor.panel", type = "bool", default = true },
+    -- Q-A: point the quest arrow at the player's quests (lead)
+    -- L6-J: record what the player's own loot windows show (Items/Drops.lua) (lead)
+    { key = "loot.record", type = "bool", default = true },
+    { key = "quest.arrow", type = "bool", default = true },
     { key = "auction.chartClick", type = "bool", default = true },
     { key = "buffButton.enabled", type = "bool", default = false },
     { key = "buffButton.dock", type = "bool", default = true },
     { key = "buffButton.always", type = "bool", default = false },
     { key = "buffButton.care", type = "bool", default = true },
     { key = "buffButton.keepOnMain", type = "bool", default = false },
+    -- spec.role: the role the player chose (Rotation/Role.lua): "", "dps",
+    -- "heal" or "tank". Empty: none chosen.
+    { key = "spec.role", type = "string", default = "" },
 }
 
 -- ---------------------------------------------------------------- helpers
