@@ -62,6 +62,21 @@ return {
         t.eq(k.problems:count(), 0)
     end,
 
+    ["arrow setting: a reset of all keeps the arrow places; the row's own reset clears them (D6)"] = function(t)
+        if type(A.SETTING) ~= "string" then t.ok(false, MISSING) return end
+        local k, c, a = start()
+        login(c)
+        a.setGuide(step)
+        t.eq(k.settings:row(A.SETTING).keepOnResetAll, true)
+        c.arrows[1].drag({ "TOP", "TOP", 0, -40 })
+        k.settings:reset("all")
+        t.ok(type(direct(k)) == "table", "kept by a reset of all")
+        t.eq(k.settings:get(A.SETTING).points.quest, { "TOP", "TOP", 0, -40 })
+        k.settings:reset(A.SETTING)
+        t.eq(direct(k), nil, "the layout reset is its own path")
+        t.eq(k.problems:count(), 0)
+    end,
+
     ["arrow setting: the row answers what the direct read answers"] = function(t)
         if type(A.SETTING) ~= "string" then t.ok(false, MISSING) return end
         local k, c, a = start()

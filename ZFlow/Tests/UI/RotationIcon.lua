@@ -254,6 +254,17 @@ tests["rotation icon: it presses nothing, glows nothing and makes no other frame
 end
 
 -- ------------------------------------------------------------------- place
+tests["rotation icon: a reset of all keeps the icon's place; the row's own reset clears it (D6)"] = function(t)
+    local k, c = start()
+    t.eq(k.settings:row(I.SETTING).keepOnResetAll, true)
+    c.icons[1].drag({ "CENTER", "CENTER", 30, -40 })
+    k.settings:reset("all")
+    t.eq(k.settings:get(I.SETTING), { point = { "CENTER", "CENTER", 30, -40 } }, "kept by a reset of all")
+    k.settings:reset(I.SETTING)
+    t.eq(k.settings:get(I.SETTING), nil, "the place reset is its own path")
+    t.eq(k.problems:count(), 0)
+end
+
 tests["rotation icon: a Ctrl drag saves the point in the layout and the next start restores it"] = function(t)
     local k, c = start()
     c.icons[1].drag({ "CENTER", "CENTER", 30, -40 })
