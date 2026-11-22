@@ -62,7 +62,7 @@ function N.MinimapPin(target, here, mini)
     local half = mini.size / 2
     local rim = half
     if above0(mini.inset) then rim = half - mini.inset end
-    if not (rim > 0) then return nil, "minimap unknown" end
+    if rim <= 0 then return nil, "minimap unknown" end
 
     if type(here) ~= "table" then here = {} end
     local at = here.position
