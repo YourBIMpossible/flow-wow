@@ -152,4 +152,17 @@ tests["usable: no reason names the product, and nothing handed in is changed"] =
     end
 end
 
+tests["usable P-Q: a class-table yes is not a yes until the game confirms it"] = function(t)
+    local yes = { can = true, why = "ok", reason = "you can use it", evidence = "first guess" }
+    local a = U.Best(U.Check(nil), yes)
+    t.eq(a.can, nil, "the game's marks were not read")
+    t.eq(a.why, "unknown")
+    t.eq(a.reason, U.REASON.unconfirmed)
+    t.eq(yes.can, true, "the table's answer is not changed")
+    t.eq(U.Best(nil, yes).can, nil)
+    t.eq(U.Best(U.Check({}), yes).can, true, "the game marks nothing: yes")
+    local no = { can = false, why = "class", reason = "x", evidence = "first guess" }
+    t.ok(U.Best(U.Check(nil), no) == no, "a table no still stands, with its label")
+end
+
 return tests

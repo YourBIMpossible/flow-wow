@@ -42,6 +42,13 @@ local function typed(gear, classId, subclassId, minLevel)
     return gear
 end
 
+-- The game marks nothing on the item as not met (gear.unmet, a CLIENT NEED):
+-- the yes these tests need. A class table alone is no longer taken as a yes.
+local function marked(gear)
+    gear.unmet = {}
+    return gear
+end
+
 local function who(role, level)
     return { pack = pack(), role = role, level = level }
 end
@@ -49,7 +56,7 @@ end
 tests["verdict: an upgrade for an empty slot, through the fake client"] = function(t)
     local c = client()
     c.setWorn(1, false)
-    local lines, detail = V.Lines(typed(c.gear(HELM), 4, 2, 1), who("dps", 10))
+    local lines, detail = V.Lines(marked(typed(c.gear(HELM), 4, 2, 1)), who("dps", 10))
     t.eq(lines, { { text = "Upgrade for your head piece (+4, dps)", tone = "good" } })
     t.eq(detail.use.can, true)
     t.eq(detail.result.verdict, "upgrade")
@@ -60,7 +67,7 @@ end
 tests["verdict: the role picks the weights"] = function(t)
     local c = client()
     c.setWorn(1, false)
-    local lines = V.Lines(typed(c.gear(HELM), 4, 2, 1), who("tank", 10))
+    local lines = V.Lines(marked(typed(c.gear(HELM), 4, 2, 1)), who("tank", 10))
     t.eq(lines[1].text, "Upgrade for your head piece (+12, tank)")
 end
 
@@ -69,10 +76,10 @@ tests["verdict F-006: a dual wielder's one-hander is held up to the off hand too
     c.setWorn(16, SWORD)
     c.setWorn(17, DAGGER)
     c.setDualWield(true)
-    local lines = V.Lines(typed(c.gear(NEW), 2, 7, 1), who("dps", 10))
+    local lines = V.Lines(marked(typed(c.gear(NEW), 2, 7, 1)), who("dps", 10))
     t.eq(lines, { { text = "Upgrade for your off hand (+6, dps)", tone = "good" } })
     c.setDualWield(nil)
-    lines = V.Lines(typed(c.gear(NEW), 2, 7, 1), who("dps", 10))
+    lines = V.Lines(marked(typed(c.gear(NEW), 2, 7, 1)), who("dps", 10))
     t.eq(lines[1], { text = "Not an upgrade for your main hand (-8, dps)", tone = "bad" })
     t.eq(#lines, 2, "and the note that dual wield is not known")
 end
@@ -103,7 +110,7 @@ end
 
 tests["verdict: a slot nobody read is no verdict, where an empty one is an upgrade"] = function(t)
     local c = client()
-    local lines = V.Lines(typed(c.gear(HELM), 4, 2, 1), who("dps", 10))
+    local lines = V.Lines(marked(typed(c.gear(HELM), 4, 2, 1)), who("dps", 10))
     t.eq(lines[1].tone, "none")
     t.eq(lines[1].text, "No verdict: " .. ns.GearScore.REASON.worn .. ": head")
 end
@@ -112,7 +119,7 @@ tests["verdict: a role the pack has no weights for is no verdict, with the reaso
     local c = client()
     c.setWorn(1, false)
     for _, role in ipairs({ "heal", false, 3 }) do
-        local lines, detail = V.Lines(typed(c.gear(HELM), 4, 2, 1), who(role or nil, 10))
+        local lines, detail = V.Lines(marked(typed(c.gear(HELM), 4, 2, 1)), who(role or nil, 10))
         t.eq(lines, { { text = "No verdict: " .. ns.GearScore.REASON.weights, tone = "none" } })
         t.eq(detail.weights, nil)
     end
@@ -148,7 +155,7 @@ tests["verdict: a stat not read is no verdict, and a stat key no weights name is
     local c = client()
     c.setWorn(1, false)
     c.setItem("item:8", { kind = "INVTYPE_HEAD", stats = { [STA] = "?", ITEM_MOD_NEW_THING_SHORT = 5 } })
-    local lines, detail = V.Lines(typed(c.gear("item:8"), 4, 2, 1), who("dps", 10))
+    local lines, detail = V.Lines(marked(typed(c.gear("item:8"), 4, 2, 1)), who("dps", 10))
     t.eq(lines, { { text = "No verdict: " .. ns.GearScore.REASON.stat .. ": " .. STA, tone = "none" } })
     t.eq(detail.unmapped, { "ITEM_MOD_NEW_THING_SHORT" })
 end
@@ -177,6 +184,15 @@ tests["verdict: nothing handed in is changed"] = function(t)
         classId = 4, subclassId = 2, minLevel = 1 })
     t.eq(w.role, "dps")
     t.eq(w.pack.weights.dps.values, { [STR] = 2, [STA] = 1 })
+end
+
+tests["verdict P-Q: a class-table yes with the game's marks not read is no verdict, never an upgrade"] = function(t)
+    local c = client()
+    c.setWorn(1, false)
+    local lines, detail = V.Lines(typed(c.gear(HELM), 4, 2, 1), who("dps", 10))
+    t.eq(lines, { { text = "No verdict: " .. ns.GearUsable.REASON.unconfirmed, tone = "none" } })
+    t.eq(detail.use.can, nil, "a weapon skill or armour kind may not be trained yet")
+    t.eq(detail.result.verdict, "upgrade", "the scorer would have called it one")
 end
 
 return tests
