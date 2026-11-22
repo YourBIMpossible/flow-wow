@@ -99,6 +99,7 @@ Modules\Fight\Choices.lua
 Modules\CombatLogFile.lua
 Modules\Nav\Nav.lua
 Modules\Nav\Activities.lua
+Modules\Nav\Arrows.lua
 Modules\Nav\Gates.lua
 Modules\Nav\TravelSpells.lua
 Modules\Nav\Rides.lua

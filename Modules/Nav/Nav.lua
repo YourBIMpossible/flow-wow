@@ -4373,47 +4373,16 @@ function N:ShowStop(goal, anchor)
     card:Show()
 end
 
+-- The ring art, for the arrow views (Arrows.lua builds the frames).
+N.ARROW_RING = { texture = ART .. "ArrowRing", w = HALO_W, h = HALO_H, y = HALO_Y }
+
 local function buildArrow()
-    local f = CreateFrame("Button", "FlowNavArrow", UIParent)
-    f:SetSize(56, 56)
-    f:SetFrameStrata("HIGH")
-    local p = ns.db.nav.point
-    if p then f:SetPoint(p[1], UIParent, p[2], p[3], p[4])
-    else f:SetPoint("TOP", UIParent, "TOP", 0, -120) end
-    -- The faint profession needle sits under the main arrow (a lower frame
-    -- level, a little see-through), its step name and distance in small grey
-    -- text above, opposite the main arrow's text.
-    f.prof = CreateFrame("Frame", nil, f)
-    f.prof:SetAllPoints(f)
-    f.prof:SetFrameLevel(math.max(0, f:GetFrameLevel() - 1))
-    f.prof:SetAlpha(0.85)
-    f.prof.arrow = N:MakeProfArrow(f.prof)
-    -- At the profession step: a faint see-through ring where the arrow was,
-    -- with none of the main arrow's beam or bouncing icon (those mean "your
-    -- main step").
-    f.prof.ring = f.prof:CreateTexture(nil, "BACKGROUND", nil, 2)
-    f.prof.ring:SetTexture(ART .. "ArrowRing")
-    f.prof.ring:SetBlendMode("ADD")
-    f.prof.ring:SetSize(HALO_W, HALO_H)
-    f.prof.ring:SetPoint("CENTER", f.prof, "CENTER", 0, HALO_Y)
-    f.prof.ring:SetAlpha(N.PROF_RING_ALPHA)
-    f.prof.ring:Hide()
-    f.prof.text = f.prof:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    f.prof.text:SetPoint("BOTTOM", f, "TOP", 0, N.NeedleClearance(f))
-    f.prof.text:SetWidth(260)
-    f.prof.text:SetWordWrap(false)
-    do local c = ns.theme.muted; f.prof.text:SetTextColor(c[1], c[2], c[3]) end
-    f.prof:Hide()
-    f.arrow = N:MakeArrow(f)
-    N.arrowFrame = f
-    f.text = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    f.text:SetPoint("TOP", f, "BOTTOM", 0, -2)
-    f.sub = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    f.sub:SetPoint("TOP", f.text, "BOTTOM", 0, -2)
+    -- Both arrows' frames, their sizes, anchors and levels: N:ArrowView
+    -- (Arrows.lua). Here: what they do (clicks, drag, tooltips).
+    local f = N:ArrowView("quest").frame
     -- The lines are stacked by length on one side of the arrow (N.LayoutLines),
     -- looked at a few times a second: any of them may change, and so may
     -- where the arrow is.
-    f.linesDriver = CreateFrame("Frame", nil, f)
     do
         local acc = 1
         f.linesDriver:SetScript("OnUpdate", function(_, dt)
@@ -4423,9 +4392,6 @@ local function buildArrow()
             pcall(N.LayoutLines, f)
         end)
     end
-    f:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    f:SetMovable(true)
-    f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", function(self) if ns.MoveKeyDown() then self:StartMoving() end end)
     f:SetScript("OnDragStop", function(self)
         self:StopMovingOrSizing()
@@ -4470,10 +4436,6 @@ local function buildArrow()
     end)
     -- The text under the arrow (step name, distance) clicks like the arrow:
     -- left = this panel, right = the menu.
-    f.textHit = CreateFrame("Button", nil, f)
-    f.textHit:SetPoint("TOP", f, "BOTTOM", 0, 0)
-    f.textHit:SetSize(240, 34)
-    f.textHit:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     f.textHit:SetScript("OnClick", function(_, button) f:GetScript("OnClick")(f, button) end)
     -- Hover the arrow (or ring, or its text): the step's details, e.g. quest progress.
     local function tip(owner)
@@ -4507,10 +4469,6 @@ local function buildArrow()
     f.textHit:SetScript("OnLeave", leave)
     -- The faint arrow's text: left-click opens that step, right-click the
     -- arrow's menu, hover its details.
-    f.prof.hit = CreateFrame("Button", nil, f.prof)
-    f.prof.hit:SetPoint("BOTTOM", f, "TOP", 0, N.NeedleClearance(f) - 2)
-    f.prof.hit:SetSize(240, 16)
-    f.prof.hit:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     f.prof.hit:SetScript("OnClick", function(_, button)
         if button == "RightButton" then f:GetScript("OnClick")(f, button)
         elseif N.profChoice then N:OpenStop(N.profChoice.goal) end
@@ -4682,39 +4640,32 @@ function N.AtStopPoint(d)
     return d ~= nil and d < ARRIVED * 2
 end
 
+local profLook = {}
 local function updateProf(p)
-    local holder = frame.prof
-    if not holder then return end
+    local V = frame.prof and N:ArrowView("professions")
+    if not V then return end
     local choice = N:ProfPointerOn() and chooseProf(p) or nil
     N.profChoice = choice
     if ns.minimapPin and ns.minimapPin.UpdateProf then
         local pt = choice and not choice.goal.anywhere and choice.point or nil
         pcall(ns.minimapPin.UpdateProf, ns.minimapPin, p, pt, choice and choice.goal)
     end
-    if not choice then holder:Hide(); N.SetOverNeedle(frame, false) return end
+    if not choice then V:Hide(); N.SetOverNeedle(frame, false) return end
     local g, pt = choice.goal, choice.point
     local name = g.text or g.title or "Profession step"
     local here = choice.d < ARRIVED * 2 or N:InArea(g, p)
     local b = bearing(p, pt.wx, pt.wy)
     local facing = N.ArrowFacing()
     local mode = N.ProfArrowMode(N.arrivedSpot, here, b and facing)
-    holder.mode = mode
-    if holder.ring then holder.ring:SetShown(mode == "ring") end
-    if mode == "arrow" then
-        holder.arrow:SetRotation(-(b + facing))
-        holder.arrow:Show()
-        N.SetOverNeedle(frame, true)
-    else
-        holder.arrow:Hide()
-        N.SetOverNeedle(frame, false)
-    end
+    profLook.mode = mode
+    profLook.angle = mode == "arrow" and -(b + facing) or nil
+    profLook.text = nil
     if ns.db.nav.profArrowText ~= false then
-        holder.text:SetText(here and ("Here: " .. name) or string.format("%s, %d yd%s", name, choice.d, N.TravelText(p, pt, choice.d)))
-        holder.text:Show(); holder.hit:Show()
-    else
-        holder.text:Hide(); holder.hit:Hide()
+        profLook.text = here and ("Here: " .. name) or string.format("%s, %d yd%s", name, choice.d, N.TravelText(p, pt, choice.d))
     end
-    holder:Show()
+    -- The view draws it (Arrows.lua); the main arrow shrinks over a needle that shows.
+    V:Show(profLook)
+    N.SetOverNeedle(frame, mode == "arrow")
 end
 
 local function update()
