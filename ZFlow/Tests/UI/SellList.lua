@@ -151,18 +151,28 @@ tests["sell list panel: a client that cannot draw leaves nothing to do"] = funct
     t.eq(api.shows(), 1, "the list is still worked out")
 end
 
-tests["sell list panel: look only - no buttons, no clicks, no raw game calls"] = function(t)
+tests["sell list panel: look only - no buttons, no clicks, only the two reads"] = function(t)
     local _, c = start()
-    local raw = 0
-    local realRaw = c.raw
-    c.raw = function(...) raw = raw + 1 return realRaw(...) end
     c.setMerchantOpen(true)
     local p = panelOf(c)
     for field in pairs(p.spec) do
         local f = tostring(field):lower()
         t.ok(not (f:find("button") or f:find("click") or f:find("secure")), "no acting field on the panel: " .. f)
     end
-    t.eq(raw, 0, "no raw game call")
+    -- A listing over a client that has only the two reads: anything else it
+    -- touched would be nil and raise. (Diag's own window snapshot is not
+    -- this module's and is left out by calling Lines directly.)
+    local called = {}
+    local only = {
+        bagItems = function() called.bagItems = true return { { item = 97, count = 1 } } end,
+        itemInfo = function(item) called.itemInfo = true return { name = "Broken Fang", quality = 0, sellPrice = 4 } end,
+    }
+    local lines = L.Lines(setmetatable(only, { __index = function(_, name)
+        called["other:" .. tostring(name)] = true
+        return nil
+    end }), nil)
+    t.ok(type(lines) == "table" and #lines > 0, "a listing")
+    t.eq(called, { bagItems = true, itemInfo = true }, "the bag read and the item read, nothing else")
     for name in pairs(L) do
         local n = tostring(name):lower()
         t.ok(not (n:find("^sell$") or n:find("buy") or n:find("click")), "no acting function: " .. n)
