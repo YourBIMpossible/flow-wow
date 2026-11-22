@@ -390,6 +390,20 @@ ns:Register("test", "professions: kills and node counts are said only when your 
     t:ok(SP.GATHER_UNKNOWN:find("unknown to Flow", 1, true) ~= nil, "and the step says what Flow doesn't know")
 end)
 
+ns:Register("test", "professions: Flow's own Fishing estimate is said as about", function(t)
+    local SP = ns.skillPlan
+    t:ok(SP.PaceIsEstimate("Fishing"), "Fishing's pace is Flow's own estimate")
+    t:ok(not SP.PaceIsEstimate("Mining"), "Mining aims for a tier cap, not an estimate")
+    t:ok(not SP.PaceIsEstimate(nil), "no profession: no estimate")
+    t:eq(SP.AimText("Fishing", 75), "about 75", "an estimate: about")
+    t:eq(SP.AimText("Mining", 150), "150", "a cap: the number")
+    t:eq(SP.AimText("Fishing", 75, 20), "about 75 at level 20 (Flow's own estimate)", "and named as Flow's estimate")
+    t:eq(SP.AimText("Mining", 150, 20), "150 at level 20 (the highest cap you can train)", "a cap is named as a cap")
+    for id, s in ns:Each("itemSource") do
+        if s.share ~= nil then t:ok(s.fished == true and s.share > 0 and s.share <= 1, tostring(s.name or id) .. ": a share is only on a fished item, a part of 1") end
+    end
+end)
+
 ns:Register("test", "professions: no Alliance starting-area profession trainer names are listed", function(t)
     local list = ns:Get("trainerNames", "alliance-elwynn")
     t:ok(type(list) == "table", "the list is still registered (class trainers)")

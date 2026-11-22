@@ -718,8 +718,21 @@ end) end)
 -- The skill that's right for your level, per profession. Crafting aims for
 -- the cap of the highest tier you can train (A.ProfessionTarget, from what
 -- trainers showed Flow). A profession can give
--- its own `pace` (level -> skill) when the general curve asks too much:
--- Fishing only needs to keep up with the water you'll be fishing in.
+-- its own `pace` (level -> skill) when the general curve asks too much.
+-- That curve is Flow's own estimate (Guides.lua), so it is said as "about".
+-- Pure: is the skill to aim for Flow's own estimate (not a tier cap)?
+function SP.PaceIsEstimate(prof)
+    local g = prof and ns:Get("profGuide", prof)
+    return (g and g.pace) ~= nil
+end
+-- Pure: "aim for ..." in words: "about 75 at level 20 (Flow's own estimate)"
+-- or "150 at level 20 (the highest cap you can train)"; level nil: the number.
+function SP.AimText(prof, target, level)
+    local own = SP.PaceIsEstimate(prof)
+    local n = (own and "about " or "") .. tostring(target)
+    if not level then return n end
+    return string.format("%s at level %d (%s)", n, level, own and "Flow's own estimate" or "the highest cap you can train")
+end
 function SP.Pace(prof, level)
     local g = prof and ns:Get("profGuide", prof)
     local marks = g and g.pace

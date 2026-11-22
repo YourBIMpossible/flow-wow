@@ -109,7 +109,7 @@ ns:Register("advisor", "trainer", {
             end
         end
 
-        -- 2. Guide data for spells you've never seen at a trainer yet.
+        -- 2. Flow's shipped spell list (the "classSpells" registry) for spells you've never seen at a trainer yet.
         for _, s in ipairs(ns:Get("classSpells", classToken()) or {}) do
             local waitFor = s.needs and not known[s.needs] and s.needs or nil
             if s.level <= level and not known[s.spell] and not listed[s.spell] and waitFor then
@@ -314,7 +314,9 @@ ns:Register("advisor", "professions", {
                     improves = { "Professions" }, goalKey = "train:" .. p.name }
             elseif not p.unsure and p.rank + 15 < (ns.skillPlan and ns.skillPlan.Pace(p.name, level) or target) then
                 out[#out + 1] = { importance = 30,
-                    text = string.format("%s is %d; aim for %d at level %d (the highest cap you can train)", p.name, p.rank, ns.skillPlan and ns.skillPlan.Pace(p.name, level) or target, level),
+                    text = ns.skillPlan
+                        and string.format("%s is %d; aim for %s", p.name, p.rank, ns.skillPlan.AimText(p.name, ns.skillPlan.Pace(p.name, level), level))
+                        or string.format("%s is %d; aim for %d at level %d (the highest cap you can train)", p.name, p.rank, target, level),
                     improves = { "Professions" }, goalKey = "skill:" .. p.name }
             end
         end

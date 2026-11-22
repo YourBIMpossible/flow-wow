@@ -86,9 +86,10 @@ ns:Register("itemSource", 1015, { name = "Lean Wolf Flank", looted = true })
 ns:Register("itemSource", 3685, { name = "Raptor Egg", looted = true })
 ns:Register("itemSource", 12184, { name = "Raptor Flesh", looted = true })
 
--- Caught while levelling Fishing (share: roughly how many catches are this fish
--- in the water you fish at that skill). Counts against the meat Cooking would
--- otherwise farm.
+-- Caught while levelling Fishing. share: Flow's own estimate (a guess, not
+-- read from the game or from any source) of the part of your catches that are
+-- this fish; steps that use it say "about". Counts against the meat Cooking
+-- would otherwise farm.
 ns:Register("itemSource", 6291, { name = "Raw Brilliant Smallfish", fished = true, share = 0.7 })
 ns:Register("itemSource", 6289, { name = "Raw Longjaw Mud Snapper", fished = true, share = 0.6 })
 ns:Register("itemSource", 6308, { name = "Raw Bristle Whisker Catfish", fished = true, share = 0.5 })
@@ -249,8 +250,10 @@ ns:Register("profGuide", "Cooking", {
 })
 
 ns:Register("profGuide", "Fishing", { kind = "gather", spots = true, tool = 6256, lure = 6529,
-    -- Keep up with the water you'll fish in, not with crafting: starting-zone
-    -- lakes need ~25 so fish don't get away, the next zones ~75, then ~150.
+    -- pace ({ level, skill } marks): Flow's own estimate of a Fishing skill to
+    -- aim for at a level, so Fishing isn't asked to keep up with crafting. A
+    -- guess, not read from the game: it says nothing about what any water
+    -- asks, and what uses it says "about" (SkillPlan.lua: SP.AimText).
     pace = { { 1, 1 }, { 10, 25 }, { 20, 75 }, { 30, 150 }, { 40, 225 }, { 50, 300 } },
     tip = "Tip: a Shiny Bauble (+25 Fishing for 10 minutes) catches more while your skill is low. Flow's key puts it on your pole." })
 

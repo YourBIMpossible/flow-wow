@@ -779,7 +779,8 @@ ns:Register("navGoal", "errands", {
                         if guide and guide.tip then details[#details + 1] = guide.tip end
                         out[#out + 1] = {
                             key = "skill:" .. p.name, prof = p.name, optional = true, weight = 1.5, points = points,
-                            title = spot.text, text = string.format("%s (%s %d, aim for %d)", spot.text, p.name, rank, target),
+                            title = spot.text, text = string.format("%s (%s %d, aim for %s)", spot.text, p.name, rank,
+                                ns.skillPlan and ns.skillPlan.AimText(p.name, target) or tostring(target)),
                             details = details,
                             blockedBy = missing and ("needs a " .. missing) or nil,
                         }
