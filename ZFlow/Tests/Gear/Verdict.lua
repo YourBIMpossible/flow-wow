@@ -37,12 +37,12 @@ local function client()
     return c
 end
 
-local function typed(gear, classId, subclassId, minLevel)
-    gear.classId, gear.subclassId, gear.minLevel = classId, subclassId, minLevel
+local function typed(gear, classID, subclassID, minLevel)
+    gear.classID, gear.subclassID, gear.minLevel = classID, subclassID, minLevel
     return gear
 end
 
--- The game marks nothing on the item as not met (gear.unmet, a CLIENT NEED):
+-- The game marks nothing on the item as not met (gear.unmet):
 -- the yes these tests need. A class table alone is no longer taken as a yes.
 local function marked(gear)
     gear.unmet = {}
@@ -181,7 +181,7 @@ tests["verdict: nothing handed in is changed"] = function(t)
     local gear, w = typed(c.gear(HELM), 4, 2, 1), who("dps", 10)
     V.Lines(gear, w)
     t.eq(gear, { kind = "INVTYPE_HEAD", stats = { [STA] = 4 }, worn = { [1] = false },
-        classId = 4, subclassId = 2, minLevel = 1 })
+        classID = 4, subclassID = 2, minLevel = 1 })
     t.eq(w.role, "dps")
     t.eq(w.pack.weights.dps.values, { [STR] = 2, [STA] = 1 })
 end

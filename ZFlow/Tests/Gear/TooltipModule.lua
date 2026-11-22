@@ -3,13 +3,13 @@ local _, ns = ...
 -- Tests for ZFlow/Gear/TooltipModule.lua: the module that puts the gear
 -- verdict on the game's item tooltip.
 --
--- The client reads it needs beyond client.gear are not in Core/Client.lua
--- yet (a patch asked for): the item-tooltip hook, your level, and the
--- item's class, subclass and needed level. `client` below is the fake
--- client with those three added by hand, in the shapes asked for:
+-- The fake client has these reads (F3); the tests replace them with hand-
+-- made ones so each test controls its own answers, in the same shapes:
+--   the item-tooltip hook, your level, and the item's class, subclass,
+-- needed level and what the game marks on it:
 --   c.onItemTooltip(fn) -> cancel       fn(link, add); add(text, r, g, b)
 --   c.level() -> number or nil
---   c.gear(link) also carrying classId, subclassId, minLevel
+--   c.gear(link) also carrying classID, subclassID, minLevel
 -- c.hover(link) plays the game filling a tooltip and returns what was added.
 
 local M = ns.GearTooltipModule
@@ -47,7 +47,7 @@ local function client(opts)
     c.gear = function(link)
         local g = gear(link)
         local ty = types[link]
-        if ty then g.classId, g.subclassId, g.minLevel = ty[1], ty[2], ty[3] end
+        if ty then g.classID, g.subclassID, g.minLevel = ty[1], ty[2], ty[3] end
         if c.unmet[link] ~= nil then g.unmet = c.unmet[link] end
         return g
     end
@@ -64,6 +64,8 @@ local function client(opts)
                 end
             end
         end
+    else
+        c.onItemTooltip = nil   -- a client that offers no tooltip hook
     end
     c.hover = function(link)
         local added = {}
