@@ -30,6 +30,33 @@ local function entry(list, key)
     return nil
 end
 
+-- Every line a merge report holds for one place: how many times the path
+-- is listed as added, as kept and as skipped.
+local function lines(report, path)
+    local n = { added = 0, kept = 0, skipped = 0 }
+    for _, at in ipairs(report.added) do
+        if at == path then n.added = n.added + 1 end
+    end
+    for _, at in ipairs(report.kept) do
+        if at == path then n.kept = n.kept + 1 end
+    end
+    for _, row in ipairs(report.skipped) do
+        if row.path == path then n.skipped = n.skipped + 1 end
+    end
+    return n
+end
+
+local MARK = "account.layout.arrowModern"
+local STYLE = "account.layout.arrowStyle"
+
+-- An install the arrow has already run on: its mark is `mark`.
+local function marked(mark, style)
+    local account = emptyAccount()
+    account.layout.arrowModern = mark
+    account.layout.arrowStyle = style
+    return account
+end
+
 local function settingsStyle(account)
     return type(account.settings.nav) == "table" and account.settings.nav.arrowStyle or nil
 end
@@ -137,5 +164,71 @@ return {
         local out = (Import.Merge(account, emptyChar(), from({ arrowStyle = "flat" })))
         t.eq(out.layout.arrowStyle, "flat")
         t.eq(account.layout.arrowStyle, nil)
+    end,
+
+    -- ---------------------------------------------------------------- SI1
+    ["mark quiet: the same mark already there gets no report line"] = function(t)
+        local account, _, report = Import.Merge(marked(true), emptyChar(), from({ arrowStyle = "flat", arrowModern = true }))
+        t.eq(account.layout.arrowModern, true)
+        local n = lines(report, MARK)
+        t.eq(n.skipped, 0, "not listed as skipped")
+        t.eq(n.kept, 0, "not listed as kept")
+        t.eq(n.added, 0, "not listed as added")
+    end,
+
+    ["mark quiet: a mark that differs from the one already there gets no report line, and the one there stays"] = function(t)
+        local account, _, report = Import.Merge(marked(true), emptyChar(), from({ arrowStyle = "flat", arrowModern = false }))
+        t.eq(account.layout.arrowModern, true, "the install's own mark is kept")
+        local n = lines(report, MARK)
+        t.eq(n.skipped, 0, "not listed as skipped")
+        t.eq(n.kept, 0, "not listed as kept")
+        t.eq(n.added, 0)
+
+        account, _, report = Import.Merge(marked(false), emptyChar(), from({ arrowStyle = "flat", arrowModern = true }))
+        t.eq(account.layout.arrowModern, false, "a value already there is never replaced")
+        n = lines(report, MARK)
+        t.eq(n.skipped, 0)
+        t.eq(n.kept, 0)
+        t.eq(n.added, 0)
+    end,
+
+    ["mark quiet: the counts are the lists' lengths, without the mark"] = function(t)
+        local _, _, report = Import.Merge(marked(true, "modern"), emptyChar(), from({ arrowStyle = "flat", arrowModern = false }))
+        t.eq(report.counts.skipped, #report.skipped)
+        t.eq(report.counts.kept, #report.kept)
+        t.eq(report.counts.added, #report.added)
+        t.eq(lines(report, MARK).skipped, 0)
+        t.eq(lines(report, MARK).kept, 0)
+    end,
+
+    ["mark quiet: with no mark there yet, the mark is added and listed like any other row"] = function(t)
+        local account, _, report = Import.Merge(emptyAccount(), emptyChar(), from({ arrowStyle = "flat", arrowModern = true }))
+        t.eq(account.layout.arrowModern, true)
+        t.eq(lines(report, MARK).added, 1, "an added row is still reported")
+    end,
+
+    ["mark quiet: the style beside it is still reported"] = function(t)
+        local account, _, report = Import.Merge(marked(true, "modern"), emptyChar(), from({ arrowStyle = "flat", arrowModern = true }))
+        t.eq(account.layout.arrowStyle, "modern")
+        local n = lines(report, STYLE)
+        t.eq(n.kept, 1, "the kept style is listed")
+        t.eq(n.skipped, 1, "with its reason")
+        t.eq(lines(report, MARK).skipped, 0)
+
+        account, _, report = Import.Merge(marked(true, "flat"), emptyChar(), from({ arrowStyle = "flat", arrowModern = true }))
+        t.eq(account.layout.arrowStyle, "flat")
+        t.eq(lines(report, STYLE).skipped, 1, "the same style is still listed as skipped")
+        t.eq(lines(report, MARK).skipped, 0)
+    end,
+
+    ["mark quiet: a per-character value at the same name is reported as before"] = function(t)
+        -- Only the account's mark is the arrow's bookkeeping.
+        local char = emptyChar()
+        char.layout.arrowModern = true
+        local imported = from({ arrowStyle = "flat", arrowModern = true })
+        imported.char.layout.arrowModern = true
+        local _, _, report = Import.Merge(marked(true), char, imported)
+        t.eq(lines(report, "char.layout.arrowModern").skipped, 1)
+        t.eq(lines(report, MARK).skipped, 0)
     end,
 }
