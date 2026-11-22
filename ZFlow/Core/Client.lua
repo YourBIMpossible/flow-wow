@@ -623,6 +623,87 @@ function ns.make.client(env)
         return yesNo(call(group.IsSpellInRange, spellId, "target"))
     end
 
+    -- An item's stats by its link, as the client keys them: a copy, or nil
+    -- when not read (no call, a failed call, no answer, a secret answer, or
+    -- an answer that is no table). A stat whose value is secret is kept as
+    -- false: on the item, not read. First guesses, not seen in game on
+    -- 16001: C_Item.GetItemStats(link) where the client has it, else
+    -- GetItemStats(link).
+    local function itemStats(link)
+        local group = env.C_Item
+        local ok, raw
+        if type(group) == "table" and type(group.GetItemStats) == "function" then
+            ok, raw = call(group.GetItemStats, link)
+        else
+            ok, raw = call(env.GetItemStats, link)
+        end
+        if not ok or raw == nil or hidden(raw) or type(raw) ~= "table" then return nil end
+        local out = {}
+        for key, value in pairs(raw) do
+            if hidden(value) then out[key] = false else out[key] = value end
+        end
+        return out
+    end
+
+    -- An item's equip location by its link ("INVTYPE_HEAD"), or nil when
+    -- not said: no call, a failed call, a secret answer, or anything but a
+    -- non-empty string. First guesses, not seen in game on 16001: the
+    -- fourth answer of C_Item.GetItemInfoInstant(link) where the client has
+    -- it, else of GetItemInfoInstant(link).
+    local function itemKind(link)
+        local group = env.C_Item
+        local fn = env.GetItemInfoInstant
+        if type(group) == "table" and type(group.GetItemInfoInstant) == "function" then
+            fn = group.GetItemInfoInstant
+        end
+        local ok, _, _, _, where = call(fn, link)
+        return text(ok, where)
+    end
+
+    -- The inventory slots that are compared: Gear/Read.lua's SLOT_OF. Not
+    -- the shirt (4), not the tabard (19).
+    local GEAR_SLOTS = { 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18 }
+
+    -- What the client says about one item and about what you wear, as the
+    -- raw tables ns.GearRead.Shapes takes:
+    --   { kind, stats, worn, dualWield }
+    -- kind, stats   the item `link` names (see the two reads above); both
+    --               left out when link is not a non-empty string.
+    -- worn          { [inventory slot number] = { kind, stats } for an item,
+    --                 false for a slot the client says holds nothing }.
+    --               A slot is false only when GetInventoryItemID("player",
+    --               slot) answers with no id at all. A slot whose id cannot
+    --               be asked for, or is secret or no number, and a slot with
+    --               an id but no link yet (the item is not loaded), have no
+    --               entry: not read, which is never the same as empty.
+    -- dualWield     true or false from CanDualWield(); left out otherwise.
+    -- This only reads, and names no unit but "player". Nothing is equipped,
+    -- moved or picked up. First guesses, not seen in game on 16001:
+    -- GetInventoryItemID, GetInventoryItemLink, CanDualWield, and whether
+    -- slot 18 (ranged) exists on this client. Before your character's items
+    -- are loaded the client may give no id for any slot; this cannot tell
+    -- that from empty slots, so it is to be asked after login.
+    function c.gear(link)
+        local out = { worn = {} }
+        if type(link) == "string" and link ~= "" then
+            out.kind, out.stats = itemKind(link), itemStats(link)
+        end
+        for i = 1, #GEAR_SLOTS do
+            local slot = GEAR_SLOTS[i]
+            local ok, id = call(env.GetInventoryItemID, "player", slot)
+            if ok then
+                if id == nil then
+                    out.worn[slot] = false
+                elseif not hidden(id) and type(id) == "number" then
+                    local worn = text(call(env.GetInventoryItemLink, "player", slot))
+                    if worn then out.worn[slot] = { kind = itemKind(worn), stats = itemStats(worn) } end
+                end
+            end
+        end
+        out.dualWield = yesNo(call(env.CanDualWield))
+        return out
+    end
+
     -- One spell's cooldown as the client gives it: read?, start, length,
     -- the client's own "this is the global cooldown" mark (true, false, or
     -- nil where it gives none), and waiting: true when the client marks
@@ -694,6 +775,24 @@ function ns.make.client(env)
         local id = info.spellID
         if hidden(id) or type(id) ~= "number" or id <= 0 then return nil end
         return id
+    end
+
+    -- The texture of a spell by id (a file id or a path), or nil. Only the
+    -- client is asked: C_Spell.GetSpellTexture, then the older
+    -- GetSpellTexture. First guess, not seen in game; no texture comes from
+    -- a table in this addon.
+    function c.spellTexture(id)
+        if type(id) ~= "number" then return nil end
+        local group = env.C_Spell
+        local reads = { type(group) == "table" and group.GetSpellTexture or nil, env.GetSpellTexture }
+        for i = 1, 2 do
+            local ok, tex = call(reads[i], id)
+            if ok and not hidden(tex) then
+                if type(tex) == "number" and tex > 0 then return tex end
+                if type(tex) == "string" and tex ~= "" then return tex end
+            end
+        end
+        return nil
     end
 
     -- Which way you face, in radians (0 = north, turning left adds), or nil.
@@ -1124,6 +1223,90 @@ function ns.make.client(env)
         end
         -- failed(err), when given, is called with the error of an fn that
         -- failed; without it the error is dropped.
+        function h.onMoved(fn, failed)
+            moved = fn
+            movedFailed = type(failed) == "function" and failed or nil
+        end
+        return h
+    end
+
+    -- One movable icon, or nil when the client cannot make a frame. First
+    -- guess, not seen in game (WOW-ROTATION-ICON).
+    --   spec = { name = global frame name or nil, size = n }
+    --   h.setTexture(tex) -> true when the client took it. tex is what
+    --                   spellTexture gave (a file id or a path); nil clears
+    --                   the picture and answers false.
+    --   h.place(point), h.show(on), h.onMoved(fn, failed): as the panel's.
+    -- It moves only while Ctrl is held, like the arrows; a client that will
+    -- not say whether Ctrl is held starts no drag. It takes no click and
+    -- holds no secure action. A new icon is hidden and has no place.
+    function c.icon(spec)
+        spec = type(spec) == "table" and spec or {}
+        local parent = env.UIParent
+        local ok, f = call(env.CreateFrame, "Frame", spec.name, parent)
+        if not ok or f == nil then return nil end
+        local h, moved, movedFailed, dragging = {}, nil, nil, false
+        local size = tonumber(spec.size) or 48
+
+        method(f, "Hide")
+        if not method(f, "SetSize", size, size) then
+            method(f, "SetWidth", size)
+            method(f, "SetHeight", size)
+        end
+        method(f, "SetFrameStrata", "MEDIUM")
+        method(f, "SetClampedToScreen", true)
+
+        local okTex, tex = method(f, "CreateTexture", nil, "ARTWORK")
+        if not okTex then tex = nil end
+        if tex ~= nil then method(tex, "SetAllPoints", f) end
+
+        local function standing()
+            local okP, a, _, r, x, y = method(f, "GetPoint", 1)
+            if okP and type(a) == "string" and type(x) == "number" and type(y) == "number" then
+                return { a, type(r) == "string" and r or a, x, y }
+            end
+            local okL, left = method(f, "GetLeft")
+            local okB, bottom = method(f, "GetBottom")
+            if okL and okB and type(left) == "number" and type(bottom) == "number" then
+                return { "BOTTOMLEFT", "BOTTOMLEFT", left, bottom }
+            end
+            return nil
+        end
+
+        method(f, "SetMovable", true)
+        method(f, "EnableMouse", true)
+        method(f, "RegisterForDrag", "LeftButton")
+        method(f, "SetScript", "OnDragStart", function()
+            local okKey, held = call(env.IsControlKeyDown)
+            if not (okKey and held == true) then return end
+            dragging = true
+            method(f, "StartMoving")
+        end)
+        method(f, "SetScript", "OnDragStop", function()
+            if not dragging then return end
+            dragging = false
+            method(f, "StopMovingOrSizing")
+            method(f, "SetUserPlaced", false)
+            local point = standing()
+            if point and moved then
+                local okM, err = pcall(moved, point)
+                if not okM and movedFailed then pcall(movedFailed, err) end
+            end
+        end)
+
+        function h.setTexture(value)
+            if tex == nil then return false end
+            local okSet = method(tex, "SetTexture", value)
+            return okSet and value ~= nil
+        end
+        function h.place(point)
+            if type(point) ~= "table" then return end
+            method(f, "ClearAllPoints")
+            method(f, "SetPoint", point[1], parent, point[2], point[3], point[4])
+        end
+        function h.show(on)
+            method(f, on and "Show" or "Hide")
+        end
         function h.onMoved(fn, failed)
             moved = fn
             movedFailed = type(failed) == "function" and failed or nil

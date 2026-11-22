@@ -59,5 +59,7 @@ Nav\Waypoint.lua
 Nav\ProfStep.lua
 Nav\ProfSeen.lua
 UI\DevPanel.lua
+UI\SettingsSlash.lua
 UI\ArrowMenu.lua
 UI\Arrow.lua
+UI\RotationIcon.lua
