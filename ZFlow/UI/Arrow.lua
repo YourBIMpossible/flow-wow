@@ -39,10 +39,24 @@ Arrow.DEMO = {
     profBearing = math.pi / 2, -- east
 }
 
+-- The setting row the saved layout is read and written through. It names
+-- Arrow.PATH as its place: the layout stays where it always was.
+Arrow.SETTING = "arrow.layout"
+
+-- The row on kernel k, declared the first time it is asked for. nil when the
+-- kernel refused it (a problem of kind "setting" says why).
+function Arrow.Row(k)
+    return k.settings:row(Arrow.SETTING) or k:Setting({
+        key = Arrow.SETTING, scope = "account", type = "table", path = Arrow.PATH,
+        label = "Arrow positions", group = "Arrows",
+        help = "Where the arrows stand and whether they are stacked. Resetting puts them back.",
+    })
+end
+
 -- The saved layout, as ArrowView and ArrowApply take it: { arrows = ... }.
 function Arrow.Saved(k)
-    local raw = k.store:get("account", Arrow.PATH)
-    return { arrows = type(raw) == "table" and raw or nil }
+    Arrow.Row(k)
+    return { arrows = k.settings:get(Arrow.SETTING) }
 end
 
 -- The demo's arrow source: ArrowView's state plus the turns and lines.
@@ -449,7 +463,8 @@ function Arrow.Start(k, diag, own)
     end
 
     local function write(layout)
-        local ok, reason = k.store:set("account", Arrow.PATH, layout.arrows)
+        Arrow.Row(k)
+        local ok, reason = k.settings:set(Arrow.SETTING, layout.arrows)
         if not ok then k.problems:add("arrow", "save", reason) end
         return ok
     end
@@ -585,6 +600,7 @@ end
 function Arrow.Declare(k, diag)
     local inner, pending = nil, nil
     local api = {}
+    Arrow.Row(k)
     function api.relayout()
         if inner then inner.relayout() end
     end
