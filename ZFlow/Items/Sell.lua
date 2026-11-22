@@ -133,6 +133,11 @@ local function priceOf(item, book)
     return { unit = nil, basis = Prices.UNKNOWN, source = nil }
 end
 
+-- The same price, for the price lookup (Items/PriceLookup.lua):
+-- item = { key, sellPrice } -> { unit, basis, source }, or nil when it
+-- can't be sold to a merchant.
+Sell.PriceOf = priceOf
+
 local function priceText(price)
     local Prices = ns.Prices
     if price.basis == Prices.OBSERVED then return Prices.Coin(price.unit) end
