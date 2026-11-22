@@ -4477,6 +4477,16 @@ function ns.make.client(env)
     end
     -- ------------------------------------------------------------ end S17
 
+    -- S34 trip timing (LEDGER 153/169; WoW/from-zen/RESEARCH-S34.md): are
+    -- you mounted. True, false, or nil when not known (no call, a failed
+    -- call, a secret answer, or anything but a boolean). It only reads.
+    -- Docs (warcraft.wiki.gg, API IsMounted): no argument, a boolean, listed
+    -- for 1.60.1. Legacy Flow asks the same (Modules/Nav/Legs.lua:298).
+    -- A first guess: not seen in game on this client.
+    function c.mounted()
+        return flag(call(env.IsMounted))
+    end
+
     -- ----------------------------------------------------------------- S2
     -- The trader (owner Twin): every priced row of a search the player runs,
     -- not the cheapest alone. The same events, reads and limits as the S4

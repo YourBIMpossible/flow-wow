@@ -1334,6 +1334,13 @@ function ns.make.fakeClient(opts)
         return added
     end
 
+    -- S34: mounted() is unknown (nil) until set.
+    --   c.setMounted(true / false)   c.setMounted(nil): not known
+    function c.mounted() return s.mounted end
+    function c.setMounted(v)
+        if v == nil then s.mounted = nil else s.mounted = v and true or false end
+    end
+
     -- S2 trader. As the real client's: watchAuctionRows(fn) -> true, or nil
     -- after setAuctionHouse(false); auctionRows(id, rows) plays one of the
     -- player's searches answering with rows = { { unit =, qty = } ... }.

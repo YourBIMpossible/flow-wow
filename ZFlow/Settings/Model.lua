@@ -77,6 +77,10 @@ M.ROWS = {
     -- general.groupTip: on another friendly player's tooltip, which of your
     -- group buffs they have (Rotation/GroupTip.lua). On by default.
     { key = "general.groupTip", type = "bool", default = true },
+    -- nav.learnLegs: time the player's own trips from step to step and keep
+    -- the quickest (Nav/Legs.lua, S34). On by default, as in legacy Flow.
+    -- Off: nothing is timed, and routes go by the straight line.
+    { key = "nav.learnLegs", type = "bool", default = true },
 }
 
 -- ---------------------------------------------------------------- helpers
