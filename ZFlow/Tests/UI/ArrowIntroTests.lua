@@ -400,4 +400,25 @@ return {
         c.corpse = nil
         t.eq(A.GuideSource(c, {}, {}).view.quest.distance, nil, "no read")
     end,
+
+    -- A pin of what happens, not a wish: the intro is not held back for a
+    -- save that fails, so it plays again next session.
+    ["the save fails: the intro plays, one problem is recorded, and it is not seen (IT2)"] = function(t)
+        local c, a, k = start()
+        login(c)
+        k.store.blocked.account = "the disk refused"
+        t.eq(k.problems:count(), 0)
+        firstFrame(c)
+        t.eq(c.arrows[1].shown, true, "it plays")
+        t.eq(a.state().view.quest.mode, "intro")
+        t.eq(k.problems:count(), 1, "the failed save is one problem")
+        t.eq(seen(c), nil, "not saved as seen")
+        c.advance(A.INTRO_SECONDS - 0.5, 10)
+        t.eq(a.state().view.quest.mode, "intro", "its full length")
+        t.eq(k.problems:count(), 1, "said once, not every frame")
+        c.advance(1, 10)
+        t.eq(c.arrows[1].shown, false, "and it ends")
+        t.eq(seen(c), nil)
+        t.eq(k.problems:count(), 1)
+    end,
 }
