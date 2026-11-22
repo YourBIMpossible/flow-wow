@@ -33,6 +33,9 @@ local function login(c)
     c.fire("PLAYER_ENTERING_WORLD")
 end
 
+-- The first frame after the loading screen: the intro's clock starts here.
+local function firstFrame(c) c.advance(0.01, 1) end
+
 local function seen(c)
     if not c.savedExists(ns.id.accountDB) then return nil end
     local layout = c.saved(ns.id.accountDB).layout
@@ -58,7 +61,7 @@ return {
         t.eq(seen(c), nil)
     end,
 
-    ["fresh install: the intro is on the quest arrow at login, and saved as seen"] = function(t)
+    ["fresh install: the intro is on the quest arrow once in the world; seen is saved at the first frame (MR2-1)"] = function(t)
         local c, a = start()
         login(c)
         local q, p = c.arrows[1], c.arrows[2]
@@ -66,12 +69,67 @@ return {
         t.eq(p.shown, false, "the needle is not part of the intro")
         t.eq(q.lines, { ns.id.title })
         t.eq(a.state().view.quest.mode, "intro")
+        t.eq(seen(c), nil, "no frame has been drawn yet: not seen")
+        firstFrame(c)
         t.eq(seen(c), true)
+    end,
+
+    ["before the world is entered: no intro, nothing saved, whatever frames are drawn (MR2-1)"] = function(t)
+        local c, a = start()
+        c.fire("ADDON_LOADED", ns.id.addon)
+        c.fire("PLAYER_LOGIN")
+        t.eq(c.arrows[1].shown, false, "login alone is not the world")
+        c.advance(A.INTRO_SECONDS * 2, 12)
+        t.eq(c.arrows[1].shown, false)
+        t.eq(seen(c), nil)
+        c.fire("PLAYER_ENTERING_WORLD")
+        t.eq(a.state().view.quest.mode, "intro", "the whole intro is still to come")
+        firstFrame(c)
+        c.advance(A.INTRO_SECONDS - 0.5, 10)
+        t.eq(a.state().view.quest.mode, "intro")
+        t.eq(seen(c), true)
+    end,
+
+    ["the clock starts at the first frame, not at the event: time under the loading screen is not counted (MR2-1)"] = function(t)
+        local c, a = start()
+        local now, under = c.now, 0
+        c.now = function() return now() + under end
+        login(c)
+        under = A.INTRO_SECONDS * 10        -- the loading screen: time passes, no frame is drawn
+        t.eq(seen(c), nil)
+        firstFrame(c)
+        t.eq(c.arrows[1].shown, true)
+        t.eq(a.state().view.quest.mode, "intro")
+        c.advance(A.INTRO_SECONDS - 0.5, 10)
+        t.eq(a.state().view.quest.mode, "intro", "its full length, from the first frame")
+        c.advance(1, 10)
+        t.eq(c.arrows[1].shown, false)
+    end,
+
+    ["a second loading screen while the intro plays neither restarts nor replays it"] = function(t)
+        local c, a = start()
+        login(c)
+        firstFrame(c)
+        c.advance(A.INTRO_SECONDS - 1, 10)
+        c.fire("PLAYER_ENTERING_WORLD")
+        t.eq(a.state().view.quest.mode, "intro")
+        c.advance(1.5, 10)
+        t.eq(c.arrows[1].shown, false, "it ended by the clock it started with")
+    end,
+
+    ["a clock that is no number at the first frame: the intro is dropped and not saved"] = function(t)
+        local c = start()
+        login(c)
+        c.now = function() return nil end
+        c.advance(1, 4)
+        t.eq(c.arrows[1].shown, false)
+        t.eq(seen(c), nil)
     end,
 
     ["the intro ends after its length; with no guide the arrows hide"] = function(t)
         local c, a = start()
         login(c)
+        firstFrame(c)
         c.advance(A.INTRO_SECONDS - 0.5, 10)
         t.eq(c.arrows[1].shown, true, "still playing")
         t.eq(a.state().view.quest.mode, "intro")
@@ -85,6 +143,7 @@ return {
     ["shown once: an install that has seen it gets no intro"] = function(t)
         local c = start()
         login(c)
+        firstFrame(c)
         local c2, a2 = start({ saved = c.saved(ns.id.accountDB) })
         login(c2)
         t.eq(c2.arrows[1].shown, false)
@@ -108,6 +167,7 @@ return {
         local c = start({ saved = { layout = { arrowIntroSeen = "yes" } } })
         login(c)
         t.eq(c.arrows[1].shown, true)
+        firstFrame(c)
         t.eq(seen(c), true)
     end,
 
@@ -148,12 +208,18 @@ return {
         t.eq(seen(c), nil)
     end,
 
-    ["the demo during the intro: the demo shows, and the intro is not marked seen by it"] = function(t)
+    ["the demo over an unseen intro: the demo shows, and its frames do not mark the intro seen (MR2-7)"] = function(t)
         local c, a, _, d = start({ saved = { layout = {} } })
         login(c)
-        t.eq(seen(c), true, "the intro itself was shown at login")
+        t.eq(seen(c), nil, "unseen: no frame yet")
         d.commands.arrow("demo")
         t.eq(a.state().view.quest.mode, "arrow")
+        c.advance(A.INTRO_SECONDS * 2, 12)
+        t.eq(seen(c), nil, "the demo's frames are not the intro's")
+        d.commands.arrow("demo")
+        t.eq(a.state().view.quest.mode, "intro", "the intro was never on a frame: it is still to come")
+        firstFrame(c)
+        t.eq(seen(c), true)
     end,
 
     -- ------------------------------------------- GuideSource's intro argument
@@ -287,5 +353,51 @@ return {
         t.eq(q.lines, { ns.id.title })
         c.advance(A.INTRO_SECONDS + 0.5, 10)
         t.eq(q.lines, { "Waypoint", "200 yd" })
+    end,
+
+    -- ------------------------------------------- the corpse's place (Plexy R5)
+    ["the real client's corpse place is always on the player's own map (R5)"] = function(t)
+        local env = { here = 1411 }
+        local asked = {}
+        env.C_Map = { GetBestMapForUnit = function() return env.here end }
+        env.C_DeathInfo = { GetCorpseMapPosition = function(map)
+            asked[#asked + 1] = map
+            return { x = 0.25, y = 0.75, uiMapID = 9999, map = 9999 }
+        end }
+        local c = ns.make.client(env)
+        t.eq(c.corpse(), { map = 1411, x = 0.25, y = 0.75 })
+        env.here = 1412
+        t.eq(c.corpse(), { map = 1412, x = 0.25, y = 0.75 }, "the map asked for, not one the answer names")
+        t.eq(asked, { 1411, 1412 }, "only the player's map is asked about")
+        env.here = nil
+        t.eq(c.corpse(), nil, "no map for the player: no place")
+        t.eq(#asked, 2, "and nothing is asked")
+    end,
+
+    ["a corpse place is built only from a place the corpse read gives (R5)"] = function(t)
+        local c = start({ saved = seenSaved() })
+        login(c)
+        c.setDead(true)
+        c.setGhost(true)
+        c.setCorpse(1411, 0.5, 0.3)
+        local src = A.GuideSource(c, {}, {})
+        t.ok(type(src.view.quest.distance) == "number", "a place on the player's map: a distance")
+        t.ok(src.turns.quest ~= nil, "and a turn")
+        local none = { false, "nil", "a string", 7, true, {}, { map = 1411 }, { x = 0.5, y = 0.3 },
+                       { map = 1411, x = "left", y = 0.3 } }
+        for i = 1, #none do
+            local answer = none[i]
+            c.corpse = function()
+                if answer == "nil" then return nil end
+                return answer
+            end
+            src = A.GuideSource(c, {}, {})
+            t.eq(src.view.quest.distance, nil, "no place, no distance: answer " .. i)
+            t.eq(src.turns.quest, nil, "no turn: answer " .. i)
+        end
+        c.corpse = function() error("the client refused") end
+        t.eq(A.GuideSource(c, {}, {}).view.quest.distance, nil, "a failing read")
+        c.corpse = nil
+        t.eq(A.GuideSource(c, {}, {}).view.quest.distance, nil, "no read")
     end,
 }

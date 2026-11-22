@@ -116,6 +116,30 @@ return {
         t.eq(ns.make.client(env).waypoint(), nil)
     end,
 
+    ["waypoint: a hidden point, map, x or y alone is nil (MR2-9)"] = function(t)
+        local point = { uiMapID = 1411, position = { x = 0.25, y = 0.75 } }
+        local function env(secret)
+            local e = { C_Map = { HasUserWaypoint = function() return true end,
+                                  GetUserWaypoint = function() return point end } }
+            e.issecretvalue = function(v) return secret(v) end
+            return e
+        end
+        t.eq(ns.make.client(env(function() return false end)).waypoint(), { map = 1411, x = 0.25, y = 0.75 },
+            "nothing hidden: the place")
+        t.eq(ns.make.client(env(function(v) return v == point end)).waypoint(), nil, "the point is hidden")
+        t.eq(ns.make.client(env(function(v) return v == 1411 end)).waypoint(), nil, "the map is hidden")
+        t.eq(ns.make.client(env(function(v) return v == 0.25 end)).waypoint(), nil, "x is hidden")
+        t.eq(ns.make.client(env(function(v) return v == 0.75 end)).waypoint(), nil, "y is hidden")
+        t.eq(ns.make.client(env(function(v)
+            if v == 1411 then error("the client refused") end
+            return false
+        end)).waypoint(), nil, "the hidden check itself fails: treated as hidden")
+        t.eq(ns.make.client(env(function(v)
+            if v == 0.25 then return nil end
+            return false
+        end)).waypoint(), nil, "no plain no for x: treated as hidden")
+    end,
+
     ["fake: unknown until set, a copy each time, cleared with nil"] = function(t)
         local c = ns.make.fakeClient()
         t.eq(c.waypoint(), nil)
