@@ -39,7 +39,8 @@ Setup.NAME = "setup"
 Setup.MAX = 3
 Setup.PRIORITY = 1
 Setup.OFFERED_PATH = "state.setup.offered"
-Setup.SLASH = "/zflow setting"
+-- The slash word comes from Core/Identity.lua (identity rule; lead, U-B merge).
+Setup.SLASH = ns.id.slash .. " setting"
 
 -- The shipped suggestions. Which settings to suggest is the lead's and the
 -- owner's call; none is chosen here. Each entry is { key, value, why }.
