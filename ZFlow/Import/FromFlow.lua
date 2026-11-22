@@ -137,7 +137,11 @@ local _, ns = ...
 -- 3: the stored record carries its own copies of what was left behind and
 --    what was adjusted (record.dropped, record.adjusted), and a merge keeps a
 --    setting the player has stored even when it equals the default.
-local IMPORTER_VERSION = 3
+-- 4: a merge says when the source value was incompatible: a table that met
+--    a stored single value. The stored value is kept as before; the place is
+--    in report.incompatible, its skipped line says so, and the stored
+--    record's merge counts carry incompatible (D8, GH1).
+local IMPORTER_VERSION = 4
 -- The highest Flow data version this importer understands. Flow's version is
 -- the highest migration it has run (Core.lua:251-276) and Flow registers no
 -- migration, so every known Flow data set is at 0 (or carries no version).
@@ -1162,6 +1166,9 @@ local function givesWay(choice, at, have, value)
 end
 
 local REFUSED = "the settings model refuses this value; it was not added"
+local KEPT = "the player already has a value here; it was kept"
+local INCOMPATIBLE = "the source value is incompatible: it is a table and a single value is stored here;"
+    .. " the stored value was kept"
 local NEITHER = "neither value fits the setting; nothing was changed"
 
 -- What may be added at `at` where nothing is stored: a copy of the import's
@@ -1247,10 +1254,12 @@ local function fill(dst, src, defaults, path, report, choice)
             elseif neither then
                 report.skipped[#report.skipped + 1] = { path = at, reason = NEITHER }
             else
+                -- A table cannot take a single value's place: said as
+                -- such, not only as kept (D8). The stored value stays.
+                local misfit = type(value) == "table" and type(have) ~= "table"
                 report.kept[#report.kept + 1] = at
-                report.skipped[#report.skipped + 1] = {
-                    path = at, reason = "the player already has a value here; it was kept",
-                }
+                if misfit then report.incompatible[#report.incompatible + 1] = at end
+                report.skipped[#report.skipped + 1] = { path = at, reason = misfit and INCOMPATIBLE or KEPT }
             end
         end
     end
@@ -1448,7 +1457,8 @@ end
 
 local function Merge(existingAccount, existingChar, imported, defaults, confirmed, model)
     local report = {
-        ok = true, added = {}, kept = {}, skipped = {}, counts = { added = 0, kept = 0, skipped = 0 },
+        ok = true, added = {}, kept = {}, skipped = {}, incompatible = {},
+        counts = { added = 0, kept = 0, skipped = 0, incompatible = 0 },
         vendorConfirmed = {}, vendorLeftOff = {}, vendorAlreadyOn = {}, vendorNotPlain = {},
     }
     local problem
@@ -1505,6 +1515,7 @@ local function Merge(existingAccount, existingChar, imported, defaults, confirme
     report.counts.added = #report.added
     report.counts.kept = #report.kept
     report.counts.skipped = #report.skipped
+    report.counts.incompatible = #report.incompatible
 
     -- plain, not copy: what the caller hands in may hold itself or a function.
     local record = plain(imported.record)
