@@ -3460,6 +3460,271 @@ function ns.make.client(env)
         return true
     end
 
+    ---------------------------------------------------------------------
+    -- Settings controls (Plexy, LEDGER 134/135; WoW/from-plexy/
+    -- RESEARCH-settings-controls.md): Z-Flow's page in the game's
+    -- Options > AddOns, with controls. The pattern is legacy Flow's, which
+    -- ran on this client (Modules/Settings.lua): a canvas registered with
+    -- Settings.RegisterCanvasLayoutCategory and Settings.RegisterAddOnCategory,
+    -- else InterfaceOptions_AddCategory; opened with
+    -- Settings.OpenToCategory(category:GetID()), else
+    -- InterfaceOptionsFrame_OpenToCategory (twice on older clients); built
+    -- from UICheckButtonTemplate check buttons, UIPanelButtonTemplate buttons,
+    -- InputBoxTemplate edit boxes and a UIPanelScrollFrameTemplate scroll
+    -- frame. No Blizzard panel function (ShowUIPanel, HideUIPanel) is called.
+    -- Needs a game test: the page under Options > AddOns, and each control.
+    --
+    --   c.optionsPage(spec) -> handle, or nil when the client has no options
+    --   page route. spec = { title = text, name = global frame name or nil }
+    --   h.open() -> true when the game's Options was asked to open at the page
+    --   h.onShow(fn)   fn() each time the page is shown
+    --   h.shown() -> true while it is on the screen
+    --   h.draw(rows, act)   rows top to bottom, each one of
+    --     { kind = "group", text }
+    --     { kind = "toggle", key, label, value, settable, why }
+    --     { kind = "choice", key, label, value, choices, settable, why }
+    --     { kind = "number", key, label, value, min, max, step, settable, why }
+    --     { kind = "text", key, label, value, settable, why }
+    --     { kind = "info", key, label, shown }
+    --   act(key, value) is called when the player changes a control; the
+    --   page is redrawn by whoever answers it.
+    --   h.status(text)   one line under the title
+    ---------------------------------------------------------------------
+    function c.optionsPage(spec)
+        spec = type(spec) == "table" and spec or {}
+        local S = env.Settings
+        local okC, canvas = call(env.CreateFrame, "Frame", spec.name)
+        if not okC or type(canvas) ~= "table" then return nil end
+        local title = type(spec.title) == "string" and spec.title or "Add-on"
+        canvas.name = title
+        local category, route
+        if type(S) == "table" and type(S.RegisterCanvasLayoutCategory) == "function"
+            and type(S.RegisterAddOnCategory) == "function" then
+            local ok, cat = call(S.RegisterCanvasLayoutCategory, canvas, title)
+            if ok and cat ~= nil then
+                category, route = cat, "settings"
+                call(S.RegisterAddOnCategory, cat)
+            end
+        end
+        if not route and type(env.InterfaceOptions_AddCategory) == "function" then
+            if call(env.InterfaceOptions_AddCategory, canvas) then route = "interface" end
+        end
+        if not route then return nil end
+
+        local h, showFns, built = {}, {}, nil
+        local function build()
+            if built then return built end
+            local b = { checks = {}, buttons = {}, labels = {}, edits = {}, n = {} }
+            local okS, scroll = call(env.CreateFrame, "ScrollFrame", nil, canvas, "UIPanelScrollFrameTemplate")
+            if not okS or type(scroll) ~= "table" then return nil end
+            method(scroll, "SetPoint", "TOPLEFT", canvas, "TOPLEFT", 0, -40)
+            method(scroll, "SetPoint", "BOTTOMRIGHT", canvas, "BOTTOMRIGHT", -28, 4)
+            local okF, body = call(env.CreateFrame, "Frame", nil, scroll)
+            if not okF or type(body) ~= "table" then return nil end
+            method(body, "SetSize", 560, 400)
+            method(scroll, "SetScrollChild", body)
+            local okT, head = method(canvas, "CreateFontString", nil, "OVERLAY", "GameFontNormalLarge")
+            if okT and head then
+                method(head, "SetPoint", "TOPLEFT", canvas, "TOPLEFT", 16, -12)
+                method(head, "SetText", title)
+            end
+            local okSt, status = method(canvas, "CreateFontString", nil, "OVERLAY", "GameFontHighlightSmall")
+            if okSt and status then method(status, "SetPoint", "TOPLEFT", canvas, "TOPLEFT", 16, -30) end
+            b.body, b.status = body, (okSt and status) or nil
+            built = b
+            return b
+        end
+        -- One widget of a kind from the page's pool, made when the pool is short.
+        local function take(b, kind, make)
+            b.n[kind] = (b.n[kind] or 0) + 1
+            local list = b[kind]
+            local w = list[b.n[kind]]
+            if w == nil then
+                w = make() or false
+                list[b.n[kind]] = w
+            end
+            if not w then return nil end
+            method(w, "ClearAllPoints")
+            method(w, "Show")
+            return w
+        end
+        local function label(b, text, x, y, font)
+            local fs = take(b, "labels", function()
+                local ok, f = method(b.body, "CreateFontString", nil, "OVERLAY", font or "GameFontHighlight")
+                return ok and f or nil
+            end)
+            if fs then
+                method(fs, "SetPoint", "TOPLEFT", b.body, "TOPLEFT", x, y)
+                method(fs, "SetText", text)
+            end
+            return fs
+        end
+        local function button(b, text, x, y, width, onClick, on, enabled)
+            local w = take(b, "buttons", function()
+                local ok, f = call(env.CreateFrame, "Button", nil, b.body, "UIPanelButtonTemplate")
+                return ok and f or nil
+            end)
+            if not w then return nil end
+            method(w, "SetSize", width, 20)
+            method(w, "SetPoint", "TOPLEFT", b.body, "TOPLEFT", x, y)
+            method(w, "SetText", on and ("[" .. text .. "]") or text)
+            if enabled then method(w, "Enable") else method(w, "Disable") end
+            method(w, "SetScript", "OnClick", function() onClick() end)
+            return w
+        end
+
+        function h.draw(rows, act)
+            local b = build()
+            if not b then return false end
+            for _, kind in ipairs({ "checks", "buttons", "labels", "edits" }) do
+                for _, w in ipairs(b[kind]) do if w then method(w, "Hide") end end
+                b.n[kind] = 0
+            end
+            local y = -4
+            local function changed(key, value)
+                if type(act) == "function" then pcall(act, key, value) end
+            end
+            for _, r in ipairs(type(rows) == "table" and rows or {}) do
+                if r.kind == "group" then
+                    y = y - 8
+                    label(b, tostring(r.text or ""), 8, y, "GameFontNormal")
+                    y = y - 22
+                else
+                    local text = tostring(r.label or r.key or "")
+                    local can = r.settable == true
+                    local key = r.key
+                    if r.kind == "toggle" then
+                        local w = take(b, "checks", function()
+                            local ok, f = call(env.CreateFrame, "CheckButton", nil, b.body, "UICheckButtonTemplate")
+                            return ok and f or nil
+                        end)
+                        if w then
+                            method(w, "SetSize", 24, 24)
+                            method(w, "SetPoint", "TOPLEFT", b.body, "TOPLEFT", 12, y + 3)
+                            method(w, "SetChecked", r.value == true)
+                            if can then method(w, "Enable") else method(w, "Disable") end
+                            method(w, "SetScript", "OnClick", function(self)
+                                local okG, on = method(self, "GetChecked")
+                                changed(key, (okG and on) and true or false)
+                            end)
+                        end
+                        label(b, text, 40, y - 2)
+                    elseif r.kind == "choice" then
+                        label(b, text, 16, y - 2)
+                        local x = 220
+                        for _, choice in ipairs(type(r.choices) == "table" and r.choices or {}) do
+                            local value = choice
+                            local width = 16 + 7 * #tostring(choice)
+                            button(b, tostring(choice), x, y, width, function() changed(key, value) end,
+                                choice == r.value, can)
+                            x = x + width + 4
+                        end
+                    elseif r.kind == "number" then
+                        label(b, text, 16, y - 2)
+                        local step = (type(r.step) == "number" and r.step > 0) and r.step or 1
+                        local value = type(r.value) == "number" and r.value or nil
+                        local lower = value ~= nil and (type(r.min) ~= "number" or value - step >= r.min)
+                        local higher = value ~= nil and (type(r.max) ~= "number" or value + step <= r.max)
+                        button(b, "-", 220, y, 24, function() changed(key, value - step) end, false, can and lower)
+                        label(b, value and tostring(value) or "not set", 250, y - 2)
+                        button(b, "+", 300, y, 24, function() changed(key, value + step) end, false, can and higher)
+                    elseif r.kind == "text" then
+                        label(b, text, 16, y - 2)
+                        local w = take(b, "edits", function()
+                            local ok, f = call(env.CreateFrame, "EditBox", nil, b.body, "InputBoxTemplate")
+                            return ok and f or nil
+                        end)
+                        if w then
+                            method(w, "SetSize", 180, 20)
+                            method(w, "SetPoint", "TOPLEFT", b.body, "TOPLEFT", 224, y)
+                            method(w, "SetAutoFocus", false)
+                            method(w, "SetText", type(r.value) == "string" and r.value or "")
+                            if can then method(w, "Enable") else method(w, "Disable") end
+                            method(w, "SetScript", "OnEnterPressed", function(self)
+                                local okT, typed = method(self, "GetText")
+                                method(self, "ClearFocus")
+                                if okT and type(typed) == "string" then changed(key, typed) end
+                            end)
+                            method(w, "SetScript", "OnEscapePressed", function(self) method(self, "ClearFocus") end)
+                        else
+                            label(b, tostring(r.value or ""), 224, y - 2)
+                        end
+                    else
+                        label(b, text .. ": " .. tostring(r.shown or ""), 16, y - 2)
+                    end
+                    if not can and r.kind ~= "info" and type(r.why) == "string" then
+                        label(b, r.why, 420, y - 2, "GameFontDisableSmall")
+                    end
+                    y = y - 26
+                end
+            end
+            method(b.body, "SetHeight", math.max(40, -y + 10))
+            return true
+        end
+        function h.status(text)
+            local b = build()
+            if b and b.status then method(b.status, "SetText", type(text) == "string" and text or "") end
+        end
+        function h.onShow(fn)
+            if type(fn) == "function" then showFns[#showFns + 1] = fn end
+        end
+        function h.shown()
+            local ok, on = method(canvas, "IsVisible")
+            return ok and on == true
+        end
+        method(canvas, "SetScript", "OnShow", function()
+            for _, fn in ipairs({ unpack(showFns) }) do pcall(fn) end
+        end)
+        function h.open()
+            if route == "settings" and type(S.OpenToCategory) == "function" then
+                local id = category
+                if type(category) == "table" and type(category.GetID) == "function" then
+                    local okId, got = pcall(category.GetID, category)
+                    if okId and got ~= nil then id = got end
+                end
+                return (call(S.OpenToCategory, id))
+            end
+            if route == "interface" and type(env.InterfaceOptionsFrame_OpenToCategory) == "function" then
+                local ok = call(env.InterfaceOptionsFrame_OpenToCategory, canvas)
+                call(env.InterfaceOptionsFrame_OpenToCategory, canvas)
+                return ok
+            end
+            return false
+        end
+        return h
+    end
+
+    -- F7 probe (Plexy, LEDGER 134; WoW/from-plexy/RESEARCH-fight-log.md): two
+    -- narrow reads for /zflow fights probe, so one game session settles what
+    -- this client gives the fight log instead of the combat log.
+    --   c.apiPresent(path) -> true / false: whether the dotted global path
+    --     ("C_DamageMeter", "C_DeathRecap.GetRecapEvents") names a function or
+    --     a table. It only looks; nothing is called.
+    --   c.watchUnitCombat(fn) -> cancel: fn(unit, readable) for each UNIT_COMBAT
+    --     event; unit nil when secret or not text; readable true only for an
+    --     amount that is a plain, non-secret number. The amount itself is not
+    --     handed on. UNIT_COMBAT is an event legacy Flow listened to on this
+    --     client (Modules/Rotation/Engine.lua); its payload is a first guess.
+    function c.apiPresent(path)
+        if type(path) ~= "string" or path == "" then return false end
+        local v = env
+        for part in path:gmatch("[^%.]+") do
+            if type(v) ~= "table" then return false end
+            local ok, nextV = pcall(function() return v[part] end)
+            if not ok then return false end
+            v = nextV
+        end
+        return type(v) == "function" or type(v) == "table"
+    end
+    function c.watchUnitCombat(fn)
+        if type(fn) ~= "function" then return nil end
+        return events.add("UNIT_COMBAT", function(unit, _, _, amount)
+            local who = (type(unit) == "string" and not hidden(unit)) and unit or nil
+            local readable = amount ~= nil and not hidden(amount) and type(amount) == "number" and amount == amount
+            pcall(fn, who, readable)
+        end)
+    end
+
     return c
 end
 

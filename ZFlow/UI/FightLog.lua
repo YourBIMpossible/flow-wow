@@ -5,6 +5,9 @@
 --   <slash> fights            the fights of this session, newest first
 --   <slash> fights <number>   that fight, with its spells
 --   <slash> fights death      what hit you before your last death (G30)
+--   <slash> fights probe      what this client gives the fight log: the combat-log
+--                             read, the game's damage meter and death recap, hits
+--                             on you (RESEARCH-fight-log.md; reads nothing as a number)
 --
 -- At your death (PLAYER_DEAD) the damage you took in the seconds before is
 -- printed, as text. Each fight row also says its type (G28): solo, elite,
@@ -40,6 +43,7 @@ L.WORD = "fights"
 L.HELP = "show the last fights of this session: what you dealt, took and healed;"
     .. " fights <number> lists that fight's spells; fights death shows what hit you before your last death"
 L.NO_FEED = "this client build has no combat-log read yet, so no fight can be recorded."
+L.PROBE = "probe"
 L.NO_ME = "the client did not say who you are, so nothing in these fights could be counted as yours."
 
 local function read(fn)
@@ -55,6 +59,8 @@ function L.Start(k, diag)
     local rec = ns.Fights.New()
     local feed = false
     local me
+    -- For "fights probe" (RESEARCH-fight-log.md): counts since login only.
+    local cleuSeen, hitsOnYou, hitsReadable, hitsFollowed = 0, 0, 0, false
 
     local function now()
         if type(client.uptime) ~= "function" then return nil end
@@ -80,6 +86,7 @@ function L.Start(k, diag)
         feed = client.watchCombatLog(function(...)
             -- A hit outside a fight is kept for the death report, so your
             -- id is asked for here too until it is known.
+            cleuSeen = cleuSeen + 1
             if not rec:knowsMe() then who() end
             rec:event(now(), ...)
         end) == true
@@ -100,7 +107,39 @@ function L.Start(k, diag)
         end)
     end
 
+    if type(client.watchUnitCombat) == "function" then
+        hitsFollowed = client.watchUnitCombat(function(unit, readable)
+            if unit ~= "player" then return end
+            hitsOnYou = hitsOnYou + 1
+            if readable then hitsReadable = hitsReadable + 1 end
+        end) ~= nil
+    end
+
+    -- One line per open question of RESEARCH-fight-log.md. It reads no
+    -- game value as a number; it only says what is there.
+    local function present(path)
+        if type(client.apiPresent) ~= "function" then return "not known" end
+        return client.apiPresent(path) and "present" or "absent"
+    end
+    local function probe()
+        say("probe: combat-log read " .. present("CombatLogGetCurrentEventInfo")
+            .. "; feed " .. (feed and "taken" or "not taken")
+            .. "; combat-log events since login: " .. cleuSeen .. ".")
+        say("probe: game damage meter (C_DamageMeter) " .. present("C_DamageMeter")
+            .. "; death recap (C_DeathRecap.GetRecapEvents) " .. present("C_DeathRecap.GetRecapEvents") .. ".")
+        if hitsFollowed then
+            say("probe: hits on you since login (UNIT_COMBAT): " .. hitsOnYou
+                .. ", with a readable amount: " .. hitsReadable .. ".")
+        else
+            say("probe: hits on you (UNIT_COMBAT) are not followed: this client has no such read.")
+        end
+    end
+
     local function run(rest)
+        if tostring(rest):lower():find(L.PROBE, 1, true) then
+            probe()
+            return
+        end
         if not feed then
             say(L.NO_FEED)
             return

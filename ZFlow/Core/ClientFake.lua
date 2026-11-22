@@ -732,6 +732,63 @@ function ns.make.fakeClient(opts)
     -- nil for closed or not known.
     -- { profession, npc, services, filter }; services and filter as the real
     -- client gives them (F8). The table is kept as given; trainer() copies.
+    -- F7 probe: which dotted paths apiPresent answers true for, and the
+    -- UNIT_COMBAT watchers; unitCombat(unit, readable) plays one event.
+    function c.setApi(path, on)
+        s.apis = s.apis or {}
+        s.apis[path] = on and true or nil
+    end
+    function c.apiPresent(path) return (s.apis and s.apis[path]) == true end
+    function c.watchUnitCombat(fn)
+        if type(fn) ~= "function" then return nil end
+        s.unitCombat = s.unitCombat or {}
+        table.insert(s.unitCombat, fn)
+        return function()
+            for i = #s.unitCombat, 1, -1 do
+                if s.unitCombat[i] == fn then table.remove(s.unitCombat, i) end
+            end
+        end
+    end
+    function c.unitCombat(unit, readable)
+        for _, fn in ipairs({ unpack(s.unitCombat or {}) }) do fn(unit, readable and true or false) end
+    end
+    -- Settings controls: the game's Options page, as the real client's
+    -- optionsPage. setOptionsPage(false) plays a client with no route.
+    -- optionsRows(), optionsStatus() and optionsAct(key, value) let a test
+    -- read what was drawn and play a control being changed.
+    function c.setOptionsPage(on) s.noOptionsPage = (on == false) end
+    function c.optionsPage(spec)
+        if s.noOptionsPage then return nil end
+        local h, showFns = {}, {}
+        s.options = { title = spec and spec.title, opened = 0, shown = false }
+        function h.open()
+            s.options.opened = s.options.opened + 1
+            s.options.shown = true
+            for _, fn in ipairs(showFns) do fn() end
+            return true
+        end
+        function h.onShow(fn) showFns[#showFns + 1] = fn end
+        function h.shown() return s.options.shown end
+        function h.draw(rows, act)
+            local copy = {}
+            for i, r in ipairs(rows or {}) do
+                local row = {}
+                for k2, v in pairs(r) do row[k2] = v end
+                copy[i] = row
+            end
+            s.options.rows, s.options.act = copy, act
+            return true
+        end
+        function h.status(text) s.options.status = text end
+        return h
+    end
+    function c.optionsRows() return s.options and s.options.rows end
+    function c.optionsStatus() return s.options and s.options.status end
+    function c.optionsOpened() return s.options and s.options.opened or 0 end
+    function c.optionsHide() if s.options then s.options.shown = false end end
+    function c.optionsAct(key, value)
+        if s.options and type(s.options.act) == "function" then return s.options.act(key, value) end
+    end
     function c.setTrainer(r)
         s.trainer = r and { profession = r.profession, npc = r.npc, services = r.services, filter = r.filter } or nil
     end

@@ -122,6 +122,7 @@ return {
         "UI/SettingsSlash.lua",
         "UI/SettingsPage.lua",
         "UI/SettingsPanel.lua",
+        "UI/SettingsOptions.lua",
         "UI/Rows.lua",
         "UI/Intro.lua",
         "UI/WindowButtons.lua",
