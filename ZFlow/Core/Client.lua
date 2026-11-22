@@ -38,14 +38,25 @@ local function Listeners(first, last)
             end
         end
     end
+    -- A call runs over a snapshot of its list, so a listener may add or
+    -- remove listeners. The snapshot table is kept and used again: a call
+    -- makes none. It is taken out of `spare` while in use, so a call made
+    -- from inside a listener, or one after a listener failed, finds none
+    -- and makes its own; the last to finish is kept.
+    local spare = {}
     function L.call(key, ...)
         local list = lists[key]
         if not list then return end
-        local snapshot = {}
-        for i = 1, #list do snapshot[i] = list[i] end
-        for i = 1, #snapshot do
-            if not snapshot[i].dead then snapshot[i].fn(...) end
+        local snapshot = spare or {}
+        spare = nil
+        local n = #list
+        for i = 1, n do snapshot[i] = list[i] end
+        for i = 1, n do
+            local entry = snapshot[i]
+            snapshot[i] = nil
+            if not entry.dead then entry.fn(...) end
         end
+        spare = snapshot
     end
     return L
 end
@@ -788,10 +799,18 @@ function ns.make.client(env)
     --            beams' texcoords) }
     -- The halo, beam and texcoord numbers are Nav/ArrowMotion's, handed in
     -- by the caller: there is no copy of them here, and a spec without them
-    -- gets no size, height or texcoord made up.
-    -- Two frames: the frame that is placed, dragged and shown (scale 1), and
-    -- on it a holder that carries the art and takes the scale. The text is
-    -- the placed frame's, so its offsets are screen units at every scale.
+    -- gets no size, height or texcoord made up. Without halo[3] the ring,
+    -- the ripple and the beams are given no place, and a texture with no
+    -- place is not drawn: such an arrow has no arrived ring at all. That is
+    -- not reported: the one caller (UI/Arrow.lua) always gives all three.
+    -- Three frames: the frame that is placed, dragged and shown (scale 1);
+    -- on it a holder that carries the art and takes the scale, one level
+    -- up; and a text frame for the label, a child of the placed frame (so
+    -- unscaled: its offsets are screen units at every scale), one level
+    -- above the holder so the label is over the art, in front and behind
+    -- alike. Without a text frame the label is the placed frame's, under
+    -- the art. First guess on 16001, not observed in a client: that a child
+    -- frame one level up draws over its sibling's art. Needs a client check.
     -- The handle:
     --   h.place({ anchor, relative anchor, x, y })   against the screen
     --   h.attach(other)        centred on another arrow handle, following it
@@ -875,6 +894,23 @@ function ns.make.client(env)
             sized(holder, size, size)
             method(holder, "SetPoint", "CENTER", f, "CENTER", 0, 0)
         end
+        -- The text frame: the label's, over the art. It covers the placed
+        -- frame and takes no mouse.
+        local okT, textFrame = call(env.CreateFrame, "Frame", nil, f)
+        if not okT or textFrame == nil then textFrame = f end
+        if textFrame ~= f then method(textFrame, "SetAllPoints", f) end
+        -- The levels for the placed frame at `to`: the holder one up, the
+        -- text frame one above the holder.
+        local function levels(to)
+            method(f, "SetFrameLevel", to)
+            local top = to
+            if holder ~= f then
+                top = to + 1
+                method(holder, "SetFrameLevel", top)
+            end
+            if textFrame ~= f then method(textFrame, "SetFrameLevel", top + 1) end
+        end
+        levels(level)
         local function tex(file, layer, sub, blend)
             local okT, t = method(holder, "CreateTexture", nil, layer, nil, sub)
             if not okT or t == nil then return nil end
@@ -933,8 +969,8 @@ function ns.make.client(env)
         coords(beamDown, spec.beamDown)
         for i = 1, #ring do fast(ring[i], "Hide") end
 
-        -- The text is the placed frame's, not the holder's: unscaled.
-        local okText, label = method(f, "CreateFontString", nil, "OVERLAY", "GameFontNormal")
+        -- The text is the text frame's, not the holder's: unscaled.
+        local okText, label = method(textFrame, "CreateFontString", nil, "OVERLAY", "GameFontNormal")
         if not okText then label = nil end
         if label ~= nil then
             method(label, "SetJustifyH", "CENTER")
@@ -999,6 +1035,10 @@ function ns.make.client(env)
             method(f, "StartMoving")
         end)
         method(f, "SetScript", "OnDragStop", function()
+            -- No drag in progress: it was let go when the arrow was hidden
+            -- or sent behind, and the client fires this late. Nothing is
+            -- stopped again and no place is saved.
+            if not dragging then return end
             dragging = false
             method(f, "StopMovingOrSizing")
             method(f, "SetUserPlaced", false)
@@ -1082,11 +1122,10 @@ function ns.make.client(env)
         end
         function h.behind(on)
             if on then letGo() end
-            local to = on and math.max(level - 2, 0) or level
-            method(f, "SetFrameLevel", to)
-            -- The holder is a frame of its own: left at its level it would
-            -- keep the art above the arrow this one is meant to be under.
-            if holder ~= f then method(holder, "SetFrameLevel", to + 1) end
+            -- The holder and the text frame are frames of their own: left at
+            -- their levels they would keep the art and the text above the
+            -- arrow this one is meant to be under.
+            levels(on and math.max(level - 2, 0) or level)
             method(f, "EnableMouse", not on)
         end
         function h.text(lines, point)

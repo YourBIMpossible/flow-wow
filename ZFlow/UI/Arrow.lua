@@ -78,17 +78,22 @@ end
 -- line is the unknown-direction line (GuideSource's lost). That line is left
 -- out for an arrow drawn as the ring, which points nowhere, and where the
 -- stack it would join already has one: once per stack of text.
+-- -> out, kept. kept = { quest = n, prof = n }: how many of each arrow's own
+-- lines are in out, wherever they are drawn; no entry for an arrow whose
+-- text is not shown.
 function Arrow.Lines(view, lines, lost)
     local out = { quest = {}, prof = {} }
-    local said = {}
+    local said, kept = {}, {}
     local function add(key, to)
         local list = lines[key] or {}
         local n = #list
         local unknown = type(lost) == "table" and lost[key] == true
+        kept[key] = 0
         for i = 1, n do
             local isUnknown = unknown and i == n
             if not (isUnknown and (view[key].mode == "ring" or said[to])) then
                 out[to][#out[to] + 1] = list[i]
+                kept[key] = kept[key] + 1
                 if isUnknown then said[to] = true end
             end
         end
@@ -96,7 +101,7 @@ function Arrow.Lines(view, lines, lost)
     if view.quest.shown and view.quest.text.shown then add("quest", "quest") end
     local pt = view.prof.text
     if view.prof.shown and pt.shown then add("prof", pt.to == "quest" and "quest" or "prof") end
-    return out
+    return out, kept
 end
 
 -- One read of the client: nil when there is no such read or it fails.
@@ -181,7 +186,7 @@ function Arrow.GuideSource(client, layout, guide, intro)
         state, more = N.ViewState(client, given)
     end
     state.gate = gate
-    local lines, lost, still = {}, {}, {}
+    local lines, lost, still, auto = {}, {}, {}, {}
     for _, key in ipairs(N.ARROW_KEYS) do
         local step = type(given[key]) == "table" and given[key] or {}
         local out = {}
@@ -203,12 +208,16 @@ function Arrow.GuideSource(client, layout, guide, intro)
         -- A still step has nowhere to turn to: its missing turn is not "lost".
         if step.still and not (playing and key == "quest") then still[key] = true end
         lines[key] = out
+        -- No height given: the height of these lines. That is a first
+        -- count: Arrow.Lines may leave the unknown-direction line out, and
+        -- the caller then counts again from what is kept (auto says where).
         if state[key] and state[key].textHeight == nil then
             state[key].textHeight = #out * Arrow.LINE_HEIGHT
+            auto[key] = true
         end
     end
     return { view = state, turns = { quest = playing and 0 or more.quest.turn, prof = more.prof.turn },
-             lines = lines, lost = lost, still = still, intro = playing }
+             lines = lines, lost = lost, still = still, auto = auto, intro = playing }
 end
 
 -- The intro: the quest arrow upright with the addon's title, once, for an
@@ -305,7 +314,24 @@ function Arrow.Start(k, diag)
             return
         end
         local view = N.ArrowView(src.view)
-        local lines = Arrow.Lines(view, src.lines, src.lost)
+        local lines, kept = Arrow.Lines(view, src.lines, src.lost)
+        -- A height the source counted itself is counted again from the
+        -- lines kept: a dropped line takes no room, so the text side is
+        -- chosen for what is shown. Which lines are kept does not depend on
+        -- the height, so once is enough.
+        local refit = false
+        for _, key in ipairs(N.ARROW_KEYS) do
+            local need = kept[key] and kept[key] * Arrow.LINE_HEIGHT
+            if type(src.auto) == "table" and src.auto[key] and need and type(src.view[key]) == "table"
+                and src.view[key].textHeight ~= need then
+                src.view[key].textHeight = need
+                refit = true
+            end
+        end
+        if refit then
+            view = N.ArrowView(src.view)
+            lines = Arrow.Lines(view, src.lines, src.lost)
+        end
         for _, key in ipairs(N.ARROW_KEYS) do
             local ops, h = view[key], handles[key]
             h.show(ops.shown)
@@ -351,23 +377,27 @@ function Arrow.Start(k, diag)
         if not ok then k.problems:add("arrow", "save", reason) end
     end
 
+    -- One frame's work. A function of its own, made once: frame() makes
+    -- none per frame.
+    local function step(elapsed)
+        if introWanted and introShown and introUntil == nil then startIntro() end
+        since = since + (tonumber(elapsed) or 0)
+        if since >= Arrow.RELAYOUT then
+            since = 0
+            relayout()
+        end
+        if not current then return end
+        local now = client.now()
+        for _, key in ipairs(N.ARROW_KEYS) do
+            if current[key].shown then
+                handles[key].draw(N.ArrowStep(motion[key], elapsed, now))
+            end
+        end
+    end
+
     local function frame(elapsed)
         if broken then return end
-        local ok, err = pcall(function()
-            if introWanted and introShown and introUntil == nil then startIntro() end
-            since = since + (tonumber(elapsed) or 0)
-            if since >= Arrow.RELAYOUT then
-                since = 0
-                relayout()
-            end
-            if not current then return end
-            local now = client.now()
-            for _, key in ipairs(N.ARROW_KEYS) do
-                if current[key].shown then
-                    handles[key].draw(N.ArrowStep(motion[key], elapsed, now))
-                end
-            end
-        end)
+        local ok, err = pcall(step, elapsed)
         if not ok then
             -- A broken arrow is taken off the screen, not left frozen on it.
             broken = true
