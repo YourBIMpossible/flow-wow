@@ -753,6 +753,32 @@ function ns.make.fakeClient(opts)
     function c.failSecureAttr(attr, on) secureFail[attr] = on and true or nil end
     function c.dropSecureAttr(attr, on) secureDrop[attr] = on and true or nil end
 
+    -- F2 errand stops: the same reads as Core/Client.lua, set by a test.
+    local guids = {}
+    function c.guid(unit)
+        if unit ~= "player" and unit ~= "pet" and unit ~= "target" then return nil end
+        return guids[unit]
+    end
+    function c.setGuid(unit, id) guids[unit] = type(id) == "string" and id ~= "" and id or nil end
+    function c.playerGUID() return c.guid("player") end
+    function c.petGUID() return c.guid("pet") end
+    function c.serviceNpc()
+        local n = s.serviceNpc
+        return n and { guid = n.guid, name = n.name } or nil
+    end
+    function c.setServiceNpc(guid, name)
+        if guid == nil and name == nil then s.serviceNpc = nil return end
+        s.serviceNpc = { guid = guid, name = name }
+    end
+    function c.merchantRepairs() return s.merchantRepairs end
+    function c.setMerchantRepairs(v)
+        if v == true or v == false then s.merchantRepairs = v else s.merchantRepairs = nil end
+    end
+    function c.bindLocation() return s.bindLocation end
+    function c.setBindLocation(name) s.bindLocation = type(name) == "string" and name ~= "" and name or nil end
+    function c.hearthCooldown() return s.hearthCooldown end
+    function c.setHearthCooldown(v) s.hearthCooldown = type(v) == "number" and v >= 0 and v or nil end
+
     return c
 end
 

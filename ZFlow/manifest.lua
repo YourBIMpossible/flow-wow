@@ -109,6 +109,7 @@ return {
         "Nav/HearthSeen.lua",
         "Nav/ServiceNearest.lua",
         "Nav/ServiceSeen.lua",
+        "Nav/Errand.lua",
         "Nav/QuestSource.lua",
         "Nav/QuestRead.lua",
         "UI/ProfCard.lua",
