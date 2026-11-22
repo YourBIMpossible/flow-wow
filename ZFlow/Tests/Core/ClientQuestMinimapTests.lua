@@ -127,6 +127,117 @@ return {
         })
     end,
 
+    ["client quest focus: no such read at all is nil"] = function(t)
+        t.eq(ns.make.client({}).questFocus(), nil)
+        t.eq(ns.make.client({ C_SuperTrack = "x", C_QuestLog = 7, Questie = "y" }).questFocus(), nil)
+    end,
+
+    ["client quest focus: the grouped call first, the bare name second"] = function(t)
+        local asked = {}
+        local env = {
+            C_SuperTrack = { GetSuperTrackedQuestID = function() asked[#asked + 1] = "group" return 101 end },
+            GetSuperTrackedQuestID = function() asked[#asked + 1] = "bare" return 202 end,
+        }
+        local c = ns.make.client(env)
+        t.eq(c.questFocus(), { quest = 101 })
+        t.eq(asked, { "group" })
+        env.C_SuperTrack.GetSuperTrackedQuestID = function() error("no") end
+        t.eq(c.questFocus(), { quest = 202 }, "a failed grouped call: the bare name")
+        env.C_SuperTrack = nil
+        t.eq(c.questFocus(), { quest = 202 }, "no group: the bare name")
+    end,
+
+    ["client quest focus: none picked is a read with no quest"] = function(t)
+        local env = { C_SuperTrack = { GetSuperTrackedQuestID = function() return nil end } }
+        local c = ns.make.client(env)
+        t.eq(c.questFocus(), {})
+        env.C_SuperTrack.GetSuperTrackedQuestID = function() return 0 end
+        t.eq(c.questFocus(), {}, "0 is no quest")
+        env.C_SuperTrack.GetSuperTrackedQuestID = function() return true end
+        t.eq(c.questFocus(), {}, "not a number")
+    end,
+
+    ["client quest focus: the quest Questie is set on, when the client names none"] = function(t)
+        local env = { Questie = { db = { char = { TrackerFocus = 303 } } } }
+        local c = ns.make.client(env)
+        t.eq(c.questFocus(), { quest = 303 })
+        env.Questie.db.char.TrackerFocus = "303 2"
+        t.eq(c.questFocus(), { quest = 303 }, "a text that starts with the id")
+        env.Questie.db.char.TrackerFocus = nil
+        t.eq(c.questFocus(), {}, "Questie is there and set on none")
+        env.Questie.db.char.TrackerFocus = "none"
+        t.eq(c.questFocus(), {})
+        env.Questie.db = nil
+        t.eq(c.questFocus(), nil, "a Questie with no such place: no read")
+        env.Questie = { db = { char = { TrackerFocus = 303 } } }
+        env.C_SuperTrack = { GetSuperTrackedQuestID = function() return 101 end }
+        t.eq(c.questFocus(), { quest = 101 }, "the client is asked first")
+        env.C_SuperTrack.GetSuperTrackedQuestID = function() return 0 end
+        t.eq(c.questFocus(), { quest = 303 }, "the client names none: Questie")
+    end,
+
+    ["client quest focus: the watch list from C_QuestLog"] = function(t)
+        local ids = { 101, 0, 202, "x" }
+        local env = { C_QuestLog = {
+            GetNumQuestWatches = function() return 5 end,
+            GetQuestIDForQuestWatchIndex = function(i)
+                if i == 5 then error("no") end
+                return ids[i]
+            end,
+        } }
+        local c = ns.make.client(env)
+        t.eq(c.questFocus(), { watched = { 101, 202 } })
+        env.C_QuestLog.GetNumQuestWatches = function() return 0 end
+        t.eq(c.questFocus(), { watched = {} }, "nothing watched is an empty list")
+        env.C_QuestLog.GetNumQuestWatches = function() return "many" end
+        t.eq(c.questFocus(), nil, "a count that is no number: no read")
+        env.C_QuestLog.GetNumQuestWatches = function() return 100000 end
+        env.C_QuestLog.GetQuestIDForQuestWatchIndex = function(i) return i end
+        t.eq(#c.questFocus().watched, 100, "never read past 100 rows")
+    end,
+
+    ["client quest focus: the older watch calls, when C_QuestLog has none"] = function(t)
+        local env = {
+            GetNumQuestWatches = function() return 3 end,
+            GetQuestIndexForWatch = function(i) return ({ 4, nil, 9 })[i] end,
+            GetQuestLogTitle = function(index)
+                if index == 4 then return "Boar Trouble", 5, nil, nil, nil, nil, nil, 101 end
+                return "No id", 5
+            end,
+        }
+        local c = ns.make.client(env)
+        t.eq(c.questFocus(), { watched = { 101 } })
+        env.C_QuestLog = { GetNumQuestWatches = function() return 1 end,
+                           GetQuestIDForQuestWatchIndex = function() return 202 end }
+        t.eq(c.questFocus(), { watched = { 202 } }, "the grouped calls are asked first")
+    end,
+
+    ["client quest focus: hidden values are not read"] = function(t)
+        local env = {
+            issecretvalue = function() return true end,
+            C_SuperTrack = { GetSuperTrackedQuestID = function() return 101 end },
+            C_QuestLog = { GetNumQuestWatches = function() return 1 end,
+                           GetQuestIDForQuestWatchIndex = function() return 202 end },
+            Questie = { db = { char = { TrackerFocus = 303 } } },
+        }
+        t.eq(ns.make.client(env).questFocus(), {})
+    end,
+
+    ["fake quest focus: nothing set is no read, and it answers a copy"] = function(t)
+        local c = ns.make.fakeClient()
+        t.eq(c.questFocus(), nil)
+        local list = { 101, 202 }
+        c.setQuestFocus(101, list)
+        local got = c.questFocus()
+        t.eq(got, { quest = 101, watched = { 101, 202 } })
+        got.watched[1] = 9
+        t.eq(c.questFocus().watched, { 101, 202 })
+        c.setQuestFocus(nil, {})
+        t.eq(c.questFocus(), { watched = {} })
+        c.setQuestFocus(nil)
+        t.eq(c.questFocus(), nil)
+    end,
+
     ["client questie module: asked of the loader of Questie by name"] = function(t)
         local db, asked = { GetQuest = function() end }, {}
         local env = { QuestieLoader = {} }

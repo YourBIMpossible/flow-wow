@@ -250,4 +250,57 @@ T["quest watch: the player is nowhere known: words only, nothing thrown"] = func
     t.eq(N.QuestWatch(c).step().lines, { "Boar Trouble", "Boars slain: 2/8", Q.UNKNOWN_PLACE })
 end
 
+-- Sections 131 and 133. The scouting (404) is at 0.2, 0.8; the nearest
+-- boar objective at 0.55, 0.5.
+local function scouting() return { id = 404, title = "Scout", objectives = { { text = "Scout the camp" } } } end
+
+T["quest watch: the quest the player picked out is the step"] = function(t)
+    local c = client({ boars(), scouting() }, (questie()))
+    local w = N.QuestWatch(c)
+    t.eq(w.step().quest, 101, "nothing picked: the nearest")
+    c.setQuestFocus(404)
+    local step = w.step()
+    t.eq(step.quest, 404)
+    t.eq(step.place, { cont = 1, map = 1411, x = 0.2, y = 0.8 })
+end
+
+T["quest watch: the focus changes, so the step changes on the next step"] = function(t)
+    local module, calls = questie()
+    local c = client({ boars(), scouting() }, module)
+    local w = N.QuestWatch(c)
+    c.setQuestFocus(101)
+    t.eq(w.step().quest, 101)
+    local n = calls.n
+    c.setQuestFocus(404)
+    t.eq(w.step().quest, 404, "no refresh and no event in between")
+    c.setQuestFocus(101)
+    t.eq(w.step().quest, 101)
+    c.setQuestFocus(nil, { 404 })
+    t.eq(w.step().quest, 404, "the watch list alone")
+    c.setQuestFocus(nil)
+    t.eq(w.step().quest, 101, "nothing picked again: the nearest")
+    t.eq(calls.n, n, "Questie is not asked again for a change of focus")
+end
+
+T["quest watch: a picked quest that left the log falls back"] = function(t)
+    local log = { boars(), scouting() }
+    local c = client(log, (questie()))
+    local w = N.QuestWatch(c)
+    c.setQuestFocus(404)
+    t.eq(w.step().quest, 404)
+    log[2] = nil
+    w.refresh()
+    t.eq(w.step().quest, 101, "abandoned or handed in: the old rules")
+end
+
+T["quest watch: no focus read, or one that fails: the old answer"] = function(t)
+    local c = client({ boars(), scouting() }, (questie()))
+    c.questFocus = nil
+    t.eq(N.QuestWatch(c).step().quest, 101)
+    c.questFocus = function() error("no") end
+    t.eq(N.QuestWatch(c).step().quest, 101)
+    c.questFocus = function() return "junk" end
+    t.eq(N.QuestWatch(c).step().quest, 101)
+end
+
 return T

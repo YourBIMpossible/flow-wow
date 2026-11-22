@@ -1817,6 +1817,8 @@ function ns.make.client(env)
         if v == false then return false end
         return nil
     end
+    -- No watch list is read past this many rows, whatever the client says.
+    local QUEST_WATCH_MAX = 100
     function c.questLog()
         local rows = {}
         local group = env.C_QuestLog
@@ -1874,6 +1876,80 @@ function ns.make.client(env)
             end
         end
         return rows
+    end
+
+    -- Which of the quests the player follows (section 131), or nil when this
+    -- client gives no such read at all:
+    --   { quest = id or nil, watched = { id, ... } or nil }
+    -- quest: the one quest the player has picked out. Asked, in this order:
+    -- C_SuperTrack.GetSuperTrackedQuestID(), the bare
+    -- GetSuperTrackedQuestID(), then the quest the tracker of Questie is
+    -- set on (Questie.db.char.TrackerFocus). A number above 0 is a quest;
+    -- anything else, or an answer the client hides, is "none picked".
+    -- watched: the quests on the watch list of the player, in its order.
+    -- Asked of C_QuestLog.GetNumQuestWatches() and
+    -- C_QuestLog.GetQuestIDForQuestWatchIndex(i); else the bare
+    -- GetNumQuestWatches() with GetQuestIndexForWatch(i), the id then being
+    -- the 8th answer of GetQuestLogTitle(index) as in questLog above. nil
+    -- when neither pair is there; an empty list when nothing is watched.
+    -- Read only: nothing here sets what is tracked or watched.
+    -- Sources: warcraft.wiki.gg, the pages API
+    -- C_SuperTrack.GetSuperTrackedQuestID, API C_QuestLog.GetNumQuestWatches
+    -- and API C_QuestLog.GetQuestIDForQuestWatchIndex: each lists this
+    -- client from 1.60.1. The bare watch names have no row for this client
+    -- there and are asked second. Not settled: none of these names is in
+    -- the list on that site of calls added in 1.60.1, so the two pages
+    -- disagree. The Questie field is from the public repository of Questie,
+    -- Modules/Tracker/TrackerUtils.lua (FocusQuest sets it to the quest id,
+    -- UnFocus clears it); a text answer starting with the id is read too,
+    -- as a guess. Every call here needs game test.
+    function c.questFocus()
+        local out, known = {}, false
+        local function questId(v)
+            if hidden(v) then return nil end
+            if type(v) == "string" then v = tonumber(v:match("^(%d+)")) end
+            if type(v) == "number" and v > 0 then return v end
+            return nil
+        end
+        local track = type(env.C_SuperTrack) == "table" and env.C_SuperTrack or {}
+        local okQ, q = call(track.GetSuperTrackedQuestID)
+        if not okQ then okQ, q = call(env.GetSuperTrackedQuestID) end
+        if okQ then
+            known = true
+            out.quest = questId(q)
+        end
+        if out.quest == nil then
+            local okF, f = call(function() return env.Questie.db.char.TrackerFocus end)
+            if okF then
+                known = true
+                out.quest = questId(f)
+            end
+        end
+        local group = type(env.C_QuestLog) == "table" and env.C_QuestLog or {}
+        local okN, n = call(group.GetNumQuestWatches)
+        if okN and not hidden(n) and type(n) == "number" then
+            local list = {}
+            for i = 1, math.min(n, QUEST_WATCH_MAX) do
+                local okI, id = call(group.GetQuestIDForQuestWatchIndex, i)
+                if okI then list[#list + 1] = questId(id) end
+            end
+            out.watched, known = list, true
+        else
+            okN, n = call(env.GetNumQuestWatches)
+            if okN and not hidden(n) and type(n) == "number" then
+                local list = {}
+                for i = 1, math.min(n, QUEST_WATCH_MAX) do
+                    local okI, index = call(env.GetQuestIndexForWatch, i)
+                    if okI and not hidden(index) and type(index) == "number" then
+                        local okT, _, _, _, _, _, _, _, id = call(env.GetQuestLogTitle, index)
+                        if okT then list[#list + 1] = questId(id) end
+                    end
+                end
+                out.watched, known = list, true
+            end
+        end
+        if not known then return nil end
+        return out
     end
 
     -- A module of the installed Questie by name, or nil: Questie is not

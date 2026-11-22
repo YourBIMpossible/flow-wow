@@ -826,6 +826,17 @@ function Arrow.Start(k, diag, own)
             end)
             listen("QUEST_LOG_UPDATE", changed)
             listen("ZONE_CHANGED_NEW_AREA", changed)
+            -- The quest the player follows changed, or a quest came or went
+            -- (sections 131 and 133). The names are on warcraft.wiki.gg, each
+            -- listed for this client; none has been seen to fire in game:
+            -- needs game test. A name this client does not have is not
+            -- registered and costs nothing.
+            listen("SUPER_TRACKING_CHANGED", changed)
+            listen("QUEST_WATCH_LIST_CHANGED", changed)
+            listen("QUEST_ACCEPTED", changed)
+            listen("QUEST_REMOVED", changed)
+            listen("QUEST_TURNED_IN", changed)
+            listen("UNIT_QUEST_LOG_CHANGED", changed)
         end
     end
 

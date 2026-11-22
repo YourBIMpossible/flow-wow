@@ -5,7 +5,7 @@ local _, ns = ...
 -- authored here: the rows are the player's quest log and the places are
 -- what the reader (Nav/QuestRead.lua) was given at runtime.
 --
--- Q.Pick(rows, places, here) -> step or nil
+-- Q.Pick(rows, places, here, focus) -> step or nil
 --   rows    the quest log, in its own order:
 --           { { id, title, complete, failed, objectives = { { text, done } } } }
 --           complete: a plain true when the quest is ready to hand in.
@@ -18,8 +18,24 @@ local _, ns = ...
 --           Anything absent is "not known".
 --   here    { map, x, y, cont, size = { w, h } in yards or nil }
 --           every field may be absent.
+--   focus   { quest = id or nil, watched = { id, ... } or nil } or nil:
+--           the quest the player picked out, and the watch list of the
+--           player, as the client says them (client.questFocus). nil, or a
+--           table with neither, is "the player picked nothing".
 --
--- The step, by the first of these that gives one:
+-- The quest the player picked out comes first (section 131). When
+-- focus.quest is a quest in the log that is not failed and has something
+-- left, the step is that quest's and no other quest is looked at:
+--   its nearest unfinished objective on the map the player is on; for a
+--   complete quest the nearest point where it is handed in; else words
+--   only for that quest, as in rule 3.
+-- A picked quest that is not in the log (handed in, abandoned), is failed,
+-- or has nothing left gives no step of its own.
+-- Then, when focus.watched names quests that are in the log, rules 1 to 3
+-- are asked of those quests alone; when that gives no step, of the whole
+-- log. With no focus the answer is that of rules 1 to 3 on the whole log.
+--
+-- Rules 1 to 3, the first that gives a step:
 --   1. the nearest point of an unfinished objective, on the map the player
 --      is on, of a quest that is neither complete nor failed;
 --   2. the nearest point where a complete quest is handed in, on that map;
@@ -122,11 +138,34 @@ local function worded(row, i, detail, spot, here)
              lines = lines, still = true }
 end
 
-function Q.Pick(rows, places, here)
-    if type(rows) ~= "table" then return nil end
-    here = type(here) == "table" and here or {}
-    local canPoint = here.map ~= nil and finite(here.x) and finite(here.y)
+-- The step of one quest alone: its nearest unfinished objective on this
+-- map, for a complete quest its nearest turn-in, else that quest in words.
+-- nil when the quest has nothing left to do.
+local function ofQuest(row, places, here, canPoint)
+    if row.complete == true then
+        local spot = spotOf(places, row.id, nil)
+        local pt = canPoint and nearest(spot, here) or nil
+        if pt then return placed(row, nil, Q.TurnInLine(spot.name), pt, here) end
+        return worded(row, nil, Q.TurnInLine(spot and spot.name), spot, here)
+    end
+    local todo = open(row)
+    if #todo == 0 then return nil end
+    if canPoint then
+        local best, bestD
+        for _, o in ipairs(todo) do
+            local pt, d = nearest(spotOf(places, row.id, o.i), here)
+            if pt and (not best or d < bestD) then
+                best, bestD = placed(row, o.i, o.text, pt, here), d
+            end
+        end
+        if best then return best end
+    end
+    local o = todo[1]
+    return worded(row, o.i, o.text, spotOf(places, row.id, o.i), here)
+end
 
+-- Rules 1 to 3 over these rows.
+local function byRules(rows, places, here, canPoint)
     if canPoint then
         -- 1. the nearest unfinished objective on this map.
         local best, bestD
@@ -166,4 +205,37 @@ function Q.Pick(rows, places, here)
         end
     end
     return nil
+end
+
+function Q.Pick(rows, places, here, focus)
+    if type(rows) ~= "table" then return nil end
+    here = type(here) == "table" and here or {}
+    local canPoint = here.map ~= nil and finite(here.x) and finite(here.y)
+
+    if type(focus) == "table" then
+        -- The quest the player picked out, when it is still to be done.
+        if focus.quest ~= nil then
+            for _, row in ipairs(rows) do
+                if usable(row) and row.id == focus.quest then
+                    local step = ofQuest(row, places, here, canPoint)
+                    if step then return step end
+                    break
+                end
+            end
+        end
+        -- Then the quests the player watches, before the rest of the log.
+        if type(focus.watched) == "table" then
+            local on = {}
+            for _, id in ipairs(focus.watched) do on[id] = true end
+            local mine = {}
+            for _, row in ipairs(rows) do
+                if type(row) == "table" and row.id ~= nil and on[row.id] then mine[#mine + 1] = row end
+            end
+            if #mine > 0 then
+                local step = byRules(mine, places, here, canPoint)
+                if step then return step end
+            end
+        end
+    end
+    return byRules(rows, places, here, canPoint)
 end

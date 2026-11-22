@@ -130,6 +130,42 @@ return {
         t.eq(c.arrows[1].lines[1], "Boar Trouble")
     end,
 
+    ["quest arrow: the quest the player picks out is the one shown"] = function(t)
+        local c = start({ boars(), wolves() }, questie())
+        t.eq(c.arrows[1].lines[1], "Boar Trouble", "nothing picked: the one on this map")
+        c.setQuestFocus(202)
+        c.fire("SUPER_TRACKING_CHANGED")
+        t.eq(c.arrows[1].lines[1], "Wolves")
+        t.eq(c.arrows[1].lines[2], "Wolves slain: 0/4")
+        c.setQuestFocus(101)
+        c.fire("SUPER_TRACKING_CHANGED")
+        t.eq(c.arrows[1].lines[1], "Boar Trouble")
+    end,
+
+    ["quest arrow: a change of the watch list is shown"] = function(t)
+        local c = start({ boars(), wolves() }, questie())
+        c.setQuestFocus(nil, { 202 })
+        c.fire("QUEST_WATCH_LIST_CHANGED", 202, true)
+        t.eq(c.arrows[1].lines[1], "Wolves")
+        c.setQuestFocus(nil, {})
+        c.fire("QUEST_WATCH_LIST_CHANGED", 202, false)
+        t.eq(c.arrows[1].lines[1], "Boar Trouble")
+    end,
+
+    ["quest arrow: a quest taken, dropped or handed in reads the log again"] = function(t)
+        for _, event in ipairs({ "QUEST_ACCEPTED", "QUEST_REMOVED", "QUEST_TURNED_IN", "UNIT_QUEST_LOG_CHANGED" }) do
+            local c, _, _, held = start({ boars() }, questie())
+            c.setQuestFocus(202)
+            t.eq(c.arrows[1].lines[1], "Boar Trouble", "the picked quest is not in the log yet")
+            held.log = { boars(), wolves() }
+            c.fire(event, "player")
+            t.eq(c.arrows[1].lines[1], "Wolves", event)
+            held.log = { boars() }
+            c.fire(event, "player")
+            t.eq(c.arrows[1].lines[1], "Boar Trouble", event .. ", gone again")
+        end
+    end,
+
     ["quest arrow: the player's own pin wins over the quest"] = function(t)
         local c, a = start({ boars() }, questie())
         c.setWaypoint(1411, 0.5, 0.1)

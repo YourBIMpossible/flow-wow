@@ -213,7 +213,11 @@ function N.QuestWatch(client)
             local size = ask(client, "mapSize", here.map)
             if type(size) == "table" then here.size = { w = size.w, h = size.h } end
         end
-        return Q.Pick(rows, places, here)
+        -- Which quest the player follows is asked on every step: one cheap
+        -- read, so a change shows on the next step with no event needed.
+        -- The log and the places stay as read until said to have changed.
+        local focus = ask(client, "questFocus")
+        return Q.Pick(rows, places, here, type(focus) == "table" and focus or nil)
     end
 
     return { step = step, refresh = refresh }
