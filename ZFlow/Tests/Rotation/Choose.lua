@@ -26,7 +26,7 @@ end
 
 local function snap(known, over)
     local s = { dead = false, inCombat = false, spells = {} }
-    for _, name in ipairs(known or {}) do s.spells[name] = { known = true } end
+    for _, name in ipairs(known or {}) do s.spells[name] = { known = true, onCooldown = false } end
     for k, v in pairs(over or {}) do s[k] = v end
     return s
 end
@@ -113,7 +113,9 @@ return {
 
     ["heal: low health takes the quickest direct heal"] = function(t)
         local over = { lowHealth = true, inCombat = true, spells = {
-            Mend = { known = true, castMs = 2500 }, ["Big Mend"] = { known = true, castMs = 1500 }, Renew = { known = true, castMs = 0 },
+            Mend = { known = true, onCooldown = false, castMs = 2500 },
+            ["Big Mend"] = { known = true, onCooldown = false, castMs = 1500 },
+            Renew = { known = true, onCooldown = false, castMs = 0 },
         } }
         local spell, s = pick(nil, over)
         t.eq(spell, "Big Mend", "the quicker direct heal, not the heal over time")
@@ -132,7 +134,9 @@ return {
         local heals = { "Mend", "Big Mend", "Renew" }
         local function hurt(n, over)
             local o = { hurt = n, spells = {
-                Mend = { known = true, castMs = 1500 }, ["Big Mend"] = { known = true, castMs = 3000 }, Renew = { known = true, castMs = 0 },
+                Mend = { known = true, onCooldown = false, castMs = 1500 },
+                ["Big Mend"] = { known = true, onCooldown = false, castMs = 3000 },
+                Renew = { known = true, onCooldown = false, castMs = 0 },
             } }
             for k, v in pairs(over or {}) do o[k] = v end
             return pick(nil, o)
@@ -158,7 +162,7 @@ return {
         on.targetNear = false
         t.eq(pick({ "Kick", "Silence" }, on), "Silence", "far: the ranged one")
         t.eq(pick({ "Kick" }, on), nil, "far with only the near one")
-        on.spells = { Silence = { known = true, inRange = false } }
+        on.spells = { Silence = { known = true, onCooldown = false, inRange = false } }
         t.eq(pick(nil, on), nil, "the ranged one out of range")
         t.eq(pick({ "Kick" }, { inCombat = true, hostile = true, targetNear = true }), nil, "not casting")
         t.eq(pick({ "Kick" }, { hostile = true, targetCasting = "Fireball", targetNear = true }), nil, "not in a fight")
@@ -197,9 +201,9 @@ return {
         t.eq(pick({ "Shield", "Bolt" }, fight), "Shield", "the first rule")
         t.eq(pick({ "Shield", "Bolt" }, { inCombat = true, hostile = true, buffs = { Shield = 20 } }), "Bolt", "when says no")
         t.eq(pick({ "Shield", "Bolt" }, fight, { skip = { Shield = true } }), "Bolt", "a skipped spell")
-        fight.spells = { Shield = { known = true, onCooldown = true }, Bolt = { known = true } }
+        fight.spells = { Shield = { known = true, onCooldown = true }, Bolt = { known = true, onCooldown = false } }
         t.eq(pick(nil, fight), "Bolt", "on cooldown")
-        fight.spells = { Shield = { known = true, usable = false }, Bolt = { known = true } }
+        fight.spells = { Shield = { known = true, onCooldown = false, usable = false }, Bolt = { known = true, onCooldown = false } }
         t.eq(pick(nil, fight), "Bolt", "not usable")
         local spell, s = pick({ "Shield", "Bolt", "Storm" }, { inCombat = true, hostile = true, fightType = "aoe" })
         t.eq(spell, "Storm", "the aoe list")
@@ -231,7 +235,7 @@ return {
     end,
 
     ["far opener: the first wanted rule that is only out of range"] = function(t)
-        local over = { hostile = true, attacking = true, spells = { Bolt = { known = true, inRange = false } } }
+        local over = { hostile = true, attacking = true, spells = { Bolt = { known = true, onCooldown = false, inRange = false } } }
         local spell, s = pick(nil, over)
         t.eq(spell, "Bolt", "the opener")
         t.eq(s.step, "farOpener", "the last step")
@@ -242,6 +246,51 @@ return {
         over.hostile = true
         over.spells.Bolt.onCooldown = true
         t.eq(pick(nil, over), nil, "not castable anyway")
+    end,
+
+    ["castable: a cooldown nobody read is not castable, with its own reason"] = function(t)
+        local R = ns.Rotation
+        local function with(row) return { dead = false, inCombat = true, hostile = true, spells = { Bolt = row } } end
+        local ok, why = R.Castable(with({ known = true, onCooldown = false }), "Bolt")
+        t.eq(ok, true, "read, ready: castable")
+        t.eq(why, nil, "no reason with a yes")
+        ok, why = R.Castable(with({ known = true }), "Bolt")
+        t.eq(ok, false, "not read: not castable")
+        t.eq(why, "not known whether it is ready", "its own reason")
+        ok, why = R.Castable(with({ known = true, usable = true, inRange = true }), "Bolt")
+        t.eq(ok, false, "all else read and fine: still not castable")
+        t.eq(why, "not known whether it is ready")
+        ok, why = R.Castable(with({ known = true, onCooldown = true }), "Bolt")
+        t.eq(ok, false, "read, on cooldown")
+        t.eq(why, nil, "a plain no: not the not-known reason")
+        ok, why = R.Castable(with({ onCooldown = false }), "Bolt")
+        t.eq(ok, false, "known not read")
+        t.eq(why, nil, "the cooldown is not what stops it")
+        ok, why = R.Castable(with({ known = true, usable = false }), "Bolt")
+        t.eq(ok, false, "refused by the game")
+        t.eq(why, nil, "the cooldown is not what stops it")
+        ok, why = R.Castable(with({ known = true }), "Other")
+        t.eq(ok, false, "no row")
+        t.eq(why, nil, "no row, no reason")
+        local ready = R.Ready(with({ known = true }), "Bolt")
+        t.eq(ready, false, "Ready follows Castable")
+    end,
+
+    ["a cooldown nobody read: the list, a heal and the far opener pass the spell by"] = function(t)
+        local fight = { inCombat = true, hostile = true }
+        fight.spells = { Shield = { known = true }, Bolt = { known = true, onCooldown = false } }
+        t.eq(pick(nil, fight), "Bolt", "the list goes on to the rule whose cooldown was read")
+        fight.spells = { Shield = { known = true }, Bolt = { known = true } }
+        t.eq(pick(nil, fight), nil, "neither read: nothing")
+        local hurt = { lowHealth = true, inCombat = true, spells = {
+            Mend = { known = true, castMs = 1500 },
+            ["Big Mend"] = { known = true, onCooldown = false, castMs = 2500 },
+        } }
+        t.eq(pick(nil, hurt), "Big Mend", "the heal whose cooldown was read, though slower")
+        hurt.spells["Big Mend"].onCooldown = nil
+        t.eq(pick(nil, hurt), nil, "no heal whose cooldown is not known")
+        local far = { hostile = true, attacking = true, spells = { Bolt = { known = true, inRange = false } } }
+        t.eq(pick(nil, far), nil, "out of range and cooldown not read: not offered as the opener")
     end,
 
     ["pure: the same input gives the same answer and nothing is changed"] = function(t)

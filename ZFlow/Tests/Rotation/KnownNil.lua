@@ -32,7 +32,7 @@ T["snapshot: known not read stays nil, no stays false, yes stays true"] = functi
     t.eq(s.spells.Wrath.usable, true)
     t.eq(s.spells.Moonfire.known, false, "read: no")
     t.eq(s.spells.Attack.known, true, "read: yes")
-    t.eq(s.spells.Claw, { onCooldown = false }, "an empty row: known not read")
+    t.eq(s.spells.Claw, {}, "an empty row: known not read, cooldown not read")
 end
 
 T["snapshot: the reader's rows keep known nil"] = function(t)
@@ -45,18 +45,18 @@ T["snapshot: the reader's rows keep known nil"] = function(t)
 end
 
 T["chooser: known not read is not known, not castable, not ready"] = function(t)
-    local s = fight({ usable = true, inRange = true })
+    local s = fight({ usable = true, inRange = true, onCooldown = false })
     t.eq(R.Knows(s, "Bolt"), false)
     t.eq(R.Castable(s, "Bolt"), false)
     t.eq(R.Ready(s, "Bolt", true), false)
 end
 
 T["chooser: a spell whose known was not read is not suggested"] = function(t)
-    local yes = ns.Choose(fight({ known = true, usable = true }), fightPack())
+    local yes = ns.Choose(fight({ known = true, usable = true, onCooldown = false }), fightPack())
     t.eq(yes and yes.spell, "Bolt", "known: suggested")
-    local unread = ns.Choose(fight({ usable = true }), fightPack())
+    local unread = ns.Choose(fight({ usable = true, onCooldown = false }), fightPack())
     t.eq(unread, nil, "known not read: nothing")
-    local no = ns.Choose(fight({ known = false, usable = true }), fightPack())
+    local no = ns.Choose(fight({ known = false, usable = true, onCooldown = false }), fightPack())
     t.eq(no, nil, "not known: nothing")
 end
 

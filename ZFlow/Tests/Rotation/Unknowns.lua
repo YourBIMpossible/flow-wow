@@ -36,7 +36,7 @@ local ALL = { "Shield", "Bolt", "Mend", "Big Mend", "Renew", "Kick", "Silence", 
 -- Alive, every spell known; inCombat is left out unless `over` gives it.
 local function snap(over, known)
     local s = { dead = false, spells = {} }
-    for _, name in ipairs(known or ALL) do s.spells[name] = { known = true } end
+    for _, name in ipairs(known or ALL) do s.spells[name] = { known = true, onCooldown = false } end
     for k, v in pairs(over or {}) do s[k] = v end
     return s
 end
@@ -106,7 +106,7 @@ T["chooser: dead not known, nothing is suggested"] = function(t)
     t.ok(type(trace[1].note) == "string" and trace[1].note ~= "", "the row says why")
 
     local built = ns.SnapshotOf({ inCombat = false, hostile = true, lowHealth = true,
-                                  spells = { Mend = { known = true } } })
+                                  spells = { Mend = { known = true, onCooldown = false } } })
     t.eq(built.dead, nil, "the built snapshot keeps dead unknown")
     t.eq(ns.Choose(built, pack()), nil, "and nothing is suggested from it")
 end
@@ -198,7 +198,7 @@ end
 T["druid: combat not known, no out-of-fight buff and no Prowl"] = function(t)
     local function druid(over, role, form, tree, known)
         local s = { dead = false, role = role, form = form, tree = tree, hostile = true, attacking = true, spells = {} }
-        for _, name in ipairs(known) do s.spells[name] = { known = true } end
+        for _, name in ipairs(known) do s.spells[name] = { known = true, onCooldown = false } end
         for k, v in pairs(over or {}) do s[k] = v end
         local got = ns.Choose(s, ns.Packs.DRUID)
         return got and got.spell or nil
