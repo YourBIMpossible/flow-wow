@@ -115,10 +115,42 @@ function ns.make.fakeClient(opts)
     end
     function c.spellId(name) return s.spellIds and s.spellIds[name] or nil end
     function c.watchTrainer() end
+    -- A copy of the service rows, or nil.
+    local function copyRowsOf(rows)
+        if type(rows) ~= "table" then return nil end
+        local out = {}
+        for i = 1, #rows do
+            local r = {}
+            for k, v in pairs(rows[i]) do r[k] = v end
+            out[i] = r
+        end
+        return out
+    end
     function c.trainer()
         local r = s.trainer
         if type(r) ~= "table" then return nil end
-        return { profession = r.profession, npc = r.npc }
+        local filter = nil
+        if type(r.filter) == "table" then
+            filter = { available = r.filter.available, unavailable = r.filter.unavailable, known = r.filter.known }
+        end
+        return { profession = r.profession, npc = r.npc, services = copyRowsOf(r.services), filter = filter }
+    end
+    -- As the real client's (F8): fn({ id, name, rank }) for each spell learned
+    -- with learnSpell; the answer takes the listener back.
+    function c.onSpellLearned(fn)
+        if type(fn) ~= "function" then return nil end
+        s.learnedListeners = s.learnedListeners or {}
+        table.insert(s.learnedListeners, fn)
+        return function()
+            for i = #s.learnedListeners, 1, -1 do
+                if s.learnedListeners[i] == fn then table.remove(s.learnedListeners, i) end
+            end
+        end
+    end
+    -- Plays the game telling that a spell was learned.
+    function c.learnSpell(spell)
+        local copy = { id = spell and spell.id, name = spell and spell.name, rank = spell and spell.rank }
+        for _, fn in ipairs({ unpack(s.learnedListeners or {}) }) do fn(copy) end
     end
     function c.faction() return s.faction end
     function c.class() return s.class end
@@ -563,7 +595,11 @@ function ns.make.fakeClient(opts)
     end
     -- The open trainer window: { profession = name or nil, npc = name };
     -- nil for closed or not known.
-    function c.setTrainer(r) s.trainer = r and { profession = r.profession, npc = r.npc } or nil end
+    -- { profession, npc, services, filter }; services and filter as the real
+    -- client gives them (F8). The table is kept as given; trainer() copies.
+    function c.setTrainer(r)
+        s.trainer = r and { profession = r.profession, npc = r.npc, services = r.services, filter = r.filter } or nil
+    end
     -- "Horde", "Alliance", or nil for not known.
     function c.setFaction(group) s.faction = group end
     -- The class token ("DRUID"), or nil for not known.
