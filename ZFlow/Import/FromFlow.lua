@@ -1096,8 +1096,10 @@ end
 -- the import's value may take its place. choice = { model, prefix }: the
 -- settings model to ask and the part of the path before its keys; a choice
 -- with no model, or a key the model has no row for, compares types. A
--- stored table never gives way to a value that is no table. The second
--- result is true when the model accepts neither value.
+-- stored table never gives way to a value that is no table, and where the
+-- model has no row a stored value that is no table never gives way to a
+-- table: an import adds, it does not swap one shape for another. The
+-- second result is true when the model accepts neither value.
 local function givesWay(choice, at, have, value)
     if type(have) == "table" and type(value) ~= "table" then return false end
     local model = choice.model
@@ -1109,6 +1111,7 @@ local function givesWay(choice, at, have, value)
             return false, true
         end
     end
+    if type(value) == "table" and type(have) ~= "table" then return false end
     return type(have) ~= type(value)
 end
 
