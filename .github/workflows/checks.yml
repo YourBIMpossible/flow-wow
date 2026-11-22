@@ -4,7 +4,8 @@
 # tools/check-structure.ps1 (Flow.toc lists every file and only real ones; no
 # registration key used twice). Passing this is not a gameplay test: the
 # add-on's self-tests run in the game; tools/run-tests.ps1 runs the ones that
-# need nothing of the game client (docs/TESTING.md).
+# need nothing of the game client (docs/TESTING.md). The Z-Flow steps at the
+# end do the same for ZFlow/.
 name: Checks
 
 on:
@@ -46,3 +47,18 @@ jobs:
       - name: Offline tests (tools/run-tests.ps1)
         shell: pwsh
         run: ./tools/run-tests.ps1
+
+      # The Z-Flow line (ZFlow/): its own structure rules, its generated TOC
+      # still matching manifest.lua, and its offline tests on the fake client.
+      # Without these a broken Z-Flow commit shows green here.
+      - name: Z-Flow structure (tools/zflow-structure.ps1)
+        shell: pwsh
+        run: ./tools/zflow-structure.ps1
+
+      - name: Z-Flow TOC is current (tools/zflow-toc.ps1 -Check)
+        shell: pwsh
+        run: ./tools/zflow-toc.ps1 -Check
+
+      - name: Z-Flow offline tests (tools/zflow-tests.ps1)
+        shell: pwsh
+        run: ./tools/zflow-tests.ps1
