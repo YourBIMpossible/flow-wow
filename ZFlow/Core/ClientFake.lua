@@ -1183,6 +1183,22 @@ function ns.make.fakeClient(opts)
     function c.merchantRedraw()
         for _, fn in ipairs({ unpack(merchantRedrawFns) }) do fn() end
     end
+
+    -- S35: worldPosition() and onTaxi(), both unknown (nil) until set.
+    --   c.setWorldPosition(cont, wx, wy)   c.setWorldPosition(nil): not known
+    --   c.setOnTaxi(true / false)          c.setOnTaxi(nil): not known
+    function c.worldPosition()
+        local w = s.world
+        if not w then return nil end
+        return { cont = w.cont, wx = w.wx, wy = w.wy }
+    end
+    function c.setWorldPosition(cont, wx, wy)
+        s.world = cont ~= nil and { cont = cont, wx = wx, wy = wy } or nil
+    end
+    function c.onTaxi() return s.onTaxi end
+    function c.setOnTaxi(v)
+        if v == nil then s.onTaxi = nil else s.onTaxi = v and true or false end
+    end
     return c
 end
 
