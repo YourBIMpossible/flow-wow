@@ -98,6 +98,7 @@ return {
         local shown = ns.TrainerListRankUp.Refresh({ level = function() return 10 end }, a, lists(), {}, nil)
         shown = ns.TrainerListRankUp.Refresh({ level = function() return nil end }, a, lists(), {}, shown)
         t.eq(a.List(), {}, "level not known: nothing claimed")
+        t.eq(shown, {}, "level not known: nothing shown")
         t.eq(ns.TrainerListRankUp.Refresh({}, a, lists(), {}, nil), {})
         t.eq(ns.TrainerListRankUp.Refresh(nil, a, lists(), {}, nil), {})
     end,
