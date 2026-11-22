@@ -23,6 +23,14 @@ local _, ns = ...
 --   cont is the continent of the zone the player is in, and only for a
 --   trainer on the map the player is on (see Nav/WaypointStep.lua).
 --
+--   A trainer on another map, when the map the player is on is known (owner
+--   decision D10), is text only:
+--     step = { label = "<profession> trainer" .. N.PROF_OTHER_MAP,
+--              still = true, elsewhere = { map, x, y } }
+--   No place, so no needle and no distance. elsewhere is where the trainer
+--   was seen. The label is left out, never cut, when it is over the limit.
+--   With the player's map not known, the step is the one above, no cont.
+--
 -- A profession gets a step when all of these hold; the reason names the
 -- first that does not:
 --   "no reading"   skill and max are both finite numbers, max above 0
@@ -137,6 +145,10 @@ local function forProfession(prof, r, npcs, tierSeen, here)
     return choose(usable, here)
 end
 
+-- Said after the label of a trainer on another map: a long dash (three
+-- bytes, written as byte escapes to keep this file ASCII) and the words.
+N.PROF_OTHER_MAP = " \226\128\148 other map"
+
 function N.ProfStep(readings, npcs, tierSeen, here)
     if type(here) ~= "table" then here = {} end
     local names = {}
@@ -161,11 +173,18 @@ function N.ProfStep(readings, npcs, tierSeen, here)
     end
     if not to then return nil, why end
 
+    local max = N.Waypoint and N.Waypoint.LABEL_MAX or 40
+    if not near and type(here.position) == "table" and here.position.map ~= nil then
+        local step = { still = true, elsewhere = { map = to.map, x = to.x, y = to.y } }
+        local label = prof .. " trainer" .. N.PROF_OTHER_MAP
+        if #label <= max then step.label = label end
+        return step
+    end
     local cont
     if near and type(here.zone) == "table" then cont = here.zone.cont end
     local step = { place = { cont = cont, map = to.map, x = to.x, y = to.y }, radius = N.PROF_NEAR }
     local label = prof .. " trainer"
-    if #label <= (N.Waypoint and N.Waypoint.LABEL_MAX or 40) then step.label = label end
+    if #label <= max then step.label = label end
     return step
 end
 
