@@ -128,4 +128,13 @@ tests["tooltip line: no line spells the product, a bar or a line break"] = funct
     t.ok(#all >= 7)
 end
 
+tests["tooltip line P-Q: a gain or loss too small to show is the same, not an upgrade of +0.0"] = function(t)
+    t.eq(T.Lines(result("upgrade", 0.04, "head"), YES), { { text = "Same as your head piece", tone = "same" } })
+    t.eq(T.Lines(result("worse", -0.04, "head"), YES), { { text = "Same as your head piece", tone = "same" } })
+    t.eq(T.Lines(result("upgrade", 1e-16, "head"), YES)[1].text, "Same as your head piece", "a rounding residue")
+    t.eq(T.Lines(result("upgrade", 0.06, "head"), YES)[1].text, "Upgrade for your head piece (+0.1)")
+    t.eq(T.Lines(result("worse", -0.06, "head"), YES)[1].text, "Not an upgrade for your head piece (-0.1)")
+    t.eq(T.SAME, 0.05)
+end
+
 return tests

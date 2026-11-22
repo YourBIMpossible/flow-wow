@@ -26,6 +26,8 @@
 --   c.setWaypoint(1411, 0.4, 0.2)   -- c.setWaypoint(nil): none set
 --   c.setScreen(1024, 768); c.setVersion("0.1.0"); c.setFrames(false)
 --   c.panels[1].lines / .point / .shown / .spec; c.panels[1].drag({ "CENTER", "CENTER", 0, 0 })
+--   c.panel({ closable = true }) has h.onClose(fn, failed); h.close() is the
+--   player closing it. c.setCloseRoute(false): a client with no close route.
 --   c.arrows[1].point / .attached / .shown / .drawn / .lines; c.arrows[1].drag(point)
 -- What a test has not set is unknown (nil), as on a client that won't say.
 local _, ns = ...
@@ -113,10 +115,42 @@ function ns.make.fakeClient(opts)
     end
     function c.spellId(name) return s.spellIds and s.spellIds[name] or nil end
     function c.watchTrainer() end
+    -- A copy of the service rows, or nil.
+    local function copyRowsOf(rows)
+        if type(rows) ~= "table" then return nil end
+        local out = {}
+        for i = 1, #rows do
+            local r = {}
+            for k, v in pairs(rows[i]) do r[k] = v end
+            out[i] = r
+        end
+        return out
+    end
     function c.trainer()
         local r = s.trainer
         if type(r) ~= "table" then return nil end
-        return { profession = r.profession, npc = r.npc }
+        local filter = nil
+        if type(r.filter) == "table" then
+            filter = { available = r.filter.available, unavailable = r.filter.unavailable, known = r.filter.known }
+        end
+        return { profession = r.profession, npc = r.npc, services = copyRowsOf(r.services), filter = filter }
+    end
+    -- As the real client's (F8): fn({ id, name, rank }) for each spell learned
+    -- with learnSpell; the answer takes the listener back.
+    function c.onSpellLearned(fn)
+        if type(fn) ~= "function" then return nil end
+        s.learnedListeners = s.learnedListeners or {}
+        table.insert(s.learnedListeners, fn)
+        return function()
+            for i = #s.learnedListeners, 1, -1 do
+                if s.learnedListeners[i] == fn then table.remove(s.learnedListeners, i) end
+            end
+        end
+    end
+    -- Plays the game telling that a spell was learned.
+    function c.learnSpell(spell)
+        local copy = { id = spell and spell.id, name = spell and spell.name, rank = spell and spell.rank }
+        for _, fn in ipairs({ unpack(s.learnedListeners or {}) }) do fn(copy) end
     end
     function c.faction() return s.faction end
     function c.class() return s.class end
@@ -130,6 +164,39 @@ function ns.make.fakeClient(opts)
     function c.inRange(id)
         if type(id) ~= "number" or not s.ranges then return nil end
         return s.ranges[id]
+    end
+    -- As the real client's (F4): fn(rollID, link, show) for each roll offered
+    -- with offerRoll; the answer takes the listener back.
+    function c.onLootRoll(fn)
+        if type(fn) ~= "function" then return nil end
+        s.rollListeners = s.rollListeners or {}
+        table.insert(s.rollListeners, fn)
+        return function()
+            for i = #s.rollListeners, 1, -1 do
+                if s.rollListeners[i] == fn then table.remove(s.rollListeners, i) end
+            end
+        end
+    end
+    -- Plays the game offering a roll on `link`: every onLootRoll listener is
+    -- told, and what they showed comes back as { { text, r, g, b } ... }.
+    function c.offerRoll(rollID, link)
+        local shown = {}
+        local function show(text, r, g, b) shown[#shown + 1] = { text = text, r = r, g = g, b = b } end
+        for _, fn in ipairs({ unpack(s.rollListeners or {}) }) do fn(rollID, link, show) end
+        return shown
+    end
+    function c.level() return s.level end
+    -- As the real client's: fn(link, add) for each item tooltip shown with
+    -- showItemTooltip; the answer takes the listener back.
+    function c.onItemTooltip(fn)
+        if type(fn) ~= "function" then return nil end
+        s.tooltipListeners = s.tooltipListeners or {}
+        table.insert(s.tooltipListeners, fn)
+        return function()
+            for i = #s.tooltipListeners, 1, -1 do
+                if s.tooltipListeners[i] == fn then table.remove(s.tooltipListeners, i) end
+            end
+        end
     end
     -- A copy of a flat table, or nil for anything else.
     local function copyFlat(t)
@@ -145,12 +212,19 @@ function ns.make.fakeClient(opts)
         if not item then return {} end
         return { kind = item.kind, stats = copyFlat(item.stats) }
     end
-    -- As the real client's gear(): { kind, stats, worn, dualWield }.
+    -- As the real client's gear(): { kind, stats, classID, subclassID,
+    -- minLevel, unmet, speed, worn, dualWield }. Worn items carry kind and
+    -- stats only, as the real client's do.
     function c.gear(link)
         local out = { worn = {}, dualWield = s.dualWield }
         if type(link) == "string" and link ~= "" then
             local item = gearItem(link)
             out.kind, out.stats = item.kind, item.stats
+            local more = s.items and s.items[link] or nil
+            if more then
+                out.classID, out.subclassID, out.minLevel = more.classID, more.subclassID, more.minLevel
+                out.unmet, out.speed = copyFlat(more.unmet), more.speed
+            end
         end
         for slot, worn in pairs(s.worn or {}) do
             if worn == false then
@@ -277,6 +351,26 @@ function ns.make.fakeClient(opts)
             if moved then
                 local ok, err = pcall(moved, { point[1], point[2], point[3], point[4] })
                 if not ok and movedFailed then movedFailed(err) end
+            end
+        end
+        -- A closable panel, as on the real client: onClose only when
+        -- there is a close route. close() is the test's control: the
+        -- player closed it by the button or Escape. Nothing on a panel
+        -- that is not shown.
+        if type(spec) == "table" and spec.closable == true and not s.noCloseRoute then
+            local closed = type(spec.onClose) == "function" and spec.onClose or nil
+            local closedFailed
+            function h.onClose(fn, failed)
+                closed = type(fn) == "function" and fn or nil
+                closedFailed = type(failed) == "function" and failed or nil
+            end
+            function h.close()
+                if not h.shown then return end
+                h.shown = false
+                if closed then
+                    local ok, err = pcall(closed)
+                    if not ok and closedFailed then closedFailed(err) end
+                end
             end
         end
         c.panels[#c.panels + 1] = h
@@ -417,6 +511,9 @@ function ns.make.fakeClient(opts)
     function c.setVersion(text) s.version = text end
     -- false: a client that cannot make frames (panel() answers nil).
     function c.setFrames(on) s.noFrames = not on end
+    -- false: a client where a closable panel gets neither a close button
+    -- nor the Escape route (panel() answers a handle with no onClose).
+    function c.setCloseRoute(on) s.noCloseRoute = not on end
     -- false: a client that will not say the time (uptime() nil, now() 0).
     function c.setTime(on) s.noTime = not on end
     -- What listenFaults() answers: an event the client refused, and (false)
@@ -498,7 +595,11 @@ function ns.make.fakeClient(opts)
     end
     -- The open trainer window: { profession = name or nil, npc = name };
     -- nil for closed or not known.
-    function c.setTrainer(r) s.trainer = r and { profession = r.profession, npc = r.npc } or nil end
+    -- { profession, npc, services, filter }; services and filter as the real
+    -- client gives them (F8). The table is kept as given; trainer() copies.
+    function c.setTrainer(r)
+        s.trainer = r and { profession = r.profession, npc = r.npc, services = r.services, filter = r.filter } or nil
+    end
     -- "Horde", "Alliance", or nil for not known.
     function c.setFaction(group) s.faction = group end
     -- The class token ("DRUID"), or nil for not known.
@@ -533,7 +634,20 @@ function ns.make.fakeClient(opts)
             s.items[link] = nil
             return
         end
-        s.items[link] = { kind = item.kind, stats = copyFlat(item.stats) }
+        s.items[link] = { kind = item.kind, stats = copyFlat(item.stats),
+                          classID = item.classID, subclassID = item.subclassID, minLevel = item.minLevel,
+                          unmet = copyFlat(item.unmet), speed = item.speed }
+    end
+    -- Your level for level(): a number, or nil for not known (the start).
+    function c.setLevel(n) s.level = n end
+    -- Plays the game filling its item tooltip for `link`: every onItemTooltip
+    -- listener is told, and what they added comes back as
+    -- { { text, r, g, b } ... }.
+    function c.showItemTooltip(link)
+        local added = {}
+        local function add(text, r, g, b) added[#added + 1] = { text = text, r = r, g = g, b = b } end
+        for _, fn in ipairs({ unpack(s.tooltipListeners or {}) }) do fn(link, add) end
+        return added
     end
     -- What one inventory slot holds: a link (an item worn), false (read and
     -- empty), or nil (not read).
@@ -603,12 +717,44 @@ function ns.make.fakeClient(opts)
     -- True while something is subscribed to the frame tick.
     function c.ticking() return s.frames == 1 end
 
-    -- F7, the fight log. guid(unit): what setGuid gave for "player", "pet"
-    -- or "target" (nil, the start: not known); any other unit is nil.
-    -- targetRank(): what setTargetRank gave. watchCombatLog(fn) answers
-    -- true and combatLog(...) hands its values to every watcher; after
-    -- setCombatLog(false) it answers nil and takes no watcher.
-    local guids, logWatchers = {}, {}
+    -- F6, the rotation helper. form(): what setForm gave (a number, or nil
+    -- for not known: the start). petBattle() and vehicle(): true, false, or
+    -- nil for not known (the start).
+    function c.form() return s.form end
+    function c.setForm(n) s.form = type(n) == "number" and n or nil end
+    function c.petBattle() return s.petBattle end
+    function c.setPetBattle(on)
+        if on == nil then s.petBattle = nil else s.petBattle = on and true or false end
+    end
+    function c.vehicle() return s.vehicle end
+    function c.setVehicle(on)
+        if on == nil then s.vehicle = nil else s.vehicle = on and true or false end
+    end
+    -- Every secure button made is in c.secureButtons, in order: .spec and
+    -- .attrs (what it holds). set refuses with "lockdown" while
+    -- combatLockdown() is not false (it follows setCombat / setLockdown).
+    -- failSecureAttr(attr, true): setting that one is "refused".
+    -- dropSecureAttr(attr, true): setting it answers true and keeps nothing.
+    c.secureButtons = {}
+    local secureFail, secureDrop = {}, {}
+    function c.secureButton(spec)
+        if s.noFrames then return nil end
+        local h = { spec = spec, attrs = {} }
+        function h.set(attr, value)
+            if c.combatLockdown() ~= false then return false, "lockdown" end
+            if secureFail[attr] then return false, "refused" end
+            if not secureDrop[attr] then h.attrs[attr] = value end
+            return true
+        end
+        function h.get(attr) return h.attrs[attr] end
+        c.secureButtons[#c.secureButtons + 1] = h
+        return h
+    end
+    function c.failSecureAttr(attr, on) secureFail[attr] = on and true or nil end
+    function c.dropSecureAttr(attr, on) secureDrop[attr] = on and true or nil end
+
+    -- F2 errand stops: the same reads as Core/Client.lua, set by a test.
+    local guids = {}
     function c.guid(unit)
         if unit ~= "player" and unit ~= "pet" and unit ~= "target" then return nil end
         return guids[unit]
@@ -616,6 +762,30 @@ function ns.make.fakeClient(opts)
     function c.setGuid(unit, id) guids[unit] = type(id) == "string" and id ~= "" and id or nil end
     function c.playerGUID() return c.guid("player") end
     function c.petGUID() return c.guid("pet") end
+    function c.serviceNpc()
+        local n = s.serviceNpc
+        return n and { guid = n.guid, name = n.name } or nil
+    end
+    function c.setServiceNpc(guid, name)
+        if guid == nil and name == nil then s.serviceNpc = nil return end
+        s.serviceNpc = { guid = guid, name = name }
+    end
+    function c.merchantRepairs() return s.merchantRepairs end
+    function c.setMerchantRepairs(v)
+        if v == true or v == false then s.merchantRepairs = v else s.merchantRepairs = nil end
+    end
+    function c.bindLocation() return s.bindLocation end
+    function c.setBindLocation(name) s.bindLocation = type(name) == "string" and name ~= "" and name or nil end
+    function c.hearthCooldown() return s.hearthCooldown end
+    function c.setHearthCooldown(v) s.hearthCooldown = type(v) == "number" and v >= 0 and v or nil end
+
+    -- F7, the fight log. guid(unit): what setGuid gave for "player", "pet"
+    -- or "target" (nil, the start: not known); any other unit is nil.
+    -- targetRank(): what setTargetRank gave. watchCombatLog(fn) answers
+    -- true and combatLog(...) hands its values to every watcher; after
+    -- setCombatLog(false) it answers nil and takes no watcher.
+    -- guid, setGuid, playerGUID and petGUID are above, with the errand reads.
+    local logWatchers = {}
     function c.targetRank() return s.targetRank end
     function c.setTargetRank(rank) s.targetRank = type(rank) == "string" and rank ~= "" and rank or nil end
     function c.watchCombatLog(fn)

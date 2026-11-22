@@ -53,6 +53,9 @@ Gear\WeaponSpeed.lua
 Gear\Verdict.lua
 Gear\Tooltip.lua
 Gear\TooltipModule.lua
+Gear\MerchantMarks.lua
+Gear\MerchantShow.lua
+Gear\RollHint.lua
 Rotation\Pack.lua
 Rotation\Snapshot.lua
 Rotation\Choose.lua
@@ -81,11 +84,15 @@ Nav\WaypointStep.lua
 Nav\Waypoint.lua
 Nav\ProfStep.lua
 Nav\ProfSeen.lua
+Spells\TrainerList.lua
+Spells\TrainerListRankUp.lua
+Spells\TrainerModule.lua
 Nav\RoutePlan.lua
 Nav\HearthStep.lua
 Nav\HearthSeen.lua
 Nav\ServiceNearest.lua
 Nav\ServiceSeen.lua
+Nav\Errand.lua
 Nav\QuestSource.lua
 Nav\QuestRead.lua
 UI\ProfCard.lua
