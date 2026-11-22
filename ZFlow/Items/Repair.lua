@@ -45,6 +45,11 @@ Repair.NEAR = 10             -- yards from the vendor that count as there (as N.
 Repair.NAME = "repairWarn"
 Repair.SETTING = "repair.warnBelow"
 Repair.EVENT = "UPDATE_INVENTORY_DURABILITY"
+-- The advisor prompt (UI/Advisor.lua: Add(id, text, priority), Remove(id)).
+-- Shown while gear is low; a first guess at a priority above routine prompts.
+Repair.ADVISOR = "advisor"
+Repair.PROMPT_ID = "l6c.repair"
+Repair.PROMPT_PRIORITY = 50
 -- Nothing in Z-Flow learns repair vendors yet (they come only from an import
 -- of Flow's places), so the line promises nothing.
 Repair.NO_VENDOR = "No repair vendor is known yet."
@@ -202,17 +207,40 @@ end
 function Repair.Declare(k)
     local api = {}
     local current, warned = nil, false
+    local prompted = nil      -- the text last given to the advisor, or nil
     function api.current() return current end
     k:Module({
         name = Repair.NAME,
         needs = { "client", "store", "bus", "settings" },
         provides = { Current = api.current },
         start = function(ctx)
+            -- The advisor panel (UI/Advisor.lua), looked up each time and
+            -- never needed: without it, or when it refuses or raises, the
+            -- warning works as before.
+            local function prompt(warning)
+                local ok, advisor = pcall(ctx.use, Repair.ADVISOR)
+                if not ok or type(advisor) ~= "table" then return end
+                if warning then
+                    if type(advisor.Add) == "function" then
+                        pcall(advisor.Add, Repair.PROMPT_ID, table.concat(warning.lines, " "), Repair.PROMPT_PRIORITY)
+                    end
+                elseif type(advisor.Remove) == "function" then
+                    pcall(advisor.Remove, Repair.PROMPT_ID)
+                end
+            end
             local function check()
                 local warning, state = Repair.Check(ctx.client, ctx.store, ctx.settings:get(Repair.SETTING))
                 -- Not read: neither low nor fine. What was known stays.
                 if state == "unread" then return end
                 current = warning
+                -- Only on a change of what is said: a prompt is not re-added
+                -- on every durability event, and nothing is removed that was
+                -- never added.
+                local text = warning and table.concat(warning.lines, " ") or nil
+                if text ~= prompted then
+                    prompted = text
+                    prompt(warning)
+                end
                 if current and not warned then
                     warned = true
                     local id = k.id or ns.id
