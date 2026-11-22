@@ -53,5 +53,6 @@ Nav\ViewState.lua
 Nav\WaypointStep.lua
 Nav\Waypoint.lua
 Nav\ProfStep.lua
+Nav\ProfSeen.lua
 UI\DevPanel.lua
 UI\Arrow.lua
