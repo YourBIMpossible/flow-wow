@@ -111,6 +111,16 @@ function ns.make.client(env)
         return ok and tonumber(t) or 0
     end
 
+    -- The date: seconds since 1970 by the server's clock, the same clock in
+    -- every session (now() starts again with the client). nil when not
+    -- known, never now() in its place. GetServerTime is a first guess on
+    -- 16001: not seen in game.
+    function c.date()
+        local ok, t = call(env.GetServerTime)
+        if not ok or type(t) ~= "number" or t ~= t or t <= 0 or t == math.huge then return nil end
+        return t
+    end
+
     -- Milliseconds, fine-grained, for timing work. debugprofilestop is a
     -- first guess on 16001; falls back to GetTime, which only moves per frame.
     function c.clockMs()
