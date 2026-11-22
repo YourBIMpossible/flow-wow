@@ -25,7 +25,7 @@ local _, ns = ...
 --   gear.rollHint   "Upgrade hint on loot rolls"
 -- At start it asks the client to be told about loot rolls:
 --   client.onLootRoll(fn) -> cancel;  fn(rollId, link, show);  show(text, r, g, b)
--- A client without that hook (Core/Client.lua has none yet) leaves the
+-- A client without that hook (see Core/Client.lua, F4) leaves the
 -- module started and quiet. With the setting off nothing is worked out. An
 -- error while working a hint out shows nothing for that roll, is counted,
 -- and is kept as one "gear" problem per distinct error.

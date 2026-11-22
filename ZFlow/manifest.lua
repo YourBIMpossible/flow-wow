@@ -68,6 +68,9 @@ return {
         "Gear/Verdict.lua",
         "Gear/Tooltip.lua",
         "Gear/TooltipModule.lua",
+        "Gear/MerchantMarks.lua",
+        "Gear/MerchantShow.lua",
+        "Gear/RollHint.lua",
 
         -- Rotation and classes
         "Rotation/Pack.lua",
