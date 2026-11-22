@@ -131,6 +131,36 @@ function ns.make.fakeClient(opts)
         if type(id) ~= "number" or not s.ranges then return nil end
         return s.ranges[id]
     end
+    -- A copy of a flat table, or nil for anything else.
+    local function copyFlat(t)
+        if type(t) ~= "table" then return nil end
+        local out = {}
+        for key, value in pairs(t) do out[key] = value end
+        return out
+    end
+    -- One item as gear() gives it: its kind and a copy of its stats; a link
+    -- nobody described gives an item with nothing known.
+    local function gearItem(link)
+        local item = s.items and s.items[link] or nil
+        if not item then return {} end
+        return { kind = item.kind, stats = copyFlat(item.stats) }
+    end
+    -- As the real client's gear(): { kind, stats, worn, dualWield }.
+    function c.gear(link)
+        local out = { worn = {}, dualWield = s.dualWield }
+        if type(link) == "string" and link ~= "" then
+            local item = gearItem(link)
+            out.kind, out.stats = item.kind, item.stats
+        end
+        for slot, worn in pairs(s.worn or {}) do
+            if worn == false then
+                out.worn[slot] = false
+            elseif type(worn) == "string" then
+                out.worn[slot] = gearItem(worn)
+            end
+        end
+        return out
+    end
     function c.spellCooldown(id)
         if type(id) ~= "number" or not s.cooldowns then return nil end
         return s.cooldowns[id]
@@ -438,6 +468,27 @@ function ns.make.fakeClient(opts)
     function c.setInRange(id, on)
         s.ranges = s.ranges or {}
         if on == nil then s.ranges[id] = nil else s.ranges[id] = on and true or false end
+    end
+    -- Gear, for gear(): nothing is known until set.
+    -- One item by its link: { kind, stats }; nil takes it back. The stats
+    -- are copied.
+    function c.setItem(link, item)
+        s.items = s.items or {}
+        if type(item) ~= "table" then
+            s.items[link] = nil
+            return
+        end
+        s.items[link] = { kind = item.kind, stats = copyFlat(item.stats) }
+    end
+    -- What one inventory slot holds: a link (an item worn), false (read and
+    -- empty), or nil (not read).
+    function c.setWorn(slot, link)
+        s.worn = s.worn or {}
+        s.worn[slot] = link
+    end
+    -- Dual wield: true, false, or anything else for not known.
+    function c.setDualWield(on)
+        if type(on) == "boolean" then s.dualWield = on else s.dualWield = nil end
     end
     -- One spell's cooldown: true (on cooldown), false (ready), nil for
     -- not known. A spell never set is not known.
