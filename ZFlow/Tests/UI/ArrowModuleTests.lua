@@ -293,4 +293,96 @@ return {
         t.eq(again.handles, nil)
         t.eq(a.state().ready, true)
     end,
+
+    -- KF2: the kernel's stop hides the frames, whatever switched the module off.
+    ["module: switched off by errors that are not the arrows' own code, the frames still hide (KF2)"] = function(t)
+        if type(A.Declare) ~= "function" then t.ok(false, MISSING) return end
+        local k, c, a = start()
+        login(c)
+        a.setGuide(step)
+        local q, p = c.arrows[1], c.arrows[2]
+        t.eq(q.shown, true)
+        -- A handler under the arrows' name that the arrows did not make.
+        k.bus:on(A.NAME, "poke", function() error("poke broke") end)
+        for _ = 1, ns.FAULT_LIMIT - 1 do k.bus:emit("poke") end
+        t.eq(q.shown, true, "four errors: still shown")
+        k.bus:emit("poke")
+        t.eq(k:ModuleState(A.NAME), "off")
+        t.eq({ q.shown, p.shown }, { false, false }, "hidden by the module's stop")
+        t.eq(a.state().view, nil)
+        t.eq(k.problems:count("stop"), 0)
+        local draws = q.draws
+        c.advance(1, 10)
+        t.eq(q.draws, draws, "and not drawn again")
+    end,
+
+    -- KF3: what a frame script runs of the arrows is the module's work.
+    ["module: an error after a drag is counted, and five switch the arrows off (KF3)"] = function(t)
+        if type(A.Declare) ~= "function" then t.ok(false, MISSING) return end
+        local k, c, a = start()
+        login(c)
+        local box = {}
+        a.setGuide(counted(box))
+        local q, p = c.arrows[1], c.arrows[2]
+        local ran = work(k)
+        q.drag({ "TOP", "TOP", 0, -40 })
+        t.eq(work(k), ran + 1, "the drag is run as work of the module")
+        t.eq(k.problems:count(), 0)
+        t.eq(savedArrows(c).points.quest, { "TOP", "TOP", 0, -40 }, "and saved as before")
+
+        box.fail = true
+        for i = 1, ns.FAULT_LIMIT - 1 do
+            local ok = pcall(q.drag, { "TOP", "TOP", 0, -40 - i })
+            t.ok(ok, "the error does not reach the client: drag " .. i)
+            t.eq(q.shown, false, "off the screen, not frozen: drag " .. i)
+        end
+        t.eq(k:ModuleState(A.NAME), "started", "four errors")
+        t.eq(k.meter:report()[A.NAME].errors, ns.FAULT_LIMIT - 1)
+        t.ok(pcall(p.drag, { "TOP", "TOP", 50, -40 }), "the fifth, on the other arrow")
+        local state, reason = k:ModuleState(A.NAME)
+        t.eq(state, "off")
+        t.ok(type(reason) == "string" and reason:find("guide broke", 1, true) ~= nil, "the reason is the last error")
+        t.eq({ q.shown, p.shown }, { false, false })
+
+        box.fail = false
+        local asked, at = box.asked, savedArrows(c).points.quest
+        ran = work(k)
+        q.drag({ "CENTER", "CENTER", 0, 0 })
+        t.eq(box.asked, asked, "a drag after that lays nothing out")
+        t.eq(work(k), ran, "and runs nothing of the module")
+        t.eq(savedArrows(c).points.quest, at, "and saves nothing")
+    end,
+
+    ["module: a frame error counts as one of the five (KF3)"] = function(t)
+        if type(A.Declare) ~= "function" then t.ok(false, MISSING) return end
+        local k, c, a = start()
+        login(c)
+        local box = {}
+        a.setGuide(counted(box))
+        local q = c.arrows[1]
+        box.fail = true
+        for _ = 1, ns.FAULT_LIMIT - 1 do c.fire("PLAYER_ENTERING_WORLD") end
+        box.fail = false
+        c.fire("PLAYER_ENTERING_WORLD")
+        t.eq({ k:ModuleState(A.NAME) }, { "started" }, "four errors")
+        t.eq(q.shown, true)
+        q.draw = function() error("boom") end
+        c.advance(0.1, 3)
+        local state, reason = k:ModuleState(A.NAME)
+        t.eq(state, "off", "the frame error is the fifth")
+        t.ok(type(reason) == "string" and reason:find("boom", 1, true) ~= nil, "and the reason")
+        t.eq(k.problems:count("arrow"), 1, "still one problem of the arrow")
+        t.eq(q.shown, false)
+    end,
+
+    ["a drag on arrows started directly is not the module's: its error reaches the caller, as before (KF3)"] = function(t)
+        if type(A.Declare) ~= "function" then t.ok(false, MISSING) return end
+        local k, c, a = start({ direct = true })
+        login(c)
+        local box = {}
+        a.setGuide(counted(box))
+        box.fail = true
+        t.eq(pcall(c.arrows[1].drag, { "TOP", "TOP", 0, -40 }), false)
+        t.eq(k.meter:report()[A.NAME], nil)
+    end,
 }

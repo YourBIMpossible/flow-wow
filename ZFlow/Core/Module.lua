@@ -8,6 +8,7 @@
 --     events   = { MERCHANT_SHOW = function(ctx, ...) end },
 --     ticks    = { { every = 0.5, when = "outOfCombat", run = function(ctx) end } },
 --     start    = function(ctx) end,
+--     stop     = function(ctx) end,                -- optional
 --   }
 --   ctx = { name, id, client, store, settings, bus, sched, use }
 --
@@ -18,6 +19,11 @@
 -- A module with a missing or cyclic need, or whose start fails, is turned
 -- off and reported by name; the others start. If the load guard pauses the
 -- addon, Load wires and starts nothing.
+-- stop:    when a started module is switched off (its own errors, or a
+--          module it needs was switched off) its stop runs once, after its
+--          handlers, ticks and jobs are cut. An error in stop is a recorded
+--          problem, kind "stop", and is not thrown and not counted towards
+--          anything. A module that never started gets no stop.
 local _, ns = ...
 ns.make = ns.make or {}
 
@@ -31,6 +37,7 @@ local function specProblem(spec)
         if spec[field] ~= nil and type(spec[field]) ~= "table" then return field .. " must be a table" end
     end
     if spec.start ~= nil and type(spec.start) ~= "function" then return "start must be a function" end
+    if spec.stop ~= nil and type(spec.stop) ~= "function" then return "stop must be a function" end
     for _, need in ipairs(spec.needs or {}) do
         if type(need) ~= "string" then return "needs must be names" end
     end
@@ -56,10 +63,17 @@ function ns.make.modules(k)
     k.paused = false
 
     local function turnOff(mod, reason)
+        local was = mod.state
         mod.state, mod.reason = "off", reason
         k.bus:off(mod.spec.name)
         k.sched:off(mod.spec.name)
         k.problems:add("module", mod.spec.name, reason)
+        -- Only what started is stopped, and once. The meter records an
+        -- error in stop as a problem; it goes no further.
+        if was == "started" and not mod.stopped and type(mod.spec.stop) == "function" then
+            mod.stopped = true
+            k.meter:run(mod.spec.name, "stop", nil, mod.spec.stop, mod.ctx)
+        end
     end
 
     -- Repeated errors. The bus and the scheduler report each error of a
