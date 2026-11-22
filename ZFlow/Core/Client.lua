@@ -4556,6 +4556,40 @@ function ns.make.client(env)
         if type(name) ~= "string" or hidden(name) then return nil end
         return name ~= ""
     end
+
+    -- S44 quest place on another map (lead section 173): where a map lies in
+    -- the world, so a step on another map can be pointed at (Nav/GuideRead.lua).
+    -- Only reads. C_Map.GetWorldPosFromMapPos(map, CreateVector2D(x, y)) is
+    -- the call c.worldPosition already makes (S35; RESEARCH-S35.md), asked
+    -- here for three points of the map: 0,0, 1,0 and 0,1. Legacy Flow does
+    -- the same (Modules/Nav/Nav.lua:55-61 and 104-123: map corners and the
+    -- map's east and south axes). A first guess: not seen in game on 1.60.1.
+    -- CreateVector2D is the client's own; with none, a plain { x, y } is
+    -- asked with (whether the client takes it is not known).
+    local function mapWorld(map, x, y)
+        local okV, vec = call(env.CreateVector2D, x, y)
+        if not okV or type(vec) ~= "table" then vec = { x = x, y = y } end
+        local ok, cont, world = mapCall("GetWorldPosFromMapPos", map, vec)
+        if not ok or type(world) ~= "table" then return nil end
+        if type(cont) ~= "number" or hidden(cont) then return nil end
+        local okXY, wx, wy = call(world.GetXY, world)
+        if not okXY then wx, wy = world.x, world.y end
+        if type(wx) ~= "number" or type(wy) ~= "number" or hidden(wx) or hidden(wy) then return nil end
+        if wx ~= wx or wy ~= wy then return nil end
+        return cont, wx, wy
+    end
+
+    -- A map's corners in the world: { cont, ox, oy (the point 0,0),
+    -- ex, ey (1,0, the east edge's end), sx, sy (0,1, the south edge's end) },
+    -- or nil when any is not known or they are not on one continent.
+    function c.mapCorners(map)
+        if map == nil then return nil end
+        local c0, ox, oy = mapWorld(map, 0, 0)
+        local c1, ex, ey = mapWorld(map, 1, 0)
+        local c2, sx, sy = mapWorld(map, 0, 1)
+        if c0 == nil or c0 ~= c1 or c0 ~= c2 then return nil end
+        return { cont = c0, ox = ox, oy = oy, ex = ex, ey = ey, sx = sx, sy = sy }
+    end
     return c
 end
 

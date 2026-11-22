@@ -11,7 +11,8 @@ local _, ns = ...
 --           complete: a plain true when the quest is ready to hand in.
 --           failed: a plain true; such a quest is never a step.
 --   places  { [id] = { objectives = { [i] = spot }, turnIn = spot } } or nil
---           spot = { points = { { map, x, y } }, elsewhere = bool, name }
+--           spot = { points = { { map, x, y } }, elsewhere = bool, name, away }
+--           away: one point on another map, { map, x, y }, or absent
 --           points are on the map the reader was asked for, x and y shares
 --           0..1. elsewhere: a place is known, on another map only. name
 --           (turnIn only): who takes the quest in, when that is known.
@@ -39,10 +40,12 @@ local _, ns = ...
 --   1. the nearest point of an unfinished objective, on the map the player
 --      is on, of a quest that is neither complete nor failed;
 --   2. the nearest point where a complete quest is handed in, on that map;
---   3. words only (no place, so no needle): the first quest in the log with
---      something left to do. Its last line is Q.ELSEWHERE when a place is
---      known on another map (and the player's own map is known), else
---      Q.UNKNOWN_PLACE.
+--   3. the first quest in the log with something left to do. When its
+--      spot has an `away` point (on another map, S44) that is its place:
+--      { quest, objective, turnIn, label, detail, place = { map, x, y } }.
+--      Else words only (no place, so no needle); its last line is
+--      Q.ELSEWHERE when a place is known on another map (and the player's
+--      own map is known), else Q.UNKNOWN_PLACE.
 --   nil when the log has no such quest.
 -- Nearest is in yards when here.size is known, else in map shares. With the
 -- player's x, y not known a point cannot be chosen, so rule 3 answers.
@@ -128,6 +131,16 @@ local function placed(row, i, detail, pt, here)
 end
 
 local function worded(row, i, detail, spot, here)
+    -- S44 (lead section 173): a point on another map is the step's place,
+    -- with no `still`, so the arrow can turn to it and ask for a way there
+    -- (Nav/Travel.lua). Its continent is not known here and is left out.
+    -- Only while the player's own map is known (section 175): with it not
+    -- known, the words as before.
+    local away = here.map ~= nil and type(spot) == "table" and spot.away or nil
+    if type(away) == "table" and away.map ~= nil and finite(away.x) and finite(away.y) then
+        return { quest = row.id, objective = i, turnIn = i == nil, label = row.title, detail = detail,
+                 place = { map = away.map, x = away.x, y = away.y } }
+    end
     -- Elsewhere is said only when the map the player is on is known.
     local why = (here.map ~= nil and type(spot) == "table" and spot.elsewhere == true)
         and Q.ELSEWHERE or Q.UNKNOWN_PLACE
