@@ -23,6 +23,9 @@
 -- starts with "settings." or "layout.": no row may sit in learned, imports,
 -- schema or any other section, so no reset can reach them.
 --
+-- keepOnResetAll = true on a row: reset("all") leaves it alone. It still
+-- resets by its own key or its group.
+--
 -- A "table" row holds the table as it is stored: the same table is given
 -- back, not a copy, and what is in it is not checked. It is the one type
 -- that may go without a default: such a row reads nil while nothing (or
@@ -63,6 +66,9 @@ local function rowProblem(row)
     if row.help ~= nil and type(row.help) ~= "string" then return "help must be text" end
     if row.group ~= nil and type(row.group) ~= "string" then return "group must be text" end
     if row.requires ~= nil and type(row.requires) ~= "function" then return "requires must be a function" end
+    if row.keepOnResetAll ~= nil and type(row.keepOnResetAll) ~= "boolean" then
+        return "keepOnResetAll must be true or false"
+    end
     if row.path ~= nil then
         local path = row.path
         if type(path) ~= "string" or path == "" or path:find("^%.") or path:find("%.$") or path:find("%.%.") then
@@ -146,11 +152,21 @@ function ns.make.settings(k)
     end
 
     -- Back to the default: one key, every key of a group, or "all".
+    -- "all" is every row but those declared with keepOnResetAll = true
+    -- (owner decision 6: a reset of all keeps the arrow layout). Such a row
+    -- still resets by its own key or its group; "all" is never read as a
+    -- key or a group name.
     function settings:reset(what)
         local n = 0
         for i = 1, #order do
             local row = order[i]
-            if what == "all" or row.key == what or (not rows[what] and row.group == what) then
+            local hit
+            if what == "all" then
+                hit = row.keepOnResetAll ~= true
+            else
+                hit = row.key == what or (not rows[what] and row.group == what)
+            end
+            if hit then
                 if k.store:set(row.scope, place(row), nil) then n = n + 1 end
             end
         end

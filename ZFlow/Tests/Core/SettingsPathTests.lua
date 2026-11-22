@@ -64,7 +64,7 @@ return {
         local k = kernel()
         local function stored() return k.store:get("account", "layout.arrows") end
         k:Setting({ key = "arrow.layout", scope = "account", type = "table", label = "Arrows",
-                    path = "layout.arrows", group = "Arrows" })
+                    path = "layout.arrows", group = "Arrows", keepOnResetAll = true })
         t.eq(k.settings:set("arrow.layout", { mode = "separate" }), true)
         t.eq(k.settings:set("arrow.layout", nil), true)
         t.eq({ stored(), k.settings:get("arrow.layout") }, { nil, nil })
@@ -75,9 +75,46 @@ return {
         t.eq(k.settings:reset("Arrows"), 1)
         t.eq(stored(), nil, "reset by group")
         k.settings:set("arrow.layout", { mode = "separate" })
-        t.eq(k.settings:reset("all"), 1)
-        t.eq(stored(), nil, "reset of all")
+        t.eq(k.settings:reset("all"), 0)
+        t.eq(stored(), { mode = "separate" }, "a reset of all keeps the arrow layout (owner decision 6, T4)")
         t.eq(k.store:get("account", "settings.arrow"), nil, "nothing was ever under settings")
+    end,
+
+    -- Owner decision 6 (T4): a reset of everything keeps the arrow layout.
+    ["settings path D6: a row marked keepOnResetAll is kept by a reset of all"] = function(t)
+        local k = kernel()
+        local function stored() return k.store:get("account", "layout.arrows") end
+        local row = k:Setting({ key = "arrow.layout", scope = "account", type = "table", label = "Arrows",
+                                path = "layout.arrows", group = "Arrows", keepOnResetAll = true })
+        t.ok(row ~= nil, "the row is taken")
+        k:Setting({ key = "v.one", scope = "account", type = "bool", default = false, label = "One" })
+        k.settings:set("arrow.layout", { mode = "separate" })
+        k.settings:set("v.one", true)
+        t.eq(k.settings:reset("all"), 1, "one row was reset: the other is not counted")
+        t.eq(stored(), { mode = "separate" }, "the layout is kept")
+        t.eq(k.settings:get("v.one"), false, "the other row went back to its default")
+        t.eq(k.problems:count(), 0)
+    end,
+
+    ["settings path D6: a group or a key named all does not pass for a reset of all"] = function(t)
+        local k = kernel()
+        k:Setting({ key = "kept", scope = "account", type = "bool", default = false, label = "Kept",
+                    group = "all", keepOnResetAll = true })
+        k.settings:set("kept", true)
+        t.eq(k.settings:reset("all"), 0)
+        t.eq(k.settings:get("kept"), true, "all means everything, and this row is kept from that")
+    end,
+
+    ["settings path D6: keepOnResetAll must be true or false"] = function(t)
+        local k = kernel()
+        t.eq(k:Setting({ key = "a", scope = "account", type = "bool", default = false, label = "A",
+                         keepOnResetAll = "yes" }), nil)
+        t.eq(k.problems:count("setting"), 1)
+        t.ok(k:Setting({ key = "b", scope = "account", type = "bool", default = false, label = "B",
+                         keepOnResetAll = false }) ~= nil, "false is the same as not said")
+        k.settings:set("b", true)
+        t.eq(k.settings:reset("all"), 1)
+        t.eq(k.settings:get("b"), false)
     end,
 
     ["settings path: a table row may give a default table"] = function(t)
