@@ -942,7 +942,9 @@ function ns.make.fakeClient(opts)
 
     -- F9 window buttons: the same read as Core/Client.lua. A window is
     -- there only when a test says so: c.setWindow(frameName, { protected =
-    -- bool }); c.setWindow(frameName, false) takes it away. Every button
+    -- true / false / "unsaid", shown = true / false }); protected left out
+    -- is a plain no, shown left out is not said.
+    -- c.setWindow(frameName, false) takes it away. Every button
     -- made is in c.windowButtons, in order: .frame, .spec, .shown.
     -- click() is the control of the test: the player clicked it (nothing
     -- on a button that is not shown).
@@ -952,15 +954,33 @@ function ns.make.fakeClient(opts)
         if w == false then gameWindows[frameName] = nil return end
         gameWindows[frameName] = type(w) == "table" and w or {}
     end
+    local function fakeProtected(w)
+        if w.protected == nil or w.protected == false then return false end
+        if w.protected == true then return true end
+        return nil
+    end
+    function c.windowState(frameName)
+        local w = gameWindows[frameName]
+        if not w then return nil end
+        local shown = w.shown
+        if type(shown) ~= "boolean" then shown = nil end
+        return { shown = shown, protected = fakeProtected(w) }
+    end
     function c.windowButton(frameName, spec)
         if type(spec) ~= "table" then return nil, "bad ask" end
         local w = gameWindows[frameName]
         if not w then return nil, "no window" end
         if c.inCombat() ~= false then return nil, "in combat" end
+        local protected = fakeProtected(w)
+        if protected == nil then return nil, "its window will not say whether it is protected" end
+        if protected then return nil, "its window is protected" end
         if s.noFrames then return nil, "no frame" end
-        local protected = w.protected
-        if type(protected) ~= "boolean" then protected = nil end
-        local h = { frame = frameName, spec = spec, shown = false, parentProtected = protected }
+        local h = { frame = frameName, spec = spec, shown = false }
+        function h.visible()
+            local now = gameWindows[frameName]
+            if not now or type(now.shown) ~= "boolean" then return nil end
+            return h.shown and now.shown
+        end
         local clicked, clickFailed
         function h.onClick(fn, failed)
             clicked = type(fn) == "function" and fn or nil

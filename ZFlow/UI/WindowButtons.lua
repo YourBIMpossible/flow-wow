@@ -15,9 +15,10 @@
 -- combat; one wanted in combat is made when combat ends. A button that
 -- could not be made is tried again when its window opens (its `retry`
 -- event) and when combat ends: the owner turned the merchant button on,
--- opened a merchant and saw none (section 132). A protected window no
--- longer stops it; Core/Client.lua says why. A button is made once and
--- only shown or hidden after that.
+-- opened a merchant and saw none (section 132). A protected window, or
+-- one that will not say, stops it again (section 134), and the reason
+-- is said; Core/Client.lua says why. A button is made once and only
+-- shown or hidden after that.
 --
 --   WindowButtons.WINDOWS            the two windows: key, frame, setting row,
 --                                    label, what a click opens, the button spec
@@ -25,9 +26,14 @@
 --     api.state() -> { worldMap = s, merchant = s }, s one of
 --       "off", "shown", "waiting for combat to end", "not made"
 --     api.reasons() -> { [key] = why } for each button not made: what the
---       client said ("no window", "in combat", "no frame", "bad ask") or
+--       client said ("no window", "in combat", "no frame", "bad ask",
+--       "its window is protected",
+--       "its window will not say whether it is protected") or
 --       "no window read" when the client has none
---     api.lines() -> one line for each window, for the chat window
+--     api.lines() -> one line for each window, for the chat window: the
+--       state and why, then what the client says of the window itself
+--       (there or not, open or closed, protected or not), then whether a
+--       shown button can be seen
 --   WindowButtons.Declare(k, diag) also adds the word WB.WORD, which
 --   prints those lines.
 --
@@ -43,6 +49,9 @@
 --     (shown only while the window is): h.onClick(fn) fn() on a left click,
 --     h.show(on). It never sets an attribute and is never secure.
 --     Fake: c.setWindow(frameName, { protected = bool }) says a window exists.
+--   client.windowState(frameName) -> nil (no such window) or
+--     { shown = true / false / nil, protected = true / false / nil }
+--   h.visible() -> true / false / nil: can the button be seen now
 --   client.inCombat()     true / false / nil (nil counts as in combat)
 --   PLAYER_REGEN_ENABLED  combat ended
 --   MERCHANT_SHOW, PLAYER_ENTERING_WORLD   a button not made is tried again
@@ -97,14 +106,33 @@ function WB.Declare(k, diag)
         return out
     end
 
+    -- What the client says of the window itself, whatever the button is.
+    local function windowSays(win)
+        local client = ctx and ctx.client or k.client
+        if type(client) ~= "table" or type(client.windowState) ~= "function" then return "window not read" end
+        local ok, w = pcall(client.windowState, win.frame)
+        if not ok then return "window not read" end
+        if type(w) ~= "table" then return "window not there" end
+        local s = "window there"
+        if w.shown ~= nil then s = s .. (w.shown and ", open" or ", closed") end
+        if w.protected == true then return s .. ", protected" end
+        if w.protected == false then return s .. ", not protected" end
+        return s .. ", will not say whether it is protected"
+    end
+
     function api.lines()
         local out = {}
         for _, win in ipairs(WB.WINDOWS) do
             local s = states[win.key]
             local line = "button on the " .. win.says .. ": " .. tostring(s)
             if s == "not made" and reasons[win.key] then line = line .. " (" .. reasons[win.key] .. ")" end
+            line = line .. "; " .. windowSays(win)
             local h = handles[win.key]
-            if h and h.parentProtected == true then line = line .. "; its window is protected" end
+            if s == "shown" and h and type(h.visible) == "function" then
+                local okV, v = pcall(h.visible)
+                if okV and v == true then line = line .. "; button can be seen" end
+                if okV and v == false then line = line .. "; button cannot be seen" end
+            end
             out[#out + 1] = line .. "."
         end
         return out
