@@ -16,7 +16,7 @@ local function fightPack()
 end
 
 local function fight(row)
-    return ns.SnapshotOf({ inCombat = true, hostile = true, spells = { Bolt = row } })
+    return ns.SnapshotOf({ inCombat = true, dead = false, hostile = true, spells = { Bolt = row } })
 end
 
 local T = {}
@@ -61,9 +61,11 @@ T["chooser: a spell whose known was not read is not suggested"] = function(t)
 end
 
 T["chooser: the attack is not started on a known nobody read"] = function(t)
-    local s = ns.SnapshotOf({ hostile = true, canStartAttack = true, spells = { Attack = {} } })
+    local s = ns.SnapshotOf({ inCombat = false, dead = false, hostile = true, canStartAttack = true,
+                               spells = { Attack = {} } })
     t.eq(ns.Choose(s, fightPack()), nil)
-    s = ns.SnapshotOf({ hostile = true, canStartAttack = true, spells = { Attack = { known = true } } })
+    s = ns.SnapshotOf({ inCombat = false, dead = false, hostile = true, canStartAttack = true,
+                         spells = { Attack = { known = true } } })
     local pick = ns.Choose(s, fightPack())
     t.eq(pick and pick.spell, "Attack")
 end

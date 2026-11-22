@@ -70,20 +70,22 @@ local function longest(s, prefix)
 end
 
 -- A blessing is wanted out of a fight, with none up or the one up nearly out.
+-- Not known whether a fight is on: not wanted.
 function ns.PaladinWantsBlessing(s)
-    if s.inCombat then return false end
+    if s.inCombat ~= false then return false end
     local left = longest(s, "Blessing of ")
     if left == nil then return true end
     return type(left) == "number" and left < 30
 end
 
 -- A seal is wanted when none is up; with a fight on or about to start, also
--- when the one up is nearly out (3 s in the fight, 8 s before the pull).
+-- when the one up is nearly out (3 s in the fight, 8 s before the pull; 3 s
+-- when it is not known whether the fight is on).
 function ns.PaladinWantsSeal(s)
     local left = longest(s, "Seal of ")
     if left == nil then return true end
     if not fight(s) or type(left) ~= "number" then return false end
-    return left < (s.inCombat and 3 or 8)
+    return left < (s.inCombat ~= false and 3 or 8)
 end
 
 local function sealUp(s) return longest(s, "Seal of ") ~= nil end

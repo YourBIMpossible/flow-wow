@@ -80,9 +80,9 @@ end
 
 local buffs = tag({
     { spell = "Mark of the Wild", kind = "buff", reason = "Mark of the Wild missing or running out",
-      when = function(s) return not s.inCombat and caster(s) and needBuff(s, "Mark of the Wild", 60) end },
+      when = function(s) return s.inCombat == false and caster(s) and needBuff(s, "Mark of the Wild", 60) end },
     { spell = "Thorns", kind = "buff", reason = "Thorns missing or running out",
-      when = function(s) return not s.inCombat and caster(s) and needBuff(s, "Thorns", 30) end },
+      when = function(s) return s.inCombat == false and caster(s) and needBuff(s, "Thorns", 30) end },
     { spell = "Dire Bear Form", kind = "buff", reason = "Tanking: Bear Form",
       when = function(s) return ns.DruidWantsBear(s.role, fight(s), inBear(s)) end },
     { spell = "Bear Form", kind = "buff", reason = "Tanking: Bear Form",
@@ -93,7 +93,7 @@ local buffs = tag({
       evidence = "authored", provenance = CAT_PROVENANCE,
       when = function(s) return ns.DruidWantsCat(s.role, fight(s), s.form, s.tree) end },
     { spell = "Prowl", kind = "buff", reason = "Prowl before you pull: your key then holds your opener from stealth",
-      when = function(s) return not s.inCombat and s.hostile and inCat(s) and not stealthed(s) end },
+      when = function(s) return s.inCombat == false and s.hostile and inCat(s) and not stealthed(s) end },
 })
 
 local melee = tag({
@@ -144,7 +144,7 @@ local roots = tag({
     { spell = "Entangling Roots", target = true, reason = "Root it before it reaches you, then cast",
       when = function(s)
           return s.hostile and caster(s) and s.targetMelee and missingOnTarget(s, "Entangling Roots")
-              and (not s.inCombat or s.targetOnYou)
+              and (s.inCombat == false or s.targetOnYou)
       end },
 })
 
