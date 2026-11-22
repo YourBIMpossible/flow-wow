@@ -494,14 +494,16 @@ end
 -- Diag.RotationLine(state, view, enabled) -> line or nil
 --   nil when there is no driver (state nil). Otherwise the first row that
 --   holds: not running; no view held (switched off, or no reading yet); no
---   pack; dead not known; dead; fight not known; lockdown not known;
---   lockdown; spells not read; and last the suggestion, or why there is
---   none. A fight not known is said as the chooser counts it (R.InFight:
---   as a fight). The two lockdown rows say the key refusal's own reason
---   (ns.cast.REFUSED). A view kept from an earlier tick says so.
+--   pack; dead not known; dead; spells not read; and last the suggestion,
+--   or why there is none. The first five are the whole line. The fight is
+--   a clause in front of the last two, never a row of its own: a fight not
+--   known (said as the chooser counts it, R.InFight: as a fight), lockdown
+--   not known, or lockdown. "(keys unchanged)" goes with it whenever
+--   lockdown is not a known "no". A view kept from an earlier tick says so.
 -- Diag.RotationCooldownLine(view) -> line or nil
---   one line when no spell can be cast and at least one is held back only
---   because nobody read its cooldown (R.COOLDOWN_UNKNOWN).
+--   one line when at least one spell is held back only because nobody read
+--   its cooldown (R.COOLDOWN_UNKNOWN): the count, and, while another spell
+--   can still be cast, the names in order.
 -- Diag.RotationStealthLine(view) -> line or nil
 --   stealth as it was read: stealthed, not stealthed, or not known. The
 --   attack is started only on a known "no" (see Choose.lua).
@@ -509,16 +511,13 @@ end
 -- known "no": nothing is chosen then for a reason the first line gives.
 local function plural(n, one, many) return n .. " " .. (n == 1 and one or many) end
 
-local function lowerFirst(text) return text:sub(1, 1):lower() .. text:sub(2) end
-
-local function refusal(view, why, fallback)
-    local reason = type(view.why) == "table" and view.why.reason or nil
-    if type(reason) ~= "string" then
-        local texts = type(ns.cast) == "table" and ns.cast.REFUSED or nil
-        reason = type(texts) == "table" and texts[why] or nil
-    end
-    if type(reason) ~= "string" or reason == "" then return fallback end
-    return lowerFirst(reason)
+-- The fight as a clause, or nil out of a fight with the keys free.
+local function fightClause(view, s)
+    local held = view.lockdown ~= false and " (keys unchanged)" or ""
+    if s.inCombat == nil then return "fight not known, counted as a fight" .. held end
+    if view.lockdown == nil then return "not known whether you are in a fight" .. held end
+    if view.lockdown ~= false then return "in a fight" .. held end
+    return nil
 end
 
 local function rotationRow(view)
@@ -526,24 +525,19 @@ local function rotationRow(view)
     local s = type(view.snapshot) == "table" and view.snapshot or {}
     if s.dead == nil then return "not known whether you are dead; nothing suggested." end
     if s.dead ~= false then return "dead; nothing suggested." end
-    if s.inCombat == nil then return "fight not known; counted as a fight." end
-    if view.lockdown == nil then
-        return refusal(view, "lockdownUnknown", "not known whether you are in a fight; keys unchanged") .. "."
-    end
-    if view.lockdown ~= false then
-        return refusal(view, "lockdown", "in a fight; keys change when it ends") .. "."
-    end
+    local fight = fightClause(view, s)
+    local head = fight ~= nil and fight .. "; " or ""
     local unread = type(view.unread) == "table" and #view.unread or 0
     if unread > 0 then
-        return plural(unread, "spell", "spells") .. " not read; "
+        return head .. plural(unread, "spell", "spells") .. " not read; "
             .. (unread == 1 and "it is" or "they are") .. " skipped."
     end
     local why = type(view.why) == "table" and view.why or {}
     local picked = type(view.suggestion) == "table" and view.suggestion.spell or nil
     if picked ~= nil then
-        return "suggesting " .. tostring(picked) .. " (" .. tostring(why.step or "step not known") .. ")."
+        return head .. "suggesting " .. tostring(picked) .. " (" .. tostring(why.step or "step not known") .. ")."
     end
-    return "nothing to suggest (" .. tostring(why.note or "no reason given") .. ")."
+    return head .. "nothing to suggest (" .. tostring(why.note or "no reason given") .. ")."
 end
 
 function Diag.RotationLine(state, view, enabled)
@@ -569,15 +563,23 @@ function Diag.RotationCooldownLine(view)
     local s = choosing(view)
     local R = ns.Rotation
     if s == nil or type(s.spells) ~= "table" or type(R) ~= "table" then return nil end
-    local held = 0
+    local held, castable = {}, false
     for name in pairs(s.spells) do
         local can, why = R.Castable(s, name)
-        if can then return nil end
-        if why == R.COOLDOWN_UNKNOWN then held = held + 1 end
+        if can then
+            castable = true
+        elseif why == R.COOLDOWN_UNKNOWN then
+            held[#held + 1] = tostring(name)
+        end
     end
-    if held == 0 then return nil end
-    return "rotation: nothing can be chosen; " .. plural(held, "spell", "spells") .. ": "
-        .. R.COOLDOWN_UNKNOWN .. "."
+    if #held == 0 then return nil end
+    if not castable then
+        return "rotation: nothing can be chosen; " .. plural(#held, "spell", "spells") .. ": "
+            .. R.COOLDOWN_UNKNOWN .. "."
+    end
+    table.sort(held)
+    return "rotation: " .. plural(#held, "spell", "spells") .. " passed by: "
+        .. R.COOLDOWN_UNKNOWN .. ": " .. table.concat(held, ", ") .. "."
 end
 
 function Diag.RotationStealthLine(view)
