@@ -738,6 +738,12 @@ Pure, so they must pass offline (`tools/run-tests.ps1`) as well as in game:
 - `reserve: each free-slot reader keeps its number` (general, all, and the missing-API
   values 99 / nil / 99).
 
+- `minimap: the UpdateLane contract` (P2's test, P5's body: with the pin frames stood in
+  for, a call for one lane changes only that lane's pin; `point` nil hides it; the
+  `quest` and `professions` keys give what `Update` and `UpdateProf` give. Offline it
+  can only run if the pin's frame work sits behind a function the test can stand in
+  for; otherwise it is an in-game test, and P5's PR D says which.)
+
 Need the game (reported SKIP offline):
 
 - `click:` tests for "Go here next" on a profession step and for clearing it.
@@ -825,11 +831,21 @@ pattern:
   (TaxiMark, MapFlights, AreaHop) stay on the quest lane's route (2.2 rule 5).
 - The minimap pin has two hard-wired entry points today, `P:Update` and `P:UpdateProf`
   (MinimapPin.lua:415). The per-lane call is
-  `ns.minimapPin:UpdateLane(key, p, point, goal)`. **Who owns what:** P2 fixes that
-  signature and supplies its inputs (each lane's `Target` and `route`, PRs 2 and 3), and
-  keeps calling `Update` and `UpdateProf` as now. **P5 builds `UpdateLane`** (its PR D:
-  one pin per key, the lane's colour) and turns `Update` and `UpdateProf` into calls of
-  it. The pin follows the lane, not the arrow: a hidden arrow keeps its dot.
+  `ns.minimapPin:UpdateLane(key, p, point, goal)`. **Who owns what (lead ruling, Batch 4,
+  WOW-12; it settles the mismatch with P5 revision 2, which gave the function and its
+  calls to P2):**
+  - **P2 owns the signature and the contract test.** The signature is the one above and
+    does not change without a P2 revision. The contract test (section 5) is written with
+    P2's lane-state PRs and runs against whatever body exists. P2 also supplies the
+    inputs (each lane's `Target` and `route`, PRs 2 and 3) and, until P5's PR D lands,
+    keeps calling `Update` and `UpdateProf` as now.
+  - **P5's PR D owns the body and the calls**: one pin per key, the lane's colour, and
+    turning `Update` and `UpdateProf` into calls of `UpdateLane`.
+  - The contract, which the test checks: `key` is an activity key; `point` nil hides
+    that lane's pin and no other; a call for one lane never moves, shows or hides
+    another lane's pin; `UpdateLane("quest", ...)` and `UpdateLane("professions", ...)`
+    do what `Update` and `UpdateProf` do today; the pin follows the lane, not the arrow,
+    so a hidden arrow keeps its dot.
 - The world map's profession route (MapOverlay.lua:1028-1063) reads
   `A:State("professions").plan` instead of `N.profPlan`; drawing more lanes is P5's.
 
@@ -920,3 +936,7 @@ Round 2 (WOW-7):
 | P5-8 mismatches with P5 | P5 document 2.1, 2.3, 2.5 on `wow-p5-design` 43d3e15 | 6.2 (`nav.arrows.text` reserved), 6.4 (P5 builds `UpdateLane`), 6.5 (leader), section 7 (numbers kept; Q2b folded back into Q2) |
 
 No round-2 finding was rejected.
+
+Batch 4 (WOW-12): the lead's ruling on `ns.minimapPin:UpdateLane` is recorded in 6.4 and
+its contract test added to section 5. P2 owns the signature and the contract test; P5's
+PR D owns the body and the calls. No other design change.
