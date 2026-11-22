@@ -1185,10 +1185,11 @@ function ns.make.client(env)
     -- game on 16001. owner is the arrow handle the menu is open for.
     local MENU_ROW, MENU_PAD, MENU_MARK, MENU_WIDTH = 18, 6, 22, 170
     local menu = { rows = {}, keys = {} }
+    -- A made catcher is hidden here whether or not a menu is open (AI1): it
+    -- covers the screen, so it must never outlive the menu it is under.
     local function menuClose()
-        local open = menu.owner ~= nil
         menu.owner, menu.pick = nil, nil
-        if open and menu.catcher then method(menu.catcher, "Hide") end
+        if menu.catcher then method(menu.catcher, "Hide") end
     end
     local function menuFrames()
         if menu.panel then return true end
@@ -1196,6 +1197,10 @@ function ns.make.client(env)
             local ok, catcher = call(env.CreateFrame, "Button", nil, env.UIParent)
             if not ok or catcher == nil then return false end
             menu.catcher = catcher
+            -- The game makes a frame shown. Hidden at once (AI1): only a
+            -- menu that has opened fully shows it, so a panel that cannot
+            -- be made leaves nothing over the screen.
+            method(catcher, "Hide")
             method(catcher, "SetFrameStrata", "FULLSCREEN_DIALOG")
             method(catcher, "SetAllPoints", env.UIParent)
             method(catcher, "EnableMouse", true)
@@ -1772,8 +1777,10 @@ function ns.make.client(env)
             if #out == 0 then
                 if not tipped then return end
                 tipped = false
+                -- Hidden only when the tooltip says it is this arrow's
+                -- (AI2): no answer is not known, and is left alone.
                 local okOwned, owned = method(tip, "IsOwned", f)
-                if okOwned and owned == false then return end
+                if not okOwned or owned ~= true then return end
                 method(tip, "Hide")
                 return
             end
