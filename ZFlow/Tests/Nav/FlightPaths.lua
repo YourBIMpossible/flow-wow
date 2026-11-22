@@ -225,6 +225,23 @@ tests["flight paths module: a flight map inside the wait cancels the note"] = fu
     t.eq(#c.printed, 0)
 end
 
+-- Review of 211e99b (medium, F-086): a flight map did open; that the NPC
+-- read failed at that moment is not "they have no flight path".
+tests["flight paths module: a flight map with the NPC not read still cancels the note"] = function(t)
+    local _, c, api, at = start()
+    at("Karos")
+    c.fire("GOSSIP_SHOW")
+    c.advance(1, 2)
+    at(nil)                                   -- the NPC read gives nothing now
+    c.fire("TAXIMAP_OPENED")
+    c.advance(FP.WAIT + 0.5, 8)
+    t.eq((flights(c).none or {}).Karos, nil, "no 'no flight path' note: a flight map opened")
+    t.eq(#c.printed, 0, "and no chat line")
+    t.eq((flights(c).talked or {}).Karos, nil, "nor is anyone marked learned on a guess")
+    at("Karos")
+    t.eq(api.goals()[1].name, "Karos", "the goal simply stays")
+end
+
 tests["flight paths module: talking to someone who is no goal notes nothing"] = function(t)
     local _, c, _, at = start()
     at("Smith")
