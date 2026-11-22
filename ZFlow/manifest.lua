@@ -80,6 +80,7 @@ return {
 
         -- On screen (after Nav: the panel uses its saved-point rules)
         "UI/DevPanel.lua",
+        "UI/SettingsSlash.lua",
         "UI/ArrowMenu.lua",
     "UI/Arrow.lua",
     "UI/RotationIcon.lua",
