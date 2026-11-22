@@ -103,8 +103,15 @@ function T.Record(lists, reading, when)
     local seenStates = {}
     for s in pairs(shown) do seenStates[s] = true end
     if type(old) == "table" and type(old.rows) == "table" then
+        -- A spell and rank the new visit lists (in any state) is not kept
+        -- from the old list too: the new state wins (review d5a4dc1).
+        local fresh = {}
+        for _, r in ipairs(rows) do fresh[r.name .. "\0" .. (r.rank or "")] = true end
         for _, r in ipairs(old.rows) do
-            if type(r) == "table" and STATES[r.state] and not shown[r.state] then rows[#rows + 1] = r end
+            if type(r) == "table" and STATES[r.state] and not shown[r.state]
+                and type(r.name) == "string" and not fresh[r.name .. "\0" .. (r.rank or "")] then
+                rows[#rows + 1] = r
+            end
         end
         if type(old.shown) == "table" then
             for _, s in ipairs(STATE_ORDER) do

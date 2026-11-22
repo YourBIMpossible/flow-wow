@@ -144,4 +144,21 @@ return {
         t.eq(lists[key] and lists[key].npc, nil, "class trainer key differs")
         t.eq(lists[ns.TrainerList.Key("Mr. Smith")].npc, "Mr. Smith", "the real name stays on the entry")
     end,
+
+    ["filter: a spell the new visit lists in another state is not kept twice"] = function(t)
+        local lists = ns.TrainerList.Record({}, reading(rows()), 1)
+        local knownOnly = { available = false, unavailable = false, known = true }
+        lists = ns.TrainerList.Record(lists, reading({
+            { name = "Moonfire", rank = "Rank 2", state = "known", cost = 150, level = 10 },
+            { name = "Rejuvenation", rank = "Rank 1", state = "known", cost = 100, level = 4 },
+        }, nil, nil, knownOnly), 2)
+        local seen = {}
+        for _, r in ipairs(lists["Loganaar|class"].rows) do
+            local k = r.name .. "/" .. (r.rank or "")
+            t.ok(not seen[k], "listed once: " .. k)
+            seen[k] = r.state
+        end
+        t.eq(seen["Moonfire/Rank 2"], "known", "the new state wins")
+        t.eq(seen["Wrath/Rank 3"], "unavailable", "an untouched row of another state is kept")
+    end,
 }
