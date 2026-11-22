@@ -112,6 +112,7 @@ return {
         t.eq(best, nil)
         t.eq(why, "no crossings")
         best, why = N.CrossingBest(nil, at(7, 70, 0.5, 0.5), { at(8, 80, 0.2, 0.2) }, apart, "Horde")
+        t.eq(best, nil)
         t.eq(why, "no crossings")
         best, why = N.CrossingBest(given(), at(7, 70, 0.5, 0.5), {}, apart, "Horde")
         t.eq(best, nil)
@@ -277,9 +278,11 @@ return {
         input.on, input.me = nil, nil
         steps, unjoined, why = N.CrossingSteps(input)
         t.eq(#steps, 0)
+        t.eq(#unjoined, 0)
         t.eq(why, "position unknown")
         steps, unjoined, why = N.CrossingSteps(nil)
         t.eq(#steps, 0)
+        t.eq(#unjoined, 0)
         t.eq(why, "position unknown")
     end,
 
@@ -376,10 +379,13 @@ return {
         t.eq(what, "hearthstone")
         -- the bind place on a map whose size is not known: on that map is enough to say no
         out, key, what = N.CrossingSeen({}, at(7, 70, 0.3, 0.3), at(8, 81, 0.1, 0.1), { apart = apart, bind = { map = 81, x = 0.9, y = 0.9 } })
+        t.eq(#out, 0)
         t.eq(key, nil)
         t.eq(what, "hearthstone")
         -- far from the bind place on a known map: a trip like any other
         out, key, what = N.CrossingSeen({}, at(7, 70, 0.3, 0.3), at(8, 80, 0.1, 0.1), { apart = apart, bind = bind })
+        t.eq(#out, 1)
+        t.eq(key, "seen:70:80")
         t.eq(what, "new")
     end,
 
@@ -391,10 +397,16 @@ return {
         t.eq(what, "no change")
         t.eq(out, list, "the same list back")
         out, key, what = N.CrossingSeen(list, at(7, 70, 0.5, 0.1), at(nil, 80, 0.5, 0.1), { apart = apart })
+        t.eq(out, list)
+        t.eq(key, nil)
         t.eq(what, "no change")
         out, key, what = N.CrossingSeen(list, nil, at(8, 80, 0.5, 0.1), { apart = apart })
+        t.eq(out, list)
+        t.eq(key, nil)
         t.eq(what, "no change")
         out, key, what = N.CrossingSeen(list, at(7, 70, 0.5, 0.1), { cont = 8, map = 80 }, { apart = apart })
+        t.eq(out, list)
+        t.eq(key, nil)
         t.eq(what, "no change")
     end,
 
