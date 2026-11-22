@@ -537,8 +537,68 @@ function ns.make.client(env)
         return shown and true or false
     end
 
+    -- ---------------------------------------------------------------- F8
+    -- Trainer and spell learning (FEATURE-PLAN F8, owner Plexy since LEDGER
+    -- 125): the service rows and the window's filter, added to the one
+    -- trainer read below (no second trainer read). First guesses, not seen in
+    -- game on 16001: GetNumTrainerServices(), GetTrainerServiceInfo(i) (name,
+    -- rank, category "available" / "unavailable" / "used" / "header"),
+    -- GetTrainerServiceCost(i), GetTrainerServiceLevelReq(i) and
+    -- GetTrainerServiceTypeFilter("available" / "unavailable" / "used").
+    --
+    -- services { { name, rank, state, cost, level } ... } in the window's order:
+    --          state "available", "unavailable" or "known" (the game's
+    --          "used"); header rows are left out. rank, cost and level are
+    --          left out of a row when not read. One row whose name or state
+    --          cannot be read drops the whole list (never a shorter list).
+    -- filter   { available, unavailable, known }, each true or false; nil
+    --          when any of the three cannot be read.
+    -- Look-only: nothing is trained or bought.
+    local SERVICE_STATE = { available = "available", unavailable = "unavailable", used = "known" }
+    local function wholeOrNil(ok, v)
+        if not ok or v == nil or hidden(v) or type(v) ~= "number" or v ~= v then return nil end
+        if v < 0 or v == math.huge or v ~= math.floor(v) then return nil end
+        return v
+    end
+    local function trainerFilter()
+        local out = {}
+        for game, ours in pairs({ available = "available", unavailable = "unavailable", used = "known" }) do
+            -- Older clients answer 1 for shown and nothing for hidden: an
+            -- answer of nothing from a call that ran is "not shown".
+            local ok, on = call(env.GetTrainerServiceTypeFilter, game)
+            if not ok then return nil end
+            if on == nil then on = false end
+            if hidden(on) then return nil end
+            if on == 1 then on = true elseif on == 0 then on = false end
+            if type(on) ~= "boolean" then return nil end
+            out[ours] = on
+        end
+        return out
+    end
+    local function trainerServices()
+        local n = wholeOrNil(call(env.GetNumTrainerServices))
+        if not n then return nil, trainerFilter() end
+        local rows = {}
+        for i = 1, n do
+            local ok, name, rank, category = call(env.GetTrainerServiceInfo, i)
+            if not ok or (category ~= nil and hidden(category)) then return nil, trainerFilter() end
+            if category ~= "header" then
+                local state = SERVICE_STATE[category]
+                name = text(ok, name)
+                if not state or not name then return nil, trainerFilter() end
+                rows[#rows + 1] = {
+                    name = name, rank = text(ok, rank), state = state,
+                    cost = wholeOrNil(call(env.GetTrainerServiceCost, i)),
+                    level = wholeOrNil(call(env.GetTrainerServiceLevelReq, i)),
+                }
+            end
+        end
+        return rows, trainerFilter()
+    end
+
     -- The trainer whose window is open:
-    --   { profession = name or nil, npc = name }
+    --   { profession = name or nil, npc = name, services, filter }
+    -- services and filter as above (F8).
     -- nil unless the window is known to be open, nil for a player, and nil
     -- when the client will not say whether it is a player or what it is
     -- called. profession is the trainer's first skill line as the client
@@ -553,8 +613,43 @@ function ns.make.client(env)
         if not okPlayer or player == nil or hidden(player) or player ~= false then return nil end
         local npc = text(call(env.UnitName, "npc"))
         if not npc then return nil end
-        return { profession = text(call(env.GetTrainerServiceSkillLine, 1)), npc = npc }
+        local out = { profession = text(call(env.GetTrainerServiceSkillLine, 1)), npc = npc }
+        out.services, out.filter = trainerServices()
+        return out
     end
+
+    -- F8: told when you learn a spell.
+    --   client.onSpellLearned(fn) -> cancel;  fn({ id, name, rank })
+    -- LEARNED_SPELL_IN_TAB (spellID, ...); the name is the first answer of
+    -- GetSpellInfo(spellID), the rank GetSpellSubtext(spellID) where the
+    -- client has it, else GetSpellInfo's second answer when that is text.
+    -- A spell with no readable name tells nobody; a rank not read is left
+    -- out. First guesses, not seen in game on 16001. fn's errors stay here.
+    local learnedListeners, learnedWatched = {}, false
+    local function spellLearned(id)
+        if type(id) ~= "number" or hidden(id) then return end
+        local ok, name, oldRank = call(env.GetSpellInfo, id)
+        name = text(ok, name)
+        if not name then return end
+        local rank = text(call(env.GetSpellSubtext, id)) or text(ok, oldRank)
+        for _, fn in ipairs({ unpack(learnedListeners) }) do
+            pcall(fn, { id = id, name = name, rank = rank })
+        end
+    end
+    function c.onSpellLearned(fn)
+        if type(fn) ~= "function" then return nil end
+        if not learnedWatched then
+            learnedWatched = true
+            events.add("LEARNED_SPELL_IN_TAB", spellLearned)
+        end
+        learnedListeners[#learnedListeners + 1] = fn
+        return function()
+            for i = #learnedListeners, 1, -1 do
+                if learnedListeners[i] == fn then table.remove(learnedListeners, i) end
+            end
+        end
+    end
+    -- -------------------------------------------------------------- end F8
 
     -- "Horde", "Alliance", or nil when not known (any other answer, no
     -- answer, a secret one). UnitFactionGroup("player"), a first guess:
