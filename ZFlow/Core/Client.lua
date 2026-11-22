@@ -409,6 +409,18 @@ function ns.make.client(env)
         return flag(call(env.UnitIsDeadOrGhost, "player"))
     end
 
+    -- Whether the player is a ghost (released, not yet back in the body):
+    -- true, false, or nil when the client does not say. A 1 is read as true.
+    -- First guess on 16001: UnitIsGhost has not been seen to exist or answer
+    -- there. Asked for "player" only.
+    function c.ghost()
+        local ok, v = call(env.UnitIsGhost, "player")
+        if not ok or hidden(v) then return nil end
+        if v == true or v == 1 then return true end
+        if v == false then return false end
+        return nil
+    end
+
     -- Where the player's corpse is on the map the client picks for the
     -- player: { map = uiMapID, x = 0..1, y = 0..1 }, or nil (no map, no
     -- corpse, or a corpse the client places on no position of that map).
