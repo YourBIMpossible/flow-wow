@@ -427,6 +427,27 @@ function ns.make.client(env)
         return { map = map, x = x, y = y }
     end
 
+    -- The player's own map waypoint (the pin they set on the world map):
+    -- { map = uiMapID, x = 0..1, y = 0..1 }, or nil (no such call, none
+    -- set, or an answer that is not a map with two shares). Asks
+    -- C_Map.HasUserWaypoint, where the client has it, then
+    -- C_Map.GetUserWaypoint. Both are the retail names; a first guess on
+    -- 16001, where neither has been seen to exist or answer.
+    function c.waypoint()
+        local group = env.C_Map
+        if type(group) ~= "table" then return nil end
+        if group.HasUserWaypoint ~= nil and flag(mapCall("HasUserWaypoint")) ~= true then return nil end
+        local ok, point = mapCall("GetUserWaypoint")
+        if not ok or hidden(point) or type(point) ~= "table" then return nil end
+        local map, pos = point.uiMapID, point.position
+        if hidden(map) or type(map) ~= "number" or type(pos) ~= "table" then return nil end
+        local okXY, x, y = call(pos.GetXY, pos)
+        if not okXY then x, y = pos.x, pos.y end
+        if hidden(x) or hidden(y) or type(x) ~= "number" or type(y) ~= "number" then return nil end
+        if not (x >= 0 and x <= 1 and y >= 0 and y <= 1) then return nil end
+        return { map = map, x = x, y = y }
+    end
+
     -- The world place of one corner of a map, as two numbers, or nil.
     local function corner(map, x, y)
         local okVec, vec = call(env.CreateVector2D, x, y)

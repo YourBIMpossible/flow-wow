@@ -18,6 +18,7 @@
 --   ns.make.fakeClient{ env = { GetMoney = function() return 5 end } }; c.slashes["/x"]("rest")
 --   c.setZone(1, 1411); c.setPosition(1411, 0.5, 0.25); c.setLockdown(true)
 --   c.setDead(true); c.setCorpse(1411, 0.3, 0.6)
+--   c.setWaypoint(1411, 0.4, 0.2)   -- c.setWaypoint(nil): none set
 --   c.setScreen(1024, 768); c.setVersion("0.1.0"); c.setFrames(false)
 --   c.panels[1].lines / .point / .shown / .spec; c.panels[1].drag({ "CENTER", "CENTER", 0, 0 })
 --   c.arrows[1].point / .attached / .shown / .drawn / .lines; c.arrows[1].drag(point)
@@ -95,6 +96,10 @@ function ns.make.fakeClient(opts)
     function c.corpse()
         if not s.corpse then return nil end
         return { map = s.corpse.map, x = s.corpse.x, y = s.corpse.y }
+    end
+    function c.waypoint()
+        if not s.waypoint then return nil end
+        return { map = s.waypoint.map, x = s.waypoint.x, y = s.waypoint.y }
     end
     function c.zone()
         if not s.zone then return nil end
@@ -293,6 +298,11 @@ function ns.make.fakeClient(opts)
     -- The corpse, as shares of a map; leave the map out for not known.
     function c.setCorpse(map, x, y)
         s.corpse = map and { map = map, x = x, y = y } or nil
+    end
+    -- The player's own map waypoint, as shares of a map; leave the map out
+    -- for none set.
+    function c.setWaypoint(map, x, y)
+        s.waypoint = map and { map = map, x = x, y = y } or nil
     end
     -- Until this is called the lock follows setCombat. nil: not known.
     function c.setLockdown(on)
