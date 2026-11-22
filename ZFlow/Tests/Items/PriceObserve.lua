@@ -43,13 +43,15 @@ tests["price observe: one merchant read gives one observed entry per item"] = fu
         { index = 3, key = "15234:588", value = 4000 },
     })
     t.eq(book, { vendor = {
-        [2318] = { value = 60, basis = "observed", source = "merchant window", seenAt = 100 },
-        [2320] = { value = 10, basis = "observed", source = "merchant window", seenAt = 100 },
-        ["15234:588"] = { value = 4000, basis = "observed", source = "merchant window", seenAt = 100 },
+        [2318] = { value = 60, basis = "observed", source = "merchant window", seenAt = 100, per = 1 },
+        [2320] = { value = 10, basis = "observed", source = "merchant window", seenAt = 100, per = 5 },
+        ["15234:588"] = { value = 4000, basis = "observed", source = "merchant window", seenAt = 100, per = 1 },
     } }, "one entry per item, of kind vendor, and nothing else")
     local got = P.Get(book, 2320, "vendor")
     t.eq(got.basis, "observed")
     t.eq(got.value, 10, "the price for one, not for the stack of five")
+    t.eq(got.per, 5, "and the stack of five it is sold in is kept")
+    t.eq(P.Cost(got, 6), 100, "six of them are two whole stacks")
     t.eq(got.seenAt, 100, "the date the caller stamped")
     t.eq(P.Get(book, 2320, "trainer").basis, "unknown", "no other kind is written")
     t.eq(P.Get(book, 2319, "vendor").basis, "unknown", "an item not on sale stays unknown")
@@ -146,7 +148,7 @@ tests["price observe: a row left out does not stop the rows that have a price"] 
     t.eq(report.reason, nil)
     t.eq(report.recorded, { { index = 2, key = 2320, value = 10 } })
     t.eq(#report.skipped, 1)
-    t.eq(book, { vendor = { [2320] = { value = 10, basis = "observed", source = "merchant window", seenAt = 100 } } })
+    t.eq(book, { vendor = { [2320] = { value = 10, basis = "observed", source = "merchant window", seenAt = 100, per = 5 } } })
 end
 
 tests["price observe: a failing read records nothing and says why"] = function(t)

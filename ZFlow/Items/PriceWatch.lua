@@ -64,7 +64,11 @@ function PriceWatch.Declare(k)
         provides = { Last = api.last, Shows = api.shows },
         -- The handler is registered here, after watchMerchant(), and not in
         -- `events`: the client then hears the event before this does, so
-        -- the window is known to be open when it is read.
+        -- the window is known to be open when it is read. That order holds
+        -- only while priceWatch is the only subscriber of that bus event:
+        -- the client listener is attached by the first bus:on for the
+        -- event, so an earlier subscriber (any module, or `events`) would
+        -- attach it before watchMerchant() and this would run first.
         start = function(ctx)
             if type(ctx.client.watchMerchant) == "function" then ctx.client.watchMerchant() end
             ctx.bus:on(PriceWatch.NAME, PriceWatch.EVENT, function()

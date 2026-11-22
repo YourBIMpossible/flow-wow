@@ -7,6 +7,8 @@
 --   sched:nextFrame(owner, fn) -> cancel
 --   sched:afterCombat(owner, fn) -> cancel   -- now if out of combat, else when it ends
 --   sched:off(owner)                         -- cancels everything of that owner
+--   sched:held() -> count, unknown   work waiting for combat to end; unknown is
+--                                    true when the client cannot say if it has
 --   sched:report() -> { [owner] = { calls, ms, errors } }  (event handlers included)
 --
 -- Nothing runs until sched:enable(): the kernel calls it only after the load
@@ -176,6 +178,24 @@ function ns.make.sched(k)
 
     function sched:report()
         return k.meter:report()
+    end
+
+    -- How much work waits for combat to end: the afterCombat queue and the
+    -- outOfCombat jobs that are due. 0 when the player is plainly out of
+    -- combat. The second answer is true when the client could not say
+    -- whether the player is in combat, so the wait may never end.
+    function sched:held()
+        local state = k.client.inCombat()
+        if state == false then return 0, false end
+        local n, now = 0, k.client.now()
+        for i = 1, #waiting do
+            if not waiting[i].dead then n = n + 1 end
+        end
+        for i = 1, #jobs do
+            local job = jobs[i]
+            if not job.dead and job.when == "outOfCombat" and now >= job.due - 1e-9 then n = n + 1 end
+        end
+        return n, state == nil
     end
 
     function sched:enable()

@@ -683,7 +683,8 @@ return {
         t.eq(snap.bank, nil)
         t.eq(snap.bankKnown, false, "the bank has not been seen")
         t.eq(snap.bankSeenAt, nil)
-        t.eq(snap.takenAt, 500)
+        t.eq(snap.takenAt, nil, "no wall clock yet: not known, and not the uptime")
+        c.setClock(1700000000)
 
         c.setBankOpen(true)
         c.advance(10)
@@ -698,7 +699,7 @@ return {
         snap = Resources.Take(read)
         t.eq(snap.bank, { [2589] = 40 }, "closed: what was last seen")
         t.eq(snap.bankSeenAt, 510, "and when")
-        t.eq(snap.takenAt, 600)
+        t.eq(snap.takenAt, 1700000000, "the wall clock, not the uptime (600)")
 
         local grants = Resources.Resolve(snap, {
             { owner = "train", kind = "money", amount = 10000 },
@@ -719,7 +720,7 @@ return {
         t.eq(snap.slots, nil)
         t.eq(snap.bank, nil)
         t.eq(snap.bankKnown, false)
-        t.eq(snap.takenAt, 7)
+        t.eq(snap.takenAt, nil, "no wall clock: no time, never the uptime (7) and never 0")
 
         local grants = Resources.Resolve(snap, { { owner = "train", kind = "money", amount = 100 } })
         local g = grants:For("train")[1]
@@ -921,6 +922,39 @@ return {
         end).merchantItems(), nil, "one item that cannot be read gave a shorter list")
     end,
 
+    ["merchant: a count, link, price or stack the client hides makes the whole reading unknown"] = function(t)
+        local SECRET = {}
+        local function open(change)
+            local env = merchantEnv({ { link = LEATHER, price = 60, stack = 1 }, { link = BEAR, price = 5, stack = 1 } })
+            env.issecretvalue = function(v) return v == SECRET end
+            change(env)
+            local c = ns.make.client(env)
+            c.watchMerchant()
+            env.fire("MERCHANT_SHOW")
+            return c
+        end
+        local whole = open(function() end).merchantItems()
+        t.eq(type(whole) == "table" and #whole or nil, 2, "the fixture does not read where nothing is hidden")
+        t.eq(open(function(env) env.GetMerchantNumItems = function() return SECRET end end).merchantItems(), nil, "a hidden count")
+        t.eq(open(function(env)
+            env.GetMerchantItemLink = function(index) return index == 2 and SECRET or LEATHER end
+        end).merchantItems(), nil, "a hidden link gave a shorter or a guessed list")
+        t.eq(open(function(env)
+            env.GetMerchantItemInfo = function(index) return "name", 1, index == 2 and SECRET or 60, 1 end
+        end).merchantItems(), nil, "a hidden price")
+        t.eq(open(function(env)
+            env.GetMerchantItemInfo = function(index) return "name", 1, 60, index == 2 and SECRET or 1 end
+        end).merchantItems(), nil, "a hidden stack")
+        t.eq(open(function(env)
+            env.C_MerchantFrame = { GetItemInfo = function() return { price = SECRET, stackCount = 1 } end }
+        end).merchantItems(), nil, "a hidden price in the table answer")
+        t.eq(open(function(env)
+            env.C_MerchantFrame = { GetItemInfo = function() return { price = 60, stackCount = SECRET } end }
+        end).merchantItems(), nil, "a hidden stack in the table answer")
+        t.eq(open(function(env) env.issecretvalue = boom end).merchantItems(), nil,
+            "a client that will not say what is secret was read as nothing hidden")
+    end,
+
     ["merchant: the read asks for no buy, sell or pick-up function"] = function(t)
         local real = merchantEnv({ { link = LEATHER, price = 60, stack = 1 } })
         local called = 0
@@ -947,7 +981,7 @@ return {
             t.eq(asked[name], nil, name .. " was looked up")
         end
         asked.GetMerchantNumItems, asked.GetMerchantItemLink, asked.C_MerchantFrame = nil, nil, nil
-        asked.MerchantFrame, asked.GetMerchantItemInfo = nil, nil
+        asked.MerchantFrame, asked.GetMerchantItemInfo, asked.issecretvalue = nil, nil, nil
         t.eq(asked, {}, "the read looked up a name that is not a merchant read")
     end,
 

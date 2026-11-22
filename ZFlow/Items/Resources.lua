@@ -177,7 +177,7 @@ function Resources.Fake(t)
         bankKnown = known and true or false,
         bankSeenAt = type(t.bankSeenAt) == "number" and t.bankSeenAt or nil,
         slots = copySlots(t.slots),
-        takenAt = type(t.takenAt) == "number" and t.takenAt or 0,
+        takenAt = type(t.takenAt) == "number" and t.takenAt or nil,
     }
 end
 
@@ -189,7 +189,7 @@ end
 --   read.items()  -> { [itemKey] = count } for the bags, or nil
 --   read.bank()   -> { [itemKey] = count } or nil (never seen), and the time
 --                    it was last seen
---   read.now()    -> the time
+--   read.clock()  -> the wall-clock time, or nil when it can't be read
 -- Each is called once, here. One that is missing, errors or answers with
 -- something that isn't what it should be leaves that part unknown; it is
 -- never turned into 0. What comes back is a copy.
@@ -203,7 +203,7 @@ function Resources.Take(read)
         return a, b
     end
     local bank, bankSeenAt = call("bank")
-    local now = call("now")
+    local now = call("clock")
     return Resources.Fake({
         money = call("money"),
         slots = Resources.Slots(call("bags")),
@@ -368,6 +368,7 @@ function Resources.Resolve(snapshot, claims)
         return (isCount(bank[key]) and bank[key] or 0) - (usedBank[key] or 0)
     end
 
+    -- Bank unseen counts as none here.
     grants.free = function(key)
         if key == Resources.MONEY then return money and (money - spent) or nil end
         if type(key) == "string" then

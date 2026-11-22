@@ -80,8 +80,8 @@ tests["price watch: a merchant show gives observed book entries"] = function(t)
     t.eq(report.seenAt, 5000)
     t.eq(report.recorded, { { index = 1, key = 2318, value = 60 }, { index = 2, key = 2320, value = 10 } })
     t.eq(book(c), { vendor = {
-        [2318] = { value = 60, basis = "observed", source = "merchant window", seenAt = 5000 },
-        [2320] = { value = 10, basis = "observed", source = "merchant window", seenAt = 5000 },
+        [2318] = { value = 60, basis = "observed", source = "merchant window", seenAt = 5000, per = 1 },
+        [2320] = { value = 10, basis = "observed", source = "merchant window", seenAt = 5000, per = 5 },
     } })
     t.eq(P.Get(book(c), 2320, "vendor").basis, "observed")
     t.eq(#c.printed, said, "something was printed")
@@ -125,8 +125,8 @@ tests["price watch: the same rows on a later date move only the date"] = functio
     c.setMerchantOpen(true)
     t.eq(w.last().seenAt, 7000)
     t.eq(book(c), { vendor = {
-        [2318] = { value = 60, basis = "observed", source = "merchant window", seenAt = 7000 },
-        [2320] = { value = 10, basis = "observed", source = "merchant window", seenAt = 7000 },
+        [2318] = { value = 60, basis = "observed", source = "merchant window", seenAt = 7000, per = 1 },
+        [2320] = { value = 10, basis = "observed", source = "merchant window", seenAt = 7000, per = 5 },
     } })
 end
 
@@ -229,6 +229,70 @@ tests["price watch: beside the predecessor nothing is watched or recorded"] = fu
     t.eq(book(c), {})
 end
 
+-- A client whose clock read errors while broken.on is true.
+local function breakable(broken)
+    return function(real)
+        return setmetatable({}, { __index = function(_, name)
+            if name == "clock" and broken.on then
+                return function() error("the clock broke") end
+            end
+            return real[name]
+        end })
+    end
+end
+
+local function reopen(c)
+    c.setMerchantOpen(false)
+    c.setMerchantOpen(true)
+end
+
+tests["price watch: an error inside one show loses that show only"] = function(t)
+    local broken = { on = false }
+    local k, c, w = start({ wrap = breakable(broken) })
+    login(c)
+    c.setMerchantOpen(true)
+    local first = w.last()
+    t.eq(first.ok, true, tostring(first.reason))
+    local before = copy(book(c))
+
+    broken.on = true
+    reopen(c)
+    t.eq(w.shows(), 2, "the show that failed was not counted")
+    t.ok(w.last() == first, "the kept report was replaced by a show that failed")
+    t.eq(book(c), before, "a show that failed wrote to the book")
+    t.eq((k:ModuleState(W.NAME)), "started", "one error switched the module off")
+
+    broken.on = false
+    c.setClock(6000)
+    reopen(c)
+    t.eq(w.shows(), 3)
+    t.eq(w.last().ok, true, "the show after the error was not read")
+    t.eq(w.last().seenAt, 6000)
+    t.eq(P.Get(book(c), 2318, "vendor").seenAt, 6000)
+end
+
+tests["price watch: switched off, no show is read or recorded"] = function(t)
+    local broken = { on = false }
+    local k, c, w = start({ wrap = breakable(broken) })
+    login(c)
+    t.eq((k:ModuleState(W.NAME)), "started")
+    broken.on = true
+    for _ = 1, ns.FAULT_LIMIT do reopen(c) end
+    local state, reason = k:ModuleState(W.NAME)
+    t.eq(state, "off", "repeated errors did not switch the module off")
+    t.ok(type(reason) == "string" and reason:find("the clock broke", 1, true) ~= nil,
+        "the reason does not carry the error: " .. tostring(reason))
+    t.eq(k.use(W.NAME), nil, "a module that is off still gives its api")
+    t.eq(w.shows(), ns.FAULT_LIMIT)
+
+    broken.on = false
+    reopen(c)
+    t.eq(w.shows(), ns.FAULT_LIMIT, "a show was read after the switch-off")
+    t.eq(w.last(), nil)
+    t.eq(book(c), {}, "a show was recorded after the switch-off")
+    t.eq(c.merchantOpen(), true, "the client no longer follows the window")
+end
+
 tests["price watch: no buy or sell name is looked up"] = function(t)
     local asked = {}
     local _, c, w = start({ wrap = function(real)
@@ -309,7 +373,7 @@ tests["price watch: over the real client the window is known open when the show 
     local saved = real[ns.id.accountDB]
     local prices = type(saved) == "table" and type(saved.learned) == "table" and saved.learned.prices or {}
     t.eq(P.Get(prices, 2318, "vendor"),
-        { value = 60, basis = "observed", source = "merchant window", seenAt = 1700000000 })
+        { value = 60, basis = "observed", source = "merchant window", seenAt = 1700000000, per = 1 })
     t.eq(real.acted, 0, "a buy, sell or pick-up function was called")
     for _, name in ipairs(acts) do
         t.eq(asked[name], nil, name .. " was looked up")
