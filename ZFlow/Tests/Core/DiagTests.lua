@@ -129,8 +129,33 @@ return {
         local d = c.saved(ns.id.accountDB).diag
         t.eq(d.count, 2, "four events inside the gap take one snapshot")
         c.advance(6)
+        t.eq(d.count, 3, "one late look, a few seconds after the opening")
+        t.eq(d.snaps[3].why, "profession-late")
         c.fire("TRADE_SKILL_SHOW")
-        t.eq(d.count, 3)
+        t.eq(d.count, 4)
+        c.advance(6)
+        local late = 0
+        for i = 1, d.count do
+            if d.snaps[i].why == "profession-late" then late = late + 1 end
+        end
+        t.eq(late, 2, "and one per opening")
+    end,
+
+    ["profession: an empty full list falls back to the shown list"] = function(t)
+        local e = env()
+        e.C_TradeSkillUI = {
+            GetAllRecipeIDs = function() return {} end,
+            GetFilteredRecipeIDs = function() return { 2660, 2661 } end,
+            GetRecipeInfo = function(recipe) return { recipeID = recipe } end,
+            GetBaseProfessionInfo = function() return { professionID = 164 } end,
+            GetProfessionInfoBySkillLineID = function(line) return { professionID = line } end,
+        }
+        local s = ns.Diag.Collect(ns.Kernel({}, ns.make.fakeClient({ env = e })), "test").shapes
+        t.eq(s.recipeCount.values.v1, 0)
+        t.eq(s.recipeShownCount.values.v1, 2)
+        t.eq(s.recipeInfo.values.v1.recipeID, 2660)
+        t.eq(s.tradeByLine.values.v1.professionID, 164)
+        t.eq(s.tradeChildren.ok, false, "a call the client lacks is recorded, not an error")
     end,
 
     ["windows: the list arriving takes one more snapshot, once per opening"] = function(t)

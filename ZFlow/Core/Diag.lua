@@ -28,7 +28,7 @@ local KEEP = 40
 local SHAPE_KEYS = 60
 -- Seconds after login for the "settled" snapshot, and the gap inside which
 -- the same window event again takes no second snapshot.
-local SETTLE, SAME_WINDOW = 8, 5
+local SETTLE, SAME_WINDOW, LATE = 8, 5, 3
 local ERRORS_KEPT = 40
 
 -- Client names whose presence decides how the boundary is written.
@@ -284,7 +284,20 @@ function Diag.Collect(k, why)
     S.tradeReady = ask(client, "C_TradeSkillUI.IsTradeSkillReady")
     local okRecipes, recipes = client.raw("C_TradeSkillUI.GetAllRecipeIDs")
     S.recipeCount = shape(okRecipes, type(recipes) == "table" and #recipes or recipes)
+    -- In the game on 16001 the full list was empty with the window open and
+    -- ready: ask the other ways the client has of naming what is in it.
+    local okShown, shown = client.raw("C_TradeSkillUI.GetFilteredRecipeIDs")
+    S.recipeShownCount = shape(okShown, type(shown) == "table" and #shown or shown)
+    S.tradeChildren = ask(client, "C_TradeSkillUI.GetChildProfessionInfos")
+    S.tradeChildLine = ask(client, "C_TradeSkillUI.GetProfessionChildSkillLineID")
+    S.tradeCategories = ask(client, "C_TradeSkillUI.GetCategories")
+    S.tradeDataSource = ask(client, "C_TradeSkillUI.IsDataSourceChanging")
+    local base = S.tradeBase.ok and type(S.tradeBase.values.v1) == "table" and S.tradeBase.values.v1.professionID
+    if type(base) == "number" then
+        S.tradeByLine = ask(client, "C_TradeSkillUI.GetProfessionInfoBySkillLineID", base)
+    end
     local recipe = okRecipes and type(recipes) == "table" and recipes[1]
+    if type(recipe) ~= "number" then recipe = okShown and type(shown) == "table" and shown[1] end
     if type(recipe) == "number" then
         S.recipeInfo = ask(client, "C_TradeSkillUI.GetRecipeInfo", recipe)
         S.recipeSchematic = ask(client, "C_TradeSkillUI.GetRecipeSchematic", recipe, false)
@@ -445,6 +458,16 @@ function Diag.Start(k)
             last[why] = type(now) == "number" and now or nil
             waiting[why] = ready[why] ~= nil
             snapshot(why)
+            -- The recipe list can arrive after the client says it is ready.
+            if why == "profession" then
+                local waited, cancel = 0, nil
+                cancel = client.onFrame(function(elapsed)
+                    waited = waited + (tonumber(elapsed) or 0)
+                    if waited < LATE then return end
+                    if cancel then cancel() end
+                    snapshot("profession-late")
+                end)
+            end
         end)
     end
     for why, event in pairs(ready) do
