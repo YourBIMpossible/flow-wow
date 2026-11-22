@@ -88,6 +88,42 @@ local function lastCall(o, name)
     return all[#all]
 end
 
+-- AM5. The tests of clicks, the tooltip and the menu need these on the
+-- handle; without them each fails here.
+local function interactive(t, h)
+    local ok = type(h) == "table" and type(h.onClick) == "function" and type(h.onHover) == "function"
+        and type(h.tip) == "function" and type(h.menu) == "function"
+    t.ok(ok, "the arrow takes onClick, onHover, tip and menu")
+    return ok
+end
+
+-- A menu as UI/ArrowMenu gives it: a title, a row, a divider, a row that is
+-- not offered, a ticked row.
+local ITEMS = {
+    { text = "Arrows", title = true },
+    { text = "Reset", key = "reset" },
+    { sep = true },
+    { text = "Restack", key = "restack", disabled = true },
+    { text = "Quest arrow text", key = "text.quest", checked = true },
+}
+
+-- The text last put on a menu row's font string.
+local function rowText(r)
+    local out
+    for _, child in ipairs(rawget(r, "made") or {}) do
+        local set = lastCall(child, "SetText")
+        if set then out = set[1] end
+    end
+    return out
+end
+
+-- The player's click on a menu frame.
+local function click(o)
+    if o == nil then return end
+    local on = scripts(o).OnClick
+    if on then on(o, "LeftButton") end
+end
+
 -- A quiet environment for counting: every object answers every method with
 -- one shared function per name that records nothing, so the only tables or
 -- functions made during a call are the caller's own. stats.lookups counts
@@ -544,5 +580,258 @@ return {
         e.IsControlKeyDown = function() return 1 end
         on.OnDragStart()
         t.eq({ h.dragging(), #called(f, "StartMoving") }, { false, 0 }, "only true counts")
+    end,
+
+    -- AM5: clicks, the pointer, the tooltip and the menu. First guesses, as
+    -- every frame call here: not seen in game.
+    ["c.arrow: a mouse button let go over the arrow is a click, left or right (AM5)"] = function(t)
+        local h, f = arrow()
+        if not interactive(t, h) then return end
+        local got = {}
+        h.onClick(function(button) got[#got + 1] = button end)
+        local on = scripts(f)
+        t.ok(type(on.OnMouseUp) == "function", "the frame hears the button let go")
+        if type(on.OnMouseUp) ~= "function" then return end
+        on.OnMouseDown(f, "LeftButton")
+        on.OnMouseUp(f, "LeftButton")
+        on.OnMouseDown(f, "RightButton")
+        on.OnMouseUp(f, "RightButton")
+        on.OnMouseUp(f, "MiddleButton")
+        on.OnMouseUp(f, "Button4")
+        on.OnMouseUp(f, nil)
+        t.eq(got, { "left", "right" }, "other buttons are no click")
+    end,
+
+    ["c.arrow: the button let go at the end of a drag is no click (AM5)"] = function(t)
+        local h, f = arrow()
+        if not interactive(t, h) then return end
+        local got = 0
+        h.onClick(function() got = got + 1 end)
+        local on = scripts(f)
+        if type(on.OnMouseUp) ~= "function" then
+            t.ok(false, "the frame hears the button let go")
+            return
+        end
+        on.OnMouseDown(f, "LeftButton")
+        on.OnDragStart()
+        on.OnDragStop()
+        on.OnMouseUp(f, "LeftButton")
+        t.eq(got, 0, "a drag is not a click")
+        on.OnMouseDown(f, "LeftButton")
+        on.OnDragStart()
+        on.OnMouseUp(f, "LeftButton")
+        on.OnDragStop()
+        t.eq(got, 0, "whichever of the two the client fires first")
+        on.OnMouseDown(f, "LeftButton")
+        on.OnMouseUp(f, "LeftButton")
+        t.eq(got, 1, "the next plain click counts")
+    end,
+
+    ["c.arrow: a button let go away from the arrow is no click; a client that cannot say counts it (AM5)"] = function(t)
+        local h, f = arrow()
+        if not interactive(t, h) then return end
+        local got = 0
+        h.onClick(function() got = got + 1 end)
+        local on = scripts(f)
+        if type(on.OnMouseUp) ~= "function" then
+            t.ok(false, "the frame hears the button let go")
+            return
+        end
+        f.answers = { IsMouseOver = function() return false end }
+        on.OnMouseDown(f, "LeftButton")
+        on.OnMouseUp(f, "LeftButton")
+        t.eq(got, 0, "let go elsewhere")
+        f.answers = { IsMouseOver = function() return true end }
+        on.OnMouseUp(f, "LeftButton")
+        t.eq(got, 1)
+        f.answers = nil
+        on.OnMouseUp(f, "RightButton")
+        t.eq(got, 2, "no answer: the click counts")
+    end,
+
+    ["c.arrow: a click or hover handler that breaks is not thrown at the client (AM5)"] = function(t)
+        local h, f = arrow()
+        if not interactive(t, h) then return end
+        h.onClick(function() error("click broke") end)
+        h.onHover(function() error("hover broke") end)
+        local on = scripts(f)
+        if type(on.OnMouseUp) ~= "function" or type(on.OnEnter) ~= "function" then
+            t.ok(false, "the frame hears clicks and the pointer")
+            return
+        end
+        t.ok(pcall(on.OnMouseUp, f, "LeftButton"), "click")
+        t.ok(pcall(on.OnEnter, f), "enter")
+        t.ok(pcall(on.OnLeave, f), "leave")
+        h.onClick(nil)
+        h.onHover(nil)
+        t.ok(pcall(on.OnMouseUp, f, "LeftButton") and pcall(on.OnEnter, f), "no handler, no error")
+    end,
+
+    ["c.arrow: the pointer coming and going is told as hover (AM5)"] = function(t)
+        local h, f = arrow()
+        if not interactive(t, h) then return end
+        local got = {}
+        h.onHover(function(on) got[#got + 1] = on end)
+        local on = scripts(f)
+        t.ok(type(on.OnEnter) == "function" and type(on.OnLeave) == "function", "enter and leave")
+        if type(on.OnEnter) ~= "function" or type(on.OnLeave) ~= "function" then return end
+        on.OnEnter(f)
+        on.OnLeave(f)
+        t.eq(got, { true, false })
+    end,
+
+    ["c.arrow: tip puts the lines on the client's tooltip, owned by the arrow; no lines hides it (AM5)"] = function(t)
+        local e = env()
+        e.GameTooltip = stub("GameTooltip")
+        local c = ns.make.client(e)
+        local h = c.arrow(SPEC)
+        if not interactive(t, h) then return end
+        local tip = e.GameTooltip
+        h.tip({ "Quest arrow", "Kill ten boars", "Right-click: menu" })
+        local owner = lastCall(tip, "SetOwner")
+        t.ok(owner ~= nil and owner[1] ~= nil and owner[1].name == "TestArrow", "owned by the arrow's frame")
+        local lines = called(tip, "AddLine")
+        t.eq(#lines, 3)
+        if #lines == 3 then
+            t.eq({ lines[1][1], lines[2][1], lines[3][1] }, { "Quest arrow", "Kill ten boars", "Right-click: menu" })
+        end
+        t.eq(#called(tip, "Show"), 1)
+        t.eq(#called(tip, "Hide"), 0)
+        h.tip(nil)
+        t.eq(#called(tip, "Hide"), 1, "taken away")
+        h.tip({})
+        t.eq(#called(tip, "Hide"), 1, "not hidden twice: it may be another frame's by now")
+        t.eq(#called(tip, "Show"), 1)
+    end,
+
+    ["c.arrow: tip leaves a tooltip another frame has taken alone (AM5)"] = function(t)
+        local e = env()
+        e.GameTooltip = stub("GameTooltip")
+        local c = ns.make.client(e)
+        local h = c.arrow(SPEC)
+        if not interactive(t, h) then return end
+        h.tip({ "Quest arrow" })
+        e.GameTooltip.answers = { IsOwned = function() return false end }
+        h.tip(nil)
+        t.eq(#called(e.GameTooltip, "Hide"), 0)
+    end,
+
+    ["c.arrow: a client with no tooltip takes tip without an error (AM5)"] = function(t)
+        local h = arrow()
+        if not interactive(t, h) then return end
+        t.ok(pcall(h.tip, { "Quest arrow" }), "lines")
+        t.ok(pcall(h.tip, nil), "none")
+    end,
+
+    ["c.arrow: menu shows a row for each item and tells the key of the row clicked (AM5)"] = function(t)
+        local e, made = env()
+        local c = ns.make.client(e)
+        local h = c.arrow(SPEC)
+        if not interactive(t, h) then return end
+        local before = #made
+        local got = {}
+        h.menu(ITEMS, function(key) got[#got + 1] = key end)
+        local catcher, panel = made[before + 1], made[before + 2]
+        t.ok(catcher ~= nil and panel ~= nil, "a catcher and a panel were made")
+        if not (catcher and panel) then return end
+        t.eq(panel.parent, catcher, "the panel is on the catcher")
+        t.eq(#made - before - 2, #ITEMS, "one row for each item")
+        t.ok(#called(catcher, "Show") >= 1, "shown")
+        for i = 1, #ITEMS do
+            local r = made[before + 2 + i]
+            if r then t.eq(rowText(r), ITEMS[i].text or "", "row " .. i) end
+        end
+        local hides = #called(catcher, "Hide")
+        click(made[before + 2 + 1])   -- the title
+        click(made[before + 2 + 3])   -- the divider
+        click(made[before + 2 + 4])   -- a row that is not offered
+        t.eq(got, {}, "a title, a divider and a row not offered tell nothing")
+        t.eq(#called(catcher, "Hide"), hides, "and the menu stays")
+        click(made[before + 2 + 2])
+        t.eq(got, { "reset" })
+        t.ok(#called(catcher, "Hide") > hides, "a choice closes the menu")
+        click(made[before + 2 + 2])
+        t.eq(got, { "reset" }, "a closed menu tells nothing")
+    end,
+
+    ["c.arrow: a click beside the menu closes it and tells nothing (AM5)"] = function(t)
+        local e, made = env()
+        local c = ns.make.client(e)
+        local h = c.arrow(SPEC)
+        if not interactive(t, h) then return end
+        local before = #made
+        local got = 0
+        h.menu(ITEMS, function() got = got + 1 end)
+        local catcher = made[before + 1]
+        if not catcher then
+            t.ok(false, "a catcher was made")
+            return
+        end
+        local hides = #called(catcher, "Hide")
+        click(catcher)
+        t.ok(#called(catcher, "Hide") > hides, "closed")
+        t.eq(got, 0)
+        click(made[before + 2 + 2])
+        t.eq(got, 0, "its rows are dead until it is opened again")
+    end,
+
+    ["c.arrow: the menu's frames are made once and used again, also by the other arrow (AM5)"] = function(t)
+        local e, made = env()
+        local c = ns.make.client(e)
+        local h = c.arrow(SPEC)
+        local other = c.arrow({ name = "OtherArrow", size = 56, art = 64, artPath = "x\\" })
+        if not interactive(t, h) or not interactive(t, other) then return end
+        local before = #made
+        local got = {}
+        h.menu(ITEMS, function(key) got[#got + 1] = "h:" .. key end)
+        local after = #made
+        t.ok(after > before, "frames were made")
+        other.menu({ ITEMS[2] }, function(key) got[#got + 1] = "other:" .. key end)
+        t.eq(#made, after, "no new frame for a shorter menu")
+        click(made[before + 2 + 1])
+        t.eq(got, { "other:reset" }, "the row tells the menu that is open")
+        local hidden = lastCall(made[before + 2 + 2], "Hide")
+        t.ok(hidden ~= nil, "a row the shorter menu does not use is hidden")
+    end,
+
+    ["c.arrow: menu(nil) and hiding the arrow close its menu and its tooltip (AM5)"] = function(t)
+        local e, made = env()
+        e.GameTooltip = stub("GameTooltip")
+        local c = ns.make.client(e)
+        local h = c.arrow(SPEC)
+        if not interactive(t, h) then return end
+        local before = #made
+        h.menu(ITEMS, function() end)
+        local catcher = made[before + 1]
+        if not catcher then
+            t.ok(false, "a catcher was made")
+            return
+        end
+        local hides = #called(catcher, "Hide")
+        h.menu(nil)
+        t.ok(#called(catcher, "Hide") > hides, "menu(nil) closes it")
+        h.menu(ITEMS, function() end)
+        h.tip({ "Quest arrow" })
+        hides = #called(catcher, "Hide")
+        scripts(made[1]).OnHide()
+        t.ok(#called(catcher, "Hide") > hides, "the arrow hidden: its menu goes")
+        t.eq(#called(e.GameTooltip, "Hide"), 1, "and its tooltip")
+    end,
+
+    ["c.arrow: a pick that breaks is not thrown at the client, and no items is no menu (AM5)"] = function(t)
+        local e, made = env()
+        local c = ns.make.client(e)
+        local h = c.arrow(SPEC)
+        if not interactive(t, h) then return end
+        local before = #made
+        t.ok(pcall(h.menu, {}, function() end), "an empty menu")
+        t.ok(pcall(h.menu, "no", function() end), "an odd one")
+        h.menu(ITEMS, function() error("pick broke") end)
+        local r = made[before + 2 + 2]
+        if not r then
+            t.ok(false, "rows were made")
+            return
+        end
+        t.ok(pcall(scripts(r).OnClick, r, "LeftButton"), "the error stays here")
     end,
 }
