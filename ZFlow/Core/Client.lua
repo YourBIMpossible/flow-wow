@@ -83,6 +83,11 @@ function ns.make.client(env)
         return nil
     end
 
+    -- What could not be set up, for c.listenFaults(): the events something
+    -- listens to that the client never took, and the frames it did not make.
+    local unregistered = {}   -- event name -> true
+    local noEventFrame, noTickFrame = false, false
+
     events = Listeners(function(event)
         if not eventFrame then
             eventFrame = newFrame()
@@ -90,14 +95,22 @@ function ns.make.client(env)
                 eventFrame:SetScript("OnEvent", function(_, name, ...) events.call(name, ...) end)
             end
         end
+        noEventFrame = eventFrame == nil
         -- pcall: registering an event name this client does not have errors.
-        if eventFrame then pcall(eventFrame.RegisterEvent, eventFrame, event) end
+        -- The listener is kept either way; the event just never arrives.
+        if eventFrame and pcall(eventFrame.RegisterEvent, eventFrame, event) then
+            unregistered[event] = nil
+        else
+            unregistered[event] = true
+        end
     end, function(event)
+        unregistered[event] = nil
         if eventFrame then pcall(eventFrame.UnregisterEvent, eventFrame, event) end
     end)
 
     ticks = Listeners(function()
         tickFrame = tickFrame or newFrame()
+        noTickFrame = tickFrame == nil
         if tickFrame then
             tickFrame:SetScript("OnUpdate", function(_, elapsed) ticks.call("frame", elapsed or 0) end)
         end
@@ -153,13 +166,40 @@ function ns.make.client(env)
         return (ok and loaded) and true or false
     end
 
+    -- What listening could not set up, as fresh plain data:
+    --   notRegistered  the event names something listens to that the client
+    --                  did not take (it refused the name, or there is no
+    --                  frame to register on), sorted
+    --   noEventFrame   true when the frame that receives events was not made
+    --   noTickFrame    true when the frame that draws onFrame was not made
+    -- Listeners to these are kept; they are simply never called.
+    function c.listenFaults()
+        local names = {}
+        for event in pairs(unregistered) do names[#names + 1] = event end
+        table.sort(names)
+        return { notRegistered = names, noEventFrame = noEventFrame, noTickFrame = noTickFrame }
+    end
+
+    -- Seconds since the client started, or nil when the client will not say.
+    -- now() without the made-up 0: for a time that is kept or saved, where 0
+    -- would read as a real moment. A time that has to mean anything after a
+    -- reload is not this one; it starts again each session.
+    function c.uptime()
+        local ok, t = call(env.GetTime)
+        if not ok then return nil end
+        return tonumber(t)
+    end
+
     -- InCombatLockdown is the protected-action lock; UnitAffectingCombat is
-    -- the fallback when it is absent.
+    -- the fallback when it is absent. true, false, or nil when neither read
+    -- worked: not knowing is not "out of combat", and a caller about to do
+    -- something combat forbids has to treat nil as in combat.
     function c.inCombat()
         local ok, locked = call(env.InCombatLockdown)
         if ok then return locked and true or false end
         local ok2, fighting = call(env.UnitAffectingCombat, "player")
-        return (ok2 and fighting) and true or false
+        if ok2 then return fighting and true or false end
+        return nil
     end
 
     ---------------------------------------------------------------------
@@ -784,7 +824,7 @@ function ns.make.client(env)
     --   h.setLines({ "text", ... })   the lines shown, top to bottom
     --   h.place({ anchor, relative anchor, x, y })   against the screen
     --   h.show(on)
-    --   h.onMoved(fn)   fn(point) after the player drags it; point is plain
+    --   h.onMoved(fn, failed)   fn(point) after the player drags it; point is plain
     --                   data in the shape place() takes. Not called when the
     --                   client will not say where the panel now stands.
     -- A new panel is hidden and has no place until told.
@@ -793,7 +833,7 @@ function ns.make.client(env)
         local parent = env.UIParent
         local ok, f = call(env.CreateFrame, "Frame", spec.name, parent)
         if not ok or f == nil then return nil end
-        local h, moved = {}, nil
+        local h, moved, movedFailed = {}, nil, nil
         local width, height = tonumber(spec.width) or 200, tonumber(spec.height) or 80
 
         method(f, "Hide")
@@ -849,7 +889,12 @@ function ns.make.client(env)
             -- in its own layout cache and put it back there itself.
             method(f, "SetUserPlaced", false)
             local point = standing()
-            if point and moved then pcall(moved, point) end
+            if point and moved then
+                -- An error in fn must not reach the client's drag handler.
+                -- It goes back to whoever gave fn, to record.
+                local ok, err = pcall(moved, point)
+                if not ok and movedFailed then pcall(movedFailed, err) end
+            end
         end)
 
         function h.setLines(lines)
@@ -866,8 +911,11 @@ function ns.make.client(env)
         function h.show(on)
             method(f, on and "Show" or "Hide")
         end
-        function h.onMoved(fn)
+        -- failed(err), when given, is called with the error of an fn that
+        -- failed; without it the error is dropped.
+        function h.onMoved(fn, failed)
             moved = fn
+            movedFailed = type(failed) == "function" and failed or nil
         end
         return h
     end

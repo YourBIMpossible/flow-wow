@@ -53,7 +53,7 @@ return {
         t.eq(c.now(), 0)
         t.eq(c.clockMs(), 0)
         t.eq(c.addonLoaded("Anything"), false)
-        t.eq(c.inCombat(), false)
+        t.eq(c.inCombat(), nil, "combat cannot be read, so it is unknown, not false")
         t.ok((pcall(c.print, "hello")), "print does not raise with no print to call")
         local ran = false
         local ok, cancel = pcall(c.listen, "PLAYER_LOGIN", function() ran = true end)

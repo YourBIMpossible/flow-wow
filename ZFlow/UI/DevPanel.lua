@@ -133,7 +133,7 @@ function DevPanel.Start(k, diag)
             saved.point = to
             write(saved)
             panel.place(to)
-        end)
+        end, function(err) k.problems:add("devpanel", "drag", err) end)
         -- Saved data is in by login. Entering the world is taken too: by
         -- then the kernel has loaded or paused whatever order the login
         -- listeners ran in, and a later one (a zone change) puts the panel
