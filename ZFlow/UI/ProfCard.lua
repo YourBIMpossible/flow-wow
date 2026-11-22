@@ -19,14 +19,22 @@ local _, ns = ...
 -- faction's trainer, an npc with no factions and an unknown player faction
 -- name nobody.
 --
--- Not wired yet: U-A's Advisor is not merged on fork/zflow, so the module
--- declaration (needs = { "advisor", "profSeen" }) and the events that call
--- Sync are left for the merge after U-A (see the delivery note). Look-only:
--- it trains, buys and changes nothing.
+-- The module (F5, was U-F): P.Declare(k) needs the advisor and ProfSeen,
+-- so it starts after both and hears each event after ProfSeen has saved
+-- what the event brought. It calls Sync when the character enters the
+-- world, when the recipe list changes and when a trainer window opens: a
+-- prompt appears when its cause does and is removed when its cause goes
+-- (the cap was raised, or the faction is no longer known). Stopped, it
+-- removes what it added. Look-only: it trains, buys and changes nothing.
+-- Not tested in game.
 
 ns.ProfCard = {}
 local P = ns.ProfCard
 
+P.NAME = "profCard"
+P.ADVISOR = "advisor"
+P.SEEN = "profSeen"
+P.ENTER_EVENT = "PLAYER_ENTERING_WORLD"
 P.PREFIX = "aps.prof."
 P.PRIORITY = 1
 
@@ -90,3 +98,53 @@ function P.Sync(advisor, readings, npcs, faction, shown)
     end
     return now
 end
+
+-- The module. api.shown(): a copy of the ids now in the advisor.
+function P.Declare(k)
+    local api = {}
+    local shown, advisor = {}, nil
+    function api.shown()
+        local out = {}
+        for id in pairs(shown) do out[id] = true end
+        return out
+    end
+
+    local function clear()
+        if type(advisor) == "table" and type(advisor.Remove) == "function" then
+            for id in pairs(shown) do pcall(advisor.Remove, id) end
+        end
+        shown = {}
+    end
+
+    k:Module({
+        name = P.NAME,
+        needs = { "client", "store", "bus", P.ADVISOR, P.SEEN },
+        provides = { Shown = api.shown },
+        start = function(ctx)
+            local Seen = ns.ProfSeen
+            local function sync()
+                local okA, found = pcall(ctx.use, P.ADVISOR)
+                if not okA or type(found) ~= "table" then return end
+                advisor = found
+                local faction = nil
+                if type(ctx.client.faction) == "function" then
+                    local okF, f = pcall(ctx.client.faction)
+                    if okF then faction = f end
+                end
+                -- An advisor that raises costs this module nothing; what it
+                -- held before is kept as it was.
+                local okS, now = pcall(P.Sync, advisor, ctx.store:get("char", Seen.READINGS),
+                    ctx.store:get("account", Seen.NPCS), faction, shown)
+                if okS and type(now) == "table" then shown = now end
+            end
+            ctx.bus:on(P.NAME, P.ENTER_EVENT, sync)
+            ctx.bus:on(P.NAME, Seen.RECIPES_EVENT, sync)
+            ctx.bus:on(P.NAME, Seen.TRAINER_EVENT, sync)
+        end,
+        stop = clear,
+    })
+    return api
+end
+
+-- The addon's own: declared when this file loads, started at login.
+ns.profCard = P.Declare(ns)

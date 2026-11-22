@@ -37,6 +37,9 @@ local SellList = ns.SellList or {}
 ns.SellList = SellList
 
 SellList.NAME = "sellList"
+-- The bags changed (one event after a burst of changes): the list is made
+-- again while a merchant window is open. A first guess: not seen in game.
+SellList.BAG_EVENT = "BAG_UPDATE_DELAYED"
 SellList.SETTING = "vendor.list"
 SellList.WIDTH, SellList.HEIGHT = 340, 260
 SellList.DEFAULT_POINT = { "TOPLEFT", "TOPLEFT", 360, -120 }
@@ -146,6 +149,11 @@ function SellList.Declare(k)
                 open = false
                 asked = false
                 hide()
+            end)
+            -- Something was sold, bought or moved by the player: the list
+            -- follows the bags. Nothing when no merchant window is open.
+            ctx.bus:on(SellList.NAME, SellList.BAG_EVENT, function()
+                api.refresh()
             end)
             -- The frame last, after everything that can switch the module off.
             local id = k.id or ns.id

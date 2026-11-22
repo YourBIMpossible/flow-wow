@@ -1820,6 +1820,154 @@ function ns.make.client(env)
         function h.hide() method(f, "Hide") end
         return h
     end
+    -- Bags and vendor helper (FEATURE-PLAN F5, owner Lazy): what an item
+    -- is, how worn the gear is, whose loot a chat line is, and what the open
+    -- loot window holds. Read only: nothing is sold, bought, repaired,
+    -- looted or moved. Every call here is a first guess, not seen in game on
+    -- 16001; an answer that cannot be read is left out, never a default.
+
+    -- One item's facts, or nil when the client says nothing about it:
+    --   { name =, quality =, sellPrice =, classID =, subclassID = }
+    -- item: a link or an item ID. GetItemInfo (C_Item.GetItemInfo where the
+    -- client has it): name 1st, quality 3rd, sell price 11th, class 12th,
+    -- subclass 13th. An item the client has not loaded yet has no name,
+    -- quality or price; its class and subclass then come from
+    -- GetItemInfoInstant, as in c.gear. classID and subclassID are the
+    -- client's own numbers, spelled as in c.gear.
+    function c.itemInfo(item)
+        if item == nil then return nil end
+        local group = env.C_Item
+        local fn = env.GetItemInfo
+        if type(group) == "table" and type(group.GetItemInfo) == "function" then fn = group.GetItemInfo end
+        local ok, name, _, quality, _, _, _, _, _, _, _, price, class, subclass = call(fn, item)
+        local out = {}
+        out.name = text(ok, name)
+        out.quality = whole(ok, quality)
+        out.sellPrice = whole(ok, price)
+        out.classID = whole(ok, class)
+        out.subclassID = whole(ok, subclass)
+        if out.classID == nil then
+            local instantClass, instantSubclass = itemType(item)
+            out.classID = instantClass
+            if out.subclassID == nil then out.subclassID = instantSubclass end
+        end
+        if next(out) == nil then return nil end
+        return out
+    end
+
+    -- How worn the gear is, or nil when the client will not say:
+    --   { [slot] = { cur = n, max = n } }
+    -- One row for each worn slot that has durability; a slot with nothing
+    -- in it, or with an item that does not wear, has no row, so a reading
+    -- with no rows is "nothing wears", not "not known".
+    -- GetInventoryItemDurability(slot) answers current, maximum.
+    function c.durability()
+        if type(env.GetInventoryItemDurability) ~= "function" then return nil end
+        local out = {}
+        for i = 1, #GEAR_SLOTS do
+            local slot = GEAR_SLOTS[i]
+            local ok, cur, max = call(env.GetInventoryItemDurability, slot)
+            if not ok then return nil end
+            if (cur ~= nil and hidden(cur)) or (max ~= nil and hidden(max)) then return nil end
+            cur, max = whole(true, cur), whole(true, max)
+            if cur and max and max > 0 then out[slot] = { cur = cur, max = max } end
+        end
+        return out
+    end
+
+    -- The words of a loot line as a pattern. fmt is the client's own text
+    -- for the line (in the language of the client), with %s for the item
+    -- and %d for the count, or the numbered forms %1$s and %2$d. Answers
+    -- the pattern and, for each capture in order, "s" or "d".
+    local function lootPattern(fmt)
+        if type(fmt) ~= "string" or fmt == "" or hidden(fmt) then return nil end
+        local out, kinds, i = {}, {}, 1
+        while i <= #fmt do
+            local kind = fmt:match("^%%%d%$([sd])", i)
+            local len = 4
+            if not kind then
+                kind = fmt:match("^%%([sd])", i)
+                len = 2
+            end
+            if kind then
+                kinds[#kinds + 1] = kind
+                out[#out + 1] = kind == "s" and "(.+)" or "(%d+)"
+                i = i + len
+            else
+                local ch = fmt:sub(i, i):gsub("%W", "%%%0")
+                out[#out + 1] = ch
+                i = i + 1
+            end
+        end
+        return "^" .. table.concat(out) .. "$", kinds
+    end
+
+    -- Whose loot a CHAT_MSG_LOOT line is. For the player's own loot line:
+    -- the item link and the count (1 when the line names none). For anyone
+    -- else's line, a line it cannot read, or a client without the texts:
+    -- nil. The texts are the client's own LOOT_ITEM_SELF_MULTIPLE and
+    -- LOOT_ITEM_SELF; no English is written here. Lines for an item that
+    -- was made, bought or given (LOOT_ITEM_PUSHED_SELF) are not loot and
+    -- are not read.
+    function c.ownLoot(line)
+        if type(line) ~= "string" or line == "" or hidden(line) then return nil end
+        local forms = { env.LOOT_ITEM_SELF_MULTIPLE or false, env.LOOT_ITEM_SELF or false }
+        for f = 1, 2 do
+            local pattern, kinds = lootPattern(forms[f])
+            if pattern then
+                local caps = { line:match(pattern) }
+                if #caps > 0 and #caps == #kinds then
+                    local link, count = nil, nil
+                    for i = 1, #kinds do
+                        if kinds[i] == "s" then link = caps[i] else count = tonumber(caps[i]) end
+                    end
+                    if type(link) == "string" and link:find("item:%d+") then
+                        return link, count or 1
+                    end
+                end
+            end
+        end
+        return nil
+    end
+
+    -- What the open loot window holds, or nil when the client will not say:
+    --   { source = { kind = "creature", guid =, id =, name = },
+    --     items = { { item = link, count = n } } }
+    -- GetNumLootItems, GetLootSlotLink(slot), GetLootSlotInfo(slot) (count
+    -- 3rd) and GetLootSourceInfo(slot) (the GUID of what is looted, 1st).
+    -- A slot with no link (coins) is left out; a count not read is nil.
+    -- source is there only with a GUID; kind is "creature" for a Creature
+    -- GUID and its sixth part is the id; name only when the target has that
+    -- same GUID. source.how is NOT given: no call here tells a corpse from
+    -- a skinning or a pickpocket window (all three carry the GUID of the
+    -- creature), and saying "corpse" would be a guess.
+    function c.lootWindow()
+        local okN, n = call(env.GetNumLootItems)
+        n = whole(okN, n)
+        if not n then return nil end
+        local items, guid = {}, nil
+        for slot = 1, n do
+            local link = text(call(env.GetLootSlotLink, slot))
+            if link then
+                local okI, _, _, quantity = call(env.GetLootSlotInfo, slot)
+                items[#items + 1] = { item = link, count = whole(okI, quantity) }
+            end
+            if guid == nil then guid = text(call(env.GetLootSourceInfo, slot)) end
+        end
+        local source
+        if guid then
+            source = { guid = guid }
+            local kind, id = guid:match("^(%a+)%-%d+%-%d+%-%d+%-%d+%-(%d+)%-%x+$")
+            if kind == "Creature" then
+                source.kind = "creature"
+                source.id = tonumber(id)
+                if text(call(env.UnitGUID, "target")) == guid then
+                    source.name = text(call(env.UnitName, "target"))
+                end
+            end
+        end
+        return { source = source, items = items }
+    end
 
     -- One movable icon, or nil when the client cannot make a frame. First
     -- guess, not seen in game (WOW-ROTATION-ICON).
