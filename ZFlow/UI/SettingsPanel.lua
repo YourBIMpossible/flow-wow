@@ -139,6 +139,11 @@ function SP.Declare(k, diag)
         diag.commands[SP.WORD] = function(rest)
             rest = trim(rest)
             if rest == "" then
+                -- The page with controls in the game's Options when the
+                -- client has it (UI/SettingsOptions.lua); this text page
+                -- otherwise.
+                local options = k.use and k.use("settingsOptions") or nil
+                if options and type(options.Open) == "function" and options.Open() == true then return end
                 api.toggle()
                 return
             end
