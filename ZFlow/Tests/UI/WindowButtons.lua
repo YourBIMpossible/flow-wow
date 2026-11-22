@@ -300,6 +300,46 @@ tests["window buttons: look only - plain buttons, no secure fields, no acting fu
     end
 end
 
+-- Section 142: the owner saw the world map button under the quest log
+-- header at the top right of the map window. It must not be asked for
+-- against the top of the window again.
+tests["window buttons: the world map button is asked for on the map itself, not at the top of the window"] = function(t)
+    local _, c, api = start({ on = { worldMap = true, merchant = true },
+        windows = { WorldMapFrame = { shown = true }, MerchantFrame = { shown = true } } })
+    local map = buttonOn(c, "WorldMapFrame")
+    t.ok(map ~= nil, "made")
+    t.eq(map.spec.inside, { "ScrollContainer" }, "against the map, a part of the window")
+    t.ok(not map.spec.point[1]:find("TOP", 1, true), "not at the top, where the quest log header is")
+    t.eq(map.spec.point, { "BOTTOMRIGHT", "BOTTOMRIGHT", -44, 4 })
+    t.eq(map.spec.strata, "HIGH")
+    t.eq(map.placedOn, "ScrollContainer")
+    t.eq(api.lines()[1],
+        "button on the world map: shown; window there, open, not protected; button can be seen; placed on the map itself.")
+end
+
+tests["window buttons: the merchant button stays where the owner saw it"] = function(t)
+    local _, c, api = start({ on = { worldMap = true, merchant = true },
+        windows = { WorldMapFrame = { shown = true }, MerchantFrame = { shown = true } } })
+    local shop = buttonOn(c, "MerchantFrame")
+    t.eq(shop.spec.point, { "TOPRIGHT", "TOPRIGHT", -40, -40 })
+    t.eq(shop.spec.inside, nil, "against the window itself")
+    t.eq(shop.spec.strata, nil)
+    t.eq(api.lines()[2],
+        "button on the merchant window: shown; window there, open, not protected; button can be seen.")
+end
+
+tests["window buttons: a map window with no map part gets no button, and the line says why"] = function(t)
+    local _, c, api = start({ on = { worldMap = true },
+        windows = { WorldMapFrame = { parts = {} }, MerchantFrame = {} } })
+    t.eq(buttonOn(c, "WorldMapFrame"), nil, "no guess at another place")
+    t.eq(api.state().worldMap, "not made")
+    t.eq(api.lines()[1],
+        "button on the world map: not made (its place inside the window was not found); window there, not protected.")
+    c.setWindow("WorldMapFrame", { parts = { "ScrollContainer" } })
+    c.fire("PLAYER_ENTERING_WORLD")
+    t.eq(api.state().worldMap, "shown", "asked again, and made once the part is there")
+end
+
 tests["window buttons: the button's text and tooltip name the addon from the identity"] = function(t)
     local id = {}
     for key, v in pairs(ns.id) do id[key] = v end
