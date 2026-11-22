@@ -322,6 +322,7 @@ return {
         t.ok(#lines >= #ROWS, "a line for each row")
         lines, changed = S.Run(k, nil)
         t.eq(changed, false, "no text is a list")
+        t.ok(#lines >= #ROWS, "no text lists every row too")
     end,
 
     ["other words of the slash command still work"] = function(t)
