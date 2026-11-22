@@ -972,6 +972,10 @@ function ns.make.fakeClient(opts)
     -- made is in c.windowButtons, in order: .frame, .spec, .shown.
     -- click() is the control of the test: the player clicked it (nothing
     -- on a button that is not shown).
+    -- Section 142: w.parts = { field name, ... } says which parts the
+    -- window has; left out, it has every part asked for. A button asked
+    -- for with spec.inside gets h.placedOn, or is not made when the
+    -- window has none of the parts named.
     c.windowButtons = {}
     local gameWindows = {}
     function c.setWindow(frameName, w)
@@ -998,8 +1002,19 @@ function ns.make.fakeClient(opts)
         local protected = fakeProtected(w)
         if protected == nil then return nil, "its window will not say whether it is protected" end
         if protected then return nil, "its window is protected" end
+        local placedOn
+        if type(spec.inside) == "table" then
+            for _, field in ipairs(spec.inside) do
+                local there = w.parts == nil
+                for _, part in ipairs(type(w.parts) == "table" and w.parts or {}) do
+                    if part == field then there = true end
+                end
+                if there and type(field) == "string" then placedOn = field break end
+            end
+            if placedOn == nil then return nil, "its place inside the window was not found" end
+        end
         if s.noFrames then return nil, "no frame" end
-        local h = { frame = frameName, spec = spec, shown = false }
+        local h = { frame = frameName, spec = spec, shown = false, placedOn = placedOn }
         function h.visible()
             local now = gameWindows[frameName]
             if not now or type(now.shown) ~= "boolean" then return nil end
@@ -1097,6 +1112,31 @@ function ns.make.fakeClient(opts)
         return true
     end
     function c.setCombatLog(on) s.noCombatLog = not on end
+    -- Slash commands another addon owns: setSlashTaken(command, on) says
+    -- so, slashTaken answers as the real boundary does, and unslash gives a
+    -- command back.
+    local slashTags, slashOthers = {}, {}
+    local plainSlash = c.slash
+    function c.slash(tag, command, fn)
+        slashTags[tag] = command
+        return plainSlash(tag, command, fn)
+    end
+    function c.setSlashTaken(command, on) slashOthers[command] = on and true or nil end
+    function c.slashTaken(command, ownTag)
+        if type(command) ~= "string" then return nil end
+        if slashOthers[command] then return true end
+        for tag, held in pairs(slashTags) do
+            if tag ~= ownTag and held == command then return true end
+        end
+        return false
+    end
+    function c.unslash(tag)
+        local command = slashTags[tag]
+        if command == nil then return false end
+        slashTags[tag] = nil
+        c.slashes[command] = nil
+        return true
+    end
     function c.combatLog(...)
         for i = 1, #logWatchers do logWatchers[i](...) end
     end
@@ -1167,6 +1207,22 @@ function ns.make.fakeClient(opts)
     end
     function c.merchantRedraw()
         for _, fn in ipairs({ unpack(merchantRedrawFns) }) do fn() end
+    end
+
+    -- S35: worldPosition() and onTaxi(), both unknown (nil) until set.
+    --   c.setWorldPosition(cont, wx, wy)   c.setWorldPosition(nil): not known
+    --   c.setOnTaxi(true / false)          c.setOnTaxi(nil): not known
+    function c.worldPosition()
+        local w = s.world
+        if not w then return nil end
+        return { cont = w.cont, wx = w.wx, wy = w.wy }
+    end
+    function c.setWorldPosition(cont, wx, wy)
+        s.world = cont ~= nil and { cont = cont, wx = wx, wy = wy } or nil
+    end
+    function c.onTaxi() return s.onTaxi end
+    function c.setOnTaxi(v)
+        if v == nil then s.onTaxi = nil else s.onTaxi = v and true or false end
     end
     -- S4 auction prices. setRealm(name or nil). watchAuctionResults takes
     -- listeners (nil after setAuctionHouse(false)); auctionResult(id, row)

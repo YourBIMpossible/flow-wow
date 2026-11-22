@@ -3169,6 +3169,22 @@ function ns.make.client(env)
     -- for this client, and other addons put plain buttons on it with no
     -- such check. None of that has been seen in game. c.windowState below
     -- lets one look in game settle it. Needs game test.
+    --
+    -- Section 142: spec.inside = { field name, ... } places the button
+    -- against a part of the window instead of the window itself: the
+    -- first named field of the window that is a frame. The button is
+    -- still a child of the window. When none of the named fields is
+    -- there, nothing is made: nil and
+    -- "its place inside the window was not found" (a guess at
+    -- another place could sit under something again). spec.strata is
+    -- given to SetFrameStrata when it is a string. h.placedOn is the
+    -- field name used, nil for the window itself. Why: the owner saw the
+    -- world map button under the quest log header at the top right of
+    -- the window. The map window field ScrollContainer (the map
+    -- itself) is named in the public UI source for this client family
+    -- and used by two installed addons
+    -- (WoW\from-twin\RESEARCH-worldmap-button.md). Frame:SetFrameStrata
+    -- (warcraft.wiki.gg). Not seen in game. Needs game test.
     --   h.onClick(fn, failed)  fn() on a left click; failed(err) is told the
     --                          error of an fn that failed.
     --   h.show(on)
@@ -3209,6 +3225,21 @@ function ns.make.client(env)
         end
         if protected then return nil, "its window is protected" end
 
+        local against, placedOn = frame, nil
+        if type(spec.inside) == "table" then
+            against = nil
+            for _, field in ipairs(spec.inside) do
+                if type(field) == "string" then
+                    local okF, part = pcall(function() return frame[field] end)
+                    if okF and not hidden(part) and type(part) == "table" then
+                        against, placedOn = part, field
+                        break
+                    end
+                end
+            end
+            if against == nil then return nil, "its place inside the window was not found" end
+        end
+
         local name = spec.name
         if type(name) ~= "string" or name == "" or env[name] ~= nil then name = nil end
         local ok, b = call(env.CreateFrame, "Button", name, frame, "UIPanelButtonTemplate")
@@ -3227,11 +3258,12 @@ function ns.make.client(env)
             method(b, "SetHeight", 22)
         end
         local p = type(spec.point) == "table" and spec.point or {}
-        method(b, "SetPoint", type(p[1]) == "string" and p[1] or "TOPRIGHT", frame,
+        if type(spec.strata) == "string" then method(b, "SetFrameStrata", spec.strata) end
+        method(b, "SetPoint", type(p[1]) == "string" and p[1] or "TOPRIGHT", against,
             type(p[2]) == "string" and p[2] or "TOPRIGHT", tonumber(p[3]) or 0, tonumber(p[4]) or 0)
         method(b, "RegisterForClicks", "LeftButtonUp")
 
-        local h, clicked, clickFailed = {}, nil, nil
+        local h, clicked, clickFailed = { placedOn = placedOn }, nil, nil
         -- The handlers close over the button: they use none of the
         -- arguments the client passes.
         method(b, "SetScript", "OnClick", function()
@@ -4040,6 +4072,78 @@ function ns.make.client(env)
             if okN and type(b) == "table" and method(b, "HookScript", "OnClick", merchantTell) then merchantFollowed = true end
         end
         return merchantFollowed or nil
+    end
+
+    -- S35 (LEDGER 150/153; WoW/from-zen/RESEARCH-S35.md): the two reads
+    -- Nav/Gates.lua needs before it may learn a gate. Both only read.
+    --   c.worldPosition() -> { cont, wx, wy }: the continent and the world
+    --     position in yards of where the player stands, or nil when the
+    --     client gives no map, no position, no world point, or marks any of
+    --     it secret. C_Map.GetWorldPosFromMapPos(map, position) is the call
+    --     legacy Flow's N:PlayerPos uses (Modules/Nav/Nav.lua:40-52), asked
+    --     with the client's own position value; a first guess on 16001.
+    --   c.onTaxi() -> true / false, or nil when the client gives no plain
+    --     yes or no. UnitOnTaxi("player") is the call legacy Flow uses
+    --     (Modules/Nav/Nav.lua:4688); a first guess on 16001. nil is "not
+    --     known", never "not on a taxi": Gates learns only on a plain false.
+    function c.worldPosition()
+        local map, _, _, pos = playerPoint()
+        if not map then return nil end
+        local ok, cont, world = mapCall("GetWorldPosFromMapPos", map, pos)
+        if not ok or type(world) ~= "table" then return nil end
+        if type(cont) ~= "number" or hidden(cont) then return nil end
+        local okXY, wx, wy = call(world.GetXY, world)
+        if not okXY then wx, wy = world.x, world.y end
+        if type(wx) ~= "number" or type(wy) ~= "number" then return nil end
+        if hidden(wx) or hidden(wy) then return nil end
+        if wx ~= wx or wy ~= wy then return nil end
+        return { cont = cont, wx = wx, wy = wy }
+    end
+    function c.onTaxi()
+        return flag(call(env.UnitOnTaxi, "player"))
+    end
+    -- Whether a slash command already belongs to someone else.
+    --   c.slashTaken(command, ownTag) -> true when a tag other than ownTag
+    --     lists the command (any case) or the client has already looked it
+    --     up for another handler; false when it is free or ownTag's; nil
+    --     when there is no slash table to read (unknown, not free).
+    --   c.unslash(tag) -> true when the tag held a command and it was given
+    --     back; false when there was nothing to give back.
+    -- Legacy Flow asked the same before claiming "/way"
+    -- (Modules/Nav/Waypoint.lua:260-262: SlashCmdList.TOMTOM_WAY or
+    -- hash_SlashCmdList["/WAY"]). Reading every tag's SLASH_<tag><n> texts
+    -- is the general form of that; needs game test.
+    function c.slashTaken(command, ownTag)
+        local list = env.SlashCmdList
+        if type(list) ~= "table" or type(command) ~= "string" or command == "" then return nil end
+        local hash = env.hash_SlashCmdList
+        if type(hash) == "table" then
+            local held = hash[command:upper()]
+            if held ~= nil and (ownTag == nil or held ~= list[ownTag]) then return true end
+        end
+        local want = command:lower()
+        for tag in pairs(list) do
+            if tag ~= ownTag and type(tag) == "string" then
+                for n = 1, 20 do
+                    local text = env["SLASH_" .. tag .. n]
+                    if type(text) ~= "string" then break end
+                    if text:lower() == want then return true end
+                end
+            end
+        end
+        return false
+    end
+    function c.unslash(tag)
+        local list = env.SlashCmdList
+        if type(list) ~= "table" or type(tag) ~= "string" or list[tag] == nil then return false end
+        local fn, text = list[tag], env["SLASH_" .. tag .. "1"]
+        local hash = env.hash_SlashCmdList
+        if type(hash) == "table" and type(text) == "string" and hash[text:upper()] == fn then
+            hash[text:upper()] = nil
+        end
+        list[tag] = nil
+        env["SLASH_" .. tag .. "1"] = nil
+        return true
     end
     -- S4 auction prices, read passively (L6-F option A): only the answers to
     -- searches the player runs in the auction window. Nothing here sends a
