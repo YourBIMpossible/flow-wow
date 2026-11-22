@@ -12,7 +12,12 @@
 --   SellList.Declare(k)           -> api       declares the module on kernel k
 --     api.last()   the lines of the last listing, nil before the first
 --     api.shows()  how many listings were made since the start
---   ns.use(SellList.NAME) -> { Last = api.last, Shows = api.shows }
+--     api.show()   lists now and shows the panel, when asked for: only
+--                  while a merchant window is open. -> true, or false and why
+--   ns.use(SellList.NAME) -> { Last = api.last, Shows = api.shows, Show = api.show }
+--   Show() is for the merchant window's Z-Flow button (UI/WindowButtons.lua):
+--   the player asked, so it shows even with "vendor.list" off; that setting
+--   only governs showing by itself when a merchant opens.
 --
 -- Setting: "vendor.list" (bool, on by default). The row is the lead's to add
 -- to the settings model; until it is there, the list is on. Off: nothing is
@@ -37,6 +42,10 @@ SellList.WIDTH, SellList.HEIGHT = 340, 260
 SellList.DEFAULT_POINT = { "TOPLEFT", "TOPLEFT", 360, -120 }
 SellList.NEVER_PATH = "settings.sell.never"
 SellList.PRICES_PATH = "learned.prices"
+-- Why Show() showed nothing (for the caller; not player text).
+SellList.NOT_STARTED = "the sell list has not started"
+SellList.NO_MERCHANT = "no merchant window is open"
+SellList.NO_PANEL = "this client cannot draw the panel"
 
 -- The player's never-sell list as Disposition takes it: { never = { [key] = true } }.
 -- Takes a set ({ [item] = true }) or a list ({ item, ... }); anything that is
@@ -84,6 +93,17 @@ function SellList.Declare(k)
     function api.refresh()
         if open and relist then relist() end
     end
+    -- Asked for (the merchant window's button): lists now and shows the
+    -- panel, whatever "vendor.list" says. Only while a merchant window is
+    -- open, so that its closing hides the panel again.
+    local started = false
+    function api.show()
+        if not started or not relist then return false, SellList.NOT_STARTED end
+        if not open then return false, SellList.NO_MERCHANT end
+        if not panel then return false, SellList.NO_PANEL end
+        relist(true)
+        return true
+    end
 
     local function hide()
         if panel then panel.show(false) end
@@ -92,13 +112,16 @@ function SellList.Declare(k)
     k:Module({
         name = SellList.NAME,
         needs = { "client", "store", "bus", "settings" },
-        provides = { Last = api.last, Shows = api.shows },
+        provides = { Last = api.last, Shows = api.shows, Show = function() return api.show() end },
         start = function(ctx)
             local client = ctx.client
             if type(client.watchMerchant) == "function" then client.watchMerchant() end
-            relist = function()
+            started = true
+            -- asked: true when the player asked for the list (Show()).
+            relist = function(asked)
                 -- Off only when the player turned it off; a missing row is on.
-                if ctx.settings:get(SellList.SETTING) == false then
+                -- The setting governs showing by itself, not an ask.
+                if not asked and ctx.settings:get(SellList.SETTING) == false then
                     hide()
                     return
                 end
@@ -131,6 +154,7 @@ function SellList.Declare(k)
         -- refresh() lists nothing.
         stop = function()
             open = false
+            started = false
             hide()
         end,
     })
