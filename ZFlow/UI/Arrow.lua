@@ -74,16 +74,28 @@ end
 
 -- The lines each arrow shows for one view: the profession lines go under
 -- the quest arrow's when its text is drawn on the quest arrow.
-function Arrow.Lines(view, lines)
+-- lost (optional): { quest = true, prof = true } for each arrow whose last
+-- line is the unknown-direction line (GuideSource's lost). That line is left
+-- out for an arrow drawn as the ring, which points nowhere, and where the
+-- stack it would join already has one: once per stack of text.
+function Arrow.Lines(view, lines, lost)
     local out = { quest = {}, prof = {} }
-    local function add(to, list)
-        for i = 1, #(list or {}) do to[#to + 1] = list[i] end
+    local said = {}
+    local function add(key, to)
+        local list = lines[key] or {}
+        local n = #list
+        local unknown = type(lost) == "table" and lost[key] == true
+        for i = 1, n do
+            local isUnknown = unknown and i == n
+            if not (isUnknown and (view[key].mode == "ring" or said[to])) then
+                out[to][#out[to] + 1] = list[i]
+                if isUnknown then said[to] = true end
+            end
+        end
     end
-    if view.quest.shown and view.quest.text.shown then add(out.quest, lines.quest) end
+    if view.quest.shown and view.quest.text.shown then add("quest", "quest") end
     local pt = view.prof.text
-    if view.prof.shown and pt.shown then
-        add(pt.to == "quest" and out.quest or out.prof, lines.prof)
-    end
+    if view.prof.shown and pt.shown then add("prof", pt.to == "quest" and "quest" or "prof") end
     return out
 end
 
@@ -167,7 +179,7 @@ function Arrow.GuideSource(client, layout, guide, intro)
         state, more = N.ViewState(client, given)
     end
     state.gate = gate
-    local lines = {}
+    local lines, lost = {}, {}
     for _, key in ipairs(N.ARROW_KEYS) do
         local step = type(given[key]) == "table" and given[key] or {}
         local out = {}
@@ -184,6 +196,7 @@ function Arrow.GuideSource(client, layout, guide, intro)
         if type(given[key]) == "table" and more[key].turn == nil and not step.still
             and not (playing and key == "quest") then
             out[#out + 1] = Arrow.UNKNOWN_TURN
+            lost[key] = true          -- the last line is the unknown-direction line
         end
         lines[key] = out
         if state[key] and state[key].textHeight == nil then
@@ -191,7 +204,7 @@ function Arrow.GuideSource(client, layout, guide, intro)
         end
     end
     return { view = state, turns = { quest = playing and 0 or more.quest.turn, prof = more.prof.turn },
-             lines = lines, intro = playing }
+             lines = lines, lost = lost, intro = playing }
 end
 
 -- The intro: the quest arrow upright with the addon's title, once, at the
@@ -209,7 +222,9 @@ function Arrow.Start(k, diag)
     local spec = function(name, level)
         return { name = id.framePrefix .. name, size = N.ARROW_SIZE, art = N.ARROW_ART,
                  artPath = "Interface\\AddOns\\" .. id.addon .. "\\Art\\",
-                 needle = { N.NEEDLE_W, N.NEEDLE_H }, level = level }
+                 needle = { N.NEEDLE_W, N.NEEDLE_H }, level = level,
+                 halo = { N.HALO_W, N.HALO_H, N.HALO_Y }, beam = { N.BEAM_W, N.BEAM_H },
+                 beamUp = { N.BeamCoords(false) }, beamDown = { N.BeamCoords(true) } }
     end
     local quest = client.arrow(spec("QuestArrow", 6))
     local prof = quest and client.arrow(spec("ProfArrow", 6)) or nil
@@ -260,6 +275,13 @@ function Arrow.Start(k, diag)
     -- A fresh layout: what is shown, where, at what scale and opacity.
     local function relayout()
         if not handles or not ready then return end
+        -- A frame error stops the arrows for the session: nothing here,
+        -- a loading screen or a command, shows them again.
+        if broken then
+            current = nil
+            hideAll()
+            return
+        end
         local src = source()
         if not src then
             current = nil
@@ -267,7 +289,7 @@ function Arrow.Start(k, diag)
             return
         end
         local view = N.ArrowView(src.view)
-        local lines = Arrow.Lines(view, src.lines)
+        local lines = Arrow.Lines(view, src.lines, src.lost)
         for _, key in ipairs(N.ARROW_KEYS) do
             local ops, h = view[key], handles[key]
             h.show(ops.shown)
@@ -279,7 +301,8 @@ function Arrow.Start(k, diag)
                     if ops.anchor == "quest" then h.attach(handles.quest) else h.place(ops.point) end
                 end
                 h.scale(ops.scale)
-                local lost = src.turns[key] == nil
+                -- The ring points nowhere: an unknown turn takes nothing from it.
+                local lost = src.turns[key] == nil and ops.mode ~= "ring"
                 h.alpha(lost and type(ops.alpha) == "number" and ops.alpha * Arrow.LOST_ALPHA or ops.alpha)
                 h.behind(ops.behind)
                 local textPoint = ops.text.point

@@ -16,7 +16,11 @@ N.TURN_RATE = 14       -- per second: how fast the drawn turn closes on the want
 N.COLOUR_RATE = 3      -- per second: the colour blend
 N.FADE_RATE = 4        -- per second: pointer <-> arrived ring
 N.MOTION_STEP = 0.1    -- seconds: a longer frame is taken as this long
+-- The arrived ring's size and its height against the arrow's centre, and
+-- the beams' size at rest. The client boundary takes these in the arrow's
+-- spec (UI/Arrow.lua): it holds no copy.
 N.HALO_W, N.HALO_H, N.HALO_Y = 58, 42, -4
+N.BEAM_W, N.BEAM_H = 18, 50
 N.ARROW_START_COLOUR = { 1, 0.62, 0 }
 
 local TWO_PI = 2 * math.pi
@@ -126,6 +130,6 @@ function N.ArrowStep(m, dt, now)
     d.ripple[1] = N.HALO_W * (0.55 + 0.75 * u)
     d.ripple[2] = N.HALO_H * (0.55 + 0.75 * u)
     d.ripple[3] = f * (1 - u) * (m.wave and 0.9 or 0.6)
-    d.beam[1], d.beam[2], d.beam[3] = 18 + 4 * pulse, 50 + 8 * pulse, f * (0.45 + 0.25 * pulse)
+    d.beam[1], d.beam[2], d.beam[3] = N.BEAM_W + 4 * pulse, N.BEAM_H + 8 * pulse, f * (0.45 + 0.25 * pulse)
     return d
 end
