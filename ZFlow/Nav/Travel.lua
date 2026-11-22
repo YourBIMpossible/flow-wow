@@ -39,7 +39,8 @@ local _, ns = ...
 --   Else the step itself (the same table) and no how. skipped drops the
 --   spell, the stone and the ride; the gate is the walk, so it stays.
 --   The step handed in and the ways are never changed. Each new step
---   carries travel = how.
+--   carries via = how. (Not "travel": Nav/ViewState.lua reads a step's
+--   travel as "the travel icon is shown" and halves the arrow for it.)
 --
 -- N.Travel.Declare(k, diag) -> api
 --   api.via(step)   reads the client and the store and answers N.TravelVia.
@@ -74,11 +75,11 @@ function N.TravelVia(step, ways, skipped)
     if not skipped then
         local action = N.TravelAction(ways.spell, ways.hearth, false)
         if action then
-            return { label = action.text, still = true, detail = thenLine(step), travel = action.kind }, action.kind
+            return { label = action.text, still = true, detail = thenLine(step), via = action.kind }, action.kind
         end
         local ride = ways.ride
         if type(ride) == "table" and type(ride.label) == "string" then
-            local out = { label = ride.label, detail = ride.detail, travel = "ride" }
+            local out = { label = ride.label, detail = ride.detail, via = "ride" }
             local p = ride.point
             if type(p) == "table" and p.map ~= nil and type(p.x) == "number" and type(p.y) == "number" then
                 out.place = { cont = ways.cont, map = p.map, x = p.x, y = p.y }
@@ -96,7 +97,7 @@ function N.TravelVia(step, ways, skipped)
             local out = {}
             for key, v in pairs(gate) do out[key] = v end
             out.detail = thenLine(step)
-            out.travel = "gate"
+            out.via = "gate"
             return out, "gate"
         end
         if gate.text then

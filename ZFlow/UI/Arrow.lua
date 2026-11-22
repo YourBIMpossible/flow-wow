@@ -522,7 +522,7 @@ function Arrow.Start(k, diag, own)
                 if ok and type(via) == "table" and via ~= step then
                     step = via
                     -- (A step that only gained a line is still the waypoint.)
-                    if via.travel ~= nil then
+                    if via.via ~= nil then
                         mine = false
                         from = from .. ", by way of travel"
                     end

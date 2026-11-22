@@ -35,7 +35,7 @@ tests["travel via: a spell the player knows comes first, the step is said next"]
     local hearth = { label = "Hearth to Nighthaven", text = true, saves = 900 }
     local out, how = N.TravelVia(step, { spell = spell, hearth = hearth }, false)
     t.eq(how, "spell")
-    t.eq(out, { label = "Cast " .. SPELL, still = true, detail = "Then: Kill boars", travel = "spell" })
+    t.eq(out, { label = "Cast " .. SPELL, still = true, detail = "Then: Kill boars", via = "spell" })
     t.eq(step, boars(), "the chosen step is not changed")
 end
 
@@ -51,7 +51,7 @@ tests["travel via: the hearthstone only when its saving is a known number above 
     local step = boars(DUROTAR)
     local out, how = N.TravelVia(step, { hearth = { label = "Hearth to Razor Hill", text = true, saves = 400 } }, false)
     t.eq(how, "hearth")
-    t.eq(out, { label = "Hearth to Razor Hill", still = true, detail = "Then: Kill boars", travel = "hearth" })
+    t.eq(out, { label = "Hearth to Razor Hill", still = true, detail = "Then: Kill boars", via = "hearth" })
     local none = N.TravelVia(step, { hearth = { label = "Hearth to Razor Hill", text = true } }, false)
     t.ok(none == step, "saving not known: not claimed")
     local zero = N.TravelVia(step, { hearth = { label = "Hearth to Razor Hill", text = true, saves = 0 } }, false)
@@ -65,11 +65,11 @@ tests["travel via: a ride points at its master when their place is known"] = fun
     local out, how = N.TravelVia(step, { ride = ride, cont = 1 }, false)
     t.eq(how, "ride")
     t.eq(out, { label = "Talk to Bunthen Plainswind", detail = "he flies druids to Thunder Bluff, free",
-                place = { cont = 1, map = MOONGLADE, x = 0.44, y = 0.45 }, radius = T.NEAR, travel = "ride" })
+                place = { cont = 1, map = MOONGLADE, x = 0.44, y = 0.45 }, radius = T.NEAR, via = "ride" })
     ride.point = nil
     out = N.TravelVia(step, { ride = ride, cont = 1 }, false)
     t.eq(out, { label = "Talk to Bunthen Plainswind", detail = "he flies druids to Thunder Bluff, free",
-                still = true, travel = "ride" }, "place not known: said in words, no place made up")
+                still = true, via = "ride" }, "place not known: said in words, no place made up")
 end
 
 tests["travel via: a known gate takes the arrow, the step is said next"] = function(t)
@@ -78,7 +78,7 @@ tests["travel via: a known gate takes the arrow, the step is said next"] = funct
     local out, how = N.TravelVia(step, { gate = gate }, false)
     t.eq(how, "gate")
     t.eq(out, { kind = "gate", label = "Way to Orgrimmar", place = { cont = 1, map = DUROTAR, x = 0.5, y = 0.1 },
-                radius = 10, detail = "Then: Kill boars", travel = "gate" })
+                radius = 10, detail = "Then: Kill boars", via = "gate" })
     t.eq(gate.detail, nil, "the gate step handed in is not changed")
 end
 
@@ -122,7 +122,7 @@ end
 tests["travel via: a step with no label gets no 'then' line"] = function(t)
     local step = { place = { cont = 1, map = MOONGLADE, x = 0.4, y = 0.6 } }
     local out = N.TravelVia(step, { spell = { label = "Cast " .. SPELL, text = true, spell = SPELL } }, false)
-    t.eq(out, { label = "Cast " .. SPELL, still = true, travel = "spell" })
+    t.eq(out, { label = "Cast " .. SPELL, still = true, via = "spell" })
 end
 
 -- --------------------------------------------------------------- the module
@@ -180,8 +180,8 @@ tests["travel module: a druid who knows the spell is told to cast it"] = functio
     local k, _, api = start()
     local out, how = api.via(boars())
     t.eq(how, "spell")
-    t.eq(out, { label = "Cast " .. SPELL, still = true, detail = "Then: Kill boars", travel = "spell" })
-    t.eq((k.use(T.NAME).Via(boars())).travel, "spell", "the same through the kernel")
+    t.eq(out, { label = "Cast " .. SPELL, still = true, detail = "Then: Kill boars", via = "spell" })
+    t.eq((k.use(T.NAME).Via(boars())).via, "spell", "the same through the kernel")
 end
 
 tests["travel module: spell not known, or the client did not say: the step stays"] = function(t)
@@ -215,7 +215,7 @@ tests["travel module: a learned gate takes the arrow to a walled map"] = functio
     local out, how = api.via(boars(ORGRIMMAR))
     t.eq(how, "gate")
     t.eq(out, { kind = "gate", label = "Way to Orgrimmar", place = { cont = 1, map = DUROTAR, x = 0.50, y = 0.10 },
-                radius = N.Gates.NEAR, detail = "Then: Kill boars", travel = "gate" })
+                radius = N.Gates.NEAR, detail = "Then: Kill boars", via = "gate" })
 end
 
 tests["travel module: no gate known says so; with no gates module the step stays"] = function(t)
