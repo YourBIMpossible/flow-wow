@@ -429,6 +429,23 @@ ns:Register("test", "quests: a quest skipped as not offered says why and can be 
         t:eq(Q.ClearNotOffered(), 1, "clear all: the rest")
         t:eq(next(ns.db.quests.notOffered), nil, "none left")
         t:ok(type(ns.commands.notoffered) == "function", "/flow notoffered exists")
+        -- A mistyped ID is not "clear all".
+        ns.db.quests.notOffered = { [999301] = { firstAt = now }, [999302] = { firstAt = now } }
+        local said
+        local print0 = ns.Print
+        ns.Print = function(_, msg) said = msg end
+        local okCmd, errCmd = pcall(function()
+            ns.commands.notoffered("clear abc")
+            t:ok(ns.db.quests.notOffered[999301] ~= nil and ns.db.quests.notOffered[999302] ~= nil, "clear abc: nothing cleared")
+            t:ok(type(said) == "string" and said:find("isn't a quest ID", 1, true) ~= nil, "and it says why")
+            ns.commands.notoffered("clear 999301")
+            t:eq(ns.db.quests.notOffered[999301], nil, "clear <id>: that one cleared")
+            t:ok(ns.db.quests.notOffered[999302] ~= nil, "the other kept")
+            ns.commands.notoffered("clear")
+            t:eq(next(ns.db.quests.notOffered), nil, "clear: all cleared")
+        end)
+        ns.Print = print0
+        if not okCmd then error(errCmd, 0) end
     end)
     ns.db.quests.notOffered = keep
     t:ok(ok, "ran: " .. tostring(err))

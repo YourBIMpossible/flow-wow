@@ -1140,6 +1140,11 @@ ns.commands.notoffered = function(arg)
     local cmd, rest = arg:match("^(%S*)%s*(.-)$")
     if cmd == "clear" then
         local id = tonumber(rest)
+        -- (A mistyped ID must not read as "clear all".)
+        if rest ~= "" and not id then
+            ns:Print("\"" .. rest .. "\" isn't a quest ID. Use /flow notoffered clear, or /flow notoffered clear <id>.")
+            return
+        end
         local n = Q.ClearNotOffered(id)
         ns:Print(string.format("cleared %d quest(s) skipped as not offered%s.", n, id and (" (quest " .. id .. ")") or ""))
         return
