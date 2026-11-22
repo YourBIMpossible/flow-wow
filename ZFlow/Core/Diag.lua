@@ -129,6 +129,16 @@ local function shape(ok, ...)
 end
 Diag.Shape = shape
 
+-- { profession, skill, max, total, learned } of a recipes() reading, or nil.
+local function recipeCounts(r)
+    if type(r) ~= "table" then return nil end
+    local learned = 0
+    for i = 1, #r.recipes do
+        if r.recipes[i].learned then learned = learned + 1 end
+    end
+    return { profession = r.profession, skill = r.skill, max = r.max, total = #r.recipes, learned = learned }
+end
+
 local function ask(client, path, ...)
     return shape(client.raw(path, ...))
 end
@@ -169,6 +179,7 @@ function Diag.Collect(k, why)
         bags = client.bags(), bagStacks = count(client.bagItems()),
         bankOpen = client.bankOpen(), bankStacks = count(client.bankItems()),
         position = client.position(), zone = client.zone(),
+        recipes = recipeCounts(client.recipes()),
         predecessorLoaded = client.addonLoaded(k.id.predecessor),
         predecessorData = client.savedExists(k.id.predecessorDB),
         selfLoaded = client.addonLoaded(k.id.addon),
@@ -302,6 +313,16 @@ function Diag.Collect(k, why)
         S.recipeInfo = ask(client, "C_TradeSkillUI.GetRecipeInfo", recipe)
         S.recipeSchematic = ask(client, "C_TradeSkillUI.GetRecipeSchematic", recipe, false)
         S.recipeItemLink = ask(client, "C_TradeSkillUI.GetRecipeItemLink", recipe)
+        -- What a recipe needs: the first reagent slot and its first reagent.
+        local okPlan, plan = client.raw("C_TradeSkillUI.GetRecipeSchematic", recipe, false)
+        local slots = okPlan and type(plan) == "table" and plan.reagentSlotSchematics
+        local need = type(slots) == "table" and slots[1]
+        S.recipeSlotCount = shape(okPlan, type(slots) == "table" and #slots or slots)
+        if type(need) == "table" then
+            S.recipeSlot1 = shape(true, need)
+            local reagents = need.reagents
+            if type(reagents) == "table" then S.recipeSlot1Reagent1 = shape(true, reagents[1]) end
+        end
     end
     S.trainer1Req = ask(client, "GetTrainerServiceSkillReq", 1)
     S.merchant1Link = ask(client, "GetMerchantItemLink", 1)

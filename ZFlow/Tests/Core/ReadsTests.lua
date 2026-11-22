@@ -188,6 +188,59 @@ return {
         t.eq(c.bagItems(), nil)
     end,
 
+    ["recipes: the open profession, every recipe, learned or not"] = function(t)
+        local ui = {
+            IsTradeSkillReady = function() return true end,
+            IsDataSourceChanging = function() return false end,
+            GetBaseProfessionInfo = function() return { professionID = 164, skillLevel = 104, maxSkillLevel = 150 } end,
+            GetAllRecipeIDs = function() return { 11, 12 } end,
+            GetRecipeInfo = function(id) return { name = "R" .. id, learned = id == 11 } end,
+        }
+        local c = ns.make.client({ C_TradeSkillUI = ui })
+        t.eq(c.recipes(), { profession = 164, skill = 104, max = 150, recipes = {
+            { id = 11, name = "R11", learned = true }, { id = 12, name = "R12", learned = false },
+        } })
+        ui.GetAllRecipeIDs = function() return {} end
+        t.eq(c.recipes().recipes, {}, "settled and empty is known to be empty")
+    end,
+
+    ["recipes: unknown while the list is still arriving, or when a call fails"] = function(t)
+        local ui = {
+            IsTradeSkillReady = function() return true end,
+            IsDataSourceChanging = function() return true end,
+            GetBaseProfessionInfo = function() return { professionID = 164, skillLevel = 104, maxSkillLevel = 150 } end,
+            GetAllRecipeIDs = function() return {} end,
+            GetRecipeInfo = function() return { name = "R", learned = true } end,
+        }
+        local c = ns.make.client({ C_TradeSkillUI = ui })
+        t.eq(c.recipes(), nil, "ready but still changing: not an empty profession")
+        ui.IsDataSourceChanging = function() return false end
+        ui.IsTradeSkillReady = function() return false end
+        t.eq(c.recipes(), nil, "not ready")
+        ui.IsTradeSkillReady = function() return true end
+        ui.GetBaseProfessionInfo = function() return { professionID = 0, skillLevel = 0, maxSkillLevel = 0 } end
+        t.eq(c.recipes(), nil, "no profession window")
+        ui.GetBaseProfessionInfo = function() return { professionID = 164, skillLevel = 104, maxSkillLevel = 150 } end
+        ui.GetAllRecipeIDs = function() return { 1, 2 } end
+        ui.GetRecipeInfo = function(id) if id == 2 then boom() end return { name = "R", learned = true } end
+        t.eq(c.recipes(), nil, "one recipe errors: no shorter list")
+        ui.GetRecipeInfo = function() return { name = "R" } end
+        t.eq(c.recipes(), nil, "learned not given")
+        ui.IsDataSourceChanging = nil
+        t.eq(c.recipes(), nil, "the client cannot say whether it is settled")
+        t.eq(ns.make.client({}).recipes(), nil)
+    end,
+
+    ["recipes: the fake client gives what the test set, as a copy"] = function(t)
+        local c = ns.make.fakeClient()
+        t.eq(c.recipes(), nil)
+        local rows = { { id = 5, name = "X", learned = true } }
+        c.setRecipes({ profession = 164, skill = 1, max = 75, recipes = rows })
+        local r = c.recipes()
+        r.recipes[1].learned = false
+        t.eq(c.recipes(), { profession = 164, skill = 1, max = 75, recipes = { { id = 5, name = "X", learned = true } } })
+    end,
+
     ["bag items: every stack, link first, empty slots skipped"] = function(t)
         local c = ns.make.client(bagEnv(twoBags()))
         t.eq(c.bagItems(), {

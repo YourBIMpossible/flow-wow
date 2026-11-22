@@ -10,6 +10,7 @@
 --   c.setLoaded("Name", true); c.setSaved("NameDB", {...}); c.burn(5)
 --   c.setMoney(12345); c.setBags{ { free = 3, total = 16, family = 0 } }
 --   c.setBagItems{ { item = 2318, count = 4 } }; c.setBank{ ... }
+--   c.setRecipes{ profession = 164, skill = 104, max = 150, recipes = { ... } }
 --   c.setBankOpen(true)     -- also fires the bank opened / closed event
 --   ns.make.fakeClient{ env = { GetMoney = function() return 5 end } }; c.slashes["/x"]("rest")
 --   c.setZone(1, 1411); c.setPosition(1411, 0.5, 0.25); c.setLockdown(true)
@@ -64,6 +65,11 @@ function ns.make.fakeClient(opts)
     function c.bankItems()
         if s.bankOpen ~= true then return nil end
         return copyRows(s.bank)
+    end
+    function c.recipes()
+        local r = s.recipes
+        if type(r) ~= "table" then return nil end
+        return { profession = r.profession, skill = r.skill, max = r.max, recipes = copyRows(r.recipes) or {} }
     end
     function c.position()
         if not s.position then return nil end
@@ -196,6 +202,9 @@ function ns.make.fakeClient(opts)
         s.bankOpen = on
         events.call(on and "BANKFRAME_OPENED" or "BANKFRAME_CLOSED")
     end
+    -- The open profession window: { profession =, skill =, max =,
+    -- recipes = { { id =, name =, learned = }, ... } }; nil for none.
+    function c.setRecipes(r) s.recipes = r end
     function c.setZone(cont, zone)
         s.zone = (cont ~= nil or zone ~= nil) and { cont = cont, zone = zone } or nil
     end

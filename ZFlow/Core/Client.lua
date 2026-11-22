@@ -299,6 +299,38 @@ function ns.make.client(env)
         return stacks(ids)
     end
 
+    -- The profession whose window is open, and every recipe in it:
+    --   { profession = skill line, skill = n, max = n,
+    --     recipes = { { id =, name =, learned = true / false }, ... } }
+    -- nil when no profession window is open or the client will not say.
+    -- Seen in game on 16001 (Blacksmithing): for a moment after the window
+    -- opens the client says "ready" but is still changing its data source,
+    -- and lists no recipes. That is not an empty profession, so it is nil
+    -- until IsDataSourceChanging answers false. One recipe that cannot be
+    -- read makes the whole reading nil: never a shorter list.
+    function c.recipes()
+        local ui = env.C_TradeSkillUI
+        if type(ui) ~= "table" then return nil end
+        local okReady, ready = call(ui.IsTradeSkillReady)
+        if not okReady or ready ~= true then return nil end
+        local okChanging, changing = call(ui.IsDataSourceChanging)
+        if not okChanging or changing ~= false then return nil end
+        local okBase, base = call(ui.GetBaseProfessionInfo)
+        if not okBase or type(base) ~= "table" then return nil end
+        local line = base.professionID
+        if type(line) ~= "number" or line <= 0 then return nil end
+        if type(base.skillLevel) ~= "number" or type(base.maxSkillLevel) ~= "number" then return nil end
+        local okIds, ids = call(ui.GetAllRecipeIDs)
+        if not okIds or type(ids) ~= "table" then return nil end
+        local rows = {}
+        for i = 1, #ids do
+            local okInfo, info = call(ui.GetRecipeInfo, ids[i])
+            if not okInfo or type(info) ~= "table" or type(info.learned) ~= "boolean" then return nil end
+            rows[i] = { id = ids[i], name = type(info.name) == "string" and info.name or nil, learned = info.learned }
+        end
+        return { profession = line, skill = base.skillLevel, max = base.maxSkillLevel, recipes = rows }
+    end
+
     local function playerMap()
         local ok, map = mapCall("GetBestMapForUnit", "player")
         if ok and type(map) == "number" then return map end
