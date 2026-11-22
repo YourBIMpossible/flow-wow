@@ -118,4 +118,19 @@ T["ids feed the reader: names to ids to rows"] = function(t)
     t.eq(r.unread, { "Moonfire" })
 end
 
+T["chooser: a target nobody read is not no target, and a spell that needs one is not suggested"] = function(t)
+    local s = ns.SnapshotOf({ inCombat = true, dead = false,
+        spells = { Bolt = { known = true, usable = true, onCooldown = false } } })
+    t.ok(s.hostile == nil, "hostile not read stays nil through the snapshot")
+    local got, trace = ns.Choose(s, fightPack())
+    t.eq(got, nil, "target not known: nothing")
+    local note
+    for _, row in ipairs(trace) do
+        if row.step == "list" then note = row.note end
+    end
+    t.eq(note, "no rule ready; not known whether you have a target: Bolt", "and the trace says why")
+    local yes = ns.Choose(fight({ known = true, usable = true, onCooldown = false }), fightPack())
+    t.eq(yes and yes.spell, "Bolt", "an enemy targeted: suggested")
+end
+
 return T

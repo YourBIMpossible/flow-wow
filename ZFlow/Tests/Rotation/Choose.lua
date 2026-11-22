@@ -211,7 +211,7 @@ return {
         t.eq(pick({ "Bolt" }, { inCombat = true, hostile = true, fightType = "cleave" }), "Bolt", "an unknown fight type: the default list")
         t.eq(pick({ "Shield" }, { resting = true }), nil, "no buffs while resting out of a fight")
         t.eq(pick({ "Shield" }, { resting = true, inCombat = true }), "Shield", "but in a fight, yes")
-        local _, s2 = pick({ "Bolt" }, { inCombat = true })
+        local _, s2 = pick({ "Bolt" }, { inCombat = true, hostile = true })
         t.eq(s2.kind, "damage", "the default kind")
         t.eq(s2.reason, "Bolt", "the default reason is the spell")
     end,
@@ -291,6 +291,87 @@ return {
         t.eq(pick(nil, hurt), nil, "no heal whose cooldown is not known")
         local far = { hostile = true, attacking = true, spells = { Bolt = { known = true, inRange = false } } }
         t.eq(pick(nil, far), nil, "out of range and cooldown not read: not offered as the opener")
+    end,
+
+    ["CD1: each trace row lists the spells its step passed by for a cooldown not read"] = function(t)
+        local fight = { inCombat = true, hostile = true }
+        fight.spells = { Shield = { known = true }, Bolt = { known = true, onCooldown = false } }
+        local spell, _, trace = pick(nil, fight)
+        t.eq(spell, "Bolt")
+        t.eq(trace[#trace].step, "list")
+        t.eq(trace[#trace].passed, { "Shield" }, "the pick's row names what the list passed by first")
+        for i = 1, #trace - 1 do t.eq(trace[i].passed, nil, trace[i].step .. ": passed nothing by") end
+
+        fight.spells = { Shield = { known = true, onCooldown = false }, Bolt = { known = true } }
+        spell, _, trace = pick(nil, fight)
+        t.eq(spell, "Shield")
+        t.eq(trace[#trace].passed, nil, "Bolt was never weighed: not named")
+
+        fight.spells = { Shield = { known = true }, Bolt = { known = true } }
+        spell, _, trace = pick(nil, fight)
+        t.eq(spell, nil)
+        t.eq(trace[6].step, "list")
+        t.eq(trace[6].passed, { "Bolt", "Shield" }, "no pick: the row still names them, sorted")
+        t.eq(trace[6].note, "no rule ready; not known whether it is ready: Bolt, Shield", "and the note is as it was")
+        t.eq(trace[7].passed, nil, "the far opener weighed none")
+
+        local hurt = { lowHealth = true, inCombat = true, spells = {
+            Mend = { known = true, castMs = 1500 },
+            ["Big Mend"] = { known = true, onCooldown = false, castMs = 2500 },
+        } }
+        spell, _, trace = pick(nil, hurt)
+        t.eq(spell, "Big Mend")
+        t.eq(trace[2].step, "heal")
+        t.eq(trace[2].passed, { "Mend" }, "the heal step's own row")
+        t.eq(trace[1].passed, nil)
+    end,
+
+    ["F-086: a spell that needs a target is not suggested while the target is not known"] = function(t)
+        local function noteOf(trace, step)
+            for _, r in ipairs(trace) do
+                if r.step == step then return r.note end
+            end
+        end
+        local fight = { inCombat = true }
+        local spell, _, trace = pick({ "Bolt" }, fight)
+        t.eq(spell, nil, "hostile not known: Bolt is not suggested")
+        t.eq(noteOf(trace, "list"), "no rule ready; not known whether you have a target: Bolt")
+        t.eq(noteOf(trace, "farOpener"), "not known whether you have a target", "not the no-enemy note")
+        t.eq(ns.Rotation.TARGET_UNKNOWN, "not known whether you have a target")
+        t.eq(trace[6].passed, nil, "no cooldown was in the way")
+
+        t.eq(pick({ "Shield", "Bolt" }, fight), "Shield", "a spell that needs no target is still suggested")
+        spell, _, trace = pick({ "Shield", "Bolt" }, { inCombat = true, buffs = { Shield = 20 } })
+        t.eq(spell, nil, "and when it is not wanted, nothing")
+        t.eq(noteOf(trace, "list"), "no rule ready; not known whether you have a target: Bolt")
+        t.eq(pick({ "Bolt" }, { inCombat = true, hostile = true }), "Bolt", "an enemy targeted: suggested")
+
+        -- Named only when the target alone is in the way.
+        _, _, trace = pick(nil, { inCombat = true, spells = { Bolt = { known = true, onCooldown = true } } })
+        t.eq(noteOf(trace, "list"), "no rule ready", "on cooldown: a plain no")
+        _, _, trace = pick(nil, { inCombat = true, spells = { Bolt = { known = true } } })
+        t.eq(noteOf(trace, "list"), "no rule ready; not known whether it is ready: Bolt", "the cooldown comes first")
+        _, _, trace = pick({ "Bolt" }, { inCombat = true }, { skip = { Bolt = true } })
+        t.eq(noteOf(trace, "list"), "no rule ready", "a skipped spell is not named")
+
+        local p = pack()
+        p.lists.default = { rule("Storm", { target = true }), rule("Bolt", { target = true }),
+            rule("Kick", { target = true }) }
+        local s = { inCombat = true, spells = {
+            Storm = { known = true, onCooldown = false }, Bolt = { known = true, onCooldown = false },
+            Kick = { known = true },
+        } }
+        spell, _, trace = pick(nil, s, nil, nil, p)
+        t.eq(spell, nil)
+        t.eq(noteOf(trace, "list"),
+            "no rule ready; not known whether it is ready: Kick; not known whether you have a target: Bolt, Storm",
+            "both reasons, each with its own spells, sorted")
+
+        p.lists.default = { rule("One", { adaptive = true, target = true }), rule("Two", { adaptive = true }) }
+        t.eq(pick({ "One", "Two" }, fight, nil, nil, p), "Two", "in an adaptive group too")
+        spell, _, trace = pick({ "One" }, fight, nil, nil, p)
+        t.eq(spell, nil)
+        t.eq(noteOf(trace, "list"), "no rule ready; not known whether you have a target: One")
     end,
 
     ["pure: the same input gives the same answer and nothing is changed"] = function(t)
