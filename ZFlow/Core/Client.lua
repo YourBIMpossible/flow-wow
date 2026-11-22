@@ -2036,6 +2036,75 @@ function ns.make.client(env)
         return h
     end
 
+    -- F2 errand stops: the reads Nav/ServiceSeen.lua, Nav/HearthSeen.lua,
+    -- Nav/HearthStep.lua and Nav/Errand.lua ask for. Each only reads. An
+    -- answer the client hides, or one of the wrong kind, is "not known".
+    -- First guesses, none seen in game: UnitGUID, CanMerchantRepair,
+    -- GetBindLocation, GetItemCount and GetItemCooldown.
+    --
+    -- c.guid(unit) -> text or nil. Only the player, the pet and the target;
+    -- any other unit is nil and the client is not asked. Shared with F7,
+    -- which carries the same lines.
+    local GUID_UNITS = { player = true, pet = true, target = true }
+    function c.guid(unit)
+        if type(unit) ~= "string" or not GUID_UNITS[unit] then return nil end
+        local ok, id = call(env.UnitGUID, unit)
+        if not ok or id == nil or hidden(id) or type(id) ~= "string" or id == "" then return nil end
+        return id
+    end
+    function c.playerGUID() return c.guid("player") end
+    function c.petGUID() return c.guid("pet") end
+
+    -- c.serviceNpc() -> { guid, name } or nil: the npc whose window is
+    -- open (unit "npc", as c.trainer reads it). Nil unless the client says
+    -- plainly that it is no player. A part not known is left out; nil when
+    -- neither is known.
+    function c.serviceNpc()
+        local okP, isPlayer = call(env.UnitIsPlayer, "npc")
+        if not okP or hidden(isPlayer) or isPlayer ~= false then return nil end
+        local name = text(call(env.UnitName, "npc"))
+        local guid
+        local okG, id = call(env.UnitGUID, "npc")
+        if okG and id ~= nil and not hidden(id) and type(id) == "string" and id ~= "" then guid = id end
+        if name == nil and guid == nil then return nil end
+        return { guid = guid, name = name }
+    end
+
+    -- c.merchantRepairs() -> true, false, or nil when not known.
+    function c.merchantRepairs()
+        local ok, v = call(env.CanMerchantRepair)
+        if not ok or v == nil or hidden(v) then return nil end
+        if v == true or v == 1 then return true end
+        if v == false or v == 0 then return false end
+        return nil
+    end
+
+    -- c.bindLocation() -> the name of the place the hearthstone is set to,
+    -- or nil.
+    function c.bindLocation()
+        return text(call(env.GetBindLocation))
+    end
+
+    -- c.hearthCooldown() -> seconds until the hearthstone is ready, 0 when
+    -- ready, nil when not known or the player carries no stone. It never
+    -- uses the stone.
+    local HEARTHSTONE = 6948
+    function c.hearthCooldown()
+        local okN, n = call(env.GetItemCount, HEARTHSTONE)
+        if not okN or n == nil or hidden(n) or type(n) ~= "number" or n < 1 then return nil end
+        local ok, start, duration = call(env.GetItemCooldown, HEARTHSTONE)
+        if not ok or start == nil or duration == nil or hidden(start) or hidden(duration) then return nil end
+        if type(start) ~= "number" or type(duration) ~= "number" then return nil end
+        if start ~= start or duration ~= duration or start < 0 or duration < 0 then return nil end
+        if start == 0 or duration == 0 then return 0 end
+        local okT, now = call(env.GetTime)
+        if not okT or now == nil or hidden(now) or type(now) ~= "number" then return nil end
+        local left = start + duration - now
+        if left ~= left or left == math.huge then return nil end
+        if left < 0 then return 0 end
+        return left
+    end
+
     return c
 end
 
