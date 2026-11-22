@@ -16,6 +16,9 @@
 --     result.record    the import record: source, sourceVersion, importer,
 --                      counts per category, vendor choices found. The caller
 --                      stamps the date (a pure function has no clock).
+--                      record.sameAsFlowDefault[key] = true marks a value
+--                      equal to the one Flow writes by itself at load: it
+--                      was found, but it does not prove the player chose it.
 --     result.vendorToConfirm   list of { key, to, sameAsFlowDefault }, sorted
 --                      by key: every vendor automation Flow had on. None of
 --                      them is on in result.account. The import screen shows
@@ -48,6 +51,8 @@
 --   bank         Modules/Crafting/SkillPlan.lua:1214-1215
 --   banker       Modules/Items/Banker.lua:1184, Modules/Quests/QuestBags.lua:430
 --   bonus        Modules/Bonus.lua:121
+--   buffButton   Modules/Rotation/BuffButton.lua:32-34, :573, :997-998,
+--                Modules/Rotation/CareKeys.lua:47-59, Modules/MoveHandle.lua:126-127
 --   camera       Modules/Camera.lua:41
 --   cast         Modules/Rotation/Cast.lua:757
 --   chat         Modules/AskClaude.lua:492, Modules/Chat.lua:22
@@ -112,6 +117,15 @@ local ONCE = "a one-time notice flag"
 local DIAGNOSTIC = "diagnostic output, not player data"
 local SESSION = "state of one play session; stale once imported"
 local OLD = "an old Flow setting that Flow itself no longer reads"
+-- legacyShared (Core.lua:182-208): the shared values Flow parked when it began
+-- keeping them per character, by path. Each character takes its share by
+-- rules each Flow module owns, when it next logs in.
+local PARKED_EMPTY = "Flow's parking place for data from before it kept things per character; nothing is parked in it"
+local PARKED_TAKEN = "shared data from before Flow kept this per character; this character already took its share,"
+    .. " and that share is imported from the character's own data"
+local PARKED_WAITING = "shared data from before Flow kept this per character; Flow hands each character its share by"
+    .. " its own rules when that character next logs in, and the importer does not copy those rules,"
+    .. " so nothing was imported from here"
 -- nav.mode and nav.professions: Flow still reads and writes both. They are
 -- the older saved names of the choice in nav.kinds, kept in step with it
 -- (Modules/Nav/Nav.lua:1372, :1386, :1445-1446), and the only record of it
@@ -134,6 +148,8 @@ local OLDER_NAME_ALONE = "the older saved name of the choice Flow now keeps in n
 --   vendor      a vendor automation: off unless the player confirms it
 --   flowDefault Flow itself writes this value at load, so finding it does
 --               not prove the player chose it
+--   parked      Flow's parking place for data from before it kept things per
+--               character: dropped, one entry per parked path
 -- A "section" row beside "section.key" rows takes the keys no row names.
 -- A key under a section that has rows but no row for it is "unknown".
 local MAP = {
@@ -141,7 +157,7 @@ local MAP = {
     { "version", meta = "read as the source version on the import record" },
     { "migrations", drop = BOOKKEEPING },
     { "charSplit", drop = BOOKKEEPING },
-    { "legacyShared", drop = BOOKKEEPING },
+    { "legacyShared", drop = PARKED_WAITING, parked = true },
 
     -- Learned: places
     { "places", to = "learned.places.npcs", as = "places" },
@@ -207,10 +223,20 @@ local MAP = {
     { "advisor.point", to = "layout.advisor.frame", as = "point" },
     { "advisor.panelPoint", to = "layout.advisor.panel", as = "point" },
     { "ah.postPoint", to = "layout.auction.post", as = "point" },
+    { "ah.chartPoint", to = "layout.auction.chart", as = "point" },
+    -- The Flow button's small companion (Modules/MoveHandle.lua:126-127 saves
+    -- point and scale together; BuffButton.lua:573 the docked size).
+    { "buffButton.point", to = "layout.buffButton.frame", as = "point" },
+    { "buffButton.scale", to = "layout.buffButton.scale", as = "positive" },
+    { "buffButton.dockScale", to = "layout.buffButton.dockScale", as = "positive" },
     { "banker.point", to = "layout.banker.frame", as = "point" },
     { "deaths.point", to = "layout.deaths.frame", as = "point" },
     { "meters.point", to = "layout.meters.frame", as = "point" },
     { "rotation.point", to = "layout.rotation.frame", as = "point" },
+    { "rotation.scale", to = "layout.rotation.scale", as = "positive" },
+    -- The professions window: per character, as the whole prof section is
+    -- (Modules/Professions.lua:50, :152).
+    { "prof.point", to = "layout.prof.frame", as = "point", char = true },
     { "tracker.point", to = "layout.tracker.frame", as = "point" },
     { "trader.point", to = "layout.trader.frame", as = "point" },
 
@@ -223,8 +249,9 @@ local MAP = {
     { "sell.autoCleanup", to = "settings.sell.autoCleanup", as = "bool", vendor = true },
     { "sell.vendorUnpriced", to = "settings.sell.vendorUnpriced", as = "bool", vendor = true },
     -- The rest of selling
-    { "sell.enabled", to = "settings.sell.enabled", as = "bool" },
-    { "sell.junkAll", to = "settings.sell.junkAll", as = "bool" },
+    -- Flow writes both as true at load when unset (Modules/Items/Vendor.lua:733-739).
+    { "sell.enabled", to = "settings.sell.enabled", as = "bool", flowDefault = true },
+    { "sell.junkAll", to = "settings.sell.junkAll", as = "bool", flowDefault = true },
     { "sell.repairWarn", to = "settings.sell.repairWarn" },
     { "sell.repairStop", to = "settings.sell.repairStop" },
     { "sell.never", to = "settings.sell.never", char = true },
@@ -313,6 +340,7 @@ local MAP = {
     { "ah.duration", to = "settings.auction.duration" },
     { "ah.postOff", to = "settings.auction.postOff" },
     { "ah.watch", to = "settings.auction.watch" },
+    { "ah.chartClick", to = "settings.auction.chartClick", as = "bool" },
     { "ah.posts", drop = CACHE },
     { "ah.lastFull", drop = CACHE },
     { "ah.lastScan", drop = CACHE },
@@ -321,6 +349,13 @@ local MAP = {
     { "banker.autoCleanup", to = "settings.banker.autoCleanup" },
     { "banker.off", to = "settings.banker.off" },
     { "banker.parked", to = "state.banker.parked", char = true },
+    { "buffButton.enabled", to = "settings.buffButton.enabled" },
+    { "buffButton.key", to = "settings.buffButton.key" },
+    { "buffButton.key2", to = "settings.buffButton.key2" },
+    { "buffButton.dock", to = "settings.buffButton.dock" },
+    { "buffButton.always", to = "settings.buffButton.always" },
+    { "buffButton.care", to = "settings.buffButton.care" },
+    { "buffButton.keepOnMain", to = "settings.buffButton.keepOnMain" },
     { "bonus.enabled", to = "settings.bonus.enabled" },
     -- The speech toggle (Modules/Bonus.lua): a choice, not a notice flag.
     { "bonus.spoken", to = "settings.bonus.spoken" },
@@ -372,6 +407,7 @@ local MAP = {
     { "prof.remind", to = "settings.prof.remind", char = true },
     { "prof.snoozeLevel", to = "settings.prof.snoozeLevel", char = true },
     { "prof.lastKey", drop = BOOKKEEPING },
+    { "prof.suggestKey", drop = BOOKKEEPING },
     { "quests.enabled", to = "settings.quests.enabled" },
     { "quests.autoAccept", to = "settings.quests.autoAccept" },
     { "quests.autoTurnIn", to = "settings.quests.autoTurnIn" },
@@ -760,6 +796,7 @@ local function newRecord(sourceVersion)
         counts = counts,
         vendorChoices = {},
         vendorSameAsFlowDefault = {},
+        sameAsFlowDefault = {},
     }
 end
 
@@ -796,8 +833,21 @@ local function FromFlow(flowDb, flowCharDb)
     local function note(label, reason, why) leave(why or "malformed", label, reason) end
     local vendorToConfirm = {}
 
+    local adopted = type(flowCharDb) == "table" and flowCharDb.adopted
+    local taken = type(adopted) == "table" and adopted or {}
+
     local function apply(row, value, label)
         if row.meta then return end
+        if row.parked then
+            if type(value) ~= "table" then
+                return leave("malformed", label, "expected a table, found a " .. type(value))
+            end
+            if next(value) == nil then return leave("dropped", label, PARKED_EMPTY) end
+            for _, path in ipairs(sortedKeys(value)) do
+                leave("dropped", label .. "." .. tostring(path), taken[path] == true and PARKED_TAKEN or PARKED_WAITING)
+            end
+            return
+        end
         if row.drop then
             local alone = row.beside and getPath(flowDb, row.beside) == nil
             return leave("dropped", label, alone and row.dropAlone or row.drop)
@@ -809,9 +859,10 @@ local function FromFlow(flowDb, flowCharDb)
         if row.yield and getPath(root, row.to) ~= nil then
             return leave("superseded", label, "a newer Flow key holds this same choice; that one was used")
         end
+        local sameAsDefault = row.flowDefault ~= nil and cleaned == row.flowDefault
+        if sameAsDefault then record.sameAsFlowDefault[row[1]] = true end
         if row.vendor then
             record.vendorChoices[row[1]] = cleaned
-            local sameAsDefault = row.flowDefault ~= nil and cleaned == row.flowDefault
             if sameAsDefault then record.vendorSameAsFlowDefault[row[1]] = true end
             if cleaned == true then
                 -- Found on: listed for the player to confirm, written nowhere.
@@ -884,7 +935,14 @@ local function FromFlow(flowDb, flowCharDb)
                     elseif ROW[path] or HAS_KEYS[path] then
                         take(path, value[path], at)
                     else
-                        leave("unknown", at, "no row for this key in the mapping; left behind untouched")
+                        -- One field of a section that is left behind whole
+                        -- (Flow parks autopush.seen, not autopush).
+                        local whole = ROW[path:match("^([^.]+)%.") or ""]
+                        if whole and whole.drop and not whole.parked then
+                            leave("dropped", at, whole.drop)
+                        else
+                            leave("unknown", at, "no row for this key in the mapping; left behind untouched")
+                        end
                     end
                 end
             end

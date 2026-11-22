@@ -22,6 +22,11 @@ local function fullDb()
     return {
         charSplit = 3,
         migrations = {},
+        legacyShared = { trainer = { npc = "Old Tobb" }, ["nav.hidden"] = { ["q:7"] = true } },
+        buffButton = {
+            enabled = true, key = "F", key2 = "SHIFT-F", dock = true, dockScale = 0.8,
+            point = { "CENTER", "BOTTOMLEFT", 640, 220 }, scale = 1.1, always = true, care = false, keepOnMain = true,
+        },
         places = {
             ["Mara Stonehand"] = { map = 1412, x = 0.42, y = 0.61, kind = "vendor", roles = { repair = true }, seen = 1700000000, n = 4 },
             ["Old Tobb"] = { map = 1411, x = 0.5, y = 0.5, kind = "trainer" },
@@ -59,10 +64,14 @@ local function fullDb()
             entrances = { { cont = 1, wx = -4012.5, wy = 220.25, map = 1412 } },
             gates = { { cont = 1, wx = -10.5, wy = 33, a = 1411, b = 1412 } },
             taxiTrip = { from = "Stonegate", at = 1700000300 },
+            wayTips = 2,
         },
-        ah = { prices = { ["Emberfall-Alliance"] = { [2589] = 40 } }, watch = { [4306] = { name = "Silk Cloth", max = 900 } }, lastScan = 1700000400 },
+        ah = {
+            prices = { ["Emberfall-Alliance"] = { [2589] = 40 } }, watch = { [4306] = { name = "Silk Cloth", max = 900 } },
+            lastScan = 1700000400, chartPoint = { "CENTER", "BOTTOMLEFT", 300, 500 }, chartClick = false,
+        },
         rotation = {
-            enabled = true, panicPct = 35, point = { "CENTER", "CENTER", 0, -200 }, debug = true,
+            enabled = true, panicPct = 35, point = { "CENTER", "CENTER", 0, -200 }, scale = 1.2, debug = true,
             recoverBandage = false, recoverFood = true, recoverBuffFood = false, recoverHeal = true, bandageRank = "low",
         },
         bonus = { enabled = true, spoken = false },
@@ -96,6 +105,13 @@ local function fullCharDb()
             },
             ["quests.notOffered"] = { [205] = true },
             paladinSeal = "Righteousness",
+            prof = {
+                chosen = { "Tailoring", "Enchanting" },
+                point = { "CENTER", "BOTTOMLEFT", 400, 300 },
+                suggestKey = "Tailoring+Enchanting",
+            },
+            ["autopush.seen"] = { [1] = true },
+            ["autopush.bars"] = { bear = 2 },
         },
     }
 end
@@ -186,7 +202,7 @@ return {
         -- The reader itself (Nav/ArrowLayout.lua) finds every part of it.
         t.eq(ns.Nav.ArrowSaved(account.layout), arrows, "Z-Flow reads back what was imported")
         t.eq(account.settings.nav.profArrowText, nil, "the profession arrow's text choice is layout, not a setting")
-        t.eq(result.char.layout, {}, "no arrow position is per character")
+        t.eq(result.char.layout.arrows, nil, "no arrow position is per character")
         t.eq(account.layout.nav.card, { "LEFT", "LEFT", 20, 0 })
         t.eq(account.layout.rotation.frame, { "CENTER", "CENTER", 0, -200 })
         t.eq(account.settings.nav.enabled, true)
@@ -203,12 +219,38 @@ return {
 
     ["import: caches, bookkeeping and diagnostics are listed as dropped with a reason"] = function(t)
         local result = Import.FromFlow(fullDb(), fullCharDb())
-        for _, key in ipairs({ "charSplit", "migrations", "deathNext", "diag", "chat", "setup", "nav.arrowModern",
-            "nav.taxiTrip", "ah.lastScan", "rotation.debug", "FlowCharDB.adopted", "FlowCharDB.data.profiler.report" }) do
+        -- Each key with the words its true reason must carry: a reason that
+        -- belongs to another kind of key fails here.
+        local expected = {
+            ["charSplit"] = "bookkeeping",
+            ["migrations"] = "bookkeeping",
+            ["deathNext"] = "bookkeeping",
+            ["nav.arrowModern"] = "bookkeeping",
+            ["FlowCharDB.adopted"] = "bookkeeping",
+            ["FlowCharDB.data.prof.suggestKey"] = "bookkeeping",
+            ["diag"] = "diagnostic",
+            ["rotation.debug"] = "diagnostic",
+            ["ah.lastScan"] = "a cache",
+            ["nav.taxiTrip"] = "one play session",
+            ["nav.wayTips"] = "one-time notice",
+            ["chat"] = "chat bridge",
+            ["setup"] = "first-run progress",
+            ["FlowCharDB.data.profiler.report"] = "built from the fight records",
+            ["FlowCharDB.data.autopush.seen"] = "action bar moves",
+            ["FlowCharDB.data.autopush.bars"] = "action bar moves",
+            ["legacyShared.nav.hidden"] = "already took its share",
+            ["legacyShared.trainer"] = "nothing was imported from here",
+        }
+        local checked = 0
+        for key, words in pairs(expected) do
             local entry = droppedFor(result, key)
             t.ok(entry and entry.why == "dropped", key .. " is listed as dropped")
-            t.ok(entry and type(entry.reason) == "string" and entry.reason ~= "", key .. " has a reason")
+            t.ok(entry and entry.reason:find(words, 1, true), key .. ": the reason says " .. words)
+            checked = checked + 1
         end
+        -- Every dropped entry of the fixture is in the list above or in the
+        -- nav.mode and nav.professions check below: none passes unread.
+        t.eq(checked + 2, result.record.counts.dropped, "every dropped key of the fixture has its reason checked")
         t.eq(result.account.settings.rotation.debug, nil)
         t.eq(result.account.settings.nav.taxiTrip, nil)
         for _, key in ipairs({ "nav.mode", "nav.professions" }) do
@@ -226,7 +268,7 @@ return {
         local result = Import.FromFlow(fullDb(), fullCharDb())
         local counts = result.record.counts
         t.eq(counts.prices, 3, "two vendor prices and one realm of auction prices")
-        t.eq(counts.dropped, 14)
+        t.eq(counts.dropped, 20)
         t.ok(counts.places > 0 and counts.flights > 0 and counts.facts > 0 and counts.fights > 0, "every learned category counted")
         t.ok(counts.settings > 0 and counts.layout > 0 and counts.state > 0, "settings, layout and state counted")
         t.eq(result.account.imports, { result.record }, "the record is ready for the imports list")
@@ -594,6 +636,141 @@ return {
         t.eq(known.ok, true)
         t.eq(known.record.sourceVersion, 0)
         t.eq(droppedFor(known, "version"), nil, "the version is read, not dropped")
+    end,
+
+    ["import: the companion button's choices, keys and place are kept"] = function(t)
+        local result = Import.FromFlow(fullDb(), fullCharDb())
+        t.eq(result.account.settings.buffButton,
+            { enabled = true, key = "F", key2 = "SHIFT-F", dock = true, always = true, care = false, keepOnMain = true })
+        t.eq(result.account.layout.buffButton, { frame = { "CENTER", "BOTTOMLEFT", 640, 220 }, scale = 1.1, dockScale = 0.8 })
+        t.eq(droppedFor(result, "buffButton"), nil, "the section is not listed as left behind")
+        t.eq(droppedFor(result, "buffButton.key"), nil, "nor is a key binding")
+    end,
+
+    ["import: window sizes and the chart's place and click choice are kept"] = function(t)
+        local result = Import.FromFlow(fullDb(), fullCharDb())
+        t.eq(result.account.layout.rotation, { frame = { "CENTER", "CENTER", 0, -200 }, scale = 1.2 })
+        t.eq(result.account.layout.auction.chart, { "CENTER", "BOTTOMLEFT", 300, 500 })
+        t.eq(result.account.settings.auction.chartClick, false, "a chart click switched off stays off")
+        local bad = Import.FromFlow({ rotation = { scale = 0 }, buffButton = { scale = "big", dockScale = -1 } }, nil)
+        t.eq(bad.account.layout, {}, "a size that is not above zero is not kept")
+        for _, key in ipairs({ "rotation.scale", "buffButton.scale", "buffButton.dockScale" }) do
+            local entry = droppedFor(bad, key)
+            t.ok(entry and entry.why == "malformed", key .. " is listed as malformed")
+        end
+    end,
+
+    ["import: the professions window's place is the character's"] = function(t)
+        local result = Import.FromFlow(fullDb(), fullCharDb())
+        t.eq(result.char.layout.prof, { frame = { "CENTER", "BOTTOMLEFT", 400, 300 } })
+        t.eq(result.char.settings.prof.chosen, { "Tailoring", "Enchanting" })
+        t.eq(result.account.layout.prof, nil, "not the account's")
+        t.eq(result.char.settings.prof.suggestKey, nil, "the suggestion stamp is not a choice")
+        local _, char = Import.Merge(nil, nil, result)
+        t.eq(char.layout.prof, { frame = { "CENTER", "BOTTOMLEFT", 400, 300 } }, "merge carries the character's layout")
+    end,
+
+    ["import: a parked field of a section left behind whole is dropped, not unknown"] = function(t)
+        local result = Import.FromFlow({}, { data = {
+            ["autopush.seen"] = { [1] = true }, ["autopush.bars"] = { bear = 2 }, ["autopush.moved"] = { [3] = 12 },
+            ["nav.futureField"] = 1, ["futureSection.field"] = 1,
+        } })
+        for _, name in ipairs({ "seen", "bars", "moved" }) do
+            local entry = droppedFor(result, "FlowCharDB.data.autopush." .. name)
+            t.ok(entry and entry.why == "dropped", "autopush." .. name .. " is listed as dropped")
+            t.ok(entry and entry.reason:find("action bar moves", 1, true), "autopush." .. name .. " carries the section's reason")
+        end
+        t.eq(result.record.counts.dropped, 3)
+        local future = droppedFor(result, "FlowCharDB.data.nav.futureField")
+        t.eq(future and future.why, "unknown", "a section with no whole-section drop row gives no cover")
+        local other = droppedFor(result, "FlowCharDB.data.futureSection.field")
+        t.eq(other and other.why, "unknown")
+        t.eq(result.record.counts.unknown, 2)
+    end,
+
+    ["import: parked pre-split data is listed path by path and never imported"] = function(t)
+        local db = { legacyShared = { trainer = { npc = "Old Tobb" }, ["nav.hidden"] = { ["q:7"] = true }, spec = { role = "heal" } } }
+        local result = Import.FromFlow(db, { adopted = { ["nav.hidden"] = true, trainer = false } })
+        local taken = droppedFor(result, "legacyShared.nav.hidden")
+        t.ok(taken and taken.why == "dropped" and taken.reason:find("already took its share", 1, true),
+            "a path this character adopted says its share comes from the character's data")
+        for _, path in ipairs({ "trainer", "spec" }) do
+            local entry = droppedFor(result, "legacyShared." .. path)
+            t.ok(entry and entry.why == "dropped" and entry.reason:find("nothing was imported from here", 1, true),
+                path .. " says it was not imported")
+            t.ok(entry and not entry.reason:find("already took", 1, true), path .. " does not claim it was adopted")
+        end
+        t.eq(droppedFor(result, "legacyShared"), nil, "the entries are per path")
+        t.eq(result.char, emptyChar(), "nothing parked reaches the character")
+        t.eq(result.account, emptyAccount(result.record), "nor the account")
+
+        local empty = droppedFor(Import.FromFlow({ legacyShared = {} }, nil), "legacyShared")
+        t.ok(empty and empty.why == "dropped" and empty.reason:find("nothing is parked", 1, true), "an empty parking place says so")
+        local wrong = droppedFor(Import.FromFlow({ legacyShared = 5 }, nil), "legacyShared")
+        t.eq(wrong and wrong.why, "malformed")
+        local noChar = droppedFor(Import.FromFlow(db, nil), "legacyShared.nav.hidden")
+        t.ok(noChar and noChar.reason:find("nothing was imported from here", 1, true),
+            "with no character data nothing counts as adopted")
+    end,
+
+    ["import: the tip counter Flow keeps in nav.wayTips is dropped as a notice flag"] = function(t)
+        -- Flow writes it at Modules/Nav/Waypoint.lua:90-91.
+        local result = Import.FromFlow({ nav = { wayTips = 2 } }, nil)
+        local entry = droppedFor(result, "nav.wayTips")
+        t.ok(entry and entry.why == "dropped" and entry.reason:find("one-time notice", 1, true))
+        t.eq(result.account.settings, {})
+    end,
+
+    ["import: selling values equal to what Flow writes at load are marked as not proven choices"] = function(t)
+        local found = { sell = { enabled = true, junkAll = true, autoJunk = true, autoAll = true, autoRepair = false } }
+        local result = Import.FromFlow(found, nil)
+        t.eq(result.record.sameAsFlowDefault, { ["sell.enabled"] = true, ["sell.junkAll"] = true, ["sell.autoJunk"] = true })
+        t.eq(result.account.settings.sell.enabled, true, "the value is still imported")
+        t.eq(result.account.settings.sell.junkAll, true)
+        local changed = Import.FromFlow({ sell = { enabled = false, junkAll = false } }, nil)
+        t.eq(changed.record.sameAsFlowDefault, {}, "a value Flow would not write by itself is the player's")
+        t.eq(changed.account.settings.sell, { enabled = false, junkAll = false })
+        t.eq(Import.FromFlow(nil, nil).record.sameAsFlowDefault, {})
+    end,
+
+    ["mapping: the Flow keys the WOW-20 review found missing each have the row expected"] = function(t)
+        -- Flow key -> where it lands ("char:" = the character's data), or
+        -- false when it is left behind on purpose. Read from Flow's source;
+        -- the file and line for each is in the importer's header and rows.
+        local expected = {
+            ["buffButton.enabled"] = "settings.buffButton.enabled",
+            ["buffButton.key"] = "settings.buffButton.key",
+            ["buffButton.key2"] = "settings.buffButton.key2",
+            ["buffButton.dock"] = "settings.buffButton.dock",
+            ["buffButton.dockScale"] = "layout.buffButton.dockScale",
+            ["buffButton.point"] = "layout.buffButton.frame",
+            ["buffButton.scale"] = "layout.buffButton.scale",
+            ["buffButton.always"] = "settings.buffButton.always",
+            ["buffButton.care"] = "settings.buffButton.care",
+            ["buffButton.keepOnMain"] = "settings.buffButton.keepOnMain",
+            ["rotation.scale"] = "layout.rotation.scale",
+            ["ah.chartPoint"] = "layout.auction.chart",
+            ["ah.chartClick"] = "settings.auction.chartClick",
+            ["prof.point"] = "char:layout.prof.frame",
+            ["prof.suggestKey"] = false,
+            ["nav.wayTips"] = false,
+            ["legacyShared"] = false,
+            ["autopush"] = false,
+        }
+        local rows = {}
+        for _, row in ipairs(Import.flowMap) do rows[row[1]] = row end
+        for key, to in pairs(expected) do
+            local row = rows[key]
+            t.ok(row, key .. " has a row")
+            if row and to then
+                t.eq((row.char and "char:" or "") .. tostring(row.to), to, key .. " lands where expected")
+            elseif row then
+                t.ok(row.drop and not row.to, key .. " is left behind on purpose")
+            end
+        end
+        for _, key in ipairs({ "sell.enabled", "sell.junkAll", "sell.autoJunk", "sell.autoRepair" }) do
+            t.eq(rows[key] and rows[key].flowDefault, true, key .. " is marked as a value Flow writes at load")
+        end
     end,
 
     ["mapping: every row maps to a named path or is dropped with a reason"] = function(t)
