@@ -15,6 +15,8 @@
 --   c.setSpellId("Wrath", 5176)   c.setFacing(1.57)
 --   c.setMapSize(1411, 5287.5, 3525)
 --   c.setBankOpen(true)     -- also fires the bank opened / closed event
+--   c.setMerchant{ { item = "item:2318", price = 60, stack = 1 } }
+--   c.setMerchantOpen(true) -- also fires the merchant shown / closed event
 --   ns.make.fakeClient{ env = { GetMoney = function() return 5 end } }; c.slashes["/x"]("rest")
 --   c.setZone(1, 1411); c.setPosition(1411, 0.5, 0.25); c.setLockdown(true)
 --   c.setDead(true); c.setCorpse(1411, 0.3, 0.6)
@@ -42,7 +44,7 @@ end
 
 function ns.make.fakeClient(opts)
     opts = opts or {}
-    local s = { t = opts.now or 1000, ms = 0, combat = false, bankOpen = false, loaded = {}, saved = {}, listening = {}, frames = 0 }
+    local s = { t = opts.now or 1000, ms = 0, combat = false, bankOpen = false, merchantOpen = false, loaded = {}, saved = {}, listening = {}, frames = 0 }
     local c = { printed = {} }
 
     local events = ns.make.listeners(
@@ -73,6 +75,12 @@ function ns.make.fakeClient(opts)
     function c.bankItems()
         if s.bankOpen ~= true then return nil end
         return copyRows(s.bank)
+    end
+    function c.watchMerchant() end
+    function c.merchantOpen() return s.merchantOpen end
+    function c.merchantItems()
+        if s.merchantOpen ~= true then return nil end
+        return copyRows(s.merchant)
     end
     function c.recipes()
         local r = s.recipes
@@ -268,6 +276,19 @@ function ns.make.fakeClient(opts)
         if on == s.bankOpen then return end
         s.bankOpen = on
         events.call(on and "BANKFRAME_OPENED" or "BANKFRAME_CLOSED")
+    end
+    -- What the merchant has on sale, in the shape of merchantItems():
+    -- { { index =, item =, price =, stack =, other = }, ... }; nil for a
+    -- window that cannot be read. merchantItems() gives it only while the
+    -- window is open.
+    function c.setMerchant(rows) s.merchant = copyRows(rows) end
+    -- true / false fire the merchant event; nil is "not known" and fires nothing.
+    function c.setMerchantOpen(on)
+        if on == nil then s.merchantOpen = nil return end
+        on = on and true or false
+        if on == s.merchantOpen then return end
+        s.merchantOpen = on
+        events.call(on and "MERCHANT_SHOW" or "MERCHANT_CLOSED")
     end
     -- The open profession window: { profession =, skill =, max =,
     -- recipes = { { id =, name =, learned = }, ... } }; nil for none.

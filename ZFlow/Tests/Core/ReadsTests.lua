@@ -58,6 +58,21 @@ local function bankTabs(env, tabs)
     end }
 end
 
+-- An environment with frames (for events) and a merchant selling `rows`:
+--   rows[i] = { link =, price =, stack =, other = }, read through the bare
+--   globals; a test adds env.C_MerchantFrame where it wants the table answer.
+local function merchantEnv(rows)
+    local env = bagEnv({})
+    env.GetMerchantNumItems = function() return #rows end
+    env.GetMerchantItemLink = function(index) return rows[index] and rows[index].link end
+    env.GetMerchantItemInfo = function(index)
+        local row = rows[index]
+        if not row then return nil end
+        return "name", 1, row.price, row.stack, -1, true, true, row.other and true or false
+    end
+    return env
+end
+
 local function twoBags()
     return {
         [0] = { family = 0, size = 16, { link = LEATHER, id = 2318, count = 4 }, { id = 2318, count = 3 } },
@@ -99,6 +114,11 @@ return {
         t.eq(c.bagItems(), nil)
         t.eq(c.bankOpen(), nil)
         t.eq(c.bankItems(), nil)
+        t.eq(c.merchantOpen(), nil)
+        t.eq(c.merchantItems(), nil)
+        c.watchMerchant()
+        t.eq(c.merchantOpen(), nil, "watching with no frame still knows nothing")
+        t.eq(c.merchantItems(), nil)
         t.eq(c.position(), nil)
         t.eq(c.zone(), nil)
         t.eq(c.combatLockdown(), nil)
@@ -781,5 +801,180 @@ return {
         snap = ns.Resources.Take(read)
         t.eq(snap.bank, { [2589] = 9 })
         t.eq(snap.bankSeenAt, 3)
+    end,
+    -- ------------------------------------------------------------ merchant
+    ["merchant: closed or not known gives nil, never an empty list"] = function(t)
+        local env = merchantEnv({ { link = LEATHER, price = 60, stack = 1 } })
+        local c = ns.make.client(env)
+        c.watchMerchant()
+        t.eq(c.merchantOpen(), nil, "no event and no frame: not known")
+        t.eq(c.merchantItems(), nil)
+        env.fire("MERCHANT_SHOW")
+        t.eq(c.merchantOpen(), true)
+        t.eq(c.merchantItems(), { { index = 1, item = LEATHER, price = 60, stack = 1, other = false } })
+        env.fire("MERCHANT_CLOSED")
+        t.eq(c.merchantOpen(), false)
+        t.eq(c.merchantItems(), nil, "a closed window is not an empty merchant")
+        t.eq(env.frames[1].events.MERCHANT_SHOW, true)
+        t.eq(env.frames[1].events.MERCHANT_CLOSED, true)
+    end,
+
+    ["merchant: before any event the window's own frame is the first guess"] = function(t)
+        local env = merchantEnv({})
+        env.MerchantFrame = { IsShown = function() return env.shown end }
+        local c = ns.make.client(env)
+        env.shown = true
+        t.eq(c.merchantOpen(), true)
+        t.eq(c.merchantItems(), {}, "an open merchant with nothing on sale is an empty list")
+        env.shown = false
+        t.eq(c.merchantOpen(), false)
+        t.eq(c.merchantItems(), nil)
+        env.MerchantFrame = { IsShown = boom }
+        t.eq(c.merchantOpen(), nil)
+        t.eq(c.merchantItems(), nil)
+    end,
+
+    ["merchant: one row per item on sale, with the price and stack the window shows"] = function(t)
+        local env = merchantEnv({
+            { link = LEATHER, price = 60, stack = 1 },
+            { link = BEAR, price = 4000, stack = 1, other = true },
+            { link = "item:2320", price = 50, stack = 5 },
+        })
+        local c = ns.make.client(env)
+        c.watchMerchant()
+        env.fire("MERCHANT_SHOW")
+        t.eq(c.merchantItems(), {
+            { index = 1, item = LEATHER, price = 60, stack = 1, other = false },
+            { index = 2, item = BEAR, price = 4000, stack = 1, other = true },
+            { index = 3, item = "item:2320", price = 50, stack = 5, other = false },
+        })
+    end,
+
+    ["merchant: the table answer is used where the client has it"] = function(t)
+        local env = merchantEnv({ { link = LEATHER, price = 1, stack = 1 } })
+        local old = 0
+        env.GetMerchantItemInfo = function()
+            old = old + 1
+            return "x", 1, 999, 9
+        end
+        env.C_MerchantFrame = { GetItemInfo = function(index)
+            return index == 1 and { price = 60, stackCount = 5, hasExtendedCost = false } or nil
+        end }
+        local c = ns.make.client(env)
+        c.watchMerchant()
+        env.fire("MERCHANT_SHOW")
+        t.eq(c.merchantItems(), { { index = 1, item = LEATHER, price = 60, stack = 5, other = false } })
+        t.eq(old, 0, "both answers were asked for")
+        env.C_MerchantFrame.GetItemInfo = function() return nil end
+        t.eq(c.merchantItems(), { { index = 1, item = LEATHER } }, "no answer for an item is no price, not 0")
+        env.C_MerchantFrame.GetItemInfo = boom
+        t.eq(c.merchantItems(), nil)
+    end,
+
+    ["merchant: what the client does not give is left out, never 0"] = function(t)
+        local env = merchantEnv({
+            { link = LEATHER },
+            { price = 60, stack = 1 },
+            { link = "item:2320", price = -1, stack = 0 },
+            { link = "item:2321", price = 2.5, stack = "5" },
+            { link = 2318, price = 60, stack = 1 },
+        })
+        local c = ns.make.client(env)
+        c.watchMerchant()
+        env.fire("MERCHANT_SHOW")
+        t.eq(c.merchantItems(), {
+            { index = 1, item = LEATHER, other = false },
+            { index = 2, price = 60, stack = 1, other = false },
+            { index = 3, item = "item:2320", other = false },
+            { index = 4, item = "item:2321", other = false },
+            { index = 5, price = 60, stack = 1, other = false },
+        })
+        env.GetMerchantItemInfo = function() return "name", 1, 60, 1 end
+        t.eq(c.merchantItems()[1], { index = 1, item = LEATHER, price = 60, stack = 1 },
+            "a client that does not say what the item costs in was read as coin or as not coin")
+    end,
+
+    ["merchant: a missing or erroring call makes the whole reading unknown"] = function(t)
+        local function open(change)
+            local env = merchantEnv({ { link = LEATHER, price = 60, stack = 1 }, { link = BEAR, price = 5, stack = 1 } })
+            change(env)
+            local c = ns.make.client(env)
+            c.watchMerchant()
+            env.fire("MERCHANT_SHOW")
+            return c
+        end
+        local whole = open(function() end).merchantItems()
+        t.eq(type(whole) == "table" and #whole or nil, 2, "the fixture does not read")
+        t.eq(open(function(env) env.GetMerchantNumItems = nil end).merchantItems(), nil)
+        t.eq(open(function(env) env.GetMerchantNumItems = boom end).merchantItems(), nil)
+        t.eq(open(function(env) env.GetMerchantNumItems = function() return "2" end end).merchantItems(), nil)
+        t.eq(open(function(env) env.GetMerchantNumItems = function() return 1.5 end end).merchantItems(), nil)
+        t.eq(open(function(env) env.GetMerchantItemLink = nil end).merchantItems(), nil)
+        t.eq(open(function(env) env.GetMerchantItemLink = boom end).merchantItems(), nil)
+        t.eq(open(function(env) env.GetMerchantItemInfo = nil end).merchantItems(), nil)
+        t.eq(open(function(env)
+            local real = env.GetMerchantItemInfo
+            env.GetMerchantItemInfo = function(index)
+                if index == 2 then boom() end
+                return real(index)
+            end
+        end).merchantItems(), nil, "one item that cannot be read gave a shorter list")
+    end,
+
+    ["merchant: the read asks for no buy, sell or pick-up function"] = function(t)
+        local real = merchantEnv({ { link = LEATHER, price = 60, stack = 1 } })
+        local called = 0
+        local function act() called = called + 1 end
+        local acts = { "BuyMerchantItem", "BuybackItem", "PickupMerchantItem", "SellCursorItem",
+            "UseContainerItem", "PickupContainerItem", "RepairAllItems", "ShowMerchantSellCursor" }
+        for _, name in ipairs(acts) do real[name] = act end
+        real.C_Container.UseContainerItem = act
+        real.C_Container.PickupContainerItem = act
+        real.C_MerchantFrame = { GetItemInfo = function() return { price = 60, stackCount = 1 } end,
+            BuyItem = act, SellAllJunkItems = act }
+        local asked = {}
+        local env = setmetatable({}, { __index = function(_, name)
+            asked[name] = true
+            return real[name]
+        end })
+        local c = ns.make.client(env)
+        c.watchMerchant()
+        real.fire("MERCHANT_SHOW")
+        for name in pairs(asked) do asked[name] = nil end
+        t.eq(c.merchantItems(), { { index = 1, item = LEATHER, price = 60, stack = 1 } })
+        t.eq(called, 0, "a buy, sell or pick-up function was called")
+        for _, name in ipairs(acts) do
+            t.eq(asked[name], nil, name .. " was looked up")
+        end
+        asked.GetMerchantNumItems, asked.GetMerchantItemLink, asked.C_MerchantFrame = nil, nil, nil
+        asked.MerchantFrame, asked.GetMerchantItemInfo = nil, nil
+        t.eq(asked, {}, "the read looked up a name that is not a merchant read")
+    end,
+
+    ["fake client: the merchant mirrors the real read"] = function(t)
+        local c = ns.make.fakeClient()
+        local seen = {}
+        c.listen("MERCHANT_SHOW", function() seen[#seen + 1] = "show" end)
+        c.listen("MERCHANT_CLOSED", function() seen[#seen + 1] = "closed" end)
+        t.eq(c.merchantOpen(), false)
+        t.eq(c.merchantItems(), nil)
+        local rows = { { index = 1, item = LEATHER, price = 60, stack = 1 } }
+        c.setMerchant(rows)
+        t.eq(c.merchantItems(), nil, "a closed window gave its items")
+        c.setMerchantOpen(true)
+        c.setMerchantOpen(true)
+        t.eq(c.merchantItems(), { { index = 1, item = LEATHER, price = 60, stack = 1 } })
+        local got = c.merchantItems()
+        got[1].price = 1
+        rows[1].price = 2
+        t.eq(c.merchantItems()[1].price, 60, "the fake handed out or kept the caller's own rows")
+        c.setMerchantOpen(false)
+        t.eq(c.merchantItems(), nil)
+        t.eq(seen, { "show", "closed" })
+        c.setMerchantOpen(nil)
+        t.eq(c.merchantOpen(), nil)
+        t.eq(c.merchantItems(), nil)
+        t.eq(#seen, 2, "not known fired an event")
+        c.watchMerchant()
     end,
 }
