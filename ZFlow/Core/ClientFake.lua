@@ -227,7 +227,8 @@ function ns.make.fakeClient(opts)
     -- Every arrow made is in c.arrows, in order. A handle keeps what it
     -- was last told: point or attached (the other handle), shown, lookIs,
     -- drawn (the last draw table), scaled, faded (alpha), under (behind),
-    -- lines and textPoint.
+    -- lines and textPoint, and shaped (the last shapes table; nil: the
+    -- arrow is drawn from its pictures).
     c.arrows = {}
     function c.arrow(spec)
         if s.noFrames then return nil end
@@ -241,6 +242,8 @@ function ns.make.fakeClient(opts)
         function h.show(on) h.shown = on and true or false end
         function h.look(look) h.lookIs = look == "needle" and "needle" or "pointer" end
         function h.draw(d) h.drawn, h.draws = d, h.draws + 1 end
+        function h.shapes(shapes) h.shaped = shapes end
+        function h.canShapes() return not s.noLines end
         function h.scale(n) h.scaled = n end
         function h.alpha(n) h.faded = n end
         function h.behind(on) h.under = on and true or false end
@@ -279,6 +282,8 @@ function ns.make.fakeClient(opts)
     -- false: listenFaults() says the tick frame was not made. Frames still
     -- tick here either way.
     function c.setTickFrame(on) s.noTickFrame = not on end
+    -- false: a client that draws no lines (an arrow's canShapes() is false).
+    function c.setLines(on) s.noLines = not on end
     -- The key that lets an arrow be dragged (Ctrl): held until told not.
     function c.setMoveKey(on) s.noMoveKey = not on end
     -- Moves the clock by `seconds`, drawing `frames` frames (default 1).

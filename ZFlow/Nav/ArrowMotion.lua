@@ -64,7 +64,8 @@ end
 
 -- What the arrow should show: turn (radians, clockwise on screen from up;
 -- nil keeps the last), colour { r, g, b } (nil keeps it), arrived, wave
--- (right on the spot: faster, brighter ripples), snap (jump there now).
+-- (right on the spot: faster, brighter ripples), snap (jump there now),
+-- icon (the step's picture, for the styles that show one; nil: none).
 function N.ArrowAim(m, aim)
     aim = type(aim) == "table" and aim or {}
     if finite(aim.turn) then m.want = aim.turn end
@@ -74,6 +75,7 @@ function N.ArrowAim(m, aim)
     end
     m.arrived = aim.arrived and true or false
     m.wave = (aim.wave and m.arrived) and true or false
+    m.icon = aim.icon
     if aim.snap then
         m.at = m.want
         m.shown = { m.colour[1], m.colour[2], m.colour[3] }
