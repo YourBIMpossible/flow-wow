@@ -68,6 +68,7 @@ Diag.NAMES = {
     "C_TradeSkillUI.GetAllRecipeIDs", "GetNumCrafts", "GetCraftInfo",
     "GetNumTrainerServices", "GetTrainerServiceInfo", "GetTrainerServiceCost", "GetTrainerServiceSkillReq",
     "GetMerchantNumItems", "GetMerchantItemInfo", "GetMerchantItemLink", "C_MerchantFrame.GetItemInfo",
+    "IsControlKeyDown",
     "CanMerchantRepair", "GetRepairAllCost",
     "NumTaxiNodes", "TaxiNodeName", "TaxiNodeGetType", "TaxiNodeCost",
     "C_ChatInfo.RegisterAddonMessagePrefix", "C_ChatInfo.SendAddonMessage", "SendAddonMessage",
@@ -678,6 +679,9 @@ function Diag.Start(k)
             local faults = client.listenFaults()
             if faults.noEventFrame then
                 client.print(id.title .. ": event frame not made; no event reaches the addon.")
+            end
+            if faults.noTickFrame then
+                client.print(id.title .. ": tick frame not made; nothing that runs each frame runs.")
             end
             if #faults.notRegistered > 0 then
                 client.print(id.title .. ": events not registered: "

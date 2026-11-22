@@ -204,6 +204,17 @@ return {
         t.eq(p.panel.lines[#p.panel.lines], "In combat", "combat starting rewrites the text at once")
     end,
 
+    ["lines: combat that the client cannot tell is shown as unknown, not as out of combat"] = function(t)
+        local k, c, _, d = start()
+        login(c)
+        c.inCombat = function() return nil end
+        local lines = P.Lines(k, d)
+        t.eq(lines[#lines], "Combat unknown")
+        c.inCombat = function() return false end
+        lines = P.Lines(k, d)
+        t.eq(lines[#lines], "Out of combat")
+    end,
+
     ["lines: an unknown version is left out; without diag there are no counts"] = function(t)
         local k, c, p = start({ noDiag = true })
         login(c)
