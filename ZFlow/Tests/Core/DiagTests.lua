@@ -342,7 +342,7 @@ return {
                 { key = "x.name", from = "Long", to = "L", reason = "cut" },
             },
         })
-        t.eq(counts, { dropped = 2, adjusted = 2, malformed = 1, unknown = 0, superseded = 0, other = 0 })
+        t.eq(counts, { dropped = 2, adjusted = 2, malformed = 1, unknown = 0, superseded = 0, other = 0, vendor = 0 })
         t.eq(lines, {
             "import: 2 dropped, 2 adjusted, 1 malformed.",
             "import: adjusted buffButton.scale: 9 to 2 (outside the sizes a frame can take)",
@@ -353,7 +353,7 @@ return {
     ["import report: nothing left behind or changed is three zeroes"] = function(t)
         local lines, counts = ns.Diag.ImportReport({ ok = true, dropped = {}, adjusted = {} })
         t.eq(lines, { "import: 0 dropped, 0 adjusted, 0 malformed." })
-        t.eq(counts, { dropped = 0, adjusted = 0, malformed = 0, unknown = 0, superseded = 0, other = 0 })
+        t.eq(counts, { dropped = 0, adjusted = 0, malformed = 0, unknown = 0, superseded = 0, other = 0, vendor = 0 })
     end,
 
     ["import report: entries left behind for another reason are not counted as dropped"] = function(t)
@@ -366,7 +366,7 @@ return {
             },
             adjusted = {},
         })
-        t.eq(counts, { dropped = 1, adjusted = 0, malformed = 0, unknown = 2, superseded = 1, other = 2 })
+        t.eq(counts, { dropped = 1, adjusted = 0, malformed = 0, unknown = 2, superseded = 1, other = 2, vendor = 0 })
         t.eq(lines, {
             "import: 1 dropped, 0 adjusted, 0 malformed.",
             "import: also left behind: 2 with no row, 1 superseded, 2 with no category.",
@@ -466,6 +466,58 @@ return {
         t.ok(seenC ~= nil and seenC ~= c.saved(ns.id.predecessorCharDB), "the character table handed in is a copy")
         t.eq(flow, { buffButton = { scale = 9 } })
         t.eq(c.saved(ns.id.predecessorCharDB), { note = { text = "kept" } })
+    end,
+
+    ["import report: each vendor automation Flow had on gets a line; it stays off (IR8)"] = function(t)
+        local lines, counts = ns.Diag.ImportReport({ ok = true, dropped = {}, adjusted = {},
+            vendorToConfirm = { { key = "autoRepair", to = true, sameAsFlowDefault = true },
+                                { key = "autoSell", to = true }, "broken" } })
+        t.eq(counts.vendor, 3)
+        t.eq(lines, {
+            "import: 0 dropped, 0 adjusted, 0 malformed.",
+            "import: 3 vendor automations were on in Flow; each stays off until you confirm it.",
+            "import: confirm autoRepair (it is Flow's own default, so it may not be a choice you made)",
+            "import: confirm autoSell",
+            "import: confirm nil",
+        })
+    end,
+
+    ["import report: no vendor list, or an empty one, adds no line (IR8)"] = function(t)
+        local lines, counts = ns.Diag.ImportReport({ ok = true, dropped = {}, adjusted = {}, vendorToConfirm = {} })
+        t.eq(lines, { "import: 0 dropped, 0 adjusted, 0 malformed." })
+        t.eq(counts.vendor, 0)
+    end,
+
+    ["import report: a | from saved data is doubled, so chat shows it as typed (IR13)"] = function(t)
+        local lines = ns.Diag.ImportReport({ ok = true, dropped = {},
+            adjusted = { { key = "a|cff", from = "x|r", to = "y", reason = "r|n" } } })
+        t.eq(lines[2], 'import: adjusted a||cff: "x||r" to "y" (r||n)')
+        t.eq((ns.Diag.ImportReport({ ok = false, reason = "bad|r" })), { "import: nothing was read: bad||r" })
+    end,
+
+    ["slash: an import that raises is recorded as a problem and said in one line (IR13)"] = function(t)
+        local k, c = start()
+        login(c)
+        c.saved(ns.id.predecessorDB).x = 1
+        local real = ns.Import.FromFlow
+        ns.Import.FromFlow = function() error("boom") end
+        local before = #c.printed
+        c.slashes[ns.id.slash]("import")
+        ns.Import.FromFlow = real
+        t.eq(#c.printed, before + 1)
+        t.eq(c.printed[#c.printed], ns.id.title .. ": the import could not be read.")
+        local p = k.problems:list("diag")
+        t.eq(#p, 1)
+        t.eq(p[1].owner, "import")
+    end,
+
+    ["slash: the help line names both words (IR13)"] = function(t)
+        local _, c = start()
+        login(c)
+        c.slashes[ns.id.slash]("")
+        local line = c.printed[#c.printed]
+        t.ok(line:find(ns.id.slash .. " diag", 1, true), line)
+        t.ok(line:find(ns.id.slash .. " import", 1, true), line)
     end,
 
     ["identity: the predecessor's character table name is read from Core/Identity.lua (R6)"] = function(t)
