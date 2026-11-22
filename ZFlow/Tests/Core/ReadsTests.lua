@@ -241,6 +241,45 @@ return {
         t.eq(c.recipes(), { profession = 164, skill = 1, max = 75, recipes = { { id = 5, name = "X", learned = true } } })
     end,
 
+    ["spell: known, usable and out of power, each as the client says"] = function(t)
+        local env = {
+            IsPlayerSpell = function(id) return id == 5176 end,
+            C_Spell = { IsSpellUsable = function(id) return false, id == 5176 end },
+        }
+        local c = ns.make.client(env)
+        t.eq(c.spell(5176), { known = true, usable = false, noPower = true })
+        t.eq(c.spell(1), { known = false, usable = false, noPower = false })
+        t.eq(c.spell("Wrath"), nil, "by id only")
+    end,
+
+    ["spell: an answer the client hides or does not give stays unknown"] = function(t)
+        local env = {
+            IsPlayerSpell = function() return true end,
+            C_Spell = { IsSpellUsable = function() return true, false end },
+            issecretvalue = function(v) return v == false end,
+        }
+        local c = ns.make.client(env)
+        t.eq(c.spell(7), { known = true, usable = true }, "the hidden one is not read as false")
+        env.issecretvalue = boom
+        t.eq(c.spell(7), {}, "cannot tell what is hidden: nothing is known")
+        env.issecretvalue = nil
+        env.C_Spell.IsSpellUsable = function() return 1 end
+        t.eq(c.spell(7), { known = true }, "not a true / false")
+        env.C_Spell.IsSpellUsable = boom
+        env.IsPlayerSpell = nil
+        t.eq(c.spell(7), {})
+        t.eq(ns.make.client({}).spell(7), {})
+    end,
+
+    ["spell: the fake client gives what the test set"] = function(t)
+        local c = ns.make.fakeClient()
+        t.eq(c.spell(5176), {})
+        c.setSpell(5176, { known = true, usable = false, noPower = true })
+        t.eq(c.spell(5176), { known = true, usable = false, noPower = true })
+        c.setSpell(5176, nil)
+        t.eq(c.spell(5176), {})
+    end,
+
     ["bag items: every stack, link first, empty slots skipped"] = function(t)
         local c = ns.make.client(bagEnv(twoBags()))
         t.eq(c.bagItems(), {

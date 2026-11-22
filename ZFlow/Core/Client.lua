@@ -331,6 +331,35 @@ function ns.make.client(env)
         return { profession = line, skill = base.skillLevel, max = base.maxSkillLevel, recipes = rows }
     end
 
+    -- A plain true / false the client lets this code see, else nil. The
+    -- client can hand back a value it marks secret (issecretvalue); that is
+    -- "not known", never read as false.
+    local function flag(ok, v)
+        if not ok then return nil end
+        if env.issecretvalue ~= nil then
+            local okSecret, secret = call(env.issecretvalue, v)
+            if not okSecret or secret ~= false then return nil end
+        end
+        if type(v) ~= "boolean" then return nil end
+        return v
+    end
+
+    -- What the client says about one of your spells, by spell id:
+    --   { known =, usable =, noPower = }   each true, false or nil
+    -- nil for a field means the client did not say; it is never guessed.
+    -- noPower is the client's own "not enough power" answer, not an amount.
+    -- Seen in game on 16001, out of a fight: C_Spell.IsSpellUsable gives two
+    -- plain booleans. In a fight it has not been observed.
+    function c.spell(id)
+        if type(id) ~= "number" then return nil end
+        local group = type(env.C_Spell) == "table" and env.C_Spell or {}
+        local row = { known = flag(call(env.IsPlayerSpell, id)) }
+        local ok, usable, noPower = call(group.IsSpellUsable, id)
+        row.usable = flag(ok, usable)
+        row.noPower = flag(ok, noPower)
+        return row
+    end
+
     local function playerMap()
         local ok, map = mapCall("GetBestMapForUnit", "player")
         if ok and type(map) == "number" then return map end
