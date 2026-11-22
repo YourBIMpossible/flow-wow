@@ -391,6 +391,92 @@ return {
     end,
 
     -- --------------------------------------------------------------- fake
+    -- ------------------------------------------------------------ stealth
+    ["stealthed() is true or false as the client says, and nil when it does not say"] = function(t)
+        local env = frameEnv()
+        local c = ns.make.client(env)
+        t.eq(c.stealthed(), nil, "no call: not known")
+        local answer = true
+        env.IsStealthed = function() return answer end
+        t.eq(c.stealthed(), true)
+        answer = false
+        t.eq(c.stealthed(), false)
+        answer = nil
+        t.eq(c.stealthed(), nil, "no answer is not 'not stealthed'")
+        answer = 1
+        t.eq(c.stealthed(), nil, "a number is not an answer")
+        answer = "yes"
+        t.eq(c.stealthed(), nil, "a string is not an answer")
+        answer = true
+        strictSecret(env, function(v) return v == true end)
+        t.eq(c.stealthed(), nil, "a secret answer")
+        strictSecret(env)
+        t.eq(c.stealthed(), true)
+        env.IsStealthed = boom
+        t.eq(c.stealthed(), nil, "the call fails")
+    end,
+
+    ["stealthed() asks the client about nothing but you"] = function(t)
+        local env = frameEnv()
+        local args
+        env.IsStealthed = function(...)
+            args = select("#", ...)
+            return false
+        end
+        t.eq(ns.make.client(env).stealthed(), false)
+        t.eq(args, 0, "no unit is named")
+    end,
+
+    -- ---------------------------------------------------------------- CR2
+    ["CR2: a cooldown that is waiting to start is not known, never ready"] = function(t)
+        local rows = { [5215] = { startTime = 0, duration = 0, isOnGCD = false, isEnabled = false } }
+        local c = ns.make.client(tableCooldowns(rows))
+        t.eq(c.spellCooldown(5215), nil, "waiting, start 0: not ready")
+        rows[5215] = { startTime = 100, duration = 10, isOnGCD = false, isEnabled = false }
+        t.eq(c.spellCooldown(5215), nil, "waiting with times")
+        rows[5215] = { startTime = 0, duration = 0, isOnGCD = false, isEnabled = true }
+        t.eq(c.spellCooldown(5215), false, "enabled and no times: ready")
+        rows[5215] = { startTime = 100, duration = 10, isOnGCD = false, isEnabled = true }
+        t.eq(c.spellCooldown(5215), true, "enabled and running")
+        rows[5215] = { startTime = 0, duration = 0, isOnGCD = false, isEnabled = "no" }
+        t.eq(c.spellCooldown(5215), false, "an odd mark is no mark")
+
+        local mark = 0
+        local env = frameEnv()
+        env.GetSpellCooldown = function(id)
+            if id ~= 5215 then return 0, 0, 1 end
+            return 0, 0, mark
+        end
+        local bare = ns.make.client(env)
+        t.eq(bare.spellCooldown(5215), nil, "the bare answer, enabled 0")
+        mark = false
+        t.eq(bare.spellCooldown(5215), nil, "the bare answer, enabled false")
+        mark = 1
+        t.eq(bare.spellCooldown(5215), false, "the bare answer, enabled 1")
+        mark = true
+        t.eq(bare.spellCooldown(5215), false, "the bare answer, enabled true")
+        mark = nil
+        t.eq(bare.spellCooldown(5215), false, "no mark given: as before")
+    end,
+
+    ["CR2: a secret enabled mark is no mark"] = function(t)
+        local env = tableCooldowns({ [5215] = { startTime = 100, duration = 10, isOnGCD = false, isEnabled = false } })
+        local c = ns.make.client(env)
+        strictSecret(env, function(v) return v == false end)
+        t.eq(c.spellCooldown(5215), true, "isOnGCD and isEnabled both secret: the times decide")
+    end,
+
+    ["fake: stealthed() is nil until set"] = function(t)
+        local c = ns.make.fakeClient()
+        t.eq(c.stealthed(), nil)
+        c.setStealthed(true)
+        t.eq(c.stealthed(), true)
+        c.setStealthed(false)
+        t.eq(c.stealthed(), false)
+        c.setStealthed(nil)
+        t.eq(c.stealthed(), nil)
+    end,
+
     ["fake: trainer, faction, class and spell cooldown are nil until set"] = function(t)
         local c = ns.make.fakeClient()
         t.eq(c.trainer(), nil)
