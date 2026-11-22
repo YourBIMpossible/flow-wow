@@ -13,6 +13,10 @@
 --     result.dropped   list of { key, why, reason }, sorted by key. why is
 --                      "dropped" (on purpose), "unknown" (no row in MAP),
 --                      "malformed" or "superseded". Nothing is lost silently.
+--     result.adjusted  list of { key, from, to, reason }, sorted by key: a
+--                      value that was kept, but not as Flow had it (a frame
+--                      size outside the limits, stored at the nearest limit).
+--                      record.counts.adjusted is its length.
 --     result.record    the import record: source, sourceVersion, importer,
 --                      counts per category, vendor choices found. The caller
 --                      stamps the date (a pure function has no clock).
@@ -103,7 +107,11 @@
 --   trainer      Modules/Trainer.lua:101-104
 local _, ns = ...
 
-local IMPORTER_VERSION = 1
+-- 2: what is stored is made safe on the way in. Frame sizes are held within
+--    the limits, a position keeps only anchors a frame has, and the companion
+--    button's switches and keys are checked by type. Version 1 stored all of
+--    those as Flow had them and left the checking to the readers.
+local IMPORTER_VERSION = 2
 -- The highest Flow data version this importer understands. Flow's version is
 -- the highest migration it has run (Core.lua:251-276) and Flow registers no
 -- migration, so every known Flow data set is at 0 (or carries no version).
@@ -227,13 +235,13 @@ local MAP = {
     -- The Flow button's small companion (Modules/MoveHandle.lua:126-127 saves
     -- point and scale together; BuffButton.lua:573 the docked size).
     { "buffButton.point", to = "layout.buffButton.frame", as = "point" },
-    { "buffButton.scale", to = "layout.buffButton.scale", as = "positive" },
-    { "buffButton.dockScale", to = "layout.buffButton.dockScale", as = "positive" },
+    { "buffButton.scale", to = "layout.buffButton.scale", as = "size" },
+    { "buffButton.dockScale", to = "layout.buffButton.dockScale", as = "size" },
     { "banker.point", to = "layout.banker.frame", as = "point" },
     { "deaths.point", to = "layout.deaths.frame", as = "point" },
     { "meters.point", to = "layout.meters.frame", as = "point" },
     { "rotation.point", to = "layout.rotation.frame", as = "point" },
-    { "rotation.scale", to = "layout.rotation.scale", as = "positive" },
+    { "rotation.scale", to = "layout.rotation.scale", as = "size" },
     -- The professions window: per character, as the whole prof section is
     -- (Modules/Professions.lua:50, :152).
     { "prof.point", to = "layout.prof.frame", as = "point", char = true },
@@ -349,13 +357,13 @@ local MAP = {
     { "banker.autoCleanup", to = "settings.banker.autoCleanup" },
     { "banker.off", to = "settings.banker.off" },
     { "banker.parked", to = "state.banker.parked", char = true },
-    { "buffButton.enabled", to = "settings.buffButton.enabled" },
-    { "buffButton.key", to = "settings.buffButton.key" },
-    { "buffButton.key2", to = "settings.buffButton.key2" },
-    { "buffButton.dock", to = "settings.buffButton.dock" },
-    { "buffButton.always", to = "settings.buffButton.always" },
-    { "buffButton.care", to = "settings.buffButton.care" },
-    { "buffButton.keepOnMain", to = "settings.buffButton.keepOnMain" },
+    { "buffButton.enabled", to = "settings.buffButton.enabled", as = "bool" },
+    { "buffButton.key", to = "settings.buffButton.key", as = "key" },
+    { "buffButton.key2", to = "settings.buffButton.key2", as = "key" },
+    { "buffButton.dock", to = "settings.buffButton.dock", as = "bool" },
+    { "buffButton.always", to = "settings.buffButton.always", as = "bool" },
+    { "buffButton.care", to = "settings.buffButton.care", as = "bool" },
+    { "buffButton.keepOnMain", to = "settings.buffButton.keepOnMain", as = "bool" },
     { "bonus.enabled", to = "settings.bonus.enabled" },
     -- The speech toggle (Modules/Bonus.lua): a choice, not a notice flag.
     { "bonus.spoken", to = "settings.bonus.spoken" },
@@ -558,6 +566,8 @@ end
 --------------------------------------------------------------------------------
 -- KIND: how a value is checked and copied. Each is
 --   fn(value, label, note) -> the clean copy, or nil and a reason
+-- A kind that keeps a value but not as it was found also returns, third, why
+-- it changed it; that goes on result.adjusted.
 -- note(label, reason [, why]) records a part that was left out of an
 -- otherwise good value; why is "malformed" unless given. Nothing here keeps
 -- a reference to the input.
@@ -608,10 +618,40 @@ function KIND.positive(v)
     return nil, "expected a number above zero"
 end
 
+-- A frame size. The limits are the ones the readers hold a size to
+-- (Import/Stored.lua, from Flow's Modules/MoveHandle.lua:11-19); a size
+-- outside them is stored at the nearest limit and reported as changed. A size
+-- within them is stored exactly as found: rounding stays with the reader.
+local SIZE_MIN, SIZE_MAX = 0.5, 2
+local SIZE_CHANGED = "outside the sizes a frame can take (" .. SIZE_MIN .. " to " .. SIZE_MAX
+    .. "); the nearest one was kept"
+
+function KIND.size(v)
+    if not finite(v) or v <= 0 then return nil, "expected a number above zero" end
+    if v < SIZE_MIN then return SIZE_MIN, nil, SIZE_CHANGED end
+    if v > SIZE_MAX then return SIZE_MAX, nil, SIZE_CHANGED end
+    return v
+end
+
+-- A key binding: a string with something in it.
+function KIND.key(v)
+    if type(v) == "string" and v ~= "" then return v end
+    if type(v) == "string" then return nil, "an empty key binding" end
+    return nil, "expected a key binding, found a " .. type(v)
+end
+
+-- The nine places on a frame a position can hang from.
+local ANCHOR = {
+    TOPLEFT = true, TOP = true, TOPRIGHT = true,
+    LEFT = true, CENTER = true, RIGHT = true,
+    BOTTOMLEFT = true, BOTTOM = true, BOTTOMRIGHT = true,
+}
+
 -- A frame position: { anchor, relative anchor, x, y }. Offsets may be negative.
 function KIND.point(v)
     if type(v) ~= "table" then return nil, "expected a position, found a " .. type(v) end
     if type(v[1]) ~= "string" or type(v[2]) ~= "string" then return nil, "a position without its two anchors" end
+    if not ANCHOR[v[1]] or not ANCHOR[v[2]] then return nil, "a position with an anchor no frame has" end
     if not finite(v[3]) or not finite(v[4]) then return nil, "a position whose offsets are not numbers" end
     return { v[1], v[2], v[3], v[4] }
 end
@@ -786,7 +826,7 @@ local function skeleton(scope)
 end
 
 local function newRecord(sourceVersion)
-    local counts = { dropped = 0, unknown = 0, malformed = 0, superseded = 0 }
+    local counts = { dropped = 0, unknown = 0, malformed = 0, superseded = 0, adjusted = 0 }
     for _, name in ipairs(CATEGORIES) do counts[name] = 0 end
     return {
         source = "Flow",
@@ -803,7 +843,7 @@ end
 local function refuse(reason, sourceVersion)
     local record = newRecord(sourceVersion)
     record.refused = reason
-    return { ok = false, reason = reason, dropped = {}, record = record }
+    return { ok = false, reason = reason, dropped = {}, adjusted = {}, record = record }
 end
 
 local function FromFlow(flowDb, flowCharDb)
@@ -831,6 +871,7 @@ local function FromFlow(flowDb, flowCharDb)
         record.counts[why] = record.counts[why] + 1
     end
     local function note(label, reason, why) leave(why or "malformed", label, reason) end
+    local adjusted = {}
     local vendorToConfirm = {}
 
     local adopted = type(flowCharDb) == "table" and flowCharDb.adopted
@@ -852,8 +893,13 @@ local function FromFlow(flowDb, flowCharDb)
             local alone = row.beside and getPath(flowDb, row.beside) == nil
             return leave("dropped", label, alone and row.dropAlone or row.drop)
         end
-        local cleaned, why = KIND[row.as or (row.to:find("^learned%.") and "tree" or "any")](value, label, note)
+        local cleaned, why, changed = KIND[row.as or (row.to:find("^learned%.") and "tree" or "any")](value, label, note)
         if cleaned == nil then return leave("malformed", label, why) end
+        if changed then
+            -- Only a plain value is ever changed, so from holds no table of Flow's.
+            adjusted[#adjusted + 1] = { key = label, from = value, to = cleaned, reason = changed }
+            record.counts.adjusted = record.counts.adjusted + 1
+        end
         if type(cleaned) == "table" and next(cleaned) == nil then return end
         local root = row.char and out.char or out.account
         if row.yield and getPath(root, row.to) ~= nil then
@@ -955,9 +1001,10 @@ local function FromFlow(flowDb, flowCharDb)
         return a.reason < b.reason
     end)
     table.sort(vendorToConfirm, function(a, b) return a.key < b.key end)
+    table.sort(adjusted, function(a, b) return a.key < b.key end)
     out.account.imports[1] = copy(record)
     return {
-        ok = true, account = out.account, char = out.char, dropped = dropped, record = record,
+        ok = true, account = out.account, char = out.char, dropped = dropped, adjusted = adjusted, record = record,
         vendorToConfirm = vendorToConfirm,
     }
 end
