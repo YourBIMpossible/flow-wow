@@ -48,7 +48,7 @@ function I.Row(k)
     if row or refused[k] then return row end
     row = k:Setting({
         key = I.SETTING, scope = "account", type = "table", path = I.PATH,
-        label = "Rotation icon position", group = "Rotation",
+        label = "Rotation icon position", group = "Rotation", keepOnResetAll = true,
         help = "Where the suggested-spell icon stands. Resetting puts it back.",
     })
     if not row then

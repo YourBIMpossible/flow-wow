@@ -57,7 +57,7 @@ function Arrow.Row(k)
     if row or refused[k] then return row end
     row = k:Setting({
         key = Arrow.SETTING, scope = "account", type = "table", path = Arrow.PATH,
-        label = "Arrow positions", group = "Arrows",
+        label = "Arrow positions", group = "Arrows", keepOnResetAll = true,
         help = "Where the arrows stand and whether they are stacked. Resetting puts them back.",
     })
     if not row then
