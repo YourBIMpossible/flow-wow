@@ -260,8 +260,8 @@ return {
         feed(rec, 42, spell("SPELL_DAMAGE", ME, "Me", MOB, "Boar", 5176, "Wrath", nil))
         t.eq(ns.Fights.Lines(rec:list(), 45), {
             "fights (2 kept, newest first):",
-            "1. still going, 5s so far: dealt 7 in 1 hit, taken 0, healing done 0, healing received 0, 1 amount not read",
-            "2. 12s: dealt 100 in 1 hit, taken 12 in 1 hit, healing done 0, healing received 0",
+            "1. still going, 5s so far (type unknown): dealt 7 in 1 hit, taken 0, healing done 0, healing received 0, 1 amount not read",
+            "2. 12s (type unknown): dealt 100 in 1 hit, taken 12 in 1 hit, healing done 0, healing received 0",
         })
     end,
 
@@ -270,7 +270,7 @@ return {
         rec:enter(nil)
         rec:leave(nil)
         local lines = ns.Fights.Lines(rec:list(), nil)
-        t.eq(lines[2], "1. length not known: dealt 0, taken 0, healing done 0, healing received 0")
+        t.eq(lines[2], "1. length not known (type unknown): dealt 0, taken 0, healing done 0, healing received 0")
     end,
 
     ["fight lines: one fight by number lists its spells, biggest first"] = function(t)
@@ -283,7 +283,7 @@ return {
         feed(rec, 13, spell("SPELL_HEAL", ME, "Me", ME, "Me", 5185, "Healing Touch", 90, 10))
         rec:leave(22)
         t.eq(ns.Fights.Lines(rec:list(), 30, 1), {
-            "1. 12s: dealt 220 in 3 hits, taken 12 in 1 hit, healing done 90, healing received 90",
+            "1. 12s (type unknown): dealt 220 in 3 hits, taken 12 in 1 hit, healing done 90, healing received 90",
             "dealt: Wrath 200 (2 hits), Moonfire 20 (1 hit)",
             "taken: " .. ns.Fights.MELEE .. " 12 (1 hit)",
             "healing done: Healing Touch 90 (1 hit), 10 of it overhealing",

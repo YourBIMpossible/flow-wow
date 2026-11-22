@@ -98,7 +98,7 @@ return {
         t.eq(list[1].ended - list[1].started, 12)
         t.eq(said(c, "fights"), {
             ns.id.title .. ": fights (1 kept, newest first):",
-            ns.id.title .. ": 1. 12s: dealt 100 in 1 hit, taken 12 in 1 hit, healing done 0, healing received 0",
+            ns.id.title .. ": 1. 12s (type unknown): dealt 100 in 1 hit, taken 12 in 1 hit, healing done 0, healing received 0",
         })
     end,
 
