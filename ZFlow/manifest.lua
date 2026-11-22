@@ -40,6 +40,7 @@ return {
         "Items/Resources.lua",
         "Items/Prices.lua",
         "Items/PriceObserve.lua",
+        "Items/PriceWatch.lua",
         "Items/Disposition.lua",
         "Items/Plan.lua",
         "Items/Present.lua",
