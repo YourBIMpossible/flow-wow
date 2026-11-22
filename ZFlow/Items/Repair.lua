@@ -45,7 +45,9 @@ Repair.NEAR = 10             -- yards from the vendor that count as there (as N.
 Repair.NAME = "repairWarn"
 Repair.SETTING = "repair.warnBelow"
 Repair.EVENT = "UPDATE_INVENTORY_DURABILITY"
-Repair.NO_VENDOR = "No repair vendor known yet: one is learned each time you use one."
+-- Nothing in Z-Flow learns repair vendors yet (they come only from an import
+-- of Flow's places), so the line promises nothing.
+Repair.NO_VENDOR = "No repair vendor is known yet."
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -55,8 +57,10 @@ local function share(v)
     return finite(v) and v >= 0 and v <= 1
 end
 
+-- A share from 0 to 1. 0 is a real choice: nothing is under it, so the
+-- warning is off. Anything that is no share falls back to the default.
 local function thresholdOf(threshold)
-    if finite(threshold) and threshold > 0 and threshold <= 1 then return threshold end
+    if finite(threshold) and threshold >= 0 and threshold <= 1 then return threshold end
     return Repair.THRESHOLD
 end
 
@@ -179,16 +183,20 @@ local function saved(store, scope, path)
     return v
 end
 
--- One check: the warning, or nil when nothing is low (or nothing was read).
+-- One check -> warning, state. state is "low" (with the warning), "fine"
+-- (durability was read and nothing is low) or "unread" (it was not read:
+-- that is not "fine", and the caller keeps what it knew).
 function Repair.Check(client, store, threshold)
-    local worst = Repair.Worst(ask(client, "durability"), threshold)
-    if not worst or not Repair.Low(worst.pct, threshold) then return nil end
+    local readings = ask(client, "durability")
+    if type(readings) ~= "table" then return nil, "unread" end
+    local worst = Repair.Worst(readings, threshold)
+    if not worst or not Repair.Low(worst.pct, threshold) then return nil, "fine" end
     local here = {
         position = ask(client, "position"), zone = ask(client, "zone"), faction = ask(client, "faction"),
         mapSize = function(map) return ask(client, "mapSize", map) end,
     }
     local vendor = Repair.Vendor(saved(store, "account", "learned.places.npcs"), here)
-    return { worst = worst, lines = Repair.Lines(worst, threshold, vendor), step = Repair.Step(vendor, here) }
+    return { worst = worst, lines = Repair.Lines(worst, threshold, vendor), step = Repair.Step(vendor, here) }, "low"
 end
 
 function Repair.Declare(k)
@@ -201,7 +209,10 @@ function Repair.Declare(k)
         provides = { Current = api.current },
         start = function(ctx)
             local function check()
-                current = Repair.Check(ctx.client, ctx.store, ctx.settings:get(Repair.SETTING))
+                local warning, state = Repair.Check(ctx.client, ctx.store, ctx.settings:get(Repair.SETTING))
+                -- Not read: neither low nor fine. What was known stays.
+                if state == "unread" then return end
+                current = warning
                 if current and not warned then
                     warned = true
                     local id = k.id or ns.id
