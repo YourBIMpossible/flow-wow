@@ -546,10 +546,18 @@ function N:Collect(gathered)
     -- lines you picked choose among them; the rest go by the custom route's own ticks.)
     local FK = ns.focus
     local customOn = FK and FK.KindsOn and FK.KindsOn()
-    list = N.FilterKinds(list, function(kind)
+    local level = UnitLevel("player")
+    local function includes(kind)
         if customOn and FK.Replaces(kind) then return true end
         return N:Includes(kind)
-    end, UnitLevel("player"))
+    end
+    list = N.FilterKinds(list, includes, level)
+    -- Whose step each one is (Activities.lua: goal.owner), before any are set
+    -- apart as blocked, hidden or "along the way". Which lane it sits in
+    -- (goal.activity) is only known at the split, below.
+    local AC = ns.activities
+    local acts, laneCtx = AC.Defs(), { level = level, includes = includes }
+    AC.StampOwners(list, acts, laneCtx)
     -- "Only the dungeon run" (Dungeons.lua): just the prepared run's steps. Here
     -- with the ticks, before the blocked steps are set apart, so a blocked
     -- step of another kind isn't listed either.
@@ -716,7 +724,10 @@ function N:Collect(gathered)
     -- Profession steps (training, skill-ups) get their own faint arrow when
     -- it's on, so the quest arrow never sends you off to them.
     -- (On a custom route a profession step you picked is the route: the main arrow has it.)
-    local quest, prof = N.SplitProfessions(shown, N:ProfPointerOn() and not (ns.focus and ns.focus.Active() and not ns.focus.idle))
+    -- (The "professions" activity's `exists` is that test; asked here, after the
+    -- custom route's filter above has said whether it is waiting.)
+    local quest, prof = N.SplitProfessions(shown, AC.Exists("professions", acts, laneCtx))
+    AC.StampLanes({ quest = quest, professions = prof }, { blockedGoals, hiddenGoals, along }, acts, laneCtx)
     N.profGoals = prof
     N.profDirty = true
     goals = quest
@@ -1277,10 +1288,13 @@ end
 -- nothing but profession steps left, everything stays on the main arrow.
 function N.SplitProfessions(list, on)
     if not on then return list, {} end
-    local quest, prof = {}, {}
-    for _, g in ipairs(list) do
-        if N.IsProfessionStop(g) then prof[#prof + 1] = g else quest[#quest + 1] = g end
-    end
+    -- By the activities' own rules (Activities.lua), with the two lanes this
+    -- split knows: "professions" as asked for, "quest" for everything else.
+    local AC = ns.activities
+    local defs, has = AC.Defs(), {}
+    for _, entry in ipairs(defs) do has[entry.key] = entry.key == "professions" or entry.key == "quest" end
+    local lanes = AC.Split(list, defs, { exists = has })
+    local quest, prof = lanes.quest or {}, lanes.professions or {}
     if #quest == 0 then return list, {} end
     return quest, prof
 end
