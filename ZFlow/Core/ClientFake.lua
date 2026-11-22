@@ -231,7 +231,10 @@ function ns.make.fakeClient(opts)
         -- The test's control: h.held = true while the player holds it.
         function h.dragging() return h.held == true end
         -- The test's control: the player let the arrow go at this point.
+        -- Without the move key (c.setMoveKey(false)) no drag started:
+        -- nothing moves and nothing is told.
         function h.drag(point)
+            if s.noMoveKey then return end
             h.point, h.attached = { point[1], point[2], point[3], point[4] }, nil
             if moved then moved({ point[1], point[2], point[3], point[4] }) end
         end
@@ -245,6 +248,8 @@ function ns.make.fakeClient(opts)
     function c.setVersion(text) s.version = text end
     -- false: a client that cannot make frames (panel() answers nil).
     function c.setFrames(on) s.noFrames = not on end
+    -- The key that lets an arrow be dragged (Ctrl): held until told not.
+    function c.setMoveKey(on) s.noMoveKey = not on end
     -- Moves the clock by `seconds`, drawing `frames` frames (default 1).
     function c.advance(seconds, frames)
         frames = frames or 1

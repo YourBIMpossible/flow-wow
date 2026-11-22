@@ -1114,6 +1114,11 @@ function ns.make.client(env)
         method(f, "EnableMouse", true)
         method(f, "RegisterForDrag", "LeftButton")
         method(f, "SetScript", "OnDragStart", function()
+            -- The arrow moves only while Ctrl is held, as in the
+            -- predecessor: a plain left drag does nothing. Asked once, at
+            -- the start; a client that cannot say starts no drag.
+            local okKey, held = call(env.IsControlKeyDown)
+            if not (okKey and held == true) then return end
             dragging = true
             method(f, "StartMoving")
         end)

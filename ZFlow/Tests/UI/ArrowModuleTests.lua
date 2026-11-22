@@ -385,4 +385,26 @@ return {
         t.eq(pcall(c.arrows[1].drag, { "TOP", "TOP", 0, -40 }), false)
         t.eq(k.meter:report()[A.NAME], nil)
     end,
+
+    -- N1: the fake's arrows, like the client's, move only with the move key.
+    ["module: without the move key held a drag moves nothing and saves nothing (N1)"] = function(t)
+        if type(A.Declare) ~= "function" then t.ok(false, MISSING) return end
+        local k, c, a = start()
+        login(c)
+        a.setGuide(step)
+        local q = c.arrows[1]
+        t.ok(type(c.setMoveKey) == "function", "the fake has a move key")
+        if type(c.setMoveKey) ~= "function" then return end
+        q.drag({ "TOP", "TOP", 0, -40 })
+        t.eq(savedArrows(c).points.quest, { "TOP", "TOP", 0, -40 }, "held, as the fake starts")
+        c.setMoveKey(false)
+        local ran, at = work(k), { q.point[1], q.point[2], q.point[3], q.point[4] }
+        q.drag({ "CENTER", "CENTER", 5, 5 })
+        t.eq(q.point, at, "not moved")
+        t.eq(savedArrows(c).points.quest, { "TOP", "TOP", 0, -40 }, "not saved")
+        t.eq(work(k), ran, "and nothing of the module runs")
+        c.setMoveKey(true)
+        q.drag({ "CENTER", "CENTER", 5, 5 })
+        t.eq(savedArrows(c).points.quest, { "CENTER", "CENTER", 5, 5 })
+    end,
 }
