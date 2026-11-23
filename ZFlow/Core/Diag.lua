@@ -231,10 +231,7 @@ Diag.NAMES = {
     -- globals: the probe's own record says those (diag.kitProbe,
     -- UI/KitProbe.lua). UIParent, GameTooltip, UISpecialFrames, CreateFrame,
     -- InCombatLockdown and the two IsAddOnLoaded forms are listed above.
-    "C_Texture", "C_Texture.GetAtlasInfo", "ITEM_QUALITY_COLORS", "EncounterJournal",
-    "ButtonFrameTemplate_HidePortrait", "PanelTemplates_SetNumTabs", "PanelTemplates_SetTab",
-    "CreateScrollBoxListLinearView", "ScrollUtil.InitScrollBoxListWithScrollBar", "CreateDataProvider",
-    "MenuUtil.CreateContextMenu",
+    "C_Texture", "C_Texture.GetAtlasInfo",
     "NORMAL_FONT_COLOR", "HIGHLIGHT_FONT_COLOR", "DISABLED_FONT_COLOR", "RED_FONT_COLOR", "GREEN_FONT_COLOR",
     "GRAY_FONT_COLOR",
     "GameFontNormal", "GameFontHighlight", "GameFontDisable", "GameFontNormalSmall", "GameFontHighlightSmall",

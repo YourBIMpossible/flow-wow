@@ -43,13 +43,7 @@ local KIND = {
              -- S20: the per-role badges on the merchant's item buttons.
              "markMerchantSpecs" },
     tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "savedMadeHere", "slash",
-             "slashTaken", "unslash",
-             -- Lead sections 297 and 303: asks whether each part of the
-             -- window kit's list is there, on hidden frames; run once per
-             -- login by UI/KitProbe.lua, never by the capture. The client
-             -- calls that module makes besides it (listen, saved, uptime,
-             -- raw) are listed already.
-             "kitProbe" },
+             "slashTaken", "unslash" },
     -- Hands back or runs a sound restart: never asked by the capture.
     -- craftRecipe (lead section 226, acting): one craft on the player click.
     -- stopCraftRepeat (section 234): stops the game repeat; not a craft.
@@ -71,6 +65,10 @@ local KIND = {
 -- buttons, each cast only on the player click, and the grip that moves it.
 KIND.show[#KIND.show + 1] = "clickRow"
 KIND.show[#KIND.show + 1] = "moveHandle"
+-- Lead sections 297, 303 and 308: asks whether each part of the window
+-- kit's list is there, on hidden frames; run once per login by
+-- UI/KitProbe.lua, never by the capture.
+KIND.tool[#KIND.tool + 1] = "kitProbe"
 
 -- Every read, and whether the capture asks it (true) or not (false).
 local READS = {
