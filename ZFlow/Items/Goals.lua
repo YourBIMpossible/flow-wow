@@ -2,13 +2,19 @@ local _, ns = ...
 
 -- ItemGoals: the player's goals list, the first producer of reservations.
 -- A goal says "keep this many of this item for later" (or, with a recipe,
--- "keep the mats to make this many"); the bank list, the bank prompt and the
--- banker word then hold that count back, through Items/Reservations.lua.
+-- "make this many": keep what is owned of it and the mats for the rest); the
+-- bank list, the bank prompt and the banker word then hold that back,
+-- through Items/Reservations.lua.
 --
 --   <slash> goal add <item> <count>   set a goal: one item link or an item
 --                                     ID, a count of 1 to MAX_COUNT in digits;
 --                                     a second add for the item changes its
 --                                     count (and drops a second saved entry)
+--   <slash> goal make <item> <count>  as add, with the recipe the recipe
+--                                     book (Items/RecipeBook.lua) knows for
+--                                     the item; none known: nothing is
+--                                     saved and the player is told to open
+--                                     the profession window that makes it
 --   <slash> goal remove <item>        drop it (every saved entry for it)
 --   <slash> goal list                 the list (the bare word too)
 --   <slash> goal clean                remove the saved entries that can't be
@@ -23,19 +29,30 @@ local _, ns = ...
 -- not touch it.
 --
 --   ItemGoals.Claims(snapshot, goals, recipes) -> claims, skipped
---     pure. Per goal: with a recipe that recipes knows and ItemPlan can
---     plan, ItemPlan.Build over the snapshot and ItemPlan.Claims(plan,
---     "goal:" .. item, "goal"); otherwise the item itself (kind "item",
+--     pure. Per goal: with a recipe that recipes knows, what is owned of
+--     the item (bags, and the bank once seen) is held first, up to the
+--     count, and for the rest ItemPlan.Build over the snapshot and
+--     ItemPlan.Claims(plan, "goal:" .. item, "goal"). When ItemPlan can't
+--     plan it, or with no recipe known, the item itself (kind "item",
 --     amount count, from the bags or the bank). Every claim is marked
 --     selected: the player picked it. A goal that is not a table, names no
 --     item, or has no whole count of at least 1 is skipped and counted; a
 --     saved value that is no list counts as one, and so does each entry
 --     outside 1..#goals (after a hole, or under a name).
 --     recipes: { [name] = { makes, yield, mats } } as ItemPlan reads them.
---     Section 225 (GS-2): a recipe part never makes a goal skipped. Z-Flow
---     holds no recipe data yet, so the source passes none and a goal with a
---     recipe holds its item and count, as a goal with none does; the list
---     says the recipe part is not used yet.
+--     Section 225 (GS-2): a recipe part never makes a goal skipped.
+--     Section 227 (P-GOALS-RECIPE): the source passes the recipe book; a
+--     recipe it has not seen holds the item and count, as a goal with none
+--     does, and the list says the recipe is not seen yet (NOT_SEEN).
+--   ItemGoals.Crafts(k, snapshot) -> rows   the recipe goals, in order, for
+--     the list and for P-CRAFT. snapshot: nil for the reservations' own.
+--     nil while the goals can't be read (store not open, a saved value that
+--     is no list); {} with none. Each row:
+--       { item, count, recipe, known (the book has it), recipeId, makes,
+--         have (owned), times (crafts of it still to do), ready (ItemPlan's),
+--         missing = { { key, count } } (still to get, not crafted),
+--         bankUnseen (some may be in the bank), bagsUnread }
+--   ItemGoals.NoRecipe(name) -> line   make, for an item no recipe makes
 --   ItemGoals.Unread(n) -> line   what the word says while n saved entries
 --                                 can't be read (section 225, GS-3)
 --   ItemGoals.Run(k, rest) -> lines, changed      the goal word
@@ -66,8 +83,16 @@ Goals.RECIPE_MAX = 40         -- the most of a recipe part the list shows (G-8)
 do
     local cmd = tostring(ns.id.slash) .. " " .. Goals.WORD
     Goals.CLEAN = cmd .. " clean"
-    Goals.USAGE = "Say " .. cmd .. " add <item link> <count>, " .. cmd .. " remove <item link>, "
-        .. cmd .. " list, or " .. Goals.CLEAN .. "."
+    Goals.USAGE = "Say " .. cmd .. " add <item link> <count>, " .. cmd .. " make <item link> <count>, "
+        .. cmd .. " remove <item link>, " .. cmd .. " list, or " .. Goals.CLEAN .. "."
+    -- Section 227: a goal whose recipe the book has not seen.
+    Goals.NOT_SEEN = "recipe not seen yet, so the goal keeps the item itself. Open the profession window"
+        .. " that makes it."
+    -- Section 227: make, for an item no recipe in the book makes.
+    function Goals.NoRecipe(name)
+        return "No recipe you have seen makes " .. tostring(name) .. ". Open the profession window that makes"
+            .. " it, then say " .. cmd .. " make again."
+    end
     Goals.EMPTY = "You have no goals. Say " .. cmd .. " add <item link> <count> to keep that many for later."
     Goals.UNREADABLE = "Your saved goals can't be read, so nothing was changed. Say " .. Goals.CLEAN
         .. " to clear them."
@@ -102,6 +127,15 @@ local function readGoal(g)
     return key, g.count
 end
 
+-- What the snapshot says is owned of key: the bags, and the bank once it was
+-- seen. nil when the bags were not read.
+local function owned(snapshot, key)
+    if type(snapshot) ~= "table" or type(snapshot.bags) ~= "table" then return nil end
+    local n = tonumber(snapshot.bags[key]) or 0
+    if snapshot.bankKnown and type(snapshot.bank) == "table" then n = n + (tonumber(snapshot.bank[key]) or 0) end
+    return n
+end
+
 function Goals.Claims(snapshot, goals, recipes)
     local claims, skipped = {}, 0
     if goals == nil then return claims, 0 end
@@ -113,15 +147,27 @@ function Goals.Claims(snapshot, goals, recipes)
         if key == nil then
             skipped = skipped + 1
         else
-            local plan
+            -- Section 227: what is owned of the item is held first; the
+            -- mats are planned for the rest only. Bags unread: nothing is
+            -- known to be owned, so the plan is for the whole count.
+            local plan, held
             if type(g.recipe) == "string" and type(recipes) == "table" and recipes[g.recipe] ~= nil then
-                plan = ns.ItemPlan.Build({ recipe = g.recipe, count = count },
-                    { recipes = recipes, snapshot = snapshot })
+                held = math.min(owned(snapshot, key) or 0, count)
+                if held < count then
+                    plan = ns.ItemPlan.Build({ recipe = g.recipe, count = count - held },
+                        { recipes = recipes, snapshot = snapshot })
+                end
             end
-            if type(plan) == "table" and plan.ok then
-                for _, c in ipairs(ns.ItemPlan.Claims(plan, Goals.OWNER .. key, Goals.ACTIVITY)) do
-                    c.selected = true
-                    claims[#claims + 1] = c
+            if held ~= nil and (held == count or (type(plan) == "table" and plan.ok)) then
+                if held > 0 then
+                    claims[#claims + 1] = { owner = Goals.OWNER .. key, activity = Goals.ACTIVITY, kind = "item",
+                                            key = key, amount = held, bank = true, selected = true }
+                end
+                if plan ~= nil then
+                    for _, c in ipairs(ns.ItemPlan.Claims(plan, Goals.OWNER .. key, Goals.ACTIVITY)) do
+                        c.selected = true
+                        claims[#claims + 1] = c
+                    end
                 end
             else
                 claims[#claims + 1] = { owner = Goals.OWNER .. key, activity = Goals.ACTIVITY, kind = "item",
@@ -176,7 +222,7 @@ end
 ns.Reservations.Source(Goals.SOURCE, function(snapshot, k)
     k = k or ns
     if not storeOpen(k) then return nil end
-    local claims, skipped = Goals.Claims(snapshot, savedGoals(k))
+    local claims, skipped = Goals.Claims(snapshot, savedGoals(k), ns.RecipeBook.Recipes(k))
     if skipped > 0 then return nil end
     return claims
 end, function(k)
@@ -185,6 +231,75 @@ end, function(k)
     local raw = savedGoals(k)
     return raw ~= nil and not (type(raw) == "table" and next(raw) == nil)
 end)
+
+-------------------------------------------------------------------------------
+-- Section 227: what each recipe goal still needs
+-------------------------------------------------------------------------------
+
+-- The reservations' own snapshot, or nil when it can't be had.
+local function currentSnapshot(k)
+    local r = type(k) == "table" and k.reservations or nil
+    if type(r) ~= "table" or type(r.Current) ~= "function" then return nil end
+    local ok, cur = pcall(r.Current)
+    if ok and type(cur) == "table" and type(cur.snapshot) == "table" then return cur.snapshot end
+    return nil
+end
+
+local function craftRow(key, count, recipe, recipes, snapshot)
+    local row = { item = key, count = count, recipe = recipe, known = false }
+    local r = type(recipe) == "string" and recipes[recipe] or nil
+    if r == nil then return row end
+    row.known, row.recipeId, row.makes = true, r.id, r.makes
+    local have = owned(snapshot, key)
+    if have == nil then
+        row.bagsUnread, row.ready = true, "unknown"
+        return row
+    end
+    row.have = have
+    local rest = count - math.min(have, count)
+    if rest == 0 then
+        row.times, row.ready, row.missing = 0, true, {}
+        return row
+    end
+    local plan = ns.ItemPlan.Build({ recipe = recipe, count = rest }, { recipes = recipes, snapshot = snapshot })
+    if type(plan) ~= "table" or not plan.ok then
+        row.ready = false
+        return row
+    end
+    -- Inner crafts come first: the goal's own craft is the last of its recipe.
+    for _, c in ipairs(plan.crafts or {}) do
+        if c.recipe == recipe then row.times = c.times end
+    end
+    row.ready, row.missing = plan.ready, {}
+    for _, pr in ipairs(plan.rows or {}) do
+        local short = tonumber(pr.missing) or 0
+        for _, s in ipairs(pr.sources or {}) do
+            if s.from == "craft" then short = short - (tonumber(s.count) or 0) end
+        end
+        if short > 0 then
+            row.missing[#row.missing + 1] = { key = pr.key, count = short }
+            if pr.bankUnseen then row.bankUnseen = true end
+        end
+    end
+    return row
+end
+
+function Goals.Crafts(k, snapshot)
+    if not storeOpen(k) then return nil end
+    local raw = savedGoals(k)
+    if raw == nil then return {} end
+    if type(raw) ~= "table" then return nil end
+    local recipes, rows = ns.RecipeBook.Recipes(k), {}
+    for i = 1, #raw do
+        local g = raw[i]
+        local key, count = readGoal(g)
+        if key ~= nil and g.recipe ~= nil then
+            if snapshot == nil then snapshot = currentSnapshot(k) end
+            rows[#rows + 1] = craftRow(key, count, g.recipe, recipes, snapshot)
+        end
+    end
+    return rows
+end
 
 -------------------------------------------------------------------------------
 -- The goal word
@@ -259,15 +374,35 @@ local function shown(text)
     return (text:gsub("|", "||"))
 end
 
+-- Section 227: what a recipe goal's list line says after its recipe.
+local function craftStatus(k, row)
+    if not row.known then return Goals.NOT_SEEN end
+    if row.bagsUnread then return "can't say what is missing: the bags were not read" end
+    if row.have >= row.count then return "you have all " .. row.count end
+    local text = row.have > 0 and ("you have " .. row.have .. "; ") or ""
+    if row.missing == nil then return text .. "can't say what is missing: the recipe can't be planned" end
+    if #row.missing == 0 then return text .. "ready to make " .. (row.count - row.have) end
+    local parts = {}
+    for _, m in ipairs(row.missing) do parts[#parts + 1] = m.count .. " x " .. nameOf(k, m.key) end
+    text = text .. "missing " .. table.concat(parts, ", ")
+    if row.bankUnseen then text = text .. " (the bank was not seen; some may be there)" end
+    return text
+end
+
 local function listLines(k, raw)
     local rows = {}
     if type(raw) == "table" then
+        local recipes, snapshot, read
         for i = 1, #raw do
             local g = raw[i]
             local key, count = readGoal(g)
             if key ~= nil then
                 local text = count .. " x " .. nameOf(k, key)
-                if g.recipe ~= nil then text = text .. " (recipe part not used yet: " .. shown(g.recipe) .. ")" end
+                if g.recipe ~= nil then
+                    if not read then recipes, snapshot, read = ns.RecipeBook.Recipes(k), currentSnapshot(k), true end
+                    text = text .. ", made by " .. shown(g.recipe) .. ": "
+                        .. craftStatus(k, craftRow(key, count, g.recipe, recipes, snapshot))
+                end
                 rows[#rows + 1] = text
             end
         end
@@ -338,10 +473,16 @@ function Goals.Run(k, rest)
     -- is (G-4 iii); only the changed goal is copied, with its new count.
     -- (G-5) add sets the first entry for the item and drops later ones;
     -- remove drops every one.
-    if word == "add" then
+    -- Section 227: make is add with the recipe the book knows for the item.
+    if word == "add" or word == "make" then
         local key, count = parseAdd(more)
         if key == nil then return { Goals.USAGE }, false end
         if raw ~= nil and type(raw) ~= "table" then return { Goals.UNREADABLE }, false end
+        local recipe
+        if word == "make" then
+            recipe = ns.RecipeBook.For(k, key)
+            if recipe == nil then return { Goals.NoRecipe(nameOf(k, key)) }, false end
+        end
         local seq, other = entries(raw or {})
         local list, set = {}, false
         for _, g in ipairs(seq) do
@@ -350,6 +491,7 @@ function Goals.Run(k, rest)
                     local copy = {}
                     for field, value in pairs(g) do copy[field] = value end
                     copy.count = count
+                    if recipe ~= nil then copy.recipe = recipe end
                     list[#list + 1] = copy
                     set = true
                 end
@@ -357,10 +499,16 @@ function Goals.Run(k, rest)
                 list[#list + 1] = g
             end
         end
-        if not set then list[#list + 1] = { item = key, count = count } end
+        if not set then list[#list + 1] = { item = key, count = count, recipe = recipe } end
         list = withOthers(list, other)
         if not save(k, list) then return { Goals.FAILED }, false end
-        return withUnread({ "Goal set: keep " .. count .. " x " .. nameOf(k, key) .. "." }, list), true
+        local said
+        if recipe ~= nil then
+            said = "Goal set: make " .. count .. " x " .. nameOf(k, key) .. " (recipe: " .. shown(recipe) .. ")."
+        else
+            said = "Goal set: keep " .. count .. " x " .. nameOf(k, key) .. "."
+        end
+        return withUnread({ said }, list), true
     end
 
     if word == "remove" then
