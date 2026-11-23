@@ -200,6 +200,17 @@ tests["c.stopCraftRepeat: asks the game to stop the repeat, never a craft"] = fu
     t.eq({ ns.make.client(env).stopCraftRepeat() }, { nil, "raised" })
 end
 
+-- Lead section 237, section 236 item 2: the craft calls are names the
+-- capture records, so the next login shows which the client has.
+tests["diag: the craft and repeat names are recorded at login"] = function(t)
+    local listed = {}
+    for _, name in ipairs(ns.Diag.NAMES) do listed[name] = true end
+    for _, name in ipairs({ "C_TradeSkillUI.CraftRecipe", "C_TradeSkillUI.StopRecipeRepeat",
+        "C_TradeSkillUI.IsRecipeRepeating" }) do
+        t.ok(listed[name] == true, name)
+    end
+end
+
 tests["fake client: a stop of the repeat is counted"] = function(t)
     local c = ns.make.fakeClient()
     t.eq(c.repeatStops, 0)
