@@ -74,7 +74,8 @@ R.HELP = "<item link>: Need or Greed for that item, by the gear verdict for your
 R.NEED = "Need"
 R.GREED = "Greed"
 R.CANT_USE = "Greed (can't use)"
-R.NO_ADVICE = "no advice: not gear, or not known yet."
+R.NOT_TRAINED = "Greed (not trained yet)"
+R.NO_ADVICE ="no advice: not gear, or not known yet."
 
 function R.Hint(client, packs, link)
     if type(client) ~= "table" or type(link) ~= "string" or link == "" then return nil end
@@ -152,6 +153,11 @@ function R.Advice(client, packs, link, role)
         local can = nil
         if type(detail) == "table" and type(detail.use) == "table" then can = detail.use.can end
         if can == false then
+            -- G12: a weapon skill not trained yet is said apart from a
+            -- kind the class can never use.
+            if detail.use.why == "untrained" then
+                return { word = "greed", text = R.NOT_TRAINED, value = R.GREED, tone = "none" }
+            end
             return { word = "greed", text = R.CANT_USE, value = R.GREED, tone = "none" }
         end
         if can ~= true then return nil end
