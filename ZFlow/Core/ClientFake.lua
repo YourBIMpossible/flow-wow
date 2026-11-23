@@ -100,9 +100,16 @@ function ns.make.fakeClient(opts)
         return { notRegistered = names, noEventFrame = s.noEventFrame and true or false,
             noTickFrame = s.noTickFrame and true or false }
     end
+    local madeHere = {}
     function c.saved(name)
-        if type(s.saved[name]) ~= "table" then s.saved[name] = {} end
+        if type(s.saved[name]) ~= "table" then
+            s.saved[name] = {}
+            madeHere[name] = s.saved[name]
+        end
         return s.saved[name]
+    end
+    function c.savedMadeHere(name)
+        return madeHere[name] ~= nil and s.saved[name] == madeHere[name]
     end
     function c.savedExists(name) return type(s.saved[name]) == "table" end
     function c.money() return s.money end

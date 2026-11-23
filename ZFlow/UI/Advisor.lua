@@ -85,9 +85,16 @@ function Advisor.Declare(k)
         return ctx ~= nil and ctx.settings:get(Advisor.SETTING) ~= false
     end
 
+    -- G55 (UI/Reveal.lua): a new player's panel waits for its stage. No
+    -- reveal module, or any doubt: shown.
+    local function held()
+        local R = ns.Reveal
+        return type(R) == "table" and type(R.Open) == "function" and R.Open(k, "advice") == false
+    end
+
     local function render()
         if not panel then return end
-        if not enabled() or #entries == 0 then
+        if not enabled() or #entries == 0 or held() then
             panel.show(false)
             return
         end
@@ -182,6 +189,11 @@ function Advisor.Declare(k)
             local scope = row and row.scope or "char"
             local path = row and row.path or ("settings." .. Advisor.SETTING)
             cancelWatch = c.store:watch(scope, path, function() render() end)
+            -- G55: a stage shown or reset draws the panel again.
+            local R = ns.Reveal
+            if type(R) == "table" and type(R.EVENT) == "string" and type(c.bus) == "table" then
+                c.bus:on(Advisor.NAME, R.EVENT, function() render() end)
+            end
             -- The frame last, after everything that can switch the module off.
             local id = k.id or ns.id
             panel = c.client.panel({ name = id.framePrefix .. "Advisor",

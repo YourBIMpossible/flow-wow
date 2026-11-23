@@ -191,6 +191,26 @@ function ns.make.store(k)
 
     -- Call once the client has loaded saved data.
     function store:open()
+        -- G55 (UI/Reveal.lua): whether each scope's saved table was there
+        -- before this login, asked once, before root() makes a missing one:
+        -- store.existed[scope] is true / false, or nil when the client
+        -- cannot say. A new install has no account table yet.
+        if self.existed == nil then
+            self.existed = {}
+            local c = k.client
+            for scope, name in pairs(names) do
+                if type(c) == "table" and type(c.savedExists) == "function" then
+                    local ok, v = pcall(c.savedExists, name)
+                    -- Lead (section 274): a table the add-on made itself before
+                    -- this (a read ahead of the saved data) was not there.
+                    if ok and v == true and type(c.savedMadeHere) == "function" then
+                        local ok2, made = pcall(c.savedMadeHere, name)
+                        if ok2 and made == true then v = false end
+                    end
+                    if ok and type(v) == "boolean" then self.existed[scope] = v end
+                end
+            end
+        end
         self.blocked = {}
         for scope, tables in pairs(SKELETON) do
             local db = root(scope)

@@ -35,7 +35,7 @@ local KIND = {
              "playAlert",
              -- G14: the mark on the best quest reward choice (Gear/RewardMark.lua).
              "markRewardChoice" },
-    tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "slash",
+    tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "savedMadeHere", "slash",
              "slashTaken", "unslash" },
     -- Hands back or runs a sound restart: never asked by the capture.
     -- craftRecipe (lead section 226, acting): one craft on the player click.

@@ -628,6 +628,13 @@ function Arrow.Start(k, diag, own)
             hideAll()
             return
         end
+        -- G55 (UI/Reveal.lua): a new player's arrow waits for its stage.
+        -- No reveal module, or any doubt: shown.
+        if type(ns.Reveal) == "table" and type(ns.Reveal.Open) == "function" and ns.Reveal.Open(k, "arrow") == false then
+            current = nil
+            hideAll()
+            return
+        end
         local src = source()
         -- Arrival at the player's own waypoint: it is cleared, that is said
         -- once, and the layout is made from what is left. Not while the

@@ -123,6 +123,7 @@ Nav\ServiceSeen.lua
 Nav\Errand.lua
 Nav\RepairStep.lua
 Nav\WeaponMasterStep.lua
+Nav\WeaponMasterSeen.lua
 Nav\QuestSource.lua
 Nav\QuestRead.lua
 Nav\AddonSources.lua
@@ -184,4 +185,5 @@ Rotation\Mouseover.lua
 Rotation\Enchant.lua
 UI\BossLoot.lua
 UI\NpcSpeech.lua
+UI\Reveal.lua
 UI\SettingsShare.lua
