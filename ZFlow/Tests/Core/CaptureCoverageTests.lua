@@ -34,7 +34,7 @@ local KIND = {
 local READS = {
     now = false, clock = true, clockMs = false, addonLoaded = true, listenFaults = true, uptime = true, inCombat = true,
     money = true, bags = true, bagItems = true, bankOpen = true, bankItems = true, merchantOpen = false,
-    merchantItems = false, recipes = true, recipeSchematic = false, trainer = false, faction = false, class = true,
+    merchantItems = false, recipes = true, recipeSchematic = false, tradeSkillSchematic = true, trainer = false, faction = false, class = true,
     stealthed = true, target = true, inRange = true, level = false, gear = false, spellCooldown = true,
     spellId = true, spellTexture = false, facing = true, spell = true, position = true, dead = true,
     ghost = true, corpse = true, waypoint = false, mapSize = true, mapCont = false, zone = true,
@@ -51,6 +51,11 @@ local READS = {
     targetDebuffs = true, formName = true, currentSpell = true, taxiNodes = true,
     -- Lead section 197: the pet state the rotation reads.
     pet = true,
+    -- CF-32: a spell's name by id, for your own casts (Rotation/OwnCasts.lua).
+    spellName = false,
+    -- N13: the buffs you put up yourself (Classes/Paladin.lua auras).
+    ownBuffs = false,
+
     -- P-SETS: what is worn, read by the set word only.
     wornLinks = false,
 }

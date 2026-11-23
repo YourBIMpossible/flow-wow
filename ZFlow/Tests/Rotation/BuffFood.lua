@@ -36,11 +36,14 @@ local function pack(resource)
     }
 end
 
--- A fake client out of a fight, alive, no target, with these items in the
--- bags and these buffs (nil: buffs not read).
+-- A fake client out of a fight, alive, not mounted, not on a flight path,
+-- no target, with these items in the bags and these buffs (nil: buffs not
+-- read).
 local function client(items, buffs, inCombat)
     local c = ns.make.fakeClient()
     c.setDead(false)
+    c.setMounted(false)
+    c.setOnTaxi(false)
     if inCombat then c.setCombat(true) end
     c.setPlayerBuffs(buffs)
     local stacks = {}
@@ -142,6 +145,227 @@ tests["buff food: the driver's read is nil when the bags are not read, {} when t
     local c2 = client({ RIBS }, {})
     c2.setItemLines(RIBS, nil)
     t.eq(D.Read(c2, pack(), {}, "dps")("buffFood"), nil, "a food whose tooltip was not read: not known")
+end
+
+-- Section 229 (F-1): the driver in a kernel. The food is read out of a fight
+-- only, and kept between bag changes (BAG_UPDATE_DELAYED). Fails before the
+-- repair: every tick read the bags, in a fight too.
+
+local KCLASS = "TESTCLASS"
+
+-- The driver on a kernel, switched on, over client c; the bag reads are
+-- counted. keys: the key frame (Rotation/KeyFrame.lua) on the same kernel,
+-- switched on. Returns the api, the count so far, and the kernel.
+local function running(c, keys)
+    c.setSaved(ns.id.accountDB, {})
+    c.setSaved(ns.id.charDB, {})
+    c.setClass(KCLASS)
+    local reads, real = 0, c.bagItems
+    c.bagItems = function(...)
+        reads = reads + 1
+        return real(...)
+    end
+    local k = ns.Kernel({}, c)
+    local diag = ns.Diag.Start(k)
+    local api = D.Declare(k, { [KCLASS] = pack() })
+    if keys then ns.KeyFrame.Declare(k, diag) end
+    k:Boot()
+    c.fire("ADDON_LOADED", ns.id.addon)
+    c.fire("PLAYER_LOGIN")
+    c.fire("PLAYER_ENTERING_WORLD")
+    k.settings:set(D.SETTING, true)
+    if keys then k.settings:set(ns.KeyFrame.SETTING, true) end
+    return api, function() return reads end, k
+end
+
+local function tick(c) c.advance(D.EVERY + 0.05, 1) end
+
+local function food(api)
+    local v = api.view()
+    local s = v and v.suggestion
+    return s and s.step == "food" and s.item or nil
+end
+
+tests["buff food F-1: a tick in a fight reads no bags"] = function(t)
+    local c = client({ RIBS }, {}, true)
+    local api, reads = running(c)
+    local from = reads()
+    tick(c)
+    t.ok(api.view() ~= nil, "the tick ran")
+    t.eq(reads() - from, 0, "no bag read in a fight")
+    tick(c)
+    t.eq(reads() - from, 0, "nor on the next")
+end
+
+tests["buff food F-1: out of a fight the bags are read once, and again only after a bag change"] = function(t)
+    local c = client({ RIBS }, {})
+    local api, reads = running(c)
+    local from = reads()
+    tick(c)
+    t.eq(food(api), "Spiced Wolf Ribs", "the food is suggested")
+    t.eq(reads() - from, 1, "one bag read")
+    tick(c)
+    t.eq(reads() - from, 1, "a second tick with no bag event: no bag read")
+    t.eq(food(api), "Spiced Wolf Ribs", "the food kept")
+    c.setBagItems({ { item = BREAD, count = 3 } })
+    c.fire("BAG_UPDATE_DELAYED")
+    tick(c)
+    t.eq(reads() - from, 2, "the bags changed: read again")
+    t.eq(food(api), nil, "only plain food now: no food suggested")
+end
+
+tests["buff food F-1: a fight, then out of it with no bag change, reads the bags once"] = function(t)
+    local c = client({ RIBS }, {}, true)
+    local api, reads = running(c)
+    local from = reads()
+    tick(c)
+    c.setCombat(false)
+    tick(c)
+    tick(c)
+    t.eq(reads() - from, 1, "the first tick out of the fight reads, the next does not")
+    t.eq(food(api), "Spiced Wolf Ribs")
+end
+
+tests["buff food F-1: a food not read is not kept; the next tick reads again"] = function(t)
+    local c = client({ RIBS }, {})
+    c.setItemLines(RIBS, nil)
+    local api, reads = running(c)
+    local from = reads()
+    tick(c)
+    t.eq(food(api), nil, "the tooltip not read: no food")
+    c.setItemLines(RIBS, LINES[RIBS])
+    tick(c)
+    t.eq(reads() - from, 2, "not known is read again, with no bag event")
+    t.eq(food(api), "Spiced Wolf Ribs", "once the tooltip is read")
+end
+
+-- BF-1 (section 230, MyBuddy) ---------------------------------------------------
+
+-- The worry: the out-of-fight "/use item:" macro is still on the key at a
+-- pull, so a press at the pull starts eating. The one secure button
+-- (Rotation/KeyFrame.lua) is set from the key plan with no suggestion, so the
+-- food macro never reaches it; the food is only in the view. This holds that
+-- down: every value the button is ever given is recorded, out of a fight
+-- with the food suggested and then in the fight.
+tests["buff food BF-1: the food macro never reaches the secure button, before or at a pull"] = function(t)
+    local c = client({ RIBS }, {})
+    c.setSpellId("Wrath", 5176)
+    c.setSpell(5176, { known = true, usable = true, noPower = false })
+    c.setSpellCooldown(5176, false)
+    local given, real = {}, c.secureButton
+    c.secureButton = function(spec)
+        local h = real(spec)
+        if type(h) == "table" then
+            local set = h.set
+            h.set = function(attr, value)
+                given[#given + 1] = { attr = attr, value = value }
+                return set(attr, value)
+            end
+        end
+        return h
+    end
+    local api = running(c, true)
+    tick(c)
+    t.eq(food(api), "Spiced Wolf Ribs", "the food is suggested out of a fight")
+    t.eq(#c.secureButtons, 1, "the key frame made its button")
+    local h = c.secureButtons[1]
+    t.ok(h and h.attrs.type ~= "macro", "the button holds no macro")
+    t.ok(h and h.attrs.macrotext == nil, "and no macro text")
+    c.setCombat(true)
+    tick(c)
+    tick(c)
+    for _, g in ipairs(given) do
+        t.ok(not (type(g.value) == "string" and g.value:find("/use", 1, true)),
+            "never given a /use macro: " .. tostring(g.attr) .. " = " .. tostring(g.value))
+    end
+    t.ok(#given > 0, "the button was set")
+end
+
+-- BF-2 (section 230, MyBuddy) ---------------------------------------------------
+
+tests["buff food BF-2: eating or drinking: no food suggestion"] = function(t)
+    t.eq(step(client({ RIBS }, { Food = 18 }), pack(), "dps").suggestion, nil, "eating")
+    t.eq(step(client({ RIBS }, { Drink = 18 }), pack(), "dps").suggestion, nil, "drinking")
+    t.eq(step(client({ RIBS }, { ["Food & Drink"] = 18 }), pack(), "dps").suggestion, nil, "both")
+    t.eq(ns.BuffFood.Eating({ Food = 18 }), true)
+    t.eq(ns.BuffFood.Eating({ ["Power Word: Fortitude"] = 600 }), false)
+    t.eq(ns.BuffFood.Eating(nil), nil, "buffs not read: not known")
+end
+
+tests["buff food BF-2: mounted, or mounted not known: no food suggestion"] = function(t)
+    local c = client({ RIBS }, {})
+    c.setMounted(true)
+    t.eq(step(c, pack(), "dps").suggestion, nil, "mounted")
+    c.setMounted(nil)
+    t.eq(step(c, pack(), "dps").suggestion, nil, "not known is not \"not mounted\"")
+    c.setMounted(false)
+    t.eq(step(c, pack(), "dps").suggestion and step(c, pack(), "dps").suggestion.item, "Spiced Wolf Ribs",
+        "on foot: the food")
+end
+
+tests["buff food BF-2: on a flight path, or not known: no food suggestion"] = function(t)
+    local c = client({ RIBS }, {})
+    c.setOnTaxi(true)
+    t.eq(step(c, pack(), "dps").suggestion, nil, "on a flight path")
+    c.setOnTaxi(nil)
+    t.eq(step(c, pack(), "dps").suggestion, nil, "not known")
+end
+
+tests["buff food BF-2: the reason is in the trace"] = function(t)
+    local c = client({ RIBS }, { Food = 18 })
+    local v = step(c, pack(), "dps")
+    local why
+    for _, r in ipairs(v.trace or {}) do
+        if r.step == "food" then why = r.note or r.result end
+    end
+    t.ok(type(why) == "string" and why:find("eating", 1, true) ~= nil, "eating named: " .. tostring(why))
+end
+
+-- BF-3 (section 230, MyBuddy) ---------------------------------------------------
+
+tests["buff food BF-3: a settings row, on by default; off, no food is suggested and no bag is read"] = function(t)
+    local c = client({ RIBS }, {})
+    local api, reads, k = running(c)
+    t.eq(k.settings:get(D.FOOD), true, "on by default")
+    tick(c)
+    t.eq(food(api), "Spiced Wolf Ribs")
+    t.eq(k.settings:set(D.FOOD, false), true, "the setting is taken")
+    c.fire("BAG_UPDATE_DELAYED")
+    local from = reads()
+    tick(c)
+    t.eq(food(api), nil, "off: no food")
+    t.eq(reads() - from, 0, "off: no bag read")
+    k.settings:set(D.FOOD, true)
+    tick(c)
+    t.eq(food(api), "Spiced Wolf Ribs", "on again: the food")
+end
+
+tests["buff food BF-3: the food step says it is switched off"] = function(t)
+    local s = ns.SnapshotOf({ inCombat = false, dead = false, buffs = {}, foodOn = false,
+        mounted = false, onTaxi = false, buffFood = { name = "Spiced Wolf Ribs", item = RIBS, score = 12 } })
+    local got, why = ns.Rotation._steps.food(s)
+    t.eq(got, nil)
+    t.ok(type(why) == "string" and why:find("switched off", 1, true) ~= nil, tostring(why))
+end
+
+-- Section 232: D.Read and D.Step take one trailing options table, extra,
+-- with named fields. extra.food reaches the food read with another field
+-- (Zen's extra.chosen) beside it; that one is Zen's to assert.
+tests["buff food: extra.food reaches the food read with extra.chosen beside it (section 232)"] = function(t)
+    local c = client({ RIBS }, {})
+    local n, real = 0, c.bagItems
+    c.bagItems = function(...) n = n + 1 return real(...) end
+    local off = { food = { on = false }, chosen = { spell = "Wrath" } }
+    local read = D.Read(c, pack(), {}, "dps", off)
+    t.eq(read("foodOn"), false, "foodOn from extra.food")
+    t.eq(read("buffFood"), nil, "switched off: no food")
+    t.eq(n, 0, "and no bag read")
+    local on = { food = { on = true }, chosen = { spell = "Wrath" } }
+    t.eq(D.Read(c, pack(), {}, "dps", on)("buffFood").name, "Spiced Wolf Ribs", "on: the food")
+    t.eq(on.food.kept, true, "kept in extra.food")
+    local v = D.Step(c, pack(), nil, nil, nil, "dps", { food = { on = false }, chosen = { spell = "Wrath" } })
+    t.ok(not (v.suggestion and v.suggestion.step == "food"), "D.Step hands extra on: no food when off")
+    t.eq(D.Read(c, pack(), {}, "dps", { chosen = { spell = "Wrath" } })("foodOn"), nil, "no extra.food: not known")
 end
 
 return tests

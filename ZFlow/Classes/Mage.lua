@@ -21,15 +21,18 @@ local _, ns = ...
 -- Shared pieces this pack uses: the snapshot's `conjured` read (bag counts
 -- of the items options.conjure names; Rotation/Snapshot.lua R.Conjured).
 --
--- Not in the lists, on purpose:
+-- Not in this pack yet (tasks):
 --   * channelled spells (Arcane Missiles, Blizzard, Evocation): the snapshot
 --     has no read of your own channel, so a suggestion could cut one short.
 --     They stay in the spell list; the chooser does not suggest them;
 --   * Frost Nova and Blink as steps: they answer an enemy next to you, and
 --     the driver reads no such thing yet. Both are on the key rows;
---   * Polymorph, Counterspell on anyone's cast but your target's, Arcane
---     Brilliance, Amplify and Dampen Magic, and anything cast on another
---     player.
+--   * Polymorph: the chooser has no crowd-control step;
+--   * Counterspell on anyone's cast but your target's: no read of another
+--     unit's cast;
+--   * Amplify and Dampen Magic: no rule asks for them;
+--   * Arcane Brilliance, and anything cast on another player: needs a party
+--     member read.
 
 local GUESS = "first guess"
 local NOTE = "written by Flow for this pack, 2026-11-23; not read from the game"
@@ -193,7 +196,8 @@ local pack = {
             .. "the game client. No guide, database or other addon used.",
     },
 
-    -- One role: a mage deals damage. No heal or tank row on purpose.
+    -- One role: a mage deals damage. A mage has no heal or tank spec in this
+    -- game, so there is no heal or tank row.
     roles = {
         dps = { name = "Frost", evidence = GUESS },
     },
@@ -213,8 +217,8 @@ local pack = {
         aoe = join(buffs, aoe, single),
     },
 
-    -- Nothing is cast on the group (Arcane Brilliance, Arcane Intellect on
-    -- others: for other players, out of scope).
+    -- Nothing is cast on the group yet (Arcane Brilliance, Arcane Intellect
+    -- on others: needs a party member read; a task, see the header).
     groups = {},
 
     -- A mage has no heal of its own: the rows are empty, not unknown.

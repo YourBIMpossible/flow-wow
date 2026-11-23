@@ -11,7 +11,8 @@ local _, ns = ...
 -- player's, and nobody else's. No health or power amount is read; noPower is
 -- the client's own yes or no (see R.FROM_AMOUNT in Snapshot.lua).
 --
--- finisherReady is not built here: nothing reads it yet, so it stays absent.
+-- finisherReady: no reader builds it yet (a task; combo points are a hidden
+-- amount), so it stays absent.
 --
 -- Ids: a pack names spells by name and stores no ids. The caller hands in
 -- `ids`, { [name] = spell id }, as read from the game. A name with no id is

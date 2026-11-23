@@ -7,6 +7,10 @@ local _, ns = ...
 -- comes from the role and from whether the pack uses mana (its resources).
 -- First guesses, not seen in game on 16001.
 --   BuffFood.WELL_FED                  the buff's name
+--   BuffFood.EATING                    the buffs eating or drinking gives
+--                                      (section 230 BF-2, first guesses)
+--   BuffFood.Eating(buffs)             true when one is on you, false when
+--                                      none, nil when buffs not read
 --   BuffFood.CLASS, BuffFood.SUBCLASS  food and drink: consumable (0), 5
 --   BuffFood.IsBuffFood(lines)         true when the tooltip says well fed
 --   BuffFood.Gain(lines)               { Stamina = 6, Spirit = 6 }, { mp5 = 3 },
@@ -22,6 +26,15 @@ ns.BuffFood = BF
 
 BF.WELL_FED = "Well Fed"
 BF.CLASS, BF.SUBCLASS = 0, 5
+BF.EATING = { "Food", "Drink", "Food & Drink" }
+
+function BF.Eating(buffs)
+    if type(buffs) ~= "table" then return nil end
+    for _, name in ipairs(BF.EATING) do
+        if buffs[name] then return true end
+    end
+    return false
+end
 
 function BF.IsBuffFood(lines)
     for _, l in ipairs(type(lines) == "table" and lines or {}) do

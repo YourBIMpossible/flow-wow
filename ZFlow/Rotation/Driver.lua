@@ -5,7 +5,10 @@ local _, ns = ...
 -- nothing: no attribute, binding, cast or frame is touched here, and the
 -- key plan is only worked out, never applied.
 --
---   D.Read(client, pack, ids[, role]) -> read(field)
+--   D.Read(client, pack, ids[, role, extra]) -> read(field)
+--     extra (section 232): one options table with named fields; no further
+--     positional arguments. extra.food: the module's food table (below).
+--     extra.chosen: the seals and blessings from the ownCasts module (below).
 --     the reader ns.Snapshot takes. dead, inCombat, stealthed, hostile,
 --     spells, buffs, targetDebuffs, form, current and pet are asked of the
 --     client; role is the
@@ -42,7 +45,28 @@ local _, ns = ...
 --       spells     each row also gets inRange = client.inRange(spell id)
 --                  when the client has that read and the answer is true or
 --                  false; otherwise range stays not known
---   D.Step(client, pack[, prefs, bias, applied, role]) -> view
+--       buffFood   the best Well Fed food in your bags (section 226). With
+--                  food (a table the module keeps, section 229 F-1): the
+--                  bags are read only out of a fight (inCombat false), and
+--                  a food read is kept in food until the module clears it
+--                  on BAG_UPDATE_DELAYED, or the pack or role changes. In a
+--                  fight, or a fight not known, the kept food answers, or
+--                  nil. Not known (nil) is not kept: the next read asks
+--                  again. Without food: read each time, as before.
+--                  food.on false (the D.FOOD setting off, section 230
+--                  BF-3): nil, and the bags are not read
+--       foodOn     food.on (true or false); nil without food
+--       mounted, onTaxi  client.mounted(), client.onTaxi(): true or false,
+--                  nil when the client has no such read or does not say
+--       chosen     extra.chosen (CF-32, N12): the seals and blessings
+--                  you cast or chose, by key, from the ownCasts module
+--                  (Rotation/OwnCasts.lua); nil when it is not a table
+--                  (none, or the module is not there)
+--       ownBuffs   client.ownBuffs() as it answered (N13): the buffs on you
+--                  that you put up yourself; nil when not known or the
+--                  client has no such read
+--   D.Step(client, pack[, prefs, bias, applied, role, extra]) -> view
+--     extra is handed to D.Read as it is (section 232).
 --     one read and one choice. A read that fails is an error (not caught
 --     here; the tick catches it).
 --   D.Why(snapshot, trace, keys, lockdown) -> why
@@ -95,6 +119,9 @@ ns.RotationDriver = D
 D.NAME = "rotationDriver"
 D.EVENT = "rotation.suggested"
 D.SETTING = "rotation.enabled"
+-- Section 230 (BF-3): suggest Well Fed food. The key Flow's import writes
+-- (Import/FromFlow.lua, rotation.recoverBuffFood).
+D.FOOD = "rotation.recoverBuffFood"
 -- The role you chose (Rotation/Role.lua declares the row).
 D.ROLE = "spec.role"
 D.EVERY = 0.2
@@ -205,7 +232,27 @@ local function buffFoodOf(client, pack, role)
     return {}
 end
 
-function D.Read(client, pack, ids, role)
+-- Section 229 (F-1): the food read, kept between bag changes and skipped in
+-- a fight. food: the module's table { kept, value, pack, role }; nil reads
+-- each time.
+local function buffFoodKept(client, pack, role, food)
+    if type(food) ~= "table" then return buffFoodOf(client, pack, role) end
+    if food.on == false then return nil end
+    local fresh = food.kept == true and food.pack == pack and food.role == role
+    if fresh then return food.value end
+    if client.inCombat() ~= false then return nil end
+    local got = buffFoodOf(client, pack, role)
+    if got ~= nil then
+        food.kept, food.value, food.pack, food.role = true, got, pack, role
+    else
+        food.kept, food.value = false, nil
+    end
+    return got
+end
+
+function D.Read(client, pack, ids, role, extra)
+    local food = type(extra) == "table" and extra.food or nil
+    local chosen = type(extra) == "table" and extra.chosen or nil
     -- Lead section 187: the form is asked of the client once for a read,
     -- and both fields (form, formKnown) come from that one answer.
     -- The answer is kept only for the other field of the pair, and used
@@ -257,9 +304,26 @@ function D.Read(client, pack, ids, role)
             return client.pet()
         end
         if field == "conjured" then return conjuredOf(client, pack) end
-        if field == "buffFood" then return buffFoodOf(client, pack, role) end
-        -- GT-1, GT-2: the gather guards' reads (Rotation/Gather.lua).
-        if field == "trackingAny" or field == "mounted" or field == "onTaxi" then
+        if field == "chosen" then return type(chosen) == "table" and chosen or nil end
+        if field == "ownBuffs" then
+            if type(client.ownBuffs) ~= "function" then return nil end
+            return client.ownBuffs()
+        end
+        if field == "buffFood" then return buffFoodKept(client, pack, role, food) end
+        -- Section 230: no "and ... or nil" here; false must stay false.
+        if field == "foodOn" then
+            if type(food) ~= "table" or type(food.on) ~= "boolean" then return nil end
+            return food.on
+        end
+        -- Section 230 (BF-2) and GT-2: one read of each for both the food and the gather guards.
+        if field == "mounted" or field == "onTaxi" then
+            if type(client[field]) ~= "function" then return nil end
+            local ok, v = pcall(client[field])
+            if ok and type(v) == "boolean" then return v end
+            return nil
+        end
+        -- GT-1: is any tracking on (Rotation/Gather.lua).
+        if field == "trackingAny" then
             if type(ns.Gather) ~= "table" then return nil end
             return ns.Gather.Read(client, field)
         end
@@ -327,12 +391,12 @@ function D.Why(snapshot, trace, keys, lockdown)
     return why
 end
 
-function D.Step(client, pack, prefs, bias, applied, role)
+function D.Step(client, pack, prefs, bias, applied, role, extra)
     if type(pack) ~= "table" then
         return { pack = false, trace = {}, why = { pack = false } }
     end
     local ids, missing = RR.SpellIds(pack, client.spellId)
-    local snapshot = ns.Snapshot(D.Read(client, pack, ids, role))
+    local snapshot = ns.Snapshot(D.Read(client, pack, ids, role, extra))
     local suggestion, trace = ns.Choose(snapshot, pack, prefs, bias)
     local passed = passedIn(trace)
     if suggestion and #passed > 0 then suggestion.passed = passed end
@@ -373,15 +437,29 @@ function D.Step(client, pack, prefs, bias, applied, role)
 end
 
 -- One tick's work: the class's pack, then a step.
-local function work(client, packs, role)
+local function work(client, packs, role, extra)
     local class = type(client.class) == "function" and client.class() or nil
     local pack = type(class) == "string" and type(packs) == "table" and packs[class] or nil
-    return D.Step(client, pack, nil, nil, nil, role)
+    return D.Step(client, pack, nil, nil, nil, role, extra)
+end
+
+-- CF-32: what the ownCasts module keeps (Rotation/OwnCasts.lua), asked
+-- each tick; nil when the kernel has no such module, it is off, or it
+-- keeps nothing. Resolved when called, so file order does not matter.
+local function chosenOf(k)
+    if type(k) ~= "table" or type(k.use) ~= "function" then return nil end
+    local ok, own = pcall(k.use, "ownCasts")
+    if not ok or type(own) ~= "table" or type(own.Chosen) ~= "function" then return nil end
+    local asked, got = pcall(own.Chosen)
+    if asked and type(got) == "table" then return got end
+    return nil
 end
 
 function D.Declare(k, packs)
     local api = {}
     local view, errors, lastError = nil, 0, nil
+    -- Section 229 (F-1): the Well Fed food read, kept until the bags change.
+    local food = {}
     function api.view() return view end
     function api.errors() return errors end
     function api.lastError() return lastError end
@@ -394,7 +472,8 @@ function D.Declare(k, packs)
             end
             return
         end
-        local ok, got = pcall(work, ctx.client, packs or ns.Packs, ctx.settings:get(D.ROLE))
+        food.on = ctx.settings:get(D.FOOD) ~= false
+        local ok, got = pcall(work, ctx.client, packs or ns.Packs, ctx.settings:get(D.ROLE), { food = food, chosen = chosenOf(k) })
         if ok then
             view = got
         else
@@ -418,9 +497,20 @@ function D.Declare(k, packs)
             label = "Suggest the next spell",
             help = "Works out which spell to press next. It presses nothing for you.",
             group = "Rotation",
+        }, {
+            key = D.FOOD, scope = "account", type = "bool", default = true,
+            label = "Suggest Well Fed food",
+            help = "Out of a fight, with no Well Fed on you, suggests the best Well Fed food in your bags. It eats nothing for you.",
+            group = "Rotation",
         } },
         provides = { View = api.view, Errors = api.errors },
         ticks = { { every = D.EVERY, run = tick } },
+        start = function(c)
+            food = {}
+            -- The bags changed: the food kept may be gone, or a better one there.
+            c.bus:on(D.NAME, "BAG_UPDATE_DELAYED", function() food = {} end)
+        end,
+        stop = function() food = {} end,
     })
     return api
 end

@@ -13,12 +13,14 @@ local _, ns = ...
 --                  game shows.
 --   "authored"     a model written by Flow, with its provenance note beside it.
 --
--- Not ported, on purpose:
---   * removing poisons or curses from other players (the old dispel list was
---     used on the group; here it is for yourself only);
---   * the class-quest ids and quest names for Bear Form and Aquatic Form
---     (their source is unrecorded);
---   * the per-talent "why" lines (they stay in Classes/Druid/Data.lua).
+-- Not in this pack yet (tasks):
+--   * removing poisons or curses from other players: needs a party member
+--     read and a chooser step for others (the old dispel list was used on
+--     the group; here it is for yourself only);
+--   * the class-quest ids and quest names for Bear Form and Aquatic Form:
+--     their old source is unrecorded, so they need a read from the game;
+--   * the per-talent "why" lines: not carried over yet (they are in
+--     Classes/Druid/Data.lua on zflow).
 
 local GUESS = "first guess"
 local OLD = "carried over from Classes/Druid on zflow; authorship unrecorded"
