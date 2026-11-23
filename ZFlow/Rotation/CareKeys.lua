@@ -190,6 +190,9 @@ end
 -- PK-3: { [spell] = true | false } for one unit, from client.spellId and
 -- client.reach (C_Spell.IsSpellInRange, party units only). A spell with no
 -- id, a read that raised or gave nothing is left out: not known.
+-- K7-1 (P-KEYS-RAID-REACH): in a raid the friends are raid1..40 and
+-- client.reach answers for those too (Core/Client.lua section 243); any
+-- other unit answers nil there, so it stays not known.
 local function reachOf(client, unit, spells)
     local out = {}
     if type(client.reach) ~= "function" or type(client.spellId) ~= "function" then return out end
