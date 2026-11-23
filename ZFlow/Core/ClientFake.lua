@@ -1445,6 +1445,25 @@ function ns.make.fakeClient(opts)
         s.unitBuffs = s.unitBuffs or {}
         s.unitBuffs[unit] = rows
     end
+    -- N64: the enchant on your weapons, in the shape Plexy's P-READS note
+    -- names for the real read (item 5, not yet in Core/Client.lua):
+    --   c.weaponEnchant() -> { main = { has, left, charges }, off = ... } or nil
+    -- has true or false, left seconds (nil: not known), charges a number or
+    -- nil; a hand not read is left out. setWeaponEnchant(nil): not read;
+    -- setWeaponEnchantFails(true): the read raises.
+    function c.weaponEnchant()
+        if s.weaponEnchantFails then error("weapon enchant read failed (test)") end
+        if type(s.weaponEnchant) ~= "table" then return nil end
+        local out = {}
+        for hand, row in pairs(s.weaponEnchant) do
+            if type(row) == "table" then
+                out[hand] = { has = row.has, left = row.left, charges = row.charges }
+            end
+        end
+        return out
+    end
+    function c.setWeaponEnchant(t) s.weaponEnchant = t end
+    function c.setWeaponEnchantFails(on) s.weaponEnchantFails = (on == true) end
     -- Plays the game filling its tooltip for `unit`: every onUnitTooltip
     -- listener is told, and what they added comes back as
     -- { { text, r, g, b } ... }.
@@ -2502,6 +2521,43 @@ function ns.make.fakeClient(opts)
         function e.escape() e.shown, told = false, nil end
         c.textEntries[#c.textEntries + 1] = e
         return h
+    end
+
+    -- N67: other add-ons' data as the real client reads it.
+    -- setGatherMateNodes(map, rows): GatherMate2 is there with those rows
+    -- on that map ({ { kind, x, y, node } }); a map not set has none.
+    -- setGatherMateNodes(nil): GatherMate2 is gone. c.gatherMateAsks counts
+    -- every ask. setAttuneProgress(rows | nil): Attune's rows, or none.
+    -- Each answer is a copy.
+    c.gatherMateAsks = 0
+    local function copyRows(rows)
+        local out = {}
+        for i, r in ipairs(rows) do
+            local row = {}
+            for key, v in pairs(r) do row[key] = v end
+            out[i] = row
+        end
+        return out
+    end
+    function c.setGatherMateNodes(map, rows)
+        if map == nil then
+            s.gatherMate = nil
+            return
+        end
+        s.gatherMate = s.gatherMate or {}
+        s.gatherMate[map] = rows
+    end
+    function c.gatherMateNodes(map)
+        c.gatherMateAsks = c.gatherMateAsks + 1
+        if type(s.gatherMate) ~= "table" or type(map) ~= "number" then return nil end
+        local rows = s.gatherMate[map]
+        if type(rows) ~= "table" then return {} end
+        return copyRows(rows)
+    end
+    function c.setAttuneProgress(rows) s.attune = rows end
+    function c.attuneProgress()
+        if type(s.attune) ~= "table" then return nil end
+        return copyRows(s.attune)
     end
     return c
 end

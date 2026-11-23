@@ -86,6 +86,11 @@ local READS = {
     -- N57: the rotation key's bindings and what a key does; read by the
     -- settings page only. Their names are in Diag.NAMES.
     bindingKeys = false, bindingAction = false,
+
+    -- N67: other add-ons' data at runtime (GatherMate2's nodes, Attune's
+    -- progress); read by Nav/AddonSources.lua only. The globals they read
+    -- are in Diag.NAMES; the capture keeps only whether each is loaded.
+    gatherMateNodes = false, attuneProgress = false,
 }
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).

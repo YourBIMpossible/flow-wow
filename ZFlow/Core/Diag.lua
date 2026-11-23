@@ -171,6 +171,10 @@ Diag.NAMES = {
     "GetBinding", "GetNumBindings", "LoadBindings", "C_KeyBindings.GetBindingContextForAction",
     "C_KeyBindings.GetBindingByKey", "C_KeyBindings.GetBindingIndex", "RunBinding",
     "CreateKeyChordStringUsingMetaKeyState", "IsKeyPressIgnoredForBinding", "GetConvertedKeyOrButton",
+    -- N67: the other add-ons' globals read at runtime (client.gatherMateNodes,
+    -- client.attuneProgress); first guesses, so a capture says which exist.
+    "GatherMate2", "GatherMate2.GetNodesForZone", "GatherMate2.DecodeLoc", "GatherMate2.GetNameForNode",
+    "Attune_Data", "Attune_Data.attunes", "Attune_DB", "Attune_DB.toons",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns
@@ -348,6 +352,10 @@ function Diag.Collect(k, why)
         predecessorLoaded = client.addonLoaded(k.id.predecessor),
         predecessorData = client.savedExists(k.id.predecessorDB),
         selfLoaded = client.addonLoaded(k.id.addon),
+        -- N67: whether each optional source add-on is loaded; nothing of
+        -- their data is kept in a snapshot.
+        gatherMateLoaded = client.addonLoaded(k.id.gatherMate or ns.id.gatherMate),
+        attuneLoaded = client.addonLoaded(k.id.attune or ns.id.attune),
     }
     -- Whether each read came back known: a nil above leaves no trace when saved.
     snap.known = {}
@@ -1514,6 +1522,12 @@ function Diag.Start(k)
             local line = rotation[i]
             say("rotation", function() return line end)
         end
+        -- N67: the optional GatherMate2 and Attune sources (Nav/AddonSources.lua).
+        say("sources", function()
+            local sources = ns.Nav and ns.Nav.AddonSources
+            if type(sources) ~= "table" or type(sources.Line) ~= "function" then return nil end
+            return sources.Line(k)
+        end)
     end
 
     -- The help word: every word in commands, one line each. It reads the

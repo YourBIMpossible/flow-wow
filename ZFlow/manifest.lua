@@ -139,6 +139,7 @@ return {
         "Nav/RepairStep.lua",
         "Nav/QuestSource.lua",
         "Nav/QuestRead.lua",
+        "Nav/AddonSources.lua",
         "Nav/Rides.lua",
         "Nav/TravelSpells.lua",
         "Nav/TravelIcon.lua",
@@ -197,6 +198,8 @@ return {
     "Rotation/Group.lua",
     -- N63: heal and cures on the unit under your mouse, off by default.
     "Rotation/Mouseover.lua",
+    -- N64: the weapon enchant reminder, a line in chat only (after Group).
+    "Rotation/Enchant.lua",
     -- N55: the boss loot panel, look only (after Gear, Items/Drops and the classes).
     "UI/BossLoot.lua",
     -- N70: settings export and import as data (after Export, Diag and the settings page).

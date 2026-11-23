@@ -285,7 +285,12 @@ return {
         t.eq(type(run), "function")
         run("diag")
         t.eq(c.saved(ns.id.accountDB).diag.count, 2)
-        t.ok(c.printed[#c.printed]:find("snapshot 2", 1, true), c.printed[#c.printed])
+        -- The snapshot line is said first; state lines (N67 sources) may follow it.
+        local said = false
+        for _, line in ipairs(c.printed) do
+            if line:find("snapshot 2", 1, true) then said = true end
+        end
+        t.ok(said, c.printed[#c.printed])
         run(" DIAG clear ")
         t.eq(c.saved(ns.id.accountDB).diag, nil)
         run("")

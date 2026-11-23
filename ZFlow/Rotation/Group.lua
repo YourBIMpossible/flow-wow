@@ -63,7 +63,15 @@ G.BOUNCE = 300
 -- written here. Not given: no refusal is known, and nothing is kept.
 G.BOUNCE_GLOBAL = "SPELL_FAILED_AURA_BOUNCED"
 G.SENT_WINDOW = 2
+-- N64 (lead section 243): how long a buff lasts, from the client's own
+-- answer, over the pack's guessed minutes. A member's buffs read with the
+-- time left within G.LEARN_WINDOW seconds of your own cast of it on them
+-- landing: the whole length is that time left plus the seconds since the
+-- cast. Kept per spell, in memory only, like the casts it is used with;
+-- the pack's minutes stay the first guess until a read gives it.
+G.LEARN_WINDOW = 10
 local memory, bounced, sent, last = {}, {}, {}, nil
+local learned = {}
 -- Lead section 248 PP2-2: the members of the last read, by the name a cast
 -- names them with ("Name", or "Name-Realm" for another realm), to the key
 -- memory is kept under: their GUID where it was read, else that full name.
@@ -135,12 +143,36 @@ local function remembered(row, rule, now, name)
         row.has[rule.spell] = true
         return
     end
-    if row.has[rule.spell] ~= nil or type(rule.minutes) ~= "number" then return end
     local castAt = noted(memory, name, rule.spell)
-    if type(castAt) ~= "number" then return end
-    local left = rule.minutes * 60 - (now - castAt)
+    local seen = row.has[rule.spell]
+    -- N64: the time left read just after your cast landed gives its length.
+    if type(castAt) == "number" and type(seen) == "number" and seen == seen and seen < math.huge
+        and seen > 0 and now >= castAt and now - castAt <= G.LEARN_WINDOW then
+        learned[rule.spell] = seen + (now - castAt)
+    end
+    if seen ~= nil or type(castAt) ~= "number" then return end
+    local whole = G.Length(rule)
+    if whole == nil then return end
+    local left = whole - (now - castAt)
     if left < 0 then left = 0 end
     row.has[rule.spell] = left
+end
+
+-- N64: the seconds a buff lasts: what the client answered (above), else
+-- the row's guessed minutes; nil when neither is known.
+function G.Length(rule)
+    if type(rule) ~= "table" then return nil end
+    local got = learned[rule.spell]
+    if type(got) == "number" then return got end
+    if type(rule.minutes) == "number" then return rule.minutes * 60 end
+    return nil
+end
+
+-- N64: { [spell] = seconds } learned this session; a copy.
+function G.Learned()
+    local out = {}
+    for spell, secs in pairs(learned) do out[spell] = secs end
+    return out
 end
 
 local function readMember(client, m, pack, ids)
@@ -388,6 +420,7 @@ function G.Declare(k)
             ctx = c
             kept = nil
             memory, bounced, sent, last = {}, {}, {}, nil
+            learned = {}
             roster = {}
             -- Someone joined or left: read the group again at once.
             c.bus:on(G.NAME, "GROUP_ROSTER_UPDATE", function() kept = nil end)
@@ -437,6 +470,7 @@ function G.Declare(k)
             ctx = nil
             kept = nil
             memory, bounced, sent, last = {}, {}, {}, nil
+            learned = {}
         end,
     })
     return api
