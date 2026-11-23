@@ -87,7 +87,10 @@ Report 'two-characters' $r 0 @(
     'Encounter Journal add-on loaded: no',
     'works 2, missing 2, not confirmed 1, not asked 20',
     'arrows.mode = separate',
-    'arrows.points.quest = CENTER, CENTER, 200, 100'
+    'arrows.points.quest = CENTER, CENTER, 200, 100',
+    '=== Sell list: first grey item ===',
+    'Cracked Bone: not read (price not read yet)',
+    'listing: to sell 0, kept 1, not sold 1, not read 0'
 ) @('987654', '987111', '555444', '0.4321', '0.8765', '1411', 'bagStacks', 'money', 'level:', 'x3:')
 $cases++
 $after = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash

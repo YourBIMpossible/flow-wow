@@ -196,4 +196,18 @@ tests["dungeon states 305: the one place all objectives share, or none"] = funct
     t.eq(S.ObjectivesTop({}), nil)
 end
 
+-- Lead DISPATCH 343 (the Dungeon Quests look): the level range and the
+-- list text are worked out here, so the window computes nothing.
+tests["dungeon list 343: the level range as the header and the list say it"] = function(t)
+    t.eq(S.LevelText({ minQ = 18, maxQ = 22 }), "Levels 18-22")
+    t.eq(S.LevelText({ minQ = 27, maxQ = 27 }), "Level 27", "one level")
+    t.eq(S.LevelText({ name = "X" }), nil, "no level known")
+    t.eq(S.ListText({ name = "The Deadmines", minQ = 18, maxQ = 22 }), "The Deadmines (18-22)")
+    t.eq(S.ListText({ name = "Shadowfang Keep", minQ = 27, maxQ = 27 }), "Shadowfang Keep (27)")
+    t.eq(S.ListText({ name = "Zul'Farrak" }), "Zul'Farrak", "no level known: the name alone")
+    t.eq(S.CountText(1), "1 quest")
+    t.eq(S.CountText(2), "2 quests")
+    t.eq(S.CountText(0), "No quests")
+end
+
 return tests

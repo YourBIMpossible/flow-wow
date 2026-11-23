@@ -60,7 +60,9 @@ Advisor.MAX_SHOWN = 5
 Advisor.WIDTH, Advisor.HEIGHT = 300, 120
 Advisor.DEFAULT_POINT = { "TOPRIGHT", "TOPRIGHT", -220, -200 }
 -- The kit window. Its size is a first guess: not seen in game.
-Advisor.TITLE = "Advisor"
+-- Its title is the add-on's own (lead sections 340/341): Advisor.Title(id),
+-- also the plain panel's first line. Advisor.TITLE is the words after it.
+Advisor.TITLE = "Advice"
 Advisor.KIT_ID = "Advisor"
 Advisor.KIT_WIDTH, Advisor.KIT_HEIGHT = 320, 220
 
@@ -73,16 +75,23 @@ local function checkId(id)
     return nil
 end
 
--- Advisor.View(lines) -> a kit window spec: a header, then one line for
+-- Advisor.Title(id) -> "<add-on title>: Advice". id: the identity (default ns.id).
+function Advisor.Title(id)
+    id = type(id) == "table" and id or ns.id
+    return tostring(id.title) .. ": " .. Advisor.TITLE
+end
+
+-- Advisor.View(lines, title) -> a kit window spec: a header, then one line for
 -- each text, top to bottom. A line that is no text is left out, so it
 -- cannot cost the window. Nothing in it can be pressed. Escape does not
 -- close it: advice should not go with every Escape.
-function Advisor.View(lines)
-    local view = { id = Advisor.KIT_ID, title = Advisor.TITLE, children = {},
+function Advisor.View(lines, title)
+    if type(title) ~= "string" or title == "" then title = Advisor.Title() end
+    local view = { id = Advisor.KIT_ID, title = title, children = {},
         width = Advisor.KIT_WIDTH, height = Advisor.KIT_HEIGHT, point = Advisor.DEFAULT_POINT,
         escape = false }
     local kids = view.children
-    kids[1] = { kind = "header", title = Advisor.TITLE }
+    kids[1] = { kind = "header", title = title }
     if type(lines) ~= "table" then return view end
     for i = 1, #lines do
         local text = lines[i]
@@ -141,7 +150,11 @@ function Advisor.Declare(k)
         if #list > Advisor.MAX_SHOWN then
             lines[#lines + 1] = "and " .. (#list - Advisor.MAX_SHOWN) .. " more"
         end
-        host.draw(Advisor.View(lines), lines)
+        -- The plain panel has no title of its own: the title is its first line.
+        local title = Advisor.Title(k.id or ns.id)
+        local rows = { title }
+        for i = 1, #lines do rows[i + 1] = lines[i] end
+        host.draw(Advisor.View(lines, title), rows)
         if not closed then host.show(true) end
     end
 

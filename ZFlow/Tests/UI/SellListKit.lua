@@ -238,7 +238,20 @@ tests["sell list kit: reservations not known offers nothing, says so, and still 
     if not empty then return end
     t.eq(empty.text, "Reservations not known.")
     t.ok(empty.how:find("Nothing is offered for sale", 1, true) == 1, empty.how)
-    t.eq(part(tree, "itemLine", "Broken Fang"), nil, "nothing offered")
+    -- Lead section 340: an item not offered still has its own row, with
+    -- its reason, under "Not sold, and why" (never under "To sell"): the
+    -- fang is listed there as "reservations not known", with no price.
+    local section, sectionOf = nil, {}
+    K.Each(tree, function(p)
+        if p.kind == "section" then section = p.text end
+        if p.kind == "itemLine" then sectionOf[K.TextOf(p)] = section end
+    end)
+    local fang = part(tree, "itemLine", "Broken Fang")
+    t.ok(fang ~= nil, "the fang has its own row")
+    t.eq(sectionOf["Broken Fang"], L.OTHER_SECTION, "nothing offered: it is under " .. L.OTHER_SECTION)
+    t.eq(fang and fang.note, "reservations not known", "with its reason")
+    t.eq(fang and fang.money, nil, "and no price claimed")
+    t.ok(sectionOf["Broken Fang"] ~= L.SELL_SECTION, "not under " .. L.SELL_SECTION)
     t.ok(part(tree, "itemLine", "Hearthstone") ~= nil, "what is kept still shows")
     t.eq(part(tree, "footer").money, nil, "no total is claimed")
 end
@@ -261,7 +274,7 @@ tests["sell list kit: the footer total is the observed sum, with the empty slot 
     K.Each(tree, function(p)
         t.ok(p.kind ~= "button" and p.onClick == nil, "nothing to press: " .. p.kind .. " " .. p.path)
     end)
-    t.eq(count(drawn(c), "button"), 0, "no button drawn")
+    t.eq(count(drawn(c), "button"), 1, "one button drawn: Sell these (lead section 337 item 1)")
     t.eq(type(api.window), "function", "the window is reachable for the lane that owns the button")
     if type(api.window) ~= "function" then return end
     local h = api.window()

@@ -314,8 +314,11 @@ tests["price watch: no buy or sell name is looked up"] = function(t)
             t.ok(not lower:find(word, 1, true), "a client function was asked for: " .. tostring(name))
         end
     end
+    -- The fake's one sell call is Sell these (lead section 337 item 1); the
+    -- price watch must not ask it, which the asked check above holds.
     for name in pairs(c) do
         local lower = tostring(name):lower()
+        if name == "sellBagItem" then lower = "" end
         t.ok(not lower:find("buy", 1, true) and not lower:find("sell", 1, true),
             "the fake client has a buy or sell function: " .. tostring(name))
     end

@@ -32,6 +32,9 @@ ns.KitTheme = {
         icon = 20, coin = 12,
         header = 32, tab = 24, section = 24,
         topicWidth = 180, topicRow = 24,
+        -- Lead section 340: the pane's page heading (the retail Settings
+        -- window's category title).
+        pageTitle = 36,
         controlColumn = 200,
         button = 22, buttonMin = 96, buttonPad = 24,
         check = 24, search = 180, scrollBar = 18,
@@ -75,6 +78,8 @@ ns.KitTheme = {
         small = "GameFontHighlightSmall",
         off = "GameFontDisableSmall",
         big = "GameFontNormalLarge",
+        -- Lead section 340, first guess on 16001; the plain form is big.
+        pageTitle = "GameFontHighlightHuge",
     },
     -- Pictures a window puts on its own rows, by what they mean: a window
     -- file takes them from here (Kit.look.icon.questInLog) and names no

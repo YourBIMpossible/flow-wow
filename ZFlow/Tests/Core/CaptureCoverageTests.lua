@@ -87,6 +87,14 @@ KIND.show[#KIND.show + 1] = "settingsWindow"
 KIND.show[#KIND.show + 1] = "buttonFace"
 KIND.show[#KIND.show + 1] = "ctrlDrag"
 KIND.show[#KIND.show + 1] = "hoverTip"
+-- Lead DISPATCH section 340: the minimap button; a click opens the
+-- settings page only.
+KIND.show[#KIND.show + 1] = "minimapButton"
+
+-- Lead section 340: the diagnostics line naming the frame under the mouse,
+-- and which kit window made a frame; asked by the settings word only.
+KIND.tool[#KIND.tool + 1] = "kitFocus"
+KIND.tool[#KIND.tool + 1] = "kitOwner"
 
 -- N60b: chat readability (UI/Chat.lua). How a chat window looks (text
 -- size, fading, the tab held up) and the wheel hook after the game's own.
@@ -180,6 +188,9 @@ local READS = {
     -- weapon master step; the capture asks none. Its names (GetNumSkillLines,
     -- GetSkillLineInfo) are in Diag.NAMES and Diag's skillLines field.
     weaponSkills = false,
+    -- Lead section 337 item 2: skill ranks for the skill boosters (first
+    -- guess); the same skill line reads, none in the capture.
+    skillRanks = false,
     -- G60: whether the client can speak (its voices) and the NPC's words in
     -- an open gossip or quest window; read by UI/NpcSpeech.lua only, the
     -- capture asks none. Their names are in Diag.NAMES.
@@ -217,6 +228,14 @@ local READS = {
     -- only. Its name (UnitName) is in Diag.NAMES.
     playerName = false,
 }
+-- Lead section 337 item 1: the bag stacks with their bag and slot, and one
+-- slot read again before it is sold; read by Items/SellThese.lua only, on
+-- the player click. The capture asks neither.
+READS.bagSlots = false
+READS.bagSlot = false
+-- Lead section 337 item 1 (ACTING): one bag slot sold to the open merchant,
+-- only on the player click on Sell these, out of combat. Never the capture.
+KIND.act[#KIND.act + 1] = "sellBagItem"
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).
 local FEATURE = {
