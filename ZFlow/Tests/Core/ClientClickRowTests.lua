@@ -188,6 +188,33 @@ tests["client moveHandle: a drag in a fight does not move the frame"] = function
     t.eq(got, nil, "nothing handed back")
 end
 
+-- SC-3: a drag that ends in a fight does not stop the protected frame
+-- then; it stops it, and hands back the place, once the fight is over.
+local function fireEvent(env, name, ...)
+    for _, m in ipairs(env.made) do
+        local fn = m.frame.scripts.OnEvent
+        if type(fn) == "function" then fn(m.frame, name, ...) end
+    end
+end
+
+tests["client moveHandle: a drag that ends in a fight stops after the fight"] = function(t)
+    local env = frameEnv(false)
+    local got, n = nil, 0
+    local _, grip, holder = handle(env, function(point) got = point; n = n + 1 end)
+    grip.scripts.OnDragStart()
+    env.lock = true
+    grip.scripts.OnDragStop()
+    t.eq(count(holder.calls, "StopMovingOrSizing"), 0, "not stopped in the fight")
+    t.eq(got, nil, "nothing handed back in the fight")
+    env.lock = false
+    fireEvent(env, "PLAYER_REGEN_ENABLED")
+    t.eq(count(holder.calls, "StopMovingOrSizing"), 1, "stopped after the fight")
+    t.eq(got, { "BOTTOMLEFT", "BOTTOMLEFT", 120, 80 })
+    fireEvent(env, "PLAYER_REGEN_ENABLED")
+    t.eq(count(holder.calls, "StopMovingOrSizing"), 1, "once only")
+    t.eq(n, 1)
+end
+
 tests["client moveHandle: a handler that raises does not escape"] = function(t)
     local env = frameEnv(false)
     local _, grip = handle(env, function() error("boom") end)
