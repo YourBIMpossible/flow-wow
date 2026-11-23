@@ -237,6 +237,44 @@ tests["fake client: the craft reads are unknown until set, and crafts are logged
     t.eq(#c.crafts, 1, "a refused craft is not logged")
 end
 
+-- Section 240: the repeat runner. With setCraftRepeat(seconds), one craft
+-- asked with a repeat count n finishes n times on its own, one finish each
+-- `seconds` of advance(), each as UNIT_SPELLCAST_SUCCEEDED for the player
+-- and the recipe. A stop of the repeat drops the finishes still to come;
+-- a new ask replaces the run. Without it nothing finishes by itself.
+tests["fake client: the repeat runner finishes a repeat count on its own"] = function(t)
+    local c = ns.make.fakeClient()
+    c.setCombat(false)
+    local seen = {}
+    c.listen("UNIT_SPELLCAST_SUCCEEDED", function(unit, _, id)
+        seen[#seen + 1] = { "UNIT_SPELLCAST_SUCCEEDED", unit, id }
+    end)
+    c.craftRecipe(2657, 2)
+    c.advance(10, 10)
+    t.eq(#seen, 0, "no runner set: nothing finishes by itself")
+    c.setCraftRepeat(2)
+    c.craftRecipe(2657, 3)
+    c.advance(1)
+    t.eq(#seen, 0, "not yet")
+    c.advance(1)
+    t.eq(seen, { { "UNIT_SPELLCAST_SUCCEEDED", "player", 2657 } })
+    c.advance(4, 4)
+    t.eq(#seen, 3)
+    c.advance(10, 10)
+    t.eq(#seen, 3, "the count is done")
+    c.craftRecipe(2657, 3)
+    c.advance(2)
+    t.eq(#seen, 4)
+    c.stopCraftRepeat()
+    c.advance(10, 10)
+    t.eq(#seen, 4, "a stop drops the rest")
+    c.craftRecipe(2657, 3)
+    c.craftRecipe(3304, 1)
+    c.advance(10, 10)
+    t.eq(seen[#seen], { "UNIT_SPELLCAST_SUCCEEDED", "player", 3304 })
+    t.eq(#seen, 5, "a new ask replaces the run")
+end
+
 tests["fake client: a row panel records its rows and presses as the player"] = function(t)
     local c = ns.make.fakeClient()
     local h = c.rowPanel({ name = "TestRows" })

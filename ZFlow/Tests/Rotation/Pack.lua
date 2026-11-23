@@ -161,6 +161,64 @@ return {
         t.eq(ok, false, "a unit other than yourself fails")
     end,
 
+    -- P-PARTY: the look-only wording (lead section 233): a pack's dispels
+    -- are for you; your group's are only shown, from those same rows.
+    ["a group dispel entry says the group's are only shown"] = function(t)
+        local pack = good()
+        pack.dispels[1].group = true
+        local _, problems = ns.PackCheck(pack)
+        t.ok(has(problems, "dispels[1]: a group dispel entry (a pack's dispels are your own; "
+            .. "your group's are only shown, from the same rows, never cast)"), table.concat(problems, "; "))
+    end,
+
+    -- P-PARTY: the group rows (Rotation/Group.lua) and what PackCheck asks of them.
+    ["group rows: a good row passes; who, aura, slot, numbers and a unit are checked"] = function(t)
+        local pack = good()
+        pack.groups = {
+            { spell = "Shield", aura = { "Shield", "Greater Shield" }, who = "all", slot = "s", minutes = 5, rebuff = 30,
+              when = function() return true end, evidence = "first guess" },
+            { spell = "Shield", who = { "tank", "melee", "caster", "healer", "ranged", "WARRIOR", "DRUID" },
+              evidence = "first guess" },
+        }
+        local ok, problems = ns.PackCheck(pack)
+        t.eq(table.concat(problems, "; "), "", "no problems")
+        t.eq(ok, true, "good rows pass")
+        local bad = {
+            { function(r) r.who = nil end, "groups[1]: who is not \"all\" or a list of kinds and classes" },
+            { function(r) r.who = {} end, "groups[1]: who is not \"all\" or a list of kinds and classes" },
+            { function(r) r.who = { "tank", "wizard" } end, "groups[1]: who[2] is not a kind or a class" },
+            { function(r) r.aura = "Shield" end, "groups[1]: aura is not a list of buff names" },
+            { function(r) r.aura = { "Shield", "" } end, "groups[1]: aura is not a list of buff names" },
+            { function(r) r.slot = 3 end, "groups[1]: slot is not a name" },
+            { function(r) r.minutes = "five" end, "groups[1]: minutes is not a number" },
+            { function(r) r.rebuff = -1 end, "groups[1]: rebuff is not a number" },
+            { function(r) r.unit = "party1" end, "groups[1]: names a unit; group rows are only shown, never cast on anyone" },
+        }
+        for i, case in ipairs(bad) do
+            local p = good()
+            p.groups = { { spell = "Shield", aura = { "Shield" }, who = "all", evidence = "first guess" } }
+            case[1](p.groups[1])
+            local okBad, got = ns.PackCheck(p)
+            t.eq(okBad, false, "case " .. i .. " fails")
+            t.ok(has(got, case[2]), "case " .. i .. ": " .. table.concat(got, "; "))
+        end
+    end,
+
+    ["group rows: a pack still holding groupBuffs is told they are in groups now"] = function(t)
+        local pack = good()
+        pack.groupBuffs = {}
+        local ok, problems = ns.PackCheck(pack)
+        t.eq(ok, false, "fails")
+        t.ok(has(problems, "groupBuffs: the group rows are in groups now"), "named")
+    end,
+
+    ["group rows: every class pack's rows pass"] = function(t)
+        for class, pack in pairs(ns.Packs) do
+            local ok, problems = ns.PackCheck(pack)
+            t.eq(ok, true, class .. ": " .. table.concat(problems, "; "))
+        end
+    end,
+
     ["a when that is not a function is reported"] = function(t)
         local pack = good()
         pack.lists.default[1].when = true

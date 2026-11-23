@@ -409,14 +409,19 @@ end
 -- helps them most. Kings for a tank; Might for melee (warriors, rogues,
 -- paladins, a druid in Cat Form); Wisdom for casters, healers and hunters
 -- (Might doesn't help ranged attacks); Kings for anyone else once you have it.
+-- Blessings last 60 minutes on WoW: Forever (5 in Classic Era). `minutes` is
+-- only used when the game hides the aura and Flow goes by when you cast it;
+-- with 5, Flow asked you to rebless a full group every few minutes.
+local BLESSING_MINUTES = 60
 local function physical(u) return u.kind == "melee" or u.kind == "tank" end
 local function usesMana(u) return u.kind == "caster" or u.kind == "healer" or u.kind == "ranged" end
 local groupBuffs = {
-    { spell = "Blessing of Kings", group = "blessing", minutes = 5, rebuff = 30,
+    { spell = "Blessing of Kings", group = "blessing", minutes = BLESSING_MINUTES, rebuff = 30,
       who = function(u) return u.kind == "tank" end },
-    { spell = "Blessing of Might", group = "blessing", minutes = 5, rebuff = 30, who = physical },
-    { spell = "Blessing of Wisdom", group = "blessing", minutes = 5, rebuff = 30, who = usesMana },
-    { spell = "Blessing of Kings", group = "blessing", minutes = 5, rebuff = 30, who = function() return true end },
+    { spell = "Blessing of Might", group = "blessing", minutes = BLESSING_MINUTES, rebuff = 30, who = physical },
+    { spell = "Blessing of Wisdom", group = "blessing", minutes = BLESSING_MINUTES, rebuff = 30, who = usesMana },
+    { spell = "Blessing of Kings", group = "blessing", minutes = BLESSING_MINUTES, rebuff = 30,
+      who = function() return true end },
 }
 
 -- /flow seal [name|auto]: choose the seal Flow suggests (this character only).

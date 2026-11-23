@@ -55,7 +55,15 @@ for _, class in ipairs({ "PRIEST", "SHAMAN" }) do
     tests[name .. " pack: nothing observed, nothing for another player"] = function(t)
         local p = ns.Packs[class]
         t.ok(not string.find(p.provenance.facts, "observed in", 1, true), "no observation claimed")
-        t.eq(p.groups, {}, "no group rows")
+        -- P-PARTY: the priest's Fortitude for the group, only shown; the shaman has none.
+        if class == "PRIEST" then
+            t.eq(#p.groups, 1, "one group row")
+            t.eq({ p.groups[1].spell, p.groups[1].who, p.groups[1].aura, p.groups[1].unit },
+                { "Power Word: Fortitude", "all", { "Power Word: Fortitude", "Prayer of Fortitude" }, nil },
+                "Fortitude for everyone; Prayer counts")
+        else
+            t.eq(p.groups, {}, "no group rows")
+        end
         t.eq(p.spells.Resurrection, nil, "no Resurrection")
         t.eq(p.spells["Ancestral Spirit"], nil, "no Ancestral Spirit")
     end

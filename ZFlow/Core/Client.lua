@@ -487,13 +487,20 @@ function ns.make.client(env)
 
     -- The profession whose window is open, and every recipe in it:
     --   { profession = skill line, skill = n, max = n,
-    --     recipes = { { id =, name =, learned = true / false }, ... } }
+    --     recipes = { { id =, name =, learned = true / false,
+    --                   difficulty =, skillUps = }, ... } }
+    -- difficulty is the window colour (optimal, medium, easy, trivial) from
+    -- relativeDifficulty 0 to 3, and skillUps is numSkillUps when it is a
+    -- whole count; each is left out when the client gives anything else.
+    -- Needs game test: relativeDifficulty and numSkillUps on 16001 (P-PROF).
     -- nil when no profession window is open or the client will not say.
     -- Seen in game on 16001 (Blacksmithing): for a moment after the window
     -- opens the client says "ready" but is still changing its data source,
     -- and lists no recipes. That is not an empty profession, so it is nil
     -- until IsDataSourceChanging answers false. One recipe that cannot be
     -- read makes the whole reading nil: never a shorter list.
+    local RELATIVE_DIFFICULTY = { [0] = "optimal", [1] = "medium", [2] = "easy", [3] = "trivial" }
+
     function c.recipes()
         local ui = env.C_TradeSkillUI
         if type(ui) ~= "table" then return nil end
@@ -512,7 +519,9 @@ function ns.make.client(env)
         for i = 1, #ids do
             local okInfo, info = call(ui.GetRecipeInfo, ids[i])
             if not okInfo or type(info) ~= "table" or type(info.learned) ~= "boolean" then return nil end
-            rows[i] = { id = ids[i], name = type(info.name) == "string" and info.name or nil, learned = info.learned }
+            rows[i] = { id = ids[i], name = type(info.name) == "string" and info.name or nil, learned = info.learned,
+                difficulty = RELATIVE_DIFFICULTY[info.relativeDifficulty],
+                skillUps = wholeCount(info.numSkillUps) and info.numSkillUps or nil }
         end
         local out = { profession = line, skill = base.skillLevel, max = base.maxSkillLevel, recipes = rows }
         -- The profession's name as the client spells it (professionName, a
@@ -570,12 +579,24 @@ function ns.make.client(env)
     -- GetTradeSkillNumReagents(index), then for each reagent
     -- GetTradeSkillReagentItemLink(index, r) for the item and the third answer
     -- of GetTradeSkillReagentInfo(index, r) for how many a craft takes.
-    -- The same answer as recipeSchematic: { makes =, yield =, mats = }.
-    -- Anything that can't be read makes the whole answer nil: never a
-    -- shorter list. First guesses, not seen in game. Items/RecipeBook.lua
-    -- calls it for each row of tradeSkillRows (section 233, GR2-1).
+    -- Section 238 (RF-1 to RF-3, as Flow's readClassic in
+    -- Modules/Crafting/Recipes.lua): GetTradeSkillInfo(index) first, for the
+    -- row's name and kind (its difficulty); a "header" or "subheader" row is
+    -- no recipe: nil (RF-2). A product link that is no item link (an
+    -- enchant) gives makes nil, the reagents kept (RF-1); no product link
+    -- yet gives makes nil and partial. A reagent whose item or count is not
+    -- read yet is left out and the answer says partial = true (RF-3). No
+    -- reagent count, or none (RF-4), or any other read that fails: nil.
+    --   { name =, difficulty =, makes = (nil: no item), yield =, mats =,
+    --     partial = (true, or nil when every reagent was read) }
+    -- First guesses, not seen in game. Items/RecipeBook.lua calls it for
+    -- each row of tradeSkillRows (section 233, GR2-1).
     function c.tradeSkillSchematic(index)
         if not wholeCount(index) or index < 1 or index == math.huge then return nil end
+        local okInfo, name, kind = call(env.GetTradeSkillInfo, index)
+        if not okInfo or type(kind) ~= "string" or hidden(kind) then return nil end
+        if kind == "header" or kind == "subheader" then return nil end
+        if type(name) ~= "string" or hidden(name) or name == "" then return nil end
         local function itemOf(ok, link)
             if not ok or type(link) ~= "string" or hidden(link) then return nil end
             local id = tonumber(link:match("item:(%d+)"))
@@ -585,8 +606,17 @@ function ns.make.client(env)
         local function count(n, least)
             return wholeCount(n) and n < math.huge and n >= least
         end
-        local makes = itemOf(call(env.GetTradeSkillItemLink, index))
-        if not makes then return nil end
+        local okLink, link = call(env.GetTradeSkillItemLink, index)
+        if not okLink then return nil end
+        local makes, partial
+        if link == nil then
+            partial = true
+        elseif type(link) ~= "string" or hidden(link) then
+            return nil
+        elseif link:find("item:", 1, true) then
+            makes = itemOf(true, link)
+            if not makes then return nil end
+        end
         local yield = 1
         if env.GetTradeSkillNumMade ~= nil then
             local okMade, least = call(env.GetTradeSkillNumMade, index)
@@ -599,11 +629,14 @@ function ns.make.client(env)
         local mats = {}
         for r = 1, n do
             local item = itemOf(call(env.GetTradeSkillReagentItemLink, index, r))
-            local okInfo, _, _, need = call(env.GetTradeSkillReagentInfo, index, r)
-            if not item or not okInfo or not count(need, 1) then return nil end
-            mats[item] = (mats[item] or 0) + need
+            local okNeed, _, _, need = call(env.GetTradeSkillReagentInfo, index, r)
+            if item and okNeed and count(need, 1) then
+                mats[item] = (mats[item] or 0) + need
+            else
+                partial = true
+            end
         end
-        return { makes = makes, yield = yield, mats = mats }
+        return { name = name, difficulty = kind, makes = makes, yield = yield, mats = mats, partial = partial }
     end
 
     -- Section 233 (GR2-1): the rows of the classic trade skill window, for
@@ -612,10 +645,15 @@ function ns.make.client(env)
     -- GetNumTradeSkills() rows (0: no window), and GetTradeSkillInfo(i) for
     -- each row's name and kind; "header" and "subheader" rows are left out.
     -- Every other row is a recipe the player has learned. Only what the
-    -- window shows: a collapsed header hides its rows.
-    --   { name =, skill =, max =, rows = { { index = i, name = } } }
+    -- window shows: a collapsed header hides its rows. Section 238 (RF-2):
+    -- each row keeps its kind as its difficulty, as Flow did.
+    --   { name =, skill =, max =, rows = { { index = i, name =, difficulty = } } }
     -- Anything that can't be read makes the whole answer nil: never a
     -- shorter list. First guesses, not seen in game.
+    -- P-PROF (N23): the colour words the classic window gives a recipe row.
+    -- Needs game test: the words on 16001.
+    local ROW_DIFFICULTY = { optimal = "optimal", medium = "medium", easy = "easy", trivial = "trivial", difficult = "difficult" }
+
     function c.tradeSkillRows()
         local okLine, name, skill, max = call(env.GetTradeSkillLine)
         if not okLine or type(name) ~= "string" or hidden(name) or name == "" or name == "UNKNOWN" then
@@ -629,7 +667,7 @@ function ns.make.client(env)
             if not okInfo or type(kind) ~= "string" or hidden(kind) then return nil end
             if kind ~= "header" and kind ~= "subheader" then
                 if type(rowName) ~= "string" or hidden(rowName) or rowName == "" then return nil end
-                rows[#rows + 1] = { index = i, name = rowName }
+                rows[#rows + 1] = { index = i, name = rowName, difficulty = ROW_DIFFICULTY[kind] }
             end
         end
         local out = { name = name, rows = rows }
@@ -6124,6 +6162,192 @@ function ns.make.client(env)
         return out
     end
     -- --------------------------------------------------- end worn links
+
+    -- --------------------------------------------- your group (P-PARTY)
+    -- Read only, for the rotation's group step (Rotation/Group.lua): what
+    -- it suggests for another player is only shown, never cast. First
+    -- guesses, not seen in game on 16001. Each call under pcall; any answer
+    -- not given, raised, secret or of the wrong kind is nil (not known).
+    -- Your own party only (party1..4; in a raid, your own subgroup).
+    local PARTY_UNITS = { party1 = true, party2 = true, party3 = true, party4 = true }
+
+    -- c.party() -> { { unit, name, class, role, power, dead, connected }, ... } | nil
+    --   the other players in your party, in party order; {} when you are
+    --   alone. nil when whether one is there is not known (UnitExists gave
+    --   no yes or no for any party unit). Each field is left out when not
+    --   known: name UnitName; class UnitClass's second answer (the token);
+    --   role UnitGroupRolesAssigned; power UnitPowerType's first answer (a
+    --   kind, never an amount); dead UnitIsDead; connected UnitIsConnected.
+    --   The name is for the live caption only: never saved.
+    function c.party()
+        local out = {}
+        for i = 1, 4 do
+            local unit = "party" .. i
+            local there = yesNo(call(env.UnitExists, unit))
+            if there == nil then return nil end
+            if there then
+                local row = { unit = unit }
+                row.name = text(call(env.UnitName, unit))
+                local okClass, _, class = call(env.UnitClass, unit)
+                row.class = text(okClass, class)
+                row.role = text(call(env.UnitGroupRolesAssigned, unit))
+                local okPower, power = call(env.UnitPowerType, unit)
+                if okPower and power ~= nil and not hidden(power) and type(power) == "number" and power == power then
+                    row.power = power
+                end
+                row.dead = yesNo(call(env.UnitIsDead, unit))
+                row.connected = yesNo(call(env.UnitIsConnected, unit))
+                out[#out + 1] = row
+            end
+        end
+        return out
+    end
+
+    -- c.reach(spellId, unit) -> true | false | nil
+    --   C_Spell.IsSpellInRange(id, unit) for a party unit: in reach of that
+    --   spell (which also says they are there and in sight); nil for no
+    --   answer, and for any unit that is not party1..4 (not asked).
+    function c.reach(spellId, unit)
+        if type(spellId) ~= "number" or not PARTY_UNITS[unit] then return nil end
+        local group = env.C_Spell
+        if type(group) ~= "table" then return nil end
+        return yesNo(call(group.IsSpellInRange, spellId, unit))
+    end
+
+    -- c.unitDebuffTypes(unit) -> { [type] = debuff name } | nil
+    --   the curses, poisons, diseases and magic on you ("player") or a party
+    --   member, by type (C_UnitAuras.GetAuraDataByIndex(unit, i, "HARMFUL"),
+    --   the row's dispelName), the first debuff's name for each type ({}
+    --   when nothing removable is on them). nil when not known: no call, a
+    --   raise, or a row or a type the client hides. At most 40 rows.
+    function c.unitDebuffTypes(unit)
+        if unit ~= "player" and not PARTY_UNITS[unit] then return nil end
+        local auras = env.C_UnitAuras
+        local byIndex = type(auras) == "table" and auras.GetAuraDataByIndex or nil
+        if type(byIndex) ~= "function" then return nil end
+        local out = {}
+        for i = 1, 40 do
+            local ok, row = pcall(byIndex, unit, i, "HARMFUL")
+            if not ok then return nil end
+            if row == nil then return out end
+            if hidden(row) or type(row) ~= "table" then return nil end
+            local kind = row.dispelName
+            if kind ~= nil then
+                if hidden(kind) or type(kind) ~= "string" then return nil end
+                if kind ~= "" and out[kind] == nil then
+                    local name = row.name
+                    if name == nil or hidden(name) or type(name) ~= "string" or name == "" then name = kind end
+                    out[kind] = name
+                end
+            end
+        end
+        return out
+    end
+
+    -- The icon's caption: h.caption(text) on an icon c.icon made, a line
+    -- of text under it ("Mark of the Wild on <name>"); nil or "" hides it.
+    -- The live screen only: nothing is kept. Made the first time it is
+    -- asked for, on the icon's frame, found by the name the icon was made
+    -- with (spec.name); an icon with no name, or whose frame is not found,
+    -- has no caption. A first guess, not seen in game.
+    do
+        local plainIcon = c.icon
+        function c.icon(spec)
+            local h = plainIcon(spec)
+            if type(h) ~= "table" or type(spec) ~= "table" or type(spec.name) ~= "string" then return h end
+            local okFrame, frame = pcall(function() return env[spec.name] end)
+            if not okFrame or frame == nil then return h end
+            local line
+            function h.caption(words)
+                local shown = type(words) == "string" and words ~= ""
+                if line == nil then
+                    if not shown then return true end
+                    local okMade, made = method(frame, "CreateFontString", nil, "OVERLAY", "GameFontNormalSmall")
+                    if not okMade or made == nil then return false end
+                    line = made
+                    method(line, "SetPoint", "TOP", frame, "BOTTOM", 0, -2)
+                end
+                local okSet = method(line, "SetText", shown and words or "")
+                method(line, shown and "Show" or "Hide")
+                return okSet and true or false
+            end
+            return h
+        end
+    end
+    -- ----------------------------------------------- end your group
+    -- ---------------------------------------------------------------- N55
+    -- The boss loot panel (lead sections 237 item 5 and 238 item 4, owner
+    -- Zen; RESEARCH-N55): the boss unit, whether you are in an instance,
+    -- and the item of anyone's loot line. Read only: no unit is targeted,
+    -- nothing is looted, rolled on or said. Every call here is a first
+    -- guess, not seen in game on 16001; an answer that cannot be read is
+    -- left out, never a default. The capture asks each name (Diag.NAMES).
+
+    -- c.bossUnit() -> { exists, guid, name } | nil
+    --   the unit "boss1" (the game's first boss frame): UnitExists,
+    --   UnitGUID, UnitName. nil when the client does not say whether there
+    --   is one; { exists = false } when it says there is none, and then
+    --   nothing more is asked. guid and name are each left out when not
+    --   read. Only "boss1" is named.
+    function c.bossUnit()
+        local exists = yesNo(call(env.UnitExists, "boss1"))
+        if exists == nil then return nil end
+        if not exists then return { exists = false } end
+        return {
+            exists = true,
+            guid = text(call(env.UnitGUID, "boss1")),
+            name = text(call(env.UnitName, "boss1")),
+        }
+    end
+
+    -- c.instance() -> { inside, kind } | nil
+    --   whether you are in an instance: IsInInstance() (inside, and the
+    --   kind as the game names it: "party", "raid", "none", ...); else the
+    --   second answer of GetInstanceInfo(), where "none" is not inside.
+    --   nil when neither says.
+    function c.instance()
+        local ok, inside, kind = call(env.IsInInstance)
+        if yesNo(ok, inside) ~= nil then
+            return { inside = inside, kind = text(ok, kind) }
+        end
+        local okInfo, _, infoKind = call(env.GetInstanceInfo)
+        infoKind = text(okInfo, infoKind)
+        if infoKind == nil then return nil end
+        return { inside = infoKind ~= "none", kind = infoKind }
+    end
+
+    -- c.lootLine(line) -> item link, count | nil
+    --   the item of a CHAT_MSG_LOOT line, whoever looted it: your own
+    --   (LOOT_ITEM_SELF_MULTIPLE, LOOT_ITEM_SELF) or another player's
+    --   (LOOT_ITEM_MULTIPLE, LOOT_ITEM), by the client's own texts; no
+    --   English is written here. The looter's name is matched and dropped:
+    --   it is never returned. count is 1 when the line names none. nil for
+    --   a line that is none of the four (a roll, something made or
+    --   bought), one with no item link, or a client without the texts.
+    function c.lootLine(line)
+        if type(line) ~= "string" or line == "" or hidden(line) then return nil end
+        local forms = { env.LOOT_ITEM_SELF_MULTIPLE or false, env.LOOT_ITEM_SELF or false,
+                        env.LOOT_ITEM_MULTIPLE or false, env.LOOT_ITEM or false }
+        for f = 1, 4 do
+            local pattern, kinds = lootPattern(forms[f])
+            if pattern then
+                local caps = { line:match(pattern) }
+                if #caps > 0 and #caps == #kinds then
+                    local link, count = nil, nil
+                    for i = 1, #kinds do
+                        if kinds[i] == "d" then
+                            count = tonumber(caps[i])
+                        elseif type(caps[i]) == "string" and caps[i]:find("item:%d+") then
+                            link = caps[i]
+                        end
+                    end
+                    if link then return link, count or 1 end
+                end
+            end
+        end
+        return nil
+    end
+    -- ------------------------------------------------------------ end N55
     return c
 end
 

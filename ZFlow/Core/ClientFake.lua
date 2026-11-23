@@ -56,6 +56,8 @@ end
 function ns.make.fakeClient(opts)
     opts = opts or {}
     local s = { t = opts.now or 1000, ms = 0, combat = false, bankOpen = false, merchantOpen = false, loaded = {}, saved = {}, listening = {}, eventFaults = {}, frames = 0 }
+    -- The craft repeat runner step (section 240), set in the craft section.
+    local repeatFrame
     local c = { printed = {} }
 
     local events = ns.make.listeners(
@@ -145,12 +147,14 @@ function ns.make.fakeClient(opts)
         if type(r) ~= "table" then return nil end
         return { name = r.name, skill = r.skill, max = r.max, rows = copyRows(r.rows) or {} }
     end
+    -- Section 238: name, difficulty and partial too, as the client gives.
     function c.tradeSkillSchematic(index)
         local r = s.tradeSchematics and s.tradeSchematics[index]
         if type(r) ~= "table" then return nil end
         local mats = {}
         for item, n in pairs(type(r.mats) == "table" and r.mats or {}) do mats[item] = n end
-        return { makes = r.makes, yield = r.yield, mats = mats }
+        return { name = r.name, difficulty = r.difficulty, makes = r.makes, yield = r.yield, mats = mats,
+                 partial = r.partial }
     end
     function c.spell(id)
         if type(id) ~= "number" then return nil end
@@ -704,6 +708,7 @@ function ns.make.fakeClient(opts)
         for i = 1, frames do
             s.t = t0 + seconds * i / frames
             ticks.call("frame", seconds / frames)
+            if repeatFrame then repeatFrame() end
         end
     end
     function c.fire(event, ...) events.call(event, ...) end
@@ -1898,16 +1903,41 @@ function ns.make.fakeClient(opts)
     c.crafts = {}
     local craftFails
     function c.setCraftFails(why) craftFails = why end
+    -- Section 240, the repeat runner: setCraftRepeat(seconds) makes each
+    -- craft asked with a repeat count n finish n times by itself, one
+    -- UNIT_SPELLCAST_SUCCEEDED ("player", a cast guid, the recipe) each
+    -- `seconds` of advance(). stopCraftRepeat drops the finishes still to
+    -- come; a new ask replaces the run. nil: nothing finishes by itself
+    -- (the tests fire each finish). How the real client paces its repeat
+    -- and orders its events is not known: Needs game test.
+    local repeatEvery, repeatRun
+    function c.setCraftRepeat(seconds) repeatEvery, repeatRun = seconds, nil end
     function c.craftRecipe(id, n)
         if s.combat ~= false then return nil, "combat" end
         if craftFails then return nil, craftFails end
         c.crafts[#c.crafts + 1] = { id = id, n = n }
+        if type(repeatEvery) == "number" and repeatEvery > 0 then
+            repeatRun = { id = id, left = type(n) == "number" and n or 1, at = s.t + repeatEvery }
+        end
         return true
+    end
+    -- One frame of the runner (called from advance, after the frame
+    -- ticks): each finish that is due, in order. No frame listener, so the
+    -- tick counts other tests pin do not change.
+    function repeatFrame()
+        while repeatRun and repeatRun.left > 0 and s.t >= repeatRun.at do
+            local run = repeatRun
+            run.left = run.left - 1
+            run.at = run.at + repeatEvery
+            if run.left <= 0 then repeatRun = nil end
+            events.call("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-fake", run.id)
+        end
     end
     -- How many times the add-on asked the game to stop a craft repeat.
     c.repeatStops = 0
     function c.stopCraftRepeat()
         c.repeatStops = c.repeatStops + 1
+        repeatRun = nil
         return true
     end
 
@@ -2010,6 +2040,112 @@ function ns.make.fakeClient(opts)
         return out
     end
     function c.setWornUnread(on) s.wornUnread = on and true or nil end
+
+    -- Your group (P-PARTY), as the real client's party(), reach(id, unit)
+    -- and unitDebuffTypes(unit); each nil (not known) until set.
+    --   c.setParty(list)                  { { unit, name, class, role, power,
+    --                                     dead, connected }, ... } (a field
+    --                                     left out: not known); nil: not known
+    --   c.setReach(unit, spellId, v)      true, false, or nil (not known)
+    --   c.setUnitDebuffs(unit, map)       { [type] = debuff name }; nil: not known
+    --   c.setPartyFails(on), c.setReachFails(on)   the read raises while on
+    --                                     (lead section 236: a read that
+    --                                     fails, then recovers)
+    function c.setParty(list) s.party = list end
+    function c.party()
+        if s.partyFails then error("party read failed (test)") end
+        if type(s.party) ~= "table" then return nil end
+        local out = {}
+        for i, m in ipairs(s.party) do
+            local row = {}
+            for k, v in pairs(m) do row[k] = v end
+            out[i] = row
+        end
+        return out
+    end
+    function c.setPartyFails(on) s.partyFails = on and true or nil end
+    function c.setReach(unit, spellId, v)
+        s.reach = s.reach or {}
+        s.reach[unit] = s.reach[unit] or {}
+        s.reach[unit][spellId] = v
+    end
+    function c.reach(spellId, unit)
+        if s.reachFails then error("reach read failed (test)") end
+        local r = s.reach and s.reach[unit]
+        if type(r) ~= "table" or type(r[spellId]) ~= "boolean" then return nil end
+        return r[spellId]
+    end
+    function c.setReachFails(on) s.reachFails = on and true or nil end
+    function c.setUnitDebuffs(unit, map)
+        s.unitDebuffs = s.unitDebuffs or {}
+        s.unitDebuffs[unit] = map
+    end
+    function c.unitDebuffTypes(unit)
+        local m = s.unitDebuffs and s.unitDebuffs[unit]
+        if type(m) ~= "table" then return nil end
+        local out = {}
+        for k, v in pairs(m) do out[k] = v end
+        return out
+    end
+    -- The icon's caption (P-PARTY), as the real client's: h.caption(text)
+    -- on every icon; h.captionText is the last text, nil when hidden.
+    do
+        local plainIcon = c.icon
+        function c.icon(spec)
+            local h = plainIcon(spec)
+            if type(h) ~= "table" then return h end
+            function h.caption(words)
+                h.captionText = (type(words) == "string" and words ~= "") and words or nil
+                return true
+            end
+            return h
+        end
+    end
+    -- N55, the boss loot panel: the same reads as Core/Client.lua, set by a
+    -- test; each nil (not known) until set.
+    --   c.setBossUnit(r)       { exists, guid, name } as c.bossUnit() gives
+    --                          it; with exists false nothing more is said
+    --   c.setInstance(r)       { inside, kind } as c.instance() gives it
+    --   c.setLootLine(fn)      fn(line) answering item, count for a loot
+    --                          line (anyone's) and nil for any other
+    --   c.setReadFails(name, on)   the read c[name] raises while on (lead
+    --                          section 236: a read that fails, then
+    --                          recovers). For any read of this client; a
+    --                          caller that kept the function itself from
+    --                          before the first call is not reached.
+    function c.setBossUnit(r) s.bossUnit = type(r) == "table" and r or nil end
+    function c.bossUnit()
+        local r = s.bossUnit
+        if type(r) ~= "table" or type(r.exists) ~= "boolean" then return nil end
+        if not r.exists then return { exists = false } end
+        return { exists = true, guid = r.guid, name = r.name }
+    end
+    function c.setInstance(r) s.instance = type(r) == "table" and r or nil end
+    function c.instance()
+        local r = s.instance
+        if type(r) ~= "table" or type(r.inside) ~= "boolean" then return nil end
+        return { inside = r.inside, kind = r.kind }
+    end
+    function c.setLootLine(fn) s.lootLine = fn end
+    function c.lootLine(line)
+        if type(s.lootLine) ~= "function" then return nil end
+        return s.lootLine(line)
+    end
+    do
+        local failing, wrapped = {}, {}
+        function c.setReadFails(name, on)
+            if type(c[name]) ~= "function" then return end
+            if not wrapped[name] then
+                wrapped[name] = true
+                local plainRead = c[name]
+                c[name] = function(...)
+                    if failing[name] then error(tostring(name) .. " read failed (test)") end
+                    return plainRead(...)
+                end
+            end
+            failing[name] = on and true or nil
+        end
+    end
     return c
 end
 

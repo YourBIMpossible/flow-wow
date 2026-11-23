@@ -24,14 +24,20 @@ local _, ns = ...
 -- is dropped. Section 233 (GR2-4): a read that changes nothing writes
 -- nothing (report.unchanged). Nothing to save, or no answer: nothing is
 -- written.
+-- Section 238 (RF-1 to RF-3, as Flow's readClassic): a classic entry keeps
+-- its row's difficulty; a recipe whose product is no item (an enchant) is
+-- saved with makes nil, and one read in part with partial = true. Neither
+-- is in Recipes or For: ItemPlan can make nothing of it. A recipe read in
+-- part does not write over the same recipe saved whole. A schematic that
+-- names another recipe than its row (the rows moved) is not saved.
 --
 --   RecipeBook.Read(client, store) -> report   one profession window read
 --     report = { ok, reason (when not ok), saved = entries written,
 --                collided = n (when names were shared), unchanged = true }
 --   RecipeBook.Recipes(k) -> { [name] = { id, makes, yield, mats } }
 --     the saved entries that read, as ItemPlan reads recipes; {} while the
---     store is not open. An entry that can't be read is left out (and left
---     saved as it is).
+--     store is not open. An entry that can't be read, or has no product, or
+--     was read in part, is left out (and left saved as it is).
 --   RecipeBook.For(k, item) -> name or nil   a saved recipe that makes the
 --     item (the first by name when several do)
 --   RecipeBook.Declare(k) -> api   declares the module on kernel k
@@ -55,7 +61,7 @@ end
 -- read: a product, a whole yield of at least 1 (1 when not given), and at
 -- least one mat, each a whole item ID with a whole count of at least 1.
 local function readEntry(e)
-    if type(e) ~= "table" or not whole(e.makes, 1) then return nil end
+    if type(e) ~= "table" or not whole(e.makes, 1) or e.partial == true then return nil end
     if e.yield ~= nil and not whole(e.yield, 1) then return nil end
     if type(e.mats) ~= "table" or next(e.mats) == nil then return nil end
     local mats = {}
@@ -84,6 +90,28 @@ RecipeBook.UNREAD = "the profession window was open, but none of its recipes cou
 
 local function named(v)
     return type(v) == "string" and v ~= "" and v or nil
+end
+
+-- Section 238 (RF-1 to RF-3): one classic row's schematic as saved, a copy;
+-- nil when it can't be read. As Flow's readClassic: makes may be nil (a
+-- product that is no item); partial = true keeps a schematic missing
+-- reagents, even none; the difficulty is the schematic's, else the row's.
+-- A schematic naming another recipe than its row is nil: the rows moved.
+local function classicEntry(e, row)
+    if type(e) ~= "table" then return nil end
+    if e.name ~= nil and e.name ~= row.name then return nil end
+    if e.makes ~= nil and not whole(e.makes, 1) then return nil end
+    if e.yield ~= nil and not whole(e.yield, 1) then return nil end
+    if type(e.mats) ~= "table" then return nil end
+    local partial = e.partial == true or nil
+    local mats = {}
+    for item, n in pairs(e.mats) do
+        if not whole(item, 1) or not whole(n, 1) then return nil end
+        mats[item] = n
+    end
+    if next(mats) == nil and not partial then return nil end
+    return { makes = e.makes, yield = e.yield or 1, mats = mats, partial = partial,
+             difficulty = named(e.difficulty) or named(row.difficulty) }
 end
 
 -- One window read: { profession, rows = learned rows met, list = { { name,
@@ -115,9 +143,9 @@ local function readClassic(client)
     for _, row in ipairs(r.rows) do
         if type(row) == "table" and named(row.name) and whole(row.index, 1) then
             got.rows = got.rows + 1
-            local e = readEntry(ask(client, "tradeSkillSchematic", row.index))
+            local e = classicEntry(ask(client, "tradeSkillSchematic", row.index), row)
             if e ~= nil then
-                e.id, e.profession = nil, got.profession
+                e.profession = got.profession
                 got.list[#got.list + 1] = { name = row.name, entry = e, at = #got.list + 1 }
             end
         end
@@ -199,8 +227,15 @@ function RecipeBook.Read(client, store)
     end
     local n = 0
     for key, value in pairs(found) do
-        out[key] = value
-        n = n + 1
+        -- Section 238 (RF-3): a recipe read in part (its data not here yet)
+        -- does not write over the same recipe saved whole.
+        local kept = cur ~= nil and value.partial == true and readEntry(cur[key]) ~= nil
+        if kept then
+            out[key] = cur[key]
+        else
+            out[key] = value
+            n = n + 1
+        end
     end
     if same(out, cur or {}) then
         report.ok, report.unchanged = true, true

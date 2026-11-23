@@ -64,6 +64,7 @@ return {
         "Items/Plan.lua",
         "Items/Present.lua",
         "Items/CraftHint.lua",
+        "Items/SkillUps.lua",
         "Items/CraftQueue.lua",
         "Items/Sell.lua",
         "Items/Repair.lua",
@@ -165,6 +166,7 @@ return {
         "UI/SellList.lua",
         "UI/BankList.lua",
         "UI/CraftBar.lua",
+        "UI/ProfHelper.lua",
         "Items/Keep.lua",
         "Items/RecipeBook.lua",
         "Items/Goals.lua",
@@ -189,5 +191,9 @@ return {
     { "Core/Capture.lua", dev = true },
     { "Core/CaptureEvidence.lua", dev = true },
     "Rotation/Gather.lua",
+    -- P-PARTY: your group's buffs and dispels, look only (after GroupTip and Choose).
+    "Rotation/Group.lua",
+    -- N55: the boss loot panel, look only (after Gear, Items/Drops and the classes).
+    "UI/BossLoot.lua",
     },
 }

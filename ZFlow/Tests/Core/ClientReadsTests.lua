@@ -274,6 +274,38 @@ return {
         t.eq(c.recipes(), plain, "false is not a name")
     end,
 
+    -- P-PROF (N22, N23): each recipe carries its colour, from
+    -- relativeDifficulty 0 to 3, and numSkillUps when it is a whole count.
+    ["recipes(): each recipe carries its colour and skill ups when the client gives them"] = function(t)
+        local env = recipeEnv({ professionID = 197, skillLevel = 40, maxSkillLevel = 75 })
+        local info = {
+            [11] = { name = "Orange Hat", learned = true, relativeDifficulty = 0, numSkillUps = 1 },
+            [12] = { name = "Yellow Hat", learned = true, relativeDifficulty = 1 },
+            [13] = { name = "Green Hat", learned = true, relativeDifficulty = 2, numSkillUps = 2 },
+            [14] = { name = "Grey Hat", learned = true, relativeDifficulty = 3 },
+            [15] = { name = "Odd Hat", learned = false, relativeDifficulty = 7, numSkillUps = 1.5 },
+            [16] = { name = "Plain Hat", learned = true },
+        }
+        env.C_TradeSkillUI.GetAllRecipeIDs = function() return { 11, 12, 13, 14, 15, 16 } end
+        env.C_TradeSkillUI.GetRecipeInfo = function(id) return info[id] end
+        local c = ns.make.client(env)
+        t.eq(c.recipes(), { profession = 197, skill = 40, max = 75, recipes = {
+            { id = 11, name = "Orange Hat", learned = true, difficulty = "optimal", skillUps = 1 },
+            { id = 12, name = "Yellow Hat", learned = true, difficulty = "medium" },
+            { id = 13, name = "Green Hat", learned = true, difficulty = "easy", skillUps = 2 },
+            { id = 14, name = "Grey Hat", learned = true, difficulty = "trivial" },
+            { id = 15, name = "Odd Hat", learned = false },
+            { id = 16, name = "Plain Hat", learned = true },
+        } })
+    end,
+
+    ["fake: recipes() passes the colour and skill ups through"] = function(t)
+        local c = ns.make.fakeClient()
+        c.setRecipes({ profession = 197, skill = 40, max = 75, recipes = {
+            { id = 11, name = "Orange Hat", learned = true, difficulty = "optimal", skillUps = 1 } } })
+        t.eq(c.recipes().recipes[1], { id = 11, name = "Orange Hat", learned = true, difficulty = "optimal", skillUps = 1 })
+    end,
+
     -- ----------------------------------------------------------------- C4
     ["C4: a secret trainer name gives nil; a secret skill line leaves the profession out"] = function(t)
         local env = trainerEnv({ name = "Bena Winterhoof", player = false, line = "Alchemy" })
@@ -573,6 +605,7 @@ return {
             { link = "|cffffffff|Hitem:2589::::::::|h[Linen Cloth]|h|r", need = 2 },
             { link = "|cffffffff|Hitem:2320::::::::|h[Coarse Thread]|h|r", need = 1 },
         } }
+        function env.GetTradeSkillInfo() return "Bolt of Linen Cloth", "optimal", 0, true end
         function env.GetTradeSkillItemLink(i) return links[i] end
         function env.GetTradeSkillNumMade() return 1, 1 end
         function env.GetTradeSkillNumReagents(i) return reagents[i] and #reagents[i] or 0 end
@@ -582,8 +615,9 @@ return {
         end
         local c = ns.make.client(env)
         t.eq(c.recipeSchematic(2963), nil, "no GetRecipeSchematic: the first read says nothing")
-        t.eq(c.tradeSkillSchematic(2), { makes = 2996, yield = 1, mats = { [2589] = 2, [2320] = 1 } },
-            "the fallback names the product, the yield and the mats")
+        t.eq(c.tradeSkillSchematic(2), { name = "Bolt of Linen Cloth", difficulty = "optimal", makes = 2996,
+            yield = 1, mats = { [2589] = 2, [2320] = 1 } },
+            "the fallback names the recipe, its difficulty, the product, the yield and the mats")
         env.GetTradeSkillNumMade = function() return 2, 3 end
         t.eq(c.tradeSkillSchematic(2).yield, 2, "the least a craft makes")
         env.GetTradeSkillNumMade = nil
@@ -597,20 +631,55 @@ return {
         t.eq(c.tradeSkillSchematic(0), nil, "no row 0")
         t.eq(c.tradeSkillSchematic("2"), nil, "an index that is no number")
         local link = "|cffffffff|Hitem:2996::::::::|h[Bolt]|h|r"
-        local need = 2
+        local need, kind = 2, "easy"
+        function env.GetTradeSkillInfo() return "Bolt", kind, 0, true end
         function env.GetTradeSkillItemLink() return link end
         function env.GetTradeSkillNumReagents() return 1 end
         function env.GetTradeSkillReagentItemLink() return "|cffffffff|Hitem:2589::::::::|h[Linen]|h|r" end
         function env.GetTradeSkillReagentInfo() return "Linen", nil, need, 0 end
-        t.eq(c.tradeSkillSchematic(2), { makes = 2996, yield = 1, mats = { [2589] = 2 } }, "all read")
-        need = nil
-        t.eq(c.tradeSkillSchematic(2), nil, "a reagent count not read: never a shorter list")
-        need = 2
-        link = "|cffffd000|Henchant:7418|h[Enchant Bracer]|h|r"
-        t.eq(c.tradeSkillSchematic(2), nil, "a product that is no item")
-        link = "|cffffffff|Hitem:2996::::::::|h[Bolt]|h|r"
+        t.eq(c.tradeSkillSchematic(2), { name = "Bolt", difficulty = "easy", makes = 2996, yield = 1,
+            mats = { [2589] = 2 } }, "all read")
         env.GetTradeSkillNumReagents = function() return 0 end
-        t.eq(c.tradeSkillSchematic(2), nil, "no reagents read")
+        t.eq(c.tradeSkillSchematic(2), nil, "RF-4: no reagents read")
+        env.GetTradeSkillNumReagents = function() return 1 end
+        kind = "header"
+        t.eq(c.tradeSkillSchematic(2), nil, "RF-2: a header row is no recipe")
+        kind = "subheader"
+        t.eq(c.tradeSkillSchematic(2), nil, "RF-2: nor a subheader row")
+        kind = nil
+        t.eq(c.tradeSkillSchematic(2), nil, "a row of no kind")
+        kind = "easy"
+        env.GetTradeSkillItemLink = function() error("link read failed") end
+        t.eq(c.tradeSkillSchematic(2), nil, "the product read failed")
+        env.GetTradeSkillItemLink = function() return 7 end
+        t.eq(c.tradeSkillSchematic(2), nil, "a product link that is no string")
+    end,
+
+    -- Section 238 (RF-1, RF-3). Fails before: both answers were nil, so the
+    -- recipe was not saved at all (Flow kept it).
+    ["tradeSkillSchematic(): an enchant keeps its reagents; a reagent not read yet says partial"] = function(t)
+        local env = frameEnv()
+        local c = ns.make.client(env)
+        local BOLT = "|cffffffff|Hitem:2996::::::::|h[Bolt]|h|r"
+        local LINEN = "|cffffffff|Hitem:2589::::::::|h[Linen]|h|r"
+        local link, reagent, need = "|cffffd000|Henchant:7418|h[Enchant Bracer]|h|r", LINEN, 2
+        function env.GetTradeSkillInfo() return "Enchant Bracer", "optimal", 0, true end
+        function env.GetTradeSkillItemLink() return link end
+        function env.GetTradeSkillNumReagents() return 1 end
+        function env.GetTradeSkillReagentItemLink() return reagent end
+        function env.GetTradeSkillReagentInfo() return "Linen", nil, need, 0 end
+        t.eq(c.tradeSkillSchematic(2), { name = "Enchant Bracer", difficulty = "optimal", yield = 1,
+            mats = { [2589] = 2 } }, "RF-1: no product item, the reagents kept")
+        link, need = BOLT, nil
+        t.eq(c.tradeSkillSchematic(2), { name = "Enchant Bracer", difficulty = "optimal", makes = 2996, yield = 1,
+            mats = {}, partial = true }, "RF-3: a reagent count not read: kept, said partial")
+        need, reagent = 2, nil
+        t.eq(c.tradeSkillSchematic(2).partial, true, "RF-3: a reagent item not read: partial")
+        reagent, link = LINEN, nil
+        t.eq(c.tradeSkillSchematic(2), { name = "Enchant Bracer", difficulty = "optimal", yield = 1,
+            mats = { [2589] = 2 }, partial = true }, "no product link yet: no product, partial")
+        link = BOLT
+        t.eq(c.tradeSkillSchematic(2).partial, nil, "all read again: not partial")
     end,
 
     -- Section 233 (GR2-1) ---------------------------------------------------
@@ -625,8 +694,13 @@ return {
         function env.GetNumTradeSkills() return #info end
         function env.GetTradeSkillInfo(i) return info[i][1], info[i][2], 0, true end
         local c = ns.make.client(env)
+        -- P-PROF (N23): each row carries its colour word as the window gives it.
         t.eq(c.tradeSkillRows(), { name = "Tailoring", skill = 50, max = 75, rows = {
-            { index = 2, name = "Bolt of Linen Cloth" }, { index = 3, name = "Brown Linen Robe" } } })
+            { index = 2, name = "Bolt of Linen Cloth", difficulty = "trivial" },
+            { index = 3, name = "Brown Linen Robe", difficulty = "optimal" } } })
+        info[2][2] = "purple"
+        t.eq(c.tradeSkillRows().rows[1], { index = 2, name = "Bolt of Linen Cloth" }, "a word it never gives: left out")
+        info[2][2] = "trivial"
         info[3][1] = nil
         t.eq(c.tradeSkillRows(), nil, "a row with no name: never a shorter list")
         info[3][1] = "Brown Linen Robe"
@@ -660,6 +734,9 @@ return {
         c.setTradeSkillSchematic(2, { makes = 2996, yield = 1, mats = { [2589] = 2 } })
         c.tradeSkillSchematic(2).mats[2589] = 9
         t.eq(c.tradeSkillSchematic(2), { makes = 2996, yield = 1, mats = { [2589] = 2 } })
+        c.setTradeSkillSchematic(3, { name = "Enchant", difficulty = "easy", yield = 1, mats = {}, partial = true })
+        t.eq(c.tradeSkillSchematic(3), { name = "Enchant", difficulty = "easy", yield = 1, mats = {}, partial = true },
+            "section 238: name, difficulty and partial too")
     end,
 
     -- Section 235 item 4 ---------------------------------------------------

@@ -175,16 +175,23 @@ ns:Register("fightProbe", "casts", {
 })
 
 -- Threat on your target (if the client exposes it). Highest value seen per mob.
+-- Forever hides the target's GUID (a secret), while the threat value itself can
+-- still be readable. Without a GUID the threat goes under one shared key, so a
+-- fight still records your threat instead of none at all (it can't be split
+-- per mob then; the highest value on your target stands for the fight).
+local NO_GUID = "target"
+function P.RecordThreat(f, guid, value)
+    if type(value) ~= "number" then return end
+    local key = guid or NO_GUID
+    if value > (f.threatByMob[key] or 0) then f.threatByMob[key] = value end
+end
+
 ns:Register("fightProbe", "threat", {
     start = function(f) f.threatByMob = {} end,
     tick = function(f)
         if not UnitDetailedThreatSituation or not UnitExists("target") then return end
         local _, _, _, _, value = UnitDetailedThreatSituation("player", "target")
-        value = A.Safe(value)
-        local guid = A.Safe(UnitGUID("target"))
-        if value and guid and value > (f.threatByMob[guid] or 0) then
-            f.threatByMob[guid] = value
-        end
+        P.RecordThreat(f, A.Safe(UnitGUID("target")), A.Safe(value))
     end,
     finish = function(f)
         local sum, any = 0, false

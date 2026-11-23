@@ -63,9 +63,21 @@ return {
         t.ok(ok, "ok")
     end,
 
-    ["nothing is for the group: no group rows, every dispel is for yourself"] = function(t)
+    ["the group rows are blessings, only shown; every dispel is for yourself"] = function(t)
         local p = ns.Packs.PALADIN
-        t.eq(p.groups, {}, "groups")
+        -- P-PARTY (Flow's Classes/Paladin/Rotation.lua:408-419): Kings for a
+        -- tank, Might for melee, Wisdom for casters, healers and hunters,
+        -- Kings for anyone else; one blessing each (slot).
+        local got = {}
+        for i, r in ipairs(p.groups) do
+            got[i] = { r.spell, r.who, r.slot, r.aura and r.aura[2], r.evidence, r.unit }
+        end
+        t.eq(got, {
+            { "Blessing of Kings", { "tank" }, "blessing", "Greater Blessing of Kings", "first guess", nil },
+            { "Blessing of Might", { "melee", "tank" }, "blessing", "Greater Blessing of Might", "first guess", nil },
+            { "Blessing of Wisdom", { "caster", "healer", "ranged" }, "blessing", "Greater Blessing of Wisdom", "first guess", nil },
+            { "Blessing of Kings", "all", "blessing", "Greater Blessing of Kings", "first guess", nil },
+        }, "groups")
         for _, rule in ipairs(p.dispels) do
             t.ok(not rule.group and rule.unit == nil, rule.spell .. " is not a group entry")
         end

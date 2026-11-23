@@ -277,3 +277,39 @@ ns:Register("test", "paladin: /flow rot guide states no unchecked Forever rule",
     t:ok(text:find("use up", 1, true) == nil, "nothing about what Judgement does to your seal")
     t:ok(text:find("up to 4", 1, true) == nil, "no target count for Consecration")
 end)
+
+ns:Register("test", "paladin: blessings last 60 minutes when the game hides them", function(t)
+    -- Forever blessings last 60 minutes; with 5, Flow asked for a rebless every few minutes.
+    local E = ns.rotation
+    local def = ns:Get("rotation", "PALADIN")
+    t:ok(def and #def.groupBuffs > 0, "the paladin has group blessings")
+    for _, rule in ipairs(def.groupBuffs) do
+        t:eq(rule.minutes, 60, rule.spell .. ": 60 minutes")
+    end
+    local rule = def.groupBuffs[1]
+    local u = { unit = "party1", guid = "G1" }
+    local hidden = function() return nil end
+    with(E, "buffMemory", { G1 = { [rule.spell] = 0 } }, function()
+        with(E, "bounced", {}, function()
+            t:ok(E.GroupCovered(u, rule, 50 * 60, hidden), "auras hidden, cast 50 min ago: still covered")
+            t:ok(not E.GroupCovered(u, rule, 60 * 60, hidden), "cast 60 min ago: rebless")
+        end)
+    end)
+end)
+
+ns:Register("test", "fight: threat is recorded when the target's GUID is hidden", function(t)
+    -- Forever hides the target's GUID (Safe gives nil); the threat value used to be dropped.
+    local P = ns.profiler
+    local f = { threatByMob = {} }
+    P.RecordThreat(f, nil, 500)
+    P.RecordThreat(f, nil, 300)
+    t:eq(f.threatByMob.target, 500, "no GUID: the highest value goes under one key")
+    P.RecordThreat(f, "Creature-1", 200)
+    t:eq(f.threatByMob["Creature-1"], 200, "a readable GUID keeps its own key")
+    P.RecordThreat(f, nil, nil)
+    P.RecordThreat(f, "Creature-2", nil)
+    t:eq(f.threatByMob["Creature-2"], nil, "no value (hidden): nothing recorded")
+    local probe = ns:Get("fightProbe", "threat")
+    probe.finish(f)
+    t:near(f.threat, 7, 0.001, "the fight's threat sums both keys (/100)")
+end)

@@ -101,6 +101,10 @@ M.ROWS = {
     -- the one kept for your role (Rotation/OwnCasts.lua, PC-7). On by
     -- default: legacy Flow always said it.
     { key = "rotation.sayKept", type = "bool", default = true },
+    -- loot.bossPanel: the boss loot panel, the drops this account has seen
+    -- from the boss you fight, your role's pieces first (UI/BossLoot.lua,
+    -- N55, lead sections 237 and 238). On by default; look only.
+    { key = "loot.bossPanel", type = "bool", default = true },
 }
 
 -- ---------------------------------------------------------------- helpers

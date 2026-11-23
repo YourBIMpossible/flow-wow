@@ -220,4 +220,59 @@ tests["recipe book GR2-4: a read that changes nothing writes nothing"] = functio
     t.eq(book(c)["Linen Bandage"] ~= nil, true)
 end
 
+-- Section 238 -------------------------------------------------------------------
+
+local ENCHANT = "Enchant Bracer - Minor Health"
+local CLASSIC_BOLT = { makes = BOLT, yield = 1, mats = { [LINEN] = 2 }, profession = "Tailoring" }
+
+-- RF-1. Fails before: a recipe with no item product was not saved.
+tests["recipe book RF-1: a recipe whose product is no item is kept with its reagents"] = function(t)
+    local c, addon = start()
+    c.setTradeSkillSchematic(2, { makes = BOLT, yield = 1, mats = { [LINEN] = 2 } })
+    c.setTradeSkillSchematic(3, { name = ENCHANT, difficulty = "optimal", yield = 1, mats = { [LINEN] = 1 } })
+    classic(c, addon, { { index = 2, name = "Bolt of Linen Cloth" }, { index = 3, name = ENCHANT } })
+    t.eq(book(c)[ENCHANT], { yield = 1, mats = { [LINEN] = 1 }, difficulty = "optimal", profession = "Tailoring" })
+    t.eq(addon.RecipeBook.Recipes(addon)[ENCHANT], nil, "nothing ItemPlan can make: left out of Recipes")
+    t.eq(addon.RecipeBook.For(addon, BOLT), "Bolt of Linen Cloth")
+end
+
+-- RF-2. Fails before: the difficulty was not kept, and a schematic of
+-- another row was saved under this row's name.
+tests["recipe book RF-2: the difficulty is kept; a schematic of another recipe is not saved"] = function(t)
+    local c, addon = start()
+    c.setTradeSkillSchematic(2, { name = "Bolt of Linen Cloth", difficulty = "trivial", makes = BOLT, yield = 1,
+        mats = { [LINEN] = 2 } })
+    c.setTradeSkillSchematic(3, { name = "Linen Bandage", difficulty = "easy", makes = BANDAGE, yield = 1,
+        mats = { [LINEN] = 1 } })
+    classic(c, addon, { { index = 2, name = "Bolt of Linen Cloth", difficulty = "trivial" },
+        { index = 3, name = "Brown Linen Robe", difficulty = "easy" } })
+    t.eq(book(c), { ["Bolt of Linen Cloth"] = { makes = BOLT, yield = 1, mats = { [LINEN] = 2 },
+        difficulty = "trivial", profession = "Tailoring" } }, "row 3 names another recipe: the rows moved")
+end
+
+-- RF-3. Fails before: a recipe read in part was not saved.
+tests["recipe book RF-3: a recipe read in part is kept, said partial, and left out of Recipes"] = function(t)
+    local c, addon = start()
+    c.setTradeSkillSchematic(2, { makes = BOLT, yield = 1, mats = {}, partial = true })
+    classic(c, addon, { { index = 2, name = "Bolt of Linen Cloth" } })
+    t.eq(book(c), { ["Bolt of Linen Cloth"] = { makes = BOLT, yield = 1, mats = {}, partial = true,
+        profession = "Tailoring" } })
+    t.eq(addon.RecipeBook.Recipes(addon), {}, "read in part: not planned from")
+    t.eq(addon.RecipeBook.For(addon, BOLT), nil)
+    c.setTradeSkillSchematic(2, { makes = BOLT, yield = 1, mats = { [LINEN] = 2 } })
+    c.fire(addon.RecipeBook.EVENT)
+    t.eq(book(c), { ["Bolt of Linen Cloth"] = CLASSIC_BOLT }, "read whole later: the whole one saved")
+    t.eq(addon.RecipeBook.For(addon, BOLT), "Bolt of Linen Cloth")
+end
+
+-- RF-3. Fails before: the part read wrote over the whole one.
+tests["recipe book RF-3: a recipe read in part does not write over the same recipe saved whole"] = function(t)
+    local c, addon = start({ learned = { facts = { recipeBook = { ["Bolt of Linen Cloth"] = CLASSIC_BOLT } } } })
+    c.setTradeSkillSchematic(2, { makes = BOLT, yield = 1, mats = { [LINEN] = 1 }, partial = true })
+    classic(c, addon, { { index = 2, name = "Bolt of Linen Cloth" } })
+    t.eq(book(c), { ["Bolt of Linen Cloth"] = CLASSIC_BOLT })
+    t.eq(addon.recipeBook.last().ok, true)
+    t.eq(addon.RecipeBook.For(addon, BOLT), "Bolt of Linen Cloth")
+end
+
 return tests

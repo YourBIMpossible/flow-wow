@@ -135,6 +135,16 @@ Diag.NAMES = {
     "GetTaxiNodesForMap", "UnitThreatSituation", "C_NamePlate.GetNamePlates",
     -- Lead section 197: the pet read (client.pet) asks these two as well.
     "UnitCreatureFamily", "GetPetHappiness",
+    -- P-PARTY (lead sections 233, 236): the group read (client.party) asks
+    -- UnitIsConnected too; the rest it asks (UnitExists, UnitName,
+    -- UnitClass, UnitGroupRolesAssigned, UnitPowerType, UnitIsDead,
+    -- C_Spell.IsSpellInRange, C_UnitAuras.GetAuraDataByIndex) are above.
+    "UnitIsConnected",
+    -- N55 (the boss loot panel, RESEARCH-N55): client.instance asks these
+    -- two, client.lootLine these two texts beside LOOT_ITEM_SELF and
+    -- LOOT_ITEM_SELF_MULTIPLE above; client.bossUnit asks UnitExists,
+    -- UnitGUID and UnitName, above. The journal names are Plexy's to add.
+    "IsInInstance", "GetInstanceInfo", "LOOT_ITEM", "LOOT_ITEM_MULTIPLE",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns
@@ -994,6 +1004,9 @@ Diag.READ_WORDS = {
     conjured = "your conjured food and water",
     -- N13: Classes/Paladin.lua's aura rule.
     ownBuffs = "the buffs you put up yourself",
+    -- P-PARTY (Rotation/Group.lua; flag (a): the self dispel).
+    party = "your group",
+    debuffTypes = "what is on you that you could remove",
 }
 
 -- The pack's reads that came back not known, as one list of words, or nil.
@@ -1026,6 +1039,13 @@ local function rotationRow(view)
         else
             line = head .. tostring(picked) .. " is next, but out of range: move closer (farOpener)."
         end
+    elseif picked ~= nil and view.suggestion.look == true then
+        -- P-PARTY: a suggestion for another player is only shown. The line
+        -- names the party unit, never the player's name (diag lines can be
+        -- captured and saved).
+        local unit = view.suggestion.unit
+        line = head .. "suggesting " .. tostring(picked) .. (type(unit) == "string" and (" for " .. unit) or "")
+            .. " (" .. tostring(why.step or "step not known") .. "; look only, nothing cast)."
     elseif picked ~= nil then
         line = head .. "suggesting " .. tostring(picked) .. " (" .. tostring(why.step or "step not known") .. ")."
     else

@@ -29,7 +29,8 @@ local KIND = {
     -- stopCraftRepeat (section 234): stops the game repeat; not a craft.
     act = { "restartSound", "soundWays", "craftRecipe", "stopCraftRepeat" },
     -- Reads a chat line handed in, not the client.
-    parse = { "ownLoot", "auctionOutcome" },
+    -- lootLine (N55): the item of anyone's loot line, never the looter.
+    parse = { "ownLoot", "auctionOutcome", "lootLine" },
 }
 
 -- Every read, and whether the capture asks it (true) or not (false).
@@ -66,6 +67,16 @@ local READS = {
     fishingPole = true,
     -- N8: the heal step asks both (Rotation/Driver.lua).
     lowHealth = true, itemCooldown = true,
+
+    -- P-PARTY: your group, a spell's reach to one of them, and the debuff
+    -- types on you or one of them; read by the rotation only. Their names
+    -- (UnitIsConnected and the rest) are in Diag.NAMES, which the capture asks.
+    party = false, reach = false, unitDebuffTypes = false,
+
+    -- N55 (the boss loot panel): the boss unit and whether you are in an
+    -- instance; read by UI/BossLoot.lua only. The names they ask
+    -- (IsInInstance, GetInstanceInfo and the rest) are in Diag.NAMES.
+    bossUnit = false, instance = false,
 }
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).

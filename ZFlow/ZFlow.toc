@@ -51,6 +51,7 @@ Items\LootNote.lua
 Items\Plan.lua
 Items\Present.lua
 Items\CraftHint.lua
+Items\SkillUps.lua
 Items\CraftQueue.lua
 Items\Sell.lua
 Items\Repair.lua
@@ -144,6 +145,7 @@ UI\ArrowMenu.lua
 UI\SellList.lua
 UI\BankList.lua
 UI\CraftBar.lua
+UI\ProfHelper.lua
 Items\Keep.lua
 Items\RecipeBook.lua
 Items\Goals.lua
@@ -166,3 +168,5 @@ Items\Posting.lua
 Items\Trader.lua
 Nav\Try.lua
 Rotation\Gather.lua
+Rotation\Group.lua
+UI\BossLoot.lua
