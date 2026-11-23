@@ -183,7 +183,7 @@ tests["paladin: the switch is kept over a reload"] = function(t)
 end
 
 tests["a class with no pack: on, and it says so"] = function(t)
-    local c, addon, icon = start({ class = "WARRIOR" })
+    local c, addon, icon = start({ class = "MAGE" })
     c.setPlayerBuffs({}); on(c, addon)
     t.eq(icon.shown, false)
     t.ok(#said(c) > 0, "the diag word has a rotation line")
