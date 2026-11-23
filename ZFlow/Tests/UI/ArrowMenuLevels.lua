@@ -168,7 +168,7 @@ return {
         q.click("right")
         t.eq(q.enter("show"), true)
         t.eq(q.pickRow(M.BACK), true)
-        t.eq(#q.menuItems, 7, "the top level again")
+        t.eq(#q.menuItems, 8, "the top level again (with the Dungeon quests row, lead section 318)")
         t.ok(rowAt(q.menuItems, "layout") ~= nil)
         t.eq(k.problems:count(), 0)
     end,
