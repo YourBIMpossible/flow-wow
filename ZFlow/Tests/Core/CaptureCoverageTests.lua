@@ -66,6 +66,11 @@ local READS = {
     fishingPole = true,
     -- N8: the heal step asks both (Rotation/Driver.lua).
     lowHealth = true, itemCooldown = true,
+
+    -- P-PARTY: your group, a spell's reach to one of them, and the debuff
+    -- types on you or one of them; read by the rotation only. Their names
+    -- (UnitIsConnected and the rest) are in Diag.NAMES, which the capture asks.
+    party = false, reach = false, unitDebuffTypes = false,
 }
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).

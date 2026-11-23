@@ -188,5 +188,7 @@ return {
     { "Core/Capture.lua", dev = true },
     { "Core/CaptureEvidence.lua", dev = true },
     "Rotation/Gather.lua",
+    -- P-PARTY: your group's buffs and dispels, look only (after GroupTip and Choose).
+    "Rotation/Group.lua",
     },
 }

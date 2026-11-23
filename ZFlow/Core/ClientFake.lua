@@ -2010,6 +2010,67 @@ function ns.make.fakeClient(opts)
         return out
     end
     function c.setWornUnread(on) s.wornUnread = on and true or nil end
+
+    -- Your group (P-PARTY), as the real client's party(), reach(id, unit)
+    -- and unitDebuffTypes(unit); each nil (not known) until set.
+    --   c.setParty(list)                  { { unit, name, class, role, power,
+    --                                     dead, connected }, ... } (a field
+    --                                     left out: not known); nil: not known
+    --   c.setReach(unit, spellId, v)      true, false, or nil (not known)
+    --   c.setUnitDebuffs(unit, map)       { [type] = debuff name }; nil: not known
+    --   c.setPartyFails(on), c.setReachFails(on)   the read raises while on
+    --                                     (lead section 236: a read that
+    --                                     fails, then recovers)
+    function c.setParty(list) s.party = list end
+    function c.party()
+        if s.partyFails then error("party read failed (test)") end
+        if type(s.party) ~= "table" then return nil end
+        local out = {}
+        for i, m in ipairs(s.party) do
+            local row = {}
+            for k, v in pairs(m) do row[k] = v end
+            out[i] = row
+        end
+        return out
+    end
+    function c.setPartyFails(on) s.partyFails = on and true or nil end
+    function c.setReach(unit, spellId, v)
+        s.reach = s.reach or {}
+        s.reach[unit] = s.reach[unit] or {}
+        s.reach[unit][spellId] = v
+    end
+    function c.reach(spellId, unit)
+        if s.reachFails then error("reach read failed (test)") end
+        local r = s.reach and s.reach[unit]
+        if type(r) ~= "table" or type(r[spellId]) ~= "boolean" then return nil end
+        return r[spellId]
+    end
+    function c.setReachFails(on) s.reachFails = on and true or nil end
+    function c.setUnitDebuffs(unit, map)
+        s.unitDebuffs = s.unitDebuffs or {}
+        s.unitDebuffs[unit] = map
+    end
+    function c.unitDebuffTypes(unit)
+        local m = s.unitDebuffs and s.unitDebuffs[unit]
+        if type(m) ~= "table" then return nil end
+        local out = {}
+        for k, v in pairs(m) do out[k] = v end
+        return out
+    end
+    -- The icon's caption (P-PARTY), as the real client's: h.caption(text)
+    -- on every icon; h.captionText is the last text, nil when hidden.
+    do
+        local plainIcon = c.icon
+        function c.icon(spec)
+            local h = plainIcon(spec)
+            if type(h) ~= "table" then return h end
+            function h.caption(words)
+                h.captionText = (type(words) == "string" and words ~= "") and words or nil
+                return true
+            end
+            return h
+        end
+    end
     return c
 end
 

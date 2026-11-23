@@ -81,6 +81,10 @@ local _, ns = ...
 -- Not in the chooser yet (tasks): other items (bandage, drink), and anything
 -- for another player (friend heal, group buffs, group dispels), which needs
 -- a party member read.
+-- P-PARTY (lead section 233): group buffs and group dispels are now the last
+-- step, "group" (Rotation/Group.lua), look only: the suggestion carries
+-- look = true, the party unit and the member's name, and the key never
+-- casts it (Rotation/Cast.lua). The friend heal is still a task.
 
 ns.Rotation = ns.Rotation or {}
 local R = ns.Rotation
@@ -576,6 +580,14 @@ steps.track = function(s)
     return ns.Gather.Step(s)
 end
 R.STEPS[#R.STEPS + 1] = "track"
+-- 10. P-PARTY: out of a fight, a buff a member of your party is missing, or
+-- a curse or poison on one you could remove (Rotation/Group.lua G.Step).
+-- Last: it is only shown, so it never pushes off anything the key can do.
+steps.group = function(s, pack, prefs)
+    if type(ns.PartyGroup) ~= "table" then return nil, "no group suggestions" end
+    return ns.PartyGroup.Step(s, pack, prefs)
+end
+R.STEPS[#R.STEPS + 1] = "group"
 R._steps = steps   -- (tests)
 
 function ns.Choose(snapshot, pack, prefs, bias)
