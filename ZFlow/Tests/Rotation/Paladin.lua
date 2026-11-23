@@ -11,8 +11,10 @@ local READY = { ["Devotion Aura"] = true, ["Blessing of Might"] = true, ["Seal o
 
 -- An enemy targeted, in the fight, already swinging, aura, blessing and seal up.
 local function snap(over, knows, buffs)
+    -- N13: your own auras are read apart (ownBuffs); here every buff is yours.
     local s = { role = "dps", hostile = true, inCombat = true, dead = false, attacking = true,
-                current = { Attack = true, ["Auto Attack"] = true }, spells = {}, buffs = buffs or READY }
+                current = { Attack = true, ["Auto Attack"] = true }, spells = {}, buffs = buffs or READY,
+                ownBuffs = buffs or READY }
     for _, name in ipairs(knows or ALL) do s.spells[name] = { known = true, onCooldown = false, inRange = true } end
     for k, v in pairs(over or {}) do s[k] = v end
     return s
@@ -50,6 +52,7 @@ end
 local function unread(over, knows)
     local s = snap(over, knows)
     s.buffs = nil
+    s.ownBuffs = nil
     return s
 end
 
@@ -128,7 +131,11 @@ return {
             ["Blessing of Might"] = true, ["Blessing of Wisdom"] = true, ["Blessing of Kings"] = true,
             ["Blessing of Salvation"] = true, ["Blessing of Light"] = true, ["Blessing of Sanctuary"] = true,
         }, "the long blessings; not Protection, Freedom or Sacrifice")
-        t.eq(ns.Packs.PALADIN.options.reads, { "buffs" }, "chosen is not a read: nil is no cast yet")
+        t.eq(ns.Packs.PALADIN.options.reads, { "buffs", "ownBuffs" }, "chosen is not a read: nil is no cast yet")
+        t.eq(by.blessing and by.blessing.onYou, true, "a blessing is kept only once it lands on you")
+        t.eq(by.seal and by.seal.onYou, nil, "a seal only ever goes on you")
+        t.eq(by.seal and by.seal.word, "seal", "the seal word")
+        t.eq(by.blessing and by.blessing.word, "blessing", "the blessing word")
     end,
 
     -- CF-32: the seal kept up. A seal you cast yourself (snapshot.chosen.seal)
@@ -155,6 +162,66 @@ return {
             for _, name in ipairs(case[3]) do s.spells[name] = { known = true } end
             t.eq(ns.PaladinSeal(s), case[4], case[1])
         end
+    end,
+
+    -- N12 (lead section 228): your cast this fight, then the seal word's
+    -- choice, then the one you cast for the role, each only while known.
+    ["the seal picked: this fight's cast, then the word's choice, then the role's cast"] = function(t)
+        local R, X, J, L = "Seal of Righteousness", "Seal of the Crusader", "Seal of Justice", "Seal of Light"
+        local cases = {
+            { "the word's choice over the role's cast", { sealSet = J, seal = X }, { R, X, J }, J },
+            { "this fight's cast over the word's choice", { sealFight = L, sealSet = J, seal = X }, { R, X, J, L }, L },
+            { "this fight's cast not known: the choice", { sealFight = L, sealSet = J }, { R, J }, J },
+            { "the choice not known: the role's cast", { sealSet = J, seal = X }, { R, X }, X },
+            { "none known: the present rule", { sealFight = L, sealSet = J, seal = X }, { R }, R },
+        }
+        for _, case in ipairs(cases) do
+            local s = { role = "dps", spells = {}, chosen = case[2] }
+            for _, name in ipairs(case[3]) do s.spells[name] = { known = true } end
+            t.eq(ns.PaladinSeal(s), case[4], case[1])
+        end
+    end,
+
+    ["the blessing picked: the word's choice, then the role's cast; tanking Kings"] = function(t)
+        local M, W, K, S = "Blessing of Might", "Blessing of Wisdom", "Blessing of Kings", "Blessing of Salvation"
+        local cases = {
+            { "the choice over the cast", { role = "dps", chosen = { blessingSet = S, blessing = K } }, { M, K, S }, S },
+            { "the choice not known: the cast", { role = "dps", chosen = { blessingSet = S, blessing = K } }, { M, K }, K },
+            { "a fight's cast is not read for a blessing", { role = "dps", chosen = { blessingFight = K } }, { M, K }, M },
+            { "tank knows Kings", { role = "tank" }, { M, K }, K },
+            { "tank without Kings", { role = "tank" }, { M }, M },
+            { "dps knows Kings: Might", { role = "dps" }, { M, K }, M },
+            { "no Might known: Kings", { role = "dps" }, { K }, K },
+            { "healer: Wisdom over Kings", { role = "heal" }, { M, W, K }, W },
+        }
+        for _, case in ipairs(cases) do
+            local s = { spells = {} }
+            for k, v in pairs(case[2]) do s[k] = v end
+            for _, name in ipairs(case[3]) do s.spells[name] = { known = true } end
+            t.eq(ns.PaladinBlessing(s), case[4], case[1])
+        end
+    end,
+
+    ["the snapshot and the driver carry your own buffs; not read stays nil"] = function(t)
+        t.eq(ns.SnapshotOf({ ownBuffs = { ["Devotion Aura"] = true } }).ownBuffs, { ["Devotion Aura"] = true })
+        t.eq(ns.SnapshotOf({}).ownBuffs, nil, "not given: nil")
+        local read = ns.RotationDriver.Read({ ownBuffs = function() return { ["Devotion Aura"] = 5 } end },
+                                            ns.Packs.PALADIN, {})
+        t.eq(read("ownBuffs"), { ["Devotion Aura"] = 5 }, "asked of the client")
+        t.eq(ns.RotationDriver.Read({}, ns.Packs.PALADIN, {})("ownBuffs"), nil, "no such read: nil")
+    end,
+
+    -- N13: only your own aura counts.
+    ["an aura counts only when it is yours; your own not read is not known"] = function(t)
+        local s = snap(IDLE, nil, { ["Devotion Aura"] = true })
+        s.ownBuffs = {}
+        t.ok(fires("Devotion Aura", s), "another paladin's aura up, yours not: asked for")
+        s.ownBuffs = { ["Devotion Aura"] = true }
+        t.ok(not fires("Devotion Aura", s), "yours up")
+        s.ownBuffs = nil
+        t.ok(not fires("Devotion Aura", s), "yours not read: not asked for")
+        s.form = "Retribution Aura"
+        t.ok(not fires("Devotion Aura", s), "your aura shown as your stance counts")
     end,
 
     -- The same rule for the blessing (lead section 227).

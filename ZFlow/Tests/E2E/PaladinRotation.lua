@@ -203,12 +203,48 @@ local function cast(c, name, unit)
     c.advance(1, 5)
 end
 
--- What is kept for this character: the seal or the blessing, or nil.
-local function kept(c, key)
+-- What is kept for this character: the seal or the blessing you cast for a
+-- role (no role chosen: dps, as the old add-on did), or nil (N12).
+local function kept(c, key, role)
     local char = c.saved(ns.id.charDB)
     local state = type(char) == "table" and char.state or nil
     local own = type(state) == "table" and state.ownCasts or nil
-    return type(own) == "table" and own[key] or nil
+    local mine = type(own) == "table" and own[role or "dps"] or nil
+    return type(mine) == "table" and mine[key] or nil
+end
+
+-- The seal or blessing chosen with the word, or nil.
+local function picked(c, key)
+    local char = c.saved(ns.id.charDB)
+    local state = type(char) == "table" and char.state or nil
+    local choice = type(state) == "table" and state.ownChoice or nil
+    return type(choice) == "table" and choice[key] or nil
+end
+
+-- A blessing you cast that lands on you: the cast, then your own buffs show
+-- it (UNIT_AURA for you), then it wears off again (`after`, the buffs left).
+local function bless(c, name, after)
+    cast(c, name)
+    local now = {}
+    for k, v in pairs(after) do now[k] = v end
+    now[name] = 300
+    c.setPlayerBuffs(now); c.fire("UNIT_AURA", "player"); c.advance(1, 5)
+    c.setPlayerBuffs(after); c.advance(1, 5)
+end
+
+-- A word typed after the slash command; the lines it printed, as one.
+local function word(c, text)
+    local from = #c.printed + 1
+    c.slashes[ns.id.slash](text)
+    c.advance(1, 5)
+    local out = {}
+    for i = from, #c.printed do out[#out + 1] = tostring(c.printed[i]) end
+    return table.concat(out, " / ")
+end
+
+-- A fight starts and ends: what you cast for that fight alone is over.
+local function fightPasses(c)
+    c.setCombat(true); c.advance(1, 5); c.setCombat(false); c.advance(1, 5)
 end
 
 local function reload(c)
@@ -255,12 +291,12 @@ tests["paladin: a long blessing you cast yourself sticks; Protection does not"] 
     local c, addon, icon = start()
     c.setPlayerBuffs(AURA); on(c, addon)
     t.eq(icon.texture, "tex:Blessing of Might", "before any cast: the present rule")
-    cast(c, "Blessing of Kings")
+    bless(c, "Blessing of Kings", AURA)
     t.eq(icon.texture, "tex:Blessing of Kings", "blessing down: the one you cast")
-    cast(c, "Blessing of Protection")
+    bless(c, "Blessing of Protection", AURA)
     t.eq(kept(c, "blessing"), "Blessing of Kings", "a short blessing is not kept")
     t.eq(icon.texture, "tex:Blessing of Kings")
-    cast(c, "Blessing of Wisdom")
+    bless(c, "Blessing of Wisdom", AURA)
     t.eq(icon.texture, "tex:Blessing of Wisdom", "another long blessing: that one")
     local c2, _, icon2 = reload(c)
     c2.setPlayerBuffs(AURA); c2.advance(1, 5)
@@ -291,6 +327,140 @@ tests["paladin: Righteous Fury never for a role that is not tank"] = function(t)
             t.eq(icon.texture, "tex:Righteous Fury", "the same, as a tank: asked for")
         end
     end
+end
+
+-- ------------------------------------------------ N12, N13 (lead section 228)
+
+tests["paladin: Kings cast as dps in Auto is suggested in the next fight; each role keeps its own"] = function(t)
+    local c, addon, icon = start()
+    addon.settings:set(D.ROLE, "dps")
+    c.setPlayerBuffs(AURA); on(c, addon)
+    t.eq(icon.texture, "tex:Blessing of Might", "dps, nothing cast: Might")
+    bless(c, "Blessing of Kings", AURA)
+    t.eq(kept(c, "blessing", "dps"), "Blessing of Kings", "kept for dps")
+    fightPasses(c)
+    t.eq(icon.texture, "tex:Blessing of Kings", "the next fight over, blessing down: Kings")
+    addon.settings:set(D.ROLE, "heal"); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Blessing of Wisdom", "healing, none cast for it: Wisdom")
+    addon.settings:set(D.ROLE, "dps"); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Blessing of Kings", "back to dps: its own again")
+    t.eq(kept(c, "blessing", "heal"), nil, "nothing kept for healing")
+end
+
+tests["paladin: the present blessing follows the role: healing Wisdom, tanking Kings, else Might"] = function(t)
+    for _, case in ipairs({ { "heal", "tex:Blessing of Wisdom" }, { "tank", "tex:Blessing of Kings" },
+                            { "dps", "tex:Blessing of Might" } }) do
+        local c, addon, icon = start()
+        addon.settings:set(D.ROLE, case[1])
+        c.setPlayerBuffs({ ["Devotion Aura"] = true, ["Righteous Fury"] = true }); on(c, addon)
+        t.eq(icon.texture, case[2], case[1])
+    end
+end
+
+tests["paladin: a seal cast is kept for the role you play"] = function(t)
+    local c, addon, icon = start()
+    addon.settings:set(D.ROLE, "dps")
+    c.setPlayerBuffs(READY); on(c, addon)
+    cast(c, "Seal of the Crusader")
+    fightPasses(c)
+    t.eq(icon.texture, "tex:Seal of the Crusader", "dps: the one cast")
+    addon.settings:set(D.ROLE, "heal"); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Seal of Righteousness", "healing, none cast for it: the present rule")
+    addon.settings:set(D.ROLE, "dps"); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Seal of the Crusader", "back to dps")
+end
+
+tests["paladin: a blessing cast that never lands on you is not kept"] = function(t)
+    local c, addon, icon = start()
+    c.setPlayerBuffs(AURA); on(c, addon)
+    cast(c, "Blessing of Kings")
+    c.fire("UNIT_AURA", "player"); c.advance(1, 5)
+    t.eq(kept(c, "blessing"), nil, "your buffs show no Kings: not kept")
+    local withKings = { ["Devotion Aura"] = true, ["Blessing of Kings"] = 300 }
+    c.setPlayerBuffs(withKings); c.fire("UNIT_AURA", "party1"); c.advance(1, 5)
+    t.eq(kept(c, "blessing"), nil, "another unit's auras: not read as yours")
+    c.advance(5, 5)
+    c.fire("UNIT_AURA", "player"); c.advance(1, 5)
+    t.eq(kept(c, "blessing"), nil, "it shows only long after the cast: not kept")
+    c.setPlayerBuffs(AURA); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Blessing of Might", "the present rule holds")
+    -- Kings already on you, cast on someone else: your Kings is not renewed.
+    c.setPlayerBuffs({ ["Devotion Aura"] = true, ["Blessing of Kings"] = 200 })
+    cast(c, "Blessing of Kings")
+    c.setPlayerBuffs({ ["Devotion Aura"] = true, ["Blessing of Kings"] = 199 }); c.fire("UNIT_AURA", "player")
+    c.advance(1, 5)
+    t.eq(kept(c, "blessing"), nil, "yours not renewed by the cast: not kept")
+    bless(c, "Blessing of Kings", AURA)
+    t.eq(kept(c, "blessing"), "Blessing of Kings", "it lands on you: kept")
+end
+
+tests["paladin: the seal word chooses a seal; your cast still wins for one fight; auto clears"] = function(t)
+    local c, addon, icon = start()
+    c.setPlayerBuffs(READY); on(c, addon)
+    local line = word(c, "seal crusader")
+    t.ok(line:find(ns.id.title, 1, true) == 1, "said under the add-on's title: " .. line)
+    t.ok(line:find("Seal of the Crusader", 1, true), line)
+    t.eq(picked(c, "seal"), "Seal of the Crusader", "kept for the character")
+    t.eq(icon.texture, "tex:Seal of the Crusader", "the chosen seal")
+    cast(c, "Seal of Righteousness")
+    t.eq(icon.texture, "tex:Seal of Righteousness", "your own cast wins")
+    t.eq(kept(c, "seal"), nil, "with a seal chosen, a cast is not kept for the role")
+    fightPasses(c)
+    t.eq(icon.texture, "tex:Seal of the Crusader", "the fight over: the chosen one again")
+    local c2, _, icon2 = reload(c)
+    c2.setPlayerBuffs(READY); c2.advance(1, 5)
+    t.eq(icon2.texture, "tex:Seal of the Crusader", "the choice kept over a reload")
+    line = word(c, "seal auto")
+    t.ok(line:find("auto", 1, true), line)
+    t.eq(picked(c, "seal"), nil, "the choice cleared")
+    t.eq(icon.texture, "tex:Seal of Righteousness", "auto: the present rule")
+end
+
+tests["paladin: choosing a seal forgets the seals you cast; a seal not known keeps the usual one"] = function(t)
+    local c, addon, icon = start()
+    c.setPlayerBuffs(READY); on(c, addon)
+    cast(c, "Seal of the Crusader")
+    fightPasses(c)
+    t.eq(kept(c, "seal"), "Seal of the Crusader")
+    local line = word(c, "seal justice")
+    t.eq(kept(c, "seal"), nil, "the cast one forgotten")
+    t.ok(line:find("Seal of Justice", 1, true), line)
+    t.ok(line:find("usual one holds", 1, true), "says the usual one holds until it is known: " .. line)
+    t.eq(icon.texture, "tex:Seal of Righteousness", "not known: the present rule")
+    line = word(c, "seal banana")
+    t.ok(line:find("righteousness, crusader, command, justice, light, wisdom, fury", 1, true),
+         "lists the names: " .. line)
+    t.eq(picked(c, "seal"), "Seal of Justice", "an unknown name changes nothing")
+end
+
+tests["paladin: the blessing word chooses a blessing; casts do not change it; auto clears"] = function(t)
+    local c, addon, icon = start()
+    c.setPlayerBuffs(AURA); on(c, addon)
+    local line = word(c, "blessing kings")
+    t.ok(line:find("Blessing of Kings", 1, true), line)
+    t.eq(icon.texture, "tex:Blessing of Kings", "the chosen blessing")
+    bless(c, "Blessing of Wisdom", AURA)
+    t.eq(icon.texture, "tex:Blessing of Kings", "a cast does not change a chosen blessing")
+    t.eq(kept(c, "blessing"), nil, "nor is it kept")
+    line = word(c, "blessing protection")
+    t.ok(line:find("might, wisdom, kings, salvation, light, sanctuary", 1, true), "lists the names: " .. line)
+    t.eq(picked(c, "blessing"), "Blessing of Kings", "Protection is no blessing to keep")
+    word(c, "blessing auto")
+    t.eq(picked(c, "blessing"), nil)
+    t.eq(icon.texture, "tex:Blessing of Might", "auto: the present rule")
+end
+
+tests["paladin: only your own aura counts: another paladin's Devotion Aura does not"] = function(t)
+    local c, addon, icon = start()
+    c.setPlayerBuffs({ ["Devotion Aura"] = true, ["Blessing of Might"] = 200, ["Seal of Righteousness"] = 25 })
+    c.setOwnBuffs({ ["Blessing of Might"] = 200, ["Seal of Righteousness"] = 25 })
+    on(c, addon)
+    t.eq(icon.texture, "tex:Devotion Aura", "someone else's aura up, yours not: Devotion Aura")
+    c.setOwnBuffs({ ["Devotion Aura"] = true, ["Blessing of Might"] = 200, ["Seal of Righteousness"] = 25 })
+    c.advance(1, 5)
+    t.ok(not (icon.shown and icon.texture == "tex:Devotion Aura"), "yours up: not asked for")
+    c.setOwnBuffs(nil); c.advance(1, 5)
+    t.ok(not (icon.shown and icon.texture == "tex:Devotion Aura"), "your own auras not read: not asked for")
 end
 
 tests["a class with no pack: on, and it says so"] = function(t)
