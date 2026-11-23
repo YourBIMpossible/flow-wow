@@ -3,9 +3,12 @@
 -- the game; not in ZFlow/manifest.lua and not in the TOC.
 --
 -- For an add-on loaded on a fake client (ns.offline.addon(c)): ONE text
--- block of what the player sees, the same text for the same state, with no
--- character, realm, guild or account name in it. It is what is posted and
--- compared after a run on a real capture.
+-- block of what the player sees, the same text for the same state, with
+-- every name it was told or could read replaced. A name it was not told
+-- and cannot read can remain (see NAMES, "The limits"): the block from a
+-- real session is treated as holding names, stays where it was made and
+-- is not posted (section 199). It is what is compared after a run on a
+-- real capture.
 --
 --   ns.offline.seen(c, addon, opts) -> text, lines, problems
 --                                   -> nil, why          (refused, see NAMES)
@@ -22,7 +25,16 @@
 --                  refused (see NAMES).
 --     opts.madeUp  true: the state is made up and holds no character. With
 --                  no character name known and this not said, the snapshot
---                  is refused.
+--                  is refused. Said, and the client itself answers a
+--                  character name (its reads or the diag snapshots kept):
+--                  refused, the state is real (section 199, N2). The names
+--                  line says "state made up" or "state real".
+--     opts.absent  { realm = true, guild = true, account = true, ... }: the
+--                  kinds of name the caller says the player has none of
+--                  (no guild, an account name the client never says). For
+--                  real state every kind of REQUIRED must be known or
+--                  marked here, or the snapshot is refused (section 199,
+--                  N1). Any other key, or a value that is not true: refused.
 --     opts.diag    nil: the diag word is asked (see DIAG). false: not asked.
 --                  A list of texts: those lines are used as they are.
 --     opts.chat    false: the chat lines are left out ("not asked").
@@ -45,9 +57,10 @@
 --     the names line; a text of format 1 has none.
 --
 -- THE BLOCK. The first line is HEAD. The second says which kinds of name
--- were known, and so replaced, and which were not, the kinds in the order
--- of KINDS, "none" for an empty side:
---   names: character, realm known; guild, account, guid not known
+-- were known, and so replaced, which the caller marked absent, which were
+-- not known, the kinds in the order of KINDS, "none" for an empty part,
+-- and whether the state was said to be made up:
+--   names: character, realm known; guild, account marked absent; guid not known; state real
 -- A kind that is not known was not searched for: a reader sees it here.
 -- The compare has both lines as the section "head". Then every section of
 -- SECTIONS, in that order, always: a header "== name ==" and its lines. A
@@ -208,6 +221,10 @@ M.FAILED = "failed"
 M.SECTIONS = { "arrows", "rotation icon", "flight marks", "map pins", "minimap pins",
     "nameplate labels", "combo bars", "slot icons", "panels", "chat", "diag" }
 M.KINDS = { "character", "realm", "guild", "account", "guid" }
+-- The kinds real state must know or mark absent (section 199, N1). A GUID
+-- is not one: the client may give none, and its parts are found when it does.
+M.REQUIRED = { "character", "realm", "guild", "account" }
+M.MADE_UP, M.REAL = "state made up", "state real"
 M.PLACE = { character = "<character>", realm = "<realm>", guild = "<guild>",
     account = "<account>", guid = "<guid>" }
 M.PATH = "<path>/"
@@ -615,8 +632,10 @@ function M.names(c, addon, given, shortNames)
     if type(c) == "table" then
         local name, realm = read(c, "UnitName", "player")
         addName(names, "character", name); addName(names, "realm", realm)
+        local answered = type(name) == "string" and name ~= ""
         name, realm = read(c, "UnitFullName", "player")
         addName(names, "character", name); addName(names, "realm", realm)
+        answered = answered or (type(name) == "string" and name ~= "")
         addName(names, "realm", (read(c, "GetRealmName")))
         addName(names, "realm", (read(c, "GetNormalizedRealmName")))
         addName(names, "guild", (read(c, "GetGuildInfo", "player")))
@@ -638,9 +657,12 @@ function M.names(c, addon, given, shortNames)
                 if type(timing) == "table" then
                     addName(names, "character", timing.character)
                     addName(names, "realm", timing.realm)
+                    if type(timing.character) == "string" and timing.character ~= "" then answered = true end
                 end
             end
         end
+        -- N2: the client itself answered a character name.
+        names.answered = answered
     end
     for i = 1, #names do
         local name = names[i]
@@ -665,14 +687,28 @@ function M.names(c, addon, given, shortNames)
 end
 
 -- The second line of the block: the kinds known and not known.
-local function namesLine(names)
-    local known, missing = {}, {}
+local function namesLine(names, absent, madeUp)
+    local known, marked, missing = {}, {}, {}
     for _, kind in ipairs(M.KINDS) do
-        local into = names[kind] and known or missing
+        local into = names[kind] and known or (absent[kind] and marked) or missing
         into[#into + 1] = kind
     end
-    return "names: " .. (#known > 0 and table.concat(known, ", ") or M.NONE) .. " known; "
-        .. (#missing > 0 and table.concat(missing, ", ") or M.NONE) .. " not known"
+    local function part(kinds) return #kinds > 0 and table.concat(kinds, ", ") or M.NONE end
+    return "names: " .. part(known) .. " known; " .. part(marked) .. " marked absent; "
+        .. part(missing) .. " not known; " .. (madeUp and M.MADE_UP or M.REAL)
+end
+
+-- opts.absent as the header says, or nil and the reason (which never
+-- repeats a key or a value).
+local function absentOf(given)
+    if given == nil then return {} end
+    local want = "refused. It is { realm = true, guild = true, ... }, each a kind of name the player has none of."
+    if type(given) ~= "table" then return nil, "opts.absent is not a table: " .. want end
+    for key, v in pairs(given) do
+        if type(key) ~= "string" or not M.PLACE[key] then return nil, "opts.absent has a key that is no kind of name: " .. want end
+        if v ~= true then return nil, "opts.absent has a mark that is not true: " .. want end
+    end
+    return given
 end
 
 -- Where the names are in the line: { s, e, kind } by place in the line as
@@ -692,7 +728,12 @@ local function spans(line, names)
                 -- As it was written, a whole word.
                 a, b = low:find(name.lower, from, true)
                 if not a then break end
-                if not wordByte(low:byte(a - 1)) and not wordByte(low:byte(b + 1)) then
+                -- A colour code just before ("|cffff0000") or a "|r" or
+                -- another code just after is not a letter next to it (N3).
+                local codeBefore = a > 10 and low:sub(a - 10, a - 1):find("^|c%x%x%x%x%x%x%x%x$") ~= nil
+                local codeAfter = low:sub(b + 1, b + 2) == "|r" or low:sub(b + 1, b + 2) == "|c"
+                if (codeBefore or not wordByte(low:byte(a - 1)))
+                    and (codeAfter or not wordByte(low:byte(b + 1))) then
                     found[#found + 1] = { s = a, e = b, kind = name.kind, at = #found + 1 }
                 end
             elseif name.digits then
@@ -890,9 +931,27 @@ function M.seen(c, addon, opts)
     if type(c) ~= "table" then return nil, "no fake client was given" end
     local names, bad = M.names(c, addon, opts.names, opts.shortNames == true)
     if not names then return nil, bad end
-    if not names.character and opts.madeUp ~= true then
+    local absent, badAbsent = absentOf(opts.absent)
+    if not absent then return nil, badAbsent end
+    local madeUp = opts.madeUp == true
+    if not names.character and not madeUp then
         return nil, "no character name is known (none in opts.names, none from the client's reads): "
             .. "refused, because the names cannot be taken out. For made-up state say opts.madeUp = true."
+    end
+    if madeUp and names.answered then
+        return nil, "the state was said to be made up, but the client answers a character name: the state "
+            .. "is real. Refused (section 199, N2)."
+    end
+    if not madeUp then
+        local missing = {}
+        for _, kind in ipairs(M.REQUIRED) do
+            if not names[kind] and not absent[kind] then missing[#missing + 1] = kind end
+        end
+        if #missing > 0 then
+            return nil, "real state: the " .. table.concat(missing, ", ") .. " names are neither known nor "
+                .. "marked absent (opts.absent): refused, because a name of that kind could not be taken out "
+                .. "(section 199, N1)."
+        end
     end
 
     local makers = {
@@ -918,7 +977,7 @@ function M.seen(c, addon, opts)
         end,
     }
 
-    local lines, problems = { M.HEAD, namesLine(names) }, {}
+    local lines, problems = { M.HEAD, namesLine(names, absent, madeUp) }, {}
     for _, name in ipairs(M.SECTIONS) do
         lines[#lines + 1] = "== " .. name .. " =="
         local ok, got = pcall(makers[name])
