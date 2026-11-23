@@ -68,13 +68,54 @@ WB.NAME = "windowButtons"
 WB.WORD = "buttons"
 WB.HELP = "say whether each window button is shown, and why not"
 WB.NO_READ = "no window read"
+-- What the client says when the part a place names is not there
+-- (Core/Client.lua, windowButton): the next place is tried.
+WB.NO_PLACE = "its place inside the window was not found"
+
+-- The places a window's button is asked for, in order: win.places, or the
+-- one place of win.point and win.inside.
+function WB.Places(win)
+    if type(win.places) == "table" then return win.places end
+    return { { point = win.point, inside = win.inside } }
+end
+
+-- What the buttons line says of the place a part names, or nil.
+function WB.PlaceSays(win, field)
+    if field == nil then return nil end
+    for _, place in ipairs(WB.Places(win)) do
+        for _, name in ipairs(type(place.inside) == "table" and place.inside or {}) do
+            if name == field then return place.says end
+        end
+    end
+    return nil
+end
+
+-- Lead section 296: the buttons word also lists Plexy's other surfaces,
+-- each on or off and, in one line, when it appears (its module's WHEN),
+-- and why the minimap pin is not shown. mod is the module's table in ns;
+-- field names its setting; off = true for a setting that hides it.
+WB.SURFACES = {
+    { says = "threat on enemy nameplates", mod = "PlateThreat", field = "OFF", off = true },
+    { says = "combo points on your target's nameplate", mod = "PlateCombo", field = "OFF", off = true },
+    { says = "quest marks on enemy nameplates", mod = "PlateQuests", field = "OFF", off = true },
+    { says = "ring on the flight map", mod = "TaxiMark", field = "SETTING" },
+    { says = "flight pins on the world map", mod = "MapFlights", field = "SETTING" },
+    { says = "NPCs read aloud", mod = "NpcSpeech", field = "SETTING" },
+}
+WB.PIN_SAYS = "minimap pin"
+WB.PIN_WHEN = "it appears when you set a waypoint"
 
 -- The merchant point was seen in game (section 142): top right of the
 -- merchant window, nothing over it. The world map point is a first
--- guess, not seen in game: the owner saw the first one (top right of the
--- window) under the quest log header, so it is now on the map itself,
--- bottom right, left of the game's own quest log toggle. Why there, and
--- what sits in the other corners: WoW\from-twin\RESEARCH-worldmap-button.md.
+-- guess, not seen in game. The owner saw the first one (top right of the
+-- window) under the quest log header (section 142), and the second (the
+-- map's bottom right corner, 44 px in) under the quest log "Q" toggle
+-- (lead section 293). So the button now stands on the toggle itself: its
+-- bottom right on the toggle's top right, 4 px up, as legacy Flow's map
+-- button stood (Modules/Nav/MapOverlay.lua:1176-1186), whatever the
+-- toggle's size. A client with no toggle gets the map's corner. Places
+-- are tried in order; a place whose part is missing gives way to the next.
+-- What sits in the other corners: WoW\from-twin\RESEARCH-worldmap-button.md.
 -- Needs game test. The button text
 -- and the start of its tooltip are the addon's title from the identity
 -- (Core/Identity.lua is the only file that may hold it).
@@ -85,9 +126,13 @@ WB.WINDOWS = {
         retry = "PLAYER_ENTERING_WORLD",
         opens = "arrow", call = "OpenMenu",
         tip = "open the arrow menu",
-        inside = { "ScrollContainer" }, insideSays = "on the map itself",
         strata = "HIGH",
-        point = { "BOTTOMRIGHT", "BOTTOMRIGHT", -44, 4 },
+        places = {
+            { inside = { "SidePanelToggle" }, says = "above the quest log toggle",
+                point = { "BOTTOMRIGHT", "TOPRIGHT", 0, 4 } },
+            { inside = { "ScrollContainer" }, says = "on the map itself",
+                point = { "BOTTOMRIGHT", "BOTTOMRIGHT", -44, 4 } },
+        },
     },
     {
         key = "merchant", frame = "MerchantFrame", setting = "buttons.merchant",
@@ -145,10 +190,39 @@ function WB.Declare(k, diag)
                 if okV and v == true then line = line .. "; button can be seen" end
                 if okV and v == false then line = line .. "; button cannot be seen" end
             end
-            if s == "shown" and h and win.insideSays and h.placedOn ~= nil then
-                line = line .. "; placed " .. win.insideSays
-            end
+            local says = (s == "shown" and h) and WB.PlaceSays(win, h.placedOn) or nil
+            if says then line = line .. "; placed " .. says end
             out[#out + 1] = line .. "."
+        end
+        return out
+    end
+
+    -- The lines for WB.SURFACES and the minimap pin, after the buttons'.
+    function api.surfaceLines()
+        local out = {}
+        local settings = ctx and ctx.settings or k.settings
+        for _, s in ipairs(WB.SURFACES) do
+            local mod = ns[s.mod]
+            if type(mod) == "table" and type(mod.WHEN) == "string" then
+                local on = nil
+                if type(settings) == "table" and type(mod[s.field]) == "string" then
+                    local okG, v = pcall(settings.get, settings, mod[s.field])
+                    if okG and type(v) == "boolean" then
+                        if s.off then on = not v else on = v end
+                    end
+                end
+                local state = on == nil and "not known" or (on and "on" or "off")
+                out[#out + 1] = s.says .. ": " .. state .. "; " .. mod.WHEN
+            end
+        end
+        local pin = k.use("minimapPin")
+        local okL, last = false, nil
+        if type(pin) == "table" and type(pin.Last) == "function" then okL, last = pcall(pin.Last) end
+        if okL and type(last) == "table" and last.shown == true then
+            out[#out + 1] = WB.PIN_SAYS .. ": shown."
+        else
+            local why = okL and type(last) == "table" and last.reason or "not looked at yet"
+            out[#out + 1] = WB.PIN_SAYS .. ": not shown (" .. tostring(why) .. "); " .. WB.PIN_WHEN .. "."
         end
         return out
     end
@@ -188,12 +262,16 @@ function WB.Declare(k, diag)
         local why = WB.NO_READ
         h = nil
         if type(make) == "function" then
-            h, why = make(win.frame, {
-                name = id.framePrefix .. "Button" .. win.frame,
-                text = id.title, tip = id.title .. ": " .. win.tip,
-                point = { win.point[1], win.point[2], win.point[3], win.point[4] },
-                inside = win.inside, strata = win.strata,
-            })
+            for _, place in ipairs(WB.Places(win)) do
+                local p = place.point
+                h, why = make(win.frame, {
+                    name = id.framePrefix .. "Button" .. win.frame,
+                    text = id.title, tip = id.title .. ": " .. win.tip,
+                    point = { p[1], p[2], p[3], p[4] },
+                    inside = place.inside, strata = win.strata,
+                })
+                if type(h) == "table" or why ~= WB.NO_PLACE then break end
+            end
         end
         if type(h) ~= "table" then
             states[win.key] = "not made"
@@ -222,6 +300,7 @@ function WB.Declare(k, diag)
             local client = ctx and ctx.client or k.client
             if type(client) ~= "table" or type(client.print) ~= "function" then return end
             local lines = api.lines()
+            for _, line in ipairs(api.surfaceLines()) do lines[#lines + 1] = line end
             for i = 1, #lines do client.print(id.title .. ": " .. lines[i]) end
         end
         if type(diag.help) == "table" then diag.help[WB.WORD] = WB.HELP end

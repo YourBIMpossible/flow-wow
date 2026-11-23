@@ -323,6 +323,8 @@ function Arrow.GuideSource(client, layout, guide, intro, palette)
             if intro.title ~= nil then out[1] = tostring(intro.title) end
         elseif type(step.lines) == "table" then
             for i = 1, #step.lines do out[i] = tostring(step.lines[i]) end
+            -- How to get there, or why there is no way (section 286).
+            if step.hint ~= nil then out[#out + 1] = tostring(step.hint) end
             -- The quest's own item in words (S42, Nav/QuestItems.lua): last.
             if step.use ~= nil then out[#out + 1] = tostring(step.use) end
         else
@@ -330,6 +332,8 @@ function Arrow.GuideSource(client, layout, guide, intro, palette)
             if label ~= nil then out[#out + 1] = tostring(label) end
             -- A step may say one more line of its own under its label (S43).
             if step.detail ~= nil then out[#out + 1] = tostring(step.detail) end
+            -- How to get there, or why there is no way (section 286).
+            if step.hint ~= nil then out[#out + 1] = tostring(step.hint) end
             -- The quest's own item in words (S42, Nav/QuestItems.lua).
             if step.use ~= nil then out[#out + 1] = tostring(step.use) end
             if type(d) == "number" then
@@ -867,8 +871,10 @@ function Arrow.Start(k, diag, own)
     -- What the menu and the tooltip are made from (UI/ArrowMenu.lua).
     local function menuState()
         local saved = N.ArrowSaved(Arrow.Saved(k))
+        local Feedback = ns.Feedback
+        local feedback = type(Feedback) == "table" and k.use(Feedback.NAME) ~= nil
         return { stacked = saved.mode ~= "separate", hidden = saved.hidden, text = saved.text,
-                 styles = Arrow.Styles(style()), canShapes = canShapes() }
+                 styles = Arrow.Styles(style()), canShapes = canShapes(), feedback = feedback }
     end
     -- The tooltip's lines for one arrow, or nil when none is on the screen.
     -- The lines are the step's own, also for an arrow whose text is off.

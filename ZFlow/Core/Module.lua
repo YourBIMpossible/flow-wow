@@ -225,6 +225,10 @@ function ns.make.modules(k)
         local verdict = ns.Guard.Decide(k.client, k.id)
         if verdict.paused then
             k.phase, k.paused, k.pausePanel = "paused", true, verdict.panel
+            -- Lead section 286: the old add-on's flights, copied while its
+            -- tables are loaded (Core/Guard.lua CopyFlights).
+            local okCopy, err = pcall(ns.Guard.CopyFlights, k.client, k.id)
+            if not okCopy then k.problems:add("guard", "copy flights", err) end
             return false
         end
         k.store:open()

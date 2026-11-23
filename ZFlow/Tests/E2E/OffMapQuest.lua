@@ -63,7 +63,8 @@ tests["off-map quest, same continent: the needle turns and the yards are said"] 
     local c = start({ cont = 1 })
     local a = c.arrows[1]
     t.eq(a.shown, true)
-    t.eq(a.lines, { "Wolves", "Wolves slain: 0/4", "1415 yd SE" })
+    -- Section 208: no flight point known, so the line of section 286.
+    t.eq(a.lines, { "Wolves", "Wolves slain: 0/4", ns.Nav.Flights.NONE, "1415 yd SE" })
     t.ok(type(a.drawn) == "table" and type(a.drawn.turn) == "number" and a.drawn.turn ~= 0, "needle turned")
 end
 
