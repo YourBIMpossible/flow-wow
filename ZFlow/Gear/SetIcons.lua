@@ -19,7 +19,8 @@ local _, ns = ...
 --
 -- ACTING, the click only (lead sections 227 item 4 and 230): a left click
 -- on an icon puts on that set's pieces that are in the bags and not worn,
--- one client.equipItem (EquipItemByName) per piece, in one pass. What
+-- one client.equipItem (EquipItemByName) per piece, to the inventory slot
+-- it was saved in (Gear/Sets.lua set.slots), in one pass. What
 -- starts it: the player's own click (the row's act). What stops it:
 -- combat, or combat not known (nothing is asked), what is worn or the bags
 -- not read (nothing is asked). No timer, no event, no retry: a piece the
@@ -133,8 +134,10 @@ end
 
 -- What one click puts on: each piece of the set not worn whose item is in
 -- the bags (two of one ring take two from the bags). -> { equip = { item
--- as the bags list it, ... }, missing = pieces neither worn nor in the
--- bags }; or nil and why when what is worn or the bags are not known.
+-- as the bags list it, ... }, slots = { [i] = the saved inventory slot of
+-- equip[i], nil for a set saved without slots }, missing = pieces neither
+-- worn nor in the bags }; or nil and why when what is worn or the bags are
+-- not known.
 function SetIcons.Plan(set, wornLinks, bagItems)
     local worn = SetIcons.WornKeys(wornLinks)
     if worn == nil then return nil, SetIcons.CANT_READ_WORN end
@@ -153,12 +156,14 @@ function SetIcons.Plan(set, wornLinks, bagItems)
             for _ = 1, n do list[#list + 1] = stack.item end
         end
     end
-    local plan = { equip = {}, missing = 0 }
-    for _, key in ipairs(set.items) do
+    local plan = { equip = {}, slots = {}, missing = 0 }
+    local saved = set.slots
+    for i, key in ipairs(set.items) do
         if (have[key] or 0) > 0 then
             have[key] = have[key] - 1
         elseif bag[key] and #bag[key] > 0 then
             plan.equip[#plan.equip + 1] = table.remove(bag[key], 1)
+            if type(saved) == "table" then plan.slots[#plan.equip] = saved[i] end
         else
             plan.missing = plan.missing + 1
         end
@@ -247,9 +252,14 @@ function SetIcons.Declare(k)
         local plan, why = SetIcons.Plan(set, read("wornLinks"), read("bagItems"))
         if not plan then return say(why) end
         local equipped, failed = 0, 0
-        for _, item in ipairs(plan.equip) do
+        -- Each piece to its saved slot, so the second of two rings (or
+        -- trinkets, or weapons) never replaces the first; no saved slot:
+        -- the game's choice.
+        for i, item in ipairs(plan.equip) do
             local ok, put = false, nil
-            if type(ctx.client.equipItem) == "function" then ok, put = pcall(ctx.client.equipItem, item) end
+            if type(ctx.client.equipItem) == "function" then
+                ok, put = pcall(ctx.client.equipItem, item, plan.slots[i])
+            end
             if ok and put == true then equipped = equipped + 1 else failed = failed + 1 end
         end
         say(SetIcons.Done(set.name, equipped, plan.missing, failed))

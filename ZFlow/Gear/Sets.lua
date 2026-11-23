@@ -18,16 +18,19 @@ local _, ns = ...
 --   facts = GearSets.Facts(store)   { [item key] = { set name, ... } }, or
 --                                   nil when no set is saved: what
 --                                   Disposition's inSet rule reads
---   sets  = GearSets.Saved(store)   { { name, items = { key ... } } ... }
+--   sets  = GearSets.Saved(store)   { { name, items = { key ... },
+--                                   slots = { slot ... } or nil } ... }
 --   lines, changed = GearSets.Run(k, rest)
 --   lines = GearSets.TipLines(store, link)   the tooltip keep line, or nil
 --   api   = GearSets.Declare(k, diag)        adds the word; a module that
 --                                   adds the keep line to item tooltips
 --
 -- Saved data: char state.gearSets = { { name = "tank", items = { 1000,
--- "15234:588", ... } } ... }, a list in the order saved. A set holds its
--- name (what the player typed) and the item keys (Items/Key.lua: an item
--- with a random suffix is its own key), never a character name. Imported
+-- "15234:588", ... }, slots = { 15, 11, ... } } ... }, a list in the order
+-- saved. A set holds its name (what the player typed), the item keys
+-- (Items/Key.lua: an item with a random suffix is its own key) and the
+-- inventory slot each was worn in (a set saved before slots has none),
+-- never a character name. Imported
 -- sets (account settings.gear.mySets, Flow's { [role] = { [slot] = link } })
 -- are read only, listed, and never hold anything: they are account wide, so
 -- they may be another character's.
@@ -82,20 +85,35 @@ local function get(store, scope, path)
     return v
 end
 
+-- An inventory slot id as saved: a whole number 1..19.
+local function goodSlot(slot)
+    return type(slot) == "number" and slot >= 1 and slot <= 19 and slot == math.floor(slot)
+end
+
 -- The saved sets that read, in order; a set or a key that does not read is
--- left out.
+-- left out. slots (the inventory slot each key was worn in, same order) is
+-- kept only when every kept key has a good one; else nil (an older set).
 function Sets.Saved(store)
     local raw, out = get(store, "char", Sets.PATH), {}
     if type(raw) ~= "table" then return out end
     for i = 1, #raw do
         local s = raw[i]
         if type(s) == "table" and goodName(s.name) and type(s.items) == "table" then
-            local items = {}
+            local items, slots, allSlots = {}, {}, type(s.slots) == "table"
             for j = 1, #s.items do
                 local key = ns.Items.Key(s.items[j])
-                if key ~= nil then items[#items + 1] = key end
+                if key ~= nil then
+                    items[#items + 1] = key
+                    if allSlots and goodSlot(s.slots[j]) then
+                        slots[#items] = s.slots[j]
+                    else
+                        allSlots = false
+                    end
+                end
             end
-            out[#out + 1] = { name = s.name, items = items }
+            local set = { name = s.name, items = items }
+            if allSlots then set.slots = slots end
+            out[#out + 1] = set
         end
     end
     return out
@@ -144,7 +162,8 @@ local function loaded(k)
     return type(c.saved) == "function" and type(c.saved(k.id.charDB)) == "table"
 end
 
--- What is worn now, as item keys in slot order; nil when not known.
+-- What is worn now, as item keys in slot order, and the slot of each key
+-- (same order); nil when not known.
 local function wornKeys(client)
     if type(client) ~= "table" or type(client.wornLinks) ~= "function" then return nil end
     local ok, links = pcall(client.wornLinks)
@@ -154,21 +173,29 @@ local function wornKeys(client)
         if type(slot) == "number" then slots[#slots + 1] = slot end
     end
     table.sort(slots)
-    local keys = {}
+    local keys, at = {}, {}
     for _, slot in ipairs(slots) do
         local key = ns.Items.Key(links[slot])
-        if key ~= nil then keys[#keys + 1] = key end
+        if key ~= nil then
+            keys[#keys + 1] = key
+            at[#keys] = slot
+        end
     end
-    return keys
+    return keys, at
 end
 
--- The list as saved: plain tables, nothing but name and items.
+-- The list as saved: plain tables, nothing but name, items and slots.
 local function save(k, sets)
     local list = {}
     for i, s in ipairs(sets) do
         local items = {}
         for j, key in ipairs(s.items) do items[j] = key end
         list[i] = { name = s.name, items = items }
+        if type(s.slots) == "table" then
+            local slots = {}
+            for j = 1, #items do slots[j] = s.slots[j] end
+            list[i].slots = slots
+        end
     end
     local ok, reason = k.store:set("char", Sets.PATH, list)
     if not ok then
@@ -228,11 +255,11 @@ function Sets.Run(k, rest)
         return { "Set " .. more .. " forgotten." }, true
     end
 
-    local keys = wornKeys(k.client)
+    local keys, slots = wornKeys(k.client)
     if keys == nil then return { Sets.CANT_READ }, false end
     if #keys == 0 then return { Sets.NOTHING_WORN }, false end
     if not at and #sets >= Sets.MAX_SETS then return { Sets.TOO_MANY }, false end
-    local set = { name = more, items = keys }
+    local set = { name = more, items = keys, slots = slots }
     if at then sets[at] = set else sets[#sets + 1] = set end
     if not save(k, sets) then return { Sets.FAILED }, false end
     return { "Set " .. more .. " saved: " .. plural(#keys, "piece", "pieces") .. "." }, true
