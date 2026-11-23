@@ -51,6 +51,19 @@ tests["client speech: localPlayback says whether the destination is known"] = fu
     t.eq(ns.make.client({ C_VoiceChat = voiceChat({}) }).speech().localPlayback, false)
 end
 
+-- NS-1a (lead section 275): a secret LocalPlayback number is not a
+-- destination - not known, and nothing is spoken to it.
+tests["client speech: a secret LocalPlayback value is not a destination"] = function(t)
+    local log = {}
+    local c = ns.make.client({ C_VoiceChat = voiceChat(log),
+        Enum = { VoiceTtsDestination = { LocalPlayback = 1 } },
+        issecretvalue = function(v) return v == 1 end })
+    t.eq(c.speech().localPlayback, false)
+    local ok = c.speak("Hello.", { voiceID = 3 })
+    t.eq(ok, false)
+    t.eq(#log, 0, "nothing was spoken")
+end
+
 tests["client speech: SpeakText gets voice, text, local playback, rate 0, volume 100"] = function(t)
     local log = {}
     local c = ns.make.client({ C_VoiceChat = voiceChat(log),

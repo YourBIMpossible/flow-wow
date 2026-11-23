@@ -131,6 +131,30 @@ tests["reward mark: the module marks on QUEST_COMPLETE and clears on QUEST_FINIS
     t.eq(api.marked(), nil)
 end
 
+-- RM-2 (lead section 275): with fewer than 2 choices there is nothing to
+-- choose between: no 1 s repeat is kept. Two choices still repeat.
+tests["reward mark: one choice - no repeat after QUEST_COMPLETE; two choices repeat"] = function(t)
+    local function reads(rows)
+        local c = client()
+        c.setQuestChoices(rows)
+        local read, n = c.questChoices, 0
+        c.questChoices = function(...)
+            n = n + 1
+            return read(...)
+        end
+        local k = ns.Kernel({}, c)
+        RM.Declare(k, packs())
+        k:Boot()
+        c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
+        c.fire("QUEST_COMPLETE")
+        local before = n
+        c.advance(3, 6)
+        return n - before
+    end
+    t.eq(reads(choices(STRONG)), 0, "one choice: nothing read again")
+    t.ok(reads(choices(WEAK, STRONG)) > 0, "two choices: read again each second")
+end
+
 tests["reward mark: switched off, nothing is marked"] = function(t)
     local c = client()
     c.setQuestChoices(choices(WEAK, STRONG))
