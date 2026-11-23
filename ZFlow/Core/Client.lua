@@ -1332,6 +1332,29 @@ function ns.make.client(env)
         return nil
     end
 
+    -- GT-1. Is any minimap tracking on (Flow's X.AnyTracked)? true / false;
+    -- nil when it cant be told. First guess; not seen in game.
+    function c.anyTracking()
+        local M = env.C_Minimap
+        if type(M) == "table" then
+            local okN, n = call(M.GetNumTrackingTypes)
+            if okN and type(n) == "number" and not hidden(n) then
+                for i = 1, n do
+                    local ok, a, _, active = call(M.GetTrackingInfo, i)
+                    if ok then
+                        local on = active
+                        if type(a) == "table" then on = a.active end
+                        if on == true and not hidden(on) then return true end
+                    end
+                end
+                return false
+            end
+        end
+        local okT, cur = call(env.GetTrackingTexture)
+        if okT and not hidden(cur) then return cur ~= nil end
+        return nil
+    end
+
     -- P-GATHER. The professions you have: { [name] = true }, empty when read
     -- and none, nil when the client gives no read. GetProfessions with
     -- GetProfessionInfo, else the skill lines (GetNumSkillLines,

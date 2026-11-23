@@ -36,6 +36,8 @@ ns.Gather = G
 
 G.NAME = "gatherTrack"
 G.SETTING = "rotation.gatherTracking"
+-- The buffs that mean eating or drinking (GT-2): no offer while one is up.
+G.RESTING = { "Food", "Drink" }
 G.LIST = {
     { profession = "Mining", spell = "Find Minerals" },
     { profession = "Herbalism", spell = "Find Herbs" },
@@ -66,6 +68,21 @@ function G.Read(client, field)
         local ok, p = pcall(client.professions)
         return (ok and type(p) == "table") and p or nil
     end
+    -- GT-2: on a mount or a flight path a cast would dismount or fail.
+    if field == "mounted" or field == "onTaxi" then
+        local read = client[field]
+        if type(read) ~= "function" then return nil end
+        local ok, v = pcall(read)
+        if ok and type(v) == "boolean" then return v end
+        return nil
+    end
+    -- GT-1: any tracking at all on (Flow's X.AnyTracked).
+    if field == "trackingAny" then
+        if type(client.anyTracking) ~= "function" then return nil end
+        local ok, v = pcall(client.anyTracking)
+        if ok and type(v) == "boolean" then return v end
+        return nil
+    end
     if type(client.tracking) ~= "function" then return nil end
     if field == "tracking" then
         return each(function(g) return client.tracking(g.spell) end)
@@ -87,6 +104,21 @@ function G.Step(s)
     if type(s) ~= "table" then return nil, "nothing to read" end
     if s.gatherOn == false then return nil, "gathering tracking is switched off" end
     if not ns.Rotation.OutOfFight(s) then return nil, "not out of a fight" end
+    -- GT-2 (Flow's X.TrackAllowed): on foot, not on a flight path, not
+    -- eating or drinking; each must be read, as a cast would dismount the
+    -- player or stand them up.
+    if s.mounted ~= false then return nil, s.mounted and "mounted" or "not known whether you are mounted" end
+    if s.onTaxi ~= false then
+        return nil, s.onTaxi and "on a flight path" or "not known whether you are on a flight path"
+    end
+    if type(s.buffs) ~= "table" then return nil, "not known whether you are eating or drinking" end
+    for _, buff in ipairs(G.RESTING) do
+        if s.buffs[buff] then return nil, "eating or drinking" end
+    end
+    -- GT-1: any tracking on is the player's choice and is left alone.
+    if s.trackingAny ~= false then
+        return nil, s.trackingAny and "a tracking is already on" or "not known whether a tracking is on"
+    end
     local prof, known, on = s.professions, s.trackKnown, s.tracking
     if type(prof) ~= "table" or type(known) ~= "table" or type(on) ~= "table" then
         return nil, "not known which gathering tracking you have"
