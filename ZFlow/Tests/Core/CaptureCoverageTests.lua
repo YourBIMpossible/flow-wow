@@ -69,6 +69,13 @@ KIND.show[#KIND.show + 1] = "moveHandle"
 -- kit's list is there, on hidden frames; run once per login by
 -- UI/KitProbe.lua, never by the capture.
 KIND.tool[#KIND.tool + 1] = "kitProbe"
+-- The window kit's drawer (lead sections 287, 291 and 303): one window
+-- from a checked tree; a click runs the part's own function.
+KIND.show[#KIND.show + 1] = "kitWindow"
+-- Lead sections 319 and 322: the probe's answers handed to the drawer, and
+-- the listener told what each window drew. Neither asks the game anything.
+KIND.tool[#KIND.tool + 1] = "kitKnown"
+KIND.listen[#KIND.listen + 1] = "onKitDrawn"
 
 -- Section 285 item 2b: the face, Ctrl-drag and hover tip of the Flow and
 -- self buttons (Rotation/FlowButton.lua).

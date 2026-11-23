@@ -232,6 +232,23 @@ if (Test-ZSavedTable $probeRows) {
     Write-Output ("   works {0}, missing {1}, not confirmed {2}, not asked {3}" -f $works, $missing, $unsure, $unknown)
 } else { Write-Output '   none saved (log in once out of combat, then reload or log out)' }
 
+# What each kit window drew, part by part (lead section 319): "first" is the
+# game's own template, "fallback" the kit's plain form.
+Write-Output ''
+Write-Output '=== Kit parts drawn ==='
+$kitDrawn = Get-ZSaved $diag 'kitDrawn'
+if ((Test-ZSavedTable $kitDrawn) -and $kitDrawn.Keys.Count -gt 0) {
+    foreach ($win in ($kitDrawn.Keys | Sort-Object { [string]$_ })) {
+        $parts = Get-ZSaved $kitDrawn $win
+        if (-not (Test-ZSavedTable $parts)) { continue }
+        $own = @(); $plain = @()
+        foreach ($part in ($parts.Keys | Sort-Object { [string]$_ })) {
+            if ((Get-ZSaved $parts $part) -eq 'first') { $own += [string]$part } else { $plain += [string]$part }
+        }
+        Write-Output ("   {0}: game's own: {1}; plain fallback: {2}" -f (Format-Plain $win), (Format-Plain ($own -join ', ')), (Format-Plain ($plain -join ', ')))
+    }
+} else { Write-Output '   none saved (no kit window was opened)' }
+
 Write-Output ''
 Write-Output '=== Layout (saved for the account) ==='
 $layout = Get-ZSaved $db 'layout'

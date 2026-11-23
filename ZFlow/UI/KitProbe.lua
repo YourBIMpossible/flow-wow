@@ -120,6 +120,27 @@ function P.Start(k)
         last = record
         local okSave, err = pcall(save, k, record)
         if not okSave then k.problems:add(P.KIND, "save", tostring(err)) end
+        -- The kit's drawer is told, so a part found missing is not asked
+        -- for again and its plain form draws.
+        if type(client.kitKnown) == "function" then pcall(client.kitKnown, copyRows(record.rows)) end
+    end
+
+    -- Lead section 319: what each kit window drew, part by part ("first":
+    -- the game's own template; "fallback": the plain form), kept in the
+    -- saved diagnostics beside the probe's answers (diag.kitDrawn).
+    if type(client.onKitDrawn) == "function" then
+        client.onKitDrawn(function(id, art)
+            if type(id) ~= "string" or type(art) ~= "table" then return end
+            local db = client.saved(k.id.accountDB)
+            if type(db) ~= "table" then return end
+            if type(db.diag) ~= "table" then db.diag = {} end
+            if type(db.diag.kitDrawn) ~= "table" then db.diag.kitDrawn = {} end
+            local row = {}
+            for part, which in pairs(art) do
+                if type(part) == "string" and type(which) == "string" then row[part] = which end
+            end
+            db.diag.kitDrawn[id] = row
+        end)
     end
 
     -- Lead section 307: the journal add-on is never loaded from here. When
