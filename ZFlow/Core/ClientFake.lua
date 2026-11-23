@@ -2055,6 +2055,51 @@ function ns.make.fakeClient(opts)
             return h
         end
     end
+    -- N55, the boss loot panel: the same reads as Core/Client.lua, set by a
+    -- test; each nil (not known) until set.
+    --   c.setBossUnit(r)       { exists, guid, name } as c.bossUnit() gives
+    --                          it; with exists false nothing more is said
+    --   c.setInstance(r)       { inside, kind } as c.instance() gives it
+    --   c.setLootLine(fn)      fn(line) answering item, count for a loot
+    --                          line (anyone's) and nil for any other
+    --   c.setReadFails(name, on)   the read c[name] raises while on (lead
+    --                          section 236: a read that fails, then
+    --                          recovers). For any read of this client; a
+    --                          caller that kept the function itself from
+    --                          before the first call is not reached.
+    function c.setBossUnit(r) s.bossUnit = type(r) == "table" and r or nil end
+    function c.bossUnit()
+        local r = s.bossUnit
+        if type(r) ~= "table" or type(r.exists) ~= "boolean" then return nil end
+        if not r.exists then return { exists = false } end
+        return { exists = true, guid = r.guid, name = r.name }
+    end
+    function c.setInstance(r) s.instance = type(r) == "table" and r or nil end
+    function c.instance()
+        local r = s.instance
+        if type(r) ~= "table" or type(r.inside) ~= "boolean" then return nil end
+        return { inside = r.inside, kind = r.kind }
+    end
+    function c.setLootLine(fn) s.lootLine = fn end
+    function c.lootLine(line)
+        if type(s.lootLine) ~= "function" then return nil end
+        return s.lootLine(line)
+    end
+    do
+        local failing, wrapped = {}, {}
+        function c.setReadFails(name, on)
+            if type(c[name]) ~= "function" then return end
+            if not wrapped[name] then
+                wrapped[name] = true
+                local plainRead = c[name]
+                c[name] = function(...)
+                    if failing[name] then error(tostring(name) .. " read failed (test)") end
+                    return plainRead(...)
+                end
+            end
+            failing[name] = on and true or nil
+        end
+    end
     return c
 end
 

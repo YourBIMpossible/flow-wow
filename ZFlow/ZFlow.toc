@@ -165,3 +165,4 @@ Items\Trader.lua
 Nav\Try.lua
 Rotation\Gather.lua
 Rotation\Group.lua
+UI\BossLoot.lua

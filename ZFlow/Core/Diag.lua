@@ -135,6 +135,11 @@ Diag.NAMES = {
     -- UnitClass, UnitGroupRolesAssigned, UnitPowerType, UnitIsDead,
     -- C_Spell.IsSpellInRange, C_UnitAuras.GetAuraDataByIndex) are above.
     "UnitIsConnected",
+    -- N55 (the boss loot panel, RESEARCH-N55): client.instance asks these
+    -- two, client.lootLine these two texts beside LOOT_ITEM_SELF and
+    -- LOOT_ITEM_SELF_MULTIPLE above; client.bossUnit asks UnitExists,
+    -- UnitGUID and UnitName, above. The journal names are Plexy's to add.
+    "IsInInstance", "GetInstanceInfo", "LOOT_ITEM", "LOOT_ITEM_MULTIPLE",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns

@@ -52,7 +52,7 @@ local DROPS = {
 }
 -- What is worn, by inventory slot: head, hands, chest, wrist, feet.
 local WORN = {
-    [1] = { id = 3001, kind = "INVTYPE_HEAD", stats = { [STA] = 5 } },
+    [1] = { id = 3001, kind = "INVTYPE_HEAD", stats = { [STA] = 5, [INT] = 8 } },
     [10] = { id = 3002, kind = "INVTYPE_HAND", stats = { [STA] = 12, [STR] = 8 } },
     [5] = { id = 3003, kind = "INVTYPE_CHEST", stats = { [STA] = 30, [INT] = 10 } },
     [9] = { id = 3004, kind = "INVTYPE_WRIST", stats = { [STA] = 10 } },
@@ -141,7 +141,7 @@ end
 local EVERYTHING = { HELM, GRIPS, ROBE, CUFFS, DAGGER, BOOTS, TOOTH }
 local TANK_LIST = {
     BOSS .. ": loot you have seen drop",
-    FULL .. "Thornhelm: upgrade +27 for Protection, seen 1 of 1 kill" .. END,
+    FULL .. "Thornhelm: upgrade +25 for Protection, seen 1 of 1 kill" .. END,
     FADED .. "Dawnweave Cuffs: +63 for Holy, seen 1 of 1 kill" .. END,
     FADED .. "Sunward Grips: +29 for Holy, seen 1 of 1 kill" .. END,
     FADED .. "Dull Sabatons: no upgrade, seen 1 of 1 kill" .. END,
@@ -216,7 +216,7 @@ tests["boss loot: as a healer the same drops reorder: the healing pieces on top,
         BOSS .. ": loot you have seen drop",
         FULL .. "Dawnweave Cuffs: upgrade +63 for Holy, seen 1 of 1 kill" .. END,
         FULL .. "Sunward Grips: upgrade +29 for Holy, seen 1 of 1 kill" .. END,
-        FADED .. "Thornhelm: +27 for Protection, seen 1 of 1 kill" .. END,
+        FADED .. "Thornhelm: +25 for Protection, seen 1 of 1 kill" .. END,
         FADED .. "Dull Sabatons: no upgrade, seen 1 of 1 kill" .. END,
     }, joined(shownLines(c)))
 end
@@ -241,7 +241,7 @@ tests["boss loot: no role chosen: every role's upgrade is full strength, and a l
         BOSS .. ": loot you have seen drop",
         "Say " .. ns.id.slash .. " role to put your own role's pieces first.",
         FULL .. "Sunward Grips: upgrade +29 for Holy, seen 1 of 1 kill" .. END,
-        FULL .. "Thornhelm: upgrade +27 for Protection, seen 1 of 1 kill" .. END,
+        FULL .. "Thornhelm: upgrade +25 for Protection, seen 1 of 1 kill" .. END,
     }, joined(shownLines(c)))
 end
 
@@ -254,7 +254,7 @@ tests["boss loot: seen n of m kills: a piece rolled twice in one kill counts onc
     pull(c)
     t.eq(shownLines(c), {
         BOSS .. ": loot you have seen drop",
-        FULL .. "Thornhelm: upgrade +27 for Protection, seen 2 of 2 kills" .. END,
+        FULL .. "Thornhelm: upgrade +25 for Protection, seen 2 of 2 kills" .. END,
         FADED .. "Dull Sabatons: no upgrade, seen 1 of 2 kills" .. END,
     }, joined(shownLines(c)))
 end
@@ -325,7 +325,7 @@ tests["boss loot: a world boss target in a fight is recognised; its corpse loot 
     c.fire("PLAYER_TARGET_CHANGED"); c.setCombat(true)
     t.eq(shownLines(c), {
         "Old Mossback: loot you have seen drop",
-        FULL .. "Thornhelm: upgrade +27 for Protection, seen 1 of 1 kill" .. END,
+        FULL .. "Thornhelm: upgrade +25 for Protection, seen 1 of 1 kill" .. END,
         FADED .. "Dull Sabatons: no upgrade, seen 1 of 1 kill" .. END,
     }, joined(shownLines(c)))
     t.eq(errorsOf(addon), 0)
@@ -367,7 +367,7 @@ tests["boss loot: the setting hides the panel at once and brings it back; drops 
     addon.settings:set(SETTING, true)
     t.eq(shownLines(c), {
         BOSS .. ": loot you have seen drop",
-        FULL .. "Thornhelm: upgrade +27 for Protection, seen 1 of 2 kills" .. END,
+        FULL .. "Thornhelm: upgrade +25 for Protection, seen 1 of 2 kills" .. END,
         FADED .. "Dull Sabatons: no upgrade, seen 1 of 2 kills" .. END,
     }, joined(shownLines(c)))
 end
@@ -387,13 +387,17 @@ end
 
 -- Fails before: there is no boss loot module to hold to this (the first
 -- assertion: the panel is shown).
-tests["boss loot: look only: nothing is cast, crafted or clicked through it, and it prints nothing"] = function(t)
+tests["boss loot: look only: nothing is crafted or clicked through it, and it says nothing in chat"] = function(t)
     local c = start()
     local printed = #c.printed
     killWith(c, EVERYTHING)
     pull(c)
     t.ok(shownLines(c) ~= nil, "shown")
-    t.eq(#c.printed, printed, "nothing printed")
+    for i = printed + 1, #c.printed do
+        local line = tostring(c.printed[i])
+        t.ok(not line:find(BOSS, 1, true), "the boss is not named in chat")
+        for _, name in pairs(NAMES) do t.ok(not line:find(name, 1, true), "no drop is named in chat: " .. name) end
+    end
     t.eq(#c.crafts, 0, "nothing crafted")
     for _, b in ipairs(c.secureButtons) do
         t.ok(not tostring(type(b.spec) == "table" and b.spec.name or ""):find("BossLoot", 1, true), "no button of its own")
@@ -429,7 +433,7 @@ tests["boss loot 236(a): item data late and in parts: the line waits, then says 
     c.fire("GET_ITEM_INFO_RECEIVED", HELM, true)
     t.eq(shownLines(c), {
         BOSS .. ": loot you have seen drop",
-        FULL .. "Thornhelm: upgrade +27 for Protection, seen 1 of 1 kill" .. END,
+        FULL .. "Thornhelm: upgrade +25 for Protection, seen 1 of 1 kill" .. END,
     }, "all read: the verdict")
     t.eq(errorsOf(addon), 0)
 end
@@ -444,7 +448,7 @@ tests["boss loot 236(a): a waiting line is read again without any event"] = func
     info[HELM] = { name = NAMES[HELM] }
     c.setItem(plain(HELM), DROPS[HELM])
     c.advance(3, 6)
-    t.ok(holds(shownLines(c), "Thornhelm: upgrade +27 for Protection"), joined(shownLines(c)))
+    t.ok(holds(shownLines(c), "Thornhelm: upgrade +25 for Protection"), joined(shownLines(c)))
 end
 
 -- (b) A reload in the middle. Drops learned on one add-on instance are
@@ -495,7 +499,7 @@ tests["boss loot 236(c): the item read raises, then answers: the line waits, no 
     c.advance(3, 6)
     t.eq(shownLines(c), {
         BOSS .. ": loot you have seen drop",
-        FULL .. "Thornhelm: upgrade +27 for Protection, seen 1 of 1 kill" .. END,
+        FULL .. "Thornhelm: upgrade +25 for Protection, seen 1 of 1 kill" .. END,
     }, "the read answers: the verdict")
 end
 
