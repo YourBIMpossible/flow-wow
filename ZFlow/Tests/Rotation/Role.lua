@@ -268,9 +268,14 @@ end
 
 tests["role module: it changes no setting but its own"] = function(t)
     local k, _, _, diag = start()
+    local was = k.settings:get(D.SETTING)
+    t.eq(was, true, "the rotation is on by default (lead section 294)")
     diag.commands[Ro.WORD]("tank")
     k.bus:emit(D.EVENT, view("dps"))
-    t.eq(k.settings:get(D.SETTING), false, "the rotation stays as it was")
+    t.eq(k.settings:get(D.SETTING), was, "the rotation stays as it was")
+    k.settings:set(D.SETTING, false)
+    diag.commands[Ro.WORD]("heal")
+    t.eq(k.settings:get(D.SETTING), false, "a saved off stays off too")
 end
 
 -- ------------------------------------------------------------ settings model

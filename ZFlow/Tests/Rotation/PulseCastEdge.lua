@@ -272,7 +272,7 @@ local function start(opts)
     c.fire("ADDON_LOADED", ns.id.addon)
     c.fire("PLAYER_LOGIN")
     c.fire("PLAYER_ENTERING_WORLD")
-    if opts.rotation ~= false then k.settings:set(D.SETTING, true) end
+    k.settings:set(D.SETTING, opts.rotation ~= false)
     local w = { k = k, c = c, icon = icon, cast = cast, pulse = pulse, edge = edge }
     function w.noTarget() hasTarget = false end
     return w

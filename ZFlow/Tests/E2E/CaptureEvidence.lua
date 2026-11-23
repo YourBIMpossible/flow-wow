@@ -155,8 +155,19 @@ tests["capture evidence: the words for nothing-to-work-on are the modules' own"]
     t.ok(Evidence.REQUIRES.banker.idle[ns.ItemPresent.BAGS_UNREAD] ~= nil, "banker: the bags-not-read words")
     -- The rotation and arrow words are built in place (Core/Diag.lua,
     -- UI/Arrow.lua): they are checked by what a run with nothing says.
-    local _, lines = judge(made(), "rotation")
+    -- A saved off still says switched off (the rotation is on by default
+    -- since lead section 294).
+    local off = made()
+    off.char = { settings = { rotation = { enabled = false } } }
+    local _, lines = judge(off, "rotation")
     t.ok(anyHas(lines, "rotation: switched off"), "rotation: the switched-off line")
+    -- On by default with nothing to work on: a line the idle words cover.
+    local idle = false
+    _, lines = judge(made(), "rotation")
+    for words in pairs(Evidence.REQUIRES.rotation.idle) do
+        if anyHas(lines, words) then idle = true end
+    end
+    t.ok(idle, "rotation on, nothing to work on: an idle line: " .. table.concat(lines, " / "))
     _, lines = judge(made(), "arrow")
     t.ok(anyHas(lines, "quest step from nothing"), "arrow: the no-step line")
     t.ok(anyHas(lines, "quest log: not read"), "arrow: the no-log line")
@@ -203,7 +214,10 @@ tests["capture evidence: class, level, faction and place alone do not verify rot
     local rotation = judge(cap, "rotation")
     t.eq({ rotation.result, rotation.verified }, { Evidence.NOT_EXERCISED, false })
     t.ok(has(rotation.missing, "known spells") and has(rotation.missing, "a target"), "rotation: no spells and no target")
-    t.ok(has(rotation.missing, "the rotation setting on"), "rotation: it was switched off")
+    t.ok(has(rotation.missing, "a rotation suggestion"), "rotation: on by default, it suggested nothing")
+    local off = made()
+    off.char = { settings = { rotation = { enabled = false } } }
+    t.ok(has(judge(off, "rotation").missing, "the rotation setting on"), "rotation: a saved off is switched off")
     t.ok(not has(rotation.missing, "class") and not has(rotation.missing, "level"), "rotation: the class and level were there")
 
     local banker = judge(cap, "banker")
@@ -222,7 +236,8 @@ end
 
 tests["capture evidence: saying a made-up input was given does not make an idle run a verification"] = function(t)
     -- The test claims spells and a target but supplies none: the run still
-    -- says switched off, and that decides it.
+    -- suggests nothing (on by default since lead section 294), and that
+    -- decides it.
     local v = judge(made(), "rotation", nil, { "known spells", "a target" })
     t.eq({ v.result, v.verified }, { Evidence.NOT_EXERCISED, false })
     v = judge(made(), "banker", nil, { "bag items" })

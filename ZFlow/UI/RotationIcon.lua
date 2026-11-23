@@ -90,6 +90,25 @@ function I.Row(k)
     return row
 end
 
+-- Lead section 294: the line said once a session when the icon is on, a
+-- fight is under way and there is nothing to suggest, so an empty icon is
+-- not a silent one. Only for a real "nothing" (Twin review 17:11, F1): the
+-- class pack read, no suggestion, no earlier reading kept after a failed
+-- read, and a live enemy targeted. A suggestion whose picture was not read,
+-- or no enemy yet, is a missing read or a wait, not "nothing".
+I.EMPTY = "next spell: nothing to suggest in this fight yet"
+I.EMPTY_HOW = "; the spells this character knows give no suggestion here. Type the slash command with diag to see why."
+
+-- true only when the driver's view says there is nothing to suggest and an
+-- enemy is targeted (see I.EMPTY).
+function I.NothingToSuggest(client, view)
+    if type(view) ~= "table" or view.pack ~= true or view.stale == true then return false end
+    if I.Spell(view) ~= nil then return false end
+    if type(client) ~= "table" or type(client.target) ~= "function" then return false end
+    local ok, tg = pcall(client.target)
+    return ok and type(tg) == "table" and tg.exists == true and tg.hostile == true and tg.dead == false
+end
+
 -- true only when the client has this read and it answers true. No read,
 -- a read that raises, false or nil: not a yes.
 local function says(client, name)
@@ -146,6 +165,7 @@ function I.Declare(k)
             local client = ctx.client
             local row = I.Row(k)
             local saveSaid = false
+            local emptySaid = false
 
             local function screen()
                 if type(client.screen) ~= "function" then return nil end
@@ -209,6 +229,13 @@ function I.Declare(k)
                     and ns.Reveal.Open(k, "icon") == false
                 if not tex or held or says(client, "petBattle") or says(client, "vehicle") then
                     hide()
+                    if not tex and not held and not emptySaid and k.settings:get(D.SETTING) == true
+                        and I.NothingToSuggest(client, view)
+                        and type(client.inCombat) == "function" and client.inCombat() == true
+                        and type(client.print) == "function" then
+                        emptySaid = true
+                        pcall(client.print, ns.id.title .. ": " .. I.EMPTY .. I.EMPTY_HOW)
+                    end
                     return
                 end
                 if icon.setTexture(tex) then
