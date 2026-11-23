@@ -221,4 +221,59 @@ tests["dungeon window F3: each quest line carries the kit's icon for its group"]
     t.eq(icons["The Defias Brotherhood"], look.questLater, "a later quest: later")
 end
 
+-- Lead DISPATCH 343: the look of the game's dungeon journal. The list
+-- shows each dungeon's level range with its name; above the tabs a
+-- summary line names the dungeon, its range at the right and its quest
+-- count below (all worked out by Nav/DungeonStates.lua).
+local function capture(c)
+    local box = {}
+    local real = c.kitWindow
+    c.kitWindow = function(id, tree, extra)
+        box.tree = tree
+        local h = real(id, tree, extra)
+        if type(h) == "table" then
+            local update = h.update
+            h.update = function(now)
+                box.tree = now
+                return update(now)
+            end
+        end
+        return h
+    end
+    return box
+end
+
+local function partByKey(tree, key)
+    local found
+    ns.Kit.Each(tree, function(part)
+        if part.key == key then found = part end
+    end)
+    return found
+end
+
+tests["dungeon window 343: the list shows each dungeon's level range"] = function(t)
+    local c = boot()
+    local box = capture(c)
+    open(c)
+    local list = partByKey(box.tree, "dungeons")
+    t.eq(list and list.items, { "The Deadmines (18-22)", "Shadowfang Keep (27)" })
+end
+
+tests["dungeon window 343: a summary line above the tabs: name, level range, quest count"] = function(t)
+    local c = boot()
+    local box = capture(c)
+    open(c)
+    local s = partByKey(box.tree, "summary")
+    t.ok(s ~= nil, "a summary line")
+    t.eq(s and { s.kind, s.text, s.right, s.sub }, { "line", "The Deadmines", "Levels 18-22", "2 quests" })
+    local order = {}
+    ns.Kit.Each(box.tree, function(part)
+        if part.key == "summary" or part.key == "tabs" then order[#order + 1] = part.key end
+    end)
+    t.eq(order, { "summary", "tabs" }, "the summary stands above the tabs")
+    c.kitType(ID, "header", "shadow")
+    s = partByKey(box.tree, "summary")
+    t.eq(s and { s.text, s.right, s.sub }, { "Shadowfang Keep", "Level 27", "1 quest" }, "follows the pick")
+end
+
 return tests

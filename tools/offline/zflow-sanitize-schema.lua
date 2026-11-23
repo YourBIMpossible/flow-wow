@@ -99,6 +99,9 @@ local DIAG = fields({
     -- What each kit window drew (lead section 319; UI/KitProbe.lua): window id,
     -- then part name, then "first" or "fallback". No player text.
     kitDrawn = map("str", map("str", "str")),
+    -- The sell list's first grey item (lead section 340; UI/SellList.lua):
+    -- an item name and fixed words. No player text.
+    sellGrey = fields({ item = "str", rule = "str", why = "str", counts = "str" }),
     snaps = list(SNAP),
 })
 

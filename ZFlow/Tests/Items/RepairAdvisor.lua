@@ -9,6 +9,10 @@ local _, ns = ...
 local R = ns.Repair
 local tests = {}
 
+-- The plain panel's first line is the advisor's title since lead sections
+-- 340/341 (the owner saw an untitled box): the lines below start with it.
+local TITLE = ns.id.title .. ": Advice"
+
 local function setDurability(c, readings)
     if type(c.setDurability) == "function" then return c.setDurability(readings) end
     c.durability = function()
@@ -25,6 +29,9 @@ local function start(opts)
     local c = ns.make.fakeClient()
     c.setSaved(ns.id.accountDB, {})
     setDurability(c, opts.durability)
+    -- The plain panel cases: the kit window is refused, so the advisor
+    -- draws on the plain panel (Tests/UI/AdvisorKit.lua has the kit's).
+    if type(c.setKitFails) == "function" then c.setKitFails(math.huge) end
     local k = ns.Kernel({}, c)
     ns.Diag.Start(k)
     -- The real advisor (UI/Advisor.lua). `prompts[id]` reads its List() live;
@@ -78,7 +85,7 @@ tests["repair prompt: the advisor panel shows the line, and hides when gear is r
     end
     t.ok(panel ~= nil, "the advisor's panel is there")
     t.eq(panel.shown, true)
-    t.eq(panel.lines, { "An item you wear is at 10% durability. " .. R.NO_VENDOR })
+    t.eq(panel.lines, { TITLE, "An item you wear is at 10% durability. " .. R.NO_VENDOR })
     setDurability(c, { [5] = { cur = 100, max = 100 } })
     c.fire(R.EVENT)
     t.eq(panel.shown, false, "no prompts left: the panel hides")

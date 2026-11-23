@@ -71,10 +71,12 @@ return {
         "Items/Present.lua",
         "Items/CraftHint.lua",
         "Items/SkillUps.lua",
+        "Items/SkillBoosters.lua",
         "Items/CraftQueue.lua",
         "Items/Sell.lua",
         "Items/Repair.lua",
         "Items/SellView.lua",
+        "Items/SellThese.lua",
         "Items/PriceLookup.lua",
 
         -- Gear
@@ -185,6 +187,7 @@ return {
         "UI/BankList.lua",
         "UI/CraftBar.lua",
         "UI/ProfHelper.lua",
+        "UI/KitHost.lua",
         "Items/Keep.lua",
         "Items/RecipeBook.lua",
         "Items/Goals.lua",
@@ -246,6 +249,13 @@ return {
     "Nav/BossKills.lua",
     -- Lead section 318: the Dungeon Quests window, on the kit (after Kit and the dungeon data).
     "UI/DungeonWindow.lua",
+    -- P-TRIP (S43): quest spots learned from the player's own play (after QuestRead and Diag).
+    "Nav/QuestSpots.lua",
+    -- P-TRIP (S39/S43/S40): quest routes and dungeon runs for the arrow (after RoutePlan, QuestSpots).
+    "Nav/TripRoute.lua",
+    -- Lead DISPATCH section 340: the minimap button's rim math (pure), then the button.
+    "UI/MinimapPlace.lua",
+    "UI/MinimapButton.lua",
     -- N60a: copy chat text and clickable web addresses in chat (after the settings page).
     "UI/Chat.lua",
     },

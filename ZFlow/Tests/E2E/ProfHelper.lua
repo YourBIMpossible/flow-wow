@@ -29,6 +29,9 @@ end
 local function start(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
+    -- These cases are the plain panel: the kit window is refused, so the
+    -- panel behind it draws (lead section 297 item 5, the fallback).
+    if type(c.setKitFails) == "function" then c.setKitFails(math.huge) end
     c.setSaved(ns.id.accountDB, opts.account or {
         learned = { prices = { vendor = { [CLOTH] = { value = 10, basis = "observed", source = "merchant" } } } },
     })
