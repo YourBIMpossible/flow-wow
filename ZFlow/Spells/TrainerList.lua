@@ -8,7 +8,9 @@ local _, ns = ...
 -- Pure. A reading is c.trainer()'s answer (Core/Client.lua: { npc =,
 -- profession = }) with the two fields it lacks today (CLIENT NEED, A-F):
 --   services = { { name =, rank =, state = "available" | "unavailable" | "known",
---                  cost = copper, level = n }, ... }
+--                  cost = copper, level = n, skill = n }, ... }
+-- skill is the profession skill the recipe needs (N23, lead section 274
+-- item 2; a whole number, left out when the client did not read one).
 --   filter   = { available = bool, unavailable = bool, known = bool }
 -- The visiting character's faction is c.faction(), passed to Record.
 -- filter is the window's own filter: which row states it showed. The
@@ -57,7 +59,8 @@ local function row(r)
     if r.rank ~= nil and not text(r.rank) then return nil end
     if r.cost ~= nil and not count(r.cost) then return nil end
     if r.level ~= nil and not count(r.level) then return nil end
-    return { name = name, rank = text(r.rank), state = r.state, cost = r.cost, level = r.level }
+    if r.skill ~= nil and not count(r.skill) then return nil end
+    return { name = name, rank = text(r.rank), state = r.state, cost = r.cost, level = r.level, skill = r.skill }
 end
 
 -- The key a trainer's list is kept under. "%" and "." in names are
@@ -134,7 +137,8 @@ function T.Record(lists, reading, when, faction)
     return lists
 end
 
--- One plain line per row: "Moonfire (Rank 2), level 10, 1s 50c: can learn",
+-- One plain line per row: "Moonfire (Rank 2), level 10, 1s 50c: can learn"
+-- ("Red Linen Robe, level 10, skill 40, ..." when a skill is needed),
 -- and a last line when the list is not complete.
 function T.Lines(entry)
     local out = {}
@@ -142,6 +146,7 @@ function T.Lines(entry)
     for _, r in ipairs(entry.rows) do
         local parts = { r.rank and (r.name .. " (" .. r.rank .. ")") or r.name }
         if r.level then parts[#parts + 1] = "level " .. r.level end
+        if r.skill then parts[#parts + 1] = "skill " .. r.skill end
         local coin = r.cost and ns.Prices and ns.Prices.Coin and ns.Prices.Coin(r.cost) or nil
         parts[#parts + 1] = coin or T.PRICE_UNKNOWN
         out[#out + 1] = table.concat(parts, ", ") .. ": " .. STATES[r.state]
