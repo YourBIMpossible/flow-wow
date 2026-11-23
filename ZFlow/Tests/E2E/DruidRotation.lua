@@ -386,4 +386,73 @@ tests["druid 247: tank and damage keep the form they cast, as built"] = function
     t.eq(kept(c, "form", "tank"), "Cat Form", "tank: kept")
 end
 
+-- ---------------------- N50 / GAP DRUID-2 (P-SELFBUFF, section 236): tree
+-- The known-spell tree on the whole add-on: Moonkin Form, a Balance talent
+-- (options.trees, a first guess), known marks the druid as Balance, and the
+-- Cat Form rule stays off. Spell id plausible, not read here.
+local MOONKIN = 24858
+
+tests["druid N50: Moonkin Form learned late: the tree appears and Cat Form stops"] = function(t)
+    local c, _, icon = ready()
+    t.eq(icon.texture, "tex:Cat Form", "no talent spell known: Cat Form, as today")
+    c.setSpellId("Moonkin Form", MOONKIN); c.setSpell(MOONKIN, { known = false }); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Cat Form", "Moonkin Form not known yet: still Cat Form")
+    learn(c, "Moonkin Form", MOONKIN); c.advance(1, 5)
+    t.ok(not (icon.shown and icon.texture == "tex:Cat Form"), "Moonkin Form learned: no Cat Form")
+end
+
+tests["druid N50: a Balance druid is still not offered Cat Form after a reload"] = function(t)
+    local c = ready()
+    learn(c, "Moonkin Form", MOONKIN); c.advance(1, 5)
+    local c2, _, icon2 = reload(c)
+    learn(c2, "Bear Form", FORM_IDS["Bear Form"]); learn(c2, "Moonkin Form", MOONKIN)
+    caster(c2, BUFFED); c2.setTarget(ENEMY); c2.advance(1, 5)
+    t.ok(icon2 ~= nil, "the icon is there after the reload")
+    t.ok(not (icon2.shown and icon2.texture == "tex:Cat Form"), "read again after the reload: no Cat Form")
+end
+
+tests["druid N50: the talent read raising: today's behaviour, and the tick goes on"] = function(t)
+    local c, _, icon = ready()
+    c.setSpellId("Moonkin Form", MOONKIN)
+    local spell = c.spell
+    c.spell = function(id)
+        if id == MOONKIN then error("broke") end
+        return spell(id)
+    end
+    c.advance(1, 5)
+    t.eq(icon.shown, true, "still suggesting")
+    t.eq(icon.texture, "tex:Cat Form", "tree not known: Cat Form, as today")
+end
+
+-- Lead section 238: the cat's finisher waits on options.combo (ROGUE-2's
+-- machinery, Rotation/Combo.lua). Spell id plausible, not read here.
+local BITE = 22568
+
+tests["druid combo: a cat with five combo points is told Ferocious Bite"] = function(t)
+    local c, addon, icon = start()
+    learn(c, "Ferocious Bite", BITE); c.setInRange(BITE, true)
+    on(c, addon, "dps")
+    clawing(c, { Rake = true })
+    t.eq(icon.texture, "tex:Claw", "no points: build")
+    c.setCombo(4, 5); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Claw", "four points: still build")
+    c.setCombo(5, 5); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Ferocious Bite", "five points: the finisher")
+end
+
+tests["druid combo: points not read: your own Claws are counted"] = function(t)
+    local c, addon, icon = start()
+    learn(c, "Ferocious Bite", BITE); c.setInRange(BITE, true)
+    on(c, addon, "dps")
+    clawing(c, { Rake = true })
+    for i = 1, 4 do
+        c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-3-0-0-0-0-0", IDS["Claw"]); c.advance(1, 5)
+        t.eq(icon.texture, "tex:Claw", "after " .. i .. " Claw(s): not due")
+    end
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-3-0-0-0-0-0", IDS["Claw"]); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Ferocious Bite", "five Claws counted: the finisher")
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-3-0-0-0-0-0", BITE); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Claw", "the bite spent them: build again")
+end
+
 return tests

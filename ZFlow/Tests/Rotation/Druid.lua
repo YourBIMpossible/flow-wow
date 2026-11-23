@@ -49,6 +49,59 @@ return {
         local ok, problems = ns.PackCheck(ns.Packs.DRUID)
         t.eq(table.concat(problems, "; "), "", "no problems")
         t.ok(ok, "ok")
+        -- A9 (section 229 item 7): the pack also plays. The Cat Form rule
+        -- fires for a Feral dps with a fight to take, and not for a Balance one.
+        local _, got = advice("dps", nil, "Feral")
+        t.eq(got and got.spell, "Cat Form", "Feral dps, an enemy targeted: Cat Form")
+        t.eq(got and got.step, "list", "from the priority list")
+        t.ok(advice("dps", nil, "Balance") ~= "Cat Form", "Balance dps, the same snapshot: not Cat Form")
+    end,
+
+    -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree is pack data.
+    ["druid N50: options.trees names talent spells, Moonkin Form first as Balance"] = function(t)
+        local rows = ns.Packs.DRUID.options.trees
+        t.ok(type(rows) == "table" and #rows > 0, "a list of rows")
+        t.eq(rows[1].spell, "Moonkin Form")
+        t.eq(rows[1].tree, "Balance")
+        for i, row in ipairs(rows) do
+            t.eq(row.evidence, "first guess", "row " .. i .. " is a first guess")
+            t.ok(row.tree == "Balance" or row.tree == "Feral" or row.tree == "Restoration", "row " .. i .. " names a druid tree")
+        end
+    end,
+
+    -- N50: a Balance druid (Moonkin Form known) through the whole read: the
+    -- driver serves tree, and the Cat Form rule stays off.
+    ["druid N50: a druid knowing Moonkin Form is not offered Cat Form; not known: Cat Form"] = function(t)
+        local D = ns.RotationDriver
+        local c = ns.make.fakeClient()
+        c.setDead(false); c.setCombat(false); c.setClass("DRUID"); c.setFormName(nil, true)
+        c.setTarget({ exists = true, hostile = true, dead = false })
+        c.setPlayerBuffs({ ["Mark of the Wild"] = true, ["Thorns"] = true }); c.setTargetDebuffs({})
+        local ids = { ["Cat Form"] = 768, ["Moonkin Form"] = 24858 }
+        for name, id in pairs(ids) do c.setSpellId(name, id); c.setSpellCooldown(id, false) end
+        c.setSpell(768, { known = true, usable = true })
+        c.setSpell(24858, { known = false })
+        local v = D.Step(c, ns.Packs.DRUID, nil, nil, nil, "dps")
+        t.eq(v.snapshot.tree, nil, "Moonkin Form not known: no tree")
+        t.eq(v.suggestion and v.suggestion.spell, "Cat Form", "today's behaviour: Cat Form")
+        c.setSpell(24858, { known = true, usable = true })
+        v = D.Step(c, ns.Packs.DRUID, nil, nil, nil, "dps")
+        t.eq(v.snapshot.tree, "Balance", "Moonkin Form known: Balance")
+        t.ok(not (v.suggestion and v.suggestion.spell == "Cat Form"), "a Balance druid: no Cat Form")
+    end,
+
+    -- Lead section 238: the cat's finisher waits on options.combo.
+    ["druid combo: options.combo counts the cat's builders and finishers"] = function(t)
+        local combo = ns.Packs.DRUID.options.combo
+        t.ok(type(combo) == "table", "the druid pack has options.combo")
+        t.eq(combo.need, 5, "need")
+        t.eq(combo.builders["Claw"], 1, "Claw builds")
+        t.eq(combo.builders["Rake"], 1, "Rake builds")
+        t.eq(combo.finishers["Ferocious Bite"], true, "Ferocious Bite spends")
+        t.eq(combo.finishers["Rip"], true, "Rip spends")
+        t.eq(combo.evidence, "first guess")
+        t.eq(ns.Combo.Ready(nil, 5, combo.need), true, "five counted: due")
+        t.eq(ns.Combo.Ready(nil, 4, combo.need), false, "four counted: not due")
     end,
 
     ["druid pack has no group dispel entry and every dispel is for yourself"] = function(t)
