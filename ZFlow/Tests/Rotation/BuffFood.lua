@@ -517,4 +517,18 @@ tests["buff food: extra.food reaches the food read with extra.chosen beside it (
     t.eq(D.Read(c, pack(), {}, "dps", { chosen = { spell = "Wrath" } })("foodOn"), nil, "no extra.food: not known")
 end
 
+-- Section 236: a pick made while another food was not read yet answers, but
+-- is not kept; the late food is read on the next read.
+tests["buff food: a pick made with a food not read yet is not kept (section 236)"] = function(t)
+    local c = client({ RIBS, FISH }, {})
+    c.setItemLines(RIBS, nil)
+    local food = { on = true }
+    local function read() return D.Read(c, pack(), {}, "heal", { food = food })("buffFood") end
+    t.eq(read().name, "Smoked Sagefish", "the one read")
+    t.eq(food.kept, false, "not kept: Spiced Wolf Ribs not read")
+    c.setItemLines(RIBS, LINES[RIBS])
+    t.eq(read().name, "Smoked Sagefish", "read again: still the healer's pick")
+    t.eq(food.kept, true, "all read: kept")
+end
+
 return tests
