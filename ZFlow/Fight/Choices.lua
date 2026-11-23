@@ -454,7 +454,7 @@ function Ch.Declare(k, diag, packs)
             key = Ch.SETTING, scope = "account", type = "bool", default = true,
             label = "Compare your casts with the advice",
             help = "In fights, counts what you cast beside what the rotation suggested. It only counts.",
-            group = "Rotation",
+            group = "combat.rotation", synonyms = { "rotation", "compare", "casts", "count" },
         } },
         start = function(ctx)
             client = ctx.client

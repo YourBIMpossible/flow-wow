@@ -228,7 +228,7 @@ function TM.Declare(k)
         return name
     end
 
-    k:Setting({ key = TM.SETTING, scope = "account", type = "bool", default = true, group = "Arrows",
+    k:Setting({ key = TM.SETTING, scope = "account", type = "bool", default = true, group = "travel.flights", synonyms = { "flight", "taxi", "map", "mark" },
         label = TM.ROW_LABEL, help = TM.ROW_HELP })
 
     k:Module({

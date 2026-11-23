@@ -68,7 +68,7 @@ function U.Declare(k)
             key = U.SETTING, scope = "account", type = "bool", default = true,
             label = "Show what each modifier casts",
             help = "Small icons beside the suggested spell: what Shift, Ctrl, Alt and Ctrl + Shift with your key cast. It presses nothing.",
-            group = "Rotation",
+            group = "combat.rotation", synonyms = { "rotation", "modifier", "shift", "ctrl", "alt", "icons" },
         } },
         start = function(ctx)
             local client = ctx.client

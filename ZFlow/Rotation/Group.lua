@@ -313,7 +313,7 @@ function G.Declare(k)
             label = "Suggest buffs for your group",
             help = "Out of a fight, names a party member who is missing one of your buffs, or has a curse or "
                 .. "poison you can remove, with the spell. It casts nothing; your key is unchanged.",
-            group = "Rotation",
+            group = "party", synonyms = { "group", "party", "buffs", "blessing", "mark of the wild", "fortitude", "cure" },
         } },
         start = function(c)
             ctx = c

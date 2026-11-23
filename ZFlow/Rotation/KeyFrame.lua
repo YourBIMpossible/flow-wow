@@ -368,7 +368,7 @@ function K.Declare(k, diag)
             key = K.SETTING, scope = "char", type = "bool", default = false,
             label = K.LABEL,
             help = "Puts your form's spells on one hidden button, outside fights only. It presses nothing for you.",
-            group = "Rotation",
+            group = "combat.rotation", synonyms = { "key", "button", "keybind", "macro", "form" },
         } },
         start = function(ctx)
             client = ctx.client

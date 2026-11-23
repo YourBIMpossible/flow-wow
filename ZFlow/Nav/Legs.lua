@@ -522,7 +522,8 @@ function L.Declare(k, diag)
 
     -- The switch (lead section 169 C; its model row is in Settings/Model.lua).
     k:Setting({ key = L.SETTING, scope = "account", type = "bool", default = true,
-        label = "Time my trips and plan by them" })
+        label = "Time my trips and plan by them", group = "travel.route",
+        synonyms = { "route", "travel time", "trips", "learn" } })
 
     k:Module({
         name = L.NAME,

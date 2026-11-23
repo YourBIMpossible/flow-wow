@@ -3979,7 +3979,17 @@ function ns.make.client(env)
             return w
         end
 
-        function h.draw(rows, act)
+        -- Topics and search (lead sections 238, 239). nav(kind, value) is told
+        -- "topic" and its id, or "search" and the typed text ("" for Clear);
+        -- it changes no setting. More row kinds:
+        --   { kind = "search", label, value, clear }   an edit box and Clear
+        --   { kind = "topics", topics = { { id, name, on }, ... } }
+        --                                    a button each, wrapped in lines
+        --   { kind = "section", text }, { kind = "note", text }   one line
+        -- and on a setting row: under (a small line below it), jump and
+        -- jumpText (a button on that line that asks nav for topic `jump`).
+        -- First guesses as the rest of the page: not seen in game.
+        function h.draw(rows, act, nav)
             local b = build()
             if not b then return false end
             for _, kind in ipairs({ "checks", "buttons", "labels", "edits" }) do
@@ -3995,6 +4005,48 @@ function ns.make.client(env)
                     y = y - 8
                     label(b, tostring(r.text or ""), 8, y, "GameFontNormal")
                     y = y - 22
+                elseif r.kind == "section" or r.kind == "note" then
+                    label(b, tostring(r.text or ""), 12, y - 2,
+                        r.kind == "section" and "GameFontNormalSmall" or "GameFontHighlightSmall")
+                    y = y - 18
+                elseif r.kind == "search" then
+                    label(b, tostring(r.label or ""), 16, y - 2)
+                    local typedNow = type(r.value) == "string" and r.value or ""
+                    local w = take(b, "edits", function()
+                        local ok, f = call(env.CreateFrame, "EditBox", nil, b.body, "InputBoxTemplate")
+                        return ok and f or nil
+                    end)
+                    if w then
+                        method(w, "SetSize", 220, 20)
+                        method(w, "SetPoint", "TOPLEFT", b.body, "TOPLEFT", 96, y)
+                        method(w, "SetAutoFocus", false)
+                        method(w, "SetText", typedNow)
+                        method(w, "Enable")
+                        method(w, "SetScript", "OnEnterPressed", function(self)
+                            local okT, typed = method(self, "GetText")
+                            method(self, "ClearFocus")
+                            if okT and type(typed) == "string" and type(nav) == "function" then
+                                pcall(nav, "search", typed)
+                            end
+                        end)
+                        method(w, "SetScript", "OnEscapePressed", function(self) method(self, "ClearFocus") end)
+                    end
+                    button(b, tostring(r.clear or "x"), 324, y, 60, function()
+                        if type(nav) == "function" then pcall(nav, "search", "") end
+                    end, false, typedNow ~= "")
+                    y = y - 28
+                elseif r.kind == "topics" then
+                    local x = 8
+                    for _, topic in ipairs(type(r.topics) == "table" and r.topics or {}) do
+                        local id, name = topic.id, tostring(topic.name or topic.id or "")
+                        local width = 20 + 6 * #name
+                        if x > 8 and x + width > 552 then x, y = 8, y - 22 end
+                        button(b, name, x, y, width, function()
+                            if type(nav) == "function" then pcall(nav, "topic", id) end
+                        end, topic.on == true, true)
+                        x = x + width + 4
+                    end
+                    y = y - 28
                 else
                     local text = tostring(r.label or r.key or "")
                     local can = r.settable == true
@@ -4060,6 +4112,18 @@ function ns.make.client(env)
                     end
                     if not can and r.kind ~= "info" and type(r.why) == "string" then
                         label(b, r.why, 420, y - 2, "GameFontDisableSmall")
+                    end
+                    if type(r.under) == "string" and r.under ~= "" then
+                        local ux = 40
+                        if r.jump ~= nil then
+                            local to = r.jump
+                            button(b, tostring(r.jumpText or ">"), 40, y - 22, 90, function()
+                                if type(nav) == "function" then pcall(nav, "topic", to) end
+                            end, false, true)
+                            ux = 136
+                        end
+                        label(b, r.under, ux, y - 24, "GameFontDisableSmall")
+                        y = y - (r.jump ~= nil and 22 or 14)
                     end
                     y = y - 26
                 end

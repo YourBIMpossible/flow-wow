@@ -156,7 +156,7 @@ tests["boss loot: the module starts, its row is on by default, the panel waits h
     t.eq((addon:ModuleState(NAME)), "started")
     local row = addon.settings:row(SETTING)
     t.ok(type(row) == "table", "the row " .. SETTING)
-    t.eq(row and { row.type, row.default, row.scope, row.group }, { "bool", true, "account", "Gear" })
+    t.eq(row and { row.type, row.default, row.scope, row.group }, { "bool", true, "account", "party" })
     t.eq(addon.settings:get(SETTING), true, "on by default")
     local p = panelOf(c)
     t.ok(p ~= nil, "a panel named for the boss loot")

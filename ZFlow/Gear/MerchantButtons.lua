@@ -78,7 +78,7 @@ function B.Declare(k, packs)
             key = B.SETTING, scope = "account", type = "bool", default = true,
             label = "Mark upgrades on a vendor's item buttons",
             help = "A green arrow on each item a vendor sells that is an upgrade for what you wear. It buys nothing.",
-            group = "Gear",
+            group = "gear", synonyms = { "upgrade", "vendor", "merchant", "buy" },
         } },
         provides = { Marked = api.marked },
         start = function(c)

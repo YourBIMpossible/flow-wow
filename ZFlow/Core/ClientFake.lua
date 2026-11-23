@@ -2146,6 +2146,81 @@ function ns.make.fakeClient(opts)
             failing[name] = on and true or nil
         end
     end
+
+    -- Settings topics and search, and menus with submenus (lead sections
+    -- 238 and 239). Added last, around what is above.
+    --
+    -- The Options page: draw(rows, act, nav) keeps nav as the real page's
+    -- topic buttons, search box and Open topic buttons call it.
+    --   c.optionsNav("topic", id) / c.optionsNav("search", text)   the test
+    --     plays the player choosing a topic or searching ("" clears)
+    --   c.setOptionsPageFault(n)   the next n asks for the page raise, as a
+    --     client whose registration fails; the one after answers as usual
+    --   c.optionsPagesMade()       how many pages were handed out
+    local optionsBase = c.optionsPage
+    function c.setOptionsPageFault(n) s.optionsFaults = tonumber(n) or 0 end
+    function c.optionsPagesMade() return s.optionsMade or 0 end
+    function c.optionsPage(spec)
+        if (s.optionsFaults or 0) > 0 then
+            s.optionsFaults = s.optionsFaults - 1
+            error("the options page could not be registered", 0)
+        end
+        local h = optionsBase(spec)
+        if not h then return h end
+        s.optionsMade = (s.optionsMade or 0) + 1
+        local draw = h.draw
+        function h.draw(rows, act, nav)
+            s.optionsNav = type(nav) == "function" and nav or nil
+            return draw(rows, act)
+        end
+        return h
+    end
+    function c.optionsNav(kind, value)
+        if type(s.optionsNav) == "function" then return s.optionsNav(kind, value) end
+        return nil
+    end
+
+    -- Menu rows with a submenu. A level of a menu is the rows the arrow
+    -- was last given; a row marked `more` opens another level when chosen
+    -- (UI/ArrowMenu.lua). As on the real menu, only a row of the open level
+    -- that is not a heading, a divider or greyed takes a click.
+    --   h.pickRow(key) -> true when that row was offered and was clicked
+    --   h.enter(key)   -> true when it was a submenu row and its level is
+    --                     now the open one
+    --   h.menuDepth       how many submenus deep the open level is
+    local arrowBase = c.arrow
+    function c.arrow(spec)
+        local h = arrowBase(spec)
+        if not h then return h end
+        h.menuDepth = 0
+        local function offered(key)
+            for _, row in ipairs(h.menuItems or {}) do
+                if type(row) == "table" and row.key == key and not row.title and not row.sep
+                    and not row.disabled then
+                    return row
+                end
+            end
+            return nil
+        end
+        function h.pickRow(key)
+            if not offered(key) then return false end
+            h.choose(key)
+            if h.menuItems == nil then h.menuDepth = 0 end
+            return true
+        end
+        function h.enter(key)
+            local row = offered(key)
+            if not row or row.more ~= true then return false end
+            h.choose(key)
+            if h.menuItems == nil then
+                h.menuDepth = 0
+                return false
+            end
+            h.menuDepth = h.menuDepth + 1
+            return true
+        end
+        return h
+    end
     return c
 end
 

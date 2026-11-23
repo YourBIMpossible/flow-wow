@@ -47,6 +47,7 @@ return {
 
         -- Settings
         "Settings/Model.lua",
+        "Settings/Topics.lua",
         "Settings/Rows.lua",
 
         -- Items

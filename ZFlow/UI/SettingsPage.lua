@@ -11,13 +11,23 @@ local _, ns = ...
 --     view.loaded  false until the saved settings are loaded. Until then
 --                  the rows are listed without values and none can be set.
 --     view.count   how many rows
---     view.groups  { { name = , rows = { entry, ... } }, ... }: groups in
---                  the order first declared, rows in the order declared. A
---                  row without a group stands under GROUP_OTHER.
+--     view.topics  { { id = , name = , rows = { entry, ... }, sections = {
+--                  { id = , name = , rows = { entry, ... } }, ... } }, ... }:
+--                  the topics of Settings/Topics.lua that hold a row, in
+--                  the list's order; rows in the order declared. sections
+--                  holds the same rows as they are shown: first the ones
+--                  in no section (id and name nil), then each listed
+--                  section that holds one. A row that names no listed
+--                  topic stands under Topics.UNFILED, last. Nothing here
+--                  is a hand-kept list: a row declared a moment ago is in
+--                  the next view. view.groups is the same list.
 --     entry        key, label, help (nil when the row has none), kind,
---                  value, shown (the value as text), savedFor, min, max,
---                  choices (a copy), available, settable, why (the reason
---                  when it cannot be set, else nil)
+--                  value, shown (the value as text), savedFor, scope
+--                  ("account" or "character"), topic, topicName, section,
+--                  sectionName, min, max, choices (a copy), available,
+--                  settable, why (the reason when it cannot be set, else
+--                  nil), because (what an unavailable row depends on and
+--                  what its `requires` said, when either is known)
 --     kind         "toggle" (bool), "number", "choice", "text" (string) or
 --                  "place" (table). A place is never handed out or spelled
 --                  out: it reads "set" or "not set", and is not set here.
@@ -30,17 +40,50 @@ local _, ns = ...
 --     for a key the settings model (Settings/Model.lua) also holds, through
 --     the model's check for that key. A refusal changes nothing.
 --
+--   SettingsPage.Search(k, query [, view]) -> found, or nil for an empty
+--     search (then the page is browsed by topic)
+--     found.query    the search as typed, trimmed
+--     found.results  entries from every topic, best match first: the same
+--                    entries the topics hold, so a result is changed by
+--                    the same Set. Matched on the label, the description,
+--                    the topic's and section's names and the row's
+--                    synonyms, whatever the capitals and accents.
+--     found.none     the line to show when nothing matched, else nil
+--
+--   SettingsPage.State(k) -> { topic = id or nil, query = text or nil }
+--     where the player is on the page, one for every surface of kernel k
+--     (the Options page, the text panel, the slash word, a menu row). Not
+--     saved: a reload starts at the first topic.
+--   SettingsPage.Goto(k, topicId) -> true, or false for no such topic
+--     Chooses the topic and ends a search.
+--   SettingsPage.Find(k, query) -> true while a search is on
+--     An empty query ends the search: the chosen topic is shown again.
+--   SettingsPage.Page(k) -> page: what a surface draws now
+--     page.loaded, page.count
+--     page.topics  { { id, name, count, on }, ... }: the navigation; `on`
+--                  marks the topic shown, none during a search
+--     page.mode    "topic": page.topic is that view topic (nil: no rows)
+--                  "search": page.query, page.results, page.none
+--
 -- There is no reset on the page (owner decision 6).
 local P = {}
 ns.SettingsPage = P
 
-P.GROUP_OTHER = "Other" -- authored
 P.NOT_LOADED = "the saved settings are not loaded yet; try again after login"
 P.NOT_NOW = "this setting does not apply right now"
 P.NOT_FROM_HERE = "this is not set from the settings page"
 P.SCOPES = { char = "this character", account = "account" }
+P.SCOPE_WORDS = { char = "character", account = "account" }
+P.DEPENDS = "depends on "
+P.NO_MATCH_TAIL = "Try another word (sell, bank, arrow, food), or pick a topic."
 
 local KINDS = { bool = "toggle", number = "number", choice = "choice", string = "text", table = "place" }
+
+local function topics() return ns.Settings.Topics end
+
+function P.NoMatch(query)
+    return 'No setting matches "' .. tostring(query) .. '". ' .. P.NO_MATCH_TAIL
+end
 
 local function loaded(k)
     return type(k.store) == "table" and k.store.opened == true
@@ -61,6 +104,32 @@ local function show(row, value)
     return tostring(value)
 end
 
+-- Why an unavailable row cannot be used: the rows it names in `needs`,
+-- each with its topic, and what its `requires` gave as a second answer.
+-- nil when the row says neither.
+local function because(k, row)
+    local parts = {}
+    local needs = row.needs
+    if type(needs) == "string" then needs = { needs } end
+    if type(needs) == "table" then
+        for i = 1, #needs do
+            local other = type(needs[i]) == "string" and k.settings:row(needs[i]) or nil
+            if other then
+                parts[#parts + 1] = P.DEPENDS .. '"' .. tostring(other.label) .. '" ('
+                    .. topics().Of(other).name .. ")"
+            elseif type(needs[i]) == "string" then
+                parts[#parts + 1] = P.DEPENDS .. needs[i]
+            end
+        end
+    end
+    if type(row.requires) == "function" then
+        local ok, _, said = pcall(row.requires, k.settings)
+        if ok and type(said) == "string" and said ~= "" then parts[#parts + 1] = said end
+    end
+    if #parts == 0 then return nil end
+    return table.concat(parts, "; ")
+end
+
 local function entryOf(k, row, isLoaded)
     local kind = KINDS[row.type]
     local e = {
@@ -69,6 +138,7 @@ local function entryOf(k, row, isLoaded)
         help = type(row.help) == "string" and row.help ~= "" and row.help or nil,
         kind = kind,
         savedFor = P.SCOPES[row.scope] or tostring(row.scope),
+        scope = P.SCOPE_WORDS[row.scope] or tostring(row.scope),
         min = row.min,
         max = row.max,
         shown = "",
@@ -90,28 +160,146 @@ local function entryOf(k, row, isLoaded)
         e.why = P.NOT_FROM_HERE
     elseif not e.available then
         e.why = P.NOT_NOW
+        e.because = because(k, row)
     else
         e.settable = true
     end
     return e
 end
 
-function P.View(k)
-    local isLoaded = loaded(k)
-    local view = { loaded = isLoaded, count = 0, groups = {} }
-    local byName = {}
-    for row in k.settings:each() do
-        local name = type(row.group) == "string" and row.group ~= "" and row.group or P.GROUP_OTHER
-        local group = byName[name]
-        if not group then
-            group = { name = name, rows = {} }
-            byName[name] = group
-            view.groups[#view.groups + 1] = group
+-- The rows of one topic as they are shown: the ones in no section first,
+-- then each listed section that holds a row, in the list's order.
+local function sectionsOf(topic, rows)
+    local out, plain, by = {}, { rows = {} }, {}
+    for i = 1, #rows do
+        local e = rows[i]
+        if e.section == nil then
+            plain.rows[#plain.rows + 1] = e
+        else
+            by[e.section] = by[e.section] or { id = e.section, name = e.sectionName, rows = {} }
+            by[e.section].rows[#by[e.section].rows + 1] = e
         end
-        group.rows[#group.rows + 1] = entryOf(k, row, isLoaded)
-        view.count = view.count + 1
     end
+    if #plain.rows > 0 then out[#out + 1] = plain end
+    for i = 1, #topic.sections do
+        local held = by[topic.sections[i].id]
+        if held then out[#out + 1] = held end
+    end
+    return out
+end
+
+function P.View(k)
+    local Topics = topics()
+    local isLoaded = loaded(k)
+    local view = { loaded = isLoaded, count = 0, topics = {} }
+    local byId, listed = {}, {}
+    for row in k.settings:each() do
+        local topic, section = Topics.Of(row)
+        local e = entryOf(k, row, isLoaded)
+        view.count = view.count + 1
+        e.order = view.count
+        e.topic, e.topicName = topic.id, topic.name
+        if section then e.section, e.sectionName = section.id, section.name end
+        local held = byId[topic.id]
+        if not held then
+            held = { id = topic.id, name = topic.name, rows = {} }
+            byId[topic.id] = held
+            listed[#listed + 1] = topic
+        end
+        held.rows[#held.rows + 1] = e
+    end
+    table.sort(listed, function(a, b) return a.at < b.at end)
+    for i = 1, #listed do
+        local held = byId[listed[i].id]
+        held.sections = sectionsOf(listed[i], held.rows)
+        view.topics[i] = held
+    end
+    view.groups = view.topics
     return view
+end
+
+local function trim(text)
+    return (tostring(text):gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+function P.Search(k, query, view)
+    local Topics = topics()
+    if type(query) ~= "string" then return nil end
+    local words = Topics.Words(query)
+    if #words == 0 then return nil end
+    view = view or P.View(k)
+    local hits = {}
+    for t = 1, #view.topics do
+        local rows = view.topics[t].rows
+        for i = 1, #rows do
+            local score = Topics.Match(k.settings:row(rows[i].key), words)
+            if score then hits[#hits + 1] = { e = rows[i], score = score } end
+        end
+    end
+    table.sort(hits, function(a, b)
+        if a.score ~= b.score then return a.score > b.score end
+        return a.e.order < b.e.order
+    end)
+    local found = { query = trim(query), results = {} }
+    for i = 1, #hits do found.results[i] = hits[i].e end
+    if #hits == 0 then found.none = P.NoMatch(found.query) end
+    return found
+end
+
+-- Where the player is on the page, by kernel. Kept only while the kernel is.
+local states = setmetatable({}, { __mode = "k" })
+
+function P.State(k)
+    local state = states[k]
+    if not state then
+        state = {}
+        states[k] = state
+    end
+    return state
+end
+
+function P.Goto(k, topicId)
+    local Topics = topics()
+    local topic = Topics.Find(topicId)
+    if not topic and topicId ~= Topics.UNFILED.id then return false end
+    local state = P.State(k)
+    state.topic = topic and topic.id or topicId
+    state.query = nil
+    return true
+end
+
+function P.Find(k, query)
+    local state = P.State(k)
+    if type(query) == "string" and #topics().Words(query) > 0 then
+        state.query = trim(query)
+    else
+        state.query = nil
+    end
+    return state.query ~= nil
+end
+
+function P.Page(k)
+    local state = P.State(k)
+    local view = P.View(k)
+    local page = { loaded = view.loaded, count = view.count, topics = {} }
+    local found = P.Search(k, state.query, view)
+    local chosen
+    if not found then
+        for i = 1, #view.topics do
+            if view.topics[i].id == state.topic then chosen = view.topics[i] end
+        end
+        chosen = chosen or view.topics[1]
+    end
+    for i = 1, #view.topics do
+        local topic = view.topics[i]
+        page.topics[i] = { id = topic.id, name = topic.name, count = #topic.rows, on = topic == chosen }
+    end
+    if found then
+        page.mode, page.query, page.results, page.none = "search", found.query, found.results, found.none
+    else
+        page.mode, page.topic = "topic", chosen
+    end
+    return page
 end
 
 -- Why the value does not fit the row, or nil when it does.

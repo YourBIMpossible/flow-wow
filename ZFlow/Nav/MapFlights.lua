@@ -312,7 +312,7 @@ function MF.Declare(k)
         return out, lines
     end
 
-    k:Setting({ key = MF.SETTING, scope = "account", type = "bool", default = false, group = "Arrows",
+    k:Setting({ key = MF.SETTING, scope = "account", type = "bool", default = false, group = "travel.flights", synonyms = { "flight", "map", "pins", "taxi" },
         label = MF.ROW_LABEL, help = MF.ROW_HELP })
 
     k:Module({

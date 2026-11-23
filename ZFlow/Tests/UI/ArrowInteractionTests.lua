@@ -45,6 +45,9 @@ end
 local function row(items, key)
     for i = 1, #(items or {}) do
         if items[i].key == key then return items[i] end
+        -- A row of a submenu (lead section 239, N57) is found under its heading.
+        local below = type(items[i].children) == "table" and row(items[i].children, key) or nil
+        if below then return below end
     end
     return nil
 end

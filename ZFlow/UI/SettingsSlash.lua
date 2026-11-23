@@ -98,6 +98,13 @@ local function find(k, typed)
     return nil, "no setting is called " .. typed
 end
 
+-- The row a typed key means, as the word finds it; nil when no row has that
+-- key. (UI/SettingsPanel.lua asks, to tell a key from words to search for.)
+function S.Row(k, typed)
+    if type(typed) ~= "string" or typed == "" then return nil end
+    return (find(k, typed))
+end
+
 -- The typed text as a value for the row. -> value, or nil and why.
 local function parse(row, text)
     if row.type == "bool" then

@@ -7,15 +7,15 @@ local P = ns.SettingsPage
 
 local ROWS = {
     { key = "sell.autoJunk", scope = "char", type = "bool", default = false, label = "Sell junk",
-      help = "Sells grey items.", group = "Vendor" },
+      help = "Sells grey items.", group = "bags" },
     { key = "arrow.size", scope = "account", type = "number", default = 5, min = 1, max = 10,
-      label = "Arrow size", group = "Arrow" },
+      label = "Arrow size", group = "travel.arrow" },
     { key = "arrow.look", scope = "account", type = "choice", choices = { "Modern", "3D", "flat" },
-      default = "Modern", label = "Arrow look", group = "Arrow" },
+      default = "Modern", label = "Arrow look", group = "travel.arrow" },
     { key = "note.text", scope = "char", type = "string", default = "hello", label = "Note" },
     { key = "arrow.points", scope = "account", type = "table", path = "layout.points",
-      label = "Arrow places", group = "Arrow" },
-    { key = "sell.confirm", scope = "char", type = "bool", default = true, label = "Ask first", group = "Vendor",
+      label = "Arrow places", group = "travel" },
+    { key = "sell.confirm", scope = "char", type = "bool", default = true, label = "Ask first", group = "bags",
       requires = function(settings) return settings:get("sell.autoJunk") == true end },
 }
 
@@ -59,7 +59,10 @@ local function stored(c, db, a, b)
 end
 
 return {
-    ["view: the rows stand in their groups, groups in the order first declared, rows in the order declared"] = function(t)
+    -- Lead sections 238 and 239: the groups are the topics of Settings/Topics.lua,
+    -- in the list's order whatever the order declared; a row that names no
+    -- listed topic stands under "not filed yet", last, never under "Other".
+    ["view: the rows stand in their topics, topics in the list's order, rows in the order declared"] = function(t)
         local k = start()
         local view = P.View(k)
         t.eq(view.loaded, true)
@@ -69,10 +72,12 @@ return {
             keys[g] = {}
             for i = 1, #view.groups[g].rows do keys[g][i] = view.groups[g].rows[i].key end
         end
-        t.eq(names, { "Vendor", "Arrow", P.GROUP_OTHER })
+        local T = ns.Settings.Topics
+        t.eq(names, { T.Find("travel").name, T.Find("bags").name, T.UNFILED.name })
+        t.eq(P.GROUP_OTHER, nil, "there is no Other bucket")
         t.eq(keys, {
-            { "sell.autoJunk", "sell.confirm" },
             { "arrow.size", "arrow.look", "arrow.points" },
+            { "sell.autoJunk", "sell.confirm" },
             { "note.text" },
         })
         t.eq(view.count, 6)
@@ -309,7 +314,7 @@ return {
     end,
 
     ["no player text of the page spells the old name"] = function(t)
-        for _, text in ipairs({ P.NOT_LOADED, P.NOT_NOW, P.NOT_FROM_HERE, P.GROUP_OTHER }) do
+        for _, text in ipairs({ P.NOT_LOADED, P.NOT_NOW, P.NOT_FROM_HERE, P.NoMatch("x"), P.DEPENDS }) do
             t.ok(type(text) == "string" and text ~= "", "the text is there")
             t.ok(not text:lower():find("flow", 1, true), "the text does not spell it")
         end
