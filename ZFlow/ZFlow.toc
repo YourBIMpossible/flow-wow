@@ -51,6 +51,7 @@ Items\LootNote.lua
 Items\Plan.lua
 Items\Present.lua
 Items\CraftHint.lua
+Items\CraftQueue.lua
 Items\Sell.lua
 Items\Repair.lua
 Items\SellView.lua
@@ -140,6 +141,7 @@ UI\WindowButtons.lua
 UI\ArrowMenu.lua
 UI\SellList.lua
 UI\BankList.lua
+UI\CraftBar.lua
 Items\Keep.lua
 Items\RecipeBook.lua
 Items\Goals.lua
@@ -153,6 +155,7 @@ Rotation\CastEdge.lua
 Rotation\Audit.lua
 Rotation\FormSpells.lua
 Rotation\OwnCasts.lua
+Rotation\Combo.lua
 Fight\Choices.lua
 Rotation\Queue.lua
 UI\RotationQueue.lua

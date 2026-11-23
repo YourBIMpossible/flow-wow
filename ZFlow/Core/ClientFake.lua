@@ -13,6 +13,7 @@
 --   c.setBagItems{ { item = 2318, count = 4 } }; c.setBank{ ... }
 --   c.setRecipes{ profession = 164, skill = 104, max = 150, recipes = { ... } }
 --   c.setRecipeSchematic(2963, { makes = 2996, yield = 1, mats = { [2589] = 2 } })
+--   c.setTradeSkillRows{ name = "Tailoring", rows = { { index = 2, name = "Bolt of Linen Cloth" } } }
 --   c.setSpell(5176, { known = true, usable = false, noPower = true })
 --   c.setSpellId("Wrath", 5176)   c.setFacing(1.57)
 --   c.setMapSize(1411, 5287.5, 3525); c.setMapCont(1411, 1)
@@ -137,6 +138,13 @@ function ns.make.fakeClient(opts)
     end
     -- Section 231 item 1: the classic fallback, by trade skill row index; a
     -- copy, nil when none is set for that index.
+    -- Section 233 (GR2-1): the classic window's rows, a copy; nil when none
+    -- are set.
+    function c.tradeSkillRows()
+        local r = s.tradeRows
+        if type(r) ~= "table" then return nil end
+        return { name = r.name, skill = r.skill, max = r.max, rows = copyRows(r.rows) or {} }
+    end
     function c.tradeSkillSchematic(index)
         local r = s.tradeSchematics and s.tradeSchematics[index]
         if type(r) ~= "table" then return nil end
@@ -752,6 +760,9 @@ function ns.make.fakeClient(opts)
         s.tradeSchematics = s.tradeSchematics or {}
         s.tradeSchematics[index] = r
     end
+    -- The classic window's rows (section 233): { name =, rows = { { index =,
+    -- name = } } }; nil: no classic window answers.
+    function c.setTradeSkillRows(r) s.tradeRows = r end
     -- One spell's answers: { known =, usable =, noPower = }; a field left
     -- out reads as not known.
     function c.setSpell(id, row)
@@ -1412,6 +1423,12 @@ function ns.make.fakeClient(opts)
     function c.setMounted(v)
         if v == nil then s.mounted = nil else s.mounted = v and true or false end
     end
+    -- Section 235 item 4: fishingPole() is unknown (nil) until set.
+    --   c.setFishingPole(true / false)   c.setFishingPole(nil): not known
+    function c.fishingPole() return s.fishingPole end
+    function c.setFishingPole(v)
+        if v == nil then s.fishingPole = nil else s.fishingPole = v and true or false end
+    end
 
     -- S42: questItem(questID), itemCount(item), itemUse(item), all unknown
     -- (nil) until set.
@@ -1849,6 +1866,93 @@ function ns.make.fakeClient(opts)
         local out = {}
         for k, v in pairs(s.pet) do out[k] = v end
         return out
+    end
+
+    -- ------------------------------------------------------- craft (P-CRAFT)
+    -- The craft reads: not known (nil) until a test sets them.
+    local usableOf, whyOf = {}, {}
+    function c.setRecipeUsable(id, v, why) usableOf[id], whyOf[id] = v, why end
+    function c.recipeUsable(id) return usableOf[id], whyOf[id] end
+    function c.setMoving(on) s.moving = on end
+    function c.moving() return s.moving end
+
+    -- Every craft the add-on asked for, in order: { id =, n = }. A refused
+    -- craft is not logged. setCraftFails(why) makes every craft answer
+    -- nil, why (nil again lets them through).
+    c.crafts = {}
+    local craftFails
+    function c.setCraftFails(why) craftFails = why end
+    function c.craftRecipe(id, n)
+        if s.combat ~= false then return nil, "combat" end
+        if craftFails then return nil, craftFails end
+        c.crafts[#c.crafts + 1] = { id = id, n = n }
+        return true
+    end
+    -- How many times the add-on asked the game to stop a craft repeat.
+    c.repeatStops = 0
+    function c.stopCraftRepeat()
+        c.repeatStops = c.repeatStops + 1
+        return true
+    end
+
+    -- Every row panel made, in order. h.rows is the last draw (copied);
+    -- press(key, value) is the player clicking that row: false for an
+    -- info row, a row not enabled, no act, or a number outside min..max;
+    -- else act(key[, value]) and true. The fake jumps to any value where
+    -- the real panel steps by one.
+    c.rowPanels = {}
+    function c.rowPanel(spec)
+        if s.noFrames then return nil end
+        local h = { spec = spec, rows = {}, places = 0 }
+        local open, act, closed, closedFailed = false, nil, nil, nil
+        function h.draw(rows, fn)
+            h.rows = {}
+            for i, row in ipairs(type(rows) == "table" and rows or {}) do
+                local copy = {}
+                for k, v in pairs(row) do copy[k] = v end
+                h.rows[i] = copy
+            end
+            act = type(fn) == "function" and fn or nil
+        end
+        function h.show(on) open = on and true or false end
+        function h.shown() return open end
+        function h.place(point)
+            if type(point) ~= "table" then return end
+            h.point = { point[1], point[2], point[3], point[4] }
+            h.places = h.places + 1
+        end
+        function h.onMoved() end
+        function h.onClose(fn, failed)
+            closed = type(fn) == "function" and fn or nil
+            closedFailed = type(failed) == "function" and failed or nil
+        end
+        function h.press(key, value)
+            for _, row in ipairs(h.rows) do
+                if row.key == key and row.kind ~= "info" then
+                    if row.enabled == false or not act then return false end
+                    if row.kind == "number" then
+                        if type(value) ~= "number" then return false end
+                        if type(row.min) == "number" and value < row.min then return false end
+                        if type(row.max) == "number" and value > row.max then return false end
+                        pcall(act, key, value)
+                    else
+                        pcall(act, key)
+                    end
+                    return true
+                end
+            end
+            return false
+        end
+        function h.close()
+            if not open then return end
+            open = false
+            if closed then
+                local ok, err = pcall(closed)
+                if not ok and closedFailed then closedFailed(err) end
+            end
+        end
+        c.rowPanels[#c.rowPanels + 1] = h
+        return h
     end
 
     -- A spell's name by id, as the real client's spellName(id) (CF-32): the

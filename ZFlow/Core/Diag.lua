@@ -331,6 +331,9 @@ function Diag.Collect(k, why)
     S.health = ask(client, "UnitHealth", "player")
     S.power = ask(client, "UnitPower", "player")
     S.powerType = ask(client, "UnitPowerType", "player")
+    -- ROGUE-2: the combo read Rotation/Combo.lua prefers to its own count
+    -- (a first guess; whether 16001 gives a plain number is not known).
+    S.comboPoints = ask(client, "GetComboPoints", "player", "target")
     S.spellTabs = ask(client, "GetNumSpellTabs")
     S.spellTab1 = ask(client, "GetSpellTabInfo", 1)
     S.spellBook1 = ask(client, "GetSpellBookItemName", 1, "spell")
@@ -379,6 +382,9 @@ function Diag.Collect(k, why)
     -- Section 231 item 1: the classic schematic read for row 2, all of it.
     S.tradeSkill2Schematic = shape(true, type(client.tradeSkillSchematic) == "function"
         and client.tradeSkillSchematic(2) or nil)
+    -- Section 233 (GR2-1): the classic window's rows, as the recipe book walks them.
+    S.tradeSkillRows = shape(true, type(client.tradeSkillRows) == "function"
+        and client.tradeSkillRows() or nil)
     S.crafts = ask(client, "GetNumCrafts")
     S.taxiNodes = ask(client, "NumTaxiNodes")
 
@@ -609,6 +615,8 @@ Diag.ANSWERS = {
     { "itemCount", 6948 }, { "unitBuff", "player", {} },
     -- Lead section 197: the pet state; forms only, the family word is not kept.
     { "pet" },
+    -- Section 235 item 4: a fishing pole in the main hand.
+    { "fishingPole" },
 }
 Diag.ANSWER_COUNTS = { "playerBuffs", "targetDebuffs" }
 Diag.ANSWER_MAPS = { "mapCorners", "mapSize" }

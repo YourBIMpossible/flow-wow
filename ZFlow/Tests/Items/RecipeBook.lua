@@ -118,4 +118,106 @@ tests["recipe book: before login the book reads as empty"] = function(t)
     t.eq(addon.RecipeBook.For(addon, BOLT), nil)
 end
 
+-- Section 233 -------------------------------------------------------------------
+
+-- The classic window only: no C_TradeSkillUI answer, these rows.
+local function classic(c, addon, rows)
+    c.setRecipes(nil)
+    c.setTradeSkillRows({ name = "Tailoring", rows = rows })
+    c.fire(addon.RecipeBook.EVENT)
+end
+
+-- GR2-1. Fails before: the classic rows were not read, so nothing was saved.
+tests["recipe book GR2-1: no C_TradeSkillUI answer: the classic window's rows are read"] = function(t)
+    local c, addon = start()
+    c.setTradeSkillSchematic(2, { makes = BOLT, yield = 1, mats = { [LINEN] = 2 } })
+    classic(c, addon, { { index = 2, name = "Bolt of Linen Cloth" }, { index = 3, name = "Unread" } })
+    t.eq(book(c), { ["Bolt of Linen Cloth"] = { makes = BOLT, yield = 1, mats = { [LINEN] = 2 }, profession = "Tailoring" } },
+        "no id from the classic read")
+    t.eq(addon.recipeBook.last().ok, true)
+    t.eq(addon.RecipeBook.For(addon, BOLT), "Bolt of Linen Cloth")
+end
+
+-- GR2-1. Fails before: GetRecipeSchematic absent, nothing could be read and
+-- the classic rows were not tried.
+tests["recipe book GR2-1: C_TradeSkillUI answers but no schematic reads: the classic rows are read"] = function(t)
+    local c, addon = start()
+    c.setTradeSkillSchematic(2, { makes = BOLT, yield = 1, mats = { [LINEN] = 2 } })
+    c.setTradeSkillRows({ name = "Tailoring", rows = { { index = 2, name = "Bolt of Linen Cloth" } } })
+    seen(c, addon, { profession = 197, name = "Tailoring", recipes = {
+        { id = UNREAD_ID, name = "Bolt of Linen Cloth", learned = true } } })
+    t.eq(book(c), { ["Bolt of Linen Cloth"] = { makes = BOLT, yield = 1, mats = { [LINEN] = 2 }, profession = "Tailoring" } })
+end
+
+-- GR2-1. Fails before: this was ok with nothing saved, said as nothing at all.
+tests["recipe book GR2-1: a window seen but not read says so, not no window"] = function(t)
+    local c, addon = start()
+    seen(c, addon, { profession = 197, name = "Tailoring", recipes = {
+        { id = UNREAD_ID, name = "Unread", learned = true } } })
+    t.eq(book(c), nil, "nothing written")
+    t.eq(addon.recipeBook.last().ok, false)
+    t.eq(addon.recipeBook.last().reason, addon.RecipeBook.UNREAD)
+    local lines = addon.ItemGoals.Run(addon, "make 2996 3")
+    t.ok(type(lines) == "table" and type(lines[1]) == "string"
+        and lines[1]:find("could not read its recipes", 1, true) ~= nil, tostring(lines and lines[1]))
+    seen(c, addon, nil)
+    t.eq(addon.recipeBook.last().reason, "no profession window answered", "no window: the other reason")
+    lines = addon.ItemGoals.Run(addon, "make 2996 3")
+    t.ok(type(lines) == "table" and type(lines[1]) == "string"
+        and lines[1]:find("No recipe you have seen", 1, true) ~= nil, tostring(lines and lines[1]))
+end
+
+-- GR2-3. Fails before: the second of one name was written over the first.
+tests["recipe book GR2-3: two recipes of one name are both saved, and said"] = function(t)
+    local c, addon = start()
+    seen(c, addon, { profession = 197, name = "Tailoring", recipes = {
+        { id = BANDAGE_ID, name = "Bolt of Linen Cloth", learned = true },
+        { id = BOLT_ID, name = "Bolt of Linen Cloth", learned = true } } })
+    t.eq(book(c), {
+        ["Bolt of Linen Cloth"] = BOLT_ENTRY,
+        ["Bolt of Linen Cloth (" .. BANDAGE_ID .. ")"] = { id = BANDAGE_ID, makes = BANDAGE, yield = 1,
+            mats = { [LINEN] = 1 }, profession = "Tailoring" },
+    }, "the lower id keeps the name")
+    t.eq(addon.recipeBook.last().collided, 1)
+end
+
+-- GR2-3. Fails before: a recipe once saved stayed saved.
+tests["recipe book GR2-3: a recipe no longer learned is dropped; another profession's is kept"] = function(t)
+    local c, addon = start()
+    local ROBE = { id = UNLEARNED_ID, name = "Brown Linen Robe", learned = true }
+    local BOLT_ROW = { id = BOLT_ID, name = "Bolt of Linen Cloth", learned = true }
+    seen(c, addon, firstAid())
+    seen(c, addon, { profession = 197, name = "Tailoring", recipes = { BOLT_ROW, ROBE } })
+    t.ok(book(c)["Brown Linen Robe"] ~= nil, "saved")
+    seen(c, addon, { profession = 197, name = "Tailoring", recipes = { BOLT_ROW,
+        { id = UNREAD_ID, name = "Unread", learned = true } } })
+    t.ok(book(c)["Brown Linen Robe"] ~= nil, "a read with a recipe that could not be read drops nothing")
+    seen(c, addon, { profession = 197, name = "Tailoring", recipes = { BOLT_ROW,
+        { id = UNLEARNED_ID, name = "Brown Linen Robe", learned = false } } })
+    t.eq(book(c), {
+        ["Bolt of Linen Cloth"] = BOLT_ENTRY,
+        ["Linen Bandage"] = { id = BANDAGE_ID, makes = BANDAGE, yield = 1, mats = { [LINEN] = 1 }, profession = "First Aid" },
+    })
+end
+
+-- GR2-4. Fails before: every TRADE_SKILL_LIST_UPDATE wrote the whole book.
+tests["recipe book GR2-4: a read that changes nothing writes nothing"] = function(t)
+    local c, addon = start()
+    seen(c, addon, tailoring())
+    local writes, real = 0, addon.store.set
+    -- Other modules write on the same event; count the book's own path only.
+    addon.store.set = function(self, scope, path, ...)
+        if path == addon.RecipeBook.PATH then writes = writes + 1 end
+        return real(self, scope, path, ...)
+    end
+    c.fire(addon.RecipeBook.EVENT)
+    c.fire(addon.RecipeBook.EVENT)
+    t.eq(writes, 0, "the same window twice")
+    t.eq(addon.recipeBook.last().unchanged, true)
+    t.eq(addon.recipeBook.last().ok, true)
+    seen(c, addon, firstAid())
+    t.eq(writes, 1, "a new profession is written")
+    t.eq(book(c)["Linen Bandage"] ~= nil, true)
+end
+
 return tests

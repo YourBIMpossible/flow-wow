@@ -21,11 +21,13 @@ local KIND = {
                "watchAuctionResults", "onUnitTooltip", "watchAuctionRows", "onSystemMessage" },
     show = { "print", "panel", "minimapPin", "copyBox", "icon", "arrow", "windowButton", "secureButton",
              "optionsPage", "guideLines", "taxiMark", "mapPins", "comboBar", "slotIcon",
-             "markMerchantButtons" },
+             "markMerchantButtons", "rowPanel" },
     tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "slash",
              "slashTaken", "unslash" },
     -- Hands back or runs a sound restart: never asked by the capture.
-    act = { "restartSound", "soundWays" },
+    -- craftRecipe (lead section 226, acting): one craft on the player click.
+    -- stopCraftRepeat (section 234): stops the game repeat; not a craft.
+    act = { "restartSound", "soundWays", "craftRecipe", "stopCraftRepeat" },
     -- Reads a chat line handed in, not the client.
     parse = { "ownLoot", "auctionOutcome" },
 }
@@ -34,7 +36,7 @@ local KIND = {
 local READS = {
     now = false, clock = true, clockMs = false, addonLoaded = true, listenFaults = true, uptime = true, inCombat = true,
     money = true, bags = true, bagItems = true, bankOpen = true, bankItems = true, merchantOpen = false,
-    merchantItems = false, recipes = true, recipeSchematic = false, tradeSkillSchematic = true, trainer = false, faction = false, class = true,
+    merchantItems = false, recipes = true, recipeSchematic = false, tradeSkillSchematic = true, tradeSkillRows = true, trainer = false, faction = false, class = true,
     stealthed = true, target = true, inRange = true, level = false, gear = false, spellCooldown = true,
     spellId = true, spellTexture = false, facing = true, spell = true, position = true, dead = true,
     ghost = true, corpse = true, waypoint = false, mapSize = true, mapCont = false, zone = true,
@@ -51,6 +53,8 @@ local READS = {
     targetDebuffs = true, formName = true, currentSpell = true, taxiNodes = true,
     -- Lead section 197: the pet state the rotation reads.
     pet = true,
+    -- Lead section 226: the craft bar reads (P-CRAFT); the capture asks none.
+    recipeUsable = false, moving = false,
     -- CF-32: a spell's name by id, for your own casts (Rotation/OwnCasts.lua).
     spellName = false,
     -- N13: the buffs you put up yourself (Classes/Paladin.lua auras).
@@ -58,6 +62,8 @@ local READS = {
 
     -- P-SETS: what is worn, read by the set word only.
     wornLinks = false,
+    -- Section 235 item 4: the food read asks it (Rotation/Driver.lua).
+    fishingPole = true,
 
     -- P-PARTY: your group, a spell's reach to one of them, and the debuff
     -- types on you or one of them; read by the rotation only. Their names
@@ -71,6 +77,7 @@ local FEATURE = {
     "spellCooldown", "spellId", "stealthed", "target", "targetDebuffs", "unitBuff",
     "facing", "itemCount", "mapCorners", "mapSize", "onTaxi", "position", "questFocus", "questItem",
     "questLog", "taxiNodes", "worldPosition", "zone", "corpse", "ghost", "pet",
+    "fishingPole",
 }
 
 local TEXTS = { "Orgrimmar", "Devotion Aura", "Attack", "Rend", "Bear Form", "Wolves" }

@@ -14,9 +14,11 @@ local _, ns = ...
 -- key row has no form (ZFlow/Rotation/KeyPlan.lua: "[stealth] 9", any form;
 -- needs game test). Energy is not read as an amount: the game marks a
 -- strike not usable when there is too little (needs game test). Combo points
--- are a hidden amount (R.FROM_AMOUNT in Rotation/Snapshot.lua): a finisher
--- waits for s.finisherReady, which no reader builds yet, so no finisher is
--- suggested until one does.
+-- may be a hidden amount (R.FROM_AMOUNT in Rotation/Snapshot.lua): a
+-- finisher waits for s.finisherReady, which Rotation/Driver.lua builds
+-- (ROGUE-2, section 236) from the client's combo read when it gives a plain
+-- number, else from Rotation/Combo.lua's count of your own builder casts
+-- (an estimate), against options.combo below.
 --
 -- Evidence. Nothing in this pack was read from the game by this file, and the
 -- repository holds no list of client observations for the Rogue, so nothing
@@ -27,8 +29,6 @@ local _, ns = ...
 -- Not in this pack yet (tasks):
 --   * poisons: putting one on a weapon is the use of an item, there is no
 --     poison row, and no read of the weapon's enchant;
---   * the finisher read: combo points are a hidden amount (see above), and
---     no reader builds finisherReady from anything else yet;
 --   * a talent order: talentBuilds is empty, as no capture backs one (one
 --     written from memory would be guide-shaped);
 --   * Vanish and Blind as breakers: breakers is empty, as whether the
@@ -46,7 +46,7 @@ local function outOfFight(s) return ns.Rotation.OutOfFight(s) end
 local function stealthed(s) return s.stealthed == true end
 -- Read as not stealthed. A stealth nobody read (nil) is neither.
 local function unstealthed(s) return s.stealthed == false end
--- Combo points are a hidden amount: a finisher waits for the reader's say-so.
+-- A finisher waits for the reader's say-so (options.combo, Rotation/Combo.lua).
 local function finisher(s) return s.finisherReady == true end
 -- A buff on yourself missing or nearly out. Buffs not read: not wanted.
 local function needBuff(s, name, secs)
@@ -250,6 +250,17 @@ local pack = {
     options = {
         -- Reads the rules lean on; one not given is named by diag (187).
         reads = { "stealthed", "buffs", "targetDebuffs" },
+        -- ROGUE-2 (section 236): when a finisher is due. need: the combo
+        -- points a finisher waits for; builders: the points each of your
+        -- strikes gives; finishers: the spells that spend them all. Every
+        -- value is a first guess (Cheap Shot's 2 included), not seen in game.
+        combo = {
+            need = 5, max = 5,
+            builders = { ["Sinister Strike"] = 1, ["Backstab"] = 1, ["Gouge"] = 1, ["Garrote"] = 1,
+                         ["Ambush"] = 1, ["Cheap Shot"] = 2, ["Hemorrhage"] = 1, ["Ghostly Strike"] = 1 },
+            finishers = { ["Eviscerate"] = true, ["Slice and Dice"] = true, ["Rupture"] = true,
+                          ["Kidney Shot"] = true, ["Expose Armor"] = true },
+        },
     },
 }
 

@@ -449,7 +449,7 @@ end
 
 -- RD11 ----------------------------------------------------------------
 
-tests["rotation driver RD11: a step presses nothing and asks only its fourteen reads"] = function(t)
+tests["rotation driver RD11: a step presses nothing and asks only its sixteen reads"] = function(t)
     for _, fight in ipairs({ false, true }) do
         local client, calls, other = stub(false, fight, fight)
         local v = D.Step(client, pack())
@@ -461,9 +461,10 @@ tests["rotation driver RD11: a step presses nothing and asks only its fourteen r
         -- GT-1, GT-2: and the gather guards' reads (any tracking, mounted, on a flight).
         -- P-PARTY: the curses and poisons on you (unitDebuffTypes, at the
         -- debuffTypes field) and your group (party, at the party field).
-        t.eq(other, { "unitDebuffTypes", "bagItems", "mounted", "onTaxi", "tracking", "tracking", "professions",
-            "anyTracking", "ownBuffs", "party" },
-            "nothing else asked of the client but the debuff, bag, tracking, profession, gather-guard and group reads it lacks")
+        -- PC-3: and whether you are in a group (grouped).
+        t.eq(other, { "unitDebuffTypes", "fishingPole", "bagItems", "mounted", "onTaxi", "fishingPole", "tracking", "tracking",
+            "professions", "anyTracking", "ownBuffs", "grouped", "party" },
+            "nothing else asked of the client but the debuff, pole, bag, tracking, profession, gather-guard, grouped and group reads it lacks")
         local names = {}
         for name in pairs(calls) do names[#names + 1] = name end
         table.sort(names)

@@ -10,25 +10,48 @@ local tests = {}
 local D = ns.RotationDriver
 
 local RIBS, FISH, BREAD, ROCK = 9001, 9002, 9003, 9004
+-- Section 235 item 4: Strength, Stamina, Fishing, and a Well Fed food whose
+-- tooltip names no stat.
+local STRF, STAF, LURE, VAGUE = 9005, 9006, 9007, 9008
 local LINES = {
     [RIBS] = { "Spiced Wolf Ribs", "Use: Restores 552 health over 21 sec. If you spend at least 10 seconds eating you will become well fed and gain 6 Stamina and Spirit for 15 min." },
     [FISH] = { "Smoked Sagefish", "Use: Restores 378 health over 21 sec. If you spend at least 10 seconds eating you will become well fed and gain 3 Mana every 5 seconds for 15 min." },
     [BREAD] = { "Plain Bread", "Use: Restores 243 health over 18 sec. Must remain seated while eating." },
     [ROCK] = { "Lava Rock" },
+    [STRF] = { "Strength Stew", "Use: If you spend at least 10 seconds eating you will become well fed and gain 10 Strength for 15 min." },
+    [STAF] = { "Stamina Stew", "Use: If you spend at least 10 seconds eating you will become well fed and gain 10 Stamina for 15 min." },
+    [LURE] = { "Angler Bites", "Use: If you spend at least 10 seconds eating you will become well fed and gain 10 Fishing skill for 15 min." },
+    [VAGUE] = { "Mystery Meat", "Use: If you spend at least 10 seconds eating you will become well fed for 15 min." },
 }
 local INFO = {
     [RIBS] = { name = "Spiced Wolf Ribs", classID = 0, subclassID = 5 },
     [FISH] = { name = "Smoked Sagefish", classID = 0, subclassID = 5 },
     [BREAD] = { name = "Plain Bread", classID = 0, subclassID = 5 },
     [ROCK] = { name = "Lava Rock", classID = 7, subclassID = 0 },
+    [STRF] = { name = "Strength Stew", classID = 0, subclassID = 5 },
+    [STAF] = { name = "Stamina Stew", classID = 0, subclassID = 5 },
+    [LURE] = { name = "Angler Bites", classID = 0, subclassID = 5 },
+    [VAGUE] = { name = "Mystery Meat", classID = 0, subclassID = 5 },
 }
 
 local MANA = { name = "Mana", forms = { "none" } }
 local RAGE = { name = "Rage", forms = { "none" } }
 
-local function pack(resource)
+-- Section 235 item 4: the test pack's stat weights, as a class pack's
+-- (pack.weights[role].values). A dps values Stamina over Spirit and mana
+-- regeneration; a healer mana regeneration first.
+local WEIGHTS = {
+    dps = { values = { ITEM_MOD_STAMINA_SHORT = 1, ITEM_MOD_SPIRIT_SHORT = 0.5,
+                       ITEM_MOD_MANA_REGENERATION_SHORT = 1 } },
+    heal = { values = { ITEM_MOD_STAMINA_SHORT = 0.3, ITEM_MOD_SPIRIT_SHORT = 0.4,
+                        ITEM_MOD_MANA_REGENERATION_SHORT = 1.5 } },
+    tank = { values = { ITEM_MOD_STAMINA_SHORT = 1 } },
+}
+
+local function pack(resource, weights)
     return {
         resources = { resource or MANA },
+        weights = weights or WEIGHTS,
         roles = { dps = {}, heal = {}, tank = {} },
         spells = { Wrath = { evidence = "test" } },
         lists = { default = { { spell = "Wrath", target = true, reason = "Wrath" } } },
@@ -73,23 +96,77 @@ tests["buff food: what the buff gives is read from the tooltip"] = function(t)
     t.eq(ns.BuffFood.Gain(LINES[BREAD]), {})
 end
 
-tests["buff food: scored by role; mana food is worth nothing without mana"] = function(t)
+tests["buff food: scored with the pack weights for the role (section 235)"] = function(t)
     local BF = ns.BuffFood
-    t.eq(BF.Score({ Stamina = 6, Spirit = 6 }, "dps", true), 12)
-    t.eq(BF.Score({ mp5 = 3 }, "dps", true), 6)
-    t.eq(BF.Score({ mp5 = 3 }, "heal", true), 9)
-    t.eq(BF.Score({ Stamina = 6, Spirit = 6 }, "heal", true), 7.5)
-    t.eq(BF.Score({ mp5 = 3 }, "dps", false), 0)
-    t.eq(BF.Score({}, "dps", true), nil, "the tooltip does not say: not known")
+    t.eq(BF.Score({ Stamina = 6, Spirit = 6 }, WEIGHTS.dps.values), 9)
+    t.eq(BF.Score({ mp5 = 3 }, WEIGHTS.heal.values), 4.5)
+    t.eq(BF.Score({ mp5 = 3 }, WEIGHTS.tank.values), 0, "a stat the weights do not name: worth nothing")
+    t.eq(BF.Score({}, WEIGHTS.dps.values), nil, "the tooltip does not say: not known")
+    t.eq(BF.Score({ Stamina = 6 }, nil), nil, "no weights: not known")
 end
 
-tests["buff food: the best is picked; nothing worth something is never picked"] = function(t)
+tests["buff food: the fixed role tables, only for a pack with no weights"] = function(t)
+    local BF = ns.BuffFood
+    t.eq(BF.ScoreByRole({ Stamina = 6, Spirit = 6 }, "dps", true), 12)
+    t.eq(BF.ScoreByRole({ mp5 = 3 }, "heal", true), 9)
+    t.eq(BF.ScoreByRole({ mp5 = 3 }, "dps", false), 0)
+    local bare = pack()
+    bare.weights = nil
+    t.eq(D.Read(client({ RIBS, FISH }, {}), bare, {}, "heal")("buffFood").name, "Smoked Sagefish",
+        "no weights: the role table picks")
+end
+
+tests["buff food: every class pack has weights for each of its roles; none falls back (section 235)"] = function(t)
+    local n = 0
+    for class, p in pairs(ns.Packs or {}) do
+        for role in pairs(type(p.roles) == "table" and p.roles or {}) do
+            n = n + 1
+            local w = type(p.weights) == "table" and p.weights[role] or nil
+            t.ok(type(w) == "table" and type(w.values) == "table", class .. " " .. role .. " has weights")
+        end
+    end
+    t.ok(n > 0, "the packs were read")
+end
+
+tests["buff food: the best is picked; worth nothing or not known is never picked (section 235)"] = function(t)
     local BF = ns.BuffFood
     t.eq(BF.Best({ { id = 2, score = 6 }, { id = 1, score = 12 } }).id, 1)
     t.eq(BF.Best({ { id = 5, score = 6 }, { id = 4, score = 6 } }).id, 4, "a tie: the lower id")
-    t.eq(BF.Best({ { id = 3, score = nil }, { id = 2, score = 6 } }).id, 2, "not known counts below known")
+    t.eq(BF.Best({ { id = 3, score = nil }, { id = 2, score = 6 } }).id, 2, "not known: never picked")
+    t.eq(BF.Best({ { id = 3, score = nil } }), nil, "only not known: none")
     t.eq(BF.Best({ { id = 3, score = 0 } }), nil, "worth nothing: none")
     t.eq(BF.Best({}), nil)
+end
+
+-- Section 235 item 4: each tooltip stat name, one test each, read and
+-- weighed through the one name map.
+local NAMED = {
+    { "10 Stamina", "ITEM_MOD_STAMINA_SHORT" },
+    { "10 Strength", "ITEM_MOD_STRENGTH_SHORT" },
+    { "10 Agility", "ITEM_MOD_AGILITY_SHORT" },
+    { "10 Intellect", "ITEM_MOD_INTELLECT_SHORT" },
+    { "10 Spirit", "ITEM_MOD_SPIRIT_SHORT" },
+    { "10 attack power", "ITEM_MOD_ATTACK_POWER_SHORT" },
+    { "10 spell damage", "ITEM_MOD_SPELL_POWER_SHORT" },
+    { "10 healing", "ITEM_MOD_SPELL_HEALING_DONE_SHORT" },
+    { "10 Mana every 5 seconds", "ITEM_MOD_MANA_REGENERATION_SHORT" },
+    { "10 health every 5 seconds", "ITEM_MOD_HEALTH_REGEN_SHORT" },
+}
+for _, row in ipairs(NAMED) do
+    tests["buff food: the tooltip's " .. row[1] .. " is weighed as " .. row[2]] = function(t)
+        local lines = { "x", "Use: If you spend at least 10 seconds eating you will become well fed and gain "
+            .. row[1] .. " for 15 min." }
+        t.eq(ns.BuffFood.Score(ns.BuffFood.Gain(lines), { [row[2]] = 1 }), 10)
+    end
+end
+
+tests["buff food: a profession skill is an activity, not a fight stat"] = function(t)
+    local BF = ns.BuffFood
+    t.eq(BF.Activity(LINES[LURE]), { Fishing = 10 })
+    t.eq(BF.Activity({ "x", "you will become well fed and increases your Fishing skill by 5 for 10 min." }),
+        { Fishing = 5 })
+    t.eq(BF.Activity(LINES[RIBS]), {})
+    t.eq(BF.Gain(LINES[LURE]), {}, "no fight stat")
 end
 
 -- Acceptance (section 226, CF-30) ------------------------------------------------
@@ -130,7 +207,8 @@ end
 tests["buff food CF-30: no Well Fed food in the bags: no food suggestion"] = function(t)
     t.eq(step(client({ BREAD, ROCK }, {}), pack(), "dps").suggestion, nil, "only plain food")
     t.eq(step(client({}, {}), pack(), "dps").suggestion, nil, "empty bags")
-    t.eq(step(client({ FISH }, {}), pack(RAGE), "dps").suggestion, nil, "mana food without mana: worth nothing")
+    t.eq(step(client({ FISH }, {}), pack(RAGE, { dps = { values = { ITEM_MOD_STAMINA_SHORT = 1 } } }), "dps").suggestion,
+        nil, "mana food when the weights give mana nothing: worth nothing")
 end
 
 tests["buff food CF-30: your buffs not read: no food suggestion"] = function(t)
@@ -145,6 +223,77 @@ tests["buff food: the driver's read is nil when the bags are not read, {} when t
     local c2 = client({ RIBS }, {})
     c2.setItemLines(RIBS, nil)
     t.eq(D.Read(c2, pack(), {}, "dps")("buffFood"), nil, "a food whose tooltip was not read: not known")
+end
+
+-- Section 235 item 4: the owner's cases --------------------------------------
+
+local function foodOf(c, p, role)
+    return D.Read(c, p, {}, role)("buffFood")
+end
+
+tests["buff food 235 (a): a Paladin dps with Strength and Stamina food: Strength"] = function(t)
+    local p = ns.Packs.PALADIN
+    local got = foodOf(client({ STAF, STRF }, {}), p, "dps")
+    t.eq(got and got.name, "Strength Stew")
+end
+
+tests["buff food 235 (b): a tank: the pick follows the pack weights"] = function(t)
+    local p = ns.Packs.PALADIN
+    local w = p.weights.tank.values
+    local str, sta = (w.ITEM_MOD_STRENGTH_SHORT or 0) * 10, (w.ITEM_MOD_STAMINA_SHORT or 0) * 10
+    t.ok(str ~= sta, "the weights tell them apart")
+    local want = sta > str and "Stamina Stew" or "Strength Stew"
+    local got = foodOf(client({ STRF, STAF }, {}), p, "tank")
+    t.eq(got and got.name, want)
+    t.eq(got and got.score, math.max(str, sta), "scored from the weights")
+end
+
+tests["buff food 235 (c): only a fishing food and no pole: nothing"] = function(t)
+    local c = client({ LURE }, {})
+    c.setFishingPole(false)
+    t.eq(foodOf(c, pack(), "dps"), {})
+    t.eq(step(c, pack(), "dps").suggestion, nil)
+    c.setFishingPole(nil)
+    t.eq(step(c, pack(), "dps").suggestion, nil, "pole not known: not offered either")
+end
+
+tests["buff food 235 (d): a fishing food with a pole: the fishing food"] = function(t)
+    local c = client({ RIBS, LURE }, {})
+    c.setFishingPole(true)
+    local v = step(c, pack(), "dps")
+    t.eq(v.suggestion and v.suggestion.item, "Angler Bites")
+    c.setFishingPole(false)
+    t.eq(step(c, pack(), "dps").suggestion.item, "Spiced Wolf Ribs", "pole away: the fight food")
+end
+
+tests["buff food 235: with a pole, no fight food"] = function(t)
+    local c = client({ RIBS, STAF }, {})
+    c.setFishingPole(true)
+    t.eq(foodOf(c, pack(), "dps"), {})
+    t.eq(step(c, pack(), "dps").suggestion, nil)
+end
+
+tests["buff food 235: the kept pick follows the pole with no bag change"] = function(t)
+    local c = client({ RIBS, LURE }, {})
+    local food = { on = true }
+    c.setFishingPole(false)
+    t.eq(D.Read(c, pack(), {}, "dps", { food = food })("buffFood").name, "Spiced Wolf Ribs")
+    c.setFishingPole(true)
+    t.eq(D.Read(c, pack(), {}, "dps", { food = food })("buffFood").name, "Angler Bites")
+end
+
+tests["buff food 235 (e): a caster with only a Strength food: nothing"] = function(t)
+    local p = ns.Packs.MAGE
+    t.ok(((p.weights.dps.values.ITEM_MOD_STRENGTH_SHORT) or 0) <= 0, "the weights give Strength nothing")
+    t.eq(foodOf(client({ STRF }, {}), p, "dps"), {})
+end
+
+tests["buff food 235 (f): a tooltip not read, or one that names no stat: nothing"] = function(t)
+    local c = client({ STRF }, {})
+    c.setItemLines(STRF, nil)
+    t.eq(foodOf(c, pack(), "dps"), nil, "not read")
+    t.eq(step(c, pack(), "dps").suggestion, nil)
+    t.eq(foodOf(client({ VAGUE }, {}), pack(), "dps"), {}, "names no stat: never offered")
 end
 
 -- Section 229 (F-1): the driver in a kernel. The food is read out of a fight
@@ -287,6 +436,9 @@ tests["buff food BF-2: eating or drinking: no food suggestion"] = function(t)
     t.eq(step(client({ RIBS }, { Food = 18 }), pack(), "dps").suggestion, nil, "eating")
     t.eq(step(client({ RIBS }, { Drink = 18 }), pack(), "dps").suggestion, nil, "drinking")
     t.eq(step(client({ RIBS }, { ["Food & Drink"] = 18 }), pack(), "dps").suggestion, nil, "both")
+    -- Section 237 BF2-1: Flow's list (Engine.lua EATING) has Refreshment too.
+    t.eq(step(client({ RIBS }, { Refreshment = 18 }), pack(), "dps").suggestion, nil, "refreshment")
+    t.eq(ns.BuffFood.Eating({ Refreshment = 18 }), true)
     t.eq(ns.BuffFood.Eating({ Food = 18 }), true)
     t.eq(ns.BuffFood.Eating({ ["Power Word: Fortitude"] = 600 }), false)
     t.eq(ns.BuffFood.Eating(nil), nil, "buffs not read: not known")
@@ -366,6 +518,20 @@ tests["buff food: extra.food reaches the food read with extra.chosen beside it (
     local v = D.Step(c, pack(), nil, nil, nil, "dps", { food = { on = false }, chosen = { spell = "Wrath" } })
     t.ok(not (v.suggestion and v.suggestion.step == "food"), "D.Step hands extra on: no food when off")
     t.eq(D.Read(c, pack(), {}, "dps", { chosen = { spell = "Wrath" } })("foodOn"), nil, "no extra.food: not known")
+end
+
+-- Section 236: a pick made while another food was not read yet answers, but
+-- is not kept; the late food is read on the next read.
+tests["buff food: a pick made with a food not read yet is not kept (section 236)"] = function(t)
+    local c = client({ RIBS, FISH }, {})
+    c.setItemLines(RIBS, nil)
+    local food = { on = true }
+    local function read() return D.Read(c, pack(), {}, "heal", { food = food })("buffFood") end
+    t.eq(read().name, "Smoked Sagefish", "the one read")
+    t.eq(food.kept, false, "not kept: Spiced Wolf Ribs not read")
+    c.setItemLines(RIBS, LINES[RIBS])
+    t.eq(read().name, "Smoked Sagefish", "read again: still the healer's pick")
+    t.eq(food.kept, true, "all read: kept")
 end
 
 return tests

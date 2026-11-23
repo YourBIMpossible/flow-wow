@@ -613,11 +613,92 @@ return {
         t.eq(c.tradeSkillSchematic(2), nil, "no reagents read")
     end,
 
+    -- Section 233 (GR2-1) ---------------------------------------------------
+    ["tradeSkillRows(): the classic window's recipe rows, headers left out"] = function(t)
+        local env = frameEnv()
+        local info = {
+            { "Cloth", "header" },
+            { "Bolt of Linen Cloth", "trivial" },
+            { "Brown Linen Robe", "optimal" },
+        }
+        function env.GetTradeSkillLine() return "Tailoring", 50, 75 end
+        function env.GetNumTradeSkills() return #info end
+        function env.GetTradeSkillInfo(i) return info[i][1], info[i][2], 0, true end
+        local c = ns.make.client(env)
+        t.eq(c.tradeSkillRows(), { name = "Tailoring", skill = 50, max = 75, rows = {
+            { index = 2, name = "Bolt of Linen Cloth" }, { index = 3, name = "Brown Linen Robe" } } })
+        info[3][1] = nil
+        t.eq(c.tradeSkillRows(), nil, "a row with no name: never a shorter list")
+        info[3][1] = "Brown Linen Robe"
+        env.GetTradeSkillLine = function() return "UNKNOWN", 0, 0 end
+        t.eq(c.tradeSkillRows(), nil, "no window open")
+    end,
+
+    ["tradeSkillRows(): nil when the client can't say"] = function(t)
+        local env = frameEnv()
+        local c = ns.make.client(env)
+        t.eq(c.tradeSkillRows(), nil, "no classic reads")
+        function env.GetTradeSkillLine() return "Tailoring", 50, 75 end
+        function env.GetNumTradeSkills() return 0 end
+        t.eq(c.tradeSkillRows(), nil, "no rows: no window")
+        env.GetNumTradeSkills = function() return 1 end
+        function env.GetTradeSkillInfo() return "Bolt", nil end
+        t.eq(c.tradeSkillRows(), nil, "a row of no kind")
+    end,
+
+    ["tradeSkillRows(): the fake gives a copy"] = function(t)
+        local c = ns.make.fakeClient()
+        t.eq(c.tradeSkillRows(), nil, "none set")
+        c.setTradeSkillRows({ name = "Tailoring", rows = { { index = 2, name = "Bolt" } } })
+        c.tradeSkillRows().rows[1].name = "x"
+        t.eq(c.tradeSkillRows(), { name = "Tailoring", rows = { { index = 2, name = "Bolt" } } })
+    end,
+
     ["tradeSkillSchematic(): the fake gives a copy"] = function(t)
         local c = ns.make.fakeClient()
         t.eq(c.tradeSkillSchematic(2), nil, "none set")
         c.setTradeSkillSchematic(2, { makes = 2996, yield = 1, mats = { [2589] = 2 } })
         c.tradeSkillSchematic(2).mats[2589] = 9
         t.eq(c.tradeSkillSchematic(2), { makes = 2996, yield = 1, mats = { [2589] = 2 } })
+    end,
+
+    -- Section 235 item 4 ---------------------------------------------------
+    ["fishingPole(): the main hand's class and subclass say it"] = function(t)
+        local env = frameEnv()
+        local held = { [6256] = { 2, 20 }, [25] = { 2, 7 } }
+        local id = 6256
+        local asked
+        function env.GetInventoryItemID(unit, slot) asked = { unit, slot } return id end
+        env.C_Item = { GetItemInfoInstant = function(item)
+            local r = held[item]
+            if not r then return nil end
+            return item, "Weapon", "x", "INVTYPE_2HWEAPON", 0, r[1], r[2]
+        end }
+        local c = ns.make.client(env)
+        t.eq(c.fishingPole(), true, "weapon 2, subclass 20")
+        t.eq(asked, { "player", 16 }, "the main hand")
+        id = 25
+        t.eq(c.fishingPole(), false, "a sword")
+        id = nil
+        t.eq(c.fishingPole(), false, "nothing in the main hand")
+        id = 7777
+        t.eq(c.fishingPole(), nil, "a class not read: not known, never false")
+        id = "6256"
+        t.eq(c.fishingPole(), nil, "an id that is no number")
+        env.GetInventoryItemID = function() error("no") end
+        t.eq(c.fishingPole(), nil, "a failed call")
+        env.GetInventoryItemID = nil
+        t.eq(c.fishingPole(), nil, "no such read")
+    end,
+
+    ["fishingPole(): the fake is not known until set"] = function(t)
+        local c = ns.make.fakeClient()
+        t.eq(c.fishingPole(), nil)
+        c.setFishingPole(true)
+        t.eq(c.fishingPole(), true)
+        c.setFishingPole(false)
+        t.eq(c.fishingPole(), false)
+        c.setFishingPole(nil)
+        t.eq(c.fishingPole(), nil)
     end,
 }

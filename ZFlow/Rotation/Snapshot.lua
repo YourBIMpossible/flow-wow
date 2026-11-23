@@ -40,6 +40,8 @@ R.SNAPSHOT_FIELDS = {
     -- Section 230 (BF-2, BF-3): mounted, on a flight path (nil when not
     -- read), and the Well Fed food setting (nil without the driver's table).
     { "mounted", "flag" }, { "onTaxi", "flag" }, { "foodOn", "flag" },
+    -- Section 235 item 4: a fishing pole in your main hand (nil: not read).
+    { "fishingPole", "flag" },
     -- P-GATHER (Rotation/Gather.lua): gathering tracking, read by G.Read.
     { "tracking", "map" }, { "trackKnown", "map" }, { "professions", "map" }, { "gatherOn", "flag" },
     -- GT-1 (Rotation/Gather.lua): any tracking on. Mounted and on a flight path are the two flags above.
@@ -50,6 +52,8 @@ R.SNAPSHOT_FIELDS = {
     -- N13: the buffs on you that you put up yourself (client.ownBuffs),
     -- the same shape as buffs; nil when not read.
     { "ownBuffs", "map" },
+    -- PC-3: whether you are in a group (client.grouped); nil when not read.
+    { "grouped", "flag" },
     -- P-PARTY (Rotation/Group.lua): the other players in your party, a list
     -- of { unit, name, class, role, kind, power, dead, connected, reach,
     -- has, debuffTypes } (kind "party"); nil when not read. The names are

@@ -503,6 +503,36 @@ tests["goal make: saves the recipe the book knows for the item"] = function(t)
     t.eq(saved(c), { { item = BOLT, count = 5, recipe = BOLT_RECIPE } }, "set again: the count changes, one entry")
 end
 
+-- Section 233 (GR2-2). Fails before: add kept the recipe, so the goal was
+-- still made, not kept.
+tests["goal add: on a recipe goal, the goal keeps the item and drops the recipe"] = function(t)
+    local c = start({ { item = BOLT, count = 3, recipe = BOLT_RECIPE } }, false, BOOK)
+    t.eq(say(c, "add 2996 5"), { "Goal set: keep 5 x Bolt of Linen Cloth." })
+    t.eq(saved(c), { { item = BOLT, count = 5 } })
+    t.eq(say(c, "make 2996 2"), { "Goal set: make 2 x Bolt of Linen Cloth (recipe: Bolt of Linen Cloth)." })
+    t.eq(saved(c), { { item = BOLT, count = 2, recipe = BOLT_RECIPE } }, "make puts it back")
+end
+
+-- Section 233 (GR2-5): settles whether an owned product is counted twice.
+-- It is not: the product is held once by the goal (bags and bank), and the
+-- plan for the rest has no row for it, so ItemPlan claims none of it again.
+tests["goals GR2-5: an owned product is held once, never again by the plan"] = function(t)
+    local G = ns.ItemGoals
+    local s = ns.Resources.Fake({ bags = { [LINEN] = 20, [BOLT] = 1 }, bank = { [BOLT] = 2 } })
+    local items = itemClaims(G.Claims(s, { { item = BOLT, count = 5, recipe = "bolt" } }, RECIPES))
+    local bolts, linen = 0, 0
+    for _, c in ipairs(items) do
+        if c.key == BOLT then bolts = bolts + c.amount end
+        if c.key == LINEN then linen = linen + c.amount end
+    end
+    t.eq(bolts, 3, "the 1 in the bags and 2 in the bank, once")
+    t.eq(linen, 4, "the mats for the 2 still to make")
+    local plan = ns.ItemPlan.Build({ recipe = "bolt", count = 2 }, { recipes = RECIPES, snapshot = s })
+    for _, r in ipairs(plan.rows) do
+        t.ok(r.key ~= BOLT, "no plan row for the product")
+    end
+end
+
 tests["goal make: an item no recipe seen makes says how, and saves nothing"] = function(t)
     local c = start(nil, false, BOOK)
     t.eq(say(c, "make 2589 3"), { ns.ItemGoals.NoRecipe("Linen Cloth") })

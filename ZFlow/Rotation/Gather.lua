@@ -36,8 +36,6 @@ ns.Gather = G
 
 G.NAME = "gatherTrack"
 G.SETTING = "rotation.gatherTracking"
--- The buffs that mean eating or drinking (GT-2): no offer while one is up.
-G.RESTING = { "Food", "Drink" }
 G.LIST = {
     { profession = "Mining", spell = "Find Minerals" },
     { profession = "Herbalism", spell = "Find Herbs" },
@@ -111,10 +109,11 @@ function G.Step(s)
     if s.onTaxi ~= false then
         return nil, s.onTaxi and "on a flight path" or "not known whether you are on a flight path"
     end
-    if type(s.buffs) ~= "table" then return nil, "not known whether you are eating or drinking" end
-    for _, buff in ipairs(G.RESTING) do
-        if s.buffs[buff] then return nil, "eating or drinking" end
-    end
+    -- Section 237 GK-1: the one eating list, ns.BuffFood.EATING
+    -- (Rotation/BuffFood.lua), the food offer's too.
+    local eating = ns.BuffFood.Eating(s.buffs)
+    if eating == nil then return nil, "not known whether you are eating or drinking" end
+    if eating then return nil, "eating or drinking" end
     -- GT-1: any tracking on is the player's choice and is left alone.
     if s.trackingAny ~= false then
         return nil, s.trackingAny and "a tracking is already on" or "not known whether a tracking is on"

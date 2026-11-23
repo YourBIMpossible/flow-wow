@@ -572,7 +572,8 @@ function ns.make.client(env)
     -- of GetTradeSkillReagentInfo(index, r) for how many a craft takes.
     -- The same answer as recipeSchematic: { makes =, yield =, mats = }.
     -- Anything that can't be read makes the whole answer nil: never a
-    -- shorter list. First guesses, not seen in game; nothing calls it yet.
+    -- shorter list. First guesses, not seen in game. Items/RecipeBook.lua
+    -- calls it for each row of tradeSkillRows (section 233, GR2-1).
     function c.tradeSkillSchematic(index)
         if not wholeCount(index) or index < 1 or index == math.huge then return nil end
         local function itemOf(ok, link)
@@ -603,6 +604,38 @@ function ns.make.client(env)
             mats[item] = (mats[item] or 0) + need
         end
         return { makes = makes, yield = yield, mats = mats }
+    end
+
+    -- Section 233 (GR2-1): the rows of the classic trade skill window, for
+    -- when C_TradeSkillUI can't be read. GetTradeSkillLine() for the
+    -- profession's name, skill and max ("UNKNOWN" or no name: no window),
+    -- GetNumTradeSkills() rows (0: no window), and GetTradeSkillInfo(i) for
+    -- each row's name and kind; "header" and "subheader" rows are left out.
+    -- Every other row is a recipe the player has learned. Only what the
+    -- window shows: a collapsed header hides its rows.
+    --   { name =, skill =, max =, rows = { { index = i, name = } } }
+    -- Anything that can't be read makes the whole answer nil: never a
+    -- shorter list. First guesses, not seen in game.
+    function c.tradeSkillRows()
+        local okLine, name, skill, max = call(env.GetTradeSkillLine)
+        if not okLine or type(name) ~= "string" or hidden(name) or name == "" or name == "UNKNOWN" then
+            return nil
+        end
+        local okN, n = call(env.GetNumTradeSkills)
+        if not okN or not wholeCount(n) or n < 1 or n == math.huge then return nil end
+        local rows = {}
+        for i = 1, n do
+            local okInfo, rowName, kind = call(env.GetTradeSkillInfo, i)
+            if not okInfo or type(kind) ~= "string" or hidden(kind) then return nil end
+            if kind ~= "header" and kind ~= "subheader" then
+                if type(rowName) ~= "string" or hidden(rowName) or rowName == "" then return nil end
+                rows[#rows + 1] = { index = i, name = rowName }
+            end
+        end
+        local out = { name = name, rows = rows }
+        if wholeCount(skill) and not hidden(skill) then out.skill = skill end
+        if wholeCount(max) and not hidden(max) then out.max = max end
+        return out
     end
 
     -- A string the client gave and did not mark secret, or nil.
@@ -1838,7 +1871,9 @@ function ns.make.client(env)
     -- UIHANDLER OnDragStart, OnDragStop; UIHANDLER OnHide, which that page
     -- says also runs when a frame it stands on is hidden. UISpecialFrames
     -- and the UIPanelCloseButton template have no page: needs a game test.
-    function c.panel(spec)
+    -- The panel, its frame, and whether it is open (shown by the add-on and
+    -- not since hidden or closed): c.panel and c.rowPanel share it.
+    local function panelFrame(spec)
         spec = type(spec) == "table" and spec or {}
         local parent = env.UIParent
         -- Asked before the frame is made: making it takes the name.
@@ -2000,6 +2035,10 @@ function ns.make.client(env)
                 end
             end
         end
+        return h, f, function() return open end
+    end
+    function c.panel(spec)
+        local h = panelFrame(spec)
         return h
     end
 
@@ -4732,6 +4771,23 @@ function ns.make.client(env)
         return flag(call(env.IsMounted))
     end
 
+    -- Section 235 item 4: is a fishing pole in your main hand. True, false,
+    -- or nil when not known. GetInventoryItemID("player", 16) (the main
+    -- hand; no id: nothing there, false), then the item's class and
+    -- subclass from GetItemInfoInstant (C_Item first, as c.gear): weapon 2,
+    -- subclass 20 is a fishing pole. A class not read: nil, never false.
+    -- Both names are in CLIENT-NAMES-16001; the read is a first guess, not
+    -- seen in game. It only reads.
+    function c.fishingPole()
+        local ok, id = call(env.GetInventoryItemID, "player", 16)
+        if not ok then return nil end
+        if id == nil then return false end
+        if hidden(id) or type(id) ~= "number" then return nil end
+        local class, subclass = itemType(id)
+        if class == nil or subclass == nil then return nil end
+        return class == 2 and subclass == 20
+    end
+
     -- S42 quest item on the quest arrow (LEDGER 169/172;
     -- WoW/from-zen/RESEARCH-S42.md). Three reads, each only reads: nothing
     -- uses an item here (no UseQuestLogSpecialItem, no secure button; the
@@ -5804,6 +5860,184 @@ function ns.make.client(env)
         return out
     end
     -- ------------------------------------------------------- end pet state
+
+    -- ------------------------------------------------------- craft (P-CRAFT)
+    -- The reads and the bar the craft queue needs (lead section 226: #34
+    -- Smelt All, G21 the craft bar; UI/CraftBar.lua). Needs game test: every
+    -- call here is a first guess on 16001, read from the client names.
+    -- Unknown stays unknown: nil is never "nothing needed", "usable" or
+    -- "standing still".
+    local function wholeId(n)
+        return type(n) == "number" and not hidden(n) and n == n and n >= 1 and n < math.huge
+            and n == math.floor(n)
+    end
+
+    -- Whether the recipe can be made here and now: true; false and the
+    -- client reason (disabledReason) when it gives one; nil when not
+    -- known. From C_TradeSkillUI.GetRecipeInfo(id): learned, disabled.
+    function c.recipeUsable(id)
+        if not wholeId(id) then return nil end
+        local ui = env.C_TradeSkillUI
+        if type(ui) ~= "table" then return nil end
+        local ok, info = call(ui.GetRecipeInfo, id)
+        if not ok or type(info) ~= "table" then return nil end
+        if info.learned == false then return false end
+        if info.disabled == true then
+            local why = info.disabledReason
+            if type(why) == "string" and why ~= "" and not hidden(why) then return false, why end
+            return false
+        end
+        if info.disabled == false and info.learned == true then return true end
+        return nil
+    end
+
+    -- Whether the player is moving: GetUnitSpeed("player") above 0, else
+    -- IsPlayerMoving() when it answers a plain true or false, else nil.
+    function c.moving()
+        local ok, speed = call(env.GetUnitSpeed, "player")
+        if ok and type(speed) == "number" and not hidden(speed) and speed == speed and speed >= 0 then
+            return speed > 0
+        end
+        local okFlag, flag = call(env.IsPlayerMoving)
+        if okFlag and type(flag) == "boolean" then return flag end
+        return nil
+    end
+
+    -- A panel of rows (the craft bar): c.panel h, always closable, with
+    -- shown() and draw(rows, act). rows, top to bottom:
+    --   { kind = "info", text = }
+    --   { kind = "number", key =, label =, value =, min =, max =, enabled = }
+    --   { kind = "button", key =, label =, enabled = }
+    -- A number reads "label: value" with a "-" and a "+": a click asks
+    -- act(key, value - 1) or act(key, value + 1), never past min or max; the
+    -- panel keeps no value itself, the next draw shows it. A button asks
+    -- act(key). act runs under pcall: its error stays in the panel.
+    -- enabled == false disables the row buttons. Rows are pooled and a
+    -- draw replaces the last one; the frame grows with the rows (no
+    -- scrolling). Needs game test: UIPanelButtonTemplate, the row layout.
+    local ROW = 20
+    function c.rowPanel(spec)
+        local own = {}
+        for key, v in pairs(type(spec) == "table" and spec or {}) do own[key] = v end
+        own.closable = true
+        local h, f, isOpen = panelFrame(own)
+        if h == nil then return nil end
+        h.shown = isOpen
+        local width = tonumber(own.width) or 200
+        local fonts, buttons = {}, {}
+
+        local function font(i)
+            if fonts[i] == nil then
+                local ok, made = method(f, "CreateFontString", nil, "OVERLAY", "GameFontNormalSmall")
+                if not ok or made == nil then return nil end
+                method(made, "SetJustifyH", "LEFT")
+                fonts[i] = made
+            end
+            return fonts[i]
+        end
+        local function button(i)
+            if buttons[i] == nil then
+                local ok, made = call(env.CreateFrame, "Button", nil, f, "UIPanelButtonTemplate")
+                if not ok or made == nil then ok, made = call(env.CreateFrame, "Button", nil, f) end
+                if not ok or made == nil then return nil end
+                buttons[i] = made
+            end
+            return buttons[i]
+        end
+
+        function h.draw(rows, act)
+            local fontsUsed, buttonsUsed, y = 0, 0, -24
+            local function ask(...)
+                if type(act) == "function" then pcall(act, ...) end
+            end
+            local function line(text, room)
+                fontsUsed = fontsUsed + 1
+                local fs = font(fontsUsed)
+                if fs == nil then return end
+                method(fs, "ClearAllPoints")
+                method(fs, "SetPoint", "TOPLEFT", f, "TOPLEFT", 6, y)
+                method(fs, "SetWidth", width - 12 - room)
+                method(fs, "SetText", text)
+                method(fs, "Show")
+            end
+            local function push(label, enabled, x, w, onClick)
+                buttonsUsed = buttonsUsed + 1
+                local b = button(buttonsUsed)
+                if b == nil then return end
+                method(b, "ClearAllPoints")
+                method(b, "SetWidth", w)
+                method(b, "SetHeight", ROW - 2)
+                method(b, "SetPoint", "TOPLEFT", f, "TOPLEFT", x, y)
+                method(b, "SetText", label)
+                method(b, enabled and "Enable" or "Disable")
+                method(b, "SetScript", "OnClick", function()
+                    if enabled then onClick() end
+                end)
+                method(b, "Show")
+            end
+            for _, row in ipairs(type(rows) == "table" and rows or {}) do
+                if type(row) == "table" then
+                    local enabled = row.enabled ~= false
+                    local drawn = true
+                    if row.kind == "info" then
+                        line(tostring(row.text or ""), 0)
+                    elseif row.kind == "number" and type(row.value) == "number" then
+                        local v = row.value
+                        local least = tonumber(row.min) or -math.huge
+                        local most = tonumber(row.max) or math.huge
+                        line(tostring(row.label) .. ": " .. tostring(v), 54)
+                        push("-", enabled, width - 52, 22, function()
+                            if v - 1 >= least then ask(row.key, v - 1) end
+                        end)
+                        push("+", enabled, width - 28, 22, function()
+                            if v + 1 <= most then ask(row.key, v + 1) end
+                        end)
+                    elseif row.kind == "button" then
+                        push(tostring(row.label), enabled, 6, width - 12, function() ask(row.key) end)
+                    else
+                        drawn = false
+                    end
+                    if drawn then y = y - ROW end
+                end
+            end
+            for i = fontsUsed + 1, #fonts do
+                method(fonts[i], "SetText", "")
+                method(fonts[i], "Hide")
+            end
+            for i = buttonsUsed + 1, #buttons do method(buttons[i], "Hide") end
+            method(f, "SetHeight", 6 - y)
+        end
+        return h
+    end
+
+    -- ACTING (section 227 item 4, section 234): one ask of the recipe, n
+    -- as the game repeat count, only on the player own click on the craft
+    -- bar (UI/CraftBar.lua); never from a finish, a timer or the tick.
+    -- C_TradeSkillUI.CraftRecipe(id, n). Out of combat only: combat true or
+    -- not known asks nothing. -> true | nil, "combat" | "bad" | "noCall" |
+    -- "raised". Needs game test: the call and its repeat count.
+    function c.craftRecipe(id, n)
+        if c.inCombat() ~= false then return nil, "combat" end
+        if not wholeId(id) or not wholeId(n) then return nil, "bad" end
+        local ui = env.C_TradeSkillUI
+        local fn = type(ui) == "table" and ui.CraftRecipe or nil
+        if type(fn) ~= "function" then return nil, "noCall" end
+        if not pcall(fn, id, n) then return nil, "raised" end
+        return true
+    end
+    -- Section 234: asks the game to stop the repeat of the craft the
+    -- player click started (C_TradeSkillUI.StopRecipeRepeat). Not a craft:
+    -- it only ends one, so it is asked in combat too. -> true | nil,
+    -- "noCall" | "raised". Needs game test: StopRecipeRepeat is in the
+    -- 16001 name list, its place under C_TradeSkillUI is a guess.
+    function c.stopCraftRepeat()
+        local ui = env.C_TradeSkillUI
+        local fn = type(ui) == "table" and ui.StopRecipeRepeat or nil
+        if type(fn) ~= "function" then return nil, "noCall" end
+        if not pcall(fn) then return nil, "raised" end
+        return true
+    end
+    -- ------------------------------------------------------- end craft
 
     -- ------------------------------------------- spell name by id (CF-32)
     -- c.spellName(id) -> the spell's name, or nil when not read. The same
