@@ -4657,6 +4657,56 @@ function ns.make.client(env)
         return rowsFollowed or nil
     end
     -- ------------------------------------------------------------- end S2
+
+    -- ---------------------------------------------------------------- S3
+    -- S3 slice 3 (lead section 181): the lines that say an auction sold or
+    -- came back unsold.
+    --   client.globalText(name) -> the client's own text of that name, or nil
+    --   client.onSystemMessage(fn) -> cancel | nil;  fn(line), CHAT_MSG_SYSTEM
+    --   client.auctionOutcome(line) -> "sold" | "expired", item name; or nil
+    -- The texts are the client's own ERR_AUCTION_SOLD_S and
+    -- ERR_AUCTION_EXPIRED_S; no English is written here. A hidden or
+    -- non-text line never reaches a listener. Needs game test on 16001:
+    -- that these lines come as CHAT_MSG_SYSTEM, and in these texts.
+    function c.globalText(name)
+        if type(name) ~= "string" then return nil end
+        local ok, v = pcall(function() return env[name] end)
+        if not ok or type(v) ~= "string" or v == "" or hidden(v) then return nil end
+        return v
+    end
+
+    local systemFns, systemFollowed = {}, false
+    local function systemLine(line)
+        if type(line) ~= "string" or hidden(line) then return end
+        for _, fn in ipairs({ unpack(systemFns) }) do pcall(fn, line) end
+    end
+    function c.onSystemMessage(fn)
+        if type(fn) ~= "function" then return nil end
+        if not systemFollowed then
+            events.add("CHAT_MSG_SYSTEM", systemLine)
+            systemFollowed = true
+        end
+        systemFns[#systemFns + 1] = fn
+        return function()
+            for i = #systemFns, 1, -1 do
+                if systemFns[i] == fn then table.remove(systemFns, i) end
+            end
+        end
+    end
+
+    local OUTCOMES = { { "sold", "ERR_AUCTION_SOLD_S" }, { "expired", "ERR_AUCTION_EXPIRED_S" } }
+    function c.auctionOutcome(line)
+        if type(line) ~= "string" or line == "" or hidden(line) then return nil end
+        for _, o in ipairs(OUTCOMES) do
+            local pattern, kinds = lootPattern(c.globalText(o[2]))
+            if pattern and #kinds == 1 and kinds[1] == "s" then
+                local name = line:match(pattern)
+                if name then return o[1], name end
+            end
+        end
+        return nil
+    end
+    -- ------------------------------------------------------------- end S3
     return c
 end
 
