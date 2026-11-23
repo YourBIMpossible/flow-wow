@@ -25,7 +25,8 @@ local KIND = {
     tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "slash",
              "slashTaken", "unslash" },
     -- Hands back or runs a sound restart: never asked by the capture.
-    act = { "restartSound", "soundWays" },
+    -- craftRecipe (lead section 226, acting): one craft on the player click.
+    act = { "restartSound", "soundWays", "craftRecipe" },
     -- Reads a chat line handed in, not the client.
     parse = { "ownLoot", "auctionOutcome" },
 }

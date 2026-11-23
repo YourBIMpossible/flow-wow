@@ -69,9 +69,14 @@ function CraftBar.Declare(k)
                 if type(fn) ~= "function" then return nil end
                 return pass(pcall(fn, ...))
             end
-            -- The craft call: none in this commit, so a run stops at once.
-            local function craft()
-                return nil, "noCall"
+            -- ACTING: one craft of the recipe (Core/Client.lua craftRecipe),
+            -- only from the player click on Start or Smelt all and the
+            -- finish of the craft that click started.
+            local function craft(recipe)
+                if type(client.craftRecipe) ~= "function" then return nil, "noCall" end
+                local ok, done, why = pcall(client.craftRecipe, recipe, 1)
+                if not ok then return nil, "noCall" end
+                return done, why
             end
 
             local function readBook()
