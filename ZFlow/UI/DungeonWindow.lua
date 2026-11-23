@@ -19,8 +19,9 @@
 --   `<slash> dungeons` opens it; so does the arrow menu's row
 --   (UI/ArrowMenu.lua M.WINDOWS).
 -- Its place is kept, account wide, at W.PATH.
--- Not tested in game. No quest-state icons yet: the kit's theme has none
--- (asked of the kit's owner, from-plexy RESULTS).
+-- Each quest line carries the kit's quest picture for its group
+-- (Kit.look.icon, UI/Kit/Theme.lua); this file names no picture itself.
+-- Not tested in game.
 local _, ns = ...
 
 local W = {}
@@ -42,6 +43,14 @@ W.PATH = "layout.dungeonWindow"
 
 -- The tone a group's lines are drawn in (the kit's three words).
 local TONE = { log = "good", later = "warn", notforyou = "bad" }
+-- The kit's quest picture for a group's lines, by its name in Kit.look.icon.
+local ICON = { log = "questInLog", pickup = "questAvailable", inside = "questAvailable",
+    later = "questLater", notforyou = "questNotForYou" }
+
+local function iconOf(group)
+    local icons = ns.Kit and ns.Kit.look and ns.Kit.look.icon
+    return type(icons) == "table" and icons[ICON[group]] or nil
+end
 
 local function join(a, b)
     if a and b then return a .. " · " .. b end
@@ -131,7 +140,8 @@ function W.Declare(k, diag)
                     end }
                 if not folded then
                     for _, r in ipairs(g.rows) do
-                        rows[#rows + 1] = { kind = "line", text = r.name, sub = join(r.chain, r.note),
+                        rows[#rows + 1] = { kind = "line", text = r.name, icon = iconOf(g.id),
+                            sub = join(r.chain, r.note),
                             right = r.level and ("Level " .. tostring(r.level)) or nil, tone = TONE[g.id] }
                     end
                 end
