@@ -148,6 +148,7 @@ Nav\Travel.lua
 Nav\Legs.lua
 Nav\QuestItems.lua
 UI\ProfCard.lua
+UI\ProfLearn.lua
 UI\ProfPick.lua
 UI\DevPanel.lua
 UI\SettingsSlash.lua
