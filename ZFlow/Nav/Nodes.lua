@@ -11,21 +11,29 @@ local _, ns = ...
 -- A node is a loot window (client.lootWindow at LOOT_OPENED) whose source
 -- is a game object (its GUID begins "GameObject-"), opened by a player who
 -- has one of the gathering professions of Rotation/Gather.lua's G.LIST.
--- Its name is the first item's name in the window; its profession is the
--- player's one gathering profession, or none (nil) when they have more than
--- one (the window does not say which was used). A node within X.SAME yards
+-- P-GATHER (zflow-gather-5): its profession is what the client said at that
+-- moment, in this order: the player's own gathering cast within
+-- X.CAST_WINDOW seconds before the window (UNIT_SPELLCAST_SUCCEEDED, the
+-- spell named by client.spellName, X.CAST), else the looted items' class
+-- (client.itemInfo: trade goods, herb or metal and stone, X.MATERIAL). A
+-- profession the player does not have counts as none. With neither, the
+-- window is a chest (or a box, or a quest object) and nothing is kept.
+-- Minimap tracking is not used: a gatherer opens chests with it on.
+-- Its name is the first gathering material's name (the link, else
+-- client.itemInfo), else the first item's name. A node within X.SAME yards
 -- of one kept with the same object id or name is that one again.
 --
 -- Saved, account X.PATH: { [map] = { { x, y, id, name, prof, n, at } } }
+--   prof the profession (old nodes saved before zflow-gather-5 may have
+--   none: those are shown to every gatherer, as before),
 --   x, y shares 0..1 of the map (4 decimals), id the object id or nil, n
 --   how many times it was gathered, at the clock of the last time. At most
 --   X.PER_MAP a map (the least recently gathered go, X.Cap) and X.MAPS maps.
 --
 --   X.Cap(list)             keeps the X.PER_MAP most recent, oldest first out
 --   X.Declare(k, diag) -> api
--- Not tested in game: LOOT_OPENED, the loot read and the professions read
--- are first guesses. A chest (also a game object) opened by a gatherer is
--- kept too: nothing in the loot read tells the two apart.
+-- Not tested in game: LOOT_OPENED, the loot read, the professions read, the
+-- cast names and the item class numbers are first guesses.
 ns.Nav = ns.Nav or {}
 local N = ns.Nav
 
@@ -42,6 +50,14 @@ X.SAME = 8          -- yards: a node this close with the same id or name is that
 X.PER_MAP = 200
 X.MAPS = 80
 X.SHOW = 5          -- nodes said by the word
+X.CAST_EVENT = "UNIT_SPELLCAST_SUCCEEDED"   -- unit, castGUID, spellID
+X.CAST_WINDOW = 5   -- seconds from a gathering cast to its loot window
+-- The gathering spell the client casts on a node, by profession. First
+-- guess at the names (the cast bar's words); not seen in game.
+X.CAST = { ["Herb Gathering"] = "Herbalism", ["Mining"] = "Mining" }
+-- Trade goods (classID 7): subclass 9 herb, 7 metal and stone. The
+-- client's own numbers; first guess, not seen in game.
+X.MATERIAL = { [7] = { [9] = "Herbalism", [7] = "Mining" } }
 
 local sqrt = math.sqrt
 
@@ -72,6 +88,13 @@ local function itemName(link)
     return name
 end
 
+-- The gathering profession an item's facts say it is from, or nil.
+local function materialOf(info)
+    if type(info) ~= "table" then return nil end
+    local sub = X.MATERIAL[info.classID]
+    return type(sub) == "table" and sub[info.subclassID] or nil
+end
+
 -- The gathering professions of Rotation/Gather.lua the player has.
 local function gathering(profs)
     local out = {}
@@ -86,6 +109,7 @@ end
 function X.Declare(k, diag)
     local api = {}
     local ctx
+    local lastCast   -- { prof, at }: the player's last gathering cast
 
     local function ask(name, ...)
         local client = ctx and ctx.client
@@ -135,13 +159,31 @@ function X.Declare(k, diag)
         if type(guid) ~= "string" or not guid:find("^GameObject%-") then return nil end
         local mine = gathering(ask("professions"))
         if #mine == 0 then return nil end
+        local have = {}
+        for _, prof in ipairs(mine) do have[prof] = true end
         local p = ask("position")
         if type(p) ~= "table" or p.map == nil or not finite(p.x) or not finite(p.y) then return nil end
-        local name
-        for _, row in ipairs(type(win.items) == "table" and win.items or {}) do
-            name = itemName(type(row) == "table" and row.item or nil)
-            if name then break end
+        local now = ask("clock")
+        local prof
+        if lastCast and finite(now) and finite(lastCast.at) and now - lastCast.at <= X.CAST_WINDOW
+            and have[lastCast.prof] then
+            prof = lastCast.prof
         end
+        lastCast = nil
+        local name, first
+        for _, row in ipairs(type(win.items) == "table" and win.items or {}) do
+            local item = type(row) == "table" and row.item or nil
+            local info = item ~= nil and ask("itemInfo", item) or nil
+            local own = itemName(item) or (type(info) == "table" and type(info.name) == "string" and info.name ~= "" and info.name) or nil
+            first = first or own
+            local from = materialOf(info)
+            if from and have[from] and (prof == nil or prof == from) and name == nil then
+                prof = prof or from
+                name = own
+            end
+        end
+        if prof == nil then return nil end
+        name = name or first or (type(src.name) == "string" and src.name ~= "" and src.name) or nil
         local id = tonumber(guid:match("^GameObject%-[^-]*%-[^-]*%-[^-]*%-[^-]*%-(%d+)"))
         local all = saved()
         if not all then
@@ -152,7 +194,6 @@ function X.Declare(k, diag)
         local list = type(all[p.map]) == "table" and all[p.map] or {}
         all[p.map] = list
         local size = sizeOf(p.map)
-        local now = ask("clock")
         local spot = { x = p.x, y = p.y }
         for _, e in ipairs(list) do
             if type(e) == "table" and finite(e.x) and finite(e.y) and yards(e, spot, size) <= X.SAME
@@ -163,7 +204,7 @@ function X.Declare(k, diag)
             end
         end
         local e = { x = round4(p.x), y = round4(p.y), id = id, name = name,
-                    prof = #mine == 1 and mine[1] or nil, n = 1, at = now }
+                    prof = prof, n = 1, at = now }
         list[#list + 1] = e
         X.Cap(list)
         local maps, oldest, oldestAt = 0, nil, nil
@@ -207,7 +248,9 @@ function X.Declare(k, diag)
         local e = r.node
         local where = ("%.1f, %.1f"):format(e.x * 100, e.y * 100)
         local d = known and (math.floor(r.d + 0.5) .. " yd") or "distance not known"
-        return ("  %d. %s, %s (%s)%s"):format(i, e.name or "a node", d, where,
+        local what = e.name or "a node"
+        if type(e.prof) == "string" then what = what .. " (" .. e.prof .. ")" end
+        return ("  %d. %s, %s at %s%s"):format(i, what, d, where,
             (tonumber(e.n) or 1) > 1 and (", gathered " .. e.n .. " times") or "")
     end
 
@@ -240,6 +283,12 @@ function X.Declare(k, diag)
         },
         start = function(c)
             ctx = c
+            c.bus:on(X.NAME, X.CAST_EVENT, function(unit, _, id)
+                if unit ~= "player" then return end
+                local spell = ask("spellName", id)
+                local prof = type(spell) == "string" and X.CAST[spell] or nil
+                if prof then lastCast = { prof = prof, at = ask("clock") } end
+            end)
             c.bus:on(X.NAME, X.EVENT, function()
                 local ok, err = pcall(api.loot)
                 if not ok then k.problems:add(X.NAME, X.EVENT, tostring(err)) end
