@@ -480,6 +480,16 @@ local pack = {
         }),
     },
 
+    -- G15: the weapon speed each role prefers, and why, for the speed line
+    -- on a weapon's tooltip (Gear/WeaponSpeed.lua). Carried over from
+    -- legacy Classes/Paladin/Data.lua:91-96; not counted in the score.
+    weaponSpeed = {
+        evidence = GUESS, note = OLD,
+        dps = { prefer = "slow", why = "Seal and Judgement damage scales with damage per swing" },
+        tank = { prefer = "medium", why = "steady swings for steady threat" },
+        heal = { prefer = "medium", why = "speed barely matters; stats do" },
+    },
+
     -- What the class can equip, by item class and subclass ids, as the old
     -- file gave them. Armor (4): 0, 1, 2, 3, 4, 6, 7. Weapons (2): 0, 1, 4, 5, 6, 7, 8, 20.
     proficiency = {

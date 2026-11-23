@@ -79,6 +79,18 @@ tests["weapon speed: a preference that is not one of the three feels is not said
     t.eq(W.Line(weapon(3.4, nil), nil).text, "Speed 3.40 (slow)")
 end
 
+-- G15 (lead section 275 item 3): the class data's reason goes after the
+-- role, as words in brackets; a reason that is not words is left out.
+tests["weapon speed: a preference's reason is said after it"] = function(t)
+    local prefs = { dps = { prefer = "slow", why = "big hits" }, tank = { prefer = "medium", why = "steady threat" } }
+    t.eq(W.Line(weapon(3.6, nil), prefs).text,
+        "Speed 3.60 (slow); good for dps (big hits); tank prefers medium (steady threat)")
+    for _, bad in ipairs({ "", false, 7 }) do
+        t.eq(W.Line(weapon(3.6, nil), { dps = { prefer = "slow", why = bad } }).text,
+            "Speed 3.60 (slow); good for dps", tostring(bad))
+    end
+end
+
 tests["weapon speed: From takes the weapon out of the client's gear answer"] = function(t)
     local gear = { kind = "INVTYPE_2HWEAPON", speed = 3.6, stats = { [DPS] = 55.5, ITEM_MOD_STRENGTH_SHORT = 9 } }
     t.eq(W.From(gear), { kind = "INVTYPE_2HWEAPON", speed = 3.6, dps = 55.5 })

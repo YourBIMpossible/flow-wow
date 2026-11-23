@@ -15,10 +15,10 @@ local _, ns = ...
 --   weapon  { kind, speed, dps }: the equip location, the speed and the
 --           damage per second. dps not read is left out of the line; it is
 --           never shown as 0.
---   prefs   { [role] = { prefer = "slow" | "medium" | "fast" } }: which
---           speed a role likes, from class data when a pack has it. No pack
---           has it today, and none is made here; without it the line gives
---           the speed and its feel only.
+--   prefs   { [role] = { prefer = "slow" | "medium" | "fast", why } }:
+--           which speed a role likes, from the class pack's weaponSpeed
+--           (the paladin's today); `why`, when words, follows in brackets.
+--           Without prefs the line gives the speed and its feel only.
 --   line    { text, tone = "none" }, or nil: not a weapon, or no speed read.
 --           "Speed 3.40 (slow), 60.0 damage per second; good for dps"
 --   gear    what client.gear(link) answers. From takes kind, `speed` (a
@@ -74,12 +74,13 @@ function W.Line(weapon, prefs)
         end
         table.sort(roles)
         for i = 1, #roles do
-            local prefer = prefs[roles[i]].prefer
-            if prefer == feel then
+            local pref = prefs[roles[i]]
+            if pref.prefer == feel then
                 text = text .. "; good for " .. roles[i]
             else
-                text = text .. "; " .. roles[i] .. " prefers " .. prefer
+                text = text .. "; " .. roles[i] .. " prefers " .. pref.prefer
             end
+            if type(pref.why) == "string" and pref.why ~= "" then text = text .. " (" .. pref.why .. ")" end
         end
     end
     return { text = text, tone = "none" }
