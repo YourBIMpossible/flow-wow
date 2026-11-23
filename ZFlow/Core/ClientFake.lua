@@ -2017,6 +2017,38 @@ function ns.make.fakeClient(opts)
         return true
     end
 
+    -- G59: the game settings by name. c.putGameSetting seeds a value (not a write);
+    -- c.gameSettingLimit(name, most) makes the game keep its value on a write above
+    -- most (the call still answers true); c.setGameSettingFails(why) makes every
+    -- write answer nil, why. Every write asked for is in c.gameSettingWrites as
+    -- { name, value }. Not seeded: nil, not known.
+    local cvars, cvarMost, cvarFail = {}, {}, nil
+    c.gameSettingWrites = {}
+    function c.putGameSetting(name, v) cvars[name] = v end
+    function c.gameSettingLimit(name, most) cvarMost[name] = most end
+    function c.setGameSettingFails(why) cvarFail = why end
+    function c.gameSetting(name) return cvars[name] end
+    function c.setGameSetting(name, v)
+        c.gameSettingWrites[#c.gameSettingWrites + 1] = { name, v }
+        if cvarFail then return nil, cvarFail end
+        local most, n = cvarMost[name], tonumber(v)
+        if most and n and n > most then return true end
+        cvars[name] = v
+        return true
+    end
+    -- G59: the combat log file, on or off; seeded by c.putCombatLogFile, nil
+    -- until then. Every write asked for is in c.logFileWrites.
+    local logging
+    c.logFileWrites = {}
+    function c.putCombatLogFile(on) logging = on end
+    function c.combatLogFile() return logging end
+    function c.setCombatLogFile(on)
+        c.logFileWrites[#c.logFileWrites + 1] = on
+        if type(on) ~= "boolean" then return nil, "bad" end
+        logging = on
+        return true
+    end
+
     -- Every row panel made, in order. h.rows is the last draw (copied);
     -- press(key, value) is the player clicking that row: false for an
     -- info row, a row not enabled, no act, or a number outside min..max;

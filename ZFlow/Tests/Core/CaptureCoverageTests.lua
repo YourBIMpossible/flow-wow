@@ -90,6 +90,10 @@ local READS = {
     -- instance; read by UI/BossLoot.lua only. The names they ask
     -- (IsInInstance, GetInstanceInfo and the rest) are in Diag.NAMES.
     bossUnit = false, instance = false,
+    -- G59: a game setting by name and the combat log file, read by
+    -- UI/GameOptions.lua only, on the player choice. The names they ask
+    -- (C_CVar.GetCVar, GetCVar, LoggingCombat) are in Diag.NAMES.
+    gameSetting = false, combatLogFile = false,
 
     -- N57: the rotation key's bindings and what a key does; read by the
     -- settings page only. Their names are in Diag.NAMES.
