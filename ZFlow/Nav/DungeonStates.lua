@@ -63,7 +63,7 @@ end
 
 function S.Eligible(q, me)
     me = type(me) == "table" and me or {}
-    local unsure
+    local unsure = nil
     local races, classes = tonumber(q.requiredRaces), tonumber(q.requiredClasses)
     if races and races ~= 0 then
         if type(me.raceId) ~= "number" then

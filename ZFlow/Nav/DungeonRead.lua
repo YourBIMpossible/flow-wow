@@ -46,6 +46,15 @@ R.SKIP = { [2597] = true, [3277] = true, [3358] = true }
 
 R.WHY_BUILDING = { "Reading Questie's dungeon quests.",
     "This takes a moment the first time; the list fills in by itself." }
+R.WHY_NO_LEVEL = { "Your level is not known yet.",
+    "It is read when you log in; open this again in a moment." }
+R.WHY_NO_IDS = { "Questie gave no quest list.",
+    "Update or re-enable the Questie add-on; type the slash command with diag to see what it offers." }
+R.WHY_LOOT_UNPLACED = { "Boss loot was seen, but not where.",
+    "The bosses it came from were never seen as a creature; kill one again with loot recording on." }
+-- Added to a row when the client does not say whether the quest was handed
+-- in (Twin review 17:11, F2): listed, and said, never taken as not done.
+R.DONE_UNKNOWN = "not known whether you handed it in"
 R.WHY_NO_LOOT = { "No boss loot seen here on this account yet.",
     "Kill a boss of this dungeon with loot recording on and its drops will appear here." }
 R.WHY_LIST = { "Questie's dungeon list could not be read.",
@@ -115,6 +124,8 @@ function R.Start(client)
         end
     end
     table.sort(ids)
+    -- Twin review 17:11, F3: no quest list is said, never an empty list.
+    if #ids == 0 then return { state = "failed", why = R.WHY_NO_IDS } end
     return { state = "building", byKey = byKey, areaTop = areaTop, ids = ids, at = 0, dungeonOf = {}, quests = {},
              place = { npc = {}, object = {}, item = {} } }
 end
@@ -318,22 +329,30 @@ end
 
 function R.Pane(st, client, key)
     if type(st) ~= "table" or st.state == "noquestie" then return S.Pane({ available = false }) end
-    if st.state == "failed" then return waiting(R.WHY_LIST) end
+    if st.state == "failed" then return waiting(st.why or R.WHY_LIST) end
     if st.state ~= "ready" then return waiting(R.WHY_BUILDING) end
     local d = key ~= nil and st.byKey[key] or nil
     if not d then return S.Pane({ available = true }) end
     local db = questieModule(client, "QuestieDB")
     if not db then return S.Pane({ available = false }) end
+    -- Twin review 17:11, F1: a level not known is not level 0.
+    local level = tonumber(ask(client, "level"))
+    if not level then return waiting(R.WHY_NO_LEVEL, d.name) end
     local log, rows = {}, ask(client, "questLog")
     for _, row in ipairs(type(rows) == "table" and rows or {}) do
         if type(row) == "table" and type(row.id) == "number" then log[row.id] = true end
     end
-    local done = setmetatable({}, { __index = function(_, id) return ask(client, "questDone", id) == true end })
+    local unknown = {}
+    local done = setmetatable({}, { __index = function(_, id)
+        local v = ask(client, "questDone", id)
+        if v == nil then unknown[id] = true end
+        return v == true
+    end })
     local class = ask(client, "class")
     local me = { raceId = ask(client, "raceId"), classId = class and S.CLASS_ID[class] or nil,
         faction = ask(client, "faction") }
     local ctx = {
-        level = tonumber(ask(client, "level")) or 0,
+        level = level,
         log = log, done = done,
         get = function(id) return quest(st, db, id) end,
         eligible = function(q) return S.Eligible(q, me) end,
@@ -346,45 +365,88 @@ function R.Pane(st, client, key)
         local q = quest(st, db, id)
         if q then quests[#quests + 1] = q end
     end
-    return S.Pane({ available = true, dungeon = d, quests = quests, ctx = ctx })
+    local pane = S.Pane({ available = true, dungeon = d, quests = quests, ctx = ctx })
+    pane.doneUnknown = 0
+    for _, g in ipairs(pane.groups) do
+        for _, r in ipairs(g.rows) do
+            if unknown[r.id] then
+                r.note = r.note and (r.note .. "; " .. R.DONE_UNKNOWN) or R.DONE_UNKNOWN
+                pane.doneUnknown = pane.doneUnknown + 1
+            end
+        end
+    end
+    return pane
 end
 
-function R.Loot(st, client, key, book)
+-- The creatures a seen-loot entry names: the one in an n:<creature> key,
+-- and the npcs an e:<encounter> entry kept (UI/BossLoot.lua B.Kill).
+local function creaturesOf(key, entry)
+    local out = {}
+    local n = type(key) == "string" and tonumber(key:match("^n:(%d+)$")) or nil
+    if n then out[#out + 1] = n end
+    for npc in pairs(type(entry.npcs) == "table" and entry.npcs or {}) do
+        if type(npc) == "number" then out[#out + 1] = npc end
+    end
+    return out
+end
+
+-- Twin review 17:11: F5 (n: entries are placed by their key), F6 (loot
+-- placed nowhere says so), F7 (one boss from its e: and n: entries, merged
+-- by UI/BossLoot.lua B.Lookup, the boss panel's own reading). drops: the
+-- character's learned.drops, or nil.
+function R.Loot(st, client, key, book, drops)
     if type(st) ~= "table" or st.state == "noquestie" then return S.Pane({ available = false }) end
-    if st.state == "failed" then return waiting(R.WHY_LIST) end
+    if st.state == "failed" then return waiting(st.why or R.WHY_LIST) end
     if st.state ~= "ready" then return waiting(R.WHY_BUILDING) end
     local d = key ~= nil and st.byKey[key] or nil
     if not d then return S.Pane({ available = true }) end
     local db = questieModule(client, "QuestieDB")
     if not db then return S.Pane({ available = false }) end
+    local B = ns.BossLoot
     local out = { title = d.name, bosses = {}, unplaced = 0 }
-    for _, entry in pairs(type(book) == "table" and book or {}) do
+    book = type(book) == "table" and book or {}
+    local here, seen, named = {}, false, false
+    for k, entry in pairs(book) do
         if type(entry) == "table" then
-            local here, any = false, false
-            for npc in pairs(type(entry.npcs) == "table" and entry.npcs or {}) do
-                if type(npc) == "number" then
-                    any = true
-                    if placeOf(st, db, "npc", npc) == d.key then here = true end
+            seen = true
+            local creatures = creaturesOf(k, entry)
+            if #creatures == 0 then out.unplaced = out.unplaced + 1 else named = true end
+            for _, npc in ipairs(creatures) do
+                if placeOf(st, db, "npc", npc) == d.key then here[npc] = true end
+            end
+        end
+    end
+    local npcs = {}
+    for npc in pairs(here) do npcs[#npcs + 1] = npc end
+    table.sort(npcs)
+    local covered = {}
+    for _, npc in ipairs(npcs) do
+        if not covered[npc] and type(B) == "table" and type(B.Lookup) == "function" then
+            covered[npc] = true
+            -- The other creatures of the same encounters are this boss too.
+            for k, entry in pairs(book) do
+                if type(entry) == "table" and type(entry.npcs) == "table" and entry.npcs[npc] == true then
+                    for _, other in ipairs(creaturesOf(k, entry)) do covered[other] = true end
                 end
             end
-            if not any then
-                out.unplaced = out.unplaced + 1
-            elseif here then
+            local ok, got = pcall(B.Lookup, book, drops, { npc = npc })
+            if ok and type(got) == "table" then
                 local items = {}
-                for item, v in pairs(type(entry.items) == "table" and entry.items or {}) do
-                    local times = type(v) == "table" and tonumber(v.times) or nil
-                    if times and times > 0 then items[#items + 1] = { item = item, times = times } end
+                for item, times in pairs(type(got.items) == "table" and got.items or {}) do
+                    if type(times) == "number" and times > 0 then items[#items + 1] = { item = item, times = times } end
                 end
                 table.sort(items, function(a, b)
                     if a.times ~= b.times then return a.times > b.times end
                     return tostring(a.item) < tostring(b.item)
                 end)
-                out.bosses[#out.bosses + 1] = { name = type(entry.name) == "string" and entry.name or nil,
-                    kills = tonumber(entry.kills) or 0, items = items }
+                out.bosses[#out.bosses + 1] = { name = got.name, kills = tonumber(got.kills) or 0, items = items }
             end
         end
     end
     table.sort(out.bosses, function(a, b) return tostring(a.name) < tostring(b.name) end)
-    if #out.bosses == 0 then out.why = R.WHY_NO_LOOT end
+    if #out.bosses == 0 then
+        -- Loot seen, none of it tied to any creature: that, not "no loot".
+        out.why = (seen and not named) and R.WHY_LOOT_UNPLACED or R.WHY_NO_LOOT
+    end
     return out
 end

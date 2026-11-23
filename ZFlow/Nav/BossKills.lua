@@ -155,8 +155,11 @@ function K.Declare(k, diag)
             on("PLAYER_ENTERING_WORLD", function()
                 local okI, inst = false, nil
                 if type(client.instance) == "function" then okI, inst = pcall(client.instance) end
-                local now = okI and type(inst) == "table" and inst.inside == true and tostring(inst.kind) or nil
-                if now == nil or now ~= where then
+                -- Twin review 17:11, F8: an instance read that does not
+                -- answer is not "outside"; the visit stays as it was.
+                if not okI or type(inst) ~= "table" or type(inst.inside) ~= "boolean" then return end
+                local now = inst.inside and tostring(inst.kind) or "outside"
+                if now ~= where then
                     kills, killed = {}, {}
                 end
                 where = now
