@@ -26,12 +26,18 @@ local _, ns = ...
 -- The realm table is read from the store once a session and kept (PA10); a
 -- look adds its own item to that same table, with no copy of the rest. A
 -- new realm table written through the store at the same path replaces the
--- kept one (store:watch). One written at a parent path is not seen.
+-- kept one (store:watch). One written at a parent path is not seen. The
+-- kept tables belong to the store, not to this module (AuctionLog.Kept), so
+-- the trader judges on the same ones (R3, lead section 179).
 --
 --   AuctionLog.UnitFrom(row) -> copper for one, or nil   (legacy, verbatim)
 --   AuctionLog.AddPoint(h, price, at, max, same) -> h     (legacy, verbatim)
 --   AuctionLog.RealmKey(realm, faction) -> key, or nil
 --   AuctionLog.Read(store, client, id) -> { h = ... } or nil   reads only
+--   AuctionLog.Key(client) -> this realm and faction key, nil while not known
+--   AuctionLog.Kept(store) -> kept   one a store, this session
+--     kept.realm(rk) -> the realm table or nil (read once, then followed)
+--     kept.reset()   forgets them all and stops following
 --   AuctionLog.ProbeLines(present) -> lines for `auction probe`
 --   AuctionLog.Declare(k, diag) -> api   (api.looks() -> looks recorded)
 --
@@ -98,13 +104,51 @@ local function known(faction)
     return type(faction) == "string" and faction ~= ""
 end
 
--- One item's saved looks on this realm and faction, or nil. Reads only.
-function AL.Read(store, client, id)
-    if type(store) ~= "table" or type(client) ~= "table" or type(id) ~= "number" then return nil end
-    if type(client.realm) ~= "function" or type(client.faction) ~= "function" then return nil end
+-- This realm and faction key; nil while the faction is not known (PA6).
+function AL.Key(client)
+    if type(client) ~= "table" or type(client.realm) ~= "function" or type(client.faction) ~= "function" then
+        return nil
+    end
     local faction = client.faction()
     if not known(faction) then return nil end
-    local rk = AL.RealmKey(client.realm(), faction)
+    return AL.RealmKey(client.realm(), faction)
+end
+
+-- The realm tables read this session, one set a store. A table is read from
+-- the store once, then a new one set at its exact path replaces it.
+local keptBy = setmetatable({}, { __mode = "k" })
+function AL.Kept(store)
+    local kept = keptBy[store]
+    if kept then return kept end
+    local slots, offs = {}, {}
+    kept = {}
+    function kept.realm(rk)
+        if type(rk) ~= "string" then return nil end
+        local slot = slots[rk]
+        if not slot then
+            local path = AL.PATH .. "." .. rk
+            local saved = store:get("account", path)
+            slot = { t = type(saved) == "table" and saved or nil }
+            slots[rk] = slot
+            local ok, off = pcall(store.watch, store, "account", path, function(value)
+                slot.t = type(value) == "table" and value or nil
+            end)
+            if ok and type(off) == "function" then offs[#offs + 1] = off end
+        end
+        return slot.t
+    end
+    function kept.reset()
+        for _, off in ipairs(offs) do pcall(off) end
+        slots, offs = {}, {}
+    end
+    keptBy[store] = kept
+    return kept
+end
+
+-- One item's saved looks on this realm and faction, or nil. Reads only.
+function AL.Read(store, client, id)
+    if type(store) ~= "table" or type(id) ~= "number" then return nil end
+    local rk = AL.Key(client)
     local saved = rk and store:get("account", AL.PATH .. "." .. rk)
     local e = type(saved) == "table" and saved[id] or nil
     return (type(e) == "table" and type(e.h) == "table") and e or nil
@@ -125,31 +169,11 @@ end
 function AL.Declare(k, diag)
     local api = {}
     local ctx, looks, cancel = nil, 0, nil
-    local kept, unwatch = {}, {}   -- [rk] = { t = the realm table or nil }; this session
     function api.looks() return looks end
 
     -- nil while the realm or the faction is not known.
-    local function realmKey()
-        local client = ctx.client
-        local faction = client.faction()
-        if not known(faction) then return nil end
-        return AL.RealmKey(client.realm(), faction)
-    end
-
-    local function entries(rk)
-        if not rk then return nil end
-        local slot = kept[rk]
-        if not slot then
-            local path = AL.PATH .. "." .. rk
-            local saved = ctx.store:get("account", path)
-            slot = { t = type(saved) == "table" and saved or nil }
-            kept[rk] = slot
-            unwatch[#unwatch + 1] = ctx.store:watch("account", path, function(value)
-                slot.t = type(value) == "table" and value or nil
-            end)
-        end
-        return slot.t
-    end
+    local function realmKey() return AL.Key(ctx.client) end
+    local function entries(rk) return rk and AL.Kept(ctx.store).realm(rk) or nil end
 
     local function record(id, row)
         if not ctx or type(id) ~= "number" then return end
@@ -225,8 +249,7 @@ function AL.Declare(k, diag)
         stop = function()
             if type(cancel) == "function" then cancel() end
             cancel = nil
-            for _, off in ipairs(unwatch) do pcall(off) end
-            kept, unwatch = {}, {}
+            if ctx then AL.Kept(ctx.store).reset() end
         end,
     })
     return api

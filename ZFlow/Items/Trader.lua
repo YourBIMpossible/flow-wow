@@ -177,11 +177,11 @@ function T.Declare(k, diag)
         return ok and yes == true
     end
 
-    -- The usual price here, from your own recorded looks (Items/AuctionLog).
+    -- The usual price here, from your own recorded looks (Items/AuctionLog):
+    -- the realm table AuctionLog keeps this session, not a read a search.
     local function usualFor(id)
-        local client = ctx.client
-        local rk = ns.AuctionLog.RealmKey(client.realm(), client.faction())
-        local saved = rk and ctx.store:get("account", ns.AuctionLog.PATH .. "." .. rk)
+        local rk = ns.AuctionLog.Key(ctx.client)
+        local saved = rk and ns.AuctionLog.Kept(ctx.store).realm(rk)
         local e = type(saved) == "table" and saved[id] or nil
         if type(e) ~= "table" or type(e.h) ~= "table" then return nil end
         return (T.Usual(e.h))
