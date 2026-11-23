@@ -465,7 +465,7 @@ tests["rotation driver RD11: a step presses nothing and asks only its sixteen re
         -- PC-3: and whether you are in a group (grouped).
         -- N8: the low-health warning, and the healing items' own look for bagItems.
         t.eq(other, { "lowHealth", "unitDebuffTypes", "fishingPole", "bagItems", "mounted", "onTaxi", "bagItems", "tracking", "tracking",
-            "professions", "anyTracking", "ownBuffs", "grouped", "party" },
+            "professions", "anyTracking", "ownBuffs", "grouped", "party", "plateEnemies", "plateCasts" },
             "nothing else asked of the client but the warning, debuff, pole, bag, tracking, profession, gather-guard, grouped and group reads it lacks")
         local names = {}
         for name in pairs(calls) do names[#names + 1] = name end
