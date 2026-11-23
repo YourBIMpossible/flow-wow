@@ -51,7 +51,8 @@ SetIcons.IN_COMBAT = "You are in combat, so nothing was equipped. Click the set 
 SetIcons.COMBAT_UNKNOWN = "Can't tell whether you are in combat, so nothing was equipped."
 SetIcons.CANT_READ_WORN = "Can't read what you wear right now, so nothing was equipped."
 SetIcons.CANT_READ_BAGS = "Can't read your bags right now, so nothing was equipped."
-SetIcons.NO_SET = "You have no set named %s."
+SetIcons.NO_SLOT = "Pieces with no saved slot: %d (the game picks where they go)."
+SetIcons.NO_SET ="You have no set named %s."
 SetIcons.ALREADY = "You already wear all of %s that is in your bags."
 
 local function finite(n)
@@ -121,6 +122,7 @@ function SetIcons.Icons(sets, wornKeys, nameOf, textureOf)
             tip[#tip + 1] = SetIcons.WEARING:format(wearing, total)
         end
         for _, key in ipairs(set.items) do tip[#tip + 1] = nameOf(key) or ("item " .. tostring(key)) end
+        if type(set.noSlot) == "number" and set.noSlot > 0 then tip[#tip + 1] = SetIcons.NO_SLOT:format(set.noSlot) end
         tip[#tip + 1] = SetIcons.CLICK
         local texture = SetIcons.TEXTURE
         if total > 0 then
