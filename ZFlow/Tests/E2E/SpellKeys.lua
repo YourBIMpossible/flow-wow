@@ -175,6 +175,27 @@ tests["auto attack: in a fight the key is never changed to start it"] = function
     nothingWritten(t, c)
 end
 
+-- SE-1: the press on Attack starts the fight. The key frame cannot change
+-- in combat lockdown, so a key still holding Attack then would toggle the
+-- swing off on the next press (Attack toggles; first guess, not seen in
+-- game). PLAYER_REGEN_DISABLED is handled before the lock is on (first
+-- guess, not seen in this client): Attack is taken off the key there.
+tests["auto attack: Attack on the key, then the fight starts: the key no longer holds Attack"] = function(t)
+    local c, addon = start()
+    pull(c)
+    t.eq(attr(c, "spell"), "Attack", "the key holds Attack before the press")
+    -- The press: the swing goes on and the fight starts before the next
+    -- tick; the lock comes on after PLAYER_REGEN_DISABLED is handled.
+    c.setLockdown(false)
+    c.setCurrentSpell(ATTACK_ID, true)
+    c.setCombat(true)
+    c.setLockdown(true)
+    t.ok(onKey(c)["Attack"] == nil, "in the fight the key holds no Attack a second press would toggle off")
+    c.advance(1, 5)
+    t.ok(onKey(c)["Attack"] == nil, "still no Attack on the key in the fight")
+    nothingWritten(t, c)
+end
+
 tests["auto attack: the setting off: the key does not hold Attack"] = function(t)
     local c, addon = start()
     addon.settings:set(ATTACK, false)
