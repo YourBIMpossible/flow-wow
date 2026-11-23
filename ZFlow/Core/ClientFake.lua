@@ -115,6 +115,59 @@ function ns.make.fakeClient(opts)
     function c.money() return s.money end
     function c.bags() return copyRows(s.bags) end
     function c.bagItems() return copyRows(s.bagItems) end
+    -- Lead section 337 item 1, as the real client's: each stack set with
+    -- c.setBagItems and where it is. A row's own bag and slot when the test
+    -- gave them, else bag 0 and its place in the list. nil when no bag is set.
+    local function slotRows()
+        if type(s.bagItems) ~= "table" then return nil end
+        local out = {}
+        for i, row in ipairs(s.bagItems) do
+            out[i] = { bag = row.bag or 0, slot = row.slot or i, item = row.item, count = row.count }
+        end
+        return out
+    end
+    function c.bagSlots()
+        local rows = slotRows()
+        if rows == nil then return nil end
+        table.sort(rows, function(a, b)
+            if a.bag ~= b.bag then return a.bag < b.bag end
+            return a.slot < b.slot
+        end)
+        return rows
+    end
+    function c.bagSlot(bag, slot)
+        if type(bag) ~= "number" or type(slot) ~= "number" then return false end
+        for _, row in ipairs(slotRows() or {}) do
+            if row.bag == bag and row.slot == slot then return row.item, row.count end
+        end
+        return nil
+    end
+    -- Lead section 337 item 1 (ACTING), as the real client's: the slot sold
+    -- leaves the bags and is kept in c.soldSlots, in the order sold.
+    c.soldSlots = {}
+    function c.sellBagItem(bag, slot)
+        if c.combatLockdown() ~= false then return nil, "combat" end
+        if s.merchantOpen ~= true then return nil, "closed" end
+        if type(s.bagItems) ~= "table" or type(bag) ~= "number" or type(slot) ~= "number" then return nil, "bad" end
+        local found = nil
+        for i, row in ipairs(s.bagItems) do
+            if found == nil and (row.bag or 0) == bag and (row.slot or i) == slot then found = i end
+        end
+        if found == nil then return nil, "bad" end
+        local kept = {}
+        for i, row in ipairs(s.bagItems) do
+            if i ~= found then
+                local copy = {}
+                for k, v in pairs(row) do copy[k] = v end
+                copy.bag, copy.slot = row.bag or 0, row.slot or i
+                kept[#kept + 1] = copy
+            end
+        end
+        local row = s.bagItems[found]
+        s.bagItems = kept
+        c.soldSlots[#c.soldSlots + 1] = { bag = bag, slot = slot, item = row.item, count = row.count }
+        return true
+    end
     function c.watchBank() end
     function c.bankOpen() return s.bankOpen end
     function c.bankItems()
@@ -3084,6 +3137,18 @@ function ns.make.fakeClient(opts)
     --   section 236: a read that fails, then recovers).
     function c.setWeaponSkills(list) s.weaponSkills = type(list) == "table" and list or nil end
     function c.setWeaponSkillsFails(on) s.weaponSkillsFails = on and true or nil end
+    -- Lead section 337 item 2: the skill ranks for skillRanks(),
+    -- { [name] = { rank, max } }; nil (the start): not read.
+    function c.setSkillRanks(map)
+        s.skillRanks = nil
+        if type(map) == "table" then s.skillRanks = map end
+    end
+    function c.skillRanks()
+        if type(s.skillRanks) ~= "table" then return nil end
+        local out = {}
+        for name, r in pairs(s.skillRanks) do out[name] = { rank = r.rank, max = r.max } end
+        return out
+    end
     function c.weaponSkills()
         if s.weaponSkillsFails then error("weapon skill read failed (test)") end
         if type(s.weaponSkills) ~= "table" then return nil end
@@ -3865,6 +3930,53 @@ function ns.make.fakeClient(opts)
     function c.setUnitPosition(unit, map, x, y)
         s.unitPositions = s.unitPositions or {}
         s.unitPositions[unit] = map and { map = map, x = x, y = y } or nil
+    end
+
+    -- The minimap button (UI/MinimapButton.lua). Every one made is in
+    -- c.minimapButtons, in order; nil and "no frame" after c.setFrames(false).
+    -- Test controls on a handle h:
+    --   h.click()        a left click
+    --   h.drag(angle)    dragged to that angle (degrees, 0 right, 90 up) on
+    --                    the rim and dropped: the drag function is told
+    --                    dx, dy 50 from the middle at that angle, done true
+    --   h.shown, h.x, h.y, h.places, h.tipLines, h.spec
+    c.minimapButtons = {}
+    function c.minimapButton(spec)
+        if s.noFrames then return nil, "no frame" end
+        local h = { spec = spec, shown = false, places = 0 }
+        local clickFn, dragFn
+        function h.place(x, y)
+            if type(x) ~= "number" or type(y) ~= "number" then return end
+            h.x, h.y = x, y
+            h.places = h.places + 1
+        end
+        function h.show(on) h.shown = on and true or false end
+        function h.onClick(fn) clickFn = fn end
+        function h.onDrag(fn) dragFn = fn end
+        function h.tip(lines) h.tipLines = lines end
+        function h.click()
+            if type(clickFn) == "function" then clickFn() end
+        end
+        function h.drag(angle)
+            if type(dragFn) ~= "function" or type(angle) ~= "number" then return end
+            local a = math.rad(angle)
+            dragFn(math.cos(a) * 50, math.sin(a) * 50, true)
+        end
+        c.minimapButtons[#c.minimapButtons + 1] = h
+        return h
+    end
+
+    -- Lead section 340: the real client's c.kitFocus and c.kitOwner. The
+    -- fake has no mouse: the line is what c.setKitFocus last set.
+    --   c.kitFocus() -> line;  c.kitOwner(frame) -> nil
+    --   c.setKitFocus(line)   the line kitFocus answers next
+    do
+        local focusLine = "focus: nothing under the mouse"
+        function c.kitFocus() return focusLine end
+        function c.kitOwner() return nil end
+        function c.setKitFocus(line)
+            if type(line) == "string" then focusLine = line end
+        end
     end
     return c
 end
