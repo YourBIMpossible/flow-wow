@@ -19,15 +19,17 @@ local D, TM, MF, Travel = ns.RotationDriver, ns.TaxiMark, ns.MapFlights, ns.Nav.
 -- refuses (see "refuses" below).
 local MADE_UP = { madeUp = true }
 local MADE_LINE = "names: made up; none known; none absent; character, realm, guild, account, guid not known"
-local FOUR = { "character", "realm", "guild", "account" }
+local MUST = { "character", "realm", "guild", "account", "guid" }
 
 -- Options for real state (lead section 199, N1): the names handed in, and
--- every kind of the four that is not handed in marked absent. more: other
--- options (words, shortNames, ...).
-local function named(names, more)
-    local opts = { names = names, absent = {} }
-    for _, kind in ipairs(FOUR) do
-        if names[kind] == nil then opts.absent[#opts.absent + 1] = kind end
+-- every kind of M.MUST that is not handed in marked absent. more: other
+-- options (words, shortNames, ...). answered: kinds the client itself
+-- answers (a GUID set on it), never marked absent.
+local function named(names, more, answered)
+    local opts, skip = { names = names, absent = {} }, {}
+    for _, kind in ipairs(answered or {}) do skip[kind] = true end
+    for _, kind in ipairs(MUST) do
+        if names[kind] == nil and not skip[kind] then opts.absent[#opts.absent + 1] = kind end
     end
     for key, value in pairs(more or {}) do opts[key] = value end
     return opts
@@ -405,7 +407,7 @@ tests["seen: no names: character, realm, guild and account are slotted or replac
     c.setEventFault("ZZYXMADE_SEEN", true)
 
     -- The add-on's own words: the names are free text, slotted.
-    local text, lines = seen(c, addon, { names = { account = ACCOUNT } })
+    local text, lines = seen(c, addon, { names = { account = ACCOUNT }, absent = { "guid" } })
     t.ok(type(text) == "string", "a text came back: " .. tostring(lines))
     local low = tostring(text):lower()
     for _, name in ipairs({ CHARACTER, REALM, "QuellMade", GUILD, ACCOUNT }) do
@@ -416,7 +418,7 @@ tests["seen: no names: character, realm, guild and account are slotted or replac
     -- Words that let the names through: then the names are replaced.
     local words = { ns.id.title, "Fly to Camp Vortexmade Then Help Zzyxmade of Quell Made welcome back",
         "QuellMade account WOBBLEMADE events not registered ZZYXMADE SEEN" }
-    text, lines = seen(c, addon, { names = { account = ACCOUNT }, words = words })
+    text, lines = seen(c, addon, { names = { account = ACCOUNT }, absent = { "guid" }, words = words })
     t.ok(type(text) == "string", "a text came back: " .. tostring(lines))
     low = tostring(text):lower()
     for _, name in ipairs({ CHARACTER, REALM, "QuellMade", GUILD, ACCOUNT }) do
@@ -480,7 +482,7 @@ tests["seen names: a line under the head says the kinds known, absent and not kn
     t.ok(type(text) == "string", "no guild is no reason to refuse once it is marked absent: " .. tostring(lines))
     lines = type(lines) == "table" and lines or {}
     t.eq(lines[1], parts.HEAD)
-    t.eq(lines[2], "names: character, realm known; guild, account absent; guid not known")
+    t.eq(lines[2], "names: character, realm known; guild, account, guid absent; none not known")
     t.eq(lines[3], "words: the add-on's")
     t.eq(lines[4], "== arrows ==", "the first section comes after them")
     local by, order = parts.sections(text)
@@ -524,7 +526,7 @@ tests["seen names: a name joined by any signs, a GUID's parts alone and a non-AS
     local words = { "at Quell Made quell made and QuellMade guid Player short bare ABCDEF the stands",
         "account WOBBL\195\169 MADE" }
     local text, lines = seen(c, nil, named({ character = "Zzyxmade", realm = "Quell Made",
-        account = "Wobbl\195\169 Made" }, { words = words }))
+        account = "Wobbl\195\169 Made" }, { words = words }, { "guid" }))
     t.ok(type(text) == "string", "a text came back: " .. tostring(lines))
     t.eq(section(text, "chat"), {
         "lines: 4",
@@ -778,7 +780,7 @@ tests["seen: a slot is neither searched nor forged"] = function(t)
     local c2 = ns.make.fakeClient()
     c2.setGuid("player", "Player-1234-ABCDEF")
     c2.print("<text:1234> Zzyx")
-    text, lines = seen(c2, nil, named({ character = "Zzyxmade" }, { words = { "text" } }))
+    text, lines = seen(c2, nil, named({ character = "Zzyxmade" }, { words = { "text" } }, { "guid" }))
     t.ok(type(text) == "string", "a text came back: " .. tostring(lines))
     t.eq(section(text, "chat"), { "lines: 1", "  (text:<guid>> <text:4>" })
 end
@@ -793,10 +795,13 @@ tests["seen N1: real state needs every kind of name known or marked absent"] = f
     t.ok(type(why) == "string" and why:find("absent", 1, true) ~= nil, "the reason says how: " .. tostring(why))
     text = seen(c, nil, { names = { character = "Zzyxmade", realm = "Quell Made" }, absent = { "guild" } })
     t.eq(text, nil, "account is still neither")
+    text = seen(c, nil, { names = { character = "Zzyxmade", realm = "Quell Made" }, absent = { "guild", "account" } })
+    t.eq(text, nil, "guid is still neither")
     local lines
-    text, lines = seen(c, nil, { names = { character = "Zzyxmade", realm = "Quell Made" }, absent = { "guild", "account" } })
+    text, lines = seen(c, nil, { names = { character = "Zzyxmade", realm = "Quell Made" },
+        absent = { "guild", "account", "guid" } })
     t.ok(type(text) == "string", "every kind known or absent: " .. tostring(lines))
-    t.eq(type(lines) == "table" and lines[2], "names: character, realm known; guild, account absent; guid not known")
+    t.eq(type(lines) == "table" and lines[2], "names: character, realm known; guild, account, guid absent; none not known")
 
     local bad = { "guild", { "guildd" }, { guild = true }, { 5 }, { "character" }, { "realm" } }
     for i, absent in ipairs(bad) do
@@ -817,7 +822,8 @@ tests["seen N2: made-up state says so on line 2 and is refused when the client a
         t.eq(text, nil, read .. " answers a name: not made up")
         t.ok(type(why) == "string" and why:find("made up", 1, true) ~= nil, read .. ": the reason: " .. tostring(why))
         t.ok(not tostring(why):find("Zzyx", 1, true), read .. ": and it says no name")
-        t.ok(type((seen(c, nil, { absent = { "guild", "account" } }))) == "string", read .. ": said as real state, it is taken")
+        t.ok(type((seen(c, nil, { absent = { "guild", "account", "guid" } }))) == "string",
+            read .. ": said as real state, it is taken")
     end
     -- The character a diag snapshot kept in the account's saved table.
     local c = ns.make.fakeClient()
@@ -843,6 +849,97 @@ tests["seen N4: a relative path in a problem's text keeps only its file's name"]
     t.eq(parts.paths("diag: Tests\\x.lua:3: bad"), "diag: <path>/x.lua:3: bad", "a backslash")
     t.eq(parts.paths("diag: Zzyxowner/src/notes: bad"), "diag: <path> bad", "no file's name: the whole word goes")
     t.eq(parts.paths("diag: Zzyxowner/x.lua:3:Zzyxowner bad"), "diag: <path> bad", "more after the file: the whole word goes")
+end
+
+-- ------------------------------------------ the desk check of format 3
+-- Six findings, a test each (items 1 to 5; 6 is THE LIMITS' text). Every
+-- name, word and folder here is made up.
+
+-- Item 1. "%%" is a literal percent: it goes before the specifiers, and a
+-- specifier ends at a conversion letter, so no cut word joins the list.
+tests["seen words: a literal percent goes before the specifiers, and no cut word is kept"] = function(t)
+    local src = 'local a = "%d%% what" .. "%d%% durability" .. "% of yours" .. "%5.1f%% done"'
+    local W = parts.wordSet(parts.literals(src))
+    for _, word in ipairs({ "what", "durability", "of", "yours", "done" }) do
+        t.eq(W[word], true, word .. " is a word of a literal")
+    end
+    for _, word in ipairs({ "hat", "urability", "f", "d" }) do
+        t.eq(W[word], nil, word .. " is a cut word, not the add-on's")
+    end
+end
+
+-- Item 2. A backslash before CR LF continues the string over both bytes:
+-- the code after it is not read as a literal.
+tests["seen words: a backslash before CR LF continues the string over both bytes"] = function(t)
+    local src = 'local x = "Zzone\\\r\nZztwo" .. Zzcode .. "Zzthree"\n'
+    local lits = parts.literals(src)
+    t.eq(#lits, 2, "two literals")
+    t.eq(lits[2], "Zzthree")
+    local W = parts.wordSet(lits)
+    t.eq(W.Zzone, true); t.eq(W.Zztwo, true); t.eq(W.Zzthree, true)
+    t.eq(W.Zzcode, nil, "code is not a literal's word")
+end
+
+-- Item 3. A known name with an add-on word in it ("Made") is replaced on
+-- the raw text, before the template could cut it at a slot's edge; the
+-- placeholders pass the template as they are.
+tests["seen names: a known name split by a kept word is replaced whole, before the template"] = function(t)
+    local c = ns.make.fakeClient()
+    c.print("at Quell Made")
+    c.print("Quell-Made at")
+    local text, lines = seen(c, nil, named({ character = "Zzyxmade", realm = "Quell Made" }, { words = { "at Made" } }))
+    t.ok(type(text) == "string", "a text came back: " .. tostring(lines))
+    local chat = section(text, "chat")
+    t.eq(chat, { "lines: 2", "  at <realm>", "  <realm> at" })
+    t.ok(not anyFinds(chat, "Made"), "no piece of the name: " .. table.concat(chat or {}, " / "))
+    t.eq(parts.template("Zzyx <character> of <realm>", parts.wordSet({ "of" })), "<text:4> <character> of <realm>",
+        "a placeholder is neither slotted nor rewritten")
+    local c2 = ns.make.fakeClient()
+    c2.print("<realm> says")
+    local typed = section(seen(c2, nil, { madeUp = true, words = { "says" } }), "chat")
+    t.ok(typed ~= nil and not anyFinds(typed, "<realm>"), "a typed placeholder is not one: "
+        .. table.concat(typed or {}, " / "))
+end
+
+-- Item 4. The repo's folder is the one the runner was given (-Root), not
+-- only where this file lies. No second tree is made on disk: a made-up
+-- folder handed in is read (and fails), which the file's own folder would
+-- not.
+tests["seen words: the repo folder is the runner's root"] = function(t)
+    t.ok(type(parts.RUN_ROOT) == "string" and #parts.RUN_ROOT > 0, "the runner handed its root in")
+    local own = parts.RUN_ROOT
+    parts.RUN_ROOT = "Zzmissing-root-folder"
+    local W, why = parts.words()
+    parts.RUN_ROOT = own
+    t.eq(W, nil, "the words were looked for under the root handed in")
+    t.ok(type(why) == "string" and why:find("manifest", 1, true) ~= nil, "the reason: " .. tostring(why))
+    t.ok(not tostring(why):find("Zzmissing", 1, true), "and it names no path")
+    t.ok(type((parts.words())) == "table", "the runner's root again: the words are read")
+end
+
+-- Item 5. A GUID part of 3 is a name (a realm id), replaced as a whole
+-- number and never inside another; guid is a kind real state must have
+-- known or marked absent.
+tests["seen names: a 3-digit realm id of the GUID is replaced whole, never inside another number"] = function(t)
+    t.eq(parts.MUST, { "character", "realm", "guild", "account", "guid" })
+    local c = ns.make.fakeClient()
+    c.setGuid("player", "Player-349-0ABCDEF1")
+    c.print("realm 349, at 0.349, 1349 and 3490, (349)")
+    c.print("guid Player-349-0ABCDEF1")
+    local opts = named({ character = "Zzyxmade" }, { words = { "realm at and guid" } }, { "guid" })
+    local text, lines = seen(c, nil, opts)
+    t.ok(type(text) == "string", "a text came back: " .. tostring(lines))
+    t.eq(section(text, "chat"), { "lines: 2", "  realm <guid>, at 0.349, 1349 and 3490, (<guid>)", "  guid <guid>" })
+    t.eq(type(lines) == "table" and lines[2], "names: character, guid known; realm, guild, account absent; none not known")
+
+    local names = parts.names(c, nil, { character = "Zzyxmade" }) or {}
+    t.eq(parts.held("  id 349.", names), true, "the whole number")
+    t.eq(parts.held("  at 0.349, 349.5 and 13490", names), false, "not inside another number")
+
+    local bare = ns.make.fakeClient()
+    bare.print("a line")
+    t.eq(seen(bare, nil, { names = { character = "Zzyxmade" }, absent = { "realm", "guild", "account" } }), nil,
+        "guid neither known nor marked absent: refused")
 end
 
 return tests
