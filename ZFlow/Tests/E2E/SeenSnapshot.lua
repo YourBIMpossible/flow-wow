@@ -19,6 +19,9 @@ local D, TM, MF, Travel = ns.RotationDriver, ns.TaxiMark, ns.MapFlights, ns.Nav.
 -- refuses (see "refuses" below).
 local MADE_UP = { madeUp = true }
 local MADE_LINE = "names: made up; none known; none absent; character, realm, guild, account, guid not known"
+-- Section 217 (N2): no add-on and no name read answered: made up is not
+-- shown, so the line says not known instead.
+local UNPROVEN_LINE = "names: not known; none known; none absent; character, realm, guild, account, guid not known"
 local MUST = { "character", "realm", "guild", "account", "guid" }
 
 -- Options for real state (lead section 199, N1): the names handed in, and
@@ -490,7 +493,7 @@ tests["seen names: a line under the head says the kinds known, absent and not kn
     t.eq(by.head, { parts.HEAD, lines[2], lines[3] }, "the compare has them in the head, in no section")
 
     local made = select(2, seen(c, nil, MADE_UP))
-    t.eq(type(made) == "table" and made[2], MADE_LINE)
+    t.eq(type(made) == "table" and made[2], UNPROVEN_LINE, "this client answers no name read")
     local all = select(2, seen(c, nil, { names = { character = "Zzyxmade", realm = "Quell Made",
         guild = "Vortexmade", account = "Wobblemade", guid = "Player-1234-ABCDEF" } }))
     t.eq(type(all) == "table" and all[2], "names: character, realm, guild, account, guid known; none absent; none not known")
@@ -596,10 +599,10 @@ tests["seen names: an ASCII name with a non-ASCII sign between its letters is re
     local NBSP, CURLY = "\194\160", "\226\128\153"
     local c = ns.make.fakeClient()
     c.print("at Quell" .. NBSP .. "Made")
-    c.print("O" .. CURLY .. "Brien says hello")
-    local given = { character = "O'Brien", realm = "Quell Made" }
+    c.print("Q" .. CURLY .. "Zorvex says hello")
+    local given = { character = "Q'Zorvex", realm = "Quell Made" }
     -- A non-ASCII byte is part of a word: each joined form is one word.
-    local words = { "at Quell" .. NBSP .. "Made O" .. CURLY .. "Brien says hello" }
+    local words = { "at Quell" .. NBSP .. "Made Q" .. CURLY .. "Zorvex says hello" }
     local text, lines = seen(c, nil, named(given, { words = words }))
     t.ok(type(text) == "string", "a text came back: " .. tostring(lines))
     t.eq(section(text, "chat"), { "lines: 2", "  at <realm>", "  <character> says hello" })
@@ -609,7 +612,7 @@ tests["seen names: an ASCII name with a non-ASCII sign between its letters is re
     names = type(names) == "table" and names or {}
     t.eq(parts.redact("at Quell" .. NBSP .. "Made", names), "at <realm>")
     t.eq(parts.held("  at Quell" .. NBSP .. "Made", names), true, "a no-break space between the words")
-    t.eq(parts.held("  O" .. CURLY .. "Brien", names), true, "a curly apostrophe")
+    t.eq(parts.held("  Q" .. CURLY .. "Zorvex", names), true, "a curly apostrophe")
     t.eq(parts.held("  caf\195\169 at noon", names), false, "a non-ASCII letter alone is no name")
 end
 
@@ -622,10 +625,12 @@ tests["seen names: a path with a quote in a folder, one ending at a folder and a
         local got = parts.paths(text)
         t.eq(got, want, why)
         local low = tostring(got):lower()
-        t.ok(not low:find("zzyxowner", 1, true) and not low:find("brien", 1, true), "no folder name: " .. tostring(got))
+        t.ok(not low:find("zzyxowner", 1, true) and not low:find("zorvex", 1, true), "no folder name: " .. tostring(got))
     end
-    cut("diag: C:\\Users\\O'Brien\\src\\x.lua:12: bad", "diag: <path>/ bad", "a quote in a folder's name")
-    cut("diag: C:\\Users\\Zzyx O'Brien Jr\\src\\x.lua:12: bad", "diag: <path>/ bad", "a quote and blanks")
+    cut("diag: C:\\Users\\Q'Zorvex\\src\\x.lua:12: bad", "diag: <path>/x.lua:12: bad",
+        "a quote in the user's folder: the folder goes, the file's name stays")
+    cut("diag: C:\\Users\\Zzyx Q'Zorvex Jr\\src\\x.lua:12: bad", "diag: <path>/x.lua:12: bad",
+        "a quote and blanks")
     cut("chat: cannot open /home/zzyxowner (No such file or directory)", "chat: cannot open <path>/",
         "the last part is a folder, not a file")
     cut("chat: cannot open /home/zzyxowner: Permission denied", "chat: cannot open <path>/: Permission denied",
@@ -814,7 +819,9 @@ tests["seen N1: real state needs every kind of name known or marked absent"] = f
 end
 
 tests["seen N2: made-up state says so on line 2 and is refused when the client answers a character name"] = function(t)
-    local made = select(2, seen(ns.make.fakeClient(), nil, MADE_UP))
+    -- A client that answers the name read with no name: made up is shown.
+    local blank = ns.make.fakeClient({ env = { UnitName = function() return nil end } })
+    local made = select(2, seen(blank, nil, MADE_UP))
     t.eq(type(made) == "table" and made[2], MADE_LINE)
     for _, read in ipairs({ "UnitName", "UnitFullName" }) do
         local c = ns.make.fakeClient({ env = { [read] = function() return "Zzyxmade", "Quellmade" end } })
@@ -940,6 +947,44 @@ tests["seen names: a 3-digit realm id of the GUID is replaced whole, never insid
     bare.print("a line")
     t.eq(seen(bare, nil, { names = { character = "Zzyxmade" }, absent = { "realm", "guild", "account" } }), nil,
         "guid neither known nor marked absent: refused")
+end
+
+-- Section 217, MyBuddy's N4 rest 1 and 2: after "Users" or "home" the next
+-- part of a path is a name, whatever it holds, up to the next separator,
+-- ": " or the end. Every name here is made up.
+tests["seen paths N4: the part after Users or home goes whole, an apostrophe or a dot in it too"] = function(t)
+    local function gone(text, want, why)
+        local got = parts.paths(text)
+        t.eq(got, want, why)
+        local low = tostring(got):lower()
+        t.ok(not low:find("zzyx", 1, true) and not low:find("owner", 1, true) and not low:find("'", 1, true),
+            "nothing of the name is left: " .. tostring(got))
+    end
+    gone("chat: cannot open C:\\Users\\O'Zzyx: Permission denied", "chat: cannot open <path>/: Permission denied",
+        "rest 1: an apostrophe in the user's folder")
+    gone("chat: cannot open C:\\Users\\zzyx.owner: denied", "chat: cannot open <path>/: denied",
+        "rest 2: a dot in the user's folder, which looks like a file's name")
+    gone("chat: cannot open /home/zzyx.owner: denied", "chat: cannot open <path>/: denied", "home, a dot")
+    gone("chat: cannot open D:/USERS/Zzyx.Owner", "chat: cannot open <path>/", "Users in any case, at the end")
+    gone("diag: D:/Users/O'Zzyx Owner/x.lua:3: bad", "diag: <path>/x.lua:3: bad", "a file below it keeps its name")
+end
+
+-- Section 217, MyBuddy's N2 gap: with no add-on and no name read answered,
+-- that the state is made up cannot be shown; and no refusal text offers the
+-- made-up flag as a way round it.
+tests["seen N2: made up that cannot be shown says not known; refusals do not offer the flag"] = function(t)
+    local lines = select(2, seen(ns.make.fakeClient(), nil, MADE_UP))
+    t.eq(type(lines) == "table" and lines[2], UNPROVEN_LINE, "no add-on, no name read answered")
+    local blank = ns.make.fakeClient({ env = { UnitName = function() return nil end } })
+    lines = select(2, seen(blank, nil, MADE_UP))
+    t.eq(type(lines) == "table" and lines[2], MADE_LINE, "the name read answered no name: made up is shown")
+    local c = ns.make.fakeClient()
+    local _, why = seen(c, nil, { names = { character = "Zzyxmade" } })
+    t.ok(type(why) == "string", "refused: kinds not known or absent")
+    t.ok(not tostring(why):find("madeUp", 1, true), "the refusal does not offer madeUp: " .. tostring(why))
+    _, why = seen(c, nil, { names = { character = "Zzyxmade" }, absent = { "character" } })
+    t.ok(type(why) == "string", "refused: character marked absent")
+    t.ok(not tostring(why):find("madeUp", 1, true), "nor this one: " .. tostring(why))
 end
 
 return tests
