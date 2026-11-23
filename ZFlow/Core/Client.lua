@@ -5837,13 +5837,22 @@ function ns.make.client(env)
             return near, close, onYou
         end
 
-        -- c.plateCasts() -> { { unit, name, spellId, channel, endsAt,
-        --   interruptible } ... } or nil when the plate list is not read.
-        -- UnitCastingInfo (name, text, texture, startMs, endMs, tradeSkill,
-        -- castID, notInterruptible, spellId), else UnitChannelInfo (the same
-        -- less castID). A cast whose name is hidden is left out; a hidden
-        -- spellId, end or interrupt answer leaves that field out. endsAt is
-        -- in the clock of c.now().
+        -- The plate unit's name (for the live caption only) and whether it
+        -- is your target; each nil when not read or hidden.
+        local function plateWho(unit)
+            local name = text(call(env.UnitName, unit))
+            local isTarget = yesNo(call(env.UnitIsUnit, unit, "target"))
+            return name, isTarget
+        end
+
+        -- c.plateCasts() -> { { unit, name, spell, interruptible, isTarget,
+        --   spellId, channel, endsAt } ... } or nil when the plate list is
+        -- not read. The row shape is the class-b one (lead section 262):
+        -- name is the enemy, spell the spell. UnitCastingInfo (name, text,
+        -- texture, startMs, endMs, tradeSkill, castID, notInterruptible,
+        -- spellId), else UnitChannelInfo (the same less castID). A cast whose
+        -- spell name is hidden is left out; any other field hidden or not
+        -- read is left out. endsAt is in the clock of c.now().
         function c.plateCasts()
             local list = plateList()
             if list == nil then return nil end
@@ -5857,9 +5866,10 @@ function ns.make.client(env)
                         local okCh, chName, _, _, _, chEnd, _, chLocked, chId = call(env.UnitChannelInfo, unit)
                         ok, name, endMs, locked, id, channel = okCh, chName, chEnd, chLocked, chId, true
                     end
-                    name = text(ok, name)
-                    if name ~= nil then
-                        local row = { unit = unit, name = name, channel = channel }
+                    local spell = text(ok, name)
+                    if spell ~= nil then
+                        local who, isTarget = plateWho(unit)
+                        local row = { unit = unit, name = who, spell = spell, channel = channel, isTarget = isTarget }
                         if endMs ~= nil and not hidden(endMs) and type(endMs) == "number" then
                             row.endsAt = endMs / 1000
                         end
@@ -5869,6 +5879,72 @@ function ns.make.client(env)
                         if id ~= nil and not hidden(id) and type(id) == "number" then row.spellId = id end
                         out[#out + 1] = row
                     end
+                end
+            end
+            return out
+        end
+
+        -- Debuff names read as a crowd control that holds the enemy (first
+        -- guess names; Polymorph by any of its forms).
+        local HELD = {
+            ["Shackle Undead"] = true, ["Hibernate"] = true, ["Sap"] = true,
+            ["Freezing Trap Effect"] = true, ["Banish"] = true, ["Fear"] = true,
+            ["Seduction"] = true, ["Scare Beast"] = true, ["Repentance"] = true,
+            ["Gouge"] = true, ["Blind"] = true, ["Psychic Scream"] = true,
+            ["Howl of Terror"] = true, ["Intimidating Shout"] = true,
+        }
+
+        -- true when a held debuff is on the unit, false when its debuffs were
+        -- read and none is, nil when a debuff or its name is not read.
+        local function held(unit)
+            local auras = env.C_UnitAuras
+            local byIndex
+            if type(auras) == "table" then byIndex = auras.GetAuraDataByIndex end
+            local old = env.UnitDebuff
+            if type(byIndex) ~= "function" and type(old) ~= "function" then return nil end
+            for i = 1, 40 do
+                local name
+                if type(byIndex) == "function" then
+                    local ok, row = pcall(byIndex, unit, i, "HARMFUL")
+                    if not ok then return nil end
+                    if row == nil then return false end
+                    if hidden(row) or type(row) ~= "table" then return nil end
+                    name = row.name
+                else
+                    local ok, got = pcall(old, unit, i)
+                    if not ok then return nil end
+                    if got == nil then return false end
+                    name = got
+                end
+                if name == nil or hidden(name) or type(name) ~= "string" then return nil end
+                if HELD[name] or name:find("^Polymorph") then return true end
+            end
+            return false
+        end
+
+        -- c.plateEnemies() -> { { unit, name, isTarget, creature, controlled,
+        --   threat } ... } or nil when the plate list is not read. The class-b
+        -- row shape (lead section 262). Only the plates you can attack; a
+        -- plate whose attack answer is not read is left out. creature is the
+        -- client word (UnitCreatureType), threat your threat status 0..3
+        -- (UnitThreatSituation), controlled a held debuff on it. Any field
+        -- hidden or not read is left out: never false or 0 in its place.
+        function c.plateEnemies()
+            local list = plateList()
+            if list == nil then return nil end
+            local out = {}
+            for _, plate in ipairs(list) do
+                local unit = plateToken(plate)
+                if unit ~= nil and yesNo(call(env.UnitCanAttack, "player", unit)) == true then
+                    local who, isTarget = plateWho(unit)
+                    local okThreat, status = call(env.UnitThreatSituation, "player", unit)
+                    local threat
+                    if okThreat then threat = threatStatus(status) end
+                    out[#out + 1] = {
+                        unit = unit, name = who, isTarget = isTarget,
+                        creature = text(call(env.UnitCreatureType, unit)),
+                        controlled = held(unit), threat = threat,
+                    }
                 end
             end
             return out
@@ -6963,6 +7039,248 @@ function ns.make.client(env)
         return nil
     end
     -- ------------------------------------------------------------ end N55
+    -- ------------------------------------------------------------ N59
+    -- N59 (lead section 243): the info bar. c.infoBar(spec) makes one plain
+    -- frame (never a secure template, no attribute set) with a dark backing,
+    -- one text and a resize grip; it returns a handle, or nil when the
+    -- client makes no frame. spec: name, width, height.
+    -- h.setText(s), h.show(on), h.font(size), h.alpha(a) (backing 0..1),
+    -- h.size(w, h), h.place(point), h.lock(on), h.onMoved(fn(point)),
+    -- h.onResized(fn(w, h)), h.onClick(fn(button)), h.onHover(fn(on)),
+    -- h.tip(lines) (nil hides the tip it showed).
+    -- A drag is not a click: the release that ends a drag says nothing.
+    -- Every handler the add-on gives runs under pcall; an error is dropped
+    -- here, the caller records its own.
+    -- Docs (warcraft.wiki.gg), not seen in game on 16001: Frame
+    -- SetResizable, StartSizing("BOTTOMRIGHT"), SetResizeBounds;
+    -- FontString GetFont / SetFont(path, size, flags); UIHANDLER OnEnter,
+    -- OnLeave, OnMouseUp(button), OnMouseDown(button). Needs game test.
+    function c.infoBar(spec)
+        spec = type(spec) == "table" and spec or {}
+        local parent = env.UIParent
+        local ok, f = call(env.CreateFrame, "Frame", spec.name, parent)
+        if not ok or f == nil then return nil end
+        local h = {}
+        local width, height = tonumber(spec.width) or 300, tonumber(spec.height) or 20
+        local locked, dragged = false, false
+        local moved, resized, clicked, hovered
+        local tipped = false
+
+        method(f, "Hide")
+        if not method(f, "SetSize", width, height) then
+            method(f, "SetWidth", width)
+            method(f, "SetHeight", height)
+        end
+        method(f, "SetFrameStrata", "MEDIUM")
+        method(f, "SetClampedToScreen", true)
+
+        local okBg, bg = method(f, "CreateTexture", nil, "BACKGROUND")
+        if not okBg then bg = nil end
+        if bg ~= nil then
+            method(bg, "SetAllPoints", f)
+            if not method(bg, "SetColorTexture", 0, 0, 0, 0.6) then method(bg, "SetTexture", 0, 0, 0, 0.6) end
+        end
+
+        local okText, text = method(f, "CreateFontString", nil, "OVERLAY", "GameFontNormalSmall")
+        if not okText then text = nil end
+        if text ~= nil then
+            method(text, "SetPoint", "TOPLEFT", f, "TOPLEFT", 6, -4)
+            method(text, "SetPoint", "BOTTOMRIGHT", f, "BOTTOMRIGHT", -6, 4)
+            method(text, "SetJustifyH", "LEFT")
+            method(text, "SetJustifyV", "TOP")
+        end
+
+        local function tell(fn, ...)
+            if type(fn) == "function" then pcall(fn, ...) end
+        end
+
+        local function standing()
+            local okP, a, _, r, x, y = method(f, "GetPoint", 1)
+            if okP and type(a) == "string" and type(x) == "number" and type(y) == "number" then
+                return { a, type(r) == "string" and r or a, x, y }
+            end
+            return nil
+        end
+
+        method(f, "SetMovable", true)
+        method(f, "SetResizable", true)
+        method(f, "SetResizeBounds", 60, 14)
+        method(f, "EnableMouse", true)
+        method(f, "RegisterForDrag", "LeftButton")
+        method(f, "SetScript", "OnDragStart", function()
+            if locked then return end
+            dragged = true
+            method(f, "StartMoving")
+        end)
+        method(f, "SetScript", "OnDragStop", function()
+            method(f, "StopMovingOrSizing")
+            method(f, "SetUserPlaced", false)
+            local point = standing()
+            if point then tell(moved, point) end
+        end)
+        method(f, "SetScript", "OnMouseUp", function(_, button)
+            if dragged then
+                dragged = false
+                return
+            end
+            tell(clicked, button)
+        end)
+        method(f, "SetScript", "OnEnter", function() tell(hovered, true) end)
+        method(f, "SetScript", "OnLeave", function() tell(hovered, false) end)
+
+        -- The grip: a small plain button at the lower right corner.
+        local okG, grip = call(env.CreateFrame, "Button", nil, f)
+        if okG and grip ~= nil then
+            method(grip, "SetSize", 10, 10)
+            method(grip, "SetPoint", "BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
+            method(grip, "EnableMouse", true)
+            method(grip, "SetScript", "OnMouseDown", function()
+                if locked then return end
+                method(f, "StartSizing", "BOTTOMRIGHT")
+            end)
+            method(grip, "SetScript", "OnMouseUp", function()
+                method(f, "StopMovingOrSizing")
+                if locked then return end
+                local okW, w = method(f, "GetWidth")
+                local okH, ht = method(f, "GetHeight")
+                if okW and okH and type(w) == "number" and type(ht) == "number" then tell(resized, w, ht) end
+            end)
+        end
+
+        function h.setText(s)
+            if text ~= nil then method(text, "SetText", tostring(s or "")) end
+        end
+        function h.show(on) method(f, on and "Show" or "Hide") end
+        function h.font(size)
+            size = tonumber(size)
+            if text == nil or size == nil then return end
+            local okF, path, _, flags = method(text, "GetFont")
+            if okF and type(path) == "string" then method(text, "SetFont", path, size, flags or "") end
+        end
+        function h.alpha(a)
+            a = tonumber(a)
+            if bg == nil or a == nil then return end
+            if not method(bg, "SetColorTexture", 0, 0, 0, a) then method(bg, "SetTexture", 0, 0, 0, a) end
+        end
+        function h.size(w, ht)
+            w, ht = tonumber(w), tonumber(ht)
+            if w == nil or ht == nil then return end
+            method(f, "SetSize", w, ht)
+        end
+        function h.place(point)
+            if type(point) ~= "table" then return end
+            method(f, "ClearAllPoints")
+            method(f, "SetPoint", point[1], parent, point[2], point[3], point[4])
+        end
+        function h.lock(on) locked = on and true or false end
+        function h.onMoved(fn) moved = fn end
+        function h.onResized(fn) resized = fn end
+        function h.onClick(fn) clicked = fn end
+        function h.onHover(fn) hovered = fn end
+        function h.tip(lines)
+            local tip = env.GameTooltip
+            if tip == nil then return end
+            if type(lines) ~= "table" or #lines == 0 then
+                if tipped then
+                    local okO, owned = method(tip, "IsOwned", f)
+                    if okO and owned then method(tip, "Hide") end
+                end
+                tipped = false
+                return
+            end
+            method(tip, "SetOwner", f, "ANCHOR_BOTTOM")
+            method(tip, "ClearLines")
+            for i, line in ipairs(lines) do
+                if i == 1 then method(tip, "AddLine", tostring(line), 1, 1, 1)
+                else method(tip, "AddLine", tostring(line), 0.8, 0.8, 0.8, true) end
+            end
+            method(tip, "Show")
+            tipped = true
+        end
+        return h
+    end
+
+    -- c.xp() -> {cur, max, rested} or nil. rested is 0 when the client says
+    -- nil (not rested). nil when the required amount is not above 0.
+    -- Docs: UnitXP, UnitXPMax, GetXPExhaustion. Needs game test.
+    function c.xp()
+        local okC, cur = call(env.UnitXP, "player")
+        local okM, max = call(env.UnitXPMax, "player")
+        if not okC or not okM or hidden(cur) or hidden(max) then return nil end
+        if type(cur) ~= "number" or type(max) ~= "number" or cur ~= cur or max ~= max then return nil end
+        if max <= 0 or cur < 0 then return nil end
+        local okR, rested = call(env.GetXPExhaustion)
+        if not okR or rested == nil or hidden(rested) or type(rested) ~= "number" or rested ~= rested then rested = 0 end
+        return { cur = cur, max = max, rested = rested }
+    end
+
+    -- c.watchedFaction() -> {name, standing, label, min, max, value}, false
+    -- when none is watched, nil when not known. C_Reputation
+    -- .GetWatchedFactionData first (newer clients), else
+    -- GetWatchedFactionInfo (name, standing, min, max, value). The label is
+    -- the client's FACTION_STANDING_LABEL<n> string (FACTION_STANDING_LABEL1
+    -- and up). Docs only, not seen in game on 16001. Needs game test.
+    function c.watchedFaction()
+        local name, standing, low, high, value
+        local rep = type(env.C_Reputation) == "table" and env.C_Reputation or {}
+        local okN, data = call(rep.GetWatchedFactionData)
+        if okN and type(data) == "table" then
+            name, standing = data.name, data.reaction
+            low, high, value = data.currentReactionThreshold, data.nextReactionThreshold, data.currentStanding
+        elseif okN and data == nil and rep.GetWatchedFactionData ~= nil then
+            return false
+        else
+            local ok
+            ok, name, standing, low, high, value = call(env.GetWatchedFactionInfo)
+            if not ok then return nil end
+            if name == nil then return false end
+        end
+        if hidden(name) or type(name) ~= "string" then return nil end
+        for _, v in ipairs({ standing, low, high, value }) do
+            if hidden(v) or type(v) ~= "number" or v ~= v then return nil end
+        end
+        local label = env["FACTION_STANDING_LABEL" .. tostring(standing)]
+        if type(label) ~= "string" or hidden(label) then label = nil end
+        return { name = name, standing = standing, label = label, min = low, max = high, value = value }
+    end
+
+    -- c.gameTime() -> {hour, minute} server time, or nil. Docs: GetGameTime.
+    function c.gameTime()
+        local ok, hour, minute = call(env.GetGameTime)
+        hour, minute = whole(ok, hour), whole(ok, minute)
+        if hour == nil or minute == nil or hour > 23 or minute > 59 then return nil end
+        return { hour = hour, minute = minute }
+    end
+
+    -- c.framerate() -> whole frames a second, or nil. Docs: GetFramerate.
+    function c.framerate()
+        local ok, n = call(env.GetFramerate)
+        if not ok or hidden(n) or type(n) ~= "number" or n ~= n or n < 0 or n == math.huge then return nil end
+        return math.floor(n)
+    end
+
+    -- c.latency() -> {home, world} in ms, or nil. GetNetStats answers
+    -- bandwidth in, out, home latency, world latency. Docs only.
+    function c.latency()
+        local ok, _, _, home, world = call(env.GetNetStats)
+        home, world = whole(ok, home), whole(ok, world)
+        if home == nil or world == nil then return nil end
+        return { home = home, world = world }
+    end
+
+    -- c.broker(name, obj) -> the data object LibDataBroker-1.1 made, or nil
+    -- when LibStub or the library is not loaded. The add-on never loads
+    -- either itself. Docs (LibDataBroker-1.1 README): NewDataObject(name,
+    -- table). Needs game test.
+    function c.broker(name, obj)
+        if type(name) ~= "string" or type(obj) ~= "table" then return nil end
+        local okL, lib = call(env.LibStub, "LibDataBroker-1.1", true)
+        if not okL or type(lib) ~= "table" then return nil end
+        local okD, made = pcall(function() return lib:NewDataObject(name, obj) end)
+        if not okD or made == nil then return nil end
+        return made
+    end
+    -- ------------------------------------------------------------ end N59
 
     -- ------------------------------------------------- text entry (N73)
     -- c.textEntry(spec) -> h, or nil when the client cannot make one. A
