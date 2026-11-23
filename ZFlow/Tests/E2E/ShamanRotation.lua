@@ -337,4 +337,49 @@ tests["shaman pack: mail is the one armor kind with a level"] = function(t)
     t.eq(armor[4], nil, "no plate")
 end
 
+-- ---------------------- P-SELFBUFF: the imbue on your main hand (section 236)
+-- The fake's weaponEnchant read -> snapshot.weaponEnchant -> the pack's
+-- imbue step -> the icon. Spell id plausible, not read here.
+local ROCKBITER = 8017
+
+local function imbueReady(opts)
+    local c, addon, icon = start(opts)
+    c.setSpellId("Rockbiter Weapon", ROCKBITER); c.setSpell(ROCKBITER, { known = true, usable = true })
+    c.setSpellCooldown(ROCKBITER, false); c.setSpellTexture(ROCKBITER, "tex:Rockbiter Weapon")
+    c.setPlayerBuffs(SHIELDED); c.setTargetDebuffs({})
+    on(c, addon)
+    return c, addon, icon
+end
+
+tests["shaman P-SELFBUFF: the read comes late; a bare main hand asks for the imbue, one on clears it"] = function(t)
+    local c, _, icon = imbueReady()
+    t.ok(not showing(icon, "Rockbiter Weapon"), "the enchant not read yet: no imbue")
+    c.setWeaponEnchant({ main = { has = false } }); c.advance(1, 5)
+    t.ok(showing(icon, "Rockbiter Weapon"), "read late, bare: Rockbiter Weapon")
+    c.setWeaponEnchant({ main = { has = true, left = 1500 } }); c.advance(1, 5)
+    t.ok(not showing(icon, "Rockbiter Weapon"), "on for 25 minutes: cleared")
+    c.setWeaponEnchant({ main = { has = true, left = 20 } }); c.advance(1, 5)
+    t.ok(showing(icon, "Rockbiter Weapon"), "20 seconds left out of a fight: asked again")
+end
+
+tests["shaman P-SELFBUFF: the enchant read raising, then answering"] = function(t)
+    local c, addon, icon = imbueReady()
+    local before = #addon.problems:list()
+    c.setWeaponEnchant({ main = { has = false } })
+    c.setWeaponEnchantFails(true); c.advance(1, 5)
+    t.ok(not showing(icon, "Rockbiter Weapon"), "the read raised: not known, no imbue")
+    t.eq(#addon.problems:list(), before, "no new problem: the raise is caught")
+    c.setWeaponEnchantFails(false); c.advance(1, 5)
+    t.ok(showing(icon, "Rockbiter Weapon"), "the read answers again: bare, the imbue")
+end
+
+tests["shaman P-SELFBUFF: over a reload the imbue is asked for again from the read"] = function(t)
+    local c = imbueReady()
+    local account, char = c.saved(ns.id.accountDB), c.saved(ns.id.charDB)
+    local c2, _, icon2 = imbueReady({ account = account, char = char })
+    t.ok(not showing(icon2, "Rockbiter Weapon"), "after the reload, not read yet: no imbue")
+    c2.setWeaponEnchant({ main = { has = false } }); c2.advance(1, 5)
+    t.ok(showing(icon2, "Rockbiter Weapon"), "read bare after the reload: the imbue")
+end
+
 return tests
