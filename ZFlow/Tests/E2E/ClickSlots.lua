@@ -106,6 +106,34 @@ tests["click slots: the key, the care key and the plan's parts, shown with their
     noBindsNoMacros(t, c)
 end
 
+tests["click slots: the target changes in a fight; the care slot keeps the friend"] = function(t)
+    local c = start({ on = true })
+    local h = slotRow(c)
+    if not h then t.ok(false, "no row"); return end
+    c.setGuid("target", "Player-1")
+    c.setParty({ { unit = "party1", guid = "Player-1" } })
+    local hurt = { exists = true, friend = true, isSelf = false, dead = false, hurt = true }
+    c.setUnitCare("target", hurt); c.setUnitCare("party1", hurt)
+    c.advance(3, 5)
+    t.eq(slot(h, "care").attrs.unit, "party1", "planned on the friend you target, by its group token")
+    c.setCombat(true); c.advance(1, 5)
+    c.setGuid("target", "Creature-1")
+    c.setUnitCare("target", { exists = true, friend = false, dead = false, hurt = true })
+    c.advance(5, 10)
+    t.eq(slot(h, "care").attrs.unit, "party1", "an enemy targeted in the fight: still the friend")
+    for _, g in ipairs(h.given) do
+        if tostring(g.attr):find("unit", 1, true) then
+            t.ok(g.value ~= "target", "never the target token: " .. tostring(g.attr))
+        end
+    end
+    c.setCombat(false); c.advance(3, 5)
+    c.setGuid("target", "Player-9"); c.setUnitCare("target", hurt)
+    c.setUnitCare("party1", { exists = true, friend = true, isSelf = false, dead = false, hurt = false })
+    c.advance(3, 5)
+    t.eq(slot(h, "care").attrs.unit, "player", "a friend not in your group is left out")
+    noBindsNoMacros(t, c)
+end
+
 tests["click slots: switched off, the row is cleared and hidden"] = function(t)
     local c, addon = start({ on = true })
     local h = slotRow(c)

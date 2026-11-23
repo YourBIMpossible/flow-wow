@@ -84,16 +84,63 @@ tests["priest care key: your quick heal on you, the parts on the modifiers"] = f
     noBindsNoMacros(t, c)
 end
 
-tests["priest care key: a hurt friendly target takes the key"] = function(t)
+local function neverTarget(t, h)
+    for _, g in ipairs(h.given) do
+        if tostring(g.attr):find("unit", 1, true) then
+            t.ok(g.value ~= "target", "never the target token: " .. tostring(g.attr))
+        end
+    end
+end
+
+local function targetInGroup(c, care)
+    c.setGuid("target", "Player-1")
+    c.setParty({ { unit = "party1", guid = "Player-1" } })
+    c.setUnitCare("target", care)
+    c.setUnitCare("party1", care)
+end
+
+tests["priest care key: a hurt friendly target takes the key by its group token"] = function(t)
     local c = start({ on = true })
+    targetInGroup(c, FRIEND); c.advance(3, 5)
+    local h = button(c)
+    if not h then t.ok(false, "no button"); return end
+    t.eq({ h.attrs.spell, h.attrs.unit }, { "Flash Heal", "party1" })
+    t.eq(h.attrs["*unit-ctrl"], "player", "the rest stays on you")
+    targetInGroup(c, { exists = true, friend = false, dead = false, hurt = true }); c.advance(3, 5)
+    t.eq(h.attrs.unit, "player", "a foe is never healed")
+    neverTarget(t, h)
+    noBindsNoMacros(t, c)
+end
+
+tests["priest care key: the target changes in a fight; the key keeps the friend"] = function(t)
+    local c = start({ on = true })
+    targetInGroup(c, FRIEND); c.advance(3, 5)
+    local h = button(c)
+    if not h then t.ok(false, "no button"); return end
+    t.eq(h.attrs.unit, "party1", "planned on the friend you target")
+    c.setCombat(true); c.advance(1, 5)
+    c.setGuid("target", "Creature-1")
+    c.setUnitCare("target", { exists = true, friend = false, dead = false, hurt = true })
+    c.advance(5, 10)
+    t.eq(h.attrs.unit, "party1", "an enemy targeted in the fight: the key still holds the friend")
+    c.setParty({ { unit = "party1", guid = "Player-1" }, { unit = "party2", guid = "Player-2" } })
+    c.setGuid("target", "Player-2")
+    c.setUnitCare("party2", { exists = true, friend = true, isSelf = false, dead = false, hurt = false })
+    c.advance(5, 10)
+    t.eq(h.attrs.unit, "party1", "another friend targeted: still the planned friend")
+    c.setCombat(false); c.advance(3, 5)
+    t.eq(h.attrs.unit, "party1", "after the fight: the hurt friend")
+    neverTarget(t, h)
+end
+
+tests["priest care key: a friendly target not in your group is left out"] = function(t)
+    local c = start({ on = true })
+    c.setGuid("target", "Player-9")
     c.setUnitCare("target", FRIEND); c.advance(3, 5)
     local h = button(c)
     if not h then t.ok(false, "no button"); return end
-    t.eq({ h.attrs.spell, h.attrs.unit }, { "Flash Heal", "target" })
-    t.eq(h.attrs["*unit-ctrl"], "player", "the rest stays on you")
-    c.setUnitCare("target", { exists = true, friend = false, dead = false, hurt = true }); c.advance(3, 5)
-    t.eq(h.attrs.unit, "player", "a foe is never healed")
-    noBindsNoMacros(t, c)
+    t.eq(h.attrs.unit, "player", "the target is left out: the heal on you")
+    neverTarget(t, h)
 end
 
 tests["priest care key: a dead friend out of a fight; in a fight it waits"] = function(t)
@@ -127,14 +174,14 @@ end
 
 tests["priest care key: a unit read that fails, then recovers"] = function(t)
     local c = start({ on = true })
-    c.setUnitCare("target", FRIEND)
+    targetInGroup(c, FRIEND)
     c.setUnitCareFails(true)
     t.eq(pcall(c.advance, 3, 5), true, "no error escapes")
     local h = button(c)
     if not h then t.ok(false, "no button"); return end
     t.eq(h.attrs.unit, "player", "nothing read: the heal on you")
     c.setUnitCareFails(false); c.advance(3, 5)
-    t.eq(h.attrs.unit, "target", "the read recovers")
+    t.eq(h.attrs.unit, "party1", "the read recovers")
 end
 
 tests["priest care key: spell data that arrives late"] = function(t)

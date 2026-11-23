@@ -82,11 +82,34 @@ tests["key controls: Alt on keeps the healing item; Alt off leaves Alt + key not
     t.eq(off.states[0].alt, nil)
 end
 
-tests["key controls: Ctrl on a friend you target casts your quick heal on the target"] = function(t)
+tests["key controls: Ctrl on a friend you target casts your quick heal on its group token"] = function(t)
     if not ready(t) then return end
-    local p = KC().Shape(plan(), with(), snap(), PACK, true)
+    local p = KC().Shape(plan(), with(), snap(), PACK, "party2")
     t.eq(p.states[0].ctrl, "Flash of Light")
-    t.eq(unitOf(p, "ctrl"), "target")
+    t.eq(unitOf(p, "ctrl"), "party2", "a stable token, never the target")
+    local q = KC().Shape(plan(), with(), snap(), PACK, true)
+    t.eq(q.states[0].ctrl, "Exorcism", "a friend with no group token: the pack's spell")
+    t.eq(unitOf(q, "ctrl"), nil)
+end
+
+tests["key controls: the friend you target is read as its group token"] = function(t)
+    if not ready(t) then return end
+    local c = ns.make.fakeClient()
+    t.eq(KC().FriendUnit(c), nil, "nothing known")
+    c.setGuid("target", "Player-2")
+    c.setUnitCare("target", { exists = true, friend = true, isSelf = false, dead = false, hurt = true })
+    t.eq(KC().FriendUnit(c), nil, "not in your group: left out")
+    c.setParty({ { unit = "party1", guid = "Player-1" }, { unit = "party2", guid = "Player-2" } })
+    c.setUnitCare("party2", { exists = true, friend = true, isSelf = false, dead = false, hurt = true })
+    t.eq(KC().FriendUnit(c), "party2")
+    c.setUnitCare("party2", { exists = true, friend = false, dead = false, hurt = true })
+    t.eq(KC().FriendUnit(c), nil, "a foe")
+    c.setUnitCare("party2", { exists = true, friend = true, isSelf = false, dead = false, hurt = true })
+    c.setUnitCareFails(true)
+    t.eq(KC().FriendUnit(c), nil, "the read raised")
+    c.setUnitCareFails(false)
+    t.eq(KC().FriendUnit(c), "party2", "the read recovers")
+    t.eq(KC().FriendUnit(nil), nil)
 end
 
 tests["key controls: Ctrl on with no friend targeted keeps the pack's spell"] = function(t)

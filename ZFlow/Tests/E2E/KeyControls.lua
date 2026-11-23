@@ -84,7 +84,17 @@ end
 
 local function friendTarget(c)
     c.setTarget({ exists = true, hostile = false, dead = false })
+    c.setGuid("target", "Player-1")
+    c.setParty({ { unit = "party1", guid = "Player-1" } })
     c.setUnitCare("target", { exists = true, friend = true, isSelf = false, dead = false, hurt = true })
+    c.setUnitCare("party1", { exists = true, friend = true, isSelf = false, dead = false, hurt = true })
+end
+
+local function keyButton(c)
+    for _, h in ipairs(c.secureButtons) do
+        if tostring(h.spec and h.spec.name):find("RotationKey", 1, true) then return h end
+    end
+    return nil
 end
 
 local function set(c, addon, key, value)
@@ -156,7 +166,7 @@ tests["key controls: Ctrl + key heals a friend you target; off, Ctrl + key is no
     t.ok(before ~= nil and before ~= "Flash of Light", "no friend targeted: the pack's spell, got " .. tostring(before))
     friendTarget(c); c.advance(1, 5)
     t.eq(attr(c, "*spell-ctrl"), "Flash of Light", "a friend targeted: your quick heal")
-    t.eq(attr(c, "*unit-ctrl"), "target", "on the friend")
+    t.eq(attr(c, "*unit-ctrl"), "party1", "on the friend, by its group token")
     set(c, addon, CTRL, false)
     t.eq(attr(c, "*spell-ctrl"), nil, "off: nothing on Ctrl")
     t.eq(attr(c, "*type-ctrl"), nil)
@@ -217,7 +227,37 @@ tests["key controls: the friend read fails, then recovers"] = function(t)
     t.ok(addon.rotationDriver.view() ~= nil and addon.rotationDriver.view().stale == nil, "the tick went on")
     c.setUnitCareFails(false); c.advance(1, 5)
     t.eq(attr(c, "*spell-ctrl"), "Flash of Light", "the read recovers: the heal on the friend")
-    t.eq(attr(c, "*unit-ctrl"), "target")
+    t.eq(attr(c, "*unit-ctrl"), "party1")
+end
+
+tests["key controls: the target changes in a fight; Ctrl + key keeps the friend"] = function(t)
+    local c = start()
+    friendTarget(c); c.advance(1, 5)
+    t.eq(attr(c, "*unit-ctrl"), "party1", "planned on the friend you target")
+    c.setCombat(true); c.advance(1, 5)
+    c.setTarget({ exists = true, hostile = true, dead = false })
+    c.setGuid("target", "Creature-1")
+    c.setUnitCare("target", { exists = true, friend = false, dead = false, hurt = true })
+    c.advance(5, 10)
+    t.eq(attr(c, "*unit-ctrl"), "party1", "an enemy targeted in the fight: Ctrl + key still on the friend")
+    local h = keyButton(c)
+    t.ok(h ~= nil, "the key button")
+    for _, g in ipairs(h and h.given or {}) do
+        if tostring(g.attr):find("unit", 1, true) then
+            t.ok(g.value ~= "target", "never the target token: " .. tostring(g.attr))
+        end
+    end
+end
+
+tests["key controls: a friendly target not in your group leaves Ctrl + key on the pack spell"] = function(t)
+    local c = start()
+    local before = attr(c, "*spell-ctrl")
+    c.setTarget({ exists = true, hostile = false, dead = false })
+    c.setGuid("target", "Player-9")
+    c.setUnitCare("target", { exists = true, friend = true, isSelf = false, dead = false, hurt = true })
+    c.advance(1, 5)
+    t.eq(attr(c, "*spell-ctrl"), before, "not in the group: the pack spell")
+    t.ok(attr(c, "*unit-ctrl") ~= "target", "never the target token")
 end
 
 return tests
