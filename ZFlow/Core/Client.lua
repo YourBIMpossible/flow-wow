@@ -8257,6 +8257,9 @@ function ns.make.client(env)
         return h
     end
 
+    -- Lead section 305 item 1: no add-on file calls this now. The Flow and
+    -- self buttons move by moveHandle; a drag on a secure button that acts
+    -- on the press down would also cast. Kept in place (shared file).
     -- c.ctrlDrag(spec) -> true or nil. spec = { target, button, onMoved }.
     -- A left-button drag on the button named spec.button moves the frame
     -- named spec.target, only when IsControlKeyDown answers true and
