@@ -147,12 +147,12 @@ return {
         t.eq(r.spell, "Moonfire", "spell")
         t.eq(r.form, 0, "form")
         t.eq(attrs(r.button), {
-            "type=spell", "spell=Moonfire", "unit=nil", "macrotext=nil",
+            "type=spell", "spell=Moonfire", "unit=nil", "item=nil",
             "*type-ctrl=spell", "*spell-ctrl=B", "*unit-ctrl=target",
             "*type-shift=nil", "*spell-shift=nil", "*unit-shift=nil",
             "*type-alt=nil", "*spell-alt=nil", "*unit-alt=nil",
             "*type-more=nil", "*spell-more=nil", "*unit-more=nil",
-            "*macrotext-alt=nil",
+            "*item-alt=nil", "macrotext=nil", "*macrotext-alt=nil",
         }, "button")
     end,
 
@@ -169,11 +169,62 @@ return {
         end
     end,
 
-    ["attributes: Attack is the start-attack macro"] = function(t)
+    -- Section 246 (N63-E): a macro-type secure button does not act on this
+    -- client, so Attack is the Attack spell, as legacy Flow did.
+    ["attributes: Attack is the Attack spell with no unit, not a macro"] = function(t)
         for _, name in ipairs({ "Attack", "Auto Attack" }) do
-            local r = ns.cast.Attributes({ spell = name, kind = "damage" }, plan(), nil, false)
+            local r = ns.cast.Attributes({ spell = name, kind = "damage", unit = "target" }, plan(), nil, false)
             t.eq({ attrs(r.button)[1], attrs(r.button)[2], attrs(r.button)[3], attrs(r.button)[4] },
-                { "type=macro", "spell=nil", "unit=nil", "macrotext=/startattack" }, name)
+                { "type=spell", "spell=" .. name, "unit=nil", "item=nil" }, name)
+            local got = {}
+            for _, a in ipairs(r.button) do got[a.attr] = a.value end
+            t.eq(got.macrotext, nil, name .. ": no macro text")
+        end
+    end,
+
+    ["attributes: an item suggestion is the item type, item:ID"] = function(t)
+        local r = ns.cast.Attributes({ itemId = 4544, kind = "food" }, plan(), nil, false)
+        t.eq(r.item, 4544, "item")
+        t.eq({ attrs(r.button)[1], attrs(r.button)[2], attrs(r.button)[3], attrs(r.button)[4] },
+            { "type=item", "spell=nil", "unit=nil", "item=item:4544" }, "key")
+        local got = {}
+        for _, a in ipairs(r.button) do got[a.attr] = a.value end
+        t.eq(got.macrotext, nil, "no macro text")
+        local back = ns.cast.Attributes({ spell = "Moonfire", kind = "damage" }, plan(), nil, false)
+        local had = {}
+        for _, a in ipairs(back.button) do had[a.attr] = a.value end
+        t.eq(had.type, "spell", "back to a spell")
+        t.ok(had.item == nil, "the item row clears it")
+        local named = false
+        for _, a in ipairs(back.button) do if a.attr == "item" then named = true end end
+        t.ok(named, "the item row is named, so the old item is cleared")
+    end,
+
+    -- Section 246 (N63-E): no suggestion, plan or Alt item ever gives a
+    -- button row the type "macro", or a macro text.
+    ["attributes: no row is ever a macro"] = function(t)
+        local suggestions = {
+            false, { spell = "Moonfire", kind = "damage" }, { spell = "Attack", kind = "damage" },
+            { spell = "Auto Attack", kind = "damage" }, { spell = "Rejuvenation", kind = "heal" },
+            { itemId = 4544, kind = "food" }, { spell = "Mark of the Wild", kind = "buff", look = true },
+        }
+        for i, s in ipairs(suggestions) do
+            for _, alt in ipairs({ false, 5512 }) do
+                local p = plan()
+                p.altItem = alt or nil
+                p.states[0].alt = "X"
+                for _, form in ipairs({ 0, 3, 9 }) do
+                    local r = ns.cast.Attributes(s or nil, p, nil, false, form)
+                    t.eq(r.ok, true, "ok " .. i)
+                    for _, a in ipairs(r.button) do
+                        t.ok(a.value ~= "macro", "a macro type: " .. i .. " " .. a.attr)
+                        t.ok(not (a.attr:find("macrotext", 1, true) and a.value ~= nil),
+                            "a macro text: " .. i .. " " .. a.attr)
+                        t.ok(not (type(a.value) == "string" and a.value:sub(1, 1) == "/"),
+                            "a slash command: " .. i .. " " .. a.attr)
+                    end
+                end
+            end
         end
     end,
 
@@ -196,7 +247,7 @@ return {
         for i, a in ipairs(attrs(r.button)) do
             t.ok(string.sub(a, -4) == "=nil", "cleared " .. i)
         end
-        t.eq(#r.button, 17, "every attribute named")
+        t.eq(#r.button, 19, "every attribute named")
     end,
 
     ["attributes: a form with no row, or not a form number, reads as described"] = function(t)
@@ -287,14 +338,18 @@ return {
         t.eq(r.ok, true, "ok")
         local got = {}
         for _, a in ipairs(r.button) do got[a.attr] = a.value end
-        t.eq(got["*type-alt"], "macro", "a macro")
+        -- Section 246 (N63-E): the item type, not a macro.
+        t.eq(got["*type-alt"], "item", "the item type")
         t.eq(got["*spell-alt"], nil, "no spell")
         t.eq(got["*unit-alt"], nil, "no unit")
-        t.eq(got["*macrotext-alt"], "/use item:5512", "the item")
+        t.eq(got["*item-alt"], "item:5512", "the item")
+        t.eq(got["*macrotext-alt"], nil, "no macro text")
         local plain = ns.cast.Attributes(nil, { states = p.states, condition = "0" }, nil, false)
         local had = {}
         for _, a in ipairs(plain.button) do had[a.attr] = a.value end
         t.eq(had["*spell-alt"], "X", "without it: the spell")
+        t.eq(had["*type-alt"], "spell", "without it: the spell type")
+        t.eq(had["*item-alt"], nil, "without it: no item")
         t.eq(had["*macrotext-alt"], nil, "without it: no macro")
     end,
 

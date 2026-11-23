@@ -271,4 +271,127 @@ tests["warrior gear: a plate helm is scored, a wand is not offered"] = function(
         { { text = "Can't use: your class cannot use this kind of item (first guess)", tone = "bad" } })
 end
 
+-- ------------------------------------- N58 (lead section 241): your stance
+
+-- A stance you cast: the cast event, then a second. The stance row holds a
+-- cast 6 s before it is kept (a stance swapped for one ability and back).
+local function castId(c, name)
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-3-0-0-0-0-0", IDS[name])
+    c.advance(1, 5)
+end
+
+-- Past the row's 6 s window.
+local function waitOut(c)
+    c.advance(7, 14)
+end
+
+-- The stance kept for the role (dps unless named), or nil.
+local function kept(c, key, role)
+    local char = c.saved(ns.id.charDB)
+    local state = type(char) == "table" and char.state or nil
+    local own = type(state) == "table" and state.ownCasts or nil
+    local mine = type(own) == "table" and own[role or "dps"] or nil
+    return type(mine) == "table" and mine[key] or nil
+end
+
+-- The stance chosen with the word, or nil.
+local function picked(c, key)
+    local char = c.saved(ns.id.charDB)
+    local state = type(char) == "table" and char.state or nil
+    local choice = type(state) == "table" and state.ownChoice or nil
+    return type(choice) == "table" and choice[key] or nil
+end
+
+-- The lines the word prints, as one.
+local function word(c, text)
+    local from = #c.printed + 1
+    c.slashes[ns.id.slash](text)
+    c.advance(1, 5)
+    local out = {}
+    for i = from, #c.printed do out[#out + 1] = tostring(c.printed[i]) end
+    return table.concat(out, " / ")
+end
+
+local function reload(c)
+    return start({ account = c.saved(ns.id.accountDB), char = c.saved(ns.id.charDB) })
+end
+
+-- Gap: before N58 the Warrior pack had no stance row, so a stance you cast
+-- was never kept and no stance asked for was ever yours: the kept and
+-- icon checks below are red on the old code.
+tests["warrior N58: the stance you cast is kept after 6 s and asked for in no stance"] = function(t)
+    local c, addon, icon = start()
+    c.setFormName("Battle Stance", true); c.setPlayerBuffs({}); on(c, addon)
+    castId(c, "Defensive Stance")
+    t.eq(kept(c, "stance"), nil, "held: inside the window nothing is kept yet")
+    waitOut(c)
+    t.eq(kept(c, "stance"), "Defensive Stance", "past 6 s: kept for the role")
+    c.setFormName(nil, true); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Defensive Stance", "in no stance: the one you cast, not Battle Stance")
+    c.setFormName("Battle Stance", true); c.advance(1, 5)
+    t.ok(icon.texture ~= "tex:Defensive Stance", "dps in a stance: not asked to change it, as before")
+end
+
+-- Gap: the 6 s window. Without it the Battle Stance cast would be kept at
+-- once, replacing Defensive Stance; on the old code nothing is kept at all.
+tests["warrior N58: a stance swapped for one ability and back inside 6 s is not kept"] = function(t)
+    local c, addon = start()
+    c.setFormName("Battle Stance", true); c.setPlayerBuffs({}); on(c, addon)
+    castId(c, "Defensive Stance"); waitOut(c)
+    t.eq(kept(c, "stance"), "Defensive Stance", "kept first")
+    c.setFormName("Defensive Stance", true); c.advance(1, 5)
+    castId(c, "Battle Stance")
+    c.setFormName("Battle Stance", true); c.advance(1, 5)
+    castId(c, "Defensive Stance")
+    c.setFormName("Defensive Stance", true)
+    waitOut(c)
+    t.eq(kept(c, "stance"), "Defensive Stance", "the swap and back: the kept one stays")
+    castId(c, "Battle Stance"); waitOut(c)
+    t.eq(kept(c, "stance"), "Battle Stance", "a swap left in place: kept after the window")
+end
+
+tests["warrior N58: the stance word chooses one; auto clears it; a reload keeps it"] = function(t)
+    local c, addon, icon = start()
+    c.setFormName(nil, true); c.setPlayerBuffs({}); on(c, addon)
+    t.eq(icon.texture, "tex:Battle Stance", "nothing chosen: Battle Stance")
+    local line = word(c, "stance defensive")
+    t.ok(line:find("Defensive Stance", 1, true), line)
+    t.eq(picked(c, "stance"), "Defensive Stance")
+    t.eq(icon.texture, "tex:Defensive Stance", "the chosen stance")
+    local c2, _, icon2 = reload(c)
+    c2.setFormName(nil, true); c2.setPlayerBuffs({}); c2.advance(1, 5)
+    t.eq(icon2.texture, "tex:Defensive Stance", "over a reload")
+    line = word(c, "stance auto")
+    t.ok(line:find("auto", 1, true), line)
+    t.eq(picked(c, "stance"), nil, "auto forgets the choice")
+    t.eq(icon.texture, "tex:Battle Stance", "auto: Battle Stance again")
+end
+
+tests["warrior N58: a tank's kept stance replaces Defensive Stance"] = function(t)
+    local c, addon, icon = start()
+    on(c, addon, "tank"); fighting(c)
+    c.setFormName("Defensive Stance", true); c.advance(1, 5)
+    t.ok(icon.texture ~= "tex:Defensive Stance", "in Defensive, nothing kept: no stance asked")
+    castId(c, "Battle Stance")
+    c.setFormName("Battle Stance", true)
+    waitOut(c)
+    t.eq(kept(c, "stance", "tank"), "Battle Stance", "kept for the tank role")
+    t.eq(kept(c, "stance"), nil, "not for dps")
+    t.ok(icon.texture ~= "tex:Defensive Stance", "in the kept one: Defensive not asked")
+    c.setFormName("Defensive Stance", true); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Battle Stance", "in Defensive: the kept one asked for")
+end
+
+tests["warrior N58: the spell name raising once: not kept; read again: kept"] = function(t)
+    local c, addon = start()
+    c.setFormName("Battle Stance", true); c.setPlayerBuffs({}); on(c, addon)
+    local name = c.spellName
+    c.spellName = function() error("made-up failure") end
+    castId(c, "Defensive Stance"); waitOut(c)
+    t.eq(kept(c, "stance"), nil, "the name could not be read: nothing kept")
+    c.spellName = name
+    castId(c, "Defensive Stance"); waitOut(c)
+    t.eq(kept(c, "stance"), "Defensive Stance", "read again: kept")
+end
+
 return tests

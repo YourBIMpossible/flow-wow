@@ -182,8 +182,10 @@ tests["buff food CF-30: out of a fight, no Well Fed, food in bags: the best food
     t.eq(v.suggestion.spell, nil, "not a spell")
     local key = {}
     for _, r in ipairs(v.attrs.button) do key[r.attr] = r.value end
-    t.eq(key.type, "macro", "the key uses the item")
-    t.eq(key.macrotext, "/use item:" .. RIBS)
+    -- Section 246 (N63-E): the item type, not a macro.
+    t.eq(key.type, "item", "the key uses the item")
+    t.eq(key.item, "item:" .. RIBS)
+    t.eq(key.macrotext, nil, "no macro text")
     t.eq(key.spell, nil)
     t.eq(ns.RotationIcon.Item(v), RIBS, "the icon shows the item")
     t.eq(ns.RotationIcon.Texture(c, v), "tex:ribs", "with the item's own texture")
@@ -429,6 +431,10 @@ tests["buff food BF-1: the food macro never reaches the secure button, before or
     for _, g in ipairs(given) do
         t.ok(not (type(g.value) == "string" and g.value:find("/use", 1, true)),
             "never given a /use macro: " .. tostring(g.attr) .. " = " .. tostring(g.value))
+        -- Section 246 (N63-E): the food is the item type now; still never on
+        -- the button.
+        t.ok(g.value ~= "item:" .. RIBS, "never given the food: " .. tostring(g.attr))
+        t.ok(g.value ~= "macro", "never a macro: " .. tostring(g.attr))
     end
     t.ok(#given > 0, "the button was set")
 end

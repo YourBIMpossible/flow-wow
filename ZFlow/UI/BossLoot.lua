@@ -89,7 +89,18 @@ B.RECORD = "loot.record"        -- Items/Drops.lua's setting: off, nothing is le
 B.PATH = "learned.bossLoot"     -- account
 B.DROPS = "learned.drops"       -- char: Items/Drops.lua's book, read only
 B.LAYOUT = "layout.bossLoot"    -- account: { point = { anchor, relative anchor, x, y } }
-B.WINDOW = 180                  -- seconds after a kill that rolls and loot lines are its; a first guess
+-- Seconds after a kill that rolls and loot lines are its. A FIRST GUESS,
+-- not a measured number. What would settle it: how long after ENCOUNTER_END
+-- the rolls and loot lines of that kill really come. No capture field holds
+-- that today (a snapshot's `at` is the snapshot's own time only); one is
+-- needed, e.g. account diag.bossLoot.gaps = the seconds from each kill to
+-- each roll and loot line that followed it (numbers only, no names).
+B.WINDOW = 180
+-- The client events this module listens to. They are not globals, so they
+-- are not in Diag.NAMES; one the client refuses is saved by the capture in
+-- each snapshot's kernel.eventsNotRegistered (Core/Diag.lua).
+B.EVENTS = { "ENCOUNTER_START", "ENCOUNTER_END", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED",
+             "PLAYER_TARGET_CHANGED", "GET_ITEM_INFO_RECEIVED", "LOOT_OPENED", "CHAT_MSG_LOOT" }
 B.TICK = 1                      -- seconds between looks while the add-on runs
 B.REFRESH = 5                   -- seconds a worked-out list is kept while nothing changed
 B.MAX_SHOWN = 10
@@ -746,7 +757,9 @@ function B.Declare(k, packs)
             key = B.SETTING, scope = "account", type = "bool", default = true,
             label = "Boss loot panel",
             help = "While you fight a boss, lists the drops you have seen from it before, your role's upgrades first. "
-                .. "It only shows them: it never rolls or picks for you.",
+                .. "It only shows them: it never rolls or picks for you. "
+                .. "What is rolled or looted in the 3 minutes after a kill counts as that boss's; "
+                .. "the 3 minutes are a first guess.",
             -- A topic of Settings/Topics.lua (zflow-settings-groups, N56).
             group = "party",
             synonyms = { "boss", "loot", "drops", "dungeon", "upgrade", "panel" },

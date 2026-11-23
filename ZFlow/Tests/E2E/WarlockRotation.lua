@@ -214,6 +214,145 @@ tests["warlock: the switch is kept over a reload"] = function(t)
     t.eq(icon2.texture, "tex:Demon Skin")
 end
 
+-- ------------------------------------- N58 (lead section 241): your choice
+
+-- Spell ids for the demons and curses the tests above do not learn (made up).
+local MORE = { ["Summon Felhunter"] = 9211, ["Summon Succubus"] = 9212, ["Curse of Weakness"] = 9213 }
+local SHARD = 6265
+
+local function learn(c, name)
+    local id = MORE[name]
+    c.setSpellId(name, id)
+    c.setSpell(id, { known = true, usable = true })
+    c.setSpellCooldown(id, false)
+    c.setSpellTexture(id, "tex:" .. name)
+    c.setInRange(id, true)
+end
+
+-- Your own cast that went off.
+local function cast(c, name)
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-3-0-0-0-0-0", MORE[name] or IDS[name])
+    c.advance(1, 5)
+end
+
+-- What you cast for a role (none chosen: dps), saved for the character.
+local function kept(c, key)
+    local char = c.saved(ns.id.charDB)
+    local state = type(char) == "table" and char.state or nil
+    local own = type(state) == "table" and state.ownCasts or nil
+    local mine = type(own) == "table" and own.dps or nil
+    return type(mine) == "table" and mine[key] or nil
+end
+
+-- What the word chose, saved for the character.
+local function picked(c, key)
+    local char = c.saved(ns.id.charDB)
+    local state = type(char) == "table" and char.state or nil
+    local choice = type(state) == "table" and state.ownChoice or nil
+    return type(choice) == "table" and choice[key] or nil
+end
+
+local function word(c, text)
+    local from = #c.printed + 1
+    c.slashes[ns.id.slash](text)
+    c.advance(1, 5)
+    local out = {}
+    for i = from, #c.printed do out[#out + 1] = tostring(c.printed[i]) end
+    return table.concat(out, " / ")
+end
+
+local DEAD = { exists = true, dead = true }
+
+-- The gap: a dead felhunter asked for a voidwalker (the rule knew only the
+-- voidwalker and the imp). Red before N58: nothing kept the felhunter, and
+-- the icon showed Summon Voidwalker.
+tests["warlock N58: the demon you summon is kept; a dead one asks for it, not the voidwalker"] = function(t)
+    local c, addon, icon = start()
+    learn(c, "Summon Felhunter")
+    on(c, addon); idle(c, VOID)
+    cast(c, "Summon Felhunter")
+    t.eq(kept(c, "demon"), "Summon Felhunter", "kept for the role")
+    c.setPet(DEAD); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Summon Felhunter", "dead: the felhunter again")
+    c.setPet({ exists = false }); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Summon Felhunter", "none out: the felhunter")
+end
+
+tests["warlock N58: the demon word chooses one; auto goes back to the voidwalker"] = function(t)
+    local c, addon, icon = start()
+    learn(c, "Summon Felhunter"); learn(c, "Summon Succubus")
+    on(c, addon); idle(c, VOID)
+    cast(c, "Summon Felhunter")
+    local line = word(c, "demon succubus")
+    t.ok(line:find("Summon Succubus", 1, true), line)
+    t.eq(picked(c, "demon"), "Summon Succubus")
+    t.eq(kept(c, "demon"), nil, "the word forgets the cast")
+    c.setPet(DEAD); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Summon Succubus", "the chosen demon")
+    line = word(c, "demon auto")
+    t.ok(line:find("auto", 1, true), line)
+    t.eq(picked(c, "demon"), nil, "auto clears the word")
+    t.eq(icon.texture, "tex:Summon Voidwalker", "auto: the voidwalker, as before")
+end
+
+tests["warlock N58: the kept demon and curse over a reload"] = function(t)
+    local c, addon = start()
+    learn(c, "Summon Felhunter"); learn(c, "Curse of Weakness")
+    on(c, addon); idle(c, VOID)
+    cast(c, "Summon Felhunter"); cast(c, "Curse of Weakness")
+    local c2, _, icon2 = start({ account = c.saved(ns.id.accountDB), char = c.saved(ns.id.charDB) })
+    learn(c2, "Summon Felhunter"); learn(c2, "Curse of Weakness")
+    idle(c2, DEAD)
+    t.eq(icon2.texture, "tex:Summon Felhunter", "the felhunter over a reload")
+    fighting(c2, {})
+    t.eq(icon2.texture, "tex:Curse of Weakness", "the curse over a reload")
+end
+
+-- The gap: only Curse of Agony was ever asked for. Red before N58: the
+-- curse you cast was not kept, and the icon showed Curse of Agony.
+tests["warlock N58: the curse you cast is the one asked for while none of yours is on the target"] = function(t)
+    local c, addon, icon = start()
+    learn(c, "Curse of Weakness")
+    on(c, addon); idle(c, VOID)
+    cast(c, "Curse of Weakness")
+    t.eq(kept(c, "curse"), "Curse of Weakness", "kept for the role")
+    fighting(c, {})
+    t.eq(icon.texture, "tex:Curse of Weakness", "nothing on the target: your curse")
+    c.setTargetDebuffs({ ["Curse of Weakness"] = 20 }); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Corruption", "your curse on: no Curse of Agony over it")
+    local line = word(c, "curse auto")
+    t.ok(line:find("auto", 1, true), line)
+    c.setTargetDebuffs({}); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Curse of Agony", "auto: Curse of Agony again")
+end
+
+-- Soul Shards: a count read apart from the kept demon. Offline the fake
+-- says the summon is usable; in the game a summon with no shard is
+-- expected to answer usable false (IsUsableSpell), to be confirmed.
+tests["warlock N58: no Soul Shard holds back the summon; the read failing, then back; the kept demon stays"] = function(t)
+    local c, addon, icon = start()
+    learn(c, "Summon Felhunter")
+    c.setItemCount(SHARD, 3)
+    on(c, addon); idle(c, VOID)
+    cast(c, "Summon Felhunter")
+    c.setPet(DEAD); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Summon Felhunter", "a shard: the felhunter")
+    c.setItemCount(SHARD, 0); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Summon Imp", "no shard: the imp instead")
+    t.ok(said(c):find("Summon Imp", 1, true), said(c))
+    cast(c, "Summon Imp")
+    t.eq(kept(c, "demon"), "Summon Felhunter", "the imp asked for and cast: not kept, the felhunter stays")
+    local count = c.itemCount
+    c.itemCount = function() error("made-up failure") end
+    c.advance(1, 5)
+    t.eq(icon.texture, "tex:Summon Felhunter", "shards not read: the kept one, as before N58")
+    c.itemCount = count; c.advance(1, 5)
+    t.eq(icon.texture, "tex:Summon Imp", "read again, none: the imp")
+    c.setItemCount(SHARD, 2); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Summon Felhunter", "shards back: the kept felhunter again")
+    t.eq(kept(c, "demon"), "Summon Felhunter", "never cleared for want of a shard")
+end
+
 -- Gear ------------------------------------------------------------------------
 
 local VERDICT = { "Can't use: ", "No verdict: ", "Upgrade for ", "Same as ", "Not an upgrade for " }

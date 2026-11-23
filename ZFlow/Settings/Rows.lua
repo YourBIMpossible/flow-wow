@@ -51,7 +51,7 @@ R.ROWS = {
       label = "Show the bank list at the bank",
       help = "A list of what could go to the bank, beside the bank window. Look only: nothing is moved." },
     { key = "loot.junkNote", scope = "account", type = "bool", default = true, group = "gear.loot",
-      synonyms = { "junk", "grey", "loot", "vendor trash", "sell" },
+      synonyms = { "grey", "loot", "vendor trash", "note" },
       label = "Note grey loot",
       help = "A short note in chat when you loot a grey item." },
     { key = "loot.record", scope = "account", type = "bool", default = true, group = "gear.loot",

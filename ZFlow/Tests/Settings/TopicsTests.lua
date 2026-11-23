@@ -108,4 +108,31 @@ return {
         t.eq(T.Pick("nosuchtopic"), nil)
         t.eq(T.Pick(""), nil)
     end,
+
+    -- Lead section 247 item 5 (MyBuddy, LOW). Fails before: T.Pick took the
+    -- first topic whose name held the letters ("ve" gave Travel).
+    ["pick: the best match wins, not the first topic that holds the letters"] = function(t)
+        if not has(t) then return end
+        t.eq(T.Pick("ve").id, "bags", "a word that starts with it beats letters inside another word")
+        t.eq(T.Pick("qu").id, "travel")
+        t.eq(T.Pick("loot gear").id, "gear")
+        t.eq(T.Pick("and").id, T.LIST[1].id, "a tie goes to the list's order")
+    end,
+
+    -- Fails before: T.Pick read no rows, so a synonym named no topic.
+    ["pick: with the rows given, a synonym names its topic; a topic's own name counts more"] = function(t)
+        if not has(t) then return end
+        local rows = {
+            { key = "a.sell", label = "Sell list", group = "bags", synonyms = { "junk", "sell" } },
+            { key = "a.note", label = "Note", group = "gear.loot", synonyms = { "grey", "vendor trash" } },
+            { key = "a.tip", label = "Tip", group = "party", synonyms = { "buffs" } },
+        }
+        t.eq(T.Pick("junk"), nil, "no rows given: only the names")
+        local junk, sell, trash = T.Pick("junk", rows), T.Pick("sell", rows), T.Pick("trash", rows)
+        t.eq(junk and junk.id, "bags")
+        t.eq(sell and sell.id, "bags")
+        t.eq(trash and trash.id, "gear", "a word of a synonym")
+        t.eq(T.Pick("buffs", rows).id, "buffs", "the topic named so, not the one with the synonym")
+        t.eq(T.Pick("dragons", rows), nil)
+    end,
 }

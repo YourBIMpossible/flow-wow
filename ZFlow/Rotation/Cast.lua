@@ -8,7 +8,7 @@ local _, ns = ...
 --
 -- plan      what ns.KeyPlan returned: { states, condition, stealthForm },
 --           plus altItem (N8): an item id the Alt slot uses instead of its
---           spell, or nil
+--           spell, or nil. N8 stays PARTLY until seen in the client.
 -- applied   the plan in place now (the `plan` field of the last result that
 --           was carried out), or nil when nothing is bound yet
 -- lockdown  true while the game refuses binding changes (in combat), false
@@ -145,13 +145,20 @@ end
 --   ok        true
 --   button    an ordered list of { attr, value } for the button; a row with
 --             no value clears that attribute. First the key itself (type,
---             spell, unit, macrotext), then three per modifier slot
---             ("*type-ctrl", "*spell-ctrl", "*unit-ctrl", ...).
+--             spell, unit, item), then three per modifier slot
+--             ("*type-ctrl", "*spell-ctrl", "*unit-ctrl", ...), then
+--             "*item-alt", then "macrotext" and "*macrotext-alt", which are
+--             only ever cleared.
 --             The key casts the suggestion: a heal, an emergency or your own
---             buff on you, Attack as "/startattack", anything else with no
+--             buff on you, Attack as the Attack spell with no unit, an item
+--             suggestion as the item type ("item:ID"), anything else with no
 --             unit (the game's own target rules). With no suggestion it holds
 --             the form's own key spell on your target. The modifier slots
 --             always hold the form's row, on your target.
+--             Section 246 (N63-E): no row ever gives the type "macro". A
+--             macro-type secure button does not act on this client: the press
+--             arrives with the right macro and nothing is cast (legacy Flow
+--             moved Attack off the macro type for the same reason).
 --   header    an ordered list of { attr, value } for the state handler: for
 --             each state 0 .. the stealth state, "key-N" then "ctrl-N",
 --             "shift-N", "alt-N", "more-N"; "" where the plan has nothing.
@@ -211,17 +218,22 @@ function C.Attributes(suggestion, plan, applied, lockdown, form)
 
     local button = {}
     local spell, source = spellOf(suggestion), "suggestion"
-    local kind, unit, macro, item
+    local kind, unit, item
     if spell and C.ATTACK[spell] then
-        kind, macro = "macro", "/startattack"
+        -- Section 246 (N63-E): the Attack spell itself under the name the
+        -- suggestion gives, with no unit (the game's own target rules), as
+        -- legacy Flow did; not a "/startattack" macro, which does not act
+        -- on this client.
+        kind = "spell"
     elseif spell then
         kind = "spell"
         unit = C.UNITS[suggestion.unit] and suggestion.unit or (C.ON_YOU[suggestion.kind] and "player") or nil
     elseif itemOf(suggestion) then
-        -- Section 226 (CF-30): an item (Well Fed food) is used by its id
-        -- through the key's existing macro type, on the player's press.
+        -- Section 226 (CF-30): an item (Well Fed food) is used by its id on
+        -- the player's press. Section 246 (N63-E): through the secure item
+        -- type, item = "item:ID", as legacy Flow did; not a macro.
         item = itemOf(suggestion)
-        kind, macro = "macro", "/use item:" .. item
+        kind = "item"
     else
         spell, source = slotOf(states, form, "key"), "plan"
         if spell then
@@ -233,13 +245,15 @@ function C.Attributes(suggestion, plan, applied, lockdown, form)
     row(button, "type", kind)
     row(button, "spell", kind == "spell" and spell or nil)
     row(button, "unit", unit)
-    row(button, "macrotext", macro)
-    -- N8: with plan.altItem the Alt slot uses that item ("/use item:ID")
-    -- instead of its spell.
+    row(button, "item", item and ("item:" .. item) or nil)
+    -- N8: with plan.altItem the Alt slot uses that item instead of its
+    -- spell. Section 246 (N63-E): as the item type, "*type-alt" = "item" and
+    -- "*item-alt" = "item:ID", the modifier form legacy Flow's slots used.
+    -- N8 stays PARTLY until seen in the client.
     local altItem = apply.plan.altItem
     for _, slot in ipairs(C.MODIFIERS) do
         if slot == "alt" and altItem then
-            row(button, "*type-alt", "macro")
+            row(button, "*type-alt", "item")
             row(button, "*spell-alt", nil)
             row(button, "*unit-alt", nil)
         else
@@ -250,7 +264,11 @@ function C.Attributes(suggestion, plan, applied, lockdown, form)
         end
     end
     -- N8: last, so the rows above keep their places.
-    row(button, "*macrotext-alt", altItem and ("/use item:" .. altItem) or nil)
+    row(button, "*item-alt", altItem and ("item:" .. altItem) or nil)
+    -- Section 246 (N63-E): the macro text attributes are never given a value;
+    -- their rows only clear anything left there, so nothing left over acts.
+    row(button, "macrotext", nil)
+    row(button, "*macrotext-alt", nil)
 
     local header = {}
     for state = 0, lastState() do

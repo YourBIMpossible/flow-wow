@@ -11,7 +11,10 @@ local _, ns = ...
 -- sets the schematic each row gives (c.setTradeSkillSchematic); those reads
 -- are tested in Tests/Core/ClientReadsTests.lua. Nor whether the game fires
 -- TRADE_SKILL_LIST_UPDATE again when late reagent data arrives: the test
--- fires it.
+-- fires it. Section 245: the window opens with TRADE_SKILL_SHOW, then its
+-- list updates; the book reads once RecipeBook.SETTLE seconds pass with no
+-- more of them. The order and count of those events in game: needs game
+-- test.
 local tests = {}
 
 local LINEN, BOLT = 2589, 2996
@@ -44,6 +47,9 @@ end
 
 local function book(c) return at(c.saved(ns.id.charDB), "learned", "facts", "recipeBook") end
 
+-- Section 245 (RB2-1): the book reads once the window's events stop.
+local function settle(c, addon) c.advance(addon.RecipeBook.SETTLE, 1) end
+
 -- The classic window open on these schematics: no C_TradeSkillUI answer.
 local function window(c, addon, bolt)
     c.setRecipes(nil)
@@ -51,6 +57,7 @@ local function window(c, addon, bolt)
     c.setTradeSkillSchematic(2, bolt)
     c.setTradeSkillSchematic(3, { name = ENCHANT, difficulty = "easy", yield = 1, mats = { [LINEN] = 1 } })
     c.fire(addon.RecipeBook.EVENT)
+    settle(c, addon)
 end
 
 local WHOLE = { name = "Bolt of Linen Cloth", difficulty = "optimal", makes = BOLT, yield = 1,
@@ -101,6 +108,7 @@ tests["recipe book classic: a read that fails, then recovers"] = function(t)
     local read = c.tradeSkillSchematic
     c.tradeSkillSchematic = function() error("schematic read failed") end
     c.fire(addon.RecipeBook.EVENT)
+    settle(c, addon)
     t.eq(addon.recipeBook.last(), before, "the failed read reports nothing new")
     t.eq(book(c)["Bolt of Linen Cloth"].mats, { [LINEN] = 2 }, "the book kept as it was")
     t.ok(planned(make(c)), "make still reads the saved book")
@@ -111,6 +119,91 @@ tests["recipe book classic: a read that fails, then recovers"] = function(t)
     t.eq(book(c)["Bolt of Linen Cloth"].mats, { [LINEN] = 3 }, "the read recovers: the new read saved")
     t.eq(book(c)["Bolt of Linen Cloth"].difficulty, "trivial")
     t.eq(addon.recipeBook.last().ok, true)
+end
+
+-- Section 245 -------------------------------------------------------------------
+
+local ROBE = 6238
+local SAVED = {
+    ["Bolt of Linen Cloth"] = { makes = BOLT, yield = 1, mats = { [LINEN] = 2 }, profession = "Tailoring" },
+    ["Brown Linen Robe"] = { makes = ROBE, yield = 1, mats = { [LINEN] = 3 }, profession = "Tailoring" },
+}
+
+-- The window opening as the game does it: shown, then its list answered.
+-- rows: what tradeSkillRows gives (section 245: collapsed, filtered, whole).
+local function opened(c, addon, rows)
+    c.setRecipes(nil)
+    c.setTradeSkillRows(rows)
+    c.setTradeSkillSchematic(2, WHOLE)
+    c.fire(addon.RecipeBook.SHOW)
+    c.fire(addon.RecipeBook.EVENT)
+    settle(c, addon)
+end
+
+-- RB2-2 (HIGH). Fails at 1b4e461f: TRADE_SKILL_LIST_UPDATE read the window
+-- at once, every row it gave was read, so the read counted as every learned
+-- recipe and the robe (under a collapsed header, so not given) was dropped
+-- from the book as no longer learned.
+tests["recipe book classic RB2-2: a collapsed header leaves the saved recipes saved"] = function(t)
+    local c, addon = start({ char = { learned = { facts = { recipeBook = SAVED } } } })
+    opened(c, addon, { name = "Tailoring", collapsed = true,
+                       rows = { { index = 2, name = "Bolt of Linen Cloth", difficulty = "optimal" } } })
+    t.eq(addon.recipeBook.last().ok, true, "the window read")
+    t.eq(book(c)["Bolt of Linen Cloth"].difficulty, "optimal", "the shown recipe read again")
+    t.eq(book(c)["Brown Linen Robe"], SAVED["Brown Linen Robe"], "the hidden recipe still saved")
+    t.ok(planned(make(c)), make(c))
+end
+
+-- RB2-1. Fails at 1b4e461f: only TRADE_SKILL_LIST_UPDATE was heard, so a
+-- window that opened with no list update after it was never read.
+tests["recipe book classic RB2-1: the window opening alone reads it"] = function(t)
+    local c, addon = start()
+    c.setRecipes(nil)
+    c.setTradeSkillRows({ name = "Tailoring", rows = ROWS })
+    c.setTradeSkillSchematic(2, WHOLE)
+    c.fire(addon.RecipeBook.SHOW)
+    t.eq(addon.recipeBook.last(), nil, "not before the window settles")
+    settle(c, addon)
+    t.eq(addon.recipeBook.last().ok, true)
+    t.eq(book(c)["Bolt of Linen Cloth"].mats, { [LINEN] = 2 })
+end
+
+-- RB2-1. Fails at 1b4e461f: each list update read the whole window, five
+-- reads for five updates, the first while the list was still filling.
+tests["recipe book classic RB2-1: a burst of list updates reads once, after it settles"] = function(t)
+    local c, addon = start()
+    local reads, real = 0, addon.RecipeBook.Read
+    addon.RecipeBook.Read = function(...)
+        reads = reads + 1
+        return real(...)
+    end
+    c.setRecipes(nil)
+    c.setTradeSkillRows({ name = "Tailoring", rows = ROWS })
+    c.setTradeSkillSchematic(2, WHOLE)
+    c.fire(addon.RecipeBook.SHOW)
+    for _ = 1, 5 do
+        c.fire(addon.RecipeBook.EVENT)
+        c.advance(addon.RecipeBook.SETTLE / 4, 1)
+    end
+    t.eq(reads, 0, "no read while updates keep coming")
+    settle(c, addon)
+    t.eq(reads, 1, "one read once they stop")
+    t.eq(book(c)["Bolt of Linen Cloth"].mats, { [LINEN] = 2 })
+    addon.RecipeBook.Read = real
+end
+
+-- RB2-1. Passes at 1b4e461f too (nothing read on show then): the window
+-- closing before it settles reads nothing.
+tests["recipe book classic RB2-1: the window closed before it settles is not read"] = function(t)
+    local c, addon = start()
+    c.setRecipes(nil)
+    c.setTradeSkillRows({ name = "Tailoring", rows = ROWS })
+    c.setTradeSkillSchematic(2, WHOLE)
+    c.fire(addon.RecipeBook.SHOW)
+    c.fire(addon.RecipeBook.CLOSE)
+    settle(c, addon)
+    t.eq(addon.recipeBook.last(), nil)
+    t.eq(book(c), nil)
 end
 
 return tests

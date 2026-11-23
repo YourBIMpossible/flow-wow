@@ -253,6 +253,13 @@ local pack = {
     options = {
         -- Reads the rules lean on; one not given is named by diag (187).
         reads = { "buffs", "targetDebuffs" },
+        -- N58 (lead section 241): no own-choice row yet. The imbue you cast
+        -- would be the one to keep, but no rule here suggests an imbue: no
+        -- read gives the enchant on your weapon (see the header), so the
+        -- imbues are Alt key row only. A kept imbue would be said "kept up"
+        -- with nothing keeping it up. Totems: none is suggested either. The
+        -- row (prefix "", key "imbue", word "imbue") waits for a weapon
+        -- enchant read and a rule that uses it.
     },
 
     -- Beyond the sixteen rows, from the old shared tables.

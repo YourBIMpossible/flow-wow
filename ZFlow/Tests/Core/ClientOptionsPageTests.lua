@@ -206,4 +206,33 @@ return {
         h.draw(rows, function() end)
         t.eq(#env.made, before, "nothing new made")
     end,
+
+    -- The legacy slider's job (lead section 247 item 5): a number row moves
+    -- by its step. Holds before and after: the client already took a step.
+    ["optionsPage: a number row moves by the step it is given"] = function(t)
+        local env = gameEnv("settings")
+        local h = ns.make.client(env).optionsPage({ title = "Z-Flow" })
+        local got = {}
+        h.draw({ { kind = "number", key = "n", label = "N", value = 0.5, min = 0, max = 1, step = 0.25, settable = true } },
+            function(key, value) got[#got + 1] = value end)
+        local buttons = find(env, "Button", "UIPanelButtonTemplate")
+        t.eq({ buttons[1].enabled, buttons[2].enabled }, { true, true })
+        buttons[1].scripts.OnClick(buttons[1])
+        buttons[2].scripts.OnClick(buttons[2])
+        t.eq(got, { 0.25, 0.75 })
+    end,
+
+    -- SETTINGS-UX-01 item 4. Fails before: Core/Client.lua draw drew no help.
+    ["optionsPage: a row's help is drawn under it as its own line"] = function(t)
+        local env = gameEnv("settings")
+        local h = ns.make.client(env).optionsPage({ title = "Z-Flow" })
+        h.draw({ { kind = "toggle", key = "a.b", label = "A", value = true, settable = true,
+            under = "Saved for account", help = "What it does, in a sentence." } }, function() end)
+        local texts = {}
+        for _, f in ipairs(find(env, "FontString")) do
+            if f.text then texts[f.text] = true end
+        end
+        t.ok(texts["What it does, in a sentence."], "the help is drawn")
+        t.ok(texts["Saved for account"], "beside who it is saved for")
+    end,
 }

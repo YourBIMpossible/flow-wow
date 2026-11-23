@@ -192,6 +192,124 @@ tests["mage: the switch is kept over a reload"] = function(t)
     t.eq(icon2.texture, "tex:Frost Armor")
 end
 
+-- ------------------------------------- N58 (lead section 241): your choice
+
+-- The better armors; ids made up.
+local ARMOR_IDS = { ["Ice Armor"] = 9020, ["Mage Armor"] = 9021 }
+
+local function learn(c, name)
+    local id = ARMOR_IDS[name]
+    c.setSpellId(name, id)
+    c.setSpell(id, { known = true, usable = true })
+    c.setSpellCooldown(id, false)
+    c.setSpellTexture(id, "tex:" .. name)
+end
+
+-- Your own cast went off, then a frame or so.
+local function cast(c, name)
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-3-0-0-0-0-0", IDS[name] or ARMOR_IDS[name])
+    c.advance(1, 5)
+end
+
+-- The armor kept for the role (none chosen: dps), or nil.
+local function kept(c, key, role)
+    local char = c.saved(ns.id.charDB)
+    local state = type(char) == "table" and char.state or nil
+    local own = type(state) == "table" and state.ownCasts or nil
+    local mine = type(own) == "table" and own[role or "dps"] or nil
+    return type(mine) == "table" and mine[key] or nil
+end
+
+-- The armor chosen with the word, or nil.
+local function picked(c, key)
+    local char = c.saved(ns.id.charDB)
+    local state = type(char) == "table" and char.state or nil
+    local choice = type(state) == "table" and state.ownChoice or nil
+    return type(choice) == "table" and choice[key] or nil
+end
+
+-- The lines a slash word prints, as one.
+local function word(c, text)
+    local from = #c.printed + 1
+    c.slashes[ns.id.slash](text)
+    c.advance(1, 5)
+    local out = {}
+    for i = from, #c.printed do out[#out + 1] = tostring(c.printed[i]) end
+    return table.concat(out, " / ")
+end
+
+local function reload(c)
+    return start({ account = c.saved(ns.id.accountDB), char = c.saved(ns.id.charDB) })
+end
+
+local NO_ARMOR = { ["Arcane Intellect"] = 900 }
+
+tests["mage N58: the armor you cast is the one asked for, over a reload"] = function(t)
+    local c, addon, icon = start()
+    learn(c, "Ice Armor")
+    c.setPlayerBuffs(NO_ARMOR); on(c, addon)
+    t.eq(icon.texture, "tex:Ice Armor", "none cast: the best known, as before")
+    cast(c, "Ice Armor")
+    t.eq(kept(c, "armor"), nil, "the one asked for: not kept (PC-1)")
+    cast(c, "Frost Armor")
+    t.eq(kept(c, "armor"), "Frost Armor", "kept for the role")
+    t.eq(icon.texture, "tex:Frost Armor", "no armor on: the one you cast")
+    c.setPlayerBuffs(BUFFED); c.advance(1, 5)
+    t.eq(icon.shown, false, "your armor up: nothing asked for")
+    c.setPlayerBuffs(NO_ARMOR); c.setTarget(ENEMY); c.setCombat(true); c.advance(1, 5)
+    t.ok(not (icon.shown and icon.texture == "tex:Frost Armor"), "in a fight: no armor, as before")
+    local c2, _, icon2 = reload(c)
+    learn(c2, "Ice Armor")
+    c2.setPlayerBuffs(NO_ARMOR); c2.advance(1, 5)
+    t.eq(icon2.texture, "tex:Frost Armor", "over a reload")
+end
+
+tests["mage N58: the armor word chooses one; one not known holds the usual; auto"] = function(t)
+    local c, addon, icon = start()
+    learn(c, "Ice Armor")
+    c.setPlayerBuffs(NO_ARMOR); on(c, addon)
+    local line = word(c, "armor frost")
+    t.ok(line:find("Frost Armor", 1, true), line)
+    t.eq(picked(c, "armor"), "Frost Armor")
+    t.eq(icon.texture, "tex:Frost Armor", "the chosen armor")
+    line = word(c, "armor mage")
+    t.ok(line:find("Mage Armor", 1, true), line)
+    t.eq(picked(c, "armor"), "Mage Armor")
+    t.eq(icon.texture, "tex:Ice Armor", "Mage Armor not known: the best known holds")
+    learn(c, "Mage Armor"); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Mage Armor", "learned: the chosen armor")
+    local c2, _, icon2 = reload(c)
+    learn(c2, "Ice Armor"); learn(c2, "Mage Armor")
+    c2.setPlayerBuffs(NO_ARMOR); c2.advance(1, 5)
+    t.eq(icon2.texture, "tex:Mage Armor", "the word's choice over a reload")
+    word(c, "armor frost")
+    line = word(c, "armor auto")
+    t.ok(line:find("auto", 1, true), line)
+    t.eq(picked(c, "armor"), nil, "auto clears the choice")
+    t.eq(icon.texture, "tex:Mage Armor", "auto: the best known")
+end
+
+tests["mage N58: a read that fails keeps nothing and clears nothing; read again, fine"] = function(t)
+    local c, addon, icon = start()
+    c.setPlayerBuffs(NO_ARMOR); on(c, addon)
+    learn(c, "Ice Armor"); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Ice Armor")
+    local nameRead = c.spellName
+    c.spellName = function() error("made-up failure") end
+    cast(c, "Frost Armor")
+    t.eq(kept(c, "armor"), nil, "the spell name not read: nothing kept")
+    c.spellName = nameRead; c.advance(1, 5)
+    cast(c, "Frost Armor")
+    t.eq(kept(c, "armor"), "Frost Armor", "read again: kept")
+    local buffsRead = c.playerBuffs
+    c.playerBuffs = function() error("made-up failure") end
+    c.advance(1, 5)
+    t.ok(not (icon.shown and icon.texture == "tex:Frost Armor"), "your buffs not read: no armor asked for")
+    c.playerBuffs = buffsRead; c.advance(1, 5)
+    t.eq(icon.texture, "tex:Frost Armor", "read again: the kept armor")
+    t.eq(kept(c, "armor"), "Frost Armor", "the failed read did not clear it")
+end
+
 -- Gear ------------------------------------------------------------------------
 
 local CLOTH, PLATE = "item:9101", "item:9102"

@@ -38,6 +38,9 @@ local GUESS = "first guess"
 local NOTE = "written by Flow for this pack, 2026-11-23; not read from the game"
 
 local ARMORS = { "Mage Armor", "Ice Armor", "Frost Armor" }
+-- N58 (lead section 241): the armors the armor word names.
+local IS_ARMOR = {}
+for _, name in ipairs(ARMORS) do IS_ARMOR[name] = true end
 local WATER = { "Conjured Water", "Conjured Fresh Water", "Conjured Purified Water", "Conjured Spring Water",
     "Conjured Mineral Water", "Conjured Sparkling Water", "Conjured Crystal Water" }
 local FOOD = { "Conjured Muffin", "Conjured Bread", "Conjured Rye", "Conjured Pumpernickel",
@@ -80,8 +83,17 @@ local function wantsIntellect(s)
     return type(left) == "number" and left < 60
 end
 
+-- N58 (lead section 241): the armor to keep up: the one you cast or chose,
+-- while known; else the best one known, as before (nil when none is).
+-- New: Flow had no armor choice.
+function ns.MageArmor(s)
+    local OC = ns.OwnCasts
+    local kept = OC and OC.Kept(s, IS_ARMOR, "armor") or nil
+    return kept or bestArmor(s)
+end
+
 local function wantsArmor(s, name)
-    return outOfFight(s) and bestArmor(s) == name and armorUp(s) == false
+    return outOfFight(s) and ns.MageArmor(s) == name and armorUp(s) == false
 end
 
 -- Conjure more only on a count read out of a fight: not known is not "none".
@@ -293,6 +305,14 @@ local pack = {
         conjure = {
             { spell = "Conjure Water", items = WATER },
             { spell = "Conjure Food", items = FOOD },
+        },
+        -- N58 (lead section 241): the armor you cast is the one asked for
+        -- (OwnCasts.lua). No prefix: the row takes only the armors. word:
+        -- the word that chooses one of `names`. pick (PC-1): the one asked
+        -- for now; a cast of it is not kept.
+        sticky = {
+            { prefix = "", only = IS_ARMOR, key = "armor", word = "armor", names = ARMORS,
+              pick = function(s) return ns.MageArmor(s) end },
         },
     },
 }

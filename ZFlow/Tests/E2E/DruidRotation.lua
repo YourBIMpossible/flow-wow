@@ -200,4 +200,120 @@ tests["druid: the switch and the role are kept over a reload"] = function(t)
     t.eq(icon2.texture, "tex:Cat Form")
 end
 
+-- ------------------------------------- N58 (lead section 241): your form
+
+-- Spell ids for the forms not in IDS. Plausible, not read here.
+local FORM_IDS = { ["Bear Form"] = 5487, ["Dire Bear Form"] = 9634, ["Travel Form"] = 783 }
+
+local function learn(c, name, id)
+    c.setSpellId(name, id)
+    c.setSpell(id, { known = true, usable = true })
+    c.setSpellCooldown(id, false)
+    c.setSpellTexture(id, "tex:" .. name)
+end
+
+-- A form you cast: the cast event, then a second.
+local function castId(c, name)
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-3-0-0-0-0-0", FORM_IDS[name] or IDS[name])
+    c.advance(1, 5)
+end
+
+-- The form kept for the role (dps unless named), or nil.
+local function kept(c, key, role)
+    local char = c.saved(ns.id.charDB)
+    local state = type(char) == "table" and char.state or nil
+    local own = type(state) == "table" and state.ownCasts or nil
+    local mine = type(own) == "table" and own[role or "dps"] or nil
+    return type(mine) == "table" and mine[key] or nil
+end
+
+-- The form chosen with the word, or nil.
+local function picked(c, key)
+    local char = c.saved(ns.id.charDB)
+    local state = type(char) == "table" and char.state or nil
+    local choice = type(state) == "table" and state.ownChoice or nil
+    return type(choice) == "table" and choice[key] or nil
+end
+
+-- The lines the word prints, as one.
+local function word(c, text)
+    local from = #c.printed + 1
+    c.slashes[ns.id.slash](text)
+    c.advance(1, 5)
+    local out = {}
+    for i = from, #c.printed do out[#out + 1] = tostring(c.printed[i]) end
+    return table.concat(out, " / ")
+end
+
+local function reload(c)
+    return start({ account = c.saved(ns.id.accountDB), char = c.saved(ns.id.charDB) })
+end
+
+-- A damage druid knowing Bear Form and Travel Form, in no form, buffed, an
+-- enemy targeted: Cat Form asked for.
+local function ready()
+    local c, addon, icon = start()
+    learn(c, "Bear Form", FORM_IDS["Bear Form"]); learn(c, "Travel Form", FORM_IDS["Travel Form"])
+    caster(c, BUFFED); c.setTarget(ENEMY); on(c, addon, "dps")
+    return c, addon, icon
+end
+
+-- Gap: before N58 the Druid pack had no form row, so a form you cast was
+-- never kept: the kept and icon checks below are red on the old code.
+tests["druid N58: the form you cast is kept and asked for; the one suggested is not"] = function(t)
+    local c, _, icon = ready()
+    t.eq(icon.texture, "tex:Cat Form", "nothing cast: Cat Form, as before")
+    castId(c, "Cat Form")
+    t.eq(kept(c, "form"), nil, "PC-1: the suggested form cast is not a choice")
+    castId(c, "Bear Form")
+    t.eq(kept(c, "form"), "Bear Form", "kept for the role")
+    caster(c, BUFFED)
+    t.eq(icon.texture, "tex:Bear Form", "in no form: the one you cast")
+    learn(c, "Dire Bear Form", FORM_IDS["Dire Bear Form"]); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Dire Bear Form", "Dire Bear Form known: the kept bear's later rank")
+end
+
+-- Gap: Travel Form and Aquatic Form are for a moment. Red on the old code
+-- at the first kept check (no form row); without `temporary` the Travel
+-- Form cast would replace the kept Bear Form.
+tests["druid N58: Travel Form is never kept; the kept form stays"] = function(t)
+    local c, _, icon = ready()
+    castId(c, "Bear Form")
+    t.eq(kept(c, "form"), "Bear Form", "kept first")
+    castId(c, "Travel Form")
+    t.eq(kept(c, "form"), "Bear Form", "Travel Form: not kept")
+    caster(c, BUFFED)
+    t.eq(icon.texture, "tex:Bear Form", "the kept form still asked for")
+    local line = word(c, "form travel")
+    t.eq(picked(c, "form"), nil, "the word cannot choose Travel Form: " .. line)
+end
+
+tests["druid N58: the form word chooses one; auto clears it; a reload keeps it"] = function(t)
+    local c, _, icon = ready()
+    castId(c, "Bear Form")
+    local line = word(c, "form auto")
+    t.ok(line:find("auto", 1, true), line)
+    t.eq(kept(c, "form"), nil, "auto forgets the cast")
+    t.eq(icon.texture, "tex:Cat Form", "auto: Cat Form")
+    line = word(c, "form bear")
+    t.ok(line:find("Bear Form", 1, true), line)
+    t.eq(picked(c, "form"), "Bear Form")
+    t.eq(icon.texture, "tex:Bear Form", "the chosen form")
+    local c2, _, icon2 = reload(c)
+    learn(c2, "Bear Form", FORM_IDS["Bear Form"])
+    caster(c2, BUFFED); c2.setTarget(ENEMY); c2.advance(1, 5)
+    t.eq(icon2.texture, "tex:Bear Form", "over a reload")
+end
+
+tests["druid N58: the spell name raising once: not kept; read again: kept"] = function(t)
+    local c = ready()
+    local name = c.spellName
+    c.spellName = function() error("made-up failure") end
+    castId(c, "Bear Form")
+    t.eq(kept(c, "form"), nil, "the name could not be read: nothing kept")
+    c.spellName = name
+    castId(c, "Bear Form")
+    t.eq(kept(c, "form"), "Bear Form", "read again: kept")
+end
+
 return tests
