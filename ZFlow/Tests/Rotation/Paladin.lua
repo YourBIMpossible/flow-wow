@@ -110,10 +110,77 @@ return {
     end,
 
     ["spells no rule of this pack uses yet have no row"] = function(t)
-        for _, name in ipairs({ "Holy Strike", "Consecration",
-                                "Judgment", "Crusader Strike", "Shield of the Righteous", "Word of Glory" }) do
+        for _, name in ipairs({ "Shield of the Righteous", "Word of Glory" }) do
             t.eq(ns.Packs.PALADIN.spells[name], nil, name)
         end
+    end,
+
+    -- PC-8 (legacy Classes/Paladin/Rotation.lua:335-353): Holy Strike,
+    -- Judgment and Crusader Strike on an enemy, after Judgement, in both
+    -- lists; Consecration has a row and no rule (no near count is read).
+    ["PC-8: the strikes and Consecration have a row, a first guess with no level"] = function(t)
+        for _, name in ipairs({ "Holy Strike", "Crusader Strike", "Judgment", "Consecration" }) do
+            local row = ns.Packs.PALADIN.spells[name]
+            t.ok(type(row) == "table", name .. " has a row")
+            t.eq(row and row.evidence, "first guess", name)
+            t.eq(row and row.level, nil, name .. ": no level")
+        end
+    end,
+
+    ["PC-8: the strikes come after Judgement, in the old order, in both lists"] = function(t)
+        for _, list in ipairs({ "default", "aoe" }) do
+            local at = {}
+            for i, rule in ipairs(ns.Packs.PALADIN.lists[list]) do
+                if at[rule.spell] == nil then at[rule.spell] = i end
+            end
+            t.ok(type(at["Holy Strike"]) == "number" and at["Judgement"] < at["Holy Strike"], list .. ": Holy Strike")
+            t.ok(type(at["Judgment"]) == "number" and type(at["Holy Strike"]) == "number"
+                and at["Holy Strike"] < at["Judgment"], list .. ": Judgment")
+            t.ok(type(at["Crusader Strike"]) == "number" and type(at["Judgment"]) == "number"
+                and at["Judgment"] < at["Crusader Strike"], list .. ": Crusader Strike")
+        end
+    end,
+
+    ["PC-8: each strike on an enemy only"] = function(t)
+        for _, name in ipairs({ "Holy Strike", "Crusader Strike", "Judgment" }) do
+            t.eq(fires(name, snap()), true, name .. ": an enemy targeted")
+            t.eq(fires(name, snap({ hostile = false })), false, name .. ": no enemy")
+            local unknown = snap()
+            unknown.hostile = nil
+            t.eq(fires(name, unknown), false, name .. ": not known")
+            for _, rule in ipairs(rulesFor(name)) do t.eq(rule.target, true, name .. ": on the target") end
+        end
+    end,
+
+    ["PC-8: Crusader Strike once Judgement is on cooldown; nothing on no enemy"] = function(t)
+        local knows = { "Devotion Aura", "Blessing of Might", "Seal of Righteousness", "Judgement", "Crusader Strike" }
+        local function cooled(over)
+            local s = snap(over, knows)
+            s.spells["Judgement"].onCooldown = true
+            return ns.Choose(s, ns.Packs.PALADIN)
+        end
+        t.eq(advice(nil, knows), "Judgement", "Judgement first")
+        local got = cooled()
+        t.eq(got and got.spell, "Crusader Strike", "Judgement on cooldown")
+        got = cooled(IDLE)
+        t.ok(not (got and got.spell == "Crusader Strike"), "no enemy: no strike")
+        local both = { "Devotion Aura", "Blessing of Might", "Seal of Righteousness", "Judgement",
+                       "Crusader Strike", "Holy Strike" }
+        local s = snap(nil, both)
+        s.spells["Judgement"].onCooldown = true
+        got = ns.Choose(s, ns.Packs.PALADIN)
+        t.eq(got and got.spell, "Holy Strike", "Holy Strike before Crusader Strike, as the old list")
+    end,
+
+    -- PARTLY: Consecration waits for a near-enemy count in the snapshot.
+    ["PC-8: Consecration is never suggested: the snapshot has no near count"] = function(t)
+        t.eq(#rulesFor("Consecration"), 0, "no rule")
+        local _, ignored = ns.SnapshotOf({ enemiesNear = 3 })
+        local named = false
+        for _, name in ipairs(ignored or {}) do
+            if name == "enemiesNear" then named = true end
+        end
+        t.eq(named, true, "enemiesNear is not a snapshot field")
     end,
 
     -- CF-32 / CF-33c: every seal and long blessing a rule can now suggest

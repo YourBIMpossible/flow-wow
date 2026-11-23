@@ -41,9 +41,14 @@ local _, ns = ...
 --   * blessings and cleansing for other players: group blessings, Cleanse
 --     and Purify on anyone but yourself;
 --   * Lay on Hands and Blessing of Protection;
---   * Holy Strike and Consecration (no row in the spell list);
---   * Judgment, Crusader Strike, Shield of the Righteous and Word of Glory
---     (named in the old lists, with no row in the old spell list);
+--   * Consecration in the aoe list (PC-8, PARTLY): it has a row, and its
+--     rule waits for a count of enemies near you in the snapshot (the
+--     client's enemiesNear read is not a snapshot field yet);
+--   * Shield of the Righteous and Word of Glory (named in the old lists,
+--     with no row in the old spell list).
+-- Holy Strike, Judgment and Crusader Strike (PC-8): on an enemy, after
+-- Judgement, in both lists, in the old order. The old lists had one
+-- Judgement rule (seal up) and one Judgment rule (an enemy): no rule per seal.
 --   * advice to use Divine Protection or Divine Shield (the chooser has no
 --     step for it; both are on the Alt key row);
 --   * a seal or blessing chosen on the settings page (the words choose one).
@@ -284,6 +289,15 @@ local execute = tag({
 local single = tag({
     { spell = "Judgement", target = true, reason = "Your seal is up: judge it",
       when = function(s) return s.hostile and sealUp(s) end },
+    -- PC-8 (legacy Classes/Paladin/Rotation.lua:339-344): on an enemy, in
+    -- the old order. In melee reach: a target rule, so the chooser asks the
+    -- spell's range (spells[name].inRange), as Warrior's strikes.
+    { spell = "Holy Strike", target = true, reason = "Holy Strike",
+      when = function(s) return s.hostile == true end },
+    { spell = "Judgment", target = true, reason = "Judgment",
+      when = function(s) return s.hostile == true end },
+    { spell = "Crusader Strike", target = true, reason = "Crusader Strike",
+      when = function(s) return s.hostile == true end },
 })
 
 local aoe = tag({
@@ -355,6 +369,12 @@ local spells = {
     ["Blessing of Sanctuary"] = sp(nil, { "Tanking" }, nil, "whether it is a talent was never checked in the game"),
     ["Attack"]                = sp(nil, { "DPS" }),
     ["Auto Attack"]           = sp(nil, { "DPS" }),
+    -- PC-8: no level; the old spell list's levels were third-party values.
+    ["Holy Strike"]           = sp(nil, { "DPS" }, nil, "the old rotation file's strike"),
+    ["Crusader Strike"]       = sp(nil, { "DPS" }, nil, "the old rotation file's strike; a later client's name"),
+    ["Judgment"]              = sp(nil, { "DPS" }, nil, "a later client's name for Judgement"),
+    ["Consecration"]          = sp(nil, { "DPS" }, nil,
+        "PC-8 (PARTLY): no rule yet; it waits for a near-enemy count in the snapshot"),
     ["Oath of Light"]         = sp(nil, { "Utility" }, nil,
         "N58, B3: WoW: Forever only; not read from a trainer; what it does is not known"),
 }
