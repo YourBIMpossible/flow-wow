@@ -16,15 +16,20 @@ local _, ns = ...
 --   Seal: one you cast this fight (sealFight); else the word's choice
 --   (sealSet); else the one you last cast for this role (seal, saved over a
 --   reload); else the role's: a tank who knows Seal of Fury gets Fury;
---   Command for a role that is not heal or tank, once known; else
+--   Command for a role that is not heal or tank, once known; a healer in a
+--   group (snapshot.grouped) who knows Seal of Wisdom gets it; else
 --   Righteousness.
 --   Blessing (the long ones only; one cast on someone else does not count):
 --   the word's choice (blessingSet); else the one you last cast on yourself
 --   for this role (blessing); else the role's: healing Wisdom, tanking
 --   Kings, once known; else Might; Kings when you know no Might.
+--   A cast of the one picked at that moment is not kept (PC-1). Only the
+--   one picked counts as up (PC-2): another blessing up, or in a fight
+--   another seal up, counts as missing; a Greater blessing counts as its own.
 -- Righteous Fury (CF-33c): for role tank only, out of a fight, when it is
--- not up. An aura (N13): only your own counts (snapshot.ownBuffs, or the
--- aura shown as your stance); another paladin's does not.
+-- not up or has under 30 s left. An aura (N13): only your own counts
+-- (snapshot.ownBuffs, or the aura shown as your stance); another
+-- paladin's does not.
 --
 -- Evidence. Nothing in this pack was read from the game by this file, and the
 -- repository holds no list of client observations for the Paladin, so nothing
@@ -41,7 +46,6 @@ local _, ns = ...
 --     (named in the old lists, with no row in the old spell list);
 --   * advice to use Divine Protection or Divine Shield (the chooser has no
 --     step for it; both are on the Alt key row);
---   * Seal of Wisdom for a healer in a group (needs a group read);
 --   * a seal or blessing chosen on the settings page (the words choose one).
 
 local GUESS = "first guess"
@@ -97,24 +101,49 @@ local function longest(s, prefix)
     return best
 end
 
--- A blessing is wanted out of a fight, with none up or the one up nearly out.
+-- PC-2 (legacy isWanted): a buff on you is `want`, or its Greater form.
+-- The longest time left on it: nil = not up; true = up, time not shown;
+-- a number = seconds left.
+local function leftOn(s, want)
+    local best
+    if type(want) ~= "string" then return nil end
+    for name, left in pairs(s.buffs or {}) do
+        if (name == want or name == "Greater " .. want) and left then
+            if left == true or best == true then
+                best = true
+            elseif type(left) == "number" and (best == nil or left > best) then
+                best = left
+            end
+        end
+    end
+    return best
+end
+
+-- A blessing is wanted out of a fight when `want` (the one picked when not
+-- given) is not up on you, or has under 30 s left (PC-2, legacy
+-- needBlessing): another blessing up counts as missing, so another
+-- paladin's Kings does not hide your Might and a new choice applies at
+-- once; a Greater blessing of the same name counts as up.
 -- Not known whether a fight is on: not wanted. Buffs not read: not wanted.
-function ns.PaladinWantsBlessing(s)
+function ns.PaladinWantsBlessing(s, want)
     if not outOfFight(s) or not buffsRead(s) then return false end
-    local left = longest(s, "Blessing of ")
+    local left = leftOn(s, want or ns.PaladinBlessing(s))
     if left == nil then return true end
     return type(left) == "number" and left < 30
 end
 
--- A seal is wanted when none is up; with a fight on or about to start, also
--- when the one up is nearly out (3 s in the fight, 8 s before the pull; 3 s
--- when it is not known whether the fight is on).
+-- A seal (PC-2, legacy wantSeal and needSeal): out of a fight, wanted only
+-- when no seal at all is up. With a fight on or about to start (an enemy
+-- targeted, or a fight on or not known), wanted when `want` (the one picked
+-- when not given) is not up, so another seal counts as missing, or is
+-- nearly out: 3 s in the fight, 8 s before the pull.
 -- Buffs not read: not wanted (section 183).
-function ns.PaladinWantsSeal(s)
+function ns.PaladinWantsSeal(s, want)
     if not buffsRead(s) then return false end
-    local left = longest(s, "Seal of ")
+    if not fight(s) then return longest(s, "Seal of ") == nil end
+    local left = leftOn(s, want or ns.PaladinSeal(s))
     if left == nil then return true end
-    if not fight(s) or type(left) ~= "number" then return false end
+    if type(left) ~= "number" then return false end
     return left < (inFight(s) and 3 or 8)
 end
 
@@ -154,6 +183,8 @@ function ns.PaladinSeal(s)
     if own then return own end
     if s.role == "tank" and knows(s, "Seal of Fury") then return "Seal of Fury" end
     if command(s) then return "Seal of Command" end
+    -- PC-3 (legacy roleSeal): healing in a group, read as yes.
+    if s.role == "heal" and s.grouped == true and knows(s, "Seal of Wisdom") then return "Seal of Wisdom" end
     return "Seal of Righteousness"
 end
 
@@ -180,20 +211,23 @@ end
 local buffs = {
     { spell = "Devotion Aura", kind = "buff", reason = "No aura is on",
       when = function(s) return hasAura(s) == false end },
-    -- CF-33c: a tank only; out of a fight, buffs read, not up.
+    -- CF-33c: a tank only; out of a fight, buffs read, not up, or (PC-4,
+    -- legacy needFury) under 30 s left.
     { spell = "Righteous Fury", kind = "buff", reason = "Tanking: Righteous Fury (threat)",
       when = function(s)
-          return s.role == "tank" and outOfFight(s) and buffsRead(s) and s.buffs["Righteous Fury"] == nil
+          if not (s.role == "tank" and outOfFight(s) and buffsRead(s)) then return false end
+          local left = s.buffs["Righteous Fury"]
+          return left == nil or (type(left) == "number" and left < 30)
       end },
 }
 -- One rule per blessing and per seal; only the one picked can fire.
 for _, name in ipairs(BLESSINGS) do
     buffs[#buffs + 1] = { spell = name, kind = "buff", reason = "Blessing missing or running out",
-        when = function(s) return ns.PaladinBlessing(s) == name and ns.PaladinWantsBlessing(s) end }
+        when = function(s) return ns.PaladinBlessing(s) == name and ns.PaladinWantsBlessing(s, name) end }
 end
 for _, name in ipairs(SEALS) do
     buffs[#buffs + 1] = { spell = name, kind = "buff", reason = "Seal missing or running out",
-        when = function(s) return ns.PaladinSeal(s) == name and ns.PaladinWantsSeal(s) end }
+        when = function(s) return ns.PaladinSeal(s) == name and ns.PaladinWantsSeal(s, name) end }
 end
 tag(buffs)
 
@@ -396,11 +430,14 @@ local pack = {
         -- CF-32, N12: your own casts kept by Rotation/OwnCasts.lua, by key:
         -- any seal; a blessing only when it is one kept on yourself, and
         -- only once it lands on you (onYou). word: the word that chooses
-        -- one of `names`.
+        -- one of `names`. pick (PC-1, legacy keptFromCast): the one the
+        -- rotation would put up on that snapshot; a cast of it is not kept.
         sticky = {
-            { prefix = "Seal of ", key = "seal", word = "seal", names = SEALS },
+            { prefix = "Seal of ", key = "seal", word = "seal", names = SEALS,
+              pick = function(s) return ns.PaladinSeal(s) end },
             { prefix = "Blessing of ", key = "blessing", only = IS_BLESSING, onYou = true,
-              word = "blessing", names = BLESSINGS },
+              word = "blessing", names = BLESSINGS,
+              pick = function(s) return ns.PaladinBlessing(s) end },
         },
     },
 }

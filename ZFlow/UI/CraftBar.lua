@@ -29,6 +29,11 @@ CraftBar.NOTHING_TO_SMELT = "Nothing to smelt: no ore for a learned recipe."
 CraftBar.NO_GOALS = "No goal to craft in this window."
 -- Section 234: a recipe is made and the next waits for the click.
 CraftBar.NEXT = "Click Start for %s."
+-- Sections 236, 237: each craft the click asked, kept on the character for
+-- the capture (recipe, asked, made, at, stop, why), newest last. Shows
+-- whether the client ran the repeat count: made against asked.
+CraftBar.RUNS_PATH = "learned.craftRuns"
+CraftBar.RUNS_KEEP = 10
 
 function CraftBar.Declare(k)
     local Q = ns.CraftQueue
@@ -36,6 +41,8 @@ function CraftBar.Declare(k)
     -- running: a craft the click asked is under way. asked: that craft was
     -- asked of the game, so a stop asks the game to stop its repeat.
     local running, asked, status = false, false, nil
+    -- The kept record of the craft under way (CraftBar.RUNS_PATH), or nil.
+    local run
     function api.running() return running end
     function api.status() return status end
 
@@ -184,7 +191,31 @@ function CraftBar.Declare(k)
                 panel.draw(rows, act)
             end
 
+            -- Keeps the ask on the character, the oldest dropped past
+            -- CraftBar.RUNS_KEEP. Records only; asks nothing.
+            local function record(recipe, n)
+                local runs = ctx.store:table("char", CraftBar.RUNS_PATH)
+                if type(runs) ~= "table" then
+                    run = nil
+                    return
+                end
+                run = { recipe = recipe, asked = n, made = 0, at = client.now() }
+                runs[#runs + 1] = run
+                while #runs > CraftBar.RUNS_KEEP do table.remove(runs, 1) end
+            end
+
+            -- How the kept run ended. Clears it, so a later stop of the
+            -- same run does not overwrite the reason.
+            local function ended(why, detail)
+                if run then
+                    run.stop = why
+                    run.why = detail
+                end
+                run = nil
+            end
+
             local function stop(why, detail)
+                ended(why)
                 unwatch()
                 stopRepeat()
                 running = false
@@ -219,8 +250,10 @@ function CraftBar.Declare(k)
                     return
                 end
                 running = true
+                record(row.id, row.count - row.made)
                 local ok, failed = craft(row.id, row.count - row.made)
                 if not ok then
+                    ended("refused", failed)
                     stop(failed == "combat" and "combat" or "noCall")
                     return
                 end
@@ -234,6 +267,7 @@ function CraftBar.Declare(k)
             local function finished()
                 local row = Q.Current(q)
                 Q.Made(q)
+                if run then run.made = run.made + 1 end
                 if Q.Current(q) == row then
                     local why, detail = blocked(row)
                     if why then
@@ -245,6 +279,7 @@ function CraftBar.Declare(k)
                     draw()
                     return
                 end
+                ended("done")
                 unwatch()
                 asked = false
                 running = false
@@ -384,7 +419,7 @@ function CraftBar.Declare(k)
         end,
         stop = function()
             unwatch()
-            running, asked = false, false
+            running, asked, run = false, false, nil
             hide()
         end,
     })

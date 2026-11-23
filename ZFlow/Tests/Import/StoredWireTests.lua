@@ -230,8 +230,9 @@ return {
         -- general.groupTip (S17, RESEARCH-S17 section 5); 22 with
         -- nav.learnLegs (lead section 169); 25 with plateThreat.off,
         -- plateThreat.always and plateCombo.off (S8, lead section 178); 27
-        -- with nav.mapFlights and nav.taxiMark (lead section 187 section 7).
-        t.eq(#model:keys(), 27, "the shipped model changed its number of rows")
+        -- with nav.mapFlights and nav.taxiMark (lead section 187 section 7);
+        -- 28 with rotation.sayKept (PC-7, zflow-paladin-carry-2).
+        t.eq(#model:keys(), 28, "the shipped model changed its number of rows")
         for _, key in ipairs(model:keys()) do
             t.ok(not model:explicit(out, key), key .. " counts as chosen")
             t.eq((model:get(out, key)), model:default(key), key)
