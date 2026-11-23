@@ -279,11 +279,12 @@ local function poleOf(client)
     return nil
 end
 
-local function buffFoodKept(client, pack, role, food)
-    if type(food) ~= "table" then return (buffFoodOf(client, pack, role, poleOf(client))) end
+-- pole: the step's one pole read (section 237 FB3-1), asked when needed.
+local function buffFoodKept(client, pack, role, food, pole)
+    if type(food) ~= "table" then return (buffFoodOf(client, pack, role, pole())) end
     if food.on == false then return nil end
     -- The pole changes with no bag change: a kept pick is for one pole answer.
-    local pole = poleOf(client)
+    pole = pole()
     local fresh = food.kept == true and food.pack == pack and food.role == role and food.pole == pole
     if fresh then return food.value end
     if client.inCombat() ~= false then return nil end
@@ -332,6 +333,14 @@ function D.Read(client, pack, ids, role, extra)
         kept = { field = field, name = name, known = known }
         return name, known
     end
+    -- Section 237 FB3-1: the pole is asked of the client once for a read,
+    -- on first need, and the food pick and the fishingPole field share the
+    -- answer (nil, not known, kept too).
+    local poleRead, poleValue = false, nil
+    local function pole()
+        if not poleRead then poleRead, poleValue = true, poleOf(client) end
+        return poleValue
+    end
     return function(field)
         if field == "role" then return roleIn(pack, role) end
         if field == "dead" then return client.dead() end
@@ -374,14 +383,15 @@ function D.Read(client, pack, ids, role, extra)
             if type(client.ownBuffs) ~= "function" then return nil end
             return client.ownBuffs()
         end
-        if field == "buffFood" then return buffFoodKept(client, pack, role, food) end
+        if field == "buffFood" then return buffFoodKept(client, pack, role, food, pole) end
         -- Section 230: no "and ... or nil" here; false must stay false.
         if field == "foodOn" then
             if type(food) ~= "table" or type(food.on) ~= "boolean" then return nil end
             return food.on
         end
         -- Section 230 (BF-2) and GT-2: one read of each for both the food and the gather guards.
-        if field == "mounted" or field == "onTaxi" or field == "fishingPole" then
+        if field == "fishingPole" then return pole() end
+        if field == "mounted" or field == "onTaxi" then
             if type(client[field]) ~= "function" then return nil end
             local ok, v = pcall(client[field])
             if ok and type(v) == "boolean" then return v end
