@@ -228,6 +228,41 @@ tests["craft bar: a stop asks the game to stop the repeat"] = function(t)
     end
 end
 
+-- Section 240: one click, and the client runs the whole repeat count by
+-- itself (the fake repeat runner). The bar counts each finish and asks
+-- nothing more; the run is kept as done with made equal to asked.
+tests["craft bar: the client runs the repeat count from one click"] = function(t)
+    local c = start()
+    local bar = barOf(c)
+    if not bar then t.ok(false, "no craft bar") return end
+    c.setCraftRepeat(2)
+    tick(bar, { [COPPER_BAR] = 3 })
+    c.advance(8, 8)
+    t.eq(c.crafts, { { id = COPPER_BAR, n = 3 } }, "one ask for the whole count")
+    local runs = c.saved(ns.id.charDB).learned.craftRuns
+    t.eq(runs[#runs].asked, 3)
+    t.eq(runs[#runs].made, 3)
+    t.eq(runs[#runs].stop, "done")
+    t.eq(c.repeatStops, 0)
+end
+
+-- Section 240: moving mid-repeat stops the repeat; no finish comes after.
+tests["craft bar: moving mid-repeat stops the client repeat"] = function(t)
+    local c = start()
+    local bar = barOf(c)
+    if not bar then t.ok(false, "no craft bar") return end
+    c.setCraftRepeat(2)
+    tick(bar, { [COPPER_BAR] = 3 })
+    c.advance(2)
+    c.fire("PLAYER_STARTED_MOVING")
+    c.advance(8, 8)
+    local runs = c.saved(ns.id.charDB).learned.craftRuns
+    t.eq(runs[#runs].made, 1)
+    t.eq(runs[#runs].stop, "moving")
+    t.eq(c.repeatStops, 1)
+    t.eq(#c.crafts, 1)
+end
+
 tests["craft bar: nothing to stop when no craft was asked"] = function(t)
     local c = start()
     local bar = barOf(c)
