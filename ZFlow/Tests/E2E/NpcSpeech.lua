@@ -11,7 +11,10 @@ local tests = {}
 local SETTING, BONUS = "general.npcSpeech", "general.bonus"
 local NO_CALL = "Your game client has no text-to-speech call"
 local STORY = "Wolves have been taking our sheep. Slay 4 of them."
-local VOICES = { voices = { { voiceID = 7, name = "Voice A" }, { voiceID = 8, name = "Voice B" } } }
+local NO_DEST = "Your game client gives no local playback destination for speech"
+local VOICES = { voices = { { voiceID = 7, name = "Voice A" }, { voiceID = 8, name = "Voice B" } },
+                 localPlayback = true }
+local NO_LOCAL = { voices = VOICES.voices, localPlayback = false }
 
 -- opts: account, char (saved tables), speech (false: the call absent), on.
 local function boot(opts)
@@ -21,7 +24,11 @@ local function boot(opts)
     c.setSaved(ns.id.charDB, opts.char or {})
     c.setClass("WARRIOR")
     c.setLevel(10)
-    if opts.speech ~= false then c.setSpeech(VOICES) end
+    if opts.speech == "noLocal" then
+        c.setSpeech(NO_LOCAL)
+    elseif opts.speech ~= false then
+        c.setSpeech(VOICES)
+    end
     if opts.before then opts.before(c) end
     local addon = ns.offline.addon(c)
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
@@ -132,6 +139,29 @@ tests["npc speech: a reload keeps the setting"] = function(t)
     c2.setNpcText("progress", "Have you slain them yet?")
     c2.fire("QUEST_PROGRESS")
     t.eq(c2.spoken()[1] and c2.spoken()[1].text, "Have you slain them yet?")
+end
+
+-- Lead section 270: the call is there but the local destination is not known.
+tests["npc speech: no local playback destination - greyed row with its reason, nothing spoken"] = function(t)
+    local c, addon = boot({ speech = "noLocal", on = true })
+    local e = entry(addon)
+    t.ok(e ~= nil, "the row is found by tts")
+    t.eq(e and e.available, false)
+    t.ok(e and type(e.because) == "string" and e.because:find(NO_DEST, 1, true) ~= nil,
+        "the reason: " .. tostring(e and e.because))
+    t.eq(addon.settings:available(SETTING), false)
+    c.setNpcText("detail", STORY)
+    c.fire("QUEST_DETAIL")
+    c.advance(5, 20)
+    t.eq(#c.spoken(), 0)
+    t.eq(c.speakCalls(), 0, "speak never asked")
+end
+
+tests["npc speech: call and destination both there - the row is usable"] = function(t)
+    local _, addon = boot()
+    local e = entry(addon)
+    t.eq(e and e.available, true)
+    t.eq(e and e.because, nil)
 end
 
 return tests

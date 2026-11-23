@@ -69,6 +69,7 @@ Gear\Verdict.lua
 Gear\Tooltip.lua
 Gear\TooltipModule.lua
 Gear\MerchantMarks.lua
+Gear\RewardMark.lua
 Gear\MerchantShow.lua
 Gear\RollHint.lua
 Gear\Sets.lua
@@ -122,6 +123,7 @@ Nav\ServiceSeen.lua
 Nav\Errand.lua
 Nav\RepairStep.lua
 Nav\WeaponMasterStep.lua
+Nav\WeaponMasterSeen.lua
 Nav\QuestSource.lua
 Nav\QuestRead.lua
 Nav\AddonSources.lua
@@ -138,6 +140,7 @@ Nav\Travel.lua
 Nav\Legs.lua
 Nav\QuestItems.lua
 UI\ProfCard.lua
+UI\ProfPick.lua
 UI\DevPanel.lua
 UI\SettingsSlash.lua
 UI\SettingsPage.lua

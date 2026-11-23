@@ -8241,6 +8241,16 @@ function ns.make.client(env)
         return vc
     end
 
+    -- Enum.VoiceTtsDestination.LocalPlayback when it is a readable number,
+    -- else nil: the one source of the speech destination, never guessed.
+    local function localDestination()
+        local enum = env.Enum
+        if type(enum) ~= "table" or type(enum.VoiceTtsDestination) ~= "table" then return nil end
+        local v = enum.VoiceTtsDestination.LocalPlayback
+        if type(v) ~= "number" or hidden(v) then return nil end
+        return v
+    end
+
     function c.speech()
         local vc = voiceChat()
         if not vc then return nil end
@@ -8254,18 +8264,24 @@ function ns.make.client(env)
                 voices[#voices + 1] = one
             end
         end
-        return { voices = voices }
+        -- Lead sections 270 and 274: localPlayback is true only with
+        -- Enum.VoiceTtsDestination.LocalPlayback a number. The
+        -- TextToSpeech_Speak helper alone does not count: its destination on
+        -- this client is unseen. Otherwise false, and the feature is not offered.
+        return { voices = voices, localPlayback = localDestination() ~= nil }
     end
 
-    -- c.speak(text, voice) -> true, or false and why. The game's own helper
-    --   TextToSpeech_Speak(text, voice) first when it is there (it knows
-    --   this client's way of calling); else C_VoiceChat.SpeakText(voiceID,
-    --   text, destination, rate, volume) - the retail order, a first guess
-    --   for 16001 - with destination Enum.VoiceTtsDestination.LocalPlayback,
-    --   and refuses when that enum is absent (never a guessed number); rate 0,
-    --   volume 100.
+    -- c.speak(text, voice) -> true, or false and why. Refuses with "no local
+    --   playback destination" whenever Enum.VoiceTtsDestination.LocalPlayback
+    --   is not a number, helper or not (never a guessed number; lead section
+    --   274). With it known: the game's own helper TextToSpeech_Speak(text,
+    --   voice) when it is there, else C_VoiceChat.SpeakText(voiceID, text,
+    --   destination, rate, volume) - the retail order, a first guess for
+    --   16001 - rate 0, volume 100.
     function c.speak(text, voice)
         if type(text) ~= "string" or text == "" then return false, "no text" end
+        local dest = localDestination()
+        if dest == nil then return false, "no local playback destination" end
         local helper = env.TextToSpeech_Speak
         if type(helper) == "function" then
             local ok, err = call(helper, text, voice)
@@ -8275,15 +8291,6 @@ function ns.make.client(env)
         local vc = voiceChat()
         if not vc or type(vc.SpeakText) ~= "function" then return false, "no text-to-speech call" end
         if type(voice) ~= "table" or type(voice.voiceID) ~= "number" then return false, "no voice" end
-        -- The destination is never guessed: a number that is local playback
-        -- on retail could be another destination here.
-        local dest
-        local enum = env.Enum
-        if type(enum) == "table" and type(enum.VoiceTtsDestination) == "table"
-            and type(enum.VoiceTtsDestination.LocalPlayback) == "number" then
-            dest = enum.VoiceTtsDestination.LocalPlayback
-        end
-        if dest == nil then return false, "no local playback destination" end
         local ok, err = call(vc.SpeakText, voice.voiceID, text, dest, 0, 100)
         if ok then return true end
         return false, tostring(err)
@@ -8441,16 +8448,96 @@ function ns.make.client(env)
     end
     -- N68 (UI/Alerts.lua): c.playAlert() -> true | nil, why. The one alert
     --   sound: PlaySound(SOUNDKIT.RAID_WARNING). why: "noCall" (no
-    --   PlaySound, or the game names no such sound: no number is guessed),
+    --   PlaySound, or the game names no such sound as a number: no number is guessed),
     --   "raised". Sound only; nothing in the game changes. A first guess
     --   from the API pages (API_PlaySound, SOUNDKIT), not heard in game.
     function c.playAlert()
         local kit = env.SOUNDKIT
-        local id = type(kit) == "table" and kit.RAID_WARNING or nil
-        if type(env.PlaySound) ~= "function" or id == nil then return nil, "noCall" end
+        local id
+        if type(kit) == "table" then id = kit.RAID_WARNING end
+        if type(env.PlaySound) ~= "function" or type(id) ~= "number" then return nil, "noCall" end
         local ok = call(env.PlaySound, id)
         if not ok then return nil, "raised" end
         return true
+    end
+    -- G14 (lead sections 226, 229, 236): the quest reward choice and a mark
+    -- on its button (Gear/RewardMark.lua). Both only read or draw a texture
+    -- of ours: nothing takes a reward or clicks a button. New reads, added
+    -- at the end. First guesses, none seen in game on 16001, each name in
+    -- Diag.NAMES so a capture says which exist: GetNumQuestChoices,
+    -- GetQuestItemLink("choice", i), the reward buttons
+    -- QuestInfoRewardsFrameQuestInfoItem<i> (else the older QuestRewardItem<i>),
+    -- the atlas "bags-greenarrow" (else the pet battle "strong" badge), as
+    -- markMerchantButtons draws its marks.
+    -- RM-1 (lead section 275): also a first guess, unseen: choice i is
+    -- reward button i. If the game lays the buttons out in another order
+    -- (or a button is not the choice its number says), the mark lands on
+    -- the WRONG button. Diag.NAMES only says a button exists, not which
+    -- choice it shows; a capture must answer that (the capture question).
+    --   c.questChoices() -> { { index, link } ... }, or nil when the count
+    --     cannot be read. link is nil for a choice the game has not given
+    --     yet (the item not loaded).
+    --   c.markRewardChoice(index) -> true when that choice's button carries
+    --     the mark; nil when no button was found. Every other mark is
+    --     hidden; index nil hides them all.
+    -- In a do block: make.client is near Lua 5.1's 200 locals.
+    do
+        local REWARD_BUTTONS = 10
+        function c.questChoices()
+            local ok, n = call(env.GetNumQuestChoices)
+            if not ok or hidden(n) or type(n) ~= "number" or n ~= n or n < 0 then return nil end
+            local out = {}
+            for i = 1, math.min(math.floor(n), REWARD_BUTTONS) do
+                local okL, link = call(env.GetQuestItemLink, "choice", i)
+                if not okL or hidden(link) or type(link) ~= "string" or link == "" then link = nil end
+                out[#out + 1] = { index = i, link = link }
+            end
+            return out
+        end
+
+        local rewardBadges = {}
+        local function rewardBadge(i)
+            local b
+            for _, name in ipairs({ "QuestInfoRewardsFrameQuestInfoItem" .. i, "QuestRewardItem" .. i }) do
+                local okB, found = pcall(function() return env[name] end)
+                if okB and type(found) == "table" then
+                    b = found
+                    break
+                end
+            end
+            if b == nil then return nil end -- not kept: it may come later
+            local known = rewardBadges[b]
+            if known ~= nil then return known or nil end
+            local okT, t = method(b, "CreateTexture", nil, "OVERLAY", nil, 7)
+            if not okT or t == nil then
+                rewardBadges[b] = false
+                return nil
+            end
+            method(t, "SetSize", 18, 18)
+            method(t, "SetPoint", "TOPLEFT", b, "TOPLEFT", -2, 2)
+            local okA, set = method(t, "SetAtlas", "bags-greenarrow")
+            if not okA or set == false then
+                method(t, "SetTexture", "Interface\\PetBattles\\BattleBar-AbilityBadge-Strong")
+            end
+            method(t, "Hide")
+            rewardBadges[b] = t
+            return t
+        end
+        function c.markRewardChoice(index)
+            local shown = nil
+            for i = 1, REWARD_BUTTONS do
+                local t = rewardBadge(i)
+                if t then
+                    if i == index then
+                        method(t, "Show")
+                        shown = true
+                    else
+                        method(t, "Hide")
+                    end
+                end
+            end
+            return shown
+        end
     end
     return c
 end

@@ -84,6 +84,7 @@ return {
         "Gear/Tooltip.lua",
         "Gear/TooltipModule.lua",
         "Gear/MerchantMarks.lua",
+        "Gear/RewardMark.lua",
         "Gear/MerchantShow.lua",
         "Gear/RollHint.lua",
         "Gear/Sets.lua",
@@ -141,6 +142,7 @@ return {
         "Nav/Errand.lua",
         "Nav/RepairStep.lua",
         "Nav/WeaponMasterStep.lua",
+        "Nav/WeaponMasterSeen.lua",
         "Nav/QuestSource.lua",
         "Nav/QuestRead.lua",
         "Nav/AddonSources.lua",
@@ -157,6 +159,7 @@ return {
         "Nav/Legs.lua",
         "Nav/QuestItems.lua",
         "UI/ProfCard.lua",
+        "UI/ProfPick.lua",
 
         -- On screen (after Nav: the panel uses its saved-point rules)
         "UI/DevPanel.lua",

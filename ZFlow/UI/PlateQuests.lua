@@ -46,6 +46,7 @@ PQ.HELP = "quest marks on enemy nameplates: what shows and why; questmarks on or
 PQ.OFF = "plateQuests.off"
 PQ.DROPS = "learned.drops"
 PQ.WAIT = 0.5
+PQ.LOOK = 0.5      -- seconds between looks at the switch (lead section 274 PM-3)
 PQ.MARK = "!"
 PQ.MAX_LABELS = 2
 PQ.COLOR = { 1, 0.82, 0 }
@@ -77,14 +78,69 @@ local function ids(v)
 end
 
 -- A function of a Questie module, called both ways Questie writes them, as
--- Nav/QuestRead.lua. An error is no answer.
+-- Nav/QuestRead.lua. Every lookup here answers a table: anything else from
+-- either form (an error, a number, a text) is no answer (lead section 274
+-- PM-2).
 local function dbCall(db, name, id)
     if type(db) ~= "table" or type(db[name]) ~= "function" then return nil end
     local ok, v = pcall(db[name], id)
-    if ok and v ~= nil then return v end
+    if ok and type(v) == "table" then return v end
     ok, v = pcall(db[name], db, id)
-    if ok then return v end
+    if ok and type(v) == "table" then return v end
     return nil
+end
+
+-- The names Questie gives for one objective: its own Text, and the name of
+-- its creature or item. Lowercase; empty when Questie gives none.
+local function odNames(db, od)
+    local out = {}
+    local function put(s)
+        if type(s) == "string" and s ~= "" then out[#out + 1] = s:lower() end
+    end
+    put(od.Text)
+    local fn
+    if od.Type == "monster" then fn = "GetNPC" elseif od.Type == "item" then fn = "GetItem" end
+    if fn then
+        for _, id in ipairs(ids(od.Id)) do
+            local thing = dbCall(db, fn, id)
+            if thing then put(thing.name) end
+        end
+    end
+    return out
+end
+
+local function named(names, text)
+    for _, n in ipairs(names) do
+        if text:find(n, 1, true) then return true end
+    end
+    return false
+end
+
+-- Lead section 274 PM-1: which of Questie's objectives log objective i is.
+-- Where Questie names them, by name: data[i] when its name is in the
+-- objective's text, else the one other objective whose name is; none, or
+-- more than one: nil (no mark, never a guess). Where Questie names none of
+-- them, by place (data[i]), as Nav/QuestRead.lua takes it.
+local function matchOd(db, data, i, text)
+    local all, anyNamed = {}, false
+    for j, od in ipairs(data) do
+        if type(od) == "table" then
+            all[j] = odNames(db, od)
+            if #all[j] > 0 then anyNamed = true end
+        end
+    end
+    if not anyNamed then return data[i] end
+    if type(text) ~= "string" then return nil end
+    local lower = text:lower()
+    if all[i] and named(all[i], lower) then return data[i] end
+    local found
+    for j, names in pairs(all) do
+        if j ~= i and named(names, lower) then
+            if found ~= nil then return nil end
+            found = data[j]
+        end
+    end
+    return found
 end
 
 -- The creatures you looted itemId from yourself.
@@ -122,7 +178,8 @@ function PQ.Index(rows, db, book)
             if type(quest) == "table" then data = quest.ObjectiveData end
             if type(data) == "table" and type(row.objectives) == "table" then
                 for i, o in ipairs(row.objectives) do
-                    local od = data[i]
+                    local od
+                    if type(o) == "table" and o.done ~= true then od = matchOd(db, data, i, o.text) end
                     if type(o) == "table" and o.done ~= true and type(od) == "table" then
                         local label = PQ.Progress(o.text) or PQ.MARK
                         if od.Type == "monster" then
@@ -184,7 +241,8 @@ function PQ.Declare(k, diag)
     local shownOn = {}       -- [unit] = true: a mark showing
     local index              -- nil until read
     local source = "none"
-    local cancelPlates, pending
+    local cancelPlates, pending, cancelLook
+    local wasOn = false
 
     local function on() return ctx ~= nil and ctx.settings:get(PQ.OFF) ~= true end
 
@@ -305,6 +363,16 @@ function PQ.Declare(k, diag)
             ctx = c
             cancelPlates = ask(c.client, "plates", onPlate)
             for _, event in ipairs(PQ.EVENTS) do c.bus:on(PQ.NAME, event, soon) end
+            -- Lead section 274 PM-3: the settings tell no one of a change,
+            -- so the switch alone is looked at every PQ.LOOK seconds (one
+            -- setting read, no rebuild): off hides every mark, on reads again.
+            wasOn = on()
+            cancelLook = c.sched:every(PQ.NAME, PQ.LOOK, function()
+                local now = on()
+                if now == wasOn then return end
+                wasOn = now
+                if now then soon() else hideAll() end
+            end, { when = "always" })
             soon()
         end,
         stop = function()
@@ -312,6 +380,8 @@ function PQ.Declare(k, diag)
             cancelPlates = nil
             if type(pending) == "function" then pcall(pending) end
             pending = nil
+            if type(cancelLook) == "function" then pcall(cancelLook) end
+            cancelLook = nil
             hideAll()
             inView, marks, shownOn, index, source = {}, {}, {}, nil, "none"
         end,

@@ -371,8 +371,9 @@ local spells = {
     ["Auto Attack"]           = sp(nil, { "DPS" }),
     -- PC-8: no level; the old spell list's levels were third-party values.
     ["Holy Strike"]           = sp(nil, { "DPS" }, nil, "the old rotation file's strike"),
-    ["Crusader Strike"]       = sp(nil, { "DPS" }, nil, "the old rotation file's strike; a later client's name"),
-    ["Judgment"]              = sp(nil, { "DPS" }, nil, "a later client's name for Judgement"),
+    ["Crusader Strike"]       = sp(nil, { "DPS" }, nil, "the old rotation file's strike; a live rule, suggested only while known"),
+    ["Judgment"]              = sp(nil, { "DPS" }, nil,
+        "the old rotation file's rule (an enemy); a live rule, suggested only while known"),
     ["Consecration"]          = sp(nil, { "DPS" }, nil,
         "PC-8 (PARTLY): no rule yet; it waits for a near-enemy count in the snapshot"),
     ["Oath of Light"]         = sp(nil, { "Utility" }, nil,
