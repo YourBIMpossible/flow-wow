@@ -76,15 +76,20 @@ ns.KitTheme = {
         off = "GameFontDisableSmall",
         big = "GameFontNormalLarge",
     },
+    -- Pictures a window puts on its own rows, by what they mean: a window
+    -- file takes them from here (Kit.look.icon.questInLog) and names no
+    -- picture itself. The game's own quest marks. First guesses, none seen
+    -- in game on 16001; a picture the client lacks leaves the row without
+    -- an icon.
+    icon = {
+        questInLog = "Interface\\GossipFrame\\ActiveQuestIcon",
+        questAvailable = "Interface\\GossipFrame\\AvailableQuestIcon",
+        questLater = "Interface\\GossipFrame\\IncompleteQuestIcon",
+        questNotForYou = "Interface\\Buttons\\UI-GroupLoot-Pass-Up",
+    },
     art = {
-        frame = "ButtonFrameTemplate",
-        close = "UIPanelCloseButton",
-        button = "UIPanelButtonTemplate",
-        check = "UICheckButtonTemplate",
-        input = "InputBoxTemplate",
-        search = "SearchBoxTemplate",
-        scroll = "UIPanelScrollFrameTemplate",
-        tab = "PanelTabButtonTemplate",
+        -- Pictures only. The game's templates are named in Core/Client.lua
+        -- alone (its kitWindow), each keyed to its row of UI/Kit/Parts.lua.
         rowHighlight = "Interface\\QuestFrame\\UI-QuestTitleHighlight",
         topicHighlight = "Interface\\Buttons\\UI-Listbox-Highlight",
         iconBorder = "Interface\\Buttons\\UI-Quickslot2",

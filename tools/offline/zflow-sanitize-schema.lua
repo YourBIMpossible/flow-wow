@@ -96,6 +96,9 @@ local DIAG = fields({
     -- said of a template, atlas, texture path or client name. No player,
     -- realm or chat text is in it, so it is kept as it is.
     kitProbe = fields({ at = "num", interface = "str", rows = map("str", "str") }),
+    -- What each kit window drew (lead section 319; UI/KitProbe.lua): window id,
+    -- then part name, then "first" or "fallback". No player text.
+    kitDrawn = map("str", map("str", "str")),
     snaps = list(SNAP),
 })
 
