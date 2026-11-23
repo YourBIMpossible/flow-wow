@@ -30,7 +30,8 @@ local function setItemInfo(c, map)
 end
 
 -- opts: bag (stacks, or false for unread), setting (true / false / nil: no
--- row declared), saved (account), char (character saved data), noFrames.
+-- row declared), saved (account), char (character saved data), noFrames,
+-- noReservations (the kernel has no reservations module).
 local function start(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
@@ -46,6 +47,7 @@ local function start(opts)
     if opts.setting ~= nil then
         k:Setting({ key = L.SETTING, scope = "char", type = "bool", default = true, label = "Vendor sell list" })
     end
+    if not opts.noReservations then ns.Reservations.Declare(k) end
     local api = L.Declare(k)
     k:Boot()
     c.fire("ADDON_LOADED", ns.id.addon)
@@ -180,6 +182,30 @@ tests["sell list panel: look only - no buttons, no clicks, only the two reads"] 
         local n = tostring(name):lower()
         t.ok(not (n:find("^sell$") or n:find("buy") or n:find("click")), "no acting function: " .. n)
     end
+end
+
+tests["sell list panel: no reservations module is unavailable: nothing offered, and it says so"] = function(t)
+    local _, c, api = start({ noReservations = true })
+    c.setMerchantOpen(true)
+    local lines = api.last() or {}
+    t.eq(lines[1], L.RESERVATIONS_UNKNOWN, "the first line says it")
+    t.ok(not has(lines, ns.ItemPresent.SELL_HEADER), "no sell advice")
+    t.ok(not has(lines, "3 x Broken Fang: 4c each, 12c (the item's own sell price)"), "nothing offered")
+    t.ok(has(lines, "Hearthstone: can't be sold to a merchant"), "what is kept is still said")
+end
+
+tests["sell list lines: bags not read says only that, even when unavailable"] = function(t)
+    local c = ns.make.fakeClient()
+    local lines = L.Lines(c, nil, nil, { status = ns.Reservations.UNAVAILABLE })
+    t.eq(lines, { "Can't list what to sell: " .. ns.ItemSell.BAGS_UNREAD })
+end
+
+tests["sell list lines: none changes nothing"] = function(t)
+    local c = ns.make.fakeClient()
+    c.setBagItems({ { item = 97, count = 3 } })
+    setItemInfo(c, INFO)
+    local r = { status = ns.Reservations.NONE }
+    t.eq(L.Lines(c, nil, L.Held(r), r), L.Lines(c, nil))
 end
 
 return tests
