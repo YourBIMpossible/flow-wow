@@ -283,13 +283,19 @@ end
 -- timing mark says it happened.
 tests["key actions: a read that raises is counted and marked, the tick goes on"] = function(t)
     local c, addon = start()
-    local KA = ns.KeyActions
+    -- The add-on loaded on the fake has its own namespace: its KeyActions.
+    local KA = addon.KeyActions
     local read = KA.Read
     t.eq(addon.diag.timing.ROTATION_KEY_ACTIONS_RAISED, nil, "no mark before")
-    KA.Read = function() error("a read that raises") end
+    local asked = 0
+    KA.Read = function()
+        asked = asked + 1
+        error("a read that raises")
+    end
     local ran = pcall(c.advance, 1, 5)
     KA.Read = read
     t.ok(ran, "no error escapes the tick")
+    t.ok(asked > 0, "the key actions were read: " .. asked)
     local counts = type(addon.rotationDriver.counts) == "function" and addon.rotationDriver.counts() or {}
     t.ok((counts.keyActionsRaised or 0) >= 1, "counted")
     t.ok(type(addon.diag.timing.ROTATION_KEY_ACTIONS_RAISED) == "table", "the diag timing has the mark")
