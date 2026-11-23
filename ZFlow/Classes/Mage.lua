@@ -31,8 +31,8 @@ local _, ns = ...
 --   * Counterspell on anyone's cast but your target's: no read of another
 --     unit's cast;
 --   * Amplify and Dampen Magic: no rule asks for them;
---   * Arcane Brilliance, and anything cast on another player: needs a party
---     member read.
+--   * Arcane Brilliance, and anything cast on another player (P-PARTY:
+--     Arcane Intellect for your group is only shown, never cast).
 
 local GUESS = "first guess"
 local NOTE = "written by Flow for this pack, 2026-11-23; not read from the game"
@@ -217,9 +217,14 @@ local pack = {
         aoe = join(buffs, aoe, single),
     },
 
-    -- Nothing is cast on the group yet (Arcane Brilliance, Arcane Intellect
-    -- on others: needs a party member read; a task, see the header).
-    groups = {},
+    -- Arcane Intellect for those in your group who use mana, out of a
+    -- fight: only shown (P-PARTY, Rotation/Group.lua; and on the tooltip);
+    -- nothing is cast on anyone. Arcane Brilliance counts. First guesses.
+    groups = {
+        { spell = "Arcane Intellect", aura = { "Arcane Intellect", "Arcane Brilliance" },
+          who = { "MAGE", "PRIEST", "WARLOCK", "SHAMAN", "DRUID", "PALADIN", "HUNTER" },
+          minutes = 30, rebuff = 60, evidence = GUESS },
+    },
 
     -- A mage has no heal of its own: the rows are empty, not unknown.
     heals = {

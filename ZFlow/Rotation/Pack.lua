@@ -9,11 +9,20 @@ local _, ns = ...
 --   resources    { { name, forms, evidence }, ... }
 --   maintain     { { spell, seconds, evidence }, ... }  buffs kept on yourself
 --   lists        { default = { rule, ... }, aoe = { ... } }
---   groups       { { spell, evidence }, ... }  out-of-combat group buffs
+--   groups       { { spell, aura, who, slot, minutes, rebuff, when, evidence }, ... }
+--                out-of-combat buffs for your group, only shown (P-PARTY,
+--                Rotation/Group.lua; also the tooltip, Rotation/GroupTip.lua):
+--                aura the buff names that count as this one (default the
+--                spell); who "all" or a list of kinds (tank, healer, melee,
+--                caster, ranged) and class tokens; slot: rows sharing one
+--                give each player only the first that fits (a paladin's
+--                blessings); rebuff: seconds left at which it counts as
+--                missing (default 30); when(snapshot): yours to cast now
 --   heals        { self = { spell, ... }, hots = { ... }, lingers = { [spell] = seconds } }
 --   interrupts   { { spell, near, forms = { [formName or "none"] = true }, evidence }, ... }
 --   breakers     { { spell, types = { ROOT = true }, any, form, evidence }, ... }
---   dispels      { { spell, types = { Poison = true }, evidence }, ... }  yourself only
+--   dispels      { { spell, types = { Poison = true }, evidence }, ... }  yours; the
+--                same rows are only shown for your group (P-PARTY)
 --   keys         { [formName or "none" or "stealth"] = { key, ctrl, shift, alt, more } }
 --   weights      { [role] = { evidence, values = { [stat] = number } } } or nil per role
 --   proficiency  { evidence, [itemClass] = { [subclass] = true or n } }  n: from level n
@@ -38,6 +47,13 @@ P.KEYS = {
 }
 P.PROVENANCE_KEYS = { "author", "date", "method", "facts" }
 P.EVIDENCE = { ["observed"] = true, ["first guess"] = true, ["authored"] = true }
+-- P-PARTY: what a group row's `who` may name: the kinds Rotation/GroupTip.lua
+-- tells a player by, and the class tokens.
+P.GROUP_KINDS = { tank = true, healer = true, melee = true, caster = true, ranged = true }
+P.CLASSES = {
+    WARRIOR = true, PALADIN = true, HUNTER = true, ROGUE = true, PRIEST = true, SHAMAN = true,
+    MAGE = true, WARLOCK = true, DRUID = true, DEATHKNIGHT = true,
+}
 
 local function add(problems, fmt, ...)
     problems[#problems + 1] = string.format(fmt, ...)
@@ -134,14 +150,60 @@ function ns.PackCheck(pack)
         checkRules(pack, pack[key], key, problems)
     end
 
-    -- Removing things from other players is not advised: a pack's dispels are for yourself.
+    -- Look only for other players (P-PARTY): a pack's dispels are your own;
+    -- your group's are only shown, from the same rows, never cast.
     if type(pack.dispels) == "table" then
         for i, rule in ipairs(pack.dispels) do
             if type(rule) == "table" and (rule.group or (rule.unit ~= nil and rule.unit ~= "player")) then
-                add(problems, "dispels[%d]: a group dispel entry", i)
+                add(problems, "dispels[%d]: a group dispel entry (a pack's dispels are your own; "
+                    .. "your group's are only shown, from the same rows, never cast)", i)
             end
         end
     end
+
+    -- P-PARTY: the group rows (Rotation/Group.lua). Their spell, when and
+    -- evidence are checked above with the other rule lists.
+    if type(pack.groups) == "table" then
+        for i, row in ipairs(pack.groups) do
+            if type(row) == "table" then
+                local at = string.format("groups[%d]", i)
+                local who = row.who
+                if who ~= "all" then
+                    if type(who) ~= "table" or #who == 0 then
+                        add(problems, "%s: who is not \"all\" or a list of kinds and classes", at)
+                    else
+                        for j, w in ipairs(who) do
+                            if not (P.GROUP_KINDS[w] or P.CLASSES[w]) then
+                                add(problems, "%s: who[%d] is not a kind or a class", at, j)
+                            end
+                        end
+                    end
+                end
+                if row.aura ~= nil then
+                    local fine = type(row.aura) == "table" and #row.aura > 0
+                    if fine then
+                        for _, name in ipairs(row.aura) do
+                            if type(name) ~= "string" or name == "" then fine = false end
+                        end
+                    end
+                    if not fine then add(problems, "%s: aura is not a list of buff names", at) end
+                end
+                if row.slot ~= nil and (type(row.slot) ~= "string" or row.slot == "") then
+                    add(problems, "%s: slot is not a name", at)
+                end
+                for _, key in ipairs({ "minutes", "rebuff" }) do
+                    local v = row[key]
+                    if v ~= nil and (type(v) ~= "number" or v ~= v or v < 0) then
+                        add(problems, "%s: %s is not a number", at, key)
+                    end
+                end
+                if row.unit ~= nil then
+                    add(problems, "%s: names a unit; group rows are only shown, never cast on anyone", at)
+                end
+            end
+        end
+    end
+    if pack.groupBuffs ~= nil then add(problems, "groupBuffs: the group rows are in groups now") end
 
     if type(pack.heals) == "table" then
         if pack.heals.self == nil then add(problems, "missing key \"heals.self\"") end

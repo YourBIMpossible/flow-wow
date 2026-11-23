@@ -361,8 +361,22 @@ local pack = {
         aoe = join(buffs, melee, aoe, execute, single),
     },
 
-    -- Nothing is cast on the group.
-    groups = {},
+    -- Your group's blessings, out of a fight: only shown (P-PARTY,
+    -- Rotation/Group.lua; and on the tooltip, Rotation/GroupTip.lua);
+    -- nothing is cast on anyone. One each (slot "blessing"), the first that
+    -- fits: Kings for a tank; Might for melee; Wisdom for casters, healers
+    -- and hunters; Kings for anyone else (Flow's Classes/Paladin/Rotation.lua
+    -- 408-419). The greater blessings count. First guesses.
+    groups = {
+        { spell = "Blessing of Kings", aura = { "Blessing of Kings", "Greater Blessing of Kings" },
+          who = { "tank" }, slot = "blessing", minutes = 5, rebuff = 30, evidence = GUESS },
+        { spell = "Blessing of Might", aura = { "Blessing of Might", "Greater Blessing of Might" },
+          who = { "melee", "tank" }, slot = "blessing", minutes = 5, rebuff = 30, evidence = GUESS },
+        { spell = "Blessing of Wisdom", aura = { "Blessing of Wisdom", "Greater Blessing of Wisdom" },
+          who = { "caster", "healer", "ranged" }, slot = "blessing", minutes = 5, rebuff = 30, evidence = GUESS },
+        { spell = "Blessing of Kings", aura = { "Blessing of Kings", "Greater Blessing of Kings" },
+          who = "all", slot = "blessing", minutes = 5, rebuff = 30, evidence = GUESS },
+    },
 
     heals = {
         self = { "Flash of Light", "Holy Light" },

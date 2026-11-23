@@ -52,6 +52,22 @@ function I.Mark(view)
     return view.suggestion.step == "farOpener" and "far" or nil
 end
 
+-- P-PARTY: the caption under the icon for a look-only suggestion (for
+-- another player, Rotation/Group.lua): "<spell> on <name>", or "<spell>
+-- on <party unit>" when no name was read; nil for anything else (no
+-- caption). Shown live only: the name is never saved or logged.
+function I.Words(view)
+    if type(view) ~= "table" then return nil end
+    local s = view.suggestion
+    if type(s) ~= "table" or s.look ~= true then return nil end
+    local spell = I.Spell(view)
+    if not spell then return nil end
+    local who = s.member
+    if type(who) ~= "string" or who == "" then who = s.unit end
+    if type(who) ~= "string" or who == "" then return spell end
+    return spell .. " on " .. who
+end
+
 local refused = setmetatable({}, { __mode = "k" })
 
 -- The layout row on kernel k, declared the first time it is asked for; nil
@@ -151,7 +167,11 @@ function I.Declare(k)
             local function mark(look)
                 if type(icon.mark) == "function" then pcall(icon.mark, look) end
             end
+            local function caption(words)
+                if type(icon.caption) == "function" then pcall(icon.caption, words) end
+            end
             local function hide()
+                caption(nil)
                 mark(nil)
                 icon.setTexture(nil)
                 icon.show(false)
@@ -186,6 +206,7 @@ function I.Declare(k)
                 end
                 if icon.setTexture(tex) then
                     mark(I.Mark(view))
+                    caption(I.Words(view))
                     icon.show(true)
                 else
                     hide()

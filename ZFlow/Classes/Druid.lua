@@ -286,18 +286,16 @@ local pack = {
         aoe = join(buffs, melee, cat, bearAoe, bear, casterDamage),   -- (several mobs: no roots, they keep coming)
     },
 
-    -- Out of a fight only; the chooser in this batch does not use them.
+    -- Your group's buffs, out of a fight, in caster form: only shown, by the
+    -- rotation's group step (P-PARTY, Rotation/Group.lua) and on another
+    -- player's tooltip (Rotation/GroupTip.lua); nothing is cast on anyone.
+    -- aura: the buffs that count as this one. who: "all", or the kinds and
+    -- classes it is worth having on (Flow's Classes/Druid/Rotation.lua:213-221).
+    -- First guesses. (One list: groupBuffs is folded in here.)
     groups = {
-        { spell = "Mark of the Wild", minutes = 30, rebuff = 60, evidence = GUESS },
-        { spell = "Thorns", minutes = 10, rebuff = 30, evidence = GUESS },
-    },
-
-    -- Read on another player's tooltip (Rotation/GroupTip.lua): text only,
-    -- nothing is cast. aura: the buffs that count as this one. who: "all",
-    -- or the kinds and classes it is worth having on. First guesses.
-    groupBuffs = {
-        { spell = "Mark of the Wild", aura = { "Mark of the Wild", "Gift of the Wild" }, who = "all", evidence = GUESS },
-        { spell = "Thorns", who = { "tank", "WARRIOR" }, evidence = GUESS },
+        { spell = "Mark of the Wild", aura = { "Mark of the Wild", "Gift of the Wild" }, who = "all",
+          minutes = 30, rebuff = 60, when = caster, evidence = GUESS },
+        { spell = "Thorns", who = { "tank", "WARRIOR" }, minutes = 10, rebuff = 30, when = caster, evidence = GUESS },
     },
 
     heals = {
