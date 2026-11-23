@@ -136,6 +136,10 @@ return {
         t.eq(by.seal and by.seal.onYou, nil, "a seal only ever goes on you")
         t.eq(by.seal and by.seal.word, "seal", "the seal word")
         t.eq(by.blessing and by.blessing.word, "blessing", "the blessing word")
+        t.eq(by.seal and by.seal.fightOnly, true, "N58: a seal cast in a fight is for that fight")
+        t.eq(by.aura and by.aura.word, "aura", "N58: the aura word")
+        t.eq(by.aura and by.aura.only, { ["Devotion Aura"] = true, ["Retribution Aura"] = true,
+                                        ["Concentration Aura"] = true }, "N58: the auras in the pack")
     end,
 
     -- CF-32: the seal kept up. A seal you cast yourself (snapshot.chosen.seal)

@@ -1,7 +1,9 @@
 local _, ns = ...
 
 -- The seal and the blessing you put up yourself, and the ones you choose
--- with a word (CF-32, N12; lead sections 226 to 228).
+-- with a word (CF-32, N12; lead sections 226 to 228). N58 (lead section
+-- 241): the same for every class with a choice to keep: an aura, a
+-- stance, a form, an aspect, an armor, a demon, a curse.
 --
 -- Your casts. It watches your own casts that went off
 -- (UNIT_SPELLCAST_SUCCEEDED, unit "player"). A cast whose name matches a
@@ -28,6 +30,19 @@ local _, ns = ...
 --                        only = { ["Blessing of Kings"] = true, ... },
 --                        onYou = true, word = "blessing", names = { ... } } }
 --
+-- N58, per row, all optional:
+--   prefix = ""        no prefix: the row takes only the names in `only`
+--   temporary          a set of names, or function(name, ctx) -> true: a
+--                      cast for a moment (Travel Form, a demon summoned in
+--                      a fight), never kept. ctx = { inCombat = true, false
+--                      or nil (not read) }. A function that raises: kept.
+--   fightOnly = true   a cast in a fight (or with the fight not read) is
+--                      kept for that fight only; the role's stays.
+--   window = seconds   a cast held that long before it is kept; a cast of
+--                      the one in use before it, inside that time, undoes
+--                      it (a stance swapped for one ability and back). The
+--                      time not read: kept at once.
+--
 -- Saved for the character: state.ownCasts[role][key] = name (your casts)
 -- and state.ownChoice[key] = name (the words). Spell names only.
 --
@@ -49,6 +64,11 @@ local _, ns = ...
 --   OC.Find(names, prefix, text) -> the name a short name means, or nil
 --   OC.Short(names, prefix)      -> the short names, ", " between
 --   OC.Landed(before, after)     -> true when a blessing landed on you
+--   OC.Temporary(row, name, ctx) -> true when the cast is for a moment
+--   OC.FightOnly(row, ctx)       -> true when it is kept for the fight only
+--   OC.Keys(key)                 -> { key.."Fight", key.."Set", key }
+--   OC.Kept(s, set, key)         -> the first of those in snapshot.chosen
+--                                   that is in the set and known, or nil
 -- Module (ns.use("ownCasts")):
 --   Chosen()                     -> the map above, or nil when it holds nothing
 -- Not tested in game.
@@ -79,16 +99,25 @@ local IS_ROLE = {}
 for _, role in ipairs(OC.ROLES) do IS_ROLE[role] = true end
 
 -- A name matches a row that starts it with the row's prefix (and has more
--- after it), and, when the row has `only`, is in that set.
+-- after it), and, when the row has `only`, is in that set. A row with no
+-- prefix (N58) takes only the names in its `only`.
+local function matches(row, name)
+    if type(row) ~= "table" or type(row.key) ~= "string" or row.key == "" then return false end
+    local only = row.only
+    if only ~= nil and type(only) ~= "table" then return false end
+    local prefix = row.prefix
+    if prefix == nil or prefix == "" then
+        return only ~= nil and only[name] == true
+    end
+    if type(prefix) ~= "string" then return false end
+    return #name > #prefix and string.sub(name, 1, #prefix) == prefix
+        and (only == nil or only[name] == true)
+end
+
 function OC.Match(rows, name)
     if type(rows) ~= "table" or type(name) ~= "string" then return nil end
     for _, row in ipairs(rows) do
-        if type(row) == "table" and type(row.prefix) == "string" and row.prefix ~= ""
-            and type(row.key) == "string" and row.key ~= ""
-            and #name > #row.prefix and string.sub(name, 1, #row.prefix) == row.prefix
-            and (row.only == nil or (type(row.only) == "table" and row.only[name] == true)) then
-            return row
-        end
+        if matches(row, name) then return row end
     end
     return nil
 end
@@ -101,6 +130,42 @@ end
 function OC.Role(role)
     if type(role) == "string" and IS_ROLE[role] then return role end
     return OC.DEFAULT_ROLE
+end
+
+-- N58: a cast for a moment, by the row's `temporary`.
+function OC.Temporary(row, name, ctx)
+    local temp = type(row) == "table" and row.temporary or nil
+    if type(temp) == "table" then return temp[name] == true end
+    if type(temp) == "function" then
+        local ok, v = pcall(temp, name, type(ctx) == "table" and ctx or {})
+        return ok and v == true
+    end
+    return false
+end
+
+-- N58: kept for this fight only. A fight not read counts as one, so the
+-- role's choice is never changed on a guess.
+function OC.FightOnly(row, ctx)
+    if type(row) ~= "table" or row.fightOnly ~= true then return false end
+    return not (type(ctx) == "table" and ctx.inCombat == false)
+end
+
+-- N58: the order a class pack reads its kept one in: this fight's cast,
+-- the word's choice, the one cast for the role.
+function OC.Keys(key)
+    return { key .. "Fight", key .. "Set", key }
+end
+
+function OC.Kept(s, set, key)
+    if type(s) ~= "table" or type(s.chosen) ~= "table" or type(set) ~= "table" or type(key) ~= "string" then
+        return nil
+    end
+    for _, k in ipairs(OC.Keys(key)) do
+        local name = s.chosen[k]
+        local r = type(name) == "string" and set[name] and type(s.spells) == "table" and s.spells[name] or nil
+        if type(r) == "table" and r.known then return name end
+    end
+    return nil
 end
 
 -- A name in lower case without the prefix and a leading "the ".
@@ -174,6 +239,8 @@ function OC.Declare(k, diag, packs)
     local api = {}
     local fight = {}           -- [key] = name, this fight's casts
     local sentRec, pending     -- a blessing being cast / waiting to land on you
+    local held                 -- N58: a cast waiting out its row's window
+    local settle               -- below: a held cast whose window is over is taken
 
     local function read(fn, ...)
         if type(fn) ~= "function" then return nil end
@@ -217,6 +284,7 @@ function OC.Declare(k, diag, packs)
     -- What is kept for the role you play now, the words' choices and this
     -- fight's casts; nil when there is nothing.
     function api.chosen()
+        settle()
         local out, any = {}, false
         local function put(key, name)
             if type(key) == "string" and type(name) == "string" then
@@ -272,6 +340,41 @@ function OC.Declare(k, diag, packs)
         if was ~= name and sayOn() then say(OC.Line(row, name, OC.ROLE_WORDS[r] or r, k.id.slash)) end
     end
 
+    -- N58: whether a fight is on when you cast: true, false, or nil.
+    local function context()
+        local v = client and read(client.inCombat) or nil
+        if type(v) ~= "boolean" then v = nil end
+        return { inCombat = v }
+    end
+
+    -- N58: a cast taken; a fight-only row's cast in a fight is this fight's.
+    local function take(row, name, ctx)
+        if OC.FightOnly(row, ctx) then
+            fight[row.key] = name
+            return
+        end
+        accept(row, name)
+    end
+
+    -- The one in use for a key before a cast: this fight's, the word's, the
+    -- role's.
+    local function current(key)
+        if fight[key] then return fight[key] end
+        local choice = choiceOf(key)
+        if choice then return choice end
+        local v = k.store:get("char", OC.PATH .. "." .. role() .. "." .. key)
+        return type(v) == "string" and v or nil
+    end
+
+    settle = function()
+        if not held then return end
+        local t = now()
+        if not t or t - held.at <= held.row.window then return end
+        local h = held
+        held = nil
+        take(h.row, h.name, h.ctx)
+    end
+
     local function nameOf(id)
         if type(id) ~= "number" or not client then return nil end
         local name = read(client.spellName, id)
@@ -297,7 +400,7 @@ function OC.Declare(k, diag, packs)
         if OC.Landed(pending.before, after) then
             local p = pending
             pending = nil
-            accept(p.row, p.name)
+            take(p.row, p.name, p.ctx)
         end
     end
 
@@ -319,10 +422,25 @@ function OC.Declare(k, diag, packs)
         if not row then return end
         local s = sentRec
         sentRec = nil
+        local ctx = context()
+        -- N58: a held cast whose window is over is kept; one still held is
+        -- undone by a cast of the one in use before it.
+        settle()
+        if held and held.row.key == row.key then
+            local h = held
+            held = nil
+            if name == h.was then return end
+        end
         -- PC-1: the one picked or suggested when you cast it: not your choice.
         if OC.Fresh(row, driverView(), name) then return end
+        if OC.Temporary(row, name, ctx) then return end
         if not row.onYou then
-            accept(row, name)
+            local t = now()
+            if type(row.window) == "number" and row.window > 0 and t then
+                held = { row = row, name = name, at = t, ctx = ctx, was = current(row.key) }
+            else
+                take(row, name, ctx)
+            end
             return
         end
         -- PC-5: the buffs before the cast are the ones read at
@@ -332,7 +450,7 @@ function OC.Declare(k, diag, packs)
         local fromSent = s ~= nil and s.name == name and t ~= nil and s.at ~= nil and t - s.at <= OC.WINDOW
         local before
         if fromSent then before = s.before else before = ownBuff(name) end
-        pending = { key = row.key, row = row, name = name, at = t, before = before }
+        pending = { key = row.key, row = row, name = name, at = t, before = before, ctx = ctx }
         if fromSent then check() end
     end
 
@@ -360,6 +478,7 @@ function OC.Declare(k, diag, packs)
         end
         fight[key] = nil
         if pending and pending.key == key then pending = nil end
+        if held and held.row.key == key then held = nil end
     end
 
     function api.run(word, rest)
@@ -421,8 +540,8 @@ function OC.Declare(k, diag, packs)
         -- PC-7: on by default: the old add-on always said it.
         settings = { {
             key = OC.SAY, scope = "account", type = "bool", default = true,
-            label = "Say when a seal or blessing you cast is kept",
-            help = "One line in chat when a seal or blessing you cast becomes the one suggested for your role. It casts nothing.",
+            label = "Say when a choice you cast is kept",
+            help = "One line in chat when a seal, blessing, aura, stance, form, aspect, armor, demon or curse you cast becomes the one suggested for your role. It casts nothing.",
             group = "Rotation",
         } },
         start = function(ctx)
@@ -430,7 +549,10 @@ function OC.Declare(k, diag, packs)
             client.listen(OC.SENT, sent)
             client.listen(OC.EVENT, cast)
             client.listen(OC.AURA, aura)
-            client.listen(OC.FIGHT_END, function() fight = {} end)
+            client.listen(OC.FIGHT_END, function()
+                settle()
+                fight = {}
+            end)
             if diag and type(diag.commands) == "table" then
                 for _, w in ipairs(words()) do
                     if diag.commands[w] == nil then

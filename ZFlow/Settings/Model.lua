@@ -97,8 +97,9 @@ M.ROWS = {
     -- (Nav/MapFlights.lua, S31, lead section 187). Off by default, as in
     -- legacy Flow.
     { key = "nav.mapFlights", type = "bool", default = false },
-    -- rotation.sayKept: one line when a seal or blessing you cast becomes
-    -- the one kept for your role (Rotation/OwnCasts.lua, PC-7). On by
+    -- rotation.sayKept: one line when a choice you cast (a seal, blessing,
+    -- aura, stance, form, aspect, armor, demon or curse) becomes the one
+    -- kept for your role (Rotation/OwnCasts.lua, PC-7, N58). On by
     -- default: legacy Flow always said it.
     { key = "rotation.sayKept", type = "bool", default = true },
 }

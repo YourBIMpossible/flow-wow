@@ -642,6 +642,97 @@ tests["paladin 236c: the spell name or your own buffs raising once, then fine"] 
     t.eq(icon.texture, "tex:Devotion Aura", "read again: asked for")
 end
 
+-- ------------------------------------- N58 (lead section 241): your choice
+
+-- The defect: a seal cast in a fight overwrote the seal kept for the role.
+-- Flow kept it for that fight only.
+tests["paladin N58: a seal cast in a fight is for that fight; the role's kept seal stays"] = function(t)
+    local c, addon, icon = start()
+    addon.settings:set(D.ROLE, "dps")
+    c.setPlayerBuffs(READY); on(c, addon)
+    cast(c, "Seal of the Crusader")
+    t.eq(kept(c, "seal"), "Seal of the Crusader", "out of a fight: kept for the role")
+    c.setTarget(ENEMY); c.setCombat(true); c.advance(1, 5)
+    local from = #c.printed + 1
+    cast(c, "Seal of Righteousness")
+    t.eq(kept(c, "seal"), "Seal of the Crusader", "in a fight: the role's kept seal is not changed")
+    t.eq(icon.texture, "tex:Seal of Righteousness", "this fight: the one cast in it")
+    t.eq(printedSince(c, from, "Seal of"), "", "nothing said: the role's did not change")
+    c.setCombat(false); c.advance(1, 5)
+    c.setTarget(nil); c.setPlayerBuffs(READY); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Seal of the Crusader", "the fight over: the role's again")
+    local c2, _, icon2 = reload(c)
+    c2.setPlayerBuffs(READY); c2.advance(1, 5)
+    t.eq(icon2.texture, "tex:Seal of the Crusader", "over a reload: the role's")
+end
+
+tests["paladin N58: a seal cast with the fight not read is kept for the fight only"] = function(t)
+    local c, addon, icon = start()
+    c.setPlayerBuffs(READY); on(c, addon)
+    cast(c, "Seal of the Crusader")
+    local fightRead = c.inCombat
+    c.inCombat = function() error("made-up failure") end
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-3-0-0-0-0-0", UNKNOWN["Seal of Justice"])
+    c.inCombat = fightRead
+    c.advance(1, 5)
+    t.eq(kept(c, "seal"), "Seal of the Crusader", "not known whether a fight is on: the role's stays")
+    c.setCombat(true); c.advance(1, 5); c.setCombat(false); c.advance(1, 5)
+    cast(c, "Seal of Righteousness")
+    t.eq(kept(c, "seal"), "Seal of Righteousness", "read again, out of a fight: kept for the role")
+    t.eq(icon.texture, "tex:Seal of Righteousness")
+end
+
+local AURA_IDS = { ["Retribution Aura"] = 7294, ["Concentration Aura"] = 19746 }
+local function castId(c, name)
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-3-0-0-0-0-0", AURA_IDS[name])
+    c.advance(1, 5)
+end
+local NO_AURA = { ["Blessing of Might"] = 200, ["Blessing of Wisdom"] = 200, ["Blessing of Kings"] = 200 }
+
+tests["paladin N58: the aura you cast is the one asked for; auto goes back to Devotion"] = function(t)
+    local c, addon, icon = start()
+    addon.settings:set(D.ROLE, "dps")
+    learn(c, "Retribution Aura", AURA_IDS["Retribution Aura"])
+    c.setPlayerBuffs(NO_AURA); on(c, addon)
+    t.eq(icon.texture, "tex:Devotion Aura", "none cast: Devotion Aura")
+    castId(c, "Retribution Aura")
+    t.eq(kept(c, "aura"), "Retribution Aura", "kept for the role")
+    t.eq(icon.texture, "tex:Retribution Aura", "no aura on: the one you cast")
+    c.setPlayerBuffs({ ["Retribution Aura"] = true, ["Blessing of Might"] = 200 }); c.advance(1, 5)
+    t.ok(not (icon.texture == "tex:Retribution Aura" or icon.texture == "tex:Devotion Aura"), "yours up: no aura asked")
+    c.setSpellId("Concentration Aura", AURA_IDS["Concentration Aura"])
+    c.setSpell(AURA_IDS["Concentration Aura"], { known = false })
+    castId(c, "Concentration Aura")
+    t.eq(kept(c, "aura"), "Concentration Aura", "cast, kept even when not known: the word list says so")
+    c.setPlayerBuffs(NO_AURA); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Devotion Aura", "a kept aura you do not know: Devotion Aura")
+    castId(c, "Retribution Aura")
+    local c2, _, icon2 = reload(c)
+    learn(c2, "Retribution Aura", AURA_IDS["Retribution Aura"])
+    c2.setPlayerBuffs(NO_AURA); c2.advance(1, 5)
+    t.eq(icon2.texture, "tex:Retribution Aura", "over a reload")
+    local line = word(c, "aura auto")
+    t.ok(line:find("auto", 1, true), line)
+    t.eq(kept(c, "aura"), nil, "auto forgets the cast")
+    t.eq(icon.texture, "tex:Devotion Aura", "auto: Devotion Aura")
+end
+
+tests["paladin N58: the aura word chooses one; your buffs not read, then read"] = function(t)
+    local c, addon, icon = start()
+    learn(c, "Retribution Aura", AURA_IDS["Retribution Aura"])
+    c.setPlayerBuffs(NO_AURA); on(c, addon)
+    local line = word(c, "aura retribution")
+    t.ok(line:find("Retribution Aura", 1, true), line)
+    t.eq(picked(c, "aura"), "Retribution Aura")
+    t.eq(icon.texture, "tex:Retribution Aura", "the chosen aura")
+    local own = c.ownBuffs
+    c.ownBuffs = function() error("made-up failure") end
+    c.advance(1, 5)
+    t.ok(not (icon.shown and icon.texture == "tex:Retribution Aura"), "your buffs not read: no aura asked")
+    c.ownBuffs = own; c.advance(1, 5)
+    t.eq(icon.texture, "tex:Retribution Aura", "read again: the chosen aura")
+end
+
 tests["a class with no pack: on, and it says so"] = function(t)
     local c, addon, icon = start({ class = "DEATHKNIGHT" })
     c.setPlayerBuffs({}); on(c, addon)
