@@ -200,6 +200,8 @@ function SellList.Listing(client, store, grants, r)
         grants = grants }
     -- P-SETS: saved gear set pieces are kept (Disposition's inSet).
     context.sets = ns.GearSets and ns.GearSets.Facts(store) or nil
+    -- P-INV G6: skill boosters are kept while the skill can rise.
+    if type(ns.SkillBoosters) == "table" then context.boosters = ns.SkillBoosters.Facts(client, bag) end
     local out = { stacks = stacks, kept = ns.SellView.Kept(bag, context), notRead = 0 }
     -- Items whose facts were not read yet (no name, quality or price),
     -- counted once per item: two stacks of one item are one item.

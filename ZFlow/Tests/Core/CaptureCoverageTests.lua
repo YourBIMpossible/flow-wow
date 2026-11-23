@@ -179,6 +179,9 @@ local READS = {
     -- weapon master step; the capture asks none. Its names (GetNumSkillLines,
     -- GetSkillLineInfo) are in Diag.NAMES and Diag's skillLines field.
     weaponSkills = false,
+    -- Lead section 337 item 2: skill ranks for the skill boosters (first
+    -- guess); the same skill line reads, none in the capture.
+    skillRanks = false,
     -- G60: whether the client can speak (its voices) and the NPC's words in
     -- an open gossip or quest window; read by UI/NpcSpeech.lua only, the
     -- capture asks none. Their names are in Diag.NAMES.
