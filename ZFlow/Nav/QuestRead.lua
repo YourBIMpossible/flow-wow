@@ -26,6 +26,9 @@ local _, ns = ...
 --   step(): the quest step for where the player is now (Q.Pick), or nil.
 --   opts.zoneFirst (optional): a function asked on every step; what it
 --   gives is handed to Q.Pick as opts.zoneFirst (lead section 187).
+--   opts.learned (optional, S43): a function giving the player's own
+--   learned quest spots (Nav/QuestSpots.lua, account QS.PATH); where
+--   Questie gives no place on this map they are used (QS.Merge).
 --   The log and the places are read again only after refresh(), when the
 --   player's map changes, and now and then while Questie is not ready.
 ns.Nav = ns.Nav or {}
@@ -225,6 +228,7 @@ end
 
 function N.QuestWatch(client, opts)
     local zoneFirst = type(opts) == "table" and type(opts.zoneFirst) == "function" and opts.zoneFirst or nil
+    local learned = type(opts) == "table" and type(opts.learned) == "function" and opts.learned or nil
     local Q = N.QuestSource
     local rows, places, map
     local stale, waited, since = true, 0, 0
@@ -250,6 +254,12 @@ function N.QuestWatch(client, opts)
             stale, waited, since, map = false, 0, 0, here.map
             rows = N.QuestLogRows(client)
             places = rows and N.QuestiePlaces(client, rows, map) or nil
+            local QS = N.QuestSpots
+            if rows and learned and QS then
+                local okL, book = pcall(learned)
+                local mine = okL and QS.Places(book, rows, map) or nil
+                places = QS.Merge(places, mine)
+            end
         end
         last = {}
         if rows == nil then return nil end

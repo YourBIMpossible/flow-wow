@@ -35,6 +35,10 @@ W.HEADER = "Dungeon Quests"
 W.SEARCH = "Search dungeons"
 W.TABS = { "Quests", "Bosses", "Map" }
 W.SHOW_ON_MAP = "Show on map"
+-- P-TRIP (S40): hands the dungeon run (Nav/DungeonRead.lua R.Run) to the
+-- route (Nav/TripRoute.lua), which the quest arrow walks. Quests tab only.
+W.PLAN_RUN = "Plan the run"
+W.NO_ROUTE = "Routes are not loaded."
 W.BOSS_LOOT = "learned.bossLoot"   -- account, UI/BossLoot.lua
 W.DROPS = "learned.drops"          -- character, Items/Drops.lua
 -- Where the window was left, account wide: { point, width, height }
@@ -110,15 +114,38 @@ function W.Declare(k, diag)
         view.said = wp and ("Waypoint set: " .. tostring(Wp.Text(wp)) .. ".") or (tostring(reason) .. ".")
     end
 
+    local function planRun(d)
+        local run, why = R.Run(st, client(), d and d.key)
+        if not run then
+            view.said = why[1]
+            return
+        end
+        local trip = k.use and k.use(ns.Nav.TripRoute.NAME)
+        if not trip or type(trip.Run) ~= "function" then
+            view.said = W.NO_ROUTE
+            return
+        end
+        view.said = trip.Run(run)
+    end
+
     local function footer(d)
         local e = R.Entrance(st, client(), d and d.key)
-        return { kind = "footer", key = "footer", text = view.said or "",
-            buttons = { { kind = "button", key = "showOnMap", text = W.SHOW_ON_MAP, enabled = e ~= nil,
+        local buttons = { { kind = "button", key = "showOnMap", text = W.SHOW_ON_MAP, enabled = e ~= nil,
                 tooltip = e == nil and R.WHY_NO_ENTRANCE[1] or nil,
                 onClick = function()
                     showOnMap(d)
                     render()
-                end } } }
+                end } }
+        if view.tab == 1 then
+            local run, why = R.Run(st, client(), d and d.key)
+            buttons[#buttons + 1] = { kind = "button", key = "planRun", text = W.PLAN_RUN, enabled = run ~= nil,
+                tooltip = run == nil and why and why[1] or nil,
+                onClick = function()
+                    planRun(d)
+                    render()
+                end }
+        end
+        return { kind = "footer", key = "footer", text = view.said or "", buttons = buttons }
     end
 
     local function questsPane(d, out)
