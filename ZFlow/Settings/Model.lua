@@ -81,6 +81,14 @@ M.ROWS = {
     -- the quickest (Nav/Legs.lua, S34). On by default, as in legacy Flow.
     -- Off: nothing is timed, and routes go by the straight line.
     { key = "nav.learnLegs", type = "bool", default = true },
+    -- plateThreat.off, plateThreat.always: your threat on enemy nameplates
+    -- (UI/PlateThreat.lua, S8, lead section 178). On by default, shown in a
+    -- group or with a pet out; always: when alone too. As legacy Flow.
+    { key = "plateThreat.off", type = "bool", default = false },
+    { key = "plateThreat.always", type = "bool", default = false },
+    -- plateCombo.off: combo points on your target's nameplate
+    -- (UI/PlateCombo.lua, S8). On by default, as in legacy Flow.
+    { key = "plateCombo.off", type = "bool", default = false },
 }
 
 -- ---------------------------------------------------------------- helpers

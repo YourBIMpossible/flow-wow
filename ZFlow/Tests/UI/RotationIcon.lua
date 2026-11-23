@@ -361,6 +361,61 @@ tests["rotation icon: it follows the fake's own pet battle and vehicle reads"] =
     t.eq(c.icons[1].shown, true, "not known shows it")
 end
 
+-- ------------------------------------------------------- out of range (187)
+tests["187 rotation icon: the mark of a view is far only for the out of range step"] = function(t)
+    t.eq(I.Mark(nil), nil, "no view")
+    t.eq(I.Mark({ trace = {} }), nil, "nothing suggested")
+    t.eq(I.Mark({ suggestion = { spell = "Wrath", step = "list" } }), nil, "a ready spell")
+    t.eq(I.Mark({ suggestion = { spell = "Wrath" } }), nil, "no step")
+    t.eq(I.Mark({ suggestion = { spell = "Wrath", step = "farOpener", label = "Out of range" } }), "far")
+end
+
+tests["187 rotation icon: an out of range suggestion is shown marked, a ready one plain"] = function(t)
+    local k, c = start({ enabled = true })
+    local h = c.icons[1]
+    k.bus:emit(D.EVENT, { suggestion = { spell = "Wrath", step = "farOpener", label = "Out of range" }, trace = {} })
+    t.eq(h.shown, true, "still shown: it is the next spell")
+    t.eq(h.texture, WRATH_TEX)
+    t.eq(h.marked, "far", "but marked out of range")
+    k.bus:emit(D.EVENT, { suggestion = { spell = "Wrath", step = "list" }, trace = {} })
+    t.eq(h.shown, true)
+    t.eq(h.marked, nil, "in range again: the mark is gone")
+    k.bus:emit(D.EVENT, { suggestion = { spell = "Wrath", step = "farOpener" }, trace = {} })
+    suggest(k, nil)
+    t.eq(h.shown, false)
+    t.eq(h.marked, nil, "hidden: no mark is left behind")
+    t.eq(k.problems:count(), 0)
+end
+
+tests["187 rotation icon: the driver's own out of range step marks the icon"] = function(t)
+    local k, c = start({ enabled = true })
+    c.setInRange(WRATH, false)
+    c.setInRange(MOONFIRE, false)
+    tick(c)
+    local h = c.icons[1]
+    t.eq(h.shown, true)
+    t.eq(h.marked, "far", "nothing in range: the next spell is shown marked")
+    c.setInRange(WRATH, true)
+    c.setInRange(MOONFIRE, true)
+    tick(c)
+    t.eq(h.marked, nil, "in range: plain")
+    t.eq(k.problems:count(), 0)
+end
+
+tests["187 rotation icon: an icon with no mark call still shows the spell"] = function(t)
+    local k, c = start({ enabled = true, before = function(fc)
+        local make = fc.icon
+        fc.icon = function(spec)
+            local h = make(spec)
+            if h then h.mark = nil end
+            return h
+        end
+    end })
+    k.bus:emit(D.EVENT, { suggestion = { spell = "Wrath", step = "farOpener" }, trace = {} })
+    t.eq(c.icons[1].shown, true)
+    t.eq(k.problems:count(), 0)
+end
+
 -- ------------------------------------------------------ the client's reads
 -- A made-up environment: frames record what they are told.
 local function gameEnv(opts)
@@ -383,6 +438,7 @@ local function gameEnv(opts)
                 local tex = {}
                 function tex:SetTexture(v) self.value = v end
                 function tex:SetAllPoints() self.all = true end
+                function tex:SetVertexColor(r, g, b) self.color = { r, g, b } end
                 env.textures[#env.textures + 1] = tex
                 return tex
             end
@@ -410,6 +466,17 @@ tests["client icon: a hidden frame of the asked size with one texture"] = functi
     t.eq(f.shown, false)
     h.place({ "TOPLEFT", "TOPLEFT", 5, -6 })
     t.eq(f.point, { "TOPLEFT", "TOPLEFT", 5, -6 })
+end
+
+tests["187 client icon: the far mark tints the picture red, no mark puts the plain colour back"] = function(t)
+    local env = gameEnv()
+    local h = ns.make.client(env).icon({ name = "TestIcon" })
+    t.eq(h.mark("far"), true)
+    t.eq(env.textures[1].color, { 1, 0.3, 0.3 })
+    t.eq(h.mark(nil), true)
+    t.eq(env.textures[1].color, { 1, 1, 1 })
+    local bare = gameEnv({ noTexture = true })
+    t.eq(ns.make.client(bare).icon({ name = "TestIcon" }).mark("far"), false, "no picture, no mark")
 end
 
 tests["client icon: no frame, no icon; no texture, setTexture says so"] = function(t)

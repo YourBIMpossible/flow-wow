@@ -228,8 +228,9 @@ return {
         -- 12 since L6-A added vendor.list (lead); 19 with T-E spec.role;
         -- 20 with nav.flightPaths (lead section 151); 21 with
         -- general.groupTip (S17, RESEARCH-S17 section 5); 22 with
-        -- nav.learnLegs (lead section 169).
-        t.eq(#model:keys(), 22, "the shipped model changed its number of rows")
+        -- nav.learnLegs (lead section 169); 25 with plateThreat.off,
+        -- plateThreat.always and plateCombo.off (S8, lead section 178).
+        t.eq(#model:keys(), 25, "the shipped model changed its number of rows")
         for _, key in ipairs(model:keys()) do
             t.ok(not model:explicit(out, key), key .. " counts as chosen")
             t.eq((model:get(out, key)), model:default(key), key)

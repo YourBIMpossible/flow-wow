@@ -241,7 +241,8 @@ end
 
 T["druid: combat not known, no out-of-fight buff and no Prowl"] = function(t)
     local function druid(over, role, form, tree, known)
-        local s = { dead = false, role = role, form = form, tree = tree, hostile = true, attacking = true, spells = {} }
+        local s = { dead = false, role = role, form = form, formKnown = true, tree = tree, hostile = true,
+                    attacking = true, spells = {}, buffs = {}, targetDebuffs = {} }
         for _, name in ipairs(known) do s.spells[name] = { known = true, onCooldown = false, inRange = true } end
         for k, v in pairs(over or {}) do s[k] = v end
         local got = ns.Choose(s, ns.Packs.DRUID)

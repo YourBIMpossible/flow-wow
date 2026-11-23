@@ -47,6 +47,7 @@ return {
 
         -- Settings
         "Settings/Model.lua",
+        "Settings/Rows.lua",
 
         -- Items
         "Items/Key.lua",
@@ -157,6 +158,8 @@ return {
     "UI/MinimapPin.lua",
     "UI/RotationIcon.lua",
     "Rotation/Pulse.lua",
+    "UI/PlateThreat.lua",
+    "UI/PlateCombo.lua",
     "Rotation/CastEdge.lua",
     "Rotation/Audit.lua",
     "Rotation/FormSpells.lua",
@@ -166,5 +169,6 @@ return {
     "Items/Banker.lua",
     "Items/Posting.lua",
     "Items/Trader.lua",
+    "Nav/Try.lua",
     },
 }

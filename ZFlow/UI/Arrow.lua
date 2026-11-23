@@ -391,6 +391,17 @@ function Arrow.QuestArrowOn(k)
     return not (ok and v == false)
 end
 
+-- Whether what is left on this map comes before the quest log order (lead
+-- section 187): the setting row ns.Nav.LEAVING_SETTING, on unless it says
+-- a plain false.
+function Arrow.ZoneFirstOn(k)
+    local s = type(k) == "table" and k.settings or nil
+    local key = ns.Nav and ns.Nav.LEAVING_SETTING
+    if type(s) ~= "table" or type(s.get) ~= "function" or key == nil then return true end
+    local ok, v = pcall(s.get, s, key)
+    return not (ok and v == false)
+end
+
 -- The name the arrows are declared under as a module.
 Arrow.NAME = "arrow"
 
@@ -451,7 +462,8 @@ function Arrow.Start(k, diag, own)
     local guideFn = nil
     -- The player's own quests (S43, Nav/QuestRead.lua): the quest step when
     -- there is no waypoint. Read-only; nil when that file is not loaded.
-    local quests = N.QuestWatch and N.QuestSource and N.QuestWatch(client) or nil
+    local quests = N.QuestWatch and N.QuestSource
+        and N.QuestWatch(client, { zoneFirst = function() return Arrow.ZoneFirstOn(k) end }) or nil
     -- introWanted: this install has not seen the intro and it has not ended.
     -- entered: the world has been entered. introShown: the last layout had
     -- the intro on the quest arrow. introUntil: when it ends, nil until the
@@ -509,13 +521,26 @@ function Arrow.Start(k, diag, own)
             guide = guideFn()
             from = "a guide"
         else
-            local step = W and W.Step(k.store:get(W.SCOPE, W.PATH), ask(client, "position"), ask(client, "zone"))
-            from = "nothing"
+            -- A travel preview (Nav/Try.lua, <slash> try) wins over every
+            -- step of the player's own while it is on. It is not the
+            -- player's waypoint: reaching it clears nothing.
+            local step
+            local preview = k.use and k.use("try")
+            if preview and type(preview.Step) == "function" then
+                local okPreview, s = pcall(preview.Step)
+                if okPreview and type(s) == "table" then step = s end
+            end
             if step then
-                mine, from = true, "your own waypoint"
+                from = N.Try and N.Try.FROM or "a preview"
             else
-                step = N.WaypointStep(client)
-                if step then from = "the map pin" end
+                step = W and W.Step(k.store:get(W.SCOPE, W.PATH), ask(client, "position"), ask(client, "zone"))
+                from = "nothing"
+                if step then
+                    mine, from = true, "your own waypoint"
+                else
+                    step = N.WaypointStep(client)
+                    if step then from = "the map pin" end
+                end
             end
             -- Then the errand stop the player asked for (Nav/Errand.lua), when there is one.
             local errand = k.use and k.use("errand")

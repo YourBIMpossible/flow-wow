@@ -31,7 +31,10 @@ local function knows(s, name)
 end
 local function inCat(s) return s.form == "Cat Form" end
 local function inBear(s) return BEAR[s.form or ""] == true end
-local function caster(s) return s.form == nil or s.form == "Moonkin Form" end
+-- No form counts only when the reader said it knows the form (section 186):
+-- a form nobody read is not caster.
+local function noForm(s) return s.form == nil and s.formKnown == true end
+local function caster(s) return noForm(s) or s.form == "Moonkin Form" end
 local function inAnimal(s) return inCat(s) or inBear(s) end
 local function stealthed(s) return s.stealthed == true end
 -- Read as not stealthed. A stealth nobody read (nil) is neither: Prowl and
@@ -44,15 +47,21 @@ local function lacksPower(s, name)
     local r = s.spells and s.spells[name]
     return (r and r.known and r.noPower == true) and true or false
 end
-local function current(s, name) return (s.current and s.current[name]) and true or false end
--- Missing, or with less than secs left (a buff the snapshot gives as true has time left).
+-- Read as off (section 186): a current map not read, or a spell left out of
+-- it, is not known, and the rule that wants it off does not fire.
+local function readOff(s, name) return type(s.current) == "table" and s.current[name] == false end
+-- Missing, or with less than secs left (a buff the snapshot gives as true has
+-- time left). Buffs not read: not known, so not needed (section 186).
 local function needBuff(s, name, secs)
-    local left = s.buffs and s.buffs[name]
+    if type(s.buffs) ~= "table" then return false end
+    local left = s.buffs[name]
     if not left then return true end
     return type(left) == "number" and left < secs
 end
+-- Target debuffs not read: not known, so not missing (section 186).
 local function missingOnTarget(s, name)
-    return not (s.targetDebuffs and s.targetDebuffs[name])
+    if type(s.targetDebuffs) ~= "table" then return false end
+    return not s.targetDebuffs[name]
 end
 -- A fight on, or not known (ns.Rotation.InFight); known to be out of one.
 local function inFight(s) return ns.Rotation.InFight(s) end
@@ -97,16 +106,16 @@ local buffs = tag({
       end },
     { spell = "Cat Form", kind = "buff", reason = "Suggested for DPS: Cat Form",
       evidence = "authored", provenance = CAT_PROVENANCE,
-      when = function(s) return ns.DruidWantsCat(s.role, fight(s), s.form, s.tree) end },
+      when = function(s) return noForm(s) and ns.DruidWantsCat(s.role, fight(s), s.form, s.tree) end },
     { spell = "Prowl", kind = "buff", reason = "Prowl before you pull: your key then holds your opener from stealth",
       when = function(s) return outOfFight(s) and s.hostile and inCat(s) and unstealthed(s) end },
 })
 
 local melee = tag({
     { spell = "Attack", target = true, reason = "Start attacking",
-      when = function(s) return s.hostile and inAnimal(s) and unstealthed(s) and not current(s, "Attack") end },
+      when = function(s) return s.hostile and inAnimal(s) and unstealthed(s) and readOff(s, "Attack") end },
     { spell = "Auto Attack", target = true, reason = "Start attacking",
-      when = function(s) return s.hostile and inAnimal(s) and unstealthed(s) and not current(s, "Auto Attack") end },
+      when = function(s) return s.hostile and inAnimal(s) and unstealthed(s) and readOff(s, "Auto Attack") end },
 })
 
 local cat = tag({
@@ -133,7 +142,7 @@ local bear = tag({
     { spell = "Demoralizing Roar", reason = "Weaken what is hitting you",
       when = function(s) return inFight(s) and s.hostile and inBear(s) and missingOnTarget(s, "Demoralizing Roar") end },
     { spell = "Maul", target = true, reason = "Maul on your next swing",
-      when = function(s) return s.hostile and inBear(s) and not current(s, "Maul") end },
+      when = function(s) return s.hostile and inBear(s) and readOff(s, "Maul") end },
 })
 
 local bearAoe = tag({
@@ -160,9 +169,9 @@ local casterDamage = tag({
     { spell = "Wrath", target = true, reason = "Wrath",
       when = function(s) return s.hostile and caster(s) end },
     { spell = "Attack", target = true, reason = "Out of mana: hit it with your weapon",
-      when = function(s) return s.hostile and caster(s) and lacksPower(s, "Wrath") and not current(s, "Attack") end },
+      when = function(s) return s.hostile and caster(s) and lacksPower(s, "Wrath") and readOff(s, "Attack") end },
     { spell = "Auto Attack", target = true, reason = "Out of mana: hit it with your weapon",
-      when = function(s) return s.hostile and caster(s) and lacksPower(s, "Wrath") and not current(s, "Auto Attack") end },
+      when = function(s) return s.hostile and caster(s) and lacksPower(s, "Wrath") and readOff(s, "Auto Attack") end },
 })
 
 local function join(...)
@@ -373,6 +382,8 @@ local pack = {
     options = {
         shapeshifts = true,
         nextSwing = { "Maul" },
+        -- Reads the rules lean on; one not given is named by diag (187).
+        reads = { "formKnown", "buffs", "targetDebuffs" },
     },
 }
 

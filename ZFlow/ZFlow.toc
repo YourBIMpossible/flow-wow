@@ -36,6 +36,7 @@ UI\Setup.lua
 Import\FromFlow.lua
 Import\Stored.lua
 Settings\Model.lua
+Settings\Rows.lua
 Items\Key.lua
 Items\Resources.lua
 Items\TooltipHave.lua
@@ -136,6 +137,8 @@ UI\Arrow.lua
 UI\MinimapPin.lua
 UI\RotationIcon.lua
 Rotation\Pulse.lua
+UI\PlateThreat.lua
+UI\PlateCombo.lua
 Rotation\CastEdge.lua
 Rotation\Audit.lua
 Rotation\FormSpells.lua
@@ -145,3 +148,4 @@ UI\RotationQueue.lua
 Items\Banker.lua
 Items\Posting.lua
 Items\Trader.lua
+Nav\Try.lua

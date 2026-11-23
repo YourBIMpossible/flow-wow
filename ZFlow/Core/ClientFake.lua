@@ -14,7 +14,7 @@
 --   c.setRecipes{ profession = 164, skill = 104, max = 150, recipes = { ... } }
 --   c.setSpell(5176, { known = true, usable = false, noPower = true })
 --   c.setSpellId("Wrath", 5176)   c.setFacing(1.57)
---   c.setMapSize(1411, 5287.5, 3525)
+--   c.setMapSize(1411, 5287.5, 3525); c.setMapCont(1411, 1)
 --   c.setBankOpen(true)     -- also fires the bank opened / closed event
 --   c.setMerchant{ { item = "item:2318", price = 60, stack = 1 } }
 --   c.setMerchantOpen(true) -- also fires the merchant shown / closed event
@@ -354,6 +354,9 @@ function ns.make.fakeClient(opts)
         local r = s.mapSizes and s.mapSizes[map]
         return r and { w = r.w, h = r.h } or nil
     end
+    function c.mapCont(map)
+        return s.mapConts and s.mapConts[map] or nil
+    end
     function c.position()
         if not s.position then return nil end
         return { map = s.position.map, x = s.position.x, y = s.position.y }
@@ -513,7 +516,8 @@ function ns.make.fakeClient(opts)
     end
 
     -- Every icon made is in c.icons, in order: .spec, .shown, .texture,
-    -- .point, .places. setTexture(nil) clears and answers false, as on the
+    -- .point, .places, .marked ("far" or nil, the last mark).
+    -- setTexture(nil) clears and answers false, as on the
     -- client. drag(point) is the test's control: the player let it go
     -- there; without the move key (c.setMoveKey(false)) nothing happens.
     c.icons = {}
@@ -531,6 +535,10 @@ function ns.make.fakeClient(opts)
             h.places = h.places + 1
         end
         function h.show(on) h.shown = on and true or false end
+        function h.mark(look)
+            h.marked = look == "far" and "far" or nil
+            return true
+        end
         function h.onMoved(fn, failed)
             moved = fn
             movedFailed = type(failed) == "function" and failed or nil
@@ -918,6 +926,11 @@ function ns.make.fakeClient(opts)
     function c.setMapSize(map, w, h)
         s.mapSizes = s.mapSizes or {}
         s.mapSizes[map] = w and h and { w = w, h = h } or nil
+    end
+    -- A map's continent number; leave it out for not known.
+    function c.setMapCont(map, cont)
+        s.mapConts = s.mapConts or {}
+        s.mapConts[map] = cont
     end
     function c.setZone(cont, zone)
         s.zone = (cont ~= nil or zone ~= nil) and { cont = cont, zone = zone } or nil
@@ -1446,6 +1459,217 @@ function ns.make.fakeClient(opts)
         end
         return nil
     end
+
+    -- S8 nameplate threat and combo points. As the real client's; every
+    -- read is unknown (nil) until set.
+    --   c.SECRET   stands in for a value the game hides: it may be stored
+    --              and handed on; adding, comparing, indexing or joining it
+    --              raises, so a module that looked at it fails its test.
+    --   c.addPlate(unit[, part]) / c.removePlate(unit)   a nameplate comes
+    --              into view / goes (the client's events fire). part: what a
+    --              bar hangs under there, "power", "health" (the default)
+    --              or "plate"
+    --   c.setPlate(unit, part)   the same without the event ("target" too);
+    --              nil: no plate for it on screen
+    --   c.setThreat(unit, status, pct)   pct a number, c.SECRET or nil;
+    --              status a number, c.SECRET or nil; c.setThreat(unit): on
+    --              no threat list there
+    --   c.setCanAttack(unit, v)   c.setGrouped(v)   nil: not known
+    --   c.setCombo(points, max)   points a number, c.SECRET or nil
+    --   c.setComboColor(r, g, b)  c.setComboColor(nil): not known
+    -- c.plateLabels[i]: .unit, .shown, .says (the text set, or c.SECRET as
+    --   the client passed it through), .format (what the hidden value was
+    --   formatted with), .rgb, .alphaNow, .reads (threat reads)
+    -- c.comboBars[i]: .shown, .hung, .under, .max, .value (a number, or
+    --   c.SECRET as the client passed it through), .rgb, .reads, .hangs
+    local function refuse() error("a hidden value was looked at", 2) end
+    c.SECRET = setmetatable({}, {
+        __index = refuse, __newindex = refuse, __call = refuse, __concat = refuse, __len = refuse,
+        __unm = refuse, __add = refuse, __sub = refuse, __mul = refuse, __div = refuse, __mod = refuse,
+        __pow = refuse, __lt = refuse, __le = refuse,
+        __tostring = function() return "(a hidden value)" end,
+    })
+    local function plateUnit(unit)
+        return type(unit) == "string" and unit:find("^nameplate%d+$") ~= nil
+    end
+    local PARTS = { power = true, health = true, plate = true }
+    function c.setPlate(unit, part)
+        s.plates = s.plates or {}
+        if part == true then part = "health" end
+        s.plates[unit] = PARTS[part] and part or nil
+    end
+    function c.addPlate(unit, part)
+        c.setPlate(unit, part or "health")
+        events.call("NAME_PLATE_UNIT_ADDED", unit)
+    end
+    function c.removePlate(unit)
+        c.setPlate(unit, nil)
+        events.call("NAME_PLATE_UNIT_REMOVED", unit)
+    end
+    function c.plates(fn)
+        if type(fn) ~= "function" then return nil end
+        local function tell(what)
+            return function(unit)
+                if plateUnit(unit) then pcall(fn, what, unit) end
+            end
+        end
+        local offAdded = events.add("NAME_PLATE_UNIT_ADDED", tell("added"))
+        local offRemoved = events.add("NAME_PLATE_UNIT_REMOVED", tell("removed"))
+        return function()
+            offAdded()
+            offRemoved()
+        end
+    end
+    function c.canAttack(unit)
+        if unit ~= "target" and not plateUnit(unit) then return nil end
+        if not s.attackable then return nil end
+        return s.attackable[unit]
+    end
+    function c.setCanAttack(unit, v)
+        s.attackable = s.attackable or {}
+        if v == nil then s.attackable[unit] = nil else s.attackable[unit] = v and true or false end
+    end
+    function c.grouped() return s.grouped end
+    function c.setGrouped(v)
+        if v == nil then s.grouped = nil else s.grouped = v and true or false end
+    end
+    function c.setThreat(unit, status, pct)
+        s.threats = s.threats or {}
+        if status == nil and pct == nil then
+            s.threats[unit] = nil
+        else
+            s.threats[unit] = { status = status, pct = pct }
+        end
+    end
+    local function rgbOf(r, g, b)
+        if type(r) == "number" and type(g) == "number" and type(b) == "number" then return { r, g, b } end
+        return nil
+    end
+    c.plateLabels = {}
+    function c.plateLabel(unit)
+        if s.noFrames or not plateUnit(unit) or not (s.plates and s.plates[unit]) then return nil end
+        local h = { unit = unit, shown = false, reads = 0 }
+        function h.show(on) h.shown = on and true or false end
+        function h.text(text)
+            if type(text) ~= "string" then return end
+            h.says, h.format = text, nil
+        end
+        function h.color(r, g, b) h.rgb = rgbOf(r, g, b) or h.rgb end
+        function h.alpha(a)
+            if type(a) == "number" then h.alphaNow = a end
+        end
+        function h.threat()
+            h.reads = h.reads + 1
+            local r = s.threats and s.threats[unit]
+            if type(r) ~= "table" or r.pct == nil then return nil end
+            local status = type(r.status) == "number" and r.status or nil
+            if rawequal(r.pct, c.SECRET) then
+                h.says, h.format = r.pct, "%.0f%%"
+                return "hidden", status
+            end
+            if type(r.pct) ~= "number" then return nil end
+            return "shown", status, r.pct
+        end
+        c.plateLabels[#c.plateLabels + 1] = h
+        return h
+    end
+    c.comboBars = {}
+    function c.comboBar()
+        if s.noFrames then return nil end
+        local h = { shown = false, reads = 0, hangs = 0 }
+        function h.hang(unit)
+            h.hangs = h.hangs + 1
+            if unit ~= "target" and not plateUnit(unit) then return nil end
+            local part = s.plates and s.plates[unit] or nil
+            h.hung, h.under = part and unit or nil, part
+            return part
+        end
+        function h.sections(n)
+            if type(n) ~= "number" or n < 1 or n > 10 or n ~= math.floor(n) then return false end
+            h.max = n
+            return true
+        end
+        function h.fill(n)
+            if type(n) ~= "number" then return false end
+            h.value = n
+            return true
+        end
+        function h.color(r, g, b) h.rgb = rgbOf(r, g, b) or h.rgb end
+        function h.show(on) h.shown = on and true or false end
+        function h.fillFromGame()
+            h.reads = h.reads + 1
+            local p = s.comboPoints
+            if p == nil then return nil end
+            if rawequal(p, c.SECRET) then
+                h.value = p
+                return "hidden"
+            end
+            if type(p) ~= "number" then return nil end
+            return "shown", p
+        end
+        c.comboBars[#c.comboBars + 1] = h
+        return h
+    end
+    function c.combo()
+        local p = s.comboPoints
+        return { points = type(p) == "number" and p or nil, max = s.comboMax }
+    end
+    function c.setCombo(points, max)
+        s.comboPoints = points
+        s.comboMax = type(max) == "number" and max or nil
+    end
+    function c.comboColor()
+        local col = s.comboColor
+        if not col then return nil end
+        return { r = col.r, g = col.g, b = col.b }
+    end
+    function c.setComboColor(r, g, b)
+        if type(r) == "number" and type(g) == "number" and type(b) == "number" then
+            s.comboColor = { r = r, g = g, b = b }
+        else
+            s.comboColor = nil
+        end
+    end
+
+    -- Section 183 (C1): the rotation's buffs, form and current reads. Each
+    -- starts not known (nil). setPlayerBuffs(map or nil): the map handed
+    -- back as a copy. setFormName(name, known): known false (or left out
+    -- with no name) means not known. setCurrentSpell(id, v): v true, false
+    -- or nil (not known) for that spell id.
+    function c.playerBuffs()
+        if type(s.playerBuffs) ~= "table" then return nil end
+        local out = {}
+        for k, v in pairs(s.playerBuffs) do out[k] = v end
+        return out
+    end
+    function c.setPlayerBuffs(map) s.playerBuffs = type(map) == "table" and map or nil end
+    -- Section 187: your debuffs on the target, the same way. Starts not
+    -- known (nil). setTargetDebuffs(map or nil): handed back as a copy.
+    function c.targetDebuffs()
+        if type(s.targetDebuffs) ~= "table" then return nil end
+        local out = {}
+        for k, v in pairs(s.targetDebuffs) do out[k] = v end
+        return out
+    end
+    function c.setTargetDebuffs(map) s.targetDebuffs = type(map) == "table" and map or nil end
+    function c.formName()
+        if s.formKnown ~= true then return nil, false end
+        return s.formName, true
+    end
+    function c.setFormName(name, known)
+        s.formName = type(name) == "string" and name or nil
+        if known == nil then known = s.formName ~= nil end
+        s.formKnown = known and true or false
+    end
+    function c.currentSpell(id)
+        if type(id) ~= "number" or type(s.currentSpells) ~= "table" then return nil end
+        return s.currentSpells[id]
+    end
+    function c.setCurrentSpell(id, v)
+        s.currentSpells = s.currentSpells or {}
+        if v == nil then s.currentSpells[id] = nil else s.currentSpells[id] = v and true or false end
+    end
+
     -- Flights (DISPATCH section 182 item 2). As the real client's
     -- taxiNodes(): unknown (nil) until set; a copy each time.
     --   c.setTaxiNodes({ map, here, nodes = { { name, x, y, state } } })

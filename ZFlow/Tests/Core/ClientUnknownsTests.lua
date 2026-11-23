@@ -155,6 +155,58 @@ return {
         t.eq(printedHas(c, "event frame not made"), true)
     end,
 
+    -- RESEARCH-blockC section 4: two events this client does not have.
+    -- Their refusal costs no feature, so they are said apart, as expected,
+    -- and never as an error.
+    ["diag: the events this client is known not to have are named"] = function(t)
+        t.eq(type(ns.Diag.EXPECTED_ABSENT), "table")
+        if type(ns.Diag.EXPECTED_ABSENT) ~= "table" then return end
+        t.ok(type(ns.Diag.EXPECTED_ABSENT.CRAFT_SHOW) == "string", "CRAFT_SHOW, with why")
+        t.ok(type(ns.Diag.EXPECTED_ABSENT.LEARNED_SPELL_IN_TAB) == "string", "LEARNED_SPELL_IN_TAB, with why")
+        t.eq(ns.Diag.EXPECTED_ABSENT.MERCHANT_SHOW, nil)
+    end,
+
+    ["diag: a snapshot keeps the expected missing events apart from the refused"] = function(t)
+        local c = ns.make.fakeClient()
+        local k = ns.Kernel({}, c)
+        c.setEventFault("CRAFT_SHOW", true)
+        c.setEventFault("LEARNED_SPELL_IN_TAB", true)
+        c.setEventFault("MERCHANT_SHOW", true)
+        local K = ns.Diag.Collect(k, "test").kernel
+        t.eq(K.eventsNotRegistered, { "MERCHANT_SHOW" }, "only the unexpected one is a fault")
+        t.eq(K.eventsExpectedAbsent, { "CRAFT_SHOW", "LEARNED_SPELL_IN_TAB" })
+        c.setEventFault("MERCHANT_SHOW", false)
+        K = ns.Diag.Collect(k, "test").kernel
+        t.eq(K.eventsNotRegistered, {})
+        t.eq(K.eventsExpectedAbsent, { "CRAFT_SHOW", "LEARNED_SPELL_IN_TAB" })
+    end,
+
+    ["diag: the diag command says the expected missing events as expected, not as refused"] = function(t)
+        local _, c = started()
+        c.setEventFault("CRAFT_SHOW", true)
+        c.setEventFault("LEARNED_SPELL_IN_TAB", true)
+        c.slashes[ns.id.slash]("diag")
+        t.eq(printedHas(c, "not registered"), false, "no fault line for them")
+        t.eq(printedHas(c, ns.id.title .. ": events this client does not have, as expected: "
+            .. "CRAFT_SHOW, LEARNED_SPELL_IN_TAB."), true)
+    end,
+
+    ["diag: the diag command says refused and expected events on lines of their own"] = function(t)
+        local _, c = started()
+        c.setEventFault("CRAFT_SHOW", true)
+        c.setEventFault("MERCHANT_SHOW", true)
+        c.slashes[ns.id.slash]("diag")
+        t.eq(printedHas(c, ns.id.title .. ": events not registered: MERCHANT_SHOW."), true)
+        t.eq(printedHas(c, "CRAFT_SHOW, "), false, "the refused line does not name it")
+        t.eq(printedHas(c, ns.id.title .. ": events this client does not have, as expected: CRAFT_SHOW."), true)
+    end,
+
+    ["diag: no expected-events line when none is missing"] = function(t)
+        local _, c = started()
+        c.slashes[ns.id.slash]("diag")
+        t.eq(printedHas(c, "as expected:"), false)
+    end,
+
     ["diag: the diag command says when the tick frame was not made"] = function(t)
         local k, c = started()
         c.slashes[ns.id.slash]("diag")

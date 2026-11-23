@@ -138,12 +138,13 @@ return {
         local H = ns.Rotation.HURT
         local heals = { "Mend", "Big Mend", "Renew" }
         local function hurt(n, over)
-            local o = { hurt = n, spells = {
+            local o = { hurt = n, buffs = {}, spells = {
                 Mend = { known = true, onCooldown = false, castMs = 1500 },
                 ["Big Mend"] = { known = true, onCooldown = false, castMs = 3000 },
                 Renew = { known = true, onCooldown = false, castMs = 0 },
             } }
             for k, v in pairs(over or {}) do o[k] = v end
+            if o.buffs == false then o.buffs = nil end   -- false here: not read
             return pick(nil, o)
         end
         t.eq(pack().heals.self, heals, "the pack offers these three heals, in this order")
@@ -158,6 +159,11 @@ return {
         t.eq(s.early, true, "marked early")
         t.eq(s.kind, "heal", "kind")
         t.ok(string.find(s.reason, "estimate", 1, true) ~= nil, "the reason says it is an estimate")
+        -- Section 183: buffs not read, so the heal over time may be on already.
+        t.eq(hurt(H.outStart, { buffs = false }), "Mend", "buffs not read: a direct heal, not the heal over time")
+        t.eq(hurt(H.inHot, { inCombat = true, buffs = false }), nil, "buffs not read, in a fight: no heal over time")
+        t.eq(hurt(H.inHeal, { inCombat = true, buffs = false }), "Mend", "buffs not read, hit a lot: still healed")
+        t.eq(hurt(H.outBig, { buffs = false }), "Big Mend", "buffs not read, hurt: the big heal")
     end,
 
     -- The snapshot carries only targetCasting: whose target it is cannot be told here.

@@ -6,9 +6,11 @@ local _, ns = ...
 -- key plan is only worked out, never applied.
 --
 --   D.Read(client, pack, ids[, role]) -> read(field)
---     the reader ns.Snapshot takes. dead, inCombat, stealthed, hostile and
---     spells are asked of the client; role is the one handed in; every
---     other field answers nil (not known), never a guess.
+--     the reader ns.Snapshot takes. dead, inCombat, stealthed, hostile,
+--     spells, buffs, targetDebuffs, form and current are asked of the
+--     client; role is the
+--     one handed in; every other field answers nil (not known), never a
+--     guess.
 --       role       the role you chose (the setting D.ROLE), when it is
 --                  "dps", "heal" or "tank" and the pack has a part for it;
 --                  anything else: nil. No talent is read: the rotation
@@ -19,6 +21,20 @@ local _, ns = ...
 --                  true for a target that is there, hostile and alive; false
 --                  when any of the three was read the other way; nil for
 --                  anything else, or when the client has no such read
+--       buffs      client.playerBuffs() as it answered: { [name] = seconds
+--                  left or true }, {} for read and none, nil when not known
+--                  or the client has no such read
+--       targetDebuffs  client.targetDebuffs(): your own debuffs on the
+--                  target, the same shape and the same not known (187)
+--       form       client.formName(): the form name, or nil for no form
+--                  and for not known alike
+--       formKnown  true when client.formName() said its answer is known
+--                  (a form name, or no form); nil otherwise, never false.
+--                  form nil with formKnown true is no form (section 186)
+--       current    { [spell name] = true or false } over the pack's spell
+--                  ids, from client.currentSpell(id); a spell whose answer
+--                  was not read is left out; nil when the client has no
+--                  such read or no spell was read
 --       spells     each row also gets inRange = client.inRange(spell id)
 --                  when the client has that read and the answer is true or
 --                  false; otherwise range stays not known
@@ -45,6 +61,9 @@ local _, ns = ...
 --     keys        ns.cast.Apply(plan, applied, lockdown)
 --     attrs       ns.cast.Attributes(suggestion, plan, applied, lockdown)
 --     unread      the pack's spells that could not be read (sorted)
+--     notRead     the reads the pack names in options.reads (formKnown,
+--                 buffs, targetDebuffs) that came back not known, in the
+--                 pack's order; {} when every one was read (section 187)
 --     missing     the pack's spells with no id (sorted)
 --     passed      the spells the chooser's steps passed by only because
 --                 nobody read their cooldown (sorted, each once): the trace
@@ -88,6 +107,21 @@ local function hostileOf(client)
     return nil
 end
 
+-- What is queued or toggled on, by spell name: only answers read as yes
+-- or no are kept; nil when nothing could be read (section 183).
+local function currentOf(client, ids)
+    if type(client.currentSpell) ~= "function" or type(ids) ~= "table" then return nil end
+    local out, any = {}, false
+    for name, id in pairs(ids) do
+        local asked, on = pcall(client.currentSpell, id)
+        if asked and type(on) == "boolean" then
+            out[name] = on
+            any = true
+        end
+    end
+    return any and out or nil
+end
+
 -- The pack's spell rows, each with its range when the client can tell.
 local function spellRows(client, pack, ids)
     local rows = RR.SpellRows(pack, ids, client.spell, client.spellCooldown).rows
@@ -107,6 +141,21 @@ local function roleIn(pack, role)
 end
 
 function D.Read(client, pack, ids, role)
+    -- Lead section 187: the form is asked of the client once for a read,
+    -- and both fields (form, formKnown) come from that one answer.
+    -- The answer is kept only for the other field of the pair, and used
+    -- once: a field asked again asks the client again.
+    local kept
+    local function form(field)
+        if kept ~= nil and kept.field ~= field then
+            local name, known = kept.name, kept.known
+            kept = nil
+            return name, known
+        end
+        local name, known = client.formName()
+        kept = { field = field, name = name, known = known }
+        return name, known
+    end
     return function(field)
         if field == "role" then return roleIn(pack, role) end
         if field == "dead" then return client.dead() end
@@ -117,6 +166,27 @@ function D.Read(client, pack, ids, role)
         end
         if field == "hostile" then return hostileOf(client) end
         if field == "spells" then return spellRows(client, pack, ids) end
+        if field == "buffs" then
+            if type(client.playerBuffs) ~= "function" then return nil end
+            return client.playerBuffs()
+        end
+        if field == "targetDebuffs" then
+            if type(client.targetDebuffs) ~= "function" then return nil end
+            return client.targetDebuffs()
+        end
+        if field == "form" then
+            if type(client.formName) ~= "function" then return nil end
+            local name = form("form")
+            return type(name) == "string" and name or nil
+        end
+        if field == "formKnown" then
+            if type(client.formName) ~= "function" then return nil end
+            local name, known = form("formKnown")
+            if known ~= true then return nil end
+            if name == nil or type(name) == "string" then return true end
+            return nil
+        end
+        if field == "current" then return currentOf(client, ids) end
         return nil
     end
 end
@@ -147,6 +217,20 @@ function D.Why(snapshot, trace, keys, lockdown)
         why.refused, why.reason = keys.refused, keys.reason
     end
     local last = type(trace) == "table" and trace[#trace] or nil
+    -- Lead section 187: with nothing picked, the reason shown is the last
+    -- step that was stopped by a read nobody gave ("not known ..."), not
+    -- the step after it. A list that had rules ready but could not read
+    -- their range was followed by "nothing out of range", and that was
+    -- what the player was told.
+    if type(last) == "table" and last.result ~= "pick" then
+        for i = #trace, 1, -1 do
+            local row = trace[i]
+            if type(row) == "table" and type(row.note) == "string" and row.note:find("not known", 1, true) then
+                last = row
+                break
+            end
+        end
+    end
     if type(last) == "table" then
         why.step, why.result, why.note, why.spell = last.step, last.result, last.note, last.spell
     end
@@ -175,6 +259,13 @@ function D.Step(client, pack, prefs, bias, applied, role)
     end
     table.sort(notRead)
 
+    -- The reads the pack leans on that came back not known (section 187).
+    local readsMissing = {}
+    local options = type(pack.options) == "table" and pack.options or {}
+    for _, field in ipairs(type(options.reads) == "table" and options.reads or {}) do
+        if snapshot[field] == nil then readsMissing[#readsMissing + 1] = field end
+    end
+
     return {
         pack = true,
         snapshot = snapshot,
@@ -184,6 +275,7 @@ function D.Step(client, pack, prefs, bias, applied, role)
         keys = keys,
         attrs = attrs,
         unread = notRead,
+        notRead = readsMissing,
         missing = missing,
         passed = passed,
         why = D.Why(snapshot, trace, keys, lockdown),
