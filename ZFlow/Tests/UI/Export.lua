@@ -150,7 +150,8 @@ tests["export 368 module: the advice panel's list is in the export when the pane
     advisor.Add("test.export", "Export test advice", 99)
     c.slashes[ns.id.slash]("export")
     local found, you
-    for _, l in ipairs(addon.export.lines() or {}) do
+    local export = addon.use(X.NAME)
+    for _, l in ipairs(export and export.Lines() or {}) do
         local rec = X.Parse(l)
         if rec and rec.kind == "improve" and rec.id == "test.export" then found = rec end
         if rec and rec.kind == "you" then you = rec end
