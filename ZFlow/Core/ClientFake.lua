@@ -1792,6 +1792,15 @@ function ns.make.fakeClient(opts)
         s.trackingOn = s.trackingOn or {}
         if on == nil then s.trackingOn[spell] = nil else s.trackingOn[spell] = on and true or false end
     end
+    -- GT-1: any tracking on: true when one set on is, false when any was set
+    -- and none is on, nil when none was set.
+    function c.anyTracking()
+        if not s.trackingOn then return nil end
+        for _, on in pairs(s.trackingOn) do
+            if on == true then return true end
+        end
+        return false
+    end
     function c.professions()
         if not s.professions then return nil end
         local out = {}
