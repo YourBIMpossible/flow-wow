@@ -344,14 +344,18 @@ end
 -- the merchant part. The money claim has an amount only when every merchant
 -- price is observed; otherwise it has none ("price unknown"), and carries
 -- the observed-plus-estimated figure as its estimate when there is one.
+-- A row whose bank was never seen also claims what it is missing, from the
+-- bank: some of it may be there, so Resources.Resolve marks that part
+-- unknown ("bank") instead of leaving it free for anyone else.
 function ItemPlan.Claims(plan, owner, activity)
     local claims = {}
     if type(plan) ~= "table" or not plan.ok then return claims end
     for _, r in ipairs(plan.rows) do
         local take = r.have and (r.have.bags + r.have.bank) or 0
-        if take > 0 then
-            claims[#claims + 1] = { owner = owner, activity = activity, kind = "item", key = r.key, amount = take,
-                                    bank = r.have.bank > 0 or nil }
+        local unseen = r.have and r.bankUnseen and isCount(r.missing) and r.missing or 0
+        if take + unseen > 0 then
+            claims[#claims + 1] = { owner = owner, activity = activity, kind = "item", key = r.key,
+                                    amount = take + unseen, bank = (r.have.bank > 0 or unseen > 0) or nil }
         end
     end
     local c = plan.cost

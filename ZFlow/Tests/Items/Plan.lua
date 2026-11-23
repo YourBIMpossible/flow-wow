@@ -289,6 +289,21 @@ tests["plan: the claims it makes, and they resolve"] = function(t)
     t.eq(free[1].bank, nil, "and no bank flag when nothing comes from the bank")
 end
 
+tests["plan: a bank never seen is claimed for what is missing, and resolves as unknown"] = function(t)
+    local shot = R.Fake({ bags = { hide = 1, thread = 2 } })
+    local plan = build({ recipe = "make:kit", count = 2 }, shot)
+    local claims = P.Claims(plan, "craft:kit", "profession:x")
+    local hide
+    for _, c in ipairs(claims) do if c.key == "hide" then hide = c end end
+    t.ok(hide ~= nil, "a hide claim")
+    t.eq(hide.amount, 4, "the 1 in the bags and the 3 that may be in the bank")
+    t.eq(hide.bank, true, "from the bank too")
+    local g = R.Resolve(shot, { hide })
+    t.eq(g[1].got, 1, "the bags give 1")
+    t.eq(g[1].unknown, "bank", "the rest is not known, not short")
+    t.eq(g[1].short, nil)
+end
+
 tests["plan: a merchant's stack is paid for whole"] = function(t)
     local shot = R.Fake({ bags = {}, bank = {}, money = 1000 })
     local book = {}

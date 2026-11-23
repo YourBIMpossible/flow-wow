@@ -92,6 +92,7 @@ local function start(opts)
     if opts.bag ~= false then c.setBagItems({ { item = 2589, count = 20 }, { item = 858, count = 5 } }) end
     local k = ns.Kernel({}, c)
     local d = ns.Diag.Start(k)
+    ns.Reservations.Declare(k)
     local api = B.Declare(k, d)
     k:Boot()
     c.fire("ADDON_LOADED", ns.id.addon)
