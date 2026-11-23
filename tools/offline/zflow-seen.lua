@@ -29,9 +29,9 @@
 --     text      the lines joined by "\n", no line break at the end.
 --     problems  { "section: error" }: a section whose making raised says
 --               "failed" in the block; the error text is only here, never
---               in the block. Each text has had its absolute paths cut to
---               "<path>/" and the file's name (see PATHS) and its names
---               replaced, and is checked, as a line of the block is.
+--               in the block. Each text has had its paths cut to "<path>/"
+--               and the file's name, or to "<path>" (see PATHS), and its
+--               names replaced, and is checked, as a line of the block is.
 --   ns.offline.seenDiff(a, b) -> { { section, line, was, now, text } ... }
 --     Two snapshot texts, compared line by line inside each section: line
 --     is the number of the line under its section's header, was / now the
@@ -41,7 +41,8 @@
 --     section after it, and each is reported.
 --   ns.offline.seenParts: this file's table (HEAD, SECTIONS, UNKNOWN, PLACE,
 --     sections(text) -> { [section] = lines }, order; names; normal;
---     redact; held; paths).
+--     redact; held; paths). HEAD is "zflow seen 2": 2 is the block with
+--     the names line; a text of format 1 has none.
 --
 -- THE BLOCK. The first line is HEAD. The second says which kinds of name
 -- were known, and so replaced, and which were not, the kinds in the order
@@ -113,10 +114,18 @@
 -- more kept as it is. So a name is found in upper or lower case and with
 -- anything or nothing between its letters that is not a letter or digit:
 -- "Quell Made" is found in "Quell-Made", "Quell_Made", "quell.made" and
--- "QuellMade". From the first to the last character of what was found, the
+-- "QuellMade". A name whose own bytes are all ASCII is looked for a second
+-- time in the line with every byte of 128 or more taken out too: "Quell
+-- Made" is found with a no-break space between its words, "O'Brien" with a
+-- curly apostrophe. From the first to the last character of what was found, the
 -- line is replaced by PLACE[kind]: <character>, <realm>, <guild>,
 -- <account>, <guid>. Names that overlap in a line are replaced as one,
 -- with the kind of the one that starts first (the longest of those).
+--
+-- A name of digits only (of any kind: the "1234" of a GUID) is a number,
+-- and is found only as a whole one, in the line as it is: the digits as
+-- they stand, with no digit before or after. So "4904" is not found in
+-- "0.349, 0.412", in "49040" or in "49-04".
 --
 -- A name of under 3 letters or digits cannot be told from ordinary text:
 -- it is refused, unless opts.shortNames is true; then it is replaced only
@@ -132,9 +141,11 @@
 --     character with no guild is usual): the second line says so;
 --   * after the replacing, a line or a problem still holds a name. This
 --     second check (held) does not use the replacing's search: it takes
---     the placeholders and "<path>/" out, makes the normal form of each
+--     the placeholders and "<path>" out, makes the normal form of each
 --     piece between them and of each name its own way, and looks for the
---     name (3 or more) in the piece.
+--     name (3 or more) in the piece; for an all-ASCII name also in the
+--     piece with its bytes of 128 or more taken out; a name of digits
+--     only as a whole number in the piece as it is.
 --
 -- The limits. string.lower knows only A to Z in Lua 5.1: a non-ASCII
 -- letter is compared byte for byte. A name with such a letter is found
@@ -142,25 +153,54 @@
 -- it is NOT found, by the replacing or by the second check, when the
 -- non-ASCII letter itself is in the other case (bytes 195 137 for bytes
 -- 195 169), is written another way (a letter and a combining accent, or
--- the plain ASCII letter), or is a look-alike. Not found either: a name
+-- the plain ASCII letter), or is a look-alike; nor when a sign that is
+-- not ASCII stands between its letters (only an all-ASCII name is looked
+-- for with those bytes taken out). Not found either: a name of digits
+-- only written with anything between its digits; a name
 -- this file was not told and cannot read (another player's name in a chat
 -- line, an alt, an account name the client never says: hand them in); a
 -- name cut short, misspelt, or with a letter or digit put between its
 -- letters; a short name with a letter or digit next to it (shortNames),
 -- which the second check does not look for either. Replaced too much: a
 -- name that is also a word, or whose letters come up across two words
--- ("Tom" in "to Moonglade"), is replaced wherever that is. This is not the
+-- ("Tom" in "to Moonglade"), is replaced wherever that is; an all-ASCII
+-- name also across a non-ASCII letter ("Tom" in "t\195\169om"). A name that
+-- is one of the block's own words ("pin", "line", "shown", "none",
+-- "hidden") replaces those words too: sections() and seenDiff still read
+-- the block (the head, the names line and the "== name ==" headers are not
+-- searched), but those lines no longer say what was seen. This is not the
 -- capture sanitizer and does not use it.
 --
--- PATHS. In a problem's text a path is cut to "<path>/" and what follows
--- its last slash or backslash: it starts at a drive letter and a colon, at
--- a slash that begins a word, or at the "..." Lua puts where it cut a long
--- file name short, and runs to the next of : " ' < > | * ? or the line's
--- end. A path with no folder in front (ZFlow/Core/Diag.lua) is left as it
--- is.
+-- PATHS. Only a problem's text is cut; the lines of the block (chat, diag
+-- and the rest) are not: a path the add-on prints stays as printed, with
+-- only the names replaced. Two steps, each failing closed.
+--
+-- First, a path is cut to "<path>/" and what follows its last slash or
+-- backslash: it starts at a drive letter and a colon, at a slash that
+-- begins a word, or at the "..." Lua puts where it cut a long file name
+-- short, and runs to the next of : " ' < > | * ? or the line's end. What
+-- follows the last slash stays only when it starts as a file's name with
+-- an extension does (letters, digits, _ - . then a dot and letters, as in
+-- "x.lua" or "x.lua:12", no letter, digit, _ or - right after). Anything
+-- else may be a folder (the user's) and is dropped to where the path
+-- ended, "<path>/" alone; and when a slash still follows on that line (the
+-- path went on past a quote in a folder's name), to the end of the last
+-- word there that has one.
+--
+-- Then every word (what stands between blanks) that still has a slash or
+-- backslash outside a "<path>/" is replaced whole by "<path>": a relative
+-- path (..\Users\x.lua, ZFlow/Core/Diag.lua:12:, with its line number) and
+-- a path after a sign the first step does not start at. Prose with a slash
+-- ("either/or") goes too, on purpose: a problem is a diagnostic, and a
+-- lost word costs less than a folder's name.
+--
+-- Still let through: a last part that is a folder with a dot in its name
+-- ("/home/john.smith" looks like a file's); the middle words of a folder's
+-- name of three words or more in a path the first step did not start at
+-- ("..\Zzyx Middle Owner\x.lua" keeps "Middle").
 local M = {}
 
-M.HEAD = "zflow seen 1"
+M.HEAD = "zflow seen 2"
 M.UNKNOWN = "not known"
 M.NONE = "none"
 M.NOT_ASKED = "not asked"
@@ -171,6 +211,7 @@ M.KINDS = { "character", "realm", "guild", "account", "guid" }
 M.PLACE = { character = "<character>", realm = "<realm>", guild = "<guild>",
     account = "<account>", guid = "<guid>" }
 M.PATH = "<path>/"
+M.PATH_WHOLE = "<path>"
 M.SHORT = 3
 M.GUID_PART = 4
 
@@ -474,15 +515,16 @@ local function askDiag(c, addon)
 end
 
 -- ------------------------------------------------------------------ names
--- M.normal(text) -> the text in lower case with every character that is
--- not a letter or a digit taken out (a byte of 128 or more is kept as it
--- is), and for each place of it the place in the text it came from.
-function M.normal(text)
+-- M.normal(text, ascii) -> the text in lower case with every character
+-- that is not a letter or a digit taken out (a byte of 128 or more is kept
+-- as it is; with ascii true it is taken out too), and for each place of it
+-- the place in the text it came from.
+function M.normal(text, ascii)
     local out, map = {}, {}
     for i = 1, #text do
         local b = text:byte(i)
         if b >= 65 and b <= 90 then b = b + 32 end
-        if (b >= 48 and b <= 57) or (b >= 97 and b <= 122) or b >= 128 then
+        if (b >= 48 and b <= 57) or (b >= 97 and b <= 122) or (b >= 128 and not ascii) then
             out[#out + 1] = string.char(b)
             map[#map + 1] = i
         end
@@ -495,10 +537,16 @@ local function wordByte(b)
     return b ~= nil and ((b >= 48 and b <= 57) or (b >= 65 and b <= 90) or (b >= 97 and b <= 122) or b >= 128)
 end
 
+local function digitByte(b)
+    return b ~= nil and b >= 48 and b <= 57
+end
+
+-- ascii: no byte of 128 or more in the name. digits: nothing but digits.
 local function addName(names, kind, v)
     if type(v) ~= "string" or v == "" then return end
     local norm = M.normal(v)
-    names[#names + 1] = { kind = kind, text = v, lower = v:lower(), norm = norm, short = #norm < M.SHORT }
+    names[#names + 1] = { kind = kind, text = v, lower = v:lower(), norm = norm, short = #norm < M.SHORT,
+        ascii = not v:find("[\128-\255]"), digits = v:find("^%d+$") ~= nil }
     names[kind] = true
 end
 
@@ -631,6 +679,9 @@ end
 -- it is, in order, no two overlapping (those that did are one).
 local function spans(line, names)
     local norm, map = M.normal(line)
+    -- The line with its non-ASCII bytes taken out: only when it has any.
+    local plain, plainMap = M.normal(line, true)
+    if #plain == #norm then plain = nil end
     local low, found = line:lower(), {}
     for k = 1, #names do
         local name = names[k]
@@ -644,12 +695,28 @@ local function spans(line, names)
                 if not wordByte(low:byte(a - 1)) and not wordByte(low:byte(b + 1)) then
                     found[#found + 1] = { s = a, e = b, kind = name.kind, at = #found + 1 }
                 end
+            elseif name.digits then
+                -- A whole number, in the line as it is.
+                a, b = line:find(name.text, from, true)
+                if not a then break end
+                if not digitByte(line:byte(a - 1)) and not digitByte(line:byte(b + 1)) then
+                    found[#found + 1] = { s = a, e = b, kind = name.kind, at = #found + 1 }
+                end
             else
                 a, b = norm:find(name.norm, from, true)
                 if not a then break end
                 found[#found + 1] = { s = map[a], e = map[b], kind = name.kind, at = #found + 1 }
             end
             from = a + 1
+        end
+        if plain and name.ascii and not name.short and not name.digits then
+            from = 1
+            while true do
+                local a, b = plain:find(name.norm, from, true)
+                if not a then break end
+                found[#found + 1] = { s = plainMap[a], e = plainMap[b], kind = name.kind, at = #found + 1 }
+                from = a + 1
+            end
         end
     end
     table.sort(found, function(x, y)
@@ -687,7 +754,8 @@ end
 -- The line cut at every placeholder: the pieces between them.
 local function pieces(line)
     local rest = { line }
-    local places = { M.PATH }
+    -- "<path>" is in "<path>/" too: the slash left over is no letter.
+    local places = { M.PATH_WHOLE }
     for _, kind in ipairs(M.KINDS) do places[#places + 1] = M.PLACE[kind] end
     for _, place in ipairs(places) do
         local cut = {}
@@ -706,24 +774,53 @@ local function pieces(line)
     return rest
 end
 
--- The second check's own normal form (not M.normal: see NAMES).
-local function flat(text)
-    local s = text:lower():gsub("[^%w\128-\255]", "")
+-- The second check's own normal form (not M.normal: see NAMES). ascii
+-- true: the bytes of 128 or more are taken out too.
+local function flat(text, ascii)
+    local s = text:lower():gsub(ascii and "[^0-9a-z]" or "[^%w\128-\255]", "")
     return s
+end
+
+-- The second check's own search for a name of digits only: true when the
+-- number stands in the text with no digit before or after it.
+local function wholeNumber(text, number)
+    local from = 1
+    while true do
+        local a, b = text:find(number, from, true)
+        if not a then return false end
+        if not text:sub(a - 1, a - 1):find("%d") and not text:sub(b + 1, b + 1):find("%d") then return true end
+        from = a + 1
+    end
 end
 
 -- M.held(line, names) -> true when the line, its placeholders set aside,
 -- still holds a name of 3 or more. Does not use redact's search.
 function M.held(line, names)
-    local wanted = {}
+    local wanted, plain, numbers = {}, {}, {}
     for k = 1, #names do
-        local name = flat(names[k].text)
-        if #name >= M.SHORT then wanted[#wanted + 1] = name end
+        local given = names[k].text
+        local name = flat(given)
+        if #name < M.SHORT then
+            -- Not looked for (see the limits).
+        elseif given:find("^%d+$") then
+            numbers[#numbers + 1] = given
+        else
+            wanted[#wanted + 1] = name
+            if not given:find("[\128-\255]") then plain[#plain + 1] = name end
+        end
     end
     for _, piece in ipairs(pieces(line)) do
-        local text = flat(piece)
+        local text, bare = flat(piece), flat(piece, true)
         for k = 1, #wanted do
             if text:find(wanted[k], 1, true) then return true end
+        end
+        if bare ~= text then
+            for k = 1, #plain do
+                if bare:find(plain[k], 1, true) then return true end
+            end
+        end
+        for k = 1, #numbers do
+            if wholeNumber(piece, numbers[k]) then return true end
         end
     end
     return false
@@ -740,27 +837,51 @@ local function pathBody(text, i)
     return nil
 end
 
--- M.paths(text) -> the text with every absolute path cut to "<path>/" and
--- what follows its last separator.
+-- True when the text at place i starts as a file's name with an extension
+-- does: "x.lua", "x.lua:12", "d.txt" and a blank. Not "zzyxowner (...".
+local function fileName(text, i)
+    local e = text:match("^[%w_%-%.]+%.%a+()", i)
+    return e ~= nil and not text:find("^[%w_%-\128-\255]", e)
+end
+
+-- Every word that still has a slash or backslash outside a "<path>/" is
+-- replaced whole by "<path>". (No character of M.PATH is a pattern's.)
+local function wordsCut(text)
+    local s = text:gsub("%S+", function(token)
+        local rest = token:gsub(M.PATH, "")
+        if rest:find("[\\/]") then return M.PATH_WHOLE end
+        return nil
+    end)
+    return s
+end
+
+-- M.paths(text) -> the text with every path cut to "<path>/" and the
+-- file's name that follows its last separator, or to "<path>". See PATHS.
 function M.paths(text)
     local out, from, i, n = {}, 1, 1, #text
     while i <= n do
-        local body, cut = pathBody(text, i), nil
+        local body, cut, stop = pathBody(text, i), nil, nil
         if body then
-            local stop = text:find("[:\"'<>|%*%?\r\n\t]", body) or (n + 1)
+            stop = text:find("[:\"'<>|%*%?\r\n\t]", body) or (n + 1)
             local last = text:sub(body, stop - 1):match(".*()[\\/]")
             if last then cut = body + last - 1 end
         end
         if cut then
             out[#out + 1] = text:sub(from, i - 1)
             out[#out + 1] = M.PATH
-            from, i = cut + 1, cut + 1
+            local keep = cut + 1
+            if not fileName(text, keep) then
+                -- A folder, maybe: dropped to the path's end, and past it
+                -- to the last word of this line that has a slash.
+                keep = text:match("^[^\r\n]*[\\/]%S*()", stop) or stop
+            end
+            from, i = keep, keep
         else
             i = i + 1
         end
     end
     out[#out + 1] = text:sub(from)
-    return table.concat(out)
+    return wordsCut(table.concat(out))
 end
 
 -- --------------------------------------------------------------- snapshot
