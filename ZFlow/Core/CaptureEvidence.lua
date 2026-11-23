@@ -181,8 +181,9 @@ function Evidence.Judge(feature, run)
     run = type(run) == "table" and run or {}
     local spec = Evidence.REQUIRES[feature]
     local lines = type(run.lines) == "table" and run.lines or {}
-    -- A count that is not a number is not known: never read as zero.
-    local problems = type(run.problems) == "number" and run.problems == run.problems and run.problems or nil
+    -- A count that is not a number, or is below zero, is not known: never
+    -- read as zero (MyBuddy EB-1). 0/0 is of type number, and fails >= 0.
+    local problems = type(run.problems) == "number" and run.problems >= 0 and run.problems or nil
     local v = { feature = tostring(feature), missing = {}, synthetic = {}, verified = false,
         smoke = problems == 0, recorded = false }
     if not spec then
