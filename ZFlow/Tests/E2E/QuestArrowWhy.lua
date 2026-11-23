@@ -9,7 +9,8 @@ local _, ns = ...
 local tests = {}
 local Arrow = ns.Arrow
 
--- opts: log (the quest log rows; nil: not known), account, charSettings.
+-- opts: log (the quest log rows; nil: not known), account, charSettings,
+-- professions (client.professions names).
 local function start(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
@@ -25,6 +26,7 @@ local function start(opts)
     c.setPosition(1411, 0.5, 0.5)
     c.setMapSize(1411, 1000, 500)
     if opts.log then c.setQuestLog(opts.log) end
+    if opts.professions then c.setProfessions(opts.professions) end
     local addon = ns.offline.addon(c)
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
     c.advance(5, 20)
@@ -80,6 +82,29 @@ tests["quest arrow why: the quest arrow setting off is kept and nothing is said"
     local acc, char = c.saved(ns.id.accountDB), c.saved(ns.id.charDB)
     t.eq(acc.settings and acc.settings.quest and acc.settings.quest.arrow, false, "the saved choice is unchanged (account)")
     t.eq(char.settings and char.settings.quest and char.settings.quest.arrow, false, "the saved choice is unchanged (character)")
+end
+
+-- A profession step with no quest step. Stacked (the default), the
+-- profession step takes the stack's place and the stack is not silent, so
+-- no why line is put over it. Apart, the quest arrow has its own frame and
+-- says why, and the profession frame keeps its line.
+tests["quest arrow why: stacked, a profession step takes the stack and no why line is put over it"] = function(t)
+    local N = ns.Nav
+    local c = start({ log = {}, professions = { "Mining" } })
+    local q, p = c.arrows[1], c.arrows[2]
+    t.eq(q and q.shown, false, "no quest frame over the profession step")
+    t.eq(p and p.shown, true, "the profession frame is up")
+    t.eq(p and p.lines, { N.PROF_WHY_GM_ABSENT:format("Mining") }, "its words")
+end
+
+tests["quest arrow why: separate, the quest arrow says why and the profession frame keeps its line"] = function(t)
+    local N = ns.Nav
+    local c = start({ log = {}, professions = { "Mining" },
+        account = { layout = { arrows = { mode = "separate" } } } })
+    whyOnly(t, c, { Arrow.NO_QUEST }, "separate")
+    local p = c.arrows[2]
+    t.eq(p and p.shown, true, "separate: the profession frame is up")
+    t.eq(p and p.lines, { N.PROF_WHY_GM_ABSENT:format("Mining") }, "separate: its words")
 end
 
 return tests

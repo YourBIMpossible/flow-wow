@@ -280,7 +280,7 @@ return {
         a.relayout()
         t.eq(q.shown, true, "the place known again: shown")
         a.setGuide(nil)
-        t.eq(q.shown, false, "no guide: nothing to point at")
+        t.eq(q.lines, { ns.Arrow.NO_QUEST }, "no guide: nothing to point at, and it says why")
     end,
 
     ["a frame error is one problem, and the arrows stop drawing and hide"] = function(t)

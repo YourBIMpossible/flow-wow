@@ -105,7 +105,7 @@ return {
         way(c, "50 30")
         way(c, "clear")
         t.eq(saved(k), nil)
-        t.eq(c.arrows[1].shown, false)
+        t.eq(c.arrows[1].lines, { A.NO_QUEST }, "no step: the quest arrow says why (lead section 294 item 5)")
         t.ok(has(last(c), "waypoint cleared"), last(c))
         way(c, "Clear")
         t.ok(has(last(c), W.REASON.unset), last(c))
@@ -167,7 +167,7 @@ return {
         t.eq(saved(k), nil, "5 yd: there")
         t.eq(#c.printed, before + 1)
         t.ok(has(last(c), "waypoint reached"), last(c))
-        t.eq(c.arrows[1].shown, false)
+        t.eq(c.arrows[1].lines, { A.NO_QUEST }, "no step: the quest arrow says why (lead section 294 item 5)")
         a.relayout()
         t.eq(#c.printed, before + 1, "said once")
     end,
@@ -215,7 +215,7 @@ return {
         if type(c.slashes["/way"]) ~= "function" then t.ok(false, "no /way") return end
         k.store:set(W.SCOPE, W.PATH, { waypoint = { map = 1411, x = 7, y = 0.3 } })
         a.relayout()
-        t.eq(c.arrows[1].shown, false)
+        t.eq(c.arrows[1].lines, { A.NO_QUEST }, "no step: the quest arrow says why (lead section 294 item 5)")
         t.eq(k.problems:count(), 0)
         way(c, "clear")
         t.eq(saved(k), nil)
