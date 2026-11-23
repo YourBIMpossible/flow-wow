@@ -129,9 +129,20 @@ return {
         t.eq(advice({ lowHealth = nil }), "Sinister Strike", "warning not read: no Evasion")
     end,
 
+    -- Lead section 358: the swing check. Rewritten: this had the driver's
+    -- swing read as off with the names not read, which now asks for Attack.
     ["the swing not read as off: no Attack"] = function(t)
-        local got = advice({ current = nil, inCombat = false, attacking = false }, without("Stealth"))
+        local s = snap({ inCombat = false }, without("Stealth"))
+        s.current, s.attacking = nil, nil
+        local r = ns.Choose(s, ns.Packs.ROGUE)
+        local got = r and r.spell or nil
         t.ok(got ~= "Attack", tostring(got))
+    end,
+
+    ["358 the swing read as off, the names not read: Attack"] = function(t)
+        local s = snap({ inCombat = false, attacking = false }, without("Stealth"))
+        s.current = nil
+        t.eq(ns.Choose(s, ns.Packs.ROGUE).spell, "Attack")
     end,
 
     ["Kick is the interrupt, on your own target"] = function(t)
