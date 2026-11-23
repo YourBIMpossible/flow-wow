@@ -48,7 +48,11 @@ end
 tests["profession picker: no professions, a mage is told Tailoring and Enchanting"] = function(t)
     local _, addon = boot({ professions = {} })
     t.eq(text(addon), MAGE)
-    t.eq(addon.problems:count(), 0)
+    -- Lead (section 274): the whole add-on lists problems of its own at boot on
+    -- the fake client; the picker must add none to a boot where it is silent.
+    local _, quiet = boot({ professions = {}, level = 1 })
+    t.eq(text(quiet), nil, "below level 3: no advice")
+    t.eq(addon.problems:count(), quiet.problems:count(), "the picker adds no problem")
 end
 
 tests["profession picker: one gathering profession, its craft is named"] = function(t)
@@ -92,7 +96,7 @@ end
 tests["profession picker: the read raising, then recovering"] = function(t)
     local c, addon = boot({ professions = {} })
     local real = c.professions
-    c.professions = function() local none; return none.read end
+    c.professions = function() error("professions read failed (test)") end
     c.fire("SKILL_LINES_CHANGED")
     t.eq(prompt(addon), nil, "the read raised: no advice")
     t.eq(addon:ModuleState("profPick"), "started", "the module stays on")
