@@ -5,7 +5,8 @@ local _, ns = ...
 -- Needs Nav/GuideRead.lua.
 --
 -- The reads are N.GuideRead's: client.position() (shares of a map),
--- client.mapSize(map) (yards), client.zone() and client.facing(). A share
+-- client.mapSize(map) (yards), client.zone(), client.facing(), and
+-- client.mapCorners(map) for a step on another map (S44). A share
 -- becomes yards as x * w and y * h. What the client does not say stays nil
 -- (distance, player) or false (here, bearingKnown, facingKnown). Nothing is
 -- guessed.

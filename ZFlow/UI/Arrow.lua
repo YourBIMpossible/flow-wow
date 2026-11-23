@@ -323,11 +323,15 @@ function Arrow.GuideSource(client, layout, guide, intro, palette)
             if intro.title ~= nil then out[1] = tostring(intro.title) end
         elseif type(step.lines) == "table" then
             for i = 1, #step.lines do out[i] = tostring(step.lines[i]) end
+            -- The quest's own item in words (S42, Nav/QuestItems.lua): last.
+            if step.use ~= nil then out[#out + 1] = tostring(step.use) end
         else
             local label = more[key].label or step.label
             if label ~= nil then out[#out + 1] = tostring(label) end
             -- A step may say one more line of its own under its label (S43).
             if step.detail ~= nil then out[#out + 1] = tostring(step.detail) end
+            -- The quest's own item in words (S42, Nav/QuestItems.lua).
+            if step.use ~= nil then out[#out + 1] = tostring(step.use) end
             if type(d) == "number" then
                 local word = more[key].compass
                 if arrived then
@@ -384,6 +388,17 @@ function Arrow.QuestArrowOn(k)
     local Q = ns.Nav and ns.Nav.QuestSource
     if type(s) ~= "table" or type(s.get) ~= "function" or not Q then return true end
     local ok, v = pcall(s.get, s, Q.SETTING)
+    return not (ok and v == false)
+end
+
+-- Whether what is left on this map comes before the quest log order (lead
+-- section 187): the setting row ns.Nav.LEAVING_SETTING, on unless it says
+-- a plain false.
+function Arrow.ZoneFirstOn(k)
+    local s = type(k) == "table" and k.settings or nil
+    local key = ns.Nav and ns.Nav.LEAVING_SETTING
+    if type(s) ~= "table" or type(s.get) ~= "function" or key == nil then return true end
+    local ok, v = pcall(s.get, s, key)
     return not (ok and v == false)
 end
 
@@ -447,7 +462,8 @@ function Arrow.Start(k, diag, own)
     local guideFn = nil
     -- The player's own quests (S43, Nav/QuestRead.lua): the quest step when
     -- there is no waypoint. Read-only; nil when that file is not loaded.
-    local quests = N.QuestWatch and N.QuestSource and N.QuestWatch(client) or nil
+    local quests = N.QuestWatch and N.QuestSource
+        and N.QuestWatch(client, { zoneFirst = function() return Arrow.ZoneFirstOn(k) end }) or nil
     -- introWanted: this install has not seen the intro and it has not ended.
     -- entered: the world has been entered. introShown: the last layout had
     -- the intro on the quest arrow. introUntil: when it ends, nil until the
@@ -483,9 +499,21 @@ function Arrow.Start(k, diag, own)
     -- from: where the quest step of the last source came from, for the
     -- arrow's own report (arrow why).
     local from = "not asked yet"
+    -- heading: the place of the quest arrow's step in the last source, as
+    -- { cont, map, x, y }, or nil (none, the demo, or a step with no map
+    -- place). Heading() gives a copy (lead section 169 B: Nav/Legs.lua
+    -- reads it to know which step the player is going to).
+    local heading = nil
+    local function placeOf(step)
+        local p = type(step) == "table" and step.place or nil
+        if type(p) ~= "table" or p.map == nil or type(p.x) ~= "number" or type(p.y) ~= "number" then return nil end
+        if p.x ~= p.x or p.y ~= p.y then return nil end
+        return { cont = p.cont, map = p.map, x = p.x, y = p.y }
+    end
     local function source()
         mine = false
         from = "demo"
+        heading = nil
         if demo then return Arrow.DemoSource(client, Arrow.Saved(k), near, Arrow.Palette(k)) end
         local playing = intro()
         local guide
@@ -493,13 +521,26 @@ function Arrow.Start(k, diag, own)
             guide = guideFn()
             from = "a guide"
         else
-            local step = W and W.Step(k.store:get(W.SCOPE, W.PATH), ask(client, "position"), ask(client, "zone"))
-            from = "nothing"
+            -- A travel preview (Nav/Try.lua, <slash> try) wins over every
+            -- step of the player's own while it is on. It is not the
+            -- player's waypoint: reaching it clears nothing.
+            local step
+            local preview = k.use and k.use("try")
+            if preview and type(preview.Step) == "function" then
+                local okPreview, s = pcall(preview.Step)
+                if okPreview and type(s) == "table" then step = s end
+            end
             if step then
-                mine, from = true, "your own waypoint"
+                from = N.Try and N.Try.FROM or "a preview"
             else
-                step = N.WaypointStep(client)
-                if step then from = "the map pin" end
+                step = W and W.Step(k.store:get(W.SCOPE, W.PATH), ask(client, "position"), ask(client, "zone"))
+                from = "nothing"
+                if step then
+                    mine, from = true, "your own waypoint"
+                else
+                    step = N.WaypointStep(client)
+                    if step then from = "the map pin" end
+                end
             end
             -- Then the errand stop the player asked for (Nav/Errand.lua), when there is one.
             local errand = k.use and k.use("errand")
@@ -518,6 +559,14 @@ function Arrow.Start(k, diag, own)
             if step == nil and quests and Arrow.QuestArrowOn(k) then
                 step = quests.step()
                 if step then from = "your quests" end
+            end
+            -- The quest's own item, named under the objective (S42,
+            -- Nav/QuestItems.lua): "Use <item> (in your bags)". Words only:
+            -- nothing here uses the item.
+            local questItems = k.use and k.use("questItems")
+            if step ~= nil and from == "your quests" and questItems and type(questItems.With) == "function" then
+                local ok, with = pcall(questItems.With, step)
+                if ok and type(with) == "table" then step = with end
             end
             -- The way there, when it is a cast, the hearthstone, a ride or a
             -- gate (Nav/Travel.lua, S33 + S35): that takes the step's place
@@ -542,6 +591,7 @@ function Arrow.Start(k, diag, own)
             if not playing then return nil end
             guide = {}
         end
+        heading = placeOf(guide.quest)
         return Arrow.GuideSource(client, Arrow.Saved(k), guide, playing, Arrow.Palette(k))
     end
 
@@ -1060,7 +1110,11 @@ function Arrow.Start(k, diag, own)
              tip = tip,
              openMenu = openMenu,
              setDrawer = function(fn) drawer = type(fn) == "function" and fn or nil end,
-             state = function() return { ready = ready, demo = demo, near = near, view = current } end }
+             state = function() return { ready = ready, demo = demo, near = near, view = current } end,
+             heading = function()
+                 if not heading then return nil end
+                 return { cont = heading.cont, map = heading.map, x = heading.x, y = heading.y }
+             end }
 end
 
 -- Declares the arrows on kernel k as the module Arrow.NAME. Nothing is made
@@ -1134,10 +1188,18 @@ function Arrow.Declare(k, diag)
         if inner then return inner.state() end
         return { ready = false, demo = false, near = false }
     end
+    -- The place the quest arrow points the player to now, { cont, map, x,
+    -- y } (shares of map), or nil: before the start, with nothing shown,
+    -- in the demo, or for a step with no map place. A copy each time.
+    function api.heading()
+        if inner and inner.heading then return inner.heading() end
+        return nil
+    end
     k:Module({
         name = Arrow.NAME,
         needs = { "client", "store", "bus", "sched" },
-        provides = { OpenMenu = function() return api.openMenu() end },
+        provides = { OpenMenu = function() return api.openMenu() end,
+                     Heading = function() return api.heading() end },
         start = function(ctx)
             local own = { loaded = true }
             function own.listen(event, fn) ctx.bus:on(Arrow.NAME, event, fn) end

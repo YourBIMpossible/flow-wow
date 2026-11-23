@@ -35,6 +35,7 @@ ns.Diag = Diag
 local KEEP = 20
 Diag.KEEP = KEEP
 local SHAPE_KEYS = 60
+Diag.SHAPE_KEYS = SHAPE_KEYS
 -- Seconds after login for the "settled" snapshot, and the gap inside which
 -- the same window event again takes no second snapshot.
 local SETTLE, SAME_WINDOW, LATE = 8, 5, 3
@@ -96,6 +97,33 @@ Diag.NAMES = {
     "Enum.BankType", "C_PlayerInteractionManager.IsInteractingWithNpcOfType", "Enum.PlayerInteractionType",
     "C_UnitAuras.GetBuffDataByIndex", "C_UnitAuras.GetPlayerAuraBySpellID",
     "C_Item.GetItemInfoInstant", "C_Item.GetItemNameByID", "C_Container.GetBagName",
+    -- Sections 185 and 186: every other name Core/Client.lua reads (found
+    -- from the file itself at 7ea3b50), so a missing one is never "not
+    -- asked"; then the names the lead named that it does not read yet.
+    "C_AddOns", "C_AddOns.GetAddOnMetadata", "C_AuctionHouse", "C_AuctionHouse.GetCommoditySearchResultInfo",
+    "C_AuctionHouse.GetItemSearchResultInfo", "C_Bank", "C_CVar", "C_CVar.GetCVar", "C_Container",
+    "C_DeathInfo", "C_DeathInfo.GetCorpseMapPosition", "C_Item", "C_Item.GetItemSpell", "C_Item.GetItemStats",
+    "C_Map", "C_Map.GetUserWaypoint", "C_Map.HasUserWaypoint", "C_MerchantFrame", "C_Minimap",
+    "C_Minimap.GetViewRadius", "C_NamePlate", "C_NamePlate.GetNamePlateForUnit", "C_PetBattles",
+    "C_PetBattles.IsInBattle", "C_QuestLog", "C_QuestLog.GetLogIndexForQuestID", "C_QuestLog.IsFailed",
+    "C_Spell", "C_Spell.GetSpellSubtext", "C_Spell.IsCurrentSpell", "C_SpellBook", "C_SuperTrack",
+    "C_TooltipInfo", "C_TooltipInfo.GetHyperlink", "C_TradeSkillUI", "C_TradeSkillUI.IsDataSourceChanging",
+    "C_UnitAuras", "CanDualWield", "ClassTrainerFrame", "CombatLogGetCurrentEventInfo", "ConsoleExec",
+    "CreateVector2D", "Enum", "GetAddOnMetadata", "GetBindLocation", "GetCursorPosition",
+    "GetInventoryItemDurability", "GetItemCooldown", "GetItemSpell", "GetItemStats", "GetLootRollItemLink",
+    "GetLootSlotInfo", "GetLootSlotLink", "GetLootSourceInfo", "GetMinimapShape", "GetNumLootItems",
+    "GetNumQuestWatches", "GetQuestIndexForWatch", "GetQuestLogIndexByID", "GetQuestLogSpecialItemInfo",
+    "GetSpellSubtext", "GetSpellTexture", "GetSuperTrackedQuestID", "GetTrainerServiceLevelReq",
+    "GetTrainerServiceSkillLine", "GetTrainerServiceTypeFilter", "GroupLootContainer",
+    "InterfaceOptionsFrame_OpenToCategory", "InterfaceOptions_AddCategory", "IsAltKeyDown", "IsCurrentSpell",
+    "IsInGroup", "IsMounted", "IsShiftKeyDown", "LOOT_ITEM_SELF", "LOOT_ITEM_SELF_MULTIPLE",
+    "MERCHANT_ITEMS_PER_PAGE", "MerchantFrame", "MerchantFrame_Update", "NUM_GROUP_LOOT_FRAMES",
+    "PowerBarColor", "Questie.db", "QuestieLoader", "SPEED", "STANDARD_TEXT_FONT", "Settings",
+    "Sound_GameSystem_RestartSoundSystem", "TooltipDataProcessor", "UISpecialFrames", "UnitClassification",
+    "UnitDetailedThreatSituation", "UnitGUID", "UnitGroupRolesAssigned", "UnitInVehicle", "UnitIsDeadOrGhost",
+    "UnitIsFriend", "UnitIsGhost", "UnitIsPlayer", "UnitIsUnit", "UnitOnTaxi", "geterrorhandler",
+    "hash_SlashCmdList", "print", "seterrorhandler", "time", "C_TaxiMap", "C_TaxiMap.GetTaxiNodesForMap",
+    "GetTaxiNodesForMap", "UnitThreatSituation", "C_NamePlate.GetNamePlates",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns
@@ -107,6 +135,30 @@ Diag.NAMESPACES = {
     "Enum.BagIndex", "Enum.BankType", "Enum.SpellBookSpellBank", "Enum.PlayerInteractionType",
 }
 Diag.GLOBALS = { "^C_", "Talent", "Skill", "Trainer", "Craft", "Profession", "Bank", "Realm", "Taxi" }
+
+-- Events this client is known not to have, and why. They are still listened
+-- for (a later client may have them), but a refusal of one is no fault: it
+-- costs no feature, so diag says it apart, as expected
+-- (RESEARCH-blockC section 4).
+Diag.EXPECTED_ABSENT = {
+    CRAFT_SHOW = "the old craft window event; professions open with TRADE_SKILL_SHOW here",
+    LEARNED_SPELL_IN_TAB = "named LEARNED_SPELL_IN_SKILL_LINE on this client, which is listened for too",
+}
+
+-- The refused event names split in two: (unexpected, expected absent),
+-- each in the order given.
+local function splitEvents(names)
+    local refused, expected = {}, {}
+    if type(names) ~= "table" then return refused, expected end
+    for _, name in ipairs(names) do
+        if Diag.EXPECTED_ABSENT[name] ~= nil then
+            expected[#expected + 1] = name
+        else
+            refused[#refused + 1] = name
+        end
+    end
+    return refused, expected
+end
 
 local function plain(v)
     local t = type(v)
@@ -362,6 +414,15 @@ function Diag.Collect(k, why)
     end
     S.spellByName = ask(client, "C_Spell.GetSpellInfo", "Attack")
     S.aura1 = ask(client, "C_UnitAuras.GetAuraDataByIndex", "player", 1, "HELPFUL")
+    -- Section 183 (C1, C5): the reads the rotation now takes, so one game
+    -- session can show them. 6603 as the Attack spell id is a first guess.
+    S.auraOld1 = ask(client, "UnitBuff", "player", 1, "HELPFUL")
+    if S.form.ok and type(S.form.values.v1) == "number" and S.form.values.v1 > 0 then
+        S.formInfo = ask(client, "GetShapeshiftFormInfo", S.form.values.v1)
+    end
+    S.currentAttack = ask(client, "IsCurrentSpell", 6603)
+    S.currentAttackNew = ask(client, "C_Spell.IsCurrentSpell", 6603)
+    S.gcd = ask(client, "C_Spell.GetSpellCooldown", 61304)
     S.professions = ask(client, "GetProfessions")
     if S.professions.ok and type(S.professions.values.v1) == "number" then
         S.profession1 = ask(client, "GetProfessionInfo", S.professions.values.v1)
@@ -422,11 +483,168 @@ function Diag.Collect(k, why)
     -- Listeners that will never be called: the client refused the event
     -- name, or the frame that receives events was not made.
     local faults = client.listenFaults()
-    K.eventsNotRegistered = faults.notRegistered
+    K.eventsNotRegistered, K.eventsExpectedAbsent = splitEvents(faults.notRegistered)
     K.eventFrameNotMade = faults.noEventFrame
     K.tickFrameNotMade = faults.noTickFrame
     K.meter = k.meter:report()
     return snap
+end
+
+-- Read shapes (sections 185 and 186). Once per login, after the world has
+-- settled, the SHAPE of a few reads is saved, so one login and logout tell
+-- which reads this client answers and how: field names, types and counts
+-- only. No value is kept: no name, place, spell, icon, chat or error text,
+-- and no number. Every read is asked through client.raw (a pcall).
+--
+--   Diag.CONTINENTS          the continent maps asked about (uiMapIDs 1414
+--                            Kalimdor, 1415 Eastern Kingdoms: first guess)
+--   Diag.Form(v, isSecret)   "nil" | "number" | "string" | ... | "secret", or
+--                            for a table { type = "table", count = #v, keys = n,
+--                            fields = { [name] = type }, first = form of v[1] }
+--                            (fields: keys that read as field names, at most
+--                            SHAPE_KEYS; first: at the top level only)
+--   Diag.Reads(client)       -> { taxi, worldPos, aura, auraCount, gcd, form,
+--                            forms, formInfo, current, currentNew, spellInfo,
+--                            secretFn, nameplates }
+--   Diag.SaveReads(k, reads) appends { at, build, reads }; newest KEEP kept
+Diag.CONTINENTS = { 1414, 1415 }
+Diag.FORMS_MAX = 10      -- shapeshift forms asked about at most
+Diag.AURAS_MAX = 40      -- aura rows counted at most
+
+local FIELD = "^[%a_][%w_]*$"
+
+local function form(v, isSecret, depth)
+    local kind = type(v)
+    if kind == "nil" then return "nil" end
+    if isSecret and isSecret(v) then return SECRET end
+    if kind ~= "table" then return kind end
+    local okN, n = pcall(function() return #v end)
+    local out = { type = "table", count = okN and n or nil, keys = 0, fields = {} }
+    local kept = 0
+    for key, value in pairs(v) do
+        out.keys = out.keys + 1
+        if kept < SHAPE_KEYS and type(key) == "string" and key:find(FIELD) then
+            kept = kept + 1
+            if type(value) ~= "nil" and isSecret and isSecret(value) then
+                out.fields[key] = SECRET
+            else
+                out.fields[key] = type(value)
+            end
+        end
+    end
+    if depth == 0 then
+        local okFirst, first = pcall(function() return v[1] end)
+        if okFirst and first ~= nil then out.first = form(first, isSecret, 1) end
+    end
+    return out
+end
+
+function Diag.Form(v, isSecret)
+    return form(v, isSecret, 0)
+end
+
+-- One call's shape: { path, exists = type of the name, ok, n, answers }.
+-- A call that is missing or raises is { path, exists, ok = false }: the
+-- error text is not kept.
+local function callForm(client, isSecret, path, ...)
+    local row = { path = path, exists = client.typeOf(path), ok = false }
+    if row.exists ~= "function" then return row end
+    local function pack(...) return select("#", ...), { ... } end
+    local count, packed = pack(client.raw(path, ...))
+    if packed[1] ~= true then return row end
+    row.ok, row.n, row.answers = true, count - 1, {}
+    for i = 1, count - 1 do row.answers[i] = form(packed[i + 1], isSecret, 0) end
+    return row
+end
+
+-- The first of two names that is a function, or the first name.
+local function either(client, a, b)
+    if client.typeOf(a) == "function" then return a end
+    if client.typeOf(b) == "function" then return b end
+    return a
+end
+
+-- A number answer of a call, or nil (missing, raised, secret, not a number).
+local function number(client, isSecret, path, ...)
+    if client.typeOf(path) ~= "function" then return nil end
+    local ok, v = client.raw(path, ...)
+    if not ok or type(v) ~= "number" or isSecret(v) then return nil end
+    return v
+end
+
+function Diag.Reads(client)
+    local function isSecret(v) return Diag.IsSecret(client, v) end
+    local R = {}
+    -- Each read on its own: one that raises leaves { failed = true }.
+    local function try(key, make)
+        local ok, v = pcall(make)
+        if ok then R[key] = v else R[key] = { failed = true } end
+    end
+    local function ask(path, ...) return callForm(client, isSecret, path, ...) end
+
+    try("taxi", function()
+        local path, out = either(client, "C_TaxiMap.GetTaxiNodesForMap", "GetTaxiNodesForMap"), {}
+        for _, map in ipairs(Diag.CONTINENTS) do out[map] = ask(path, map) end
+        return out
+    end)
+    try("worldPos", function()
+        local path, out = "C_Map.GetWorldPosFromMapPos", {}
+        for _, map in ipairs(Diag.CONTINENTS) do
+            local okVec, vec = false, nil
+            if client.typeOf("CreateVector2D") == "function" then okVec, vec = client.raw("CreateVector2D", 0.5, 0.5) end
+            if okVec and vec ~= nil then
+                out[map] = ask(path, map, vec)
+            else
+                out[map] = { path = path, exists = client.typeOf(path), ok = false, noVector = true }
+            end
+        end
+        return out
+    end)
+    try("aura", function() return ask("C_UnitAuras.GetAuraDataByIndex", "player", 1, "HELPFUL") end)
+    try("auraCount", function()
+        local path = "C_UnitAuras.GetAuraDataByIndex"
+        if client.typeOf(path) ~= "function" then return nil end
+        for i = 1, Diag.AURAS_MAX do
+            local ok, row = client.raw(path, "player", i, "HELPFUL")
+            if not ok or row == nil then return i - 1 end
+        end
+        return Diag.AURAS_MAX
+    end)
+    try("gcd", function() return ask("C_Spell.GetSpellCooldown", 61304) end)
+    try("form", function() return ask("GetShapeshiftForm") end)
+    try("forms", function() return ask("GetNumShapeshiftForms") end)
+    try("formInfo", function()
+        local out = {}
+        local n = number(client, isSecret, "GetNumShapeshiftForms")
+        if n == nil then return out end
+        for i = 1, math.min(math.floor(n), Diag.FORMS_MAX) do out[i] = ask("GetShapeshiftFormInfo", i) end
+        return out
+    end)
+    try("current", function() return ask("IsCurrentSpell", 6603) end)
+    try("currentNew", function() return ask("C_Spell.IsCurrentSpell", 6603) end)
+    try("spellInfo", function() return ask("C_Spell.GetSpellInfo", 6603) end)
+    R.secretFn = client.typeOf("issecretvalue")
+    try("nameplates", function()
+        local path = "C_NamePlate.GetNamePlates"
+        local row = { exists = client.typeOf(path), ok = false }
+        if row.exists ~= "function" then return row end
+        local ok, plates = client.raw(path)
+        if not ok then return row end
+        row.ok = true
+        if type(plates) == "table" and not isSecret(plates) then row.count = #plates end
+        return row
+    end)
+    return R
+end
+
+function Diag.SaveReads(k, reads)
+    local db = k.client.saved(k.id.accountDB)
+    if type(db.diag) ~= "table" then db.diag = {} end
+    local d = db.diag
+    if type(d.reads) ~= "table" then d.reads = {} end
+    d.reads[#d.reads + 1] = { at = k.client.uptime(), build = Diag.BuildKey(k.client), reads = reads }
+    while #d.reads > KEEP do table.remove(d.reads, 1) end
+    return d
 end
 
 -- The member names of the client's namespaces and the bare global names
@@ -593,9 +811,13 @@ end
 -- Diag.RotationLine(state, view, enabled) -> line or nil
 --   nil when there is no driver (state nil). Otherwise the first row that
 --   holds: not running; no view held (switched off, or no reading yet); no
---   pack; dead not known; dead; spells not read; and last the suggestion,
---   or why there is none. The first five are the whole line. The fight is
---   a clause in front of the last two, never a row of its own: a fight not
+--   pack; dead not known; dead; and last the suggestion, or why there is
+--   none. The first five are the whole line. After the suggestion come the
+--   pack's spells that were skipped (C2, RESEARCH-blockC): first those with
+--   no id (view.missing: not learned yet, or not found by name), then those
+--   with an id whose row did not come back. A low-level character has not
+--   learned most of its pack, so the count never hides the suggestion. The
+--   fight is a clause in front of the suggestion, never a row of its own: a fight not
 --   known (said as the chooser counts it, R.InFight: as a fight), lockdown
 --   not known, or lockdown. "(keys unchanged)" goes with it whenever
 --   lockdown is not a known "no". A view kept from an earlier tick says so.
@@ -622,6 +844,44 @@ local function fightClause(view, s)
     return nil
 end
 
+local function skippedCount(n, what)
+    if n == 0 then return "" end
+    return " " .. plural(n, "spell", "spells") .. " " .. what .. "; " .. (n == 1 and "it is" or "they are") .. " skipped."
+end
+
+-- The pack's spells left out of the reading, after the suggestion: not
+-- learned (no id) first, then not read (an id, but no row).
+local function skippedClause(view)
+    local noId = {}
+    if type(view.missing) == "table" then
+        for _, name in ipairs(view.missing) do noId[name] = true end
+    end
+    local notLearned, notRead = 0, 0
+    if type(view.unread) == "table" then
+        for _, name in ipairs(view.unread) do
+            if noId[name] then notLearned = notLearned + 1 else notRead = notRead + 1 end
+        end
+    end
+    return skippedCount(notLearned, "not learned or not found by name") .. skippedCount(notRead, "not read")
+end
+
+-- Section 187: the reads a pack leans on, in the player's words.
+Diag.READ_WORDS = {
+    formKnown = "which form you are in",
+    buffs = "your buffs",
+    targetDebuffs = "your debuffs on the target",
+}
+
+-- The pack's reads that came back not known, as one list of words, or nil.
+local function notReadWords(view)
+    if type(view.notRead) ~= "table" or #view.notRead == 0 then return nil end
+    local words = {}
+    for _, field in ipairs(view.notRead) do
+        words[#words + 1] = Diag.READ_WORDS[field] or tostring(field)
+    end
+    return table.concat(words, ", ")
+end
+
 local function rotationRow(view)
     if view.pack ~= true then return "class not known, or no spell list for it; nothing suggested." end
     local s = type(view.snapshot) == "table" and view.snapshot or {}
@@ -629,17 +889,24 @@ local function rotationRow(view)
     if s.dead ~= false then return "dead; nothing suggested." end
     local fight = fightClause(view, s)
     local head = fight ~= nil and fight .. "; " or ""
-    local unread = type(view.unread) == "table" and #view.unread or 0
-    if unread > 0 then
-        return head .. plural(unread, "spell", "spells") .. " not read; "
-            .. (unread == 1 and "it is" or "they are") .. " skipped."
-    end
     local why = type(view.why) == "table" and view.why or {}
     local picked = type(view.suggestion) == "table" and view.suggestion.spell or nil
-    if picked ~= nil then
-        return head .. "suggesting " .. tostring(picked) .. " (" .. tostring(why.step or "step not known") .. ")."
+    local line
+    if picked ~= nil and why.step == "farOpener" then
+        -- Lead section 187: the spell shown is out of range, and the words say so.
+        line = head .. tostring(picked) .. " is next, but out of range: move closer (farOpener)."
+    elseif picked ~= nil then
+        line = head .. "suggesting " .. tostring(picked) .. " (" .. tostring(why.step or "step not known") .. ")."
+    else
+        -- Section 187: a read the pack leans on that was not given is named.
+        -- Before, a druid whose form was not read was told only "nothing out
+        -- of range" or "no enemy targeted".
+        local note = tostring(why.note or "no reason given")
+        local unread = notReadWords(view)
+        if unread ~= nil then note = note .. "; not read: " .. unread end
+        line = head .. "nothing to suggest (" .. note .. ")."
     end
-    return head .. "nothing to suggest (" .. tostring(why.note or "no reason given") .. ")."
+    return line .. skippedClause(view)
 end
 
 function Diag.RotationLine(state, view, enabled)
@@ -687,6 +954,22 @@ function Diag.RotationCooldownLine(view)
     table.sort(passed)
     return "rotation: " .. plural(#passed, "spell", "spells") .. " passed by: "
         .. R.COOLDOWN_UNKNOWN .. ": " .. table.concat(passed, ", ") .. "."
+end
+
+-- Diag.RotationReadsLine(view) -> line or nil
+--   Section 187: with a spell suggested, the reads the pack leans on that
+--   came back not known. Before, the spells that wait on them (Mark of the
+--   Wild with your buffs not read, Rake with your debuffs on the target not
+--   read) were passed by and nothing said so. nil when every read was
+--   given, nothing was picked (the rotation line names them then), or no
+--   choosing happened.
+function Diag.RotationReadsLine(view)
+    local s = choosing(view)
+    if s == nil then return nil end
+    if type(view.suggestion) ~= "table" or view.suggestion.spell == nil then return nil end
+    local unread = notReadWords(view)
+    if unread == nil then return nil end
+    return "rotation: not read: " .. unread .. "; spells that need them are passed by."
 end
 
 function Diag.RotationStealthLine(view)
@@ -803,6 +1086,9 @@ function Diag.Start(k)
             if waited < SETTLE then return end
             if cancel then cancel() end
             snapshot("settled")
+            -- The read shapes: once per login, the world loaded and settled.
+            local ok, err = pcall(function() Diag.SaveReads(k, Diag.Reads(client)) end)
+            if not ok then k.problems:add("diag", "reads", err) end
         end)
     end
 
@@ -953,6 +1239,7 @@ function Diag.Start(k)
         lines[#lines + 1] = Diag.RotationLine(state, view, enabled)
         lines[#lines + 1] = Diag.RotationCooldownLine(view)
         lines[#lines + 1] = Diag.RotationStealthLine(view)
+        lines[#lines + 1] = Diag.RotationReadsLine(view)
         return lines
     end
 
@@ -990,9 +1277,14 @@ function Diag.Start(k)
         say("tick frame", function()
             return faults.noTickFrame and "tick frame not made; nothing that runs each frame runs." or nil
         end)
+        local refusedEvents, expectedEvents = splitEvents(faults.notRegistered)
         say("events", function()
-            if type(faults.notRegistered) ~= "table" or #faults.notRegistered == 0 then return nil end
-            return "events not registered: " .. table.concat(faults.notRegistered, ", ") .. "."
+            if #refusedEvents == 0 then return nil end
+            return "events not registered: " .. table.concat(refusedEvents, ", ") .. "."
+        end)
+        say("expected events", function()
+            if #expectedEvents == 0 then return nil end
+            return "events this client does not have, as expected: " .. table.concat(expectedEvents, ", ") .. "."
         end)
         say("time", function()
             if client.uptime() ~= nil then return nil end

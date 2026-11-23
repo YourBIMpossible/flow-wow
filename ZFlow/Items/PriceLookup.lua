@@ -6,8 +6,11 @@ local _, ns = ...
 --   else a labelled estimate that names its source
 --   else "price unknown—check vendor". Unknown stays unknown: never a 0.
 --
--- It only reads (the item read and the saved price book) and prints. A
--- lookup writes nothing and asks no merchant, auction or other player.
+-- It only reads (the item read, the saved price book and the auction
+-- history) and prints. A lookup writes nothing and asks no merchant, auction
+-- or other player. The auction lines come from Items/AuctionLog.lua, the one
+-- writer of auction prices (PA8): your own searches on this realm and
+-- faction, nothing when the faction is not known.
 --
 --   result = PriceLookup.Find(item, itemInfo, book)     pure; nil: not an item
 --   lines  = PriceLookup.Run(k, rest)                   what to say, no title
@@ -73,7 +76,16 @@ function Lookup.Run(k, rest)
     local book = k.store:get("account", "learned.prices")
     local result = Lookup.Find(trim(rest), read, type(book) == "table" and book or nil)
     if not result then return { Lookup.USAGE } end
-    return ns.ItemPresent.PriceLines(result)
+    local lines = ns.ItemPresent.PriceLines(result)
+    local log, chart = ns.AuctionLog, ns.PriceChart
+    if type(result.key) == "number" and type(log) == "table" and type(chart) == "table"
+        and type(client) == "table" and type(client.clock) == "function" then
+        local e = log.Read(k.store, client, result.key)
+        if e then
+            for _, line in ipairs(chart.TipLines(chart.Points(e), client.clock())) do lines[#lines + 1] = line end
+        end
+    end
+    return lines
 end
 
 function Lookup.Start(k, diag)

@@ -47,6 +47,7 @@ return {
 
         -- Settings
         "Settings/Model.lua",
+        "Settings/Rows.lua",
 
         -- Items
         "Items/Key.lua",
@@ -97,6 +98,7 @@ return {
         "Classes/Paladin.lua",
         "Classes/Priest.lua",
         "Classes/Shaman.lua",
+        "Rotation/GroupTip.lua",
 
         -- Navigation
         "Nav/ArrowLayout.lua",
@@ -132,8 +134,11 @@ return {
         "Nav/FlightPaths.lua",
         "Nav/MapFlights.lua",
         "Nav/TaxiMark.lua",
+        "Nav/Flights.lua",
         "Nav/Gates.lua",
         "Nav/Travel.lua",
+        "Nav/Legs.lua",
+        "Nav/QuestItems.lua",
         "UI/ProfCard.lua",
 
         -- On screen (after Nav: the panel uses its saved-point rules)
@@ -153,6 +158,8 @@ return {
     "UI/MinimapPin.lua",
     "UI/RotationIcon.lua",
     "Rotation/Pulse.lua",
+    "UI/PlateThreat.lua",
+    "UI/PlateCombo.lua",
     "Rotation/CastEdge.lua",
     "Rotation/Audit.lua",
     "Rotation/FormSpells.lua",
@@ -161,5 +168,7 @@ return {
     "UI/RotationQueue.lua",
     "Items/Banker.lua",
     "Items/Posting.lua",
+    "Items/Trader.lua",
+    "Nav/Try.lua",
     },
 }

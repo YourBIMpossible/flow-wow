@@ -36,6 +36,7 @@ UI\Setup.lua
 Import\FromFlow.lua
 Import\Stored.lua
 Settings\Model.lua
+Settings\Rows.lua
 Items\Key.lua
 Items\Resources.lua
 Items\TooltipHave.lua
@@ -80,6 +81,7 @@ Classes\Druid.lua
 Classes\Paladin.lua
 Classes\Priest.lua
 Classes\Shaman.lua
+Rotation\GroupTip.lua
 Nav\ArrowLayout.lua
 Nav\Bearing.lua
 Nav\ArrowView.lua
@@ -113,8 +115,11 @@ Nav\Leaving.lua
 Nav\FlightPaths.lua
 Nav\MapFlights.lua
 Nav\TaxiMark.lua
+Nav\Flights.lua
 Nav\Gates.lua
 Nav\Travel.lua
+Nav\Legs.lua
+Nav\QuestItems.lua
 UI\ProfCard.lua
 UI\DevPanel.lua
 UI\SettingsSlash.lua
@@ -132,6 +137,8 @@ UI\Arrow.lua
 UI\MinimapPin.lua
 UI\RotationIcon.lua
 Rotation\Pulse.lua
+UI\PlateThreat.lua
+UI\PlateCombo.lua
 Rotation\CastEdge.lua
 Rotation\Audit.lua
 Rotation\FormSpells.lua
@@ -140,3 +147,5 @@ Rotation\Queue.lua
 UI\RotationQueue.lua
 Items\Banker.lua
 Items\Posting.lua
+Items\Trader.lua
+Nav\Try.lua

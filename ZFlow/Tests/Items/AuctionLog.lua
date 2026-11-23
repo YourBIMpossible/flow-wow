@@ -38,7 +38,8 @@ tests["auction log: the probe says what the client has and lacks"] = function(t)
     t.eq(lines[1], "auction probe: has C_AuctionHouse, GetRealmName")
     t.eq(lines[2], "auction probe: lacks C_AuctionHouse.GetCommoditySearchResultInfo, C_AuctionHouse.GetItemSearchResultInfo, "
         .. "C_AuctionHouse.GetNumCommoditySearchResults, C_AuctionHouse.GetNumItemSearchResults, "
-        .. "C_AuctionHouse.SendSearchQuery, C_AuctionHouse.MakeItemKey, C_AuctionHouse.ReplicateItems, QueryAuctionItems")
+        .. "C_AuctionHouse.SendSearchQuery, C_AuctionHouse.MakeItemKey, C_AuctionHouse.ReplicateItems, QueryAuctionItems, "
+        .. "ERR_AUCTION_SOLD_S, ERR_AUCTION_EXPIRED_S")
 end
 
 local function start(opts)

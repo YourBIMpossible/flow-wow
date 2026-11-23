@@ -74,6 +74,29 @@ M.ROWS = {
     -- nav.flightPaths: flight paths, learned from the player's own flight
     -- maps and shown as route steps (Nav/FlightPaths.lua). On by default.
     { key = "nav.flightPaths", type = "bool", default = true },
+    -- general.groupTip: on another friendly player's tooltip, which of your
+    -- group buffs they have (Rotation/GroupTip.lua). On by default.
+    { key = "general.groupTip", type = "bool", default = true },
+    -- nav.learnLegs: time the player's own trips from step to step and keep
+    -- the quickest (Nav/Legs.lua, S34). On by default, as in legacy Flow.
+    -- Off: nothing is timed, and routes go by the straight line.
+    { key = "nav.learnLegs", type = "bool", default = true },
+    -- plateThreat.off, plateThreat.always: your threat on enemy nameplates
+    -- (UI/PlateThreat.lua, S8, lead section 178). On by default, shown in a
+    -- group or with a pet out; always: when alone too. As legacy Flow.
+    { key = "plateThreat.off", type = "bool", default = false },
+    { key = "plateThreat.always", type = "bool", default = false },
+    -- plateCombo.off: combo points on your target's nameplate
+    -- (UI/PlateCombo.lua, S8). On by default, as in legacy Flow.
+    { key = "plateCombo.off", type = "bool", default = false },
+    -- nav.taxiMark: a ring on the open flight map at the flight master for
+    -- your next step (Nav/TaxiMark.lua, S31, lead section 187). On by
+    -- default, as in legacy Flow.
+    { key = "nav.taxiMark", type = "bool", default = true },
+    -- nav.mapFlights: your flight paths as pins on the world map
+    -- (Nav/MapFlights.lua, S31, lead section 187). Off by default, as in
+    -- legacy Flow.
+    { key = "nav.mapFlights", type = "bool", default = false },
 }
 
 -- ---------------------------------------------------------------- helpers

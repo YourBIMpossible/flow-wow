@@ -135,8 +135,11 @@ end
 T["quest read: a place on another map only is said to be elsewhere, with no point"] = function(t)
     local rows = { wolves() }
     local places = N.QuestiePlaces(client(rows, (questie())), rows, 1411)
-    t.eq(places[303].objectives[1], { points = {}, elsewhere = true })
-    t.eq(places[303].turnIn, { points = {}, elsewhere = true, name = "Wanted Board" })
+    -- No point on this map; since S44 (lead section 173) the first point
+    -- seen on another map is kept beside it as `away`.
+    t.eq(places[303].objectives[1], { points = {}, elsewhere = true, away = { map = 1412, x = 0.5, y = 0.5 } })
+    t.eq(places[303].turnIn, { points = {}, elsewhere = true, name = "Wanted Board",
+                               away = { map = 1412, x = 0.1, y = 0.1 } })
     local there = N.QuestiePlaces(client(rows, (questie())), rows, 1412)
     t.eq(there[303].objectives[1].points, { { map = 1412, x = 0.5, y = 0.5 } })
 end
@@ -212,12 +215,15 @@ T["quest watch: objective before turn-in, then the turn-in"] = function(t)
     t.eq(step.place, { cont = 1, map = 1411, x = 0.5, y = 0.6 })
 end
 
-T["quest watch: an objective on another map is words only"] = function(t)
+T["quest watch: an objective on another map points at a place there (S44)"] = function(t)
     local c = client({ wolves() }, (questie()))
     local w = N.QuestWatch(c)
     local step = w.step()
-    t.eq(step.place, nil)
-    t.eq(step.lines, { "Wolves", "Wolves slain: 0/4", Q.ELSEWHERE })
+    -- Was words only with Q.ELSEWHERE (owner session 6, Block B failed on
+    -- it); since S44 (lead section 173) the point away is the place.
+    t.eq(step.place, { map = 1412, x = 0.5, y = 0.5 })
+    t.eq(step.lines, nil)
+    t.eq(step.still, nil)
     c.setPosition(1412, 0.5, 0.4)
     t.eq(w.step().place, { cont = 1, map = 1412, x = 0.5, y = 0.5 }, "on that map the places are read again")
 end

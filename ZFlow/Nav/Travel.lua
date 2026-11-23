@@ -22,6 +22,10 @@ local _, ns = ...
 --              hearth  from N.HearthStep
 --              ride    from N.RideStep
 --              gate    from ns.use("gates").Step
+--              crossing  from ns.use("crossings").Way(target) (S45; Twin's)
+--              flight    from ns.use("flights").Way(target) (S45; MyBuddy's)
+--                      each a step { kind, label, place = { cont, map, x, y },
+--                      radius, ... } at the boarding place or flight master
 --              cont    the continent the player is on (for the ride's place)
 --   skipped  true when the player chose to walk to this step
 --   The first of these that holds, and how:
@@ -32,20 +36,26 @@ local _, ns = ...
 --     "ride"    -> { label, detail = how the ride goes, place, radius } when
 --               the master's saved place is known, else the words with
 --               still = true. No place is made up.
+--     "crossing"  a crossing's step, detail = "Then: ..." (never skipped:
+--               there is no walking over the sea). No place: not used.
+--     "flight"  a flight's step, detail = "Then: ...". No place: not used.
 --     "gate"    a learned gate -> the gate step, detail = "Then: ..."
 --     "gate unknown"  a walled map with no gate known: a copy of the step
 --               with N.GATE_UNKNOWN as its detail; a step that has a line of
 --               its own (detail or lines) is handed back as it is
 --   Else the step itself (the same table) and no how. skipped drops the
---   spell, the stone and the ride; the gate is the walk, so it stays.
+--   spell, the stone, the ride and the flight; the crossing and the gate
+--   stay.
 --   The step handed in and the ways are never changed. Each new step
 --   carries via = how. (Not "travel": Nav/ViewState.lua reads a step's
 --   travel as "the travel icon is shown" and halves the arrow for it.)
 --
 -- N.Travel.Declare(k, diag) -> api
 --   api.via(step)   reads the client and the store and answers N.TravelVia.
---                   A step with no map place, or on the player's own map
---                   with no stone to save a walk, comes back as it is.
+--                   A step with no map place comes back as it is; so does
+--                   one no way applies to (on the player's own map that is
+--                   usually so, unless a provider of a crossing or a flight
+--                   answers for it: the providers judge that themselves).
 --   api.walk()      the word N.Travel.WORD: walk to this step instead, or
 --                   back to the shortcut when said again. This session only.
 --   ns.use("travel") -> { Via = api.via }
@@ -62,10 +72,30 @@ Travel.WORD = "walk"
 Travel.HELP = "walk to this step instead of the shortcut; say it again for the shortcut"
 Travel.NEAR = 10               -- yards from a ride's master that count as there
 Travel.THEN = "Then: %s"
+-- Shown under a step whose place is on another continent with no way there
+-- known yet (lead section 187).
+Travel.FAR = "On another continent: no boat or zeppelin learned yet"
+-- S45: the ways asked of other modules, in no order of their own (the
+-- order is N.TravelVia's). module: its name for k.use; key: its field in ways.
+Travel.WAYS = { { module = "crossings", key = "crossing" }, { module = "flights", key = "flight" } }
 
 local function thenLine(step)
     if type(step.label) == "string" and step.label ~= "" then return Travel.THEN:format(step.label) end
     return nil
+end
+
+-- A crossing's or a flight's step (S45) as the arrow is given it: a copy
+-- with "Then: <step>" as its detail and via = how. nil for one with no
+-- label or no map place: no place is made up.
+local function wayStep(way, how, step)
+    if type(way) ~= "table" or type(way.label) ~= "string" then return nil end
+    local p = way.place
+    if type(p) ~= "table" or p.map == nil or type(p.x) ~= "number" or type(p.y) ~= "number" then return nil end
+    local out = {}
+    for key, v in pairs(way) do out[key] = v end
+    out.detail = thenLine(step)
+    out.via = how
+    return out
 end
 
 function N.TravelVia(step, ways, skipped)
@@ -91,6 +121,15 @@ function N.TravelVia(step, ways, skipped)
         end
     end
 
+    -- S45: a crossing to another continent (never skipped: there is no
+    -- walking over the sea), then a flight (skipped when walking).
+    local crossing = wayStep(ways.crossing, "crossing", step)
+    if crossing then return crossing, "crossing" end
+    if not skipped then
+        local flight = wayStep(ways.flight, "flight", step)
+        if flight then return flight, "flight" end
+    end
+
     local gate = ways.gate
     if type(gate) == "table" and type(gate.label) == "string" then
         if type(gate.place) == "table" then
@@ -107,6 +146,30 @@ function N.TravelVia(step, ways, skipped)
             out.detail = gate.label
             return out, "gate unknown"
         end
+    end
+
+    -- Lead section 187: the place is on another continent and no way there
+    -- is known (no crossing learned, no spell, no gate). There is no turn to
+    -- give: a bearing over the sea would be wrong, and "direction unknown"
+    -- reads as a fault. The step says so instead and is still. Both
+    -- continents must be read numbers; either unknown and nothing is claimed.
+    if type(ways.cont) == "number" and type(ways.far) == "number" and ways.cont ~= ways.far then
+        local out = {}
+        for key, v in pairs(step) do out[key] = v end
+        local lines = {}
+        if type(step.lines) == "table" then
+            for i = 1, #step.lines do lines[i] = step.lines[i] end
+        else
+            if step.label ~= nil then lines[#lines + 1] = step.label end
+            if step.detail ~= nil then lines[#lines + 1] = step.detail end
+        end
+        lines[#lines + 1] = Travel.FAR
+        out.lines = lines
+        out.place = nil
+        out.radius = nil
+        out.still = true
+        out.via = "far"
+        return out, "far"
     end
     return step
 end
@@ -145,11 +208,25 @@ function Travel.Declare(k, diag)
             return step
         end
         local client, target = ctx.client, step.place
+        -- Lead section 184 G1: a place with no continent (a quest place on
+        -- another map) gets it from its own map, the same number the zone
+        -- read gives. Not read: it stays nil. The step's place is not
+        -- changed; every way below is handed the filled copy.
+        if type(target) == "table" and target.cont == nil and type(target.map) == "number" then
+            local cont = ask(client, "mapCont", target.map)
+            if type(cont) == "number" then
+                local filled = {}
+                for f, v in pairs(target) do filled[f] = v end
+                filled.cont = cont
+                target = filled
+            end
+        end
         local pos = ask(client, "position")
         local zone = ask(client, "zone")
         local here = { position = pos }
         local mapSize = function(map) return ask(client, "mapSize", map) end
         local ways = { cont = type(zone) == "table" and zone.cont or nil }
+        ways.far = type(target) == "table" and target.cont or nil
 
         local okSpell, spell = pcall(N.TravelSpellStepFrom, target, client)
         if okSpell then ways.spell = spell end
@@ -164,12 +241,22 @@ function Travel.Declare(k, diag)
             local okGate, gate = pcall(gates.Step, target)
             if okGate then ways.gate = gate end
         end
+        -- S45: the crossing and the flight, from their owners' modules when
+        -- they exist (Travel.WAYS). Each is handed a copy of the place.
+        for _, w in ipairs(Travel.WAYS) do
+            local provider = k.use and k.use(w.module)
+            if type(provider) == "table" and type(provider.Way) == "function" then
+                local okWay, way = pcall(provider.Way, { cont = target.cont, map = target.map, x = target.x, y = target.y })
+                if okWay then ways[w.key] = way end
+            end
+        end
 
         -- What it would be with no walking chosen: the walk word needs to
         -- know whether there is a shortcut to skip at all.
         local _, shortcut = N.TravelVia(step, ways, false)
         lastKey = key
-        lastHow = (shortcut == "spell" or shortcut == "hearth" or shortcut == "ride") and shortcut or nil
+        lastHow = (shortcut == "spell" or shortcut == "hearth" or shortcut == "ride" or shortcut == "flight")
+            and shortcut or nil
         return N.TravelVia(step, ways, skips[key] == true)
     end
 

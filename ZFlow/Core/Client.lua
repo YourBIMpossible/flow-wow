@@ -1406,6 +1406,20 @@ function ns.make.client(env)
         return { w = w, h = h }
     end
 
+    -- The continent number of a map, or nil: the first answer of
+    -- C_Map.GetWorldPosFromMapPos for the middle of the map, the same
+    -- number c.zone() gives as cont (lead section 184 G1). nil when the
+    -- client will not say; never guessed. Needs game test: that the middle
+    -- of a map gives the number the player's own spot on it gives.
+    function c.mapCont(map)
+        if type(map) ~= "number" then return nil end
+        local okVec, vec = call(env.CreateVector2D, 0.5, 0.5)
+        if not okVec or vec == nil then return nil end
+        local ok, id = mapCall("GetWorldPosFromMapPos", map, vec)
+        if not ok or hidden(id) or type(id) ~= "number" or id ~= id then return nil end
+        return id
+    end
+
     -- The zone a map belongs to: the map itself or the nearest parent that
     -- is a zone or wider (Flow's N.ZoneOf). nil when the client won't say.
     local function zoneOf(map)
@@ -2341,6 +2355,9 @@ function ns.make.client(env)
     --                   spellTexture gave (a file id or a path); nil clears
     --                   the picture and answers false.
     --   h.place(point), h.show(on), h.onMoved(fn, failed): as the panel's.
+    --   h.mark(look) -> true when the client took it. "far" tints the
+    --                   picture red (the action bar's out of range colour);
+    --                   anything else puts the plain colour back.
     -- It moves only while Ctrl is held, like the arrows; a client that will
     -- not say whether Ctrl is held starts no drag. It takes no click and
     -- holds no secure action. A new icon is hidden and has no place.
@@ -2410,6 +2427,13 @@ function ns.make.client(env)
         end
         function h.show(on)
             method(f, on and "Show" or "Hide")
+        end
+        function h.mark(look)
+            if tex == nil then return false end
+            if look == "far" then
+                return (method(tex, "SetVertexColor", 1, 0.3, 0.3)) and true or false
+            end
+            return (method(tex, "SetVertexColor", 1, 1, 1)) and true or false
         end
         function h.onMoved(fn, failed)
             moved = fn
@@ -4340,6 +4364,1185 @@ function ns.make.client(env)
         end
         return down(env.IsControlKeyDown), down(env.IsShiftKeyDown), down(env.IsAltKeyDown)
     end
+
+    -- ---------------------------------------------------------------- S17
+    -- Group buff tooltip (owner Twin): the unit tooltip hook and two reads of
+    -- the unit it shows. Every call here is a first guess, not seen in game
+    -- on this client: needs a game test. Reads only, of the hovered unit:
+    -- nothing targets, casts or clicks, and no health, power amount, name or
+    -- GUID is read.
+    --
+    -- Told each time the game's own tooltip has been filled for a unit:
+    --   client.onUnitTooltip(fn) -> cancel;  fn(unit, add);  add(text, r, g, b)
+    -- unit is the token the tooltip gives (GameTooltip:GetUnit, the second
+    -- answer). add appends one line of text. fn's errors stay here. The
+    -- routes and their order are the item hook's above: the data post call
+    -- for unit data first, GameTooltip only; else OnTooltipSetUnit where the
+    -- tooltip has that script, once per fill. Neither replaces anything of
+    -- the game; a hook cannot be taken back, so cancel only stops fn being
+    -- told. nil when the client offers neither. No token, or a secret one:
+    -- fn is not told.
+    local unitListeners, unitHooked = {}, false
+    local function unitFilled(tip)
+        if type(tip) ~= "table" or type(tip.GetUnit) ~= "function" then return end
+        local ok, _, unit = pcall(tip.GetUnit, tip)
+        unit = text(ok, unit)
+        if not unit then return end
+        local function add(s, r, g, b)
+            if type(s) ~= "string" or type(tip.AddLine) ~= "function" then return end
+            pcall(tip.AddLine, tip, s, r, g, b)
+        end
+        for _, fn in ipairs({ unpack(unitListeners) }) do pcall(fn, unit, add) end
+    end
+    local function hookUnitTooltip()
+        if unitHooked then return true end
+        local proc, enum = env.TooltipDataProcessor, env.Enum
+        local unitData = type(enum) == "table" and type(enum.TooltipDataType) == "table"
+            and enum.TooltipDataType.Unit or nil
+        if type(proc) == "table" and unitData ~= nil
+            and call(proc.AddTooltipPostCall, unitData, function(t2)
+                if t2 == env.GameTooltip then unitFilled(t2) end
+            end) then
+            unitHooked = true
+            return true
+        end
+        local tip = env.GameTooltip
+        if type(tip) == "table" and type(tip.HookScript) == "function" then
+            local okHas, has = call(tip.HasScript, tip, "OnTooltipSetUnit")
+            local filled = false
+            if okHas and has == true and call(tip.HookScript, tip, "OnTooltipSetUnit", function(t2)
+                if filled then return end
+                filled = true
+                unitFilled(t2)
+            end) then
+                call(tip.HookScript, tip, "OnTooltipCleared", function() filled = false end)
+                unitHooked = true
+                return true
+            end
+        end
+        return false
+    end
+    function c.onUnitTooltip(fn)
+        if type(fn) ~= "function" or not hookUnitTooltip() then return nil end
+        unitListeners[#unitListeners + 1] = fn
+        return function()
+            for i = #unitListeners, 1, -1 do
+                if unitListeners[i] == fn then table.remove(unitListeners, i) end
+            end
+        end
+    end
+
+    -- What the client says of a unit, for the tooltip only:
+    --   { exists, player, isSelf, friendly, class, role, power }
+    -- exists, player, isSelf and friendly are each true, false, or nil when
+    -- the read is absent, raised, was hidden or was not a yes or no: never a
+    -- guess. class is the class token (UnitClass, second answer), role the
+    -- group role as the game names it ("TANK", "HEALER", "DAMAGER", "NONE"),
+    -- power the kind of power bar (UnitPowerType, first answer: a number,
+    -- never an amount). nil when no unit is asked about.
+    function c.unitInfo(unit)
+        if type(unit) ~= "string" or unit == "" then return nil end
+        local info = {}
+        info.exists = yesNo(call(env.UnitExists, unit))
+        info.player = yesNo(call(env.UnitIsPlayer, unit))
+        info.isSelf = yesNo(call(env.UnitIsUnit, unit, "player"))
+        info.friendly = yesNo(call(env.UnitIsFriend, "player", unit))
+        local okClass, _, class = call(env.UnitClass, unit)
+        info.class = text(okClass, class)
+        info.role = text(call(env.UnitGroupRolesAssigned, unit))
+        local okPower, power = call(env.UnitPowerType, unit)
+        if okPower and power ~= nil and not hidden(power) and type(power) == "number" then
+            info.power = power
+        end
+        return info
+    end
+
+    -- Does the unit have one of these buffs?
+    --   client.unitBuff(unit, names) -> up, secondsLeft, found
+    -- up: true (found, with the name that matched), false (every buff was
+    -- read and none is one of the names), nil (not known: no read, a read
+    -- that raised, or a row or a name the client hides, met before a match).
+    -- secondsLeft: math.huge for a buff with no end, nil when not known.
+    -- C_UnitAuras.GetAuraDataByIndex(unit, i, "HELPFUL") where the client has
+    -- it, else UnitBuff(unit, i, "HELPFUL") (name first, end time sixth).
+    -- At most 40 rows are asked for.
+    function c.unitBuff(unit, names)
+        if type(unit) ~= "string" or unit == "" or type(names) ~= "table" then return nil end
+        local wanted = {}
+        for i = 1, #names do
+            if type(names[i]) == "string" then wanted[names[i]] = true end
+        end
+        local auras = env.C_UnitAuras
+        local byIndex = type(auras) == "table" and auras.GetAuraDataByIndex or nil
+        local old = env.UnitBuff
+        if type(byIndex) ~= "function" and type(old) ~= "function" then return nil end
+        for i = 1, 40 do
+            local name, expires
+            if type(byIndex) == "function" then
+                local ok, row = pcall(byIndex, unit, i, "HELPFUL")
+                if not ok then return nil end
+                if row == nil then return false end
+                if hidden(row) or type(row) ~= "table" then return nil end
+                name, expires = row.name, row.expirationTime
+            else
+                local got = { pcall(old, unit, i, "HELPFUL") }
+                if not got[1] then return nil end
+                if got[2] == nil then return false end
+                name, expires = got[2], got[7]
+            end
+            if hidden(name) or type(name) ~= "string" then return nil end
+            if wanted[name] then
+                if expires == nil or hidden(expires) or type(expires) ~= "number" then return true, nil, name end
+                if expires == 0 then return true, math.huge, name end
+                return true, expires - c.now(), name
+            end
+        end
+        return false
+    end
+    -- ------------------------------------------------------------ end S17
+
+    -- S34 trip timing (LEDGER 153/169; WoW/from-zen/RESEARCH-S34.md): are
+    -- you mounted. True, false, or nil when not known (no call, a failed
+    -- call, a secret answer, or anything but a boolean). It only reads.
+    -- Docs (warcraft.wiki.gg, API IsMounted): no argument, a boolean, listed
+    -- for 1.60.1. Legacy Flow asks the same (Modules/Nav/Legs.lua:298).
+    -- A first guess: not seen in game on this client.
+    function c.mounted()
+        return flag(call(env.IsMounted))
+    end
+
+    -- S42 quest item on the quest arrow (LEDGER 169/172;
+    -- WoW/from-zen/RESEARCH-S42.md). Three reads, each only reads: nothing
+    -- uses an item here (no UseQuestLogSpecialItem, no secure button; the
+    -- click is parked behind G23). FIRST GUESSES: not seen in game on 1.60.1
+    -- and not seen in an installed addon (lead section 169 D).
+    -- Docs (warcraft.wiki.gg, read 2026-11-22), all listed for 1.60.1 unless
+    -- said: C_QuestLog.GetLogIndexForQuestID(questID) -> index or nil;
+    -- GetQuestLogIndexByID(questID) -> index, 0 when not in the log (NOT
+    -- listed for 1.60.1: asked second); GetQuestLogSpecialItemInfo(index)
+    -- -> link, icon, charges, showWhenComplete (index in the log, not the
+    -- quest id); C_Item.GetItemCount(item) -> count (GetItemCount second);
+    -- C_Item.GetItemSpell(item) -> name, id, "may return nothing"
+    -- (GetItemSpell second, not listed for 1.60.1). Legacy Flow asks the
+    -- same: Modules/Nav/QuestItems.lua:80-106.
+
+    -- A quest's place in the log, or nil when it is not there or not known.
+    local function questLogIndex(questID)
+        local group = env.C_QuestLog
+        if type(group) == "table" then
+            local ok, i = call(group.GetLogIndexForQuestID, questID)
+            if ok and type(i) == "number" and not hidden(i) and i > 0 then return i end
+        end
+        local ok, i = call(env.GetQuestLogIndexByID, questID)
+        if ok and type(i) == "number" and not hidden(i) and i > 0 then return i end
+        return nil
+    end
+
+    -- The game's own item for a quest in the log: { id, link }, or nil
+    -- (not in the log, no item, an answer that is not an item link, or a
+    -- secret one).
+    function c.questItem(questID)
+        if type(questID) ~= "number" then return nil end
+        local index = questLogIndex(questID)
+        if not index then return nil end
+        local ok, link = call(env.GetQuestLogSpecialItemInfo, index)
+        if not ok or type(link) ~= "string" or hidden(link) then return nil end
+        local id = tonumber(link:match("item:(%d+)"))
+        if not id or id <= 0 then return nil end
+        return { id = id, link = link }
+    end
+
+    -- How many of an item are in the bags: a whole number of 0 or more, or
+    -- nil when not known. item: an item ID or link.
+    function c.itemCount(item)
+        if item == nil then return nil end
+        local group = env.C_Item
+        local fn = env.GetItemCount
+        if type(group) == "table" and type(group.GetItemCount) == "function" then fn = group.GetItemCount end
+        local ok, n = call(fn, item)
+        if not ok or type(n) ~= "number" or hidden(n) then return nil end
+        if n ~= n or n < 0 or n ~= math.floor(n) or n == math.huge then return nil end
+        return n
+    end
+
+    -- Whether using an item does something (it has a spell): true, false
+    -- when the read ran and named no spell, nil when not known (no read, a
+    -- failed read, a secret or odd answer).
+    function c.itemUse(item)
+        if item == nil then return nil end
+        local group = env.C_Item
+        local fn = env.GetItemSpell
+        if type(group) == "table" and type(group.GetItemSpell) == "function" then fn = group.GetItemSpell end
+        if type(fn) ~= "function" then return nil end
+        local ok, name = call(fn, item)
+        if not ok then return nil end
+        if name == nil then return false end
+        if type(name) ~= "string" or hidden(name) then return nil end
+        return name ~= ""
+    end
+
+    -- S44 quest place on another map (lead section 173): where a map lies in
+    -- the world, so a step on another map can be pointed at (Nav/GuideRead.lua).
+    -- Only reads. C_Map.GetWorldPosFromMapPos(map, CreateVector2D(x, y)) is
+    -- the call c.worldPosition already makes (S35; RESEARCH-S35.md), asked
+    -- here for three points of the map: 0,0, 1,0 and 0,1. Legacy Flow does
+    -- the same (Modules/Nav/Nav.lua:55-61 and 104-123: map corners and the
+    -- map's east and south axes). A first guess: not seen in game on 1.60.1.
+    -- CreateVector2D is the client's own; with none, a plain { x, y } is
+    -- asked with (whether the client takes it is not known).
+    local function mapWorld(map, x, y)
+        local okV, vec = call(env.CreateVector2D, x, y)
+        if not okV or type(vec) ~= "table" then vec = { x = x, y = y } end
+        local ok, cont, world = mapCall("GetWorldPosFromMapPos", map, vec)
+        if not ok or type(world) ~= "table" then return nil end
+        if type(cont) ~= "number" or hidden(cont) then return nil end
+        local okXY, wx, wy = call(world.GetXY, world)
+        if not okXY then wx, wy = world.x, world.y end
+        if type(wx) ~= "number" or type(wy) ~= "number" or hidden(wx) or hidden(wy) then return nil end
+        if wx ~= wx or wy ~= wy then return nil end
+        return cont, wx, wy
+    end
+
+    -- A map's corners in the world: { cont, ox, oy (the point 0,0),
+    -- ex, ey (1,0, the east edge's end), sx, sy (0,1, the south edge's end) },
+    -- or nil when any is not known or they are not on one continent.
+    function c.mapCorners(map)
+        if map == nil then return nil end
+        local c0, ox, oy = mapWorld(map, 0, 0)
+        local c1, ex, ey = mapWorld(map, 1, 0)
+        local c2, sx, sy = mapWorld(map, 0, 1)
+        if c0 == nil or c0 ~= c1 or c0 ~= c2 then return nil end
+        return { cont = c0, ox = ox, oy = oy, ex = ex, ey = ey, sx = sx, sy = sy }
+    end
+
+    -- ----------------------------------------------------------------- S2
+    -- The trader (owner Twin): every priced row of a search the player runs,
+    -- not the cheapest alone. The same events, reads and limits as the S4
+    -- block above (lead section 170): no further rows are asked of the
+    -- server, nothing searches, bids, buys or posts. First guesses, not seen
+    -- in game: needs a game test.
+    --
+    --   client.watchAuctionRows(fn) -> true | nil;  fn(itemID, rows, kind)
+    -- kind is "commodity" or "item": which search the rows answer (R4).
+    -- rows = { { unit =, qty = } ... } in the order the client gives them:
+    -- unit is the price for one, qty how many (left out when the client
+    -- hides it or it is no whole count above zero: never made up). A row
+    -- with no readable price is left out. At most AUCTION_ROWS rows are
+    -- read; row 1 alone when the client will not say how many. A search
+    -- with nothing priced is told with no rows. A hidden or unreadable item
+    -- ID is not told. fn's errors stay here. nil when the client has
+    -- neither result read (no event is then asked for).
+    local rowsFns, rowsFollowed = {}, false
+    local function auctionRows(read, count, what)
+        local house = env.C_AuctionHouse
+        if type(house) ~= "table" then return nil end
+        local okN, n = call(house[count], what)
+        if not okN or hidden(n) or type(n) ~= "number" or n ~= n or n < 1 then n = 1 end
+        n = math.min(math.floor(n), AUCTION_ROWS)
+        local out = {}
+        for i = 1, n do
+            local row = auctionRowAt(read, what, i)
+            local unit = auctionUnit(row)
+            if unit then
+                local qty = row.quantity
+                if type(qty) ~= "number" or qty < 1 or qty ~= math.floor(qty) then qty = nil end
+                out[#out + 1] = { unit = unit, qty = qty }
+            end
+        end
+        return out
+    end
+    local function rowsTell(id, rows, kind)
+        if type(id) ~= "number" or rows == nil then return end
+        for _, fn in ipairs({ unpack(rowsFns) }) do pcall(fn, id, rows, kind) end
+    end
+    function c.watchAuctionRows(fn)
+        if type(fn) ~= "function" then return nil end
+        rowsFns[#rowsFns + 1] = fn
+        if rowsFollowed then return true end
+        local house = env.C_AuctionHouse
+        if type(house) ~= "table" then return nil end
+        if type(house.GetCommoditySearchResultInfo) == "function" then
+            events.add("COMMODITY_SEARCH_RESULTS_UPDATED", function(itemID)
+                if hidden(itemID) then return end
+                rowsTell(itemID, auctionRows("GetCommoditySearchResultInfo", "GetNumCommoditySearchResults", itemID),
+                    "commodity")
+            end)
+            rowsFollowed = true
+        end
+        if type(house.GetItemSearchResultInfo) == "function" then
+            events.add("ITEM_SEARCH_RESULTS_UPDATED", function(itemKey)
+                if type(itemKey) ~= "table" then return end
+                local okI, id = pcall(function() return itemKey.itemID end)
+                if not okI or hidden(id) then return end
+                rowsTell(id, auctionRows("GetItemSearchResultInfo", "GetNumItemSearchResults", itemKey), "item")
+            end)
+            rowsFollowed = true
+        end
+        return rowsFollowed or nil
+    end
+    -- ------------------------------------------------------------- end S2
+
+    -- ---------------------------------------------------------------- S3
+    -- S3 slice 3 (lead section 181): the lines that say an auction sold or
+    -- came back unsold.
+    --   client.globalText(name) -> the client's own text of that name, or nil
+    --   client.onSystemMessage(fn) -> cancel | nil;  fn(line), CHAT_MSG_SYSTEM
+    --   client.auctionOutcome(line) -> "sold" | "expired", item name; or nil
+    -- The texts are the client's own ERR_AUCTION_SOLD_S and
+    -- ERR_AUCTION_EXPIRED_S; no English is written here. A hidden or
+    -- non-text line never reaches a listener. Needs game test on 16001:
+    -- that these lines come as CHAT_MSG_SYSTEM, and in these texts.
+    function c.globalText(name)
+        if type(name) ~= "string" then return nil end
+        local ok, v = pcall(function() return env[name] end)
+        if not ok or type(v) ~= "string" or v == "" or hidden(v) then return nil end
+        return v
+    end
+
+    local systemFns, systemFollowed = {}, false
+    local function systemLine(line)
+        if type(line) ~= "string" or hidden(line) then return end
+        for _, fn in ipairs({ unpack(systemFns) }) do pcall(fn, line) end
+    end
+    function c.onSystemMessage(fn)
+        if type(fn) ~= "function" then return nil end
+        if not systemFollowed then
+            events.add("CHAT_MSG_SYSTEM", systemLine)
+            systemFollowed = true
+        end
+        systemFns[#systemFns + 1] = fn
+        return function()
+            for i = #systemFns, 1, -1 do
+                if systemFns[i] == fn then table.remove(systemFns, i) end
+            end
+        end
+    end
+
+    local OUTCOMES = { { "sold", "ERR_AUCTION_SOLD_S" }, { "expired", "ERR_AUCTION_EXPIRED_S" } }
+    function c.auctionOutcome(line)
+        if type(line) ~= "string" or line == "" or hidden(line) then return nil end
+        for _, o in ipairs(OUTCOMES) do
+            local pattern, kinds = lootPattern(c.globalText(o[2]))
+            if pattern and #kinds == 1 and kinds[1] == "s" then
+                local name = line:match(pattern)
+                if name then return o[1], name end
+            end
+        end
+        return nil
+    end
+    -- ------------------------------------------------------------- end S3
+
+    -- ----------------------------------------------------------------- S8
+    -- Nameplate threat and combo points (lead section 178; WoW/from-lazy/
+    -- RESEARCH-S8.md): UI/PlateThreat.lua and UI/PlateCombo.lua. LOOK ONLY:
+    -- nothing here clicks, targets, casts or writes a CVar; no frame is
+    -- secure or takes the mouse. Only "player", "target" and enemy
+    -- nameplate units ("nameplateN") are named: no party or raid unit.
+    --
+    -- THE DISPLAY SINK (lead section 178, option A). A threat share and a
+    -- combo count are amounts this client may hide (secret values). A
+    -- hidden one never leaves this file: the label or the bar that read it
+    -- writes it onto its own widget (FontString:SetFormattedText,
+    -- StatusBar:SetValue) and the caller is told only "hidden". Nothing
+    -- hidden is compared, added to or kept. A plain one is handed back as a
+    -- number and the caller draws it.
+    --
+    --   client.plates(fn) -> cancel | nil   fn("added" | "removed", unit) on
+    --                     NAME_PLATE_UNIT_ADDED / _REMOVED; unit is always
+    --                     "nameplateN" (any other, or a hidden one, is not told)
+    --   client.canAttack(unit) -> true | false | nil   "target" or nameplateN
+    --                     only; any other unit is nil and not asked about
+    --   client.grouped() -> true | false | nil   IsInGroup()
+    --   client.plateLabel(unit) -> h | nil   a small text at the right of
+    --                     that unit's nameplate (one frame per plate frame,
+    --                     made the first time). nil: no nameplate unit, no
+    --                     plate on screen, no frames.
+    --     h.show(on), h.text(s), h.color(r, g, b), h.alpha(a)
+    --     h.threat() -> "shown", status, pct   pct plain; not drawn here
+    --                 -> "hidden", status      pct hidden; written here
+    --                 -> nil                   on no threat list, or not known
+    --                 status: the game's 0..3, or nil when hidden or odd
+    --   client.comboBar() -> h | nil   a bar for combo points, hidden until shown
+    --     h.hang(unit) -> "power" | "health" | "plate" | nil   under that
+    --                 unit's plate ("target" or nameplateN): under its power
+    --                 bar when one shows, else its health bar, else the plate;
+    --                 nil when no plate is on screen. Hung again only when
+    --                 the plate or the part changed.
+    --     h.sections(n) -> true | false   n whole, 1..10: the fill's range and
+    --                 a divider at each point
+    --     h.fill(n), h.color(r, g, b), h.show(on)
+    --     h.fillFromGame() -> "shown", n   n plain, whole, 0 or more; not drawn
+    --                      -> "hidden"     hidden; set on the bar here
+    --                      -> nil          not known (never 0 in its place)
+    --   client.combo() -> { points, max }   plain whole numbers only; a field
+    --                     not known is left out
+    --   client.comboColor() -> { r, g, b } | nil   PowerBarColor's combo row
+    --
+    -- FIRST GUESSES, none seen in game on 1.60.1 (16001) and none seen in an
+    -- installed addon. Docs read on warcraft.wiki.gg 2026-11-22 (see
+    -- RESEARCH-S8.md): API_UnitDetailedThreatSituation (isTanking, status,
+    -- scaledPercentage, rawPercentage, rawThreat = (unit, mobUnit); secret
+    -- when unit threat values are restricted; may return nothing),
+    -- API_C_NamePlate.GetNamePlateForUnit (unitToken; friendly plates in
+    -- instances are not handed out; the frame has UnitFrame),
+    -- NAME_PLATE_UNIT_ADDED and NAME_PLATE_UNIT_REMOVED (payload
+    -- "nameplateN"), API_GetComboPoints ((unit, target) -> 0..5; 0 for a
+    -- friendly or missing target), API_UnitPower (combo points are power
+    -- type 4; secret when unit power is restricted), API_issecretvalue and
+    -- Secret_Values (a hidden value may be stored, passed on and given to
+    -- string.format; comparing or adding one raises), API_StatusBar_SetValue
+    -- (takes a hidden value). FontString:SetFormattedText taking a hidden
+    -- value is from the page summary only (the fetch was cut): less firm.
+    -- Not read: the pages of UnitPowerMax, IsInGroup, UnitCanAttack (c.target
+    -- uses it already) and PowerBarColor; legacy Flow 0.35.377 uses each
+    -- (Modules/PlateThreat.lua, Modules/PlateCombo.lua). The nameplate's
+    -- parts (UnitFrame.powerBar / healthBar ...) are legacy Flow's guess too.
+    do
+        local THREAT_FORMAT = "%.0f%%"
+        local LABEL_GAP, LABEL_RAISE, LABEL_FONT = 2, 12, 10
+        local BAR_WIDTH, BAR_HEIGHT, BAR_DROP = 110, 5, 1
+        local BAR_TEXTURE = "Interface\\TargetingFrame\\UI-StatusBar"
+        local COMBO_POWER = 4
+
+        local function plateUnit(unit)
+            return type(unit) == "string" and unit:find("^nameplate%d+$") ~= nil
+        end
+
+        -- obj[key] under pcall: a frame may refuse a field read.
+        local function field(obj, key)
+            local ok, v = pcall(function() return obj[key] end)
+            if ok then return v end
+            return nil
+        end
+
+        local function plateOf(unit)
+            local group = env.C_NamePlate
+            if type(group) ~= "table" then return nil end
+            local ok, plate = call(group.GetNamePlateForUnit, unit)
+            if not ok or type(plate) ~= "table" then return nil end
+            return plate
+        end
+
+        local function levelOf(f)
+            local ok, n = method(f, "GetFrameLevel")
+            if ok and type(n) == "number" and not hidden(n) then return n end
+            return nil
+        end
+
+        local function sized(f, w, ht)
+            if not method(f, "SetSize", w, ht) then
+                method(f, "SetWidth", w)
+                method(f, "SetHeight", ht)
+            end
+        end
+
+        function c.plates(fn)
+            if type(fn) ~= "function" then return nil end
+            local function tell(what)
+                return function(unit)
+                    if unit == nil or hidden(unit) or not plateUnit(unit) then return end
+                    pcall(fn, what, unit)
+                end
+            end
+            local offAdded = events.add("NAME_PLATE_UNIT_ADDED", tell("added"))
+            local offRemoved = events.add("NAME_PLATE_UNIT_REMOVED", tell("removed"))
+            return function()
+                offAdded()
+                offRemoved()
+            end
+        end
+
+        function c.canAttack(unit)
+            if unit ~= "target" and not plateUnit(unit) then return nil end
+            return yesNo(call(env.UnitCanAttack, "player", unit))
+        end
+
+        function c.grouped()
+            return yesNo(call(env.IsInGroup))
+        end
+
+        -- The labels made, by plate frame (the game hands a plate frame out
+        -- again for another unit). Weak keys: a frame the game lets go is
+        -- not held here. Nothing is written onto the game's own frames.
+        local labels = setmetatable({}, { __mode = "k" })
+
+        -- As legacy Flow's label: a frame on the plate, at its right, raised
+        -- clear of the level, in the game's font, 10, outlined.
+        local function makeLabel(plate)
+            local ok, f = call(env.CreateFrame, "Frame", nil, plate)
+            if not ok or f == nil then return nil end
+            method(f, "Hide")
+            sized(f, 1, LABEL_RAISE)
+            method(f, "SetPoint", "LEFT", plate, "RIGHT", LABEL_GAP, LABEL_RAISE)
+            method(f, "EnableMouse", false)
+            local level = levelOf(plate)
+            if level then method(f, "SetFrameLevel", level + 10) end
+            local okText, fs = method(f, "CreateFontString", nil, "OVERLAY", "GameFontNormalSmall")
+            if not okText then fs = nil end
+            if fs ~= nil then
+                local font = env.STANDARD_TEXT_FONT
+                if type(font) ~= "string" or font == "" then font = "Fonts\\FRIZQT__.TTF" end
+                method(fs, "SetFont", font, LABEL_FONT, "OUTLINE")
+                method(fs, "SetPoint", "LEFT", f, "LEFT", 0, 0)
+            end
+            return { frame = f, text = fs }
+        end
+
+        -- The game's threat status, 0..3, when plain and whole; else nil.
+        local function threatStatus(v)
+            if v == nil or hidden(v) or type(v) ~= "number" then return nil end
+            if v ~= math.floor(v) or v < 0 or v > 3 then return nil end
+            return v
+        end
+
+        function c.plateLabel(unit)
+            if not plateUnit(unit) then return nil end
+            local plate = plateOf(unit)
+            if plate == nil then return nil end
+            local made = labels[plate]
+            if made == nil then
+                made = makeLabel(plate)
+                if made == nil then return nil end
+                labels[plate] = made
+            end
+            local f, fs = made.frame, made.text
+            local h = {}
+            function h.show(on) method(f, on and "Show" or "Hide") end
+            function h.text(s)
+                if fs ~= nil and type(s) == "string" then method(fs, "SetText", s) end
+            end
+            function h.color(r, g, b)
+                if fs ~= nil and type(r) == "number" and type(g) == "number" and type(b) == "number" then
+                    method(fs, "SetTextColor", r, g, b)
+                end
+            end
+            function h.alpha(a)
+                if fs ~= nil and type(a) == "number" then method(fs, "SetAlpha", a) end
+            end
+            -- Your own share only ("player" against this plate's unit); the
+            -- raw share first, else the scaled one (legacy Flow's P.Read).
+            function h.threat()
+                local ok, _, status, scaled, raw = call(env.UnitDetailedThreatSituation, "player", unit)
+                if not ok then return nil end
+                local st = threatStatus(status)
+                local pct = raw
+                if pct == nil then pct = scaled end
+                if pct == nil then return nil end
+                if hidden(pct) then
+                    -- The sink: onto the label as it is, and no further.
+                    if fs == nil then return nil end
+                    if method(fs, "SetFormattedText", THREAT_FORMAT, pct) then return "hidden", st end
+                    local okF, s = pcall(string.format, THREAT_FORMAT, pct)
+                    if okF and type(s) == "string" and method(fs, "SetText", s) then return "hidden", st end
+                    return nil
+                end
+                if type(pct) ~= "number" or pct ~= pct or pct < 0 or pct == math.huge then return nil end
+                return "shown", st, pct
+            end
+            return h
+        end
+
+        -- Combo points' power type: the client's own number for it, else 4.
+        local function comboType()
+            local enum = env.Enum
+            local kinds = type(enum) == "table" and field(enum, "PowerType") or nil
+            local n = type(kinds) == "table" and field(kinds, "ComboPoints") or nil
+            if type(n) == "number" and not hidden(n) then return n end
+            return COMBO_POWER
+        end
+
+        -- true and the count as the client gave it (perhaps hidden), or
+        -- false. GetComboPoints("player", "target") first, UnitPower second,
+        -- as legacy Flow (Modules/Rotation/Compat.lua A.ComboPoints), but an
+        -- answer not given is not known, never 0.
+        local function comboRead()
+            local ok, n = call(env.GetComboPoints, "player", "target")
+            if ok and n ~= nil then return true, n end
+            ok, n = call(env.UnitPower, "player", comboType())
+            if ok and n ~= nil then return true, n end
+            return false, nil
+        end
+
+        function c.combo()
+            local _, n = comboRead()
+            local okMax, most = call(env.UnitPowerMax, "player", comboType())
+            local max = wholeOrNil(okMax, most)
+            if max == 0 then max = nil end
+            return { points = wholeOrNil(true, n), max = max }
+        end
+
+        local function share(v)
+            if v == nil or hidden(v) or type(v) ~= "number" or v ~= v or v < 0 or v > 1 then return nil end
+            return v
+        end
+
+        function c.comboColor()
+            local colors = env.PowerBarColor
+            if type(colors) ~= "table" then return nil end
+            local row = field(colors, "COMBO_POINTS")
+            if type(row) ~= "table" then row = field(colors, COMBO_POWER) end
+            if type(row) ~= "table" then return nil end
+            local r, g, b = share(field(row, "r")), share(field(row, "g")), share(field(row, "b"))
+            if r == nil or g == nil or b == nil then return nil end
+            return { r = r, g = g, b = b }
+        end
+
+        local function isShown(frame)
+            local ok, v = method(frame, "IsShown")
+            if not ok or v == nil then return false end
+            return flag(ok, v) == true
+        end
+
+        -- What a bar hangs under on a plate (legacy Flow's PC.Under): the
+        -- power bar when one shows, else the health bar, else the plate.
+        local POWER_PARTS = { "powerBar", "PowerBar", "manabar", "ManaBar" }
+        local function partOf(plate)
+            local uf = field(plate, "UnitFrame")
+            if type(uf) == "table" then
+                for i = 1, #POWER_PARTS do
+                    local p = field(uf, POWER_PARTS[i])
+                    if type(p) == "table" and isShown(p) then return p, "power" end
+                end
+                local hb = field(uf, "healthBar") or field(uf, "HealthBar")
+                if hb == nil then
+                    local box = field(uf, "HealthBarsContainer")
+                    if type(box) == "table" then hb = field(box, "healthBar") or box end
+                end
+                if type(hb) == "table" and isShown(hb) then return hb, "health" end
+            end
+            return plate, "plate"
+        end
+
+        -- As legacy Flow's bar: 5 high, the game's bar texture, a dark back
+        -- and a thin dark edge; the dividers each ride an unseen bar filled
+        -- to that many points, so nothing is measured.
+        function c.comboBar()
+            local ok, f = call(env.CreateFrame, "Frame", nil, env.UIParent)
+            if not ok or f == nil then return nil end
+            method(f, "Hide")
+            sized(f, BAR_WIDTH, BAR_HEIGHT)
+            method(f, "EnableMouse", false)
+            local okFill, fill = call(env.CreateFrame, "StatusBar", nil, f)
+            if not okFill or fill == nil then return nil end
+            method(fill, "SetAllPoints", f)
+            method(fill, "SetStatusBarTexture", BAR_TEXTURE)
+            local okEdge, edge = method(f, "CreateTexture", nil, "BACKGROUND", nil, -2)
+            if okEdge and edge ~= nil then
+                method(edge, "SetPoint", "TOPLEFT", f, "TOPLEFT", -1, 1)
+                method(edge, "SetPoint", "BOTTOMRIGHT", f, "BOTTOMRIGHT", 1, -1)
+                if not method(edge, "SetColorTexture", 0, 0, 0, 0.9) then method(edge, "SetTexture", 0, 0, 0, 0.9) end
+            end
+            local okBack, back = method(f, "CreateTexture", nil, "BACKGROUND", nil, -1)
+            if okBack and back ~= nil then
+                method(back, "SetAllPoints", f)
+                method(back, "SetTexture", BAR_TEXTURE)
+                method(back, "SetVertexColor", 0.18, 0.17, 0.1, 0.9)
+            end
+            local okLines, lines = call(env.CreateFrame, "Frame", nil, f)
+            if not okLines then lines = nil end
+            if lines ~= nil then
+                method(lines, "SetAllPoints", f)
+                local level = levelOf(fill)
+                if level then method(lines, "SetFrameLevel", level + 2) end
+            end
+
+            local marks, dividers = {}, {}
+            local most, plateNow, partNow, whatNow
+            local h = {}
+
+            -- The unseen bar and the divider for point k, made the first time.
+            local function mark(k)
+                if marks[k] ~= nil then return marks[k], dividers[k] end
+                local okM, m = call(env.CreateFrame, "StatusBar", nil, f)
+                if not okM or m == nil then return nil end
+                method(m, "SetAllPoints", f)
+                method(m, "SetStatusBarTexture", BAR_TEXTURE)
+                method(m, "SetStatusBarColor", 0, 0, 0, 0)
+                local d = false
+                if lines ~= nil then
+                    local okD, tex = method(lines, "CreateTexture", nil, "OVERLAY")
+                    if okD and tex ~= nil then
+                        d = tex
+                        if not method(d, "SetColorTexture", 0, 0, 0, 1) then method(d, "SetTexture", 0, 0, 0, 1) end
+                        method(d, "SetWidth", 1)
+                        local okEnd, ends = method(m, "GetStatusBarTexture")
+                        if okEnd and ends ~= nil then
+                            method(d, "SetPoint", "TOP", ends, "TOPRIGHT", 0, 0)
+                            method(d, "SetPoint", "BOTTOM", ends, "BOTTOMRIGHT", 0, 0)
+                        end
+                    end
+                end
+                marks[k], dividers[k] = m, d
+                return m, d
+            end
+
+            function h.sections(n)
+                if type(n) ~= "number" or n ~= n or n < 1 or n > 10 or n ~= math.floor(n) then return false end
+                if n == most then return true end
+                most = n
+                method(fill, "SetMinMaxValues", 0, n)
+                for k = 1, 9 do
+                    if k <= n - 1 then
+                        local m, d = mark(k)
+                        if m ~= nil then
+                            method(m, "SetMinMaxValues", 0, n)
+                            method(m, "SetValue", k)
+                            method(m, "Show")
+                            if d then method(d, "Show") end
+                        end
+                    elseif marks[k] ~= nil then
+                        method(marks[k], "Hide")
+                        if dividers[k] then method(dividers[k], "Hide") end
+                    end
+                end
+                return true
+            end
+
+            function h.fill(n)
+                if type(n) ~= "number" or n ~= n then return false end
+                return (method(fill, "SetValue", n))
+            end
+
+            function h.color(r, g, b)
+                if type(r) == "number" and type(g) == "number" and type(b) == "number" then
+                    method(fill, "SetStatusBarColor", r, g, b)
+                end
+            end
+
+            function h.show(on) method(f, on and "Show" or "Hide") end
+
+            function h.hang(unit)
+                if unit ~= "target" and not plateUnit(unit) then return nil end
+                local plate = plateOf(unit)
+                if plate == nil then
+                    plateNow, partNow, whatNow = nil, nil, nil
+                    return nil
+                end
+                local part, what = partOf(plate)
+                if plate == plateNow and part == partNow then return whatNow end
+                plateNow, partNow, whatNow = plate, part, what
+                method(f, "SetParent", plate)
+                method(f, "ClearAllPoints")
+                if what == "plate" then
+                    sized(f, BAR_WIDTH, BAR_HEIGHT)
+                    method(f, "SetPoint", "TOP", plate, "BOTTOM", 0, -BAR_DROP - 2)
+                else
+                    method(f, "SetHeight", BAR_HEIGHT)
+                    method(f, "SetPoint", "TOPLEFT", part, "BOTTOMLEFT", 0, -BAR_DROP - 1)
+                    method(f, "SetPoint", "TOPRIGHT", part, "BOTTOMRIGHT", 0, -BAR_DROP - 1)
+                end
+                local level = levelOf(plate)
+                if level then method(f, "SetFrameLevel", level + 10) end
+                return what
+            end
+
+            function h.fillFromGame()
+                local okRead, n = comboRead()
+                if not okRead then return nil end
+                if hidden(n) then
+                    -- The sink: onto the bar as it is, and no further.
+                    if method(fill, "SetValue", n) then return "hidden" end
+                    return nil
+                end
+                local plain = wholeOrNil(true, n)
+                if plain == nil then return nil end
+                return "shown", plain
+            end
+
+            return h
+        end
+    end
+    -- ------------------------------------------------------------- end S8
+
+    -- Section 183 (C1): the three reads the rotation takes for buffs, form
+    -- and what is queued or toggled on. Each answers nil when not known,
+    -- never an empty answer made up. Not tested in game; each read below is
+    -- a first guess from the API pages (warcraft.wiki.gg API_C_UnitAuras.
+    -- GetAuraDataByIndex, API_UnitBuff, API_GetShapeshiftForm,
+    -- API_GetShapeshiftFormInfo, API_IsCurrentSpell).
+    --
+    -- c.targetDebuffs() -> { [name] = secondsLeft or true } or nil
+    --   Section 187: your own debuffs on your target, read the same way as
+    --   playerBuffs with the unit "target" and the filter "HARMFUL|PLAYER":
+    --   C_UnitAuras.GetAuraDataByIndex where present, else UnitDebuff. No
+    --   target reads as an empty list. A first guess from the API pages
+    --   (API_C_UnitAuras.GetAuraDataByIndex, API_UnitDebuff), not seen in
+    --   game.
+    --
+    -- c.playerBuffs() -> { [name] = secondsLeft or true } or nil
+    --   every buff on you, read to the end of the list. secondsLeft is
+    --   math.huge for a buff with no end; true when the end time is hidden or
+    --   not a number. nil when the client has no read, a read raised, or a
+    --   row or a name was hidden (one buff not seen makes the whole list not
+    --   known). A full read with no buff gives an empty table.
+    --   C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL") where present,
+    --   else UnitBuff("player", i, "HELPFUL"); at most 40 rows.
+    local function aurasOf(unit, filter, old)
+        local auras = env.C_UnitAuras
+        local byIndex = type(auras) == "table" and auras.GetAuraDataByIndex or nil
+        if type(byIndex) ~= "function" and type(old) ~= "function" then return nil end
+        local out = {}
+        for i = 1, 40 do
+            local name, expires
+            if type(byIndex) == "function" then
+                local ok, row = pcall(byIndex, unit, i, filter)
+                if not ok then return nil end
+                if row == nil then return out end
+                if hidden(row) or type(row) ~= "table" then return nil end
+                name, expires = row.name, row.expirationTime
+            else
+                local got = { pcall(old, unit, i, filter) }
+                if not got[1] then return nil end
+                if got[2] == nil then return out end
+                name, expires = got[2], got[7]
+            end
+            if hidden(name) or type(name) ~= "string" then return nil end
+            local left
+            if expires == nil or hidden(expires) or type(expires) ~= "number" then
+                left = true
+            elseif expires == 0 then
+                left = math.huge
+            else
+                left = expires - c.now()
+            end
+            local had = out[name]
+            if had == nil or (type(had) == "number" and type(left) == "number" and left > had) or left == true then
+                out[name] = left
+            end
+        end
+        return out
+    end
+    function c.playerBuffs() return aurasOf("player", "HELPFUL", env.UnitBuff) end
+    function c.targetDebuffs() return aurasOf("target", "HARMFUL|PLAYER", env.UnitDebuff) end
+
+    -- c.formName() -> name or nil, known
+    --   GetShapeshiftForm(): 0 gives nil, true (no form). A form number gives
+    --   the spell name of GetShapeshiftFormInfo(n)'s fourth answer (the
+    --   spell id), read as spellName does. Anything not read gives nil,
+    --   false. The second answer is the only way to tell "no form" from
+    --   "not known".
+    function c.formName()
+        local ok, n = call(env.GetShapeshiftForm)
+        if not ok or hidden(n) or type(n) ~= "number" then return nil, false end
+        if n == 0 then return nil, true end
+        local got = { call(env.GetShapeshiftFormInfo, n) }
+        if not got[1] then return nil, false end
+        local id = got[5]
+        if hidden(id) or type(id) ~= "number" then return nil, false end
+        local name = spellName(id)
+        if type(name) ~= "string" then return nil, false end
+        return name, true
+    end
+
+    -- c.currentSpell(id) -> true | false | nil
+    --   C_Spell.IsCurrentSpell(id) where present, else IsCurrentSpell(id).
+    --   true when the spell is queued or toggled on (Attack swinging), false
+    --   when not; nil when there is no read, it raised, or the answer was
+    --   hidden or not a yes or no. A 1 / nil answer of older clients is read
+    --   as true / false only for the old global.
+    function c.currentSpell(id)
+        if type(id) ~= "number" then return nil end
+        local group = env.C_Spell
+        local fn = type(group) == "table" and group.IsCurrentSpell or nil
+        local old = false
+        if type(fn) ~= "function" then fn, old = env.IsCurrentSpell, true end
+        if type(fn) ~= "function" then return nil end
+        local ok, v = pcall(fn, id)
+        if not ok or hidden(v) then return nil end
+        if type(v) == "boolean" then return v end
+        if old and v == 1 then return true end
+        if old and v == nil then return false end
+        return nil
+    end
+    -- ----------------------------------------------------------- end 183
+
+    -- ------------------------------------------------------------ flights
+    -- DISPATCH section 182 item 2 (RESEARCH-FLIGHTS.md section 6, "New
+    -- client functions" 1; legacy Flow Modules/Nav/Nav.lua:2723-2749,
+    -- N.ReadTaxiNodes). The flight points on the open flight map:
+    --   c.taxiNodes() -> { map = uiMapID or nil, here = name or nil,
+    --                      nodes = { { name, x, y, state } ... } } or nil
+    -- x, y are shares (0..1) of the flight map `map`. state is "current",
+    -- "reachable", "unreachable", or nil when the client gives none it
+    -- names (never guessed). here only from a node read plainly as current.
+    -- A node whose name or place is hidden, missing or odd is left out.
+    -- nil when no node is read: no flight map open, no such calls, a read
+    -- that raised, or a hidden list.
+    -- Asks GetTaxiMapID, then C_TaxiMap.GetAllTaxiNodes(map) with
+    -- Enum.FlightPathState; without them NumTaxiNodes, TaxiNodeGetType
+    -- ("CURRENT", "REACHABLE"), TaxiNodePosition, TaxiNodeName. All first
+    -- guesses, not seen on 1.60.1 (names from legacy Flow; warcraft.wiki.gg
+    -- not checked from here). LOOK ONLY: no node is taken or selected, and
+    -- no frame is made.
+    local function plainName(v)
+        if v == nil or hidden(v) or type(v) ~= "string" or v == "" then return nil end
+        return v
+    end
+    local function plainShare(v)
+        if v == nil or hidden(v) or type(v) ~= "number" or v ~= v then return nil end
+        return v
+    end
+    function c.taxiNodes()
+        local okMap, map = call(env.GetTaxiMapID)
+        if not okMap or map == nil or hidden(map) or type(map) ~= "number" then map = nil end
+        local nodes, here = {}, nil
+        local group = env.C_TaxiMap
+        local all = type(group) == "table" and group.GetAllTaxiNodes or nil
+        if map ~= nil and type(all) == "function" then
+            local ok, list = call(all, map)
+            if not ok or list == nil or hidden(list) or type(list) ~= "table" then return nil end
+            local enum = type(env.Enum) == "table" and env.Enum.FlightPathState or nil
+            local names = {}
+            if type(enum) == "table" then
+                for _, pair in ipairs({ { "Current", "current" }, { "Reachable", "reachable" },
+                    { "Unreachable", "unreachable" } }) do
+                    local v = enum[pair[1]]
+                    if v ~= nil then names[v] = pair[2] end
+                end
+            end
+            for _, n in ipairs(list) do
+                if type(n) == "table" and not hidden(n) then
+                    local name, pos, state = plainName(n.name), n.position, n.state
+                    local x, y
+                    if name and pos ~= nil and not hidden(pos) and type(pos) == "table" then
+                        local okXY, px, py = call(pos.GetXY, pos)
+                        if not okXY then px, py = pos.x, pos.y end
+                        x, y = plainShare(px), plainShare(py)
+                    end
+                    if name and x and y then
+                        local word = nil
+                        if state ~= nil and not hidden(state) then word = names[state] end
+                        nodes[#nodes + 1] = { name = name, x = x, y = y, state = word }
+                        if word == "current" then here = name end
+                    end
+                end
+            end
+        else
+            local okN, count = call(env.NumTaxiNodes)
+            if not okN or count == nil or hidden(count) or type(count) ~= "number" or count ~= count then
+                return nil
+            end
+            local kinds = { CURRENT = "current", REACHABLE = "reachable" }
+            for i = 1, math.min(math.floor(count), 200) do
+                local okName, rawName = call(env.TaxiNodeName, i)
+                local okPos, px, py = call(env.TaxiNodePosition, i)
+                local name = okName and plainName(rawName) or nil
+                local x = okPos and plainShare(px) or nil
+                local y = okPos and plainShare(py) or nil
+                if name and x and y then
+                    local okKind, kind = call(env.TaxiNodeGetType, i)
+                    local word = nil
+                    if okKind and kind ~= nil and not hidden(kind) and type(kind) == "string" then word = kinds[kind] end
+                    nodes[#nodes + 1] = { name = name, x = x, y = y, state = word }
+                    if word == "current" then here = name end
+                end
+            end
+        end
+        if #nodes == 0 then return nil end
+        return { map = map, here = here, nodes = nodes }
+    end
+    -- --------------------------------------------------------- end flights
+
+    -- ------------------------------------------------------- flight marks
+    -- Lead DISPATCH section 187 section 7 (CLIENT NEEDs of Nav/TaxiMark.lua
+    -- and Nav/MapFlights.lua; legacy Flow 0.35.377 Modules/Nav/TaxiMark.lua
+    -- :66-150 and Modules/Nav/MapFlights.lua :300-530). LOOK ONLY: plain
+    -- frames that take no mouse, have no template and hold no action. No
+    -- node is taken or selected, no CVar is set.
+    --
+    -- c.taxiMark() -> h, or nil when there is no flight map frame
+    -- (TaxiFrame, else FlightMapFrame) or no frame could be made. Hidden
+    -- when made.
+    --   h.mark(node, text) -> true | false   node = { name, x, y } as
+    --       c.taxiNodes() gives it. Rings the game's own button for that
+    --       name (TaxiButton<i> where TaxiNodeName(i) is the name and the
+    --       button is visible), else stands at the node's share (x right,
+    --       y down) of TaxiRouteMap (else the flight map frame). text: the
+    --       words under it. false, and hidden, when neither place is known.
+    --   h.hide()
+    -- All first guesses, not seen on 1.60.1: TaxiFrame, FlightMapFrame,
+    -- TaxiRouteMap, TaxiButton<i>, NumTaxiNodes, TaxiNodeName (names from
+    -- legacy Flow and the Blizzard classic UI; CLIENT-NAMES-16001.txt was
+    -- not reachable from Zen), Region:IsVisible, CreateFontString with
+    -- GameFontNormalSmall, SetColorTexture.
+    function c.taxiMark()
+        local parent = env.TaxiFrame
+        if parent == nil then parent = env.FlightMapFrame end
+        if parent == nil then return nil end
+        local ok, f = call(env.CreateFrame, "Frame", nil, parent)
+        if not ok or f == nil then return nil end
+        method(f, "Hide")
+        method(f, "EnableMouse", false)
+        if not method(f, "SetSize", 34, 34) then
+            method(f, "SetWidth", 34)
+            method(f, "SetHeight", 34)
+        end
+        local okTex, ring = method(f, "CreateTexture", nil, "OVERLAY")
+        if okTex and ring ~= nil then
+            method(ring, "SetAllPoints", f)
+            if not method(ring, "SetColorTexture", 0.3, 1, 0.4, 0.45) then method(ring, "SetTexture", 0.3, 1, 0.4, 0.45) end
+        end
+        local okLabel, label = method(f, "CreateFontString", nil, "OVERLAY", "GameFontNormalSmall")
+        if not okLabel then label = nil end
+        if label ~= nil then method(label, "SetPoint", "TOP", f, "BOTTOM", 0, -2) end
+
+        -- The game's own visible button for a node of that name, or nil.
+        local function button(name)
+            local okN, count = call(env.NumTaxiNodes)
+            if not okN or count == nil or hidden(count) or type(count) ~= "number" or count ~= count then return nil end
+            for i = 1, math.min(math.floor(count), 200) do
+                local okName, n = call(env.TaxiNodeName, i)
+                if okName and n ~= nil and not hidden(n) and n == name then
+                    local b = env["TaxiButton" .. i]
+                    if b ~= nil then
+                        local okV, visible = method(b, "IsVisible")
+                        if okV and visible == true then return b end
+                    end
+                    return nil
+                end
+            end
+            return nil
+        end
+
+        local function size(region)
+            local okW, w = method(region, "GetWidth")
+            local okH, ht = method(region, "GetHeight")
+            if not okW or not okH or w == nil or ht == nil or hidden(w) or hidden(ht) then return nil end
+            if type(w) ~= "number" or type(ht) ~= "number" or w ~= w or ht ~= ht or w <= 0 or ht <= 0 then return nil end
+            return w, ht
+        end
+
+        local h = {}
+        function h.mark(node, words)
+            if type(node) ~= "table" then return false end
+            local at = type(node.name) == "string" and button(node.name) or nil
+            method(f, "ClearAllPoints")
+            if at ~= nil then
+                method(f, "SetPoint", "CENTER", at, "CENTER", 0, 0)
+            else
+                local x, y = node.x, node.y
+                local area = env.TaxiRouteMap
+                if area == nil then area = parent end
+                local w, ht = size(area)
+                if type(x) ~= "number" or type(y) ~= "number" or x ~= x or y ~= y or not w then
+                    method(f, "Hide")
+                    return false
+                end
+                method(f, "SetPoint", "CENTER", area, "TOPLEFT", x * w, -y * ht)
+            end
+            if label ~= nil then method(label, "SetText", tostring(words or "")) end
+            method(f, "Show")
+            return true
+        end
+        function h.hide() method(f, "Hide") end
+        return h
+    end
+
+    -- c.mapPins() -> h, or nil when there is no world map, no canvas
+    -- (WorldMapFrame.ScrollContainer.Child) or no frame could be made. One
+    -- plain frame over the canvas, no mouse; its dots and lines are made
+    -- as needed and kept.
+    --   h.map() -> the uiMapID the world map shows, or nil when it is not
+    --       shown or will not say (WorldMapFrame:IsShown, :GetMapID).
+    --   h.draw(pins, lines)
+    --       pins  = { { name, kind = "have" | "new", role, x, y } }
+    --       lines = { { from, to, ax, ay, bx, by } }
+    --       x, y: shares (x right, y down) of the shown map. Draws these and
+    --       hides any made before past their count; a pin or line not placed
+    --       by plain numbers is skipped.
+    --   h.clear()   hides them all
+    -- All first guesses, not seen on 1.60.1: WorldMapFrame, its
+    -- ScrollContainer.Child canvas (named in RESEARCH-worldmap-button.md),
+    -- IsShown, GetMapID, CreateLine, SetStartPoint, SetEndPoint,
+    -- SetThickness, SetColorTexture. The canvas's own scale (legacy
+    -- divided by it) is not read: the dots may draw small or large when
+    -- the map is zoomed. Needs a game test.
+    function c.mapPins()
+        local wm = env.WorldMapFrame
+        if wm == nil then return nil end
+        local okC, canvas = pcall(function() return wm.ScrollContainer.Child end)
+        if not okC or canvas == nil then return nil end
+        local ok, host = call(env.CreateFrame, "Frame", nil, canvas)
+        if not ok or host == nil then return nil end
+        method(host, "EnableMouse", false)
+        method(host, "SetAllPoints", canvas)
+        local dots, lines = {}, {}
+        local nDots, nLines = 0, 0
+        local COLOUR = {
+            from = { 0.3, 1, 0.4 }, to = { 0.3, 1, 0.4 },
+            have = { 1, 0.82, 0 }, new = { 0.6, 0.6, 0.6 },
+        }
+        local function plain(v) return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge end
+
+        local h = {}
+        function h.map()
+            local okS, shown = method(wm, "IsShown")
+            if not okS or shown ~= true then return nil end
+            local okM, map = method(wm, "GetMapID")
+            if not okM or map == nil or hidden(map) or type(map) ~= "number" or map ~= map then return nil end
+            return map
+        end
+        function h.clear()
+            for i = 1, nDots do if dots[i] then method(dots[i], "Hide") end end
+            for i = 1, nLines do if lines[i] then method(lines[i], "Hide") end end
+            nDots, nLines = 0, 0
+        end
+        function h.draw(pins, segs)
+            local okW, w = method(canvas, "GetWidth")
+            local okH, ht = method(canvas, "GetHeight")
+            if not okW or not okH or w == nil or ht == nil or hidden(w) or hidden(ht)
+                or not plain(w) or not plain(ht) or w <= 0 or ht <= 0 then
+                h.clear()
+                return false
+            end
+            local n = 0
+            for _, p in ipairs(type(pins) == "table" and pins or {}) do
+                if type(p) == "table" and plain(p.x) and plain(p.y) then
+                    n = n + 1
+                    local d = dots[n]
+                    if d == nil then
+                        local okT, made = method(host, "CreateTexture", nil, "OVERLAY")
+                        d = okT and made or false
+                        dots[n] = d
+                    end
+                    if d then
+                        local col = COLOUR[p.role or ""] or COLOUR[p.kind or ""] or COLOUR.new
+                        method(d, "SetSize", 10, 10)
+                        method(d, "SetColorTexture", col[1], col[2], col[3], 1)
+                        method(d, "ClearAllPoints")
+                        method(d, "SetPoint", "CENTER", canvas, "TOPLEFT", p.x * w, -p.y * ht)
+                        method(d, "Show")
+                    end
+                end
+            end
+            for i = n + 1, nDots do if dots[i] then method(dots[i], "Hide") end end
+            nDots = n
+            local m = 0
+            for _, l in ipairs(type(segs) == "table" and segs or {}) do
+                if type(l) == "table" and plain(l.ax) and plain(l.ay) and plain(l.bx) and plain(l.by) then
+                    m = m + 1
+                    local line = lines[m]
+                    if line == nil then
+                        local okL, made = method(host, "CreateLine", nil, "ARTWORK")
+                        line = okL and made or false
+                        lines[m] = line
+                    end
+                    if line then
+                        method(line, "SetThickness", 2)
+                        method(line, "SetColorTexture", 0.3, 1, 0.4, 0.8)
+                        method(line, "SetStartPoint", "TOPLEFT", canvas, l.ax * w, -l.ay * ht)
+                        method(line, "SetEndPoint", "TOPLEFT", canvas, l.bx * w, -l.by * ht)
+                        method(line, "Show")
+                    end
+                end
+            end
+            for i = m + 1, nLines do if lines[i] then method(lines[i], "Hide") end end
+            nLines = m
+            return true
+        end
+        return h
+    end
+    -- --------------------------------------------------- end flight marks
     return c
 end
 

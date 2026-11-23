@@ -48,9 +48,31 @@ local _, ns = ...
 -- A distance that is not known stays not known: it is never taken as short,
 -- and the whole of a trip is not claimed when a part of it is missing.
 --
+-- The module (lead sections 182 and 184), at the end of this file, is the
+-- one part that reads: the client (where the player is, the faction, map
+-- sizes, the taxi read) and the crossings saved in N.CROSSING_PLACES. Its
+-- one write is the player's own trips: every N.Crossings.EVERY seconds
+-- api.sample() reads where the player is, and when the continent changes
+-- between two places read off a flight it saves what N.CrossingSeen gives
+-- (the hearthstone home, char N.Crossings.BIND, is not a crossing).
+-- The setting N.CROSSING_SETTING (lead section 187): a plain false and
+-- api.way gives nil, so a place over the sea is told as far; trips are
+-- still sampled and saved, and used once it is on again.
+--   N.Crossings.Declare(k) -> api
+--   ns.use("crossings") -> { Way = api.way }
+--   api.sample() -> key, what or nil: one trip sample (the tick)
+--   api.way(place) -> step or nil: the step Nav/Travel.lua expects for a
+--        place on another continent, at the boarding place of the best
+--        crossing on the player's own continent (N.CrossingSteps and
+--        N.CrossingStepFor), with radius = N.Crossings.NEAR. nil for a place
+--        on the player's continent, a place with no continent or no map
+--        spot, the player's place or continent not known, or no crossing
+--        known that joins the two. The place handed in is not changed.
+--
 -- Not tested in game. Needs game test: that the continent number changes when
 -- a boat or zeppelin lands, and that the place read just before and just
--- after is good enough to tell a boarding place from a landing.
+-- after is good enough to tell a boarding place from a landing; that a
+-- step's place carries the same continent number the zone read gives.
 
 ns.Nav = ns.Nav or {}
 local N = ns.Nav
@@ -451,3 +473,108 @@ function N.CrossingLines(list, steps, unjoined, on, faction)
     if not told then lines[#lines + 1] = "  nothing of yours waits on another continent" end
     return lines
 end
+
+-- ---------------------------------------------------------------- module
+
+N.Crossings = N.Crossings or {}
+local Crossings = N.Crossings
+
+Crossings.NAME = "crossings"
+Crossings.NEAR = 10            -- yards from the boarding place that count as there
+Crossings.EVERY = 0.5          -- seconds between trip samples (a first guess, as N.Gates.EVERY)
+Crossings.BIND = "learned.places.bind"   -- char: the hearthstone home (Nav/HearthSeen.lua)
+
+-- One read of the client, or nil when it has no such read or it fails.
+local function ask(client, name, ...)
+    if type(client) ~= "table" or type(client[name]) ~= "function" then return nil end
+    local ok, v = pcall(client[name], ...)
+    if not ok then return nil end
+    return v
+end
+
+function Crossings.Declare(k)
+    local api = {}
+    local ctx
+
+    local function saved()
+        local ok, list = pcall(ctx.store.get, ctx.store, "account", N.CROSSING_PLACES)
+        if ok and type(list) == "table" then return list end
+        return nil
+    end
+
+    -- Lead section 184 G2: the player's own trips. Each sample reads where
+    -- the player is; a read that is not whole keeps the place before (a
+    -- loading screen), a flight or a taxi read that is not known forgets
+    -- it. When the continent changes between two places read off a
+    -- flight, N.CrossingSeen gets both and its list is saved. Only what
+    -- this client showed; nothing is copied in.
+    local last
+
+    function api.sample()
+        if not ctx then return nil end
+        local client = ctx.client
+        local pos, zone = ask(client, "position"), ask(client, "zone")
+        if type(pos) ~= "table" or type(zone) ~= "table" then return nil end
+        local here = { cont = zone.cont, map = pos.map, x = pos.x, y = pos.y }
+        if not whole(here) then return nil end
+        if ask(client, "onTaxi") ~= false then
+            last = nil
+            return nil
+        end
+        local before = last
+        last = here
+        if before == nil or before.cont == here.cont then return nil end
+        local okBind, bind = pcall(ctx.store.get, ctx.store, "char", Crossings.BIND)
+        local list, key, what = N.CrossingSeen(saved(), before, here, {
+            apart = N.CrossingApart(function(map) return ask(client, "mapSize", map) end),
+            bind = okBind and type(bind) == "table" and bind or nil,
+        })
+        if key == nil then return nil, what end
+        local okSet = pcall(ctx.store.set, ctx.store, "account", N.CROSSING_PLACES, list)
+        if not okSet then return nil, "not saved" end
+        return key, what
+    end
+
+    function api.way(place)
+        if not ctx or not whole(place) then return nil end
+        local okS, on = pcall(ctx.settings.get, ctx.settings, N.CROSSING_SETTING)
+        if okS and on == false then return nil end
+        local client = ctx.client
+        local pos, zone = ask(client, "position"), ask(client, "zone")
+        if type(pos) ~= "table" or type(zone) ~= "table" then return nil end
+        local me = { cont = zone.cont, map = pos.map, x = pos.x, y = pos.y }
+        if not whole(me) or me.cont == place.cont then return nil end
+        local target = { cont = place.cont, map = place.map, x = place.x, y = place.y }
+        -- A travel preview (Nav/Try.lua, <slash> try crossing) hands in a
+        -- made-up crossing, in memory only: it is used here in place of the
+        -- saved ones and never saved (api.sample reads only saved()).
+        local list = saved()
+        local okTry, try = pcall(function() return k.use and k.use("try") or nil end)
+        if okTry and type(try) == "table" and type(try.Crossings) == "function" then
+            local okList, made = pcall(try.Crossings)
+            if okList and type(made) == "table" then list = made end
+        end
+        local steps = N.CrossingSteps({
+            list = list, me = me, faction = ask(client, "faction"),
+            apart = N.CrossingApart(function(map) return ask(client, "mapSize", map) end),
+            waiting = { [target.cont] = { steps = { { place = target } }, targets = { target } } },
+        })
+        local step = N.CrossingStepFor(target.cont, steps)
+        if step == nil then return nil end
+        step.radius = Crossings.NEAR
+        return step
+    end
+
+    k:Module({
+        name = Crossings.NAME,
+        needs = { "client", "store", "sched", "settings" },
+        provides = { Way = function(place) return api.way(place) end },
+        ticks = { { every = Crossings.EVERY, when = "always", run = function() api.sample() end } },
+        start = function(c) ctx = c end,
+        stop = function() ctx, last = nil, nil end,
+    })
+    return api
+end
+
+-- The addon's own: declared when this file loads, started at login.
+ns.crossings = Crossings.Declare(ns)

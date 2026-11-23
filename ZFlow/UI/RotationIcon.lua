@@ -16,7 +16,13 @@ local _, ns = ...
 -- today. Where client.petBattle or client.vehicle exists and answers true,
 -- the icon is hidden; where neither exists the case is not handled.
 --
--- Not tested in game: client.icon and client.spellTexture are first guesses.
+-- Out of range: when the driver's step is farOpener (the next spell, but
+-- the target is out of its range) the icon is tinted red, as the action
+-- bar does, so the player sees "move closer" and not "press this now". Any
+-- other suggestion puts the plain colour back.
+--
+-- Not tested in game: client.icon, client.spellTexture and the tint are
+-- first guesses.
 local I = {}
 ns.RotationIcon = I
 
@@ -37,6 +43,13 @@ function I.Spell(view)
     local spell = s.spell
     if type(spell) ~= "string" or spell == "" then return nil end
     return spell
+end
+
+-- The icon's mark for a driver view: "far" when the suggestion is the
+-- out of range step, else nil.
+function I.Mark(view)
+    if type(view) ~= "table" or type(view.suggestion) ~= "table" then return nil end
+    return view.suggestion.step == "farOpener" and "far" or nil
 end
 
 local refused = setmetatable({}, { __mode = "k" })
@@ -112,7 +125,11 @@ function I.Declare(k)
                 return
             end
 
+            local function mark(look)
+                if type(icon.mark) == "function" then pcall(icon.mark, look) end
+            end
             local function hide()
+                mark(nil)
                 icon.setTexture(nil)
                 icon.show(false)
             end
@@ -146,6 +163,7 @@ function I.Declare(k)
                     return
                 end
                 if icon.setTexture(tex) then
+                    mark(I.Mark(view))
                     icon.show(true)
                 else
                     hide()

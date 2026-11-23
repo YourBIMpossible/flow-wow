@@ -5,13 +5,14 @@ local _, ns = ...
 -- authored here: the rows are the player's quest log and the places are
 -- what the reader (Nav/QuestRead.lua) was given at runtime.
 --
--- Q.Pick(rows, places, here, focus) -> step or nil
+-- Q.Pick(rows, places, here, focus, opts) -> step or nil
 --   rows    the quest log, in its own order:
 --           { { id, title, complete, failed, objectives = { { text, done } } } }
 --           complete: a plain true when the quest is ready to hand in.
 --           failed: a plain true; such a quest is never a step.
 --   places  { [id] = { objectives = { [i] = spot }, turnIn = spot } } or nil
---           spot = { points = { { map, x, y } }, elsewhere = bool, name }
+--           spot = { points = { { map, x, y } }, elsewhere = bool, name, away }
+--           away: one point on another map, { map, x, y }, or absent
 --           points are on the map the reader was asked for, x and y shares
 --           0..1. elsewhere: a place is known, on another map only. name
 --           (turnIn only): who takes the quest in, when that is known.
@@ -22,6 +23,9 @@ local _, ns = ...
 --           the quest the player picked out, and the watch list of the
 --           player, as the client says them (client.questFocus). nil, or a
 --           table with neither, is "the player picked nothing".
+--   opts    { zoneFirst = bool or nil } or nil (lead section 187, the
+--           setting N.LEAVING_SETTING). Only a plain false changes
+--           anything: rules 1 to 3 give way to the log order, below.
 --
 -- The quest the player picked out comes first (section 131). When
 -- focus.quest is a quest in the log that is not failed and has something
@@ -39,11 +43,18 @@ local _, ns = ...
 --   1. the nearest point of an unfinished objective, on the map the player
 --      is on, of a quest that is neither complete nor failed;
 --   2. the nearest point where a complete quest is handed in, on that map;
---   3. words only (no place, so no needle): the first quest in the log with
---      something left to do. Its last line is Q.ELSEWHERE when a place is
---      known on another map (and the player's own map is known), else
---      Q.UNKNOWN_PLACE.
+--   3. the first quest in the log with something left to do. When its
+--      spot has an `away` point (on another map, S44) that is its place:
+--      { quest, objective, turnIn, label, detail, place = { map, x, y } }.
+--      Else words only (no place, so no needle); its last line is
+--      Q.ELSEWHERE when a place is known on another map (and the player's
+--      own map is known), else Q.UNKNOWN_PLACE.
 --   nil when the log has no such quest.
+-- With opts.zoneFirst a plain false, rules 1 to 3 are not asked: the step
+-- is that of the first quest (of the watched, then of the log) with
+-- something left, as for a picked quest (its nearest point on this map
+-- when it has one, else its away point or words), even when that leads
+-- off this map. The picked quest comes first as before.
 -- Nearest is in yards when here.size is known, else in map shares. With the
 -- player's x, y not known a point cannot be chosen, so rule 3 answers.
 --
@@ -128,6 +139,16 @@ local function placed(row, i, detail, pt, here)
 end
 
 local function worded(row, i, detail, spot, here)
+    -- S44 (lead section 173): a point on another map is the step's place,
+    -- with no `still`, so the arrow can turn to it and ask for a way there
+    -- (Nav/Travel.lua). Its continent is not known here and is left out.
+    -- Only while the player's own map is known (section 175): with it not
+    -- known, the words as before.
+    local away = here.map ~= nil and type(spot) == "table" and spot.away or nil
+    if type(away) == "table" and away.map ~= nil and finite(away.x) and finite(away.y) then
+        return { quest = row.id, objective = i, turnIn = i == nil, label = row.title, detail = detail,
+                 place = { map = away.map, x = away.x, y = away.y } }
+    end
     -- Elsewhere is said only when the map the player is on is known.
     local why = (here.map ~= nil and type(spot) == "table" and spot.elsewhere == true)
         and Q.ELSEWHERE or Q.UNKNOWN_PLACE
@@ -207,13 +228,27 @@ local function byRules(rows, places, here, canPoint)
     return nil
 end
 
+-- The log order (opts.zoneFirst a plain false): the step of the first
+-- usable quest that has one.
+local function byLog(rows, places, here, canPoint)
+    for _, row in ipairs(rows) do
+        if usable(row) then
+            local step = ofQuest(row, places, here, canPoint)
+            if step then return step end
+        end
+    end
+    return nil
+end
+
 -- Answers the step, and where it came from: "picked" (the quest the
 -- player picked out), "watched" (the watch list) or "log" (the whole
 -- log). No step: nil alone.
-function Q.Pick(rows, places, here, focus)
+function Q.Pick(rows, places, here, focus, opts)
     if type(rows) ~= "table" then return nil end
     here = type(here) == "table" and here or {}
     local canPoint = here.map ~= nil and finite(here.x) and finite(here.y)
+    local order = byRules
+    if type(opts) == "table" and opts.zoneFirst == false then order = byLog end
 
     if type(focus) == "table" then
         -- The quest the player picked out, when it is still to be done.
@@ -235,12 +270,12 @@ function Q.Pick(rows, places, here, focus)
                 if type(row) == "table" and row.id ~= nil and on[row.id] then mine[#mine + 1] = row end
             end
             if #mine > 0 then
-                local step = byRules(mine, places, here, canPoint)
+                local step = order(mine, places, here, canPoint)
                 if step then return step, "watched" end
             end
         end
     end
-    local step = byRules(rows, places, here, canPoint)
+    local step = order(rows, places, here, canPoint)
     if step then return step, "log" end
     return nil
 end
