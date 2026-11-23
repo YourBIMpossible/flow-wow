@@ -7912,6 +7912,27 @@ function ns.make.client(env)
         if ok and type(got) == "table" then return got end
         return nil
     end
+
+    -- G16: c.weaponSkills() -> { [skill line name] = true } or nil: every
+    --   skill line you know (headers left out), by the name the client
+    --   gives, for Gear/WeaponSkill.lua to find the weapon skills in.
+    --   GetNumSkillLines, then GetSkillLineInfo(i) for each. nil when the
+    --   client has no such read, gives no count, or any read raised: never
+    --   a guess. First guesses, not seen in game on 16001; both names are
+    --   in Diag.NAMES and the capture's skillLines field counts the lines.
+    function c.weaponSkills()
+        local okN, n = call(env.GetNumSkillLines)
+        if not okN or type(n) ~= "number" or hidden(n) or n ~= n or n < 0 then return nil end
+        local out = {}
+        for i = 1, math.floor(n) do
+            local ok, name, header = call(env.GetSkillLineInfo, i)
+            if not ok then return nil end
+            if not header and type(name) == "string" and not hidden(name) and name ~= "" then
+                out[name] = true
+            end
+        end
+        return out
+    end
     return c
 end
 
