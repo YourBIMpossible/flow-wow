@@ -5,6 +5,7 @@
 --   PA8  one writer: the price lookup reads the auction history, and the
 --        price book gets no second copy
 --   PA10 the realm table is read once a session and never copied a look
+--   R3   (lead section 179) the trader reads the same kept realm table
 local _, ns = ...
 
 local AL, L = ns.AuctionLog, ns.PriceLookup
@@ -26,11 +27,12 @@ local function start(opts)
     local d = ns.Diag.Start(k)
     local api = AL.Declare(k, d)
     L.Start(k, d)
+    local trader = opts.trader and ns.Trader.Declare(k, d) or nil
     k:Boot()
     c.fire("ADDON_LOADED", ns.id.addon)
     c.fire("PLAYER_LOGIN")
     c.fire("PLAYER_ENTERING_WORLD")
-    return k, c, api
+    return k, c, api, trader
 end
 
 local function texts(lines)
@@ -182,6 +184,29 @@ tests["PA10: the cached table follows a new realm table written in the session"]
     t.eq(texts(c.showItemTooltip("item:7")), { "Auction: 5c each, 0 min ago" })
     c.auctionResult(2589, { unitPrice = 14 })
     t.eq(k.store:get("account", AL.PATH .. "." .. REALM), { [7] = { h = { 1000, 5 } }, [2589] = { h = { 1000, 14 } } })
+end
+
+-- ------------------------------------------------------------------ R3
+
+tests["R3: 500 items: looks and trader judging read the realm table once"] = function(t)
+    local k, c, api = start({ trader = true })
+    local m = measure(k)
+    for id = 1, 500 do c.auctionResult(id, { unitPrice = id }) end
+    for id = 1, 500 do c.auctionRows(id, { { unit = id, qty = 1 } }) end
+    for id = 1, 500 do c.showItemTooltip("item:" .. id) end
+    t.eq(api.looks(), 500)
+    t.ok(m.reads <= 1, "realm table reads: " .. m.reads)
+    t.eq(m.distinct(), 1)
+end
+
+tests["R3: the trader judges on a realm table written later in the session"] = function(t)
+    local k, c, _, trader = start({ trader = true })
+    c.auctionRows(2589, { { unit = 100, qty = 10 } })
+    t.eq(#trader.deals(), 0, "no usual price yet")
+    t.eq(k.store:set("account", AL.PATH .. "." .. REALM,
+        { [2589] = { h = { 1, 400, 2, 400, 3, 400, 4, 400 } } }), true)
+    c.auctionRows(2589, { { unit = 100, qty = 10 } })
+    t.eq(#trader.deals(), 1, "the new table is read")
 end
 
 return tests
