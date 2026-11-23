@@ -239,6 +239,8 @@ Diag.NAMES = {
     "GRAY_FONT_COLOR",
     "GameFontNormal", "GameFontHighlight", "GameFontDisable", "GameFontNormalSmall", "GameFontHighlightSmall",
     "GameFontDisableSmall", "GameFontNormalLarge", "GameFontRed", "GameFontGreen",
+    -- G38: indoors (Nav/Trails.lua). A first guess on 16001.
+    "IsIndoors",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns

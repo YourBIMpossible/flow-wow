@@ -10803,6 +10803,39 @@ function ns.make.client(env)
             return page
         end
     end
+    -- G38: whether the player is indoors (a cave, a building): true or
+    -- false, nil when the client will not say. IsIndoors() answers 1 or nil
+    -- in the classic clients; a nil from a call that is there is read as
+    -- "not indoors". A first guess: not seen in game on 16001.
+    function c.indoors()
+        if type(env.IsIndoors) ~= "function" then return nil end
+        local ok, v = call(env.IsIndoors)
+        if not ok or hidden(v) then return nil end
+        if v == true or v == 1 then return true end
+        if v == false or v == nil or v == 0 then return false end
+        return nil
+    end
+
+    -- G47: where a party or raid member is on the map the client picks for
+    -- them: { map = uiMapID, x = 0..1, y = 0..1 }, or nil (not a party
+    -- unit, another map, an instance, no answer, or a hidden answer).
+    -- C_Map.GetBestMapForUnit(unit) and C_Map.GetPlayerMapPosition(map,
+    -- unit), the calls the player's own position uses, asked for the unit.
+    -- A first guess: not seen in game on 16001. Only party1..4 and
+    -- raid1..40 are asked; nothing is sent or shared.
+    function c.unitPosition(unit)
+        if type(unit) ~= "string" or not PARTY_UNITS[unit] then return nil end
+        local okMap, map = mapCall("GetBestMapForUnit", unit)
+        if not okMap or hidden(map) or type(map) ~= "number" then return nil end
+        local ok, pos = mapCall("GetPlayerMapPosition", map, unit)
+        if not ok or hidden(pos) or type(pos) ~= "table" then return nil end
+        local okXY, x, y = call(pos.GetXY, pos)
+        if not okXY then x, y = pos.x, pos.y end
+        if hidden(x) or hidden(y) or type(x) ~= "number" or type(y) ~= "number" then return nil end
+        if x ~= x or y ~= y or (x == 0 and y == 0) then return nil end
+        if x < 0 or x > 1 or y < 0 or y > 1 then return nil end
+        return { map = map, x = x, y = y }
+    end
     return c
 end
 

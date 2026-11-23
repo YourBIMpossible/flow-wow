@@ -3850,6 +3850,22 @@ function ns.make.fakeClient(opts)
             return page
         end
     end
+    -- G38: indoors; c.setIndoors(true | false | nil), nil for not known.
+    function c.indoors() return s.indoors end
+    function c.setIndoors(v)
+        if v == nil then s.indoors = nil else s.indoors = v and true or false end
+    end
+    -- G47: a party member's position; c.setUnitPosition(unit, map, x, y),
+    -- leave map out for not known.
+    function c.unitPosition(unit)
+        local p = s.unitPositions and s.unitPositions[unit]
+        if type(p) ~= "table" then return nil end
+        return { map = p.map, x = p.x, y = p.y }
+    end
+    function c.setUnitPosition(unit, map, x, y)
+        s.unitPositions = s.unitPositions or {}
+        s.unitPositions[unit] = map and { map = map, x = x, y = y } or nil
+    end
     return c
 end
 

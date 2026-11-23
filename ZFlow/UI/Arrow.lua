@@ -567,7 +567,20 @@ function Arrow.Start(k, diag, own)
                 local okPreview, s = pcall(preview.Step)
                 if okPreview and type(s) == "table" then step = s end
             end
-            if step then
+            -- Then the party member the player chose to point at (G47,
+            -- Nav/Follow.lua): only while their position is known.
+            local followed = false
+            local follow = step == nil and k.use and k.use("follow") or nil
+            if follow and type(follow.Step) == "function" then
+                local okFollow, f = pcall(follow.Step)
+                if okFollow and type(f) == "table" then
+                    step = f
+                    followed = true
+                end
+            end
+            if followed then
+                from = "a party member you point at"
+            elseif step then
                 from = N.Try and N.Try.FROM or "a preview"
             else
                 step = W and W.Step(k.store:get(W.SCOPE, W.PATH), ask(client, "position"), ask(client, "zone"))
@@ -624,6 +637,18 @@ function Arrow.Start(k, diag, own)
             if step ~= nil and from == "your quests" and questItems and type(questItems.With) == "function" then
                 local ok, with = pcall(questItems.With, step)
                 if ok and type(with) == "table" then step = with end
+            end
+            -- A target past a path the player walked into a cave (G38,
+            -- Nav/Trails.lua) is pointed at along that path, one point at a
+            -- time. Reaching a trail point clears no waypoint.
+            local trails = k.use and k.use("trails")
+            if step ~= nil and not followed and trails and type(trails.Refine) == "function" then
+                local okTrail, refined = pcall(trails.Refine, step)
+                if okTrail and type(refined) == "table" and refined ~= step then
+                    step = refined
+                    mine = false
+                    from = from .. ", along a trail you walked"
+                end
             end
             -- The way there, when it is a cast, the hearthstone, a ride or a
             -- gate (Nav/Travel.lua, S33 + S35): that takes the step's place
@@ -916,8 +941,16 @@ function Arrow.Start(k, diag, own)
         local saved = N.ArrowSaved(Arrow.Saved(k))
         local Feedback = ns.Feedback
         local feedback = type(Feedback) == "table" and k.use(Feedback.NAME) ~= nil
+        -- G47: the party members the follow row offers (Nav/Follow.lua).
+        local follow = k.use and k.use("follow")
+        local party
+        if follow and type(follow.Members) == "function" then
+            local okParty, list = pcall(follow.Members)
+            if okParty and type(list) == "table" then party = list end
+        end
         return { stacked = saved.mode ~= "separate", hidden = saved.hidden, text = saved.text,
-                 styles = Arrow.Styles(style()), canShapes = canShapes(), feedback = feedback }
+                 styles = Arrow.Styles(style()), canShapes = canShapes(), feedback = feedback,
+                 party = party }
     end
     -- The tooltip's lines for one arrow, or nil when none is on the screen.
     -- The lines are the step's own, also for an arrow whose text is off.
@@ -975,6 +1008,16 @@ function Arrow.Start(k, diag, own)
                 if not ok then k.problems:add("arrow", "window", err) end
             else
                 say("that window is not ready.")
+            end
+        elseif action.follow ~= nil then
+            -- G47: point at a party member, or stop (Nav/Follow.lua).
+            local follow = k.use and k.use("follow") or nil
+            if type(follow) == "table" and type(follow.Pick) == "function" and type(follow.Stop) == "function" then
+                local ok, err
+                if action.follow == false then ok, err = pcall(follow.Stop) else ok, err = pcall(follow.Pick, action.follow) end
+                if not ok then k.problems:add("arrow", "follow", err) end
+            else
+                say("pointing at a party member is not ready.")
             end
         elseif action.style then
             local ok, reason = setStyle(action.style)
