@@ -4598,7 +4598,8 @@ function ns.make.client(env)
     -- server, nothing searches, bids, buys or posts. First guesses, not seen
     -- in game: needs a game test.
     --
-    --   client.watchAuctionRows(fn) -> true | nil;  fn(itemID, rows)
+    --   client.watchAuctionRows(fn) -> true | nil;  fn(itemID, rows, kind)
+    -- kind is "commodity" or "item": which search the rows answer (R4).
     -- rows = { { unit =, qty = } ... } in the order the client gives them:
     -- unit is the price for one, qty how many (left out when the client
     -- hides it or it is no whole count above zero: never made up). A row
@@ -4626,9 +4627,9 @@ function ns.make.client(env)
         end
         return out
     end
-    local function rowsTell(id, rows)
+    local function rowsTell(id, rows, kind)
         if type(id) ~= "number" or rows == nil then return end
-        for _, fn in ipairs({ unpack(rowsFns) }) do pcall(fn, id, rows) end
+        for _, fn in ipairs({ unpack(rowsFns) }) do pcall(fn, id, rows, kind) end
     end
     function c.watchAuctionRows(fn)
         if type(fn) ~= "function" then return nil end
@@ -4639,7 +4640,8 @@ function ns.make.client(env)
         if type(house.GetCommoditySearchResultInfo) == "function" then
             events.add("COMMODITY_SEARCH_RESULTS_UPDATED", function(itemID)
                 if hidden(itemID) then return end
-                rowsTell(itemID, auctionRows("GetCommoditySearchResultInfo", "GetNumCommoditySearchResults", itemID))
+                rowsTell(itemID, auctionRows("GetCommoditySearchResultInfo", "GetNumCommoditySearchResults", itemID),
+                    "commodity")
             end)
             rowsFollowed = true
         end
@@ -4648,7 +4650,7 @@ function ns.make.client(env)
                 if type(itemKey) ~= "table" then return end
                 local okI, id = pcall(function() return itemKey.itemID end)
                 if not okI or hidden(id) then return end
-                rowsTell(id, auctionRows("GetItemSearchResultInfo", "GetNumItemSearchResults", itemKey))
+                rowsTell(id, auctionRows("GetItemSearchResultInfo", "GetNumItemSearchResults", itemKey), "item")
             end)
             rowsFollowed = true
         end
