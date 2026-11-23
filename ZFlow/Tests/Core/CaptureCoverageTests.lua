@@ -32,7 +32,9 @@ local KIND = {
              -- stopped; an output like print, not a game action.
              "speak", "stopSpeech",
              -- N68: the one alert sound (output only; changes nothing in the game).
-             "playAlert" },
+             "playAlert",
+             -- G14: the mark on the best quest reward choice (Gear/RewardMark.lua).
+             "markRewardChoice" },
     tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "slash",
              "slashTaken", "unslash" },
     -- Hands back or runs a sound restart: never asked by the capture.
@@ -129,6 +131,11 @@ local READS = {
     -- UI/PlateQuests.lua only. Their names (UnitGUID, C_NamePlate.
     -- GetNamePlateForUnit, CreateFrame) are in Diag.NAMES.
     plateCreature = false, plateQuestMark = false,
+
+    -- G14: the open quest reward choices; read by Gear/RewardMark.lua only.
+    -- Their names (GetNumQuestChoices, GetQuestItemLink and the reward
+    -- buttons) are in Diag.NAMES.
+    questChoices = false,
 }
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).
