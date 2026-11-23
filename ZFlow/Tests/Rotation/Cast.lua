@@ -152,6 +152,7 @@ return {
             "*type-shift=nil", "*spell-shift=nil", "*unit-shift=nil",
             "*type-alt=nil", "*spell-alt=nil", "*unit-alt=nil",
             "*type-more=nil", "*spell-more=nil", "*unit-more=nil",
+            "*macrotext-alt=nil",
         }, "button")
     end,
 

@@ -461,7 +461,8 @@ tests["rotation driver RD11: a step presses nothing and asks only its sixteen re
         -- GT-1, GT-2: and the gather guards' reads (any tracking, mounted, on a flight).
         -- Section 237 FB3-1: the pole looked for once a step, not twice.
         -- PC-3: and whether you are in a group (grouped).
-        t.eq(other, { "fishingPole", "bagItems", "mounted", "onTaxi", "tracking", "tracking", "professions", "anyTracking", "ownBuffs", "grouped" },
+        -- N8: the low-health warning, and the healing items' own look for bagItems.
+        t.eq(other, { "lowHealth", "fishingPole", "bagItems", "mounted", "onTaxi", "bagItems", "tracking", "tracking", "professions", "anyTracking", "ownBuffs", "grouped" },
             "nothing else asked of the client but the bag, tracking, profession and gather-guard reads it lacks")
         local names = {}
         for name in pairs(calls) do names[#names + 1] = name end

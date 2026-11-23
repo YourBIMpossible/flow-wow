@@ -82,6 +82,8 @@ local function signature(plan)
             out[#out + 1] = type(row) == "table" and tostring(row[slot]) or "-"
         end
     end
+    -- N8: the item on Alt is part of the plan; a changed item is a changed plan.
+    if plan.altItem ~= nil then out[#out + 1] = "alt:" .. tostring(plan.altItem) end
     return table.concat(out, "|")
 end
 

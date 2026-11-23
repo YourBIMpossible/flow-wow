@@ -8,7 +8,7 @@ local LINK = "|cffffffff|Hitem:2318::::::::20:::::|h[Light Leather]|h|r"
 local GUID = "Creature-0-4444-0-55-299-00001A2B3C"
 
 -- GetItemInfo as the client answers it: 13 values, the ones read here at
--- 1, 3, 11, 12 and 13.
+-- 1, 3, 4, 5 (N8: level, required level), 11, 12 and 13.
 local function itemAnswer(name, quality, price, class, subclass)
     return name, "link", quality, 10, 5, "Type", "Sub", 20, "", 134000, price, class, subclass
 end
@@ -31,7 +31,7 @@ return {
             return itemAnswer("Light Leather", 1, 15, 7, 6)
         end
         t.eq(ns.make.client(env).itemInfo(2318),
-            { name = "Light Leather", quality = 1, sellPrice = 15, classID = 7, subclassID = 6 })
+            { name = "Light Leather", quality = 1, level = 10, minLevel = 5, sellPrice = 15, classID = 7, subclassID = 6 })
         t.eq(asked, { 2318 })
     end,
 
@@ -39,7 +39,7 @@ return {
         local env = { GetItemInfo = function() error("the old call is not used") end }
         env.C_Item = { GetItemInfo = function() return itemAnswer("Broken Fang", 0, 4, 15, 0) end }
         t.eq(ns.make.client(env).itemInfo(LINK),
-            { name = "Broken Fang", quality = 0, sellPrice = 4, classID = 15, subclassID = 0 })
+            { name = "Broken Fang", quality = 0, level = 10, minLevel = 5, sellPrice = 4, classID = 15, subclassID = 0 })
     end,
 
     ["client item info: an item not loaded yet has its class only, never a made-up price"] = function(t)
@@ -59,7 +59,7 @@ return {
 
     ["client item info: a value that is not a whole number is left out"] = function(t)
         local env = { GetItemInfo = function() return itemAnswer("Odd", "rare", -3, 2.5, nil) end }
-        t.eq(ns.make.client(env).itemInfo(1), { name = "Odd" })
+        t.eq(ns.make.client(env).itemInfo(1), { name = "Odd", level = 10, minLevel = 5 })
     end,
 
     ["client item info: hidden values are not read"] = function(t)

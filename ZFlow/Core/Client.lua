@@ -2330,7 +2330,7 @@ function ns.make.client(env)
         local group = env.C_Item
         local fn = env.GetItemInfo
         if type(group) == "table" and type(group.GetItemInfo) == "function" then fn = group.GetItemInfo end
-        local ok, name, _, quality, level, minLevel, _, _, _, _, price, class, subclass = call(fn, item)
+        local ok, name, _, quality, level, minLevel, _, _, _, _, _, price, class, subclass = call(fn, item)
         local out = {}
         out.name = text(ok, name)
         out.quality = whole(ok, quality)
