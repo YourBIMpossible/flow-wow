@@ -247,5 +247,8 @@ return {
     "Nav/BossKills.lua",
     -- Lead section 318: the Dungeon Quests window, on the kit (after Kit and the dungeon data).
     "UI/DungeonWindow.lua",
+    -- Lead DISPATCH section 340: the minimap button's rim math (pure), then the button.
+    "UI/MinimapPlace.lua",
+    "UI/MinimapButton.lua",
     },
 }

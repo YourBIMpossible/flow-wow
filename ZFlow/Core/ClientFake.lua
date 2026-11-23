@@ -3850,6 +3850,39 @@ function ns.make.fakeClient(opts)
             return page
         end
     end
+    -- The minimap button (UI/MinimapButton.lua). Every one made is in
+    -- c.minimapButtons, in order; nil and "no frame" after c.setFrames(false).
+    -- Test controls on a handle h:
+    --   h.click()        a left click
+    --   h.drag(angle)    dragged to that angle (degrees, 0 right, 90 up) on
+    --                    the rim and dropped: the drag function is told
+    --                    dx, dy 50 from the middle at that angle, done true
+    --   h.shown, h.x, h.y, h.places, h.tipLines, h.spec
+    c.minimapButtons = {}
+    function c.minimapButton(spec)
+        if s.noFrames then return nil, "no frame" end
+        local h = { spec = spec, shown = false, places = 0 }
+        local clickFn, dragFn
+        function h.place(x, y)
+            if type(x) ~= "number" or type(y) ~= "number" then return end
+            h.x, h.y = x, y
+            h.places = h.places + 1
+        end
+        function h.show(on) h.shown = on and true or false end
+        function h.onClick(fn) clickFn = fn end
+        function h.onDrag(fn) dragFn = fn end
+        function h.tip(lines) h.tipLines = lines end
+        function h.click()
+            if type(clickFn) == "function" then clickFn() end
+        end
+        function h.drag(angle)
+            if type(dragFn) ~= "function" or type(angle) ~= "number" then return end
+            local a = math.rad(angle)
+            dragFn(math.cos(a) * 50, math.sin(a) * 50, true)
+        end
+        c.minimapButtons[#c.minimapButtons + 1] = h
+        return h
+    end
     return c
 end
 

@@ -208,3 +208,5 @@ Nav\DungeonStates.lua
 Nav\DungeonRead.lua
 Nav\BossKills.lua
 UI\DungeonWindow.lua
+UI\MinimapPlace.lua
+UI\MinimapButton.lua
