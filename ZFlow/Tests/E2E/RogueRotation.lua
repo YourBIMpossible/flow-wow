@@ -22,7 +22,10 @@ local function start(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
     c.setSaved(ns.id.accountDB, opts.account or {})
-    if opts.char then c.setSaved(ns.id.charDB, opts.char) end
+    -- These tests read the suggestion without the key frame (on by default
+    -- since lead section 294 item 1), so it is switched off unless a test
+    -- gives its own char settings.
+    c.setSaved(ns.id.charDB, opts.char or { settings = { rotation = { keyFrame = false } } })
     c.setClass("ROGUE"); c.setFaction("Alliance"); c.setLevel(20)
     if not opts.deadUnknown then c.setDead(false) end
     for name, id in pairs(IDS) do
@@ -237,6 +240,27 @@ tests["rogue gear: a leather helm is scored, a plate helm is not offered"] = fun
     end
     t.eq(ns.GearTooltipModule.Lines(c, ns.Packs, PLATE),
         { { text = "Can't use: your class cannot use this kind of item (first guess)", tone = "bad" } })
+end
+
+
+-- The Flow button (the key frame) is on by default, so the engage step can
+-- start the swing. Starting it breaks stealth: at the default profile the
+-- rogue at the pull is still told Stealth, not Attack. Stealth not ready
+-- (on a cooldown): the swing.
+tests["rogue: default profile, the Flow button on: Stealth at the pull, not Attack"] = function(t)
+    local c, addon, icon = start({ char = {} })
+    on(c, addon); pull(c)
+    t.eq(icon.shown, true)
+    t.eq(icon.texture, "tex:Stealth", "an enemy, out of a fight, the Flow button on: stealth first")
+end
+
+tests["rogue: default profile, Stealth on a cooldown: the swing at the pull"] = function(t)
+    local c, addon, icon = start({ char = {} })
+    on(c, addon)
+    c.setSpellCooldown(IDS["Stealth"], true)
+    pull(c)
+    t.eq(icon.shown, true)
+    t.eq(icon.texture, "tex:Attack", "Stealth not ready: start attacking")
 end
 
 return tests

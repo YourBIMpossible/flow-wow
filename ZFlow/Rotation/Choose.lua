@@ -445,6 +445,16 @@ function steps.engage(s, pack, prefs)
     -- was read and the answer was no. Not read is not "not stealthed".
     if s.stealthed == nil then return nil, "not known whether you are stealthed" end
     if s.stealthed ~= false then return nil, "stealthed" end
+    -- A pack that opens with a spell first (pack.beforeEngage: the rogue's
+    -- Stealth) keeps the swing back while that spell is known, allowed and
+    -- ready: the swing would break it. Not ready: the swing.
+    if type(pack) == "table" and type(pack.beforeEngage) == "table" then
+        for _, name in ipairs(pack.beforeEngage) do
+            if type(name) == "string" and R.Knows(s, name) and allowed(prefs, name) and ready(s, name) then
+                return nil, name .. " first"
+            end
+        end
+    end
     local spell = (R.Knows(s, "Auto Attack") and "Auto Attack") or (R.Knows(s, "Attack") and "Attack") or nil
     if not spell then return nil, "no attack known" end
     return { spell = spell, kind = "damage", engage = true,
