@@ -87,6 +87,23 @@ local function logChanged(c)
     c.advance(0.5, 1)
 end
 
+-- Lead section 271: the boot baseline above cannot see a problem this module
+-- lists during boot itself. The whole list, filtered by owner, can.
+local function ownProblems(addon)
+    local out = {}
+    for _, p in ipairs(addon.problems:list()) do
+        if p.owner == ns.PlateQuests.NAME then out[#out + 1] = p.kind .. ": " .. p.text end
+    end
+    return out
+end
+
+tests["plate quests: the module lists no problem of its own during boot"] = function(t)
+    for _, opts in ipairs({ {}, { noQuestie = true }, { noLog = true } }) do
+        local _, addon = boot(opts)
+        t.eq(ownProblems(addon), {}, "no plateQuests problem at boot")
+    end
+end
+
 tests["plate quests: a plate added for a quest mob gets its mark"] = function(t)
     local c, addon = boot()
     mob(c, "nameplate1", VERMIN)
