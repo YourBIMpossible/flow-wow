@@ -242,9 +242,9 @@ tests["trader module: an item in the session's list says so on its tooltip"] = f
     t.eq(c.showItemTooltip(2589), {}, "no deal seen: no line")
     c.auctionRows(2589, LINEN_ROWS)
     c.auctionRows(4306, { { unit = 100, qty = 3 } })
-    t.eq(c.showItemTooltip(2589), { { text = "Deal: listed at 1s 50c each, usually 4s", r = 1, g = 0.82, b = 0 } })
+    t.eq(c.showItemTooltip(2589), { { text = "Deal: listed at 1s 50c each, usually 4s (seen 0 min ago)", r = 1, g = 0.82, b = 0 } })
     t.eq(c.showItemTooltip(4306),
-        { { text = "Deal: listed at 1s each, under a vendor's 1s 50c", r = 0.25, g = 1, b = 0.25 } })
+        { { text = "Deal: listed at 1s each, under a vendor's 1s 50c (seen 0 min ago)", r = 0.25, g = 1, b = 0.25 } })
     t.eq(c.showItemTooltip(858), {}, "another item: no line")
     c.auctionRows(2589, { { unit = 300, qty = 5 } })
     t.eq(c.showItemTooltip(2589), {}, "no longer a deal: no line")

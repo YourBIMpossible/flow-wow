@@ -1386,16 +1386,19 @@ function ns.make.fakeClient(opts)
     end
 
     -- S2 trader. As the real client's: watchAuctionRows(fn) -> true, or nil
-    -- after setAuctionHouse(false); auctionRows(id, rows) plays one of the
-    -- player's searches answering with rows = { { unit =, qty = } ... }.
+    -- after setAuctionHouse(false); auctionRows(id, rows[, kind]) plays one
+    -- of the player's searches answering with rows = { { unit =, qty = } ... }.
+    -- kind is "commodity" (when not given) or "item". A watcher's error
+    -- stays here, as in the real client (R7).
     function c.watchAuctionRows(fn)
         if s.noAuctionHouse or type(fn) ~= "function" then return nil end
         s.auctionRowsFns = s.auctionRowsFns or {}
         table.insert(s.auctionRowsFns, fn)
         return true
     end
-    function c.auctionRows(id, rows)
-        for _, fn in ipairs({ unpack(s.auctionRowsFns or {}) }) do fn(id, rows) end
+    function c.auctionRows(id, rows, kind)
+        kind = kind or "commodity"
+        for _, fn in ipairs({ unpack(s.auctionRowsFns or {}) }) do pcall(fn, id, rows, kind) end
     end
     return c
 end
