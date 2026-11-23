@@ -53,7 +53,11 @@ local _, ns = ...
 --                  on BAG_UPDATE_DELAYED, or the pack or role changes. In a
 --                  fight, or a fight not known, the kept food answers, or
 --                  nil. Not known (nil) is not kept: the next read asks
---                  again. Without food: read each time, as before.
+--                  again. A pick made while some food in the bags was not
+--                  read yet (section 236: data arriving in parts) answers
+--                  but is not kept either: the next read asks again, so a
+--                  better food read late is not missed until the bags
+--                  change. Without food: read each time, as before.
 --                  food.on false (the D.FOOD setting off, section 230
 --                  BF-3): nil, and the bags are not read
 --       foodOn     food.on (true or false); nil without food
@@ -255,10 +259,12 @@ local function buffFoodOf(client, pack, role, pole)
             end
         end
     end
+    -- The second answer: true when some item could not be read, so the
+    -- answer may change when it arrives (section 236).
     local best = BF.Best(pole == true and fishing or foods)
-    if best then return { name = best.name, item = best.id, score = best.score } end
-    if unread then return nil end
-    return {}
+    if best then return { name = best.name, item = best.id, score = best.score }, unread end
+    if unread then return nil, true end
+    return {}, false
 end
 
 -- Section 229 (F-1): the food read, kept between bag changes and skipped in
@@ -274,15 +280,15 @@ local function poleOf(client)
 end
 
 local function buffFoodKept(client, pack, role, food)
-    if type(food) ~= "table" then return buffFoodOf(client, pack, role, poleOf(client)) end
+    if type(food) ~= "table" then return (buffFoodOf(client, pack, role, poleOf(client))) end
     if food.on == false then return nil end
     -- The pole changes with no bag change: a kept pick is for one pole answer.
     local pole = poleOf(client)
     local fresh = food.kept == true and food.pack == pack and food.role == role and food.pole == pole
     if fresh then return food.value end
     if client.inCombat() ~= false then return nil end
-    local got = buffFoodOf(client, pack, role, pole)
-    if got ~= nil then
+    local got, partial = buffFoodOf(client, pack, role, pole)
+    if got ~= nil and not partial then
         food.kept, food.value, food.pack, food.role, food.pole = true, got, pack, role, pole
     else
         food.kept, food.value = false, nil
