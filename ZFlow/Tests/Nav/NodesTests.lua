@@ -22,7 +22,7 @@ end
 local function start(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
-    c.setSaved(ns.id.accountDB, { layout = { arrowIntroSeen = true } })
+    c.setSaved(ns.id.accountDB, { layout = { arrowIntroSeen = true }, learned = opts.learned })
     c.setSaved(ns.id.charDB, {})
     c.setScreen(1024, 768)
     c.setZone(1, MAP)
@@ -32,6 +32,8 @@ local function start(opts)
     c.setClass("WARRIOR")
     c.setFaction("Horde")
     c.setProfessions(opts.profs or { "Herbalism" })
+    c.setSpellId("Herb Gathering", 2366)
+    c.setSpellId("Mining", 2575)
     local k = ns.Kernel({}, c)
     local d = ns.Diag.Start(k)
     N.Nodes.Declare(k, d)
@@ -43,8 +45,12 @@ local function start(opts)
     return k, c, a
 end
 
-local function gather(c, x, y, link, guid)
+-- cast: the gathering spell fired just before the window ("Herb Gathering"
+-- unless given; false for none, as a chest).
+local function gather(c, x, y, link, guid, cast)
     c.setPosition(MAP, x, y)
+    if cast == nil then cast = "Herb Gathering" end
+    if cast then c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-1", c.spellId(cast)) end
     c.setLootWindow({ source = { guid = guid or "GameObject-0-1-2-3-1618-0000" }, items = { { item = link, count = 1 } } })
     c.fire("LOOT_OPENED")
     c.setLootWindow(nil)
@@ -114,7 +120,7 @@ end
 tests["nodes: only nodes of the player's own professions are shown"] = function(t)
     if not has(t) then return end
     local _, c = start({ profs = { "Mining" } })
-    gather(c, 0.5, 0.5, "|cffffffff|Hitem:2770::::::::|h[Copper Ore]|h|r")
+    gather(c, 0.5, 0.5, "|cffffffff|Hitem:2770::::::::|h[Copper Ore]|h|r", nil, "Mining")
     t.ok(type(nodesOf(c)) == "table", "kept for the miner")
     c.setProfessions({ "Herbalism" })
     c.slashes[ns.id.slash]("nodes")
@@ -132,6 +138,88 @@ tests["nodes: the store is capped per map"] = function(t)
     N.Nodes.Cap(list)
     t.eq(#list, N.Nodes.PER_MAP)
     t.eq(list[1].at, 6, "the oldest went")
+end
+
+-- P-GATHER (zflow-gather-5): the node's profession, chests, names.
+local ORE = "|cffffffff|Hitem:2770::::::::|h[Copper Ore]|h|r"
+local SWORD = "|cffffffff|Hitem:25::::::::|h[Worn Shortsword]|h|r"
+local MATERIALS = {
+    [2447] = { name = "Peacebloom", classID = 7, subclassID = 9 },
+    [765] = { name = "Silverleaf", classID = 7, subclassID = 9 },
+    [2770] = { name = "Copper Ore", classID = 7, subclassID = 7 },
+    [25] = { name = "Worn Shortsword", classID = 2, subclassID = 7 },
+}
+
+local function shownLines(c, word)
+    local out = {}
+    for _, line in ipairs(c.printed) do
+        if line:find(word, 1, true) then out[#out + 1] = line end
+    end
+    return out
+end
+
+tests["nodes: a herbalist-miner's node gets the profession of the gathering cast"] = function(t)
+    if not has(t) then return end
+    local _, c = start({ profs = { "Herbalism", "Mining" } })
+    gather(c, 0.5, 0.5, ORE, nil, "Mining")
+    gather(c, 0.6, 0.5, HERB, "GameObject-0-1-2-3-1617-0000", "Herb Gathering")
+    local list = nodesOf(c)
+    t.ok(type(list) == "table" and #list == 2, "two nodes kept")
+    if type(list) ~= "table" or #list ~= 2 then return end
+    t.eq({ list[1].prof, list[2].prof }, { "Mining", "Herbalism" })
+    c.setProfessions({ "Herbalism" })
+    c.slashes[ns.id.slash]("nodes")
+    t.eq(#shownLines(c, "Copper Ore"), 0, "the ore is not shown to an herbalist")
+    t.eq(#shownLines(c, "Peacebloom"), 1, "the herb is")
+end
+
+tests["nodes: without a cast, the looted material says the profession"] = function(t)
+    if not has(t) then return end
+    local _, c = start({ profs = { "Herbalism", "Mining" } })
+    c.setItemInfo(MATERIALS)
+    gather(c, 0.5, 0.5, ORE, nil, false)
+    local list = nodesOf(c)
+    t.ok(type(list) == "table" and #list == 1, "kept from the ore")
+    if type(list) ~= "table" or #list ~= 1 then return end
+    t.eq({ list[1].prof, list[1].name }, { "Mining", "Copper Ore" })
+end
+
+tests["nodes: a chest a gatherer opens is not kept"] = function(t)
+    if not has(t) then return end
+    local _, c = start({ profs = { "Herbalism" } })
+    c.setItemInfo(MATERIALS)
+    gather(c, 0.5, 0.5, SWORD, "GameObject-0-1-2-3-2843-0000", false)
+    t.eq(nodesOf(c), nil, "no cast and no gathering material: a chest")
+    -- A cast long ago does not make the next window a node.
+    gather(c, 0.5, 0.5, HERB, nil, "Herb Gathering")
+    c.advance(N.Nodes.CAST_WINDOW + 5, 1)
+    gather(c, 0.7, 0.7, SWORD, "GameObject-0-1-2-3-2844-0000", false)
+    local list = nodesOf(c)
+    t.ok(type(list) == "table" and #list == 1, "only the herb node is kept")
+end
+
+tests["nodes: a node is named from the item's own name and shown with its profession"] = function(t)
+    if not has(t) then return end
+    local _, c = start({ profs = { "Mining" } })
+    c.setItemInfo(MATERIALS)
+    gather(c, 0.5, 0.5, 2770, nil, "Mining")
+    local list = nodesOf(c)
+    t.ok(type(list) == "table" and list[1] ~= nil and list[1].name == "Copper Ore",
+        "named from the item info: " .. tostring(list and list[1] and list[1].name))
+    c.slashes[ns.id.slash]("nodes")
+    local lines = shownLines(c, "Copper Ore")
+    t.ok(#lines == 1 and lines[1]:find("Mining", 1, true) ~= nil,
+        "the line says the profession: " .. tostring(lines[1]))
+    c.slashes[ns.id.slash]("nodes go")
+    t.ok(#shownLines(c, "Copper Ore") >= 2, "the waypoint is labelled with the name")
+end
+
+tests["nodes: an old node saved without a profession still shows to any gatherer"] = function(t)
+    if not has(t) then return end
+    local _, c = start({ profs = { "Mining" },
+        learned = { nodes = { [MAP] = { { x = 0.5, y = 0.5, name = "Old Find", n = 1, at = 0 } } } } })
+    c.slashes[ns.id.slash]("nodes")
+    t.eq(#shownLines(c, "Old Find"), 1)
 end
 
 return tests
