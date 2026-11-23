@@ -5,7 +5,7 @@ local _, ns = ...
 -- nothing: no attribute, binding, cast or frame is touched here, and the
 -- key plan is only worked out, never applied.
 --
---   D.Read(client, pack, ids[, role]) -> read(field)
+--   D.Read(client, pack, ids[, role, food]) -> read(field)
 --     the reader ns.Snapshot takes. dead, inCombat, stealthed, hostile,
 --     spells, buffs, targetDebuffs, form, current and pet are asked of the
 --     client; role is the
@@ -42,7 +42,15 @@ local _, ns = ...
 --       spells     each row also gets inRange = client.inRange(spell id)
 --                  when the client has that read and the answer is true or
 --                  false; otherwise range stays not known
---   D.Step(client, pack[, prefs, bias, applied, role]) -> view
+--       buffFood   the best Well Fed food in your bags (section 226). With
+--                  food (a table the module keeps, section 229 F-1): the
+--                  bags are read only out of a fight (inCombat false), and
+--                  a food read is kept in food until the module clears it
+--                  on BAG_UPDATE_DELAYED, or the pack or role changes. In a
+--                  fight, or a fight not known, the kept food answers, or
+--                  nil. Not known (nil) is not kept: the next read asks
+--                  again. Without food: read each time, as before.
+--   D.Step(client, pack[, prefs, bias, applied, role, food]) -> view
 --     one read and one choice. A read that fails is an error (not caught
 --     here; the tick catches it).
 --   D.Why(snapshot, trace, keys, lockdown) -> why
@@ -205,7 +213,24 @@ local function buffFoodOf(client, pack, role)
     return {}
 end
 
-function D.Read(client, pack, ids, role)
+-- Section 229 (F-1): the food read, kept between bag changes and skipped in
+-- a fight. food: the module's table { kept, value, pack, role }; nil reads
+-- each time.
+local function buffFoodKept(client, pack, role, food)
+    if type(food) ~= "table" then return buffFoodOf(client, pack, role) end
+    local fresh = food.kept == true and food.pack == pack and food.role == role
+    if fresh then return food.value end
+    if client.inCombat() ~= false then return nil end
+    local got = buffFoodOf(client, pack, role)
+    if got ~= nil then
+        food.kept, food.value, food.pack, food.role = true, got, pack, role
+    else
+        food.kept, food.value = false, nil
+    end
+    return got
+end
+
+function D.Read(client, pack, ids, role, food)
     -- Lead section 187: the form is asked of the client once for a read,
     -- and both fields (form, formKnown) come from that one answer.
     -- The answer is kept only for the other field of the pair, and used
@@ -257,7 +282,7 @@ function D.Read(client, pack, ids, role)
             return client.pet()
         end
         if field == "conjured" then return conjuredOf(client, pack) end
-        if field == "buffFood" then return buffFoodOf(client, pack, role) end
+        if field == "buffFood" then return buffFoodKept(client, pack, role, food) end
         -- P-GATHER: the gathering tracking reads (Rotation/Gather.lua).
         if field == "tracking" or field == "trackKnown" or field == "professions" or field == "gatherOn" then
             -- Lead: no "and ... or nil" here; a false answer (the setting off) must stay false.
@@ -322,12 +347,12 @@ function D.Why(snapshot, trace, keys, lockdown)
     return why
 end
 
-function D.Step(client, pack, prefs, bias, applied, role)
+function D.Step(client, pack, prefs, bias, applied, role, food)
     if type(pack) ~= "table" then
         return { pack = false, trace = {}, why = { pack = false } }
     end
     local ids, missing = RR.SpellIds(pack, client.spellId)
-    local snapshot = ns.Snapshot(D.Read(client, pack, ids, role))
+    local snapshot = ns.Snapshot(D.Read(client, pack, ids, role, food))
     local suggestion, trace = ns.Choose(snapshot, pack, prefs, bias)
     local passed = passedIn(trace)
     if suggestion and #passed > 0 then suggestion.passed = passed end
@@ -368,15 +393,17 @@ function D.Step(client, pack, prefs, bias, applied, role)
 end
 
 -- One tick's work: the class's pack, then a step.
-local function work(client, packs, role)
+local function work(client, packs, role, food)
     local class = type(client.class) == "function" and client.class() or nil
     local pack = type(class) == "string" and type(packs) == "table" and packs[class] or nil
-    return D.Step(client, pack, nil, nil, nil, role)
+    return D.Step(client, pack, nil, nil, nil, role, food)
 end
 
 function D.Declare(k, packs)
     local api = {}
     local view, errors, lastError = nil, 0, nil
+    -- Section 229 (F-1): the Well Fed food read, kept until the bags change.
+    local food = {}
     function api.view() return view end
     function api.errors() return errors end
     function api.lastError() return lastError end
@@ -389,7 +416,7 @@ function D.Declare(k, packs)
             end
             return
         end
-        local ok, got = pcall(work, ctx.client, packs or ns.Packs, ctx.settings:get(D.ROLE))
+        local ok, got = pcall(work, ctx.client, packs or ns.Packs, ctx.settings:get(D.ROLE), food)
         if ok then
             view = got
         else
@@ -416,6 +443,12 @@ function D.Declare(k, packs)
         } },
         provides = { View = api.view, Errors = api.errors },
         ticks = { { every = D.EVERY, run = tick } },
+        start = function(c)
+            food = {}
+            -- The bags changed: the food kept may be gone, or a better one there.
+            c.bus:on(D.NAME, "BAG_UPDATE_DELAYED", function() food = {} end)
+        end,
+        stop = function() food = {} end,
     })
     return api
 end
