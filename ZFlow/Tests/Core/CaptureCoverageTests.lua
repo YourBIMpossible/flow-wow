@@ -85,6 +85,9 @@ KIND.show[#KIND.show + 1] = "settingsWindow"
 KIND.show[#KIND.show + 1] = "buttonFace"
 KIND.show[#KIND.show + 1] = "ctrlDrag"
 KIND.show[#KIND.show + 1] = "hoverTip"
+-- Lead DISPATCH section 340: the minimap button; a click opens the
+-- settings page only.
+KIND.show[#KIND.show + 1] = "minimapButton"
 
 -- Every read, and whether the capture asks it (true) or not (false).
 local READS = {
