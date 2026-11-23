@@ -86,16 +86,21 @@ return {
         t.eq(k.problems:count(), 0)
     end,
 
-    ["bag event: the bank prompt follows the bags away from the bank"] = function(t)
+    -- Raised only at the bank and naming the items now (sections 340/341).
+    ["bag event: the bank prompt follows the bags at the bank, none away from it"] = function(t)
         local k, c, _, advisor = start({ { item = 2589, count = 20 }, { item = 2318, count = 4 } }, bankWithAdvisor)
+        t.eq(bankPrompt(advisor), nil, "away from the bank: none")
+        c.fire(B.BAG_EVENT)
+        t.eq(bankPrompt(advisor), nil, "a bag change away from the bank: still none")
+        c.setBankOpen(true)
         local p = bankPrompt(advisor)
-        t.ok(p ~= nil, "registered on entering the world")
+        t.ok(p ~= nil, "registered at the bank")
         if not p then return end
-        t.eq(p.text, "2 kinds of item to put in the bank.")
+        t.eq(p.text, "Bank: Linen Cloth x20, Light Leather x4")
         c.setBagItems({ { item = 2318, count = 4 } })
         c.fire(B.BAG_EVENT)
         p = bankPrompt(advisor)
-        t.eq(p and p.text, "1 kind of item to put in the bank.")
+        t.eq(p and p.text, "Bank: Light Leather x4")
         c.setBagItems({ { item = 858, count = 5 } })
         c.fire(B.BAG_EVENT)
         t.eq(bankPrompt(advisor), nil, "nothing left to bank: the prompt is gone")

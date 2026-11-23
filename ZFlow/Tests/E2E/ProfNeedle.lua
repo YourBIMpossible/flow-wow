@@ -214,4 +214,22 @@ tests["prof needle: a recipe of another profession is not offered as the craft"]
     textOnly(t, c, { fmt(N.PROF_WHY_NO_POINT, "Tailoring", 50) }, "only an Engineering recipe gives a point")
 end
 
+-- Lead section 339 (zflow-prof-guide): with nothing to point at, the why
+-- line covered only the first profession by name, so a capped profession
+-- later in the alphabet got no word at all. Now one line per profession,
+-- by name. Fails before: only the Alchemy line.
+tests["prof guide: nothing to point at says one line for each profession, not only the first by name"] = function(t)
+    local c = start({ professions = { "Alchemy", "Tailoring" },
+        skill = { Alchemy = { skill = 10, max = 75 }, Tailoring = { skill = 75, max = 75 } } })
+    textOnly(t, c, { fmt(N.PROF_WHY_RECIPES, "Alchemy"), fmt(N.PROF_WHY_TRAINER, "Tailoring", 75, "Tailoring") },
+        "Alchemy with no recipe seen, Tailoring capped with no trainer known")
+end
+
+tests["prof guide: a gatherer with no node and a capped crafter each get their line"] = function(t)
+    local c = start({ professions = { "Herbalism", "Tailoring" },
+        skill = { Herbalism = { skill = 20, max = 75 }, Tailoring = { skill = 75, max = 75 } } })
+    textOnly(t, c, { fmt(N.PROF_WHY_GM_ABSENT, "Herbalism"), fmt(N.PROF_WHY_TRAINER, "Tailoring", 75, "Tailoring") },
+        "Herbalism with no GatherMate2, Tailoring capped with no trainer known")
+end
+
 return tests

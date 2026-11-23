@@ -472,10 +472,26 @@ end
 
 -- The advisor's one-line prompt for the same pick, or nil when there is
 -- nothing to say: nothing to bank, or it can't be told (bags or item facts
--- not read). A count is only given for what was read.
+-- not read). It names the items (lead sections 340/341): "Bank: Linen
+-- Cloth x12, Copper Ore x5", the first BANK_PROMPT_NAMED then "and N more".
+-- A name not read is said so, never an item number; a count only when read.
+Present.BANK_PROMPT_HEAD = "Bank: "
+Present.BANK_PROMPT_NAMED = 3
+Present.BANK_PROMPT_UNNAMED = "item not read yet"
 function Present.BankPrompt(pick)
     if type(pick) ~= "table" or not pick.ok or type(pick.rows) ~= "table" then return nil end
     local n = #pick.rows
     if n == 0 then return nil end
-    return n .. (n == 1 and " kind" or " kinds") .. " of item to put in the bank."
+    local parts = {}
+    for i = 1, math.min(n, Present.BANK_PROMPT_NAMED) do
+        local r = pick.rows[i]
+        local name = Present.BANK_PROMPT_UNNAMED
+        if type(r) == "table" and type(r.name) == "string" and r.name ~= "" then name = r.name end
+        if type(r) == "table" and isCount(r.count) then name = name .. " x" .. r.count end
+        parts[#parts + 1] = name
+    end
+    if n > Present.BANK_PROMPT_NAMED then
+        parts[#parts + 1] = "and " .. (n - Present.BANK_PROMPT_NAMED) .. " more"
+    end
+    return Present.BANK_PROMPT_HEAD .. table.concat(parts, ", ")
 end
