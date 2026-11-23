@@ -36,6 +36,7 @@ UI\Setup.lua
 Import\FromFlow.lua
 Import\Stored.lua
 Settings\Model.lua
+Settings\Rows.lua
 Items\Key.lua
 Items\Resources.lua
 Items\TooltipHave.lua

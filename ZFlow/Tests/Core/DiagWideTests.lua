@@ -155,7 +155,7 @@ tests["diag wide (b): a form is a type, never a value"] = function(t)
     t.eq(Diag.Form(42), "number")
     t.eq(Diag.Form("Orgrimmar"), "string")
     t.eq(Diag.Form(true), "boolean")
-    t.eq(Diag.Form(print), "function")
+    t.eq(Diag.Form(function() end), "function")
 end
 
 tests["diag wide (b): a table's form is its count, its field names and their types"] = function(t)
