@@ -8361,7 +8361,8 @@ function ns.make.client(env)
     -- and nothing of the window is called. The page is read as
     -- markMerchantButtons reads it; none on the buyback tab. New, added at
     -- the end. First guesses, none seen in game on 16001: CreateFrame with
-    -- a parent, Texture SetTexCoord / SetVertexColor / SetColorTexture, and
+    -- a parent, the frame's CreateTexture, Texture SetTexCoord /
+    -- SetVertexColor / SetColorTexture / SetAtlas / SetSize, and
     -- the names markMerchantButtons already guesses (MerchantItem<i>ItemButton,
     -- MerchantFrame.page and .selectedTab, MERCHANT_ITEMS_PER_PAGE).
     --   c.markMerchantSpecs(badges) -> how many buttons carry a badge; nil

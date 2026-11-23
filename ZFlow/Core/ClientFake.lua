@@ -2981,7 +2981,9 @@ function ns.make.fakeClient(opts)
     --   c.rewardMarked(): the choice marked now, or nil.
     do
         local rewardMark = nil
-        function c.setQuestChoices(rows) s.questChoices = type(rows) == "table" and rows or nil end
+        function c.setQuestChoices(rows)
+            if type(rows) == "table" then s.questChoices = rows else s.questChoices = nil end
+        end
         function c.setQuestChoicesFails(on) s.questChoicesFails = on == true end
         function c.questChoices()
             if s.questChoicesFails then error("quest choice read failed (test)") end
@@ -3031,14 +3033,19 @@ function ns.make.fakeClient(opts)
     --   c.merchantButtons() -> { [button] = { up = arrow shown, specs = { { role,
     --     state } ... } } } for the buttons showing anything; {} when closed.
     --   c.setMoneyFails(on): money() raises while on (section 236).
+    --   c.setMerchantTab(tab): MerchantFrame.selectedTab (1, on sale, at the
+    --     start); any other tab is the buyback tab, where nothing is drawn
+    --     and markMerchantSpecs gives 0, as the real client.
+    -- As the real client, at most 12 buttons are drawn whatever the page size.
     do
-        local page, per = 1, 10
+        local BUTTONS = 12
+        local page, per, tab = 1, 10, 1
         local specsNow, drawn = nil, {}
         local function draw()
             drawn = {}
             local arrows = c.merchantMarked()
-            if s.merchantOpen ~= true then return end
-            for i = 1, per do
+            if s.merchantOpen ~= true or (tab ~= nil and tab ~= 1) then return end
+            for i = 1, math.min(per, BUTTONS) do
                 local index = (page - 1) * per + i
                 local up = type(arrows) == "table" and arrows[index] == true
                 local list = nil
@@ -3054,6 +3061,7 @@ function ns.make.fakeClient(opts)
             if type(p) == "number" then page = p end
             if type(n) == "number" then per = n end
         end
+        function c.setMerchantTab(n) tab = n end
         local plainMark = c.markMerchantButtons
         function c.markMerchantButtons(indexes)
             local n = plainMark(indexes)
