@@ -22,7 +22,10 @@ local function start(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
     c.setSaved(ns.id.accountDB, opts.account or {})
-    if opts.char then c.setSaved(ns.id.charDB, opts.char) end
+    -- These tests read the suggestion without the key frame (on by default
+    -- since lead section 294 item 1), so it is switched off unless a test
+    -- gives its own char settings.
+    c.setSaved(ns.id.charDB, opts.char or { settings = { rotation = { keyFrame = false } } })
     c.setClass("ROGUE"); c.setFaction("Alliance"); c.setLevel(20)
     if not opts.deadUnknown then c.setDead(false) end
     for name, id in pairs(IDS) do

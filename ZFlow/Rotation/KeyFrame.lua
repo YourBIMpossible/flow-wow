@@ -414,7 +414,7 @@ function K.Declare(k, diag)
         name = K.NAME,
         needs = { "client", "store", "bus", D.NAME },
         settings = { {
-            key = K.SETTING, scope = "char", type = "bool", default = false,
+            key = K.SETTING, scope = "char", type = "bool", default = true,
             label = K.LABEL,
             help = "Puts your form's spells on one hidden button, outside fights only. It presses nothing for you.",
             group = "combat.rotation", synonyms = { "key", "button", "keybind", "macro", "form", "easy key" },
