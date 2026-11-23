@@ -24,9 +24,9 @@
 --     opts.absent  a list of kinds ("realm", "guild", "account", "guid"):
 --                  this state has no name of that kind (a character with no
 --                  guild). For real state every kind of M.MUST (character,
---                  realm, guild, account) is known or marked absent, or the
---                  snapshot is refused. character cannot be marked absent:
---                  a real state has one. A kind marked absent that has a
+--                  realm, guild, account, guid) is known or marked absent,
+--                  or the snapshot is refused. character cannot be marked
+--                  absent: a real state has one. A kind marked absent that has a
 --                  known name: refused.
 --     opts.shortNames  true: a name under 3 characters is replaced where
 --                  it stands as a whole word. Not said: such a name is
@@ -131,16 +131,27 @@
 -- and "|cff00ff00Al|r is here" is "|<text:13> is here" (a colour code is a
 -- word the add-on does not write). The same text always gives the same
 -- template, so seenDiff compares them. A "<text:" already in the value is
--- written "(text:" first, so no value can look like a slot.
+-- written "(text:" first, and a typed placeholder ("<realm>", "<path>")
+-- "(realm>", so no value can look like a slot or a placeholder. The known
+-- names are replaced BEFORE the template, on the value as it is (see
+-- NAMES); the template keeps those placeholders as they are, never
+-- slotted or rewritten.
 --
 -- WORDS. The add-on's own words are the words of every string literal
 -- ("...", '...', [[...]], [=[...]=]) in every file ZFlow/manifest.lua
 -- lists, dev files left out (the fake client's test data is not the
 -- add-on's), read when the first snapshot asks for them and kept for the
--- run. Comments are not literals. A format's "%s", "%d", "%.1f" and a
--- string's escapes ("\n", "\"", "\123") are taken out before the words are
--- cut, so "%d yd %s" gives "yd". The folder is found from where this file
--- was loaded (tools/offline/ under the repo). It stays current by itself:
+-- run. Comments are not literals; a backslash before a line break (LF, or
+-- CR LF as one) continues a quoted literal, as Lua reads it. A literal
+-- percent "%%" is taken out first, then a format's specifiers ("%s",
+-- "%d", "%-5.1f": a "%", flags - + # 0, a width, a precision, and one
+-- conversion letter of c d i o u x X e E f g G q s), then a string's
+-- escapes ("\n", "\"", "\123"), before the words are cut: "%d yd %s"
+-- gives "yd", "%d%% what" gives "what". A blank is not read as a flag, so
+-- "% of" gives "of" (a "% d" keeps the "d"). The folder is the one the
+-- runner was given (tools/offline/zflow-run.lua sets M.RUN_ROOT to its
+-- repo root, the -Root of tools/zflow-tests.ps1), else the one found from
+-- where this file was loaded (tools/offline/ under the repo). It stays current by itself:
 -- a word a shipped file adds is kept from the next run on; a word no
 -- shipped literal has any more is slotted. When the manifest or a file it
 -- lists cannot be read, the snapshot is refused (opts.words aside).
@@ -154,16 +165,20 @@
 -- changed: whatever Diag.Collect itself counts (the kernel's meter), and a
 -- problem kept when a diag line raises.
 --
--- NAMES. On top of the template, known names are replaced (a name made of
--- the add-on's words, or a number, passes the template). Known names:
+-- NAMES. Known names are replaced in a value as it is, before the
+-- template: a name made of the add-on's words, or a number, would pass the
+-- template, and one with a free word in it ("Quell Made", "Made" the
+-- add-on's) would be cut at a slot's edge and never be seen whole. Then the
+-- line of the block is replaced and checked once more, slots and
+-- placeholders left out (see REFUSED). Known names:
 -- opts.names, and what the fake client answers for the game's own reads
 -- (UnitName, UnitFullName, GetRealmName, GetNormalizedRealmName,
 -- GetGuildInfo through c.raw; c.realm(); c.guid("player")), and the
 -- character and realm the diag snapshots in the account's saved table
 -- hold. Of a GUID ("Player-1234-ABCDEF") the parts after the first are
 -- names too, each alone and joined to the end ("1234-ABCDEF", "1234",
--- "ABCDEF"), when they have 4 letters or digits or more; the first part
--- says what kind of thing it is, not who.
+-- "ABCDEF"), when they have 3 letters or digits or more (a realm id of 3
+-- digits too); the first part says what kind of thing it is, not who.
 --
 -- A line and a name are compared in their normal form: lower case, every
 -- character that is not a letter or a digit taken out, a byte of 128 or
@@ -177,13 +192,14 @@
 -- line is replaced by PLACE[kind]: <character>, <realm>, <guild>,
 -- <account>, <guid>. Names that overlap in a line are replaced as one,
 -- with the kind of the one that starts first (the longest of those). A slot
--- "<text:n>" is never searched: a name that is in the word "text" ("Tex")
--- leaves it alone.
+-- "<text:n>" is never searched, nor a placeholder: a name that is in the
+-- word "text" ("Tex") leaves it alone.
 --
 -- A name of digits only (of any kind: the "1234" of a GUID) is a number,
 -- and is found only as a whole one, in the line as it is: the digits as
--- they stand, with no digit before or after. So "4904" is not found in
--- "0.349, 0.412", in "49040" or in "49-04".
+-- they stand, with no digit before or after, nor a dot with a digit past
+-- it. So "4904" is not found in "0.349, 0.412", in "49040" or in "49-04",
+-- and "349" not in "0.349" or "349.5"; it is in "id 349." and "(349)".
 --
 -- A name of under 3 letters or digits cannot be told from ordinary text:
 -- it is refused, unless opts.shortNames is true; then it is replaced only
@@ -200,14 +216,15 @@
 --   * not made up, and a kind of M.MUST is neither known nor marked absent
 --     (no character name known is refused this way too);
 --   * the add-on's words cannot be read (WORDS) and opts.words is not given;
---   * after the template and the replacing, a line or a problem still holds
---     a name. This second check (held) does not use the replacing's search:
+--   * after the replacing, a value (before its template), a line of the
+--     block (after it) or a problem still holds a name. This check (held)
+--     does not use the replacing's search:
 --     it takes the placeholders (and, in a line of the block, the slots)
 --     out, makes the normal form of each piece between them and of each
 --     name its own way, and looks for the name (3 or more) in the piece;
 --     for an all-ASCII name also in the piece with its bytes of 128 or more
---     taken out; a name of digits only as a whole number in the piece as
---     it is.
+--     taken out; a name of digits only as a whole number (as above) in the
+--     piece as it is.
 --
 -- THE LIMITS. What the block can still hold:
 --   * the add-on's own words and numbers, from whatever text they stood in:
@@ -218,7 +235,15 @@
 --     slot says the length of what it hides. A name made only of such
 --     words or numbers, that this file was not told and cannot read
 --     (another player in a chat line, an alt, an account name the client
---     never says: hand them in), is printed.
+--     never says: hand them in), is printed. The add-on's words include
+--     spell names, and several realm names are spell names: another
+--     player's realm or guild built from them prints in full.
+--   * numbers that say who: only the player's own GUID is known, so the
+--     GUID digits of other players and of pets print, and so does a realm
+--     id of under 3 digits (a part under 3 is not a name). A realm id that
+--     prints identifies the realm even where the realm's name is replaced.
+--     A known number joined to another by a dot and a digit ("1.349") is
+--     read as part of that number and not found.
 --   * a known name in the shapes the replacing does not find: string.lower
 --     knows only A to Z in Lua 5.1, so a non-ASCII letter is compared byte
 --     for byte; a name is NOT found when its non-ASCII letter is in the
@@ -279,13 +304,16 @@ M.FAILED = "failed"
 M.SECTIONS = { "arrows", "rotation icon", "flight marks", "map pins", "minimap pins",
     "nameplate labels", "combo bars", "slot icons", "panels", "chat", "diag" }
 M.KINDS = { "character", "realm", "guild", "account", "guid" }
-M.MUST = { "character", "realm", "guild", "account" }
+M.MUST = { "character", "realm", "guild", "account", "guid" }
+-- Set by tools/offline/zflow-run.lua to the repo folder it was given (the
+-- runner's -Root); nil: M.ROOT. See WORDS.
+M.RUN_ROOT = nil
 M.PLACE = { character = "<character>", realm = "<realm>", guild = "<guild>",
     account = "<account>", guid = "<guid>" }
 M.PATH = "<path>/"
 M.PATH_WHOLE = "<path>"
 M.SHORT = 3
-M.GUID_PART = 4
+M.GUID_PART = 3
 M.COMPASS = { "N", "NE", "E", "SE", "S", "SW", "W", "NW", "north", "south", "east", "west" }
 -- A slot as a pattern, and a word as a pattern (see TEMPLATE).
 local SLOT = "<text:%d+>"
@@ -337,7 +365,8 @@ local function list(v) return type(v) == "table" and v or {} end
 
 -- ---------------------------------------------------------------- template
 -- M.template(text, words) -> the text with every run of free words as one
--- slot "<text:n>". words: a set { [word] = true } (nil: none). See TEMPLATE.
+-- slot "<text:n>". words: a set { [word] = true } (nil: none). A
+-- placeholder of a kind of name ("<character>" ...) stays. See TEMPLATE.
 function M.template(text, words)
     words = type(words) == "table" and words or {}
     text = text:gsub("<text:", "(text:")
@@ -356,7 +385,9 @@ function M.template(text, words)
             break
         end
         local token = text:sub(a, b)
-        if token:find("^%d+$") or words[token] or COMPASS[token] then
+        -- A placeholder the replacing put in ("<character>" ...) stays as it is.
+        local placed = M.PLACE[token] ~= nil and text:sub(a - 1, a - 1) == "<" and text:sub(b + 1, b + 1) == ">"
+        if placed or token:find("^%d+$") or words[token] or COMPASS[token] then
             close()
             out[#out + 1] = text:sub(pos, a - 1)
             out[#out + 1] = token
@@ -378,7 +409,10 @@ function M.wordSet(texts)
     local set = {}
     for _, text in ipairs(list(texts)) do
         if type(text) == "string" then
-            local bare = text:gsub("%%[%-%+ #0]*%d*%.?%d*%a", " "):gsub("\\%d%d?%d?", " "):gsub("\\.", " ")
+            -- "%%" first: its second "%" would start a specifier that eats
+            -- the next word's first letter ("%d%% what" gave "hat").
+            local bare = text:gsub("%%%%", " "):gsub("%%[%-%+#0]*%d*%.?%d*[cdiouxXeEfgGqs]", " ")
+                :gsub("\\%d%d?%d?", " "):gsub("\\.", " ")
             for token in bare:gmatch(WORD) do set[token] = true end
         end
     end
@@ -428,7 +462,9 @@ function M.literals(src)
                     break
                 end
                 if src:sub(j, j) == "\\" then
-                    k = j + 2
+                    -- A backslash before CR LF continues the string over
+                    -- both bytes, as Lua reads it.
+                    k = src:sub(j + 1, j + 2) == "\r\n" and j + 3 or j + 2
                 else
                     k = j
                     break
@@ -442,12 +478,13 @@ function M.literals(src)
 end
 
 -- M.words(root) -> the add-on's own words { [word] = true }, or nil and
--- why. root: the repo's folder (nil: M.ROOT, and the answer is kept for
--- the run). See WORDS. The reason names no path.
-local kept
+-- why. root: the repo's folder (nil: M.RUN_ROOT, the runner's, else
+-- M.ROOT, this file's; that answer is kept for the run, for that folder).
+-- See WORDS. The reason names no path.
+local kept, keptAt
 function M.words(root)
-    if root == nil and kept then return kept end
-    local at = root or M.ROOT
+    local at = root or M.RUN_ROOT or M.ROOT
+    if root == nil and kept and keptAt == at then return kept end
     if type(at) ~= "string" then return nil, "the repo's folder is not known (this file was not loaded from a file)" end
     local chunk = loadfile(at .. "/ZFlow/manifest.lua")
     if not chunk then return nil, "ZFlow/manifest.lua did not load" end
@@ -471,7 +508,7 @@ function M.words(root)
     end
     if files == 0 then return nil, "ZFlow/manifest.lua lists no shipped file" end
     local set = M.wordSet(texts)
-    if root == nil then kept = set end
+    if root == nil then kept, keptAt = set, at end
     return set
 end
 
@@ -762,6 +799,17 @@ local function digitByte(b)
     return b ~= nil and b >= 48 and b <= 57
 end
 
+-- True when text:sub(a, b) (digits) is a whole number: no digit next to
+-- it, and no dot with a digit past it ("0.349", "349.5" are one number).
+local function wholeAt(text, a, b)
+    local before = a > 1 and text:byte(a - 1) or nil
+    local after = text:byte(b + 1)
+    if digitByte(before) or digitByte(after) then return false end
+    if before == 46 and a > 2 and digitByte(text:byte(a - 2)) then return false end
+    if after == 46 and digitByte(text:byte(b + 2)) then return false end
+    return true
+end
+
 -- ascii: no byte of 128 or more in the name. digits: nothing but digits.
 -- client: the client answered it (not handed in): names.fromClient[kind].
 local function addName(names, kind, v, client)
@@ -939,7 +987,7 @@ local function spans(line, names)
                 -- A whole number, in the line as it is.
                 a, b = line:find(name.text, from, true)
                 if not a then break end
-                if not digitByte(line:byte(a - 1)) and not digitByte(line:byte(b + 1)) then
+                if wholeAt(line, a, b) then
                     found[#found + 1] = { s = a, e = b, kind = name.kind, at = #found + 1 }
                 end
             else
@@ -988,16 +1036,29 @@ local function redactPiece(piece, names)
     return table.concat(out)
 end
 
+-- The next slot or placeholder ("<character>" ..., "<path>") in the line
+-- from place from: where it starts and ends, or nil.
+local function nextKept(line, from)
+    local a, b = line:find(SLOT, from)
+    for i = 0, #M.KINDS do
+        local place = i == 0 and M.PATH_WHOLE or M.PLACE[M.KINDS[i]]
+        local pa, pb = line:find(place, from, true)
+        if pa and (not a or pa < a) then a, b = pa, pb end
+    end
+    return a, b
+end
+
 -- M.redact(line, names) -> the line with every name replaced. Every place
 -- of every name is found in the line as it was, the places that overlap
 -- are made one, and each is replaced once: a replacement is never searched.
--- A slot "<text:n>" is never searched either: the pieces between slots are
--- searched each on its own.
+-- A slot "<text:n>" or a placeholder is never searched either: the pieces
+-- between them are searched each on its own, so a line can be redacted
+-- twice (the raw value, then the line of the block).
 function M.redact(line, names)
     if #names == 0 then return line end
     local out, from = {}, 1
     while true do
-        local a, b = line:find(SLOT, from)
+        local a, b = nextKept(line, from)
         out[#out + 1] = redactPiece(line:sub(from, (a or #line + 1) - 1), names)
         if not a then break end
         out[#out + 1] = line:sub(a, b)
@@ -1040,13 +1101,16 @@ local function flat(text, ascii)
 end
 
 -- The second check's own search for a name of digits only: true when the
--- number stands in the text with no digit before or after it.
+-- number stands in the text with no digit before or after it, nor a dot
+-- with a digit past it.
 local function wholeNumber(text, number)
     local from = 1
     while true do
         local a, b = text:find(number, from, true)
         if not a then return false end
-        if not text:sub(a - 1, a - 1):find("%d") and not text:sub(b + 1, b + 1):find("%d") then return true end
+        local head = a > 2 and text:sub(a - 2, a - 1) or (a > 1 and text:sub(a - 1, a - 1) or "")
+        local tail = text:sub(b + 1, b + 2)
+        if not head:find("%d%.?$") and not tail:find("^%.?%d") then return true end
         from = a + 1
     end
 end
@@ -1213,10 +1277,22 @@ function M.seen(c, addon, opts)
         end
         whose = "the add-on's"
     end
-    -- What the block says of a free value: see TEMPLATE.
+    -- What the block says of a free value: its known names replaced on the
+    -- raw text, then its template (see TEMPLATE and NAMES). A slot or a
+    -- placeholder typed into the value is made plain text first, so only
+    -- the replacing's own placeholders pass the template. heldRaw: a value
+    -- still held a name after the replacing (the section is refused).
+    local heldRaw = false
+    local function neutral(kind)
+        if M.PLACE[kind] or "<" .. kind .. ">" == M.PATH_WHOLE then return "(" .. kind .. ">" end
+        return nil
+    end
     local function say(v)
         local s = word(v)
         if s == M.UNKNOWN or type(v) == "number" then return s end
+        s = s:gsub("<text:", "(text:"):gsub("<(%a+)>", neutral)
+        s = M.redact(s, names)
+        if M.held(s, names) then heldRaw = true end
         return M.template(s, words)
     end
     local function indented(said)
@@ -1258,6 +1334,9 @@ function M.seen(c, addon, opts)
     for _, name in ipairs(M.SECTIONS) do
         lines[#lines + 1] = "== " .. name .. " =="
         local ok, got = pcall(makers[name])
+        if heldRaw then
+            return nil, "a name was still in a line of " .. name .. " after the replacing: refused"
+        end
         if not ok then
             problems[#problems + 1] = name .. ": " .. tostring(got)
             got = { M.FAILED }

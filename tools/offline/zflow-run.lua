@@ -176,6 +176,7 @@ do
     if chunk then ok, seen = pcall(chunk) end
     if ok and type(seen) == "table" then
         ns.offline.seen, ns.offline.seenDiff, ns.offline.seenParts = seen.seen, seen.compare, seen
+        seen.RUN_ROOT = root
     else
         local why = "tools/offline/zflow-seen.lua did not load: " .. tostring(seen)
         local function broken() error(why, 2) end
