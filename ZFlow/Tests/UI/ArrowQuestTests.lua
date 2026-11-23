@@ -110,21 +110,24 @@ return {
         t.ok(tostring(q.lines[3]):find("^50 yd") ~= nil, tostring(q.lines[3]))
     end,
 
+    -- Lead section 294 item 5 (pin changed under section 208): an empty
+    -- log no longer hides the quest arrow without a word; it says why.
     ["quest arrow: an empty log shows no quest arrow"] = function(t)
         local c = start({}, questie())
-        t.eq(c.arrows[1].shown, false)
+        t.eq(c.arrows[1].shown, true, "the frame stays up")
+        t.eq(c.arrows[1].lines, { ns.Arrow.NO_QUEST }, "and says why")
     end,
 
     ["quest arrow: QUEST_LOG_UPDATE reads the log again"] = function(t)
         local c, _, _, held = start({}, questie())
-        t.eq(c.arrows[1].shown, false)
+        t.eq(c.arrows[1].lines, { ns.Arrow.NO_QUEST })
         held.log = { boars() }
         c.fire("QUEST_LOG_UPDATE")
         t.eq(c.arrows[1].shown, true)
         t.eq(c.arrows[1].lines[1], "Boar Trouble")
         held.log = {}
         c.fire("QUEST_LOG_UPDATE")
-        t.eq(c.arrows[1].shown, false)
+        t.eq(c.arrows[1].lines, { ns.Arrow.NO_QUEST })
     end,
 
     ["quest arrow: a change of zone reads it again"] = function(t)
