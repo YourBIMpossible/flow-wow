@@ -9,6 +9,10 @@ local _, ns = ...
 --                                   fn(snapshot) -> claims, active() -> false: idle
 --   Reservations.Grants(r)          r's grants, or nil when unavailable
 --   Reservations.HeldIn(grants, "bags" | "bank")   what they hold in one place
+--   Reservations.Changed(k)         a source's claims changed (a goal added
+--                                   or removed): emits Reservations.CHANGED
+--                                   on k's bus, so a list that keeps an
+--                                   evaluation (UI/SellList.lua) drops it
 --
 -- One evaluation is one Resources.Take and one Resources.Resolve over every
 -- claim the sources give for that snapshot, so the bags and the bank are
@@ -32,9 +36,10 @@ local _, ns = ...
 -- active() that raises counts as active.
 --
 -- READ ONLY. Nothing here deposits, withdraws, moves, sells, buys or uses
--- anything, adds an event, a window or saved data (the goals list is
--- Items/Goals.lua's own). Fresh on every call: the
--- callers already re-ask on the game's bag and bank events, so nothing polls.
+-- anything, adds a client event, a window or saved data (the goals list is
+-- Items/Goals.lua's own); its one event, CHANGED, is internal and is sent
+-- only when a source says so. Fresh on every call: the callers already
+-- re-ask on the game's bag and bank events, so nothing polls.
 -- Not tested in game.
 
 local Reservations = {}
@@ -44,6 +49,7 @@ Reservations.NAME = "reservations"
 Reservations.OK = "ok"
 Reservations.NONE = "none"
 Reservations.UNAVAILABLE = "unavailable"
+Reservations.CHANGED = "reservations:changed"
 
 local sources, actives = {}, {}
 
@@ -53,6 +59,14 @@ function Reservations.Source(name, fn, active)
     if active ~= nil and type(active) ~= "function" then error("a source's active test is a function", 2) end
     sources[name] = fn
     actives[name] = fn and active or nil
+end
+
+-- A source's claims changed. Emitted on the bus of k (the kernel), never
+-- raised: with no bus nothing is told and nothing fails.
+function Reservations.Changed(k)
+    local bus = type(k) == "table" and k.bus or nil
+    if type(bus) ~= "table" or type(bus.emit) ~= "function" then return end
+    pcall(bus.emit, bus, Reservations.CHANGED)
 end
 
 -- Is the source to be asked? Only an active() answering false says no.

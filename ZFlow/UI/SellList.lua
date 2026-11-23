@@ -32,7 +32,9 @@
 -- learned.prices (account).
 -- Reservations (lead section 209): one evaluation per merchant visit
 -- (ns.use(Reservations.NAME).Current, made at the first listing of the visit
--- and kept until the window closes). What it holds in the bags
+-- and kept until the window closes; dropped and listed once again when
+-- Reservations.CHANGED says the claims changed, lead section 218). What it
+-- holds in the bags
 -- (Reservations.HeldIn(grants, "bags")) goes to Disposition as the grants,
 -- so a held part is kept, not offered. "none" (no producer, or nothing
 -- claimed) changes nothing. "unavailable" (a producer failed, or the module
@@ -130,7 +132,8 @@ function SellList.Declare(k)
     local panel
     local open, relist = false, nil
     -- The reservations evaluation of this merchant visit: made at its first
-    -- listing, kept until the window closes.
+    -- listing, kept until the window closes or the reservations change
+    -- (Reservations.CHANGED).
     local visit = nil
     function api.last() return last end
     function api.shows() return shows end
@@ -199,6 +202,14 @@ function SellList.Declare(k)
             -- Something was sold, bought or moved by the player: the list
             -- follows the bags. Nothing when no merchant window is open.
             ctx.bus:on(SellList.NAME, SellList.BAG_EVENT, function()
+                api.refresh()
+            end)
+            -- The reservations changed (a goal added or removed): this
+            -- visit's evaluation is old, so drop it and list once again.
+            -- Nothing when no merchant window is open.
+            ctx.bus:on(SellList.NAME, ns.Reservations.CHANGED, function()
+                if not open then return end
+                visit = nil
                 api.refresh()
             end)
             -- The frame last, after everything that can switch the module off.
