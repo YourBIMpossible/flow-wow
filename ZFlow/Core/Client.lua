@@ -3499,6 +3499,9 @@ function ns.make.client(env)
     -- name. CombatLogGetCurrentEventInfo is not listed for this client, and
     -- the combat-log event is listed as closed to addons since 12.0.0.
     -- With no such read watchCombatLog answers nil and registers nothing.
+    -- Lead section 195: C_CombatLog.GetCurrentEventInfo is asked first, the
+    -- old global second. Needs game test: which of the two 16001 has, and
+    -- that the values come in the same order.
     ---------------------------------------------------------------------
 
     -- c.guid(unit), c.playerGUID() and c.petGUID() are above, with the
@@ -3513,16 +3516,32 @@ function ns.make.client(env)
         return rank
     end
 
+    -- The combat-log read of this client: C_CombatLog.GetCurrentEventInfo
+    -- when it is a function, else CombatLogGetCurrentEventInfo when it is
+    -- one, else nil. Looked up again at each event; a lookup that raises
+    -- counts as no read.
+    local function logRead()
+        local ok, space = pcall(function() return env.C_CombatLog end)
+        if ok and type(space) == "table" then
+            local found, fn = pcall(function() return space.GetCurrentEventInfo end)
+            if found and type(fn) == "function" then return fn end
+        end
+        local old = env.CombatLogGetCurrentEventInfo
+        if type(old) == "function" then return old end
+        return nil
+    end
+
     -- Calls fn with the values of each combat-log event, in the client's
-    -- own order: COMBAT_LOG_EVENT_UNFILTERED, read with
-    -- CombatLogGetCurrentEventInfo(). Answers true when the feed was taken;
-    -- nil when the client has no such read or did not take the event (fn
-    -- is then never called). A read that fails does not call fn that
-    -- time. A secret value is handed over as nil, never as it is. It only
-    -- reads: the log is not filtered, cleared or written to.
+    -- own order: COMBAT_LOG_EVENT_UNFILTERED, read with logRead() above.
+    -- Answers true when the feed was taken; nil and "no log" when the
+    -- client has neither read; nil and "not taken" when it did not take the
+    -- event (fn is then never called). A read that fails does not call fn
+    -- that time. A secret value is handed over as nil, never as it is. It
+    -- only reads: the log is not filtered, cleared or written to.
     local logBuf = {}
     function c.watchCombatLog(fn)
-        if type(fn) ~= "function" or type(env.CombatLogGetCurrentEventInfo) ~= "function" then return nil end
+        if type(fn) ~= "function" then return nil end
+        if logRead() == nil then return nil, "no log" end
         local function pass(ok, ...)
             if not ok then return end
             local n = select("#", ...)
@@ -3535,11 +3554,12 @@ function ns.make.client(env)
             fn(unpack(logBuf, 1, n))
         end
         local cancel = events.add("COMBAT_LOG_EVENT_UNFILTERED", function()
-            pass(pcall(env.CombatLogGetCurrentEventInfo))
+            local read = logRead()
+            if read ~= nil then pass(pcall(read)) end
         end)
         if unregistered["COMBAT_LOG_EVENT_UNFILTERED"] then
             cancel()
-            return nil
+            return nil, "not taken"
         end
         return true
     end

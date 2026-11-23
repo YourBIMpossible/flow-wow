@@ -161,6 +161,11 @@ end
 
 local function checkFeatures(t, cap)
     local c, addon, report = boot(cap)
+    -- Lead, owner direction 2026-11-23: nothing counts unless the capture
+    -- gave what the features read. What is missing is named and fails.
+    local enough, missing = Capture.Evidence(cap, report)
+    t.ok(enough, "the capture lacks: " .. table.concat(missing, ", ") .. "; the features were not exercised")
+    if not enough then return end
     for _, feature in ipairs(Capture.FEATURES) do
         local lines, added = runFeature(c, addon, feature)
         t.ok(#lines > 0, feature.name .. ": it said something")
@@ -175,6 +180,25 @@ tests["capture features: rotation, arrow, flights, banker and settings on a made
     for _, f in ipairs(Capture.FEATURES) do names[#names + 1] = f.name end
     t.eq(names, { "rotation", "arrow", "flights", "banker", "settings" })
     checkFeatures(t, made())
+end
+
+tests["capture evidence: an empty capture is missing evidence, not a pass"] = function(t)
+    t.ok(type(Capture.Evidence) == "function", "the loader says what a run lacked")
+    if type(Capture.Evidence) ~= "function" then return end
+    local empty = { account = {}, char = {} }
+    local c = ns.make.fakeClient()
+    local ok, missing = Capture.Evidence(empty, Capture.Apply(c, empty))
+    t.eq(ok, false, "no snapshot and no read: not enough")
+    t.eq(missing, { "a snapshot", "class", "level", "faction", "position", "zone" })
+    -- A snapshot with no reads in it is still missing every read.
+    local bare = { account = { diag = { snaps = { {} } } }, char = {} }
+    ok, missing = Capture.Evidence(bare, Capture.Apply(ns.make.fakeClient(), bare))
+    t.eq(ok, false)
+    t.eq(missing, { "class", "level", "faction", "position", "zone" })
+    -- The made-up capture gives all of them.
+    local full = made()
+    ok, missing = Capture.Evidence(full, Capture.Apply(ns.make.fakeClient(), full))
+    t.eq({ ok, #missing }, { true, 0 }, "the made-up capture: " .. table.concat(missing, ", "))
 end
 
 tests["capture real features: each feature on a real capture (skipped when none is given)"] = function(t)

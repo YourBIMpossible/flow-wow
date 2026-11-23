@@ -21,9 +21,11 @@
 -- It needs three client reads (Core/Client.lua, the F7 block; the ids go
 -- through client.guid). Where the client has no combat-log read the word
 -- says that no fight can be recorded:
---   client.watchCombatLog(fn) -> true | nil
+--   client.watchCombatLog(fn) -> true | nil, why
 --       calls fn with the values of each combat-log event, in the client's
---       own order. nil when the client has no such read.
+--       own order. nil and "no log" when the client gives add-ons no
+--       combat-log read at all (the word then says so: NO_LOG); nil when
+--       the feed was not taken for another reason (NO_FEED).
 --   client.playerGUID() -> text | nil    your id, nil when it will not say
 --   client.petGUID() -> text | nil       your pet's id, nil with no pet
 --
@@ -43,6 +45,7 @@ L.WORD = "fights"
 L.HELP = "show the last fights of this session: what you dealt, took and healed;"
     .. " fights <number> lists that fight's spells; fights death shows what hit you before your last death"
 L.NO_FEED = "this client build has no combat-log read yet, so no fight can be recorded."
+L.NO_LOG = "the client gives add-ons no combat log, so no fight can be recorded."
 L.PROBE = "probe"
 L.NO_ME = "the client did not say who you are, so nothing in these fights could be counted as yours."
 
@@ -58,6 +61,7 @@ function L.Start(k, diag)
     local client = k.client
     local rec = ns.Fights.New()
     local feed = false
+    local noLog = false
     local me
     -- For "fights probe" (RESEARCH-fight-log.md): counts since login only.
     local cleuSeen, hitsOnYou, hitsReadable, hitsFollowed = 0, 0, 0, false
@@ -83,13 +87,15 @@ function L.Start(k, diag)
     end
 
     if type(client.watchCombatLog) == "function" then
-        feed = client.watchCombatLog(function(...)
+        local taken, why = client.watchCombatLog(function(...)
             -- A hit outside a fight is kept for the death report, so your
             -- id is asked for here too until it is known.
             cleuSeen = cleuSeen + 1
             if not rec:knowsMe() then who() end
             rec:event(now(), ...)
-        end) == true
+        end)
+        feed = taken == true
+        noLog = not feed and why == "no log"
     end
     if feed then
         client.listen("PLAYER_REGEN_DISABLED", function()
@@ -122,8 +128,10 @@ function L.Start(k, diag)
         return client.apiPresent(path) and "present" or "absent"
     end
     local function probe()
-        say("probe: combat-log read " .. present("CombatLogGetCurrentEventInfo")
+        say("probe: combat-log read C_CombatLog.GetCurrentEventInfo " .. present("C_CombatLog.GetCurrentEventInfo")
+            .. ", CombatLogGetCurrentEventInfo " .. present("CombatLogGetCurrentEventInfo")
             .. "; feed " .. (feed and "taken" or "not taken")
+            .. (noLog and ", the client gives add-ons no combat log" or "")
             .. "; combat-log events since login: " .. cleuSeen .. ".")
         say("probe: game damage meter (C_DamageMeter) " .. present("C_DamageMeter")
             .. "; death recap (C_DeathRecap.GetRecapEvents) " .. present("C_DeathRecap.GetRecapEvents") .. ".")
@@ -141,7 +149,7 @@ function L.Start(k, diag)
             return
         end
         if not feed then
-            say(L.NO_FEED)
+            say(noLog and L.NO_LOG or L.NO_FEED)
             return
         end
         if tostring(rest):lower():find("death", 1, true) then

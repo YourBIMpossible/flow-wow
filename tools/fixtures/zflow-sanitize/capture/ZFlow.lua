@@ -23,6 +23,13 @@ ZFlowDB = {
 ["basis"] = "vendor",
 ["source"] = "merchant",
 },
+[2770] = {
+["value"] = 5,
+["basis"] = "observed",
+["source"] = "merchant window",
+["seenAt"] = 1700000123,
+["per"] = 5,
+},
 },
 ["auction"] = {
 ["Mossvale-Alliance"] = {
