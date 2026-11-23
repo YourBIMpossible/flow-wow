@@ -79,7 +79,7 @@ return {
         t.eq(c.savedExists(ns.id.accountDB) and savedArrows(c) or nil, nil, "nothing saved")
     end,
 
-    ["demo: stacked, needle behind the quest arrow, one stack of text"] = function(t)
+    ["demo: stacked, needle behind the quest arrow, its text on the other side (section 341)"] = function(t)
         local _, c, a, d = start()
         login(c)
         cmd(d, "demo")
@@ -94,8 +94,10 @@ return {
         t.eq(q.scaled, N.ON_NEEDLE_SCALE)
         t.eq(q.faded, N.ON_NEEDLE_ALPHA)
         t.eq(p.faded, N.PROF_HOLDER_ALPHA, "the needle stays the quieter arrow")
-        t.eq(q.lines, { "Demo: north", "300 yd", "Demo: east" })
-        t.eq(p.lines, {}, "its text is on the quest arrow")
+        t.eq(q.lines, { "Demo: north", "300 yd" })
+        t.eq(p.lines, { "Demo: east" }, "its text is on its own frame")
+        t.eq(q.textPoint, { "BOTTOM", "TOP", 0, 7 }, "quest lines above")
+        t.eq(p.textPoint, { "TOP", "BOTTOM", 0, -7 }, "needle lines below")
         c.advance(0.5, 30)
         t.ok(q.draws > 0 and p.draws > 0, "both are drawn every frame")
         t.ok(a.state().demo)
@@ -120,7 +122,9 @@ return {
         cmd(d, "demo")
         local q, p = c.arrows[1], c.arrows[2]
         t.eq(q.lines[3], "facing unknown")
-        t.eq(p.shown, false, "no facing: the needle has no bearing to show")
+        t.eq(p.shown, true, "no facing: the frame stays for its text (section 341)")
+        c.advance(0.1, 2)
+        t.eq(type(p.drawn) == "table" and p.drawn.body, 0, "and no needle is drawn")
         t.eq(q.faded, 1 * A.LOST_ALPHA, "the quest arrow alone, faded")
         c.setFacing(0)
         c.advance(0.5, 5)
@@ -263,7 +267,8 @@ return {
         local q, p = c.arrows[1], c.arrows[2]
         t.eq(q.shown, true)
         t.eq(p.shown, true)
-        t.eq(q.lines, { "Kill boars", "100 yd N", "Copper vein", "300 yd E" })
+        t.eq(q.lines, { "Kill boars", "100 yd N" })
+        t.eq(p.lines, { "Copper vein", "300 yd E" }, "on the other side (section 341)")
         c.advance(3, 300)
         t.ok(math.abs(q.drawn.turn - N.ArrowTurn(0, 0)) < 1e-3, "the boars are north")
         cmd(d, "demo")
@@ -448,7 +453,8 @@ return {
         local q, p = c.arrows[1], c.arrows[2]
         t.eq(q.shown, true, "the waypoint is still the quest arrow")
         t.eq(p.shown, true, "the profession needle is shown")
-        t.eq(q.lines, { N.WAYPOINT_LABEL, "100 yd N", "Mining trainer", "300 yd E" })
+        t.eq(q.lines, { N.WAYPOINT_LABEL, "100 yd N" })
+        t.eq(p.lines, { "Mining trainer", "300 yd E" }, "on the other side (section 341)")
         t.ok(a.state().view.prof.mode ~= "off")
         c.setWaypoint(nil)
         a.relayout()
@@ -460,9 +466,10 @@ return {
     end,
 
     -- Lead section 288 (pin updated under section 208): with no trainer to
-    -- point at, the profession says why in one line, added under the quest
-    -- lines; no needle, and the quest arrow itself is unchanged.
-    ["wiring G2: with no trainer step the needle is off, the quest arrow is unchanged, and one why line joins it"] = function(t)
+    -- point at, the profession says why in one line; no needle, and the quest
+    -- arrow itself is unchanged. Section 341: the line is on the other side
+    -- of the arrow from the quest lines, on the needle's frame.
+    ["wiring G2: with no trainer step the needle is off, the quest arrow is unchanged, and one why line stands opposite"] = function(t)
         local plain = select(2, start())
         plain.setPosition(1411, 0.5, 0.5)
         plain.setMapSize(1411, 1000, 500)
@@ -480,9 +487,12 @@ return {
             a.relayout()
             local q, p = c.arrows[1], c.arrows[2]
             t.eq(a.state().view.prof.mode, "off", name)
-            t.eq(p.shown, false, name)
+            t.eq(p.shown, true, name .. ": the frame for the line")
             t.eq(q.shown, true, name)
-            t.eq(q.lines, { want.lines[1], want.lines[2], why[name] }, name)
+            t.eq(q.lines, { want.lines[1], want.lines[2] }, name)
+            t.eq(p.lines, { why[name] }, name)
+            c.advance(0.1, 2)
+            t.eq(type(p.drawn) == "table" and p.drawn.body, 0, name .. ": no needle drawn")
             t.eq(q.point, want.point, name)
             t.eq(q.faded, want.faded, name)
             t.eq(q.scaled, want.scaled, name)
@@ -498,7 +508,9 @@ return {
         login(c)
         a.relayout()
         local q, p = c.arrows[1], c.arrows[2]
-        t.eq(q.lines, { N.WAYPOINT_LABEL, "100 yd N", "Mining trainer \226\128\148 other map" })
-        t.eq(p.shown, false, "no needle")
+        t.eq(q.lines, { N.WAYPOINT_LABEL, "100 yd N" })
+        t.eq(p.shown, true, "the frame for the line (section 341)")
+        t.eq(p.lines, { "Mining trainer \226\128\148 other map" })
+        t.eq(a.state().view.prof.mode, "off", "no needle")
     end,
 }

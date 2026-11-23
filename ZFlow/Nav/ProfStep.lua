@@ -226,15 +226,30 @@ end
 
 -- Lead section 288 (N25 widened): the next profession step for any
 -- character with a profession, by priority:
---   1. the trainer of a capped profession (N.ProfStep above);
---   2. the nearest known node of a gathering profession not capped, from
---      GatherMate2 on the map the player is on (Nav/AddonSources.lua);
+--   1. the trainer of a capped profession on another map, as text
+--      (N.ProfStep above, owner decision D10);
+--   2. the first stop of the profession route (lead section 341): the
+--      nearest of the stops that have a place on the map the player is on,
+--      which are
+--        the trainer of a capped profession (N.ProfStep above);
+--        the nearest known node of a gathering profession not capped, from
+--        GatherMate2 (Nav/AddonSources.lua);
+--        the nearest station this account has seen (an anvil, a forge or a
+--        fire: Rotation/KeyActions.lua saves them) for the craft that
+--        gives a point, when its profession works at one (N.PROF_STATION);
+--      at the same distance, or with where the player is not known, in
+--      that order;
 --   3. the craft that gives a point, from the recipe book of this character
 --      and the recipe colours its profession windows showed, as one line;
 --   4. else one line per profession, by name, that says why there is
 --      nothing to point at, and how the player supplies it (Lead section
 --      339: before, only the first profession by name got a line).
 -- No profession: nil, "no profession".
+--
+-- N.ProfRoute(input) -> { { kind, step, d }, ... }: every stop with a
+-- place, nearest first. kind: "trainer", "node" or "station". d: the
+-- distance squared (yards with a map size, else shares of the map; 0 with
+-- where the player is not known). Pure; the input of N.ProfNext.
 --
 -- N.ProfNext(input) -> step, or nil and a reason. Pure; input fields:
 --   professions  client.professions(): { [name] = true } or nil
@@ -244,9 +259,17 @@ end
 --   book         char "learned.facts.recipeBook": { [recipe] = { profession } }
 --   colours      char "learned.recipeColors":
 --                { [recipe] = { [difficulty] = { lo, hi } } }
+--   stations     account "learned.keyStations": { { kind, map, x, y } },
+--                kind "anvil", "forge" or "fire"
 -- A node step: { place = { cont, map, x, y }, radius = N.PROF_NEAR,
 --   label = the node name (or "<profession> node" over the limit),
---   detail = N.PROF_NODE_DETAIL }. A craft or why step:
+--   detail = N.PROF_NODE_DETAIL }. A craft at a station:
+--   { place, radius = N.PROF_NEAR, label = the craft line, detail =
+--   N.PROF_STATION_DETAIL with the kind seen there }; a craft line over the
+--   limit is the detail, under the label "<profession> <kind>". No recipe
+--   saves the station it needs, so the station is the profession's. No
+--   vendor's wares are saved, so no step points at a reagent vendor.
+--   A craft with no station, or a why step:
 --   { still = true, lines = { text, ... }, label = the text when there is
 --   one line within the limit }.
 --
@@ -266,6 +289,21 @@ for _, name in ipairs({ "Alchemy", "Blacksmithing", "Enchanting", "Engineering",
 end
 
 N.PROF_NODE_DETAIL = "nearest known %s node"
+-- The station a profession's crafts are made at. A first guess, by
+-- profession: the recipe book saves no station for a recipe. A profession
+-- not named here has none, and its craft stays a line of text.
+N.PROF_STATION = { Blacksmithing = "anvil", Cooking = "fire" }
+-- The saved kinds that serve a station (a forge stands by an anvil: a
+-- first guess, as original Flow had it).
+N.PROF_STATION_SPOTS = {
+    anvil = { anvil = true, forge = true },
+    forge = { forge = true },
+    fire = { fire = true },
+}
+N.PROF_STATION_DETAIL = "nearest known %s"
+-- Where Rotation/KeyActions.lua saves the stations (its KA.STATIONS_PATH;
+-- that file loads after this one).
+N.PROF_STATIONS_PATH = "learned.keyStations"
 N.PROF_CRAFT_SURE = "Make %s: a sure %s point"
 N.PROF_CRAFT_MAYBE = "Make %s: may give a %s point"
 N.PROF_WHY_READ = "Open your %s window once to read your skill"
@@ -365,9 +403,51 @@ local function nodeStep(input, names, here)
     return step
 end
 
-function N.ProfNext(input)
-    if type(input) ~= "table" then input = {} end
-    local here = type(input.here) == "table" and input.here or {}
+-- The craft that gives a point, at the nearest station this account has
+-- seen on the map the player is on; nil when no profession with such a
+-- craft works at a station seen here.
+local function stationStep(input, names, here)
+    local pos = type(here.position) == "table" and here.position or nil
+    if type(input.stations) ~= "table" or not pos or pos.map == nil then return nil end
+    local size = sizeOf(here, pos.map)
+    local best, bestD, bestProf, bestCraft, bestGives
+    for _, prof in ipairs(names) do
+        local need = N.PROF_STATION[prof]
+        local serves = need and N.PROF_STATION_SPOTS[need] or nil
+        local r = reading(input.readings, prof)
+        if serves and N.PROF_GATHER[prof] == nil and r and not capped(r) then
+            local craft, gives = craftFor(prof, r.skill, input.book, input.colours)
+            if craft then
+                for _, s in ipairs(input.stations) do
+                    if type(s) == "table" and serves[s.kind] == true and s.map == pos.map
+                        and share(s.x) and share(s.y) then
+                        local d = apart(s, pos, size)
+                        if not best or d < bestD then
+                            best, bestD, bestProf, bestCraft, bestGives = s, d, prof, craft, gives
+                        end
+                    end
+                end
+            end
+        end
+    end
+    if not best then return nil end
+    local cont = type(here.zone) == "table" and here.zone.cont or nil
+    local step = { place = { cont = cont, map = pos.map, x = best.x, y = best.y }, radius = N.PROF_NEAR }
+    local words = bestGives == "sure" and N.PROF_CRAFT_SURE or N.PROF_CRAFT_MAYBE
+    local line = words:format(bestCraft, bestProf)
+    local max = N.Waypoint and N.Waypoint.LABEL_MAX or 40
+    if #line <= max then
+        step.label, step.detail = line, N.PROF_STATION_DETAIL:format(best.kind)
+    else
+        step.detail = line
+        local label = bestProf .. " " .. best.kind
+        if #label <= max then step.label = label end
+    end
+    return step
+end
+
+-- The professions of the input, by name.
+local function namesOf(input)
     local names, has = {}, {}
     local function add(name)
         if type(name) == "string" and not has[name] then
@@ -385,15 +465,58 @@ function N.ProfNext(input)
             if reading(input.readings, name) then add(name) end
         end
     end
-    if #names == 0 then return nil, "no profession" end
     table.sort(names)
+    return names
+end
+
+-- The stops with a place, nearest first; trainer is N.ProfStep's answer.
+local function route(input, names, here, trainer)
+    local pos = type(here.position) == "table" and here.position or nil
+    local size = pos and sizeOf(here, pos.map) or nil
+    local stops = {}
+    local function add(kind, step)
+        if type(step) == "table" and type(step.place) == "table" then
+            stops[#stops + 1] = { kind = kind, step = step, d = apart(step.place, pos, size), nth = #stops + 1 }
+        end
+    end
+    add("trainer", trainer)
+    add("node", nodeStep(input, names, here))
+    add("station", stationStep(input, names, here))
+    table.sort(stops, function(a, b)
+        if a.d ~= b.d then return a.d < b.d end
+        return a.nth < b.nth
+    end)
+    for _, stop in ipairs(stops) do stop.nth = nil end
+    return stops
+end
+
+function N.ProfRoute(input)
+    if type(input) ~= "table" then input = {} end
+    local here = type(input.here) == "table" and input.here or {}
+    local names = namesOf(input)
+    if #names == 0 then return {} end
+    local trainer = N.ProfStep(input.readings, input.npcs, input.tierSeen, here)
+    return route(input, names, here, trainer)
+end
+
+local textNext
+
+function N.ProfNext(input)
+    if type(input) ~= "table" then input = {} end
+    local here = type(input.here) == "table" and input.here or {}
+    local names = namesOf(input)
+    if #names == 0 then return nil, "no profession" end
 
     local trainer = N.ProfStep(input.readings, input.npcs, input.tierSeen, here)
-    if trainer then return trainer end
+    if trainer and type(trainer.place) ~= "table" then return trainer end
 
-    local node = nodeStep(input, names, here)
-    if node then return node end
+    local stops = route(input, names, here, trainer)
+    if stops[1] then return stops[1].step end
+    return textNext(input, names, here)
+end
 
+-- Steps 3 and 4 of N.ProfNext: nothing has a place.
+textNext = function(input, names, here)
     -- The craft that gives a point: sure before maybe, then by profession.
     local pick, pickKind, pickProf
     for _, prof in ipairs(names) do
@@ -465,6 +588,7 @@ function N.ProfNextFrom(client, store, nodeSource)
         nodeState = state or "absent",
         book = saved(store, "char", "learned.facts.recipeBook"),
         colours = saved(store, "char", "learned.recipeColors"),
+        stations = saved(store, "account", N.PROF_STATIONS_PATH),
     })
 end
 
