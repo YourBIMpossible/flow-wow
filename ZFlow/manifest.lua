@@ -269,5 +269,7 @@ return {
     "Nav/PartyRoute.lua",
     -- P-EVIDENCE+ (sections 252, 262): look-only capture fields saved under diag (after Diag).
     "Core/AutoEvidence.lua",
+    -- P-QUEST (lead section 354 item 4): quest advice text (after QuestRead and the advisor).
+    "Nav/QuestAdvice.lua",
     },
 }
