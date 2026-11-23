@@ -373,7 +373,7 @@ return {
         a.setGuide(function() return guide end)
         local q = c.arrows[1]
         t.ok(a.state().view.quest.mode ~= "ring", "an arrow, not the ring")
-        -- Third: after it come the lines of the needle, which is off (D2).
+        -- Third: the last of its own lines (the needle's are on its own frame).
         t.eq(q.lines[3], A.UNKNOWN_TURN)
         t.eq(q.faded, a.state().view.quest.alpha * A.LOST_ALPHA)
     end,
