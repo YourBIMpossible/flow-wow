@@ -184,7 +184,7 @@ local pack = {
     provenance = {
         author = "Flow",
         date = "2026-11-23",
-        method = "Written for Z-Flow (lead section 197) on the Paladin and Druid pattern: damage on your own "
+        method = "Written for this pack (lead section 197) on the Paladin and Druid pattern: damage on your own "
             .. "target and care for yourself only. What the class can equip is carried over from the old "
             .. "Modules/Gear/Score.lua; the list order is Flow's own (an instant when it is ready, the slowing "
             .. "bolt, the wand when nothing else can be cast; armor, intellect, then food and water out of a fight).",
