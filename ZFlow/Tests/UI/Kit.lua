@@ -235,6 +235,17 @@ return {
         refused(t, ok, why, "folded", "folded not true or false")
     end,
 
+    ["kit: the theme names the quest marks a window puts on its rows"] = function(t)
+        if not has(t) then return end
+        local icon = type(K.look) == "table" and K.look.icon
+        t.eq(type(icon), "table", "Kit.look.icon")
+        if type(icon) ~= "table" then return end
+        for _, name in ipairs({ "questInLog", "questAvailable", "questLater", "questNotForYou" }) do
+            t.ok(type(icon[name]) == "string" and icon[name]:find("Interface", 1, true) == 1, name .. " is a game picture path")
+            t.eq((K.Check({ kind = "line", text = "A quest", icon = icon[name] })), true, name .. " is taken by a line")
+        end
+    end,
+
     ["kit: a key not bound reads Not Bound"] = function(t)
         if not has(t) then return end
         t.eq(K.BindText(nil), "Not Bound")
