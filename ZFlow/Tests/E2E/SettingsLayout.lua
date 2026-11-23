@@ -363,11 +363,15 @@ end
 -- Section 236, an ask that raises then recovers: the window's draw.
 -- Fails before: the fake has no setSettingsDrawFault; a draw that raised
 -- went up through the slash word.
+-- The fault count was 2 when this was written before the kit: the game's
+-- Options page was drawn twice an open (once by its show, once by the
+-- open). The kit window is drawn once an open, so two faults would also
+-- fail the second ask, which this case expects to draw. One draw raises.
 tests["settings layout recovery: a draw that raises is listed, the text page takes over, and the next open draws"] = function(t)
     local c, addon = boot()
     if not ready(t, c) then return end
     local problems = addon.problems:count()
-    c.setSettingsDrawFault(2)
+    c.setSettingsDrawFault(1)
     local ok = pcall(slash, c, "settings")
     t.eq(ok, true, "the slash word does not raise")
     t.ok(addon.problems:count() > problems, "the failed draw is listed as a problem")
