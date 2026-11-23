@@ -261,7 +261,7 @@ tests["sell list kit: the footer total is the observed sum, with the empty slot 
     K.Each(tree, function(p)
         t.ok(p.kind ~= "button" and p.onClick == nil, "nothing to press: " .. p.kind .. " " .. p.path)
     end)
-    t.eq(count(drawn(c), "button"), 0, "no button drawn")
+    t.eq(count(drawn(c), "button"), 1, "one button drawn: Sell these (lead section 337 item 1)")
     t.eq(type(api.window), "function", "the window is reachable for the lane that owns the button")
     if type(api.window) ~= "function" then return end
     local h = api.window()

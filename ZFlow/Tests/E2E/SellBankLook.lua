@@ -86,7 +86,7 @@ tests["sell and bank look: at a default profile a merchant draws the kit sell li
     t.ok(shows(win, "header", "1 item to sell"), "the header")
     t.ok(shows(win, "itemLine", "Broken Fang"), "the junk as an item line")
     t.ok(shows(win, "itemLine", "Hearthstone"), "what is kept")
-    t.eq(count(win, "button"), 0, "nothing to press in the list")
+    t.eq(count(win, "button"), 1, "one thing to press: the Sell these button (lead section 337 item 1)")
     t.eq(textPanel(c, "SellList"), nil, "no bare text panel")
     local h = addon.sellList.window()
     t.eq(h.slot("sellAction"), { slot = "sellAction" }, "the slot for the sell button is there, and empty")

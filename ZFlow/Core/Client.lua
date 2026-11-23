@@ -353,6 +353,35 @@ function ns.make.client(env)
         return stacks(bagIds())
     end
 
+    -- Lead section 337 item 1 (the sell list's "Sell these" button): the
+    -- bag stacks with where each one is, and one slot read again before it
+    -- is sold. Read with the same C_Container calls as bagItems above
+    -- (GetContainerNumSlots, GetContainerItemInfo); first guess, not seen
+    -- in game, that a slot's answer is the same one bagItems reads.
+    --   c.bagSlots() -> { { bag = id, slot = n, item = link or ID, count = n }, ... }
+    --     in bag then slot order; nil when any bag or slot could not be read
+    --   c.bagSlot(bag, slot) -> item, count; nil for an empty slot; false
+    --     when it could not be read or bag and slot are not whole numbers
+    function c.bagSlots()
+        local slotsOf = container("GetContainerNumSlots")
+        local out = {}
+        for _, bag in ipairs(bagIds()) do
+            local ok, total = call(slotsOf, bag)
+            if not ok or not wholeCount(total) then return nil end
+            for slot = 1, total do
+                local item, count = slotItem(bag, slot)
+                if item == false then return nil end
+                if item ~= nil then out[#out + 1] = { bag = bag, slot = slot, item = item, count = count } end
+            end
+        end
+        return out
+    end
+
+    function c.bagSlot(bag, slot)
+        if not wholeCount(bag) or not wholeCount(slot) or slot < 1 then return false end
+        return slotItem(bag, slot)
+    end
+
     -- The character's bank tabs, as the client lists them:
     -- C_Bank.FetchPurchasedBankTabIDs(Enum.BankType.Character). Never the
     -- account-wide bank. On 16001 the bank is tabs only (seen in game: one

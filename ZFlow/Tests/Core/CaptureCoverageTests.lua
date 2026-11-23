@@ -196,6 +196,11 @@ local READS = {
     -- C_QuestLog.IsQuestFlaggedCompleted) are in Diag.NAMES.
     raceId = false, questDone = false,
 }
+-- Lead section 337 item 1: the bag stacks with their bag and slot, and one
+-- slot read again before it is sold; read by Items/SellThese.lua only, on
+-- the player click. The capture asks neither.
+READS.bagSlots = false
+READS.bagSlot = false
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).
 local FEATURE = {

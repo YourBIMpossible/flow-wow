@@ -115,6 +115,33 @@ function ns.make.fakeClient(opts)
     function c.money() return s.money end
     function c.bags() return copyRows(s.bags) end
     function c.bagItems() return copyRows(s.bagItems) end
+    -- Lead section 337 item 1, as the real client's: each stack set with
+    -- c.setBagItems and where it is. A row's own bag and slot when the test
+    -- gave them, else bag 0 and its place in the list. nil when no bag is set.
+    local function slotRows()
+        if type(s.bagItems) ~= "table" then return nil end
+        local out = {}
+        for i, row in ipairs(s.bagItems) do
+            out[i] = { bag = row.bag or 0, slot = row.slot or i, item = row.item, count = row.count }
+        end
+        return out
+    end
+    function c.bagSlots()
+        local rows = slotRows()
+        if rows == nil then return nil end
+        table.sort(rows, function(a, b)
+            if a.bag ~= b.bag then return a.bag < b.bag end
+            return a.slot < b.slot
+        end)
+        return rows
+    end
+    function c.bagSlot(bag, slot)
+        if type(bag) ~= "number" or type(slot) ~= "number" then return false end
+        for _, row in ipairs(slotRows() or {}) do
+            if row.bag == bag and row.slot == slot then return row.item, row.count end
+        end
+        return nil
+    end
     function c.watchBank() end
     function c.bankOpen() return s.bankOpen end
     function c.bankItems()

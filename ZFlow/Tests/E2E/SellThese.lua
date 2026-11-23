@@ -86,7 +86,7 @@ tests["sell these: a click sells the listed rows, one stack per frame, then the 
     frame(c); frame(c)
     t.eq(sold(c), 3, "only the listed stacks")
     local where = {}
-    for i, s in ipairs(c.soldSlots) do where[i] = s.bag .. ":" .. s.slot end
+    for i, s in ipairs(c.soldSlots or {}) do where[i] = s.bag .. ":" .. s.slot end
     t.eq(where, { "0:1", "0:4", "1:1" }, "by bag and slot, the kept ones left alone")
     t.ok(shows(c, "line", BUYBACK), "the buyback note")
     t.eq(newProblems(addon), 0)
