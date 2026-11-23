@@ -170,5 +170,6 @@ return {
     "Items/Posting.lua",
     "Items/Trader.lua",
     "Nav/Try.lua",
+    { "Core/Capture.lua", dev = true },
     },
 }
