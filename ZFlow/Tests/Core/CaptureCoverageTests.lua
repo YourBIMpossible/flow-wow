@@ -23,7 +23,9 @@ local KIND = {
              "optionsPage", "guideLines", "taxiMark", "mapPins", "comboBar", "slotIcon",
              "markMerchantButtons", "rowPanel", "textEntry",
              -- N57: the key-capture overlay on the settings page.
-             "keyCapture" },
+             "keyCapture",
+             -- N72 (section 248 item 4): the macro icon window; shows a list on it.
+             "macroPopup" },
     tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "slash",
              "slashTaken", "unslash" },
     -- Hands back or runs a sound restart: never asked by the capture.
@@ -65,6 +67,10 @@ local READS = {
     spellName = false,
     -- N13: the buffs you put up yourself (Classes/Paladin.lua auras).
     ownBuffs = false,
+    -- PRIEST-3 (P-SELFBUFF): your own debuffs by name (Weakened Soul), read
+    -- by the rotation only. Its names (UnitDebuff, C_UnitAuras.
+    -- GetAuraDataByIndex) are in Diag.NAMES, which the capture asks.
+    playerDebuffs = false,
 
     -- P-SETS: what is worn, read by the set word only.
     wornLinks = false,
@@ -77,6 +83,8 @@ local READS = {
     -- types on you or one of them; read by the rotation only. Their names
     -- (UnitIsConnected and the rest) are in Diag.NAMES, which the capture asks.
     party = false, reach = false, unitDebuffTypes = false,
+    -- N72: the spells for the macro icon search; the capture asks none.
+    spellbookIcons = false,
 
     -- N55 (the boss loot panel): the boss unit and whether you are in an
     -- instance; read by UI/BossLoot.lua only. The names they ask

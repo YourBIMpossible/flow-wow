@@ -90,4 +90,43 @@ tests["mage N58: a kept armor you do not know: the best known, as before"] = fun
     t.eq(pick({ buffs = {}, chosen = { armor = "Molten Armor" } }), MAGE_ARMOR, "not an armor of this pack")
 end
 
+-- MAGE-5 (P-SELFBUFF): Amplify or Dampen Magic, your own choice (the magic
+-- row of options.sticky, Rotation/OwnCasts.lua): off unless you cast or
+-- chose one and know it.
+local AMPLIFY, DAMPEN = "Amplify Magic", "Dampen Magic"
+local ARMORED = { [MAGE_ARMOR] = 1800, ["Arcane Intellect"] = 900 }
+local WITH_MAGIC = { MAGE_ARMOR, ICE, FROST, "Arcane Intellect", "Frostbolt", "Fire Blast", AMPLIFY, DAMPEN }
+
+local function magicRow()
+    local p = mage()
+    local sticky = type(p) == "table" and type(p.options) == "table" and p.options.sticky or nil
+    for _, row in ipairs(type(sticky) == "table" and sticky or {}) do
+        if row.key == "magic" then return row end
+    end
+    return nil
+end
+
+tests["mage MAGE-5: the magic row: only Amplify and Dampen, the magic word"] = function(t)
+    local row = magicRow()
+    t.ok(row ~= nil, "a magic row")
+    if not row then return end
+    t.eq(row.prefix, "")
+    t.eq(row.word, "magic")
+    t.eq(row.names, { AMPLIFY, DAMPEN })
+    t.eq(row.only[AMPLIFY], true); t.eq(row.only[DAMPEN], true); t.eq(row.only[MAGE_ARMOR], nil)
+end
+
+tests["mage MAGE-5: the magic you chose is kept up out of a fight"] = function(t)
+    if type(mage()) ~= "table" then t.ok(false, "no pack") return end
+    t.eq(pick({ buffs = ARMORED, chosen = { magic = AMPLIFY } }, WITH_MAGIC), AMPLIFY, "cast for the role: Amplify")
+    t.eq(pick({ buffs = ARMORED, chosen = { magicSet = DAMPEN, magic = AMPLIFY } }, WITH_MAGIC), DAMPEN, "the word over the cast")
+    t.eq(pick({ buffs = ARMORED }, WITH_MAGIC), nil, "none cast or chosen: off")
+    t.eq(pick({ buffs = ARMORED, chosen = { magic = AMPLIFY } }, ALL), nil, "not known: off")
+    local on = { [MAGE_ARMOR] = 1800, ["Arcane Intellect"] = 900, [AMPLIFY] = 300 }
+    t.eq(pick({ buffs = on, chosen = { magic = AMPLIFY } }, WITH_MAGIC), nil, "up: left alone")
+    t.eq(pick({ buffs = "nil", chosen = { magic = AMPLIFY } }, WITH_MAGIC), nil, "buffs not read: nothing")
+    local _, got = pick({ buffs = ARMORED, chosen = { magic = AMPLIFY }, inCombat = true }, WITH_MAGIC)
+    t.ok(got == nil or got.spell ~= AMPLIFY, "in a fight: not asked for")
+end
+
 return tests

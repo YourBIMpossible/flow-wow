@@ -30,7 +30,10 @@ R.SNAPSHOT_FIELDS = {
     { "targetNear", "flag" }, { "targetMelee", "flag" }, { "targetOnYou", "flag" }, { "hittingYou", "flag" },
     { "attacking", "flag" }, { "canStartAttack", "flag" }, { "engageGaveUp", "flag" },
     { "loc", "value" }, { "lowHealth", "flag" }, { "hurt", "number" },
-    { "buffs", "map" }, { "targetDebuffs", "map" }, { "debuffTypes", "map" }, { "current", "map" },
+    { "buffs", "map" }, { "targetDebuffs", "map" }, { "debuffTypes", "map" },
+    -- PRIEST-3 (P-SELFBUFF): your own debuffs by name (Weakened Soul); nil when not read.
+    { "debuffs", "map" },
+    { "current", "map" },
     -- Lead section 197: your pet (Choose.lua, R.PetUp); nil when not read.
     { "pet", "map" },
     { "conjured", "map" },

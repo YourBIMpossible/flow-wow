@@ -146,6 +146,7 @@ UI\Intro.lua
 UI\WindowButtons.lua
 UI\ArrowMenu.lua
 UI\Feedback.lua
+UI\MacroIcons.lua
 UI\SellList.lua
 UI\BankList.lua
 UI\CraftBar.lua
@@ -176,3 +177,4 @@ Rotation\Group.lua
 Rotation\Mouseover.lua
 Rotation\Enchant.lua
 UI\BossLoot.lua
+UI\SettingsShare.lua
