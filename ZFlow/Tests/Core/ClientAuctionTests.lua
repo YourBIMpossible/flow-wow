@@ -178,6 +178,83 @@ return {
         t.eq(got[1].row, { unitPrice = 4 })
     end,
 
+    ["client auction: a hidden, zero or raising count reads row 1 alone"] = function(t)
+        local hid = auctionEnv({ [1] = { { unitPrice = 5 }, { unitPrice = 4 } } }, { count = 777 })
+        hid.issecretvalue = function(v) return v == 777 end
+        watch(hid)
+        hid.send(COMMODITY, 1)
+        t.eq(hid.asked, { 1 }, "hidden count")
+        local zero = auctionEnv({ [1] = { { unitPrice = 5 } } }, { count = 0 })
+        watch(zero)
+        zero.send(COMMODITY, 1)
+        t.eq(zero.asked, { 1 }, "under one")
+        local boom = auctionEnv({ [1] = { { unitPrice = 5 }, { unitPrice = 4 } } })
+        boom.C_AuctionHouse.GetNumCommoditySearchResults = function() error("count boom") end
+        local _, got = watch(boom)
+        boom.send(COMMODITY, 1)
+        t.eq(boom.asked, { 1 }, "a count that raises")
+        t.eq(got[1].row, { unitPrice = 5 })
+    end,
+
+    ["client auction: a row with no price for one tells nothing"] = function(t)
+        local env = auctionEnv({
+            [1] = { { unitPrice = "x", buyoutAmount = 777 } },
+            [2] = { { buyoutAmount = 50, quantity = 0 } },
+        })
+        env.issecretvalue = function(v) return v == 777 end
+        local _, got = watch(env)
+        env.send(COMMODITY, 1)
+        env.send(COMMODITY, 2)
+        t.eq(got, {}, "hidden or not-number prices; a buyout over a quantity of 0")
+    end,
+
+    ["client auction: an item key whose ID is hidden tells nothing"] = function(t)
+        local env = auctionEnv({ [777] = { { unitPrice = 5 } } })
+        env.issecretvalue = function(v) return v == 777 end
+        local _, got = watch(env)
+        env.send(ITEM, { itemID = 777 })
+        t.eq(got, {})
+    end,
+
+    ["client auction: a client with one search read follows only its event"] = function(t)
+        local com = auctionEnv({ [1] = { { unitPrice = 5 } } })
+        com.C_AuctionHouse.GetItemSearchResultInfo = nil
+        local _, _, ok = watch(com)
+        t.eq(ok, true)
+        t.eq(com.taken(COMMODITY), true)
+        t.eq(com.taken(ITEM), false)
+        local item = auctionEnv({ [7] = { { unitPrice = 5 } } })
+        item.C_AuctionHouse.GetCommoditySearchResultInfo = nil
+        local _, got, okI = watch(item)
+        t.eq(okI, true)
+        t.eq(item.taken(COMMODITY), false)
+        t.eq(item.taken(ITEM), true)
+        item.send(ITEM, { itemID = 7 })
+        t.eq(got, { { id = 7, row = { unitPrice = 5 } } })
+    end,
+
+    ["client auction: a watcher added during a tell waits for the next one"] = function(t)
+        local env = auctionEnv({ [1] = { { unitPrice = 5 } } })
+        local c = ns.make.client(env)
+        local late, added = {}, false
+        c.watchAuctionResults(function()
+            if added then return end
+            added = true
+            c.watchAuctionResults(function(id) late[#late + 1] = id end)
+        end)
+        env.send(COMMODITY, 1)
+        t.eq(late, {}, "not told in the tell that added it")
+        env.send(COMMODITY, 1)
+        t.eq(late, { 1 })
+    end,
+
+    ["client auction: equal prices for one keep the first row"] = function(t)
+        local env = auctionEnv({ [1] = { { unitPrice = 30, quantity = 5 }, { unitPrice = 30, quantity = 7 } } })
+        local _, got = watch(env)
+        env.send(COMMODITY, 1)
+        t.eq(got, { { id = 1, row = { unitPrice = 30, quantity = 5 } } })
+    end,
+
     ["client auction: no watcher function, nothing followed"] = function(t)
         local env = auctionEnv({})
         local c = ns.make.client(env)
