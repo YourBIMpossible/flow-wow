@@ -41,6 +41,8 @@ SK.CHOICES_PATH = "rotation.spellChoices"
 SK.NO_ATTACK_PATH = "rotation.noAutoAttack"
 SK.PLACED_PATH = "rotation.placedSpells"
 SK.PLACED_MAX = 40
+-- First guess (name and arguments, from the old file); Core/Diag.lua marks
+-- it in the capture timing when it fires.
 SK.EVENT = "SPELL_PUSHED_TO_ACTIONBAR"
 SK.WORDS = { spells = "spells", attack = "attack", placed = "autoplace" }
 SK.HELP = {

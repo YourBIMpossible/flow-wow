@@ -1390,6 +1390,10 @@ function Diag.Start(k)
     -- event name is not a global: Diag.NAMES can not say it).
     client.listen("TRADE_SKILL_SHOW", function() mark("TRADE_SKILL_SHOW") end)
     client.listen("TRADE_SKILL_CLOSE", function() mark("TRADE_SKILL_CLOSE") end)
+    -- SE-2 (N26): the game placing a spell on a bar, which
+    -- Rotation/SpellKeys.lua listens to; the name is a first guess from the
+    -- old file, so a capture says whether it fired. A mark only.
+    client.listen("SPELL_PUSHED_TO_ACTIONBAR", function() mark("SPELL_PUSHED_TO_ACTIONBAR") end)
     client.listen("PLAYER_ENTERING_WORLD", function()
         if mark("PLAYER_ENTERING_WORLD") then
             session()
