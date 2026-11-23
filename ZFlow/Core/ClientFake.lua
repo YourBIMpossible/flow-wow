@@ -2503,6 +2503,43 @@ function ns.make.fakeClient(opts)
         c.textEntries[#c.textEntries + 1] = e
         return h
     end
+
+    -- N67: other add-ons' data as the real client reads it.
+    -- setGatherMateNodes(map, rows): GatherMate2 is there with those rows
+    -- on that map ({ { kind, x, y, node } }); a map not set has none.
+    -- setGatherMateNodes(nil): GatherMate2 is gone. c.gatherMateAsks counts
+    -- every ask. setAttuneProgress(rows | nil): Attune's rows, or none.
+    -- Each answer is a copy.
+    c.gatherMateAsks = 0
+    local function copyRows(rows)
+        local out = {}
+        for i, r in ipairs(rows) do
+            local row = {}
+            for key, v in pairs(r) do row[key] = v end
+            out[i] = row
+        end
+        return out
+    end
+    function c.setGatherMateNodes(map, rows)
+        if map == nil then
+            s.gatherMate = nil
+            return
+        end
+        s.gatherMate = s.gatherMate or {}
+        s.gatherMate[map] = rows
+    end
+    function c.gatherMateNodes(map)
+        c.gatherMateAsks = c.gatherMateAsks + 1
+        if type(s.gatherMate) ~= "table" or type(map) ~= "number" then return nil end
+        local rows = s.gatherMate[map]
+        if type(rows) ~= "table" then return {} end
+        return copyRows(rows)
+    end
+    function c.setAttuneProgress(rows) s.attune = rows end
+    function c.attuneProgress()
+        if type(s.attune) ~= "table" then return nil end
+        return copyRows(s.attune)
+    end
     return c
 end
 
