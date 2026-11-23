@@ -127,6 +127,35 @@ tests["flow fight: the Shaman pack has one Attack row, driven by the swing read"
     t.ok(not r.when({ hostile = false, attacking = false }), "no enemy: no swing")
 end
 
+-- Lead section 348: Druid and Paladin fold the same way. Each distinct
+-- Attack rule is counted once (a rule shared by several lists is one rule).
+local function distinctAttackRows(class)
+    local pack, seen, out = ns.Packs[class], {}, {}
+    for _, list in pairs(type(pack) == "table" and pack.lists or {}) do
+        for _, rule in ipairs(list) do
+            if type(rule) == "table" and (rule.spell == "Attack" or rule.spell == "Auto Attack") and not seen[rule] then
+                seen[rule] = true
+                out[#out + 1] = rule
+            end
+        end
+    end
+    return out
+end
+
+tests["flow fight: Druid and Paladin have one Attack row per place, on the swing read"] = function(t)
+    for class, want in pairs({ DRUID = 2, PALADIN = 1 }) do
+        local rows = distinctAttackRows(class)
+        t.eq(#rows, want, class .. ": one Attack row per place, not one per name")
+        for _, r in ipairs(rows) do
+            t.eq(r.spell, "Attack", class .. ": the name the button casts")
+            t.ok(not r.when({ hostile = true, attacking = true, current = { Attack = false, ["Auto Attack"] = false } }),
+                class .. ": the swing read says swinging: not again")
+        end
+    end
+    local p = distinctAttackRows("PALADIN")[1]
+    if p then t.ok(p.when({ hostile = true, attacking = false }) == true, "PALADIN: not swinging: start it") end
+end
+
 tests["flow fight: Attack on the Flow button, the fight starts before the lock: the fight spell"] = function(t)
     local c = start()
     pull(c)
