@@ -1,7 +1,7 @@
 -- Tests for ZFlow/Rotation/FormSpells.lua (S16): which spells take you out
 -- of a form. The pure parts are checked against Flow 0.35.377
 -- (Modules/Rotation/FormSpells.lua): same window, rules and texts. The
--- client has no form list, spell name or spell tooltip read yet, so the
+-- client has no form list or spell tooltip read yet, so the
 -- module cases put hand-made ones on the fake client; that is not proof
 -- the game gives them. Not tested in game.
 local _, ns = ...
@@ -261,7 +261,8 @@ local function start(opts)
     c.setClass(opts.class or CLASS)
     c.setForm(0)
     if opts.forms ~= false then c.forms = function() return w.list end end
-    if opts.names ~= false then c.spellName = function(id) return NAMES[id] end end
+    -- The fake has spellName now (CF-32); names = false takes it away.
+    if opts.names ~= false then c.spellName = function(id) return NAMES[id] end else c.spellName = nil end
     if opts.tooltip ~= false then
         c.onSpellTooltip = function(fn)
             w.hook = fn

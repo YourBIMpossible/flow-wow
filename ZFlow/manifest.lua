@@ -172,6 +172,7 @@ return {
     "Rotation/CastEdge.lua",
     "Rotation/Audit.lua",
     "Rotation/FormSpells.lua",
+    "Rotation/OwnCasts.lua",
     "Fight/Choices.lua",
     "Rotation/Queue.lua",
     "UI/RotationQueue.lua",

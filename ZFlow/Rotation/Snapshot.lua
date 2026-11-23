@@ -44,6 +44,12 @@ R.SNAPSHOT_FIELDS = {
     { "tracking", "map" }, { "trackKnown", "map" }, { "professions", "map" }, { "gatherOn", "flag" },
     -- GT-1 (Rotation/Gather.lua): any tracking on. Mounted and on a flight path are the two flags above.
     { "trackingAny", "flag" },
+    -- CF-32, N12: the seals and blessings you cast or chose, by key
+    -- (Rotation/OwnCasts.lua); nil when there is none.
+    { "chosen", "map" },
+    -- N13: the buffs on you that you put up yourself (client.ownBuffs),
+    -- the same shape as buffs; nil when not read.
+    { "ownBuffs", "map" },
     { "spells", "spells" },
 }
 -- Names that would be made from a health or power amount. This client hides

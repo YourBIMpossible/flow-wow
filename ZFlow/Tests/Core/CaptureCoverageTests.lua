@@ -51,6 +51,10 @@ local READS = {
     targetDebuffs = true, formName = true, currentSpell = true, taxiNodes = true,
     -- Lead section 197: the pet state the rotation reads.
     pet = true,
+    -- CF-32: a spell's name by id, for your own casts (Rotation/OwnCasts.lua).
+    spellName = false,
+    -- N13: the buffs you put up yourself (Classes/Paladin.lua auras).
+    ownBuffs = false,
 }
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).

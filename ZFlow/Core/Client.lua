@@ -5761,6 +5761,30 @@ function ns.make.client(env)
         return out
     end
     -- ------------------------------------------------------- end pet state
+
+    -- ------------------------------------------- spell name by id (CF-32)
+    -- c.spellName(id) -> the spell's name, or nil when not read. The same
+    -- read the learned-spell watch uses above: C_Spell.GetSpellInfo(id).name
+    -- where the client has it, else GetSpellInfo's first answer; no rank.
+    -- For your own casts, which the client names by id
+    -- (UNIT_SPELLCAST_SUCCEEDED): Rotation/OwnCasts.lua and
+    -- Rotation/FormSpells.lua. A first guess, not seen in game.
+    function c.spellName(id)
+        if type(id) ~= "number" or hidden(id) then return nil end
+        local name = spellName(id)
+        return name
+    end
+    -- --------------------------------------------- end spell name by id
+
+    -- ------------------------------------------- your own buffs (N13)
+    -- c.ownBuffs() -> { [name] = secondsLeft or true } or nil
+    --   the buffs on you that you put up yourself: read as playerBuffs, with
+    --   the filter "HELPFUL|PLAYER" (the PLAYER filter targetDebuffs uses
+    --   for your own debuffs). Another paladin's aura on you is not in it.
+    --   The same not known as playerBuffs. A first guess from the API pages
+    --   (API_C_UnitAuras.GetAuraDataByIndex, API_UnitBuff), not seen in game.
+    function c.ownBuffs() return aurasOf("player", "HELPFUL|PLAYER", env.UnitBuff) end
+    -- ------------------------------------------ end your own buffs
     return c
 end
 

@@ -8,6 +8,7 @@ local _, ns = ...
 --   D.Read(client, pack, ids[, role, extra]) -> read(field)
 --     extra (section 232): one options table with named fields; no further
 --     positional arguments. extra.food: the module's food table (below).
+--     extra.chosen: the seals and blessings from the ownCasts module (below).
 --     the reader ns.Snapshot takes. dead, inCombat, stealthed, hostile,
 --     spells, buffs, targetDebuffs, form, current and pet are asked of the
 --     client; role is the
@@ -57,6 +58,13 @@ local _, ns = ...
 --       foodOn     food.on (true or false); nil without food
 --       mounted, onTaxi  client.mounted(), client.onTaxi(): true or false,
 --                  nil when the client has no such read or does not say
+--       chosen     extra.chosen (CF-32, N12): the seals and blessings
+--                  you cast or chose, by key, from the ownCasts module
+--                  (Rotation/OwnCasts.lua); nil when it is not a table
+--                  (none, or the module is not there)
+--       ownBuffs   client.ownBuffs() as it answered (N13): the buffs on you
+--                  that you put up yourself; nil when not known or the
+--                  client has no such read
 --   D.Step(client, pack[, prefs, bias, applied, role, extra]) -> view
 --     extra is handed to D.Read as it is (section 232).
 --     one read and one choice. A read that fails is an error (not caught
@@ -244,6 +252,7 @@ end
 
 function D.Read(client, pack, ids, role, extra)
     local food = type(extra) == "table" and extra.food or nil
+    local chosen = type(extra) == "table" and extra.chosen or nil
     -- Lead section 187: the form is asked of the client once for a read,
     -- and both fields (form, formKnown) come from that one answer.
     -- The answer is kept only for the other field of the pair, and used
@@ -295,6 +304,11 @@ function D.Read(client, pack, ids, role, extra)
             return client.pet()
         end
         if field == "conjured" then return conjuredOf(client, pack) end
+        if field == "chosen" then return type(chosen) == "table" and chosen or nil end
+        if field == "ownBuffs" then
+            if type(client.ownBuffs) ~= "function" then return nil end
+            return client.ownBuffs()
+        end
         if field == "buffFood" then return buffFoodKept(client, pack, role, food) end
         -- Section 230: no "and ... or nil" here; false must stay false.
         if field == "foodOn" then
@@ -429,6 +443,18 @@ local function work(client, packs, role, extra)
     return D.Step(client, pack, nil, nil, nil, role, extra)
 end
 
+-- CF-32: what the ownCasts module keeps (Rotation/OwnCasts.lua), asked
+-- each tick; nil when the kernel has no such module, it is off, or it
+-- keeps nothing. Resolved when called, so file order does not matter.
+local function chosenOf(k)
+    if type(k) ~= "table" or type(k.use) ~= "function" then return nil end
+    local ok, own = pcall(k.use, "ownCasts")
+    if not ok or type(own) ~= "table" or type(own.Chosen) ~= "function" then return nil end
+    local asked, got = pcall(own.Chosen)
+    if asked and type(got) == "table" then return got end
+    return nil
+end
+
 function D.Declare(k, packs)
     local api = {}
     local view, errors, lastError = nil, 0, nil
@@ -447,7 +473,7 @@ function D.Declare(k, packs)
             return
         end
         food.on = ctx.settings:get(D.FOOD) ~= false
-        local ok, got = pcall(work, ctx.client, packs or ns.Packs, ctx.settings:get(D.ROLE), { food = food })
+        local ok, got = pcall(work, ctx.client, packs or ns.Packs, ctx.settings:get(D.ROLE), { food = food, chosen = chosenOf(k) })
         if ok then
             view = got
         else
