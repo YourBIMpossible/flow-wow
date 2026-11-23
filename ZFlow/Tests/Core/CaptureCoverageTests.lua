@@ -55,6 +55,9 @@ local READS = {
     spellName = false,
     -- N13: the buffs you put up yourself (Classes/Paladin.lua auras).
     ownBuffs = false,
+
+    -- P-SETS: what is worn, read by the set word only.
+    wornLinks = false,
 }
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).
