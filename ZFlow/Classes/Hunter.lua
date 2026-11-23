@@ -299,6 +299,19 @@ local pack = {
         },
     },
 
+    -- G15, lead section 280: the weapon speed each role likes, and why, for
+    -- the speed line on a weapon's tooltip (Gear/WeaponSpeed.lua). "any":
+    -- speed does not matter for the role. Not counted in the score.
+    weaponSpeed = {
+        evidence = GUESS,
+        note = "written for lead section 280 from the game's rules as remembered; no outside source;"
+            .. " not read from the game",
+        dps = { prefer = "any", why = "shots do the damage; a melee weapon is carried for its stats",
+                ranged = { prefer = "slow",
+                           why = "Aimed Shot and Multi-Shot hit for weapon damage, so a slow bow or gun hits"
+                               .. " harder per shot" } },
+    },
+
     -- What the class can equip, by item class and subclass ids, from
     -- Modules/Gear/Score.lua's HUNTER row. Armor (4): 0 misc, 1 cloth,
     -- 2 leather, 3 mail from level 40 (D3: a level in place of true).

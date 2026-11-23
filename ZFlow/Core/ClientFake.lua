@@ -3211,6 +3211,33 @@ function ns.make.fakeClient(opts)
             return plainMoney()
         end
     end
+    -- RH-1 (lead section 279): a client on which no roll frame is found.
+    -- c.setRollFrame(false): as the real client's show (F4) then does,
+    -- offerRoll's show prints the link and the text once per roll offered,
+    -- unless told { quiet = true } (show's trailing table), nothing is
+    -- shown above a roll, and rollValue draws nothing (nil).
+    -- c.setRollFrame(true): roll frames are found again (as made).
+    do
+        local plainOffer, plainValue = c.offerRoll, c.rollValue
+        function c.setRollFrame(on) s.noRollFrame = on == false end
+        function c.offerRoll(rollID, link)
+            if not s.noRollFrame then return plainOffer(rollID, link) end
+            local printed = false
+            local function show(text, _, _, _, opts)
+                if type(text) ~= "string" or text == "" then return end
+                local quiet = type(opts) == "table" and opts.quiet == true
+                if printed or quiet then return end
+                printed = true
+                c.print(ns.id.title .. ": " .. tostring(link) .. " " .. text)
+            end
+            for _, fn in ipairs({ unpack(s.rollListeners or {}) }) do fn(rollID, link, show) end
+            return {}
+        end
+        function c.rollValue(rollID, ...)
+            if s.noRollFrame then return nil end
+            return plainValue(rollID, ...)
+        end
+    end
     return c
 end
 

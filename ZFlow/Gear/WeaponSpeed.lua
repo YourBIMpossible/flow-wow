@@ -15,12 +15,19 @@ local _, ns = ...
 --   weapon  { kind, speed, dps }: the equip location, the speed and the
 --           damage per second. dps not read is left out of the line; it is
 --           never shown as 0.
---   prefs   { [role] = { prefer = "slow" | "medium" | "fast", why } }:
---           which speed a role likes, from the class pack's weaponSpeed
---           (the paladin's today); `why`, when words, follows in brackets.
---           Without prefs the line gives the speed and its feel only.
+--   prefs   { [role] = { prefer = "slow" | "medium" | "fast" | "any", why,
+--           ranged = { prefer, why }, offhand = { prefer, why } } }:
+--           which speed a role likes, from the class pack's weaponSpeed;
+--           `why`, when words, follows in brackets. "any" (GearWeaponSpeed.ANY):
+--           speed does not matter for the role, and the line says so, the
+--           reason after a colon. `ranged`, when the role has it, speaks
+--           for a weapon of the ranged slot (a bow, a gun, a wand, a thrown
+--           weapon) in place of the role's own entry; `offhand` for a weapon
+--           that only goes in the off hand. Without prefs the line gives
+--           the speed and its feel only.
 --   line    { text, tone = "none" }, or nil: not a weapon, or no speed read.
 --           "Speed 3.40 (slow), 60.0 damage per second; good for dps"
+--           "Speed 3.00 (medium); speed does not matter for heal (stats do)"
 --   gear    what client.gear(link) answers. From takes kind, `speed` (a
 --           field client.gear gives for a weapon) and the damage per second
 --           from the stats, when it is a plain number.
@@ -45,6 +52,9 @@ local WEAPON = {
     INVTYPE_THROWN = true,
 }
 local FEELS = { slow = true, medium = true, fast = true }
+W.ANY = "any"
+local RANGED = { INVTYPE_RANGED = true, INVTYPE_RANGEDRIGHT = true, INVTYPE_THROWN = true }
+local OFF_HAND = "INVTYPE_WEAPONOFFHAND"
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -55,6 +65,22 @@ function W.Feel(speed)
     if speed >= W.SLOW then return "slow" end
     if speed <= W.FAST then return "fast" end
     return "medium"
+end
+
+-- The entry that speaks for a weapon of this kind: the role's `ranged` or
+-- `offhand` part when the weapon is one and the role has that part, else
+-- the role's own. nil when it names no speed.
+local function entryFor(pref, kind)
+    if type(pref) ~= "table" then return nil end
+    local part
+    if RANGED[kind] then
+        part = pref.ranged
+    elseif kind == OFF_HAND then
+        part = pref.offhand
+    end
+    if type(part) == "table" then pref = part end
+    if FEELS[pref.prefer] or pref.prefer == W.ANY then return pref end
+    return nil
 end
 
 function W.Line(weapon, prefs)
@@ -68,19 +94,23 @@ function W.Line(weapon, prefs)
     if type(prefs) == "table" then
         local roles = {}
         for role, pref in pairs(prefs) do
-            if type(role) == "string" and type(pref) == "table" and FEELS[pref.prefer] then
-                roles[#roles + 1] = role
-            end
+            if type(role) == "string" and entryFor(pref, weapon.kind) then roles[#roles + 1] = role end
         end
         table.sort(roles)
         for i = 1, #roles do
-            local pref = prefs[roles[i]]
-            if pref.prefer == feel then
-                text = text .. "; good for " .. roles[i]
+            local pref = entryFor(prefs[roles[i]], weapon.kind)
+            local why = type(pref.why) == "string" and pref.why ~= ""
+            if pref.prefer == W.ANY then
+                text = text .. "; speed does not matter for " .. roles[i] .. " (stats do)"
+                if why then text = text .. ": " .. pref.why end
             else
-                text = text .. "; " .. roles[i] .. " prefers " .. pref.prefer
+                if pref.prefer == feel then
+                    text = text .. "; good for " .. roles[i]
+                else
+                    text = text .. "; " .. roles[i] .. " prefers " .. pref.prefer
+                end
+                if why then text = text .. " (" .. pref.why .. ")" end
             end
-            if type(pref.why) == "string" and pref.why ~= "" then text = text .. " (" .. pref.why .. ")" end
         end
     end
     return { text = text, tone = "none" }

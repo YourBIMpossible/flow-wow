@@ -287,6 +287,39 @@ tests["set icons: a set saved without slots asks no slot"] = function(t)
     t.eq(slotsAsked(c), { "none" })
 end
 
+-- S4-3 (lead section 279): saved with a slots table that holds no slot at
+-- all: every piece counts as one without a slot, and the game picks.
+tests["set icons: a slots table with no slot in it: every piece is counted and asks no slot"] = function(t)
+    local c, addon = start({ on = true,
+        char = { state = { gearSets = { savedSet("bare", { "15234:588", CLOAK }, {}) } } },
+        worn = { [11] = false }, bag = { { item = LINK.ringBear, count = 1 }, { item = LINK.cloak, count = 1 } } })
+    local sets = ns.GearSets.Saved(addon.store)
+    t.eq(#sets, 1, "the set reads")
+    t.eq(sets[1] and sets[1].noSlot, 2, "both pieces have no slot that reads")
+    local icon = iconOf(rowOf(c), "bare")
+    if not icon then t.ok(false, "no bare icon") return end
+    t.eq(icon.tip[#icon.tip - 1], "Pieces with no saved slot: 2 (the game picks where they go).",
+        "the tip counts both")
+    click(c, "bare")
+    t.eq(slotsAsked(c), { "none", "none" })
+end
+
+-- S4-3: a set saved before slots were kept has no count of missing slots
+-- (nothing was lost), so its tip has no line about them.
+tests["set icons: a set saved without slots has no count of pieces without one"] = function(t)
+    local c, addon = start({ on = true, char = { state = { gearSets = { savedSet("rings", { "15234:588" }) } } },
+        worn = { [11] = false }, bag = { { item = LINK.ringBear, count = 1 } } })
+    local sets = ns.GearSets.Saved(addon.store)
+    t.eq(#sets, 1, "the set reads")
+    t.eq(sets[1] and sets[1].noSlot, nil, "no count")
+    t.eq(sets[1] and sets[1].slots, nil, "and no slots")
+    local icon = iconOf(rowOf(c), "rings")
+    if not icon then t.ok(false, "no rings icon") return end
+    for _, tipLine in ipairs(icon.tip) do
+        t.ok(not tostring(tipLine):find("no saved slot", 1, true), "no line about slots: " .. tostring(tipLine))
+    end
+end
+
 -- ST-1 end to end: two rings worn, saved, taken off; a click puts each back
 -- in the finger it was saved in. Fails before: no slot is saved or asked.
 tests["set icons: set save keeps each piece's slot; the click asks it"] = function(t)
