@@ -38,6 +38,15 @@ local _, ns = ...
 --     keys.matches(query) -> true when a search finds the rows
 --     keys.press(id)   a button of the rows was clicked (ids start "keys.")
 --     keys.lines() -> "label: shown" for the text page
+--
+-- Lead section 255: the mouseover button (Rotation/Mouseover.lua, named
+-- framePrefix .. "Mouseover") has one slot of its own, the same flow and
+-- refusals. One key is enough: its Shift, Ctrl and Alt parts are on the
+-- button itself (N63), so the plain key is bound. Its Set key is greyed,
+-- and refused with the reason, while the button is not made (its setting
+-- off, or not made yet): no click is bound to a missing frame. A key on
+-- the other Z-Flow button is Z-Flow's own: it moves without a question,
+-- taken off that button, and the page says where it came from.
 -- Fake client only; not tested in game.
 local SK = {}
 ns.SettingsKeys = SK
@@ -46,9 +55,13 @@ SK.NAME = "settingsKeys"
 SK.BUTTON = "RotationKey"
 SK.GROUP = "combat"
 SK.SYNONYMS = { "key", "keybind", "bind", "binding", "hotkey" }
+-- n: the slot's id; button: the secure button it binds (framePrefix ..
+-- button); index: its place among that button's keys.
 SK.SLOTS = {
-    { key = "keys.rotation", n = 1, label = "Rotation key" },
-    { key = "keys.rotation2", n = 2, label = "Rotation second key" },
+    { key = "keys.rotation", n = 1, button = "RotationKey", index = 1, label = "Rotation key" },
+    { key = "keys.rotation2", n = 2, button = "RotationKey", index = 2, label = "Rotation second key" },
+    { key = "keys.mouseover", n = 3, button = "Mouseover", index = 1, label = "Mouseover key",
+      synonyms = { "mouseover", "heal", "cure", "friendly", "key", "bind" }, needs = "mouseover" },
 }
 SK.IN_USE_KEY = "keys.inUse"
 SK.SECTION = "Keys"
@@ -79,8 +92,8 @@ function SK.New(k)
     local client, onStatus, capture
     local id = k.id or ns.id
     local title = tostring(id.title)
-    local function action() return "CLICK " .. tostring(id.framePrefix) .. SK.BUTTON .. ":LeftButton" end
-    local function button() return tostring(id.framePrefix) .. SK.BUTTON end
+    local function button(b) return tostring(id.framePrefix) .. tostring(b or SK.BUTTON) end
+    local function action(b) return "CLICK " .. button(b) .. ":LeftButton" end
 
     local function status(text)
         if type(onStatus) == "function" then pcall(onStatus, text) end
@@ -108,8 +121,8 @@ function SK.New(k)
         if ok and lock == true then return SK.LOCKED end
         return SK.LOCK_UNKNOWN
     end
-    local function readKeys()
-        local ok, got = ask("bindingKeys", action())
+    local function readKeys(b)
+        local ok, got = ask("bindingKeys", action(b))
         if not ok or type(got) ~= "table" then return nil end
         return got
     end
@@ -119,10 +132,38 @@ function SK.New(k)
         end
         return nil
     end
-    local function shownOf(n, held)
-        if keys.overrides[n] ~= nil then return keys.overrides[n] .. SK.SESSION end
+    local function shownOf(slot, held)
+        if keys.overrides[slot.n] ~= nil then return keys.overrides[slot.n] .. SK.SESSION end
         if held == nil then return SK.NOT_KNOWN end
-        return held[n] or SK.NOT_SET
+        return held[slot.index] or SK.NOT_SET
+    end
+    -- Why a slot's button cannot take a key now, or nil (section 255: the
+    -- mouseover button is made only with its setting on).
+    local function needWhy(slot)
+        if slot.needs ~= "mouseover" then return nil end
+        local M = ns.Mouseover
+        if type(M) ~= "table" then return "There is no mouseover button in this version." end
+        local okOn, on = false, nil
+        if type(k.settings) == "table" then okOn, on = pcall(k.settings.get, k.settings, M.SETTING) end
+        if not okOn or on ~= true then
+            return "Switch on \"" .. tostring(M.LABEL) .. "\" first: the mouseover button is made only then."
+        end
+        local api, made = k.mouseover, false
+        if type(api) == "table" and type(api.made) == "function" then
+            local okMade, got = pcall(api.made)
+            made = okMade and got == true
+        end
+        if not made then
+            return "Your mouseover button is not made yet: it is made outside a fight once you know a heal or cure."
+        end
+        return nil
+    end
+    -- The first slot of the Z-Flow button whose action this is, or nil.
+    local function ownSlotOf(act)
+        for _, slot in ipairs(SK.SLOTS) do
+            if action(slot.button) == act then return slot end
+        end
+        return nil
     end
     local function inUseText(p)
         local slot = slotOf(p.n)
@@ -138,20 +179,22 @@ function SK.New(k)
         keys.overrides[n] = nil
         local ok, why = write("clearOverrideKeys")
         if not ok then return false, why end
-        for _, key in pairs(keys.overrides) do
-            local okSet, whySet = write("overrideBindingClick", key, button())
+        for m, key in pairs(keys.overrides) do
+            local okSet, whySet = write("overrideBindingClick", key, button(slotOf(m).button))
             if not okSet then return false, whySet end
         end
         return true
     end
 
-    -- Sets slot n to key, the other slots kept in order; held: the keys
-    -- bound now. unbindOther: the key is taken off the action it had.
-    local function setKey(n, key, unbindOther, held)
+    -- Sets slot n to key, the button's other keys kept in order; held: the
+    -- button's keys bound now. unbindOther: the key is taken off the action
+    -- it had. movedFrom: the slot of the other Z-Flow button it came from.
+    local function setKey(n, key, unbindOther, held, movedFrom)
         local slot = slotOf(n)
+        local b = slot.button
         local want = {}
-        for i = 1, math.max(#held, n) do
-            if i == n then
+        for i = 1, math.max(#held, slot.index) do
+            if i == slot.index then
                 want[#want + 1] = key
             elseif held[i] ~= nil and held[i] ~= key then
                 want[#want + 1] = held[i]
@@ -163,14 +206,15 @@ function SK.New(k)
             local ok, w = write(name, ...)
             if not ok then fine, why = false, w end
         end
-        for _, old in ipairs(held) do step("clearBinding", old, action()) end
-        if unbindOther then step("clearBinding", key, action()) end
-        for _, k2 in ipairs(want) do step("setBindingClick", k2, button()) end
+        for _, old in ipairs(held) do step("clearBinding", old, action(b)) end
+        if unbindOther then step("clearBinding", key, action(b)) end
+        for _, k2 in ipairs(want) do step("setBindingClick", k2, button(b)) end
         step("saveBindings")
         if not fine then
             -- Put back what was bound, as far as the client lets; nothing saved.
-            for _, k2 in ipairs(want) do write("clearBinding", k2, action()) end
-            for _, old in ipairs(held) do write("setBindingClick", old, button()) end
+            for _, k2 in ipairs(want) do write("clearBinding", k2, action(b)) end
+            for _, old in ipairs(held) do write("setBindingClick", old, button(b)) end
+            if movedFrom then write("setBindingClick", key, button(movedFrom.button)) end
             problem("set", why)
             status(slot.label .. " " .. SK.FAILED .. ": " .. tostring(why))
             return false
@@ -179,30 +223,37 @@ function SK.New(k)
         for m, over in pairs(keys.overrides) do
             if over == key then dropOverride(m) end
         end
-        status(slot.label .. " set to " .. key .. " and saved.")
+        if movedFrom then
+            status(slot.label .. " set to " .. key .. ", moved from the " .. movedFrom.label .. ", and saved.")
+        else
+            status(slot.label .. " set to " .. key .. " and saved.")
+        end
         return true
     end
 
     -- The key the player pressed into the overlay for slot n.
     local function pressed(n, key)
         keys.capturing = nil
-        local why = lockWhy()
+        local slot = slotOf(n)
+        local why = lockWhy() or needWhy(slot)
         if why then return status(why) end
-        local held = readKeys()
+        local held = readKeys(slot.button)
         if held == nil then return status(SK.UNREAD) end
-        local ok, other = ask("bindingAction", key, action())
+        local ok, other = ask("bindingAction", key, action(slot.button))
         if not ok or type(other) ~= "string" then
             return status("The game won't say what " .. key .. " does now; pick another key or try again.")
         end
-        if other == "" or other == action() then return setKey(n, key, false, held) end
+        if other == "" or other == action(slot.button) then return setKey(n, key, false, held) end
+        local own = ownSlotOf(other)
+        if own then return setKey(n, key, true, held, own) end
         keys.pending = { n = n, key = key, action = other }
         status(inUseText(keys.pending))
     end
 
     local function startCapture(n)
-        local why = lockWhy()
+        local why = lockWhy() or needWhy(slotOf(n))
         if why then return status(why) end
-        if readKeys() == nil then return status(SK.UNREAD) end
+        if readKeys(slotOf(n).button) == nil then return status(SK.UNREAD) end
         if capture == nil then
             local ok, h = ask("keyCapture", { name = tostring(id.framePrefix) .. "KeyCapture" })
             if ok and type(h) == "table" then capture = h end
@@ -234,11 +285,11 @@ function SK.New(k)
             if not ok then return status(slot.label .. " " .. SK.FAILED .. ": " .. tostring(w)) end
             return status(slot.label .. " cleared.")
         end
-        local held = readKeys()
+        local held = readKeys(slot.button)
         if held == nil then return status(SK.UNREAD) end
-        local key = held[n]
+        local key = held[slot.index]
         if key == nil then return status(slot.label .. " is not set.") end
-        local ok, w = write("clearBinding", key, action())
+        local ok, w = write("clearBinding", key, action(slot.button))
         if ok then ok, w = write("saveBindings") end
         if not ok then
             problem("clear", w)
@@ -250,10 +301,10 @@ function SK.New(k)
     local function useAnyway()
         local p = keys.pending
         if not p then return status("") end
-        local why = lockWhy()
-        if why then return status(why) end
-        local ok, w = write("overrideBindingClick", p.key, button())
         local slot = slotOf(p.n)
+        local why = lockWhy() or needWhy(slot)
+        if why then return status(why) end
+        local ok, w = write("overrideBindingClick", p.key, button(slot.button))
         if not ok then
             problem("override", w)
             return status(slot.label .. " " .. SK.FAILED .. ": " .. tostring(w))
@@ -266,9 +317,9 @@ function SK.New(k)
     local function useAndUnbind()
         local p = keys.pending
         if not p then return status("") end
-        local why = lockWhy()
+        local why = lockWhy() or needWhy(slotOf(p.n))
         if why then return status(why) end
-        local held = readKeys()
+        local held = readKeys(slotOf(p.n).button)
         if held == nil then return status(SK.UNREAD) end
         keys.pending = nil
         setKey(p.n, p.key, true, held)
@@ -302,20 +353,27 @@ function SK.New(k)
     end
 
     function keys.rows()
-        local held = readKeys()
-        local why = lockWhy()
-        if why == nil and held == nil then why = SK.UNREAD end
-        local can = why == nil
+        local lock = lockWhy()
+        local byButton = {}
         local out = {}
         for _, slot in ipairs(SK.SLOTS) do
+            if byButton[slot.button] == nil then byButton[slot.button] = readKeys(slot.button) or false end
+            local held = byButton[slot.button]
+            if held == false then held = nil end
+            local why = lock
+            if why == nil and held == nil then why = SK.UNREAD end
+            local can = why == nil
+            local need = needWhy(slot)
             local has = keys.overrides[slot.n] ~= nil
-            if held ~= nil and held[slot.n] ~= nil then has = true end
+            if held ~= nil and held[slot.index] ~= nil then has = true end
+            local why2 = why
+            if why2 == nil then why2 = need end
             out[#out + 1] = {
-                kind = "actions", key = slot.key, label = slot.label, shown = shownOf(slot.n, held),
-                group = SK.GROUP, topic = SK.GROUP, synonyms = copyList(SK.SYNONYMS),
-                settable = can, why = why, under = under(),
+                kind = "actions", key = slot.key, label = slot.label, shown = shownOf(slot, held),
+                group = SK.GROUP, topic = SK.GROUP, synonyms = copyList(slot.synonyms or SK.SYNONYMS),
+                settable = can and need == nil, why = why2, under = under(),
                 actions = {
-                    { key = "keys.set:" .. slot.n, label = SK.SET, enabled = can },
+                    { key = "keys.set:" .. slot.n, label = SK.SET, enabled = can and need == nil },
                     { key = "keys.clear:" .. slot.n, label = SK.CLEAR, enabled = can and has },
                 },
             }
@@ -341,16 +399,17 @@ function SK.New(k)
         local words = Topics.Words(query)
         if #words == 0 then return false end
         for _, slot in ipairs(SK.SLOTS) do
-            local row = { key = slot.key, label = slot.label, group = SK.GROUP, synonyms = SK.SYNONYMS }
+            local row = { key = slot.key, label = slot.label, group = SK.GROUP, synonyms = slot.synonyms or SK.SYNONYMS }
             if Topics.Match(row, words) then return true end
         end
         return false
     end
 
     function keys.lines()
-        local held = readKeys()
         local out = {}
-        for _, slot in ipairs(SK.SLOTS) do out[#out + 1] = slot.label .. ": " .. shownOf(slot.n, held) end
+        for _, slot in ipairs(SK.SLOTS) do
+            out[#out + 1] = slot.label .. ": " .. shownOf(slot, readKeys(slot.button))
+        end
         return out
     end
 
