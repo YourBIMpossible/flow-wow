@@ -481,10 +481,16 @@ end
 --   Capture.SettingsLines(settings)     -> one line per declared setting
 --   Capture.RunFeature(c, addon, f)     -> lines, problems added, ran (true when
 --                                          every word ran without raising)
---   Capture.Summarize(c, addon, report, names, own [, features]) -> { { feature,
+--   Capture.Summarize(c, addon, report, cap, own [, features]) -> { { feature,
 --                                          ran, problems, unknowns, hidden,
---                                          lines = masked } } in FEATURES order
+--                                          verdict, lines = masked } } in
+--                                          FEATURES order; names from Capture.Names(cap)
 --   Capture.SummaryText(rows)           -> the text written to ZFLOW_SUMMARY
+-- The verdict (lead section 206): each row is judged by
+-- ns.CaptureEvidence.Judge on the run's own lines, and the text leads with
+-- ns.CaptureEvidence.Text of those verdicts. A feature whose words only ran
+-- with no Lua problem is "not exercised", never a pass; "words ran" says
+-- only that typing them raised nothing.
 -- Masking (lead section 199, MyBuddy S1): a line keeps only the add-on's own
 -- words and the numbers' places. `own` is the set of lower-case words in
 -- the add-on's own source (ns.offline.ownWords). Colour and link codes go;
@@ -649,8 +655,10 @@ function Capture.RunFeature(c, addon, feature)
     return lines, problemCount(addon) - before, ran
 end
 
-function Capture.Summarize(c, addon, report, names, own, features)
+function Capture.Summarize(c, addon, report, cap, own, features)
     local rows = {}
+    local names = Capture.Names(cap)
+    local Evidence = ns.CaptureEvidence
     for _, feature in ipairs(features or Capture.FEATURES) do
         local lines, added, ran = Capture.RunFeature(c, addon, feature)
         local masked, hidden = {}, 0
@@ -663,16 +671,39 @@ function Capture.Summarize(c, addon, report, names, own, features)
                 hidden = hidden + n
             end
         end
+        local verdict = nil
+        if type(Evidence) == "table" and type(Evidence.Judge) == "function" then
+            verdict = Evidence.Judge(feature.name,
+                { cap = cap, report = report, lines = lines, problems = added, addon = addon })
+        end
         rows[#rows + 1] = { feature = feature.name, ran = ran, problems = added,
-            unknowns = Capture.Unknowns(lines, report), hidden = hidden, lines = masked }
+            unknowns = Capture.Unknowns(lines, report), hidden = hidden, verdict = verdict, lines = masked }
     end
     return rows
 end
 
+-- A row with no verdict is not verified: it is said so, never left out.
+local NO_VERDICT = ": no verdict; not verified"
+
 function Capture.SummaryText(rows)
     local out = { Capture.SUMMARY_HEAD }
+    local Evidence = ns.CaptureEvidence
+    local verdicts = {}
     for _, r in ipairs(rows or {}) do
-        out[#out + 1] = string.format("feature %s: ran %s, problems %d, unknown %d, hidden %d, lines %d",
+        if type(r.verdict) == "table" then
+            verdicts[#verdicts + 1] = r.verdict
+        else
+            out[#out + 1] = tostring(r.feature) .. NO_VERDICT
+        end
+    end
+    if type(Evidence) == "table" and #verdicts > 0 then
+        local n = Evidence.Count(verdicts)
+        out[#out + 1] = string.format("verified on captured inputs %d, with made-up inputs %d, not exercised %d, "
+            .. "Lua problem %d, of %d", n.captured, n.synthetic, n.notExercised, n.error, #(rows or {}))
+        for _, line in ipairs(Evidence.Text(verdicts)) do out[#out + 1] = line end
+    end
+    for _, r in ipairs(rows or {}) do
+        out[#out + 1] = string.format("feature %s: words ran %s, problems %d, unknown %d, hidden %d, lines %d",
             tostring(r.feature), r.ran and "yes" or "no", tonumber(r.problems) or 0, tonumber(r.unknowns) or 0,
             tonumber(r.hidden) or 0, #(r.lines or {}))
         for _, line in ipairs(r.lines or {}) do out[#out + 1] = "  " .. line end
