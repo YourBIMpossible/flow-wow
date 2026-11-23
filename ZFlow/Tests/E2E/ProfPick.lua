@@ -215,6 +215,12 @@ tests["profession picker: choose counts a repeated name once"] = function(t)
     out = said(c, "professions choose mining herbalism mining")
     t.ok(out:find("Mining and Herbalism", 1, true) ~= nil, "a pair, saved: " .. out)
     t.eq(text(addon), "Your choice: learn Mining and Herbalism." .. HINT)
+    -- PP3-2: a repeat that is not of the first name. The old check held each
+    -- name up to the first only, so this was three names and the answer was
+    -- "name one or two professions".
+    out = said(c, "professions choose mining herbalism herbalism")
+    t.ok(out:find("your choice is saved: Mining and Herbalism.", 1, true) ~= nil,
+         "a later repeat counts once: " .. out)
 end
 
 -- PP3-1: as Flow did, "later" only quiets the prompt; a trainer step asked
