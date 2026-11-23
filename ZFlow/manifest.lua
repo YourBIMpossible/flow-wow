@@ -84,6 +84,7 @@ return {
         "Gear/Tooltip.lua",
         "Gear/TooltipModule.lua",
         "Gear/MerchantMarks.lua",
+        "Gear/RewardMark.lua",
         "Gear/MerchantShow.lua",
         "Gear/RollHint.lua",
         "Gear/Sets.lua",
