@@ -34,7 +34,11 @@ local KIND = {
              -- N68: the one alert sound (output only; changes nothing in the game).
              "playAlert",
              -- G14: the mark on the best quest reward choice (Gear/RewardMark.lua).
-             "markRewardChoice" },
+             "markRewardChoice",
+             -- S21: the Need or Greed value on a loot roll's item (Gear/RollHint.lua).
+             "rollValue",
+             -- S20: the per-role badges on the merchant's item buttons.
+             "markMerchantSpecs" },
     tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "savedMadeHere", "slash",
              "slashTaken", "unslash" },
     -- Hands back or runs a sound restart: never asked by the capture.
@@ -57,7 +61,7 @@ KIND.show[#KIND.show + 1] = "moveHandle"
 local READS = {
     now = false, clock = true, clockMs = false, addonLoaded = true, listenFaults = true, uptime = true, inCombat = true,
     money = true, bags = true, bagItems = true, bankOpen = true, bankItems = true, merchantOpen = false,
-    merchantItems = false, recipes = true, recipeSchematic = false, tradeSkillSchematic = true, tradeSkillRows = true, trainer = false, faction = false, class = true,
+    merchantItems = false, recipes = true, recipeSchematic = false, tradeSkillSchematic = true, tradeSkillRows = true, tradeSkillTools = true, trainer = false, faction = false, class = true,
     stealthed = true, target = true, inRange = true, level = false, gear = false, spellCooldown = true,
     spellId = true, spellTexture = false, facing = true, spell = true, position = true, dead = true,
     ghost = true, corpse = true, waypoint = false, mapSize = true, mapCont = false, zone = true,
@@ -100,9 +104,9 @@ local READS = {
     spellbookIcons = false,
     -- S12 (P-KEYS slice A): a friend for the care key; the capture asks none.
     unitCare = false,
-    -- N2 and N20 (P-KEYS slice D): the corpse you target and the
-    -- profession window's tools; the capture asks neither.
-    targetCorpse = false, tradeSkillTools = false,
+    -- N2 (P-KEYS slice D): the corpse you target; the capture asks it not.
+    -- N20 reads tradeSkillTools, listed above (N24).
+    targetCorpse = false,
 
     -- N55 (the boss loot panel): the boss unit and whether you are in an
     -- instance; read by UI/BossLoot.lua only. The names they ask

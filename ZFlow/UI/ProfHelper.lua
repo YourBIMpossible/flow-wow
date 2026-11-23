@@ -21,9 +21,24 @@ local _, ns = ...
 -- client gave no name for is kept by its id. A history kept by the recipe
 -- id before (zflow-prof) is folded into the name when the window shows
 -- that recipe with both, and the id entry is removed.
+-- Lead section 274 item 2, the rest of P-PROF (look only, no acting call):
+--   A6   the first recipe listed is planned with the craft hint
+--        (Items/CraftHint.lua): how many to make for the goal (one with no
+--        goal) and how many the bags make now. Lines only: the hint button
+--        is never drawn, so the panel never crafts.
+--   N23  the trainer lists this character saw (learned.trainerLists, kept
+--        by Spells/TrainerModule.lua) for this profession: how many recipes
+--        not yet known each trainer teaches at the skill reached, and the
+--        lowest skill a listed recipe still needs. Matched by profession
+--        name, so a modern window (a profession number) matches none.
+--   N24  a classic window row whose tool (c.tradeSkillTools) the bags do not
+--        hold: a line, and one advisor prompt per profession. The prompt
+--        goes only when every tool read answered and none is missing; a read
+--        that does not answer keeps it. Shown only with the helper on.
 -- Needs game test: the colour and skill up fields of the recipe read
 -- (Core/Client.lua c.recipes; Diag capture fields recipeDifficulty and
--- recipeSkillUps), and where the panel sits beside the window.
+-- recipeSkillUps), the trainer skill requirement, the tool read, and where
+-- the panel sits beside the window.
 
 local ProfHelper = ns.ProfHelper or {}
 ns.ProfHelper = ProfHelper
@@ -76,6 +91,45 @@ ProfHelper.ROW_NOCOST = "%s: %s, cost unknown."
 ProfHelper.SURE = "sure point"
 ProfHelper.MAYBE = "may give a point"
 ProfHelper.UNKNOWN = "colour not read"
+ProfHelper.TRAINER_MEETS = "Your skill meets %d recipes %s teaches."
+ProfHelper.TRAINER_NEXT = "Next trainer recipe at skill %d."
+ProfHelper.TRAINERS_PATH = "learned.trainerLists"
+ProfHelper.TOOL_MISSING = "Missing tool: %s, for %s."
+ProfHelper.TOOL_PROMPT = "Carry your %s for %s."
+ProfHelper.TOOL_ID = "aps.prof.tool."
+ProfHelper.TOOL_PRIORITY = 2
+
+-- N23: what the trainer lists seen teach for this profession at this skill.
+-- lists: the saved trainer lists; profession: the window profession name.
+-- -> { { npc, count } } sorted by npc (count above zero only), and the
+--    lowest skill above the current one a listed recipe needs, or nil.
+-- A recipe already known, or with no skill read, is not counted.
+function ProfHelper.Trainers(lists, profession, skill)
+    local meets, nextSkill = {}, nil
+    if type(lists) ~= "table" or type(profession) ~= "string" or type(skill) ~= "number" then
+        return meets, nil
+    end
+    local by = {}
+    for _, e in pairs(lists) do
+        if type(e) == "table" and e.profession == profession and type(e.npc) == "string"
+            and type(e.rows) == "table" then
+            for _, r in ipairs(e.rows) do
+                local need = nil
+                if type(r) == "table" and r.state ~= "known" then need = r.skill end
+                if type(need) == "number" then
+                    if need <= skill then
+                        by[e.npc] = (by[e.npc] or 0) + 1
+                    elseif nextSkill == nil or need < nextSkill then
+                        nextSkill = need
+                    end
+                end
+            end
+        end
+    end
+    for npc, n in pairs(by) do meets[#meets + 1] = { npc = npc, count = n } end
+    table.sort(meets, function(a, b) return a.npc < b.npc end)
+    return meets, nextSkill
+end
 
 local WORD = { sure = "SURE", maybe = "MAYBE", unknown = "UNKNOWN" }
 
@@ -89,7 +143,7 @@ function ProfHelper.Declare(k)
 
     k:Module({
         name = ProfHelper.NAME,
-        needs = { "client", "store", "bus", "settings", "sched" },
+        needs = { "client", "store", "bus", "settings", "sched", "advisor" },
         settings = { {
             key = ProfHelper.SETTING, scope = "account", type = "bool", default = true,
             label = "Skill-up helper beside the profession window",
@@ -183,10 +237,91 @@ function ProfHelper.Declare(k)
                         local sc = read("tradeSkillSchematic", r.index)
                         local m
                         if type(sc) == "table" and not sc.partial and type(sc.mats) == "table" then m = sc.mats end
-                        rows[#rows + 1] = { key = r.name, name = r.name, difficulty = r.difficulty, mats = m }
+                        rows[#rows + 1] = { key = r.name, name = r.name, difficulty = r.difficulty, mats = m,
+                            index = r.index }
                     end
                 end
                 return { profession = w.name, skill = w.skill, max = w.max, rows = rows }
+            end
+
+            -- A6: the craft hint for one ranked row, as lines only. Nothing
+            -- when the mats are not read or the plan cannot be made.
+            local function plan(out, row, count)
+                if type(row) ~= "table" or type(row.mats) ~= "table" or type(ns.CraftHint) ~= "table"
+                    or type(ns.Resources) ~= "table" then
+                    return
+                end
+                local key, made = "recipe:" .. row.name, "made:" .. row.name
+                local snapshot = ns.Resources.Take({ items = function()
+                    local have = {}
+                    for item in pairs(row.mats) do
+                        local n = read("itemCount", item)
+                        if type(n) ~= "number" then return nil end
+                        have[item] = n
+                    end
+                    return have
+                end })
+                local hint = ns.CraftHint.Build({ recipe = key, count = count }, {
+                    recipes = { [key] = { makes = made, yield = 1, mats = row.mats } },
+                    names = { [made] = row.name },
+                    snapshot = snapshot, book = {}, sources = {}, useBank = false,
+                })
+                if type(hint) ~= "table" or hint.ok ~= true or type(hint.lines) ~= "table" then return end
+                for _, line in ipairs(hint.lines) do
+                    if type(line) == "string" then out[#out + 1] = { kind = "info", text = line } end
+                end
+            end
+
+            -- N23: the trainers seen for this profession.
+            local function trainers(out, w)
+                local lists = ctx.store:get("char", ProfHelper.TRAINERS_PATH)
+                local meets, nextSkill = ProfHelper.Trainers(lists, w.profession, w.skill)
+                for _, m in ipairs(meets) do
+                    out[#out + 1] = { kind = "info", text = ProfHelper.TRAINER_MEETS:format(m.count, m.npc) }
+                end
+                if nextSkill then
+                    out[#out + 1] = { kind = "info", text = ProfHelper.TRAINER_NEXT:format(nextSkill) }
+                end
+            end
+
+            -- N24: a tool a listed classic row needs and the bags do not hold.
+            -- The prompt goes only when no tool is missing and each recipe
+            -- that raised it answered again; a read that does not answer
+            -- keeps it (unknown is not carried).
+            local raisedBy = {}
+            local function tools(out, w, ranked)
+                if type(w.profession) ~= "string" then return end
+                local first, answered, missingBy = nil, {}, {}
+                for i = 1, math.min(ProfHelper.TOP, #ranked) do
+                    local r = ranked[i]
+                    if type(r.index) == "number" then
+                        local list = read("tradeSkillTools", r.index)
+                        if type(list) == "table" then
+                            answered[r.name] = true
+                            for _, tool in ipairs(list) do
+                                if type(tool) == "table" and tool.has == false and type(tool.name) == "string" then
+                                    out[#out + 1] = { kind = "info",
+                                        text = ProfHelper.TOOL_MISSING:format(tool.name, r.name) }
+                                    first = first or { tool = tool.name, recipe = r.name }
+                                    missingBy[r.name] = true
+                                end
+                            end
+                        end
+                    end
+                end
+                local advisor = ctx.use("advisor")
+                if type(advisor) ~= "table" then return end
+                local id = ProfHelper.TOOL_ID .. w.profession
+                if first then
+                    advisor.Add(id, ProfHelper.TOOL_PROMPT:format(first.tool, first.recipe), ProfHelper.TOOL_PRIORITY)
+                    raisedBy[id] = missingBy
+                    return
+                end
+                for name in pairs(raisedBy[id] or {}) do
+                    if not answered[name] then return end
+                end
+                raisedBy[id] = nil
+                advisor.Remove(id)
             end
 
             local act
@@ -201,7 +336,7 @@ function ProfHelper.Declare(k)
                 local rows, colours = {}, {}
                 for _, r in ipairs(window.rows) do
                     rows[#rows + 1] = { key = r.key, name = r.name, difficulty = r.difficulty,
-                        cost = cost(r.mats), mats = r.mats }
+                        cost = cost(r.mats), mats = r.mats, index = r.index }
                     colours[#colours + 1] = { key = r.key, difficulty = r.difficulty }
                 end
                 local seen = ctx.store:table("char", ProfHelper.COLORS_PATH)
@@ -257,7 +392,12 @@ function ProfHelper.Declare(k)
                             or ProfHelper.ROW_NOCOST:format(r.name, word)
                         out[#out + 1] = { kind = "info", text = text }
                     end
+                    local count = 1
+                    if state and not state.overCap and state.need > 0 then count = state.need end
+                    plan(out, ranked[1], count)
                 end
+                trainers(out, window)
+                tools(out, window, ranked)
                 panel.draw(out, act)
             end
 

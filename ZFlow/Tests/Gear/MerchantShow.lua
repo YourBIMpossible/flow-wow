@@ -53,7 +53,7 @@ tests["merchant show: opening a merchant with an upgrade on sale shows it"] = fu
     local k, c, advisor, api = start({ row(WORSE), row(BETTER) })
     t.eq(k:ModuleState(M.NAME), "started")
     c.setMerchantOpen(true)
-    t.eq(texts(advisor), { "1 upgrade on sale here", BETTER .. ": Upgrade for your head piece (+5, dps)" })
+    t.eq(texts(advisor), { "1 upgrade on sale here", BETTER .. ": Upgrade for your head piece (+5, dps); 1s" })
     t.eq(api.shown(), { M.ID .. 1, M.ID .. 2 })
 end
 
@@ -103,6 +103,23 @@ tests["merchant show: an error while working it out shows nothing and is one pro
     t.eq(api.errors(), 1)
     t.eq(k.problems:count("gear"), 1)
     t.eq(k:ModuleState(M.NAME), "started")
+end
+
+tests["merchant show: an upgrade dearer than your money says so; money not read, no claim"] = function(t)
+    local _, c, advisor = start({ row(BETTER) })
+    c.setMoney(50)
+    c.setMerchantOpen(true)
+    t.eq(texts(advisor)[2], BETTER .. ": Upgrade for your head piece (+5, dps); 1s, more than you have")
+    c.setMerchantOpen(false)
+    c.setMoney(nil)
+    c.setMerchantOpen(true)
+    t.eq(texts(advisor)[2], BETTER .. ": Upgrade for your head piece (+5, dps); 1s")
+    c.setMerchantOpen(false)
+    c.setMoney(50)
+    c.setMoneyFails(true)
+    c.setMerchantOpen(true)
+    t.eq(texts(advisor)[2], BETTER .. ": Upgrade for your head piece (+5, dps); 1s", "a raising read: no claim")
+    t.eq(#advisor.List(), 2)
 end
 
 tests["merchant show: it only reads; nothing is bought"] = function(t)

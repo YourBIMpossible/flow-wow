@@ -602,6 +602,38 @@ function ns.make.client(env)
     -- it is left out, never saved as it came.
     local ROW_DIFFICULTY = { optimal = "optimal", medium = "medium", easy = "easy", trivial = "trivial", difficult = "difficult" }
 
+    -- N24 (lead section 274 item 2): the tools a classic recipe row needs,
+    -- GetTradeSkillTools(index), answered in pairs (name, carried):
+    --   { { name =, has = true | false } }, {} when the recipe needs none.
+    -- Carried 1 or true is carried; nothing, 0 or false is not. nil when the
+    -- call is missing or raises, the row is no whole number from 1, a name
+    -- is empty, not text or secret, or a carried answer is any other value.
+    -- Look only. Needs game test: the call and its answer shape on 16001.
+    local function packed(...) return select("#", ...), { ... } end
+    function c.tradeSkillTools(index)
+        if not wholeCount(index) or index < 1 or index == math.huge then return nil end
+        local n, a = packed(call(env.GetTradeSkillTools, index))
+        if a[1] ~= true then return nil end
+        local out = {}
+        for i = 2, n, 2 do
+            local name, carried = a[i], a[i + 1]
+            if name ~= nil or carried ~= nil then
+                if type(name) ~= "string" or hidden(name) or name == "" then return nil end
+                if carried ~= nil and hidden(carried) then return nil end
+                local has
+                if carried == 1 or carried == true then
+                    has = true
+                elseif carried == nil or carried == 0 or carried == false then
+                    has = false
+                else
+                    return nil
+                end
+                out[#out + 1] = { name = name, has = has }
+            end
+        end
+        return out
+    end
+
     -- Section 231 item 1: the fallback for recipeSchematic when the client
     -- has no C_TradeSkillUI.GetRecipeSchematic (not in CLIENT-NAMES-16001).
     -- The classic reads of the open trade skill window, by row index, not
@@ -819,6 +851,16 @@ function ns.make.client(env)
         end
         return out
     end
+    -- N23 (lead section 274 item 2): the profession skill a trainer recipe
+    -- needs, the second answer of GetTrainerServiceSkillReq(i) (the first is
+    -- the skill name); a whole number from 1, else nil and left out of the
+    -- row. Needs game test: the answer order on 16001.
+    local function skillReq(i)
+        local ok, _, skill = call(env.GetTrainerServiceSkillReq, i)
+        local v = wholeOrNil(ok, skill)
+        if v == nil or v < 1 then return nil end
+        return v
+    end
     local function trainerServices()
         local n = wholeOrNil(call(env.GetNumTrainerServices))
         if not n then return nil, trainerFilter() end
@@ -845,6 +887,7 @@ function ns.make.client(env)
                     name = name, rank = text(ok, rank), state = state,
                     cost = wholeOrNil(call(env.GetTrainerServiceCost, i)),
                     level = wholeOrNil(call(env.GetTrainerServiceLevelReq, i)),
+                    skill = skillReq(i),
                 }
             end
         end
@@ -5896,6 +5939,12 @@ function ns.make.client(env)
 
         -- Debuff names read as a crowd control that holds the enemy (first
         -- guess names; Polymorph by any of its forms).
+        -- Named limit (review R2-2): English names only. On a client in
+        -- another language none matches, so controlled reads false for an
+        -- enemy that is held. Matching by spell id would fix it, but no id
+        -- of these effects is in the repo data and guessing them is not
+        -- allowed. Evidence still needed: the spell ids of the held effects
+        -- on Forever, from a capture (the debuff rows' spellId).
         local HELD = {
             ["Shackle Undead"] = true, ["Hibernate"] = true, ["Sap"] = true,
             ["Freezing Trap Effect"] = true, ["Banish"] = true, ["Fear"] = true,
@@ -6138,9 +6187,12 @@ function ns.make.client(env)
         return out
     end
 
-    -- Every row of a unit's buffs, in order, as { name, duration, expires }:
-    -- the name from the spell id (spellName) when the row has none. nil for
-    -- no read, a read that raised, or a row or a name not read.
+    -- Every row of a unit's buffs, in order, as { name, duration, expires,
+    -- caster }: the name from the spell id (spellName) when the row has
+    -- none. nil for no read, a read that raised, or a row or a name not
+    -- read. caster (review R2-1) is the row's sourceUnit, else UnitBuff's
+    -- seventh answer, as given (hidden or nil kept): a first guess, not in
+    -- the client names table, not seen in game.
     local function buffRows(unit)
         local auras = env.C_UnitAuras
         local byIndex
@@ -6149,22 +6201,22 @@ function ns.make.client(env)
         if type(byIndex) ~= "function" and type(old) ~= "function" then return nil end
         local rows = {}
         for i = 1, 40 do
-            local name, length, expires
+            local name, length, expires, caster
             if type(byIndex) == "function" then
                 local ok, row = pcall(byIndex, unit, i, "HELPFUL")
                 if not ok then return nil end
                 if row == nil then return rows end
                 if hidden(row) or type(row) ~= "table" then return nil end
-                name, length, expires = row.name, row.duration, row.expirationTime
+                name, length, expires, caster = row.name, row.duration, row.expirationTime, row.sourceUnit
                 if name == nil and plainNumber(row.spellId) then name = spellName(row.spellId) end
             else
                 local got = { pcall(old, unit, i, "HELPFUL") }
                 if not got[1] then return nil end
                 if got[2] == nil then return rows end
-                name, length, expires = got[2], got[6], got[7]
+                name, length, expires, caster = got[2], got[6], got[7], got[8]
             end
             if name == nil or hidden(name) or type(name) ~= "string" then return nil end
-            rows[#rows + 1] = { name = name, duration = length, expires = expires }
+            rows[#rows + 1] = { name = name, duration = length, expires = expires, caster = caster }
         end
         return rows
     end
@@ -6196,7 +6248,10 @@ function ns.make.client(env)
     --   the fifth answer of UnitBuff). 0 is no end: math.huge. A hidden
     --   length gives nil and the name. false: read, none there. nil: not
     --   known.
-    function c.buffLength(unit, names)
+    --   c.buffLength(unit, names, true) (review R2-1): only a buff you cast
+    --   (the caster "player"); a row of another caster is passed over, and
+    --   a caster hidden or not read gives nil and the name.
+    function c.buffLength(unit, names, mine)
         if type(unit) ~= "string" or unit == "" or type(names) ~= "table" then return nil end
         local rows = buffRows(unit)
         if rows == nil then return nil end
@@ -6205,7 +6260,12 @@ function ns.make.client(env)
             if type(names[i]) == "string" then wanted[names[i]] = true end
         end
         for _, row in ipairs(rows) do
-            if wanted[row.name] then
+            local theirs = false
+            if wanted[row.name] and mine == true then
+                if row.caster == nil or hidden(row.caster) or type(row.caster) ~= "string" then return nil, row.name end
+                theirs = row.caster ~= "player"
+            end
+            if wanted[row.name] and not theirs then
                 if not plainNumber(row.duration) then return nil, row.name end
                 if row.duration == 0 then return math.huge, row.name end
                 return row.duration, row.name
@@ -8182,26 +8242,6 @@ function ns.make.client(env)
         return out
     end
 
-    -- N20 station key (P-KEYS slice D): c.tradeSkillTools() -> nil
-    --   | { { name, met }, ... }. The tools the open profession window asks
-    --   for (GetTradeSkillTools: name, met pairs), each met true when the
-    --   client says you are by it. {} when it names none; nil when the call
-    --   is missing or fails. A name that is not plain text is left out.
-    --   A first guess: not seen in game.
-    function c.tradeSkillTools()
-        local got = { call(env.GetTradeSkillTools) }
-        if got[1] ~= true then return nil end
-        local out = {}
-        local n = table.maxn(got)
-        for i = 2, n, 2 do
-            local name = text(true, got[i])
-            if name then
-                local met = got[i + 1]
-                out[#out + 1] = { name = name, met = met == true or met == 1 }
-            end
-        end
-        return out
-    end
 
 
     -- G16: c.weaponSkills() -> { [skill line name] = true } or nil: every
@@ -8537,6 +8577,181 @@ function ns.make.client(env)
                 end
             end
             return shown
+        end
+    end
+
+    -- S21 (lead section 275): the Need or Greed value on a loot roll's item
+    -- (Gear/RollHint.lua). A first guess, not seen in game on 16001: the
+    -- roll frame's item picture is its IconFrame field (legacy Flow's
+    -- Modules/Gear/RollHint.lua IconHost read it on this client); without
+    -- one the roll frame itself holds the value. The roll frame is found as
+    -- onLootRoll finds it (rollFrame, F4). The names are in Diag.NAMES
+    -- (GroupLootFrame1, GroupLootFrame1.IconFrame).
+    --   c.rollValue(rollID, text, r, g, b) -> true when that roll's frame
+    --     carries the text (no text, or "": hidden); nil when no frame shows
+    --     that roll, or one of ours could not be made there.
+    -- The text sits on a frame of ours made as a child of the item picture,
+    -- one per roll frame, reused; it takes no clicks. Nothing of the game's
+    -- frame is called or written, and nothing rolls.
+    -- In a do block: make.client is near Lua 5.1's 200 locals.
+    do
+        local rollValues = {}   -- roll frame -> { holder, text }, or false
+        local function rollValueMark(frame)
+            local known = rollValues[frame]
+            if known ~= nil then return known or nil end
+            local host = frame
+            local okI, icon = pcall(function() return frame.IconFrame end)
+            if okI and type(icon) == "table" then host = icon end
+            local okF, holder = call(env.CreateFrame, "Frame", nil, host)
+            if not okF or type(holder) ~= "table" then
+                rollValues[frame] = false
+                return nil
+            end
+            local okT, fs = method(holder, "CreateFontString", nil, "OVERLAY", "GameFontNormalSmall")
+            if not okT or type(fs) ~= "table" then
+                rollValues[frame] = false
+                return nil
+            end
+            method(holder, "SetAllPoints", host)
+            method(holder, "EnableMouse", false)
+            method(fs, "SetPoint", "TOPLEFT", holder, "TOPLEFT", 2, -2)
+            local m = { holder = holder, text = fs }
+            rollValues[frame] = m
+            return m
+        end
+        function c.rollValue(rollID, s, r, g, b)
+            if type(rollID) ~= "number" or hidden(rollID) then return nil end
+            local frame = rollFrame(rollID)
+            if frame == nil then return nil end
+            local m = rollValueMark(frame)
+            if m == nil then return nil end
+            if type(s) ~= "string" or s == "" then
+                method(m.holder, "Hide")
+                return true
+            end
+            method(m.text, "SetText", s)
+            if type(r) == "number" and type(g) == "number" and type(b) == "number" then
+                method(m.text, "SetTextColor", r, g, b)
+            end
+            method(m.holder, "Show")
+            return true
+        end
+    end
+
+    -- S20 vendor marks (lead section 230): the per-role badge on the
+    -- merchant's item buttons, as legacy Flow's Modules/Gear/SpecBadge.lua
+    -- drew it: per role, a green arrow up (better than what you wear), the
+    -- same arrow turned over and red (worse), a short grey bar (about the
+    -- same); the chosen role first, the others fainter. Drawn on a frame of
+    -- ours made a child of each button: no region of the button is touched
+    -- and nothing of the window is called. The page is read as
+    -- markMerchantButtons reads it; none on the buyback tab. New, added at
+    -- the end. First guesses, none seen in game on 16001: CreateFrame with
+    -- a parent, the frame's CreateTexture, Texture SetTexCoord /
+    -- SetVertexColor / SetColorTexture / SetAtlas / SetSize, and
+    -- the names markMerchantButtons already guesses (MerchantItem<i>ItemButton,
+    -- MerchantFrame.page and .selectedTab, MERCHANT_ITEMS_PER_PAGE).
+    --   c.markMerchantSpecs(badges) -> how many buttons carry a badge; nil
+    --     (every badge hidden) when no merchant window is open or its page
+    --     cannot be read. badges: { [the merchant's item number] = { { role,
+    --     state = "up" / "down" / "same" } ... } }; {} hides them all.
+    do
+        local SPEC_BUTTONS, SPEC_ROLES, SPEC_SIZE = 12, 3, 10
+        local specFrames = {}
+        local function specFrame(i)
+            local okB, b = pcall(function() return env["MerchantItem" .. i .. "ItemButton"] end)
+            if not okB or type(b) ~= "table" then return nil end -- not kept: it may come later
+            local known = specFrames[b]
+            if known ~= nil then return known or nil end
+            local okF, f = call(env.CreateFrame, "Frame", nil, b)
+            if not okF or type(f) ~= "table" then
+                specFrames[b] = false
+                return nil
+            end
+            method(f, "SetSize", SPEC_SIZE * SPEC_ROLES + 2 * (SPEC_ROLES - 1), SPEC_SIZE)
+            method(f, "SetPoint", "BOTTOMLEFT", b, "BOTTOMLEFT", 1, 1)
+            local h = { frame = f, slots = {} }
+            for r = 1, SPEC_ROLES do
+                local okT, t = method(f, "CreateTexture", nil, "OVERLAY", nil, 7)
+                if okT and t ~= nil then
+                    method(t, "SetPoint", "BOTTOMLEFT", f, "BOTTOMLEFT", (r - 1) * (SPEC_SIZE + 2), 0)
+                    method(t, "Hide")
+                    h.slots[r] = t
+                end
+            end
+            method(f, "Hide")
+            specFrames[b] = h
+            return h
+        end
+        local function paint(t, state, first)
+            local alpha = first and 1 or 0.7
+            if state == "same" then
+                method(t, "SetTexCoord", 0, 1, 0, 1)
+                method(t, "SetSize", SPEC_SIZE - 2, 2)
+                method(t, "SetVertexColor", 1, 1, 1, 1)
+                method(t, "SetColorTexture", 0.7, 0.7, 0.7, alpha)
+                method(t, "Show")
+                return
+            end
+            method(t, "SetSize", SPEC_SIZE, SPEC_SIZE)
+            local okA, set = method(t, "SetAtlas", "bags-greenarrow")
+            if not okA or set == false then
+                if state == "up" then
+                    method(t, "SetColorTexture", 0.3, 1, 0.3, alpha)
+                else
+                    method(t, "SetColorTexture", 1, 0.3, 0.3, alpha)
+                end
+            elseif state == "up" then
+                method(t, "SetTexCoord", 0, 1, 0, 1)
+                method(t, "SetVertexColor", 1, 1, 1, alpha)
+            else
+                method(t, "SetTexCoord", 0, 1, 1, 0)  -- turned over
+                method(t, "SetVertexColor", 1, 0.3, 0.3, alpha)
+            end
+            method(t, "Show")
+        end
+        function c.markMerchantSpecs(badges)
+            badges = type(badges) == "table" and badges or {}
+            local frame = env.MerchantFrame
+            local okP, page = pcall(function() return frame.page end)
+            local okT, tab = pcall(function() return frame.selectedTab end)
+            local per = env.MERCHANT_ITEMS_PER_PAGE
+            local readable = c.merchantOpen() == true and okP and type(page) == "number" and page >= 1
+                and type(per) == "number" and per >= 1
+            local buyback = okT and tab ~= nil and tab ~= 1
+            local n = 0
+            for i = 1, SPEC_BUTTONS do
+                local h = specFrame(i)
+                if h then
+                    local list = nil
+                    if readable and not buyback and i <= per then
+                        list = badges[(page - 1) * per + i]
+                    end
+                    local any = false
+                    for r = 1, SPEC_ROLES do
+                        local t = h.slots[r]
+                        local b, state = nil, nil
+                        if type(list) == "table" then b = list[r] end
+                        if type(b) == "table" then state = b.state end
+                        if t ~= nil then
+                            if state == "up" or state == "down" or state == "same" then
+                                paint(t, state, r == 1)
+                                any = true
+                            else
+                                method(t, "Hide")
+                            end
+                        end
+                    end
+                    if any then
+                        method(h.frame, "Show")
+                        n = n + 1
+                    else
+                        method(h.frame, "Hide")
+                    end
+                end
+            end
+            if not readable then return nil end
+            return n
         end
     end
     return c

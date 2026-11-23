@@ -167,6 +167,14 @@ function ns.make.fakeClient(opts)
         return { name = r.name, difficulty = r.difficulty, makes = r.makes, yield = r.yield, mats = mats,
                  partial = r.partial }
     end
+    -- N24: the tools one classic row needs, a copy; nil when not set.
+    function c.tradeSkillTools(index)
+        local list = s.tradeTools and s.tradeTools[index]
+        if type(list) ~= "table" then return nil end
+        local out = {}
+        for i, tool in ipairs(list) do out[i] = { name = tool.name, has = tool.has } end
+        return out
+    end
     function c.spell(id)
         if type(id) ~= "number" then return nil end
         local r = s.spells and s.spells[id] or {}
@@ -792,6 +800,12 @@ function ns.make.fakeClient(opts)
     -- true says the rows are every learned recipe (the real client does not
     -- say so yet). Left out: unknown, and RecipeBook drops nothing.
     function c.setTradeSkillRows(r) s.tradeRows = r end
+    -- N24: the tools one classic row needs, { { name =, has = } }; nil: the
+    -- client can not read them.
+    function c.setTradeSkillTools(index, list)
+        s.tradeTools = s.tradeTools or {}
+        s.tradeTools[index] = list
+    end
     -- One spell's answers: { known =, usable =, noPower = }; a field left
     -- out reads as not known.
     function c.setSpell(id, row)
@@ -1493,6 +1507,9 @@ function ns.make.fakeClient(opts)
     --   creatureType(unit) -> text | nil
     --   buffLength(unit, names) -> the row field `length` of setUnitBuffs,
     --                              name | false | nil
+    --   buffLength(unit, names, true): only a row whose field `caster` is
+    --                              "player"; another caster passed over; a
+    --                              caster not set or c.SECRET: nil, name
     local function copied(v)
         if type(v) ~= "table" then return v end
         local out = {}
@@ -1522,7 +1539,7 @@ function ns.make.fakeClient(opts)
         s.creatureTypes = s.creatureTypes or {}
         s.creatureTypes[unit] = v
     end
-    function c.buffLength(unit, names)
+    function c.buffLength(unit, names, mine)
         if type(unit) ~= "string" or unit == "" or type(names) ~= "table" then return nil end
         local rows = s.unitBuffs and s.unitBuffs[unit]
         if type(rows) ~= "table" then return nil end
@@ -1530,7 +1547,11 @@ function ns.make.fakeClient(opts)
             local row = rows[i]
             if type(row) ~= "table" or type(row.name) ~= "string" then return nil end
             for j = 1, #names do
-                if names[j] == row.name then return row.length, row.name end
+                if names[j] == row.name then
+                    if mine ~= true then return row.length, row.name end
+                    if type(row.caster) ~= "string" then return nil, row.name end
+                    if row.caster == "player" then return row.length, row.name end
+                end
             end
         end
         return false
@@ -2870,12 +2891,11 @@ function ns.make.fakeClient(opts)
         for k, v in pairs(row) do out[k] = v end
         return out
     end
-    -- N2 and N20 (P-KEYS slice D): the twins of Core/Client.lua
-    -- c.targetCorpse and c.tradeSkillTools; each nil (not known) until set.
+    -- N2 (P-KEYS slice D): the twin of Core/Client.lua c.targetCorpse;
+    -- nil (not known) until set. N20 uses the N24 c.tradeSkillTools(index).
     --   c.setTargetCorpse(row)       { exists, dead, player, lootable, needs }
     --   c.setTargetCorpseFails(on)   the read raises while on (lead section
     --                                236: a read that fails, then recovers)
-    --   c.setTradeSkillTools(list)   { { name, met }, ... }; nil: not known
     function c.setTargetCorpse(row)
         if type(row) == "table" then s.targetCorpse = row else s.targetCorpse = nil end
     end
@@ -2885,15 +2905,6 @@ function ns.make.fakeClient(opts)
         if type(s.targetCorpse) ~= "table" then return nil end
         local out = {}
         for k, v in pairs(s.targetCorpse) do out[k] = v end
-        return out
-    end
-    function c.setTradeSkillTools(list)
-        if type(list) == "table" then s.tradeSkillTools = list else s.tradeSkillTools = nil end
-    end
-    function c.tradeSkillTools()
-        if type(s.tradeSkillTools) ~= "table" then return nil end
-        local out = {}
-        for i, tool in ipairs(s.tradeSkillTools) do out[i] = { name = tool.name, met = tool.met } end
         return out
     end
     -- S15 click slots and S29 move handle (P-KEYS slice C). clickRow keeps
@@ -3111,7 +3122,9 @@ function ns.make.fakeClient(opts)
     --   c.rewardMarked(): the choice marked now, or nil.
     do
         local rewardMark = nil
-        function c.setQuestChoices(rows) s.questChoices = type(rows) == "table" and rows or nil end
+        function c.setQuestChoices(rows)
+            if type(rows) == "table" then s.questChoices = rows else s.questChoices = nil end
+        end
         function c.setQuestChoicesFails(on) s.questChoicesFails = on == true end
         function c.questChoices()
             if s.questChoicesFails then error("quest choice read failed (test)") end
@@ -3129,6 +3142,105 @@ function ns.make.fakeClient(opts)
             return true
         end
         function c.rewardMarked() return rewardMark end
+    end
+    -- S21: the value on a loot roll's item, as the real client's
+    -- rollValue(rollID, text, r, g, b): true, kept per roll; no text clears
+    -- it. c.rollValueOf(rollID) -> { text, r, g, b } shown now, or nil.
+    do
+        local rollValues = {}
+        function c.rollValue(rollID, text, r, g, b)
+            if type(rollID) ~= "number" then return nil end
+            if type(text) ~= "string" or text == "" then
+                rollValues[rollID] = nil
+                return true
+            end
+            rollValues[rollID] = { text = text, r = r, g = g, b = b }
+            return true
+        end
+        function c.rollValueOf(rollID)
+            local v = rollValues[rollID]
+            if v == nil then return nil end
+            return { text = v.text, r = v.r, g = v.g, b = v.b }
+        end
+    end
+
+    -- S20 vendor marks (lead section 230): the merchant's pages, the
+    -- per-role badges, and the money read raising. As the real client's
+    -- markMerchantSpecs(badges) (badges { [item number] = { { role, state }
+    -- ... } }) and markMerchantButtons, each draw is worked out for the page
+    -- shown when it is called, so a page turned without a redraw keeps the
+    -- old marks:
+    --   c.setMerchantPage(page, perPage)   (page 1, 10 a page at the start)
+    --   c.merchantButtons() -> { [button] = { up = arrow shown, specs = { { role,
+    --     state } ... } } } for the buttons showing anything; {} when closed.
+    --   c.setMoneyFails(on): money() raises while on (section 236).
+    --   c.setMerchantTab(tab): MerchantFrame.selectedTab (1, on sale, at the
+    --     start); any other tab is the buyback tab, where nothing is drawn
+    --     and markMerchantSpecs gives 0, as the real client.
+    -- As the real client, at most 12 buttons are drawn whatever the page size.
+    do
+        local BUTTONS = 12
+        local page, per, tab = 1, 10, 1
+        local specsNow, drawn = nil, {}
+        local function draw()
+            drawn = {}
+            local arrows = c.merchantMarked()
+            if s.merchantOpen ~= true or (tab ~= nil and tab ~= 1) then return end
+            for i = 1, math.min(per, BUTTONS) do
+                local index = (page - 1) * per + i
+                local up = type(arrows) == "table" and arrows[index] == true
+                local list = nil
+                if type(specsNow) == "table" then list = specsNow[index] end
+                if up or list ~= nil then
+                    local copy = {}
+                    for j, b in ipairs(list or {}) do copy[j] = { role = b.role, state = b.state } end
+                    drawn[i] = { up = up, specs = copy }
+                end
+            end
+        end
+        function c.setMerchantPage(p, n)
+            if type(p) == "number" then page = p end
+            if type(n) == "number" then per = n end
+        end
+        function c.setMerchantTab(n) tab = n end
+        local plainMark = c.markMerchantButtons
+        function c.markMerchantButtons(indexes)
+            local n = plainMark(indexes)
+            draw()
+            return n
+        end
+        function c.markMerchantSpecs(badges)
+            if s.merchantOpen ~= true then
+                specsNow = nil
+                draw()
+                return nil
+            end
+            specsNow = {}
+            for index, list in pairs(type(badges) == "table" and badges or {}) do
+                if type(index) == "number" and type(list) == "table" then specsNow[index] = list end
+            end
+            draw()
+            local n = 0
+            for _, b in pairs(drawn) do
+                if #b.specs > 0 then n = n + 1 end
+            end
+            return n
+        end
+        function c.merchantButtons()
+            local out = {}
+            for i, b in pairs(drawn) do
+                local copy = {}
+                for j, x in ipairs(b.specs) do copy[j] = { role = x.role, state = x.state } end
+                out[i] = { up = b.up, specs = copy }
+            end
+            return out
+        end
+        local plainMoney = c.money
+        function c.setMoneyFails(on) s.moneyFails = on == true end
+        function c.money()
+            if s.moneyFails then error("money read failed (test)") end
+            return plainMoney()
+        end
     end
     return c
 end

@@ -155,6 +155,33 @@ tests["reward mark: one choice - no repeat after QUEST_COMPLETE; two choices rep
     t.ok(reads(choices(WEAK, STRONG)) > 0, "two choices: read again each second")
 end
 
+-- LF-1: one choice read at QUEST_COMPLETE, two read once an item's data
+-- arrives (GET_ITEM_INFO_RECEIVED): the mark follows and the repeat starts.
+tests["reward mark: a choice count that grows later - marked, and the repeat starts"] = function(t)
+    local c = client()
+    c.setQuestChoices(choices(STRONG))
+    local read, n = c.questChoices, 0
+    c.questChoices = function(...)
+        n = n + 1
+        return read(...)
+    end
+    local k = ns.Kernel({}, c)
+    RM.Declare(k, packs())
+    k:Boot()
+    c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
+    c.fire("QUEST_COMPLETE")
+    t.eq(c.rewardMarked(), nil, "one choice: no mark")
+    c.setQuestChoices(choices(WEAK, STRONG))
+    c.fire("GET_ITEM_INFO_RECEIVED")
+    t.eq(c.rewardMarked(), 2, "two choices read late: the upgrade is marked")
+    local before = n
+    c.advance(3, 6)
+    t.ok(n - before > 0, "the repeat started")
+    c.fire("QUEST_FINISHED")
+    c.fire("GET_ITEM_INFO_RECEIVED")
+    t.eq(c.rewardMarked(), nil, "closed: item data does not mark")
+end
+
 tests["reward mark: switched off, nothing is marked"] = function(t)
     local c = client()
     c.setQuestChoices(choices(WEAK, STRONG))

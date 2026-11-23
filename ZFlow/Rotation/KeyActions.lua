@@ -18,7 +18,8 @@ local _, ns = ...
 --   N20 a crafting station (rotation.stationKey): by a forge with ore, the
 --       key opens Smelting; by an anvil or forge, Blacksmithing; by a fire,
 --       Cooking. Stations are learned when a profession window opens by one
---       (client.tradeSkillTools: a tool met) and kept in the add-on's own
+--       (client.tradeSkillRows, then client.tradeSkillTools(index) for
+--       each row: a tool you have) and kept in the add-on's own
 --       saved data (account learned.keyStations). Making the count stays
 --       the craft bar's own click.
 --   N5  a better item in the bags (rotation.upgradeKey): the key equips it.
@@ -385,12 +386,17 @@ function KA.Declare(k)
     -- where you stand. State only; nothing acts.
     local function learn(ctx)
         if ctx.settings:get(KA.STATION) == false then return end
-        local tools = ask(ctx.client, "tradeSkillTools")
-        if type(tools) ~= "table" then return end
+        local window = ask(ctx.client, "tradeSkillRows")
+        if type(window) ~= "table" or type(window.rows) ~= "table" then return end
         local pos = ask(ctx.client, "position")
-        for _, tool in ipairs(tools) do
-            if type(tool) == "table" and tool.met == true then
-                KA.Learn(state.stations, pos, KA.StationKind(tool.name))
+        for _, row in ipairs(window.rows) do
+            local tools = type(row) == "table" and ask(ctx.client, "tradeSkillTools", row.index) or nil
+            if type(tools) == "table" then
+                for _, tool in ipairs(tools) do
+                    if type(tool) == "table" and tool.has == true then
+                        KA.Learn(state.stations, pos, KA.StationKind(tool.name))
+                    end
+                end
             end
         end
     end

@@ -221,9 +221,11 @@ end
 -- The forge learned: the profession window opened by it, the tool met.
 local function learnForge(c)
     c.setPosition(1411, 0.5, 0.5)
-    c.setTradeSkillTools({ { name = "Blacksmith Forge", met = true } })
+    c.setTradeSkillRows({ name = "Blacksmithing", rows = { { index = 1, name = "Rough Sharpening Stone" } } })
+    c.setTradeSkillTools(1, { { name = "Blacksmith Forge", has = true } })
     c.fire("TRADE_SKILL_SHOW"); c.advance(1, 5)
-    c.setTradeSkillTools(nil)
+    c.setTradeSkillRows(nil)
+    c.setTradeSkillTools(1, nil)
 end
 
 tests["key actions: by a forge with ore, one press opens Smelting; far from it, nothing"] = function(t)

@@ -144,6 +144,64 @@ tests["roll hint: what is not gear gets no hint"] = function(t)
     t.eq(R.Hint(nil, packs(), BETTER), nil)
 end
 
+-- Advice (S21, lead section 275): Need or Greed -------------------------------
+
+-- Every read the verdict needs: class, level, the worn head, both hands
+-- read empty, the weapon skills.
+local function adviceClient()
+    local c = client()
+    c.setLevel(10)
+    c.setWorn(16, false)
+    c.setWorn(17, false)
+    c.setWeaponSkills({})
+    return c
+end
+
+tests["roll advice: an upgrade for the chosen role is Need, with that role"] = function(t)
+    local a = R.Advice(adviceClient(), packs(), BETTER, "dps")
+    t.eq(a and a.word, "need")
+    t.eq(a and a.text, "Need: upgrade for dps")
+    t.eq(a and a.value, "Need +5")
+end
+
+tests["roll advice: usable but no upgrade for the chosen role is Greed"] = function(t)
+    local a = R.Advice(adviceClient(), packs(), BETTER, "tank")
+    t.eq(a and a.text, "Greed", "the same for a tank")
+    t.eq(a and a.word, "greed")
+    a = R.Advice(adviceClient(), packs(), WORSE, "dps")
+    t.eq(a and a.text, "Greed")
+    t.eq(a and a.value, "Greed")
+end
+
+tests["roll advice: no role chosen, an upgrade for any role is Need for that role"] = function(t)
+    local a = R.Advice(adviceClient(), packs(), BETTER, nil)
+    t.eq(a and a.text, "Need: upgrade for dps")
+    a = R.Advice(adviceClient(), packs(), BETTER, "healer")
+    t.eq(a and a.text, "Need: upgrade for dps", "a role the pack has no weights for counts as none")
+end
+
+tests["roll advice: gear you cannot use is Greed (can't use)"] = function(t)
+    local a = R.Advice(adviceClient(), packs(), PLATE, "dps")
+    t.eq(a and a.text, "Greed (can't use)")
+    t.eq(a and a.word, "greed")
+end
+
+tests["roll advice: no verdict gives no advice, never a guess"] = function(t)
+    t.eq(R.Advice(adviceClient(), packs(), UNREAD, "dps"), nil, "the game's marks not read")
+    local c = adviceClient()
+    c.setWorn(1, nil)
+    t.eq(R.Advice(c, packs(), BETTER, "dps"), nil, "what you wear was not read")
+    t.eq(R.Advice(adviceClient(), packs(), POTION, "dps"), nil, "not gear")
+    t.eq(R.Advice(adviceClient(), packs(), nil, "dps"), nil)
+    t.eq(R.Advice(nil, packs(), BETTER, "dps"), nil)
+end
+
+tests["roll advice: the hint words on the roll frame are unchanged"] = function(t)
+    local c = adviceClient()
+    t.eq(R.Hint(c, packs(), BETTER).text, "Upgrade")
+    t.eq(R.Hint(c, packs(), WORSE).text, "No upgrade")
+end
+
 -- The module ------------------------------------------------------------------
 
 tests["roll hint: a roll on an upgrade shows the hint on that roll"] = function(t)

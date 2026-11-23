@@ -4,7 +4,7 @@
 -- these reads. First guesses: none of these reads was seen in game.
 --   c.targetCorpse() -> nil | { exists = false }
 --                     | { exists = true, dead, player, lootable, needs }
---   c.tradeSkillTools() -> nil | { { name, met }, ... }
+--   N20 reads the N24 c.tradeSkillTools(index) (ClientProfReadsTests).
 local _, ns = ...
 
 local tests = {}
@@ -79,21 +79,7 @@ tests["c.targetCorpse: a read that fails or gives an odd answer is not known, ne
     t.eq(ns.make.client(bare).targetCorpse().lootable, nil, "no such call")
 end
 
-tests["c.tradeSkillTools: each tool and whether you are by it"] = function(t)
-    local env = { GetTradeSkillTools = function() return "Anvil", true, "Blacksmith Forge", false end }
-    t.eq(ns.make.client(env).tradeSkillTools(),
-        { { name = "Anvil", met = true }, { name = "Blacksmith Forge", met = false } })
-end
-
-tests["c.tradeSkillTools: none needed is an empty list; no call or a failed one is not known"] = function(t)
-    t.eq(ns.make.client({ GetTradeSkillTools = function() return nil end }).tradeSkillTools(), {})
-    t.eq(ns.make.client({}).tradeSkillTools(), nil)
-    t.eq(ns.make.client({ GetTradeSkillTools = function() error("no") end }).tradeSkillTools(), nil)
-    t.eq(ns.make.client({ GetTradeSkillTools = function() return 7, true end }).tradeSkillTools(), {},
-        "a name that is not text is left out")
-end
-
-tests["fake client: targetCorpse and tradeSkillTools are twins of the real reads"] = function(t)
+tests["fake client: targetCorpse is the twin of the real read"] = function(t)
     local c = ns.make.fakeClient()
     t.eq(c.targetCorpse(), nil, "not known until set")
     c.setTargetCorpse({ exists = true, dead = true, player = false, lootable = false, needs = "Skinning" })
@@ -105,9 +91,6 @@ tests["fake client: targetCorpse and tradeSkillTools are twins of the real reads
     t.ok(not pcall(c.targetCorpse), "the read raises while failing")
     c.setTargetCorpseFails(false)
     t.eq(c.targetCorpse().needs, "Skinning", "recovers")
-    t.eq(c.tradeSkillTools(), nil)
-    c.setTradeSkillTools({ { name = "Anvil", met = true } })
-    t.eq(c.tradeSkillTools(), { { name = "Anvil", met = true } })
 end
 
 return tests

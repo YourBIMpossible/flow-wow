@@ -7,6 +7,11 @@ local _, ns = ...
 -- upgrades as advisor prompts (Gear/MerchantShow.lua, F4). This puts the
 -- mark on the button too: a green arrow up on each item Gear/MerchantMarks.lua
 -- finds is an upgrade. Research: WoW/from-plexy/RESEARCH-vendor-marks.md.
+-- With it, as legacy Flow's Modules/Gear/SpecBadge.lua did, a small badge
+-- per role the class pack has (the chosen spec.role first): up, down or
+-- same against what you wear (GearMerchantMarks.Specs; can't use or no
+-- verdict: none for that role), drawn by client.markMerchantSpecs on the
+-- same pages, at the same times, as the arrows.
 --
 -- Marked again when the window opens or changes (MERCHANT_SHOW,
 -- MERCHANT_UPDATE), draws a new page or the buyback tab (client
@@ -23,6 +28,7 @@ ns.GearMerchantButtons = B
 B.NAME = "gearMerchantButtons"
 B.SETTING = "gear.merchantButtons"
 B.RETRY = 0.5
+B.ROLE = "spec.role"           -- Rotation/Role.lua's setting
 
 function B.Indexes(marks)
     local out = {}
@@ -37,13 +43,33 @@ function B.Declare(k, packs)
     local ctx, marked, retried, retry, followed = nil, nil, false, nil, false
     function api.marked() return marked end
 
+    -- The per-role badges; cleared with {}. A client without the call
+    -- draws none.
+    local function specs(badges)
+        local client = ctx.client
+        if type(client.markMerchantSpecs) == "function" then client.markMerchantSpecs(badges) end
+    end
+
+    local function badges()
+        local okRole, role = pcall(ctx.settings.get, ctx.settings, B.ROLE)
+        if not okRole then role = nil end
+        local ok, out = pcall(ns.GearMerchantMarks.Specs, ctx.client, packs or ns.Packs, role)
+        if not ok then
+            k.problems:add(B.NAME, "badges", tostring(out))
+            return {}
+        end
+        return out
+    end
+
     local function update()
         local client = ctx.client
         if type(client.markMerchantButtons) ~= "function" then return end
         if ctx.settings:get(B.SETTING) ~= true then
             marked = client.markMerchantButtons({})
+            specs({})
             return
         end
+        specs(badges())
         local ok, marks, info = pcall(ns.GearMerchantMarks.Marks, client, packs or ns.Packs)
         if not ok then
             k.problems:add(B.NAME, "marks", tostring(marks))
@@ -97,6 +123,7 @@ function B.Declare(k, packs)
                 if retry then retry() end
                 retry = nil
                 if type(c.client.markMerchantButtons) == "function" then marked = c.client.markMerchantButtons({}) end
+                specs({})
             end)
         end,
     })

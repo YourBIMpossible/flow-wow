@@ -782,13 +782,12 @@ tests["paladin PC-8: in melee with Crusader Strike known, it comes once Judgemen
     t.eq(icon.texture, "tex:Crusader Strike", "Judgement on cooldown: Crusader Strike")
     t.ok(said(c):find("suggesting Crusader Strike", 1, true), said(c))
     c.setTarget({ exists = false }); c.advance(1, 5)
-    -- PS-2 (lead section 275): not just "not showing" - the reason is the
-    -- missing target: the icon shows another spell, or the diag word names it.
-    local words = said(c)
-    local other = icon.shown == true and type(icon.texture) == "string"
-        and icon.texture ~= "tex:Crusader Strike"
-    t.ok(other or words:find("no enemy targeted", 1, true) ~= nil, "no target: no strike - " .. words)
-    t.ok(icon.texture ~= "tex:Crusader Strike" or icon.shown ~= true, "no target: no strike")
+    -- PS-2 (lead section 275), LF-2: the reason is the missing target. The
+    -- control: only the target changes back, and the strike comes back.
+    t.ok(icon.texture ~= "tex:Crusader Strike" or icon.shown ~= true, "no target: no strike - " .. said(c))
+    c.setTarget(ENEMY); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Crusader Strike", "the target back, nothing else changed: the strike again")
+    t.eq(icon.shown, true, "and shown")
 end
 
 tests["a class with no pack: on, and it says so"] = function(t)
