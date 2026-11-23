@@ -9214,6 +9214,157 @@ function ns.make.client(env)
             return n
         end
     end
+    ---------------------------------------------------------------------
+    -- N60a: chat text to copy and this add-on's own links in chat
+    -- (UI/Chat.lua). Look only: a line is read or handed on, a click is
+    -- heard; nothing is sent, no chat frame's own function is replaced and
+    -- no link of the game's own is handled here. Every call is a first
+    -- guess, not seen in game on 16001; the names are in Diag.NAMES.
+    --
+    --   client.chatLines(index, max) -> { text, ... } | nil
+    --     The last `max` lines chat window `index` holds, oldest first, as
+    --     the game keeps them (colour and link codes still in). At most
+    --     CHAT_LINES_MAX (500), which is also what a missing max means.
+    --     nil when the window is not there or will not say how many lines
+    --     it has. A line the client hides, or that is no text, is left out.
+    --     Read from the global ChatFrame<index>: GetNumMessages() and
+    --     GetMessageInfo(i) -> text, ... (warcraft.wiki.gg,
+    --     ScrollingMessageFrame). That line 1 is the oldest is part of the
+    --     first guess.
+    --
+    --   client.chatFilter(events, fn) -> cancel | nil
+    --     fn(text, event) for every chat line of the named events before it
+    --     is shown; a text it gives back replaces the line's text, anything
+    --     else leaves the line as it was. fn runs under pcall. A text the
+    --     client hides (issecretvalue), or that is no text, is handed on
+    --     unread. Through ChatFrameUtil.AddMessageEventFilter, the name
+    --     Blizzard's 1.60.1 UI source has (WoW/from-plexy/
+    --     RESEARCH-chat-prat.md section 3: the older global
+    --     ChatFrame_AddMessageEventFilter is nil on this client unless the
+    --     player turned the deprecation fallbacks on); the older global is
+    --     used where only it exists. The game's contract for a filter:
+    --     filter(frame, event, text, ...) -> false to keep the line, then,
+    --     when an argument changed, every argument again. nil when the
+    --     client has neither name or took no event.
+    --
+    --   client.onLinkClick(kind, fn) -> cancel | nil
+    --     fn(rest) when the player clicks a chat link whose data starts
+    --     with kind .. ":"; rest is what follows. Every other link is left
+    --     to the game: this only listens after the game's own SetItemRef
+    --     (hooksecurefunc, once for every kind), it never replaces it. nil
+    --     when the client has no hooksecurefunc or no SetItemRef.
+    --
+    --   client.pratModule(name) -> true | false | nil
+    --     Whether the chat add-on Prat has its module `name` on; nil when
+    --     Prat is not there or does not say. Read from Prat's global object
+    --     Prat: GetModule(name, true) (or the same on Prat.Addon), then the
+    --     module's IsEnabled(). The names are inferred in the research note
+    --     (section 4), not read from Prat's source here.
+    ---------------------------------------------------------------------
+    do
+        local CHAT_LINES_MAX = 500
+
+        function c.chatLines(index, max)
+            if type(index) ~= "number" or index < 1 or index ~= math.floor(index) then return nil end
+            max = math.floor(tonumber(max) or CHAT_LINES_MAX)
+            if max < 1 then max = 1 end
+            if max > CHAT_LINES_MAX then max = CHAT_LINES_MAX end
+            local frame = env["ChatFrame" .. index]
+            if type(frame) ~= "table" then return nil end
+            local okN, n = method(frame, "GetNumMessages")
+            if not okN or hidden(n) or type(n) ~= "number" then return nil end
+            local from = n - max + 1
+            if from < 1 then from = 1 end
+            local out = {}
+            for i = from, n do
+                local okM, line = method(frame, "GetMessageInfo", i)
+                if okM and line ~= nil and not hidden(line) and type(line) == "string" then
+                    out[#out + 1] = line
+                end
+            end
+            return out
+        end
+
+        function c.chatFilter(events, fn)
+            if type(events) ~= "table" or type(fn) ~= "function" then return nil end
+            local add, remove = nil, nil
+            local util = env.ChatFrameUtil
+            if type(util) == "table" then
+                local okA, a = pcall(function() return util.AddMessageEventFilter end)
+                if okA and type(a) == "function" then
+                    add = a
+                    local okR, r = pcall(function() return util.RemoveMessageEventFilter end)
+                    if okR then remove = r end
+                end
+            end
+            if add == nil then
+                add, remove = env.ChatFrame_AddMessageEventFilter, env.ChatFrame_RemoveMessageEventFilter
+            end
+            if type(add) ~= "function" then return nil end
+            local dead = false
+            local function filter(_, event, text, ...)
+                if dead or text == nil then return false end
+                if hidden(text) or type(text) ~= "string" then return false end
+                local ok, new = pcall(fn, text, event)
+                if not ok or type(new) ~= "string" or new == text then return false end
+                return false, new, ...
+            end
+            local added = {}
+            for _, event in ipairs(events) do
+                if type(event) == "string" and event ~= "" and call(add, event, filter) then
+                    added[#added + 1] = event
+                end
+            end
+            if #added == 0 then return nil end
+            return function()
+                dead = true
+                for i = 1, #added do call(remove, added[i], filter) end
+                added = {}
+            end
+        end
+
+        local linkHandlers, linkHooked = {}, false
+        local function linkClicked(link)
+            if link == nil or hidden(link) or type(link) ~= "string" then return end
+            for kind, fn in pairs(linkHandlers) do
+                if link:sub(1, #kind + 1) == kind .. ":" then
+                    -- An error in fn must not reach the click handler of the client.
+                    pcall(fn, link:sub(#kind + 2))
+                end
+            end
+        end
+        function c.onLinkClick(kind, fn)
+            if type(kind) ~= "string" or kind == "" or type(fn) ~= "function" then return nil end
+            if not linkHooked then
+                if type(env.hooksecurefunc) ~= "function" or type(env.SetItemRef) ~= "function" then return nil end
+                if not pcall(env.hooksecurefunc, "SetItemRef", function(link) linkClicked(link) end) then
+                    return nil
+                end
+                linkHooked = true
+            end
+            linkHandlers[kind] = fn
+            return function()
+                if linkHandlers[kind] == fn then linkHandlers[kind] = nil end
+            end
+        end
+
+        function c.pratModule(name)
+            if type(name) ~= "string" or name == "" then return nil end
+            local prat = env.Prat
+            if type(prat) ~= "table" then return nil end
+            local okM, mod = method(prat, "GetModule", name, true)
+            if not okM or type(mod) ~= "table" then
+                local okA, addon = pcall(function() return prat.Addon end)
+                if okA and type(addon) == "table" then
+                    okM, mod = method(addon, "GetModule", name, true)
+                end
+            end
+            if not okM or type(mod) ~= "table" then return nil end
+            local okE, on = method(mod, "IsEnabled")
+            if not okE or hidden(on) or type(on) ~= "boolean" then return nil end
+            return on
+        end
+    end
 
     -- Lead section 303 (Dungeon Quests, Nav/DungeonRead.lua). Your race
     -- number, the third answer of UnitRace("player"): Questie's
@@ -11313,6 +11464,39 @@ function ns.make.client(env)
             if #chain > 0 then parts[#parts + 1] = "on " .. table.concat(chain, " < ") end
             return table.concat(parts, "; ")
         end
+    end
+    -- G48 (P-TRIP): the party route's add-on messages (Nav/PartyRoute.lua),
+    -- the add-on's only outward call. First guesses, not tested in game:
+    -- C_ChatInfo.RegisterAddonMessagePrefix(prefix) and
+    -- C_ChatInfo.SendAddonMessage(prefix, text, channel) answer true (older
+    -- builds) or 0 (Enum.SendAddonMessageResult.Success, newer builds) on
+    -- success; any other answer, nothing, or a raise is "not sent".
+    -- Messages come in through c.listen("CHAT_MSG_ADDON",
+    -- fn(prefix, text, channel, sender)).
+    --   c.addonPrefix(prefix) -> true | false | nil (no such call)
+    --   c.addonSend(prefix, text, channel) -> true | nil, why
+    -- Only the "PARTY" channel is ever sent on; any other is refused here.
+    function c.addonPrefix(prefix)
+        if type(prefix) ~= "string" or prefix == "" or #prefix > 16 then return false end
+        local chat = env.C_ChatInfo
+        if type(chat) ~= "table" or type(chat.RegisterAddonMessagePrefix) ~= "function" then return nil end
+        local ok, r = call(chat.RegisterAddonMessagePrefix, prefix)
+        if not ok then return nil end
+        return r == true or r == 0
+    end
+
+    function c.addonSend(prefix, text, channel)
+        if channel ~= "PARTY" then return nil, "only the party channel" end
+        if type(prefix) ~= "string" or type(text) ~= "string" then return nil, "nothing to send" end
+        if #text > 255 then return nil, "message too long" end
+        local chat = env.C_ChatInfo
+        if type(chat) ~= "table" or type(chat.SendAddonMessage) ~= "function" then
+            return nil, "the client has no C_ChatInfo.SendAddonMessage"
+        end
+        local ok, r = call(chat.SendAddonMessage, prefix, text, channel)
+        if not ok then return nil, "the send raised: " .. tostring(r) end
+        if r == true or r == 0 then return true end
+        return nil, "the client answered " .. tostring(r)
     end
     return c
 end
