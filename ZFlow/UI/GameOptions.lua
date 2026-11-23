@@ -13,6 +13,11 @@ local _, ns = ...
 -- reload or on any tick: the store watch fires only when the value
 -- changes. A value the game does not say is never guessed: nothing is
 -- changed and the line says so.
+-- In a fight (or when the game does not say), nothing is written: the
+-- change waits and is made when the fight ends, to the setting as it is
+-- then. A write the game already has is skipped; off reads the value
+-- first and writes nothing when the game does not say it (lead section
+-- 266, GO-1 to GO-3).
 -- ACTS: the writes are client.setGameSetting and client.setCombatLogFile, on the
 -- player's own choice only. A client without them changes nothing.
 -- Needs game test: every read and write, a write in a fight, the camera
@@ -52,8 +57,11 @@ local function act(fn, ...)
 end
 
 -- Writes a setting and reads it back: true when the game kept it (or does
--- not say), nil and why when not.
+-- not say), nil and why when not. Nothing is written when the game already
+-- has the value.
 local function putGameSetting(cl, name, v)
+    local before = cl.gameSetting(name)
+    if before ~= nil and same(before, v) then return true end
     local ok, why = act(cl.setGameSetting, name, v)
     if not ok then return nil, why end
     local now = cl.gameSetting(name)
@@ -113,6 +121,7 @@ local OPTIONS = {
         show = onOff,
         read = function(cl) return cl.combatLogFile() end,
         apply = function(cl)
+            if cl.combatLogFile() == true then return true end
             local ok, why = act(cl.setCombatLogFile, true)
             if ok then return true end
             return nil, why
@@ -126,12 +135,14 @@ local WHY = {
     raised = "the game refused the change",
     bad = "the game refused the change",
     kept = "the game kept its own value",
+    combat = "the game takes no change in a fight",
 }
 local function because(why) return WHY[why] or WHY.bad end
 
 function G.Declare(k)
     local ctx
     local cancels = {}
+    local pending = {}   -- by option: changed in a fight, made when it ends
     local api = {}
 
     local function say(text)
@@ -140,6 +151,15 @@ function G.Declare(k)
         end
     end
     local function path(o) return G.PATH .. "." .. o.opt end
+
+    -- A fight, or a combat state the game does not say: wait.
+    local function inFight()
+        return ctx.client.inCombat() ~= false
+    end
+    local function later(o)
+        pending[o.opt] = true
+        say(o.name .. " is changed after the fight (" .. WHY.combat .. ").")
+    end
 
     -- The player turned it on: keep what the game has (once), then change it.
     local function turnOn(o)
@@ -156,6 +176,7 @@ function G.Declare(k)
         end
         local ok, done, why = pcall(o.apply, cl)
         if not ok then done, why = nil, "raised" end
+        if done == nil and why == "combat" then later(o); return end
         if done == nil then
             say(o.name .. " not changed (" .. because(why) .. "). It stays " .. o.show(found) .. ".")
             return
@@ -170,13 +191,19 @@ function G.Declare(k)
         local found = ctx.store:get("account", path(o))
         if found == nil then return end
         local okR, now = pcall(o.read, cl)
-        if okR and now ~= nil and same(now, found) then
+        if not okR or now == nil then
+            say(o.name .. " not put back to " .. o.show(found)
+                .. ": the game did not say its value. It is kept for the next try.")
+            return
+        end
+        if same(now, found) then
             ctx.store:set("account", path(o), nil)
             say(o.name .. " left " .. o.show(found) .. ", as it was before.")
             return
         end
         local ok, done, why = pcall(o.put, cl, found)
         if not ok then done, why = nil, "raised" end
+        if done ~= true and why == "combat" then later(o); return end
         if done ~= true then
             say(o.name .. " not put back to " .. o.show(found) .. " (" .. because(why)
                 .. "). It is kept for the next try.")
@@ -205,7 +232,7 @@ function G.Declare(k)
 
     k:Module({
         name = G.NAME,
-        needs = { "client", "store", "settings" },
+        needs = { "client", "store", "settings", "bus" },
         settings = rows,
         provides = { Status = api.status },
         start = function(c)
@@ -214,19 +241,31 @@ function G.Declare(k)
                 local row = c.settings:row(o.key)
                 if type(row) == "table" then
                     local cancel = c.store:watch(row.scope, row.path or ("settings." .. o.key), function(value, old)
-                        if value == true and old ~= true then
-                            turnOn(o)
-                        elseif value ~= true and old == true then
-                            turnOff(o)
-                        end
+                        local on, was = value == true, old == true
+                        if on == was then return end
+                        if inFight() then later(o); return end
+                        pending[o.opt] = nil
+                        if on then turnOn(o) else turnOff(o) end
                     end)
                     if type(cancel) == "function" then cancels[#cancels + 1] = cancel end
                 end
             end
+            -- The fight is over: make each waiting change, to the setting
+            -- as it is now (on then off again in one fight changes nothing).
+            c.bus:on(G.NAME, "PLAYER_REGEN_ENABLED", function()
+                if not ctx or inFight() then return end
+                for _, o in ipairs(OPTIONS) do
+                    if pending[o.opt] then
+                        pending[o.opt] = nil
+                        if ctx.settings:get(o.key) == true then turnOn(o) else turnOff(o) end
+                    end
+                end
+            end)
         end,
         stop = function()
             for i = 1, #cancels do cancels[i]() end
             cancels = {}
+            pending = {}
             ctx = nil
         end,
     })
