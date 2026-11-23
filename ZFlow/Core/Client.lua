@@ -5255,6 +5255,93 @@ function ns.make.client(env)
         return nil
     end
     -- ----------------------------------------------------------- end 183
+
+    -- ------------------------------------------------------------ flights
+    -- DISPATCH section 182 item 2 (RESEARCH-FLIGHTS.md section 6, "New
+    -- client functions" 1; legacy Flow Modules/Nav/Nav.lua:2723-2749,
+    -- N.ReadTaxiNodes). The flight points on the open flight map:
+    --   c.taxiNodes() -> { map = uiMapID or nil, here = name or nil,
+    --                      nodes = { { name, x, y, state } ... } } or nil
+    -- x, y are shares (0..1) of the flight map `map`. state is "current",
+    -- "reachable", "unreachable", or nil when the client gives none it
+    -- names (never guessed). here only from a node read plainly as current.
+    -- A node whose name or place is hidden, missing or odd is left out.
+    -- nil when no node is read: no flight map open, no such calls, a read
+    -- that raised, or a hidden list.
+    -- Asks GetTaxiMapID, then C_TaxiMap.GetAllTaxiNodes(map) with
+    -- Enum.FlightPathState; without them NumTaxiNodes, TaxiNodeGetType
+    -- ("CURRENT", "REACHABLE"), TaxiNodePosition, TaxiNodeName. All first
+    -- guesses, not seen on 1.60.1 (names from legacy Flow; warcraft.wiki.gg
+    -- not checked from here). LOOK ONLY: no node is taken or selected, and
+    -- no frame is made.
+    local function plainName(v)
+        if v == nil or hidden(v) or type(v) ~= "string" or v == "" then return nil end
+        return v
+    end
+    local function plainShare(v)
+        if v == nil or hidden(v) or type(v) ~= "number" or v ~= v then return nil end
+        return v
+    end
+    function c.taxiNodes()
+        local okMap, map = call(env.GetTaxiMapID)
+        if not okMap or map == nil or hidden(map) or type(map) ~= "number" then map = nil end
+        local nodes, here = {}, nil
+        local group = env.C_TaxiMap
+        local all = type(group) == "table" and group.GetAllTaxiNodes or nil
+        if map ~= nil and type(all) == "function" then
+            local ok, list = call(all, map)
+            if not ok or list == nil or hidden(list) or type(list) ~= "table" then return nil end
+            local enum = type(env.Enum) == "table" and env.Enum.FlightPathState or nil
+            local names = {}
+            if type(enum) == "table" then
+                for _, pair in ipairs({ { "Current", "current" }, { "Reachable", "reachable" },
+                    { "Unreachable", "unreachable" } }) do
+                    local v = enum[pair[1]]
+                    if v ~= nil then names[v] = pair[2] end
+                end
+            end
+            for _, n in ipairs(list) do
+                if type(n) == "table" and not hidden(n) then
+                    local name, pos, state = plainName(n.name), n.position, n.state
+                    local x, y
+                    if name and pos ~= nil and not hidden(pos) and type(pos) == "table" then
+                        local okXY, px, py = call(pos.GetXY, pos)
+                        if not okXY then px, py = pos.x, pos.y end
+                        x, y = plainShare(px), plainShare(py)
+                    end
+                    if name and x and y then
+                        local word = nil
+                        if state ~= nil and not hidden(state) then word = names[state] end
+                        nodes[#nodes + 1] = { name = name, x = x, y = y, state = word }
+                        if word == "current" then here = name end
+                    end
+                end
+            end
+        else
+            local okN, count = call(env.NumTaxiNodes)
+            if not okN or count == nil or hidden(count) or type(count) ~= "number" or count ~= count then
+                return nil
+            end
+            local kinds = { CURRENT = "current", REACHABLE = "reachable" }
+            for i = 1, math.min(math.floor(count), 200) do
+                local okName, rawName = call(env.TaxiNodeName, i)
+                local okPos, px, py = call(env.TaxiNodePosition, i)
+                local name = okName and plainName(rawName) or nil
+                local x = okPos and plainShare(px) or nil
+                local y = okPos and plainShare(py) or nil
+                if name and x and y then
+                    local okKind, kind = call(env.TaxiNodeGetType, i)
+                    local word = nil
+                    if okKind and kind ~= nil and not hidden(kind) and type(kind) == "string" then word = kinds[kind] end
+                    nodes[#nodes + 1] = { name = name, x = x, y = y, state = word }
+                    if word == "current" then here = name end
+                end
+            end
+        end
+        if #nodes == 0 then return nil end
+        return { map = map, here = here, nodes = nodes }
+    end
+    -- --------------------------------------------------------- end flights
     return c
 end
 

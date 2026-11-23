@@ -1669,6 +1669,21 @@ function ns.make.fakeClient(opts)
         s.currentSpells = s.currentSpells or {}
         if v == nil then s.currentSpells[id] = nil else s.currentSpells[id] = v and true or false end
     end
+
+    -- Flights (DISPATCH section 182 item 2). As the real client's
+    -- taxiNodes(): unknown (nil) until set; a copy each time.
+    --   c.setTaxiNodes({ map, here, nodes = { { name, x, y, state } } })
+    --   c.setTaxiNodes(nil): no flight map open
+    function c.setTaxiNodes(read) s.taxiNodes = type(read) == "table" and read or nil end
+    function c.taxiNodes()
+        local r = s.taxiNodes
+        if type(r) ~= "table" then return nil end
+        local nodes = {}
+        for i, n in ipairs(type(r.nodes) == "table" and r.nodes or {}) do
+            nodes[i] = { name = n.name, x = n.x, y = n.y, state = n.state }
+        end
+        return { map = r.map, here = r.here, nodes = nodes }
+    end
     return c
 end
 

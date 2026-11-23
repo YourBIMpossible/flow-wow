@@ -134,6 +134,7 @@ return {
         "Nav/FlightPaths.lua",
         "Nav/MapFlights.lua",
         "Nav/TaxiMark.lua",
+        "Nav/Flights.lua",
         "Nav/Gates.lua",
         "Nav/Travel.lua",
         "Nav/Legs.lua",
