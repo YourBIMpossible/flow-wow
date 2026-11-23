@@ -358,20 +358,21 @@ tests["reveal: the word has its help line"] = function(t)
     t.eq(#lines, 1)
 end
 
-tests["reveal: the login intro waits for the arrow on a new character; the intro word still shows it"] = function(t)
-    local c, addon = boot()
+-- Lead section 294 (Twin checks 16:58): staging is off by default, so a
+-- new install gets the intro at its first login. The old case (the intro
+-- waits for the arrow) needs staging on before the first login, which a
+-- new install cannot have: its saved setting would make it an existing
+-- account (UI/Reveal.lua R.Initial). Staging switched on later is pinned
+-- by the stage tests above.
+tests["reveal 294: staging off by default: a new install gets the intro at first login; the intro word shows it again"] = function(t)
+    local c = boot({ staged = false })
     local p = named(c.panels, "Intro")
     t.ok(p ~= nil, "the intro panel is made")
-    t.eq(p and p.shown, false, "first login of a new character: not yet")
-    t.eq(addon.store:get("char", "state.intro.seen"), nil, "not marked seen")
-    said(c, "intro")
-    t.eq(p and p.shown, true, "asked for: shown")
+    t.eq(p and p.shown, true, "first login of a new install: the intro")
     p.close()
-    walk(c, 12)
-    local account, char = c.saved(ns.id.accountDB), c.saved(ns.id.charDB)
-    char.state.intro = nil
-    local c2 = boot({ account = account, char = char })
-    t.eq(named(c2.panels, "Intro").shown, true, "the next login, the arrow in: the intro")
+    t.eq(p and p.shown, false, "closed")
+    said(c, "intro")
+    t.eq(p and p.shown, true, "asked for: shown again")
 end
 
 tests["reveal: walking is measured on one continent only"] = function(t)

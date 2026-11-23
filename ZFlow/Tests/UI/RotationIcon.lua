@@ -573,27 +573,57 @@ local function saidEmpty(c)
     return n
 end
 
-tests["rotation icon 294: on, in a fight, nothing to suggest: one line saying why, once a session"] = function(t)
+-- A view of the driver with the class pack read and no suggestion: the
+-- one case the line is for (Twin review 17:11, F1).
+local function nothing(k)
+    k.bus:emit(D.EVENT, { pack = true, trace = {} })
+end
+local ENEMY = { exists = true, hostile = true, dead = false }
+
+tests["rotation icon 294: on, in a fight, an enemy targeted, nothing to suggest: one line, once a session"] = function(t)
     local k, c = start({ enabled = true })
     c.setCombat(true)
-    suggest(k, nil)
+    c.setTarget(ENEMY)
+    nothing(k)
     t.eq(c.icons[1].shown, false, "nothing to show")
     t.eq(saidEmpty(c), 1, "one line")
     t.ok(tostring(c.printed[#c.printed]):find(ns.id.title, 1, true) == 1, "from the add-on, by its title")
-    suggest(k, nil)
-    suggest(k, nil)
+    nothing(k)
+    nothing(k)
     t.eq(saidEmpty(c), 1, "not again")
 end
 
 tests["rotation icon 294: out of a fight, or switched off, nothing to suggest says nothing"] = function(t)
     local k, c = start({ enabled = true })
     c.setCombat(false)
-    suggest(k, nil)
+    c.setTarget(ENEMY)
+    nothing(k)
     t.eq(saidEmpty(c), 0, "out of a fight")
     local k2, c2 = start()
     c2.setCombat(true)
-    suggest(k2, nil)
+    c2.setTarget(ENEMY)
+    nothing(k2)
     t.eq(saidEmpty(c2), 0, "switched off")
+end
+
+-- Twin review 17:11, F1: a missing read is not "nothing to suggest".
+tests["rotation icon 294 F1: no line when a texture read failed or no enemy is targeted yet"] = function(t)
+    local k, c = start({ enabled = true })
+    c.setCombat(true)
+    c.setTarget(ENEMY)
+    suggest(k, "No Such Spell")
+    t.eq(c.icons[1].shown, false, "a suggestion whose picture was not read: hidden")
+    t.eq(saidEmpty(c), 0, "a suggestion exists: not the empty line")
+    c.setTarget({ exists = false })
+    nothing(k)
+    t.eq(saidEmpty(c), 0, "no enemy targeted yet: not the empty line")
+    k.bus:emit(D.EVENT, { trace = {} })
+    t.eq(saidEmpty(c), 0, "the class pack not read: not the empty line")
+    c.setTarget(ENEMY)
+    k.bus:emit(D.EVENT, { pack = true, trace = {}, stale = true })
+    t.eq(saidEmpty(c), 0, "an earlier reading kept after a failed read: not the empty line")
+    nothing(k)
+    t.eq(saidEmpty(c), 1, "the line is still there for the real case")
 end
 
 return tests
