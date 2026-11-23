@@ -239,7 +239,7 @@ end
 
 -- PM-1: Questie with names, its ObjectiveData in another order than the log.
 local function namedQuestie(data)
-    local npcs = { [VERMIN] = { name = "Kobold Vermin" }, [GNOLL] = { name = "Gnoll" } }
+    local npcs = { [VERMIN] = { name = "Kobold Vermin" }, [STRANGER] = { name = "Murloc" } }
     local items = { [PAW] = { name = "Gnoll Paw", npcDrops = { GNOLL } } }
     return {
         GetQuest = function(id) if id == 101 then return { ObjectiveData = data } end return nil end,
@@ -258,9 +258,9 @@ end
 
 tests["plate quests index (PM-1): names that match no objective give no mark, never a guess"] = function(t)
     if type(PQ) ~= "table" then return t.ok(false, "no module") end
-    local other = { { Type = "monster", Id = GNOLL }, { Type = "monster", Id = GNOLL } }
+    local other = { { Type = "monster", Id = STRANGER }, { Type = "monster", Id = STRANGER } }
     local index = PQ.Index({ log()[1] }, namedQuestie(other), nil)
-    t.eq(index[GNOLL], nil, "Questie names a Gnoll; the log speaks of Kobold Vermin and Gnoll Paw")
+    t.eq(index[STRANGER], nil, "Questie names a Murloc; the log speaks of Kobold Vermin and Gnoll Paw")
 end
 
 tests["plate quests index (PM-2): a '.' call answering no table is no answer; the ':' form is asked"] = function(t)
