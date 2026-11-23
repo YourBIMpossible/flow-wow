@@ -155,4 +155,53 @@ tests["goal mid bank visit: a goal word that changes nothing does not list again
     c.setBankOpen(false)
 end
 
+-- Lead section 223 (BR-1, MyBuddy): the bank list started again while the
+-- bank window stays open (an interface load at the bank). The start reads
+-- whether the bank is open; it does not take a fresh closed. Here the add-on
+-- is loaded on a client whose bank is already open, with no bank event
+-- after the load.
+local function startAt(open)
+    local c = ns.make.fakeClient()
+    c.setSaved(ns.id.accountDB, {})
+    c.setSaved(ns.id.charDB, {})
+    c.setItemInfo(INFO)
+    c.setBagItems(BAG)
+    c.setBankOpen(open)
+    local addon = ns.offline.addon(c)
+    c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
+    c.advance(5, 20)
+    return c, addon
+end
+
+tests["goal mid bank visit: started with the bank already open, a goal change lists once"] = function(t)
+    local c, addon = startAt(true)
+    t.eq(c.bankOpen(), true, "the bank is open at the start")
+    local made = addon.bankList.shows()
+    word(c, "goal add " .. LINEN .. " 8")
+    t.eq(addon.bankList.shows() - made, 1, "the goal change lists once")
+    local lines = shown(c)
+    t.ok(has(lines, KEPT12) and has(lines, "8 x Linen Cloth"), "twelve to bank, eight held: " .. joined(lines))
+    word(c, "goal remove " .. LINEN)
+    t.eq(addon.bankList.shows() - made, 2, "the removal lists once")
+    t.ok(has(shown(c), KEPT20), "goal gone: all 20 again: " .. joined(shown(c)))
+    c.setBankOpen(false)
+    word(c, "goal add " .. LINEN .. " 8")
+    t.eq(addon.bankList.shows() - made, 2, "the bank closed: a goal change draws nothing")
+    t.eq(shown(c), nil, "no panel shown")
+end
+
+-- Started with the bank closed, or not known to be open: a goal change
+-- draws nothing. Not known stays not known; it is never read as open.
+tests["goal mid bank visit: started with the bank closed or not known, a goal change draws nothing"] = function(t)
+    for _, open in ipairs({ false, "not known" }) do
+        local c, addon = startAt(open == true)
+        if open == "not known" then c.setBankOpen(nil) end
+        local made, kept = addon.bankList.shows(), addon.bankList.last()
+        word(c, "goal add " .. LINEN .. " 8")
+        t.eq(addon.bankList.shows() - made, 0, "no listing: " .. tostring(open))
+        t.ok(addon.bankList.last() == kept, "the last listing is unchanged: " .. tostring(open))
+        t.eq(shown(c), nil, "no panel shown: " .. tostring(open))
+    end
+end
+
 return tests
