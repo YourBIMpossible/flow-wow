@@ -3972,7 +3972,7 @@ function ns.make.fakeClient(opts)
     -- Not in a party (c.setGrouped not true): nil, "not in a party".
     do
         local links, prefixes = {}, {}
-        local refuse
+        local addonRefusal
         local me = "Player"
         c.addonSent = {}
         function c.addonPrefix(prefix)
@@ -3987,7 +3987,7 @@ function ns.make.fakeClient(opts)
             if channel ~= "PARTY" then return nil, "only the party channel" end
             if type(prefix) ~= "string" or type(text) ~= "string" then return nil, "nothing to send" end
             if #text > 255 then return nil, "message too long" end
-            if refuse ~= nil then return nil, refuse end
+            if addonRefusal ~= nil then return nil, addonRefusal end
             if s.grouped ~= true then return nil, "not in a party" end
             c.addonSent[#c.addonSent + 1] = { prefix = prefix, text = text, channel = channel }
             for _, other in ipairs(links) do other.addonDeliver(prefix, text, channel, me) end
@@ -3995,7 +3995,7 @@ function ns.make.fakeClient(opts)
             return true
         end
         function c.linkAddon(other) links[#links + 1] = other end
-        function c.setAddonRefuse(why) refuse = why end
+        function c.setAddonRefuse(why) addonRefusal = why end
         function c.setAddonName(name) me = tostring(name) end
     end
     return c
