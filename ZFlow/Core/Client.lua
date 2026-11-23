@@ -571,6 +571,12 @@ function ns.make.client(env)
         return { makes = makes, yield = yield, mats = mats }
     end
 
+    -- P-PROF (N23): the colour words the classic window gives a recipe row.
+    -- Needs game test: the words on 16001. Section 245 (lead item 1, LOW):
+    -- one table for tradeSkillRows and tradeSkillSchematic; a word not in
+    -- it is left out, never saved as it came.
+    local ROW_DIFFICULTY = { optimal = "optimal", medium = "medium", easy = "easy", trivial = "trivial", difficult = "difficult" }
+
     -- Section 231 item 1: the fallback for recipeSchematic when the client
     -- has no C_TradeSkillUI.GetRecipeSchematic (not in CLIENT-NAMES-16001).
     -- The classic reads of the open trade skill window, by row index, not
@@ -581,7 +587,8 @@ function ns.make.client(env)
     -- of GetTradeSkillReagentInfo(index, r) for how many a craft takes.
     -- Section 238 (RF-1 to RF-3, as Flow's readClassic in
     -- Modules/Crafting/Recipes.lua): GetTradeSkillInfo(index) first, for the
-    -- row's name and kind (its difficulty); a "header" or "subheader" row is
+    -- row's name and kind (its difficulty, a ROW_DIFFICULTY word or left
+    -- out); a "header" or "subheader" row is
     -- no recipe: nil (RF-2). A product link that is no item link (an
     -- enchant) gives makes nil, the reagents kept (RF-1); no product link
     -- yet gives makes nil and partial. A reagent whose item or count is not
@@ -636,7 +643,8 @@ function ns.make.client(env)
                 partial = true
             end
         end
-        return { name = name, difficulty = kind, makes = makes, yield = yield, mats = mats, partial = partial }
+        return { name = name, difficulty = ROW_DIFFICULTY[kind], makes = makes, yield = yield, mats = mats,
+                 partial = partial }
     end
 
     -- Section 233 (GR2-1): the rows of the classic trade skill window, for
@@ -647,12 +655,31 @@ function ns.make.client(env)
     -- Every other row is a recipe the player has learned. Only what the
     -- window shows: a collapsed header hides its rows. Section 238 (RF-2):
     -- each row keeps its kind as its difficulty, as Flow did.
-    --   { name =, skill =, max =, rows = { { index = i, name =, difficulty = } } }
+    --   { name =, skill =, max =, rows = { { index = i, name =, difficulty = } },
+    --     collapsed =, filtered = }   (section 245, below)
     -- Anything that can't be read makes the whole answer nil: never a
     -- shorter list. First guesses, not seen in game.
-    -- P-PROF (N23): the colour words the classic window gives a recipe row.
-    -- Needs game test: the words on 16001.
-    local ROW_DIFFICULTY = { optimal = "optimal", medium = "medium", easy = "easy", trivial = "trivial", difficult = "difficult" }
+    -- Section 245 (RB2-2): whether the rows are every learned recipe.
+    --   collapsed = true when a header's fourth GetTradeSkillInfo answer
+    --     (isExpanded) is false; false when every header says true (or 1);
+    --     nil when one says anything else (nil may be a collapsed header
+    --     on clients that answer 1/nil). No header: false.
+    --   filtered = false when GetTradeSkillSubClassFilter(0) and
+    --     GetTradeSkillInvSlotFilter(0) both say "all" (true or 1); true
+    --     when one answers anything else; nil when one is missing, fails or
+    --     is secret.
+    --   whole is never set here: no reliable read of the "have materials"
+    --   box or the name search box is known, so whether they hide rows is
+    --   unknown, and RecipeBook drops nothing from this read.
+    -- All first guesses, needs game test (Core/Diag.lua NAMES lists the
+    -- names, and the candidates for the two unknown reads).
+    local function allShown(fn)
+        if fn == nil then return nil end
+        local ok, on = call(fn, 0)
+        if not ok then return nil end
+        if on ~= nil and hidden(on) then return nil end
+        return on == true or on == 1
+    end
 
     function c.tradeSkillRows()
         local okLine, name, skill, max = call(env.GetTradeSkillLine)
@@ -661,16 +688,28 @@ function ns.make.client(env)
         end
         local okN, n = call(env.GetNumTradeSkills)
         if not okN or not wholeCount(n) or n < 1 or n == math.huge then return nil end
-        local rows = {}
+        local rows, collapsed = {}, false
         for i = 1, n do
-            local okInfo, rowName, kind = call(env.GetTradeSkillInfo, i)
+            local okInfo, rowName, kind, _, expanded = call(env.GetTradeSkillInfo, i)
             if not okInfo or type(kind) ~= "string" or hidden(kind) then return nil end
             if kind ~= "header" and kind ~= "subheader" then
                 if type(rowName) ~= "string" or hidden(rowName) or rowName == "" then return nil end
                 rows[#rows + 1] = { index = i, name = rowName, difficulty = ROW_DIFFICULTY[kind] }
+            elseif expanded == nil or hidden(expanded) then
+                if collapsed ~= true then collapsed = nil end
+            elseif expanded == false then
+                collapsed = true
+            elseif expanded ~= true and expanded ~= 1 then
+                if collapsed ~= true then collapsed = nil end
             end
         end
-        local out = { name = name, rows = rows }
+        local out = { name = name, rows = rows, collapsed = collapsed }
+        local sub, slot = allShown(env.GetTradeSkillSubClassFilter), allShown(env.GetTradeSkillInvSlotFilter)
+        if sub == false or slot == false then
+            out.filtered = true
+        elseif sub == true and slot == true then
+            out.filtered = false
+        end
         if wholeCount(skill) and not hidden(skill) then out.skill = skill end
         if wholeCount(max) and not hidden(max) then out.max = max end
         return out
