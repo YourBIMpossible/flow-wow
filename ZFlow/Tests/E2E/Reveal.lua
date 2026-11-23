@@ -248,28 +248,29 @@ end
 
 tests["reveal 236: a read raising then recovering"] = function(t)
     local c, addon = boot()
-    local real, raised = c.worldPosition, 0
-    c.worldPosition = function()
-        raised = raised + 1
-        c.worldPosition = real
-        error("position not ready")
+    -- While broken, the read raises for every caller; then it answers again.
+    local broken, raised = true, 0
+    local realPos, realTarget = c.worldPosition, c.target
+    c.worldPosition = function(...)
+        if broken then raised = raised + 1; error("position not ready") end
+        return realPos(...)
+    end
+    c.target = function(...)
+        if broken then raised = raised + 1; error("target not ready") end
+        return realTarget(...)
     end
     c.setWorldPosition(1, 100, 112)
-    c.advance(0.5, 1)
-    t.eq(raised, 1, "the read raised once")
-    t.eq(addon.revealed("arrow"), false, "no answer: not yet")
+    c.setTarget({ exists = true, hostile = true, dead = false })
+    c.advance(1, 4)
+    c.fire("PLAYER_TARGET_CHANGED")
+    t.ok(raised >= 2, "the reads raised: " .. raised)
+    t.eq(addon.revealed("arrow"), false, "no position: not yet")
+    t.eq(addon.revealed("icon"), false, "no target: not yet")
+    broken = false
     c.advance(1, 4)
     t.eq(addon.revealed("arrow"), true, "answered again: the arrow")
-    local realTarget = c.target
-    c.target = function()
-        c.target = realTarget
-        error("target not ready")
-    end
     c.fire("PLAYER_TARGET_CHANGED")
-    t.eq(addon.revealed("icon"), false)
-    c.setTarget({ exists = true, hostile = true, dead = false })
-    c.fire("PLAYER_TARGET_CHANGED")
-    t.eq(addon.revealed("icon"), true)
+    t.eq(addon.revealed("icon"), true, "answered again: the icon")
     t.eq((addon:ModuleState(R.NAME)), "started", "still running")
     t.eq(revealProblems(addon), 0)
 end

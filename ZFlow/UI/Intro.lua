@@ -97,7 +97,13 @@ function Intro.Declare(k, diag)
                 if type(panel.onClose) == "function" then
                     panel.onClose(function() c.store:set("char", Intro.SEEN_PATH, true) end)
                     -- Off only when the player turned it off; a missing row is on.
-                    if c.store:get("char", Intro.SEEN_PATH) ~= true and c.settings:get(Intro.SETTING) ~= false then
+                    -- G55 (legacy Splash.lua:211): a new player's first
+                    -- login has no intro while the arrow has not come in;
+                    -- it shows at a later login. The word still shows it.
+                    local R = ns.Reveal
+                    local waits = type(R) == "table" and type(R.Open) == "function" and R.Open(k, "arrow") == false
+                    if c.store:get("char", Intro.SEEN_PATH) ~= true and c.settings:get(Intro.SETTING) ~= false
+                        and not waits then
                         show()
                     end
                 end

@@ -209,6 +209,8 @@ return {
     "UI/BossLoot.lua",
     -- G60: NPC words read aloud, off by default (after the settings page).
     "UI/NpcSpeech.lua",
+    -- G55: the staged reveal for a new player (after the arrow, the icon, the advisor and the intro).
+    "UI/Reveal.lua",
     -- N70: settings export and import as data (after Export, Diag and the settings page).
     "UI/SettingsShare.lua",
     },
