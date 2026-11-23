@@ -24,7 +24,9 @@ local function info(item)
     return out
 end
 
--- opts: bag (stacks; false: unread), advisor (false: none), setting, noInfo
+-- opts: bag (stacks; false: unread), advisor (false: none), setting, noInfo,
+-- away (true: the bank is not opened). Since lead sections 340/341 the
+-- prompt is raised only at the bank, so start opens it unless told not to.
 local function start(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
@@ -70,36 +72,45 @@ local function start(opts)
     c.fire("PLAYER_LOGIN")
     if opts.setting == false then k.settings:set(L.SETTING, false) end
     c.fire("PLAYER_ENTERING_WORLD")
+    if not opts.away then c.setBankOpen(true) end
     return k, c, api, prompts, calls
 end
 
-tests["bank prompt words: how many kinds of item, or nothing to say"] = function(t)
-    t.eq(Present.BankPrompt({ ok = true, rows = { {}, {}, {} }, unread = 0 }), "3 kinds of item to put in the bank.")
-    t.eq(Present.BankPrompt({ ok = true, rows = { {} }, unread = 0 }), "1 kind of item to put in the bank.")
+-- Words changed (sections 340/341): the prompt names the items, not a count of kinds.
+tests["bank prompt words: the items by name, or nothing to say"] = function(t)
+    t.eq(Present.BankPrompt({ ok = true, rows = { { name = "A", count = 2 }, { name = "B" }, {} }, unread = 0 }),
+        "Bank: A x2, B, item not read yet")
+    t.eq(Present.BankPrompt({ ok = true, rows = { { name = "Linen Cloth", count = 1 } }, unread = 0 }),
+        "Bank: Linen Cloth x1")
     t.eq(Present.BankPrompt({ ok = true, rows = {}, unread = 0 }), nil, "nothing to bank: no prompt")
     t.eq(Present.BankPrompt({ ok = true, rows = {}, unread = 4 }), nil, "can't tell: no prompt, not a guess")
     t.eq(Present.BankPrompt({ ok = false, rows = {} }), nil, "bags not read: no prompt")
     t.eq(Present.BankPrompt(nil), nil)
 end
 
-tests["bank prompt: on entering the world, what could be banked is one prompt"] = function(t)
+-- At the bank now, not on entering the world (sections 340/341).
+tests["bank prompt: at the bank, what could be banked is one prompt"] = function(t)
+    local _, _, _, away = start({ away = true })
+    t.eq(away[L.PROMPT_ID], nil, "away from the bank: none")
     local _, _, _, prompts = start()
     local p = prompts[L.PROMPT_ID]
     t.eq(L.PROMPT_ID, "l6d.bank")
     t.ok(p ~= nil, "registered")
-    t.eq(p.text, "2 kinds of item to put in the bank.")
+    t.eq(p and p.text, "Bank: Linen Cloth x20, Light Leather x4")
     t.eq(p.priority, L.PROMPT_PRIORITY)
 end
 
-tests["bank prompt: it follows the bags when the bank closes"] = function(t)
+-- The prompt now follows the bags at the bank and goes when it closes (sections 340/341).
+tests["bank prompt: it follows the bags at the bank, and goes when the bank closes"] = function(t)
     local _, c, _, prompts = start()
-    c.setBankOpen(true)
     c.setBagItems({ { item = 2318, count = 4 } })       -- the linen went in
+    c.fire(L.BAG_EVENT)
+    t.eq(prompts[L.PROMPT_ID] and prompts[L.PROMPT_ID].text, "Bank: Light Leather x4")
     c.setBankOpen(false)
-    t.eq(prompts[L.PROMPT_ID].text, "1 kind of item to put in the bank.")
+    t.eq(prompts[L.PROMPT_ID], nil, "the bank closed: the prompt is gone")
     c.setBankOpen(true)
     c.setBagItems({ { item = 858, count = 5 } })
-    c.setBankOpen(false)
+    c.fire(L.BAG_EVENT)
     t.eq(prompts[L.PROMPT_ID], nil, "nothing left to bank: the prompt is gone")
 end
 
@@ -119,32 +130,32 @@ tests["bank prompt: bank.list off gives no prompt, and takes one away"] = functi
     local k, c, _, prompts2 = start({ setting = true })
     t.ok(prompts2[L.PROMPT_ID] ~= nil)
     k.settings:set(L.SETTING, false)
-    c.fire("PLAYER_ENTERING_WORLD")
+    c.fire(L.BAG_EVENT)
     t.eq(prompts2[L.PROMPT_ID], nil, "turned off: removed at the next check")
 end
 
 tests["bank prompt: with no advisor the list still works"] = function(t)
-    local k, c, api = start({ advisor = false })
+    local k, c, api = start({ advisor = false, away = true })
     t.eq((k:ModuleState(L.NAME)), "started")
     c.setBankOpen(true)
     t.eq(api.shows(), 1)
 end
 
 tests["bank prompt: an advisor that refuses leaves the list working and no prompt behind"] = function(t)
-    local k, c, api, prompts, calls = start({ refuse = true })
+    local k, c, api, prompts, calls = start({ refuse = true, away = true })
+    c.setBankOpen(true)
     t.eq(calls.add, 1, "Add was reached, and refused")
     t.eq(prompts[L.PROMPT_ID], nil, "nothing was registered")
     t.eq((k:ModuleState(L.NAME)), "started")
-    c.setBankOpen(true)
     t.eq(api.shows(), 1, "the bank list still shows")
 end
 
 tests["bank prompt: an advisor that raises on Add and on Remove costs the module nothing"] = function(t)
-    local k, c, api, _, calls = start({ raise = true })
+    local k, c, api, _, calls = start({ raise = true, away = true })
+    c.setBankOpen(true)
     t.eq(calls.add, 1, "Add was reached, and raised")
     t.eq((k:ModuleState(L.NAME)), "started", "the error did not switch the module off")
     t.eq(k.problems:count("handler"), 0, "nor count as a handler error")
-    c.setBankOpen(true)
     t.eq(api.shows(), 1, "the bank list still shows")
     c.setBagItems({ { item = 858, count = 5 } })
     c.setBankOpen(false)

@@ -161,7 +161,13 @@ end
 
 local function addOne(out, r, act, nav)
     if r.kind == "group" or r.kind == "section" then
-        if isText(r.text) then out[#out + 1] = { kind = "section", text = r.text } end
+        if isText(r.text) then
+            -- The topic's name (a group) is the pane's page heading, as the
+            -- retail Settings window shows its category title.
+            local big = nil
+            if r.kind == "group" then big = true end
+            out[#out + 1] = { kind = "section", text = r.text, big = big }
+        end
     elseif r.kind == "note" then
         if isText(r.text) and isText(r.how) then
             out[#out + 1] = { kind = "empty", text = r.text, how = r.how }

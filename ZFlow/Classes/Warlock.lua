@@ -289,6 +289,7 @@ local pack = {
     -- Does not apply: nothing is cast on the group (Unending Breath and the
     -- like on others are for other players).
     groups = {},
+    groupsNone = "A warlock has no group buff to keep up: Unending Breath and Detect Invisibility are only for the moment they are needed.",
 
     -- Does not apply: the warlock's heals for itself are channelled (Drain
     -- Life) or trade health (Life Tap); Health Funnel heals the demon and
@@ -310,6 +311,7 @@ local pack = {
     -- Does not apply: the warlock cannot remove a curse, poison, disease or
     -- magic from itself (Devour Magic is the felhunter's, a pet command).
     dispels = {},
+    dispelsNone = "A warlock cannot remove anything itself: Devour Magic is the felhunter's, a pet command.",
 
     keys = { none = keys },
 

@@ -21,6 +21,8 @@ local _, ns = ...
 --     questItems = { [key] = { quest = "title", inLog = true, level = n } }
 --     tools      = { [key] = "Mining" }      a tool of a profession you have or plan
 --     classKeep  = { [key] = { why = "...", untilLevel = n } }
+--     boosters   = { [key] = { skill, amount, cap, rank, max } }  skill
+--                  boosters (Items/SkillBoosters.lua, P-INV G6)
 --     level      = the player's level
 --     the keep rules ported from Flow (L6-B) read, each only when given:
 --     sets       = { [key] = { "Feral", ... } }     sets you keep it in
@@ -147,6 +149,16 @@ Disposition.RULES = {
         -- that isn't known doesn't end it.
         if isCount(k.untilLevel) and isCount(c.level) and c.level >= k.untilLevel then return nil end
         return { action = "keep", reason = tostring(k.why or "kept for your class"), basis = "recommendation" }
+    end },
+    -- P-INV G6 (lead section 337 item 2): a skill booster is kept while its
+    -- skill can still rise from it; at the cap it may be sold.
+    { key = "skillBooster", order = 8, check = function(i, c)
+        local b = factOf(c, "boosters", i.key)
+        if type(b) ~= "table" or type(b.skill) ~= "string" or type(b.amount) ~= "number" then return nil end
+        local SB = ns.SkillBoosters
+        if type(SB) ~= "table" or not SB.CanRise(b, b.rank, b.max) then return nil end
+        return { action = "keep", reason = "skill booster for " .. b.skill .. ": " .. SB.Advice(b, b.rank, b.max),
+                 basis = "recommendation" }
     end },
     -- The eight keep rules ported from Flow (L6-B, G5), at Flow's order: this
     -- one before junk, the other seven after it. Only their keep: where
