@@ -432,7 +432,7 @@ Capture.FEATURES = {
     { name = "arrow", words = { "arrow why" } },
     { name = "flights", words = { "try flight", "arrow why", "try off" } },
     { name = "banker", words = { "banker" } },
-    { name = "settings", words = { "settings" } },
+    { name = "settings", words = { "settings" }, fromRows = true },   -- summed up from the rows (S2)
 }
 
 -- The words a feature says when a read is not known, by the read the
@@ -471,4 +471,242 @@ function Capture.Unknowns(lines, report)
         if hit then n = n + 1 end
     end
     return n
+end
+
+-- Section 196: a name-free summary of the feature run, for White to post.
+--   Capture.Names(cap)                  -> names the capture holds, longest first
+--   Capture.Mask(line, names, own)      -> the line with only own words and
+--                                          numbers printed, and how many words
+--                                          were left out
+--   Capture.SettingsLines(settings)     -> one line per declared setting
+--   Capture.RunFeature(c, addon, f)     -> lines, problems added, ran (true when
+--                                          every word ran without raising)
+--   Capture.Summarize(c, addon, report, cap, own [, features]) -> { { feature,
+--                                          ran, problems, unknowns, hidden,
+--                                          verdict, lines = masked } } in
+--                                          FEATURES order; names from Capture.Names(cap)
+--   Capture.SummaryText(rows)           -> the text written to ZFLOW_SUMMARY
+-- The verdict (lead section 206): each row is judged by
+-- ns.CaptureEvidence.Judge on the run's own lines, and the text leads with
+-- ns.CaptureEvidence.Text of those verdicts. A feature whose words only ran
+-- with no Lua problem is "not exercised", never a pass; "words ran" says
+-- only that typing them raised nothing.
+-- Masking (lead section 199, MyBuddy S1): a line keeps only the add-on's own
+-- words and the numbers' places. `own` is the set of lower-case words in
+-- the add-on's own source (ns.offline.ownWords). Colour and link codes go;
+-- a name the capture holds, a bracketed item, a word with a byte past
+-- ASCII and every word not in `own` become "_"; every number becomes "#".
+-- Each "_" is counted (hidden), never printed: typed labels, chat and any
+-- name not held in a capture field are counted, not shown. With no `own`
+-- list, no word is printed.
+-- Settings (S2): the settings feature is summed up from the declared rows,
+-- not from the page: each row's key and kind, and its value only when it
+-- is one of the row's declared choices (on or off for a switch).
+Capture.SUMMARY_HEAD = "capture summary (only the add-on's own words; numbers and other words replaced)"
+Capture.HIDE = "_"
+Capture.KIND = { string = "text", choice = "choice", bool = "on or off", number = "number", table = "table" }
+
+local function addName(out, seen, v)
+    if type(v) ~= "string" or v == "" or v == ns.id.title then return end
+    local spellings = { v, (v:gsub("%s+", "")), (v:gsub("%s+", "-")) }
+    for _, s in ipairs(spellings) do
+        if s ~= "" and not seen[s] then
+            seen[s] = true
+            out[#out + 1] = s
+        end
+    end
+end
+
+local function shapeText(shapes, key, i)
+    local r = type(shapes) == "table" and shapes[key] or nil
+    if type(r) ~= "table" or type(r.values) ~= "table" then return nil end
+    return r.values["v" .. i]
+end
+
+function Capture.Names(cap)
+    local out, seen = {}, {}
+    local d = diagOf(cap)
+    local snaps = d and type(d.snaps) == "table" and d.snaps or {}
+    for _, snap in ipairs(snaps) do
+        if type(snap) == "table" then
+            local timing = type(snap.timing) == "table" and snap.timing or {}
+            addName(out, seen, timing.character)
+            addName(out, seen, timing.realm)
+            addName(out, seen, shapeText(snap.shapes, "realm", 1))
+            addName(out, seen, shapeText(snap.shapes, "realmNormalized", 1))
+            addName(out, seen, shapeText(snap.shapes, "fullName", 1))
+            addName(out, seen, shapeText(snap.shapes, "fullName", 2))
+        end
+    end
+    -- The realm part of the auction price keys "<realm>-<faction>".
+    local learned = type(cap) == "table" and type(cap.account) == "table" and cap.account.learned
+    local prices = type(learned) == "table" and type(learned.prices) == "table" and learned.prices or {}
+    for _, part in ipairs({ "auctionHistory", "auction" }) do
+        if type(prices[part]) == "table" then
+            for key in pairs(prices[part]) do
+                if type(key) == "string" then addName(out, seen, key:match("^(.*)%-[^%-]*$")) end
+            end
+        end
+    end
+    table.sort(out, function(a, b)
+        if #a ~= #b then return #a > #b end
+        return a < b
+    end)
+    return out
+end
+
+-- A stand-in byte for a left-out word while a line is worked on; it is
+-- turned into Capture.HIDE at the end.
+local GAP = "\1"
+
+-- Every place a name is, in any case, left out. Answers the line and how many.
+local function maskNames(line, names)
+    local n = 0
+    for _, name in ipairs(names or {}) do
+        if type(name) == "string" and name ~= "" then
+            local low, from = name:lower(), 1
+            local out = {}
+            while true do
+                local a, b = line:lower():find(low, from, true)
+                if not a then break end
+                out[#out + 1] = line:sub(from, a - 1)
+                out[#out + 1] = GAP
+                n = n + 1
+                from = b + 1
+            end
+            out[#out + 1] = line:sub(from)
+            line = table.concat(out)
+        end
+    end
+    return line, n
+end
+
+function Capture.Mask(line, names, own)
+    line = tostring(line)
+    own = type(own) == "table" and own or {}
+    local head = ns.id.title .. ": "
+    local prefix = ""
+    if line:sub(1, #head) == head then
+        prefix, line = head, line:sub(#head + 1)
+    end
+    line = line:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|H[^|]*|h", ""):gsub("|h", "")
+    local hidden
+    line, hidden = maskNames(line, names)
+    local items
+    line, items = line:gsub("%[[^%]]*%]", "[" .. GAP .. "]")
+    hidden = hidden + items
+    line = line:gsub("[%a\128-\255]+", function(word)
+        if not word:find("[\128-\255]") and own[word:lower()] then return word end
+        hidden = hidden + 1
+        return GAP
+    end)
+    line = line:gsub("%d+", "#"):gsub(GAP, Capture.HIDE)
+    return prefix .. line, hidden
+end
+
+-- One line per declared setting (S2): its key and kind, and its value only
+-- when that is one of the row's declared choices (true or false for a switch).
+function Capture.SettingsLines(settings)
+    local out = {}
+    if type(settings) ~= "table" or type(settings.each) ~= "function" then return out end
+    for row in settings:each() do
+        if type(row) == "table" and type(row.key) == "string" then
+            local kind = Capture.KIND[row.type] or "other"
+            local line = "setting " .. row.key .. ": " .. kind
+            local ok, v = pcall(settings.get, settings, row.key)
+            if ok and row.type == "bool" and type(v) == "boolean" then
+                line = line .. " = " .. tostring(v)
+            elseif ok and row.type == "choice" and type(row.choices) == "table" then
+                for _, choice in ipairs(row.choices) do
+                    if v ~= nil and choice == v and (type(v) == "string" or type(v) == "number") then
+                        line = line .. " = " .. tostring(v)
+                        break
+                    end
+                end
+            end
+            out[#out + 1] = line
+        end
+    end
+    return out
+end
+
+local function problemCount(addon)
+    local n = 0
+    for _, p in ipairs(addon.problems:list()) do n = n + (p.count or 1) end
+    return n
+end
+
+function Capture.RunFeature(c, addon, feature)
+    local before = problemCount(addon)
+    for i = #c.printed, 1, -1 do c.printed[i] = nil end
+    local ran = true
+    for _, words in ipairs(feature.words) do
+        if not pcall(c.slashes[ns.id.slash], words) then ran = false end
+    end
+    c.advance(2, 8)
+    local lines = {}
+    for _, line in ipairs(c.printed) do lines[#lines + 1] = tostring(line) end
+    for _, a in ipairs(c.arrows or {}) do
+        if a.shown then for _, line in ipairs(a.lines or {}) do lines[#lines + 1] = tostring(line) end end
+    end
+    for _, p in ipairs(c.panels or {}) do
+        if p.shown then for _, line in ipairs(p.lines or {}) do lines[#lines + 1] = tostring(line) end end
+    end
+    return lines, problemCount(addon) - before, ran
+end
+
+function Capture.Summarize(c, addon, report, cap, own, features)
+    local rows = {}
+    local names = Capture.Names(cap)
+    local Evidence = ns.CaptureEvidence
+    for _, feature in ipairs(features or Capture.FEATURES) do
+        local lines, added, ran = Capture.RunFeature(c, addon, feature)
+        local masked, hidden = {}, 0
+        if feature.fromRows then
+            masked = Capture.SettingsLines(addon.settings)
+        else
+            for i, line in ipairs(lines) do
+                local n
+                masked[i], n = Capture.Mask(line, names, own)
+                hidden = hidden + n
+            end
+        end
+        local verdict = nil
+        if type(Evidence) == "table" and type(Evidence.Judge) == "function" then
+            verdict = Evidence.Judge(feature.name,
+                { cap = cap, report = report, lines = lines, problems = added, addon = addon })
+        end
+        rows[#rows + 1] = { feature = feature.name, ran = ran, problems = added,
+            unknowns = Capture.Unknowns(lines, report), hidden = hidden, verdict = verdict, lines = masked }
+    end
+    return rows
+end
+
+-- A row with no verdict is not verified: it is said so, never left out.
+local NO_VERDICT = ": no verdict; not verified"
+
+function Capture.SummaryText(rows)
+    local out = { Capture.SUMMARY_HEAD }
+    local Evidence = ns.CaptureEvidence
+    local verdicts = {}
+    for _, r in ipairs(rows or {}) do
+        if type(r.verdict) == "table" then
+            verdicts[#verdicts + 1] = r.verdict
+        else
+            out[#out + 1] = tostring(r.feature) .. NO_VERDICT
+        end
+    end
+    if type(Evidence) == "table" and #verdicts > 0 then
+        local n = Evidence.Count(verdicts)
+        out[#out + 1] = string.format("verified on captured inputs %d, with made-up inputs %d, not exercised %d, "
+            .. "Lua problem %d, of %d", n.captured, n.synthetic, n.notExercised, n.error, #(rows or {}))
+        for _, line in ipairs(Evidence.Text(verdicts)) do out[#out + 1] = line end
+    end
+    for _, r in ipairs(rows or {}) do
+        out[#out + 1] = string.format("feature %s: words ran %s, problems %d, unknown %d, hidden %d, lines %d",
+            tostring(r.feature), r.ran and "yes" or "no", tonumber(r.problems) or 0, tonumber(r.unknowns) or 0,
+            tonumber(r.hidden) or 0, #(r.lines or {}))
+        for _, line in ipairs(r.lines or {}) do out[#out + 1] = "  " .. line end
+    end
+    return table.concat(out, "\n") .. "\n"
 end
