@@ -1493,6 +1493,9 @@ function ns.make.fakeClient(opts)
     --   creatureType(unit) -> text | nil
     --   buffLength(unit, names) -> the row field `length` of setUnitBuffs,
     --                              name | false | nil
+    --   buffLength(unit, names, true): only a row whose field `caster` is
+    --                              "player"; another caster passed over; a
+    --                              caster not set or c.SECRET: nil, name
     local function copied(v)
         if type(v) ~= "table" then return v end
         local out = {}
@@ -1522,7 +1525,7 @@ function ns.make.fakeClient(opts)
         s.creatureTypes = s.creatureTypes or {}
         s.creatureTypes[unit] = v
     end
-    function c.buffLength(unit, names)
+    function c.buffLength(unit, names, mine)
         if type(unit) ~= "string" or unit == "" or type(names) ~= "table" then return nil end
         local rows = s.unitBuffs and s.unitBuffs[unit]
         if type(rows) ~= "table" then return nil end
@@ -1530,7 +1533,11 @@ function ns.make.fakeClient(opts)
             local row = rows[i]
             if type(row) ~= "table" or type(row.name) ~= "string" then return nil end
             for j = 1, #names do
-                if names[j] == row.name then return row.length, row.name end
+                if names[j] == row.name then
+                    if mine ~= true then return row.length, row.name end
+                    if type(row.caster) ~= "string" then return nil, row.name end
+                    if row.caster == "player" then return row.length, row.name end
+                end
             end
         end
         return false
