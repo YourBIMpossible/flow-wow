@@ -109,7 +109,7 @@ tests["goal mid bank visit: the bank prompt follows the goal while the bank is o
 end
 
 tests["goal mid bank visit: the banker word after a mid-visit goal add holds the 8 back"] = function(t)
-    local c, addon = start()
+    local c = start()
     c.setBankOpen(true)
     word(c, "goal add " .. LINEN .. " 8")
     local said = banker(c)
