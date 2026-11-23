@@ -180,4 +180,5 @@ Rotation\Group.lua
 Rotation\Mouseover.lua
 Rotation\Enchant.lua
 UI\BossLoot.lua
+UI\NpcSpeech.lua
 UI\SettingsShare.lua

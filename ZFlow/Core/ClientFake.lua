@@ -2845,6 +2845,53 @@ function ns.make.fakeClient(opts)
         for _, name in ipairs(s.weaponSkills) do out[name] = true end
         return out
     end
+
+    -- G60: text-to-speech, as the real client's speech/speak/stopSpeech:
+    --   c.setSpeech({ voices = { { voiceID, name } } }) or nil (the call
+    --   absent, the start); c.setSpeakFails(n): the next n speak calls raise
+    --   (lead section 236). c.spoken() -> what was said, { text, voice } in
+    --   order; c.speakCalls() -> every speak asked; c.speechStops() -> stops.
+    --   c.setNpcText(kind, text) / c.npcText(kind): the open window's words.
+    s.spoken, s.speakCalls, s.speechStops, s.npcText = {}, 0, 0, {}
+    function c.setSpeech(v)
+        s.speech = nil
+        if type(v) == "table" then s.speech = v end
+    end
+    function c.setSpeakFails(n) s.speakFails = type(n) == "number" and n or 0 end
+    function c.speech()
+        if type(s.speech) ~= "table" then return nil end
+        local voices = {}
+        for i, v in ipairs(s.speech.voices or {}) do voices[i] = { voiceID = v.voiceID, name = v.name } end
+        return { voices = voices }
+    end
+    function c.speak(text, voice)
+        s.speakCalls = s.speakCalls + 1
+        if type(s.speech) ~= "table" then return false, "no text-to-speech call" end
+        if (s.speakFails or 0) > 0 then
+            s.speakFails = s.speakFails - 1
+            error("speak failed (test)")
+        end
+        s.spoken[#s.spoken + 1] = { text = text, voice = voice }
+        return true
+    end
+    function c.stopSpeech()
+        if type(s.speech) ~= "table" then return false end
+        s.speechStops = s.speechStops + 1
+        return true
+    end
+    function c.spoken()
+        local out = {}
+        for i, v in ipairs(s.spoken) do out[i] = v end
+        return out
+    end
+    function c.speakCalls() return s.speakCalls end
+    function c.speechStops() return s.speechStops end
+    function c.setNpcText(kind, text) s.npcText[kind] = text end
+    function c.npcText(kind)
+        local v = s.npcText[kind]
+        if type(v) ~= "string" or v == "" then return nil end
+        return v
+    end
     return c
 end
 
