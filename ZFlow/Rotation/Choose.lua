@@ -507,9 +507,18 @@ end
 -- buffs read and no Well Fed among them, and a Well Fed food in your bags
 -- (snapshot.buffFood, the driver's pick for your role). Buffs not read is
 -- not "no Well Fed": nothing is suggested.
+-- Section 230: not with the setting off (BF-3, foodOn false); not while
+-- eating or drinking, mounted, or on a flight path, and not when mounted or
+-- the flight path is not known (BF-2).
 function steps.food(s)
+    if s.foodOn == false then return nil, "Well Fed food is switched off" end
     if not R.OutOfFight(s) then return nil, "not out of a fight" end
     if type(s.buffs) ~= "table" then return nil, "your buffs not read" end
+    if ns.BuffFood.Eating(s.buffs) then return nil, "eating or drinking" end
+    if s.onTaxi == true then return nil, "on a flight path" end
+    if s.onTaxi ~= false then return nil, "not known whether you are on a flight path" end
+    if s.mounted == true then return nil, "mounted" end
+    if s.mounted ~= false then return nil, "not known whether you are mounted" end
     if s.buffs[ns.BuffFood.WELL_FED] then return nil, "Well Fed is on you" end
     local f = s.buffFood
     if type(f) ~= "table" then return nil, "your food not read" end

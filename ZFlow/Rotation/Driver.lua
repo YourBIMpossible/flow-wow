@@ -50,6 +50,11 @@ local _, ns = ...
 --                  fight, or a fight not known, the kept food answers, or
 --                  nil. Not known (nil) is not kept: the next read asks
 --                  again. Without food: read each time, as before.
+--                  food.on false (the D.FOOD setting off, section 230
+--                  BF-3): nil, and the bags are not read
+--       foodOn     food.on (true or false); nil without food
+--       mounted, onTaxi  client.mounted(), client.onTaxi(): true or false,
+--                  nil when the client has no such read or does not say
 --   D.Step(client, pack[, prefs, bias, applied, role, food]) -> view
 --     one read and one choice. A read that fails is an error (not caught
 --     here; the tick catches it).
@@ -103,6 +108,9 @@ ns.RotationDriver = D
 D.NAME = "rotationDriver"
 D.EVENT = "rotation.suggested"
 D.SETTING = "rotation.enabled"
+-- Section 230 (BF-3): suggest Well Fed food. The key Flow's import writes
+-- (Import/FromFlow.lua, rotation.recoverBuffFood).
+D.FOOD = "rotation.recoverBuffFood"
 -- The role you chose (Rotation/Role.lua declares the row).
 D.ROLE = "spec.role"
 D.EVERY = 0.2
@@ -218,6 +226,7 @@ end
 -- each time.
 local function buffFoodKept(client, pack, role, food)
     if type(food) ~= "table" then return buffFoodOf(client, pack, role) end
+    if food.on == false then return nil end
     local fresh = food.kept == true and food.pack == pack and food.role == role
     if fresh then return food.value end
     if client.inCombat() ~= false then return nil end
@@ -283,6 +292,17 @@ function D.Read(client, pack, ids, role, food)
         end
         if field == "conjured" then return conjuredOf(client, pack) end
         if field == "buffFood" then return buffFoodKept(client, pack, role, food) end
+        -- Section 230: no "and ... or nil" here; false must stay false.
+        if field == "foodOn" then
+            if type(food) ~= "table" or type(food.on) ~= "boolean" then return nil end
+            return food.on
+        end
+        if field == "mounted" or field == "onTaxi" then
+            if type(client[field]) ~= "function" then return nil end
+            local ok, v = pcall(client[field])
+            if ok and type(v) == "boolean" then return v end
+            return nil
+        end
         -- P-GATHER: the gathering tracking reads (Rotation/Gather.lua).
         if field == "tracking" or field == "trackKnown" or field == "professions" or field == "gatherOn" then
             -- Lead: no "and ... or nil" here; a false answer (the setting off) must stay false.
@@ -416,6 +436,7 @@ function D.Declare(k, packs)
             end
             return
         end
+        food.on = ctx.settings:get(D.FOOD) ~= false
         local ok, got = pcall(work, ctx.client, packs or ns.Packs, ctx.settings:get(D.ROLE), food)
         if ok then
             view = got
@@ -439,6 +460,11 @@ function D.Declare(k, packs)
             key = D.SETTING, scope = "char", type = "bool", default = false,
             label = "Suggest the next spell",
             help = "Works out which spell to press next. It presses nothing for you.",
+            group = "Rotation",
+        }, {
+            key = D.FOOD, scope = "account", type = "bool", default = true,
+            label = "Suggest Well Fed food",
+            help = "Out of a fight, with no Well Fed on you, suggests the best Well Fed food in your bags. It eats nothing for you.",
             group = "Rotation",
         } },
         provides = { View = api.view, Errors = api.errors },

@@ -37,6 +37,9 @@ R.SNAPSHOT_FIELDS = {
     -- Section 226 (CF-30): the best Well Fed food in your bags for your role,
     -- { name, item, score }; {} when the bags hold none; nil when not read.
     { "buffFood", "map" },
+    -- Section 230 (BF-2, BF-3): mounted, on a flight path (nil when not
+    -- read), and the Well Fed food setting (nil without the driver's table).
+    { "mounted", "flag" }, { "onTaxi", "flag" }, { "foodOn", "flag" },
     -- P-GATHER (Rotation/Gather.lua): gathering tracking, read by G.Read.
     { "tracking", "map" }, { "trackKnown", "map" }, { "professions", "map" }, { "gatherOn", "flag" },
     { "spells", "spells" },
