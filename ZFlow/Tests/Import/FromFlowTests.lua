@@ -1028,7 +1028,8 @@ return {
         t.eq(again.settings, account.settings)
         t.eq(again.learned, account.learned)
         t.eq(againChar, char)
-        t.eq(#again.imports, 2, "each merge is recorded")
+        -- F-011: the same import again replaces its record instead of adding one (bounded).
+        t.eq(#again.imports, 1, "the same import is recorded once")
     end,
 
     ["merge: a refused or missing import merges nothing"] = function(t)
