@@ -90,6 +90,12 @@ local function signature(plan)
     -- plan. Section 246 (N63-E): named as the attribute it puts on the
     -- button ("*item-alt=item:ID"), the item type, never a macro.
     if plan.altItem ~= nil then out[#out + 1] = "*item-alt=item:" .. tostring(plan.altItem) end
+    -- N41 (P-KEYS slice B): a slot's unit (plan.units) is part of the plan.
+    if type(plan.units) == "table" then
+        for _, slot in ipairs(C.MODIFIERS) do
+            if plan.units[slot] ~= nil then out[#out + 1] = "*unit-" .. slot .. "=" .. tostring(plan.units[slot]) end
+        end
+    end
     return table.concat(out, "|")
 end
 
@@ -389,7 +395,7 @@ function K.Declare(k, diag)
             key = K.SETTING, scope = "char", type = "bool", default = false,
             label = K.LABEL,
             help = "Puts your form's spells on one hidden button, outside fights only. It presses nothing for you.",
-            group = "combat.rotation", synonyms = { "key", "button", "keybind", "macro", "form" },
+            group = "combat.rotation", synonyms = { "key", "button", "keybind", "macro", "form", "easy key" },
         } },
         start = function(ctx)
             client = ctx.client

@@ -11,6 +11,7 @@ local _, ns = ...
 --     extra.heal: the module's heal table (N8, below).
 --     extra.chosen: the seals and blessings from the ownCasts module (below).
 --     extra.combo: the combo module's counted combo points (below).
+--     extra.controls: the key controls (N41, Rotation/KeyControls.lua).
 --     the reader ns.Snapshot takes. dead, inCombat, stealthed, hostile,
 --     spells, buffs, targetDebuffs, form, current and pet are asked of the
 --     client; role is the
@@ -643,8 +644,20 @@ function D.Step(client, pack, prefs, bias, applied, role, extra)
     if type(plan) == "table" and type(hi) == "table" and type(hi.alt) == "number" then
         plan.altItem = hi.alt
     end
+    -- N41 (P-KEYS slice B): the key controls (Rotation/KeyControls.lua),
+    -- extra.controls, shape the plan; a gathering step with the key's
+    -- actions off is shown but kept off the key.
+    local KC = ns.KeyControls
+    local controls = nil
+    if type(extra) == "table" then controls = extra.controls end
+    local onKey = suggestion
+    if type(KC) == "table" and type(controls) == "table" then
+        KC.Shape(plan, controls, snapshot, pack, KC.Friend(client))
+        suggestion = KC.Gate(suggestion, controls)
+        if type(suggestion) == "table" and suggestion.keyOff == true then onKey = nil end
+    end
     local keys = ns.cast.Apply(plan, applied, lockdown)
-    local attrs = ns.cast.Attributes(suggestion, plan, applied, lockdown, nil)
+    local attrs = ns.cast.Attributes(onKey, plan, applied, lockdown, nil)
 
     -- Not read: no id, or no row came back for it.
     local notRead = {}
@@ -731,8 +744,11 @@ function D.Declare(k, packs)
         heal.on = ctx.settings:get(D.HEAL) ~= false
         local K = ns.KeyFrame
         heal.keys = type(K) == "table" and ctx.settings:get(K.SETTING) == true
+        -- N41: the key controls' rows, read each tick.
+        local controls = nil
+        if type(ns.KeyControls) == "table" then controls = ns.KeyControls.Read(ctx.settings) end
         local ok, got = pcall(work, ctx.client, packs or ns.Packs, ctx.settings:get(D.ROLE),
-            { food = food, heal = heal, chosen = chosenOf(k), combo = comboOf(k) })
+            { food = food, heal = heal, chosen = chosenOf(k), combo = comboOf(k), controls = controls })
         if ok then
             view = got
         else

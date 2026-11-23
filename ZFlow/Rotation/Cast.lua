@@ -70,6 +70,29 @@ local function slotOf(states, state, slot)
     return type(v) == "string" and v or nil
 end
 
+-- N41 (P-KEYS slice B): a plan may name the unit a modifier slot casts on
+-- (plan.units[slot], one of C.UNITS); a slot with none casts on the target.
+local function unitsOf(p)
+    local out
+    if type(p.units) ~= "table" then return nil end
+    for _, slot in ipairs(C.MODIFIERS) do
+        local u = p.units[slot]
+        if type(u) == "string" and C.UNITS[u] then
+            out = out or {}
+            out[slot] = u
+        end
+    end
+    return out
+end
+
+local function unitsText(units)
+    local parts = {}
+    for _, slot in ipairs(C.MODIFIERS) do
+        if units then parts[#parts + 1] = slot .. "=" .. tostring(units[slot]) end
+    end
+    return table.concat(parts, ",")
+end
+
 local function copyPlan(p)
     local states = {}
     for state = 0, lastState() do
@@ -88,6 +111,7 @@ local function copyPlan(p)
         condition = type(p.condition) == "string" and p.condition or "0",
         stealthForm = type(p.stealthForm) == "number" and p.stealthForm or nil,
         altItem = (type(p.altItem) == "number" and p.altItem > 0 and p.altItem % 1 == 0) and p.altItem or nil,
+        units = unitsOf(p),
     }
 end
 
@@ -116,11 +140,12 @@ function C.Apply(plan, applied, lockdown)
         end
     end
     local conditionChanged = new.condition ~= old.condition
+    local unitsChanged = unitsText(new.units) ~= unitsText(old.units)
     return {
         ok = true,
         ops = ops,
         counts = counts,
-        changed = (counts.set + counts.clear > 0 or conditionChanged or new.altItem ~= old.altItem) and true or false,
+        changed = (counts.set + counts.clear > 0 or conditionChanged or new.altItem ~= old.altItem or unitsChanged) and true or false,
         condition = new.condition,
         conditionChanged = conditionChanged,
         stealthForm = new.stealthForm,
@@ -270,9 +295,15 @@ function C.Attributes(suggestion, plan, applied, lockdown, form)
             row(button, "*unit-alt", nil)
         else
             local v = castName(slotOf(states, form, slot))
+            -- N41: the plan's unit for the slot (plan.units), else the target.
+            local slotUnit
+            if v then
+                slotUnit = "target"
+                if apply.plan.units and apply.plan.units[slot] then slotUnit = apply.plan.units[slot] end
+            end
             row(button, "*type-" .. slot, v and "spell" or nil)
             row(button, "*spell-" .. slot, v)
-            row(button, "*unit-" .. slot, v and "target" or nil)
+            row(button, "*unit-" .. slot, slotUnit)
         end
     end
     -- N8: last, so the rows above keep their places.

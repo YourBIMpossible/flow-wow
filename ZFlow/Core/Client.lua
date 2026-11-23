@@ -7457,6 +7457,27 @@ function ns.make.client(env)
         return action
     end
 
+    -- S23 (P-KEYS slice B): what the key does with override bindings
+    -- counted, the binding that wins when the key is pressed (a click-cast
+    -- add-on's override, ours, else the game's own): GetBindingAction(key,
+    -- true[, context]). A read only, for the click-casting check line
+    -- (UI/ClickCheck.lua). "" for nothing bound, nil when not known.
+    -- First guess: the checkOverride argument is not seen in game.
+    function c.bindingOverride(key, forAction)
+        if type(key) ~= "string" or key == "" then return nil end
+        local context = bindingContext(forAction)
+        local ok, action
+        if context ~= nil then
+            ok, action = call(env.GetBindingAction, key, true, context)
+        else
+            ok, action = call(env.GetBindingAction, key, true)
+        end
+        if not ok or hidden(action) then return nil end
+        if action == nil then return "" end
+        if type(action) ~= "string" then return nil end
+        return action
+    end
+
     function c.setBindingClick(key, button)
         if type(key) ~= "string" or type(button) ~= "string" then return false, "no key" end
         return bindingCall(env.SetBindingClick, key, button, "LeftButton")

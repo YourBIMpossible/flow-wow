@@ -54,6 +54,8 @@ ns.SettingsKeys = SK
 SK.NAME = "settingsKeys"
 SK.BUTTON = "RotationKey"
 SK.GROUP = "combat"
+-- S23: the click-casting check's line (UI/ClickCheck.lua), under the rows.
+SK.CLICK_KEY = "keys.clickCheck"
 SK.SYNONYMS = { "key", "keybind", "bind", "binding", "hotkey" }
 -- n: the slot's id; button: the secure button it binds (framePrefix ..
 -- button); index: its place among that button's keys.
@@ -373,6 +375,20 @@ function SK.New(k)
         return true
     end
 
+    -- S23 (P-KEYS slice B): the click-casting check's one line
+    -- (UI/ClickCheck.lua), or nil. A read only.
+    local function clickLine()
+        local CC = ns.ClickCheck
+        if type(CC) ~= "table" or client == nil then return nil end
+        local slots = {}
+        for _, slot in ipairs(SK.SLOTS) do
+            slots[#slots + 1] = { label = slot.label, action = action(slot.button), override = keys.overrides[slot.n] }
+        end
+        local ok, line = pcall(function() return CC.Line(CC.Read(client, slots), id.title) end)
+        if ok and type(line) == "string" then return line end
+        return nil
+    end
+
     function keys.rows()
         local lock = lockWhy()
         local byButton = {}
@@ -411,6 +427,10 @@ function SK.New(k)
                 }
             end
         end
+        local click = clickLine()
+        if click ~= nil then
+            out[#out + 1] = { kind = "note", key = SK.CLICK_KEY, text = click, group = SK.GROUP, topic = SK.GROUP }
+        end
         return out
     end
 
@@ -431,6 +451,8 @@ function SK.New(k)
         for _, slot in ipairs(SK.SLOTS) do
             out[#out + 1] = slot.label .. ": " .. shownOf(slot, readKeys(slot.button))
         end
+        local click = clickLine()
+        if click ~= nil then out[#out + 1] = click end
         return out
     end
 

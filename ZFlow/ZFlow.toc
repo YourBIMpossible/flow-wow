@@ -177,6 +177,8 @@ Rotation\Gather.lua
 Rotation\Group.lua
 Rotation\Mouseover.lua
 Rotation\CareKeys.lua
+Rotation\KeyControls.lua
+UI\ClickCheck.lua
 Rotation\Enchant.lua
 UI\BossLoot.lua
 UI\SettingsShare.lua

@@ -102,6 +102,9 @@ local READS = {
     -- N57: the rotation key's bindings and what a key does; read by the
     -- settings page only. Their names are in Diag.NAMES.
     bindingKeys = false, bindingAction = false,
+    -- S23 (P-KEYS slice B): what a key does with override bindings counted;
+    -- read by the click-casting check line (UI/ClickCheck.lua) only.
+    bindingOverride = false,
 
     -- N67: other add-ons' data at runtime (GatherMate2's nodes, Attune's
     -- progress); read by Nav/AddonSources.lua only. The globals they read

@@ -2541,6 +2541,20 @@ function ns.make.fakeClient(opts)
             if unread or type(key) ~= "string" or key == "" then return nil end
             return live[key] or ""
         end
+        -- S23 (P-KEYS slice B): the twin of c.bindingOverride. Another
+        -- add-on's override (c.setForeignOverride) wins, then ours
+        -- (c.overrideBindingClick), then the game's binding; "" for none.
+        -- c.setBindingOverrideFails(true): the read raises until set false.
+        local foreign, overrideFails = {}, false
+        function c.setForeignOverride(key, action) foreign[key] = action end
+        function c.setBindingOverrideFails(on) overrideFails = (on == true) end
+        function c.bindingOverride(key)
+            if overrideFails then error("GetBindingAction failed (test)", 0) end
+            if unread or type(key) ~= "string" or key == "" then return nil end
+            if foreign[key] ~= nil then return foreign[key] end
+            if overrides[key] ~= nil then return "CLICK " .. tostring(overrides[key]) .. ":LeftButton" end
+            return live[key] or ""
+        end
         function c.setBindingClick(key, button)
             if locked() then return false, "lockdown" end
             if faults > 0 then
