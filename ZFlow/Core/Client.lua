@@ -5603,6 +5603,20 @@ function ns.make.client(env)
         return out
     end
     -- ------------------------------------------------------- end pet state
+
+    -- ------------------------------------------- spell name by id (CF-32)
+    -- c.spellName(id) -> the spell's name, or nil when not read. The same
+    -- read the learned-spell watch uses above: C_Spell.GetSpellInfo(id).name
+    -- where the client has it, else GetSpellInfo's first answer; no rank.
+    -- For your own casts, which the client names by id
+    -- (UNIT_SPELLCAST_SUCCEEDED): Rotation/OwnCasts.lua and
+    -- Rotation/FormSpells.lua. A first guess, not seen in game.
+    function c.spellName(id)
+        if type(id) ~= "number" or hidden(id) then return nil end
+        local name = spellName(id)
+        return name
+    end
+    -- --------------------------------------------- end spell name by id
     return c
 end
 

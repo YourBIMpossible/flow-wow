@@ -1770,6 +1770,16 @@ function ns.make.fakeClient(opts)
         for k, v in pairs(s.pet) do out[k] = v end
         return out
     end
+
+    -- A spell's name by id, as the real client's spellName(id) (CF-32): the
+    -- name setSpellId gave that id, else nil (not read).
+    function c.spellName(id)
+        if type(id) ~= "number" then return nil end
+        for name, known in pairs(s.spellIds or {}) do
+            if known == id then return name end
+        end
+        return nil
+    end
     return c
 end
 

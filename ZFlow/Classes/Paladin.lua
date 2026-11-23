@@ -5,8 +5,19 @@ local _, ns = ...
 -- Spells.lua on the zflow branch. Pure: every rule reads the snapshot it is
 -- given (ZFlow/Rotation/Choose.lua lists the fields) and nothing else.
 --
--- Scope: damage on your own target and care for yourself. Nothing here heals,
--- buffs, cleanses, shields or revives another player.
+-- Scope: damage on your own target and care for yourself. Every rule here
+-- is for you or your own target: nothing heals, buffs, cleanses, shields or
+-- revives another player.
+--
+-- Seal and blessing (CF-32, lead sections 226, 227): the seal kept up is the
+-- one you last cast yourself, while you know it (snapshot.chosen.seal, kept
+-- for the character by Rotation/OwnCasts.lua from options.sticky below, over
+-- a reload, until you cast another); before any cast, the role's seal (a
+-- tank who knows Seal of Fury: Fury; Command for a role that is not heal or
+-- tank, once known; else Righteousness). The blessing the same way, for the
+-- long blessings only; before any cast Wisdom for a healer who knows it,
+-- else Might. Righteous Fury (CF-33c): for role tank only, out of a fight,
+-- when it is not up.
 --
 -- Evidence. Nothing in this pack was read from the game by this file, and the
 -- repository holds no list of client observations for the Paladin, so nothing
@@ -14,19 +25,18 @@ local _, ns = ...
 -- and stat weight is a "first guess" carried over from the old Paladin files,
 -- whose commits name no source: each needs a check in the game client.
 --
--- Not ported, on purpose:
---   * anything for other players: Righteous Fury and the tank seal (group
---     play), Blessing of Kings and the group blessings, Lay on Hands,
---     Blessing of Protection, Cleanse and Purify on anyone but yourself;
---   * the seal and the blessing "learned from your own cast" and the commands
---     that set them (they need memory and client events; a pure rule has
---     neither). Here a blessing or a seal you put up yourself is left alone;
---   * Holy Strike, Seal of Fury, Consecration and Blessing of Kings (their
---     rows were taken out of the old spell list as guide-reported);
+-- Not in this pack yet (tasks):
+--   * blessings and cleansing for other players: group blessings, Cleanse
+--     and Purify on anyone but yourself;
+--   * Lay on Hands and Blessing of Protection;
+--   * Holy Strike and Consecration (no row in the spell list);
 --   * Judgment, Crusader Strike, Shield of the Righteous and Word of Glory
 --     (named in the old lists, with no row in the old spell list);
---   * the advice to use Divine Protection or Divine Shield (the chooser has
---     no step for it; both are on the Alt key row).
+--   * advice to use Divine Protection or Divine Shield (the chooser has no
+--     step for it; both are on the Alt key row);
+--   * Seal of Wisdom for a healer in a group (needs a group read);
+--   * a seal or blessing set by a command or a setting (only your own cast
+--     sets one here).
 
 local GUESS = "first guess"
 local OLD = "carried over from Classes/Paladin on zflow; authorship unrecorded"
@@ -105,6 +115,44 @@ local function sealUp(s) return buffsRead(s) and longest(s, "Seal of ") ~= nil e
 local function wisdom(s) return s.role == "heal" and knows(s, "Blessing of Wisdom") end
 local function command(s) return s.role ~= "heal" and s.role ~= "tank" and knows(s, "Seal of Command") end
 
+-- Every seal, and the blessings kept on yourself (not Protection, Freedom
+-- or Sacrifice: those are for a moment). One rule each, below.
+local SEALS = { "Seal of Righteousness", "Seal of the Crusader", "Seal of Command", "Seal of Justice",
+                "Seal of Light", "Seal of Wisdom", "Seal of Fury" }
+local BLESSINGS = { "Blessing of Might", "Blessing of Wisdom", "Blessing of Kings", "Blessing of Salvation",
+                    "Blessing of Light", "Blessing of Sanctuary" }
+local function set(list)
+    local out = {}
+    for _, name in ipairs(list) do out[name] = true end
+    return out
+end
+local IS_SEAL, IS_BLESSING = set(SEALS), set(BLESSINGS)
+
+-- The one you cast yourself (snapshot.chosen[key]), when it is one of the
+-- list's and you know it; nil otherwise.
+local function chosen(s, key, list)
+    local name = type(s.chosen) == "table" and s.chosen[key] or nil
+    if type(name) == "string" and list[name] and knows(s, name) then return name end
+    return nil
+end
+
+-- The seal to keep up (CF-32): the one you cast while known; else the role's.
+function ns.PaladinSeal(s)
+    local own = chosen(s, "seal", IS_SEAL)
+    if own then return own end
+    if s.role == "tank" and knows(s, "Seal of Fury") then return "Seal of Fury" end
+    if command(s) then return "Seal of Command" end
+    return "Seal of Righteousness"
+end
+
+-- The blessing to keep up: the long one you cast while known; else the role's.
+function ns.PaladinBlessing(s)
+    local own = chosen(s, "blessing", IS_BLESSING)
+    if own then return own end
+    if wisdom(s) then return "Blessing of Wisdom" end
+    return "Blessing of Might"
+end
+
 local function tag(list)
     for _, rule in ipairs(list) do
         if not rule.evidence then rule.evidence = GUESS end
@@ -112,18 +160,25 @@ local function tag(list)
     return list
 end
 
-local buffs = tag({
+local buffs = {
     { spell = "Devotion Aura", kind = "buff", reason = "No aura is on",
       when = function(s) return hasAura(s) == false end },
-    { spell = "Blessing of Wisdom", kind = "buff", reason = "Blessing missing or running out",
-      when = function(s) return wisdom(s) and ns.PaladinWantsBlessing(s) end },
-    { spell = "Blessing of Might", kind = "buff", reason = "Blessing missing or running out",
-      when = function(s) return not wisdom(s) and ns.PaladinWantsBlessing(s) end },
-    { spell = "Seal of Command", kind = "buff", reason = "Seal missing or running out",
-      when = function(s) return command(s) and ns.PaladinWantsSeal(s) end },
-    { spell = "Seal of Righteousness", kind = "buff", reason = "Seal missing or running out",
-      when = function(s) return not command(s) and ns.PaladinWantsSeal(s) end },
-})
+    -- CF-33c: a tank only; out of a fight, buffs read, not up.
+    { spell = "Righteous Fury", kind = "buff", reason = "Tanking: Righteous Fury (threat)",
+      when = function(s)
+          return s.role == "tank" and outOfFight(s) and buffsRead(s) and s.buffs["Righteous Fury"] == nil
+      end },
+}
+-- One rule per blessing and per seal; only the one picked can fire.
+for _, name in ipairs(BLESSINGS) do
+    buffs[#buffs + 1] = { spell = name, kind = "buff", reason = "Blessing missing or running out",
+        when = function(s) return ns.PaladinBlessing(s) == name and ns.PaladinWantsBlessing(s) end }
+end
+for _, name in ipairs(SEALS) do
+    buffs[#buffs + 1] = { spell = name, kind = "buff", reason = "Seal missing or running out",
+        when = function(s) return ns.PaladinSeal(s) == name and ns.PaladinWantsSeal(s) end }
+end
+tag(buffs)
 
 local melee = tag({
     { spell = "Attack", target = true, reason = "Start attacking",
@@ -208,6 +263,12 @@ local spells = {
     ["Hammer of Wrath"]       = sp(44, { "DPS" }),
     ["Holy Wrath"]            = sp(50, { "DPS" }),
     ["Seal of Command"]       = sp(nil, { "DPS" }, nil, "the old file calls it a Retribution talent"),
+    -- CF-32: seals and blessings a rule can now suggest. No level: the old
+    -- spell list's rows for them were guide-reported, so none is kept.
+    ["Seal of Fury"]          = sp(nil, { "Tanking" }, nil, "the old rotation file's seal for a tank"),
+    ["Blessing of Kings"]     = sp(nil, { "Survival" }, nil, "whether it is a talent was never checked in the game"),
+    ["Blessing of Light"]     = sp(nil, { "Healing" }),
+    ["Blessing of Sanctuary"] = sp(nil, { "Tanking" }, nil, "whether it is a talent was never checked in the game"),
     ["Attack"]                = sp(nil, { "DPS" }),
     ["Auto Attack"]           = sp(nil, { "DPS" }),
 }
@@ -313,7 +374,14 @@ local pack = {
 
     options = {
         -- Reads the rules lean on; one not given is named by diag (187).
+        -- snapshot.chosen is not one: nil there is "nothing cast yet".
         reads = { "buffs" },
+        -- CF-32: your own casts kept by Rotation/OwnCasts.lua, by key:
+        -- any seal; a blessing only when it is one kept on yourself.
+        sticky = {
+            { prefix = "Seal of ", key = "seal" },
+            { prefix = "Blessing of ", key = "blessing", only = IS_BLESSING },
+        },
     },
 }
 

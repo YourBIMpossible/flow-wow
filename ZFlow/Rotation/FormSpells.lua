@@ -15,11 +15,12 @@ local _, ns = ...
 --
 -- It only watches and writes text: nothing is cast, shifted or pressed.
 --
--- The client reads it needs are not in Core/Client.lua yet, so each is
--- asked for only if the client has it, and one problem line says what is
--- missing (see RESEARCH-form-spells.md for their shape):
+-- Two of the client reads it needs are not in Core/Client.lua yet, so each
+-- read is asked for only if the client has it, and one problem line says
+-- what is missing (see RESEARCH-form-spells.md for their shape):
 --   client.forms()            -> { { index, name, active } ... } or nil
---   client.spellName(id)      -> the spell's name or nil
+--   client.spellName(id)      -> the spell's name or nil (in Core/Client.lua
+--                                since CF-32)
 --   client.onSpellTooltip(fn) -> cancel;  fn(name, add);  add(text, r, g, b)
 -- client.form() (the form's number, 0 for none) is there already.
 --
