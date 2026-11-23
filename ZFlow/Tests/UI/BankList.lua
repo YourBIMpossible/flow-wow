@@ -40,6 +40,7 @@ local function start(opts)
     end
     ns.Reservations.Declare(k)
     local api = L.Declare(k)
+    c.lists = { BankList = api }
     k:Boot()
     c.fire("ADDON_LOADED", ns.id.addon)
     c.fire("PLAYER_LOGIN")
@@ -48,11 +49,18 @@ local function start(opts)
     return k, c, api
 end
 
+-- The list as the player has it since it moved to the window kit (lead
+-- section 303): whether its kit window is shown, and the text lines of the
+-- last listing (what the text panel shows on a client that cannot draw the
+-- kit). Read each time it is asked, as a panel's own fields were.
 local function panelOf(c)
-    for _, p in ipairs(c.panels) do
-        if type(p.spec) == "table" and p.spec.name == ns.id.framePrefix .. "BankList" then return p end
-    end
-    return nil
+    local id = "BankList"
+    if type(c.kitWindows()[id]) ~= "table" then return nil end
+    return setmetatable({}, { __index = function(_, field)
+        if field == "shown" then return c.kitWindows()[id].shown end
+        if field == "lines" then return c.lists[id].last() or {} end
+        return nil
+    end })
 end
 
 local function has(lines, text)

@@ -63,10 +63,13 @@ local _, ns = ...
 --
 --   SettingsPage.State(k) -> { topic = id or nil, query = text or nil }
 --     where the player is on the page, one for every surface of kernel k
---     (the Options page, the text panel, the slash word, a menu row). Not
---     saved: a reload starts at the first topic.
+--     (the settings window, the text panel, the slash word, a menu row).
+--     The search is not saved: a reload starts with none.
 --   SettingsPage.Goto(k, topicId) -> true, or false for no such topic
---     Chooses the topic and ends a search.
+--     Chooses the topic and ends a search. The topic is saved for the
+--     account (SettingsPage.TOPIC_PATH) once the saved data is loaded, and
+--     is the one shown after a reload; a saved topic that holds no row any
+--     more is passed over for the first.
 --   SettingsPage.Find(k, query) -> true while a search is on
 --     An empty query ends the search: the chosen topic is shown again.
 --   SettingsPage.Page(k) -> page: what a surface draws now
@@ -75,6 +78,8 @@ local _, ns = ...
 --                  marks the topic shown, none during a search
 --     page.mode    "topic": page.topic is that view topic (nil: no rows)
 --                  "search": page.query, page.results, page.none
+--     page.back    the id of the topic shown when no search is on: the one
+--                  a search goes back to when it is cleared (nil: no rows)
 --
 -- There is no reset on the page (owner decision 6).
 local P = {}
@@ -86,6 +91,9 @@ P.NOT_FROM_HERE = "this is not set from the settings page"
 P.SCOPES = { char = "this character", account = "account" }
 P.SCOPE_WORDS = { char = "character", account = "account" }
 P.DEPENDS = "depends on "
+-- Where the last topic chosen is saved, for the account (lead section 285
+-- item 3).
+P.TOPIC_PATH = "layout.settingsTopic"
 P.NO_MATCH_TAIL = "Try another word (sell, bank, arrow, food), or pick a topic."
 
 local KINDS = { bool = "toggle", number = "number", choice = "choice", string = "text", table = "place" }
@@ -299,6 +307,10 @@ function P.Goto(k, topicId)
     local state = P.State(k)
     state.topic = topic and topic.id or topicId
     state.query = nil
+    if loaded(k) then
+        local ok, why = k.store:set("account", P.TOPIC_PATH, state.topic)
+        if not ok then k.problems:add("settings", "topic", why) end
+    end
     return true
 end
 
@@ -317,16 +329,20 @@ function P.Page(k)
     local view = P.View(k)
     local page = { loaded = view.loaded, count = view.count, topics = {} }
     local found = P.Search(k, state.query, view)
+    -- The topic chosen here, else the one saved before the reload, else
+    -- the first.
+    local want = state.topic
+    if want == nil and view.loaded then want = k.store:get("account", P.TOPIC_PATH) end
     local chosen
-    if not found then
-        for i = 1, #view.topics do
-            if view.topics[i].id == state.topic then chosen = view.topics[i] end
-        end
-        chosen = chosen or view.topics[1]
+    for i = 1, #view.topics do
+        if view.topics[i].id == want then chosen = view.topics[i] end
     end
+    chosen = chosen or view.topics[1]
+    if chosen then page.back = chosen.id end
     for i = 1, #view.topics do
         local topic = view.topics[i]
-        page.topics[i] = { id = topic.id, name = topic.name, count = #topic.rows, on = topic == chosen }
+        page.topics[i] = { id = topic.id, name = topic.name, count = #topic.rows,
+            on = not found and topic == chosen }
     end
     if found then
         page.mode, page.query, page.results, page.none = "search", found.query, found.results, found.none

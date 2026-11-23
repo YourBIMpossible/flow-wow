@@ -967,6 +967,15 @@ function Arrow.Start(k, diag, own)
             else
                 say("feedback is not ready.")
             end
+        elseif action.window then
+            -- Lead section 318: a window of its own module (UI/ArrowMenu.lua M.WINDOWS).
+            local win = k.use and k.use(action.window) or nil
+            if type(win) == "table" and type(win.Open) == "function" then
+                local ok, err = pcall(win.Open)
+                if not ok then k.problems:add("arrow", "window", err) end
+            else
+                say("that window is not ready.")
+            end
         elseif action.style then
             local ok, reason = setStyle(action.style)
             if not ok then say(tostring(reason) .. ".") end
