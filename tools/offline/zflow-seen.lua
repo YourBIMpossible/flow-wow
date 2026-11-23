@@ -35,7 +35,11 @@
 --                  2 says "names: made up". Refused when the client itself
 --                  answers a character name (UnitName, UnitFullName, or a
 --                  diag snapshot kept in the account's saved table): that is
---                  real state. M.MUST is not asked of made-up state.
+--                  real state. M.MUST is not asked of made-up state. Made up
+--                  can only be shown when the client answered a name read
+--                  (with no name) or an add-on was given whose kept diag
+--                  snapshots were read; with neither, line 2 says "names:
+--                  not known" in place of "made up" (lead section 217, N2).
 --     opts.words   a list of texts: the words a line may keep, in place of
 --                  the add-on's own (a test's list; a real run leaves it
 --                  out). Line 3 says "words: given".
@@ -66,9 +70,10 @@
 -- THE BLOCK. Line 1 is HEAD. Line 2 says which kinds of name were known,
 -- and so replaced, which were marked absent, and which were neither, the
 -- kinds in the order of KINDS, "none" for an empty part, after "made up;"
--- for made-up state:
+-- for made-up state ("not known;" when made up could not be shown):
 --   names: character, realm known; guild, account absent; guid not known
 --   names: made up; none known; none absent; character, realm, guild, account, guid not known
+--   names: not known; none known; none absent; character, realm, guild, account, guid not known
 -- A kind that is not known was not searched for: a reader sees it here.
 -- Line 3 says whose words the templates kept: "words: the add-on's" or
 -- "words: given". The compare has lines 1 to 3 as the section "head". Then
@@ -187,7 +192,7 @@
 -- "Quell Made" is found in "Quell-Made", "Quell_Made", "quell.made" and
 -- "QuellMade". A name whose own bytes are all ASCII is looked for a second
 -- time in the line with every byte of 128 or more taken out too: "Quell
--- Made" is found with a no-break space between its words, "O'Brien" with a
+-- Made" is found with a no-break space between its words, "Q'Zorvex" with a
 -- curly apostrophe. From the first to the last character of what was found, the
 -- line is replaced by PLACE[kind]: <character>, <realm>, <guild>,
 -- <account>, <guid>. Names that overlap in a line are replaced as one,
@@ -290,10 +295,17 @@
 -- by "<path>". Prose with a slash ("either/or") goes too, on purpose: a
 -- problem is a diagnostic, and a lost word costs less than a folder's name.
 --
+-- Before both steps (lead section 217, N4 rest 1 and 2): the part of a path
+-- after "Users" or "home" (any case, after a separator or at the start) is
+-- the user's name, whatever it holds (an apostrophe, a dot, blanks): it is
+-- taken out whole, up to the next separator, ": " or the line's end, and
+-- "_" stands in its place for the two steps to cut.
+--
 -- Still let through: a last part that is a folder with a dot in its name
--- ("/home/john.smith" looks like a file's); the words before the one with
--- the first separator of a relative path whose folder's name has blanks
--- ("Zzyx Middle Owner\x.lua" keeps "Zzyx" and "Middle").
+-- under any folder but Users or home ("/srv/zzyx.qorv" looks like a
+-- file's); the words before the one with the first separator of a
+-- relative path whose folder's name has blanks ("Zzyx Middle Owner\x.lua"
+-- keeps "Zzyx" and "Middle").
 local M = {}
 
 M.HEAD = "zflow seen 3"
@@ -868,6 +880,13 @@ end
 
 -- One of the game's own reads, through the fake client's c.raw: the
 -- answers, or nothing when the client has no such read or it raised.
+-- True when the client has the read and it answered (with a name or none).
+local function asked(c, fn, ...)
+    if type(c.raw) ~= "function" then return false end
+    local ok, done = pcall(c.raw, fn, ...)
+    return ok and done == true
+end
+
 local function read(c, fn, ...)
     if type(c.raw) ~= "function" then return nil end
     local got = { pcall(c.raw, fn, ...) }
@@ -881,10 +900,12 @@ end
 -- Or nil and the reason: given is not as the header says, or a name is
 -- too short (shortNames true lets a name of 1 or 2 through).
 function M.names(c, addon, given, shortNames)
-    local names = { fromClient = {} }
+    local names = { fromClient = {}, asked = false }
     local bad = addGiven(names, given)
     if bad then return nil, bad end
     if type(c) == "table" then
+        -- Whether a name read answered at all (N2: made up can be shown).
+        names.asked = asked(c, "UnitName", "player") or asked(c, "UnitFullName", "player")
         local name, realm = read(c, "UnitName", "player")
         addName(names, "character", name, true); addName(names, "realm", realm, true)
         name, realm = read(c, "UnitFullName", "player")
@@ -952,14 +973,15 @@ end
 
 -- Line 2 of the block: made up or not, and the kinds known, absent and
 -- neither.
-local function namesLine(names, absent, madeUp)
+local function namesLine(names, absent, madeUp, shown)
     local known, gone, missing = {}, {}, {}
     for _, kind in ipairs(M.KINDS) do
         local into = names[kind] and known or (absent[kind] and gone or missing)
         into[#into + 1] = kind
     end
     local function said(kinds) return #kinds > 0 and table.concat(kinds, ", ") or M.NONE end
-    return "names: " .. (madeUp and "made up; " or "") .. said(known) .. " known; " .. said(gone) .. " absent; "
+    local head = madeUp and (shown and "made up; " or (M.UNKNOWN .. "; ")) or ""
+    return "names: " .. head .. said(known) .. " known; " .. said(gone) .. " absent; "
         .. said(missing) .. " not known"
 end
 
@@ -1190,9 +1212,48 @@ local function wordsCut(text)
     return s
 end
 
+-- The folders whose next part is a user's name (N4 rest 1 and 2).
+M.HOMES = { "users", "home" }
+
+-- Where the next home folder at or after i is: the start of its word and
+-- the place of the separator after it, or nil. Only one that stands at the
+-- start of the text or right after a separator counts.
+local function nextHome(low, i)
+    local s, e
+    for _, word in ipairs(M.HOMES) do
+        local a, b = low:find(word .. "[\\/]", i)
+        while a and a > 1 and not low:sub(a - 1, a - 1):find("[\\/]") do
+            a, b = low:find(word .. "[\\/]", a + 1)
+        end
+        if a and (not s or a < s) then s, e = a, b end
+    end
+    return s, e
+end
+
+-- The text with the part after each home folder taken out whole: up to the
+-- next separator, ": ", the line's end or the end, "_" in its place.
+local function userParts(text)
+    local low, out, from = text:lower(), {}, 1
+    local _, e = nextHome(low, 1)
+    while e do
+        local stop = #text + 1
+        local sep = text:find("[\\/\r\n]", e + 1)
+        if sep and sep < stop then stop = sep end
+        local colon = text:find(": ", e + 1, true)
+        if colon and colon < stop then stop = colon end
+        out[#out + 1] = text:sub(from, e)
+        out[#out + 1] = "_"
+        from = stop
+        _, e = nextHome(low, stop)
+    end
+    out[#out + 1] = text:sub(from)
+    return table.concat(out)
+end
+
 -- M.paths(text) -> the text with every path cut to "<path>/" and the
 -- file's name that follows its last separator, or to "<path>". See PATHS.
 function M.paths(text)
+    text = userParts(text)
     local out, from, i, n = {}, 1, 1, #text
     while i <= n do
         local body, cut, stop = pathBody(text, i), nil, nil
@@ -1223,8 +1284,7 @@ end
 -- The kinds that refuse, or nil: see REFUSED in the header.
 local function refusedKinds(names, absent, madeUp)
     if absent.character then
-        return "opts.absent cannot mark character absent: a real state has one; for state with no "
-            .. "character say opts.madeUp = true. Refused"
+        return "opts.absent cannot mark character absent: a real state has one. Refused"
     end
     for _, kind in ipairs(M.KINDS) do
         if absent[kind] and names[kind] then
@@ -1242,7 +1302,7 @@ local function refusedKinds(names, absent, madeUp)
         if not names[kind] and not absent[kind] then
             return "no " .. kind .. " name is known (none in opts.names, none from the client's reads) and "
                 .. "opts.absent does not mark it absent: refused, because it cannot be taken out. "
-                .. "Hand it in, mark it absent (not character), or say opts.madeUp = true for made-up state."
+                .. "Hand it in, or mark it absent (not character)."
         end
     end
     return nil
@@ -1330,7 +1390,10 @@ function M.seen(c, addon, opts)
         end,
     }
 
-    local lines, problems = { M.HEAD, namesLine(names, absent, madeUp), "words: " .. whose }, {}
+    -- N2: made up is shown only when a name read answered or an add-on's
+    -- kept snapshots were read.
+    local shown = names.asked == true or type(addon) == "table"
+    local lines, problems = { M.HEAD, namesLine(names, absent, madeUp, shown), "words: " .. whose }, {}
     for _, name in ipairs(M.SECTIONS) do
         lines[#lines + 1] = "== " .. name .. " =="
         local ok, got = pcall(makers[name])
