@@ -91,6 +91,59 @@ tests["weapon speed: a preference's reason is said after it"] = function(t)
     end
 end
 
+-- Lead section 280: a role speed does not matter for says so ("any"), with
+-- the class data's reason; never "prefers any", never left out.
+tests["weapon speed: a role that speed does not matter for says so, with the reason"] = function(t)
+    local prefs = { dps = { prefer = "any", why = "spells do the damage" } }
+    t.eq(W.Line(weapon(3.0, nil, "INVTYPE_2HWEAPON"), prefs).text,
+        "Speed 3.00 (medium); speed does not matter for dps (stats do): spells do the damage")
+    t.eq(W.Line(weapon(3.6, 50), { heal = { prefer = "any" } }).text,
+        "Speed 3.60 (slow), 50.0 damage per second; speed does not matter for heal (stats do)", "no reason given")
+    local both = { dps = { prefer = "fast", why = "more swings" }, heal = { prefer = "any", why = "no swings" } }
+    t.eq(W.Line(weapon(1.8, nil), both).text,
+        "Speed 1.80 (fast); good for dps (more swings); speed does not matter for heal (stats do): no swings")
+    t.eq(W.ANY, "any")
+end
+
+-- A hunter: a slow bow or gun matters, the melee weapon's speed does not.
+-- The role's `ranged` part speaks for a weapon of the ranged slot.
+tests["weapon speed: a role's ranged part speaks for a bow, a gun and a thrown weapon only"] = function(t)
+    local prefs = { dps = { prefer = "any", why = "shots do the damage",
+                            ranged = { prefer = "slow", why = "shots hit for weapon damage" } } }
+    for _, kind in ipairs({ "INVTYPE_RANGED", "INVTYPE_RANGEDRIGHT", "INVTYPE_THROWN" }) do
+        t.eq(W.Line(weapon(3.4, nil, kind), prefs).text,
+            "Speed 3.40 (slow); good for dps (shots hit for weapon damage)", kind)
+        t.eq(W.Line(weapon(2.2, nil, kind), prefs).text,
+            "Speed 2.20 (medium); dps prefers slow (shots hit for weapon damage)", kind .. ", not slow")
+    end
+    for _, kind in ipairs({ "INVTYPE_WEAPON", "INVTYPE_2HWEAPON", "INVTYPE_WEAPONMAINHAND", "INVTYPE_WEAPONOFFHAND" }) do
+        t.eq(W.Line(weapon(3.4, nil, kind), prefs).text,
+            "Speed 3.40 (slow); speed does not matter for dps (stats do): shots do the damage", kind)
+    end
+    t.eq(W.Line(weapon(3.4, nil, "INVTYPE_RANGED"), { dps = { prefer = "slow", why = "big hits" } }).text,
+        "Speed 3.40 (slow); good for dps (big hits)", "no ranged part: the role's own")
+    t.eq(W.Line(weapon(3.4, nil, "INVTYPE_RANGED"), { dps = { prefer = "fast", ranged = "slow" } }).text,
+        "Speed 3.40 (slow); dps prefers fast", "a ranged part that is no table: the role's own")
+end
+
+-- A rogue: a slow main hand, a fast off hand. The role's `offhand` part
+-- speaks for a weapon that only goes in the off hand.
+tests["weapon speed: a role's off hand part speaks for an off hand weapon only"] = function(t)
+    local prefs = { dps = { prefer = "slow", why = "big strikes",
+                            offhand = { prefer = "fast", why = "more poison" } } }
+    t.eq(W.Line(weapon(1.5, nil, "INVTYPE_WEAPONOFFHAND"), prefs).text, "Speed 1.50 (fast); good for dps (more poison)")
+    t.eq(W.Line(weapon(3.4, nil, "INVTYPE_WEAPONOFFHAND"), prefs).text, "Speed 3.40 (slow); dps prefers fast (more poison)")
+    for _, kind in ipairs({ "INVTYPE_WEAPON", "INVTYPE_WEAPONMAINHAND", "INVTYPE_2HWEAPON", "INVTYPE_RANGED" }) do
+        t.eq(W.Line(weapon(1.5, nil, kind), prefs).text, "Speed 1.50 (fast); dps prefers slow (big strikes)", kind)
+    end
+end
+
+tests["weapon speed: a part with no speed of its own is not said"] = function(t)
+    local prefs = { dps = { prefer = "slow", ranged = { why = "no speed here" } } }
+    t.eq(W.Line(weapon(3.4, nil, "INVTYPE_RANGED"), prefs).text, "Speed 3.40 (slow)")
+    t.eq(W.Line(weapon(3.4, nil, "INVTYPE_WEAPON"), prefs).text, "Speed 3.40 (slow); good for dps")
+end
+
 tests["weapon speed: From takes the weapon out of the client's gear answer"] = function(t)
     local gear = { kind = "INVTYPE_2HWEAPON", speed = 3.6, stats = { [DPS] = 55.5, ITEM_MOD_STRENGTH_SHORT = 9 } }
     t.eq(W.From(gear), { kind = "INVTYPE_2HWEAPON", speed = 3.6, dps = 55.5 })

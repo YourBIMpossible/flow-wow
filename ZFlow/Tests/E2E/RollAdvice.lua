@@ -154,10 +154,68 @@ tests["roll advice 236: the chat setting off says nothing in chat; the hint sett
     c.offerRoll(12, STRONG)
     t.eq(valueText(c, 12), "Need +7.3", "the value still shows")
     t.eq(naming(c, from, STRONG), 0, "no chat line")
+    -- RH-3: the value is there first, so "gone" is seen, not assumed.
+    -- Fails before: with the hint off the roll is left as it was ("Greed").
+    c.offerRoll(13, SMALL)
+    t.eq(valueText(c, 13), "Greed", "the value shows while the hint is on")
     t.eq(addon.settings:set(R().SETTING, false), true)
     c.offerRoll(13, SMALL)
-    t.eq(valueText(c, 13), nil)
+    t.eq(valueText(c, 13), nil, "the hint off takes the value away")
     t.eq(naming(c, from, SMALL), 0)
+end
+
+-- RH-1 (lead section 279): no roll frame found. The client's show then says
+-- the hint in chat ("<link> Upgrade"); with the chat advice on that made two
+-- lines a roll, and a roll offered again said the hint again.
+-- Fails before: 3 lines name the link (the fallback, the advice, the
+-- fallback again).
+tests["roll advice RH-1: no roll frame, the same roll offered twice says one chat line"] = function(t)
+    local c = boot({ role = "dps" })
+    c.setRollFrame(false)
+    local from = #c.printed + 1
+    c.offerRoll(20, STRONG)
+    c.offerRoll(20, STRONG)
+    t.eq(naming(c, from, STRONG), 1, "exactly one chat line names the link")
+    t.eq(count(c, from, STRONG .. ": Need: upgrade for dps"), 1, "and it is the advice")
+    t.eq(valueText(c, 20), nil, "no roll frame: no value drawn")
+end
+
+-- RH-1: with the chat advice off the client's own line is the only one, and
+-- it is said once for a roll. Fails before: 2 (once per offer).
+tests["roll advice RH-1: no roll frame, chat advice off: the hint is said once for a roll"] = function(t)
+    local c, addon = boot({ role = "dps" })
+    c.setRollFrame(false)
+    t.eq(addon.settings:set(R().CHAT_SETTING, false), true)
+    local from = #c.printed + 1
+    c.offerRoll(21, STRONG)
+    c.offerRoll(21, STRONG)
+    t.eq(naming(c, from, STRONG), 1, "the hint line, once")
+    t.eq(count(c, from, STRONG .. " Upgrade"), 1)
+end
+
+-- RH-4 (lead section 279): a roll the game cancelled (CANCEL_LOOT_ROLL
+-- carries the roll id) is dropped. Fails before: the roll stays pending, so
+-- the late item data gives the value "Need +7.3" and 1 chat line.
+tests["roll advice RH-4: item data late, the roll cancelled, then the data: no line and no value"] = function(t)
+    local c = boot({ role = "dps" })
+    local from = #c.printed + 1
+    c.offerRoll(18, LATE)
+    c.fire("CANCEL_LOOT_ROLL", 18)
+    c.setItem(LATE, helm({ [STR] = 10 }))
+    c.advance(3, 6)
+    t.eq(valueText(c, 18), nil, "no value for a roll that is gone")
+    t.eq(naming(c, from, LATE), 0, "no late chat line")
+end
+
+-- RH-4: the game uses a roll id again; after a cancel it is a new roll.
+-- Fails before: 1 (the id was said already).
+tests["roll advice RH-4: a roll id offered again after its cancel is said again"] = function(t)
+    local c = boot({ role = "tank" })
+    local from = #c.printed + 1
+    c.offerRoll(19, STRONG)
+    c.fire("CANCEL_LOOT_ROLL", 19)
+    c.offerRoll(19, STRONG)
+    t.eq(count(c, from, STRONG .. ": Need: upgrade for tank"), 2)
 end
 
 tests["roll advice 236: reload keeps the chat setting"] = function(t)
@@ -182,7 +240,13 @@ tests["roll advice 236: the roll word says the same advice for any item link"] =
     t.ok(string.find(how[1], ns.id.slash .. " roll", 1, true) ~= nil, "says how: " .. tostring(how[1]))
 end
 
-tests["roll advice 236: it never rolls or confirms a roll"] = function(t)
+-- RH-2 (lead section 279): DOCUMENTATION, not a proof. The fake client has
+-- no roll call, and nothing reads the two names stubbed here, so this
+-- passes with any implementation. The test harness gives a test no way to
+-- read the add-on's source (a test names no file: lead section 208), so
+-- "Gear/RollHint.lua names no RollOnLoot or ConfirmLootRoll" is not
+-- checked here.
+tests["roll advice 236: documentation only - hint only, no roll or confirm call is made"] = function(t)
     local c = boot({ role = "dps" })
     local calls = 0
     for _, name in ipairs({ "RollOnLoot", "ConfirmLootRoll" }) do

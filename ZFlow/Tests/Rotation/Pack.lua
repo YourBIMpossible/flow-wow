@@ -17,6 +17,7 @@ local function good()
         keys = { none = { key = "Bolt", ctrl = { "Kick" } } },
         weights = { dps = { evidence = "first guess", values = { STAT = 1 } } },
         proficiency = { evidence = "first guess" },
+        weaponSpeed = { evidence = "first guess", dps = { prefer = "slow", why = "a reason in words" } },
         spells = {
             Bolt = { evidence = "first guess" }, Mend = { evidence = "first guess" }, Kick = { evidence = "first guess" },
             Slip = { evidence = "first guess" }, Cleanse = { evidence = "first guess" }, Shield = { evidence = "observed" },
@@ -79,6 +80,99 @@ return {
         local ok, problems = ns.PackCheck({})
         t.eq(ok, false, "an empty pack")
         t.eq(#problems, #ns.Pack.KEYS, "one problem per key, the provenance block included")
+    end,
+
+    -- Lead section 280: every class says which weapon speed each of its
+    -- roles likes, or that speed does not matter ("any"), and why.
+    ["weaponSpeed is a required key"] = function(t)
+        local listed = false
+        for _, key in ipairs(ns.Pack.KEYS) do
+            if key == "weaponSpeed" then listed = true end
+        end
+        t.eq(listed, true, "in ns.Pack.KEYS")
+        local pack = good()
+        pack.weaponSpeed = nil
+        local ok, problems = ns.PackCheck(pack)
+        t.eq(ok, false, "a pack without it fails")
+        t.ok(has(problems, "missing key \"weaponSpeed\""), "named")
+    end,
+
+    ["a role with weights and no weapon speed entry is reported"] = function(t)
+        local pack = good()
+        pack.weights.tank = { evidence = "first guess", values = { STAT = 1 } }
+        local ok, problems = ns.PackCheck(pack)
+        t.eq(ok, false, "fails")
+        t.ok(has(problems, "weaponSpeed.tank: no entry"), "the role named: " .. table.concat(problems, "; "))
+        t.ok(not has(problems, "weaponSpeed.dps"), "the role with an entry passes")
+    end,
+
+    ["a weapon speed entry without a speed, a reason or an evidence class is reported"] = function(t)
+        local pack = good()
+        pack.weaponSpeed.dps.prefer = "heavy"
+        local ok, problems = ns.PackCheck(pack)
+        t.eq(ok, false, "a speed that is none of slow, medium, fast, any")
+        t.ok(has(problems, "weaponSpeed.dps: no preferred speed"), "named")
+        for _, why in ipairs({ false, "", 5 }) do
+            pack = good()
+            pack.weaponSpeed.dps.why = why or nil
+            ok, problems = ns.PackCheck(pack)
+            t.eq(ok, false, "why " .. tostring(why))
+            t.ok(has(problems, "weaponSpeed.dps: no reason"), "named for " .. tostring(why))
+        end
+        pack = good()
+        pack.weaponSpeed.evidence = nil
+        ok, problems = ns.PackCheck(pack)
+        t.eq(ok, false, "no evidence class")
+        t.ok(has(problems, "weaponSpeed: no evidence class"), "named")
+    end,
+
+    ["speed that does not matter is an entry: any, with its reason"] = function(t)
+        local pack = good()
+        pack.weaponSpeed.dps = { prefer = "any", why = "spells do the damage" }
+        local ok, problems = ns.PackCheck(pack)
+        t.eq(table.concat(problems, "; "), "", "no problems")
+        t.eq(ok, true, "ok")
+    end,
+
+    ["a ranged or off hand part of an entry needs its own speed and reason"] = function(t)
+        local pack = good()
+        pack.weaponSpeed.dps.ranged = { prefer = "slow", why = "a reason in words" }
+        pack.weaponSpeed.dps.offhand = { prefer = "fast", why = "a reason in words" }
+        local ok, problems = ns.PackCheck(pack)
+        t.eq(table.concat(problems, "; "), "", "both parts given in full pass")
+        t.eq(ok, true, "ok")
+        pack.weaponSpeed.dps.ranged = { prefer = "slow" }
+        pack.weaponSpeed.dps.offhand = "fast"
+        ok, problems = ns.PackCheck(pack)
+        t.eq(ok, false, "fails")
+        t.ok(has(problems, "weaponSpeed.dps.ranged: no reason"), "the ranged part: " .. table.concat(problems, "; "))
+        t.ok(has(problems, "weaponSpeed.dps.offhand: no entry"), "the off hand part")
+    end,
+
+    ["every class pack says a weapon speed, with its reason, for each role it has weights for"] = function(t)
+        local speeds = { slow = true, medium = true, fast = true, any = true }
+        local classes, lacking = {}, {}
+        for class in pairs(ns.Packs) do classes[#classes + 1] = class end
+        table.sort(classes)
+        for _, class in ipairs(classes) do
+            local pack = ns.Packs[class]
+            local speedTable = pack.weaponSpeed
+            if type(speedTable) ~= "table" then
+                lacking[#lacking + 1] = class
+            else
+                t.eq(speedTable.evidence, "first guess", class .. ": the table's evidence class")
+                for role in pairs(pack.weights) do
+                    local entry = speedTable[role]
+                    local at = class .. " " .. role
+                    t.ok(type(entry) == "table", at .. ": an entry")
+                    if type(entry) == "table" then
+                        t.eq(speeds[entry.prefer], true, at .. ": a speed, or any")
+                        t.ok(type(entry.why) == "string" and entry.why ~= "", at .. ": a reason")
+                    end
+                end
+            end
+        end
+        t.eq(table.concat(lacking, ", "), "", "class packs with no weaponSpeed table")
     end,
 
     ["a missing provenance block is reported"] = function(t)
