@@ -36,7 +36,9 @@ local _, ns = ...
 -- rules still win, and a goal protects only the count it reserves.
 --
 -- ADVICE DATA ONLY. Nothing here deposits, withdraws, moves, sells, buys or
--- uses anything; the source adds no event and no window. Not tested in game.
+-- uses anything; the source adds no event and no window. A change made with
+-- the word calls Reservations.Changed, so an open sell list relists with it.
+-- Not tested in game.
 
 local Goals = {}
 ns.ItemGoals = Goals
@@ -266,6 +268,7 @@ function Goals.Start(k, diag)
     local function run(rest)
         local lines, changed = Goals.Run(k, rest)
         for i = 1, #lines do k.client.print(k.id.title .. ": " .. lines[i]) end
+        if changed then ns.Reservations.Changed(k) end
         return changed
     end
     if diag and type(diag.commands) == "table" then
