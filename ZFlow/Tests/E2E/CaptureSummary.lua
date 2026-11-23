@@ -85,8 +85,13 @@ tests["capture mask: only the add-on's own words and numbers are printed; the re
     t.eq({ Capture.Mask("way: meet fenwick here", {}, OWN) }, { "way: meet _ here", 1 },
         "S1: a lower-case word typed by the player is not printed")
     t.eq({ Capture.Mask("met aldwynne at 3:15", names, OWN) }, { "_ _ _ #:#", 3 }, "a known name, and words not own")
-    t.eq({ Capture.Mask("Then: Talk to Brannoch", {}, OWN) }, { "Then: Talk to _", 1 },
-        "own words as written, capitalised ones at the start of a sentence")
+    -- CM-1 (lead sections 237, 238): after a colon is not a sentence's start,
+    -- so a capitalised own word there is left out too ("guild: Way" must not
+    -- print a name spelt "Way"); at the line's start it prints.
+    t.eq({ Capture.Mask("Then: Talk to Brannoch", {}, OWN) }, { "Then: _ to _", 2 },
+        "own words as written, capitalised ones only at the start of a sentence")
+    t.eq({ Capture.Mask("Talk to Brannoch. Then talk", {}, OWN) }, { "Talk to _. Then talk", 1 },
+        "at the line's start and after a full stop they print")
     t.eq({ Capture.Mask("sell [Linen Cloth] x4", {}, OWN) }, { "sell [_] _#", 2 })
     t.eq({ Capture.Mask("|cffff0000Kestrelle|r says", {}, OWN) }, { "_ says", 1 }, "colour codes dropped")
     t.eq({ Capture.Mask("from zo\195\171 here", {}, OWN) }, { "from _ here", 1 }, "a byte past ASCII")
@@ -465,6 +470,34 @@ tests["capture summary C3-2: a capitalised own word the add-on never writes in l
     t.eq({ Capture.Mask("guild: Brannoch", {}, own) }, { "guild: _", 1 }, "CS4-1: after a colon")
     t.eq({ Capture.Mask("Then: you met", {}, own) }, { "Then: you met", 0 },
         "a word the add-on writes in lower case too is printed, so the test can fail the other way")
+end
+
+-- MyBuddy CM-1 (lead sections 237, 238): a made-up name spelt like a word
+-- the add-on writes both capitalised and in lower case ("Hunter" and
+-- "hunter", "Way" and "way") is not printed where it stands inside a line or
+-- after a colon. Such a word is printed capitalised only where the add-on's
+-- own text would capitalise it: at a line's start, or after ". ! ?" and a
+-- blank. A name in that place, spelt like such a word, still prints: the
+-- one case the mask cannot tell from the add-on's own sentence.
+tests["capture summary CM-1: a capitalised word the add-on also writes in lower case is masked inside a line"] = function(t)
+    local own = { you = true, met = true, here = true, guild = true, by = true,
+                  Hunter = true, hunter = true, Way = true, way = true, Then = true, ["then"] = true }
+    t.eq({ Capture.Mask("you met Hunter here", {}, own) }, { "you met _ here", 1 }, "inside a line")
+    t.eq({ Capture.Mask("guild: Way", {}, own) }, { "guild: _", 1 }, "after a colon")
+    t.eq({ Capture.Mask("met by Way, here", {}, own) }, { "met by _, here", 1 }, "before a comma")
+    t.eq({ Capture.Mask("you met hunter here", {}, own) }, { "you met hunter here", 0 }, "the lower-case word prints")
+    t.eq({ Capture.Mask("Then you met", {}, own) }, { "Then you met", 0 }, "at a line's start it prints")
+    t.eq({ Capture.Mask("here. Then you met", {}, own) }, { "here. Then you met", 0 }, "after a full stop it prints")
+    t.eq({ Capture.Mask("here! Hunter met you", {}, own) }, { "here! Hunter met you", 0 },
+        "after ! it prints: the residual case, stated")
+    -- With the add-on's real word list: a capitalised "Way" or "Hunter" inside
+    -- a line is masked whether or not the list holds the capitalised form.
+    local real = ns.offline.ownWords()
+    local line, n = Capture.Mask("you met Way here", {}, real)
+    t.ok(not line:find("Way", 1, true), "real list: Way is not printed inside a line: " .. line)
+    t.ok(n >= 1, "counted as hidden")
+    line = Capture.Mask("you met Hunter here", {}, real)
+    t.ok(not line:find("Hunter", 1, true), "real list: Hunter is not printed inside a line: " .. line)
 end
 
 return tests

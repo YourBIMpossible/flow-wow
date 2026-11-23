@@ -595,16 +595,26 @@ function Capture.Mask(line, names, own)
     local items
     line, items = line:gsub("%[[^%]]*%]", "[" .. GAP .. "]")
     hidden = hidden + items
-    line = line:gsub("[%a\128-\255]+", function(word)
-        -- As the add-on writes it (MyBuddy CS-4): a name spelt like a word of
-        -- the add-on in another case ("Way" for "way") is not printed. A
-        -- capitalised own word only when the add-on also writes it in lower
-        -- case ("Then" and "then"; lead section 228, C3-2 and CS4-1): own
-        -- words come from every quoted text of the add-on, data names too,
-        -- and a name is written only capitalised. So a name is left out
-        -- wherever it stands, at a line's start or after a colon too.
+    local text = line
+    line = line:gsub("()([%a\128-\255]+)", function(at, word)
+        -- As the add-on writes it (MyBuddy CS-4): only a word the add-on
+        -- itself writes, in the same case, is printed. A capitalised own
+        -- word (lead section 228, C3-2 and CS4-1; MyBuddy CM-1, sections 237
+        -- and 238) is printed only when the add-on also writes it in lower
+        -- case ("Then" and "then") AND it stands where the add-on's own text
+        -- would capitalise it: at the line's start, or after ". ! ?" and a
+        -- blank. Inside a line, before a comma or after a colon, a
+        -- capitalised word is left out even when the add-on writes it
+        -- ("Hunter", "Way"): a made-up name spelt like it cannot be told
+        -- apart. A name only ever written capitalised (a data name) is left
+        -- out wherever it stands. Still printed: a name at a sentence's start
+        -- spelt like a word the add-on writes in both cases.
         local keep = not word:find("[\128-\255]") and own[word]
-        if keep and word:find("^%u") then keep = own[word:lower()] end
+        if keep and word:find("^%u") then
+            local before = text:sub(1, at - 1)
+            local opens = before:find("^%s*$") ~= nil or before:find("[%.!%?]%s+$") ~= nil
+            keep = opens and own[word:lower()]
+        end
         if keep then return word end
         hidden = hidden + 1
         return GAP
