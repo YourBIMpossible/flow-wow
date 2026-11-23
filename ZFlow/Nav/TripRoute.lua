@@ -1,0 +1,389 @@
+local _, ns = ...
+-- Z-Flow trip routes (lead dispatch P-TRIP: S39/S43 quest routes, S40
+-- dungeon runs). A route is an ordered list of stops the quest arrow walks
+-- one at a time; the slash word lists it with distances and lets the
+-- player skip a stop. WAYPOINTS ONLY: nothing here accepts, hands in,
+-- targets, casts, moves the player or sends chat.
+--
+-- Quest route (`<slash> route`): the player's quest log (N.QuestLogRows),
+-- placed by Questie at runtime (N.QuestiePlaces) and, where Questie gives
+-- no place on this map, by the spots the player learned (Nav/QuestSpots.lua).
+-- One stop per open objective and per complete quest's turn-in that has a
+-- point on the player's map (its point nearest the player). ORDER: nearest
+-- next from where the player stands, then shortened by N.RoutePlan (one run
+-- turned around or one stop moved while that makes the whole shorter); the
+-- player's own trip times (Nav/Legs.lua) where known, else straight lines.
+-- A stop drops out by itself once its objective is done or its quest has
+-- left the log.
+-- Dungeon run (the Dungeon Quests window's Plan the run): the steps of
+-- ns.DungeonRead R.Run, walked as given; a stop is passed when the player
+-- reaches it.
+--
+-- Pure:
+--   T.Stops(rows, places, here) -> stops, left
+--   T.Plan(rows, places, here, legs) -> route or nil, why
+--   T.Live(stop, rows) -> bool
+--   T.Lines(route, at) -> lines
+-- Module "tripRoute" provides Step, Plan, Run, Skip, Off, Lines.
+-- Not tested in game.
+ns.Nav = ns.Nav or {}
+local N = ns.Nav
+local T = {}
+N.TripRoute = T
+
+T.NAME = "tripRoute"
+T.WORD = "route"
+T.HELP = "plan your quests on this map in order and walk them with the arrow; route skip, route new, route off"
+T.SETTING = "quest.route"
+T.ARRIVE_YARDS = 10      -- a run stop is reached this close
+T.ARRIVE_SHARE = 0.01    -- the same when the map's size is not known
+T.REREAD = 1             -- seconds between looks at the quest log
+
+T.WHY_NO_MAP = "Your map is not known yet; try again in a moment."
+T.WHY_NO_LOG = "Your quest log could not be read."
+T.WHY_NONE = "No quest step on this map has a known place: no route."
+T.WHY_OFF = "Routes are switched off in the settings."
+T.NOT_HERE = "not on this map"
+T.NO_DISTANCE = "distance not known"
+T.DONE = "Route done."
+T.CLEARED = "Route cleared."
+T.HEADER = "Route: %d stops (%s)"
+T.RUN_SAID = "Run planned: %d stops; the arrow walks it."
+
+local function finite(v)
+    return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
+end
+
+local function ask(client, name, ...)
+    if type(client) ~= "table" or type(client[name]) ~= "function" then return nil end
+    local ok, v = pcall(client[name], ...)
+    if not ok then return nil end
+    return v
+end
+
+local function scale(here)
+    if type(here.size) == "table" and finite(here.size.w) and finite(here.size.h)
+        and here.size.w > 0 and here.size.h > 0 then
+        return here.size.w, here.size.h, true
+    end
+    return 1, 1, false
+end
+
+-- The point of a spot on here.map nearest the player (the first when the
+-- player's x, y are not known), or nil.
+local function pointOf(spot, here)
+    if type(spot) ~= "table" or type(spot.points) ~= "table" then return nil end
+    local w, h = scale(here)
+    local canMeasure = finite(here.x) and finite(here.y)
+    local best, bestD
+    for _, pt in ipairs(spot.points) do
+        if type(pt) == "table" and pt.map == here.map and finite(pt.x) and finite(pt.y) then
+            if not canMeasure then return pt end
+            local dx, dy = (pt.x - here.x) * w, (pt.y - here.y) * h
+            local d = dx * dx + dy * dy
+            if best == nil or d < bestD then best, bestD = pt, d end
+        end
+    end
+    return best
+end
+
+local function spotOf(places, id, i)
+    local p = type(places) == "table" and places[id] or nil
+    if type(p) ~= "table" then return nil end
+    if i == nil then return p.turnIn end
+    return type(p.objectives) == "table" and p.objectives[i] or nil
+end
+
+function T.Stops(rows, places, here)
+    local Q = N.QuestSource
+    local stops, left = {}, {}
+    here = type(here) == "table" and here or {}
+    local function add(row, i, detail)
+        local pt = pointOf(spotOf(places, row.id, i), here)
+        if pt then
+            stops[#stops + 1] = { quest = row.id, objective = i, turnIn = i == nil, label = row.title,
+                                  detail = detail, place = { map = pt.map, x = pt.x, y = pt.y } }
+        else
+            left[#left + 1] = { quest = row.id, label = row.title, detail = detail, why = T.NOT_HERE }
+        end
+    end
+    for _, row in ipairs(type(rows) == "table" and rows or {}) do
+        if type(row) == "table" and row.id ~= nil and type(row.title) == "string" and row.failed ~= true then
+            if row.complete == true then
+                local spot = spotOf(places, row.id, nil)
+                add(row, nil, Q.TurnInLine(type(spot) == "table" and spot.name or nil))
+            else
+                for i, o in ipairs(type(row.objectives) == "table" and row.objectives or {}) do
+                    if type(o) == "table" and o.done ~= true then
+                        add(row, i, type(o.text) == "string" and o.text or nil)
+                    end
+                end
+            end
+        end
+    end
+    return stops, left
+end
+
+function T.Plan(rows, places, here, legs)
+    here = type(here) == "table" and here or {}
+    if here.map == nil then return nil, T.WHY_NO_MAP end
+    local stops, left = T.Stops(rows, places, here)
+    if #stops == 0 then return nil, T.WHY_NONE end
+    local w, h, yards = scale(here)
+    -- No more than the planner takes: the nearest ones.
+    if #stops > N.ROUTE_MAX and finite(here.x) and finite(here.y) then
+        local function far(s)
+            local dx, dy = (s.place.x - here.x) * w, (s.place.y - here.y) * h
+            return dx * dx + dy * dy
+        end
+        table.sort(stops, function(a, b) return far(a) < far(b) end)
+        for i = #stops, N.ROUTE_MAX + 1, -1 do stops[i] = nil end
+    end
+    local list = {}
+    for i, s in ipairs(stops) do list[i] = s.place end
+    local route, why = N.RoutePlan(list, here.map, { w = w, h = h }, here, yards and legs or nil)
+    if not route then return nil, tostring(why) end
+    local ordered = {}
+    for i, rs in ipairs(route.stops) do
+        local s = stops[rs.index]
+        s.leg = yards and rs.leg or nil
+        ordered[i] = s
+    end
+    return { kind = "quests", stops = ordered, yards = yards, label = route.label, left = left }
+end
+
+function T.Live(stop, rows)
+    if type(stop) ~= "table" then return false end
+    if stop.quest == nil or stop.kind ~= nil then return true end
+    for _, row in ipairs(type(rows) == "table" and rows or {}) do
+        if type(row) == "table" and row.id == stop.quest then
+            if row.failed == true then return false end
+            if stop.turnIn then return true end
+            if row.complete == true then return false end
+            local o = type(row.objectives) == "table" and row.objectives[stop.objective] or nil
+            return type(o) == "table" and o.done ~= true
+        end
+    end
+    return false
+end
+
+function T.Lines(route, at)
+    if type(route) ~= "table" or type(route.stops) ~= "table" then return {} end
+    local lines = { T.HEADER:format(#route.stops, tostring(route.label or N.ROUTE_STRAIGHT)) }
+    for i, s in ipairs(route.stops) do
+        local dist = (finite(s.leg) and route.yards ~= false) and (tostring(math.floor(s.leg + 0.5)) .. " yd")
+            or T.NO_DISTANCE
+        local parts = { tostring(s.label) }
+        if s.detail ~= nil then parts[#parts + 1] = tostring(s.detail) end
+        parts[#parts + 1] = dist
+        if s.gone then parts[#parts + 1] = "done" end
+        lines[#lines + 1] = (i == at and "> " or "") .. i .. ". " .. table.concat(parts, " - ")
+    end
+    for _, l in ipairs(type(route.left) == "table" and route.left or {}) do
+        local what = type(l) == "table" and (tostring(l.label) .. (l.detail and (" - " .. tostring(l.detail)) or "")
+            .. " - " .. tostring(l.why or T.NOT_HERE)) or tostring(l)
+        lines[#lines + 1] = "  " .. what
+    end
+    return lines
+end
+
+-- Straight yards between run stops on one map with a known size; the first
+-- from where the player stands.
+local function runLegs(stops, client)
+    local at = ask(client, "position")
+    local last = type(at) == "table" and { map = at.map, x = at.x, y = at.y } or nil
+    local yards = true
+    for _, s in ipairs(stops) do
+        local p = s.place
+        local size = type(p) == "table" and ask(client, "mapSize", p.map) or nil
+        if type(last) == "table" and type(p) == "table" and last.map == p.map and type(size) == "table"
+            and finite(size.w) and finite(size.h) and finite(last.x) and finite(last.y) then
+            local dx, dy = (p.x - last.x) * size.w, (p.y - last.y) * size.h
+            s.leg = math.sqrt(dx * dx + dy * dy)
+        else
+            yards = false
+        end
+        last = p
+    end
+    return yards
+end
+
+function T.Declare(k, diag)
+    local api = {}
+    local ctx
+    local route, at, readAt = nil, 1, nil
+
+    local function client() return ctx and ctx.client or k.client end
+
+    local function on()
+        local s = ctx and ctx.settings
+        if type(s) ~= "table" or type(s.get) ~= "function" then return true end
+        local ok, v = pcall(s.get, s, T.SETTING)
+        return not (ok and v == false)
+    end
+
+    local function hereNow()
+        local c = client()
+        local pos = ask(c, "position")
+        local here = {}
+        if type(pos) == "table" then here.map, here.x, here.y = pos.map, pos.x, pos.y end
+        if here.map ~= nil then
+            local size = ask(c, "mapSize", here.map)
+            if type(size) == "table" then here.size = { w = size.w, h = size.h } end
+        end
+        return here
+    end
+
+    function api.Plan()
+        if not on() then return nil, T.WHY_OFF end
+        local c = client()
+        local rows = N.QuestLogRows(c)
+        if rows == nil then return nil, T.WHY_NO_LOG end
+        local here = hereNow()
+        if here.map == nil then return nil, T.WHY_NO_MAP end
+        local places = N.QuestiePlaces(c, rows, here.map)
+        local QS = N.QuestSpots
+        if QS and ctx then
+            places = QS.Merge(places, QS.Places(ctx.store:get("account", QS.PATH), rows, here.map))
+        end
+        local legs
+        local L = k.use and k.use("legs")
+        if L and type(L.Planner) == "function" then
+            local ok, fn = pcall(L.Planner, here.map)
+            if ok and type(fn) == "function" then legs = fn end
+        end
+        local r, why = T.Plan(rows, places or {}, here, legs)
+        if not r then return nil, why end
+        route, at, readAt = r, 1, ask(c, "now")
+        return r
+    end
+
+    -- run: what ns.DungeonRead R.Run gives. Answers the sentence to show.
+    function api.Run(run)
+        if not on() then return T.WHY_OFF end
+        if type(run) ~= "table" or type(run.steps) ~= "table" or #run.steps == 0 then return T.WHY_NONE end
+        local stops = {}
+        for i, s in ipairs(run.steps) do
+            stops[i] = { kind = s.kind or "run", quest = s.quest, label = s.label, detail = s.detail,
+                         place = { map = s.place.map, x = s.place.x, y = s.place.y } }
+        end
+        local yards = runLegs(stops, client())
+        local left = {}
+        for _, name in ipairs(type(run.left) == "table" and run.left or {}) do
+            left[#left + 1] = { label = tostring(name), why = "giver's place not known" }
+        end
+        route, at = { kind = "run", stops = stops, yards = yards, label = tostring(run.title or N.ROUTE_STRAIGHT),
+                      left = left }, 1
+        return T.RUN_SAID:format(#stops)
+    end
+
+    function api.Off()
+        route, at = nil, 1
+    end
+
+    -- The first stop from at on that is not gone; the route ends past the last.
+    local function settle()
+        while route and route.stops[at] and route.stops[at].gone do at = at + 1 end
+        if route and route.stops[at] == nil then route, at = nil, 1 end
+    end
+
+    function api.Skip()
+        if not route then return nil end
+        at = at + 1
+        settle()
+        return route and route.stops[at] or nil
+    end
+
+    local function reached(s, here)
+        local p = s.place
+        if type(p) ~= "table" or here.map ~= p.map or not (finite(here.x) and finite(here.y)) then return false end
+        local w, h, yards = scale(here)
+        local dx, dy = (p.x - here.x) * w, (p.y - here.y) * h
+        local d = math.sqrt(dx * dx + dy * dy)
+        return d < (yards and T.ARRIVE_YARDS or T.ARRIVE_SHARE)
+    end
+
+    function api.Step()
+        if not route or not on() then return nil end
+        local c = client()
+        if route.kind == "quests" then
+            local now = ask(c, "now")
+            if not finite(now) or not finite(readAt) or now - readAt >= T.REREAD then
+                readAt = now
+                local rows = N.QuestLogRows(c)
+                if rows then
+                    for _, s in ipairs(route.stops) do
+                        if not T.Live(s, rows) then s.gone = true end
+                    end
+                end
+            end
+        else
+            local here = hereNow()
+            while route and route.stops[at] and reached(route.stops[at], here) do
+                route.stops[at].gone = true
+                at = at + 1
+                settle()
+            end
+        end
+        settle()
+        local s = route and route.stops[at]
+        if not s then return nil end
+        return { quest = s.quest, objective = s.objective, turnIn = s.turnIn, label = s.label, detail = s.detail,
+                 place = { map = s.place.map, x = s.place.x, y = s.place.y } }
+    end
+
+    function api.Lines()
+        if not route then return nil end
+        return T.Lines(route, at)
+    end
+
+    local function say(lines)
+        local c = client()
+        if type(c) ~= "table" or type(c.print) ~= "function" then return end
+        local id = k.id or ns.id
+        for _, line in ipairs(lines) do c.print(id.title .. ": " .. tostring(line)) end
+    end
+
+    function api.Word(rest)
+        local word = tostring(rest or ""):lower():match("^%s*(%S*)")
+        if word == "off" or word == "clear" then
+            api.Off()
+            say({ T.CLEARED })
+            return
+        end
+        if word == "skip" or word == "next" then
+            if api.Skip() then say(api.Lines()) else say({ T.DONE }) end
+            return
+        end
+        if word == "new" or not route then
+            local r, why = api.Plan()
+            if not r then
+                say({ why })
+                return
+            end
+        end
+        say(api.Lines() or { T.DONE })
+    end
+
+    if diag and type(diag.commands) == "table" then
+        diag.commands[T.WORD] = function(rest) api.Word(rest) end
+        if type(diag.help) == "table" then diag.help[T.WORD] = T.HELP end
+    end
+
+    k:Setting({ key = T.SETTING, scope = "account", type = "bool", default = true,
+        label = "Walk a planned route with the arrow", group = "travel.route",
+        help = "Shows when you plan a route with the route word or Plan the run: the quest arrow walks its stops in order.",
+        synonyms = { "route", "quest", "dungeon", "run", "order", "plan" } })
+
+    k:Module({
+        name = T.NAME,
+        needs = { "client", "store", "settings" },
+        provides = { Step = api.Step, Plan = api.Plan, Run = api.Run, Skip = api.Skip, Off = api.Off,
+                     Lines = api.Lines },
+        start = function(c) ctx = c end,
+        stop = function() route, at = nil, 1 end,
+    })
+    return api
+end
+
+ns.tripRoute = T.Declare(ns, ns.diag)
