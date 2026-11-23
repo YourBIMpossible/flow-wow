@@ -143,6 +143,9 @@ local function start()
     c.setBagItems({ { item = 2589, count = 20 }, { item = 858, count = 5 } })
     local k = ns.Kernel({}, c)
     local d = ns.Diag.Start(k)
+    -- Lead section 220 (SR-1, SR-2): with no reservations module the status
+    -- is unavailable and nothing is advised for sale; this kernel has one.
+    ns.Reservations.Declare(k)
     local api = Po.Declare(k, d)
     k:Boot()
     c.fire("ADDON_LOADED", ns.id.addon)

@@ -596,7 +596,9 @@ function Capture.Mask(line, names, own)
     line, items = line:gsub("%[[^%]]*%]", "[" .. GAP .. "]")
     hidden = hidden + items
     line = line:gsub("[%a\128-\255]+", function(word)
-        if not word:find("[\128-\255]") and own[word:lower()] then return word end
+        -- As the add-on writes it (MyBuddy CS-4): a name spelt like a word of
+        -- the add-on in another case ("Way" for "way") is not printed.
+        if not word:find("[\128-\255]") and own[word] then return word end
         hidden = hidden + 1
         return GAP
     end)
@@ -657,32 +659,44 @@ end
 
 function Capture.Summarize(c, addon, report, cap, own, features)
     local rows = {}
-    local names = Capture.Names(cap)
+    local okNames, names = pcall(Capture.Names, cap)
+    if not okNames or type(names) ~= "table" then names = {} end
     local Evidence = ns.CaptureEvidence
     for _, feature in ipairs(features or Capture.FEATURES) do
-        local lines, added, ran = Capture.RunFeature(c, addon, feature)
+        -- MyBuddy CS2-3: each step is guarded; a step that raises is one more
+        -- problem on this row, its output left out, and the rest go on.
+        local faults = 0
+        local okRun, lines, added, ran = pcall(Capture.RunFeature, c, addon, feature)
+        if not okRun or type(lines) ~= "table" then lines, added, ran = {}, 0, false end
         local masked, hidden = {}, 0
         if feature.fromRows then
-            masked = Capture.SettingsLines(addon.settings)
+            local okRows, got = pcall(Capture.SettingsLines, type(addon) == "table" and addon.settings or nil)
+            if okRows and type(got) == "table" then masked = got else faults = faults + 1 end
         else
             for i, line in ipairs(lines) do
-                local n
-                masked[i], n = Capture.Mask(line, names, own)
-                hidden = hidden + n
+                local okMask, text, n = pcall(Capture.Mask, line, names, own)
+                if okMask then
+                    masked[i], hidden = text, hidden + (tonumber(n) or 0)
+                else
+                    masked[i], hidden, faults = Capture.HIDE, hidden + 1, faults + 1
+                end
             end
         end
+        local okUnknown, unknowns = pcall(Capture.Unknowns, lines, report)
+        if not okUnknown then unknowns, faults = 0, faults + 1 end
         -- A word that raised (ran false) counts as a Lua problem, so the run
         -- is never verified (MyBuddy CS-1). A Judge that raises leaves this
         -- row with no verdict, said as not verified, and the rest go on (CS-3).
         local verdict = nil
         if type(Evidence) == "table" and type(Evidence.Judge) == "function" then
-            local judged = added + (ran and 0 or 1)
+            local judged = (tonumber(added) or 0) + (ran and 0 or 1) + faults
             local ok, v = pcall(Evidence.Judge, feature.name,
                 { cap = cap, report = report, lines = lines, problems = judged, addon = addon, ran = ran })
             if ok and type(v) == "table" then verdict = v end
         end
-        rows[#rows + 1] = { feature = feature.name, ran = ran, problems = added,
-            unknowns = Capture.Unknowns(lines, report), hidden = hidden, verdict = verdict, lines = masked }
+        -- MyBuddy CS2-1: the row says the problems the verdict was judged on.
+        rows[#rows + 1] = { feature = feature.name, ran = ran, problems = (tonumber(added) or 0) + (ran and 0 or 1) + faults,
+            unknowns = unknowns, hidden = hidden, verdict = verdict, lines = masked }
     end
     return rows
 end
@@ -701,10 +715,14 @@ function Capture.SummaryText(rows)
             out[#out + 1] = tostring(r.feature) .. NO_VERDICT
         end
     end
+    -- MyBuddy CS2-2: the rows with no verdict have their own count, so the
+    -- counts add up to the rows.
+    local n = { captured = 0, synthetic = 0, notExercised = 0, error = 0 }
+    if type(Evidence) == "table" and #verdicts > 0 then n = Evidence.Count(verdicts) end
+    out[#out + 1] = string.format("verified on captured inputs %d, with made-up inputs %d, not exercised %d, "
+        .. "Lua problem %d, no verdict %d, of %d", n.captured, n.synthetic, n.notExercised, n.error,
+        #(rows or {}) - #verdicts, #(rows or {}))
     if type(Evidence) == "table" and #verdicts > 0 then
-        local n = Evidence.Count(verdicts)
-        out[#out + 1] = string.format("verified on captured inputs %d, with made-up inputs %d, not exercised %d, "
-            .. "Lua problem %d, of %d", n.captured, n.synthetic, n.notExercised, n.error, #(rows or {}))
         for _, line in ipairs(Evidence.Text(verdicts)) do out[#out + 1] = line end
     end
     for _, r in ipairs(rows or {}) do

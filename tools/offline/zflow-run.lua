@@ -170,17 +170,35 @@ end
 --   readFile(path) -> its text, or nil
 --   removeFile(path) -> true when it was removed
 local made = 0
+-- Where a temp folder is looked for (MyBuddy CS-5): these environment
+-- names in order, then these folders; the first outside the repo where the
+-- file opens is used.
+ns.offline.TEMP_ENV = { "TEMP", "TMP", "TMPDIR", "TEMPDIR" }
+ns.offline.TEMP_FALLBACK = { "/tmp", "/var/tmp" }
 function ns.offline.tempFile(text)
-    local dir = os.getenv("TEMP") or os.getenv("TMPDIR") or os.getenv("TMP")
-    if type(dir) ~= "string" or dir == "" then return nil, "no temp folder" end
-    if ns.offline.inRepo(dir) then return nil, "the temp folder is inside the repo" end
-    made = made + 1
-    local path = dir .. "/zflow-test-" .. tostring(os.time()) .. "-" .. made .. ".txt"
-    local fh = io.open(path, "wb")
-    if not fh then return nil, "the file did not open" end
-    fh:write(tostring(text))
-    fh:close()
-    return path
+    local dirs = {}
+    for _, name in ipairs(ns.offline.TEMP_ENV) do
+        local dir = os.getenv(name)
+        if type(dir) == "string" and dir ~= "" then dirs[#dirs + 1] = dir end
+    end
+    for _, dir in ipairs(ns.offline.TEMP_FALLBACK) do dirs[#dirs + 1] = dir end
+    local why = "no temp folder"
+    for _, dir in ipairs(dirs) do
+        if ns.offline.inRepo(dir) then
+            why = "the temp folder is inside the repo"
+        else
+            made = made + 1
+            local path = dir .. "/zflow-test-" .. tostring(os.time()) .. "-" .. made .. ".txt"
+            local fh = io.open(path, "wb")
+            if fh then
+                fh:write(tostring(text))
+                fh:close()
+                return path
+            end
+            why = "the file did not open"
+        end
+    end
+    return nil, why
 end
 function ns.offline.readFile(path)
     local fh = type(path) == "string" and io.open(path, "rb") or nil
@@ -210,7 +228,8 @@ function ns.offline.ownWords()
                 fh:close()
                 for _, quote in ipairs({ '"([^"\n]*)"', "'([^'\n]*)'" }) do
                     for literal in text:gmatch(quote) do
-                        for word in literal:gmatch("%a+") do words[word:lower()] = true end
+                        -- As written (MyBuddy CS-4): "Way" is not "way".
+                        for word in literal:gmatch("%a+") do words[word] = true end
                     end
                 end
             end
