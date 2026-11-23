@@ -140,7 +140,7 @@ end
 tests["capture summary: one row per feature, counts and masked lines"] = function(t)
     local cap = made()
     local c, addon, report = boot(cap)
-    local rows = Capture.Summarize(c, addon, report, Capture.Names(cap), ns.offline.ownWords())
+    local rows = Capture.Summarize(c, addon, report, cap, ns.offline.ownWords())
     t.eq(#rows, #Capture.FEATURES)
     for i, r in ipairs(rows) do
         t.eq(r.feature, Capture.FEATURES[i].name)
@@ -150,7 +150,8 @@ tests["capture summary: one row per feature, counts and masked lines"] = functio
         t.ok(#r.lines > 0, r.feature .. " said something")
     end
     local text = Capture.SummaryText(rows)
-    t.ok(text:find("\nfeature rotation: ran yes, problems 0, unknown 0, hidden ", 1, true) ~= nil, "the rotation row")
+    t.ok(text:find("\nfeature rotation: words ran yes, problems 0, unknown 0, hidden ", 1, true) ~= nil,
+        "the rotation row")
     t.eq(text:find(Capture.SUMMARY_HEAD, 1, true), 1, "it starts with its heading")
     local digits = 0
     for _, r in ipairs(rows) do
@@ -159,6 +160,38 @@ tests["capture summary: one row per feature, counts and masked lines"] = functio
         end
     end
     t.eq(digits, 0, "lines with a digit left in them")
+end
+
+-- Lead section 206: the verdict is CaptureEvidence's. Rotation on this
+-- made-up capture runs with no Lua problem but has no target, no known
+-- spells and the setting off: that is "not exercised", never a pass.
+tests["capture summary: a feature that only ran clean is not a pass"] = function(t)
+    local cap = made()
+    local c, addon, report = boot(cap)
+    local rows = Capture.Summarize(c, addon, report, cap, ns.offline.ownWords())
+    local rotation = rows[1]
+    t.eq({ rotation.feature, rotation.ran, rotation.problems }, { "rotation", true, 0 }, "it ran clean")
+    t.ok(type(rotation.verdict) == "table", "it has a verdict")
+    if type(rotation.verdict) ~= "table" then return end
+    t.eq(rotation.verdict.result, ns.CaptureEvidence.NOT_EXERCISED, "ran clean, not verified")
+    t.eq(rotation.verdict.verified, false)
+    local text = Capture.SummaryText(rows)
+    t.ok(text:find("\nrotation: NOT exercised; missing ", 1, true) ~= nil, "the summary says so")
+    t.eq(text:find("\nrotation: verified", 1, true), nil, "and never calls it verified")
+    for _, line in ipairs(ns.CaptureEvidence.Text({ rotation.verdict })) do
+        t.ok(text:find(line, 1, true) ~= nil, "the evidence line, as CaptureEvidence words it")
+    end
+    local n = ns.CaptureEvidence.Count((function()
+        local v = {}
+        for _, r in ipairs(rows) do v[#v + 1] = r.verdict end
+        return v
+    end)())
+    t.ok(text:find(("not exercised %d"):format(n.notExercised), 1, true) ~= nil, "the count of runs not exercised")
+end
+
+tests["capture summary: a row with no verdict is said to be not verified"] = function(t)
+    local text = Capture.SummaryText({ { feature = "made", ran = true, problems = 0, unknowns = 0, hidden = 0, lines = {} } })
+    t.ok(text:find("\nmade: no verdict; not verified", 1, true) ~= nil, text)
 end
 
 -- S4: the name-absent check could not fail, since no name was ever shown. A
@@ -171,7 +204,7 @@ tests["capture summary: a planted name the player sees is not in the summary"] =
     local raw = table.concat((Capture.RunFeature(c, addon, plant)), "\n")
     t.ok(raw:find("Fenwick", 1, true) and raw:find("aldwynne", 1, true), "the planted names are shown to the player")
     local features = { plant, { name = "arrow", words = { "arrow why" } } }
-    local rows = Capture.Summarize(c, addon, report, Capture.Names(cap), ns.offline.ownWords(), features)
+    local rows = Capture.Summarize(c, addon, report, cap, ns.offline.ownWords(), features)
     local text = Capture.SummaryText(rows):lower()
     for _, name in ipairs({ "fenwick", "aldwynne", "moss vale", "mossvale", "moss-vale" }) do
         t.eq(text:find(name, 1, true), nil, "no planted or held name in the summary: " .. name:sub(1, 1))
@@ -233,7 +266,7 @@ tests["capture real summary: the real run's summary goes to ZFLOW_SUMMARY (skipp
     t.ok(cap ~= nil, "a capture")
     if not cap then return end
     local c, addon, report = boot(cap)
-    local text = Capture.SummaryText(Capture.Summarize(c, addon, report, Capture.Names(cap), ns.offline.ownWords()))
+    local text = Capture.SummaryText(Capture.Summarize(c, addon, report, cap, ns.offline.ownWords()))
     local ok, why = ns.offline.writeSummary(out, text, { path, charPath })
     t.eq({ ok, why }, { true }, "the summary is written")
 end
