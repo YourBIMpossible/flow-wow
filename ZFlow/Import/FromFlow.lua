@@ -452,7 +452,7 @@ local MAP = {
     { "quests.autoAccept", to = "settings.quests.autoAccept" },
     { "quests.autoTurnIn", to = "settings.quests.autoTurnIn" },
     { "quests.share", to = "settings.quests.share" },
-    { "rotation.enabled", to = "settings.rotation.enabled" },
+    { "rotation.enabled", to = "settings.rotation.enabled", char = true },  -- account-wide in Flow, per character here (Rotation/Driver.lua)
     { "rotation.locked", to = "settings.rotation.locked" },
     { "rotation.overheal", to = "settings.rotation.overheal" },
     { "rotation.panicPct", to = "settings.rotation.panicPct" },
