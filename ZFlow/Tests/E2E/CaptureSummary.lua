@@ -85,8 +85,13 @@ tests["capture mask: only the add-on's own words and numbers are printed; the re
     t.eq({ Capture.Mask("way: meet fenwick here", {}, OWN) }, { "way: meet _ here", 1 },
         "S1: a lower-case word typed by the player is not printed")
     t.eq({ Capture.Mask("met aldwynne at 3:15", names, OWN) }, { "_ _ _ #:#", 3 }, "a known name, and words not own")
-    t.eq({ Capture.Mask("Then: Talk to Brannoch", {}, OWN) }, { "Then: Talk to _", 1 },
-        "own words as written, capitalised ones at the start of a sentence")
+    -- CM-1 (lead sections 237, 238): after a colon is not a sentence's start,
+    -- so a capitalised own word there is left out too ("guild: Way" must not
+    -- print a name spelt "Way"); at the line's start it prints.
+    t.eq({ Capture.Mask("Then: Talk to Brannoch", {}, OWN) }, { "Then: _ to _", 2 },
+        "own words as written, capitalised ones only at the start of a sentence")
+    t.eq({ Capture.Mask("Talk to Brannoch. Then talk", {}, OWN) }, { "Talk to _. Then talk", 1 },
+        "at the line's start and after a full stop they print")
     t.eq({ Capture.Mask("sell [Linen Cloth] x4", {}, OWN) }, { "sell [_] _#", 2 })
     t.eq({ Capture.Mask("|cffff0000Kestrelle|r says", {}, OWN) }, { "_ says", 1 }, "colour codes dropped")
     t.eq({ Capture.Mask("from zo\195\171 here", {}, OWN) }, { "from _ here", 1 }, "a byte past ASCII")
