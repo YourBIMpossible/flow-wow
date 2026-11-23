@@ -214,6 +214,10 @@ Diag.NAMES = {
     -- has them before any branch asks them.
     "EquipItemByName", "C_EquipmentSet", "C_EquipmentSet.GetEquipmentSetIDs",
     "C_EquipmentSet.GetEquipmentSetInfo", "C_EquipmentSet.UseEquipmentSet",
+    -- G59: the game options (UI/GameOptions.lua, Core/Client.lua gameSetting,
+    -- combatLogFile and their two writes). GetCVar and C_CVar.GetCVar are
+    -- listed above.
+    "LoggingCombat", "C_CVar.SetCVar", "SetCVar",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns

@@ -2434,6 +2434,69 @@ function ns.make.client(env)
         if okS and shape == "SQUARE" then out.square = true end
         return out
     end
+    -- G59 (lead section 226): a game setting read by name, as the game
+    -- gives it (text), or nil when no call answers. A read only: nothing is
+    -- written here. Docs (warcraft.wiki.gg): C_CVar.GetCVar(name), and the
+    -- older GetCVar(name), answer the value as text. A number is turned to
+    -- its text. Needs game test on 16001.
+    function c.gameSetting(name)
+        if type(name) ~= "string" or name == "" then return nil end
+        local function text(ok, v)
+            if not ok or hidden(v) then return nil end
+            if type(v) == "string" then return v end
+            if type(v) == "number" and v == v then return tostring(v) end
+            return nil
+        end
+        local v
+        if type(env.C_CVar) == "table" then v = text(call(env.C_CVar.GetCVar, name)) end
+        if v == nil then v = text(call(env.GetCVar, name)) end
+        return v
+    end
+
+    -- G59: whether the game writes the combat log to its file. LoggingCombat
+    -- called with no value only reads (docs: it answers the state). Older
+    -- clients answer 1 or nil, so nil from a call that ran is off. nil when
+    -- the call is missing or raised. Needs game test on 16001.
+    function c.combatLogFile()
+        if type(env.LoggingCombat) ~= "function" then return nil end
+        local ok, v = call(env.LoggingCombat)
+        if not ok or hidden(v) then return nil end
+        if v == nil or v == false or v == 0 then return false end
+        if v == true or v == 1 then return true end
+        return nil
+    end
+
+    -- G59 ACTS: the two writes behind the game options, called only by
+    -- UI/GameOptions.lua on the player own choice (the settings page or the
+    -- setting word). Nothing else may call them. Only the two settings the
+    -- options use can be written; any other name is refused before the game
+    -- is asked. Docs (warcraft.wiki.gg): C_CVar.SetCVar(name, value) answers
+    -- whether it took; the older SetCVar(name, value) answers nothing.
+    -- LoggingCombat(on) turns the combat log file on or off. Needs game test
+    -- on 16001: each write, and a write in a fight.
+    local GAME_SETTINGS = { cameraDistanceMaxZoomFactor = true, showTimestamps = true }
+    function c.setGameSetting(name, v)
+        if type(name) ~= "string" or not GAME_SETTINGS[name] then return nil, "notAllowed" end
+        if type(v) ~= "string" then return nil, "bad" end
+        if c.inCombat() ~= false then return nil, "combat" end   -- a fight, or not known (section 266 GO-1)
+        local fn = type(env.C_CVar) == "table" and env.C_CVar.SetCVar or nil
+        if type(fn) ~= "function" then fn = env.SetCVar end
+        if type(fn) ~= "function" then return nil, "noCall" end
+        local ok, done = call(fn, name, v)
+        if not ok then return nil, "raised" end
+        if done == false then return nil, "bad" end
+        return true
+    end
+
+    function c.setCombatLogFile(on)
+        if type(on) ~= "boolean" then return nil, "bad" end
+        if c.inCombat() ~= false then return nil, "combat" end   -- a fight, or not known (section 266 GO-1)
+        if type(env.LoggingCombat) ~= "function" then return nil, "noCall" end
+        local ok = call(env.LoggingCombat, on)
+        if not ok then return nil, "raised" end
+        return true
+    end
+
 
     -- One small mark on the minimap (F1), or nil when the client cannot
     -- make it. Hidden when made; it takes no mouse and holds no action.
