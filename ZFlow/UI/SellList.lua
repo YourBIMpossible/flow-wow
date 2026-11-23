@@ -101,7 +101,8 @@ end
 
 -- One listing, as lines for the panel.
 -- grants: what the bags hold (SellList.Held), or nil. r: the evaluation the
--- grants came from, when there is one; "unavailable" lists nothing to sell
+-- grants came from; missing or not a table counts as "unavailable" (lead
+-- section 224, SR-3). "unavailable" lists nothing to sell
 -- and says so (not when the bags themselves weren't read: the list already
 -- says it can't be made).
 function SellList.Lines(client, store, grants, r)
@@ -113,7 +114,9 @@ function SellList.Lines(client, store, grants, r)
     local context = { choices = SellList.Choices(store), book = type(book) == "table" and book or nil,
         grants = grants }
     local kept = ns.SellView.Kept(bag, context)
-    if bag ~= nil and type(r) == "table" and r.status == ns.Reservations.UNAVAILABLE then
+    -- An evaluation that is missing or not a table is unavailable too
+    -- (MyBuddy SR-3): no sell advice without reservations that can be trusted.
+    if bag ~= nil and (type(r) ~= "table" or r.status == ns.Reservations.UNAVAILABLE) then
         local lines = { SellList.RESERVATIONS_UNKNOWN }
         if #kept.rows > 0 then
             lines[#lines + 1] = ns.ItemPresent.KEPT_HEADER
