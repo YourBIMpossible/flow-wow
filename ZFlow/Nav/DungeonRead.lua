@@ -55,6 +55,11 @@ R.WHY_LOOT_UNPLACED = { "Boss loot was seen, but not where.",
 -- Added to a row when the client does not say whether the quest was handed
 -- in (Twin review 17:11, F2): listed, and said, never taken as not done.
 R.DONE_UNKNOWN = "not known whether you handed it in"
+-- Lead section 318: for the window, which computes nothing itself.
+R.WHY_NO_ENTRANCE = { "No entrance known for this dungeon.",
+    "Questie lists none for it; walk there once and set a waypoint by hand with the way word." }
+R.WHY_NO_MATCH = { "No dungeon matches the search.", "Clear the search box to see every dungeon." }
+R.ITEM_UNREAD = "Item not read yet"
 R.WHY_NO_LOOT = { "No boss loot seen here on this account yet.",
     "Kill a boss of this dungeon with loot recording on and its drops will appear here." }
 R.WHY_LIST = { "Questie's dungeon list could not be read.",
@@ -439,6 +444,21 @@ function R.Loot(st, client, key, book, drops)
                     if a.times ~= b.times then return a.times > b.times end
                     return tostring(a.item) < tostring(b.item)
                 end)
+                -- Lead section 318: each item's name, quality and icon, as the
+                -- client reads them; one not read yet says so.
+                for _, it in ipairs(items) do
+                    local info = ask(client, "itemInfo", it.item)
+                    if type(info) == "table" then
+                        if type(info.name) == "string" and info.name ~= "" then it.name = info.name end
+                        -- Twin review 18:06, F4: only a quality the kit draws
+                        -- (whole, 0 to 5); any other is left out, never a stop.
+                        local q = info.quality
+                        if type(q) == "number" and q >= 0 and q <= 5 and q == math.floor(q) then it.quality = q end
+                    end
+                    it.name = it.name or R.ITEM_UNREAD
+                    local icon = ask(client, "itemTexture", it.item)
+                    if type(icon) == "string" or type(icon) == "number" then it.icon = icon end
+                end
                 out.bosses[#out.bosses + 1] = { name = got.name, kills = tonumber(got.kills) or 0, items = items }
             end
         end
@@ -449,4 +469,42 @@ function R.Loot(st, client, key, book, drops)
         out.why = (seen and not named) and R.WHY_LOOT_UNPLACED or R.WHY_NO_LOOT
     end
     return out
+end
+
+-- The dungeons of list whose name holds text, any case, as plain letters.
+-- Empty or no text: the whole list.
+function R.Search(list, text)
+    local out = {}
+    local want = type(text) == "string" and text:lower() or ""
+    for _, d in ipairs(type(list) == "table" and list or {}) do
+        if want == "" or (type(d.name) == "string" and d.name:lower():find(want, 1, true) ~= nil) then
+            out[#out + 1] = d
+        end
+    end
+    return out
+end
+
+-- Questie's area as the game's map, or nil (the call taken with or without
+-- its module, as Nav/QuestRead.lua takes it).
+local function mapOf(zones, area)
+    if type(zones) ~= "table" or type(zones.GetUiMapIdByAreaId) ~= "function" then return nil end
+    local ok, m = pcall(zones.GetUiMapIdByAreaId, area)
+    if ok and type(m) == "number" then return m end
+    ok, m = pcall(zones.GetUiMapIdByAreaId, zones, area)
+    if ok and type(m) == "number" then return m end
+    return nil
+end
+
+-- The first entrance Questie lists for dungeon key, as the waypoint takes
+-- it: { map, x, y (percents), label, text = "x y label" }; or nil, why.
+function R.Entrance(st, client, key)
+    local d = type(st) == "table" and type(st.byKey) == "table" and key ~= nil and st.byKey[key] or nil
+    local e = d and type(d.entrances) == "table" and d.entrances[1] or nil
+    if type(e) ~= "table" or type(e[2]) ~= "number" or type(e[3]) ~= "number" then return nil, R.WHY_NO_ENTRANCE end
+    local map = mapOf(questieModule(client, "ZoneDB"), e[1])
+    if not map then return nil, R.WHY_NO_ENTRANCE end
+    local label = d.name
+    if type(label) ~= "string" or #label > 40 or label:find("[%c|]") then label = nil end
+    local text = string.format("%.1f %.1f", e[2], e[3]) .. (label and (" " .. label) or "")
+    return { map = map, x = e[2], y = e[3], label = label, text = text }
 end

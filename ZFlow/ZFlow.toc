@@ -151,6 +151,7 @@ UI\SettingsSlash.lua
 UI\SettingsPage.lua
 UI\SettingsKeys.lua
 UI\SettingsPanel.lua
+UI\SettingsWindow.lua
 UI\SettingsOptions.lua
 UI\Rows.lua
 UI\Intro.lua
@@ -206,3 +207,4 @@ UI\SettingsShare.lua
 Nav\DungeonStates.lua
 Nav\DungeonRead.lua
 Nav\BossKills.lua
+UI\DungeonWindow.lua

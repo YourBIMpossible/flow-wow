@@ -102,8 +102,10 @@ tests["settings keys: the Combat topic shows the rotation key and its second key
     local one, two = rowOf(c, KEY1), rowOf(c, KEY2)
     t.ok(one ~= nil and two ~= nil, "both rows drawn")
     if not (one and two) then return end
-    t.eq({ one.kind, one.group, one.shown }, { "actions", "combat", "F" })
-    t.eq({ two.kind, two.shown }, { "actions", SK(addon).NOT_SET })
+    -- Changed for the window (lead section 285 item 3): a key row is a
+    -- bind button; it asserted kind "actions" for both.
+    t.eq({ one.kind, one.group, one.shown }, { "bind", "combat", "F" })
+    t.eq({ two.kind, two.shown }, { "bind", SK(addon).NOT_SET })
     for _, word in ipairs({ "key", "keybind", "bind", "binding", "hotkey" }) do
         local found = false
         for _, s in ipairs(one.synonyms or {}) do if s == word then found = true end end

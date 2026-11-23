@@ -83,6 +83,8 @@ function M.Items(state)
     if #styles > 0 then
         rows[#rows + 1] = { key = "style", text = T.MENU.style, children = styles }
     end
+    -- Lead section 318: the Dungeon Quests window.
+    rows[#rows + 1] = { key = M.DUNGEONS, text = T.MENU.dungeons }
     local topic = T.Find(M.TOPIC)
     rows[#rows + 1] = { sep = true }
     rows[#rows + 1] = { key = "settings." .. topic.id, text = topic.name .. T.MENU.topicSettings }
@@ -95,6 +97,9 @@ end
 
 M.BACK = "back"
 M.FEEDBACK = "feedback"
+M.DUNGEONS = "dungeons"
+-- The window a row opens, by the module that owns it (lead section 318).
+M.WINDOWS = { [M.DUNGEONS] = "dungeonWindow" }
 M.MORE = "  >"
 
 local function childrenOf(items, key)
@@ -180,6 +185,7 @@ function M.Action(key, state)
         return nil
     end
     if key == "settings" then return { settings = true } end
+    if M.WINDOWS[key] then return { window = M.WINDOWS[key] } end
     if key == "feedback" then
         if s.feedback then return { feedback = true } end
         return nil
