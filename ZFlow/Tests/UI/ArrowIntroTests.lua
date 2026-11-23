@@ -44,6 +44,13 @@ end
 
 local function seenSaved() return { layout = { arrowIntroSeen = true } } end
 
+-- Lead section 294 item 5: with no step the quest arrow stays and says in
+-- one line why, with no needle (it was hidden before).
+local function why(t, q, what)
+    t.eq(q.shown, true, what .. ": the quest arrow stays")
+    t.eq(q.lines, { A.NO_QUEST }, what .. ": it says why")
+end
+
 local function boars()
     return { quest = { place = { cont = 1, map = 1411, x = 0.5, y = 0.3 }, label = "Kill boars" } }
 end
@@ -103,7 +110,7 @@ return {
         c.advance(A.INTRO_SECONDS - 0.5, 10)
         t.eq(a.state().view.quest.mode, "intro", "its full length, from the first frame")
         c.advance(1, 10)
-        t.eq(c.arrows[1].shown, false)
+        why(t, c.arrows[1], "no step")
     end,
 
     ["a second loading screen while the intro plays neither restarts nor replays it"] = function(t)
@@ -114,7 +121,7 @@ return {
         c.fire("PLAYER_ENTERING_WORLD")
         t.eq(a.state().view.quest.mode, "intro")
         c.advance(1.5, 10)
-        t.eq(c.arrows[1].shown, false, "it ended by the clock it started with")
+        why(t, c.arrows[1], "it ended by the clock it started with")
     end,
 
     ["a clock that is no number at the first frame: the intro is dropped and not saved"] = function(t)
@@ -122,7 +129,7 @@ return {
         login(c)
         c.now = function() return nil end
         c.advance(1, 4)
-        t.eq(c.arrows[1].shown, false)
+        why(t, c.arrows[1], "no step")
         t.eq(seen(c), nil)
     end,
 
@@ -134,10 +141,10 @@ return {
         t.eq(c.arrows[1].shown, true, "still playing")
         t.eq(a.state().view.quest.mode, "intro")
         c.advance(1, 10)
-        t.eq(c.arrows[1].shown, false)
-        t.eq(a.state().view, nil)
+        why(t, c.arrows[1], "no step")
+        t.eq(a.state().view.quest.mode == "intro", false, "no intro")
         c.advance(60, 10)
-        t.eq(c.arrows[1].shown, false, "it does not come back")
+        why(t, c.arrows[1], "it does not come back")
     end,
 
     ["shown once: an install that has seen it gets no intro"] = function(t)
@@ -146,10 +153,10 @@ return {
         firstFrame(c)
         local c2, a2 = start({ saved = c.saved(ns.id.accountDB) })
         login(c2)
-        t.eq(c2.arrows[1].shown, false)
-        t.eq(a2.state().view, nil)
+        why(t, c2.arrows[1], "no step")
+        t.eq(a2.state().view.quest.mode == "intro", false, "no intro")
         c2.advance(1, 4)
-        t.eq(c2.arrows[1].shown, false)
+        why(t, c2.arrows[1], "no step")
         t.eq(seen(c2), true)
     end,
 
@@ -158,9 +165,9 @@ return {
         login(c)
         c.advance(A.INTRO_SECONDS + 1, 10)
         c.fire("PLAYER_ENTERING_WORLD")
-        t.eq(c.arrows[1].shown, false)
+        why(t, c.arrows[1], "no step")
         c.advance(1, 4)
-        t.eq(c.arrows[1].shown, false)
+        why(t, c.arrows[1], "no step")
     end,
 
     ["only a saved plain true counts as seen"] = function(t)
@@ -269,8 +276,8 @@ return {
     ["no guide, no waypoint: nothing to point at"] = function(t)
         local c, a = start({ saved = seenSaved() })
         login(c)
-        t.eq(c.arrows[1].shown, false)
-        t.eq(a.state().view, nil)
+        why(t, c.arrows[1], "no step")
+        t.eq(a.state().view.quest.mode == "intro", false, "no intro")
     end,
 
     ["no guide: the player's waypoint is the quest step"] = function(t)
@@ -288,7 +295,7 @@ return {
         local c = start({ saved = seenSaved() })
         login(c)
         local q = c.arrows[1]
-        t.eq(q.shown, false)
+        why(t, q, "no step")
         c.setWaypoint(1411, 0.3, 0.5)
         c.advance(A.RELAYOUT * 2, 2)
         t.eq(q.lines, { "Waypoint", "200 yd W" })
@@ -297,7 +304,7 @@ return {
         t.eq(q.lines, { "Waypoint", "100 yd N" })
         c.setWaypoint(nil)
         c.advance(A.RELAYOUT * 2, 2)
-        t.eq(q.shown, false)
+        why(t, q, "no step")
     end,
 
     ["a guide replaces the waypoint; taking the guide away brings it back"] = function(t)
@@ -338,11 +345,11 @@ return {
         c.setWaypoint(1411, 0.3, 0.5)
         c.waypoint = nil
         login(c)
-        t.eq(c.arrows[1].shown, false)
+        why(t, c.arrows[1], "no step")
         c.waypoint = function() error("the client refused") end
         a.relayout()
-        t.eq(c.arrows[1].shown, false)
-        t.eq(a.state().view, nil)
+        why(t, c.arrows[1], "no step")
+        t.eq(a.state().view.quest.mode == "intro", false, "no intro")
     end,
 
     ["the intro plays first, then the waypoint shows"] = function(t)
@@ -417,7 +424,7 @@ return {
         t.eq(a.state().view.quest.mode, "intro", "its full length")
         t.eq(k.problems:count(), 1, "said once, not every frame")
         c.advance(1, 10)
-        t.eq(c.arrows[1].shown, false, "and it ends")
+        why(t, c.arrows[1], "and it ends")
         t.eq(seen(c), nil)
         t.eq(k.problems:count(), 1)
     end,
