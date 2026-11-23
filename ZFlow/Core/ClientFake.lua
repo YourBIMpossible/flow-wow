@@ -1114,17 +1114,23 @@ function ns.make.fakeClient(opts)
     -- or "target" (nil, the start: not known); any other unit is nil.
     -- targetRank(): what setTargetRank gave. watchCombatLog(fn) answers
     -- true and combatLog(...) hands its values to every watcher; after
-    -- setCombatLog(false) it answers nil and takes no watcher.
+    -- setCombatLog(false) it answers nil and takes no watcher (the event
+    -- not taken); after setCombatLog("none") it answers nil and "no log"
+    -- (the client has no combat-log read).
     -- guid, setGuid, playerGUID and petGUID are above, with the errand reads.
     local logWatchers = {}
     function c.targetRank() return s.targetRank end
     function c.setTargetRank(rank) s.targetRank = type(rank) == "string" and rank ~= "" and rank or nil end
     function c.watchCombatLog(fn)
-        if s.noCombatLog or type(fn) ~= "function" then return nil end
+        if type(fn) ~= "function" then return nil end
+        if s.combatLog == "none" then return nil, "no log" end
+        if s.combatLog == false then return nil end
         logWatchers[#logWatchers + 1] = fn
         return true
     end
-    function c.setCombatLog(on) s.noCombatLog = not on end
+    function c.setCombatLog(on)
+        if on == "none" then s.combatLog = "none" else s.combatLog = on and true or false end
+    end
     -- Slash commands another addon owns: setSlashTaken(command, on) says
     -- so, slashTaken answers as the real boundary does, and unslash gives a
     -- command back.
