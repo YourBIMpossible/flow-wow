@@ -22,6 +22,8 @@ local KIND = {
     show = { "print", "panel", "minimapPin", "copyBox", "icon", "arrow", "windowButton", "secureButton",
              "optionsPage", "guideLines", "taxiMark", "mapPins", "comboBar", "slotIcon",
              "markMerchantButtons", "rowPanel", "textEntry",
+             -- N59: the info bar, and its data broker feed where the library is loaded.
+             "infoBar", "broker",
              -- N57: the key-capture overlay on the settings page.
              "keyCapture",
              -- N72 (section 248 item 4): the macro icon window; shows a list on it.
@@ -90,6 +92,10 @@ local READS = {
     -- instance; read by UI/BossLoot.lua only. The names they ask
     -- (IsInInstance, GetInstanceInfo and the rest) are in Diag.NAMES.
     bossUnit = false, instance = false,
+
+    -- N59 (the info bar): read by UI/InfoBar.lua only. The names they ask
+    -- (UnitXP, GetWatchedFactionInfo and the rest) are in Diag.NAMES.
+    xp = false, watchedFaction = false, gameTime = false, framerate = false, latency = false,
 
     -- N57: the rotation key's bindings and what a key does; read by the
     -- settings page only. Their names are in Diag.NAMES.

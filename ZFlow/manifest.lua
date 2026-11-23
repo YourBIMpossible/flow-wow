@@ -178,6 +178,7 @@ return {
     "UI/Arrow.lua",
     "UI/MinimapPin.lua",
     "UI/RotationIcon.lua",
+    "UI/InfoBar.lua",
     "Rotation/Pulse.lua",
     "UI/PlateThreat.lua",
     "UI/PlateCombo.lua",
