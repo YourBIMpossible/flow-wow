@@ -85,11 +85,27 @@ function CraftBar.Declare(k)
                 local r = read("recipes")
                 book = (type(r) == "table" and type(r.recipes) == "table") and r or { recipes = {} }
             end
+            -- The saved recipe book entry with this recipe id, or nil. The
+            -- book (Items/RecipeBook.lua, read only here) is filled from
+            -- the open window, by the classic row read c.tradeSkillSchematic
+            -- where the client has no GetRecipeSchematic (section 234).
+            local function saved(id)
+                local RB = ns.RecipeBook
+                if type(RB) ~= "table" or type(RB.Recipes) ~= "function" then return nil end
+                local ok, all = pcall(RB.Recipes, k)
+                if not ok or type(all) ~= "table" then return nil end
+                for _, e in pairs(all) do
+                    if type(e) == "table" and e.id == id then return e end
+                end
+                return nil
+            end
             -- A recipe reagents as the craft queue reads them,
             -- { { item, count } } by item, from c.recipeSchematic (the read
-            -- the recipe book uses; section 231). nil when not read.
+            -- the recipe book uses; section 231), else from the recipe
+            -- book entry for that id. nil when neither reads.
             local function reagents(id)
                 local sc = read("recipeSchematic", id)
+                if type(sc) ~= "table" or type(sc.mats) ~= "table" then sc = saved(id) end
                 if type(sc) ~= "table" or type(sc.mats) ~= "table" then return nil end
                 local out = {}
                 for item, n in pairs(sc.mats) do out[#out + 1] = { item = item, count = n } end
