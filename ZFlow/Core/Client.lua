@@ -4590,6 +4590,71 @@ function ns.make.client(env)
         if c0 == nil or c0 ~= c1 or c0 ~= c2 then return nil end
         return { cont = c0, ox = ox, oy = oy, ex = ex, ey = ey, sx = sx, sy = sy }
     end
+
+    -- ----------------------------------------------------------------- S2
+    -- The trader (owner Twin): every priced row of a search the player runs,
+    -- not the cheapest alone. The same events, reads and limits as the S4
+    -- block above (lead section 170): no further rows are asked of the
+    -- server, nothing searches, bids, buys or posts. First guesses, not seen
+    -- in game: needs a game test.
+    --
+    --   client.watchAuctionRows(fn) -> true | nil;  fn(itemID, rows)
+    -- rows = { { unit =, qty = } ... } in the order the client gives them:
+    -- unit is the price for one, qty how many (left out when the client
+    -- hides it or it is no whole count above zero: never made up). A row
+    -- with no readable price is left out. At most AUCTION_ROWS rows are
+    -- read; row 1 alone when the client will not say how many. A search
+    -- with nothing priced is told with no rows. A hidden or unreadable item
+    -- ID is not told. fn's errors stay here. nil when the client has
+    -- neither result read (no event is then asked for).
+    local rowsFns, rowsFollowed = {}, false
+    local function auctionRows(read, count, what)
+        local house = env.C_AuctionHouse
+        if type(house) ~= "table" then return nil end
+        local okN, n = call(house[count], what)
+        if not okN or hidden(n) or type(n) ~= "number" or n ~= n or n < 1 then n = 1 end
+        n = math.min(math.floor(n), AUCTION_ROWS)
+        local out = {}
+        for i = 1, n do
+            local row = auctionRowAt(read, what, i)
+            local unit = auctionUnit(row)
+            if unit then
+                local qty = row.quantity
+                if type(qty) ~= "number" or qty < 1 or qty ~= math.floor(qty) then qty = nil end
+                out[#out + 1] = { unit = unit, qty = qty }
+            end
+        end
+        return out
+    end
+    local function rowsTell(id, rows)
+        if type(id) ~= "number" or rows == nil then return end
+        for _, fn in ipairs({ unpack(rowsFns) }) do pcall(fn, id, rows) end
+    end
+    function c.watchAuctionRows(fn)
+        if type(fn) ~= "function" then return nil end
+        rowsFns[#rowsFns + 1] = fn
+        if rowsFollowed then return true end
+        local house = env.C_AuctionHouse
+        if type(house) ~= "table" then return nil end
+        if type(house.GetCommoditySearchResultInfo) == "function" then
+            events.add("COMMODITY_SEARCH_RESULTS_UPDATED", function(itemID)
+                if hidden(itemID) then return end
+                rowsTell(itemID, auctionRows("GetCommoditySearchResultInfo", "GetNumCommoditySearchResults", itemID))
+            end)
+            rowsFollowed = true
+        end
+        if type(house.GetItemSearchResultInfo) == "function" then
+            events.add("ITEM_SEARCH_RESULTS_UPDATED", function(itemKey)
+                if type(itemKey) ~= "table" then return end
+                local okI, id = pcall(function() return itemKey.itemID end)
+                if not okI or hidden(id) then return end
+                rowsTell(id, auctionRows("GetItemSearchResultInfo", "GetNumItemSearchResults", itemKey))
+            end)
+            rowsFollowed = true
+        end
+        return rowsFollowed or nil
+    end
+    -- ------------------------------------------------------------- end S2
     return c
 end
 

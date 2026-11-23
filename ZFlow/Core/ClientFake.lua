@@ -1384,6 +1384,19 @@ function ns.make.fakeClient(opts)
         s.mapCorners = s.mapCorners or {}
         s.mapCorners[map] = type(corners) == "table" and corners or nil
     end
+
+    -- S2 trader. As the real client's: watchAuctionRows(fn) -> true, or nil
+    -- after setAuctionHouse(false); auctionRows(id, rows) plays one of the
+    -- player's searches answering with rows = { { unit =, qty = } ... }.
+    function c.watchAuctionRows(fn)
+        if s.noAuctionHouse or type(fn) ~= "function" then return nil end
+        s.auctionRowsFns = s.auctionRowsFns or {}
+        table.insert(s.auctionRowsFns, fn)
+        return true
+    end
+    function c.auctionRows(id, rows)
+        for _, fn in ipairs({ unpack(s.auctionRowsFns or {}) }) do fn(id, rows) end
+    end
     return c
 end
 
