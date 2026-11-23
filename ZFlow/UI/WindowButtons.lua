@@ -69,6 +69,21 @@ WB.WORD = "buttons"
 WB.HELP = "say whether each window button is shown, and why not"
 WB.NO_READ = "no window read"
 
+-- Lead section 296: the buttons word also lists Plexy's other surfaces,
+-- each on or off and, in one line, when it appears (its module's WHEN),
+-- and why the minimap pin is not shown. mod is the module's table in ns;
+-- field names its setting; off = true for a setting that hides it.
+WB.SURFACES = {
+    { says = "threat on enemy nameplates", mod = "PlateThreat", field = "OFF", off = true },
+    { says = "combo points on your target's nameplate", mod = "PlateCombo", field = "OFF", off = true },
+    { says = "quest marks on enemy nameplates", mod = "PlateQuests", field = "OFF", off = true },
+    { says = "ring on the flight map", mod = "TaxiMark", field = "SETTING" },
+    { says = "flight pins on the world map", mod = "MapFlights", field = "SETTING" },
+    { says = "NPCs read aloud", mod = "NpcSpeech", field = "SETTING" },
+}
+WB.PIN_SAYS = "minimap pin"
+WB.PIN_WHEN = "it appears when you set a waypoint"
+
 -- The merchant point was seen in game (section 142): top right of the
 -- merchant window, nothing over it. The world map point is a first
 -- guess, not seen in game: the owner saw the first one (top right of the
@@ -153,6 +168,36 @@ function WB.Declare(k, diag)
         return out
     end
 
+    -- The lines for WB.SURFACES and the minimap pin, after the buttons'.
+    function api.surfaceLines()
+        local out = {}
+        local settings = ctx and ctx.settings or k.settings
+        for _, s in ipairs(WB.SURFACES) do
+            local mod = ns[s.mod]
+            if type(mod) == "table" and type(mod.WHEN) == "string" then
+                local on = nil
+                if type(settings) == "table" and type(mod[s.field]) == "string" then
+                    local okG, v = pcall(settings.get, settings, mod[s.field])
+                    if okG and type(v) == "boolean" then
+                        if s.off then on = not v else on = v end
+                    end
+                end
+                local state = on == nil and "not known" or (on and "on" or "off")
+                out[#out + 1] = s.says .. ": " .. state .. "; " .. mod.WHEN
+            end
+        end
+        local pin = k.use("minimapPin")
+        local okL, last = false, nil
+        if type(pin) == "table" and type(pin.Last) == "function" then okL, last = pcall(pin.Last) end
+        if okL and type(last) == "table" and last.shown == true then
+            out[#out + 1] = WB.PIN_SAYS .. ": shown."
+        else
+            local why = okL and type(last) == "table" and last.reason or "not looked at yet"
+            out[#out + 1] = WB.PIN_SAYS .. ": not shown (" .. tostring(why) .. "); " .. WB.PIN_WHEN .. "."
+        end
+        return out
+    end
+
     local function click(win)
         local provider = k.use(win.opens)
         local fn = type(provider) == "table" and provider[win.call] or nil
@@ -222,6 +267,7 @@ function WB.Declare(k, diag)
             local client = ctx and ctx.client or k.client
             if type(client) ~= "table" or type(client.print) ~= "function" then return end
             local lines = api.lines()
+            for _, line in ipairs(api.surfaceLines()) do lines[#lines + 1] = line end
             for i = 1, #lines do client.print(id.title .. ": " .. lines[i]) end
         end
         if type(diag.help) == "table" then diag.help[WB.WORD] = WB.HELP end

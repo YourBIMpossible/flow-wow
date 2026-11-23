@@ -110,8 +110,11 @@ end
 TM.NAME = "taxiMark"
 TM.EVERY = 0.5          -- seconds between looks while the flight map is open
 TM.ROW_LABEL = "Mark the flight master to fly to on the flight map"
+-- When it appears, in one line (lead section 296): its settings row and the
+-- buttons word say it, so a player who sees nothing can find out why.
+TM.WHEN = "Shows only while the flight map is open and your next step is reached by a flight."
 TM.ROW_HELP = "On the open flight map, a ring on the flight master that lands you nearest your next step. "
-    .. "Look only: it takes no flight."
+    .. "Look only: it takes no flight. " .. TM.WHEN
 
 local function ask(client, name, ...)
     if type(client) ~= "table" or type(client[name]) ~= "function" then return nil end
