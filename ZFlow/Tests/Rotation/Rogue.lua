@@ -3,8 +3,9 @@ local _, ns = ...
 -- The Rogue pack (lead section 197): it passes PackCheck, it is for yourself
 -- and your own target only, stealth comes from the stealth read (nil is not
 -- known, never "not stealthed"), the openers wait for stealth, and the
--- finishers wait for finisherReady, which nothing builds yet (combo points
--- are a hidden amount; see R.FROM_AMOUNT in Rotation/Snapshot.lua).
+-- finishers wait for finisherReady (built by Rotation/Driver.lua from the
+-- combo read or Rotation/Combo.lua's count; end to end in
+-- Tests/E2E/RogueFinisher.lua).
 
 local ALL = {
     "Stealth", "Ambush", "Garrote", "Cheap Shot", "Attack", "Sinister Strike", "Eviscerate",

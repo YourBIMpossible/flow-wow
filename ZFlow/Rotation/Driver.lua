@@ -9,6 +9,7 @@ local _, ns = ...
 --     extra (section 232): one options table with named fields; no further
 --     positional arguments. extra.food: the module's food table (below).
 --     extra.chosen: the seals and blessings from the ownCasts module (below).
+--     extra.combo: the combo module's counted combo points (below).
 --     the reader ns.Snapshot takes. dead, inCombat, stealthed, hostile,
 --     spells, buffs, targetDebuffs, form, current and pet are asked of the
 --     client; role is the
@@ -62,6 +63,11 @@ local _, ns = ...
 --                  you cast or chose, by key, from the ownCasts module
 --                  (Rotation/OwnCasts.lua); nil when it is not a table
 --                  (none, or the module is not there)
+--       finisherReady  ROGUE-2 (section 236): the client's combo read when
+--                  a plain whole number, else extra.combo (the combo
+--                  module's counted estimate, Rotation/Combo.lua), against
+--                  the pack's options.combo.need; nil without options.combo
+--                  or when neither answers
 --       ownBuffs   client.ownBuffs() as it answered (N13): the buffs on you
 --                  that you put up yourself; nil when not known or the
 --                  client has no such read
@@ -250,9 +256,27 @@ local function buffFoodKept(client, pack, role, food)
     return got
 end
 
+-- ROGUE-2 (section 236): is a finisher due. The client's combo read when it
+-- gives a plain whole number, else the combo module's counted estimate
+-- (Rotation/Combo.lua), against the pack's options.combo.need. nil for a
+-- pack without options.combo, or when neither answers.
+local function finisherOf(client, pack, counted)
+    local options = type(pack) == "table" and pack.options or nil
+    local rules = type(options) == "table" and options.combo or nil
+    if type(rules) ~= "table" or type(ns.Combo) ~= "table" then return nil end
+    local points
+    if type(client.combo) == "function" then
+        local ok, got = pcall(client.combo)
+        if ok and type(got) == "table" then points = got.points end
+    end
+    local due = ns.Combo.Ready(points, counted, rules.need)
+    return due
+end
+
 function D.Read(client, pack, ids, role, extra)
     local food = type(extra) == "table" and extra.food or nil
     local chosen = type(extra) == "table" and extra.chosen or nil
+    local combo = type(extra) == "table" and extra.combo or nil
     -- Lead section 187: the form is asked of the client once for a read,
     -- and both fields (form, formKnown) come from that one answer.
     -- The answer is kept only for the other field of the pair, and used
@@ -305,6 +329,7 @@ function D.Read(client, pack, ids, role, extra)
         end
         if field == "conjured" then return conjuredOf(client, pack) end
         if field == "chosen" then return type(chosen) == "table" and chosen or nil end
+        if field == "finisherReady" then return finisherOf(client, pack, combo) end
         if field == "ownBuffs" then
             if type(client.ownBuffs) ~= "function" then return nil end
             return client.ownBuffs()
@@ -455,6 +480,18 @@ local function chosenOf(k)
     return nil
 end
 
+-- ROGUE-2: the combo module's counted combo points (Rotation/Combo.lua),
+-- asked each tick; nil when there is no such module or it counts nothing
+-- for your class. Resolved when called, as chosenOf.
+local function comboOf(k)
+    if type(k) ~= "table" or type(k.use) ~= "function" then return nil end
+    local ok, mod = pcall(k.use, "combo")
+    if not ok or type(mod) ~= "table" or type(mod.Count) ~= "function" then return nil end
+    local asked, got = pcall(mod.Count)
+    if asked and type(got) == "number" then return got end
+    return nil
+end
+
 function D.Declare(k, packs)
     local api = {}
     local view, errors, lastError = nil, 0, nil
@@ -473,7 +510,7 @@ function D.Declare(k, packs)
             return
         end
         food.on = ctx.settings:get(D.FOOD) ~= false
-        local ok, got = pcall(work, ctx.client, packs or ns.Packs, ctx.settings:get(D.ROLE), { food = food, chosen = chosenOf(k) })
+        local ok, got = pcall(work, ctx.client, packs or ns.Packs, ctx.settings:get(D.ROLE), { food = food, chosen = chosenOf(k), combo = comboOf(k) })
         if ok then
             view = got
         else
