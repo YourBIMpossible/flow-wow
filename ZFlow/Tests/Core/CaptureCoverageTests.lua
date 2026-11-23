@@ -180,6 +180,11 @@ local READS = {
     -- Their names (GetNumQuestChoices, GetQuestItemLink and the reward
     -- buttons) are in Diag.NAMES.
     questChoices = false,
+
+    -- Lead section 303: race number and quests handed in; read by
+    -- Nav/DungeonRead.lua only. Their names (UnitRace,
+    -- C_QuestLog.IsQuestFlaggedCompleted) are in Diag.NAMES.
+    raceId = false, questDone = false,
 }
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).

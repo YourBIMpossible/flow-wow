@@ -8980,6 +8980,29 @@ function ns.make.client(env)
         end
     end
 
+    -- Lead section 303 (Dungeon Quests, Nav/DungeonRead.lua). Your race
+    -- number, the third answer of UnitRace("player"): Questie's
+    -- requiredRaces sets bit n - 1 for race n. nil when not known (no call,
+    -- a failed call, a secret or odd answer). A first guess: not seen in
+    -- game on 16001.
+    function c.raceId()
+        local ok, _, _, id = call(env.UnitRace, "player")
+        if not ok or hidden(id) or type(id) ~= "number" then return nil end
+        return id
+    end
+
+    -- Whether this character handed in quest id: true, false, or nil when
+    -- not known. C_QuestLog.IsQuestFlaggedCompleted(id), a first guess: not
+    -- seen in game on 16001. Only reads.
+    function c.questDone(id)
+        if type(id) ~= "number" then return nil end
+        local log = env.C_QuestLog
+        if type(log) ~= "table" then return nil end
+        local ok, done = call(log.IsQuestFlaggedCompleted, id)
+        if not ok or hidden(done) or type(done) ~= "boolean" then return nil end
+        return done
+    end
+
     -- The window kit's login probe (lead DISPATCH section 297 item 3 and
     -- section 303 item 5). Asks the client, read only, whether each part
     -- the kit would like to use is there. New, added at the end.
