@@ -39,6 +39,8 @@ R.SNAPSHOT_FIELDS = {
     { "buffFood", "map" },
     -- P-GATHER (Rotation/Gather.lua): gathering tracking, read by G.Read.
     { "tracking", "map" }, { "trackKnown", "map" }, { "professions", "map" }, { "gatherOn", "flag" },
+    -- GT-1, GT-2 (Rotation/Gather.lua): any tracking on; mounted; on a flight path.
+    { "trackingAny", "flag" }, { "mounted", "flag" }, { "onTaxi", "flag" },
     { "spells", "spells" },
 }
 -- Names that would be made from a health or power amount. This client hides

@@ -119,7 +119,8 @@ end
 
 tests["gather tracking: the suggestion goes to the key as a spell on yourself"] = function(t)
     local s = ns.Gather.Step({ inCombat = false, gatherOn = true, professions = { Mining = true },
-        trackKnown = { [MINERALS] = true }, tracking = { [MINERALS] = false } })
+        trackKnown = { [MINERALS] = true }, tracking = { [MINERALS] = false },
+        trackingAny = false, mounted = false, onTaxi = false, buffs = {} })
     -- A spell suggestion on yourself: the key (Rotation/Cast.lua Attributes)
     -- casts it as it casts a buff, a "spell" action type, nothing new.
     t.eq(type(s) == "table" and { s.spell, s.kind, s.unit } or nil, { MINERALS, "buff", "player" })
