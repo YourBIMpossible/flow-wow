@@ -144,4 +144,93 @@ tests["buff food: the driver's read is nil when the bags are not read, {} when t
     t.eq(D.Read(c2, pack(), {}, "dps")("buffFood"), nil, "a food whose tooltip was not read: not known")
 end
 
+-- Section 229 (F-1): the driver in a kernel. The food is read out of a fight
+-- only, and kept between bag changes (BAG_UPDATE_DELAYED). Fails before the
+-- repair: every tick read the bags, in a fight too.
+
+local KCLASS = "TESTCLASS"
+
+-- The driver on a kernel, switched on, over client c; the bag reads are
+-- counted. Returns the api and the count so far.
+local function running(c)
+    c.setSaved(ns.id.accountDB, {})
+    c.setSaved(ns.id.charDB, {})
+    c.setClass(KCLASS)
+    local reads, real = 0, c.bagItems
+    c.bagItems = function(...)
+        reads = reads + 1
+        return real(...)
+    end
+    local k = ns.Kernel({}, c)
+    ns.Diag.Start(k)
+    local api = D.Declare(k, { [KCLASS] = pack() })
+    k:Boot()
+    c.fire("ADDON_LOADED", ns.id.addon)
+    c.fire("PLAYER_LOGIN")
+    c.fire("PLAYER_ENTERING_WORLD")
+    k.settings:set(D.SETTING, true)
+    return api, function() return reads end
+end
+
+local function tick(c) c.advance(D.EVERY + 0.05, 1) end
+
+local function food(api)
+    local v = api.view()
+    local s = v and v.suggestion
+    return s and s.step == "food" and s.item or nil
+end
+
+tests["buff food F-1: a tick in a fight reads no bags"] = function(t)
+    local c = client({ RIBS }, {}, true)
+    local api, reads = running(c)
+    local from = reads()
+    tick(c)
+    t.ok(api.view() ~= nil, "the tick ran")
+    t.eq(reads() - from, 0, "no bag read in a fight")
+    tick(c)
+    t.eq(reads() - from, 0, "nor on the next")
+end
+
+tests["buff food F-1: out of a fight the bags are read once, and again only after a bag change"] = function(t)
+    local c = client({ RIBS }, {})
+    local api, reads = running(c)
+    local from = reads()
+    tick(c)
+    t.eq(food(api), "Spiced Wolf Ribs", "the food is suggested")
+    t.eq(reads() - from, 1, "one bag read")
+    tick(c)
+    t.eq(reads() - from, 1, "a second tick with no bag event: no bag read")
+    t.eq(food(api), "Spiced Wolf Ribs", "the food kept")
+    c.setBagItems({ { item = BREAD, count = 3 } })
+    c.fire("BAG_UPDATE_DELAYED")
+    tick(c)
+    t.eq(reads() - from, 2, "the bags changed: read again")
+    t.eq(food(api), nil, "only plain food now: no food suggested")
+end
+
+tests["buff food F-1: a fight, then out of it with no bag change, reads the bags once"] = function(t)
+    local c = client({ RIBS }, {}, true)
+    local api, reads = running(c)
+    local from = reads()
+    tick(c)
+    c.setCombat(false)
+    tick(c)
+    tick(c)
+    t.eq(reads() - from, 1, "the first tick out of the fight reads, the next does not")
+    t.eq(food(api), "Spiced Wolf Ribs")
+end
+
+tests["buff food F-1: a food not read is not kept; the next tick reads again"] = function(t)
+    local c = client({ RIBS }, {})
+    c.setItemLines(RIBS, nil)
+    local api, reads = running(c)
+    local from = reads()
+    tick(c)
+    t.eq(food(api), nil, "the tooltip not read: no food")
+    c.setItemLines(RIBS, LINES[RIBS])
+    tick(c)
+    t.eq(reads() - from, 2, "not known is read again, with no bag event")
+    t.eq(food(api), "Spiced Wolf Ribs", "once the tooltip is read")
+end
+
 return tests
