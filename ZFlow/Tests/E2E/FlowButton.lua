@@ -5,7 +5,8 @@ local _, ns = ...
 -- player clicks, or binds a key to on the settings page with a button the
 -- player presses; the add-on clicks, binds and casts nothing. Set only
 -- while the lock is a plain false; a change in a fight waits for its end.
--- Size and place come from the imported layout; Ctrl-drag moves them.
+-- Size and place come from the imported layout; a grip beside each
+-- button moves it (lead section 305 item 1: no drag on the secure button).
 -- N15: seals, shouts and forms stay on the Flow button, never on the self
 -- button. Section 236: late data, a reload, a lock read that fails, then
 -- recovers. No macro type anywhere. Section 294 item 1: both buttons are
@@ -82,9 +83,7 @@ local function noBindsNoMacros(t, c)
         local name = tostring(g.name)
         if name:find(FLOW, 1, true) or name:find(SELF, 1, true) then
             local attr = tostring(g.attr)
-            if attr == FB.CTRL_ATTR and g.value ~= nil then
-                t.eq(g.value, "", "Ctrl: the empty type only, never a cast")
-            elseif attr:find("type", 1, true) and g.value ~= nil then
+            if attr:find("type", 1, true) and g.value ~= nil then
                 t.ok(g.value == "spell" or g.value == "item", "type is spell or item only: " .. tostring(g.value))
             end
         end
@@ -214,54 +213,52 @@ tests["flow button: a change in a fight waits, set after it ends"] = function(t)
     noBindsNoMacros(t, c)
 end
 
-tests["flow button: Ctrl-drag moves it out of a fight only, the place kept"] = function(t)
+tests["flow button: the grip moves it out of a fight only, the place kept"] = function(t)
     if type(FB) ~= "table" then t.ok(false, "no module"); return end
     local c, addon = start({ on = true })
     local h = rowOf(c, FLOW)
     if not h then t.ok(false, "no Flow button"); return end
-    t.ok(type(c.ctrlDragTo) == "function", "the fake client drags")
-    if type(c.ctrlDragTo) ~= "function" then return end
     local to = { "CENTER", "CENTER", 100, -100 }
-    t.eq(c.ctrlDragTo(FLOW, to, false), false, "no Ctrl: no move")
     t.eq(h.point, FB.DEFAULT_POINT)
     c.setCombat(true); c.advance(1, 5)
-    t.eq(c.ctrlDragTo(FLOW, to, true), false, "no move in a fight")
+    t.eq(c.dragHandle(FLOW, to), false, "no move in a fight")
     c.setCombat(false); c.advance(1, 5)
-    t.eq(c.ctrlDragTo(FLOW, to, true), true, "Ctrl held, out of a fight: moved")
+    t.eq(c.dragHandle(FLOW, to), true, "the grip, out of a fight: moved")
     t.eq(h.point, to, "placed there")
     t.eq(addon.settings:get(FB.LAYOUT), to, "kept in the add-on's layout")
 end
 
--- Lead section 305 item 1: a Ctrl press on either button never casts, so
--- the Ctrl-drag that moves it cannot cast as the drag starts (the buttons
--- act on the press down). The fake client cannot press; the attribute the
--- template reads for Ctrl with the left button is pinned instead.
-tests["flow and self buttons: a Ctrl click holds no cast, so a Ctrl-drag never casts"] = function(t)
+-- Lead section 305 item 1: a drag never casts. The buttons act on the
+-- press down (Core/Client.lua clickRow registers AnyUp and AnyDown), so a
+-- drag that starts on the secure button would also press it. Each button
+-- moves only by the grip beside it (client.moveHandle, as ClickSlots S29),
+-- and nothing drags the secure button itself. No modifier attribute is
+-- written either: a Ctrl click is a plain click.
+tests["flow and self buttons: moved by a grip only, never a drag on the secure button"] = function(t)
     if type(FB) ~= "table" then t.ok(false, "no module"); return end
-    t.eq(FB.CTRL_ATTR, "ctrl-type1", "the attribute for Ctrl with the left button")
     local c = start({ on = true })
     for _, name in ipairs({ FLOW, SELF }) do
         local h = rowOf(c, name)
         t.ok(h ~= nil, name .. " made")
         if h then
-            local a = h.slots[1].attrs
-            t.eq(a.type, "spell", name .. ": a plain click casts")
-            t.eq(a[FB.CTRL_ATTR], "", name .. ": Ctrl held, the empty type: nothing cast")
+            t.eq(h.slots[1].attrs.type, "spell", name .. ": a plain click casts")
+            t.eq(h.slots[1].attrs["ctrl-type1"], nil, name .. ": no modifier attribute")
         end
+        t.eq(c.ctrlDrags[name], nil, name .. ": no drag on the secure button")
+        t.ok(c.moveHandles[name] ~= nil, name .. ": a grip moves it")
     end
     noBindsNoMacros(t, c)
     local d = start()
-    local h = rowOf(d, FLOW)
-    t.eq(h and h.slots[1].attrs[FB.CTRL_ATTR], nil, "holding nothing: nothing written for Ctrl either")
     t.eq(castGiven(d), 0, "a default profile still writes no cast")
+    t.ok(d.moveHandles[FLOW] ~= nil, "a default profile: the grip is there too")
 end
 
 tests["flow button: a reload keeps its place and the key the player bound"] = function(t)
     if type(FB) ~= "table" then t.ok(false, "no module"); return end
     local c = start({ on = true })
-    if type(c.ctrlDragTo) ~= "function" or type(c.pressKey) ~= "function" then t.ok(false, "fake client"); return end
+    if type(c.pressKey) ~= "function" then t.ok(false, "fake client"); return end
     local to = { "CENTER", "CENTER", 120, -80 }
-    t.eq(c.ctrlDragTo(FLOW, to, true), true)
+    t.eq(c.dragHandle(FLOW, to), true)
     open(c)
     t.ok(pageRow(c, "keys.flow") ~= nil, "a key row for the Flow button")
     t.eq(c.bindingCalls(), {}, "nothing bound before the player presses")
@@ -416,9 +413,9 @@ end
 tests["self button: a reload keeps its place and the key the player bound"] = function(t)
     if type(FB) ~= "table" then t.ok(false, "no module"); return end
     local c = start({ on = true })
-    if type(c.ctrlDragTo) ~= "function" or type(c.pressKey) ~= "function" then t.ok(false, "fake client"); return end
+    if type(c.pressKey) ~= "function" then t.ok(false, "fake client"); return end
     local to = { "CENTER", "CENTER", -200, -50 }
-    t.eq(c.ctrlDragTo(SELF, to, true), true, "Ctrl-drag moves it")
+    t.eq(c.dragHandle(SELF, to), true, "the grip moves it")
     open(c)
     t.eq(press(c, "keys.self", "Set key"), true, "the player presses Set key")
     t.eq(c.pressKey("G"), true)
