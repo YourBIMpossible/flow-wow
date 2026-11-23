@@ -46,11 +46,7 @@ ZFlowDB = {
 },
 ["fights"] = {
 ["deaths"] = {
-{
-["at"] = 1700000100,
-["by"] = "Brannoch",
-["level"] = 14,
-}, -- [1]
+"3|Aldwynne|DRUID|12|Elwynn Forest|died after 20 s fighting Brannoch (level 14, you 12) || low health", -- [1]
 },
 },
 },
@@ -63,6 +59,18 @@ ZFlowDB = {
 ["key"] = "ah.prices.Cinder-Reach - Horde",
 ["why"] = "shape",
 ["reason"] = "not a price table",
+}, -- [1]
+},
+["adjusted"] = {
+{
+["key"] = "ah.prices.cinder reach - Alliance",
+["from"] = {
+["Mossvale"] = 3,
+},
+["to"] = {
+["value"] = 3,
+},
+["reason"] = "kept the price of Mossvale",
 }, -- [1]
 },
 }, -- [1]
@@ -147,6 +155,21 @@ ZFlowDB = {
 },
 },
 ["timing"] = {
+["order"] = {
+"ADDON_LOADED", -- [1]
+},
+["fileLoad"] = {
+["at"] = 5.5,
+["accountData"] = false,
+["charData"] = false,
+["phase"] = "loading",
+},
+["ADDON_LOADED"] = {
+["at"] = 5.75,
+["accountData"] = true,
+["charData"] = true,
+["phase"] = "loading",
+},
 ["start"] = 6,
 ["character"] = "Aldwynne",
 ["realm"] = "Mossvale",

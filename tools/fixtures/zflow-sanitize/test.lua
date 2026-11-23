@@ -131,7 +131,17 @@ end)
 -- The ZFlow capture: both files in one run, the real schema.
 local ACCOUNT = read(here .. "/capture/ZFlow.lua")
 local CHAR = read(here .. "/capture/ZFlowChar.lua")
-local CAPTURE_NAMES = { "Aldwynne", "Mossvale", "Brannoch", "Cinder-Reach", "Kestrelle" }
+-- Fenwick is only ever in an open part (learned.fights.records target).
+local CAPTURE_NAMES = { "Aldwynne", "Mossvale", "Brannoch", "Cinder-Reach", "Kestrelle", "Fenwick" }
+
+-- Every spelling of a capture name: any case, spaces and hyphens ignored.
+local function holdsCaptureName(text)
+    local n = S.norm(text or "")
+    for _, real in ipairs(CAPTURE_NAMES) do
+        if n:find(S.norm(real), 1, true) then return real end
+    end
+    return nil
+end
 
 case("ZFlow capture: no made-up real name left in either file; the shapes kept", function(t)
     local outs, kind, msg = S.texts({ ACCOUNT, CHAR }, schema)
@@ -139,6 +149,7 @@ case("ZFlow capture: no made-up real name left in either file; the shapes kept",
     if not outs then return end
     for _, out in ipairs(outs) do
         for _, real in ipairs(CAPTURE_NAMES) do t.hasNot(out, real, "a real name left") end
+        t.ok(holdsCaptureName(out) == nil, "a name in another spelling left: " .. tostring(holdsCaptureName(out)))
     end
     local a, c = S.parse(outs[1]), S.parse(outs[2])
     local snap = a.ZFlowDB.diag.snaps[1]
@@ -150,11 +161,107 @@ case("ZFlow capture: no made-up real name left in either file; the shapes kept",
     t.ok(snap.shapes.build.values.v1 == "1.16.1", "game text kept")
     t.ok(a.ZFlowDB.learned.prices.auction["Realm1-Alliance"] ~= nil, "auction key: realm replaced, faction kept")
     t.ok(a.ZFlowDB.learned.prices.auctionHistory["Realm2-Horde"] ~= nil, "a realm with a hyphen in it")
-    local function made(v) return type(v) == "string" and v:match("^text %d+$") ~= nil end
     t.ok(made(snap.timing.errors[1].text), "error text: " .. tostring(snap.timing.errors[1].text))
     t.ok(made(c.ZFlowCharDB.state.nav.waypoint.label), "label: " .. tostring(c.ZFlowCharDB.state.nav.waypoint.label))
     t.ok(c.ZFlowCharDB.learned.fights.mobs["Kobold Miner"] == nil, "mob keys treated as names")
     t.ok(made(c.ZFlowCharDB.export.lines[1]), "export line: " .. tostring(c.ZFlowCharDB.export.lines[1]))
+end)
+
+local function made(v) return type(v) == "string" and v:match("^text %d+$") ~= nil end
+
+-- Section 192 S3: learned.fights.deaths holds the text lines the import
+-- copies from Flow deathReports, the player name inside. Fails at d4ea0cc:
+-- the schema wanted { at, by, level } tables, so the capture was refused.
+case("S3: death lines are replaced whole", function(t)
+    local outs, kind, msg = S.texts({ ACCOUNT, CHAR }, schema)
+    t.ok(outs ~= nil, "refused: " .. tostring(kind) .. " " .. tostring(msg))
+    if not outs then return end
+    local d = S.parse(outs[1]).ZFlowDB.learned.fights.deaths
+    t.ok(made(d[1]), "death: " .. tostring(d[1]))
+end)
+
+-- S4: the timing marks Core/Diag.lua dataNow() saves. Fails at d4ea0cc:
+-- the open part of timing took numbers only, so every capture with a
+-- snapshot was refused.
+case("S4: timing marks are kept", function(t)
+    local outs, kind, msg = S.texts({ ACCOUNT, CHAR }, schema)
+    t.ok(outs ~= nil, "refused: " .. tostring(kind) .. " " .. tostring(msg))
+    if not outs then return end
+    local tm = S.parse(outs[1]).ZFlowDB.diag.snaps[1].timing
+    t.ok(tm.fileLoad and tm.fileLoad.at == 5.5 and tm.fileLoad.charData == false, "fileLoad")
+    t.ok(tm.ADDON_LOADED and tm.ADDON_LOADED.phase == "loading", "ADDON_LOADED")
+    t.ok(tm.order[1] == "ADDON_LOADED", "order")
+    t.ok(tm.start == 6, "start")
+end)
+
+-- S5: the keys and notes of dropped and adjusted import entries hold no
+-- realm name in any spelling. Fails at 4db3296 (a key in another spelling,
+-- "cinder reach", was not scrubbed); closed by section 190 (3d7ffe4).
+case("S5: import dropped and adjusted entries hold no realm name", function(t)
+    local outs = S.texts({ ACCOUNT, CHAR }, schema)
+    t.ok(outs ~= nil, "refused")
+    if not outs then return end
+    local imp = S.parse(outs[1]).ZFlowDB.imports[1]
+    t.ok(made(imp.dropped[1].key), "dropped key: " .. tostring(imp.dropped[1].key))
+    local adj = imp.adjusted[1]
+    t.ok(made(adj.key) and made(adj.reason), "adjusted key and reason")
+    for k in pairs(adj.from) do t.ok(holdsCaptureName(k) == nil, "a realm in an adjusted key") end
+    t.ok(adj.to.value == 3, "an add-on field kept")
+end)
+
+-- S6: kept text and keys holding a known name in any case, any length or
+-- another spelling. Fails at d4ea0cc: "str" text and lower-case keys were
+-- kept as they were.
+local S6 = { globals = { G = { fields = {
+    who = "char", who2 = "char", realm = "realm", realm2 = "realm",
+    upper = "str", lower = "str", joined = "str", hyphen = "str", word = "str", plain = "str",
+    any = "scalar",
+    open = { map = "num", key = "fieldKey" },
+} } } }
+local S6_TEXT = table.concat({
+    "G = {",
+    "[\"who\"] = \"Bo\",",
+    "[\"who2\"] = \"Aldwynne\",",
+    "[\"realm\"] = \"Cinder Reach\",",
+    "[\"realm2\"] = \"CinderReach\",",
+    "[\"upper\"] = \"ALDWYNNE\",",
+    "[\"lower\"] = \"bo\",",
+    "[\"joined\"] = \"cinderreach\",",
+    "[\"hyphen\"] = \"Aldwynne-Cinder-Reach\",",
+    "[\"word\"] = \"sold by bo today\",",
+    "[\"plain\"] = \"Linen Cloth\",",
+    "[\"any\"] = \"aldwynne\",",
+    "[\"open\"] = { [\"bo\"] = 1, [\"aldwynne\"] = 2, [\"lastSeen\"] = 3, },",
+    "}",
+}, "\n")
+case("S6: a known name in any case, length or spelling is replaced in kept text and keys", function(t)
+    local out, kind, msg = S.text(S6_TEXT, S6)
+    t.ok(out ~= nil, "refused: " .. tostring(kind) .. " " .. tostring(msg))
+    if not out then return end
+    local g = S.parse(out).G
+    t.ok(g.realm == g.realm2 and g.realm == "Realm1", "two spellings, one realm: " .. tostring(g.realm) .. " " .. tostring(g.realm2))
+    for _, k in ipairs({ "upper", "lower", "joined", "hyphen", "word", "any" }) do
+        t.ok(made(g[k]), k .. ": " .. tostring(g[k]))
+    end
+    t.ok(g.plain == "Linen Cloth", "text with no name kept: " .. tostring(g.plain))
+    t.ok(g.open.lastSeen == 3, "an add-on key kept")
+    t.ok(g.open.bo == nil and g.open.aldwynne == nil, "a key that is a name was kept")
+    local n = S.norm(out)
+    for _, real in ipairs({ "aldwynne", "cinderreach" }) do t.hasNot(n, real, "a name left") end
+end)
+
+-- S7: a name only in an open part (learned.fights.records target), and a
+-- run on the character file alone. Fails at 4db3296: free text was only
+-- scrubbed of names found in a field, and Brannoch is in a field of the
+-- account file only.
+case("S7: the character file alone, and a name only in an open part", function(t)
+    local outs, kind, msg = S.texts({ CHAR }, schema)
+    t.ok(outs ~= nil, "refused: " .. tostring(kind) .. " " .. tostring(msg))
+    if not outs then return end
+    t.ok(holdsCaptureName(outs[1]) == nil, "a name left: " .. tostring(holdsCaptureName(outs[1])))
+    local c = S.parse(outs[1]).ZFlowCharDB
+    t.ok(made(c.learned.fights.records[1].target), "target: " .. tostring(c.learned.fights.records[1].target))
+    t.ok(made(c.state.nav.waypoint.label), "label")
 end)
 
 case("a field the schema does not know is refused, and its value is not in the message", function(t)

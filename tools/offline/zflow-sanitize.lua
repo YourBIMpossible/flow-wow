@@ -34,6 +34,17 @@
 -- found in text without breaking ordinary words, so free text is not
 -- searched for names; it is not kept.
 --
+-- Section 192 (S6): a character, realm, guild or account name is matched in
+-- any case and with spaces, punctuation and hyphens ignored, so "Cinder
+-- Reach", "CinderReach" and "cinder-reach" are one realm with one made-up
+-- name. Text that is kept as it is ("str", a text "scalar", a key of an open
+-- table) is replaced whole like free text when it holds a known name: the
+-- whole text is the name, a word of it is the name (any length, so a name
+-- of one or two letters is caught as a word), or a name of four letters or
+-- more is inside it with spaces and punctuation ignored. This replaces more
+-- than it must (an item or a word that is also a name); that is the side it
+-- errs on. Letters above ASCII are matched as bytes, not by case.
+--
 -- Exit code: 0 = written, 1 = refused (a field, type or global the schema
 -- does not know), 2 = could not run (bad arguments, no capture, not
 -- saved-variables data, <out> exists).
@@ -230,7 +241,10 @@ end
 --                                 a lower-case-first ASCII word (an add-on
 --                                 field such as money or lastSeen; a
 --                                 character or realm name always starts
---                                 with a capital), else as "free"
+--                                 with a capital) and holds no known name,
+--                                 else as "free"
+-- Kept text ("str", text "scalar", a kept "fieldKey") that holds a known
+-- name is replaced as "free" (S6).
 --   "nothing"                     never saved: refused when present
 --   { fields = { key = spec }, open = spec }   a table with these text
 --                                 keys; open: any other key, of that spec
@@ -244,6 +258,16 @@ local NAME_KINDS = {
     chat = "chat text ", mail = "mail text ", free = "text ",
 }
 S.NAME_KINDS = NAME_KINDS
+
+-- The kinds matched in any spelling (S6), and in kept text.
+local FOLDED = { char = true, realm = true, guild = true, account = true }
+
+-- norm(text) -> lower case, every ASCII space, control and punctuation byte
+-- removed. Bytes above 127 are kept as they are.
+local function norm(s)
+    return (s:lower():gsub("[%c%p%s]", ""))
+end
+S.norm = norm
 
 local function refuse(path, what) error({ sanitize = "refuse", msg = what .. " at " .. path }, 0) end
 
@@ -262,15 +286,55 @@ function S.new()
     return run
 end
 
+-- madeUp: a name kind is keyed by norm(real), so every spelling of one
+-- name gets one made-up name; chat, mail and free text are keyed as they are.
 local function madeUp(run, kind, real)
     if real == "" then return "" end
-    local got = run.names[kind][real]
+    local key = real
+    if FOLDED[kind] then
+        key = norm(real)
+        if key == "" then key = real end
+    end
+    local got = run.names[kind][key]
     if got then return got end
     run.counts[kind] = run.counts[kind] + 1
     got = NAME_KINDS[kind] .. run.counts[kind]
-    run.names[kind][real] = got
+    run.names[kind][key] = got
     return got
 end
+
+-- S.know(run): after pass one, the names found, for holdsName.
+function S.know(run)
+    local set, long = {}, {}
+    for kind in pairs(FOLDED) do
+        for key in pairs(run.names[kind]) do
+            if not set[key] then
+                set[key] = true
+                if #key >= 4 then long[#long + 1] = key end
+            end
+        end
+    end
+    table.sort(long)
+    run.known = { set = set, long = long }
+end
+
+-- holdsName(run, text) -> true when the text is a known name, a word of it
+-- is one, or a known name of four bytes or more is inside it, all compared
+-- through norm. False before S.know.
+local function holdsName(run, text)
+    local k = run.known
+    if not k then return false end
+    local n = norm(text)
+    if k.set[n] then return true end
+    for w in text:gmatch("[^%c%p%s]+") do
+        if k.set[w:lower()] then return true end
+    end
+    for _, name in ipairs(k.long) do
+        if n:find(name, 1, true) then return true end
+    end
+    return false
+end
+S.holdsName = holdsName
 
 local function charRealm(run, v)
     local name, realm = v:match("^([^%-]+)%-(.+)$")
@@ -317,15 +381,19 @@ local function leaf(run, spec, v, path, copy)
     if spec == "nothing" then refuse(path, "a field that is never saved") end
     if spec == "num" or spec == "bool" or spec == "scalar" then
         if not fits(spec, v) then refuse(path, "a " .. tv .. " where " .. spec .. " is saved") end
+        if copy and tv == "string" and holdsName(run, v) then return S.free(run, v) end
         return v
     end
     if tv ~= "string" then refuse(path, "a " .. tv .. " where text is saved") end
-    if spec == "str" then return v end
+    if spec == "str" then
+        if copy and holdsName(run, v) then return S.free(run, v) end
+        return v
+    end
     -- Before the name kinds: "free" is one of them, but text with no
     -- letter is kept.
     if spec == "free" then return S.free(run, v) end
     if spec == "fieldKey" then
-        if v:match("^%l[%w_]*$") then return v end
+        if v:match("^%l[%w_]*$") and not (copy and holdsName(run, v)) then return v end
         return S.free(run, v)
     end
     if NAME_KINDS[spec] then return madeUp(run, spec, v) end
@@ -376,13 +444,15 @@ end
 -- S.sanitize(globals, order, schema) -> copy, run   (raises { sanitize, msg })
 --   schema.globals[name] is the spec of that saved table; any other global
 --   is refused. Pass one finds every name and numbers them; pass two
---   copies with the numbers pass one gave.
+--   copies with the numbers pass one gave, and replaces kept text that
+--   holds a name pass one found (S6).
 function S.sanitize(globals, order, schema)
     for _, name in ipairs(order) do
         if not schema.globals[name] then refuse("<global>", "a global the schema does not know") end
     end
     local run = S.new()
     for _, name in ipairs(order) do walk(run, schema.globals[name], globals[name], name, false) end
+    S.know(run)
     local copy = {}
     for _, name in ipairs(order) do copy[name] = walk(run, schema.globals[name], globals[name], name, true) end
     return copy, run

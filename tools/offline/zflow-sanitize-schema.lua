@@ -9,7 +9,9 @@
 --   learned.prices.auction / .auctionHistory keys "<realm>-<faction>"
 --                                                 Import/FromFlow.lua,
 --                                                 Items/AuctionLog.lua
---   learned.fights.deaths[].by (the killer)       Import/FromFlow.lua
+--   learned.fights.deaths[] (Flow deathReports lines: "id|who|class|level|
+--     zone|summary || findings", who the player)   Import/FromFlow.lua,
+--                                                 Modules/Rotation/Engine.lua
 --   learned.fights.mobs keys (target names) on the character
 -- Free text (error lines, problem texts, import notes, export lines, typed
 -- labels, other add-ons' globals) is replaced whole by a made-up "text N"
@@ -28,6 +30,10 @@ local OPEN = { key = { any = { "num", "fieldKey" } } }
 OPEN.map = { any = { "num", "bool", "free", OPEN } }
 
 local function fields(t, open) return { fields = t, open = open } end
+
+-- A timing mark: Core/Diag.lua dataNow(), saved under the event name
+-- (fileLoad, ADDON_LOADED ...) next to order, start and errors.
+local MARK = fields({ at = "num", accountData = "bool", charData = "bool", phase = "str" })
 local function list(spec) return { list = spec } end
 local function map(spec, key) return { map = spec, key = key } end
 
@@ -68,7 +74,7 @@ local SNAP = fields({
         character = "char",
         realm = "realm",
         errors = list(fields({ text = "free", count = "num", at = "num", phase = "str", ours = "bool" })),
-    }, "num"),
+    }, { any = { "num", MARK } }),
 })
 
 local DIAG = fields({
@@ -102,7 +108,7 @@ local ACCOUNT_LEARNED = fields({
         auctionHistory = map(map(HISTORY, { any = { "num", "str" } }), "realmFaction"),
     }),
     fights = fields({
-        deaths = list(fields({ at = "num", by = "char", level = "num" })),
+        deaths = list("free"),
     }, OPEN),
 }, OPEN)
 
