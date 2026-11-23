@@ -17,6 +17,9 @@ local ITEM_COPPER_BAR, ITEM_TIN_BAR = 2840, 3576
 local function start(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
+    -- These cases are the plain panel: the kit window is refused, so the
+    -- panel behind it draws (lead section 297 item 5, the fallback).
+    if type(c.setKitFails) == "function" then c.setKitFails(math.huge) end
     c.setSaved(ns.id.accountDB, opts.account or {})
     local char = opts.char or {}
     if opts.goals then char.settings = { goals = opts.goals } end
