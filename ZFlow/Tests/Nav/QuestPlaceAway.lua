@@ -93,7 +93,8 @@ end
 
 tests["away: a turn-in on another map gets its place too"] = function(t)
     local row = { id = 202, title = "Crates", complete = true, objectives = {} }
-    local places = { [202] = { turnIn = { points = {}, elsewhere = true, name = "Marshal Dughan",
+    -- F-028: an empty objective list is a ready turn-in only when Questie says the quest has none.
+    local places = { [202] = { objectiveCount = 0, turnIn = { points = {}, elsewhere = true, name = "Marshal Dughan",
                                           away = { map = 1412, x = 0.1, y = 0.2 } } } }
     local step = Q.Pick({ row }, places, HERE)
     t.eq(step.place, { map = 1412, x = 0.1, y = 0.2 })
