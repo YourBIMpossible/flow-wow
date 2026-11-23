@@ -369,7 +369,10 @@ function G.Step(s, pack, prefs)
     end
 
     local rows = type(pack.groups) == "table" and pack.groups or {}
-    if #rows == 0 then return nil, "no buffs for your group" end
+    if #rows == 0 then
+        if type(pack.groupsNone) == "string" and pack.groupsNone ~= "" then return nil, pack.groupsNone end
+        return nil, "no buffs for your group"
+    end
     -- Who wants which row: every row that fits them and is yours; of the
     -- rows sharing a slot, only the first of those.
     local wanted = {}

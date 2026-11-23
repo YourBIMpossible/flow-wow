@@ -260,6 +260,7 @@ local pack = {
     -- Does not apply: no hunter spell here is cast on the group (Trueshot
     -- Aura is a talent on yourself; Aspect of the Pack is your own aspect).
     groups = {},
+    groupsNone = "No hunter spell is a buff you cast on your group: Trueshot Aura and Aspect of the Pack are your own.",
 
     -- Does not apply: the hunter has no heal for itself; Mend Pet heals the
     -- pet only and waits on the pet's health (D1).
@@ -280,6 +281,7 @@ local pack = {
     -- Does not apply: the hunter cannot remove a poison, curse, disease or
     -- magic from itself.
     dispels = {},
+    dispelsNone = "A hunter cannot remove a poison, curse, disease or magic from anyone.",
 
     keys = { none = keys },
 
