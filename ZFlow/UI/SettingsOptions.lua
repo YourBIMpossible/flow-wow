@@ -107,6 +107,12 @@ local function settingRow(e, found)
     }
 end
 
+-- A row with a window of its own gets that button in place of Open topic.
+local function withOpener(row, e)
+    if e.opens then row.jump, row.jumpText, row.jumpKind = e.key, e.opens, "open" end
+    return row
+end
+
 function O.Rows(k)
     local page = ns.SettingsPage.Page(k)
     local rows = {
@@ -118,13 +124,13 @@ function O.Rows(k)
             rows[#rows + 1] = { kind = "note", text = page.none }
         else
             rows[#rows + 1] = { kind = "group", text = #page.results .. O.FOUND .. '"' .. page.query .. '"' }
-            for _, e in ipairs(page.results) do rows[#rows + 1] = settingRow(e, true) end
+            for _, e in ipairs(page.results) do rows[#rows + 1] = withOpener(settingRow(e, true), e) end
         end
     elseif page.topic then
         rows[#rows + 1] = { kind = "group", text = page.topic.name }
         for _, section in ipairs(page.topic.sections) do
             if section.name then rows[#rows + 1] = { kind = "section", text = section.name } end
-            for _, e in ipairs(section.rows) do rows[#rows + 1] = settingRow(e, false) end
+            for _, e in ipairs(section.rows) do rows[#rows + 1] = withOpener(settingRow(e, false), e) end
         end
     else
         rows[#rows + 1] = { kind = "note", text = O.NONE }
@@ -191,6 +197,9 @@ function O.Declare(k)
             if not P.Goto(k, value) then return false end
         elseif kind == "search" then
             P.Find(k, value)
+        elseif kind == "open" then
+            -- The button of a row with a window of its own.
+            return P.Open(k, value)
         else
             return false
         end

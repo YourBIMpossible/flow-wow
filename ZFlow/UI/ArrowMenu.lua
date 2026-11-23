@@ -86,10 +86,13 @@ function M.Items(state)
     rows[#rows + 1] = { sep = true }
     rows[#rows + 1] = { key = "settings." .. topic.id, text = topic.name .. T.MENU.topicSettings }
     rows[#rows + 1] = { key = "settings", text = T.MENU.settings }
+    -- Row N73: the feedback window (UI/Feedback.lua).
+    rows[#rows + 1] = { key = M.FEEDBACK, text = T.MENU.feedback }
     return rows
 end
 
 M.BACK = "back"
+M.FEEDBACK = "feedback"
 M.MORE = "  >"
 
 local function childrenOf(items, key)
@@ -158,8 +161,9 @@ end
 -- or not offered:
 --   a layout action for Nav.ArrowApply ({ op = ... }), { style = key },
 --   { open = key } for a row that opens its level ({ open = false }: back
---   to the top), or { settings = topic id } / { settings = true } for a
---   row that opens the settings page (at that topic, or where it was).
+--   to the top), { settings = topic id } / { settings = true } for a
+--   row that opens the settings page (at that topic, or where it was), or
+--   { feedback = true } for the row that opens the feedback window.
 -- Opening a level or the settings changes nothing that is saved.
 function M.Action(key, state)
     if type(key) ~= "string" then return nil end
@@ -173,6 +177,7 @@ function M.Action(key, state)
         return nil
     end
     if key == "settings" then return { settings = true } end
+    if key == "feedback" then return { feedback = true } end
     local topicId = key:match("^settings%.(.+)$")
     if topicId then
         local topic = topics().Find(topicId)
