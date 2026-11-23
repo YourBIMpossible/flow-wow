@@ -34,7 +34,9 @@ local KIND = {
              -- N68: the one alert sound (output only; changes nothing in the game).
              "playAlert",
              -- G14: the mark on the best quest reward choice (Gear/RewardMark.lua).
-             "markRewardChoice" },
+             "markRewardChoice",
+             -- S21: the Need or Greed value on a loot roll's item (Gear/RollHint.lua).
+             "rollValue" },
     tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "savedMadeHere", "slash",
              "slashTaken", "unslash" },
     -- Hands back or runs a sound restart: never asked by the capture.
