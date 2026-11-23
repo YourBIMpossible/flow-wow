@@ -184,10 +184,24 @@ tests["settings layout: every row of the add-on, and each key row, is reached ex
     local c, addon = boot()
     slash(c, "settings")
     if not ready(t, c) then return end
-    local seen = {}
+    local seen, unreachable = {}, {}
     for _, topic in ipairs(c.optionsLayout().topics) do
         t.eq(c.optionsNav("topic", topic.id), true, topic.id)
         for _, key in ipairs(drawn(c)) do seen[key] = (seen[key] or 0) + 1 end
+        -- Twin F2: each settable row is drawn with a control, or greyed
+        -- with a reason; never enabled with nothing to change it.
+        local settable = {}
+        for _, r in ipairs(c.optionsRows() or {}) do
+            if r.settable == true and r.label ~= nil then settable[tostring(r.label)] = true end
+        end
+        local tree = ns.SettingsWindow.Tree(c.optionsRows() or {}, function() end, function() end,
+            c.optionsLayout())
+        ns.Kit.Each(tree, function(part)
+            if part.kind == "row" and settable[tostring(part.label)] and part.control == nil
+                and not (part.enabled == false and type(part.reason) == "string" and part.reason ~= "") then
+                unreachable[#unreachable + 1] = topic.id .. ": " .. tostring(part.label)
+            end
+        end)
     end
     local n, bad = 0, {}
     for row in addon.settings:each() do
@@ -200,6 +214,7 @@ tests["settings layout: every row of the add-on, and each key row, is reached ex
     table.sort(bad)
     t.ok(n >= 40, "the add-on's rows were walked: " .. n)
     t.eq(table.concat(bad, ", "), "", "rows not reached exactly once")
+    t.eq(table.concat(unreachable, ", "), "", "settable rows drawn with no control and no reason")
 end
 
 -- Fails before: where the player was is not saved; after the reload the

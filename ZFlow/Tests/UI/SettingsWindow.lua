@@ -189,4 +189,35 @@ return {
         t.eq(api.open(), true, "the next ask makes it")
         t.eq(window(c).shown, true)
     end,
+
+    -- Fails before (Twin F1): a hit's topic jump has no kind, so no button
+    -- is drawn for it and kitClick finds no part.
+    ["settings window: a search hit draws its go-to-topic button; the click shows that topic and ends the search"] = function(t)
+        local _, c, api = start()
+        api.open({ topic = "advanced" })
+        t.eq(c.kitType(W.ID, W.HEADER, "junk"), true)
+        local jump = "sell.list" .. tostring(W.TOPIC_JUMP)
+        t.eq(texts(c, "button"), { O.JUMP }, "the hit's jump is drawn")
+        t.eq(c.kitClick(W.ID, jump), true, "and takes a click")
+        t.eq(c.optionsLayout().topic, "bags", "the hit's topic is shown")
+        t.ok(c.optionsLayout().search == nil or c.optionsLayout().search.value == nil
+            or c.optionsLayout().search.value == "", "the search is cleared")
+        t.eq(texts(c, "section"), { T.Find("bags").name })
+    end,
+
+    -- Fails before (Twin F2): a settable row whose value type has no
+    -- control draws enabled with nothing to change it.
+    ["settings window: a settable row with no control for its type is greyed with a reason"] = function(t)
+        local rows = { { key = "test.odd", kind = "colour", label = "An odd one", settable = true, value = {} } }
+        local tree = W.Tree(rows, function() end, function() end, {})
+        local odd
+        ns.Kit.Each(tree, function(part)
+            if part.kind == "row" and part.label == "An odd one" then odd = part end
+        end)
+        t.ok(odd ~= nil, "the row is drawn")
+        if not odd then return end
+        t.eq(odd.control, nil)
+        t.eq(odd.enabled, false, "greyed")
+        t.eq(odd.reason, W.NO_CONTROL, "says it cannot be changed here")
+    end,
 }
