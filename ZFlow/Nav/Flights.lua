@@ -52,6 +52,11 @@ local _, ns = ...
 --   api.way(place)  place = { map, x, y } -> the step
 --     { kind = "flight", label = "Fly to <to>", place = { cont, map, x, y },
 --       radius = Flights.NEAR } at the board point, or nil, reason.
+--     While a travel preview is on (k.use("try").Flight() answers a table,
+--     lead section 187), the saved points are not read: the points are the
+--     preview's made-up master (its map share put in the world with its
+--     map's corners) under its name, and the target place itself under
+--     Try.LAND_NAME. In memory only; nothing is saved.
 --   api.nodes()     the saved points (a copy), or nil
 --   ns.use("flights") -> { Way = api.way, Nodes = api.nodes }
 ns.Nav = ns.Nav or {}
@@ -230,7 +235,25 @@ function Flights.Declare(k)
         local seconds = function(from, to) return times and times[from .. ">" .. to] or nil end
         local okRate, rate = pcall(ctx.store.get, ctx.store, "account", Flights.RATE_PATH)
         if not okRate then rate = nil end
-        local pick, reason = Flights.Pick(get("char", Flights.PATH), { cont = cont, wx = px, wy = py },
+        local known = get("char", Flights.PATH)
+        -- A travel preview (Nav/Try.lua, <slash> try flight): its made-up
+        -- master and the target itself, in memory only, in place of the
+        -- saved points. Nothing is saved.
+        local okTry, try = pcall(function() return k.use and k.use("try") or nil end)
+        if okTry and type(try) == "table" and type(try.Flight) == "function" then
+            local okMade, made = pcall(try.Flight)
+            if okMade and type(made) == "table" and type(made.name) == "string" then
+                local mc = made.map == pos.map and home or ask(client, "mapCorners", made.map)
+                local mcont, mx, my = Flights.ToWorld(mc, made.x, made.y)
+                if mcont ~= nil then
+                    known = {
+                        [made.name] = { cont = mcont, wx = mx, wy = my },
+                        [(N.Try and N.Try.LAND_NAME) or "the made-up landing"] = { cont = tcont, wx = tx, wy = ty },
+                    }
+                end
+            end
+        end
+        local pick, reason = Flights.Pick(known, { cont = cont, wx = px, wy = py },
             { cont = tcont, wx = tx, wy = ty }, home, seconds, Flights.RUN, rate)
         if not pick then return nil, reason end
         return {

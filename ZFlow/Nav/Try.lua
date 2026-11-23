@@ -17,8 +17,10 @@ local _, ns = ...
 --             in place of the saved crossings while the preview is on
 --   flight    a place across the player's own map, and a made-up flight
 --             master beside the player (api.Flight), for a flight way to
---             read. This build has no flight way yet (S45, the "flights"
---             module); the preview says so.
+--             read. Nav/Flights.lua's Way uses it, and the target itself
+--             as the landing (Try.LAND_NAME), in place of the saved flight
+--             points while the preview is on. With no "flights" module
+--             running the preview says so.
 --
 --   Try.Make(kind, here) -> preview or nil, why
 --     here     { cont, map, x, y }: where the player is
@@ -62,7 +64,7 @@ Try.OFF = "Preview off: the arrow is back to your own steps."
 Try.STRAIGHT = "Preview: Travel has no shortcut for it; the arrow points straight at it."
 Try.SAYS = "Preview: Travel says: %s."
 Try.NO_TRAVEL = "Preview: Travel is not running; the arrow points straight at it."
-Try.NO_FLIGHTS = "Preview: this build has no flight way yet, so no flight step shows."
+Try.NO_FLIGHTS = "Preview: the flight way is not running, so no flight step shows."
 Try.NOT_STARTED = "Preview: not started yet."
 Try.WHY = {
     ["position unknown"] = "Preview: your place is not known; nothing to show.",
