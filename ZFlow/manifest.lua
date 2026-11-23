@@ -59,6 +59,7 @@ return {
         "Items/Disposition.lua",
         "Items/TooltipDisposition.lua",
         "Items/Bank.lua",
+        "Items/Reservations.lua",
         "Items/LootNote.lua",
         "Items/Plan.lua",
         "Items/Present.lua",
