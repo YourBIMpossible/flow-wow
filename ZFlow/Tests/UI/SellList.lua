@@ -173,10 +173,14 @@ tests["sell list panel: look only - no buttons, no clicks, only the two reads"] 
     -- click of its own.
     local parts = c.kitWindows().SellList.parts
     t.ok(#parts > 0, "the window has parts")
+    -- But one: the Sell these button (lead section 337 item 1), whose
+    -- click is tested in Tests/E2E/SellThese.lua.
     for _, part in ipairs(parts) do
-        t.ok(part.kind ~= "button" and part.kind ~= "bind" and part.kind ~= "checkbox",
-            "no acting part in the window: " .. part.kind)
-        t.eq(c.kitClick("SellList", part.path), false, "nothing happens on a click: " .. part.kind)
+        if part.key ~= ns.SellThese.KEY then
+            t.ok(part.kind ~= "button" and part.kind ~= "bind" and part.kind ~= "checkbox",
+                "no acting part in the window: " .. part.kind)
+            t.eq(c.kitClick("SellList", part.path), false, "nothing happens on a click: " .. part.kind)
+        end
     end
     -- A listing over a client that has only the two reads: anything else it
     -- touched would be nil and raise. (Diag's own window snapshot is not

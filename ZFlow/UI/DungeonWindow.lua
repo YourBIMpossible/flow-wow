@@ -5,6 +5,8 @@
 -- level, "Step n of m" and "Available at Level X". Show on map sets the
 -- player's own waypoint (Nav/Waypoint.lua) at the dungeon's entrance.
 -- Bosses: this account's own seen loot (Nav/DungeonRead.lua R.Loot).
+-- Each dungeon in the list carries its level range; a summary line above
+-- the tabs names the picked one, its range and its quest count.
 -- Every empty pane says what is missing and how to get it.
 --
 -- Built from the kit's parts only (UI/Kit.lua, drawn by client.kitWindow):
@@ -222,13 +224,19 @@ function W.Declare(k, diag)
         else
             local list = R.Search(R.List(st), view.search)
             local names = {}
-            for i, d in ipairs(list) do names[i] = d.name end
+            for i, d in ipairs(list) do names[i] = S.ListText(d) end
             local sel, d = picked(list)
             children[#children + 1] = { kind = "topicList", key = "dungeons", items = names, selected = sel,
                 onSelect = function(i)
                     if list[i] then view.pick, view.said = list[i].key, nil end
                     render()
                 end }
+            -- Lead DISPATCH 343: as the journal's, the dungeon's name with
+            -- its level range above the tabs, its quest count below.
+            if d then
+                children[#children + 1] = { kind = "line", key = "summary", text = d.name,
+                    right = S.LevelText(d), sub = S.CountText(#d.ids) }
+            end
             children[#children + 1] = { kind = "tabs", key = "tabs", items = W.TABS, selected = view.tab,
                 onSelect = function(i)
                     view.tab = i

@@ -353,6 +353,35 @@ function ns.make.client(env)
         return stacks(bagIds())
     end
 
+    -- Lead section 337 item 1 (the sell list's "Sell these" button): the
+    -- bag stacks with where each one is, and one slot read again before it
+    -- is sold. Read with the same C_Container calls as bagItems above
+    -- (GetContainerNumSlots, GetContainerItemInfo); first guess, not seen
+    -- in game, that a slot's answer is the same one bagItems reads.
+    --   c.bagSlots() -> { { bag = id, slot = n, item = link or ID, count = n }, ... }
+    --     in bag then slot order; nil when any bag or slot could not be read
+    --   c.bagSlot(bag, slot) -> item, count; nil for an empty slot; false
+    --     when it could not be read or bag and slot are not whole numbers
+    function c.bagSlots()
+        local slotsOf = container("GetContainerNumSlots")
+        local out = {}
+        for _, bag in ipairs(bagIds()) do
+            local ok, total = call(slotsOf, bag)
+            if not ok or not wholeCount(total) then return nil end
+            for slot = 1, total do
+                local item, count = slotItem(bag, slot)
+                if item == false then return nil end
+                if item ~= nil then out[#out + 1] = { bag = bag, slot = slot, item = item, count = count } end
+            end
+        end
+        return out
+    end
+
+    function c.bagSlot(bag, slot)
+        if not wholeCount(bag) or not wholeCount(slot) or slot < 1 then return false end
+        return slotItem(bag, slot)
+    end
+
     -- The character's bank tabs, as the client lists them:
     -- C_Bank.FetchPurchasedBankTabIDs(Enum.BankType.Character). Never the
     -- account-wide bank. On 16001 the bank is tabs only (seen in game: one
@@ -450,6 +479,25 @@ function ns.make.client(env)
         if env.issecretvalue == nil then return false end
         local okSecret, secret = call(env.issecretvalue, v)
         return not okSecret or secret ~= false
+    end
+
+    -- Lead section 337 item 1 (ACTING): sells one bag slot to the open
+    -- merchant, only on the player click (Items/SellThese.lua). First guess,
+    -- not seen in game on 16001: C_Container.UseContainerItem(bag, slot)
+    -- sells the slot while the merchant window is open. Asked only when
+    -- InCombatLockdown answers a plain false and the merchant is open, both
+    -- read again here for each slot.
+    --   c.sellBagItem(bag, slot) -> true, or nil and why:
+    --     "combat", "closed", "bad" (not a bag slot), "noCall", "raised"
+    function c.sellBagItem(bag, slot)
+        local okLock, locked = call(env.InCombatLockdown)
+        if not okLock or hidden(locked) or locked ~= false then return nil, "combat" end
+        if c.merchantOpen() ~= true then return nil, "closed" end
+        if not wholeCount(bag) or not wholeCount(slot) or slot < 1 then return nil, "bad" end
+        local fn = container("UseContainerItem")
+        if fn == nil then return nil, "noCall" end
+        if not pcall(fn, bag, slot) then return nil, "raised" end
+        return true
     end
 
     -- What the window shows for one item on sale: read?, price, stack,
@@ -10984,6 +11032,138 @@ function ns.make.client(env)
             return page
         end
     end
+    -- The minimap button (lead DISPATCH sections 340 and 303(g);
+    -- UI/MinimapButton.lua): a small round button on the minimap's rim, or
+    -- nil and why when the client cannot make it.
+    --   spec = { name = global frame name or nil, title = the add-on's title
+    --            (its first letter is the plain look's face) }
+    --   h.place(x, y)    its middle x right and y up from the minimap's middle
+    --   h.show(on)
+    --   h.onClick(fn)    fn() on a left click; nothing else is done
+    --   h.onDrag(fn)     fn(dx, dy, done) while dragged with the left button:
+    --                    the cursor's offset from the minimap's middle, in the
+    --                    minimap's own units; done true once, at the drop
+    --   h.tip(lines)     the tooltip lines shown on hover (nil: none)
+    -- LOOK: the Blizzard minimap-button look. These texture paths move to
+    -- the kit's theme (UI/Kit/Theme.lua) when the kit owner adds a
+    -- minimap-button part; until then they are named here only:
+    --   border     Interface\Minimap\MiniMap-TrackingBorder
+    --   background Interface\Minimap\UI-Minimap-Background
+    --   highlight  Interface\Minimap\UI-Minimap-ZoomButton-Highlight
+    --   icon       Interface\Icons\INV_Misc_Map_01 (the add-on has no icon file
+    --              of its own yet)
+    -- A texture that does not set (SetTexture raises or answers false) gives
+    -- the plain look instead: a square button with the title's first letter.
+    -- First guesses, none seen in game on 16001. Docs (warcraft.wiki.gg):
+    -- API CreateFrame ("Button", name, parent); Button RegisterForClicks,
+    -- RegisterForDrag; Frame SetScript OnClick, OnDragStart, OnDragStop,
+    -- OnUpdate, OnEnter, OnLeave; Region GetCenter, GetEffectiveScale; API
+    -- GetCursorPosition (screen pixels, scaled by the effective scale);
+    -- GameTooltip SetOwner, AddLine, Show, Hide; TextureBase SetTexture
+    -- (returns success on recent clients; nil is taken as set).
+    function c.minimapButton(spec)
+        spec = type(spec) == "table" and spec or {}
+        local map = env.Minimap
+        if map == nil then return nil, "no minimap" end
+        local ok, b = call(env.CreateFrame, "Button", spec.name, map)
+        if not ok or b == nil then return nil, "no frame" end
+        local BORDER = "Interface\\Minimap\\MiniMap-TrackingBorder"
+        local BACK = "Interface\\Minimap\\UI-Minimap-Background"
+        local HIGHLIGHT = "Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight"
+        local ICON = "Interface\\Icons\\INV_Misc_Map_01"
+        method(b, "Hide")
+        method(b, "SetFrameStrata", "MEDIUM")
+        method(b, "SetFrameLevel", 8)
+        if not method(b, "SetSize", 31, 31) then
+            method(b, "SetWidth", 31)
+            method(b, "SetHeight", 31)
+        end
+        method(b, "RegisterForClicks", "LeftButtonUp")
+        method(b, "RegisterForDrag", "LeftButton")
+        local function texture(layer, path, w, h, x, y)
+            local okT, tex = method(b, "CreateTexture", nil, layer)
+            if not okT or tex == nil then return nil, false end
+            local okS, set = method(tex, "SetTexture", path)
+            if not method(tex, "SetSize", w, h) then
+                method(tex, "SetWidth", w)
+                method(tex, "SetHeight", h)
+            end
+            method(tex, "SetPoint", "TOPLEFT", b, "TOPLEFT", x, y)
+            return tex, okS and set ~= false and not hidden(set)
+        end
+        local back, okBack = texture("BACKGROUND", BACK, 20, 20, 7, -5)
+        local icon, okIcon = texture("ARTWORK", ICON, 17, 17, 7, -6)
+        local border, okBorder = texture("OVERLAY", BORDER, 53, 53, 0, 0)
+        local okHigh = method(b, "SetHighlightTexture", HIGHLIGHT)
+        if not (okBack and okIcon and okBorder and okHigh) then
+            -- The plain look: one square face with the title's first letter.
+            for _, tex in ipairs({ back, icon, border }) do method(tex, "Hide") end
+            local okF, face = method(b, "CreateTexture", nil, "BACKGROUND")
+            if okF and face ~= nil then
+                method(face, "SetAllPoints", b)
+                if not method(face, "SetColorTexture", 0, 0, 0, 0.7) then method(face, "SetTexture", 0, 0, 0, 0.7) end
+            end
+            local okL, letter = method(b, "CreateFontString", nil, "OVERLAY", "GameFontNormal")
+            if okL and letter ~= nil then
+                method(letter, "SetPoint", "CENTER", b, "CENTER", 0, 0)
+                local title = type(spec.title) == "string" and spec.title or "?"
+                method(letter, "SetText", title:sub(1, 1))
+            end
+        end
+        local clickFn, dragFn, lines
+        local function cursor()
+            local okC, cx, cy = method(map, "GetCenter")
+            local okE, scale = method(map, "GetEffectiveScale")
+            local okP, px, py = call(env.GetCursorPosition)
+            if not (okC and okE and okP) or hidden(cx) or hidden(cy) or hidden(scale) or hidden(px) or hidden(py) then
+                return nil
+            end
+            if type(cx) ~= "number" or type(cy) ~= "number" or type(px) ~= "number" or type(py) ~= "number"
+                or type(scale) ~= "number" or scale <= 0 then
+                return nil
+            end
+            return px / scale - cx, py / scale - cy
+        end
+        local function drag(done)
+            if type(dragFn) ~= "function" then return end
+            local dx, dy = cursor()
+            if dx ~= nil then pcall(dragFn, dx, dy, done) end
+        end
+        method(b, "SetScript", "OnClick", function()
+            if type(clickFn) == "function" then pcall(clickFn) end
+        end)
+        method(b, "SetScript", "OnDragStart", function(self)
+            method(self, "SetScript", "OnUpdate", function() drag(false) end)
+        end)
+        method(b, "SetScript", "OnDragStop", function(self)
+            method(self, "SetScript", "OnUpdate", nil)
+            drag(true)
+        end)
+        method(b, "SetScript", "OnEnter", function(self)
+            local tip = env.GameTooltip
+            if tip == nil or type(lines) ~= "table" then return end
+            method(tip, "SetOwner", self, "ANCHOR_LEFT")
+            for _, line in ipairs(lines) do method(tip, "AddLine", tostring(line), 1, 1, 1) end
+            method(tip, "Show")
+        end)
+        method(b, "SetScript", "OnLeave", function()
+            if env.GameTooltip ~= nil and type(lines) == "table" then method(env.GameTooltip, "Hide") end
+        end)
+        local h = {}
+        function h.place(x, y)
+            if type(x) ~= "number" or type(y) ~= "number" or x ~= x or y ~= y then return end
+            method(b, "ClearAllPoints")
+            method(b, "SetPoint", "CENTER", map, "CENTER", x, y)
+        end
+        function h.show(on)
+            if on then method(b, "Show") else method(b, "Hide") end
+        end
+        function h.onClick(fn) clickFn = fn end
+        function h.onDrag(fn) dragFn = fn end
+        function h.tip(t) lines = type(t) == "table" and t or nil end
+        return h
+    end
+
     -- Lead section 340: one diagnostics line naming the frame under the
     -- mouse, for a window that takes no clicks. New, added at the end.
     --   c.kitFocus() -> line
