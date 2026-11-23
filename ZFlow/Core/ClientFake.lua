@@ -1873,9 +1873,33 @@ function ns.make.fakeClient(opts)
         s.trackingOn = s.trackingOn or {}
         if on == nil then s.trackingOn[spell] = nil else s.trackingOn[spell] = on and true or false end
     end
+    -- GK-4: the whole tracking list as the client lists it, town kinds and
+    -- entries whose active is not known included:
+    --   c.setTrackingList({ { name, active = true | false | nil, town = true }, ... })
+    -- nil clears it (back to setTracking's spells). While a list is set,
+    -- anyTracking answers from it by the real client's rule (GK-2, GK-3):
+    -- town entries left out; one of yours on: true; else one not known: nil;
+    -- else false.
+    function c.setTrackingList(list)
+        if type(list) ~= "table" then s.trackingList = nil return end
+        s.trackingList = {}
+        for i, e in ipairs(list) do
+            s.trackingList[i] = { name = e.name, active = e.active, town = e.town == true }
+        end
+    end
     -- GT-1: any tracking on: true when one set on is, false when any was set
     -- and none is on, nil when none was set.
     function c.anyTracking()
+        if s.trackingList then
+            local unknown = false
+            for _, e in ipairs(s.trackingList) do
+                if not e.town then
+                    if e.active == nil then unknown = true elseif e.active then return true end
+                end
+            end
+            if unknown then return nil end
+            return false
+        end
         if not s.trackingOn then return nil end
         for _, on in pairs(s.trackingOn) do
             if on == true then return true end
