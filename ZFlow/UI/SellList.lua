@@ -8,7 +8,8 @@
 -- that this file does not make. It reads the bags, the item facts, the
 -- player's never-sell list and the saved price book, and draws text.
 --
---   SellList.Lines(client, store) -> lines     one listing; what the module shows
+--   SellList.Lines(client, store, grants, r) -> lines   one listing; what the
+--                                     module shows. r missing: unavailable (SR-3)
 --   SellList.Declare(k)           -> api       declares the module on kernel k
 --     api.last()   the lines of the last listing, nil before the first
 --     api.shows()  how many listings were made since the start
