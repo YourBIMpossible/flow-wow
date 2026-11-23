@@ -150,9 +150,13 @@ function BankList.Declare(k)
                     pcall(advisor.Remove, BankList.PROMPT_ID)
                 end
             end
-            -- The bank window is open: set on BANKFRAME_OPENED, cleared on
-            -- BANKFRAME_CLOSED.
-            local open = false
+            -- The bank window is open: read at the start, so a start while
+            -- the bank stays open (an interface load at the bank, lead
+            -- section 223 BR-1) is not taken as closed; then set on
+            -- BANKFRAME_OPENED, cleared on BANKFRAME_CLOSED. Not known is
+            -- not open. Needs game test: the first read before any bank
+            -- event is BankFrame:IsShown() (Core/Client.lua).
+            local open = type(client.bankOpen) == "function" and client.bankOpen() == true
             -- One evaluation for the prompt and the panel: made when the bank
             -- opens, and again when the reservations change while it is open.
             local function list()
