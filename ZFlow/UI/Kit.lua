@@ -33,6 +33,7 @@
 --              left, the full height of the window; every part after it is
 --              drawn in the pane at its right.
 --   section    text; folded (true | false) with onFold(folded) when it folds
+--              big (true): the pane's page heading (lead section 340)
 --   line       text, icon, sub (a second line), right (a short text at the
 --              right), tone, tooltip, enabled, onClick()
 --   row        label, description, tooltip, enabled, reason, control (one
@@ -257,6 +258,11 @@ end
 function PARTS.section(p, out)
     local ok, why = needText(p, out, "text", "a section")
     if not ok then return nil, why end
+    -- Lead section 340: big = true draws it as the pane's page heading.
+    if p.big ~= nil then
+        if not isFlag(p.big) then return nil, "a section: big must be true or false" end
+        out.big = p.big
+    end
     -- A section that folds says which way it is and whom to tell.
     if p.folded == nil then return true end
     if not isFlag(p.folded) then return nil, "a section: folded must be true or false" end
