@@ -65,6 +65,12 @@ local _, ns = ...
 --       ownBuffs   client.ownBuffs() as it answered (N13): the buffs on you
 --                  that you put up yourself; nil when not known or the
 --                  client has no such read
+--       debuffTypes  client.unitDebuffTypes("player") (P-PARTY flag (a)):
+--                  { [type] = debuff name } on you; nil when not known, the
+--                  read raised, or the client has no such read
+--       party, groupOn  your group and the "suggest buffs for your group"
+--                  setting, from Rotation/Group.lua (ns.PartyGroup.Read,
+--                  handed the pack and ids already here: no new argument)
 --   D.Step(client, pack[, prefs, bias, applied, role, extra]) -> view
 --     extra is handed to D.Read as it is (section 232).
 --     one read and one choice. A read that fails is an error (not caught
@@ -322,6 +328,18 @@ function D.Read(client, pack, ids, role, extra)
             if ok and type(v) == "boolean" then return v end
             return nil
         end
+        -- P-PARTY flag (a): what is on you that you could remove, by type.
+        if field == "debuffTypes" then
+            if type(client.unitDebuffTypes) ~= "function" then return nil end
+            local ok, got = pcall(client.unitDebuffTypes, "player")
+            if ok and type(got) == "table" then return got end
+            return nil
+        end
+        -- P-PARTY: your group and its setting (Rotation/Group.lua).
+        if field == "party" or field == "groupOn" then
+            if type(ns.PartyGroup) ~= "table" then return nil end
+            return ns.PartyGroup.Read(client, field, { pack = pack, ids = ids })
+        end
         -- GT-1: is any tracking on (Rotation/Gather.lua).
         if field == "trackingAny" then
             if type(ns.Gather) ~= "table" then return nil end
@@ -366,7 +384,9 @@ function D.Why(snapshot, trace, keys, lockdown)
     -- Section 226 (CF-30): food is the step after the rotation. Skipped, its
     -- row is not the rotation's reason; the row before it is.
     -- Lead (merge of P-FOOD and P-GATHER): the same holds for "track".
-    while n > 1 and type(trace[n]) == "table" and (trace[n].step == "food" or trace[n].step == "track")
+    -- P-PARTY: and for "group", the step after "track".
+    while n > 1 and type(trace[n]) == "table"
+        and (trace[n].step == "food" or trace[n].step == "track" or trace[n].step == "group")
         and trace[n].result ~= "pick" do
         n = n - 1
     end

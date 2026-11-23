@@ -132,7 +132,8 @@ end
 --
 --   ns.cast.Attributes(suggestion, plan, applied, lockdown, form) -> result
 --
--- suggestion  what ns.Choose returned ({ spell, kind, unit }), or nil
+-- suggestion  what ns.Choose returned ({ spell, kind, unit }), or nil; one
+--             with look = true (P-PARTY) counts as nil: it is only shown
 -- plan, applied, lockdown   as for Apply
 -- form        the state you are in now (0 = no form; the stealth state while
 --             stealthed in the stealth form); anything else reads as 0
@@ -167,8 +168,9 @@ end
 C.STATE = "castform"
 C.MODIFIERS = { "ctrl", "shift", "alt", "more" }
 C.ON_YOU = { heal = true, emergency = true, buff = true }
--- The only units a suggestion may name. Anyone else (a party or raid member,
--- focus, mouseover) is never cast on: Z-Flow does not help other players.
+-- The only units a suggestion may name for the key. Anyone else (a party or
+-- raid member, focus, mouseover) is never cast on: help for another player
+-- is only shown (look = true, Rotation/Group.lua), never put on the key.
 C.UNITS = { player = true, pet = true, target = true }
 C.ATTACK = { ["Attack"] = true, ["Auto Attack"] = true }
 
@@ -199,6 +201,10 @@ function C.Attributes(suggestion, plan, applied, lockdown, form)
     end
     local states = apply.plan.states
     if type(form) ~= "number" or form < 0 or form > lastState() or form % 1 ~= 0 then form = 0 end
+
+    -- P-PARTY: a look-only suggestion (look = true: for another player) is
+    -- never put on the key. The key holds what it holds with no suggestion.
+    if type(suggestion) == "table" and suggestion.look == true then suggestion = nil end
 
     local button = {}
     local spell, source = spellOf(suggestion), "suggestion"

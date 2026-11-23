@@ -50,6 +50,11 @@ R.SNAPSHOT_FIELDS = {
     -- N13: the buffs on you that you put up yourself (client.ownBuffs),
     -- the same shape as buffs; nil when not read.
     { "ownBuffs", "map" },
+    -- P-PARTY (Rotation/Group.lua): the other players in your party, a list
+    -- of { unit, name, class, role, kind, power, dead, connected, reach,
+    -- has, debuffTypes } (kind "party"); nil when not read. The names are
+    -- for the live caption only: never saved. groupOn: the setting.
+    { "party", "party" }, { "groupOn", "flag" },
     { "spells", "spells" },
 }
 -- Names that would be made from a health or power amount. This client hides
@@ -101,6 +106,33 @@ local function copySpells(t)
     return out
 end
 
+-- P-PARTY: the party list, row by row: the plain fields kept by type, the
+-- three maps copied (nil when not read). A row with no unit is left out.
+local PARTY_TEXT = { "unit", "name", "class", "role", "kind" }
+local PARTY_FLAGS = { "dead", "connected" }
+local PARTY_MAPS = { "reach", "has", "debuffTypes" }
+local function copyParty(list)
+    if type(list) ~= "table" then return nil end
+    local out = {}
+    for _, row in ipairs(list) do
+        if type(row) == "table" and type(row.unit) == "string" and row.unit ~= "" then
+            local r = {}
+            for _, f in ipairs(PARTY_TEXT) do
+                if type(row[f]) == "string" then r[f] = row[f] end
+            end
+            if type(row.power) == "number" then r.power = row.power end
+            for _, f in ipairs(PARTY_FLAGS) do
+                if type(row[f]) == "boolean" then r[f] = row[f] end
+            end
+            for _, f in ipairs(PARTY_MAPS) do
+                if type(row[f]) == "table" then r[f] = copyMap(row[f]) end
+            end
+            out[#out + 1] = r
+        end
+    end
+    return out
+end
+
 local function shape(kind, v)
     if kind == "flag" then
         if v == nil then return nil end
@@ -114,6 +146,7 @@ local function shape(kind, v)
         return copyMap(v)
     end
     if kind == "spells" then return copySpells(v) end
+    if kind == "party" then return copyParty(v) end
     if type(v) == "table" or type(v) == "function" then return nil end
     return v
 end
