@@ -140,6 +140,22 @@ tests["craft bar: From goals with no goal to craft here says so and keeps the co
     t.eq(#c.crafts, 0)
 end
 
+tests["craft bar: From goals says so when every goal is met or belongs to another window"] = function(t)
+    local c = start({
+        goals = {
+            { item = ITEM_TIN_BAR, count = 1, recipe = "Tin Bar" },
+            { item = 2996, count = 2, recipe = "Bolt of Linen Cloth" },
+        },
+        bagItems = { { item = ITEM_TIN_BAR, count = 4 } },
+        book = { ["Bolt of Linen Cloth"] = { id = 2963, makes = 2996, yield = 1, mats = { [2589] = 2 },
+                                            profession = "Tailoring" } },
+    })
+    local bar = barOf(c)
+    if not bar then t.ok(false, "no craft bar") return end
+    bar.press("goals")
+    t.ok(infos(bar):find(ns.CraftBar.NO_GOALS, 1, true) ~= nil, "a met goal and another window goal fill nothing")
+end
+
 tests["craft bar: nothing crafts without the click"] = function(t)
     local c = start()
     local bar = barOf(c)
