@@ -1114,17 +1114,23 @@ function ns.make.fakeClient(opts)
     -- or "target" (nil, the start: not known); any other unit is nil.
     -- targetRank(): what setTargetRank gave. watchCombatLog(fn) answers
     -- true and combatLog(...) hands its values to every watcher; after
-    -- setCombatLog(false) it answers nil and takes no watcher.
+    -- setCombatLog(false) it answers nil and takes no watcher (the event
+    -- not taken); after setCombatLog("none") it answers nil and "no log"
+    -- (the client has no combat-log read).
     -- guid, setGuid, playerGUID and petGUID are above, with the errand reads.
     local logWatchers = {}
     function c.targetRank() return s.targetRank end
     function c.setTargetRank(rank) s.targetRank = type(rank) == "string" and rank ~= "" and rank or nil end
     function c.watchCombatLog(fn)
-        if s.noCombatLog or type(fn) ~= "function" then return nil end
+        if type(fn) ~= "function" then return nil end
+        if s.combatLog == "none" then return nil, "no log" end
+        if s.combatLog == false then return nil end
         logWatchers[#logWatchers + 1] = fn
         return true
     end
-    function c.setCombatLog(on) s.noCombatLog = not on end
+    function c.setCombatLog(on)
+        if on == "none" then s.combatLog = "none" else s.combatLog = on and true or false end
+    end
     -- Slash commands another addon owns: setSlashTaken(command, on) says
     -- so, slashTaken answers as the real boundary does, and unslash gives a
     -- command back.
@@ -1730,6 +1736,39 @@ function ns.make.fakeClient(opts)
         end
         c.mapPinSets[#c.mapPinSets + 1] = h
         return h
+    end
+
+    -- Pet state (lead section 197), as the real client's pet(): not known
+    -- (nil) until set; a copy each time.
+    --   c.setPet({ exists = true or false, dead, inCombat, family, happiness, powerKind })
+    --   c.setPet(nil), or no plain exists: not known again
+    -- dead and inCombat: true or false, else not known; family: a non-empty
+    -- word; happiness: "unhappy", "content" or "happy"; powerKind: a number.
+    -- Anything else is left out (not known). With exists false the rest is
+    -- dropped.
+    local PET_MOODS = { unhappy = true, content = true, happy = true }
+    function c.setPet(r)
+        if type(r) ~= "table" or type(r.exists) ~= "boolean" then
+            s.pet = nil
+            return
+        end
+        if not r.exists then
+            s.pet = { exists = false }
+            return
+        end
+        local function yesNo(v) if type(v) == "boolean" then return v end return nil end
+        s.pet = {
+            exists = true, dead = yesNo(r.dead), inCombat = yesNo(r.inCombat),
+            family = (type(r.family) == "string" and r.family ~= "") and r.family or nil,
+            happiness = PET_MOODS[r.happiness or ""] and r.happiness or nil,
+            powerKind = (type(r.powerKind) == "number" and r.powerKind == r.powerKind) and r.powerKind or nil,
+        }
+    end
+    function c.pet()
+        if type(s.pet) ~= "table" then return nil end
+        local out = {}
+        for k, v in pairs(s.pet) do out[k] = v end
+        return out
     end
     return c
 end

@@ -85,9 +85,12 @@ tests["can use: the level it needs, or your level, not read is not known"] = fun
 end
 
 tests["can use: only a plain true in the table is a yes"] = function(t)
-    local prof = { [4] = { [1] = 1, [2] = "yes", [3] = false } }
+    -- A whole number from 1 up is "from level n" (D3); 0 is a malformed
+    -- number, which is not known. Neither that nor a string or false is a yes.
+    local prof = { [4] = { [1] = 0, [2] = "yes", [3] = false } }
+    local want = { [1] = nil, [2] = false, [3] = false }
     for sub = 1, 3 do
-        t.eq(U.Check(item(4, sub, 1), { proficiency = prof, level = 60 }).can, false, tostring(sub))
+        t.eq(U.Check(item(4, sub, 1), { proficiency = prof, level = 60 }).can, want[sub], tostring(sub))
     end
 end
 

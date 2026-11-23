@@ -7,7 +7,7 @@ local _, ns = ...
 --
 --   D.Read(client, pack, ids[, role]) -> read(field)
 --     the reader ns.Snapshot takes. dead, inCombat, stealthed, hostile,
---     spells, buffs, targetDebuffs, form and current are asked of the
+--     spells, buffs, targetDebuffs, form, current and pet are asked of the
 --     client; role is the
 --     one handed in; every other field answers nil (not known), never a
 --     guess.
@@ -35,6 +35,10 @@ local _, ns = ...
 --                  ids, from client.currentSpell(id); a spell whose answer
 --                  was not read is left out; nil when the client has no
 --                  such read or no spell was read
+--       pet        client.pet() as it answered (lead section 197): nil when
+--                  not known or the client has no such read; { exists =
+--                  false } for no pet; else exists, dead, inCombat, family,
+--                  happiness, powerKind, each nil when not known
 --       spells     each row also gets inRange = client.inRange(spell id)
 --                  when the client has that read and the answer is true or
 --                  false; otherwise range stays not known
@@ -62,7 +66,7 @@ local _, ns = ...
 --     attrs       ns.cast.Attributes(suggestion, plan, applied, lockdown)
 --     unread      the pack's spells that could not be read (sorted)
 --     notRead     the reads the pack names in options.reads (formKnown,
---                 buffs, targetDebuffs) that came back not known, in the
+--                 buffs, targetDebuffs, pet) that came back not known, in the
 --                 pack's order; {} when every one was read (section 187)
 --     missing     the pack's spells with no id (sorted)
 --     passed      the spells the chooser's steps passed by only because
@@ -116,6 +120,31 @@ local function currentOf(client, ids)
         local asked, on = pcall(client.currentSpell, id)
         if asked and type(on) == "boolean" then
             out[name] = on
+            any = true
+        end
+    end
+    return any and out or nil
+end
+
+-- Conjured food and water (lead section 197): for each row of the pack's
+-- options.conjure ({ spell, items = { item name, ... } }), how many of its
+-- items are in the bags, added up. A row none of whose items could be
+-- counted is left out; nil when nothing could be counted (not read).
+local function conjuredOf(client, pack)
+    local options = type(pack) == "table" and pack.options or nil
+    local rows = type(options) == "table" and options.conjure or nil
+    if type(rows) ~= "table" or type(client.itemCount) ~= "function" then return nil end
+    local out, any = {}, false
+    for _, row in ipairs(rows) do
+        local total = nil
+        if type(row) == "table" and type(row.spell) == "string" and type(row.items) == "table" then
+            for _, item in ipairs(row.items) do
+                local asked, n = pcall(client.itemCount, item)
+                if asked and type(n) == "number" then total = (total or 0) + n end
+            end
+        end
+        if total then
+            out[row.spell] = total
             any = true
         end
     end
@@ -187,6 +216,11 @@ function D.Read(client, pack, ids, role)
             return nil
         end
         if field == "current" then return currentOf(client, ids) end
+        if field == "pet" then
+            if type(client.pet) ~= "function" then return nil end
+            return client.pet()
+        end
+        if field == "conjured" then return conjuredOf(client, pack) end
         return nil
     end
 end

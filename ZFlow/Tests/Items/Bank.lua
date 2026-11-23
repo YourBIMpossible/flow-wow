@@ -119,10 +119,14 @@ tests["bank pick: stacks of one item are one row, biggest first"] = function(t)
     t.eq(p.rows[1].count, 20)
 end
 
-tests["bank pick: what Resources holds for a step stays with you, listed apart"] = function(t)
+tests["bank pick: what Resources holds for a step stays with you, the rest is banked"] = function(t)
     local grants = { Held = function(_, key) return key == 2589 and 8 or 0 end }
     local p = pick({ { item = 2589, count = 20 } }, { grants = grants })
-    t.eq(find(p.rows, 2589), nil, "not to the bank")
+    -- A hold keeps only what it holds (bank reservations): 8 stay, the
+    -- other 12 are decided as if nothing held them.
+    local row = find(p.rows, 2589)
+    t.ok(row ~= nil, "the rest goes to the bank")
+    t.eq(row.count, 12, "only what no step holds")
     local held = find(p.held, 2589)
     t.ok(held ~= nil, "listed as held")
     t.eq(held.count, 8, "how many the steps hold")

@@ -13,6 +13,11 @@ local _, ns = ...
 --   to sell        of those, what the sell rules (Disposition.Decide) would
 --                  now sell, with the reason
 --
+-- One reservations evaluation (Items/Reservations.lua) per word: "to bank"
+-- counts what the goals hold in the bags, "to sell" what they hold in the
+-- bank, so nothing is counted twice. When the reservations are not known,
+-- nothing in the bank is offered for sale.
+--
 -- LOOK ONLY (§156 §8). Nothing here deposits, withdraws, moves, sells or
 -- picks up anything; there are no buttons.
 --
@@ -36,6 +41,7 @@ B.SELL_HEADER = "In your bank, you would now sell (take it out yourself):"
 B.NOTHING_TO_SELL = "Nothing in your bank to sell."
 B.SELL_NOT_SEEN = "In your bank to sell: not known until your bank is seen."
 B.FAILED = "could not be listed this time."
+B.SELL_UNKNOWN = "In your bank to sell: reservations not known, so nothing is offered for sale."
 
 local function whole(v)
     return type(v) == "number" and v == v and v >= 0 and v ~= math.huge and v == math.floor(v)
@@ -150,7 +156,12 @@ function B.Declare(k, diag)
         if not ctx then say(B.WORD .. ": not started yet") return end
         runs = runs + 1
         local client, store = ctx.client, ctx.store
-        section(say, "To bank", function() return ns.BankList.Lines(client, store, nil) end)
+        local R = ns.Reservations
+        local r = ns.BankList.Current(ctx.use)
+        local grants = R.Grants(r)
+        section(say, "To bank", function()
+            return ns.BankList.Lines(client, store, R.HeldIn(grants, "bags"), r)
+        end)
         local saved = store:get("char", ns.HaveTip.PATH)
         local items
         section(say, "In your bank", function()
@@ -159,7 +170,8 @@ function B.Declare(k, diag)
             return B.InBankLines(items, type(saved) == "table" and saved.at or nil, now)
         end)
         section(say, "To sell", function()
-            return B.SellLines(B.SellRows(items, ns.BankList.Context(store, nil)))
+            if r.status == R.UNAVAILABLE then return { B.SELL_UNKNOWN } end
+            return B.SellLines(B.SellRows(items, ns.BankList.Context(store, R.HeldIn(grants, "bank"))))
         end)
     end
 

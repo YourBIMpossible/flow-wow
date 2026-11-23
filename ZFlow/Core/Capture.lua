@@ -214,10 +214,27 @@ local function depth(path)
     return n
 end
 
+-- The arguments each recorded call was made with. A capture does not store
+-- them: they are fixed in Core/Diag.lua, which asks every unit call about
+-- the player and every other call with no argument (a test holds the two
+-- lists together). So a recorded answer is an answer for these arguments
+-- only. A call with other arguments (another unit, an item, a spell) was
+-- never recorded and gets no answer: the player's is not given in its place.
+-- A call not listed here was recorded with no argument.
+Capture.ARGS = {
+    class = { "player" }, level = { "player" }, faction = { "player" },
+    health = { "player" }, healthMax = { "player" },
+    power = { "player" }, powerType = { "player" },
+    bestMap = { "player" },
+}
+
+-- Capture.Env(cap) -> env, replay. replay[path] = { answered = n,
+-- unanswered = n }: how often a recorded call was asked with the recorded
+-- arguments, and how often with others (those got no answer).
 function Capture.Env(cap)
-    local env = {}
+    local env, replay = {}, {}
     local d = diagOf(cap)
-    if not d then return env end
+    if not d then return env, replay end
     local names = type(d.names) == "table" and type(d.names.names) == "table" and d.names.names or {}
 
     -- A secret answer: a token only this client's issecretvalue knows.
@@ -235,13 +252,30 @@ function Capture.Env(cap)
         local row = shapes[key]
         local list = answers(row, secretToken)
         if list and names[path] == "function" then
-            if row.ok == true then
-                local n = row.n
-                put(env, path, function() return unpack(list, 1, n) end)
-            else
-                local text = type(list[1]) == "string" and list[1] or "failed"
-                put(env, path, function() error(text, 0) end)
+            local want = Capture.ARGS[key] or {}
+            local count = { answered = 0, unanswered = 0 }
+            replay[path] = count
+            -- The recorded arguments exactly: no more, no fewer, no other.
+            local function recorded(...)
+                local n = select("#", ...)
+                while n > 0 and select(n, ...) == nil do n = n - 1 end
+                if n ~= #want then return false end
+                for i = 1, n do
+                    if select(i, ...) ~= want[i] then return false end
+                end
+                return true
             end
+            local ok, n = row.ok == true, row.n
+            local text = type(list[1]) == "string" and list[1] or "failed"
+            put(env, path, function(...)
+                if not recorded(...) then
+                    count.unanswered = count.unanswered + 1
+                    return
+                end
+                count.answered = count.answered + 1
+                if not ok then error(text, 0) end
+                return unpack(list, 1, n)
+            end)
         end
     end
 
@@ -274,7 +308,7 @@ function Capture.Env(cap)
             end
         end
     end
-    return env
+    return env, replay
 end
 
 function Capture.Apply(c, cap)
@@ -360,6 +394,28 @@ function Capture.Apply(c, cap)
     return report
 end
 
+-- The reads a feature run must have had from the capture for its result to
+-- mean anything: who the character is (the rotation) and where it stands
+-- (the arrow, flights). A run with one of them missing shows nothing about
+-- the feature, so it is reported as missing, never as a pass.
+Capture.NEEDED = { "class", "level", "faction", "position", "zone" }
+
+-- Whether a capture gave what a feature run needs. Answers true, or false
+-- and the list of what is missing, in the add-on's own words (no value from
+-- the capture): "a snapshot", then each needed read that was not set.
+function Capture.Evidence(cap, report)
+    local missing = {}
+    if Capture.Newest(cap) == nil then missing[#missing + 1] = "a snapshot" end
+    local set = {}
+    if type(report) == "table" and type(report.set) == "table" then
+        for _, name in ipairs(report.set) do set[name] = true end
+    end
+    for _, name in ipairs(Capture.NEEDED) do
+        if not set[name] then missing[#missing + 1] = name end
+    end
+    return #missing == 0, missing
+end
+
 function Capture.Client(cap, opts)
     local ok, why = Capture.Check(cap)
     if not ok then return nil, why end
@@ -381,11 +437,22 @@ Capture.FEATURES = {
 
 -- The words a feature says when a read is not known, by the read the
 -- loader sets (Capture.READS). Only words that mean that read alone: a line
--- that could mean another cause too (a class with no spell list) is not here.
+-- that could mean another cause too (a class with no spell list, the
+-- arrow's "direction unknown", which facing, position or the bearing can
+-- each cause) is not here. Section 203: each is a line the add-on prints.
+--   position  "your place is not known": the flight preview, try flight
+--             (Nav/Try.lua Try.WHY). "where you are is not known": the
+--             errand route (Nav/Errand.lua). "not known where you are":
+--             the flight finder's reason (Nav/Flights.lua).
+--   facing    "facing unknown": the arrow's demo lines (UI/Arrow.lua).
+--   form      "which form you are in": the rotation row and reads line in
+--             diag, for a pack that leans on the form (Core/Diag.lua
+--             Diag.READ_WORDS). "form not read": the key frame word
+--             (Rotation/KeyFrame.lua).
 Capture.UNKNOWN = {
-    position = { "not known where you are" },
+    position = { "your place is not known", "where you are is not known", "not known where you are" },
     facing = { "facing unknown" },
-    form = { "form not read" },
+    form = { "which form you are in", "form not read" },
 }
 
 -- How many lines say unknown for a read the capture answers (report.set,

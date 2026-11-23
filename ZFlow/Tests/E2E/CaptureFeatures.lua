@@ -159,8 +159,16 @@ local function runFeature(c, addon, feature)
     return lines, after - before
 end
 
+-- A SMOKE check: each feature says something, with no Lua problem and no
+-- "unknown" for a read the capture answers. It does not show a feature is
+-- right: that is judged per feature below (Core/CaptureEvidence.lua).
 local function checkFeatures(t, cap)
     local c, addon, report = boot(cap)
+    -- Lead, owner direction 2026-11-23: nothing counts unless the capture
+    -- gave what the features read. What is missing is named and fails.
+    local enough, missing = Capture.Evidence(cap, report)
+    t.ok(enough, "the capture lacks: " .. table.concat(missing, ", ") .. "; the features were not exercised")
+    if not enough then return end
     for _, feature in ipairs(Capture.FEATURES) do
         local lines, added = runFeature(c, addon, feature)
         t.ok(#lines > 0, feature.name .. ": it said something")
@@ -169,7 +177,7 @@ local function checkFeatures(t, cap)
     end
 end
 
-tests["capture features: rotation, arrow, flights, banker and settings on a made-up capture"] = function(t)
+tests["capture smoke: rotation, arrow, flights, banker and settings run on a made-up capture"] = function(t)
     t.eq(#Capture.FEATURES, 5)
     local names = {}
     for _, f in ipairs(Capture.FEATURES) do names[#names + 1] = f.name end
@@ -177,7 +185,26 @@ tests["capture features: rotation, arrow, flights, banker and settings on a made
     checkFeatures(t, made())
 end
 
-tests["capture real features: each feature on a real capture (skipped when none is given)"] = function(t)
+tests["capture evidence: an empty capture is missing evidence, not a pass"] = function(t)
+    t.ok(type(Capture.Evidence) == "function", "the loader says what a run lacked")
+    if type(Capture.Evidence) ~= "function" then return end
+    local empty = { account = {}, char = {} }
+    local c = ns.make.fakeClient()
+    local ok, missing = Capture.Evidence(empty, Capture.Apply(c, empty))
+    t.eq(ok, false, "no snapshot and no read: not enough")
+    t.eq(missing, { "a snapshot", "class", "level", "faction", "position", "zone" })
+    -- A snapshot with no reads in it is still missing every read.
+    local bare = { account = { diag = { snaps = { {} } } }, char = {} }
+    ok, missing = Capture.Evidence(bare, Capture.Apply(ns.make.fakeClient(), bare))
+    t.eq(ok, false)
+    t.eq(missing, { "class", "level", "faction", "position", "zone" })
+    -- The made-up capture gives all of them.
+    local full = made()
+    ok, missing = Capture.Evidence(full, Capture.Apply(ns.make.fakeClient(), full))
+    t.eq({ ok, #missing }, { true, 0 }, "the made-up capture: " .. table.concat(missing, ", "))
+end
+
+tests["capture real smoke: each feature runs on a real capture (skipped when none is given)"] = function(t)
     local path = ns.offline.capturePath()
     if not path then
         t.skip("no real capture: set ZFLOW_CAPTURE to a saved file outside the repo")
@@ -192,6 +219,64 @@ tests["capture real features: each feature on a real capture (skipped when none 
     t.ok(cap ~= nil, "a capture")
     if not cap then return end
     checkFeatures(t, cap)
+end
+
+-- Verification, feature by feature -------------------------------------------------
+
+local Evidence = ns.CaptureEvidence
+
+local function verdictOf(cap, name)
+    local c, addon, report = boot(cap)
+    for _, feature in ipairs(Capture.FEATURES) do
+        if feature.name == name then
+            local lines, added = runFeature(c, addon, feature)
+            return Evidence.Judge(name, { cap = cap, report = report, lines = lines, problems = added, addon = addon })
+        end
+    end
+end
+
+tests["capture verification: the smoke run of the made-up capture verifies no feature"] = function(t)
+    -- The same capture the smoke test passes on: every baseline read, and
+    -- nothing a feature works on.
+    local verdicts = {}
+    for _, feature in ipairs(Capture.FEATURES) do
+        local v = verdictOf(made(), feature.name)
+        verdicts[#verdicts + 1] = v
+        t.eq({ v.result, v.verified, v.smoke }, { Evidence.NOT_EXERCISED, false, true }, feature.name)
+    end
+    t.eq(Evidence.Count(verdicts), { captured = 0, synthetic = 0, notExercised = #Capture.FEATURES, error = 0 })
+end
+
+-- A real capture, one test per feature, on captured inputs alone: nothing is
+-- made up here. A feature the capture gives too little for is SKIPPED with
+-- what is missing (this file's own words, never a line or value of the
+-- capture): never a pass.
+local function realCapture()
+    local path = ns.offline.capturePath()
+    if not path then return nil, "no real capture: set ZFLOW_CAPTURE to a saved file outside the repo" end
+    if ns.offline.inRepo(path) then return nil, "a real capture is never inside the repo" end
+    local vars = ns.offline.readSaved(path, ns.offline.captureCharPath())
+    local cap = vars and Capture.FromSaved(vars) or nil
+    if not cap then return nil, "the real capture did not read" end
+    return cap
+end
+
+for _, feature in ipairs(Capture.FEATURES) do
+    local name = feature.name
+    tests["capture real verification: " .. name .. " on captured inputs alone (skipped when not exercised)"] = function(t)
+        local cap, why = realCapture()
+        if not cap then
+            t.skip(why)
+            return
+        end
+        local v = verdictOf(cap, name)
+        if v.result == Evidence.NOT_EXERCISED then
+            t.skip(name .. " NOT exercised; the capture is missing " .. table.concat(v.missing, "; "))
+            return
+        end
+        t.ok(v.result ~= Evidence.ERROR, name .. ": a Lua problem while it ran")
+        t.eq({ v.result, v.verified, #v.synthetic }, { Evidence.CAPTURED, true, 0 }, name .. ": verified on captured inputs")
+    end
 end
 
 return tests

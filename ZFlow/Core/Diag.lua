@@ -109,6 +109,8 @@ Diag.NAMES = {
     "C_Spell", "C_Spell.GetSpellSubtext", "C_Spell.IsCurrentSpell", "C_SpellBook", "C_SuperTrack",
     "C_TooltipInfo", "C_TooltipInfo.GetHyperlink", "C_TradeSkillUI", "C_TradeSkillUI.IsDataSourceChanging",
     "C_UnitAuras", "CanDualWield", "ClassTrainerFrame", "CombatLogGetCurrentEventInfo", "ConsoleExec",
+    -- Lead section 195: the combat-log read asked first.
+    "C_CombatLog", "C_CombatLog.GetCurrentEventInfo",
     "CreateVector2D", "Enum", "GetAddOnMetadata", "GetBindLocation", "GetCursorPosition",
     "GetInventoryItemDurability", "GetItemCooldown", "GetItemSpell", "GetItemStats", "GetLootRollItemLink",
     "GetLootSlotInfo", "GetLootSlotLink", "GetLootSourceInfo", "GetMinimapShape", "GetNumLootItems",
@@ -124,6 +126,8 @@ Diag.NAMES = {
     "UnitIsFriend", "UnitIsGhost", "UnitIsPlayer", "UnitIsUnit", "UnitOnTaxi", "geterrorhandler",
     "hash_SlashCmdList", "print", "seterrorhandler", "time", "C_TaxiMap", "C_TaxiMap.GetTaxiNodesForMap",
     "GetTaxiNodesForMap", "UnitThreatSituation", "C_NamePlate.GetNamePlates",
+    -- Lead section 197: the pet read (client.pet) asks these two as well.
+    "UnitCreatureFamily", "GetPetHappiness",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns
@@ -593,6 +597,8 @@ Diag.ANSWERS = {
     { "zone" }, { "worldPosition" }, { "questLog" }, { "questFocus" }, { "taxiNodes" },
     { "spell", 6603 }, { "currentSpell", 6603 }, { "inRange", 6603 }, { "spellCooldown", 61304 },
     { "itemCount", 6948 }, { "unitBuff", "player", {} },
+    -- Lead section 197: the pet state; forms only, the family word is not kept.
+    { "pet" },
 }
 Diag.ANSWER_COUNTS = { "playerBuffs", "targetDebuffs" }
 Diag.ANSWER_MAPS = { "mapCorners", "mapSize" }
@@ -964,6 +970,8 @@ Diag.READ_WORDS = {
     formKnown = "which form you are in",
     buffs = "your buffs",
     targetDebuffs = "your debuffs on the target",
+    pet = "your pet",
+    conjured = "your conjured food and water",
 }
 
 -- The pack's reads that came back not known, as one list of words, or nil.
@@ -988,7 +996,13 @@ local function rotationRow(view)
     local line
     if picked ~= nil and why.step == "farOpener" then
         -- Lead section 187: the spell shown is out of range, and the words say so.
-        line = head .. tostring(picked) .. " is next, but out of range: move closer (farOpener)."
+        -- Section 197: a spell with a minimum range (the hunter's dead zone)
+        -- reads false too close as well, so the words say both.
+        if view.suggestion.minRange == true then
+            line = head .. tostring(picked) .. " is next, but out of range: too far away or too close (farOpener)."
+        else
+            line = head .. tostring(picked) .. " is next, but out of range: move closer (farOpener)."
+        end
     elseif picked ~= nil then
         line = head .. "suggesting " .. tostring(picked) .. " (" .. tostring(why.step or "step not known") .. ")."
     else
