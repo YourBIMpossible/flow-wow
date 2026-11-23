@@ -14,8 +14,9 @@ local REALM, FACTION, NOW = "Realm1", "Horde", 1700000000
 
 -- goals: settings.goals for the character (nil: none saved). bagsUnread:
 -- the bag read answers nil. priced: the player's own search saw the pelt
--- at 5000 copper on this realm.
-local function start(goals, bagsUnread, priced)
+-- at 5000 copper on this realm. source: a reservation source registered
+-- as "test" before login (a function of the snapshot, as Reservations.Source).
+local function start(goals, bagsUnread, priced, source)
     local c = ns.make.fakeClient()
     local account = {}
     if priced then
@@ -34,6 +35,7 @@ local function start(goals, bagsUnread, priced)
         return item, tonumber(count)
     end)
     local addon = ns.offline.addon(c)
+    if source then addon.Reservations.Source("test", source) end
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
     c.advance(5, 20)
     return c, addon
@@ -116,6 +118,39 @@ tests["loot reservations SR-2: reservations unavailable: the auctions list offer
     local said = auctions(c)
     t.ok(not finds(said, "Ruined Pelt"), "nothing offered: " .. table.concat(said, " / "))
     t.ok(finds(said, ns.Posting.RESERVATIONS_UNKNOWN), "the reason: " .. table.concat(said, " / "))
+end
+
+-- Section 225 (ZLR-1): the test above can't fail on the offer, since with
+-- the bags unread there is no pelt to offer anyway. Here the bags are read
+-- and priced, so the pelt would be offered; only the reservations are
+-- unavailable, forced by a source that raises. Fails if the auctions list
+-- offers while the reservations are unavailable.
+tests["loot reservations SR-2: bags read, reservations unavailable (a source raises): nothing offered"] = function(t)
+    local c, addon = start(nil, false, true, function() error("made-up boom") end)
+    t.eq(addon.reservations.Current().status, addon.Reservations.UNAVAILABLE, "the source raised")
+    local said = auctions(c)
+    t.ok(not finds(said, "Ruined Pelt"), "nothing offered: " .. table.concat(said, " / "))
+    t.ok(finds(said, ns.Posting.RESERVATIONS_UNKNOWN), "the reason: " .. table.concat(said, " / "))
+    t.ok(not finds(loot(c), "Ruined Pelt"), "and no loot note")
+end
+
+-- LR-1 ------------------------------------------------------------------------
+
+-- Section 225 (LR-1). Fails before the repair: the reservations were worked
+-- out for every loot line, another player's and a throttled repeat too.
+tests["loot reservations LR-1: only a loot line that can be noted works out the reservations"] = function(t)
+    local calls = 0
+    local c = start(nil, false, false, function() calls = calls + 1; return {} end)
+    local from = calls
+    c.fire(ns.LootNote.EVENT, "someone:item:" .. PELT .. ":2")
+    t.eq(calls - from, 0, "another player's loot: no evaluation")
+    t.ok(finds(loot(c), "Ruined Pelt"), "your own loot is noted")
+    t.eq(calls - from, 1, "one evaluation for it")
+    t.eq(loot(c), {}, "the same item again at once: kept quiet")
+    t.eq(calls - from, 1, "kept quiet: no evaluation")
+    c.advance(ns.LootNote.REPEAT_S + 1)
+    t.ok(finds(loot(c), "Ruined Pelt"), "after REPEAT_S it is noted again")
+    t.eq(calls - from, 2, "and worked out again")
 end
 
 -- SR-5 ------------------------------------------------------------------------
