@@ -8036,6 +8036,91 @@ function ns.make.client(env)
         local name = NPC_TEXT[kind]
         if not name then return nil end
         return words(env[name])
+
+    -- G51 (UI/PlateQuests.lua): a quest mark over an enemy's nameplate.
+    -- LOOK ONLY: nothing clicks, targets or casts; no frame is secure or
+    -- takes the mouse. Only nameplate units ("nameplateN") are asked about.
+    --   c.plateCreature(unit) -> npc id or nil: the creature id in the
+    --     unit's GUID ("Creature-0-server-instance-zone-npcId-spawn"; a
+    --     "Vehicle-" GUID the same). A player, a pet, a hidden or odd GUID:
+    --     nil, never a guess.
+    --   c.plateQuestMark(unit) -> h | nil: a small text above that unit's
+    --     plate, one frame per plate frame, its own (never the threat
+    --     label). nil: no plate unit, no plate on screen, no frames.
+    --     h.show(on), h.text(s), h.color(r, g, b)
+    -- FIRST GUESSES, not seen in game on 16001. UnitGUID on a nameplate
+    -- unit and the GUID's field order are from warcraft.wiki.gg (API
+    -- UnitGUID, GUID page: Creature-0-[serverID]-[instanceID]-[zoneUID]-
+    -- [ID]-[spawnUID]); legacy Flow read nameplate units the same way
+    -- (Modules/QuestMarks.lua). C_NamePlate.GetNamePlateForUnit,
+    -- CreateFrame, UnitGUID and STANDARD_TEXT_FONT are in Diag.NAMES.
+    do
+        local MARK_RAISE, MARK_FONT = 2, 12
+        local CREATURE_KINDS = { Creature = true, Vehicle = true }
+
+        local function isPlate(unit)
+            return type(unit) == "string" and unit:find("^nameplate%d+$") ~= nil
+        end
+
+        function c.plateCreature(unit)
+            if not isPlate(unit) then return nil end
+            local ok, id = call(env.UnitGUID, unit)
+            if not ok or id == nil or hidden(id) or type(id) ~= "string" then return nil end
+            local kind, npc = id:match("^(%a+)%-[^-]*%-[^-]*%-[^-]*%-[^-]*%-(%d+)%-")
+            if not CREATURE_KINDS[kind] then return nil end
+            local n = tonumber(npc)
+            if type(n) ~= "number" or n <= 0 then return nil end
+            return n
+        end
+
+        -- Made frames by plate frame; weak keys, as the threat labels.
+        local made = setmetatable({}, { __mode = "k" })
+
+        local function makeMark(plate)
+            local ok, f = call(env.CreateFrame, "Frame", nil, plate)
+            if not ok or f == nil then return nil end
+            method(f, "Hide")
+            method(f, "SetSize", 1, MARK_FONT)
+            method(f, "SetPoint", "BOTTOM", plate, "TOP", 0, MARK_RAISE)
+            method(f, "EnableMouse", false)
+            local okL, level = method(plate, "GetFrameLevel")
+            if okL and type(level) == "number" and not hidden(level) then method(f, "SetFrameLevel", level + 10) end
+            local okText, fs = method(f, "CreateFontString", nil, "OVERLAY", "GameFontNormal")
+            if not okText then fs = nil end
+            if fs ~= nil then
+                local font = env.STANDARD_TEXT_FONT
+                if type(font) ~= "string" or font == "" then font = "Fonts\\FRIZQT__.TTF" end
+                method(fs, "SetFont", font, MARK_FONT, "OUTLINE")
+                method(fs, "SetPoint", "BOTTOM", f, "BOTTOM", 0, 0)
+            end
+            return { frame = f, text = fs }
+        end
+
+        function c.plateQuestMark(unit)
+            if not isPlate(unit) then return nil end
+            local group = env.C_NamePlate
+            if type(group) ~= "table" then return nil end
+            local okP, plate = call(group.GetNamePlateForUnit, unit)
+            if not okP or type(plate) ~= "table" then return nil end
+            local m = made[plate]
+            if m == nil then
+                m = makeMark(plate)
+                if m == nil then return nil end
+                made[plate] = m
+            end
+            local f, fs = m.frame, m.text
+            local h = {}
+            function h.show(on) method(f, on and "Show" or "Hide") end
+            function h.text(s)
+                if fs ~= nil and type(s) == "string" then method(fs, "SetText", s) end
+            end
+            function h.color(r, g, b)
+                if fs ~= nil and type(r) == "number" and type(g) == "number" and type(b) == "number" then
+                    method(fs, "SetTextColor", r, g, b)
+                end
+            end
+            return h
+        end
     end
     return c
 end

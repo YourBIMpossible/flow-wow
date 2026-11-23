@@ -89,6 +89,10 @@ M.ROWS = {
     -- plateCombo.off: combo points on your target's nameplate
     -- (UI/PlateCombo.lua, S8). On by default, as in legacy Flow.
     { key = "plateCombo.off", type = "bool", default = false },
+    -- plateQuests.off: quest marks over enemy nameplates whose creature
+    -- counts toward an unfinished objective (UI/PlateQuests.lua, G51). On
+    -- by default; look only.
+    { key = "plateQuests.off", type = "bool", default = false },
     -- nav.taxiMark: a ring on the open flight map at the flight master for
     -- your next step (Nav/TaxiMark.lua, S31, lead section 187). On by
     -- default, as in legacy Flow.

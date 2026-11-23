@@ -122,6 +122,11 @@ local READS = {
     -- an open gossip or quest window; read by UI/NpcSpeech.lua only, the
     -- capture asks none. Their names are in Diag.NAMES.
     speech = false, npcText = false,
+
+    -- G51: the creature on a nameplate and the quest mark over it; read by
+    -- UI/PlateQuests.lua only. Their names (UnitGUID, C_NamePlate.
+    -- GetNamePlateForUnit, CreateFrame) are in Diag.NAMES.
+    plateCreature = false, plateQuestMark = false,
 }
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).
