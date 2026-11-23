@@ -292,6 +292,20 @@ local pack = {
         }),
     },
 
+    -- G15, lead section 280: the weapon speed each role likes, and why, for
+    -- the speed line on a weapon's tooltip (Gear/WeaponSpeed.lua). "any":
+    -- speed does not matter for the role. Not counted in the score.
+    weaponSpeed = {
+        evidence = GUESS,
+        note = "written for lead section 280 from the game's rules as remembered; no outside source;"
+            .. " not read from the game",
+        dps = { prefer = "slow",
+                why = "Mortal Strike, Whirlwind and Overpower hit for weapon damage, so a slow weapon hits harder"
+                    .. " for the same rage",
+                offhand = { prefer = "fast", why = "more off hand swings bring rage more often" } },
+        tank = { prefer = "fast", why = "more swings to turn into Heroic Strike, so threat comes steadily" },
+    },
+
     -- What the class can equip, by item class and subclass ids.
     -- Armor (4): 0 misc, 1 cloth, 2 leather, 3 mail, 4 plate, 6 shield.
     -- Weapons (2): 0/1 axes, 2 bow, 3 gun, 4/5 maces, 6 polearm, 7/8 swords,

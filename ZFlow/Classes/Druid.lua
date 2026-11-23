@@ -418,6 +418,18 @@ local pack = {
         }),
     },
 
+    -- G15, lead section 280: the weapon speed each role likes, and why, for
+    -- the speed line on a weapon's tooltip (Gear/WeaponSpeed.lua). "any":
+    -- speed does not matter for the role. Not counted in the score.
+    weaponSpeed = {
+        evidence = GUESS,
+        note = "written for lead section 280 from the game's rules as remembered; the old"
+            .. " Classes/Druid/Data.lua:87-88 says the same of Cat and Bear Form; not read from the game",
+        dps = { prefer = "any", why = "in Cat Form your paws strike at the form's own speed, not the weapon's" },
+        tank = { prefer = "any", why = "in Bear Form your paws strike at the form's own speed, not the weapon's" },
+        heal = { prefer = "any", why = "healing spells do not use the weapon's swing" },
+    },
+
     -- What the class can equip, by item class and subclass ids.
     -- Armor (4): 0 misc, 1 cloth, 2 leather, 8 idol.
     -- Weapons (2): 4/5 maces, 6 polearm, 10 staff, 13 fist, 15 dagger, 20 fishing pole.

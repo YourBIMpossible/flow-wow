@@ -324,6 +324,16 @@ local pack = {
         } },
     },
 
+    -- G15, lead section 280: the weapon speed each role likes, and why, for
+    -- the speed line on a weapon's tooltip (Gear/WeaponSpeed.lua). "any":
+    -- speed does not matter for the role. Not counted in the score.
+    weaponSpeed = {
+        evidence = GUESS,
+        note = "written for lead section 280 from the game's rules as remembered; no outside source;"
+            .. " not read from the game",
+        dps = { prefer = "any", why = "spells do the damage, not the weapon's swing" },
+    },
+
     -- What the class can equip, by item class and subclass ids, following
     -- Modules/Gear/Score.lua. Armor (4): 0 misc, 1 cloth.
     -- Weapons (2): 7 one-handed swords, 10 staves, 15 daggers, 19 wands, 20 fishing poles.

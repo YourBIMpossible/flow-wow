@@ -280,6 +280,17 @@ local pack = {
         }),
     },
 
+    -- G15, lead section 280: the weapon speed each role likes, and why, for
+    -- the speed line on a weapon's tooltip (Gear/WeaponSpeed.lua). "any":
+    -- speed does not matter for the role. Not counted in the score.
+    weaponSpeed = {
+        evidence = GUESS,
+        note = "written for lead section 280 from the game's rules as remembered; no outside source;"
+            .. " not read from the game",
+        dps = { prefer = "any", why = "spells do the damage, not the weapon's swing" },
+        heal = { prefer = "any", why = "healing spells do not use the weapon's swing" },
+    },
+
     -- What the class can equip, by item class and subclass ids, as the old
     -- table gave them. Armor (4): 0, 1. Weapons (2): 4, 10, 15, 19, 20.
     proficiency = {
