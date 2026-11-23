@@ -206,7 +206,10 @@ function W.Declare(k, diag)
                 if view.tab ~= 2 then children[#children + 1] = footer(d) end
             end
         end
-        return ns.Kit.Window({ id = W.ID, title = id.title .. ": " .. W.HEADER, children = children })
+        -- It lists dungeons, so it can be resized, also on the first draw before
+        -- the list is read (its saved size is given back then too).
+        return ns.Kit.Window({ id = W.ID, title = id.title .. ": " .. W.HEADER, resizable = true,
+            children = children })
     end
 
     render = function()
