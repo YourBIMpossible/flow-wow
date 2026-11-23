@@ -18,7 +18,9 @@ local _, ns = ...
 --     read and a chooser step for others (the old dispel list was used on
 --     the group; here it is for yourself only);
 --   * the class-quest ids and quest names for Bear Form and Aquatic Form:
---     their old source is unrecorded, so they need a read from the game.
+--     no table here; Spells/ClassQuests.lua learns them from the quest log
+--     of the player and keeps them for the account (lead section 242,
+--     DRUID-2). The "class quest" note on a spell is what it reads.
 --
 -- Each talent in the levelling build says why it is taken (lead section
 -- 242, DRUID-3). The order and what each reason means came over with the
