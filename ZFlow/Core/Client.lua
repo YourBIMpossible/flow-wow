@@ -487,13 +487,20 @@ function ns.make.client(env)
 
     -- The profession whose window is open, and every recipe in it:
     --   { profession = skill line, skill = n, max = n,
-    --     recipes = { { id =, name =, learned = true / false }, ... } }
+    --     recipes = { { id =, name =, learned = true / false,
+    --                   difficulty =, skillUps = }, ... } }
+    -- difficulty is the window colour (optimal, medium, easy, trivial) from
+    -- relativeDifficulty 0 to 3, and skillUps is numSkillUps when it is a
+    -- whole count; each is left out when the client gives anything else.
+    -- Needs game test: relativeDifficulty and numSkillUps on 16001 (P-PROF).
     -- nil when no profession window is open or the client will not say.
     -- Seen in game on 16001 (Blacksmithing): for a moment after the window
     -- opens the client says "ready" but is still changing its data source,
     -- and lists no recipes. That is not an empty profession, so it is nil
     -- until IsDataSourceChanging answers false. One recipe that cannot be
     -- read makes the whole reading nil: never a shorter list.
+    local RELATIVE_DIFFICULTY = { [0] = "optimal", [1] = "medium", [2] = "easy", [3] = "trivial" }
+
     function c.recipes()
         local ui = env.C_TradeSkillUI
         if type(ui) ~= "table" then return nil end
@@ -512,7 +519,9 @@ function ns.make.client(env)
         for i = 1, #ids do
             local okInfo, info = call(ui.GetRecipeInfo, ids[i])
             if not okInfo or type(info) ~= "table" or type(info.learned) ~= "boolean" then return nil end
-            rows[i] = { id = ids[i], name = type(info.name) == "string" and info.name or nil, learned = info.learned }
+            rows[i] = { id = ids[i], name = type(info.name) == "string" and info.name or nil, learned = info.learned,
+                difficulty = RELATIVE_DIFFICULTY[info.relativeDifficulty],
+                skillUps = wholeCount(info.numSkillUps) and info.numSkillUps or nil }
         end
         local out = { profession = line, skill = base.skillLevel, max = base.maxSkillLevel, recipes = rows }
         -- The profession's name as the client spells it (professionName, a
@@ -641,6 +650,10 @@ function ns.make.client(env)
     --   { name =, skill =, max =, rows = { { index = i, name =, difficulty = } } }
     -- Anything that can't be read makes the whole answer nil: never a
     -- shorter list. First guesses, not seen in game.
+    -- P-PROF (N23): the colour words the classic window gives a recipe row.
+    -- Needs game test: the words on 16001.
+    local ROW_DIFFICULTY = { optimal = "optimal", medium = "medium", easy = "easy", trivial = "trivial", difficult = "difficult" }
+
     function c.tradeSkillRows()
         local okLine, name, skill, max = call(env.GetTradeSkillLine)
         if not okLine or type(name) ~= "string" or hidden(name) or name == "" or name == "UNKNOWN" then
@@ -654,7 +667,7 @@ function ns.make.client(env)
             if not okInfo or type(kind) ~= "string" or hidden(kind) then return nil end
             if kind ~= "header" and kind ~= "subheader" then
                 if type(rowName) ~= "string" or hidden(rowName) or rowName == "" then return nil end
-                rows[#rows + 1] = { index = i, name = rowName, difficulty = kind }
+                rows[#rows + 1] = { index = i, name = rowName, difficulty = ROW_DIFFICULTY[kind] }
             end
         end
         local out = { name = name, rows = rows }

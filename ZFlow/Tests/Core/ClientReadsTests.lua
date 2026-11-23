@@ -274,6 +274,38 @@ return {
         t.eq(c.recipes(), plain, "false is not a name")
     end,
 
+    -- P-PROF (N22, N23): each recipe carries its colour, from
+    -- relativeDifficulty 0 to 3, and numSkillUps when it is a whole count.
+    ["recipes(): each recipe carries its colour and skill ups when the client gives them"] = function(t)
+        local env = recipeEnv({ professionID = 197, skillLevel = 40, maxSkillLevel = 75 })
+        local info = {
+            [11] = { name = "Orange Hat", learned = true, relativeDifficulty = 0, numSkillUps = 1 },
+            [12] = { name = "Yellow Hat", learned = true, relativeDifficulty = 1 },
+            [13] = { name = "Green Hat", learned = true, relativeDifficulty = 2, numSkillUps = 2 },
+            [14] = { name = "Grey Hat", learned = true, relativeDifficulty = 3 },
+            [15] = { name = "Odd Hat", learned = false, relativeDifficulty = 7, numSkillUps = 1.5 },
+            [16] = { name = "Plain Hat", learned = true },
+        }
+        env.C_TradeSkillUI.GetAllRecipeIDs = function() return { 11, 12, 13, 14, 15, 16 } end
+        env.C_TradeSkillUI.GetRecipeInfo = function(id) return info[id] end
+        local c = ns.make.client(env)
+        t.eq(c.recipes(), { profession = 197, skill = 40, max = 75, recipes = {
+            { id = 11, name = "Orange Hat", learned = true, difficulty = "optimal", skillUps = 1 },
+            { id = 12, name = "Yellow Hat", learned = true, difficulty = "medium" },
+            { id = 13, name = "Green Hat", learned = true, difficulty = "easy", skillUps = 2 },
+            { id = 14, name = "Grey Hat", learned = true, difficulty = "trivial" },
+            { id = 15, name = "Odd Hat", learned = false },
+            { id = 16, name = "Plain Hat", learned = true },
+        } })
+    end,
+
+    ["fake: recipes() passes the colour and skill ups through"] = function(t)
+        local c = ns.make.fakeClient()
+        c.setRecipes({ profession = 197, skill = 40, max = 75, recipes = {
+            { id = 11, name = "Orange Hat", learned = true, difficulty = "optimal", skillUps = 1 } } })
+        t.eq(c.recipes().recipes[1], { id = 11, name = "Orange Hat", learned = true, difficulty = "optimal", skillUps = 1 })
+    end,
+
     -- ----------------------------------------------------------------- C4
     ["C4: a secret trainer name gives nil; a secret skill line leaves the profession out"] = function(t)
         local env = trainerEnv({ name = "Bena Winterhoof", player = false, line = "Alchemy" })
@@ -662,10 +694,13 @@ return {
         function env.GetNumTradeSkills() return #info end
         function env.GetTradeSkillInfo(i) return info[i][1], info[i][2], 0, true end
         local c = ns.make.client(env)
+        -- P-PROF (N23): each row carries its colour word as the window gives it.
         t.eq(c.tradeSkillRows(), { name = "Tailoring", skill = 50, max = 75, rows = {
             { index = 2, name = "Bolt of Linen Cloth", difficulty = "trivial" },
-            { index = 3, name = "Brown Linen Robe", difficulty = "optimal" } } },
-            "section 238 RF-2: each row keeps its difficulty")
+            { index = 3, name = "Brown Linen Robe", difficulty = "optimal" } } })
+        info[2][2] = "purple"
+        t.eq(c.tradeSkillRows().rows[1], { index = 2, name = "Bolt of Linen Cloth" }, "a word it never gives: left out")
+        info[2][2] = "trivial"
         info[3][1] = nil
         t.eq(c.tradeSkillRows(), nil, "a row with no name: never a shorter list")
         info[3][1] = "Brown Linen Robe"
