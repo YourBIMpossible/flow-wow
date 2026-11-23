@@ -52,6 +52,7 @@ local function enemy() return { exists = true, hostile = true, dead = false } en
 --          one (a live enemy targeted; stealth not known; every spell in range)
 --        playerBuffs, formName, currentSpell  the same (section 183; each
 --          answers nil, not read, unless given)
+--        pet  the same (section 197)
 --        without = { name, ... }     reads this client does not have
 local function stub(dead, inCombat, lockdown, cooldowns, extra)
     extra = extra or {}
@@ -77,6 +78,8 @@ local function stub(dead, inCombat, lockdown, cooldowns, extra)
         targetDebuffs = rec("targetDebuffs", extra.targetDebuffs or function() return nil end),
         formName = rec("formName", extra.formName or function() return nil, false end),
         currentSpell = rec("currentSpell", extra.currentSpell or function() return nil end),
+        -- Lead section 197: the pet read; not known unless given.
+        pet = rec("pet", extra.pet or function() return nil end),
     }
     for _, name in ipairs(extra.without or {}) do client[name] = nil end
     for _, name in ipairs(FORBIDDEN) do
@@ -446,7 +449,7 @@ end
 
 -- RD11 ----------------------------------------------------------------
 
-tests["rotation driver RD11: a step presses nothing and asks only its thirteen reads"] = function(t)
+tests["rotation driver RD11: a step presses nothing and asks only its fourteen reads"] = function(t)
     for _, fight in ipairs({ false, true }) do
         local client, calls, other = stub(false, fight, fight)
         local v = D.Step(client, pack())
@@ -457,7 +460,7 @@ tests["rotation driver RD11: a step presses nothing and asks only its thirteen r
         for name in pairs(calls) do names[#names + 1] = name end
         table.sort(names)
         t.eq(names, { "combatLockdown", "currentSpell", "dead", "formName", "inCombat", "inRange",
-            "playerBuffs", "spell", "spellCooldown", "spellId", "stealthed", "target", "targetDebuffs" })
+            "pet", "playerBuffs", "spell", "spellCooldown", "spellId", "stealthed", "target", "targetDebuffs" })
         t.eq(calls.dead, 1)
         t.eq(calls.inCombat, 1)
         t.eq(calls.combatLockdown, 1)

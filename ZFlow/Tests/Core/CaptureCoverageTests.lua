@@ -48,6 +48,8 @@ local READS = {
     itemUse = false, mapCorners = true, globalText = false, plates = false, canAttack = false,
     grouped = false, plateLabel = false, combo = false, comboColor = false, playerBuffs = true,
     targetDebuffs = true, formName = true, currentSpell = true, taxiNodes = true,
+    -- Lead section 197: the pet state the rotation reads.
+    pet = true,
 }
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).
@@ -55,7 +57,7 @@ local FEATURE = {
     "class", "currentSpell", "dead", "form", "formName", "inCombat", "inRange", "playerBuffs", "spell",
     "spellCooldown", "spellId", "stealthed", "target", "targetDebuffs", "unitBuff",
     "facing", "itemCount", "mapCorners", "mapSize", "onTaxi", "position", "questFocus", "questItem",
-    "questLog", "taxiNodes", "worldPosition", "zone", "corpse", "ghost",
+    "questLog", "taxiNodes", "worldPosition", "zone", "corpse", "ghost", "pet",
 }
 
 local TEXTS = { "Orgrimmar", "Devotion Aura", "Attack", "Rend", "Bear Form", "Wolves" }
@@ -98,6 +100,7 @@ local function start()
     c.setForm(1); c.setFormName("Bear Form", true); c.setSpellId("Bear Form", 5487)
     c.setPlayerBuffs({ ["Devotion Aura"] = 120, Rend = 5 })
     c.setTargetDebuffs({ Rend = 9 })
+    c.setPet({ exists = true, dead = false, inCombat = false, family = "Wolves", happiness = "happy", powerKind = 2 })
     c.setQuestLog({ { id = 303, title = "Wolves", objectives = { { text = "Wolves slain: 0/4" } } } })
     c.setQuestFocus(303, { 303 })
     c.setQuestItem(303, 4000); c.setItemCount(6948, 1)

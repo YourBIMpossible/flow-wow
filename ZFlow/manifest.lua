@@ -95,6 +95,7 @@ return {
         "Rotation/Fights.lua",
         "UI/FightLog.lua",
         "Classes/Druid.lua",
+        "Classes/Hunter.lua",
         "Classes/Paladin.lua",
         "Classes/Priest.lua",
         "Classes/Shaman.lua",

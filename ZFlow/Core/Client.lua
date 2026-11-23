@@ -5563,6 +5563,46 @@ function ns.make.client(env)
         return h
     end
     -- --------------------------------------------------- end flight marks
+
+    -- ------------------------------------------------ pet state (section 197)
+    -- c.pet() -> nil | { exists = false }
+    --          | { exists = true, dead, inCombat, family, happiness, powerKind }
+    -- Your own pet, read only; no pet command is ever asked of the client.
+    --   nil             not known: UnitExists("pet") is missing, raised, gave
+    --                   no plain yes or no, or the answer was secret. It never
+    --                   means "no pet".
+    --   exists = false  the client says there is no pet; nothing more is asked.
+    -- Each other field is nil when not known, never false, 0 or "":
+    --   dead       UnitIsDead("pet")
+    --   inCombat   UnitAffectingCombat("pet")
+    --   family     UnitCreatureFamily("pet"), the client's own word
+    --   happiness  GetPetHappiness(): 1, 2, 3 as "unhappy", "content",
+    --              "happy" (a first guess at the mapping); nil for a pet
+    --              that has none (a demon)
+    --   powerKind  UnitPowerType("pet"), the kind of power bar; never an amount
+    -- No health or power amount is read (R.FROM_AMOUNT). UnitExists, UnitIsDead,
+    -- UnitAffectingCombat and UnitPowerType are functions on 16001 (the names
+    -- table); UnitCreatureFamily and GetPetHappiness were not asked yet.
+    local PET_HAPPINESS = { "unhappy", "content", "happy" }
+    function c.pet()
+        local exists = yesNo(call(env.UnitExists, "pet"))
+        if exists == nil then return nil end
+        if not exists then return { exists = false } end
+        local out = { exists = true }
+        out.dead = yesNo(call(env.UnitIsDead, "pet"))
+        out.inCombat = yesNo(call(env.UnitAffectingCombat, "pet"))
+        out.family = text(call(env.UnitCreatureFamily, "pet"))
+        local okMood, mood = call(env.GetPetHappiness)
+        if okMood and mood ~= nil and not hidden(mood) and type(mood) == "number" then
+            out.happiness = PET_HAPPINESS[mood]
+        end
+        local okKind, kind = call(env.UnitPowerType, "pet")
+        if okKind and kind ~= nil and not hidden(kind) and type(kind) == "number" and kind == kind then
+            out.powerKind = kind
+        end
+        return out
+    end
+    -- ------------------------------------------------------- end pet state
     return c
 end
 

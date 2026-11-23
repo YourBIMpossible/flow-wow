@@ -36,6 +36,10 @@ local _, ns = ...
 --   current       { [spell] = true or false }        queued or toggled on (Attack, Maul)
 --     each of the four maps is nil when not read: a rule that needs one
 --       does not fire on nil (section 183). An empty map is read, nothing there.
+--   pet           { exists, dead, inCombat, family, happiness, powerKind }  your pet
+--     nil when not read (never "no pet"); { exists = false } when the client
+--       says there is none. Each other field is nil when not known. Ask it
+--       through R.PetUp, R.NoPet and R.PetDead (below), not the bare fields.
 --   spells        { [name] = { known, usable, onCooldown, inRange, noPower, castMs } }
 --     onCooldown not known (nil): the spell is not castable; it is not read
 --       as off cooldown.
@@ -53,7 +57,8 @@ local _, ns = ...
 -- bias:  { [spell] = number } what the player has been pressing (used only
 --        between neighbouring rules marked adaptive).
 --
--- suggestion: { spell, kind, reason, fightType, step } or nil.
+-- suggestion: { spell, kind, reason, fightType, step } or nil; farOpener's
+-- also has label, and minRange = true for a pack with options.minRange.
 -- trace: a list of { step, result, spell, note, passed }, one row per step
 -- looked at, in order; the last row is the step that answered (result
 -- "pick"). passed: the spells that step passed by only because nobody read
@@ -82,6 +87,38 @@ end
 -- for out of a fight; never the bare flag.
 function R.InFight(s) return s.inCombat ~= false end
 function R.OutOfFight(s) return s.inCombat == false end
+
+-- The pet (lead section 197). Each answers true, false, or nil when it
+-- cannot be told; a rule fires only on true, so a pet nobody read is never
+-- "no pet" and never "dead".
+--   R.PetUp(s)    a pet is out and alive: nil when whether there is one, or
+--                 (with one) whether it is dead, was not read
+--   R.NoPet(s)    the client said there is no pet: nil when not read
+--   R.PetDead(s)  there is a pet and it is dead: false with no pet; nil when
+--                 not read, or dead not read
+local function petOf(s)
+    local p = s.pet
+    if type(p) ~= "table" or type(p.exists) ~= "boolean" then return nil end
+    return p
+end
+function R.NoPet(s)
+    local p = petOf(s)
+    if p == nil then return nil end
+    return not p.exists
+end
+function R.PetDead(s)
+    local p = petOf(s)
+    if p == nil then return nil end
+    if not p.exists then return false end
+    if type(p.dead) ~= "boolean" then return nil end
+    return p.dead
+end
+function R.PetUp(s)
+    local dead = R.PetDead(s)
+    if dead == nil then return nil end
+    if R.NoPet(s) then return false end
+    return not dead
+end
 
 function R.Knows(s, name)
     local r = row(s, name)
@@ -437,15 +474,26 @@ function steps.list(s, pack, prefs, bias, unread)
 end
 
 -- 7. An enemy targeted and the first rule that wants it is only out of range.
+-- A pack whose spells have a minimum range (options.minRange = true, lead
+-- section 197: the hunter's dead zone) gets minRange = true on the
+-- suggestion and "too far or too close" in its reason: the client's range
+-- read answers false inside the dead zone as well as too far away, so
+-- "move closer" alone would be wrong.
 function steps.farOpener(s, pack, prefs, _, unread)
     if s.hostile == nil then return nil, R.TARGET_UNKNOWN end
     if not s.hostile then return nil, "no enemy targeted" end
     unread = unread or {}
+    local minRange = type(pack.options) == "table" and pack.options.minRange == true
     for _, rule in ipairs(listFor(s, pack)) do
         if rule.target and ruleWants(s, rule, prefs) and row(s, rule.spell).inRange == false
             and ready(s, rule.spell, nil, unread) then
-            return { spell = rule.spell, kind = rule.kind or "damage", label = "Out of range",
-                     reason = (rule.reason or rule.spell) .. " (out of range)" }
+            local out = { spell = rule.spell, kind = rule.kind or "damage", label = "Out of range",
+                          reason = (rule.reason or rule.spell) .. " (out of range)" }
+            if minRange then
+                out.minRange = true
+                out.reason = (rule.reason or rule.spell) .. " (out of range: too far or too close)"
+            end
+            return out
         end
     end
     return nil, noteWith("nothing out of range", unread)
