@@ -219,12 +219,18 @@ function M.Lines(client, packs, link, opts)
         end
         keep(scoreLines(ordered, wearing(client, link)))
     end
-    -- G15: a weapon's speed, last. No pack carries speed preferences yet, so
-    -- no prefs are passed and the line names no role. An error here keeps
-    -- the verdict lines and comes back as the second value.
+    -- G15: a weapon's speed, last, with the pack's weaponSpeed preferences:
+    -- the chosen role's alone (opts.role) when the pack has one for it, else
+    -- every role's. An error here keeps the verdict lines and comes back as
+    -- the second value.
     local ok, speed = pcall(function()
         local W = ns.GearWeaponSpeed
-        return W.Line(W.From(gear))
+        local prefs = type(pack) == "table" and pack.weaponSpeed or nil
+        local chosen = type(opts) == "table" and opts.role or nil
+        if type(prefs) == "table" and type(chosen) == "string" and type(prefs[chosen]) == "table" then
+            prefs = { [chosen] = prefs[chosen] }
+        end
+        return W.Line(W.From(gear), prefs)
     end)
     if not ok then return out, speed end
     -- Its own tone, "info": readers of these lines (RollHint, MerchantMarks)
@@ -336,10 +342,10 @@ function M.Declare(k, packs, diag)
             if type(ctx.client.onItemTooltip) ~= "function" then return end
             local got = ctx.client.onItemTooltip(function(link, add)
                 if ctx.settings:get(M.SETTING) ~= true or type(add) ~= "function" then return end
-                local opts = nil
-                if ctx.settings:get(M.SCORE_SETTING) == true then
-                    opts = { score = true, role = ctx.settings:get(M.ROLE) }
-                end
+                -- The role always (the speed line names its preference);
+                -- the score lines only with their setting on.
+                local opts = { role = ctx.settings:get(M.ROLE) }
+                if ctx.settings:get(M.SCORE_SETTING) == true then opts.score = true end
                 -- Every line is worked out before the first is added, so an
                 -- error leaves the tooltip as the game made it.
                 local ok, lines, partErr = pcall(M.Lines, ctx.client, packs or ns.Packs, link, opts)
