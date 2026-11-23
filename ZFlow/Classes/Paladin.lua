@@ -163,6 +163,15 @@ local function set(list)
     return out
 end
 local IS_SEAL, IS_BLESSING = set(SEALS), set(BLESSINGS)
+-- N58: the auras this pack can suggest (the ones in its spell list).
+local AURA_NAMES = { "Devotion Aura", "Retribution Aura", "Concentration Aura" }
+local IS_AURA = set(AURA_NAMES)
+-- N58, B3: Oath of Light, a WoW: Forever paladin spell. PARTLY: not read
+-- from a trainer, and what it does is not known (a first guess: a buff on
+-- you). It is never the add-on's own pick: asked for only once you cast it
+-- or choose it with the oath word.
+local OATH_NAMES = { "Oath of Light" }
+local IS_OATH = set(OATH_NAMES)
 
 -- The first of snapshot.chosen[keys...] that is one of the list's and that
 -- you know; nil when none is.
@@ -188,6 +197,18 @@ function ns.PaladinSeal(s)
     return "Seal of Righteousness"
 end
 
+-- N58: the aura to put up when none of yours is on: the one you cast or
+-- chose, while known; else Devotion Aura. New: Flow had no aura choice.
+function ns.PaladinAura(s)
+    return ns.OwnCasts.Kept(s, IS_AURA, "aura") or "Devotion Aura"
+end
+
+-- N58, B3: the oath you cast or chose, while known; else none (auto).
+-- New: Flow had no oath.
+function ns.PaladinOath(s)
+    return ns.OwnCasts.Kept(s, IS_OATH, "oath")
+end
+
 -- The blessing to keep up (N12): the word's choice, the one cast on
 -- yourself for this role, each while known; else the role's.
 local BLESSING_KEYS = { "blessingSet", "blessing" }
@@ -208,9 +229,13 @@ local function tag(list)
     return list
 end
 
+local function auraRule(name)
+    return { spell = name, kind = "buff", reason = "No aura is on",
+             when = function(s) return hasAura(s) == false and ns.PaladinAura(s) == name end }
+end
+
 local buffs = {
-    { spell = "Devotion Aura", kind = "buff", reason = "No aura is on",
-      when = function(s) return hasAura(s) == false end },
+    auraRule("Devotion Aura"), auraRule("Retribution Aura"), auraRule("Concentration Aura"),
     -- CF-33c: a tank only; out of a fight, buffs read, not up, or (PC-4,
     -- legacy needFury) under 30 s left.
     { spell = "Righteous Fury", kind = "buff", reason = "Tanking: Righteous Fury (threat)",
@@ -218,6 +243,13 @@ local buffs = {
           if not (s.role == "tank" and outOfFight(s) and buffsRead(s)) then return false end
           local left = s.buffs["Righteous Fury"]
           return left == nil or (type(left) == "number" and left < 30)
+      end },
+    -- N58, B3 (PARTLY): your oath, out of a fight, buffs read and none
+    -- named "Oath of" up. Read as a buff on you: a first guess.
+    { spell = "Oath of Light", kind = "buff", reason = "Your oath is not on (first guess: read as a buff on you)",
+      when = function(s)
+          return outOfFight(s) and buffsRead(s) and ns.PaladinOath(s) == "Oath of Light"
+              and longest(s, "Oath of ") == nil
       end },
 }
 -- One rule per blessing and per seal; only the one picked can fire.
@@ -322,6 +354,8 @@ local spells = {
     ["Blessing of Sanctuary"] = sp(nil, { "Tanking" }, nil, "whether it is a talent was never checked in the game"),
     ["Attack"]                = sp(nil, { "DPS" }),
     ["Auto Attack"]           = sp(nil, { "DPS" }),
+    ["Oath of Light"]         = sp(nil, { "Utility" }, nil,
+        "N58, B3: WoW: Forever only; not read from a trainer; what it does is not known"),
 }
 
 local function weights(values)
@@ -446,9 +480,16 @@ local pack = {
         -- only once it lands on you (onYou). word: the word that chooses
         -- one of `names`. pick (PC-1, legacy keptFromCast): the one the
         -- rotation would put up on that snapshot; a cast of it is not kept.
+        -- N58: a seal cast in a fight is kept for that fight only, as Flow
+        -- did; the aura you cast is kept for the role. B3: the oath you
+        -- cast is kept for the role (PARTLY, see OATH_NAMES).
         sticky = {
-            { prefix = "Seal of ", key = "seal", word = "seal", names = SEALS,
+            { prefix = "Seal of ", key = "seal", word = "seal", names = SEALS, fightOnly = true,
               pick = function(s) return ns.PaladinSeal(s) end },
+            { prefix = "", only = IS_AURA, key = "aura", word = "aura", names = AURA_NAMES,
+              pick = function(s) return ns.PaladinAura(s) end },
+            { prefix = "", only = IS_OATH, key = "oath", word = "oath", names = OATH_NAMES,
+              pick = function(s) return ns.PaladinOath(s) end },
             { prefix = "Blessing of ", key = "blessing", only = IS_BLESSING, onYou = true,
               word = "blessing", names = BLESSINGS,
               pick = function(s) return ns.PaladinBlessing(s) end },

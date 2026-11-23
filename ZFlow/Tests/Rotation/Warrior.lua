@@ -134,4 +134,68 @@ return {
         t.eq(p[2][19], nil, "wand")
         t.eq(p[4][7], nil, "libram")
     end,
+
+    -- N58 (lead section 241): the stance you cast or choose.
+    ["N58 warrior: the stance row: no prefix, the three stances, held 6 s"] = function(t)
+        local rows = ns.Packs.WARRIOR.options.sticky
+        t.ok(type(rows) == "table" and #rows == 1, "one row")
+        local row = rows[1]
+        t.eq(row.prefix, "", "no prefix")
+        t.eq(row.key, "stance")
+        t.eq(row.word, "stance")
+        t.eq(row.window, 6, "a stance swapped for one ability and back is not kept")
+        t.eq(row.names, { "Battle Stance", "Defensive Stance", "Berserker Stance" })
+        t.eq(row.only, { ["Battle Stance"] = true, ["Defensive Stance"] = true, ["Berserker Stance"] = true })
+        t.eq(row.temporary, nil, "no stance is for a moment")
+        t.eq(row.fightOnly, nil, "a stance cast in a fight is kept for the role")
+        t.eq(ns.OwnCasts.Note(rows, "Defensive Stance"), "stance", "a stance cast matches the row")
+        t.eq(ns.OwnCasts.Note(rows, "Battle Shout"), nil, "the shout does not")
+        t.eq(row.pick(snap({ form = nil })), "Battle Stance", "PC-1: dps, nothing kept: Battle Stance")
+        t.eq(row.pick(snap({ role = "tank" })), "Defensive Stance", "PC-1: a tank: Defensive Stance")
+    end,
+
+    ["N58 warrior: nothing kept: Battle Stance in no stance, Defensive for a tank, as before"] = function(t)
+        t.eq(ns.WarriorStance(snap()), "Battle Stance")
+        t.eq(ns.WarriorStance(snap({ role = "tank" })), "Defensive Stance")
+        local s = snap({ role = "tank" })
+        s.form = nil
+        t.eq(ns.Choose(s, ns.Packs.WARRIOR).spell, "Defensive Stance", "a tank in no stance")
+        t.ok(advice() ~= "Battle Stance", "dps in Battle Stance: no stance asked")
+        t.ok(advice({ form = "Defensive Stance" }) ~= "Battle Stance", "dps in another stance: left alone, as before")
+    end,
+
+    ["N58 warrior: the kept stance is the one asked for in no stance"] = function(t)
+        local s = snap({ chosen = { stance = "Defensive Stance" } })
+        s.form = nil
+        t.eq(ns.WarriorStance(s), "Defensive Stance")
+        t.eq(ns.Choose(s, ns.Packs.WARRIOR).spell, "Defensive Stance", "dps, kept Defensive, no stance")
+        s.form = "Battle Stance"
+        t.ok(ns.Choose(s, ns.Packs.WARRIOR).spell ~= "Defensive Stance", "dps in a stance: not asked to change it")
+        s.form = nil
+        s.chosen = { stance = "Defensive Stance", stanceSet = "Battle Stance" }
+        t.eq(ns.Choose(s, ns.Packs.WARRIOR).spell, "Battle Stance", "the word's choice before the one cast")
+    end,
+
+    ["N58 warrior: a tank's kept stance replaces Defensive"] = function(t)
+        local s = snap({ role = "tank", form = "Defensive Stance", chosen = { stance = "Battle Stance" } })
+        t.eq(ns.Choose(s, ns.Packs.WARRIOR).spell, "Battle Stance", "a tank in Defensive, kept Battle")
+        s.form = "Battle Stance"
+        t.ok(ns.Choose(s, ns.Packs.WARRIOR).spell ~= "Defensive Stance", "in the kept one: Defensive not asked")
+        s.formKnown = nil
+        t.ok(ns.Choose(s, ns.Packs.WARRIOR).spell ~= "Battle Stance", "the stance not read: no stance asked")
+    end,
+
+    ["N58 warrior: a kept stance not known: the role's own"] = function(t)
+        local s = snap({ chosen = { stance = "Berserker Stance" } })
+        s.form = nil
+        t.eq(ns.WarriorStance(s), "Battle Stance", "Berserker Stance not known: Battle Stance")
+        t.eq(ns.Choose(s, ns.Packs.WARRIOR).spell, "Battle Stance")
+        local tankS = snap({ role = "tank", chosen = { stance = "Berserker Stance" } })
+        t.eq(ns.Choose(tankS, ns.Packs.WARRIOR).spell, "Defensive Stance", "a tank: Defensive Stance")
+        local knows = { "Berserker Stance" }
+        for _, name in ipairs(ALL) do knows[#knows + 1] = name end
+        local k = snap({ chosen = { stance = "Berserker Stance" } }, knows)
+        k.form = nil
+        t.eq(ns.Choose(k, ns.Packs.WARRIOR).spell, "Berserker Stance", "known: the kept one")
+    end,
 }

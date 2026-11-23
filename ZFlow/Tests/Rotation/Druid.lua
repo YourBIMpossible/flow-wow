@@ -355,4 +355,73 @@ return {
         t.eq(advice("dps", nil, "Feral"), "Cat Form", "read, no form: Cat Form")
         t.eq(ns.DruidWantsCat("dps", true, nil, "Feral"), true, "the predicate itself is unchanged")
     end,
+
+    -- N58 (lead section 241): the form you cast or choose.
+    ["N58 druid: the form row: no prefix, Travel and Aquatic for a moment"] = function(t)
+        local rows = ns.Packs.DRUID.options.sticky
+        t.ok(type(rows) == "table" and #rows == 1, "one row")
+        local row = rows[1]
+        t.eq(row.prefix, "", "no prefix")
+        t.eq(row.key, "form")
+        t.eq(row.word, "form")
+        t.eq(row.names, { "Bear Form", "Dire Bear Form", "Cat Form" }, "the forms the rules ask for")
+        t.eq(row.only, { ["Bear Form"] = true, ["Dire Bear Form"] = true, ["Cat Form"] = true,
+                         ["Travel Form"] = true, ["Aquatic Form"] = true })
+        t.eq(row.temporary, { ["Travel Form"] = true, ["Aquatic Form"] = true })
+        t.eq(ns.OwnCasts.Temporary(row, "Travel Form"), true, "Travel Form: never kept")
+        t.eq(ns.OwnCasts.Temporary(row, "Aquatic Form"), true, "Aquatic Form: never kept")
+        t.eq(ns.OwnCasts.Temporary(row, "Cat Form"), false, "Cat Form can be kept")
+        t.eq(ns.OwnCasts.Note(rows, "Bear Form"), "form")
+        t.eq(ns.OwnCasts.Note(rows, "Moonkin Form"), nil, "Moonkin Form is not in the row")
+        t.eq(row.pick(snap("dps", nil, "Feral")), "Cat Form", "PC-1: dps")
+        t.eq(row.pick(snap("tank", nil, "Feral")), "Dire Bear Form", "PC-1: a tank, Dire Bear known")
+        t.eq(row.pick(snap("tank", nil, "Feral", { "Bear Form" })), "Bear Form", "PC-1: a tank, only Bear")
+        t.eq(row.pick(snap("heal", nil, "Restoration")), nil, "PC-1: a healer has no form")
+    end,
+
+    ["N58 druid: a dps's kept Bear Form is asked in no form, as Dire Bear once known"] = function(t)
+        local kept = { chosen = { form = "Bear Form" } }
+        t.eq(advice("dps", nil, "Feral", { "Bear Form", "Cat Form" }, kept), "Bear Form", "Bear Form only")
+        t.eq(advice("dps", nil, "Feral", nil, kept), "Dire Bear Form", "Dire Bear known: its later rank")
+        t.ok(advice("dps", "Cat Form", "Feral", nil, kept) ~= "Dire Bear Form", "in a form: left alone")
+    end,
+
+    ["N58 druid: a tank's kept Cat Form replaces the bear"] = function(t)
+        local kept = { chosen = { form = "Cat Form" } }
+        t.eq(advice("tank", nil, "Feral", nil, kept), "Cat Form", "no form")
+        t.eq(advice("tank", "Dire Bear Form", "Feral", nil, kept), "Cat Form", "in Dire Bear Form")
+        t.ok(advice("tank", "Cat Form", "Feral", nil, kept) ~= "Dire Bear Form", "in the kept one: no bear asked")
+    end,
+
+    ["N58 druid: a kept Cat Form is asked even for a Balance build"] = function(t)
+        t.ok(advice("dps", nil, "Balance") ~= "Cat Form", "nothing kept: no Cat Form, as before")
+        t.eq(advice("dps", nil, "Balance", nil, { chosen = { form = "Cat Form" } }), "Cat Form", "kept")
+    end,
+
+    ["N58 druid: a healer's kept form is asked in no form"] = function(t)
+        t.ok(advice("heal", nil, "Restoration") == nil or advice("heal", nil, "Restoration") ~= "Cat Form",
+             "nothing kept: no form")
+        t.eq(advice("heal", nil, "Restoration", { "Bear Form" }, { chosen = { form = "Bear Form" } }),
+             "Bear Form", "kept Bear Form")
+    end,
+
+    ["N58 druid: a kept form not known, or Travel Form chosen: the role's own"] = function(t)
+        t.eq(advice("dps", nil, "Feral", { "Cat Form" }, { chosen = { form = "Bear Form" } }), "Cat Form",
+             "Bear Form not known")
+        t.eq(advice("tank", nil, "Feral", nil, { chosen = { form = "Moonkin Form" } }), "Dire Bear Form",
+             "a form not in the row")
+        local knows = { "Travel Form", "Cat Form" }
+        t.eq(advice("dps", nil, "Feral", knows, { chosen = { formSet = "Travel Form" } }), "Cat Form",
+             "Travel Form is never the kept form")
+        t.eq(advice("dps", nil, "Feral", nil, { chosen = { form = "Cat Form", formSet = "Bear Form" } }),
+             "Dire Bear Form", "the word's choice before the one cast")
+    end,
+
+    ["N58 druid: nothing kept: the old form advice"] = function(t)
+        t.eq(advice("tank", nil, "Feral"), "Dire Bear Form")
+        t.eq(advice("tank", nil, "Feral", { "Bear Form" }), "Bear Form")
+        t.ok(advice("tank", "Bear Form", "Feral") ~= "Dire Bear Form", "a tank in Bear Form: no Dire asked")
+        t.eq(advice("dps", nil, "Feral"), "Cat Form")
+        t.ok(advice("dps", "Dire Bear Form", "Feral") ~= "Cat Form", "dps in a form: left alone")
+    end,
 }

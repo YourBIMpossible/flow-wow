@@ -420,7 +420,12 @@ function D.Read(client, pack, ids, role, extra)
         if field == "spells" then return spellRows(client, pack, ids) end
         if field == "buffs" then
             if type(client.playerBuffs) ~= "function" then return nil end
-            return client.playerBuffs()
+            -- A read that raises is not known (as ownBuffs below): the
+            -- rules that need your buffs then wait, and the icon does
+            -- not keep asking for what was up before the failure.
+            local ok, v = pcall(client.playerBuffs)
+            if ok and type(v) == "table" then return v end
+            return nil
         end
         if field == "targetDebuffs" then
             if type(client.targetDebuffs) ~= "function" then return nil end

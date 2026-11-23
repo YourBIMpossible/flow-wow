@@ -71,12 +71,32 @@ local function tag(list)
     return list
 end
 
-local stance = tag({
-    { spell = BATTLE, kind = "buff", reason = "No stance: Battle Stance",
-      when = function(s) return noForm(s) and not tank(s) end },
-    { spell = DEFENSIVE, kind = "buff", reason = "Tanking: Defensive Stance",
-      when = function(s) return tank(s) and s.formKnown == true and s.form ~= DEFENSIVE end },
-})
+-- N58 (lead section 241): the stance asked for. The one you cast and held
+-- (or chose with the word), while known; else Defensive Stance for a tank,
+-- Battle Stance for the rest. New: Flow had no stance choice.
+local STANCE_NAMES = { BATTLE, DEFENSIVE, BERSERKER }
+local IS_STANCE = { [BATTLE] = true, [DEFENSIVE] = true, [BERSERKER] = true }
+function ns.WarriorStance(s)
+    local kept = ns.OwnCasts and ns.OwnCasts.Kept(s, IS_STANCE, "stance") or nil
+    if kept then return kept end
+    if tank(s) then return DEFENSIVE end
+    return BATTLE
+end
+
+-- One rule per stance, only for the one asked for. In no stance: that one.
+-- A tank, the stance read and another one: that one too, as before.
+-- Nothing kept: Battle Stance in no stance, Defensive Stance for a tank,
+-- the same as the two rules before N58.
+local function stanceRule(name)
+    return { spell = name, kind = "buff",
+             reason = "Not in " .. name .. ": the stance for your role, or the one you chose",
+             when = function(s)
+                 if ns.WarriorStance(s) ~= name then return false end
+                 return noForm(s) or (tank(s) and s.formKnown == true and s.form ~= name)
+             end }
+end
+
+local stance = tag({ stanceRule(BATTLE), stanceRule(DEFENSIVE), stanceRule(BERSERKER) })
 
 local buffs = tag({
     { spell = "Battle Shout", kind = "buff", reason = "Shout missing or running out",
@@ -294,6 +314,15 @@ local pack = {
         nextSwing = { "Heroic Strike", "Cleave" },
         -- Reads the rules lean on; one not given is named by diag (187).
         reads = { "formKnown", "buffs", "targetDebuffs" },
+        -- N58 (lead section 241): the stance you cast is kept for your role
+        -- once held 6 s; one swapped for a single ability and back inside
+        -- that time is not. `stance <name>` chooses one, `stance auto` goes
+        -- back. pick (PC-1): the stance asked for now; a cast of it is not
+        -- kept.
+        sticky = {
+            { prefix = "", only = IS_STANCE, key = "stance", word = "stance", names = STANCE_NAMES,
+              window = 6, pick = function(s) return ns.WarriorStance(s) end },
+        },
     },
 }
 
