@@ -84,6 +84,10 @@ end
 -- The advice panel with one prompt in it: shown or not.
 local function adviceShown(c, addon)
     addon.advisor.Add("revealTest", "Train your weapon skill.", 1)
+    -- Drawn by the kit (UI/Advisor.lua); the plain panel when the kit
+    -- window is refused.
+    local w = type(c.kitWindows) == "function" and c.kitWindows().Advisor
+    if type(w) == "table" and w.shown == true then return true end
     local p = named(c.panels, "Advisor")
     return p ~= nil and p.shown == true
 end

@@ -496,7 +496,12 @@ function Arrow.Start(k, diag, own)
     -- The player's own quests (S43, Nav/QuestRead.lua): the quest step when
     -- there is no waypoint. Read-only; nil when that file is not loaded.
     local quests = N.QuestWatch and N.QuestSource
-        and N.QuestWatch(client, { zoneFirst = function() return Arrow.ZoneFirstOn(k) end }) or nil
+        and N.QuestWatch(client, { zoneFirst = function() return Arrow.ZoneFirstOn(k) end,
+            -- S43: the spots this player learned, where Questie gives none.
+            learned = function()
+                local QS = N.QuestSpots
+                return QS and k.store:get("account", QS.PATH) or nil
+            end }) or nil
     -- introWanted: this install has not seen the intro and it has not ended.
     -- entered: the world has been entered. introShown: the last layout had
     -- the intro on the quest arrow. introUntil: when it ends, nil until the
@@ -590,6 +595,17 @@ function Arrow.Start(k, diag, own)
                 else
                     step = N.WaypointStep(client)
                     if step then from = "the map pin" end
+                end
+            end
+            -- Then the route the player planned (P-TRIP, Nav/TripRoute.lua):
+            -- the quest route of the route word, or a dungeon run from the
+            -- Dungeon Quests window. Waypoints only.
+            local trip = k.use and k.use("tripRoute")
+            if step == nil and trip and type(trip.Step) == "function" then
+                local okTrip, s = pcall(trip.Step)
+                if okTrip and type(s) == "table" then
+                    step = s
+                    from = "your route"
                 end
             end
             -- Then the errand stop the player asked for (Nav/Errand.lua), when there is one.

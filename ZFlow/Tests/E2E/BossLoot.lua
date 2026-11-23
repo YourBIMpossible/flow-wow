@@ -60,10 +60,14 @@ local WORN = {
 }
 
 -- opts: account, char (saved tables); role ("tank" unless given; false: none
--- chosen); items = false: no item is known to the client yet.
+-- chosen); items = false: no item is known to the client yet; kit = true:
+-- the client draws the kit window. Without it the kit window is refused,
+-- so the cases below it are the plain panel's (lead section 298: the kit
+-- cases are at the end of this file).
 local function start(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
+    if opts.kit ~= true and type(c.setKitFails) == "function" then c.setKitFails(math.huge) end
     c.setSaved(ns.id.accountDB, opts.account or {})
     c.setSaved(ns.id.charDB, opts.char or {})
     c.setClass("PALADIN"); c.setFaction("Alliance"); c.setLevel(60); c.setDead(false)
@@ -592,6 +596,158 @@ tests["boss loot 245: the setting's help says the time after a kill is a first g
     t.ok(help:find("first guess", 1, true) ~= nil, "says first guess: " .. help)
     t.ok(help:find("3 minutes", 1, true) ~= nil, "and the time: " .. help)
     t.eq(addon.BossLoot and addon.BossLoot.WINDOW, 180)
+end
+
+-- The kit window (lead sections 297 item 5 and 322 line 4) --------------------
+-- Red before the code: the boss loot panel asks for no kit window, so
+-- c.kitWindows() holds none and each case fails its first check.
+
+local BL = ns.BossLoot or {}
+local KIT = "BossLoot"
+
+local function kitOf(c)
+    if type(c.kitWindows) ~= "function" then return nil end
+    return c.kitWindows()[KIT]
+end
+
+-- The shown kit window's parts as "kind:words", top to bottom; nil when it
+-- is not shown.
+local function kitParts(c)
+    local w = kitOf(c)
+    if not w or not w.shown then return nil end
+    local out = {}
+    for i, part in ipairs(w.parts or {}) do out[i] = tostring(part.kind) .. ":" .. tostring(part.text) end
+    return out
+end
+
+local function hostProblems(addon)
+    local kind = ns.KitHost and ns.KitHost.PROBLEM or "kitHost"
+    return addon.problems:count(kind)
+end
+
+tests["boss loot kit: the list is a kit window: the boss, your role's upgrades, then the rest; hidden after the fight"] = function(t)
+    local c, addon = start({ kit = true })
+    killWith(c, EVERYTHING)
+    t.eq(kitParts(c), nil, "hidden once the boss is down")
+    pull(c)
+    t.eq(kitParts(c), {
+        "header:" .. BOSS,
+        "section:" .. tostring(BL.TOP_ROLE),
+        "itemLine:Thornhelm",
+        "section:" .. tostring(BL.REST),
+        "itemLine:Dawnweave Cuffs",
+        "itemLine:Sunward Grips",
+        "itemLine:Dull Sabatons",
+    }, joined(kitParts(c)))
+    t.eq(shownLines(c), nil, "the plain panel is not shown")
+    t.eq(hostProblems(addon), 0, "no problem")
+    t.eq(errorsOf(addon), 0)
+    down(c)
+    t.eq(kitParts(c), nil, "hidden after the fight")
+end
+
+tests["boss loot kit: a boss never killed: the window says so and how the list fills"] = function(t)
+    local c = start({ kit = true })
+    pull(c)
+    t.eq(kitParts(c), { "header:" .. BOSS, "empty:" .. tostring(BL.EMPTY_WHAT) }, joined(kitParts(c)))
+end
+
+tests["boss loot kit: no role chosen: a line says how to choose one, and any role's upgrade is on top"] = function(t)
+    local c = start({ kit = true, role = false })
+    killWith(c, { HELM, BOOTS })
+    pull(c)
+    local parts = kitParts(c) or {}
+    t.eq(parts[1], "header:" .. BOSS, joined(parts))
+    t.ok(tostring(parts[2]):find("line:Say ", 1, true) == 1 and tostring(parts[2]):find(" role ", 1, true) ~= nil,
+        "how to choose a role: " .. tostring(parts[2]))
+    t.eq(parts[3], "section:" .. tostring(BL.TOP_ANY), joined(parts))
+    t.eq(parts[4], "itemLine:Thornhelm", joined(parts))
+end
+
+tests["boss loot kit: closed by the player it stays closed for that fight; the next pull shows it"] = function(t)
+    local c = start({ kit = true })
+    killWith(c, { HELM })
+    pull(c)
+    t.ok(kitParts(c) ~= nil, "shown")
+    t.eq(type(c.kitClose) == "function" and c.kitClose(KIT), true, "the player closes it")
+    c.advance(12, 24)
+    c.fire("GET_ITEM_INFO_RECEIVED", HELM, true)
+    t.eq(kitParts(c), nil, "the same fight: still closed")
+    down(c)
+    pull(c)
+    t.ok(kitParts(c) ~= nil, "the next pull: shown again")
+end
+
+tests["boss loot kit: dragged to another place, the window is there after a reload"] = function(t)
+    local c = start({ kit = true })
+    killWith(c, { HELM })
+    pull(c)
+    t.eq(kitOf(c) and kitOf(c).point, { "LEFT", "LEFT", 20, -120 }, "at the left edge to begin with")
+    t.eq(type(c.kitDrag) == "function" and c.kitDrag(KIT, { "TOPRIGHT", "TOPRIGHT", -40, -300 }), true, "dragged")
+    local c2 = start({ kit = true, account = c.saved(ns.id.accountDB), char = c.saved(ns.id.charDB) })
+    pull(c2)
+    t.eq(kitOf(c2) and kitOf(c2).point, { "TOPRIGHT", "TOPRIGHT", -40, -300 })
+end
+
+tests["boss loot kit: a refused kit window hands over to the plain panel, with one problem line"] = function(t)
+    local c, addon = start()
+    killWith(c, EVERYTHING)
+    pull(c)
+    t.eq(kitOf(c), nil, "no kit window")
+    t.eq(shownLines(c), TANK_LIST, joined(shownLines(c)))
+    down(c)
+    pull(c)
+    t.eq(hostProblems(addon), 1, "said once")
+    t.eq(errorsOf(addon), 0, "and is no error of the boss loot's own")
+end
+
+-- BossLoot.View, pure: what each line carries.
+tests["boss loot kit: the view: each drop an item line with its verdict as the note; nothing to press"] = function(t)
+    t.ok(type(BL.View) == "function", "BossLoot.View")
+    if type(BL.View) ~= "function" then return end
+    local who = { role = "tank", pack = { weights = { tank = {}, heal = {} },
+        roles = { tank = { name = "Protection" }, heal = { name = "Holy" } } } }
+    local found = { name = BOSS, n = 3, kills = 3, items = {} }
+    local rows = {
+        { key = plain(HELM), times = 1, name = "Thornhelm", state = "top", role = "tank", delta = 25 },
+        { key = plain(CUFFS), times = 3, name = "Dawnweave Cuffs", state = "other", role = "heal", delta = 63 },
+        { key = plain(BOOTS), times = 2, state = "wait" },
+    }
+    local tree, why = ns.Kit.Window(BL.View(found, rows, who, ns.id))
+    t.ok(type(tree) == "table", "the kit takes it: " .. tostring(why))
+    if type(tree) ~= "table" then return end
+    local got = {}
+    ns.Kit.Each(tree, function(part)
+        t.ok(part.kind ~= "button" and part.onClick == nil, "nothing to press: " .. tostring(part.kind))
+        if part.kind == "itemLine" then
+            got[#got + 1] = { part.name, part.note, part.tone or "none", part.item }
+        end
+    end)
+    t.eq(got, {
+        { "Thornhelm", "upgrade +25 for Protection, seen 1 of 3 kills", "good", HELM },
+        { "Dawnweave Cuffs", "+63 for Holy, seen 3 of 3 kills", "none", CUFFS },
+        { "Item " .. BOOTS, "not read yet, seen 2 of 3 kills", "none", BOOTS },
+    })
+    t.eq(tree.closable, true, "the player can close it")
+    t.eq(tree.escape, false, "Escape in a fight does not")
+    -- More drops than the window lists: the rest are counted.
+    local many = {}
+    for i = 1, BL.MAX_SHOWN + 3 do
+        many[i] = { key = plain(5000 + i), times = 1, name = "Piece " .. i, state = "plain" }
+    end
+    local big = ns.Kit.Window(BL.View(found, many, who, ns.id))
+    local lines, last = 0, nil
+    ns.Kit.Each(big or {}, function(part)
+        if part.kind == "itemLine" then lines = lines + 1 end
+        last = part
+    end)
+    t.eq(lines, BL.MAX_SHOWN, "at most MAX_SHOWN drops")
+    t.eq(last and last.text, "and 3 more")
+    -- Odd answers cost no window.
+    for _, odd in ipairs({ { nil, nil, nil, nil }, { { n = 0 }, {}, {}, nil }, { { n = 4, name = 7 }, {}, who, ns.id } }) do
+        local ok, whyOdd = ns.Kit.Window(BL.View(odd[1], odd[2], odd[3], odd[4]))
+        t.ok(type(ok) == "table", "still a window: " .. tostring(whyOdd))
+    end
 end
 
 return tests

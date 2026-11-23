@@ -61,7 +61,8 @@ R.ROWS = {
     { key = "advisor.panel", scope = "char", type = "bool", default = true, group = "general.windows",
       synonyms = { "advice", "advisor", "tips", "prompts" },
       label = "Show the advisor panel",
-      help = "Off hides the panel at once; its prompts are kept and show again when it is back on." },
+      help = ((ns.Advisor or {}).APPEARS or "The panel appears only while there is a prompt for you.")
+          .. " Off hides the panel at once; its prompts are kept and show again when it is back on." },
 }
 
 -- Declares each row on kernel k that k does not hold yet. Returns how many.

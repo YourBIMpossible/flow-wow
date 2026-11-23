@@ -1,6 +1,7 @@
 local _, ns = ...
 -- The info bar end to end (N59, lead section 243), on the whole add-on
--- loaded on a fake client. It is off until the player turns it on; then it
+-- loaded on a fake client. It is shown by default (lead section 294) and
+-- off once the player turns it off (OFF below is that saved choice); it
 -- shows four metrics, each updated from its own game event; a read the
 -- client does not answer shows as not available; hover gives the details,
 -- a click opens the settings page only. Per lead section 236: data arriving
@@ -64,16 +65,19 @@ end
 
 local function on(addon, key, value) return addon.settings:set(key, value) end
 
-tests["info bar: off until the player turns it on, then the four default metrics"] = function(t)
-    local c, addon = boot({ before = values })
-    t.eq(text(c), nil, "off by default")
+-- The saved choice of a player who turned the bar off.
+local function off(metrics) return { settings = { infoBar = { shown = false, metrics = metrics } } } end
+
+tests["info bar: turned off it shows nothing; turned on, the four default metrics"] = function(t)
+    local c, addon = boot({ before = values, account = off() })
+    t.eq(text(c), nil, "off as saved")
     t.ok(on(addon, "infoBar.shown", true), "the setting is there")
     t.eq(text(c), "1g 23s 45c  |  Bags 12  |  Dur 50%  |  XP 45%")
 end
 
 tests["info bar: a hidden bar reads nothing and listens to nothing of its own"] = function(t)
     local c, addon = boot({ before = values, count = true,
-        account = { settings = { infoBar = { metrics = "gold xp rep clock fps latency hearth" } } } })
+        account = off("gold xp rep clock fps latency hearth") })
     c.advance(30, 60)
     for _, name in ipairs(NEW_READS) do t.eq(c.counted[name], nil, name .. " not read") end
     for _, ev in ipairs(OWN_EVENTS) do t.ok(not has(c.events(), ev), ev .. " not listened to") end

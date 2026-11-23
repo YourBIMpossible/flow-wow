@@ -4,9 +4,22 @@ local _, ns = ...
 -- trainer, a profession step, the bank, a vendor upgrade, setup, an
 -- attunement). With alerts on, and that kind of prompt on, one chat line
 -- says it; with the sound on as well, one sound plays with it.
---   alerts.on      off by default: nothing is said until the player turns it on
+--   alerts.on      off by default: nothing is said until the player turns it on.
+--                  Legacy Flow matched (lead section 294): it had no line for
+--                  a prompt that turned up. Its only chat lines of its own
+--                  were the list once at login and at a level-up
+--                  (flow-wow Modules/Advisor/Advisor.lua lines 333-341), and
+--                  its advisor.enabled, on by default (line 320), showed
+--                  the advice button only (line 288).
 --   alerts.sound   off by default: the one sound with each line
 --   alerts.<kind>  on by default: each kind of prompt can be left out
+--   alerts.dungeon off by default (lead section 303, item 8c): with alerts
+--                  on as well, one line when you go into a dungeon or a
+--                  raid and one when you come out. Read from
+--                  client.instance() after PLAYER_ENTERING_WORLD and
+--                  ZONE_CHANGED_NEW_AREA; only a change from a place that
+--                  was read is said, so nothing at login and nothing while
+--                  the client does not say. A battleground is not one.
 -- Nothing at login (prompts there before SETTLE seconds have passed are
 -- the state the player logged in to, not a change), nothing for a replaced
 -- text (the same rule, still true), and nothing for the same prompt again
@@ -26,6 +39,19 @@ A.SOUND = "alerts.sound"
 A.SETTLE = 10   -- seconds after start: prompts before this are the login state
 A.QUIET = 60    -- seconds: the same prompt is not said again within this
 A.NO_SOUND = "Alert sound not played"
+A.DUNGEON = "alerts.dungeon"
+A.ENTERED = "You entered a dungeon."
+A.LEFT = "You left the dungeon."
+-- The kinds of instance, as the game names them, that count as a dungeon.
+A.DUNGEON_KINDS = { party = true, raid = true }
+A.DUNGEON_EVENTS = { "PLAYER_ENTERING_WORLD", "ZONE_CHANGED_NEW_AREA" }
+
+-- Whether an instance read is inside a dungeon: true, false, or nil when
+-- the client did not say.
+function A.InDungeon(read)
+    if type(read) ~= "table" or type(read.inside) ~= "boolean" then return nil end
+    return read.inside and A.DUNGEON_KINDS[read.kind] == true
+end
 
 -- The kinds, by the id prefix each source gives its prompt (whole parts
 -- only: "aps.prof." is a profession, "aps.profx" is not). The last kind,
@@ -86,6 +112,8 @@ local WHY = {
 
 function A.Declare(k)
     local ctx, cancelWatch, cancelSettle
+    local cancels = {}        -- of the dungeon events
+    local inDungeon           -- true, false, or nil while never read
     local settled = false
     local quiet = {}          -- by prompt id: cancel of the quiet timer
     local soundSaid = false
@@ -115,6 +143,30 @@ function A.Declare(k)
         if ctx.settings:get(A.SOUND) == true then sound() end
     end
 
+    local function readDungeon()
+        if not ctx or type(ctx.client.instance) ~= "function" then return nil end
+        local ok, read = pcall(ctx.client.instance)
+        if not ok then return nil end
+        return A.InDungeon(read)
+    end
+
+    -- A read not answered keeps what was known; the first answer is where
+    -- the player is, not a change.
+    local function moved()
+        local now = readDungeon()
+        if now == nil or now == inDungeon then return end
+        local before = inDungeon
+        inDungeon = now
+        if before == nil then return end
+        local id, text = "dungeon.left", A.LEFT
+        if now then id, text = "dungeon.entered", A.ENTERED end
+        local on = ctx.settings:get(A.SETTING)
+        if not A.Decide(on, ctx.settings:get(A.DUNGEON), settled, quiet[id] ~= nil) then return end
+        quiet[id] = ctx.sched:after(A.NAME, A.QUIET, function() quiet[id] = nil end)
+        say(text)
+        if ctx.settings:get(A.SOUND) == true then sound() end
+    end
+
     -- Named settings so the settings check reads the two fixed rows here.
     local settings = {
         { key = "alerts.on", scope = "account", type = "bool", default = false, group = "general",
@@ -125,6 +177,11 @@ function A.Declare(k)
             label = "Alert sound",
             help = "Plays one sound with each alert line. Off until you turn it on.",
             synonyms = { "sound", "alert sound", "ping", "noise" } },
+        { key = "alerts.dungeon", scope = "account", type = "bool", default = false, group = "general",
+            label = "Alerts: entering and leaving a dungeon",
+            help = "With alerts on, says in chat when you go into a dungeon or a raid and when you come out. "
+                .. "Off until you turn it on.",
+            synonyms = { "dungeon", "instance", "raid", "enter", "leave", "zone in" } },
     }
     for _, kind in ipairs(A.KINDS) do
         settings[#settings + 1] = {
@@ -141,7 +198,7 @@ function A.Declare(k)
 
     k:Module({
         name = A.NAME,
-        needs = { "client", "store", "settings", "sched", "advisor" },
+        needs = { "client", "store", "bus", "settings", "sched", "advisor" },
         settings = settings,
         provides = { Status = api.status },
         start = function(c)
@@ -150,10 +207,20 @@ function A.Declare(k)
             soundSaid = false
             cancelSettle = c.sched:after(A.NAME, A.SETTLE, function() settled = true end)
             cancelWatch = c.use("advisor").Watch(heard)
+            inDungeon = readDungeon()
+            for _, event in ipairs(A.DUNGEON_EVENTS) do
+                cancels[#cancels + 1] = c.bus:on(A.NAME, event, function()
+                    local ok, err = pcall(moved)
+                    if not ok then k.problems:add(A.NAME, event, tostring(err)) end
+                end)
+            end
         end,
         stop = function()
             if type(cancelWatch) == "function" then cancelWatch() end
             if type(cancelSettle) == "function" then cancelSettle() end
+            for i = 1, #cancels do pcall(cancels[i]) end
+            cancels = {}
+            inDungeon = nil
             for id, cancel in pairs(quiet) do
                 if type(cancel) == "function" then cancel() end
                 quiet[id] = nil

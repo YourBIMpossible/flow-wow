@@ -2,8 +2,15 @@
 -- modules register. Hidden while it has no prompts. The setting row
 -- "advisor.panel" turns it off.
 --
--- LOOK ONLY. The panel draws text and has no buttons; nothing here acts in
--- the game. A prompt is advice for the player to read, nothing more.
+-- Drawn by the shared kit (UI/Kit.lua, lead sections 297 item 5 and 322
+-- line 4): one window, a line for each prompt. When the kit or the client
+-- refuses the window, the plain text panel shows the same lines
+-- (UI/KitHost.lua). The player can close the kit window; it stays closed
+-- for the prompts already there and opens again for a new one.
+--
+-- LOOK ONLY. The panel draws text and has no buttons of its own; nothing
+-- here acts in the game. A prompt is advice for the player to read,
+-- nothing more.
 --
 -- The API (fixed; other modules code against it):
 --   Advisor.Add(id, text, priority) -> true | false, reason
@@ -47,9 +54,15 @@ ns.Advisor = Advisor
 
 Advisor.NAME = "advisor"
 Advisor.SETTING = "advisor.panel"
+-- When the panel appears, in one line, for its settings row (lead section 294).
+Advisor.APPEARS = "The panel appears only while there is a prompt for you, such as gear to repair."
 Advisor.MAX_SHOWN = 5
 Advisor.WIDTH, Advisor.HEIGHT = 300, 120
 Advisor.DEFAULT_POINT = { "TOPRIGHT", "TOPRIGHT", -220, -200 }
+-- The kit window. Its size is a first guess: not seen in game.
+Advisor.TITLE = "Advisor"
+Advisor.KIT_ID = "Advisor"
+Advisor.KIT_WIDTH, Advisor.KIT_HEIGHT = 320, 220
 
 local function isFinite(n)
     return type(n) == "number" and n == n and n ~= math.huge and n ~= -math.huge
@@ -60,13 +73,36 @@ local function checkId(id)
     return nil
 end
 
+-- Advisor.View(lines) -> a kit window spec: a header, then one line for
+-- each text, top to bottom. A line that is no text is left out, so it
+-- cannot cost the window. Nothing in it can be pressed. Escape does not
+-- close it: advice should not go with every Escape.
+function Advisor.View(lines)
+    local view = { id = Advisor.KIT_ID, title = Advisor.TITLE, children = {},
+        width = Advisor.KIT_WIDTH, height = Advisor.KIT_HEIGHT, point = Advisor.DEFAULT_POINT,
+        escape = false }
+    local kids = view.children
+    kids[1] = { kind = "header", title = Advisor.TITLE }
+    if type(lines) ~= "table" then return view end
+    for i = 1, #lines do
+        local text = lines[i]
+        if type(text) == "string" and text:find("%S") then
+            kids[#kids + 1] = { kind = "line", key = "prompt" .. i, text = text }
+        end
+    end
+    return view
+end
+
 -- Declares the module on kernel k. Usable at once: prompts added before the
 -- module starts are kept and shown when it starts.
 function Advisor.Declare(k)
     local api = {}
     local entries = {}         -- { id, text, priority, seq }
     local seq = 0
-    local panel, ctx, cancelWatch
+    -- host: the kit window with the plain panel behind it (UI/KitHost.lua).
+    -- closed: the player closed the window; a new prompt opens it again.
+    local host, ctx, cancelWatch
+    local closed = false
     local watchers = {}        -- by token: fn(id, text)
     local watchSeq = 0
 
@@ -93,9 +129,10 @@ function Advisor.Declare(k)
     end
 
     local function render()
-        if not panel then return end
+        if not host then return end
+        if #entries == 0 then closed = false end
         if not enabled() or #entries == 0 or held() then
-            panel.show(false)
+            host.show(false)
             return
         end
         local list = sorted()
@@ -104,8 +141,8 @@ function Advisor.Declare(k)
         if #list > Advisor.MAX_SHOWN then
             lines[#lines + 1] = "and " .. (#list - Advisor.MAX_SHOWN) .. " more"
         end
-        panel.setLines(lines)
-        panel.show(true)
+        host.draw(Advisor.View(lines), lines)
+        if not closed then host.show(true) end
     end
 
     local function find(id)
@@ -130,6 +167,9 @@ function Advisor.Declare(k)
         else
             seq = seq + 1
             entries[#entries + 1] = { id = id, text = text, priority = priority, seq = seq }
+            -- A new prompt opens a window the player closed; a replaced
+            -- text does not.
+            closed = false
         end
         render()
         if not at then
@@ -174,7 +214,7 @@ function Advisor.Declare(k)
             cancelWatch()
             cancelWatch = nil
         end
-        if panel then panel.show(false) end
+        if host then host.show(false) end
     end
 
     k:Module({
@@ -196,12 +236,26 @@ function Advisor.Declare(k)
             end
             -- The frame last, after everything that can switch the module off.
             local id = k.id or ns.id
-            panel = c.client.panel({ name = id.framePrefix .. "Advisor",
+            local panel = c.client.panel({ name = id.framePrefix .. "Advisor",
                 width = Advisor.WIDTH, height = Advisor.HEIGHT })
+            -- The plain panel as the host draws it: its lines, and whether
+            -- it is shown (the client's panel does not say).
+            local plain
             if panel then
                 panel.show(false)
                 panel.place(Advisor.DEFAULT_POINT)
+                local open = false
+                plain = {
+                    draw = function(lines) panel.setLines(lines) end,
+                    show = function(on)
+                        open = on == true
+                        panel.show(open)
+                    end,
+                    shown = function() return open end,
+                }
             end
+            host = ns.KitHost.New(k, c.client, { name = id.framePrefix .. "AdvisorKit", panel = plain,
+                onClose = function() closed = true end })
             render()
         end,
         stop = stop,

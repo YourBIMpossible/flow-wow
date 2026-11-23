@@ -62,6 +62,12 @@ R.WHY_NO_MATCH = { "No dungeon matches the search.", "Clear the search box to se
 R.ITEM_UNREAD = "Item not read yet"
 R.WHY_NO_LOOT = { "No boss loot seen here on this account yet.",
     "Kill a boss of this dungeon with loot recording on and its drops will appear here." }
+-- P-TRIP (S40): the dungeon run, R.Run below.
+R.WHY_NO_RUN = { "Nothing to plan for this dungeon.",
+    "No quest to pick up before you go has a giver Questie places, and no entrance is known." }
+R.RUN_PICK_UP = "Pick up: %s"
+R.RUN_GIVER = "Quest giver"
+R.RUN_ENTRANCE = "Dungeon entrance"
 R.WHY_LIST = { "Questie's dungeon list could not be read.",
     "Type the slash command with diag to see why." }
 
@@ -293,6 +299,7 @@ local function quest(st, db, id)
         if ok and type(npc) == "table" then
             if type(npc.friendlyToFaction) == "string" then out.giverFaction = npc.friendlyToFaction end
             if type(npc.spawns) == "table" then out.giverSpawns = npc.spawns end
+            if type(npc.name) == "string" and npc.name ~= "" then out.giverName = npc.name end
         end
     end
     st.quests[id] = out
@@ -507,4 +514,90 @@ function R.Entrance(st, client, key)
     if type(label) ~= "string" or #label > 40 or label:find("[%c|]") then label = nil end
     local text = string.format("%.1f %.1f", e[2], e[3]) .. (label and (" " .. label) or "")
     return { map = map, x = e[2], y = e[3], label = label, text = text }
+end
+
+-- Where Questie places the giver of q, as a waypoint takes it: { map, x, y }
+-- in shares 0..1. Of the giver's areas the lowest one that is a map, its
+-- first point: the same every time. nil when not known.
+local function giverPlace(zones, q)
+    if type(q) ~= "table" or type(q.giverSpawns) ~= "table" then return nil end
+    local areas = {}
+    for area in pairs(q.giverSpawns) do
+        if type(area) == "number" then areas[#areas + 1] = area end
+    end
+    table.sort(areas)
+    for _, area in ipairs(areas) do
+        local map = mapOf(zones, area)
+        local p = map and q.giverSpawns[area][1]
+        if type(p) == "table" and type(p[1]) == "number" and type(p[2]) == "number"
+            and p[1] >= 0 and p[1] <= 100 and p[2] >= 0 and p[2] <= 100 then
+            return { map = map, x = p[1] / 100, y = p[2] / 100 }
+        end
+    end
+    return nil
+end
+
+-- The dungeon run for key (P-TRIP, S40; the rule of legacy Flow's
+-- Dungeons.lua Prepare, no data of it): the givers of the quests to pick up
+-- before you go, nearest next from where the player stands (givers on the
+-- player's map first, then by map), then the entrance (R.Entrance).
+--   -> { title, steps = { { kind = "giver" | "entrance", quest, label,
+--        detail, place = { map, x, y } } }, left = { quest names whose
+--        giver has no known place } }, or nil and why lines.
+function R.Run(st, client, key)
+    if type(st) ~= "table" or st.state ~= "ready" then
+        local pane = R.Pane(st, client, key)
+        return nil, pane.why or R.WHY_NO_RUN
+    end
+    local d = key ~= nil and st.byKey[key] or nil
+    if not d then return nil, R.WHY_NO_RUN end
+    local zones = questieModule(client, "ZoneDB")
+    local pane = R.Pane(st, client, key)
+    local givers, left = {}, {}
+    for _, g in ipairs(type(pane.groups) == "table" and pane.groups or {}) do
+        if g.id == "pickup" then
+            for _, r in ipairs(g.rows) do
+                local q = st.quests[r.id]
+                local place = q and giverPlace(zones, q) or nil
+                if place then
+                    givers[#givers + 1] = { kind = "giver", quest = r.id, label = R.RUN_PICK_UP:format(r.name),
+                        detail = q.giverName or R.RUN_GIVER, place = place }
+                else
+                    left[#left + 1] = r.name
+                end
+            end
+        end
+    end
+    -- Nearest next: on the same map as the last stop by distance, else the
+    -- lowest map. Ties keep the pane's order.
+    local at = ask(client, "position")
+    local last = type(at) == "table" and at or nil
+    local steps = {}
+    while #givers > 0 do
+        local best, bestSame, bestD
+        for i, s in ipairs(givers) do
+            local same = last ~= nil and s.place.map == last.map
+                and type(last.x) == "number" and type(last.y) == "number"
+            local dist
+            if same then
+                local dx, dy = s.place.x - last.x, s.place.y - last.y
+                dist = dx * dx + dy * dy
+            else
+                dist = type(s.place.map) == "number" and s.place.map or 0
+            end
+            if best == nil or (same and not bestSame) or (same == bestSame and dist < bestD) then
+                best, bestSame, bestD = i, same, dist
+            end
+        end
+        local s = table.remove(givers, best)
+        steps[#steps + 1] = s
+        last = s.place
+    end
+    local e = R.Entrance(st, client, key)
+    if e then
+        steps[#steps + 1] = { kind = "entrance", label = d.name, detail = R.RUN_ENTRANCE,
+            place = { map = e.map, x = e.x / 100, y = e.y / 100 } }
+    end
+    if #steps == 0 then return nil, R.WHY_NO_RUN end
+    return { title = d.name, steps = steps, left = left }
 end
