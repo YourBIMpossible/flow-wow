@@ -202,6 +202,9 @@ function SellList.Listing(client, store, grants, r)
     context.sets = ns.GearSets and ns.GearSets.Facts(store) or nil
     -- P-INV G6: skill boosters are kept while the skill can rise.
     if type(ns.SkillBoosters) == "table" then context.boosters = ns.SkillBoosters.Facts(client, bag) end
+    -- P-SETS G13: gear better for another role of yours is kept (the
+    -- setting gear.keepOffspec), an upgrade for your chosen role too.
+    if type(ns.GearOffSpec) == "table" then ns.GearOffSpec.Apply(context, client, store, ns.Packs, stacks) end
     local out = { stacks = stacks, kept = ns.SellView.Kept(bag, context), notRead = 0 }
     -- Items whose facts were not read yet (no name, quality or price),
     -- counted once per item: two stacks of one item are one item.

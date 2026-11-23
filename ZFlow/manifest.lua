@@ -96,6 +96,7 @@ return {
         "Gear/RollHint.lua",
         "Gear/Sets.lua",
         "Gear/SetIcons.lua",
+        "Gear/OffSpec.lua",
 
         -- Rotation and classes
         "Rotation/Pack.lua",
