@@ -39,6 +39,15 @@ local NOTE = "written for lead section 197; no outside source; needs a check in 
 -- Read as off: true only when the current map was read and says false.
 -- Not read (nil map or no answer for the spell) is not "off" (section 183).
 local function readOff(s, name) return type(s.current) == "table" and s.current[name] == false end
+-- Lead section 358 (as section 340 for Druid, Paladin, Shaman): not swinging,
+-- by the driver's swing read (s.attacking, Rotation/Driver.lua attackingOf,
+-- over Auto Attack and Attack). Where that read was not made, either name
+-- read as off. One row for both names: the button casts the swing as
+-- "Attack" (Rotation/Cast.lua C.ATTACK_SPELL).
+local function swingOff(s)
+    if s.attacking ~= nil then return s.attacking == false end
+    return readOff(s, "Attack") or readOff(s, "Auto Attack")
+end
 local function inFight(s) return ns.Rotation.InFight(s) end
 local function outOfFight(s) return ns.Rotation.OutOfFight(s) end
 local function stealthed(s) return s.stealthed == true end
@@ -89,7 +98,7 @@ local opener = tag({
 
 local swing = tag({
     { spell = "Attack", target = true, reason = "Start attacking",
-      when = function(s) return s.hostile == true and unstealthed(s) and readOff(s, "Attack") end },
+      when = function(s) return s.hostile == true and unstealthed(s) and swingOff(s) end },
 })
 
 local finish = tag({

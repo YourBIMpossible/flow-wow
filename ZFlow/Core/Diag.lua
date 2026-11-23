@@ -1355,14 +1355,43 @@ function Diag.HelpLines(commands, help, slash, page)
     return lines
 end
 
+-- The lines of the help that has a text (lead section 362, as the
+-- predecessor's help did): each word that can run whose name or whose
+-- help text has it, a to z. The text is plain, never a pattern, and is
+-- not looked for in NO_HELP. Nothing found is one line that says so.
+function Diag.HelpSearch(commands, help, slash, text)
+    local words = runnableWords(commands)
+    local lines = {}
+    for i = 1, #words do
+        local word = words[i]
+        local said
+        if type(help) == "table" then said = help[word] end
+        local found = word:lower():find(text, 1, true) ~= nil
+        if not found and type(said) == "string" then
+            found = said:lower():find(text, 1, true) ~= nil
+        end
+        if found then lines[#lines + 1] = helpLine(help, slash, word) end
+    end
+    if #lines == 0 then
+        return { 'no help has "' .. text .. '". ' .. tostring(slash) .. " help lists every command." }
+    end
+    table.insert(lines, 1, 'commands about "' .. text .. '" (' .. #lines .. "):")
+    return lines
+end
+
 -- The help word with what was typed after it: a word that can run prints
--- its one line; a page number lists that page; anything else lists page 1.
+-- its one line; a page number lists that page; nothing lists page 1; any
+-- other text is searched for (Diag.HelpSearch).
 function Diag.HelpFor(commands, help, slash, rest)
-    local arg = tostring(rest or ""):lower():match("^%s*(%S*)")
+    local text = tostring(rest or ""):lower():match("^%s*(.-)%s*$")
+    local arg = text:match("^(%S*)")
     if arg ~= "" and type(commands) == "table" and type(commands[arg]) == "function" then
         return { helpLine(help, slash, arg) }
     end
-    return Diag.HelpLines(commands, help, slash, arg:match("^%d+$") and tonumber(arg) or 1)
+    if text == "" or text:match("^%d+$") then
+        return Diag.HelpLines(commands, help, slash, tonumber(text) or 1)
+    end
+    return Diag.HelpSearch(commands, help, slash, text)
 end
 
 -- The bus event (internal, not a client event) another module emits with a
@@ -1703,7 +1732,7 @@ function Diag.Start(k)
     -- table when it is typed, so a word another file adds is listed and
     -- there is no second list to keep.
     help.help = "list these commands, " .. Diag.HELP_PAGE .. " to a page; help <n> for page n,"
-        .. " help <command> for one command"
+        .. " help <command> for one command, help <text> for the commands about it"
     commands.help = function(rest)
         local lines = Diag.HelpFor(commands, help, id.slash, rest)
         for i = 1, #lines do client.print(id.title .. ": " .. lines[i]) end
