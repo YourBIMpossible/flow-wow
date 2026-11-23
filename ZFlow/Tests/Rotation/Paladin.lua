@@ -295,9 +295,25 @@ return {
         local s = ns.SnapshotOf({ chosen = { seal = "Seal of Light", blessing = "Blessing of Kings" } })
         t.eq(s.chosen, { seal = "Seal of Light", blessing = "Blessing of Kings" }, "kept in the snapshot")
         t.eq(ns.SnapshotOf({}).chosen, nil, "none given: nil")
-        local read = ns.RotationDriver.Read({}, ns.Packs.PALADIN, {}, nil, { seal = "Seal of Light" })
+        -- Lead section 232: one trailing options table, extra, with named
+        -- fields; chosen is extra.chosen.
+        local read = ns.RotationDriver.Read({}, ns.Packs.PALADIN, {}, nil, { chosen = { seal = "Seal of Light" } })
         t.eq(read("chosen"), { seal = "Seal of Light" }, "the driver hands it on")
         t.eq(ns.RotationDriver.Read({}, ns.Packs.PALADIN, {}, nil, nil)("chosen"), nil, "none: nil")
+        t.eq(ns.RotationDriver.Read({}, ns.Packs.PALADIN, {}, nil, {})("chosen"), nil, "extra without chosen: nil")
+    end,
+
+    -- Lead section 232: both optional fields given together, each reaches its
+    -- own consumer and neither lands in the other's place. extra.food is
+    -- Lazy's (zflow-buff-food-2); here it only must not become chosen.
+    ["the driver's extra table: chosen and food together, chosen reaches the snapshot"] = function(t)
+        local c = ns.make.fakeClient()
+        c.setClass("PALADIN"); c.setDead(false); c.setCombat(false)
+        local extra = { food = { name = "Made-up Bread", item = 1 }, chosen = { seal = "Seal of Light" } }
+        local v = ns.RotationDriver.Step(c, ns.Packs.PALADIN, nil, nil, nil, nil, extra)
+        t.eq(v.snapshot.chosen, { seal = "Seal of Light" }, "chosen from extra.chosen, not the whole table")
+        local read = ns.RotationDriver.Read(c, ns.Packs.PALADIN, {}, nil, extra)
+        t.eq(read("chosen"), { seal = "Seal of Light" }, "the read gives extra.chosen alone")
     end,
 
     ["out of a fight: aura, then blessing, then seal, then nothing"] = function(t)
