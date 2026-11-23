@@ -100,6 +100,25 @@ tests["class quests: two quests gone at once keep nothing; unknown stays unknown
     t.eq(kept(c), nil)
 end
 
+tests["class quests: a quest dropped long before the form is learned keeps nothing, in either order"] = function(t)
+    local c = start({ log = { row(QUEST, TITLE) } })
+    c.setQuestLog({})
+    c.fire("QUEST_REMOVED", QUEST)
+    c.advance(60, 60)
+    c.setSpell(BEAR, { known = true })
+    c.learnSpell({ id = BEAR, name = "Bear Form" })
+    c.advance(1, 5)
+    t.eq(kept(c), nil, "quest gone first")
+    local c2 = start({ log = { row(QUEST, TITLE) } })
+    c2.setSpell(BEAR, { known = true })
+    c2.learnSpell({ id = BEAR, name = "Bear Form" })
+    c2.advance(60, 60)
+    c2.setQuestLog({})
+    c2.fire("QUEST_REMOVED", QUEST)
+    c2.advance(1, 5)
+    t.eq(kept(c2), nil, "spell learned first")
+end
+
 tests["class quests: a quest gone with a spell that no class quest gives keeps nothing"] = function(t)
     local c = start({ log = { row(QUEST, TITLE, true) } })
     c.setQuestLog({})
