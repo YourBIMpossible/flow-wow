@@ -17,6 +17,15 @@ local _, ns = ...
 --                                     gives no note (lead section 220, SR-1:
 --                                     no sell advice on any path while the
 --                                     reservations can't be worked out).
+--   item, count = LootNote.Own(client, chatText)   the player's own loot
+--                                     line read, or nil (another player's,
+--                                     not loot, or the read raised)
+--   text = LootNote.FromItem(client, store, item, count, r)   FromClient
+--                                     past the read. Section 225 (LR-1): the
+--                                     module reads the line and applies the
+--                                     REPEAT_S throttle first, and works out
+--                                     the reservations only for a line that
+--                                     can still be noted.
 --   api  = LootNote.Declare(k)        api.notes() = how many were printed
 --
 -- Reads (through the injected client):
@@ -97,12 +106,23 @@ local function neverOf(store)
     return never
 end
 
-function LootNote.FromClient(client, store, chatText, r)
+function LootNote.Own(client, chatText)
     if type(client) ~= "table" then return nil end
     local own = client.ownLoot
     if type(own) ~= "function" then return nil end
     local ok, item, count = pcall(own, chatText)
     if not ok or item == nil then return nil end
+    return item, count
+end
+
+function LootNote.FromClient(client, store, chatText, r)
+    local item, count = LootNote.Own(client, chatText)
+    if item == nil then return nil end
+    return LootNote.FromItem(client, store, item, count, r)
+end
+
+function LootNote.FromItem(client, store, item, count, r)
+    if type(client) ~= "table" then return nil end
     local R = ns.Reservations
     if type(r) ~= "table" or r.status == R.UNAVAILABLE then return nil end
     local read = client.itemInfo
@@ -127,10 +147,14 @@ function LootNote.Declare(k)
         start = function(ctx)
             ctx.bus:on(LootNote.NAME, LootNote.EVENT, function(chatText)
                 if ctx.settings:get(LootNote.SETTING) == false then return end
-                -- The reservations now: one evaluation for this loot.
-                local r = ns.SellList.Current(ctx.use)
-                local text, key = LootNote.FromClient(ctx.client, ctx.store, chatText, r)
-                if not text then return end
+                -- Section 225 (LR-1): every loot line in chat comes here,
+                -- other players' too. The line is read first, then the
+                -- throttle; only then are the reservations worked out (the
+                -- bag read, the goal claims), so a line that can't be noted
+                -- costs no evaluation.
+                local item, count = LootNote.Own(ctx.client, chatText)
+                if item == nil then return end
+                local key = ns.Items.Key(item)
                 -- No flood while grinding: one note per item per REPEAT_S
                 -- seconds; with no time from the client, once a session.
                 local now = type(ctx.client.uptime) == "function" and ctx.client.uptime() or nil
@@ -140,6 +164,10 @@ function LootNote.Declare(k)
                     quiet = quiet + 1
                     return
                 end
+                -- The reservations now: one evaluation for this loot.
+                local r = ns.SellList.Current(ctx.use)
+                local text = LootNote.FromItem(ctx.client, ctx.store, item, count, r)
+                if not text then return end
                 if key ~= nil then notedAt[key] = now or true end
                 printed = printed + 1
                 local id = k.id or ns.id
