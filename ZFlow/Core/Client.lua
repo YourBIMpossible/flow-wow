@@ -570,12 +570,24 @@ function ns.make.client(env)
     -- GetTradeSkillNumReagents(index), then for each reagent
     -- GetTradeSkillReagentItemLink(index, r) for the item and the third answer
     -- of GetTradeSkillReagentInfo(index, r) for how many a craft takes.
-    -- The same answer as recipeSchematic: { makes =, yield =, mats = }.
-    -- Anything that can't be read makes the whole answer nil: never a
-    -- shorter list. First guesses, not seen in game. Items/RecipeBook.lua
-    -- calls it for each row of tradeSkillRows (section 233, GR2-1).
+    -- Section 238 (RF-1 to RF-3, as Flow's readClassic in
+    -- Modules/Crafting/Recipes.lua): GetTradeSkillInfo(index) first, for the
+    -- row's name and kind (its difficulty); a "header" or "subheader" row is
+    -- no recipe: nil (RF-2). A product link that is no item link (an
+    -- enchant) gives makes nil, the reagents kept (RF-1); no product link
+    -- yet gives makes nil and partial. A reagent whose item or count is not
+    -- read yet is left out and the answer says partial = true (RF-3). No
+    -- reagent count, or none (RF-4), or any other read that fails: nil.
+    --   { name =, difficulty =, makes = (nil: no item), yield =, mats =,
+    --     partial = (true, or nil when every reagent was read) }
+    -- First guesses, not seen in game. Items/RecipeBook.lua calls it for
+    -- each row of tradeSkillRows (section 233, GR2-1).
     function c.tradeSkillSchematic(index)
         if not wholeCount(index) or index < 1 or index == math.huge then return nil end
+        local okInfo, name, kind = call(env.GetTradeSkillInfo, index)
+        if not okInfo or type(kind) ~= "string" or hidden(kind) then return nil end
+        if kind == "header" or kind == "subheader" then return nil end
+        if type(name) ~= "string" or hidden(name) or name == "" then return nil end
         local function itemOf(ok, link)
             if not ok or type(link) ~= "string" or hidden(link) then return nil end
             local id = tonumber(link:match("item:(%d+)"))
@@ -585,8 +597,17 @@ function ns.make.client(env)
         local function count(n, least)
             return wholeCount(n) and n < math.huge and n >= least
         end
-        local makes = itemOf(call(env.GetTradeSkillItemLink, index))
-        if not makes then return nil end
+        local okLink, link = call(env.GetTradeSkillItemLink, index)
+        if not okLink then return nil end
+        local makes, partial
+        if link == nil then
+            partial = true
+        elseif type(link) ~= "string" or hidden(link) then
+            return nil
+        elseif link:find("item:", 1, true) then
+            makes = itemOf(true, link)
+            if not makes then return nil end
+        end
         local yield = 1
         if env.GetTradeSkillNumMade ~= nil then
             local okMade, least = call(env.GetTradeSkillNumMade, index)
@@ -599,11 +620,14 @@ function ns.make.client(env)
         local mats = {}
         for r = 1, n do
             local item = itemOf(call(env.GetTradeSkillReagentItemLink, index, r))
-            local okInfo, _, _, need = call(env.GetTradeSkillReagentInfo, index, r)
-            if not item or not okInfo or not count(need, 1) then return nil end
-            mats[item] = (mats[item] or 0) + need
+            local okNeed, _, _, need = call(env.GetTradeSkillReagentInfo, index, r)
+            if item and okNeed and count(need, 1) then
+                mats[item] = (mats[item] or 0) + need
+            else
+                partial = true
+            end
         end
-        return { makes = makes, yield = yield, mats = mats }
+        return { name = name, difficulty = kind, makes = makes, yield = yield, mats = mats, partial = partial }
     end
 
     -- Section 233 (GR2-1): the rows of the classic trade skill window, for
@@ -612,8 +636,9 @@ function ns.make.client(env)
     -- GetNumTradeSkills() rows (0: no window), and GetTradeSkillInfo(i) for
     -- each row's name and kind; "header" and "subheader" rows are left out.
     -- Every other row is a recipe the player has learned. Only what the
-    -- window shows: a collapsed header hides its rows.
-    --   { name =, skill =, max =, rows = { { index = i, name = } } }
+    -- window shows: a collapsed header hides its rows. Section 238 (RF-2):
+    -- each row keeps its kind as its difficulty, as Flow did.
+    --   { name =, skill =, max =, rows = { { index = i, name =, difficulty = } } }
     -- Anything that can't be read makes the whole answer nil: never a
     -- shorter list. First guesses, not seen in game.
     function c.tradeSkillRows()
@@ -629,7 +654,7 @@ function ns.make.client(env)
             if not okInfo or type(kind) ~= "string" or hidden(kind) then return nil end
             if kind ~= "header" and kind ~= "subheader" then
                 if type(rowName) ~= "string" or hidden(rowName) or rowName == "" then return nil end
-                rows[#rows + 1] = { index = i, name = rowName }
+                rows[#rows + 1] = { index = i, name = rowName, difficulty = kind }
             end
         end
         local out = { name = name, rows = rows }

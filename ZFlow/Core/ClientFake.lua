@@ -145,12 +145,14 @@ function ns.make.fakeClient(opts)
         if type(r) ~= "table" then return nil end
         return { name = r.name, skill = r.skill, max = r.max, rows = copyRows(r.rows) or {} }
     end
+    -- Section 238: name, difficulty and partial too, as the client gives.
     function c.tradeSkillSchematic(index)
         local r = s.tradeSchematics and s.tradeSchematics[index]
         if type(r) ~= "table" then return nil end
         local mats = {}
         for item, n in pairs(type(r.mats) == "table" and r.mats or {}) do mats[item] = n end
-        return { makes = r.makes, yield = r.yield, mats = mats }
+        return { name = r.name, difficulty = r.difficulty, makes = r.makes, yield = r.yield, mats = mats,
+                 partial = r.partial }
     end
     function c.spell(id)
         if type(id) ~= "number" then return nil end
