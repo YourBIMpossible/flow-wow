@@ -92,6 +92,12 @@ end
 
 -- true only when the client has this read and it answers true. No read,
 -- a read that raises, false or nil: not a yes.
+-- Lead section 294: the line said once a session when the icon is on, a
+-- fight is under way and there is nothing to suggest, so an empty icon is
+-- not a silent one.
+I.EMPTY = "next spell: nothing to suggest in this fight yet"
+I.EMPTY_HOW = "; the spells this character knows give no suggestion here. Type the slash command with diag to see why."
+
 local function says(client, name)
     local fn = client[name]
     if type(fn) ~= "function" then return false end
@@ -146,6 +152,7 @@ function I.Declare(k)
             local client = ctx.client
             local row = I.Row(k)
             local saveSaid = false
+            local emptySaid = false
 
             local function screen()
                 if type(client.screen) ~= "function" then return nil end
@@ -209,6 +216,12 @@ function I.Declare(k)
                     and ns.Reveal.Open(k, "icon") == false
                 if not tex or held or says(client, "petBattle") or says(client, "vehicle") then
                     hide()
+                    if not tex and not held and not emptySaid and k.settings:get(D.SETTING) == true
+                        and type(client.inCombat) == "function" and client.inCombat() == true
+                        and type(client.print) == "function" then
+                        emptySaid = true
+                        pcall(client.print, ns.id.title .. ": " .. I.EMPTY .. I.EMPTY_HOW)
+                    end
                     return
                 end
                 if icon.setTexture(tex) then
