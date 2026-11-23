@@ -193,6 +193,8 @@ return {
     "Rotation/Gather.lua",
     -- P-PARTY: your group's buffs and dispels, look only (after GroupTip and Choose).
     "Rotation/Group.lua",
+    -- N63: heal and cures on the unit under your mouse, off by default.
+    "Rotation/Mouseover.lua",
     -- N55: the boss loot panel, look only (after Gear, Items/Drops and the classes).
     "UI/BossLoot.lua",
     },
