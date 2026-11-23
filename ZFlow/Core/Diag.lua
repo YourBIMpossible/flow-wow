@@ -505,7 +505,18 @@ end
 --                            SHAPE_KEYS; first: at the top level only)
 --   Diag.Reads(client)       -> { taxi, worldPos, aura, auraCount, gcd, form,
 --                            forms, formInfo, current, currentNew, spellInfo,
---                            secretFn, nameplates }
+--                            secretFn, nameplates, answers }
+--   Diag.Answers(client, isSecret) -> answers (lead section 188): the reads
+--                            the merged features use, asked of the client
+--                            itself, by read name. Each is "missing" (no
+--                            such read), { failed = true } (it raised),
+--                            { noArg = true } (nothing to ask it with), or
+--                            { n = answer count, answers = { Diag.Form } }.
+--                            Diag.ANSWER_COUNTS reads are keyed by aura
+--                            name, so only { count, values = { [type] = true } }
+--                            is kept (or { kind = form } for a non-table).
+--                            Diag.ANSWER_MAPS reads are { [map] = row } for
+--                            Diag.CONTINENTS and the map the player is on.
 --   Diag.SaveReads(k, reads) appends { at, build, reads }; newest KEEP kept
 Diag.CONTINENTS = { 1414, 1415 }
 Diag.FORMS_MAX = 10      -- shapeshift forms asked about at most
@@ -572,6 +583,88 @@ local function number(client, isSecret, path, ...)
     return v
 end
 
+-- The reads asked with fixed arguments: name, then the arguments. Spell
+-- 6603 (Attack) and 61304 (the global cooldown) as the raw reads above;
+-- item 6948 is the hearthstone Core/Client.lua already names. unitBuff is
+-- asked with no aura names, so only its answer shape is seen.
+Diag.ANSWERS = {
+    { "class" }, { "stealthed" }, { "dead" }, { "ghost" }, { "corpse" }, { "inCombat" },
+    { "form" }, { "formName" }, { "target" }, { "facing" }, { "onTaxi" }, { "position" },
+    { "zone" }, { "worldPosition" }, { "questLog" }, { "questFocus" }, { "taxiNodes" },
+    { "spell", 6603 }, { "currentSpell", 6603 }, { "inRange", 6603 }, { "spellCooldown", 61304 },
+    { "itemCount", 6948 }, { "unitBuff", "player", {} },
+}
+Diag.ANSWER_COUNTS = { "playerBuffs", "targetDebuffs" }
+Diag.ANSWER_MAPS = { "mapCorners", "mapSize" }
+
+-- One read of the client by name: its answers' forms, never a value.
+local function answerOf(client, isSecret, name, ...)
+    local fn = client[name]
+    if type(fn) ~= "function" then return "missing" end
+    local function pack(...) return select("#", ...), { ... } end
+    local count, packed = pack(pcall(fn, ...))
+    if packed[1] ~= true then return { failed = true } end
+    local row = { n = count - 1, answers = {} }
+    for i = 1, count - 1 do row.answers[i] = form(packed[i + 1], isSecret, 0) end
+    return row
+end
+
+-- A read keyed by aura name: how many, and the types of the values.
+local function countOf(client, isSecret, name)
+    local fn = client[name]
+    if type(fn) ~= "function" then return "missing" end
+    local ok, v = pcall(fn)
+    if not ok then return { failed = true } end
+    if type(v) ~= "table" or isSecret(v) then return { kind = form(v, isSecret, 1) } end
+    local out = { count = 0, values = {} }
+    for _, value in pairs(v) do
+        out.count = out.count + 1
+        out.values[(isSecret(value) and SECRET) or type(value)] = true
+    end
+    return out
+end
+
+-- The first answer of a read when it is a plain value of `kind`, else nil.
+local function plainRead(client, isSecret, kind, name)
+    local fn = client[name]
+    if type(fn) ~= "function" then return nil end
+    local ok, v = pcall(fn)
+    if not ok or type(v) ~= kind or isSecret(v) then return nil end
+    return v
+end
+
+function Diag.Answers(client, isSecret)
+    local out = {}
+    for _, spec in ipairs(Diag.ANSWERS) do
+        out[spec[1]] = answerOf(client, isSecret, unpack(spec))
+    end
+    for _, name in ipairs(Diag.ANSWER_COUNTS) do out[name] = countOf(client, isSecret, name) end
+    -- spellId: asked with the name of the form the player is in, the one
+    -- spell name a read here hands over; the name itself is not kept.
+    local formName = plainRead(client, isSecret, "string", "formName")
+    out.spellId = formName and answerOf(client, isSecret, "spellId", formName) or { noArg = true }
+    -- questItem: asked with the first quest in the log.
+    local log, quest = plainRead(client, isSecret, "table", "questLog"), nil
+    if log and type(log[1]) == "table" and type(log[1].id) == "number" and not isSecret(log[1].id) then
+        quest = log[1].id
+    end
+    out.questItem = quest and answerOf(client, isSecret, "questItem", quest) or { noArg = true }
+    local maps = {}
+    for _, map in ipairs(Diag.CONTINENTS) do maps[#maps + 1] = map end
+    local pos = plainRead(client, isSecret, "table", "position")
+    if pos and type(pos.map) == "number" and not isSecret(pos.map) then maps[#maps + 1] = pos.map end
+    for _, name in ipairs(Diag.ANSWER_MAPS) do
+        if type(client[name]) ~= "function" then
+            out[name] = "missing"
+        else
+            local rows = {}
+            for _, map in ipairs(maps) do rows[map] = answerOf(client, isSecret, name, map) end
+            out[name] = rows
+        end
+    end
+    return out
+end
+
 function Diag.Reads(client)
     local function isSecret(v) return Diag.IsSecret(client, v) end
     local R = {}
@@ -624,6 +717,7 @@ function Diag.Reads(client)
     try("currentNew", function() return ask("C_Spell.IsCurrentSpell", 6603) end)
     try("spellInfo", function() return ask("C_Spell.GetSpellInfo", 6603) end)
     R.secretFn = client.typeOf("issecretvalue")
+    try("answers", function() return Diag.Answers(client, isSecret) end)
     try("nameplates", function()
         local path = "C_NamePlate.GetNamePlates"
         local row = { exists = client.typeOf(path), ok = false }
