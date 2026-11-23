@@ -256,4 +256,143 @@ tests["group e2e 236(c): the group read raises, then answers: nothing, no error,
     t.eq(picked(addon) and picked(addon).step, "group", "the reach answers again: suggested")
 end
 
+-- ---------------------------------------------- lead section 243 item 1
+
+local K = ns.KeyFrame
+local OTHER = "Quillaby"   -- made up
+
+-- The rotation key's secure button on the fake client, or nil.
+local function keyButton(c)
+    for _, h in ipairs(c.secureButtons) do
+        if tostring(h.spec and h.spec.name):find("RotationKey", 1, true) then return h end
+    end
+    return nil
+end
+
+-- The key on: the secure button is set out of a fight.
+local function keyOn(c, addon)
+    addon.settings:set(K.SETTING, true)
+    c.advance(2, 10)
+    return keyButton(c)
+end
+
+-- No attribute of the button holds the group spell, the unit or the name.
+local function keyClean(t, b, label)
+    t.ok(b ~= nil, label .. ": the key's button was made")
+    for attr, value in pairs(b and b.attrs or {}) do
+        t.ok(value ~= MOTW and value ~= ABOLISH and value ~= "party1" and value ~= NAME,
+            label .. ": nothing of the group suggestion on " .. tostring(attr))
+    end
+end
+
+local function copy(t)
+    local out = {}
+    for k, v in pairs(t or {}) do out[k] = v end
+    return out
+end
+
+-- 243 item 3: the look-only check on the key's actual attributes.
+tests["group e2e 243: a group suggestion leaves the key's secure button as the plan has it"] = function(t)
+    local c, addon = start()
+    local b = keyOn(c, addon)
+    t.eq(picked(addon) and picked(addon).step, "group", "the group step picked")
+    t.eq(b and { b.attrs.type, b.attrs.spell, b.attrs.unit }, { "spell", "Wrath", "target" },
+        "the key casts the caster key's spell on your target")
+    keyClean(t, b, "out of a fight")
+end
+
+-- 243 item 1 (MED): the icon shows the key will not cast it.
+tests["group e2e 243: the icon is marked look-only for a group suggestion, and only then"] = function(t)
+    local c, addon, icon = start()
+    t.eq(picked(addon) and picked(addon).step, "group")
+    t.eq(icon and icon.marked, "look", "a group suggestion: the look-only mark")
+    c.setPlayerBuffs({ [THORNS] = true }); c.advance(2, 10)
+    t.eq(picked(addon) and picked(addon).step, "list", "your own Mark is missing: the list's own buff")
+    t.eq(icon and icon.marked, nil, "your own buff: no mark, the key casts it")
+    c.setPlayerBuffs(BUFFED); c.setUnitBuffs("party1", { { name = MOTW, left = 1000 }, { name = THORNS, left = 500 } })
+    c.advance(2, 10)
+    t.eq(picked(addon), nil, "nothing")
+    t.eq(icon and icon.marked, nil, "nothing shown: no mark")
+end
+
+-- 243 item 4 (section 236): the roster changes in a fight.
+tests["group e2e 243: the roster changes mid-fight: nothing in the fight, the new member after"] = function(t)
+    local c, addon = start({ buffs = { { name = MOTW, left = 1000 }, { name = THORNS, left = 500 } } })
+    t.eq(picked(addon), nil, "party1 has both: nothing")
+    c.setCombat(true); c.advance(1, 5)
+    c.setParty({ member({ unit = "party2", name = OTHER }) })
+    for _, id in pairs(IDS) do c.setReach("party2", id, true) end
+    c.setUnitBuffs("party2", { { name = THORNS, left = 500 } })
+    c.fire("GROUP_ROSTER_UPDATE"); c.advance(2, 10)
+    local s = picked(addon)
+    t.ok(s == nil or s.step ~= "group", "in the fight: nothing for the group")
+    c.setCombat(false); c.advance(2, 10)
+    s = picked(addon)
+    t.eq(s and { s.step, s.spell, s.unit, s.member } or nil, { "group", MOTW, "party2", OTHER },
+        "out of the fight: the new member, read again")
+end
+
+-- 243 item 4: lockdown not known while a group suggestion is up.
+tests["group e2e 243: lockdown not known: still look only, the key untouched"] = function(t)
+    local c, addon, icon = start()
+    local b = keyOn(c, addon)
+    local before = copy(b and b.attrs)
+    c.setLockdown(nil); c.advance(2, 10)
+    local s = picked(addon)
+    t.eq(s and { s.step, s.look } or nil, { "group", true }, "still suggested, look only")
+    t.eq(icon and icon.marked, "look", "still marked")
+    t.eq(b and copy(b.attrs), before, "the key's attributes are as they were")
+    keyClean(t, b, "lockdown not known")
+end
+
+-- 243 item 4: the aura read raises for one member, then recovers.
+tests["group e2e 243: the buff read raises for one member: skipped, no error, then back"] = function(t)
+    local c, addon = start()
+    c.setParty({ member(), member({ unit = "party2", name = OTHER }) })
+    for _, id in pairs(IDS) do c.setReach("party2", id, true) end
+    c.setUnitBuffs("party2", { { name = THORNS, left = 500 } })
+    c.fire("GROUP_ROSTER_UPDATE"); c.advance(2, 10)
+    t.eq(picked(addon) and picked(addon).unit, "party1", "both missing Mark: party1 first")
+    local before = errors(addon)
+    c.setUnitBuffFails("party1", true); c.advance(2, 10)
+    t.eq(picked(addon) and picked(addon).unit, "party2", "party1's buffs raise: skipped, party2")
+    t.eq(errors(addon), before, "no error escaped the tick")
+    c.setUnitBuffFails("party1", false); c.advance(2, 10)
+    t.eq(picked(addon) and picked(addon).unit, "party1", "party1 read again")
+end
+
+-- 243 item 5: buff memory. The game hides the member's buffs; what you
+-- cast on them is remembered (Flow's E.buffMemory, Engine.lua:1399-1410),
+-- so Mark of the Wild is not asked for again until it runs out.
+tests["group e2e 243: buffs hidden: what you cast on them is remembered until it runs out"] = function(t)
+    local c, addon = start({ buffs = { { name = false } } })
+    t.eq(picked(addon), nil, "their buffs hidden, nothing remembered: not known, nothing")
+    c.fire("UNIT_SPELLCAST_SENT", "player", OTHER, "cast-0", IDS[MOTW])
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-0", IDS[MOTW])
+    c.advance(2, 10)
+    t.eq(picked(addon), nil, "cast on someone else: still nothing for party1")
+    c.fire("UNIT_SPELLCAST_SENT", "player", NAME, "cast-1", IDS[MOTW])
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-1", IDS[MOTW])
+    c.advance(2, 10)
+    t.eq(picked(addon), nil, "cast on them: covered for its 30 minutes")
+    c.advance(1750, 50)
+    local s = picked(addon)
+    t.eq(s and { s.step, s.spell, s.unit } or nil, { "group", MOTW, "party1" }, "under a minute left: running out")
+    t.ok(s == nil or not tostring(s.reason):find(NAME, 1, true), "no name in the reason")
+end
+
+-- 243 item 5: "a more powerful spell is already active" (Flow's
+-- E.BOUNCE_SECONDS, Engine.lua:1084, 1412-1420): the game's refusal is
+-- remembered for that member and spell for five minutes.
+tests["group e2e 243: the game refuses a weaker buff: not asked for again for five minutes"] = function(t)
+    local c, addon = start()
+    t.eq(picked(addon) and picked(addon).spell, MOTW, "Mark missing: suggested")
+    c.fire("UNIT_SPELLCAST_SENT", "player", NAME, "cast-2", IDS[MOTW])
+    c.fire("UI_ERROR_MESSAGE", 51, "A more powerful spell is already active")
+    c.advance(2, 10)
+    t.eq(picked(addon), nil, "a stronger one is on them: not asked for")
+    c.advance(300, 30)
+    t.eq(picked(addon) and picked(addon).spell, MOTW, "five minutes on: asked again")
+end
+
 return tests
