@@ -20,6 +20,9 @@ CraftBar.NAME = "craftBar"
 CraftBar.SETTING = "craft.queue"
 CraftBar.WIDTH = 240
 CraftBar.DEFAULT_POINT = { "TOPLEFT", "TOPLEFT", 700, -120 }
+-- The kit window's size and place. First guess: not yet seen in the game.
+CraftBar.KIT_WIDTH, CraftBar.KIT_HEIGHT = 320, 360
+CraftBar.KIT_POINT = { "TOPLEFT", "TOPLEFT", 700, -120 }
 -- Seconds a craft may take to finish before the run stops as not started.
 CraftBar.WATCHDOG = 10
 CraftBar.HINT = "Tick a count, then click Start."
@@ -35,6 +38,86 @@ CraftBar.NEXT = "Click Start for %s."
 CraftBar.RUNS_PATH = "learned.craftRuns"
 CraftBar.RUNS_KEEP = 10
 
+-- The bar on the shared kit (lead sections 287 and 291): what it shows as
+-- a kit window spec (UI/Kit.lua, K.Window). Pure: no client, no kernel.
+CraftBar.TITLE = "Craft bar"
+CraftBar.NO_RECIPES = "You know no recipe in this window."
+CraftBar.NO_RECIPES_HOW = "Learn one at your profession trainer, then open this window again."
+
+-- CraftBar.View(model[, act]) -> a kit window spec
+--   model  { recipes, running, smelts, status }:
+--          recipes  { { id, name, count, difficulty, icon } } the learned
+--                   recipes, count the number queued
+--          running  a craft the click asked is under way
+--          smelts   the window smelts, so Smelt all is offered
+--          status   why the bar stopped or what it waits for, or nil
+--   act    the bar's own click: act("start"), act("all"), act("goals"),
+--          act("clear"), act("count:<id>", n). A button that is off passes
+--          nothing on.
+-- The count buttons stand in for a number control the kit does not have
+-- yet (kit ask).
+function CraftBar.View(model, act)
+    local Q = ns.CraftQueue
+    local view = { id = "CraftBar", title = CraftBar.TITLE, children = {},
+        width = CraftBar.KIT_WIDTH, height = CraftBar.KIT_HEIGHT, point = CraftBar.KIT_POINT }
+    local kids = view.children
+    if type(model) ~= "table" then model = {} end
+    local running = model.running == true
+    local function click(key, value)
+        if type(act) == "function" then act(key, value) end
+    end
+
+    kids[1] = { kind = "header", title = CraftBar.TITLE }
+    local status = CraftBar.HINT
+    if type(model.status) == "string" and model.status ~= "" then status = model.status end
+    kids[2] = { kind = "row", key = "status", label = status }
+
+    local recipes = model.recipes
+    if type(recipes) ~= "table" or #recipes == 0 then
+        kids[3] = { kind = "empty", key = "recipes", text = CraftBar.NO_RECIPES, how = CraftBar.NO_RECIPES_HOW }
+        return view
+    end
+
+    local colours = ns.ProfHelper and ns.ProfHelper.COLOURS
+    for _, r in ipairs(recipes) do
+        local count = 0
+        if type(r.count) == "number" and r.count > 0 then count = r.count end
+        local name = "recipe " .. tostring(r.id)
+        if type(r.name) == "string" and r.name ~= "" then name = r.name end
+        local line = { kind = "itemLine", name = name, count = count }
+        -- The kit takes a texture path or the game's file number; anything
+        -- else is left out, so it cannot cost the window.
+        local icon = r.icon
+        if (type(icon) == "string" and icon ~= "") or (type(icon) == "number" and icon > 0 and icon < math.huge) then
+            line.icon = icon
+        end
+        -- Kit ask: a line colour that is not an item quality (the skill colour).
+        if type(colours) == "table" and type(r.difficulty) == "string" then line.color = colours[r.difficulty] end
+        kids[#kids + 1] = line
+        local less, more = not running and count > 0, not running and count < Q.MAX
+        kids[#kids + 1] = { kind = "button", key = "less:" .. r.id, text = "-", enabled = less,
+            tooltip = "One fewer " .. name .. ".",
+            onClick = function() if less then click("count:" .. r.id, count - 1) end end }
+        kids[#kids + 1] = { kind = "button", key = "more:" .. r.id, text = "+", enabled = more,
+            tooltip = "One more " .. name .. ".",
+            onClick = function() if more then click("count:" .. r.id, count + 1) end end }
+    end
+
+    local startText = "Start"
+    if running then startText = "Stop" end
+    kids[#kids + 1] = { kind = "button", key = "start", text = startText, enabled = true,
+        tooltip = "Start makes the first recipe with a count; the next one waits for your next click.",
+        onClick = function() click("start") end }
+    local function idle(key, text, tooltip)
+        kids[#kids + 1] = { kind = "button", key = key, text = text, enabled = not running, tooltip = tooltip,
+            onClick = function() if not running then click(key) end end }
+    end
+    if model.smelts == true then idle("all", "Smelt all", "Smelts every bar your ore makes.") end
+    idle("goals", "From goals", "Fills the counts from your item goals. Start is still your click.")
+    idle("clear", "Clear", "Sets every count back to none.")
+    return view
+end
+
 function CraftBar.Declare(k)
     local Q = ns.CraftQueue
     local api = {}
@@ -46,9 +129,14 @@ function CraftBar.Declare(k)
     function api.running() return running end
     function api.status() return status end
 
-    local panel, cancelWatch
+    -- host: the bar's kit window with the plain panel behind it
+    -- (UI/KitHost.lua).
+    local host, cancelWatch
+    -- What the bar shows, for CraftBar.View; nil while it shows nothing.
+    local model
     local function hide()
-        if panel then panel.show(false) end
+        model = nil
+        if host then host.show(false) end
     end
     local function unwatch()
         if cancelWatch then
@@ -174,9 +262,13 @@ function CraftBar.Declare(k)
 
             local act
             local function draw()
-                if not panel then return end
+                if not host then return end
                 local rows = {}
+                local shown = { recipes = {}, running = running, smelts = Q.SMELTS[book.profession] == true,
+                    status = status }
                 for _, r in ipairs(learned()) do
+                    shown.recipes[#shown.recipes + 1] = { id = r.id, name = r.name, count = counts[r.id] or 0,
+                        difficulty = r.difficulty, icon = r.icon }
                     rows[#rows + 1] = { kind = "number", key = "count:" .. r.id,
                         label = type(r.name) == "string" and r.name or ("recipe " .. r.id),
                         value = counts[r.id] or 0, min = 0, max = Q.MAX, enabled = not running }
@@ -188,7 +280,8 @@ function CraftBar.Declare(k)
                 rows[#rows + 1] = { kind = "button", key = "goals", label = "From goals", enabled = not running }
                 rows[#rows + 1] = { kind = "button", key = "clear", label = "Clear", enabled = not running }
                 rows[#rows + 1] = { kind = "info", text = status or CraftBar.HINT }
-                panel.draw(rows, act)
+                model = shown
+                host.draw(CraftBar.View(shown, act), rows, act)
             end
 
             -- Keeps the ask on the character, the oldest dropped past
@@ -366,6 +459,13 @@ function CraftBar.Declare(k)
                 end
             end
 
+            -- The bar as a kit window spec now, or nil while it shows
+            -- nothing. Its buttons pass the same clicks on as the panel's.
+            function api.view()
+                if model == nil then return nil end
+                return CraftBar.View(model, act)
+            end
+
             local function mine(unit) return unit == "player" end
             ctx.bus:on(CraftBar.NAME, "TRADE_SKILL_SHOW", function()
                 if ctx.settings:get(CraftBar.SETTING) == false then
@@ -374,10 +474,10 @@ function CraftBar.Declare(k)
                 end
                 readBook()
                 draw()
-                if panel then panel.show(true) end
+                host.show(true)
             end)
             ctx.bus:on(CraftBar.NAME, "TRADE_SKILL_LIST_UPDATE", function()
-                if not (panel and panel.shown()) then return end
+                if not host.shown() then return end
                 readBook()
                 draw()
             end)
@@ -406,16 +506,22 @@ function CraftBar.Declare(k)
                 if running then stop("moving") end
             end)
 
+            -- Closing the bar, the kit window or the plain panel, stops a run.
+            local function closed()
+                if running then stop("closed") end
+            end
             local id = k.id or ns.id
-            panel = type(client.rowPanel) == "function" and client.rowPanel({ name = id.framePrefix .. "CraftBar",
-                width = CraftBar.WIDTH, height = 80 }) or nil
+            local panel
+            if type(client.rowPanel) == "function" then
+                panel = client.rowPanel({ name = id.framePrefix .. "CraftBar", width = CraftBar.WIDTH, height = 80 })
+            end
             if panel then
                 panel.show(false)
                 panel.place(CraftBar.DEFAULT_POINT)
-                panel.onClose(function()
-                    if running then stop("closed") end
-                end)
+                panel.onClose(closed)
             end
+            host = ns.KitHost.New(k, client, { name = id.framePrefix .. "CraftBarKit", panel = panel,
+                onClose = closed })
         end,
         stop = function()
             unwatch()
