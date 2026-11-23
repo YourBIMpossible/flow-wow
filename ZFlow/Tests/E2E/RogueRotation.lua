@@ -242,4 +242,25 @@ tests["rogue gear: a leather helm is scored, a plate helm is not offered"] = fun
         { { text = "Can't use: your class cannot use this kind of item (first guess)", tone = "bad" } })
 end
 
+
+-- The Flow button (the key frame) is on by default, so the engage step can
+-- start the swing. Starting it breaks stealth: at the default profile the
+-- rogue at the pull is still told Stealth, not Attack. Stealth not ready
+-- (on a cooldown): the swing.
+tests["rogue: default profile, the Flow button on: Stealth at the pull, not Attack"] = function(t)
+    local c, addon, icon = start({ char = {} })
+    on(c, addon); pull(c)
+    t.eq(icon.shown, true)
+    t.eq(icon.texture, "tex:Stealth", "an enemy, out of a fight, the Flow button on: stealth first")
+end
+
+tests["rogue: default profile, Stealth on a cooldown: the swing at the pull"] = function(t)
+    local c, addon, icon = start({ char = {} })
+    on(c, addon)
+    c.setSpellCooldown(IDS["Stealth"], true)
+    pull(c)
+    t.eq(icon.shown, true)
+    t.eq(icon.texture, "tex:Attack", "Stealth not ready: start attacking")
+end
+
 return tests
