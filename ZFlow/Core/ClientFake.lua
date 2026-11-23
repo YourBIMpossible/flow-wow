@@ -14,7 +14,7 @@
 --   c.setRecipes{ profession = 164, skill = 104, max = 150, recipes = { ... } }
 --   c.setSpell(5176, { known = true, usable = false, noPower = true })
 --   c.setSpellId("Wrath", 5176)   c.setFacing(1.57)
---   c.setMapSize(1411, 5287.5, 3525)
+--   c.setMapSize(1411, 5287.5, 3525); c.setMapCont(1411, 1)
 --   c.setBankOpen(true)     -- also fires the bank opened / closed event
 --   c.setMerchant{ { item = "item:2318", price = 60, stack = 1 } }
 --   c.setMerchantOpen(true) -- also fires the merchant shown / closed event
@@ -353,6 +353,9 @@ function ns.make.fakeClient(opts)
     function c.mapSize(map)
         local r = s.mapSizes and s.mapSizes[map]
         return r and { w = r.w, h = r.h } or nil
+    end
+    function c.mapCont(map)
+        return s.mapConts and s.mapConts[map] or nil
     end
     function c.position()
         if not s.position then return nil end
@@ -918,6 +921,11 @@ function ns.make.fakeClient(opts)
     function c.setMapSize(map, w, h)
         s.mapSizes = s.mapSizes or {}
         s.mapSizes[map] = w and h and { w = w, h = h } or nil
+    end
+    -- A map's continent number; leave it out for not known.
+    function c.setMapCont(map, cont)
+        s.mapConts = s.mapConts or {}
+        s.mapConts[map] = cont
     end
     function c.setZone(cont, zone)
         s.zone = (cont ~= nil or zone ~= nil) and { cont = cont, zone = zone } or nil

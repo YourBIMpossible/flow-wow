@@ -181,6 +181,19 @@ function Travel.Declare(k, diag)
             return step
         end
         local client, target = ctx.client, step.place
+        -- Lead section 184 G1: a place with no continent (a quest place on
+        -- another map) gets it from its own map, the same number the zone
+        -- read gives. Not read: it stays nil. The step's place is not
+        -- changed; every way below is handed the filled copy.
+        if type(target) == "table" and target.cont == nil and type(target.map) == "number" then
+            local cont = ask(client, "mapCont", target.map)
+            if type(cont) == "number" then
+                local filled = {}
+                for f, v in pairs(target) do filled[f] = v end
+                filled.cont = cont
+                target = filled
+            end
+        end
         local pos = ask(client, "position")
         local zone = ask(client, "zone")
         local here = { position = pos }

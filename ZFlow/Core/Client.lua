@@ -1406,6 +1406,20 @@ function ns.make.client(env)
         return { w = w, h = h }
     end
 
+    -- The continent number of a map, or nil: the first answer of
+    -- C_Map.GetWorldPosFromMapPos for the middle of the map, the same
+    -- number c.zone() gives as cont (lead section 184 G1). nil when the
+    -- client will not say; never guessed. Needs game test: that the middle
+    -- of a map gives the number the player's own spot on it gives.
+    function c.mapCont(map)
+        if type(map) ~= "number" then return nil end
+        local okVec, vec = call(env.CreateVector2D, 0.5, 0.5)
+        if not okVec or vec == nil then return nil end
+        local ok, id = mapCall("GetWorldPosFromMapPos", map, vec)
+        if not ok or hidden(id) or type(id) ~= "number" or id ~= id then return nil end
+        return id
+    end
+
     -- The zone a map belongs to: the map itself or the nearest parent that
     -- is a zone or wider (Flow's N.ZoneOf). nil when the client won't say.
     local function zoneOf(map)

@@ -48,11 +48,16 @@ local _, ns = ...
 -- A distance that is not known stays not known: it is never taken as short,
 -- and the whole of a trip is not claimed when a part of it is missing.
 --
--- The module (lead section 182), at the end of this file, is the one part
--- that reads: the client (where the player is, the faction, map sizes) and
--- the crossings saved in N.CROSSING_PLACES. It writes nothing.
+-- The module (lead sections 182 and 184), at the end of this file, is the
+-- one part that reads: the client (where the player is, the faction, map
+-- sizes, the taxi read) and the crossings saved in N.CROSSING_PLACES. Its
+-- one write is the player's own trips: every N.Crossings.EVERY seconds
+-- api.sample() reads where the player is, and when the continent changes
+-- between two places read off a flight it saves what N.CrossingSeen gives
+-- (the hearthstone home, char N.Crossings.BIND, is not a crossing).
 --   N.Crossings.Declare(k) -> api
 --   ns.use("crossings") -> { Way = api.way }
+--   api.sample() -> key, what or nil: one trip sample (the tick)
 --   api.way(place) -> step or nil: the step Nav/Travel.lua expects for a
 --        place on another continent, at the boarding place of the best
 --        crossing on the player's own continent (N.CrossingSteps and
@@ -473,6 +478,8 @@ local Crossings = N.Crossings
 
 Crossings.NAME = "crossings"
 Crossings.NEAR = 10            -- yards from the boarding place that count as there
+Crossings.EVERY = 0.5          -- seconds between trip samples (a first guess, as N.Gates.EVERY)
+Crossings.BIND = "learned.places.bind"   -- char: the hearthstone home (Nav/HearthSeen.lua)
 
 -- One read of the client, or nil when it has no such read or it fails.
 local function ask(client, name, ...)
@@ -490,6 +497,39 @@ function Crossings.Declare(k)
         local ok, list = pcall(ctx.store.get, ctx.store, "account", N.CROSSING_PLACES)
         if ok and type(list) == "table" then return list end
         return nil
+    end
+
+    -- Lead section 184 G2: the player's own trips. Each sample reads where
+    -- the player is; a read that is not whole keeps the place before (a
+    -- loading screen), a flight or a taxi read that is not known forgets
+    -- it. When the continent changes between two places read off a
+    -- flight, N.CrossingSeen gets both and its list is saved. Only what
+    -- this client showed; nothing is copied in.
+    local last
+
+    function api.sample()
+        if not ctx then return nil end
+        local client = ctx.client
+        local pos, zone = ask(client, "position"), ask(client, "zone")
+        if type(pos) ~= "table" or type(zone) ~= "table" then return nil end
+        local here = { cont = zone.cont, map = pos.map, x = pos.x, y = pos.y }
+        if not whole(here) then return nil end
+        if ask(client, "onTaxi") ~= false then
+            last = nil
+            return nil
+        end
+        local before = last
+        last = here
+        if before == nil or before.cont == here.cont then return nil end
+        local okBind, bind = pcall(ctx.store.get, ctx.store, "char", Crossings.BIND)
+        local list, key, what = N.CrossingSeen(saved(), before, here, {
+            apart = N.CrossingApart(function(map) return ask(client, "mapSize", map) end),
+            bind = okBind and type(bind) == "table" and bind or nil,
+        })
+        if key == nil then return nil, what end
+        local okSet = pcall(ctx.store.set, ctx.store, "account", N.CROSSING_PLACES, list)
+        if not okSet then return nil, "not saved" end
+        return key, what
     end
 
     function api.way(place)
@@ -513,10 +553,11 @@ function Crossings.Declare(k)
 
     k:Module({
         name = Crossings.NAME,
-        needs = { "client", "store" },
+        needs = { "client", "store", "sched" },
         provides = { Way = function(place) return api.way(place) end },
+        ticks = { { every = Crossings.EVERY, when = "always", run = function() api.sample() end } },
         start = function(c) ctx = c end,
-        stop = function() ctx = nil end,
+        stop = function() ctx, last = nil, nil end,
     })
     return api
 end
