@@ -99,6 +99,7 @@ return {
         "Classes/Priest.lua",
         "Classes/Rogue.lua",
         "Classes/Shaman.lua",
+        "Classes/Warrior.lua",
         "Rotation/GroupTip.lua",
 
         -- Navigation
