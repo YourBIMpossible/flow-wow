@@ -168,9 +168,12 @@ function SellList.Listing(client, store, grants, r)
     -- P-SETS: saved gear set pieces are kept (Disposition's inSet).
     context.sets = ns.GearSets and ns.GearSets.Facts(store) or nil
     local out = { stacks = stacks, kept = ns.SellView.Kept(bag, context), notRead = 0 }
-    -- Items whose facts were not read yet (no name, quality or price).
+    -- Items whose facts were not read yet (no name, quality or price),
+    -- counted once per item: two stacks of one item are one item.
+    local unreadSeen = {}
     for _, e in ipairs(type(bag) == "table" and bag or {}) do
-        if e.key ~= nil and e.name == nil and e.quality == nil and e.sellPrice == nil then
+        if e.key ~= nil and e.name == nil and e.quality == nil and e.sellPrice == nil and not unreadSeen[e.key] then
+            unreadSeen[e.key] = true
             out.notRead = out.notRead + 1
         end
     end
