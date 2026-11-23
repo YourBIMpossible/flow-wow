@@ -96,6 +96,7 @@ return {
         "UI/FightLog.lua",
         "Classes/Druid.lua",
         "Classes/Hunter.lua",
+        "Classes/Mage.lua",
         "Classes/Paladin.lua",
         "Classes/Priest.lua",
         "Classes/Rogue.lua",
