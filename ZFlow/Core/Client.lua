@@ -672,6 +672,8 @@ function ns.make.client(env)
     --   whole is never set here: no reliable read of the "have materials"
     --   box or the name search box is known, so whether they hide rows is
     --   unknown, and RecipeBook drops nothing from this read.
+    --   Section 253 (RB4-1): RecipeBook now counts collapsed = false and
+    --   filtered = false as every learned recipe, as legacy Flow did.
     -- All first guesses, needs game test (Core/Diag.lua NAMES lists the
     -- names, and the candidates for the two unknown reads).
     local function allShown(fn)
