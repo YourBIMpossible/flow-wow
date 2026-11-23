@@ -35,6 +35,7 @@ ns.Diag = Diag
 local KEEP = 20
 Diag.KEEP = KEEP
 local SHAPE_KEYS = 60
+Diag.SHAPE_KEYS = SHAPE_KEYS
 -- Seconds after login for the "settled" snapshot, and the gap inside which
 -- the same window event again takes no second snapshot.
 local SETTLE, SAME_WINDOW, LATE = 8, 5, 3
@@ -96,6 +97,33 @@ Diag.NAMES = {
     "Enum.BankType", "C_PlayerInteractionManager.IsInteractingWithNpcOfType", "Enum.PlayerInteractionType",
     "C_UnitAuras.GetBuffDataByIndex", "C_UnitAuras.GetPlayerAuraBySpellID",
     "C_Item.GetItemInfoInstant", "C_Item.GetItemNameByID", "C_Container.GetBagName",
+    -- Sections 185 and 186: every other name Core/Client.lua reads (found
+    -- from the file itself at 7ea3b50), so a missing one is never "not
+    -- asked"; then the names the lead named that it does not read yet.
+    "C_AddOns", "C_AddOns.GetAddOnMetadata", "C_AuctionHouse", "C_AuctionHouse.GetCommoditySearchResultInfo",
+    "C_AuctionHouse.GetItemSearchResultInfo", "C_Bank", "C_CVar", "C_CVar.GetCVar", "C_Container",
+    "C_DeathInfo", "C_DeathInfo.GetCorpseMapPosition", "C_Item", "C_Item.GetItemSpell", "C_Item.GetItemStats",
+    "C_Map", "C_Map.GetUserWaypoint", "C_Map.HasUserWaypoint", "C_MerchantFrame", "C_Minimap",
+    "C_Minimap.GetViewRadius", "C_NamePlate", "C_NamePlate.GetNamePlateForUnit", "C_PetBattles",
+    "C_PetBattles.IsInBattle", "C_QuestLog", "C_QuestLog.GetLogIndexForQuestID", "C_QuestLog.IsFailed",
+    "C_Spell", "C_Spell.GetSpellSubtext", "C_Spell.IsCurrentSpell", "C_SpellBook", "C_SuperTrack",
+    "C_TooltipInfo", "C_TooltipInfo.GetHyperlink", "C_TradeSkillUI", "C_TradeSkillUI.IsDataSourceChanging",
+    "C_UnitAuras", "CanDualWield", "ClassTrainerFrame", "CombatLogGetCurrentEventInfo", "ConsoleExec",
+    "CreateVector2D", "Enum", "GetAddOnMetadata", "GetBindLocation", "GetCursorPosition",
+    "GetInventoryItemDurability", "GetItemCooldown", "GetItemSpell", "GetItemStats", "GetLootRollItemLink",
+    "GetLootSlotInfo", "GetLootSlotLink", "GetLootSourceInfo", "GetMinimapShape", "GetNumLootItems",
+    "GetNumQuestWatches", "GetQuestIndexForWatch", "GetQuestLogIndexByID", "GetQuestLogSpecialItemInfo",
+    "GetSpellSubtext", "GetSpellTexture", "GetSuperTrackedQuestID", "GetTrainerServiceLevelReq",
+    "GetTrainerServiceSkillLine", "GetTrainerServiceTypeFilter", "GroupLootContainer",
+    "InterfaceOptionsFrame_OpenToCategory", "InterfaceOptions_AddCategory", "IsAltKeyDown", "IsCurrentSpell",
+    "IsInGroup", "IsMounted", "IsShiftKeyDown", "LOOT_ITEM_SELF", "LOOT_ITEM_SELF_MULTIPLE",
+    "MERCHANT_ITEMS_PER_PAGE", "MerchantFrame", "MerchantFrame_Update", "NUM_GROUP_LOOT_FRAMES",
+    "PowerBarColor", "Questie.db", "QuestieLoader", "SPEED", "STANDARD_TEXT_FONT", "Settings",
+    "Sound_GameSystem_RestartSoundSystem", "TooltipDataProcessor", "UISpecialFrames", "UnitClassification",
+    "UnitDetailedThreatSituation", "UnitGUID", "UnitGroupRolesAssigned", "UnitInVehicle", "UnitIsDeadOrGhost",
+    "UnitIsFriend", "UnitIsGhost", "UnitIsPlayer", "UnitIsUnit", "UnitOnTaxi", "geterrorhandler",
+    "hash_SlashCmdList", "print", "seterrorhandler", "time", "C_TaxiMap", "C_TaxiMap.GetTaxiNodesForMap",
+    "GetTaxiNodesForMap", "UnitThreatSituation", "C_NamePlate.GetNamePlates",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns
@@ -460,6 +488,163 @@ function Diag.Collect(k, why)
     K.tickFrameNotMade = faults.noTickFrame
     K.meter = k.meter:report()
     return snap
+end
+
+-- Read shapes (sections 185 and 186). Once per login, after the world has
+-- settled, the SHAPE of a few reads is saved, so one login and logout tell
+-- which reads this client answers and how: field names, types and counts
+-- only. No value is kept: no name, place, spell, icon, chat or error text,
+-- and no number. Every read is asked through client.raw (a pcall).
+--
+--   Diag.CONTINENTS          the continent maps asked about (uiMapIDs 1414
+--                            Kalimdor, 1415 Eastern Kingdoms: first guess)
+--   Diag.Form(v, isSecret)   "nil" | "number" | "string" | ... | "secret", or
+--                            for a table { type = "table", count = #v, keys = n,
+--                            fields = { [name] = type }, first = form of v[1] }
+--                            (fields: keys that read as field names, at most
+--                            SHAPE_KEYS; first: at the top level only)
+--   Diag.Reads(client)       -> { taxi, worldPos, aura, auraCount, gcd, form,
+--                            forms, formInfo, current, currentNew, spellInfo,
+--                            secretFn, nameplates }
+--   Diag.SaveReads(k, reads) appends { at, build, reads }; newest KEEP kept
+Diag.CONTINENTS = { 1414, 1415 }
+Diag.FORMS_MAX = 10      -- shapeshift forms asked about at most
+Diag.AURAS_MAX = 40      -- aura rows counted at most
+
+local FIELD = "^[%a_][%w_]*$"
+
+local function form(v, isSecret, depth)
+    local kind = type(v)
+    if kind == "nil" then return "nil" end
+    if isSecret and isSecret(v) then return SECRET end
+    if kind ~= "table" then return kind end
+    local okN, n = pcall(function() return #v end)
+    local out = { type = "table", count = okN and n or nil, keys = 0, fields = {} }
+    local kept = 0
+    for key, value in pairs(v) do
+        out.keys = out.keys + 1
+        if kept < SHAPE_KEYS and type(key) == "string" and key:find(FIELD) then
+            kept = kept + 1
+            if type(value) ~= "nil" and isSecret and isSecret(value) then
+                out.fields[key] = SECRET
+            else
+                out.fields[key] = type(value)
+            end
+        end
+    end
+    if depth == 0 then
+        local okFirst, first = pcall(function() return v[1] end)
+        if okFirst and first ~= nil then out.first = form(first, isSecret, 1) end
+    end
+    return out
+end
+
+function Diag.Form(v, isSecret)
+    return form(v, isSecret, 0)
+end
+
+-- One call's shape: { path, exists = type of the name, ok, n, answers }.
+-- A call that is missing or raises is { path, exists, ok = false }: the
+-- error text is not kept.
+local function callForm(client, isSecret, path, ...)
+    local row = { path = path, exists = client.typeOf(path), ok = false }
+    if row.exists ~= "function" then return row end
+    local function pack(...) return select("#", ...), { ... } end
+    local count, packed = pack(client.raw(path, ...))
+    if packed[1] ~= true then return row end
+    row.ok, row.n, row.answers = true, count - 1, {}
+    for i = 1, count - 1 do row.answers[i] = form(packed[i + 1], isSecret, 0) end
+    return row
+end
+
+-- The first of two names that is a function, or the first name.
+local function either(client, a, b)
+    if client.typeOf(a) == "function" then return a end
+    if client.typeOf(b) == "function" then return b end
+    return a
+end
+
+-- A number answer of a call, or nil (missing, raised, secret, not a number).
+local function number(client, isSecret, path, ...)
+    if client.typeOf(path) ~= "function" then return nil end
+    local ok, v = client.raw(path, ...)
+    if not ok or type(v) ~= "number" or isSecret(v) then return nil end
+    return v
+end
+
+function Diag.Reads(client)
+    local function isSecret(v) return Diag.IsSecret(client, v) end
+    local R = {}
+    -- Each read on its own: one that raises leaves { failed = true }.
+    local function try(key, make)
+        local ok, v = pcall(make)
+        if ok then R[key] = v else R[key] = { failed = true } end
+    end
+    local function ask(path, ...) return callForm(client, isSecret, path, ...) end
+
+    try("taxi", function()
+        local path, out = either(client, "C_TaxiMap.GetTaxiNodesForMap", "GetTaxiNodesForMap"), {}
+        for _, map in ipairs(Diag.CONTINENTS) do out[map] = ask(path, map) end
+        return out
+    end)
+    try("worldPos", function()
+        local path, out = "C_Map.GetWorldPosFromMapPos", {}
+        for _, map in ipairs(Diag.CONTINENTS) do
+            local okVec, vec = false, nil
+            if client.typeOf("CreateVector2D") == "function" then okVec, vec = client.raw("CreateVector2D", 0.5, 0.5) end
+            if okVec and vec ~= nil then
+                out[map] = ask(path, map, vec)
+            else
+                out[map] = { path = path, exists = client.typeOf(path), ok = false, noVector = true }
+            end
+        end
+        return out
+    end)
+    try("aura", function() return ask("C_UnitAuras.GetAuraDataByIndex", "player", 1, "HELPFUL") end)
+    try("auraCount", function()
+        local path = "C_UnitAuras.GetAuraDataByIndex"
+        if client.typeOf(path) ~= "function" then return nil end
+        for i = 1, Diag.AURAS_MAX do
+            local ok, row = client.raw(path, "player", i, "HELPFUL")
+            if not ok or row == nil then return i - 1 end
+        end
+        return Diag.AURAS_MAX
+    end)
+    try("gcd", function() return ask("C_Spell.GetSpellCooldown", 61304) end)
+    try("form", function() return ask("GetShapeshiftForm") end)
+    try("forms", function() return ask("GetNumShapeshiftForms") end)
+    try("formInfo", function()
+        local out = {}
+        local n = number(client, isSecret, "GetNumShapeshiftForms")
+        if n == nil then return out end
+        for i = 1, math.min(math.floor(n), Diag.FORMS_MAX) do out[i] = ask("GetShapeshiftFormInfo", i) end
+        return out
+    end)
+    try("current", function() return ask("IsCurrentSpell", 6603) end)
+    try("currentNew", function() return ask("C_Spell.IsCurrentSpell", 6603) end)
+    try("spellInfo", function() return ask("C_Spell.GetSpellInfo", 6603) end)
+    R.secretFn = client.typeOf("issecretvalue")
+    try("nameplates", function()
+        local path = "C_NamePlate.GetNamePlates"
+        local row = { exists = client.typeOf(path), ok = false }
+        if row.exists ~= "function" then return row end
+        local ok, plates = client.raw(path)
+        if not ok then return row end
+        row.ok = true
+        if type(plates) == "table" and not isSecret(plates) then row.count = #plates end
+        return row
+    end)
+    return R
+end
+
+function Diag.SaveReads(k, reads)
+    local db = k.client.saved(k.id.accountDB)
+    if type(db.diag) ~= "table" then db.diag = {} end
+    local d = db.diag
+    if type(d.reads) ~= "table" then d.reads = {} end
+    d.reads[#d.reads + 1] = { at = k.client.uptime(), build = Diag.BuildKey(k.client), reads = reads }
+    while #d.reads > KEEP do table.remove(d.reads, 1) end
+    return d
 end
 
 -- The member names of the client's namespaces and the bare global names
@@ -859,6 +1044,9 @@ function Diag.Start(k)
             if waited < SETTLE then return end
             if cancel then cancel() end
             snapshot("settled")
+            -- The read shapes: once per login, the world loaded and settled.
+            local ok, err = pcall(function() Diag.SaveReads(k, Diag.Reads(client)) end)
+            if not ok then k.problems:add("diag", "reads", err) end
         end)
     end
 
