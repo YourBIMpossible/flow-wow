@@ -175,7 +175,7 @@ tests["zone first off: the first quest in the log, on another map; on again, bac
     local ok, why = addon.settings:set(ZONE, false)
     t.ok(ok, "setting taken: " .. tostring(why))
     c.advance(1, 4)
-    t.eq(shown(c), { "Wolves", "Wolves slain: 0/4", "1415 yd SE" })
+    t.eq(shown(c), { "Wolves", "Wolves slain: 0/4", N.Flights.NONE, "1415 yd SE" }) -- section 208: the line of section 286
     addon.settings:set(ZONE, true)
     c.advance(1, 4)
     t.eq(shown(c), { "Boars", "Boars slain: 0/4", "100 yd N" })
@@ -194,7 +194,7 @@ tests["zone first off survives a reload"] = function(t)
     addon.settings:set(ZONE, false)
     c.advance(1, 4)
     local c2 = start({ cont = 1, log = { wolves(), boars() }, saved = c.saved(ns.id.accountDB) })
-    t.eq(shown(c2), { "Wolves", "Wolves slain: 0/4", "1415 yd SE" })
+    t.eq(shown(c2), { "Wolves", "Wolves slain: 0/4", N.Flights.NONE, "1415 yd SE" }) -- section 208: the line of section 286
 end
 
 return tests

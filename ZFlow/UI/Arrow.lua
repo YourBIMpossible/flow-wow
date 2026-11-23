@@ -323,6 +323,8 @@ function Arrow.GuideSource(client, layout, guide, intro, palette)
             if intro.title ~= nil then out[1] = tostring(intro.title) end
         elseif type(step.lines) == "table" then
             for i = 1, #step.lines do out[i] = tostring(step.lines[i]) end
+            -- How to get there, or why there is no way (section 286).
+            if step.hint ~= nil then out[#out + 1] = tostring(step.hint) end
             -- The quest's own item in words (S42, Nav/QuestItems.lua): last.
             if step.use ~= nil then out[#out + 1] = tostring(step.use) end
         else
@@ -330,6 +332,8 @@ function Arrow.GuideSource(client, layout, guide, intro, palette)
             if label ~= nil then out[#out + 1] = tostring(label) end
             -- A step may say one more line of its own under its label (S43).
             if step.detail ~= nil then out[#out + 1] = tostring(step.detail) end
+            -- How to get there, or why there is no way (section 286).
+            if step.hint ~= nil then out[#out + 1] = tostring(step.hint) end
             -- The quest's own item in words (S42, Nav/QuestItems.lua).
             if step.use ~= nil then out[#out + 1] = tostring(step.use) end
             if type(d) == "number" then

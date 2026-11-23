@@ -302,16 +302,36 @@ end
 
 -- Section 142: the owner saw the world map button under the quest log
 -- header at the top right of the map window. It must not be asked for
--- against the top of the window again.
-tests["window buttons: the world map button is asked for on the map itself, not at the top of the window"] = function(t)
+-- against the top of the window again. Lead section 293: it then sat under
+-- the quest log "Q" toggle at the bottom right of the map. It now stands
+-- on the toggle itself, just above it and flush with its right edge, as
+-- legacy Flow's map button did (Modules/Nav/MapOverlay.lua:1176-1186);
+-- only when the client has no toggle does it go to the map's corner.
+local ABOVE_TOGGLE = { "BOTTOMRIGHT", "TOPRIGHT", 0, 4 }
+local MAP_CORNER = { "BOTTOMRIGHT", "BOTTOMRIGHT", -44, 4 }
+
+tests["window buttons: the world map button stands just above the quest log toggle, never over it"] = function(t)
     local _, c, api = start({ on = { worldMap = true, merchant = true },
-        windows = { WorldMapFrame = { shown = true }, MerchantFrame = { shown = true } } })
+        windows = { WorldMapFrame = { shown = true, parts = { "SidePanelToggle", "ScrollContainer" } },
+            MerchantFrame = { shown = true } } })
     local map = buttonOn(c, "WorldMapFrame")
     t.ok(map ~= nil, "made")
-    t.eq(map.spec.inside, { "ScrollContainer" }, "against the map, a part of the window")
-    t.ok(not map.spec.point[1]:find("TOP", 1, true), "not at the top, where the quest log header is")
-    t.eq(map.spec.point, { "BOTTOMRIGHT", "BOTTOMRIGHT", -44, 4 })
+    t.eq(map.spec.inside, { "SidePanelToggle" }, "against the toggle, a part of the window")
+    t.eq(map.spec.point, ABOVE_TOGGLE, "its bottom on the toggle's top: above it, not on it")
     t.eq(map.spec.strata, "HIGH")
+    t.eq(map.placedOn, "SidePanelToggle")
+    t.eq(#c.windowButtons, 2, "one button on the map, one on the merchant: no second try left behind")
+    t.eq(api.lines()[1],
+        "button on the world map: shown; window there, open, not protected; button can be seen; placed above the quest log toggle.")
+end
+
+tests["window buttons: with no quest log toggle, the world map button goes to the map's corner"] = function(t)
+    local _, c, api = start({ on = { worldMap = true },
+        windows = { WorldMapFrame = { shown = true, parts = { "ScrollContainer" } }, MerchantFrame = {} } })
+    local map = buttonOn(c, "WorldMapFrame")
+    t.ok(map ~= nil, "made")
+    t.eq(map.spec.inside, { "ScrollContainer" })
+    t.eq(map.spec.point, MAP_CORNER)
     t.eq(map.placedOn, "ScrollContainer")
     t.eq(api.lines()[1],
         "button on the world map: shown; window there, open, not protected; button can be seen; placed on the map itself.")
