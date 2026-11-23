@@ -220,13 +220,60 @@ tests["capture summary: a planted name the player sees is not in the summary"] =
     t.ok(Capture.SummaryText(rows):find("hidden " .. rows[1].hidden, 1, true) ~= nil, "and the count is said")
 end
 
-tests["capture summary: a word that raises is ran no"] = function(t)
+-- MyBuddy CS-2 (lead section 214): this test said only "ran no"; it now
+-- also says the verdict is not a pass.
+tests["capture summary: a word that raises is ran no, and not verified"] = function(t)
     local rows = Capture.Summarize({ slashes = { [ns.id.slash] = function() error("made-up boom") end },
         printed = {}, advance = function() end }, { problems = { list = function() return {} end } },
         { set = {} }, {}, {})
     t.eq(rows[1].ran, false)
-    t.eq(Capture.SummaryText({ rows[1] }):find("ran no", 1, true) ~= nil, true)
+    t.ok(type(rows[1].verdict) == "table" and rows[1].verdict.verified == false, "not verified")
+    t.eq(type(rows[1].verdict) == "table" and rows[1].verdict.result, ns.CaptureEvidence.ERROR,
+        "a word that raised is a Lua problem")
+    t.eq(Capture.SummaryText({ rows[1] }):find("words ran no", 1, true) ~= nil, true)
     t.eq(Capture.SummaryText({ rows[1] }):find("boom", 1, true), nil, "the error text is not in it")
+end
+
+-- MyBuddy CS-1 (lead section 214): RunFeature sets ran = false when a word
+-- raises, but the verdict was judged on the lines alone. Settings is proved
+-- from the saved settings, not from the lines, so a run whose word raised
+-- came out "verified on captured inputs". A raise is now a Lua problem.
+tests["capture summary: a feature whose word raised is never verified, even when its proof holds"] = function(t)
+    local cap = made()
+    cap.account.settings = { items = { priceChart = false } }
+    local c, addon, report = boot(cap)
+    local word = c.slashes[ns.id.slash]
+    c.slashes[ns.id.slash] = function(words)
+        word(words)
+        error("made-up boom")
+    end
+    local features = { { name = "settings", words = { "settings" }, fromRows = true } }
+    local rows = Capture.Summarize(c, addon, report, cap, ns.offline.ownWords(), features)
+    c.slashes[ns.id.slash] = word
+    local check = ns.CaptureEvidence.Judge("settings", { cap = cap, report = report, lines = { "x" },
+        problems = 0, addon = addon })
+    t.eq(check.verified, true, "with no raise the settings proof holds: the test can fail")
+    t.eq(rows[1].ran, false)
+    t.ok(type(rows[1].verdict) == "table" and rows[1].verdict.verified == false, "a raise: not verified")
+    local text = Capture.SummaryText(rows)
+    t.ok(text:find("\nsettings: Lua problem while it ran; not verified", 1, true) ~= nil, text)
+    t.eq(text:find("\nsettings: verified", 1, true), nil)
+end
+
+-- MyBuddy CS-3: one Judge that raises must not stop the whole summary.
+tests["capture summary: a verdict that raises leaves that row with no verdict, and the rest go on"] = function(t)
+    local cap = made()
+    local c, addon, report = boot(cap)
+    local judge = ns.CaptureEvidence.Judge
+    ns.CaptureEvidence.Judge = function() error("made-up boom") end
+    local ok, rows = pcall(Capture.Summarize, c, addon, report, cap, ns.offline.ownWords())
+    ns.CaptureEvidence.Judge = judge
+    t.ok(ok, "the summary did not stop")
+    if not ok then return end
+    t.eq(#rows, #Capture.FEATURES, "every feature has its row")
+    local text = Capture.SummaryText(rows)
+    t.ok(text:find("\nrotation: no verdict; not verified", 1, true) ~= nil, "said not verified")
+    t.eq(text:find("boom", 1, true), nil, "the error text is not in it")
 end
 
 -- Writing it: S3, never over a saved file ------------------------------------------
