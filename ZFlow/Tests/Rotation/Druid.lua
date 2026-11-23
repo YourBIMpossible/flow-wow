@@ -273,13 +273,15 @@ return {
         for _, swing in ipairs({ "Attack", "Auto Attack" }) do
             for _, form in ipairs({ "Cat Form", "Bear Form", "Dire Bear Form" }) do
                 local function animal(over)
-                    local s = snap("dps", form, "Feral", { swing }, over)
+                    -- Lead section 348: one Attack row, cast as Attack, reads either name.
+                    local s = snap("dps", form, "Feral", { "Attack" }, over)
                     s.inCombat, s.current = true, { [swing] = false }
+                    s.attacking = nil   -- the swing read not made: the names decide
                     local got = ns.Choose(s, ns.Packs.DRUID)
                     return got and got.spell or nil
                 end
                 local what = swing .. " in " .. form
-                t.eq(animal({ stealthed = false }), swing, what .. ": read, not stealthed")
+                t.eq(animal({ stealthed = false }), "Attack", what .. ": read, not stealthed")
                 t.eq(animal({}), nil, what .. ": not read, no swing")
                 t.eq(animal({ stealthed = true }), nil, what .. ": stealthed, no swing")
             end
@@ -299,11 +301,10 @@ return {
         t.eq(when(list, "Prowl", pull(false)), true, "Prowl: read, not stealthed")
         t.eq(when(list, "Prowl", pull(nil)), false, "Prowl: not read")
         t.eq(when(list, "Prowl", pull(true)), false, "Prowl: stealthed")
-        for _, swing in ipairs({ "Attack", "Auto Attack" }) do
-            t.eq(when(list, swing, pull(false)), true, swing .. ": read, not stealthed")
-            t.eq(when(list, swing, pull(nil)), false, swing .. ": not read")
-            t.eq(when(list, swing, pull(true)), false, swing .. ": stealthed")
-        end
+        -- Lead section 348: the one Attack row.
+        t.eq(when(list, "Attack", pull(false)), true, "Attack: read, not stealthed")
+        t.eq(when(list, "Attack", pull(nil)), false, "Attack: not read")
+        t.eq(when(list, "Attack", pull(true)), false, "Attack: stealthed")
     end,
 
     ["caster list: buffs out of a fight, then moonfire, then wrath"] = function(t)
@@ -388,13 +389,14 @@ return {
         local list = ns.Packs.DRUID.lists.default
         for _, swing in ipairs({ "Attack", "Auto Attack" }) do
             local s = { dead = false, inCombat = true, hostile = true, form = "Cat Form", stealthed = false }
-            t.eq(anyWhen(list, swing, s), false, swing .. ": current not read")
+            -- Lead section 348: one Attack row reads either name.
+            t.eq(anyWhen(list, "Attack", s), false, swing .. ": current not read")
             s.current = {}
-            t.eq(anyWhen(list, swing, s), false, swing .. ": left out of current, not known")
+            t.eq(anyWhen(list, "Attack", s), false, swing .. ": left out of current, not known")
             s.current = { [swing] = true }
-            t.eq(anyWhen(list, swing, s), false, swing .. ": read, already on")
+            t.eq(anyWhen(list, "Attack", s), false, swing .. ": read, already on")
             s.current = { [swing] = false }
-            t.eq(anyWhen(list, swing, s), true, swing .. ": read, off")
+            t.eq(anyWhen(list, "Attack", s), true, swing .. ": read, off")
         end
         local bear = { dead = false, inCombat = true, hostile = true, form = "Bear Form" }
         t.eq(anyWhen(list, "Maul", bear), false, "Maul: current not read")
@@ -407,9 +409,9 @@ return {
         for _, swing in ipairs({ "Attack", "Auto Attack" }) do
             local s = { dead = false, inCombat = true, hostile = true, formKnown = true,
                         spells = { Wrath = { known = true, noPower = true } } }
-            t.eq(anyWhen(list, swing, s), false, swing .. " for a caster out of mana: current not read")
+            t.eq(anyWhen(list, "Attack", s), false, swing .. " for a caster out of mana: current not read")
             s.current = { [swing] = false }
-            t.eq(anyWhen(list, swing, s), true, swing .. " for a caster out of mana: read, off")
+            t.eq(anyWhen(list, "Attack", s), true, swing .. " for a caster out of mana: read, off")
         end
     end,
 
