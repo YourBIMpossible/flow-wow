@@ -570,21 +570,24 @@ return {
     end,
 
     ["not attacking yet: start the attack first"] = function(t)
-        t.eq(advice({ current = { Attack = false } }, { "Attack", "Judgement" }), "Attack", "Attack")
-        t.eq(advice({ current = { ["Auto Attack"] = false } }, { "Auto Attack", "Judgement" }),
-             "Auto Attack", "Auto Attack")
+        -- Lead section 348: the swing read (attacking) decides first.
+        t.eq(advice({ attacking = false, current = { Attack = false } }, { "Attack", "Judgement" }), "Attack", "Attack")
+        -- Lead section 348: the one Attack row reads Auto Attack too.
+        t.eq(advice({ attacking = false, current = { ["Auto Attack"] = false } }, { "Attack", "Judgement" }),
+             "Attack", "Auto Attack read as off")
     end,
 
     -- Section 183: a map not read stays nil and a rule that needs it does not fire.
     ["attack state not read: Attack is not suggested"] = function(t)
         t.eq(advice({ current = {} }, { "Attack", "Judgement" }), "Judgement", "no answer for Attack: not off")
         t.ok(not fires("Attack", snap({ current = false })), "current not read")
-        t.ok(not fires("Auto Attack", snap({ current = false })), "current not read")
+        t.ok(not fires("Attack", snap({ current = { ["Auto Attack"] = true } })), "Auto Attack read as on")
         local s = snap()
         s.current = nil
         t.ok(not fires("Attack", s), "current nil: Attack does not fire")
-        t.ok(not fires("Auto Attack", s), "current nil: Auto Attack does not fire")
-        t.ok(fires("Attack", snap({ current = { Attack = false } })), "read as off: it fires")
+        t.eq(#(function() local n = {} for _, r in ipairs(ns.Packs.PALADIN.lists.default) do if r.spell == "Auto Attack" then n[#n + 1] = r end end return n end)(), 0,
+            "no Auto Attack row (lead section 348)")
+        t.ok(fires("Attack", snap({ attacking = false, current = { Attack = false } })), "read as off: it fires")
         t.ok(not fires("Attack", snap({ current = { Attack = true } })), "read as on: it does not")
         t.ok(not fires("Attack", snap({ hostile = false, current = { Attack = false } })), "no enemy: it does not")
     end,

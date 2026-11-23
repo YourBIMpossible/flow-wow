@@ -130,7 +130,10 @@ return {
         local plain = said(c, "help")
         t.ok(#plain > 1, "help listed nothing")
         t.eq(said(c, "  HELP  "), plain)
-        t.eq(said(c, "Help me"), plain)
+        -- Lead section 362: rewritten. A text after help that is no command
+        -- was answered with page 1; it is now searched for
+        -- (Tests/Core/DiagHelpSearchTests.lua).
+        t.eq(said(c, "Help 1"), plain)
         local snaps = c.saved(ns.id.accountDB).diag.count
         said(c, "help")
         t.eq(c.saved(ns.id.accountDB).diag.count, snaps, "help took a snapshot")

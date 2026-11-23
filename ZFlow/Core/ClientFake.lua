@@ -3128,6 +3128,26 @@ function ns.make.fakeClient(opts)
         if not ok or type(text) ~= "string" then return nil end
         return text
     end
+    -- Lead section 340: hoverTip also takes a named icon (c.icon with
+    -- spec.name), as the real client takes any named frame: the rotation
+    -- icon's tooltip.
+    local iconNames = {}
+    local namedIcon = c.icon
+    function c.icon(spec)
+        local h = namedIcon(spec)
+        if type(h) == "table" and type(spec) == "table" and type(spec.name) == "string" then
+            iconNames[spec.name] = true
+        end
+        return h
+    end
+    local rowTip = c.hoverTip
+    function c.hoverTip(spec)
+        if type(spec) == "table" and type(spec.text) == "function" and iconNames[spec.frame] then
+            c.hoverTips[spec.frame] = spec
+            return true
+        end
+        return rowTip(spec)
+    end
 
 
 
@@ -4327,6 +4347,21 @@ function ns.make.fakeClient(opts)
         function c.setAddonRefuse(why) addonRefusal = why end
         function c.setAddonName(name) me = tostring(name) end
     end
+    -- P-EVIDENCE+: the raw tracking list (c.trackingRaw) and the profession
+    -- window's raw answers (c.tradeSkillAnswers), each a copy of what was
+    -- set, in the real read's shape; nil when none is set (no such read).
+    --   c.setTrackingRaw({ count = n, entries = { { form, kind, name, hasActive, active, ... } } })
+    --   c.setTradeSkillAnswers({ open, rows, headers, expanded, collapsed, unknown, subClass, invSlot })
+    local function evidenceCopy(v)
+        if type(v) ~= "table" then return v end
+        local out = {}
+        for key, value in pairs(v) do out[key] = evidenceCopy(value) end
+        return out
+    end
+    function c.setTrackingRaw(r) s.evidenceTracking = evidenceCopy(r) end
+    function c.trackingRaw() return evidenceCopy(s.evidenceTracking) end
+    function c.setTradeSkillAnswers(r) s.evidenceTradeAnswers = evidenceCopy(r) end
+    function c.tradeSkillAnswers() return evidenceCopy(s.evidenceTradeAnswers) end
     return c
 end
 

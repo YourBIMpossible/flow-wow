@@ -32,6 +32,7 @@ return {
         "Core/Sound.lua",
         "UI/MoveGuides.lua",
         "Core/Facts.lua",
+        "Core/InviteAdvice.lua",
         "UI/Export.lua",
         "Items/PriceChart.lua",
         "Items/HaveTip.lua",
@@ -266,5 +267,7 @@ return {
     "UI/Chat.lua",
     -- G48 (P-TRIP): the party route over add-on messages (after TripRoute).
     "Nav/PartyRoute.lua",
+    -- P-EVIDENCE+ (sections 252, 262): look-only capture fields saved under diag (after Diag).
+    "Core/AutoEvidence.lua",
     },
 }
