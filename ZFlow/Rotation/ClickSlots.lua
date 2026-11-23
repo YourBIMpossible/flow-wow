@@ -218,11 +218,14 @@ function S.Declare(k, diag)
     local api = {}
     local kf, client, row
     local noFrame, failSaid, saveSaid = false, false, false
+    -- SC-2: the last try to make the row gave nothing (tried again on the
+    -- next ensure once the lock is a plain false); the problem said once.
+    local rowMissed, rowSaid = false, false
     local wantedPlan, iconSig = nil, nil
 
     function api.status()
         if kf then return kf:status() end
-        if noFrame then return { state = "noFrame", failed = {}, parts = 0 } end
+        if noFrame or rowMissed then return { state = "noFrame", failed = {}, parts = 0 } end
         return nil
     end
 
@@ -284,13 +287,22 @@ function S.Declare(k, diag)
             noFrame = true
             return nil
         end
+        -- SC-2: a row is asked for only while the lock is a plain false; one
+        -- that is not made (a lock race included) is asked for again on the
+        -- next ensure, not given up for the session.
+        local okLock, lock = pcall(client.combatLockdown)
+        if not okLock or lock ~= false then return nil end
         local name = ns.id.framePrefix .. S.FRAME
         local ok, made = pcall(client.clickRow, { name = name, count = #S.SLOTS, size = S.SIZE, gap = S.GAP })
         if not ok or type(made) ~= "table" or type(made.set) ~= "function" then
-            noFrame = true
-            k.problems:add(S.NAME, "frame", "the client made no secure buttons; " .. SUBJECT .. " are not set")
+            rowMissed = true
+            if not rowSaid then
+                rowSaid = true
+                k.problems:add(S.NAME, "frame", "the client made no secure buttons; " .. SUBJECT .. " are not set")
+            end
             return nil
         end
+        rowMissed = false
         row = made
         local saved = k.settings:get(S.LAYOUT)
         local savedPoint = nil
