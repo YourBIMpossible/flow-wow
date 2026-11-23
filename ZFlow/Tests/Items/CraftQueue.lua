@@ -6,7 +6,7 @@ local Q = ns.CraftQueue
 
 local tests = {}
 
-local COPPER, TIN, BRONZE = 2840, 3576, 2841
+local COPPER, TIN = 2840, 3576
 local ORE_COPPER, ORE_TIN = 2770, 2771
 
 -- over: reads to change; unset: the name of one read not known (nil),

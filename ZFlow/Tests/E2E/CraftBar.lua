@@ -201,6 +201,20 @@ tests["craft bar: stops on combat, and does not start in it"] = function(t)
     t.eq(#c.crafts, 1, "a click in combat crafts nothing")
 end
 
+tests["craft bar: combat starting stops it at once, before the craft finishes"] = function(t)
+    local c, addon = start()
+    local bar = barOf(c)
+    if not bar then t.ok(false, "no craft bar") return end
+    tick(bar, { [COPPER_BAR] = 3 })
+    t.eq(addon.craftBar.running(), true)
+    c.setCombat(true)
+    c.fire("PLAYER_REGEN_DISABLED")
+    stopsWith(t, c, addon, bar, "in combat")
+    c.setCombat(false)
+    done(c, COPPER_BAR)
+    t.eq(#c.crafts, 1, "a finish after the stop starts nothing")
+end
+
 tests["craft bar: stops when the recipe cannot be made here"] = function(t)
     local c, addon = start()
     local bar = barOf(c)
@@ -232,6 +246,18 @@ tests["craft bar: stops when a craft is interrupted"] = function(t)
     done(c, COPPER_BAR)
     t.eq(#c.crafts, 1)
     stopsWith(t, c, addon, bar, "the craft was interrupted")
+end
+
+tests["craft bar: an interrupt of another spell, or of another unit, does not stop it"] = function(t)
+    local c, addon = start()
+    local bar = barOf(c)
+    if not bar then t.ok(false, "no craft bar") return end
+    tick(bar, { [COPPER_BAR] = 2 })
+    c.fire("UNIT_SPELLCAST_INTERRUPTED", "player", "Cast-guid", COPPER_BAR + 1)
+    c.fire("UNIT_SPELLCAST_INTERRUPTED", "target", "Cast-guid", COPPER_BAR)
+    t.eq(addon.craftBar.running(), true, "still running")
+    done(c, COPPER_BAR)
+    t.eq(crafted(c), { COPPER_BAR, COPPER_BAR }, "the next craft still starts")
 end
 
 tests["craft bar: stops when no craft starts"] = function(t)
