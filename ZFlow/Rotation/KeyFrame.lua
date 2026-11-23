@@ -228,7 +228,7 @@ local function holds(held)
     local key = held.spell or held.macrotext
     if key then out[#out + 1] = "key: " .. tostring(key) end
     for _, slot in ipairs(C.MODIFIERS) do
-        local spell = held["*spell-" .. slot]
+        local spell = held["*spell-" .. slot] or held["*macrotext-" .. slot]
         if spell then out[#out + 1] = slot .. ": " .. tostring(spell) end
     end
     return table.concat(out, "; ")

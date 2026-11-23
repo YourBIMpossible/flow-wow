@@ -20,6 +20,8 @@ for _, slot in ipairs({ "ctrl", "shift", "alt", "more" }) do
     ALLOWED["*spell-" .. slot] = true
     ALLOWED["*unit-" .. slot] = true
 end
+-- N8 (lead section 238): the healing item on Alt.
+ALLOWED["*macrotext-alt"] = true
 
 local function plan(key, ctrl)
     return ns.KeyPlan({ keys = { none = { key = key or "Wrath", ctrl = ctrl or "Moonfire" } } }, {})

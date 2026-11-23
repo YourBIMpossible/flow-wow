@@ -2317,7 +2317,8 @@ function ns.make.client(env)
     -- test.
 
     -- One item's facts, or nil when the client says nothing about it:
-    --   { name =, quality =, sellPrice =, classID =, subclassID = }
+    --   { name =, quality =, sellPrice =, classID =, subclassID =, level =,
+    --     minLevel = } (level, minLevel: N8, as Flow ranks healing items)
     -- item: a link or an item ID. GetItemInfo (C_Item.GetItemInfo where the
     -- client has it): name 1st, quality 3rd, sell price 11th, class 12th,
     -- subclass 13th. An item the client has not loaded yet has no name,
@@ -2329,10 +2330,12 @@ function ns.make.client(env)
         local group = env.C_Item
         local fn = env.GetItemInfo
         if type(group) == "table" and type(group.GetItemInfo) == "function" then fn = group.GetItemInfo end
-        local ok, name, _, quality, _, _, _, _, _, _, _, price, class, subclass = call(fn, item)
+        local ok, name, _, quality, level, minLevel, _, _, _, _, price, class, subclass = call(fn, item)
         local out = {}
         out.name = text(ok, name)
         out.quality = whole(ok, quality)
+        out.level = whole(ok, level)
+        out.minLevel = whole(ok, minLevel)
         out.sellPrice = whole(ok, price)
         out.classID = whole(ok, class)
         out.subclassID = whole(ok, subclass)
@@ -3732,6 +3735,27 @@ function ns.make.client(env)
         return left
     end
 
+    -- N8 (lead section 238): c.itemCooldown(id) -> seconds until the item
+    -- is ready, 0 when ready, nil when not known. The same read as
+    -- c.hearthCooldown, for any item id (a whole number above 0). A first
+    -- guess, not seen in game. It never uses the item.
+    function c.itemCooldown(id)
+        if type(id) ~= "number" or id <= 0 or id % 1 ~= 0 then return nil end
+        local bags = type(env.C_Container) == "table" and env.C_Container or {}
+        local ok, start, duration = call(bags.GetItemCooldown, id)
+        if not ok then ok, start, duration = call(env.GetItemCooldown, id) end
+        if not ok or start == nil or duration == nil or hidden(start) or hidden(duration) then return nil end
+        if type(start) ~= "number" or type(duration) ~= "number" then return nil end
+        if start ~= start or duration ~= duration or start < 0 or duration < 0 then return nil end
+        if start == 0 or duration == 0 then return 0 end
+        local okT, now = call(env.GetTime)
+        if not okT or now == nil or hidden(now) or type(now) ~= "number" then return nil end
+        local left = start + duration - now
+        if left ~= left or left == math.huge then return nil end
+        if left < 0 then return 0 end
+        return left
+    end
+
     ---------------------------------------------------------------------
     -- F7, the fight log and death report: its reads, kept together. All
     -- first guesses: not seen in game on 16001.
@@ -4786,6 +4810,22 @@ function ns.make.client(env)
         local class, subclass = itemType(id)
         if class == nil or subclass == nil then return nil end
         return class == 2 and subclass == 20
+    end
+
+    -- N8 (lead section 238): the game's low-health warning, as Flow reads it
+    -- (Modules/Rotation/BuffItems.lua): LowHealthFrame shown, and not faded
+    -- out (alpha above 0.05; an alpha not read counts as shown). True,
+    -- false, or nil when not known (no frame, a failed or secret answer).
+    -- A first guess, not seen in game. It only reads.
+    function c.lowHealth()
+        local f = env.LowHealthFrame
+        if type(f) ~= "table" then return nil end
+        local ok, shown = call(f.IsShown, f)
+        if not ok or shown == nil or hidden(shown) then return nil end
+        if not shown then return false end
+        local okA, a = call(f.GetAlpha, f)
+        if not okA or a == nil or hidden(a) or type(a) ~= "number" then return true end
+        return a > 0.05
     end
 
     -- S42 quest item on the quest arrow (LEDGER 169/172;

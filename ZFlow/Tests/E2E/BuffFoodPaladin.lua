@@ -7,10 +7,9 @@ local _, ns = ...
 -- and in parts, a reload (the food setting read back), and a read that fails
 -- then recovers. Made-up items and tooltip lines; not tested in game.
 --
--- What the fake client cannot express: GET_ITEM_INFO_RECEIVED, the event the
--- game sends when item data arrives. The fake has no item-data event; the
--- late data here is read on the next tick (the driver does not keep an
--- answer read in part), not on that event.
+-- Late data: the fake fires GET_ITEM_INFO_RECEIVED as the game does when
+-- item data arrives (lead section 238); the driver drops what it kept on
+-- that event, and an answer read in part was not kept anyway.
 local tests = {}
 
 local D = ns.RotationDriver
@@ -116,6 +115,7 @@ tests["paladin food: item data arriving late and in parts"] = function(t)
     -- The rest arrives with no bag change.
     c.setItemInfo(INFO)
     for id, lines in pairs(LINES) do c.setItemLines(id, lines) end
+    c.fire("GET_ITEM_INFO_RECEIVED")
     c.advance(1, 5)
     t.eq(icon.texture, "tex:Strength Stew", "the late food is read: the better one")
 end

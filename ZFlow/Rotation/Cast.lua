@@ -6,7 +6,9 @@ local _, ns = ...
 --
 --   ns.cast.Apply(plan, applied, lockdown) -> result
 --
--- plan      what ns.KeyPlan returned: { states, condition, stealthForm }
+-- plan      what ns.KeyPlan returned: { states, condition, stealthForm },
+--           plus altItem (N8): an item id the Alt slot uses instead of its
+--           spell, or nil
 -- applied   the plan in place now (the `plan` field of the last result that
 --           was carried out), or nil when nothing is bound yet
 -- lockdown  true while the game refuses binding changes (in combat), false
@@ -85,6 +87,7 @@ local function copyPlan(p)
         states = states,
         condition = type(p.condition) == "string" and p.condition or "0",
         stealthForm = type(p.stealthForm) == "number" and p.stealthForm or nil,
+        altItem = (type(p.altItem) == "number" and p.altItem > 0 and p.altItem % 1 == 0) and p.altItem or nil,
     }
 end
 
@@ -117,7 +120,7 @@ function C.Apply(plan, applied, lockdown)
         ok = true,
         ops = ops,
         counts = counts,
-        changed = (counts.set + counts.clear > 0 or conditionChanged) and true or false,
+        changed = (counts.set + counts.clear > 0 or conditionChanged or new.altItem ~= old.altItem) and true or false,
         condition = new.condition,
         conditionChanged = conditionChanged,
         stealthForm = new.stealthForm,
@@ -225,12 +228,23 @@ function C.Attributes(suggestion, plan, applied, lockdown, form)
     row(button, "spell", kind == "spell" and spell or nil)
     row(button, "unit", unit)
     row(button, "macrotext", macro)
+    -- N8: with plan.altItem the Alt slot uses that item ("/use item:ID")
+    -- instead of its spell.
+    local altItem = apply.plan.altItem
     for _, slot in ipairs(C.MODIFIERS) do
-        local v = slotOf(states, form, slot)
-        row(button, "*type-" .. slot, v and "spell" or nil)
-        row(button, "*spell-" .. slot, v)
-        row(button, "*unit-" .. slot, v and "target" or nil)
+        if slot == "alt" and altItem then
+            row(button, "*type-alt", "macro")
+            row(button, "*spell-alt", nil)
+            row(button, "*unit-alt", nil)
+        else
+            local v = slotOf(states, form, slot)
+            row(button, "*type-" .. slot, v and "spell" or nil)
+            row(button, "*spell-" .. slot, v)
+            row(button, "*unit-" .. slot, v and "target" or nil)
+        end
     end
+    -- N8: last, so the rows above keep their places.
+    row(button, "*macrotext-alt", altItem and ("/use item:" .. altItem) or nil)
 
     local header = {}
     for state = 0, lastState() do
