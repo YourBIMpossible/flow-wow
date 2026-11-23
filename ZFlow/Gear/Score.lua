@@ -179,6 +179,8 @@ local function best(score, equipped, slots, weights)
         if against == nil then return none(why) end
         if found == nil or score - against > found.delta then
             found = answer(score, against, slots[i])
+            -- GT2-1: held up to a slot known to be empty, not to a 0 score.
+            found.empty = equipped[slots[i]] == false
         end
     end
     return found
@@ -201,6 +203,7 @@ function S.Compare(candidate, equipped, weights, can)
         if off == nil then return none(whyOff) end
         local result = answer(score, main + off, "mainHand")
         result.pair = true
+        result.empty = equipped.mainHand == false and equipped.offHand == false
         return result
     end
 

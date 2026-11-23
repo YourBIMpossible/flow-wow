@@ -197,10 +197,20 @@ function RM.Declare(k, packs)
         provides = { Marked = api.marked, Errors = api.errors },
         start = function(c)
             ctx = c
+            -- The repeat starts once 2 or more choices are read (LF-1): a
+            -- count read late, on an item's data arriving, starts it too.
+            local function repeatIfMany()
+                if open and not tick and not fewChoices() then tick = c.sched:every(RM.NAME, RM.TICK, update) end
+            end
             c.bus:on(RM.NAME, "QUEST_COMPLETE", function()
                 open = true
                 update()
-                if not tick and not fewChoices() then tick = c.sched:every(RM.NAME, RM.TICK, update) end
+                repeatIfMany()
+            end)
+            c.bus:on(RM.NAME, "GET_ITEM_INFO_RECEIVED", function()
+                if not open or tick then return end
+                update()
+                repeatIfMany()
             end)
             c.bus:on(RM.NAME, "QUEST_FINISHED", close)
         end,
