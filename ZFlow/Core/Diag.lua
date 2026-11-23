@@ -1682,7 +1682,8 @@ function Diag.Start(k)
                 .. id.slash .. " import to see what an import would do.")
         end
     end)
-    return { timing = timing, snapshot = snapshot, commands = commands, help = help }
+    -- mark: other modules add a timing mark of their own (once per name).
+    return { timing = timing, snapshot = snapshot, commands = commands, help = help, mark = mark }
 end
 
 -- The addon's own kernel collects from the moment this file loads.

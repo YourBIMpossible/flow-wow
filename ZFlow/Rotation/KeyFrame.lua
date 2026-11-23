@@ -71,6 +71,8 @@ K.TEMPLATE = "SecureActionButtonTemplate"
 K.LABEL = "Keep the rotation on one button"
 K.HELP = "show what your rotation button holds; keys apply tries again what could not be set"
 K.SLOT_ORDER = { "key", "ctrl", "shift", "alt", "more" }
+-- SE6-1: the diag timing mark for a fight that started with the lock on.
+K.FIGHT_START_WAITED = "KEYS_FIGHT_START_WAITED"
 
 local SUBJECT = "your rotation button"
 
@@ -256,13 +258,14 @@ function K.New(opts)
     -- the swing off (first guess, not seen in game), so the wanted plan
     -- loses it now. Written only while the lock is a plain false (kf:try
     -- asks before every set); PLAYER_REGEN_DISABLED handled before the lock
-    -- is on is a first guess: with the lock already on it waits.
+    -- is on is a first guess: with the lock already on it waits. The second
+    -- return is true when Attack was taken off the wanted plan (SE6-1).
     function kf:fightStarts()
-        if not has or type(wanted) ~= "table" or type(wanted.action) ~= "table" then return kf:status() end
-        if not C.ATTACK[wanted.action.spell] then return kf:status() end
+        if not has or type(wanted) ~= "table" or type(wanted.action) ~= "table" then return kf:status(), false end
+        if not C.ATTACK[wanted.action.spell] then return kf:status(), false end
         local plan = copy(wanted)
         plan.action = nil
-        return kf:want(plan)
+        return kf:want(plan), true
     end
 
     return kf
@@ -423,8 +426,16 @@ function K.Declare(k, diag)
                 if kf then after(kf:try(true)) end
             end)
             -- SE-1: Attack off the key as the fight starts (kf:fightStarts).
+            -- SE6-1: the lock was already on, so Attack stays on the key
+            -- this fight; a diag timing mark says so.
             client.listen("PLAYER_REGEN_DISABLED", function()
-                if kf then after(kf:fightStarts()) end
+                if not kf then return end
+                local st, removing = kf:fightStarts()
+                if removing == true and type(st) == "table" and st.state == "waiting"
+                    and diag and type(diag.mark) == "function" then
+                    diag.mark(K.FIGHT_START_WAITED)
+                end
+                after(st)
             end)
             client.listen("UPDATE_SHAPESHIFT_FORM", function()
                 if kf then after(kf:reform()) end
