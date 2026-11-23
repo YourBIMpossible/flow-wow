@@ -197,6 +197,10 @@ tests["sell reservations: look only - no acting call from any path, stubbed befo
     }
     for _, name in ipairs(ACTING_GAME) do env[name] = record(name) end
     local function prepare(c)
+        -- MyBuddy ST-8: a client function that names an act but is not in
+        -- ACTING_CLIENT (as if ClientFake gained one later). It must be
+        -- counted too; the check after the run calls it to prove that.
+        c.zzSellAllJunk = function() end
         for _, name in ipairs(ACTING_CLIENT) do c[name] = record("client." .. name) end
         setmetatable(c, { __index = function(_, name)
             if type(name) ~= "string" then return nil end
@@ -227,6 +231,10 @@ tests["sell reservations: look only - no acting call from any path, stubbed befo
     c.setMerchantOpen(false)
     t.eq(called, {}, "no acting call")
     t.eq(looked, {}, "no acting name looked up on the client")
+    -- ST-8: the client function that names an act and is in no list is
+    -- counted when called, so a later one on ClientFake cannot act unseen.
+    c.zzSellAllJunk()
+    t.eq(called, { "client.zzSellAllJunk" }, "an acting-named client function outside the list is counted")
 end
 
 -- Lead section 213: a list asked for away from a merchant is never made, so
