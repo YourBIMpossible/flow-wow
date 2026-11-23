@@ -160,6 +160,9 @@ case("ZFlow capture: no made-up real name left in either file; the shapes kept",
     t.ok(snap.shapes.fullName.values.v2 == "Realm1", "fullName v2")
     t.ok(snap.reads.money == 987654, "a number kept")
     t.ok(snap.shapes.build.values.v1 == "1.16.1", "game text kept")
+    local seen = a.ZFlowDB.learned.prices.vendor[2770] or {}
+    t.ok(seen.seenAt == 1700000123 and seen.per == 5 and seen.value == 5,
+        "a vendor price as Prices.Record writes it, seenAt and per kept")
     t.ok(a.ZFlowDB.learned.prices.auction["Realm1-Alliance"] ~= nil, "auction key: realm replaced, faction kept")
     t.ok(a.ZFlowDB.learned.prices.auctionHistory["Realm2-Horde"] ~= nil, "a realm with a hyphen in it")
     t.ok(made(snap.timing.errors[1].text), "error text: " .. tostring(snap.timing.errors[1].text))

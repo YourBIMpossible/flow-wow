@@ -94,7 +94,10 @@ local DIAG = fields({
     snaps = list(SNAP),
 })
 
-local PRICE = fields({ value = "num", basis = "str", source = "str" })
+-- A price book entry as Items/Prices.lua Prices.Record writes it: the
+-- copper, how it is known, where from, when seen (a time) and how many it
+-- was for (a stack size). Section 197: White's capture held seenAt and per.
+local PRICE = fields({ value = "num", basis = "str", source = "str", seenAt = "num", per = "num" })
 local HISTORY = fields({ h = list("num") })
 
 local IMPORT = fields({
