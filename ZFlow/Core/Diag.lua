@@ -47,6 +47,9 @@ Diag.NAMES = {
     "C_AddOns.IsAddOnLoaded", "IsAddOnLoaded", "C_AddOns.GetAddOnEnableState", "InCombatLockdown",
     "GetMoney", "NUM_BAG_SLOTS", "NUM_TOTAL_EQUIPPED_BAG_SLOTS", "NUM_BANKBAGSLOTS", "BANK_CONTAINER",
     "REAGENTBANK_CONTAINER", "Enum.BagIndex", "BankFrame",
+    -- N59: the info bar reads, and the data broker library where it is loaded.
+    "UnitXP", "UnitXPMax", "GetXPExhaustion", "GetWatchedFactionInfo", "C_Reputation.GetWatchedFactionData",
+    "FACTION_STANDING_LABEL1", "GetGameTime", "GetFramerate", "GetNetStats", "LibStub",
     "C_Container.GetContainerNumSlots", "GetContainerNumSlots",
     "C_Container.GetContainerNumFreeSlots", "GetContainerNumFreeSlots",
     "C_Container.GetContainerItemInfo", "GetContainerItemInfo",
@@ -180,6 +183,11 @@ Diag.NAMES = {
     "MacroPopupFrame", "MacroPopupFrame.IconSelector", "IconSelectorPopupFrameTemplateMixin",
     "IconDataProviderMixin", "GetMacroIcons", "GetMacroItemIcons", "GetSpellBookItemTexture",
     "GetItemIcon", "C_Item.GetItemIconByID",
+    -- P-READS (lead section 260 item 1): the shared reads in Core/Client.lua
+    -- (channel, weaponEnchant, totems, enemiesNear, plateCasts, creatureType,
+    -- pet hurt); first guesses, so a capture says which exist.
+    "CheckInteractDistance", "GetTotemInfo", "UnitHealthPercent", "UnitCreatureType",
+    "C_Item.GetWeaponEnchantInfo",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns
@@ -399,6 +407,15 @@ function Diag.Collect(k, why)
     S.freeSlots0Old = ask(client, "GetContainerNumFreeSlots", 0)
     S.bindingSet = ask(client, "GetCurrentBindingSet")
     S.selfEnabled = ask(client, "C_AddOns.GetAddOnEnableState", k.id.addon)
+    -- N59: what the info bar reads.
+    S.xp = ask(client, "UnitXP", "player")
+    S.xpMax = ask(client, "UnitXPMax", "player")
+    S.xpRested = ask(client, "GetXPExhaustion")
+    S.watchedFaction = ask(client, "GetWatchedFactionInfo")
+    S.watchedFactionNew = ask(client, "C_Reputation.GetWatchedFactionData")
+    S.gameTime = ask(client, "GetGameTime")
+    S.framerate = ask(client, "GetFramerate")
+    S.netStats = ask(client, "GetNetStats")
 
     local bag, slot = firstItem(client)
     if bag then

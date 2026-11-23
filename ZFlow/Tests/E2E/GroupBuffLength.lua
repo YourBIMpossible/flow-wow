@@ -85,4 +85,31 @@ tests["group e2e N64: a buff you did not cast teaches nothing"] = function(t)
     t.eq(picked(addon), nil, "they have it: nothing suggested")
 end
 
+-- Lead section 263 READS-2 item 4: client.buffLength, the whole length the
+-- client gives (the fake: the row field length), over the time-left path.
+tests["group e2e N64: the client buff length is taken, even read long after your cast"] = function(t)
+    local c, addon = start()
+    cast(c, "n64-4")
+    c.advance(30, 10)
+    c.setUnitBuffs("party1", { { name = THORNS, left = 470 }, { name = MOTW, left = 3000, length = 3600 } })
+    c.advance(2, 10)
+    t.eq(addon.PartyGroup.Learned()[MOTW], 3600, "the client length, past the window")
+    t.eq(addon.PartyGroup.Length({ spell = MOTW, minutes = 30 }), 3600, "the client length over the guess")
+end
+
+tests["group e2e N64: the client buff length over a time left read just after your cast"] = function(t)
+    local c, addon = start()
+    cast(c, "n64-5")
+    c.setUnitBuffs("party1", { { name = THORNS, left = 490 }, { name = MOTW, left = 3598, length = 3600 } })
+    c.advance(2, 10)
+    t.eq(addon.PartyGroup.Learned()[MOTW], 3600, "the client length, not the time left plus the seconds since")
+end
+
+tests["group e2e N64: a client buff length on a buff you did not cast teaches nothing"] = function(t)
+    local c, addon = start()
+    c.setUnitBuffs("party1", { { name = THORNS, left = 500 }, { name = MOTW, left = 3598, length = 3600 } })
+    c.advance(5, 10)
+    t.eq(addon.PartyGroup.Learned()[MOTW], nil, "no cast of yours: nothing learned")
+end
+
 return tests

@@ -136,7 +136,7 @@ end
 -- What you remember of this member and spell, over what the read gave:
 -- refused a moment ago (up); else, their buffs not known, your own cast's
 -- time left. A read "missing" stays missing unless the game refused it.
-local function remembered(row, rule, now, name)
+local function remembered(row, rule, now, name, length)
     if type(name) ~= "string" or type(now) ~= "number" then return end
     local refusedAt = noted(bounced, name, rule.spell)
     if type(refusedAt) == "number" and now - refusedAt < G.BOUNCE then
@@ -145,8 +145,12 @@ local function remembered(row, rule, now, name)
     end
     local castAt = noted(memory, name, rule.spell)
     local seen = row.has[rule.spell]
-    -- N64: the time left read just after your cast landed gives its length.
-    if type(castAt) == "number" and type(seen) == "number" and seen == seen and seen < math.huge
+    -- N64 (lead section 263 READS-2): the whole length the client gives
+    -- (client.buffLength) for a buff of yours on them; else the time left
+    -- read just after your cast landed gives its length.
+    if type(castAt) == "number" and now >= castAt and type(length) == "number" then
+        learned[rule.spell] = length
+    elseif type(castAt) == "number" and type(seen) == "number" and seen == seen and seen < math.huge
         and seen > 0 and now >= castAt and now - castAt <= G.LEARN_WINDOW then
         learned[rule.spell] = seen + (now - castAt)
     end
@@ -201,12 +205,20 @@ local function readMember(client, m, pack, ids)
             if type(rule) == "table" and type(rule.spell) == "string" and row.has[rule.spell] == nil then
                 local names = type(rule.aura) == "table" and rule.aura or { rule.spell }
                 local ok, up, left = pcall(client.unitBuff, m.unit, names)
+                local length
                 if ok and up == true then
                     row.has[rule.spell] = (type(left) == "number" and left == left) and left or true
+                    -- READS-2: a whole length that ends; no end or not read: nil.
+                    if type(client.buffLength) == "function" then
+                        local okLen, secs = pcall(client.buffLength, m.unit, names)
+                        if okLen and type(secs) == "number" and secs == secs and secs > 0 and secs < math.huge then
+                            length = secs
+                        end
+                    end
                 elseif ok and up == false then
                     row.has[rule.spell] = false
                 end
-                remembered(row, rule, clock(client), text(m.guid) or fullName(m))
+                remembered(row, rule, clock(client), text(m.guid) or fullName(m), length)
             end
         end
     end

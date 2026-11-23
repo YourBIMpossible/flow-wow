@@ -513,4 +513,19 @@ tests["choices module: an instant in the moment the advice first showed is judge
     t.ok(w.api.data().list["own: Moonfire < nothing"] ~= nil)
 end
 
+-- P-READS (lead section 248): the client hands a secret event argument on
+-- as nil; the fake's fireSecret plays that.
+tests["choices module: a secret cast id or spell id comes as nil; nothing breaks or is miscounted"] = function(t)
+    local w = start()
+    fight(w)
+    w.c.fireSecret(Ch.START, "player", w.c.SECRET, MOONFIRE)
+    w.c.fireSecret(Ch.DONE, "player", w.c.SECRET, MOONFIRE)
+    t.eq(w.api.data().kinds, { advice = 1 }, "the spell known, the cast id not: judged as an instant")
+    w.c.fireSecret(Ch.DONE, "player", "cast-2", w.c.SECRET)
+    t.eq(w.api.data().casts, 1, "the spell not known: not counted")
+    w.c.fireSecret(Ch.DONE, w.c.SECRET, "cast-3", WRATH)
+    t.eq(w.api.data().casts, 1, "the unit not known: not counted")
+    t.eq(w.k.problems:count(Ch.NAME), 0)
+end
+
 return tests

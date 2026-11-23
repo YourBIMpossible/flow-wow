@@ -110,6 +110,7 @@ Nav\ProfSeen.lua
 Spells\TrainerList.lua
 Spells\TrainerListRankUp.lua
 Spells\TrainerModule.lua
+Spells\ClassQuests.lua
 Nav\RoutePlan.lua
 Nav\HearthStep.lua
 Nav\HearthSeen.lua
@@ -156,6 +157,7 @@ Items\Goals.lua
 UI\Arrow.lua
 UI\MinimapPin.lua
 UI\RotationIcon.lua
+UI\InfoBar.lua
 Rotation\Pulse.lua
 UI\PlateThreat.lua
 UI\PlateCombo.lua

@@ -37,6 +37,8 @@
 --   c.setItemInfo{ [2318] = { name = "Light Leather", quality = 1, sellPrice = 15, classID = 7 } }
 --   c.setDurability{ [5] = { cur = 40, max = 100 } }; c.setOwnLoot(function(line) return link, count end)
 --   c.setLootWindow{ source = { kind = "creature", guid = "...", id = 1 }, items = { { item = 97, count = 1 } } }
+--   c.setXp{ cur = 450, max = 1000, rested = 0 }; c.setWatchedFaction(false); c.setGameTime(14, 5)
+--   c.infoBars[1].text / .shown / .point / .tipLines; c.infoBars[1].drag(point) / .resize(w, h)
 -- What a test has not set is unknown (nil), as on a client that won't say.
 local _, ns = ...
 ns.make = ns.make or {}
@@ -714,6 +716,16 @@ function ns.make.fakeClient(opts)
         end
     end
     function c.fire(event, ...) events.call(event, ...) end
+    -- P-READS: plays the real client handing on a secret event argument:
+    -- each argument that is c.SECRET reaches the listeners as nil.
+    function c.fireSecret(event, ...)
+        local n = select("#", ...)
+        local args = { ... }
+        for i = 1, n do
+            if rawequal(args[i], c.SECRET) then args[i] = nil end
+        end
+        events.call(event, unpack(args, 1, n))
+    end
     -- What clock() gives; nil: the client will not say. advance() does not
     -- move it.
     function c.setClock(seconds) s.clock = seconds end
@@ -1464,6 +1476,58 @@ function ns.make.fakeClient(opts)
     end
     function c.setWeaponEnchant(t) s.weaponEnchant = t end
     function c.setWeaponEnchantFails(on) s.weaponEnchantFails = (on == true) end
+    -- P-READS twins (lead section 260 item 1): each answers what a test set,
+    -- and nil (not known) before. Shapes as on the real client:
+    --   channel() -> { name, spellId, endsAt } | false | nil
+    --   totems() -> { [slot] = { name, spellId, left } or false } | nil
+    --   targetBuffs() -> { [name] = secondsLeft or true } | nil
+    --   enemiesNear() -> near, close, onYou | nil
+    --   plateCasts and plateEnemies: the class-b twins further down.
+    --   creatureType(unit) -> text | nil
+    --   buffLength(unit, names) -> the row field `length` of setUnitBuffs,
+    --                              name | false | nil
+    local function copied(v)
+        if type(v) ~= "table" then return v end
+        local out = {}
+        for k, x in pairs(v) do out[k] = copied(x) end
+        return out
+    end
+    function c.channel() return copied(s.channel) end
+    function c.setChannel(v) s.channel = v end
+    function c.totems() return copied(s.totems) end
+    function c.setTotems(v) s.totems = v end
+    function c.targetBuffs() return copied(s.targetBuffs) end
+    function c.setTargetBuffs(v) s.targetBuffs = v end
+    function c.enemiesNear()
+        local e = s.enemiesNear
+        if type(e) ~= "table" then return nil end
+        return e.near, e.close, e.onYou
+    end
+    function c.setEnemiesNear(near, close, onYou)
+        if near == nil then s.enemiesNear = nil return end
+        s.enemiesNear = { near = near, close = close, onYou = onYou }
+    end
+    function c.creatureType(unit)
+        if type(s.creatureTypes) ~= "table" then return nil end
+        return s.creatureTypes[unit]
+    end
+    function c.setCreatureType(unit, v)
+        s.creatureTypes = s.creatureTypes or {}
+        s.creatureTypes[unit] = v
+    end
+    function c.buffLength(unit, names)
+        if type(unit) ~= "string" or unit == "" or type(names) ~= "table" then return nil end
+        local rows = s.unitBuffs and s.unitBuffs[unit]
+        if type(rows) ~= "table" then return nil end
+        for i = 1, #rows do
+            local row = rows[i]
+            if type(row) ~= "table" or type(row.name) ~= "string" then return nil end
+            for j = 1, #names do
+                if names[j] == row.name then return row.length, row.name end
+            end
+        end
+        return false
+    end
     -- Plays the game filling its tooltip for `unit`: every onUnitTooltip
     -- listener is told, and what they added comes back as
     -- { { text, r, g, b } ... }.
@@ -1678,6 +1742,23 @@ function ns.make.fakeClient(opts)
         s.attackable = s.attackable or {}
         if v == nil then s.attackable[unit] = nil else s.attackable[unit] = v and true or false end
     end
+    -- Lead section 242: the enemies on nameplates and the casts on them, as
+    -- the real client.plateEnemies and client.plateCasts (P-READS, Plexy):
+    -- nil until set (not read); each answer is a fresh copy of the rows.
+    local function copyPlateRows(list)
+        if type(list) ~= "table" then return nil end
+        local out = {}
+        for i, row in ipairs(list) do
+            local r = {}
+            for k, v in pairs(row) do r[k] = v end
+            out[i] = r
+        end
+        return out
+    end
+    function c.setPlateEnemies(list) s.plateEnemies = copyPlateRows(list) end
+    function c.plateEnemies() return copyPlateRows(s.plateEnemies) end
+    function c.setPlateCasts(list) s.plateCasts = copyPlateRows(list) end
+    function c.plateCasts() return copyPlateRows(s.plateCasts) end
     function c.grouped() return s.grouped end
     function c.setGrouped(v)
         if v == nil then s.grouped = nil else s.grouped = v and true or false end
@@ -1953,6 +2034,7 @@ function ns.make.fakeClient(opts)
         local function yesNo(v) if type(v) == "boolean" then return v end return nil end
         s.pet = {
             exists = true, dead = yesNo(r.dead), inCombat = yesNo(r.inCombat),
+            hurt = yesNo(r.hurt),
             family = (type(r.family) == "string" and r.family ~= "") and r.family or nil,
             happiness = PET_MOODS[r.happiness or ""] and r.happiness or nil,
             powerKind = (type(r.powerKind) == "number" and r.powerKind == r.powerKind) and r.powerKind or nil,
@@ -2325,6 +2407,79 @@ function ns.make.fakeClient(opts)
             return h
         end
     end
+    -- N59: the info bar reads, unknown (nil) until a test sets them.
+    -- c.setXp{ cur, max, rested }; c.setWatchedFaction(t or false: none
+    -- watched); c.setGameTime(h, m); c.setFramerate(n); c.setLatency(home, world).
+    local function ibCopy(t)
+        if type(t) ~= "table" then return t end
+        local out = {}
+        for k, v in pairs(t) do out[k] = v end
+        return out
+    end
+    function c.setXp(t) s.xp = ibCopy(t) end
+    function c.xp() return ibCopy(s.xp) end
+    function c.setWatchedFaction(v) s.watchedFaction = ibCopy(v) end
+    function c.watchedFaction() return ibCopy(s.watchedFaction) end
+    function c.setGameTime(h, m)
+        if h == nil then s.gameTime = nil else s.gameTime = { hour = h, minute = m } end
+    end
+    function c.gameTime() return ibCopy(s.gameTime) end
+    function c.setFramerate(n) s.framerate = n end
+    function c.framerate() return s.framerate end
+    function c.setLatency(home, world)
+        if home == nil then s.latency = nil else s.latency = { home = home, world = world } end
+    end
+    function c.latency() return ibCopy(s.latency) end
+    -- No data broker library offline: the feed is never made.
+    function c.broker() return nil end
+
+    -- Every info bar made is in c.infoBars, in order: .spec, .text,
+    -- .shown, .fontSize, .alpha, .width, .height, .point, .locked,
+    -- .tipLines. The test's controls: drag(point), resize(w, h) (neither
+    -- while locked), click(button), hover(on).
+    c.infoBars = {}
+    function c.infoBar(spec)
+        if s.noFrames then return nil end
+        spec = type(spec) == "table" and spec or {}
+        local b = { spec = spec, shown = false, width = spec.width, height = spec.height, locked = false }
+        local h = {}
+        local moved, resized, clicked, hovered
+        local function tell(fn, ...) if type(fn) == "function" then pcall(fn, ...) end end
+        function h.setText(text) b.text = tostring(text or "") end
+        function h.show(on) b.shown = on and true or false end
+        function h.font(size) b.fontSize = size end
+        function h.alpha(a) b.alpha = a end
+        function h.size(w, ht) b.width, b.height = w, ht end
+        function h.place(point)
+            if type(point) ~= "table" then return end
+            b.point = { point[1], point[2], point[3], point[4] }
+        end
+        function h.lock(on) b.locked = on and true or false end
+        function h.onMoved(fn) moved = fn end
+        function h.onResized(fn) resized = fn end
+        function h.onClick(fn) clicked = fn end
+        function h.onHover(fn) hovered = fn end
+        function h.tip(lines)
+            if type(lines) ~= "table" or #lines == 0 then b.tipLines = nil; return end
+            b.tipLines = {}
+            for i = 1, #lines do b.tipLines[i] = tostring(lines[i]) end
+        end
+        function b.drag(point)
+            if b.locked then return end
+            b.point = { point[1], point[2], point[3], point[4] }
+            tell(moved, { point[1], point[2], point[3], point[4] })
+        end
+        function b.resize(w, ht)
+            if b.locked then return end
+            b.width, b.height = w, ht
+            tell(resized, w, ht)
+        end
+        function b.click(button) tell(clicked, button) end
+        function b.hover(on) tell(hovered, on and true or false) end
+        c.infoBars[#c.infoBars + 1] = b
+        return h
+    end
+
     -- N57: the game's key bindings and the key-capture overlay, as the real
     -- client's wrappers (Core/Client.lua, end). Added last.
     --   c.setBindings({ { key, action }, ... })   the game's binding set as
