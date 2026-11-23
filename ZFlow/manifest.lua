@@ -141,6 +141,7 @@ return {
         "Nav/Errand.lua",
         "Nav/RepairStep.lua",
         "Nav/WeaponMasterStep.lua",
+        "Nav/WeaponMasterSeen.lua",
         "Nav/QuestSource.lua",
         "Nav/QuestRead.lua",
         "Nav/AddonSources.lua",
