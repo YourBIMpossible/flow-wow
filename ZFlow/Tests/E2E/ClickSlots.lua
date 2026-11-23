@@ -176,6 +176,38 @@ tests["click slots: the lock not known waits, then sets when it is a plain false
     if h then t.eq(slot(h, "key").attrs.spell, "Power Word: Fortitude") end
 end
 
+-- SC-2: one row not made (here the lock comes on as it is made) is not the
+-- end of it: the next try, once the lock is a plain false, makes it.
+tests["click slots: a row not made as the lock comes on is made on a later try"] = function(t)
+    local c, addon = start()
+    local make, asked = c.clickRow, 0
+    c.clickRow = function(spec)
+        asked = asked + 1
+        if asked == 1 then c.setLockdown(true) end
+        return make(spec)
+    end
+    addon.settings:set(D.SETTING, true)
+    addon.settings:set(S.SETTING, true)
+    c.advance(3, 5)
+    t.eq(asked, 1, "asked once, then frozen by the lock")
+    t.eq(slotRow(c), nil, "no row while the lock is on")
+    c.setLockdown(false); c.advance(3, 5)
+    local h = slotRow(c)
+    t.ok(h ~= nil, "made on the next try once the lock is a plain false")
+    if h then t.eq(slot(h, "key").attrs.spell, "Power Word: Fortitude") end
+    t.eq(asked, 2, "asked once more, not every tick")
+    noBindsNoMacros(t, c)
+end
+
+tests["click slots: a client with no row maker: the status says no frame"] = function(t)
+    local c, addon = start()
+    c.clickRow = nil
+    addon.settings:set(D.SETTING, true)
+    addon.settings:set(S.SETTING, true)
+    c.advance(3, 5)
+    t.eq(addon.clickSlots.status().state, "noFrame")
+end
+
 tests["click slots: late spell data fills the slot when it arrives"] = function(t)
     local late = "Power Word: Fortitude"
     local c = start({ on = true, late = late })
