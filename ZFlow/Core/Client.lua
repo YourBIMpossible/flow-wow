@@ -6237,6 +6237,79 @@ function ns.make.client(env)
         end
     end
     -- ----------------------------------------------- end your group
+    -- ---------------------------------------------------------------- N55
+    -- The boss loot panel (lead sections 237 item 5 and 238 item 4, owner
+    -- Zen; RESEARCH-N55): the boss unit, whether you are in an instance,
+    -- and the item of anyone's loot line. Read only: no unit is targeted,
+    -- nothing is looted, rolled on or said. Every call here is a first
+    -- guess, not seen in game on 16001; an answer that cannot be read is
+    -- left out, never a default. The capture asks each name (Diag.NAMES).
+
+    -- c.bossUnit() -> { exists, guid, name } | nil
+    --   the unit "boss1" (the game's first boss frame): UnitExists,
+    --   UnitGUID, UnitName. nil when the client does not say whether there
+    --   is one; { exists = false } when it says there is none, and then
+    --   nothing more is asked. guid and name are each left out when not
+    --   read. Only "boss1" is named.
+    function c.bossUnit()
+        local exists = yesNo(call(env.UnitExists, "boss1"))
+        if exists == nil then return nil end
+        if not exists then return { exists = false } end
+        return {
+            exists = true,
+            guid = text(call(env.UnitGUID, "boss1")),
+            name = text(call(env.UnitName, "boss1")),
+        }
+    end
+
+    -- c.instance() -> { inside, kind } | nil
+    --   whether you are in an instance: IsInInstance() (inside, and the
+    --   kind as the game names it: "party", "raid", "none", ...); else the
+    --   second answer of GetInstanceInfo(), where "none" is not inside.
+    --   nil when neither says.
+    function c.instance()
+        local ok, inside, kind = call(env.IsInInstance)
+        if yesNo(ok, inside) ~= nil then
+            return { inside = inside, kind = text(ok, kind) }
+        end
+        local okInfo, _, infoKind = call(env.GetInstanceInfo)
+        infoKind = text(okInfo, infoKind)
+        if infoKind == nil then return nil end
+        return { inside = infoKind ~= "none", kind = infoKind }
+    end
+
+    -- c.lootLine(line) -> item link, count | nil
+    --   the item of a CHAT_MSG_LOOT line, whoever looted it: your own
+    --   (LOOT_ITEM_SELF_MULTIPLE, LOOT_ITEM_SELF) or another player's
+    --   (LOOT_ITEM_MULTIPLE, LOOT_ITEM), by the client's own texts; no
+    --   English is written here. The looter's name is matched and dropped:
+    --   it is never returned. count is 1 when the line names none. nil for
+    --   a line that is none of the four (a roll, something made or
+    --   bought), one with no item link, or a client without the texts.
+    function c.lootLine(line)
+        if type(line) ~= "string" or line == "" or hidden(line) then return nil end
+        local forms = { env.LOOT_ITEM_SELF_MULTIPLE or false, env.LOOT_ITEM_SELF or false,
+                        env.LOOT_ITEM_MULTIPLE or false, env.LOOT_ITEM or false }
+        for f = 1, 4 do
+            local pattern, kinds = lootPattern(forms[f])
+            if pattern then
+                local caps = { line:match(pattern) }
+                if #caps > 0 and #caps == #kinds then
+                    local link, count = nil, nil
+                    for i = 1, #kinds do
+                        if kinds[i] == "d" then
+                            count = tonumber(caps[i])
+                        elseif type(caps[i]) == "string" and caps[i]:find("item:%d+") then
+                            link = caps[i]
+                        end
+                    end
+                    if link then return link, count or 1 end
+                end
+            end
+        end
+        return nil
+    end
+    -- ------------------------------------------------------------ end N55
     return c
 end
 
