@@ -49,6 +49,9 @@ end
 -- out of range step, else nil.
 function I.Mark(view)
     if type(view) ~= "table" or type(view.suggestion) ~= "table" then return nil end
+    -- Lead section 243: a look-only suggestion (for another player) is
+    -- marked, so the player sees the key will not cast it.
+    if view.suggestion.look == true then return "look" end
     return view.suggestion.step == "farOpener" and "far" or nil
 end
 

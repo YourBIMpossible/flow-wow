@@ -2221,6 +2221,34 @@ function ns.make.fakeClient(opts)
         end
         return h
     end
+
+    -- Lead section 243 (P-PARTY 2). setUnitBuffFails(unit, on): that unit's
+    -- buff read raises while on (one member's aura read failing). And the
+    -- icon's look-only mark, as the real client's: mark("look") keeps
+    -- "look" in h.marked; any other mark is the icon's own.
+    do
+        local failing = {}
+        function c.setUnitBuffFails(unit, on) failing[unit] = on and true or nil end
+        local plainBuff = c.unitBuff
+        function c.unitBuff(unit, names)
+            if failing[unit] then error("buff read failed (test)") end
+            return plainBuff(unit, names)
+        end
+        local plainIcon = c.icon
+        function c.icon(spec)
+            local h = plainIcon(spec)
+            if type(h) ~= "table" then return h end
+            local plainMark = h.mark
+            function h.mark(look, ...)
+                if look == "look" then
+                    h.marked = "look"
+                    return true
+                end
+                return plainMark(look, ...)
+            end
+            return h
+        end
+    end
     return c
 end
 

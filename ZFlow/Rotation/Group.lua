@@ -48,6 +48,31 @@ G.ORDER = { tank = 1, healer = 2 }
 local ctx
 local kept   -- { client, pack, at, value }
 
+-- Lead section 243 item 5, as Flow had them (Engine.lua:1084, 1399-1420 at
+-- a529eea), kept in memory only (names are never saved):
+--   memory   [name][spell] = when your cast of it on them went through
+--            (UNIT_SPELLCAST_SENT names whom, UNIT_SPELLCAST_SUCCEEDED says
+--            it landed): when the game hides their buffs, the time left is
+--            the row's minutes less the time since
+--   bounced  [name][spell] = when the game refused it ("a more powerful
+--            spell is already active", UI_ERROR_MESSAGE right after your
+--            cast of it on them): counted as up for G.BOUNCE seconds
+G.BOUNCE = 300
+G.BOUNCE_TEXT = "more powerful spell"
+G.SENT_WINDOW = 2
+local memory, bounced, sent, last = {}, {}, {}, nil
+
+local function noted(store, name, spell)
+    local byName = store[name]
+    if type(byName) ~= "table" then return nil end
+    return byName[spell]
+end
+
+local function note(store, name, spell, at)
+    store[name] = store[name] or {}
+    store[name][spell] = at
+end
+
 -- Is the row for this player? "all", or a list holding their kind or class.
 function G.Fits(who, kind, class)
     if who == "all" then return true end
@@ -85,6 +110,25 @@ local function spellsOf(pack)
     return out
 end
 
+-- What you remember of this member and spell, over what the read gave:
+-- refused a moment ago (up); else, their buffs not known, your own cast's
+-- time left. A read "missing" stays missing unless the game refused it.
+local function remembered(row, rule, now)
+    local name = row.name
+    if type(name) ~= "string" or type(now) ~= "number" then return end
+    local refusedAt = noted(bounced, name, rule.spell)
+    if type(refusedAt) == "number" and now - refusedAt < G.BOUNCE then
+        row.has[rule.spell] = true
+        return
+    end
+    if row.has[rule.spell] ~= nil or type(rule.minutes) ~= "number" then return end
+    local castAt = noted(memory, name, rule.spell)
+    if type(castAt) ~= "number" then return end
+    local left = rule.minutes * 60 - (now - castAt)
+    if left < 0 then left = 0 end
+    row.has[rule.spell] = left
+end
+
 local function readMember(client, m, pack, ids)
     local row = {
         unit = m.unit, name = text(m.name), class = text(m.class), role = text(m.role),
@@ -116,6 +160,7 @@ local function readMember(client, m, pack, ids)
                 elseif ok and up == false then
                     row.has[rule.spell] = false
                 end
+                remembered(row, rule, clock(client))
             end
         end
     end
@@ -307,23 +352,57 @@ function G.Declare(k)
     local api = {}
     k:Module({
         name = G.NAME,
-        needs = { "settings", "bus" },
+        needs = { "client", "settings", "bus" },
         settings = { {
             key = G.SETTING, scope = "account", type = "bool", default = true,
             label = "Suggest buffs for your group",
-            help = "Out of a fight, names a party member who is missing one of your buffs, or has a curse or "
-                .. "poison you can remove, with the spell. It casts nothing; your key is unchanged.",
+            help = "Out of a fight, names a party member who is missing one of your buffs, or has something "
+                .. "on them your spells can remove, with the spell. It casts nothing; your key is unchanged.",
             group = "party", synonyms = { "group", "party", "buffs", "blessing", "mark of the wild", "fortitude", "cure" },
         } },
         start = function(c)
             ctx = c
             kept = nil
+            memory, bounced, sent, last = {}, {}, {}, nil
             -- Someone joined or left: read the group again at once.
             c.bus:on(G.NAME, "GROUP_ROSTER_UPDATE", function() kept = nil end)
+            -- 243 item 5: your casts on others, and the game's refusal.
+            local function now() return clock(c.client) end
+            c.bus:on(G.NAME, "UNIT_SPELLCAST_SENT", function(unit, target, castGUID, spellID)
+                if unit ~= "player" or type(target) ~= "string" or target == "" or type(spellID) ~= "number" then return end
+                if type(c.client.spellName) ~= "function" then return end
+                local ok, spell = pcall(c.client.spellName, spellID)
+                if not ok or type(spell) ~= "string" or spell == "" then return end
+                local at = now()
+                if castGUID ~= nil then sent[castGUID] = { name = target, spell = spell } end
+                last = { name = target, spell = spell, at = at }
+            end)
+            c.bus:on(G.NAME, "UNIT_SPELLCAST_SUCCEEDED", function(unit, castGUID)
+                if unit ~= "player" or castGUID == nil then return end
+                local e = sent[castGUID]
+                sent[castGUID] = nil
+                local at = now()
+                if type(e) ~= "table" or type(at) ~= "number" then return end
+                note(memory, e.name, e.spell, at)
+                kept = nil
+            end)
+            c.bus:on(G.NAME, "UI_ERROR_MESSAGE", function(...)
+                local said = false
+                for i = 1, select("#", ...) do
+                    local v = select(i, ...)
+                    if type(v) == "string" and v:lower():find(G.BOUNCE_TEXT, 1, true) then said = true end
+                end
+                local at = now()
+                if not said or type(last) ~= "table" or type(at) ~= "number" or type(last.at) ~= "number" then return end
+                if at - last.at > G.SENT_WINDOW then return end
+                note(bounced, last.name, last.spell, at)
+                kept = nil
+            end)
         end,
         stop = function()
             ctx = nil
             kept = nil
+            memory, bounced, sent, last = {}, {}, {}, nil
         end,
     })
     return api
