@@ -206,4 +206,17 @@ tests["recipe book classic RB2-1: the window closed before it settles is not rea
     t.eq(book(c), nil)
 end
 
+-- RB4-1 (lead section 253). Fails at 8aa468bd: the window opened with every
+-- header expanded and no filter on, and the robe, no longer learned, stayed
+-- in the book: a classic read never counted as every learned recipe.
+tests["recipe book classic RB4-1: the window showing everything replaces the profession's list"] = function(t)
+    local c, addon = start({ char = { learned = { facts = { recipeBook = SAVED } } } })
+    opened(c, addon, { name = "Tailoring", collapsed = false, filtered = false,
+                       rows = { { index = 2, name = "Bolt of Linen Cloth", difficulty = "optimal" } } })
+    t.eq(addon.recipeBook.last().ok, true, "the window read")
+    t.eq(book(c)["Brown Linen Robe"], nil, "the robe no longer learned: dropped")
+    t.eq(book(c)["Bolt of Linen Cloth"].difficulty, "optimal", "the shown recipe kept")
+    t.ok(planned(make(c)), make(c))
+end
+
 return tests
