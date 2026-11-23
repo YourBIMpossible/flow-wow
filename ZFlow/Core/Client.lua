@@ -4487,6 +4487,110 @@ function ns.make.client(env)
         return flag(call(env.IsMounted))
     end
 
+    -- S42 quest item on the quest arrow (LEDGER 169/172;
+    -- WoW/from-zen/RESEARCH-S42.md). Three reads, each only reads: nothing
+    -- uses an item here (no UseQuestLogSpecialItem, no secure button; the
+    -- click is parked behind G23). FIRST GUESSES: not seen in game on 1.60.1
+    -- and not seen in an installed addon (lead section 169 D).
+    -- Docs (warcraft.wiki.gg, read 2026-11-22), all listed for 1.60.1 unless
+    -- said: C_QuestLog.GetLogIndexForQuestID(questID) -> index or nil;
+    -- GetQuestLogIndexByID(questID) -> index, 0 when not in the log (NOT
+    -- listed for 1.60.1: asked second); GetQuestLogSpecialItemInfo(index)
+    -- -> link, icon, charges, showWhenComplete (index in the log, not the
+    -- quest id); C_Item.GetItemCount(item) -> count (GetItemCount second);
+    -- C_Item.GetItemSpell(item) -> name, id, "may return nothing"
+    -- (GetItemSpell second, not listed for 1.60.1). Legacy Flow asks the
+    -- same: Modules/Nav/QuestItems.lua:80-106.
+
+    -- A quest's place in the log, or nil when it is not there or not known.
+    local function questLogIndex(questID)
+        local group = env.C_QuestLog
+        if type(group) == "table" then
+            local ok, i = call(group.GetLogIndexForQuestID, questID)
+            if ok and type(i) == "number" and not hidden(i) and i > 0 then return i end
+        end
+        local ok, i = call(env.GetQuestLogIndexByID, questID)
+        if ok and type(i) == "number" and not hidden(i) and i > 0 then return i end
+        return nil
+    end
+
+    -- The game's own item for a quest in the log: { id, link }, or nil
+    -- (not in the log, no item, an answer that is not an item link, or a
+    -- secret one).
+    function c.questItem(questID)
+        if type(questID) ~= "number" then return nil end
+        local index = questLogIndex(questID)
+        if not index then return nil end
+        local ok, link = call(env.GetQuestLogSpecialItemInfo, index)
+        if not ok or type(link) ~= "string" or hidden(link) then return nil end
+        local id = tonumber(link:match("item:(%d+)"))
+        if not id or id <= 0 then return nil end
+        return { id = id, link = link }
+    end
+
+    -- How many of an item are in the bags: a whole number of 0 or more, or
+    -- nil when not known. item: an item ID or link.
+    function c.itemCount(item)
+        if item == nil then return nil end
+        local group = env.C_Item
+        local fn = env.GetItemCount
+        if type(group) == "table" and type(group.GetItemCount) == "function" then fn = group.GetItemCount end
+        local ok, n = call(fn, item)
+        if not ok or type(n) ~= "number" or hidden(n) then return nil end
+        if n ~= n or n < 0 or n ~= math.floor(n) or n == math.huge then return nil end
+        return n
+    end
+
+    -- Whether using an item does something (it has a spell): true, false
+    -- when the read ran and named no spell, nil when not known (no read, a
+    -- failed read, a secret or odd answer).
+    function c.itemUse(item)
+        if item == nil then return nil end
+        local group = env.C_Item
+        local fn = env.GetItemSpell
+        if type(group) == "table" and type(group.GetItemSpell) == "function" then fn = group.GetItemSpell end
+        if type(fn) ~= "function" then return nil end
+        local ok, name = call(fn, item)
+        if not ok then return nil end
+        if name == nil then return false end
+        if type(name) ~= "string" or hidden(name) then return nil end
+        return name ~= ""
+    end
+
+    -- S44 quest place on another map (lead section 173): where a map lies in
+    -- the world, so a step on another map can be pointed at (Nav/GuideRead.lua).
+    -- Only reads. C_Map.GetWorldPosFromMapPos(map, CreateVector2D(x, y)) is
+    -- the call c.worldPosition already makes (S35; RESEARCH-S35.md), asked
+    -- here for three points of the map: 0,0, 1,0 and 0,1. Legacy Flow does
+    -- the same (Modules/Nav/Nav.lua:55-61 and 104-123: map corners and the
+    -- map's east and south axes). A first guess: not seen in game on 1.60.1.
+    -- CreateVector2D is the client's own; with none, a plain { x, y } is
+    -- asked with (whether the client takes it is not known).
+    local function mapWorld(map, x, y)
+        local okV, vec = call(env.CreateVector2D, x, y)
+        if not okV or type(vec) ~= "table" then vec = { x = x, y = y } end
+        local ok, cont, world = mapCall("GetWorldPosFromMapPos", map, vec)
+        if not ok or type(world) ~= "table" then return nil end
+        if type(cont) ~= "number" or hidden(cont) then return nil end
+        local okXY, wx, wy = call(world.GetXY, world)
+        if not okXY then wx, wy = world.x, world.y end
+        if type(wx) ~= "number" or type(wy) ~= "number" or hidden(wx) or hidden(wy) then return nil end
+        if wx ~= wx or wy ~= wy then return nil end
+        return cont, wx, wy
+    end
+
+    -- A map's corners in the world: { cont, ox, oy (the point 0,0),
+    -- ex, ey (1,0, the east edge's end), sx, sy (0,1, the south edge's end) },
+    -- or nil when any is not known or they are not on one continent.
+    function c.mapCorners(map)
+        if map == nil then return nil end
+        local c0, ox, oy = mapWorld(map, 0, 0)
+        local c1, ex, ey = mapWorld(map, 1, 0)
+        local c2, sx, sy = mapWorld(map, 0, 1)
+        if c0 == nil or c0 ~= c1 or c0 ~= c2 then return nil end
+        return { cont = c0, ox = ox, oy = oy, ex = ex, ey = ey, sx = sx, sy = sy }
+    end
+
     -- ----------------------------------------------------------------- S2
     -- The trader (owner Twin): every priced row of a search the player runs,
     -- not the cheapest alone. The same events, reads and limits as the S4

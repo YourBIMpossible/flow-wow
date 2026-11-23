@@ -91,9 +91,13 @@ return {
         t.eq(k.problems:count(), 0)
     end,
 
-    ["quest arrow: an objective on another map is words only"] = function(t)
+    ["quest arrow: an objective on another map has its place there (S44)"] = function(t)
+        -- Was words only with Q.ELSEWHERE (owner session 6, Block B failed
+        -- on it). Since S44 (lead section 173) the step has its place on the
+        -- other map. This client gives no map corners, so the two maps
+        -- cannot be related: no distance, and the direction is unknown.
         local c = start({ wolves() }, questie())
-        t.eq(c.arrows[1].lines, { "Wolves", "Wolves slain: 0/4", Q.ELSEWHERE })
+        t.eq(c.arrows[1].lines, { "Wolves", "Wolves slain: 0/4", A.UNKNOWN_TURN })
     end,
 
     ["quest arrow: a complete quest points at its turn-in"] = function(t)

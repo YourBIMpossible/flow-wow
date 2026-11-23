@@ -323,11 +323,15 @@ function Arrow.GuideSource(client, layout, guide, intro, palette)
             if intro.title ~= nil then out[1] = tostring(intro.title) end
         elseif type(step.lines) == "table" then
             for i = 1, #step.lines do out[i] = tostring(step.lines[i]) end
+            -- The quest's own item in words (S42, Nav/QuestItems.lua): last.
+            if step.use ~= nil then out[#out + 1] = tostring(step.use) end
         else
             local label = more[key].label or step.label
             if label ~= nil then out[#out + 1] = tostring(label) end
             -- A step may say one more line of its own under its label (S43).
             if step.detail ~= nil then out[#out + 1] = tostring(step.detail) end
+            -- The quest's own item in words (S42, Nav/QuestItems.lua).
+            if step.use ~= nil then out[#out + 1] = tostring(step.use) end
             if type(d) == "number" then
                 local word = more[key].compass
                 if arrived then
@@ -530,6 +534,14 @@ function Arrow.Start(k, diag, own)
             if step == nil and quests and Arrow.QuestArrowOn(k) then
                 step = quests.step()
                 if step then from = "your quests" end
+            end
+            -- The quest's own item, named under the objective (S42,
+            -- Nav/QuestItems.lua): "Use <item> (in your bags)". Words only:
+            -- nothing here uses the item.
+            local questItems = k.use and k.use("questItems")
+            if step ~= nil and from == "your quests" and questItems and type(questItems.With) == "function" then
+                local ok, with = pcall(questItems.With, step)
+                if ok and type(with) == "table" then step = with end
             end
             -- The way there, when it is a cast, the hearthstone, a ride or a
             -- gate (Nav/Travel.lua, S33 + S35): that takes the step's place

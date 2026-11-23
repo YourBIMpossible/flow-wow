@@ -117,6 +117,7 @@ Nav\TaxiMark.lua
 Nav\Gates.lua
 Nav\Travel.lua
 Nav\Legs.lua
+Nav\QuestItems.lua
 UI\ProfCard.lua
 UI\DevPanel.lua
 UI\SettingsSlash.lua
