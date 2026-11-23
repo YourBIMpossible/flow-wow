@@ -172,6 +172,23 @@ return {
         t.eq(got and got.spell, "Holy Strike", "Holy Strike before Crusader Strike, as the old list")
     end,
 
+    -- PS-1 (lead section 275): Judgment has a live rule; the chooser
+    -- suggests it only while the spell is known.
+    ["PS-1: Judgment is suggested only while known"] = function(t)
+        local base = { "Devotion Aura", "Blessing of Might", "Seal of Righteousness", "Judgement" }
+        local function pick(knows)
+            local s = snap(nil, knows)
+            s.spells["Judgement"].onCooldown = true
+            local got = ns.Choose(s, ns.Packs.PALADIN)
+            if type(got) ~= "table" then return nil end
+            return got.spell
+        end
+        local withJ = { "Judgment" }
+        for _, name in ipairs(base) do withJ[#withJ + 1] = name end
+        t.eq(pick(withJ), "Judgment", "known: suggested")
+        t.ok(pick(base) ~= "Judgment", "not known: not suggested")
+    end,
+
     -- PARTLY: Consecration waits for a near-enemy count in the snapshot.
     ["PC-8: Consecration is never suggested: the snapshot has no near count"] = function(t)
         t.eq(#rulesFor("Consecration"), 0, "no rule")

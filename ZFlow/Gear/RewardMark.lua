@@ -170,6 +170,13 @@ function RM.Declare(k, packs)
         show(pick)
     end
 
+    -- RM-2: fewer than 2 choices read - nothing to choose between, so no
+    -- repeat. Not read (nil, or the read raised) is not "few": it repeats.
+    local function fewChoices()
+        local okC, list = pcall(ctx.client.questChoices)
+        return okC and type(list) == "table" and #list < 2
+    end
+
     local function close()
         open = false
         if tick then tick() end
@@ -193,7 +200,7 @@ function RM.Declare(k, packs)
             c.bus:on(RM.NAME, "QUEST_COMPLETE", function()
                 open = true
                 update()
-                if not tick then tick = c.sched:every(RM.NAME, RM.TICK, update) end
+                if not tick and not fewChoices() then tick = c.sched:every(RM.NAME, RM.TICK, update) end
             end)
             c.bus:on(RM.NAME, "QUEST_FINISHED", close)
         end,

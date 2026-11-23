@@ -5896,6 +5896,12 @@ function ns.make.client(env)
 
         -- Debuff names read as a crowd control that holds the enemy (first
         -- guess names; Polymorph by any of its forms).
+        -- Named limit (review R2-2): English names only. On a client in
+        -- another language none matches, so controlled reads false for an
+        -- enemy that is held. Matching by spell id would fix it, but no id
+        -- of these effects is in the repo data and guessing them is not
+        -- allowed. Evidence still needed: the spell ids of the held effects
+        -- on Forever, from a capture (the debuff rows' spellId).
         local HELD = {
             ["Shackle Undead"] = true, ["Hibernate"] = true, ["Sap"] = true,
             ["Freezing Trap Effect"] = true, ["Banish"] = true, ["Fear"] = true,
@@ -6138,9 +6144,12 @@ function ns.make.client(env)
         return out
     end
 
-    -- Every row of a unit's buffs, in order, as { name, duration, expires }:
-    -- the name from the spell id (spellName) when the row has none. nil for
-    -- no read, a read that raised, or a row or a name not read.
+    -- Every row of a unit's buffs, in order, as { name, duration, expires,
+    -- caster }: the name from the spell id (spellName) when the row has
+    -- none. nil for no read, a read that raised, or a row or a name not
+    -- read. caster (review R2-1) is the row's sourceUnit, else UnitBuff's
+    -- seventh answer, as given (hidden or nil kept): a first guess, not in
+    -- the client names table, not seen in game.
     local function buffRows(unit)
         local auras = env.C_UnitAuras
         local byIndex
@@ -6149,22 +6158,22 @@ function ns.make.client(env)
         if type(byIndex) ~= "function" and type(old) ~= "function" then return nil end
         local rows = {}
         for i = 1, 40 do
-            local name, length, expires
+            local name, length, expires, caster
             if type(byIndex) == "function" then
                 local ok, row = pcall(byIndex, unit, i, "HELPFUL")
                 if not ok then return nil end
                 if row == nil then return rows end
                 if hidden(row) or type(row) ~= "table" then return nil end
-                name, length, expires = row.name, row.duration, row.expirationTime
+                name, length, expires, caster = row.name, row.duration, row.expirationTime, row.sourceUnit
                 if name == nil and plainNumber(row.spellId) then name = spellName(row.spellId) end
             else
                 local got = { pcall(old, unit, i, "HELPFUL") }
                 if not got[1] then return nil end
                 if got[2] == nil then return rows end
-                name, length, expires = got[2], got[6], got[7]
+                name, length, expires, caster = got[2], got[6], got[7], got[8]
             end
             if name == nil or hidden(name) or type(name) ~= "string" then return nil end
-            rows[#rows + 1] = { name = name, duration = length, expires = expires }
+            rows[#rows + 1] = { name = name, duration = length, expires = expires, caster = caster }
         end
         return rows
     end
@@ -6196,7 +6205,10 @@ function ns.make.client(env)
     --   the fifth answer of UnitBuff). 0 is no end: math.huge. A hidden
     --   length gives nil and the name. false: read, none there. nil: not
     --   known.
-    function c.buffLength(unit, names)
+    --   c.buffLength(unit, names, true) (review R2-1): only a buff you cast
+    --   (the caster "player"); a row of another caster is passed over, and
+    --   a caster hidden or not read gives nil and the name.
+    function c.buffLength(unit, names, mine)
         if type(unit) ~= "string" or unit == "" or type(names) ~= "table" then return nil end
         local rows = buffRows(unit)
         if rows == nil then return nil end
@@ -6205,7 +6217,12 @@ function ns.make.client(env)
             if type(names[i]) == "string" then wanted[names[i]] = true end
         end
         for _, row in ipairs(rows) do
-            if wanted[row.name] then
+            local theirs = false
+            if wanted[row.name] and mine == true then
+                if row.caster == nil or hidden(row.caster) or type(row.caster) ~= "string" then return nil, row.name end
+                theirs = row.caster ~= "player"
+            end
+            if wanted[row.name] and not theirs then
                 if not plainNumber(row.duration) then return nil, row.name end
                 if row.duration == 0 then return math.huge, row.name end
                 return row.duration, row.name
@@ -7960,6 +7977,16 @@ function ns.make.client(env)
         return vc
     end
 
+    -- Enum.VoiceTtsDestination.LocalPlayback when it is a readable number,
+    -- else nil: the one source of the speech destination, never guessed.
+    local function localDestination()
+        local enum = env.Enum
+        if type(enum) ~= "table" or type(enum.VoiceTtsDestination) ~= "table" then return nil end
+        local v = enum.VoiceTtsDestination.LocalPlayback
+        if type(v) ~= "number" or hidden(v) then return nil end
+        return v
+    end
+
     function c.speech()
         local vc = voiceChat()
         if not vc then return nil end
@@ -7973,29 +8000,24 @@ function ns.make.client(env)
                 voices[#voices + 1] = one
             end
         end
-        -- Lead section 270: localPlayback is true only when speak can reach
-        -- the player's own speakers without a guessed enum value: the game's
-        -- TextToSpeech_Speak helper, or Enum.VoiceTtsDestination.LocalPlayback
-        -- a number. Otherwise false, and the feature is not offered.
-        local known = type(env.TextToSpeech_Speak) == "function"
-        local enum = env.Enum
-        if type(enum) == "table" and type(enum.VoiceTtsDestination) == "table"
-            and type(enum.VoiceTtsDestination.LocalPlayback) == "number"
-            and not hidden(enum.VoiceTtsDestination.LocalPlayback) then
-            known = true
-        end
-        return { voices = voices, localPlayback = known }
+        -- Lead sections 270 and 274: localPlayback is true only with
+        -- Enum.VoiceTtsDestination.LocalPlayback a number. The
+        -- TextToSpeech_Speak helper alone does not count: its destination on
+        -- this client is unseen. Otherwise false, and the feature is not offered.
+        return { voices = voices, localPlayback = localDestination() ~= nil }
     end
 
-    -- c.speak(text, voice) -> true, or false and why. The game's own helper
-    --   TextToSpeech_Speak(text, voice) first when it is there (it knows
-    --   this client's way of calling); else C_VoiceChat.SpeakText(voiceID,
-    --   text, destination, rate, volume) - the retail order, a first guess
-    --   for 16001 - with destination Enum.VoiceTtsDestination.LocalPlayback,
-    --   and refuses when that enum is absent (never a guessed number); rate 0,
-    --   volume 100.
+    -- c.speak(text, voice) -> true, or false and why. Refuses with "no local
+    --   playback destination" whenever Enum.VoiceTtsDestination.LocalPlayback
+    --   is not a number, helper or not (never a guessed number; lead section
+    --   274). With it known: the game's own helper TextToSpeech_Speak(text,
+    --   voice) when it is there, else C_VoiceChat.SpeakText(voiceID, text,
+    --   destination, rate, volume) - the retail order, a first guess for
+    --   16001 - rate 0, volume 100.
     function c.speak(text, voice)
         if type(text) ~= "string" or text == "" then return false, "no text" end
+        local dest = localDestination()
+        if dest == nil then return false, "no local playback destination" end
         local helper = env.TextToSpeech_Speak
         if type(helper) == "function" then
             local ok, err = call(helper, text, voice)
@@ -8005,15 +8027,6 @@ function ns.make.client(env)
         local vc = voiceChat()
         if not vc or type(vc.SpeakText) ~= "function" then return false, "no text-to-speech call" end
         if type(voice) ~= "table" or type(voice.voiceID) ~= "number" then return false, "no voice" end
-        -- The destination is never guessed: a number that is local playback
-        -- on retail could be another destination here.
-        local dest
-        local enum = env.Enum
-        if type(enum) == "table" and type(enum.VoiceTtsDestination) == "table"
-            and type(enum.VoiceTtsDestination.LocalPlayback) == "number" then
-            dest = enum.VoiceTtsDestination.LocalPlayback
-        end
-        if dest == nil then return false, "no local playback destination" end
         local ok, err = call(vc.SpeakText, voice.voiceID, text, dest, 0, 100)
         if ok then return true end
         return false, tostring(err)
@@ -8146,13 +8159,14 @@ function ns.make.client(env)
     end
     -- N68 (UI/Alerts.lua): c.playAlert() -> true | nil, why. The one alert
     --   sound: PlaySound(SOUNDKIT.RAID_WARNING). why: "noCall" (no
-    --   PlaySound, or the game names no such sound: no number is guessed),
+    --   PlaySound, or the game names no such sound as a number: no number is guessed),
     --   "raised". Sound only; nothing in the game changes. A first guess
     --   from the API pages (API_PlaySound, SOUNDKIT), not heard in game.
     function c.playAlert()
         local kit = env.SOUNDKIT
-        local id = type(kit) == "table" and kit.RAID_WARNING or nil
-        if type(env.PlaySound) ~= "function" or id == nil then return nil, "noCall" end
+        local id
+        if type(kit) == "table" then id = kit.RAID_WARNING end
+        if type(env.PlaySound) ~= "function" or type(id) ~= "number" then return nil, "noCall" end
         local ok = call(env.PlaySound, id)
         if not ok then return nil, "raised" end
         return true
@@ -8166,6 +8180,11 @@ function ns.make.client(env)
     -- QuestInfoRewardsFrameQuestInfoItem<i> (else the older QuestRewardItem<i>),
     -- the atlas "bags-greenarrow" (else the pet battle "strong" badge), as
     -- markMerchantButtons draws its marks.
+    -- RM-1 (lead section 275): also a first guess, unseen: choice i is
+    -- reward button i. If the game lays the buttons out in another order
+    -- (or a button is not the choice its number says), the mark lands on
+    -- the WRONG button. Diag.NAMES only says a button exists, not which
+    -- choice it shows; a capture must answer that (the capture question).
     --   c.questChoices() -> { { index, link } ... }, or nil when the count
     --     cannot be read. link is nil for a choice the game has not given
     --     yet (the item not loaded).

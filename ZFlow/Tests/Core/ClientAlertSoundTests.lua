@@ -39,6 +39,16 @@ tests["c.playAlert: no call or no sound name: nothing played, no number guessed"
     t.eq(#calls, 0, "the game is not asked")
 end
 
+tests["c.playAlert: a sound name that is not a number: nothing played (AL-1)"] = function(t)
+    local fn, calls = recorder(false)
+    for _, v in ipairs({ false, "RAID_WARNING", true }) do
+        local c = ns.make.client({ PlaySound = fn, SOUNDKIT = { RAID_WARNING = v } })
+        if type(c.playAlert) ~= "function" then t.ok(false, "c.playAlert"); return end
+        t.eq({ c.playAlert() }, { nil, "noCall" }, tostring(v))
+    end
+    t.eq(#calls, 0, "the game is not asked")
+end
+
 tests["c.playAlert: a call that raises"] = function(t)
     local fn, calls = recorder(true)
     local c = ns.make.client({ PlaySound = fn, SOUNDKIT = { RAID_WARNING = 8959 } })

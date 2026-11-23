@@ -34,21 +34,34 @@ tests["client speech: the voices, and a raising read gives nil"] = function(t)
     t.eq(bad.speech(), nil)
 end
 
--- Lead section 270: whether the local playback destination is known. True
--- with Enum.VoiceTtsDestination.LocalPlayback a number, or with the game's
--- own TextToSpeech_Speak helper (it picks the destination itself); false
--- otherwise - never a guessed value.
+-- Lead sections 270 and 274: whether the local playback destination is
+-- known. True only with Enum.VoiceTtsDestination.LocalPlayback a number;
+-- the TextToSpeech_Speak helper alone does not count (its destination on
+-- this client is unseen) - never a guessed value.
 tests["client speech: localPlayback says whether the destination is known"] = function(t)
     local withEnum = ns.make.client({ C_VoiceChat = voiceChat({}),
         Enum = { VoiceTtsDestination = { LocalPlayback = 1 } } })
     t.eq(withEnum.speech().localPlayback, true)
     local withHelper = ns.make.client({ C_VoiceChat = voiceChat({}),
         TextToSpeech_Speak = function() end })
-    t.eq(withHelper.speech().localPlayback, true)
+    t.eq(withHelper.speech().localPlayback, false, "the helper alone: destination unseen")
     local noValue = ns.make.client({ C_VoiceChat = voiceChat({}),
         Enum = { VoiceTtsDestination = { LocalPlayback = "one" } } })
     t.eq(noValue.speech().localPlayback, false)
     t.eq(ns.make.client({ C_VoiceChat = voiceChat({}) }).speech().localPlayback, false)
+end
+
+-- NS-1a (lead section 275): a secret LocalPlayback number is not a
+-- destination - not known, and nothing is spoken to it.
+tests["client speech: a secret LocalPlayback value is not a destination"] = function(t)
+    local log = {}
+    local c = ns.make.client({ C_VoiceChat = voiceChat(log),
+        Enum = { VoiceTtsDestination = { LocalPlayback = 1 } },
+        issecretvalue = function(v) return v == 1 end })
+    t.eq(c.speech().localPlayback, false)
+    local ok = c.speak("Hello.", { voiceID = 3 })
+    t.eq(ok, false)
+    t.eq(#log, 0, "nothing was spoken")
 end
 
 tests["client speech: SpeakText gets voice, text, local playback, rate 0, volume 100"] = function(t)
@@ -70,9 +83,23 @@ tests["client speech: with no local playback value known, SpeakText is not calle
     t.eq(#log, 0, "nothing was spoken")
 end
 
-tests["client speech: the game's own helper is used when it is there"] = function(t)
+-- NS-3 (lead section 274): helper present, enum absent -> refused, and
+-- neither the helper nor SpeakText is called.
+tests["client speech: helper present, enum absent - refused, nothing called"] = function(t)
+    local log, helped = {}, 0
+    local c = ns.make.client({ C_VoiceChat = voiceChat(log),
+        TextToSpeech_Speak = function() helped = helped + 1 end })
+    local ok, why = c.speak("Hello.", { voiceID = 3 })
+    t.eq(ok, false)
+    t.eq(why, "no local playback destination")
+    t.eq(helped, 0, "the helper is not called")
+    t.eq(#log, 0, "SpeakText is not called")
+end
+
+tests["client speech: the game's own helper is used when the destination is known"] = function(t)
     local log, got = {}, nil
     local c = ns.make.client({ C_VoiceChat = voiceChat(log),
+        Enum = { VoiceTtsDestination = { LocalPlayback = 1 } },
         TextToSpeech_Speak = function(text, voice) got = { text, voice and voice.voiceID } end })
     t.eq(c.speak("Hello.", { voiceID = 3 }), true)
     t.eq(got, { "Hello.", 3 })
