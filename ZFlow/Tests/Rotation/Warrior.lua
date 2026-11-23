@@ -56,12 +56,15 @@ return {
     end,
 
     ["no stance read as none: Battle Stance first"] = function(t)
-        t.eq(advice({ form = nil, formKnown = true }), "Battle Stance")
+        local s = snap({ formKnown = true })
+        s.form = nil
+        t.eq(ns.Choose(s, ns.Packs.WARRIOR).spell, "Battle Stance")
     end,
 
     ["the stance not read: no stance asked for"] = function(t)
-        local got = advice({ form = nil, formKnown = false, hostile = false, inCombat = false, buffs = {} })
-        t.eq(got, "Battle Shout")
+        local s = snap({ formKnown = false, hostile = false, inCombat = false, buffs = {} })
+        s.form = nil
+        t.eq(ns.Choose(s, ns.Packs.WARRIOR).spell, "Battle Shout")
     end,
 
     ["shout missing or nearly out: Battle Shout"] = function(t)
