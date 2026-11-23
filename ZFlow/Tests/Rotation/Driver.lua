@@ -523,6 +523,27 @@ end
 tests["rotation driver RD15: a form name that is not text is nil"] = function(t)
     local client = stub(false, false, false, nil, { formName = function() return 3, true end })
     t.ok(D.Read(client, pack(), IDS)("form") == nil)
+    t.ok(D.Read(client, pack(), IDS)("formKnown") == nil, "and not known, never no form")
+end
+
+tests["rotation driver RD16: formKnown is true only when the client says the form is known"] = function(t)
+    local c = ns.make.fakeClient()
+    local read = D.Read(c, pack(), IDS)
+    t.ok(read("formKnown") == nil, "not known: nil, never false")
+    c.setFormName(nil, true)
+    t.eq(read("formKnown"), true, "no form, known")
+    t.ok(read("form") == nil, "and form is nil")
+    c.setFormName("Cat Form", true)
+    t.eq(read("formKnown"), true, "a form, known")
+    c.setFormName(nil)
+    t.ok(read("formKnown") == nil, "not known again")
+    local bare = stub(false, false, false, nil, { without = { "formName" } })
+    t.ok(D.Read(bare, pack(), IDS)("formKnown") == nil, "no such read: nil")
+    local odd = stub(false, false, false, nil, { formName = function() return nil, 1 end })
+    t.ok(D.Read(odd, pack(), IDS)("formKnown") == nil, "a known answer that is not true: nil")
+    local none = stub(false, false, false, nil, { formName = function() return nil, true end })
+    t.eq(D.Step(none, pack()).snapshot.formKnown, true, "the snapshot keeps it")
+    t.ok(D.Step(bare, pack()).snapshot.formKnown == nil, "and keeps it nil when not read")
 end
 
 -- The driver in a kernel ------------------------------------------------

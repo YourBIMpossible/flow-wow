@@ -24,8 +24,10 @@ local _, ns = ...
 --                  left or true }, {} for read and none, nil when not known
 --                  or the client has no such read
 --       form       client.formName(): the form name, or nil for no form
---                  and for not known alike (the snapshot cannot tell the
---                  two apart; a rule uses form only as a yes)
+--                  and for not known alike
+--       formKnown  true when client.formName() said its answer is known
+--                  (a form name, or no form); nil otherwise, never false.
+--                  form nil with formKnown true is no form (section 186)
 --       current    { [spell name] = true or false } over the pack's spell
 --                  ids, from client.currentSpell(id); a spell whose answer
 --                  was not read is left out; nil when the client has no
@@ -151,6 +153,13 @@ function D.Read(client, pack, ids, role)
             if type(client.formName) ~= "function" then return nil end
             local name = client.formName()
             return type(name) == "string" and name or nil
+        end
+        if field == "formKnown" then
+            if type(client.formName) ~= "function" then return nil end
+            local name, known = client.formName()
+            if known ~= true then return nil end
+            if name == nil or type(name) == "string" then return true end
+            return nil
         end
         if field == "current" then return currentOf(client, ids) end
         return nil

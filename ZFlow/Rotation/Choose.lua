@@ -21,6 +21,7 @@ local _, ns = ...
 --       allowed.
 --   role, tree, fightType                 "dps" / "heal" / "tank"; talent tree name; "aoe" or nil
 --   form, stealthed                       shapeshift form name or nil; boolean
+--   formKnown                             true when form was read (form nil is then no form)
 --   finisherReady                         true when the reader can tell a finisher is due
 --   casting, targetCasting                the spell you are casting; the spell your target is casting
 --   targetNear                            true when the target is within a few yards

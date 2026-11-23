@@ -107,7 +107,7 @@ return {
     ["no amounts: out of power is the game refusing the spell, not a mana figure"] = function(t)
         local function caster(wrath, over)
             local f = { role = "dps", hostile = true, inCombat = true, dead = false, targetNear = true,
-                        targetDebuffs = { Moonfire = true },
+                        formKnown = true, targetDebuffs = { Moonfire = true }, current = { Attack = false },
                         spells = { Wrath = wrath, Moonfire = { known = true, onCooldown = false, inRange = true }, Attack = { known = true, onCooldown = false, inRange = true } } }
             for k, v in pairs(over or {}) do f[k] = v end
             wrath.inRange = true
@@ -132,6 +132,7 @@ return {
         local function grasp(row)
             return spellOf({ role = "dps", hostile = true, inCombat = true, dead = false, targetMelee = true,
                              targetOnYou = true, hittingYou = true, targetNear = true,
+                             formKnown = true, buffs = {}, targetDebuffs = {},
                              spells = { ["Nature's Grasp"] = row, Wrath = { known = true, onCooldown = false, inRange = true } } }, ns.Packs.DRUID)
         end
         t.eq(grasp({ known = true, onCooldown = false }), "Nature's Grasp", "castable: suggested")

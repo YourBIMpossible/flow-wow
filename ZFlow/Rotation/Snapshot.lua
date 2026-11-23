@@ -25,7 +25,7 @@ local R = ns.Rotation
 R.SNAPSHOT_FIELDS = {
     { "inCombat", "flag" }, { "hostile", "flag" }, { "resting", "flag" }, { "dead", "flag" },
     { "role", "value" }, { "tree", "value" }, { "fightType", "value" },
-    { "form", "value" }, { "stealthed", "flag" }, { "finisherReady", "flag" },
+    { "form", "value" }, { "formKnown", "flag" }, { "stealthed", "flag" }, { "finisherReady", "flag" },
     { "casting", "value" }, { "targetCasting", "value" },
     { "targetNear", "flag" }, { "targetMelee", "flag" }, { "targetOnYou", "flag" }, { "hittingYou", "flag" },
     { "attacking", "flag" }, { "canStartAttack", "flag" }, { "engageGaveUp", "flag" },
