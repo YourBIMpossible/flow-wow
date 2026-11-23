@@ -9,8 +9,15 @@
 --     account = the account saved table (ns.id.accountDB, "ZFlowDB") as the
 --               client wrote it, every key kept. Its `diag` (Core/Diag.lua):
 --         snaps  = { snap, ... }   oldest first, newest KEEP (20); each snap:
---             why, at, clock, timing, kernel   (timing.character, timing.realm:
---                                               names, see NAMES below)
+--             why, at, clock, kernel
+--             timing = (Core/Diag.lua Diag.Start; Capture.TIMING lists them)
+--                      order = { event, ... }   the events marked, in order
+--                      fileLoad, and one per event in order (ADDON_LOADED,
+--                        VARIABLES_LOADED, PLAYER_LOGIN, PLAYER_ENTERING_WORLD):
+--                        { at, accountData, charData, phase } (Capture.TIMING_MARK)
+--                      errors = { { text, count, at, phase, ours } }  Lua error
+--                        lines, ours and other add-ons'
+--                      start (a count), character, realm   (names, see NAMES)
 --             reads  = { money, combatLockdown, inCombat, bags = { row },
 --                        bagStacks, bankOpen, bankStacks,
 --                        position = { map, x, y }, zone = { cont, zone },
@@ -22,17 +29,28 @@
 --                      type "secret": the client hid the value; no value kept
 --         names  = { build = "1.16.1 (7777)", names = { ["C_Map.GetBestMapForUnit"] = "function", ... } }
 --         reads  = { { at, build, reads = Diag.Reads(client) }, ... }  oldest first; types only
---         api    = { namespaces = { [ns] = { [member] = type } | false }, globals }
+--         api    = { namespaces = { [ns] = { [member] = type name, or the
+--                    member's own number, text or true/false (peek keeps
+--                    plain values) } | false }, globals }
 --         starts, count
 --     char    = the character saved table (ns.id.charDB, "ZFlowCharDB"), or nil
 --   }
 -- A saved-variables file gives one with Capture.FromSaved(vars), vars being
--- what running the file assigned: { ZFlowDB = ..., ZFlowCharDB = ... } (the
--- account file and the character file are two files; merge their globals).
+-- the globals it assigns: { ZFlowDB = ..., ZFlowCharDB = ... } (the account
+-- file and the character file are two files). The offline runner reads
+-- them with the sanitizer's parser (ns.offline.readSaved): a saved file is
+-- parsed as data, never run.
 --
--- NAMES. A capture from the game holds character, realm and account names
--- (diag timing.character, timing.realm; shapes realm, realmNormalized,
--- fullName; saved per-character keys) and may hold chat or mail text.
+-- NAMES. A capture from the game holds character and realm names: diag
+-- timing.character and timing.realm; shapes realm, realmNormalized and
+-- fullName; auction price keys "<realm>-<faction>". Text that can hold any
+-- word, a name too: timing.errors[].text (other add-ons' errors), kernel
+-- problem texts, labels the player types (a waypoint's, char state.nav),
+-- import notes and export lines. No code reads or saves guild, account,
+-- chat or mail text (Capture.NO_TEXT); the sanitizer schema
+-- (tools/offline/zflow-sanitize-schema.lua) has no field of those kinds and
+-- refuses a capture holding one. A capture must pass the sanitizer before
+-- it leaves White, and even then is treated as holding names (section 192).
 -- Real captures never enter the repo, a branch, RESULTS or Drive (lead
 -- section 188, 3): tests here use made-up captures in this format.
 local _, ns = ...
@@ -41,6 +59,12 @@ local Capture = {}
 ns.Capture = Capture
 
 Capture.FORMAT = 1
+
+-- The timing fields (L2) and the fields of each mark; the text kinds no
+-- code saves (L1), as the sanitizer schema's kinds are named.
+Capture.TIMING = { "order", "fileLoad", "errors", "start", "character", "realm" }
+Capture.TIMING_MARK = { "at", "accountData", "charData", "phase" }
+Capture.NO_TEXT = { "account", "chat", "guild", "mail" }
 
 -- WHAT THE LOADER DOES with a capture (Capture.Client):
 --   saved    the account and character tables, deep copies, as the saved
@@ -342,4 +366,42 @@ function Capture.Client(cap, opts)
     opts = opts or {}
     local c = ns.make.fakeClient({ env = Capture.Env(cap), now = opts.now })
     return c, Capture.Apply(c, cap)
+end
+
+-- Section 191: the features run on a capture, each by the words a player
+-- would type, in this order. What each shows is what chat says for them
+-- and the arrows and panels shown after them.
+Capture.FEATURES = {
+    { name = "rotation", words = { "diag" } },
+    { name = "arrow", words = { "arrow why" } },
+    { name = "flights", words = { "try flight", "arrow why", "try off" } },
+    { name = "banker", words = { "banker" } },
+    { name = "settings", words = { "settings" } },
+}
+
+-- The words a feature says when a read is not known, by the read the
+-- loader sets (Capture.READS). Only words that mean that read alone: a line
+-- that could mean another cause too (a class with no spell list) is not here.
+Capture.UNKNOWN = {
+    position = { "not known where you are" },
+    facing = { "facing unknown" },
+    form = { "form not read" },
+}
+
+-- How many lines say unknown for a read the capture answers (report.set,
+-- from Capture.Apply). A count only: a line could hold a name.
+function Capture.Unknowns(lines, report)
+    local n = 0
+    local set = type(report) == "table" and type(report.set) == "table" and report.set or {}
+    for _, line in ipairs(lines or {}) do
+        local text = tostring(line)
+        local hit = false
+        for _, read in ipairs(set) do
+            for _, words in ipairs(Capture.UNKNOWN[read] or {}) do
+                if text:find(words, 1, true) then hit = true end
+            end
+        end
+        if hit then n = n + 1 end
+    end
+    return n
 end

@@ -17,6 +17,11 @@
                 nothing written, the value not printed
     broken      a file cut off part way: exit 2, nothing written
     odd         three arguments: exit 2
+    charOnly    the character file alone: exit 0, no made-up real name in
+                any spelling
+    allRefusals --all-refusals on a capture with two refusals: exit 1, two
+                refuse lines, nothing written, no value printed; on the
+                capture itself: exit 0
 
 .USAGE
   powershell -ExecutionPolicy Bypass -File tools\fixtures\zflow-sanitize\run.ps1
@@ -32,7 +37,9 @@ $bad = 0
 & $lua (Join-Path $PSScriptRoot 'test.lua')
 if ($LASTEXITCODE -ne 0) { $bad++ }
 
-$names = @('Aldwynne', 'Mossvale', 'Brannoch', 'Cinder-Reach', 'Kestrelle')
+$names = @('Aldwynne', 'Mossvale', 'Brannoch', 'Cinder-Reach', 'Kestrelle', 'Fenwick')
+# Every spelling: lower case, spaces, hyphens and punctuation removed.
+function Get-Folded([string]$s) { return ($s.ToLowerInvariant() -replace '[\s\p{P}\p{S}\p{Cc}]', '') }
 $work = Join-Path ([System.IO.Path]::GetTempPath()) ('zflow-sanitize-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $work | Out-Null
 try {
@@ -64,12 +71,24 @@ try {
     foreach ($o in @($outA, $outC)) {
         if (-not (Test-Path -LiteralPath $o)) { $why += ("not written: {0}" -f (Split-Path $o -Leaf)); continue }
         $text = [System.IO.File]::ReadAllText($o)
-        foreach ($n in $names) { if ($text.Contains($n)) { $why += ("a real name left in {0}" -f (Split-Path $o -Leaf)) } }
+        $folded = Get-Folded $text
+        foreach ($n in $names) { if ($folded.Contains((Get-Folded $n))) { $why += ("a real name left in {0}" -f (Split-Path $o -Leaf)) } }
         if (-not $text.Contains('Character')) { $why += ("no made-up name in {0}" -f (Split-Path $o -Leaf)) }
     }
     $after = @((Get-FileHash -LiteralPath $account).Hash, (Get-FileHash -LiteralPath $char).Hash)
     if (($before -join ',') -ne ($after -join ',')) { $why += 'a capture changed' }
     Report 'written' $r 0 $why
+
+    # charOnly: the character file alone
+    $outCo = Join-Path $work 'out-charOnly.lua'
+    $r = Invoke-Tool @($char, $outCo)
+    $why = @()
+    if (-not (Test-Path -LiteralPath $outCo)) { $why += 'not written' }
+    else {
+        $folded = Get-Folded ([System.IO.File]::ReadAllText($outCo))
+        foreach ($n in $names) { if ($folded.Contains((Get-Folded $n))) { $why += 'a real name left' } }
+    }
+    Report 'charOnly' $r 0 $why
 
     # exists
     $stampHash = (Get-FileHash -LiteralPath $outA).Hash
@@ -94,6 +113,20 @@ try {
     if (Test-Path -LiteralPath $outR) { $why += 'written' }
     if ($r.Out.Contains('Fenwick')) { $why += 'the value printed' }
     Report 'refused' $r 1 $why
+
+    # allRefusals
+    $odd2 = Join-Path $work 'odd2.lua'
+    [System.IO.File]::WriteAllText($odd2, $text + "`nOtherAddonDB = { [`"owner`"] = `"Fenwick`", }`n")
+    $before2 = @(Get-ChildItem -LiteralPath $work).Count
+    $r = Invoke-Tool @('--all-refusals', $odd2, $char)
+    $why = @()
+    $lines = @($r.Out -split "`r?`n" | Where-Object { $_ -like 'zflow-sanitize: refuse: *' })
+    if ($lines.Count -ne 2) { $why += ("refuse lines: {0}" -f $lines.Count) }
+    if ($r.Out.Contains('Fenwick')) { $why += 'a value printed' }
+    if (@(Get-ChildItem -LiteralPath $work).Count -ne $before2) { $why += 'a file written' }
+    Report 'allRefusals' $r 1 $why
+    $r = Invoke-Tool @('--all-refusals', $account, $char)
+    Report 'allRefusals none' $r 0 @()
 
     # broken
     $cut = Join-Path $work 'cut.lua'
