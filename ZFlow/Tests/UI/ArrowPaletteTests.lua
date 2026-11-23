@@ -100,7 +100,7 @@ return {
         t.eq(row.choices, { "standard", "colourBlind" })
         t.eq(row.default, "standard")
         t.eq(row.path, PATH)
-        t.eq(row.group, "Arrows")
+        t.eq(row.group, "travel.arrow")
         t.eq(row.label, "Arrow colours")
         t.eq(k.settings:get(A.PALETTE), "standard")
         t.eq(k.problems:count(), 0)

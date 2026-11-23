@@ -169,7 +169,7 @@ tests["role module: the setting is a choice, nothing chosen at first"] = functio
     t.eq(row.scope, "char")
     t.eq(row.default, "")
     t.eq(row.choices, { "", "dps", "heal", "tank" })
-    t.eq(row.group, "Rotation")
+    t.eq(row.group, "combat.rotation")
     t.eq(k.settings:get(Ro.SETTING), "")
 end
 

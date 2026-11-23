@@ -18,9 +18,9 @@ local function start(opts)
     local diag = ns.Diag.Start(k)
     if opts.rows ~= false then
         k:Setting({ key = "test.sound", scope = "account", type = "bool", default = true,
-            label = "Play a sound", group = "Sounds" })
+            label = "Play a sound", group = "advanced" })
         k:Setting({ key = "test.quiet", scope = "char", type = "bool", default = false,
-            label = "Stay quiet", group = "Sounds" })
+            label = "Stay quiet", group = "advanced" })
     end
     local api = SP.Declare(k, diag)
     k:Boot()
@@ -72,16 +72,19 @@ return {
         t.eq(api.open(), false)
     end,
 
-    ["settings panel: the page lists every row under its group, with value and key"] = function(t)
+    ["settings panel: the page lists the chosen topic's rows under its name, with value and key"] = function(t)
         local k, c, api = start()
         api.toggle()
         local lines = panelOf(c).lines
         t.eq(lines, SP.Lines(k))
         t.eq(lines[1], SP.TITLE)
-        local g = find(lines, "Sounds")
+        local g
+        for i, l in ipairs(lines) do
+            if l == ns.Settings.Topics.Find("advanced").name then g = i end
+        end
         local a = find(lines, "Play a sound")
         local b = find(lines, "Stay quiet")
-        t.ok(g and a and b and g < a and g < b, "the group stands above its rows")
+        t.ok(g and a and b and g < a and g < b, "the topic stands above its rows")
         local _, line = find(lines, "Play a sound")
         t.ok(tostring(line):find("[test.sound]", 1, true) ~= nil, "the key: " .. tostring(line))
         t.ok(find(lines, ns.id.slash .. " setting <key> <value>") ~= nil, "how to change one")

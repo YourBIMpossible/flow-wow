@@ -17,9 +17,15 @@ local function state(over)
     return s
 end
 
-local function row(items, key)
+local row
+row = function(items, key)
     for i = 1, #items do
         if items[i].key == key then return items[i], i end
+        -- A row of a submenu (lead section 239, N57) is found under its heading.
+        if type(items[i].children) == "table" then
+            local below, at = row(items[i].children, key)
+            if below then return below, at end
+        end
     end
     return nil
 end
