@@ -83,4 +83,31 @@ tests["placed notice: the kept list holds the newest 40"] = function(t)
     t.eq(#list, 40, "a bad row is not kept")
 end
 
+-- SE-3: the swing is read for every class, not only those whose pack has
+-- an Attack row (Druid and Paladin). The id is asked of the client by name
+-- (client.spellId) when the pack's ids do not have it. Made-up spell id.
+local function swingClient(on)
+    local c = ns.make.fakeClient()
+    c.setSpellId("Attack", 6603)
+    c.setCurrentSpell(6603, on)
+    c.setLockdown(false)
+    return c
+end
+
+tests["swing: read with no Attack row in the pack, through the client's spell id"] = function(t)
+    local D = ns.RotationDriver
+    local extra = { spellKeys = { keyOn = true } }
+    t.eq(D.Read(swingClient(true), {}, {}, "dps", extra)("attacking"), true, "swinging")
+    t.eq(D.Read(swingClient(false), {}, {}, "dps", extra)("attacking"), false, "not swinging")
+    t.eq(D.Read(swingClient(false), {}, {}, "dps", extra)("canStartAttack"), true, "the key may start it")
+    t.eq(D.Read(swingClient(true), {}, {}, "dps", extra)("canStartAttack"), false, "already swinging")
+end
+
+tests["swing: no id from the pack or the client is not known"] = function(t)
+    local D = ns.RotationDriver
+    local c = ns.make.fakeClient()
+    c.setLockdown(false)
+    t.eq(D.Read(c, {}, {}, "dps", { spellKeys = { keyOn = true } })("attacking"), nil)
+end
+
 return tests
