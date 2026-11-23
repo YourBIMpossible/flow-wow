@@ -5,8 +5,11 @@ local _, ns = ...
 -- left their row "the lead's to add" and it never was (Settings/Rows.lua).
 local tests = {}
 
+-- The feedback (row N73) is paused by lead section 284 and declares no row
+-- while paused (Tests/E2E/FeedbackOff.lua); here it is on through the fake
+-- client internal switch, so its row is checked like every other.
 local function boot()
-    local c = ns.make.fakeClient()
+    local c = ns.make.fakeClient({ internal = { feedback = true } })
     c.setSaved(ns.id.accountDB, {})
     local addon = ns.offline.addon(c)
     c.fire("ADDON_LOADED", ns.id.addon)
