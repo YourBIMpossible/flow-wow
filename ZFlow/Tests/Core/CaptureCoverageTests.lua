@@ -134,6 +134,11 @@ local READS = {
     -- an open gossip or quest window; read by UI/NpcSpeech.lua only, the
     -- capture asks none. Their names are in Diag.NAMES.
     speech = false, npcText = false,
+    -- N39 and N40 (P-KEYS slice E): the target's name (the no-auto-attack
+    -- list) and the spell it casts (the stop-a-cast advice); read by the
+    -- rotation only, the capture asks neither. Their names (UnitName,
+    -- UnitCastingInfo, UnitChannelInfo) are in Diag.NAMES.
+    targetName = false, targetCast = false,
 }
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).

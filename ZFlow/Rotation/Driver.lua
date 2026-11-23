@@ -202,6 +202,46 @@ local function currentOf(client, ids)
     return any and out or nil
 end
 
+-- N39 (P-KEYS slice E): whether you are swinging, read as the current spell
+-- of Auto Attack or Attack; nil when neither could be read.
+local function attackingOf(client, ids)
+    if type(client.currentSpell) ~= "function" or type(ids) ~= "table" then return nil end
+    local seen = nil
+    for _, name in ipairs({ "Auto Attack", "Attack" }) do
+        local id = ids[name]
+        if type(id) == "number" then
+            local asked, on = pcall(client.currentSpell, id)
+            if asked and on == true then return true end
+            if asked and on == false then seen = false end
+        end
+    end
+    return seen
+end
+
+-- N39: the key can start the swing only with the key frame on, out of
+-- combat lockdown (its attributes cannot change in it) and not swinging.
+local function canStartOf(client, ids, sk)
+    if sk.keyOn ~= true then return false end
+    if type(client.combatLockdown) ~= "function" then return nil end
+    local asked, locked = pcall(client.combatLockdown)
+    if not asked or type(locked) ~= "boolean" then return nil end
+    if locked then return false end
+    local swinging = attackingOf(client, ids)
+    if swinging == nil then return nil end
+    return not swinging
+end
+
+-- N39: your target is on the no-auto-attack list (Rotation/SpellKeys.lua).
+-- An empty list is false; a name not read with a list kept is true (the
+-- cautious answer: the key is not changed for an enemy it may not want).
+local function gaveUpOf(client, sk)
+    if type(sk.noAttack) ~= "table" or next(sk.noAttack) == nil then return false end
+    if type(client.targetName) ~= "function" then return true end
+    local asked, name = pcall(client.targetName)
+    if not asked or type(name) ~= "string" then return true end
+    return sk.noAttack[name] == true
+end
+
 -- Conjured food and water (lead section 197): for each row of the pack's
 -- options.conjure ({ spell, items = { item name, ... } }), how many of its
 -- items are in the bags, added up. A row none of whose items could be
@@ -425,6 +465,8 @@ function D.Read(client, pack, ids, role, extra)
     local heal = type(extra) == "table" and extra.heal or nil
     local chosen = type(extra) == "table" and extra.chosen or nil
     local combo = type(extra) == "table" and extra.combo or nil
+    local spellKeys = nil
+    if type(extra) == "table" then spellKeys = extra.spellKeys end
     -- Lead section 187: the form is asked of the client once for a read,
     -- and both fields (form, formKnown) come from that one answer.
     -- The answer is kept only for the other field of the pair, and used
@@ -508,6 +550,23 @@ function D.Read(client, pack, ids, role, extra)
             return nil
         end
         -- PC-3: in a group, read as yes or no (Classes/Paladin.lua's seal).
+        -- N39 (P-KEYS slice E): the swing, whether the key may start it and
+        -- whether your target is on the no-auto-attack list. N40: the spell
+        -- your target is casting; false when it casts none. Asked only with
+        -- the spell keys' input (Rotation/SpellKeys.lua): not known without.
+        if field == "attacking" or field == "canStartAttack" or field == "engageGaveUp"
+            or field == "targetCasting" then
+            if type(spellKeys) ~= "table" then return nil end
+        end
+        if field == "attacking" then return attackingOf(client, ids) end
+        if field == "canStartAttack" then return canStartOf(client, ids, spellKeys) end
+        if field == "engageGaveUp" then return gaveUpOf(client, spellKeys) end
+        if field == "targetCasting" then
+            if type(client.targetCast) ~= "function" then return nil end
+            local ok, v = pcall(client.targetCast)
+            if ok and (type(v) == "string" or v == false) then return v end
+            return nil
+        end
         if field == "grouped" then
             if type(client.grouped) ~= "function" then return nil end
             local ok, v = pcall(client.grouped)
@@ -635,12 +694,21 @@ function D.Step(client, pack, prefs, bias, applied, role, extra)
     end
     local ids, missing = RR.SpellIds(pack, client.spellId)
     local snapshot = ns.Snapshot(D.Read(client, pack, ids, role, extra))
+    -- N39 and N27 (P-KEYS slice E): with no prefs passed, the spells list
+    -- and the auto attack row (Rotation/SpellKeys.lua), extra.spellKeys,
+    -- give them: the chooser's, and the key plan's (Skip and Bar off it).
+    local planPrefs = prefs
+    local sk = nil
+    if type(extra) == "table" then sk = extra.spellKeys end
+    if prefs == nil and type(sk) == "table" and type(ns.SpellKeys) == "table" then
+        prefs, planPrefs = ns.SpellKeys.Prefs(sk)
+    end
     local suggestion, trace = ns.Choose(snapshot, pack, prefs, bias)
     local passed = passedIn(trace)
     if suggestion and #passed > 0 then suggestion.passed = passed end
 
     local lockdown = client.combatLockdown()
-    local plan = ns.KeyPlan(pack, prefs)
+    local plan = ns.KeyPlan(pack, planPrefs)
     -- N8: the healing item on Alt + the key (KeyPlan gives a fresh table).
     local hi = snapshot.healItem
     if type(plan) == "table" and type(hi) == "table" and type(hi.alt) == "number" then
@@ -675,11 +743,22 @@ function D.Step(client, pack, prefs, bias, applied, role, extra)
             end
         end
     end
+    -- N39 (P-KEYS slice E): the engage step's Attack goes on the plan, a
+    -- spell (never a macro), out of combat lockdown only.
+    if type(suggestion) == "table" and suggestion.engage == true and type(suggestion.spell) == "string"
+        and type(plan) == "table" and plan.action == nil and lockdown == false then
+        plan.action = { spell = suggestion.spell }
+    end
     local onKey = suggestion
     if type(KC) == "table" and type(controls) == "table" then
         KC.Shape(plan, controls, snapshot, pack, KC.Friend(client))
         suggestion = KC.Gate(suggestion, controls)
         if type(suggestion) == "table" and suggestion.keyOff == true then onKey = nil end
+    end
+    -- N27: a Bar spell is shown but kept off the key.
+    if type(onKey) == "table" and type(prefs) == "table" and type(prefs.bar) == "table"
+        and type(onKey.spell) == "string" and prefs.bar[onKey.spell] then
+        onKey = nil
     end
     local keys = ns.cast.Apply(plan, applied, lockdown)
     local attrs = ns.cast.Attributes(onKey, plan, applied, lockdown, nil)
@@ -757,6 +836,18 @@ local function keyActionsOf(k, settings)
     return nil
 end
 
+-- P-KEYS slice E: the spells list's and auto attack's input
+-- (Rotation/SpellKeys.lua), asked each tick; nil when the kernel has no
+-- such module or it is off. Resolved when called, as chosenOf.
+local function spellKeysOf(k, settings)
+    if type(k) ~= "table" or type(k.use) ~= "function" then return nil end
+    local ok, mod = pcall(k.use, "spellKeys")
+    if not ok or type(mod) ~= "table" or type(mod.Input) ~= "function" then return nil end
+    local asked, got = pcall(mod.Input, settings)
+    if asked and type(got) == "table" then return got end
+    return nil
+end
+
 function D.Declare(k, packs)
     local api = {}
     local view, errors, lastError = nil, 0, nil
@@ -786,9 +877,13 @@ function D.Declare(k, packs)
         if type(ns.KeyControls) == "table" then controls = ns.KeyControls.Read(ctx.settings) end
         -- N1, N2, N20, N5: the key actions' rows and what they keep.
         local keyActions = keyActionsOf(k, ctx.settings)
+        -- N39, N40, N27 (P-KEYS slice E): the spell keys' input, and whether
+        -- the key frame is on (only the key can start the swing).
+        local spellKeys = spellKeysOf(k, ctx.settings)
+        if type(spellKeys) == "table" then spellKeys.keyOn = heal.keys == true end
         local ok, got = pcall(work, ctx.client, packs or ns.Packs, ctx.settings:get(D.ROLE),
             { food = food, heal = heal, chosen = chosenOf(k), combo = comboOf(k), controls = controls,
-              keyActions = keyActions })
+              keyActions = keyActions, spellKeys = spellKeys })
         if ok then
             view = got
         else

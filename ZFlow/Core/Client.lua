@@ -8318,6 +8318,31 @@ function ns.make.client(env)
         if not name then return nil end
         return words(env[name])
     end
+
+    -- N39 (P-KEYS slice E): your target's name, for the no-auto-attack
+    -- list; nil with no target or when the client does not say.
+    -- UnitName("target"), a first guess for this use: not seen in game on
+    -- 16001.
+    function c.targetName()
+        return text(call(env.UnitName, "target"))
+    end
+
+    -- N40 (P-KEYS slice E): the spell your target is casting or channelling
+    -- (UnitCastingInfo("target"), else UnitChannelInfo("target")); false
+    -- when both answered and it casts nothing; nil when either could not
+    -- be asked or answered something but a plain name. First guesses for
+    -- this use: not seen in game on 16001.
+    function c.targetCast()
+        local ok, name = call(env.UnitCastingInfo, "target")
+        local cast = text(ok, name)
+        if cast then return cast end
+        local okCh, chName = call(env.UnitChannelInfo, "target")
+        local channel = text(okCh, chName)
+        if channel then return channel end
+        if (ok and name ~= nil) or (okCh and chName ~= nil) then return nil end
+        if ok and okCh then return false end
+        return nil
+    end
     return c
 end
 

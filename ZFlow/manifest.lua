@@ -212,6 +212,8 @@ return {
     "Rotation/ClickSlots.lua",
     -- N1, N2, N20, N5 key actions (P-KEYS slice D).
     "Rotation/KeyActions.lua",
+    -- N39, N40, N26, N27: auto attack, the spells list and the placed notice (P-KEYS slice E).
+    "Rotation/SpellKeys.lua",
     -- N64: the weapon enchant reminder, a line in chat only (after Group).
     "Rotation/Enchant.lua",
     -- N55: the boss loot panel, look only (after Gear, Items/Drops and the classes).

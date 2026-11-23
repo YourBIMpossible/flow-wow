@@ -3029,6 +3029,20 @@ function ns.make.fakeClient(opts)
         if type(v) ~= "string" or v == "" then return nil end
         return v
     end
+    -- N39 and N40 (P-KEYS slice E): the target's name and the spell it
+    -- casts, as the real client's; setTargetCastFails makes the read raise.
+    function c.setTargetName(name) s.targetName = name end
+    function c.targetName()
+        if type(s.targetName) ~= "string" or s.targetName == "" then return nil end
+        return s.targetName
+    end
+    function c.setTargetCast(name) s.targetCast = name end
+    function c.setTargetCastFails(on) s.targetCastFails = on == true end
+    function c.targetCast()
+        if s.targetCastFails then error("the target cast read failed (test)") end
+        if type(s.targetCast) == "string" and s.targetCast ~= "" then return s.targetCast end
+        return false
+    end
     return c
 end
 
