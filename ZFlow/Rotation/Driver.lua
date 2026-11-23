@@ -107,6 +107,10 @@ local _, ns = ...
 --                  whose spell client.spell reads as known names the tree
 --                  (id from ids, else client.spellId). nil when the pack has
 --                  no rows, none is known, or a read raised
+--       weaponEnchant  P-SELFBUFF: client.weaponEnchant() by hand: the
+--                  seconds left, true (on, time not shown) or false (bare);
+--                  a hand with nothing known is left out. nil when not
+--                  known, the read raised, or the client has no such read
 --       debuffs    PRIEST-3: client.playerDebuffs(): your own debuffs by
 --                  name, as playerBuffs; nil when not known, the read
 --                  raised, or the client has no such read
@@ -325,6 +329,31 @@ local function treeOf(client, pack, ids)
     return nil
 end
 
+-- P-SELFBUFF: the enchant on your weapons (see the header). A read that
+-- raises, or answers no table, gives nil: not known.
+local function enchantOf(client)
+    if type(client.weaponEnchant) ~= "function" then return nil end
+    local ok, got = pcall(client.weaponEnchant)
+    if not ok or type(got) ~= "table" then return nil end
+    local out = {}
+    for _, hand in ipairs({ "main", "off" }) do
+        local row = got[hand]
+        if type(row) == "table" then
+            if row.has == false then
+                out[hand] = false
+            elseif row.has == true then
+                local secs = row.left
+                if type(secs) == "number" and secs == secs and secs >= 0 then
+                    out[hand] = secs
+                else
+                    out[hand] = true
+                end
+            end
+        end
+    end
+    return out
+end
+
 local ROLES = { dps = true, heal = true, tank = true }
 local function roleIn(pack, role)
     if type(role) ~= "string" or not ROLES[role] then return nil end
@@ -525,6 +554,7 @@ function D.Read(client, pack, ids, role, extra)
             if ok and type(v) == "table" then return v end
             return nil
         end
+        if field == "weaponEnchant" then return enchantOf(client) end
         if field == "dead" then return client.dead() end
         if field == "inCombat" then return client.inCombat() end
         if field == "stealthed" then

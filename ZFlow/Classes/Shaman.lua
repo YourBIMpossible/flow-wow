@@ -27,9 +27,9 @@ local _, ns = ...
 --   * SHAMAN-1 (P-KEYS slice A) holds Ancestral Spirit and the heals for
 --     another player in `care`, on the care key only (Rotation/CareKeys.lua);
 --     Chain Heal and the totems for a party are not in it;
---   * the weapon imbues (Rockbiter, Flametongue, Frostbrand, Windfury) in the
---     list: no read gives the enchant on your weapon yet, so "is it on"
---     cannot be told. They are on the Alt key row, for you to press;
+--   * Frostbrand Weapon in the list: a slowing imbue for the moment, not
+--     one to keep up. Windfury, Flametongue and Rockbiter are in the list
+--     (P-SELFBUFF, read against your weapon enchant) and on the Alt key row;
 --   * totems in the list: no read says which totem is down or how far it is,
 --     and most totems reach the group. Searing, Stoneskin and Earthbind are
 --     on the key rows, for you to press;
@@ -92,6 +92,28 @@ local buffs = tag({
       end },
 })
 
+-- P-SELFBUFF: the imbue on your main hand (snapshot.weaponEnchant, from
+-- client.weaponEnchant). Asked for when the main hand is read bare, or out
+-- of a fight with less than IMBUE seconds left. Not read, or the main hand
+-- not known: not asked. One rule per imbue; the chooser takes the first
+-- you know, in this order (a first guess: the strongest first).
+local IMBUE = 60
+local function imbueDue(s)
+    if wolf(s) or type(s.weaponEnchant) ~= "table" then return false end
+    local main = s.weaponEnchant.main
+    if main == false then return true end
+    if type(main) ~= "number" then return false end
+    return outOfFight(s) and main < IMBUE
+end
+local function imbueRule(name)
+    return { spell = name, kind = "buff", reason = "No imbue on your main hand, or running out: " .. name,
+             when = imbueDue }
+end
+buffs[#buffs + 1] = imbueRule("Windfury Weapon")
+buffs[#buffs + 1] = imbueRule("Flametongue Weapon")
+buffs[#buffs + 1] = imbueRule("Rockbiter Weapon")
+tag(buffs)
+
 local damage = tag({
     { spell = "Lightning Bolt", target = true, reason = "Open with Lightning Bolt",
       when = function(s) return s.hostile and outOfFight(s) and not wolf(s) end },
@@ -137,13 +159,13 @@ local spells = {
     ["Healing Wave"]        = sp(1,  { "Healing" }),
     -- SHAMAN-1: on a dead friend, out of a fight only (the care key).
     ["Ancestral Spirit"]    = sp(12, { "Utility" }),
-    ["Rockbiter Weapon"]    = sp(1,  { "DPS" }, nil, "a weapon imbue; no read shows it"),
+    ["Rockbiter Weapon"]    = sp(1,  { "DPS" }, nil, "a weapon imbue; the weapon enchant read shows it"),
     ["Earth Shock"]         = sp(4,  { "DPS", "Control" }),
     ["Stoneskin Totem"]     = sp(4,  { "Survival" }, nil, "a totem; no read shows it"),
     ["Earthbind Totem"]     = sp(6,  { "Control" }, nil, "a totem; no read shows it"),
     ["Lightning Shield"]    = sp(8,  { "Survival" }),
     ["Flame Shock"]         = sp(10, { "DPS" }),
-    ["Flametongue Weapon"]  = sp(10, { "DPS" }, nil, "a weapon imbue; no read shows it"),
+    ["Flametongue Weapon"]  = sp(10, { "DPS" }, nil, "a weapon imbue; the weapon enchant read shows it"),
     ["Searing Totem"]       = sp(10, { "DPS" }, nil, "a totem; no read shows it"),
     ["Purge"]               = sp(12, { "Utility" }),
     ["Cure Poison"]         = sp(16, { "Utility" }),
@@ -151,7 +173,7 @@ local spells = {
     ["Frost Shock"]         = sp(20, { "DPS", "Control" }),
     ["Lesser Healing Wave"] = sp(20, { "Healing" }),
     ["Cure Disease"]        = sp(22, { "Utility" }),
-    ["Windfury Weapon"]     = sp(30, { "DPS" }, nil, "a weapon imbue; no read shows it"),
+    ["Windfury Weapon"]     = sp(30, { "DPS" }, nil, "a weapon imbue; the weapon enchant read shows it"),
     ["Stormstrike"]         = sp(nil, { "DPS" }, nil, "an Enhancement talent"),
     ["Attack"]              = sp(nil, { "DPS" }, nil, "the swing; the client names it Attack or Auto Attack"),
     ["Auto Attack"]         = sp(nil, { "DPS" }, nil, "the swing; the client names it Attack or Auto Attack"),
@@ -306,13 +328,19 @@ local pack = {
         },
         -- Reads the rules lean on; one not given is named by diag (187).
         reads = { "buffs", "targetDebuffs" },
-        -- N58 (lead section 241): no own-choice row yet. The imbue you cast
-        -- would be the one to keep, but no rule here suggests an imbue: no
-        -- read gives the enchant on your weapon (see the header), so the
-        -- imbues are Alt key row only. A kept imbue would be said "kept up"
-        -- with nothing keeping it up. Totems: none is suggested either. The
-        -- row (prefix "", key "imbue", word "imbue") waits for a weapon
-        -- enchant read and a rule that uses it.
+        -- N58 (lead section 241): no own-choice row yet. The imbue steps
+        -- (P-SELFBUFF) ask for the first imbue you know; the one you cast is
+        -- not kept. The row (prefix "", key "imbue", word "imbue") is the
+        -- next N58 step. Totems: none is suggested.
+        -- P-SELFBUFF: the self-buff rows (Tests/Rotation/SelfBuffRows.lua).
+        selfBuffs = {
+            rows = { "Lightning Shield", "Windfury Weapon", "Flametongue Weapon", "Rockbiter Weapon" },
+            none = {
+                { what = "Frostbrand Weapon", why = "a slowing imbue for the moment, not one to keep up" },
+                { what = "Water Shield", why = "not a spell of this client's shaman (first guess)" },
+            },
+            waits = {},
+        },
     },
 
     -- Beyond the sixteen rows, from the old shared tables.

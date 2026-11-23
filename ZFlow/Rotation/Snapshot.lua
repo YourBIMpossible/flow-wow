@@ -33,6 +33,10 @@ R.SNAPSHOT_FIELDS = {
     { "buffs", "map" }, { "targetDebuffs", "map" }, { "debuffTypes", "map" },
     -- PRIEST-3 (P-SELFBUFF): your own debuffs by name (Weakened Soul); nil when not read.
     { "debuffs", "map" },
+    -- P-SELFBUFF: the enchant on your weapons by hand (main, off): seconds
+    -- left, true (on, time not shown) or false (bare); a hand not known is
+    -- left out; nil when not read (Rotation/Driver.lua).
+    { "weaponEnchant", "map" },
     { "current", "map" },
     -- Lead section 197: your pet (Choose.lua, R.PetUp); nil when not read.
     { "pet", "map" },

@@ -27,8 +27,10 @@ local _, ns = ...
 -- outside source: each needs a check in the game client.
 --
 -- Not in this pack yet (tasks):
---   * poisons: putting one on a weapon is the use of an item, there is no
---     poison row, and no read of the weapon's enchant;
+--   * poisons: putting one on a weapon is the use of an item, not a spell,
+--     so there is no poison row here (P-SELFBUFF, options.selfBuffs.none).
+--     The weapon enchant reminder (Rotation/Enchant.lua, off by default)
+--     says when a poison runs out;
 --   * Vanish and Blind as breakers: breakers is empty, as whether the
 --     control read names the effect type is not known yet.
 -- A rogue has no tank spec in this game, so there is no tank role.
@@ -282,6 +284,16 @@ local pack = {
     },
 
     options = {
+        -- P-SELFBUFF: the self-buff rows (Tests/Rotation/SelfBuffRows.lua):
+        -- rows are buff rules in the lists; none do not apply as a row (why);
+        -- waits are not suggested until the read named in on is there.
+        selfBuffs = {
+            rows = { "Slice and Dice" },
+            none = {
+                { what = "poison", why = "putting a poison on a weapon is the use of an item, not a spell: the weapon enchant reminder (Rotation/Enchant.lua) says when it runs out" },
+            },
+            waits = {},
+        },
         crowdControl = { none = "Sap works only from stealth on an enemy not yet in a fight, and Gouge holds your own target only" },
         threatDrop = { spell = "Feint" },
         -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,
@@ -302,9 +314,9 @@ local pack = {
         reads = { "stealthed", "buffs", "targetDebuffs" },
         -- N58 (lead section 241): no own-choice row yet. No rule here
         -- suggests a poison, the poisons are not in the spell list (putting
-        -- one on is the use of an item) and no read gives the enchant on your
-        -- weapon (see the header). The row (prefix "", key "poison", word
-        -- "poison") waits for that read and a rule that uses it.
+        -- one on is the use of an item; see the header). The row (prefix "",
+        -- key "poison", word "poison") waits for an item step that uses the
+        -- weapon enchant read.
         -- ROGUE-2 (section 236): when a finisher is due. need: the combo
         -- points a finisher waits for; builders: the points each of your
         -- strikes gives; finishers: the spells that spend them all. Every

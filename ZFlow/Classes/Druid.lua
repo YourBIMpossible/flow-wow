@@ -471,6 +471,16 @@ local pack = {
     },
 
     options = {
+        -- P-SELFBUFF: the self-buff rows (Tests/Rotation/SelfBuffRows.lua):
+        -- rows are buff rules in the lists; none do not apply as a row (why);
+        -- waits are not suggested until the read named in on is there.
+        selfBuffs = {
+            rows = { "Mark of the Wild", "Thorns" },
+            none = {},
+            waits = {
+                { spell = "Omen of Clarity", on = "N50", why = "a talent (first guess): asked for only once the talent probe says you have it" },
+            },
+        },
         crowdControl = { { spell = "Hibernate", creatures = { beast = true, dragonkin = true } } },
         threatDrop = { spell = "Cower", forms = { ["Cat Form"] = true } },
         -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,
