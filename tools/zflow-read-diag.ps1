@@ -216,19 +216,20 @@ if (Test-ZSavedTable $probeRows) {
     foreach ($key in ($probeRows.Keys | Sort-Object { [string]$_ })) {
         if ($key -ne 'EJ_LOADED' -and -not $partInfo.ContainsKey([string]$key)) { [void]$partOrder.Add([string]$key) }
     }
-    $works = 0; $missing = 0; $unsure = 0
+    $works = 0; $missing = 0; $unsure = 0; $unknown = 0
     foreach ($id in $partOrder) {
         $said = Get-ZSaved $probeRows $id
         $kind = '?'; $name = '?'
         if ($partInfo.ContainsKey($id)) { $kind = $partInfo[$id].Kind; $name = $partInfo[$id].Name }
         if ($said -isnot [string]) { $said = 'not asked' }
-        if ($said -eq 'works' -or $said.StartsWith('works ')) { $works++ }
-        elseif ($said -eq 'set, not confirmed') { $unsure++ }
+        if ($said -eq 'not asked') { $unknown++ }
+        elseif ($said -eq 'works' -or $said.StartsWith('works ')) { $works++ }
+        elseif ($said -eq 'made, not confirmed') { $unsure++ }
         else { $missing++ }
         Write-Output ("   {0}  {1}  {2}: {3}" -f $id, $kind, $name, (Format-Plain $said))
     }
     Write-Output ("   Encounter Journal add-on loaded: {0}" -f (Format-Plain (Get-ZSaved $probeRows 'EJ_LOADED')))
-    Write-Output ("   works {0}, missing {1}, not confirmed {2}" -f $works, $missing, $unsure)
+    Write-Output ("   works {0}, missing {1}, not confirmed {2}, not asked {3}" -f $works, $missing, $unsure, $unknown)
 } else { Write-Output '   none saved (log in once out of combat, then reload or log out)' }
 
 Write-Output ''
