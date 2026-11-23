@@ -187,6 +187,13 @@ Nav\Try.lua
 Rotation\Gather.lua
 Rotation\Group.lua
 Rotation\Mouseover.lua
+Rotation\CareKeys.lua
+Rotation\KeyControls.lua
+UI\ClickCheck.lua
+UI\MoveHandle.lua
+Rotation\ClickSlots.lua
+Rotation\KeyActions.lua
+Rotation\SpellKeys.lua
 Rotation\Enchant.lua
 UI\BossLoot.lua
 UI\NpcSpeech.lua

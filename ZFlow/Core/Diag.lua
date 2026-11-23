@@ -204,6 +204,11 @@ Diag.NAMES = {
     -- markRewardChoice). First guesses, never asked of 16001; saved in the
     -- snapshot's names table so a normal login records which exist.
     "GetNumQuestChoices", "GetQuestItemLink", "QuestInfoRewardsFrameQuestInfoItem1", "QuestRewardItem1",
+    -- SD-1 (N2, N20; P-KEYS slice D): the corpse you target and the
+    -- profession window's tools (Core/Client.lua targetCorpse; the tools
+    -- name GetTradeSkillTools is listed above, N24). First guesses, never asked of 16001; saved here so
+    -- a normal login records which exist.
+    "CanLootUnit", "C_TooltipInfo.GetUnit",
     -- S21 (lead section 275): the roll frame and its item picture that
     -- carry the Need or Greed value (Core/Client.lua rollValue). First
     -- guesses, never asked of 16001.
@@ -1328,6 +1333,10 @@ function Diag.HelpFor(commands, help, slash, rest)
     return Diag.HelpLines(commands, help, slash, arg:match("^%d+$") and tonumber(arg) or 1)
 end
 
+-- The bus event (internal, not a client event) another module emits with a
+-- timing mark's name: ctx.bus:emit(Diag.MARK_EVENT, "NAME").
+Diag.MARK_EVENT = "diag:mark"
+
 function Diag.Start(k)
     local client, id = k.client, k.id
 
@@ -1419,6 +1428,10 @@ function Diag.Start(k)
     -- event name is not a global: Diag.NAMES can not say it).
     client.listen("TRADE_SKILL_SHOW", function() mark("TRADE_SKILL_SHOW") end)
     client.listen("TRADE_SKILL_CLOSE", function() mark("TRADE_SKILL_CLOSE") end)
+    -- SE-2 (N26): the game placing a spell on a bar, which
+    -- Rotation/SpellKeys.lua listens to; the name is a first guess from the
+    -- old file, so a capture says whether it fired. A mark only.
+    client.listen("SPELL_PUSHED_TO_ACTIONBAR", function() mark("SPELL_PUSHED_TO_ACTIONBAR") end)
     client.listen("PLAYER_ENTERING_WORLD", function()
         if mark("PLAYER_ENTERING_WORLD") then
             session()
@@ -1688,7 +1701,14 @@ function Diag.Start(k)
                 .. id.slash .. " import to see what an import would do.")
         end
     end)
-    return { timing = timing, snapshot = snapshot, commands = commands, help = help }
+    -- Other modules add a timing mark of their own (once per name) through
+    -- the bus's internal "diag:mark" event, or the mark returned here.
+    if type(k.bus) == "table" and type(k.bus.on) == "function" then
+        k.bus:on("diag", Diag.MARK_EVENT, function(name)
+            if type(name) == "string" and name ~= "" then mark(name) end
+        end)
+    end
+    return { timing = timing, snapshot = snapshot, commands = commands, help = help, mark = mark }
 end
 
 -- The addon's own kernel collects from the moment this file loads.

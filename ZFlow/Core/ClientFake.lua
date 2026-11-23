@@ -2603,6 +2603,20 @@ function ns.make.fakeClient(opts)
             if unread or type(key) ~= "string" or key == "" then return nil end
             return live[key] or ""
         end
+        -- S23 (P-KEYS slice B): the twin of c.bindingOverride. Another
+        -- add-on's override (c.setForeignOverride) wins, then ours
+        -- (c.overrideBindingClick), then the game's binding; "" for none.
+        -- c.setBindingOverrideFails(true): the read raises until set false.
+        local foreign, overrideFails = {}, false
+        function c.setForeignOverride(key, action) foreign[key] = action end
+        function c.setBindingOverrideFails(on) overrideFails = (on == true) end
+        function c.bindingOverride(key)
+            if overrideFails then error("GetBindingAction failed (test)", 0) end
+            if unread or type(key) ~= "string" or key == "" then return nil end
+            if foreign[key] ~= nil then return foreign[key] end
+            if overrides[key] ~= nil then return "CLICK " .. tostring(overrides[key]) .. ":LeftButton" end
+            return live[key] or ""
+        end
         function c.setBindingClick(key, button)
             if locked() then return false, "lockdown" end
             if faults > 0 then
@@ -2893,6 +2907,119 @@ function ns.make.fakeClient(opts)
         for k, v in pairs(s.playerDebuffs) do out[k] = v end
         return out
     end
+    -- S12 care key (P-KEYS slice A): the twin of Core/Client.lua c.unitCare.
+    --   c.setUnitCare(unit, row)   { exists, friend, isSelf, dead, hurt }
+    --                              (a field left out: not known); nil: not known
+    --   c.setUnitCareFails(on)     the read raises while on (lead section
+    --                              236: a read that fails, then recovers)
+    function c.setUnitCare(unit, row)
+        s.unitCare = s.unitCare or {}
+        if type(row) == "table" then s.unitCare[unit] = row else s.unitCare[unit] = nil end
+    end
+    function c.setUnitCareFails(on) s.unitCareFails = (on == true) end
+    function c.unitCare(unit)
+        if s.unitCareFails then error("unit care read failed (test)") end
+        local row = s.unitCare and s.unitCare[unit]
+        if type(row) ~= "table" then return nil end
+        local out = {}
+        for k, v in pairs(row) do out[k] = v end
+        return out
+    end
+    -- N2 (P-KEYS slice D): the twin of Core/Client.lua c.targetCorpse;
+    -- nil (not known) until set. N20 uses the N24 c.tradeSkillTools(index).
+    --   c.setTargetCorpse(row)       { exists, dead, player, lootable, needs }
+    --   c.setTargetCorpseFails(on)   the read raises while on (lead section
+    --                                236: a read that fails, then recovers)
+    function c.setTargetCorpse(row)
+        if type(row) == "table" then s.targetCorpse = row else s.targetCorpse = nil end
+    end
+    function c.setTargetCorpseFails(on) s.targetCorpseFails = (on == true) end
+    function c.targetCorpse()
+        if s.targetCorpseFails then error("target corpse read failed (test)") end
+        if type(s.targetCorpse) ~= "table" then return nil end
+        local out = {}
+        for k, v in pairs(s.targetCorpse) do out[k] = v end
+        return out
+    end
+    -- S15 click slots and S29 move handle (P-KEYS slice C). clickRow keeps
+    -- every row it makes in c.clickRows: h.spec, h.slots[i] = { attrs,
+    -- shown, icon }, h.shown (the row), h.point and h.given (every set
+    -- asked, in order). Each set is also kept in c.secureGiven under the
+    -- button name spec.name .. i, so secureMacros() sees it. Not made
+    -- (nil) with frames off or while combatLockdown() is not a plain false;
+    -- set, show and place answer false, "lockdown" then. moveHandle keeps
+    -- spec in c.moveHandles[target] for a target a row was made under, and
+    -- dragHandle(target, point) stands in for a drag that ends at point:
+    -- false, "lockdown" in a fight, false, "absent" with no handle, else
+    -- onMoved(point) and true.
+    c.clickRows = {}
+    c.moveHandles = {}
+    function c.clickRow(spec)
+        if s.noFrames then return nil end
+        if type(spec) ~= "table" or type(spec.name) ~= "string" then return nil end
+        if type(spec.count) ~= "number" or spec.count < 1 then return nil end
+        if c.combatLockdown() ~= false then return nil end
+        local h = { spec = spec, slots = {}, shown = false, point = nil, given = {} }
+        for i = 1, spec.count do h.slots[i] = { attrs = {}, shown = false, icon = nil } end
+        function h.set(i, attr, value)
+            local slot = h.slots[i]
+            if slot == nil then return false, "absent" end
+            h.given[#h.given + 1] = { slot = i, attr = attr, value = value }
+            c.secureGiven[#c.secureGiven + 1] = { name = spec.name .. i, attr = attr, value = value }
+            if c.combatLockdown() ~= false then return false, "lockdown" end
+            if secureFail[attr] then return false, "refused" end
+            slot.attrs[attr] = value
+            return true
+        end
+        function h.get(i, attr)
+            local slot = h.slots[i]
+            if slot == nil then return nil end
+            return slot.attrs[attr]
+        end
+        function h.show(i, on)
+            if i ~= 0 and h.slots[i] == nil then return false, "absent" end
+            if c.combatLockdown() ~= false then return false, "lockdown" end
+            if i == 0 then h.shown = on == true else h.slots[i].shown = on == true end
+            return true
+        end
+        function h.isShown(i)
+            if i == 0 then return h.shown end
+            local slot = h.slots[i]
+            return slot ~= nil and slot.shown
+        end
+        function h.icon(i, texture)
+            local slot = h.slots[i]
+            if slot == nil or texture == nil then return false end
+            slot.icon = texture
+            return true
+        end
+        function h.place(point)
+            if type(point) ~= "table" then return false, "refused" end
+            if c.combatLockdown() ~= false then return false, "lockdown" end
+            h.point = { point[1], point[2], point[3], point[4] }
+            return true
+        end
+        c.clickRows[#c.clickRows + 1] = h
+        return h
+    end
+    function c.moveHandle(spec)
+        if type(spec) ~= "table" or type(spec.target) ~= "string" then return nil end
+        local found = false
+        for _, row in ipairs(c.clickRows) do
+            if row.spec.name == spec.target then found = true end
+        end
+        if not found then return nil end
+        c.moveHandles[spec.target] = spec
+        return { show = function() return true end }
+    end
+    function c.dragHandle(target, point)
+        local spec = c.moveHandles[target]
+        if spec == nil then return false, "absent" end
+        if c.combatLockdown() ~= false then return false, "lockdown" end
+        if type(spec.onMoved) == "function" then pcall(spec.onMoved, point) end
+        return true
+    end
+
 
     -- G16: the skill lines you know, as the real client's weaponSkills():
     --   c.setWeaponSkills({ "Swords", ... }) or nil (not read, the start);
@@ -2954,6 +3081,20 @@ function ns.make.fakeClient(opts)
         local v = s.npcText[kind]
         if type(v) ~= "string" or v == "" then return nil end
         return v
+    end
+    -- N39 and N40 (P-KEYS slice E): the target's name and the spell it
+    -- casts, as the real client's; setTargetCastFails makes the read raise.
+    function c.setTargetName(name) s.targetName = name end
+    function c.targetName()
+        if type(s.targetName) ~= "string" or s.targetName == "" then return nil end
+        return s.targetName
+    end
+    function c.setTargetCast(name) s.targetCast = name end
+    function c.setTargetCastFails(on) s.targetCastFails = on == true end
+    function c.targetCast()
+        if s.targetCastFails then error("the target cast read failed (test)") end
+        if type(s.targetCast) == "string" and s.targetCast ~= "" then return s.targetCast end
+        return false
     end
 
     -- G51: the creature on a nameplate and the quest mark over it, as the

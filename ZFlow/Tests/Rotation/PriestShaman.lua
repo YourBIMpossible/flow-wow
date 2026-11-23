@@ -65,7 +65,7 @@ for _, class in ipairs({ "PRIEST", "SHAMAN" }) do
         t.eq(items, REAGENTS[class], "reagents")
     end
 
-    tests[name .. " pack: nothing observed, nothing for another player"] = function(t)
+    tests[name .. " pack: nothing observed; care rows for another player (S12)"] = function(t)
         local p = ns.Packs[class]
         t.ok(not string.find(p.provenance.facts, "observed in", 1, true), "no observation claimed")
         -- P-PARTY: the priest's Fortitude for the group, only shown; the shaman has none.
@@ -77,8 +77,11 @@ for _, class in ipairs({ "PRIEST", "SHAMAN" }) do
         else
             t.eq(p.groups, {}, "no group rows")
         end
-        t.eq(p.spells.Resurrection, nil, "no Resurrection")
-        t.eq(p.spells["Ancestral Spirit"], nil, "no Ancestral Spirit")
+        -- PRIEST-1, SHAMAN-1: the revive and the heals for another player
+        -- (the care key, Rotation/CareKeys.lua), each a first guess.
+        local revive = class == "PRIEST" and "Resurrection" or "Ancestral Spirit"
+        t.eq(type(p.care) == "table" and p.care.revive, revive, "the revive for another player")
+        t.eq(p.spells[revive] and p.spells[revive].evidence, "first guess", "its spell row")
     end
 end
 

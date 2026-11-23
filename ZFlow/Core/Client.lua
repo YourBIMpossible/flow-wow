@@ -7594,6 +7594,27 @@ function ns.make.client(env)
         return action
     end
 
+    -- S23 (P-KEYS slice B): what the key does with override bindings
+    -- counted, the binding that wins when the key is pressed (a click-cast
+    -- add-on's override, ours, else the game's own): GetBindingAction(key,
+    -- true[, context]). A read only, for the click-casting check line
+    -- (UI/ClickCheck.lua). "" for nothing bound, nil when not known.
+    -- First guess: the checkOverride argument is not seen in game.
+    function c.bindingOverride(key, forAction)
+        if type(key) ~= "string" or key == "" then return nil end
+        local context = bindingContext(forAction)
+        local ok, action
+        if context ~= nil then
+            ok, action = call(env.GetBindingAction, key, true, context)
+        else
+            ok, action = call(env.GetBindingAction, key, true)
+        end
+        if not ok or hidden(action) then return nil end
+        if action == nil then return "" end
+        if type(action) ~= "string" then return nil end
+        return action
+    end
+
     function c.setBindingClick(key, button)
         if type(key) ~= "string" or type(button) ~= "string" then return false, "no key" end
         return bindingCall(env.SetBindingClick, key, button, "LeftButton")
@@ -8050,6 +8071,264 @@ function ns.make.client(env)
         return nil
     end
 
+    -- S12 care key (P-KEYS slice A): c.unitCare(unit) -> nil
+    --   | { exists = false } | { exists = true, friend, isSelf, dead, hurt }
+    --   One unit (your target, a party member) as the care key needs it.
+    --   exists UnitExists(unit); friend UnitIsFriend("player", unit); isSelf
+    --   UnitIsUnit(unit, "player"); dead UnitIsDead(unit); hurt as c.pet():
+    --   UnitHealth below UnitHealthMax when both are plain, else
+    --   UnitHealthPercent (above 1: on a scale of 100). Each true, false, or
+    --   nil when not known; a yes or no only, no amount is kept or handed
+    --   on. nil when unit is not a name or whether it exists is not known.
+    --   A first guess: none of these reads was seen in game for this use.
+    function c.unitCare(unit)
+        if type(unit) ~= "string" or unit == "" then return nil end
+        local exists = yesNo(call(env.UnitExists, unit))
+        if exists == nil then return nil end
+        if not exists then return { exists = false } end
+        local out = { exists = true }
+        out.friend = yesNo(call(env.UnitIsFriend, "player", unit))
+        out.isSelf = yesNo(call(env.UnitIsUnit, unit, "player"))
+        out.dead = yesNo(call(env.UnitIsDead, unit))
+        local okNow, now = call(env.UnitHealth, unit)
+        local okMost, most = call(env.UnitHealthMax, unit)
+        if okNow and okMost and plainNumber(now) and plainNumber(most) and most > 0 then
+            out.hurt = now < most
+        else
+            local okShare, share = call(env.UnitHealthPercent, unit)
+            if okShare and plainNumber(share) then
+                if share > 1 then out.hurt = share < 100 elseif share < 1 then out.hurt = true end
+            end
+        end
+        return out
+    end
+    -- S15 click slots and S29 move handle (P-KEYS slice C). First guesses,
+    -- none seen in game: CreateFrame with SecureActionButtonTemplate on a
+    -- plain holder frame, RegisterForClicks("AnyUp", "AnyDown"), and the
+    -- holder moved by StartMoving / StopMovingOrSizing from a grip.
+    --
+    -- c.clickRow(spec) -> handle or nil. spec = { name, count, size, gap }.
+    -- A hidden holder frame `name` on the screen with `count` secure buttons
+    -- name1..nameN on it, each hidden until it holds something. Each button
+    -- casts what it holds only on the player click on it; nothing here
+    -- clicks, binds, registers a state driver or casts. Made only when
+    -- InCombatLockdown answers a plain false; nil otherwise, with count
+    -- below 1, or when CreateFrame fails. Slot i is button i; slot 0 is the
+    -- holder.
+    --   h.set(i, attr, value) -> true, or false and "absent" (no slot i),
+    --                            "lockdown" (anything but a plain false from
+    --                            InCombatLockdown: the frame is not touched)
+    --                            or "refused" (SetAttribute failed).
+    --   h.get(i, attr)        -> what button i holds for attr, or nil.
+    --   h.show(i, on)         -> as set, for showing slot i (0: the row).
+    --   h.isShown(i)          -> true or false.
+    --   h.icon(i, texture)    -> true, or false with no texture or no slot.
+    --   h.place(point)        -> as set; point = { point, relativePoint, x, y }
+    --                            against the screen.
+    function c.clickRow(spec)
+        if type(spec) ~= "table" or type(spec.name) ~= "string" or spec.name == "" then return nil end
+        local count = spec.count
+        if type(count) ~= "number" or count < 1 or count % 1 ~= 0 then return nil end
+        local function unlocked()
+            local okLock, locked = call(env.InCombatLockdown)
+            return okLock and locked == false
+        end
+        if not unlocked() then return nil end
+        local size, gap = 32, 4
+        if type(spec.size) == "number" and spec.size > 0 then size = spec.size end
+        if type(spec.gap) == "number" and spec.gap >= 0 then gap = spec.gap end
+        local okH, holder = call(env.CreateFrame, "Frame", spec.name, env.UIParent)
+        if not okH or holder == nil then return nil end
+        method(holder, "Hide")
+        method(holder, "SetSize", count * size + (count - 1) * gap, size)
+        method(holder, "SetFrameStrata", "MEDIUM")
+        method(holder, "SetClampedToScreen", true)
+        method(holder, "SetMovable", true)
+        local buttons, icons = {}, {}
+        for i = 1, count do
+            local okB, b = call(env.CreateFrame, "Button", spec.name .. i, holder, "SecureActionButtonTemplate")
+            if not okB or b == nil then return nil end
+            method(b, "Hide")
+            method(b, "SetSize", size, size)
+            method(b, "SetPoint", "LEFT", holder, "LEFT", (i - 1) * (size + gap), 0)
+            method(b, "RegisterForClicks", "AnyUp", "AnyDown")
+            local okT, tex = method(b, "CreateTexture", nil, "ARTWORK")
+            if okT and type(tex) == "table" then
+                method(tex, "SetAllPoints", b)
+                icons[i] = tex
+            end
+            method(b, "SetHighlightTexture", "Interface\\Buttons\\ButtonHilight-Square")
+            buttons[i] = b
+        end
+        local function frameOf(i)
+            if i == 0 then return holder end
+            return buttons[i]
+        end
+        local h = {}
+        function h.set(i, attr, value)
+            local b = buttons[i]
+            if b == nil then return false, "absent" end
+            if not unlocked() then return false, "lockdown" end
+            if not method(b, "SetAttribute", attr, value) then return false, "refused" end
+            return true
+        end
+        function h.get(i, attr)
+            local b = buttons[i]
+            if b == nil then return nil end
+            local okGet, v = method(b, "GetAttribute", attr)
+            if not okGet then return nil end
+            return v
+        end
+        function h.show(i, on)
+            local f = frameOf(i)
+            if f == nil then return false, "absent" end
+            if not unlocked() then return false, "lockdown" end
+            local called
+            if on == true then called = method(f, "Show") else called = method(f, "Hide") end
+            if not called then return false, "refused" end
+            return true
+        end
+        function h.isShown(i)
+            local f = frameOf(i)
+            if f == nil then return false end
+            local okS, shown = method(f, "IsShown")
+            return okS and shown == true
+        end
+        function h.icon(i, texture)
+            local tex = icons[i]
+            if tex == nil or texture == nil then return false end
+            return method(tex, "SetTexture", texture) == true
+        end
+        function h.place(point)
+            if type(point) ~= "table" then return false, "refused" end
+            if not unlocked() then return false, "lockdown" end
+            method(holder, "ClearAllPoints")
+            if not method(holder, "SetPoint", point[1], env.UIParent, point[2], point[3], point[4]) then
+                return false, "refused"
+            end
+            return true
+        end
+        return h
+    end
+
+    -- c.moveHandle(spec) -> handle or nil. spec = { target, width, height,
+    -- onMoved }. A grip on the left edge of the frame named target (nil
+    -- when there is no such frame). Dragging it moves that frame, only when
+    -- InCombatLockdown answers a plain false as the drag starts; let go,
+    -- the client layout cache is not written (SetUserPlaced(false)) and
+    -- onMoved({ point, relativePoint, x, y }) is called. An onMoved that
+    -- raises does not escape. The add-on keeps the place in its own saved
+    -- settings; no other file is written.
+    --   h.show(on) -> true, or false and "lockdown" or "refused".
+    function c.moveHandle(spec)
+        if type(spec) ~= "table" then return nil end
+        local target = guideFrame(spec.target)
+        if target == nil then return nil end
+        local function unlocked()
+            local okLock, locked = call(env.InCombatLockdown)
+            return okLock and locked == false
+        end
+        local okG, grip = call(env.CreateFrame, "Frame", nil, target)
+        if not okG or grip == nil then return nil end
+        local width, height = 10, 32
+        if type(spec.width) == "number" and spec.width > 0 then width = spec.width end
+        if type(spec.height) == "number" and spec.height > 0 then height = spec.height end
+        method(grip, "SetSize", width, height)
+        method(grip, "SetPoint", "RIGHT", target, "LEFT", -2, 0)
+        local okT, tex = method(grip, "CreateTexture", nil, "BACKGROUND")
+        if okT and type(tex) == "table" then
+            method(tex, "SetAllPoints", grip)
+            method(tex, "SetColorTexture", 1, 0.82, 0, 0.6)
+        end
+        method(grip, "EnableMouse", true)
+        method(grip, "RegisterForDrag", "LeftButton")
+        local dragging = false
+        method(grip, "SetScript", "OnDragStart", function()
+            if not unlocked() then return end
+            dragging = true
+            method(target, "StartMoving")
+        end)
+        -- SC-3: a drag that ends while the lock is on does not stop the
+        -- protected frame then; it waits for PLAYER_REGEN_ENABLED and stops
+        -- it once the lock answers a plain false.
+        local waitStop
+        local onStop
+        onStop = function()
+            if not dragging then return end
+            if not unlocked() then
+                if waitStop == nil then
+                    waitStop = c.listen("PLAYER_REGEN_ENABLED", function()
+                        if not unlocked() then return end
+                        local cancel = waitStop
+                        waitStop = nil
+                        if type(cancel) == "function" then cancel() end
+                        onStop()
+                    end)
+                end
+                return
+            end
+            dragging = false
+            method(target, "StopMovingOrSizing")
+            method(target, "SetUserPlaced", false)
+            local okP, a, _, r, x, y = method(target, "GetPoint", 1)
+            if not okP or type(a) ~= "string" or type(x) ~= "number" or type(y) ~= "number" then return end
+            if type(r) ~= "string" then r = a end
+            if type(spec.onMoved) == "function" then pcall(spec.onMoved, { a, r, x, y }) end
+        end
+        method(grip, "SetScript", "OnDragStop", onStop)
+        local h = {}
+        function h.show(on)
+            if not unlocked() then return false, "lockdown" end
+            local called
+            if on == true then called = method(grip, "Show") else called = method(grip, "Hide") end
+            if not called then return false, "refused" end
+            return true
+        end
+        return h
+    end
+
+    -- N2 corpse key (P-KEYS slice D): c.targetCorpse() -> nil
+    --   | { exists = false } | { exists = true, dead, player, lootable, needs }
+    --   The corpse you target as the rotation key needs it. exists
+    --   UnitExists("target"); dead UnitIsDead; player UnitIsPlayer; lootable
+    --   CanLootUnit(UnitGUID("target")), its first answer; needs the
+    --   profession the target's tooltip (C_TooltipInfo.GetUnit("target"))
+    --   names: "Skinnable" is Skinning, "Requires <name>" is that name. Each
+    --   true, false, or nil when not known; nil when whether the target
+    --   exists is not known. Only the target is asked about.
+    --   A first guess: none of these reads was seen in game for this use.
+    function c.targetCorpse()
+        local exists = yesNo(call(env.UnitExists, "target"))
+        if exists == nil then return nil end
+        if not exists then return { exists = false } end
+        local out = { exists = true }
+        out.dead = yesNo(call(env.UnitIsDead, "target"))
+        out.player = yesNo(call(env.UnitIsPlayer, "target"))
+        local guid = text(call(env.UnitGUID, "target"))
+        if guid then out.lootable = yesNo(call(env.CanLootUnit, guid)) end
+        local tips = env.C_TooltipInfo
+        if type(tips) == "table" then
+            local okTip, tip = call(tips.GetUnit, "target")
+            if okTip and type(tip) == "table" and type(tip.lines) == "table" then
+                for _, line in ipairs(tip.lines) do
+                    local left = type(line) == "table" and text(true, line.leftText)
+                    if left == "Skinnable" then
+                        out.needs = "Skinning"
+                        break
+                    end
+                    local named = left and string.match(left, "^Requires (%a+)$")
+                    if named then
+                        out.needs = named
+                        break
+                    end
+                end
+            end
+        end
+        return out
+    end
+
+
+
     -- G16: c.weaponSkills() -> { [skill line name] = true } or nil: every
     --   skill line you know (headers left out), by the name the client
     --   gives, for Gear/WeaponSkill.lua to find the weapon skills in.
@@ -8180,6 +8459,31 @@ function ns.make.client(env)
         local name = NPC_TEXT[kind]
         if not name then return nil end
         return words(env[name])
+    end
+
+    -- N39 (P-KEYS slice E): your target's name, for the no-auto-attack
+    -- list; nil with no target or when the client does not say.
+    -- UnitName("target"), a first guess for this use: not seen in game on
+    -- 16001.
+    function c.targetName()
+        return text(call(env.UnitName, "target"))
+    end
+
+    -- N40 (P-KEYS slice E): the spell your target is casting or channelling
+    -- (UnitCastingInfo("target"), else UnitChannelInfo("target")); false
+    -- when both answered and it casts nothing; nil when either could not
+    -- be asked or answered something but a plain name. First guesses for
+    -- this use: not seen in game on 16001.
+    function c.targetCast()
+        local ok, name = call(env.UnitCastingInfo, "target")
+        local cast = text(ok, name)
+        if cast then return cast end
+        local okCh, chName = call(env.UnitChannelInfo, "target")
+        local channel = text(okCh, chName)
+        if channel then return channel end
+        if (ok and name ~= nil) or (okCh and chName ~= nil) then return nil end
+        if ok and okCh then return false end
+        return nil
     end
 
     -- G51 (UI/PlateQuests.lua): a quest mark over an enemy's nameplate.
