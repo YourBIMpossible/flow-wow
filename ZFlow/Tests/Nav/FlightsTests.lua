@@ -163,7 +163,9 @@ end
 tests["flights way: the step at the board point nearest you, flying to the one nearest the target"] = function(t)
     local _, _, api = start({ nodes = known() })
     t.eq(api.way(target()), { kind = "flight", label = "Fly to Crossroads",
-        place = { cont = 1, map = 1411, x = 0.6, y = 0.5 }, radius = F.NEAR })
+        place = { cont = 1, map = 1411, x = 0.6, y = 0.5 }, radius = F.NEAR,
+        -- Section 208: the route line under the step (lead section 286).
+        hint = F.ROUTE:format("Razor Hill", "Crossroads", 300) })
 end
 
 tests["flights way: nil with no known points"] = function(t)
@@ -232,7 +234,9 @@ end
 
 tests["flights on the arrow: fly to the point, the step next, and how far to the board point"] = function(t)
     local k, c = start({ nodes = known(), travel = true, arrow = true })
-    t.eq(c.arrows[1].lines, { "Fly to Crossroads", "Then: Waypoint", "100 yd E" })
+    -- Section 208: the route line before the distance (lead section 286).
+    t.eq(c.arrows[1].lines, { "Fly to Crossroads", "Then: Waypoint",
+        ns.Nav.Flights.ROUTE:format("Razor Hill", "Crossroads", 300), "100 yd E" })
     t.eq(k.problems:count(), 0)
 end
 
