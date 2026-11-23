@@ -49,6 +49,7 @@ local function questie(over)
     }
     local db = { QuestPointers = {} }
     for id in pairs(quests) do db.QuestPointers[id] = true end
+    if over.noPointers then db.QuestPointers = nil end
     function db.GetQuest(id) return quests[id] end
     function db.GetNPC(id) return npcs[id] end
     if not over.noQuery then
@@ -82,7 +83,12 @@ local function client(opts)
         c.setQuestieModule("ZoneDB", zones)
     end
     c.setClass(opts.class or "WARRIOR"); c.setRaceId(opts.race or 1); c.setFaction(opts.faction or "Alliance")
-    c.setLevel(opts.level or 18)
+    if opts.noLevel then c.setLevel(nil) else c.setLevel(opts.level or 18) end
+    -- Every quest of the made-up Questie read as not handed in, unless
+    -- opts.doneUnknown (Twin review, F2).
+    if not opts.doneUnknown then
+        for _, id in ipairs({ 101, 102, 103, 105, 106, 107, 108, 201, 999 }) do c.setQuestDone(id, false) end
+    end
     return c
 end
 
@@ -225,10 +231,10 @@ end
 -- dungeon by where Questie spawns the boss. No loot table of any kind.
 local function book()
     return {
+        -- As UI/BossLoot.lua writes them (B.Kill): npcs only on e: keys.
         ["e:1001"] = { name = "Cookie", kills = 3, npcs = { [601] = true },
             items = { ["item:1"] = { times = 1 }, ["item:2"] = { times = 3 } } },
-        ["n:602"] = { name = "Outside Thug", kills = 1, npcs = { [602] = true },
-            items = { ["item:3"] = { times = 1 } } },
+        ["n:602"] = { name = "Outside Thug", kills = 1, items = { ["item:3"] = { times = 1 } } },
         ["e:1009"] = { name = "No Unit Seen", kills = 1, items = { ["item:4"] = { times = 1 } } },
     }
 end
@@ -241,8 +247,74 @@ tests["dungeon read 305: the bosses of a dungeon with the loot this account saw,
     t.eq(#loot.bosses, 1, "only the boss that lives in the Deadmines")
     local b = loot.bosses[1]
     t.eq({ b.name, b.kills }, { "Cookie", 3 })
-    t.eq(b.items, { { item = "item:2", times = 3 }, { item = "item:1", times = 1 } })
+    t.eq(b.items, { { item = 2, times = 3 }, { item = 1, times = 1 } })
     t.eq(loot.unplaced, 1, "a boss whose creature was never seen cannot be placed")
+end
+
+-- Twin review 17:11, F5: an n: entry (a creature killed outside an
+-- encounter) has no npcs; its creature is in its key.
+tests["dungeon read F5: an n: entry is placed by the creature in its key"] = function(t)
+    local c = client({ more = true })
+    local st = indexed(c)
+    local loot = R.Loot(st, c, DM, { ["n:601"] = { name = "Cookie", kills = 2, items = { ["item:5"] = { times = 2 } } } })
+    t.eq(loot.why, nil, "loot was seen: said, not hidden")
+    t.eq(#loot.bosses, 1)
+    t.eq(loot.bosses[1].items, { { item = 5, times = 2 } })
+end
+
+-- F7: the e: and n: entries of one creature are one boss, as the boss
+-- panel reads them (UI/BossLoot.lua B.Lookup).
+tests["dungeon read F7: the encounter and the creature entries of one boss are one row"] = function(t)
+    local c = client({ more = true })
+    local st = indexed(c)
+    local b = book()
+    b["n:601"] = { name = "Cookie", kills = 1, items = { ["item:2"] = { times = 1 }, ["item:6"] = { times = 1 } } }
+    local loot = R.Loot(st, c, DM, b)
+    t.eq(#loot.bosses, 1, "one Cookie, not two")
+    t.eq(loot.bosses[1].kills, 4)
+    t.eq(loot.bosses[1].items, { { item = 2, times = 4 }, { item = 1, times = 1 },
+        { item = 6, times = 1 } })
+end
+
+-- F6: loot seen that cannot be placed says so, not "no loot seen".
+tests["dungeon read F6: loot seen but placed nowhere says why"] = function(t)
+    local c = client({ more = true })
+    local st = indexed(c)
+    local loot = R.Loot(st, c, DM, { ["e:1009"] = { name = "No Unit Seen", kills = 1, items = {} } })
+    t.eq(loot.why, R.WHY_LOOT_UNPLACED)
+    t.eq(#R.WHY_LOOT_UNPLACED, 2)
+end
+
+-- F1: a level not known stays not known.
+tests["dungeon read F1: your level not known: the pane says so instead of guessing"] = function(t)
+    local c = client({ noLevel = true })
+    local st = indexed(c)
+    t.eq(R.Pane(st, c, DM).why, R.WHY_NO_LEVEL)
+    t.eq(#R.WHY_NO_LEVEL, 2)
+end
+
+-- F2: a quest whose hand-in is not known is listed and says so.
+tests["dungeon read F2: not known whether a quest was handed in: listed, and the row says so"] = function(t)
+    local c = client({ doneUnknown = true })
+    c.setQuestDone(102, false)
+    local st = indexed(c)
+    local pane = R.Pane(st, c, DM)
+    local notes = {}
+    for _, g in ipairs(pane.groups) do
+        for _, r in ipairs(g.rows) do notes[r.name] = r.note end
+    end
+    t.ok(notes["Red Silk"] and notes["Red Silk"]:find(R.DONE_UNKNOWN, 1, true) ~= nil, tostring(notes["Red Silk"]))
+    t.eq(notes["Collecting Memories"], nil, "known not handed in: no such note")
+    t.eq(pane.doneUnknown, 2)
+end
+
+-- F3: no quest list in Questie says why.
+tests["dungeon read F3: Questie with no quest list says why, never an empty list"] = function(t)
+    local c = client({ noPointers = true })
+    local st = R.Start(c)
+    t.eq(st.state, "failed")
+    t.eq(R.Pane(st, c, DM).why, R.WHY_NO_IDS)
+    t.eq(#R.WHY_NO_IDS, 2)
 end
 
 tests["dungeon read 305: no loot seen says so, never an empty tab"] = function(t)

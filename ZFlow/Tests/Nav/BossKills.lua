@@ -97,6 +97,30 @@ tests["boss kills: an event the client did not take is said, so the answer is kn
     t.ok(line:find("the client does not have BOSS_KILL", 1, true) ~= nil, line)
 end
 
+-- Twin review 17:11, F8: an instance read that does not answer is not
+-- "outside": the kills of this visit stay.
+tests["boss kills F8: an unknown instance read keeps this visit's kills"] = function(t)
+    local _, c, api = start()
+    c.fire("ENCOUNTER_END", 1001, "Rhahk'Zor", 1, 5, 1)
+    c.setInstance(nil)
+    c.fire("PLAYER_ENTERING_WORLD")
+    t.eq(api.Kills(), { { id = 1001, name = "Rhahk'Zor" } })
+end
+
+-- F8: through the real entry, the add-on's own module on the whole add-on.
+tests["boss kills F8: the add-on's own module, through its real entry"] = function(t)
+    local c = ns.make.fakeClient()
+    c.setSaved(ns.id.accountDB, {}); c.setSaved(ns.id.charDB, {})
+    c.setInstance({ inside = true, kind = "party" })
+    local addon = ns.offline.addon(c)
+    c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
+    c.fire("ENCOUNTER_END", 1001, "Rhahk'Zor", 1, 5, 1)
+    local api = addon.use(K.NAME)
+    t.ok(api ~= nil, "declared on the add-on")
+    t.eq(api and api.Kills(), { { id = 1001, name = "Rhahk'Zor" } })
+    t.eq(addon.store:get("account", K.PATH), { ends = 1, kills = 1 })
+end
+
 tests["boss kills: the counts are kept over a reload"] = function(t)
     local _, c = start()
     c.fire("ENCOUNTER_END", 1001, "Rhahk'Zor", 1, 5, 1)
