@@ -87,7 +87,7 @@ R.NEED = "Need"
 R.GREED = "Greed"
 R.CANT_USE = "Greed (can't use)"
 R.NOT_TRAINED = "Greed (not trained yet)"
-R.NO_ADVICE ="no advice: not gear, or not known yet."
+R.NO_ADVICE = "no advice: not gear, or not known yet."
 
 function R.Hint(client, packs, link)
     if type(client) ~= "table" or type(link) ~= "string" or link == "" then return nil end

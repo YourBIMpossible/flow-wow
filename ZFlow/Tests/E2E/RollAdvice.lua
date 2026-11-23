@@ -193,6 +193,33 @@ tests["roll advice RH-1: no roll frame, chat advice off: the hint is said once f
     t.eq(count(c, from, STRONG .. " Upgrade"), 1)
 end
 
+-- WS-3: a weapon not trained yet (G12; the fixture of Tests/E2E/WeaponMaster
+-- "the roll hint says not trained yet": the game marks Swords in red and the
+-- skill is not among those read), with no roll frame. The hint "Not trained
+-- yet" and the advice "Greed (not trained yet)" are one chat line, not two.
+-- Passes since RH-1's fix. Before it: 3 lines with the chat advice on (the
+-- fallback, the advice, the fallback again), 2 with it off.
+tests["roll advice WS-3: no roll frame, an untrained weapon says one chat line"] = function(t)
+    local untrained = "item:4131"
+    for _, chatOn in ipairs({ true, false }) do
+        local c, addon = boot({ role = "dps" })
+        c.setItem(untrained, { kind = "INVTYPE_WEAPON", stats = { [STR] = 5 }, classID = 2, subclassID = 7,
+                               minLevel = 1, unmet = { "Swords" } })
+        c.setWeaponSkills({ "Axes", "Defense" })
+        c.setRollFrame(false)
+        t.eq(addon.settings:set(R().CHAT_SETTING, chatOn), true)
+        local from = #c.printed + 1
+        c.offerRoll(22, untrained)
+        c.offerRoll(22, untrained)
+        t.eq(naming(c, from, untrained), 1, "exactly one chat line names the link, chat advice " .. tostring(chatOn))
+        if chatOn then
+            t.eq(count(c, from, untrained .. ": " .. R().NOT_TRAINED), 1, "and it is the advice")
+        else
+            t.eq(count(c, from, untrained .. " Not trained yet"), 1, "and it is the hint")
+        end
+    end
+end
+
 -- RH-4 (lead section 279): a roll the game cancelled (CANCEL_LOOT_ROLL
 -- carries the roll id) is dropped. Fails before: the roll stays pending, so
 -- the late item data gives the value "Need +7.3" and 1 chat line.
