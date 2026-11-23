@@ -4,7 +4,8 @@
 --
 -- LOOK ONLY. No buttons; nothing here deposits, withdraws, moves or clicks.
 --
---   BankList.Lines(client, store, grants) -> lines
+--   BankList.Lines(client, store, grants, r) -> lines
+--   BankList.Current(use) -> r, one Reservations evaluation (Items/Reservations.lua)
 --   BankList.Declare(k) -> api   (api.last(), api.shows())
 --   ns.use(BankList.NAME) -> { Last, Shows }
 --
@@ -14,9 +15,10 @@
 -- client.bagItems(), client.itemInfo(item) (CLIENT NEED, as the sell list).
 -- Saved data (read only): char settings.sell.never, account
 -- settings.banker.rules ({ [item] = "bank" | "carry" }, imported from Flow).
--- grants: what Resources.Resolve returned, when a caller has it; no module
--- resolves claims yet, so the addon's own list passes none and nothing is
--- shown as held.
+-- grants: what the bags hold for the player's goals, from one Reservations
+-- evaluation (Reservations.HeldIn(grants, "bags")). The prompt and the panel
+-- of one bank visit share that evaluation. When it is unavailable nothing is
+-- shown as held, and the list says the reservations are not known.
 -- Not tested in game.
 local _, ns = ...
 
@@ -34,6 +36,7 @@ BankList.DEFAULT_POINT = { "TOPLEFT", "TOPLEFT", 360, -120 }
 BankList.ADVISOR = "advisor"
 BankList.PROMPT_ID = "l6d.bank"
 BankList.PROMPT_PRIORITY = 10
+BankList.RESERVATIONS_UNKNOWN = "Reservations not known: what your goals hold is not counted here."
 
 local function saved(store, scope, path)
     if type(store) ~= "table" or type(store.get) ~= "function" then return nil end
@@ -74,8 +77,32 @@ function BankList.Pick(client, store, grants)
     return ns.Bank.Pick(ns.Bank.Entries(stacks, read), BankList.Context(store, grants))
 end
 
-function BankList.Lines(client, store, grants)
-    return ns.ItemPresent.BankLines(BankList.Pick(client, store, grants))
+-- r: the evaluation the grants came from, when there is one; unavailable
+-- adds the line that says so (not when the bags themselves weren't read:
+-- the list already says it can't be made).
+function BankList.Lines(client, store, grants, r)
+    local pick = BankList.Pick(client, store, grants)
+    local lines = ns.ItemPresent.BankLines(pick)
+    if pick.ok and type(r) == "table" and r.status == ns.Reservations.UNAVAILABLE then
+        lines[#lines + 1] = BankList.RESERVATIONS_UNKNOWN
+    end
+    return lines
+end
+
+-- One evaluation of the reservations, through ctx.use. The module not being
+-- there, or raising, is "unavailable", never "none".
+function BankList.Current(use)
+    local ok, mod = pcall(use, ns.Reservations.NAME)
+    if ok and type(mod) == "table" and type(mod.Current) == "function" then
+        local fine, r = pcall(mod.Current)
+        if fine and type(r) == "table" then return r end
+    end
+    return { status = ns.Reservations.UNAVAILABLE }
+end
+
+-- What the bags hold, from an evaluation: the grants Pick takes.
+function BankList.Held(r)
+    return ns.Reservations.HeldIn(ns.Reservations.Grants(r), "bags")
 end
 
 function BankList.Declare(k)
@@ -101,10 +128,11 @@ function BankList.Declare(k)
             -- Given only on a change of the text, so nothing is re-added on
             -- every check and nothing is removed that was never added.
             local prompted = nil
-            local function prompt()
+            local function prompt(r)
                 local text = nil
                 if ctx.settings:get(BankList.SETTING) ~= false then
-                    local ok, pick = pcall(BankList.Pick, client, ctx.store, nil)
+                    r = r or BankList.Current(ctx.use)
+                    local ok, pick = pcall(BankList.Pick, client, ctx.store, BankList.Held(r))
                     text = ok and ns.ItemPresent.BankPrompt(pick) or nil
                 end
                 if text == prompted then return end
@@ -119,14 +147,16 @@ function BankList.Declare(k)
                     pcall(advisor.Remove, BankList.PROMPT_ID)
                 end
             end
-            ctx.bus:on(BankList.NAME, "PLAYER_ENTERING_WORLD", prompt)
+            ctx.bus:on(BankList.NAME, "PLAYER_ENTERING_WORLD", function() prompt() end)
             ctx.bus:on(BankList.NAME, "BANKFRAME_OPENED", function()
-                prompt()
+                -- One evaluation for the prompt and the panel of this visit.
+                local r = BankList.Current(ctx.use)
+                prompt(r)
                 if ctx.settings:get(BankList.SETTING) == false then
                     hide()
                     return
                 end
-                local lines = BankList.Lines(client, ctx.store, nil)
+                local lines = BankList.Lines(client, ctx.store, BankList.Held(r), r)
                 shows = shows + 1
                 last = lines
                 if panel then

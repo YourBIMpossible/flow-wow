@@ -31,6 +31,9 @@ local _, ns = ...
 --   rows  what to bank, biggest count first: { key, name, count, reason }
 --   held  what stays with you because a step holds it: { key, name, count }
 -- }
+-- A hold keeps only what it holds: of 20 with 8 held, 8 stay and the other
+-- 12 are decided as if nothing held them. The player's own "bank" or
+-- "carry" rule for an item wins over a hold, as it always has.
 
 local Bank = {}
 ns.Bank = Bank
@@ -148,16 +151,37 @@ function Bank.Pick(bag, context)
         local n = heldOf(context.grants, item.key)
         if n then
             needed[item.key] = true
-            held[#held + 1] = { key = item.key, name = item.name, count = n }
+            -- Holds come off the bags first (Resources.Resolve): what the
+            -- bags have of it is all that can stay with you.
+            local inBags = isCount(item.count) and math.min(n, item.count) or n
+            held[#held + 1] = { key = item.key, name = item.name, count = inBags }
         end
     end
+    local rules = type(context.bankRules) == "table" and context.bankRules or nil
     for idx = 1, #items do
         local item = items[idx]
         local d = D.Decide(item, context)
-        local row = { key = item.key, action = d.action, rule = d.rule, reason = d.reason, classID = item.classID }
-        local yes, why, notRead = Bank.Banks(row, needed, context.bankRules, context.questWaits)
+        local count = item.count
+        local n = needed[item.key] and heldOf(context.grants, item.key) or nil
+        local yes, why, notRead
+        if n and not (rules and rules[item.key]) then
+            -- A step holds n of them: those stay. Only the rest is decided,
+            -- by what the rules after the hold say of it. A count not read
+            -- can't be split, so then all of it stays.
+            local rest = d.rule == "held" and d.rest or d
+            if isCount(count) and count > n and type(rest) == "table" then
+                local row = { key = item.key, action = rest.action, rule = rest.rule, reason = rest.reason,
+                              classID = item.classID }
+                yes, why, notRead = Bank.Banks(row, nil, rules, context.questWaits)
+                count = count - n
+            end
+        else
+            -- No hold, or the player's own bank / carry choice, which wins.
+            local row = { key = item.key, action = d.action, rule = d.rule, reason = d.reason, classID = item.classID }
+            yes, why, notRead = Bank.Banks(row, needed, rules, context.questWaits)
+        end
         if yes then
-            rows[#rows + 1] = { key = item.key, name = item.name, count = item.count, reason = why }
+            rows[#rows + 1] = { key = item.key, name = item.name, count = count, reason = why }
         elseif notRead then
             unread = unread + 1
         end

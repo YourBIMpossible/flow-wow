@@ -33,6 +33,7 @@ R.SNAPSHOT_FIELDS = {
     { "buffs", "map" }, { "targetDebuffs", "map" }, { "debuffTypes", "map" }, { "current", "map" },
     -- Lead section 197: your pet (Choose.lua, R.PetUp); nil when not read.
     { "pet", "map" },
+    { "conjured", "map" },
     { "spells", "spells" },
 }
 -- Names that would be made from a health or power amount. This client hides
@@ -112,6 +113,18 @@ function ns.SnapshotOf(fields)
     end
     table.sort(ignored)
     return s, ignored
+end
+
+-- Conjured food and water (lead section 197): snapshot.conjured is
+-- { [conjure spell] = how many of what it makes are in your bags }, read by
+-- the driver for the items a pack names in options.conjure. R.Conjured(s,
+-- spell) is that count, or nil when it was not read: a pack asks for the
+-- spell only on a count it read, never on nil.
+function R.Conjured(s, spell)
+    local map = type(s) == "table" and s.conjured or nil
+    local n = type(map) == "table" and map[spell] or nil
+    if type(n) ~= "number" or n ~= n then return nil end
+    return n
 end
 
 function ns.Snapshot(read)

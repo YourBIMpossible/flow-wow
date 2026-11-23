@@ -126,6 +126,31 @@ local function currentOf(client, ids)
     return any and out or nil
 end
 
+-- Conjured food and water (lead section 197): for each row of the pack's
+-- options.conjure ({ spell, items = { item name, ... } }), how many of its
+-- items are in the bags, added up. A row none of whose items could be
+-- counted is left out; nil when nothing could be counted (not read).
+local function conjuredOf(client, pack)
+    local options = type(pack) == "table" and pack.options or nil
+    local rows = type(options) == "table" and options.conjure or nil
+    if type(rows) ~= "table" or type(client.itemCount) ~= "function" then return nil end
+    local out, any = {}, false
+    for _, row in ipairs(rows) do
+        local total = nil
+        if type(row) == "table" and type(row.spell) == "string" and type(row.items) == "table" then
+            for _, item in ipairs(row.items) do
+                local asked, n = pcall(client.itemCount, item)
+                if asked and type(n) == "number" then total = (total or 0) + n end
+            end
+        end
+        if total then
+            out[row.spell] = total
+            any = true
+        end
+    end
+    return any and out or nil
+end
+
 -- The pack's spell rows, each with its range when the client can tell.
 local function spellRows(client, pack, ids)
     local rows = RR.SpellRows(pack, ids, client.spell, client.spellCooldown).rows
@@ -195,6 +220,7 @@ function D.Read(client, pack, ids, role)
             if type(client.pet) ~= "function" then return nil end
             return client.pet()
         end
+        if field == "conjured" then return conjuredOf(client, pack) end
         return nil
     end
 end

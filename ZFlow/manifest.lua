@@ -59,6 +59,7 @@ return {
         "Items/Disposition.lua",
         "Items/TooltipDisposition.lua",
         "Items/Bank.lua",
+        "Items/Reservations.lua",
         "Items/LootNote.lua",
         "Items/Plan.lua",
         "Items/Present.lua",
@@ -96,10 +97,13 @@ return {
         "UI/FightLog.lua",
         "Classes/Druid.lua",
         "Classes/Hunter.lua",
+        "Classes/Mage.lua",
         "Classes/Paladin.lua",
         "Classes/Priest.lua",
+        "Classes/Rogue.lua",
         "Classes/Shaman.lua",
         "Classes/Warrior.lua",
+        "Classes/Warlock.lua",
         "Rotation/GroupTip.lua",
 
         -- Navigation
