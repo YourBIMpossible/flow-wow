@@ -206,6 +206,11 @@ local READS = {
     -- Nav/DungeonRead.lua only. Their names (UnitRace,
     -- C_QuestLog.IsQuestFlaggedCompleted) are in Diag.NAMES.
     raceId = false, questDone = false,
+
+    -- G38 and G47: indoors and a party member's position; read by
+    -- Nav/Trails.lua and Nav/Follow.lua only. Their names (IsIndoors,
+    -- C_Map.GetBestMapForUnit, C_Map.GetPlayerMapPosition) are in Diag.NAMES.
+    indoors = false, unitPosition = false,
 }
 -- Lead section 337 item 1: the bag stacks with their bag and slot, and one
 -- slot read again before it is sold; read by Items/SellThese.lua only, on

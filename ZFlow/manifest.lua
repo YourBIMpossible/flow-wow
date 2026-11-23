@@ -256,5 +256,10 @@ return {
     -- Lead DISPATCH section 340: the minimap button's rim math (pure), then the button.
     "UI/MinimapPlace.lua",
     "UI/MinimapButton.lua",
+    -- G38, G47, G22 (P-NAV): learned cave trails, pointing at a party member,
+    -- the nodes you gathered (after the arrow, Waypoint and Gather).
+    "Nav/Trails.lua",
+    "Nav/Follow.lua",
+    "Nav/Nodes.lua",
     },
 }

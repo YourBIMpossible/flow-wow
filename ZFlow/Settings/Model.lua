@@ -110,6 +110,12 @@ M.ROWS = {
     -- from the boss you fight, your role's pieces first (UI/BossLoot.lua,
     -- N55, lead sections 237 and 238). On by default; look only.
     { key = "loot.bossPanel", type = "bool", default = true },
+    -- nav.learnTrails: learn the paths you walk into caves and indoor
+    -- places; the arrow follows them (Nav/Trails.lua, G38). On by default.
+    { key = "nav.learnTrails", type = "bool", default = true },
+    -- nav.nodes: remember the nodes you gather, for the nodes word and its
+    -- arrow (Nav/Nodes.lua, G22). On by default; look only.
+    { key = "nav.nodes", type = "bool", default = true },
 }
 
 -- ---------------------------------------------------------------- helpers
