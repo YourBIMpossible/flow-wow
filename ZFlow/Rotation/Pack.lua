@@ -16,7 +16,7 @@ local _, ns = ...
 --   dispels      { { spell, types = { Poison = true }, evidence }, ... }  yourself only
 --   keys         { [formName or "none" or "stealth"] = { key, ctrl, shift, alt, more } }
 --   weights      { [role] = { evidence, values = { [stat] = number } } } or nil per role
---   proficiency  { evidence, [itemClass] = { [subclass] = true } }
+--   proficiency  { evidence, [itemClass] = { [subclass] = true or n } }  n: from level n
 --   spells       { [name] = { evidence, level, improves, needs, note } }
 --   talentBuilds { { name, role, evidence, order = { ... } }, ... }
 --   options      { ... }
