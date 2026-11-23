@@ -34,6 +34,11 @@ R.SNAPSHOT_FIELDS = {
     -- Lead section 197: your pet (Choose.lua, R.PetUp); nil when not read.
     { "pet", "map" },
     { "conjured", "map" },
+    -- Section 226 (CF-30): the best Well Fed food in your bags for your role,
+    -- { name, item, score }; {} when the bags hold none; nil when not read.
+    { "buffFood", "map" },
+    -- P-GATHER (Rotation/Gather.lua): gathering tracking, read by G.Read.
+    { "tracking", "map" }, { "trackKnown", "map" }, { "professions", "map" }, { "gatherOn", "flag" },
     -- CF-32, N12: the seals and blessings you cast or chose, by key
     -- (Rotation/OwnCasts.lua); nil when there is none.
     { "chosen", "map" },

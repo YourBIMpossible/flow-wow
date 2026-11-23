@@ -68,6 +68,7 @@ Gear\MerchantShow.lua
 Gear\RollHint.lua
 Rotation\Pack.lua
 Rotation\Snapshot.lua
+Rotation\BuffFood.lua
 Rotation\Choose.lua
 Rotation\KeyPlan.lua
 Rotation\Cast.lua
@@ -139,6 +140,7 @@ UI\ArrowMenu.lua
 UI\SellList.lua
 UI\BankList.lua
 Items\Keep.lua
+Items\RecipeBook.lua
 Items\Goals.lua
 UI\Arrow.lua
 UI\MinimapPin.lua
@@ -157,3 +159,4 @@ Items\Banker.lua
 Items\Posting.lua
 Items\Trader.lua
 Nav\Try.lua
+Rotation\Gather.lua

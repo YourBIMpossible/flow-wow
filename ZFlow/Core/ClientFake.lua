@@ -12,6 +12,7 @@
 --   c.setMoney(12345); c.setBags{ { free = 3, total = 16, family = 0 } }
 --   c.setBagItems{ { item = 2318, count = 4 } }; c.setBank{ ... }
 --   c.setRecipes{ profession = 164, skill = 104, max = 150, recipes = { ... } }
+--   c.setRecipeSchematic(2963, { makes = 2996, yield = 1, mats = { [2589] = 2 } })
 --   c.setSpell(5176, { known = true, usable = false, noPower = true })
 --   c.setSpellId("Wrath", 5176)   c.setFacing(1.57)
 --   c.setMapSize(1411, 5287.5, 3525); c.setMapCont(1411, 1)
@@ -124,6 +125,15 @@ function ns.make.fakeClient(opts)
             max = r.max,
             recipes = copyRows(r.recipes) or {},
         }
+    end
+    -- Section 227 (P-GOALS-RECIPE): one recipe's product, yield and mats, a
+    -- copy; nil when none is set for that id.
+    function c.recipeSchematic(id)
+        local r = s.schematics and s.schematics[id]
+        if type(r) ~= "table" then return nil end
+        local mats = {}
+        for item, n in pairs(type(r.mats) == "table" and r.mats or {}) do mats[item] = n end
+        return { makes = r.makes, yield = r.yield, mats = mats }
     end
     function c.spell(id)
         if type(id) ~= "number" then return nil end
@@ -721,6 +731,12 @@ function ns.make.fakeClient(opts)
     -- The open profession window: { profession =, skill =, max =,
     -- recipes = { { id =, name =, learned = }, ... } }; nil for none.
     function c.setRecipes(r) s.recipes = r end
+    -- One recipe's schematic: { makes =, yield =, mats = { [item] = n } };
+    -- nil: the client can't read it.
+    function c.setRecipeSchematic(id, r)
+        s.schematics = s.schematics or {}
+        s.schematics[id] = r
+    end
     -- One spell's answers: { known =, usable =, noPower = }; a field left
     -- out reads as not known.
     function c.setSpell(id, row)
@@ -913,6 +929,28 @@ function ns.make.fakeClient(opts)
     -- Item facts by item ID, each as client.itemInfo() gives it; nil: the
     -- client says nothing about any item.
     function c.setItemInfo(map) s.itemInfo = map end
+    -- Section 226 (CF-30): an item's tooltip text and icon by item ID, as
+    -- client.itemLines() and client.itemTexture() give them; nil: not read.
+    function c.setItemLines(id, lines)
+        s.itemLines = s.itemLines or {}
+        s.itemLines[id] = type(lines) == "table" and lines or nil
+    end
+    function c.itemLines(item)
+        local id = ns.Items and ns.Items.Id(item) or item
+        local lines = s.itemLines and s.itemLines[id] or nil
+        if type(lines) ~= "table" then return nil end
+        local out = {}
+        for i = 1, #lines do out[i] = lines[i] end
+        return out
+    end
+    function c.setItemTexture(id, tex)
+        s.itemTextures = s.itemTextures or {}
+        s.itemTextures[id] = tex
+    end
+    function c.itemTexture(item)
+        local id = ns.Items and ns.Items.Id(item) or item
+        return s.itemTextures and s.itemTextures[id] or nil
+    end
     -- { [slot] = { cur =, max = } } as client.durability() gives it; nil:
     -- not known.
     function c.setDurability(readings) s.durability = readings end
@@ -1747,6 +1785,24 @@ function ns.make.fakeClient(opts)
     -- Anything else is left out (not known). With exists false the rest is
     -- dropped.
     local PET_MOODS = { unhappy = true, content = true, happy = true }
+    -- P-GATHER. c.setTracking(spell, on): true / false; nil: not known.
+    -- c.setProfessions({ name, ... }) or nil: not read.
+    function c.tracking(spell) return s.trackingOn and s.trackingOn[spell] end
+    function c.setTracking(spell, on)
+        s.trackingOn = s.trackingOn or {}
+        if on == nil then s.trackingOn[spell] = nil else s.trackingOn[spell] = on and true or false end
+    end
+    function c.professions()
+        if not s.professions then return nil end
+        local out = {}
+        for k, v in pairs(s.professions) do out[k] = v end
+        return out
+    end
+    function c.setProfessions(list)
+        if type(list) ~= "table" then s.professions = nil return end
+        s.professions = {}
+        for _, name in ipairs(list) do s.professions[name] = true end
+    end
     function c.setPet(r)
         if type(r) ~= "table" or type(r.exists) ~= "boolean" then
             s.pet = nil

@@ -85,6 +85,7 @@ return {
         -- Rotation and classes
         "Rotation/Pack.lua",
         "Rotation/Snapshot.lua",
+        "Rotation/BuffFood.lua",
         "Rotation/Choose.lua",
         "Rotation/KeyPlan.lua",
         "Rotation/Cast.lua",
@@ -160,6 +161,7 @@ return {
         "UI/SellList.lua",
         "UI/BankList.lua",
         "Items/Keep.lua",
+        "Items/RecipeBook.lua",
         "Items/Goals.lua",
     "UI/Arrow.lua",
     "UI/MinimapPin.lua",
@@ -180,5 +182,6 @@ return {
     "Nav/Try.lua",
     { "Core/Capture.lua", dev = true },
     { "Core/CaptureEvidence.lua", dev = true },
+    "Rotation/Gather.lua",
     },
 }

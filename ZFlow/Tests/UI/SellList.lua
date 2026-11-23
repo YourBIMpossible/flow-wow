@@ -175,7 +175,7 @@ tests["sell list panel: look only - no buttons, no clicks, only the two reads"] 
     local lines = L.Lines(setmetatable(only, { __index = function(_, name)
         called["other:" .. tostring(name)] = true
         return nil
-    end }), nil)
+    end }), nil, nil, { status = ns.Reservations.NONE })
     t.ok(type(lines) == "table" and #lines > 0, "a listing")
     t.eq(called, { bagItems = true, itemInfo = true }, "the bag read and the item read, nothing else")
     for name in pairs(L) do
@@ -205,7 +205,9 @@ tests["sell list lines: none changes nothing"] = function(t)
     c.setBagItems({ { item = 97, count = 3 } })
     setItemInfo(c, INFO)
     local r = { status = ns.Reservations.NONE }
-    t.eq(L.Lines(c, nil, L.Held(r), r), L.Lines(c, nil))
+    -- Lead section 226: a missing evaluation is unavailable (SR-3), so the
+    -- plain list is the one made with an explicit none on both sides.
+    t.eq(L.Lines(c, nil, L.Held(r), r), L.Lines(c, nil, nil, r))
 end
 
 return tests

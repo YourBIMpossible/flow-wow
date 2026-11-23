@@ -455,7 +455,12 @@ tests["rotation driver RD11: a step presses nothing and asks only its fourteen r
         local v = D.Step(client, pack())
         t.ok(v.suggestion ~= nil, "a suggestion was made")
         t.eq(pressed(calls), 0, "nothing pressed, fight " .. tostring(fight))
-        t.eq(other, {}, "nothing else asked of the client")
+        -- Section 226 (CF-30): the food read looks for client.bagItems; this
+        -- client has none, so the look is all there is and no bag is read.
+        -- P-GATHER: the same for the tracking and profession reads.
+        -- N13: and the own-buffs read (client.ownBuffs), which this client lacks.
+        t.eq(other, { "bagItems", "tracking", "tracking", "professions", "ownBuffs" },
+            "nothing else asked of the client but the bag, tracking, profession and own-buff reads it lacks")
         local names = {}
         for name in pairs(calls) do names[#names + 1] = name end
         table.sort(names)

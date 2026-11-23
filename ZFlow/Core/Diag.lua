@@ -994,7 +994,8 @@ local function rotationRow(view)
     local fight = fightClause(view, s)
     local head = fight ~= nil and fight .. "; " or ""
     local why = type(view.why) == "table" and view.why or {}
-    local picked = type(view.suggestion) == "table" and view.suggestion.spell or nil
+    -- Section 226 (CF-30): an item suggestion (Well Fed food) is named too.
+    local picked = type(view.suggestion) == "table" and (view.suggestion.spell or view.suggestion.item) or nil
     local line
     if picked ~= nil and why.step == "farOpener" then
         -- Lead section 187: the spell shown is out of range, and the words say so.
