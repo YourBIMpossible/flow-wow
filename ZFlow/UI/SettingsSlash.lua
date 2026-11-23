@@ -1,6 +1,7 @@
 -- SettingsSlash: the settings from the chat line. No panel, no frames.
 --
---   <slash> setting                 every setting row: key, value, scope, label
+--   <slash> setting                 every setting row: key, value, scope, label,
+--                                   under its topic's name
 --   <slash> setting <key>           that one row, and what it takes
 --   <slash> setting <key> on|off    a yes-or-no row
 --   <slash> setting <key> <value>   a number row or a choice row
@@ -158,8 +159,23 @@ function S.Run(k, rest)
     local text = trim(rest == nil and "" or rest)
 
     if text == "" then
+        -- Under their topics (row N57), in the topics' order, as the
+        -- settings page has them; a row is one line, as it always was.
         local lines = {}
-        for row in k.settings:each() do lines[#lines + 1] = rowLine(k, row) end
+        local Page = ns.SettingsPage
+        local view
+        if type(Page) == "table" and type(Page.View) == "function" then view = Page.View(k) end
+        if type(view) == "table" and type(view.topics) == "table" then
+            for _, topic in ipairs(view.topics) do
+                lines[#lines + 1] = tostring(topic.name) .. ":"
+                for _, e in ipairs(topic.rows) do
+                    local row = k.settings:row(e.key)
+                    if row then lines[#lines + 1] = rowLine(k, row) end
+                end
+            end
+        else
+            for row in k.settings:each() do lines[#lines + 1] = rowLine(k, row) end
+        end
         if #lines == 0 then return { S.NONE }, false end
         table.insert(lines, 1, "settings, as key = value (saved for) - what it is. Change one with: "
             .. id.slash .. " " .. S.WORD .. " <key> <value>")

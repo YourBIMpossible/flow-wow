@@ -67,6 +67,17 @@ O.LOCK_UNKNOWN = "the game won't say whether you are in combat, so its Options s
 
 local DRAW = { toggle = "toggle", choice = "choice", number = "number", text = "text", place = "info" }
 
+-- Row N57: a number row with both limits is drawn as a slider (the client
+-- draws the stepper when it cannot make one); any other number row is the
+-- stepper. The page's two buttons stand under this topic.
+O.ACTIONS_TOPIC = "general"
+local function drawKind(e)
+    if e.kind == "number" and type(e.min) == "number" and type(e.max) == "number" and e.max > e.min then
+        return "slider"
+    end
+    return DRAW[e.kind] or "info"
+end
+
 local function settingRow(e, found)
     local under = O.SAVED_FOR .. tostring(e.savedFor)
     if found then
@@ -75,7 +86,7 @@ local function settingRow(e, found)
     end
     if e.because then under = under .. " - " .. e.because end
     return {
-        kind = DRAW[e.kind] or "info",
+        kind = drawKind(e),
         key = e.key,
         label = e.label or e.key,
         value = e.value,
@@ -117,6 +128,11 @@ function O.Rows(k)
         end
     else
         rows[#rows + 1] = { kind = "note", text = O.NONE }
+    end
+    -- The page's own buttons (SettingsPage.Actions), under one topic only.
+    if page.mode == "topic" and page.topic and page.topic.id == O.ACTIONS_TOPIC
+        and type(ns.SettingsPage.Actions) == "function" then
+        rows[#rows + 1] = { kind = "actions", actions = ns.SettingsPage.Actions(k) }
     end
     return rows, page
 end
@@ -180,6 +196,24 @@ function O.Declare(k)
         end
         draw("")
         return true
+    end
+
+    -- A press on one of the page's own buttons (row N57). It goes the way
+    -- a change goes: refused in combat lockdown, done by SettingsPage.Act
+    -- through the one checked set, and the page is drawn again with what it
+    -- said. -> true when the button was one of the page's and ran.
+    local plainNav = nav
+    nav = function(kind, value)
+        if kind ~= "action" then return plainNav(kind, value) end
+        local client = ctx and ctx.client
+        if client and type(client.combatLockdown) == "function" and client.combatLockdown() == true then
+            draw(O.IN_COMBAT)
+            return false, O.IN_COMBAT
+        end
+        local n, said = ns.SettingsPage.Act(k, value)
+        if n == nil then return false end
+        draw(tostring(said))
+        return true, said
     end
 
     -- The client's page, asked for once it can be; nil when there is none
