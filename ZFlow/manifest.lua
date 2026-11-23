@@ -168,5 +168,6 @@ return {
     "Items/Banker.lua",
     "Items/Posting.lua",
     "Items/Trader.lua",
+    "Nav/Try.lua",
     },
 }

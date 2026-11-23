@@ -509,13 +509,26 @@ function Arrow.Start(k, diag, own)
             guide = guideFn()
             from = "a guide"
         else
-            local step = W and W.Step(k.store:get(W.SCOPE, W.PATH), ask(client, "position"), ask(client, "zone"))
-            from = "nothing"
+            -- A travel preview (Nav/Try.lua, <slash> try) wins over every
+            -- step of the player's own while it is on. It is not the
+            -- player's waypoint: reaching it clears nothing.
+            local step
+            local preview = k.use and k.use("try")
+            if preview and type(preview.Step) == "function" then
+                local okPreview, s = pcall(preview.Step)
+                if okPreview and type(s) == "table" then step = s end
+            end
             if step then
-                mine, from = true, "your own waypoint"
+                from = N.Try and N.Try.FROM or "a preview"
             else
-                step = N.WaypointStep(client)
-                if step then from = "the map pin" end
+                step = W and W.Step(k.store:get(W.SCOPE, W.PATH), ask(client, "position"), ask(client, "zone"))
+                from = "nothing"
+                if step then
+                    mine, from = true, "your own waypoint"
+                else
+                    step = N.WaypointStep(client)
+                    if step then from = "the map pin" end
+                end
             end
             -- Then the errand stop the player asked for (Nav/Errand.lua), when there is one.
             local errand = k.use and k.use("errand")
