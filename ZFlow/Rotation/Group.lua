@@ -372,13 +372,16 @@ function G.Step(s, pack, prefs)
         end
         wanted[i] = w
     end
-    -- Each row in order, for each member in order (Flow's order).
+    -- Item 19 (lead section 247): each member in order (the tank, then the
+    -- healer, then the rest in roster order), each of their rows in order.
+    -- Flow went row by row over the roster, so a rogue's Mark came before
+    -- the tank's Thorns.
     local unsure = false
-    for j, row in ipairs(rows) do
-        if type(row) == "table" and type(row.spell) == "string" and castable(s, row.spell) then
-            local rebuff = type(row.rebuff) == "number" and row.rebuff or G.REBUFF
-            for i, m in ipairs(members) do
-                if wanted[i][j] then
+    for i, m in ipairs(members) do
+        for j, row in ipairs(rows) do
+            if wanted[i][j] and type(row) == "table" and type(row.spell) == "string" and castable(s, row.spell) then
+                local rebuff = type(row.rebuff) == "number" and row.rebuff or G.REBUFF
+                do
                     -- Not `t and t[k] or nil`: a read "missing" (false) must stay false.
                     local reach, has
                     if type(m.reach) == "table" then reach = m.reach[row.spell] end
