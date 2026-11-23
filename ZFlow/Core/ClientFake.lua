@@ -2111,6 +2111,7 @@ function ns.make.fakeClient(opts)
     function c.setGameSettingFails(why) cvarFail = why end
     function c.gameSetting(name) return cvars[name] end
     function c.setGameSetting(name, v)
+        if s.combat ~= false then return nil, "combat" end   -- as the client: not asked in a fight
         c.gameSettingWrites[#c.gameSettingWrites + 1] = { name, v }
         if cvarFail then return nil, cvarFail end
         local most, n = cvarMost[name], tonumber(v)
@@ -2125,6 +2126,7 @@ function ns.make.fakeClient(opts)
     function c.putCombatLogFile(on) logging = on end
     function c.combatLogFile() return logging end
     function c.setCombatLogFile(on)
+        if s.combat ~= false then return nil, "combat" end   -- as the client: not asked in a fight
         c.logFileWrites[#c.logFileWrites + 1] = on
         if type(on) ~= "boolean" then return nil, "bad" end
         logging = on

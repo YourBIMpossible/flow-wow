@@ -2425,6 +2425,7 @@ function ns.make.client(env)
     function c.setGameSetting(name, v)
         if type(name) ~= "string" or not GAME_SETTINGS[name] then return nil, "notAllowed" end
         if type(v) ~= "string" then return nil, "bad" end
+        if c.inCombat() ~= false then return nil, "combat" end   -- a fight, or not known (section 266 GO-1)
         local fn = type(env.C_CVar) == "table" and env.C_CVar.SetCVar or nil
         if type(fn) ~= "function" then fn = env.SetCVar end
         if type(fn) ~= "function" then return nil, "noCall" end
@@ -2436,6 +2437,7 @@ function ns.make.client(env)
 
     function c.setCombatLogFile(on)
         if type(on) ~= "boolean" then return nil, "bad" end
+        if c.inCombat() ~= false then return nil, "combat" end   -- a fight, or not known (section 266 GO-1)
         if type(env.LoggingCombat) ~= "function" then return nil, "noCall" end
         local ok = call(env.LoggingCombat, on)
         if not ok then return nil, "raised" end
