@@ -194,6 +194,7 @@ function Drops.Declare(k, diag)
             local lines = Drops.Run(k, rest)
             for i = 1, #lines do k.client.print(k.id.title .. ": " .. lines[i]) end
         end
+        if type(diag.help) == "table" then diag.help[Drops.WORD] = "what this character looted, by creature; drops <creature> for one" end
     end
     return api
 end

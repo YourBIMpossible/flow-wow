@@ -75,6 +75,7 @@ function Intro.Declare(k, diag)
 
     if diag and type(diag.commands) == "table" then
         diag.commands[Intro.WORD] = function() show() end
+        if type(diag.help) == "table" then diag.help[Intro.WORD] = "show the introduction again" end
     end
 
     k:Module({

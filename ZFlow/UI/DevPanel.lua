@@ -169,6 +169,7 @@ function DevPanel.Start(k, diag)
                 client.print(id.title .. ": " .. id.slash .. " panel, or " .. id.slash .. " panel reset.")
             end
         end
+        if type(diag.help) == "table" then diag.help.panel = "show or hide the dev panel; panel reset puts it back" end
     end
 
     return { panel = panel, refresh = refresh }
