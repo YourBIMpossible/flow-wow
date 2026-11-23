@@ -221,7 +221,7 @@ function S.Declare(k, diag)
     -- SC-2: the last try to make the row gave nothing (tried again on the
     -- next ensure once the lock is a plain false); the problem said once.
     local rowMissed, rowSaid = false, false
-    local wantedPlan, iconSig = nil, nil
+    local iconSig = nil
 
     function api.status()
         if kf then return kf:status() end
@@ -233,16 +233,35 @@ function S.Declare(k, diag)
         if client then client.print(ns.id.title .. ": " .. text) end
     end
 
-    local function icons()
+    -- SC-4: the icons follow what the slots hold (held, the key frame's
+    -- record of what it set), and iconSig is what was actually put on the
+    -- row: a texture not known yet, or an icon the row refused, is tried
+    -- again on the next set, with the plan unchanged.
+    local function heldEntry(held, i)
+        local kind = held[i .. ":type"]
+        if kind == "item" and type(held[i .. ":item"]) == "string" then return { item = held[i .. ":item"] } end
+        if kind == "spell" and type(held[i .. ":spell"]) == "string" then return { spell = held[i .. ":spell"] } end
+        return nil
+    end
+
+    local function icons(held)
         if not row or type(row.icon) ~= "function" then return end
-        local sig = S.Signature(wantedPlan)
-        if sig == iconSig then return end
-        iconSig = sig
-        if type(wantedPlan) ~= "table" then return end
-        for i, slot in ipairs(S.SLOTS) do
-            local tex = texture(client, wantedPlan[slot])
-            if tex ~= nil then pcall(row.icon, i, tex) end
+        if type(held) ~= "table" then return end
+        local texs, want = {}, {}
+        for i = 1, #S.SLOTS do
+            texs[i] = texture(client, heldEntry(held, i))
+            want[i] = tostring(texs[i])
         end
+        if table.concat(want, "|") == iconSig then return end
+        local got = {}
+        for i = 1, #S.SLOTS do
+            got[i] = "nil"
+            if texs[i] ~= nil then
+                local ok, given = pcall(row.icon, i, texs[i])
+                if ok and given ~= false then got[i] = tostring(texs[i]) else got[i] = "refused" end
+            end
+        end
+        iconSig = table.concat(got, "|")
     end
 
     local function after(st)
@@ -255,7 +274,7 @@ function S.Declare(k, diag)
             end
         elseif st.state == "set" then
             failSaid = false
-            icons()
+            icons(st.held)
         elseif st.state == "cleared" then
             failSaid = false
             iconSig = nil
@@ -322,7 +341,6 @@ function S.Declare(k, diag)
     end
 
     local function clear()
-        wantedPlan = nil
         if kf then after(kf:want(nil)) end
     end
 
@@ -351,7 +369,6 @@ function S.Declare(k, diag)
             return
         end
         if not ensure() then return end
-        wantedPlan = plan
         after(kf:want(plan))
     end
 
