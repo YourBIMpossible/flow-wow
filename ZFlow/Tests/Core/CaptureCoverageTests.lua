@@ -236,6 +236,11 @@ local READS = {
     -- and the edit box; read by UI/Chat.lua only. Their names
     -- (GetPlayerInfoByGUID, ChatTypeInfo and the rest) are in Diag.NAMES.
     classOfGuid = false, chatNameByClass = false, chatTypeHeader = false, editBox = false,
+
+    -- G38 and G47: indoors and a party member's position; read by
+    -- Nav/Trails.lua and Nav/Follow.lua only. Their names (IsIndoors,
+    -- C_Map.GetBestMapForUnit, C_Map.GetPlayerMapPosition) are in Diag.NAMES.
+    indoors = false, unitPosition = false,
 }
 -- Lead section 337 item 1: the bag stacks with their bag and slot, and one
 -- slot read again before it is sold; read by Items/SellThese.lua only, on
@@ -437,5 +442,12 @@ tests["capture coverage (d): the reads saved at login carry the answers"] = func
     t.ok(type(last) == "table" and type(last.reads.answers) == "table", "answers saved")
     t.ok(not holds(last, TEXTS), "no made-up text saved")
 end
+
+-- G48 (P-TRIP, ACTING): the party route's add-on messages; the prefix is
+-- taken at login, a send goes on the party channel only, on the player's
+-- own route share or route ask (or an answer to a party member's ask).
+-- Never the capture.
+KIND.act[#KIND.act + 1] = "addonPrefix"
+KIND.act[#KIND.act + 1] = "addonSend"
 
 return tests

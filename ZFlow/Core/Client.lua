@@ -7259,14 +7259,45 @@ function ns.make.client(env)
         method(f, "SetFrameStrata", "MEDIUM")
         method(f, "SetClampedToScreen", true)
 
+        -- Lead sections 320 and 350: the shared look, from the one theme file
+        -- (UI/Kit/Theme.lua, read when the bar is made): its fill, a thin
+        -- edge and its small font; the bar keeps its own layout. Without the
+        -- theme: the old black backing and font, no edge.
+        local look = type(ns.Kit) == "table" and type(ns.Kit.look) == "table" and ns.Kit.look or nil
+        local fill, edgeColor, edgeSize, barFont = { 0, 0, 0 }, nil, 1, "GameFontNormalSmall"
+        if look ~= nil and type(look.color) == "table" then
+            if type(look.color.fill) == "table" then fill = look.color.fill end
+            if type(look.color.edge) == "table" then edgeColor = look.color.edge end
+        end
+        if look ~= nil and type(look.size) == "table" and type(look.size.edge) == "number" then edgeSize = look.size.edge end
+        if look ~= nil and type(look.font) == "table" and type(look.font.small) == "string" then barFont = look.font.small end
+
         local okBg, bg = method(f, "CreateTexture", nil, "BACKGROUND")
         if not okBg then bg = nil end
         if bg ~= nil then
             method(bg, "SetAllPoints", f)
-            if not method(bg, "SetColorTexture", 0, 0, 0, 0.6) then method(bg, "SetTexture", 0, 0, 0, 0.6) end
+            if not method(bg, "SetColorTexture", fill[1], fill[2], fill[3], 0.6) then
+                method(bg, "SetTexture", fill[1], fill[2], fill[3], 0.6)
+            end
+        end
+        if edgeColor ~= nil then
+            for _, side in ipairs({ { "TOPLEFT", "TOPRIGHT" }, { "BOTTOMLEFT", "BOTTOMRIGHT" },
+                { "TOPLEFT", "BOTTOMLEFT" }, { "TOPRIGHT", "BOTTOMRIGHT" } }) do
+                local okE, line = method(f, "CreateTexture", nil, "BORDER")
+                if okE and line ~= nil then
+                    method(line, "SetPoint", side[1], f, side[1], 0, 0)
+                    method(line, "SetPoint", side[2], f, side[2], 0, 0)
+                    if side[1] == "TOPLEFT" and side[2] == "TOPRIGHT" or side[1] == "BOTTOMLEFT" then
+                        method(line, "SetHeight", edgeSize)
+                    else
+                        method(line, "SetWidth", edgeSize)
+                    end
+                    method(line, "SetColorTexture", edgeColor[1], edgeColor[2], edgeColor[3], edgeColor[4])
+                end
+            end
         end
 
-        local okText, text = method(f, "CreateFontString", nil, "OVERLAY", "GameFontNormalSmall")
+        local okText, text = method(f, "CreateFontString", nil, "OVERLAY", barFont)
         if not okText then text = nil end
         if text ~= nil then
             method(text, "SetPoint", "TOPLEFT", f, "TOPLEFT", 6, -4)
@@ -7345,7 +7376,9 @@ function ns.make.client(env)
         function h.alpha(a)
             a = tonumber(a)
             if bg == nil or a == nil then return end
-            if not method(bg, "SetColorTexture", 0, 0, 0, a) then method(bg, "SetTexture", 0, 0, 0, a) end
+            if not method(bg, "SetColorTexture", fill[1], fill[2], fill[3], a) then
+                method(bg, "SetTexture", fill[1], fill[2], fill[3], a)
+            end
         end
         function h.size(w, ht)
             w, ht = tonumber(w), tonumber(ht)
@@ -11415,6 +11448,40 @@ function ns.make.client(env)
         end
     end
 
+    -- G38: whether the player is indoors (a cave, a building): true or
+    -- false, nil when the client will not say. IsIndoors() answers 1 or nil
+    -- in the classic clients; a nil from a call that is there is read as
+    -- "not indoors". A first guess: not seen in game on 16001.
+    function c.indoors()
+        if type(env.IsIndoors) ~= "function" then return nil end
+        local ok, v = call(env.IsIndoors)
+        if not ok or hidden(v) then return nil end
+        if v == true or v == 1 then return true end
+        if v == false or v == nil or v == 0 then return false end
+        return nil
+    end
+
+    -- G47: where a party or raid member is on the map the client picks for
+    -- them: { map = uiMapID, x = 0..1, y = 0..1 }, or nil (not a party
+    -- unit, another map, an instance, no answer, or a hidden answer).
+    -- C_Map.GetBestMapForUnit(unit) and C_Map.GetPlayerMapPosition(map,
+    -- unit), the calls the player's own position uses, asked for the unit.
+    -- A first guess: not seen in game on 16001. Only party1..4 and
+    -- raid1..40 are asked; nothing is sent or shared.
+    function c.unitPosition(unit)
+        if type(unit) ~= "string" or not PARTY_UNITS[unit] then return nil end
+        local okMap, map = mapCall("GetBestMapForUnit", unit)
+        if not okMap or hidden(map) or type(map) ~= "number" then return nil end
+        local ok, pos = mapCall("GetPlayerMapPosition", map, unit)
+        if not ok or hidden(pos) or type(pos) ~= "table" then return nil end
+        local okXY, x, y = call(pos.GetXY, pos)
+        if not okXY then x, y = pos.x, pos.y end
+        if hidden(x) or hidden(y) or type(x) ~= "number" or type(y) ~= "number" then return nil end
+        if x ~= x or y ~= y or (x == 0 and y == 0) then return nil end
+        if x < 0 or x > 1 or y < 0 or y > 1 then return nil end
+        return { map = map, x = x, y = y }
+    end
+
     -- The minimap button (lead DISPATCH sections 340 and 303(g);
     -- UI/MinimapButton.lua): a small round button on the minimap's rim, or
     -- nil and why when the client cannot make it.
@@ -11693,6 +11760,40 @@ function ns.make.client(env)
             if type(history) == "number" then method(box, "SetHistoryLines", history) end
             return true
         end
+    end
+
+    -- G48 (P-TRIP): the party route's add-on messages (Nav/PartyRoute.lua),
+    -- the add-on's only outward call. First guesses, not tested in game:
+    -- C_ChatInfo.RegisterAddonMessagePrefix(prefix) and
+    -- C_ChatInfo.SendAddonMessage(prefix, text, channel) answer true (older
+    -- builds) or 0 (Enum.SendAddonMessageResult.Success, newer builds) on
+    -- success; any other answer, nothing, or a raise is "not sent".
+    -- Messages come in through c.listen("CHAT_MSG_ADDON",
+    -- fn(prefix, text, channel, sender)).
+    --   c.addonPrefix(prefix) -> true | false | nil (no such call)
+    --   c.addonSend(prefix, text, channel) -> true | nil, why
+    -- Only the "PARTY" channel is ever sent on; any other is refused here.
+    function c.addonPrefix(prefix)
+        if type(prefix) ~= "string" or prefix == "" or #prefix > 16 then return false end
+        local chat = env.C_ChatInfo
+        if type(chat) ~= "table" or type(chat.RegisterAddonMessagePrefix) ~= "function" then return nil end
+        local ok, r = call(chat.RegisterAddonMessagePrefix, prefix)
+        if not ok then return nil end
+        return r == true or r == 0
+    end
+
+    function c.addonSend(prefix, text, channel)
+        if channel ~= "PARTY" then return nil, "only the party channel" end
+        if type(prefix) ~= "string" or type(text) ~= "string" then return nil, "nothing to send" end
+        if #text > 255 then return nil, "message too long" end
+        local chat = env.C_ChatInfo
+        if type(chat) ~= "table" or type(chat.SendAddonMessage) ~= "function" then
+            return nil, "the client has no C_ChatInfo.SendAddonMessage"
+        end
+        local ok, r = call(chat.SendAddonMessage, prefix, text, channel)
+        if not ok then return nil, "the send raised: " .. tostring(r) end
+        if r == true or r == 0 then return true end
+        return nil, "the client answered " .. tostring(r)
     end
     return c
 end

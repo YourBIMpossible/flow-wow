@@ -119,7 +119,10 @@ return {
         h.font(16)
         t.eq(find(env, "FontString")[1].font, { "Fonts\\TEST.TTF", 16, "" })
         h.alpha(0.25)
-        t.eq(find(env, "Texture")[1].color, { 0, 0, 0, 0.25 })
+        -- The backing keeps the theme's fill colour (lead section 350); only
+        -- the opacity is the player's.
+        local fill = ns.Kit.look.color.fill
+        t.eq(find(env, "Texture")[1].color, { fill[1], fill[2], fill[3], 0.25 })
     end,
 
     ["info bar client: dragged when unlocked, not when locked"] = function(t)

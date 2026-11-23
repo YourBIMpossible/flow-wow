@@ -24,6 +24,7 @@ local function read(s)
         styles = type(s.styles) == "table" and s.styles or {},
         canShapes = s.canShapes == true,
         feedback = s.feedback == true,
+        party = type(s.party) == "table" and s.party or {},
     }
 end
 
@@ -85,6 +86,22 @@ function M.Items(state)
     end
     -- Lead section 318: the Dungeon Quests window.
     rows[#rows + 1] = { key = M.DUNGEONS, text = T.MENU.dungeons }
+    -- G47 (Nav/Follow.lua): point the arrow at a party member, only while
+    -- in a group. A level holds T.MENU_MAX rows with its heading, the stop
+    -- row and the way back, so a raid shows its first members only.
+    if #s.party > 0 then
+        local members = {}
+        for i = 1, #s.party do
+            local m = s.party[i]
+            if #members >= T.MENU_MAX - 3 then break end
+            if type(m) == "table" and type(m.unit) == "string" then
+                members[#members + 1] = { key = M.FOLLOW .. "." .. m.unit,
+                    text = type(m.name) == "string" and m.name or m.unit }
+            end
+        end
+        members[#members + 1] = { key = M.FOLLOW .. ".stop", text = M.FOLLOW_STOP }
+        rows[#rows + 1] = { key = M.FOLLOW, text = M.FOLLOW_TEXT, children = members }
+    end
     local topic = T.Find(M.TOPIC)
     rows[#rows + 1] = { sep = true }
     rows[#rows + 1] = { key = "settings." .. topic.id, text = topic.name .. T.MENU.topicSettings }
@@ -98,6 +115,9 @@ end
 M.BACK = "back"
 M.FEEDBACK = "feedback"
 M.DUNGEONS = "dungeons"
+M.FOLLOW = "follow"
+M.FOLLOW_TEXT = "Point at a party member"
+M.FOLLOW_STOP = "Stop pointing at them"
 -- The window a row opens, by the module that owns it (lead section 318).
 M.WINDOWS = { [M.DUNGEONS] = "dungeonWindow" }
 M.MORE = "  >"
@@ -186,6 +206,13 @@ function M.Action(key, state)
     end
     if key == "settings" then return { settings = true } end
     if M.WINDOWS[key] then return { window = M.WINDOWS[key] } end
+    -- G47: the follow level, a member (by unit), or stop ({ follow = false }).
+    if key == M.FOLLOW then return { open = key } end
+    local unit = key:match("^follow%.(.+)$")
+    if unit then
+        if unit == "stop" then return { follow = false } end
+        return { follow = unit }
+    end
     if key == "feedback" then
         if s.feedback then return { feedback = true } end
         return nil

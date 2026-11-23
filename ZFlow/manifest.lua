@@ -101,6 +101,7 @@ return {
         "Rotation/Snapshot.lua",
         "Rotation/BuffFood.lua",
         "Rotation/HealItems.lua",
+        "Rotation/FoodAdvice.lua",
         "Rotation/Choose.lua",
         "Rotation/KeyPlan.lua",
         "Rotation/Cast.lua",
@@ -256,7 +257,14 @@ return {
     -- Lead DISPATCH section 340: the minimap button's rim math (pure), then the button.
     "UI/MinimapPlace.lua",
     "UI/MinimapButton.lua",
+    -- G38, G47, G22 (P-NAV): learned cave trails, pointing at a party member,
+    -- the nodes you gathered (after the arrow, Waypoint and Gather).
+    "Nav/Trails.lua",
+    "Nav/Follow.lua",
+    "Nav/Nodes.lua",
     -- N60a: copy chat text and clickable web addresses in chat (after the settings page).
     "UI/Chat.lua",
+    -- G48 (P-TRIP): the party route over add-on messages (after TripRoute).
+    "Nav/PartyRoute.lua",
     },
 }

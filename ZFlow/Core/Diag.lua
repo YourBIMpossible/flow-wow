@@ -256,6 +256,8 @@ Diag.NAMES = {
     "ChatFrame1.GetTimeVisible", "ChatFrame1.SetTimeVisible", "ChatFrame1.HookScript",
     "ChatFrame1.ScrollUp", "ChatFrame1.ScrollDown", "ChatFrame1.ScrollToTop", "ChatFrame1.ScrollToBottom",
     "ChatFrame1Tab", "ChatFrame1Tab.SetAlpha", "ChatFrame1Tab.GetAlpha", "date",
+    -- G38: indoors (Nav/Trails.lua). A first guess on 16001.
+    "IsIndoors",
     -- Lead section 340: the frame under the mouse (c.kitFocus), and the
     -- settings window's large page heading.
     "GetMouseFocus", "GetMouseFoci", "GameFontHighlightHuge",

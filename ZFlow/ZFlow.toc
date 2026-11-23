@@ -84,6 +84,7 @@ Rotation\Pack.lua
 Rotation\Snapshot.lua
 Rotation\BuffFood.lua
 Rotation\HealItems.lua
+Rotation\FoodAdvice.lua
 Rotation\Choose.lua
 Rotation\KeyPlan.lua
 Rotation\Cast.lua
@@ -214,4 +215,8 @@ Nav\QuestSpots.lua
 Nav\TripRoute.lua
 UI\MinimapPlace.lua
 UI\MinimapButton.lua
+Nav\Trails.lua
+Nav\Follow.lua
+Nav\Nodes.lua
 UI\Chat.lua
+Nav\PartyRoute.lua
