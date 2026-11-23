@@ -63,12 +63,11 @@ function IB.Parse(s)
     return out
 end
 
+-- The money read is what the client said: an observed sum, written the
+-- one way every price is (Items/Prices.lua).
 local function money(n)
-    n = math.floor(n)
-    local g, s, c = math.floor(n / 10000), math.floor(n / 100) % 100, n % 100
-    if g > 0 then return string.format("%dg %ds %dc", g, s, c) end
-    if s > 0 then return string.format("%ds %dc", s, c) end
-    return string.format("%dc", c)
+    local P = ns.Prices
+    return P.Text({ value = math.floor(n), basis = P.OBSERVED }, "money")
 end
 
 local function freeSlots(rows)

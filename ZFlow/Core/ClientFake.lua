@@ -2254,26 +2254,26 @@ function ns.make.fakeClient(opts)
     -- N59: the info bar reads, unknown (nil) until a test sets them.
     -- c.setXp{ cur, max, rested }; c.setWatchedFaction(t or false: none
     -- watched); c.setGameTime(h, m); c.setFramerate(n); c.setLatency(home, world).
-    local function copyFlat(t)
+    local function ibCopy(t)
         if type(t) ~= "table" then return t end
         local out = {}
         for k, v in pairs(t) do out[k] = v end
         return out
     end
-    function c.setXp(t) s.xp = copyFlat(t) end
-    function c.xp() return copyFlat(s.xp) end
-    function c.setWatchedFaction(v) s.watchedFaction = copyFlat(v) end
-    function c.watchedFaction() return copyFlat(s.watchedFaction) end
+    function c.setXp(t) s.xp = ibCopy(t) end
+    function c.xp() return ibCopy(s.xp) end
+    function c.setWatchedFaction(v) s.watchedFaction = ibCopy(v) end
+    function c.watchedFaction() return ibCopy(s.watchedFaction) end
     function c.setGameTime(h, m)
         if h == nil then s.gameTime = nil else s.gameTime = { hour = h, minute = m } end
     end
-    function c.gameTime() return copyFlat(s.gameTime) end
+    function c.gameTime() return ibCopy(s.gameTime) end
     function c.setFramerate(n) s.framerate = n end
     function c.framerate() return s.framerate end
     function c.setLatency(home, world)
         if home == nil then s.latency = nil else s.latency = { home = home, world = world } end
     end
-    function c.latency() return copyFlat(s.latency) end
+    function c.latency() return ibCopy(s.latency) end
     -- No data broker library offline: the feed is never made.
     function c.broker() return nil end
 
