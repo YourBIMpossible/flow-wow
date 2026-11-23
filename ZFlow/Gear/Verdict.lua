@@ -21,6 +21,8 @@ local _, ns = ...
 --            labels they carry. No weight and no proficiency is made here.
 --     role   which of the pack's weights to score by ("dps", "tank", ...)
 --     level  your level
+--     skills (G16) client.weaponSkills(): the skill lines you know; nil
+--            when not read (Gear/WeaponSkill.lua)
 --   lines  GearTooltip.Lines' answer, or nil when nothing is to be said:
 --          the item is not known to be gear (no equip location), or is of a
 --          kind that is not compared (a bag, a shirt). nil is not a verdict.
@@ -62,6 +64,10 @@ function V.Lines(gear, who)
         { classID = gear.classID, subclassID = gear.subclassID, minLevel = gear.minLevel },
         { proficiency = pack.proficiency, level = who.level })
     local use = ns.GearUsable.Best(ns.GearUsable.Check(gear.unmet), packUse)
+    -- G16: a weapon the class can learn but you have not trained reads so
+    -- (Gear/WeaponSkill.lua), when who.skills (client.weaponSkills()) was read.
+    use = ns.GearWeaponSkill.Apply(use, packUse,
+        { classID = gear.classID, subclassID = gear.subclassID }, who.skills)
     local lines = ns.GearTooltip.Lines(result, use, { role = who.role })
     return lines, { result = result, use = use, unmapped = shapes.unmapped, ignored = shapes.ignored,
                     weights = evidence }

@@ -69,6 +69,10 @@ function M.Lines(client, packs, link)
     local class = ask(client, "class")
     local pack = type(packs) == "table" and class ~= nil and packs[class] or nil
     local level = ask(client, "level")
+    -- G16: the skill lines you know; a read that raises is not read.
+    local skills = nil
+    local okSkills, readSkills = pcall(ask, client, "weaponSkills")
+    if okSkills and type(readSkills) == "table" then skills = readSkills end
     local roles = rolesOf(pack)
 
     local out, said = {}, {}
@@ -82,7 +86,8 @@ function M.Lines(client, packs, link)
     end
     -- With no role to score by, one pass still says why there is no verdict.
     for i = 1, math.max(#roles, 1) do
-        local lines, detail = ns.GearVerdict.Lines(gear, { pack = pack, role = roles[i], level = level })
+        local lines, detail = ns.GearVerdict.Lines(gear, { pack = pack, role = roles[i], level = level,
+                                                            skills = skills })
         if lines == nil then return nil end
         keep(lines)
         -- Whether you can use it does not depend on the role.

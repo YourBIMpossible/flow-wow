@@ -22,7 +22,8 @@ local _, ns = ...
 --
 -- The game marks a kind your class can never use and a skill you have not
 -- trained in the same way, so this cannot tell them apart and does not try:
--- the line shows the game's words.
+-- the line shows the game's words. Gear/WeaponSkill.lua (G16) tells them
+-- apart afterwards, from the skill lines you know, when those were read.
 --
 -- Clean: the game's text made safe to show: colour codes taken off, spaces
 -- trimmed. nil for anything that is not text, is empty, or still holds a
