@@ -11465,6 +11465,39 @@ function ns.make.client(env)
             return table.concat(parts, "; ")
         end
     end
+    -- G48 (P-TRIP): the party route's add-on messages (Nav/PartyRoute.lua),
+    -- the add-on's only outward call. First guesses, not tested in game:
+    -- C_ChatInfo.RegisterAddonMessagePrefix(prefix) and
+    -- C_ChatInfo.SendAddonMessage(prefix, text, channel) answer true (older
+    -- builds) or 0 (Enum.SendAddonMessageResult.Success, newer builds) on
+    -- success; any other answer, nothing, or a raise is "not sent".
+    -- Messages come in through c.listen("CHAT_MSG_ADDON",
+    -- fn(prefix, text, channel, sender)).
+    --   c.addonPrefix(prefix) -> true | false | nil (no such call)
+    --   c.addonSend(prefix, text, channel) -> true | nil, why
+    -- Only the "PARTY" channel is ever sent on; any other is refused here.
+    function c.addonPrefix(prefix)
+        if type(prefix) ~= "string" or prefix == "" or #prefix > 16 then return false end
+        local chat = env.C_ChatInfo
+        if type(chat) ~= "table" or type(chat.RegisterAddonMessagePrefix) ~= "function" then return nil end
+        local ok, r = call(chat.RegisterAddonMessagePrefix, prefix)
+        if not ok then return nil end
+        return r == true or r == 0
+    end
+
+    function c.addonSend(prefix, text, channel)
+        if channel ~= "PARTY" then return nil, "only the party channel" end
+        if type(prefix) ~= "string" or type(text) ~= "string" then return nil, "nothing to send" end
+        if #text > 255 then return nil, "message too long" end
+        local chat = env.C_ChatInfo
+        if type(chat) ~= "table" or type(chat.SendAddonMessage) ~= "function" then
+            return nil, "the client has no C_ChatInfo.SendAddonMessage"
+        end
+        local ok, r = call(chat.SendAddonMessage, prefix, text, channel)
+        if not ok then return nil, "the send raised: " .. tostring(r) end
+        if r == true or r == 0 then return true end
+        return nil, "the client answered " .. tostring(r)
+    end
     return c
 end
 

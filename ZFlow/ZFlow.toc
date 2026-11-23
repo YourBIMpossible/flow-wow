@@ -218,3 +218,4 @@ Nav\Trails.lua
 Nav\Follow.lua
 Nav\Nodes.lua
 UI\Chat.lua
+Nav\PartyRoute.lua
