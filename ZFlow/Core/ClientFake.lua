@@ -2666,6 +2666,16 @@ function ns.make.fakeClient(opts)
         for i, row in ipairs(s.spellbook) do out[i] = { name = row.name, icon = row.icon } end
         return out
     end
+
+    -- PRIEST-3 (P-SELFBUFF): your own debuffs by name, as the real client's
+    -- playerDebuffs(): a copy of the map set, nil when none was set.
+    function c.setPlayerDebuffs(map) s.playerDebuffs = type(map) == "table" and map or nil end
+    function c.playerDebuffs()
+        if type(s.playerDebuffs) ~= "table" then return nil end
+        local out = {}
+        for k, v in pairs(s.playerDebuffs) do out[k] = v end
+        return out
+    end
     return c
 end
 

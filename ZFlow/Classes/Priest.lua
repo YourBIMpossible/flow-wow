@@ -26,9 +26,8 @@ local _, ns = ...
 --   * Resurrection, and the heals, Fortitude, Shield and Dispel Magic on
 --     anyone but yourself: needs a party member read and a chooser step for
 --     other players (the pack holds nothing for them yet);
---   * Power Word: Shield in the list: the shield leaves Weakened Soul on you,
---     and no read gives your own debuffs by name, so "can it go on again"
---     cannot be told. It is on the Alt key row, for you to press;
+--   * Power Word: Shield out of a fight (PRIEST-3 puts it in the list only
+--     in a fight, read against Weakened Soul); it stays on the Alt key row;
 --   * an aoe list: Holy Nova is a talent and hits only what is near you,
 --     and no read says how many enemies are near;
 --   * Smite or the wand chosen by mana: the client hides power amounts from
@@ -103,6 +102,14 @@ local buffs = tag({
           -- In a fight (or not known): only when it is not up at all.
           if outOfFight(s) then return wants(s, "Inner Fire", INNER) end
           return buffsRead(s) and left(s, "Inner Fire") == nil
+      end },
+    -- PRIEST-3 (P-SELFBUFF): in a fight, no shield on you and no Weakened
+    -- Soul (your own debuffs by name, snapshot.debuffs). Either read not
+    -- given: no shield (section 186).
+    { spell = "Power Word: Shield", kind = "buff", reason = "In a fight: Power Word: Shield",
+      when = function(s)
+          if s.inCombat ~= true or type(s.debuffs) ~= "table" or not buffsRead(s) then return false end
+          return s.debuffs["Weakened Soul"] == nil and left(s, "Power Word: Shield") == nil
       end },
 })
 
@@ -276,6 +283,20 @@ local pack = {
     talentBuilds = {},
 
     options = {
+        -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,
+        -- in order: the first you know names your tree (snapshot.tree,
+        -- Rotation/Driver.lua). Which spell is a talent of which tree: a first
+        -- guess from the 1.12 talent trees as remembered, not read from the game.
+        trees = {
+            { spell = "Shadowform", tree = "Shadow", evidence = GUESS },
+            { spell = "Power Infusion", tree = "Discipline", evidence = GUESS },
+            { spell = "Lightwell", tree = "Holy", evidence = GUESS },
+            { spell = "Vampiric Embrace", tree = "Shadow", evidence = GUESS },
+            { spell = "Silence", tree = "Shadow", evidence = GUESS },
+            { spell = "Mind Flay", tree = "Shadow", evidence = GUESS },
+            { spell = "Holy Nova", tree = "Holy", evidence = GUESS },
+            { spell = "Inner Focus", tree = "Discipline", evidence = GUESS },
+        },
         -- N58 (lead section 241): no own-choice row: Priest has no aura,
         -- stance, form or armor choice in this rotation.
         -- Reads the rules lean on; one not given is named by diag (187).

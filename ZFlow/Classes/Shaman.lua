@@ -251,6 +251,16 @@ local pack = {
     talentBuilds = {},
 
     options = {
+        -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,
+        -- in order: the first you know names your tree (snapshot.tree,
+        -- Rotation/Driver.lua). Which spell is a talent of which tree: a first
+        -- guess from the 1.12 talent trees as remembered, not read from the game.
+        trees = {
+            { spell = "Mana Tide Totem", tree = "Restoration", evidence = GUESS },
+            { spell = "Stormstrike", tree = "Enhancement", evidence = GUESS },
+            { spell = "Elemental Mastery", tree = "Elemental", evidence = GUESS },
+            { spell = "Nature's Swiftness", tree = "Restoration", evidence = GUESS },
+        },
         -- Reads the rules lean on; one not given is named by diag (187).
         reads = { "buffs", "targetDebuffs" },
         -- N58 (lead section 241): no own-choice row yet. The imbue you cast

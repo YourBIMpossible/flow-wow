@@ -248,6 +248,20 @@ local pack = {
     talentBuilds = {},
 
     options = {
+        -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,
+        -- in order: the first you know names your tree (snapshot.tree,
+        -- Rotation/Driver.lua). Which spell is a talent of which tree: a first
+        -- guess from the 1.12 talent trees as remembered, not read from the game.
+        trees = {
+            { spell = "Adrenaline Rush", tree = "Combat", evidence = GUESS },
+            { spell = "Cold Blood", tree = "Assassination", evidence = GUESS },
+            { spell = "Preparation", tree = "Subtlety", evidence = GUESS },
+            { spell = "Blade Flurry", tree = "Combat", evidence = GUESS },
+            { spell = "Premeditation", tree = "Subtlety", evidence = GUESS },
+            { spell = "Hemorrhage", tree = "Subtlety", evidence = GUESS },
+            { spell = "Riposte", tree = "Combat", evidence = GUESS },
+            { spell = "Ghostly Strike", tree = "Subtlety", evidence = GUESS },
+        },
         -- Reads the rules lean on; one not given is named by diag (187).
         reads = { "stealthed", "buffs", "targetDebuffs" },
         -- N58 (lead section 241): no own-choice row yet. No rule here
