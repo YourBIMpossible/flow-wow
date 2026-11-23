@@ -8530,6 +8530,26 @@ function ns.make.client(env)
         return out
     end
 
+    -- Lead section 337 item 2 (P-INV G6): c.skillRanks() -> { [skill line
+    --   name] = { rank, max } } or nil: GetNumSkillLines, then
+    --   GetSkillLineInfo(i) (name, header, _, rank, _, _, max), headers left
+    --   out. nil when there is no such read or any read raised. First guess,
+    --   not seen in game.
+    function c.skillRanks()
+        local okN, n = call(env.GetNumSkillLines)
+        if not okN or type(n) ~= "number" or hidden(n) or n ~= n or n < 0 then return nil end
+        local out = {}
+        for i = 1, math.floor(n) do
+            local ok, name, header, _, rank, _, _, max = call(env.GetSkillLineInfo, i)
+            if not ok then return nil end
+            if not header and type(name) == "string" and not hidden(name) and name ~= "" then
+                out[name] = { rank = type(rank) == "number" and not hidden(rank) and rank or nil,
+                              max = type(max) == "number" and not hidden(max) and max or nil }
+            end
+        end
+        return out
+    end
+
     -- G60: NPC words read aloud (UI/NpcSpeech.lua). Text-to-speech plays on
     --   the player's own speakers: an output like print, not a game action,
     --   so no combat lockdown or protected-call concern. Every name here is

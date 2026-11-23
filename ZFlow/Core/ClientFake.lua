@@ -3137,6 +3137,15 @@ function ns.make.fakeClient(opts)
     --   section 236: a read that fails, then recovers).
     function c.setWeaponSkills(list) s.weaponSkills = type(list) == "table" and list or nil end
     function c.setWeaponSkillsFails(on) s.weaponSkillsFails = on and true or nil end
+    -- Lead section 337 item 2: the skill ranks for skillRanks(),
+    -- { [name] = { rank, max } }; nil (the start): not read.
+    function c.setSkillRanks(map) s.skillRanks = type(map) == "table" and map or nil end
+    function c.skillRanks()
+        if type(s.skillRanks) ~= "table" then return nil end
+        local out = {}
+        for name, r in pairs(s.skillRanks) do out[name] = { rank = r.rank, max = r.max } end
+        return out
+    end
     function c.weaponSkills()
         if s.weaponSkillsFails then error("weapon skill read failed (test)") end
         if type(s.weaponSkills) ~= "table" then return nil end

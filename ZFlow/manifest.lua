@@ -71,6 +71,7 @@ return {
         "Items/Present.lua",
         "Items/CraftHint.lua",
         "Items/SkillUps.lua",
+        "Items/SkillBoosters.lua",
         "Items/CraftQueue.lua",
         "Items/Sell.lua",
         "Items/Repair.lua",

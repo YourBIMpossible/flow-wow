@@ -197,7 +197,9 @@ tests["sell list Show: it reads the bags and the item facts, draws, and does not
     -- itemTexture: the icon of an item line (lead section 303), a read.
     -- bagSlots: where each stack is, for the Sell these button (lead
     -- section 337 item 1), a read. Never sellBagItem.
-    local readsAllowed = { bagItems = true, itemInfo = true, itemTexture = true, saved = true, bagSlots = true }
+    -- skillRanks, itemLines: the skill boosters' reads (lead section 337 item 2).
+    local readsAllowed = { bagItems = true, itemInfo = true, itemTexture = true, saved = true, bagSlots = true,
+        skillRanks = true, itemLines = true }
     for name in pairs(called) do
         t.ok(readsAllowed[name], "Show() called client." .. name .. ", which is not one of its reads")
     end

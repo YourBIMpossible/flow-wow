@@ -69,7 +69,7 @@ end
 local function keptReason(c)
     local listing = ns.SellList.Listing(c, nil, nil, nil)
     for _, row in ipairs(listing.kept and listing.kept.rows or {}) do
-        if row.key == tostring(BOOK) then return row.rule, row.reason end
+        if tostring(row.key) == tostring(BOOK) then return row.rule, row.reason end
     end
     return nil
 end
