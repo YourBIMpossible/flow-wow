@@ -323,6 +323,8 @@ local pack = {
     talentBuilds = {},
 
     options = {
+        crowdControl = { none = "Intimidating Shout and Hamstring do not hold one chosen second enemy" },
+        threatDrop = { none = "no warrior ability drops threat" },
         -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,
         -- in order: the first you know names your tree (snapshot.tree,
         -- Rotation/Driver.lua). Which spell is a talent of which tree: a first

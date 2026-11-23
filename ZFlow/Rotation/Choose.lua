@@ -614,10 +614,12 @@ function steps.plateCast(s, pack, prefs, _, unread)
 end
 
 -- In a group, not the tank, an enemy on you (threat 2 or 3, the enemy's
--- target): the pack's threat drop (Fade), cast on you.
+-- target): the pack's threat drop (Fade), cast on you; a drop tied to
+-- forms (Cower) only in one of them, read.
 function steps.threat(s, pack, prefs, _, unread)
     local drop = type(pack.options) == "table" and pack.options.threatDrop or nil
     if type(drop) ~= "table" or type(drop.spell) ~= "string" then return nil, "no threat drop" end
+    if not inForms(s, drop.forms) then return nil, drop.spell .. " not in this form" end
     if s.inCombat ~= true then return nil, "not known to be in a fight" end
     if s.grouped == nil then return nil, "not known whether you are in a group" end
     if s.grouped ~= true then return nil, "not in a group" end

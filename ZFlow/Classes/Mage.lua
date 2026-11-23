@@ -323,14 +323,23 @@ local pack = {
         { name = "Frost levelling build", role = "dps", evidence = GUESS, note = NOTE,
           trees = { "Arcane", "Fire", "Frost" },
           order = {
-              { "Improved Frostbolt", 5 }, { "Elemental Precision", 3 }, { "Ice Shards", 5 },
-              { "Permafrost", 3 }, { "Piercing Ice", 3 }, { "Cold Snap", 1 }, { "Frost Channeling", 3 },
-              { "Shatter", 5 }, { "Ice Block", 1 }, { "Improved Cone of Cold", 3 }, { "Winter's Chill", 5 },
-              { "Ice Barrier", 1 },
+              { "Improved Frostbolt", 5, why = "Frostbolt casts faster, the spell you cast most." },
+              { "Elemental Precision", 3, why = "Fewer of your frost and fire spells are resisted." },
+              { "Ice Shards", 5, why = "Frost spell crits hit harder." },
+              { "Permafrost", 3, why = "Your chill effects last longer and slow more." },
+              { "Piercing Ice", 3, why = "More damage from every frost spell." },
+              { "Cold Snap", 1, why = "Resets your frost cooldowns when a pull goes wrong." },
+              { "Frost Channeling", 3, why = "Frost spells cost less mana, so fewer drinking breaks." },
+              { "Shatter", 5, why = "More crits on a frozen enemy, after Frost Nova." },
+              { "Ice Block", 1, why = "Stops all damage for a few seconds to get out of trouble." },
+              { "Improved Cone of Cold", 3, why = "More damage from Cone of Cold on enemies close in." },
+              { "Winter's Chill", 5, why = "Your frost spells make the enemy easier to crit." },
+              { "Ice Barrier", 1, why = "An absorb shield you can cast before a pull." },
           } },
     },
 
     options = {
+        threatDrop = { none = "no mage spell drops threat at once; Ice Block stops damage, not threat" },
         -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,
         -- in order: the first you know names your tree (snapshot.tree,
         -- Rotation/Driver.lua). Which spell is a talent of which tree: a first

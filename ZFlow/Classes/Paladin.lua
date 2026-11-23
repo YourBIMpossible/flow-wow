@@ -504,6 +504,8 @@ local pack = {
     talentBuilds = {},
 
     options = {
+        crowdControl = { { spell = "Turn Undead", creatures = { undead = true } } },
+        threatDrop = { none = "no paladin spell drops threat at once; Blessing of Salvation only slows it" },
         -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,
         -- in order: the first you know names your tree (snapshot.tree,
         -- Rotation/Driver.lua). Which spell is a talent of which tree: a first
