@@ -47,7 +47,6 @@ local function readOff(s, name) return type(s.current) == "table" and s.current[
 local function readOn(s, name) return type(s.current) == "table" and s.current[name] == true end
 -- Buffs read at all (an empty map is read: none up).
 local function buffsRead(s) return type(s.buffs) == "table" end
-local function inFight(s) return ns.Rotation.InFight(s) end
 local function outOfFight(s) return ns.Rotation.OutOfFight(s) end
 local function shadow(s) return s.form == "Shadowform" end
 
