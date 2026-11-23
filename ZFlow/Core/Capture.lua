@@ -214,10 +214,27 @@ local function depth(path)
     return n
 end
 
+-- The arguments each recorded call was made with. A capture does not store
+-- them: they are fixed in Core/Diag.lua, which asks every unit call about
+-- the player and every other call with no argument (a test holds the two
+-- lists together). So a recorded answer is an answer for these arguments
+-- only. A call with other arguments (another unit, an item, a spell) was
+-- never recorded and gets no answer: the player's is not given in its place.
+-- A call not listed here was recorded with no argument.
+Capture.ARGS = {
+    class = { "player" }, level = { "player" }, faction = { "player" },
+    health = { "player" }, healthMax = { "player" },
+    power = { "player" }, powerType = { "player" },
+    bestMap = { "player" },
+}
+
+-- Capture.Env(cap) -> env, replay. replay[path] = { answered = n,
+-- unanswered = n }: how often a recorded call was asked with the recorded
+-- arguments, and how often with others (those got no answer).
 function Capture.Env(cap)
-    local env = {}
+    local env, replay = {}, {}
     local d = diagOf(cap)
-    if not d then return env end
+    if not d then return env, replay end
     local names = type(d.names) == "table" and type(d.names.names) == "table" and d.names.names or {}
 
     -- A secret answer: a token only this client's issecretvalue knows.
@@ -235,13 +252,30 @@ function Capture.Env(cap)
         local row = shapes[key]
         local list = answers(row, secretToken)
         if list and names[path] == "function" then
-            if row.ok == true then
-                local n = row.n
-                put(env, path, function() return unpack(list, 1, n) end)
-            else
-                local text = type(list[1]) == "string" and list[1] or "failed"
-                put(env, path, function() error(text, 0) end)
+            local want = Capture.ARGS[key] or {}
+            local count = { answered = 0, unanswered = 0 }
+            replay[path] = count
+            -- The recorded arguments exactly: no more, no fewer, no other.
+            local function recorded(...)
+                local n = select("#", ...)
+                while n > 0 and select(n, ...) == nil do n = n - 1 end
+                if n ~= #want then return false end
+                for i = 1, n do
+                    if select(i, ...) ~= want[i] then return false end
+                end
+                return true
             end
+            local ok, n = row.ok == true, row.n
+            local text = type(list[1]) == "string" and list[1] or "failed"
+            put(env, path, function(...)
+                if not recorded(...) then
+                    count.unanswered = count.unanswered + 1
+                    return
+                end
+                count.answered = count.answered + 1
+                if not ok then error(text, 0) end
+                return unpack(list, 1, n)
+            end)
         end
     end
 
@@ -274,7 +308,7 @@ function Capture.Env(cap)
             end
         end
     end
-    return env
+    return env, replay
 end
 
 function Capture.Apply(c, cap)
