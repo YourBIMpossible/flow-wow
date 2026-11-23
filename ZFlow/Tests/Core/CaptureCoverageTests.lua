@@ -37,7 +37,9 @@ local KIND = {
              "markRewardChoice",
              -- S19 (P-SETS branch 2): the set icon row; a click asks only
              -- what the caller's act does.
-             "iconRow" },
+             "iconRow",
+             -- S20: the per-role badges on the merchant's item buttons.
+             "markMerchantSpecs" },
     tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "savedMadeHere", "slash",
              "slashTaken", "unslash" },
     -- Hands back or runs a sound restart: never asked by the capture.
