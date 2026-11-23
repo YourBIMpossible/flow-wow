@@ -108,6 +108,30 @@ Diag.NAMESPACES = {
 }
 Diag.GLOBALS = { "^C_", "Talent", "Skill", "Trainer", "Craft", "Profession", "Bank", "Realm", "Taxi" }
 
+-- Events this client is known not to have, and why. They are still listened
+-- for (a later client may have them), but a refusal of one is no fault: it
+-- costs no feature, so diag says it apart, as expected
+-- (RESEARCH-blockC section 4).
+Diag.EXPECTED_ABSENT = {
+    CRAFT_SHOW = "the old craft window event; professions open with TRADE_SKILL_SHOW here",
+    LEARNED_SPELL_IN_TAB = "named LEARNED_SPELL_IN_SKILL_LINE on this client, which is listened for too",
+}
+
+-- The refused event names split in two: (unexpected, expected absent),
+-- each in the order given.
+local function splitEvents(names)
+    local refused, expected = {}, {}
+    if type(names) ~= "table" then return refused, expected end
+    for _, name in ipairs(names) do
+        if Diag.EXPECTED_ABSENT[name] ~= nil then
+            expected[#expected + 1] = name
+        else
+            refused[#refused + 1] = name
+        end
+    end
+    return refused, expected
+end
+
 local function plain(v)
     local t = type(v)
     return t == "number" or t == "string" or t == "boolean"
@@ -422,7 +446,7 @@ function Diag.Collect(k, why)
     -- Listeners that will never be called: the client refused the event
     -- name, or the frame that receives events was not made.
     local faults = client.listenFaults()
-    K.eventsNotRegistered = faults.notRegistered
+    K.eventsNotRegistered, K.eventsExpectedAbsent = splitEvents(faults.notRegistered)
     K.eventFrameNotMade = faults.noEventFrame
     K.tickFrameNotMade = faults.noTickFrame
     K.meter = k.meter:report()
@@ -593,9 +617,13 @@ end
 -- Diag.RotationLine(state, view, enabled) -> line or nil
 --   nil when there is no driver (state nil). Otherwise the first row that
 --   holds: not running; no view held (switched off, or no reading yet); no
---   pack; dead not known; dead; spells not read; and last the suggestion,
---   or why there is none. The first five are the whole line. The fight is
---   a clause in front of the last two, never a row of its own: a fight not
+--   pack; dead not known; dead; and last the suggestion, or why there is
+--   none. The first five are the whole line. After the suggestion come the
+--   pack's spells that were skipped (C2, RESEARCH-blockC): first those with
+--   no id (view.missing: not learned yet, or not found by name), then those
+--   with an id whose row did not come back. A low-level character has not
+--   learned most of its pack, so the count never hides the suggestion. The
+--   fight is a clause in front of the suggestion, never a row of its own: a fight not
 --   known (said as the chooser counts it, R.InFight: as a fight), lockdown
 --   not known, or lockdown. "(keys unchanged)" goes with it whenever
 --   lockdown is not a known "no". A view kept from an earlier tick says so.
@@ -622,6 +650,27 @@ local function fightClause(view, s)
     return nil
 end
 
+local function skippedCount(n, what)
+    if n == 0 then return "" end
+    return " " .. plural(n, "spell", "spells") .. " " .. what .. "; " .. (n == 1 and "it is" or "they are") .. " skipped."
+end
+
+-- The pack's spells left out of the reading, after the suggestion: not
+-- learned (no id) first, then not read (an id, but no row).
+local function skippedClause(view)
+    local noId = {}
+    if type(view.missing) == "table" then
+        for _, name in ipairs(view.missing) do noId[name] = true end
+    end
+    local notLearned, notRead = 0, 0
+    if type(view.unread) == "table" then
+        for _, name in ipairs(view.unread) do
+            if noId[name] then notLearned = notLearned + 1 else notRead = notRead + 1 end
+        end
+    end
+    return skippedCount(notLearned, "not learned or not found by name") .. skippedCount(notRead, "not read")
+end
+
 local function rotationRow(view)
     if view.pack ~= true then return "class not known, or no spell list for it; nothing suggested." end
     local s = type(view.snapshot) == "table" and view.snapshot or {}
@@ -629,17 +678,15 @@ local function rotationRow(view)
     if s.dead ~= false then return "dead; nothing suggested." end
     local fight = fightClause(view, s)
     local head = fight ~= nil and fight .. "; " or ""
-    local unread = type(view.unread) == "table" and #view.unread or 0
-    if unread > 0 then
-        return head .. plural(unread, "spell", "spells") .. " not read; "
-            .. (unread == 1 and "it is" or "they are") .. " skipped."
-    end
     local why = type(view.why) == "table" and view.why or {}
     local picked = type(view.suggestion) == "table" and view.suggestion.spell or nil
+    local line
     if picked ~= nil then
-        return head .. "suggesting " .. tostring(picked) .. " (" .. tostring(why.step or "step not known") .. ")."
+        line = head .. "suggesting " .. tostring(picked) .. " (" .. tostring(why.step or "step not known") .. ")."
+    else
+        line = head .. "nothing to suggest (" .. tostring(why.note or "no reason given") .. ")."
     end
-    return head .. "nothing to suggest (" .. tostring(why.note or "no reason given") .. ")."
+    return line .. skippedClause(view)
 end
 
 function Diag.RotationLine(state, view, enabled)
@@ -990,9 +1037,14 @@ function Diag.Start(k)
         say("tick frame", function()
             return faults.noTickFrame and "tick frame not made; nothing that runs each frame runs." or nil
         end)
+        local refusedEvents, expectedEvents = splitEvents(faults.notRegistered)
         say("events", function()
-            if type(faults.notRegistered) ~= "table" or #faults.notRegistered == 0 then return nil end
-            return "events not registered: " .. table.concat(faults.notRegistered, ", ") .. "."
+            if #refusedEvents == 0 then return nil end
+            return "events not registered: " .. table.concat(refusedEvents, ", ") .. "."
+        end)
+        say("expected events", function()
+            if #expectedEvents == 0 then return nil end
+            return "events this client does not have, as expected: " .. table.concat(expectedEvents, ", ") .. "."
         end)
         say("time", function()
             if client.uptime() ~= nil then return nil end
