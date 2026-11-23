@@ -13,7 +13,8 @@ local N = ns.Nav
 -- opts: professions (client.professions names), skill (char profSkill),
 -- book (char recipeBook), colours (char recipeColors), nodes (GatherMate2
 -- rows on map 1411), npcs (account), account (the account saved table),
--- charSettings (the settings of the character).
+-- charSettings (the settings of the character), stations (the account's
+-- learned.keyStations: { kind, map, x, y } rows).
 local function start(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
@@ -21,6 +22,10 @@ local function start(opts)
     account.layout = account.layout or {}
     account.layout.arrowIntroSeen = true
     if opts.npcs then account.learned = { places = { npcs = opts.npcs } } end
+    if opts.stations then
+        account.learned = account.learned or {}
+        account.learned.keyStations = opts.stations
+    end
     c.setSaved(ns.id.accountDB, account)
     c.setSaved(ns.id.charDB, { settings = opts.charSettings, learned = {
         facts = { profSkill = opts.skill, recipeBook = opts.book },
@@ -230,6 +235,48 @@ tests["prof guide: a gatherer with no node and a capped crafter each get their l
         skill = { Herbalism = { skill = 20, max = 75 }, Tailoring = { skill = 75, max = 75 } } })
     textOnly(t, c, { fmt(N.PROF_WHY_GM_ABSENT, "Herbalism"), fmt(N.PROF_WHY_TRAINER, "Tailoring", 75, "Tailoring") },
         "Herbalism with no GatherMate2, Tailoring capped with no trainer known")
+end
+
+-- Lead section 341 (zflow-prof-guide): a craft step had no place, so a
+-- crafter never got a needle. A craft of a profession that works at a
+-- station now points at the nearest such station this account has seen on
+-- the map. Fails before: text only, no needle.
+local SMITH_BOOK = { ["Test Buckle"] = { profession = "Blacksmithing" } }
+local SMITH_COLOURS = { ["Test Buckle"] = { optimal = { lo = 40, hi = 60 } } }
+
+tests["prof guide: a craft that needs an anvil points the needle at the nearest anvil seen"] = function(t)
+    local c = start({ professions = { "Blacksmithing" }, skill = { Blacksmithing = { skill = 50, max = 75 } },
+        book = SMITH_BOOK, colours = SMITH_COLOURS,
+        stations = { { kind = "anvil", map = 1411, x = 0.9, y = 0.9 }, { kind = "anvil", map = 1411, x = 0.6, y = 0.5 } } })
+    local p = c.arrows[2]
+    t.eq(p.shown, true, "the profession needle is up")
+    t.eq(p.lines and p.lines[1], "Blacksmithing anvil", "where to go")
+    t.eq(p.lines and p.lines[2], fmt(N.PROF_CRAFT_SURE, "Test Buckle", "Blacksmithing"), "what to make there")
+    t.ok(type(p.lines and p.lines[3]) == "string" and p.lines[3]:match("^100 yd") ~= nil,
+        "the nearer anvil, 100 yd away: " .. tostring(p.lines and p.lines[3]))
+    c.advance(0.1, 2)
+    t.ok(type(p.drawn) == "table" and p.drawn.body ~= 0, "the needle is drawn")
+end
+
+tests["prof guide: an anvil seen only on another map leaves the craft as text"] = function(t)
+    local c = start({ professions = { "Blacksmithing" }, skill = { Blacksmithing = { skill = 50, max = 75 } },
+        book = SMITH_BOOK, colours = SMITH_COLOURS, stations = { { kind = "anvil", map = 1412, x = 0.6, y = 0.5 } } })
+    textOnly(t, c, { fmt(N.PROF_CRAFT_SURE, "Test Buckle", "Blacksmithing") }, "no anvil on this map")
+end
+
+-- The route: the nearest stop with a place is the next one. Fails before:
+-- the trainer 300 yd away, whatever is nearer.
+tests["prof guide: the nearest stop comes first: an anvil at 100 yd before a trainer at 300 yd"] = function(t)
+    local npcs = { ["Test Trainer"] = { map = 1411, x = 0.8, y = 0.5, trains = { Mining = true },
+                                        factions = { Horde = true }, seen = 10 } }
+    local c = start({ professions = { "Blacksmithing", "Mining" }, npcs = npcs, book = SMITH_BOOK, colours = SMITH_COLOURS,
+        skill = { Mining = { skill = 75, max = 75 }, Blacksmithing = { skill = 50, max = 75 } },
+        stations = { { kind = "anvil", map = 1411, x = 0.6, y = 0.5 } } })
+    t.eq(c.arrows[2].lines and c.arrows[2].lines[1], "Blacksmithing anvil", "the anvil is nearer")
+    local c2 = start({ professions = { "Blacksmithing", "Mining" }, npcs = npcs, book = SMITH_BOOK, colours = SMITH_COLOURS,
+        skill = { Mining = { skill = 75, max = 75 }, Blacksmithing = { skill = 50, max = 75 } },
+        stations = { { kind = "anvil", map = 1411, x = 0.1, y = 0.5 } } })
+    t.eq(c2.arrows[2].lines and c2.arrows[2].lines[1], "Mining trainer", "the trainer is nearer")
 end
 
 return tests
