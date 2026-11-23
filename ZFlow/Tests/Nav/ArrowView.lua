@@ -290,9 +290,12 @@ T["text anchors: below or above by screen half, clear of the needle"] = function
     t.eq(N.NeedleClearance(56), 7, "needle clearance")
     local stacked = N.ArrowView(state())
     t.eq(stacked.quest.text.point, { "BOTTOM", "TOP", 0, 7 }, "above, clear of the needle")
-    t.eq(stacked.prof.text.to, "quest", "needle text joins the quest arrow's lines")
-    t.eq(stacked.prof.text.side, stacked.quest.text.side, "same side")
-    t.eq(stacked.prof.text.point, stacked.quest.text.point, "same first gap")
+    -- Lead section 341: the needle's lines go on the other side of the
+    -- arrow from the quest lines, on the needle's own frame, same first gap.
+    t.eq(stacked.prof.text.to, "prof", "needle text is on its own frame")
+    t.eq(stacked.prof.text.side, "below", "the other side from the quest lines")
+    t.eq(stacked.prof.text.point, { "TOP", "BOTTOM", 0, -7 }, "same first gap, mirrored")
+    t.eq(stacked.prof.text.first, stacked.quest.text.first, "same first gap")
     -- Bottom half: below.
     local low = { arrows = { points = { quest = { "BOTTOMLEFT", "BOTTOMLEFT", 100, 100 } } } }
     local below = N.ArrowView(state({ layout = low }, nil, { hasStep = false }))
@@ -358,20 +361,59 @@ T["stacked text: lines of a needle that is off still take their room (D2)"] = fu
     local top = { arrows = { points = { quest = { "TOP", "TOP", 0, -40 } } } }
     local drawn = N.ArrowView(state({ layout = top }, { textHeight = 14 }, { textHeight = 28 }))
     t.eq(drawn.prof.shown, true)
-    t.eq(drawn.prof.text.to, "quest")
-    t.eq(drawn.prof.text.side, "below", "needle drawn: its lines count, the stack does not fit above")
+    t.eq(drawn.quest.text.side, "above", "the quest line fits above")
+    t.eq(drawn.prof.text.to, "prof", "section 341: on its own frame")
+    t.eq(drawn.prof.text.side, "below", "needle drawn: its lines are on the other side")
     -- The needle cannot point (no bearing): it is not drawn, its lines still are.
     local off = N.ArrowView(state({ layout = top }, { textHeight = 14 }, { textHeight = 28, bearingKnown = false }))
     t.eq(off.prof.mode, "off")
     t.eq(off.prof.shown, false)
     t.eq(off.prof.text.shown, true)
-    t.eq(off.prof.text.to, "quest")
-    t.eq(off.prof.text.side, "below", "its lines count as when it is drawn")
-    t.eq(off.prof.text.point, drawn.prof.text.point, "and the stack stands where it stood")
+    t.eq(off.prof.text.to, "prof")
+    t.eq(off.prof.text.side, "below", "its lines stand as when it is drawn")
+    t.eq(off.prof.text.point, drawn.prof.text.point, "and they stand where they stood")
     -- Off because the quest step is at its point: the same.
     local here = N.ArrowView(state({ layout = top }, { textHeight = 14, distance = 0 }, { textHeight = 28 }))
     t.eq(here.prof.mode, "off")
-    t.eq(here.prof.text.side, "below", "at the quest's point: its lines count too")
+    t.eq(here.prof.text.side, "below", "at the quest's point: its lines are there too")
+end
+
+-- Lead section 341. The needle's lines go on the other side only when that
+-- can be worked out and they fit there; otherwise the one stack on the quest
+-- arrow, as before.
+T["stacked text: the needle's lines mirror the quest lines, above when those are below"] = function(t)
+    local low = { arrows = { points = { quest = { "BOTTOMLEFT", "BOTTOMLEFT", 100, 100 } } } }
+    local v = N.ArrowView(state({ layout = low }, { textHeight = 28 }, { textHeight = 28 }))
+    t.eq(v.quest.text.side, "below", "bottom half: quest lines below")
+    t.eq(v.prof.text.to, "prof")
+    t.eq(v.prof.text.side, "above")
+    t.eq(v.prof.text.point, { "BOTTOM", "TOP", 0, 7 })
+end
+
+T["stacked text: no room on the other side, the one stack on the quest arrow"] = function(t)
+    -- Arrow at the very top: the quest line does not fit above, so it is
+    -- below, and the needle's lines do not fit above either.
+    local top = { arrows = { points = { quest = { "TOP", "TOP", 0, -5 } } } }
+    local v = N.ArrowView(state({ layout = top }, { textHeight = 14 }, { textHeight = 28 }))
+    t.eq(v.quest.text.side, "below", "no room above for the quest line")
+    t.eq(v.prof.text.to, "quest", "nor for the needle's: the old stack")
+    t.eq(v.prof.text.side, "below")
+    t.eq(v.prof.text.point, v.quest.text.point, "same first gap")
+end
+
+T["stacked text: screen size unknown, the one stack on the quest arrow"] = function(t)
+    local v = N.ArrowView(state({ screenW = false, screenH = false }))
+    t.eq(v.prof.text.to, "quest")
+    t.eq(v.prof.text.side, v.quest.text.side)
+    t.eq(v.prof.text.point, v.quest.text.point)
+end
+
+T["stacked text: quest text off, the needle's lines stay where they were"] = function(t)
+    local hidden = { arrows = { text = { quest = false } } }
+    local v = N.ArrowView(state({ layout = hidden }))
+    t.eq(v.quest.text.shown, false)
+    t.eq(v.prof.text.shown, true)
+    t.eq(v.prof.text.to, "quest", "nothing to stand opposite")
 end
 
 return T

@@ -97,13 +97,14 @@ T["view: a needle that is off with a step is bare, and is not drawn"] = function
     t.eq(blind.prof.text.to, "prof", "on its own frame")
 end
 
-T["view: stacked and off, the text goes on the quest arrow"] = function(t)
+T["view: stacked and off, the text is on the needle's own frame, opposite the quest lines (section 341)"] = function(t)
     local off = N.ArrowView(state(nil, nil, { bearingKnown = false }))
     t.eq(off.prof.mode, "off")
     t.eq(off.prof.shown, false)
     t.eq(off.prof.bare, true)
     t.eq(off.prof.text.shown, true)
-    t.eq(off.prof.text.to, "quest")
+    t.eq(off.prof.text.to, "prof")
+    t.ok(off.prof.text.side ~= off.quest.text.side, "the other side")
     local onPoint = N.ArrowView(state(nil, { distance = 5 }))
     t.eq(onPoint.prof.mode, "off", "the quest step is at its point")
     t.eq(onPoint.prof.bare, true)
@@ -137,7 +138,7 @@ T["view: stacked and off, the needle's lines take room"] = function(t)
     local top = { arrows = { points = { quest = { "TOP", "TOP", 0, -40 } } } }
     local off = N.ArrowView(state({ layout = top }, { textHeight = 14 }, { textHeight = 28, bearingKnown = false }))
     t.eq(off.prof.mode, "off")
-    t.eq(off.prof.text.side, "below", "the stack does not fit above")
+    t.eq(off.prof.text.side, "below", "the other side from the quest line")
     t.eq(off.quest.text.side, "above", "the quest's own side is its own count, as before")
 end
 
