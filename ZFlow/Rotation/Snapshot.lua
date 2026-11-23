@@ -42,6 +42,10 @@ R.SNAPSHOT_FIELDS = {
     { "mounted", "flag" }, { "onTaxi", "flag" }, { "foodOn", "flag" },
     -- Section 235 item 4: a fishing pole in your main hand (nil: not read).
     { "fishingPole", "flag" },
+    -- N8 (lead section 238): healthstone and healing potion, { stone,
+    -- stoneName, stoneWait, potion, potionName, potionWait, alt }; nil when
+    -- not read or the setting is off (Rotation/Driver.lua).
+    { "healItem", "map" },
     -- P-GATHER (Rotation/Gather.lua): gathering tracking, read by G.Read.
     { "tracking", "map" }, { "trackKnown", "map" }, { "professions", "map" }, { "gatherOn", "flag" },
     -- GT-1 (Rotation/Gather.lua): any tracking on. Mounted and on a flight path are the two flags above.

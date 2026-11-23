@@ -323,6 +323,9 @@ local function running(c, keys)
     c.fire("PLAYER_LOGIN")
     c.fire("PLAYER_ENTERING_WORLD")
     k.settings:set(D.SETTING, true)
+    -- N8: the healing items read the bags too; switched off here so the
+    -- count is the food's alone (theirs is held in Tests/Rotation/HealItems.lua).
+    k.settings:set(D.HEAL, false)
     if keys then k.settings:set(ns.KeyFrame.SETTING, true) end
     return api, function() return reads end, k
 end

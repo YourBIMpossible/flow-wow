@@ -1432,6 +1432,22 @@ function ns.make.fakeClient(opts)
     function c.setFishingPole(v)
         if v == nil then s.fishingPole = nil else s.fishingPole = v and true or false end
     end
+    -- N8: lowHealth() and itemCooldown(id) are unknown (nil) until set.
+    --   c.setLowHealth(true / false)   c.setLowHealth(nil): not known
+    --   c.setItemCooldown(id, secs)    secs 0: ready; nil: not known
+    function c.lowHealth() return s.lowHealth end
+    function c.setLowHealth(v)
+        if v == nil then s.lowHealth = nil else s.lowHealth = v and true or false end
+    end
+    function c.itemCooldown(item)
+        local id = ns.Items and ns.Items.Id(item) or item
+        return s.itemCooldowns and s.itemCooldowns[id] or nil
+    end
+    function c.setItemCooldown(item, secs)
+        local id = ns.Items and ns.Items.Id(item) or item
+        s.itemCooldowns = s.itemCooldowns or {}
+        s.itemCooldowns[id] = (type(secs) == "number" and secs >= 0) and secs or nil
+    end
 
     -- S42: questItem(questID), itemCount(item), itemUse(item), all unknown
     -- (nil) until set.

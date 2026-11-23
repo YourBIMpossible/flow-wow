@@ -102,6 +102,7 @@ Diag.NAMES = {
     "Enum.BankType", "C_PlayerInteractionManager.IsInteractingWithNpcOfType", "Enum.PlayerInteractionType",
     "C_UnitAuras.GetBuffDataByIndex", "C_UnitAuras.GetPlayerAuraBySpellID",
     "C_Item.GetItemInfoInstant", "C_Item.GetItemNameByID", "C_Container.GetBagName",
+    "C_Container.GetItemCooldown",
     -- Sections 185 and 186: every other name Core/Client.lua reads (found
     -- from the file itself at 7ea3b50), so a missing one is never "not
     -- asked"; then the names the lead named that it does not read yet.
@@ -124,6 +125,7 @@ Diag.NAMES = {
     "GetTrainerServiceSkillLine", "GetTrainerServiceTypeFilter", "GroupLootContainer",
     "InterfaceOptionsFrame_OpenToCategory", "InterfaceOptions_AddCategory", "IsAltKeyDown", "IsCurrentSpell",
     "IsInGroup", "IsMounted", "IsShiftKeyDown", "LOOT_ITEM_SELF", "LOOT_ITEM_SELF_MULTIPLE",
+    "LowHealthFrame",
     "MERCHANT_ITEMS_PER_PAGE", "MerchantFrame", "MerchantFrame_Update", "NUM_GROUP_LOOT_FRAMES",
     "PowerBarColor", "Questie.db", "QuestieLoader", "SPEED", "STANDARD_TEXT_FONT", "Settings",
     "Sound_GameSystem_RestartSoundSystem", "TooltipDataProcessor", "UISpecialFrames", "UnitClassification",
@@ -615,6 +617,8 @@ Diag.ANSWERS = {
     { "pet" },
     -- Section 235 item 4: a fishing pole in the main hand.
     { "fishingPole" },
+    -- N8: the low-health warning and an item cooldown (the hearthstone).
+    { "lowHealth" }, { "itemCooldown", 6948 },
 }
 Diag.ANSWER_COUNTS = { "playerBuffs", "targetDebuffs" }
 Diag.ANSWER_MAPS = { "mapCorners", "mapSize" }
