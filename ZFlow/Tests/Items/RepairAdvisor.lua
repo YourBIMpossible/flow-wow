@@ -25,6 +25,9 @@ local function start(opts)
     local c = ns.make.fakeClient()
     c.setSaved(ns.id.accountDB, {})
     setDurability(c, opts.durability)
+    -- The plain panel cases: the kit window is refused, so the advisor
+    -- draws on the plain panel (Tests/UI/AdvisorKit.lua has the kit's).
+    if type(c.setKitFails) == "function" then c.setKitFails(math.huge) end
     local k = ns.Kernel({}, c)
     ns.Diag.Start(k)
     -- The real advisor (UI/Advisor.lua). `prompts[id]` reads its List() live;
