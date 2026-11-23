@@ -267,8 +267,9 @@ function P.Declare(k, diag)
         end
     end
 
-    -- The step asked for: the first profession still advised (the snooze
-    -- does not hide a step the player asked for).
+    -- The step asked for: the first profession still advised. The snooze
+    -- does not hide a step the player asked for: as Flow did, "later" only
+    -- quiets the prompt (program-integ Modules/Professions.lua:349-353, :441).
     function api.step()
         if not ctx or not on() then return nil end
         local p = plan()
@@ -310,12 +311,14 @@ function P.Declare(k, diag)
                 end
             end
         elseif verb == "choose" then
-            local chosen, bad = {}, nil
+            -- A name said twice counts once, wherever it repeats (PP3-2).
+            local chosen, seen, bad = {}, {}, nil
             for i = 2, #words do
                 local name = P.Primary(words[i])
                 if not name then
                     bad = words[i]
-                elseif chosen[1] ~= name then
+                elseif not seen[name] then
+                    seen[name] = true
                     chosen[#chosen + 1] = name
                 end
             end
