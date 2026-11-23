@@ -157,7 +157,7 @@ Items and money
 
 Rotation and class
 - ns.Snapshot() and ns.SnapshotOf(fields): a plain value of everything a decision reads.
-- ns:Register("classPack", CLASS, { provenance, roles, resources, maintain, lists, groups, heals = { self }, interrupts, breakers, dispels, keys, weights, proficiency, spells, talentBuilds, options }); ns.PackCheck(pack) fails on a missing key or an unknown required spell.
+- ns:Register("classPack", CLASS, { provenance, roles, resources, maintain, lists, groups, heals = { self }, interrupts, breakers, dispels, keys, weights, proficiency, weaponSpeed, spells, talentBuilds, options }); ns.PackCheck(pack) fails on a missing key or an unknown required spell.
 - ns.Choose(snapshot, pack, prefs, bias) -> suggestion, trace
 - ns.KeyPlan(pack, prefs) -> bindings; ns.cast.Apply(plan)
 - ns:Role()

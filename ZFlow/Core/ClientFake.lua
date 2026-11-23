@@ -702,6 +702,11 @@ function ns.make.fakeClient(opts)
     -- nil: the client will not say how big the screen is.
     function c.setScreen(w, h) s.screen = (w and h) and { w, h } or nil end
     function c.setVersion(text) s.version = text end
+    -- Internal switches for the tests only (opts.internal = { name = true }):
+    -- the feedback, paused by lead section 284, answers on here. The game
+    -- client has no such call.
+    local internal = type(opts.internal) == "table" and opts.internal or {}
+    function c.internal(name) return internal[name] == true end
     -- false: a client that cannot make frames (panel() answers nil).
     function c.setFrames(on) s.noFrames = not on end
     -- false: a client where a closable panel gets neither a close button
@@ -2603,6 +2608,20 @@ function ns.make.fakeClient(opts)
             if unread or type(key) ~= "string" or key == "" then return nil end
             return live[key] or ""
         end
+        -- S23 (P-KEYS slice B): the twin of c.bindingOverride. Another
+        -- add-on's override (c.setForeignOverride) wins, then ours
+        -- (c.overrideBindingClick), then the game's binding; "" for none.
+        -- c.setBindingOverrideFails(true): the read raises until set false.
+        local foreign, overrideFails = {}, false
+        function c.setForeignOverride(key, action) foreign[key] = action end
+        function c.setBindingOverrideFails(on) overrideFails = (on == true) end
+        function c.bindingOverride(key)
+            if overrideFails then error("GetBindingAction failed (test)", 0) end
+            if unread or type(key) ~= "string" or key == "" then return nil end
+            if foreign[key] ~= nil then return foreign[key] end
+            if overrides[key] ~= nil then return "CLICK " .. tostring(overrides[key]) .. ":LeftButton" end
+            return live[key] or ""
+        end
         function c.setBindingClick(key, button)
             if locked() then return false, "lockdown" end
             if faults > 0 then
@@ -2893,6 +2912,171 @@ function ns.make.fakeClient(opts)
         for k, v in pairs(s.playerDebuffs) do out[k] = v end
         return out
     end
+    -- S12 care key (P-KEYS slice A): the twin of Core/Client.lua c.unitCare.
+    --   c.setUnitCare(unit, row)   { exists, friend, isSelf, dead, hurt }
+    --                              (a field left out: not known); nil: not known
+    --   c.setUnitCareFails(on)     the read raises while on (lead section
+    --                              236: a read that fails, then recovers)
+    function c.setUnitCare(unit, row)
+        s.unitCare = s.unitCare or {}
+        if type(row) == "table" then s.unitCare[unit] = row else s.unitCare[unit] = nil end
+    end
+    function c.setUnitCareFails(on) s.unitCareFails = (on == true) end
+    function c.unitCare(unit)
+        if s.unitCareFails then error("unit care read failed (test)") end
+        local row = s.unitCare and s.unitCare[unit]
+        if type(row) ~= "table" then return nil end
+        local out = {}
+        for k, v in pairs(row) do out[k] = v end
+        return out
+    end
+    -- N2 (P-KEYS slice D): the twin of Core/Client.lua c.targetCorpse;
+    -- nil (not known) until set. N20 uses the N24 c.tradeSkillTools(index).
+    --   c.setTargetCorpse(row)       { exists, dead, player, lootable, needs }
+    --   c.setTargetCorpseFails(on)   the read raises while on (lead section
+    --                                236: a read that fails, then recovers)
+    function c.setTargetCorpse(row)
+        if type(row) == "table" then s.targetCorpse = row else s.targetCorpse = nil end
+    end
+    function c.setTargetCorpseFails(on) s.targetCorpseFails = (on == true) end
+    function c.targetCorpse()
+        if s.targetCorpseFails then error("target corpse read failed (test)") end
+        if type(s.targetCorpse) ~= "table" then return nil end
+        local out = {}
+        for k, v in pairs(s.targetCorpse) do out[k] = v end
+        return out
+    end
+    -- S15 click slots and S29 move handle (P-KEYS slice C). clickRow keeps
+    -- every row it makes in c.clickRows: h.spec, h.slots[i] = { attrs,
+    -- shown, icon }, h.shown (the row), h.point and h.given (every set
+    -- asked, in order). Each set is also kept in c.secureGiven under the
+    -- button name spec.name .. i, so secureMacros() sees it. Not made
+    -- (nil) with frames off or while combatLockdown() is not a plain false;
+    -- set, show and place answer false, "lockdown" then. moveHandle keeps
+    -- spec in c.moveHandles[target] for a target a row was made under, and
+    -- dragHandle(target, point) stands in for a drag that ends at point:
+    -- false, "lockdown" in a fight, false, "absent" with no handle, else
+    -- onMoved(point) and true.
+    c.clickRows = {}
+    c.moveHandles = {}
+    function c.clickRow(spec)
+        if s.noFrames then return nil end
+        if type(spec) ~= "table" or type(spec.name) ~= "string" then return nil end
+        if type(spec.count) ~= "number" or spec.count < 1 then return nil end
+        if c.combatLockdown() ~= false then return nil end
+        local h = { spec = spec, slots = {}, shown = false, point = nil, given = {} }
+        for i = 1, spec.count do h.slots[i] = { attrs = {}, shown = false, icon = nil } end
+        function h.set(i, attr, value)
+            local slot = h.slots[i]
+            if slot == nil then return false, "absent" end
+            h.given[#h.given + 1] = { slot = i, attr = attr, value = value }
+            c.secureGiven[#c.secureGiven + 1] = { name = spec.name .. i, attr = attr, value = value }
+            if c.combatLockdown() ~= false then return false, "lockdown" end
+            if secureFail[attr] then return false, "refused" end
+            slot.attrs[attr] = value
+            return true
+        end
+        function h.get(i, attr)
+            local slot = h.slots[i]
+            if slot == nil then return nil end
+            return slot.attrs[attr]
+        end
+        function h.show(i, on)
+            if i ~= 0 and h.slots[i] == nil then return false, "absent" end
+            if c.combatLockdown() ~= false then return false, "lockdown" end
+            if i == 0 then h.shown = on == true else h.slots[i].shown = on == true end
+            return true
+        end
+        function h.isShown(i)
+            if i == 0 then return h.shown end
+            local slot = h.slots[i]
+            return slot ~= nil and slot.shown
+        end
+        function h.icon(i, texture)
+            local slot = h.slots[i]
+            if slot == nil or texture == nil then return false end
+            slot.icon = texture
+            return true
+        end
+        function h.place(point)
+            if type(point) ~= "table" then return false, "refused" end
+            if c.combatLockdown() ~= false then return false, "lockdown" end
+            h.point = { point[1], point[2], point[3], point[4] }
+            return true
+        end
+        c.clickRows[#c.clickRows + 1] = h
+        return h
+    end
+    function c.moveHandle(spec)
+        if type(spec) ~= "table" or type(spec.target) ~= "string" then return nil end
+        local found = false
+        for _, row in ipairs(c.clickRows) do
+            if row.spec.name == spec.target then found = true end
+        end
+        if not found then return nil end
+        c.moveHandles[spec.target] = spec
+        return { show = function() return true end }
+    end
+    function c.dragHandle(target, point)
+        local spec = c.moveHandles[target]
+        if spec == nil then return false, "absent" end
+        if c.combatLockdown() ~= false then return false, "lockdown" end
+        if type(spec.onMoved) == "function" then pcall(spec.onMoved, point) end
+        return true
+    end
+    -- Flow and self buttons (Rotation/FlowButton.lua). Each helper answers
+    -- nil for a name no clickRow made. buttonFace keeps { empty } in
+    -- c.buttonFaces[button]. ctrlDrag keeps spec in c.ctrlDrags[target]
+    -- (nil while combatLockdown() is not a plain false), and
+    -- ctrlDragTo(target, point, ctrl) stands in for a drag that ends at
+    -- point: false, "absent" with none; false, "noCtrl" without Ctrl held;
+    -- false, "lockdown" in a fight; else onMoved(point) and true. hoverTip
+    -- keeps spec in c.hoverTips[frame]; hoverTipText(frame) -> the line
+    -- pointing at it shows, or nil.
+    c.buttonFaces, c.ctrlDrags, c.hoverTips = {}, {}, {}
+    local function rowButton(name)
+        for _, row in ipairs(c.clickRows) do
+            if row.spec.name == name then return true end
+            for i = 1, row.spec.count do
+                if row.spec.name .. i == name then return true end
+            end
+        end
+        return false
+    end
+    function c.buttonFace(spec)
+        if type(spec) ~= "table" or not rowButton(spec.button) then return nil end
+        local face = { empty = false }
+        c.buttonFaces[spec.button] = face
+        return { empty = function(on) face.empty = on == true; return true end }
+    end
+    function c.ctrlDrag(spec)
+        if type(spec) ~= "table" or not rowButton(spec.target) or not rowButton(spec.button) then return nil end
+        if c.combatLockdown() ~= false then return nil end
+        c.ctrlDrags[spec.target] = spec
+        return true
+    end
+    function c.ctrlDragTo(target, point, ctrl)
+        local spec = c.ctrlDrags[target]
+        if spec == nil then return false, "absent" end
+        if ctrl ~= true then return false, "noCtrl" end
+        if c.combatLockdown() ~= false then return false, "lockdown" end
+        if type(spec.onMoved) == "function" then pcall(spec.onMoved, point) end
+        return true
+    end
+    function c.hoverTip(spec)
+        if type(spec) ~= "table" or type(spec.text) ~= "function" or not rowButton(spec.frame) then return nil end
+        c.hoverTips[spec.frame] = spec
+        return true
+    end
+    function c.hoverTipText(frame)
+        local spec = c.hoverTips[frame]
+        if spec == nil then return nil end
+        local ok, text = pcall(spec.text)
+        if not ok or type(text) ~= "string" then return nil end
+        return text
+    end
+
+
 
     -- G16: the skill lines you know, as the real client's weaponSkills():
     --   c.setWeaponSkills({ "Swords", ... }) or nil (not read, the start);
@@ -2954,6 +3138,20 @@ function ns.make.fakeClient(opts)
         local v = s.npcText[kind]
         if type(v) ~= "string" or v == "" then return nil end
         return v
+    end
+    -- N39 and N40 (P-KEYS slice E): the target's name and the spell it
+    -- casts, as the real client's; setTargetCastFails makes the read raise.
+    function c.setTargetName(name) s.targetName = name end
+    function c.targetName()
+        if type(s.targetName) ~= "string" or s.targetName == "" then return nil end
+        return s.targetName
+    end
+    function c.setTargetCast(name) s.targetCast = name end
+    function c.setTargetCastFails(on) s.targetCastFails = on == true end
+    function c.targetCast()
+        if s.targetCastFails then error("the target cast read failed (test)") end
+        if type(s.targetCast) == "string" and s.targetCast ~= "" then return s.targetCast end
+        return false
     end
 
     -- G51: the creature on a nameplate and the quest mark over it, as the
@@ -3325,6 +3523,447 @@ function ns.make.fakeClient(opts)
             local on = prat[name]
             if type(on) ~= "boolean" then return nil end
             return on
+        end
+    end
+    -- RH-1 (lead section 279): a client on which no roll frame is found.
+    -- c.setRollFrame(false): as the real client's show (F4) then does,
+    -- offerRoll's show prints the link and the text once per roll offered,
+    -- unless told { quiet = true } (show's trailing table), nothing is
+    -- shown above a roll, and rollValue draws nothing (nil).
+    -- c.setRollFrame(true): roll frames are found again (as made).
+    do
+        local plainOffer, plainValue = c.offerRoll, c.rollValue
+        function c.setRollFrame(on) s.noRollFrame = on == false end
+        function c.offerRoll(rollID, link)
+            if not s.noRollFrame then return plainOffer(rollID, link) end
+            local printed = false
+            local function show(text, _, _, _, opts)
+                if type(text) ~= "string" or text == "" then return end
+                local quiet = type(opts) == "table" and opts.quiet == true
+                if printed or quiet then return end
+                printed = true
+                c.print(ns.id.title .. ": " .. tostring(link) .. " " .. text)
+            end
+            for _, fn in ipairs({ unpack(s.rollListeners or {}) }) do fn(rollID, link, show) end
+            return {}
+        end
+        function c.rollValue(rollID, ...)
+            if s.noRollFrame then return nil end
+            return plainValue(rollID, ...)
+        end
+    end
+
+    -- Lead section 303 (Dungeon Quests). c.setRaceId(n) (nil: not known);
+    -- c.setQuestDone(id, true / false / nil). Not set: not known.
+    function c.setRaceId(n) s.raceId = n end
+    function c.raceId() return s.raceId end
+    function c.setQuestDone(id, v)
+        s.questDone = s.questDone or {}
+        s.questDone[id] = v
+    end
+    function c.questDone(id)
+        if type(id) ~= "number" then return nil end
+        return s.questDone and s.questDone[id]
+    end
+
+    -- The window kit's login probe (lead DISPATCH section 297 item 3 and
+    -- section 303 item 5): kitProbe(rows), as the real client's, answered
+    -- from a script; nothing is made or drawn.
+    --   c.setKitProbe(fnOrTable)   a table { [row id] = text } or a function
+    --     (row) -> text; a row it gives no text for answers "works", and so
+    --     does every row with no script (as made). A table's EJ_LOADED is
+    --     the journal answer; without one it is "yes" when
+    --     setLoaded("Blizzard_EncounterJournal", true) was said, else "no".
+    --     A function that raises makes kitProbe raise.
+    --   c.setKitProbeCombat(on)    the probe is refused (nil, "combat")
+    --     while on. Combat true or not known (setCombat, setCombatUnknown)
+    --     refuses it too, as the real client's InCombatLockdown does.
+    --   c.kitProbeCalls            every call, refused ones too.
+    do
+        local JOURNAL = "Blizzard_EncounterJournal"
+        local script, refusing = nil, false
+        c.kitProbeCalls = 0
+        function c.setKitProbe(fnOrTable) script = fnOrTable end
+        function c.setKitProbeCombat(on) refusing = on and true or false end
+        function c.kitProbe(rows)
+            c.kitProbeCalls = c.kitProbeCalls + 1
+            if refusing or s.combat ~= false then return nil, "combat" end
+            local out = {}
+            if type(rows) == "table" then
+                for i = 1, #rows do
+                    local row = rows[i]
+                    if type(row) == "table" and type(row.id) == "string" then
+                        local text = nil
+                        if type(script) == "function" then
+                            text = script(row)
+                        elseif type(script) == "table" then
+                            text = script[row.id]
+                        end
+                        if type(text) ~= "string" then text = "works" end
+                        out[row.id] = text
+                    end
+                end
+            end
+            local journal = nil
+            if type(script) == "table" then journal = script.EJ_LOADED end
+            if type(journal) ~= "string" then
+                if s.loaded[JOURNAL] == true then journal = "yes" else journal = "no" end
+            end
+            out.EJ_LOADED = journal
+            return out
+        end
+    end
+
+    -- The window kit (lead sections 287, 291 item 1 and 292): c.kitWindow
+    -- and c.kitProbe, as the real client's. Nothing is drawn; a window is
+    -- recorded by its id.
+    --   c.kitWindows() -> { [id] = { shown, point, width, height,
+    --     parts = { { kind, path, key, text } ... in Kit.Each order } } }
+    --     (a copy)
+    -- The test's controls, each standing in for the player; each answers
+    -- true when the part's own function was run, false when there is no such
+    -- window or part, the part is not of that kind, or it is disabled (a
+    -- part is disabled by its own enabled = false or its row's):
+    --   c.kitClick(id, pathOrKey)        a button, a bind button, or a check
+    --                                    box (which turns over and tells
+    --                                    onToggle its new state)
+    --   c.kitSelect(id, pathOrKey, i)    tabs, a topic list, a choice
+    --   c.kitType(id, pathOrKey, text)   a header's search box, a text box
+    --   c.kitChange(id, pathOrKey, v)    a number, within its min and max
+    --   c.kitClose(id)                   the player closes it: onClose once;
+    --                                    false when it is not shown
+    --   c.kitDrag(id, point, w, h)       moved or resized: onMoved
+    --   c.setKitFails(n)                 the next n kitWindow calls answer
+    --                                    nil (and tell failed)
+    --   c.setKitProbe(result, reason)    what kitProbe answers out of
+    --                                    combat (nil, reason for none)
+    -- A caller function that raises goes to extra.failed, as on the real
+    -- client. setFrames(false) makes kitWindow answer nil. The art is the
+    -- default client's: every name in Kit.look.unproven is "fallback".
+    do
+        local kits = {}   -- id -> { handle =, rec =, tree =, cb =, parts = { [path or key] = entry }, slots = }
+        local kitFails = 0
+
+        local function deep(v)
+            if type(v) ~= "table" then return v end
+            local out = {}
+            for key, value in pairs(v) do out[key] = deep(value) end
+            return out
+        end
+        local function told(w, fn, ...)
+            if type(fn) ~= "function" then return end
+            local ok, err = pcall(fn, ...)
+            if not ok and type(w.cb.failed) == "function" then pcall(w.cb.failed, err) end
+        end
+        -- Reads a tree into the window: the record's parts, and each part
+        -- by its path and by its key, with whether it can be used.
+        local function read(w, tree)
+            local list, byName, slots = {}, {}, {}
+            local function one(part, live)
+                local entry = { part = part, live = live and part.enabled ~= false, checked = part.checked == true }
+                list[#list + 1] = { kind = part.kind, path = part.path, key = part.key, text = ns.Kit.TextOf(part) }
+                byName[part.path] = entry
+                if part.kind ~= "bind" and part.key ~= nil then byName[part.key] = entry end
+                if part.kind == "footer" and part.slot ~= nil then slots[part.slot] = { slot = part.slot } end
+                return entry
+            end
+            local function walk(parts)
+                for i = 1, #(parts or {}) do
+                    local part = parts[i]
+                    local entry = one(part, true)
+                    if part.control then one(part.control, entry.live) end
+                    if part.children then walk(part.children) end
+                    if part.buttons then walk(part.buttons) end
+                end
+            end
+            walk(tree.children)
+            w.tree, w.parts, w.slots, w.rec.parts = tree, byName, slots, list
+        end
+        -- The window, and the part of that path or key when it can be used.
+        local function entryOf(id, name)
+            local w = kits[id]
+            if w == nil or name == nil then return nil, nil end
+            local entry = w.parts[name]
+            if entry == nil or not entry.live then return w, nil end
+            return w, entry
+        end
+
+        -- As the real client's: the probe's answers are kept (c.kitSaid()
+        -- reads them back in a test), and c.kitDrawnTell(id, art) stands in
+        -- for a draw telling the listener.
+        local said, drawnFn = {}, nil
+        function c.kitKnown(rows)
+            said = {}
+            if type(rows) ~= "table" then return end
+            for id, text in pairs(rows) do
+                if type(id) == "string" and type(text) == "string" then said[id] = text end
+            end
+        end
+        function c.kitSaid()
+            local out = {}
+            for id, text in pairs(said) do out[id] = text end
+            return out
+        end
+        function c.onKitDrawn(fn)
+            if type(fn) == "function" then drawnFn = fn else drawnFn = nil end
+        end
+        function c.kitDrawnTell(id, art)
+            if drawnFn ~= nil then pcall(drawnFn, id, art) end
+        end
+        function c.setKitFails(n) kitFails = tonumber(n) or 0 end
+        function c.kitWindow(id, tree, extra)
+            local cb = type(extra) == "table" and extra or {}
+            local bad = s.noFrames or type(id) ~= "string" or type(tree) ~= "table" or tree.kind ~= "window"
+                or type(tree.children) ~= "table"
+            if kitFails > 0 then
+                kitFails = kitFails - 1
+                bad = true
+            end
+            if bad then
+                if type(cb.failed) == "function" then pcall(cb.failed, "no kit window (test)") end
+                return nil
+            end
+            local w = kits[id]
+            if w ~= nil then
+                w.cb = cb
+                read(w, tree)
+                return w.handle
+            end
+            local point = type(cb.point) == "table" and cb.point or tree.point
+            w = { cb = cb, rec = { shown = false, point = { point[1], point[2], point[3], point[4] },
+                width = tonumber(cb.width) or tree.width, height = tonumber(cb.height) or tree.height } }
+            read(w, tree)
+            local h = {}
+            function h.update(now)
+                if type(now) ~= "table" or now.kind ~= "window" or type(now.children) ~= "table" then return false end
+                read(w, now)
+                return true
+            end
+            function h.show(on) w.rec.shown = on and true or false end
+            function h.shown() return w.rec.shown end
+            function h.close() w.rec.shown = false end
+            -- As the real client draws: the four parts with no row of the
+            -- parts list are the game's own; a part with a row is the game's
+            -- own only when the login probe said its row works (kitKnown),
+            -- else its plain form; pictures not yet seen are plain.
+            function h.art()
+                local out = { close = "first", check = "first", input = "first", scroll = "first" }
+                for key, row in pairs({ frame = "T2", search = "T5", tab = "T7", button = "T16" }) do
+                    local text = said[row]
+                    if text == "works" then out[key] = "first" else out[key] = "fallback" end
+                end
+                for key in pairs(ns.Kit.look.unproven or {}) do out[key] = "fallback" end
+                return out
+            end
+            function h.slot(name) return w.slots[name] end
+            w.handle = h
+            kits[id] = w
+            return h
+        end
+        function c.kitWindows()
+            local out = {}
+            for id, w in pairs(kits) do out[id] = deep(w.rec) end
+            return out
+        end
+        function c.kitClick(id, name)
+            local w, entry = entryOf(id, name)
+            if entry == nil then return false end
+            local part = entry.part
+            if part.kind == "button" or part.kind == "bind" then
+                told(w, part.onClick)
+                return true
+            end
+            -- A list row with a click, and a section that folds.
+            if part.kind == "line" then
+                if type(part.onClick) ~= "function" then return false end
+                told(w, part.onClick)
+                return true
+            end
+            if part.kind == "section" then
+                if part.folded == nil then return false end
+                told(w, part.onFold, not part.folded)
+                return true
+            end
+            if part.kind == "checkbox" then
+                entry.checked = not entry.checked
+                told(w, part.onToggle, entry.checked)
+                return true
+            end
+            return false
+        end
+        function c.kitSelect(id, name, i)
+            local w, entry = entryOf(id, name)
+            if entry == nil then return false end
+            local part = entry.part
+            if part.kind ~= "tabs" and part.kind ~= "topicList" and part.kind ~= "choice" then return false end
+            if type(i) ~= "number" or part.items[i] == nil then return false end
+            told(w, part.onSelect, i)
+            return true
+        end
+        function c.kitType(id, name, text)
+            local w, entry = entryOf(id, name)
+            if entry == nil or type(text) ~= "string" then return false end
+            local part = entry.part
+            if part.kind == "header" and part.search ~= nil then
+                told(w, part.search.onText, text)
+                return true
+            end
+            if part.kind == "text" then
+                told(w, part.onText, text)
+                return true
+            end
+            return false
+        end
+        function c.kitChange(id, name, value)
+            local w, entry = entryOf(id, name)
+            if entry == nil or type(value) ~= "number" then return false end
+            local part = entry.part
+            if part.kind ~= "number" then return false end
+            if part.min ~= nil and value < part.min then return false end
+            if part.max ~= nil and value > part.max then return false end
+            told(w, part.onChange, value)
+            return true
+        end
+        function c.kitClose(id)
+            local w = kits[id]
+            if w == nil or not w.rec.shown then return false end
+            w.rec.shown = false
+            told(w, w.cb.onClose)
+            return true
+        end
+        function c.kitDrag(id, point, width, height)
+            local w = kits[id]
+            if w == nil or type(point) ~= "table" then return false end
+            w.rec.point = { point[1], point[2], point[3], point[4] }
+            if type(width) == "number" then w.rec.width = width end
+            if type(height) == "number" then w.rec.height = height end
+            told(w, w.cb.onMoved, { point[1], point[2], point[3], point[4] }, w.rec.width, w.rec.height)
+            return true
+        end
+    end
+    -- The settings window (lead sections 285 item 3 and 303 item 2), as the
+    -- real client's c.settingsWindow: the caller's tree goes to c.kitWindow
+    -- above (so c.kitWindows, c.kitClick, c.kitSelect and c.kitType play the
+    -- player on it), and what was drawn is kept where the Options page's
+    -- was, so the reads a test already has are the window's:
+    --   c.optionsRows(), c.optionsStatus(), c.optionsAct(key, value),
+    --   c.optionsNav(kind, value), c.optionsDrag, c.optionsOpened(),
+    --   c.optionsHide() (the player closes it), c.optionsPagesMade()
+    -- and new here:
+    --   c.optionsLayout() -> what stands beside the rows (a copy of the
+    --     layout last drawn): title, topics, topic, search ...
+    --   c.optionsShown() -> true while the window is shown
+    --   c.setSettingsDrawFault(n)  the next n draws of the window raise;
+    --     nothing is kept of a draw that raised
+    -- setOptionsPage(false) plays a client with no settings window and no
+    -- entry in the game's Options; setOptionsPageFault(n) makes the next n
+    -- asks for the window raise.
+    --
+    -- The add-on's entry in the game's Options > AddOns is a page asked for
+    -- with spec.entry = true. It is kept apart from the window:
+    --   c.optionsEntry() -> { title, rows, status, shown } (the live record)
+    --     or nil when no entry was asked for
+    --   c.optionsEntryShow() -> true: the player opens the entry
+    --   c.optionsEntryPress(key) -> true when that button of the entry is
+    --     there and what it ran answered true
+    do
+        local pageBase = c.optionsPage
+        local drawFaults = 0
+        local entryNav, entryShow
+
+        local function copyOf(v)
+            if type(v) ~= "table" then return v end
+            local out = {}
+            for key, value in pairs(v) do out[key] = copyOf(value) end
+            return out
+        end
+
+        function c.setSettingsDrawFault(n) drawFaults = tonumber(n) or 0 end
+        function c.optionsLayout() return s.options and s.options.layout end
+        function c.optionsShown() return s.options ~= nil and s.options.shown == true end
+
+        function c.optionsPage(spec)
+            if type(spec) ~= "table" or spec.entry ~= true then return pageBase(spec) end
+            if s.noOptionsPage then return nil end
+            local e = { title = spec.title, shown = false }
+            local h, showFns = {}, {}
+            s.optionsEntry, entryShow, entryNav = e, showFns, nil
+            function h.open() return false end
+            function h.onShow(fn) showFns[#showFns + 1] = fn end
+            function h.shown() return e.shown end
+            function h.draw(rows, _, nav)
+                e.rows = copyOf(rows or {})
+                entryNav = nil
+                if type(nav) == "function" then entryNav = nav end
+                return true
+            end
+            function h.status(text) e.status = text end
+            return h
+        end
+        function c.optionsEntry() return s.optionsEntry end
+        function c.optionsEntryShow()
+            if not s.optionsEntry then return false end
+            s.optionsEntry.shown = true
+            for _, fn in ipairs(entryShow) do fn() end
+            return true
+        end
+        function c.optionsEntryPress(key)
+            if not s.optionsEntry or type(entryNav) ~= "function" then return false end
+            for _, r in ipairs(s.optionsEntry.rows or {}) do
+                for _, action in ipairs(type(r.actions) == "table" and r.actions or {}) do
+                    if action.key == key and action.enabled ~= false then
+                        return entryNav("action", key) == true
+                    end
+                end
+            end
+            return false
+        end
+
+        function c.settingsWindow(spec)
+            if type(spec) ~= "table" or type(spec.id) ~= "string" or type(spec.build) ~= "function" then
+                return nil
+            end
+            local base = pageBase({ title = spec.title, name = spec.name })
+            if not base then return nil end
+            local record = s.options
+            local extra = { name = spec.name, point = spec.point, width = spec.width, height = spec.height,
+                onMoved = spec.onMoved, failed = spec.failed }
+            -- The player closing the kit window closes what the reads show.
+            function extra.onClose()
+                record.shown = false
+                if type(spec.onClose) == "function" then spec.onClose() end
+            end
+            local h
+            local page = {}
+            function page.draw(rows, act, nav, layout)
+                if drawFaults > 0 then
+                    drawFaults = drawFaults - 1
+                    error("the settings window could not be drawn (test)", 0)
+                end
+                local tree, why = spec.build(rows, act, nav, layout)
+                if type(tree) ~= "table" then return false, why or "the settings window has no tree" end
+                if h == nil then
+                    h = c.kitWindow(spec.id, tree, extra)
+                    if h == nil then return false, "the kit could not draw the settings window" end
+                elseif h.update(tree) ~= true then
+                    return false, "the kit could not draw the settings window again"
+                end
+                base.draw(rows, act, nav)
+                record.layout = copyOf(layout)
+                if type(layout) == "table" and layout.status ~= nil then base.status(layout.status) end
+                return true
+            end
+            function page.open()
+                if h == nil then return false, "the settings window was not drawn" end
+                h.show(true)
+                return base.open()
+            end
+            function page.hide()
+                if h ~= nil then h.show(false) end
+                record.shown = false
+            end
+            function page.shown() return record.shown == true end
+            return page
         end
     end
     return c

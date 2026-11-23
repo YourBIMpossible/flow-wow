@@ -54,6 +54,13 @@ local _, ns = ...
 --
 -- N.ProfStepFrom(client, store) -> the same, read from the client and the
 -- three saved tables. It writes nothing; a read that fails is "not known".
+--
+-- Module (lead section 279 item 2, N25): N.ProfStepDeclare(k) -> api;
+--   ns.use(N.PROF_STEP) -> { Step = api.step }, the step above or nil.
+-- Setting "nav.profArrow" (account, bool, default true): false gives no
+-- profession step, so the arrow shows no profession needle and says no
+-- trainer. Flow's nav.profArrow lands here on import (Import/FromFlow.lua).
+-- The row is declared here, by the module that reads it. Look only.
 ns.Nav = ns.Nav or {}
 local N = ns.Nav
 
@@ -216,3 +223,288 @@ function N.ProfStepFrom(client, store)
             mapSize = function(map) return ask(client, "mapSize", map) end,
         })
 end
+
+-- Lead section 288 (N25 widened): the next profession step for any
+-- character with a profession, by priority:
+--   1. the trainer of a capped profession (N.ProfStep above);
+--   2. the nearest known node of a gathering profession not capped, from
+--      GatherMate2 on the map the player is on (Nav/AddonSources.lua);
+--   3. the craft that gives a point, from the recipe book of this character
+--      and the recipe colours its profession windows showed, as one line;
+--   4. else one line that says why there is nothing to point at, and how
+--      the player supplies it, for the first profession by name.
+-- No profession: nil, "no profession".
+--
+-- N.ProfNext(input) -> step, or nil and a reason. Pure; input fields:
+--   professions  client.professions(): { [name] = true } or nil
+--   readings, npcs, tierSeen, here   as N.ProfStep
+--   nodes        { { x, y, map, kind, node } } on here.position.map, or nil
+--   nodeState    "absent" | "off" | "failed" | "no map" | "ready"
+--   book         char "learned.facts.recipeBook": { [recipe] = { profession } }
+--   colours      char "learned.recipeColors":
+--                { [recipe] = { [difficulty] = { lo, hi } } }
+-- A node step: { place = { cont, map, x, y }, radius = N.PROF_NEAR,
+--   label = the node name (or "<profession> node" over the limit),
+--   detail = N.PROF_NODE_DETAIL }. A craft or why step:
+--   { still = true, lines = { text }, label = text when within the limit }.
+--
+-- The names client.professions gives are kept only when they are on
+-- N.PROF_NAMES (the real client also gives weapon and other skill lines).
+-- Needs game test: the English names. A client in another language is known
+-- only through the readings its profession windows saved.
+
+-- Gathering professions and the GatherMate2 kind of their nodes; false: a
+-- gathering profession with no node kind.
+N.PROF_GATHER = { Mining = "Mining", Herbalism = "Herb Gathering", Fishing = "Fishing", Skinning = false }
+N.PROF_NAMES = {}
+for _, name in ipairs({ "Alchemy", "Blacksmithing", "Enchanting", "Engineering", "Leatherworking",
+    "Tailoring", "Jewelcrafting", "Inscription", "Cooking", "First Aid",
+    "Mining", "Herbalism", "Skinning", "Fishing" }) do
+    N.PROF_NAMES[name] = true
+end
+
+N.PROF_NODE_DETAIL = "nearest known %s node"
+N.PROF_CRAFT_SURE = "Make %s: a sure %s point"
+N.PROF_CRAFT_MAYBE = "Make %s: may give a %s point"
+N.PROF_WHY_READ = "Open your %s window once to read your skill"
+N.PROF_WHY_TRAINER = "%s capped at %d: open a %s trainer once to mark it"
+N.PROF_WHY_TRAIN = "%s capped at %d: train the next rank when you can"
+N.PROF_WHY_GM_ABSENT = "No known %s node here: GatherMate2 gives nodes"
+N.PROF_WHY_GM_OFF = "No known %s node here: turn on Read GatherMate2 nodes"
+N.PROF_WHY_NODE = "No known %s node on this map"
+N.PROF_WHY_RECIPES = "Open your %s window once to see what gives a point"
+N.PROF_WHY_NO_POINT = "No known %s recipe gives a point at %d"
+N.PROF_WHY_NOTHING = "Nothing known to point at for %s"
+
+-- Recipe colours that give a point: sure, or may.
+local GIVES = { optimal = "sure", medium = "maybe", easy = "maybe" }
+
+local function reading(readings, prof)
+    local r = type(readings) == "table" and readings[prof] or nil
+    if type(r) == "table" and finite(r.skill) and finite(r.max) and r.max > 0 then return r end
+    return nil
+end
+
+local function capped(r) return r ~= nil and r.skill >= r.max end
+
+local function textStep(text)
+    local step = { still = true, lines = { text } }
+    if #text <= (N.Waypoint and N.Waypoint.LABEL_MAX or 40) then step.label = text end
+    return step
+end
+
+-- Squared distance from the player to n: yards when the map size is
+-- known, else shares; 0 when where the player is is not known.
+local function apart(n, pos, size)
+    if not (pos and share(pos.x) and share(pos.y)) then return 0 end
+    local dx, dy = n.x - pos.x, n.y - pos.y
+    if size then dx, dy = dx * size.w, dy * size.h end
+    return dx * dx + dy * dy
+end
+
+-- The craft of prof that gives a point at skill: its name and "sure" or
+-- "maybe"; else nil, nil and whether any recipe of prof has colours seen.
+local function craftFor(prof, skill, book, colours)
+    if type(book) ~= "table" or type(colours) ~= "table" then return nil, nil, false end
+    local sure, maybe, seen = {}, {}, false
+    for name, rec in pairs(book) do
+        local spans = colours[name]
+        if type(name) == "string" and type(rec) == "table" and rec.profession == prof and type(spans) == "table" then
+            seen = true
+            for difficulty, span in pairs(spans) do
+                local kind = GIVES[difficulty]
+                if kind and type(span) == "table" and finite(span.lo) and finite(span.hi)
+                    and span.lo <= skill and skill <= span.hi then
+                    if kind == "sure" then sure[#sure + 1] = name else maybe[#maybe + 1] = name end
+                end
+            end
+        end
+    end
+    table.sort(sure)
+    table.sort(maybe)
+    if sure[1] then return sure[1], "sure", true end
+    if maybe[1] then return maybe[1], "maybe", true end
+    return nil, nil, seen
+end
+
+local function nodeWhy(prof, state)
+    if state == "absent" then return N.PROF_WHY_GM_ABSENT:format(prof) end
+    if state == "off" then return N.PROF_WHY_GM_OFF:format(prof) end
+    return N.PROF_WHY_NODE:format(prof)
+end
+
+local function nodeStep(input, names, here)
+    if input.nodeState ~= "ready" or type(input.nodes) ~= "table" then return nil end
+    local pos = type(here.position) == "table" and here.position or nil
+    local size = pos and sizeOf(here, pos.map) or nil
+    local best, bestProf, bestD
+    for _, prof in ipairs(names) do
+        local kind = N.PROF_GATHER[prof]
+        if kind and not capped(reading(input.readings, prof)) then
+            for _, n in ipairs(input.nodes) do
+                if type(n) == "table" and n.kind == kind and share(n.x) and share(n.y) then
+                    local d = apart(n, pos, size)
+                    if not best or d < bestD then best, bestProf, bestD = n, prof, d end
+                end
+            end
+        end
+    end
+    if not best then return nil end
+    local cont = type(here.zone) == "table" and here.zone.cont or nil
+    local map = best.map
+    if map == nil and pos then map = pos.map end
+    local step = { place = { cont = cont, map = map, x = best.x, y = best.y },
+                   radius = N.PROF_NEAR, detail = N.PROF_NODE_DETAIL:format(bestProf) }
+    local max = N.Waypoint and N.Waypoint.LABEL_MAX or 40
+    local label = type(best.node) == "string" and #best.node <= max and best.node or (bestProf .. " node")
+    if #label <= max then step.label = label end
+    return step
+end
+
+function N.ProfNext(input)
+    if type(input) ~= "table" then input = {} end
+    local here = type(input.here) == "table" and input.here or {}
+    local names, has = {}, {}
+    local function add(name)
+        if type(name) == "string" and not has[name] then
+            has[name] = true
+            names[#names + 1] = name
+        end
+    end
+    if type(input.professions) == "table" then
+        for name in pairs(input.professions) do
+            if N.PROF_NAMES[name] then add(name) end
+        end
+    end
+    if type(input.readings) == "table" then
+        for name in pairs(input.readings) do
+            if reading(input.readings, name) then add(name) end
+        end
+    end
+    if #names == 0 then return nil, "no profession" end
+    table.sort(names)
+
+    local trainer = N.ProfStep(input.readings, input.npcs, input.tierSeen, here)
+    if trainer then return trainer end
+
+    local node = nodeStep(input, names, here)
+    if node then return node end
+
+    -- The craft that gives a point: sure before maybe, then by profession.
+    local pick, pickKind, pickProf
+    for _, prof in ipairs(names) do
+        local r = reading(input.readings, prof)
+        if N.PROF_GATHER[prof] == nil and r and not capped(r) then
+            local name, kind = craftFor(prof, r.skill, input.book, input.colours)
+            if name and (not pick or (kind == "sure" and pickKind ~= "sure")) then
+                pick, pickKind, pickProf = name, kind, prof
+            end
+        end
+    end
+    if pick then
+        local words = pickKind == "sure" and N.PROF_CRAFT_SURE or N.PROF_CRAFT_MAYBE
+        return textStep(words:format(pick, pickProf))
+    end
+
+    -- Why, for the first profession by name.
+    local prof = names[1]
+    local r = reading(input.readings, prof)
+    local text
+    if capped(r) then
+        local _, why = N.ProfStep({ [prof] = r }, input.npcs, input.tierSeen, here)
+        if why == "visited" or why == "unavailable" then
+            text = N.PROF_WHY_TRAIN:format(prof, r.max)
+        else
+            text = N.PROF_WHY_TRAINER:format(prof, r.max, prof)
+        end
+    elseif N.PROF_GATHER[prof] then
+        text = nodeWhy(prof, input.nodeState)
+    elseif N.PROF_GATHER[prof] == false then
+        text = N.PROF_WHY_NOTHING:format(prof)
+    elseif not r then
+        text = N.PROF_WHY_READ:format(prof)
+    else
+        local _, _, seen = craftFor(prof, r.skill, input.book, input.colours)
+        if seen then
+            text = N.PROF_WHY_NO_POINT:format(prof, r.skill)
+        else
+            text = N.PROF_WHY_RECIPES:format(prof)
+        end
+    end
+    return textStep(text)
+end
+
+-- N.ProfNextFrom(client, store, nodeSource) -> N.ProfNext read from the
+-- client, the saved tables and the GatherMate2 source module (or nil).
+-- It writes nothing; a read that fails is "not known".
+function N.ProfNextFrom(client, store, nodeSource)
+    local nodes, state
+    if type(nodeSource) == "table" then
+        if type(nodeSource.State) == "function" then
+            local ok, s = pcall(nodeSource.State)
+            if ok then state = s end
+        end
+        if type(nodeSource.Nodes) == "function" then
+            local ok, n = pcall(nodeSource.Nodes)
+            if ok then nodes = n end
+        end
+    end
+    return N.ProfNext({
+        professions = ask(client, "professions"),
+        readings = saved(store, "char", "learned.facts.profSkill"),
+        npcs = saved(store, "account", "learned.places.npcs"),
+        tierSeen = saved(store, "char", "learned.facts.tierSeen"),
+        here = {
+            position = ask(client, "position"),
+            zone = ask(client, "zone"),
+            faction = ask(client, "faction"),
+            mapSize = function(map) return ask(client, "mapSize", map) end,
+        },
+        nodes = nodes,
+        nodeState = state or "absent",
+        book = saved(store, "char", "learned.facts.recipeBook"),
+        colours = saved(store, "char", "learned.recipeColors"),
+    })
+end
+
+N.PROF_STEP = "profStep"
+N.PROF_SETTING = "nav.profArrow"
+
+function N.ProfStepDeclare(k)
+    local api = {}
+    local ctx
+
+    -- Off only when the setting says false; a read that fails is not off.
+    local function off()
+        if not ctx or type(ctx.settings) ~= "table" or type(ctx.settings.get) ~= "function" then return false end
+        local ok, v = pcall(ctx.settings.get, ctx.settings, N.PROF_SETTING)
+        return ok and v == false
+    end
+
+    function api.step()
+        if not ctx or off() then return nil end
+        local source
+        if type(ctx.use) == "function" then
+            local ok, s = pcall(ctx.use, "gatherMateSource")
+            if ok then source = s end
+        end
+        return N.ProfNextFrom(ctx.client, ctx.store, source)
+    end
+
+    k:Setting({ key = N.PROF_SETTING, scope = "account", type = "bool", default = true,
+        label = "Profession trainer arrow", group = "travel.arrow",
+        synonyms = { "profession", "trainer", "arrow", "needle", "skill cap" } })
+
+    k:Module({
+        name = N.PROF_STEP,
+        needs = { "client", "store", "settings" },
+        provides = { Step = api.step },
+        start = function(c)
+            ctx = c
+        end,
+    })
+    return api
+end
+
+-- The addon's own: declared when this file loads.
+ns.profStep = N.ProfStepDeclare(ns)

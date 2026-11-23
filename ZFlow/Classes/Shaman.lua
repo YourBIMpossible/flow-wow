@@ -24,9 +24,9 @@ local _, ns = ...
 -- addon: each needs a check in the game client.
 --
 -- Not in this pack yet (tasks):
---   * Ancestral Spirit, and the heals and cures on anyone but yourself:
---     needs a party member read and a chooser step for other players (the
---     pack holds nothing for them yet);
+--   * SHAMAN-1 (P-KEYS slice A) holds Ancestral Spirit and the heals for
+--     another player in `care`, on the care key only (Rotation/CareKeys.lua);
+--     Chain Heal and the totems for a party are not in it;
 --   * the weapon imbues (Rockbiter, Flametongue, Frostbrand, Windfury) in the
 --     list: no read gives the enchant on your weapon yet, so "is it on"
 --     cannot be told. They are on the Alt key row, for you to press;
@@ -135,6 +135,8 @@ end
 local spells = {
     ["Lightning Bolt"]      = sp(1,  { "DPS" }),
     ["Healing Wave"]        = sp(1,  { "Healing" }),
+    -- SHAMAN-1: on a dead friend, out of a fight only (the care key).
+    ["Ancestral Spirit"]    = sp(12, { "Utility" }),
     ["Rockbiter Weapon"]    = sp(1,  { "DPS" }, nil, "a weapon imbue; no read shows it"),
     ["Earth Shock"]         = sp(4,  { "DPS", "Control" }),
     ["Stoneskin Totem"]     = sp(4,  { "Survival" }, nil, "a totem; no read shows it"),
@@ -217,6 +219,14 @@ local pack = {
         { spell = "Cure Disease", types = { Disease = true }, evidence = GUESS },
     },
 
+    -- SHAMAN-1 (P-KEYS slice A): for another player, on the care key only
+    -- (Rotation/CareKeys.lua, R.FriendHeal). The cures are the dispels above.
+    care = {
+        friend = { "Lesser Healing Wave", "Healing Wave" },
+        revive = "Ancestral Spirit",
+        evidence = GUESS,
+    },
+
     keys = { none = keys },
 
     -- Stat weights per role: relative numbers, score = sum(stat * weight).
@@ -234,6 +244,19 @@ local pack = {
         }),
     },
 
+    -- G15, lead section 280: the weapon speed each role likes, and why, for
+    -- the speed line on a weapon's tooltip (Gear/WeaponSpeed.lua). "any":
+    -- speed does not matter for the role. Not counted in the score.
+    weaponSpeed = {
+        evidence = GUESS,
+        note = "written for lead section 280 from the game's rules as remembered; no outside source;"
+            .. " not read from the game",
+        dps = { prefer = "slow",
+                why = "Windfury Weapon and Stormstrike hit for weapon damage, so a slow weapon makes each extra"
+                    .. " swing bigger" },
+        heal = { prefer = "any", why = "healing spells do not use the weapon's swing" },
+    },
+
     -- What the class can equip, by item class and subclass ids, as the old
     -- table gave them. Armor (4): 0, 1, 2, 3 mail from level 40 (section
     -- 205, D3: a level in place of true), 6, 9. Weapons (2): 0, 1, 4, 5,
@@ -248,9 +271,28 @@ local pack = {
 
     -- Does not apply: no talent plan is written; the rotation plays the role
     -- you choose and reads no talent.
-    talentBuilds = {},
+    talentBuilds = {
+        { name = "Enhancement levelling build", role = "dps", evidence = GUESS, note = "written for this pack on 2026-11-23 from general knowledge of the class; not read from the game",
+          trees = { "Elemental", "Enhancement", "Restoration" },
+          order = {
+              { "Ancestral Knowledge", 5, why = "More mana, so longer between drinking breaks." },
+              { "Thundering Strikes", 5, why = "More critical hits with your weapon." },
+              { "Two-Handed Axes and Maces", 1, why = "Lets you wield a two-handed axe or mace." },
+              { "Improved Ghost Wolf", 2, why = "Ghost Wolf comes faster, so less time walking between pulls." },
+              { "Enhancing Totems", 2, why = "Your strength and agility totems give more." },
+              { "Flurry", 5, why = "After a critical hit, your next few swings come faster." },
+              { "Elemental Weapons", 3, why = "Your Rockbiter and Windfury weapon enchants are stronger." },
+              { "Parry", 1, why = "You can parry, so you take less damage while you fight." },
+              { "Toughness", 1, why = "More armor from your items." },
+              { "Weapon Mastery", 5, why = "More damage with every weapon." },
+              { "Stormstrike", 1, why = "A strike that hits twice and makes your next nature spells hit harder." },
+          },
+        },
+    },
 
     options = {
+        crowdControl = { none = "no shaman spell in this client holds a second enemy" },
+        threatDrop = { none = "no shaman spell in this client drops threat" },
         -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,
         -- in order: the first you know names your tree (snapshot.tree,
         -- Rotation/Driver.lua). Which spell is a talent of which tree: a first

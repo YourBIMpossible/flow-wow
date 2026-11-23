@@ -71,6 +71,8 @@ K.TEMPLATE = "SecureActionButtonTemplate"
 K.LABEL = "Keep the rotation on one button"
 K.HELP = "show what your rotation button holds; keys apply tries again what could not be set"
 K.SLOT_ORDER = { "key", "ctrl", "shift", "alt", "more" }
+-- SE6-1: the diag timing mark for a fight that started with the lock on.
+K.FIGHT_START_WAITED = "KEYS_FIGHT_START_WAITED"
 
 local SUBJECT = "your rotation button"
 
@@ -90,6 +92,17 @@ local function signature(plan)
     -- plan. Section 246 (N63-E): named as the attribute it puts on the
     -- button ("*item-alt=item:ID"), the item type, never a macro.
     if plan.altItem ~= nil then out[#out + 1] = "*item-alt=item:" .. tostring(plan.altItem) end
+    -- N41 (P-KEYS slice B): a slot's unit (plan.units) is part of the plan.
+    if type(plan.units) == "table" then
+        for _, slot in ipairs(C.MODIFIERS) do
+            if plan.units[slot] ~= nil then out[#out + 1] = "*unit-" .. slot .. "=" .. tostring(plan.units[slot]) end
+        end
+    end
+    -- P-KEYS slice D: the key action (plan.action) is part of the plan.
+    local a = plan.action
+    if type(a) == "table" then
+        out[#out + 1] = "action=" .. tostring(a.itemId) .. "/" .. tostring(a.spell) .. "/" .. tostring(a.unit)
+    end
     return table.concat(out, "|")
 end
 
@@ -111,6 +124,13 @@ function K.New(opts)
     local button = type(opts.button) == "table" and opts.button or nil
     local lockdown = type(opts.lockdown) == "function" and opts.lockdown or function() return nil end
     local formOf = type(opts.form) == "function" and opts.form or nil
+    -- S12 care key (P-KEYS slice A): a button with rows of its own.
+    -- opts.rows(plan) -> { { attr, value }, ... } replaces the rotation's
+    -- rows; opts.signature(plan) -> text tells a changed plan. Left out:
+    -- the rotation button as before.
+    local rowsOf = nil
+    if type(opts.rows) == "function" then rowsOf = opts.rows end
+    local signature = type(opts.signature) == "function" and opts.signature or signature
 
     local kf = {}
     local held = {}
@@ -170,6 +190,13 @@ function K.New(opts)
             table.sort(names)
             rows = {}
             for i, attr in ipairs(names) do rows[i] = { attr = attr } end
+        elseif rowsOf then
+            local made, got = pcall(rowsOf, wanted)
+            if not made or type(got) ~= "table" then
+                stuck = true
+                return now("failed", { reason = "plan", text = "the plan could not be made into parts" })
+            end
+            rows = got
         else
             local f = formOf and formOf() or nil
             formRead = type(f) == "number"
@@ -224,6 +251,21 @@ function K.New(opts)
     function kf:reform()
         if has then pending, stuck = true, false end
         return kf:try()
+    end
+
+    -- SE-1: the fight is starting. A key action of Attack (N39) would stay
+    -- on the key all through combat lockdown, and a second press toggles
+    -- the swing off (first guess, not seen in game), so the wanted plan
+    -- loses it now. Written only while the lock is a plain false (kf:try
+    -- asks before every set); PLAYER_REGEN_DISABLED handled before the lock
+    -- is on is a first guess: with the lock already on it waits. The second
+    -- return is true when Attack was taken off the wanted plan (SE6-1).
+    function kf:fightStarts()
+        if not has or type(wanted) ~= "table" or type(wanted.action) ~= "table" then return kf:status(), false end
+        if not C.ATTACK[wanted.action.spell] then return kf:status(), false end
+        local plan = copy(wanted)
+        plan.action = nil
+        return kf:want(plan), true
     end
 
     return kf
@@ -372,16 +414,28 @@ function K.Declare(k, diag)
         name = K.NAME,
         needs = { "client", "store", "bus", D.NAME },
         settings = { {
-            key = K.SETTING, scope = "char", type = "bool", default = false,
+            key = K.SETTING, scope = "char", type = "bool", default = true,
             label = K.LABEL,
-            help = "Puts your form's spells on one hidden button, outside fights only. It presses nothing for you.",
-            group = "combat.rotation", synonyms = { "key", "button", "keybind", "macro", "form" },
+            help = "Shows the Flow button holding the rotation's next spell, set outside fights only. Click it, or bind a key to it on this page. It binds no key by itself and presses nothing for you.",
+            group = "combat.rotation", synonyms = { "key", "button", "keybind", "macro", "form", "easy key" },
         } },
         start = function(ctx)
             client = ctx.client
             ctx.bus:on(K.NAME, D.EVENT, onView)
             client.listen("PLAYER_REGEN_ENABLED", function()
                 if kf then after(kf:try(true)) end
+            end)
+            -- SE-1: Attack off the key as the fight starts (kf:fightStarts).
+            -- SE6-1: the lock was already on, so Attack stays on the key
+            -- this fight; a diag timing mark says so.
+            client.listen("PLAYER_REGEN_DISABLED", function()
+                if not kf then return end
+                local st, removing = kf:fightStarts()
+                if removing == true and type(st) == "table" and st.state == "waiting"
+                    and diag and type(diag.mark) == "function" then
+                    diag.mark(K.FIGHT_START_WAITED)
+                end
+                after(st)
             end)
             client.listen("UPDATE_SHAPESHIFT_FORM", function()
                 if kf then after(kf:reform()) end

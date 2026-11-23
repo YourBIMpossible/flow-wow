@@ -66,11 +66,28 @@ local function drawnRow(c, key)
     return nil
 end
 
+-- Since the settings window (lead section 285 item 3) the search and the
+-- topics stand beside the rows: "search" and "topics" are read from the
+-- window's layout (value; topics), every other kind from the rows.
 local function ofKind(c, kind)
+    if kind == "search" or kind == "topics" then
+        local layout
+        if type(c.optionsLayout) == "function" then layout = c.optionsLayout() end
+        if type(layout) ~= "table" then return nil end
+        if kind == "search" then return layout.search end
+        return layout
+    end
     for _, r in ipairs(c.optionsRows() or {}) do
         if r.kind == kind then return r end
     end
     return nil
+end
+
+local function tipHolds(r, text)
+    for _, line in ipairs(type(r) == "table" and type(r.tip) == "table" and r.tip or {}) do
+        if tostring(line):find(text, 1, true) ~= nil then return true end
+    end
+    return false
 end
 
 local function has(list, value)
@@ -216,12 +233,12 @@ local BEFORE = {
     ["nav.taxiMark"] = { "account", "bool", true },
     ["nav.learnLegs"] = { "account", "bool", true },
     ["nav.repairStep"] = { "account", "bool", true },
-    ["rotation.enabled"] = { "char", "bool", false },
+    ["rotation.enabled"] = { "char", "bool", true },
     ["rotation.recoverBuffFood"] = { "account", "bool", true },
     ["rotation.formSpells"] = { "account", "bool", true },
     ["rotation.gatherTracking"] = { "char", "bool", true },
     ["general.groupTip"] = { "account", "bool", true },
-    ["rotation.keyFrame"] = { "char", "bool", false },
+    ["rotation.keyFrame"] = { "char", "bool", true },
     ["spec.role"] = { "char", "choice", "" },
     ["spells.trainerList"] = { "char", "bool", true },
     ["spells.rankUp"] = { "char", "bool", true },
@@ -234,8 +251,10 @@ local BEFORE = {
     ["rotationIcon.layout"] = { "account", "table", nil, "layout.rotationIcon" },
     ["rotationQueue.enabled"] = { "account", "bool", true },
     ["ui.intro"] = { "char", "bool", true },
-    ["buttons.worldMap"] = { "account", "bool", false },
-    ["buttons.merchant"] = { "account", "bool", false },
+    -- Both on by default: the world map's (default-on) and the merchant's
+    -- (lead section 294 item 3).
+    ["buttons.worldMap"] = { "account", "bool", true },
+    ["buttons.merchant"] = { "account", "bool", true },
     ["plateCombo.off"] = { "account", "bool", false },
     ["plateThreat.off"] = { "account", "bool", false },
     ["plateThreat.always"] = { "account", "bool", false },
@@ -328,9 +347,13 @@ tests["settings workflow: open the page, pick a topic, search, change a result, 
     if not ready(t, c) then return end
     slash(c, "settings")
     t.eq(c.optionsOpened(), 1, "the slash word opens the Options page")
+    -- Changed for the window (lead section 285 item 3): it asserted the
+    -- kinds "search", "topics", "group" at rows 1 to 3.
     local rows = c.optionsRows()
-    t.eq({ rows[1].kind, rows[2].kind, rows[3].kind }, { "search", "topics", "group" })
-    t.eq(rows[3].text, T.LIST[1].name, "the first topic is shown")
+    t.eq(rows[1].kind, "group")
+    t.eq(ofKind(c, "search").value, "", "the search stands beside the rows")
+    t.eq(#ofKind(c, "topics").topics, #T.LIST, "and so do the topics")
+    t.eq(rows[1].text, T.LIST[1].name, "the first topic is shown")
     for _, key in ipairs(drawn(c)) do
         t.eq(drawnRow(c, key).topic, T.LIST[1].id, key .. " is of the topic shown")
     end
@@ -351,7 +374,8 @@ tests["settings workflow: open the page, pick a topic, search, change a result, 
     if not (sell and note) then return end
     t.eq({ sell.topicName, sell.scope, sell.jump }, { T.Find("bags").name, "account", "bags" })
     t.eq({ note.topicName, note.jump }, { T.Find("gear").name, "gear" })
-    t.ok(sell.under:find(T.Find("bags").name, 1, true) ~= nil and sell.under:find("account", 1, true) ~= nil, sell.under)
+    -- Changed for the window: "account" was in sell.under; it is in the tooltip.
+    t.ok(sell.under:find(T.Find("bags").name, 1, true) ~= nil and tipHolds(sell, "account"), sell.under)
     t.eq({ sell.kind, sell.value, sell.settable }, { "toggle", true, true }, "the same control as in its topic")
 
     -- Change the result where it stands.
@@ -436,7 +460,11 @@ end
 
 -- (b) A reload in the middle of a search.
 -- Fails before: no search and no topic to be in the middle of.
-tests["settings reload in the middle: where you were is not saved, what you changed is, and looking saves nothing"] = function(t)
+-- Changed for the window (lead section 285 item 3): the last topic chosen
+-- is saved now (layout.settingsTopic) and shown after the reload. It
+-- asserted that choosing a topic wrote nothing and that the reload showed
+-- the first topic.
+tests["settings reload in the middle: the last topic is saved, the search is not, what you changed is, and looking saves nothing else"] = function(t)
     local c, addon = boot()
     if not ready(t, c) then return end
     slash(c, "settings")
@@ -446,14 +474,20 @@ tests["settings reload in the middle: where you were is not saved, what you chan
     c.optionsNav("search", "")
     slash(c, "settings topic auctions")
     slash(c, "settings tooltip")
-    t.eq({ c.saved(ns.id.accountDB), c.saved(ns.id.charDB) }, before, "choosing topics and searching write nothing")
+    local account = copy(c.saved(ns.id.accountDB))
+    t.eq(type(account.layout) == "table" and account.layout.settingsTopic, "auctions", "the last topic chosen is kept")
+    if type(account.layout) == "table" then
+        account.layout.settingsTopic = nil
+        if next(account.layout) == nil and before[1].layout == nil then account.layout = nil end
+    end
+    t.eq({ account, c.saved(ns.id.charDB) }, before, "choosing topics and searching write nothing else")
     t.eq((c.optionsAct("gear.tooltip", false)), true)
     -- The reload comes with the search still on.
     local c2, addon2 = reload(c)
     t.eq(addon2.settings:get("gear.tooltip"), false, "the change is there")
     slash(c2, "settings")
     t.eq(ofKind(c2, "search").value, "", "no search carried over")
-    t.eq(ofKind(c2, "group").text, T.LIST[1].name, "the first topic again")
+    t.eq(ofKind(c2, "group").text, T.Find("auctions").name, "the last topic chosen")
     t.eq(c2.optionsNav("topic", "gear"), true)
     t.eq(drawnRow(c2, "gear.tooltip").value, false)
     t.ok(addon ~= addon2)
@@ -522,7 +556,22 @@ tests["menu workflow: right-click the arrow, enter a submenu, choose a row; then
     t.eq(c.optionsOpened(), 1, "the settings open")
     t.eq(ofKind(c, "group").text, T.Find("travel").name, "at the matching topic")
     t.ok(has(drawn(c), "quest.arrow") and has(drawn(c), "arrow.style"), "with the arrow's settings")
-    t.eq({ c.saved(ns.id.accountDB), c.saved(ns.id.charDB) }, before, "opening the settings saved nothing")
+    -- Opening at a topic remembers that topic (layout.settingsTopic, the
+    -- settings window's saved last topic, lead section 285 item 3); nothing
+    -- else is saved: no setting changes.
+    local after = { copy(c.saved(ns.id.accountDB)), copy(c.saved(ns.id.charDB)) }
+    local function topicOf(saved)
+        local layout = type(saved) == "table" and saved.layout or nil
+        if type(layout) ~= "table" then return nil end
+        local topic = layout.settingsTopic
+        layout.settingsTopic = nil
+        -- A layout table made only to hold it is not a change either.
+        if next(layout) == nil then saved.layout = nil end
+        return topic
+    end
+    topicOf(before[1]); topicOf(before[2]); topicOf(after[2])
+    t.eq(topicOf(after[1]), "travel", "the topic it opened at is remembered")
+    t.eq(after, before, "opening the settings saved nothing else")
     -- After a reload the hidden arrow is still hidden, and the menu says so.
     local c2 = reload(c)
     t.ok(c2 ~= nil)

@@ -86,6 +86,19 @@ return {
         t.eq(#env.made, 0)
     end,
 
+    -- RH-1 (lead section 279): the listener can ask for no chat fallback
+    -- (it says the roll in chat itself). Fails before: show takes no
+    -- trailing table, so the fallback line is printed (1, not 0).
+    ["RH-1 onLootRoll: no roll frame found and show told quiet prints nothing"] = function(t)
+        local env = rollEnv()
+        env.GroupLootFrame1 = nil
+        local c = ns.make.client(env)
+        c.onLootRoll(function(_, _, show) show("Upgrade", 0.1, 1, 0.1, { quiet = true }) end)
+        env.fire("START_LOOT_ROLL", 7, 60000)
+        t.eq(#env.printed, 0, "no fallback line when told quiet")
+        t.eq(#env.made, 0)
+    end,
+
     ["F4 onLootRoll: no link, a secret link or an odd roll id tells nobody"] = function(t)
         local env = rollEnv()
         local c = ns.make.client(env)

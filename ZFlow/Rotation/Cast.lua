@@ -9,6 +9,10 @@ local _, ns = ...
 -- plan      what ns.KeyPlan returned: { states, condition, stealthForm },
 --           plus altItem (N8): an item id the Alt slot uses instead of its
 --           spell, or nil. N8 stays PARTLY until seen in the client.
+--           Plus action (P-KEYS slice D, Rotation/KeyActions.lua): what the
+--           key itself holds instead of its slot spell, out of a fight only:
+--           { spell, unit } (unit player, target or none) or { itemId }; the
+--           spell or item type, never a macro (section 246).
 -- applied   the plan in place now (the `plan` field of the last result that
 --           was carried out), or nil when nothing is bound yet
 -- lockdown  true while the game refuses binding changes (in combat), false
@@ -70,6 +74,54 @@ local function slotOf(states, state, slot)
     return type(v) == "string" and v or nil
 end
 
+-- N41 (P-KEYS slice B): a plan may name the unit a modifier slot casts on
+-- (plan.units[slot], one of C.UNITS, or a group token: KC-1, the Ctrl heal
+-- on the friend you target by its stable party or raid token, since
+-- "target" re-resolves at the press); a slot with none casts on the target.
+local function groupUnit(u)
+    if u == "party1" or u == "party2" or u == "party3" or u == "party4" then return true end
+    local n = tonumber(u:match("^raid(%d%d?)$") or "")
+    return n ~= nil and n >= 1 and n <= 40
+end
+
+local function unitsOf(p)
+    local out
+    if type(p.units) ~= "table" then return nil end
+    for _, slot in ipairs(C.MODIFIERS) do
+        local u = p.units[slot]
+        if type(u) == "string" and (C.UNITS[u] or groupUnit(u)) then
+            out = out or {}
+            out[slot] = u
+        end
+    end
+    return out
+end
+
+-- P-KEYS slice D: a plan's key action, checked, as a fresh table; nil when
+-- there is none or it is not one the key may hold.
+local function actionOf(p)
+    local a = p.action
+    if type(a) ~= "table" then return nil end
+    local id = a.itemId
+    if type(id) == "number" and id > 0 and id % 1 == 0 then return { itemId = id } end
+    if type(a.spell) ~= "string" or a.spell == "" then return nil end
+    if a.unit ~= nil and a.unit ~= "player" and a.unit ~= "target" then return nil end
+    return { spell = a.spell, unit = a.unit }
+end
+
+local function actionText(a)
+    if type(a) ~= "table" then return "-" end
+    return tostring(a.itemId) .. "|" .. tostring(a.spell) .. "|" .. tostring(a.unit)
+end
+
+local function unitsText(units)
+    local parts = {}
+    for _, slot in ipairs(C.MODIFIERS) do
+        if units then parts[#parts + 1] = slot .. "=" .. tostring(units[slot]) end
+    end
+    return table.concat(parts, ",")
+end
+
 local function copyPlan(p)
     local states = {}
     for state = 0, lastState() do
@@ -88,6 +140,8 @@ local function copyPlan(p)
         condition = type(p.condition) == "string" and p.condition or "0",
         stealthForm = type(p.stealthForm) == "number" and p.stealthForm or nil,
         altItem = (type(p.altItem) == "number" and p.altItem > 0 and p.altItem % 1 == 0) and p.altItem or nil,
+        units = unitsOf(p),
+        action = actionOf(p),
     }
 end
 
@@ -116,11 +170,13 @@ function C.Apply(plan, applied, lockdown)
         end
     end
     local conditionChanged = new.condition ~= old.condition
+    local unitsChanged = unitsText(new.units) ~= unitsText(old.units)
+        or actionText(new.action) ~= actionText(old.action)
     return {
         ok = true,
         ops = ops,
         counts = counts,
-        changed = (counts.set + counts.clear > 0 or conditionChanged or new.altItem ~= old.altItem) and true or false,
+        changed = (counts.set + counts.clear > 0 or conditionChanged or new.altItem ~= old.altItem or unitsChanged) and true or false,
         condition = new.condition,
         conditionChanged = conditionChanged,
         stealthForm = new.stealthForm,
@@ -246,6 +302,12 @@ function C.Attributes(suggestion, plan, applied, lockdown, form)
         -- type, item = "item:ID", as legacy Flow did; not a macro.
         item = itemOf(suggestion)
         kind = "item"
+    elseif type(apply.plan.action) == "table" and apply.plan.action.itemId ~= nil then
+        -- P-KEYS slice D: the plan's key action, an item (the item type).
+        item, kind, source = apply.plan.action.itemId, "item", "plan"
+    elseif type(apply.plan.action) == "table" then
+        -- P-KEYS slice D: the plan's key action, a spell on its unit.
+        spell, kind, unit, source = apply.plan.action.spell, "spell", apply.plan.action.unit, "plan"
     else
         spell, source = castName(slotOf(states, form, "key")), "plan"
         if spell then
@@ -270,9 +332,15 @@ function C.Attributes(suggestion, plan, applied, lockdown, form)
             row(button, "*unit-alt", nil)
         else
             local v = castName(slotOf(states, form, slot))
+            -- N41: the plan's unit for the slot (plan.units), else the target.
+            local slotUnit
+            if v then
+                slotUnit = "target"
+                if apply.plan.units and apply.plan.units[slot] then slotUnit = apply.plan.units[slot] end
+            end
             row(button, "*type-" .. slot, v and "spell" or nil)
             row(button, "*spell-" .. slot, v)
-            row(button, "*unit-" .. slot, v and "target" or nil)
+            row(button, "*unit-" .. slot, slotUnit)
         end
     end
     -- N8: last, so the rows above keep their places.

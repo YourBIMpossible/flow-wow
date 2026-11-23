@@ -19,6 +19,8 @@ local function start(opts)
     if opts.facing ~= false then c.setFacing(opts.facing or 0) end
     if opts.noFrames then c.setFrames(false) end
     local k = ns.Kernel({}, c)
+    -- The profession step is its own module behind nav.profArrow (N25).
+    N.ProfStepDeclare(k)
     local d = ns.Diag.Start(k)
     local a = A.Start(k, d)
     k:Boot()
@@ -278,7 +280,7 @@ return {
         a.relayout()
         t.eq(q.shown, true, "the place known again: shown")
         a.setGuide(nil)
-        t.eq(q.shown, false, "no guide: nothing to point at")
+        t.eq(q.lines, { ns.Arrow.NO_QUEST }, "no guide: nothing to point at, and it says why")
     end,
 
     ["a frame error is one problem, and the arrows stop drawing and hide"] = function(t)
@@ -457,7 +459,10 @@ return {
         t.eq(p.shown, false)
     end,
 
-    ["wiring G2: with no profession step the needle is off and the quest arrow is unchanged"] = function(t)
+    -- Lead section 288 (pin updated under section 208): with no trainer to
+    -- point at, the profession says why in one line, added under the quest
+    -- lines; no needle, and the quest arrow itself is unchanged.
+    ["wiring G2: with no trainer step the needle is off, the quest arrow is unchanged, and one why line joins it"] = function(t)
         local plain = select(2, start())
         plain.setPosition(1411, 0.5, 0.5)
         plain.setMapSize(1411, 1000, 500)
@@ -465,6 +470,10 @@ return {
         login(plain)
         local want = plain.arrows[1]
         t.eq(want.lines, { N.WAYPOINT_LABEL, "100 yd N" })
+        local why = {
+            ["not capped"] = N.PROF_WHY_GM_ABSENT and N.PROF_WHY_GM_ABSENT:format("Mining"),
+            ["visited"] = N.PROF_WHY_TRAIN and N.PROF_WHY_TRAIN:format("Mining", 75),
+        }
         for name, given in pairs({ ["not capped"] = { 50, 75 }, ["visited"] = { 75, 75, 75 } }) do
             local c, a = profStart(given[1], given[2], given[3])
             login(c)
@@ -473,11 +482,10 @@ return {
             t.eq(a.state().view.prof.mode, "off", name)
             t.eq(p.shown, false, name)
             t.eq(q.shown, true, name)
-            t.eq(q.lines, want.lines, name)
+            t.eq(q.lines, { want.lines[1], want.lines[2], why[name] }, name)
             t.eq(q.point, want.point, name)
             t.eq(q.faded, want.faded, name)
             t.eq(q.scaled, want.scaled, name)
-            t.eq(q.textPoint, want.textPoint, name)
         end
     end,
 

@@ -233,7 +233,11 @@ end
 MF.NAME = "mapFlights"
 MF.EVERY = 0.5          -- seconds between looks
 MF.ROW_LABEL = "Show my flight paths on the world map"
-MF.ROW_HELP = "Pins on the world map for the flight paths you have, and a line for the flight your next step takes."
+-- When it appears, in one line (lead section 296): its settings row and the
+-- buttons word say it, so a player who sees nothing can find out why.
+MF.WHEN = "Off by default; when on, shows on the world map for the flight paths you have learned."
+MF.ROW_HELP = "Pins on the world map for the flight paths you have, and a line for the flight your next step takes. "
+    .. MF.WHEN
 
 local function ask(client, name, ...)
     if type(client) ~= "table" or type(client[name]) ~= "function" then return nil end

@@ -287,6 +287,7 @@ local spells = {
     ["Hibernate"]             = sp(18, { "Control" }),
     ["Cat Form"]              = sp(20, { "DPS" }),
     ["Claw"]                  = sp(20, { "DPS" }, "Cat Form"),
+    ["Cower"]                 = sp(28, { "Survival" }, "Cat Form"),
     ["Rake"]                  = sp(20, { "DPS" }, "Cat Form"),
     ["Prowl"]                 = sp(20, { "Control" }, "Cat Form"),
     ["Starfire"]              = sp(20, { "DPS" }),
@@ -418,6 +419,18 @@ local pack = {
         }),
     },
 
+    -- G15, lead section 280: the weapon speed each role likes, and why, for
+    -- the speed line on a weapon's tooltip (Gear/WeaponSpeed.lua). "any":
+    -- speed does not matter for the role. Not counted in the score.
+    weaponSpeed = {
+        evidence = GUESS,
+        note = "written for lead section 280 from the game's rules as remembered; the old"
+            .. " Classes/Druid/Data.lua:87-88 says the same of Cat and Bear Form; not read from the game",
+        dps = { prefer = "any", why = "in Cat Form your paws strike at the form's own speed, not the weapon's" },
+        tank = { prefer = "any", why = "in Bear Form your paws strike at the form's own speed, not the weapon's" },
+        heal = { prefer = "any", why = "healing spells do not use the weapon's swing" },
+    },
+
     -- What the class can equip, by item class and subclass ids.
     -- Armor (4): 0 misc, 1 cloth, 2 leather, 8 idol.
     -- Weapons (2): 4/5 maces, 6 polearm, 10 staff, 13 fist, 15 dagger, 20 fishing pole.
@@ -458,6 +471,8 @@ local pack = {
     },
 
     options = {
+        crowdControl = { { spell = "Hibernate", creatures = { beast = true, dragonkin = true } } },
+        threatDrop = { spell = "Cower", forms = { ["Cat Form"] = true } },
         -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,
         -- in order: the first you know names your tree (snapshot.tree,
         -- Rotation/Driver.lua). Which spell is a talent of which tree: a first

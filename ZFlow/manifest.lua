@@ -41,6 +41,10 @@ return {
         "UI/Advisor.lua",
         "UI/Alerts.lua",
         "UI/Setup.lua",
+        "UI/Kit/Parts.lua",
+        "UI/Kit/Theme.lua",
+        "UI/Kit.lua",
+        "UI/KitProbe.lua",
 
         -- Import
         "Import/FromFlow.lua",
@@ -168,6 +172,7 @@ return {
         "UI/SettingsPage.lua",
         "UI/SettingsKeys.lua",
         "UI/SettingsPanel.lua",
+        "UI/SettingsWindow.lua",
         "UI/SettingsOptions.lua",
         "UI/Rows.lua",
         "UI/Intro.lua",
@@ -210,6 +215,19 @@ return {
     "Rotation/Group.lua",
     -- N63: heal and cures on the unit under your mouse, off by default.
     "Rotation/Mouseover.lua",
+    "Rotation/CareKeys.lua",
+    -- N41 key controls and S23 click-casting check (P-KEYS slice B).
+    "Rotation/KeyControls.lua",
+    "UI/ClickCheck.lua",
+    -- S15 click slots and S29 move handle (P-KEYS slice C).
+    "UI/MoveHandle.lua",
+    "Rotation/ClickSlots.lua",
+    -- Section 285 item 2b: the Flow button and the self button on screen.
+    "Rotation/FlowButton.lua",
+    -- N1, N2, N20, N5 key actions (P-KEYS slice D).
+    "Rotation/KeyActions.lua",
+    -- N39, N40, N26, N27: auto attack, the spells list and the placed notice (P-KEYS slice E).
+    "Rotation/SpellKeys.lua",
     -- N64: the weapon enchant reminder, a line in chat only (after Group).
     "Rotation/Enchant.lua",
     -- N55: the boss loot panel, look only (after Gear, Items/Drops and the classes).
@@ -220,5 +238,13 @@ return {
     "UI/Reveal.lua",
     -- N70: settings export and import as data (after Export, Diag and the settings page).
     "UI/SettingsShare.lua",
+    -- Lead section 303: the Dungeon Quests pane's data (pure).
+    "Nav/DungeonStates.lua",
+    -- Lead section 303: the Dungeon Quests reader (Questie at runtime).
+    "Nav/DungeonRead.lua",
+    -- Lead section 305: boss kills as the client reports them (after Diag).
+    "Nav/BossKills.lua",
+    -- Lead section 318: the Dungeon Quests window, on the kit (after Kit and the dungeon data).
+    "UI/DungeonWindow.lua",
     },
 }

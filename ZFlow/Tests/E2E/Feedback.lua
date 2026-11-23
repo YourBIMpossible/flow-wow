@@ -16,7 +16,9 @@ local NAMES = { name = "Zarkon", realm = "Stormrage", guild = "Knights of Zar" }
 local function boot(opts)
     opts = opts or {}
     local who = opts.who or { name = NAMES.name, realm = NAMES.realm, guild = NAMES.guild }
-    local c = ns.make.fakeClient({ env = {
+    -- The feedback is paused (lead section 284); these tests run it with
+    -- the fake client internal switch on.
+    local c = ns.make.fakeClient({ internal = { feedback = true }, env = {
         UnitName = function() return who.name end,
         GetRealmName = function() return who.realm end,
         GetGuildInfo = function() return who.guild end,

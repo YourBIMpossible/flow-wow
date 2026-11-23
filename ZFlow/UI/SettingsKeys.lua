@@ -31,10 +31,14 @@ local _, ns = ...
 --
 --   SK.New(k) -> keys
 --     keys.attach(client, status)   status(text) redraws the page with text
---     keys.rows() -> the page rows: { kind = "actions", key, label, shown,
---                    group, topic, synonyms, settable, why, under,
---                    actions = { { key, label, enabled } } } per slot, and the
---                    question row (key SK.IN_USE_KEY) under the slot asked
+--     keys.rows() -> the page rows: { kind = "bind", key, label, shown,
+--                    bound (true when a key is set), waiting (true while
+--                    the overlay waits for this slot's key), group, topic,
+--                    synonyms, settable, why, under,
+--                    actions = { { key, label, enabled } } } per slot (the
+--                    first action sets the key: the bind button's press),
+--                    and the question row (kind "actions", key
+--                    SK.IN_USE_KEY) under the slot asked
 --     keys.matches(query) -> true when a search finds the rows
 --     keys.press(id)   a button of the rows was clicked (ids start "keys.")
 --     keys.lines() -> "label: shown" for the text page
@@ -54,6 +58,8 @@ ns.SettingsKeys = SK
 SK.NAME = "settingsKeys"
 SK.BUTTON = "RotationKey"
 SK.GROUP = "combat"
+-- S23: the click-casting check's line (UI/ClickCheck.lua), under the rows.
+SK.CLICK_KEY = "keys.clickCheck"
 SK.SYNONYMS = { "key", "keybind", "bind", "binding", "hotkey" }
 -- n: the slot's id; button: the secure button it binds (framePrefix ..
 -- button); index: its place among that button's keys.
@@ -62,8 +68,17 @@ SK.SLOTS = {
     { key = "keys.rotation2", n = 2, button = "RotationKey", index = 2, label = "Rotation second key" },
     { key = "keys.mouseover", n = 3, button = "Mouseover", index = 1, label = "Mouseover key",
       synonyms = { "mouseover", "heal", "cure", "friendly", "key", "bind" }, needs = "mouseover" },
+    -- S12 (P-KEYS slice A): the care key's own button (Rotation/CareKeys.lua).
+    { key = "keys.care", n = 4, button = "CareKey", index = 1, label = "Care key",
+      synonyms = { "care", "heal", "cure", "resurrect", "key", "bind" }, needs = "careKey" },
 }
 SK.IN_USE_KEY = "keys.inUse"
+-- Section 285 item 2b: the Flow button and the self button
+-- (Rotation/FlowButton.lua), each bound only when the player presses Set key.
+SK.SLOTS[#SK.SLOTS + 1] = { key = "keys.flow", n = 5, button = "FlowButton1", index = 1, label = "Flow button key",
+    synonyms = { "flow", "button", "rotation", "key", "bind" }, needs = "flowButton" }
+SK.SLOTS[#SK.SLOTS + 1] = { key = "keys.self", n = 6, button = "SelfButton1", index = 1, label = "Self button key",
+    synonyms = { "self", "buff", "buff button", "key", "bind" }, needs = "selfButton" }
 SK.SECTION = "Keys"
 
 SK.SET = "Set key"
@@ -71,7 +86,7 @@ SK.CLEAR = "Clear"
 SK.ANYWAY = "Use it anyway"
 SK.UNBIND = "Use it and unbind"
 SK.OTHER = "Pick another"
-SK.NOT_SET = "not set"
+SK.NOT_SET = "Not Bound"
 SK.NOT_KNOWN = "not known"
 SK.SESSION = " (until you reload)"
 SK.LOCKED = "Keys can't change in combat."
@@ -140,6 +155,42 @@ function SK.New(k)
     -- Why a slot's button cannot take a key now, or nil (section 255: the
     -- mouseover button is made only with its setting on).
     local function needWhy(slot)
+        if slot.needs == "flowButton" or slot.needs == "selfButton" then
+            local FBm = ns.FlowButton
+            if type(FBm) ~= "table" then return "There is no Flow button in this version." end
+            local setting, label, ask = FBm.SETTING, FBm.LABEL, "made"
+            if slot.needs == "selfButton" then setting, label, ask = FBm.SELF_SETTING, FBm.SELF_LABEL, "selfMade" end
+            local okOn, on = false, nil
+            if type(k.settings) == "table" then okOn, on = pcall(k.settings.get, k.settings, setting) end
+            if not okOn or on ~= true then
+                return "Switch on \"" .. tostring(label) .. "\" first: the button is made only then."
+            end
+            local fbApi, fbMade = k.flowButton, false
+            if type(fbApi) == "table" and type(fbApi[ask]) == "function" then
+                local okMade, got = pcall(fbApi[ask])
+                fbMade = okMade and got == true
+            end
+            if not fbMade then return "The button is not made yet: it is made outside a fight." end
+            return nil
+        end
+        if slot.needs == "careKey" then
+            local CK = ns.CareKeys
+            if type(CK) ~= "table" then return "There is no care key in this version." end
+            local okCare, care = false, nil
+            if type(k.settings) == "table" then okCare, care = pcall(k.settings.get, k.settings, CK.SETTING) end
+            if not okCare or care ~= true then
+                return "Switch on \"" .. tostring(CK.LABEL) .. "\" first: the care key's button is made only then."
+            end
+            local careApi, careMade = k.careKey, false
+            if type(careApi) == "table" and type(careApi.made) == "function" then
+                local okMade, got = pcall(careApi.made)
+                careMade = okMade and got == true
+            end
+            if not careMade then
+                return "Your care key's button is not made yet: it is made outside a fight with the rotation on."
+            end
+            return nil
+        end
         if slot.needs ~= "mouseover" then return nil end
         local M = ns.Mouseover
         if type(M) ~= "table" then return "There is no mouseover button in this version." end
@@ -352,6 +403,20 @@ function SK.New(k)
         return true
     end
 
+    -- S23 (P-KEYS slice B): the click-casting check's one line
+    -- (UI/ClickCheck.lua), or nil. A read only.
+    local function clickLine()
+        local CC = ns.ClickCheck
+        if type(CC) ~= "table" or client == nil then return nil end
+        local slots = {}
+        for _, slot in ipairs(SK.SLOTS) do
+            slots[#slots + 1] = { label = slot.label, action = action(slot.button), override = keys.overrides[slot.n] }
+        end
+        local ok, line = pcall(function() return CC.Line(CC.Read(client, slots), id.title) end)
+        if ok and type(line) == "string" then return line end
+        return nil
+    end
+
     function keys.rows()
         local lock = lockWhy()
         local byButton = {}
@@ -369,7 +434,8 @@ function SK.New(k)
             local why2 = why
             if why2 == nil then why2 = need end
             out[#out + 1] = {
-                kind = "actions", key = slot.key, label = slot.label, shown = shownOf(slot, held),
+                kind = "bind", key = slot.key, label = slot.label, shown = shownOf(slot, held),
+                bound = has, waiting = keys.capturing == slot.n,
                 group = SK.GROUP, topic = SK.GROUP, synonyms = copyList(slot.synonyms or SK.SYNONYMS),
                 settable = can and need == nil, why = why2, under = under(),
                 actions = {
@@ -389,6 +455,10 @@ function SK.New(k)
                     },
                 }
             end
+        end
+        local click = clickLine()
+        if click ~= nil then
+            out[#out + 1] = { kind = "note", key = SK.CLICK_KEY, text = click, group = SK.GROUP, topic = SK.GROUP }
         end
         return out
     end
@@ -410,6 +480,8 @@ function SK.New(k)
         for _, slot in ipairs(SK.SLOTS) do
             out[#out + 1] = slot.label .. ": " .. shownOf(slot, readKeys(slot.button))
         end
+        local click = clickLine()
+        if click ~= nil then out[#out + 1] = click end
         return out
     end
 

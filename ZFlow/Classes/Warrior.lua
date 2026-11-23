@@ -20,8 +20,6 @@ local _, ns = ...
 -- outside source: each needs a check in the game client.
 --
 -- Not in this pack yet (tasks):
---   * a talent order: talentBuilds is empty, as no capture backs one (one
---     written from memory would be guide-shaped);
 --   * Berserker Rage as a fear breaker: breakers is empty; it needs
 --     Berserker Stance, and whether the fear read names the effect type is
 --     not known yet;
@@ -292,6 +290,20 @@ local pack = {
         }),
     },
 
+    -- G15, lead section 280: the weapon speed each role likes, and why, for
+    -- the speed line on a weapon's tooltip (Gear/WeaponSpeed.lua). "any":
+    -- speed does not matter for the role. Not counted in the score.
+    weaponSpeed = {
+        evidence = GUESS,
+        note = "written for lead section 280 from the game's rules as remembered; no outside source;"
+            .. " not read from the game",
+        dps = { prefer = "slow",
+                why = "Mortal Strike, Whirlwind and Overpower hit for weapon damage, so a slow weapon hits harder"
+                    .. " for the same rage",
+                offhand = { prefer = "fast", why = "more off hand swings bring rage more often" } },
+        tank = { prefer = "fast", why = "more swings to turn into Heroic Strike, so threat comes steadily" },
+    },
+
     -- What the class can equip, by item class and subclass ids.
     -- Armor (4): 0 misc, 1 cloth, 2 leather, 3 mail, 4 plate, 6 shield.
     -- Weapons (2): 0/1 axes, 2 bow, 3 gun, 4/5 maces, 6 polearm, 7/8 swords,
@@ -306,9 +318,30 @@ local pack = {
     spells = spells,
 
     -- Not authored: see the header.
-    talentBuilds = {},
+    talentBuilds = {
+        { name = "Arms levelling build", role = "dps", evidence = GUESS, note = "written for this pack on 2026-11-23 from general knowledge of the class; not read from the game",
+          trees = { "Arms", "Fury", "Protection" },
+          order = {
+              { "Improved Heroic Strike", 3, why = "Heroic Strike costs less rage." },
+              { "Deflection", 2, why = "You parry more, so you take less damage." },
+              { "Improved Charge", 2, why = "Charge gives more rage to start the fight." },
+              { "Tactical Mastery", 3, why = "You keep rage when you change stance, for Overpower and Hamstring." },
+              { "Anger Management", 1, why = "You gain rage slowly even out of a hit." },
+              { "Deep Wounds", 3, why = "Your critical hits make the enemy bleed." },
+              { "Improved Overpower", 1, why = "Overpower lands more critical hits." },
+              { "Two-Handed Weapon Specialization", 5, why = "More damage with the two-handed weapon you level with." },
+              { "Impale", 2, why = "Your critical hits with abilities deal more damage." },
+              { "Sweeping Strikes", 1, why = "Your next few attacks also hit a second enemy." },
+              { "Axe Specialization", 5, why = "More critical hits with an axe." },
+              { "Improved Hamstring", 2, why = "Hamstring now and then roots the enemy, so it cannot run off." },
+              { "Mortal Strike", 1, why = "A heavy strike that also cuts the healing the enemy takes." },
+          },
+        },
+    },
 
     options = {
+        crowdControl = { none = "Intimidating Shout and Hamstring do not hold one chosen second enemy" },
+        threatDrop = { none = "no warrior ability drops threat" },
         -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,
         -- in order: the first you know names your tree (snapshot.tree,
         -- Rotation/Driver.lua). Which spell is a talent of which tree: a first

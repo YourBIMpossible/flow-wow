@@ -46,6 +46,9 @@ PC.NAME = "plateCombo"
 PC.WORD = "combo"
 PC.HELP = "combo points on your target's nameplate: what shows and why; combo on or combo off switches it"
 PC.OFF = "plateCombo.off"
+-- When it appears, in one line (lead section 296): its settings row and the
+-- buttons word say it, so a player who sees nothing can find out why.
+PC.WHEN = "Shows on your target's nameplate while you have combo points (a rogue, or a druid in cat form)."
 PC.TICK = 0.2                         -- seconds between looks while it is wanted
 PC.MAX = 5                            -- sections when the most is not known
 PC.COLOR = { 1.00, 0.96, 0.41 }       -- the game's combo point colour, where it does not say
@@ -205,7 +208,7 @@ function PC.Declare(k, diag)
 
     -- The switch (lead section 178; its model row is in Settings/Model.lua).
     k:Setting({ key = PC.OFF, scope = "account", type = "bool", default = false,
-        label = "Hide combo points on your target's nameplate", group = "combat.plates",
+        label = "Hide combo points on your target's nameplate", group = "combat.plates", help = PC.WHEN,
         synonyms = { "combo points", "nameplate", "rogue", "druid" } })
 
     k:Module({

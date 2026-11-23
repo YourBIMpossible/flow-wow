@@ -9,8 +9,12 @@
 -- Like the diagnostic collector it runs when the load guard has paused the
 -- addon: a paused addon says why on the panel. It only reads, apart from
 -- its own place and shown / hidden flag, kept per account:
---   layout.devPanel = { point = { anchor, relative anchor, x, y }, hidden = true }
--- Both are left out at their defaults. The point has the shape and rules of
+--   layout.devPanel = { point = { anchor, relative anchor, x, y }, shown = true }
+-- Both are left out at their defaults. Hidden unless the player asked for
+-- it with `<slash> panel` (lead section 294). A paused addon shows it, to
+-- say why, unless hidden = true was kept by an earlier version (a panel
+-- the player hid then stays hidden). Hiding it now keeps nothing.
+-- The point has the shape and rules of
 -- the arrows' saved points (Nav/ArrowLayout.lua).
 --
 --   <slash> panel          show or hide it
@@ -25,11 +29,21 @@ DevPanel.DEFAULT_POINT = { "TOPLEFT", "TOPLEFT", 20, -160 }
 DevPanel.PATH = "layout.devPanel"
 DevPanel.REFRESH = 1 -- seconds between rewrites of the text while it is shown
 
--- What is saved, read safely: { point = a usable point or nil, hidden = bool }.
+-- What is saved, read safely: { point = a usable point or nil, shown =
+-- true (asked for), false (hidden by the player) or nil (never chosen) }.
 function DevPanel.Saved(k)
     local raw = k.store:get("account", DevPanel.PATH)
     if type(raw) ~= "table" then raw = {} end
-    return { point = ns.Nav.ClampPoint(raw.point), hidden = raw.hidden == true }
+    local shown = nil
+    if raw.shown == true then shown = true elseif raw.hidden == true then shown = false end
+    return { point = ns.Nav.ClampPoint(raw.point), shown = shown }
+end
+
+-- Whether the panel is hidden for that saved data: hidden unless asked
+-- for, but a paused addon shows it when the player never chose.
+function DevPanel.Hidden(saved, paused)
+    if saved.shown ~= nil then return not saved.shown end
+    return paused ~= true
 end
 
 -- Where the panel stands for that saved data on a screen of that size: the
@@ -110,7 +124,7 @@ function DevPanel.Start(k, diag)
     local function write(saved)
         local value = {}
         if saved.point then value.point = saved.point end
-        if saved.hidden then value.hidden = true end
+        if saved.shown == true then value.shown = true end
         local ok, reason = k.store:set("account", DevPanel.PATH, next(value) and value or nil)
         if not ok then k.problems:add("devpanel", "save", reason) end
         return ok
@@ -119,7 +133,7 @@ function DevPanel.Start(k, diag)
     local function apply()
         ready = true
         local saved = DevPanel.Saved(k)
-        hidden = saved.hidden
+        hidden = DevPanel.Hidden(saved, k.paused)
         panel.place(DevPanel.Position(saved, client.screen()))
         show()
     end
@@ -160,9 +174,9 @@ function DevPanel.Start(k, diag)
                 client.print(id.title .. ": panel back to its first place.")
             elseif rest == "" then
                 local saved = DevPanel.Saved(k)
-                saved.hidden = not saved.hidden
+                hidden = not hidden
+                saved.shown = not hidden
                 write(saved)
-                hidden = saved.hidden
                 show()
                 client.print(id.title .. ": panel " .. (hidden and "hidden." or "shown."))
             else

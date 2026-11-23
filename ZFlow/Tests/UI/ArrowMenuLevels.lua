@@ -16,7 +16,8 @@ local MENUS = {
 }
 
 local function state(over)
-    local s = { stacked = true, hidden = {}, text = {}, styles = A.Styles("modern"), canShapes = true }
+    -- feedback: the feedback is reachable (paused by lead section 284; on here).
+    local s = { stacked = true, hidden = {}, text = {}, styles = A.Styles("modern"), canShapes = true, feedback = true }
     for key, v in pairs(over or {}) do s[key] = v end
     return s
 end
@@ -35,7 +36,9 @@ local function has(t)
 end
 
 local function start()
-    local c = ns.make.fakeClient()
+    -- The feedback row needs the feedback reachable: paused by lead section
+    -- 284, on here through the fake client internal switch and declared.
+    local c = ns.make.fakeClient({ internal = { feedback = true } })
     c.setSaved(ns.id.accountDB, { layout = { arrowIntroSeen = true } })
     c.setScreen(1024, 768)
     c.setZone(1, 1411)
@@ -45,6 +48,7 @@ local function start()
     local k = ns.Kernel({}, c)
     local d = ns.Diag.Start(k)
     local a = A.Declare(k, d)
+    ns.Feedback.Declare(k, d)
     k:Boot()
     c.fire("ADDON_LOADED", ns.id.addon)
     c.fire("PLAYER_LOGIN")
@@ -97,7 +101,9 @@ return {
         local top = M.Level(items)
         local keys = {}
         for i, r in ipairs(top) do keys[i] = r.sep and "-" or r.key end
-        t.eq(keys, { "layout", "show", "style", "-", "settings.travel", "settings", "feedback" })
+        t.eq(keys, { "layout", "show", "style", "dungeons", "-", "settings.travel", "settings", "feedback" })
+        t.eq(rowAt(top, "dungeons").text, T.MENU.dungeons, "lead section 318: the Dungeon Quests window")
+        t.eq(M.Action("dungeons", state()), { window = "dungeonWindow" })
         t.eq(rowAt(top, "feedback").text, T.MENU.feedback, "row N73: the feedback window")
         t.eq(rowAt(top, "layout").text, T.MENU.layout .. M.MORE)
         t.eq(rowAt(top, "layout").more, true)
@@ -146,7 +152,7 @@ return {
         t.ok(type(q.enter) == "function" and type(q.pickRow) == "function", "the fake arrow has submenu rows")
         if type(q.enter) ~= "function" then return end
         q.click("right")
-        t.eq(#q.menuItems, 7)
+        t.eq(#q.menuItems, 8, "seven rows and the Dungeon quests row (lead section 318)")
         t.eq(q.menuDepth, 0)
         t.eq(q.pickRow("separate"), false, "not offered on the top level")
         t.eq(q.enter("settings"), false, "not a submenu row")
@@ -162,7 +168,7 @@ return {
         q.click("right")
         t.eq(q.enter("show"), true)
         t.eq(q.pickRow(M.BACK), true)
-        t.eq(#q.menuItems, 7, "the top level again")
+        t.eq(#q.menuItems, 8, "the top level again (with the Dungeon quests row, lead section 318)")
         t.ok(rowAt(q.menuItems, "layout") ~= nil)
         t.eq(k.problems:count(), 0)
     end,

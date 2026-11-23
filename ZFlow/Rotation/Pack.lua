@@ -26,6 +26,14 @@ local _, ns = ...
 --   keys         { [formName or "none" or "stealth"] = { key, ctrl, shift, alt, more } }
 --   weights      { [role] = { evidence, values = { [stat] = number } } } or nil per role
 --   proficiency  { evidence, [itemClass] = { [subclass] = true or n } }  n: from level n
+--   weaponSpeed  { evidence, [role] = { prefer, why, ranged = { prefer, why },
+--                offhand = { prefer, why } } }: an entry for every role with
+--                weights (lead section 280). prefer: "slow", "medium", "fast",
+--                or "any" when speed does not matter for the role; why: the
+--                reason, in words. ranged and offhand are optional parts for
+--                a weapon of the ranged slot and one that only goes in the
+--                off hand (Gear/WeaponSpeed.lua). Shown on a weapon's
+--                tooltip; never counted in a score.
 --   spells       { [name] = { evidence, level, improves, needs, note } }
 --   talentBuilds { { name, role, evidence, order = { { "Talent", ranks, why = "..." }, ... } }, ... }
 --     (why is optional; a reason given must be words, section 242)
@@ -44,8 +52,11 @@ local P = ns.Pack
 
 P.KEYS = {
     "provenance", "roles", "resources", "maintain", "lists", "groups", "heals", "interrupts",
-    "breakers", "dispels", "keys", "weights", "proficiency", "spells", "talentBuilds", "options",
+    "breakers", "dispels", "keys", "weights", "proficiency", "weaponSpeed", "spells", "talentBuilds",
+    "options",
 }
+P.SPEEDS = { slow = true, medium = true, fast = true, any = true }
+P.SPEED_PARTS = { "ranged", "offhand" }
 P.PROVENANCE_KEYS = { "author", "date", "method", "facts" }
 P.EVIDENCE = { ["observed"] = true, ["first guess"] = true, ["authored"] = true }
 -- P-PARTY: what a group row's `who` may name: the kinds Rotation/GroupTip.lua
@@ -117,6 +128,16 @@ local function checkNames(pack, names, where, problems)
             needSpell(pack, name, string.format("%s[%d]", where, i), problems)
         end
     end
+end
+
+-- One weaponSpeed entry, or one of its parts: a speed and a reason in words.
+local function checkSpeed(row, where, problems)
+    if type(row) ~= "table" then
+        add(problems, "%s: no entry", where)
+        return
+    end
+    if not P.SPEEDS[row.prefer] then add(problems, "%s: no preferred speed", where) end
+    if type(row.why) ~= "string" or row.why == "" then add(problems, "%s: no reason", where) end
 end
 
 -- ns.PackCheck(pack) -> ok, problems
@@ -217,6 +238,12 @@ function ns.PackCheck(pack)
         end
     end
 
+    -- PRIEST-1, SHAMAN-1 (P-KEYS slice A): the care rows name spells too.
+    if type(pack.care) == "table" then
+        checkNames(pack, pack.care.friend, "care.friend", problems)
+        if pack.care.revive ~= nil then needSpell(pack, pack.care.revive, "care.revive", problems) end
+    end
+
     if type(pack.keys) == "table" then
         for form, row in pairs(pack.keys) do
             if type(row) == "table" then
@@ -256,6 +283,24 @@ function ns.PackCheck(pack)
         end
     end
     if type(pack.proficiency) == "table" then checkEvidence(pack.proficiency, "proficiency", problems) end
+    -- Lead section 280: every role with weights says its weapon speed.
+    if type(pack.weaponSpeed) == "table" then
+        checkEvidence(pack.weaponSpeed, "weaponSpeed", problems)
+        local weights = {}
+        if type(pack.weights) == "table" then weights = pack.weights end
+        for role, row in pairs(weights) do
+            if type(role) == "string" and type(row) == "table" then
+                local where = "weaponSpeed." .. role
+                local entry = pack.weaponSpeed[role]
+                checkSpeed(entry, where, problems)
+                if type(entry) == "table" then
+                    for _, part in ipairs(P.SPEED_PARTS) do
+                        if entry[part] ~= nil then checkSpeed(entry[part], where .. "." .. part, problems) end
+                    end
+                end
+            end
+        end
+    end
 
     table.sort(problems)
     return #problems == 0, problems

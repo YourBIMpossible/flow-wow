@@ -75,6 +75,8 @@ T.MENU = {
     back = "Back",
     settings = "All settings",
     feedback = "Feedback",
+    -- Lead section 318: the Dungeon Quests window (UI/DungeonWindow.lua).
+    dungeons = "Dungeon quests",
     topicSettings = " settings",
 }
 -- The most rows one level of any menu may hold, headings, dividers and the
