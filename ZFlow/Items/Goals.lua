@@ -38,7 +38,8 @@ local _, ns = ...
 --
 -- ADVICE DATA ONLY. Nothing here deposits, withdraws, moves, sells, buys or
 -- uses anything; the source adds no event and no window. A change made with
--- the word calls Reservations.Changed, so an open sell list relists with it.
+-- the word calls Reservations.Changed, so an open sell or bank list relists
+-- with it.
 -- Not tested in game.
 
 local Goals = {}
