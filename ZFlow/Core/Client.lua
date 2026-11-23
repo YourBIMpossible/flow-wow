@@ -8181,8 +8181,25 @@ function ns.make.client(env)
             dragging = true
             method(target, "StartMoving")
         end)
-        method(grip, "SetScript", "OnDragStop", function()
+        -- SC-3: a drag that ends while the lock is on does not stop the
+        -- protected frame then; it waits for PLAYER_REGEN_ENABLED and stops
+        -- it once the lock answers a plain false.
+        local waitStop
+        local onStop
+        onStop = function()
             if not dragging then return end
+            if not unlocked() then
+                if waitStop == nil then
+                    waitStop = c.listen("PLAYER_REGEN_ENABLED", function()
+                        if not unlocked() then return end
+                        local cancel = waitStop
+                        waitStop = nil
+                        if type(cancel) == "function" then cancel() end
+                        onStop()
+                    end)
+                end
+                return
+            end
             dragging = false
             method(target, "StopMovingOrSizing")
             method(target, "SetUserPlaced", false)
@@ -8190,7 +8207,8 @@ function ns.make.client(env)
             if not okP or type(a) ~= "string" or type(x) ~= "number" or type(y) ~= "number" then return end
             if type(r) ~= "string" then r = a end
             if type(spec.onMoved) == "function" then pcall(spec.onMoved, { a, r, x, y }) end
-        end)
+        end
+        method(grip, "SetScript", "OnDragStop", onStop)
         local h = {}
         function h.show(on)
             if not unlocked() then return false, "lockdown" end
