@@ -58,9 +58,24 @@ local kept   -- { client, pack, at, value }
 --            spell is already active", UI_ERROR_MESSAGE right after your
 --            cast of it on them): counted as up for G.BOUNCE seconds
 G.BOUNCE = 300
-G.BOUNCE_TEXT = "more powerful spell"
+-- Lead section 248 PP2-1: the refusal is the client's own text of this
+-- name, as Flow compared it (Engine.lua:1084-1101 at a529eea); no English is
+-- written here. Not given: no refusal is known, and nothing is kept.
+G.BOUNCE_GLOBAL = "SPELL_FAILED_AURA_BOUNCED"
 G.SENT_WINDOW = 2
 local memory, bounced, sent, last = {}, {}, {}, nil
+-- Lead section 248 PP2-2: the members of the last read, by the name a cast
+-- names them with ("Name", or "Name-Realm" for another realm), to the key
+-- memory is kept under: their GUID where it was read, else that full name.
+-- false: two members answer to the name, so it is nobody's. Memory only.
+local roster = {}
+
+local function fullName(m)
+    local name, realm = m.name, m.realm
+    if type(name) ~= "string" or name == "" then return nil end
+    if type(realm) == "string" and realm ~= "" then return name .. "-" .. realm end
+    return name
+end
 
 local function noted(store, name, spell)
     local byName = store[name]
@@ -113,8 +128,7 @@ end
 -- What you remember of this member and spell, over what the read gave:
 -- refused a moment ago (up); else, their buffs not known, your own cast's
 -- time left. A read "missing" stays missing unless the game refused it.
-local function remembered(row, rule, now)
-    local name = row.name
+local function remembered(row, rule, now, name)
     if type(name) ~= "string" or type(now) ~= "number" then return end
     local refusedAt = noted(bounced, name, rule.spell)
     if type(refusedAt) == "number" and now - refusedAt < G.BOUNCE then
@@ -160,7 +174,7 @@ local function readMember(client, m, pack, ids)
                 elseif ok and up == false then
                     row.has[rule.spell] = false
                 end
-                remembered(row, rule, clock(client))
+                remembered(row, rule, clock(client), text(m.guid) or fullName(m))
             end
         end
     end
@@ -182,12 +196,22 @@ end
 local function readParty(client, pack, ids)
     local ok, list = pcall(client.party)
     if not ok or type(list) ~= "table" then return nil end
-    local out = {}
+    local out, names = {}, {}
     for _, m in ipairs(list) do
         if type(m) == "table" and type(m.unit) == "string" and m.unit ~= "" then
             out[#out + 1] = readMember(client, m, pack, ids)
+            local full = fullName(m)
+            if full then
+                if names[full] == nil then
+                    local key = text(m.guid) or full
+                    names[full] = key
+                else
+                    names[full] = false
+                end
+            end
         end
     end
+    roster = names
     return out
 end
 
@@ -364,6 +388,7 @@ function G.Declare(k)
             ctx = c
             kept = nil
             memory, bounced, sent, last = {}, {}, {}, nil
+            roster = {}
             -- Someone joined or left: read the group again at once.
             c.bus:on(G.NAME, "GROUP_ROSTER_UPDATE", function() kept = nil end)
             -- 243 item 5: your casts on others, and the game's refusal.
@@ -373,9 +398,15 @@ function G.Declare(k)
                 if type(c.client.spellName) ~= "function" then return end
                 local ok, spell = pcall(c.client.spellName, spellID)
                 if not ok or type(spell) ~= "string" or spell == "" then return end
+                -- 248 PP2-2: whom, by the key their memory is kept under.
+                local key = roster[target]
+                if type(key) ~= "string" then
+                    last = nil
+                    return
+                end
                 local at = now()
-                if castGUID ~= nil then sent[castGUID] = { name = target, spell = spell } end
-                last = { name = target, spell = spell, at = at }
+                if castGUID ~= nil then sent[castGUID] = { name = key, spell = spell } end
+                last = { name = key, spell = spell, at = at }
             end)
             c.bus:on(G.NAME, "UNIT_SPELLCAST_SUCCEEDED", function(unit, castGUID)
                 if unit ~= "player" or castGUID == nil then return end
@@ -387,10 +418,13 @@ function G.Declare(k)
                 kept = nil
             end)
             c.bus:on(G.NAME, "UI_ERROR_MESSAGE", function(...)
+                -- 248 PP2-1: the client's own text, compared whole; none given: no refusal.
+                if type(c.client.globalText) ~= "function" then return end
+                local okText, want = pcall(c.client.globalText, G.BOUNCE_GLOBAL)
+                if not okText or type(want) ~= "string" or want == "" then return end
                 local said = false
                 for i = 1, select("#", ...) do
-                    local v = select(i, ...)
-                    if type(v) == "string" and v:lower():find(G.BOUNCE_TEXT, 1, true) then said = true end
+                    if select(i, ...) == want then said = true end
                 end
                 local at = now()
                 if not said or type(last) ~= "table" or type(at) ~= "number" or type(last.at) ~= "number" then return end

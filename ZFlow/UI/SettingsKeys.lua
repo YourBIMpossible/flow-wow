@@ -33,10 +33,10 @@ local _, ns = ...
 --     keys.attach(client, status)   status(text) redraws the page with text
 --     keys.rows() -> the page rows: { kind = "actions", key, label, shown,
 --                    group, topic, synonyms, settable, why, under,
---                    buttons = { { text, id, enabled } } } per slot, and the
+--                    actions = { { key, label, enabled } } } per slot, and the
 --                    question row (key SK.IN_USE_KEY) under the slot asked
 --     keys.matches(query) -> true when a search finds the rows
---     keys.press(id)   a button of the rows was clicked
+--     keys.press(id)   a button of the rows was clicked (ids start "keys.")
 --     keys.lines() -> "label: shown" for the text page
 -- Fake client only; not tested in game.
 local SK = {}
@@ -279,7 +279,8 @@ function SK.New(k)
     end
 
     function keys.press(what)
-        if type(what) ~= "string" then return false end
+        if type(what) ~= "string" or what:sub(1, 5) ~= "keys." then return false end
+        what = what:sub(6)
         local verb, n = what:match("^(%a+):(%d+)$")
         n = tonumber(n)
         if verb == "set" and slotOf(n) then
@@ -313,9 +314,9 @@ function SK.New(k)
                 kind = "actions", key = slot.key, label = slot.label, shown = shownOf(slot.n, held),
                 group = SK.GROUP, topic = SK.GROUP, synonyms = copyList(SK.SYNONYMS),
                 settable = can, why = why, under = under(),
-                buttons = {
-                    { text = SK.SET, id = "set:" .. slot.n, enabled = can },
-                    { text = SK.CLEAR, id = "clear:" .. slot.n, enabled = can and has },
+                actions = {
+                    { key = "keys.set:" .. slot.n, label = SK.SET, enabled = can },
+                    { key = "keys.clear:" .. slot.n, label = SK.CLEAR, enabled = can and has },
                 },
             }
             local p = keys.pending
@@ -323,10 +324,10 @@ function SK.New(k)
                 out[#out + 1] = {
                     kind = "actions", key = SK.IN_USE_KEY, label = inUseText(p),
                     group = SK.GROUP, topic = SK.GROUP, settable = can, why = why,
-                    buttons = {
-                        { text = SK.ANYWAY, id = "anyway", enabled = can },
-                        { text = SK.UNBIND, id = "unbind", enabled = can },
-                        { text = SK.OTHER, id = "other", enabled = can },
+                    actions = {
+                        { key = "keys.anyway", label = SK.ANYWAY, enabled = can },
+                        { key = "keys.unbind", label = SK.UNBIND, enabled = can },
+                        { key = "keys.other", label = SK.OTHER, enabled = can },
                     },
                 }
             end

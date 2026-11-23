@@ -66,8 +66,8 @@ end
 
 local function buttonOf(r, text)
     if type(r) ~= "table" then return nil end
-    for _, b in ipairs(r.buttons or {}) do
-        if b.text == text then return b end
+    for _, b in ipairs(r.actions or {}) do
+        if b.label == text then return b end
     end
     return nil
 end
@@ -76,7 +76,7 @@ end
 local function click(c, key, text)
     local b = buttonOf(rowOf(c, key), text)
     if not b or b.enabled ~= true then return false end
-    c.optionsNav("action", b.id)
+    c.optionsNav("action", b.key)
     return true
 end
 
@@ -185,10 +185,10 @@ tests["keys workflow: refused in combat and with the lock not read; nothing open
         if lock == true then c.setLockdown(true) else c.setLockdown(nil) end
         local why = lock == true and S.LOCKED or S.LOCK_UNKNOWN
         local set = buttonOf(rowOf(c, KEY1), S.SET)
-        c.optionsNav("action", set.id)
+        c.optionsNav("action", set.key)
         t.eq(c.keyCaptureOpen(), false, tostring(lock) .. ": no overlay")
         t.ok(says(c, why), tostring(lock) .. ": " .. status(c))
-        c.optionsNav("action", buttonOf(rowOf(c, KEY1), S.CLEAR).id)
+        c.optionsNav("action", buttonOf(rowOf(c, KEY1), S.CLEAR).key)
         t.eq(c.bindingMap().F, ACTION, tostring(lock) .. ": not cleared")
         t.eq(buttonOf(rowOf(c, KEY1), S.SET).enabled, false, tostring(lock) .. ": the buttons are greyed")
     end
@@ -282,7 +282,7 @@ tests["keys workflow (a): a binding read answering nil shows not known and refus
     open(c)
     t.eq(shown(c, KEY1), S.NOT_KNOWN, "never not set, never a guess")
     t.eq(buttonOf(rowOf(c, KEY1), S.SET).enabled, false)
-    c.optionsNav("action", buttonOf(rowOf(c, KEY1), S.SET).id)
+    c.optionsNav("action", buttonOf(rowOf(c, KEY1), S.SET).key)
     t.eq(c.keyCaptureOpen(), false)
     t.ok(says(c, S.UNREAD), status(c))
     t.eq(c.bindingCalls(), {})

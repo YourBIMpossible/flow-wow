@@ -170,4 +170,5 @@ Items\Trader.lua
 Nav\Try.lua
 Rotation\Gather.lua
 Rotation\Group.lua
+Rotation\Mouseover.lua
 UI\BossLoot.lua

@@ -698,7 +698,7 @@ function B.Declare(k, packs)
     -- fn (when given) first, then a look. same = true: the event changes
     -- who is fought, not what is known of the drops, so a list already
     -- worked out for the same boss stands.
-    local function on(event, fn, same)
+    local function listen(event, fn, same)
         ctx.bus:on(B.NAME, event, function(...)
             if fn then
                 local ok, err = pcall(fn, ...)
@@ -768,6 +768,10 @@ function B.Declare(k, packs)
         ticks = { { every = B.TICK, when = "always", run = function() evaluate() end } },
         start = function(c)
             ctx = c
+            -- What each event does; they are registered from B.EVENTS below,
+            -- the one list (MyBuddy PT-1): an event missing from it is not heard.
+            local handlers = {}
+            local function on(event, fn, same) handlers[event] = { fn = fn, same = same } end
             on("ENCOUNTER_START", function(id, name)
                 win = nil
                 if finite(id) then enc = { id = id, name = words(name) and name or nil } end
@@ -796,6 +800,10 @@ function B.Declare(k, packs)
                 local link = read("lootLine", line)
                 if link ~= nil then teach(to.key, link) end
             end)
+            for _, event in ipairs(B.EVENTS) do
+                local h = handlers[event]
+                if h then listen(event, h.fn, h.same) end
+            end
             if type(c.client.onLootRoll) == "function" then
                 local ok, cancel = pcall(c.client.onLootRoll, function(_, link)
                     -- Reads the item offered. Never rolls, and shows nothing on the roll.

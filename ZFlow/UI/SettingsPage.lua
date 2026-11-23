@@ -375,3 +375,64 @@ function P.Set(k, key, value)
     if k.settings:get(row.key) ~= value then return false, "it did not read back as saved" end
     return true
 end
+
+-- The page's own two buttons (row N57; legacy Flow's page had them at its
+-- foot, Modules/Settings.lua :884 and :900).
+--   SettingsPage.Actions(k) -> { { key = "suggest", label }, { key = "keep", label } }
+--   SettingsPage.Act(k, key) -> how many settings changed, and what to say;
+--     nil for a key that is no action.
+--     "suggest"  every entry of UI/Setup.lua's Setup.SUGGESTIONS whose row
+--                exists and holds another value is set through Set above
+--                (the row's type, limits, availability and the model's
+--                check all apply; a refusal is counted and changes
+--                nothing). With no suggestions it says so and does nothing
+--                more. Otherwise this character is marked as offered
+--                (Setup.OFFERED_PATH), so the advisor does not offer them
+--                again.
+--     "keep"     no setting changes; the character is marked the same way.
+P.NO_SUGGESTIONS = "There are no suggestions yet; nothing changed."
+P.ALREADY = "Your settings already match the suggestions; nothing changed."
+P.KEPT = "Your settings stay as they are."
+P.CHANGED = " setting(s) changed to the suggestions"
+P.REFUSED = " could not be set"
+
+function P.Actions(k)
+    local id = k.id or ns.id
+    return {
+        { key = "suggest", label = "Use " .. tostring(id.title) .. "'s suggestions" },
+        { key = "keep", label = "Keep my settings" },
+    }
+end
+
+local function markOffered(k)
+    local Setup = ns.Setup
+    if type(Setup) ~= "table" or type(Setup.OFFERED_PATH) ~= "string" then return end
+    local ok, why = k.store:set("char", Setup.OFFERED_PATH, true)
+    if not ok then k.problems:add("settings", "offered", why) end
+end
+
+function P.Act(k, key)
+    if key ~= "suggest" and key ~= "keep" then return nil end
+    if not loaded(k) then return 0, P.NOT_LOADED end
+    if key == "keep" then
+        markOffered(k)
+        return 0, P.KEPT
+    end
+    local Setup = ns.Setup
+    local list = {}
+    if type(Setup) == "table" and type(Setup.SUGGESTIONS) == "table" then list = Setup.SUGGESTIONS end
+    if #list == 0 or type(Setup.Pick) ~= "function" then return 0, P.NO_SUGGESTIONS end
+    local changed, refused = 0, 0
+    for i = 1, #list do
+        -- Setup.Pick says whether the entry is sound, has a row and differs.
+        local pick = Setup.Pick(k.settings, { list[i] })[1]
+        if pick then
+            if P.Set(k, pick.key, pick.value) then changed = changed + 1 else refused = refused + 1 end
+        end
+    end
+    markOffered(k)
+    if changed == 0 and refused == 0 then return 0, P.ALREADY end
+    local said = changed .. P.CHANGED
+    if refused > 0 then said = said .. "; " .. refused .. P.REFUSED end
+    return changed, said .. "."
+end
