@@ -48,6 +48,16 @@ end
 -- A few frames, enough for any index and search of the small data here.
 local function settle(c) c.advance(1, 30) end
 
+-- The problems of the macro icon search only: other modules of the add-on
+-- note their own on this bare fake (a cast read, a tooltip hook).
+local function ours(addon)
+    local n = 0
+    for _, e in ipairs(addon.problems:list()) do
+        if e.kind == "macro icons" or e.owner == "macroIcons" then n = n + 1 end
+    end
+    return n
+end
+
 local function said(c, text)
     local n = 0
     for _, line in ipairs(c.printed) do
@@ -69,7 +79,7 @@ tests["macro icons: the box comes when the macro window loads, before or after l
     local c2, addon2 = boot()
     if not ready(t, c2, addon2) then return end
     t.ok(type(popup(c2).box) == "table", "loaded before login: the box at once")
-    t.eq(addon2.problems:count(), 0)
+    t.eq(ours(addon2), 0)
 end
 
 tests["macro icons: typing filters the grid by spell, item and file name; a click selects; clearing restores"] = function(t)
@@ -88,7 +98,7 @@ tests["macro icons: typing filters the grid by spell, item and file name; a clic
     settle(c)
     t.eq(p.visible(), ICONS, "cleared: every icon again")
     t.eq(p.box.hint == nil or p.box.hint == "", true, "no hint on an empty box")
-    t.eq(addon.problems:count(), 0)
+    t.eq(ours(addon), 0)
 end
 
 tests["macro icons: the index is built on first use of the box, not before, and again after the window reopens"] = function(t)
@@ -165,7 +175,7 @@ tests["macro icons: a name missing on the client, no box, and diag says why"] = 
     t.eq(popup(c), nil, "no window handle")
     c.slashes[ns.id.slash]("diag")
     t.eq(said(c, ns.id.title .. ": macro icon search: not added: missing IconDataProviderMixin."), 1)
-    t.eq(addon.problems:count(), 0, "a missing name is not a problem of the add-on")
+    t.eq(ours(addon), 0, "a missing name is not a problem of the add-on")
 end
 
 tests["macro icons: diag says how far the search got"] = function(t)
@@ -246,13 +256,13 @@ tests["macro icons: a spellbook read that raises keeps the item matches and is o
         c0.spellbookIcons = function() error("spellbook boom") end
     end })
     if not ready(t, c, addon) then return end
-    local start = addon.problems:count()
+    local start = ours(addon)
     local p = popup(c)
     p.open()
     p.type("fire")
     settle(c)
     t.eq(p.visible(), { 201, FIRE_FILE }, "items and file names still found")
-    t.eq(addon.problems:count(), start + 1, "one problem")
+    t.eq(ours(addon), start + 1, "one problem")
     c.spellbookIcons = real
     p.close()
     settle(c)

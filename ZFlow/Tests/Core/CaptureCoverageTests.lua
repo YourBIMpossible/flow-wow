@@ -21,7 +21,9 @@ local KIND = {
                "watchAuctionResults", "onUnitTooltip", "watchAuctionRows", "onSystemMessage" },
     show = { "print", "panel", "minimapPin", "copyBox", "icon", "arrow", "windowButton", "secureButton",
              "optionsPage", "guideLines", "taxiMark", "mapPins", "comboBar", "slotIcon",
-             "markMerchantButtons", "rowPanel", "textEntry" },
+             "markMerchantButtons", "rowPanel", "textEntry",
+             -- N72 (section 248 item 4): the macro icon window; shows a list on it.
+             "macroPopup" },
     tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "slash",
              "slashTaken", "unslash" },
     -- Hands back or runs a sound restart: never asked by the capture.
@@ -72,6 +74,8 @@ local READS = {
     -- types on you or one of them; read by the rotation only. Their names
     -- (UnitIsConnected and the rest) are in Diag.NAMES, which the capture asks.
     party = false, reach = false, unitDebuffTypes = false,
+    -- N72: the spells for the macro icon search; the capture asks none.
+    spellbookIcons = false,
 
     -- N55 (the boss loot panel): the boss unit and whether you are in an
     -- instance; read by UI/BossLoot.lua only. The names they ask
