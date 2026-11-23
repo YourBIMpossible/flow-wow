@@ -540,8 +540,17 @@ function Crossings.Declare(k)
         local me = { cont = zone.cont, map = pos.map, x = pos.x, y = pos.y }
         if not whole(me) or me.cont == place.cont then return nil end
         local target = { cont = place.cont, map = place.map, x = place.x, y = place.y }
+        -- A travel preview (Nav/Try.lua, <slash> try crossing) hands in a
+        -- made-up crossing, in memory only: it is used here in place of the
+        -- saved ones and never saved (api.sample reads only saved()).
+        local list = saved()
+        local okTry, try = pcall(function() return k.use and k.use("try") or nil end)
+        if okTry and type(try) == "table" and type(try.Crossings) == "function" then
+            local okList, made = pcall(try.Crossings)
+            if okList and type(made) == "table" then list = made end
+        end
         local steps = N.CrossingSteps({
-            list = saved(), me = me, faction = ask(client, "faction"),
+            list = list, me = me, faction = ask(client, "faction"),
             apart = N.CrossingApart(function(map) return ask(client, "mapSize", map) end),
             waiting = { [target.cont] = { steps = { { place = target } }, targets = { target } } },
         })
