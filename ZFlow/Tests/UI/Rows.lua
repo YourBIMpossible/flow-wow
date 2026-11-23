@@ -44,21 +44,20 @@ return {
         end
     end,
 
-    -- Lead section 294 item 3: the merchant window's button is on unless the
-    -- player turned it off. Before that flip row("buttons.merchant").default
-    -- and get("buttons.merchant") were both false here.
-    ["rows: the welcome is on for this character; for the account the map button is off, the merchant's on"] = function(t)
+    -- Both window buttons are on unless the player turned one off: the
+    -- world map's by default-on, the merchant's by lead section 294 item 3.
+    ["rows: the welcome is on for this character; for the account both window buttons are on"] = function(t)
         local k, c = kernel()
         R.Declare(k)
         t.eq(k.settings:row("ui.intro").scope, "char")
         t.eq(k.settings:row("ui.intro").default, true)
         t.eq(k.settings:row("buttons.worldMap").scope, "account")
-        t.eq(k.settings:row("buttons.worldMap").default, false)
+        t.eq(k.settings:row("buttons.worldMap").default, true)
         t.eq(k.settings:row("buttons.merchant").scope, "account")
         t.eq(k.settings:row("buttons.merchant").default, true)
         login(k, c)
         t.eq(k.settings:get("ui.intro"), true)
-        t.eq(k.settings:get("buttons.worldMap"), false)
+        t.eq(k.settings:get("buttons.worldMap"), true)
         t.eq(k.settings:get("buttons.merchant"), true)
     end,
 
@@ -76,9 +75,9 @@ return {
         t.eq(buttons.state().merchant, "off")
     end,
 
-    -- At a default profile the merchant window has its button, and the
-    -- world map none. Before the flip no button was made (#c.windowButtons 0).
-    ["rows: at a default profile the merchant button is made, and only that one"] = function(t)
+    -- At a default profile both windows have their button. Before the
+    -- merchant flip only the world map's was made.
+    ["rows: at a default profile both window buttons are made"] = function(t)
         local k, c = kernel()
         R.Declare(k)
         c.setWindow("WorldMapFrame", {})
@@ -88,11 +87,14 @@ return {
         k:Module({ name = "sellList", provides = { Show = function() shown = shown + 1 end } })
         local buttons = ns.WindowButtons.Declare(k)
         login(k, c)
-        t.eq(#c.windowButtons, 1, "one button")
-        t.eq(c.windowButtons[1] and c.windowButtons[1].frame, "MerchantFrame")
-        t.eq(c.windowButtons[1] and c.windowButtons[1].shown, true)
-        t.eq(buttons.state(), { worldMap = "off", merchant = "shown" })
-        for _, b in ipairs(c.windowButtons) do b.click() end
+        t.eq(#c.windowButtons, 2, "two buttons")
+        local merchant = nil
+        for _, b in ipairs(c.windowButtons) do
+            if b.frame == "MerchantFrame" then merchant = b end
+        end
+        t.eq(merchant and merchant.shown, true, "the merchant window has its button")
+        t.eq(buttons.state(), { worldMap = "shown", merchant = "shown" })
+        if merchant then merchant.click() end
         t.eq(shown, 1, "the click shows the sell list")
     end,
 
@@ -138,7 +140,9 @@ return {
     end,
 
     ["rows: a button row turned on makes that button, and only that one"] = function(t)
-        local k, c = kernel({ account = { settings = { buttons = { merchant = true } } } })
+        -- The world map button is on by default (lead section 294): saved off
+        -- here, so only the row turned on makes a button.
+        local k, c = kernel({ account = { settings = { buttons = { merchant = true, worldMap = false } } } })
         R.Declare(k)
         c.setWindow("WorldMapFrame", {})
         c.setWindow("MerchantFrame", {})

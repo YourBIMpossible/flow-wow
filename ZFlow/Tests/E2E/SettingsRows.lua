@@ -73,15 +73,14 @@ tests["the rows the features left to the lead can be set and read back"] = funct
     end
 end
 
--- Lead section 294 item 3: the merchant window's button starts on (it was
--- off: get("buttons.merchant") gave false here); the world map's stays off.
-tests["the window buttons' settings are rows: the world map's starts off, the merchant's on"] = function(t)
+-- Lead section 294 item 3 turns the merchant window's button on (it was off);
+-- Plexy's default-on turned the world map's on (it was off). Both start on.
+tests["the window buttons' settings are rows, and both start on"] = function(t)
     local addon = boot()
     for _, key in ipairs({ "buttons.worldMap", "buttons.merchant" }) do
         t.ok(addon.settings:row(key) ~= nil, key .. " is a row")
+        t.eq(addon.settings:get(key), true, key .. " starts on")
     end
-    t.eq(addon.settings:get("buttons.worldMap"), false, "buttons.worldMap starts off")
-    t.eq(addon.settings:get("buttons.merchant"), true, "buttons.merchant starts on")
 end
 
 tests["a merchant button saved off stays off in the loaded add-on"] = function(t)

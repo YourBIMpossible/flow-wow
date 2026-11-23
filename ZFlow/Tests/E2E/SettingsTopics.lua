@@ -216,7 +216,7 @@ local BEFORE = {
     ["nav.taxiMark"] = { "account", "bool", true },
     ["nav.learnLegs"] = { "account", "bool", true },
     ["nav.repairStep"] = { "account", "bool", true },
-    ["rotation.enabled"] = { "char", "bool", false },
+    ["rotation.enabled"] = { "char", "bool", true },
     ["rotation.recoverBuffFood"] = { "account", "bool", true },
     ["rotation.formSpells"] = { "account", "bool", true },
     ["rotation.gatherTracking"] = { "char", "bool", true },
@@ -234,8 +234,9 @@ local BEFORE = {
     ["rotationIcon.layout"] = { "account", "table", nil, "layout.rotationIcon" },
     ["rotationQueue.enabled"] = { "account", "bool", true },
     ["ui.intro"] = { "char", "bool", true },
-    ["buttons.worldMap"] = { "account", "bool", false },
-    -- Lead section 294 item 3: on by default (it was false here).
+    -- Both on by default: the world map's (default-on) and the merchant's
+    -- (lead section 294 item 3).
+    ["buttons.worldMap"] = { "account", "bool", true },
     ["buttons.merchant"] = { "account", "bool", true },
     ["plateCombo.off"] = { "account", "bool", false },
     ["plateThreat.off"] = { "account", "bool", false },

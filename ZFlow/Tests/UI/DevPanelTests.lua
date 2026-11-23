@@ -7,11 +7,14 @@ local P = ns.DevPanel
 local PATH = "devPanel" -- under the account table's layout
 
 -- opts: saved (the account table to start from), screen = { w, h },
--- predecessor (pause the addon), noFrames, noDiag.
+-- predecessor (pause the addon), noFrames, noDiag, shown (a player who
+-- asked for the panel: lead section 294 hides it until then).
 local function start(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
-    if opts.saved then c.setSaved(ns.id.accountDB, opts.saved) end
+    local saved = opts.saved
+    if opts.shown then saved = { layout = { [PATH] = { shown = true } } } end
+    if saved then c.setSaved(ns.id.accountDB, saved) end
     if opts.screen then c.setScreen(opts.screen[1], opts.screen[2]) end
     if opts.predecessor then c.setLoaded(ns.id.predecessor, true) end
     if opts.noFrames then c.setFrames(false) end
@@ -41,7 +44,9 @@ local function has(lines, text)
 end
 
 return {
-    ["first run: hidden until login, then shown at the default point, nothing saved"] = function(t)
+    -- Lead section 294: the dev panel is for development. A player who has
+    -- not asked for it (`/zflow panel`) does not see it.
+    ["first run: hidden, placed at the default point at login, nothing saved"] = function(t)
         local _, c, p = start({ screen = { 1024, 768 } })
         t.eq(#c.panels, 1)
         t.eq(c.panels[1].spec, { name = ns.id.framePrefix .. "DevPanel", width = P.WIDTH, height = P.HEIGHT })
@@ -49,16 +54,16 @@ return {
         t.eq(p.panel.point, nil, "no place before saved data is in")
         t.eq(c.savedExists(ns.id.accountDB), false, "nothing is read or written before login")
         login(c)
-        t.eq(p.panel.shown, true)
+        t.eq(p.panel.shown, false, "not asked for: not shown")
         t.eq(p.panel.point, P.DEFAULT_POINT)
-        t.eq(savedPanel(c), nil, "showing it at the default saves nothing")
+        t.eq(savedPanel(c), nil, "the default saves nothing")
     end,
 
     ["drag: the new point is saved and the next start restores it"] = function(t)
-        local _, c, p = start({ screen = { 1024, 768 } })
+        local _, c, p = start({ screen = { 1024, 768 }, shown = true })
         login(c)
         p.panel.drag({ "CENTER", "CENTER", 30, -40 })
-        t.eq(savedPanel(c), { point = { "CENTER", "CENTER", 30, -40 } })
+        t.eq(savedPanel(c), { point = { "CENTER", "CENTER", 30, -40 }, shown = true })
         local _, c2, p2 = start({ screen = { 1024, 768 }, saved = c.saved(ns.id.accountDB) })
         login(c2)
         t.eq(p2.panel.point, { "CENTER", "CENTER", 30, -40 })
@@ -78,7 +83,7 @@ return {
         login(c)
         p.panel.drag({ "NOWHERE", "CENTER", 1, 1 })
         p.panel.drag({ "CENTER", "CENTER", 0 / 0, 1 })
-        t.eq(savedPanel(c), nil)
+        t.eq(savedPanel(c), nil, "nothing was saved before, nothing now")
     end,
 
     ["drag: before login nothing is saved"] = function(t)
@@ -109,39 +114,48 @@ return {
         local _, c, p = start({ screen = { 1024, 768 }, saved = db })
         login(c)
         t.eq(p.panel.point, P.DEFAULT_POINT)
-        t.eq(p.panel.shown, true)
+        t.eq(p.panel.shown, false, "an odd flag is no request to see it")
         local _, c2, p2 = start({ saved = { layout = { [PATH] = 7 } } })
         login(c2)
         t.eq(p2.panel.point, P.DEFAULT_POINT)
     end,
 
-    ["slash: panel hides and shows, saved, and a hidden panel stays hidden next start"] = function(t)
+    ["slash: panel shows it, saved, and a shown panel is shown next start; again hides it"] = function(t)
         local _, c, p = start({ screen = { 1024, 768 } })
         login(c)
         local run = c.slashes[ns.id.slash]
         run("panel")
-        t.eq(p.panel.shown, false)
-        t.eq(savedPanel(c), { hidden = true })
-        t.ok(c.printed[#c.printed]:find("hidden", 1, true), c.printed[#c.printed])
+        t.eq(p.panel.shown, true, "asked for")
+        t.eq(savedPanel(c), { shown = true })
+        t.ok(c.printed[#c.printed]:find("shown", 1, true), c.printed[#c.printed])
         local _, c2, p2 = start({ saved = c.saved(ns.id.accountDB) })
         login(c2)
-        t.eq(p2.panel.shown, false)
+        t.eq(p2.panel.shown, true, "kept")
         run(" PANEL ")
-        t.eq(p.panel.shown, true)
-        t.eq(savedPanel(c), nil, "shown at the default is the default: nothing kept")
+        t.eq(p.panel.shown, false)
+        t.eq(savedPanel(c), nil, "hidden is the default: nothing kept")
     end,
 
-    ["slash: panel reset goes back to the default point and keeps hidden"] = function(t)
+    ["slash: a panel hidden before this change stays hidden"] = function(t)
+        local _, c, p = start({ saved = { layout = { [PATH] = { hidden = true } } } })
+        login(c)
+        t.eq(p.panel.shown, false)
+        c.slashes[ns.id.slash]("panel")
+        t.eq(p.panel.shown, true, "and shows when asked")
+        t.eq(savedPanel(c), { shown = true })
+    end,
+
+    ["slash: panel reset goes back to the default point and keeps it shown"] = function(t)
         local _, c, p = start({ screen = { 1024, 768 } })
         login(c)
         local run = c.slashes[ns.id.slash]
-        p.panel.drag({ "CENTER", "CENTER", 30, -40 })
         run("panel")
-        t.eq(savedPanel(c), { point = { "CENTER", "CENTER", 30, -40 }, hidden = true })
+        p.panel.drag({ "CENTER", "CENTER", 30, -40 })
+        t.eq(savedPanel(c), { point = { "CENTER", "CENTER", 30, -40 }, shown = true })
         run("panel reset")
         t.eq(p.panel.point, P.DEFAULT_POINT)
-        t.eq(savedPanel(c), { hidden = true })
-        t.eq(p.panel.shown, false)
+        t.eq(savedPanel(c), { shown = true })
+        t.eq(p.panel.shown, true)
     end,
 
     ["slash: an unknown word after panel changes nothing; diag still works"] = function(t)
@@ -149,7 +163,7 @@ return {
         login(c)
         local run = c.slashes[ns.id.slash]
         run("panel sideways")
-        t.eq(p.panel.shown, true)
+        t.eq(p.panel.shown, false)
         t.eq(savedPanel(c), nil)
         run("diag")
         t.eq(c.saved(ns.id.accountDB).diag.count, 2)
@@ -224,7 +238,7 @@ return {
     end,
 
     ["refresh: the text follows new errors on the slow tick, and not while hidden"] = function(t)
-        local _, c, p = start()
+        local _, c, p = start({ shown = true })
         login(c)
         t.eq(p.panel.lines[3], "Lua errors: 0")
         c.raise("late.lua:9: oops")

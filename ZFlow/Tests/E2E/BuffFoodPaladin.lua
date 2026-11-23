@@ -54,6 +54,9 @@ local function start(opts)
     end
     for id, tex in pairs(TEX) do c.setItemTexture(id, tex) end
     c.setPlayerBuffs(SEALED)
+    -- opts.before(c): runs just before the add-on loads (a read broken from
+    -- the start: the rotation is on at login since lead section 294).
+    if opts.before then opts.before(c) end
     local addon = ns.offline.addon(c)
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
     c.advance(5, 20)
@@ -136,9 +139,14 @@ tests["paladin food: the food setting is read back after a reload"] = function(t
 end
 
 tests["paladin food: a read that fails, then recovers"] = function(t)
-    local c, addon, icon = start()
-    local lines = c.itemLines
-    c.itemLines = function() error("tooltip read failed") end
+    -- The read fails from login on. A pick made from a good read is kept
+    -- until the bags, pack, role or pole change (Rotation/Driver.lua), so
+    -- breaking the read after login would test nothing.
+    local lines
+    local c, addon, icon = start({ before = function(c0)
+        lines = c0.itemLines
+        c0.itemLines = function() error("tooltip read failed") end
+    end })
     on(c, addon)
     t.ok(not foodShown(icon), "lines not read: no food")
     c.itemLines = lines; c.advance(1, 5)

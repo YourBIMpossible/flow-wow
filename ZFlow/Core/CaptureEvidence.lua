@@ -66,6 +66,14 @@ Evidence.REQUIRES = {
             ["rotation: switched off"] = "the rotation setting on",
             ["rotation: no reading yet"] = "a rotation reading",
             ["rotation: not running"] = "the rotation running",
+            -- Lead section 298: the rotation is on by default (section 294),
+            -- so a run with no spells or no target no longer says
+            -- "switched off". Every line that suggests nothing is idle too
+            -- (Core/Diag.lua, rotationRow): "...; nothing suggested.",
+            -- "nothing to suggest (...)" and "nothing can be chosen".
+            ["nothing suggested."] = "a rotation suggestion",
+            ["nothing to suggest ("] = "a rotation suggestion",
+            ["rotation: nothing can be chosen"] = "a rotation suggestion",
         },
         shows = { "rotation: " },
     },
