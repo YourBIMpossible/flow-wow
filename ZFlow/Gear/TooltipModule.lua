@@ -20,6 +20,9 @@ local _, ns = ...
 --     client.class()      which class pack (packs[class])
 --     client.level()      your level; no such read, or no answer: not known
 --   Not known is never an upgrade (Gear/Verdict.lua).
+--   Then, for a weapon whose speed was read, one speed line (G15,
+--   Gear/WeaponSpeed.lua). An error working that line out leaves it off,
+--   keeps the others, and is the second value: lines, err.
 --
 -- The module: one setting row, account wide, on by default:
 --   gear.tooltip   "Gear verdict on item tooltips"
@@ -88,6 +91,15 @@ function M.Lines(client, packs, link)
         -- Whether you can use it does not depend on the role.
         if type(detail.use) ~= "table" or detail.use.can ~= true then break end
     end
+    -- G15: a weapon's speed, last. No pack carries speed preferences yet, so
+    -- no prefs are passed and the line names no role. An error here keeps
+    -- the verdict lines and comes back as the second value.
+    local ok, speed = pcall(function()
+        local W = ns.GearWeaponSpeed
+        return W.Line(W.From(gear))
+    end)
+    if not ok then return out, speed end
+    if type(speed) == "table" then keep({ speed }) end
     return out
 end
 
@@ -114,16 +126,18 @@ function M.Declare(k, packs)
                 if ctx.settings:get(M.SETTING) ~= true or type(add) ~= "function" then return end
                 -- Every line is worked out before the first is added, so an
                 -- error leaves the tooltip as the game made it.
-                local ok, lines = pcall(M.Lines, ctx.client, packs or ns.Packs, link)
-                if not ok then
+                local ok, lines, partErr = pcall(M.Lines, ctx.client, packs or ns.Packs, link)
+                local err = partErr
+                if not ok then err = lines end
+                if err ~= nil then
                     errors = errors + 1
-                    local text = tostring(lines)
+                    local text = tostring(err)
                     if not seen[text] then
                         seen[text] = true
                         k.problems:add("gear", "tooltip", text)
                     end
-                    return
                 end
+                if not ok then return end
                 for i = 1, #(lines or {}) do
                     local colour = M.COLOUR[lines[i].tone] or M.COLOUR.none
                     add(lines[i].text, colour[1], colour[2], colour[3])
