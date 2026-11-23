@@ -30,7 +30,8 @@ local _, ns = ...
 --   * Polymorph: the chooser has no crowd-control step;
 --   * Counterspell on anyone's cast but your target's: no read of another
 --     unit's cast;
---   * Amplify and Dampen Magic: no rule asks for them;
+--   * Amplify and Dampen Magic: asked for only once you cast or chose one
+--     (MAGE-5, the magic row below); no default pick;
 --   * Arcane Brilliance, and anything cast on another player (P-PARTY:
 --     Arcane Intellect for your group is only shown, never cast).
 
@@ -92,6 +93,23 @@ function ns.MageArmor(s)
     return kept or bestArmor(s)
 end
 
+-- MAGE-5 (P-SELFBUFF): Amplify or Dampen Magic, your own choice only (the
+-- magic row of options.sticky): never asked for until cast or chosen.
+local MAGICS = { "Amplify Magic", "Dampen Magic" }
+local IS_MAGIC = { ["Amplify Magic"] = true, ["Dampen Magic"] = true }
+local MAGIC_LEFT = 60
+function ns.MageMagic(s)
+    local OC = ns.OwnCasts
+    if type(OC) ~= "table" then return nil end
+    return OC.Kept(s, IS_MAGIC, "magic")
+end
+local function wantsMagic(s, name)
+    if not outOfFight(s) or not buffsRead(s) or ns.MageMagic(s) ~= name then return false end
+    local l = s.buffs[name]
+    if l == nil then return true end
+    return type(l) == "number" and l < MAGIC_LEFT
+end
+
 local function wantsArmor(s, name)
     return outOfFight(s) and ns.MageArmor(s) == name and armorUp(s) == false
 end
@@ -122,6 +140,10 @@ local buffs = tag({
       when = function(s) return lowStock(s, "Conjure Water") end },
     { spell = "Conjure Food", kind = "buff", reason = "Little conjured food left in your bags",
       when = function(s) return lowStock(s, "Conjure Food") end },
+    { spell = "Amplify Magic", kind = "buff", reason = "Amplify Magic, your choice, missing or running out",
+      when = function(s) return wantsMagic(s, "Amplify Magic") end },
+    { spell = "Dampen Magic", kind = "buff", reason = "Dampen Magic, your choice, missing or running out",
+      when = function(s) return wantsMagic(s, "Dampen Magic") end },
 })
 
 local single = tag({
@@ -299,6 +321,20 @@ local pack = {
     },
 
     options = {
+        -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,
+        -- in order: the first you know names your tree (snapshot.tree,
+        -- Rotation/Driver.lua). Which spell is a talent of which tree: a first
+        -- guess from the 1.12 talent trees as remembered, not read from the game.
+        trees = {
+            { spell = "Arcane Power", tree = "Arcane", evidence = GUESS },
+            { spell = "Ice Barrier", tree = "Frost", evidence = GUESS },
+            { spell = "Combustion", tree = "Fire", evidence = GUESS },
+            { spell = "Blast Wave", tree = "Fire", evidence = GUESS },
+            { spell = "Presence of Mind", tree = "Arcane", evidence = GUESS },
+            { spell = "Ice Block", tree = "Frost", evidence = GUESS },
+            { spell = "Cold Snap", tree = "Frost", evidence = GUESS },
+            { spell = "Pyroblast", tree = "Fire", evidence = GUESS },
+        },
         -- Reads the rules lean on; one not given is named by diag (187).
         reads = { "buffs", "conjured" },
         -- What each conjuring spell makes, for the shared `conjured` read.
@@ -313,6 +349,9 @@ local pack = {
         sticky = {
             { prefix = "", only = IS_ARMOR, key = "armor", word = "armor", names = ARMORS,
               pick = function(s) return ns.MageArmor(s) end },
+            -- MAGE-5: Amplify or Dampen Magic. pick: the one asked for now.
+            { prefix = "", only = IS_MAGIC, key = "magic", word = "magic", names = MAGICS,
+              pick = function(s) return ns.MageMagic(s) end },
         },
     },
 }

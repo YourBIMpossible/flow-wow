@@ -346,6 +346,20 @@ local pack = {
     },
 
     options = {
+        -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,
+        -- in order: the first you know names your tree (snapshot.tree,
+        -- Rotation/Driver.lua). Which spell is a talent of which tree: a first
+        -- guess from the 1.12 talent trees as remembered, not read from the game.
+        trees = {
+            { spell = "Soul Link", tree = "Demonology", evidence = GUESS },
+            { spell = "Conflagrate", tree = "Destruction", evidence = GUESS },
+            { spell = "Siphon Life", tree = "Affliction", evidence = GUESS },
+            { spell = "Demonic Sacrifice", tree = "Demonology", evidence = GUESS },
+            { spell = "Shadowburn", tree = "Destruction", evidence = GUESS },
+            { spell = "Dark Pact", tree = "Affliction", evidence = GUESS },
+            { spell = "Curse of Exhaustion", tree = "Affliction", evidence = GUESS },
+            { spell = "Fel Domination", tree = "Demonology", evidence = GUESS },
+        },
         -- Reads the rules lean on; one not given is named by diag (187).
         reads = { "buffs", "targetDebuffs", "pet" },
         -- N58: the Soul Shards in your bags, through the shared bag count

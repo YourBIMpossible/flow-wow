@@ -6986,6 +6986,16 @@ function ns.make.client(env)
         return out
     end
     -- ------------------------------------------------------------ end N67
+    -- PRIEST-3 (P-SELFBUFF): c.playerDebuffs() -> { [name] = secondsLeft or
+    --   true } or nil: every debuff on you, by name (Weakened Soul), read as
+    --   playerBuffs with the filter "HARMFUL". nil when not known or a read
+    --   raised. A first guess from the API pages (API_C_UnitAuras.
+    --   GetAuraDataByIndex, API_UnitDebuff), not seen in game.
+    function c.playerDebuffs()
+        local ok, got = pcall(aurasOf, "player", "HARMFUL", env.UnitDebuff)
+        if ok and type(got) == "table" then return got end
+        return nil
+    end
     return c
 end
 

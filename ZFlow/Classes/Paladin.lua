@@ -473,6 +473,19 @@ local pack = {
     talentBuilds = {},
 
     options = {
+        -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,
+        -- in order: the first you know names your tree (snapshot.tree,
+        -- Rotation/Driver.lua). Which spell is a talent of which tree: a first
+        -- guess from the 1.12 talent trees as remembered, not read from the game.
+        trees = {
+            { spell = "Holy Shock", tree = "Holy", evidence = GUESS },
+            { spell = "Holy Shield", tree = "Protection", evidence = GUESS },
+            { spell = "Repentance", tree = "Retribution", evidence = GUESS },
+            { spell = "Blessing of Sanctuary", tree = "Protection", evidence = GUESS },
+            { spell = "Seal of Command", tree = "Retribution", evidence = GUESS },
+            { spell = "Divine Favor", tree = "Holy", evidence = GUESS },
+            { spell = "Blessing of Kings", tree = "Protection", evidence = GUESS },
+        },
         -- Reads the rules lean on; one not given is named by diag (187).
         -- snapshot.chosen is not one: nil there is "nothing cast yet".
         reads = { "buffs", "ownBuffs" },
