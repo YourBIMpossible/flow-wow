@@ -9,6 +9,7 @@ local _, ns = ...
 --     extra (section 232): one options table with named fields; no further
 --     positional arguments. extra.food: the module's food table (below).
 --     extra.chosen: the seals and blessings from the ownCasts module (below).
+--     extra.combo: the combo module's counted combo points (below).
 --     the reader ns.Snapshot takes. dead, inCombat, stealthed, hostile,
 --     spells, buffs, targetDebuffs, form, current and pet are asked of the
 --     client; role is the
@@ -52,7 +53,11 @@ local _, ns = ...
 --                  on BAG_UPDATE_DELAYED, or the pack or role changes. In a
 --                  fight, or a fight not known, the kept food answers, or
 --                  nil. Not known (nil) is not kept: the next read asks
---                  again. Without food: read each time, as before.
+--                  again. A pick made while some food in the bags was not
+--                  read yet (section 236: data arriving in parts) answers
+--                  but is not kept either: the next read asks again, so a
+--                  better food read late is not missed until the bags
+--                  change. Without food: read each time, as before.
 --                  food.on false (the D.FOOD setting off, section 230
 --                  BF-3): nil, and the bags are not read
 --       foodOn     food.on (true or false); nil without food
@@ -62,6 +67,11 @@ local _, ns = ...
 --                  you cast or chose, by key, from the ownCasts module
 --                  (Rotation/OwnCasts.lua); nil when it is not a table
 --                  (none, or the module is not there)
+--       finisherReady  ROGUE-2 (section 236): the client's combo read when
+--                  a plain whole number, else extra.combo (the combo
+--                  module's counted estimate, Rotation/Combo.lua), against
+--                  the pack's options.combo.need; nil without options.combo
+--                  or when neither answers
 --       ownBuffs   client.ownBuffs() as it answered (N13): the buffs on you
 --                  that you put up yourself; nil when not known or the
 --                  client has no such read
@@ -249,10 +259,12 @@ local function buffFoodOf(client, pack, role, pole)
             end
         end
     end
+    -- The second answer: true when some item could not be read, so the
+    -- answer may change when it arrives (section 236).
     local best = BF.Best(pole == true and fishing or foods)
-    if best then return { name = best.name, item = best.id, score = best.score } end
-    if unread then return nil end
-    return {}
+    if best then return { name = best.name, item = best.id, score = best.score }, unread end
+    if unread then return nil, true end
+    return {}, false
 end
 
 -- Section 229 (F-1): the food read, kept between bag changes and skipped in
@@ -268,15 +280,15 @@ local function poleOf(client)
 end
 
 local function buffFoodKept(client, pack, role, food)
-    if type(food) ~= "table" then return buffFoodOf(client, pack, role, poleOf(client)) end
+    if type(food) ~= "table" then return (buffFoodOf(client, pack, role, poleOf(client))) end
     if food.on == false then return nil end
     -- The pole changes with no bag change: a kept pick is for one pole answer.
     local pole = poleOf(client)
     local fresh = food.kept == true and food.pack == pack and food.role == role and food.pole == pole
     if fresh then return food.value end
     if client.inCombat() ~= false then return nil end
-    local got = buffFoodOf(client, pack, role, pole)
-    if got ~= nil then
+    local got, partial = buffFoodOf(client, pack, role, pole)
+    if got ~= nil and not partial then
         food.kept, food.value, food.pack, food.role, food.pole = true, got, pack, role, pole
     else
         food.kept, food.value = false, nil
@@ -284,9 +296,27 @@ local function buffFoodKept(client, pack, role, food)
     return got
 end
 
+-- ROGUE-2 (section 236): is a finisher due. The client's combo read when it
+-- gives a plain whole number, else the combo module's counted estimate
+-- (Rotation/Combo.lua), against the pack's options.combo.need. nil for a
+-- pack without options.combo, or when neither answers.
+local function finisherOf(client, pack, counted)
+    local options = type(pack) == "table" and pack.options or nil
+    local rules = type(options) == "table" and options.combo or nil
+    if type(rules) ~= "table" or type(ns.Combo) ~= "table" then return nil end
+    local points
+    if type(client.combo) == "function" then
+        local ok, got = pcall(client.combo)
+        if ok and type(got) == "table" then points = got.points end
+    end
+    local due = ns.Combo.Ready(points, counted, rules.need)
+    return due
+end
+
 function D.Read(client, pack, ids, role, extra)
     local food = type(extra) == "table" and extra.food or nil
     local chosen = type(extra) == "table" and extra.chosen or nil
+    local combo = type(extra) == "table" and extra.combo or nil
     -- Lead section 187: the form is asked of the client once for a read,
     -- and both fields (form, formKnown) come from that one answer.
     -- The answer is kept only for the other field of the pair, and used
@@ -339,6 +369,7 @@ function D.Read(client, pack, ids, role, extra)
         end
         if field == "conjured" then return conjuredOf(client, pack) end
         if field == "chosen" then return type(chosen) == "table" and chosen or nil end
+        if field == "finisherReady" then return finisherOf(client, pack, combo) end
         if field == "ownBuffs" then
             if type(client.ownBuffs) ~= "function" then return nil end
             return client.ownBuffs()
@@ -489,6 +520,18 @@ local function chosenOf(k)
     return nil
 end
 
+-- ROGUE-2: the combo module's counted combo points (Rotation/Combo.lua),
+-- asked each tick; nil when there is no such module or it counts nothing
+-- for your class. Resolved when called, as chosenOf.
+local function comboOf(k)
+    if type(k) ~= "table" or type(k.use) ~= "function" then return nil end
+    local ok, mod = pcall(k.use, "combo")
+    if not ok or type(mod) ~= "table" or type(mod.Count) ~= "function" then return nil end
+    local asked, got = pcall(mod.Count)
+    if asked and type(got) == "number" then return got end
+    return nil
+end
+
 function D.Declare(k, packs)
     local api = {}
     local view, errors, lastError = nil, 0, nil
@@ -507,7 +550,7 @@ function D.Declare(k, packs)
             return
         end
         food.on = ctx.settings:get(D.FOOD) ~= false
-        local ok, got = pcall(work, ctx.client, packs or ns.Packs, ctx.settings:get(D.ROLE), { food = food, chosen = chosenOf(k) })
+        local ok, got = pcall(work, ctx.client, packs or ns.Packs, ctx.settings:get(D.ROLE), { food = food, chosen = chosenOf(k), combo = comboOf(k) })
         if ok then
             view = got
         else

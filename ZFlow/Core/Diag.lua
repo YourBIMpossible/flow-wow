@@ -329,6 +329,9 @@ function Diag.Collect(k, why)
     S.health = ask(client, "UnitHealth", "player")
     S.power = ask(client, "UnitPower", "player")
     S.powerType = ask(client, "UnitPowerType", "player")
+    -- ROGUE-2: the combo read Rotation/Combo.lua prefers to its own count
+    -- (a first guess; whether 16001 gives a plain number is not known).
+    S.comboPoints = ask(client, "GetComboPoints", "player", "target")
     S.spellTabs = ask(client, "GetNumSpellTabs")
     S.spellTab1 = ask(client, "GetSpellTabInfo", 1)
     S.spellBook1 = ask(client, "GetSpellBookItemName", 1, "spell")
