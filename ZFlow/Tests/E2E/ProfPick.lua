@@ -206,6 +206,28 @@ tests["profession picker: choose refuses a name that is no primary profession"] 
     t.eq(text(addon), MAGE, "the advice is as before")
 end
 
+-- PP3-2: a name said twice counts once, wherever it repeats.
+tests["profession picker: choose counts a repeated name once"] = function(t)
+    local c, addon = boot({ professions = {} })
+    local out = said(c, "professions choose mining mining mining")
+    t.ok(out:find("your choice is saved: Mining.", 1, true) ~= nil, "one name, saved: " .. out)
+    t.eq(text(addon), "Your choice: learn Mining." .. HINT)
+    out = said(c, "professions choose mining herbalism mining")
+    t.ok(out:find("Mining and Herbalism", 1, true) ~= nil, "a pair, saved: " .. out)
+    t.eq(text(addon), "Your choice: learn Mining and Herbalism." .. HINT)
+end
+
+-- PP3-1: as Flow did, "later" only quiets the prompt; a trainer step asked
+-- for stays on the route (program-integ Modules/Professions.lua:349-353 sets
+-- snoozeLevel only, and :441 reads it only for the reminder card).
+tests["profession picker: later keeps a route step asked for"] = function(t)
+    local c, addon = boot({ professions = {} })
+    said(c, "professions route")
+    said(c, "professions later")
+    t.eq(prompt(addon), nil, "the prompt is quiet")
+    t.eq(skillOf(addon), "Tailoring", "the route step stays")
+end
+
 tests["profession picker: route gives a words-only step, then a place once a trainer is learned"] = function(t)
     local c, addon = boot({ professions = {} })
     c.setPosition(1453, 0.5, 0.5)

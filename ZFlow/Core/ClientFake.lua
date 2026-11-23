@@ -3006,6 +3006,79 @@ function ns.make.fakeClient(opts)
             return { text = v.text, r = v.r, g = v.g, b = v.b }
         end
     end
+
+    -- S20 vendor marks (lead section 230): the merchant's pages, the
+    -- per-role badges, and the money read raising. As the real client's
+    -- markMerchantSpecs(badges) (badges { [item number] = { { role, state }
+    -- ... } }) and markMerchantButtons, each draw is worked out for the page
+    -- shown when it is called, so a page turned without a redraw keeps the
+    -- old marks:
+    --   c.setMerchantPage(page, perPage)   (page 1, 10 a page at the start)
+    --   c.merchantButtons() -> { [button] = { up = arrow shown, specs = { { role,
+    --     state } ... } } } for the buttons showing anything; {} when closed.
+    --   c.setMoneyFails(on): money() raises while on (section 236).
+    do
+        local page, per = 1, 10
+        local specsNow, drawn = nil, {}
+        local function draw()
+            drawn = {}
+            local arrows = c.merchantMarked()
+            if s.merchantOpen ~= true then return end
+            for i = 1, per do
+                local index = (page - 1) * per + i
+                local up = type(arrows) == "table" and arrows[index] == true
+                local list = nil
+                if type(specsNow) == "table" then list = specsNow[index] end
+                if up or list ~= nil then
+                    local copy = {}
+                    for j, b in ipairs(list or {}) do copy[j] = { role = b.role, state = b.state } end
+                    drawn[i] = { up = up, specs = copy }
+                end
+            end
+        end
+        function c.setMerchantPage(p, n)
+            if type(p) == "number" then page = p end
+            if type(n) == "number" then per = n end
+        end
+        local plainMark = c.markMerchantButtons
+        function c.markMerchantButtons(indexes)
+            local n = plainMark(indexes)
+            draw()
+            return n
+        end
+        function c.markMerchantSpecs(badges)
+            if s.merchantOpen ~= true then
+                specsNow = nil
+                draw()
+                return nil
+            end
+            specsNow = {}
+            for index, list in pairs(type(badges) == "table" and badges or {}) do
+                if type(index) == "number" and type(list) == "table" then specsNow[index] = list end
+            end
+            draw()
+            local n = 0
+            for _, b in pairs(drawn) do
+                if #b.specs > 0 then n = n + 1 end
+            end
+            return n
+        end
+        function c.merchantButtons()
+            local out = {}
+            for i, b in pairs(drawn) do
+                local copy = {}
+                for j, x in ipairs(b.specs) do copy[j] = { role = x.role, state = x.state } end
+                out[i] = { up = b.up, specs = copy }
+            end
+            return out
+        end
+        local plainMoney = c.money
+        function c.setMoneyFails(on) s.moneyFails = on == true end
+        function c.money()
+            if s.moneyFails then error("money read failed (test)") end
+            return plainMoney()
+        end
+    end
     return c
 end
 

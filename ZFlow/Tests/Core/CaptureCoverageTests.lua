@@ -36,7 +36,9 @@ local KIND = {
              -- G14: the mark on the best quest reward choice (Gear/RewardMark.lua).
              "markRewardChoice",
              -- S21: the Need or Greed value on a loot roll's item (Gear/RollHint.lua).
-             "rollValue" },
+             "rollValue",
+             -- S20: the per-role badges on the merchant's item buttons.
+             "markMerchantSpecs" },
     tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "savedMadeHere", "slash",
              "slashTaken", "unslash" },
     -- Hands back or runs a sound restart: never asked by the capture.
