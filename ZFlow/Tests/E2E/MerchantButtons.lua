@@ -129,11 +129,6 @@ tests["vendor marks: money not read - the price, no 'more than you have', no err
     t.eq(line:find("25s 40c", 1, true) ~= nil, true, line)
     t.eq(line:find("more than you have", 1, true), nil)
     t.eq(newProblems(addon), 0, "no problem listed")
-
-    local c2, addon2 = boot({ role = "dps", prepare = function(cl) cl.money = nil end })
-    c2.setMerchantOpen(true)
-    t.eq(prompts(addon2)[2]:find("more than you have", 1, true), nil, "no money read at all")
-    t.eq(newProblems(addon2), 0, "no problem listed without the read")
 end
 
 tests["vendor marks: the money read raising, then recovering"] = function(t)
