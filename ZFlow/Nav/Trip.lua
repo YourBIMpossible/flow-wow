@@ -28,6 +28,19 @@ local _, ns = ...
 --     arrow walks (Nav/TripRoute.lua Current) for the quest arrow's
 --     tooltip: the current stop marked, the straight distance left. Z-Flow
 --     has no route panel; the arrow's tooltip is where the step is shown.
+-- G42 (slice 3):
+--   P.After(list, n, m) -> true, line or false, why   stop n comes after
+--     stop m (`trip after <n> <m>`); a circle is refused, naming the stops
+--   P.Edges(list) -> { [i] = { j, ... } }   stop i comes after stop j:
+--     the player's own afters, a quest's hand-in after its objectives on
+--     the trip, a dungeon's entrance after the pick-up givers of that
+--     dungeon's quests on the trip
+--   P.ViaText(step) -> words or nil   how the arrow reaches a stop on
+--     another map: Nav/Travel.lua's step for it (the crossing, the flight
+--     master, the gate), the same step the arrow is given for that leg
+--   P.Order now keeps the afters (N.RoutePlan's after, then a stable pass
+--     over the stops on other maps) and answers nil, why for a circle.
+-- Each stop keeps an id (its number on the list changes on remove).
 -- Module "trip" provides List, Lines, Go, Tip. Not tested in game.
 ns.Nav = ns.Nav or {}
 local N = ns.Nav
@@ -39,7 +52,7 @@ P.WORD = "trip"
 P.PATH = "state.trip"
 P.MAX = 20
 P.HELP = "a list of stops to visit: trip add vendor|repair|bank|inn|flight|mail|trainer|giver <quest>"
-    .. "|dungeon <name>|here [label]; trip, trip remove <n>, trip clear, trip go"
+    .. "|dungeon <name>|here [label]; trip, trip remove <n>, trip after <n> <m>, trip clear, trip go"
 
 P.HEADER = "Trip: %d stops"
 P.EMPTY = "Trip: no stops. Add one with trip add."
@@ -68,6 +81,13 @@ P.TIP_NOW = "> "
 P.TIP_NEXT = "  "
 P.TIP_MORE = "  and %d more"
 P.TIP_MAX = 5
+P.AFTER_SET = "Stop %d (%s) now comes after stop %d (%s)."
+P.AFTER_SAME = "A stop cannot come after itself."
+P.AFTER_HOW = "Say trip after <n> <m>: stop n comes after stop m."
+P.CIRCLE_WORD = "round in a circle"
+P.CIRCLE = "Not set: %s would go " .. P.CIRCLE_WORD .. "."
+P.CIRCLE_ORDER = "No route: %s go " .. P.CIRCLE_WORD .. "."
+P.VIA = "via %s"
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -89,9 +109,30 @@ local function ask(client, name, ...)
     return v
 end
 
+local function ids(v)
+    if type(v) ~= "table" then return nil end
+    local out = {}
+    for _, x in ipairs(v) do
+        if type(x) == "number" then out[#out + 1] = x end
+    end
+    if #out == 0 then return nil end
+    return out
+end
+
 local function copy(s)
-    return { kind = s.kind, label = s.label, detail = s.detail,
+    return { id = type(s.id) == "number" and s.id or nil, kind = s.kind, label = s.label, detail = s.detail,
+             after = ids(s.after), quest = s.quest, objective = s.objective, pickUp = s.pickUp or nil,
+             quests = ids(s.quests),
              place = { map = s.place.map, x = s.place.x, y = s.place.y } }
+end
+
+-- A free id for a new stop: one above the highest on the list.
+local function nextId(list)
+    local top = 0
+    for _, s in ipairs(list) do
+        if type(s) == "table" and type(s.id) == "number" and s.id > top then top = s.id end
+    end
+    return top + 1
 end
 
 local function placed(s)
@@ -104,6 +145,7 @@ function P.Add(list, stop)
     if #list >= P.MAX then return false, P.FULL end
     local s = copy(stop)
     s.label = tostring(text(s.label) or s.kind or P.TITLE)
+    if s.id == nil then s.id = nextId(list) end
     list[#list + 1] = s
     return true
 end
@@ -113,7 +155,86 @@ function P.Remove(list, n)
     if type(list) ~= "table" or i == nil or i ~= math.floor(i) or list[i] == nil then
         return nil, P.BAD_NUMBER:format(tostring(n))
     end
-    return table.remove(list, i)
+    local gone = table.remove(list, i)
+    for _, s in ipairs(list) do
+        if type(s.after) == "table" then
+            local keep = {}
+            for _, x in ipairs(s.after) do
+                if x ~= gone.id then keep[#keep + 1] = x end
+            end
+            if #keep > 0 then s.after = keep else s.after = nil end
+        end
+    end
+    return gone
+end
+
+local function contains(list, v)
+    for _, x in ipairs(type(list) == "table" and list or {}) do
+        if x == v then return true end
+    end
+    return false
+end
+
+function P.Edges(list)
+    local edges, byId = {}, {}
+    list = type(list) == "table" and list or {}
+    for i, s in ipairs(list) do
+        if type(s) == "table" and s.id ~= nil then byId[s.id] = i end
+    end
+    local function add(i, j)
+        if j == nil or i == j then return end
+        edges[i] = edges[i] or {}
+        if not contains(edges[i], j) then table.insert(edges[i], j) end
+    end
+    for i, s in ipairs(list) do
+        if type(s) == "table" then
+            for _, id in ipairs(type(s.after) == "table" and s.after or {}) do add(i, byId[id]) end
+            for j, o in ipairs(list) do
+                if type(o) == "table" and o.quest ~= nil then
+                    -- A quest's hand-in after its objectives.
+                    if s.kind == "giver" and s.quest == o.quest and o.objective ~= nil then add(i, j) end
+                    -- A dungeon's entrance after the pick-up givers of its quests.
+                    if s.kind == "dungeon" and o.pickUp and contains(s.quests, o.quest) then add(i, j) end
+                end
+            end
+        end
+    end
+    return edges
+end
+
+local function ringNames(list, ring)
+    local names = {}
+    for _, i in ipairs(ring) do names[#names + 1] = tostring(list[i] and list[i].label) end
+    names[#names + 1] = names[1]
+    return table.concat(names, " after ")
+end
+
+function P.After(list, n, m)
+    local i, j = tonumber(n), tonumber(m)
+    if type(list) ~= "table" then return false, P.AFTER_HOW end
+    if i == nil or list[i] == nil then return false, P.BAD_NUMBER:format(tostring(n)) end
+    if j == nil or list[j] == nil then return false, P.BAD_NUMBER:format(tostring(m)) end
+    if i == j then return false, P.AFTER_SAME end
+    local s, o = list[i], list[j]
+    if s.id == nil then s.id = nextId(list) end
+    if o.id == nil then o.id = nextId(list) end
+    local before = s.after
+    local now = ids(before) or {}
+    if not contains(now, o.id) then now[#now + 1] = o.id end
+    s.after = now
+    local ring = N.RouteCycle(#list, P.Edges(list))
+    if ring then
+        s.after = before
+        return false, P.CIRCLE:format(ringNames(list, ring))
+    end
+    return true, P.AFTER_SET:format(i, tostring(s.label), j, tostring(o.label))
+end
+
+function P.ViaText(step)
+    if type(step) ~= "table" or step.via == nil then return nil end
+    if step.via == "far" then return N.Travel and N.Travel.FAR or nil end
+    if type(step.label) ~= "string" or step.label == "" then return nil end
+    return P.VIA:format(step.label)
 end
 
 local function sizeOf(here)
@@ -124,31 +245,68 @@ end
 
 function P.Order(list, here, legs)
     here = type(here) == "table" and here or {}
-    local same, others = {}, {}
+    local all = {}
     for _, s in ipairs(type(list) == "table" and list or {}) do
-        if placed(s) then
-            if here.map ~= nil and s.place.map == here.map then
-                same[#same + 1] = s
-            else
-                others[#others + 1] = s
-            end
+        if placed(s) then all[#all + 1] = s end
+    end
+    local edges = P.Edges(all)
+    local ring = N.RouteCycle(#all, edges)
+    if ring then return nil, P.CIRCLE_ORDER:format(ringNames(all, ring)) end
+    local same, others = {}, {}
+    for i, s in ipairs(all) do
+        if here.map ~= nil and s.place.map == here.map then
+            same[#same + 1] = i
+        else
+            others[#others + 1] = i
         end
     end
-    local ordered, label = {}, N.ROUTE_STRAIGHT
+    local seq, label = {}, N.ROUTE_STRAIGHT
     local size = sizeOf(here)
     local route
     if #same > 0 and size and type(N.RoutePlan) == "function" then
-        local places = {}
-        for i, s in ipairs(same) do places[i] = s.place end
-        route = N.RoutePlan(places, here.map, size, here, legs)
+        local places, localOf, after = {}, {}, {}
+        for n, i in ipairs(same) do
+            places[n] = all[i].place
+            localOf[i] = n
+        end
+        for n, i in ipairs(same) do
+            for _, j in ipairs(edges[i] or {}) do
+                if localOf[j] then
+                    after[n] = after[n] or {}
+                    table.insert(after[n], localOf[j])
+                end
+            end
+        end
+        route = N.RoutePlan(places, here.map, size, here, legs, after)
     end
     if route then
         label = route.label
-        for _, rs in ipairs(route.stops) do ordered[#ordered + 1] = copy(same[rs.index]) end
+        for _, rs in ipairs(route.stops) do seq[#seq + 1] = same[rs.index] end
     else
-        for _, s in ipairs(same) do ordered[#ordered + 1] = copy(s) end
+        for _, i in ipairs(same) do seq[#seq + 1] = i end
     end
-    for _, s in ipairs(others) do ordered[#ordered + 1] = copy(s) end
+    for _, i in ipairs(others) do seq[#seq + 1] = i end
+    -- G42: a stable pass: the first stop of seq whose afters are all done
+    -- goes next. Without afters seq is kept as it is.
+    local done, ordered = {}, {}
+    while #ordered < #seq do
+        local took = false
+        for _, i in ipairs(seq) do
+            if not done[i] then
+                local free = true
+                for _, j in ipairs(edges[i] or {}) do
+                    if not done[j] then free = false end
+                end
+                if free then
+                    done[i] = true
+                    ordered[#ordered + 1] = copy(all[i])
+                    took = true
+                    break
+                end
+            end
+        end
+        if not took then break end
+    end
     return ordered, label
 end
 
@@ -160,7 +318,7 @@ local function distance(s, here)
     return tostring(math.floor(math.sqrt(dx * dx + dy * dy) + 0.5)) .. " yd"
 end
 
-function P.Lines(list, here)
+function P.Lines(list, here, vias)
     if type(list) ~= "table" or #list == 0 then return { P.EMPTY } end
     local lines = { P.HEADER:format(#list) }
     for i, s in ipairs(list) do
@@ -171,6 +329,7 @@ function P.Lines(list, here)
         else
             parts[#parts + 1] = P.NO_DISTANCE
         end
+        if type(vias) == "table" and type(vias[i]) == "string" then parts[#parts + 1] = vias[i] end
         lines[#lines + 1] = i .. ". " .. table.concat(parts, " - ")
     end
     return lines
@@ -294,6 +453,9 @@ function P.Declare(k, diag)
         for _, s in ipairs(saved) do
             if placed(s) and #list < P.MAX then list[#list + 1] = copy(s) end
         end
+        for _, s in ipairs(list) do
+            if s.id == nil then s.id = nextId(list) end
+        end
         return list
     end
 
@@ -347,7 +509,7 @@ function P.Declare(k, diag)
         local spot = type(entry) == "table" and entry.turnIn or nil
         local pt = pointOf(spot, h)
         if not pt then return nil, P.NO_GIVER:format(tostring(row.title)) end
-        return { kind = "giver", label = P.HAND_IN:format(tostring(row.title)),
+        return { kind = "giver", quest = row.id, label = P.HAND_IN:format(tostring(row.title)),
                  detail = type(spot) == "table" and text(spot.name) or nil, place = pt }
     end
 
@@ -365,13 +527,39 @@ function P.Declare(k, diag)
         if not d then return nil, P.NO_DUNGEON:format(tostring(want)) end
         local e = R.Entrance(dungeons, c, d.key)
         if type(e) ~= "table" then return nil, P.NO_ENTRANCE:format(tostring(d.name)) end
-        return { kind = "dungeon", label = tostring(d.name), detail = P.ENTRANCE,
+        local quests
+        if type(R.List) == "function" then
+            local okList, rows = pcall(R.List, dungeons)
+            for _, row in ipairs(okList and type(rows) == "table" and rows or {}) do
+                if type(row) == "table" and row.key == d.key then quests = ids(row.ids) end
+            end
+        end
+        return { kind = "dungeon", quests = quests, label = tostring(d.name), detail = P.ENTRANCE,
                  place = { map = e.map, x = e.x / 100, y = e.y / 100 } }
     end
 
     function api.List() return load() end
 
-    function api.Lines() return P.Lines(load(), hereNow()) end
+    -- G42: how the arrow reaches each stop on another map (Nav/Travel.lua
+    -- Via, the step the arrow is given for that leg), as words.
+    local function viasOf(list, here)
+        local vias = {}
+        local travel = k.use and k.use("travel")
+        if not (travel and type(travel.Via) == "function") then return vias end
+        for i, s in ipairs(list) do
+            if placed(s) and s.place.map ~= here.map then
+                local ok, step = pcall(travel.Via, { label = s.label, detail = s.detail,
+                    place = { map = s.place.map, x = s.place.x, y = s.place.y } })
+                if ok then vias[i] = P.ViaText(step) end
+            end
+        end
+        return vias
+    end
+
+    function api.Lines()
+        local list, here = load(), hereNow()
+        return P.Lines(list, here, viasOf(list, here))
+    end
 
     -- word: the kind after "add"; rest: the quest, dungeon or label.
     -- Answers the line to show.
@@ -408,6 +596,7 @@ function P.Declare(k, diag)
             if ok and type(fn) == "function" then legs = fn end
         end
         local ordered, label = P.Order(list, h, legs)
+        if not ordered then return tostring(label) end
         local ok, line = pcall(route.Run, P.Run(ordered, label))
         if not ok then return P.NO_ROUTE end
         return tostring(line)
@@ -444,6 +633,16 @@ function P.Declare(k, diag)
                 say({ P.REMOVED:format(tostring(gone.label)) })
             else
                 say({ why })
+            end
+        elseif word == "after" then
+            local n, m = rest:match("^(%S+)%s+(%S+)")
+            if not n then
+                say({ P.AFTER_HOW })
+            else
+                local list = load()
+                local ok, line = P.After(list, n, m)
+                if ok then save(list) end
+                say({ line })
             end
         elseif word == "clear" then
             save({})

@@ -131,7 +131,7 @@ tests["trip after: a dungeon's entrance comes after the pick-up givers of that d
     local list = {
         stop(1, "Deadmines", 1, 0.55, 0.5, { kind = "dungeon", quests = { 7 } }),
         stop(2, "Pick up: Red Silk", 1, 0.9, 0.5, { quest = 7, pickUp = true }),
-        stop(3, "Pick up: Other", 1, 0.95, 0.5, { quest = 8, pickUp = true }),
+        stop(3, "Pick up: Other", 1, 0.3, 0.5, { quest = 8, pickUp = true }),
     }
     local order = labels(P().Order(list, HERE))
     t.eq(order[1], "Pick up: Red Silk")
