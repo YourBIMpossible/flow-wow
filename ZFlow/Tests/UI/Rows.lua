@@ -44,18 +44,18 @@ return {
         end
     end,
 
-    ["rows: the welcome is on for this character, the buttons are off for the account"] = function(t)
+    ["rows: the welcome is on for this character; the world map button on and the merchant button off, for the account"] = function(t)
         local k, c = kernel()
         R.Declare(k)
         t.eq(k.settings:row("ui.intro").scope, "char")
         t.eq(k.settings:row("ui.intro").default, true)
         t.eq(k.settings:row("buttons.worldMap").scope, "account")
-        t.eq(k.settings:row("buttons.worldMap").default, false)
+        t.eq(k.settings:row("buttons.worldMap").default, true)
         t.eq(k.settings:row("buttons.merchant").scope, "account")
         t.eq(k.settings:row("buttons.merchant").default, false)
         login(k, c)
         t.eq(k.settings:get("ui.intro"), true)
-        t.eq(k.settings:get("buttons.worldMap"), false)
+        t.eq(k.settings:get("buttons.worldMap"), true)
         t.eq(k.settings:get("buttons.merchant"), false)
     end,
 
@@ -101,7 +101,9 @@ return {
     end,
 
     ["rows: a button row turned on makes that button, and only that one"] = function(t)
-        local k, c = kernel({ account = { settings = { buttons = { merchant = true } } } })
+        -- The world map button is on by default (lead section 294): saved off
+        -- here, so only the row turned on makes a button.
+        local k, c = kernel({ account = { settings = { buttons = { merchant = true, worldMap = false } } } })
         R.Declare(k)
         c.setWindow("WorldMapFrame", {})
         c.setWindow("MerchantFrame", {})
