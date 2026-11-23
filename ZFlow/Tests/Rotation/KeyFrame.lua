@@ -13,15 +13,18 @@ local tests = {}
 local CLASS = "TESTCLASS"
 local WRATH, MOONFIRE, CLAW = 5176, 8921, 1082 -- test values, not client data
 
--- The only attribute names the button may ever be given.
-local ALLOWED = { type = true, spell = true, unit = true, macrotext = true }
+-- The only attribute names the button may ever be given. Section 246
+-- (N63-E): the macro text attributes are not among them; the button is
+-- never a macro (a macro-type secure button does not act on this client).
+local ALLOWED = { type = true, spell = true, unit = true }
 for _, slot in ipairs({ "ctrl", "shift", "alt", "more" }) do
     ALLOWED["*type-" .. slot] = true
     ALLOWED["*spell-" .. slot] = true
     ALLOWED["*unit-" .. slot] = true
 end
--- N8 (lead section 238): the healing item on Alt.
-ALLOWED["*macrotext-alt"] = true
+-- N8 (lead section 238): the healing item on Alt, as the item type
+-- (section 246, N63-E).
+ALLOWED["*item-alt"] = true
 
 local function plan(key, ctrl)
     return ns.KeyPlan({ keys = { none = { key = key or "Wrath", ctrl = ctrl or "Moonfire" } } }, {})
@@ -98,10 +101,38 @@ tests["key frame: only the attributes of the button list are ever set"] = functi
     local kf, h = make({ form = 0 })
     kf:want(formPlan())
     kf:want(plan("Moonfire", "Wrath"))
+    local withItem = plan("Moonfire", "Wrath")
+    withItem.altItem = 5512
+    kf:want(withItem)
     kf:want(nil)
     t.ok(#h.reached > 0, "something was set")
     for _, attr in ipairs(h.reached) do
         t.ok(ALLOWED[attr] == true, "not a button attribute: " .. tostring(attr))
+    end
+end
+
+-- Section 246 (N63-E): the healing item on Alt (N8) is the item type,
+-- "*item-alt" = "item:ID", never a macro; a changed item is a changed plan,
+-- and the item gone puts the spell type back and clears the item.
+tests["key frame: the Alt item is the item type and follows the plan"] = function(t)
+    local kf, h = make({ form = 0 })
+    local p = plan()
+    p.altItem = 5512
+    local st = kf:want(p)
+    t.eq(st.state, "set")
+    t.eq(h.attrs["*type-alt"], "item", "the item type")
+    t.eq(h.attrs["*item-alt"], "item:5512", "the item")
+    t.eq(h.attrs["*macrotext-alt"], nil, "no macro text")
+    t.eq(h.attrs.type, "spell", "the key itself is still the spell")
+    local q = plan()
+    q.altItem = 5513
+    kf:want(q)
+    t.eq(h.attrs["*item-alt"], "item:5513", "another item: set again")
+    kf:want(plan())
+    t.eq(h.attrs["*type-alt"], nil, "the item gone: the empty Alt slot holds nothing")
+    t.eq(h.attrs["*item-alt"], nil, "and the item is cleared")
+    for _, attr in ipairs(h.reached) do
+        t.ok(not attr:find("macrotext", 1, true), "a macro text attribute was set: " .. attr)
     end
 end
 

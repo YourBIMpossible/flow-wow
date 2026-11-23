@@ -1135,12 +1135,24 @@ function ns.make.fakeClient(opts)
     -- combatLockdown() is not false (it follows setCombat / setLockdown).
     -- failSecureAttr(attr, true): setting that one is "refused".
     -- dropSecureAttr(attr, true): setting it answers true and keeps nothing.
+    -- Section 246 (N63-E): every set asked for, kept or refused, is logged
+    -- in order: h.given = { { attr, value } } on the button, and
+    -- c.secureGiven = { { name, attr, value } } over every button.
+    -- c.secureMacros() lists the rows of c.secureGiven that make a button
+    -- a macro: a type attribute ("type", "*type-alt", "shift-type1", ...)
+    -- given "macro", or a macro text attribute given a value. A macro-type
+    -- secure button does not act on this client (the press arrives with the
+    -- right macro and nothing is cast), so no Z-Flow button may be one.
     c.secureButtons = {}
+    c.secureGiven = {}
     local secureFail, secureDrop = {}, {}
     function c.secureButton(spec)
         if s.noFrames then return nil end
-        local h = { spec = spec, attrs = {} }
+        local h = { spec = spec, attrs = {}, given = {} }
         function h.set(attr, value)
+            h.given[#h.given + 1] = { attr = attr, value = value }
+            c.secureGiven[#c.secureGiven + 1] = {
+                name = type(spec) == "table" and spec.name or nil, attr = attr, value = value }
             if c.combatLockdown() ~= false then return false, "lockdown" end
             if secureFail[attr] then return false, "refused" end
             if not secureDrop[attr] then h.attrs[attr] = value end
@@ -1151,6 +1163,17 @@ function ns.make.fakeClient(opts)
         return h
     end
     function c.failSecureAttr(attr, on) secureFail[attr] = on and true or nil end
+    function c.secureMacros()
+        local out = {}
+        for _, g in ipairs(c.secureGiven) do
+            local attr = tostring(g.attr)
+            if (attr:find("type", 1, true) and g.value == "macro")
+                or (attr:find("macrotext", 1, true) and g.value ~= nil) then
+                out[#out + 1] = g
+            end
+        end
+        return out
+    end
     function c.dropSecureAttr(attr, on) secureDrop[attr] = on and true or nil end
 
     -- F2 errand stops: the same reads as Core/Client.lua, set by a test.
