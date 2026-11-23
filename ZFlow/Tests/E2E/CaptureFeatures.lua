@@ -154,6 +154,16 @@ local function runFeature(c, addon, feature)
     for _, p in ipairs(c.panels or {}) do
         if p.shown then for _, line in ipairs(p.lines or {}) do lines[#lines + 1] = tostring(line) end end
     end
+    -- The windows the kit draws (the advisor among them): their words.
+    if type(c.kitWindows) == "function" then
+        for _, w in pairs(c.kitWindows()) do
+            if w.shown then
+                for _, part in ipairs(w.parts or {}) do
+                    if part.text ~= nil then lines[#lines + 1] = tostring(part.text) end
+                end
+            end
+        end
+    end
     local after = 0
     for _, p in ipairs(addon.problems:list()) do after = after + (p.count or 1) end
     return lines, after - before

@@ -7,7 +7,16 @@ local _, ns = ...
 -- full strength, the rest of what your class can use below and faded.
 --
 -- LOOK ONLY. It reads and draws text. It never rolls, passes, picks, loots,
--- whispers, targets or casts, and the panel has nothing to click.
+-- whispers, targets or casts, and the panel has nothing to click but its
+-- own close button.
+--
+-- Drawn by the shared kit (UI/Kit.lua, lead sections 297 item 5 and 322
+-- line 4): one window, the boss as its header, each drop an item line
+-- (BossLoot.View). The kit has no faded line, so the order is said with
+-- two headings instead: your role's upgrades, then the rest. When the kit
+-- or the client refuses the window, the see-through text panel shows
+-- BossLoot.Lines as before (UI/KitHost.lua). The player can close the kit
+-- window; it stays closed for that fight and shows at the next pull.
 --
 -- NO LOOT TABLE. Nothing here is copied from anywhere: the panel shows only
 -- what this account's own loot rolls, loot lines and loot windows showed
@@ -62,6 +71,7 @@ local _, ns = ...
 --
 --   rows, waiting = BossLoot.Rows(found, facts, who)      pure
 --   lines         = BossLoot.Lines(found, rows, who, id)  pure
+--   view          = BossLoot.View(found, rows, who, id)   pure: the kit window
 --   found         = BossLoot.Lookup(book, drops, boss)    pure
 --   api           = BossLoot.Declare(k[, packs])
 --     api.view()    what is shown now: { key, via, lines, rows }, or nil
@@ -112,6 +122,15 @@ B.FULL, B.FADED, B.END = "|cffffffff", "|cff808080", "|r"
 B.CLOAK = "INVTYPE_CLOAK"
 B.EMPTY = "no loot seen from this boss yet. What drops is remembered from now on."
 B.NO_NAME = "This boss"
+-- The kit window. Its size is a first guess: not seen in game.
+B.KIT_ID = "BossLoot"
+B.KIT_WIDTH, B.KIT_HEIGHT = 340, 360
+B.TOP_ROLE = "Upgrades for your role"
+B.TOP_ANY = "Upgrades"
+B.REST = "Other pieces your class can use"
+B.EMPTY_WHAT = "No loot seen from this boss yet."
+B.EMPTY_HOW = "What drops is remembered from now on."
+B.NONE_HOW = "Other drops are added as you see them."
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -424,6 +443,38 @@ local function seenText(times, kills)
     return "seen " .. times .. (times == 1 and " time" or " times")
 end
 
+-- A row's name as shown, and its verdict in words.
+local function rowText(row, pack, kills)
+    local label = row.name or ("Item " .. tostring(ns.Items.Id(row.key) or row.key))
+    local seen = seenText(row.times, kills)
+    if row.state == "top" then
+        return label, "upgrade " .. signed(row.delta) .. " for " .. roleName(pack, row.role) .. ", " .. seen
+    elseif row.state == "other" then
+        return label, signed(row.delta) .. " for " .. roleName(pack, row.role) .. ", " .. seen
+    elseif row.state == "plain" then
+        return label, "no upgrade, " .. seen
+    elseif row.state == "none" then
+        return label, "no verdict, " .. seen
+    elseif row.state == "unsure" then
+        return label, "not known whether you can use it, " .. seen
+    end
+    return label, "not read yet, " .. seen
+end
+
+local function nothingFor(n)
+    return "othing for your class among the " .. n .. (n == 1 and " item" or " items") .. " seen from this boss."
+end
+
+-- Is who.role one of the pack's roles, and has the pack more than one?
+local function roleChosen(pack, role)
+    local roles = rolesOf(pack)
+    local chosen = false
+    for i = 1, #roles do
+        if roles[i] == role then chosen = true end
+    end
+    return chosen, #roles > 1
+end
+
 function B.Lines(found, rows, who, id)
     found = type(found) == "table" and found or {}
     rows = type(rows) == "table" and rows or {}
@@ -432,42 +483,79 @@ function B.Lines(found, rows, who, id)
     local boss = words(found.name) and found.name or B.NO_NAME
     local n = isCount(found.n) and found.n or 0
     if n == 0 then return { boss .. ": " .. B.EMPTY } end
-    if #rows == 0 then
-        return { boss .. ": nothing for your class among the " .. n .. (n == 1 and " item" or " items")
-            .. " seen from this boss." }
-    end
+    if #rows == 0 then return { boss .. ": n" .. nothingFor(n) } end
     local lines = { boss .. ": loot you have seen drop" }
-    local roles = rolesOf(pack)
-    local chosen = false
-    for i = 1, #roles do
-        if roles[i] == who.role then chosen = true end
-    end
-    if not chosen and #roles > 1 and type(id) == "table" and words(id.slash) then
+    local chosen, several = roleChosen(pack, who.role)
+    if not chosen and several and type(id) == "table" and words(id.slash) then
         lines[#lines + 1] = "Say " .. id.slash .. " role to put your own role's pieces first."
     end
     for i = 1, math.min(#rows, B.MAX_SHOWN) do
         local row = rows[i]
-        local label = row.name or ("Item " .. tostring(ns.Items.Id(row.key) or row.key))
-        local seen = seenText(row.times, found.kills)
-        local text, tint
-        if row.state == "top" then
-            tint = B.FULL
-            text = label .. ": upgrade " .. signed(row.delta) .. " for " .. roleName(pack, row.role) .. ", " .. seen
-        elseif row.state == "other" then
-            text = label .. ": " .. signed(row.delta) .. " for " .. roleName(pack, row.role) .. ", " .. seen
-        elseif row.state == "plain" then
-            text = label .. ": no upgrade, " .. seen
-        elseif row.state == "none" then
-            text = label .. ": no verdict, " .. seen
-        elseif row.state == "unsure" then
-            text = label .. ": not known whether you can use it, " .. seen
-        else
-            text = label .. ": not read yet, " .. seen
-        end
-        lines[#lines + 1] = (tint or B.FADED) .. text .. B.END
+        local label, verdict = rowText(row, pack, found.kills)
+        local tint = B.FADED
+        if row.state == "top" then tint = B.FULL end
+        lines[#lines + 1] = tint .. label .. ": " .. verdict .. B.END
     end
     if #rows > B.MAX_SHOWN then lines[#lines + 1] = "and " .. (#rows - B.MAX_SHOWN) .. " more" end
     return lines
+end
+
+-- The same list as a kit window spec (UI/Kit.lua): the boss as the header,
+-- then each drop an item line, its verdict as the note. The kit has no
+-- faded line: the top rows stand under their own heading, in the good
+-- tone, and the rest under another. Nothing in it can be pressed. Escape
+-- does not close it (Escape is pressed often in a fight); its close
+-- button does.
+function B.View(found, rows, who, id)
+    found = type(found) == "table" and found or {}
+    rows = type(rows) == "table" and rows or {}
+    who = type(who) == "table" and who or {}
+    local pack = type(who.pack) == "table" and who.pack or nil
+    local boss = words(found.name) and found.name or B.NO_NAME
+    local view = { id = B.KIT_ID, title = boss, children = { { kind = "header", title = boss } },
+        width = B.KIT_WIDTH, height = B.KIT_HEIGHT, point = B.Point(nil),
+        escape = false, resizable = false }
+    local kids = view.children
+    local n = isCount(found.n) and found.n or 0
+    if n == 0 then
+        kids[#kids + 1] = { kind = "empty", key = "none", text = B.EMPTY_WHAT, how = B.EMPTY_HOW }
+        return view
+    end
+    if #rows == 0 then
+        kids[#kids + 1] = { kind = "empty", key = "none", text = "N" .. nothingFor(n), how = B.NONE_HOW }
+        return view
+    end
+    local chosen, several = roleChosen(pack, who.role)
+    if not chosen and several and type(id) == "table" and words(id.slash) then
+        kids[#kids + 1] = { kind = "line", key = "role",
+            text = "Say " .. id.slash .. " role to put your own role's pieces first." }
+    end
+    -- Rows come sorted, the top ones first: a heading where each kind starts.
+    local heading
+    for i = 1, math.min(#rows, B.MAX_SHOWN) do
+        local row = rows[i]
+        local top = row.state == "top"
+        local want = B.REST
+        if top then
+            want = B.TOP_ANY
+            if chosen then want = B.TOP_ROLE end
+        end
+        if want ~= heading then
+            heading = want
+            kids[#kids + 1] = { kind = "section", text = want }
+        end
+        local label, verdict = rowText(row, pack, found.kills)
+        local line = { kind = "itemLine", name = label, note = verdict }
+        if top then line.tone = "good" end
+        -- The item's number, for the game's own tooltip of it.
+        local item = ns.Items.Id(row.key)
+        if type(item) == "number" then line.item = item end
+        kids[#kids + 1] = line
+    end
+    if #rows > B.MAX_SHOWN then
+        kids[#kids + 1] = { kind = "line", key = "more", text = "and " .. (#rows - B.MAX_SHOWN) .. " more" }
+    end
+    return view
 end
 
 -- A saved place when it is one, else the default: { anchor, relative
@@ -485,7 +573,9 @@ end
 
 function B.Declare(k, packs)
     local api = {}
-    local ctx, panel
+    -- host: the kit window with the plain panel behind it (UI/KitHost.lua).
+    -- closedFor: the boss whose window the player closed, until the fight ends.
+    local ctx, host, closedFor
     local cancels = {}
     local enc              -- { id, name, npc, guid } while an encounter is on
     local last             -- the boss last recognised with no encounter event: { key, npc, guid, name }
@@ -632,8 +722,8 @@ function B.Declare(k, packs)
     end
 
     local function hide()
-        shown = nil
-        if panel then panel.show(false) end
+        shown, closedFor = nil, nil
+        if host then host.show(false) end
     end
 
     local function build(boss, t)
@@ -659,8 +749,11 @@ function B.Declare(k, packs)
         end
         local rows, waiting = B.Rows(found, facts, who)
         local lines = B.Lines(found, rows, who, k.id or ns.id)
-        panel.setLines(lines)
-        panel.show(true)
+        host.draw(B.View(found, rows, who, k.id or ns.id), lines)
+        if closedFor ~= boss.key then
+            closedFor = nil
+            host.show(true)
+        end
         shown = { key = boss.key, npc = boss.npc, via = boss.via, lines = lines, rows = rows, waiting = waiting }
         dirty, computedAt = false, t
     end
@@ -673,7 +766,7 @@ function B.Declare(k, packs)
             last = boss
             last.at = now()
         end
-        if not panel then return end
+        if not host then return end
         if not boss or ctx.settings:get(B.SETTING) ~= true then
             hide()
             return
@@ -823,24 +916,50 @@ function B.Declare(k, packs)
             watch(B.ROLE)
             -- The frame last, after everything that can switch the module off.
             local id = k.id or ns.id
-            panel = c.client.panel({ name = id.framePrefix .. "BossLoot", width = B.WIDTH, height = B.HEIGHT })
+            local panel = c.client.panel({ name = id.framePrefix .. "BossLoot", width = B.WIDTH, height = B.HEIGHT })
+            -- Where the player left it: the kit window and the plain panel
+            -- keep the one place.
+            local function moved(point)
+                local to = B.Point({ point = point })
+                c.store:set("account", B.LAYOUT, { point = to })
+            end
+            -- A client that makes no plain panel draws nothing: no host.
             if panel then
                 panel.show(false)
                 panel.place(B.Point(c.store:get("account", B.LAYOUT)))
                 if type(panel.onMoved) == "function" then
-                    panel.onMoved(function(point)
-                        local to = B.Point({ point = point })
-                        c.store:set("account", B.LAYOUT, { point = to })
-                    end, function(err) fail("moved", err) end)
+                    panel.onMoved(moved, function(err) fail("moved", err) end)
                 end
+                -- The plain panel as the host draws it: its lines, and
+                -- whether it is shown (the client's panel does not say).
+                local open = false
+                host = ns.KitHost.New(k, c.client, {
+                    name = id.framePrefix .. "BossLootKit",
+                    panel = {
+                        draw = function(lines) panel.setLines(lines) end,
+                        show = function(on)
+                            open = on == true
+                            panel.show(open)
+                        end,
+                        shown = function() return open end,
+                    },
+                    place = function() return B.Point(c.store:get("account", B.LAYOUT)) end,
+                    onMoved = function(point)
+                        local ok, err = pcall(moved, point)
+                        if not ok then fail("moved", err) end
+                    end,
+                    onClose = function()
+                        if shown then closedFor = shown.key end
+                    end,
+                })
             end
             evaluate()
         end,
         stop = function()
             for i = 1, #cancels do pcall(cancels[i]) end
             cancels = {}
-            if panel then panel.show(false) end
-            shown, ctx = nil, nil
+            if host then host.show(false) end
+            shown, ctx, closedFor = nil, nil, nil
         end,
     })
     return api
