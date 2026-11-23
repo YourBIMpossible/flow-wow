@@ -7259,14 +7259,45 @@ function ns.make.client(env)
         method(f, "SetFrameStrata", "MEDIUM")
         method(f, "SetClampedToScreen", true)
 
+        -- Lead sections 320 and 350: the shared look, from the one theme file
+        -- (UI/Kit/Theme.lua, read when the bar is made): its fill, a thin
+        -- edge and its small font; the bar keeps its own layout. Without the
+        -- theme: the old black backing and font, no edge.
+        local look = type(ns.Kit) == "table" and type(ns.Kit.look) == "table" and ns.Kit.look or nil
+        local fill, edgeColor, edgeSize, barFont = { 0, 0, 0 }, nil, 1, "GameFontNormalSmall"
+        if look ~= nil and type(look.color) == "table" then
+            if type(look.color.fill) == "table" then fill = look.color.fill end
+            if type(look.color.edge) == "table" then edgeColor = look.color.edge end
+        end
+        if look ~= nil and type(look.size) == "table" and type(look.size.edge) == "number" then edgeSize = look.size.edge end
+        if look ~= nil and type(look.font) == "table" and type(look.font.small) == "string" then barFont = look.font.small end
+
         local okBg, bg = method(f, "CreateTexture", nil, "BACKGROUND")
         if not okBg then bg = nil end
         if bg ~= nil then
             method(bg, "SetAllPoints", f)
-            if not method(bg, "SetColorTexture", 0, 0, 0, 0.6) then method(bg, "SetTexture", 0, 0, 0, 0.6) end
+            if not method(bg, "SetColorTexture", fill[1], fill[2], fill[3], 0.6) then
+                method(bg, "SetTexture", fill[1], fill[2], fill[3], 0.6)
+            end
+        end
+        if edgeColor ~= nil then
+            for _, side in ipairs({ { "TOPLEFT", "TOPRIGHT" }, { "BOTTOMLEFT", "BOTTOMRIGHT" },
+                { "TOPLEFT", "BOTTOMLEFT" }, { "TOPRIGHT", "BOTTOMRIGHT" } }) do
+                local okE, line = method(f, "CreateTexture", nil, "BORDER")
+                if okE and line ~= nil then
+                    method(line, "SetPoint", side[1], f, side[1], 0, 0)
+                    method(line, "SetPoint", side[2], f, side[2], 0, 0)
+                    if side[1] == "TOPLEFT" and side[2] == "TOPRIGHT" or side[1] == "BOTTOMLEFT" then
+                        method(line, "SetHeight", edgeSize)
+                    else
+                        method(line, "SetWidth", edgeSize)
+                    end
+                    method(line, "SetColorTexture", edgeColor[1], edgeColor[2], edgeColor[3], edgeColor[4])
+                end
+            end
         end
 
-        local okText, text = method(f, "CreateFontString", nil, "OVERLAY", "GameFontNormalSmall")
+        local okText, text = method(f, "CreateFontString", nil, "OVERLAY", barFont)
         if not okText then text = nil end
         if text ~= nil then
             method(text, "SetPoint", "TOPLEFT", f, "TOPLEFT", 6, -4)
@@ -7345,7 +7376,9 @@ function ns.make.client(env)
         function h.alpha(a)
             a = tonumber(a)
             if bg == nil or a == nil then return end
-            if not method(bg, "SetColorTexture", 0, 0, 0, a) then method(bg, "SetTexture", 0, 0, 0, a) end
+            if not method(bg, "SetColorTexture", fill[1], fill[2], fill[3], a) then
+                method(bg, "SetTexture", fill[1], fill[2], fill[3], a)
+            end
         end
         function h.size(w, ht)
             w, ht = tonumber(w), tonumber(ht)
