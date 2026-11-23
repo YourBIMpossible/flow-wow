@@ -360,6 +360,28 @@ function Capture.Apply(c, cap)
     return report
 end
 
+-- The reads a feature run must have had from the capture for its result to
+-- mean anything: who the character is (the rotation) and where it stands
+-- (the arrow, flights). A run with one of them missing shows nothing about
+-- the feature, so it is reported as missing, never as a pass.
+Capture.NEEDED = { "class", "level", "faction", "position", "zone" }
+
+-- Whether a capture gave what a feature run needs. Answers true, or false
+-- and the list of what is missing, in the add-on's own words (no value from
+-- the capture): "a snapshot", then each needed read that was not set.
+function Capture.Evidence(cap, report)
+    local missing = {}
+    if Capture.Newest(cap) == nil then missing[#missing + 1] = "a snapshot" end
+    local set = {}
+    if type(report) == "table" and type(report.set) == "table" then
+        for _, name in ipairs(report.set) do set[name] = true end
+    end
+    for _, name in ipairs(Capture.NEEDED) do
+        if not set[name] then missing[#missing + 1] = name end
+    end
+    return #missing == 0, missing
+end
+
 function Capture.Client(cap, opts)
     local ok, why = Capture.Check(cap)
     if not ok then return nil, why end
