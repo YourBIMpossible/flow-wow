@@ -1445,6 +1445,25 @@ function ns.make.fakeClient(opts)
         s.unitBuffs = s.unitBuffs or {}
         s.unitBuffs[unit] = rows
     end
+    -- N64: the enchant on your weapons, in the shape Plexy's P-READS note
+    -- names for the real read (item 5, not yet in Core/Client.lua):
+    --   c.weaponEnchant() -> { main = { has, left, charges }, off = ... } or nil
+    -- has true or false, left seconds (nil: not known), charges a number or
+    -- nil; a hand not read is left out. setWeaponEnchant(nil): not read;
+    -- setWeaponEnchantFails(true): the read raises.
+    function c.weaponEnchant()
+        if s.weaponEnchantFails then error("weapon enchant read failed (test)") end
+        if type(s.weaponEnchant) ~= "table" then return nil end
+        local out = {}
+        for hand, row in pairs(s.weaponEnchant) do
+            if type(row) == "table" then
+                out[hand] = { has = row.has, left = row.left, charges = row.charges }
+            end
+        end
+        return out
+    end
+    function c.setWeaponEnchant(t) s.weaponEnchant = t end
+    function c.setWeaponEnchantFails(on) s.weaponEnchantFails = (on == true) end
     -- Plays the game filling its tooltip for `unit`: every onUnitTooltip
     -- listener is told, and what they added comes back as
     -- { { text, r, g, b } ... }.

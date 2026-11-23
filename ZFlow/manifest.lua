@@ -193,6 +193,8 @@ return {
     "Rotation/Gather.lua",
     -- P-PARTY: your group's buffs and dispels, look only (after GroupTip and Choose).
     "Rotation/Group.lua",
+    -- N64: the weapon enchant reminder, a line in chat only (after Group).
+    "Rotation/Enchant.lua",
     -- N55: the boss loot panel, look only (after Gear, Items/Drops and the classes).
     "UI/BossLoot.lua",
     },

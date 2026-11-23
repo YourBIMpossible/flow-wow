@@ -169,4 +169,5 @@ Items\Trader.lua
 Nav\Try.lua
 Rotation\Gather.lua
 Rotation\Group.lua
+Rotation\Enchant.lua
 UI\BossLoot.lua
