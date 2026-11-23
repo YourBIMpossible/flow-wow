@@ -124,6 +124,8 @@ tests["travel visible: the old add-on's flights are copied once at load, and say
     local c2 = start({ account = copy(account), char = copy(char), flow = legacy() })
     t.eq(#(c2.saved(ns.id.accountDB).imports or {}), records, "no second import record")
     t.ok(not said(c2, 0, line), "nothing said again")
+    local zero = Guard.IMPORTED and Guard.IMPORTED:format(ns.id.title, 0)
+    t.ok(not said(c2, 0, zero), "no line with nothing new either")
 end
 
 -- Fails before: nothing runs the import at load.
