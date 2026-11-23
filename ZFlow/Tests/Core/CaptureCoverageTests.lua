@@ -26,7 +26,8 @@ local KIND = {
              "slashTaken", "unslash" },
     -- Hands back or runs a sound restart: never asked by the capture.
     -- craftRecipe (lead section 226, acting): one craft on the player click.
-    act = { "restartSound", "soundWays", "craftRecipe" },
+    -- stopCraftRepeat (section 234): stops the game repeat; not a craft.
+    act = { "restartSound", "soundWays", "craftRecipe", "stopCraftRepeat" },
     -- Reads a chat line handed in, not the client.
     parse = { "ownLoot", "auctionOutcome" },
 }
