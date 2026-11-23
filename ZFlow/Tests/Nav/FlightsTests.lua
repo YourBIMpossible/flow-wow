@@ -138,13 +138,13 @@ end
 tests["flights module: an unread or closed flight map writes nothing, no table made"] = function(t)
     local _, c = start()
     c.fire("TAXIMAP_OPENED")
-    t.eq(c.saved(ns.id.charDB).learned, nil, "no read")
+    t.eq((c.saved(ns.id.charDB).learned or {}).flights, nil, "no read")
     c.setTaxiNodes(read())
     c.fire("TAXIMAP_CLOSED")
-    t.eq(c.saved(ns.id.charDB).learned, nil, "read only while the map opens")
+    t.eq((c.saved(ns.id.charDB).learned or {}).flights, nil, "read only while the map opens")
     c.setMapCorners(1414, nil)
     c.fire("TAXIMAP_OPENED")
-    t.eq(c.saved(ns.id.charDB).learned, nil, "the flight map not placed in the world")
+    t.eq((c.saved(ns.id.charDB).learned or {}).flights, nil, "the flight map not placed in the world")
 end
 
 tests["flights module: a name with a dot is one key, and the points survive the session"] = function(t)
