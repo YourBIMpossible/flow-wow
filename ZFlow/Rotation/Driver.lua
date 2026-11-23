@@ -203,12 +203,18 @@ local function currentOf(client, ids)
 end
 
 -- N39 (P-KEYS slice E): whether you are swinging, read as the current spell
--- of Auto Attack or Attack; nil when neither could be read.
+-- of Auto Attack or Attack; nil when neither could be read. SE-3: the id
+-- is the pack's when it has the row (Druid, Paladin), else asked of the
+-- client by name (client.spellId), so every class reads its swing.
 local function attackingOf(client, ids)
     if type(client.currentSpell) ~= "function" or type(ids) ~= "table" then return nil end
     local seen = nil
     for _, name in ipairs({ "Auto Attack", "Attack" }) do
         local id = ids[name]
+        if type(id) ~= "number" and type(client.spellId) == "function" then
+            local okId, got = pcall(client.spellId, name)
+            if okId and type(got) == "number" then id = got end
+        end
         if type(id) == "number" then
             local asked, on = pcall(client.currentSpell, id)
             if asked and on == true then return true end
