@@ -46,11 +46,36 @@ tests["c.unitCare: no amount read, the share is asked (a first guess)"] = functi
         })).unitCare("party2").hurt
     end
     t.eq(with(0.5), true, "a share of 1")
-    t.eq(with(1), false, "whole")
+    t.eq(with(1), nil, "exactly 1: whole on a scale of 1, or 1 in 100; not known (PK-2)")
     t.eq(with(40), true, "a share of 100")
     t.eq(with(100), false)
     t.eq(with(nil), nil, "not known")
     t.eq(with("50"), nil, "not a number")
+end
+
+tests["c.unitCare: a friend at 1 in 100 is never read as whole (PK-2)"] = function(t)
+    local share, fails = nil, false
+    local client = ns.make.client(careEnv({
+        UnitHealth = function() return nil end,
+        UnitHealthPercent = function()
+            if fails then error("share read failed (test)") end
+            return share
+        end,
+    }))
+    t.eq(client.unitCare("party1").hurt, nil, "no share yet: not known")
+    share = 1
+    t.ok(client.unitCare("party1").hurt ~= false, "late data, exactly 1: not read as not hurt")
+    fails = true
+    local ok, got = pcall(client.unitCare, "party1")
+    t.eq(ok, true, "a share read that raises: no error escapes")
+    t.eq(ok and got.hurt, nil, "the read raised: not known")
+    fails = false; share = 2
+    t.eq(client.unitCare("party1").hurt, true, "the read recovers: 2 in 100 is hurt")
+    local reloaded = ns.make.client(careEnv({
+        UnitHealth = function() return nil end,
+        UnitHealthPercent = function() return 1 end,
+    }))
+    t.ok(reloaded.unitCare("party1").hurt ~= false, "after a reload, exactly 1: still not read as whole")
 end
 
 tests["c.unitCare: no unit there is { exists = false }, and nothing more is asked"] = function(t)
