@@ -124,4 +124,22 @@ tests["sell grey: reservations not known - the grey item is a row that says so"]
     t.eq(noteOf(c, addon, "Cracked Bone", { status = addon.Reservations.UNAVAILABLE }), "reservations not known")
 end
 
+-- A cold merchant visit fires many GET_ITEM_INFO_RECEIVED in one frame: at
+-- most one relist per frame. Fails before: shows() rises by 5 at once.
+tests["sell grey: a burst of item-info events in one frame relists once"] = function(t)
+    local c, addon = boot({ info = { [BONE] = { name = "Cracked Bone", quality = 0 } } })
+    c.setMerchantOpen(true)
+    local s0 = addon.sellList.shows()
+    for _ = 1, 5 do c.fire("GET_ITEM_INFO_RECEIVED", BONE, true) end
+    t.eq(addon.sellList.shows(), s0, "not at once")
+    c.advance(0.02, 1)
+    t.eq(addon.sellList.shows(), s0 + 1, "one relist for the burst")
+    c.advance(0.02, 1)
+    t.eq(addon.sellList.shows(), s0 + 1, "nothing more without an event")
+    c.fire("GET_ITEM_INFO_RECEIVED", BONE, true)
+    c.advance(0.02, 1)
+    t.eq(addon.sellList.shows(), s0 + 2, "the next frame's event: one more")
+    t.eq(newProblems(addon), 0)
+end
+
 return tests
