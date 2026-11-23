@@ -210,4 +210,44 @@ tests["advisor panel: look only - no buttons, no clicks, no acting functions"] =
     end
 end
 
+-- N68: Watch(fn) tells fn(id, text) when a prompt id that was not there is
+-- added (a prompt turned true). A replaced text is not new; a prompt taken
+-- back and added again is. Returns a cancel function.
+tests["advisor panel: Watch hears a new prompt once, not a replaced one, and again after Remove"] = function(t)
+    local _, _, api = start()
+    if type(api.Watch) ~= "function" then t.ok(false, "api.Watch"); return end
+    local heard = {}
+    local cancel = api.Watch(function(id, text) heard[#heard + 1] = { id, text } end)
+    t.eq(type(cancel), "function", "a cancel function")
+    api.Add("a", "First.", 1)
+    api.Add("a", "First, changed.", 2)
+    t.eq(heard, { { "a", "First." } }, "the replaced text is not new")
+    api.Remove("a")
+    api.Add("a", "Back.", 1)
+    t.eq(heard, { { "a", "First." }, { "a", "Back." } }, "taken back and added again is new")
+    api.Add("", "Bad.", 1)
+    t.eq(#heard, 2, "a refused prompt is not heard")
+    cancel()
+    api.Add("b", "Second.", 1)
+    t.eq(#heard, 2, "nothing after the cancel")
+end
+
+tests["advisor panel: Watch refuses a non-function; a watcher that raises breaks nothing"] = function(t)
+    local _, c, api = start()
+    if type(api.Watch) ~= "function" then t.ok(false, "api.Watch"); return end
+    t.eq(api.Watch("not a function"), nil, "refused")
+    local after = {}
+    api.Watch(function() error("boom") end)
+    api.Watch(function(id) after[#after + 1] = id end)
+    t.eq(api.Add("a", "First.", 1), true, "still added")
+    t.eq(panelOf(c).lines, { "First." }, "still shown")
+    t.eq(after, { "a" }, "the next watcher still hears it")
+end
+
+tests["advisor panel: Watch is reached through needs and is the addon's own"] = function(t)
+    local _, _, _, source = start()
+    t.eq(type(source.advisor.Watch), "function", "through needs")
+    t.eq(ns.Advisor.Watch, ns.advisor.Watch, "Advisor.Watch is the addon's own")
+end
+
 return tests

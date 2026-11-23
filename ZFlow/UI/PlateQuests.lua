@@ -1,0 +1,342 @@
+local _, ns = ...
+-- Quest marks on enemy nameplates (G51, lead sections 226 and 227). An
+-- enemy whose creature counts toward an unfinished objective of a quest in
+-- your log gets a small yellow mark above its nameplate: the objective's
+-- count ("3/8"), or "!" when its text carries none. The mark goes when the
+-- objective is done, the quest is ready to hand in, or the plate goes.
+--
+-- WHICH CREATURES COUNT. Only from data, never from a name:
+--   1. the installed Questie's objective data, asked at runtime through its
+--      own loader (client.questieModule, as Nav/QuestRead.lua): a kill
+--      objective's creature ids, an item objective's npcDrops. Objective i
+--      of the log is taken to be Questie's ObjectiveData[i]. Nothing of
+--      Questie's is copied or saved here.
+--   2. for an item objective Questie names, your own learned drops
+--      (Items/Drops.lua, "learned.drops"): a creature you looted that item
+--      from yourself counts too.
+--   Without Questie: no mark. Legacy Flow (Modules/QuestMarks.lua) matched
+--   the plate's name against the objective's text ("Kobold Vermin slain:
+--   3/8") for kills; that guess is not carried over.
+--
+-- LOOK ONLY: nothing clicks, targets, casts or writes a CVar; no frame is
+-- secure. The client reads are FIRST GUESSES, not seen in game on 16001:
+--   client.plates(fn), client.canAttack(unit), client.plateCreature(unit),
+--   client.plateQuestMark(unit) (h.show, h.text, h.color),
+--   client.questLog() through N.QuestLogRows, client.questieModule(name).
+--
+-- Pure:
+--   PQ.Progress(text) -> "3/8" | nil
+--   PQ.Index(rows, db, book) -> { [npc id] = { { quest, label, kind, from } } }
+--     kind "kill" | "drop"; from "questie" | "learned"
+--   PQ.Label(list) -> text | nil   each count once, at most PQ.MAX_LABELS
+-- PQ.Declare(k, diag) -> api
+--   api.status() -> { on, source, inView, shown, mobs }
+--   api.lines()   what the word PQ.WORD prints
+-- Updated on QUEST_LOG_UPDATE, UNIT_QUEST_LOG_CHANGED and
+-- PLAYER_ENTERING_WORLD, read once PQ.WAIT seconds after the first of a
+-- burst; a plate coming in is marked at once from what was read. No tick.
+-- Setting (account): plateQuests.off (its row in Settings/Model.lua).
+-- Not tested in game.
+local PQ = {}
+ns.PlateQuests = PQ
+
+PQ.NAME = "plateQuests"
+PQ.WORD = "questmarks"
+PQ.HELP = "quest marks on enemy nameplates: what shows and why; questmarks on or questmarks off switches it"
+PQ.OFF = "plateQuests.off"
+PQ.DROPS = "learned.drops"
+PQ.WAIT = 0.5
+PQ.MARK = "!"
+PQ.MAX_LABELS = 2
+PQ.COLOR = { 1, 0.82, 0 }
+PQ.EVENTS = { "QUEST_LOG_UPDATE", "UNIT_QUEST_LOG_CHANGED", "PLAYER_ENTERING_WORLD" }
+PQ.WORDS = {
+    none = "not read yet",
+    questie = "from Questie and your own loot",
+    ["no questie"] = "Questie is not loaded: no marks",
+    ["not read"] = "the quest log is not read yet",
+    failed = "the last read failed",
+}
+
+function PQ.Progress(text)
+    if type(text) ~= "string" then return nil end
+    local have, need = text:match("(%d+)%s*/%s*(%d+)")
+    if have == nil then return nil end
+    return have .. "/" .. need
+end
+
+-- A number or a list of them -> the whole ids above 0, as a list.
+local function ids(v)
+    local out = {}
+    if type(v) == "number" then v = { v } end
+    if type(v) ~= "table" then return out end
+    for _, n in ipairs(v) do
+        if type(n) == "number" and n > 0 and n == math.floor(n) then out[#out + 1] = n end
+    end
+    return out
+end
+
+-- A function of a Questie module, called both ways Questie writes them, as
+-- Nav/QuestRead.lua. An error is no answer.
+local function dbCall(db, name, id)
+    if type(db) ~= "table" or type(db[name]) ~= "function" then return nil end
+    local ok, v = pcall(db[name], id)
+    if ok and v ~= nil then return v end
+    ok, v = pcall(db[name], db, id)
+    if ok then return v end
+    return nil
+end
+
+-- The creatures you looted itemId from yourself.
+local function learnedFrom(book, itemId)
+    local out = {}
+    local Items = ns.Items
+    if type(book) ~= "table" or type(Items) ~= "table" or type(Items.Key) ~= "function" then return out end
+    local key = Items.Key(itemId)
+    if key == nil then return out end
+    for npc, e in pairs(book) do
+        local id = tonumber(npc)
+        if id ~= nil and type(e) == "table" and type(e.items) == "table" and e.items[key] ~= nil then
+            out[#out + 1] = id
+        end
+    end
+    table.sort(out)
+    return out
+end
+
+function PQ.Index(rows, db, book)
+    local out = {}
+    if type(rows) ~= "table" or type(db) ~= "table" then return out end
+    local function add(npc, quest, label, kind, from)
+        local list = out[npc]
+        if list == nil then
+            list = {}
+            out[npc] = list
+        end
+        list[#list + 1] = { quest = quest, label = label, kind = kind, from = from }
+    end
+    for _, row in ipairs(rows) do
+        if type(row) == "table" and row.complete ~= true and row.failed ~= true then
+            local quest = dbCall(db, "GetQuest", row.id)
+            local data
+            if type(quest) == "table" then data = quest.ObjectiveData end
+            if type(data) == "table" and type(row.objectives) == "table" then
+                for i, o in ipairs(row.objectives) do
+                    local od = data[i]
+                    if type(o) == "table" and o.done ~= true and type(od) == "table" then
+                        local label = PQ.Progress(o.text) or PQ.MARK
+                        if od.Type == "monster" then
+                            for _, npc in ipairs(ids(od.Id)) do add(npc, row.id, label, "kill", "questie") end
+                        elseif od.Type == "item" then
+                            local seen = {}
+                            local item = dbCall(db, "GetItem", od.Id)
+                            local drops
+                            if type(item) == "table" then drops = item.npcDrops end
+                            for _, npc in ipairs(ids(drops)) do
+                                seen[npc] = true
+                                add(npc, row.id, label, "drop", "questie")
+                            end
+                            for _, itemId in ipairs(ids(od.Id)) do
+                                for _, npc in ipairs(learnedFrom(book, itemId)) do
+                                    if not seen[npc] then
+                                        seen[npc] = true
+                                        add(npc, row.id, label, "drop", "learned")
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return out
+end
+
+function PQ.Label(list)
+    if type(list) ~= "table" or #list == 0 then return nil end
+    local parts, seen = {}, {}
+    for _, e in ipairs(list) do
+        if #parts >= PQ.MAX_LABELS then break end
+        local s = type(e) == "table" and e.label
+        if type(s) == "string" and not seen[s] then
+            seen[s] = true
+            parts[#parts + 1] = s
+        end
+    end
+    if #parts == 0 then return nil end
+    return table.concat(parts, " ")
+end
+
+-- One read of the client, or nil when it has no such read or it fails.
+local function ask(client, name, ...)
+    if type(client) ~= "table" or type(client[name]) ~= "function" then return nil end
+    local ok, v = pcall(client[name], ...)
+    if not ok then return nil end
+    return v
+end
+
+function PQ.Declare(k, diag)
+    local api = {}
+    local ctx
+    local inView = {}        -- [unit] = true: the plates on screen
+    local marks = {}         -- [unit] = the client's mark handle
+    local shownOn = {}       -- [unit] = true: a mark showing
+    local index              -- nil until read
+    local source = "none"
+    local cancelPlates, pending
+
+    local function on() return ctx ~= nil and ctx.settings:get(PQ.OFF) ~= true end
+
+    local function hideOne(unit)
+        local h = marks[unit]
+        if h then h.show(false) end
+        shownOn[unit] = nil
+    end
+
+    local function hideAll()
+        for unit in pairs(marks) do hideOne(unit) end
+    end
+
+    local function drawOne(unit)
+        local client = ctx.client
+        local list
+        if on() and type(index) == "table" and ask(client, "canAttack", unit) == true then
+            local id = ask(client, "plateCreature", unit)
+            if id ~= nil then list = index[id] end
+        end
+        local label = PQ.Label(list)
+        if label == nil then
+            hideOne(unit)
+            return
+        end
+        local h = marks[unit]
+        if not h then
+            h = ask(client, "plateQuestMark", unit)
+            if type(h) ~= "table" then return end
+            marks[unit] = h
+        end
+        h.text(label)
+        h.color(PQ.COLOR[1], PQ.COLOR[2], PQ.COLOR[3])
+        h.show(true)
+        shownOn[unit] = true
+    end
+
+    local function drawAll()
+        for unit in pairs(inView) do drawOne(unit) end
+    end
+
+    local function read()
+        local client = ctx.client
+        local N = ns.Nav
+        local rows
+        if type(N) == "table" and type(N.QuestLogRows) == "function" then rows = N.QuestLogRows(client) end
+        if rows == nil then
+            index, source = nil, "not read"
+            return
+        end
+        local db = ask(client, "questieModule", "QuestieDB")
+        if type(db) ~= "table" or type(db.GetQuest) ~= "function" then
+            index, source = {}, "no questie"
+            return
+        end
+        local ok, got = pcall(PQ.Index, rows, db, ctx.store:get("char", PQ.DROPS))
+        if ok and type(got) == "table" then
+            index, source = got, "questie"
+        else
+            index, source = nil, "failed"
+        end
+    end
+
+    local function rebuild()
+        pending = nil
+        if not ctx then return end
+        read()
+        drawAll()
+    end
+
+    local function soon()
+        if not ctx or pending then return end
+        pending = ctx.sched:after(PQ.NAME, PQ.WAIT, rebuild)
+    end
+
+    local function onPlate(what, unit)
+        if not ctx then return end
+        -- A plate frame is handed out again: what was on it before goes.
+        hideOne(unit)
+        marks[unit] = nil
+        if what == "added" then
+            inView[unit] = true
+            drawOne(unit)
+        else
+            inView[unit] = nil
+        end
+    end
+
+    function api.status()
+        local n, shown, mobs = 0, 0, 0
+        for _ in pairs(inView) do n = n + 1 end
+        for _ in pairs(shownOn) do shown = shown + 1 end
+        if type(index) == "table" then
+            for _ in pairs(index) do mobs = mobs + 1 end
+        end
+        return { on = on(), source = source, inView = n, shown = shown, mobs = mobs }
+    end
+
+    function api.lines()
+        local s = api.status()
+        return {
+            ("quest marks on nameplates: %s; %d nameplate(s) in view, %d marked")
+                :format(s.on and "on" or "off", s.inView, s.shown),
+            ("  quest data: %s; %d creature(s) count toward your quests")
+                :format(PQ.WORDS[s.source] or tostring(s.source), s.mobs),
+        }
+    end
+
+    k:Setting({ key = PQ.OFF, scope = "account", type = "bool", default = false,
+        label = "Hide quest marks on enemy nameplates", group = "combat.plates",
+        synonyms = { "quest", "nameplate", "objective", "mark", "kill" } })
+
+    k:Module({
+        name = PQ.NAME,
+        needs = { "client", "settings", "bus", "sched", "store" },
+        provides = { Status = api.status, Lines = api.lines },
+        start = function(c)
+            ctx = c
+            cancelPlates = ask(c.client, "plates", onPlate)
+            for _, event in ipairs(PQ.EVENTS) do c.bus:on(PQ.NAME, event, soon) end
+            soon()
+        end,
+        stop = function()
+            if type(cancelPlates) == "function" then pcall(cancelPlates) end
+            cancelPlates = nil
+            if type(pending) == "function" then pcall(pending) end
+            pending = nil
+            hideAll()
+            inView, marks, shownOn, index, source = {}, {}, {}, nil, "none"
+        end,
+    })
+
+    local function say(line)
+        if ctx then ctx.client.print(ns.id.title .. ": " .. line) end
+    end
+
+    if diag and type(diag.commands) == "table" then
+        diag.commands[PQ.WORD] = function(rest)
+            if not ctx then return end
+            local word = tostring(rest or ""):lower():match("^%s*(%S*)")
+            if word == "on" or word == "off" then
+                ctx.settings:set(PQ.OFF, word == "off")
+                if word == "off" then hideAll() else soon() end
+            end
+            local lines = api.lines()
+            say(lines[1])
+            for i = 2, #lines do ctx.client.print(lines[i]) end
+        end
+        if type(diag.help) == "table" then diag.help[PQ.WORD] = PQ.HELP end
+    end
+    return api
+end
+
+-- The addon's own: declared when this file loads, started at login.
+ns.plateQuests = PQ.Declare(ns, ns.diag)

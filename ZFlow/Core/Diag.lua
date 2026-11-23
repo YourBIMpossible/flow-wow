@@ -195,6 +195,8 @@ Diag.NAMES = {
     "TextToSpeech_Speak", "Enum.VoiceTtsDestination", "Enum.VoiceTtsDestination.LocalPlayback",
     "C_GossipInfo", "C_GossipInfo.GetText", "GetGossipText", "GetGreetingText", "GetQuestText",
     "GetObjectiveText", "GetProgressText", "GetRewardText",
+    -- N68: the alert sound (UI/Alerts.lua, Core/Client.lua playAlert).
+    "PlaySound", "SOUNDKIT.RAID_WARNING",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns

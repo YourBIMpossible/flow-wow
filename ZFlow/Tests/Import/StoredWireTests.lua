@@ -232,8 +232,8 @@ return {
         -- plateThreat.always and plateCombo.off (S8, lead section 178); 27
         -- with nav.mapFlights and nav.taxiMark (lead section 187 section 7);
         -- 28 with rotation.sayKept (PC-7, zflow-paladin-carry-2);
-        -- 29 with loot.bossPanel (N55).
-        t.eq(#model:keys(), 29, "the shipped model changed its number of rows")
+        -- 29 with loot.bossPanel (N55); 30 with plateQuests.off (G51).
+        t.eq(#model:keys(), 30, "the shipped model changed its number of rows")
         for _, key in ipairs(model:keys()) do
             t.ok(not model:explicit(out, key), key .. " counts as chosen")
             t.eq((model:get(out, key)), model:default(key), key)
