@@ -125,6 +125,33 @@ tests["weapon master: the skill read raising keeps today's behaviour"] = functio
     t.ok(has(c.showItemTooltip(SWORD), UNTRAINED), "the read recovers: the untrained line")
 end
 
+-- G12 (lead section 275 item 3): the loot roll hint tells "not trained yet"
+-- apart from "your class can't use this" (a plain "No upgrade").
+tests["weapon master: the roll hint says not trained yet, apart from a kind the class can't use"] = function(t)
+    local c = boot({ before = function(x) x.setWeaponSkills({ "Axes", "Defense" }) end })
+    local sword = c.offerRoll(7, SWORD)
+    t.eq(#sword, 1, "one hint")
+    t.eq(sword[1] and sword[1].text, "Not trained yet")
+    -- S21's chat advice says it too, apart from "Greed (can't use)".
+    local notTrained, cantUse = 0, 0
+    for i = 1, #c.printed do
+        local said = c.printed[i]
+        if string.find(said, SWORD, 1, true) then
+            if string.find(said, "Greed (not trained yet)", 1, true) then notTrained = notTrained + 1 end
+            if string.find(said, "Greed (can't use)", 1, true) then cantUse = cantUse + 1 end
+        end
+    end
+    t.eq(notTrained, 1, "the chat advice for an untrained weapon")
+    t.eq(cantUse, 0, "never the class can't-use words for it")
+    local wand = c.offerRoll(8, WAND)
+    t.eq(wand[1] and wand[1].text, "No upgrade", "a kind the class never uses stays a no")
+    c.setWeaponSkills({ "Axes", "Swords", "Defense" })
+    c.setItem(SWORD, { kind = "INVTYPE_WEAPON", stats = { [STR] = 5 }, classID = 2, subclassID = 7,
+                       minLevel = 1, unmet = {} })
+    local trained = c.offerRoll(9, SWORD)
+    t.ok(trained[1] ~= nil and trained[1].text ~= "Not trained yet", "trained: " .. tostring(trained[1] and trained[1].text))
+end
+
 tests["weapon master: the setting row is on by default and filed under travel"] = function(t)
     local _, addon = boot()
     local row = addon.settings:row("nav.weaponMasterStep")

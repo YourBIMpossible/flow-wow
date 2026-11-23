@@ -19,6 +19,8 @@ local _, ns = ...
 --   text   "Upgrade"      at least one role's line is an upgrade
 --          "Unknown"      no upgrade line, and at least one line is a "No
 --                         verdict" (or a note that something was not known)
+--          "Not trained yet"  a weapon your class can learn but you have
+--                         not trained (the "Can't use yet: " line, G12/G16)
 --          "No upgrade"   every line is a known no: the same, worse, or
 --                         "Can't use"
 --   tone   "good" for an upgrade, else "none"
@@ -72,22 +74,29 @@ R.HELP = "<item link>: Need or Greed for that item, by the gear verdict for your
 R.NEED = "Need"
 R.GREED = "Greed"
 R.CANT_USE = "Greed (can't use)"
-R.NO_ADVICE = "no advice: not gear, or not known yet."
+R.NOT_TRAINED = "Greed (not trained yet)"
+R.NO_ADVICE ="no advice: not gear, or not known yet."
 
 function R.Hint(client, packs, link)
     if type(client) ~= "table" or type(link) ~= "string" or link == "" then return nil end
     local lines = ns.GearTooltipModule.Lines(client, packs, link)
     if type(lines) ~= "table" or #lines == 0 then return nil end
-    local good, all, unknown = {}, {}, false
+    local good, all, unknown, untrained = {}, {}, false, false
+    local prefix = ns.GearTooltip.UNTRAINED
     for i = 1, #lines do
         all[i] = lines[i].text
         if lines[i].tone == "good" then
             good[#good + 1] = lines[i].text
         elseif lines[i].tone == "none" then
             unknown = true
+        elseif lines[i].text:sub(1, #prefix) == prefix then
+            untrained = true
         end
     end
     if #good > 0 then return { text = "Upgrade", tone = "good", lines = good } end
+    -- G12: a weapon skill not trained yet is told apart from "your class
+    -- can't use this" (that stays "No upgrade").
+    if untrained then return { text = "Not trained yet", tone = "none", lines = all } end
     if unknown then return { text = "Unknown", tone = "none", lines = all } end
     return { text = "No upgrade", tone = "none", lines = all }
 end
@@ -144,6 +153,11 @@ function R.Advice(client, packs, link, role)
         local can = nil
         if type(detail) == "table" and type(detail.use) == "table" then can = detail.use.can end
         if can == false then
+            -- G12: a weapon skill not trained yet is said apart from a
+            -- kind the class can never use.
+            if detail.use.why == "untrained" then
+                return { word = "greed", text = R.NOT_TRAINED, value = R.GREED, tone = "none" }
+            end
             return { word = "greed", text = R.CANT_USE, value = R.GREED, tone = "none" }
         end
         if can ~= true then return nil end
