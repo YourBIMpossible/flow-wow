@@ -68,6 +68,10 @@ ProfHelper.NAME = "profHelper"
 ProfHelper.SETTING = "prof.helper"
 ProfHelper.WIDTH = 260
 ProfHelper.DEFAULT_POINT = { "TOPLEFT", "TOPLEFT", 700, -330 }
+-- The kit window's size and place, at the right of the craft bar's. First
+-- guess: not yet seen in the game.
+ProfHelper.KIT_WIDTH, ProfHelper.KIT_HEIGHT = 340, 420
+ProfHelper.KIT_POINT = { "TOPLEFT", "TOPLEFT", 1030, -120 }
 -- Seconds between looks at the setting while the panel is up.
 ProfHelper.EVERY = 1
 -- How many recipes the panel lists.
@@ -185,7 +189,8 @@ end
 --   act    act("goal", value) when a goal button is pressed; 0 clears it.
 -- Each part the tests and the module look up has a key.
 function ProfHelper.View(model, act)
-    local view = { id = "ProfHelper", title = ProfHelper.TITLE, children = {} }
+    local view = { id = "ProfHelper", title = ProfHelper.TITLE, children = {},
+        width = ProfHelper.KIT_WIDTH, height = ProfHelper.KIT_HEIGHT, point = ProfHelper.KIT_POINT }
     local kids = view.children
     if type(model) ~= "table" or model.reading == true then
         kids[1] = { kind = "header", title = ProfHelper.TITLE }
@@ -235,7 +240,9 @@ function ProfHelper.View(model, act)
     end
     for _, r in ipairs(recipes) do
         local line = { kind = "itemLine", name = r.name .. " (" .. ProfHelper[WORD[r.chance] or "UNKNOWN"] .. ")" }
-        if type(r.icon) == "string" or type(r.icon) == "number" then line.icon = r.icon end
+        -- The kit takes an icon as text only; a numbered icon is left out
+        -- (kit ask).
+        if type(r.icon) == "string" and r.icon ~= "" then line.icon = r.icon end
         -- The kit takes whole copper only; a cost not known is no money.
         if type(r.cost) == "number" and r.cost >= 0 then line.money = math.floor(r.cost + 0.5) end
         -- Kit ask: a line colour that is not an item quality (the skill colour).
@@ -255,13 +262,15 @@ end
 function ProfHelper.Declare(k)
     local U = ns.SkillUps
     local api = {}
-    local panel
+    -- The helper's kit window with the plain panel behind it
+    -- (UI/KitHost.lua).
+    local host
     -- What the open window reads as, for ProfHelper.View; nil while the
     -- helper shows nothing.
     local model
     local function hide()
         model = nil
-        if panel then panel.show(false) end
+        if host then host.show(false) end
     end
 
     k:Module({
@@ -449,11 +458,11 @@ function ProfHelper.Declare(k)
 
             local act
             local function draw()
-                if not panel then return end
+                if not host then return end
                 window = readWindow()
                 if not window then
                     model = { reading = true }
-                    panel.draw({ { kind = "info", text = ProfHelper.READING } }, act)
+                    host.draw(ProfHelper.View(model, act), { { kind = "info", text = ProfHelper.READING } }, act)
                     return
                 end
                 local skill, max = window.skill, window.max
@@ -533,7 +542,7 @@ function ProfHelper.Declare(k)
                 tools(out, window, ranked)
                 for i = before + 1, #out do shown.notes[#shown.notes + 1] = out[i].text end
                 model = shown
-                panel.draw(out, act)
+                host.draw(ProfHelper.View(shown, act), out, act)
             end
 
             -- The player typed a goal: kept per profession on the character;
@@ -556,18 +565,22 @@ function ProfHelper.Declare(k)
             local function on() return ctx.settings:get(ProfHelper.SETTING) ~= false end
             -- The profession window is open: from its show to its close.
             local open = false
+            -- The player closed the helper's kit window: it stays closed
+            -- until the next profession window.
+            local closed = false
 
             ctx.bus:on(ProfHelper.NAME, "TRADE_SKILL_SHOW", function()
                 open = true
+                closed = false
                 if not on() then
                     hide()
                     return
                 end
                 draw()
-                if panel then panel.show(true) end
+                host.show(true)
             end)
             ctx.bus:on(ProfHelper.NAME, "TRADE_SKILL_LIST_UPDATE", function()
-                if not (panel and panel.shown()) then return end
+                if not host.shown() then return end
                 draw()
             end)
             ctx.bus:on(ProfHelper.NAME, "TRADE_SKILL_CLOSE", function()
@@ -578,22 +591,26 @@ function ProfHelper.Declare(k)
             -- The setting turned off while the window is up hides the panel;
             -- turned on while it is open, shows it (section 245 item 2).
             ctx.sched:every(ProfHelper.NAME, ProfHelper.EVERY, function()
-                if not panel then return end
-                if panel.shown() and not on() then
+                if host.dead() then return end
+                if host.shown() and not on() then
                     hide()
-                elseif open and on() and not panel.shown() then
+                elseif open and on() and not closed and not host.shown() then
                     draw()
-                    panel.show(true)
+                    host.show(true)
                 end
             end)
 
             local id = k.id or ns.id
-            panel = type(client.rowPanel) == "function" and client.rowPanel({ name = id.framePrefix .. "ProfHelper",
-                width = ProfHelper.WIDTH, height = 120 }) or nil
+            local panel
+            if type(client.rowPanel) == "function" then
+                panel = client.rowPanel({ name = id.framePrefix .. "ProfHelper", width = ProfHelper.WIDTH, height = 120 })
+            end
             if panel then
                 panel.show(false)
                 panel.place(ProfHelper.DEFAULT_POINT)
             end
+            host = ns.KitHost.New(k, client, { name = id.framePrefix .. "ProfHelperKit", panel = panel,
+                onClose = function() closed = true end })
         end,
         stop = function()
             hide()

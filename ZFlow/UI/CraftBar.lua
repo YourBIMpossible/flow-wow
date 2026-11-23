@@ -20,6 +20,9 @@ CraftBar.NAME = "craftBar"
 CraftBar.SETTING = "craft.queue"
 CraftBar.WIDTH = 240
 CraftBar.DEFAULT_POINT = { "TOPLEFT", "TOPLEFT", 700, -120 }
+-- The kit window's size and place. First guess: not yet seen in the game.
+CraftBar.KIT_WIDTH, CraftBar.KIT_HEIGHT = 320, 360
+CraftBar.KIT_POINT = { "TOPLEFT", "TOPLEFT", 700, -120 }
 -- Seconds a craft may take to finish before the run stops as not started.
 CraftBar.WATCHDOG = 10
 CraftBar.HINT = "Tick a count, then click Start."
@@ -55,7 +58,8 @@ CraftBar.NO_RECIPES_HOW = "Learn one at your profession trainer, then open this 
 -- yet (kit ask).
 function CraftBar.View(model, act)
     local Q = ns.CraftQueue
-    local view = { id = "CraftBar", title = CraftBar.TITLE, children = {} }
+    local view = { id = "CraftBar", title = CraftBar.TITLE, children = {},
+        width = CraftBar.KIT_WIDTH, height = CraftBar.KIT_HEIGHT, point = CraftBar.KIT_POINT }
     local kids = view.children
     if type(model) ~= "table" then model = {} end
     local running = model.running == true
@@ -81,7 +85,9 @@ function CraftBar.View(model, act)
         local name = "recipe " .. tostring(r.id)
         if type(r.name) == "string" and r.name ~= "" then name = r.name end
         local line = { kind = "itemLine", name = name, count = count }
-        if type(r.icon) == "string" or type(r.icon) == "number" then line.icon = r.icon end
+        -- The kit takes an icon as text only; a numbered icon is left out
+        -- (kit ask).
+        if type(r.icon) == "string" and r.icon ~= "" then line.icon = r.icon end
         -- Kit ask: a line colour that is not an item quality (the skill colour).
         if type(colours) == "table" and type(r.difficulty) == "string" then line.color = colours[r.difficulty] end
         kids[#kids + 1] = line
@@ -120,12 +126,14 @@ function CraftBar.Declare(k)
     function api.running() return running end
     function api.status() return status end
 
-    local panel, cancelWatch
+    -- host: the bar's kit window with the plain panel behind it
+    -- (UI/KitHost.lua).
+    local host, cancelWatch
     -- What the bar shows, for CraftBar.View; nil while it shows nothing.
     local model
     local function hide()
         model = nil
-        if panel then panel.show(false) end
+        if host then host.show(false) end
     end
     local function unwatch()
         if cancelWatch then
@@ -251,7 +259,7 @@ function CraftBar.Declare(k)
 
             local act
             local function draw()
-                if not panel then return end
+                if not host then return end
                 local rows = {}
                 local shown = { recipes = {}, running = running, smelts = Q.SMELTS[book.profession] == true,
                     status = status }
@@ -270,7 +278,7 @@ function CraftBar.Declare(k)
                 rows[#rows + 1] = { kind = "button", key = "clear", label = "Clear", enabled = not running }
                 rows[#rows + 1] = { kind = "info", text = status or CraftBar.HINT }
                 model = shown
-                panel.draw(rows, act)
+                host.draw(CraftBar.View(shown, act), rows, act)
             end
 
             -- Keeps the ask on the character, the oldest dropped past
@@ -463,10 +471,10 @@ function CraftBar.Declare(k)
                 end
                 readBook()
                 draw()
-                if panel then panel.show(true) end
+                host.show(true)
             end)
             ctx.bus:on(CraftBar.NAME, "TRADE_SKILL_LIST_UPDATE", function()
-                if not (panel and panel.shown()) then return end
+                if not host.shown() then return end
                 readBook()
                 draw()
             end)
@@ -495,16 +503,22 @@ function CraftBar.Declare(k)
                 if running then stop("moving") end
             end)
 
+            -- Closing the bar, the kit window or the plain panel, stops a run.
+            local function closed()
+                if running then stop("closed") end
+            end
             local id = k.id or ns.id
-            panel = type(client.rowPanel) == "function" and client.rowPanel({ name = id.framePrefix .. "CraftBar",
-                width = CraftBar.WIDTH, height = 80 }) or nil
+            local panel
+            if type(client.rowPanel) == "function" then
+                panel = client.rowPanel({ name = id.framePrefix .. "CraftBar", width = CraftBar.WIDTH, height = 80 })
+            end
             if panel then
                 panel.show(false)
                 panel.place(CraftBar.DEFAULT_POINT)
-                panel.onClose(function()
-                    if running then stop("closed") end
-                end)
+                panel.onClose(closed)
             end
+            host = ns.KitHost.New(k, client, { name = id.framePrefix .. "CraftBarKit", panel = panel,
+                onClose = closed })
         end,
         stop = function()
             unwatch()
