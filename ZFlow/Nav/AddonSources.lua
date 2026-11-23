@@ -130,9 +130,9 @@ function S.DeclareGather(k)
         settings = { {
             key = S.GATHER_SETTING, scope = "char", type = "bool", default = true,
             label = "Read GatherMate2 nodes",
-            help = "When GatherMate2 is installed and loaded, Z-Flow reads the gathering nodes it knows on "
+            help = "When GatherMate2 is installed and loaded, " .. ns.id.title .. " reads the gathering nodes it knows on "
                 .. "your map, as an extra source beside its own. Read only: nothing of GatherMate2's is "
-                .. "changed or kept in Z-Flow's saved data.",
+                .. "changed or kept in " .. ns.id.title .. "'s saved data.",
             group = "professions",
             synonyms = { "gathermate", "nodes", "herbs", "ore", "mining", "herbalism", "gather", "addon" },
         } },
@@ -235,7 +235,7 @@ function S.DeclareAttune(k)
             label = "Show Attune progress",
             help = "When Attune is installed and loaded, the Advisor names the attunements you have under way "
                 .. "with their percent, as Attune counts them. Read only: nothing of Attune's is changed or "
-                .. "kept in Z-Flow's saved data.",
+                .. "kept in " .. ns.id.title .. "'s saved data.",
             group = "party",
             synonyms = { "attune", "attunement", "attunements", "raid", "dungeon", "keys", "addon" },
         } },
