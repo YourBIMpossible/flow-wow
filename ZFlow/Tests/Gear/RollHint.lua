@@ -103,6 +103,7 @@ tests["roll hint G15: a weapon that is no upgrade, with its speed read, is still
     c.setItem(WORN_STAFF, { kind = "INVTYPE_2HWEAPON", stats = { [STA] = 4 } })
     c.setItem(WORSE_STAFF, { kind = "INVTYPE_2HWEAPON", stats = { [STA] = 1 } })
     c.setWorn(16, WORN_STAFF)
+    c.setWorn(17, false)   -- the off hand is read and empty, so the verdict is a real one
     c.unmet[WORSE_STAFF] = {}
     local gear = c.gear
     c.gear = function(link)
