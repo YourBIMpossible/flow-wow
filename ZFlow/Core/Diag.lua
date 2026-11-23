@@ -875,7 +875,10 @@ local function rotationRow(view)
     local why = type(view.why) == "table" and view.why or {}
     local picked = type(view.suggestion) == "table" and view.suggestion.spell or nil
     local line
-    if picked ~= nil then
+    if picked ~= nil and why.step == "farOpener" then
+        -- Lead section 187: the spell shown is out of range, and the words say so.
+        line = head .. tostring(picked) .. " is next, but out of range: move closer (farOpener)."
+    elseif picked ~= nil then
         line = head .. "suggesting " .. tostring(picked) .. " (" .. tostring(why.step or "step not known") .. ")."
     else
         line = head .. "nothing to suggest (" .. tostring(why.note or "no reason given") .. ")."
