@@ -19,9 +19,12 @@ local _, ns = ...
 --     api.errors()   how many tooltips could not be worked out
 --   ns.use(GroupTip.NAME) -> { Hooked = api.hooked, Errors = api.errors }
 --
--- A pack names its group buffs in `groupBuffs`, a list of rules:
---   { spell = name, aura = { names that count }, who = "all" | { kinds and classes } }
--- A pack without the list says nothing.
+-- A pack names its group buffs in `groups` (P-PARTY: it was `groupBuffs`),
+-- a list of rules:
+--   { spell = name, aura = { names that count }, who = "all" | { kinds and classes }, slot }
+-- Rules sharing a slot (a paladin's blessings) give each player one line:
+-- the first that fits them and that you know. A pack without the list says
+-- nothing.
 
 ns.GroupTip = {}
 local T = ns.GroupTip
@@ -103,7 +106,7 @@ end
 -- friendly has to be known: a unit not known to be friendly gets nothing.
 function T.Lines(client, pack, unit)
     if type(client) ~= "table" or type(pack) ~= "table" or type(unit) ~= "string" then return nil end
-    local rules = pack.groupBuffs
+    local rules = pack.groups
     if type(rules) ~= "table" or type(client.unitInfo) ~= "function" then return nil end
     local info = client.unitInfo(unit)
     if type(info) ~= "table" then return nil end
@@ -113,12 +116,16 @@ function T.Lines(client, pack, unit)
     local class = type(info.class) == "string" and info.class or nil
     local kind = T.Kind(class, info.role, info.power)
     local lines = {}
+    local taken = {}   -- P-PARTY: the slots already given a line
     for i = 1, #rules do
         local rule = rules[i]
-        if type(rule) == "table" and type(rule.spell) == "string" and fits(rule.who, kind, class) then
+        local slot = type(rule) == "table" and type(rule.slot) == "string" and rule.slot or nil
+        if type(rule) == "table" and type(rule.spell) == "string" and fits(rule.who, kind, class)
+            and not (slot and taken[slot]) then
             local id = client.spellId(rule.spell)
             local spell = id ~= nil and client.spell(id) or nil
             if type(spell) == "table" and spell.known == true then
+                if slot then taken[slot] = true end
                 local names = {}
                 if type(rule.aura) == "table" then
                     for j = 1, #rule.aura do names[j] = rule.aura[j] end

@@ -11,7 +11,8 @@ local MOTW, GOTW, THORNS = "Mark of the Wild", "Gift of the Wild", "Thorns"
 
 local function pack()
     return {
-        groupBuffs = {
+        -- P-PARTY: one list, `groups` (it was `groupBuffs`).
+        groups = {
             { spell = MOTW, aura = { MOTW, GOTW }, who = "all", evidence = "first guess" },
             { spell = THORNS, who = { "tank", "WARRIOR" }, evidence = "first guess" },
         },
@@ -295,7 +296,8 @@ tests["group tip module: nobody to say it about adds no header"] = function(t)
 end
 
 tests["group tip: the druid pack names its group buffs, as first guesses"] = function(t)
-    local rows = ns.Packs.DRUID.groupBuffs
+    -- P-PARTY: one list, `groups`; groupBuffs is gone from every pack.
+    local rows = ns.Packs.DRUID.groups
     t.eq(#rows, 2)
     t.eq(rows[1].spell, MOTW)
     t.eq(rows[1].aura, { MOTW, GOTW })
@@ -303,7 +305,28 @@ tests["group tip: the druid pack names its group buffs, as first guesses"] = fun
     t.eq(rows[2].spell, THORNS)
     t.eq(rows[2].who, { "tank", "WARRIOR" })
     for i = 1, #rows do t.eq(rows[i].evidence, "first guess") end
-    t.eq(ns.Packs.PALADIN.groupBuffs, nil, "no paladin rows until the lead accepts them")
+    for class, p in pairs(ns.Packs) do t.eq(p.groupBuffs, nil, class .. ": no groupBuffs list") end
+    t.eq(#ns.Packs.PALADIN.groups, 4, "the paladin's blessings, accepted in P-PARTY")
+end
+
+-- P-PARTY: the paladin's blessings share one slot, so a player is told of
+-- one blessing: the first that fits them (a warrior tank: Kings).
+tests["group tip: one blessing per player, the first that fits"] = function(t)
+    local c = client(friend({ role = "TANK" }), { { name = "Blessing of Kings", left = 200 } })
+    c.setClass("PALADIN")
+    c.setSpellId("Blessing of Kings", 20217); c.setSpell(20217, { known = true })
+    c.setSpellId("Blessing of Might", 19740); c.setSpell(19740, { known = true })
+    c.setSpellId("Blessing of Wisdom", 19742); c.setSpell(19742, { known = true })
+    start(c, { PALADIN = { groups = ns.Packs.PALADIN.groups } })
+    local lines = c.showUnitTooltip("mouseover")
+    local text = {}
+    for i, l in ipairs(lines or {}) do text[i] = type(l) == "table" and l.text or tostring(l) end
+    local joined = table.concat(text, " | ")
+    t.ok(joined:find("Blessing of Kings: has it", 1, true) ~= nil, "Kings, for the tank: " .. joined)
+    t.ok(not joined:find("Blessing of Might", 1, true), "no Might line: " .. joined)
+    t.ok(not joined:find("Blessing of Wisdom", 1, true), "no Wisdom line: " .. joined)
+    local _, kings = joined:gsub("Blessing of Kings", "")
+    t.eq(kings, 1, "Kings once, not twice")
 end
 
 tests["group tip: the setting is in the model, on by default"] = function(t)

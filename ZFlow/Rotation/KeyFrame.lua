@@ -82,6 +82,8 @@ local function signature(plan)
             out[#out + 1] = type(row) == "table" and tostring(row[slot]) or "-"
         end
     end
+    -- N8: the item on Alt is part of the plan; a changed item is a changed plan.
+    if plan.altItem ~= nil then out[#out + 1] = "alt:" .. tostring(plan.altItem) end
     return table.concat(out, "|")
 end
 
@@ -228,7 +230,7 @@ local function holds(held)
     local key = held.spell or held.macrotext
     if key then out[#out + 1] = "key: " .. tostring(key) end
     for _, slot in ipairs(C.MODIFIERS) do
-        local spell = held["*spell-" .. slot]
+        local spell = held["*spell-" .. slot] or held["*macrotext-" .. slot]
         if spell then out[#out + 1] = slot .. ": " .. tostring(spell) end
     end
     return table.concat(out, "; ")

@@ -14,12 +14,16 @@ local IDS = {
     -- known; with no role chosen none of them changes the present rule.
     ["Seal of the Crusader"] = 21082, ["Blessing of Kings"] = 20217, ["Blessing of Wisdom"] = 19742,
     ["Blessing of Protection"] = 1022, ["Righteous Fury"] = 25780,
+    -- PC-3: the seal for a healer in a group.
+    ["Seal of Wisdom"] = 20166,
 }
 -- A seal with an id (so its name can be read from a cast) that you do not
 -- know: as after a talent reset took it away.
 local UNKNOWN = { ["Seal of Justice"] = 20164 }
 local AURA = { ["Devotion Aura"] = true }
-local READY = { ["Devotion Aura"] = true, ["Blessing of Might"] = 200 }
+-- PC-2: only the blessing picked for you counts as up, so every role's is up.
+local READY = { ["Devotion Aura"] = true, ["Blessing of Might"] = 200, ["Blessing of Wisdom"] = 200,
+                ["Blessing of Kings"] = 200 }
 local SEALED = { ["Devotion Aura"] = true, ["Blessing of Might"] = 200, ["Seal of Righteousness"] = 25 }
 local ENEMY = { exists = true, hostile = true, dead = false }
 
@@ -309,9 +313,13 @@ tests["paladin: Righteous Fury for a tank, out of a fight, when it is not up"] =
     c.setPlayerBuffs(READY); on(c, addon)
     t.eq(icon.texture, "tex:Righteous Fury", "tank, known, not up, out of a fight")
     t.ok(said(c):find("suggesting Righteous Fury", 1, true), said(c))
-    c.setPlayerBuffs({ ["Devotion Aura"] = true, ["Blessing of Might"] = 200, ["Righteous Fury"] = 1500 })
+    c.setPlayerBuffs({ ["Devotion Aura"] = true, ["Blessing of Kings"] = 200, ["Righteous Fury"] = 1500 })
     c.advance(1, 5)
     t.eq(icon.texture, "tex:Seal of Righteousness", "up: the seal next")
+    -- PC-4: under 30 s left, out of a fight: refreshed.
+    c.setPlayerBuffs({ ["Devotion Aura"] = true, ["Blessing of Kings"] = 200, ["Righteous Fury"] = 20 })
+    c.advance(1, 5)
+    t.eq(icon.texture, "tex:Righteous Fury", "under 30 s left: asked for again")
     c.setPlayerBuffs(READY); c.setCombat(true); c.advance(1, 5)
     t.eq(icon.texture, "tex:Seal of Righteousness", "in a fight: not asked for")
 end
@@ -461,6 +469,177 @@ tests["paladin: only your own aura counts: another paladin's Devotion Aura does 
     t.ok(not (icon.shown and icon.texture == "tex:Devotion Aura"), "yours up: not asked for")
     c.setOwnBuffs(nil); c.advance(1, 5)
     t.ok(not (icon.shown and icon.texture == "tex:Devotion Aura"), "your own auras not read: not asked for")
+end
+
+-- ------------------------------------- MyBuddy review of the merge (PC-1 to PC-7)
+
+-- A spell learned now: its id, known, ready, its picture.
+local function learn(c, name, id)
+    c.setSpellId(name, id)
+    c.setSpell(id, { known = true, usable = true })
+    c.setSpellCooldown(id, false)
+    c.setSpellTexture(id, "tex:" .. name)
+end
+
+-- The lines printed since `from` that hold `text`, as one.
+local function printedSince(c, from, text)
+    local out = {}
+    for i = from, #c.printed do
+        local line = tostring(c.printed[i])
+        if line:find(text, 1, true) then out[#out + 1] = line end
+    end
+    return table.concat(out, " / ")
+end
+
+tests["paladin PC-1: casting the seal that was suggested is not kept; a later Command takes over"] = function(t)
+    local c, addon, icon = start()
+    addon.settings:set(D.ROLE, "dps")
+    c.setPlayerBuffs(READY); on(c, addon)
+    t.eq(icon.texture, "tex:Seal of Righteousness", "suggested: Righteousness")
+    cast(c, "Seal of Righteousness")
+    t.eq(kept(c, "seal"), nil, "the suggested seal cast: not your choice")
+    learn(c, "Seal of Command", 20375); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Seal of Command", "Command learned: it takes over")
+    cast(c, "Seal of the Crusader")
+    t.eq(kept(c, "seal"), "Seal of the Crusader", "a seal other than the suggested one: kept")
+    t.eq(icon.texture, "tex:Seal of the Crusader")
+end
+
+tests["paladin PC-1: casting the blessing that was suggested is not kept"] = function(t)
+    local c, addon, icon = start()
+    addon.settings:set(D.ROLE, "dps")
+    c.setPlayerBuffs(AURA); on(c, addon)
+    t.eq(icon.texture, "tex:Blessing of Might")
+    bless(c, "Blessing of Might", AURA)
+    t.eq(kept(c, "blessing"), nil, "the suggested blessing cast: not your choice")
+    bless(c, "Blessing of Kings", AURA)
+    t.eq(kept(c, "blessing"), "Blessing of Kings", "another one: kept")
+end
+
+tests["paladin PC-2: another blessing up does not hide yours; a Greater blessing counts"] = function(t)
+    local c, addon, icon = start()
+    addon.settings:set(D.ROLE, "dps")
+    c.setPlayerBuffs({ ["Devotion Aura"] = true, ["Blessing of Kings"] = 600, ["Seal of Righteousness"] = 25 })
+    on(c, addon)
+    t.eq(icon.texture, "tex:Blessing of Might", "someone's Kings up, your Might not: Might")
+    c.setPlayerBuffs({ ["Devotion Aura"] = true, ["Greater Blessing of Might"] = 600, ["Seal of Righteousness"] = 25 })
+    c.advance(1, 5)
+    t.ok(not (icon.shown and icon.texture == "tex:Blessing of Might"), "Greater Blessing of Might up: not asked for")
+    word(c, "blessing kings")
+    t.eq(icon.texture, "tex:Blessing of Kings", "a new choice applies at once, the old one still up")
+end
+
+tests["paladin PC-2: in a fight another seal counts as missing; out of one it is left alone"] = function(t)
+    local c, addon, icon = start()
+    addon.settings:set(D.ROLE, "dps")
+    c.setPlayerBuffs({ ["Devotion Aura"] = true, ["Blessing of Might"] = 200, ["Seal of the Crusader"] = 25 })
+    on(c, addon)
+    t.ok(not (icon.shown and icon.texture == "tex:Seal of Righteousness"), "out of a fight, a seal up: left alone")
+    c.setTarget(ENEMY); c.setStealthed(false); c.setInRange(IDS["Judgement"], true)
+    c.setInRange(IDS["Attack"], true); c.setCurrentSpell(IDS["Attack"], true); c.setCombat(true); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Seal of Righteousness", "in a fight, Crusader up but Righteousness picked: Righteousness")
+end
+
+tests["paladin PC-3: a healer in a group is given Seal of Wisdom"] = function(t)
+    local c, addon, icon = start()
+    addon.settings:set(D.ROLE, "heal")
+    c.setPlayerBuffs(READY); on(c, addon)
+    t.eq(icon.texture, "tex:Seal of Righteousness", "group not read: Righteousness")
+    c.setGrouped(true); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Seal of Wisdom", "in a group: Wisdom")
+    c.setGrouped(false); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Seal of Righteousness", "alone: Righteousness")
+end
+
+tests["paladin PC-5: sent, then the aura, then the cast: the blessing is kept"] = function(t)
+    local c, addon = start()
+    c.setPlayerBuffs(AURA); on(c, addon)
+    local id = IDS["Blessing of Kings"]
+    c.fire("UNIT_SPELLCAST_SENT", "player", "", "Cast-3-0-0-0-0-1", id)
+    c.setPlayerBuffs({ ["Devotion Aura"] = true, ["Blessing of Kings"] = 300 }); c.fire("UNIT_AURA", "player")
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-3-0-0-0-0-1", id)
+    c.advance(1, 5)
+    t.eq(kept(c, "blessing"), "Blessing of Kings", "the aura before the cast still counts")
+end
+
+tests["paladin PC-7: one line says when a cast becomes the kept seal or blessing; the setting stops it"] = function(t)
+    local c, addon = start()
+    addon.settings:set(D.ROLE, "dps")
+    c.setPlayerBuffs(READY); on(c, addon)
+    t.eq(addon.settings:get(ns.OwnCasts.SAY), true, "on by default, as the old add-on")
+    local from = #c.printed + 1
+    cast(c, "Seal of the Crusader")
+    local line = printedSince(c, from, "Seal of")
+    t.ok(line:find(ns.id.title .. ": Seal of the Crusader", 1, true) == 1, "said under the title: " .. line)
+    t.ok(line:find("damage", 1, true), "names the role: " .. line)
+    from = #c.printed + 1
+    cast(c, "Seal of the Crusader")
+    t.eq(printedSince(c, from, "Seal of"), "", "the same seal again: nothing new to say")
+    addon.settings:set(ns.OwnCasts.SAY, false)
+    from = #c.printed + 1
+    cast(c, "Seal of Justice")
+    t.eq(kept(c, "seal"), "Seal of Justice", "kept all the same")
+    t.eq(printedSince(c, from, "Seal of"), "", "the setting off: nothing said")
+end
+
+-- Section 236 (a): data late or in parts: your own buffs not read at the
+-- first aura event, read at the next.
+tests["paladin 236a: your own buffs not read at first, then read: the blessing is kept"] = function(t)
+    local c, addon = start()
+    c.setPlayerBuffs(AURA); on(c, addon)
+    local id = IDS["Blessing of Kings"]
+    c.fire("UNIT_SPELLCAST_SENT", "player", "", "Cast-3-0-0-0-0-2", id)
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-3-0-0-0-0-2", id)
+    c.setOwnBuffs(nil); c.fire("UNIT_AURA", "player"); c.advance(1, 5)
+    t.eq(kept(c, "blessing"), nil, "not read yet: nothing kept, nothing dropped")
+    c.setOwnBuffs({ ["Devotion Aura"] = true, ["Blessing of Kings"] = 300 }); c.fire("UNIT_AURA", "player")
+    c.advance(1, 5)
+    t.eq(kept(c, "blessing"), "Blessing of Kings", "read now: kept")
+end
+
+-- Section 236 (b): a reload in the middle keeps the choice and the setting.
+tests["paladin 236b: a reload keeps the word's choice, the kept seal and the line switched off"] = function(t)
+    local c, addon = start()
+    c.setPlayerBuffs(READY); on(c, addon)
+    word(c, "blessing kings")
+    addon.settings:set(ns.OwnCasts.SAY, false)
+    cast(c, "Seal of the Crusader")
+    local c2, addon2, icon2 = reload(c)
+    c2.setPlayerBuffs(AURA); c2.advance(1, 5)
+    t.eq(icon2.texture, "tex:Blessing of Kings", "the word's choice kept")
+    c2.setPlayerBuffs(READY); c2.advance(1, 5)
+    t.eq(icon2.texture, "tex:Seal of the Crusader", "the seal you cast kept")
+    t.eq(addon2.settings:get(ns.OwnCasts.SAY), false, "the setting kept")
+    local from = #c2.printed + 1
+    c2.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-3-0-0-0-0-3", UNKNOWN["Seal of Justice"])
+    c2.advance(1, 5)
+    t.eq(kept(c2, "seal"), "Seal of Justice", "a new seal kept after the reload")
+    t.eq(printedSince(c2, from, "Seal of"), "", "and nothing said: the setting is still off")
+end
+
+-- Section 236 (c): a read that raises, then recovers.
+tests["paladin 236c: the spell name or your own buffs raising once, then fine"] = function(t)
+    local c, addon, icon = start()
+    addon.settings:set(D.ROLE, "dps")
+    c.setPlayerBuffs({ ["Blessing of Might"] = 200, ["Seal of Righteousness"] = 25 })
+    c.setOwnBuffs({ ["Blessing of Might"] = 200, ["Seal of Righteousness"] = 25 })
+    on(c, addon)
+    t.eq(icon.texture, "tex:Devotion Aura", "no aura of yours: Devotion Aura")
+    local name = c.spellName
+    c.spellName = function() error("made-up failure") end
+    cast(c, "Seal of the Crusader")
+    t.eq(kept(c, "seal"), nil, "the name could not be read: nothing kept")
+    c.spellName = name
+    cast(c, "Seal of the Crusader")
+    t.eq(kept(c, "seal"), "Seal of the Crusader", "read again: kept")
+    local own = c.ownBuffs
+    c.ownBuffs = function() error("made-up failure") end
+    c.advance(1, 5)
+    t.ok(not (icon.shown and icon.texture == "tex:Devotion Aura"), "your own buffs not read: no aura asked for")
+    t.eq(addon.rotationDriver.view().stale, nil, "the tick went on: not a kept old view")
+    c.ownBuffs = own
+    c.advance(1, 5)
+    t.eq(icon.texture, "tex:Devotion Aura", "read again: asked for")
 end
 
 tests["a class with no pack: on, and it says so"] = function(t)

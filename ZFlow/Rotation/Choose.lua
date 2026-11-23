@@ -75,9 +75,16 @@ local _, ns = ...
 --   1 breakFree  2 heal  3 interrupt  4 dispel  5 engage  6 list  7 farOpener
 -- and then 8 food (section 226, CF-30): Well Fed food out of a fight, last,
 -- so a pull, a rotation rule or the far opener comes first. Built here.
--- Not in the chooser yet (tasks): other items (healthstone, potion, bandage,
--- drink), and anything for another player (friend heal, group buffs, group
--- dispels), which needs a party member read.
+-- N8 (lead section 238): in a fight with the low-health warning on, the heal
+-- step offers your healthstone, else a healing potion, before any heal spell
+-- (snapshot.healItem, Rotation/HealItems.lua).
+-- Not in the chooser yet (tasks): other items (bandage, drink), and anything
+-- for another player (friend heal, group buffs, group dispels), which needs
+-- a party member read.
+-- P-PARTY (lead section 233): group buffs and group dispels are now the last
+-- step, "group" (Rotation/Group.lua), look only: the suggestion carries
+-- look = true, the party unit and the member's name, and the key never
+-- casts it (Rotation/Cast.lua). The friend heal is still a task.
 
 ns.Rotation = ns.Rotation or {}
 local R = ns.Rotation
@@ -273,8 +280,37 @@ function steps.breakFree(s, pack, prefs, _, unread)
     return nil, noteWith("nothing ready breaks " .. tostring(t), unread)
 end
 
--- 2. Healing yourself. Only yourself: pack.heals.self.
+-- N8 (lead section 238, Flow Modules/Rotation/BuffItems.lua PickEmergency):
+-- in a fight (inCombat true; not known is no item) with the game's
+-- low-health warning on, your healthstone when it is ready, else a healing
+-- potion when it is ready. A cooldown not read is not ready. snapshot.
+-- healItem = { stone, stoneName, stoneWait, potion, potionName, potionWait,
+-- alt }; alt is the item on Alt + your rotation key (set out of a fight).
+local function healItem(s)
+    local h = s.healItem
+    if type(h) ~= "table" or s.inCombat ~= true or s.lowHealth ~= true then return nil end
+    local id, name
+    if h.stone and h.stoneWait == 0 then
+        id, name = h.stone, h.stoneName
+    elseif h.potion and h.potionWait == 0 then
+        id, name = h.potion, h.potionName
+    end
+    if type(id) ~= "number" then return nil end
+    name = type(name) == "string" and name or ("item " .. id)
+    local how = h.alt == id and "press Alt + your rotation key"
+        or "press it on your bar or in your bag: the key is locked in a fight"
+    return { item = name, itemId = id, kind = "emergency",
+             reason = string.format("Low health: use your %s now (%s)", name, how) }
+end
+R._healItem = healItem   -- (tests)
+
+-- 2. Healing yourself. Only yourself: pack.heals.self. First the healing
+-- items (N8), which need no pack.
 function steps.heal(s, pack, prefs, _, unread)
+    if not s.dead then
+        local item = healItem(s)
+        if item then return item end
+    end
     local heals = pack.heals and pack.heals.self
     if not heals or s.dead then return nil, "no heals" end
     for _, h in ipairs(heals) do
@@ -544,6 +580,14 @@ steps.track = function(s)
     return ns.Gather.Step(s)
 end
 R.STEPS[#R.STEPS + 1] = "track"
+-- 10. P-PARTY: out of a fight, a buff a member of your party is missing, or
+-- a curse or poison on one you could remove (Rotation/Group.lua G.Step).
+-- Last: it is only shown, so it never pushes off anything the key can do.
+steps.group = function(s, pack, prefs)
+    if type(ns.PartyGroup) ~= "table" then return nil, "no group suggestions" end
+    return ns.PartyGroup.Step(s, pack, prefs)
+end
+R.STEPS[#R.STEPS + 1] = "group"
 R._steps = steps   -- (tests)
 
 function ns.Choose(snapshot, pack, prefs, bias)

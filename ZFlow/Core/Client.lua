@@ -2317,7 +2317,8 @@ function ns.make.client(env)
     -- test.
 
     -- One item's facts, or nil when the client says nothing about it:
-    --   { name =, quality =, sellPrice =, classID =, subclassID = }
+    --   { name =, quality =, sellPrice =, classID =, subclassID =, level =,
+    --     minLevel = } (level, minLevel: N8, as Flow ranks healing items)
     -- item: a link or an item ID. GetItemInfo (C_Item.GetItemInfo where the
     -- client has it): name 1st, quality 3rd, sell price 11th, class 12th,
     -- subclass 13th. An item the client has not loaded yet has no name,
@@ -2329,10 +2330,12 @@ function ns.make.client(env)
         local group = env.C_Item
         local fn = env.GetItemInfo
         if type(group) == "table" and type(group.GetItemInfo) == "function" then fn = group.GetItemInfo end
-        local ok, name, _, quality, _, _, _, _, _, _, _, price, class, subclass = call(fn, item)
+        local ok, name, _, quality, level, minLevel, _, _, _, _, _, price, class, subclass = call(fn, item)
         local out = {}
         out.name = text(ok, name)
         out.quality = whole(ok, quality)
+        out.level = whole(ok, level)
+        out.minLevel = whole(ok, minLevel)
         out.sellPrice = whole(ok, price)
         out.classID = whole(ok, class)
         out.subclassID = whole(ok, subclass)
@@ -3732,6 +3735,27 @@ function ns.make.client(env)
         return left
     end
 
+    -- N8 (lead section 238): c.itemCooldown(id) -> seconds until the item
+    -- is ready, 0 when ready, nil when not known. The same read as
+    -- c.hearthCooldown, for any item id (a whole number above 0). A first
+    -- guess, not seen in game. It never uses the item.
+    function c.itemCooldown(id)
+        if type(id) ~= "number" or id <= 0 or id % 1 ~= 0 then return nil end
+        local bags = type(env.C_Container) == "table" and env.C_Container or {}
+        local ok, start, duration = call(bags.GetItemCooldown, id)
+        if not ok then ok, start, duration = call(env.GetItemCooldown, id) end
+        if not ok or start == nil or duration == nil or hidden(start) or hidden(duration) then return nil end
+        if type(start) ~= "number" or type(duration) ~= "number" then return nil end
+        if start ~= start or duration ~= duration or start < 0 or duration < 0 then return nil end
+        if start == 0 or duration == 0 then return 0 end
+        local okT, now = call(env.GetTime)
+        if not okT or now == nil or hidden(now) or type(now) ~= "number" then return nil end
+        local left = start + duration - now
+        if left ~= left or left == math.huge then return nil end
+        if left < 0 then return 0 end
+        return left
+    end
+
     ---------------------------------------------------------------------
     -- F7, the fight log and death report: its reads, kept together. All
     -- first guesses: not seen in game on 16001.
@@ -4850,6 +4874,22 @@ function ns.make.client(env)
         local class, subclass = itemType(id)
         if class == nil or subclass == nil then return nil end
         return class == 2 and subclass == 20
+    end
+
+    -- N8 (lead section 238): the game's low-health warning, as Flow reads it
+    -- (Modules/Rotation/BuffItems.lua): LowHealthFrame shown, and not faded
+    -- out (alpha above 0.05; an alpha not read counts as shown). True,
+    -- false, or nil when not known (no frame, a failed or secret answer).
+    -- A first guess, not seen in game. It only reads.
+    function c.lowHealth()
+        local f = env.LowHealthFrame
+        if type(f) ~= "table" then return nil end
+        local ok, shown = call(f.IsShown, f)
+        if not ok or shown == nil or hidden(shown) then return nil end
+        if not shown then return false end
+        local okA, a = call(f.GetAlpha, f)
+        if not okA or a == nil or hidden(a) or type(a) ~= "number" then return true end
+        return a > 0.05
     end
 
     -- S42 quest item on the quest arrow (LEDGER 169/172;
@@ -6148,6 +6188,119 @@ function ns.make.client(env)
         return out
     end
     -- --------------------------------------------------- end worn links
+
+    -- --------------------------------------------- your group (P-PARTY)
+    -- Read only, for the rotation's group step (Rotation/Group.lua): what
+    -- it suggests for another player is only shown, never cast. First
+    -- guesses, not seen in game on 16001. Each call under pcall; any answer
+    -- not given, raised, secret or of the wrong kind is nil (not known).
+    -- Your own party only (party1..4; in a raid, your own subgroup).
+    local PARTY_UNITS = { party1 = true, party2 = true, party3 = true, party4 = true }
+
+    -- c.party() -> { { unit, name, class, role, power, dead, connected }, ... } | nil
+    --   the other players in your party, in party order; {} when you are
+    --   alone. nil when whether one is there is not known (UnitExists gave
+    --   no yes or no for any party unit). Each field is left out when not
+    --   known: name UnitName; class UnitClass's second answer (the token);
+    --   role UnitGroupRolesAssigned; power UnitPowerType's first answer (a
+    --   kind, never an amount); dead UnitIsDead; connected UnitIsConnected.
+    --   The name is for the live caption only: never saved.
+    function c.party()
+        local out = {}
+        for i = 1, 4 do
+            local unit = "party" .. i
+            local there = yesNo(call(env.UnitExists, unit))
+            if there == nil then return nil end
+            if there then
+                local row = { unit = unit }
+                row.name = text(call(env.UnitName, unit))
+                local okClass, _, class = call(env.UnitClass, unit)
+                row.class = text(okClass, class)
+                row.role = text(call(env.UnitGroupRolesAssigned, unit))
+                local okPower, power = call(env.UnitPowerType, unit)
+                if okPower and power ~= nil and not hidden(power) and type(power) == "number" and power == power then
+                    row.power = power
+                end
+                row.dead = yesNo(call(env.UnitIsDead, unit))
+                row.connected = yesNo(call(env.UnitIsConnected, unit))
+                out[#out + 1] = row
+            end
+        end
+        return out
+    end
+
+    -- c.reach(spellId, unit) -> true | false | nil
+    --   C_Spell.IsSpellInRange(id, unit) for a party unit: in reach of that
+    --   spell (which also says they are there and in sight); nil for no
+    --   answer, and for any unit that is not party1..4 (not asked).
+    function c.reach(spellId, unit)
+        if type(spellId) ~= "number" or not PARTY_UNITS[unit] then return nil end
+        local group = env.C_Spell
+        if type(group) ~= "table" then return nil end
+        return yesNo(call(group.IsSpellInRange, spellId, unit))
+    end
+
+    -- c.unitDebuffTypes(unit) -> { [type] = debuff name } | nil
+    --   the curses, poisons, diseases and magic on you ("player") or a party
+    --   member, by type (C_UnitAuras.GetAuraDataByIndex(unit, i, "HARMFUL"),
+    --   the row's dispelName), the first debuff's name for each type ({}
+    --   when nothing removable is on them). nil when not known: no call, a
+    --   raise, or a row or a type the client hides. At most 40 rows.
+    function c.unitDebuffTypes(unit)
+        if unit ~= "player" and not PARTY_UNITS[unit] then return nil end
+        local auras = env.C_UnitAuras
+        local byIndex = type(auras) == "table" and auras.GetAuraDataByIndex or nil
+        if type(byIndex) ~= "function" then return nil end
+        local out = {}
+        for i = 1, 40 do
+            local ok, row = pcall(byIndex, unit, i, "HARMFUL")
+            if not ok then return nil end
+            if row == nil then return out end
+            if hidden(row) or type(row) ~= "table" then return nil end
+            local kind = row.dispelName
+            if kind ~= nil then
+                if hidden(kind) or type(kind) ~= "string" then return nil end
+                if kind ~= "" and out[kind] == nil then
+                    local name = row.name
+                    if name == nil or hidden(name) or type(name) ~= "string" or name == "" then name = kind end
+                    out[kind] = name
+                end
+            end
+        end
+        return out
+    end
+
+    -- The icon's caption: h.caption(text) on an icon c.icon made, a line
+    -- of text under it ("Mark of the Wild on <name>"); nil or "" hides it.
+    -- The live screen only: nothing is kept. Made the first time it is
+    -- asked for, on the icon's frame, found by the name the icon was made
+    -- with (spec.name); an icon with no name, or whose frame is not found,
+    -- has no caption. A first guess, not seen in game.
+    do
+        local plainIcon = c.icon
+        function c.icon(spec)
+            local h = plainIcon(spec)
+            if type(h) ~= "table" or type(spec) ~= "table" or type(spec.name) ~= "string" then return h end
+            local okFrame, frame = pcall(function() return env[spec.name] end)
+            if not okFrame or frame == nil then return h end
+            local line
+            function h.caption(words)
+                local shown = type(words) == "string" and words ~= ""
+                if line == nil then
+                    if not shown then return true end
+                    local okMade, made = method(frame, "CreateFontString", nil, "OVERLAY", "GameFontNormalSmall")
+                    if not okMade or made == nil then return false end
+                    line = made
+                    method(line, "SetPoint", "TOP", frame, "BOTTOM", 0, -2)
+                end
+                local okSet = method(line, "SetText", shown and words or "")
+                method(line, shown and "Show" or "Hide")
+                return okSet and true or false
+            end
+            return h
+        end
+    end
+    -- ----------------------------------------------- end your group
     return c
 end
 

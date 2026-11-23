@@ -180,6 +180,9 @@ tests["settings topics: the owner's words find settings, each result with its to
     t.ok(has(keys("food"), "rotation.recoverBuffFood"), "food")
     t.ok(has(keys("buffs"), "rotation.recoverBuffFood") and has(keys("buffs"), "general.groupTip"), "buffs")
     t.ok(has(keys("tracking"), "rotation.gatherTracking"), "tracking")
+    t.ok(has(keys("seal"), "rotation.sayKept"), "seal")
+    t.ok(has(keys("blessing"), "rotation.sayKept") and has(keys("blessing"), "rotation.groupBuffs"), "blessing")
+    t.ok(has(keys("healthstone"), "rotation.emergencyItems"), "healthstone")
     t.ok(has(keys("sell"), "vendor.list"), "sell")
     t.ok(has(keys("junk"), "vendor.list") and has(keys("junk"), "loot.junkNote"), "junk, in two topics")
     t.ok(has(keys("bank"), "bank.list"), "bank")
@@ -246,6 +249,10 @@ local BEFORE = {
     ["loot.junkNote"] = { "account", "bool", true },
     ["loot.record"] = { "account", "bool", true },
     ["advisor.panel"] = { "char", "bool", true },
+    -- Arrived with fork zflow 723634eb, filed at the merge.
+    ["rotation.emergencyItems"] = { "account", "bool", true },
+    ["rotation.groupBuffs"] = { "account", "bool", true },
+    ["rotation.sayKept"] = { "account", "bool", true },
 }
 
 -- Holds before and after: the regrouping must not move it. (It fails only
@@ -267,7 +274,7 @@ tests["stored values: no row's key, scope, type, default or saved place changed 
             end
         end
     end
-    t.eq(n, 47)
+    t.eq(n, 50)
     t.eq(addon.settings:row("repair.warnBelow").min, 0)
     t.eq(addon.settings:row("repair.warnBelow").max, 1)
     t.eq(addon.settings:row("spec.role").choices, { "", "dps", "heal", "tank" })
@@ -298,7 +305,7 @@ tests["stored values: a saved table from before the change reads back, every val
         n = n + 1
         t.eq(addon.settings:get(key), value, key .. " reads back as saved")
     end
-    t.eq(n, 45, "every row that holds a plain value")
+    t.eq(n, 48, "every row that holds a plain value")
     -- And the saved tables still hold them where they were.
     t.eq(c.saved(ns.id.accountDB).settings.vendor.list, false)
     t.eq(c.saved(ns.id.accountDB).settings.repair.warnBelow, 0.35)

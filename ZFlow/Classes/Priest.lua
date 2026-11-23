@@ -212,8 +212,13 @@ local pack = {
         default = join(buffs, damage),
     },
 
-    -- Does not apply: nothing is cast on the group.
-    groups = {},
+    -- Power Word: Fortitude for your group, out of a fight: only shown
+    -- (P-PARTY, Rotation/Group.lua; and on the tooltip); nothing is cast on
+    -- anyone. Prayer of Fortitude counts. First guesses.
+    groups = {
+        { spell = "Power Word: Fortitude", aura = { "Power Word: Fortitude", "Prayer of Fortitude" },
+          who = "all", minutes = 30, rebuff = 60, evidence = GUESS },
+    },
 
     heals = {
         self = { "Flash Heal", "Lesser Heal", "Heal", "Greater Heal", "Renew" },

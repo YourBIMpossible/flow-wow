@@ -6,7 +6,9 @@ local _, ns = ...
 --
 --   ns.cast.Apply(plan, applied, lockdown) -> result
 --
--- plan      what ns.KeyPlan returned: { states, condition, stealthForm }
+-- plan      what ns.KeyPlan returned: { states, condition, stealthForm },
+--           plus altItem (N8): an item id the Alt slot uses instead of its
+--           spell, or nil
 -- applied   the plan in place now (the `plan` field of the last result that
 --           was carried out), or nil when nothing is bound yet
 -- lockdown  true while the game refuses binding changes (in combat), false
@@ -85,6 +87,7 @@ local function copyPlan(p)
         states = states,
         condition = type(p.condition) == "string" and p.condition or "0",
         stealthForm = type(p.stealthForm) == "number" and p.stealthForm or nil,
+        altItem = (type(p.altItem) == "number" and p.altItem > 0 and p.altItem % 1 == 0) and p.altItem or nil,
     }
 end
 
@@ -117,7 +120,7 @@ function C.Apply(plan, applied, lockdown)
         ok = true,
         ops = ops,
         counts = counts,
-        changed = (counts.set + counts.clear > 0 or conditionChanged) and true or false,
+        changed = (counts.set + counts.clear > 0 or conditionChanged or new.altItem ~= old.altItem) and true or false,
         condition = new.condition,
         conditionChanged = conditionChanged,
         stealthForm = new.stealthForm,
@@ -132,7 +135,8 @@ end
 --
 --   ns.cast.Attributes(suggestion, plan, applied, lockdown, form) -> result
 --
--- suggestion  what ns.Choose returned ({ spell, kind, unit }), or nil
+-- suggestion  what ns.Choose returned ({ spell, kind, unit }), or nil; one
+--             with look = true (P-PARTY) counts as nil: it is only shown
 -- plan, applied, lockdown   as for Apply
 -- form        the state you are in now (0 = no form; the stealth state while
 --             stealthed in the stealth form); anything else reads as 0
@@ -167,8 +171,9 @@ end
 C.STATE = "castform"
 C.MODIFIERS = { "ctrl", "shift", "alt", "more" }
 C.ON_YOU = { heal = true, emergency = true, buff = true }
--- The only units a suggestion may name. Anyone else (a party or raid member,
--- focus, mouseover) is never cast on: Z-Flow does not help other players.
+-- The only units a suggestion may name for the key. Anyone else (a party or
+-- raid member, focus, mouseover) is never cast on: help for another player
+-- is only shown (look = true, Rotation/Group.lua), never put on the key.
 C.UNITS = { player = true, pet = true, target = true }
 C.ATTACK = { ["Attack"] = true, ["Auto Attack"] = true }
 
@@ -200,6 +205,10 @@ function C.Attributes(suggestion, plan, applied, lockdown, form)
     local states = apply.plan.states
     if type(form) ~= "number" or form < 0 or form > lastState() or form % 1 ~= 0 then form = 0 end
 
+    -- P-PARTY: a look-only suggestion (look = true: for another player) is
+    -- never put on the key. The key holds what it holds with no suggestion.
+    if type(suggestion) == "table" and suggestion.look == true then suggestion = nil end
+
     local button = {}
     local spell, source = spellOf(suggestion), "suggestion"
     local kind, unit, macro, item
@@ -225,12 +234,23 @@ function C.Attributes(suggestion, plan, applied, lockdown, form)
     row(button, "spell", kind == "spell" and spell or nil)
     row(button, "unit", unit)
     row(button, "macrotext", macro)
+    -- N8: with plan.altItem the Alt slot uses that item ("/use item:ID")
+    -- instead of its spell.
+    local altItem = apply.plan.altItem
     for _, slot in ipairs(C.MODIFIERS) do
-        local v = slotOf(states, form, slot)
-        row(button, "*type-" .. slot, v and "spell" or nil)
-        row(button, "*spell-" .. slot, v)
-        row(button, "*unit-" .. slot, v and "target" or nil)
+        if slot == "alt" and altItem then
+            row(button, "*type-alt", "macro")
+            row(button, "*spell-alt", nil)
+            row(button, "*unit-alt", nil)
+        else
+            local v = slotOf(states, form, slot)
+            row(button, "*type-" .. slot, v and "spell" or nil)
+            row(button, "*spell-" .. slot, v)
+            row(button, "*unit-" .. slot, v and "target" or nil)
+        end
     end
+    -- N8: last, so the rows above keep their places.
+    row(button, "*macrotext-alt", altItem and ("/use item:" .. altItem) or nil)
 
     local header = {}
     for state = 0, lastState() do

@@ -152,6 +152,7 @@ return {
             "*type-shift=nil", "*spell-shift=nil", "*unit-shift=nil",
             "*type-alt=nil", "*spell-alt=nil", "*unit-alt=nil",
             "*type-more=nil", "*spell-more=nil", "*unit-more=nil",
+            "*macrotext-alt=nil",
         }, "button")
     end,
 
@@ -195,7 +196,7 @@ return {
         for i, a in ipairs(attrs(r.button)) do
             t.ok(string.sub(a, -4) == "=nil", "cleared " .. i)
         end
-        t.eq(#r.button, 16, "every attribute named")
+        t.eq(#r.button, 17, "every attribute named")
     end,
 
     ["attributes: a form with no row, or not a form number, reads as described"] = function(t)
@@ -277,5 +278,54 @@ return {
         t.eq(r.spell, s.spell, "the suggestion is on the key")
         t.eq(r.header[1], { attr = "key-0", value = "Wrath" }, "the caster key in the header")
         t.eq(r.driver.condition, kp.condition, "condition carried")
+    end,
+
+    -- N8 (lead section 238): the healing item on Alt.
+    ["attributes: altItem puts the item on Alt instead of the spell"] = function(t)
+        local p = { states = { [0] = { key = "A", alt = "X" } }, condition = "0", altItem = 5512 }
+        local r = ns.cast.Attributes(nil, p, nil, false)
+        t.eq(r.ok, true, "ok")
+        local got = {}
+        for _, a in ipairs(r.button) do got[a.attr] = a.value end
+        t.eq(got["*type-alt"], "macro", "a macro")
+        t.eq(got["*spell-alt"], nil, "no spell")
+        t.eq(got["*unit-alt"], nil, "no unit")
+        t.eq(got["*macrotext-alt"], "/use item:5512", "the item")
+        local plain = ns.cast.Attributes(nil, { states = p.states, condition = "0" }, nil, false)
+        local had = {}
+        for _, a in ipairs(plain.button) do had[a.attr] = a.value end
+        t.eq(had["*spell-alt"], "X", "without it: the spell")
+        t.eq(had["*macrotext-alt"], nil, "without it: no macro")
+    end,
+
+    ["apply: only the altItem differs, it is a change"] = function(t)
+        local p = { states = { [0] = { key = "A" } }, condition = "0" }
+        local first = ns.cast.Apply(p, nil, false)
+        t.eq(ns.cast.Apply(p, first.plan, false).changed, false, "the same: no change")
+        local q = { states = p.states, condition = "0", altItem = 5512 }
+        t.eq(ns.cast.Apply(q, first.plan, false).changed, true, "an item on Alt: a change")
+        t.eq(ns.cast.Apply(p, ns.cast.Apply(q, nil, false).plan, false).changed, true, "the item gone: a change")
+        t.eq(ns.cast.Apply({ states = p.states, condition = "0", altItem = 1.5 }, nil, false).plan.altItem, nil,
+            "not a whole number: no item")
+    end,
+
+    -- P-PARTY: a suggestion for another player is only shown (look = true,
+    -- Rotation/Group.lua). The key holds exactly what it holds with no
+    -- suggestion: the member's buff is never cast, on them or on you.
+    ["attributes: a look-only suggestion is never put on the key"] = function(t)
+        for _, kind in ipairs({ "group", "buff", "heal" }) do
+            local s = { spell = "Mark of the Wild", kind = kind, look = true, unit = "party1", member = "Fennimore" }
+            for _, form in ipairs({ 0, 3 }) do
+                local r = ns.cast.Attributes(s, plan(), nil, false, form)
+                t.eq(r, ns.cast.Attributes(nil, plan(), nil, false, form), kind .. ", form " .. form .. ": as with none")
+                t.eq(r.source, "plan", kind .. ": the plan's spell")
+                for _, a in ipairs(r.button) do
+                    t.ok(a.value ~= "Mark of the Wild" and a.value ~= "party1",
+                        kind .. ": nothing of the suggestion on " .. a.attr)
+                end
+            end
+        end
+        local r = ns.cast.Attributes({ spell = "Mark of the Wild", kind = "buff", look = false }, plan(), nil, false)
+        t.eq(r.spell, "Mark of the Wild", "look = false is an ordinary suggestion")
     end,
 }

@@ -89,6 +89,7 @@ return {
         "Rotation/Pack.lua",
         "Rotation/Snapshot.lua",
         "Rotation/BuffFood.lua",
+        "Rotation/HealItems.lua",
         "Rotation/Choose.lua",
         "Rotation/KeyPlan.lua",
         "Rotation/Cast.lua",
@@ -188,5 +189,7 @@ return {
     { "Core/Capture.lua", dev = true },
     { "Core/CaptureEvidence.lua", dev = true },
     "Rotation/Gather.lua",
+    -- P-PARTY: your group's buffs and dispels, look only (after GroupTip and Choose).
+    "Rotation/Group.lua",
     },
 }

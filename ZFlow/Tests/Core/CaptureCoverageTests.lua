@@ -64,6 +64,13 @@ local READS = {
     wornLinks = false,
     -- Section 235 item 4: the food read asks it (Rotation/Driver.lua).
     fishingPole = true,
+    -- N8: the heal step asks both (Rotation/Driver.lua).
+    lowHealth = true, itemCooldown = true,
+
+    -- P-PARTY: your group, a spell's reach to one of them, and the debuff
+    -- types on you or one of them; read by the rotation only. Their names
+    -- (UnitIsConnected and the rest) are in Diag.NAMES, which the capture asks.
+    party = false, reach = false, unitDebuffTypes = false,
 }
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).
@@ -72,7 +79,7 @@ local FEATURE = {
     "spellCooldown", "spellId", "stealthed", "target", "targetDebuffs", "unitBuff",
     "facing", "itemCount", "mapCorners", "mapSize", "onTaxi", "position", "questFocus", "questItem",
     "questLog", "taxiNodes", "worldPosition", "zone", "corpse", "ghost", "pet",
-    "fishingPole",
+    "fishingPole", "lowHealth", "itemCooldown",
 }
 
 local TEXTS = { "Orgrimmar", "Devotion Aura", "Attack", "Rend", "Bear Form", "Wolves" }
@@ -119,6 +126,7 @@ local function start()
     c.setQuestLog({ { id = 303, title = "Wolves", objectives = { { text = "Wolves slain: 0/4" } } } })
     c.setQuestFocus(303, { 303 })
     c.setQuestItem(303, 4000); c.setItemCount(6948, 1)
+    c.setLowHealth(false); c.setItemCooldown(6948, 0)
     c.setTaxiNodes({ map = 1411, here = 1, nodes = { { name = "Orgrimmar", x = 0.5, y = 0.5, state = "known" } } })
     local k = ns.Kernel({}, c)
     Diag.Start(k)

@@ -459,8 +459,14 @@ tests["rotation driver RD11: a step presses nothing and asks only its sixteen re
         -- client has none, so the look is all there is and no bag is read.
         -- P-GATHER: the same for the tracking and profession reads.
         -- GT-1, GT-2: and the gather guards' reads (any tracking, mounted, on a flight).
-        t.eq(other, { "fishingPole", "bagItems", "mounted", "onTaxi", "fishingPole", "tracking", "tracking", "professions", "anyTracking", "ownBuffs" },
-            "nothing else asked of the client but the bag, tracking, profession and gather-guard reads it lacks")
+        -- Section 237 FB3-1: the pole looked for once a step, not twice.
+        -- P-PARTY: the curses and poisons on you (unitDebuffTypes, at the
+        -- debuffTypes field) and your group (party, at the party field).
+        -- PC-3: and whether you are in a group (grouped).
+        -- N8: the low-health warning, and the healing items' own look for bagItems.
+        t.eq(other, { "lowHealth", "unitDebuffTypes", "fishingPole", "bagItems", "mounted", "onTaxi", "bagItems", "tracking", "tracking",
+            "professions", "anyTracking", "ownBuffs", "grouped", "party" },
+            "nothing else asked of the client but the warning, debuff, pole, bag, tracking, profession, gather-guard, grouped and group reads it lacks")
         local names = {}
         for name in pairs(calls) do names[#names + 1] = name end
         table.sort(names)
@@ -477,6 +483,38 @@ tests["rotation driver RD11: a step presses nothing and asks only its sixteen re
         t.eq(calls.formName, 1)
         t.eq(calls.currentSpell, 2, "once for each spell with an id")
     end
+end
+
+-- Section 237 FB3-1: a client with a pole read is asked it once a step,
+-- by the food pick and the gather guard both.
+tests["rotation driver FB3-1: the pole is read once a step"] = function(t)
+    for _, answer in ipairs({ true, false, "odd" }) do
+        local client, calls = stub(false, false, false)
+        client.fishingPole = function()
+            calls.fishingPole = (calls.fishingPole or 0) + 1
+            return answer
+        end
+        D.Step(client, pack())
+        t.eq(calls.fishingPole, 1, "one step: " .. tostring(answer))
+        D.Step(client, pack())
+        t.eq(calls.fishingPole, 2, "the next step asks again: " .. tostring(answer))
+    end
+end
+
+tests["rotation driver FB3-1: one read answers the field and the food pick alike"] = function(t)
+    local n = 0
+    local c = ns.make.fakeClient()
+    c.fishingPole = function() n = n + 1; return true end
+    local read = D.Read(c, pack(), {}, "dps", { food = { on = true } })
+    read("buffFood")
+    t.eq(read("fishingPole"), true)
+    t.eq(read("fishingPole"), true)
+    t.eq(n, 1, "asked once for the read")
+    c.fishingPole = function() n = n + 1; error("pole read failed") end
+    local again = D.Read(c, pack(), {}, "dps")
+    t.eq(again("fishingPole"), nil, "a failed read is not known")
+    t.eq(again("fishingPole"), nil)
+    t.eq(n, 2, "not known is kept for the read too")
 end
 
 -- RD15 (section 183): buffs, form and current ------------------------
@@ -623,6 +661,50 @@ tests["rotation driver RD11: the plan is never taken as applied"] = function(t)
     tick(c)
     -- Nothing was bound, so the second tick still has every key to set.
     t.eq(api.view().keys.ops, { { op = "set", state = 0, slot = "key", spell = "Wrath" } })
+end
+
+-- P-PARTY flag (a) ------------------------------------------------------
+-- The curses and poisons on you, by type: client.unitDebuffTypes("player").
+-- Nothing served this field before, so the dispel step (Choose.lua, on
+-- yourself, out of a fight) could never fire in the game.
+
+local function cursed(class, spell, id, debuffs)
+    local c = ns.make.fakeClient()
+    c.setDead(false); c.setCombat(false); c.setClass(class); c.setFormName(nil, true)
+    c.setTarget({ exists = false })
+    c.setSpellId(spell, id); c.setSpell(id, { known = true, usable = true }); c.setSpellCooldown(id, false)
+    c.setUnitDebuffs("player", debuffs)
+    return c
+end
+
+tests["rotation driver: the read gives your debuff types from the client, nil when not known"] = function(t)
+    local c = cursed("PALADIN", "Cleanse", 4987, { Poison = "Made-up Venom" })
+    local read = D.Read(c, ns.Packs.PALADIN, { Cleanse = 4987 })
+    t.eq(read("debuffTypes"), { Poison = "Made-up Venom" })
+    c.setUnitDebuffs("player", nil)
+    t.eq(read("debuffTypes"), nil, "the client does not say: not known")
+    t.eq(D.Read({}, ns.Packs.PALADIN, {})("debuffTypes"), nil, "no such read: nil")
+    local asked
+    local stubbed = { unitDebuffTypes = function(unit) asked = unit error("broke") end }
+    t.eq(D.Read(stubbed, ns.Packs.PALADIN, {})("debuffTypes"), nil, "a read that raises: nil")
+    t.eq(asked, "player", "asked about you only")
+end
+
+tests["rotation driver: a poison on you: Cleanse on yourself, out of a fight"] = function(t)
+    local v = D.Step(cursed("PALADIN", "Cleanse", 4987, { Poison = "Made-up Venom" }), ns.Packs.PALADIN)
+    local s = v.suggestion
+    t.eq(s and { s.step, s.spell, s.unit } or nil, { "dispel", "Cleanse", "player" })
+    t.eq(v.snapshot.debuffTypes, { Poison = "Made-up Venom" })
+    local fight = cursed("PALADIN", "Cleanse", 4987, { Poison = "Made-up Venom" })
+    fight.setCombat(true)
+    local inFight = D.Step(fight, ns.Packs.PALADIN).suggestion
+    t.ok(inFight == nil or inFight.step ~= "dispel", "in a fight: no dispel")
+end
+
+tests["rotation driver: a curse on a caster druid: Remove Curse on yourself"] = function(t)
+    local v = D.Step(cursed("DRUID", "Remove Curse", 2782, { Curse = "Made-up Hex" }), ns.Packs.DRUID)
+    local s = v.suggestion
+    t.eq(s and { s.step, s.spell, s.unit } or nil, { "dispel", "Remove Curse", "player" })
 end
 
 -- RD12 ----------------------------------------------------------------

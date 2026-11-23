@@ -8,6 +8,7 @@ local _, ns = ...
 --   D.Read(client, pack, ids[, role, extra]) -> read(field)
 --     extra (section 232): one options table with named fields; no further
 --     positional arguments. extra.food: the module's food table (below).
+--     extra.heal: the module's heal table (N8, below).
 --     extra.chosen: the seals and blessings from the ownCasts module (below).
 --     extra.combo: the combo module's counted combo points (below).
 --     the reader ns.Snapshot takes. dead, inCombat, stealthed, hostile,
@@ -74,7 +75,28 @@ local _, ns = ...
 --                  or when neither answers
 --       ownBuffs   client.ownBuffs() as it answered (N13): the buffs on you
 --                  that you put up yourself; nil when not known or the
---                  client has no such read
+--                  client has no such read; a read that raises is nil
+--       lowHealth  N8 (lead section 238): client.lowHealth(), the game's
+--                  low-health warning: true or false, nil when not known or
+--                  the client has no such read
+--       healItem   N8: your healthstone and healing potion
+--                  (Rotation/HealItems.lua): { stone, stoneName, potion,
+--                  potionName } kept in extra.heal until the bags change
+--                  or item data arrives (only a read with every item's
+--                  info is kept), plus stoneWait and potionWait (client.
+--                  itemCooldown, read each time; nil: not known) and alt,
+--                  the item on Alt + your rotation key: set out of a fight
+--                  only, with heal.keys true (the key frame on), and kept
+--                  through the fight. heal.on false (the D.HEAL setting
+--                  off): nil, and the bags are not read
+--       grouped    client.grouped() when it answers true or false (PC-3);
+--                  nil otherwise
+--       debuffTypes  client.unitDebuffTypes("player") (P-PARTY flag (a)):
+--                  { [type] = debuff name } on you; nil when not known, the
+--                  read raised, or the client has no such read
+--       party, groupOn  your group and the "suggest buffs for your group"
+--                  setting, from Rotation/Group.lua (ns.PartyGroup.Read,
+--                  handed the pack and ids already here: no new argument)
 --   D.Step(client, pack[, prefs, bias, applied, role, extra]) -> view
 --     extra is handed to D.Read as it is (section 232).
 --     one read and one choice. A read that fails is an error (not caught
@@ -132,6 +154,8 @@ D.SETTING = "rotation.enabled"
 -- Section 230 (BF-3): suggest Well Fed food. The key Flow's import writes
 -- (Import/FromFlow.lua, rotation.recoverBuffFood).
 D.FOOD = "rotation.recoverBuffFood"
+-- N8 (lead section 238): healthstone, then healing potion, in a fight.
+D.HEAL = "rotation.emergencyItems"
 -- The role you chose (Rotation/Role.lua declares the row).
 D.ROLE = "spec.role"
 D.EVERY = 0.2
@@ -279,11 +303,12 @@ local function poleOf(client)
     return nil
 end
 
-local function buffFoodKept(client, pack, role, food)
-    if type(food) ~= "table" then return (buffFoodOf(client, pack, role, poleOf(client))) end
+-- pole: the step's one pole read (section 237 FB3-1), asked when needed.
+local function buffFoodKept(client, pack, role, food, pole)
+    if type(food) ~= "table" then return (buffFoodOf(client, pack, role, pole())) end
     if food.on == false then return nil end
     -- The pole changes with no bag change: a kept pick is for one pole answer.
-    local pole = poleOf(client)
+    pole = pole()
     local fresh = food.kept == true and food.pack == pack and food.role == role and food.pole == pole
     if fresh then return food.value end
     if client.inCombat() ~= false then return nil end
@@ -294,6 +319,48 @@ local function buffFoodKept(client, pack, role, food)
         food.kept, food.value = false, nil
     end
     return got
+end
+
+-- N8 (lead section 238): an item's cooldown, seconds (0: ready), or nil.
+local function cooldownOf(client, id)
+    if type(id) ~= "number" or type(client.itemCooldown) ~= "function" then return nil end
+    local ok, left = pcall(client.itemCooldown, id)
+    if ok and type(left) == "number" and left == left and left >= 0 then return left end
+    return nil
+end
+
+-- N8: the healing items, kept as the food is (above). Without heal: read
+-- each time, no alt.
+local function healItemKept(client, heal)
+    if type(ns.HealItems) ~= "table" then return nil end
+    if type(heal) == "table" and heal.on == false then return nil end
+    local pick
+    if type(heal) == "table" and heal.kept == true then
+        pick = heal.value
+    else
+        local got, partial = ns.HealItems.Read(client)
+        pick = got
+        if type(heal) == "table" then
+            if got ~= nil and not partial then
+                heal.kept, heal.value = true, got
+            else
+                heal.kept, heal.value = false, nil
+            end
+        end
+    end
+    if type(pick) ~= "table" then return nil end
+    local out = { stone = pick.stone, stoneName = pick.stoneName,
+                  potion = pick.potion, potionName = pick.potionName }
+    out.stoneWait = cooldownOf(client, pick.stone)
+    out.potionWait = cooldownOf(client, pick.potion)
+    if type(heal) == "table" and heal.keys == true then
+        -- The key may change only out of a fight; in one, what is on it stays.
+        if type(client.inCombat) == "function" and client.inCombat() == false then
+            heal.alt = pick.stone or pick.potion
+        end
+        out.alt = heal.alt
+    end
+    return out
 end
 
 -- ROGUE-2 (section 236): is a finisher due. The client's combo read when it
@@ -315,6 +382,7 @@ end
 
 function D.Read(client, pack, ids, role, extra)
     local food = type(extra) == "table" and extra.food or nil
+    local heal = type(extra) == "table" and extra.heal or nil
     local chosen = type(extra) == "table" and extra.chosen or nil
     local combo = type(extra) == "table" and extra.combo or nil
     -- Lead section 187: the form is asked of the client once for a read,
@@ -331,6 +399,14 @@ function D.Read(client, pack, ids, role, extra)
         local name, known = client.formName()
         kept = { field = field, name = name, known = known }
         return name, known
+    end
+    -- Section 237 FB3-1: the pole is asked of the client once for a read,
+    -- on first need, and the food pick and the fishingPole field share the
+    -- answer (nil, not known, kept too).
+    local poleRead, poleValue = false, nil
+    local function pole()
+        if not poleRead then poleRead, poleValue = true, poleOf(client) end
+        return poleValue
     end
     return function(field)
         if field == "role" then return roleIn(pack, role) end
@@ -372,20 +448,52 @@ function D.Read(client, pack, ids, role, extra)
         if field == "finisherReady" then return finisherOf(client, pack, combo) end
         if field == "ownBuffs" then
             if type(client.ownBuffs) ~= "function" then return nil end
-            return client.ownBuffs()
+            -- Section 236 (c): a read that raises is not known, and the
+            -- tick goes on (the aura rule then waits).
+            local ok, v = pcall(client.ownBuffs)
+            if ok and type(v) == "table" then return v end
+            return nil
         end
-        if field == "buffFood" then return buffFoodKept(client, pack, role, food) end
+        -- PC-3: in a group, read as yes or no (Classes/Paladin.lua's seal).
+        if field == "grouped" then
+            if type(client.grouped) ~= "function" then return nil end
+            local ok, v = pcall(client.grouped)
+            if ok and type(v) == "boolean" then return v end
+            return nil
+        end
+        if field == "buffFood" then return buffFoodKept(client, pack, role, food, pole) end
         -- Section 230: no "and ... or nil" here; false must stay false.
         if field == "foodOn" then
             if type(food) ~= "table" or type(food.on) ~= "boolean" then return nil end
             return food.on
         end
         -- Section 230 (BF-2) and GT-2: one read of each for both the food and the gather guards.
-        if field == "mounted" or field == "onTaxi" or field == "fishingPole" then
+        if field == "fishingPole" then return pole() end
+        -- N8: the game's low-health warning, and the healing items.
+        if field == "lowHealth" then
+            if type(client.lowHealth) ~= "function" then return nil end
+            local ok, v = pcall(client.lowHealth)
+            if ok and type(v) == "boolean" then return v end
+            return nil
+        end
+        if field == "healItem" then return healItemKept(client, heal) end
+        if field == "mounted" or field == "onTaxi" then
             if type(client[field]) ~= "function" then return nil end
             local ok, v = pcall(client[field])
             if ok and type(v) == "boolean" then return v end
             return nil
+        end
+        -- P-PARTY flag (a): what is on you that you could remove, by type.
+        if field == "debuffTypes" then
+            if type(client.unitDebuffTypes) ~= "function" then return nil end
+            local ok, got = pcall(client.unitDebuffTypes, "player")
+            if ok and type(got) == "table" then return got end
+            return nil
+        end
+        -- P-PARTY: your group and its setting (Rotation/Group.lua).
+        if field == "party" or field == "groupOn" then
+            if type(ns.PartyGroup) ~= "table" then return nil end
+            return ns.PartyGroup.Read(client, field, { pack = pack, ids = ids })
         end
         -- GT-1: is any tracking on (Rotation/Gather.lua).
         if field == "trackingAny" then
@@ -431,7 +539,9 @@ function D.Why(snapshot, trace, keys, lockdown)
     -- Section 226 (CF-30): food is the step after the rotation. Skipped, its
     -- row is not the rotation's reason; the row before it is.
     -- Lead (merge of P-FOOD and P-GATHER): the same holds for "track".
-    while n > 1 and type(trace[n]) == "table" and (trace[n].step == "food" or trace[n].step == "track")
+    -- P-PARTY: and for "group", the step after "track".
+    while n > 1 and type(trace[n]) == "table"
+        and (trace[n].step == "food" or trace[n].step == "track" or trace[n].step == "group")
         and trace[n].result ~= "pick" do
         n = n - 1
     end
@@ -468,6 +578,11 @@ function D.Step(client, pack, prefs, bias, applied, role, extra)
 
     local lockdown = client.combatLockdown()
     local plan = ns.KeyPlan(pack, prefs)
+    -- N8: the healing item on Alt + the key (KeyPlan gives a fresh table).
+    local hi = snapshot.healItem
+    if type(plan) == "table" and type(hi) == "table" and type(hi.alt) == "number" then
+        plan.altItem = hi.alt
+    end
     local keys = ns.cast.Apply(plan, applied, lockdown)
     local attrs = ns.cast.Attributes(suggestion, plan, applied, lockdown, nil)
 
@@ -537,6 +652,9 @@ function D.Declare(k, packs)
     local view, errors, lastError = nil, 0, nil
     -- Section 229 (F-1): the Well Fed food read, kept until the bags change.
     local food = {}
+    -- N8: the healing items read, kept until the bags change or item data
+    -- arrives; alt (what is on Alt + the key) is kept through both.
+    local heal = {}
     function api.view() return view end
     function api.errors() return errors end
     function api.lastError() return lastError end
@@ -550,7 +668,11 @@ function D.Declare(k, packs)
             return
         end
         food.on = ctx.settings:get(D.FOOD) ~= false
-        local ok, got = pcall(work, ctx.client, packs or ns.Packs, ctx.settings:get(D.ROLE), { food = food, chosen = chosenOf(k), combo = comboOf(k) })
+        heal.on = ctx.settings:get(D.HEAL) ~= false
+        local K = ns.KeyFrame
+        heal.keys = type(K) == "table" and ctx.settings:get(K.SETTING) == true
+        local ok, got = pcall(work, ctx.client, packs or ns.Packs, ctx.settings:get(D.ROLE),
+            { food = food, heal = heal, chosen = chosenOf(k), combo = comboOf(k) })
         if ok then
             view = got
         else
@@ -579,15 +701,23 @@ function D.Declare(k, packs)
             label = "Suggest Well Fed food",
             help = "Out of a fight, with no Well Fed on you, suggests the best Well Fed food in your bags. It eats nothing for you.",
             group = "buffs", synonyms = { "food", "buffs", "well fed", "eat", "recovery" },
+        }, {
+            key = D.HEAL, scope = "account", type = "bool", default = true,
+            label = "In a fight: healthstone, then healing potion",
+            help = "With the game's low-health warning on in a fight, suggests your healthstone, else a healing potion, and puts it on Alt + your rotation key. It uses nothing for you.",
+            group = "buffs", synonyms = { "healthstone", "potion", "heal", "low health", "recovery" },
         } },
         provides = { View = api.view, Errors = api.errors },
         ticks = { { every = D.EVERY, run = tick } },
         start = function(c)
-            food = {}
+            food, heal = {}, {}
             -- The bags changed: the food kept may be gone, or a better one there.
-            c.bus:on(D.NAME, "BAG_UPDATE_DELAYED", function() food = {} end)
+            c.bus:on(D.NAME, "BAG_UPDATE_DELAYED", function() food, heal = {}, { alt = heal.alt } end)
+            -- Item data arrived (lead section 238): a read made without it
+            -- may change.
+            c.bus:on(D.NAME, "GET_ITEM_INFO_RECEIVED", function() food, heal = {}, { alt = heal.alt } end)
         end,
-        stop = function() food = {} end,
+        stop = function() food, heal = {}, {} end,
     })
     return api
 end

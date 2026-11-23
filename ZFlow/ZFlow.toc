@@ -72,6 +72,7 @@ Gear\Sets.lua
 Rotation\Pack.lua
 Rotation\Snapshot.lua
 Rotation\BuffFood.lua
+Rotation\HealItems.lua
 Rotation\Choose.lua
 Rotation\KeyPlan.lua
 Rotation\Cast.lua
@@ -165,3 +166,4 @@ Items\Posting.lua
 Items\Trader.lua
 Nav\Try.lua
 Rotation\Gather.lua
+Rotation\Group.lua
