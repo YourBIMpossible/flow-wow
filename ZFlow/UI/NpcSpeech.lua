@@ -37,6 +37,7 @@ S.NAME = "npcSpeech"
 S.SETTING = "general.npcSpeech"
 S.BONUS = "general.bonus"
 S.NO_CALL = "Your game client has no text-to-speech call"
+S.NO_DEST = "Your game client gives no local playback destination for speech"
 S.BONUS_OFF = "Bonus extras are off"
 S.RETRY = 0.5
 S.TRIES = 10
@@ -87,13 +88,18 @@ function S.Declare(k)
         return v
     end
 
-    local function present()
-        return type(ask("speech")) == "table"
+    -- Why the client cannot speak to the player's speakers, or nil when it
+    -- can. localPlayback unknown (nil) counts as not there (lead section 270).
+    local function blocked()
+        local sp = ask("speech")
+        if type(sp) ~= "table" then return S.NO_CALL end
+        if sp.localPlayback ~= true then return S.NO_DEST end
+        return nil
     end
 
     local function on()
         if not ctx or not ctx.settings then return false end
-        return ctx.settings:get(S.SETTING) == true and ctx.settings:get(S.BONUS) ~= false and present()
+        return ctx.settings:get(S.SETTING) == true and ctx.settings:get(S.BONUS) ~= false and blocked() == nil
     end
 
     local function stop()
@@ -150,7 +156,8 @@ function S.Declare(k)
         synonyms = { "speech", "voice", "read aloud", "tts", "npc", "text to speech", "talk" },
         needs = S.BONUS,
         requires = function(settings)
-            if not present() then return false, S.NO_CALL end
+            local why = blocked()
+            if why then return false, why end
             if settings:get(S.BONUS) == false then return false, S.BONUS_OFF end
             return true
         end })

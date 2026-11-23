@@ -197,6 +197,11 @@ Diag.NAMES = {
     "GetObjectiveText", "GetProgressText", "GetRewardText",
     -- N68: the alert sound (UI/Alerts.lua, Core/Client.lua playAlert).
     "PlaySound", "SOUNDKIT.RAID_WARNING",
+    -- G14 (lead sections 229, 236): the quest reward choice and its button
+    -- (Gear/RewardMark.lua, Core/Client.lua questChoices and
+    -- markRewardChoice). First guesses, never asked of 16001; saved in the
+    -- snapshot's names table so a normal login records which exist.
+    "GetNumQuestChoices", "GetQuestItemLink", "QuestInfoRewardsFrameQuestInfoItem1", "QuestRewardItem1",
     -- S19 (P-SETS branch 2): the set icons' equip on click (Core/Client.lua
     -- equipItem: EquipItemByName) and the game's own equipment sets, which
     -- are NOT used: capture fields only, so a login records whether 16001

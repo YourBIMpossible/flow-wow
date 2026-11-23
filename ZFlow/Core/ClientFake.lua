@@ -2869,7 +2869,8 @@ function ns.make.fakeClient(opts)
         if type(s.speech) ~= "table" then return nil end
         local voices = {}
         for i, v in ipairs(s.speech.voices or {}) do voices[i] = { voiceID = v.voiceID, name = v.name } end
-        return { voices = voices }
+        -- Lead section 270: as given to setSpeech; left out (nil) is unknown.
+        return { voices = voices, localPlayback = s.speech.localPlayback }
     end
     function c.speak(text, voice)
         s.speakCalls = s.speakCalls + 1
@@ -2949,6 +2950,34 @@ function ns.make.fakeClient(opts)
         local out = {}
         for i = 1, #alertsPlayed do out[i] = alertsPlayed[i] end
         return out
+    end
+    -- G14: the quest reward choices and the mark on one, as the real
+    -- client's questChoices() and markRewardChoice(index):
+    --   c.setQuestChoices({ { index, link } ... }) or nil (not readable,
+    --     the start); a row without a link is a choice not loaded yet;
+    --   c.setQuestChoicesFails(on): the read raises while on (lead
+    --     section 236: a read that fails, then recovers);
+    --   c.rewardMarked(): the choice marked now, or nil.
+    do
+        local rewardMark = nil
+        function c.setQuestChoices(rows) s.questChoices = type(rows) == "table" and rows or nil end
+        function c.setQuestChoicesFails(on) s.questChoicesFails = on == true end
+        function c.questChoices()
+            if s.questChoicesFails then error("quest choice read failed (test)") end
+            if type(s.questChoices) ~= "table" then return nil end
+            local out = {}
+            for i, row in ipairs(s.questChoices) do out[i] = { index = row.index, link = row.link } end
+            return out
+        end
+        function c.markRewardChoice(index)
+            if type(index) ~= "number" then
+                rewardMark = nil
+                return nil
+            end
+            rewardMark = index
+            return true
+        end
+        function c.rewardMarked() return rewardMark end
     end
 
     -- S19 (P-SETS branch 2): the set icon row, as the real client's

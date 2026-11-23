@@ -29,9 +29,26 @@ end
 
 tests["client speech: the voices, and a raising read gives nil"] = function(t)
     local c = ns.make.client({ C_VoiceChat = voiceChat({}) })
-    t.eq(c.speech(), { voices = { { voiceID = 3, name = "Voice A" } } })
+    t.eq(c.speech(), { voices = { { voiceID = 3, name = "Voice A" } }, localPlayback = false })
     local bad = ns.make.client({ C_VoiceChat = voiceChat({}, { voicesFail = true }) })
     t.eq(bad.speech(), nil)
+end
+
+-- Lead section 270: whether the local playback destination is known. True
+-- with Enum.VoiceTtsDestination.LocalPlayback a number, or with the game's
+-- own TextToSpeech_Speak helper (it picks the destination itself); false
+-- otherwise - never a guessed value.
+tests["client speech: localPlayback says whether the destination is known"] = function(t)
+    local withEnum = ns.make.client({ C_VoiceChat = voiceChat({}),
+        Enum = { VoiceTtsDestination = { LocalPlayback = 1 } } })
+    t.eq(withEnum.speech().localPlayback, true)
+    local withHelper = ns.make.client({ C_VoiceChat = voiceChat({}),
+        TextToSpeech_Speak = function() end })
+    t.eq(withHelper.speech().localPlayback, true)
+    local noValue = ns.make.client({ C_VoiceChat = voiceChat({}),
+        Enum = { VoiceTtsDestination = { LocalPlayback = "one" } } })
+    t.eq(noValue.speech().localPlayback, false)
+    t.eq(ns.make.client({ C_VoiceChat = voiceChat({}) }).speech().localPlayback, false)
 end
 
 tests["client speech: SpeakText gets voice, text, local playback, rate 0, volume 100"] = function(t)
