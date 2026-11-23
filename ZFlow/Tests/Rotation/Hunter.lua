@@ -104,7 +104,7 @@ tests["hunter chooser: aspect, then mark, sting, auto shot and arcane shot"] = f
     enemy.current = { ["Auto Shot"] = true }
     t.eq(pick(enemy), "Arcane Shot")
     t.eq(pick(enemy, nil, "aoe"), "Multi-Shot", "several enemies: Multi-Shot before Arcane Shot")
-    enemy.current = nil
+    enemy.current = "nil"   -- (the file's sentinel: a plain nil would leave the default)
     t.eq(pick(enemy), "Arcane Shot", "auto shot not read: not asked for")
 end
 
