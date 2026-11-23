@@ -181,7 +181,7 @@ end
 -- game). PLAYER_REGEN_DISABLED is handled before the lock is on (first
 -- guess, not seen in this client): Attack is taken off the key there.
 tests["auto attack: Attack on the key, then the fight starts: the key no longer holds Attack"] = function(t)
-    local c, addon = start()
+    local c = start()
     pull(c)
     t.eq(attr(c, "spell"), "Attack", "the key holds Attack before the press")
     -- The press: the swing goes on and the fight starts before the next

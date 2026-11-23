@@ -229,7 +229,7 @@ local function learnForge(c)
 end
 
 tests["key actions: by a forge with ore, one press opens Smelting; far from it, nothing"] = function(t)
-    local c, addon = start()
+    local c = start()
     smith(c)
     learnForge(c)
     c.setItemCount(ORE, 3); c.advance(1, 5)
@@ -245,7 +245,7 @@ tests["key actions: by a forge with ore, one press opens Smelting; far from it, 
 end
 
 tests["key actions: learned stations are kept in the add-on's saved settings through a reload"] = function(t)
-    local c, addon = start()
+    local c = start()
     smith(c)
     learnForge(c)
     local c2 = start({ account = c.saved(ns.id.accountDB), char = c.saved(ns.id.charDB) })
