@@ -2986,6 +2986,26 @@ function ns.make.fakeClient(opts)
         end
         function c.rewardMarked() return rewardMark end
     end
+    -- S21: the value on a loot roll's item, as the real client's
+    -- rollValue(rollID, text, r, g, b): true, kept per roll; no text clears
+    -- it. c.rollValueOf(rollID) -> { text, r, g, b } shown now, or nil.
+    do
+        local rollValues = {}
+        function c.rollValue(rollID, text, r, g, b)
+            if type(rollID) ~= "number" then return nil end
+            if type(text) ~= "string" or text == "" then
+                rollValues[rollID] = nil
+                return true
+            end
+            rollValues[rollID] = { text = text, r = r, g = g, b = b }
+            return true
+        end
+        function c.rollValueOf(rollID)
+            local v = rollValues[rollID]
+            if v == nil then return nil end
+            return { text = v.text, r = v.r, g = v.g, b = v.b }
+        end
+    end
     return c
 end
 

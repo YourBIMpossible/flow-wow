@@ -202,6 +202,10 @@ Diag.NAMES = {
     -- markRewardChoice). First guesses, never asked of 16001; saved in the
     -- snapshot's names table so a normal login records which exist.
     "GetNumQuestChoices", "GetQuestItemLink", "QuestInfoRewardsFrameQuestInfoItem1", "QuestRewardItem1",
+    -- S21 (lead section 275): the roll frame and its item picture that
+    -- carry the Need or Greed value (Core/Client.lua rollValue). First
+    -- guesses, never asked of 16001.
+    "GroupLootFrame1", "GroupLootFrame1.IconFrame",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns

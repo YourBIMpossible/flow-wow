@@ -8250,6 +8250,64 @@ function ns.make.client(env)
             return shown
         end
     end
+
+    -- S21 (lead section 275): the Need or Greed value on a loot roll's item
+    -- (Gear/RollHint.lua). A first guess, not seen in game on 16001: the
+    -- roll frame's item picture is its IconFrame field (legacy Flow's
+    -- Modules/Gear/RollHint.lua IconHost read it on this client); without
+    -- one the roll frame itself holds the value. The roll frame is found as
+    -- onLootRoll finds it (rollFrame, F4). The names are in Diag.NAMES
+    -- (GroupLootFrame1, GroupLootFrame1.IconFrame).
+    --   c.rollValue(rollID, text, r, g, b) -> true when that roll's frame
+    --     carries the text (no text, or "": hidden); nil when no frame shows
+    --     that roll, or one of ours could not be made there.
+    -- The text sits on a frame of ours made as a child of the item picture,
+    -- one per roll frame, reused; it takes no clicks. Nothing of the game's
+    -- frame is called or written, and nothing rolls.
+    -- In a do block: make.client is near Lua 5.1's 200 locals.
+    do
+        local rollValues = {}   -- roll frame -> { holder, text }, or false
+        local function rollValueMark(frame)
+            local known = rollValues[frame]
+            if known ~= nil then return known or nil end
+            local host = frame
+            local okI, icon = pcall(function() return frame.IconFrame end)
+            if okI and type(icon) == "table" then host = icon end
+            local okF, holder = call(env.CreateFrame, "Frame", nil, host)
+            if not okF or type(holder) ~= "table" then
+                rollValues[frame] = false
+                return nil
+            end
+            local okT, fs = method(holder, "CreateFontString", nil, "OVERLAY", "GameFontNormalSmall")
+            if not okT or type(fs) ~= "table" then
+                rollValues[frame] = false
+                return nil
+            end
+            method(holder, "SetAllPoints", host)
+            method(holder, "EnableMouse", false)
+            method(fs, "SetPoint", "TOPLEFT", holder, "TOPLEFT", 2, -2)
+            local m = { holder = holder, text = fs }
+            rollValues[frame] = m
+            return m
+        end
+        function c.rollValue(rollID, s, r, g, b)
+            if type(rollID) ~= "number" or hidden(rollID) then return nil end
+            local frame = rollFrame(rollID)
+            if frame == nil then return nil end
+            local m = rollValueMark(frame)
+            if m == nil then return nil end
+            if type(s) ~= "string" or s == "" then
+                method(m.holder, "Hide")
+                return true
+            end
+            method(m.text, "SetText", s)
+            if type(r) == "number" and type(g) == "number" and type(b) == "number" then
+                method(m.text, "SetTextColor", r, g, b)
+            end
+            method(m.holder, "Show")
+            return true
+        end
+    end
     return c
 end
 
