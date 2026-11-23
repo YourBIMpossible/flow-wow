@@ -102,7 +102,9 @@ tests["class b cc: unknown stays unknown: type, held, plates, fight not read: no
     t.eq((run("cc", snap({ "Polymorph" }, { enemies = e }), mage())), nil, "not known whether it is your target")
     local s, why = run("cc", snap({ "Polymorph" }, { enemies = nil }), mage())
     t.eq(s, nil); t.eq(why, "nameplates not read")
-    s = run("cc", snap({ "Polymorph" }, { enemies = TWO, inCombat = nil }), mage())
+    local unread = snap({ "Polymorph" }, { enemies = TWO })
+    unread.inCombat = nil
+    s = run("cc", unread, mage())
     t.eq(s, nil, "fight not read")
     s = run("cc", snap({ "Polymorph" }, { enemies = TWO, inCombat = false }), mage())
     t.eq(s, nil, "out of a fight")
@@ -152,7 +154,9 @@ tests["class b plate cast: your own target, a cast that cannot be stopped, or on
     t.eq((run("plateCast", snap({ "Counterspell" }, { plateCasts = c }), mage())), nil, "target not read")
     local s, why = run("plateCast", snap({ "Counterspell" }, { plateCasts = nil }), mage())
     t.eq(s, nil); t.eq(why, "plate casts not read")
-    t.eq((run("plateCast", snap({ "Counterspell" }, { plateCasts = CASTS, inCombat = nil }), mage())), nil, "fight not read")
+    local unread = snap({ "Counterspell" }, { plateCasts = CASTS })
+    unread.inCombat = nil
+    t.eq((run("plateCast", unread, mage())), nil, "fight not read")
     t.eq((run("plateCast", snap({ "Counterspell" }, { plateCasts = {} }), mage())), nil, "nobody casting")
 end
 
@@ -206,6 +210,14 @@ tests["class b threat: in a group, an enemy on you: Fade, on you"] = function(t)
     t.eq(s.kind, "buff")
     t.eq(s.look, nil, "Fade is cast on you: on the key")
     t.eq(s.reason, "Fade: an enemy is on you in a group")
+end
+
+-- Mutation found (threat >= 3 passed every case): threat 2, on you but
+-- not securely, is on you too.
+tests["class b threat: threat 2 is on you as well: Fade"] = function(t)
+    local two = { { unit = "nameplate1", isTarget = true, threat = 2 } }
+    local s = run("threat", snap({ "Fade" }, { grouped = true, role = "heal", enemies = two }), priest())
+    t.eq(s and s.spell, "Fade")
 end
 
 tests["class b threat: alone, the tank, no threat, or not read: no Fade"] = function(t)

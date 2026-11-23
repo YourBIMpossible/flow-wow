@@ -93,7 +93,7 @@ return {
         spell, s, trace = pick(ALL, everything)
         t.eq(spell, "Shield", "then the list")
         t.eq(s.step, "list", "step")
-        t.eq(#trace, 6, "five skipped rows and the pick")
+        t.eq(#trace, 9, "eight skipped rows and the pick (section 242: plateCast, threat, cc before the list)")
         -- out of a fight: dispel before engage before the list
         local pull = { hostile = true, canStartAttack = true, stealthed = false, debuffTypes = { Poison = "Venom" } }
         _, s = pick(ALL, pull)
@@ -321,10 +321,10 @@ return {
         fight.spells = { Shield = { known = true }, Bolt = { known = true } }
         spell, _, trace = pick(nil, fight)
         t.eq(spell, nil)
-        t.eq(trace[6].step, "list")
-        t.eq(trace[6].passed, { "Bolt", "Shield" }, "no pick: the row still names them, sorted")
-        t.eq(trace[6].note, "no rule ready; not known whether it is ready: Bolt, Shield", "and the note is as it was")
-        t.eq(trace[7].passed, nil, "the far opener weighed none")
+        t.eq(trace[9].step, "list")
+        t.eq(trace[9].passed, { "Bolt", "Shield" }, "no pick: the row still names them, sorted")
+        t.eq(trace[9].note, "no rule ready; not known whether it is ready: Bolt, Shield", "and the note is as it was")
+        t.eq(trace[10].passed, nil, "the far opener weighed none")
 
         local hurt = { lowHealth = true, inCombat = true, spells = {
             Mend = { known = true, castMs = 1500 },
@@ -349,7 +349,7 @@ return {
         t.eq(noteOf(trace, "list"), "no rule ready; not known whether you have a target: Bolt")
         t.eq(noteOf(trace, "farOpener"), "not known whether you have a target", "not the no-enemy note")
         t.eq(ns.Rotation.TARGET_UNKNOWN, "not known whether you have a target")
-        t.eq(trace[6].passed, nil, "no cooldown was in the way")
+        t.eq(trace[9].passed, nil, "no cooldown was in the way")
 
         t.eq(pick({ "Shield", "Bolt" }, fight), "Shield", "a spell that needs no target is still suggested")
         spell, _, trace = pick({ "Shield", "Bolt" }, { inCombat = true, buffs = { Shield = 20 } })
