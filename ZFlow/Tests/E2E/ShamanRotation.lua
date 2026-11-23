@@ -166,16 +166,45 @@ tests["shaman: cooldown is passed by and comes back; out of range is said"] = fu
     t.ok(not said(c):find("out of range", 1, true), "not told out of range: " .. said(c))
     inRange(c, false); c.advance(1, 5)
     t.ok(said(c):find("out of range", 1, true), "told it is out of range: " .. said(c))
+    -- Section 220 (Zen's section 218 read): a spell really passed by for
+    -- range. None of your debuffs on the target, so Flame Shock is wanted
+    -- and, in range, shown before Earth Shock. Read out of range, it is
+    -- passed by: Earth Shock (in range) is shown and nothing says out of range.
+    c.setTargetDebuffs({}); inRange(c, true); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Flame Shock", "Flame Shock wanted and in range: shown first")
+    c.setInRange(IDS["Flame Shock"], false); c.advance(1, 5)
+    t.ok(not showing(icon, "Flame Shock"), "Flame Shock out of range: not shown")
+    t.eq(icon.texture, "tex:Earth Shock", "the next spell in range is shown")
+    t.ok(not said(c):find("out of range", 1, true), "not told out of range: " .. said(c))
 end
 
+-- Section 220 (Zen's section 218 read): the pack's target rules, written out
+-- here by hand, in list order, so a change to the pack is seen. A rule
+-- added or a `target = true` dropped in Classes/Shaman.lua makes this differ;
+-- the writer then decides whether the spell joins IDS (and so reach()).
+local TARGET_RULES = { "Lightning Bolt", "Attack", "Auto Attack", "Stormstrike", "Flame Shock", "Earth Shock" }
+-- The target rules this file does not teach (not in IDS, so never learned
+-- and never shown here). Any other target rule must be in reach().
+local NOT_TAUGHT = { ["Auto Attack"] = true, ["Stormstrike"] = true }
+
 tests["shaman: every learned target rule is put out of range by the test"] = function(t)
-    local names = {}
-    for _, name in ipairs(reach()) do names[name] = true end
+    local targets = {}
     for _, rule in ipairs(ns.Packs.SHAMAN.lists.default) do
-        if rule.target and IDS[rule.spell] then t.ok(names[rule.spell], "in reach: " .. rule.spell) end
+        if rule.target then targets[#targets + 1] = rule.spell end
     end
-    for _, name in ipairs({ "Lightning Bolt", "Flame Shock", "Earth Shock", "Attack" }) do
-        t.ok(names[name], "in reach: " .. name)
+    t.eq(targets, TARGET_RULES, "the pack's target rules, as written out here")
+    -- MyBuddy SN-2: no hand-kept list of what is in reach. Every target rule
+    -- of the pack is in reach unless it is named below as not taught here;
+    -- reach() leaves a spell out only when IDS lacks it, so a later target
+    -- rule whose spell is not in IDS fails here instead of being skipped.
+    local inReach = {}
+    for _, name in ipairs(reach()) do inReach[name] = true end
+    for _, name in ipairs(targets) do
+        if NOT_TAUGHT[name] then
+            t.ok(IDS[name] == nil and not inReach[name], "not taught here, so not in reach: " .. name)
+        else
+            t.ok(inReach[name], "in reach: " .. name)
+        end
     end
 end
 

@@ -36,14 +36,17 @@ local function holdSource(addon, holds, calls)
 end
 
 -- opts: holds ({ [item] = n }), source (a function instead of holds; false:
--- no source at all), bag (stacks)
+-- no source at all), bag (stacks), char (the character's saved data), env
+-- (the fake client's raw names), prepare (fn(c), run before the add-on is
+-- built on c)
 local function start(opts)
     opts = opts or {}
-    local c = ns.make.fakeClient()
+    local c = ns.make.fakeClient({ env = opts.env })
     c.setSaved(ns.id.accountDB, {})
-    c.setSaved(ns.id.charDB, {})
+    c.setSaved(ns.id.charDB, opts.char or {})
     c.setItemInfo(INFO)
     c.setBagItems(opts.bag or { { item = PELT, count = 3 }, { item = POTION, count = 2 } })
+    if opts.prepare then opts.prepare(c) end
     local addon = ns.offline.addon(c)
     local holds, calls = opts.holds or {}, { n = 0 }
     if opts.source then
@@ -163,21 +166,67 @@ tests["sell reservations: one evaluation per merchant visit"] = function(t)
     c.setMerchantOpen(false)
 end
 
-tests["sell reservations: look only - no acting client call"] = function(t)
-    local c, addon = start({ holds = { [PELT] = 2 } })
-    local acting = { "useContainerItem", "pickupContainerItem", "sell", "buy", "postAuction", "placeBid",
-                     "deposit", "withdraw", "splitContainerItem", "deleteCursorItem" }
-    local called = {}
-    for _, name in ipairs(acting) do
-        if type(c[name]) == "function" then
-            c[name] = function() called[#called + 1] = name end
-        end
+-- SR-6 (lead section 220): look only, with every acting call in place
+-- BEFORE the add-on is built on the client, so a call from any product path
+-- (start, login, the visit, the button, the bag event, the goal word) is
+-- counted. Two ways an add-on on this client could act:
+--   * the client's raw call into the game's names (c.raw over the fake's
+--     env): each acting game function is put in the env and counts its calls;
+--   * a client function: none acts today. One named for each act is put on
+--     the client and counts its calls, and any other name the add-on looks up
+--     on the client that names an act is noted (a lookup hook on the client).
+local ACTING_GAME = { "UseContainerItem", "PickupContainerItem", "SplitContainerItem", "SellCursorItem",
+    "ShowMerchantSellCursor", "BuyMerchantItem", "BuybackItem", "PickupMerchantItem", "RepairAllItems",
+    "DeleteCursorItem", "PickupItem", "UseItemByName", "EquipItemByName", "PlaceAuctionBid", "PostAuction",
+    "StartAuction" }
+local ACTING_CLIENT = { "useContainerItem", "pickupContainerItem", "splitContainerItem", "sellCursorItem",
+    "sellItem", "sell", "buy", "buyMerchantItem", "pickupMerchantItem", "repairAll", "deleteCursorItem",
+    "useItem", "postAuction", "placeBid", "deposit", "withdraw" }
+local ACTING_WORDS = { "sell", "buy", "pickup", "usecontainer", "useitem", "split", "delete", "deposit",
+    "withdraw", "bid", "postauction", "repairall", "cursor" }
+
+tests["sell reservations: look only - no acting call from any path, stubbed before the add-on is built"] = function(t)
+    local called, looked = {}, {}
+    local function record(name) return function() called[#called + 1] = name end end
+    local env = {
+        C_Container = { UseContainerItem = record("C_Container.UseContainerItem"),
+                        PickupContainerItem = record("C_Container.PickupContainerItem"),
+                        SplitContainerItem = record("C_Container.SplitContainerItem") },
+        C_MerchantFrame = { SellAllJunkItems = record("C_MerchantFrame.SellAllJunkItems"),
+                            BuyItem = record("C_MerchantFrame.BuyItem") },
+    }
+    for _, name in ipairs(ACTING_GAME) do env[name] = record(name) end
+    local function prepare(c)
+        for _, name in ipairs(ACTING_CLIENT) do c[name] = record("client." .. name) end
+        setmetatable(c, { __index = function(_, name)
+            if type(name) ~= "string" then return nil end
+            local low = name:lower()
+            for _, word in ipairs(ACTING_WORDS) do
+                if low:find(word, 1, true) then
+                    looked[#looked + 1] = name
+                    return nil
+                end
+            end
+            return nil
+        end })
     end
+    -- A goal saved for the character (the real goals producer, no test
+    -- source): 2 of the 3 pelts held, so a sell list with an offer is shown.
+    local c, addon = start({ source = false, env = env, prepare = prepare,
+        char = { settings = { goals = { { item = PELT, count = 2 } } } } })
     c.setMerchantOpen(true)
-    addon.sellList.show()
+    local lines = addon.sellList.last()
+    t.ok(starts(lines, "1 x Ruined Pelt: "), "the visit listed an offer: " .. joined(lines))
+    t.ok(has(lines, "Ruined Pelt: 2 held for your steps"), "the goal held two: " .. joined(lines))
+    t.ok(addon.sellList.show(), "shown on ask")
     c.fire("BAG_UPDATE_DELAYED"); c.advance(1, 5)
+    c.slashes[ns.id.slash]("goal add " .. PELT .. " 3")
+    t.ok(has(addon.sellList.last(), "Ruined Pelt: 3 held for your steps"),
+        "the goal word relisted the visit: " .. joined(addon.sellList.last()))
+    c.advance(1, 5)
     c.setMerchantOpen(false)
     t.eq(called, {}, "no acting call")
+    t.eq(looked, {}, "no acting name looked up on the client")
 end
 
 -- Lead section 213: a list asked for away from a merchant is never made, so
@@ -190,6 +239,14 @@ tests["sell reservations: away from a merchant nothing is listed; the next visit
     local c, addon, holds, calls = start({ holds = { [PELT] = 2 } })
     c.setMerchantOpen(true)
     t.ok(starts(addon.sellList.last(), "1 x Ruined Pelt: "), "the first visit: " .. joined(addon.sellList.last()))
+    -- MyBuddy SR2-1: at the merchant the same two calls do list again, so
+    -- that they list nothing away from it (below) is the away guard, not a
+    -- refresh or bag event that does nothing at all.
+    local atVisit = addon.sellList.shows()
+    addon.sellList.refresh()
+    t.eq(addon.sellList.shows() - atVisit, 1, "refresh at the merchant lists again")
+    c.fire("BAG_UPDATE_DELAYED"); c.advance(1, 5)
+    t.eq(addon.sellList.shows() - atVisit, 2, "a bag event at the merchant lists again")
     c.setMerchantOpen(false)
     local made, kept = addon.sellList.shows(), addon.sellList.last()
     holds[PELT] = 3
