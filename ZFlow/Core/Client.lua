@@ -1486,21 +1486,36 @@ function ns.make.client(env)
         return nil
     end
 
-    -- GT-1. Is any minimap tracking on (Flow's X.AnyTracked)? true / false;
-    -- nil when it cant be told. First guess; not seen in game.
+    -- GT-1. Is any minimap tracking you chose on (Flow's X.AnyTracked)?
+    -- true / false; nil when it cant be told. First guess; not seen in game.
+    -- GK-2: the town kinds (the client's type or category "townsfolk" or
+    -- "other": Flight Master, Repair, Mailbox) are no spell you cast and are
+    -- left out, as Flow's Compat.lua TrackingEntry. A kind not named counts
+    -- as yours. GK-3: one of yours whose active is not given or hidden makes
+    -- the answer nil (not known), never false, unless another is on.
+    local TOWN_TRACKING = { townsfolk = true, other = true }
     function c.anyTracking()
         local M = env.C_Minimap
         if type(M) == "table" then
             local okN, n = call(M.GetNumTrackingTypes)
             if okN and type(n) == "number" and not hidden(n) then
+                local unknown = false
                 for i = 1, n do
-                    local ok, a, _, active = call(M.GetTrackingInfo, i)
-                    if ok then
-                        local on = active
-                        if type(a) == "table" then on = a.active end
-                        if on == true and not hidden(on) then return true end
+                    local ok, a, _, active, category = call(M.GetTrackingInfo, i)
+                    if ok and a ~= nil then
+                        local on, kind = active, category
+                        if type(a) == "table" then on, kind = a.active, a.type end
+                        if kind ~= nil and hidden(kind) then kind = nil end
+                        if not (type(kind) == "string" and TOWN_TRACKING[kind]) then
+                            if on == nil or hidden(on) then
+                                unknown = true
+                            elseif on then
+                                return true
+                            end
+                        end
                     end
                 end
+                if unknown then return nil end
                 return false
             end
         end
