@@ -184,7 +184,7 @@ end
 -- here by hand, in list order, so a change to the pack is seen. A rule
 -- added or a `target = true` dropped in Classes/Shaman.lua makes this differ;
 -- the writer then decides whether the spell joins IDS (and so reach()).
-local TARGET_RULES = { "Lightning Bolt", "Attack", "Auto Attack", "Stormstrike", "Flame Shock", "Earth Shock" }
+local TARGET_RULES = { "Lightning Bolt", "Attack", "Stormstrike", "Flame Shock", "Earth Shock" }
 -- The target rules this file does not teach (not in IDS, so never learned
 -- and never shown here). Any other target rule must be in reach().
 local NOT_TAUGHT = { ["Auto Attack"] = true, ["Stormstrike"] = true }
