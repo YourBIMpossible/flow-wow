@@ -35,7 +35,10 @@ local _, ns = ...
 --   SettingsOptions.Declare(k) -> api
 --     api.open([to]) -> true when the game's Options was asked to open at
 --                   the page; false on a client with no page (the text
---                   panel, UI/SettingsPanel.lua, is the fallback there).
+--                   panel, UI/SettingsPanel.lua, is the fallback there);
+--                   false and why (LOCKED, LOCK_UNKNOWN) when the game's
+--                   combat lock is on or cannot be read: then the Options
+--                   are not asked to open at all.
 --                   to = { topic = id } or { query = text } goes there first.
 --   ns.use(SettingsOptions.NAME) -> { Open = api.open }
 --
@@ -56,6 +59,11 @@ O.JUMP = "Open topic"
 O.SAVED_FOR = "Saved for "
 O.FOUND = " found for "
 O.NONE = "There are no settings yet."
+-- Why the game's Options were not asked to open (lead section 247): the
+-- game's own windows are not opened while its lock is on, and a lock that
+-- cannot be read counts as on.
+O.LOCKED = "the game's Options can't be opened in combat"
+O.LOCK_UNKNOWN = "the game won't say whether you are in combat, so its Options stay closed"
 
 local DRAW = { toggle = "toggle", choice = "choice", number = "number", text = "text", place = "info" }
 
@@ -75,6 +83,8 @@ local function settingRow(e, found)
         choices = e.choices,
         min = e.min,
         max = e.max,
+        step = e.step,
+        help = e.help,
         settable = e.settable == true,
         why = e.why,
         scope = e.scope,
@@ -146,6 +156,10 @@ function O.Declare(k)
             draw(O.IN_COMBAT)
             return false, O.IN_COMBAT
         end
+        -- A number a control sent is put on its row's steps first.
+        local row
+        if type(key) == "string" then row = k.settings:row(key) end
+        if row then value = ns.SettingsPage.Snap(row, value) end
         local ok, why = ns.SettingsPage.Set(k, key, value)
         if ok then
             draw(O.SAVED .. tostring(key))
@@ -192,11 +206,20 @@ function O.Declare(k)
     end
 
     function api.open(to)
-        if not ensure() then return false end
         if type(to) == "table" then
             if to.topic ~= nil then ns.SettingsPage.Goto(k, to.topic) end
             if to.query ~= nil then ns.SettingsPage.Find(k, to.query) end
         end
+        if none or not ctx then return false end
+        -- Nothing of the game's is made or opened unless the lock is a
+        -- plain false: true is a fight, anything else is not known.
+        local lock
+        if type(ctx.client.combatLockdown) == "function" then lock = ctx.client.combatLockdown() end
+        if lock ~= false then
+            if lock == true then return false, O.LOCKED end
+            return false, O.LOCK_UNKNOWN
+        end
+        if not ensure() then return false end
         local ok, opened = pcall(page.open)
         if not ok then
             k.problems:add(O.NAME, "open", opened)

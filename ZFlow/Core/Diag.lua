@@ -74,6 +74,13 @@ Diag.NAMES = {
     "GetTradeSkillReagentInfo", "GetTradeSkillItemLink", "GetTradeSkillRecipeLink",
     -- Section 231 item 1: the rest of the classic schematic read.
     "GetTradeSkillNumMade", "GetTradeSkillReagentItemLink",
+    -- Section 245 (RB2-2): whether the classic window hides recipe rows
+    -- (client.tradeSkillRows). The two filter reads are used, first guesses;
+    -- the rest are candidates for the "have materials" box and the name
+    -- search box, not read yet: the capture says which this client has.
+    "GetTradeSkillSubClassFilter", "GetTradeSkillInvSlotFilter",
+    "TradeSkillOnlyShowMakeable", "GetTradeSkillItemNameFilter",
+    "TradeSkillFrameAvailableFilterCheckButton", "TradeSkillFrameEditBox", "TradeSkillFrameSearchBox",
     "C_TradeSkillUI.GetAllRecipeIDs", "GetNumCrafts", "GetCraftInfo",
     "GetNumTrainerServices", "GetTrainerServiceInfo", "GetTrainerServiceCost", "GetTrainerServiceSkillReq",
     "GetMerchantNumItems", "GetMerchantItemInfo", "GetMerchantItemLink", "C_MerchantFrame.GetItemInfo",
@@ -401,6 +408,9 @@ function Diag.Collect(k, why)
     -- Section 233 (GR2-1): the classic window's rows, as the recipe book walks them.
     S.tradeSkillRows = shape(true, type(client.tradeSkillRows) == "function"
         and client.tradeSkillRows() or nil)
+    -- Section 245 (RB2-2): the two filter reads behind tradeSkillRows().filtered.
+    S.tradeSkillSubClassFilter = ask(client, "GetTradeSkillSubClassFilter", 0)
+    S.tradeSkillInvSlotFilter = ask(client, "GetTradeSkillInvSlotFilter", 0)
     S.crafts = ask(client, "GetNumCrafts")
     S.taxiNodes = ask(client, "NumTaxiNodes")
 
@@ -485,6 +495,14 @@ function Diag.Collect(k, why)
     if type(recipe) ~= "number" then recipe = okShown and type(shown) == "table" and shown[1] end
     if type(recipe) == "number" then
         S.recipeInfo = ask(client, "C_TradeSkillUI.GetRecipeInfo", recipe)
+        -- Lead section 245 item 2: the two recipe fields c.recipes reads
+        -- (Core/Client.lua), each its own capture field: nil when the
+        -- client leaves the field out.
+        local okInfo, info = client.raw("C_TradeSkillUI.GetRecipeInfo", recipe)
+        local difficulty, skillUps
+        if type(info) == "table" then difficulty, skillUps = info.relativeDifficulty, info.numSkillUps end
+        S.recipeDifficulty = shapeWith(function(v) return Diag.IsSecret(client, v) end, okInfo, difficulty)
+        S.recipeSkillUps = shapeWith(function(v) return Diag.IsSecret(client, v) end, okInfo, skillUps)
         S.recipeSchematic = ask(client, "C_TradeSkillUI.GetRecipeSchematic", recipe, false)
         S.recipeItemLink = ask(client, "C_TradeSkillUI.GetRecipeItemLink", recipe)
         -- What a recipe needs: the first reagent slot and its first reagent.
@@ -1254,6 +1272,11 @@ function Diag.Start(k)
     end)
     client.listen("VARIABLES_LOADED", function() mark("VARIABLES_LOADED") end)
     client.listen("PLAYER_LOGIN", function() mark("PLAYER_LOGIN") end)
+    -- Lead section 245 item 2: the profession window show and close, kept
+    -- in the timing marks so a capture says each fired on this client (an
+    -- event name is not a global: Diag.NAMES can not say it).
+    client.listen("TRADE_SKILL_SHOW", function() mark("TRADE_SKILL_SHOW") end)
+    client.listen("TRADE_SKILL_CLOSE", function() mark("TRADE_SKILL_CLOSE") end)
     client.listen("PLAYER_ENTERING_WORLD", function()
         if mark("PLAYER_ENTERING_WORLD") then
             session()

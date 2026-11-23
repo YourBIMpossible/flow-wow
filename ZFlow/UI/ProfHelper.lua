@@ -9,8 +9,15 @@ local _, ns = ...
 -- the character (learned.recipeColors), so later readings know how long a
 -- recipe stays orange. It reads only: it never crafts, buys or moves an
 -- item. Items/SkillUps.lua does the counting.
+-- Lead section 245 item 2: a window the modern read does not answer (a
+-- classic window) is read from the classic rows instead (c.tradeSkillRows,
+-- c.tradeSkillSchematic by row index): the recipe and its colour are keyed
+-- by the recipe name, the goal by the profession name, and a schematic the
+-- client gave only in part counts as mats unknown. The setting turned on
+-- with the window already open shows the panel at the next look.
 -- Needs game test: the colour and skill up fields of the recipe read
--- (Core/Client.lua c.recipes), and where the panel sits beside the window.
+-- (Core/Client.lua c.recipes; Diag capture fields recipeDifficulty and
+-- recipeSkillUps), and where the panel sits beside the window.
 
 local ProfHelper = ns.ProfHelper or {}
 ns.ProfHelper = ProfHelper
@@ -119,25 +126,55 @@ function ProfHelper.Declare(k)
 
             local function goals() return ctx.store:table("char", ProfHelper.GOALS_PATH) end
 
+            -- The open window as { profession, skill, max, rows }, rows
+            -- { key, name, difficulty, mats }: from the modern read, else
+            -- the classic rows; nil when neither answers.
+            local function readWindow()
+                local w = read("recipes")
+                if type(w) == "table" and type(w.recipes) == "table"
+                    and type(w.skill) == "number" and type(w.max) == "number" then
+                    local rows = {}
+                    for _, r in ipairs(w.recipes) do
+                        if type(r) == "table" and r.learned == true and type(r.id) == "number" then
+                            rows[#rows + 1] = { key = r.id,
+                                name = type(r.name) == "string" and r.name or ("recipe " .. r.id),
+                                difficulty = r.difficulty, mats = mats(r.id) }
+                        end
+                    end
+                    return { profession = w.profession, skill = w.skill, max = w.max, rows = rows }
+                end
+                -- Classic: every row listed is a recipe the player knows.
+                w = read("tradeSkillRows")
+                if type(w) ~= "table" or type(w.rows) ~= "table" or type(w.name) ~= "string"
+                    or type(w.skill) ~= "number" or type(w.max) ~= "number" then
+                    return nil
+                end
+                local rows = {}
+                for _, r in ipairs(w.rows) do
+                    if type(r) == "table" and type(r.name) == "string" and type(r.index) == "number" then
+                        local sc = read("tradeSkillSchematic", r.index)
+                        local m
+                        if type(sc) == "table" and not sc.partial and type(sc.mats) == "table" then m = sc.mats end
+                        rows[#rows + 1] = { key = r.name, name = r.name, difficulty = r.difficulty, mats = m }
+                    end
+                end
+                return { profession = w.name, skill = w.skill, max = w.max, rows = rows }
+            end
+
             local act
             local function draw()
                 if not panel then return end
-                window = read("recipes")
-                if type(window) ~= "table" or type(window.recipes) ~= "table"
-                    or type(window.skill) ~= "number" or type(window.max) ~= "number" then
-                    window = nil
+                window = readWindow()
+                if not window then
                     panel.draw({ { kind = "info", text = ProfHelper.READING } }, act)
                     return
                 end
                 local skill, max = window.skill, window.max
                 local rows, colours = {}, {}
-                for _, r in ipairs(window.recipes) do
-                    if type(r) == "table" and r.learned == true and type(r.id) == "number" then
-                        local m = mats(r.id)
-                        rows[#rows + 1] = { key = r.id, name = type(r.name) == "string" and r.name or ("recipe " .. r.id),
-                            difficulty = r.difficulty, cost = cost(m), mats = m }
-                        colours[#colours + 1] = { key = r.id, difficulty = r.difficulty }
-                    end
+                for _, r in ipairs(window.rows) do
+                    rows[#rows + 1] = { key = r.key, name = r.name, difficulty = r.difficulty,
+                        cost = cost(r.mats), mats = r.mats }
+                    colours[#colours + 1] = { key = r.key, difficulty = r.difficulty }
                 end
                 local seen = ctx.store:table("char", ProfHelper.COLORS_PATH)
                 if type(seen) == "table" then U.Observe(seen, colours, skill) end
@@ -204,8 +241,11 @@ function ProfHelper.Declare(k)
             end
 
             local function on() return ctx.settings:get(ProfHelper.SETTING) ~= false end
+            -- The profession window is open: from its show to its close.
+            local open = false
 
             ctx.bus:on(ProfHelper.NAME, "TRADE_SKILL_SHOW", function()
+                open = true
                 if not on() then
                     hide()
                     return
@@ -218,12 +258,20 @@ function ProfHelper.Declare(k)
                 draw()
             end)
             ctx.bus:on(ProfHelper.NAME, "TRADE_SKILL_CLOSE", function()
+                open = false
                 window = nil
                 hide()
             end)
-            -- The setting turned off while the window is up hides the panel.
+            -- The setting turned off while the window is up hides the panel;
+            -- turned on while it is open, shows it (section 245 item 2).
             ctx.sched:every(ProfHelper.NAME, ProfHelper.EVERY, function()
-                if panel and panel.shown() and not on() then hide() end
+                if not panel then return end
+                if panel.shown() and not on() then
+                    hide()
+                elseif open and on() and not panel.shown() then
+                    draw()
+                    panel.show(true)
+                end
             end)
 
             local id = k.id or ns.id

@@ -13,7 +13,7 @@
 --   c.setBagItems{ { item = 2318, count = 4 } }; c.setBank{ ... }
 --   c.setRecipes{ profession = 164, skill = 104, max = 150, recipes = { ... } }
 --   c.setRecipeSchematic(2963, { makes = 2996, yield = 1, mats = { [2589] = 2 } })
---   c.setTradeSkillRows{ name = "Tailoring", rows = { { index = 2, name = "Bolt of Linen Cloth" } } }
+--   c.setTradeSkillRows{ name = "Tailoring", rows = { { index = 2, name = "Bolt of Linen Cloth" } }, whole = true }
 --   c.setSpell(5176, { known = true, usable = false, noPower = true })
 --   c.setSpellId("Wrath", 5176)   c.setFacing(1.57)
 --   c.setMapSize(1411, 5287.5, 3525); c.setMapCont(1411, 1)
@@ -141,11 +141,13 @@ function ns.make.fakeClient(opts)
     -- Section 231 item 1: the classic fallback, by trade skill row index; a
     -- copy, nil when none is set for that index.
     -- Section 233 (GR2-1): the classic window's rows, a copy; nil when none
-    -- are set.
+    -- are set. Section 245 (RB2-2): collapsed, filtered and whole as set;
+    -- not set, they are nil: unknown, never "every learned recipe".
     function c.tradeSkillRows()
         local r = s.tradeRows
         if type(r) ~= "table" then return nil end
-        return { name = r.name, skill = r.skill, max = r.max, rows = copyRows(r.rows) or {} }
+        return { name = r.name, skill = r.skill, max = r.max, rows = copyRows(r.rows) or {},
+                 collapsed = r.collapsed, filtered = r.filtered, whole = r.whole }
     end
     -- Section 238: name, difficulty and partial too, as the client gives.
     function c.tradeSkillSchematic(index)
@@ -766,7 +768,10 @@ function ns.make.fakeClient(opts)
         s.tradeSchematics[index] = r
     end
     -- The classic window's rows (section 233): { name =, rows = { { index =,
-    -- name = } } }; nil: no classic window answers.
+    -- name = } } }; nil: no classic window answers. Section 245 (RB2-2):
+    -- collapsed = true / filtered = true say the window hid rows; whole =
+    -- true says the rows are every learned recipe (the real client does not
+    -- say so yet). Left out: unknown, and RecipeBook drops nothing.
     function c.setTradeSkillRows(r) s.tradeRows = r end
     -- One spell's answers: { known =, usable =, noPower = }; a field left
     -- out reads as not known.
@@ -1135,12 +1140,24 @@ function ns.make.fakeClient(opts)
     -- combatLockdown() is not false (it follows setCombat / setLockdown).
     -- failSecureAttr(attr, true): setting that one is "refused".
     -- dropSecureAttr(attr, true): setting it answers true and keeps nothing.
+    -- Section 246 (N63-E): every set asked for, kept or refused, is logged
+    -- in order: h.given = { { attr, value } } on the button, and
+    -- c.secureGiven = { { name, attr, value } } over every button.
+    -- c.secureMacros() lists the rows of c.secureGiven that make a button
+    -- a macro: a type attribute ("type", "*type-alt", "shift-type1", ...)
+    -- given "macro", or a macro text attribute given a value. A macro-type
+    -- secure button does not act on this client (the press arrives with the
+    -- right macro and nothing is cast), so no Z-Flow button may be one.
     c.secureButtons = {}
+    c.secureGiven = {}
     local secureFail, secureDrop = {}, {}
     function c.secureButton(spec)
         if s.noFrames then return nil end
-        local h = { spec = spec, attrs = {} }
+        local h = { spec = spec, attrs = {}, given = {} }
         function h.set(attr, value)
+            h.given[#h.given + 1] = { attr = attr, value = value }
+            c.secureGiven[#c.secureGiven + 1] = {
+                name = type(spec) == "table" and spec.name or nil, attr = attr, value = value }
             if c.combatLockdown() ~= false then return false, "lockdown" end
             if secureFail[attr] then return false, "refused" end
             if not secureDrop[attr] then h.attrs[attr] = value end
@@ -1151,6 +1168,17 @@ function ns.make.fakeClient(opts)
         return h
     end
     function c.failSecureAttr(attr, on) secureFail[attr] = on and true or nil end
+    function c.secureMacros()
+        local out = {}
+        for _, g in ipairs(c.secureGiven) do
+            local attr = tostring(g.attr)
+            if (attr:find("type", 1, true) and g.value == "macro")
+                or (attr:find("macrotext", 1, true) and g.value ~= nil) then
+                out[#out + 1] = g
+            end
+        end
+        return out
+    end
     function c.dropSecureAttr(attr, on) secureDrop[attr] = on and true or nil end
 
     -- F2 errand stops: the same reads as Core/Client.lua, set by a test.
