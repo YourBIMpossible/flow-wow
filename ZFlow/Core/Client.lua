@@ -1486,21 +1486,36 @@ function ns.make.client(env)
         return nil
     end
 
-    -- GT-1. Is any minimap tracking on (Flow's X.AnyTracked)? true / false;
-    -- nil when it cant be told. First guess; not seen in game.
+    -- GT-1. Is any minimap tracking you chose on (Flow's X.AnyTracked)?
+    -- true / false; nil when it cant be told. First guess; not seen in game.
+    -- GK-2: the town kinds (the client's type or category "townsfolk" or
+    -- "other": Flight Master, Repair, Mailbox) are no spell you cast and are
+    -- left out, as Flow's Compat.lua TrackingEntry. A kind not named counts
+    -- as yours. GK-3: one of yours whose active is not given or hidden makes
+    -- the answer nil (not known), never false, unless another is on.
+    local TOWN_TRACKING = { townsfolk = true, other = true }
     function c.anyTracking()
         local M = env.C_Minimap
         if type(M) == "table" then
             local okN, n = call(M.GetNumTrackingTypes)
             if okN and type(n) == "number" and not hidden(n) then
+                local unknown = false
                 for i = 1, n do
-                    local ok, a, _, active = call(M.GetTrackingInfo, i)
-                    if ok then
-                        local on = active
-                        if type(a) == "table" then on = a.active end
-                        if on == true and not hidden(on) then return true end
+                    local ok, a, _, active, category = call(M.GetTrackingInfo, i)
+                    if ok and a ~= nil then
+                        local on, kind = active, category
+                        if type(a) == "table" then on, kind = a.active, a.type end
+                        if kind ~= nil and hidden(kind) then kind = nil end
+                        if not (type(kind) == "string" and TOWN_TRACKING[kind]) then
+                            if on == nil or hidden(on) then
+                                unknown = true
+                            elseif on then
+                                return true
+                            end
+                        end
                     end
                 end
+                if unknown then return nil end
                 return false
             end
         end
@@ -6283,7 +6298,8 @@ function ns.make.client(env)
     -- it suggests for another player is only shown, never cast. First
     -- guesses, not seen in game on 16001. Each call under pcall; any answer
     -- not given, raised, secret or of the wrong kind is nil (not known).
-    -- Your own party only (party1..4; in a raid, your own subgroup).
+    -- Your party (party1..4), or in a raid every other raid member
+    -- (raid1..40, yourself left out by UnitIsUnit).
     local PARTY_UNITS = { party1 = true, party2 = true, party3 = true, party4 = true }
     -- 243: in a raid, raid1..40 as well.
     for i = 1, 40 do PARTY_UNITS["raid" .. i] = true end
@@ -6316,7 +6332,12 @@ function ns.make.client(env)
             end
             if there then
                 local row = { unit = unit }
-                row.name = text(call(env.UnitName, unit))
+                -- 248 PP2-2: the realm (UnitName's second answer) and the
+                -- GUID, for memory of your casts only: never saved.
+                local okName, name, realm = call(env.UnitName, unit)
+                row.name = text(okName, name)
+                row.realm = text(okName, realm)
+                row.guid = text(call(env.UnitGUID, unit))
                 local okClass, _, class = call(env.UnitClass, unit)
                 row.class = text(okClass, class)
                 row.role = text(call(env.UnitGroupRolesAssigned, unit))

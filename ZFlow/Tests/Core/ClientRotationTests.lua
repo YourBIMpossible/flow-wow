@@ -337,4 +337,25 @@ return {
         t.eq(m[1].attr, "shift-type1")
         t.eq(m[2].attr, "*macrotext-alt")
     end,
+
+    -- Section 249 (CT-2): upper case and the plain "macro" attribute are
+    -- caught too; each on its own fresh client.
+    ["fake client: MACRO in any case and the plain macro attribute are named"] = function(t)
+        local cases = {
+            { "type", "MACRO" }, { "Type", "Macro" }, { "*TYPE-alt", "macro" },
+            { "macro", "MyMacro" }, { "macro", 3 }, { "*macro-alt", "X" },
+            { "MacroText", "/cast Wrath" }, { "MACROTEXT", "/startattack" },
+        }
+        for _, case in ipairs(cases) do
+            local c = ns.make.fakeClient()
+            local h = c.secureButton({ name = "TestKey" })
+            h.set(case[1], case[2])
+            local m = c.secureMacros()
+            t.eq(#m, 1, tostring(case[1]) .. " = " .. tostring(case[2]) .. ": named")
+        end
+        local c = ns.make.fakeClient()
+        local h = c.secureButton({ name = "TestKey" })
+        h.set("type", "spell"); h.set("macro", nil); h.set("MACROTEXT", nil); h.set("spell", "Macro Shield")
+        t.eq(#c.secureMacros(), 0, "cleared macro rows and a spell named Macro are none")
+    end,
 }

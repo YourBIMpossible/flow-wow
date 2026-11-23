@@ -1147,7 +1147,10 @@ function ns.make.fakeClient(opts)
     -- c.secureGiven = { { name, attr, value } } over every button.
     -- c.secureMacros() lists the rows of c.secureGiven that make a button
     -- a macro: a type attribute ("type", "*type-alt", "shift-type1", ...)
-    -- given "macro", or a macro text attribute given a value. A macro-type
+    -- given "macro", or a macro or macro text attribute ("macro",
+    -- "macrotext", "*macrotext-alt", ...) given a value. Section 249 (CT-2):
+    -- names and values are compared lower-cased, so "MACRO" is caught too.
+    -- A macro-type
     -- secure button does not act on this client (the press arrives with the
     -- right macro and nothing is cast), so no Z-Flow button may be one.
     c.secureButtons = {}
@@ -1173,9 +1176,11 @@ function ns.make.fakeClient(opts)
     function c.secureMacros()
         local out = {}
         for _, g in ipairs(c.secureGiven) do
-            local attr = tostring(g.attr)
-            if (attr:find("type", 1, true) and g.value == "macro")
-                or (attr:find("macrotext", 1, true) and g.value ~= nil) then
+            local attr = string.lower(tostring(g.attr))
+            local value = type(g.value) == "string" and string.lower(g.value) or g.value
+            local isType = attr:find("type", 1, true) ~= nil
+            if (isType and value == "macro")
+                or (not isType and attr:find("macro", 1, true) and g.value ~= nil) then
                 out[#out + 1] = g
             end
         end
@@ -1875,9 +1880,33 @@ function ns.make.fakeClient(opts)
         s.trackingOn = s.trackingOn or {}
         if on == nil then s.trackingOn[spell] = nil else s.trackingOn[spell] = on and true or false end
     end
+    -- GK-4: the whole tracking list as the client lists it, town kinds and
+    -- entries whose active is not known included:
+    --   c.setTrackingList({ { name, active = true | false | nil, town = true }, ... })
+    -- nil clears it (back to setTracking's spells). While a list is set,
+    -- anyTracking answers from it by the real client's rule (GK-2, GK-3):
+    -- town entries left out; one of yours on: true; else one not known: nil;
+    -- else false.
+    function c.setTrackingList(list)
+        if type(list) ~= "table" then s.trackingList = nil return end
+        s.trackingList = {}
+        for i, e in ipairs(list) do
+            s.trackingList[i] = { name = e.name, active = e.active, town = e.town == true }
+        end
+    end
     -- GT-1: any tracking on: true when one set on is, false when any was set
     -- and none is on, nil when none was set.
     function c.anyTracking()
+        if s.trackingList then
+            local unknown = false
+            for _, e in ipairs(s.trackingList) do
+                if not e.town then
+                    if e.active == nil then unknown = true elseif e.active then return true end
+                end
+            end
+            if unknown then return nil end
+            return false
+        end
         if not s.trackingOn then return nil end
         for _, on in pairs(s.trackingOn) do
             if on == true then return true end

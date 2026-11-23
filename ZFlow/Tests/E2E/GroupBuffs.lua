@@ -387,12 +387,78 @@ end
 tests["group e2e 243: the game refuses a weaker buff: not asked for again for five minutes"] = function(t)
     local c, addon = start()
     t.eq(picked(addon) and picked(addon).spell, MOTW, "Mark missing: suggested")
+    -- 248 PP2-1: the refusal is the client's own SPELL_FAILED_AURA_BOUNCED.
+    c.setGlobalText("SPELL_FAILED_AURA_BOUNCED", "A more powerful spell is already active")
     c.fire("UNIT_SPELLCAST_SENT", "player", NAME, "cast-2", IDS[MOTW])
     c.fire("UI_ERROR_MESSAGE", 51, "A more powerful spell is already active")
     c.advance(2, 10)
     t.eq(picked(addon), nil, "a stronger one is on them: not asked for")
     c.advance(300, 30)
     t.eq(picked(addon) and picked(addon).spell, MOTW, "five minutes on: asked again")
+end
+
+-- Lead section 248 PP2-1: the refusal is matched against the client's own
+-- text (SPELL_FAILED_AURA_BOUNCED, as Flow did), never English written
+-- here. Made-up German text. With the text not given, no refusal is known:
+-- the buff stays suggested, as before the refusal was remembered.
+local GERMAN = "Ein staerkerer Zauber ist bereits aktiv."
+
+tests["group e2e 248: the refusal is the client's own text, in any language; never English written here"] = function(t)
+    local c, addon = start()
+    c.setGlobalText("SPELL_FAILED_AURA_BOUNCED", GERMAN)
+    c.fire("UNIT_SPELLCAST_SENT", "player", NAME, "cast-3", IDS[MOTW])
+    c.fire("UI_ERROR_MESSAGE", 51, "A more powerful spell is already active")
+    c.advance(2, 10)
+    t.eq(picked(addon) and picked(addon).spell, MOTW, "English words on a German client: not the refusal")
+    c.fire("UNIT_SPELLCAST_SENT", "player", NAME, "cast-4", IDS[MOTW])
+    c.fire("UI_ERROR_MESSAGE", 51, GERMAN)
+    c.advance(2, 10)
+    t.eq(picked(addon), nil, "the client's own text: refused, not asked for")
+end
+
+tests["group e2e 248: the refusal text not given: no refusal known, the buff stays suggested"] = function(t)
+    local c, addon = start()
+    c.fire("UNIT_SPELLCAST_SENT", "player", NAME, "cast-5", IDS[MOTW])
+    c.fire("UI_ERROR_MESSAGE", 51, "A more powerful spell is already active")
+    c.advance(2, 10)
+    t.eq(picked(addon) and picked(addon).spell, MOTW, "no constant: nothing refused, as before the feature")
+    t.ok(addon.Diag ~= nil and (function()
+        for _, n in ipairs(addon.Diag.NAMES) do if n == "SPELL_FAILED_AURA_BOUNCED" then return true end end
+        return false
+    end)(), "the constant is in the capture's name list")
+end
+
+-- Lead section 248 PP2-2: two members with the same short name, one from
+-- another realm. What you cast is kept by GUID (or the full name), so a
+-- cast on one is never taken for the other.
+local function twins(c)
+    c.setParty({
+        member({ unit = "party1", name = NAME, guid = "Player-1-0000AAAA" }),
+        member({ unit = "party2", name = NAME, realm = "Otherrealm", guid = "Player-2-0000BBBB" }),
+    })
+    for _, unit in ipairs({ "party1", "party2" }) do
+        for _, id in pairs(IDS) do c.setReach(unit, id, true) end
+        c.setUnitBuffs(unit, { { name = false } })
+    end
+    c.fire("GROUP_ROSTER_UPDATE"); c.advance(2, 10)
+end
+
+tests["group e2e 248: same short name, another realm: the cast is kept for the right one"] = function(t)
+    local c, addon = start()
+    twins(c)
+    t.eq(picked(addon), nil, "both hidden, nothing cast: nothing")
+    c.fire("UNIT_SPELLCAST_SENT", "player", NAME .. "-Otherrealm", "cast-6", IDS[MOTW])
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-6", IDS[MOTW])
+    c.advance(1750, 50)
+    local s = picked(addon)
+    t.eq(s and { s.spell, s.unit } or nil, { MOTW, "party2" }, "running out on the one from the other realm only")
+    local c2, addon2 = start()
+    twins(c2)
+    c2.fire("UNIT_SPELLCAST_SENT", "player", NAME, "cast-7", IDS[MOTW])
+    c2.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-7", IDS[MOTW])
+    c2.advance(1750, 50)
+    s = picked(addon2)
+    t.eq(s and { s.spell, s.unit } or nil, { MOTW, "party1" }, "the short name: the one from your realm only")
 end
 
 return tests

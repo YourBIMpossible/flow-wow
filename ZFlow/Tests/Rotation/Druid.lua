@@ -367,10 +367,15 @@ return {
         t.eq(row.names, { "Bear Form", "Dire Bear Form", "Cat Form" }, "the forms the rules ask for")
         t.eq(row.only, { ["Bear Form"] = true, ["Dire Bear Form"] = true, ["Cat Form"] = true,
                          ["Travel Form"] = true, ["Aquatic Form"] = true })
-        t.eq(row.temporary, { ["Travel Form"] = true, ["Aquatic Form"] = true })
         t.eq(ns.OwnCasts.Temporary(row, "Travel Form"), true, "Travel Form: never kept")
         t.eq(ns.OwnCasts.Temporary(row, "Aquatic Form"), true, "Aquatic Form: never kept")
         t.eq(ns.OwnCasts.Temporary(row, "Cat Form"), false, "Cat Form can be kept")
+        -- Section 247 item 2: every form a healer casts is for a moment.
+        t.eq(ns.OwnCasts.Temporary(row, "Bear Form", { role = "heal" }), true, "a healer's Bear: never kept")
+        t.eq(ns.OwnCasts.Temporary(row, "Cat Form", { role = "heal", inCombat = false }), true,
+             "a healer's Cat out of a fight: never kept")
+        t.eq(ns.OwnCasts.Temporary(row, "Bear Form", { role = "tank" }), false, "a tank's Bear can be kept")
+        t.eq(ns.OwnCasts.Temporary(row, "Cat Form", { role = "dps" }), false, "a dps's Cat can be kept")
         t.eq(ns.OwnCasts.Note(rows, "Bear Form"), "form")
         t.eq(ns.OwnCasts.Note(rows, "Moonkin Form"), nil, "Moonkin Form is not in the row")
         t.eq(row.pick(snap("dps", nil, "Feral")), "Cat Form", "PC-1: dps")
@@ -398,11 +403,16 @@ return {
         t.eq(advice("dps", nil, "Balance", nil, { chosen = { form = "Cat Form" } }), "Cat Form", "kept")
     end,
 
-    ["N58 druid: a healer's kept form is asked in no form"] = function(t)
+    -- Section 247 item 2: a healer's form is only the word's choice.
+    ["N58 druid: a healer's chosen form is asked in no form; a cast one is not"] = function(t)
         t.ok(advice("heal", nil, "Restoration") == nil or advice("heal", nil, "Restoration") ~= "Cat Form",
              "nothing kept: no form")
-        t.eq(advice("heal", nil, "Restoration", { "Bear Form" }, { chosen = { form = "Bear Form" } }),
-             "Bear Form", "kept Bear Form")
+        t.eq(advice("heal", nil, "Restoration", { "Bear Form" }, { chosen = { formSet = "Bear Form" } }),
+             "Bear Form", "Bear Form chosen with the word")
+        local cast = advice("heal", nil, "Restoration", { "Bear Form" }, { chosen = { form = "Bear Form" } })
+        t.ok(cast ~= "Bear Form", "a Bear Form saved for the role is not asked: " .. tostring(cast))
+        cast = advice("heal", nil, "Restoration", { "Bear Form" }, { chosen = { formFight = "Bear Form" } })
+        t.ok(cast ~= "Bear Form", "this fight's Bear Form is not asked: " .. tostring(cast))
     end,
 
     ["N58 druid: a kept form not known, or Travel Form chosen: the role's own"] = function(t)
