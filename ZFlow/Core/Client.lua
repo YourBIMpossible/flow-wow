@@ -492,7 +492,8 @@ function ns.make.client(env)
     -- difficulty is the window colour (optimal, medium, easy, trivial) from
     -- relativeDifficulty 0 to 3, and skillUps is numSkillUps when it is a
     -- whole count; each is left out when the client gives anything else.
-    -- Needs game test: relativeDifficulty and numSkillUps on 16001 (P-PROF).
+    -- Needs game test: relativeDifficulty and numSkillUps on 16001 (P-PROF);
+    -- captured as the Diag fields recipeDifficulty and recipeSkillUps.
     -- nil when no profession window is open or the client will not say.
     -- Seen in game on 16001 (Blacksmithing): for a moment after the window
     -- opens the client says "ready" but is still changing its data source,
