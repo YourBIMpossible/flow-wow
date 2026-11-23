@@ -5837,13 +5837,22 @@ function ns.make.client(env)
             return near, close, onYou
         end
 
-        -- c.plateCasts() -> { { unit, name, spellId, channel, endsAt,
-        --   interruptible } ... } or nil when the plate list is not read.
-        -- UnitCastingInfo (name, text, texture, startMs, endMs, tradeSkill,
-        -- castID, notInterruptible, spellId), else UnitChannelInfo (the same
-        -- less castID). A cast whose name is hidden is left out; a hidden
-        -- spellId, end or interrupt answer leaves that field out. endsAt is
-        -- in the clock of c.now().
+        -- The plate unit's name (for the live caption only) and whether it
+        -- is your target; each nil when not read or hidden.
+        local function plateWho(unit)
+            local name = text(call(env.UnitName, unit))
+            local isTarget = yesNo(call(env.UnitIsUnit, unit, "target"))
+            return name, isTarget
+        end
+
+        -- c.plateCasts() -> { { unit, name, spell, interruptible, isTarget,
+        --   spellId, channel, endsAt } ... } or nil when the plate list is
+        -- not read. The row shape is the class-b one (lead section 262):
+        -- name is the enemy, spell the spell. UnitCastingInfo (name, text,
+        -- texture, startMs, endMs, tradeSkill, castID, notInterruptible,
+        -- spellId), else UnitChannelInfo (the same less castID). A cast whose
+        -- spell name is hidden is left out; any other field hidden or not
+        -- read is left out. endsAt is in the clock of c.now().
         function c.plateCasts()
             local list = plateList()
             if list == nil then return nil end
@@ -5857,9 +5866,10 @@ function ns.make.client(env)
                         local okCh, chName, _, _, _, chEnd, _, chLocked, chId = call(env.UnitChannelInfo, unit)
                         ok, name, endMs, locked, id, channel = okCh, chName, chEnd, chLocked, chId, true
                     end
-                    name = text(ok, name)
-                    if name ~= nil then
-                        local row = { unit = unit, name = name, channel = channel }
+                    local spell = text(ok, name)
+                    if spell ~= nil then
+                        local who, isTarget = plateWho(unit)
+                        local row = { unit = unit, name = who, spell = spell, channel = channel, isTarget = isTarget }
                         if endMs ~= nil and not hidden(endMs) and type(endMs) == "number" then
                             row.endsAt = endMs / 1000
                         end
@@ -5869,6 +5879,72 @@ function ns.make.client(env)
                         if id ~= nil and not hidden(id) and type(id) == "number" then row.spellId = id end
                         out[#out + 1] = row
                     end
+                end
+            end
+            return out
+        end
+
+        -- Debuff names read as a crowd control that holds the enemy (first
+        -- guess names; Polymorph by any of its forms).
+        local HELD = {
+            ["Shackle Undead"] = true, ["Hibernate"] = true, ["Sap"] = true,
+            ["Freezing Trap Effect"] = true, ["Banish"] = true, ["Fear"] = true,
+            ["Seduction"] = true, ["Scare Beast"] = true, ["Repentance"] = true,
+            ["Gouge"] = true, ["Blind"] = true, ["Psychic Scream"] = true,
+            ["Howl of Terror"] = true, ["Intimidating Shout"] = true,
+        }
+
+        -- true when a held debuff is on the unit, false when its debuffs were
+        -- read and none is, nil when a debuff or its name is not read.
+        local function held(unit)
+            local auras = env.C_UnitAuras
+            local byIndex
+            if type(auras) == "table" then byIndex = auras.GetAuraDataByIndex end
+            local old = env.UnitDebuff
+            if type(byIndex) ~= "function" and type(old) ~= "function" then return nil end
+            for i = 1, 40 do
+                local name
+                if type(byIndex) == "function" then
+                    local ok, row = pcall(byIndex, unit, i, "HARMFUL")
+                    if not ok then return nil end
+                    if row == nil then return false end
+                    if hidden(row) or type(row) ~= "table" then return nil end
+                    name = row.name
+                else
+                    local ok, got = pcall(old, unit, i)
+                    if not ok then return nil end
+                    if got == nil then return false end
+                    name = got
+                end
+                if name == nil or hidden(name) or type(name) ~= "string" then return nil end
+                if HELD[name] or name:find("^Polymorph") then return true end
+            end
+            return false
+        end
+
+        -- c.plateEnemies() -> { { unit, name, isTarget, creature, controlled,
+        --   threat } ... } or nil when the plate list is not read. The class-b
+        -- row shape (lead section 262). Only the plates you can attack; a
+        -- plate whose attack answer is not read is left out. creature is the
+        -- client word (UnitCreatureType), threat your threat status 0..3
+        -- (UnitThreatSituation), controlled a held debuff on it. Any field
+        -- hidden or not read is left out: never false or 0 in its place.
+        function c.plateEnemies()
+            local list = plateList()
+            if list == nil then return nil end
+            local out = {}
+            for _, plate in ipairs(list) do
+                local unit = plateToken(plate)
+                if unit ~= nil and yesNo(call(env.UnitCanAttack, "player", unit)) == true then
+                    local who, isTarget = plateWho(unit)
+                    local okThreat, status = call(env.UnitThreatSituation, "player", unit)
+                    local threat
+                    if okThreat then threat = threatStatus(status) end
+                    out[#out + 1] = {
+                        unit = unit, name = who, isTarget = isTarget,
+                        creature = text(call(env.UnitCreatureType, unit)),
+                        controlled = held(unit), threat = threat,
+                    }
                 end
             end
             return out
