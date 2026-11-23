@@ -97,6 +97,28 @@ tests["roll hint: the same or worse is no upgrade"] = function(t)
     t.eq(hint.text, "No upgrade", "the same as what you wear")
 end
 
+tests["roll hint G15: a weapon that is no upgrade, with its speed read, is still no upgrade"] = function(t)
+    local WORN_STAFF, WORSE_STAFF = "item:7", "item:8"
+    local c = client()
+    c.setItem(WORN_STAFF, { kind = "INVTYPE_2HWEAPON", stats = { [STA] = 4 } })
+    c.setItem(WORSE_STAFF, { kind = "INVTYPE_2HWEAPON", stats = { [STA] = 1 } })
+    c.setWorn(16, WORN_STAFF)
+    c.unmet[WORSE_STAFF] = {}
+    local gear = c.gear
+    c.gear = function(link)
+        local g = gear(link)
+        if link == WORSE_STAFF then g.speed = 3.6 end
+        return g
+    end
+    local hint = R.Hint(c, packs(), WORSE_STAFF)
+    t.eq(hint.text, "No upgrade", "the speed line is not a no-verdict")
+    local speedSeen = false
+    for i = 1, #hint.lines do
+        if string.find(hint.lines[i], "^Speed 3%.60 %(slow%)") then speedSeen = true end
+    end
+    t.eq(speedSeen, true, "the speed line is among the lines behind the word")
+end
+
 tests["roll hint: gear you cannot use is no upgrade, and says why"] = function(t)
     local hint = R.Hint(client(), packs(), PLATE)
     t.eq(hint.text, "No upgrade")

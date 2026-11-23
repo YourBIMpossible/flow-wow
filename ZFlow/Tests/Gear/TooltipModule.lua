@@ -287,7 +287,11 @@ tests["gear tooltip G15: hovering a 3.6 s weapon adds the speed line, after the 
     t.eq(texts(speedLines(added)), { STAFF_LINE })
     t.eq(added[#added].text, STAFF_LINE, "the speed line comes last")
     t.eq(#added > 1, true, "the verdict lines stay")
-    t.eq({ added[#added].r, added[#added].g, added[#added].b }, M.COLOUR.none)
+    t.eq({ added[#added].r, added[#added].g, added[#added].b }, M.COLOUR.info)
+    t.eq(M.COLOUR.info, M.COLOUR.none, "drawn like none")
+    local lines = M.Lines(c, packs(), STAFF)
+    t.eq(lines[#lines], { text = STAFF_LINE, tone = "info" },
+        "its own tone, so no reader takes it for a no-verdict")
 end
 
 tests["gear tooltip G15: a non-weapon, even one with a speed read, adds no speed line"] = function(t)
