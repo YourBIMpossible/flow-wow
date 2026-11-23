@@ -4151,6 +4151,21 @@ function ns.make.fakeClient(opts)
         function c.setAddonRefuse(why) addonRefusal = why end
         function c.setAddonName(name) me = tostring(name) end
     end
+    -- P-EVIDENCE+: the raw tracking list (c.trackingRaw) and the profession
+    -- window's raw answers (c.tradeSkillAnswers), each a copy of what was
+    -- set, in the real read's shape; nil when none is set (no such read).
+    --   c.setTrackingRaw({ count = n, entries = { { form, kind, name, hasActive, active, ... } } })
+    --   c.setTradeSkillAnswers({ open, rows, headers, expanded, collapsed, unknown, subClass, invSlot })
+    local function evidenceCopy(v)
+        if type(v) ~= "table" then return v end
+        local out = {}
+        for key, value in pairs(v) do out[key] = evidenceCopy(value) end
+        return out
+    end
+    function c.setTrackingRaw(r) s.evidenceTracking = evidenceCopy(r) end
+    function c.trackingRaw() return evidenceCopy(s.evidenceTracking) end
+    function c.setTradeSkillAnswers(r) s.evidenceTradeAnswers = evidenceCopy(r) end
+    function c.tradeSkillAnswers() return evidenceCopy(s.evidenceTradeAnswers) end
     return c
 end
 

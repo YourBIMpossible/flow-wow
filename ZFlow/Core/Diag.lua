@@ -1742,3 +1742,9 @@ end
 
 -- The addon's own kernel collects from the moment this file loads.
 ns.diag = Diag.Start(ns)
+
+-- P-EVIDENCE+ (lead section 252): the tracking list reads behind
+-- client.trackingRaw (Core/AutoEvidence.lua); first guesses, so a
+-- snapshot records whether they exist.
+Diag.NAMES[#Diag.NAMES + 1] = "C_Minimap.GetNumTrackingTypes"
+Diag.NAMES[#Diag.NAMES + 1] = "C_Minimap.GetTrackingInfo"
