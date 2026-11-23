@@ -283,4 +283,37 @@ tests["bank reservations: a goal added with the goal word holds at the next look
     t.eq(promptOf(addon), "1 kind of item to put in the bank.")
 end
 
+-- The sell side (UI/SellList.lua, one evaluation per merchant visit) holds
+-- the same saved goal: the player is not offered what the goal keeps.
+local function sellLines(c)
+    c.setMerchantOpen(true)
+    local lines
+    for _, p in ipairs(c.panels) do
+        if type(p.spec) == "table" and p.spec.name == ns.id.framePrefix .. "SellList" then lines = p.lines end
+    end
+    c.setMerchantOpen(false)
+    return lines
+end
+
+tests["bank reservations: a saved goal is held at the merchant too, only the rest is offered"] = function(t)
+    local c = start({ source = false, bag = { { item = PELT, count = 3 }, { item = POTION, count = 2 } },
+                      char = { settings = { goals = { { item = PELT, count = 2 } } } } })
+    local lines = sellLines(c)
+    t.ok(lines ~= nil, "the sell panel was drawn")
+    t.ok(has(lines, "Ruined Pelt: 2 held for your steps"), "two kept, with why: " .. joined(lines))
+    local one, three = false, false
+    for _, l in ipairs(lines or {}) do
+        if l:sub(1, 17) == "1 x Ruined Pelt: " then one = true end
+        if l:sub(1, 17) == "3 x Ruined Pelt: " then three = true end
+    end
+    t.ok(one and not three, "one of three offered: " .. joined(lines))
+    c.slashes[ns.id.slash]("goal remove " .. PELT)
+    lines = sellLines(c)
+    three = false
+    for _, l in ipairs(lines or {}) do
+        if l:sub(1, 17) == "3 x Ruined Pelt: " then three = true end
+    end
+    t.ok(three and not has(lines, "Ruined Pelt: 2 held for your steps"), "goal gone, all three: " .. joined(lines))
+end
+
 return tests
