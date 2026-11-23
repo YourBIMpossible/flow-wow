@@ -183,6 +183,20 @@ function D.Why(snapshot, trace, keys, lockdown)
         why.refused, why.reason = keys.refused, keys.reason
     end
     local last = type(trace) == "table" and trace[#trace] or nil
+    -- Lead section 187: with nothing picked, the reason shown is the last
+    -- step that was stopped by a read nobody gave ("not known ..."), not
+    -- the step after it. A list that had rules ready but could not read
+    -- their range was followed by "nothing out of range", and that was
+    -- what the player was told.
+    if type(last) == "table" and last.result ~= "pick" then
+        for i = #trace, 1, -1 do
+            local row = trace[i]
+            if type(row) == "table" and type(row.note) == "string" and row.note:find("not known", 1, true) then
+                last = row
+                break
+            end
+        end
+    end
     if type(last) == "table" then
         why.step, why.result, why.note, why.spell = last.step, last.result, last.note, last.spell
     end
