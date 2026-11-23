@@ -547,4 +547,175 @@ tests["menu size: every level of every menu the loaded add-on has is short"] = f
     t.ok(c ~= nil)
 end
 
+-- Follow-ups (lead section 247 item 5) --------------------------------------
+
+local function saidSince(c, n, text)
+    for i = n + 1, #c.printed do
+        if tostring(c.printed[i]):find(text, 1, true) then return true end
+    end
+    return false
+end
+
+-- Fails before: UI/SettingsOptions.lua api.open asked the game's Options to
+-- open with no lockdown check; the page opened in a fight.
+tests["settings in combat: the slash word does not open the game's Options; the text page opens and says why"] = function(t)
+    local c, addon = boot()
+    if not ready(t, c) then return end
+    local O = addon.SettingsOptions
+    c.setCombat(true)
+    local n = #c.printed
+    slash(c, "settings sell")
+    t.eq(c.optionsOpened(), 0, "the Options page was not asked to open")
+    local p = panelOf(c, "Settings")
+    t.ok(p ~= nil and p.shown == true, "the text page is shown instead")
+    t.ok(p ~= nil and lineWith(p.lines, "[vendor.list]") ~= nil, "with the search")
+    t.ok(type(O.LOCKED) == "string" and saidSince(c, n, tostring(O.LOCKED)), "and why is said")
+    -- The plain word with the text page open does not hide it while locked.
+    slash(c, "settings")
+    t.eq(c.optionsOpened(), 0)
+    t.ok(p ~= nil and p.shown == true, "the text page stays")
+    -- A change still goes the one way.
+    slash(c, "settings vendor.list off")
+    t.eq(addon.settings:get("vendor.list"), false)
+end
+
+-- Fails before: no lockdown check, so a lock that is not known opened the
+-- page too; the menu's rows went the same way.
+tests["settings with lockdown not read: not known counts as locked, for the slash word and for both menu rows"] = function(t)
+    local c, addon = boot({ arrows = true })
+    if not ready(t, c) then return end
+    local O = addon.SettingsOptions
+    c.setLockdown(nil)
+    local n = #c.printed
+    slash(c, "settings topic gear")
+    t.eq(c.optionsOpened(), 0)
+    local p = panelOf(c, "Settings")
+    t.ok(p ~= nil and p.shown == true, "the text page is shown")
+    t.ok(p ~= nil and lineWith(p.lines, "> " .. T.Find("gear").name) ~= nil, "at the topic asked for")
+    t.ok(type(O.LOCK_UNKNOWN) == "string" and saidSince(c, n, tostring(O.LOCK_UNKNOWN)), "and why is said")
+    if not p then return end
+    -- The arrow menu's two settings rows, with the lock on.
+    c.setLockdown(true)
+    slash(c, "arrow demo")
+    c.advance(0.1, 2)
+    local q = c.arrows[1]
+    t.ok(q ~= nil and type(q.pickRow) == "function", "the fake arrow has menu rows")
+    if not (q and type(q.pickRow) == "function") then return end
+    n = #c.printed
+    q.click("right")
+    t.eq(q.pickRow("settings.travel"), true)
+    t.eq(c.optionsOpened(), 0, "the topic row does not open the Options")
+    t.ok(lineWith(p.lines, "> " .. T.Find("travel").name) ~= nil, "the text page shows the topic")
+    t.ok(saidSince(c, n, tostring(O.LOCKED)), "and why is said")
+    n = #c.printed
+    q.click("right")
+    t.eq(q.pickRow("settings"), true)
+    t.eq(c.optionsOpened(), 0, "All settings does not open the Options")
+    t.ok(p.shown == true and saidSince(c, n, tostring(O.LOCKED)), "the text page, and why")
+end
+
+-- Fails before: the page opened in the fight (the first count below was 1).
+tests["settings after the fight: the game's Options open again, where the player was"] = function(t)
+    local c = boot()
+    if not ready(t, c) then return end
+    c.setCombat(true)
+    slash(c, "settings topic bags")
+    t.eq(c.optionsOpened(), 0, "not in the fight")
+    c.setCombat(false)
+    slash(c, "settings")
+    t.eq(c.optionsOpened(), 1, "after it")
+    t.eq(ofKind(c, "group") and ofKind(c, "group").text, T.Find("bags").name, "at the topic chosen during the fight")
+    t.eq((c.optionsAct("vendor.list", false)), true)
+end
+
+-- The scenario MyBuddy found missing: a row whose requires is not met, on
+-- the whole add-on. Holds before and after (the page was built for it in
+-- the first branch; no shipped row has a requires, so a late row leans on
+-- a real one).
+tests["settings requires not met: the row is shown greyed with what it depends on, cannot be set, and can once it is met"] = function(t)
+    local c, addon = boot()
+    if not ready(t, c) then return end
+    t.ok(addon:Setting({ key = "late.dealSound", scope = "char", type = "bool", default = false,
+        label = "Play a sound for a deal", group = "auctions", needs = "trader.off",
+        requires = function(settings)
+            return settings:get("trader.off") == false, "deals are silenced"
+        end }) ~= nil)
+    -- The player silences deals: what the late row leans on is now unmet.
+    slash(c, "settings")
+    t.eq((c.optionsAct("trader.off", true)), true)
+    slash(c, "settings sound deal")
+    local r = drawnRow(c, "late.dealSound")
+    t.ok(r ~= nil, "it is in the results, not hidden")
+    if not r then return end
+    t.eq({ r.settable, r.why }, { false, addon.SettingsPage.NOT_NOW })
+    t.ok(r.under:find('"Trader: say nothing of deals"', 1, true) ~= nil, "what it depends on: " .. r.under)
+    t.ok(r.under:find(T.Find("auctions").name, 1, true) ~= nil, "and where that is: " .. r.under)
+    t.ok(r.under:find("deals are silenced", 1, true) ~= nil, "and why: " .. r.under)
+    t.eq(c.optionsAct("late.dealSound", true), false, "it cannot be set")
+    t.eq(addon.settings:get("late.dealSound"), false)
+    -- In its topic too, and on the text page's line.
+    c.optionsNav("topic", "auctions")
+    t.eq(drawnRow(c, "late.dealSound") and drawnRow(c, "late.dealSound").settable, false)
+    local line = lineWith(addon.SettingsPanel.Lines(addon), "[late.dealSound]")
+    t.ok(line ~= nil and line:find("depends on", 1, true) ~= nil, tostring(line))
+    -- Met: the player turns the other one back, on the same page.
+    t.eq((c.optionsAct("trader.off", false)), true)
+    r = drawnRow(c, "late.dealSound")
+    t.eq({ r.settable, r.why }, { true, nil })
+    t.eq((c.optionsAct("late.dealSound", true)), true)
+    t.eq(c.saved(ns.id.charDB).settings.late.dealSound, true, "saved for the character")
+    -- Unmet again: the saved choice is kept, only the control is greyed.
+    t.eq((c.optionsAct("trader.off", true)), true)
+    t.eq(drawnRow(c, "late.dealSound").settable, false)
+    t.eq(c.saved(ns.id.charDB).settings.late.dealSound, true)
+end
+
+-- Fails before: "junk" and "sell" were synonyms of rows in two and three
+-- topics, and Topics.Pick read no synonyms.
+tests["settings topic words: junk and sell each belong to one topic, and the slash word goes there"] = function(t)
+    local c, addon = boot()
+    if not ready(t, c) then return end
+    for _, word in ipairs({ "junk", "sell" }) do
+        local where, n = {}, 0
+        for row in addon.settings:each() do
+            for _, syn in ipairs(type(row.synonyms) == "table" and row.synonyms or {}) do
+                if syn == word then
+                    local topic = addon.Settings.Topics.Of(row).id
+                    if not where[topic] then n = n + 1 end
+                    where[topic] = true
+                end
+            end
+        end
+        t.eq(n, 1, word .. " is a synonym in one topic")
+        t.eq(where.bags, true, word .. " belongs to the bags topic")
+        slash(c, "settings topic gear")
+        slash(c, "settings topic " .. word)
+        t.eq(addon.SettingsPage.State(addon).topic, "bags", "settings topic " .. word)
+    end
+    -- The search still finds the loot note by its own name.
+    local found = addon.SettingsPage.Search(addon, "grey loot")
+    t.eq(found.results[1] and found.results[1].key, "loot.junkNote")
+end
+
+-- Carry-forward of the legacy slider. Fails before: repair.warnBelow was
+-- drawn with no step (the client stepped by 1 on a 0 to 1 row: both
+-- buttons greyed).
+tests["settings number row: the repair share moves in steps on the page, is saved clean and read back after a reload"] = function(t)
+    local c, addon = boot()
+    if not ready(t, c) then return end
+    slash(c, "settings repair")
+    local r = drawnRow(c, "repair.warnBelow")
+    t.ok(r ~= nil, "found by search")
+    if not r then return end
+    t.eq({ r.kind, r.value, r.min, r.max, r.step }, { "number", 0.2, 0, 1, 0.05 })
+    t.ok(type(r.help) == "string" and r.help:find("durability", 1, true) ~= nil, "its description is drawn too")
+    t.eq((c.optionsAct("repair.warnBelow", r.value + (r.step or 0))), true, "the plus button")
+    t.eq(addon.settings:get("repair.warnBelow"), 0.25)
+    t.eq((c.optionsAct("repair.warnBelow", 0.25 + 0.05)), true)
+    t.eq(c.saved(ns.id.accountDB).settings.repair.warnBelow, 0.3, "no stray digits saved")
+    t.eq(c.optionsAct("repair.warnBelow", 1.05), false, "the row's limits hold")
+    local _, addon2 = reload(c)
+    t.eq(addon2.settings:get("repair.warnBelow"), 0.3)
+end
+
 return tests

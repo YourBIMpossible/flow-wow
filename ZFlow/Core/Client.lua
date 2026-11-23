@@ -4027,7 +4027,8 @@ function ns.make.client(env)
         --                                    a button each, wrapped in lines
         --   { kind = "section", text }, { kind = "note", text }   one line
         -- and on a setting row: under (a small line below it), jump and
-        -- jumpText (a button on that line that asks nav for topic `jump`).
+        -- jumpText (a button on that line that asks nav for topic `jump`),
+        -- help (the row's description, small, wrapped, below those).
         -- First guesses as the rest of the page: not seen in game.
         function h.draw(rows, act, nav)
             local b = build()
@@ -4164,6 +4165,16 @@ function ns.make.client(env)
                         end
                         label(b, r.under, ux, y - 24, "GameFontDisableSmall")
                         y = y - (r.jump ~= nil and 22 or 14)
+                    end
+                    -- The row's description, wrapped over as many lines as
+                    -- its length asks for (a guess at 90 letters a line).
+                    if type(r.help) == "string" and r.help ~= "" then
+                        local fs = label(b, r.help, 40, y - 24, "GameFontDisableSmall")
+                        if fs then
+                            method(fs, "SetWidth", 500)
+                            method(fs, "SetJustifyH", "LEFT")
+                        end
+                        y = y - 12 * math.ceil(#r.help / 90) - 2
                     end
                     y = y - 26
                 end
