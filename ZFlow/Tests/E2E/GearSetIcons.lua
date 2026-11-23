@@ -79,8 +79,9 @@ local function iconOf(row, key)
     return nil
 end
 
--- A saved set as Gear/Sets.lua keeps it.
-local function savedSet(name, items) return { name = name, items = items } end
+-- A saved set as Gear/Sets.lua keeps it (slots: the inventory slot each
+-- piece was worn in, as saved; nil for a set saved before slots were kept).
+local function savedSet(name, items, slots) return { name = name, items = items, slots = slots } end
 
 -- Fails before: Gear/SetIcons.lua and c.iconRow are absent: no row is made.
 tests["set icons: an icon for each saved set with the setting on"] = function(t)
@@ -177,6 +178,15 @@ local function items(c)
     return out
 end
 
+-- The slot asked with each call, in call order ("none" for no slot).
+local function slotsAsked(c)
+    local out = {}
+    for i, e in ipairs(c.equips) do
+        if e.slot == nil then out[i] = "none" else out[i] = e.slot end
+    end
+    return out
+end
+
 -- Saved wearing all three; then the cloak and the sword come off. In the
 -- bags: the cloak and a helm (not in the set); the sword is gone.
 local function offAndClick(opts)
@@ -212,12 +222,40 @@ tests["set icons: a click out of combat puts on the set's pieces from the bags, 
     t.eq(said, { "Equipped 1 piece of tank; 1 not in your bags." })
 end
 
-tests["set icons: two of one piece take two from the bags, never more than the set holds"] = function(t)
-    local c = start({ on = true, char = { state = { gearSets = { savedSet("rings", { "15234:588", "15234:588" }) } } },
-        worn = { [11] = false }, bag = { { item = LINK.ringBear, count = 3 } } })
-    local _, said = click(c, "rings")
-    t.eq(items(c), { LINK.ringBear, LINK.ringBear })
-    t.eq(said, { "Equipped 2 pieces of rings; 0 not in your bags." })
+-- ST-1: each piece goes to the slot it was saved in, so the second of a
+-- pair never replaces the first (two rings, two trinkets, two weapons).
+-- Fails before: equipSet asks equipItem(item) with no slot.
+tests["set icons: two of one piece take two from the bags, each to its saved slot"] = function(t)
+    for _, pair in ipairs({ { 11, 12 }, { 13, 14 }, { 16, 17 } }) do
+        local c = start({ on = true,
+            char = { state = { gearSets = { savedSet("pair", { "15234:588", "15234:588" }, pair) } } },
+            worn = { [pair[1]] = false }, bag = { { item = LINK.ringBear, count = 3 } } })
+        local _, said = click(c, "pair")
+        t.eq(items(c), { LINK.ringBear, LINK.ringBear }, "two, never more than the set holds")
+        t.eq(slotsAsked(c), pair, "each call asks its saved slot")
+        t.eq(said, { "Equipped 2 pieces of pair; 0 not in your bags." })
+    end
+end
+
+-- A set saved before slots were kept: the game picks the slot, as before.
+tests["set icons: a set saved without slots asks no slot"] = function(t)
+    local c = start({ on = true, char = { state = { gearSets = { savedSet("rings", { "15234:588" }) } } },
+        worn = { [11] = false }, bag = { { item = LINK.ringBear, count = 1 } } })
+    click(c, "rings")
+    t.eq(slotsAsked(c), { "none" })
+end
+
+-- ST-1 end to end: two rings worn, saved, taken off; a click puts each back
+-- in the finger it was saved in. Fails before: no slot is saved or asked.
+tests["set icons: set save keeps each piece's slot; the click asks it"] = function(t)
+    local c = start({ on = true, worn = { [11] = LINK.ringBear, [12] = LINK.ringBear },
+        bag = { { item = LINK.ringBear, count = 2 } } })
+    say(c, "set save rings")
+    c.setWorn(11, false)
+    c.setWorn(12, false)
+    c.fire("PLAYER_EQUIPMENT_CHANGED", 11, true)
+    click(c, "rings")
+    t.eq(slotsAsked(c), { 11, 12 })
 end
 
 -- Fails before: the click handler (GearSetIcons equipSet) is absent.
