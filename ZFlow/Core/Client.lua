@@ -2389,6 +2389,35 @@ function ns.make.client(env)
         return nil
     end
 
+    -- G59 ACTS: the two writes behind the game options, called only by
+    -- UI/GameOptions.lua on the player own choice (the settings page or the
+    -- setting word). Nothing else may call them. Only the two settings the
+    -- options use can be written; any other name is refused before the game
+    -- is asked. Docs (warcraft.wiki.gg): C_CVar.SetCVar(name, value) answers
+    -- whether it took; the older SetCVar(name, value) answers nothing.
+    -- LoggingCombat(on) turns the combat log file on or off. Needs game test
+    -- on 16001: each write, and a write in a fight.
+    local GAME_SETTINGS = { cameraDistanceMaxZoomFactor = true, showTimestamps = true }
+    function c.setGameSetting(name, v)
+        if type(name) ~= "string" or not GAME_SETTINGS[name] then return nil, "notAllowed" end
+        if type(v) ~= "string" then return nil, "bad" end
+        local fn = type(env.C_CVar) == "table" and env.C_CVar.SetCVar or nil
+        if type(fn) ~= "function" then fn = env.SetCVar end
+        if type(fn) ~= "function" then return nil, "noCall" end
+        local ok, done = call(fn, name, v)
+        if not ok then return nil, "raised" end
+        if done == false then return nil, "bad" end
+        return true
+    end
+
+    function c.setCombatLogFile(on)
+        if type(on) ~= "boolean" then return nil, "bad" end
+        if type(env.LoggingCombat) ~= "function" then return nil, "noCall" end
+        local ok = call(env.LoggingCombat, on)
+        if not ok then return nil, "raised" end
+        return true
+    end
+
 
     -- One small mark on the minimap (F1), or nil when the client cannot
     -- make it. Hidden when made; it takes no mouse and holds no action.

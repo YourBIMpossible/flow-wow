@@ -180,9 +180,10 @@ Diag.NAMES = {
     "MacroPopupFrame", "MacroPopupFrame.IconSelector", "IconSelectorPopupFrameTemplateMixin",
     "IconDataProviderMixin", "GetMacroIcons", "GetMacroItemIcons", "GetSpellBookItemTexture",
     "GetItemIcon", "C_Item.GetItemIconByID",
-    -- G59: the game options (UI/GameOptions.lua, Core/Client.lua cvar and
-    -- combatLogFile). GetCVar and C_CVar.GetCVar are listed above.
-    "LoggingCombat",
+    -- G59: the game options (UI/GameOptions.lua, Core/Client.lua gameSetting,
+    -- combatLogFile and their two writes). GetCVar and C_CVar.GetCVar are
+    -- listed above.
+    "LoggingCombat", "C_CVar.SetCVar", "SetCVar",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns

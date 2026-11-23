@@ -34,7 +34,10 @@ local KIND = {
     -- N57 (lead section 249 item 2): the binding writes, each only on the
     -- player's own key press on the settings page, out of combat.
     act = { "restartSound", "soundWays", "craftRecipe", "stopCraftRepeat",
-            "setBindingClick", "clearBinding", "saveBindings", "overrideBindingClick", "clearOverrideKeys" },
+            "setBindingClick", "clearBinding", "saveBindings", "overrideBindingClick", "clearOverrideKeys",
+            -- G59 (lead section 226, ACTS): the game option writes, each on
+            -- the player own choice only.
+            "setGameSetting", "setCombatLogFile" },
     -- Reads a chat line handed in, not the client.
     -- lootLine (N55): the item of anyone's loot line, never the looter.
     parse = { "ownLoot", "auctionOutcome", "lootLine" },
