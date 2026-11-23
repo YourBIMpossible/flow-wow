@@ -160,7 +160,13 @@ function M.Declare(k)
             end)
             stopLearned = ask(ctx.client, "onSpellLearned", function(spell)
                 if ctx.settings:get(M.SETTING_CARD) == true then
-                    local lines = ns.SpellCard.Lines(ns.SpellCard.Build(spell))
+                    -- Lead section 242: the class pack gives the card its tip.
+                    local okClass, class = pcall(ask, ctx.client, "class")
+                    local pack
+                    if okClass and type(class) == "string" and type(ns.Packs) == "table" then
+                        pack = ns.Packs[class]
+                    end
+                    local lines = ns.SpellCard.Lines(ns.SpellCard.Build(spell, pack))
                     for i = 1, #lines do ctx.client.print(k.id.title .. ": " .. lines[i]) end
                 end
                 local ok, err = pcall(refreshRankUps, ctx, advisor)

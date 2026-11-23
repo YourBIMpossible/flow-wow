@@ -27,7 +27,8 @@ local _, ns = ...
 --   weights      { [role] = { evidence, values = { [stat] = number } } } or nil per role
 --   proficiency  { evidence, [itemClass] = { [subclass] = true or n } }  n: from level n
 --   spells       { [name] = { evidence, level, improves, needs, note } }
---   talentBuilds { { name, role, evidence, order = { ... } }, ... }
+--   talentBuilds { { name, role, evidence, order = { { "Talent", ranks, why = "..." }, ... } }, ... }
+--     (why is optional; a reason given must be words, section 242)
 --   options      { ... }
 --
 -- A rule: { spell, kind, reason, target, adaptive, when = function(snapshot), evidence, provenance }.
@@ -241,6 +242,16 @@ function ns.PackCheck(pack)
         if type(pack[key]) == "table" then
             for i, row in ipairs(pack[key]) do
                 if type(row) == "table" then checkEvidence(row, string.format("%s[%d]", key, i), problems) end
+            end
+        end
+    end
+    -- Section 242, DRUID-3: a talent reason, when given, is words.
+    for i, build in ipairs(type(pack.talentBuilds) == "table" and pack.talentBuilds or {}) do
+        local order = type(build) == "table" and build.order or nil
+        for j, entry in ipairs(type(order) == "table" and order or {}) do
+            if type(entry) == "table" and entry.why ~= nil
+                and (type(entry.why) ~= "string" or entry.why == "") then
+                problems[#problems + 1] = string.format("talentBuilds[%d].order[%d]: the reason is not words", i, j)
             end
         end
     end
