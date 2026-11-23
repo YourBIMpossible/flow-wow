@@ -50,6 +50,14 @@ local OLD = "carried over from the old shared tables on zflow; authorship unreco
 -- Read as off: true only when the current map was read and says false.
 -- Not read (nil map or no answer for the spell) is not "off" (section 183).
 local function readOff(s, name) return type(s.current) == "table" and s.current[name] == false end
+-- Lead section 340: not swinging, by the driver's swing read (s.attacking,
+-- Rotation/Driver.lua attackingOf, over Auto Attack and Attack). Where that
+-- read was not made, either name read as off. One row for both names: the
+-- button casts the swing as "Attack" (Rotation/Cast.lua C.ATTACK_SPELL).
+local function swingOff(s)
+    if s.attacking ~= nil then return s.attacking == false end
+    return readOff(s, "Attack") or readOff(s, "Auto Attack")
+end
 -- Buffs read at all (an empty map is read: none up).
 local function buffsRead(s) return type(s.buffs) == "table" end
 local function outOfFight(s) return ns.Rotation.OutOfFight(s) end
@@ -96,9 +104,7 @@ local damage = tag({
     { spell = "Lightning Bolt", target = true, reason = "Open with Lightning Bolt",
       when = function(s) return s.hostile and outOfFight(s) and not wolf(s) end },
     { spell = "Attack", target = true, reason = "Start attacking",
-      when = function(s) return s.hostile and readOff(s, "Attack") end },
-    { spell = "Auto Attack", target = true, reason = "Start attacking",
-      when = function(s) return s.hostile and readOff(s, "Auto Attack") end },
+      when = function(s) return s.hostile == true and swingOff(s) end },
     { spell = "Stormstrike", target = true, reason = "Stormstrike is ready",
       when = function(s) return s.hostile and not wolf(s) end },
     { spell = "Flame Shock", target = true, reason = "Your Flame Shock is not on the target",

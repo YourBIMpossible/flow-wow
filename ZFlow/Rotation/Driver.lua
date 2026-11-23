@@ -149,6 +149,11 @@ local _, ns = ...
 --     why         the plain reasons, see below
 --     stale       true on a view kept from an earlier tick because this
 --                 tick's read failed; absent on a fresh view
+--     fight       lead section 340: with a swing suggested (Attack or Auto
+--                 Attack), the attributes, as attrs, of what the chooser
+--                 gives in a fight with the swing left out (D.FightAttrs);
+--                 absent otherwise. The Flow button takes it as the fight
+--                 starts (Rotation/FlowButton.lua)
 --   }
 --   why = { dead, inCombat, lockdown    as read (nil: not known),
 --           refused, reason             from keys, when the keys are refused,
@@ -713,6 +718,37 @@ function D.Why(snapshot, trace, keys, lockdown)
     return why
 end
 
+-- Lead section 340: what to hold once the fight is on, for a button that
+-- cannot change in combat lockdown and holds the swing now. A second press
+-- of Attack toggles the swing off (first guess, not seen in game), so the
+-- swing is left out: the chooser asked again on a copy of the snapshot read
+-- as in a fight, with Attack and Auto Attack skipped and the engage step
+-- off, the plan without its key action. nil when it gives nothing.
+function D.FightAttrs(snapshot, pack, prefs, bias, plan, applied, lockdown)
+    if type(snapshot) ~= "table" or type(pack) ~= "table" then return nil end
+    local s = {}
+    for key, value in pairs(snapshot) do s[key] = value end
+    s.inCombat = true
+    local p, skip = {}, {}
+    if type(prefs) == "table" then
+        for key, value in pairs(prefs) do p[key] = value end
+        if type(prefs.skip) == "table" then
+            for key, value in pairs(prefs.skip) do skip[key] = value end
+        end
+    end
+    for name in pairs(ns.cast.ATTACK) do skip[name] = true end
+    p.skip, p.autoAttack = skip, false
+    local pick = ns.Choose(s, pack, p, bias)
+    if type(pick) ~= "table" then return nil end
+    local fightPlan = plan
+    if type(plan) == "table" and plan.action ~= nil then
+        fightPlan = {}
+        for key, value in pairs(plan) do fightPlan[key] = value end
+        fightPlan.action = nil
+    end
+    return ns.cast.Attributes(pick, fightPlan, applied, lockdown, nil)
+end
+
 function D.Step(client, pack, prefs, bias, applied, role, extra)
     if type(pack) ~= "table" then
         return { pack = false, trace = {}, why = { pack = false } }
@@ -794,6 +830,12 @@ function D.Step(client, pack, prefs, bias, applied, role, extra)
     end
     local keys = ns.cast.Apply(plan, applied, lockdown)
     local attrs = ns.cast.Attributes(onKey, plan, applied, lockdown, nil)
+    -- Lead section 340: the swing on the key now: what it takes as the
+    -- fight starts (D.FightAttrs).
+    local fight = nil
+    if type(onKey) == "table" and ns.cast.ATTACK[onKey.spell] then
+        fight = D.FightAttrs(snapshot, pack, prefs, bias, plan, applied, lockdown)
+    end
 
     -- Not read: no id, or no row came back for it.
     local notRead = {}
@@ -822,6 +864,7 @@ function D.Step(client, pack, prefs, bias, applied, role, extra)
         missing = missing,
         passed = passed,
         why = D.Why(snapshot, trace, keys, lockdown),
+        fight = fight,
     }
 end
 
