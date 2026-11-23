@@ -42,24 +42,31 @@ tests["settings share: the module never names loadstring, load, setfenv, dofile 
 end
 
 -- Fails before: ns.SettingsShare is absent.
-tests["settings share: reading a text never calls a code loader"] = function(t)
+-- Code in the text stays text: it comes back as a choice's words, or is
+-- skipped, and is never anything but a string, a number or true/false.
+tests["settings share: code in a pasted text comes back as plain data"] = function(t)
     local S = ns.SettingsShare
     t.ok(type(S) == "table" and type(S.Decode) == "function", "the decoder is there")
     if type(S) ~= "table" or type(S.Decode) ~= "function" then return end
-    local saved, called = {}, {}
-    local env = getfenv(0)
-    for _, word in ipairs({ "loadstring", "load", "setfenv", "dofile", "loadfile" }) do
-        saved[word] = env[word]
-        env[word] = function() called[#called + 1] = word end
-    end
-    local ok = pcall(function()
-        S.Decode(S.HEADER .. ";account:x.y=choice:return%20os.exit()%3B;END:1")
-        S.Decode("return os.exit()")
-        S.Decode(S.HEADER .. ";account:a.b=num:0x10;account:c.d=num:1e309;END:2")
-    end)
-    for word, fn in pairs(saved) do env[word] = fn end
+    local ok, got = pcall(S.Decode, S.HEADER .. ";account:x.y=choice:return%20os.exit()%3B;END:1")
     t.eq(ok, true, "the decoder does not raise")
-    t.eq(called, {}, "no loader was called")
+    t.eq(got and got.items, { { scope = "account", key = "x.y", type = "choice", value = "return os.exit();" } },
+        "the code is a choice's text, nothing more")
+    local ok2, none, why = pcall(S.Decode, "return os.exit()")
+    t.eq({ ok2, none, why }, { true, nil, S.NOT_EXPORT }, "a bare chunk is not an export")
+    local ok3, nums = pcall(S.Decode, S.HEADER .. ";account:a.b=num:0x10;account:c.d=num:1e309;END:2")
+    t.eq(ok3, true)
+    t.eq(nums and #nums.items, 0, "hex and infinite numbers are skipped")
+end
+
+-- The wire text is fixed (lead section 258): an export made today must
+-- read in every later version.
+tests["settings share: the wire header is exactly ZFLOW-EXPORT:1"] = function(t)
+    local S = ns.SettingsShare
+    t.eq(S and S.HEADER, "ZFLOW-EXPORT:1")
+    t.eq(S and S.Encode({}), "ZFLOW-EXPORT:1;END:0", "an empty export, byte for byte")
+    t.eq(S and S.Encode({ { scope = "char", key = "a.b", type = "choice", value = "x y" } }),
+        "ZFLOW-EXPORT:1;char:a.b=choice:x%20y;END:1", "a setting, byte for byte")
 end
 
 -- Fails before: ns.SettingsShare is absent.
