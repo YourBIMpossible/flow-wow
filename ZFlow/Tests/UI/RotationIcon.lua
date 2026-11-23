@@ -609,17 +609,21 @@ end
 -- Twin review 17:11, F1: a missing read is not "nothing to suggest".
 tests["rotation icon 294 F1: no line when a texture read failed or no enemy is targeted yet"] = function(t)
     local k, c = start({ enabled = true })
+    -- start() answers client.target with a fixed living enemy, so setting
+    -- the fake's target would change nothing here (lead section 321): this
+    -- case answers the read itself.
+    local target = ENEMY
+    c.target = function() return target end
     c.setCombat(true)
-    c.setTarget(ENEMY)
     k.bus:emit(D.EVENT, { pack = true, suggestion = { spell = "No Such Spell" }, trace = {} })
     t.eq(c.icons[1].shown, false, "a suggestion whose picture was not read: hidden")
     t.eq(saidEmpty(c), 0, "a suggestion exists: not the empty line")
-    c.setTarget({ exists = false })
+    target = { exists = false }
     nothing(k)
     t.eq(saidEmpty(c), 0, "no enemy targeted yet: not the empty line")
     k.bus:emit(D.EVENT, { trace = {} })
     t.eq(saidEmpty(c), 0, "the class pack not read: not the empty line")
-    c.setTarget(ENEMY)
+    target = ENEMY
     k.bus:emit(D.EVENT, { pack = true, trace = {}, stale = true })
     t.eq(saidEmpty(c), 0, "an earlier reading kept after a failed read: not the empty line")
     nothing(k)
