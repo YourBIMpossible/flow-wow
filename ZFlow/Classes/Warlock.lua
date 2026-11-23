@@ -271,6 +271,17 @@ local pack = {
         dps = { name = "Affliction", evidence = GUESS },
     },
 
+    -- G31: the spec recommended while levelling alone, and why. Written for
+    -- this pack in its own words from general knowledge of the class; nothing
+    -- here was read from the game or taken from a guide.
+    levelling = {
+        role = "dps", evidence = GUESS,
+        why = {
+            "Curses and other damage over time wear several enemies down while your demon holds them.",
+            "You can turn health into mana and drain health back, so you seldom sit to drink.",
+        },
+    },
+
     resources = {
         { name = "Mana", forms = { "none" }, evidence = GUESS },
     },

@@ -336,6 +336,19 @@ local pack = {
         tank = { name = "Feral (Bear)", evidence = GUESS },
     },
 
+    -- G31: the spec recommended while levelling alone, and why. Written for
+    -- this pack in its own words from general knowledge of the class; nothing
+    -- here was read from the game or taken from a guide.
+    levelling = {
+        role = "dps", evidence = GUESS,
+        why = {
+            "Cat form kills one enemy after another with little rest: energy comes back by itself.",
+            "Out of form you heal yourself between fights, so you seldom sit to drink.",
+            "Bear form is there when a fight goes wrong; you do not need tanking talents to use it.",
+            "Healing talents kill slowly alone. They suit you when you mostly heal dungeons.",
+        },
+    },
+
     resources = {
         { name = "Mana", forms = { "none", "Moonkin Form" }, evidence = GUESS },
         { name = "Rage", forms = { "Bear Form", "Dire Bear Form" }, evidence = GUESS },

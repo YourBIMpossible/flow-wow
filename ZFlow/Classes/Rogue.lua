@@ -187,6 +187,17 @@ local pack = {
         dps = { name = "Combat / Assassination / Subtlety", evidence = GUESS },
     },
 
+    -- G31: the spec recommended while levelling alone, and why. Written for
+    -- this pack in its own words from general knowledge of the class; nothing
+    -- here was read from the game or taken from a guide.
+    levelling = {
+        role = "dps", evidence = GUESS,
+        why = {
+            "A rogue has one role. Steady weapon damage and energy that comes back by itself mean little rest between fights.",
+            "Stealth lets you choose your fights and skip the ones you do not want.",
+        },
+    },
+
     resources = {
         { name = "Energy", forms = { "none" }, evidence = GUESS },
     },
