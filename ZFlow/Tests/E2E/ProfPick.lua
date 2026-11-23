@@ -10,10 +10,11 @@ local _, ns = ...
 local tests = {}
 
 local ID = "aps.profPick"
+local HINT = " Choices: " .. ns.id.slash .. " professions."
 local MAGE = "Two profession slots are free. You wear cloth: Tailoring makes bags and cloth gear "
-    .. "from the cloth you loot, and Enchanting turns the gear you do not need into enchants."
+    .. "from the cloth you loot, and Enchanting turns the gear you do not need into enchants." .. HINT
 local HERB = "One profession slot is free. Alchemy goes with your Herbalism: it turns the herbs "
-    .. "you gather into potions."
+    .. "you gather into potions." .. HINT
 
 -- opts: class, level, professions (nil: not read), account, char.
 local function boot(opts)
@@ -125,6 +126,124 @@ tests["profession picker: the setting row is on by default and filed under profe
     t.eq(addon.settings:get("professions.picker"), true)
     local words = table.concat(row and row.synonyms or {}, " ")
     t.ok(words:find("profession", 1, true) ~= nil and words:find("choose", 1, true) ~= nil, "synonyms: " .. words)
+end
+
+-- The three choices Flow's card gave (lead section 274), as the word
+-- "professions" on the slash command: later (Not now), choose (Choose
+-- others) and route (Add to my route); reset undoes them.
+
+local function said(c, rest)
+    local before = #c.printed
+    c.slashes[ns.id.slash](rest)
+    local out = {}
+    for i = before + 1, #c.printed do out[#out + 1] = c.printed[i] end
+    return table.concat(out, "\n")
+end
+
+local function reload(c, opts)
+    opts.account = c.saved(ns.id.accountDB)
+    opts.char = c.saved(ns.id.charDB)
+    return boot(opts)
+end
+
+local function api(addon)
+    local a = addon.use("profPick")
+    if type(a) ~= "table" then return {} end
+    return a
+end
+
+local function step(addon)
+    local a = api(addon)
+    if type(a.Step) ~= "function" then return nil end
+    return a.Step()
+end
+
+local function skillOf(addon)
+    local s = step(addon)
+    return s and s.skill
+end
+
+local TAILOR = { roles = { trainer = true }, trains = { Tailoring = true }, factions = { Alliance = true },
+                 map = 1453, x = 0.4, y = 0.6 }
+
+tests["profession picker: later dismisses until the next level, and a reload keeps it"] = function(t)
+    local c, addon = boot({ professions = {} })
+    t.eq(text(addon), MAGE)
+    local out = said(c, "professions later")
+    t.ok(out:find("level 11", 1, true) ~= nil, "says when it comes back: " .. out)
+    t.eq(prompt(addon), nil, "dismissed")
+    local c2, addon2 = reload(c, { professions = {} })
+    t.eq(prompt(addon2), nil, "still dismissed after the reload")
+    c2.setLevel(11)
+    c2.advance(5, 20)
+    t.eq(text(addon2), MAGE, "back at the next level")
+end
+
+tests["profession picker: reset brings a dismissed prompt back"] = function(t)
+    local c, addon = boot({ professions = {} })
+    said(c, "professions later")
+    t.eq(prompt(addon), nil)
+    said(c, "professions reset")
+    t.eq(text(addon), MAGE)
+end
+
+tests["profession picker: choose names the pair and the advice follows it, after a reload too"] = function(t)
+    local c, addon = boot({ professions = {} })
+    local out = said(c, "professions choose mining herbalism")
+    t.ok(out:find("Mining and Herbalism", 1, true) ~= nil, "confirms the choice: " .. out)
+    t.eq(text(addon), "Your choice: learn Mining and Herbalism." .. HINT)
+    local c2, addon2 = reload(c, { professions = { "Mining" } })
+    t.eq(text(addon2), "Your choice: learn Herbalism." .. HINT, "kept; Mining learned is left out")
+    c2.setProfessions({ "Mining", "Herbalism" })
+    c2.fire("SKILL_LINES_CHANGED")
+    t.eq(prompt(addon2), nil, "both learned: no advice")
+end
+
+tests["profession picker: choose refuses a name that is no primary profession"] = function(t)
+    local c, addon = boot({ professions = {} })
+    local out = said(c, "professions choose cooking")
+    t.ok(out:find("cooking", 1, true) ~= nil, "names it: " .. out)
+    t.eq(text(addon), MAGE, "the advice is as before")
+end
+
+tests["profession picker: route gives a words-only step, then a place once a trainer is learned"] = function(t)
+    local c, addon = boot({ professions = {} })
+    c.setPosition(1453, 0.5, 0.5)
+    t.eq(step(addon), nil, "not asked for: no step")
+    said(c, "professions route")
+    local s = step(addon)
+    t.eq(s and s.skill, "Tailoring")
+    t.eq(s and s.place, nil, "no trainer saved: words only")
+    t.eq(api(addon).Lines(), { "A Tailoring trainer in a capital city teaches it." })
+    local db = c.saved(ns.id.accountDB)
+    db.learned = db.learned or {}
+    db.learned.places = db.learned.places or {}
+    db.learned.places.npcs = { ["Lawrence Schneider"] = TAILOR }
+    s = step(addon)
+    t.eq(s and s.name, "Lawrence Schneider", "the trainer learned late is used")
+    t.eq(s and s.place and s.place.map, 1453)
+    local _, addon2 = reload(c, { professions = {} })
+    t.eq(skillOf(addon2), "Tailoring", "the route choice is kept after a reload")
+end
+
+tests["profession picker: the route step follows the read, raising and recovering"] = function(t)
+    local c, addon = boot({ professions = {} })
+    said(c, "professions route")
+    t.eq(skillOf(addon), "Tailoring")
+    local real = c.professions
+    c.professions = function() error("professions read failed (test)") end
+    t.eq(step(addon), nil, "the read raised: no step")
+    c.professions = real
+    t.eq(skillOf(addon), "Tailoring", "recovered")
+    c.setProfessions({ "Tailoring" })
+    t.eq(skillOf(addon), "Enchanting", "Tailoring learned: the next one")
+end
+
+tests["profession picker: the word has its help line"] = function(t)
+    local c = boot({ professions = {} })
+    local out = said(c, "help professions")
+    t.ok(out:find("later", 1, true) ~= nil and out:find("choose", 1, true) ~= nil
+        and out:find("route", 1, true) ~= nil, "help: " .. out)
 end
 
 return tests

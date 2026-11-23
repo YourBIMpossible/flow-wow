@@ -565,6 +565,16 @@ function Arrow.Start(k, diag, own)
                     from = "a weapon master stop"
                 end
             end
+            -- Then the profession trainer stop the player put on the route
+            -- (G17, UI/ProfPick.lua), only when its trainer is saved.
+            local profPick = k.use and k.use("profPick")
+            if step == nil and profPick and profPick.Step then
+                local ok, pp = pcall(profPick.Step)
+                if ok and type(pp) == "table" and type(pp.place) == "table" then
+                    step = pp
+                    from = "a profession trainer stop"
+                end
+            end
             -- The player's own pin (/way, then the map pin) wins over the player's quests.
             if step == nil and quests and Arrow.QuestArrowOn(k) then
                 step = quests.step()
