@@ -203,8 +203,8 @@ tests["priest: gear the class cannot use is not offered; cloth it can use is sco
         t.eq(lines, { { text = "Can't use: your class cannot use this kind of item (first guess)", tone = "bad" } },
             "not offered: " .. kind[1] .. "/" .. kind[2])
     end
-    -- Cloth (4/1), Intellect on it: in the table, scored with the dps weights.
-    local lines, detail = ns.GearVerdict.Lines(gear({ classID = 4, subclassID = 1, minLevel = 1 }), who)
+    -- Cloth (4/1), Intellect on it, the game marking nothing unmet: scored with the dps weights.
+    local lines, detail = ns.GearVerdict.Lines(gear({ unmet = {}, classID = 4, subclassID = 1, minLevel = 1 }), who)
     t.eq(lines[1] and lines[1].tone, "good", "cloth is an upgrade: " .. tostring(lines[1] and lines[1].text))
     t.ok(tostring(lines[1] and lines[1].text):find("Upgrade for your head piece", 1, true), tostring(lines[1] and lines[1].text))
     t.eq(detail.result.verdict, "upgrade", "scored")

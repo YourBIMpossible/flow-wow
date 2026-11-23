@@ -301,6 +301,14 @@ function steps.heal(s, pack, prefs, _, unread)
     return heal(big or fast, s.hostile and "Hurt: heal up before you pull" or "Hurt from your fights: heal up before the next pull")
 end
 
+-- An interrupt row's forms (lead 197): none named, any form; named, only
+-- in one of them, and only when the form was read (not read is not a yes).
+local function inForms(s, forms)
+    if type(forms) ~= "table" then return true end
+    if s.formKnown ~= true then return false end
+    return forms[s.form or "none"] == true
+end
+
 -- 3. Your target is casting: stop it. Your own target only.
 function steps.interrupt(s, pack, prefs, _, unread)
     if not (R.InFight(s) and s.hostile == true and s.targetCasting) then return nil, "target is not casting" end
@@ -309,6 +317,7 @@ function steps.interrupt(s, pack, prefs, _, unread)
     for _, r in ipairs(pack.interrupts or {}) do
         local reach = true
         if r.near then reach = s.targetNear == true end
+        reach = reach and inForms(s, r.forms)
         if reach and allowed(prefs, r.spell) and ready(s, r.spell, not r.near, unread, gaps.range) then
             return { spell = r.spell, kind = "damage",
                      reason = string.format("Stop its %s: %s", tostring(s.targetCasting), r.spell) }
