@@ -1637,7 +1637,9 @@ function ns.make.client(env)
     -- UIHANDLER OnDragStart, OnDragStop; UIHANDLER OnHide, which that page
     -- says also runs when a frame it stands on is hidden. UISpecialFrames
     -- and the UIPanelCloseButton template have no page: needs a game test.
-    function c.panel(spec)
+    -- The panel, its frame, and whether it is open (shown by the add-on and
+    -- not since hidden or closed): c.panel and c.rowPanel share it.
+    local function panelFrame(spec)
         spec = type(spec) == "table" and spec or {}
         local parent = env.UIParent
         -- Asked before the frame is made: making it takes the name.
@@ -1799,6 +1801,10 @@ function ns.make.client(env)
                 end
             end
         end
+        return h, f, function() return open end
+    end
+    function c.panel(spec)
+        local h = panelFrame(spec)
         return h
     end
 
@@ -5603,6 +5609,183 @@ function ns.make.client(env)
         return out
     end
     -- ------------------------------------------------------- end pet state
+
+    -- ------------------------------------------------------- craft (P-CRAFT)
+    -- The reads and the bar the craft queue needs (lead section 226: #34
+    -- Smelt All, G21 the craft bar; UI/CraftBar.lua). Needs game test: every
+    -- call here is a first guess on 16001, read from the client names.
+    -- Unknown stays unknown: nil is never "nothing needed", "usable" or
+    -- "standing still".
+    local function wholeId(n)
+        return type(n) == "number" and not hidden(n) and n == n and n >= 1 and n < math.huge
+            and n == math.floor(n)
+    end
+
+    -- A recipe reagents, { { item =, count = }, ... }, from
+    -- C_TradeSkillUI.GetRecipeSchematic(id, false).reagentSlotSchematics:
+    -- each slot first reagent and its quantityRequired. A slot marked
+    -- required == false (an optional reagent) is left out. One slot not
+    -- read makes the whole list not known (nil); {} is a recipe with none.
+    function c.recipeReagents(id)
+        if not wholeId(id) then return nil end
+        local ui = env.C_TradeSkillUI
+        if type(ui) ~= "table" then return nil end
+        local ok, schematic = call(ui.GetRecipeSchematic, id, false)
+        if not ok or type(schematic) ~= "table" then return nil end
+        local slots = schematic.reagentSlotSchematics
+        if type(slots) ~= "table" then return nil end
+        local out = {}
+        for i = 1, #slots do
+            local slot = slots[i]
+            if type(slot) ~= "table" then return nil end
+            if slot.required ~= false then
+                local first = type(slot.reagents) == "table" and slot.reagents[1] or nil
+                local item = type(first) == "table" and first.itemID or nil
+                if not wholeId(item) or not wholeId(slot.quantityRequired) then return nil end
+                out[#out + 1] = { item = item, count = slot.quantityRequired }
+            end
+        end
+        return out
+    end
+
+    -- Whether the recipe can be made here and now: true; false and the
+    -- client reason (disabledReason) when it gives one; nil when not
+    -- known. From C_TradeSkillUI.GetRecipeInfo(id): learned, disabled.
+    function c.recipeUsable(id)
+        if not wholeId(id) then return nil end
+        local ui = env.C_TradeSkillUI
+        if type(ui) ~= "table" then return nil end
+        local ok, info = call(ui.GetRecipeInfo, id)
+        if not ok or type(info) ~= "table" then return nil end
+        if info.learned == false then return false end
+        if info.disabled == true then
+            local why = info.disabledReason
+            if type(why) == "string" and why ~= "" and not hidden(why) then return false, why end
+            return false
+        end
+        if info.disabled == false and info.learned == true then return true end
+        return nil
+    end
+
+    -- Whether the player is moving: GetUnitSpeed("player") above 0, else
+    -- IsPlayerMoving() when it answers a plain true or false, else nil.
+    function c.moving()
+        local ok, speed = call(env.GetUnitSpeed, "player")
+        if ok and type(speed) == "number" and not hidden(speed) and speed == speed and speed >= 0 then
+            return speed > 0
+        end
+        local okFlag, flag = call(env.IsPlayerMoving)
+        if okFlag and type(flag) == "boolean" then return flag end
+        return nil
+    end
+
+    -- A panel of rows (the craft bar): c.panel h, always closable, with
+    -- shown() and draw(rows, act). rows, top to bottom:
+    --   { kind = "info", text = }
+    --   { kind = "number", key =, label =, value =, min =, max =, enabled = }
+    --   { kind = "button", key =, label =, enabled = }
+    -- A number reads "label: value" with a "-" and a "+": a click asks
+    -- act(key, value - 1) or act(key, value + 1), never past min or max; the
+    -- panel keeps no value itself, the next draw shows it. A button asks
+    -- act(key). act runs under pcall: its error stays in the panel.
+    -- enabled == false disables the row buttons. Rows are pooled and a
+    -- draw replaces the last one; the frame grows with the rows (no
+    -- scrolling). Needs game test: UIPanelButtonTemplate, the row layout.
+    local ROW = 20
+    function c.rowPanel(spec)
+        local own = {}
+        for key, v in pairs(type(spec) == "table" and spec or {}) do own[key] = v end
+        own.closable = true
+        local h, f, isOpen = panelFrame(own)
+        if h == nil then return nil end
+        h.shown = isOpen
+        local width = tonumber(own.width) or 200
+        local fonts, buttons = {}, {}
+
+        local function font(i)
+            if fonts[i] == nil then
+                local ok, made = method(f, "CreateFontString", nil, "OVERLAY", "GameFontNormalSmall")
+                if not ok or made == nil then return nil end
+                method(made, "SetJustifyH", "LEFT")
+                fonts[i] = made
+            end
+            return fonts[i]
+        end
+        local function button(i)
+            if buttons[i] == nil then
+                local ok, made = call(env.CreateFrame, "Button", nil, f, "UIPanelButtonTemplate")
+                if not ok or made == nil then ok, made = call(env.CreateFrame, "Button", nil, f) end
+                if not ok or made == nil then return nil end
+                buttons[i] = made
+            end
+            return buttons[i]
+        end
+
+        function h.draw(rows, act)
+            local fontsUsed, buttonsUsed, y = 0, 0, -24
+            local function ask(...)
+                if type(act) == "function" then pcall(act, ...) end
+            end
+            local function line(text, room)
+                fontsUsed = fontsUsed + 1
+                local fs = font(fontsUsed)
+                if fs == nil then return end
+                method(fs, "ClearAllPoints")
+                method(fs, "SetPoint", "TOPLEFT", f, "TOPLEFT", 6, y)
+                method(fs, "SetWidth", width - 12 - room)
+                method(fs, "SetText", text)
+                method(fs, "Show")
+            end
+            local function push(label, enabled, x, w, onClick)
+                buttonsUsed = buttonsUsed + 1
+                local b = button(buttonsUsed)
+                if b == nil then return end
+                method(b, "ClearAllPoints")
+                method(b, "SetWidth", w)
+                method(b, "SetHeight", ROW - 2)
+                method(b, "SetPoint", "TOPLEFT", f, "TOPLEFT", x, y)
+                method(b, "SetText", label)
+                method(b, enabled and "Enable" or "Disable")
+                method(b, "SetScript", "OnClick", function()
+                    if enabled then onClick() end
+                end)
+                method(b, "Show")
+            end
+            for _, row in ipairs(type(rows) == "table" and rows or {}) do
+                if type(row) == "table" then
+                    local enabled = row.enabled ~= false
+                    local drawn = true
+                    if row.kind == "info" then
+                        line(tostring(row.text or ""), 0)
+                    elseif row.kind == "number" and type(row.value) == "number" then
+                        local v = row.value
+                        local least = tonumber(row.min) or -math.huge
+                        local most = tonumber(row.max) or math.huge
+                        line(tostring(row.label) .. ": " .. tostring(v), 54)
+                        push("-", enabled, width - 52, 22, function()
+                            if v - 1 >= least then ask(row.key, v - 1) end
+                        end)
+                        push("+", enabled, width - 28, 22, function()
+                            if v + 1 <= most then ask(row.key, v + 1) end
+                        end)
+                    elseif row.kind == "button" then
+                        push(tostring(row.label), enabled, 6, width - 12, function() ask(row.key) end)
+                    else
+                        drawn = false
+                    end
+                    if drawn then y = y - ROW end
+                end
+            end
+            for i = fontsUsed + 1, #fonts do
+                method(fonts[i], "SetText", "")
+                method(fonts[i], "Hide")
+            end
+            for i = buttonsUsed + 1, #buttons do method(buttons[i], "Hide") end
+            method(f, "SetHeight", 6 - y)
+        end
+        return h
+    end
+    -- ------------------------------------------------------- end craft
     return c
 end
 

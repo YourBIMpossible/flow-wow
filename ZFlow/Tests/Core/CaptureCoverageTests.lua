@@ -21,7 +21,7 @@ local KIND = {
                "watchAuctionResults", "onUnitTooltip", "watchAuctionRows", "onSystemMessage" },
     show = { "print", "panel", "minimapPin", "copyBox", "icon", "arrow", "windowButton", "secureButton",
              "optionsPage", "guideLines", "taxiMark", "mapPins", "comboBar", "slotIcon",
-             "markMerchantButtons" },
+             "markMerchantButtons", "rowPanel" },
     tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "slash",
              "slashTaken", "unslash" },
     -- Hands back or runs a sound restart: never asked by the capture.
@@ -50,6 +50,8 @@ local READS = {
     targetDebuffs = true, formName = true, currentSpell = true, taxiNodes = true,
     -- Lead section 197: the pet state the rotation reads.
     pet = true,
+    -- Lead section 226: the craft bar reads (P-CRAFT); the capture asks none.
+    recipeReagents = false, recipeUsable = false, moving = false,
 }
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).
