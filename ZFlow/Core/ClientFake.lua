@@ -3496,6 +3496,8 @@ function ns.make.fakeClient(opts)
             out.EJ_LOADED = journal
             return out
         end
+    end
+
     -- The window kit (lead sections 287, 291 item 1 and 292): c.kitWindow
     -- and c.kitProbe, as the real client's. Nothing is drawn; a window is
     -- recorded by its id.
@@ -3624,8 +3626,16 @@ function ns.make.fakeClient(opts)
             function h.show(on) w.rec.shown = on and true or false end
             function h.shown() return w.rec.shown end
             function h.close() w.rec.shown = false end
+            -- As the real client draws: the four parts with no row of the
+            -- parts list are the game's own; a part with a row is the game's
+            -- own only when the login probe said its row works (kitKnown),
+            -- else its plain form; pictures not yet seen are plain.
             function h.art()
-                local out = { close = "first", button = "first", check = "first", input = "first", scroll = "first" }
+                local out = { close = "first", check = "first", input = "first", scroll = "first" }
+                for key, row in pairs({ frame = "T2", search = "T5", tab = "T7", button = "T16" }) do
+                    local text = said[row]
+                    if text == "works" then out[key] = "first" else out[key] = "fallback" end
+                end
                 for key in pairs(ns.Kit.look.unproven or {}) do out[key] = "fallback" end
                 return out
             end

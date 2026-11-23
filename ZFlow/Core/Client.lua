@@ -9288,6 +9288,10 @@ function ns.make.client(env)
             end
             local okJ, journal = pcall(journalLoaded)
             if okJ then out.EJ_LOADED = journal else out.EJ_LOADED = "not known" end
+            return out
+        end
+    end
+
     -- The window kit's drawer (lead sections 287, 291 item 1 and 292): draws
     -- a tree UI/Kit.lua checked (Kit.Window) as one window. New, added at the
     -- end. LOOK ONLY: no secure template and no acting call; a click runs

@@ -20,8 +20,9 @@ local _, ns = ...
 -- `<slash> reveal` says what is on screen, `reveal all` shows everything
 -- now, `reveal reset` starts the stages over.
 --
--- Setting "general.reveal" (bool, account, on by default as legacy): off
--- shows everything, whatever is kept.
+-- Setting "general.reveal" (bool, account): off shows everything, whatever
+-- is kept. Off by default (lead section 294): staging holds nothing back
+-- unless the player turned it on. Legacy had it on.
 --
 -- The surfaces ask R.Open(k, stage): true unless the reveal module on k
 -- says the stage is held back. No module, a raising answer, saved data not
@@ -241,10 +242,10 @@ function R.Declare(k, diag)
         end
     end
 
-    k:Setting({ key = R.SETTING, scope = "account", type = "bool", default = true,
+    k:Setting({ key = R.SETTING, scope = "account", type = "bool", default = false,
         label = "New player: show pieces one at a time", group = "general",
-        help = "On a new install the arrow, the fight icon and the advice panel come in one at a time "
-            .. "as you start to play. Off shows everything at once.",
+        help = "On: on a new install the arrow, the fight icon and the advice panel come in one at a time "
+            .. "as you start to play. Off (the default) shows everything at once.",
         synonyms = { "reveal", "new player", "stages", "intro", "one at a time", "tour" } })
 
     local function target()

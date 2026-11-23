@@ -72,7 +72,7 @@ local function start(opts)
     c.fire("ADDON_LOADED", ns.id.addon)
     c.fire("PLAYER_LOGIN")
     c.fire("PLAYER_ENTERING_WORLD")
-    if opts.enabled then k.settings:set(D.SETTING, true) end
+    k.settings:set(D.SETTING, opts.enabled == true)
     return k, c, api, calls
 end
 
@@ -561,6 +561,73 @@ tests["fake icon: it stands in for the client's"] = function(t)
     c.setSpellTexture(5176, 9)
     t.eq(c.spellTexture(5176), 9)
     t.eq(c.spellTexture(1), nil)
+end
+
+-- Lead section 294: an icon that is on but has nothing to suggest in a
+-- fight says so once, instead of staying away without a word.
+local function saidEmpty(c)
+    local n = 0
+    for _, line in ipairs(c.printed) do
+        if tostring(line):find(I.EMPTY, 1, true) then n = n + 1 end
+    end
+    return n
+end
+
+-- A view of the driver with the class pack read and no suggestion: the
+-- one case the line is for (Twin review 17:11, F1).
+local function nothing(k)
+    k.bus:emit(D.EVENT, { pack = true, trace = {} })
+end
+local ENEMY = { exists = true, hostile = true, dead = false }
+
+tests["rotation icon 294: on, in a fight, an enemy targeted, nothing to suggest: one line, once a session"] = function(t)
+    local k, c = start({ enabled = true })
+    c.setCombat(true)
+    c.setTarget(ENEMY)
+    nothing(k)
+    t.eq(c.icons[1].shown, false, "nothing to show")
+    t.eq(saidEmpty(c), 1, "one line")
+    t.ok(tostring(c.printed[#c.printed]):find(ns.id.title, 1, true) == 1, "from the add-on, by its title")
+    nothing(k)
+    nothing(k)
+    t.eq(saidEmpty(c), 1, "not again")
+end
+
+tests["rotation icon 294: out of a fight, or switched off, nothing to suggest says nothing"] = function(t)
+    local k, c = start({ enabled = true })
+    c.setCombat(false)
+    c.setTarget(ENEMY)
+    nothing(k)
+    t.eq(saidEmpty(c), 0, "out of a fight")
+    local k2, c2 = start()
+    c2.setCombat(true)
+    c2.setTarget(ENEMY)
+    nothing(k2)
+    t.eq(saidEmpty(c2), 0, "switched off")
+end
+
+-- Twin review 17:11, F1: a missing read is not "nothing to suggest".
+tests["rotation icon 294 F1: no line when a texture read failed or no enemy is targeted yet"] = function(t)
+    local k, c = start({ enabled = true })
+    -- start() answers client.target with a fixed living enemy, so setting
+    -- the fake's target would change nothing here (lead section 321): this
+    -- case answers the read itself.
+    local target = ENEMY
+    c.target = function() return target end
+    c.setCombat(true)
+    k.bus:emit(D.EVENT, { pack = true, suggestion = { spell = "No Such Spell" }, trace = {} })
+    t.eq(c.icons[1].shown, false, "a suggestion whose picture was not read: hidden")
+    t.eq(saidEmpty(c), 0, "a suggestion exists: not the empty line")
+    target = { exists = false }
+    nothing(k)
+    t.eq(saidEmpty(c), 0, "no enemy targeted yet: not the empty line")
+    k.bus:emit(D.EVENT, { trace = {} })
+    t.eq(saidEmpty(c), 0, "the class pack not read: not the empty line")
+    target = ENEMY
+    k.bus:emit(D.EVENT, { pack = true, trace = {}, stale = true })
+    t.eq(saidEmpty(c), 0, "an earlier reading kept after a failed read: not the empty line")
+    nothing(k)
+    t.eq(saidEmpty(c), 1, "the line is still there for the real case")
 end
 
 return tests

@@ -339,12 +339,10 @@ tests["kitWindow: every control tells its own function what the player did"] = f
     click(saying(env, "Button", "Bags"))
     click(saying(env, "Button", "+"))
     click(saying(env, "Button", "-"))
-    local edits = find(env, "EditBox", "InputBoxTemplate")
-    t.eq(#edits, 2, "the search box (its fallback) and the text box")
-    local search, box
-    for _, e in ipairs(edits) do
-        if e.text == "abc" then box = e else search = e end
-    end
+    -- The client has every template here, so the search box is the game's
+    -- own (SearchBoxTemplate) and the text box the input template.
+    local search = find(env, "EditBox", "SearchBoxTemplate")[1]
+    local box = find(env, "EditBox", "InputBoxTemplate")[1]
     t.ok(search ~= nil and box ~= nil, "both found")
     if search == nil or box == nil then return end
     search.text = "lin"
