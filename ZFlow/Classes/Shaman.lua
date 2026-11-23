@@ -39,10 +39,7 @@ local _, ns = ...
 --     enemies near you;
 --   * Purge on the target (no read gives the target's buffs; on the Ctrl key
 --     row), and Ghost Wolf (travel, no step of the chooser uses it; on the
---     Shift key row);
---   * mail before the level the class learns it: what the class can equip
---     is the old table, by kind only. The level number comes with
---     zflow-gear-level-proficiency (section 199, D3) once it is integrated.
+--     Shift key row).
 
 local GUESS = "first guess"
 local OLD = "carried over from the old shared tables on zflow; authorship unrecorded"
@@ -167,7 +164,7 @@ local pack = {
             .. "without a guide, database or other addon; what the class can equip, the resource, the kind, the "
             .. "food stats and the reagent kept from the old shared tables on the zflow branch "
             .. "(Modules/Gear/Score.lua, Modules/Rotation/BuffItems.lua, Modules/Rotation/Engine.lua, "
-            .. "Modules/Items/Disposition.lua).",
+            .. "Modules/Items/Disposition.lua); mail from level 40 (section 205, D3: a level in place of true).",
         facts = "No value here was read from the game by this file and none comes from a list of client "
             .. "observations (the repository has none for this class). Every value is marked first guess and "
             .. "needs a check in the game client. Nothing copied from proprietary data.",
@@ -235,11 +232,12 @@ local pack = {
     },
 
     -- What the class can equip, by item class and subclass ids, as the old
-    -- table gave them. Armor (4): 0, 1, 2, 3, 6, 9. Weapons (2): 0, 1, 4, 5,
-    -- 10, 13, 15, 20. By kind only: no level (see "Not written" above).
+    -- table gave them. Armor (4): 0, 1, 2, 3 mail from level 40 (section
+    -- 205, D3: a level in place of true), 6, 9. Weapons (2): 0, 1, 4, 5,
+    -- 10, 13, 15, 20.
     proficiency = {
         evidence = GUESS, note = OLD,
-        [4] = { [0] = true, [1] = true, [2] = true, [3] = true, [6] = true, [9] = true },
+        [4] = { [0] = true, [1] = true, [2] = true, [3] = 40, [6] = true, [9] = true },
         [2] = { [0] = true, [1] = true, [4] = true, [5] = true, [10] = true, [13] = true, [15] = true, [20] = true },
     },
 

@@ -205,4 +205,34 @@ tests["shaman: gear the class cannot use is not offered; leather it can use is s
     t.eq(detail.result.verdict, "upgrade", "scored")
 end
 
+-- Section 205: mail (4/3) from level 40, as the Hunter pack has it.
+tests["shaman gear: mail is refused below level 40 and scored from 40"] = function(t)
+    local mail = { unmet = {}, classID = 4, subclassID = 3, minLevel = 30 }
+    for _, level in ipairs({ 10, 39 }) do
+        local who = { pack = ns.Packs.SHAMAN, role = "dps", level = level }
+        t.eq(ns.GearVerdict.Lines(gear(mail), who),
+            { { text = "Can't use: your class can use this kind from level 40 (first guess)", tone = "bad" } },
+            "mail at " .. level .. ": not yet")
+    end
+    for _, level in ipairs({ 40, 41 }) do
+        local who = { pack = ns.Packs.SHAMAN, role = "dps", level = level }
+        local lines, detail = ns.GearVerdict.Lines(gear(mail), who)
+        t.eq(lines[1] and lines[1].tone, "good", "mail at " .. level .. ": " .. tostring(lines[1] and lines[1].text))
+        t.ok(tostring(lines[1] and lines[1].text):find("Upgrade for your head piece", 1, true),
+            tostring(lines[1] and lines[1].text))
+        t.eq(detail.result.verdict, "upgrade", "mail at " .. level .. ": scored")
+    end
+    -- At 40 with the game's own marks not read: no verdict, never an upgrade.
+    local who = { pack = ns.Packs.SHAMAN, role = "dps", level = 40 }
+    local lines = ns.GearVerdict.Lines(gear({ classID = 4, subclassID = 3, minLevel = 30 }), who)
+    t.eq(lines[1] and lines[1].text, "No verdict: " .. ns.GearUsable.REASON.unconfirmed, "marks not read")
+end
+
+tests["shaman pack: mail is the one armor kind with a level"] = function(t)
+    local armor = ns.Packs.SHAMAN.proficiency[4]
+    t.eq(armor[3], 40, "mail from 40")
+    for _, kind in ipairs({ 0, 1, 2, 6, 9 }) do t.eq(armor[kind], true, "armor kind " .. kind) end
+    t.eq(armor[4], nil, "no plate")
+end
+
 return tests
