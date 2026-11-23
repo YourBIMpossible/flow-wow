@@ -53,6 +53,54 @@ tests["export: what is not read is left out, never guessed"] = function(t)
     t.eq(lines, { "E^export^v=1", "E^you", "E^quest^id=3^complete=1^failed=1^n=0", "E^end^lines=4" })
 end
 
+-- P-QOL (lead sections 362 and 368): the rest of what the predecessor's
+-- export said of the character, and its list of ways to improve.
+tests["export 368: experience, rest and the hearthstone on the you record, after what was there"] = function(t)
+    local lines = X.Lines({
+        class = "DRUID", level = 12,
+        xp = { cur = 300, max = 1200, rested = 150 }, hearth = "Dolanaar", hearthLeft = 754.6,
+    })
+    t.eq(lines[2], "E^you^class=DRUID^level=12^xp=300^xpmax=1200^rested=150^hearthleft=754.6^hearth=Dolanaar")
+    local back = X.Parse(lines[2])
+    t.eq({ back.xp, back.xpmax, back.rested, back.hearth }, { "300", "1200", "150", "Dolanaar" })
+end
+
+tests["export 368: experience or hearthstone not read is left out, never guessed"] = function(t)
+    t.eq(X.Lines({ xp = "x", hearth = 5, hearthLeft = "soon" })[2], "E^you")
+    t.eq(X.Lines({ xp = { cur = 0 / 0, max = 100 }, hearthLeft = 0 / 0 })[2], "E^you^xpmax=100")
+    t.eq(X.Lines({ xp = { cur = 5, max = 100 }, hearth = "", hearthLeft = 0 })[2], "E^you^xp=5^xpmax=100^hearthleft=0",
+        "ready is 0; no rest read is not said as 0; an empty name is not a place")
+end
+
+tests["export 368: the ways to improve, one record each, in the order given, before the end"] = function(t)
+    local lines = X.Lines({ improve = {
+        { id = "repair", text = "Repair: your gear is at 20%", priority = 5 },
+        "x",
+        { id = "setup.keys", text = "Pick a key^now", priority = 0 },
+        { id = "no text" },
+    } })
+    t.eq(lines, {
+        "E^export^v=1", "E^you",
+        "E^improve^importance=5^id=repair^text=Repair: your gear is at 20%",
+        "E^improve^importance=0^id=setup.keys^text=Pick a key now",
+        "E^end^lines=5",
+    })
+end
+
+tests["export 368: the reads take experience, the hearthstone and the advice list"] = function(t)
+    local c = ns.make.fakeClient()
+    c.setXp({ cur = 300, max = 1200, rested = 0 })
+    c.setBindLocation("Dolanaar")
+    c.setHearthCooldown(60)
+    local r = X.Read(c, nil, function() return { { id = "a", text = "A", priority = 1 } } end)
+    t.eq(r.xp, { cur = 300, max = 1200, rested = 0 })
+    t.eq({ r.hearth, r.hearthLeft }, { "Dolanaar", 60 })
+    t.eq(r.improve, { { id = "a", text = "A", priority = 1 } })
+    r = X.Read(c, nil, function() error("advice failed (test)") end)
+    t.eq(r.improve, nil, "a raising list is no list")
+    t.eq(X.Read(c, nil).improve, nil)
+end
+
 local function start()
     local c = ns.make.fakeClient()
     c.setSaved(ns.id.accountDB, {})
@@ -85,6 +133,31 @@ tests["export module: /zflow export keeps the lines for this character and says 
     t.eq(saved.lines[3], "E^quest^id=7^complete=0^n=1^title=Wolves")
     t.eq(saved.lines[5], "E^skill^rank=40^max=75^name=Mining")
     t.ok(saved.lines ~= api.lines(), "a copy is saved")
+end
+
+tests["export 368 module: the advice panel's list is in the export when the panel is there"] = function(t)
+    local c = ns.make.fakeClient()
+    c.setSaved(ns.id.accountDB, {})
+    c.setSaved(ns.id.charDB, {})
+    c.setClass("DRUID")
+    c.setXp({ cur = 300, max = 1200, rested = 0 })
+    local addon = ns.offline.addon(c)
+    c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
+    c.advance(5, 20)
+    local advisor = addon.use(ns.Advisor.NAME)
+    t.ok(type(advisor) == "table" and type(advisor.Add) == "function", "the advice panel answers")
+    if not (type(advisor) == "table" and type(advisor.Add) == "function") then return end
+    advisor.Add("test.export", "Export test advice", 99)
+    c.slashes[ns.id.slash]("export")
+    local found, you
+    for _, l in ipairs(addon.export.lines() or {}) do
+        local rec = X.Parse(l)
+        if rec and rec.kind == "improve" and rec.id == "test.export" then found = rec end
+        if rec and rec.kind == "you" then you = rec end
+    end
+    t.eq(found and found.text, "Export test advice")
+    t.eq(found and found.importance, "99")
+    t.eq(you and you.xp, "300")
 end
 
 tests["export module: export dump also prints every line"] = function(t)
