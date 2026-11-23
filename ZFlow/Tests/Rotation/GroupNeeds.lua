@@ -257,6 +257,7 @@ tests["group needs step: everyone in need out of range: nothing, and the note sa
     t.ok(not tostring(note):find(NAME, 1, true) and not tostring(note):find(OTHER, 1, true), "no name in the note")
     s, trace = choose({ member("party1", nil, { [MOTW] = false }, { [MOTW] = false }) })
     step, note = lastNote(trace)
+    t.eq(step, "group", "one: the group step's note")
     t.eq(note, "Mark of the Wild for party1: missing, out of range", "one: no count")
     t.eq(s, nil)
 end
