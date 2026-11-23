@@ -86,11 +86,19 @@ local function said(c, from, text)
     return false
 end
 
-local function legacy()
-    return {
-        db = { flightTimes = { [HOME_POST .. ">" .. FAR_POST] = 150 }, flightRate = 30 },
-        char = { flights = legacyFlights() },
-    }
+-- The old add-on keeps a character's flight points per character
+-- (legacy Modules/Nav/Nav.lua:2712 PerCharacter("flights")): parked under
+-- its character table's data at logout (legacy Core.lua:226-232), and put
+-- back live at the account table's top while it is loaded (legacy
+-- Core.lua:197-206). Times and rate are account values. live = true: the
+-- second shape.
+local function legacy(live)
+    local db = { flightTimes = { [HOME_POST .. ">" .. FAR_POST] = 150 }, flightRate = 30 }
+    if live then
+        db.flights = legacyFlights()
+        return { db = db, char = { data = {} } }
+    end
+    return { db = db, char = { data = { flights = legacyFlights() } } }
 end
 
 local ROUTE = Flights.ROUTE and Flights.ROUTE:format(HOME_POST, FAR_POST, 20)
@@ -109,13 +117,22 @@ tests["travel visible: the old add-on's flights are copied once at load, and say
     local aFlights = type(account.learned) == "table" and account.learned.flights or {}
     t.eq(aFlights.times, { [HOME_POST .. ">" .. FAR_POST] = 150 }, "your own flight time")
     t.eq(aFlights.rate, 30, "your own flight rate")
-    t.eq(c.saved(ns.id.predecessorCharDB).flights, legacyFlights(), "the old data is not changed")
+    t.eq(c.saved(ns.id.predecessorCharDB).data.flights, legacyFlights(), "the old data is not changed")
 
     -- The old add-on is still on at the next load: no second copy, no line.
     local records = #(account.imports or {})
     local c2 = start({ account = copy(account), char = copy(char), flow = legacy() })
     t.eq(#(c2.saved(ns.id.accountDB).imports or {}), records, "no second import record")
     t.ok(not said(c2, 0, line), "nothing said again")
+end
+
+-- Fails before: nothing runs the import at load.
+tests["travel visible: the old add-on's live flights (it is loaded) are copied the same"] = function(t)
+    local c = start({ flow = legacy(true) })
+    local char = c.saved(ns.id.charDB)
+    local learned = type(char.learned) == "table" and char.learned.flights or {}
+    t.eq(learned.nodes, legacyFlights(), "both points copied into the character")
+    t.eq(c.saved(ns.id.predecessorDB).flights, legacyFlights(), "the old data is not changed")
 end
 
 -- Fails before: the import never ran, so no flight is known and no route
