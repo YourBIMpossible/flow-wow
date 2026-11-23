@@ -77,14 +77,8 @@ ns.KitTheme = {
         big = "GameFontNormalLarge",
     },
     art = {
-        frame = "ButtonFrameTemplate",
-        close = "UIPanelCloseButton",
-        button = "UIPanelButtonTemplate",
-        check = "UICheckButtonTemplate",
-        input = "InputBoxTemplate",
-        search = "SearchBoxTemplate",
-        scroll = "UIPanelScrollFrameTemplate",
-        tab = "PanelTabButtonTemplate",
+        -- Pictures only. The game's templates are named in Core/Client.lua
+        -- alone (its kitWindow), each keyed to its row of UI/Kit/Parts.lua.
         rowHighlight = "Interface\\QuestFrame\\UI-QuestTitleHighlight",
         topicHighlight = "Interface\\Buttons\\UI-Listbox-Highlight",
         iconBorder = "Interface\\Buttons\\UI-Quickslot2",
