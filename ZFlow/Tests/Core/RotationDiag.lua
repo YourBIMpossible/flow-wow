@@ -421,7 +421,9 @@ local function tick(c) c.advance(D.EVERY + 0.05, 1) end
 tests["rotation diag RD15: the slash command says the driver's line"] = function(t)
     local k, c = start(false)
     local head = ns.id.title .. ": rotation: "
-    t.eq(diag(c, head .. "switched off; nothing suggested."), 1, "off until switched on")
+    t.eq(k.settings:get(D.SETTING), true, "on by default (lead section 294)")
+    k.settings:set(D.SETTING, false)
+    t.eq(diag(c, head .. "switched off; nothing suggested."), 1, "a saved off: switched off")
     t.eq(said(c, "rotation: "), 1, "one rotation line while nothing is held")
     k.settings:set(D.SETTING, true)
     t.eq(diag(c, head .. "no reading yet."), 1, "switched on, before the first tick")

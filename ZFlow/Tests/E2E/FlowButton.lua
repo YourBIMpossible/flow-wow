@@ -126,6 +126,16 @@ local function reload(c, opts)
     return start(opts)
 end
 
+-- The rotation is on by default (lead sections 293 and 294). A profile the
+-- player switched off: boot once, switch it off, then start again from what
+-- was saved, so nothing from the first boot is counted.
+local function startOff(opts)
+    local c, addon = start(opts)
+    addon.settings:set(D.SETTING, false)
+    c.advance(3, 5)
+    return reload(c, opts)
+end
+
 -- The settings page, as the player uses it.
 local function open(c)
     c.slashes[ns.id.slash]("settings")
@@ -154,7 +164,21 @@ end
 tests["flow button: made and shown at a default boot, its setting on by default"] = function(t)
     t.ok(type(FB) == "table", "the module is there")
     if type(FB) ~= "table" then return end
-    local c, addon = start()
+    do
+        -- Default boot: the rotation is on by default, so the button
+        -- already holds the planned spell and shows its icon.
+        local c0, addon0 = start()
+        t.eq(addon0.settings:get(D.SETTING), true, "the rotation is on by default")
+        local h0 = rowOf(c0, FLOW)
+        t.ok(h0 ~= nil, "default boot: the Flow button was made")
+        if h0 then
+            t.eq(h0.shown, true, "default boot: on screen")
+            t.eq({ h0.slots[1].attrs.type, h0.slots[1].attrs.spell }, { "spell", "Power Word: Fortitude" }, "default boot: the click casts the planned spell")
+            t.eq(empty(c0, FLOW), false, "default boot: the face shows the icon")
+        end
+        noBindsNoMacros(t, c0)
+    end
+    local c, addon = startOff()
     local row = addon.settings:row(FB.SETTING)
     t.ok(row ~= nil, "a settings row")
     if row then t.eq({ row.scope, row.type, row.default }, { "char", "bool", true }) end
@@ -179,7 +203,7 @@ tests["flow button: made and shown at a default boot, its setting on by default"
     t.eq(empty(c, SELF), true, "the plain empty face")
     local selfLine = tip(c, SELF)
     t.ok(type(selfLine) == "string" and selfLine:find("rotation is off", 1, true) ~= nil, "its tooltip says what is missing: " .. tostring(selfLine))
-    t.eq(castGiven(c), 0, "no type, spell or item written at a default profile")
+    t.eq(castGiven(c), 0, "no type, spell or item written while the rotation is off")
     noBindsNoMacros(t, c)
 end
 
@@ -248,9 +272,9 @@ tests["flow and self buttons: moved by a grip only, never a drag on the secure b
         t.ok(c.moveHandles[name] ~= nil, name .. ": a grip moves it")
     end
     noBindsNoMacros(t, c)
-    local d = start()
-    t.eq(castGiven(d), 0, "a default profile still writes no cast")
-    t.ok(d.moveHandles[FLOW] ~= nil, "a default profile: the grip is there too")
+    local d = startOff()
+    t.eq(castGiven(d), 0, "a profile with the rotation off writes no cast")
+    t.ok(d.moveHandles[FLOW] ~= nil, "the rotation off: the grip is there too")
 end
 
 tests["flow button: a reload keeps its place and the key the player bound"] = function(t)
