@@ -34,6 +34,8 @@ local _, ns = ...
 --   targetDebuffs { [name] = true }                  yours, on the target
 --   debuffTypes   { [type] = debuffName }            on you ("Poison", "Curse")
 --   current       { [spell] = true or false }        queued or toggled on (Attack, Maul)
+--   conjured      { [conjure spell] = count }        what it makes, in your bags
+--                                                    (Snapshot.lua R.Conjured)
 --     each of the four maps is nil when not read: a rule that needs one
 --       does not fire on nil (section 183). An empty map is read, nothing there.
 --   spells        { [name] = { known, usable, onCooldown, inRange, noPower, castMs } }

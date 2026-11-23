@@ -964,6 +964,7 @@ Diag.READ_WORDS = {
     formKnown = "which form you are in",
     buffs = "your buffs",
     targetDebuffs = "your debuffs on the target",
+    conjured = "your conjured food and water",
 }
 
 -- The pack's reads that came back not known, as one list of words, or nil.

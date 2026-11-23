@@ -171,5 +171,6 @@ return {
     "Items/Trader.lua",
     "Nav/Try.lua",
     { "Core/Capture.lua", dev = true },
+    "Classes/Mage.lua",
     },
 }
