@@ -58,6 +58,11 @@ local READS = {
 
     -- P-SETS: what is worn, read by the set word only.
     wornLinks = false,
+
+    -- P-PARTY: your group, a spell's reach to one of them, and the debuff
+    -- types on you or one of them; read by the rotation only. Their names
+    -- (UnitIsConnected and the rest) are in Diag.NAMES, which the capture asks.
+    party = false, reach = false, unitDebuffTypes = false,
 }
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).

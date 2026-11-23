@@ -278,4 +278,24 @@ return {
         t.eq(r.header[1], { attr = "key-0", value = "Wrath" }, "the caster key in the header")
         t.eq(r.driver.condition, kp.condition, "condition carried")
     end,
+
+    -- P-PARTY: a suggestion for another player is only shown (look = true,
+    -- Rotation/Group.lua). The key holds exactly what it holds with no
+    -- suggestion: the member's buff is never cast, on them or on you.
+    ["attributes: a look-only suggestion is never put on the key"] = function(t)
+        for _, kind in ipairs({ "group", "buff", "heal" }) do
+            local s = { spell = "Mark of the Wild", kind = kind, look = true, unit = "party1", member = "Fennimore" }
+            for _, form in ipairs({ 0, 3 }) do
+                local r = ns.cast.Attributes(s, plan(), nil, false, form)
+                t.eq(r, ns.cast.Attributes(nil, plan(), nil, false, form), kind .. ", form " .. form .. ": as with none")
+                t.eq(r.source, "plan", kind .. ": the plan's spell")
+                for _, a in ipairs(r.button) do
+                    t.ok(a.value ~= "Mark of the Wild" and a.value ~= "party1",
+                        kind .. ": nothing of the suggestion on " .. a.attr)
+                end
+            end
+        end
+        local r = ns.cast.Attributes({ spell = "Mark of the Wild", kind = "buff", look = false }, plan(), nil, false)
+        t.eq(r.spell, "Mark of the Wild", "look = false is an ordinary suggestion")
+    end,
 }

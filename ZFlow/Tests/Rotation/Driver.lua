@@ -459,8 +459,11 @@ tests["rotation driver RD11: a step presses nothing and asks only its fourteen r
         -- client has none, so the look is all there is and no bag is read.
         -- P-GATHER: the same for the tracking and profession reads.
         -- GT-1, GT-2: and the gather guards' reads (any tracking, mounted, on a flight).
-        t.eq(other, { "bagItems", "mounted", "onTaxi", "tracking", "tracking", "professions", "anyTracking", "ownBuffs" },
-            "nothing else asked of the client but the bag, tracking, profession and gather-guard reads it lacks")
+        -- P-PARTY: the curses and poisons on you (unitDebuffTypes, at the
+        -- debuffTypes field) and your group (party, at the party field).
+        t.eq(other, { "unitDebuffTypes", "bagItems", "mounted", "onTaxi", "tracking", "tracking", "professions",
+            "anyTracking", "ownBuffs", "party" },
+            "nothing else asked of the client but the debuff, bag, tracking, profession, gather-guard and group reads it lacks")
         local names = {}
         for name in pairs(calls) do names[#names + 1] = name end
         table.sort(names)
@@ -623,6 +626,50 @@ tests["rotation driver RD11: the plan is never taken as applied"] = function(t)
     tick(c)
     -- Nothing was bound, so the second tick still has every key to set.
     t.eq(api.view().keys.ops, { { op = "set", state = 0, slot = "key", spell = "Wrath" } })
+end
+
+-- P-PARTY flag (a) ------------------------------------------------------
+-- The curses and poisons on you, by type: client.unitDebuffTypes("player").
+-- Nothing served this field before, so the dispel step (Choose.lua, on
+-- yourself, out of a fight) could never fire in the game.
+
+local function cursed(class, spell, id, debuffs)
+    local c = ns.make.fakeClient()
+    c.setDead(false); c.setCombat(false); c.setClass(class); c.setFormName(nil, true)
+    c.setTarget({ exists = false })
+    c.setSpellId(spell, id); c.setSpell(id, { known = true, usable = true }); c.setSpellCooldown(id, false)
+    c.setUnitDebuffs("player", debuffs)
+    return c
+end
+
+tests["rotation driver: the read gives your debuff types from the client, nil when not known"] = function(t)
+    local c = cursed("PALADIN", "Cleanse", 4987, { Poison = "Made-up Venom" })
+    local read = D.Read(c, ns.Packs.PALADIN, { Cleanse = 4987 })
+    t.eq(read("debuffTypes"), { Poison = "Made-up Venom" })
+    c.setUnitDebuffs("player", nil)
+    t.eq(read("debuffTypes"), nil, "the client does not say: not known")
+    t.eq(D.Read({}, ns.Packs.PALADIN, {})("debuffTypes"), nil, "no such read: nil")
+    local asked
+    local stubbed = { unitDebuffTypes = function(unit) asked = unit error("broke") end }
+    t.eq(D.Read(stubbed, ns.Packs.PALADIN, {})("debuffTypes"), nil, "a read that raises: nil")
+    t.eq(asked, "player", "asked about you only")
+end
+
+tests["rotation driver: a poison on you: Cleanse on yourself, out of a fight"] = function(t)
+    local v = D.Step(cursed("PALADIN", "Cleanse", 4987, { Poison = "Made-up Venom" }), ns.Packs.PALADIN)
+    local s = v.suggestion
+    t.eq(s and { s.step, s.spell, s.unit } or nil, { "dispel", "Cleanse", "player" })
+    t.eq(v.snapshot.debuffTypes, { Poison = "Made-up Venom" })
+    local fight = cursed("PALADIN", "Cleanse", 4987, { Poison = "Made-up Venom" })
+    fight.setCombat(true)
+    local inFight = D.Step(fight, ns.Packs.PALADIN).suggestion
+    t.ok(inFight == nil or inFight.step ~= "dispel", "in a fight: no dispel")
+end
+
+tests["rotation driver: a curse on a caster druid: Remove Curse on yourself"] = function(t)
+    local v = D.Step(cursed("DRUID", "Remove Curse", 2782, { Curse = "Made-up Hex" }), ns.Packs.DRUID)
+    local s = v.suggestion
+    t.eq(s and { s.step, s.spell, s.unit } or nil, { "dispel", "Remove Curse", "player" })
 end
 
 -- RD12 ----------------------------------------------------------------
