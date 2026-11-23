@@ -173,8 +173,10 @@ end
 --   * the client's raw call into the game's names (c.raw over the fake's
 --     env): each acting game function is put in the env and counts its calls;
 --   * a client function: none acts today. One named for each act is put on
---     the client and counts its calls, and any other name the add-on looks up
---     on the client that names an act is noted (a lookup hook on the client).
+--     the client and counts its calls; so does every function already on the
+--     client whose name holds an acting word (MyBuddy ST-8: one ClientFake
+--     gains later is counted too); and any other name the add-on looks up on
+--     the client that names an act is noted (a lookup hook on the client).
 local ACTING_GAME = { "UseContainerItem", "PickupContainerItem", "SplitContainerItem", "SellCursorItem",
     "ShowMerchantSellCursor", "BuyMerchantItem", "BuybackItem", "PickupMerchantItem", "RepairAllItems",
     "DeleteCursorItem", "PickupItem", "UseItemByName", "EquipItemByName", "PlaceAuctionBid", "PostAuction",
@@ -184,6 +186,15 @@ local ACTING_CLIENT = { "useContainerItem", "pickupContainerItem", "splitContain
     "useItem", "postAuction", "placeBid", "deposit", "withdraw" }
 local ACTING_WORDS = { "sell", "buy", "pickup", "usecontainer", "useitem", "split", "delete", "deposit",
     "withdraw", "bid", "postauction", "repairall", "cursor" }
+
+-- Whether a name holds one of the acting words, in any case.
+local function acting(name)
+    local low = name:lower()
+    for _, word in ipairs(ACTING_WORDS) do
+        if low:find(word, 1, true) then return true end
+    end
+    return false
+end
 
 tests["sell reservations: look only - no acting call from any path, stubbed before the add-on is built"] = function(t)
     local called, looked = {}, {}
@@ -202,15 +213,16 @@ tests["sell reservations: look only - no acting call from any path, stubbed befo
         -- counted too; the check after the run calls it to prove that.
         c.zzSellAllJunk = function() end
         for _, name in ipairs(ACTING_CLIENT) do c[name] = record("client." .. name) end
-        setmetatable(c, { __index = function(_, name)
-            if type(name) ~= "string" then return nil end
-            local low = name:lower()
-            for _, word in ipairs(ACTING_WORDS) do
-                if low:find(word, 1, true) then
-                    looked[#looked + 1] = name
-                    return nil
-                end
+        -- Every function already on the client whose name holds an acting
+        -- word is counted as well, whatever list it is in (ST-8). Only keys
+        -- already there are set inside the walk, which Lua allows.
+        for name, value in pairs(c) do
+            if type(name) == "string" and type(value) == "function" and acting(name) then
+                c[name] = record("client." .. name)
             end
+        end
+        setmetatable(c, { __index = function(_, name)
+            if type(name) == "string" and acting(name) then looked[#looked + 1] = name end
             return nil
         end })
     end
