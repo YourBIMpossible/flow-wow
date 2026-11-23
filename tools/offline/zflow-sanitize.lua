@@ -22,12 +22,17 @@
 --   character  Character1, Character2 ...   realm    Realm1 ...
 --   guild      Guild1 ...                    account  ACCOUNT1 ...
 --   chat       chat text 1 ...               mail     mail text 1 ...
+--   free text  text 1 ...
 -- "Name-Realm" (a character with its realm) becomes "Character1-Realm1";
 -- "Realm-Faction" (the auction price keys) becomes "Realm1-Alliance".
--- Text the schema marks "free" (error lines, log lines the add-on writes)
--- is kept, with every name found anywhere in the capture replaced inside
--- it. A name that is only ever in free text cannot be told from the other
--- words; the schema marks text free only where the add-on writes it.
+-- Text the schema marks "free" (error lines, log lines, labels, export
+-- lines, keys of the open-ended tables) is replaced whole by a made-up
+-- "text 1", "text 2" ... (the same text, the same made-up one), unless it
+-- holds no letter at all (numbers, times, versions such as 1.16.1), which
+-- is kept. Section 190: a name that is only ever in free text cannot be
+-- told from the other words, and a name of one or two letters cannot be
+-- found in text without breaking ordinary words, so free text is not
+-- searched for names; it is not kept.
 --
 -- Exit code: 0 = written, 1 = refused (a field, type or global the schema
 -- does not know), 2 = could not run (bad arguments, no capture, not
@@ -219,7 +224,13 @@ end
 --   "charRealm"                   "Name-Realm", both halves replaced
 --   "realmFaction"                "Realm-Faction", the realm replaced, the
 --                                 faction (after the last "-") kept
---   "free"                        kept, every known name inside replaced
+--   "free"                        replaced whole ("text 1" ...), unless
+--                                 it holds no letter: then kept
+--   "fieldKey"                    a key of an open table: kept when it is
+--                                 a lower-case-first ASCII word (an add-on
+--                                 field such as money or lastSeen; a
+--                                 character or realm name always starts
+--                                 with a capital), else as "free"
 --   "nothing"                     never saved: refused when present
 --   { fields = { key = spec }, open = spec }   a table with these text
 --                                 keys; open: any other key, of that spec
@@ -230,7 +241,7 @@ end
 
 local NAME_KINDS = {
     char = "Character", realm = "Realm", guild = "Guild", account = "ACCOUNT",
-    chat = "chat text ", mail = "mail text ",
+    chat = "chat text ", mail = "mail text ", free = "text ",
 }
 S.NAME_KINDS = NAME_KINDS
 
@@ -282,37 +293,12 @@ local function isList(t)
     return n == #t
 end
 
--- S.scrub(run, text) -> text with every name the run knows replaced, as
--- plain text (no patterns), in one pass from the left: at each place the
--- longest name that starts there wins, and a made-up name put in is never
--- looked at again. Names shorter than three letters are left: they would
--- break ordinary words.
-function S.scrub(run, text)
-    local all = {}
-    for _, map in pairs(run.names) do
-        for real, fake in pairs(map) do
-            if #real >= 3 then all[#all + 1] = { real, fake } end
-        end
-    end
-    table.sort(all, function(a, b)
-        if #a[1] ~= #b[1] then return #a[1] > #b[1] end
-        return a[1] < b[1]
-    end)
-    local out, from = {}, 1
-    while true do
-        local bestS, best
-        for _, pair in ipairs(all) do
-            local s = text:find(pair[1], from, true)
-            -- Longest first: a later pair wins only by starting earlier.
-            if s and (bestS == nil or s < bestS) then bestS, best = s, pair end
-        end
-        if not bestS then break end
-        out[#out + 1] = text:sub(from, bestS - 1)
-        out[#out + 1] = best[2]
-        from = bestS + #best[1]
-    end
-    out[#out + 1] = text:sub(from)
-    return table.concat(out)
+-- S.free(run, text) -> text kept when it holds only digits, ASCII
+-- punctuation and spaces (no letter, so no name: any byte above 127 counts
+-- as a letter); else its made-up "text N".
+function S.free(run, text)
+    if text:match("^[%d%p%s]*$") then return text end
+    return madeUp(run, "free", text)
 end
 
 local function fits(spec, v)
@@ -335,13 +321,16 @@ local function leaf(run, spec, v, path, copy)
     end
     if tv ~= "string" then refuse(path, "a " .. tv .. " where text is saved") end
     if spec == "str" then return v end
+    -- Before the name kinds: "free" is one of them, but text with no
+    -- letter is kept.
+    if spec == "free" then return S.free(run, v) end
+    if spec == "fieldKey" then
+        if v:match("^%l[%w_]*$") then return v end
+        return S.free(run, v)
+    end
     if NAME_KINDS[spec] then return madeUp(run, spec, v) end
     if spec == "charRealm" then return charRealm(run, v) end
     if spec == "realmFaction" then return realmFaction(run, v) end
-    if spec == "free" then
-        if not copy then return v end
-        return S.scrub(run, v)
-    end
     refuse(path, "a schema kind the sanitizer does not know")
 end
 
@@ -386,8 +375,8 @@ end
 
 -- S.sanitize(globals, order, schema) -> copy, run   (raises { sanitize, msg })
 --   schema.globals[name] is the spec of that saved table; any other global
---   is refused. Pass one finds every name; pass two copies, so free text
---   early in the walk is scrubbed of names found later.
+--   is refused. Pass one finds every name and numbers them; pass two
+--   copies with the numbers pass one gave.
 function S.sanitize(globals, order, schema)
     for _, name in ipairs(order) do
         if not schema.globals[name] then refuse("<global>", "a global the schema does not know") end
@@ -402,7 +391,7 @@ end
 -- S.texts(texts, schema) -> { sanitized text, ... }, or nil, kind, message
 --   The files of one capture (ZFlow.lua and the character file), sanitized
 --   in one run: a name gets the same made-up name in every file, and free
---   text in one file is scrubbed of names found in another. A global saved
+--   text gets the same made-up text in every file. A global saved
 --   in two files is refused.
 --   kind: "parse" (not saved-variables data), "refuse" (the schema), "bug"
 function S.texts(texts, schema)
