@@ -4157,8 +4157,11 @@ function ns.make.client(env)
                         local ux = 40
                         if r.jump ~= nil then
                             local to = r.jump
+                            -- jumpKind "open": the row's own window, not a topic.
+                            local how = "topic"
+                            if r.jumpKind == "open" then how = "open" end
                             button(b, tostring(r.jumpText or ">"), 40, y - 22, 90, function()
-                                if type(nav) == "function" then pcall(nav, "topic", to) end
+                                if type(nav) == "function" then pcall(nav, how, to) end
                             end, false, true)
                             ux = 136
                         end
@@ -6488,6 +6491,91 @@ function ns.make.client(env)
         return nil
     end
     -- ------------------------------------------------------------ end N55
+
+    -- ------------------------------------------------- text entry (N73)
+    -- c.textEntry(spec) -> h, or nil when the client cannot make one. A
+    -- small plain frame with a line of words and ONE edit box, for a line
+    -- the player types (UI/Feedback.lua). spec = { name = global frame
+    -- name or nil, width }. A new one is hidden.
+    --   h.ask(words, text, fn)  shows it with `words` above the box and
+    --                           `text` in it; fn(typed) is told once, when
+    --                           the player presses Enter, after it is hidden
+    --   h.show(false)           hides it; nothing is told
+    --   h.shown() -> true while it is on the screen
+    -- Escape hides it and tells nothing. As the copy box, it never takes
+    -- the keyboard by itself (auto-focus off: the player clicks in the box)
+    -- and gives focus back whenever it is hidden; a client that will not
+    -- turn auto-focus off gets none. It is a plain Frame and EditBox: no
+    -- secure template, no attribute, nothing of the game's is opened, and
+    -- what is typed goes only to fn. A first guess, not seen in game; every
+    -- name is one the copy box and the Options page already use
+    -- (CreateFrame, InputBoxTemplate, SetAutoFocus, OnEnterPressed,
+    -- OnEscapePressed, SetColorTexture).
+    function c.textEntry(spec)
+        spec = type(spec) == "table" and spec or {}
+        local name = spec.name
+        if type(name) ~= "string" or name == "" or env[name] ~= nil then name = nil end
+        local ok, f = call(env.CreateFrame, "Frame", name, env.UIParent)
+        if not ok or f == nil then return nil end
+        method(f, "Hide")
+        local width = tonumber(spec.width) or 420
+        method(f, "SetSize", width, 70)
+        method(f, "SetPoint", "CENTER", env.UIParent, "CENTER", 0, 140)
+        method(f, "SetFrameStrata", "DIALOG")
+        method(f, "EnableMouse", true)
+        local okB, back = method(f, "CreateTexture", nil, "BACKGROUND")
+        if okB and back ~= nil then
+            method(back, "SetAllPoints", f)
+            method(back, "SetColorTexture", 0.05, 0.05, 0.05, 0.92)
+        end
+        local okT, title = method(f, "CreateFontString", nil, "OVERLAY", "GameFontNormal")
+        if not okT then title = nil end
+        if title ~= nil then method(title, "SetPoint", "TOPLEFT", f, "TOPLEFT", 12, -10) end
+        local okE, edit = call(env.CreateFrame, "EditBox", nil, f, "InputBoxTemplate")
+        if not okE or edit == nil then return nil end
+        if not method(edit, "SetAutoFocus", false) then return nil end
+        method(edit, "SetSize", width - 32, 20)
+        method(edit, "SetPoint", "TOPLEFT", f, "TOPLEFT", 18, -36)
+
+        local h, told = {}, nil
+        local function close()
+            method(edit, "ClearFocus")
+            method(f, "Hide")
+        end
+        method(edit, "SetScript", "OnEnterPressed", function(self)
+            local okG, typed = method(self, "GetText")
+            local fn = told
+            told = nil
+            close()
+            if fn and okG and type(typed) == "string" and not hidden(typed) then pcall(fn, typed) end
+        end)
+        method(edit, "SetScript", "OnEscapePressed", function()
+            told = nil
+            close()
+        end)
+        method(f, "SetScript", "OnHide", function() method(edit, "ClearFocus") end)
+        function h.ask(words, text, fn)
+            told = nil
+            if type(fn) == "function" then told = fn end
+            local shownWords, shownText = "", ""
+            if type(words) == "string" then shownWords = words end
+            if type(text) == "string" then shownText = text end
+            if title ~= nil then method(title, "SetText", shownWords) end
+            method(edit, "SetText", shownText)
+            method(f, "Show")
+        end
+        function h.show(on)
+            if on then return end
+            told = nil
+            close()
+        end
+        function h.shown()
+            local okV, on = method(f, "IsVisible")
+            return okV and on == true
+        end
+        return h
+    end
+    -- --------------------------------------------- end text entry
     return c
 end
 

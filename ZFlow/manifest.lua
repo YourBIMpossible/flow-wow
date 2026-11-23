@@ -163,6 +163,7 @@ return {
         "UI/Intro.lua",
         "UI/WindowButtons.lua",
         "UI/ArrowMenu.lua",
+        "UI/Feedback.lua",
         "UI/SellList.lua",
         "UI/BankList.lua",
         "UI/CraftBar.lua",

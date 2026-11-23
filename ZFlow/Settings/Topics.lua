@@ -13,6 +13,9 @@ local _, ns = ...
 --   synonyms = { "sell", "junk" }   more words the search finds it by
 --   needs = "rotation.enabled"      the row (or rows) its `requires` leans
 --                                   on, named when it cannot be set
+--   open = { text = "Write feedback", run = function() ... end }
+--                                   a button beside the row on the settings
+--                                   page that opens the row's own window
 -- Neither is stored and neither changes what the row holds.
 --
 -- To add a topic or a section: add it here. The page, the search, the menu
@@ -68,6 +71,7 @@ T.MENU = {
     style = "Style",
     back = "Back",
     settings = "All settings",
+    feedback = "Feedback",
     topicSettings = " settings",
 }
 -- The most rows one level of any menu may hold, headings, dividers and the
