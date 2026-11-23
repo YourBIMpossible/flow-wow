@@ -19,6 +19,8 @@ local function start(opts)
     if opts.facing ~= false then c.setFacing(opts.facing or 0) end
     if opts.noFrames then c.setFrames(false) end
     local k = ns.Kernel({}, c)
+    -- The profession step is its own module behind nav.profArrow (N25).
+    N.ProfStepDeclare(k)
     local d = ns.Diag.Start(k)
     local a = A.Start(k, d)
     k:Boot()

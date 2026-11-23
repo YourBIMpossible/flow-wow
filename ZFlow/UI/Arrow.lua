@@ -604,7 +604,14 @@ function Arrow.Start(k, diag, own)
                     end
                 end
             end
-            local prof = N.ProfStepFrom(client, k.store)
+            -- The profession step (Nav/ProfStep.lua), behind its module:
+            -- with nav.profArrow off it gives none.
+            local profStep = k.use and k.use(N.PROF_STEP)
+            local prof = nil
+            if profStep and type(profStep.Step) == "function" then
+                local okProf, got = pcall(profStep.Step)
+                if okProf then prof = got end
+            end
             guide = (step or prof) and { quest = step, prof = prof } or nil
         end
         if type(guide) ~= "table" then

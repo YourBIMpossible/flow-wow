@@ -54,6 +54,13 @@ local _, ns = ...
 --
 -- N.ProfStepFrom(client, store) -> the same, read from the client and the
 -- three saved tables. It writes nothing; a read that fails is "not known".
+--
+-- Module (lead section 279 item 2, N25): N.ProfStepDeclare(k) -> api;
+--   ns.use(N.PROF_STEP) -> { Step = api.step }, the step above or nil.
+-- Setting "nav.profArrow" (account, bool, default true): false gives no
+-- profession step, so the arrow shows no profession needle and says no
+-- trainer. Flow's nav.profArrow lands here on import (Import/FromFlow.lua).
+-- The row is declared here, by the module that reads it. Look only.
 ns.Nav = ns.Nav or {}
 local N = ns.Nav
 
@@ -216,3 +223,40 @@ function N.ProfStepFrom(client, store)
             mapSize = function(map) return ask(client, "mapSize", map) end,
         })
 end
+
+N.PROF_STEP = "profStep"
+N.PROF_SETTING = "nav.profArrow"
+
+function N.ProfStepDeclare(k)
+    local api = {}
+    local ctx
+
+    -- Off only when the setting says false; a read that fails is not off.
+    local function off()
+        if not ctx or type(ctx.settings) ~= "table" or type(ctx.settings.get) ~= "function" then return false end
+        local ok, v = pcall(ctx.settings.get, ctx.settings, N.PROF_SETTING)
+        return ok and v == false
+    end
+
+    function api.step()
+        if not ctx or off() then return nil end
+        return N.ProfStepFrom(ctx.client, ctx.store)
+    end
+
+    k:Setting({ key = N.PROF_SETTING, scope = "account", type = "bool", default = true,
+        label = "Profession trainer arrow", group = "travel.arrow",
+        synonyms = { "profession", "trainer", "arrow", "needle", "skill cap" } })
+
+    k:Module({
+        name = N.PROF_STEP,
+        needs = { "client", "store", "settings" },
+        provides = { Step = api.step },
+        start = function(c)
+            ctx = c
+        end,
+    })
+    return api
+end
+
+-- The addon's own: declared when this file loads.
+ns.profStep = N.ProfStepDeclare(ns)
