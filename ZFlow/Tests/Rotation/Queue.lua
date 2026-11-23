@@ -39,6 +39,15 @@ tests["queue row: stealthed in the stealth form takes the stealth row"] = functi
     t.eq(Q.Row({ states = { [3] = cat } }, 3, true, 3), cat, "no stealth row: the form row")
 end
 
+tests["queue row: a stealth row with no form holds in any form"] = function(t)
+    local none, sneak = { key = "Sinister Strike" }, { key = "Ambush" }
+    local plan = { states = { [0] = none, [R.STEALTH_STATE] = sneak } }
+    t.eq(Q.Row(plan, 0, true, 0), sneak, "stealthed, no form")
+    t.eq(Q.Row({ states = { [0] = none, [1] = none, [R.STEALTH_STATE] = sneak } }, 1, true, 0), sneak, "stealthed in a form")
+    t.eq(Q.Row(plan, 0, false, 0), none, "not stealthed")
+    t.eq(Q.Row(plan, 0, nil, 0), none, "stealth not known is not stealthed")
+end
+
 tests["queue: nothing is drawn twice"] = function(t)
     t.eq(Q.NoRepeats(row()),
         { shift = "Moonfire", ctrl = "Starfire", alt = "Rejuvenation", more = "Entangling Roots" })
