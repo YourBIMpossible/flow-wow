@@ -98,4 +98,29 @@ tests["SG-R2: after the settings regrouping every legacy settings key lands on t
     end
 end
 
+-- Lead section 258. Flow kept rotation.enabled in its account table
+-- (FlowDB): Flow's Core.lua:109-121 keeps only the paths named by
+-- ns:PerCharacter per character, and Flow names rotation.heals and
+-- rotation.mobs (Modules/Rotation/Tracker.lua:235, :240), never
+-- rotation.enabled. Z-Flow declares it per character (Rotation/Driver.lua
+-- D.SETTING, scope "char"). The import carries the account-wide choice
+-- into the importing character's settings; the declared scope stays.
+-- Fails before: the mapping put it in the account data, where the
+-- character's row never reads it.
+tests["SG-R2: Flow's account-wide rotation.enabled lands in this character's settings, where the row reads it"] = function(t)
+    local _, first = boot()
+    local result = first.Import.FromFlow({ rotation = { enabled = true, panicPct = 35 } }, {})
+    t.eq(result.ok, true)
+    local charRotation = type(result.char.settings) == "table" and result.char.settings.rotation or {}
+    local accountRotation = type(result.account.settings) == "table" and result.account.settings.rotation or {}
+    t.eq(charRotation.enabled, true, "on, in the character's settings")
+    t.eq(accountRotation.enabled, nil, "not in the account's")
+    t.eq(accountRotation.panicPct, 35, "its neighbours stay account-wide")
+
+    local account, char = first.Import.Merge({}, {}, result, nil, {}, first.Settings.Model.Default())
+    local _, second = boot(account, char)
+    t.eq(second.settings:row("rotation.enabled").scope, "char", "the declared scope is unchanged")
+    t.eq(second.settings:get("rotation.enabled"), true, "and the add-on reads it on")
+end
+
 return tests
