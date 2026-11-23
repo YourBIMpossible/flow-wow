@@ -58,7 +58,8 @@ tests["trip list: own trip times change the order and the label"] = function(t)
     local list = { stop("A", 1, 0.6, 0.5), stop("B", 1, 0.4, 0.5) }
     -- A trip to A takes long (a wall), to B is quick.
     local function legs(a, b)
-        if b.x > 550 and a.x == 500 then return 900, "exact" end
+        if a.x == 500 and b.x > 550 then return 900, "exact" end
+        if a.x == 500 and b.x < 450 then return 100, "exact" end
         return nil
     end
     local ordered, label = P().Order(list, HERE, legs)

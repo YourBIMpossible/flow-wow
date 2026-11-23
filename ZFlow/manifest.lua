@@ -266,5 +266,7 @@ return {
     "UI/Chat.lua",
     -- G48 (P-TRIP): the party route over add-on messages (after TripRoute).
     "Nav/PartyRoute.lua",
+    -- P-TRIP slice 1: the trip list of stops for the route (after TripRoute, Errand, DungeonRead).
+    "Nav/Trip.lua",
     },
 }
