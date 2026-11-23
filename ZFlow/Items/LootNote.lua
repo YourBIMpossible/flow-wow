@@ -127,7 +127,8 @@ function LootNote.FromItem(client, store, item, count, r)
     if type(r) ~= "table" or r.status == R.UNAVAILABLE then return nil end
     local read = client.itemInfo
     local text = LootNote.Note(item, count, type(read) == "function" and read or nil,
-        { choices = { never = neverOf(store) }, grants = R.HeldIn(R.Grants(r), "bags") })
+        { choices = { never = neverOf(store) }, grants = R.HeldIn(R.Grants(r), "bags"),
+          sets = ns.GearSets and ns.GearSets.Facts(store) or nil })   -- P-SETS: set pieces kept
     if not text then return nil end
     return text, ns.Items.Key(item)
 end

@@ -5761,6 +5761,28 @@ function ns.make.client(env)
         return out
     end
     -- ------------------------------------------------------- end pet state
+
+    -- ------------------------------------------------ worn links (P-SETS)
+    -- c.wornLinks() -> { [slot] = link } for inventory slots 1..19, or nil
+    -- Read only (Gear/Sets.lua saves a set from it). An empty slot is left
+    -- out. nil means not known, never "nothing worn": GetInventoryItemLink
+    -- is missing, raised for a slot, or gave a secret or non-text answer.
+    -- A first guess, not seen in game on 16001 (Flow's Modules/Gear/Sets.lua
+    -- saveWorn reads the same call for slots 1..19).
+    function c.wornLinks()
+        if type(env.GetInventoryItemLink) ~= "function" then return nil end
+        local out = {}
+        for slot = 1, 19 do
+            local ok, link = call(env.GetInventoryItemLink, "player", slot)
+            if not ok then return nil end
+            if link ~= nil then
+                if hidden(link) or type(link) ~= "string" then return nil end
+                if link ~= "" then out[slot] = link end
+            end
+        end
+        return out
+    end
+    -- --------------------------------------------------- end worn links
     return c
 end
 

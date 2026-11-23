@@ -51,6 +51,8 @@ local READS = {
     targetDebuffs = true, formName = true, currentSpell = true, taxiNodes = true,
     -- Lead section 197: the pet state the rotation reads.
     pet = true,
+    -- P-SETS: what is worn, read by the set word only.
+    wornLinks = false,
 }
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).

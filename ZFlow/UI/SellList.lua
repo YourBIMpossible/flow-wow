@@ -114,6 +114,8 @@ function SellList.Lines(client, store, grants, r)
         and store:get("account", SellList.PRICES_PATH) or nil
     local context = { choices = SellList.Choices(store), book = type(book) == "table" and book or nil,
         grants = grants }
+    -- P-SETS: saved gear set pieces are kept (Disposition's inSet).
+    context.sets = ns.GearSets and ns.GearSets.Facts(store) or nil
     local kept = ns.SellView.Kept(bag, context)
     -- An evaluation that is missing or not a table is unavailable too
     -- (MyBuddy SR-3): no sell advice without reservations that can be trusted.

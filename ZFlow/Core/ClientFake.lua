@@ -1835,6 +1835,19 @@ function ns.make.fakeClient(opts)
         for k, v in pairs(s.pet) do out[k] = v end
         return out
     end
+    -- Worn links (P-SETS), as the real client's wornLinks(): { [slot] =
+    -- link } from what setWorn was given (a link worn; false or nil: none
+    -- there). nil (not known) until setWorn is called, or after
+    -- setWornUnread(true).
+    function c.wornLinks()
+        if s.wornUnread or type(s.worn) ~= "table" then return nil end
+        local out = {}
+        for slot, link in pairs(s.worn) do
+            if type(link) == "string" and link ~= "" then out[slot] = link end
+        end
+        return out
+    end
+    function c.setWornUnread(on) s.wornUnread = on and true or nil end
     return c
 end
 
