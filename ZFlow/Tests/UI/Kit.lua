@@ -264,7 +264,7 @@ return {
         p, w, h = K.Place(nil, tree)
         t.eq({ p, w, h }, { K.POINT, K.WIDTH, K.HEIGHT })
         local fixed = K.Window({ id = "F", title = "F", children = {} })
-        p, w, h = K.Place({ point = { "CENTER", "CENTER", 1, 2 }, width = 500, height = 360 }, fixed)
+        _, w, h = K.Place({ point = { "CENTER", "CENTER", 1, 2 }, width = 500, height = 360 }, fixed)
         t.eq({ w, h }, { K.WIDTH, K.HEIGHT }, "a window that cannot be resized keeps its size")
     end,
 }
