@@ -40,7 +40,7 @@ local READS = {
     ghost = true, corpse = true, waypoint = false, mapSize = true, mapCont = false, zone = true,
     combatLockdown = true, version = false, screen = false, questLog = true, questFocus = true,
     questFocusReads = false, questieModule = false, minimap = false, itemInfo = false,
-    itemLines = false, itemTexture = false, tracking = false, professions = false,
+    itemLines = false, itemTexture = false, tracking = false, anyTracking = false, professions = false,
     durability = false, lootWindow = false, windowState = false, form = true, petBattle = false,
     vehicle = false, guid = false, playerGUID = false, petGUID = false, serviceNpc = false,
     merchantRepairs = false, bindLocation = false, hearthCooldown = false, targetRank = false,
