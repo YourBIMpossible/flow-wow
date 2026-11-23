@@ -3828,9 +3828,9 @@ function ns.make.fakeClient(opts)
                 if type(tree) ~= "table" then return false, why or "the settings window has no tree" end
                 if h == nil then
                     h = c.kitWindow(spec.id, tree, extra)
-                    if h == nil then return false end
+                    if h == nil then return false, "the kit could not draw the settings window" end
                 elseif h.update(tree) ~= true then
-                    return false
+                    return false, "the kit could not draw the settings window again"
                 end
                 base.draw(rows, act, nav)
                 record.layout = copyOf(layout)
@@ -3838,7 +3838,7 @@ function ns.make.fakeClient(opts)
                 return true
             end
             function page.open()
-                if h == nil then return false end
+                if h == nil then return false, "the settings window was not drawn" end
                 h.show(true)
                 return base.open()
             end

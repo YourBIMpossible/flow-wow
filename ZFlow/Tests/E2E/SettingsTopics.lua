@@ -556,7 +556,22 @@ tests["menu workflow: right-click the arrow, enter a submenu, choose a row; then
     t.eq(c.optionsOpened(), 1, "the settings open")
     t.eq(ofKind(c, "group").text, T.Find("travel").name, "at the matching topic")
     t.ok(has(drawn(c), "quest.arrow") and has(drawn(c), "arrow.style"), "with the arrow's settings")
-    t.eq({ c.saved(ns.id.accountDB), c.saved(ns.id.charDB) }, before, "opening the settings saved nothing")
+    -- Opening at a topic remembers that topic (layout.settingsTopic, the
+    -- settings window's saved last topic, lead section 285 item 3); nothing
+    -- else is saved: no setting changes.
+    local after = { copy(c.saved(ns.id.accountDB)), copy(c.saved(ns.id.charDB)) }
+    local function topicOf(saved)
+        local layout = type(saved) == "table" and saved.layout or nil
+        if type(layout) ~= "table" then return nil end
+        local topic = layout.settingsTopic
+        layout.settingsTopic = nil
+        -- A layout table made only to hold it is not a change either.
+        if next(layout) == nil then saved.layout = nil end
+        return topic
+    end
+    topicOf(before[1]); topicOf(before[2]); topicOf(after[2])
+    t.eq(topicOf(after[1]), "travel", "the topic it opened at is remembered")
+    t.eq(after, before, "opening the settings saved nothing else")
     -- After a reload the hidden arrow is still hidden, and the menu says so.
     local c2 = reload(c)
     t.ok(c2 ~= nil)

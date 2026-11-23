@@ -351,7 +351,10 @@ tests["settings layout in combat: the window is not opened from the slash word o
     local O = addon.SettingsOptions
     slash(c, "settings")
     c.optionsNav("topic", "bags")
+    -- boot() pins the lock (setLockdown(false)), so the fight moves it too,
+    -- as the game's lock follows a fight.
     c.setCombat(true)
+    c.setLockdown(true)
     t.eq(c.optionsAct("vendor.list", false), false, "no change in a fight")
     t.eq(addon.settings:get("vendor.list"), true)
     t.eq(c.optionsStatus(), O.IN_COMBAT)
@@ -370,6 +373,7 @@ tests["settings layout in combat: the window is not opened from the slash word o
     t.eq(c.optionsOpened(), opened)
     t.eq(c.optionsEntry().status, O.LOCKED, "and the entry says why")
     c.setCombat(false)
+    c.setLockdown(false)
     t.eq(c.optionsEntryPress(key), true)
     t.eq(c.optionsOpened(), opened + 1, "after the fight it opens")
     t.eq(heading(c), T.Find("bags").name, "where the player was")

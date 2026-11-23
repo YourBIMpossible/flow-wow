@@ -10784,15 +10784,15 @@ function ns.make.client(env)
                 if type(tree) ~= "table" then return false, why or "the settings window has no tree" end
                 if h == nil then
                     h = c.kitWindow(spec.id, tree, extra)
-                    if h == nil then return false end
+                    if h == nil then return false, "the kit could not draw the settings window" end
                     h.show(false)
                     return true
                 end
-                if h.update(tree) ~= true then return false end
+                if h.update(tree) ~= true then return false, "the kit could not draw the settings window again" end
                 return true
             end
             function page.open()
-                if h == nil then return false end
+                if h == nil then return false, "the settings window was not drawn" end
                 h.show(true)
                 return true
             end
