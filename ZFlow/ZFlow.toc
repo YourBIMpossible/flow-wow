@@ -173,3 +173,4 @@ Rotation\Gather.lua
 Rotation\Group.lua
 Rotation\Mouseover.lua
 UI\BossLoot.lua
+UI\SettingsShare.lua

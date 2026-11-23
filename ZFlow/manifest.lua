@@ -199,5 +199,7 @@ return {
     "Rotation/Mouseover.lua",
     -- N55: the boss loot panel, look only (after Gear, Items/Drops and the classes).
     "UI/BossLoot.lua",
+    -- N70: settings export and import as data (after Export, Diag and the settings page).
+    "UI/SettingsShare.lua",
     },
 }
