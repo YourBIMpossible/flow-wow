@@ -11,12 +11,16 @@ local tests = {}
 local MINING = 186
 local COPPER_BAR, TIN_BAR, SILVER_BAR = 2657, 3304, 2658
 local ORE_COPPER, ORE_TIN = 2770, 2771
+local ITEM_COPPER_BAR, ITEM_TIN_BAR = 2840, 3576
 
 local function start(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
     c.setSaved(ns.id.accountDB, opts.account or {})
-    c.setSaved(ns.id.charDB, {})
+    local char = {}
+    if opts.goals then char.settings = { goals = opts.goals } end
+    if opts.book then char.learned = { facts = { recipeBook = opts.book } } end
+    c.setSaved(ns.id.charDB, char)
     c.setItemInfo({ [ORE_COPPER] = { name = "Copper Ore" }, [ORE_TIN] = { name = "Tin Ore" } })
     c.setBags(opts.bags or { { free = 4, total = 16, family = 0 } })
     c.setRecipes({ profession = opts.profession or MINING, skill = 70, max = 75, recipes = {
@@ -24,8 +28,11 @@ local function start(opts)
         { id = TIN_BAR, name = "Tin Bar", learned = true },
         { id = SILVER_BAR, name = "Silver Bar", learned = false },
     } })
-    c.setRecipeReagents(COPPER_BAR, { { item = ORE_COPPER, count = 1 } })
-    c.setRecipeReagents(TIN_BAR, { { item = ORE_TIN, count = 1 } })
+    -- Section 231: the bar reads the recipe from c.recipeSchematic, the read
+    -- the recipe book and the goals list use (Items/RecipeBook.lua).
+    c.setRecipeSchematic(COPPER_BAR, { makes = ITEM_COPPER_BAR, yield = 1, mats = { [ORE_COPPER] = 1 } })
+    c.setRecipeSchematic(TIN_BAR, { makes = ITEM_TIN_BAR, yield = 1, mats = { [ORE_TIN] = 1 } })
+    if opts.bagItems then c.setBagItems(opts.bagItems) end
     c.setRecipeUsable(COPPER_BAR, true)
     c.setRecipeUsable(TIN_BAR, true)
     c.setMoving(false)
@@ -34,7 +41,11 @@ local function start(opts)
     local addon = ns.offline.addon(c)
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
     c.advance(5, 20)
-    if opts.open ~= false then c.fire("TRADE_SKILL_SHOW") end
+    -- The window opens, then its list answers (the recipe book reads it).
+    if opts.open ~= false then
+        c.fire("TRADE_SKILL_SHOW")
+        c.fire("TRADE_SKILL_LIST_UPDATE")
+    end
     return c, addon
 end
 
@@ -86,6 +97,47 @@ tests["craft bar: shown on a profession window with a count for each learned rec
     t.eq(rowOf(bar, "count:" .. COPPER_BAR).value, 0, "nothing ticked at first")
     t.ok(rowOf(bar, "start") ~= nil and rowOf(bar, "all") ~= nil, "Start, and Smelt all on the mining window")
     t.eq(addon.craftBar.running(), false)
+end
+
+-- Section 231: the goals list (ItemGoals.Crafts, as it is) fills the counts.
+-- A goal for a recipe in this window gets the crafts it still needs; a goal
+-- already met, or for a recipe not in this window, gets none. Filling the
+-- counts crafts nothing: Start is still the player click.
+tests["craft bar: From goals fills the counts with the crafts each goal still needs"] = function(t)
+    local c, addon = start({
+        goals = {
+            { item = ITEM_COPPER_BAR, count = 3, recipe = "Copper Bar" },
+            { item = ITEM_TIN_BAR, count = 1, recipe = "Tin Bar" },
+            { item = 2996, count = 2, recipe = "Bolt of Linen Cloth" },
+        },
+        bagItems = { { item = ITEM_COPPER_BAR, count = 1 }, { item = ITEM_TIN_BAR, count = 4 } },
+        -- Known from another profession window: not craftable in this one.
+        book = { ["Bolt of Linen Cloth"] = { id = 2963, makes = 2996, yield = 1, mats = { [2589] = 2 },
+                                            profession = "Tailoring" } },
+    })
+    local bar = barOf(c)
+    if not bar then t.ok(false, "no craft bar") return end
+    t.ok(rowOf(bar, "goals") ~= nil, "a From goals button")
+    bar.press("goals")
+    t.eq(rowOf(bar, "count:" .. COPPER_BAR).value, 2, "3 wanted, 1 owned: 2 still to make")
+    t.eq(rowOf(bar, "count:" .. TIN_BAR).value, 0, "a goal already met makes none")
+    t.eq(rowOf(bar, "count:2963"), nil, "a recipe of another window gets no count here")
+    t.eq(addon.craftBar.running(), false, "filling the counts starts nothing")
+    t.eq(#c.crafts, 0, "nothing crafted")
+    bar.press("start")
+    done(c, COPPER_BAR)
+    t.eq(crafted(c), { COPPER_BAR, COPPER_BAR }, "Start makes what the goals asked for")
+end
+
+tests["craft bar: From goals with no goal to craft here says so and keeps the counts"] = function(t)
+    local c = start()
+    local bar = barOf(c)
+    if not bar then t.ok(false, "no craft bar") return end
+    bar.press("count:" .. TIN_BAR, 2)
+    bar.press("goals")
+    t.eq(rowOf(bar, "count:" .. TIN_BAR).value, 2, "the ticked count stays")
+    t.ok(infos(bar):find(ns.CraftBar.NO_GOALS, 1, true) ~= nil, "the bar says no goal is craftable here")
+    t.eq(#c.crafts, 0)
 end
 
 tests["craft bar: nothing crafts without the click"] = function(t)
