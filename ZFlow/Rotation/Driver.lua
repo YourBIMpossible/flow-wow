@@ -201,14 +201,26 @@ end
 -- and hold none; nil when the bags, or the facts or tooltip of a food in
 -- them, could not be read. Food is consumable class 0, subclass 5; Well Fed
 -- food is food whose tooltip says well fed.
-local function buffFoodOf(client, pack, role)
+-- Section 235 item 4: scored with pack.weights[role].values (the fixed role
+-- tables only when the pack has none for the role). A food for a profession
+-- (BuffFood.Activity) is never a fight food. pole: client.fishingPole().
+-- With a pole (true) only a Fishing food is picked, and no fight food; with
+-- no pole or not known, never a Fishing food.
+local function weightsOf(pack, role)
+    local w = type(pack) == "table" and type(pack.weights) == "table" and pack.weights[role] or nil
+    if type(w) == "table" and type(w.values) == "table" then return w.values end
+    return nil
+end
+
+local function buffFoodOf(client, pack, role, pole)
     local BF = ns.BuffFood
     if type(BF) ~= "table" or type(client.bagItems) ~= "function" or type(client.itemInfo) ~= "function"
         or type(client.itemLines) ~= "function" then return nil end
     local ok, stacks = pcall(client.bagItems)
     if not ok or type(stacks) ~= "table" then return nil end
     local mana, as = BF.UsesMana(pack), roleIn(pack, role) or "dps"
-    local foods, seen, unread = {}, {}, false
+    local values = weightsOf(pack, as)
+    local foods, fishing, seen, unread = {}, {}, {}, false
     for _, st in ipairs(stacks) do
         local id = type(st) == "table" and ns.Items.Id(st.item) or nil
         if id and not seen[id] and (st.count == nil or (type(st.count) == "number" and st.count > 0)) then
@@ -221,12 +233,23 @@ local function buffFoodOf(client, pack, role)
                 if not okL or type(lines) ~= "table" then
                     unread = true
                 elseif BF.IsBuffFood(lines) and type(info.name) == "string" and info.name ~= "" then
-                    foods[#foods + 1] = { id = id, name = info.name, score = BF.Score(BF.Gain(lines), as, mana) }
+                    local act = BF.Activity(lines)
+                    if next(act) ~= nil then
+                        local n = act.Fishing
+                        if pole == true and type(n) == "number" then
+                            fishing[#fishing + 1] = { id = id, name = info.name, score = n }
+                        end
+                    elseif pole ~= true then
+                        local gain = BF.Gain(lines)
+                        local score
+                        if values then score = BF.Score(gain, values) else score = BF.ScoreByRole(gain, as, mana) end
+                        foods[#foods + 1] = { id = id, name = info.name, score = score }
+                    end
                 end
             end
         end
     end
-    local best = BF.Best(foods)
+    local best = BF.Best(pole == true and fishing or foods)
     if best then return { name = best.name, item = best.id, score = best.score } end
     if unread then return nil end
     return {}
@@ -235,15 +258,26 @@ end
 -- Section 229 (F-1): the food read, kept between bag changes and skipped in
 -- a fight. food: the module's table { kept, value, pack, role }; nil reads
 -- each time.
+-- Section 235 item 4: a fishing pole in your main hand: true, false, nil
+-- when the client has no such read or does not say.
+local function poleOf(client)
+    if type(client.fishingPole) ~= "function" then return nil end
+    local ok, v = pcall(client.fishingPole)
+    if ok and type(v) == "boolean" then return v end
+    return nil
+end
+
 local function buffFoodKept(client, pack, role, food)
-    if type(food) ~= "table" then return buffFoodOf(client, pack, role) end
+    if type(food) ~= "table" then return buffFoodOf(client, pack, role, poleOf(client)) end
     if food.on == false then return nil end
-    local fresh = food.kept == true and food.pack == pack and food.role == role
+    -- The pole changes with no bag change: a kept pick is for one pole answer.
+    local pole = poleOf(client)
+    local fresh = food.kept == true and food.pack == pack and food.role == role and food.pole == pole
     if fresh then return food.value end
     if client.inCombat() ~= false then return nil end
-    local got = buffFoodOf(client, pack, role)
+    local got = buffFoodOf(client, pack, role, pole)
     if got ~= nil then
-        food.kept, food.value, food.pack, food.role = true, got, pack, role
+        food.kept, food.value, food.pack, food.role, food.pole = true, got, pack, role, pole
     else
         food.kept, food.value = false, nil
     end
@@ -316,7 +350,7 @@ function D.Read(client, pack, ids, role, extra)
             return food.on
         end
         -- Section 230 (BF-2) and GT-2: one read of each for both the food and the gather guards.
-        if field == "mounted" or field == "onTaxi" then
+        if field == "mounted" or field == "onTaxi" or field == "fishingPole" then
             if type(client[field]) ~= "function" then return nil end
             local ok, v = pcall(client[field])
             if ok and type(v) == "boolean" then return v end

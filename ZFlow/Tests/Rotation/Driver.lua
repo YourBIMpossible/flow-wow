@@ -449,7 +449,7 @@ end
 
 -- RD11 ----------------------------------------------------------------
 
-tests["rotation driver RD11: a step presses nothing and asks only its fourteen reads"] = function(t)
+tests["rotation driver RD11: a step presses nothing and asks only its sixteen reads"] = function(t)
     for _, fight in ipairs({ false, true }) do
         local client, calls, other = stub(false, fight, fight)
         local v = D.Step(client, pack())
@@ -459,7 +459,7 @@ tests["rotation driver RD11: a step presses nothing and asks only its fourteen r
         -- client has none, so the look is all there is and no bag is read.
         -- P-GATHER: the same for the tracking and profession reads.
         -- GT-1, GT-2: and the gather guards' reads (any tracking, mounted, on a flight).
-        t.eq(other, { "bagItems", "mounted", "onTaxi", "tracking", "tracking", "professions", "anyTracking", "ownBuffs" },
+        t.eq(other, { "fishingPole", "bagItems", "mounted", "onTaxi", "fishingPole", "tracking", "tracking", "professions", "anyTracking", "ownBuffs" },
             "nothing else asked of the client but the bag, tracking, profession and gather-guard reads it lacks")
         local names = {}
         for name in pairs(calls) do names[#names + 1] = name end

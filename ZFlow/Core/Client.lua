@@ -572,7 +572,8 @@ function ns.make.client(env)
     -- of GetTradeSkillReagentInfo(index, r) for how many a craft takes.
     -- The same answer as recipeSchematic: { makes =, yield =, mats = }.
     -- Anything that can't be read makes the whole answer nil: never a
-    -- shorter list. First guesses, not seen in game; nothing calls it yet.
+    -- shorter list. First guesses, not seen in game. Items/RecipeBook.lua
+    -- calls it for each row of tradeSkillRows (section 233, GR2-1).
     function c.tradeSkillSchematic(index)
         if not wholeCount(index) or index < 1 or index == math.huge then return nil end
         local function itemOf(ok, link)
@@ -603,6 +604,38 @@ function ns.make.client(env)
             mats[item] = (mats[item] or 0) + need
         end
         return { makes = makes, yield = yield, mats = mats }
+    end
+
+    -- Section 233 (GR2-1): the rows of the classic trade skill window, for
+    -- when C_TradeSkillUI can't be read. GetTradeSkillLine() for the
+    -- profession's name, skill and max ("UNKNOWN" or no name: no window),
+    -- GetNumTradeSkills() rows (0: no window), and GetTradeSkillInfo(i) for
+    -- each row's name and kind; "header" and "subheader" rows are left out.
+    -- Every other row is a recipe the player has learned. Only what the
+    -- window shows: a collapsed header hides its rows.
+    --   { name =, skill =, max =, rows = { { index = i, name = } } }
+    -- Anything that can't be read makes the whole answer nil: never a
+    -- shorter list. First guesses, not seen in game.
+    function c.tradeSkillRows()
+        local okLine, name, skill, max = call(env.GetTradeSkillLine)
+        if not okLine or type(name) ~= "string" or hidden(name) or name == "" or name == "UNKNOWN" then
+            return nil
+        end
+        local okN, n = call(env.GetNumTradeSkills)
+        if not okN or not wholeCount(n) or n < 1 or n == math.huge then return nil end
+        local rows = {}
+        for i = 1, n do
+            local okInfo, rowName, kind = call(env.GetTradeSkillInfo, i)
+            if not okInfo or type(kind) ~= "string" or hidden(kind) then return nil end
+            if kind ~= "header" and kind ~= "subheader" then
+                if type(rowName) ~= "string" or hidden(rowName) or rowName == "" then return nil end
+                rows[#rows + 1] = { index = i, name = rowName }
+            end
+        end
+        local out = { name = name, rows = rows }
+        if wholeCount(skill) and not hidden(skill) then out.skill = skill end
+        if wholeCount(max) and not hidden(max) then out.max = max end
+        return out
     end
 
     -- A string the client gave and did not mark secret, or nil.
@@ -4736,6 +4769,23 @@ function ns.make.client(env)
     -- A first guess: not seen in game on this client.
     function c.mounted()
         return flag(call(env.IsMounted))
+    end
+
+    -- Section 235 item 4: is a fishing pole in your main hand. True, false,
+    -- or nil when not known. GetInventoryItemID("player", 16) (the main
+    -- hand; no id: nothing there, false), then the item's class and
+    -- subclass from GetItemInfoInstant (C_Item first, as c.gear): weapon 2,
+    -- subclass 20 is a fishing pole. A class not read: nil, never false.
+    -- Both names are in CLIENT-NAMES-16001; the read is a first guess, not
+    -- seen in game. It only reads.
+    function c.fishingPole()
+        local ok, id = call(env.GetInventoryItemID, "player", 16)
+        if not ok then return nil end
+        if id == nil then return false end
+        if hidden(id) or type(id) ~= "number" then return nil end
+        local class, subclass = itemType(id)
+        if class == nil or subclass == nil then return nil end
+        return class == 2 and subclass == 20
     end
 
     -- S42 quest item on the quest arrow (LEDGER 169/172;
