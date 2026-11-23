@@ -1318,6 +1318,10 @@ function Diag.HelpFor(commands, help, slash, rest)
     return Diag.HelpLines(commands, help, slash, arg:match("^%d+$") and tonumber(arg) or 1)
 end
 
+-- The bus event (internal, not a client event) another module emits with a
+-- timing mark's name: ctx.bus:emit(Diag.MARK_EVENT, "NAME").
+Diag.MARK_EVENT = "diag:mark"
+
 function Diag.Start(k)
     local client, id = k.client, k.id
 
@@ -1682,7 +1686,13 @@ function Diag.Start(k)
                 .. id.slash .. " import to see what an import would do.")
         end
     end)
-    -- mark: other modules add a timing mark of their own (once per name).
+    -- Other modules add a timing mark of their own (once per name) through
+    -- the bus's internal "diag:mark" event, or the mark returned here.
+    if type(k.bus) == "table" and type(k.bus.on) == "function" then
+        k.bus:on("diag", Diag.MARK_EVENT, function(name)
+            if type(name) == "string" and name ~= "" then mark(name) end
+        end)
+    end
     return { timing = timing, snapshot = snapshot, commands = commands, help = help, mark = mark }
 end
 

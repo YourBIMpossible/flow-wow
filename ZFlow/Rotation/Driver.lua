@@ -14,6 +14,8 @@ local _, ns = ...
 --     extra.controls: the key controls (N41, Rotation/KeyControls.lua).
 --     extra.keyActions: the key actions' input (N1, N2, N20, N5,
 --     Rotation/KeyActions.lua).
+--     extra.counts: the driver's counts table (SE-4, SD-3), added to by a
+--     read or a step: targetNameUnread, keyActionsRaised.
 --     the reader ns.Snapshot takes. dead, inCombat, stealthed, hostile,
 --     spells, buffs, targetDebuffs, form, current and pet are asked of the
 --     client; role is the
@@ -174,6 +176,12 @@ D.HEAL = "rotation.emergencyItems"
 -- The role you chose (Rotation/Role.lua declares the row).
 D.ROLE = "spec.role"
 D.EVERY = 0.2
+-- SE-4, SD-3: each count (D.Declare's counts) and the diag timing mark
+-- added the first time it rises.
+D.MARKS = {
+    targetNameUnread = "ROTATION_TARGET_NAME_UNREAD",
+    keyActionsRaised = "ROTATION_KEY_ACTIONS_RAISED",
+}
 
 local RR = ns.RotationReader
 
@@ -238,13 +246,21 @@ local function canStartOf(client, ids, sk)
 end
 
 -- N39: your target is on the no-auto-attack list (Rotation/SpellKeys.lua).
--- An empty list is false; a name not read with a list kept is true (the
--- cautious answer: the key is not changed for an enemy it may not want).
-local function gaveUpOf(client, sk)
+-- An empty list is false. SE-4: a name not read with a list kept is nil
+-- (not known), never "gave up": giving up on every target for one unread
+-- name left no trace. Each such read adds 1 to counts.targetNameUnread
+-- (the driver's counts, D.Declare), which the driver turns into a diag mark.
+local function gaveUpOf(client, sk, counts)
     if type(sk.noAttack) ~= "table" or next(sk.noAttack) == nil then return false end
-    if type(client.targetName) ~= "function" then return true end
-    local asked, name = pcall(client.targetName)
-    if not asked or type(name) ~= "string" then return true end
+    local name = nil
+    if type(client.targetName) == "function" then
+        local asked, got = pcall(client.targetName)
+        if asked and type(got) == "string" then name = got end
+    end
+    if name == nil then
+        if type(counts) == "table" then counts.targetNameUnread = (counts.targetNameUnread or 0) + 1 end
+        return nil
+    end
     return sk.noAttack[name] == true
 end
 
@@ -473,6 +489,9 @@ function D.Read(client, pack, ids, role, extra)
     local combo = type(extra) == "table" and extra.combo or nil
     local spellKeys = nil
     if type(extra) == "table" then spellKeys = extra.spellKeys end
+    -- SE-4, SD-3: the driver's counts (D.Declare), added to by a read.
+    local counts = nil
+    if type(extra) == "table" then counts = extra.counts end
     -- Lead section 187: the form is asked of the client once for a read,
     -- and both fields (form, formKnown) come from that one answer.
     -- The answer is kept only for the other field of the pair, and used
@@ -566,7 +585,7 @@ function D.Read(client, pack, ids, role, extra)
         end
         if field == "attacking" then return attackingOf(client, ids) end
         if field == "canStartAttack" then return canStartOf(client, ids, spellKeys) end
-        if field == "engageGaveUp" then return gaveUpOf(client, spellKeys) end
+        if field == "engageGaveUp" then return gaveUpOf(client, spellKeys, counts) end
         if field == "targetCasting" then
             if type(client.targetCast) ~= "function" then return nil end
             local ok, v = pcall(client.targetCast)
@@ -866,6 +885,14 @@ function D.Declare(k, packs)
     function api.view() return view end
     function api.errors() return errors end
     function api.lastError() return lastError end
+    -- SE-4, SD-3: reads that could not be made, counted for this session.
+    -- A count that rises adds its diag timing mark (D.MARKS) once.
+    local counts = { targetNameUnread = 0, keyActionsRaised = 0 }
+    function api.counts()
+        local out = {}
+        for key, value in pairs(counts) do out[key] = value end
+        return out
+    end
 
     local function tick(ctx)
         if ctx.settings:get(D.SETTING) ~= true then
@@ -888,9 +915,16 @@ function D.Declare(k, packs)
         -- the key frame is on (only the key can start the swing).
         local spellKeys = spellKeysOf(k, ctx.settings)
         if type(spellKeys) == "table" then spellKeys.keyOn = heal.keys == true end
+        local before = api.counts()
         local ok, got = pcall(work, ctx.client, packs or ns.Packs, ctx.settings:get(D.ROLE),
             { food = food, heal = heal, chosen = chosenOf(k), combo = comboOf(k), controls = controls,
-              keyActions = keyActions, spellKeys = spellKeys })
+              keyActions = keyActions, spellKeys = spellKeys, counts = counts })
+        local Dg = ns.Diag
+        if type(Dg) == "table" and type(Dg.MARK_EVENT) == "string" then
+            for key, name in pairs(D.MARKS) do
+                if (counts[key] or 0) > (before[key] or 0) then ctx.bus:emit(Dg.MARK_EVENT, name) end
+            end
+        end
         if ok then
             view = got
         else
@@ -925,7 +959,7 @@ function D.Declare(k, packs)
             help = "With the game's low-health warning on in a fight, suggests your healthstone, else a healing potion, and puts it on Alt + your rotation key. It uses nothing for you.",
             group = "buffs", synonyms = { "healthstone", "potion", "heal", "low health", "recovery" },
         } },
-        provides = { View = api.view, Errors = api.errors },
+        provides = { View = api.view, Errors = api.errors, Counts = api.counts },
         ticks = { { every = D.EVERY, run = tick } },
         start = function(c)
             food, heal = {}, {}
