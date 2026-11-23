@@ -21,11 +21,12 @@ local KIND = {
                "watchAuctionResults", "onUnitTooltip", "watchAuctionRows", "onSystemMessage" },
     show = { "print", "panel", "minimapPin", "copyBox", "icon", "arrow", "windowButton", "secureButton",
              "optionsPage", "guideLines", "taxiMark", "mapPins", "comboBar", "slotIcon",
-             "markMerchantButtons" },
+             "markMerchantButtons", "rowPanel" },
     tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "slash",
              "slashTaken", "unslash" },
     -- Hands back or runs a sound restart: never asked by the capture.
-    act = { "restartSound", "soundWays" },
+    -- craftRecipe (lead section 226, acting): one craft on the player click.
+    act = { "restartSound", "soundWays", "craftRecipe" },
     -- Reads a chat line handed in, not the client.
     parse = { "ownLoot", "auctionOutcome" },
 }
@@ -51,6 +52,8 @@ local READS = {
     targetDebuffs = true, formName = true, currentSpell = true, taxiNodes = true,
     -- Lead section 197: the pet state the rotation reads.
     pet = true,
+    -- Lead section 226: the craft bar reads (P-CRAFT); the capture asks none.
+    recipeUsable = false, moving = false,
     -- CF-32: a spell's name by id, for your own casts (Rotation/OwnCasts.lua).
     spellName = false,
     -- N13: the buffs you put up yourself (Classes/Paladin.lua auras).
