@@ -353,6 +353,35 @@ function ns.make.client(env)
         return stacks(bagIds())
     end
 
+    -- Lead section 337 item 1 (the sell list's "Sell these" button): the
+    -- bag stacks with where each one is, and one slot read again before it
+    -- is sold. Read with the same C_Container calls as bagItems above
+    -- (GetContainerNumSlots, GetContainerItemInfo); first guess, not seen
+    -- in game, that a slot's answer is the same one bagItems reads.
+    --   c.bagSlots() -> { { bag = id, slot = n, item = link or ID, count = n }, ... }
+    --     in bag then slot order; nil when any bag or slot could not be read
+    --   c.bagSlot(bag, slot) -> item, count; nil for an empty slot; false
+    --     when it could not be read or bag and slot are not whole numbers
+    function c.bagSlots()
+        local slotsOf = container("GetContainerNumSlots")
+        local out = {}
+        for _, bag in ipairs(bagIds()) do
+            local ok, total = call(slotsOf, bag)
+            if not ok or not wholeCount(total) then return nil end
+            for slot = 1, total do
+                local item, count = slotItem(bag, slot)
+                if item == false then return nil end
+                if item ~= nil then out[#out + 1] = { bag = bag, slot = slot, item = item, count = count } end
+            end
+        end
+        return out
+    end
+
+    function c.bagSlot(bag, slot)
+        if not wholeCount(bag) or not wholeCount(slot) or slot < 1 then return false end
+        return slotItem(bag, slot)
+    end
+
     -- The character's bank tabs, as the client lists them:
     -- C_Bank.FetchPurchasedBankTabIDs(Enum.BankType.Character). Never the
     -- account-wide bank. On 16001 the bank is tabs only (seen in game: one
@@ -450,6 +479,25 @@ function ns.make.client(env)
         if env.issecretvalue == nil then return false end
         local okSecret, secret = call(env.issecretvalue, v)
         return not okSecret or secret ~= false
+    end
+
+    -- Lead section 337 item 1 (ACTING): sells one bag slot to the open
+    -- merchant, only on the player click (Items/SellThese.lua). First guess,
+    -- not seen in game on 16001: C_Container.UseContainerItem(bag, slot)
+    -- sells the slot while the merchant window is open. Asked only when
+    -- InCombatLockdown answers a plain false and the merchant is open, both
+    -- read again here for each slot.
+    --   c.sellBagItem(bag, slot) -> true, or nil and why:
+    --     "combat", "closed", "bad" (not a bag slot), "noCall", "raised"
+    function c.sellBagItem(bag, slot)
+        local okLock, locked = call(env.InCombatLockdown)
+        if not okLock or hidden(locked) or locked ~= false then return nil, "combat" end
+        if c.merchantOpen() ~= true then return nil, "closed" end
+        if not wholeCount(bag) or not wholeCount(slot) or slot < 1 then return nil, "bad" end
+        local fn = container("UseContainerItem")
+        if fn == nil then return nil, "noCall" end
+        if not pcall(fn, bag, slot) then return nil, "raised" end
+        return true
     end
 
     -- What the window shows for one item on sale: read?, price, stack,

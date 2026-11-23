@@ -115,6 +115,59 @@ function ns.make.fakeClient(opts)
     function c.money() return s.money end
     function c.bags() return copyRows(s.bags) end
     function c.bagItems() return copyRows(s.bagItems) end
+    -- Lead section 337 item 1, as the real client's: each stack set with
+    -- c.setBagItems and where it is. A row's own bag and slot when the test
+    -- gave them, else bag 0 and its place in the list. nil when no bag is set.
+    local function slotRows()
+        if type(s.bagItems) ~= "table" then return nil end
+        local out = {}
+        for i, row in ipairs(s.bagItems) do
+            out[i] = { bag = row.bag or 0, slot = row.slot or i, item = row.item, count = row.count }
+        end
+        return out
+    end
+    function c.bagSlots()
+        local rows = slotRows()
+        if rows == nil then return nil end
+        table.sort(rows, function(a, b)
+            if a.bag ~= b.bag then return a.bag < b.bag end
+            return a.slot < b.slot
+        end)
+        return rows
+    end
+    function c.bagSlot(bag, slot)
+        if type(bag) ~= "number" or type(slot) ~= "number" then return false end
+        for _, row in ipairs(slotRows() or {}) do
+            if row.bag == bag and row.slot == slot then return row.item, row.count end
+        end
+        return nil
+    end
+    -- Lead section 337 item 1 (ACTING), as the real client's: the slot sold
+    -- leaves the bags and is kept in c.soldSlots, in the order sold.
+    c.soldSlots = {}
+    function c.sellBagItem(bag, slot)
+        if c.combatLockdown() ~= false then return nil, "combat" end
+        if s.merchantOpen ~= true then return nil, "closed" end
+        if type(s.bagItems) ~= "table" or type(bag) ~= "number" or type(slot) ~= "number" then return nil, "bad" end
+        local found = nil
+        for i, row in ipairs(s.bagItems) do
+            if found == nil and (row.bag or 0) == bag and (row.slot or i) == slot then found = i end
+        end
+        if found == nil then return nil, "bad" end
+        local kept = {}
+        for i, row in ipairs(s.bagItems) do
+            if i ~= found then
+                local copy = {}
+                for k, v in pairs(row) do copy[k] = v end
+                copy.bag, copy.slot = row.bag or 0, row.slot or i
+                kept[#kept + 1] = copy
+            end
+        end
+        local row = s.bagItems[found]
+        s.bagItems = kept
+        c.soldSlots[#c.soldSlots + 1] = { bag = bag, slot = slot, item = row.item, count = row.count }
+        return true
+    end
     function c.watchBank() end
     function c.bankOpen() return s.bankOpen end
     function c.bankItems()

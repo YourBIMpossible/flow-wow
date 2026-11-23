@@ -152,8 +152,9 @@ tests["sell list Show: look only"] = function(t)
     t.eq(#c.printed, before, "it prints nothing")
     local parts = c.kitWindows().SellList.parts
     t.ok(#parts > 0, "the window has parts")
+    -- But one: the Sell these button (lead section 337 item 1).
     for _, part in ipairs(parts) do
-        t.ok(part.kind ~= "button" and part.kind ~= "bind" and part.kind ~= "checkbox",
+        t.ok(part.key == ns.SellThese.KEY or (part.kind ~= "button" and part.kind ~= "bind" and part.kind ~= "checkbox"),
             "no acting part in the window: " .. part.kind)
     end
 end
@@ -194,7 +195,9 @@ tests["sell list Show: it reads the bags and the item facts, draws, and does not
 
     k.store.set, k.store.table = set, tableOf
     -- itemTexture: the icon of an item line (lead section 303), a read.
-    local readsAllowed = { bagItems = true, itemInfo = true, itemTexture = true, saved = true }
+    -- bagSlots: where each stack is, for the Sell these button (lead
+    -- section 337 item 1), a read. Never sellBagItem.
+    local readsAllowed = { bagItems = true, itemInfo = true, itemTexture = true, saved = true, bagSlots = true }
     for name in pairs(called) do
         t.ok(readsAllowed[name], "Show() called client." .. name .. ", which is not one of its reads")
     end

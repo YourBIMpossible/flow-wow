@@ -11,6 +11,12 @@
 -- the lane that owns selling puts its button. A client that cannot draw
 -- the kit gets the same listing as text on a plain panel.
 --
+-- The "Sell these" button (lead section 337 item 1) is the footer's kit
+-- button: Items/SellThese.lua sells the rows the window shows, on the
+-- player's click only; this file draws the button, says on it why it
+-- can't be pressed, and shows the note after a run. Nothing is sold when
+-- a merchant opens, and the text panel has no button.
+--
 -- LOOK ONLY. This file makes no button and nothing here sells, buys,
 -- deletes, moves or clicks anything; selling is a separate decision (G2)
 -- that this file does not make. It reads the bags, the item facts, the
@@ -18,6 +24,10 @@
 --
 --   SellList.Lines(client, store, grants, r) -> lines   one listing as text;
 --                                     r missing: unavailable (SR-3)
+--   SellList.TreeOf(listing, client, id, action): action (optional) =
+--                                     { button = a kit button for the
+--                                     footer, note = { text, tone } shown
+--                                     first in the list }
 --   SellList.Tree(client, store, grants, r, id) -> a Kit.Window spec of the
 --                                     same listing. id: the identity for
 --                                     the title (default ns.id)
@@ -269,7 +279,7 @@ end
 -- A listing as a Kit.Window spec. client: for the icons and the quality
 -- colours (SellList.Look); without it the lines have none. id: the identity
 -- the title and the empty state name the add-on from (default ns.id).
-function SellList.TreeOf(listing, client, id)
+function SellList.TreeOf(listing, client, id, action)
     id = type(id) == "table" and id or ns.id
     listing = type(listing) == "table" and listing or {}
     local Present, Prices = ns.ItemPresent, ns.Prices
@@ -345,6 +355,12 @@ function SellList.TreeOf(listing, client, id)
         end
     end
     local footer = { kind = "footer", text = SellList.TOTAL, money = total, slot = SellList.SLOT }
+    if type(action) == "table" then
+        if type(action.button) == "table" then footer.buttons = { action.button } end
+        if type(action.note) == "table" then
+            table.insert(body, 1, { kind = "line", text = action.note.text, tone = action.note.tone })
+        end
+    end
     if footText then
         footer.text = footText
     elseif total == nil then
@@ -390,6 +406,8 @@ function SellList.Declare(k)
     -- cannot draw.
     local win, panel
     local open, relist = false, nil
+    -- The "Sell these" run (Items/SellThese.lua), made at the start.
+    local sellRunner = nil
     -- The player closed the window (its close button, Escape): it stays
     -- away for the rest of this merchant visit unless asked for.
     local closed = false
@@ -429,7 +447,7 @@ function SellList.Declare(k)
 
     k:Module({
         name = SellList.NAME,
-        needs = { "client", "store", "bus", "settings" },
+        needs = { "client", "store", "bus", "settings", "sched" },
         provides = { Last = api.last, Shows = api.shows, Show = function() return api.show() end,
             Window = function() return api.window() end },
         start = function(ctx)
@@ -449,10 +467,51 @@ function SellList.Declare(k)
                 end
                 return panel
             end
+            -- The "Sell these" button and its note (Items/SellThese.lua).
+            -- shownListing: the listing the window shows, which a click
+            -- sells. note: what the last run or click did, this visit.
+            local SellThese = ns.SellThese
+            local shownListing, note = nil, nil
+            local function bagSlots()
+                if type(client.bagSlots) ~= "function" then return nil end
+                return client.bagSlots()
+            end
+            local runner = SellThese.Runner(client, ctx.sched, function(result)
+                local tone = "warn"
+                if result.sold > 0 and result.stopped == nil and result.skipped == 0 then tone = "good" end
+                note = { text = SellThese.Note(result), tone = tone }
+                api.refresh()
+            end)
+            sellRunner = runner
+            local function sellClicked()
+                if not open or runner.running() then return end
+                local steps, why = SellThese.Plan(shownListing, bagSlots())
+                if steps then
+                    runner.start(steps)
+                else
+                    note = { text = SellThese.Tip(why), tone = "warn" }
+                end
+                api.refresh()
+            end
+            local function action(listing)
+                local button = { kind = "button", key = SellThese.KEY, text = SellThese.TEXT,
+                    tooltip = SellThese.TIP, onClick = sellClicked }
+                if runner.running() then
+                    button.text, button.enabled = SellThese.SELLING, false
+                    button.tooltip = SellThese.Tip(SellThese.SELLING)
+                else
+                    local steps, why = SellThese.Plan(listing, bagSlots())
+                    if not steps then
+                        button.text, button.enabled, button.tooltip = why, false, SellThese.Tip(why)
+                    end
+                end
+                return { button = button, note = note }
+            end
             -- The kit window of a listing: true when it was drawn.
             local function draw(listing)
                 if not win then return false end
-                local tree = ns.Kit.Window(SellList.TreeOf(listing, client, id))
+                shownListing = listing
+                local tree = ns.Kit.Window(SellList.TreeOf(listing, client, id, action(listing)))
                 if not tree or win.update(tree) == false then return false end
                 win.show(true)
                 return true
@@ -489,6 +548,7 @@ function SellList.Declare(k)
                 asked = false       -- a new window: nothing was asked for yet
                 closed = false
                 visit = nil         -- and no evaluation yet
+                note = nil          -- nor a sell note
                 relist()
             end)
             ctx.bus:on(SellList.NAME, "MERCHANT_CLOSED", function()
@@ -496,6 +556,7 @@ function SellList.Declare(k)
                 asked = false
                 closed = false
                 visit = nil
+                runner.stop("closed")   -- a run stops with the window
                 hide()
             end)
             -- Something was sold, bought or moved by the player: the list
@@ -552,6 +613,7 @@ function SellList.Declare(k)
             closed = false
             started = false
             visit = nil
+            if sellRunner then sellRunner.stop("closed") end
             hide()
         end,
     })
