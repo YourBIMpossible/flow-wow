@@ -347,4 +347,37 @@ tests["recipe book GR2-4: two recipes of one name keep their keys in any row ord
     t.eq(addon.recipeBook.last().unchanged, true, "nothing written")
 end
 
+-- RB4-1 (lead section 253, MyBuddy LOW). Fails at 8aa468bd: the client
+-- never says whole, so a classic read never dropped a recipe no longer
+-- learned, even with every header open and no filter on; legacy Flow
+-- replaced the list each read. Now a classic read with every header
+-- expanded (collapsed = false) and both filters on all (filtered = false)
+-- counts as every learned recipe of that profession. Made-up rows.
+tests["recipe book RB4-1: every header open and no filter: what is no longer learned is dropped"] = function(t)
+    local bandage = { id = BANDAGE_ID, makes = BANDAGE, yield = 1, mats = { [LINEN] = 1 }, profession = "First Aid" }
+    local c, addon = start({ learned = { facts = { recipeBook = {
+        ["Bolt of Linen Cloth"] = CLASSIC_BOLT, ["Brown Linen Robe"] = CLASSIC_ROBE, ["Linen Bandage"] = bandage } } } })
+    c.setTradeSkillSchematic(2, { makes = BOLT, yield = 1, mats = { [LINEN] = 2 } })
+    local rows = { { index = 2, name = "Bolt of Linen Cloth" } }
+    classic(c, addon, rows, { collapsed = false })
+    t.eq(book(c)["Brown Linen Robe"], CLASSIC_ROBE, "filters not known: the robe stays")
+    classic(c, addon, rows, { filtered = false })
+    t.eq(book(c)["Brown Linen Robe"], CLASSIC_ROBE, "headers not known: the robe stays")
+    classic(c, addon, rows, { collapsed = false, filtered = false })
+    t.eq(addon.recipeBook.last().ok, true)
+    t.eq(book(c), { ["Bolt of Linen Cloth"] = CLASSIC_BOLT, ["Linen Bandage"] = bandage },
+        "nothing hidden, no filter: the robe is no longer learned; another profession's recipe stays")
+end
+
+-- RB4-1: a row whose schematic can't be read leaves the read short, so it
+-- still drops nothing, headers open and no filter or not.
+tests["recipe book RB4-1: a row not read: nothing dropped"] = function(t)
+    local c, addon = start({ learned = { facts = { recipeBook = {
+        ["Bolt of Linen Cloth"] = CLASSIC_BOLT, ["Brown Linen Robe"] = CLASSIC_ROBE } } } })
+    c.setTradeSkillSchematic(2, { makes = BOLT, yield = 1, mats = { [LINEN] = 2 } })
+    classic(c, addon, { { index = 2, name = "Bolt of Linen Cloth" }, { index = 3, name = "Unread" } },
+        { collapsed = false, filtered = false })
+    t.eq(book(c)["Brown Linen Robe"], CLASSIC_ROBE, "one row unread: the robe stays")
+end
+
 return tests
