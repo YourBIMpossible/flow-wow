@@ -18,6 +18,7 @@
 --   W.Declare(k, diag) -> api     api.Open(), api.Close(), api.Shown()
 --   `<slash> dungeons` opens it; so does the arrow menu's row
 --   (UI/ArrowMenu.lua M.WINDOWS).
+-- Its place is kept, account wide, at W.PATH.
 -- Not tested in game. No quest-state icons yet: the kit's theme has none
 -- (asked of the kit's owner, from-plexy RESULTS).
 local _, ns = ...
@@ -35,6 +36,9 @@ W.TABS = { "Quests", "Bosses", "Map" }
 W.SHOW_ON_MAP = "Show on map"
 W.BOSS_LOOT = "learned.bossLoot"   -- account, UI/BossLoot.lua
 W.DROPS = "learned.drops"          -- character, Items/Drops.lua
+-- Where the window was left, account wide: { point, width, height }
+-- (Twin review 18:06, F1). Read back through ns.Kit.Place.
+W.PATH = "layout.dungeonWindow"
 
 -- The tone a group's lines are drawn in (the kit's three words).
 local TONE = { log = "good", later = "warn", notforyou = "bad" }
@@ -225,7 +229,18 @@ function W.Declare(k, diag)
             return false
         end
         if not handle then
+            -- A name of its own: the game's Escape list closes a named
+            -- window (the kit wires it); its place is kept when moved.
+            local point, width, height = ns.Kit.Place(k.store:get("account", W.PATH), t)
             handle = c.kitWindow(W.ID, t, {
+                name = id.framePrefix .. "DungeonWindow",
+                point = point, width = width, height = height,
+                onMoved = function(at, w, h)
+                    if type(at) ~= "table" then return end
+                    local ok, why = k.store:set("account", W.PATH,
+                        { point = { at[1], at[2], at[3], at[4] }, width = w, height = h })
+                    if not ok then k.problems:add(W.NAME, "place", tostring(why)) end
+                end,
                 onClose = function() end,
                 failed = function(err) k.problems:add(W.NAME, "draw", tostring(err)) end,
             })

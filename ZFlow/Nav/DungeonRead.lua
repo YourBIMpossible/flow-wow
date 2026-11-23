@@ -450,7 +450,10 @@ function R.Loot(st, client, key, book, drops)
                     local info = ask(client, "itemInfo", it.item)
                     if type(info) == "table" then
                         if type(info.name) == "string" and info.name ~= "" then it.name = info.name end
-                        if type(info.quality) == "number" then it.quality = info.quality end
+                        -- Twin review 18:06, F4: only a quality the kit draws
+                        -- (whole, 0 to 5); any other is left out, never a stop.
+                        local q = info.quality
+                        if type(q) == "number" and q >= 0 and q <= 5 and q == math.floor(q) then it.quality = q end
                     end
                     it.name = it.name or R.ITEM_UNREAD
                     local icon = ask(client, "itemTexture", it.item)
