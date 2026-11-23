@@ -27,7 +27,7 @@ local function start(opts)
     c.setItemInfo({ [ORE_COPPER] = { name = "Copper Ore" }, [ORE_TIN] = { name = "Tin Ore" } })
     c.setBags({ { free = 4, total = 16, family = 0 } })
     c.setRecipes({ profession = MINING, skill = 70, max = 75, recipes = {
-        -- A numbered icon: the kit takes icon text only.
+        -- A numbered icon, as the game hands one out.
         { id = COPPER_BAR, name = "Copper Bar", learned = true, difficulty = "easy", icon = 133216 },
         { id = TIN_BAR, name = "Tin Bar", learned = true },
         { id = SILVER_BAR, name = "Silver Bar", learned = false },
@@ -252,6 +252,35 @@ tests["prof look kit: a numbered recipe icon does not cost the window"] = functi
     local helper, whyHelper = K.Window(H.View({ profession = "Mining", skill = 1, max = 75,
         recipes = { { name = "Red Bar", chance = "sure", icon = 133216 } } }))
     t.ok(type(helper) == "table", "helper: " .. tostring(whyHelper))
+end
+
+-- Whether some part of a view carries this icon, however deep it sits.
+local function carriesIcon(view, icon, seen)
+    if type(view) ~= "table" then return false end
+    seen = seen or {}
+    if seen[view] then return false end
+    seen[view] = true
+    if view.icon == icon then return true end
+    for _, v in pairs(view) do
+        if carriesIcon(v, icon, seen) then return true end
+    end
+    return false
+end
+
+tests["prof look kit: a numbered recipe icon is handed to the kit"] = function(t)
+    local bar = B.View({ recipes = { { id = 7, name = "Red Bar", count = 1, icon = 133216 } } })
+    t.ok(carriesIcon(bar, 133216), "craft bar: the recipe's file number is on its line")
+    local helper = H.View({ profession = "Mining", skill = 1, max = 75,
+        recipes = { { name = "Red Bar", chance = "sure", icon = 133216 } } })
+    t.ok(carriesIcon(helper, 133216), "helper: the recipe's file number is on its line")
+    -- Not a path and not a file number: left out, the line stays.
+    local odd = B.View({ recipes = { { id = 7, name = "Red Bar", count = 1, icon = true } } })
+    t.ok(not carriesIcon(odd, true), "an icon that is neither is left out")
+    local K = ns.Kit
+    if type(K) == "table" and type(K.Window) == "function" then
+        local tree, why = K.Window(odd)
+        t.ok(type(tree) == "table", "and does not cost the window: " .. tostring(why))
+    end
 end
 
 return tests
