@@ -395,6 +395,141 @@ tests["seen: refuses when no character name is known and the state was not said 
     t.ok(type((seen(c, nil, MADE_UP))) == "string", "and so is saying the state is made up")
 end
 
+-- The review of section 188's guard: six gaps, a test each. No add-on is
+-- loaded: a bare fake client and what it printed are enough. Every name is
+-- made up.
+
+-- Gap 1. The second check is its own: it does not ask redact what a name
+-- is. With redact made to do nothing, a joined form still refuses.
+tests["seen names: the second check is its own and refuses a joined form redact left in"] = function(t)
+    local c = ns.make.fakeClient()
+    local names = parts.names(c, nil, { realm = "Quell Made", guild = "Character" })
+    t.ok(type(names) == "table", "the names came back")
+    t.eq(parts.held("  at Quell_Made", names), true, "joined by an underscore")
+    t.eq(parts.held("  at QUELL...made", names), true, "joined by dots, upper case")
+    t.eq(parts.held("  a character sheet", names), true, "a name that is a word is still a name")
+    t.eq(parts.held("  at <realm> for <character>", names), false, "a placeholder is not a name")
+    t.eq(parts.held("  at Quill Made", names), false, "another word is not the name")
+
+    c.print("at Quell_Made")
+    local opts = { names = { character = "Zzyxmade", realm = "Quell Made" } }
+    local own = parts.redact
+    parts.redact = function(line) return line end
+    local ok, text, why = pcall(seen, c, nil, opts)
+    parts.redact = own
+    t.ok(ok, "nothing raised: " .. tostring(text))
+    t.eq(text, nil, "a line redact left alone is refused")
+    t.ok(type(why) == "string" and why:find("chat", 1, true) ~= nil, "the reason names the section: " .. tostring(why))
+    t.eq(section(seen(c, nil, opts), "chat"), { "  at <realm>" }, "with redact back, the line is replaced")
+end
+
+-- Gap 2. What was replaced and what was not known is said under the head;
+-- a key of opts.names that is no kind of name is refused, not passed over.
+tests["seen names: a line under the head says the kinds known and not known; a key that is no kind refuses"] = function(t)
+    local c = ns.make.fakeClient()
+    local text, lines = seen(c, nil, { names = { character = "Zzyxmade", realm = "Quell Made" } })
+    t.ok(type(text) == "string", "no guild is no reason to refuse: " .. tostring(lines))
+    lines = type(lines) == "table" and lines or {}
+    t.eq(lines[1], parts.HEAD)
+    t.eq(lines[2], "names: character, realm known; guild, account, guid not known")
+    t.eq(lines[3], "== arrows ==", "the first section comes after it")
+    local by, order = parts.sections(text)
+    t.eq(order[1], "head")
+    t.eq(by.head, { parts.HEAD, lines[2] }, "the compare has it in the head, in no section")
+
+    local made = select(2, seen(c, nil, MADE_UP))
+    t.eq(type(made) == "table" and made[2], "names: none known; character, realm, guild, account, guid not known")
+    local all = select(2, seen(c, nil, { names = { character = "Zzyxmade", realm = "Quell Made",
+        guild = "Vortexmade", account = "Wobblemade", guid = "Player-1234-ABCDEF" } }))
+    t.eq(type(all) == "table" and all[2], "names: character, realm, guild, account, guid known; none not known")
+
+    local bad = {
+        { "Zzyxmade" },
+        { character = "Zzyxmade", guildd = "Vortexmade" },
+        "Zzyxmade",
+        { character = 5 },
+        { character = { "Zzyxmade", 5 } },
+        { character = { first = "Zzyxmade" } },
+    }
+    for i, given in ipairs(bad) do
+        local got, why = seen(c, nil, { madeUp = true, names = given })
+        t.eq(got, nil, "names " .. i .. " are refused")
+        t.ok(type(why) == "string" and #why > 0, "names " .. i .. ": the reason is given")
+        t.ok(not tostring(why):lower():find("made", 1, true), "names " .. i .. ": and it says no name: " .. tostring(why))
+    end
+end
+
+-- Gap 3. The words of a name joined by anything that is not a letter or a
+-- digit; the parts of a GUID alone; a name with a non-ASCII letter, the
+-- same bytes, its ASCII letters in the other case.
+tests["seen names: a name joined by any signs, a GUID's parts alone and a non-ASCII name are replaced"] = function(t)
+    local c = ns.make.fakeClient()
+    c.setGuid("player", "Player-1234-ABCDEF")
+    c.print("at Quell-Made, Quell_Made, quell.made and QuellMade")
+    c.print("guid Player-1234-ABCDEF, short 1234-ABCDEF, bare ABCDEF")
+    c.print("the Player stands")
+    c.print("account WOBBL\195\169_MADE")
+    local text, lines = seen(c, nil, { names = { character = "Zzyxmade", realm = "Quell Made",
+        account = "Wobbl\195\169 Made" } })
+    t.ok(type(text) == "string", "a text came back: " .. tostring(lines))
+    t.eq(section(text, "chat"), {
+        "  at <realm>, <realm>, <realm> and <realm>",
+        "  guid <guid>, short <guid>, bare <guid>",
+        "  the Player stands",
+        "  account <account>",
+    })
+    t.eq(type(lines) == "table" and lines[2], "names: character, realm, account, guid known; guild not known",
+        "the GUID the client answers is known")
+end
+
+-- Gap 4. Two names that overlap in a line leave no piece of either.
+tests["seen names: two names that overlap in a line are one placeholder, no piece left"] = function(t)
+    local c = ns.make.fakeClient()
+    c.print("Zzyxmade")
+    local text, lines = seen(c, nil, { names = { character = "Zzyx", guild = "Xmade" } })
+    t.ok(type(text) == "string", "a text came back: " .. tostring(lines))
+    t.eq(section(text, "chat"), { "  <character>" })
+end
+
+-- Gap 5. The problems are texts of errors: a file path (with the name of
+-- the computer's user in it) and the names are taken out of them too.
+tests["seen names: the problems have no path and no name in them"] = function(t)
+    local c = ns.make.fakeClient()
+    local addon = { id = { slash = "/zzseen", accountDB = "ZzSeenMadeUpDB" } }
+    c.slashes["/zzseen"] = function()
+        error("C:\\Users\\Zzyxowner\\src\\x.lua:12: boom for Zzyxmade", 0)
+    end
+    local text, _, problems = seen(c, addon, { names = { character = "Zzyxmade" } })
+    t.ok(type(text) == "string", "a text came back")
+    t.eq(section(text, "diag"), { "failed" })
+    problems = type(problems) == "table" and problems or {}
+    t.eq(#problems, 1)
+    t.eq(problems[1], "diag: <path>/x.lua:12: boom for <character>")
+    t.ok(not tostring(problems[1]):find("Zzyxowner", 1, true), "the user's name is not in it")
+
+    t.eq(parts.paths("chat: /home/zzyxowner/src/y.lua:3: bad"), "chat: <path>/y.lua:3: bad")
+    t.eq(parts.paths("...xowner/src/y.lua:3: bad"), "<path>/y.lua:3: bad", "a file name Lua cut short")
+    t.eq(parts.paths("diag: C:\\Users\\Zzyx Owner\\x.lua:5: bad"), "diag: <path>/x.lua:5: bad", "a blank in a folder")
+    t.eq(parts.paths("diag: C:\\a\\b.lua:5: cannot open D:/c/d.txt"),
+        "diag: <path>/b.lua:5: cannot open <path>/d.txt", "two paths")
+    t.eq(parts.paths("panels: attempt to index a nil value"), "panels: attempt to index a nil value",
+        "a text with no path is as it was")
+end
+
+-- Gap 6. A name of one or two characters is in ordinary words.
+tests["seen names: a name under 3 characters refuses; with shortNames it is replaced as a whole word only"] = function(t)
+    local c = ns.make.fakeClient()
+    c.print("Al is in a small hall, AL.")
+    local text, why = seen(c, nil, { names = { character = "Al" } })
+    t.eq(text, nil, "refused")
+    t.ok(type(why) == "string" and why:find("under 3 characters", 1, true) ~= nil, "the reason: " .. tostring(why))
+    text, why = seen(c, nil, { madeUp = true, names = { guild = "A-b" } })
+    t.eq(text, nil, "two letters and a hyphen are two characters")
+    t.ok(type(why) == "string" and why:find("under 3 characters", 1, true) ~= nil, "the reason: " .. tostring(why))
+    local short = seen(c, nil, { names = { character = "Al" }, shortNames = true })
+    t.eq(section(short, "chat"), { "  <character> is in a small hall, <character>." })
+end
+
 tests["seen compare: the same text has no differences; one changed arrow line is the one reported"] = function(t)
     local c, addon = flying()
     local one = seen(c, addon, MADE_UP)
