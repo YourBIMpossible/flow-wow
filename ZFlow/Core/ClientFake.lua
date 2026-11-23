@@ -2845,6 +2845,41 @@ function ns.make.fakeClient(opts)
         for _, name in ipairs(s.weaponSkills) do out[name] = true end
         return out
     end
+
+    -- G51: the creature on a nameplate and the quest mark over it, as the
+    -- real client.plateCreature and client.plateQuestMark:
+    --   c.setPlateCreature(unit, npcId) (nil: not known);
+    --   c.setPlateCreatureFails(on): the read raises while on (lead
+    --   section 236: a read that fails, then recovers).
+    -- c.plateQuestMarks[i]: .unit, .shown, .says, .rgb; one per call, as
+    --   plateLabels. A mark needs the plate on screen (c.addPlate).
+    do
+        local creatures = {}
+        local function isPlate(unit)
+            return type(unit) == "string" and unit:find("^nameplate%d+$") ~= nil
+        end
+        function c.setPlateCreature(unit, id) creatures[unit] = id end
+        function c.setPlateCreatureFails(on) s.plateCreatureFails = on and true or nil end
+        function c.plateCreature(unit)
+            if s.plateCreatureFails then error("plate creature read failed (test)") end
+            if not isPlate(unit) then return nil end
+            return creatures[unit]
+        end
+        c.plateQuestMarks = {}
+        function c.plateQuestMark(unit)
+            if s.noFrames or not isPlate(unit) or not (s.plates and s.plates[unit]) then return nil end
+            local h = { unit = unit, shown = false }
+            function h.show(on) h.shown = on and true or false end
+            function h.text(text)
+                if type(text) == "string" then h.says = text end
+            end
+            function h.color(r, g, b)
+                if type(r) == "number" and type(g) == "number" and type(b) == "number" then h.rgb = { r, g, b } end
+            end
+            c.plateQuestMarks[#c.plateQuestMarks + 1] = h
+            return h
+        end
+    end
     return c
 end
 
