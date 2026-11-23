@@ -101,7 +101,9 @@ return {
     end,
 
     ["rows: a button row turned on makes that button, and only that one"] = function(t)
-        local k, c = kernel({ account = { settings = { buttons = { merchant = true } } } })
+        -- The world map button is on by default (lead section 294): saved off
+        -- here, so only the row turned on makes a button.
+        local k, c = kernel({ account = { settings = { buttons = { merchant = true, worldMap = false } } } })
         R.Declare(k)
         c.setWindow("WorldMapFrame", {})
         c.setWindow("MerchantFrame", {})

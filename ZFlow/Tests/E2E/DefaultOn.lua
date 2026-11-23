@@ -8,8 +8,12 @@ local _, ns = ...
 local tests = {}
 
 local D = ns.RotationDriver
-local IDS = { ["Wrath"] = 5176, ["Moonfire"] = 8921, ["Attack"] = 6603 }
-local ENEMY = { exists = true, hostile = true, dead = false }
+-- The druid spells and reads of Tests/E2E/DruidRotation.lua: a caster
+-- with no buff on is offered Mark of the Wild there.
+local IDS = {
+    ["Mark of the Wild"] = 1126, ["Thorns"] = 467, ["Cat Form"] = 768, ["Prowl"] = 5215,
+    ["Claw"] = 1082, ["Rake"] = 1822, ["Wrath"] = 5176, ["Moonfire"] = 8921, ["Attack"] = 6603,
+}
 
 -- opts: account (the saved account table), char (the saved character table).
 -- The account table is there before login: not a new install, so the staged
@@ -47,25 +51,26 @@ local function mapButton(c)
     return nil
 end
 
-local function fight(c)
-    c.setTarget(ENEMY); c.setCombat(true)
+-- Out of a fight, in caster form, no buff on: the druid's first suggestion.
+local function caster(c)
+    c.setFormName(nil, true); c.setPlayerBuffs({}); c.setCombat(false)
     c.advance(1, 5)
 end
 
 tests["default on: the next-spell icon shows at a default profile, nothing switched on"] = function(t)
     local c, addon = boot()
     t.eq(addon.settings:get(D.SETTING), true, "the setting's default")
-    fight(c)
+    caster(c)
     local h = icon(c)
     t.ok(h ~= nil, "the icon is made")
-    t.eq(h and h.shown, true, "and shown in a fight")
-    t.ok(h and type(h.texture) == "string" and h.texture:find("^tex:") ~= nil, "with a spell's picture")
+    t.eq(h and h.shown, true, "and shown")
+    t.eq(h and h.texture, "tex:Mark of the Wild", "with the suggested spell's picture")
 end
 
 tests["default on: a character that switched the next spell off keeps it off"] = function(t)
     local c, addon = boot({ char = { settings = { rotation = { enabled = false } } } })
     t.eq(addon.settings:get(D.SETTING), false, "the saved choice")
-    fight(c)
+    caster(c)
     local h = icon(c)
     t.eq(h and h.shown or false, false, "no icon")
 end

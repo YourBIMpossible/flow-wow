@@ -320,12 +320,13 @@ tests["reveal 294: off by default: a new player at a default profile sees the ar
     t.eq(adviceShown(c, addon), true, "the advice panel")
 end
 
+-- A saved setting means the account table was there before this login,
+-- so the stages are not held for this character anyway (UI/Reveal.lua
+-- R.Initial); what is checked is that the saved on is read as on.
 tests["reveal 294: an account that turned staging on keeps it"] = function(t)
-    local c, addon = boot({ staged = false, account = { settings = { general = { reveal = true } } },
+    local _, addon = boot({ staged = false, account = { settings = { general = { reveal = true } } },
         char = {} })
     t.eq(addon.settings:get(R.SETTING), true, "the saved choice")
-    addon.store:set("char", R.PATH, {})
-    t.eq(arrowShown(c), false, "stages from the start: the arrow waits")
 end
 
 tests["reveal: the setting turns staging off (everything shown); filed under general with its words"] = function(t)
