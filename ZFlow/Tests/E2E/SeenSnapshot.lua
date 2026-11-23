@@ -530,6 +530,104 @@ tests["seen names: a name under 3 characters refuses; with shortNames it is repl
     t.eq(section(short, "chat"), { "  <character> is in a small hall, <character>." })
 end
 
+-- The second review of the guard: four more gaps, a test each. Every name
+-- is made up.
+
+-- Second review 1. A sign that is not ASCII (a no-break space, a curly
+-- apostrophe) between the letters of a name whose own bytes are all ASCII.
+tests["seen names: an ASCII name with a non-ASCII sign between its letters is replaced and the second check finds it"] = function(t)
+    local NBSP, CURLY = "\194\160", "\226\128\153"
+    local c = ns.make.fakeClient()
+    c.print("at Quell" .. NBSP .. "Made")
+    c.print("O" .. CURLY .. "Brien says hello")
+    local given = { character = "O'Brien", realm = "Quell Made" }
+    local text, lines = seen(c, nil, { names = given })
+    t.ok(type(text) == "string", "a text came back: " .. tostring(lines))
+    t.eq(section(text, "chat"), { "  at <realm>", "  <character> says hello" })
+
+    local names = parts.names(c, nil, given)
+    t.ok(type(names) == "table", "the names came back")
+    names = type(names) == "table" and names or {}
+    t.eq(parts.redact("at Quell" .. NBSP .. "Made", names), "at <realm>")
+    t.eq(parts.held("  at Quell" .. NBSP .. "Made", names), true, "a no-break space between the words")
+    t.eq(parts.held("  O" .. CURLY .. "Brien", names), true, "a curly apostrophe")
+    t.eq(parts.held("  caf\195\169 at noon", names), false, "a non-ASCII letter alone is no name")
+end
+
+-- Second review 2. A path in a problem's text that the first cut let
+-- through: a stop character in a folder's name, a path that ends at the
+-- user's folder, and a path that starts where no path was looked for.
+tests["seen names: a path with a quote in a folder, one ending at a folder and a relative one leave no folder name"] = function(t)
+    local function cut(text, want, why)
+        local got = parts.paths(text)
+        t.eq(got, want, why)
+        local low = tostring(got):lower()
+        t.ok(not low:find("zzyxowner", 1, true) and not low:find("brien", 1, true), "no folder name: " .. tostring(got))
+    end
+    cut("diag: C:\\Users\\O'Brien\\src\\x.lua:12: bad", "diag: <path>/ bad", "a quote in a folder's name")
+    cut("diag: C:\\Users\\Zzyx O'Brien Jr\\src\\x.lua:12: bad", "diag: <path>/ bad", "a quote and blanks")
+    cut("chat: cannot open /home/zzyxowner (No such file or directory)", "chat: cannot open <path>/",
+        "the last part is a folder, not a file")
+    cut("chat: cannot open /home/zzyxowner: Permission denied", "chat: cannot open <path>/: Permission denied",
+        "a folder, then a colon")
+    cut("diag: ..\\Zzyxowner\\src\\x.lua:12: bad", "diag: <path> bad", "a relative path, backslashes")
+    cut("diag: ./home/zzyxowner/x.lua:3: bad", "diag: <path> bad", "a relative path, slashes")
+    for _, sign in ipairs({ "`", "@", "<", ">", "{", "-" }) do
+        cut("diag: " .. sign .. "/home/zzyxowner/x.lua:3: bad", "diag: <path> bad", "a path after " .. sign)
+    end
+    -- Cut too much on purpose: a problem is read for what went wrong.
+    t.eq(parts.paths("chat: either/or is not a number"), "chat: <path> is not a number", "prose with a slash")
+    t.eq(parts.paths("diag: C:\\a\\b.lua:5: cannot open D:/c/d.txt"), "diag: <path>/b.lua:5: cannot open <path>/d.txt",
+        "a file's name with an extension stays")
+
+    local c = ns.make.fakeClient()
+    local addon = { id = { slash = "/zzseen", accountDB = "ZzSeenMadeUpDB" } }
+    c.slashes["/zzseen"] = function()
+        error("cannot open /home/zzyxowner (No such file or directory)", 0)
+    end
+    local text, _, problems = seen(c, addon, { names = { character = "Zzyxmade" } })
+    t.ok(type(text) == "string", "a text came back")
+    problems = type(problems) == "table" and problems or {}
+    t.eq(problems, { "diag: cannot open <path>/" })
+    t.eq(parts.held("diag: <path> bad for <path>/x.lua", parts.names(c, nil, { character = "Zzyxmade" }) or {}), false,
+        "the paths' placeholders are no names")
+end
+
+-- Second review 3. A name that is only digits (a part of a GUID) is a whole
+-- number in the line, never digits of two numbers joined.
+tests["seen names: a name of digits only is replaced as a whole number, never across or inside another"] = function(t)
+    local c = ns.make.fakeClient()
+    c.setGuid("player", "Player-4904-ABCDEF")
+    c.print("pin at 0.349, 0.412")
+    c.print("line 1: 234 gold")
+    c.print("server 4904, id 1234, not 49040 or 14904")
+    local given = { character = "Zzyxmade", guid = "Player-1234-FEDCBA" }
+    local text, lines = seen(c, nil, { names = given })
+    t.ok(type(text) == "string", "a text came back: " .. tostring(lines))
+    t.eq(section(text, "chat"), {
+        "  pin at 0.349, 0.412",
+        "  line 1: 234 gold",
+        "  server <guid>, id <guid>, not 49040 or 14904",
+    })
+
+    local names = parts.names(c, nil, given)
+    t.ok(type(names) == "table", "the names came back")
+    names = type(names) == "table" and names or {}
+    t.eq(parts.held("  pin at 0.349, 0.412", names), false, "digits of two numbers are not the name")
+    t.eq(parts.held("  line 1: 234 gold", names), false, "nor across a colon")
+    t.eq(parts.held("  id 49040 and 14904", names), false, "nor inside a longer number")
+    t.eq(parts.held("  id 4904.", names), true, "the whole number is")
+    t.eq(parts.held("  id (1234)", names), true, "the whole number is")
+end
+
+-- Second review 4. The block got the names line after format 1.
+tests["seen: the head says format 2 or later, the block with the names line"] = function(t)
+    local n = tostring(parts.HEAD):match("^zflow seen (%d+)$")
+    t.ok(n ~= nil and tonumber(n) >= 2, "the head: " .. tostring(parts.HEAD))
+    local made = select(2, seen(ns.make.fakeClient(), nil, MADE_UP))
+    t.eq(type(made) == "table" and made[1], parts.HEAD, "and the block starts with it")
+end
+
 tests["seen compare: the same text has no differences; one changed arrow line is the one reported"] = function(t)
     local c, addon = flying()
     local one = seen(c, addon, MADE_UP)
