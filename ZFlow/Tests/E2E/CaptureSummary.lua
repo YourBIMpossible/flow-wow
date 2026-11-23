@@ -48,6 +48,8 @@ local function made()
                 } },
             },
         },
+        -- A real capture has the character file too.
+        char = {},
     }
 end
 
@@ -202,7 +204,12 @@ tests["capture summary: a planted name the player sees is not in the summary"] =
     local c, addon, report = boot(cap)
     local plant = { name = "way", words = { "way 45 60 meet Fenwick and aldwynne here" } }
     local raw = table.concat((Capture.RunFeature(c, addon, plant)), "\n")
-    t.ok(raw:find("Fenwick", 1, true) and raw:find("aldwynne", 1, true), "the planted names are shown to the player")
+    -- The way word echoes "waypoint set: <x>, <y> <label>." The slash command
+    -- lower-cases everything typed after it (Core/Diag.lua, the slash), so
+    -- the label the player sees is "meet fenwick and aldwynne here" (lead
+    -- section 208: the test looked for "Fenwick" and failed on White).
+    t.ok(raw:find("waypoint set: ", 1, true) ~= nil, "the way word set the waypoint and said so")
+    t.ok(raw:find("fenwick", 1, true) and raw:find("aldwynne", 1, true), "the planted names are shown to the player")
     local features = { plant, { name = "arrow", words = { "arrow why" } } }
     local rows = Capture.Summarize(c, addon, report, cap, ns.offline.ownWords(), features)
     local text = Capture.SummaryText(rows):lower()
@@ -234,22 +241,17 @@ tests["capture summary file: never inside the repo, a game folder, over an input
     t.eq({ ns.offline.writeSummary("D:/x/SavedVariables/out.txt", "x") }, { nil, "inside a game folder" })
     t.eq({ ns.offline.writeSummary("D:/made/up/ZFlow.lua", "x", { "d:\\made\\up\\zflow.lua" }) },
         { nil, "the same file as an input" })
-    local dir = os.getenv("TEMP") or os.getenv("TMPDIR") or os.getenv("TMP")
-    if not dir or ns.offline.inRepo(dir) then
-        t.skip("no temp folder to make an existing file in")
+    -- A made-up file outside the repo stands in for one that is there. The
+    -- runner makes, reads and removes it (lead section 208: a test file
+    -- names no file or system call itself).
+    local path, why = ns.offline.tempFile("made up")
+    if not path then
+        t.skip("no temp folder to make an existing file in: " .. tostring(why))
         return
     end
-    local path = dir .. "/zflow-summary-exists-" .. tostring(os.time()) .. ".txt"
-    local fh = io.open(path, "wb")
-    t.ok(fh ~= nil, "a made-up file to stand in for one that is there")
-    if not fh then return end
-    fh:write("made up")
-    fh:close()
     t.eq({ ns.offline.writeSummary(path, "x") }, { nil, "the file is already there" })
-    local back = io.open(path, "rb")
-    t.eq(back and back:read("*a"), "made up", "it was not written over")
-    if back then back:close() end
-    os.remove(path)
+    t.eq(ns.offline.readFile(path), "made up", "it was not written over")
+    t.eq(ns.offline.removeFile(path), true, "the made-up file is removed")
 end
 
 tests["capture real summary: the real run's summary goes to ZFLOW_SUMMARY (skipped without both)"] = function(t)

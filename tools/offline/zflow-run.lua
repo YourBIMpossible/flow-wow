@@ -163,6 +163,37 @@ function ns.offline.writeSummary(path, text, inputs)
     return true
 end
 
+-- Made-up files for tests that need a file to be there (lead section 208:
+-- a test file names no file or system call; only this runner does). Made
+-- in the system temp folder, never inside the repo.
+--   tempFile(text) -> path of a new file holding text, or nil and a reason
+--   readFile(path) -> its text, or nil
+--   removeFile(path) -> true when it was removed
+local made = 0
+function ns.offline.tempFile(text)
+    local dir = os.getenv("TEMP") or os.getenv("TMPDIR") or os.getenv("TMP")
+    if type(dir) ~= "string" or dir == "" then return nil, "no temp folder" end
+    if ns.offline.inRepo(dir) then return nil, "the temp folder is inside the repo" end
+    made = made + 1
+    local path = dir .. "/zflow-test-" .. tostring(os.time()) .. "-" .. made .. ".txt"
+    local fh = io.open(path, "wb")
+    if not fh then return nil, "the file did not open" end
+    fh:write(tostring(text))
+    fh:close()
+    return path
+end
+function ns.offline.readFile(path)
+    local fh = type(path) == "string" and io.open(path, "rb") or nil
+    if not fh then return nil end
+    local text = fh:read("*a")
+    fh:close()
+    return text
+end
+function ns.offline.removeFile(path)
+    if type(path) ~= "string" or ns.offline.inRepo(path) then return false end
+    return os.remove(path) and true or false
+end
+
 -- The add-on's own words (lead section 199, MyBuddy S1): every word inside a
 -- quoted text in the files the game loads (the manifest, dev files left
 -- out), lower case. A summary prints only these; any other word is counted.
