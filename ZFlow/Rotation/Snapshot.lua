@@ -52,6 +52,8 @@ R.SNAPSHOT_FIELDS = {
     -- N13: the buffs on you that you put up yourself (client.ownBuffs),
     -- the same shape as buffs; nil when not read.
     { "ownBuffs", "map" },
+    -- PC-3: whether you are in a group (client.grouped); nil when not read.
+    { "grouped", "flag" },
     { "spells", "spells" },
 }
 -- Names that would be made from a health or power amount. This client hides

@@ -74,7 +74,9 @@ local _, ns = ...
 --                  or when neither answers
 --       ownBuffs   client.ownBuffs() as it answered (N13): the buffs on you
 --                  that you put up yourself; nil when not known or the
---                  client has no such read
+--                  client has no such read; a read that raises is nil
+--       grouped    client.grouped() when it answers true or false (PC-3);
+--                  nil otherwise
 --   D.Step(client, pack[, prefs, bias, applied, role, extra]) -> view
 --     extra is handed to D.Read as it is (section 232).
 --     one read and one choice. A read that fails is an error (not caught
@@ -372,7 +374,18 @@ function D.Read(client, pack, ids, role, extra)
         if field == "finisherReady" then return finisherOf(client, pack, combo) end
         if field == "ownBuffs" then
             if type(client.ownBuffs) ~= "function" then return nil end
-            return client.ownBuffs()
+            -- Section 236 (c): a read that raises is not known, and the
+            -- tick goes on (the aura rule then waits).
+            local ok, v = pcall(client.ownBuffs)
+            if ok and type(v) == "table" then return v end
+            return nil
+        end
+        -- PC-3: in a group, read as yes or no (Classes/Paladin.lua's seal).
+        if field == "grouped" then
+            if type(client.grouped) ~= "function" then return nil end
+            local ok, v = pcall(client.grouped)
+            if ok and type(v) == "boolean" then return v end
+            return nil
         end
         if field == "buffFood" then return buffFoodKept(client, pack, role, food) end
         -- Section 230: no "and ... or nil" here; false must stay false.

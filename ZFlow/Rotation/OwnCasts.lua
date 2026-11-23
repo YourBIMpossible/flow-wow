@@ -68,6 +68,12 @@ OC.EVENT = "UNIT_SPELLCAST_SUCCEEDED"   -- unit, castGUID, spellID
 OC.SENT = "UNIT_SPELLCAST_SENT"         -- unit, target, castGUID, spellID
 OC.AURA = "UNIT_AURA"                   -- unit
 OC.FIGHT_END = "PLAYER_REGEN_ENABLED"
+-- PC-7: the line said when a cast becomes the kept seal or blessing.
+OC.SAY = "rotation.sayKept"
+-- PC-1: the driver, for what it picks and suggests now.
+OC.DRIVER = "rotationDriver"
+-- PC-7: the role in the player's words (Rotation/Role.lua's words).
+OC.ROLE_WORDS = { dps = "damage", heal = "healing", tank = "tanking" }
 
 local IS_ROLE = {}
 for _, role in ipairs(OC.ROLES) do IS_ROLE[role] = true end
@@ -126,6 +132,31 @@ function OC.Short(names, prefix)
         if type(name) == "string" then out[#out + 1] = bare(name, prefix) end
     end
     return table.concat(out, ", ")
+end
+
+-- PC-1 (legacy keptFromCast, Classes/Paladin/Rotation.lua:62-66 at
+-- origin/program-integ): a cast of the one the rotation would put up right
+-- now is not a choice of yours. view: the driver's last view. true when the
+-- name is what row.pick(view.snapshot) gives, or the spell it suggests;
+-- false when it is not, or it cannot be told (no view, no pick, a pick
+-- that raises): then the cast is kept, as before.
+function OC.Fresh(row, view, name)
+    if type(row) ~= "table" or type(view) ~= "table" or type(name) ~= "string" then return false end
+    local suggestion = view.suggestion
+    if type(suggestion) == "table" and suggestion.spell == name then return true end
+    if type(row.pick) == "function" and type(view.snapshot) == "table" then
+        local ok, picked = pcall(row.pick, view.snapshot)
+        if ok and picked == name then return true end
+    end
+    return false
+end
+
+-- PC-7 (legacy Rotation.lua:138-139, 257-258): the line said when a cast
+-- becomes the one kept for your role. No name of yours in it.
+function OC.Line(row, name, roleWord, slash)
+    local word = type(row) == "table" and tostring(row.word or row.key or "") or ""
+    return string.format("%s: kept up while you play %s. Cast another to switch; %s %s auto: back to your role's.",
+        tostring(name), tostring(roleWord), tostring(slash), word)
 end
 
 -- before: the buff's time left on you before the cast (nil: not up;
@@ -207,12 +238,38 @@ function OC.Declare(k, diag, packs)
         return any and out or nil
     end
 
+    local function say(line)
+        local c = client or k.client
+        if type(c) == "table" and type(c.print) == "function" then c.print(k.id.title .. ": " .. line) end
+    end
+
+    -- PC-7: the line is on unless the setting is read as off.
+    local function sayOn()
+        local ok, v = pcall(k.settings.get, k.settings, OC.SAY)
+        return not (ok and v == false)
+    end
+
+    -- PC-1: the driver's last view, or nil.
+    local function driverView()
+        if type(k.use) ~= "function" then return nil end
+        local ok, driver = pcall(k.use, OC.DRIVER)
+        if not ok or type(driver) ~= "table" or type(driver.View) ~= "function" then return nil end
+        local asked, view = pcall(driver.View)
+        if asked and type(view) == "table" then return view end
+        return nil
+    end
+
     -- A cast taken: for this fight, and for the role unless a word chose.
-    local function accept(key, name)
+    -- PC-7: a change of the one kept for the role is said in one line.
+    local function accept(row, name)
+        local key = row.key
         fight[key] = name
-        if choiceOf(key) == nil then
-            k.store:set("char", OC.PATH .. "." .. role() .. "." .. key, name)
-        end
+        if choiceOf(key) ~= nil then return end
+        local r = role()
+        local path = OC.PATH .. "." .. r .. "." .. key
+        local was = k.store:get("char", path)
+        k.store:set("char", path, name)
+        if was ~= name and sayOn() then say(OC.Line(row, name, OC.ROLE_WORDS[r] or r, k.id.slash)) end
     end
 
     local function nameOf(id)
@@ -240,7 +297,7 @@ function OC.Declare(k, diag, packs)
         if OC.Landed(pending.before, after) then
             local p = pending
             pending = nil
-            accept(p.key, p.name)
+            accept(p.row, p.name)
         end
     end
 
@@ -260,17 +317,22 @@ function OC.Declare(k, diag, packs)
         local name = nameOf(id)
         local row = name and OC.Match(rows(), name) or nil
         if not row then return end
-        if not row.onYou then
-            accept(row.key, name)
-            return
-        end
-        local t = now()
         local s = sentRec
         sentRec = nil
+        -- PC-1: the one picked or suggested when you cast it: not your choice.
+        if OC.Fresh(row, driverView(), name) then return end
+        if not row.onYou then
+            accept(row, name)
+            return
+        end
+        -- PC-5: the buffs before the cast are the ones read at
+        -- UNIT_SPELLCAST_SENT; an aura that came between SENT and this
+        -- event is then seen by the check below.
+        local t = now()
         local fromSent = s ~= nil and s.name == name and t ~= nil and s.at ~= nil and t - s.at <= OC.WINDOW
         local before
         if fromSent then before = s.before else before = ownBuff(name) end
-        pending = { key = row.key, name = name, at = t, before = before }
+        pending = { key = row.key, row = row, name = name, at = t, before = before }
         if fromSent then check() end
     end
 
@@ -279,10 +341,6 @@ function OC.Declare(k, diag, packs)
     end
 
     -- ------------------------------------------------------------ the words
-    local function say(line)
-        local c = client or k.client
-        if type(c) == "table" and type(c.print) == "function" then c.print(k.id.title .. ": " .. line) end
-    end
 
     -- true / false as the client says you know it; nil when not read.
     local function knownNow(name)
@@ -360,6 +418,13 @@ function OC.Declare(k, diag, packs)
         name = OC.NAME,
         needs = { "client", "store" },
         provides = { Chosen = api.chosen },
+        -- PC-7: on by default: the old add-on always said it.
+        settings = { {
+            key = OC.SAY, scope = "account", type = "bool", default = true,
+            label = "Say when a seal or blessing you cast is kept",
+            help = "One line in chat when a seal or blessing you cast becomes the one suggested for your role. It casts nothing.",
+            group = "Rotation",
+        } },
         start = function(ctx)
             client = ctx.client
             client.listen(OC.SENT, sent)
