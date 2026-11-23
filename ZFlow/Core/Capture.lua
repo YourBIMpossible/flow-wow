@@ -671,10 +671,15 @@ function Capture.Summarize(c, addon, report, cap, own, features)
                 hidden = hidden + n
             end
         end
+        -- A word that raised (ran false) counts as a Lua problem, so the run
+        -- is never verified (MyBuddy CS-1). A Judge that raises leaves this
+        -- row with no verdict, said as not verified, and the rest go on (CS-3).
         local verdict = nil
         if type(Evidence) == "table" and type(Evidence.Judge) == "function" then
-            verdict = Evidence.Judge(feature.name,
-                { cap = cap, report = report, lines = lines, problems = added, addon = addon })
+            local judged = added + (ran and 0 or 1)
+            local ok, v = pcall(Evidence.Judge, feature.name,
+                { cap = cap, report = report, lines = lines, problems = judged, addon = addon, ran = ran })
+            if ok and type(v) == "table" then verdict = v end
         end
         rows[#rows + 1] = { feature = feature.name, ran = ran, problems = added,
             unknowns = Capture.Unknowns(lines, report), hidden = hidden, verdict = verdict, lines = masked }
