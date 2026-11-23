@@ -86,6 +86,7 @@ Classes\Priest.lua
 Classes\Rogue.lua
 Classes\Shaman.lua
 Classes\Warrior.lua
+Classes\Warlock.lua
 Rotation\GroupTip.lua
 Nav\ArrowLayout.lua
 Nav\Bearing.lua

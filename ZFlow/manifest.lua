@@ -103,6 +103,7 @@ return {
         "Classes/Rogue.lua",
         "Classes/Shaman.lua",
         "Classes/Warrior.lua",
+        "Classes/Warlock.lua",
         "Rotation/GroupTip.lua",
 
         -- Navigation
