@@ -5342,6 +5342,207 @@ function ns.make.client(env)
         return { map = map, here = here, nodes = nodes }
     end
     -- --------------------------------------------------------- end flights
+
+    -- ------------------------------------------------------- flight marks
+    -- Lead DISPATCH section 187 section 7 (CLIENT NEEDs of Nav/TaxiMark.lua
+    -- and Nav/MapFlights.lua; legacy Flow 0.35.377 Modules/Nav/TaxiMark.lua
+    -- :66-150 and Modules/Nav/MapFlights.lua :300-530). LOOK ONLY: plain
+    -- frames that take no mouse, have no template and hold no action. No
+    -- node is taken or selected, no CVar is set.
+    --
+    -- c.taxiMark() -> h, or nil when there is no flight map frame
+    -- (TaxiFrame, else FlightMapFrame) or no frame could be made. Hidden
+    -- when made.
+    --   h.mark(node, text) -> true | false   node = { name, x, y } as
+    --       c.taxiNodes() gives it. Rings the game's own button for that
+    --       name (TaxiButton<i> where TaxiNodeName(i) is the name and the
+    --       button is visible), else stands at the node's share (x right,
+    --       y down) of TaxiRouteMap (else the flight map frame). text: the
+    --       words under it. false, and hidden, when neither place is known.
+    --   h.hide()
+    -- All first guesses, not seen on 1.60.1: TaxiFrame, FlightMapFrame,
+    -- TaxiRouteMap, TaxiButton<i>, NumTaxiNodes, TaxiNodeName (names from
+    -- legacy Flow and the Blizzard classic UI; CLIENT-NAMES-16001.txt was
+    -- not reachable from Zen), Region:IsVisible, CreateFontString with
+    -- GameFontNormalSmall, SetColorTexture.
+    function c.taxiMark()
+        local parent = env.TaxiFrame
+        if parent == nil then parent = env.FlightMapFrame end
+        if parent == nil then return nil end
+        local ok, f = call(env.CreateFrame, "Frame", nil, parent)
+        if not ok or f == nil then return nil end
+        method(f, "Hide")
+        method(f, "EnableMouse", false)
+        if not method(f, "SetSize", 34, 34) then
+            method(f, "SetWidth", 34)
+            method(f, "SetHeight", 34)
+        end
+        local okTex, ring = method(f, "CreateTexture", nil, "OVERLAY")
+        if okTex and ring ~= nil then
+            method(ring, "SetAllPoints", f)
+            if not method(ring, "SetColorTexture", 0.3, 1, 0.4, 0.45) then method(ring, "SetTexture", 0.3, 1, 0.4, 0.45) end
+        end
+        local okLabel, label = method(f, "CreateFontString", nil, "OVERLAY", "GameFontNormalSmall")
+        if not okLabel then label = nil end
+        if label ~= nil then method(label, "SetPoint", "TOP", f, "BOTTOM", 0, -2) end
+
+        -- The game's own visible button for a node of that name, or nil.
+        local function button(name)
+            local okN, count = call(env.NumTaxiNodes)
+            if not okN or count == nil or hidden(count) or type(count) ~= "number" or count ~= count then return nil end
+            for i = 1, math.min(math.floor(count), 200) do
+                local okName, n = call(env.TaxiNodeName, i)
+                if okName and n ~= nil and not hidden(n) and n == name then
+                    local b = env["TaxiButton" .. i]
+                    if b ~= nil then
+                        local okV, visible = method(b, "IsVisible")
+                        if okV and visible == true then return b end
+                    end
+                    return nil
+                end
+            end
+            return nil
+        end
+
+        local function size(region)
+            local okW, w = method(region, "GetWidth")
+            local okH, ht = method(region, "GetHeight")
+            if not okW or not okH or w == nil or ht == nil or hidden(w) or hidden(ht) then return nil end
+            if type(w) ~= "number" or type(ht) ~= "number" or w ~= w or ht ~= ht or w <= 0 or ht <= 0 then return nil end
+            return w, ht
+        end
+
+        local h = {}
+        function h.mark(node, words)
+            if type(node) ~= "table" then return false end
+            local at = type(node.name) == "string" and button(node.name) or nil
+            method(f, "ClearAllPoints")
+            if at ~= nil then
+                method(f, "SetPoint", "CENTER", at, "CENTER", 0, 0)
+            else
+                local x, y = node.x, node.y
+                local area = env.TaxiRouteMap
+                if area == nil then area = parent end
+                local w, ht = size(area)
+                if type(x) ~= "number" or type(y) ~= "number" or x ~= x or y ~= y or not w then
+                    method(f, "Hide")
+                    return false
+                end
+                method(f, "SetPoint", "CENTER", area, "TOPLEFT", x * w, -y * ht)
+            end
+            if label ~= nil then method(label, "SetText", tostring(words or "")) end
+            method(f, "Show")
+            return true
+        end
+        function h.hide() method(f, "Hide") end
+        return h
+    end
+
+    -- c.mapPins() -> h, or nil when there is no world map, no canvas
+    -- (WorldMapFrame.ScrollContainer.Child) or no frame could be made. One
+    -- plain frame over the canvas, no mouse; its dots and lines are made
+    -- as needed and kept.
+    --   h.map() -> the uiMapID the world map shows, or nil when it is not
+    --       shown or will not say (WorldMapFrame:IsShown, :GetMapID).
+    --   h.draw(pins, lines)
+    --       pins  = { { name, kind = "have" | "new", role, x, y } }
+    --       lines = { { from, to, ax, ay, bx, by } }
+    --       x, y: shares (x right, y down) of the shown map. Draws these and
+    --       hides any made before past their count; a pin or line not placed
+    --       by plain numbers is skipped.
+    --   h.clear()   hides them all
+    -- All first guesses, not seen on 1.60.1: WorldMapFrame, its
+    -- ScrollContainer.Child canvas (named in RESEARCH-worldmap-button.md),
+    -- IsShown, GetMapID, CreateLine, SetStartPoint, SetEndPoint,
+    -- SetThickness, SetColorTexture. The canvas's own scale (legacy
+    -- divided by it) is not read: the dots may draw small or large when
+    -- the map is zoomed. Needs a game test.
+    function c.mapPins()
+        local wm = env.WorldMapFrame
+        if wm == nil then return nil end
+        local okC, canvas = pcall(function() return wm.ScrollContainer.Child end)
+        if not okC or canvas == nil then return nil end
+        local ok, host = call(env.CreateFrame, "Frame", nil, canvas)
+        if not ok or host == nil then return nil end
+        method(host, "EnableMouse", false)
+        method(host, "SetAllPoints", canvas)
+        local dots, lines = {}, {}
+        local nDots, nLines = 0, 0
+        local COLOUR = {
+            from = { 0.3, 1, 0.4 }, to = { 0.3, 1, 0.4 },
+            have = { 1, 0.82, 0 }, new = { 0.6, 0.6, 0.6 },
+        }
+        local function plain(v) return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge end
+
+        local h = {}
+        function h.map()
+            local okS, shown = method(wm, "IsShown")
+            if not okS or shown ~= true then return nil end
+            local okM, map = method(wm, "GetMapID")
+            if not okM or map == nil or hidden(map) or type(map) ~= "number" or map ~= map then return nil end
+            return map
+        end
+        function h.clear()
+            for i = 1, nDots do if dots[i] then method(dots[i], "Hide") end end
+            for i = 1, nLines do if lines[i] then method(lines[i], "Hide") end end
+            nDots, nLines = 0, 0
+        end
+        function h.draw(pins, segs)
+            local okW, w = method(canvas, "GetWidth")
+            local okH, ht = method(canvas, "GetHeight")
+            if not okW or not okH or w == nil or ht == nil or hidden(w) or hidden(ht)
+                or not plain(w) or not plain(ht) or w <= 0 or ht <= 0 then
+                h.clear()
+                return false
+            end
+            local n = 0
+            for _, p in ipairs(type(pins) == "table" and pins or {}) do
+                if type(p) == "table" and plain(p.x) and plain(p.y) then
+                    n = n + 1
+                    local d = dots[n]
+                    if d == nil then
+                        local okT, made = method(host, "CreateTexture", nil, "OVERLAY")
+                        d = okT and made or false
+                        dots[n] = d
+                    end
+                    if d then
+                        local col = COLOUR[p.role or ""] or COLOUR[p.kind or ""] or COLOUR.new
+                        method(d, "SetSize", 10, 10)
+                        method(d, "SetColorTexture", col[1], col[2], col[3], 1)
+                        method(d, "ClearAllPoints")
+                        method(d, "SetPoint", "CENTER", canvas, "TOPLEFT", p.x * w, -p.y * ht)
+                        method(d, "Show")
+                    end
+                end
+            end
+            for i = n + 1, nDots do if dots[i] then method(dots[i], "Hide") end end
+            nDots = n
+            local m = 0
+            for _, l in ipairs(type(segs) == "table" and segs or {}) do
+                if type(l) == "table" and plain(l.ax) and plain(l.ay) and plain(l.bx) and plain(l.by) then
+                    m = m + 1
+                    local line = lines[m]
+                    if line == nil then
+                        local okL, made = method(host, "CreateLine", nil, "ARTWORK")
+                        line = okL and made or false
+                        lines[m] = line
+                    end
+                    if line then
+                        method(line, "SetThickness", 2)
+                        method(line, "SetColorTexture", 0.3, 1, 0.4, 0.8)
+                        method(line, "SetStartPoint", "TOPLEFT", canvas, l.ax * w, -l.ay * ht)
+                        method(line, "SetEndPoint", "TOPLEFT", canvas, l.bx * w, -l.by * ht)
+                        method(line, "Show")
+                    end
+                end
+            end
+            for i = m + 1, nLines do if lines[i] then method(lines[i], "Hide") end end
+            nLines = m
+            return true
+        end
+        return h
+    end
+    -- --------------------------------------------------- end flight marks
     return c
 end
 
