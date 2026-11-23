@@ -6010,13 +6010,12 @@ function ns.make.client(env)
         return h
     end
 
-    -- ACTING (section 227 item 4): one craft of the recipe, asked on the
-    -- player own click on the craft bar (UI/CraftBar.lua) or from the
-    -- finish of the craft that click started; never unattended.
+    -- ACTING (section 227 item 4, section 234): one ask of the recipe, n
+    -- as the game repeat count, only on the player own click on the craft
+    -- bar (UI/CraftBar.lua); never from a finish, a timer or the tick.
     -- C_TradeSkillUI.CraftRecipe(id, n). Out of combat only: combat true or
     -- not known asks nothing. -> true | nil, "combat" | "bad" | "noCall" |
-    -- "raised". Needs game test: the call, and whether a craft started
-    -- from a finished cast (not a hardware click) is allowed.
+    -- "raised". Needs game test: the call and its repeat count.
     function c.craftRecipe(id, n)
         if c.inCombat() ~= false then return nil, "combat" end
         if not wholeId(id) or not wholeId(n) then return nil, "bad" end
@@ -6024,6 +6023,18 @@ function ns.make.client(env)
         local fn = type(ui) == "table" and ui.CraftRecipe or nil
         if type(fn) ~= "function" then return nil, "noCall" end
         if not pcall(fn, id, n) then return nil, "raised" end
+        return true
+    end
+    -- Section 234: asks the game to stop the repeat of the craft the
+    -- player click started (C_TradeSkillUI.StopRecipeRepeat). Not a craft:
+    -- it only ends one, so it is asked in combat too. -> true | nil,
+    -- "noCall" | "raised". Needs game test: StopRecipeRepeat is in the
+    -- 16001 name list, its place under C_TradeSkillUI is a guess.
+    function c.stopCraftRepeat()
+        local ui = env.C_TradeSkillUI
+        local fn = type(ui) == "table" and ui.StopRecipeRepeat or nil
+        if type(fn) ~= "function" then return nil, "noCall" end
+        if not pcall(fn) then return nil, "raised" end
         return true
     end
     -- ------------------------------------------------------- end craft

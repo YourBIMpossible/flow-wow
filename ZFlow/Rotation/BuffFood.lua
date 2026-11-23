@@ -10,7 +10,10 @@ local _, ns = ...
 -- First guesses, not seen in game on 16001.
 --   BuffFood.WELL_FED                  the buff's name
 --   BuffFood.EATING                    the buffs eating or drinking gives
---                                      (section 230 BF-2, first guesses)
+--                                      (section 230 BF-2, first guesses);
+--                                      the one list the food offer and the
+--                                      gather offer read (section 237
+--                                      GK-1, BF2-1: Flow Engine.lua EATING)
 --   BuffFood.Eating(buffs)             true when one is on you, false when
 --                                      none, nil when buffs not read
 --   BuffFood.CLASS, BuffFood.SUBCLASS  food and drink: consumable (0), 5
@@ -36,7 +39,7 @@ ns.BuffFood = BF
 
 BF.WELL_FED = "Well Fed"
 BF.CLASS, BF.SUBCLASS = 0, 5
-BF.EATING = { "Food", "Drink", "Food & Drink" }
+BF.EATING = { "Food", "Drink", "Food & Drink", "Refreshment" }
 
 function BF.Eating(buffs)
     if type(buffs) ~= "table" then return nil end

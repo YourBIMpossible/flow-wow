@@ -436,6 +436,9 @@ tests["buff food BF-2: eating or drinking: no food suggestion"] = function(t)
     t.eq(step(client({ RIBS }, { Food = 18 }), pack(), "dps").suggestion, nil, "eating")
     t.eq(step(client({ RIBS }, { Drink = 18 }), pack(), "dps").suggestion, nil, "drinking")
     t.eq(step(client({ RIBS }, { ["Food & Drink"] = 18 }), pack(), "dps").suggestion, nil, "both")
+    -- Section 237 BF2-1: Flow's list (Engine.lua EATING) has Refreshment too.
+    t.eq(step(client({ RIBS }, { Refreshment = 18 }), pack(), "dps").suggestion, nil, "refreshment")
+    t.eq(ns.BuffFood.Eating({ Refreshment = 18 }), true)
     t.eq(ns.BuffFood.Eating({ Food = 18 }), true)
     t.eq(ns.BuffFood.Eating({ ["Power Word: Fortitude"] = 600 }), false)
     t.eq(ns.BuffFood.Eating(nil), nil, "buffs not read: not known")
@@ -515,6 +518,20 @@ tests["buff food: extra.food reaches the food read with extra.chosen beside it (
     local v = D.Step(c, pack(), nil, nil, nil, "dps", { food = { on = false }, chosen = { spell = "Wrath" } })
     t.ok(not (v.suggestion and v.suggestion.step == "food"), "D.Step hands extra on: no food when off")
     t.eq(D.Read(c, pack(), {}, "dps", { chosen = { spell = "Wrath" } })("foodOn"), nil, "no extra.food: not known")
+end
+
+-- Section 236: a pick made while another food was not read yet answers, but
+-- is not kept; the late food is read on the next read.
+tests["buff food: a pick made with a food not read yet is not kept (section 236)"] = function(t)
+    local c = client({ RIBS, FISH }, {})
+    c.setItemLines(RIBS, nil)
+    local food = { on = true }
+    local function read() return D.Read(c, pack(), {}, "heal", { food = food })("buffFood") end
+    t.eq(read().name, "Smoked Sagefish", "the one read")
+    t.eq(food.kept, false, "not kept: Spiced Wolf Ribs not read")
+    c.setItemLines(RIBS, LINES[RIBS])
+    t.eq(read().name, "Smoked Sagefish", "read again: still the healer's pick")
+    t.eq(food.kept, true, "all read: kept")
 end
 
 return tests
