@@ -85,4 +85,26 @@ tests["own casts: a blessing landed on you only when your buffs show it new or r
     t.eq(OC().Landed(OC().UNREAD, 300), false, "your buffs not read before: cannot tell")
 end
 
+-- PC-1 (legacy keptFromCast): a cast of the one the rotation picks right
+-- now, or of the spell it suggests, is not your choice.
+tests["own casts: a cast of what was picked or suggested is not kept"] = function(t)
+    local row = { key = "seal", pick = function(s) return s.want end }
+    local view = { snapshot = { want = "Seal of Righteousness" }, suggestion = { spell = "Seal of Light" } }
+    t.eq(OC().Fresh(row, view, "Seal of Righteousness"), true, "the one picked")
+    t.eq(OC().Fresh(row, view, "Seal of Light"), true, "the one suggested")
+    t.eq(OC().Fresh(row, view, "Seal of the Crusader"), false, "another one")
+    t.eq(OC().Fresh(row, nil, "Seal of Righteousness"), false, "no view: cannot tell, kept")
+    t.eq(OC().Fresh({ key = "seal", pick = function() error("made-up failure") end }, { snapshot = {} },
+                    "Seal of Righteousness"), false, "a pick that raises: cannot tell")
+    t.eq(OC().Fresh({ key = "seal" }, { snapshot = {} }, "Seal of Righteousness"), false, "no pick, nothing suggested")
+end
+
+-- PC-7: the line said when a cast becomes the kept one.
+tests["own casts: the line names the spell, the role and the way back"] = function(t)
+    local line = OC().Line({ word = "seal" }, "Seal of the Crusader", "damage", "/x")
+    t.ok(line:find("Seal of the Crusader", 1, true) == 1, line)
+    t.ok(line:find("damage", 1, true) ~= nil, line)
+    t.ok(line:find("/x seal auto", 1, true) ~= nil, line)
+end
+
 return tests

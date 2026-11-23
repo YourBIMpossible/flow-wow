@@ -94,6 +94,9 @@ Diag.NAMES = {
     "C_TradeSkillUI.GetChildProfessionInfo", "C_TradeSkillUI.GetProfessionInfoBySkillLineID",
     "C_TradeSkillUI.GetAllProfessionTradeSkillLines", "C_TradeSkillUI.IsTradeSkillReady",
     "C_TradeSkillUI.GetRecipeItemLink", "C_TradeSkillUI.GetTradeSkillLine",
+    -- Lead sections 236, 237: the craft ask, its repeat stop and the repeat
+    -- read, so a capture shows which the client has (UI/CraftBar.lua).
+    "C_TradeSkillUI.CraftRecipe", "C_TradeSkillUI.StopRecipeRepeat", "C_TradeSkillUI.IsRecipeRepeating",
     "C_Traits.GetConfigInfo", "C_ClassTalents.GetActiveConfigID", "C_SpecializationInfo.GetTalentInfo",
     "C_Bank.CanViewBank", "C_Bank.FetchPurchasedBankTabIDs", "C_Bank.FetchNumPurchasedBankTabs",
     "Enum.BankType", "C_PlayerInteractionManager.IsInteractingWithNpcOfType", "Enum.PlayerInteractionType",

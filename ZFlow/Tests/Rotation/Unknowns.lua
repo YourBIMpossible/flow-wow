@@ -271,8 +271,11 @@ T["paladin: combat not known, no blessing, and the seal by the in-fight rule"] =
     t.eq(ns.PaladinWantsBlessing({ buffs = {} }), false, "not known")
 
     local function seal(left, combat)
-        return ns.PaladinWantsSeal({ buffs = { ["Seal of Light"] = left }, hostile = true, inCombat = combat })
+        return ns.PaladinWantsSeal({ buffs = { ["Seal of Light"] = left }, hostile = true, inCombat = combat },
+            "Seal of Light") -- PC-2: only the picked seal counts as up
     end
+    t.eq(ns.PaladinWantsSeal({ buffs = { ["Seal of Light"] = 5 }, hostile = true }, "Seal of Command"), true,
+        "another seal up, not known: missing, as in the fight")
     t.eq(seal(5, false), true, "5 s left before the pull")
     t.eq(seal(5, true), false, "5 s left in the fight")
     t.eq(seal(5, nil), false, "5 s left, not known: as in the fight")
