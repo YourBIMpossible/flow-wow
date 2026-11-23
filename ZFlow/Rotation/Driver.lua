@@ -258,6 +258,12 @@ function D.Read(client, pack, ids, role)
         end
         if field == "conjured" then return conjuredOf(client, pack) end
         if field == "buffFood" then return buffFoodOf(client, pack, role) end
+        -- P-GATHER: the gathering tracking reads (Rotation/Gather.lua).
+        if field == "tracking" or field == "trackKnown" or field == "professions" or field == "gatherOn" then
+            -- Lead: no "and ... or nil" here; a false answer (the setting off) must stay false.
+            if type(ns.Gather) ~= "table" then return nil end
+            return ns.Gather.Read(client, field)
+        end
         return nil
     end
 end
@@ -290,7 +296,9 @@ function D.Why(snapshot, trace, keys, lockdown)
     local n = type(trace) == "table" and #trace or 0
     -- Section 226 (CF-30): food is the step after the rotation. Skipped, its
     -- row is not the rotation's reason; the row before it is.
-    if n > 1 and type(trace[n]) == "table" and trace[n].step == "food" and trace[n].result ~= "pick" then
+    -- Lead (merge of P-FOOD and P-GATHER): the same holds for "track".
+    while n > 1 and type(trace[n]) == "table" and (trace[n].step == "food" or trace[n].step == "track")
+        and trace[n].result ~= "pick" do
         n = n - 1
     end
     local last = n > 0 and trace[n] or nil

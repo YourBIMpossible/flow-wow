@@ -521,6 +521,14 @@ function steps.food(s)
 end
 
 R.STEPS = { "breakFree", "heal", "interrupt", "dispel", "engage", "list", "farOpener", "food" }
+-- 9. P-GATHER: out of a fight, a gathering tracking that is off and can be
+-- turned on (Rotation/Gather.lua G.Step). Last: anything above comes first,
+-- food included (lead, merge of P-FOOD and P-GATHER).
+steps.track = function(s)
+    if type(ns.Gather) ~= "table" then return nil, "no gathering tracking" end
+    return ns.Gather.Step(s)
+end
+R.STEPS[#R.STEPS + 1] = "track"
 R._steps = steps   -- (tests)
 
 function ns.Choose(snapshot, pack, prefs, bias)

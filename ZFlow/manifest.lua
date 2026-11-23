@@ -180,5 +180,6 @@ return {
     "Nav/Try.lua",
     { "Core/Capture.lua", dev = true },
     { "Core/CaptureEvidence.lua", dev = true },
+    "Rotation/Gather.lua",
     },
 }
