@@ -10042,6 +10042,93 @@ function ns.make.client(env)
                     method(s, "SetText", part.text)
                 end
                 edgeLine(h, "BOTTOM", color.divider, "d")
+                -- A section that folds: a mark at its right, and a click
+                -- anywhere on the heading tells the caller the new state.
+                local foldMark = type(look.foldMark) == "table" and look.foldMark or {}
+                local mark = words(h, font.heading, "fold")
+                if mark ~= nil then
+                    if part.folded == nil then
+                        method(mark, "SetText", "")
+                    else
+                        method(mark, "SetPoint", "RIGHT", h, "RIGHT", -size.gapSmall, 0)
+                        inked(mark, color.textDim)
+                        if part.folded then
+                            method(mark, "SetText", foldMark.closed or "")
+                        else
+                            method(mark, "SetText", foldMark.open or "")
+                        end
+                    end
+                end
+                if part.folded ~= nil then
+                    method(h, "EnableMouse", true)
+                    hook(h, "OnMouseUp", function() tell(part.onFold, not part.folded) end)
+                end
+            end
+
+            -- A list row: an icon, a name, a second line under it, and a
+            -- short text at the right. A click tells the caller.
+            function DRAW.line(part, pane)
+                local hgt = size.lineHeight
+                local hasSub = type(part.sub) == "string" and part.sub ~= ""
+                if hasSub then hgt = size.rowHeightDesc end
+                local h = box(pane, hgt, "listRow")
+                stripe(h, pane)
+                local left = size.gapSmall
+                local holder = plain("Frame", h, "icon")
+                if holder ~= nil then
+                    local icon = texture(holder, "ARTWORK", "icon")
+                    local own = icon ~= nil and type(part.icon) == "string" and part.icon ~= "" and pictured(icon, part.icon)
+                    if own then
+                        sized(holder, size.icon, size.icon)
+                        method(holder, "SetPoint", "LEFT", h, "LEFT", size.gapSmall, 0)
+                        method(icon, "SetAllPoints", holder)
+                        method(holder, "Show")
+                        left = size.gapSmall * 2 + size.icon
+                    else
+                        method(holder, "Hide")
+                    end
+                end
+                local off = part.enabled == false
+                local right = size.gapSmall
+                local r = words(h, font.small, "right")
+                if r ~= nil then
+                    if type(part.right) == "string" and part.right ~= "" then
+                        method(r, "SetPoint", "RIGHT", h, "RIGHT", -right, 0)
+                        inked(r, color[part.tone or "textDim"] or color.textDim)
+                        method(r, "SetText", part.right)
+                        right = right + widthOf(r, size.buttonMin) + size.gap
+                    else
+                        method(r, "SetText", "")
+                    end
+                end
+                local nm = words(h, font.label, "name")
+                if nm ~= nil then
+                    if hasSub then
+                        method(nm, "SetPoint", "TOPLEFT", h, "TOPLEFT", left, -size.gapSmall)
+                    else
+                        method(nm, "SetPoint", "LEFT", h, "LEFT", left, 0)
+                    end
+                    method(nm, "SetWidth", math.max(pane.w - left - right, 1))
+                    method(nm, "SetJustifyH", "LEFT")
+                    if off then inked(nm, color.textOff) else inked(nm, color.text) end
+                    method(nm, "SetText", part.text)
+                end
+                local sub = words(h, font.small, "sub")
+                if sub ~= nil then
+                    if hasSub then
+                        method(sub, "SetPoint", "BOTTOMLEFT", h, "BOTTOMLEFT", left, size.gapSmall)
+                        method(sub, "SetWidth", math.max(pane.w - left - right, 1))
+                        method(sub, "SetJustifyH", "LEFT")
+                        if off then inked(sub, color.textOff) else inked(sub, color.textDim) end
+                        method(sub, "SetText", part.sub)
+                    else
+                        method(sub, "SetText", "")
+                    end
+                end
+                hover(h, part.tooltip)
+                if not off and type(part.onClick) == "function" then
+                    hook(h, "OnMouseUp", function() tell(part.onClick) end)
+                end
             end
 
             function DRAW.row(part, pane)

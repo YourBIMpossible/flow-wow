@@ -32,7 +32,9 @@
 --   topicList  items = { text ... }, selected, onSelect(i). Stands at the
 --              left, the full height of the window; every part after it is
 --              drawn in the pane at its right.
---   section    text
+--   section    text; folded (true | false) with onFold(folded) when it folds
+--   line       text, icon, sub (a second line), right (a short text at the
+--              right), tone, tooltip, enabled, onClick()
 --   row        label, description, tooltip, enabled, reason, control (one
 --              of: checkbox, bind, button, choice, number, text)
 --   button     text, onClick(), enabled, tooltip
@@ -63,87 +65,9 @@ Kit.NOT_BOUND = "Not Bound"
 Kit.BIND_WAITING = "Press a key..."
 Kit.SCROLL_HEIGHT = 240
 
--- Every size, colour, font and stock art name a kit window uses. The client
--- reads it; no window and no part writes a colour or a size of its own.
--- Each art entry is the name tried first and what is drawn when this client
--- does not have it. None of the art names has been seen in game on 16001
--- except those Core/Client.lua already used: first guesses. A template is
--- asked for by a protected create when its part is made: the part is the
--- game's own when that works, else the kit's plain panel (lead sections 297
--- item 4 and 303). A picture cannot be asked that way, so `unproven` names
--- the pictures not yet seen on 16001: the plain form is drawn for each
--- until its key is taken out.
-Kit.look = {
-    size = {
-        pad = 12, gap = 8, gapSmall = 4,
-        title = 24,
-        rowHeight = 28, rowHeightDesc = 42, lineHeight = 24,
-        icon = 20, coin = 12,
-        header = 32, tab = 24, section = 24,
-        topicWidth = 180, topicRow = 24,
-        controlColumn = 200,
-        button = 22, buttonMin = 96, buttonPad = 24,
-        check = 24, search = 180, scrollBar = 18,
-        footer = 36, grip = 16, numberValue = 60,
-        wheelLines = 3,
-        edge = 1, gripCorner = 12, choiceButtons = 3,
-    },
-    color = {
-        accent = { 1, 0.82, 0, 1 },
-        text = { 1, 1, 1, 1 },
-        textDim = { 0.75, 0.75, 0.75, 1 },
-        textOff = { 0.5, 0.5, 0.5, 1 },
-        good = { 0.3, 1, 0.4, 1 },
-        warn = { 1, 0.62, 0, 1 },
-        bad = { 1, 0.25, 0.25, 1 },
-        fill = { 0.05, 0.05, 0.05, 0.92 },
-        inset = { 0, 0, 0, 0.35 },
-        edge = { 0.4, 0.4, 0.4, 1 },
-        divider = { 1, 1, 1, 0.12 },
-        stripe = { 1, 1, 1, 0.04 },
-        hover = { 1, 1, 1, 0.08 },
-        selected = { 1, 0.82, 0, 0.18 },
-        -- The coin letters, drawn when a coin icon is missing.
-        gold = { 1, 0.82, 0, 1 },
-        silver = { 0.78, 0.78, 0.78, 1 },
-        copper = { 0.72, 0.45, 0.2, 1 },
-    },
-    -- How strongly a stock highlight picture is drawn (blended in).
-    alpha = { rowHighlight = 0.5, topicHighlight = 0.6 },
-    coinLetter = { gold = "g", silver = "s", copper = "c" },
-    unproven = {
-        rowHighlight = true, topicHighlight = true, iconBorder = true,
-        grip = true, gripOver = true, gripDown = true,
-    },
-    font = {
-        title = "GameFontNormal",
-        heading = "GameFontNormal",
-        label = "GameFontHighlight",
-        small = "GameFontHighlightSmall",
-        off = "GameFontDisableSmall",
-        big = "GameFontNormalLarge",
-    },
-    art = {
-        frame = "ButtonFrameTemplate",
-        close = "UIPanelCloseButton",
-        button = "UIPanelButtonTemplate",
-        check = "UICheckButtonTemplate",
-        input = "InputBoxTemplate",
-        search = "SearchBoxTemplate",
-        scroll = "UIPanelScrollFrameTemplate",
-        tab = "PanelTabButtonTemplate",
-        rowHighlight = "Interface\\QuestFrame\\UI-QuestTitleHighlight",
-        topicHighlight = "Interface\\Buttons\\UI-Listbox-Highlight",
-        iconBorder = "Interface\\Buttons\\UI-Quickslot2",
-        iconMissing = "Interface\\Icons\\INV_Misc_QuestionMark",
-        grip = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up",
-        gripOver = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight",
-        gripDown = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down",
-        gold = "Interface\\MoneyFrame\\UI-GoldIcon",
-        silver = "Interface\\MoneyFrame\\UI-SilverIcon",
-        copper = "Interface\\MoneyFrame\\UI-CopperIcon",
-    },
-}
+-- Every size, colour, font and Blizzard part name: the one theme file,
+-- UI/Kit/Theme.lua (loaded before this file).
+Kit.look = ns.KitTheme
 
 -- The stock item colours, by quality 0 (poor) to 5 (legendary).
 local QUALITY = {
@@ -320,7 +244,35 @@ do
 end
 
 function PARTS.section(p, out)
-    return needText(p, out, "text", "a section")
+    local ok, why = needText(p, out, "text", "a section")
+    if not ok then return nil, why end
+    -- A section that folds says which way it is and whom to tell.
+    if p.folded == nil then return true end
+    if not isFlag(p.folded) then return nil, "a section: folded must be true or false" end
+    out.folded = p.folded
+    return needFn(p, out, "onFold", "a section that folds")
+end
+
+-- A list row: a name, and optionally an icon, a second line under the
+-- name, a short text at the right (in a tone) and a click.
+function PARTS.line(p, out)
+    local ok, why = needText(p, out, "text", "a line")
+    if not ok then return nil, why end
+    for _, field in ipairs({ "icon", "sub", "right", "tooltip" }) do
+        ok, why = someText(p, out, field, "a line")
+        if not ok then return nil, why end
+    end
+    if p.tone ~= nil then
+        if not TONES[p.tone] then return nil, "a line: tone must be good, warn or bad" end
+        out.tone = p.tone
+    end
+    ok, why = flag(p, out, "enabled", true, "a line")
+    if not ok then return nil, why end
+    if p.onClick ~= nil then
+        if type(p.onClick) ~= "function" then return nil, "a line: onClick must be a function" end
+        out.onClick = p.onClick
+    end
+    return true
 end
 
 function PARTS.button(p, out)

@@ -42,6 +42,7 @@ return {
         "UI/Alerts.lua",
         "UI/Setup.lua",
         "UI/Kit/Parts.lua",
+        "UI/Kit/Theme.lua",
         "UI/Kit.lua",
         "UI/KitProbe.lua",
 

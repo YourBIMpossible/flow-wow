@@ -3560,6 +3560,17 @@ function ns.make.fakeClient(opts)
                 told(w, part.onClick)
                 return true
             end
+            -- A list row with a click, and a section that folds.
+            if part.kind == "line" then
+                if type(part.onClick) ~= "function" then return false end
+                told(w, part.onClick)
+                return true
+            end
+            if part.kind == "section" then
+                if part.folded == nil then return false end
+                told(w, part.onFold, not part.folded)
+                return true
+            end
             if part.kind == "checkbox" then
                 entry.checked = not entry.checked
                 told(w, part.onToggle, entry.checked)
