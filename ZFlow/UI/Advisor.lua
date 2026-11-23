@@ -47,6 +47,8 @@ ns.Advisor = Advisor
 
 Advisor.NAME = "advisor"
 Advisor.SETTING = "advisor.panel"
+-- When the panel appears, in one line, for its settings row (lead section 294).
+Advisor.APPEARS = "The panel appears only while there is a prompt for you, such as gear to repair."
 Advisor.MAX_SHOWN = 5
 Advisor.WIDTH, Advisor.HEIGHT = 300, 120
 Advisor.DEFAULT_POINT = { "TOPRIGHT", "TOPRIGHT", -220, -200 }
