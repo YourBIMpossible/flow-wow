@@ -6,7 +6,8 @@ local _, ns = ...
 -- plain panel's rows at each draw. The kit window is drawn while the client
 -- makes one; the first time the kit or the client refuses it, the plain
 -- panel takes over for the rest of the session, shown as the kit window
--- was, and one problem line says why.
+-- was, and one problem line says why. A host with no plain panel says
+-- nothing: nothing can draw, and that is the client's, not the kit's.
 --
 -- LOOK ONLY. Nothing here sells, buys, moves, casts or clicks anything: the
 -- view's parts carry the module's own functions, and the host only hands
@@ -87,7 +88,9 @@ function KitHost.New(k, client, opts)
             handle = nil
         end
         plain = true
-        problem(id, KitHost.FELL, why)
+        -- With no plain panel the client draws nothing at all (no frames):
+        -- there is no hand-over to report.
+        if panel ~= nil then problem(id, KitHost.FELL, why) end
     end
 
     function host.draw(view, rows, act)
