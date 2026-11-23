@@ -223,6 +223,22 @@ Diag.NAMES = {
     -- combatLogFile and their two writes). GetCVar and C_CVar.GetCVar are
     -- listed above.
     "LoggingCombat", "C_CVar.SetCVar", "SetCVar",
+    -- Lead section 303: quests handed in, for the Dungeon Quests pane
+    -- (client.questDone). UnitRace (client.raceId) is listed above.
+    "C_QuestLog.IsQuestFlaggedCompleted",
+    -- The window kit's login probe (lead sections 297 and 303; Core/Client.lua
+    -- kitProbe): the atlas lookup it asks with, and the client names of the
+    -- kit's parts list (UI/Kit/Parts.lua, kind "global") it looks up. First
+    -- guesses, never asked of 16001; saved here so a normal login records
+    -- which exist. The kit's templates, atlases and texture paths are not
+    -- globals: the probe's own record says those (diag.kitProbe,
+    -- UI/KitProbe.lua). UIParent, GameTooltip, UISpecialFrames, CreateFrame,
+    -- InCombatLockdown and the two IsAddOnLoaded forms are listed above.
+    "C_Texture", "C_Texture.GetAtlasInfo",
+    "NORMAL_FONT_COLOR", "HIGHLIGHT_FONT_COLOR", "DISABLED_FONT_COLOR", "RED_FONT_COLOR", "GREEN_FONT_COLOR",
+    "GRAY_FONT_COLOR",
+    "GameFontNormal", "GameFontHighlight", "GameFontDisable", "GameFontNormalSmall", "GameFontHighlightSmall",
+    "GameFontDisableSmall", "GameFontNormalLarge", "GameFontRed", "GameFontGreen",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns

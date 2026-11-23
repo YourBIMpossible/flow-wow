@@ -34,6 +34,10 @@ UI\CopyBox.lua
 UI\Advisor.lua
 UI\Alerts.lua
 UI\Setup.lua
+UI\Kit\Parts.lua
+UI\Kit\Theme.lua
+UI\Kit.lua
+UI\KitProbe.lua
 Import\FromFlow.lua
 Import\Stored.lua
 Settings\Model.lua
@@ -190,6 +194,7 @@ Rotation\KeyControls.lua
 UI\ClickCheck.lua
 UI\MoveHandle.lua
 Rotation\ClickSlots.lua
+Rotation\FlowButton.lua
 Rotation\KeyActions.lua
 Rotation\SpellKeys.lua
 Rotation\Enchant.lua
@@ -197,3 +202,6 @@ UI\BossLoot.lua
 UI\NpcSpeech.lua
 UI\Reveal.lua
 UI\SettingsShare.lua
+Nav\DungeonStates.lua
+Nav\DungeonRead.lua
+Nav\BossKills.lua

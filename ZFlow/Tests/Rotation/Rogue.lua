@@ -166,8 +166,10 @@ return {
         t.eq(p[2][19], nil, "wand")
     end,
 
-    ["not built, named: poisons and a talent order"] = function(t)
-        t.eq(ns.Packs.ROGUE.talentBuilds, {})
+    -- Section 208 pin moved: CLASS-B-TALENTS (section 309) authors the talent
+    -- build; its shape is checked in Tests/Rotation/ClassB.lua.
+    ["not built, named: poisons; a talent build, a first guess"] = function(t)
+        t.eq(#ns.Packs.ROGUE.talentBuilds, 1)
         t.eq(ns.Packs.ROGUE.spells["Instant Poison"], nil, "no poison row")
     end,
 

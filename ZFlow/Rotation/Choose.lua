@@ -445,6 +445,16 @@ function steps.engage(s, pack, prefs)
     -- was read and the answer was no. Not read is not "not stealthed".
     if s.stealthed == nil then return nil, "not known whether you are stealthed" end
     if s.stealthed ~= false then return nil, "stealthed" end
+    -- A pack that opens with a spell first (pack.beforeEngage: the rogue's
+    -- Stealth) keeps the swing back while that spell is known, allowed and
+    -- ready: the swing would break it. Not ready: the swing.
+    if type(pack) == "table" and type(pack.beforeEngage) == "table" then
+        for _, name in ipairs(pack.beforeEngage) do
+            if type(name) == "string" and R.Knows(s, name) and allowed(prefs, name) and ready(s, name) then
+                return nil, name .. " first"
+            end
+        end
+    end
     local spell = (R.Knows(s, "Auto Attack") and "Auto Attack") or (R.Knows(s, "Attack") and "Attack") or nil
     if not spell then return nil, "no attack known" end
     return { spell = spell, kind = "damage", engage = true,
@@ -614,10 +624,12 @@ function steps.plateCast(s, pack, prefs, _, unread)
 end
 
 -- In a group, not the tank, an enemy on you (threat 2 or 3, the enemy's
--- target): the pack's threat drop (Fade), cast on you.
+-- target): the pack's threat drop (Fade), cast on you; a drop tied to
+-- forms (Cower) only in one of them, read.
 function steps.threat(s, pack, prefs, _, unread)
     local drop = type(pack.options) == "table" and pack.options.threatDrop or nil
     if type(drop) ~= "table" or type(drop.spell) ~= "string" then return nil, "no threat drop" end
+    if not inForms(s, drop.forms) then return nil, drop.spell .. " not in this form" end
     if s.inCombat ~= true then return nil, "not known to be in a fight" end
     if s.grouped == nil then return nil, "not known whether you are in a group" end
     if s.grouped ~= true then return nil, "not in a group" end

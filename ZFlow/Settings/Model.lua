@@ -63,7 +63,7 @@ M.ROWS = {
     { key = "loot.record", type = "bool", default = true },
     { key = "quest.arrow", type = "bool", default = true },
     { key = "auction.chartClick", type = "bool", default = true },
-    { key = "buffButton.enabled", type = "bool", default = false },
+    { key = "buffButton.enabled", type = "bool", default = true },
     { key = "buffButton.dock", type = "bool", default = true },
     { key = "buffButton.always", type = "bool", default = false },
     { key = "buffButton.care", type = "bool", default = true },

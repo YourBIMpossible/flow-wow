@@ -23,6 +23,18 @@ ZFlowDB = {
 ["diag"] = {
 ["starts"] = 7,
 ["count"] = 31,
+["kitProbe"] = {
+["at"] = 12.5,
+["interface"] = "1.16.1 (7777)",
+["rows"] = {
+["T2"] = "works",
+["T5"] = "Couldn't find inherited node: SearchBoxTemplate",
+["G2"] = "nil",
+["G6"] = "works (table)",
+["X9"] = "made, not confirmed",
+["EJ_LOADED"] = "no",
+},
+},
 ["names"] = {
 ["build"] = "1.16.1 (7777)",
 ["names"] = {

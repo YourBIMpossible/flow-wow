@@ -29,8 +29,6 @@ local _, ns = ...
 -- Not in this pack yet (tasks):
 --   * poisons: putting one on a weapon is the use of an item, there is no
 --     poison row, and no read of the weapon's enchant;
---   * a talent order: talentBuilds is empty, as no capture backs one (one
---     written from memory would be guide-shaped);
 --   * Vanish and Blind as breakers: breakers is empty, as whether the
 --     control read names the effect type is not known yet.
 -- A rogue has no tank spec in this game, so there is no tank role.
@@ -146,6 +144,7 @@ local spells = {
     ["Gouge"]           = sp(6,  { "Control" }),
     ["Evasion"]         = sp(8,  { "Survival" }),
     ["Sap"]             = sp(10, { "Control" }, "from stealth, out of a fight"),
+    ["Feint"]           = sp(16, { "Survival" }),
     ["Slice and Dice"]  = sp(10, { "DPS" }, "a finisher"),
     ["Sprint"]          = sp(10, { "Survival" }),
     ["Kick"]            = sp(12, { "Control" }),
@@ -161,6 +160,8 @@ local function weights(values)
 end
 
 local pack = {
+    -- Stealth before the swing at the pull (Rotation/Choose.lua, engage).
+    beforeEngage = { "Stealth" },
     provenance = {
         author = "Flow",
         date = "2026-11-22",
@@ -259,9 +260,28 @@ local pack = {
     spells = spells,
 
     -- Not authored: see the header.
-    talentBuilds = {},
+    talentBuilds = {
+        { name = "Combat levelling build", role = "dps", evidence = GUESS, note = "written for this pack on 2026-11-23 from general knowledge of the class; not read from the game",
+          trees = { "Assassination", "Combat", "Subtlety" },
+          order = {
+              { "Improved Sinister Strike", 2, why = "Sinister Strike costs less energy, the attack you use most." },
+              { "Lightning Reflexes", 5, why = "You dodge more, so you take less damage." },
+              { "Precision", 5, why = "Fewer of your weapon attacks miss." },
+              { "Riposte", 1, why = "A strike after you parry that also disarms the enemy." },
+              { "Endurance", 2, why = "Sprint and Evasion are ready again sooner." },
+              { "Dual Wield Specialization", 5, why = "More damage from your off-hand weapon." },
+              { "Blade Flurry", 1, why = "For a short time you attack faster and hit a second enemy too." },
+              { "Sword Specialization", 5, why = "Your sword hits now and then give an extra attack." },
+              { "Weapon Expertise", 2, why = "More skill with swords, so fewer misses and glancing blows." },
+              { "Aggression", 3, why = "More damage from Sinister Strike and Eviscerate." },
+              { "Adrenaline Rush", 1, why = "Your energy comes back much faster for a short time." },
+          },
+        },
+    },
 
     options = {
+        crowdControl = { none = "Sap works only from stealth on an enemy not yet in a fight, and Gouge holds your own target only" },
+        threatDrop = { spell = "Feint" },
         -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,
         -- in order: the first you know names your tree (snapshot.tree,
         -- Rotation/Driver.lua). Which spell is a talent of which tree: a first

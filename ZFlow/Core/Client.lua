@@ -8211,6 +8211,138 @@ function ns.make.client(env)
         return h
     end
 
+    -- Flow and self buttons (Rotation/FlowButton.lua). Three helpers on a
+    -- button clickRow made; each answers nil when there is no frame by
+    -- that name. Not seen in game.
+    --
+    -- c.buttonFace(spec) -> handle or nil. spec = { button }. A plain face
+    -- drawn with colour only, no art path (lead section 297 item 5): a dark
+    -- backing under the icon, and over it a dark panel with a "?" shown
+    -- while the button holds nothing or no icon was read.
+    --   h.empty(on) -> true, or false and "refused".
+    -- First guess: CreateTexture with a sub level as its fourth argument.
+    function c.buttonFace(spec)
+        if type(spec) ~= "table" then return nil end
+        local b = guideFrame(spec.button)
+        if b == nil then return nil end
+        local okB, back = method(b, "CreateTexture", nil, "BACKGROUND")
+        if okB and type(back) == "table" then
+            method(back, "SetAllPoints", b)
+            if not method(back, "SetColorTexture", 0.1, 0.1, 0.1, 0.8) then
+                method(back, "SetTexture", 0.1, 0.1, 0.1, 0.8)
+            end
+        end
+        local okP, panel = method(b, "CreateTexture", nil, "OVERLAY", nil, -1)
+        if not okP or type(panel) ~= "table" then return nil end
+        method(panel, "SetAllPoints", b)
+        if not method(panel, "SetColorTexture", 0.15, 0.15, 0.15, 1) then
+            method(panel, "SetTexture", 0.15, 0.15, 0.15, 1)
+        end
+        local okM, mark = method(b, "CreateFontString", nil, "OVERLAY", "GameFontNormalSmall")
+        if not okM or type(mark) ~= "table" then mark = nil end
+        if mark ~= nil then
+            method(mark, "SetPoint", "CENTER", b, "CENTER", 0, 0)
+            method(mark, "SetText", "?")
+        end
+        local h = {}
+        function h.empty(on)
+            local called
+            if on == true then called = method(panel, "Show") else called = method(panel, "Hide") end
+            if mark ~= nil then
+                if on == true then method(mark, "Show") else method(mark, "Hide") end
+            end
+            if not called then return false, "refused" end
+            return true
+        end
+        return h
+    end
+
+    -- Lead section 305 item 1: no add-on file calls this now. The Flow and
+    -- self buttons move by moveHandle; a drag on a secure button that acts
+    -- on the press down would also cast. Kept in place (shared file).
+    -- c.ctrlDrag(spec) -> true or nil. spec = { target, button, onMoved }.
+    -- A left-button drag on the button named spec.button moves the frame
+    -- named spec.target, only when IsControlKeyDown answers true and
+    -- InCombatLockdown a plain false as the drag starts. Let go as
+    -- moveHandle does (SC-3): a drag that ends in a fight waits for
+    -- PLAYER_REGEN_ENABLED; the client layout cache is not written and
+    -- onMoved({ point, relativePoint, x, y }) is called. Set up only while
+    -- the lock is a plain false.
+    -- First guess: RegisterForDrag and the OnDragStart / OnDragStop scripts
+    -- on a SecureActionButtonTemplate button, and IsControlKeyDown.
+    function c.ctrlDrag(spec)
+        if type(spec) ~= "table" then return nil end
+        local target = guideFrame(spec.target)
+        local b = guideFrame(spec.button)
+        if target == nil or b == nil then return nil end
+        local function unlocked()
+            local okLock, locked = call(env.InCombatLockdown)
+            return okLock and locked == false
+        end
+        local function ctrl()
+            local okC, down = call(env.IsControlKeyDown)
+            return okC and down == true
+        end
+        if not unlocked() then return nil end
+        if not method(b, "RegisterForDrag", "LeftButton") then return nil end
+        local dragging = false
+        method(b, "SetScript", "OnDragStart", function()
+            if not unlocked() or not ctrl() then return end
+            dragging = true
+            method(target, "StartMoving")
+        end)
+        local waitStop
+        local onStop
+        onStop = function()
+            if not dragging then return end
+            if not unlocked() then
+                if waitStop == nil then
+                    waitStop = c.listen("PLAYER_REGEN_ENABLED", function()
+                        if not unlocked() then return end
+                        local cancel = waitStop
+                        waitStop = nil
+                        if type(cancel) == "function" then cancel() end
+                        onStop()
+                    end)
+                end
+                return
+            end
+            dragging = false
+            method(target, "StopMovingOrSizing")
+            method(target, "SetUserPlaced", false)
+            local okP, a, _, r, x, y = method(target, "GetPoint", 1)
+            if not okP or type(a) ~= "string" or type(x) ~= "number" or type(y) ~= "number" then return end
+            if type(r) ~= "string" then r = a end
+            if type(spec.onMoved) == "function" then pcall(spec.onMoved, { a, r, x, y }) end
+        end
+        method(b, "SetScript", "OnDragStop", onStop)
+        return true
+    end
+
+    -- c.hoverTip(spec) -> true or nil. spec = { frame, text }. Pointing at
+    -- the frame named spec.frame shows text() as one line in the game
+    -- tooltip; leaving it hides the tooltip. A text() that raises, or gives
+    -- no text, shows nothing.
+    -- First guess: GameTooltip SetOwner(frame, "ANCHOR_RIGHT"), SetText,
+    -- Show and Hide, hooked with HookScript OnEnter / OnLeave so the
+    -- template scripts stay.
+    function c.hoverTip(spec)
+        if type(spec) ~= "table" or type(spec.text) ~= "function" then return nil end
+        local f = guideFrame(spec.frame)
+        local tip = guideFrame("GameTooltip")
+        if f == nil or tip == nil then return nil end
+        local hooked = method(f, "HookScript", "OnEnter", function()
+            local okT, text = pcall(spec.text)
+            if not okT or type(text) ~= "string" or text == "" then return end
+            method(tip, "SetOwner", f, "ANCHOR_RIGHT")
+            method(tip, "SetText", text)
+            method(tip, "Show")
+        end)
+        if not hooked then return nil end
+        method(f, "HookScript", "OnLeave", function() method(tip, "Hide") end)
+        return true
+    end
+
     -- c.moveHandle(spec) -> handle or nil. spec = { target, width, height,
     -- onMoved }. A grip on the left edge of the frame named target (nil
     -- when there is no such frame). Dragging it moves that frame, only when
@@ -8977,6 +9109,1650 @@ function ns.make.client(env)
             end
             if not readable then return nil end
             return n
+        end
+    end
+
+    -- Lead section 303 (Dungeon Quests, Nav/DungeonRead.lua). Your race
+    -- number, the third answer of UnitRace("player"): Questie's
+    -- requiredRaces sets bit n - 1 for race n. nil when not known (no call,
+    -- a failed call, a secret or odd answer). A first guess: not seen in
+    -- game on 16001.
+    function c.raceId()
+        local ok, _, _, id = call(env.UnitRace, "player")
+        if not ok or hidden(id) or type(id) ~= "number" then return nil end
+        return id
+    end
+
+    -- Whether this character handed in quest id: true, false, or nil when
+    -- not known. C_QuestLog.IsQuestFlaggedCompleted(id), a first guess: not
+    -- seen in game on 16001. Only reads.
+    function c.questDone(id)
+        if type(id) ~= "number" then return nil end
+        local log = env.C_QuestLog
+        if type(log) ~= "table" then return nil end
+        local ok, done = call(log.IsQuestFlaggedCompleted, id)
+        if not ok or hidden(done) or type(done) ~= "boolean" then return nil end
+        return done
+    end
+
+    -- The window kit's login probe (lead DISPATCH section 297 item 3 and
+    -- section 303 item 5). Asks the client, read only, whether each part
+    -- the kit would like to use is there. New, added at the end.
+    --   c.kitProbe(rows) -> { [row id] = "works" | a short text saying what
+    --     the client said, EJ_LOADED = "yes" | "no" | "not known" }
+    --     | nil, "combat"
+    --   rows: the list in UI/Kit/Parts.lua (KitParts.rows): { id =, kind =
+    --     "template" | "global", name =, frameType =, proof = }. A row with
+    --     no text id is passed over. With no rows no frame is made at all.
+    -- LOOK ONLY. Nothing is shown, no setting is changed, nothing acts and
+    -- no add-on is loaded: LoadAddOn and its kin are never called. Asked
+    -- only when InCombatLockdown answers a plain false, judged as
+    -- c.equipItem judges it: true, a secret, a raise or no such call asks
+    -- nothing and makes no frame. Every row is asked under pcall, so one
+    -- that raises is kept as its text and the others are still asked. A
+    -- text is cut to PROBE_TEXT characters.
+    --
+    -- EVERY GAME NAME HERE IS A FIRST GUESS, none seen in game on 16001:
+    -- the rows' own names and proof fields, and CreateFrame with a parent
+    -- and a template, UIParent, Frame Hide / ClearAllPoints / SetParent,
+    -- C_AddOns.IsAddOnLoaded and IsAddOnLoaded.
+    --
+    --   template  pcall(CreateFrame, frameType or "Frame", nil, holder,
+    --             name); the frame made is hidden at once. holder is one
+    --             unnamed frame of ours per asking, a child of UIParent,
+    --             hidden when made and never shown, so nothing made under
+    --             it is drawn and no global is made. "works" only when the
+    --             frame handed back carries one of the row's proof fields
+    --             (a field that template is known by); a frame with none
+    --             of them is "made, not confirmed", so a client that hands
+    --             back a plain frame for a template it lacks records no
+    --             positive. "no frame" when nothing comes back, else the
+    --             error text. When the asking is over every frame made,
+    --             and the holder, is hidden, taken off its parent and let
+    --             go; the client has no call to destroy a frame.
+    --   global    looked up in the client's globals along the dotted name:
+    --             "works (" .. its Lua type .. ")", or "nil".
+    --   EJ_LOADED whether the Encounter Journal add-on is loaded:
+    --             C_AddOns.IsAddOnLoaded, else IsAddOnLoaded; "not known"
+    --             when neither answers.
+    do
+        local PROBE_TEXT = 120
+        local JOURNAL = "Blizzard_EncounterJournal"
+
+        local function short(v)
+            local text = tostring(v)
+            if #text > PROBE_TEXT then text = text:sub(1, PROBE_TEXT) end
+            return text
+        end
+
+
+        -- One unnamed, hidden holder per asking; nothing is named, so no
+        -- global is made. Every frame made to ask with is hidden, taken off
+        -- its parent and let go when the asking is over (a frame cannot be
+        -- destroyed, so this is all a release can be).
+        local function holder()
+            local ok, f = call(env.CreateFrame, "Frame", nil, env.UIParent)
+            if not ok or type(f) ~= "table" then return nil end
+            method(f, "Hide")
+            return f
+        end
+
+        local function release(made, parent)
+            for i = 1, #made do
+                method(made[i], "Hide")
+                method(made[i], "ClearAllPoints")
+                method(made[i], "SetParent", nil)
+            end
+            if parent ~= nil then
+                method(parent, "Hide")
+                method(parent, "SetParent", nil)
+            end
+        end
+
+        -- A frame handed back is the template asked for only when it carries
+        -- one of the fields that template is known by (row.proof). A client
+        -- that hands back a plain frame for a name it lacks is told apart:
+        -- "made, not confirmed". The proof fields are first guesses.
+        local function askTemplate(row, parent, made)
+            local make = env.CreateFrame
+            if type(make) ~= "function" then return "no CreateFrame" end
+            if parent == nil then return "no holder frame" end
+            local kind = row.frameType
+            if type(kind) ~= "string" then kind = "Frame" end
+            local ok, f = pcall(make, kind, nil, parent, row.name)
+            if not ok then return short(f) end
+            if type(f) ~= "table" then return "no frame" end
+            made[#made + 1] = f
+            method(f, "Hide")
+            local proof = row.proof
+            if type(proof) == "table" then
+                for i = 1, #proof do
+                    local okP, v = pcall(function() return f[proof[i]] end)
+                    if okP and v ~= nil then return "works" end
+                end
+            end
+            return "made, not confirmed"
+        end
+
+        local function askGlobal(row)
+            local at = env
+            for seg in row.name:gmatch("[^%.]+") do
+                if type(at) ~= "table" then return "nil" end
+                at = at[seg]
+            end
+            if at == nil then return "nil" end
+            return "works (" .. type(at) .. ")"
+        end
+
+        -- The rows are templates and client names only (lead section 308).
+        local function ask(row, parent, made)
+            if type(row.name) ~= "string" or row.name == "" then return "no name" end
+            if row.kind == "template" then return askTemplate(row, parent, made) end
+            if row.kind == "global" then return askGlobal(row) end
+            return "unknown kind"
+        end
+
+        -- Read only: IsAddOnLoaded says, nothing is loaded.
+        local function journalLoaded()
+            local asks = {}
+            local group = env.C_AddOns
+            if type(group) == "table" then asks[#asks + 1] = group.IsAddOnLoaded end
+            asks[#asks + 1] = env.IsAddOnLoaded
+            for i = 1, #asks do
+                local ok, loaded = call(asks[i], JOURNAL)
+                if ok and not hidden(loaded) then
+                    if loaded then return "yes" end
+                    return "no"
+                end
+            end
+            return "not known"
+        end
+
+        function c.kitProbe(rows)
+            local okLock, locked = call(env.InCombatLockdown)
+            if not okLock or hidden(locked) or locked ~= false then return nil, "combat" end
+            local out = {}
+            -- No rows (the journal re-ask): no frame is made at all.
+            if type(rows) == "table" and #rows > 0 then
+                local made = {}
+                local okH, parent = pcall(holder)
+                if not okH then parent = nil end
+                for i = 1, #rows do
+                    local row = rows[i]
+                    if type(row) == "table" and type(row.id) == "string" then
+                        local ok, text = pcall(ask, row, parent, made)
+                        if ok then out[row.id] = text else out[row.id] = short(text) end
+                    end
+                end
+                pcall(release, made, parent)
+            end
+            local okJ, journal = pcall(journalLoaded)
+            if okJ then out.EJ_LOADED = journal else out.EJ_LOADED = "not known" end
+            return out
+        end
+    end
+
+    -- The window kit's drawer (lead sections 287, 291 item 1 and 292): draws
+    -- a tree UI/Kit.lua checked (Kit.Window) as one window. New, added at the
+    -- end. LOOK ONLY: no secure template and no acting call; a click runs
+    -- the part's own function and nothing else.
+    --   c.kitWindow(id, tree, extra) -> handle | nil
+    --     extra: name (the frame's global name; Escape needs one), point,
+    --     width, height, onMoved(point, w, h) after a drag or a resize,
+    --     onClose() when the player closes it (the button or Escape),
+    --     failed(err) for any error. The build runs under pcall: a raise is
+    --     nil, and failed is told. Every function the caller gave runs
+    --     under pcall; its error goes to failed, never to the client.
+    --     Asked again with an id it has, the window is redrawn and the same
+    --     handle comes back.
+    --   handle.update(tree) -> true | false   redraws; what was made is used
+    --     again and what is left over is hidden.
+    --   handle.show(on), handle.shown(), handle.close() (hides it; onClose
+    --     is the player's close only)
+    --   handle.art() -> { frame = "first" | "fallback", close =, search =,
+    --     tab =, button =, check =, input =, scroll =, rowHighlight =,
+    --     topicHighlight =, iconBorder =, grip =, gold =, silver =, copper =,
+    --     iconMissing = }: for each stock name drawn, whether Kit.look.art's
+    --     first choice or the fallback of the look spec (section 2.4) drew.
+    --   handle.slot(name) -> the empty holder frame of a footer's slot, or nil
+    -- Every size, colour, font and art name is Kit.look's, read at each draw.
+    -- A key in Kit.look.unproven is never tried: its fallback is drawn
+    -- (section 292: the default until the name is seen on 16001).
+    -- Layout: top to bottom. A topic list stands at the left for the rest of
+    -- the height and every later part goes in the pane at its right; a
+    -- footer stands at the bottom; the last scroll takes the room left.
+    -- A choice of more than Kit.look.size.choiceButtons items is one button
+    -- that steps to the next item.
+    --   c.kitProbe() -> { templates = { [name] = "present" | error text },
+    --     textures = { [path] = what GetTexture read back | "unset" | error
+    --     text }, globals = { [name] = its type } } | nil, "combat" |
+    --     "noFrames" | "noKit"
+    --     Asks which of Kit.look.art's names this client has: each template
+    --     by making one hidden frame from it on a hidden holder, each
+    --     texture path by SetTexture then GetTexture on one hidden texture.
+    --     Only when InCombatLockdown answers a plain false (as c.equipItem
+    --     judges it). Nothing is shown.
+    -- First guesses, none seen in game on 16001. Names Core/Client.lua did
+    -- not use before: the templates ButtonFrameTemplate (and its
+    -- TitleText and CloseButton fields) and PanelTabButtonTemplate;
+    -- SearchBoxTemplate's Instructions field; Frame SetToplevel,
+    -- SetMinResize, EnableMouseWheel, SetMotionScriptsWhileDisabled; Button
+    -- SetButtonState, LockHighlight, UnlockHighlight, GetFontString,
+    -- SetNormalTexture, SetHighlightTexture, SetPushedTexture; CheckButton
+    -- SetCheckedTexture; EditBox SetFontObject; ScrollFrame
+    -- GetVerticalScroll, SetVerticalScroll, GetVerticalScrollRange and the
+    -- handler OnMouseWheel(self, delta); FontString SetWordWrap; Texture
+    -- GetTexture and SetTexture(nil); GameTooltip SetHyperlink and
+    -- SetOwner(frame, "ANCHOR_NONE"); every Interface\ path in Kit.look.art;
+    -- the global ITEM_QUALITY_COLORS (asked for its type only). Used before
+    -- here, still not seen: UIPanelCloseButton, UISpecialFrames,
+    -- SetResizeBounds, StartSizing, the other templates.
+    do
+        local kitWindows = {}   -- id -> { handle =, set = fn(extra), drawn = }
+        -- What the login probe said of each row of UI/Kit/Parts.lua, and
+        -- who is told what each window drew (UI/KitProbe.lua, both).
+        local kitSaid = {}
+        local kitDrawnFn = nil
+        local NOT_CONFIRMED = "made, not confirmed"
+        -- The game's templates the kit asks for, here and nowhere else. A
+        -- part with a row in the parts list takes its name from that row;
+        -- the four below it were used by this file before the kit and have
+        -- no row. First guesses, none seen in game on 16001.
+        local KIT_ROW = { frame = "T2", search = "T5", tab = "T7", button = "T16" }
+        local KIT_OWN = { close = "UIPanelCloseButton", check = "UICheckButtonTemplate",
+            input = "InputBoxTemplate", scroll = "UIPanelScrollFrameTemplate" }
+        -- The template to ask for a part, or nil when the probe found it
+        -- missing: then no create is tried and the plain form draws. A row
+        -- not asked yet, one that works and one made but not confirmed are
+        -- each still asked for by a protected create.
+        local function templateOf(key)
+            local id = KIT_ROW[key]
+            if id == nil then return KIT_OWN[key] end
+            local said = kitSaid[id]
+            if type(said) == "string" and said ~= "works" and said:sub(1, 6) ~= "works " and said ~= NOT_CONFIRMED then
+                return nil
+            end
+            local parts = ns.KitParts
+            if type(parts) ~= "table" or type(parts.ById) ~= "function" then return nil end
+            local row = parts.ById(id)
+            if type(row) ~= "table" or type(row.name) ~= "string" then return nil end
+            return row.name
+        end
+        -- rows: { [row id] = what the probe said }. Kept for later draws.
+        function c.kitKnown(rows)
+            kitSaid = {}
+            if type(rows) ~= "table" then return end
+            for id, said in pairs(rows) do
+                if type(id) == "string" and type(said) == "string" then kitSaid[id] = said end
+            end
+        end
+        -- fn(id, art) after each draw of a window: art[part] = "first" (the
+        -- game's own) or "fallback" (the plain form). One listener.
+        function c.onKitDrawn(fn)
+            if type(fn) == "function" then kitDrawnFn = fn else kitDrawnFn = nil end
+        end
+
+        local function kitBuild(id, tree, cb)
+            if type(id) ~= "string" or id == "" then error("a kit window needs an id") end
+            if type(tree) ~= "table" or tree.kind ~= "window" or type(tree.children) ~= "table" then
+                error("a kit window needs a tree from Kit.Window")
+            end
+            local look, size, color, font, art, unproven, alpha, letters
+            local function reread()
+                look = ns.Kit.look
+                size, color, font, art = look.size, look.color, look.font, look.art
+                unproven = type(look.unproven) == "table" and look.unproven or {}
+                alpha = type(look.alpha) == "table" and look.alpha or {}
+                letters = type(look.coinLetter) == "table" and look.coinLetter or {}
+            end
+            reread()
+
+            local function fail(err)
+                if type(cb.failed) == "function" then pcall(cb.failed, err) end
+            end
+            -- A function the caller gave: under pcall, its error to failed.
+            local function tell(fn, ...)
+                if type(fn) ~= "function" then return end
+                local ok, err = pcall(fn, ...)
+                if not ok then fail(err) end
+            end
+
+            local drew = {}
+            local function note(key, which)
+                if drew[key] ~= "fallback" then drew[key] = which end
+            end
+
+            local function sized(obj, w, h)
+                if not method(obj, "SetSize", w, h) then
+                    method(obj, "SetWidth", w)
+                    method(obj, "SetHeight", h)
+                end
+            end
+            local function paint(tex, rgba)
+                if tex == nil then return end
+                if not method(tex, "SetColorTexture", rgba[1], rgba[2], rgba[3], rgba[4]) then
+                    method(tex, "SetTexture", rgba[1], rgba[2], rgba[3], rgba[4])
+                end
+            end
+            local function inked(fs, rgba)
+                if fs ~= nil then method(fs, "SetTextColor", rgba[1], rgba[2], rgba[3], rgba[4]) end
+            end
+            -- True when the client took the picture: a raise, no such call
+            -- or a plain false is a no.
+            -- A picture is a path, or the file number the game hands out for
+            -- an item's icon.
+            local function pictured(tex, path)
+                if tex == nil then return false end
+                if type(path) == "number" then
+                    if path ~= path or path <= 0 then return false end
+                elseif type(path) ~= "string" or path == "" then
+                    return false
+                end
+                local ok, took = method(tex, "SetTexture", path)
+                return ok and took ~= false
+            end
+            local function able(obj, yes)
+                method(obj, yes and "Enable" or "Disable")
+            end
+
+            -- What was made is kept and used again. Each thing is known by
+            -- what it stands on and a key; the nth asked for under one key
+            -- in a draw is the nth made. A draw starts every count at 0 and
+            -- at its end hides what was not asked for.
+            local pools, on, wired, firstOf = {}, {}, {}, {}
+            local function take(parent, key, make, loose)
+                local by = pools[parent]
+                if by == nil then
+                    by = {}
+                    pools[parent] = by
+                end
+                local slot = by[key]
+                if slot == nil then
+                    slot = { n = 0, items = {} }
+                    by[key] = slot
+                end
+                local obj = slot.items[slot.n + 1]
+                if obj == nil then
+                    obj = make()
+                    if obj == nil then return nil end
+                    slot.items[slot.n + 1] = obj
+                end
+                slot.n = slot.n + 1
+                on[obj] = nil
+                if not loose then method(obj, "ClearAllPoints") end
+                method(obj, "Show")
+                return obj
+            end
+            local function sweepStart()
+                for _, by in pairs(pools) do
+                    for _, slot in pairs(by) do slot.n = 0 end
+                end
+            end
+            local function sweepEnd()
+                for _, by in pairs(pools) do
+                    for _, slot in pairs(by) do
+                        for i = slot.n + 1, #slot.items do
+                            method(slot.items[i], "Hide")
+                            on[slot.items[i]] = nil
+                        end
+                    end
+                end
+            end
+
+            -- A handler of ours on a thing. The script is set once; what it
+            -- runs is looked up at each call, so a thing used again runs
+            -- only what its new part gave. keep: the template's own script
+            -- of that name still runs first.
+            local function hook(obj, script, fn, keep)
+                local a = on[obj]
+                if a == nil then
+                    a = {}
+                    on[obj] = a
+                end
+                a[script] = fn
+                local w = wired[obj]
+                if w == nil then
+                    w = {}
+                    wired[obj] = w
+                end
+                if w[script] then return end
+                w[script] = true
+                local old
+                if keep then
+                    local okO, was = method(obj, "GetScript", script)
+                    if okO and type(was) == "function" then old = was end
+                end
+                method(obj, "SetScript", script, function(...)
+                    if old then pcall(old, ...) end
+                    local now = on[obj]
+                    if now == nil or now[script] == nil then return end
+                    local ok, err = pcall(now[script], ...)
+                    if not ok then fail(err) end
+                end)
+            end
+
+            -- A frame from the template of the part named key (templateOf),
+            -- asked for by a protected create; a template the client lacks
+            -- gets the one of the part named alt
+            -- (when given), else a plain frame. -> frame, "first" | "fallback"
+            local function made(kind, parent, key, alt)
+                local obj = take(parent, kind .. ":" .. key, function()
+                    local first = templateOf(key)
+                    if first ~= nil then
+                        local ok, f = call(env.CreateFrame, kind, nil, parent, first)
+                        if ok and f ~= nil then
+                            firstOf[f] = key
+                            return f
+                        end
+                    end
+                    local second = nil
+                    if alt ~= nil then second = templateOf(alt) end
+                    if second ~= nil then
+                        local ok, f = call(env.CreateFrame, kind, nil, parent, second)
+                        if ok and f ~= nil then
+                            firstOf[f] = alt
+                            return f
+                        end
+                    end
+                    local ok, f = call(env.CreateFrame, kind, nil, parent)
+                    if ok and f ~= nil then return f end
+                    return nil
+                end)
+                if obj == nil then return nil end
+                local from = firstOf[obj]
+                if from == key then
+                    note(key, "first")
+                    return obj, "first"
+                end
+                note(key, "fallback")
+                if from ~= nil then
+                    note(from, "first")
+                    return obj, "alt"
+                end
+                if alt ~= nil then note(alt, "fallback") end
+                return obj, "fallback"
+            end
+            local function plain(kind, parent, tag, loose)
+                return take(parent, kind .. "/" .. tag, function()
+                    local ok, f = call(env.CreateFrame, kind, nil, parent)
+                    if ok and f ~= nil then return f end
+                    return nil
+                end, loose)
+            end
+            local function texture(parent, layer, tag)
+                return take(parent, "T/" .. layer .. "/" .. tag, function()
+                    local ok, t = method(parent, "CreateTexture", nil, layer)
+                    if ok and t ~= nil then return t end
+                    return nil
+                end)
+            end
+            -- A line of text in that font, left aligned, on one line.
+            local function words(parent, fontName, tag)
+                local fs = take(parent, "S/" .. tostring(fontName) .. "/" .. tag, function()
+                    local ok, s = method(parent, "CreateFontString", nil, "OVERLAY", fontName)
+                    if ok and s ~= nil then return s end
+                    return nil
+                end)
+                if fs == nil then return nil end
+                method(fs, "SetWidth", 0)
+                method(fs, "SetJustifyH", "LEFT")
+                method(fs, "SetWordWrap", false)
+                return fs
+            end
+            local function widthOf(fs, guess)
+                local ok, w = method(fs, "GetStringWidth")
+                if ok and type(w) == "number" and not hidden(w) and w > 0 then return w end
+                return guess
+            end
+            local function fontOf(button)
+                local ok, fs = method(button, "GetFontString")
+                if ok and fs ~= nil then return fs end
+                return nil
+            end
+
+            -- A 1-pixel line along one edge of a frame.
+            local function edgeLine(frame, side, rgba, tag)
+                local t = texture(frame, "BORDER", tag .. side)
+                if t == nil then return end
+                if side == "TOP" or side == "BOTTOM" then
+                    method(t, "SetPoint", side .. "LEFT", frame, side .. "LEFT", 0, 0)
+                    method(t, "SetPoint", side .. "RIGHT", frame, side .. "RIGHT", 0, 0)
+                    method(t, "SetHeight", size.edge)
+                else
+                    method(t, "SetPoint", "TOP" .. side, frame, "TOP" .. side, 0, 0)
+                    method(t, "SetPoint", "BOTTOM" .. side, frame, "BOTTOM" .. side, 0, 0)
+                    method(t, "SetWidth", size.edge)
+                end
+                paint(t, rgba)
+            end
+            local function border(frame)
+                edgeLine(frame, "TOP", color.edge, "e")
+                edgeLine(frame, "BOTTOM", color.edge, "e")
+                edgeLine(frame, "LEFT", color.edge, "e")
+                edgeLine(frame, "RIGHT", color.edge, "e")
+            end
+            local function backing(frame, rgba, tag)
+                local t = texture(frame, "BACKGROUND", tag)
+                if t == nil then return nil end
+                method(t, "SetAllPoints", frame)
+                paint(t, rgba)
+                return t
+            end
+
+            -- The frame itself: made once. The stock frame when its name is
+            -- proven and the client has it; else a plain one.
+            local parent = env.UIParent
+            local name = nil
+            if type(cb.name) == "string" and cb.name ~= "" then name = cb.name end
+            -- A window given no name gets one of ours, so Escape can close it.
+            if name == nil and type(ns.id) == "table" and type(ns.id.framePrefix) == "string" then
+                name = ns.id.framePrefix .. "Kit" .. id
+            end
+            -- Asked before the frame is made: making it takes the name.
+            local nameFree = name ~= nil and env[name] == nil
+            -- A name another frame holds is not given to ours.
+            local frameName = nil
+            if nameFree then frameName = name end
+            -- The game's own window frame when a protected create makes it
+            -- (lead section 297 item 4), else a plain one. Its portrait is
+            -- hidden by the game's own call when the client has it.
+            local f, stockFrame = nil, false
+            local frameTemplate = templateOf("frame")
+            if frameTemplate ~= nil then
+                local ok, made1 = call(env.CreateFrame, "Frame", frameName, parent, frameTemplate)
+                if ok and made1 ~= nil then
+                    f, stockFrame = made1, true
+                    call(env.ButtonFrameTemplate_HidePortrait, made1)
+                end
+            end
+            if f == nil then
+                local ok, made2 = call(env.CreateFrame, "Frame", frameName, parent)
+                if not ok or made2 == nil then error("the client made no frame") end
+                f = made2
+            end
+            method(f, "Hide")
+            method(f, "SetFrameStrata", "MEDIUM")
+            method(f, "SetClampedToScreen", true)
+            method(f, "SetToplevel", true)
+            method(f, "EnableMouse", true)
+
+            local width, height = tonumber(cb.width) or tree.width, tonumber(cb.height) or tree.height
+            local open = false
+            local slots = {}
+            local body
+            local draw
+
+            local function playerClosed()
+                if not open then return end
+                open = false
+                tell(cb.onClose)
+            end
+            -- The game also runs OnHide when something the window stands on
+            -- is hidden (the whole interface): that is not a close.
+            method(f, "SetScript", "OnHide", function()
+                local okS, shown = method(f, "IsShown")
+                if okS and shown then return end
+                playerClosed()
+            end)
+            if tree.escape == true and nameFree and type(env.UISpecialFrames) == "table" then
+                local special, there = env.UISpecialFrames, false
+                for i = 1, #special do
+                    if special[i] == name then there = true end
+                end
+                if not there then special[#special + 1] = name end
+            elseif tree.escape == true then
+                -- Never silent: the caller is told why Escape will not close
+                -- this window. The window still opens.
+                local why = "the client has no list of windows Escape closes"
+                if name == nil then
+                    why = "the window has no name"
+                elseif not nameFree then
+                    why = "another frame holds the name " .. name
+                end
+                fail("Escape will not close this window: " .. why)
+            end
+
+            local function standing()
+                local okP, a, _, r, x, y = method(f, "GetPoint", 1)
+                if okP and type(a) == "string" and type(x) == "number" and type(y) == "number" then
+                    return { a, type(r) == "string" and r or a, x, y }
+                end
+                local okL, left = method(f, "GetLeft")
+                local okB, bottom = method(f, "GetBottom")
+                if okL and okB and type(left) == "number" and type(bottom) == "number" then
+                    return { "BOTTOMLEFT", "BOTTOMLEFT", left, bottom }
+                end
+                return nil
+            end
+            local function tellMoved()
+                local okW, w = method(f, "GetWidth")
+                local okH, ht = method(f, "GetHeight")
+                if okW and okH and type(w) == "number" and type(ht) == "number" and w > 0 and ht > 0 then
+                    width, height = w, ht
+                end
+                local point = standing()
+                if point then tell(cb.onMoved, point, width, height) end
+            end
+
+            -- The game's tooltip beside a thing, with one text.
+            local function tipShow(owner, text)
+                local tip = env.GameTooltip
+                if tip == nil then return end
+                method(tip, "SetOwner", owner, "ANCHOR_RIGHT")
+                method(tip, "SetText", text)
+                method(tip, "Show")
+            end
+            local function tipHide(owner)
+                local tip = env.GameTooltip
+                if tip == nil then return end
+                local okO, owned = method(tip, "IsOwned", owner)
+                if okO and owned == true then method(tip, "Hide") end
+            end
+            -- A highlight under the mouse, a tooltip text, and (item) the
+            -- game's own item tooltip at the right of the window.
+            local function hover(frame, text, item)
+                method(frame, "EnableMouse", true)
+                local hi = texture(frame, "BACKGROUND", "hover")
+                if hi ~= nil then
+                    method(hi, "SetAllPoints", frame)
+                    if not unproven.rowHighlight and pictured(hi, art.rowHighlight) then
+                        method(hi, "SetBlendMode", "ADD")
+                        method(hi, "SetAlpha", alpha.rowHighlight or 1)
+                        note("rowHighlight", "first")
+                    else
+                        paint(hi, color.hover)
+                        note("rowHighlight", "fallback")
+                    end
+                    method(hi, "Hide")
+                end
+                hook(frame, "OnEnter", function()
+                    if hi ~= nil then method(hi, "Show") end
+                    if item ~= nil then
+                        local tip = env.GameTooltip
+                        if tip ~= nil then
+                            local link = item
+                            if type(item) == "number" then link = "item:" .. item end
+                            method(tip, "SetOwner", f, "ANCHOR_NONE")
+                            method(tip, "ClearAllPoints")
+                            method(tip, "SetPoint", "TOPLEFT", f, "TOPRIGHT", size.gapSmall, 0)
+                            method(tip, "SetHyperlink", link)
+                            method(tip, "Show")
+                        end
+                    elseif type(text) == "string" and text ~= "" then
+                        tipShow(frame, text)
+                    end
+                end)
+                hook(frame, "OnLeave", function()
+                    if hi ~= nil then method(hi, "Hide") end
+                    if item ~= nil then tipHide(f) else tipHide(frame) end
+                end)
+            end
+
+            -- A stock button saying text, as wide as its words need (never
+            -- under the least width, never over `most`). The caller places
+            -- it. -> button, width
+            local function button(parent1, text, most, live, onClick, tooltip)
+                local b, which = made("Button", parent1, "button")
+                if b == nil then return nil, 0 end
+                if which ~= "first" then method(b, "SetNormalFontObject", font.label) end
+                method(b, "SetText", text)
+                local w = size.buttonMin
+                local fs = fontOf(b)
+                if fs ~= nil then
+                    local tw = widthOf(fs, 0) + size.buttonPad
+                    if tw > w then w = tw end
+                end
+                if most ~= nil and w > most then w = most end
+                sized(b, w, size.button)
+                able(b, live)
+                method(b, "SetButtonState", "NORMAL", false)
+                hook(b, "OnClick", function()
+                    if live then onClick() end
+                end)
+                if type(tooltip) == "string" and tooltip ~= "" then
+                    method(b, "SetMotionScriptsWhileDisabled", true)
+                    hook(b, "OnEnter", function() tipShow(b, tooltip) end)
+                    hook(b, "OnLeave", function() tipHide(b) end)
+                end
+                return b, w
+            end
+
+            -- Coins as number then coin, largest first. side "RIGHT": the
+            -- last coin ends `at` from the right edge; "LEFT": the first
+            -- number starts `at` from the left. -> where the coins end.
+            local function coins(parent1, list, at, side)
+                local from, to, step = 1, #list, 1
+                if side == "RIGHT" then from, to, step = #list, 1, -1 end
+                local sign = 1
+                if side == "RIGHT" then sign = -1 end
+                local function mark(i, coin)
+                    local t = texture(parent1, "ARTWORK", "coin" .. i)
+                    local w = size.coin
+                    if t ~= nil and pictured(t, coin.icon) then
+                        sized(t, size.coin, size.coin)
+                        method(t, "SetPoint", side, parent1, side, sign * at, 0)
+                        note(coin.coin, "first")
+                    else
+                        if t ~= nil then method(t, "Hide") end
+                        note(coin.coin, "fallback")
+                        local l = words(parent1, font.small, "letter" .. i)
+                        if l ~= nil then
+                            method(l, "SetPoint", side, parent1, side, sign * at, 0)
+                            inked(l, color[coin.coin] or color.text)
+                            method(l, "SetText", letters[coin.coin] or "")
+                            w = widthOf(l, size.coin)
+                        end
+                    end
+                    at = at + w + size.gapSmall
+                end
+                local function amount(i, coin)
+                    local n = words(parent1, font.small, "amount" .. i)
+                    if n == nil then return end
+                    method(n, "SetPoint", side, parent1, side, sign * at, 0)
+                    inked(n, color.text)
+                    method(n, "SetText", tostring(coin.amount))
+                    at = at + widthOf(n, size.coin * 2) + size.gapSmall
+                end
+                for i = from, to, step do
+                    if side == "RIGHT" then
+                        mark(i, list[i])
+                        amount(i, list[i])
+                    else
+                        amount(i, list[i])
+                        mark(i, list[i])
+                    end
+                end
+                return at
+            end
+
+            -- A well that scrolls: -> the frame its lines stand on, how wide
+            -- a line may be, and whether it scrolls (false: the client made
+            -- no scroll frame and the lines stand on the well itself). The
+            -- bar's width is kept free whether or not the bar shows.
+            local function scrollWell(parent1, x, y, w, h, tag)
+                local well = plain("Frame", parent1, "well" .. tag)
+                if well == nil then error("the client made no frame for a list") end
+                method(well, "SetPoint", "TOPLEFT", parent1, "TOPLEFT", x, -y)
+                sized(well, w, h)
+                backing(well, color.inset, "inset")
+                border(well)
+                local innerW = w - size.scrollBar - size.gap - size.edge
+                local scroll = made("ScrollFrame", well, "scroll")
+                if scroll == nil then return well, innerW, false end
+                method(scroll, "SetPoint", "TOPLEFT", well, "TOPLEFT", size.edge, -size.edge)
+                method(scroll, "SetPoint", "BOTTOMRIGHT", well, "BOTTOMRIGHT", -(size.scrollBar + size.gap), size.edge)
+                local child = plain("Frame", scroll, "child", true)
+                if child == nil then return well, innerW, false end
+                method(scroll, "SetScrollChild", child)
+                method(scroll, "EnableMouseWheel", true)
+                hook(scroll, "OnMouseWheel", function(_, delta)
+                    if type(delta) ~= "number" or hidden(delta) then return end
+                    local okC, cur = method(scroll, "GetVerticalScroll")
+                    local okR, range = method(scroll, "GetVerticalScrollRange")
+                    if not okC or not okR or type(cur) ~= "number" or type(range) ~= "number" then return end
+                    local to = cur - delta * size.wheelLines * size.lineHeight
+                    if to > range then to = range end
+                    if to < 0 then to = 0 end
+                    method(scroll, "SetVerticalScroll", to)
+                end)
+                return child, innerW, true
+            end
+
+            -- One part's frame in a pane: the pane's width, h high, at the
+            -- pane's next free line.
+            local function box(pane, h, tag)
+                local b = plain("Frame", pane.parent, tag)
+                if b == nil then error("the client made no frame for a part") end
+                method(b, "SetPoint", "TOPLEFT", pane.parent, "TOPLEFT", pane.x, -pane.y)
+                sized(b, pane.w, h)
+                pane.y = pane.y + h
+                return b
+            end
+            local function stripe(frame, pane)
+                pane.rows = pane.rows + 1
+                local t = texture(frame, "BACKGROUND", "stripe")
+                if t == nil then return end
+                if pane.rows % 2 == 0 then
+                    method(t, "SetAllPoints", frame)
+                    paint(t, color.stripe)
+                else
+                    method(t, "Hide")
+                end
+            end
+
+            -- A control at x on its row or line, colW wide at most.
+            local CONTROL = {}
+            function CONTROL.button(part, on1, x, colW, live)
+                local b = button(on1, part.text, colW, live and part.enabled ~= false,
+                    function() tell(part.onClick) end, part.tooltip)
+                if b ~= nil then method(b, "SetPoint", "LEFT", on1, "LEFT", x, 0) end
+            end
+            function CONTROL.bind(part, on1, x, colW, live)
+                local b = button(on1, part.text, colW, live and part.enabled ~= false, function() tell(part.onClick) end)
+                if b == nil then return end
+                sized(b, colW, size.button)
+                method(b, "SetPoint", "LEFT", on1, "LEFT", x, 0)
+                local fs = fontOf(b)
+                if part.waiting then
+                    inked(fs, color.accent)
+                elseif part.bound == nil then
+                    inked(fs, color.textDim)
+                else
+                    inked(fs, color.text)
+                end
+            end
+            function CONTROL.checkbox(part, on1, x, colW, live)
+                local okay = live and part.enabled ~= false
+                local b, which = made("CheckButton", on1, "check")
+                if b == nil then return end
+                sized(b, size.check, size.check)
+                method(b, "SetPoint", "LEFT", on1, "LEFT", x, 0)
+                if which ~= "first" then
+                    -- No stock box: a well with an edge, filled when checked.
+                    backing(b, color.inset, "inset")
+                    border(b)
+                    local mark = texture(b, "ARTWORK", "mark")
+                    if mark ~= nil then
+                        method(mark, "SetPoint", "TOPLEFT", b, "TOPLEFT", size.gapSmall, -size.gapSmall)
+                        method(mark, "SetPoint", "BOTTOMRIGHT", b, "BOTTOMRIGHT", -size.gapSmall, size.gapSmall)
+                        paint(mark, color.accent)
+                        method(b, "SetCheckedTexture", mark)
+                    end
+                end
+                method(b, "SetChecked", part.checked == true)
+                able(b, okay)
+                hook(b, "OnClick", function()
+                    if not okay then return end
+                    local okC, now = method(b, "GetChecked")
+                    if not okC or hidden(now) then now = not part.checked end
+                    tell(part.onToggle, now and true or false)
+                end)
+                if type(part.label) == "string" and part.label ~= "" and colW > size.check + size.gapSmall then
+                    local l = words(on1, font.label, "checkLabel")
+                    if l ~= nil then
+                        method(l, "SetPoint", "LEFT", b, "RIGHT", size.gapSmall, 0)
+                        if okay then inked(l, color.text) else inked(l, color.textOff) end
+                        method(l, "SetText", part.label)
+                    end
+                end
+            end
+            function CONTROL.choice(part, on1, x, colW, live)
+                local okay = live and part.enabled ~= false
+                local n = #part.items
+                if n > size.choiceButtons then
+                    local b = button(on1, part.items[part.selected] or "", colW, okay, function()
+                        tell(part.onSelect, part.selected % n + 1)
+                    end)
+                    if b ~= nil then
+                        sized(b, colW, size.button)
+                        method(b, "SetPoint", "LEFT", on1, "LEFT", x, 0)
+                    end
+                    return
+                end
+                local each = (colW - (n - 1) * size.gapSmall) / n
+                for i = 1, n do
+                    local b = button(on1, part.items[i], each, okay, function()
+                        if i ~= part.selected then tell(part.onSelect, i) end
+                    end)
+                    if b ~= nil then
+                        sized(b, each, size.button)
+                        method(b, "SetPoint", "LEFT", on1, "LEFT", x + (i - 1) * (each + size.gapSmall), 0)
+                        -- The one in use stays in its pushed look.
+                        if i == part.selected then method(b, "SetButtonState", "PUSHED", true) end
+                    end
+                end
+            end
+            function CONTROL.number(part, on1, x, colW, live)
+                local okay = live and part.enabled ~= false
+                local function stepped(dir)
+                    local v = part.value + dir * part.step
+                    if part.min ~= nil and v < part.min then v = part.min end
+                    if part.max ~= nil and v > part.max then v = part.max end
+                    return v
+                end
+                local down = okay and (part.min == nil or part.value > part.min)
+                local up = okay and (part.max == nil or part.value < part.max)
+                local minus = button(on1, "-", size.button, down, function() tell(part.onChange, stepped(-1)) end)
+                if minus ~= nil then
+                    sized(minus, size.button, size.button)
+                    method(minus, "SetPoint", "LEFT", on1, "LEFT", x, 0)
+                end
+                local v = words(on1, font.label, "value")
+                if v ~= nil then
+                    method(v, "SetPoint", "LEFT", on1, "LEFT", x + size.button, 0)
+                    method(v, "SetWidth", size.numberValue)
+                    method(v, "SetJustifyH", "CENTER")
+                    if okay then inked(v, color.text) else inked(v, color.textOff) end
+                    method(v, "SetText", tostring(part.value))
+                end
+                local plus = button(on1, "+", size.button, up, function() tell(part.onChange, stepped(1)) end)
+                if plus ~= nil then
+                    sized(plus, size.button, size.button)
+                    method(plus, "SetPoint", "LEFT", on1, "LEFT", x + size.button + size.numberValue, 0)
+                end
+            end
+            function CONTROL.text(part, on1, x, colW, live)
+                local okay = live and part.enabled ~= false
+                local e, which = made("EditBox", on1, "input")
+                if e == nil then return end
+                sized(e, colW - size.gap, size.button)
+                method(e, "SetPoint", "LEFT", on1, "LEFT", x + size.gap, 0)
+                if which ~= "first" then
+                    method(e, "SetFontObject", font.label)
+                    backing(e, color.inset, "inset")
+                    border(e)
+                end
+                method(e, "SetAutoFocus", false)
+                local okG, cur = method(e, "GetText")
+                if not okG or cur ~= part.text then method(e, "SetText", part.text) end
+                able(e, okay)
+                hook(e, "OnEnterPressed", function()
+                    local okT, typed = method(e, "GetText")
+                    method(e, "ClearFocus")
+                    if okay and okT and type(typed) == "string" and not hidden(typed) then tell(part.onText, typed) end
+                end)
+                hook(e, "OnEscapePressed", function()
+                    method(e, "SetText", part.text)
+                    method(e, "ClearFocus")
+                end)
+            end
+
+            local DRAW = {}
+            local function place(part, pane, last)
+                local fn = DRAW[part.kind]
+                if fn == nil then return end
+                fn(part, pane, last)
+                pane.first = false
+            end
+
+            function DRAW.header(part, pane)
+                local h = box(pane, size.header, "header")
+                local s = words(h, font.small, "summary")
+                if s ~= nil then
+                    method(s, "SetPoint", "LEFT", h, "LEFT", 0, 0)
+                    inked(s, color.textDim)
+                    method(s, "SetText", part.title)
+                end
+                edgeLine(h, "BOTTOM", color.divider, "d")
+                local search = part.search
+                if search ~= nil then
+                    local e, which = made("EditBox", h, "search", "input")
+                    if e ~= nil then
+                        sized(e, size.search, size.button)
+                        method(e, "SetPoint", "RIGHT", h, "RIGHT", 0, 0)
+                        method(e, "SetAutoFocus", false)
+                        local hint
+                        if which == "first" then
+                            local okI, stock = pcall(function() return e.Instructions end)
+                            if okI and type(stock) == "table" then method(stock, "SetText", search.placeholder) end
+                        else
+                            if which == "fallback" then
+                                method(e, "SetFontObject", font.label)
+                                backing(e, color.inset, "inset")
+                                border(e)
+                            end
+                            hint = words(e, font.small, "hint")
+                            if hint ~= nil then
+                                method(hint, "SetPoint", "LEFT", e, "LEFT", size.gapSmall, 0)
+                                inked(hint, color.textDim)
+                                method(hint, "SetText", search.placeholder)
+                                if search.text ~= "" then method(hint, "Hide") end
+                            end
+                        end
+                        local known = search.text
+                        local okG, cur = method(e, "GetText")
+                        if not okG or cur ~= known then method(e, "SetText", known) end
+                        -- Told only what is new: the game also runs this
+                        -- when the add-on sets the text.
+                        hook(e, "OnTextChanged", function()
+                            local okT, typed = method(e, "GetText")
+                            if not okT or type(typed) ~= "string" or hidden(typed) then return end
+                            if hint ~= nil then
+                                if typed == "" then method(hint, "Show") else method(hint, "Hide") end
+                            end
+                            if typed == known then return end
+                            known = typed
+                            tell(search.onText, typed)
+                        end, true)
+                        hook(e, "OnEnterPressed", function() method(e, "ClearFocus") end)
+                        hook(e, "OnEscapePressed", function() method(e, "ClearFocus") end)
+                    end
+                end
+                pane.y = pane.y + size.gap
+            end
+
+            function DRAW.tabs(part, pane)
+                local h = box(pane, size.tab, "tabs")
+                local n = #part.items
+                local w = size.buttonMin
+                if w * n > pane.w then w = math.floor(pane.w / n) end
+                for i = 1, n do
+                    local b, which = made("Button", h, "tab")
+                    if b ~= nil then
+                        if which ~= "first" then method(b, "SetNormalFontObject", font.label) end
+                        method(b, "SetText", part.items[i])
+                        sized(b, w, size.tab)
+                        method(b, "SetPoint", "BOTTOMLEFT", h, "BOTTOMLEFT", (i - 1) * w, 0)
+                        if which == "first" then
+                            if i == part.selected then method(b, "LockHighlight") else method(b, "UnlockHighlight") end
+                        else
+                            -- The flat tab: the one shown in the accent
+                            -- colour over the selected backing.
+                            local back = texture(b, "BACKGROUND", "selected")
+                            local fs = fontOf(b)
+                            if i == part.selected then
+                                if back ~= nil then
+                                    method(back, "SetAllPoints", b)
+                                    paint(back, color.selected)
+                                end
+                                inked(fs, color.accent)
+                            else
+                                if back ~= nil then method(back, "Hide") end
+                                inked(fs, color.text)
+                            end
+                        end
+                        hook(b, "OnClick", function()
+                            if i ~= part.selected then tell(part.onSelect, i) end
+                        end)
+                    end
+                end
+                edgeLine(h, "BOTTOM", color.divider, "d")
+                pane.y = pane.y + size.gap
+            end
+
+            function DRAW.topicList(part, pane)
+                local room = pane.h - pane.y
+                if room < size.topicRow then room = size.topicRow end
+                local child, innerW, scrolls = scrollWell(pane.parent, pane.x, pane.y, size.topicWidth, room, "topics")
+                local y = 0
+                for i = 1, #part.items do
+                    local b = plain("Button", child, "topic")
+                    if b ~= nil then
+                        sized(b, innerW, size.topicRow)
+                        method(b, "SetPoint", "TOPLEFT", child, "TOPLEFT", 0, -y)
+                        method(b, "SetNormalFontObject", font.label)
+                        method(b, "SetText", part.items[i])
+                        local fs = fontOf(b)
+                        if fs ~= nil then
+                            method(fs, "ClearAllPoints")
+                            method(fs, "SetPoint", "LEFT", b, "LEFT", size.gap, 0)
+                        end
+                        local sel = texture(b, "BACKGROUND", "selected")
+                        if i == part.selected then
+                            if sel ~= nil then
+                                method(sel, "SetAllPoints", b)
+                                if not unproven.topicHighlight and pictured(sel, art.topicHighlight) then
+                                    method(sel, "SetBlendMode", "ADD")
+                                    method(sel, "SetAlpha", alpha.topicHighlight or 1)
+                                    note("topicHighlight", "first")
+                                else
+                                    paint(sel, color.selected)
+                                    note("topicHighlight", "fallback")
+                                end
+                            end
+                            inked(fs, color.accent)
+                        else
+                            if sel ~= nil then method(sel, "Hide") end
+                            inked(fs, color.text)
+                        end
+                        hover(b)
+                        hook(b, "OnClick", function()
+                            if i ~= part.selected then tell(part.onSelect, i) end
+                        end)
+                    end
+                    y = y + size.topicRow
+                end
+                if scrolls then sized(child, innerW, math.max(y, 1)) end
+                -- Everything after it goes in the pane at its right.
+                pane.x = pane.x + size.topicWidth + size.pad
+                pane.w = pane.w - size.topicWidth - size.pad
+                pane.rows = 0
+            end
+
+            function DRAW.section(part, pane)
+                if not pane.first then pane.y = pane.y + size.gap end
+                local h = box(pane, size.section, "section")
+                local s = words(h, font.heading, "heading")
+                if s ~= nil then
+                    method(s, "SetPoint", "LEFT", h, "LEFT", 0, 0)
+                    inked(s, color.accent)
+                    method(s, "SetText", part.text)
+                end
+                edgeLine(h, "BOTTOM", color.divider, "d")
+                -- A section that folds: a mark at its right, and a click
+                -- anywhere on the heading tells the caller the new state.
+                local foldMark = type(look.foldMark) == "table" and look.foldMark or {}
+                local mark = words(h, font.heading, "fold")
+                if mark ~= nil then
+                    if part.folded == nil then
+                        method(mark, "SetText", "")
+                    else
+                        method(mark, "SetPoint", "RIGHT", h, "RIGHT", -size.gapSmall, 0)
+                        inked(mark, color.textDim)
+                        if part.folded then
+                            method(mark, "SetText", foldMark.closed or "")
+                        else
+                            method(mark, "SetText", foldMark.open or "")
+                        end
+                    end
+                end
+                if part.folded ~= nil then
+                    method(h, "EnableMouse", true)
+                    hook(h, "OnMouseUp", function() tell(part.onFold, not part.folded) end)
+                end
+            end
+
+            -- A list row: an icon, a name, a second line under it, and a
+            -- short text at the right. A click tells the caller.
+            function DRAW.line(part, pane)
+                local hgt = size.lineHeight
+                local hasSub = type(part.sub) == "string" and part.sub ~= ""
+                if hasSub then hgt = size.rowHeightDesc end
+                local h = box(pane, hgt, "listRow")
+                stripe(h, pane)
+                local left = size.gapSmall
+                local holder = plain("Frame", h, "icon")
+                if holder ~= nil then
+                    local icon = texture(holder, "ARTWORK", "icon")
+                    local own = icon ~= nil and part.icon ~= nil and pictured(icon, part.icon)
+                    if own then
+                        sized(holder, size.icon, size.icon)
+                        method(holder, "SetPoint", "LEFT", h, "LEFT", size.gapSmall, 0)
+                        method(icon, "SetAllPoints", holder)
+                        method(holder, "Show")
+                        left = size.gapSmall * 2 + size.icon
+                    else
+                        method(holder, "Hide")
+                    end
+                end
+                local off = part.enabled == false
+                local right = size.gapSmall
+                local r = words(h, font.small, "right")
+                if r ~= nil then
+                    if type(part.right) == "string" and part.right ~= "" then
+                        method(r, "SetPoint", "RIGHT", h, "RIGHT", -right, 0)
+                        inked(r, color[part.tone or "textDim"] or color.textDim)
+                        method(r, "SetText", part.right)
+                        right = right + widthOf(r, size.buttonMin) + size.gap
+                    else
+                        method(r, "SetText", "")
+                    end
+                end
+                local nm = words(h, font.label, "name")
+                if nm ~= nil then
+                    if hasSub then
+                        method(nm, "SetPoint", "TOPLEFT", h, "TOPLEFT", left, -size.gapSmall)
+                    else
+                        method(nm, "SetPoint", "LEFT", h, "LEFT", left, 0)
+                    end
+                    method(nm, "SetWidth", math.max(pane.w - left - right, 1))
+                    method(nm, "SetJustifyH", "LEFT")
+                    if off then inked(nm, color.textOff) else inked(nm, color.text) end
+                    method(nm, "SetText", part.text)
+                end
+                local sub = words(h, font.small, "sub")
+                if sub ~= nil then
+                    if hasSub then
+                        method(sub, "SetPoint", "BOTTOMLEFT", h, "BOTTOMLEFT", left, size.gapSmall)
+                        method(sub, "SetWidth", math.max(pane.w - left - right, 1))
+                        method(sub, "SetJustifyH", "LEFT")
+                        if off then inked(sub, color.textOff) else inked(sub, color.textDim) end
+                        method(sub, "SetText", part.sub)
+                    else
+                        method(sub, "SetText", "")
+                    end
+                end
+                hover(h, part.tooltip)
+                if not off and type(part.onClick) == "function" then
+                    hook(h, "OnMouseUp", function() tell(part.onClick) end)
+                end
+            end
+
+            function DRAW.row(part, pane)
+                local off = part.enabled == false
+                local desc = part.description
+                if off and type(part.reason) == "string" and part.reason ~= "" then desc = part.reason end
+                if desc == "" then desc = nil end
+                local hgt = size.rowHeight
+                if desc ~= nil then hgt = size.rowHeightDesc end
+                local h = box(pane, hgt, "row")
+                stripe(h, pane)
+                -- A narrow pane (beside a topic list, or a window drawn
+                -- small) shares its width: the control takes half at most,
+                -- so the label always has room and never lies under it.
+                local controlW = math.min(size.controlColumn, math.floor(pane.w / 2))
+                local labelW = math.max(pane.w - controlW - size.gap, 1)
+                local l = words(h, font.label, "label")
+                if l ~= nil then
+                    if desc ~= nil then
+                        method(l, "SetPoint", "TOPLEFT", h, "TOPLEFT", 0, -size.gapSmall)
+                    else
+                        method(l, "SetPoint", "LEFT", h, "LEFT", 0, 0)
+                    end
+                    method(l, "SetWidth", labelW)
+                    if off then inked(l, color.textOff) else inked(l, color.text) end
+                    method(l, "SetText", part.label)
+                end
+                if desc ~= nil then
+                    local fontName = font.small
+                    if off then fontName = font.off end
+                    local d = words(h, fontName, "description")
+                    if d ~= nil then
+                        method(d, "SetPoint", "BOTTOMLEFT", h, "BOTTOMLEFT", 0, size.gapSmall)
+                        method(d, "SetWidth", labelW)
+                        if off then inked(d, color.textOff) else inked(d, color.textDim) end
+                        method(d, "SetText", desc)
+                    end
+                end
+                local tipText = part.tooltip
+                if tipText == nil then tipText = part.description end
+                hover(h, tipText)
+                local control = part.control
+                if control ~= nil and CONTROL[control.kind] ~= nil then
+                    CONTROL[control.kind](control, h, pane.w - controlW, controlW, not off)
+                end
+            end
+
+            -- A control standing on its own line.
+            local function solo(part, pane)
+                local h = box(pane, size.rowHeight, "solo")
+                local colW = pane.w
+                if part.kind == "bind" then colW = math.min(pane.w, size.controlColumn) end
+                CONTROL[part.kind](part, h, 0, colW, true)
+            end
+            DRAW.button, DRAW.checkbox, DRAW.bind = solo, solo, solo
+            function DRAW.choice(part, pane)
+                local h = box(pane, size.rowHeight, "solo")
+                CONTROL.choice(part, h, 0, math.min(pane.w, size.controlColumn), true)
+            end
+            function DRAW.number(part, pane)
+                local h = box(pane, size.rowHeight, "solo")
+                CONTROL.number(part, h, 0, math.min(pane.w, size.controlColumn), true)
+            end
+            function DRAW.text(part, pane)
+                local h = box(pane, size.rowHeight, "solo")
+                CONTROL.text(part, h, 0, math.min(pane.w, size.controlColumn), true)
+            end
+
+            function DRAW.scroll(part, pane, last)
+                local room = pane.h - pane.y
+                local hgt = part.height
+                -- The list never runs past the pane: it takes the room that
+                -- is left, and one line's height when there is none.
+                if last or hgt > room then hgt = room end
+                if hgt < size.lineHeight then hgt = size.lineHeight end
+                local child, innerW, scrolls = scrollWell(pane.parent, pane.x, pane.y, pane.w, hgt, "list")
+                local inner = { parent = child, x = 0, y = 0, w = innerW, h = hgt - 2 * size.edge, first = true, rows = 0 }
+                for i = 1, #part.children do place(part.children[i], inner, false) end
+                if scrolls then sized(child, innerW, math.max(inner.y, 1)) end
+                pane.y = pane.y + hgt + size.gap
+            end
+
+            function DRAW.itemLine(part, pane)
+                local h = box(pane, size.lineHeight, "line")
+                stripe(h, pane)
+                local holder = plain("Frame", h, "icon")
+                if holder ~= nil then
+                    sized(holder, size.icon, size.icon)
+                    method(holder, "SetPoint", "LEFT", h, "LEFT", size.gapSmall, 0)
+                    local ring = texture(holder, "BACKGROUND", "ring")
+                    if not unproven.iconBorder and ring ~= nil and pictured(ring, art.iconBorder) then
+                        method(ring, "SetAllPoints", holder)
+                        note("iconBorder", "first")
+                    else
+                        if ring ~= nil then method(ring, "Hide") end
+                        border(holder)
+                        note("iconBorder", "fallback")
+                    end
+                    local icon = texture(holder, "ARTWORK", "icon")
+                    if icon ~= nil then
+                        method(icon, "SetAllPoints", holder)
+                        local own = part.icon ~= nil and pictured(icon, part.icon)
+                        if not own then
+                            if pictured(icon, art.iconMissing) then
+                                note("iconMissing", "first")
+                            else
+                                paint(icon, color.inset)
+                                note("iconMissing", "fallback")
+                            end
+                        end
+                    end
+                end
+                -- From the right: the note or the coins, then the count.
+                local right = size.gapSmall
+                if type(part.note) == "string" and part.note ~= "" then
+                    local n = words(h, font.small, "note")
+                    if n ~= nil then
+                        method(n, "SetPoint", "RIGHT", h, "RIGHT", -right, 0)
+                        inked(n, color[part.tone or "textDim"] or color.textDim)
+                        method(n, "SetText", part.note)
+                        right = right + widthOf(n, size.buttonMin) + size.gap
+                    end
+                elseif type(part.coins) == "table" and type(part.coins.coins) == "table" then
+                    right = coins(h, part.coins.coins, right, "RIGHT") + size.gapSmall
+                end
+                if type(part.count) == "number" and part.count ~= 1 then
+                    local n = words(h, font.small, "count")
+                    if n ~= nil then
+                        method(n, "SetPoint", "RIGHT", h, "RIGHT", -right, 0)
+                        inked(n, color.textDim)
+                        method(n, "SetText", "x" .. part.count)
+                        right = right + widthOf(n, size.icon) + size.gap
+                    end
+                end
+                local nm = words(h, font.label, "name")
+                if nm ~= nil then
+                    method(nm, "SetPoint", "LEFT", h, "LEFT", size.gapSmall * 2 + size.icon, 0)
+                    method(nm, "SetPoint", "RIGHT", h, "RIGHT", -right, 0)
+                    local q = part.color or {}
+                    method(nm, "SetTextColor", q.r or color.text[1], q.g or color.text[2], q.b or color.text[3], 1)
+                    method(nm, "SetText", part.name)
+                end
+                hover(h, nil, part.item)
+            end
+
+            function DRAW.empty(part, pane)
+                local hgt = size.rowHeightDesc + 2 * size.pad
+                -- Alone in its list it is centred in all of it.
+                if pane.first and pane.h - pane.y > hgt then hgt = pane.h - pane.y end
+                local h = box(pane, hgt, "empty")
+                local a = words(h, font.big, "what")
+                if a ~= nil then
+                    method(a, "SetPoint", "BOTTOM", h, "CENTER", 0, size.gapSmall / 2)
+                    method(a, "SetJustifyH", "CENTER")
+                    inked(a, color.textDim)
+                    method(a, "SetText", part.text)
+                end
+                local b = words(h, font.small, "how")
+                if b ~= nil then
+                    method(b, "SetPoint", "TOP", h, "CENTER", 0, -size.gapSmall / 2)
+                    method(b, "SetJustifyH", "CENTER")
+                    inked(b, color.textDim)
+                    method(b, "SetText", part.how)
+                end
+            end
+
+            -- The strip at the bottom: text and coins left; the slot, then
+            -- the buttons, from the right.
+            local function footer(part, w)
+                local h = plain("Frame", body, "footer")
+                if h == nil then error("the client made no frame for a part") end
+                method(h, "SetPoint", "BOTTOMLEFT", body, "BOTTOMLEFT", 0, 0)
+                sized(h, w, size.footer)
+                edgeLine(h, "TOP", color.divider, "d")
+                local x = 0
+                if type(part.text) == "string" and part.text ~= "" then
+                    local s = words(h, font.label, "text")
+                    if s ~= nil then
+                        method(s, "SetPoint", "LEFT", h, "LEFT", 0, 0)
+                        inked(s, color.text)
+                        method(s, "SetText", part.text)
+                        x = widthOf(s, size.buttonMin / 2) + size.gap
+                    end
+                end
+                if type(part.coins) == "table" and type(part.coins.coins) == "table" then
+                    coins(h, part.coins.coins, x, "LEFT")
+                end
+                local right = 0
+                if part.slot ~= nil then
+                    local holder = plain("Frame", h, "slot")
+                    if holder ~= nil then
+                        sized(holder, size.buttonMin, size.button)
+                        method(holder, "SetPoint", "RIGHT", h, "RIGHT", 0, 0)
+                        slots[part.slot] = holder
+                        right = size.buttonMin + size.gap
+                    end
+                end
+                for i = #part.buttons, 1, -1 do
+                    local one = part.buttons[i]
+                    local b, bw = button(h, one.text, nil, one.enabled ~= false, function() tell(one.onClick) end, one.tooltip)
+                    if b ~= nil then
+                        method(b, "SetPoint", "RIGHT", h, "RIGHT", -right, 0)
+                        right = right + bw + size.gap
+                    end
+                end
+            end
+
+            -- The frame's own art, its title, the drag area, the close
+            -- button and the grip.
+            local function chrome(now)
+                -- The stock frame brings its own title text and close button.
+                local stockTitle, stockClose = nil, nil
+                if stockFrame then
+                    local okT, own = pcall(function() return f.TitleText end)
+                    if okT and type(own) == "table" then stockTitle = own end
+                    if stockTitle == nil then
+                        -- Newer frames keep the title in a holder.
+                        local okH, held = pcall(function() return f.TitleContainer.TitleText end)
+                        if okH and type(held) == "table" then stockTitle = held end
+                    end
+                    local okC, ownClose = pcall(function() return f.CloseButton end)
+                    if okC and type(ownClose) == "table" then stockClose = ownClose end
+                end
+                if stockFrame then
+                    note("frame", "first")
+                else
+                    note("frame", "fallback")
+                    backing(f, color.fill, "fill")
+                    border(f)
+                    local strip = texture(f, "BORDER", "strip")
+                    if strip ~= nil then
+                        method(strip, "SetPoint", "TOPLEFT", f, "TOPLEFT", 0, 0)
+                        method(strip, "SetPoint", "BOTTOMRIGHT", f, "TOPRIGHT", 0, -size.title)
+                        paint(strip, color.inset)
+                    end
+                    local under = texture(f, "ARTWORK", "under")
+                    if under ~= nil then
+                        method(under, "SetPoint", "TOPLEFT", f, "TOPLEFT", 0, -size.title)
+                        method(under, "SetPoint", "TOPRIGHT", f, "TOPRIGHT", 0, -size.title)
+                        method(under, "SetHeight", size.edge)
+                        paint(under, color.divider)
+                    end
+                end
+                if stockTitle ~= nil then
+                    method(stockTitle, "SetText", now.title)
+                else
+                    local t = words(f, font.title, "title")
+                    if t ~= nil then
+                        method(t, "SetPoint", "TOPLEFT", f, "TOPLEFT", size.title, 0)
+                        method(t, "SetPoint", "BOTTOMRIGHT", f, "TOPRIGHT", -size.title, -size.title)
+                        method(t, "SetJustifyH", "CENTER")
+                        inked(t, color.accent)
+                        method(t, "SetText", now.title)
+                    end
+                end
+
+                -- Moved by the title area only.
+                method(f, "SetMovable", now.movable == true)
+                if now.movable == true then
+                    local bar = plain("Frame", f, "bar")
+                    if bar ~= nil then
+                        method(bar, "SetPoint", "TOPLEFT", f, "TOPLEFT", 0, 0)
+                        method(bar, "SetPoint", "BOTTOMRIGHT", f, "TOPRIGHT", -size.title, -size.title)
+                        method(bar, "EnableMouse", true)
+                        method(bar, "RegisterForDrag", "LeftButton")
+                        hook(bar, "OnDragStart", function() method(f, "StartMoving") end)
+                        hook(bar, "OnDragStop", function()
+                            method(f, "StopMovingOrSizing")
+                            -- The client would otherwise keep a moved named
+                            -- frame's place itself and put it back there.
+                            method(f, "SetUserPlaced", false)
+                            tellMoved()
+                        end)
+                    end
+                end
+
+                local function closeClicked()
+                    if not open then return end
+                    method(f, "Hide")
+                    -- OnHide has told it already on a client that runs it.
+                    playerClosed()
+                end
+                if stockClose ~= nil then
+                    if now.closable == true then
+                        method(stockClose, "Show")
+                        hook(stockClose, "OnClick", closeClicked)
+                        note("close", "first")
+                    else
+                        method(stockClose, "Hide")
+                    end
+                elseif now.closable == true then
+                    local b, which = made("Button", f, "close")
+                    if b ~= nil then
+                        if which ~= "first" then
+                            method(b, "SetNormalFontObject", font.label)
+                            method(b, "SetText", "x")
+                        end
+                        sized(b, size.title, size.title)
+                        method(b, "SetPoint", "TOPRIGHT", f, "TOPRIGHT", 0, 0)
+                        hook(b, "OnClick", closeClicked)
+                    end
+                end
+
+                method(f, "SetResizable", now.resizable == true)
+                if now.resizable == true then
+                    local least, leastH = now.minWidth or width, now.minHeight or height
+                    if not method(f, "SetResizeBounds", least, leastH) then method(f, "SetMinResize", least, leastH) end
+                    local grip = plain("Button", f, "grip")
+                    if grip ~= nil then
+                        sized(grip, size.grip, size.grip)
+                        method(grip, "SetPoint", "BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
+                        method(grip, "EnableMouse", true)
+                        local corner = texture(grip, "OVERLAY", "corner")
+                        local okN = false
+                        if not unproven.grip then okN = method(grip, "SetNormalTexture", art.grip) end
+                        if okN then
+                            if corner ~= nil then method(corner, "Hide") end
+                            if not unproven.gripOver then method(grip, "SetHighlightTexture", art.gripOver) end
+                            if not unproven.gripDown then method(grip, "SetPushedTexture", art.gripDown) end
+                            note("grip", "first")
+                        else
+                            if corner ~= nil then
+                                sized(corner, size.gripCorner, size.gripCorner)
+                                method(corner, "SetPoint", "BOTTOMRIGHT", grip, "BOTTOMRIGHT", 0, 0)
+                                paint(corner, color.edge)
+                            end
+                            note("grip", "fallback")
+                        end
+                        hook(grip, "OnMouseDown", function() method(f, "StartSizing", "BOTTOMRIGHT") end)
+                        hook(grip, "OnMouseUp", function()
+                            method(f, "StopMovingOrSizing")
+                            method(f, "SetUserPlaced", false)
+                            tellMoved()
+                            -- Laid out again at the new size.
+                            local ok, err = pcall(draw, tree)
+                            if not ok then fail(err) end
+                        end)
+                    end
+                end
+            end
+
+            -- What is drawn: a raise partway still ends the sweep, so no part
+            -- of the tree before it is left showing beside the half-drawn
+            -- one; the raise then goes on to the caller.
+            local function drawParts(now)
+                sized(f, width, height)
+                chrome(now)
+                body = plain("Frame", f, "body")
+                if body == nil then error("the client made no frame for the content") end
+                method(body, "SetPoint", "TOPLEFT", f, "TOPLEFT", size.pad, -(size.title + size.pad))
+                method(body, "SetPoint", "BOTTOMRIGHT", f, "BOTTOMRIGHT", -size.pad, size.pad)
+                local w, h = width - 2 * size.pad, height - size.title - 2 * size.pad
+                local kids = now.children
+                local lastFlow, hasFooter = 0, false
+                for i = 1, #kids do
+                    if kids[i].kind == "footer" then
+                        footer(kids[i], w)
+                        hasFooter = true
+                    else
+                        lastFlow = i
+                    end
+                end
+                if hasFooter then h = h - size.footer end
+                local pane = { parent = body, x = 0, y = 0, w = w, h = h, first = true, rows = 0 }
+                for i = 1, #kids do
+                    if kids[i].kind ~= "footer" then place(kids[i], pane, i == lastFlow) end
+                end
+            end
+            draw = function(now)
+                reread()
+                sweepStart()
+                slots = {}
+                local ok, err = pcall(drawParts, now)
+                sweepEnd()
+                -- Lead section 319: which parts were the game's own and
+                -- which the plain form, for the diagnostics.
+                if kitDrawnFn ~= nil then
+                    local art = {}
+                    for key, which in pairs(drew) do art[key] = which end
+                    pcall(kitDrawnFn, id, art)
+                end
+                if not ok then error(err, 0) end
+            end
+
+            local point = type(cb.point) == "table" and cb.point or tree.point
+            if type(point) == "table" then
+                method(f, "ClearAllPoints")
+                method(f, "SetPoint", point[1], parent, point[2], point[3], point[4])
+            end
+            -- A first draw that fails does not lose the frame: the window is
+            -- kept, the caller is told, and asking again draws on this frame.
+            local drawn, drawErr = pcall(draw, tree)
+
+            local h = {}
+            function h.update(now)
+                if type(now) ~= "table" or now.kind ~= "window" or type(now.children) ~= "table" then return false end
+                local ok, err = pcall(draw, now)
+                if not ok then
+                    fail(err)
+                    return false
+                end
+                tree = now
+                return true
+            end
+            -- open: shown by show(true) and not since hidden by the add-on
+            -- or closed by the player. Only a hide while open is the player's.
+            function h.show(shown)
+                open = shown and true or false
+                method(f, open and "Show" or "Hide")
+            end
+            function h.shown() return open end
+            function h.close() h.show(false) end
+            function h.art()
+                local out = {}
+                for key, which in pairs(drew) do out[key] = which end
+                return out
+            end
+            function h.slot(slotName) return slots[slotName] end
+            return h, function(extra) cb = extra end, drawn, drawErr
+        end
+
+        function c.kitWindow(id, tree, extra)
+            local cb = type(extra) == "table" and extra or {}
+            local known = nil
+            if type(id) == "string" then known = kitWindows[id] end
+            if known ~= nil then
+                known.set(cb)
+                -- update tells failed itself when its draw raises.
+                if known.handle.update(tree) then return known.handle end
+                if type(tree) ~= "table" or tree.kind ~= "window" then
+                    if type(cb.failed) == "function" then pcall(cb.failed, "a kit window needs a tree from Kit.Window") end
+                end
+                return nil
+            end
+            local ok, h, set, drawn, drawErr = pcall(kitBuild, id, tree, cb)
+            if not ok or h == nil then
+                if type(cb.failed) == "function" then pcall(cb.failed, h) end
+                return nil
+            end
+            -- Kept even when its first draw failed, so a later ask makes no
+            -- second top frame.
+            kitWindows[id] = { handle = h, set = set }
+            if not drawn then
+                if type(cb.failed) == "function" then pcall(cb.failed, drawErr) end
+                return nil
+            end
+            return h
         end
     end
     return c

@@ -57,16 +57,18 @@ for _, class in ipairs(CLASSES) do
         t.ok(ok, class .. ": PackCheck ok")
     end
 
-    tests["all nine: " .. class .. " icon hidden until the setting is on; diag has a rotation line"] = function(t)
+    tests["all nine: " .. class .. " on by default; switched off the icon is hidden; diag has a rotation line"] = function(t)
         local c, addon, icon = start(class)
         t.ok(icon ~= nil, class .. ": the icon was made at login")
         if icon == nil then return end
 
-        -- Off by default, with an enemy targeted in a fight: nothing shown.
+        -- On by default (lead section 294); switched off, with an enemy
+        -- targeted in a fight: nothing shown.
         c.setPlayerBuffs({}); c.setTarget({ exists = true, hostile = true, dead = false })
         c.setStealthed(false); c.setCombat(true)
         c.advance(2, 10)
-        t.eq(addon.settings:get(D.SETTING) == true, false, class .. ": off by default")
+        t.eq(addon.settings:get(D.SETTING), true, class .. ": on by default")
+        addon.settings:set(D.SETTING, false); c.advance(2, 10)
         t.eq(icon.shown, false, class .. ": off: the icon is hidden")
         local off = rotationLines(c)
         t.eq(#off, 1, class .. ": one rotation line while off: " .. table.concat(off, " / "))
