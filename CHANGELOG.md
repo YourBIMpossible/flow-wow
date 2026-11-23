@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed: Paladin blessings count as 60 minutes (WoW: Forever), so when the game hides your group's buffs Flow no longer asks you to rebless everyone every few minutes.
+- Fixed: your threat is recorded in fights even when the game hides your target's identity; before, those fights recorded no threat at all.
 - Druid: playing DPS and knowing Cat Form, Flow now suggests Cat Form when there's a fight to take (not for a Balance build, a healer, or when you're already in a form).
 - Fixed: `/flow notoffered clear` with a mistyped quest ID no longer clears the whole list. It says the ID isn't one and clears nothing.
 - Paladin: Holy Strike, Seal of Fury, Consecration and Blessing of Kings are no longer listed with levels taken from guides; Flow advises them from what your trainer shows.
