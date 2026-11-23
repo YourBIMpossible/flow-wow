@@ -11498,6 +11498,119 @@ function ns.make.client(env)
         if r == true or r == 0 then return true end
         return nil, "the client answered " .. tostring(r)
     end
+    -- P-EVIDENCE+ (lead section 252): the minimap tracking list as the
+    -- client returns it, for Core/AutoEvidence.lua to save so the gather
+    -- key's rules (GK-2/3/4) can be replayed on real data. Look only:
+    -- nothing is switched. First guess, not seen in game:
+    -- C_Minimap.GetNumTrackingTypes() and C_Minimap.GetTrackingInfo(i),
+    -- either a table { name, active, type, spellID } or the values
+    -- name, texture, active, category, nested, spellID.
+    --   { count = n or nil (not a plain count), entries = { {
+    --       form = "table" | "values", kind = the type or category word,
+    --       name = the tracking's game name, hasActive = whether an active
+    --       answer was given, active = true / false when given and not
+    --       secret, hidden = true when it was secret, spellId = n } },
+    --     failed = how many entries raised }
+    -- nil when the client has no such read. At most 60 entries.
+    function c.trackingRaw()
+        local M = env.C_Minimap
+        if type(M) ~= "table" or type(M.GetNumTrackingTypes) ~= "function"
+            or type(M.GetTrackingInfo) ~= "function" then
+            return nil
+        end
+        local out = { entries = {}, failed = 0 }
+        local okN, n = call(M.GetNumTrackingTypes)
+        if not okN then
+            out.failed = 1
+            return out
+        end
+        if hidden(n) or not wholeCount(n) then return out end
+        out.count = n
+        local function word(v)
+            if type(v) ~= "string" or hidden(v) then return nil end
+            return v
+        end
+        for i = 1, math.min(n, 60) do
+            local ok, a, _, active, category, _, spellId = call(M.GetTrackingInfo, i)
+            if not ok then
+                out.failed = out.failed + 1
+            else
+                local e = { form = "values" }
+                local name, on, kind, id = a, active, category, spellId
+                if type(a) == "table" then
+                    e.form = "table"
+                    name, on, kind, id = a.name, a.active, a.type, a.spellID
+                end
+                e.name, e.kind = word(name), word(kind)
+                e.hasActive = on ~= nil
+                if on ~= nil then
+                    if hidden(on) then
+                        e.hidden = true
+                    elseif on == true or on == 1 then
+                        e.active = true
+                    elseif on == false or on == 0 then
+                        e.active = false
+                    end
+                end
+                if type(id) == "number" and not hidden(id) then e.spellId = id end
+                out.entries[#out.entries + 1] = e
+            end
+        end
+        return out
+    end
+
+    -- P-EVIDENCE+ (lead section 262, RB4-2): the classic profession
+    -- window's raw answers behind tradeSkillRows' collapsed and filtered,
+    -- for Core/AutoEvidence.lua to save when the window opens or changes.
+    -- Look only: no header is expanded, no filter set. First guesses, not
+    -- seen in game: GetTradeSkillLine, GetNumTradeSkills,
+    -- GetTradeSkillInfo(i) (its fourth answer, isExpanded, on header and
+    -- subheader rows), GetTradeSkillSubClassFilter(0) and
+    -- GetTradeSkillInvSlotFilter(0).
+    --   { open = the line has a name, rows = n or nil, headers = n,
+    --     expanded = n (true or 1), collapsed = n (false or 0), unknown = n
+    --     (anything else, nil included), subClass = word, invSlot = word }
+    -- where a filter word is "true", "1", "false", "0", "nil", "secret",
+    -- "failed", "absent" or "other". nil when GetTradeSkillLine is not there.
+    function c.tradeSkillAnswers()
+        if type(env.GetTradeSkillLine) ~= "function" then return nil end
+        local function answer(fn)
+            if type(fn) ~= "function" then return "absent" end
+            local ok, v = call(fn, 0)
+            if not ok then return "failed" end
+            if v == nil then return "nil" end
+            if hidden(v) then return "secret" end
+            if v == true then return "true" end
+            if v == false then return "false" end
+            if v == 1 then return "1" end
+            if v == 0 then return "0" end
+            return "other"
+        end
+        local out = { open = false, headers = 0, expanded = 0, collapsed = 0, unknown = 0,
+                      subClass = answer(env.GetTradeSkillSubClassFilter),
+                      invSlot = answer(env.GetTradeSkillInvSlotFilter) }
+        local okLine, name = call(env.GetTradeSkillLine)
+        out.open = okLine and type(name) == "string" and not hidden(name) and name ~= "" and name ~= "UNKNOWN"
+        local okN, n = call(env.GetNumTradeSkills)
+        if not okN or hidden(n) or not wholeCount(n) or n == math.huge then return out end
+        out.rows = n
+        for i = 1, math.min(n, 500) do
+            local okInfo, _, kind, _, expanded = call(env.GetTradeSkillInfo, i)
+            if okInfo and not hidden(kind) and (kind == "header" or kind == "subheader") then
+                out.headers = out.headers + 1
+                if expanded ~= nil and hidden(expanded) then
+                    out.unknown = out.unknown + 1
+                elseif expanded == true or expanded == 1 then
+                    out.expanded = out.expanded + 1
+                elseif expanded == false or expanded == 0 then
+                    out.collapsed = out.collapsed + 1
+                else
+                    out.unknown = out.unknown + 1
+                end
+            end
+        end
+        return out
+    end
     return c
 end
 

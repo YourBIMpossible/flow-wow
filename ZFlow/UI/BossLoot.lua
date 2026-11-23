@@ -103,11 +103,15 @@ B.DROPS = "learned.drops"       -- char: Items/Drops.lua's book, read only
 B.LAYOUT = "layout.bossLoot"    -- account: { point = { anchor, relative anchor, x, y } }
 -- Seconds after a kill that rolls and loot lines are its. A FIRST GUESS,
 -- not a measured number. What would settle it: how long after ENCOUNTER_END
--- the rolls and loot lines of that kill really come. No capture field holds
--- that today (a snapshot's `at` is the snapshot's own time only); one is
--- needed, e.g. account diag.bossLoot.gaps = the seconds from each kill to
--- each roll and loot line that followed it (numbers only, no names).
+-- the rolls and loot lines of that kill really come. P-EVIDENCE+ (lead
+-- section 247 item 4) saves that: account diag.bossLoot.gaps =
+-- { rolls = { seconds, ... }, lines = { seconds, ... } }, the seconds from
+-- the last kill to each roll and loot line after it, also past this
+-- window and with the record setting off; numbers only, no names, the
+-- newest B.GAPS_KEPT of each.
 B.WINDOW = 180
+B.GAPS = "diag.bossLoot.gaps"   -- account
+B.GAPS_KEPT = 50
 -- The client events this module listens to. They are not globals, so they
 -- are not in Diag.NAMES; one the client refuses is saved by the capture in
 -- each snapshot's kernel.eventsNotRegistered (Core/Diag.lua).
@@ -582,6 +586,7 @@ function B.Declare(k, packs)
     local latest = {}      -- [key] = { guid, seen = { [item key] = true } }: this session's last kill
     local counted = {}     -- [creature GUID] = true: its kill is in the book already
     local win              -- { key, at }: the kill that rolls and loot lines now belong to
+    local killedAt         -- uptime of the last kill, for diag.bossLoot.gaps
     local shown            -- what the panel shows: { key, npc, via, lines, rows, waiting }
     local dirty, computedAt = true, nil
     local errors, said = 0, {}
@@ -626,6 +631,7 @@ function B.Declare(k, packs)
     end
 
     local function kill(key, name, npc, guid)
+        killedAt = now()
         if not learning() then return end
         local book = ctx.store:table("account", B.PATH)
         if type(book) ~= "table" then return end
@@ -641,6 +647,18 @@ function B.Declare(k, packs)
         local entry = book and book[key] or nil
         if not kept or type(entry) ~= "table" then return end
         if B.Teach(entry, kept.seen, item) then dirty = true end
+    end
+
+    -- P-EVIDENCE+: the seconds since the last kill, kept under `kind`
+    -- ("rolls" or "lines"). Nothing when no kill was seen or the time is not known.
+    local function gap(kind)
+        local t = now()
+        if killedAt == nil or t == nil then return end
+        local saved = ctx.store:get("account", B.GAPS)
+        local list = type(saved) == "table" and type(saved[kind]) == "table" and saved[kind] or {}
+        list[#list + 1] = math.floor((t - killedAt) * 10 + 0.5) / 10
+        while #list > B.GAPS_KEPT do table.remove(list, 1) end
+        ctx.store:set("account", B.GAPS .. "." .. kind, list)
     end
 
     -- The kill a roll or a loot line belongs to now, or nil.
@@ -889,6 +907,7 @@ function B.Declare(k, packs)
             on("GET_ITEM_INFO_RECEIVED")
             on("LOOT_OPENED", onLoot)
             on("CHAT_MSG_LOOT", function(line)
+                gap("lines")
                 if not learning() then return end
                 local to = open()
                 if not to then return end
@@ -904,6 +923,7 @@ function B.Declare(k, packs)
                 local ok, cancel = pcall(c.client.onLootRoll, function(_, link)
                     -- Reads the item offered. Never rolls, and shows nothing on the roll.
                     local done, err = pcall(function()
+                        gap("rolls")
                         if not learning() then return end
                         local to = open()
                         if to then teach(to.key, link) end
