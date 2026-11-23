@@ -1,14 +1,18 @@
--- Z-Flow offline: the seen-result snapshot (lead DISPATCH section 188, Zen).
--- Lua 5.1. Test tooling: loaded by tools/offline/zflow-run.lua, never by
--- the game; not in ZFlow/manifest.lua and not in the TOC.
+-- Z-Flow offline: the seen-result snapshot (lead DISPATCH sections 188 and
+-- 199, Zen). Lua 5.1. Test tooling: loaded by tools/offline/zflow-run.lua,
+-- never by the game; not in ZFlow/manifest.lua and not in the TOC.
 --
 -- For an add-on loaded on a fake client (ns.offline.addon(c)): ONE text
--- block of what the player sees, the same text for the same state, with no
--- character, realm, guild or account name in it. It is what is posted and
--- compared after a run on a real capture.
+-- block of what the player sees, the same text for the same state. Every
+-- line keeps only the add-on's own words, numbers and compass words; every
+-- run of other text is a slot "<text:n>" (see TEMPLATE), and the names this
+-- file knows are replaced on top of that (see NAMES). What it removes and
+-- what it cannot is said under THE LIMITS: the block is not proof that no
+-- name is in it. A block made from a real session stays on the machine
+-- that made it (lead section 199, N8); this file does not post anything.
 --
 --   ns.offline.seen(c, addon, opts) -> text, lines, problems
---                                   -> nil, why          (refused, see NAMES)
+--                                   -> nil, why          (refused, see REFUSED)
 --     c       the fake client (ZFlow/Core/ClientFake.lua) the add-on is on.
 --     addon   what ns.offline.addon(c) returned. nil: only what the client
 --             recorded is said; the rotation's reason and the diag lines
@@ -17,14 +21,26 @@
 --                  each a text or a list of texts: names to take out. Any
 --                  other key, a list entry (names = { "X" }) or a value
 --                  that is not a text or a list of texts: refused.
+--     opts.absent  a list of kinds ("realm", "guild", "account", "guid"):
+--                  this state has no name of that kind (a character with no
+--                  guild). For real state every kind of M.MUST (character,
+--                  realm, guild, account) is known or marked absent, or the
+--                  snapshot is refused. character cannot be marked absent:
+--                  a real state has one. A kind marked absent that has a
+--                  known name: refused.
 --     opts.shortNames  true: a name under 3 characters is replaced where
 --                  it stands as a whole word. Not said: such a name is
 --                  refused (see NAMES).
---     opts.madeUp  true: the state is made up and holds no character. With
---                  no character name known and this not said, the snapshot
---                  is refused.
+--     opts.madeUp  true: the state is made up and holds no character; line
+--                  2 says "names: made up". Refused when the client itself
+--                  answers a character name (UnitName, UnitFullName, or a
+--                  diag snapshot kept in the account's saved table): that is
+--                  real state. M.MUST is not asked of made-up state.
+--     opts.words   a list of texts: the words a line may keep, in place of
+--                  the add-on's own (a test's list; a real run leaves it
+--                  out). Line 3 says "words: given".
 --     opts.diag    nil: the diag word is asked (see DIAG). false: not asked.
---                  A list of texts: those lines are used as they are.
+--                  A list of texts: those lines are used (as templates).
 --     opts.chat    false: the chat lines are left out ("not asked").
 --     text      the lines joined by "\n", no line break at the end.
 --     problems  { "section: error" }: a section whose making raised says
@@ -32,30 +48,36 @@
 --               in the block. Each text has had its paths cut to "<path>/"
 --               and the file's name, or to "<path>" (see PATHS), and its
 --               names replaced, and is checked, as a line of the block is.
+--               A problem is NOT a template: it is a diagnostic for the
+--               machine it was made on.
 --   ns.offline.seenDiff(a, b) -> { { section, line, was, now, text } ... }
 --     Two snapshot texts, compared line by line inside each section: line
 --     is the number of the line under its section's header, was / now the
 --     two lines (nil: that side has no such line), text the one line to
---     post: arrows, line 2: was "..."; now "...". Lines are matched by
+--     say: arrows, line 2: was "..."; now "...". Lines are matched by
 --     their place: a line put in or taken out moves every line of that
 --     section after it, and each is reported.
 --   ns.offline.seenParts: this file's table (HEAD, SECTIONS, UNKNOWN, PLACE,
---     sections(text) -> { [section] = lines }, order; names; normal;
---     redact; held; paths). HEAD is "zflow seen 2": 2 is the block with
---     the names line; a text of format 1 has none.
+--     MUST, sections(text) -> { [section] = lines }, order; names; normal;
+--     redact; held; paths; template; wordSet; literals; words). HEAD is
+--     "zflow seen 3": 2 was the block with the names line, 3 adds the
+--     words line and the templates; a text of format 1 has neither line.
 --
--- THE BLOCK. The first line is HEAD. The second says which kinds of name
--- were known, and so replaced, and which were not, the kinds in the order
--- of KINDS, "none" for an empty side:
---   names: character, realm known; guild, account, guid not known
+-- THE BLOCK. Line 1 is HEAD. Line 2 says which kinds of name were known,
+-- and so replaced, which were marked absent, and which were neither, the
+-- kinds in the order of KINDS, "none" for an empty part, after "made up;"
+-- for made-up state:
+--   names: character, realm known; guild, account absent; guid not known
+--   names: made up; none known; none absent; character, realm, guild, account, guid not known
 -- A kind that is not known was not searched for: a reader sees it here.
--- The compare has both lines as the section "head". Then every section of
--- SECTIONS, in that order, always: a header "== name ==" and its lines. A
--- section with
--- nothing in it says "none". Things are numbered in the order the client
--- made them (the add-on makes them in file order). A thing that is hidden
--- says "hidden" and nothing else: a hidden arrow keeps the lines it last
--- drew, and those are not what the player sees.
+-- Line 3 says whose words the templates kept: "words: the add-on's" or
+-- "words: given". The compare has lines 1 to 3 as the section "head". Then
+-- every section of SECTIONS, in that order, always: a header "== name =="
+-- and its lines. A section with nothing in it says "none". Things are
+-- numbered in the order the client made them (the add-on makes them in
+-- file order). A thing that is hidden says "hidden" and nothing else: a
+-- hidden arrow keeps the lines it last drew, and those are not what the
+-- player sees. Every <...> below that is not a number is a template.
 --
 --   == arrows ==            arrow <i> (<frame name>): shown | hidden
 --                             line <n>: <text>      (shown, no lines: "no lines")
@@ -73,7 +95,8 @@
 --   == map pins ==          pins <i>: shown | hidden
 --                             pin: <name>, <kind>, <role>, at <x>, <y>
 --                             line: <from> to <to>, <ax>, <ay> to <bx>, <by>
---                           pins sorted as text, then lines sorted as text.
+--                           pins sorted as the lines they make (templates),
+--                           then lines the same way.
 --   == minimap pins ==      pin <i> (<frame name>): shown at <x>, <y>, edge | inside   or hidden
 --   == nameplate labels ==  label <i> (<unit>): shown | hidden
 --                             text: <text> | hidden by the game
@@ -82,14 +105,45 @@
 --                             texture: <texture>
 --   == panels ==            panel <i> (<frame name>): shown | hidden
 --                             line <n>: <text>
---   == chat ==                <every line the add-on printed, in order>
---   == diag ==                <every line the diag word prints, in order>
+--   == chat ==              lines: <count>
+--                             <every line the add-on printed, in order, as its template>
+--   == diag ==                <every line the diag word prints, in order, as its template>
 --
 -- A share of a map is said to 3 decimals, a minimap offset to 1, a whole
 -- number as it is. What is nil, empty or not a text or number is said as
 -- "not known", never left out. Nothing is read with pairs() into the
 -- block. Not in the block: where an arrow points (its drawing changes
 -- with every frame), tooltips and menus, the copy box, window buttons.
+--
+-- TEMPLATE (lead section 199, MyBuddy's root-cause repair). A value the
+-- block says (every <...> above, a chat line, a diag line) is cut into
+-- words, a word being a run of ASCII letters, digits and bytes of 128 or
+-- more; the rest (blanks and signs) are not words. A word stays when it is
+--   * all digits (a number: "0.349" is the numbers 0 and 349 and a dot),
+--   * a compass word (COMPASS: N, NE, E, SE, S, SW, W, NW, north, south,
+--     east, west), or
+--   * one of the add-on's own words (WORDS), compared as written: "Fly"
+--     stays, "fly" does not unless the add-on writes it too.
+-- Every other word is free text. A run of free words, with whatever signs
+-- stand between them, is ONE slot "<text:n>", n its length in bytes. The
+-- signs around a kept word stay. So "Fly to Qorvfar Zank" is "Fly to
+-- <text:12>", "Then: Qorvwolves" is "Then: <text:10>", "200 yd NE" stays,
+-- and "|cff00ff00Al|r is here" is "|<text:13> is here" (a colour code is a
+-- word the add-on does not write). The same text always gives the same
+-- template, so seenDiff compares them. A "<text:" already in the value is
+-- written "(text:" first, so no value can look like a slot.
+--
+-- WORDS. The add-on's own words are the words of every string literal
+-- ("...", '...', [[...]], [=[...]=]) in every file ZFlow/manifest.lua
+-- lists, dev files left out (the fake client's test data is not the
+-- add-on's), read when the first snapshot asks for them and kept for the
+-- run. Comments are not literals. A format's "%s", "%d", "%.1f" and a
+-- string's escapes ("\n", "\"", "\123") are taken out before the words are
+-- cut, so "%d yd %s" gives "yd". The folder is found from where this file
+-- was loaded (tools/offline/ under the repo). It stays current by itself:
+-- a word a shipped file adds is kept from the next run on; a word no
+-- shipped literal has any more is slotted. When the manifest or a file it
+-- lists cannot be read, the snapshot is refused (opts.words aside).
 --
 -- DIAG. By default the snapshot types the diag word itself and puts back
 -- what the word changes: while it runs the client's print is swapped for a
@@ -100,14 +154,16 @@
 -- changed: whatever Diag.Collect itself counts (the kernel's meter), and a
 -- problem kept when a diag line raises.
 --
--- NAMES. Known names: opts.names, and what the fake client answers for
--- the game's own reads (UnitName, UnitFullName, GetRealmName,
--- GetNormalizedRealmName, GetGuildInfo through c.raw; c.realm();
--- c.guid("player")), and the character and realm the diag snapshots in the
--- account's saved table hold. Of a GUID ("Player-1234-ABCDEF") the parts
--- after the first are names too, each alone and joined to the end
--- ("1234-ABCDEF", "1234", "ABCDEF"), when they have 4 letters or digits or
--- more; the first part says what kind of thing it is, not who.
+-- NAMES. On top of the template, known names are replaced (a name made of
+-- the add-on's words, or a number, passes the template). Known names:
+-- opts.names, and what the fake client answers for the game's own reads
+-- (UnitName, UnitFullName, GetRealmName, GetNormalizedRealmName,
+-- GetGuildInfo through c.raw; c.realm(); c.guid("player")), and the
+-- character and realm the diag snapshots in the account's saved table
+-- hold. Of a GUID ("Player-1234-ABCDEF") the parts after the first are
+-- names too, each alone and joined to the end ("1234-ABCDEF", "1234",
+-- "ABCDEF"), when they have 4 letters or digits or more; the first part
+-- says what kind of thing it is, not who.
 --
 -- A line and a name are compared in their normal form: lower case, every
 -- character that is not a letter or a digit taken out, a byte of 128 or
@@ -120,7 +176,9 @@
 -- curly apostrophe. From the first to the last character of what was found, the
 -- line is replaced by PLACE[kind]: <character>, <realm>, <guild>,
 -- <account>, <guid>. Names that overlap in a line are replaced as one,
--- with the kind of the one that starts first (the longest of those).
+-- with the kind of the one that starts first (the longest of those). A slot
+-- "<text:n>" is never searched: a name that is in the word "text" ("Tex")
+-- leaves it alone.
 --
 -- A name of digits only (of any kind: the "1234" of a GUID) is a number,
 -- and is found only as a whole one, in the line as it is: the digits as
@@ -133,47 +191,58 @@
 -- byte of 128 or more is next to it. A name with no letter or digit at all
 -- is always refused.
 --
--- Fails closed, each time with nothing returned but nil and the reason:
---   * opts.names is not as said above;
+-- REFUSED. Each time with nothing returned but nil and the reason, which
+-- never repeats a name:
+--   * opts.names or opts.absent is not as said above, or opts.words is not
+--     a list of texts;
 --   * a name is too short (above);
---   * no character name is known from either source and opts.madeUp is
---     not true. Realm, guild, account and GUID may be not known (a
---     character with no guild is usual): the second line says so;
---   * after the replacing, a line or a problem still holds a name. This
---     second check (held) does not use the replacing's search: it takes
---     the placeholders and "<path>" out, makes the normal form of each
---     piece between them and of each name its own way, and looks for the
---     name (3 or more) in the piece; for an all-ASCII name also in the
---     piece with its bytes of 128 or more taken out; a name of digits
---     only as a whole number in the piece as it is.
+--   * opts.madeUp is true and the client answers a character name;
+--   * not made up, and a kind of M.MUST is neither known nor marked absent
+--     (no character name known is refused this way too);
+--   * the add-on's words cannot be read (WORDS) and opts.words is not given;
+--   * after the template and the replacing, a line or a problem still holds
+--     a name. This second check (held) does not use the replacing's search:
+--     it takes the placeholders (and, in a line of the block, the slots)
+--     out, makes the normal form of each piece between them and of each
+--     name its own way, and looks for the name (3 or more) in the piece;
+--     for an all-ASCII name also in the piece with its bytes of 128 or more
+--     taken out; a name of digits only as a whole number in the piece as
+--     it is.
 --
--- The limits. string.lower knows only A to Z in Lua 5.1: a non-ASCII
--- letter is compared byte for byte. A name with such a letter is found
--- when those bytes are the same and its ASCII letters are in any case;
--- it is NOT found, by the replacing or by the second check, when the
--- non-ASCII letter itself is in the other case (bytes 195 137 for bytes
--- 195 169), is written another way (a letter and a combining accent, or
--- the plain ASCII letter), or is a look-alike; nor when a sign that is
--- not ASCII stands between its letters (only an all-ASCII name is looked
--- for with those bytes taken out). Not found either: a name of digits
--- only written with anything between its digits; a name
--- this file was not told and cannot read (another player's name in a chat
--- line, an alt, an account name the client never says: hand them in); a
--- name cut short, misspelt, or with a letter or digit put between its
--- letters; a short name with a letter or digit next to it (shortNames),
--- which the second check does not look for either. Replaced too much: a
--- name that is also a word, or whose letters come up across two words
--- ("Tom" in "to Moonglade"), is replaced wherever that is; an all-ASCII
--- name also across a non-ASCII letter ("Tom" in "t\195\169om"). A name that
--- is one of the block's own words ("pin", "line", "shown", "none",
--- "hidden") replaces those words too: sections() and seenDiff still read
--- the block (the head, the names line and the "== name ==" headers are not
+-- THE LIMITS. What the block can still hold:
+--   * the add-on's own words and numbers, from whatever text they stood in:
+--     a quest title, an NPC's or a flight master's name, a chat line or a
+--     typed label made of words a shipped literal also has ("The", "of",
+--     "Camp" if the add-on says it) keeps those words, and every number
+--     (a typed "Camp 3" keeps the 3); the signs between words stay, and a
+--     slot says the length of what it hides. A name made only of such
+--     words or numbers, that this file was not told and cannot read
+--     (another player in a chat line, an alt, an account name the client
+--     never says: hand them in), is printed.
+--   * a known name in the shapes the replacing does not find: string.lower
+--     knows only A to Z in Lua 5.1, so a non-ASCII letter is compared byte
+--     for byte; a name is NOT found when its non-ASCII letter is in the
+--     other case (bytes 195 137 for 195 169), written another way (a
+--     letter and a combining accent, or the plain ASCII letter), or a
+--     look-alike; nor when a sign that is not ASCII stands between its
+--     letters (only an all-ASCII name is looked for with those bytes taken
+--     out); nor a name of digits only written with anything between its
+--     digits; nor a name cut short, misspelt, or with a letter or digit put
+--     between its letters; nor a short name with a letter or digit next to
+--     it (shortNames), which the second check does not look for either.
+--     The template slots most of these anyway, unless they are made of the
+--     add-on's words.
+-- Replaced too much: a name that is also a word, or whose letters come up
+-- across two words ("Tom" in "to Moonglade"), is replaced wherever that is;
+-- an all-ASCII name also across a non-ASCII letter ("Tom" in "t\195\169om").
+-- A name that is one of the block's own words ("pin", "line", "shown",
+-- "none", "hidden") replaces those words too: sections() and seenDiff still
+-- read the block (lines 1 to 3 and the "== name ==" headers are not
 -- searched), but those lines no longer say what was seen. This is not the
 -- capture sanitizer and does not use it.
 --
--- PATHS. Only a problem's text is cut; the lines of the block (chat, diag
--- and the rest) are not: a path the add-on prints stays as printed, with
--- only the names replaced. Two steps, each failing closed.
+-- PATHS. Only a problem's text is cut; the lines of the block are
+-- templates and need no cut. Two steps, each failing closed.
 --
 -- First, a path is cut to "<path>/" and what follows its last slash or
 -- backslash: it starts at a drive letter and a colon, at a slash that
@@ -188,19 +257,21 @@
 -- word there that has one.
 --
 -- Then every word (what stands between blanks) that still has a slash or
--- backslash outside a "<path>/" is replaced whole by "<path>": a relative
--- path (..\Users\x.lua, ZFlow/Core/Diag.lua:12:, with its line number) and
--- a path after a sign the first step does not start at. Prose with a slash
--- ("either/or") goes too, on purpose: a problem is a diagnostic, and a
--- lost word costs less than a folder's name.
+-- backslash outside a "<path>/" is a relative path (..\Users\x.lua,
+-- ZFlow/Core/Diag.lua:12:) or a path after a sign the first step does not
+-- start at (lead section 199, N4): the word is replaced whole by "<path>/"
+-- and what follows its last separator when that is a file's name with an
+-- extension and at most ":<line>:" after it ("<path>/Diag.lua:12:"), else
+-- by "<path>". Prose with a slash ("either/or") goes too, on purpose: a
+-- problem is a diagnostic, and a lost word costs less than a folder's name.
 --
 -- Still let through: a last part that is a folder with a dot in its name
--- ("/home/john.smith" looks like a file's); the middle words of a folder's
--- name of three words or more in a path the first step did not start at
--- ("..\Zzyx Middle Owner\x.lua" keeps "Middle").
+-- ("/home/john.smith" looks like a file's); the words before the one with
+-- the first separator of a relative path whose folder's name has blanks
+-- ("Zzyx Middle Owner\x.lua" keeps "Zzyx" and "Middle").
 local M = {}
 
-M.HEAD = "zflow seen 2"
+M.HEAD = "zflow seen 3"
 M.UNKNOWN = "not known"
 M.NONE = "none"
 M.NOT_ASKED = "not asked"
@@ -208,12 +279,30 @@ M.FAILED = "failed"
 M.SECTIONS = { "arrows", "rotation icon", "flight marks", "map pins", "minimap pins",
     "nameplate labels", "combo bars", "slot icons", "panels", "chat", "diag" }
 M.KINDS = { "character", "realm", "guild", "account", "guid" }
+M.MUST = { "character", "realm", "guild", "account" }
 M.PLACE = { character = "<character>", realm = "<realm>", guild = "<guild>",
     account = "<account>", guid = "<guid>" }
 M.PATH = "<path>/"
 M.PATH_WHOLE = "<path>"
 M.SHORT = 3
 M.GUID_PART = 4
+M.COMPASS = { "N", "NE", "E", "SE", "S", "SW", "W", "NW", "north", "south", "east", "west" }
+-- A slot as a pattern, and a word as a pattern (see TEMPLATE).
+local SLOT = "<text:%d+>"
+local WORD = "[%w\128-\255]+"
+
+local COMPASS = {}
+for _, w in ipairs(M.COMPASS) do COMPASS[w] = true end
+
+-- The repo's folder: two up from this file's (tools/offline/). nil when
+-- this file was not loaded from a file.
+do
+    local source = debug.getinfo(1, "S").source
+    if type(source) == "string" and source:sub(1, 1) == "@" then
+        local dir = source:match("^@(.*)[/\\][^/\\]*$") or "."
+        M.ROOT = dir .. "/../.."
+    end
+end
 
 -- ------------------------------------------------------------------ words
 local function finite(v)
@@ -246,20 +335,161 @@ end
 
 local function list(v) return type(v) == "table" and v or {} end
 
-local function frameName(h)
-    return word(type(h.spec) == "table" and h.spec.name or nil)
+-- ---------------------------------------------------------------- template
+-- M.template(text, words) -> the text with every run of free words as one
+-- slot "<text:n>". words: a set { [word] = true } (nil: none). See TEMPLATE.
+function M.template(text, words)
+    words = type(words) == "table" and words or {}
+    text = text:gsub("<text:", "(text:")
+    local out, pos, runFrom, runTo = {}, 1, nil, nil
+    local function close()
+        if runFrom then
+            out[#out + 1] = "<text:" .. (runTo - runFrom + 1) .. ">"
+            runFrom = nil
+        end
+    end
+    while true do
+        local a, b = text:find(WORD, pos)
+        if not a then
+            close()
+            out[#out + 1] = text:sub(pos)
+            break
+        end
+        local token = text:sub(a, b)
+        if token:find("^%d+$") or words[token] or COMPASS[token] then
+            close()
+            out[#out + 1] = text:sub(pos, a - 1)
+            out[#out + 1] = token
+        elseif runFrom then
+            -- The signs since the last free word go into the slot.
+            runTo = b
+        else
+            out[#out + 1] = text:sub(pos, a - 1)
+            runFrom, runTo = a, b
+        end
+        pos = b + 1
+    end
+    return table.concat(out)
+end
+
+-- M.wordSet(texts) -> { [word] = true }: the words of each text, with a
+-- format's specifiers and a string's escapes taken out first (see WORDS).
+function M.wordSet(texts)
+    local set = {}
+    for _, text in ipairs(list(texts)) do
+        if type(text) == "string" then
+            local bare = text:gsub("%%[%-%+ #0]*%d*%.?%d*%a", " "):gsub("\\%d%d?%d?", " "):gsub("\\.", " ")
+            for token in bare:gmatch(WORD) do set[token] = true end
+        end
+    end
+    return set
+end
+
+-- M.literals(source) -> the contents of every string literal of a Lua
+-- source, as written (escapes not decoded); comments are skipped.
+function M.literals(src)
+    local out, i, n = {}, 1, #src
+    while true do
+        local a = src:find("[%-\"'%[]", i)
+        if not a then break end
+        local ch = src:sub(a, a)
+        if ch == "-" then
+            if src:sub(a + 1, a + 1) == "-" then
+                -- A comment: long to its closing bracket, else to the line's end.
+                local eq = src:match("^%[(=*)%[", a + 2)
+                local e
+                if eq then
+                    e = select(2, src:find("]" .. eq .. "]", a + 4 + #eq, true))
+                else
+                    e = src:find("\n", a + 2, true)
+                end
+                i = (e or n) + 1
+            else
+                i = a + 1
+            end
+        elseif ch == "[" then
+            local eq = src:match("^%[(=*)%[", a)
+            if eq then
+                local from = a + 2 + #eq
+                local close, e = src:find("]" .. eq .. "]", from, true)
+                out[#out + 1] = src:sub(from, (close or n + 1) - 1)
+                i = (e or n) + 1
+            else
+                i = a + 1
+            end
+        else
+            -- A quoted string: to the same quote not escaped, or the line's end.
+            local stop = ch == '"' and '[\\\n"]' or "[\\\n']"
+            local k = a + 1
+            while true do
+                local j = src:find(stop, k)
+                if not j then
+                    k = n + 1
+                    break
+                end
+                if src:sub(j, j) == "\\" then
+                    k = j + 2
+                else
+                    k = j
+                    break
+                end
+            end
+            out[#out + 1] = src:sub(a + 1, k - 1)
+            i = k + 1
+        end
+    end
+    return out
+end
+
+-- M.words(root) -> the add-on's own words { [word] = true }, or nil and
+-- why. root: the repo's folder (nil: M.ROOT, and the answer is kept for
+-- the run). See WORDS. The reason names no path.
+local kept
+function M.words(root)
+    if root == nil and kept then return kept end
+    local at = root or M.ROOT
+    if type(at) ~= "string" then return nil, "the repo's folder is not known (this file was not loaded from a file)" end
+    local chunk = loadfile(at .. "/ZFlow/manifest.lua")
+    if not chunk then return nil, "ZFlow/manifest.lua did not load" end
+    local ok, manifest = pcall(chunk)
+    if not ok or type(manifest) ~= "table" or type(manifest.files) ~= "table" then
+        return nil, "ZFlow/manifest.lua is not a list of files"
+    end
+    local texts, files = {}, 0
+    for _, entry in ipairs(manifest.files) do
+        local path, dev = entry, false
+        if type(entry) == "table" then path, dev = entry[1], entry.dev == true end
+        if type(path) ~= "string" then return nil, "ZFlow/manifest.lua has an entry that is not a path" end
+        if not dev then
+            local fh = io.open(at .. "/ZFlow/" .. path, "rb")
+            if not fh then return nil, "a file ZFlow/manifest.lua lists did not open" end
+            local src = fh:read("*a")
+            fh:close()
+            for _, literal in ipairs(M.literals(src or "")) do texts[#texts + 1] = literal end
+            files = files + 1
+        end
+    end
+    if files == 0 then return nil, "ZFlow/manifest.lua lists no shipped file" end
+    local set = M.wordSet(texts)
+    if root == nil then kept = set end
+    return set
+end
+
+local function frameName(h, say)
+    return say(type(h.spec) == "table" and h.spec.name or nil)
 end
 
 -- ------------------------------------------------------------- the sections
-local function arrows(c)
+-- Each takes say(v): what the block says of a free value (its template).
+local function arrows(c, say)
     local out = {}
     for i, h in ipairs(list(c.arrows)) do
-        local head = "arrow " .. i .. " (" .. frameName(h) .. "): "
+        local head = "arrow " .. i .. " (" .. frameName(h, say) .. "): "
         if h.shown == true then
             out[#out + 1] = head .. "shown"
             local lines = list(h.lines)
             if #lines == 0 then out[#out + 1] = "  no lines" end
-            for n = 1, #lines do out[#out + 1] = "  line " .. n .. ": " .. word(lines[n]) end
+            for n = 1, #lines do out[#out + 1] = "  line " .. n .. ": " .. say(lines[n]) end
         else
             out[#out + 1] = head .. "hidden"
         end
@@ -295,18 +525,18 @@ local function reasons(addon)
     return lines
 end
 
-local function rotationIcon(c, addon)
+local function rotationIcon(c, addon, say)
     local out, made = {}, false
     for _, h in ipairs(list(c.icons)) do
         local name = type(h.spec) == "table" and h.spec.name or nil
         if type(name) == "string" and name:find("RotationIcon", 1, true) then
             made = true
             if h.shown == true then
-                out[#out + 1] = "icon (" .. word(name) .. "): shown"
-                out[#out + 1] = "  texture: " .. word(h.texture)
-                out[#out + 1] = "  mark: " .. (h.marked == nil and M.NONE or word(h.marked))
+                out[#out + 1] = "icon (" .. say(name) .. "): shown"
+                out[#out + 1] = "  texture: " .. say(h.texture)
+                out[#out + 1] = "  mark: " .. (h.marked == nil and M.NONE or say(h.marked))
             else
-                out[#out + 1] = "icon (" .. word(name) .. "): hidden"
+                out[#out + 1] = "icon (" .. say(name) .. "): hidden"
             end
         end
     end
@@ -317,19 +547,19 @@ local function rotationIcon(c, addon)
     elseif #why == 0 then
         out[#out + 1] = "  reason: " .. M.NONE
     else
-        for i = 1, #why do out[#out + 1] = "  reason: " .. word(why[i]) end
+        for i = 1, #why do out[#out + 1] = "  reason: " .. say(why[i]) end
     end
     return out
 end
 
-local function flightMarks(c)
+local function flightMarks(c, say)
     local out = {}
     for i, h in ipairs(list(c.taxiMarks)) do
         if h.shown == true then
             local node = list(h.node)
             out[#out + 1] = "mark " .. i .. ": shown"
-            out[#out + 1] = "  node: " .. word(node.name) .. " at " .. share(node.x) .. ", " .. share(node.y)
-            out[#out + 1] = "  label: " .. word(h.label)
+            out[#out + 1] = "  node: " .. say(node.name) .. " at " .. share(node.x) .. ", " .. share(node.y)
+            out[#out + 1] = "  label: " .. say(h.label)
         else
             out[#out + 1] = "mark " .. i .. ": hidden"
         end
@@ -347,17 +577,17 @@ local function sortedInto(out, rows, make)
     for i = 1, #lines do out[#out + 1] = lines[i] end
 end
 
-local function mapPins(c)
+local function mapPins(c, say)
     local out = {}
     for i, h in ipairs(list(c.mapPinSets)) do
         if h.shown == true then
             out[#out + 1] = "pins " .. i .. ": shown"
             sortedInto(out, h.pins, function(p)
-                return "  pin: " .. word(p.name) .. ", " .. word(p.kind) .. ", " .. word(p.role)
+                return "  pin: " .. say(p.name) .. ", " .. say(p.kind) .. ", " .. say(p.role)
                     .. ", at " .. share(p.x) .. ", " .. share(p.y)
             end)
             sortedInto(out, h.lines, function(l)
-                return "  line: " .. word(l.from) .. " to " .. word(l.to) .. ", " .. share(l.ax) .. ", "
+                return "  line: " .. say(l.from) .. " to " .. say(l.to) .. ", " .. share(l.ax) .. ", "
                     .. share(l.ay) .. " to " .. share(l.bx) .. ", " .. share(l.by)
             end)
         else
@@ -367,10 +597,10 @@ local function mapPins(c)
     return out
 end
 
-local function minimapPins(c)
+local function minimapPins(c, say)
     local out = {}
     for i, h in ipairs(list(c.minimapPins)) do
-        local head = "pin " .. i .. " (" .. frameName(h) .. "): "
+        local head = "pin " .. i .. " (" .. frameName(h, say) .. "): "
         if h.shown == true then
             out[#out + 1] = head .. "shown at " .. offset(h.x) .. ", " .. offset(h.y) .. ", "
                 .. (h.edge == true and "edge" or "inside")
@@ -381,10 +611,10 @@ local function minimapPins(c)
     return out
 end
 
-local function plateLabels(c)
+local function plateLabels(c, say)
     local out = {}
     for i, h in ipairs(list(c.plateLabels)) do
-        local head = "label " .. i .. " (" .. word(h.unit) .. "): "
+        local head = "label " .. i .. " (" .. say(h.unit) .. "): "
         if h.shown == true then
             out[#out + 1] = head .. "shown"
             -- A value the game hides is kept as it came: it has no text.
@@ -392,7 +622,7 @@ local function plateLabels(c)
             if says ~= nil and type(says) ~= "string" and type(says) ~= "number" then
                 out[#out + 1] = "  text: hidden by the game"
             else
-                out[#out + 1] = "  text: " .. word(says)
+                out[#out + 1] = "  text: " .. say(says)
             end
         else
             out[#out + 1] = head .. "hidden"
@@ -401,12 +631,12 @@ local function plateLabels(c)
     return out
 end
 
-local function comboBars(c)
+local function comboBars(c, say)
     local out = {}
     for i, h in ipairs(list(c.comboBars)) do
         if h.shown == true then
-            out[#out + 1] = "bar " .. i .. ": shown on " .. word(h.hung) .. ", " .. word(h.value)
-                .. " of " .. word(h.max)
+            out[#out + 1] = "bar " .. i .. ": shown on " .. say(h.hung) .. ", " .. say(h.value)
+                .. " of " .. say(h.max)
         else
             out[#out + 1] = "bar " .. i .. ": hidden"
         end
@@ -414,13 +644,13 @@ local function comboBars(c)
     return out
 end
 
-local function slotIcons(c)
+local function slotIcons(c, say)
     local out = {}
     for i, h in ipairs(list(c.slotIcons)) do
-        local head = "icon " .. i .. " (" .. frameName(h) .. "): "
+        local head = "icon " .. i .. " (" .. frameName(h, say) .. "): "
         if h.shown == true then
             out[#out + 1] = head .. "shown"
-            out[#out + 1] = "  texture: " .. word(h.texture)
+            out[#out + 1] = "  texture: " .. say(h.texture)
         else
             out[#out + 1] = head .. "hidden"
         end
@@ -428,25 +658,19 @@ local function slotIcons(c)
     return out
 end
 
-local function panels(c)
+local function panels(c, say)
     local out = {}
     for i, h in ipairs(list(c.panels)) do
-        local head = "panel " .. i .. " (" .. frameName(h) .. "): "
+        local head = "panel " .. i .. " (" .. frameName(h, say) .. "): "
         if h.shown == true then
             out[#out + 1] = head .. "shown"
             local lines = list(h.lines)
             if #lines == 0 then out[#out + 1] = "  no lines" end
-            for n = 1, #lines do out[#out + 1] = "  line " .. n .. ": " .. word(lines[n]) end
+            for n = 1, #lines do out[#out + 1] = "  line " .. n .. ": " .. say(lines[n]) end
         else
             out[#out + 1] = head .. "hidden"
         end
     end
-    return out
-end
-
-local function indented(lines)
-    local out = {}
-    for i = 1, #lines do out[i] = "  " .. word(lines[i]) end
     return out
 end
 
@@ -457,37 +681,37 @@ local function keepDiag(c, id)
     if type(c.savedExists) ~= "function" or type(c.saved) ~= "function" then return nil end
     if not c.savedExists(id.accountDB) then return { absent = true } end
     local db = c.saved(id.accountDB)
-    local kept = { db = db, diag = db.diag }
+    local saved = { db = db, diag = db.diag }
     local d = db.diag
     if type(d) == "table" then
-        kept.count, kept.names, kept.snaps = d.count, d.names, d.snaps
+        saved.count, saved.names, saved.snaps = d.count, d.names, d.snaps
         if type(d.snaps) == "table" then
-            kept.rows = {}
-            for i = 1, #d.snaps do kept.rows[i] = d.snaps[i] end
+            saved.rows = {}
+            for i = 1, #d.snaps do saved.rows[i] = d.snaps[i] end
         end
     end
-    return kept
+    return saved
 end
 
-local function putBackDiag(c, id, kept)
-    if kept == nil then return end
-    if kept.absent then
+local function putBackDiag(c, id, saved)
+    if saved == nil then return end
+    if saved.absent then
         if type(c.setSaved) == "function" then c.setSaved(id.accountDB, nil) end
         return
     end
-    kept.db.diag = kept.diag
-    local d = kept.diag
+    saved.db.diag = saved.diag
+    local d = saved.diag
     if type(d) ~= "table" then return end
-    d.count, d.names, d.snaps = kept.count, kept.names, kept.snaps
-    if kept.rows then
-        local snaps = kept.snaps
+    d.count, d.names, d.snaps = saved.count, saved.names, saved.snaps
+    if saved.rows then
+        local snaps = saved.snaps
         for i = #snaps, 1, -1 do snaps[i] = nil end
-        for i = 1, #kept.rows do snaps[i] = kept.rows[i] end
+        for i = 1, #saved.rows do snaps[i] = saved.rows[i] end
     end
 end
 
--- Types the diag word and gives its lines; nil when it cannot be asked.
--- See DIAG in the header for what is put back.
+-- Types the diag word and gives its lines as printed; nil when it cannot
+-- be asked. See DIAG in the header for what is put back.
 local function askDiag(c, addon)
     local id = type(addon) == "table" and addon.id or nil
     if type(id) ~= "table" or type(c.slashes) ~= "table" then return nil end
@@ -495,7 +719,7 @@ local function askDiag(c, addon)
     if type(slash) ~= "function" then return nil end
     local printed = type(c.printed) == "table" and c.printed or nil
     local before = printed and #printed or 0
-    local kept = keepDiag(c, id)
+    local saved = keepDiag(c, id)
     local said, own = {}, c.print
     c.print = function(line) said[#said + 1] = tostring(line) end
     local ok, err = pcall(slash, "diag")
@@ -506,11 +730,8 @@ local function askDiag(c, addon)
         for i = before + 1, #printed do said[#said + 1] = tostring(printed[i]) end
         for i = #printed, before + 1, -1 do printed[i] = nil end
     end
-    putBackDiag(c, id, kept)
+    putBackDiag(c, id, saved)
     if not ok then error(err, 0) end
-    for i = 1, #said do
-        said[i] = said[i]:gsub("snapshot %d+ kept", "snapshot <n> kept")
-    end
     return said
 end
 
@@ -542,24 +763,26 @@ local function digitByte(b)
 end
 
 -- ascii: no byte of 128 or more in the name. digits: nothing but digits.
-local function addName(names, kind, v)
+-- client: the client answered it (not handed in): names.fromClient[kind].
+local function addName(names, kind, v, client)
     if type(v) ~= "string" or v == "" then return end
     local norm = M.normal(v)
     names[#names + 1] = { kind = kind, text = v, lower = v:lower(), norm = norm, short = #norm < M.SHORT,
         ascii = not v:find("[\128-\255]"), digits = v:find("^%d+$") ~= nil }
     names[kind] = true
+    if client then names.fromClient[kind] = true end
 end
 
 -- A GUID, and its parts after the first (see NAMES).
-local function addGuid(names, kind, v)
+local function addGuid(names, kind, v, client)
     if type(v) ~= "string" or v == "" then return end
-    addName(names, kind, v)
+    addName(names, kind, v, client)
     local parts = {}
     for part in v:gmatch("[^%-]+") do parts[#parts + 1] = part end
     for i = 2, #parts do
         local alone, tail = parts[i], table.concat(parts, "-", i)
-        if #(M.normal(alone)) >= M.GUID_PART then addName(names, kind, alone) end
-        if tail ~= alone and #(M.normal(tail)) >= M.GUID_PART then addName(names, kind, tail) end
+        if #(M.normal(alone)) >= M.GUID_PART then addName(names, kind, alone, client) end
+        if tail ~= alone and #(M.normal(tail)) >= M.GUID_PART then addName(names, kind, tail, client) end
     end
 end
 
@@ -605,28 +828,29 @@ local function read(c, fn, ...)
 end
 
 -- M.names(c, addon, given, shortNames) -> the names to take out, longest
--- first; the list also has [kind] = true for each kind that has a name.
+-- first; the list also has [kind] = true for each kind that has a name,
+-- and fromClient[kind] = true for each kind the client itself answered.
 -- Or nil and the reason: given is not as the header says, or a name is
 -- too short (shortNames true lets a name of 1 or 2 through).
 function M.names(c, addon, given, shortNames)
-    local names = {}
+    local names = { fromClient = {} }
     local bad = addGiven(names, given)
     if bad then return nil, bad end
     if type(c) == "table" then
         local name, realm = read(c, "UnitName", "player")
-        addName(names, "character", name); addName(names, "realm", realm)
+        addName(names, "character", name, true); addName(names, "realm", realm, true)
         name, realm = read(c, "UnitFullName", "player")
-        addName(names, "character", name); addName(names, "realm", realm)
-        addName(names, "realm", (read(c, "GetRealmName")))
-        addName(names, "realm", (read(c, "GetNormalizedRealmName")))
-        addName(names, "guild", (read(c, "GetGuildInfo", "player")))
+        addName(names, "character", name, true); addName(names, "realm", realm, true)
+        addName(names, "realm", (read(c, "GetRealmName")), true)
+        addName(names, "realm", (read(c, "GetNormalizedRealmName")), true)
+        addName(names, "guild", (read(c, "GetGuildInfo", "player")), true)
         if type(c.realm) == "function" then
             local ok, own = pcall(c.realm)
-            if ok then addName(names, "realm", own) end
+            if ok then addName(names, "realm", own, true) end
         end
         if type(c.guid) == "function" then
             local ok, guid = pcall(c.guid, "player")
-            if ok then addGuid(names, "guid", guid) end
+            if ok then addGuid(names, "guid", guid, true) end
         end
         -- What the diag snapshots kept of the session (Core/Diag.lua).
         local id = type(addon) == "table" and addon.id or nil
@@ -636,8 +860,8 @@ function M.names(c, addon, given, shortNames)
             for i = 1, #snaps do
                 local timing = type(snaps[i]) == "table" and snaps[i].timing or nil
                 if type(timing) == "table" then
-                    addName(names, "character", timing.character)
-                    addName(names, "realm", timing.realm)
+                    addName(names, "character", timing.character, true)
+                    addName(names, "realm", timing.realm, true)
                 end
             end
         end
@@ -664,18 +888,34 @@ function M.names(c, addon, given, shortNames)
     return names
 end
 
--- The second line of the block: the kinds known and not known.
-local function namesLine(names)
-    local known, missing = {}, {}
-    for _, kind in ipairs(M.KINDS) do
-        local into = names[kind] and known or missing
-        into[#into + 1] = kind
+-- opts.absent as { [kind] = true }, or nil and why (the why names kinds
+-- only, never a value).
+local function absentKinds(v)
+    if v == nil then return {} end
+    local want = "opts.absent is not a list of kinds of name (" .. table.concat(M.KINDS, ", ") .. "): refused"
+    if type(v) ~= "table" then return nil, want end
+    local out = {}
+    for key, kind in pairs(v) do
+        if type(key) ~= "number" or type(kind) ~= "string" or not M.PLACE[kind] then return nil, want end
+        out[kind] = true
     end
-    return "names: " .. (#known > 0 and table.concat(known, ", ") or M.NONE) .. " known; "
-        .. (#missing > 0 and table.concat(missing, ", ") or M.NONE) .. " not known"
+    return out
 end
 
--- Where the names are in the line: { s, e, kind } by place in the line as
+-- Line 2 of the block: made up or not, and the kinds known, absent and
+-- neither.
+local function namesLine(names, absent, madeUp)
+    local known, gone, missing = {}, {}, {}
+    for _, kind in ipairs(M.KINDS) do
+        local into = names[kind] and known or (absent[kind] and gone or missing)
+        into[#into + 1] = kind
+    end
+    local function said(kinds) return #kinds > 0 and table.concat(kinds, ", ") or M.NONE end
+    return "names: " .. (madeUp and "made up; " or "") .. said(known) .. " known; " .. said(gone) .. " absent; "
+        .. said(missing) .. " not known"
+end
+
+-- Where the names are in the text: { s, e, kind } by place in the text as
 -- it is, in order, no two overlapping (those that did are one).
 local function spans(line, names)
     local norm, map = M.normal(line)
@@ -736,41 +976,59 @@ local function spans(line, names)
     return merged
 end
 
--- M.redact(line, names) -> the line with every name replaced. Every place
--- of every name is found in the line as it was, the places that overlap
--- are made one, and each is replaced once: a replacement is never searched.
-function M.redact(line, names)
-    if #names == 0 then return line end
+-- One piece of a line (no slot in it) with every name replaced.
+local function redactPiece(piece, names)
     local out, from = {}, 1
-    for _, span in ipairs(spans(line, names)) do
-        out[#out + 1] = line:sub(from, span.s - 1)
+    for _, span in ipairs(spans(piece, names)) do
+        out[#out + 1] = piece:sub(from, span.s - 1)
         out[#out + 1] = M.PLACE[span.kind]
         from = span.e + 1
     end
-    out[#out + 1] = line:sub(from)
+    out[#out + 1] = piece:sub(from)
     return table.concat(out)
 end
 
--- The line cut at every placeholder: the pieces between them.
-local function pieces(line)
+-- M.redact(line, names) -> the line with every name replaced. Every place
+-- of every name is found in the line as it was, the places that overlap
+-- are made one, and each is replaced once: a replacement is never searched.
+-- A slot "<text:n>" is never searched either: the pieces between slots are
+-- searched each on its own.
+function M.redact(line, names)
+    if #names == 0 then return line end
+    local out, from = {}, 1
+    while true do
+        local a, b = line:find(SLOT, from)
+        out[#out + 1] = redactPiece(line:sub(from, (a or #line + 1) - 1), names)
+        if not a then break end
+        out[#out + 1] = line:sub(a, b)
+        from = b + 1
+    end
+    return table.concat(out)
+end
+
+-- The line cut at every placeholder (and, with slots true, every slot):
+-- the pieces between them.
+local function pieces(line, slots)
     local rest = { line }
     -- "<path>" is in "<path>/" too: the slash left over is no letter.
     local places = { M.PATH_WHOLE }
     for _, kind in ipairs(M.KINDS) do places[#places + 1] = M.PLACE[kind] end
-    for _, place in ipairs(places) do
-        local cut = {}
+    local function cut(at, plain)
+        local into = {}
         for _, piece in ipairs(rest) do
             local from = 1
             while true do
-                local a, b = piece:find(place, from, true)
+                local a, b = piece:find(at, from, plain)
                 if not a then break end
-                cut[#cut + 1] = piece:sub(from, a - 1)
+                into[#into + 1] = piece:sub(from, a - 1)
                 from = b + 1
             end
-            cut[#cut + 1] = piece:sub(from)
+            into[#into + 1] = piece:sub(from)
         end
-        rest = cut
+        rest = into
     end
+    for _, place in ipairs(places) do cut(place, true) end
+    if slots then cut(SLOT, false) end
     return rest
 end
 
@@ -793,9 +1051,11 @@ local function wholeNumber(text, number)
     end
 end
 
--- M.held(line, names) -> true when the line, its placeholders set aside,
--- still holds a name of 3 or more. Does not use redact's search.
-function M.held(line, names)
+-- M.held(line, names, slots) -> true when the line, its placeholders (and,
+-- with slots true, its slots: a line of the block, which the template
+-- made) set aside, still holds a name of 3 or more. Does not use redact's
+-- search.
+function M.held(line, names, slots)
     local wanted, plain, numbers = {}, {}, {}
     for k = 1, #names do
         local given = names[k].text
@@ -809,7 +1069,7 @@ function M.held(line, names)
             if not given:find("[\128-\255]") then plain[#plain + 1] = name end
         end
     end
-    for _, piece in ipairs(pieces(line)) do
+    for _, piece in ipairs(pieces(line, slots == true)) do
         local text, bare = flat(piece), flat(piece, true)
         for k = 1, #wanted do
             if text:find(wanted[k], 1, true) then return true end
@@ -844,12 +1104,23 @@ local function fileName(text, i)
     return e ~= nil and not text:find("^[%w_%-\128-\255]", e)
 end
 
+-- A word with a separator the first step did not cut (lead section 199,
+-- N4): "<path>/" and its file's name with at most ":<line>:" after it, or
+-- "<path>".
+local function relative(token)
+    local tail = token:match("[\\/]([^\\/]*)$") or ""
+    local file = tail:match("^[%w_%-%.]*%.%a+")
+    if not file or file:sub(1, 1) == "." then return M.PATH_WHOLE end
+    if not tail:sub(#file + 1):find("^:?%d*:?$") then return M.PATH_WHOLE end
+    return M.PATH .. tail
+end
+
 -- Every word that still has a slash or backslash outside a "<path>/" is
--- replaced whole by "<path>". (No character of M.PATH is a pattern's.)
+-- replaced whole (see relative). (No character of M.PATH is a pattern's.)
 local function wordsCut(text)
     local s = text:gsub("%S+", function(token)
         local rest = token:gsub(M.PATH, "")
-        if rest:find("[\\/]") then return M.PATH_WHOLE end
+        if rest:find("[\\/]") then return relative(token) end
         return nil
     end)
     return s
@@ -885,29 +1156,94 @@ function M.paths(text)
 end
 
 -- --------------------------------------------------------------- snapshot
+-- The kinds that refuse, or nil: see REFUSED in the header.
+local function refusedKinds(names, absent, madeUp)
+    if absent.character then
+        return "opts.absent cannot mark character absent: a real state has one; for state with no "
+            .. "character say opts.madeUp = true. Refused"
+    end
+    for _, kind in ipairs(M.KINDS) do
+        if absent[kind] and names[kind] then
+            return "opts.absent marks " .. kind .. " absent, but a " .. kind .. " name is known: refused"
+        end
+    end
+    if madeUp then
+        if names.fromClient.character then
+            return "the state was said to be made up, but the client answers a character name: refused, "
+                .. "because it is real state. Hand in its names and say opts.absent instead."
+        end
+        return nil
+    end
+    for _, kind in ipairs(M.MUST) do
+        if not names[kind] and not absent[kind] then
+            return "no " .. kind .. " name is known (none in opts.names, none from the client's reads) and "
+                .. "opts.absent does not mark it absent: refused, because it cannot be taken out. "
+                .. "Hand it in, mark it absent (not character), or say opts.madeUp = true for made-up state."
+        end
+    end
+    return nil
+end
+
 function M.seen(c, addon, opts)
     opts = list(opts)
     if type(c) ~= "table" then return nil, "no fake client was given" end
     local names, bad = M.names(c, addon, opts.names, opts.shortNames == true)
     if not names then return nil, bad end
-    if not names.character and opts.madeUp ~= true then
-        return nil, "no character name is known (none in opts.names, none from the client's reads): "
-            .. "refused, because the names cannot be taken out. For made-up state say opts.madeUp = true."
+    local absent, badAbsent = absentKinds(opts.absent)
+    if not absent then return nil, badAbsent end
+    local madeUp = opts.madeUp == true
+    local why = refusedKinds(names, absent, madeUp)
+    if why then return nil, why end
+
+    local words, whose
+    if opts.words ~= nil then
+        if type(opts.words) ~= "table" then return nil, "opts.words is not a list of texts: refused" end
+        for key, item in pairs(opts.words) do
+            if type(key) ~= "number" or type(item) ~= "string" then
+                return nil, "opts.words is not a list of texts: refused"
+            end
+        end
+        words, whose = M.wordSet(opts.words), "given"
+    else
+        local wordsWhy
+        words, wordsWhy = M.words()
+        if not words then
+            return nil, "the add-on's own words could not be read (" .. tostring(wordsWhy) .. "): refused, "
+                .. "because free text cannot be told from them"
+        end
+        whose = "the add-on's"
+    end
+    -- What the block says of a free value: see TEMPLATE.
+    local function say(v)
+        local s = word(v)
+        if s == M.UNKNOWN or type(v) == "number" then return s end
+        return M.template(s, words)
+    end
+    local function indented(said)
+        local out = {}
+        for i = 1, #said do
+            local line = say(said[i])
+            out[i] = "  " .. (line:gsub("snapshot %d+ kept", "snapshot <n> kept"))
+        end
+        return out
     end
 
     local makers = {
-        ["arrows"] = function() return arrows(c) end,
-        ["rotation icon"] = function() return rotationIcon(c, addon) end,
-        ["flight marks"] = function() return flightMarks(c) end,
-        ["map pins"] = function() return mapPins(c) end,
-        ["minimap pins"] = function() return minimapPins(c) end,
-        ["nameplate labels"] = function() return plateLabels(c) end,
-        ["combo bars"] = function() return comboBars(c) end,
-        ["slot icons"] = function() return slotIcons(c) end,
-        ["panels"] = function() return panels(c) end,
+        ["arrows"] = function() return arrows(c, say) end,
+        ["rotation icon"] = function() return rotationIcon(c, addon, say) end,
+        ["flight marks"] = function() return flightMarks(c, say) end,
+        ["map pins"] = function() return mapPins(c, say) end,
+        ["minimap pins"] = function() return minimapPins(c, say) end,
+        ["nameplate labels"] = function() return plateLabels(c, say) end,
+        ["combo bars"] = function() return comboBars(c, say) end,
+        ["slot icons"] = function() return slotIcons(c, say) end,
+        ["panels"] = function() return panels(c, say) end,
         ["chat"] = function()
             if opts.chat == false then return { M.NOT_ASKED } end
-            return indented(list(c.printed))
+            local printed = list(c.printed)
+            local out = { "lines: " .. #printed }
+            for i = 1, #printed do out[#out + 1] = "  " .. say(printed[i]) end
+            return out
         end,
         ["diag"] = function()
             if opts.diag == false then return { M.NOT_ASKED } end
@@ -918,7 +1254,7 @@ function M.seen(c, addon, opts)
         end,
     }
 
-    local lines, problems = { M.HEAD, namesLine(names) }, {}
+    local lines, problems = { M.HEAD, namesLine(names, absent, madeUp), "words: " .. whose }, {}
     for _, name in ipairs(M.SECTIONS) do
         lines[#lines + 1] = "== " .. name .. " =="
         local ok, got = pcall(makers[name])
@@ -932,7 +1268,7 @@ function M.seen(c, addon, opts)
         end
         for i = 1, #got do
             local line = M.redact(got[i], names)
-            if M.held(line, names) then
+            if M.held(line, names, true) then
                 return nil, "a name was still in a line of " .. name .. " after the replacing: refused"
             end
             lines[#lines + 1] = line
