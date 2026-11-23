@@ -24,6 +24,8 @@ local function start(opts)
     c.setPosition(1411, 0.5, 0.5)
     c.setMapSize(1411, 1000, 500)
     local k = ns.Kernel({}, c)
+    -- The profession step is its own module behind nav.profArrow (N25).
+    N.ProfStepDeclare(k)
     local d = ns.Diag.Start(k)
     local a = A.Start(k, d)
     k:Boot()

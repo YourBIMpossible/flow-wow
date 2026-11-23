@@ -281,7 +281,8 @@ return {
         c.advance(0.01, 1)
         t.eq(c.saved(ns.id.accountDB).layout.arrowIntroSeen, true)
         c.advance(A.INTRO_SECONDS + 1, 10)
-        t.eq(c.arrows[1].shown, false, "over")
+        t.eq(a.state().view.quest.mode == "intro", false, "over")
+        t.eq(c.arrows[1].lines, { A.NO_QUEST }, "over: with no step it says why")
     end,
 
     ["module: a second declaration is refused and the first goes on"] = function(t)
