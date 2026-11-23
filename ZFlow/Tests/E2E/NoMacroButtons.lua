@@ -32,13 +32,14 @@ local LINES = {
     [STEW] = { "Strength Stew", "Use: If you spend at least 10 seconds eating you will become well fed and gain 10 Strength for 15 min." },
 }
 
-local function start()
+local function start(ids)
+    ids = ids or IDS
     local c = ns.make.fakeClient()
     c.setSaved(ns.id.accountDB, {})
     c.setClass("PALADIN"); c.setFaction("Alliance"); c.setLevel(10)
     c.setDead(false); c.setMounted(false); c.setOnTaxi(false); c.setFishingPole(false)
     c.setCombat(false); c.setLowHealth(false)
-    for name, id in pairs(IDS) do
+    for name, id in pairs(ids) do
         c.setSpellId(name, id)
         c.setSpell(id, { known = true, usable = true })
         c.setSpellCooldown(id, false)
@@ -148,6 +149,39 @@ tests["no macro: rotation, key frame, food, Attack and the Alt item give no butt
             t.ok(bad == nil, "view " .. i .. ": " .. tostring(bad))
         end
     end
+end
+
+-- Section 249 (CT-1): a client that names the swing "Auto Attack". The
+-- suggestion says "Auto Attack"; the key's secure button is given the spell
+-- "Attack", a name the client casts, never the suggested one.
+tests["CT-1: an Auto Attack suggestion puts the spell Attack on the key button"] = function(t)
+    local ids = {}
+    for name, id in pairs(IDS) do ids[name] = id end
+    ids["Attack"], ids["Auto Attack"] = nil, 6603
+    local c, addon = start(ids)
+    c.setTarget(ENEMY); c.setStealthed(false)
+    c.setInRange(6603, true); c.setInRange(IDS["Judgement"], true)
+    c.setCurrentSpell(6603, false); c.advance(1, 5)
+    local v = view(addon)
+    local s = type(v) == "table" and v.suggestion or nil
+    t.eq(s and s.spell, "Auto Attack", "the suggestion names Auto Attack")
+    local k = key(v)
+    t.eq({ k.type, k.spell, k.unit }, { "spell", "Attack", nil }, "the driver's key rows: the spell Attack, no unit")
+    -- The key frame's button holds the key plan, not the live suggestion
+    -- (Rotation/KeyFrame.lua). A plan slot named "Auto Attack", set on a
+    -- secure button the fake client makes, is given the spell "Attack".
+    local h = c.secureButton({ name = "ZFlowTestKey" })
+    t.ok(type(h) == "table", "the fake client made a secure button")
+    local kf = K.New({ button = h, lockdown = function() return false end })
+    kf:want(ns.KeyPlan({ keys = { none = { key = "Auto Attack" } } }, {}))
+    local st = kf:try()
+    t.eq(st and st.state, "set", "the plan was set on the button")
+    t.eq(h and h.attrs.type, "spell", "the button: the spell type")
+    t.eq(h and h.attrs.spell, "Attack", "the button casts Attack")
+    kf:want(ns.KeyPlan({ keys = { none = { key = "Judgement", ctrl = "Auto Attack" } } }, {}))
+    st = kf:try()
+    t.eq(st and st.state, "set", "the second plan was set")
+    t.eq(h and h.attrs["*spell-ctrl"], "Attack", "Ctrl + the button casts Attack")
 end
 
 return tests

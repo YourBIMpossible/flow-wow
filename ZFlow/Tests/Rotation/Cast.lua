@@ -175,11 +175,29 @@ return {
         for _, name in ipairs({ "Attack", "Auto Attack" }) do
             local r = ns.cast.Attributes({ spell = name, kind = "damage", unit = "target" }, plan(), nil, false)
             t.eq({ attrs(r.button)[1], attrs(r.button)[2], attrs(r.button)[3], attrs(r.button)[4] },
-                { "type=spell", "spell=" .. name, "unit=nil", "item=nil" }, name)
+                { "type=spell", "spell=Attack", "unit=nil", "item=nil" }, name)
+            t.eq(r.spell, "Attack", name .. ": cast as Attack")
             local got = {}
             for _, a in ipairs(r.button) do got[a.attr] = a.value end
             t.eq(got.macrotext, nil, name .. ": no macro text")
         end
+    end,
+
+    -- Section 249 (CT-1): a slot of the plan named "Auto Attack" is cast as
+    -- Attack too, on the key, the modifier rows and the form header.
+    ["attributes: a plan slot named Auto Attack is cast as Attack"] = function(t)
+        local p = plan()
+        p.states[0] = p.states[0] or {}
+        p.states[0].key, p.states[0].shift = "Auto Attack", "Auto Attack"
+        local r = ns.cast.Attributes(nil, p, nil, false)
+        local got = {}
+        for _, a in ipairs(r.button) do got[a.attr] = a.value end
+        t.eq(got.spell, "Attack", "the key from the plan")
+        t.eq(got["*spell-shift"], "Attack", "the Shift row")
+        local head = {}
+        for _, a in ipairs(r.header) do head[a.attr] = a.value end
+        t.eq(head["key-0"], "Attack", "the header key")
+        t.eq(head["shift-0"], "Attack", "the header Shift")
     end,
 
     ["attributes: an item suggestion is the item type, item:ID"] = function(t)
