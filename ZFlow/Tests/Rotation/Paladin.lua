@@ -180,7 +180,8 @@ return {
             local s = snap(nil, knows)
             s.spells["Judgement"].onCooldown = true
             local got = ns.Choose(s, ns.Packs.PALADIN)
-            return got and got.spell or nil
+            if type(got) ~= "table" then return nil end
+            return got.spell
         end
         local withJ = { "Judgment" }
         for _, name in ipairs(base) do withJ[#withJ + 1] = name end

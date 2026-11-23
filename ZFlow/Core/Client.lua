@@ -8163,6 +8163,11 @@ function ns.make.client(env)
     -- QuestInfoRewardsFrameQuestInfoItem<i> (else the older QuestRewardItem<i>),
     -- the atlas "bags-greenarrow" (else the pet battle "strong" badge), as
     -- markMerchantButtons draws its marks.
+    -- RM-1 (lead section 275): also a first guess, unseen: choice i is
+    -- reward button i. If the game lays the buttons out in another order
+    -- (or a button is not the choice its number says), the mark lands on
+    -- the WRONG button. Diag.NAMES only says a button exists, not which
+    -- choice it shows; a capture must answer that (the capture question).
     --   c.questChoices() -> { { index, link } ... }, or nil when the count
     --     cannot be read. link is nil for a choice the game has not given
     --     yet (the item not loaded).

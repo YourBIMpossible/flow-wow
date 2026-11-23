@@ -49,7 +49,8 @@ tests["profession picker: no professions, a mage is told Tailoring and Enchantin
     local _, addon = boot({ professions = {} })
     t.eq(text(addon), MAGE)
     -- Lead (section 274): the whole add-on lists problems of its own at boot on
-    -- the fake client; the picker must add none to a boot where it is silent.
+    -- the fake client. The level-1 boot, where the picker is silent, is the
+    -- baseline: this proves no extra problem compared with level 1, not none.
     local _, quiet = boot({ professions = {}, level = 1 })
     t.eq(text(quiet), nil, "below level 3: no advice")
     t.eq(addon.problems:count(), quiet.problems:count(), "the picker adds no problem")
