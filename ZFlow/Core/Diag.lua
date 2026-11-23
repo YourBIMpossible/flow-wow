@@ -164,6 +164,9 @@ Diag.NAMES = {
     "Settings.RegisterCanvasLayoutCategory", "Settings.RegisterCanvasLayoutSubcategory",
     "Settings.RegisterAddOnCategory", "Settings.OpenToCategory", "SettingsPanel",
     "SettingsPanel.SearchBox", "InterfaceOptionsFrame",
+    -- Row N73: the feedback report takes the guild name out of its text
+    -- (UI/Feedback.lua Names). Saved in the snapshot's names table.
+    "GetGuildInfo",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns

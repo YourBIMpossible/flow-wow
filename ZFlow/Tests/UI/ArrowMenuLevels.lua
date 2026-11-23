@@ -97,7 +97,8 @@ return {
         local top = M.Level(items)
         local keys = {}
         for i, r in ipairs(top) do keys[i] = r.sep and "-" or r.key end
-        t.eq(keys, { "layout", "show", "style", "-", "settings.travel", "settings" })
+        t.eq(keys, { "layout", "show", "style", "-", "settings.travel", "settings", "feedback" })
+        t.eq(rowAt(top, "feedback").text, T.MENU.feedback, "row N73: the feedback window")
         t.eq(rowAt(top, "layout").text, T.MENU.layout .. M.MORE)
         t.eq(rowAt(top, "layout").more, true)
         t.eq(rowAt(top, "settings").more, nil, "the settings row opens the page, not a level")
@@ -129,6 +130,7 @@ return {
         t.eq(M.Action("settings.travel", state()), { settings = "travel" })
         t.eq(M.Action("settings", state()), { settings = true })
         t.eq(M.Action("settings.nosuch", state()), nil)
+        t.eq(M.Action("feedback", state()), { feedback = true })
         t.eq(M.Action("settings.travel.arrow", state()), nil, "a topic, not a section")
         -- A leaf asks what it always asked.
         t.eq(M.Action("reset", state()), { op = "reset" })
@@ -144,7 +146,7 @@ return {
         t.ok(type(q.enter) == "function" and type(q.pickRow) == "function", "the fake arrow has submenu rows")
         if type(q.enter) ~= "function" then return end
         q.click("right")
-        t.eq(#q.menuItems, 6)
+        t.eq(#q.menuItems, 7)
         t.eq(q.menuDepth, 0)
         t.eq(q.pickRow("separate"), false, "not offered on the top level")
         t.eq(q.enter("settings"), false, "not a submenu row")
@@ -160,7 +162,7 @@ return {
         q.click("right")
         t.eq(q.enter("show"), true)
         t.eq(q.pickRow(M.BACK), true)
-        t.eq(#q.menuItems, 6, "the top level again")
+        t.eq(#q.menuItems, 7, "the top level again")
         t.ok(rowAt(q.menuItems, "layout") ~= nil)
         t.eq(k.problems:count(), 0)
     end,

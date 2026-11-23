@@ -21,7 +21,7 @@ local KIND = {
                "watchAuctionResults", "onUnitTooltip", "watchAuctionRows", "onSystemMessage" },
     show = { "print", "panel", "minimapPin", "copyBox", "icon", "arrow", "windowButton", "secureButton",
              "optionsPage", "guideLines", "taxiMark", "mapPins", "comboBar", "slotIcon",
-             "markMerchantButtons", "rowPanel",
+             "markMerchantButtons", "rowPanel", "textEntry",
              -- N59: the info bar, and its data broker feed where the library is loaded.
              "infoBar", "broker" },
     tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "slash",
