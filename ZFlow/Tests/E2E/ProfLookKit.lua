@@ -92,9 +92,16 @@ local function panelShown(c, name)
     return p.shown()
 end
 
+-- The kit host's problem lines for the two profession windows only: the
+-- whole add-on runs here, and every other window on the kit (the intro at
+-- login among them) says its own line when its kit window is refused.
 local function hostProblems(addon)
     local kind = ns.KitHost and ns.KitHost.PROBLEM or "kitHost"
-    return addon.problems:count(kind)
+    local n = 0
+    for _, p in ipairs(addon.problems:list(kind)) do
+        if p.owner == "CraftBar" or p.owner == "ProfHelper" then n = n + 1 end
+    end
+    return n
 end
 
 -- -------------------------------------------------------------- craft bar
