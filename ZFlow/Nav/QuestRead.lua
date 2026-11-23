@@ -22,8 +22,10 @@ local _, ns = ...
 --   Questie is not there or not ready. A quest Questie fails on has no
 --   entry. Objective i of the log is taken to be Questie's ObjectiveData[i].
 --
--- N.QuestWatch(client) -> { step = fn, refresh = fn }
+-- N.QuestWatch(client, opts) -> { step = fn, refresh = fn }
 --   step(): the quest step for where the player is now (Q.Pick), or nil.
+--   opts.zoneFirst (optional): a function asked on every step; what it
+--   gives is handed to Q.Pick as opts.zoneFirst (lead section 187).
 --   The log and the places are read again only after refresh(), when the
 --   player's map changes, and now and then while Questie is not ready.
 ns.Nav = ns.Nav or {}
@@ -221,7 +223,8 @@ local function signature(rows)
     return table.concat(parts, "\n")
 end
 
-function N.QuestWatch(client)
+function N.QuestWatch(client, opts)
+    local zoneFirst = type(opts) == "table" and type(opts.zoneFirst) == "function" and opts.zoneFirst or nil
     local Q = N.QuestSource
     local rows, places, map
     local stale, waited, since = true, 0, 0
@@ -260,7 +263,13 @@ function N.QuestWatch(client)
         -- read, so a change shows on the next step with no event needed.
         -- The log and the places stay as read until said to have changed.
         local focus = ask(client, "questFocus")
-        local picked, from = Q.Pick(rows, places, here, type(focus) == "table" and focus or nil)
+        local zf
+        if zoneFirst then
+            local okZ, v = pcall(zoneFirst)
+            if okZ then zf = v end
+        end
+        local picked, from = Q.Pick(rows, places, here, type(focus) == "table" and focus or nil,
+            { zoneFirst = zf })
         last = { quest = picked and picked.quest or nil, from = from }
         return picked
     end
