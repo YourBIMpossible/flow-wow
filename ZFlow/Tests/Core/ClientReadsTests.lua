@@ -563,4 +563,61 @@ return {
         c.recipeSchematic(2963).mats[2589] = 9
         t.eq(c.recipeSchematic(2963), { makes = 2996, yield = 1, mats = { [2589] = 2 } })
     end,
+
+    -- Section 231 item 1 ---------------------------------------------------
+    ["tradeSkillSchematic(): the classic reads give the schematic when GetRecipeSchematic is missing"] = function(t)
+        local env = frameEnv()
+        env.C_TradeSkillUI = {}
+        local links = { [2] = "|cffffffff|Hitem:2996::::::::|h[Bolt of Linen Cloth]|h|r" }
+        local reagents = { [2] = {
+            { link = "|cffffffff|Hitem:2589::::::::|h[Linen Cloth]|h|r", need = 2 },
+            { link = "|cffffffff|Hitem:2320::::::::|h[Coarse Thread]|h|r", need = 1 },
+        } }
+        function env.GetTradeSkillItemLink(i) return links[i] end
+        function env.GetTradeSkillNumMade() return 1, 1 end
+        function env.GetTradeSkillNumReagents(i) return reagents[i] and #reagents[i] or 0 end
+        function env.GetTradeSkillReagentItemLink(i, r) return reagents[i][r].link end
+        function env.GetTradeSkillReagentInfo(i, r)
+            return "name", "texture", reagents[i][r].need, 40
+        end
+        local c = ns.make.client(env)
+        t.eq(c.recipeSchematic(2963), nil, "no GetRecipeSchematic: the first read says nothing")
+        t.eq(c.tradeSkillSchematic(2), { makes = 2996, yield = 1, mats = { [2589] = 2, [2320] = 1 } },
+            "the fallback names the product, the yield and the mats")
+        env.GetTradeSkillNumMade = function() return 2, 3 end
+        t.eq(c.tradeSkillSchematic(2).yield, 2, "the least a craft makes")
+        env.GetTradeSkillNumMade = nil
+        t.eq(c.tradeSkillSchematic(2).yield, 1, "no NumMade read: one a craft")
+    end,
+
+    ["tradeSkillSchematic(): nil when the client can't say"] = function(t)
+        local env = frameEnv()
+        local c = ns.make.client(env)
+        t.eq(c.tradeSkillSchematic(2), nil, "no classic reads")
+        t.eq(c.tradeSkillSchematic(0), nil, "no row 0")
+        t.eq(c.tradeSkillSchematic("2"), nil, "an index that is no number")
+        local link = "|cffffffff|Hitem:2996::::::::|h[Bolt]|h|r"
+        local need = 2
+        function env.GetTradeSkillItemLink() return link end
+        function env.GetTradeSkillNumReagents() return 1 end
+        function env.GetTradeSkillReagentItemLink() return "|cffffffff|Hitem:2589::::::::|h[Linen]|h|r" end
+        function env.GetTradeSkillReagentInfo() return "Linen", nil, need, 0 end
+        t.eq(c.tradeSkillSchematic(2), { makes = 2996, yield = 1, mats = { [2589] = 2 } }, "all read")
+        need = nil
+        t.eq(c.tradeSkillSchematic(2), nil, "a reagent count not read: never a shorter list")
+        need = 2
+        link = "|cffffd000|Henchant:7418|h[Enchant Bracer]|h|r"
+        t.eq(c.tradeSkillSchematic(2), nil, "a product that is no item")
+        link = "|cffffffff|Hitem:2996::::::::|h[Bolt]|h|r"
+        env.GetTradeSkillNumReagents = function() return 0 end
+        t.eq(c.tradeSkillSchematic(2), nil, "no reagents read")
+    end,
+
+    ["tradeSkillSchematic(): the fake gives a copy"] = function(t)
+        local c = ns.make.fakeClient()
+        t.eq(c.tradeSkillSchematic(2), nil, "none set")
+        c.setTradeSkillSchematic(2, { makes = 2996, yield = 1, mats = { [2589] = 2 } })
+        c.tradeSkillSchematic(2).mats[2589] = 9
+        t.eq(c.tradeSkillSchematic(2), { makes = 2996, yield = 1, mats = { [2589] = 2 } })
+    end,
 }

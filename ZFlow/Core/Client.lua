@@ -562,6 +562,49 @@ function ns.make.client(env)
         return { makes = makes, yield = yield, mats = mats }
     end
 
+    -- Section 231 item 1: the fallback for recipeSchematic when the client
+    -- has no C_TradeSkillUI.GetRecipeSchematic (not in CLIENT-NAMES-16001).
+    -- The classic reads of the open trade skill window, by row index, not
+    -- recipe id: GetTradeSkillItemLink(index) for the product,
+    -- GetTradeSkillNumMade(index) for the yield (its least; none given: one),
+    -- GetTradeSkillNumReagents(index), then for each reagent
+    -- GetTradeSkillReagentItemLink(index, r) for the item and the third answer
+    -- of GetTradeSkillReagentInfo(index, r) for how many a craft takes.
+    -- The same answer as recipeSchematic: { makes =, yield =, mats = }.
+    -- Anything that can't be read makes the whole answer nil: never a
+    -- shorter list. First guesses, not seen in game; nothing calls it yet.
+    function c.tradeSkillSchematic(index)
+        if not wholeCount(index) or index < 1 or index == math.huge then return nil end
+        local function itemOf(ok, link)
+            if not ok or type(link) ~= "string" or hidden(link) then return nil end
+            local id = tonumber(link:match("item:(%d+)"))
+            if not id or id <= 0 then return nil end
+            return id
+        end
+        local function count(n, least)
+            return wholeCount(n) and n < math.huge and n >= least
+        end
+        local makes = itemOf(call(env.GetTradeSkillItemLink, index))
+        if not makes then return nil end
+        local yield = 1
+        if env.GetTradeSkillNumMade ~= nil then
+            local okMade, least = call(env.GetTradeSkillNumMade, index)
+            if not okMade then return nil end
+            if least ~= nil then yield = least end
+        end
+        if not count(yield, 1) then return nil end
+        local okN, n = call(env.GetTradeSkillNumReagents, index)
+        if not okN or not count(n, 1) then return nil end
+        local mats = {}
+        for r = 1, n do
+            local item = itemOf(call(env.GetTradeSkillReagentItemLink, index, r))
+            local okInfo, _, _, need = call(env.GetTradeSkillReagentInfo, index, r)
+            if not item or not okInfo or not count(need, 1) then return nil end
+            mats[item] = (mats[item] or 0) + need
+        end
+        return { makes = makes, yield = yield, mats = mats }
+    end
+
     -- A string the client gave and did not mark secret, or nil.
     local function text(ok, v)
         if not ok or v == nil or hidden(v) or type(v) ~= "string" or v == "" then return nil end
