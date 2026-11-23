@@ -58,6 +58,17 @@ FB.DEFAULT_POINT = { "CENTER", "CENTER", 0, -215 } -- authored: under the rotati
 FB.SELF_LABEL = "Show the self buff button"
 FB.DOCK_LABEL = "Keep the self button under the Flow button"
 FB.PARTS = { "type", "spell", "unit", "item" }
+-- Lead section 305 item 1: Ctrl with the left button casts nothing. The
+-- Ctrl-drag that moves a button starts with the press down, and the
+-- buttons act on the press down (Core/Client.lua clickRow registers
+-- AnyDown), so without this a Ctrl-drag could cast. The template reads the
+-- modifier attribute "ctrl-type1" before "type"; the empty type has no
+-- action, so nothing is cast. First guess, not seen in this client. Written
+-- only while the button holds something (with nothing held a click casts
+-- nothing anyway). Side effect: a Ctrl key the player binds to the button
+-- (a CLICK binding with the left button) casts nothing either.
+FB.CTRL_ATTR = "ctrl-type1"
+FB.CTRL_ROW = "1:ctrl"
 
 -- N15: what stays on the Flow button (legacy BuffButton.lua:45-60).
 FB.ON_ACTION = { "^Seal of ", " Shout$", " Shield$", "^Hunter's Mark$", "^Bear Form$",
@@ -110,7 +121,7 @@ end
 -- The rows for one button. e: { spell [, unit] } or { item } or nil (shown,
 -- holding nothing).
 function FB.Rows(e)
-    local kind, spell, unit, item
+    local kind, spell, unit, item, ctrl
     if type(e) == "table" then
         if type(e.item) == "string" then
             kind, item = "item", e.item
@@ -119,11 +130,13 @@ function FB.Rows(e)
             if type(e.unit) == "string" then unit = e.unit end
         end
     end
+    if kind ~= nil then ctrl = "" end
     return {
         { attr = "1:type", value = kind },
         { attr = "1:spell", value = spell },
         { attr = "1:unit", value = unit },
         { attr = "1:item", value = item },
+        { attr = FB.CTRL_ROW, value = ctrl },
         { attr = "1:shown", value = true },
         { attr = "0:shown", value = true },
     }
@@ -160,6 +173,23 @@ function FB.DockPoint(point, flowSize, selfSize)
         x = x - (flowSize - selfSize) / 2
     end
     return { point[1], point[2], x, y }
+end
+
+-- The key frame's handle on one button: ClickSlots' rows, and FB.CTRL_ROW
+-- written as FB.CTRL_ATTR on button 1. Set through the row, so only while
+-- the lock is a plain false.
+function FB.Button(row)
+    local b = ns.ClickSlots.Button(row)
+    local set, get = b.set, b.get
+    function b.set(attr, value)
+        if attr == FB.CTRL_ROW then return row.set(1, FB.CTRL_ATTR, value) end
+        return set(attr, value)
+    end
+    function b.get(attr)
+        if attr == FB.CTRL_ROW then return row.get(1, FB.CTRL_ATTR) end
+        return get(attr)
+    end
+    return b
 end
 
 -- The hover line.
@@ -351,7 +381,7 @@ function FB.Declare(k)
             if type(client.hoverTip) == "function" then
                 pcall(client.hoverTip, { frame = name .. "1", text = function() return FB.Tip(which, u.why, u.hold) end })
             end
-            kf = K.New({ button = ns.ClickSlots.Button(row), lockdown = lockdown,
+            kf = K.New({ button = FB.Button(row), lockdown = lockdown,
                          rows = function(plan) return FB.Rows(plan.hold) end, signature = FB.Signature })
             return true
         end
