@@ -25,6 +25,34 @@ end
 
 local IDLE = { hostile = false, inCombat = false }
 
+-- Every rule for the spell, from every list of the pack.
+local function rulesFor(spell)
+    local out = {}
+    for _, list in pairs(ns.Packs.PALADIN.lists) do
+        for _, rule in ipairs(list) do
+            if rule.spell == spell then out[#out + 1] = rule end
+        end
+    end
+    return out
+end
+
+-- Does any rule for the spell fire on this snapshot (when only)?
+local function fires(spell, s)
+    local rules = rulesFor(spell)
+    assert(#rules > 0, "no rule for " .. spell)
+    for _, rule in ipairs(rules) do
+        if rule.when(s) then return true end
+    end
+    return false
+end
+
+-- A snapshot whose buffs were not read (section 183).
+local function unread(over, knows)
+    local s = snap(over, knows)
+    s.buffs = nil
+    return s
+end
+
 return {
     ["paladin pack passes PackCheck"] = function(t)
         local ok, problems = ns.PackCheck(ns.Packs.PALADIN)
@@ -148,8 +176,54 @@ return {
     end,
 
     ["not attacking yet: start the attack first"] = function(t)
-        t.eq(advice({ current = {} }, { "Attack", "Judgement" }), "Attack", "Attack")
-        t.eq(advice({ current = {} }, { "Auto Attack", "Judgement" }), "Auto Attack", "Auto Attack")
+        t.eq(advice({ current = { Attack = false } }, { "Attack", "Judgement" }), "Attack", "Attack")
+        t.eq(advice({ current = { ["Auto Attack"] = false } }, { "Auto Attack", "Judgement" }),
+             "Auto Attack", "Auto Attack")
+    end,
+
+    -- Section 183: a map not read stays nil and a rule that needs it does not fire.
+    ["attack state not read: Attack is not suggested"] = function(t)
+        t.eq(advice({ current = {} }, { "Attack", "Judgement" }), "Judgement", "no answer for Attack: not off")
+        t.ok(not fires("Attack", snap({ current = false })), "current not read")
+        t.ok(not fires("Auto Attack", snap({ current = false })), "current not read")
+        local s = snap()
+        s.current = nil
+        t.ok(not fires("Attack", s), "current nil: Attack does not fire")
+        t.ok(not fires("Auto Attack", s), "current nil: Auto Attack does not fire")
+        t.ok(fires("Attack", snap({ current = { Attack = false } })), "read as off: it fires")
+        t.ok(not fires("Attack", snap({ current = { Attack = true } })), "read as on: it does not")
+        t.ok(not fires("Attack", snap({ hostile = false, current = { Attack = false } })), "no enemy: it does not")
+    end,
+
+    ["buffs not read: no aura, blessing or seal, and no Judgement"] = function(t)
+        for _, over in ipairs({ IDLE, { inCombat = false }, {} }) do
+            local s = unread(over)
+            t.ok(not fires("Devotion Aura", s), "no aura asked for")
+            t.ok(not fires("Blessing of Might", s), "no blessing asked for")
+            t.ok(not fires("Seal of Righteousness", s), "no seal asked for")
+        end
+        t.ok(not fires("Blessing of Wisdom", unread({ hostile = false, inCombat = false, role = "heal" })),
+             "no Wisdom either")
+        t.ok(not fires("Seal of Command", unread()), "no Command either")
+        t.ok(not fires("Judgement", unread()), "a seal not known to be up: no Judgement")
+        t.eq(ns.PaladinWantsBlessing({ inCombat = false, hostile = false }), false, "blessing, buffs nil")
+        t.eq(ns.PaladinWantsBlessing({ inCombat = false, hostile = false, buffs = {} }), true, "blessing, none up")
+        t.eq(ns.PaladinWantsSeal({ inCombat = true }), false, "seal, buffs nil")
+        t.eq(ns.PaladinWantsSeal({ inCombat = true, buffs = {} }), true, "seal, none up")
+    end,
+
+    ["buffs read and empty: aura, blessing and seal are asked for"] = function(t)
+        t.ok(fires("Devotion Aura", snap(IDLE, nil, {})), "aura")
+        t.ok(fires("Blessing of Might", snap(IDLE, nil, {})), "blessing")
+        t.ok(fires("Seal of Righteousness", snap(IDLE, nil, {})), "seal")
+        t.ok(not fires("Judgement", snap(nil, nil, {})), "no seal up: no Judgement")
+    end,
+
+    ["the aura shown as your stance counts even with buffs not read"] = function(t)
+        t.ok(not fires("Devotion Aura", unread({ hostile = false, inCombat = false, form = "Devotion Aura" })),
+             "form is an aura")
+        t.ok(not fires("Devotion Aura", unread({ hostile = false, inCombat = false, form = "Bear Form" })),
+             "form not an aura, buffs nil: still not known, not asked for")
     end,
 
     ["several enemies: Holy Wrath, in the fight only"] = function(t)

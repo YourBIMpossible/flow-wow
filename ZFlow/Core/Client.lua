@@ -5129,6 +5129,99 @@ function ns.make.client(env)
         end
     end
     -- ------------------------------------------------------------- end S8
+
+    -- Section 183 (C1): the three reads the rotation takes for buffs, form
+    -- and what is queued or toggled on. Each answers nil when not known,
+    -- never an empty answer made up. Not tested in game; each read below is
+    -- a first guess from the API pages (warcraft.wiki.gg API_C_UnitAuras.
+    -- GetAuraDataByIndex, API_UnitBuff, API_GetShapeshiftForm,
+    -- API_GetShapeshiftFormInfo, API_IsCurrentSpell).
+    --
+    -- c.playerBuffs() -> { [name] = secondsLeft or true } or nil
+    --   every buff on you, read to the end of the list. secondsLeft is
+    --   math.huge for a buff with no end; true when the end time is hidden or
+    --   not a number. nil when the client has no read, a read raised, or a
+    --   row or a name was hidden (one buff not seen makes the whole list not
+    --   known). A full read with no buff gives an empty table.
+    --   C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL") where present,
+    --   else UnitBuff("player", i, "HELPFUL"); at most 40 rows.
+    function c.playerBuffs()
+        local auras = env.C_UnitAuras
+        local byIndex = type(auras) == "table" and auras.GetAuraDataByIndex or nil
+        local old = env.UnitBuff
+        if type(byIndex) ~= "function" and type(old) ~= "function" then return nil end
+        local out = {}
+        for i = 1, 40 do
+            local name, expires
+            if type(byIndex) == "function" then
+                local ok, row = pcall(byIndex, "player", i, "HELPFUL")
+                if not ok then return nil end
+                if row == nil then return out end
+                if hidden(row) or type(row) ~= "table" then return nil end
+                name, expires = row.name, row.expirationTime
+            else
+                local got = { pcall(old, "player", i, "HELPFUL") }
+                if not got[1] then return nil end
+                if got[2] == nil then return out end
+                name, expires = got[2], got[7]
+            end
+            if hidden(name) or type(name) ~= "string" then return nil end
+            local left
+            if expires == nil or hidden(expires) or type(expires) ~= "number" then
+                left = true
+            elseif expires == 0 then
+                left = math.huge
+            else
+                left = expires - c.now()
+            end
+            local had = out[name]
+            if had == nil or (type(had) == "number" and type(left) == "number" and left > had) or left == true then
+                out[name] = left
+            end
+        end
+        return out
+    end
+
+    -- c.formName() -> name or nil, known
+    --   GetShapeshiftForm(): 0 gives nil, true (no form). A form number gives
+    --   the spell name of GetShapeshiftFormInfo(n)'s fourth answer (the
+    --   spell id), read as spellName does. Anything not read gives nil,
+    --   false. The second answer is the only way to tell "no form" from
+    --   "not known".
+    function c.formName()
+        local ok, n = call(env.GetShapeshiftForm)
+        if not ok or hidden(n) or type(n) ~= "number" then return nil, false end
+        if n == 0 then return nil, true end
+        local got = { call(env.GetShapeshiftFormInfo, n) }
+        if not got[1] then return nil, false end
+        local id = got[5]
+        if hidden(id) or type(id) ~= "number" then return nil, false end
+        local name = spellName(id)
+        if type(name) ~= "string" then return nil, false end
+        return name, true
+    end
+
+    -- c.currentSpell(id) -> true | false | nil
+    --   C_Spell.IsCurrentSpell(id) where present, else IsCurrentSpell(id).
+    --   true when the spell is queued or toggled on (Attack swinging), false
+    --   when not; nil when there is no read, it raised, or the answer was
+    --   hidden or not a yes or no. A 1 / nil answer of older clients is read
+    --   as true / false only for the old global.
+    function c.currentSpell(id)
+        if type(id) ~= "number" then return nil end
+        local group = env.C_Spell
+        local fn = type(group) == "table" and group.IsCurrentSpell or nil
+        local old = false
+        if type(fn) ~= "function" then fn, old = env.IsCurrentSpell, true end
+        if type(fn) ~= "function" then return nil end
+        local ok, v = pcall(fn, id)
+        if not ok or hidden(v) then return nil end
+        if type(v) == "boolean" then return v end
+        if old and v == 1 then return true end
+        if old and v == nil then return false end
+        return nil
+    end
+    -- ----------------------------------------------------------- end 183
     return c
 end
 

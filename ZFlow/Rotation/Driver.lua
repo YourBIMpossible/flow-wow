@@ -6,9 +6,10 @@ local _, ns = ...
 -- key plan is only worked out, never applied.
 --
 --   D.Read(client, pack, ids[, role]) -> read(field)
---     the reader ns.Snapshot takes. dead, inCombat, stealthed, hostile and
---     spells are asked of the client; role is the one handed in; every
---     other field answers nil (not known), never a guess.
+--     the reader ns.Snapshot takes. dead, inCombat, stealthed, hostile,
+--     spells, buffs, form and current are asked of the client; role is the
+--     one handed in; every other field answers nil (not known), never a
+--     guess.
 --       role       the role you chose (the setting D.ROLE), when it is
 --                  "dps", "heal" or "tank" and the pack has a part for it;
 --                  anything else: nil. No talent is read: the rotation
@@ -19,6 +20,16 @@ local _, ns = ...
 --                  true for a target that is there, hostile and alive; false
 --                  when any of the three was read the other way; nil for
 --                  anything else, or when the client has no such read
+--       buffs      client.playerBuffs() as it answered: { [name] = seconds
+--                  left or true }, {} for read and none, nil when not known
+--                  or the client has no such read
+--       form       client.formName(): the form name, or nil for no form
+--                  and for not known alike (the snapshot cannot tell the
+--                  two apart; a rule uses form only as a yes)
+--       current    { [spell name] = true or false } over the pack's spell
+--                  ids, from client.currentSpell(id); a spell whose answer
+--                  was not read is left out; nil when the client has no
+--                  such read or no spell was read
 --       spells     each row also gets inRange = client.inRange(spell id)
 --                  when the client has that read and the answer is true or
 --                  false; otherwise range stays not known
@@ -88,6 +99,21 @@ local function hostileOf(client)
     return nil
 end
 
+-- What is queued or toggled on, by spell name: only answers read as yes
+-- or no are kept; nil when nothing could be read (section 183).
+local function currentOf(client, ids)
+    if type(client.currentSpell) ~= "function" or type(ids) ~= "table" then return nil end
+    local out, any = {}, false
+    for name, id in pairs(ids) do
+        local asked, on = pcall(client.currentSpell, id)
+        if asked and type(on) == "boolean" then
+            out[name] = on
+            any = true
+        end
+    end
+    return any and out or nil
+end
+
 -- The pack's spell rows, each with its range when the client can tell.
 local function spellRows(client, pack, ids)
     local rows = RR.SpellRows(pack, ids, client.spell, client.spellCooldown).rows
@@ -117,6 +143,16 @@ function D.Read(client, pack, ids, role)
         end
         if field == "hostile" then return hostileOf(client) end
         if field == "spells" then return spellRows(client, pack, ids) end
+        if field == "buffs" then
+            if type(client.playerBuffs) ~= "function" then return nil end
+            return client.playerBuffs()
+        end
+        if field == "form" then
+            if type(client.formName) ~= "function" then return nil end
+            local name = client.formName()
+            return type(name) == "string" and name or nil
+        end
+        if field == "current" then return currentOf(client, ids) end
         return nil
     end
 end

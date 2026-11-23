@@ -21,7 +21,7 @@ local R = ns.Rotation
 
 -- kind: "flag" (true or false, nil when not given), "value" (kept as given, nil when not given),
 -- "number" (a number, else nil: an unread number stays unknown, never 0),
--- "map" (a table of plain values, copied), "spells" (the spell rows).
+-- "map" (a table of plain values, copied; nil when not read), "spells" (the spell rows).
 R.SNAPSHOT_FIELDS = {
     { "inCombat", "flag" }, { "hostile", "flag" }, { "resting", "flag" }, { "dead", "flag" },
     { "role", "value" }, { "tree", "value" }, { "fightType", "value" },
@@ -88,7 +88,12 @@ local function shape(kind, v)
         return v and true or false
     end
     if kind == "number" then return type(v) == "number" and v or nil end
-    if kind == "map" then return copyMap(v) end
+    -- A map nobody read stays nil (not known), never an empty map: an empty
+    -- map says "read, and nothing there" (section 183).
+    if kind == "map" then
+        if type(v) ~= "table" then return nil end
+        return copyMap(v)
+    end
     if kind == "spells" then return copySpells(v) end
     if type(v) == "table" or type(v) == "function" then return nil end
     return v

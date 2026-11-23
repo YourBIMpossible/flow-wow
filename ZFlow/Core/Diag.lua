@@ -362,6 +362,15 @@ function Diag.Collect(k, why)
     end
     S.spellByName = ask(client, "C_Spell.GetSpellInfo", "Attack")
     S.aura1 = ask(client, "C_UnitAuras.GetAuraDataByIndex", "player", 1, "HELPFUL")
+    -- Section 183 (C1, C5): the reads the rotation now takes, so one game
+    -- session can show them. 6603 as the Attack spell id is a first guess.
+    S.auraOld1 = ask(client, "UnitBuff", "player", 1, "HELPFUL")
+    if S.form.ok and type(S.form.values.v1) == "number" and S.form.values.v1 > 0 then
+        S.formInfo = ask(client, "GetShapeshiftFormInfo", S.form.values.v1)
+    end
+    S.currentAttack = ask(client, "IsCurrentSpell", 6603)
+    S.currentAttackNew = ask(client, "C_Spell.IsCurrentSpell", 6603)
+    S.gcd = ask(client, "C_Spell.GetSpellCooldown", 61304)
     S.professions = ask(client, "GetProfessions")
     if S.professions.ok and type(S.professions.values.v1) == "number" then
         S.profession1 = ask(client, "GetProfessionInfo", S.professions.values.v1)

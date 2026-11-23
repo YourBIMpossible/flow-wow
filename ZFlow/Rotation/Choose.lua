@@ -32,7 +32,9 @@ local _, ns = ...
 --   buffs         { [name] = secondsLeft or true }   on you
 --   targetDebuffs { [name] = true }                  yours, on the target
 --   debuffTypes   { [type] = debuffName }            on you ("Poison", "Curse")
---   current       { [spell] = true }                 queued or toggled on (Attack, Maul)
+--   current       { [spell] = true or false }        queued or toggled on (Attack, Maul)
+--     each of the four maps is nil when not read: a rule that needs one
+--       does not fire on nil (section 183). An empty map is read, nothing there.
 --   spells        { [name] = { known, usable, onCooldown, inRange, noPower, castMs } }
 --     onCooldown not known (nil): the spell is not castable; it is not read
 --       as off cooldown.
@@ -230,6 +232,9 @@ function steps.heal(s, pack, prefs, _, unread)
     for _, h in ipairs(heals) do
         if h == s.casting then return nil, "already casting a heal" end
     end
+    -- Buffs not read: a heal over time may already be on, so none is
+    -- suggested; the direct heals below still run (section 183).
+    local buffsKnown = type(s.buffs) == "table"
     local buffs = s.buffs or {}
     unread = unread or {}
     local function ok(sp) return allowed(prefs, sp) and ready(s, sp, nil, unread) end
@@ -252,7 +257,7 @@ function steps.heal(s, pack, prefs, _, unread)
     for _, sp in ipairs(pack.heals.hots or {}) do
         isHot[sp] = true
         if buffs[sp] then ticking = true
-        elseif not hot and ok(sp) then hot = sp end
+        elseif buffsKnown and not hot and ok(sp) then hot = sp end
     end
     local lingering, again = {}, nil
     for sp in pairs(pack.heals.lingers or {}) do
