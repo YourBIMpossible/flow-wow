@@ -129,6 +129,15 @@ local function visit(t, c)
     return lines, word
 end
 
+-- The prompt is raised only at the bank (sections 340/341): read it during a
+-- short visit.
+local function promptAtBank(c, addon)
+    c.setBankOpen(true)
+    local text = promptOf(addon)
+    c.setBankOpen(false)
+    return text
+end
+
 local function bumpBags(c)
     c.fire("BAG_UPDATE_DELAYED")
     c.advance(1, 5)
@@ -140,7 +149,8 @@ tests["bank reservations: the reserved part stays, the free part goes to the ban
     t.ok(has(lines, "12 x Linen Cloth: kept for later"), "the free 12 to the bank: " .. joined(lines))
     t.ok(not has(lines, "20 x Linen Cloth: kept for later"), "not all 20")
     t.ok(has(lines, ns.ItemPresent.HELD_HEADER) and has(lines, "8 x Linen Cloth"), "8 held: " .. joined(lines))
-    t.eq(promptOf(addon), "1 kind of item to put in the bank.", "the prompt counts the same rows")
+    -- The prompt names the items now and is read at the bank (sections 340/341).
+    t.eq(promptAtBank(c, addon), "Bank: Linen Cloth x12", "the prompt names the same rows")
 end
 
 tests["bank reservations: a goal that holds every stack leaves nothing to bank"] = function(t)
@@ -148,7 +158,7 @@ tests["bank reservations: a goal that holds every stack leaves nothing to bank"]
     local lines = visit(t, c)
     t.ok(has(lines, ns.ItemPresent.NOTHING_TO_BANK), joined(lines))
     t.ok(has(lines, "20 x Linen Cloth"), "all 20 held, never more than the bags have: " .. joined(lines))
-    t.eq(promptOf(addon), nil, "no prompt")
+    t.eq(promptAtBank(c, addon), nil, "no prompt")
 end
 
 tests["bank reservations: two goals on one item hold their sum, counted once"] = function(t)
@@ -167,13 +177,14 @@ tests["bank reservations: a goal made, changed and dropped; nothing stale"] = fu
     -- Made.
     goals[1] = { owner = "goal:bolts", item = LINEN, count = 20 }
     bumpBags(c)
-    t.eq(promptOf(addon), nil, "the prompt follows at the next bag event")
+    t.eq(promptAtBank(c, addon), nil, "the prompt follows the goal at the bank")
     lines = visit(t, c)
     t.ok(has(lines, ns.ItemPresent.NOTHING_TO_BANK), "all held now: " .. joined(lines))
     -- Changed.
     goals[1].count = 5
     bumpBags(c)
-    t.eq(promptOf(addon), "1 kind of item to put in the bank.")
+    -- Named and read at the bank now (sections 340/341).
+    t.eq(promptAtBank(c, addon), "Bank: Linen Cloth x15")
     lines = visit(t, c)
     t.ok(has(lines, "15 x Linen Cloth: kept for later") and has(lines, "5 x Linen Cloth"), joined(lines))
     -- Dropped.
@@ -277,7 +288,8 @@ tests["bank reservations: a saved goal holds its count, the rest goes to the ban
     local lines = visit(t, c)
     t.ok(has(lines, "12 x Linen Cloth: kept for later"), "the free 12 to the bank: " .. joined(lines))
     t.ok(has(lines, ns.ItemPresent.HELD_HEADER) and has(lines, "8 x Linen Cloth"), "8 held: " .. joined(lines))
-    t.eq(promptOf(addon), "1 kind of item to put in the bank.")
+    -- Named and read at the bank now (sections 340/341).
+    t.eq(promptAtBank(c, addon), "Bank: Linen Cloth x12")
 end
 
 tests["bank reservations: a goal added with the goal word holds at the next look"] = function(t)
@@ -288,7 +300,8 @@ tests["bank reservations: a goal added with the goal word holds at the next look
     bumpBags(c)
     lines = visit(t, c)
     t.ok(has(lines, "12 x Linen Cloth: kept for later") and has(lines, "8 x Linen Cloth"), joined(lines))
-    t.eq(promptOf(addon), "1 kind of item to put in the bank.")
+    -- Named and read at the bank now (sections 340/341).
+    t.eq(promptAtBank(c, addon), "Bank: Linen Cloth x12")
 end
 
 -- The sell side (UI/SellList.lua, one evaluation per merchant visit) holds

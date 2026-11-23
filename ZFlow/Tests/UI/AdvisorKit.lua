@@ -14,6 +14,10 @@ local _, ns = ...
 local A = ns.Advisor
 local tests = {}
 
+-- The plain panel's first line is the advisor's title since lead sections
+-- 340/341 (the owner saw an untitled box): the lines below start with it.
+local TITLE = ns.id.title .. ": Advice"
+
 local ID = "Advisor"
 
 -- opts: setting (true: the row is declared), noFrames, kitFails (how many
@@ -153,10 +157,10 @@ tests["advisor kit: a refused kit window hands over to the plain panel, with one
     t.ok(p ~= nil, "the plain panel")
     if p == nil then return end
     t.eq(p.shown, true, "shown in its place")
-    t.eq(p.lines, { "A prompt." })
+    t.eq(p.lines, { TITLE, "A prompt." })
     t.eq(hostProblems(k), 1, "one line says the plain panel is used")
     api.Add("b", "Another.", 2)
-    t.eq(p.lines, { "Another.", "A prompt." }, "and it goes on drawing")
+    t.eq(p.lines, { TITLE, "Another.", "A prompt." }, "and it goes on drawing")
     t.eq(hostProblems(k), 1, "said once")
 end
 

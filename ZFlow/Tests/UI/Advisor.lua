@@ -11,6 +11,10 @@ local _, ns = ...
 local A = ns.Advisor
 local tests = {}
 
+-- The plain panel's first line is the advisor's title since lead sections
+-- 340/341 (the owner saw an untitled box): the lines below start with it.
+local TITLE = ns.id.title .. ": Advice"
+
 -- opts: setting (true / false / nil: no row declared), noFrames,
 -- prompts (list of { id, text, priority } the fake source adds at its start).
 local function start(opts)
@@ -73,7 +77,7 @@ tests["advisor panel: prompts from another module show, highest priority first"]
     t.ok(type(source.advisor) == "table", "the source reached the advisor through its needs")
     local p = panelOf(c)
     t.eq(p.shown, true, "shown")
-    t.eq(p.lines, {
+    t.eq(p.lines, { TITLE,
         "Bank your reagents at the next banker.",
         "Your gear is badly damaged: repair at the next vendor.",
     }, "priority 50 above priority 20")
@@ -83,9 +87,9 @@ tests["advisor panel: equal priority keeps the order added; adding an id again r
     local _, c, api = start()
     t.eq(api.Add("a", "First.", 10), true)
     t.eq(api.Add("b", "Second.", 10), true)
-    t.eq(panelOf(c).lines, { "First.", "Second." }, "added order on a tie")
+    t.eq(panelOf(c).lines, { TITLE, "First.", "Second." }, "added order on a tie")
     t.eq(api.Add("a", "First, changed.", 5), true)
-    t.eq(panelOf(c).lines, { "Second.", "First, changed." }, "replaced text and priority, no second line")
+    t.eq(panelOf(c).lines, { TITLE, "Second.", "First, changed." }, "replaced text and priority, no second line")
     t.eq(#api.List(), 2, "still two prompts")
 end
 
@@ -94,7 +98,7 @@ tests["advisor panel: Remove takes a prompt back, and the last one hides the pan
     api.Add("a", "First.", 1)
     api.Add("b", "Second.", 2)
     t.eq(api.Remove("b"), true, "removed")
-    t.eq(panelOf(c).lines, { "First." })
+    t.eq(panelOf(c).lines, { TITLE, "First." })
     t.eq(api.Remove("b"), false, "an id that is not there")
     t.eq(api.Remove("a"), true)
     t.eq(panelOf(c).shown, false, "hidden when empty")
@@ -121,7 +125,7 @@ tests["advisor panel: a missing priority is 0; bad arguments are refused and cha
         t.ok(type(why) == "string" and why ~= "", "with a reason: case " .. i)
     end
     t.eq(#api.List(), 1, "only the good one")
-    t.eq(panelOf(c).lines, { "No priority given." })
+    t.eq(panelOf(c).lines, { TITLE, "No priority given." })
     local ok = api.Remove(nil)
     t.eq(ok, false, "Remove(nil) is refused")
 end
@@ -131,8 +135,9 @@ tests["advisor panel: it lists at most MAX_SHOWN prompts and says how many more 
     local n = A.MAX_SHOWN + 2
     for i = 1, n do api.Add("p" .. i, "Prompt " .. i .. ".", i) end
     local lines = panelOf(c).lines
-    t.eq(#lines, A.MAX_SHOWN + 1, "the shown prompts and one more line")
-    t.eq(lines[1], "Prompt " .. n .. ".", "the highest first")
+    t.eq(lines[1], TITLE, "the title first (sections 340/341)")
+    t.eq(#lines, A.MAX_SHOWN + 2, "the title, the shown prompts and one more line")
+    t.eq(lines[2], "Prompt " .. n .. ".", "the highest first")
     t.eq(lines[#lines], "and 2 more", "the rest are counted")
     t.eq(#api.List(), n, "List holds every prompt")
 end
@@ -154,7 +159,7 @@ tests["advisor panel: advisor.panel off hides it at once and keeps the prompts"]
     t.eq(#api.List(), 2, "both kept")
     k.settings:set(A.SETTING, true)
     t.eq(panelOf(c).shown, true, "shown again when turned on")
-    t.eq(panelOf(c).lines, { "Another.", "A prompt." })
+    t.eq(panelOf(c).lines, { TITLE, "Another.", "A prompt." })
 end
 
 tests["advisor panel: off from the start never shows"] = function(t)
@@ -179,7 +184,7 @@ tests["advisor panel: a prompt added before login shows once the panel starts"] 
     c.fire("PLAYER_ENTERING_WORLD")
     local p = panelOf(c)
     t.eq(p.shown, true, "shown at start")
-    t.eq(p.lines, { "Added while files load." })
+    t.eq(p.lines, { TITLE, "Added while files load." })
 end
 
 tests["advisor panel: a client that cannot draw still keeps the prompts"] = function(t)
@@ -246,7 +251,7 @@ tests["advisor panel: Watch refuses a non-function; a watcher that raises breaks
     api.Watch(function() error("boom") end)
     api.Watch(function(id) after[#after + 1] = id end)
     t.eq(api.Add("a", "First.", 1), true, "still added")
-    t.eq(panelOf(c).lines, { "First." }, "still shown")
+    t.eq(panelOf(c).lines, { TITLE, "First." }, "still shown")
     t.eq(after, { "a" }, "the next watcher still hears it")
 end
 
