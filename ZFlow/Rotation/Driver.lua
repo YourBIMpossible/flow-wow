@@ -169,6 +169,42 @@ local function roleIn(pack, role)
     return role
 end
 
+-- Section 226 (CF-30): the best Well Fed food in your bags for your role
+-- (Rotation/BuffFood.lua), { name, item, score }; {} when the bags were read
+-- and hold none; nil when the bags, or the facts or tooltip of a food in
+-- them, could not be read. Food is consumable class 0, subclass 5; Well Fed
+-- food is food whose tooltip says well fed.
+local function buffFoodOf(client, pack, role)
+    local BF = ns.BuffFood
+    if type(BF) ~= "table" or type(client.bagItems) ~= "function" or type(client.itemInfo) ~= "function"
+        or type(client.itemLines) ~= "function" then return nil end
+    local ok, stacks = pcall(client.bagItems)
+    if not ok or type(stacks) ~= "table" then return nil end
+    local mana, as = BF.UsesMana(pack), roleIn(pack, role) or "dps"
+    local foods, seen, unread = {}, {}, false
+    for _, st in ipairs(stacks) do
+        local id = type(st) == "table" and ns.Items.Id(st.item) or nil
+        if id and not seen[id] and (st.count == nil or (type(st.count) == "number" and st.count > 0)) then
+            seen[id] = true
+            local okI, info = pcall(client.itemInfo, id)
+            if not okI or type(info) ~= "table" then
+                unread = true
+            elseif info.classID == BF.CLASS and info.subclassID == BF.SUBCLASS then
+                local okL, lines = pcall(client.itemLines, id)
+                if not okL or type(lines) ~= "table" then
+                    unread = true
+                elseif BF.IsBuffFood(lines) and type(info.name) == "string" and info.name ~= "" then
+                    foods[#foods + 1] = { id = id, name = info.name, score = BF.Score(BF.Gain(lines), as, mana) }
+                end
+            end
+        end
+    end
+    local best = BF.Best(foods)
+    if best then return { name = best.name, item = best.id, score = best.score } end
+    if unread then return nil end
+    return {}
+end
+
 function D.Read(client, pack, ids, role)
     -- Lead section 187: the form is asked of the client once for a read,
     -- and both fields (form, formKnown) come from that one answer.
@@ -221,6 +257,13 @@ function D.Read(client, pack, ids, role)
             return client.pet()
         end
         if field == "conjured" then return conjuredOf(client, pack) end
+        if field == "buffFood" then return buffFoodOf(client, pack, role) end
+        -- P-GATHER: the gathering tracking reads (Rotation/Gather.lua).
+        if field == "tracking" or field == "trackKnown" or field == "professions" or field == "gatherOn" then
+            -- Lead: no "and ... or nil" here; a false answer (the setting off) must stay false.
+            if type(ns.Gather) ~= "table" then return nil end
+            return ns.Gather.Read(client, field)
+        end
         return nil
     end
 end
@@ -250,14 +293,22 @@ function D.Why(snapshot, trace, keys, lockdown)
     if type(keys) == "table" and keys.ok ~= true then
         why.refused, why.reason = keys.refused, keys.reason
     end
-    local last = type(trace) == "table" and trace[#trace] or nil
+    local n = type(trace) == "table" and #trace or 0
+    -- Section 226 (CF-30): food is the step after the rotation. Skipped, its
+    -- row is not the rotation's reason; the row before it is.
+    -- Lead (merge of P-FOOD and P-GATHER): the same holds for "track".
+    while n > 1 and type(trace[n]) == "table" and (trace[n].step == "food" or trace[n].step == "track")
+        and trace[n].result ~= "pick" do
+        n = n - 1
+    end
+    local last = n > 0 and trace[n] or nil
     -- Lead section 187: with nothing picked, the reason shown is the last
     -- step that was stopped by a read nobody gave ("not known ..."), not
     -- the step after it. A list that had rules ready but could not read
     -- their range was followed by "nothing out of range", and that was
     -- what the player was told.
     if type(last) == "table" and last.result ~= "pick" then
-        for i = #trace, 1, -1 do
+        for i = n, 1, -1 do
             local row = trace[i]
             if type(row) == "table" and type(row.note) == "string" and row.note:find("not known", 1, true) then
                 last = row

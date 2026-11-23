@@ -929,6 +929,28 @@ function ns.make.fakeClient(opts)
     -- Item facts by item ID, each as client.itemInfo() gives it; nil: the
     -- client says nothing about any item.
     function c.setItemInfo(map) s.itemInfo = map end
+    -- Section 226 (CF-30): an item's tooltip text and icon by item ID, as
+    -- client.itemLines() and client.itemTexture() give them; nil: not read.
+    function c.setItemLines(id, lines)
+        s.itemLines = s.itemLines or {}
+        s.itemLines[id] = type(lines) == "table" and lines or nil
+    end
+    function c.itemLines(item)
+        local id = ns.Items and ns.Items.Id(item) or item
+        local lines = s.itemLines and s.itemLines[id] or nil
+        if type(lines) ~= "table" then return nil end
+        local out = {}
+        for i = 1, #lines do out[i] = lines[i] end
+        return out
+    end
+    function c.setItemTexture(id, tex)
+        s.itemTextures = s.itemTextures or {}
+        s.itemTextures[id] = tex
+    end
+    function c.itemTexture(item)
+        local id = ns.Items and ns.Items.Id(item) or item
+        return s.itemTextures and s.itemTextures[id] or nil
+    end
     -- { [slot] = { cur =, max = } } as client.durability() gives it; nil:
     -- not known.
     function c.setDurability(readings) s.durability = readings end
@@ -1763,6 +1785,24 @@ function ns.make.fakeClient(opts)
     -- Anything else is left out (not known). With exists false the rest is
     -- dropped.
     local PET_MOODS = { unhappy = true, content = true, happy = true }
+    -- P-GATHER. c.setTracking(spell, on): true / false; nil: not known.
+    -- c.setProfessions({ name, ... }) or nil: not read.
+    function c.tracking(spell) return s.trackingOn and s.trackingOn[spell] end
+    function c.setTracking(spell, on)
+        s.trackingOn = s.trackingOn or {}
+        if on == nil then s.trackingOn[spell] = nil else s.trackingOn[spell] = on and true or false end
+    end
+    function c.professions()
+        if not s.professions then return nil end
+        local out = {}
+        for k, v in pairs(s.professions) do out[k] = v end
+        return out
+    end
+    function c.setProfessions(list)
+        if type(list) ~= "table" then s.professions = nil return end
+        s.professions = {}
+        for _, name in ipairs(list) do s.professions[name] = true end
+    end
     function c.setPet(r)
         if type(r) ~= "table" or type(r.exists) ~= "boolean" then
             s.pet = nil
