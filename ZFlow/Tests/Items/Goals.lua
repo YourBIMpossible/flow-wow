@@ -114,12 +114,13 @@ tests["goals: a malformed goal is skipped and counted, the rest still claim"] = 
         { item = LINEN, count = 0 },                -- no count
         { item = LINEN, count = 2.5 },              -- not a whole count
         { item = LINEN },                           -- no count at all
-        { item = BOLT, count = 2, recipe = "unknown" },   -- recipe not known
+        { item = BOLT, count = 2, recipe = "unknown" },   -- recipe not known: the item (section 225, GS-2)
     }
     local claims, skipped = G.Claims(snap(), goals)
-    t.eq(skipped, 6)
-    t.eq(#claims, 1)
+    t.eq(skipped, 5)
+    t.eq(#claims, 2)
     t.eq(claims[1].amount, 8)
+    t.eq(claims[2].key, BOLT)
 end
 
 tests["goals: no list, an empty list or a list that is not a table claims nothing"] = function(t)
@@ -197,7 +198,6 @@ end
 tests["goals: a skipped goal gives no reservations to sell on, bags read"] = function(t)
     local cases = {
         { label = "only an entry that can't be read", goals = { "junk" } },
-        { label = "a recipe goal", goals = { { item = BOLT, count = 2, recipe = "Bolt of Linen Cloth" } } },
         { label = "a goal and an entry that can't be read", goals = { { item = LINEN, count = 8 }, "junk" } },
     }
     for _, case in ipairs(cases) do
@@ -303,7 +303,7 @@ end
 tests["goal list: the goals in the order set, and what could not be read"] = function(t)
     local c = start({ { item = POTION, count = 2 }, { item = LINEN, count = 8 }, "junk" })
     t.eq(say(c, "list"), { "Your goals (2):", "2 x Lesser Healing Potion", "8 x Linen Cloth",
-                           "1 saved goal could not be read and is skipped." })
+                           ns.ItemGoals.Unread(1) })
     t.eq(say(c, ""), say(c, "list"), "the bare word lists too")
 end
 
@@ -329,6 +329,165 @@ tests["goal: a change is seen by the next evaluation"] = function(t)
     t.eq(addon.Reservations.HeldIn(addon.Reservations.Grants(r), "bags"):Held(LINEN), 8)
     say(c, "remove 2589")
     t.eq(addon.reservations.Current().status, addon.Reservations.NONE)
+end
+
+-------------------------------------------------------------------------------
+-- Sections 223 and 225: zflow-goals-word
+-------------------------------------------------------------------------------
+
+-- G-4 (i). Fails before the repair: add wrote a new list over the value.
+tests["goal add/remove: a saved value that is no list is refused, and left as it is"] = function(t)
+    local c = start("junk")
+    t.eq(say(c, "add 2589 8"), { ns.ItemGoals.UNREADABLE })
+    t.eq(say(c, "remove 2589"), { ns.ItemGoals.UNREADABLE })
+    t.eq(saved(c), "junk", "not written over")
+end
+
+-- G-4 (ii). Fails before the repair: only 1..#raw was written back, so the
+-- entry past the hole and the named one were lost.
+tests["goal add/remove: entries past a hole or under a name are kept"] = function(t)
+    local c = start({ { item = LINEN, count = 8 }, [5] = "junk", named = { item = BOLT, count = 1 } })
+    local lines = say(c, "add 858 2")
+    t.eq(lines[1], "Goal set: keep 2 x Lesser Healing Potion.")
+    t.eq(saved(c), { { item = LINEN, count = 8 }, "junk", { item = POTION, count = 2 },
+                     named = { item = BOLT, count = 1 } })
+    say(c, "remove 2589")
+    t.eq(saved(c), { "junk", { item = POTION, count = 2 }, named = { item = BOLT, count = 1 } })
+end
+
+-- G-4 (iii). Fails before the repair: each goal was rebuilt from item,
+-- count and recipe, so anything else it held was lost.
+tests["goal add/remove: a goal keeps what else its entry holds"] = function(t)
+    local c = start({ { item = LINEN, count = 8, note = "mine" }, { item = POTION, count = 2, when = 5 },
+                      { item = BOLT, count = 1, when = 6 } })
+    say(c, "add 2589 9")
+    t.eq(saved(c), { { item = LINEN, count = 9, note = "mine" }, { item = POTION, count = 2, when = 5 },
+                     { item = BOLT, count = 1, when = 6 } })
+    say(c, "remove 2996")
+    t.eq(saved(c), { { item = LINEN, count = 9, note = "mine" }, { item = POTION, count = 2, when = 5 } })
+end
+
+-- G-5. Fails before the repair: add set the first and left the second, and
+-- remove took off only the first.
+tests["goal add/remove: a goal saved twice is set once and removed whole"] = function(t)
+    local function twice()
+        return { { item = LINEN, count = 8 }, { item = POTION, count = 2 }, { item = LINEN, count = 3 } }
+    end
+    local c = start(twice())
+    t.eq(say(c, "add 2589 5"), { "Goal set: keep 5 x Linen Cloth." })
+    t.eq(saved(c), { { item = LINEN, count = 5 }, { item = POTION, count = 2 } }, "one Linen goal")
+    local c2 = start(twice())
+    t.eq(say(c2, "remove 2589"), { "Linen Cloth is off your goals." })
+    t.eq(saved(c2), { { item = POTION, count = 2 } }, "no Linen goal left")
+end
+
+-- G-6. Fails before the repair: tonumber took "0x10" as 16 and "1e3" as
+-- 1000, and there was no most.
+tests["goal add: a count is digits only and no more than the most"] = function(t)
+    local G = ns.ItemGoals
+    local c = start(nil)
+    for _, n in ipairs({ "0x10", "1e3", "8.0", "+8", tostring(G.MAX_COUNT + 1), "99999999999999999999" }) do
+        t.eq(say(c, "add 2589 " .. n), { G.USAGE }, "count " .. n)
+    end
+    t.eq(saved(c), nil, "nothing written")
+    t.eq(say(c, "add 2589 " .. G.MAX_COUNT), { "Goal set: keep " .. G.MAX_COUNT .. " x Linen Cloth." })
+end
+
+-- G-7. Fails before the repair: Items.Key took any text holding "item:",
+-- the first of two links, and a typed "2589:7" as an item with a suffix.
+tests["goal add/remove: the item is an ID or one link, nothing more"] = function(t)
+    local c = start(nil)
+    local usage = ns.ItemGoals.USAGE
+    for _, what in ipairs({ "2589:7", "item:2589", "linen " .. LINK, LINK .. " linen", LINK .. LINK }) do
+        t.eq(say(c, "add " .. what .. " 3"), { usage }, "add " .. what)
+        t.eq(say(c, "remove " .. what), { usage }, "remove " .. what)
+    end
+    t.eq(saved(c), nil, "nothing written")
+    t.eq(say(c, "add " .. LINK .. " 3"), { "Goal set: keep 3 x Linen Cloth." })
+    t.eq(say(c, "add 2589 4"), { "Goal set: keep 4 x Linen Cloth." })
+    t.eq(say(c, "remove " .. LINK), { "Linen Cloth is off your goals." })
+end
+
+-- G-8 and GS-2. Fails before the repair: the recipe part was printed as it
+-- was saved, so a "|" in it started a colour or a link.
+tests["goal list: a recipe part is shown as not used yet, made safe for chat"] = function(t)
+    local long = string.rep("x", 60)
+    local c = start({ { item = BOLT, count = 2, recipe = "a|cffff0000red|r\nb" },
+                      { item = BOLT, count = 1, recipe = long } })
+    t.eq(say(c, "list"), { "Your goals (2):",
+        "2 x Bolt of Linen Cloth (recipe part not used yet: a||cffff0000red||rb)",
+        "1 x Bolt of Linen Cloth (recipe part not used yet: "
+            .. string.rep("x", ns.ItemGoals.RECIPE_MAX) .. "...)" })
+end
+
+-- GS-2. Fails before the repair: a goal whose recipe Z-Flow does not know
+-- was skipped, so it held nothing and the status was "unavailable".
+tests["goals: a recipe Z-Flow does not know is read as the item and count"] = function(t)
+    local G = ns.ItemGoals
+    local claims, skipped = G.Claims(snap(), { { item = BOLT, count = 2, recipe = "Bolt of Linen Cloth" } })
+    t.eq(skipped, 0)
+    t.eq(#claims, 1)
+    t.eq(claims[1].kind, "item")
+    t.eq(claims[1].key, BOLT)
+    t.eq(claims[1].amount, 2)
+    t.eq(claims[1].owner, "goal:" .. BOLT)
+    t.eq(claims[1].selected, true)
+    local _, addon = start({ { item = BOLT, count = 2, recipe = "Bolt of Linen Cloth" }, { item = LINEN, count = 8 } })
+    local r = addon.reservations.Current()
+    t.eq(r.status, addon.Reservations.OK, "the goals are read")
+    t.eq(addon.Reservations.HeldIn(addon.Reservations.Grants(r), "bags"):Held(LINEN), 8)
+end
+
+-- GS-1. Fails before the repair: there was no clean word, so an entry that
+-- can't be read blocked sell advice with no way to remove it.
+tests["goal clean: removes what can't be read and keeps the goals"] = function(t)
+    local c, addon = start({ "junk", { item = LINEN, count = 8 }, named = { item = BOLT, count = 1 } })
+    t.eq(addon.reservations.Current().status, addon.Reservations.UNAVAILABLE, "blocked before")
+    t.eq(say(c, "clean"), { "Removed 2 saved goals that could not be read. Your other goals are kept." })
+    t.eq(saved(c), { { item = LINEN, count = 8 } })
+    local r = addon.reservations.Current()
+    t.eq(r.status, addon.Reservations.OK, "sell advice again")
+    t.eq(addon.Reservations.HeldIn(addon.Reservations.Grants(r), "bags"):Held(LINEN), 8)
+    t.eq(say(c, "clean"), { ns.ItemGoals.CLEAN_NONE }, "nothing left to clean")
+    t.eq(say(c, "clean now"), { ns.ItemGoals.USAGE })
+end
+
+tests["goal clean: a value that is no list is cleared; a goal past a hole is put back"] = function(t)
+    local c, addon = start("junk")
+    t.eq(say(c, "clean"), { "Removed 1 saved goal that could not be read. Your other goals are kept." })
+    t.eq(saved(c), {})
+    t.eq(addon.reservations.Current().status, addon.Reservations.NONE)
+    local c2, addon2 = start({ { item = LINEN, count = 8 }, [5] = { item = POTION, count = 2 } })
+    t.eq(addon2.reservations.Current().status, addon2.Reservations.UNAVAILABLE, "blocked before")
+    t.eq(say(c2, "clean"), { ns.ItemGoals.CLEAN_ORDER })
+    t.eq(saved(c2), { { item = LINEN, count = 8 }, { item = POTION, count = 2 } })
+    t.eq(addon2.reservations.Current().status, addon2.Reservations.OK)
+end
+
+-- GS-3. Fails before the repair: add and remove said nothing of an entry
+-- left that can't be read, and the list line did not say what it blocks.
+tests["goal add/remove: the reply says when saved goals can't be read, and how to clear them"] = function(t)
+    local G = ns.ItemGoals
+    local c = start({ "junk", { item = LINEN, count = 8 } })
+    t.eq(say(c, "add 858 2"), { "Goal set: keep 2 x Lesser Healing Potion.", G.Unread(1) })
+    t.eq(say(c, "remove 858"), { "Lesser Healing Potion is off your goals.", G.Unread(1) })
+    for _, n in ipairs({ 1, 2 }) do
+        local line = G.Unread(n)
+        t.ok(line:find("no sell advice", 1, true), line)
+        t.ok(line:find(ns.id.slash .. " goal clean", 1, true), line)
+    end
+end
+
+-- GS-4. Pins the recovery after G-1; expected to pass before the repair
+-- too: before login the status is "unavailable", and once the store opens
+-- with no goal it is "none".
+tests["goals: unavailable before login, then none once the store opens with no goal"] = function(t)
+    local c, addon = unopened(nil)
+    t.eq(addon.Reservations.Evaluate(READ).status, addon.Reservations.UNAVAILABLE, "store not open")
+    c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
+    c.advance(5, 20)
+    t.ok(type(addon.store) == "table" and addon.store.opened, "the store is open")
+    t.eq(addon.Reservations.Evaluate(READ).status, addon.Reservations.NONE, "no goal: none")
 end
 
 return tests

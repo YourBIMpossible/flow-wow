@@ -987,4 +987,45 @@ tests["seen N2: made up that cannot be shown says not known; refusals do not off
     t.ok(not tostring(why):find("madeUp", 1, true), "nor this one: " .. tostring(why))
 end
 
+-- Lead section 223, MyBuddy's SP-1, SP-2, SP-3, SP-5 on 7108f8b. Every
+-- name here is made up.
+local function noName(t, got, why)
+    local low = tostring(got):lower()
+    t.ok(not low:find("zzyx", 1, true) and not low:find("owner", 1, true), why .. ": no piece of the name: " .. tostring(got))
+end
+
+tests["seen paths SP-1: a home folder after a blank or a line break is a home folder too"] = function(t)
+    local got = parts.paths("chat: cannot open home/zzyx.owner: denied")
+    noName(t, got, "after a blank")
+    t.ok(tostring(got):find("denied", 1, true) ~= nil, "the rest of the line stays")
+    noName(t, parts.paths("chat: one\nUsers/zzyx.owner: denied"), "after a line break")
+    noName(t, parts.paths("chat: one\tUsers/zzyx.owner: denied"), "after a tab")
+end
+
+tests["seen paths SP-2: Documents and Settings is a home folder"] = function(t)
+    local got = parts.paths("diag: C:\\Documents and Settings\\zzyx.owner: denied")
+    noName(t, got, "Documents and Settings")
+    t.eq(got, "diag: <path>/: denied")
+end
+
+tests["seen paths SP-3: a tab or a double quote ends the name; the rest of the line stays"] = function(t)
+    local got = parts.paths("chat: cannot open /home/zzyx\tthen more")
+    noName(t, got, "a tab")
+    t.ok(tostring(got):find("then more", 1, true) ~= nil, "what follows the tab stays: " .. tostring(got))
+    got = parts.paths('chat: open "/home/zzyx" failed')
+    noName(t, got, "a double quote")
+    t.ok(tostring(got):find("failed", 1, true) ~= nil, "what follows the quote stays: " .. tostring(got))
+end
+
+tests["seen SP-5: an add-on table with no kept snapshot does not show made up"] = function(t)
+    local lines = select(2, seen(ns.make.fakeClient(), {}, MADE_UP))
+    t.eq(type(lines) == "table" and lines[2], UNPROVEN_LINE, "an empty add-on table: not known")
+    lines = select(2, seen(ns.make.fakeClient(), { id = { accountDB = "ZzSeenNoSnapsDB" } }, MADE_UP))
+    t.eq(type(lines) == "table" and lines[2], UNPROVEN_LINE, "an add-on with no saved table: not known")
+    local c = ns.make.fakeClient()
+    c.setSaved("ZzSeenSnapsDB", { diag = { snaps = { { timing = {} } } } })
+    lines = select(2, seen(c, { id = { accountDB = "ZzSeenSnapsDB" } }, MADE_UP))
+    t.eq(type(lines) == "table" and lines[2], MADE_LINE, "a kept snapshot with no character: made up is shown")
+end
+
 return tests

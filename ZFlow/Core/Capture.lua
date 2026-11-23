@@ -595,10 +595,19 @@ function Capture.Mask(line, names, own)
     local items
     line, items = line:gsub("%[[^%]]*%]", "[" .. GAP .. "]")
     hidden = hidden + items
-    line = line:gsub("[%a\128-\255]+", function(word)
+    line = line:gsub("()([%a\128-\255]+)", function(at, word)
         -- As the add-on writes it (MyBuddy CS-4): a name spelt like a word of
-        -- the add-on in another case ("Way" for "way") is not printed.
-        if not word:find("[\128-\255]") and own[word] then return word end
+        -- the add-on in another case ("Way" for "way") is not printed. A
+        -- capitalised own word only at the start of the line or of a
+        -- sentence (C3-2): own words come from every quoted text of the
+        -- add-on, data names too, and inside a line a capitalised word is a
+        -- name. One spelt like an own word at a sentence's start still shows.
+        local keep = not word:find("[\128-\255]") and own[word]
+        if keep and word:find("^%u") then
+            local before = line:sub(1, at - 1)
+            keep = before:find("^%s*$") ~= nil or before:find("[:%.!%?]%s+$") ~= nil
+        end
+        if keep then return word end
         hidden = hidden + 1
         return GAP
     end)
@@ -666,8 +675,15 @@ function Capture.Summarize(c, addon, report, cap, own, features)
         -- MyBuddy CS2-3: each step is guarded; a step that raises is one more
         -- problem on this row, its output left out, and the rest go on.
         local faults = 0
+        -- C3-1: the problems counted around the run, so those a word added
+        -- before a raise in the run stay on the row.
+        local okBefore, before = pcall(problemCount, addon)
         local okRun, lines, added, ran = pcall(Capture.RunFeature, c, addon, feature)
-        if not okRun or type(lines) ~= "table" then lines, added, ran = {}, 0, false end
+        if not okRun or type(lines) ~= "table" then
+            local okAfter, after = pcall(problemCount, addon)
+            added = (okBefore and okAfter) and math.max(after - before, 0) or 0
+            lines, ran = {}, false
+        end
         local masked, hidden = {}, 0
         if feature.fromRows then
             local okRows, got = pcall(Capture.SettingsLines, type(addon) == "table" and addon.settings or nil)

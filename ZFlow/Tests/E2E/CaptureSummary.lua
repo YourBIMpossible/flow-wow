@@ -85,7 +85,8 @@ tests["capture mask: only the add-on's own words and numbers are printed; the re
     t.eq({ Capture.Mask("way: meet fenwick here", {}, OWN) }, { "way: meet _ here", 1 },
         "S1: a lower-case word typed by the player is not printed")
     t.eq({ Capture.Mask("met aldwynne at 3:15", names, OWN) }, { "_ _ _ #:#", 3 }, "a known name, and words not own")
-    t.eq({ Capture.Mask("Then: Talk to Brannoch", {}, OWN) }, { "Then: Talk to _", 1 }, "own words in any case")
+    t.eq({ Capture.Mask("Then: Talk to Brannoch", {}, OWN) }, { "Then: Talk to _", 1 },
+        "own words as written, capitalised ones at the start of a sentence")
     t.eq({ Capture.Mask("sell [Linen Cloth] x4", {}, OWN) }, { "sell [_] _#", 2 })
     t.eq({ Capture.Mask("|cffff0000Kestrelle|r says", {}, OWN) }, { "_ says", 1 }, "colour codes dropped")
     t.eq({ Capture.Mask("from zo\195\171 here", {}, OWN) }, { "from _ here", 1 }, "a byte past ASCII")
@@ -396,6 +397,17 @@ tests["capture summary CS-4: an own word is kept only as the add-on writes it"] 
     local own = ns.offline.ownWords()
     t.ok(own.waypoint == true, "the add-on writes waypoint")
     t.eq(own.WAYPOINT, nil, "as written, not in every case")
+    -- MyBuddy ZCS3-1: a word the add-on writes only capitalised must be in
+    -- the list as written and not in lower case. If the word list were
+    -- lower-cased again there would be no such word, and this fails.
+    local only = nil
+    for word in pairs(own) do
+        if word:find("^%u%l") and own[word:lower()] == nil then
+            only = word
+            break
+        end
+    end
+    t.ok(only ~= nil, "some word is written only capitalised, and kept so")
 end
 
 tests["capture summary CS-5: the temp folder is looked for in more places"] = function(t)
@@ -404,6 +416,48 @@ tests["capture summary CS-5: the temp folder is looked for in more places"] = fu
     for _, dir in ipairs(ns.offline.TEMP_FALLBACK or {}) do fallback[dir] = true end
     t.ok(env.TEMP and env.TMP and env.TMPDIR and env.TEMPDIR, "the usual names")
     t.ok(fallback["/tmp"] and fallback["/var/tmp"], "and the usual folders when none is set")
+end
+
+-- MyBuddy ZCS3-2 / C3-3: tempFile reads the two lists when it runs. With
+-- both empty it finds no folder; with only a fallback that is not there
+-- it finds none either. Fails if tempFile stops reading the lists.
+tests["capture summary CS-5: tempFile follows the lists it is given"] = function(t)
+    local env, fallback = ns.offline.TEMP_ENV, ns.offline.TEMP_FALLBACK
+    ns.offline.TEMP_ENV, ns.offline.TEMP_FALLBACK = {}, {}
+    local none = { ns.offline.tempFile("x") }
+    ns.offline.TEMP_FALLBACK = { "/zz-made-up-folder-that-is-not-there" }
+    local missing = { ns.offline.tempFile("x") }
+    ns.offline.TEMP_ENV, ns.offline.TEMP_FALLBACK = env, fallback
+    t.eq(none, { nil, "no temp folder" }, "no name and no folder: none")
+    t.eq(missing, { nil, "the file did not open" }, "a folder that is not there: none")
+end
+
+-- MyBuddy C3-1: a word that adds problems before RunFeature raises (here
+-- the client's advance) keeps those problems on the row, plus the raise.
+tests["capture summary C3-1: problems added before a raise in the run are kept"] = function(t)
+    local list = {}
+    local addon = { problems = { list = function() return list end } }
+    local c = { printed = {}, advance = function() error("made-up boom") end, slashes = {
+        [ns.id.slash] = function()
+            list[#list + 1] = { kind = "made", owner = "up", count = 1 }
+            list[#list + 1] = { kind = "made", owner = "up2", count = 1 }
+        end } }
+    local rows = Capture.Summarize(c, addon, { set = {} }, {}, {}, { { name = "rotation", words = { "x" } } })
+    t.eq(rows[1].ran, false)
+    t.eq(rows[1].problems, 3, "two added by the word, one for the raise")
+end
+
+-- MyBuddy C3-2: own words come from every quoted text of the add-on, data
+-- names too. A capitalised own word is printed only at the start of a line
+-- or a sentence; inside a line it is a name and is left out.
+tests["capture summary C3-2: a capitalised own word inside a line is not printed"] = function(t)
+    local own = { you = true, met = true, Brannoch = true, here = true }
+    t.eq({ Capture.Mask("you met Brannoch here", {}, own) }, { "you met _ here", 1 },
+        "spelt like a quoted text of the add-on, inside a line: left out")
+    t.eq({ Capture.Mask("Brannoch: here", {}, own) }, { "Brannoch: here", 0 },
+        "at the start of a line: printed (the add-on's own heading words stand there)")
+    t.eq({ Capture.Mask("here. Brannoch met you", {}, own) }, { "here. Brannoch met you", 0 },
+        "at the start of a sentence: printed")
 end
 
 return tests
