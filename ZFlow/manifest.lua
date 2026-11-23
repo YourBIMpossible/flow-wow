@@ -246,5 +246,7 @@ return {
     "Nav/BossKills.lua",
     -- Lead section 318: the Dungeon Quests window, on the kit (after Kit and the dungeon data).
     "UI/DungeonWindow.lua",
+    -- N60a: copy chat text and clickable web addresses in chat (after the settings page).
+    "UI/Chat.lua",
     },
 }
