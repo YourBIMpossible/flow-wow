@@ -39,6 +39,7 @@ return {
         "Items/AuctionLog.lua",
         "UI/CopyBox.lua",
         "UI/Advisor.lua",
+        "UI/Alerts.lua",
         "UI/Setup.lua",
 
         -- Import

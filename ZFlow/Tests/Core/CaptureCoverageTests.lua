@@ -30,7 +30,9 @@ local KIND = {
              "macroPopup",
              -- G60: NPC words read aloud on the player's own speakers, and
              -- stopped; an output like print, not a game action.
-             "speak", "stopSpeech" },
+             "speak", "stopSpeech",
+             -- N68: the one alert sound (output only; changes nothing in the game).
+             "playAlert" },
     tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "slash",
              "slashTaken", "unslash" },
     -- Hands back or runs a sound restart: never asked by the capture.

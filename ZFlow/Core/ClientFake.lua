@@ -2927,6 +2927,22 @@ function ns.make.fakeClient(opts)
             return h
         end
     end
+    -- N68: the alert sound, as the real client's playAlert(). Each sound
+    -- played is recorded; c.setAlertSound({ fail = why }) makes it fail
+    -- with why ("noCall", "raised"), nothing played.
+    local alertsPlayed = {}
+    function c.setAlertSound(opts) s.alertSound = type(opts) == "table" and opts or nil end
+    function c.playAlert()
+        local fail = s.alertSound and s.alertSound.fail
+        if fail then return nil, fail end
+        alertsPlayed[#alertsPlayed + 1] = true
+        return true
+    end
+    function c.alertsPlayed()
+        local out = {}
+        for i = 1, #alertsPlayed do out[i] = alertsPlayed[i] end
+        return out
+    end
     return c
 end
 
