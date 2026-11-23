@@ -60,8 +60,9 @@ end
 tests["spec e2e: every class pack has a levelling recommendation (section 280)"] = function(t)
     local missing = {}
     for _, class in ipairs(CLASSES) do
-        local pack = type(ns.Packs) == "table" and ns.Packs[class] or nil
-        local lv = type(pack) == "table" and pack.levelling or nil
+        local pack, lv
+        if type(ns.Packs) == "table" then pack = ns.Packs[class] end
+        if type(pack) == "table" then lv = pack.levelling end
         if type(lv) ~= "table" then
             missing[#missing + 1] = class
         else
