@@ -785,6 +785,11 @@ function Arrow.Start(k, diag, own)
                 N.ArrowAim(motion[key], { turn = src.turns[key], colour = ops.colour,
                                           arrived = ops.mode == "ring",
                                           bare = (lost or ops.bare or (key == "quest" and saying)) and true or false })
+            else
+                -- A frame taken down says nothing: its last lines do not
+                -- stay on it (the needle's own lines, with the profession
+                -- arrow turned off during play).
+                h.text(nil)
             end
         end
         current = view
