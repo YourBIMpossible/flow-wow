@@ -5,6 +5,7 @@ local _, ns = ...
 -- go out. Nothing here touches a tooltip: whoever shows the lines does.
 --
 --   lines = GearTooltip.Lines(result, use[, opts])
+--   what  = GearTooltip.What(result)   the slot it was held up to, in words
 --
 --   result  what GearScore.Compare answered
 --   use     what GearCanUse.Check answered
@@ -68,6 +69,16 @@ local function line(text, tone)
     return { text = text, tone = tone }
 end
 
+-- What the scorer held the item up to, in words: "your chest", "your main
+-- hand and off hand", or "what you wear" for a slot with no name here.
+function T.What(result)
+    if type(result) ~= "table" then return "what you wear" end
+    if result.pair == true then return "your main hand and off hand" end
+    local place = PLACE[result.slot]
+    if place then return "your " .. place end
+    return "what you wear"
+end
+
 function T.Lines(result, use, opts)
     if type(use) ~= "table" or use.can == nil then
         local reason = type(use) == "table" and words(use.reason) and use.reason or T.REASON.use
@@ -96,13 +107,7 @@ function T.Lines(result, use, opts)
         local reason = verdict == "none" and words(result.reason) and result.reason or T.REASON.result
         lines[1] = line("No verdict: " .. reason, "none")
     else
-        local place = PLACE[result.slot]
-        local what = "what you wear"
-        if result.pair == true then
-            what = "your main hand and off hand"
-        elseif place then
-            what = "your " .. place
-        end
+        local what = T.What(result)
         local role = type(opts) == "table" and words(opts.role) and opts.role or nil
         if verdict == "same" then
             lines[1] = line("Same as " .. what .. (role and (" (" .. role .. ")") or ""), "same")
