@@ -243,7 +243,9 @@ tests["gear sets: a set piece in the bank is not offered for sale by the banker 
     say(c, "set save tank")
     local after = toSell()
     t.ok(not starts(after, "1 x Frayed Cloak"), "the set piece is not offered for sale: " .. joined(after))
-    t.ok(has(after, addon.Banker.NOTHING_TO_SELL), "nothing in the bank to sell: " .. joined(after))
+    -- The nothing-to-sell line has no "In your bank" header, so look in the whole answer.
+    local all = say(c, "banker")
+    t.ok(has(all, addon.Banker.NOTHING_TO_SELL), "nothing in the bank to sell: " .. joined(all))
     -- The bank list's decision context holds it too.
     local d = addon.Disposition.Decide({ key = CLOAK, quality = 0, sellPrice = 4, classID = 4 },
         addon.BankList.Context(addon.store, nil))
