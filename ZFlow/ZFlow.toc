@@ -222,3 +222,4 @@ UI\Chat.lua
 Nav\PartyRoute.lua
 Nav\Trip.lua
 UI\RouteTracker.lua
+Core\AutoEvidence.lua

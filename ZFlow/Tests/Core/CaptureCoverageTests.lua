@@ -427,4 +427,11 @@ end
 KIND.act[#KIND.act + 1] = "addonPrefix"
 KIND.act[#KIND.act + 1] = "addonSend"
 
+-- P-EVIDENCE+ (lead sections 252 and 262, RB4-2): the raw tracking list and
+-- the profession window's header and filter answers, read by
+-- Core/AutoEvidence.lua at login, on MINIMAP_UPDATE_TRACKING and when the
+-- profession window opens or changes; never by the capture.
+READS.trackingRaw = false
+READS.tradeSkillAnswers = false
+
 return tests

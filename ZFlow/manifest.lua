@@ -270,5 +270,7 @@ return {
     "Nav/Trip.lua",
     -- G43 (P-TRIP): the route tracker window and the current step's map pin (after Trip, TripRoute, the kit).
     "UI/RouteTracker.lua",
+    -- P-EVIDENCE+ (sections 252, 262): look-only capture fields saved under diag (after Diag).
+    "Core/AutoEvidence.lua",
     },
 }
