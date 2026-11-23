@@ -54,6 +54,8 @@ ns.SettingsKeys = SK
 SK.NAME = "settingsKeys"
 SK.BUTTON = "RotationKey"
 SK.GROUP = "combat"
+-- S23: the click-casting check's line (UI/ClickCheck.lua), under the rows.
+SK.CLICK_KEY = "keys.clickCheck"
 SK.SYNONYMS = { "key", "keybind", "bind", "binding", "hotkey" }
 -- n: the slot's id; button: the secure button it binds (framePrefix ..
 -- button); index: its place among that button's keys.
@@ -62,6 +64,9 @@ SK.SLOTS = {
     { key = "keys.rotation2", n = 2, button = "RotationKey", index = 2, label = "Rotation second key" },
     { key = "keys.mouseover", n = 3, button = "Mouseover", index = 1, label = "Mouseover key",
       synonyms = { "mouseover", "heal", "cure", "friendly", "key", "bind" }, needs = "mouseover" },
+    -- S12 (P-KEYS slice A): the care key's own button (Rotation/CareKeys.lua).
+    { key = "keys.care", n = 4, button = "CareKey", index = 1, label = "Care key",
+      synonyms = { "care", "heal", "cure", "resurrect", "key", "bind" }, needs = "careKey" },
 }
 SK.IN_USE_KEY = "keys.inUse"
 SK.SECTION = "Keys"
@@ -140,6 +145,24 @@ function SK.New(k)
     -- Why a slot's button cannot take a key now, or nil (section 255: the
     -- mouseover button is made only with its setting on).
     local function needWhy(slot)
+        if slot.needs == "careKey" then
+            local CK = ns.CareKeys
+            if type(CK) ~= "table" then return "There is no care key in this version." end
+            local okCare, care = false, nil
+            if type(k.settings) == "table" then okCare, care = pcall(k.settings.get, k.settings, CK.SETTING) end
+            if not okCare or care ~= true then
+                return "Switch on \"" .. tostring(CK.LABEL) .. "\" first: the care key's button is made only then."
+            end
+            local careApi, careMade = k.careKey, false
+            if type(careApi) == "table" and type(careApi.made) == "function" then
+                local okMade, got = pcall(careApi.made)
+                careMade = okMade and got == true
+            end
+            if not careMade then
+                return "Your care key's button is not made yet: it is made outside a fight with the rotation on."
+            end
+            return nil
+        end
         if slot.needs ~= "mouseover" then return nil end
         local M = ns.Mouseover
         if type(M) ~= "table" then return "There is no mouseover button in this version." end
@@ -352,6 +375,20 @@ function SK.New(k)
         return true
     end
 
+    -- S23 (P-KEYS slice B): the click-casting check's one line
+    -- (UI/ClickCheck.lua), or nil. A read only.
+    local function clickLine()
+        local CC = ns.ClickCheck
+        if type(CC) ~= "table" or client == nil then return nil end
+        local slots = {}
+        for _, slot in ipairs(SK.SLOTS) do
+            slots[#slots + 1] = { label = slot.label, action = action(slot.button), override = keys.overrides[slot.n] }
+        end
+        local ok, line = pcall(function() return CC.Line(CC.Read(client, slots), id.title) end)
+        if ok and type(line) == "string" then return line end
+        return nil
+    end
+
     function keys.rows()
         local lock = lockWhy()
         local byButton = {}
@@ -390,6 +427,10 @@ function SK.New(k)
                 }
             end
         end
+        local click = clickLine()
+        if click ~= nil then
+            out[#out + 1] = { kind = "note", key = SK.CLICK_KEY, text = click, group = SK.GROUP, topic = SK.GROUP }
+        end
         return out
     end
 
@@ -410,6 +451,8 @@ function SK.New(k)
         for _, slot in ipairs(SK.SLOTS) do
             out[#out + 1] = slot.label .. ": " .. shownOf(slot, readKeys(slot.button))
         end
+        local click = clickLine()
+        if click ~= nil then out[#out + 1] = click end
         return out
     end
 

@@ -61,6 +61,10 @@ local KIND = {
     -- lootLine (N55): the item of anyone's loot line, never the looter.
     parse = { "ownLoot", "auctionOutcome", "lootLine" },
 }
+-- S15 click slots and S29 move handle (P-KEYS slice C): a row of secure
+-- buttons, each cast only on the player click, and the grip that moves it.
+KIND.show[#KIND.show + 1] = "clickRow"
+KIND.show[#KIND.show + 1] = "moveHandle"
 
 -- Every read, and whether the capture asks it (true) or not (false).
 local READS = {
@@ -107,6 +111,11 @@ local READS = {
     party = false, reach = false, unitDebuffTypes = false,
     -- N72: the spells for the macro icon search; the capture asks none.
     spellbookIcons = false,
+    -- S12 (P-KEYS slice A): a friend for the care key; the capture asks none.
+    unitCare = false,
+    -- N2 (P-KEYS slice D): the corpse you target; the capture asks it not.
+    -- N20 reads tradeSkillTools, listed above (N24).
+    targetCorpse = false,
 
     -- N55 (the boss loot panel): the boss unit and whether you are in an
     -- instance; read by UI/BossLoot.lua only. The names they ask
@@ -124,6 +133,9 @@ local READS = {
     -- N57: the rotation key's bindings and what a key does; read by the
     -- settings page only. Their names are in Diag.NAMES.
     bindingKeys = false, bindingAction = false,
+    -- S23 (P-KEYS slice B): what a key does with override bindings counted;
+    -- read by the click-casting check line (UI/ClickCheck.lua) only.
+    bindingOverride = false,
 
     -- N67: other add-ons' data at runtime (GatherMate2's nodes, Attune's
     -- progress); read by Nav/AddonSources.lua only. The globals they read
@@ -143,6 +155,11 @@ local READS = {
     -- an open gossip or quest window; read by UI/NpcSpeech.lua only, the
     -- capture asks none. Their names are in Diag.NAMES.
     speech = false, npcText = false,
+    -- N39 and N40 (P-KEYS slice E): the target's name (the no-auto-attack
+    -- list) and the spell it casts (the stop-a-cast advice); read by the
+    -- rotation only, the capture asks neither. Their names (UnitName,
+    -- UnitCastingInfo, UnitChannelInfo) are in Diag.NAMES.
+    targetName = false, targetCast = false,
 
     -- G51: the creature on a nameplate and the quest mark over it; read by
     -- UI/PlateQuests.lua only. Their names (UnitGUID, C_NamePlate.
@@ -252,6 +269,17 @@ tests["capture coverage (a): no listed name is stale or listed twice"] = functio
     end
     for _, list in pairs(KIND) do for _, name in ipairs(list) do one(name) end end
     for name in pairs(READS) do one(name) end
+end
+
+-- SD-1: the first guesses the corpse and tools reads lean on (N2, N20:
+-- c.targetCorpse, c.tradeSkillTools) are saved in the snapshot's names
+-- table, so a normal login records which exist.
+tests["capture coverage (a): the corpse and tools first guesses are in Diag.NAMES"] = function(t)
+    local listed = {}
+    for _, name in ipairs(ns.Diag.NAMES) do listed[name] = true end
+    for _, name in ipairs({ "CanLootUnit", "GetTradeSkillTools", "C_TooltipInfo.GetUnit" }) do
+        t.ok(listed[name], "in Diag.NAMES: " .. name)
+    end
 end
 
 tests["capture coverage (a): every feature read is a listed read"] = function(t)

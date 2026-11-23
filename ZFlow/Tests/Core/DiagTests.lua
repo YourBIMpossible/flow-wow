@@ -756,6 +756,21 @@ return {
         t.eq({ timing.order[5], timing.order[6] }, { "TRADE_SKILL_SHOW", "TRADE_SKILL_CLOSE" })
     end,
 
+    -- SE-2 (P-KEYS slice E, N26): SPELL_PUSHED_TO_ACTIONBAR, which
+    -- Rotation/SpellKeys.lua listens to, is kept in the timing marks so a
+    -- capture shows it fired on the client (a first guess, from the old
+    -- file; an event name is not a global, so Diag.NAMES can not say it).
+    ["windows: the game placing a spell on a bar is marked"] = function(t)
+        local _, c, d = start()
+        c.setSaved(ns.id.accountDB, {})
+        login(c)
+        c.fire("SPELL_PUSHED_TO_ACTIONBAR", 133, 3)
+        d.snapshot("after")
+        local saved = c.saved(ns.id.accountDB).diag
+        local timing = saved.snaps[#saved.snaps].timing
+        t.ok(type(timing.SPELL_PUSHED_TO_ACTIONBAR) == "table", "the placed spell event marked")
+    end,
+
     -- Lead section 245 item 2 (LOW-MED): the recipe colour and skill up
     -- fields c.recipes reads each get a capture field of their own.
     ["profession: the recipe colour and skill up fields are captured"] = function(t)
