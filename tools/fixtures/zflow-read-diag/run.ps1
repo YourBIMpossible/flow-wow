@@ -77,6 +77,15 @@ Report 'two-characters' $r 0 @(
     'Starts seen in the kept snapshots: 1 (7)',
     'Kernel phase: booted [newest snapshot: login]',
     'Failed shape probes: 0',
+    '=== Kit probe ===',
+    'T2  template  ButtonFrameTemplate: works',
+    "T5  template  SearchBoxTemplate: Couldn't find inherited node: SearchBoxTemplate",
+    'G2  global  C_Texture.GetAtlasInfo: nil',
+    'G6  global  GameTooltip: works (table)',
+    'T7  template  PanelTabButtonTemplate: not asked',
+    'X9  ?  ?: set, not confirmed',
+    'Encounter Journal add-on loaded: no',
+    'works 2, missing 22, not confirmed 1',
     'arrows.mode = separate',
     'arrows.points.quest = CENTER, CENTER, 200, 100'
 ) @('987654', '987111', '555444', '0.4321', '0.8765', '1411', 'bagStacks', 'money', 'level:', 'x3:')

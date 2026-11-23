@@ -8979,6 +8979,213 @@ function ns.make.client(env)
             return n
         end
     end
+
+    -- The window kit's login probe (lead DISPATCH section 297 item 3 and
+    -- section 303 item 5). Asks the client, read only, whether each part
+    -- the kit would like to use is there. New, added at the end.
+    --   c.kitProbe(rows) -> { [row id] = "works" | a short text saying what
+    --     the client said, EJ_LOADED = "yes" | "no" | "not known" }
+    --     | nil, "combat"
+    --   rows: the list in UI/Kit/Parts.lua (KitParts.rows): { id =, kind =
+    --     "template" | "atlas" | "texture" | "global", name =, frameType =,
+    --     frameTypeElse = }. A row with no text id is passed over.
+    -- LOOK ONLY. Nothing is shown, no setting is changed, nothing acts and
+    -- no add-on is loaded: LoadAddOn and its kin are never called. Asked
+    -- only when InCombatLockdown answers a plain false, judged as
+    -- c.equipItem judges it: true, a secret, a raise or no such call asks
+    -- nothing and makes no frame. Every row is asked under pcall, so one
+    -- that raises is kept as its text and the others are still asked. A
+    -- text is cut to PROBE_TEXT characters.
+    --
+    -- EVERY GAME NAME HERE IS A FIRST GUESS, none seen in game on 16001:
+    -- the rows' own names, and CreateFrame with a name, a parent and a
+    -- template, UIParent, the frame's CreateTexture, Texture SetTexture /
+    -- GetTexture / SetAtlas / GetAtlas, C_Texture.GetAtlasInfo,
+    -- C_AddOns.IsAddOnLoaded and IsAddOnLoaded.
+    --
+    --   template  pcall(CreateFrame, frameType or "Frame", nil, holder,
+    --             name); the frame made is hidden at once. holder is one
+    --             frame of ours, a child of UIParent, made once, hidden
+    --             when made and never shown, so nothing made under it is
+    --             drawn. It carries a name of ours so that a template's
+    --             "$parent" child names start with ours, not UIParent's.
+    --             "works" when a frame comes back, "no frame" when nothing
+    --             does, else the error text. A row with frameTypeElse says
+    --             which kind made it ("works (as Button)"): frameType
+    --             first, frameTypeElse when that create raised; when both
+    --             raise, the second error text. What this cannot tell: a
+    --             client that hands back a frame for a template it does
+    --             not have reads "works". The frames made are kept by the
+    --             client until the next reload; there is no call to drop
+    --             one.
+    --   atlas     with C_Texture.GetAtlasInfo: "works" when it answers a
+    --             table for the name, else "no atlas info" (SetAtlas is
+    --             then not called). Without it, a protected SetAtlas on a
+    --             hidden texture of the holder: the error text when it
+    --             raises, "SetAtlas answered false" for a false, "works"
+    --             for any other answer but nil. A SetAtlas that answers
+    --             nothing cannot tell a missing atlas from one that is
+    --             there: "works" then only when GetAtlas reads the same
+    --             name back, else "set, not confirmed".
+    --   texture   a protected SetTexture(path) on the hidden texture, then
+    --             GetTexture: "works" when it reads back anything but nil,
+    --             "set, read back nil" otherwise, the error text on a
+    --             raise, "SetTexture answered false" for a false. A client
+    --             that reads back the path it was given for a file it does
+    --             not have reads "works".
+    --   global    looked up in the client's globals along the dotted name:
+    --             "works (" .. its Lua type .. ")", or "nil".
+    --   EJ_LOADED whether the Encounter Journal add-on is loaded:
+    --             C_AddOns.IsAddOnLoaded, else IsAddOnLoaded; "not known"
+    --             when neither answers.
+    do
+        local PROBE_TEXT = 120
+        local JOURNAL = "Blizzard_EncounterJournal"
+        local probeHolder, probeTexture = nil, nil
+
+        local function short(v)
+            local text = tostring(v)
+            if #text > PROBE_TEXT then text = text:sub(1, PROBE_TEXT) end
+            return text
+        end
+
+        -- method() answers one false for "no such method" and false plus
+        -- the error for a raise: this says which, as the row's text.
+        local function refused(what, err)
+            if err == nil then return "no " .. what end
+            return short(err)
+        end
+
+        local function holder()
+            if probeHolder ~= nil then return probeHolder end
+            local name = "KitProbeHolder"
+            if type(ns.id) == "table" and type(ns.id.framePrefix) == "string" then name = ns.id.framePrefix .. name end
+            local ok, f = call(env.CreateFrame, "Frame", name, env.UIParent)
+            if not ok or type(f) ~= "table" then return nil end
+            method(f, "Hide")
+            probeHolder = f
+            return f
+        end
+
+        local function texture(parent)
+            if probeTexture ~= nil then return probeTexture end
+            if parent == nil then return nil end
+            local ok, x = method(parent, "CreateTexture", nil, "ARTWORK")
+            if not ok or x == nil then return nil end
+            method(x, "Hide")
+            probeTexture = x
+            return x
+        end
+
+        local function askTemplate(row, parent)
+            local make = env.CreateFrame
+            if type(make) ~= "function" then return "no CreateFrame" end
+            if parent == nil then return "no holder frame" end
+            local kind, other = row.frameType, row.frameTypeElse
+            if type(kind) ~= "string" then kind = "Frame" end
+            local made = kind
+            local ok, f = pcall(make, kind, nil, parent, row.name)
+            if not ok and type(other) == "string" then
+                made = other
+                ok, f = pcall(make, other, nil, parent, row.name)
+            end
+            if not ok then return short(f) end
+            if f == nil then return "no frame" end
+            method(f, "Hide")
+            if type(other) == "string" then return "works (as " .. made .. ")" end
+            return "works"
+        end
+
+        local function askAtlas(row, x)
+            local group = env.C_Texture
+            local info = nil
+            if type(group) == "table" then info = group.GetAtlasInfo end
+            if type(info) == "function" then
+                local ok, got = pcall(info, row.name)
+                if not ok then return short(got) end
+                if type(got) == "table" then return "works" end
+                return "no atlas info"
+            end
+            if x == nil then return "no texture to ask with" end
+            method(x, "SetTexture", nil)
+            local ok, set = method(x, "SetAtlas", row.name)
+            if not ok then return refused("SetAtlas", set) end
+            if set == false then return "SetAtlas answered false" end
+            if set ~= nil then return "works" end
+            local okG, got = method(x, "GetAtlas")
+            if okG and got ~= nil and got == row.name then return "works" end
+            return "set, not confirmed"
+        end
+
+        local function askTexture(row, x)
+            if x == nil then return "no texture to ask with" end
+            method(x, "SetTexture", nil)
+            local ok, set = method(x, "SetTexture", row.name)
+            if not ok then return refused("SetTexture", set) end
+            if set == false then return "SetTexture answered false" end
+            local okG, got = method(x, "GetTexture")
+            if not okG then return refused("GetTexture", got) end
+            if got == nil then return "set, read back nil" end
+            return "works"
+        end
+
+        local function askGlobal(row)
+            local at = env
+            for seg in row.name:gmatch("[^%.]+") do
+                if type(at) ~= "table" then return "nil" end
+                at = at[seg]
+            end
+            if at == nil then return "nil" end
+            return "works (" .. type(at) .. ")"
+        end
+
+        local function ask(row, parent, x)
+            if type(row.name) ~= "string" or row.name == "" then return "no name" end
+            if row.kind == "template" then return askTemplate(row, parent) end
+            if row.kind == "atlas" then return askAtlas(row, x) end
+            if row.kind == "texture" then return askTexture(row, x) end
+            if row.kind == "global" then return askGlobal(row) end
+            return "unknown kind"
+        end
+
+        -- Read only: IsAddOnLoaded says, nothing is loaded.
+        local function journalLoaded()
+            local asks = {}
+            local group = env.C_AddOns
+            if type(group) == "table" then asks[#asks + 1] = group.IsAddOnLoaded end
+            asks[#asks + 1] = env.IsAddOnLoaded
+            for i = 1, #asks do
+                local ok, loaded = call(asks[i], JOURNAL)
+                if ok and not hidden(loaded) then
+                    if loaded then return "yes" end
+                    return "no"
+                end
+            end
+            return "not known"
+        end
+
+        function c.kitProbe(rows)
+            local okLock, locked = call(env.InCombatLockdown)
+            if not okLock or hidden(locked) or locked ~= false then return nil, "combat" end
+            local out = {}
+            local okH, parent = pcall(holder)
+            if not okH then parent = nil end
+            local okX, x = pcall(texture, parent)
+            if not okX then x = nil end
+            if type(rows) == "table" then
+                for i = 1, #rows do
+                    local row = rows[i]
+                    if type(row) == "table" and type(row.id) == "string" then
+                        local ok, text = pcall(ask, row, parent, x)
+                        if ok then out[row.id] = text else out[row.id] = short(text) end
+                    end
+                end
+            end
+            local okJ, journal = pcall(journalLoaded)
+            if okJ then out.EJ_LOADED = journal else out.EJ_LOADED = "not known" end
+            return out
+        end
+    end
     return c
 end
 

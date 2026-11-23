@@ -194,6 +194,43 @@ function Write-Layout($value, [string]$path) {
     Write-Output ("   {0} = {1}" -f $path, (Format-Plain $value))
 }
 
+# The window kit's login probe (UI/KitProbe.lua): per row of the parts list
+# (ZFlow/UI/Kit/Parts.lua, read as text for each row's kind and name), what
+# the client said. Names and answers only; no game value.
+Write-Output ''
+Write-Output '=== Kit probe ==='
+$probeRows = Get-ZSaved $diag 'kitProbe' 'rows'
+if (Test-ZSavedTable $probeRows) {
+    Write-Output ("   asked at uptime {0}, client {1}" -f (Format-Plain (Get-ZSaved $diag 'kitProbe' 'at')), (Format-Plain (Get-ZSaved $diag 'kitProbe' 'interface')))
+    $partInfo = @{}
+    $partOrder = New-Object System.Collections.ArrayList
+    $partsFile = Join-Path $PSScriptRoot '..\ZFlow\UI\Kit\Parts.lua'
+    if (Test-Path -LiteralPath $partsFile -PathType Leaf) {
+        foreach ($line in (Get-Content -LiteralPath $partsFile)) {
+            if ($line -match '^\s*\{ id = "([^"]+)", kind = "([^"]+)", name = "([^"]+)"') {
+                $partInfo[$Matches[1]] = @{ Kind = $Matches[2]; Name = ($Matches[3] -replace '\\\\', '\') }
+                [void]$partOrder.Add($Matches[1])
+            }
+        }
+    }
+    foreach ($key in ($probeRows.Keys | Sort-Object { [string]$_ })) {
+        if ($key -ne 'EJ_LOADED' -and -not $partInfo.ContainsKey([string]$key)) { [void]$partOrder.Add([string]$key) }
+    }
+    $works = 0; $missing = 0; $unsure = 0
+    foreach ($id in $partOrder) {
+        $said = Get-ZSaved $probeRows $id
+        $kind = '?'; $name = '?'
+        if ($partInfo.ContainsKey($id)) { $kind = $partInfo[$id].Kind; $name = $partInfo[$id].Name }
+        if ($said -isnot [string]) { $said = 'not asked' }
+        if ($said -eq 'works' -or $said.StartsWith('works ')) { $works++ }
+        elseif ($said -eq 'set, not confirmed') { $unsure++ }
+        else { $missing++ }
+        Write-Output ("   {0}  {1}  {2}: {3}" -f $id, $kind, $name, (Format-Plain $said))
+    }
+    Write-Output ("   Encounter Journal add-on loaded: {0}" -f (Format-Plain (Get-ZSaved $probeRows 'EJ_LOADED')))
+    Write-Output ("   works {0}, missing {1}, not confirmed {2}" -f $works, $missing, $unsure)
+} else { Write-Output '   none saved (log in once out of combat, then reload or log out)' }
+
 Write-Output ''
 Write-Output '=== Layout (saved for the account) ==='
 $layout = Get-ZSaved $db 'layout'

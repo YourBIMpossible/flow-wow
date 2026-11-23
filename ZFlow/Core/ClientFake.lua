@@ -3384,6 +3384,54 @@ function ns.make.fakeClient(opts)
             return plainValue(rollID, ...)
         end
     end
+
+    -- The window kit's login probe (lead DISPATCH section 297 item 3 and
+    -- section 303 item 5): kitProbe(rows), as the real client's, answered
+    -- from a script; nothing is made or drawn.
+    --   c.setKitProbe(fnOrTable)   a table { [row id] = text } or a function
+    --     (row) -> text; a row it gives no text for answers "works", and so
+    --     does every row with no script (as made). A table's EJ_LOADED is
+    --     the journal answer; without one it is "yes" when
+    --     setLoaded("Blizzard_EncounterJournal", true) was said, else "no".
+    --     A function that raises makes kitProbe raise.
+    --   c.setKitProbeCombat(on)    the probe is refused (nil, "combat")
+    --     while on. Combat true or not known (setCombat, setCombatUnknown)
+    --     refuses it too, as the real client's InCombatLockdown does.
+    --   c.kitProbeCalls            every call, refused ones too.
+    do
+        local JOURNAL = "Blizzard_EncounterJournal"
+        local script, refusing = nil, false
+        c.kitProbeCalls = 0
+        function c.setKitProbe(fnOrTable) script = fnOrTable end
+        function c.setKitProbeCombat(on) refusing = on and true or false end
+        function c.kitProbe(rows)
+            c.kitProbeCalls = c.kitProbeCalls + 1
+            if refusing or s.combat ~= false then return nil, "combat" end
+            local out = {}
+            if type(rows) == "table" then
+                for i = 1, #rows do
+                    local row = rows[i]
+                    if type(row) == "table" and type(row.id) == "string" then
+                        local text = nil
+                        if type(script) == "function" then
+                            text = script(row)
+                        elseif type(script) == "table" then
+                            text = script[row.id]
+                        end
+                        if type(text) ~= "string" then text = "works" end
+                        out[row.id] = text
+                    end
+                end
+            end
+            local journal = nil
+            if type(script) == "table" then journal = script.EJ_LOADED end
+            if type(journal) ~= "string" then
+                if s.loaded[JOURNAL] == true then journal = "yes" else journal = "no" end
+            end
+            out.EJ_LOADED = journal
+            return out
+        end
+    end
     return c
 end
 

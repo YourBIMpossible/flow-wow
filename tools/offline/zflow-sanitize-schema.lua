@@ -91,6 +91,11 @@ local DIAG = fields({
         globals = map(list("free"), "str"),
     }),
     reads = list(fields({ at = "num", build = "str", reads = OPEN })),
+    -- The window kit's login probe (UI/KitProbe.lua save()): the row ids of
+    -- UI/Kit/Parts.lua plus EJ_LOADED, each with "works" or what the client
+    -- said of a template, atlas, texture path or client name. No player,
+    -- realm or chat text is in it, so it is kept as it is.
+    kitProbe = fields({ at = "num", interface = "str", rows = map("str", "str") }),
     snaps = list(SNAP),
 })
 

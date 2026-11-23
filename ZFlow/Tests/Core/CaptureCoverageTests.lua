@@ -43,7 +43,13 @@ local KIND = {
              -- S20: the per-role badges on the merchant's item buttons.
              "markMerchantSpecs" },
     tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "savedMadeHere", "slash",
-             "slashTaken", "unslash" },
+             "slashTaken", "unslash",
+             -- Lead sections 297 and 303: asks whether each part of the
+             -- window kit's list is there, on hidden frames; run once per
+             -- login by UI/KitProbe.lua, never by the capture. The client
+             -- calls that module makes besides it (listen, saved, uptime,
+             -- raw) are listed already.
+             "kitProbe" },
     -- Hands back or runs a sound restart: never asked by the capture.
     -- craftRecipe (lead section 226, acting): one craft on the player click.
     -- stopCraftRepeat (section 234): stops the game repeat; not a craft.
