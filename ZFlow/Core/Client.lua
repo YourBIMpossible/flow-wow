@@ -608,7 +608,8 @@ function ns.make.client(env)
     -- Carried 1 or true is carried; nothing, 0 or false is not. nil when the
     -- call is missing or raises, the row is no whole number from 1, a name
     -- is empty, not text or secret, or a carried answer is any other value.
-    -- Look only. Needs game test: the call and its answer shape on 16001.
+    -- Look only. The answer shape (name, carried pairs) is a first guess.
+    -- Needs game test: the call and its answer shape on 16001.
     local function packed(...) return select("#", ...), { ... } end
     function c.tradeSkillTools(index)
         if not wholeCount(index) or index < 1 or index == math.huge then return nil end
@@ -854,7 +855,8 @@ function ns.make.client(env)
     -- N23 (lead section 274 item 2): the profession skill a trainer recipe
     -- needs, the second answer of GetTrainerServiceSkillReq(i) (the first is
     -- the skill name); a whole number from 1, else nil and left out of the
-    -- row. Needs game test: the answer order on 16001.
+    -- row. The answer order (name, then skill) is a first guess. Needs game
+    -- test: the answer order on 16001.
     local function skillReq(i)
         local ok, _, skill = call(env.GetTrainerServiceSkillReq, i)
         local v = wholeOrNil(ok, skill)

@@ -286,15 +286,17 @@ function ProfHelper.Declare(k)
 
             -- N24: a tool a listed classic row needs and the bags do not hold.
             -- The prompt goes only when no tool is missing and each recipe
-            -- that raised it answered again; a read that does not answer
-            -- keeps it (unknown is not carried).
+            -- that raised it and is still listed answered again; a listed
+            -- read that does not answer keeps it (unknown is not carried).
+            -- A recipe no longer listed is no longer a reason (P4-3).
             local raisedBy = {}
             local function tools(out, w, ranked)
                 if type(w.profession) ~= "string" then return end
-                local first, answered, missingBy = nil, {}, {}
+                local first, answered, missingBy, listed = nil, {}, {}, {}
                 for i = 1, math.min(ProfHelper.TOP, #ranked) do
                     local r = ranked[i]
                     if type(r.index) == "number" then
+                        listed[r.name] = true
                         local list = read("tradeSkillTools", r.index)
                         if type(list) == "table" then
                             answered[r.name] = true
@@ -318,10 +320,21 @@ function ProfHelper.Declare(k)
                     return
                 end
                 for name in pairs(raisedBy[id] or {}) do
-                    if not answered[name] then return end
+                    if listed[name] and not answered[name] then return end
                 end
                 raisedBy[id] = nil
                 advisor.Remove(id)
+            end
+            -- P4-3: the helper turned off withdraws every tool prompt it
+            -- raised, with the window open or closed.
+            local function withdrawTools()
+                if next(raisedBy) == nil then return end
+                local advisor = ctx.use("advisor")
+                if type(advisor) ~= "table" then return end
+                for id in pairs(raisedBy) do
+                    raisedBy[id] = nil
+                    advisor.Remove(id)
+                end
             end
 
             local act
@@ -392,6 +405,10 @@ function ProfHelper.Declare(k)
                             or ProfHelper.ROW_NOCOST:format(r.name, word)
                         out[#out + 1] = { kind = "info", text = text }
                     end
+                    -- P4-4: the count is the skill points still to go, one
+                    -- point per craft. That holds only for a recipe sure to
+                    -- give a point; for one that may not, it is a floor, not
+                    -- an estimate (no chance per colour is known here).
                     local count = 1
                     if state and not state.overCap and state.need > 0 then count = state.need end
                     plan(out, ranked[1], count)
@@ -436,6 +453,7 @@ function ProfHelper.Declare(k)
             -- The setting turned off while the window is up hides the panel;
             -- turned on while it is open, shows it (section 245 item 2).
             ctx.sched:every(ProfHelper.NAME, ProfHelper.EVERY, function()
+                if not on() then withdrawTools() end
                 if not panel then return end
                 if panel.shown() and not on() then
                     hide()
