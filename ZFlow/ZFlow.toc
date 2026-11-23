@@ -85,6 +85,7 @@ Classes\Priest.lua
 Classes\Rogue.lua
 Classes\Shaman.lua
 Classes\Warrior.lua
+Classes\Warlock.lua
 Rotation\GroupTip.lua
 Nav\ArrowLayout.lua
 Nav\Bearing.lua
@@ -153,4 +154,3 @@ Items\Banker.lua
 Items\Posting.lua
 Items\Trader.lua
 Nav\Try.lua
-Classes\Warlock.lua

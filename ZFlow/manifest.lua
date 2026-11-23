@@ -102,6 +102,7 @@ return {
         "Classes/Rogue.lua",
         "Classes/Shaman.lua",
         "Classes/Warrior.lua",
+        "Classes/Warlock.lua",
         "Rotation/GroupTip.lua",
 
         -- Navigation
@@ -176,6 +177,5 @@ return {
     "Nav/Try.lua",
     { "Core/Capture.lua", dev = true },
     { "Core/CaptureEvidence.lua", dev = true },
-    "Classes/Warlock.lua",
     },
 }
