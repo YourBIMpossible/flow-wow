@@ -216,7 +216,7 @@ tests["flow button: holds the planned spell, its icon that spell's"] = function(
     t.eq({ a.type, a.spell }, { "spell", "Power Word: Fortitude" }, "the click casts the planned spell")
     t.eq(h.slots[1].icon, "tex:Power Word: Fortitude")
     t.eq(empty(c, FLOW), false, "the face shows the icon")
-    t.eq(tip(c, FLOW), "Casts Power Word: Fortitude when you click it.")
+    t.eq(tip(c, FLOW), "Flow button. Casts Power Word: Fortitude when you click it.")
     t.eq(h.shown, true)
     noBindsNoMacros(t, c)
 end
@@ -337,7 +337,7 @@ tests["self button: shown by default holding a missing buff on you"] = function(
         "the buff, on you: the next one, the Flow button shows Fortitude")
     t.eq(h.shown, true, "shown: it has something")
     t.eq(h.slots[1].icon, "tex:Inner Fire")
-    t.eq(tip(c, SELF), "Casts Inner Fire on you when you click it.")
+    t.eq(tip(c, SELF), "Buff button, for your self buffs. Casts Inner Fire on you when you click it.")
     noBindsNoMacros(t, c)
 end
 
@@ -371,9 +371,9 @@ tests["self button: never the buff the Flow button shows"] = function(t)
     noBindsNoMacros(t, c)
 end
 
-tests["self button: docked under the Flow button by default"] = function(t)
+tests["self button: docked under the Flow button when set to dock"] = function(t)
     if type(FB) ~= "table" then t.ok(false, "no module"); return end
-    local c = start({ on = true })
+    local c = start({ on = true, account = { settings = { buffButton = { dock = true } } } })
     local h = rowOf(c, SELF)
     if not h then t.ok(false, "no self button"); return end
     local p = FB.DEFAULT_POINT
