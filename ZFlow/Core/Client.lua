@@ -7970,7 +7970,7 @@ function ns.make.client(env)
         else
             local okShare, share = call(env.UnitHealthPercent, unit)
             if okShare and plainNumber(share) then
-                if share > 1 then out.hurt = share < 100 else out.hurt = share < 1 end
+                if share > 1 then out.hurt = share < 100 elseif share < 1 then out.hurt = true end
             end
         end
         return out
