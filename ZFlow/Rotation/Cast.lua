@@ -182,6 +182,15 @@ local function spellOf(suggestion)
     return type(s) == "string" and s ~= "" and s or nil
 end
 
+-- Section 226 (CF-30): an item suggestion's item id (a whole number above
+-- 0), or nil.
+local function itemOf(suggestion)
+    if type(suggestion) ~= "table" then return nil end
+    local id = suggestion.itemId
+    if type(id) ~= "number" or id <= 0 or id % 1 ~= 0 then return nil end
+    return id
+end
+
 function C.Attributes(suggestion, plan, applied, lockdown, form)
     local apply = C.Apply(plan, applied, lockdown)
     if not apply.ok then
@@ -193,12 +202,17 @@ function C.Attributes(suggestion, plan, applied, lockdown, form)
 
     local button = {}
     local spell, source = spellOf(suggestion), "suggestion"
-    local kind, unit, macro
+    local kind, unit, macro, item
     if spell and C.ATTACK[spell] then
         kind, macro = "macro", "/startattack"
     elseif spell then
         kind = "spell"
         unit = C.UNITS[suggestion.unit] and suggestion.unit or (C.ON_YOU[suggestion.kind] and "player") or nil
+    elseif itemOf(suggestion) then
+        -- Section 226 (CF-30): an item (Well Fed food) is used by its id
+        -- through the key's existing macro type, on the player's press.
+        item = itemOf(suggestion)
+        kind, macro = "macro", "/use item:" .. item
     else
         spell, source = slotOf(states, form, "key"), "plan"
         if spell then
@@ -232,6 +246,7 @@ function C.Attributes(suggestion, plan, applied, lockdown, form)
         driver = { state = C.STATE, condition = apply.condition, changed = apply.conditionChanged },
         source = source,
         spell = spell,
+        item = item,
         form = form,
         apply = apply,
         plan = apply.plan,

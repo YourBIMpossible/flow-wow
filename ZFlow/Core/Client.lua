@@ -950,6 +950,41 @@ function ns.make.client(env)
         return n
     end
 
+    -- Section 226 (CF-30): an item's tooltip text, left side, top to bottom,
+    -- from C_TooltipInfo.GetItemByID(id), or GetHyperlink for a link; nil
+    -- when the data cannot be read. First guess, not seen in game on 16001.
+    function c.itemLines(item)
+        local group = env.C_TooltipInfo
+        if type(group) ~= "table" then return nil end
+        local fn = (type(item) == "number" and group.GetItemByID) or (type(item) == "string" and group.GetHyperlink) or nil
+        local ok, data = call(fn, item)
+        if not ok or type(data) ~= "table" or hidden(data) or type(data.lines) ~= "table" then return nil end
+        local out = {}
+        for i = 1, #data.lines do
+            local line = data.lines[i]
+            local s = type(line) == "table" and text(true, line.leftText) or nil
+            if s then out[#out + 1] = s end
+        end
+        return out
+    end
+
+    -- Section 226 (CF-30): an item's icon texture by id or link:
+    -- C_Item.GetItemIconByID, then the older GetItemIcon. nil when neither
+    -- gives one. First guess, not seen in game on 16001.
+    function c.itemTexture(item)
+        if item == nil then return nil end
+        local group = env.C_Item
+        local reads = { type(group) == "table" and group.GetItemIconByID or false, env.GetItemIcon or false }
+        for i = 1, 2 do
+            local ok, tex = call(reads[i], item)
+            if ok and not hidden(tex) then
+                if type(tex) == "number" and tex > 0 then return tex end
+                if type(tex) == "string" and tex ~= "" then return tex end
+            end
+        end
+        return nil
+    end
+
     -- Told each time the game's item tooltip has been filled for an item:
     --   client.onItemTooltip(fn) -> cancel;  fn(link, add);  add(text, r, g, b)
     -- add appends one line to that tooltip. fn's errors stay here. Route A:

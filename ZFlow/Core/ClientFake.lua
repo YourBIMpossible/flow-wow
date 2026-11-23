@@ -913,6 +913,28 @@ function ns.make.fakeClient(opts)
     -- Item facts by item ID, each as client.itemInfo() gives it; nil: the
     -- client says nothing about any item.
     function c.setItemInfo(map) s.itemInfo = map end
+    -- Section 226 (CF-30): an item's tooltip text and icon by item ID, as
+    -- client.itemLines() and client.itemTexture() give them; nil: not read.
+    function c.setItemLines(id, lines)
+        s.itemLines = s.itemLines or {}
+        s.itemLines[id] = type(lines) == "table" and lines or nil
+    end
+    function c.itemLines(item)
+        local id = ns.Items and ns.Items.Id(item) or item
+        local lines = s.itemLines and s.itemLines[id] or nil
+        if type(lines) ~= "table" then return nil end
+        local out = {}
+        for i = 1, #lines do out[i] = lines[i] end
+        return out
+    end
+    function c.setItemTexture(id, tex)
+        s.itemTextures = s.itemTextures or {}
+        s.itemTextures[id] = tex
+    end
+    function c.itemTexture(item)
+        local id = ns.Items and ns.Items.Id(item) or item
+        return s.itemTextures and s.itemTextures[id] or nil
+    end
     -- { [slot] = { cur =, max = } } as client.durability() gives it; nil:
     -- not known.
     function c.setDurability(readings) s.durability = readings end

@@ -69,7 +69,7 @@ return {
             t.eq(trace[i].step, name, "row " .. i)
             t.eq(trace[i].result, "skip", name .. " skipped")
         end
-        t.eq(table.concat(ns.Rotation.STEPS, " "), "breakFree heal interrupt dispel engage list farOpener", "the order")
+        t.eq(table.concat(ns.Rotation.STEPS, " "), "breakFree heal interrupt dispel engage list farOpener food", "the order (section 226, CF-30: food last)")
     end,
 
     ["step order: each step answers before the ones after it"] = function(t)
