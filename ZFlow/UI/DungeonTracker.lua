@@ -89,10 +89,25 @@ function T.Declare(k)
         children[#children + 1] = { kind = "section", key = "quests", text = T.QUESTS }
         local d = st and st.state == "ready" and R.DungeonNamed(st, ask(client(), "instanceName")) or nil
         if not d then
-            local why = (st and st.state == "building") and R.WHY_BUILDING[1] or T.NOT_KNOWN
+            -- The real reason (Twin review, lead section 286): no Questie,
+            -- a list that could not be read, a list still being read; only
+            -- with the list read is the dungeon itself not known.
+            local why = T.NOT_KNOWN
+            if not st or st.state == "noquestie" then
+                why = ns.DungeonStates.WHY.noQuestie[1]
+            elseif st.state == "failed" then
+                why = (st.why or R.WHY_LIST)[1]
+            elseif st.state == "building" then
+                why = R.WHY_BUILDING[1]
+            end
             children[#children + 1] = { kind = "line", key = "notKnown", text = why }
         else
             local pane = R.Pane(st, client(), d.key)
+            if pane.why then
+                -- A pane that waits (your level not known ...) says why.
+                children[#children + 1] = { kind = "line", key = "why", text = pane.why[1] }
+                return ns.Kit.Window({ id = T.ID, title = id.title .. ": " .. T.TITLE, children = children })
+            end
             local mine = {}
             for _, g in ipairs(pane.groups or {}) do
                 if g.id == "log" then mine = g.rows end
@@ -167,10 +182,13 @@ function T.Declare(k)
                 function() refresh() end)
             refresh()
         end,
+        -- Stopped, nothing brings it back: refresh does nothing without ctx
+        -- (Twin low note).
         stop = function()
             if cancelStep then cancelStep() end
             cancelStep = nil
             hide()
+            ctx = nil
         end,
     })
     return api
