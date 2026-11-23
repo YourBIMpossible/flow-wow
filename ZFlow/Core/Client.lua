@@ -8142,13 +8142,14 @@ function ns.make.client(env)
     end
     -- N68 (UI/Alerts.lua): c.playAlert() -> true | nil, why. The one alert
     --   sound: PlaySound(SOUNDKIT.RAID_WARNING). why: "noCall" (no
-    --   PlaySound, or the game names no such sound: no number is guessed),
+    --   PlaySound, or the game names no such sound as a number: no number is guessed),
     --   "raised". Sound only; nothing in the game changes. A first guess
     --   from the API pages (API_PlaySound, SOUNDKIT), not heard in game.
     function c.playAlert()
         local kit = env.SOUNDKIT
-        local id = type(kit) == "table" and kit.RAID_WARNING or nil
-        if type(env.PlaySound) ~= "function" or id == nil then return nil, "noCall" end
+        local id
+        if type(kit) == "table" then id = kit.RAID_WARNING end
+        if type(env.PlaySound) ~= "function" or type(id) ~= "number" then return nil, "noCall" end
         local ok = call(env.PlaySound, id)
         if not ok then return nil, "raised" end
         return true
