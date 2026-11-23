@@ -223,6 +223,9 @@ Diag.NAMES = {
     -- combatLogFile and their two writes). GetCVar and C_CVar.GetCVar are
     -- listed above.
     "LoggingCombat", "C_CVar.SetCVar", "SetCVar",
+    -- Lead section 303: quests handed in, for the Dungeon Quests pane
+    -- (client.questDone). UnitRace (client.raceId) is listed above.
+    "C_QuestLog.IsQuestFlaggedCompleted",
     -- The window kit's login probe (lead sections 297 and 303; Core/Client.lua
     -- kitProbe): the atlas lookup it asks with, and the client names of the
     -- kit's parts list (UI/Kit/Parts.lua, kind "global") it looks up. First
@@ -236,9 +239,6 @@ Diag.NAMES = {
     "GRAY_FONT_COLOR",
     "GameFontNormal", "GameFontHighlight", "GameFontDisable", "GameFontNormalSmall", "GameFontHighlightSmall",
     "GameFontDisableSmall", "GameFontNormalLarge", "GameFontRed", "GameFontGreen",
-    -- The kit window's frame (Core/Client.lua kitWindow): the game's call
-    -- that hides the portrait of ButtonFrameTemplate. A first guess.
-    "ButtonFrameTemplate_HidePortrait",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns

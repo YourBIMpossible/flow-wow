@@ -497,8 +497,11 @@ local function start(opts)
     c.fire("ADDON_LOADED", ns.id.addon)
     c.fire("PLAYER_LOGIN")
     c.fire("PLAYER_ENTERING_WORLD")
-    if opts.rotation ~= false then k.settings:set(D.SETTING, true) end
+    k.settings:set(D.SETTING, opts.rotation ~= false)
     if opts.keys ~= false then k.settings:set(K.SETTING, true) end
+    -- The key frame is on by default (lead section 294 item 1); keys = false
+    -- now switches it off on purpose.
+    if opts.keys == false then k.settings:set(K.SETTING, false) end
     return k, c, made, api, calls
 end
 
@@ -516,7 +519,9 @@ local function forbidden(calls)
     return n
 end
 
-tests["key frame module: off by default, and then no secure button is made"] = function(t)
+tests["key frame module: on by default; switched off, no secure button is made"] = function(t)
+    local fresh = start({ keys = true })
+    t.eq(fresh.settings:get(K.SETTING), true, "the default is on")
     local k, c, made = start({ keys = false })
     c.advance(2, 10)
     t.eq(k.settings:get(K.SETTING), false)

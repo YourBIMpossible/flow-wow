@@ -84,11 +84,13 @@ local function fighting(c)
     c.advance(1, 5)
 end
 
-tests["paladin: off until switched on; then the icon shows the suggestion"] = function(t)
+tests["paladin: on by default (lead section 294); switched off nothing shows; on again, the icon shows the suggestion"] = function(t)
     local c, addon, icon = start()
     t.ok(icon ~= nil, "the icon was made at login")
     c.setPlayerBuffs({}); c.advance(1, 5)
-    t.eq(icon.shown, false, "off by default: nothing shown")
+    t.eq(addon.settings:get(D.SETTING), true, "on by default (lead section 294)")
+    addon.settings:set(D.SETTING, false); c.advance(1, 5)
+    t.eq(icon.shown, false, "switched off: nothing shown")
     t.ok(said(c):find("switched off", 1, true), "the diag word says it is off: " .. said(c))
     local ok, why = on(c, addon)
     t.ok(ok, "the setting is taken: " .. tostring(why))
@@ -132,7 +134,9 @@ end
 -- and Judgement ready and stopped on the range; the player was told
 -- "nothing out of range".
 tests["paladin: range not read is the reason given, not that nothing is out of range"] = function(t)
-    local c, addon, icon = start()
+    -- The key frame (on by default) would put Attack up; this test reads
+    -- the suggestion without it.
+    local c, addon, icon = start({ char = { settings = { rotation = { keyFrame = false } } } })
     c.setPlayerBuffs(SEALED); c.setTarget(ENEMY); c.setStealthed(false)
     c.setCurrentSpell(IDS["Attack"], false); on(c, addon)
     t.eq(icon.shown, false, "range not known: nothing suggested")

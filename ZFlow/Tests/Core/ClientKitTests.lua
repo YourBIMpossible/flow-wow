@@ -73,7 +73,9 @@ local function gameEnv(opts)
         return r
     end
     if not opts.noFrames then
+        -- env.stopAt: once that many things are made, no more frames.
         function env.CreateFrame(kind, name, parent, template)
+            if env.stopAt ~= nil and #env.made >= env.stopAt then error("no more frames") end
             if template ~= nil and not has[template] then error("no template " .. tostring(template)) end
             local f = region(kind, parent, template, name)
             if name ~= nil and env[name] == nil then env[name] = f end
@@ -337,12 +339,10 @@ tests["kitWindow: every control tells its own function what the player did"] = f
     click(saying(env, "Button", "Bags"))
     click(saying(env, "Button", "+"))
     click(saying(env, "Button", "-"))
-    local edits = find(env, "EditBox", "InputBoxTemplate")
-    t.eq(#edits, 2, "the search box (its fallback) and the text box")
-    local search, box
-    for _, e in ipairs(edits) do
-        if e.text == "abc" then box = e else search = e end
-    end
+    -- The client has every template here, so the search box is the game's
+    -- own (SearchBoxTemplate) and the text box the input template.
+    local search = find(env, "EditBox", "SearchBoxTemplate")[1]
+    local box = find(env, "EditBox", "InputBoxTemplate")[1]
     t.ok(search ~= nil and box ~= nil, "both found")
     if search == nil or box == nil then return end
     search.text = "lin"
@@ -514,6 +514,108 @@ tests["kitWindow: update draws a new tree and makes nothing new for the same one
     t.eq(saying(env, "Button", "Press me"), nil, "the old button is hidden")
     t.eq(saying(env, "FontString", "Linen Cloth"), nil, "and the old item line")
     t.eq(h.update(nil), false, "no tree: nothing drawn, nothing raised")
+end
+
+-- Twin's review of 0bffb83c (lead section 322), F1 to F5, and section 319.
+
+tests["kitWindow: a part the login probe found missing is not asked for; its plain form draws"] = function(t)
+    local env = gameEnv()
+    local c = ns.make.client(env)
+    t.eq(type(c.kitKnown), "function", "the client answers kitKnown")
+    if type(c.kitKnown) ~= "function" then return end
+    c.kitKnown({ T2 = "Couldn't find inherited node: ButtonFrameTemplate", T5 = "works", T7 = "made, not confirmed" })
+    local h = c.kitWindow("KitDemo", K.Window(everyPart()), { name = "KitDemoFrame" })
+    t.ok(type(h) == "table", "a handle")
+    if type(h) ~= "table" then return end
+    t.eq(h.art().frame, "fallback", "the frame the probe found missing is the plain one")
+    t.eq(#madeOf(env, "Frame", "ButtonFrameTemplate"), 0, "and its template is not asked for again")
+    t.eq({ h.art().search, h.art().tab }, { "first", "first" },
+        "a part that works, and one made but not confirmed, are still asked for")
+end
+
+tests["kitWindow: Escape that cannot be wired is said, never silent; a window with no name gets one"] = function(t)
+    local env = gameEnv()
+    env.TakenFrame = {}
+    local c = ns.make.client(env)
+    if type(c.kitWindow) ~= "function" then t.ok(false, "the client answers kitWindow") return end
+    local told = {}
+    local h = c.kitWindow("KitDemo", K.Window(everyPart()), { name = "TakenFrame",
+        failed = function(err) told[#told + 1] = tostring(err) end })
+    t.ok(type(h) == "table", "the window still opens")
+    t.eq(listed(env, "TakenFrame"), 0, "a name another frame holds is not put in the Escape list")
+    t.eq(#told, 1, "and the caller is told once")
+    t.ok(told[1] ~= nil and told[1]:find("Escape", 1, true) ~= nil, "what it is told names Escape: " .. tostring(told[1]))
+
+    local env2 = gameEnv()
+    local c2 = ns.make.client(env2)
+    local told2 = 0
+    local h2 = c2.kitWindow("KitDemo", K.Window(everyPart()), { failed = function() told2 = told2 + 1 end })
+    t.ok(type(h2) == "table", "a window given no name opens")
+    local own = ns.id.framePrefix .. "KitKitDemo"
+    t.eq(listed(env2, own), 1, "it gets a name of its own, so Escape closes it")
+    t.eq(told2, 0, "nothing to tell")
+end
+
+tests["kitWindow: a first draw that fails makes no second top frame when asked again"] = function(t)
+    local env = gameEnv()
+    local c = ns.make.client(env)
+    if type(c.kitWindow) ~= "function" then t.ok(false, "the client answers kitWindow") return end
+    local told = 0
+    local x = { name = "KitDemoFrame", failed = function() told = told + 1 end }
+    env.stopAt = 1   -- the top frame is made, then nothing more
+    t.eq(c.kitWindow("KitDemo", K.Window(everyPart()), x), nil, "the first draw fails")
+    t.ok(told >= 1, "and the caller is told")
+    env.stopAt = nil
+    local h = c.kitWindow("KitDemo", K.Window(everyPart()), x)
+    t.ok(type(h) == "table", "asked again, it draws")
+    t.eq(#madeOf(env, "Frame", "ButtonFrameTemplate"), 1, "on the same top frame: no second one is made")
+    t.eq(listed(env, "KitDemoFrame"), 1, "and Escape still closes it")
+end
+
+tests["kitWindow: a redraw that fails partway leaves none of the old parts showing"] = function(t)
+    local h, env = open(t)
+    if h == nil then t.ok(false, "a handle") return end
+    t.ok(saying(env, "FontString", "Linen Cloth") ~= nil, "the first tree's item line")
+    local many = {}
+    for i = 1, 40 do many[i] = { kind = "section", text = "Heading " .. i } end
+    env.stopAt = #env.made   -- nothing new can be made
+    t.eq(h.update(K.Window({ id = "KitDemo", title = "More", children = many })), false, "the redraw fails")
+    env.stopAt = nil
+    t.eq(saying(env, "FontString", "Linen Cloth"), nil, "the old item line is not left beside the half-drawn tree")
+    t.eq(saying(env, "FontString", "Worn Sword"), nil, "nor the other")
+end
+
+tests["kitWindow: an item's icon given as the game's file number is drawn"] = function(t)
+    local env = gameEnv()
+    local c = ns.make.client(env)
+    if type(c.kitWindow) ~= "function" then t.ok(false, "the client answers kitWindow") return end
+    local tree, why = K.Window({ id = "KitIcons", title = "Icons", children = {
+        { kind = "scroll", children = {
+            { kind = "itemLine", name = "Linen Cloth", icon = 134400 },
+            { kind = "line", text = "A quest", icon = 132049 },
+        } } } })
+    t.ok(type(tree) == "table", "the tree: " .. tostring(why))
+    if type(tree) ~= "table" then return end
+    t.ok(type(c.kitWindow("KitIcons", tree, { name = "KitIconsFrame" })) == "table", "a handle")
+    local seen = {}
+    for _, r in ipairs(env.made) do
+        if r.kind == "Texture" and type(r.texture) == "number" then seen[r.texture] = true end
+    end
+    t.eq({ seen[134400], seen[132049] }, { true, true }, "both numbers were set on a texture")
+end
+
+tests["kitWindow: what each part drew, the game's own or the plain form, is told to whoever asked"] = function(t)
+    local env = gameEnv({ templates = { "UIPanelButtonTemplate" } })
+    local c = ns.make.client(env)
+    t.eq(type(c.onKitDrawn), "function", "the client answers onKitDrawn")
+    if type(c.onKitDrawn) ~= "function" then return end
+    local got = {}
+    c.onKitDrawn(function(id, art) got[#got + 1] = { id = id, art = art } end)
+    t.ok(type(c.kitWindow("KitDemo", K.Window(everyPart()), { name = "KitDemoFrame" })) == "table", "a handle")
+    t.eq(#got, 1, "told once for the one draw")
+    if got[1] == nil then return end
+    t.eq(got[1].id, "KitDemo")
+    t.eq({ got[1].art.frame, got[1].art.button }, { "fallback", "first" }, "the frame is plain, the button the game's")
 end
 
 return tests

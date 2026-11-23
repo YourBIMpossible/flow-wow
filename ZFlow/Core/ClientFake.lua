@@ -3024,6 +3024,58 @@ function ns.make.fakeClient(opts)
         if type(spec.onMoved) == "function" then pcall(spec.onMoved, point) end
         return true
     end
+    -- Flow and self buttons (Rotation/FlowButton.lua). Each helper answers
+    -- nil for a name no clickRow made. buttonFace keeps { empty } in
+    -- c.buttonFaces[button]. ctrlDrag keeps spec in c.ctrlDrags[target]
+    -- (nil while combatLockdown() is not a plain false), and
+    -- ctrlDragTo(target, point, ctrl) stands in for a drag that ends at
+    -- point: false, "absent" with none; false, "noCtrl" without Ctrl held;
+    -- false, "lockdown" in a fight; else onMoved(point) and true. hoverTip
+    -- keeps spec in c.hoverTips[frame]; hoverTipText(frame) -> the line
+    -- pointing at it shows, or nil.
+    c.buttonFaces, c.ctrlDrags, c.hoverTips = {}, {}, {}
+    local function rowButton(name)
+        for _, row in ipairs(c.clickRows) do
+            if row.spec.name == name then return true end
+            for i = 1, row.spec.count do
+                if row.spec.name .. i == name then return true end
+            end
+        end
+        return false
+    end
+    function c.buttonFace(spec)
+        if type(spec) ~= "table" or not rowButton(spec.button) then return nil end
+        local face = { empty = false }
+        c.buttonFaces[spec.button] = face
+        return { empty = function(on) face.empty = on == true; return true end }
+    end
+    function c.ctrlDrag(spec)
+        if type(spec) ~= "table" or not rowButton(spec.target) or not rowButton(spec.button) then return nil end
+        if c.combatLockdown() ~= false then return nil end
+        c.ctrlDrags[spec.target] = spec
+        return true
+    end
+    function c.ctrlDragTo(target, point, ctrl)
+        local spec = c.ctrlDrags[target]
+        if spec == nil then return false, "absent" end
+        if ctrl ~= true then return false, "noCtrl" end
+        if c.combatLockdown() ~= false then return false, "lockdown" end
+        if type(spec.onMoved) == "function" then pcall(spec.onMoved, point) end
+        return true
+    end
+    function c.hoverTip(spec)
+        if type(spec) ~= "table" or type(spec.text) ~= "function" or not rowButton(spec.frame) then return nil end
+        c.hoverTips[spec.frame] = spec
+        return true
+    end
+    function c.hoverTipText(frame)
+        local spec = c.hoverTips[frame]
+        if spec == nil then return nil end
+        local ok, text = pcall(spec.text)
+        if not ok or type(text) ~= "string" then return nil end
+        return text
+    end
+
 
 
     -- G16: the skill lines you know, as the real client's weaponSkills():
@@ -3385,6 +3437,19 @@ function ns.make.fakeClient(opts)
         end
     end
 
+    -- Lead section 303 (Dungeon Quests). c.setRaceId(n) (nil: not known);
+    -- c.setQuestDone(id, true / false / nil). Not set: not known.
+    function c.setRaceId(n) s.raceId = n end
+    function c.raceId() return s.raceId end
+    function c.setQuestDone(id, v)
+        s.questDone = s.questDone or {}
+        s.questDone[id] = v
+    end
+    function c.questDone(id)
+        if type(id) ~= "number" then return nil end
+        return s.questDone and s.questDone[id]
+    end
+
     -- The window kit's login probe (lead DISPATCH section 297 item 3 and
     -- section 303 item 5): kitProbe(rows), as the real client's, answered
     -- from a script; nothing is made or drawn.
@@ -3431,6 +3496,8 @@ function ns.make.fakeClient(opts)
             out.EJ_LOADED = journal
             return out
         end
+    end
+
     -- The window kit (lead sections 287, 291 item 1 and 292): c.kitWindow
     -- and c.kitProbe, as the real client's. Nothing is drawn; a window is
     -- recorded by its id.
@@ -3505,6 +3572,28 @@ function ns.make.fakeClient(opts)
             return w, entry
         end
 
+        -- As the real client's: the probe's answers are kept (c.kitSaid()
+        -- reads them back in a test), and c.kitDrawnTell(id, art) stands in
+        -- for a draw telling the listener.
+        local said, drawnFn = {}, nil
+        function c.kitKnown(rows)
+            said = {}
+            if type(rows) ~= "table" then return end
+            for id, text in pairs(rows) do
+                if type(id) == "string" and type(text) == "string" then said[id] = text end
+            end
+        end
+        function c.kitSaid()
+            local out = {}
+            for id, text in pairs(said) do out[id] = text end
+            return out
+        end
+        function c.onKitDrawn(fn)
+            if type(fn) == "function" then drawnFn = fn else drawnFn = nil end
+        end
+        function c.kitDrawnTell(id, art)
+            if drawnFn ~= nil then pcall(drawnFn, id, art) end
+        end
         function c.setKitFails(n) kitFails = tonumber(n) or 0 end
         function c.kitWindow(id, tree, extra)
             local cb = type(extra) == "table" and extra or {}
@@ -3537,8 +3626,16 @@ function ns.make.fakeClient(opts)
             function h.show(on) w.rec.shown = on and true or false end
             function h.shown() return w.rec.shown end
             function h.close() w.rec.shown = false end
+            -- As the real client draws: the four parts with no row of the
+            -- parts list are the game's own; a part with a row is the game's
+            -- own only when the login probe said its row works (kitKnown),
+            -- else its plain form; pictures not yet seen are plain.
             function h.art()
-                local out = { close = "first", button = "first", check = "first", input = "first", scroll = "first" }
+                local out = { close = "first", check = "first", input = "first", scroll = "first" }
+                for key, row in pairs({ frame = "T2", search = "T5", tab = "T7", button = "T16" }) do
+                    local text = said[row]
+                    if text == "works" then out[key] = "first" else out[key] = "fallback" end
+                end
                 for key in pairs(ns.Kit.look.unproven or {}) do out[key] = "fallback" end
                 return out
             end

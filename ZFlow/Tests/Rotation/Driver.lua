@@ -630,7 +630,7 @@ local function start(opts)
     c.fire("ADDON_LOADED", ns.id.addon)
     c.fire("PLAYER_LOGIN")
     c.fire("PLAYER_ENTERING_WORLD")
-    if opts.enabled then k.settings:set(D.SETTING, true) end
+    k.settings:set(D.SETTING, opts.enabled == true)
     return k, c, api, seen, calls
 end
 
@@ -814,10 +814,10 @@ end
 
 -- RD14 ----------------------------------------------------------------
 
-tests["rotation driver RD14: off by default"] = function(t)
+tests["rotation driver RD14: on by default (lead section 293); switched off it is idle"] = function(t)
     local k, c, api, seen, calls = start()
-    t.eq(k.settings:get(D.SETTING), false, "the setting's default")
-    t.eq(k.settings:row(D.SETTING).default, false)
+    t.eq(k.settings:row(D.SETTING).default, true, "the setting's default")
+    t.eq(k.settings:get(D.SETTING), false, "the helper switched it off")
     t.eq(k:ModuleState(D.NAME), "started", "declared and started, but idle")
     c.advance(2, 10)
     t.eq(api.view(), nil, "no view")

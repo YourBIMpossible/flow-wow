@@ -72,6 +72,16 @@ KIND.tool[#KIND.tool + 1] = "kitProbe"
 -- The window kit's drawer (lead sections 287, 291 and 303): one window
 -- from a checked tree; a click runs the part's own function.
 KIND.show[#KIND.show + 1] = "kitWindow"
+-- Lead sections 319 and 322: the probe's answers handed to the drawer, and
+-- the listener told what each window drew. Neither asks the game anything.
+KIND.tool[#KIND.tool + 1] = "kitKnown"
+KIND.listen[#KIND.listen + 1] = "onKitDrawn"
+
+-- Section 285 item 2b: the face, Ctrl-drag and hover tip of the Flow and
+-- self buttons (Rotation/FlowButton.lua).
+KIND.show[#KIND.show + 1] = "buttonFace"
+KIND.show[#KIND.show + 1] = "ctrlDrag"
+KIND.show[#KIND.show + 1] = "hoverTip"
 
 -- Every read, and whether the capture asks it (true) or not (false).
 local READS = {
@@ -177,6 +187,11 @@ local READS = {
     -- Their names (GetNumQuestChoices, GetQuestItemLink and the reward
     -- buttons) are in Diag.NAMES.
     questChoices = false,
+
+    -- Lead section 303: race number and quests handed in; read by
+    -- Nav/DungeonRead.lua only. Their names (UnitRace,
+    -- C_QuestLog.IsQuestFlaggedCompleted) are in Diag.NAMES.
+    raceId = false, questDone = false,
 }
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).
