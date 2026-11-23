@@ -147,7 +147,8 @@ tests["gather tracking GT-2: mounted, on a flight path, or eating or drinking: n
     c.setMounted(false); c.setOnTaxi(true); c.advance(1, 5)
     t.ok(not offered(icon, MINERALS), "on a flight path")
     c.setOnTaxi(false)
-    for _, buff in ipairs({ "Food", "Drink" }) do
+    -- Section 237 GK-1: every buff in Flow's eating list, not only two.
+    for _, buff in ipairs({ "Food", "Drink", "Food & Drink", "Refreshment" }) do
         local buffs = { [buff] = 18 }
         for k, v in pairs(SEALED) do buffs[k] = v end
         c.setPlayerBuffs(buffs); c.advance(1, 5)

@@ -2,9 +2,10 @@ local _, ns = ...
 -- The craft bar end to end (P-CRAFT, lead section 226: #34 Smelt All, G21
 -- the craft bar, craft controls), on the whole add-on loaded on a fake
 -- client. The player opens a profession window, ticks counts on the bar and
--- clicks Start once: the crafts then run one after another, each started
--- when the last one finished, until the counts are made or something stops
--- them. Nothing crafts without the click.
+-- clicks Start: that click asks one craft of the first recipe with its whole
+-- count as the game repeat count (lead section 234). A finish only counts;
+-- the next recipe waits for the next click. Nothing crafts without the
+-- click, and never from a finish, a timer or the tick.
 -- Offline: the reads are the fake client's, not the game's. Not tested in game.
 local tests = {}
 
@@ -30,8 +31,10 @@ local function start(opts)
     } })
     -- Section 231: the bar reads the recipe from c.recipeSchematic, the read
     -- the recipe book and the goals list use (Items/RecipeBook.lua).
-    c.setRecipeSchematic(COPPER_BAR, { makes = ITEM_COPPER_BAR, yield = 1, mats = { [ORE_COPPER] = 1 } })
-    c.setRecipeSchematic(TIN_BAR, { makes = ITEM_TIN_BAR, yield = 1, mats = { [ORE_TIN] = 1 } })
+    if opts.schematic ~= false then
+        c.setRecipeSchematic(COPPER_BAR, { makes = ITEM_COPPER_BAR, yield = 1, mats = { [ORE_COPPER] = 1 } })
+        c.setRecipeSchematic(TIN_BAR, { makes = ITEM_TIN_BAR, yield = 1, mats = { [ORE_TIN] = 1 } })
+    end
     if opts.bagItems then c.setBagItems(opts.bagItems) end
     c.setRecipeUsable(COPPER_BAR, true)
     c.setRecipeUsable(TIN_BAR, true)
@@ -125,8 +128,7 @@ tests["craft bar: From goals fills the counts with the crafts each goal still ne
     t.eq(addon.craftBar.running(), false, "filling the counts starts nothing")
     t.eq(#c.crafts, 0, "nothing crafted")
     bar.press("start")
-    done(c, COPPER_BAR)
-    t.eq(crafted(c), { COPPER_BAR, COPPER_BAR }, "Start makes what the goals asked for")
+    t.eq(c.crafts, { { id = COPPER_BAR, n = 2 } }, "Start makes what the goals asked for")
 end
 
 tests["craft bar: From goals with no goal to craft here says so and keeps the counts"] = function(t)
@@ -167,22 +169,73 @@ tests["craft bar: nothing crafts without the click"] = function(t)
     t.eq(crafted(c), {}, "ticking a count crafts nothing")
 end
 
-tests["craft bar: one click makes the counts back to back, row after row"] = function(t)
+-- Section 234: one ask per click, the count as the game repeat count; a
+-- finish counts, it never asks; the next recipe waits for a click.
+tests["craft bar: one click asks one recipe with its count as the repeat, the next recipe waits for a click"] = function(t)
     local c, addon = start({ tin = 5 })
     local bar = barOf(c)
     if not bar then t.ok(false, "no craft bar") return end
     t.eq(tick(bar, { [COPPER_BAR] = 2, [TIN_BAR] = 1 }), true)
-    t.eq(crafted(c), { COPPER_BAR }, "the first craft on the click")
+    t.eq(c.crafts, { { id = COPPER_BAR, n = 2 } }, "one ask on the click, the count as the repeat")
     t.eq(addon.craftBar.running(), true)
     t.ok(infos(bar):find("Making Copper Bar: 0 of 2", 1, true) ~= nil, infos(bar))
     done(c, COPPER_BAR)
-    t.eq(crafted(c), { COPPER_BAR, COPPER_BAR }, "the next when the last finished")
+    t.eq(#c.crafts, 1, "a finish asks nothing")
+    t.ok(infos(bar):find("Making Copper Bar: 1 of 2", 1, true) ~= nil, infos(bar))
     done(c, COPPER_BAR)
-    t.eq(crafted(c), { COPPER_BAR, COPPER_BAR, TIN_BAR }, "then the next ticked recipe")
+    t.eq(#c.crafts, 1, "the last finish of a recipe asks nothing")
+    t.eq(addon.craftBar.running(), false, "waits for the click")
+    t.eq(rowOf(bar, "start").label, "Start")
+    t.ok(infos(bar):find("Click Start for Tin Bar.", 1, true) ~= nil, infos(bar))
+    c.advance(30, 60)
+    c.fire("TRADE_SKILL_LIST_UPDATE")
+    t.eq(#c.crafts, 1, "no timer, event or tick asks the next recipe")
+    t.eq(bar.press("start"), true)
+    t.eq(c.crafts, { { id = COPPER_BAR, n = 2 }, { id = TIN_BAR, n = 1 } }, "the click asks the next recipe")
     done(c, TIN_BAR)
-    t.eq(#c.crafts, 3, "no craft past the counts")
+    t.eq(#c.crafts, 2, "no craft past the counts")
     t.eq(addon.craftBar.running(), false)
     t.ok(infos(bar):find("Made 2 x Copper Bar, 1 x Tin Bar.", 1, true) ~= nil, infos(bar))
+end
+
+tests["craft bar: a waiting run is dropped when the counts change"] = function(t)
+    local c = start({ tin = 5 })
+    local bar = barOf(c)
+    if not bar then t.ok(false, "no craft bar") return end
+    tick(bar, { [COPPER_BAR] = 1, [TIN_BAR] = 1 })
+    done(c, COPPER_BAR)
+    bar.press("clear")
+    bar.press("count:" .. TIN_BAR, 2)
+    bar.press("start")
+    t.eq(c.crafts, { { id = COPPER_BAR, n = 1 }, { id = TIN_BAR, n = 2 } }, "a new run from the new counts")
+end
+
+-- Stopping mid-repeat asks the game to stop the repeat (c.stopCraftRepeat,
+-- not a craft). Nothing to stop before a craft was asked.
+tests["craft bar: a stop asks the game to stop the repeat"] = function(t)
+    for _, how in ipairs({ "click", "moving", "window", "closed", "combat" }) do
+        local c = start()
+        local bar = barOf(c)
+        if not bar then t.ok(false, "no craft bar") return end
+        tick(bar, { [COPPER_BAR] = 3 })
+        if how == "click" then bar.press("start")
+        elseif how == "moving" then c.fire("PLAYER_STARTED_MOVING")
+        elseif how == "window" then c.fire("TRADE_SKILL_CLOSE")
+        elseif how == "closed" then bar.close()
+        else c.setCombat(true); c.fire("PLAYER_REGEN_DISABLED") end
+        t.eq(c.repeatStops, 1, how)
+        t.eq(#c.crafts, 1, how)
+    end
+end
+
+tests["craft bar: nothing to stop when no craft was asked"] = function(t)
+    local c = start()
+    local bar = barOf(c)
+    if not bar then t.ok(false, "no craft bar") return end
+    c.setRecipeUsable(COPPER_BAR, false, "Requires a forge")
+    tick(bar, { [COPPER_BAR] = 3 })
+    c.fire("PLAYER_STARTED_MOVING")
+    t.eq(c.repeatStops, 0)
 end
 
 tests["craft bar: a finished cast of another spell is not a craft made"] = function(t)
@@ -325,7 +378,7 @@ tests["craft bar: an interrupt of another spell, or of another unit, does not st
     c.fire("UNIT_SPELLCAST_INTERRUPTED", "target", "Cast-guid", COPPER_BAR)
     t.eq(addon.craftBar.running(), true, "still running")
     done(c, COPPER_BAR)
-    t.eq(crafted(c), { COPPER_BAR, COPPER_BAR }, "the next craft still starts")
+    t.ok(infos(bar):find("Making Copper Bar: 1 of 2", 1, true) ~= nil, "the finish still counts: " .. infos(bar))
 end
 
 tests["craft bar: stops when no craft starts"] = function(t)
@@ -354,10 +407,37 @@ tests["craft bar: Smelt all ticks what the ore covers and starts on the click"] 
     local bar = barOf(c)
     if not bar then t.ok(false, "no craft bar") return end
     t.eq(bar.press("all"), true)
-    t.eq(crafted(c), { COPPER_BAR })
+    t.eq(c.crafts, { { id = COPPER_BAR, n = 4 } }, "the click asks the first recipe, all 4 as the repeat")
     t.eq(rowOf(bar, "count:" .. COPPER_BAR).value, 4)
     t.eq(rowOf(bar, "count:" .. TIN_BAR).value, 2)
     t.eq(addon.craftBar.running(), true)
+end
+
+-- Section 234 item 2: where c.recipeSchematic gives nothing (the client has
+-- no GetRecipeSchematic), the bar reads the recipe from the recipe book,
+-- which the classic window read (c.tradeSkillSchematic) fills. The bar does
+-- not write the book.
+tests["craft bar: Smelt all reads the recipe book when the schematic read gives nothing"] = function(t)
+    local c, addon = start({ copper = 4, tin = 2, schematic = false, book = {
+        ["Copper Bar"] = { id = COPPER_BAR, makes = ITEM_COPPER_BAR, yield = 1, mats = { [ORE_COPPER] = 1 } },
+        ["Tin Bar"] = { id = TIN_BAR, makes = ITEM_TIN_BAR, yield = 1, mats = { [ORE_TIN] = 1 } },
+    } })
+    local bar = barOf(c)
+    if not bar then t.ok(false, "no craft bar") return end
+    t.eq(bar.press("all"), true)
+    t.eq(rowOf(bar, "count:" .. COPPER_BAR).value, 4, "the book mats cover 4 copper")
+    t.eq(rowOf(bar, "count:" .. TIN_BAR).value, 2, "the book mats cover 2 tin")
+    t.eq(crafted(c), { COPPER_BAR })
+    t.eq(addon.craftBar.running(), true)
+end
+
+tests["craft bar: with neither read Smelt all smelts nothing"] = function(t)
+    local c, addon = start({ copper = 4, schematic = false })
+    local bar = barOf(c)
+    if not bar then t.ok(false, "no craft bar") return end
+    bar.press("all")
+    t.eq(#c.crafts, 0, "no recipe read, no craft")
+    t.eq(addon.craftBar.running(), false)
 end
 
 tests["craft bar: no Smelt all on another profession"] = function(t)
