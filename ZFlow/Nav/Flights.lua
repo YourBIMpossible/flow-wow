@@ -43,7 +43,15 @@ local _, ns = ...
 --         OVERHEAD;
 --       - nil unless walking to the board point, flying and walking on
 --         takes less than SAVES of walking straight there (at speed).
---     -> { from, to, x, y, sec, walk }  (x, y: the board point on `home`)
+--     -> { from, to, x, y, sec, walk, run }  (x, y: the board point on
+--     `home`; run: yards from `to` to the target)
+--   line = Flights.Explain(nodes, me, there, reason)
+--     Lead section 286: what the arrow says under a far goal when Pick
+--     found no flight for `reason` (a Pick reason). nil on another
+--     continent or a place not known; WALK when the flight is no quicker
+--     or both ends are one point; NONE with no point known on the
+--     continent; else ROUTE from the known point nearest the player to
+--     the one nearest the target.
 --
 -- Module "flights" (Flights.Declare(k) -> api):
 --   On TAXIMAP_OPENED: client.taxiNodes() and client.mapCorners(read.map),
@@ -51,7 +59,9 @@ local _, ns = ...
 --   keeps what the game showed; RESEARCH-FLIGHTS.md question 5). No setting.
 --   api.way(place)  place = { map, x, y } -> the step
 --     { kind = "flight", label = "Fly to <to>", place = { cont, map, x, y },
---       radius = Flights.NEAR } at the board point, or nil, reason.
+--       radius = Flights.NEAR, hint = ROUTE } at the board point, or nil,
+--       reason, line: line (Explain) only when the target is far (another
+--       map, or more than FAR yards).
 --     While a travel preview is on (k.use("try").Flight() answers a table,
 --     lead section 187), the saved points are not read: the points are the
 --     preview's made-up master (its map share put in the world with its
@@ -78,6 +88,10 @@ Flights.RUN = 7         -- yards a second on foot (TaxiMark.SPEED, Legs.RUN)
 Flights.RATE = 24       -- yards of straight line a second of flight (Flow: N.FLIGHT_RATE)
 Flights.OVERHEAD = 10   -- seconds to take off and land (Flow: N.FLIGHT_OVERHEAD)
 Flights.SAVES = 0.8     -- a flight must beat this share of the walk (Flow: N.AIR_SAVES)
+Flights.FAR = 1000      -- yards: a goal this far on your own map is far (section 286)
+Flights.ROUTE = "Fly: %s to %s, then run %d yd"
+Flights.NONE = "No flight points known yet for this character: open any flight map once"
+Flights.WALK = "Walking: no known flight is quicker"
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -172,7 +186,26 @@ function Flights.Pick(nodes, me, there, home, seconds, speed, rate)
     local walk = dist(me.wx, me.wy, there.wx, there.wy)
     local sec = (d1 + d2) / speed + fly
     if sec >= (walk / speed) * Flights.SAVES then return nil, "walking is about as quick" end
-    return { from = from, to = to, x = bx, y = by, sec = sec, walk = walk }
+    return { from = from, to = to, x = bx, y = by, sec = sec, walk = walk, run = d2 }
+end
+
+local NO_GAIN = { ["the same flight point"] = true, ["walking is about as quick"] = true }
+
+function Flights.Explain(nodes, me, there, reason)
+    if not point(me) or not point(there) or me.cont ~= there.cont then return nil end
+    if NO_GAIN[reason] then return Flights.WALK end
+    local from, d1, to, d2
+    for name, n in pairs(type(nodes) == "table" and nodes or {}) do
+        if type(name) == "string" and point(n) and n.cont == me.cont then
+            local d = dist(me.wx, me.wy, n.wx, n.wy)
+            if not d1 or d < d1 or (d == d1 and name < from) then from, d1 = name, d end
+            local e = dist(there.wx, there.wy, n.wx, n.wy)
+            if not d2 or e < d2 or (e == d2 and name < to) then to, d2 = name, e end
+        end
+    end
+    if not from then return Flights.NONE end
+    if from == to then return Flights.WALK end
+    return Flights.ROUTE:format(from, to, math.floor(d2 + 0.5))
 end
 
 -- One read of the client, or nil when it has no such read or it fails.
@@ -281,9 +314,14 @@ function Flights.Declare(k)
                 end
             end
         end
-        local pick, reason = Flights.Pick(known, { cont = cont, wx = px, wy = py },
-            { cont = tcont, wx = tx, wy = ty }, home, seconds, Flights.RUN, rate)
-        if not pick then return nil, reason end
+        local me, there = { cont = cont, wx = px, wy = py }, { cont = tcont, wx = tx, wy = ty }
+        local pick, reason = Flights.Pick(known, me, there, home, seconds, Flights.RUN, rate)
+        if not pick then
+            -- Lead section 286: a far goal says why there is no flight.
+            local far = place.map ~= pos.map or dist(px, py, tx, ty) > Flights.FAR
+            if not far or preview then return nil, reason end
+            return nil, reason, Flights.Explain(known, me, there, reason)
+        end
         last = {
             from = pick.from, to = pick.to,
             board = { map = pos.map, x = pick.x, y = pick.y },
@@ -295,6 +333,7 @@ function Flights.Declare(k)
             label = Flights.LABEL:format(pick.to),
             place = { cont = cont, map = pos.map, x = pick.x, y = pick.y },
             radius = Flights.NEAR,
+            hint = Flights.ROUTE:format(pick.from, pick.to, math.floor(pick.run + 0.5)),
         }
     end
 
