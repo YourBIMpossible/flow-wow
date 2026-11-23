@@ -278,6 +278,25 @@ tests["auto attack: a target name not read with the list kept: not given up, cou
     nothingWritten(t, c)
 end
 
+-- SD-3: a key actions read (KA.Read or KA.Pick) that raises is still not
+-- an error of the tick: the suggestion stands. It is counted, and a diag
+-- timing mark says it happened.
+tests["key actions: a read that raises is counted and marked, the tick goes on"] = function(t)
+    local c, addon = start()
+    local KA = ns.KeyActions
+    local read = KA.Read
+    t.eq(addon.diag.timing.ROTATION_KEY_ACTIONS_RAISED, nil, "no mark before")
+    KA.Read = function() error("a read that raises") end
+    local ran = pcall(c.advance, 1, 5)
+    KA.Read = read
+    t.ok(ran, "no error escapes the tick")
+    local counts = type(addon.rotationDriver.counts) == "function" and addon.rotationDriver.counts() or {}
+    t.ok((counts.keyActionsRaised or 0) >= 1, "counted")
+    t.ok(type(addon.diag.timing.ROTATION_KEY_ACTIONS_RAISED) == "table", "the diag timing has the mark")
+    t.eq(addon.rotationDriver.errors(), 0, "not an error of the tick")
+    t.ok(addon.rotationDriver.view() ~= nil, "the suggestion stands")
+end
+
 tests["auto attack: Attack read late: nothing until it is read, then the key holds it"] = function(t)
     local c, addon = start({ noAttack = true })
     pull(c)
