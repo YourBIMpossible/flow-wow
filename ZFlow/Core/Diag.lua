@@ -147,6 +147,9 @@ Diag.NAMES = {
     -- UnitClass, UnitGroupRolesAssigned, UnitPowerType, UnitIsDead,
     -- C_Spell.IsSpellInRange, C_UnitAuras.GetAuraDataByIndex) are above.
     "UnitIsConnected",
+    -- Lead section 248 PP2-1: the client's own refusal text Rotation/Group.lua
+    -- compares UI_ERROR_MESSAGE against (read through client.globalText).
+    "SPELL_FAILED_AURA_BOUNCED",
     -- N55 (the boss loot panel, RESEARCH-N55): client.instance asks these
     -- two, client.lootLine these two texts beside LOOT_ITEM_SELF and
     -- LOOT_ITEM_SELF_MULTIPLE above; client.bossUnit asks UnitExists,
