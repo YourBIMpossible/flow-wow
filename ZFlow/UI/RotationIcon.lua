@@ -203,7 +203,11 @@ function I.Declare(k)
             ctx.bus:on(I.NAME, D.EVENT, function(view)
                 if not icon then return end
                 local tex = k.settings:get(D.SETTING) == true and I.Texture(client, view) or nil
-                if not tex or says(client, "petBattle") or says(client, "vehicle") then
+                -- G55 (UI/Reveal.lua): a new player's icon waits for its
+                -- stage. No reveal module, or any doubt: shown.
+                local held = type(ns.Reveal) == "table" and type(ns.Reveal.Open) == "function"
+                    and ns.Reveal.Open(k, "icon") == false
+                if not tex or held or says(client, "petBattle") or says(client, "vehicle") then
                     hide()
                     return
                 end

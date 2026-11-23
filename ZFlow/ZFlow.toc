@@ -183,4 +183,5 @@ Rotation\Mouseover.lua
 Rotation\Enchant.lua
 UI\BossLoot.lua
 UI\NpcSpeech.lua
+UI\Reveal.lua
 UI\SettingsShare.lua
