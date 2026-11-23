@@ -50,6 +50,8 @@ local function enemy() return { exists = true, hostile = true, dead = false } en
 -- call by name. `other` gets every name asked for that it does not have.
 -- extra: target, stealthed, inRange  the read to use in place of the usual
 --          one (a live enemy targeted; stealth not known; every spell in range)
+--        playerBuffs, formName, currentSpell  the same (section 183; each
+--          answers nil, not read, unless given)
 --        without = { name, ... }     reads this client does not have
 local function stub(dead, inCombat, lockdown, cooldowns, extra)
     extra = extra or {}
@@ -71,6 +73,9 @@ local function stub(dead, inCombat, lockdown, cooldowns, extra)
         target = rec("target", extra.target or enemy),
         stealthed = rec("stealthed", extra.stealthed or function() return nil end),
         inRange = rec("inRange", extra.inRange or function() return true end),
+        playerBuffs = rec("playerBuffs", extra.playerBuffs or function() return nil end),
+        formName = rec("formName", extra.formName or function() return nil, false end),
+        currentSpell = rec("currentSpell", extra.currentSpell or function() return nil end),
     }
     for _, name in ipairs(extra.without or {}) do client[name] = nil end
     for _, name in ipairs(FORBIDDEN) do
@@ -254,7 +259,7 @@ tests["rotation driver RD10: no flag, value or number is invented in the snapsho
         if (kind == "flag" or kind == "value" or kind == "number") and not own[name] then
             t.ok(v.snapshot[name] == nil, name .. " is nil in the snapshot")
         elseif kind == "map" then
-            t.eq(v.snapshot[name], {}, name .. " is empty")
+            t.ok(v.snapshot[name] == nil, name .. " is nil in the snapshot: not read")
         end
     end
     t.ok(v.snapshot.stealthed == nil, "stealthed is nil, never false")
@@ -440,7 +445,7 @@ end
 
 -- RD11 ----------------------------------------------------------------
 
-tests["rotation driver RD11: a step presses nothing and asks only its nine reads"] = function(t)
+tests["rotation driver RD11: a step presses nothing and asks only its twelve reads"] = function(t)
     for _, fight in ipairs({ false, true }) do
         local client, calls, other = stub(false, fight, fight)
         local v = D.Step(client, pack())
@@ -450,15 +455,74 @@ tests["rotation driver RD11: a step presses nothing and asks only its nine reads
         local names = {}
         for name in pairs(calls) do names[#names + 1] = name end
         table.sort(names)
-        t.eq(names, { "combatLockdown", "dead", "inCombat", "inRange", "spell", "spellCooldown", "spellId",
-            "stealthed", "target" })
+        t.eq(names, { "combatLockdown", "currentSpell", "dead", "formName", "inCombat", "inRange",
+            "playerBuffs", "spell", "spellCooldown", "spellId", "stealthed", "target" })
         t.eq(calls.dead, 1)
         t.eq(calls.inCombat, 1)
         t.eq(calls.combatLockdown, 1)
         t.eq(calls.target, 1)
         t.eq(calls.stealthed, 1)
         t.eq(calls.inRange, 2, "once for each spell with an id")
+        t.eq(calls.playerBuffs, 1)
+        t.eq(calls.formName, 1)
+        t.eq(calls.currentSpell, 2, "once for each spell with an id")
     end
+end
+
+-- RD15 (section 183): buffs, form and current ------------------------
+
+local IDS = { Wrath = WRATH, Moonfire = MOONFIRE }
+
+tests["rotation driver RD15: buffs, form and current are read from the client"] = function(t)
+    local c = ns.make.fakeClient()
+    c.setPlayerBuffs({ ["Mark of the Wild"] = 1200, Thorns = true })
+    c.setFormName("Cat Form", true)
+    c.setCurrentSpell(WRATH, false)
+    c.setCurrentSpell(MOONFIRE, true)
+    local read = D.Read(c, pack(), IDS)
+    t.eq(read("buffs"), { ["Mark of the Wild"] = 1200, Thorns = true })
+    t.eq(read("form"), "Cat Form")
+    t.eq(read("current"), { Wrath = false, Moonfire = true })
+end
+
+tests["rotation driver RD15: buffs, form and current not read stay nil"] = function(t)
+    local c = ns.make.fakeClient()
+    local read = D.Read(c, pack(), IDS)
+    t.ok(read("buffs") == nil, "buffs not read: nil, never empty")
+    t.ok(read("form") == nil, "form not known: nil")
+    t.ok(read("current") == nil, "nothing read: nil")
+    c.setPlayerBuffs({})
+    t.eq(read("buffs"), {}, "read, none up: empty")
+end
+
+tests["rotation driver RD15: a spell whose current answer is not known is left out"] = function(t)
+    local c = ns.make.fakeClient()
+    c.setCurrentSpell(WRATH, true)
+    t.eq(D.Read(c, pack(), IDS)("current"), { Wrath = true })
+    local client = stub(false, false, false, nil, {
+        currentSpell = function(id)
+            if id == WRATH then error("boom") end
+            if id == MOONFIRE then return 1 end
+        end,
+    })
+    t.ok(D.Read(client, pack(), IDS)("current") == nil, "a raise and a non-boolean: nothing read")
+    t.ok(D.Read(c, pack(), nil)("current") == nil, "no ids: nil")
+end
+
+tests["rotation driver RD15: a client without the three reads gives nil"] = function(t)
+    local client = stub(false, false, false, nil, { without = { "playerBuffs", "formName", "currentSpell" } })
+    local read = D.Read(client, pack(), IDS)
+    t.ok(read("buffs") == nil)
+    t.ok(read("form") == nil)
+    t.ok(read("current") == nil)
+    local v = D.Step(client, pack())
+    t.ok(v.snapshot.buffs == nil and v.snapshot.form == nil and v.snapshot.current == nil,
+        "and the snapshot keeps them nil")
+end
+
+tests["rotation driver RD15: a form name that is not text is nil"] = function(t)
+    local client = stub(false, false, false, nil, { formName = function() return 3, true end })
+    t.ok(D.Read(client, pack(), IDS)("form") == nil)
 end
 
 -- The driver in a kernel ------------------------------------------------

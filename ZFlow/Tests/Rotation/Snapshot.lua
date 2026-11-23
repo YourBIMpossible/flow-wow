@@ -1,7 +1,7 @@
 local _, ns = ...
 
 return {
-    ["nothing given: flags and numbers stay unknown, maps are empty"] = function(t)
+    ["nothing given: flags, numbers and maps stay unknown"] = function(t)
         local s, ignored = ns.SnapshotOf(nil)
         t.eq(s.inCombat, nil, "inCombat is unknown, not no")
         t.eq(s.dead, nil, "dead is unknown, not no")
@@ -10,8 +10,11 @@ return {
         t.eq(s.finisherReady, nil, "finisherReady")
         t.eq(s.hurt, nil, "hurt is unknown, not 0")
         t.eq(s.form, nil, "form")
-        t.eq(s.buffs, {}, "buffs")
-        t.eq(s.targetDebuffs, {}, "targetDebuffs")
+        -- Section 183: a map not read is nil, never an empty "nothing up".
+        t.ok(s.buffs == nil, "buffs not read: nil")
+        t.ok(s.targetDebuffs == nil, "targetDebuffs not read: nil")
+        t.ok(s.debuffTypes == nil, "debuffTypes not read: nil")
+        t.ok(s.current == nil, "current not read: nil")
         t.eq(s.spells, {}, "spells")
         t.eq(ignored, {}, "ignored")
     end,
@@ -28,6 +31,14 @@ return {
         t.eq(s.hurt, 4.5, "hurt")
         t.eq(s.buffs, { ["Mark of the Wild"] = true }, "buffs")
         t.eq(s.debuffTypes, { Poison = true }, "debuffTypes")
+    end,
+
+    ["a map read as empty stays empty; a map that is not a table is not known"] = function(t)
+        local s = ns.SnapshotOf({ buffs = {}, current = { Attack = false }, targetDebuffs = "x", debuffTypes = 3 })
+        t.eq(s.buffs, {}, "read, none up")
+        t.eq(s.current, { Attack = false }, "current kept as read")
+        t.ok(s.targetDebuffs == nil, "text is not a map")
+        t.ok(s.debuffTypes == nil, "a number is not a map")
     end,
 
     ["a number that is not a number stays unknown"] = function(t)
@@ -127,7 +138,7 @@ return {
         t.eq(ns.Snapshot(nil), ns.SnapshotOf({}), "no reader")
         t.eq(ns.Snapshot("reader"), ns.SnapshotOf({}), "not a function")
         -- The empty snapshot spelled out here, field by field, from the kinds.
-        local empty = { map = {}, spells = {} }   -- flag, value and number: nil
+        local empty = { spells = {} }   -- flag, value, number and map: nil
         for _, reader in ipairs({ false, "reader" }) do
             local s = ns.Snapshot(reader or nil)
             local label = reader and "not a function" or "no reader"

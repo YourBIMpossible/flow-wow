@@ -42,15 +42,23 @@ local function knows(s, name)
     local r = s.spells and s.spells[name]
     return (r and r.known) and true or false
 end
-local function current(s, name) return (s.current and s.current[name]) and true or false end
+-- Read as off: true only when the current map was read and says false.
+-- Not read (nil map or no answer for the spell) is not "off" (section 183).
+local function readOff(s, name) return type(s.current) == "table" and s.current[name] == false end
+-- Buffs read at all (an empty map is read: none up).
+local function buffsRead(s) return type(s.buffs) == "table" end
 -- A fight on, or not known (ns.Rotation.InFight); known to be out of one.
 local function inFight(s) return ns.Rotation.InFight(s) end
 local function outOfFight(s) return ns.Rotation.OutOfFight(s) end
 local function fight(s) return (s.hostile == true or inFight(s)) and true or false end
 
+-- Is an aura on? true, false, or nil when it cannot be told: the form
+-- counts only as a yes (nil form is "no form" and "not known" alike), and
+-- "no aura" needs the buffs read.
 local function hasAura(s)
     if AURAS[s.form or ""] then return true end
-    for name in pairs(s.buffs or {}) do
+    if not buffsRead(s) then return nil end
+    for name in pairs(s.buffs) do
         if AURAS[name] then return true end
     end
     return false
@@ -73,9 +81,9 @@ local function longest(s, prefix)
 end
 
 -- A blessing is wanted out of a fight, with none up or the one up nearly out.
--- Not known whether a fight is on: not wanted.
+-- Not known whether a fight is on: not wanted. Buffs not read: not wanted.
 function ns.PaladinWantsBlessing(s)
-    if not outOfFight(s) then return false end
+    if not outOfFight(s) or not buffsRead(s) then return false end
     local left = longest(s, "Blessing of ")
     if left == nil then return true end
     return type(left) == "number" and left < 30
@@ -84,14 +92,16 @@ end
 -- A seal is wanted when none is up; with a fight on or about to start, also
 -- when the one up is nearly out (3 s in the fight, 8 s before the pull; 3 s
 -- when it is not known whether the fight is on).
+-- Buffs not read: not wanted (section 183).
 function ns.PaladinWantsSeal(s)
+    if not buffsRead(s) then return false end
     local left = longest(s, "Seal of ")
     if left == nil then return true end
     if not fight(s) or type(left) ~= "number" then return false end
     return left < (inFight(s) and 3 or 8)
 end
 
-local function sealUp(s) return longest(s, "Seal of ") ~= nil end
+local function sealUp(s) return buffsRead(s) and longest(s, "Seal of ") ~= nil end
 local function wisdom(s) return s.role == "heal" and knows(s, "Blessing of Wisdom") end
 local function command(s) return s.role ~= "heal" and s.role ~= "tank" and knows(s, "Seal of Command") end
 
@@ -104,7 +114,7 @@ end
 
 local buffs = tag({
     { spell = "Devotion Aura", kind = "buff", reason = "No aura is on",
-      when = function(s) return not hasAura(s) end },
+      when = function(s) return hasAura(s) == false end },
     { spell = "Blessing of Wisdom", kind = "buff", reason = "Blessing missing or running out",
       when = function(s) return wisdom(s) and ns.PaladinWantsBlessing(s) end },
     { spell = "Blessing of Might", kind = "buff", reason = "Blessing missing or running out",
@@ -117,9 +127,9 @@ local buffs = tag({
 
 local melee = tag({
     { spell = "Attack", target = true, reason = "Start attacking",
-      when = function(s) return s.hostile and not current(s, "Attack") end },
+      when = function(s) return s.hostile and readOff(s, "Attack") end },
     { spell = "Auto Attack", target = true, reason = "Start attacking",
-      when = function(s) return s.hostile and not current(s, "Auto Attack") end },
+      when = function(s) return s.hostile and readOff(s, "Auto Attack") end },
 })
 
 local execute = tag({

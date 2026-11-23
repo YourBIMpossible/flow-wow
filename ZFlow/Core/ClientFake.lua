@@ -1625,6 +1625,36 @@ function ns.make.fakeClient(opts)
             s.comboColor = nil
         end
     end
+
+    -- Section 183 (C1): the rotation's buffs, form and current reads. Each
+    -- starts not known (nil). setPlayerBuffs(map or nil): the map handed
+    -- back as a copy. setFormName(name, known): known false (or left out
+    -- with no name) means not known. setCurrentSpell(id, v): v true, false
+    -- or nil (not known) for that spell id.
+    function c.playerBuffs()
+        if type(s.playerBuffs) ~= "table" then return nil end
+        local out = {}
+        for k, v in pairs(s.playerBuffs) do out[k] = v end
+        return out
+    end
+    function c.setPlayerBuffs(map) s.playerBuffs = type(map) == "table" and map or nil end
+    function c.formName()
+        if s.formKnown ~= true then return nil, false end
+        return s.formName, true
+    end
+    function c.setFormName(name, known)
+        s.formName = type(name) == "string" and name or nil
+        if known == nil then known = s.formName ~= nil end
+        s.formKnown = known and true or false
+    end
+    function c.currentSpell(id)
+        if type(id) ~= "number" or type(s.currentSpells) ~= "table" then return nil end
+        return s.currentSpells[id]
+    end
+    function c.setCurrentSpell(id, v)
+        s.currentSpells = s.currentSpells or {}
+        if v == nil then s.currentSpells[id] = nil else s.currentSpells[id] = v and true or false end
+    end
     return c
 end
 
