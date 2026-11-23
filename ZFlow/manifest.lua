@@ -256,5 +256,7 @@ return {
     -- Lead DISPATCH section 340: the minimap button's rim math (pure), then the button.
     "UI/MinimapPlace.lua",
     "UI/MinimapButton.lua",
+    -- G48 (P-TRIP): the party route over add-on messages (after TripRoute).
+    "Nav/PartyRoute.lua",
     },
 }

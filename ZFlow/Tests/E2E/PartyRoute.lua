@@ -95,7 +95,7 @@ tests["party route: a route shared by one client is offered to and taken by the 
     t.eq(count(b, "route take"), 1, "one offer line")
     t.eq(count(a, "route take"), 0, "the sharer is not offered its own route")
     slash(b, "route take")
-    t.eq(first(b), "Herbs", "the taken route's first stop is on the other client's arrow")
+    t.eq(first(b), "Boars", "the taken route's first stop is on the other client's arrow")
 end
 
 tests["party route: a refused send says not shared and nothing else changes"] = function(t)
@@ -144,7 +144,7 @@ tests["party route: a late joiner asks and the sharer answers once"] = function(
     slash(b, "route ask")
     t.eq(#a.addonSent, again, "a second ask at once is not answered")
     slash(b, "route take")
-    t.eq(first(b), "Herbs")
+    t.eq(first(b), "Boars")
 end
 
 tests["party route: a lost chunk says the route is incomplete"] = function(t)

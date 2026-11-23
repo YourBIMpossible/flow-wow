@@ -214,3 +214,4 @@ Nav\QuestSpots.lua
 Nav\TripRoute.lua
 UI\MinimapPlace.lua
 UI\MinimapButton.lua
+Nav\PartyRoute.lua

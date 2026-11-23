@@ -337,6 +337,21 @@ function T.Declare(k, diag)
         return T.Lines(route, at)
     end
 
+    -- G48 (Nav/PartyRoute.lua): a copy of the stops still to walk, or nil.
+    function api.Current()
+        if not route then return nil end
+        local stops = {}
+        for i = at, #route.stops do
+            local s = route.stops[i]
+            if not s.gone then
+                stops[#stops + 1] = { label = s.label, detail = s.detail,
+                                      place = { map = s.place.map, x = s.place.x, y = s.place.y } }
+            end
+        end
+        if #stops == 0 then return nil end
+        return { kind = route.kind, label = route.label, stops = stops }
+    end
+
     local function say(lines)
         local c = client()
         if type(c) ~= "table" or type(c.print) ~= "function" then return end
@@ -379,7 +394,7 @@ function T.Declare(k, diag)
         name = T.NAME,
         needs = { "client", "store", "settings" },
         provides = { Step = api.Step, Plan = api.Plan, Run = api.Run, Skip = api.Skip, Off = api.Off,
-                     Lines = api.Lines },
+                     Lines = api.Lines, Current = api.Current },
         start = function(c) ctx = c end,
         stop = function() route, at = nil, 1 end,
     })

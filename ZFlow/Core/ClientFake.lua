@@ -3961,6 +3961,43 @@ function ns.make.fakeClient(opts)
             if type(line) == "string" then focusLine = line end
         end
     end
+    -- G48 (P-TRIP): the real client's c.addonPrefix and c.addonSend. A send
+    -- is recorded in c.addonSent ({ prefix, text, channel }) and delivered
+    -- to this client and every linked one that took the prefix, as
+    -- CHAT_MSG_ADDON (prefix, text, channel, sender), like the real echo.
+    --   c.linkAddon(other)       other gets this client's sends (one way)
+    --   c.setAddonRefuse(why)    every send answers nil, why (nil: sends)
+    --   c.setAddonName(name)     the sender name others see ("Player")
+    --   c.addonDeliver(prefix, text, channel, sender)   one message in
+    -- Not in a party (c.setGrouped not true): nil, "not in a party".
+    do
+        local links, prefixes = {}, {}
+        local refuse
+        local me = "Player"
+        c.addonSent = {}
+        function c.addonPrefix(prefix)
+            if type(prefix) ~= "string" or prefix == "" or #prefix > 16 then return false end
+            prefixes[prefix] = true
+            return true
+        end
+        function c.addonDeliver(prefix, text, channel, sender)
+            if prefixes[prefix] then c.fire("CHAT_MSG_ADDON", prefix, text, channel, sender) end
+        end
+        function c.addonSend(prefix, text, channel)
+            if channel ~= "PARTY" then return nil, "only the party channel" end
+            if type(prefix) ~= "string" or type(text) ~= "string" then return nil, "nothing to send" end
+            if #text > 255 then return nil, "message too long" end
+            if refuse ~= nil then return nil, refuse end
+            if s.grouped ~= true then return nil, "not in a party" end
+            c.addonSent[#c.addonSent + 1] = { prefix = prefix, text = text, channel = channel }
+            for _, other in ipairs(links) do other.addonDeliver(prefix, text, channel, me) end
+            c.addonDeliver(prefix, text, channel, me)
+            return true
+        end
+        function c.linkAddon(other) links[#links + 1] = other end
+        function c.setAddonRefuse(why) refuse = why end
+        function c.setAddonName(name) me = tostring(name) end
+    end
     return c
 end
 

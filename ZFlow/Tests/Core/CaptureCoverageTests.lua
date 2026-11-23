@@ -408,4 +408,11 @@ tests["capture coverage (d): the reads saved at login carry the answers"] = func
     t.ok(not holds(last, TEXTS), "no made-up text saved")
 end
 
+-- G48 (P-TRIP, ACTING): the party route's add-on messages; the prefix is
+-- taken at login, a send goes on the party channel only, on the player's
+-- own route share or route ask (or an answer to a party member's ask).
+-- Never the capture.
+KIND.act[#KIND.act + 1] = "addonPrefix"
+KIND.act[#KIND.act + 1] = "addonSend"
+
 return tests
