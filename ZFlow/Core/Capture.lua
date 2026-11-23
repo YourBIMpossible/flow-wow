@@ -437,11 +437,22 @@ Capture.FEATURES = {
 
 -- The words a feature says when a read is not known, by the read the
 -- loader sets (Capture.READS). Only words that mean that read alone: a line
--- that could mean another cause too (a class with no spell list) is not here.
+-- that could mean another cause too (a class with no spell list, the
+-- arrow's "direction unknown", which facing, position or the bearing can
+-- each cause) is not here. Section 203: each is a line the add-on prints.
+--   position  "your place is not known": the flight preview, try flight
+--             (Nav/Try.lua Try.WHY). "where you are is not known": the
+--             errand route (Nav/Errand.lua). "not known where you are":
+--             the flight finder's reason (Nav/Flights.lua).
+--   facing    "facing unknown": the arrow's demo lines (UI/Arrow.lua).
+--   form      "which form you are in": the rotation row and reads line in
+--             diag, for a pack that leans on the form (Core/Diag.lua
+--             Diag.READ_WORDS). "form not read": the key frame word
+--             (Rotation/KeyFrame.lua).
 Capture.UNKNOWN = {
-    position = { "not known where you are" },
+    position = { "your place is not known", "where you are is not known", "not known where you are" },
     facing = { "facing unknown" },
-    form = { "form not read" },
+    form = { "which form you are in", "form not read" },
 }
 
 -- How many lines say unknown for a read the capture answers (report.set,
