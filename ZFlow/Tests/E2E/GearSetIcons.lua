@@ -219,7 +219,7 @@ tests["set icons: a click out of combat puts on the set's pieces from the bags, 
     t.eq(pressed, true, "the icon took the click")
     t.eq(c.equipCalls, 1, "one call: the one piece in the bags and not worn")
     t.eq(items(c), { LINK.cloak }, "the cloak; never the helm (not in the set), the ring (worn) or the sword (not in the bags)")
-    t.eq(said, { "Equipped 1 piece of tank; 1 not in your bags." })
+    t.eq(said, { "Asked to equip 1 piece of tank; 1 not in your bags." })
 end
 
 -- ST-1: each piece goes to the slot it was saved in, so the second of a
@@ -233,7 +233,7 @@ tests["set icons: two of one piece take two from the bags, each to its saved slo
         local _, said = click(c, "pair")
         t.eq(items(c), { LINK.ringBear, LINK.ringBear }, "two, never more than the set holds")
         t.eq(slotsAsked(c), pair, "each call asks its saved slot")
-        t.eq(said, { "Equipped 2 pieces of pair; 0 not in your bags." })
+        t.eq(said, { "Asked to equip 2 pieces of pair; 0 not in your bags." })
     end
 end
 
@@ -293,13 +293,13 @@ tests["set icons: equip raising once says so; the next click puts it on"] = func
     local _, said = click(c, "tank")
     t.eq(c.equipCalls, 1, "one call, no retry")
     t.eq(#c.equips, 0)
-    t.eq(said, { "Equipped 0 pieces of tank; 1 not in your bags. 1 piece could not be put on; click again to try." })
+    t.eq(said, { "Asked to equip 0 pieces of tank; 1 not in your bags. 1 piece could not be put on; click again to try." })
     c.advance(30, 60)
     c.fire("PLAYER_EQUIPMENT_CHANGED", 15, false)
     t.eq(c.equipCalls, 1, "nothing retried by a timer or an event")
     _, said = click(c, "tank")
     t.eq(items(c), { LINK.cloak })
-    t.eq(said, { "Equipped 1 piece of tank; 1 not in your bags." })
+    t.eq(said, { "Asked to equip 1 piece of tank; 1 not in your bags." })
 end
 
 -- SR-6 style recorder: c.equipCalls counts every call, refused ones too.

@@ -24,7 +24,8 @@ local _, ns = ...
 -- combat, or combat not known (nothing is asked), what is worn or the bags
 -- not read (nothing is asked). No timer, no event, no retry: a piece the
 -- game refused stays off until the next click. It says what it did:
--- "Equipped N pieces of <set>; M not in your bags."
+-- "Asked to equip N pieces of <set>; M not in your bags." Asked, not done:
+-- the game may refuse a piece without a word, so none is counted as on.
 --   plan, why = GearSetIcons.Plan(set, wornLinks, bagItems)
 --   line      = GearSetIcons.Done(name, equipped, missing, failed)
 --
@@ -173,7 +174,7 @@ end
 -- The line one click prints.
 function SetIcons.Done(name, equipped, missing, failed)
     if equipped == 0 and missing == 0 and failed == 0 then return SetIcons.ALREADY:format(name) end
-    local line = "Equipped " .. pieces(equipped) .. " of " .. name .. "; " .. missing .. " not in your bags."
+    local line = "Asked to equip " .. pieces(equipped) .. " of " .. name .. "; " .. missing .. " not in your bags."
     if failed > 0 then line = line .. " " .. pieces(failed) .. " could not be put on; click again to try." end
     return line
 end

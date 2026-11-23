@@ -8349,7 +8349,7 @@ function ns.make.client(env)
     -- for the game's choice. Only when InCombatLockdown answers a plain
     -- false: true, a secret, a raise or no such call asks nothing.
     -- -> true | nil, "combat" | "bad" | "noCall" | "raised". One call, no
-    -- retry. Needs game test: EquipItemByName is in the 16001 name list;
+    -- retry. first guess: EquipItemByName is in the 16001 name list;
     -- what it does with a link and a slot is not seen in game.
     function c.equipItem(item, slot)
         local okLock, locked = call(env.InCombatLockdown)
