@@ -175,6 +175,9 @@ local function start(opts)
         c.fire("TRADE_SKILL_SHOW")
         c.fire("TRADE_SKILL_LIST_UPDATE")
         c.advance(addon.RecipeBook.SETTLE, 1)
+        -- The bar opens collapsed (lead section 341); these cases are for
+        -- the open bar, so the heading is clicked once here.
+        if opts.folded ~= true then c.kitClick("CraftBar", "fold") end
     end
     return c, addon
 end
