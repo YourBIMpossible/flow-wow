@@ -156,6 +156,8 @@ return {
     "UI/MinimapPin.lua",
     "UI/RotationIcon.lua",
     "Rotation/Pulse.lua",
+    "UI/PlateThreat.lua",
+    "UI/PlateCombo.lua",
     "Rotation/CastEdge.lua",
     "Rotation/Audit.lua",
     "Rotation/FormSpells.lua",
