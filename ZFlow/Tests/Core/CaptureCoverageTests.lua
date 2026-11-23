@@ -85,6 +85,10 @@ KIND.show[#KIND.show + 1] = "settingsWindow"
 KIND.show[#KIND.show + 1] = "buttonFace"
 KIND.show[#KIND.show + 1] = "ctrlDrag"
 KIND.show[#KIND.show + 1] = "hoverTip"
+-- Lead section 340: the diagnostics line naming the frame under the mouse,
+-- and which kit window made a frame; asked by the settings word only.
+KIND.tool[#KIND.tool + 1] = "kitFocus"
+KIND.tool[#KIND.tool + 1] = "kitOwner"
 
 -- Every read, and whether the capture asks it (true) or not (false).
 local READS = {

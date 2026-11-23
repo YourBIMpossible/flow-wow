@@ -239,6 +239,9 @@ Diag.NAMES = {
     "GRAY_FONT_COLOR",
     "GameFontNormal", "GameFontHighlight", "GameFontDisable", "GameFontNormalSmall", "GameFontHighlightSmall",
     "GameFontDisableSmall", "GameFontNormalLarge", "GameFontRed", "GameFontGreen",
+    -- Lead section 340: the frame under the mouse (c.kitFocus), and the
+    -- settings window's large page heading.
+    "GetMouseFocus", "GetMouseFoci", "GameFontHighlightHuge",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns

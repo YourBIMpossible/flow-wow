@@ -230,7 +230,7 @@ tests["kitFocus: one line names the frame under the mouse and whether it is the 
     if type(line) ~= "string" then return end
     t.ok(line:find("CheckButton", 1, true) ~= nil, "names its type: " .. line)
     t.ok(line:find("kit KitMouse", 1, true) ~= nil, "says it is the kit's: " .. line)
-    t.ok(line:find("KitMouseFrame", 1, true) ~= nil, "names the window in its parents: " .. line)
+    t.ok(line:find("(kit)", 1, true) ~= nil, "its parents are marked as the kit's: " .. line)
     env.focus = { kind = "Frame", name = "WorldFrame", GetName = function() return "WorldFrame" end,
         GetObjectType = function() return "Frame" end }
     t.ok(c.kitFocus():find("not the kit's", 1, true) ~= nil, "a game frame is not the kit's")

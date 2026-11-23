@@ -3850,6 +3850,18 @@ function ns.make.fakeClient(opts)
             return page
         end
     end
+    -- Lead section 340: the real client's c.kitFocus and c.kitOwner. The
+    -- fake has no mouse: the line is what c.setKitFocus last set.
+    --   c.kitFocus() -> line;  c.kitOwner(frame) -> nil
+    --   c.setKitFocus(line)   the line kitFocus answers next
+    do
+        local focusLine = "focus: nothing under the mouse"
+        function c.kitFocus() return focusLine end
+        function c.kitOwner() return nil end
+        function c.setKitFocus(line)
+            if type(line) == "string" then focusLine = line end
+        end
+    end
     return c
 end
 
