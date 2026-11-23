@@ -41,6 +41,9 @@ P.WORKS = "works"
 P.LOGIN = "PLAYER_ENTERING_WORLD"
 P.FIGHT_OVER = "PLAYER_REGEN_ENABLED"
 P.ADDON = "ADDON_LOADED"
+-- Why there is no data, and what the journal row says after a re-ask failed.
+P.NO_READ = "this client has no kit probe read"
+P.NOT_KNOWN = "not known"
 P.JOURNAL = "Blizzard_EncounterJournal"
 
 function P.Works(record, id)
@@ -87,6 +90,8 @@ function P.Start(k)
         if done then return end
         if type(client.kitProbe) ~= "function" then
             finish()
+            -- No data is never silent: the diagnostics say why.
+            k.problems:add(P.KIND, "probe", P.NO_READ)
             return
         end
         local rows = nil
@@ -122,9 +127,18 @@ function P.Start(k)
     -- (read only, no rows) and re-recorded; the other answers are kept.
     client.listen(P.ADDON, function(name)
         if name ~= P.JOURNAL or last == nil or type(client.kitProbe) ~= "function" then return end
-        local ok, answer = pcall(client.kitProbe, {})
-        if not ok or type(answer) ~= "table" or type(answer.EJ_LOADED) ~= "string" then return end
-        last.rows.EJ_LOADED = answer.EJ_LOADED
+        local ok, answer, reason = pcall(client.kitProbe, {})
+        if ok and type(answer) == "table" and type(answer.EJ_LOADED) == "string" then
+            last.rows.EJ_LOADED = answer.EJ_LOADED
+        else
+            -- A re-ask that fails (a raise, a fight) is not dropped in
+            -- silence, and the old answer is not left standing as if true.
+            local why = reason
+            if not ok then why = answer end
+            if why == nil then why = "no answer" end
+            last.rows.EJ_LOADED = P.NOT_KNOWN
+            k.problems:add(P.KIND, "journal", "asked again when the journal loaded: " .. tostring(why))
+        end
         local okSave, err = pcall(save, k, last)
         if not okSave then k.problems:add(P.KIND, "save", tostring(err)) end
     end)

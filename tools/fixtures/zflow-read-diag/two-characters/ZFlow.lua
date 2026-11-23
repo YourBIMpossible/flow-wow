@@ -31,7 +31,7 @@ ZFlowDB = {
 ["T5"] = "Couldn't find inherited node: SearchBoxTemplate",
 ["G2"] = "nil",
 ["G6"] = "works (table)",
-["X9"] = "set, not confirmed",
+["X9"] = "made, not confirmed",
 ["EJ_LOADED"] = "no",
 },
 },

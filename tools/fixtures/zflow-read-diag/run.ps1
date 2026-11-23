@@ -83,9 +83,9 @@ Report 'two-characters' $r 0 @(
     'G2  global  C_Texture.GetAtlasInfo: nil',
     'G6  global  GameTooltip: works (table)',
     'T7  template  PanelTabButtonTemplate: not asked',
-    'X9  ?  ?: set, not confirmed',
+    'X9  ?  ?: made, not confirmed',
     'Encounter Journal add-on loaded: no',
-    'works 2, missing 22, not confirmed 1',
+    'works 2, missing 2, not confirmed 1, not asked 20',
     'arrows.mode = separate',
     'arrows.points.quest = CENTER, CENTER, 200, 100'
 ) @('987654', '987111', '555444', '0.4321', '0.8765', '1411', 'bagStacks', 'money', 'level:', 'x3:')

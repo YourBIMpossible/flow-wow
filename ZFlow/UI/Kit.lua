@@ -146,6 +146,17 @@ local function someText(p, out, field, what)
     return true
 end
 
+-- An icon: a texture path, or the file number the game gives for one.
+local function someIcon(p, out, what)
+    local v = p.icon
+    if v == nil then return true end
+    if type(v) ~= "string" and not (isAmount(v) and v > 0) then
+        return nil, what .. ": icon must be a texture path or a file number"
+    end
+    out.icon = v
+    return true
+end
+
 local function needFn(p, out, field, what)
     if type(p[field]) ~= "function" then return nil, what .. " needs " .. field .. ": a function" end
     out[field] = p[field]
@@ -258,7 +269,9 @@ end
 function PARTS.line(p, out)
     local ok, why = needText(p, out, "text", "a line")
     if not ok then return nil, why end
-    for _, field in ipairs({ "icon", "sub", "right", "tooltip" }) do
+    ok, why = someIcon(p, out, "a line")
+    if not ok then return nil, why end
+    for _, field in ipairs({ "sub", "right", "tooltip" }) do
         ok, why = someText(p, out, field, "a line")
         if not ok then return nil, why end
     end
@@ -394,7 +407,7 @@ function PARTS.itemLine(p, out, _, ctx)
         end
         out.item = p.item
     end
-    ok, why = someText(p, out, "icon", "an item line")
+    ok, why = someIcon(p, out, "an item line")
     if not ok then return nil, why end
     ok, why = someText(p, out, "note", "an item line")
     if not ok then return nil, why end
