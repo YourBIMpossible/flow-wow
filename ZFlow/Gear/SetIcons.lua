@@ -52,7 +52,7 @@ SetIcons.COMBAT_UNKNOWN = "Can't tell whether you are in combat, so nothing was 
 SetIcons.CANT_READ_WORN = "Can't read what you wear right now, so nothing was equipped."
 SetIcons.CANT_READ_BAGS = "Can't read your bags right now, so nothing was equipped."
 SetIcons.NO_SLOT = "Pieces with no saved slot: %d (the game picks where they go)."
-SetIcons.NO_SET ="You have no set named %s."
+SetIcons.NO_SET = "You have no set named %s."
 SetIcons.ALREADY = "You already wear all of %s that is in your bags."
 
 local function finite(n)

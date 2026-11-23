@@ -44,8 +44,17 @@ local _, ns = ...
 --   gear.rollChat   "Need or Greed advice in chat on loot rolls": one chat
 --                   line per roll id, once there is advice
 -- At start it asks the client to be told about loot rolls:
---   client.onLootRoll(fn) -> cancel;  fn(rollId, link, show);  show(text, r, g, b)
+--   client.onLootRoll(fn) -> cancel;  fn(rollId, link, show)
+--   show(text, r, g, b, { quiet = true or false })
 --   client.rollValue(rollId, text, r, g, b)   the value on the roll's item
+-- With no roll frame found the client's show says the hint in chat instead
+-- (Core/Client.lua, F4). It is told quiet, so it says nothing, when
+-- gear.rollChat is on (the advice line is the one chat line for a roll) and
+-- when this roll's hint was handed to it before (a roll offered again).
+-- A roll the game cancels (CANCEL_LOOT_ROLL, the roll id) is dropped: not
+-- worked out again, and its id is a new roll when it is offered again.
+-- A roll offered with gear.rollHint off: a value this module drew earlier
+-- is taken off that roll (the game uses its roll frames again).
 -- A client without the roll hook (see Core/Client.lua, F4) leaves the
 -- module started and quiet. A roll with no advice yet (the item not loaded,
 -- what you wear not read, a read raising) is worked out again every TICK
@@ -182,8 +191,9 @@ end
 
 function R.Declare(k, packs, diag)
     local api = {}
-    local hooked, errors, cancel = false, 0, nil
+    local hooked, errors, cancel, offCancel = false, 0, nil, nil
     local seen, said, pending = {}, {}, {}
+    local told, valued = {}, false      -- roll id -> the hint handed to show; a value was drawn
     local ctx, ticker = nil, nil
     function api.hooked() return hooked end
     function api.errors() return errors end
@@ -225,6 +235,7 @@ function R.Declare(k, packs, diag)
         if advice ~= nil then
             text = advice.value
             colour = ns.GearTooltipModule.COLOUR[advice.tone] or ns.GearTooltipModule.COLOUR.none
+            valued = true
         end
         local ok, err
         if colour ~= nil then
@@ -259,7 +270,11 @@ function R.Declare(k, packs, diag)
         if hint ~= nil and hint.text ~= entry.shown then
             entry.shown = hint.text
             local colour = ns.GearTooltipModule.COLOUR[hint.tone] or ns.GearTooltipModule.COLOUR.none
-            entry.show(hint.text, colour[1], colour[2], colour[3])
+            -- No roll frame: show says it in chat unless told quiet (RH-1).
+            local mark = entry.link .. " " .. hint.text
+            local quiet = told[rollID] == mark or ctx.settings:get(R.CHAT_SETTING) == true
+            told[rollID] = mark
+            entry.show(hint.text, colour[1], colour[2], colour[3], { quiet = quiet })
         end
         value(rollID, advice)
         if advice == nil then
@@ -307,7 +322,11 @@ function R.Declare(k, packs, diag)
             ctx = c
             if type(c.client.onLootRoll) ~= "function" then return end
             local got = c.client.onLootRoll(function(rollID, link, show)
-                if c.settings:get(R.SETTING) ~= true or type(show) ~= "function" then return end
+                if c.settings:get(R.SETTING) ~= true then
+                    if valued then value(rollID, nil) end
+                    return
+                end
+                if type(show) ~= "function" then return end
                 if type(link) ~= "string" or link == "" then return end
                 local entry = { link = link, show = show, tries = 0 }
                 pending[rollID] = nil
@@ -318,11 +337,18 @@ function R.Declare(k, packs, diag)
             end)
             if type(got) == "function" then
                 cancel, hooked = got, true
+                -- A roll that is over (RH-4): nothing more is worked out or
+                -- said for it.
+                offCancel = c.bus:on(R.NAME, "CANCEL_LOOT_ROLL", function(rollID)
+                    if type(rollID) ~= "number" then return end
+                    pending[rollID], said[rollID], told[rollID] = nil, nil, nil
+                end)
             end
         end,
         stop = function()
             if cancel then cancel() end
-            cancel, hooked = nil, false
+            if offCancel then offCancel() end
+            cancel, offCancel, hooked = nil, nil, false
             stopTicker()
             pending = {}
         end,
