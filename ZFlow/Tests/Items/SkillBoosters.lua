@@ -20,7 +20,7 @@ tests["boosters: an English tooltip is read; a registered entry is found on any 
     t.eq(b and b.skill, "Mining"); t.eq(b and b.amount, 2); t.eq(b and b.cap, 15)
     t.eq(SB().Find(BOOK, GERMAN, function() return nil end), nil, "not registered, not English: unknown")
     local entry = { skill = "Mining", amount = 2, cap = 15, source = "test record", seen = "2026-11-23" }
-    local got = SB().Find(BOOK, GERMAN, function(id) return id == BOOK and entry or nil end)
+    local got = SB().Find(BOOK, GERMAN, function(id) if id == BOOK then return entry end end)
     t.eq(got and got.skill, "Mining", "found by ID")
     t.eq(SB().Find(BOOK, GERMAN, function() return { skill = "Mining", amount = 2 } end), nil,
         "an entry without where and when it was read is ignored")

@@ -8543,8 +8543,10 @@ function ns.make.client(env)
             local ok, name, header, _, rank, _, _, max = call(env.GetSkillLineInfo, i)
             if not ok then return nil end
             if not header and type(name) == "string" and not hidden(name) and name ~= "" then
-                out[name] = { rank = type(rank) == "number" and not hidden(rank) and rank or nil,
-                              max = type(max) == "number" and not hidden(max) and max or nil }
+                local row = {}
+                if type(rank) == "number" and not hidden(rank) then row.rank = rank end
+                if type(max) == "number" and not hidden(max) then row.max = max end
+                out[name] = row
             end
         end
         return out

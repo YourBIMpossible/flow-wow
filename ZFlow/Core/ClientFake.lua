@@ -3139,7 +3139,10 @@ function ns.make.fakeClient(opts)
     function c.setWeaponSkillsFails(on) s.weaponSkillsFails = on and true or nil end
     -- Lead section 337 item 2: the skill ranks for skillRanks(),
     -- { [name] = { rank, max } }; nil (the start): not read.
-    function c.setSkillRanks(map) s.skillRanks = type(map) == "table" and map or nil end
+    function c.setSkillRanks(map)
+        s.skillRanks = nil
+        if type(map) == "table" then s.skillRanks = map end
+    end
     function c.skillRanks()
         if type(s.skillRanks) ~= "table" then return nil end
         local out = {}

@@ -134,7 +134,8 @@ function SB.Facts(client, bag)
             end
         end
     end
-    return any and out or nil
+    if not any then return nil end
+    return out
 end
 
 function SB.Declare(k)
