@@ -193,4 +193,32 @@ tests["dungeon window F1: a name for Escape, and its place kept over a reload"] 
     t.eq(rec and { rec.width, rec.height }, { 720, 520 }, "the size it was left at")
 end
 
+-- Twin review, F3 (lead section 303 item 6): an icon on each quest line,
+-- the kit's quest pictures (UI/Kit/Theme.lua Kit.look.icon), by group.
+tests["dungeon window F3: each quest line carries the kit's icon for its group"] = function(t)
+    local c = boot()
+    local last
+    local real = c.kitWindow
+    c.kitWindow = function(id, tree, extra)
+        last = tree
+        local h = real(id, tree, extra)
+        if type(h) == "table" then
+            local update = h.update
+            h.update = function(now)
+                last = now
+                return update(now)
+            end
+        end
+        return h
+    end
+    open(c)
+    local icons = {}
+    ns.Kit.Each(last, function(part)
+        if part.kind == "line" and type(part.text) == "string" then icons[part.text] = part.icon end
+    end)
+    local look = ns.Kit.look.icon
+    t.eq(icons["Red Silk"], look.questAvailable, "a pickup: available")
+    t.eq(icons["The Defias Brotherhood"], look.questLater, "a later quest: later")
+end
+
 return tests
