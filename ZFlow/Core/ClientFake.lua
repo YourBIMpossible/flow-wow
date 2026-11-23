@@ -2277,6 +2277,47 @@ function ns.make.fakeClient(opts)
             return h
         end
     end
+
+    -- Slider rows of the Options page (row N57), as the real page draws
+    -- them. Added last, around the page above.
+    --   c.optionsDrag(key, value)  the player drags that row's slider to
+    --     value and lets go: act(key, value on the row's step, inside its
+    --     limits). false when the row is not a slider or cannot be set.
+    --   c.setSliders(false)        a client that gives no Slider frame:
+    --     every slider row is drawn as the stepper (kind "number")
+    local optionsWithNav = c.optionsPage
+    function c.setSliders(on) s.noSliders = (on == false) end
+    function c.optionsPage(spec)
+        local h = optionsWithNav(spec)
+        if not h then return h end
+        local draw = h.draw
+        function h.draw(rows, act, nav)
+            local ok = draw(rows, act, nav)
+            if s.noSliders and s.options and type(s.options.rows) == "table" then
+                for _, row in ipairs(s.options.rows) do
+                    if row.kind == "slider" then row.kind = "number" end
+                end
+            end
+            return ok
+        end
+        return h
+    end
+    function c.optionsDrag(key, value)
+        if not s.options or type(s.options.rows) ~= "table" or type(value) ~= "number" then return false end
+        for _, row in ipairs(s.options.rows) do
+            if row.key == key and row.kind == "slider" then
+                if row.settable ~= true or type(s.options.act) ~= "function" then return false end
+                local step = 1
+                if type(row.step) == "number" and row.step > 0 then step = row.step end
+                local v = row.min + math.floor((value - row.min) / step + 0.5) * step
+                if v < row.min then v = row.min end
+                if v > row.max then v = row.max end
+                s.options.act(key, v)
+                return true
+            end
+        end
+        return false
+    end
     return c
 end
 
