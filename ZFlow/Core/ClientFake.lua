@@ -3023,6 +3023,82 @@ function ns.make.fakeClient(opts)
         end
     end
 
+    -- S19 (P-SETS branch 2): the set icon row, as the real client's
+    -- iconRow(spec). c.iconRows[i] is each row made, in order: .spec,
+    -- .icons (the last draw, copied, at most 12), .point (the last place),
+    -- shown(). press(key) is the player's left click on that icon: false
+    -- when no such icon is drawn or no act was given, else act(key) under
+    -- pcall and true. drag(point) is the player moving the row: the
+    -- onMoved fn is told point (its error goes to the failed fn).
+    c.iconRows = {}
+    function c.iconRow(spec)
+        if s.noFrames then return nil end
+        local h = { spec = spec, icons = {}, places = 0 }
+        local open, act, moved, movedFailed = false, nil, nil, nil
+        function h.draw(icons, fn)
+            h.icons = {}
+            for _, icon in ipairs(type(icons) == "table" and icons or {}) do
+                if #h.icons >= 12 then break end
+                if type(icon) == "table" then
+                    local copy = {}
+                    for k, v in pairs(icon) do copy[k] = v end
+                    h.icons[#h.icons + 1] = copy
+                end
+            end
+            act = type(fn) == "function" and fn or nil
+        end
+        function h.show(on) open = on and true or false end
+        function h.shown() return open end
+        function h.place(point)
+            if type(point) ~= "table" then return end
+            h.point = { point[1], point[2], point[3], point[4] }
+            h.places = h.places + 1
+        end
+        function h.onMoved(fn, failed)
+            moved = type(fn) == "function" and fn or nil
+            movedFailed = type(failed) == "function" and failed or nil
+        end
+        function h.press(key)
+            for _, icon in ipairs(h.icons) do
+                if icon.key == key then
+                    if not act then return false end
+                    pcall(act, key)
+                    return true
+                end
+            end
+            return false
+        end
+        function h.drag(point)
+            h.point = { point[1], point[2], point[3], point[4] }
+            if not moved then return end
+            local ok, err = pcall(moved, point)
+            if not ok and movedFailed then pcall(movedFailed, err) end
+        end
+        c.iconRows[#c.iconRows + 1] = h
+        return h
+    end
+
+    -- S19 (acting): equipItem, as the real client's. Every call is counted
+    -- in c.equipCalls (the recorder: a call without the click is seen);
+    -- each item put on is in c.equips { item =, slot = }. Out of combat
+    -- only: combat true or not known (setCombatUnknown) answers "combat".
+    -- setEquipFails(n): the next n calls raise ("raised"), then it works.
+    c.equips, c.equipCalls = {}, 0
+    function c.setEquipFails(n) s.equipFails = n end
+    function c.setCombatUnknown(on)
+        if on then s.combat = nil else s.combat = false end
+    end
+    function c.equipItem(item, slot)
+        c.equipCalls = c.equipCalls + 1
+        if s.combat ~= false then return nil, "combat" end
+        if (s.equipFails or 0) > 0 then
+            s.equipFails = s.equipFails - 1
+            return nil, "raised"
+        end
+        c.equips[#c.equips + 1] = { item = item, slot = slot }
+        return true
+    end
+
     -- S20 vendor marks (lead section 230): the merchant's pages, the
     -- per-role badges, and the money read raising. As the real client's
     -- markMerchantSpecs(badges) (badges { [item number] = { { role, state }

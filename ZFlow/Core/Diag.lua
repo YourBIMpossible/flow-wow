@@ -208,6 +208,12 @@ Diag.NAMES = {
     -- carry the Need or Greed value (Core/Client.lua rollValue). First
     -- guesses, never asked of 16001.
     "GroupLootFrame1", "GroupLootFrame1.IconFrame",
+    -- S19 (P-SETS branch 2): the set icons' equip on click (Core/Client.lua
+    -- equipItem: EquipItemByName) and the game's own equipment sets, which
+    -- are NOT used: capture fields only, so a login records whether 16001
+    -- has them before any branch asks them.
+    "EquipItemByName", "C_EquipmentSet", "C_EquipmentSet.GetEquipmentSetIDs",
+    "C_EquipmentSet.GetEquipmentSetInfo", "C_EquipmentSet.UseEquipmentSet",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns
