@@ -5,6 +5,7 @@
 --   c.moving()           -> true | false | nil
 --   c.rowPanel(spec)     -> h: draw(rows, act), show(on), shown(), place(point), onClose
 --   c.craftRecipe(id, n) -> true | nil, why   (acts: the player's own click only)
+--   c.stopCraftRepeat()  -> true | nil, why   (stops the game repeat; not a craft)
 -- Unknown stays unknown: nil is never "nothing needed", "usable" or "still".
 -- Needs game test: every call here is a first guess on 16001.
 local _, ns = ...
@@ -184,6 +185,27 @@ tests["c.craftRecipe: refuses what it cannot ask"] = function(t)
     t.eq({ ns.make.client({ InCombatLockdown = function() return false end }).craftRecipe(2657, 1) }, { nil, "noCall" })
     env.C_TradeSkillUI.CraftRecipe = function() error("no") end
     t.eq({ ns.make.client(env).craftRecipe(2657, 1) }, { nil, "raised" })
+end
+
+tests["c.stopCraftRepeat: asks the game to stop the repeat, never a craft"] = function(t)
+    local stops, crafts = 0, 0
+    local env = { InCombatLockdown = function() return true end,
+        C_TradeSkillUI = { StopRecipeRepeat = function() stops = stops + 1 end,
+            CraftRecipe = function() crafts = crafts + 1 end } }
+    t.eq({ ns.make.client(env).stopCraftRepeat() }, { true }, "a stop is asked in combat too")
+    t.eq(stops, 1)
+    t.eq(crafts, 0)
+    t.eq({ ns.make.client({}).stopCraftRepeat() }, { nil, "noCall" })
+    env.C_TradeSkillUI.StopRecipeRepeat = function() error("no") end
+    t.eq({ ns.make.client(env).stopCraftRepeat() }, { nil, "raised" })
+end
+
+tests["fake client: a stop of the repeat is counted"] = function(t)
+    local c = ns.make.fakeClient()
+    t.eq(c.repeatStops, 0)
+    t.eq({ c.stopCraftRepeat() }, { true })
+    t.eq(c.repeatStops, 1)
+    t.eq(#c.crafts, 0)
 end
 
 tests["fake client: the craft reads are unknown until set, and crafts are logged"] = function(t)

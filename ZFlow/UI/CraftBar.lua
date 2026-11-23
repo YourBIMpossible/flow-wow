@@ -3,12 +3,15 @@ local _, ns = ...
 -- The craft bar (P-CRAFT, lead section 226: #34 Smelt All, G21 the craft
 -- bar, craft controls): a small panel beside the profession window with a
 -- count for each learned recipe, Start or Stop, Smelt all on the mining
--- window, and Clear. One click on Start makes the ticked counts one craft
--- at a time, the next started when the last one finished, until the counts
--- are made or something stops them (Items/CraftQueue.lua says what).
--- Nothing crafts without the click; a stopped run waits for the next one.
--- Needs game test: the events, the spell of a finished craft being the
--- recipe id, and a craft started from the finish of the last one.
+-- window, From goals, and Clear. Lead section 234: a click on Start (or
+-- Smelt all) asks one craft of the first recipe not yet made, with its
+-- whole count as the game repeat count. A finish only counts; when a recipe
+-- is made the next one waits for the next click. Nothing crafts without the
+-- click, and never from a finish, a timer or the tick. A stop (the click,
+-- combat, moving, a window closing, a blocker seen at a finish) asks the
+-- game to stop the repeat, which is not a craft (Items/CraftQueue.lua says
+-- what stops it). Needs game test: the events, the spell of a finished
+-- craft being the recipe id, the repeat count, and the stop call.
 
 local CraftBar = ns.CraftBar or {}
 ns.CraftBar = CraftBar
@@ -24,11 +27,15 @@ CraftBar.NOTHING = "Tick a count first."
 CraftBar.NOTHING_TO_SMELT = "Nothing to smelt: no ore for a learned recipe."
 -- Section 231: From goals found no goal still to craft in this window.
 CraftBar.NO_GOALS = "No goal to craft in this window."
+-- Section 234: a recipe is made and the next waits for the click.
+CraftBar.NEXT = "Click Start for %s."
 
 function CraftBar.Declare(k)
     local Q = ns.CraftQueue
     local api = {}
-    local running, status = false, nil
+    -- running: a craft the click asked is under way. asked: that craft was
+    -- asked of the game, so a stop asks the game to stop its repeat.
+    local running, asked, status = false, false, nil
     function api.running() return running end
     function api.status() return status end
 
@@ -49,9 +56,9 @@ function CraftBar.Declare(k)
         settings = { {
             key = CraftBar.SETTING, scope = "account", type = "bool", default = true,
             label = "Craft bar beside the profession window",
-            help = "Tick how many of each recipe to make and click Start once: the crafts run one after another "
-                .. "until the counts are made, and stop on combat, moving, full bags or a missing reagent. "
-                .. "Nothing crafts without your click.",
+            help = "Tick how many of each recipe to make and click Start: each click makes one recipe at its "
+                .. "count, and the next recipe waits for your next click. It stops on combat, moving, full bags "
+                .. "or a missing reagent. Nothing crafts without your click.",
             group = "Other",
         } },
         provides = { Running = api.running, Status = api.status },
@@ -71,25 +78,48 @@ function CraftBar.Declare(k)
                 if type(fn) ~= "function" then return nil end
                 return pass(pcall(fn, ...))
             end
-            -- ACTING: one craft of the recipe (Core/Client.lua craftRecipe),
-            -- only from the player click on Start or Smelt all and the
-            -- finish of the craft that click started.
-            local function craft(recipe)
+            -- ACTING (section 234): one ask of the recipe n times
+            -- (Core/Client.lua craftRecipe, n as the game repeat count).
+            -- Reached only from act() on the player click on Start or
+            -- Smelt all; never from a finish, a timer or the tick.
+            local function craft(recipe, n)
                 if type(client.craftRecipe) ~= "function" then return nil, "noCall" end
-                local ok, done, why = pcall(client.craftRecipe, recipe, 1)
+                local ok, done, why = pcall(client.craftRecipe, recipe, n)
                 if not ok then return nil, "noCall" end
                 return done, why
+            end
+            -- Not a craft: asks the game to stop the repeat a click started.
+            local function stopRepeat()
+                if not asked then return end
+                asked = false
+                if type(client.stopCraftRepeat) == "function" then pcall(client.stopCraftRepeat) end
             end
 
             local function readBook()
                 local r = read("recipes")
                 book = (type(r) == "table" and type(r.recipes) == "table") and r or { recipes = {} }
             end
+            -- The saved recipe book entry with this recipe id, or nil. The
+            -- book (Items/RecipeBook.lua, read only here) is filled from
+            -- the open window, by the classic row read c.tradeSkillSchematic
+            -- where the client has no GetRecipeSchematic (section 234).
+            local function saved(id)
+                local RB = ns.RecipeBook
+                if type(RB) ~= "table" or type(RB.Recipes) ~= "function" then return nil end
+                local ok, all = pcall(RB.Recipes, k)
+                if not ok or type(all) ~= "table" then return nil end
+                for _, e in pairs(all) do
+                    if type(e) == "table" and e.id == id then return e end
+                end
+                return nil
+            end
             -- A recipe reagents as the craft queue reads them,
             -- { { item, count } } by item, from c.recipeSchematic (the read
-            -- the recipe book uses; section 231). nil when not read.
+            -- the recipe book uses; section 231), else from the recipe
+            -- book entry for that id. nil when neither reads.
             local function reagents(id)
                 local sc = read("recipeSchematic", id)
+                if type(sc) ~= "table" or type(sc.mats) ~= "table" then sc = saved(id) end
                 if type(sc) ~= "table" or type(sc.mats) ~= "table" then return nil end
                 local out = {}
                 for item, n in pairs(sc.mats) do out[#out + 1] = { item = item, count = n } end
@@ -156,37 +186,75 @@ function CraftBar.Declare(k)
 
             local function stop(why, detail)
                 unwatch()
+                stopRepeat()
                 running = false
                 status = q and Q.StopLine(q, why, detail) or nil
+                q = nil
                 draw()
             end
 
-            local function nextCraft()
-                local row = Q.Current(q)
-                if not row then
-                    unwatch()
-                    running = false
-                    status = Q.DoneLine(q)
-                    draw()
-                    return
-                end
-                local why, detail = Q.Blocker(row, reads(row))
-                if why then
-                    if why == "missing" then detail = itemName(detail) end
-                    stop(why, detail)
-                    return
-                end
-                local ok, failed = craft(row.id)
-                if not ok then
-                    stop(failed == "combat" and "combat" or "noCall")
-                    return
-                end
+            -- The next finish must come within the watchdog, or the run
+            -- stops as not started. A stop, never a craft.
+            local function watch()
                 unwatch()
                 cancelWatch = ctx.sched:after(CraftBar.NAME, CraftBar.WATCHDOG, function()
                     cancelWatch = nil
                     if running then stop("noStart") end
                 end)
+            end
+
+            -- What stops the row now, with the missing item named.
+            local function blocked(row)
+                local why, detail = Q.Blocker(row, reads(row))
+                if why == "missing" then detail = itemName(detail) end
+                return why, detail
+            end
+
+            -- On the click only: ask the current row, all it still needs.
+            local function askRow()
+                local row = Q.Current(q)
+                local why, detail = blocked(row)
+                if why then
+                    stop(why, detail)
+                    return
+                end
+                running = true
+                local ok, failed = craft(row.id, row.count - row.made)
+                if not ok then
+                    stop(failed == "combat" and "combat" or "noCall")
+                    return
+                end
+                asked = true
+                watch()
                 status = Q.Line(q)
+                draw()
+            end
+
+            -- A finish of the row under way: count it. Asks nothing.
+            local function finished()
+                local row = Q.Current(q)
+                Q.Made(q)
+                if Q.Current(q) == row then
+                    local why, detail = blocked(row)
+                    if why then
+                        stop(why, detail)
+                        return
+                    end
+                    watch()
+                    status = Q.Line(q)
+                    draw()
+                    return
+                end
+                unwatch()
+                asked = false
+                running = false
+                local nextRow = Q.Current(q)
+                if nextRow then
+                    status = Q.DoneLine(q) .. " " .. CraftBar.NEXT:format(nextRow.name or ("recipe " .. nextRow.id))
+                else
+                    status = Q.DoneLine(q)
+                    q = nil
+                end
                 draw()
             end
 
@@ -204,16 +272,23 @@ function CraftBar.Declare(k)
                     return
                 end
                 q = Q.New(picks)
-                running = true
-                nextCraft()
+                askRow()
             end
 
+            -- The player click. Start goes on with a run that waits for it,
+            -- or begins one from the counts.
             act = function(key, value)
                 if key == "start" then
-                    if running then stop("click") else begin() end
+                    if running then stop("click")
+                    elseif q and Q.Current(q) then askRow()
+                    else begin() end
+                    return
                 elseif running then
                     return
-                elseif key == "all" then
+                end
+                -- Any other click drops a run that waits for Start.
+                q = nil
+                if key == "all" then
                     local picks = Q.MakeAll(learned(), reagents,
                         function(item) return read("itemCount", item) end)
                     counts = {}
@@ -273,15 +348,15 @@ function CraftBar.Declare(k)
             end)
             ctx.bus:on(CraftBar.NAME, "TRADE_SKILL_CLOSE", function()
                 if running then stop("window") end
+                q = nil
                 hide()
             end)
+            -- Counts a finish; never asks a craft (section 234).
             ctx.bus:on(CraftBar.NAME, "UNIT_SPELLCAST_SUCCEEDED", function(unit, _, spellID)
                 if not running or not mine(unit) then return end
                 local row = Q.Current(q)
                 if not row or spellID ~= row.id then return end
-                unwatch()
-                Q.Made(q)
-                nextCraft()
+                finished()
             end)
             ctx.bus:on(CraftBar.NAME, "UNIT_SPELLCAST_INTERRUPTED", function(unit, _, spellID)
                 if not running or not mine(unit) then return end
@@ -309,7 +384,7 @@ function CraftBar.Declare(k)
         end,
         stop = function()
             unwatch()
-            running = false
+            running, asked = false, false
             hide()
         end,
     })

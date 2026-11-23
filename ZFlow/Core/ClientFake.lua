@@ -1888,6 +1888,12 @@ function ns.make.fakeClient(opts)
         c.crafts[#c.crafts + 1] = { id = id, n = n }
         return true
     end
+    -- How many times the add-on asked the game to stop a craft repeat.
+    c.repeatStops = 0
+    function c.stopCraftRepeat()
+        c.repeatStops = c.repeatStops + 1
+        return true
+    end
 
     -- Every row panel made, in order. h.rows is the last draw (copied);
     -- press(key, value) is the player clicking that row: false for an
