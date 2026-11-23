@@ -3,8 +3,10 @@ local _, ns = ...
 -- Lead section 188, Zen: the seen-result snapshot (tools/offline/
 -- zflow-seen.lua, reached as ns.offline.seen). The whole add-on loaded the
 -- way the game loads it (ns.offline.addon) on a fake client; the snapshot
--- is one text block of what the player sees, in a fixed order, with no
--- character, realm, guild or account name in it. Every name and place here
+-- is one text block of what the player sees, in a fixed order, with every
+-- name it was told or could read replaced (section 199, N1: a name it was
+-- not told can remain, so real state must name every kind or mark it
+-- absent). Every name and place here
 -- is made up; nothing is from a capture. Not tested in game. Look only:
 -- the snapshot takes no flight, casts nothing and clicks nothing.
 
@@ -15,6 +17,18 @@ local D, TM, MF, Travel = ns.RotationDriver, ns.TaxiMark, ns.MapFlights, ns.Nav.
 -- Made-up state has no character in it: the snapshot is told so, or it
 -- refuses (see "refuses" below).
 local MADE_UP = { madeUp = true }
+
+-- Real state (section 199, N1): every kind of name that is not handed in is
+-- marked absent, as a caller who knows the player has no guild would.
+local REQUIRED = { "character", "realm", "guild", "account" }
+local function real(opts)
+    local given = type(opts.names) == "table" and opts.names or {}
+    opts.absent = opts.absent or {}
+    for _, kind in ipairs(REQUIRED) do
+        if given[kind] == nil then opts.absent[kind] = true end
+    end
+    return opts
+end
 
 local function has(lines, text)
     for _, l in ipairs(lines or {}) do if l == text then return true end end
@@ -391,7 +405,7 @@ tests["seen: refuses when no character name is known and the state was not said 
     local text, why = seen(c, nil)
     t.eq(text, nil, "no text")
     t.ok(type(why) == "string" and #why > 0, "and the reason is given")
-    t.ok(type((seen(c, nil, { names = { character = "Zzyxmade" } }))) == "string", "a name handed in is enough")
+    t.ok(type((seen(c, nil, real{ names = { character = "Zzyxmade" } }))) == "string", "a name handed in, the other kinds marked absent, is enough")
     t.ok(type((seen(c, nil, MADE_UP))) == "string", "and so is saying the state is made up")
 end
 
@@ -427,21 +441,23 @@ end
 -- a key of opts.names that is no kind of name is refused, not passed over.
 tests["seen names: a line under the head says the kinds known and not known; a key that is no kind refuses"] = function(t)
     local c = ns.make.fakeClient()
-    local text, lines = seen(c, nil, { names = { character = "Zzyxmade", realm = "Quell Made" } })
+    local text, lines = seen(c, nil, real{ names = { character = "Zzyxmade", realm = "Quell Made" } })
     t.ok(type(text) == "string", "no guild is no reason to refuse: " .. tostring(lines))
     lines = type(lines) == "table" and lines or {}
     t.eq(lines[1], parts.HEAD)
-    t.eq(lines[2], "names: character, realm known; guild, account, guid not known")
+    t.eq(lines[2], "names: character, realm known; guild, account marked absent; guid not known; state real")
     t.eq(lines[3], "== arrows ==", "the first section comes after it")
     local by, order = parts.sections(text)
     t.eq(order[1], "head")
     t.eq(by.head, { parts.HEAD, lines[2] }, "the compare has it in the head, in no section")
 
     local made = select(2, seen(c, nil, MADE_UP))
-    t.eq(type(made) == "table" and made[2], "names: none known; character, realm, guild, account, guid not known")
-    local all = select(2, seen(c, nil, { names = { character = "Zzyxmade", realm = "Quell Made",
+    t.eq(type(made) == "table" and made[2],
+        "names: none known; none marked absent; character, realm, guild, account, guid not known; state made up")
+    local all = select(2, seen(c, nil, real{ names = { character = "Zzyxmade", realm = "Quell Made",
         guild = "Vortexmade", account = "Wobblemade", guid = "Player-1234-ABCDEF" } }))
-    t.eq(type(all) == "table" and all[2], "names: character, realm, guild, account, guid known; none not known")
+    t.eq(type(all) == "table" and all[2],
+        "names: character, realm, guild, account, guid known; none marked absent; none not known; state real")
 
     local bad = {
         { "Zzyxmade" },
@@ -469,7 +485,7 @@ tests["seen names: a name joined by any signs, a GUID's parts alone and a non-AS
     c.print("guid Player-1234-ABCDEF, short 1234-ABCDEF, bare ABCDEF")
     c.print("the Player stands")
     c.print("account WOBBL\195\169_MADE")
-    local text, lines = seen(c, nil, { names = { character = "Zzyxmade", realm = "Quell Made",
+    local text, lines = seen(c, nil, real{ names = { character = "Zzyxmade", realm = "Quell Made",
         account = "Wobbl\195\169 Made" } })
     t.ok(type(text) == "string", "a text came back: " .. tostring(lines))
     t.eq(section(text, "chat"), {
@@ -478,7 +494,7 @@ tests["seen names: a name joined by any signs, a GUID's parts alone and a non-AS
         "  the Player stands",
         "  account <account>",
     })
-    t.eq(type(lines) == "table" and lines[2], "names: character, realm, account, guid known; guild not known",
+    t.eq(type(lines) == "table" and lines[2], "names: character, realm, account, guid known; guild marked absent; none not known; state real",
         "the GUID the client answers is known")
 end
 
@@ -486,7 +502,7 @@ end
 tests["seen names: two names that overlap in a line are one placeholder, no piece left"] = function(t)
     local c = ns.make.fakeClient()
     c.print("Zzyxmade")
-    local text, lines = seen(c, nil, { names = { character = "Zzyx", guild = "Xmade" } })
+    local text, lines = seen(c, nil, real{ names = { character = "Zzyx", guild = "Xmade" } })
     t.ok(type(text) == "string", "a text came back: " .. tostring(lines))
     t.eq(section(text, "chat"), { "  <character>" })
 end
@@ -499,7 +515,7 @@ tests["seen names: the problems have no path and no name in them"] = function(t)
     c.slashes["/zzseen"] = function()
         error("C:\\Users\\Zzyxowner\\src\\x.lua:12: boom for Zzyxmade", 0)
     end
-    local text, _, problems = seen(c, addon, { names = { character = "Zzyxmade" } })
+    local text, _, problems = seen(c, addon, real{ names = { character = "Zzyxmade" } })
     t.ok(type(text) == "string", "a text came back")
     t.eq(section(text, "diag"), { "failed" })
     problems = type(problems) == "table" and problems or {}
@@ -520,13 +536,13 @@ end
 tests["seen names: a name under 3 characters refuses; with shortNames it is replaced as a whole word only"] = function(t)
     local c = ns.make.fakeClient()
     c.print("Al is in a small hall, AL.")
-    local text, why = seen(c, nil, { names = { character = "Al" } })
+    local text, why = seen(c, nil, real{ names = { character = "Al" } })
     t.eq(text, nil, "refused")
     t.ok(type(why) == "string" and why:find("under 3 characters", 1, true) ~= nil, "the reason: " .. tostring(why))
     text, why = seen(c, nil, { madeUp = true, names = { guild = "A-b" } })
     t.eq(text, nil, "two letters and a hyphen are two characters")
     t.ok(type(why) == "string" and why:find("under 3 characters", 1, true) ~= nil, "the reason: " .. tostring(why))
-    local short = seen(c, nil, { names = { character = "Al" }, shortNames = true })
+    local short = seen(c, nil, real{ names = { character = "Al" }, shortNames = true })
     t.eq(section(short, "chat"), { "  <character> is in a small hall, <character>." })
 end
 
@@ -541,7 +557,7 @@ tests["seen names: an ASCII name with a non-ASCII sign between its letters is re
     c.print("at Quell" .. NBSP .. "Made")
     c.print("O" .. CURLY .. "Brien says hello")
     local given = { character = "O'Brien", realm = "Quell Made" }
-    local text, lines = seen(c, nil, { names = given })
+    local text, lines = seen(c, nil, real{ names = given })
     t.ok(type(text) == "string", "a text came back: " .. tostring(lines))
     t.eq(section(text, "chat"), { "  at <realm>", "  <character> says hello" })
 
@@ -585,7 +601,7 @@ tests["seen names: a path with a quote in a folder, one ending at a folder and a
     c.slashes["/zzseen"] = function()
         error("cannot open /home/zzyxowner (No such file or directory)", 0)
     end
-    local text, _, problems = seen(c, addon, { names = { character = "Zzyxmade" } })
+    local text, _, problems = seen(c, addon, real{ names = { character = "Zzyxmade" } })
     t.ok(type(text) == "string", "a text came back")
     problems = type(problems) == "table" and problems or {}
     t.eq(problems, { "diag: cannot open <path>/" })
@@ -602,7 +618,7 @@ tests["seen names: a name of digits only is replaced as a whole number, never ac
     c.print("line 1: 234 gold")
     c.print("server 4904, id 1234, not 49040 or 14904")
     local given = { character = "Zzyxmade", guid = "Player-1234-FEDCBA" }
-    local text, lines = seen(c, nil, { names = given })
+    local text, lines = seen(c, nil, real{ names = given })
     t.ok(type(text) == "string", "a text came back: " .. tostring(lines))
     t.eq(section(text, "chat"), {
         "  pin at 0.349, 0.412",
@@ -651,6 +667,54 @@ tests["seen compare: the same text has no differences; one changed arrow line is
     t.eq(more[1] and more[1].section, "diag", "the last section got the extra line")
     t.eq(more[1] and more[1].was, nil)
     t.eq(more[1] and more[1].now, "  one more")
+end
+
+-- Section 199, MyBuddy's N1-N3 on e379f23. Every name is made up.
+
+-- N1 (HIGH): real state must say every kind of name, or mark it absent; a
+-- kind neither known nor marked absent refuses the snapshot.
+tests["seen names N1: real state needs every kind of name or each marked absent"] = function(t)
+    local c = ns.make.fakeClient()
+    c.print("a line")
+    local text, why = seen(c, nil, { names = { character = "Zzyxmade" } })
+    t.eq(text, nil, "realm, guild and account neither known nor marked absent: refused")
+    t.ok(type(why) == "string" and why:find("realm, guild, account", 1, true) ~= nil, "the kinds are named: "
+        .. tostring(why))
+    local lines
+    text, lines = seen(c, nil, { names = { character = "Zzyxmade" },
+        absent = { realm = true, guild = true, account = true } })
+    t.ok(type(text) == "string", "marked absent: a text")
+    t.eq(type(lines) == "table" and lines[2],
+        "names: character known; realm, guild, account marked absent; guid not known; state real")
+    t.eq((seen(c, nil, real{ names = { character = "Zzyxmade" }, absent = { clan = true } })), nil,
+        "a key that is no kind: refused")
+    t.eq((seen(c, nil, { names = { character = "Zzyxmade" },
+        absent = { realm = "yes", guild = true, account = true } })), nil, "a mark that is not true: refused")
+end
+
+-- N2 (HIGH): made-up state is written into the names line, and refused when
+-- the client itself answers a character name (then the state is real).
+tests["seen names N2: made up is said in line 2, and refused when the client answers a character name"] = function(t)
+    local c = ns.make.fakeClient()
+    local lines = select(2, seen(c, nil, MADE_UP))
+    t.ok(type(lines) == "table" and tostring(lines[2]):find("; state made up$") ~= nil, tostring(lines and lines[2]))
+    local named = ns.make.fakeClient({ env = { UnitName = function() return "Zzyxmade" end } })
+    named.print("hello Zzyxmade")
+    local text, why = seen(named, nil, MADE_UP)
+    t.eq(text, nil, "the client answers a character: not made-up state")
+    t.ok(type(why) == "string" and why:find("made up", 1, true) ~= nil, "the reason: " .. tostring(why))
+end
+
+-- N3: a short name inside colour codes. The code's last hex digit stood
+-- next to the name, so it was not a whole word and was left in.
+tests["seen names N3: a short name inside colour codes is replaced"] = function(t)
+    local c = ns.make.fakeClient()
+    local names = parts.names(c, nil, { character = "Al" }, true)
+    t.ok(type(names) == "table", "names")
+    if type(names) ~= "table" then return end
+    t.eq(parts.redact("|cffff0000Al|r says hi", names), "|cffff0000<character>|r says hi")
+    t.eq(parts.redact("|cFF00FF00al|r", names), "|cFF00FF00<character>|r", "any case")
+    t.eq(parts.redact("Alpha and pal", names), "Alpha and pal", "not inside a word")
 end
 
 return tests
