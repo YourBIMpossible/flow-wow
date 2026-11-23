@@ -10,16 +10,20 @@ local _, ns = ...
 --         2) and the level it needs (0 for none). Each as read; a field that
 --         is not a plain number was not read.
 --   who   { proficiency, level }: the class pack's own table of what the
---         class can equip ({ [item class] = { [subclass] = true } }, with an
---         `evidence` label beside them; see ZFlow/Classes) and your level.
+--         class can equip ({ [item class] = { [subclass] = true or n } },
+--         with an `evidence` label beside them; see ZFlow/Classes) and your
+--         level. n, a whole number from 1 up, is "from level n" (lead
+--         section 197, D3: mail from 40); any other number is not known.
 --         No table is made or filled in here.
 --   answer { can, why, reason, evidence }
 --     can     true, false, or nil when it is not known. Not known is never
 --             a yes: the caller shows no upgrade for it.
---     why     "ok", "class" (the class cannot use this kind), "level" (you
---             are below the level it needs), or "unknown"
---     reason  always given, from GearCanUse.REASON; "needs level" is
---             followed by the level
+--     why     "ok", "class" (the class cannot use this kind, or not yet at
+--             your level), "level" (you are below the level it needs), or
+--             "unknown"
+--     reason  always given, from GearCanUse.REASON; "needs level" and
+--             "your class can use this kind from level" are followed by
+--             the level
 --     evidence   the proficiency table's own label ("first guess"), so a
 --             "your class cannot" can be shown for what it rests on
 --
@@ -33,6 +37,7 @@ ns.GearCanUse = U
 U.REASON = {
     ok = "you can use it",
     class = "your class cannot use this kind of item",
+    classFrom = "your class can use this kind from level",
     level = "needs level",
     type = "the item's type is not known",
     proficiency = "what your class can use is not known",
@@ -60,7 +65,20 @@ function U.Check(item, who)
     end
     local kinds = type(proficiency) == "table" and proficiency[item.classID] or nil
     if type(kinds) ~= "table" then return answer(nil, "unknown", R.proficiency) end
-    if kinds[item.subclassID] ~= true then return answer(false, "class", R.class) end
+    local allowed = kinds[item.subclassID]
+    if type(allowed) == "number" then
+        -- From level n (D3). The class part is answered first, then the
+        -- item's own level below, as for true.
+        if not finite(allowed) or allowed < 1 or allowed ~= math.floor(allowed) then
+            return answer(nil, "unknown", R.proficiency)
+        end
+        if not finite(who.level) then return answer(nil, "unknown", R.yourLevel) end
+        if who.level < allowed then
+            return answer(false, "class", R.classFrom .. " " .. tostring(allowed))
+        end
+    elseif allowed ~= true then
+        return answer(false, "class", R.class)
+    end
 
     if not finite(item.minLevel) then return answer(nil, "unknown", R.minLevel) end
     if not finite(who.level) then return answer(nil, "unknown", R.yourLevel) end

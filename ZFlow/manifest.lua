@@ -95,9 +95,11 @@ return {
         "Rotation/Fights.lua",
         "UI/FightLog.lua",
         "Classes/Druid.lua",
+        "Classes/Hunter.lua",
         "Classes/Paladin.lua",
         "Classes/Priest.lua",
         "Classes/Shaman.lua",
+        "Classes/Warrior.lua",
         "Rotation/GroupTip.lua",
 
         -- Navigation
@@ -171,5 +173,6 @@ return {
     "Items/Trader.lua",
     "Nav/Try.lua",
     { "Core/Capture.lua", dev = true },
+    { "Core/CaptureEvidence.lua", dev = true },
     },
 }
