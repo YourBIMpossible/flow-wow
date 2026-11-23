@@ -70,6 +70,8 @@ tests["alerts: the kinds of prompt, by the id each source gives"] = function(t)
     t.eq(A.KindOf("someone.else"), "other", "an id no source here gives")
     t.eq(A.KindOf(nil), "other")
     t.eq(A.KindOf("aps.profx"), "other", "a prefix is matched whole")
+    t.eq(A.KindOf("aps.trainerx"), "other", "a whole id is matched whole")
+    t.eq(A.KindOf("aps.trainer.2"), "trainer", "a whole id with more parts")
 end
 
 tests["alerts: the rule says yes only when on, the kind on, after login and not said lately"] = function(t)
