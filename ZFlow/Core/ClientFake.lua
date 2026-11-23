@@ -4131,6 +4131,21 @@ function ns.make.fakeClient(opts)
         function c.setAddonRefuse(why) addonRefusal = why end
         function c.setAddonName(name) me = tostring(name) end
     end
+    -- G14 probe: the quest reward buttons as c.rewardButtons() answers them
+    -- (Core/Client.lua); setRewardButtons(list or nil) sets them, nil:
+    -- none found.
+    do
+        local rewardButtonRows = nil
+        function c.setRewardButtons(rows) rewardButtonRows = rows end
+        function c.rewardButtons()
+            if type(rewardButtonRows) ~= "table" then return nil end
+            local out = {}
+            for i, r in ipairs(rewardButtonRows) do
+                out[i] = { index = r.index, id = r.id, kind = r.kind }
+            end
+            return out
+        end
+    end
     return c
 end
 

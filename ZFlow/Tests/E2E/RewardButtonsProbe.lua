@@ -22,7 +22,8 @@ end
 
 local function probeRecord(c)
     local db = c.saved(ns.id.accountDB)
-    return type(db.diag) == "table" and db.diag.rewardButtons or nil
+    if type(db.diag) ~= "table" then return nil end
+    return db.diag.rewardButtons
 end
 
 -- Fails before: Core/ClientFake.lua has no setRewardButtons (an error),
