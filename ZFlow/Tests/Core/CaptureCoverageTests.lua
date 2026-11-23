@@ -65,6 +65,11 @@ local KIND = {
 -- buttons, each cast only on the player click, and the grip that moves it.
 KIND.show[#KIND.show + 1] = "clickRow"
 KIND.show[#KIND.show + 1] = "moveHandle"
+-- Section 285 item 2b: the face, Ctrl-drag and hover tip of the Flow and
+-- self buttons (Rotation/FlowButton.lua).
+KIND.show[#KIND.show + 1] = "buttonFace"
+KIND.show[#KIND.show + 1] = "ctrlDrag"
+KIND.show[#KIND.show + 1] = "hoverTip"
 
 -- Every read, and whether the capture asks it (true) or not (false).
 local READS = {

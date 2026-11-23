@@ -3019,6 +3019,58 @@ function ns.make.fakeClient(opts)
         if type(spec.onMoved) == "function" then pcall(spec.onMoved, point) end
         return true
     end
+    -- Flow and self buttons (Rotation/FlowButton.lua). Each helper answers
+    -- nil for a name no clickRow made. buttonFace keeps { empty } in
+    -- c.buttonFaces[button]. ctrlDrag keeps spec in c.ctrlDrags[target]
+    -- (nil while combatLockdown() is not a plain false), and
+    -- ctrlDragTo(target, point, ctrl) stands in for a drag that ends at
+    -- point: false, "absent" with none; false, "noCtrl" without Ctrl held;
+    -- false, "lockdown" in a fight; else onMoved(point) and true. hoverTip
+    -- keeps spec in c.hoverTips[frame]; hoverTipText(frame) -> the line
+    -- pointing at it shows, or nil.
+    c.buttonFaces, c.ctrlDrags, c.hoverTips = {}, {}, {}
+    local function rowButton(name)
+        for _, row in ipairs(c.clickRows) do
+            if row.spec.name == name then return true end
+            for i = 1, row.spec.count do
+                if row.spec.name .. i == name then return true end
+            end
+        end
+        return false
+    end
+    function c.buttonFace(spec)
+        if type(spec) ~= "table" or not rowButton(spec.button) then return nil end
+        local face = { empty = false }
+        c.buttonFaces[spec.button] = face
+        return { empty = function(on) face.empty = on == true; return true end }
+    end
+    function c.ctrlDrag(spec)
+        if type(spec) ~= "table" or not rowButton(spec.target) or not rowButton(spec.button) then return nil end
+        if c.combatLockdown() ~= false then return nil end
+        c.ctrlDrags[spec.target] = spec
+        return true
+    end
+    function c.ctrlDragTo(target, point, ctrl)
+        local spec = c.ctrlDrags[target]
+        if spec == nil then return false, "absent" end
+        if ctrl ~= true then return false, "noCtrl" end
+        if c.combatLockdown() ~= false then return false, "lockdown" end
+        if type(spec.onMoved) == "function" then pcall(spec.onMoved, point) end
+        return true
+    end
+    function c.hoverTip(spec)
+        if type(spec) ~= "table" or type(spec.text) ~= "function" or not rowButton(spec.frame) then return nil end
+        c.hoverTips[spec.frame] = spec
+        return true
+    end
+    function c.hoverTipText(frame)
+        local spec = c.hoverTips[frame]
+        if spec == nil then return nil end
+        local ok, text = pcall(spec.text)
+        if not ok or type(text) ~= "string" then return nil end
+        return text
+    end
+
 
 
     -- G16: the skill lines you know, as the real client's weaponSkills():
