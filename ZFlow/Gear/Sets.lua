@@ -92,7 +92,8 @@ end
 
 -- The saved sets that read, in order; a set or a key that does not read is
 -- left out. slots (the inventory slot each key was worn in, same order) is
--- kept only when every kept key has a good one; else nil (an older set).
+-- kept per piece: a piece whose slot does not read has none (slots[i] nil);
+-- nil for a set saved before slots were kept.
 -- noSlot: how many pieces of a set saved with slots have none that reads.
 function Sets.Saved(store)
     local raw, out = get(store, "char", Sets.PATH), {}
@@ -101,7 +102,7 @@ function Sets.Saved(store)
         local s = raw[i]
         if type(s) == "table" and goodName(s.name) and type(s.items) == "table" then
             local withSlots = type(s.slots) == "table"
-            local items, slots, allSlots, noSlot = {}, {}, withSlots, 0
+            local items, slots, noSlot = {}, {}, 0
             for j = 1, #s.items do
                 local key = ns.Items.Key(s.items[j])
                 if key ~= nil then
@@ -109,13 +110,12 @@ function Sets.Saved(store)
                     if withSlots and goodSlot(s.slots[j]) then
                         slots[#items] = s.slots[j]
                     elseif withSlots then
-                        allSlots = false
                         noSlot = noSlot + 1
                     end
                 end
             end
             local set = { name = s.name, items = items }
-            if allSlots then set.slots = slots end
+            if withSlots then set.slots = slots end
             -- Pieces of a set saved with slots whose slot does not read.
             if noSlot > 0 then set.noSlot = noSlot end
             out[#out + 1] = set

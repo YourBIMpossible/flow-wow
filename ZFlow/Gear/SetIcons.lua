@@ -134,7 +134,8 @@ function SetIcons.Icons(sets, wornKeys, nameOf, textureOf)
     return out
 end
 
--- What one click puts on: each piece of the set not worn whose item is in
+-- What one click puts on: each piece of the set not worn (a piece with a
+-- saved slot is worn when that slot wears its item) whose item is in
 -- the bags (two of one ring take two from the bags). -> { equip = { item
 -- as the bags list it, ... }, slots = { [i] = the saved inventory slot of
 -- equip[i], nil for a set saved without slots }, missing = pieces neither
@@ -160,12 +161,31 @@ function SetIcons.Plan(set, wornLinks, bagItems)
     end
     local plan = { equip = {}, slots = {}, missing = 0 }
     local saved = set.slots
+    if type(saved) ~= "table" then saved = {} end
+    -- First the pieces worn in their own saved slot: slot s is satisfied when
+    -- the item worn there has the saved key. Only those are matched by slot,
+    -- so a pair (two rings, trinkets or weapons) with one off asks the empty
+    -- slot, never the one still worn.
+    local done = {}
     for i, key in ipairs(set.items) do
-        if (have[key] or 0) > 0 then
+        local s = saved[i]
+        if s ~= nil and ns.Items.Key(wornLinks[s]) == key and (have[key] or 0) > 0 then
+            have[key] = have[key] - 1
+            done[i] = true
+        end
+    end
+    for i, key in ipairs(set.items) do
+        if done[i] then
+            -- Worn where it was saved: nothing to ask.
+        elseif saved[i] ~= nil and bag[key] and #bag[key] > 0 then
+            -- Its slot holds something else (or nothing): the bag piece to it.
+            plan.equip[#plan.equip + 1] = table.remove(bag[key], 1)
+            plan.slots[#plan.equip] = saved[i]
+        elseif (have[key] or 0) > 0 then
             have[key] = have[key] - 1
         elseif bag[key] and #bag[key] > 0 then
             plan.equip[#plan.equip + 1] = table.remove(bag[key], 1)
-            if type(saved) == "table" then plan.slots[#plan.equip] = saved[i] end
+            plan.slots[#plan.equip] = saved[i]
         else
             plan.missing = plan.missing + 1
         end
