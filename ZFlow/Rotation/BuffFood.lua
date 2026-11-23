@@ -2,9 +2,11 @@ local _, ns = ...
 
 -- Well Fed food (section 226, CF-30). Pure: no client call here.
 -- Ported from Flow's Modules/Rotation/BuffItems.lua (IsBuffFood,
--- WellFedGain, FoodScore, FoodBefore, BestBuffFood) at c44363b. Flow scores
--- by class data; Z-Flow has no class stat weights, so what a stat is worth
--- comes from the role and from whether the pack uses mana (its resources).
+-- WellFedGain, FoodScore, FoodBefore, BestBuffFood) at c44363b.
+-- Section 235 item 4: a food is scored with your pack's stat weights for
+-- your role (pack.weights[role].values), the same table the gear verdict
+-- reads (Gear/Verdict.lua). The fixed role tables (ScoreByRole) are only for
+-- a pack with no weights for the role; no class pack is one.
 -- First guesses, not seen in game on 16001.
 --   BuffFood.WELL_FED                  the buff's name
 --   BuffFood.EATING                    the buffs eating or drinking gives
@@ -15,11 +17,19 @@ local _, ns = ...
 --   BuffFood.IsBuffFood(lines)         true when the tooltip says well fed
 --   BuffFood.Gain(lines)               { Stamina = 6, Spirit = 6 }, { mp5 = 3 },
 --                                      {} when it says no more than well fed
+--   BuffFood.STAT_NAMES                a Gain word -> the stat name the pack
+--                                      weights use (ITEM_MOD_..._SHORT)
+--   BuffFood.Activity(lines)           { Fishing = 10 } for a food whose buff
+--                                      is a profession skill; {} otherwise
 --   BuffFood.UsesMana(pack)            a resources row named Mana
---   BuffFood.Score(gain, role, mana)   a number (0: nothing for you), nil
---                                      when the tooltip does not say
+--   BuffFood.Score(gain, values)       a number with the pack weights (0:
+--                                      nothing for you), nil when the
+--                                      tooltip does not say or no weights
+--   BuffFood.ScoreByRole(gain, role, mana)  the same with fixed role tables,
+--                                      for a pack with no weights
 --   BuffFood.Best(foods)               the best of { id, score } rows, or nil;
---                                      one worth nothing is never picked
+--                                      one worth nothing, or whose score is
+--                                      not known, is never picked
 
 local BF = {}
 ns.BuffFood = BF
@@ -86,6 +96,40 @@ function BF.Gain(lines)
     return gain
 end
 
+-- Section 235 item 4: the one place a food word meets the pack weights.
+-- hp5 is a guess: no pack names a health-regeneration weight yet.
+BF.STAT_NAMES = {
+    Stamina = "ITEM_MOD_STAMINA_SHORT", Strength = "ITEM_MOD_STRENGTH_SHORT",
+    Agility = "ITEM_MOD_AGILITY_SHORT", Intellect = "ITEM_MOD_INTELLECT_SHORT",
+    Spirit = "ITEM_MOD_SPIRIT_SHORT", AttackPower = "ITEM_MOD_ATTACK_POWER_SHORT",
+    SpellDamage = "ITEM_MOD_SPELL_POWER_SHORT", Healing = "ITEM_MOD_SPELL_HEALING_DONE_SHORT",
+    mp5 = "ITEM_MOD_MANA_REGENERATION_SHORT", hp5 = "ITEM_MOD_HEALTH_REGEN_SHORT",
+}
+
+-- Section 235 item 4: a buff that raises a profession skill is for that
+-- work, not a fight: "well fed and gain 10 Fishing skill", or "increases
+-- your Fishing skill by 10". Kept apart from Gain.
+local ACTIVITIES = { fishing = "Fishing" }
+function BF.Activity(lines)
+    local out = {}
+    for _, l in ipairs(type(lines) == "table" and lines or {}) do
+        local low = type(l) == "string" and l:lower() or ""
+        local at = low:find("well fed", 1, true)
+        if at then
+            local words = {}
+            for w in low:sub(at + 8):gmatch("[%a%d]+") do words[#words + 1] = w end
+            for i, w in ipairs(words) do
+                if ACTIVITIES[w] and words[i + 1] == "skill" then
+                    local n = tonumber(words[i - 1])
+                    if not n and words[i + 2] == "by" then n = tonumber(words[i + 3]) end
+                    out[ACTIVITIES[w]] = n or false
+                end
+            end
+        end
+    end
+    return out
+end
+
 function BF.UsesMana(pack)
     local rows = type(pack) == "table" and pack.resources or nil
     for _, r in ipairs(type(rows) == "table" and rows or {}) do
@@ -99,7 +143,8 @@ end
 -- Intellect, mana every 5 seconds, spell damage and healing count only with
 -- mana; with mana a dps is weighed as a caster.
 local MANA_ONLY = { Intellect = true, mp5 = true, SpellDamage = true, Healing = true }
-function BF.Score(gain, role, mana)
+-- Only for a pack with no weights for the role (section 235 item 4).
+function BF.ScoreByRole(gain, role, mana)
     if type(gain) ~= "table" or next(gain) == nil then return nil end
     local w
     if role == "tank" then
@@ -120,25 +165,33 @@ function BF.Score(gain, role, mana)
     return score
 end
 
--- A food whose tooltip does not say counts a little, below any known one.
-local UNKNOWN_SCORE = 0.1
-local function valueOf(it)
-    if it.score == nil then return UNKNOWN_SCORE end
-    return it.score
+-- Section 235 item 4: with the pack weights for the role. values: the
+-- role's weights table, stat name -> worth. A stat it does not name is
+-- worth nothing.
+function BF.Score(gain, values)
+    if type(gain) ~= "table" or next(gain) == nil or type(values) ~= "table" then return nil end
+    local score = 0
+    for stat, n in pairs(gain) do
+        local w = values[BF.STAT_NAMES[stat] or ""]
+        if type(n) == "number" and type(w) == "number" then score = score + n * w end
+    end
+    return score
 end
 
 -- The higher score first, then the lower item id, so the same bags always
 -- give the same pick.
 function BF.Before(a, b)
-    local sa, sb = valueOf(a), valueOf(b)
-    if sa ~= sb then return sa > sb end
+    if a.score ~= b.score then return a.score > b.score end
     return (a.id or 0) < (b.id or 0)
 end
 
+-- Section 235 item 4: a food worth 0, and a food whose score is not known
+-- (its tooltip did not say), is never picked.
 function BF.Best(foods)
     local best
     for _, it in ipairs(type(foods) == "table" and foods or {}) do
-        if type(it) == "table" and valueOf(it) > 0 and (not best or BF.Before(it, best)) then best = it end
+        if type(it) == "table" and type(it.score) == "number" and it.score > 0
+            and (not best or BF.Before(it, best)) then best = it end
     end
     return best
 end
