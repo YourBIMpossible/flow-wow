@@ -81,7 +81,7 @@ end
 function Goals.Unread(n)
     local one = n == 1
     return n .. (one and " saved goal" or " saved goals") .. " could not be read. While "
-        .. (one and "it is" or "they are") .. " saved, Z-Flow can't say what your goals keep, so it gives"
+        .. (one and "it is" or "they are") .. " saved, " .. tostring(ns.id.title) .. " can't say what your goals keep, so it gives"
         .. " no sell advice. Say " .. Goals.CLEAN .. " to remove " .. (one and "it" or "them") .. "."
 end
 
