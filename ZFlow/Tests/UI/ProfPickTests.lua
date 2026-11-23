@@ -61,4 +61,53 @@ return {
         t.eq(type(a) == "table" and a.id, "aps.profPick")
         t.eq(type(a) == "table" and a.priority, 1)
     end,
+
+    -- PP-3: a primary with no partner entry gives no advice and does not raise.
+    ["profession picker: a primary without a partner entry gives no advice"] = function(t)
+        local P = ns.ProfPick
+        local saved = P.PARTNER.Mining
+        P.PARTNER.Mining = nil
+        local ok, a = pcall(P.Advice, { Mining = true }, "MAGE", 5)
+        P.PARTNER.Mining = saved
+        t.eq(ok, true, "does not raise")
+        t.eq(a, nil)
+    end,
+
+    -- PP-1/PP-2: the same text is added once, not again on every tick.
+    ["profession picker: an unchanged prompt is added to the advisor once"] = function(t)
+        local P = ns.ProfPick
+        local spec
+        local k = {}
+        function k.Setting() end
+        function k.Module(_, s) spec = s end
+        P.Declare(k)
+        local adds, removes = 0, 0
+        local advisor = {
+            Add = function() adds = adds + 1; return true end,
+            Remove = function() removes = removes + 1; return true end,
+        }
+        local known = {}
+        local on = true
+        local ctx = {
+            use = function() return advisor end,
+            client = {
+                professions = function() return known end,
+                class = function() return "MAGE" end,
+                level = function() return 10 end,
+            },
+            settings = { get = function() return on end },
+        }
+        spec.start(ctx)
+        for _ = 1, 4 do spec.ticks[1].run() end
+        t.eq(adds, 1, "added once for five syncs")
+        known = { Herbalism = true }
+        spec.ticks[1].run()
+        t.eq(adds, 2, "a new text is added")
+        on = false
+        spec.ticks[1].run()
+        t.eq(removes, 1)
+        on = true
+        spec.ticks[1].run()
+        t.eq(adds, 3, "after a removal it is added again")
+    end,
 }
