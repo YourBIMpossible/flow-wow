@@ -7960,6 +7960,16 @@ function ns.make.client(env)
         return vc
     end
 
+    -- Enum.VoiceTtsDestination.LocalPlayback when it is a readable number,
+    -- else nil: the one source of the speech destination, never guessed.
+    local function localDestination()
+        local enum = env.Enum
+        if type(enum) ~= "table" or type(enum.VoiceTtsDestination) ~= "table" then return nil end
+        local v = enum.VoiceTtsDestination.LocalPlayback
+        if type(v) ~= "number" or hidden(v) then return nil end
+        return v
+    end
+
     function c.speech()
         local vc = voiceChat()
         if not vc then return nil end
@@ -7973,29 +7983,24 @@ function ns.make.client(env)
                 voices[#voices + 1] = one
             end
         end
-        -- Lead section 270: localPlayback is true only when speak can reach
-        -- the player's own speakers without a guessed enum value: the game's
-        -- TextToSpeech_Speak helper, or Enum.VoiceTtsDestination.LocalPlayback
-        -- a number. Otherwise false, and the feature is not offered.
-        local known = type(env.TextToSpeech_Speak) == "function"
-        local enum = env.Enum
-        if type(enum) == "table" and type(enum.VoiceTtsDestination) == "table"
-            and type(enum.VoiceTtsDestination.LocalPlayback) == "number"
-            and not hidden(enum.VoiceTtsDestination.LocalPlayback) then
-            known = true
-        end
-        return { voices = voices, localPlayback = known }
+        -- Lead sections 270 and 274: localPlayback is true only with
+        -- Enum.VoiceTtsDestination.LocalPlayback a number. The
+        -- TextToSpeech_Speak helper alone does not count: its destination on
+        -- this client is unseen. Otherwise false, and the feature is not offered.
+        return { voices = voices, localPlayback = localDestination() ~= nil }
     end
 
-    -- c.speak(text, voice) -> true, or false and why. The game's own helper
-    --   TextToSpeech_Speak(text, voice) first when it is there (it knows
-    --   this client's way of calling); else C_VoiceChat.SpeakText(voiceID,
-    --   text, destination, rate, volume) - the retail order, a first guess
-    --   for 16001 - with destination Enum.VoiceTtsDestination.LocalPlayback,
-    --   and refuses when that enum is absent (never a guessed number); rate 0,
-    --   volume 100.
+    -- c.speak(text, voice) -> true, or false and why. Refuses with "no local
+    --   playback destination" whenever Enum.VoiceTtsDestination.LocalPlayback
+    --   is not a number, helper or not (never a guessed number; lead section
+    --   274). With it known: the game's own helper TextToSpeech_Speak(text,
+    --   voice) when it is there, else C_VoiceChat.SpeakText(voiceID, text,
+    --   destination, rate, volume) - the retail order, a first guess for
+    --   16001 - rate 0, volume 100.
     function c.speak(text, voice)
         if type(text) ~= "string" or text == "" then return false, "no text" end
+        local dest = localDestination()
+        if dest == nil then return false, "no local playback destination" end
         local helper = env.TextToSpeech_Speak
         if type(helper) == "function" then
             local ok, err = call(helper, text, voice)
@@ -8005,15 +8010,6 @@ function ns.make.client(env)
         local vc = voiceChat()
         if not vc or type(vc.SpeakText) ~= "function" then return false, "no text-to-speech call" end
         if type(voice) ~= "table" or type(voice.voiceID) ~= "number" then return false, "no voice" end
-        -- The destination is never guessed: a number that is local playback
-        -- on retail could be another destination here.
-        local dest
-        local enum = env.Enum
-        if type(enum) == "table" and type(enum.VoiceTtsDestination) == "table"
-            and type(enum.VoiceTtsDestination.LocalPlayback) == "number" then
-            dest = enum.VoiceTtsDestination.LocalPlayback
-        end
-        if dest == nil then return false, "no local playback destination" end
         local ok, err = call(vc.SpeakText, voice.voiceID, text, dest, 0, 100)
         if ok then return true end
         return false, tostring(err)
