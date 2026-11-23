@@ -9238,8 +9238,15 @@ function ns.make.client(env)
             end
             -- True when the client took the picture: a raise, no such call
             -- or a plain false is a no.
+            -- A picture is a path, or the file number the game hands out for
+            -- an item's icon.
             local function pictured(tex, path)
-                if tex == nil or type(path) ~= "string" then return false end
+                if tex == nil then return false end
+                if type(path) == "number" then
+                    if path ~= path or path <= 0 then return false end
+                elseif type(path) ~= "string" or path == "" then
+                    return false
+                end
                 local ok, took = method(tex, "SetTexture", path)
                 return ok and took ~= false
             end
@@ -10027,7 +10034,7 @@ function ns.make.client(env)
                 local holder = plain("Frame", h, "icon")
                 if holder ~= nil then
                     local icon = texture(holder, "ARTWORK", "icon")
-                    local own = icon ~= nil and type(part.icon) == "string" and part.icon ~= "" and pictured(icon, part.icon)
+                    local own = icon ~= nil and part.icon ~= nil and pictured(icon, part.icon)
                     if own then
                         sized(holder, size.icon, size.icon)
                         method(holder, "SetPoint", "LEFT", h, "LEFT", size.gapSmall, 0)
@@ -10180,7 +10187,7 @@ function ns.make.client(env)
                     local icon = texture(holder, "ARTWORK", "icon")
                     if icon ~= nil then
                         method(icon, "SetAllPoints", holder)
-                        local own = type(part.icon) == "string" and part.icon ~= "" and pictured(icon, part.icon)
+                        local own = part.icon ~= nil and pictured(icon, part.icon)
                         if not own then
                             if pictured(icon, art.iconMissing) then
                                 note("iconMissing", "first")
