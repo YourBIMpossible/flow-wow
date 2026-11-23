@@ -190,6 +190,9 @@ end
 -- PK-3: { [spell] = true | false } for one unit, from client.spellId and
 -- client.reach (C_Spell.IsSpellInRange, party units only). A spell with no
 -- id, a read that raised or gave nothing is left out: not known.
+-- K7-1 (P-KEYS-RAID-REACH): in a raid the friends are raid1..40 and
+-- client.reach answers for those too (Core/Client.lua section 243); any
+-- other unit answers nil there, so it stays not known.
 local function reachOf(client, unit, spells)
     local out = {}
     if type(client.reach) ~= "function" or type(client.spellId) ~= "function" then return out end
@@ -367,7 +370,12 @@ function CK.Declare(k, diag)
         return k.settings:get(CK.SETTING) == true and k.settings:get(D.SETTING) == true
     end
 
+    -- K7-2 (P-KEYS-TOKEN-REINDEX): the last view seen, so a roster change
+    -- can plan again by the new group tokens (CK.Friends reads them live).
+    local lastView, rosterStale = nil, false
+
     local function onView(view)
+        lastView = view
         if not (switchedOn() and type(view) == "table" and view.pack == true) then
             if kf then after(kf:want(nil)) end
             return
@@ -396,6 +404,19 @@ function CK.Declare(k, diag)
         after(kf:want(plan))
     end
 
+    -- GROUP_ROSTER_UPDATE: party1 may now be someone else. Out of a fight
+    -- the last view is planned again at once; in a fight, or the lock not
+    -- read, nothing is written and it waits for PLAYER_REGEN_ENABLED.
+    local function refreshRoster()
+        local okLock, lock = pcall(client.combatLockdown)
+        if not okLock or lock ~= false then
+            rosterStale = true
+            return
+        end
+        rosterStale = false
+        if lastView ~= nil then onView(lastView) end
+    end
+
     local function run(rest)
         if kf and tostring(rest):find("apply", 1, true) then after(kf:try(true)) end
         local st = api.status()
@@ -418,8 +439,10 @@ function CK.Declare(k, diag)
             client = ctx.client
             ctx.bus:on(CK.NAME, D.EVENT, onView)
             client.listen("PLAYER_REGEN_ENABLED", function()
+                if rosterStale then refreshRoster() end
                 if kf then after(kf:try(true)) end
             end)
+            ctx.bus:on(CK.NAME, "GROUP_ROSTER_UPDATE", refreshRoster)
         end,
     })
 

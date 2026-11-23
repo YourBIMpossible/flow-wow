@@ -73,6 +73,12 @@ SK.SLOTS = {
       synonyms = { "care", "heal", "cure", "resurrect", "key", "bind" }, needs = "careKey" },
 }
 SK.IN_USE_KEY = "keys.inUse"
+-- Section 285 item 2b: the Flow button and the self button
+-- (Rotation/FlowButton.lua), each bound only when the player presses Set key.
+SK.SLOTS[#SK.SLOTS + 1] = { key = "keys.flow", n = 5, button = "FlowButton1", index = 1, label = "Flow button key",
+    synonyms = { "flow", "button", "rotation", "key", "bind" }, needs = "flowButton" }
+SK.SLOTS[#SK.SLOTS + 1] = { key = "keys.self", n = 6, button = "SelfButton1", index = 1, label = "Self button key",
+    synonyms = { "self", "buff", "buff button", "key", "bind" }, needs = "selfButton" }
 SK.SECTION = "Keys"
 
 SK.SET = "Set key"
@@ -149,6 +155,24 @@ function SK.New(k)
     -- Why a slot's button cannot take a key now, or nil (section 255: the
     -- mouseover button is made only with its setting on).
     local function needWhy(slot)
+        if slot.needs == "flowButton" or slot.needs == "selfButton" then
+            local FBm = ns.FlowButton
+            if type(FBm) ~= "table" then return "There is no Flow button in this version." end
+            local setting, label, ask = FBm.SETTING, FBm.LABEL, "made"
+            if slot.needs == "selfButton" then setting, label, ask = FBm.SELF_SETTING, FBm.SELF_LABEL, "selfMade" end
+            local okOn, on = false, nil
+            if type(k.settings) == "table" then okOn, on = pcall(k.settings.get, k.settings, setting) end
+            if not okOn or on ~= true then
+                return "Switch on \"" .. tostring(label) .. "\" first: the button is made only then."
+            end
+            local fbApi, fbMade = k.flowButton, false
+            if type(fbApi) == "table" and type(fbApi[ask]) == "function" then
+                local okMade, got = pcall(fbApi[ask])
+                fbMade = okMade and got == true
+            end
+            if not fbMade then return "The button is not made yet: it is made outside a fight." end
+            return nil
+        end
         if slot.needs == "careKey" then
             local CK = ns.CareKeys
             if type(CK) ~= "table" then return "There is no care key in this version." end

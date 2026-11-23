@@ -195,6 +195,7 @@ Rotation\KeyControls.lua
 UI\ClickCheck.lua
 UI\MoveHandle.lua
 Rotation\ClickSlots.lua
+Rotation\FlowButton.lua
 Rotation\KeyActions.lua
 Rotation\SpellKeys.lua
 Rotation\Enchant.lua
