@@ -235,6 +235,42 @@ tests["kitWindow: one template missing leaves only that part plain"] = function(
     end
 end
 
+tests["kitWindow: a list row shows its name, second line and right text, and its click tells the caller"] = function(t)
+    local env = gameEnv()
+    local c = ns.make.client(env)
+    t.eq(type(c.kitWindow), "function", "the client answers kitWindow")
+    if type(c.kitWindow) ~= "function" then return end
+    local clicks, folds, failed = 0, {}, nil
+    local tree, why = K.Window({ id = "KitRows", title = "Dungeon Quests", children = {
+        { kind = "section", text = "Later", folded = true, onFold = function(v) folds[#folds + 1] = v end },
+        { kind = "scroll", children = {
+            { kind = "line", text = "Oh Brother...", sub = "Step 1 of 2", right = "20",
+              onClick = function() clicks = clicks + 1 end },
+            { kind = "line", text = "Locked row", enabled = false, onClick = function() clicks = clicks + 10 end },
+        } } } })
+    t.ok(type(tree) == "table", "the tree: " .. tostring(why))
+    if type(tree) ~= "table" then return end
+    local h = c.kitWindow("KitRows", tree, { name = "KitRowsFrame", failed = function(err) failed = err end })
+    t.ok(type(h) == "table", "a handle: " .. tostring(failed))
+    if type(h) ~= "table" then return end
+    t.ok(saying(env, "FontString", "Oh Brother...") ~= nil, "the row's name")
+    t.ok(saying(env, "FontString", "Step 1 of 2") ~= nil, "its second line")
+    t.ok(saying(env, "FontString", "20") ~= nil, "its right-hand text")
+    t.ok(saying(env, "FontString", "Later") ~= nil, "the section's heading")
+    -- Every frame that takes a mouse release is pressed once: the open
+    -- row and the folding section tell; the row that is off has no script.
+    local pressed = 0
+    for _, r in ipairs(env.made) do
+        if r.kind == "Frame" and type(r.scripts.OnMouseUp) == "function" then
+            pressed = pressed + 1
+            t.ok(pcall(r.scripts.OnMouseUp, r, "LeftButton"), "a release raises nothing")
+        end
+    end
+    t.eq(pressed, 2, "two things take a click: the section and the open row")
+    t.eq(clicks, 1, "the open row told its onClick once; the row that is off told nothing")
+    t.eq(folds, { false }, "the folded section is told to unfold")
+end
+
 tests["kitWindow: a picture taken out of Kit.look.unproven is drawn"] = function(t)
     local unproven = type(K.look) == "table" and K.look.unproven
     t.eq(type(unproven), "table", "Kit.look.unproven is a table")

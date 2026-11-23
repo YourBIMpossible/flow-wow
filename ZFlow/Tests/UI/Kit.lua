@@ -192,6 +192,44 @@ return {
         t.eq((K.Check({ kind = "empty", text = "No bank seen.", how = "Visit a banker." })), true)
     end,
 
+    ["kit: a list row needs its name; its icon, second line, right text and click are its own choice"] = function(t)
+        if not has(t) then return end
+        t.eq((K.Check({ kind = "line", text = "The Deadmines" })), true, "a name alone")
+        t.eq((K.Check({ kind = "line", text = "Collecting Memories", icon = "Interface\\Icons\\INV_Misc_Book_09",
+            sub = "Step 3 of 7", right = "18", tone = "good", tooltip = "A quest", onClick = nop })), true)
+        local tree = K.Window({ id = "Rows", title = "Rows", children = {
+            { kind = "line", key = "q1", text = "Oh Brother...", sub = "Step 1 of 2", right = "20", onClick = nop } } })
+        t.ok(type(tree) == "table", "a tree")
+        if type(tree) ~= "table" then return end
+        local row = tree.children[1]
+        t.eq({ row.kind, row.key, row.text, row.sub, row.right, row.enabled, row.path },
+            { "line", "q1", "Oh Brother...", "Step 1 of 2", "20", true, "1" })
+        t.eq(K.TextOf(row), "Oh Brother...")
+        local ok, why = K.Check({ kind = "line" })
+        refused(t, ok, why, "text", "a line without a name")
+        ok, why = K.Check({ kind = "line", text = "N", onClick = "no" })
+        refused(t, ok, why, "onClick", "a click that is not a function")
+        ok, why = K.Check({ kind = "line", text = "N", tone = "loud" })
+        refused(t, ok, why, "tone", "a tone the kit has not")
+        ok, why = K.Check({ kind = "line", text = "N", sub = 3 })
+        refused(t, ok, why, "sub", "a second line that is not text")
+    end,
+
+    ["kit: a section folds only when it says which way it is and whom to tell"] = function(t)
+        if not has(t) then return end
+        local tree = K.Window({ id = "Folds", title = "Folds", children = {
+            { kind = "section", text = "In your log" },
+            { kind = "section", key = "notYours", text = "Not for you", folded = true, onFold = nop } } })
+        t.ok(type(tree) == "table", "a tree")
+        if type(tree) ~= "table" then return end
+        t.eq(tree.children[1].folded, nil, "a plain section does not fold")
+        t.eq({ tree.children[2].folded, type(tree.children[2].onFold) }, { true, "function" })
+        local ok, why = K.Check({ kind = "section", text = "S", folded = true })
+        refused(t, ok, why, "onFold", "a folding section with nobody to tell")
+        ok, why = K.Check({ kind = "section", text = "S", folded = "yes", onFold = nop })
+        refused(t, ok, why, "folded", "folded not true or false")
+    end,
+
     ["kit: a key not bound reads Not Bound"] = function(t)
         if not has(t) then return end
         t.eq(K.BindText(nil), "Not Bound")

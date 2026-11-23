@@ -204,4 +204,34 @@ tests["fake kitWindow: setKitFails makes the next windows fail, then it works ag
         "a client that cannot make frames")
 end
 
+tests["fake kitWindow: a click on a list row and on a folding section tells the caller"] = function(t)
+    local c = ns.make.fakeClient()
+    t.eq(type(c.kitWindow), "function", "the fake answers kitWindow")
+    if type(c.kitWindow) ~= "function" then return end
+    local clicks, folds = 0, {}
+    local tree, why = K.Window({ id = "FakeRows", title = "Rows", children = {
+        { kind = "section", key = "open", text = "In your log" },
+        { kind = "section", key = "later", text = "Later", folded = true, onFold = function(v) folds[#folds + 1] = v end },
+        { kind = "scroll", children = {
+            { kind = "line", key = "q1", text = "Oh Brother...", sub = "Step 1 of 2", right = "20",
+              onClick = function() clicks = clicks + 1 end },
+            { kind = "line", key = "plain", text = "No click" },
+            { kind = "line", key = "off", text = "Off", enabled = false, onClick = function() clicks = clicks + 10 end },
+        } } } })
+    t.ok(type(tree) == "table", "a tree: " .. tostring(why))
+    if type(tree) ~= "table" then return end
+    t.ok(c.kitWindow("FakeRows", tree, {}) ~= nil, "a handle")
+    t.eq(c.kitClick("FakeRows", "q1"), true, "the row is clicked")
+    t.eq(clicks, 1, "and tells its onClick once")
+    t.eq(c.kitClick("FakeRows", "plain"), false, "a row with no click does nothing")
+    c.kitClick("FakeRows", "off")
+    t.eq(clicks, 1, "a row that is off tells nothing")
+    t.eq(c.kitClick("FakeRows", "later"), true, "the folding section is clicked")
+    t.eq(folds, { false }, "and is told to unfold")
+    t.eq(c.kitClick("FakeRows", "open"), false, "a plain section does not fold")
+    local texts = {}
+    for _, p in ipairs(c.kitWindows().FakeRows.parts) do texts[#texts + 1] = p.text end
+    t.eq(texts[4], "Oh Brother...", "the record carries the row's name")
+end
+
 return tests
