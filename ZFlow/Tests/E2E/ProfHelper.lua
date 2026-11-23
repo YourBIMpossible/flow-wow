@@ -190,4 +190,102 @@ tests["prof helper: closing the window or the setting off hides it"] = function(
     t.eq(#c.crafts, 0)
 end
 
+-- Lead section 245 item 2 (MED): a classic window, where the client has no
+-- modern recipe read, still fills the panel from the classic rows
+-- (c.tradeSkillRows and c.tradeSkillSchematic), never stays on reading.
+local function setClassic(c, partial)
+    c.setTradeSkillRows({ name = "Tailoring", skill = 40, max = 75, rows = {
+        { index = 2, name = "Linen Bolt", difficulty = "optimal" },
+        { index = 3, name = "Linen Belt", difficulty = "medium" },
+        { index = 4, name = "Linen Cap", difficulty = "trivial" },
+    } })
+    c.setTradeSkillSchematic(2, { name = "Linen Bolt", difficulty = "optimal", makes = 4000, yield = 1,
+        mats = { [CLOTH] = 2 }, partial = partial })
+    c.setTradeSkillSchematic(3, { name = "Linen Belt", difficulty = "medium", makes = 4001, yield = 1,
+        mats = { [THREAD] = 1 }, partial = partial })
+    c.setTradeSkillSchematic(4, { name = "Linen Cap", difficulty = "trivial", makes = 4002, yield = 1,
+        mats = { [CLOTH] = 1 }, partial = partial })
+end
+
+tests["prof helper: a classic window with no modern read still fills the panel"] = function(t)
+    local c = start({ recipes = false, schematic = false, open = false })
+    setClassic(c)
+    c.fire("TRADE_SKILL_SHOW"); c.fire("TRADE_SKILL_LIST_UPDATE")
+    local p = panelOf(c)
+    if not p then t.ok(false, "no helper panel") return end
+    t.eq(p.shown(), true)
+    local lines = infos(p)
+    t.ok(not has(lines, H().READING or "?"), "not left on reading")
+    t.ok(has(lines, string.format(H().SKILL or "", 40, 75)), "the skill line")
+    t.ok(has(lines, string.format(H().BAGS or "", 1, 3)), "the bags line")
+    t.ok(has(lines, string.format(H().ROW or "", "Linen Bolt", H().SURE or "", ns.Prices.Coin(20))), "the bolt row")
+    t.eq(p.press("goal", 60), true)
+    local char = c.saved(ns.id.charDB)
+    local goals = type(char.state) == "table" and char.state.profGoals or {}
+    t.eq(goals.Tailoring, 60, "the goal kept by the profession name")
+    local seen = type(char.learned) == "table" and char.learned.recipeColors or {}
+    t.eq(seen["Linen Bolt"], { optimal = { lo = 40, hi = 40 } }, "the colour kept by the recipe name")
+    t.eq(#c.crafts, 0)
+end
+
+-- A classic row whose reagents the client gave only in part: what it takes
+-- is unknown, so the bags line says reading, never a count.
+tests["prof helper: a classic schematic read only in part counts nothing from the bags"] = function(t)
+    local c = start({ recipes = false, schematic = false, open = false })
+    setClassic(c, true)
+    c.fire("TRADE_SKILL_SHOW"); c.fire("TRADE_SKILL_LIST_UPDATE")
+    local p = panelOf(c)
+    if not p then t.ok(false, "no helper panel") return end
+    local lines = infos(p)
+    t.ok(has(lines, string.format(H().SKILL or "", 40, 75)), "the skill line")
+    t.ok(has(lines, H().BAGS_UNREAD or "?"), "mats not read")
+    t.ok(has(lines, string.format(H().ROW_NOCOST or "", "Linen Bolt", H().SURE or "")), "no cost from a part read")
+end
+
+-- Lead section 245 item 2 (LOW), section 236 setting change: the setting
+-- turned on with the window already open shows the panel at the next look,
+-- not at the next opening. Closed, it stays hidden.
+tests["prof helper: the setting turned on with the window open shows the panel"] = function(t)
+    local c, addon = start({ open = false })
+    addon.settings:set("prof.helper", false)
+    c.fire("TRADE_SKILL_SHOW"); c.fire("TRADE_SKILL_LIST_UPDATE")
+    local p = panelOf(c)
+    if not p then t.ok(false, "no helper panel") return end
+    t.eq(p.shown(), false, "off: hidden")
+    addon.settings:set("prof.helper", true)
+    c.advance(1, 5)
+    t.eq(p.shown(), true, "on with the window open: shown")
+    t.ok(has(infos(p), string.format(H().SKILL or "", 40, 75)), "and drawn")
+    c.fire("TRADE_SKILL_CLOSE")
+    addon.settings:set("prof.helper", false)
+    c.advance(1, 5)
+    addon.settings:set("prof.helper", true)
+    c.advance(1, 5)
+    t.eq(p.shown(), false, "the window closed: stays hidden")
+end
+
+-- Lead section 245 item 2 scenario: the craft runner in combat. The helper
+-- still reads and takes a goal; nothing is crafted, by the helper or by a
+-- Start click on the craft bar while in combat.
+tests["prof helper: in combat beside the craft bar, still nothing is crafted"] = function(t)
+    local c = start()
+    local p = panelOf(c)
+    if not p then t.ok(false, "no helper panel") return end
+    local bar
+    for _, q in ipairs(c.rowPanels or {}) do
+        if type(q.spec) == "table" and q.spec.name == ns.id.framePrefix .. "CraftBar" then bar = q end
+    end
+    c.setCombat(true)
+    t.eq(p.press("goal", 60), true)
+    t.ok(has(infos(p), string.format(H().TO_GOAL or "", 20, 60)), "the helper still reads in combat")
+    if bar then
+        bar.press("count:" .. BOLT, 2)
+        bar.press("start")
+    end
+    c.fire("TRADE_SKILL_LIST_UPDATE")
+    c.advance(2, 10)
+    t.eq(#c.crafts, 0, "nothing crafted in combat")
+    t.eq(p.shown(), true)
+end
+
 return tests

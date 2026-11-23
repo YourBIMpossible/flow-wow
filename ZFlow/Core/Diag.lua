@@ -485,6 +485,14 @@ function Diag.Collect(k, why)
     if type(recipe) ~= "number" then recipe = okShown and type(shown) == "table" and shown[1] end
     if type(recipe) == "number" then
         S.recipeInfo = ask(client, "C_TradeSkillUI.GetRecipeInfo", recipe)
+        -- Lead section 245 item 2: the two recipe fields c.recipes reads
+        -- (Core/Client.lua), each its own capture field: nil when the
+        -- client leaves the field out.
+        local okInfo, info = client.raw("C_TradeSkillUI.GetRecipeInfo", recipe)
+        local difficulty, skillUps
+        if type(info) == "table" then difficulty, skillUps = info.relativeDifficulty, info.numSkillUps end
+        S.recipeDifficulty = shapeWith(function(v) return Diag.IsSecret(client, v) end, okInfo, difficulty)
+        S.recipeSkillUps = shapeWith(function(v) return Diag.IsSecret(client, v) end, okInfo, skillUps)
         S.recipeSchematic = ask(client, "C_TradeSkillUI.GetRecipeSchematic", recipe, false)
         S.recipeItemLink = ask(client, "C_TradeSkillUI.GetRecipeItemLink", recipe)
         -- What a recipe needs: the first reagent slot and its first reagent.
@@ -1254,6 +1262,11 @@ function Diag.Start(k)
     end)
     client.listen("VARIABLES_LOADED", function() mark("VARIABLES_LOADED") end)
     client.listen("PLAYER_LOGIN", function() mark("PLAYER_LOGIN") end)
+    -- Lead section 245 item 2: the profession window show and close, kept
+    -- in the timing marks so a capture says each fired on this client (an
+    -- event name is not a global: Diag.NAMES can not say it).
+    client.listen("TRADE_SKILL_SHOW", function() mark("TRADE_SKILL_SHOW") end)
+    client.listen("TRADE_SKILL_CLOSE", function() mark("TRADE_SKILL_CLOSE") end)
     client.listen("PLAYER_ENTERING_WORLD", function()
         if mark("PLAYER_ENTERING_WORLD") then
             session()

@@ -733,4 +733,38 @@ return {
         t.ok(last ~= nil and last.owner == "price watch" and tostring(last.text):find("shows broke", 1, true) ~= nil,
             "the problem row names the line and carries the error")
     end,
+    -- Lead section 245 item 2 (LOW-MED): the profession window opening and
+    -- closing are kept in the timing marks, so a capture shows each event
+    -- fired on the client (an event name is not a global, so Diag.NAMES
+    -- can not say it).
+    ["windows: the profession window show and close are marked"] = function(t)
+        local _, c, d = start()
+        c.setSaved(ns.id.accountDB, {})
+        login(c)
+        c.fire("TRADE_SKILL_SHOW")
+        c.fire("TRADE_SKILL_CLOSE")
+        d.snapshot("after")
+        local saved = c.saved(ns.id.accountDB).diag
+        local timing = saved.snaps[#saved.snaps].timing
+        t.ok(type(timing.TRADE_SKILL_SHOW) == "table", "the show marked")
+        t.ok(type(timing.TRADE_SKILL_CLOSE) == "table", "the close marked")
+        t.eq({ timing.order[5], timing.order[6] }, { "TRADE_SKILL_SHOW", "TRADE_SKILL_CLOSE" })
+    end,
+
+    -- Lead section 245 item 2 (LOW-MED): the recipe colour and skill up
+    -- fields c.recipes reads each get a capture field of their own.
+    ["profession: the recipe colour and skill up fields are captured"] = function(t)
+        local e = env()
+        e.C_TradeSkillUI = {
+            GetAllRecipeIDs = function() return { 2660 } end,
+            GetRecipeInfo = function(recipe) return { recipeID = recipe, relativeDifficulty = 1, numSkillUps = 2 } end,
+        }
+        local S = ns.Diag.Collect(ns.Kernel({}, ns.make.fakeClient({ env = e })), "test").shapes
+        t.eq(S.recipeDifficulty and S.recipeDifficulty.values.v1, 1)
+        t.eq(S.recipeSkillUps and S.recipeSkillUps.values.v1, 2)
+        e.C_TradeSkillUI.GetRecipeInfo = function(recipe) return { recipeID = recipe } end
+        S = ns.Diag.Collect(ns.Kernel({}, ns.make.fakeClient({ env = e })), "test").shapes
+        t.eq(S.recipeDifficulty and S.recipeDifficulty.types[1], "nil", "a field the client leaves out reads as nil")
+        t.eq(S.recipeSkillUps and S.recipeSkillUps.ok, true)
+    end,
 }
