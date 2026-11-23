@@ -3518,6 +3518,28 @@ function ns.make.fakeClient(opts)
             return w, entry
         end
 
+        -- As the real client's: the probe's answers are kept (c.kitSaid()
+        -- reads them back in a test), and c.kitDrawnTell(id, art) stands in
+        -- for a draw telling the listener.
+        local said, drawnFn = {}, nil
+        function c.kitKnown(rows)
+            said = {}
+            if type(rows) ~= "table" then return end
+            for id, text in pairs(rows) do
+                if type(id) == "string" and type(text) == "string" then said[id] = text end
+            end
+        end
+        function c.kitSaid()
+            local out = {}
+            for id, text in pairs(said) do out[id] = text end
+            return out
+        end
+        function c.onKitDrawn(fn)
+            if type(fn) == "function" then drawnFn = fn else drawnFn = nil end
+        end
+        function c.kitDrawnTell(id, art)
+            if drawnFn ~= nil then pcall(drawnFn, id, art) end
+        end
         function c.setKitFails(n) kitFails = tonumber(n) or 0 end
         function c.kitWindow(id, tree, extra)
             local cb = type(extra) == "table" and extra or {}

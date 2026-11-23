@@ -292,4 +292,26 @@ tests["kit probe: Works says true, false, or nil for a row not asked yet"] = fun
     t.eq(P.Works(record, nil), nil)
 end
 
+-- Lead sections 319 and 322: the probe's answers reach the kit's drawer,
+-- and what each window drew is kept in the saved diagnostics.
+tests["kit probe: its answers are handed to the drawer, and what a window drew is saved"] = function(t)
+    local c, _, _, fails = start(t)
+    if c == nil then return end
+    t.eq(type(c.kitSaid), "function", "the fake keeps what kitKnown was told")
+    if type(c.kitSaid) ~= "function" then return end
+    local said = c.kitSaid()
+    local asked, wrong = 0, 0
+    for _, row in ipairs(ns.KitParts.rows) do
+        asked = asked + 1
+        local works = said[row.id] == "works"
+        if works == (fails[row.id] == true) then wrong = wrong + 1 end
+    end
+    t.ok(asked > 0, "rows were asked")
+    t.eq(wrong, 0, "the drawer was told each row as the probe found it")
+    c.kitDrawnTell("SellList", { frame = "fallback", button = "first" })
+    local diag = c.saved(ns.id.accountDB).diag
+    t.eq(type(diag) == "table" and diag.kitDrawn and diag.kitDrawn.SellList,
+        { frame = "fallback", button = "first" }, "kept beside the probe's answers")
+end
+
 return tests

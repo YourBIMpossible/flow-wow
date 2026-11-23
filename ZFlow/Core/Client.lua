@@ -9212,7 +9212,49 @@ function ns.make.client(env)
     -- here, still not seen: UIPanelCloseButton, UISpecialFrames,
     -- SetResizeBounds, StartSizing, the other templates.
     do
-        local kitWindows = {}   -- id -> { handle =, set = fn(extra) }
+        local kitWindows = {}   -- id -> { handle =, set = fn(extra), drawn = }
+        -- What the login probe said of each row of UI/Kit/Parts.lua, and
+        -- who is told what each window drew (UI/KitProbe.lua, both).
+        local kitSaid = {}
+        local kitDrawnFn = nil
+        local NOT_CONFIRMED = "made, not confirmed"
+        -- The game's templates the kit asks for, here and nowhere else. A
+        -- part with a row in the parts list takes its name from that row;
+        -- the four below it were used by this file before the kit and have
+        -- no row. First guesses, none seen in game on 16001.
+        local KIT_ROW = { frame = "T2", search = "T5", tab = "T7", button = "T16" }
+        local KIT_OWN = { close = "UIPanelCloseButton", check = "UICheckButtonTemplate",
+            input = "InputBoxTemplate", scroll = "UIPanelScrollFrameTemplate" }
+        -- The template to ask for a part, or nil when the probe found it
+        -- missing: then no create is tried and the plain form draws. A row
+        -- not asked yet, one that works and one made but not confirmed are
+        -- each still asked for by a protected create.
+        local function templateOf(key)
+            local id = KIT_ROW[key]
+            if id == nil then return KIT_OWN[key] end
+            local said = kitSaid[id]
+            if type(said) == "string" and said ~= "works" and said:sub(1, 6) ~= "works " and said ~= NOT_CONFIRMED then
+                return nil
+            end
+            local parts = ns.KitParts
+            if type(parts) ~= "table" or type(parts.ById) ~= "function" then return nil end
+            local row = parts.ById(id)
+            if type(row) ~= "table" or type(row.name) ~= "string" then return nil end
+            return row.name
+        end
+        -- rows: { [row id] = what the probe said }. Kept for later draws.
+        function c.kitKnown(rows)
+            kitSaid = {}
+            if type(rows) ~= "table" then return end
+            for id, said in pairs(rows) do
+                if type(id) == "string" and type(said) == "string" then kitSaid[id] = said end
+            end
+        end
+        -- fn(id, art) after each draw of a window: art[part] = "first" (the
+        -- game's own) or "fallback" (the plain form). One listener.
+        function c.onKitDrawn(fn)
+            if type(fn) == "function" then kitDrawnFn = fn else kitDrawnFn = nil end
+        end
 
         local function kitBuild(id, tree, cb)
             if type(id) ~= "string" or id == "" then error("a kit window needs an id") end
@@ -9353,20 +9395,24 @@ function ns.make.client(env)
                 end)
             end
 
-            -- A frame from the template under art[key], asked for by a
-            -- protected create; a template the client lacks gets the one under art[alt]
+            -- A frame from the template of the part named key (templateOf),
+            -- asked for by a protected create; a template the client lacks
+            -- gets the one of the part named alt
             -- (when given), else a plain frame. -> frame, "first" | "fallback"
             local function made(kind, parent, key, alt)
                 local obj = take(parent, kind .. ":" .. key, function()
-                    if type(art[key]) == "string" then
-                        local ok, f = call(env.CreateFrame, kind, nil, parent, art[key])
+                    local first = templateOf(key)
+                    if first ~= nil then
+                        local ok, f = call(env.CreateFrame, kind, nil, parent, first)
                         if ok and f ~= nil then
                             firstOf[f] = key
                             return f
                         end
                     end
-                    if alt ~= nil and type(art[alt]) == "string" then
-                        local ok, f = call(env.CreateFrame, kind, nil, parent, art[alt])
+                    local second = nil
+                    if alt ~= nil then second = templateOf(alt) end
+                    if second ~= nil then
+                        local ok, f = call(env.CreateFrame, kind, nil, parent, second)
                         if ok and f ~= nil then
                             firstOf[f] = alt
                             return f
@@ -9462,6 +9508,10 @@ function ns.make.client(env)
             local parent = env.UIParent
             local name = nil
             if type(cb.name) == "string" and cb.name ~= "" then name = cb.name end
+            -- A window given no name gets one of ours, so Escape can close it.
+            if name == nil and type(ns.id) == "table" and type(ns.id.framePrefix) == "string" then
+                name = ns.id.framePrefix .. "Kit" .. id
+            end
             -- Asked before the frame is made: making it takes the name.
             local nameFree = name ~= nil and env[name] == nil
             -- A name another frame holds is not given to ours.
@@ -9471,8 +9521,9 @@ function ns.make.client(env)
             -- (lead section 297 item 4), else a plain one. Its portrait is
             -- hidden by the game's own call when the client has it.
             local f, stockFrame = nil, false
-            if type(art.frame) == "string" then
-                local ok, made1 = call(env.CreateFrame, "Frame", frameName, parent, art.frame)
+            local frameTemplate = templateOf("frame")
+            if frameTemplate ~= nil then
+                local ok, made1 = call(env.CreateFrame, "Frame", frameName, parent, frameTemplate)
                 if ok and made1 ~= nil then
                     f, stockFrame = made1, true
                     call(env.ButtonFrameTemplate_HidePortrait, made1)
@@ -9513,6 +9564,16 @@ function ns.make.client(env)
                     if special[i] == name then there = true end
                 end
                 if not there then special[#special + 1] = name end
+            elseif tree.escape == true then
+                -- Never silent: the caller is told why Escape will not close
+                -- this window. The window still opens.
+                local why = "the client has no list of windows Escape closes"
+                if name == nil then
+                    why = "the window has no name"
+                elseif not nameFree then
+                    why = "another frame holds the name " .. name
+                end
+                fail("Escape will not close this window: " .. why)
             end
 
             local function standing()
@@ -10450,10 +10511,10 @@ function ns.make.client(env)
                 end
             end
 
-            draw = function(now)
-                reread()
-                sweepStart()
-                slots = {}
+            -- What is drawn: a raise partway still ends the sweep, so no part
+            -- of the tree before it is left showing beside the half-drawn
+            -- one; the raise then goes on to the caller.
+            local function drawParts(now)
                 sized(f, width, height)
                 chrome(now)
                 body = plain("Frame", f, "body")
@@ -10476,7 +10537,21 @@ function ns.make.client(env)
                 for i = 1, #kids do
                     if kids[i].kind ~= "footer" then place(kids[i], pane, i == lastFlow) end
                 end
+            end
+            draw = function(now)
+                reread()
+                sweepStart()
+                slots = {}
+                local ok, err = pcall(drawParts, now)
                 sweepEnd()
+                -- Lead section 319: which parts were the game's own and
+                -- which the plain form, for the diagnostics.
+                if kitDrawnFn ~= nil then
+                    local art = {}
+                    for key, which in pairs(drew) do art[key] = which end
+                    pcall(kitDrawnFn, id, art)
+                end
+                if not ok then error(err, 0) end
             end
 
             local point = type(cb.point) == "table" and cb.point or tree.point
@@ -10484,7 +10559,9 @@ function ns.make.client(env)
                 method(f, "ClearAllPoints")
                 method(f, "SetPoint", point[1], parent, point[2], point[3], point[4])
             end
-            draw(tree)
+            -- A first draw that fails does not lose the frame: the window is
+            -- kept, the caller is told, and asking again draws on this frame.
+            local drawn, drawErr = pcall(draw, tree)
 
             local h = {}
             function h.update(now)
@@ -10511,7 +10588,7 @@ function ns.make.client(env)
                 return out
             end
             function h.slot(slotName) return slots[slotName] end
-            return h, function(extra) cb = extra end
+            return h, function(extra) cb = extra end, drawn, drawErr
         end
 
         function c.kitWindow(id, tree, extra)
@@ -10520,17 +10597,25 @@ function ns.make.client(env)
             if type(id) == "string" then known = kitWindows[id] end
             if known ~= nil then
                 known.set(cb)
+                -- update tells failed itself when its draw raises.
                 if known.handle.update(tree) then return known.handle end
-                -- The caller is told, as for a first build that fails.
-                if type(cb.failed) == "function" then pcall(cb.failed, "the window could not be drawn again") end
+                if type(tree) ~= "table" or tree.kind ~= "window" then
+                    if type(cb.failed) == "function" then pcall(cb.failed, "a kit window needs a tree from Kit.Window") end
+                end
                 return nil
             end
-            local ok, h, set = pcall(kitBuild, id, tree, cb)
+            local ok, h, set, drawn, drawErr = pcall(kitBuild, id, tree, cb)
             if not ok or h == nil then
                 if type(cb.failed) == "function" then pcall(cb.failed, h) end
                 return nil
             end
+            -- Kept even when its first draw failed, so a later ask makes no
+            -- second top frame.
             kitWindows[id] = { handle = h, set = set }
+            if not drawn then
+                if type(cb.failed) == "function" then pcall(cb.failed, drawErr) end
+                return nil
+            end
             return h
         end
     end
