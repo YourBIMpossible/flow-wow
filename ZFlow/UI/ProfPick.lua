@@ -83,6 +83,7 @@ function P.Advice(known, class, level)
     if #have == 1 then
         local mine = have[1]
         local pair = P.PARTNER[mine]
+        if type(pair) ~= "table" or type(pair[1]) ~= "string" or type(pair[2]) ~= "string" then return nil end
         text = "One profession slot is free. " .. pair[1] .. " goes with your " .. mine .. ": " .. pair[2]
     else
         local why = (type(class) == "string" and P.BY_CLASS[class]) or P.ANY_CLASS
@@ -94,7 +95,8 @@ end
 -- The module. api.shown(): true while the prompt is in the advisor.
 function P.Declare(k)
     local api = {}
-    local ctx, shown = nil, false
+    -- last: the text this module last put in the advisor.
+    local ctx, shown, last = nil, false, nil
 
     function api.shown() return shown end
 
@@ -122,7 +124,7 @@ function P.Declare(k)
 
     local function remove(a)
         if shown and a then pcall(a.Remove, P.ID) end
-        shown = false
+        shown, last = false, nil
     end
 
     local function sync()
@@ -137,8 +139,12 @@ function P.Declare(k)
             remove(a)
             return
         end
+        -- The same text already in the advisor: nothing to add (lead 274 PP-1).
+        if shown and last == want.text then return end
         local ok, added = pcall(a.Add, want.id, want.text, want.priority)
-        if ok and added == true then shown = true end
+        if ok and added == true then
+            shown, last = true, want.text
+        end
     end
 
     k:Setting({ key = P.SETTING, scope = "account", type = "bool", default = true,
