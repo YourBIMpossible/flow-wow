@@ -194,6 +194,28 @@ function Write-Layout($value, [string]$path) {
     Write-Output ("   {0} = {1}" -f $path, (Format-Plain $value))
 }
 
+# The window kit's login probe (lead section 292): which stock art names
+# this client has. Names and what the client said of each; no game value.
+Write-Output ''
+Write-Output '=== Kit probe (stock art names, saved for the account) ==='
+$probe = Get-ZSaved $diag 'kitProbe'
+if (Test-ZSavedTable $probe) {
+    Write-Output ("   asked at uptime {0}, build {1}" -f (Format-Plain (Get-ZSaved $probe 'at')), (Format-Plain (Get-ZSaved $probe 'build')))
+    $reason = Get-ZSaved $probe 'reason'
+    if ($null -ne $reason) { Write-Output ("   no result: {0}" -f (Format-Plain $reason)) }
+    $result = Get-ZSaved $probe 'result'
+    if (Test-ZSavedTable $result) {
+        foreach ($group in @('templates', 'textures', 'globals')) {
+            $rows = Get-ZSaved $result $group
+            if (Test-ZSavedTable $rows) {
+                foreach ($key in ($rows.Keys | Sort-Object { [string]$_ })) {
+                    Write-Output ("   {0}: {1} = {2}" -f $group, $key, (Format-Plain (Get-ZSaved $rows $key)))
+                }
+            }
+        }
+    }
+} else { Write-Output '   none saved (log in once and leave combat, then reload or log out)' }
+
 Write-Output ''
 Write-Output '=== Layout (saved for the account) ==='
 $layout = Get-ZSaved $db 'layout'
