@@ -41,7 +41,10 @@ local KIND = {
              -- what the caller's act does.
              "iconRow",
              -- S20: the per-role badges on the merchant's item buttons.
-             "markMerchantSpecs" },
+             "markMerchantSpecs",
+             -- The window kit's drawer (lead sections 287 and 291): one
+             -- window from a checked tree; a click runs the part's own function.
+             "kitWindow" },
     tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "savedMadeHere", "slash",
              "slashTaken", "unslash",
              -- Lead sections 297 and 303: asks whether each part of the
