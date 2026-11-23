@@ -30,8 +30,10 @@ local function start(opts)
     } })
     -- Section 231: the bar reads the recipe from c.recipeSchematic, the read
     -- the recipe book and the goals list use (Items/RecipeBook.lua).
-    c.setRecipeSchematic(COPPER_BAR, { makes = ITEM_COPPER_BAR, yield = 1, mats = { [ORE_COPPER] = 1 } })
-    c.setRecipeSchematic(TIN_BAR, { makes = ITEM_TIN_BAR, yield = 1, mats = { [ORE_TIN] = 1 } })
+    if opts.schematic ~= false then
+        c.setRecipeSchematic(COPPER_BAR, { makes = ITEM_COPPER_BAR, yield = 1, mats = { [ORE_COPPER] = 1 } })
+        c.setRecipeSchematic(TIN_BAR, { makes = ITEM_TIN_BAR, yield = 1, mats = { [ORE_TIN] = 1 } })
+    end
     if opts.bagItems then c.setBagItems(opts.bagItems) end
     c.setRecipeUsable(COPPER_BAR, true)
     c.setRecipeUsable(TIN_BAR, true)
@@ -358,6 +360,33 @@ tests["craft bar: Smelt all ticks what the ore covers and starts on the click"] 
     t.eq(rowOf(bar, "count:" .. COPPER_BAR).value, 4)
     t.eq(rowOf(bar, "count:" .. TIN_BAR).value, 2)
     t.eq(addon.craftBar.running(), true)
+end
+
+-- Section 234 item 2: where c.recipeSchematic gives nothing (the client has
+-- no GetRecipeSchematic), the bar reads the recipe from the recipe book,
+-- which the classic window read (c.tradeSkillSchematic) fills. The bar does
+-- not write the book.
+tests["craft bar: Smelt all reads the recipe book when the schematic read gives nothing"] = function(t)
+    local c, addon = start({ copper = 4, tin = 2, schematic = false, book = {
+        ["Copper Bar"] = { id = COPPER_BAR, makes = ITEM_COPPER_BAR, yield = 1, mats = { [ORE_COPPER] = 1 } },
+        ["Tin Bar"] = { id = TIN_BAR, makes = ITEM_TIN_BAR, yield = 1, mats = { [ORE_TIN] = 1 } },
+    } })
+    local bar = barOf(c)
+    if not bar then t.ok(false, "no craft bar") return end
+    t.eq(bar.press("all"), true)
+    t.eq(rowOf(bar, "count:" .. COPPER_BAR).value, 4, "the book mats cover 4 copper")
+    t.eq(rowOf(bar, "count:" .. TIN_BAR).value, 2, "the book mats cover 2 tin")
+    t.eq(crafted(c), { COPPER_BAR })
+    t.eq(addon.craftBar.running(), true)
+end
+
+tests["craft bar: with neither read Smelt all smelts nothing"] = function(t)
+    local c, addon = start({ copper = 4, schematic = false })
+    local bar = barOf(c)
+    if not bar then t.ok(false, "no craft bar") return end
+    bar.press("all")
+    t.eq(#c.crafts, 0, "no recipe read, no craft")
+    t.eq(addon.craftBar.running(), false)
 end
 
 tests["craft bar: no Smelt all on another profession"] = function(t)
