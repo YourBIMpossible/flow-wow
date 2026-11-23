@@ -21,7 +21,7 @@ local _, ns = ...
 --   * Mend Pet: it needs the pet's health, and no pet health is read (D1);
 --   * ammunition: no read for it yet; a shot without ammunition is refused
 --     by the game (its usable / noPower answer), and that is all used here;
---   * traps, Feign Death, Disengage, Concussive Shot, Scatter Shot, Aimed
+--   * traps, Disengage, Concussive Shot, Scatter Shot, Aimed
 --     Shot and Rapid Fire as advice: no rule asks for them yet (situational
 --     or talents; the spells are listed, and on the key row where they fit);
 --   * starting a melee swing: there is no "Attack" row yet, so the engage
@@ -207,6 +207,7 @@ local spells = {
     ["Arcane Shot"]          = sp(6,  { "DPS" }),
     ["Hunter's Mark"]        = sp(6,  { "DPS" }),
     ["Concussive Shot"]      = sp(8,  { "Control" }),
+    ["Scare Beast"]          = sp(14, { "Control" }),
     ["Aspect of the Hawk"]   = sp(10, { "DPS" }),
     ["Call Pet"]             = sp(10, { "Pet" }, nil, "from the class quest that teaches taming"),
     ["Revive Pet"]           = sp(10, { "Pet" }, nil, "from the class quest that teaches taming"),
@@ -327,9 +328,28 @@ local pack = {
     spells = spells,
 
     -- Not authored yet.
-    talentBuilds = {},
+    talentBuilds = {
+        { name = "Beast Mastery levelling build", role = "dps", evidence = GUESS, note = "written for this pack on 2026-11-23 from general knowledge of the class; not read from the game",
+          trees = { "Beast Mastery", "Marksmanship", "Survival" },
+          order = {
+              { "Improved Aspect of the Hawk", 5, why = "Your ranged attacks now and then gain speed, with the aspect you keep on." },
+              { "Endurance Training", 5, why = "Your pet has more health, so it holds the enemy longer." },
+              { "Unleashed Fury", 5, why = "Your pet hits harder, and it does much of your killing." },
+              { "Ferocity", 5, why = "Your pet lands more critical hits." },
+              { "Spirit Bond", 2, why = "You and your pet heal over time, so fewer rests between pulls." },
+              { "Intimidation", 1, why = "A pet attack that stuns the enemy and pulls it back off you." },
+              { "Bestial Swiftness", 1, why = "Your pet runs faster outdoors, so it reaches the enemy first." },
+              { "Improved Mend Pet", 2, why = "Mend Pet costs less and can clear a curse or poison from your pet." },
+              { "Bestial Discipline", 2, why = "Your pet builds focus faster, so it uses its attacks more often." },
+              { "Frenzy", 5, why = "Your pet attacks faster after its critical hits." },
+              { "Bestial Wrath", 1, why = "A cooldown that makes your pet hit much harder for a short time." },
+          },
+        },
+    },
 
     options = {
+        crowdControl = { { spell = "Scare Beast", creatures = { beast = true } } },
+        threatDrop = { spell = "Feign Death" },
         -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,
         -- in order: the first you know names your tree (snapshot.tree,
         -- Rotation/Driver.lua). Which spell is a talent of which tree: a first
