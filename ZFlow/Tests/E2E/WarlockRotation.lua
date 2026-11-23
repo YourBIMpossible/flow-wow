@@ -165,9 +165,16 @@ tests["warlock: cooldown and range"] = function(t)
     local c, addon, icon = start()
     on(c, addon); fighting(c, DOTTED)
     t.eq(icon.texture, "tex:Shadow Bolt")
+    -- One spell out of range is passed by for the next one in range (lead
+    -- fix at the merge, as in the Mage test; White ran it).
     c.setInRange(IDS["Shadow Bolt"], false); c.advance(1, 5)
+    t.ok(not (icon.shown and icon.texture == "tex:Shadow Bolt"), "out of range: not shown")
+    -- Every targeted spell out of range: the words say so.
+    for _, name in ipairs(TARGETED) do c.setInRange(IDS[name], false) end
+    c.advance(1, 5)
     t.ok(said(c):find("out of range", 1, true), "told it is out of range: " .. said(c))
-    c.setInRange(IDS["Shadow Bolt"], true); c.setSpellCooldown(IDS["Shadow Bolt"], true); c.advance(1, 5)
+    for _, name in ipairs(TARGETED) do c.setInRange(IDS[name], true) end
+    c.setSpellCooldown(IDS["Shadow Bolt"], true); c.advance(1, 5)
     t.ok(not (icon.shown and icon.texture == "tex:Shadow Bolt"), "on cooldown: not shown")
     c.setSpellCooldown(IDS["Shadow Bolt"], false); c.advance(1, 5)
     t.eq(icon.texture, "tex:Shadow Bolt", "ready again")
