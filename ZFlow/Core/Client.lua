@@ -9002,6 +9002,163 @@ function ns.make.client(env)
         if not ok or hidden(done) or type(done) ~= "boolean" then return nil end
         return done
     end
+
+    -- The window kit's login probe (lead DISPATCH section 297 item 3 and
+    -- section 303 item 5). Asks the client, read only, whether each part
+    -- the kit would like to use is there. New, added at the end.
+    --   c.kitProbe(rows) -> { [row id] = "works" | a short text saying what
+    --     the client said, EJ_LOADED = "yes" | "no" | "not known" }
+    --     | nil, "combat"
+    --   rows: the list in UI/Kit/Parts.lua (KitParts.rows): { id =, kind =
+    --     "template" | "global", name =, frameType =, proof = }. A row with
+    --     no text id is passed over. With no rows no frame is made at all.
+    -- LOOK ONLY. Nothing is shown, no setting is changed, nothing acts and
+    -- no add-on is loaded: LoadAddOn and its kin are never called. Asked
+    -- only when InCombatLockdown answers a plain false, judged as
+    -- c.equipItem judges it: true, a secret, a raise or no such call asks
+    -- nothing and makes no frame. Every row is asked under pcall, so one
+    -- that raises is kept as its text and the others are still asked. A
+    -- text is cut to PROBE_TEXT characters.
+    --
+    -- EVERY GAME NAME HERE IS A FIRST GUESS, none seen in game on 16001:
+    -- the rows' own names and proof fields, and CreateFrame with a parent
+    -- and a template, UIParent, Frame Hide / ClearAllPoints / SetParent,
+    -- C_AddOns.IsAddOnLoaded and IsAddOnLoaded.
+    --
+    --   template  pcall(CreateFrame, frameType or "Frame", nil, holder,
+    --             name); the frame made is hidden at once. holder is one
+    --             unnamed frame of ours per asking, a child of UIParent,
+    --             hidden when made and never shown, so nothing made under
+    --             it is drawn and no global is made. "works" only when the
+    --             frame handed back carries one of the row's proof fields
+    --             (a field that template is known by); a frame with none
+    --             of them is "made, not confirmed", so a client that hands
+    --             back a plain frame for a template it lacks records no
+    --             positive. "no frame" when nothing comes back, else the
+    --             error text. When the asking is over every frame made,
+    --             and the holder, is hidden, taken off its parent and let
+    --             go; the client has no call to destroy a frame.
+    --   global    looked up in the client's globals along the dotted name:
+    --             "works (" .. its Lua type .. ")", or "nil".
+    --   EJ_LOADED whether the Encounter Journal add-on is loaded:
+    --             C_AddOns.IsAddOnLoaded, else IsAddOnLoaded; "not known"
+    --             when neither answers.
+    do
+        local PROBE_TEXT = 120
+        local JOURNAL = "Blizzard_EncounterJournal"
+
+        local function short(v)
+            local text = tostring(v)
+            if #text > PROBE_TEXT then text = text:sub(1, PROBE_TEXT) end
+            return text
+        end
+
+
+        -- One unnamed, hidden holder per asking; nothing is named, so no
+        -- global is made. Every frame made to ask with is hidden, taken off
+        -- its parent and let go when the asking is over (a frame cannot be
+        -- destroyed, so this is all a release can be).
+        local function holder()
+            local ok, f = call(env.CreateFrame, "Frame", nil, env.UIParent)
+            if not ok or type(f) ~= "table" then return nil end
+            method(f, "Hide")
+            return f
+        end
+
+        local function release(made, parent)
+            for i = 1, #made do
+                method(made[i], "Hide")
+                method(made[i], "ClearAllPoints")
+                method(made[i], "SetParent", nil)
+            end
+            if parent ~= nil then
+                method(parent, "Hide")
+                method(parent, "SetParent", nil)
+            end
+        end
+
+        -- A frame handed back is the template asked for only when it carries
+        -- one of the fields that template is known by (row.proof). A client
+        -- that hands back a plain frame for a name it lacks is told apart:
+        -- "made, not confirmed". The proof fields are first guesses.
+        local function askTemplate(row, parent, made)
+            local make = env.CreateFrame
+            if type(make) ~= "function" then return "no CreateFrame" end
+            if parent == nil then return "no holder frame" end
+            local kind = row.frameType
+            if type(kind) ~= "string" then kind = "Frame" end
+            local ok, f = pcall(make, kind, nil, parent, row.name)
+            if not ok then return short(f) end
+            if type(f) ~= "table" then return "no frame" end
+            made[#made + 1] = f
+            method(f, "Hide")
+            local proof = row.proof
+            if type(proof) == "table" then
+                for i = 1, #proof do
+                    local okP, v = pcall(function() return f[proof[i]] end)
+                    if okP and v ~= nil then return "works" end
+                end
+            end
+            return "made, not confirmed"
+        end
+
+        local function askGlobal(row)
+            local at = env
+            for seg in row.name:gmatch("[^%.]+") do
+                if type(at) ~= "table" then return "nil" end
+                at = at[seg]
+            end
+            if at == nil then return "nil" end
+            return "works (" .. type(at) .. ")"
+        end
+
+        -- The rows are templates and client names only (lead section 308).
+        local function ask(row, parent, made)
+            if type(row.name) ~= "string" or row.name == "" then return "no name" end
+            if row.kind == "template" then return askTemplate(row, parent, made) end
+            if row.kind == "global" then return askGlobal(row) end
+            return "unknown kind"
+        end
+
+        -- Read only: IsAddOnLoaded says, nothing is loaded.
+        local function journalLoaded()
+            local asks = {}
+            local group = env.C_AddOns
+            if type(group) == "table" then asks[#asks + 1] = group.IsAddOnLoaded end
+            asks[#asks + 1] = env.IsAddOnLoaded
+            for i = 1, #asks do
+                local ok, loaded = call(asks[i], JOURNAL)
+                if ok and not hidden(loaded) then
+                    if loaded then return "yes" end
+                    return "no"
+                end
+            end
+            return "not known"
+        end
+
+        function c.kitProbe(rows)
+            local okLock, locked = call(env.InCombatLockdown)
+            if not okLock or hidden(locked) or locked ~= false then return nil, "combat" end
+            local out = {}
+            -- No rows (the journal re-ask): no frame is made at all.
+            if type(rows) == "table" and #rows > 0 then
+                local made = {}
+                local okH, parent = pcall(holder)
+                if not okH then parent = nil end
+                for i = 1, #rows do
+                    local row = rows[i]
+                    if type(row) == "table" and type(row.id) == "string" then
+                        local ok, text = pcall(ask, row, parent, made)
+                        if ok then out[row.id] = text else out[row.id] = short(text) end
+                    end
+                end
+                pcall(release, made, parent)
+            end
+            local okJ, journal = pcall(journalLoaded)
+            if okJ then out.EJ_LOADED = journal else out.EJ_LOADED = "not known" end
+            return out
+        end
+    end
     return c
 end
 

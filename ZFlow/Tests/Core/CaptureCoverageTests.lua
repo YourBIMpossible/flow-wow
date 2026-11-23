@@ -65,6 +65,10 @@ local KIND = {
 -- buttons, each cast only on the player click, and the grip that moves it.
 KIND.show[#KIND.show + 1] = "clickRow"
 KIND.show[#KIND.show + 1] = "moveHandle"
+-- Lead sections 297, 303 and 308: asks whether each part of the window
+-- kit's list is there, on hidden frames; run once per login by
+-- UI/KitProbe.lua, never by the capture.
+KIND.tool[#KIND.tool + 1] = "kitProbe"
 
 -- Every read, and whether the capture asks it (true) or not (false).
 local READS = {
