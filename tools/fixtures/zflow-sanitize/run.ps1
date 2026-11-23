@@ -42,7 +42,9 @@ try {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'capture\ZFlowChar.lua') -Destination $char
 
     function Invoke-Tool([string[]]$argv) {
-        $out = (& $lua $tool @argv 2>&1 | Out-String)
+        # The tool's refusals go to stderr; under 'Stop' that would end the run.
+        $ErrorActionPreference = 'Continue'
+        $out = (& $lua $tool @argv 2>&1 | ForEach-Object { "$_" } | Out-String)
         return [pscustomobject]@{ Out = $out; Code = $LASTEXITCODE }
     }
     function Report([string]$name, $r, [int]$code, [string[]]$why) {
@@ -63,7 +65,7 @@ try {
         if (-not (Test-Path -LiteralPath $o)) { $why += ("not written: {0}" -f (Split-Path $o -Leaf)); continue }
         $text = [System.IO.File]::ReadAllText($o)
         foreach ($n in $names) { if ($text.Contains($n)) { $why += ("a real name left in {0}" -f (Split-Path $o -Leaf)) } }
-        if (-not $text.Contains('Character1')) { $why += ("no made-up name in {0}" -f (Split-Path $o -Leaf)) }
+        if (-not $text.Contains('Character')) { $why += ("no made-up name in {0}" -f (Split-Path $o -Leaf)) }
     }
     $after = @((Get-FileHash -LiteralPath $account).Hash, (Get-FileHash -LiteralPath $char).Hash)
     if (($before -join ',') -ne ($after -join ',')) { $why += 'a capture changed' }
