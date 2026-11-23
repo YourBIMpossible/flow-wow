@@ -30,7 +30,7 @@ end
 local HOME_POST, FAR_POST = "Home Post", "Far Post"
 local function nodes()
     return {
-        [HOME_POST] = { cont = 1, wx = 520, wy = 250 },    -- 1411 (0.52, 0.5): 20 yd from the player
+        [HOME_POST] = { cont = 1, wx = 700, wy = 250 },    -- 1411 (0.7, 0.5): 200 yd from the player (outside the arrival radius)
         [FAR_POST] = { cont = 1, wx = 5480, wy = 500 },    -- 1420 (0.48, 0.5): 20 yd from the wolves
     }
 end
@@ -69,15 +69,15 @@ end
 tests["flight way: a far quest with two known flight masters, fly first"] = function(t)
     local c = start({ char = { learned = { flights = { nodes = nodes() } } } })
     local a = c.arrows[1]
-    -- Flights.Pick: board Home Post (20 yd), land Far Post (20 yd from the
-    -- wolves); 40/7 + 4966/24 + 10 s is well under 0.8 of the 5006 yd walk.
+    -- Flights.Pick: board Home Post (200 yd), land Far Post (20 yd from the
+    -- wolves); 220/7 + 4780/24 + 10 s is well under 0.8 of the 5006 yd walk.
     t.eq(a.shown, true)
     t.eq(a.lines[1], Flights.LABEL:format(FAR_POST))
     t.eq(a.lines[2], Travel.THEN:format("Wolves"))
     t.ok(type(a.lines[3]) == "string" and a.lines[3]:match("^%d+ yd") ~= nil, "a distance line: " .. tostring(a.lines[3]))
 
     -- At the flight master: still the flight step (Pick boards here).
-    c.setPosition(1411, 0.52, 0.5)
+    c.setPosition(1411, 0.7, 0.5)
     c.advance(2, 8)
 
     -- Landed: the player is on the wolves' map. The only known point on
