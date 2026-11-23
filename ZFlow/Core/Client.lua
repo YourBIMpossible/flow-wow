@@ -9291,8 +9291,17 @@ function ns.make.client(env)
                 if args[10] ~= nil and not hidden(args[10]) and type(args[10]) == "string" then
                     info.guid = args[10]
                 end
+                -- N60e: info.line, the game's 11th argument (the line id,
+                -- the same for one line in every window), only when a
+                -- plain number. fn's second answer { hide = true } hides
+                -- the line: the filter answers true, as the game's
+                -- contract has it. First guess for 16001.
+                if args[9] ~= nil and not hidden(args[9]) and type(args[9]) == "number" then
+                    info.line = args[9]
+                end
                 local ok, new, change = pcall(fn, text, event, who, info)
                 if not ok then return false end
+                if type(change) == "table" and change.hide == true then return true end
                 local channel = nil
                 if type(change) == "table" and type(change.channel) == "string" and info.channel ~= nil
                     and change.channel ~= info.channel then

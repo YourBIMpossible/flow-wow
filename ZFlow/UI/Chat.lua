@@ -229,14 +229,58 @@ Chat.CLASS_COLOURS = {
     SHAMAN = "ff0070de", MAGE = "ff3fc7eb", WARLOCK = "ff8788ee", DRUID = "ffff7d0a",
 }
 
+-- Part 5 (row N60e): filters, repeated lines, substitutions. Each its own
+-- row, each off at first; for display only, nothing is sent.
+--   chat.filters        hide a line holding a word of chat.filterWords
+--                       (comma-separated, at most Chat.FILTER_WORDS_MAX;
+--                       whole words, any case, found as plain text, never
+--                       as a pattern; the shown text of a link counts) in
+--                       the kinds chat.filterScope names. Whispers to or
+--                       from the player only with chat.filterWhispers on.
+--   chat.repeats        "off", or seconds: the same line from the same
+--                       author again within that time is hidden. At most
+--                       Chat.REPEAT_MAX lines kept in mind.
+--   chat.subs           each "from=to" pair of chat.subPairs (at most
+--                       Chat.SUB_PAIRS_MAX) replaces the whole word in
+--                       other players' lines. Never inside a link or a
+--                       coloured run; a bar in the new word is shown as a
+--                       bar, never read as a code.
+-- The player's own lines are never hidden or changed; while the player's
+-- name is not known, nothing is. One line shown in two windows is judged
+-- once (the game's line id). Beside Prat: its Filtering module stands
+-- filters and repeats down, its Substitutions module the substitutions
+-- (module names inferred, first guess). A line the client hides is passed
+-- on unread.
+Chat.FILTERS, Chat.FILTER_WORDS = "chat.filters", "chat.filterWords"
+Chat.FILTER_SCOPE, Chat.FILTER_WHISPERS = "chat.filterScope", "chat.filterWhispers"
+Chat.REPEATS, Chat.SUBS, Chat.SUB_PAIRS = "chat.repeats", "chat.subs", "chat.subPairs"
+Chat.PRAT_FILTER, Chat.PRAT_SUBS = "Filtering", "Substitutions"
+Chat.FILTER_WORDS_MAX, Chat.SUB_PAIRS_MAX, Chat.REPEAT_MAX = 20, 10, 200
+Chat.FILTER_SCOPES = { "channels", "channels and say", "every kind" }
+Chat.REPEAT_CHOICES = { "off", "10", "30", "60" }
+-- The kinds each scope takes, by the event's kind (Chat.SCOPE_EVENTS).
+Chat.FILTER_KINDS = {
+    channels = { channel = true },
+    ["channels and say"] = { channel = true, say = true },
+    ["every kind"] = { channel = true, say = true, party = true, raid = true, guild = true },
+}
+-- Whispers to or from the player: only chat.filterWhispers lets a filter
+-- or the repeats hide one, whatever the scope.
+Chat.WHISPER_EVENTS = {
+    CHAT_MSG_WHISPER = true, CHAT_MSG_WHISPER_INFORM = true, CHAT_MSG_BN_WHISPER = true,
+    CHAT_MSG_BN_WHISPER_INFORM = true,
+}
+
 Chat.HELP = "how the chat links, the chat copy button, the chat readability settings, chat mentions, "
-    .. "class names, short channel labels and the edit box stand; chat copy [n] puts the main chat "
+    .. "class names, short channel labels, the edit box, chat filters, repeated lines and substitutions "
+    .. "stand, and how many lines were hidden; chat copy [n] puts the main chat "
     .. "window's last n lines in a box to copy"
 Chat.LABEL = {
     urls = "chat links", copy = "chat copy button", font = "chat text size", fade = "chat fading",
     scroll = "chat wheel scrolling", stamps = "chat timestamps", tabs = "chat tabs kept visible",
     mentions = "chat mentions", sound = "chat mention sound",
     names = "chat class names", short = "short chat channel labels", edit = "chat edit box arrows",
+    filters = "chat filters", repeats = "hiding repeated chat lines", subs = "chat substitutions",
 }
 Chat.STATE = {
     on = "on", off = "off (its setting is off)", prat = "standing down",
@@ -604,6 +648,104 @@ function Chat.ShortLabel(label, short)
     return label:sub(1, a + 2) .. short .. label:sub(b)
 end
 
+-- Part 5, pure: filter words, substitution pairs.
+
+-- The player's filter text as words, lower case: as Chat.Keywords, at most
+-- Chat.FILTER_WORDS_MAX.
+function Chat.FilterWords(text)
+    local out, seenWord = {}, {}
+    if type(text) ~= "string" then return out end
+    for piece in (text .. ","):gmatch("([^,]*),") do
+        local word = piece:match("^%s*(.-)%s*$"):lower()
+        if word ~= "" and #word <= Chat.KEYWORD_LEN and not seenWord[word] and #out < Chat.FILTER_WORDS_MAX then
+            seenWord[word] = true
+            out[#out + 1] = word
+        end
+    end
+    return out
+end
+
+-- True when the line, as a player reads it (a link as its shown text),
+-- holds a whole word of `words` (lower case).
+function Chat.Holds(text, words)
+    if type(text) ~= "string" or type(words) ~= "table" or #words == 0 then return false end
+    return nextWord(Chat.Plain(text):lower(), words, 1) ~= nil
+end
+
+-- The player's substitution text as { from = (lower case), to = }, at most
+-- Chat.SUB_PAIRS_MAX: split at commas, then at the first "="; spaces at
+-- either end taken off. A pair with no "=", an empty or too long word, a
+-- bar in the old word, or an old word already given is left out. A bar in
+-- the new word is doubled, so it is shown and never read as a code.
+function Chat.Pairs(text)
+    local out, seenWord = {}, {}
+    if type(text) ~= "string" then return out end
+    for piece in (text .. ","):gmatch("([^,]*),") do
+        local eq = piece:find("=", 1, true)
+        if eq ~= nil and #out < Chat.SUB_PAIRS_MAX then
+            local from = piece:sub(1, eq - 1):match("^%s*(.-)%s*$"):lower()
+            local to = piece:sub(eq + 1):match("^%s*(.-)%s*$")
+            local okFrom = from ~= "" and #from <= Chat.KEYWORD_LEN and not from:find("|", 1, true)
+            if okFrom and #to <= Chat.KEYWORD_LEN and not seenWord[from] then
+                seenWord[from] = true
+                out[#out + 1] = { from = from, to = (to:gsub("|", "||")) }
+            end
+        end
+    end
+    return out
+end
+
+local function substitutePlain(chunk, words, swap)
+    local low, out, pos, n = chunk:lower(), {}, 1, 0
+    while true do
+        local a, b = nextWord(low, words, pos)
+        if a == nil then break end
+        out[#out + 1] = chunk:sub(pos, a - 1)
+        out[#out + 1] = swap[low:sub(a, b)]
+        n = n + 1
+        pos = b + 1
+    end
+    if n == 0 then return chunk, 0 end
+    out[#out + 1] = chunk:sub(pos)
+    return table.concat(out), n
+end
+
+-- The line with each whole old word of `list` (Chat.Pairs) replaced by its
+-- new word, and how many were. Nothing inside a link and nothing coloured
+-- is looked into. With none, the very text given.
+function Chat.Substitute(text, list)
+    if type(text) ~= "string" or text == "" or type(list) ~= "table" or #list == 0 then return text, 0 end
+    local words, swap = {}, {}
+    for i = 1, #list do
+        words[i] = list[i].from
+        swap[list[i].from] = list[i].to
+    end
+    local parts, out, n, inLink, coloured = tokens(text), {}, 0, false, false
+    for i = 1, #parts do
+        local part = parts[i]
+        if part.code ~= nil then
+            if part.code == "H" then
+                inLink = true
+            elseif part.code == "h" then
+                inLink = false
+            elseif part.code == "c" and #part.raw == 10 then
+                coloured = true
+            elseif part.code == "r" then
+                coloured = false
+            end
+            out[i] = part.raw
+        elseif inLink or coloured then
+            out[i] = part.text
+        else
+            local piece, found = substitutePlain(part.text, words, swap)
+            out[i] = piece
+            n = n + found
+        end
+    end
+    if n == 0 then return text, 0 end
+    return table.concat(out), n
+end
+
 ---------------------------------------------------------------------------
 -- The module.
 ---------------------------------------------------------------------------
@@ -614,7 +756,8 @@ function Chat.Declare(k, diag)
     local cancels = {}
     local cancelFilter, cancelClick, button, box = nil, nil, nil, nil
     local state = { urls = "off", copy = "off", font = "off", fade = "off", scroll = "off", stamps = "off",
-        tabs = "off", mentions = "off", sound = "off", names = "off", short = "off", edit = "off" }
+        tabs = "off", mentions = "off", sound = "off", names = "off", short = "off", edit = "off",
+        filters = "off", repeats = "off", subs = "off" }
     local why, told, seen = {}, {}, {}
     local errors = 0
     function api.state(part) return state[part] end
@@ -1339,11 +1482,130 @@ function Chat.Declare(k, diag)
         end
     end
 
+    -------------------------------------------------------------------
+    -- Part 5: filters, repeated lines, substitutions. One chat filter
+    -- for the three.
+    -------------------------------------------------------------------
+    local cancelSift = nil
+    local siftWords, siftKinds, siftWhispers, subList = {}, {}, false, {}
+    local repeatGap, repeatSeen, repeatCount = 0, {}, 0
+    local hiddenCount, lastLine, lastHide = 0, nil, false
+
+    function api.remembered() return repeatCount end
+    function api.hidden() return hiddenCount end
+
+    -- Whether the same line from the same author was seen less than
+    -- repeatGap seconds ago; the time is kept either way. When
+    -- Chat.REPEAT_MAX lines are kept, the old ones go, then all of them.
+    local function repeated(author, text)
+        local now = ask("chat clock", ctx.client.now)
+        if type(now) ~= "number" then return false end
+        -- As read, and without this add-on's own timestamp: another part's
+        -- filter may have run first, and a stamp would make every line new.
+        local plain = Chat.Plain(text):gsub("^%[%d+:%d+:?%d*%] ", "")
+        local key = author .. "\0" .. plain
+        local last = repeatSeen[key]
+        if last == nil then
+            if repeatCount >= Chat.REPEAT_MAX then
+                for seenKey, seenAt in pairs(repeatSeen) do
+                    if now - seenAt >= repeatGap then
+                        repeatSeen[seenKey] = nil
+                        repeatCount = repeatCount - 1
+                    end
+                end
+                if repeatCount >= Chat.REPEAT_MAX then repeatSeen, repeatCount = {}, 0 end
+            end
+            repeatCount = repeatCount + 1
+        end
+        repeatSeen[key] = now
+        return last ~= nil and now - last < repeatGap
+    end
+
+    local function siftFilter(text, event, author, info)
+        if ctx == nil or type(text) ~= "string" or type(author) ~= "string" then return nil end
+        local sifting, repeating = state.filters == "on", state.repeats == "on"
+        local swapping = state.subs == "on"
+        if sifting == false and repeating == false and swapping == false then return nil end
+        local name = me()
+        if name == nil or Chat.SameName(author, name) then return nil end
+        local line = nil
+        if type(info) == "table" and type(info.line) == "number" then line = info.line end
+        local hide = false
+        if line ~= nil and line == lastLine then
+            hide = lastHide
+        else
+            local open = siftWhispers
+            if Chat.WHISPER_EVENTS[event] == nil then
+                local kind = Chat.SCOPE_EVENTS[event]
+                open = kind ~= nil and siftKinds[kind] == true
+            end
+            if sifting and open and Chat.Holds(text, siftWords) then hide = true end
+            local whisper = Chat.WHISPER_EVENTS[event] ~= nil
+            if repeating and hide == false and (whisper == false or siftWhispers) and repeated(author, text) then
+                hide = true
+            end
+            if line ~= nil then lastLine, lastHide = line, hide end
+            if hide then hiddenCount = hiddenCount + 1 end
+        end
+        if hide then return nil, { hide = true } end
+        if swapping then
+            local new, n = Chat.Substitute(text, subList)
+            if n > 0 then return new end
+        end
+        return nil
+    end
+
+    local function dropSift()
+        if cancelSift then pcall(cancelSift) end
+        cancelSift = nil
+    end
+
+    local function syncSift()
+        why.filters, why.repeats, why.subs = nil, nil, nil
+        local set = ctx.settings
+        local gap = tonumber(set:get(Chat.REPEATS)) or 0
+        siftWords = Chat.FilterWords(set:get(Chat.FILTER_WORDS))
+        siftKinds = Chat.FILTER_KINDS[set:get(Chat.FILTER_SCOPE)] or Chat.FILTER_KINDS.channels
+        siftWhispers = set:get(Chat.FILTER_WHISPERS) == true
+        subList = Chat.Pairs(set:get(Chat.SUB_PAIRS))
+        if gap ~= repeatGap then repeatSeen, repeatCount = {}, 0 end
+        repeatGap = gap
+        local want = { filters = set:get(Chat.FILTERS) == true, repeats = gap > 0, subs = set:get(Chat.SUBS) == true }
+        local live = {}
+        for _, part in ipairs({ "filters", "repeats", "subs" }) do
+            local module = Chat.PRAT_FILTER
+            if part == "subs" then module = Chat.PRAT_SUBS end
+            if want[part] == false then
+                state[part] = "off"
+            elseif prattled(part, module) == false then
+                live[part] = true
+            end
+        end
+        if next(live) == nil then
+            dropSift()
+            return
+        end
+        local c = ctx.client
+        if cancelSift == nil and type(c.chatFilter) == "function" then
+            local got = ask("chat filters", c.chatFilter, Chat.EVENTS, siftFilter)
+            if type(got) == "function" then cancelSift = got end
+        end
+        for part in pairs(live) do
+            if cancelSift ~= nil then
+                state[part] = "on"
+            else
+                state[part] = "unavailable"
+                why[part] = "this client gives no chat filter"
+            end
+        end
+    end
+
     local PARTS = {
         { "chat links", syncUrls }, { "chat copy", syncCopy }, { "chat text size", syncFont },
         { "chat fading", syncFade }, { "chat wheel", syncScroll }, { "chat timestamps", syncStamps },
         { "chat tabs", syncTabs }, { "chat mentions", syncMentions },
         { "chat class names", syncNames }, { "chat channel labels", syncShort }, { "chat edit box", syncEdit },
+        { "chat filters", syncSift },
     }
 
     -- Each part made to stand as its setting, Prat and the client say.
@@ -1360,11 +1622,12 @@ function Chat.Declare(k, diag)
         if ctx == nil then return { Chat.NOT_STARTED } end
         local out = {}
         for _, part in ipairs({ "urls", "copy", "font", "fade", "scroll", "stamps", "tabs", "mentions", "sound", "names", "short",
-            "edit" }) do
+            "edit", "filters", "repeats", "subs" }) do
             local line = Chat.LABEL[part] .. ": " .. tostring(Chat.STATE[state[part]])
             if why[part] then line = line .. " (" .. why[part] .. ")" end
             out[#out + 1] = line .. "."
         end
+        out[#out + 1] = hiddenCount .. " chat lines hidden this session (filters and repeated lines)."
         out[#out + 1] = id().slash .. " " .. Chat.WORD .. " copy [n]: the main chat window's last n lines ("
             .. Chat.LINES .. " when left out, " .. Chat.LINES_MAX .. " at most) in a box to copy."
         return out
@@ -1519,13 +1782,61 @@ function Chat.Declare(k, diag)
                 .. "down bring back what you typed this session (the last " .. Chat.HISTORY .. " lines). Off "
                 .. "gives the game's keys back. With Prat's EditBox on, this stands down.",
             group = Chat.GROUP, synonyms = { "chat", "edit", "box", "arrow", "arrows", "keys", "history", "prat" },
+        }, {
+            key = Chat.FILTERS, scope = "account", type = "bool", default = false,
+            label = "Hide chat lines with filter words",
+            help = "A chat line holding one of your filter words is not shown. Your own lines are never hidden, "
+                .. "and whispers only when \"Filters also hide whispers\" is on. With Prat's Filtering on, this "
+                .. "stands down.",
+            group = Chat.GROUP, synonyms = { "chat", "filter", "filters", "hide", "block", "spam", "words", "prat" },
+        }, {
+            key = Chat.FILTER_WORDS, scope = "account", type = "string", default = "",
+            label = "Chat filter words",
+            help = "The words that hide a chat line, separated by commas (\"wts, boost\"). At most "
+                .. Chat.FILTER_WORDS_MAX .. " words of up to " .. Chat.KEYWORD_LEN .. " letters; whole words, any "
+                .. "case. A word in an item's name counts too.",
+            group = Chat.GROUP, synonyms = { "chat", "filter", "filters", "hide", "words", "block" },
+        }, {
+            key = Chat.FILTER_SCOPE, scope = "account", type = "choice", default = "channels",
+            choices = Chat.FILTER_SCOPES,
+            label = "Where chat filters hide lines",
+            help = "channels: chat channels (trade, general...) only. channels and say: say, yell and emote too. "
+                .. "every kind: party, raid and guild chat too. Whispers have their own setting.",
+            group = Chat.GROUP, synonyms = { "chat", "filter", "filters", "scope", "channel", "kind" },
+        }, {
+            key = Chat.FILTER_WHISPERS, scope = "account", type = "bool", default = false,
+            label = "Filters also hide whispers",
+            help = "Chat filters and repeated-line hiding also hide whispers to and from you. Off at first: a "
+                .. "whisper is never hidden.",
+            group = Chat.GROUP, synonyms = { "chat", "filter", "filters", "whisper", "tell", "hide" },
+        }, {
+            key = Chat.REPEATS, scope = "account", type = "choice", default = "off",
+            choices = Chat.REPEAT_CHOICES,
+            label = "Hide repeated chat lines (seconds)",
+            help = "off, or 10, 30 or 60: the same line from the same player again within that many seconds is "
+                .. "not shown. Your own lines and whispers are never hidden. With Prat's Filtering on, this "
+                .. "stands down.",
+            group = Chat.GROUP, synonyms = { "chat", "repeat", "repeats", "duplicate", "spam", "hide", "prat" },
+        }, {
+            key = Chat.SUBS, scope = "account", type = "bool", default = false,
+            label = "Chat word substitutions",
+            help = "Words in other players' chat lines are shown as you set in \"Chat substitution pairs\". Only "
+                .. "how it looks to you; links are never changed. With Prat's Substitutions on, this stands down.",
+            group = Chat.GROUP, synonyms = { "chat", "substitute", "substitution", "replace", "swap", "words", "prat" },
+        }, {
+            key = Chat.SUB_PAIRS, scope = "account", type = "string", default = "",
+            label = "Chat substitution pairs",
+            help = "Pairs of old=new separated by commas (\"lol=haha, brb=back soon\"). At most "
+                .. Chat.SUB_PAIRS_MAX .. " pairs; whole words, any case.",
+            group = Chat.GROUP, synonyms = { "chat", "substitute", "substitution", "replace", "pairs", "words" },
         } },
         provides = { State = api.state, Lines = api.lines },
         start = function(c)
             ctx = c
             local keys = { Chat.COPY, Chat.URLS, Chat.FONT, Chat.KEEP, Chat.FADE, Chat.SCROLL, Chat.STAMPS,
                 Chat.TABS, Chat.MENTIONS, Chat.KEYWORDS, Chat.MENTION_COLOUR, Chat.MENTION_SOUND, Chat.CLASS_NAMES,
-                Chat.SHORT_CHANNELS, Chat.EDIT_ARROWS }
+                Chat.SHORT_CHANNELS, Chat.EDIT_ARROWS, Chat.FILTERS, Chat.FILTER_WORDS, Chat.FILTER_SCOPE,
+                Chat.FILTER_WHISPERS, Chat.REPEATS, Chat.SUBS, Chat.SUB_PAIRS }
             for _, kind in ipairs(Chat.SCOPE_ORDER) do keys[#keys + 1] = Chat.SCOPE[kind] end
             for _, key in ipairs(keys) do
                 local row = c.settings:row(key)
@@ -1559,6 +1870,8 @@ function Chat.Declare(k, diag)
             dropNames()
             dropShort()
             restoreEdit()
+            dropSift()
+            repeatSeen, repeatCount, repeatGap, lastLine, lastHide = {}, 0, 0, nil, false
             guidClass, guidCount, nameClass, nameCount = {}, 0, {}, 0
             myName, lastSound = nil, nil
             for part in pairs(state) do state[part] = "off" end

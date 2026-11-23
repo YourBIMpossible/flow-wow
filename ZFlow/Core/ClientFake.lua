@@ -3558,9 +3558,12 @@ function ns.make.fakeClient(opts)
             for i = 1, #filters do
                 if filters[i].events[event] and type(shown) == "string" then
                     local view = {}
-                    if type(info) == "table" then view.guid = info.guid end
+                    if type(info) == "table" then view.guid, view.line = info.guid, info.line end
                     view.channel = channel
                     local ok, new, change = pcall(filters[i].fn, shown, event, author, view)
+                    -- N60e: { hide = true } hides the line: no later
+                    -- filter sees it, no window gets it, nil comes back.
+                    if ok and type(change) == "table" and change.hide == true then return nil, channel end
                     if ok and type(new) == "string" then shown = new end
                     if ok and type(change) == "table" and type(change.channel) == "string" and channel ~= nil then
                         channel = change.channel
