@@ -8157,6 +8157,80 @@ function ns.make.client(env)
         if not ok then return nil, "raised" end
         return true
     end
+    -- G14 (lead sections 226, 229, 236): the quest reward choice and a mark
+    -- on its button (Gear/RewardMark.lua). Both only read or draw a texture
+    -- of ours: nothing takes a reward or clicks a button. New reads, added
+    -- at the end. First guesses, none seen in game on 16001, each name in
+    -- Diag.NAMES so a capture says which exist: GetNumQuestChoices,
+    -- GetQuestItemLink("choice", i), the reward buttons
+    -- QuestInfoRewardsFrameQuestInfoItem<i> (else the older QuestRewardItem<i>),
+    -- the atlas "bags-greenarrow" (else the pet battle "strong" badge), as
+    -- markMerchantButtons draws its marks.
+    --   c.questChoices() -> { { index, link } ... }, or nil when the count
+    --     cannot be read. link is nil for a choice the game has not given
+    --     yet (the item not loaded).
+    --   c.markRewardChoice(index) -> true when that choice's button carries
+    --     the mark; nil when no button was found. Every other mark is
+    --     hidden; index nil hides them all.
+    -- In a do block: make.client is near Lua 5.1's 200 locals.
+    do
+        local REWARD_BUTTONS = 10
+        function c.questChoices()
+            local ok, n = call(env.GetNumQuestChoices)
+            if not ok or hidden(n) or type(n) ~= "number" or n ~= n or n < 0 then return nil end
+            local out = {}
+            for i = 1, math.min(math.floor(n), REWARD_BUTTONS) do
+                local okL, link = call(env.GetQuestItemLink, "choice", i)
+                if not okL or hidden(link) or type(link) ~= "string" or link == "" then link = nil end
+                out[#out + 1] = { index = i, link = link }
+            end
+            return out
+        end
+
+        local rewardBadges = {}
+        local function rewardBadge(i)
+            local b
+            for _, name in ipairs({ "QuestInfoRewardsFrameQuestInfoItem" .. i, "QuestRewardItem" .. i }) do
+                local okB, found = pcall(function() return env[name] end)
+                if okB and type(found) == "table" then
+                    b = found
+                    break
+                end
+            end
+            if b == nil then return nil end -- not kept: it may come later
+            local known = rewardBadges[b]
+            if known ~= nil then return known or nil end
+            local okT, t = method(b, "CreateTexture", nil, "OVERLAY", nil, 7)
+            if not okT or t == nil then
+                rewardBadges[b] = false
+                return nil
+            end
+            method(t, "SetSize", 18, 18)
+            method(t, "SetPoint", "TOPLEFT", b, "TOPLEFT", -2, 2)
+            local okA, set = method(t, "SetAtlas", "bags-greenarrow")
+            if not okA or set == false then
+                method(t, "SetTexture", "Interface\\PetBattles\\BattleBar-AbilityBadge-Strong")
+            end
+            method(t, "Hide")
+            rewardBadges[b] = t
+            return t
+        end
+        function c.markRewardChoice(index)
+            local shown = nil
+            for i = 1, REWARD_BUTTONS do
+                local t = rewardBadge(i)
+                if t then
+                    if i == index then
+                        method(t, "Show")
+                        shown = true
+                    else
+                        method(t, "Hide")
+                    end
+                end
+            end
+            return shown
+        end
+    end
     return c
 end
 
