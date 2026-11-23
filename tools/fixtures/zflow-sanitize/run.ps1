@@ -19,6 +19,9 @@
     odd         three arguments: exit 2
     charOnly    the character file alone: exit 0, no made-up real name in
                 any spelling
+    allRefusals --all-refusals on a capture with two refusals: exit 1, two
+                refuse lines, nothing written, no value printed; on the
+                capture itself: exit 0
 
 .USAGE
   powershell -ExecutionPolicy Bypass -File tools\fixtures\zflow-sanitize\run.ps1
@@ -110,6 +113,20 @@ try {
     if (Test-Path -LiteralPath $outR) { $why += 'written' }
     if ($r.Out.Contains('Fenwick')) { $why += 'the value printed' }
     Report 'refused' $r 1 $why
+
+    # allRefusals
+    $odd2 = Join-Path $work 'odd2.lua'
+    [System.IO.File]::WriteAllText($odd2, $text + "`nOtherAddonDB = { [`"owner`"] = `"Fenwick`", }`n")
+    $before2 = @(Get-ChildItem -LiteralPath $work).Count
+    $r = Invoke-Tool @('--all-refusals', $odd2, $char)
+    $why = @()
+    $lines = @($r.Out -split "`r?`n" | Where-Object { $_ -like 'zflow-sanitize: refuse: *' })
+    if ($lines.Count -ne 2) { $why += ("refuse lines: {0}" -f $lines.Count) }
+    if ($r.Out.Contains('Fenwick')) { $why += 'a value printed' }
+    if (@(Get-ChildItem -LiteralPath $work).Count -ne $before2) { $why += 'a file written' }
+    Report 'allRefusals' $r 1 $why
+    $r = Invoke-Tool @('--all-refusals', $account, $char)
+    Report 'allRefusals none' $r 0 @()
 
     # broken
     $cut = Join-Path $work 'cut.lua'

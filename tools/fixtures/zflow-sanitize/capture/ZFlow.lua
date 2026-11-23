@@ -87,6 +87,13 @@ ZFlowDB = {
 ["api"] = {
 ["namespaces"] = {
 ["C_Map"] = false,
+["C_Ledger"] = {
+["GetCount"] = "function",
+["MAX_SLOTS"] = 16,
+["enabled"] = true,
+["owner"] = "Fenwick of Mossvale",
+},
+["LEDGER_VERSION"] = 11601,
 },
 ["globals"] = {
 ["Realm"] = {

@@ -81,7 +81,13 @@ local DIAG = fields({
     starts = "num", count = "num",
     names = fields({ build = "str", names = map("str", "str") }),
     api = fields({
-        namespaces = map({ any = { "bool", map("free", "str") } }, "str"),
+        -- Section 194, from the writer (Core/Diag.lua Diag.Api, the same at
+        -- 88bd08d and at head): namespaces[name] = client.peek(name) or
+        -- false. peek (Core/Client.lua, ClientFake.lua) gives a number,
+        -- text or boolean as it is, or a table of tostring(key) = number,
+        -- text, boolean, or the Lua type name of any other value.
+        namespaces = map({ any = { "num", "bool", "free",
+            map({ any = { "num", "bool", "typeName" } }, "str") } }, "str"),
         globals = map(list("free"), "str"),
     }),
     reads = list(fields({ at = "num", build = "str", reads = OPEN })),

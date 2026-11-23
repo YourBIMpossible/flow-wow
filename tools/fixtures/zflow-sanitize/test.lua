@@ -338,5 +338,44 @@ case("the output reads back the same through the parser", function(t)
     t.ok(S.texts({ outs[1], outs[2] }, schema) ~= nil, "the copy itself refused")
 end)
 
+-- Section 194 (3): diag.api.namespaces as Core/Diag.lua writes it, through
+-- client.peek: numbers, booleans, type names and text inside a namespace,
+-- and a namespace that is a number. At d4ea0cc this is refused: "a number
+-- where text is saved at ZFlowDB.diag.api.namespaces[<key>][<key>]".
+case("diag.api.namespaces as peek writes it: numbers kept, type names kept, text replaced", function(t)
+    local outs, kind, msg = S.texts({ ACCOUNT, CHAR }, schema)
+    t.ok(outs ~= nil, "refused: " .. tostring(kind) .. " " .. tostring(msg))
+    if not outs then return end
+    local ns = S.parse(outs[1]).ZFlowDB.diag.api.namespaces
+    t.ok(ns.C_Map == false, "false kept")
+    t.ok(ns.LEDGER_VERSION == 11601, "a number namespace kept")
+    local l = ns.C_Ledger or {}
+    t.ok(l.MAX_SLOTS == 16, "a number inside kept")
+    t.ok(l.enabled == true, "a boolean inside kept")
+    t.ok(l.GetCount == "function", "a type name kept: " .. tostring(l.GetCount))
+    t.ok(made(l.owner), "text inside replaced: " .. tostring(l.owner))
+end)
+
+-- Section 194 (2): every refusal in one run, reason and path only.
+case("all refusals: every one listed once, no value printed; none for the capture", function(t)
+    local none = S.refusals({ ACCOUNT, CHAR }, schema)
+    t.ok(none ~= nil and #none == 0, "the capture has refusals: " .. tostring(none and #none))
+    local text = ACCOUNT:gsub("%[\"schema\"%] = 1,", "[\"schema\"] = 1,\n[\"guildRoster\"] = { \"Fenwick\", },", 1)
+    text = text:gsub("%[\"character\"%] = \"Aldwynne\",", "[\"character\"] = { \"Aldwynne\", },", 1)
+    text = text .. "\nOtherAddonDB = { [\"owner\"] = \"Aldwynne\", }\n"
+    local list, kind, msg = S.refusals({ text, CHAR }, schema)
+    t.ok(list ~= nil, "stopped: " .. tostring(kind) .. " " .. tostring(msg))
+    if not list then return end
+    local all = table.concat(list, "\n")
+    t.ok(#list == 3, "refusals: " .. #list .. ": " .. all)
+    t.has(all, "a field the schema does not know")
+    t.has(all, "a global the schema does not know")
+    t.has(all, "where text is saved at ZFlowDB.diag.snaps[1].timing.character")
+    for _, real in ipairs(CAPTURE_NAMES) do t.hasNot(all, real, "a value printed") end
+    t.hasNot(all, "guildRoster", "a data key printed")
+    local _, firstKind = S.texts({ text, CHAR }, schema)
+    t.ok(firstKind == "refuse", "the plain run still stops: " .. tostring(firstKind))
+end)
+
 print(string.format("%d of %d cases passed", cases - failed, cases))
 os.exit(failed == 0 and 0 or 1)
