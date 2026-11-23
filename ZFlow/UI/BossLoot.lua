@@ -84,6 +84,8 @@ ns.BossLoot = B
 
 B.NAME = "bossLoot"
 B.SETTING = "loot.bossPanel"
+-- When the panel appears, in one line, for its settings row (lead section 294).
+B.APPEARS = "The panel appears only while you fight a boss, and hides when the fight ends."
 B.ROLE = "spec.role"            -- Rotation/Role.lua's setting
 B.RECORD = "loot.record"        -- Items/Drops.lua's setting: off, nothing is learned
 B.PATH = "learned.bossLoot"     -- account
@@ -756,7 +758,8 @@ function B.Declare(k, packs)
         settings = { {
             key = B.SETTING, scope = "account", type = "bool", default = true,
             label = "Boss loot panel",
-            help = "While you fight a boss, lists the drops you have seen from it before, your role's upgrades first. "
+            help = B.APPEARS .. " "
+                .. "It lists the drops you have seen from it before, your role's upgrades first. "
                 .. "It only shows them: it never rolls or picks for you. "
                 .. "What is rolled or looted in the 3 minutes after a kill counts as that boss's; "
                 .. "the 3 minutes are a first guess.",

@@ -4,7 +4,13 @@ local _, ns = ...
 -- trainer, a profession step, the bank, a vendor upgrade, setup, an
 -- attunement). With alerts on, and that kind of prompt on, one chat line
 -- says it; with the sound on as well, one sound plays with it.
---   alerts.on      off by default: nothing is said until the player turns it on
+--   alerts.on      off by default: nothing is said until the player turns it on.
+--                  Legacy Flow matched (lead section 294): it had no line for
+--                  a prompt that turned up. Its only chat lines of its own
+--                  were the list once at login and at a level-up
+--                  (flow-wow Modules/Advisor/Advisor.lua lines 333-341), and
+--                  its advisor.enabled, on by default (line 320), showed
+--                  the advice button only (line 288).
 --   alerts.sound   off by default: the one sound with each line
 --   alerts.<kind>  on by default: each kind of prompt can be left out
 -- Nothing at login (prompts there before SETTLE seconds have passed are
