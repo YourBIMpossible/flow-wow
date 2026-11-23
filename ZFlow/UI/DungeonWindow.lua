@@ -5,6 +5,8 @@
 -- level, "Step n of m" and "Available at Level X". Show on map sets the
 -- player's own waypoint (Nav/Waypoint.lua) at the dungeon's entrance.
 -- Bosses: this account's own seen loot (Nav/DungeonRead.lua R.Loot).
+-- Each dungeon in the list carries its level range; a summary line above
+-- the tabs names the picked one, its range and its quest count.
 -- Every empty pane says what is missing and how to get it.
 --
 -- Built from the kit's parts only (UI/Kit.lua, drawn by client.kitWindow):
@@ -35,6 +37,10 @@ W.HEADER = "Dungeon Quests"
 W.SEARCH = "Search dungeons"
 W.TABS = { "Quests", "Bosses", "Map" }
 W.SHOW_ON_MAP = "Show on map"
+-- P-TRIP (S40): hands the dungeon run (Nav/DungeonRead.lua R.Run) to the
+-- route (Nav/TripRoute.lua), which the quest arrow walks. Quests tab only.
+W.PLAN_RUN = "Plan the run"
+W.NO_ROUTE = "Routes are not loaded."
 W.BOSS_LOOT = "learned.bossLoot"   -- account, UI/BossLoot.lua
 W.DROPS = "learned.drops"          -- character, Items/Drops.lua
 -- Where the window was left, account wide: { point, width, height }
@@ -110,15 +116,38 @@ function W.Declare(k, diag)
         view.said = wp and ("Waypoint set: " .. tostring(Wp.Text(wp)) .. ".") or (tostring(reason) .. ".")
     end
 
+    local function planRun(d)
+        local run, why = R.Run(st, client(), d and d.key)
+        if not run then
+            view.said = why[1]
+            return
+        end
+        local trip = k.use and k.use(ns.Nav.TripRoute.NAME)
+        if not trip or type(trip.Run) ~= "function" then
+            view.said = W.NO_ROUTE
+            return
+        end
+        view.said = trip.Run(run)
+    end
+
     local function footer(d)
         local e = R.Entrance(st, client(), d and d.key)
-        return { kind = "footer", key = "footer", text = view.said or "",
-            buttons = { { kind = "button", key = "showOnMap", text = W.SHOW_ON_MAP, enabled = e ~= nil,
+        local buttons = { { kind = "button", key = "showOnMap", text = W.SHOW_ON_MAP, enabled = e ~= nil,
                 tooltip = e == nil and R.WHY_NO_ENTRANCE[1] or nil,
                 onClick = function()
                     showOnMap(d)
                     render()
-                end } } }
+                end } }
+        if view.tab == 1 then
+            local run, why = R.Run(st, client(), d and d.key)
+            buttons[#buttons + 1] = { kind = "button", key = "planRun", text = W.PLAN_RUN, enabled = run ~= nil,
+                tooltip = run == nil and why and why[1] or nil,
+                onClick = function()
+                    planRun(d)
+                    render()
+                end }
+        end
+        return { kind = "footer", key = "footer", text = view.said or "", buttons = buttons }
     end
 
     local function questsPane(d, out)
@@ -195,13 +224,19 @@ function W.Declare(k, diag)
         else
             local list = R.Search(R.List(st), view.search)
             local names = {}
-            for i, d in ipairs(list) do names[i] = d.name end
+            for i, d in ipairs(list) do names[i] = S.ListText(d) end
             local sel, d = picked(list)
             children[#children + 1] = { kind = "topicList", key = "dungeons", items = names, selected = sel,
                 onSelect = function(i)
                     if list[i] then view.pick, view.said = list[i].key, nil end
                     render()
                 end }
+            -- Lead DISPATCH 343: as the journal's, the dungeon's name with
+            -- its level range above the tabs, its quest count below.
+            if d then
+                children[#children + 1] = { kind = "line", key = "summary", text = d.name,
+                    right = S.LevelText(d), sub = S.CountText(#d.ids) }
+            end
             children[#children + 1] = { kind = "tabs", key = "tabs", items = W.TABS, selected = view.tab,
                 onSelect = function(i)
                     view.tab = i

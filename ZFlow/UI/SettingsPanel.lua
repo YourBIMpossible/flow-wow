@@ -48,6 +48,9 @@ SP.WORD = "settings"
 SP.TOPIC_WORD = "topic"
 SP.HELP = "show the settings; settings <words> searches them; settings topic <name> shows one topic; "
     .. "settings <key> <value> changes one"
+-- Lead section 340: one diagnostics line naming the frame under the mouse.
+SP.FOCUS_WORD = "focus"
+SP.HELP = SP.HELP .. "; settings focus names the frame under the mouse (for a window that takes no clicks)"
 SP.TITLE = "Settings" -- authored
 SP.NONE = "There are no settings yet."
 SP.NOT_NOW = "does not apply right now"
@@ -301,6 +304,11 @@ function SP.Declare(k, diag)
                 return
             end
             local first, tail = rest:match("^(%S+)%s*(.-)$")
+            if first:lower() == SP.FOCUS_WORD and tail == "" and type(k.client.kitFocus) == "function" then
+                local okF, line = pcall(k.client.kitFocus)
+                if okF and type(line) == "string" then say(line) else say(tostring(line)) end
+                return
+            end
             if first:lower() == SP.TOPIC_WORD then
                 if tail == "" then
                     ns.SettingsPage.Find(k, "")

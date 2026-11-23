@@ -86,7 +86,7 @@ tests["sell and bank look: at a default profile a merchant draws the kit sell li
     t.ok(shows(win, "header", "1 item to sell"), "the header")
     t.ok(shows(win, "itemLine", "Broken Fang"), "the junk as an item line")
     t.ok(shows(win, "itemLine", "Hearthstone"), "what is kept")
-    t.eq(count(win, "button"), 0, "nothing to press in the list")
+    t.eq(count(win, "button"), 1, "one thing to press: the Sell these button (lead section 337 item 1)")
     t.eq(textPanel(c, "SellList"), nil, "no bare text panel")
     local h = addon.sellList.window()
     t.eq(h.slot("sellAction"), { slot = "sellAction" }, "the slot for the sell button is there, and empty")
@@ -112,6 +112,19 @@ tests["sell and bank look: nothing to sell says so, and names the add-on from th
     ns.Kit.Each(tree, function(p) if p.kind == "empty" then how = p.how end end)
     t.eq(how, "Bags hold nothing " .. ns.id.title .. " would sell.")
     t.eq(newProblems(addon), 0)
+end
+
+-- Twin N2 (lead section 332): the count is of items, not of stacks. Two
+-- stacks of one item not read yet are one item. Fails before: "2 items
+-- were not read yet."
+tests["sell and bank look: two stacks of one item not read yet count as one item"] = function(t)
+    local c, addon = boot({ info = false, bag = { { item = CLOTH, count = 20 }, { item = CLOTH, count = 7 } } })
+    if type(c.kitWindows().SellList) ~= "table" then t.ok(false, "a kit window") return end
+    c.setMerchantOpen(true)
+    local tree = ns.Kit.Window(addon.SellList.Tree(c, addon.store, nil, { status = addon.Reservations.NONE }))
+    local how
+    ns.Kit.Each(tree, function(p) if p.kind == "empty" then how = p.how end end)
+    t.eq(how, "1 item was not read yet. Reopen the merchant window to list them.")
 end
 
 tests["sell and bank look: item facts late - not read yet, then the line once they are read"] = function(t)

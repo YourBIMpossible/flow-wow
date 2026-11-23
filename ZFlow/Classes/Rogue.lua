@@ -197,6 +197,7 @@ local pack = {
 
     -- Nothing is cast on the group.
     groups = {},
+    groupsNone = "A rogue has no buff to cast on the group.",
 
     -- No heal of its own (Evasion is in the list, on the game's warning).
     heals = {
@@ -216,6 +217,7 @@ local pack = {
 
     -- The class removes nothing.
     dispels = {},
+    dispelsNone = "A rogue cannot remove a poison, curse, disease or magic from anyone.",
 
     keys = {
         none = noneKeys,
