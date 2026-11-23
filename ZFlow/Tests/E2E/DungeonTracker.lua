@@ -10,7 +10,8 @@ local tests = {}
 local ID = "dungeonTracker"
 local DM = 1581
 
-local function questie()
+local function questie(opts)
+    opts = opts or {}
     local quests = {
         [101] = { Id = 101, name = "Red Silk", level = 18, requiredLevel = 14, zoneOrSort = DM,
             Starts = { NPC = { 501 } } },
@@ -27,17 +28,22 @@ local function questie()
         return q[field]
     end
     local zones = {}
-    function zones:GetDungeons() return { [DM] = { "The Deadmines" } } end
+    function zones:GetDungeons()
+        if opts.badList then error("no list (test)") end
+        return { [DM] = { "The Deadmines" } }
+    end
     return db, zones
 end
 
 -- opts: refused (event names the client does not take), outside (not in an
--- instance), name (the instance name the client says), account (saved).
+-- instance), name (the instance name the client says), account (saved),
+-- questie (false: none), badList (Questie's dungeon list raises), noLevel.
 local function boot(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
     c.setSaved(ns.id.accountDB, opts.account or {}); c.setSaved(ns.id.charDB, {})
-    c.setClass("WARRIOR"); c.setRaceId(1); c.setFaction("Alliance"); c.setLevel(18)
+    c.setClass("WARRIOR"); c.setRaceId(1); c.setFaction("Alliance")
+    if opts.noLevel then c.setLevel(nil) else c.setLevel(18) end
     c.setQuestDone(101, false); c.setQuestDone(102, false)
     c.setQuestLog({ { id = 101, title = "Red Silk", objectives = {} } })
     for _, e in ipairs(opts.refused or {}) do c.setEventFault(e, true) end
@@ -47,8 +53,10 @@ local function boot(opts)
         c.setInstance({ inside = true, kind = "party" })
         c.setInstanceName(opts.name or "The Deadmines")
     end
-    local db, zones = questie()
-    c.setQuestieModule("QuestieDB", db); c.setQuestieModule("ZoneDB", zones)
+    if opts.questie ~= false then
+        local db, zones = questie(opts)
+        c.setQuestieModule("QuestieDB", db); c.setQuestieModule("ZoneDB", zones)
+    end
     local addon = ns.offline.addon(c)
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
     c.advance(3, 30)
@@ -123,6 +131,41 @@ tests["dungeon tracker: a dungeon the list does not know still lists the kills, 
     t.eq(on, true)
     t.ok(texts(rec):find("Somebody", 1, true) ~= nil, texts(rec))
     t.ok(texts(rec):find(ns.DungeonTracker.NOT_KNOWN, 1, true) ~= nil, texts(rec))
+end
+
+-- Twin review (lead section 286): the tracker says the real reason, never
+-- "no quest" or "not known which dungeon" in its place.
+tests["dungeon tracker 286: your level not known says so, not that you have no quest here"] = function(t)
+    local c = boot({ noLevel = true })
+    local _, rec = shown(c)
+    local words = texts(rec)
+    t.ok(words:find(ns.DungeonRead.WHY_NO_LEVEL[1], 1, true) ~= nil, words)
+    t.ok(words:find(ns.DungeonTracker.NO_QUEST, 1, true) == nil, "not the no-quest line")
+end
+
+tests["dungeon tracker 286: no Questie, or a dungeon list that failed, says so, not that the dungeon is unknown"] = function(t)
+    local c = boot({ questie = false })
+    local _, rec = shown(c)
+    local words = texts(rec)
+    t.ok(words:find(ns.DungeonStates.WHY.noQuestie[1], 1, true) ~= nil, words)
+    t.ok(words:find(ns.DungeonTracker.NOT_KNOWN, 1, true) == nil, "not the unknown-dungeon line")
+    local c2 = boot({ badList = true })
+    local _, rec2 = shown(c2)
+    local words2 = texts(rec2)
+    t.ok(words2:find(ns.DungeonRead.WHY_LIST[1], 1, true) ~= nil, words2)
+    t.ok(words2:find(ns.DungeonTracker.NOT_KNOWN, 1, true) == nil, "not the unknown-dungeon line")
+end
+
+-- Twin low note: once stopped, a later refresh shows nothing.
+tests["dungeon tracker: stopped, it does not come back on a refresh"] = function(t)
+    local c, addon = boot()
+    t.eq((shown(c)), true)
+    addon:SwitchOff(ns.DungeonTracker.NAME, "test")
+    t.eq((shown(c)), false, "hidden when stopped")
+    c.fire("PLAYER_ENTERING_WORLD")
+    c.fire("ENCOUNTER_END", 1001, "Rhahk'Zor", 1, 5, 1)
+    c.advance(0.2, 2)
+    t.eq((shown(c)), false, "still hidden")
 end
 
 return tests
