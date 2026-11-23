@@ -518,6 +518,25 @@ function F.Collect(k, names, known)
     return out
 end
 
+-- Lead section 284 (owner decision of 2026-11-23): row N73 is paused, its
+-- code kept. F.SHOWN is the one internal switch, off: F.Declare then sets
+-- up no slash word, no help line, no settings row (so no settings page row
+-- and no settings search hit) and no module (so no arrow menu row and no
+-- feedback work). It is not a setting: no saved value and no imported
+-- profile reaches it, and a saved feedback.diagnostics value is left as it
+-- is. Only the offline fake client answers it on (client.internal, for the
+-- tests); the game client has no such call.
+F.SHOWN = false
+
+-- True when the feedback is reachable on this kernel.
+function F.On(k)
+    if F.SHOWN == true then return true end
+    local client = type(k) == "table" and k.client or nil
+    if type(client) ~= "table" or type(client.internal) ~= "function" then return false end
+    local ok, on = pcall(client.internal, F.NAME)
+    return ok and on == true
+end
+
 function F.Declare(k, diag)
     local api = {}
     local ctx, panel, entry
@@ -679,6 +698,9 @@ function F.Declare(k, diag)
     function api.shown()
         return panel ~= nil and panel ~= false and panel.shown() == true
     end
+
+    -- Paused (lead section 284): no way in and no work.
+    if not F.On(k) then return api end
 
     if diag and type(diag.commands) == "table" then
         diag.commands[F.WORD] = function() api.open() end

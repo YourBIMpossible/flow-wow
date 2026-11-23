@@ -35,6 +35,9 @@ ns.NpcSpeech = S
 
 S.NAME = "npcSpeech"
 S.SETTING = "general.npcSpeech"
+-- When it appears, in one line (lead section 296): its settings row and the
+-- buttons word say it, so a player who sees nothing can find out why.
+S.WHEN = "Off by default and needs Bonus extras on; when on, speaks as an NPC's talk window opens."
 S.BONUS = "general.bonus"
 S.NO_CALL = "Your game client has no text-to-speech call"
 S.NO_DEST = "Your game client gives no local playback destination for speech"
@@ -152,7 +155,7 @@ function S.Declare(k)
     k:Setting({ key = S.SETTING, scope = "account", type = "bool", default = false,
         label = "NPCs read their words aloud", group = "general",
         help = "When you talk to an NPC, the game's text-to-speech voice reads what they say "
-            .. "on your own speakers. It stops when you close the window. Off by default.",
+            .. "on your own speakers. It stops when you close the window. " .. S.WHEN,
         synonyms = { "speech", "voice", "read aloud", "tts", "npc", "text to speech", "talk" },
         needs = S.BONUS,
         requires = function(settings)
