@@ -28,6 +28,15 @@ local function introPanel(c)
     return nil
 end
 
+-- The welcome on the screen: the kit window (UI/Intro.lua draws it with
+-- the kit), or the plain panel when the kit window is refused.
+local function introShown(c)
+    local w = type(c.kitWindows) == "function" and c.kitWindows().Intro
+    if type(w) == "table" and w.shown == true then return true end
+    local p = introPanel(c)
+    return p ~= nil and p.shown == true
+end
+
 return {
     ["rows: three rows, each with a label, a help line and the group"] = function(t)
         local k = kernel()
@@ -124,9 +133,8 @@ return {
         R.Declare(k)
         ns.Intro.Declare(k, diag)
         login(k, c)
-        local p = introPanel(c)
-        t.ok(p ~= nil, "the panel is made")
-        t.eq(p and p.shown, true)
+        t.ok(introPanel(c) ~= nil, "the panel is made")
+        t.eq(introShown(c), true)
     end,
 
     ["rows: with the row off in the saved data, the welcome does not show"] = function(t)
@@ -135,8 +143,7 @@ return {
         ns.Intro.Declare(k, diag)
         login(k, c)
         t.eq(k.settings:get("ui.intro"), false)
-        local p = introPanel(c)
-        t.ok(p == nil or p.shown == false, "not on the screen")
+        t.eq(introShown(c), false, "not on the screen")
     end,
 
     ["rows: a button row turned on makes that button, and only that one"] = function(t)
