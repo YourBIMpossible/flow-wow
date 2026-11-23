@@ -613,6 +613,47 @@ return {
         t.eq(c.tradeSkillSchematic(2), nil, "no reagents read")
     end,
 
+    -- Section 233 (GR2-1) ---------------------------------------------------
+    ["tradeSkillRows(): the classic window's recipe rows, headers left out"] = function(t)
+        local env = frameEnv()
+        local info = {
+            { "Cloth", "header" },
+            { "Bolt of Linen Cloth", "trivial" },
+            { "Brown Linen Robe", "optimal" },
+        }
+        function env.GetTradeSkillLine() return "Tailoring", 50, 75 end
+        function env.GetNumTradeSkills() return #info end
+        function env.GetTradeSkillInfo(i) return info[i][1], info[i][2], 0, true end
+        local c = ns.make.client(env)
+        t.eq(c.tradeSkillRows(), { name = "Tailoring", skill = 50, max = 75, rows = {
+            { index = 2, name = "Bolt of Linen Cloth" }, { index = 3, name = "Brown Linen Robe" } } })
+        info[3][1] = nil
+        t.eq(c.tradeSkillRows(), nil, "a row with no name: never a shorter list")
+        info[3][1] = "Brown Linen Robe"
+        env.GetTradeSkillLine = function() return "UNKNOWN", 0, 0 end
+        t.eq(c.tradeSkillRows(), nil, "no window open")
+    end,
+
+    ["tradeSkillRows(): nil when the client can't say"] = function(t)
+        local env = frameEnv()
+        local c = ns.make.client(env)
+        t.eq(c.tradeSkillRows(), nil, "no classic reads")
+        function env.GetTradeSkillLine() return "Tailoring", 50, 75 end
+        function env.GetNumTradeSkills() return 0 end
+        t.eq(c.tradeSkillRows(), nil, "no rows: no window")
+        env.GetNumTradeSkills = function() return 1 end
+        function env.GetTradeSkillInfo() return "Bolt", nil end
+        t.eq(c.tradeSkillRows(), nil, "a row of no kind")
+    end,
+
+    ["tradeSkillRows(): the fake gives a copy"] = function(t)
+        local c = ns.make.fakeClient()
+        t.eq(c.tradeSkillRows(), nil, "none set")
+        c.setTradeSkillRows({ name = "Tailoring", rows = { { index = 2, name = "Bolt" } } })
+        c.tradeSkillRows().rows[1].name = "x"
+        t.eq(c.tradeSkillRows(), { name = "Tailoring", rows = { { index = 2, name = "Bolt" } } })
+    end,
+
     ["tradeSkillSchematic(): the fake gives a copy"] = function(t)
         local c = ns.make.fakeClient()
         t.eq(c.tradeSkillSchematic(2), nil, "none set")
