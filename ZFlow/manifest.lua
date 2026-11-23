@@ -268,5 +268,7 @@ return {
     "Nav/PartyRoute.lua",
     -- P-TRIP slice 1: the trip list of stops for the route (after TripRoute, Errand, DungeonRead).
     "Nav/Trip.lua",
+    -- G43 (P-TRIP): the route tracker window and the current step's map pin (after Trip, TripRoute, the kit).
+    "UI/RouteTracker.lua",
     },
 }

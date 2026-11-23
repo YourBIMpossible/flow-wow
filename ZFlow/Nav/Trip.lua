@@ -41,6 +41,10 @@ local _, ns = ...
 --   P.Order now keeps the afters (N.RoutePlan's after, then a stable pass
 --     over the stops on other maps) and answers nil, why for a circle.
 -- Each stop keeps an id (its number on the list changes on remove).
+-- G43: P.TrackRows(current, here) -> { { label, detail, dist } } or nil
+--   the route the arrow walks (Nav/TripRoute.lua Current) as rows for the
+--   route tracker window (UI/RouteTracker.lua): each stop's distance from
+--   the one before (the first from the player), or why it is not known.
 -- Module "trip" provides List, Lines, Go, Tip. Not tested in game.
 ns.Nav = ns.Nav or {}
 local N = ns.Nav
@@ -387,6 +391,35 @@ function P.TipLines(current, here)
     for _, r in ipairs(rows) do lines[#lines + 1] = r end
     if #stops > P.TIP_MAX then lines[#lines + 1] = P.TIP_MORE:format(#stops - P.TIP_MAX) end
     return lines
+end
+
+function P.TrackRows(current, here)
+    local stops = type(current) == "table" and type(current.stops) == "table" and current.stops or nil
+    if not stops or #stops == 0 then return nil end
+    here = type(here) == "table" and here or {}
+    local size = sizeOf(here)
+    local rows = {}
+    local last
+    if finite(here.x) and finite(here.y) then last = { map = here.map, x = here.x, y = here.y } end
+    for i, s in ipairs(stops) do
+        local p = type(s) == "table" and s.place or nil
+        local dist
+        if type(p) ~= "table" or type(last) ~= "table" then
+            dist = P.NO_DISTANCE
+        elseif p.map ~= last.map then
+            dist = P.OTHER_MAP
+        elseif not size or p.map ~= here.map or not (finite(p.x) and finite(p.y)) then
+            dist = P.NO_DISTANCE
+        else
+            local dx, dy = (p.x - last.x) * size.w, (p.y - last.y) * size.h
+            dist = yardsOf(math.sqrt(dx * dx + dy * dy))
+        end
+        local row = { label = tostring(type(s) == "table" and s.label or "?"), dist = dist }
+        if type(s) == "table" and s.detail ~= nil then row.detail = tostring(s.detail) end
+        rows[i] = row
+        last = type(p) == "table" and p or nil
+    end
+    return rows
 end
 
 function P.Quest(rows, want)
