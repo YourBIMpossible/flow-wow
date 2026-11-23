@@ -461,4 +461,23 @@ tests["group e2e 248: same short name, another realm: the cast is kept for the r
     t.eq(s and { s.spell, s.unit } or nil, { MOTW, "party1" }, "the short name: the one from your realm only")
 end
 
+-- Item 19 and section 236: a roster change out of a fight re-orders on the
+-- next read: the member who became the tank is served first.
+tests["group e2e 19: a member becomes the tank: their missing buff comes first on the next read"] = function(t)
+    local c, addon = start()
+    local rogue = member({ class = "ROGUE" })
+    local warrior = member({ unit = "party2", name = OTHER })
+    c.setParty({ rogue, warrior })
+    for _, id in pairs(IDS) do c.setReach("party2", id, true) end
+    c.setUnitBuffs("party1", { { name = THORNS, left = 500 } })
+    c.setUnitBuffs("party2", { { name = MOTW, left = 1000 } })
+    c.fire("GROUP_ROSTER_UPDATE"); c.advance(2, 10)
+    local s = picked(addon)
+    t.eq(s and { s.spell, s.unit } or nil, { MOTW, "party1" }, "no tank: roster order")
+    c.setParty({ rogue, member({ unit = "party2", name = OTHER, role = "TANK" }) })
+    c.fire("GROUP_ROSTER_UPDATE"); c.advance(2, 10)
+    s = picked(addon)
+    t.eq(s and { s.spell, s.unit } or nil, { THORNS, "party2" }, "the new tank's Thorns first")
+end
+
 return tests

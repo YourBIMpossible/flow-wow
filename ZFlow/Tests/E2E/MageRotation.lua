@@ -336,4 +336,37 @@ tests["mage gear: plate is not offered; cloth with intellect is scored"] = funct
     t.ok(cloth:find("Upgrade", 1, true) ~= nil and cloth:find("dps", 1, true) ~= nil, "cloth: scored: " .. cloth)
 end
 
+-- ----------------------------- MAGE-5 (P-SELFBUFF, section 236): magic
+-- Amplify or Dampen Magic: off until you cast or choose one; then kept up
+-- out of a fight, over a reload. Ids made up.
+local MAGIC_IDS = { ["Amplify Magic"] = 9030, ["Dampen Magic"] = 9031 }
+local ALL_UP = { ["Frost Armor"] = true, ["Arcane Intellect"] = 900 }
+
+local function learnMagic(c)
+    for name, id in pairs(MAGIC_IDS) do
+        c.setSpellId(name, id)
+        c.setSpell(id, { known = true, usable = true })
+        c.setSpellCooldown(id, false)
+        c.setSpellTexture(id, "tex:" .. name)
+    end
+end
+
+tests["mage MAGE-5: Amplify Magic: off until cast, then kept up, over a reload"] = function(t)
+    local c, addon, icon = start()
+    learnMagic(c)
+    c.setPlayerBuffs(ALL_UP); on(c, addon)
+    t.eq(icon.shown, false, "known, never cast: nothing asked for")
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-3-0-0-0-0-0", MAGIC_IDS["Amplify Magic"]); c.advance(1, 5)
+    t.eq(kept(c, "magic"), "Amplify Magic", "kept for the role")
+    t.eq(icon.texture, "tex:Amplify Magic", "it ran out: asked for")
+    c.setPlayerBuffs({ ["Frost Armor"] = true, ["Arcane Intellect"] = 900, ["Amplify Magic"] = 500 }); c.advance(1, 5)
+    t.eq(icon.shown, false, "up: nothing asked for")
+    local c2, _, icon2 = reload(c)
+    learnMagic(c2)
+    c2.setPlayerBuffs(ALL_UP); c2.advance(1, 5)
+    t.eq(icon2.texture, "tex:Amplify Magic", "over a reload")
+    word(c2, "magic dampen")
+    t.eq(icon2.texture, "tex:Dampen Magic", "the word chooses Dampen")
+end
+
 return tests

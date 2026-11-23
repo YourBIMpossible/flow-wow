@@ -27,6 +27,19 @@ for _, class in ipairs({ "PRIEST", "SHAMAN" }) do
         local ok, problems = ns.PackCheck(ns.Packs[class])
         t.eq(table.concat(problems, "; "), "", "no problems")
         t.ok(ok, "ok")
+        -- A9 (section 229 item 7): the pack also plays. Its self buff is
+        -- chosen with none up out of a fight, and not with it up.
+        local buff = class == "PRIEST" and "Power Word: Fortitude" or "Lightning Shield"
+        local function snap(buffs)
+            return { dead = false, inCombat = false, hostile = false, formKnown = true,
+                     buffs = buffs, targetDebuffs = {}, current = {},
+                     spells = { [buff] = { known = true, usable = true, onCooldown = false, inRange = true } } }
+        end
+        local got = ns.Choose(snap({}), ns.Packs[class])
+        t.eq(got and got.spell, buff, buff .. " missing: chosen")
+        t.eq(got and got.step, "list", "from the priority list")
+        got = ns.Choose(snap({ [buff] = 1200 }), ns.Packs[class])
+        t.ok(not (got and got.spell == buff), buff .. " up for 20 minutes: not chosen")
     end
 
     tests[name .. " pack: what it can equip is the old table's"] = function(t)
@@ -92,10 +105,31 @@ for _, class in ipairs({ "PRIEST", "SHAMAN" }) do
     end
 end
 
-tests["priest pack: Power Word: Shield is a key, never a list step"] = function(t)
-    for _, rule in ipairs(ns.Packs.PRIEST.lists.default) do
-        t.ok(rule.spell ~= "Power Word: Shield", "no Weakened Soul read: not suggested")
+-- PRIEST-3 (P-SELFBUFF): Power Word: Shield in the list, read against your
+-- own debuffs by name (snapshot.debuffs, client.playerDebuffs).
+local function shieldSnap(over)
+    local s = { dead = false, inCombat = true, hostile = true, formKnown = true,
+                buffs = { ["Power Word: Fortitude"] = 1200, ["Inner Fire"] = 600 },
+                targetDebuffs = { ["Shadow Word: Pain"] = 10 }, debuffs = {}, current = {},
+                spells = { ["Power Word: Shield"] = { known = true, usable = true, onCooldown = false, inRange = true } } }
+    for k, v in pairs(over or {}) do
+        if v == "nil" then s[k] = nil else s[k] = v end
     end
+    return s
+end
+
+tests["priest PRIEST-3: Power Word: Shield in a fight without Weakened Soul"] = function(t)
+    local got = ns.Choose(shieldSnap(), ns.Packs.PRIEST)
+    t.eq(got and got.spell, "Power Word: Shield", "no Weakened Soul, no shield: shield")
+    got = ns.Choose(shieldSnap({ debuffs = { ["Weakened Soul"] = 10 } }), ns.Packs.PRIEST)
+    t.ok(not (got and got.spell == "Power Word: Shield"), "Weakened Soul on you: no shield")
+    got = ns.Choose(shieldSnap({ debuffs = "nil" }), ns.Packs.PRIEST)
+    t.ok(not (got and got.spell == "Power Word: Shield"), "your debuffs not read: no shield")
+    local up = { ["Power Word: Fortitude"] = 1200, ["Inner Fire"] = 600, ["Power Word: Shield"] = 20 }
+    got = ns.Choose(shieldSnap({ buffs = up }), ns.Packs.PRIEST)
+    t.ok(not (got and got.spell == "Power Word: Shield"), "a shield on you: no shield")
+    got = ns.Choose(shieldSnap({ inCombat = false }), ns.Packs.PRIEST)
+    t.ok(not (got and got.spell == "Power Word: Shield"), "out of a fight: no shield")
 end
 
 tests["priest pack: the key plan has rows for no form and Shadowform"] = function(t)

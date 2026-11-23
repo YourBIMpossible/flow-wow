@@ -210,4 +210,38 @@ tests["priest: gear the class cannot use is not offered; cloth it can use is sco
     t.eq(detail.result.verdict, "upgrade", "scored")
 end
 
+-- ------------------------- PRIEST-3 (P-SELFBUFF, section 236): the shield
+-- Power Word: Shield in a fight, read against your own debuffs by name
+-- (client.playerDebuffs -> snapshot.debuffs). Spell id plausible.
+local SHIELD = 17
+
+local function shieldReady()
+    local c, addon, icon = start()
+    c.setSpellId("Power Word: Shield", SHIELD); c.setSpell(SHIELD, { known = true, usable = true })
+    c.setSpellCooldown(SHIELD, false); c.setSpellTexture(SHIELD, "tex:Power Word: Shield")
+    on(c, addon)
+    fighting(c)
+    return c, addon, icon
+end
+
+tests["priest PRIEST-3: in a fight the shield, then not while Weakened Soul is on you"] = function(t)
+    local c, _, icon = shieldReady()
+    t.ok(not showing(icon, "Power Word: Shield"), "your debuffs not read: no shield")
+    c.setPlayerDebuffs({}); c.advance(1, 5)
+    t.ok(showing(icon, "Power Word: Shield"), "read, none on you: the shield")
+    c.setPlayerDebuffs({ ["Weakened Soul"] = 14 }); c.advance(1, 5)
+    t.ok(not showing(icon, "Power Word: Shield"), "Weakened Soul on you: no shield")
+    t.eq(icon.shown, true, "the rotation goes on")
+    c.setPlayerDebuffs({}); c.advance(1, 5)
+    t.ok(showing(icon, "Power Word: Shield"), "Weakened Soul gone: the shield again")
+end
+
+tests["priest PRIEST-3: your debuff read raising: no shield, and the tick goes on"] = function(t)
+    local c, _, icon = shieldReady()
+    c.playerDebuffs = function() error("broke") end
+    c.advance(1, 5)
+    t.ok(not showing(icon, "Power Word: Shield"), "not known: no shield")
+    t.eq(icon.shown, true, "still suggesting")
+end
+
 return tests

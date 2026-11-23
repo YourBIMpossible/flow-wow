@@ -23,13 +23,20 @@ local KIND = {
              "optionsPage", "guideLines", "taxiMark", "mapPins", "comboBar", "slotIcon",
              "markMerchantButtons", "rowPanel", "textEntry",
              -- N59: the info bar, and its data broker feed where the library is loaded.
-             "infoBar", "broker" },
+             "infoBar", "broker",
+             -- N57: the key-capture overlay on the settings page.
+             "keyCapture",
+             -- N72 (section 248 item 4): the macro icon window; shows a list on it.
+             "macroPopup" },
     tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "slash",
              "slashTaken", "unslash" },
     -- Hands back or runs a sound restart: never asked by the capture.
     -- craftRecipe (lead section 226, acting): one craft on the player click.
     -- stopCraftRepeat (section 234): stops the game repeat; not a craft.
-    act = { "restartSound", "soundWays", "craftRecipe", "stopCraftRepeat" },
+    -- N57 (lead section 249 item 2): the binding writes, each only on the
+    -- player's own key press on the settings page, out of combat.
+    act = { "restartSound", "soundWays", "craftRecipe", "stopCraftRepeat",
+            "setBindingClick", "clearBinding", "saveBindings", "overrideBindingClick", "clearOverrideKeys" },
     -- Reads a chat line handed in, not the client.
     -- lootLine (N55): the item of anyone's loot line, never the looter.
     parse = { "ownLoot", "auctionOutcome", "lootLine" },
@@ -62,6 +69,10 @@ local READS = {
     spellName = false,
     -- N13: the buffs you put up yourself (Classes/Paladin.lua auras).
     ownBuffs = false,
+    -- PRIEST-3 (P-SELFBUFF): your own debuffs by name (Weakened Soul), read
+    -- by the rotation only. Its names (UnitDebuff, C_UnitAuras.
+    -- GetAuraDataByIndex) are in Diag.NAMES, which the capture asks.
+    playerDebuffs = false,
 
     -- P-SETS: what is worn, read by the set word only.
     wornLinks = false,
@@ -74,6 +85,8 @@ local READS = {
     -- types on you or one of them; read by the rotation only. Their names
     -- (UnitIsConnected and the rest) are in Diag.NAMES, which the capture asks.
     party = false, reach = false, unitDebuffTypes = false,
+    -- N72: the spells for the macro icon search; the capture asks none.
+    spellbookIcons = false,
 
     -- N55 (the boss loot panel): the boss unit and whether you are in an
     -- instance; read by UI/BossLoot.lua only. The names they ask
@@ -83,6 +96,21 @@ local READS = {
     -- N59 (the info bar): read by UI/InfoBar.lua only. The names they ask
     -- (UnitXP, GetWatchedFactionInfo and the rest) are in Diag.NAMES.
     xp = false, watchedFaction = false, gameTime = false, framerate = false, latency = false,
+
+    -- N57: the rotation key's bindings and what a key does; read by the
+    -- settings page only. Their names are in Diag.NAMES.
+    bindingKeys = false, bindingAction = false,
+
+    -- N67: other add-ons' data at runtime (GatherMate2's nodes, Attune's
+    -- progress); read by Nav/AddonSources.lua only. The globals they read
+    -- are in Diag.NAMES; the capture keeps only whether each is loaded.
+    gatherMateNodes = false, attuneProgress = false,
+
+    -- P-READS (section 260 item 1): the shared reads for the class packs;
+    -- the capture asks none. Their names are in Diag.NAMES.
+    channel = false, weaponEnchant = false, totems = false, targetBuffs = false,
+    buffLength = false, enemiesNear = false, plateCasts = false, creatureType = false,
+    plateEnemies = false,
 }
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).

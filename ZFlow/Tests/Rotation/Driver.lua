@@ -464,8 +464,11 @@ tests["rotation driver RD11: a step presses nothing and asks only its sixteen re
         -- debuffTypes field) and your group (party, at the party field).
         -- PC-3: and whether you are in a group (grouped).
         -- N8: the low-health warning, and the healing items' own look for bagItems.
-        t.eq(other, { "lowHealth", "unitDebuffTypes", "fishingPole", "bagItems", "mounted", "onTaxi", "bagItems", "tracking", "tracking",
-            "professions", "anyTracking", "ownBuffs", "grouped", "party" },
+        -- PRIEST-3 (P-SELFBUFF): and your own debuffs by name (playerDebuffs,
+        -- at the debuffs field). N50's tree read asks only spell and spellId,
+        -- and only for a pack with options.trees (this one has none).
+        t.eq(other, { "lowHealth", "unitDebuffTypes", "playerDebuffs", "fishingPole", "bagItems", "mounted", "onTaxi", "bagItems", "tracking", "tracking",
+            "professions", "anyTracking", "ownBuffs", "grouped", "party", "plateEnemies", "plateCasts" },
             "nothing else asked of the client but the warning, debuff, pole, bag, tracking, profession, gather-guard, grouped and group reads it lacks")
         local names = {}
         for name in pairs(calls) do names[#names + 1] = name end
@@ -867,6 +870,57 @@ tests["rotation driver: the addon's own driver is declared, and others can reach
     t.eq(D.NAME, "rotationDriver")
     t.eq(D.EVENT, "rotation.suggested")
     t.eq(D.EVERY, 0.2)
+end
+
+-- N50 / GAP DRUID-2 (P-SELFBUFF; lead sections 227, 228, 232) -------------
+-- The known-spell tree: a talent spell the pack names in options.trees that
+-- the client reads as known marks the tree. Served by name through D.Read.
+
+local function treePack()
+    local p = pack()
+    p.options = { trees = {
+        { spell = "Moonkin Form", tree = "Balance", evidence = "test" },
+        { spell = "Feral Charge", tree = "Feral", evidence = "test" },
+    } }
+    return p
+end
+
+tests["rotation driver N50: a known talent spell names the tree, in the pack's order"] = function(t)
+    local c = ns.make.fakeClient()
+    c.setSpellId("Moonkin Form", 24858); c.setSpellId("Feral Charge", 16979)
+    c.setSpell(16979, { known = true })
+    t.eq(D.Read(c, treePack(), {})("tree"), "Feral", "Feral Charge known")
+    c.setSpell(24858, { known = true })
+    t.eq(D.Read(c, treePack(), {})("tree"), "Balance", "both known: the first row wins")
+    t.eq(D.Step(c, treePack()).snapshot.tree, "Balance", "the tree reaches the snapshot")
+end
+
+tests["rotation driver N50: no talent spell known, none listed, or a read that raises: nil"] = function(t)
+    local c = ns.make.fakeClient()
+    c.setSpellId("Moonkin Form", 24858); c.setSpell(24858, { known = false })
+    t.eq(D.Read(c, treePack(), {})("tree"), nil, "not known: no tree")
+    c.setSpell(24858, { known = true })
+    t.eq(D.Read(c, pack(), {})("tree"), nil, "a pack without options.trees: no tree")
+    t.eq(D.Read({}, treePack(), {})("tree"), nil, "no spell read: no tree")
+    local raising = { spellId = function() return 24858 end, spell = function() error("broke") end }
+    t.eq(D.Read(raising, treePack(), {})("tree"), nil, "the spell read raises: no tree")
+    local badId = { spellId = function() error("broke") end, spell = function() return { known = true } end }
+    t.eq(D.Read(badId, treePack(), {})("tree"), nil, "the id read raises: no tree")
+    t.eq(D.Read(c, treePack(), { ["Moonkin Form"] = 24858 })("tree"), "Balance", "an id already read is used")
+end
+
+-- PRIEST-3 (P-SELFBUFF): your own debuffs by name, client.playerDebuffs().
+tests["rotation driver PRIEST-3: the read gives your debuffs by name, nil when not known"] = function(t)
+    local c = ns.make.fakeClient()
+    c.setPlayerDebuffs({ ["Weakened Soul"] = 12 })
+    local read = D.Read(c, pack(), {})
+    t.eq(read("debuffs"), { ["Weakened Soul"] = 12 })
+    c.setPlayerDebuffs(nil)
+    t.eq(read("debuffs"), nil, "not known")
+    t.eq(D.Read({}, pack(), {})("debuffs"), nil, "no such read: nil")
+    t.eq(D.Read({ playerDebuffs = function() error("broke") end }, pack(), {})("debuffs"), nil, "a read that raises: nil")
+    c.setPlayerDebuffs({})
+    t.eq(D.Step(c, pack()).snapshot.debuffs, {}, "read and none: an empty map reaches the snapshot")
 end
 
 return tests

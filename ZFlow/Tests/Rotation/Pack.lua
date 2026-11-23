@@ -34,6 +34,24 @@ local function has(problems, text)
 end
 
 return {
+    -- Section 242, DRUID-3: a talent in a build may carry the reason it is
+    -- taken; a reason given must be words.
+    ["a talent reason that is not words is reported"] = function(t)
+        local pack = good()
+        pack.talentBuilds = { { name = "Test build", role = "dps", evidence = "first guess", order = {
+            { "Good Talent", 1, why = "A reason in words." },
+            { "Empty Reason", 1, why = "" },
+            { "Number Reason", 2, why = 5 },
+            { "No Reason", 3 },
+        } } }
+        local ok, problems = ns.PackCheck(pack)
+        t.eq(ok, false, "fails")
+        t.ok(has(problems, "talentBuilds[1].order[2]: the reason is not words"), "an empty reason named")
+        t.ok(has(problems, "talentBuilds[1].order[3]: the reason is not words"), "a number reason named")
+        t.ok(not has(problems, "order[1]"), "a reason in words passes")
+        t.ok(not has(problems, "order[4]"), "no reason is allowed")
+    end,
+
     ["a complete pack passes"] = function(t)
         local ok, problems = ns.PackCheck(good())
         t.eq(table.concat(problems, "; "), "", "no problems")

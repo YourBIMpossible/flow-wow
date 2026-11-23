@@ -33,6 +33,8 @@ local _, ns = ...
 --   buffs         { [name] = secondsLeft or true }   on you
 --   targetDebuffs { [name] = true }                  yours, on the target
 --   debuffTypes   { [type] = debuffName }            on you ("Poison", "Curse")
+--   debuffs       { [name] = secondsLeft or true }   on you, by name (PRIEST-3); nil when not read
+--   tree          the talent tree a known talent spell marks (N50, pack options.trees); nil when not known
 --   current       { [spell] = true or false }        queued or toggled on (Attack, Maul)
 --   conjured      { [conjure spell] = count }        what it makes, in your bags
 --                                                    (Snapshot.lua R.Conjured)
@@ -571,7 +573,98 @@ function steps.food(s)
              reason = "Eat " .. f.name .. ": Well Fed is not on you" }
 end
 
-R.STEPS = { "breakFree", "heal", "interrupt", "dispel", "engage", "list", "farOpener", "food" }
+-------------------------------------------------------------------------------
+-- Lead section 242 (MAGE-3, MAGE-4, PRIEST-6). Three steps over the
+-- nameplate reads (s.enemies, s.plateCasts; P-READS, Plexy). cc and
+-- plateCast are look only: they name another enemy and the spell, with
+-- look = true, and Rotation/Cast.lua never puts a look-only suggestion on
+-- the key, so nothing is cast on a unit the add-on chose. The enemy name is
+-- for the live caption only (member): never in a reason, a note or a diag
+-- line. threat is cast on you. Each waits for a fight read as yes
+-- (inCombat true): not read is not a fight here. No range is asked: the
+-- range read is to your own target, not to the other enemy (Needs game
+-- test: the player may be out of range of it).
+-------------------------------------------------------------------------------
+
+-- A plate cast you can stop on another enemy, with the first interrupt of
+-- the pack that is ready. A near-only interrupt (Psychic Scream) is passed
+-- by: nothing says that enemy is near you.
+function steps.plateCast(s, pack, prefs, _, unread)
+    local casts = s.plateCasts
+    if type(casts) ~= "table" then return nil, "plate casts not read" end
+    if s.inCombat ~= true then return nil, "not known to be in a fight" end
+    local cast
+    for _, c in ipairs(casts) do
+        if type(c) == "table" and c.isTarget == false and c.interruptible == true and type(c.unit) == "string" then
+            cast = c
+            break
+        end
+    end
+    if not cast then return nil, "no other enemy casting something you can stop" end
+    unread = unread or {}
+    for _, r in ipairs(pack.interrupts or {}) do
+        if not r.near and inForms(s, r.forms) and allowed(prefs, r.spell) and ready(s, r.spell, false, unread) then
+            local what = type(cast.spell) == "string" and cast.spell or "a spell"
+            return { spell = r.spell, kind = "damage", look = true, unit = cast.unit, member = cast.name,
+                     reason = string.format("%s the enemy casting %s (focus or mouseover it)", r.spell, what) }
+        end
+    end
+    return nil, noteWith("no interrupt ready", unread)
+end
+
+-- In a group, not the tank, an enemy on you (threat 2 or 3, the enemy's
+-- target): the pack's threat drop (Fade), cast on you.
+function steps.threat(s, pack, prefs, _, unread)
+    local drop = type(pack.options) == "table" and pack.options.threatDrop or nil
+    if type(drop) ~= "table" or type(drop.spell) ~= "string" then return nil, "no threat drop" end
+    if s.inCombat ~= true then return nil, "not known to be in a fight" end
+    if s.grouped == nil then return nil, "not known whether you are in a group" end
+    if s.grouped ~= true then return nil, "not in a group" end
+    if s.role == "tank" then return nil, "you are the tank" end
+    local enemies = s.enemies
+    if type(enemies) ~= "table" then return nil, "nameplates not read" end
+    local onYou = false
+    for _, e in ipairs(enemies) do
+        if type(e) == "table" and type(e.threat) == "number" and e.threat >= 2 then onYou = true end
+    end
+    if not onYou then return nil, "no enemy on you" end
+    unread = unread or {}
+    if not (allowed(prefs, drop.spell) and ready(s, drop.spell, false, unread)) then
+        return nil, noteWith(drop.spell .. " not ready", unread)
+    end
+    return { spell = drop.spell, kind = "buff", unit = "player",
+             reason = drop.spell .. ": an enemy is on you in a group" }
+end
+
+-- Two enemies or more, one of them not your target, of a creature type a
+-- crowd-control rule of the pack holds, read as not held already: that
+-- spell on it, shown only. The creature type is the English name
+-- (Needs game test on other client languages).
+function steps.cc(s, pack, prefs, _, unread)
+    local rules = type(pack.options) == "table" and pack.options.crowdControl or nil
+    if type(rules) ~= "table" or #rules == 0 then return nil, "no crowd control" end
+    local enemies = s.enemies
+    if type(enemies) ~= "table" then return nil, "nameplates not read" end
+    if s.inCombat ~= true then return nil, "not known to be in a fight" end
+    if #enemies < 2 then return nil, "fewer than two enemies" end
+    unread = unread or {}
+    for _, rule in ipairs(rules) do
+        if type(rule) == "table" and type(rule.spell) == "string" and type(rule.creatures) == "table"
+            and allowed(prefs, rule.spell) and ready(s, rule.spell, false, unread) then
+            for _, e in ipairs(enemies) do
+                if type(e) == "table" and e.isTarget == false and e.controlled == false
+                    and type(e.unit) == "string" and type(e.creature) == "string"
+                    and rule.creatures[string.lower(e.creature)] == true then
+                    return { spell = rule.spell, kind = "control", look = true, unit = e.unit, member = e.name,
+                             reason = rule.spell .. " the second enemy (focus or mouseover it)" }
+                end
+            end
+        end
+    end
+    return nil, noteWith("no enemy to hold", unread)
+end
+
+R.STEPS = { "breakFree", "heal", "interrupt", "plateCast", "dispel", "engage", "threat", "cc", "list", "farOpener", "food" }
 -- 9. P-GATHER: out of a fight, a gathering tracking that is off and can be
 -- turned on (Rotation/Gather.lua G.Step). Last: anything above comes first,
 -- food included (lead, merge of P-FOOD and P-GATHER).

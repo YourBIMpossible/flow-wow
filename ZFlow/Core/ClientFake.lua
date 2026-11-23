@@ -716,6 +716,16 @@ function ns.make.fakeClient(opts)
         end
     end
     function c.fire(event, ...) events.call(event, ...) end
+    -- P-READS: plays the real client handing on a secret event argument:
+    -- each argument that is c.SECRET reaches the listeners as nil.
+    function c.fireSecret(event, ...)
+        local n = select("#", ...)
+        local args = { ... }
+        for i = 1, n do
+            if rawequal(args[i], c.SECRET) then args[i] = nil end
+        end
+        events.call(event, unpack(args, 1, n))
+    end
     -- What clock() gives; nil: the client will not say. advance() does not
     -- move it.
     function c.setClock(seconds) s.clock = seconds end
@@ -1447,6 +1457,77 @@ function ns.make.fakeClient(opts)
         s.unitBuffs = s.unitBuffs or {}
         s.unitBuffs[unit] = rows
     end
+    -- N64: the enchant on your weapons, in the shape Plexy's P-READS note
+    -- names for the real read (item 5, not yet in Core/Client.lua):
+    --   c.weaponEnchant() -> { main = { has, left, charges }, off = ... } or nil
+    -- has true or false, left seconds (nil: not known), charges a number or
+    -- nil; a hand not read is left out. setWeaponEnchant(nil): not read;
+    -- setWeaponEnchantFails(true): the read raises.
+    function c.weaponEnchant()
+        if s.weaponEnchantFails then error("weapon enchant read failed (test)") end
+        if type(s.weaponEnchant) ~= "table" then return nil end
+        local out = {}
+        for hand, row in pairs(s.weaponEnchant) do
+            if type(row) == "table" then
+                out[hand] = { has = row.has, left = row.left, charges = row.charges }
+            end
+        end
+        return out
+    end
+    function c.setWeaponEnchant(t) s.weaponEnchant = t end
+    function c.setWeaponEnchantFails(on) s.weaponEnchantFails = (on == true) end
+    -- P-READS twins (lead section 260 item 1): each answers what a test set,
+    -- and nil (not known) before. Shapes as on the real client:
+    --   channel() -> { name, spellId, endsAt } | false | nil
+    --   totems() -> { [slot] = { name, spellId, left } or false } | nil
+    --   targetBuffs() -> { [name] = secondsLeft or true } | nil
+    --   enemiesNear() -> near, close, onYou | nil
+    --   plateCasts and plateEnemies: the class-b twins further down.
+    --   creatureType(unit) -> text | nil
+    --   buffLength(unit, names) -> the row field `length` of setUnitBuffs,
+    --                              name | false | nil
+    local function copied(v)
+        if type(v) ~= "table" then return v end
+        local out = {}
+        for k, x in pairs(v) do out[k] = copied(x) end
+        return out
+    end
+    function c.channel() return copied(s.channel) end
+    function c.setChannel(v) s.channel = v end
+    function c.totems() return copied(s.totems) end
+    function c.setTotems(v) s.totems = v end
+    function c.targetBuffs() return copied(s.targetBuffs) end
+    function c.setTargetBuffs(v) s.targetBuffs = v end
+    function c.enemiesNear()
+        local e = s.enemiesNear
+        if type(e) ~= "table" then return nil end
+        return e.near, e.close, e.onYou
+    end
+    function c.setEnemiesNear(near, close, onYou)
+        if near == nil then s.enemiesNear = nil return end
+        s.enemiesNear = { near = near, close = close, onYou = onYou }
+    end
+    function c.creatureType(unit)
+        if type(s.creatureTypes) ~= "table" then return nil end
+        return s.creatureTypes[unit]
+    end
+    function c.setCreatureType(unit, v)
+        s.creatureTypes = s.creatureTypes or {}
+        s.creatureTypes[unit] = v
+    end
+    function c.buffLength(unit, names)
+        if type(unit) ~= "string" or unit == "" or type(names) ~= "table" then return nil end
+        local rows = s.unitBuffs and s.unitBuffs[unit]
+        if type(rows) ~= "table" then return nil end
+        for i = 1, #rows do
+            local row = rows[i]
+            if type(row) ~= "table" or type(row.name) ~= "string" then return nil end
+            for j = 1, #names do
+                if names[j] == row.name then return row.length, row.name end
+            end
+        end
+        return false
+    end
     -- Plays the game filling its tooltip for `unit`: every onUnitTooltip
     -- listener is told, and what they added comes back as
     -- { { text, r, g, b } ... }.
@@ -1661,6 +1742,23 @@ function ns.make.fakeClient(opts)
         s.attackable = s.attackable or {}
         if v == nil then s.attackable[unit] = nil else s.attackable[unit] = v and true or false end
     end
+    -- Lead section 242: the enemies on nameplates and the casts on them, as
+    -- the real client.plateEnemies and client.plateCasts (P-READS, Plexy):
+    -- nil until set (not read); each answer is a fresh copy of the rows.
+    local function copyPlateRows(list)
+        if type(list) ~= "table" then return nil end
+        local out = {}
+        for i, row in ipairs(list) do
+            local r = {}
+            for k, v in pairs(row) do r[k] = v end
+            out[i] = r
+        end
+        return out
+    end
+    function c.setPlateEnemies(list) s.plateEnemies = copyPlateRows(list) end
+    function c.plateEnemies() return copyPlateRows(s.plateEnemies) end
+    function c.setPlateCasts(list) s.plateCasts = copyPlateRows(list) end
+    function c.plateCasts() return copyPlateRows(s.plateCasts) end
     function c.grouped() return s.grouped end
     function c.setGrouped(v)
         if v == nil then s.grouped = nil else s.grouped = v and true or false end
@@ -1936,6 +2034,7 @@ function ns.make.fakeClient(opts)
         local function yesNo(v) if type(v) == "boolean" then return v end return nil end
         s.pet = {
             exists = true, dead = yesNo(r.dead), inCombat = yesNo(r.inCombat),
+            hurt = yesNo(r.hurt),
             family = (type(r.family) == "string" and r.family ~= "") and r.family or nil,
             happiness = PET_MOODS[r.happiness or ""] and r.happiness or nil,
             powerKind = (type(r.powerKind) == "number" and r.powerKind == r.powerKind) and r.powerKind or nil,
@@ -2381,6 +2480,127 @@ function ns.make.fakeClient(opts)
         return h
     end
 
+    -- N57: the game's key bindings and the key-capture overlay, as the real
+    -- client's wrappers (Core/Client.lua, end). Added last.
+    --   c.setBindings({ { key, action }, ... })   the game's binding set as
+    --     loaded: live and saved alike, in that order
+    --   c.bindingMap() / c.savedBindingMap()   key -> action, copies: what
+    --     is bound now, and what SaveBindings last kept (a reload reads it)
+    --   c.overrideKeys()   key -> button, this session's override bindings
+    --   c.bindingCalls()   the names of the binding writes that went through
+    --   c.setBindingReads(false)   bindingKeys and bindingAction answer nil
+    --     (the client does not say); true: they answer again
+    --   c.setBindingWriteFault(n)  the next n setBindingClick calls raise
+    --   c.pressKey(chord) -> true when an open overlay took it; "ESCAPE"
+    --     cancels it.  c.keyCaptureOpen() -> true while one waits
+    -- The writes refuse with "lockdown" while combatLockdown() is not false.
+    do
+        local live, saved, order, overrides, calls = {}, {}, {}, {}, {}
+        local unread, faults = false, 0
+        local capture
+        local function copy(t)
+            local out = {}
+            for k2, v in pairs(t) do out[k2] = v end
+            return out
+        end
+        local function unbind(key)
+            live[key] = nil
+            for i = #order, 1, -1 do
+                if order[i] == key then table.remove(order, i) end
+            end
+        end
+        local function bind(key, action)
+            unbind(key)
+            live[key] = action
+            order[#order + 1] = key
+        end
+        local function locked() return c.combatLockdown() ~= false end
+        function c.setBindings(list)
+            live, saved, order = {}, {}, {}
+            for _, pair in ipairs(list or {}) do
+                bind(pair[1], pair[2])
+                saved[pair[1]] = pair[2]
+            end
+        end
+        function c.bindingMap() return copy(live) end
+        function c.savedBindingMap() return copy(saved) end
+        function c.overrideKeys() return copy(overrides) end
+        function c.bindingCalls() return copy(calls) end
+        function c.setBindingReads(on) unread = (on == false) end
+        function c.setBindingWriteFault(n) faults = tonumber(n) or 0 end
+
+        function c.bindingKeys(action)
+            if unread or type(action) ~= "string" then return nil end
+            local out = {}
+            for _, key in ipairs(order) do
+                if live[key] == action then out[#out + 1] = key end
+            end
+            return out
+        end
+        function c.bindingAction(key)
+            if unread or type(key) ~= "string" or key == "" then return nil end
+            return live[key] or ""
+        end
+        function c.setBindingClick(key, button)
+            if locked() then return false, "lockdown" end
+            if faults > 0 then
+                faults = faults - 1
+                error("SetBindingClick failed (test)", 0)
+            end
+            bind(key, "CLICK " .. tostring(button) .. ":LeftButton")
+            calls[#calls + 1] = "setBindingClick"
+            return true
+        end
+        function c.clearBinding(key)
+            if locked() then return false, "lockdown" end
+            unbind(key)
+            calls[#calls + 1] = "clearBinding"
+            return true
+        end
+        function c.saveBindings()
+            if locked() then return false, "lockdown" end
+            saved = copy(live)
+            calls[#calls + 1] = "saveBindings"
+            return true
+        end
+        function c.overrideBindingClick(key, button)
+            if locked() then return false, "lockdown" end
+            overrides[key] = button
+            calls[#calls + 1] = "overrideBindingClick"
+            return true
+        end
+        function c.clearOverrideKeys()
+            if locked() then return false, "lockdown" end
+            overrides = {}
+            calls[#calls + 1] = "clearOverrideKeys"
+            return true
+        end
+
+        function c.keyCapture()
+            local h = { waiting = false }
+            function h.start(text, onKey, onCancel)
+                h.waiting, h.text, h.onKey, h.onCancel = true, text, onKey, onCancel
+                return true
+            end
+            function h.stop() h.waiting = false end
+            function h.open() return h.waiting end
+            capture = h
+            return h
+        end
+        function c.keyCaptureOpen() return capture ~= nil and capture.waiting == true end
+        function c.pressKey(chord)
+            if not c.keyCaptureOpen() then return false end
+            local h = capture
+            h.waiting = false
+            if chord == "ESCAPE" then
+                if type(h.onCancel) == "function" then h.onCancel() end
+            elseif type(h.onKey) == "function" then
+                h.onKey(chord)
+            end
+            return true
+        end
+    end
+
     -- Slider rows of the Options page (row N57), as the real page draws
     -- them. Added last, around the page above.
     --   c.optionsDrag(key, value)  the player drags that row's slider to
@@ -2456,6 +2676,160 @@ function ns.make.fakeClient(opts)
         function e.escape() e.shown, told = false, nil end
         c.textEntries[#c.textEntries + 1] = e
         return h
+    end
+
+    -- N67: other add-ons' data as the real client reads it.
+    -- setGatherMateNodes(map, rows): GatherMate2 is there with those rows
+    -- on that map ({ { kind, x, y, node } }); a map not set has none.
+    -- setGatherMateNodes(nil): GatherMate2 is gone. c.gatherMateAsks counts
+    -- every ask. setAttuneProgress(rows | nil): Attune's rows, or none.
+    -- Each answer is a copy.
+    c.gatherMateAsks = 0
+    local function copyRows(rows)
+        local out = {}
+        for i, r in ipairs(rows) do
+            local row = {}
+            for key, v in pairs(r) do row[key] = v end
+            out[i] = row
+        end
+        return out
+    end
+    function c.setGatherMateNodes(map, rows)
+        if map == nil then
+            s.gatherMate = nil
+            return
+        end
+        s.gatherMate = s.gatherMate or {}
+        s.gatherMate[map] = rows
+    end
+    function c.gatherMateNodes(map)
+        c.gatherMateAsks = c.gatherMateAsks + 1
+        if type(s.gatherMate) ~= "table" or type(map) ~= "number" then return nil end
+        local rows = s.gatherMate[map]
+        if type(rows) ~= "table" then return {} end
+        return copyRows(rows)
+    end
+    function c.setAttuneProgress(rows) s.attune = rows end
+    function c.attuneProgress()
+        if type(s.attune) ~= "table" then return nil end
+        return copyRows(s.attune)
+    end
+    -- The macro icon window (N72), as the real client's macroPopup: nil and
+    -- { "MacroPopupFrame" } until setMacroPopup{ icons } or { missing }.
+    -- Every window set with icons is in c.macroPopups, in order. The test's
+    -- controls on one: p.open() (a fresh provider, OnShow), p.close(),
+    -- p.visible() (what the grid shows), p.click(i) (p.selected), p.type(s)
+    -- (the player typing in the box; false with no box), p.filter(kind) (a
+    -- filter button); p.box = { text, hint, shown } once the box is made.
+    -- setFrames(false): no box. setSpellbook(list) sets what
+    -- spellbookIcons() answers; c.spellbookReads counts the reads.
+    c.macroPopups = {}
+    c.spellbookReads = 0
+    function c.setMacroPopup(spec)
+        spec = spec or {}
+        if type(spec.missing) == "table" and #spec.missing > 0 then
+            s.macroMissing = {}
+            for i = 1, #spec.missing do s.macroMissing[i] = spec.missing[i] end
+            s.macroPopup = nil
+            return
+        end
+        s.macroMissing = nil
+        local p = { icons = {}, isOpen = false }
+        for i, v in ipairs(spec.icons or {}) do p.icons[i] = v end
+        local h, showFn, hideFn, onText, onFilter
+        local list
+        function p.visible()
+            local out = {}
+            for i, v in ipairs(list or p.icons) do out[i] = v end
+            return out
+        end
+        function p.open()
+            p.isOpen, list = true, nil
+            if showFn then showFn() end
+        end
+        function p.close()
+            p.isOpen, list = false, nil
+            if hideFn then hideFn() end
+        end
+        function p.click(i) p.selected = p.visible()[i] end
+        function p.type(text)
+            if not p.box then return false end
+            p.box.text = tostring(text)
+            if onText then onText(p.box.text) end
+            return true
+        end
+        function p.filter(kind)
+            if not p.box then return false end
+            if onFilter then onFilter(kind) end
+            return true
+        end
+        h = {}
+        function h.shown() return p.isOpen end
+        function h.count()
+            if not p.isOpen then return nil end
+            return #p.icons
+        end
+        function h.icon(i)
+            if not p.isOpen then return nil end
+            return p.icons[i]
+        end
+        function h.show(shown)
+            if not p.isOpen then return false end
+            if shown == nil then
+                list = nil
+                return true
+            end
+            list = {}
+            for i, v in ipairs(shown) do list[i] = v end
+            return true
+        end
+        function h.onShow(fn) showFn = type(fn) == "function" and fn or nil end
+        function h.onHide(fn) hideFn = type(fn) == "function" and fn or nil end
+        local b
+        function h.addBox(boxSpec)
+            if b then return b end
+            if s.noFrames or type(boxSpec) ~= "table" then return nil end
+            onText, onFilter = boxSpec.onText, boxSpec.onFilter
+            p.box = { text = "", hint = nil, shown = true }
+            b = {}
+            function b.setText(text)
+                p.box.text = type(text) == "string" and text or ""
+                if onText then onText(p.box.text) end
+            end
+            function b.hint(text) p.box.hint = type(text) == "string" and text or "" end
+            function b.show(on) p.box.shown = on and true or false end
+            return b
+        end
+        p.handle = h
+        s.macroPopup = p
+        c.macroPopups[#c.macroPopups + 1] = p
+    end
+    function c.macroPopup()
+        if s.macroMissing then
+            local out = {}
+            for i = 1, #s.macroMissing do out[i] = s.macroMissing[i] end
+            return nil, out
+        end
+        if not s.macroPopup then return nil, { "MacroPopupFrame" } end
+        return s.macroPopup.handle
+    end
+    function c.setSpellbook(list) s.spellbook = list end
+    function c.spellbookIcons()
+        c.spellbookReads = c.spellbookReads + 1
+        if type(s.spellbook) ~= "table" then return nil end
+        local out = {}
+        for i, row in ipairs(s.spellbook) do out[i] = { name = row.name, icon = row.icon } end
+        return out
+    end
+
+    -- PRIEST-3 (P-SELFBUFF): your own debuffs by name, as the real client's
+    -- playerDebuffs(): a copy of the map set, nil when none was set.
+    function c.setPlayerDebuffs(map) s.playerDebuffs = type(map) == "table" and map or nil end
+    function c.playerDebuffs()
+        if type(s.playerDebuffs) ~= "table" then return nil end
+        local out = {}
+        for k, v in pairs(s.playerDebuffs) do out[k] = v end
+        return out
     end
     return c
 end

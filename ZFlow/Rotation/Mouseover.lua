@@ -165,6 +165,10 @@ function M.Declare(k, diag)
     local noFrame, failedSig, failSaid = false, nil, false
     local st = nil
 
+    -- Section 255: true once the secure button is made, so the settings
+    -- page binds a key only to a frame that is there (UI/SettingsKeys.lua).
+    function api.made() return button ~= nil end
+
     function api.status()
         if st == nil then return nil end
         local out, copy = {}, {}

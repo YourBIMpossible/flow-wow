@@ -37,7 +37,13 @@ local _, ns = ...
 -- modern read counts as all. A classic read counts only when
 -- client.tradeSkillRows() says whole = true; a collapsed header, a filter,
 -- or anything unknown: nothing is dropped. Today the client never says so
--- (Core/Client.lua): on classic nothing is dropped as unlearned.
+-- (Core/Client.lua). Section 253 (RB4-1, MyBuddy LOW): as legacy Flow
+-- replaced the list each read, a classic read also counts as all when the
+-- client says every header is expanded (collapsed = false) and both filters
+-- are on all (filtered = false). The "have materials" box and the name
+-- search box are not read (first guesses, on the capture wish list): with
+-- either on, a learned recipe it hides is dropped until the next read
+-- without it.
 -- Section 245 (RB2-1): read when the window opens (TRADE_SKILL_SHOW) and
 -- when its list changes (TRADE_SKILL_LIST_UPDATE), once, RecipeBook.SETTLE
 -- seconds after the last of them; TRADE_SKILL_CLOSE cancels a read not yet
@@ -165,7 +171,9 @@ local function readClassic(client)
     local r = ask(client, "tradeSkillRows")
     if type(r) ~= "table" or type(r.rows) ~= "table" then return nil end
     -- Section 245 (RB2-2): every learned recipe only when the client says so.
-    local got = { profession = named(r.name), rows = 0, list = {}, whole = r.whole == true }
+    -- Section 253 (RB4-1): or nothing hidden and no filter on.
+    local shown = r.collapsed == false and r.filtered == false
+    local got = { profession = named(r.name), rows = 0, list = {}, whole = r.whole == true or shown }
     for _, row in ipairs(r.rows) do
         if type(row) == "table" and named(row.name) and whole(row.index, 1) then
             got.rows = got.rows + 1

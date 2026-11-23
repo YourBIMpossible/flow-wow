@@ -309,6 +309,20 @@ local pack = {
     talentBuilds = {},
 
     options = {
+        -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,
+        -- in order: the first you know names your tree (snapshot.tree,
+        -- Rotation/Driver.lua). Which spell is a talent of which tree: a first
+        -- guess from the 1.12 talent trees as remembered, not read from the game.
+        trees = {
+            { spell = "Bloodthirst", tree = "Fury", evidence = GUESS },
+            { spell = "Mortal Strike", tree = "Arms", evidence = GUESS },
+            { spell = "Shield Slam", tree = "Protection", evidence = GUESS },
+            { spell = "Death Wish", tree = "Fury", evidence = GUESS },
+            { spell = "Sweeping Strikes", tree = "Arms", evidence = GUESS },
+            { spell = "Concussion Blow", tree = "Protection", evidence = GUESS },
+            { spell = "Last Stand", tree = "Protection", evidence = GUESS },
+            { spell = "Piercing Howl", tree = "Fury", evidence = GUESS },
+        },
         -- The strikes that land on the next swing; data only, the driver does
         -- not read it yet.
         nextSwing = { "Heroic Strike", "Cleave" },

@@ -18,9 +18,14 @@ local _, ns = ...
 --     read and a chooser step for others (the old dispel list was used on
 --     the group; here it is for yourself only);
 --   * the class-quest ids and quest names for Bear Form and Aquatic Form:
---     their old source is unrecorded, so they need a read from the game;
---   * the per-talent "why" lines: not carried over yet (they are in
---     Classes/Druid/Data.lua on zflow).
+--     no table here; Spells/ClassQuests.lua learns them from the quest log
+--     of the player and keeps them for the account (lead section 242,
+--     DRUID-2). The "class quest" note on a spell is what it reads.
+--
+-- Each talent in the levelling build says why it is taken (lead section
+-- 242, DRUID-3). The order and what each reason means came over with the
+-- build, so the build keeps its carried-over mark; the words are our own,
+-- written from what each talent does.
 
 local GUESS = "first guess"
 local OLD = "carried over from Classes/Druid on zflow; authorship unrecorded"
@@ -429,20 +434,55 @@ local pack = {
           evidence = GUESS, note = OLD,
           trees = { "Balance", "Feral", "Restoration" },
           order = {
-              { "Improved Wrath", 5 }, { "Ferocity", 5 }, { "Feral Swiftness", 2 }, { "Thick Hide", 3 },
-              { "Sharpened Claws", 2 }, { "Savage Fury", 2 }, { "Feral Charge", 1 }, { "Blood Frenzy", 2 },
-              { "Predatory Strikes", 3 }, { "Leader of the Pack", 1 }, { "Shredding Attacks", 3 },
-              { "Predatory Discipline", 1 }, { "Rend and Tear", 5 }, { "Primal Bite", 1 }, { "Shifting Power", 1 },
-              { "Heart of the Wild", 5 }, { "Furor", 5 }, { "Natural Instinct", 2 }, { "Lacerate", 1 },
-              { "Brutal Impact", 1 },
+              { "Improved Wrath", 5, why = "Wrath casts quicker, which helps while you still fight in caster form before cat form at 20." },
+              { "Ferocity", 5, why = "Your main form attacks cost less rage or energy, so you can use them more often." },
+              { "Feral Swiftness", 2, why = "Cat form runs faster outdoors, which cuts travel time between quests." },
+              { "Thick Hide", 3, why = "More armour from items keeps you alive when a pull goes wrong." },
+              { "Sharpened Claws", 2, why = "A higher critical strike chance in bear and cat form means more damage and more combo points." },
+              { "Savage Fury", 2, why = "Your claw, rake and maul style attacks hit harder." },
+              { "Feral Charge", 1, why = "A charge in bear form that closes distance and interrupts a cast." },
+              { "Blood Frenzy", 2, why = "Critical strikes in cat form can give an extra combo point, so finishers come sooner." },
+              { "Predatory Strikes", 3, why = "Your attack power in forms grows with your level, a large steady damage gain." },
+              { "Leader of the Pack", 1, why = "A critical strike aura in cat and bear form for you and your group." },
+              { "Shredding Attacks", 3, why = "Shred costs less, so the strongest cat attack can be used more often." },
+              { "Predatory Discipline", 1, why = "A point spent to open the next row of the tree." },
+              { "Rend and Tear", 5, why = "Your attacks hit harder against bleeding targets, which rake and rip keep up." },
+              { "Primal Bite", 1, why = "A second point spent toward the next row of the tree." },
+              { "Shifting Power", 1, why = "One more point spent so the deeper rows of the tree open sooner." },
+              { "Heart of the Wild", 5, why = "More strength in cat form and more stamina in bear form." },
+              { "Furor", 5, why = "Shifting into a form starts you with some rage or energy, so a fight opens faster." },
+              { "Natural Instinct", 2, why = "Filler points that round out the build before the last talents." },
+              { "Lacerate", 1, why = "A bleed you can stack in bear form, useful when you tank a group." },
+              { "Brutal Impact", 1, why = "A longer stun from bash and pounce, for an interrupt or a pause in a hard fight." },
           } },
     },
 
     options = {
+        -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,
+        -- in order: the first you know names your tree (snapshot.tree,
+        -- Rotation/Driver.lua). Which spell is a talent of which tree: a first
+        -- guess from the 1.12 talent trees as remembered, not read from the game.
+        trees = {
+            { spell = "Moonkin Form", tree = "Balance", evidence = GUESS },
+            { spell = "Swiftmend", tree = "Restoration", evidence = GUESS },
+            { spell = "Feral Charge", tree = "Feral", evidence = GUESS },
+            { spell = "Insect Swarm", tree = "Balance", evidence = GUESS },
+            { spell = "Nature's Swiftness", tree = "Restoration", evidence = GUESS },
+        },
         shapeshifts = true,
         nextSwing = { "Maul" },
         -- Reads the rules lean on; one not given is named by diag (187).
         reads = { "formKnown", "buffs", "targetDebuffs" },
+        -- Lead section 238 (ROGUE-2's machinery, Rotation/Combo.lua): when the
+        -- cat's finisher is due. need: the points Ferocious Bite and Rip wait
+        -- for; builders: the points each cat strike gives; finishers: the
+        -- spells that spend them all. Every value a first guess.
+        combo = {
+            evidence = GUESS,
+            need = 5, max = 5,
+            builders = { ["Claw"] = 1, ["Rake"] = 1, ["Shred"] = 1, ["Ravage"] = 1, ["Pounce"] = 1 },
+            finishers = { ["Ferocious Bite"] = true, ["Rip"] = true },
+        },
         -- N58 (lead section 241): the form you cast is kept for your role;
         -- Travel Form and Aquatic Form never are, nor any form a healer
         -- casts (section 247 item 2). `form <name>` chooses one,
