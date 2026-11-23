@@ -6138,9 +6138,12 @@ function ns.make.client(env)
         return out
     end
 
-    -- Every row of a unit's buffs, in order, as { name, duration, expires }:
-    -- the name from the spell id (spellName) when the row has none. nil for
-    -- no read, a read that raised, or a row or a name not read.
+    -- Every row of a unit's buffs, in order, as { name, duration, expires,
+    -- caster }: the name from the spell id (spellName) when the row has
+    -- none. nil for no read, a read that raised, or a row or a name not
+    -- read. caster (review R2-1) is the row's sourceUnit, else UnitBuff's
+    -- seventh answer, as given (hidden or nil kept): a first guess, not in
+    -- the client names table, not seen in game.
     local function buffRows(unit)
         local auras = env.C_UnitAuras
         local byIndex
@@ -6149,22 +6152,22 @@ function ns.make.client(env)
         if type(byIndex) ~= "function" and type(old) ~= "function" then return nil end
         local rows = {}
         for i = 1, 40 do
-            local name, length, expires
+            local name, length, expires, caster
             if type(byIndex) == "function" then
                 local ok, row = pcall(byIndex, unit, i, "HELPFUL")
                 if not ok then return nil end
                 if row == nil then return rows end
                 if hidden(row) or type(row) ~= "table" then return nil end
-                name, length, expires = row.name, row.duration, row.expirationTime
+                name, length, expires, caster = row.name, row.duration, row.expirationTime, row.sourceUnit
                 if name == nil and plainNumber(row.spellId) then name = spellName(row.spellId) end
             else
                 local got = { pcall(old, unit, i, "HELPFUL") }
                 if not got[1] then return nil end
                 if got[2] == nil then return rows end
-                name, length, expires = got[2], got[6], got[7]
+                name, length, expires, caster = got[2], got[6], got[7], got[8]
             end
             if name == nil or hidden(name) or type(name) ~= "string" then return nil end
-            rows[#rows + 1] = { name = name, duration = length, expires = expires }
+            rows[#rows + 1] = { name = name, duration = length, expires = expires, caster = caster }
         end
         return rows
     end
@@ -6196,7 +6199,10 @@ function ns.make.client(env)
     --   the fifth answer of UnitBuff). 0 is no end: math.huge. A hidden
     --   length gives nil and the name. false: read, none there. nil: not
     --   known.
-    function c.buffLength(unit, names)
+    --   c.buffLength(unit, names, true) (review R2-1): only a buff you cast
+    --   (the caster "player"); a row of another caster is passed over, and
+    --   a caster hidden or not read gives nil and the name.
+    function c.buffLength(unit, names, mine)
         if type(unit) ~= "string" or unit == "" or type(names) ~= "table" then return nil end
         local rows = buffRows(unit)
         if rows == nil then return nil end
@@ -6205,7 +6211,12 @@ function ns.make.client(env)
             if type(names[i]) == "string" then wanted[names[i]] = true end
         end
         for _, row in ipairs(rows) do
-            if wanted[row.name] then
+            local theirs = false
+            if wanted[row.name] and mine == true then
+                if row.caster == nil or hidden(row.caster) or type(row.caster) ~= "string" then return nil, row.name end
+                theirs = row.caster ~= "player"
+            end
+            if wanted[row.name] and not theirs then
                 if not plainNumber(row.duration) then return nil, row.name end
                 if row.duration == 0 then return math.huge, row.name end
                 return row.duration, row.name
