@@ -351,6 +351,11 @@ tests["capture replay: an ask with other arguments before the diag word is not c
     local before = 0
     for _, count in pairs(replay) do before = before + count.unanswered end
     t.ok(before >= 2, "the boot asked with other arguments: " .. before)
+    -- MyBuddy CE-1: each of the three boot asks is counted on its own call,
+    -- so the count above is not met by the prepare asks alone.
+    for _, path in ipairs({ "UnitClass", "C_Map.GetBestMapForUnit", "UnitLevel" }) do
+        t.ok(replay[path] ~= nil and replay[path].unanswered >= 1, path .. ": the boot ask with other arguments is counted")
+    end
     local asked, unanswered = diagAsks(c, replay)
     t.ok(asked > 0, "the diag asked recorded calls")
     t.eq(unanswered, 0, "calls the diag word made with other arguments (count)")
@@ -434,6 +439,148 @@ tests["capture evidence: a setting saved in the capture reads back: verified on 
     local mixed = Evidence.Judge("settings", { cap = cap, report = report, lines = lines, problems = problems,
         addon = addon, synthetic = { "a made-up screen" } })
     t.eq({ mixed.result, mixed.recorded }, { Evidence.SYNTHETIC, false })
+end
+
+-- 6. Lead section 220: MyBuddy CE-1 to CE-8 ------------------------------------
+
+-- CE-3: a banker run verifies only on a real list line, never on any line
+-- that is not idle.
+tests["capture evidence: the banker shows words are the bank list header"] = function(t)
+    local shows = Evidence.REQUIRES.banker.shows
+    t.ok(type(shows) == "table" and #shows > 0, "banker: a shows list")
+    for _, words in ipairs(type(shows) == "table" and shows or {}) do
+        t.ok(ns.ItemPresent.BANK_HEADER:find(words, 1, true) ~= nil, "banker: the list header holds: " .. tostring(words))
+    end
+end
+
+tests["capture evidence: a banker line that is not a list does not verify banker"] = function(t)
+    for _, line in ipairs({ ns.Banker.NOT_SEEN, ns.Banker.SELL_NOT_SEEN, ns.ItemPresent.NOTHING_TO_BANK, "a line" }) do
+        local v = Evidence.Judge("banker", { cap = made(), report = { set = {} }, lines = { line }, problems = 0,
+            synthetic = { "bag items" } })
+        t.eq({ v.result, v.verified }, { Evidence.NOT_EXERCISED, false }, "not a list: " .. line)
+        t.eq(v.missing, { Evidence.NO_BEHAVIOUR }, "what is missing: " .. line)
+    end
+    local v = Evidence.Judge("banker", { cap = made(), report = { set = {} }, problems = 0,
+        lines = { ns.ItemPresent.BANK_HEADER, "12 x Linen Cloth: kept for later" }, synthetic = { "bag items" } })
+    t.eq({ v.result, v.verified, v.recorded }, { Evidence.SYNTHETIC, true, false }, "a list line: verified as made-up")
+end
+
+tests["capture evidence: the banker word with empty bags read does not verify banker"] = function(t)
+    local v, lines = judge(made(), "banker", function(c) c.setBagItems({}) end, { "bag items" })
+    t.ok(anyHas(lines, ns.ItemPresent.NOTHING_TO_BANK), "the bags were read: nothing to bank")
+    t.ok(not anyHas(lines, ns.ItemPresent.BAGS_UNREAD), "and not the bags-not-read line")
+    t.eq({ v.result, v.verified }, { Evidence.NOT_EXERCISED, false })
+    t.ok(has(v.missing, Evidence.NO_BEHAVIOUR), "no list line: " .. table.concat(v.missing, "; "))
+end
+
+-- CE-2: every call with recorded arguments is asked by the diag word with
+-- them, on a capture that holds every one of those calls.
+tests["capture replay: the diag word asks every call with recorded arguments, with them"] = function(t)
+    local cap = made()
+    local d = cap.account.diag
+    d.names.names.UnitHealth = "function"
+    d.names.names.UnitPower = "function"
+    d.names.names.UnitPowerType = "function"
+    d.snaps[1].shapes.health = row(240)
+    d.snaps[1].shapes.power = row(100)
+    d.snaps[1].shapes.powerType = row(0, "MANA")
+    local c, _, _, replay = boot(cap)
+    local _, unanswered, by = diagAsks(c, replay)
+    t.eq(unanswered, 0, "nothing asked with other arguments")
+    local keys = 0
+    for key in pairs(Capture.ARGS) do
+        keys = keys + 1
+        local path = Capture.CALLS[key]
+        t.ok(by[path] ~= nil, key .. ": the call is replayed and counted")
+        t.ok(by[path] ~= nil and by[path].answered > 0, key .. ": the diag word asked it with the recorded arguments")
+    end
+    t.ok(keys > 0, "there are calls with recorded arguments")
+end
+
+-- CE-2: a call the capture does not hold has no replay count; it is never
+-- said to have been asked as recorded.
+tests["capture replay: a call missing from the capture is not counted as answered"] = function(t)
+    local c, _, _, replay = boot(made())
+    t.eq(replay.UnitHealth, nil, "UnitHealth is not in the capture: no count")
+    local _, _, by = diagAsks(c, replay)
+    t.eq(by.UnitHealth, nil, "and the diag word is not credited with asking it as recorded")
+end
+
+-- CE-4: no line at all, with no proves.
+tests["capture evidence: a run that says nothing is not exercised"] = function(t)
+    local v = Evidence.Judge("banker", { cap = made(), report = { set = {} }, lines = {}, problems = 0,
+        synthetic = { "bag items" } })
+    t.eq({ v.result, v.verified, v.smoke }, { Evidence.NOT_EXERCISED, false, true })
+    t.eq(v.missing, { Evidence.NOTHING_SAID })
+end
+
+-- CE-5: an idle line beside a showing line: the idle line decides.
+tests["capture evidence: an idle line beside a list line is not exercised"] = function(t)
+    local v = Evidence.Judge("banker", { cap = made(), report = { set = {} }, problems = 0, synthetic = { "bag items" },
+        lines = { "Cannot list: " .. ns.ItemPresent.BAGS_UNREAD, ns.ItemPresent.BANK_HEADER } })
+    t.eq({ v.result, v.verified }, { Evidence.NOT_EXERCISED, false })
+    t.eq(v.missing, { "bag items" })
+end
+
+-- A made-up settings object for the settings proof: one account row.
+local function fakeSettings(get)
+    local rows = { { key = "sound", scope = "account" } }
+    return {
+        each = function()
+            local i = 0
+            return function() i = i + 1; return rows[i] end
+        end,
+        get = get,
+    }
+end
+
+local function savedCap()
+    local cap = made()
+    cap.account.settings = { sound = false }
+    return cap
+end
+
+-- CE-6: a saved value the add-on reads back differently.
+tests["capture evidence: a saved setting read back differently is not verified"] = function(t)
+    local v = Evidence.Judge("settings", { cap = savedCap(), report = { set = {} }, lines = { "x" }, problems = 0,
+        addon = { settings = fakeSettings(function() return true end) } })
+    t.eq({ v.result, v.verified }, { Evidence.NOT_EXERCISED, false })
+    t.eq(v.missing, { "the saved value read back (1 did not)" })
+    v = Evidence.Judge("settings", { cap = savedCap(), report = { set = {} }, lines = { "x" }, problems = 0,
+        addon = { settings = fakeSettings(function() error("cannot read") end) } })
+    t.eq(v.missing, { "the saved value read back (1 did not)" }, "a read that raises is one that did not read back")
+    v = Evidence.Judge("settings", { cap = savedCap(), report = { set = {} }, lines = { "x" }, problems = 0,
+        addon = { settings = fakeSettings(function() return false end) } })
+    t.eq({ v.result, v.verified }, { Evidence.CAPTURED, true }, "read back the same: verified")
+end
+
+-- CE-7: a proof that raises is not a verification, and the judge itself
+-- does not raise.
+tests["capture evidence: a proof that raises gives not exercised, and Judge does not raise"] = function(t)
+    local broken = fakeSettings(function() return false end)
+    broken.each = function() error("broken settings") end
+    local ok, v = pcall(Evidence.Judge, "settings", { cap = savedCap(), report = { set = {} }, lines = { "x" },
+        problems = 0, addon = { settings = broken } })
+    t.ok(ok, "Judge did not raise: " .. tostring(not ok and v or ""))
+    v = ok and v or {}
+    t.eq({ v.result, v.verified }, { Evidence.NOT_EXERCISED, false })
+    t.ok(type(Evidence.CHECK_FAILED) == "string" and has(v.missing, Evidence.CHECK_FAILED),
+        "what is missing names the check that raised: " .. table.concat(v.missing or {}, "; "))
+end
+
+-- CE-8: a problem count that is not a number is not known, and a run with
+-- an unknown count is neither a smoke test nor a verification.
+tests["capture evidence: a problem count that is not a number is unknown, never zero"] = function(t)
+    for _, problems in ipairs({ "0", "none", true }) do
+        local v = Evidence.Judge("banker", { cap = made(), report = { set = {} }, problems = problems,
+            lines = { ns.ItemPresent.BANK_HEADER }, synthetic = { "bag items" } })
+        t.eq({ v.result, v.verified, v.smoke }, { Evidence.NOT_EXERCISED, false, false }, tostring(problems))
+        t.ok(type(Evidence.PROBLEMS_UNKNOWN) == "string" and has(v.missing, Evidence.PROBLEMS_UNKNOWN),
+            "what is missing: " .. table.concat(v.missing, "; "))
+    end
+    local v = Evidence.Judge("banker", { cap = made(), report = { set = {} },
+        lines = { ns.ItemPresent.BANK_HEADER }, synthetic = { "bag items" } })
+    t.eq({ v.result, v.verified, v.smoke }, { Evidence.NOT_EXERCISED, false, false }, "no count at all")
 end
 
 return tests
