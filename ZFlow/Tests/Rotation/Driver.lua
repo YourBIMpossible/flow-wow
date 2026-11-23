@@ -74,6 +74,7 @@ local function stub(dead, inCombat, lockdown, cooldowns, extra)
         stealthed = rec("stealthed", extra.stealthed or function() return nil end),
         inRange = rec("inRange", extra.inRange or function() return true end),
         playerBuffs = rec("playerBuffs", extra.playerBuffs or function() return nil end),
+        targetDebuffs = rec("targetDebuffs", extra.targetDebuffs or function() return nil end),
         formName = rec("formName", extra.formName or function() return nil, false end),
         currentSpell = rec("currentSpell", extra.currentSpell or function() return nil end),
     }
@@ -445,7 +446,7 @@ end
 
 -- RD11 ----------------------------------------------------------------
 
-tests["rotation driver RD11: a step presses nothing and asks only its twelve reads"] = function(t)
+tests["rotation driver RD11: a step presses nothing and asks only its thirteen reads"] = function(t)
     for _, fight in ipairs({ false, true }) do
         local client, calls, other = stub(false, fight, fight)
         local v = D.Step(client, pack())
@@ -456,7 +457,7 @@ tests["rotation driver RD11: a step presses nothing and asks only its twelve rea
         for name in pairs(calls) do names[#names + 1] = name end
         table.sort(names)
         t.eq(names, { "combatLockdown", "currentSpell", "dead", "formName", "inCombat", "inRange",
-            "playerBuffs", "spell", "spellCooldown", "spellId", "stealthed", "target" })
+            "playerBuffs", "spell", "spellCooldown", "spellId", "stealthed", "target", "targetDebuffs" })
         t.eq(calls.dead, 1)
         t.eq(calls.inCombat, 1)
         t.eq(calls.combatLockdown, 1)
@@ -464,6 +465,7 @@ tests["rotation driver RD11: a step presses nothing and asks only its twelve rea
         t.eq(calls.stealthed, 1)
         t.eq(calls.inRange, 2, "once for each spell with an id")
         t.eq(calls.playerBuffs, 1)
+        t.eq(calls.targetDebuffs, 1)
         t.eq(calls.formName, 1)
         t.eq(calls.currentSpell, 2, "once for each spell with an id")
     end
