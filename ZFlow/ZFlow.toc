@@ -81,6 +81,7 @@ Classes\Druid.lua
 Classes\Paladin.lua
 Classes\Priest.lua
 Classes\Shaman.lua
+Classes\Warrior.lua
 Rotation\GroupTip.lua
 Nav\ArrowLayout.lua
 Nav\Bearing.lua
