@@ -180,4 +180,33 @@ tests["sell reservations: look only - no acting client call"] = function(t)
     t.eq(called, {}, "no acting call")
 end
 
+-- Lead section 213: a list asked for away from a merchant is never made, so
+-- it can never show an old held count. Away from a merchant the sell list
+-- makes no listing and keeps none; the next visit evaluates once and shows
+-- the changed hold. (The bank prompt asks the source on a bag event away
+-- from the bank; that is its own evaluation, not the sell list's, so the
+-- count of source calls is taken only across the visit.)
+tests["sell reservations: away from a merchant nothing is listed; the next visit sees the new hold"] = function(t)
+    local c, addon, holds, calls = start({ holds = { [PELT] = 2 } })
+    c.setMerchantOpen(true)
+    t.ok(starts(addon.sellList.last(), "1 x Ruined Pelt: "), "the first visit: " .. joined(addon.sellList.last()))
+    c.setMerchantOpen(false)
+    local made, kept = addon.sellList.shows(), addon.sellList.last()
+    holds[PELT] = 3
+    local ok, why = addon.sellList.show()
+    t.eq(ok, false, "asked away from a merchant: no list")
+    t.eq(why, addon.SellList.NO_MERCHANT, "and why")
+    addon.sellList.refresh()
+    c.fire("BAG_UPDATE_DELAYED"); c.advance(1, 5)
+    t.eq(addon.sellList.shows() - made, 0, "no listing made away from a merchant")
+    t.ok(addon.sellList.last() == kept, "the last listing is still the first visit")
+    local before = calls.n
+    c.setMerchantOpen(true)
+    t.eq(calls.n - before, 1, "the next visit evaluates once")
+    t.eq(addon.sellList.shows() - made, 1, "and lists once")
+    t.ok(not finds(addon.sellList.last(), "x Ruined Pelt: "), "the new hold, no pelt offered: " .. joined(addon.sellList.last()))
+    t.ok(has(addon.sellList.last(), "Ruined Pelt: 3 held for your steps"), "three held now: " .. joined(addon.sellList.last()))
+    c.setMerchantOpen(false)
+end
+
 return tests
