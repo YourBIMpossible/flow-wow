@@ -5,10 +5,14 @@ local _, ns = ...
 -- "keep the mats to make this many"); the bank list, the bank prompt and the
 -- banker word then hold that count back, through Items/Reservations.lua.
 --
---   <slash> goal add <item> <count>   set a goal (a link or an item ID); a
---                                     second add for the item changes its count
---   <slash> goal remove <item>        drop it
+--   <slash> goal add <item> <count>   set a goal: one item link or an item
+--                                     ID, a count of 1 to MAX_COUNT in digits;
+--                                     a second add for the item changes its
+--                                     count (and drops a second saved entry)
+--   <slash> goal remove <item>        drop it (every saved entry for it)
 --   <slash> goal list                 the list (the bare word too)
+--   <slash> goal clean                remove the saved entries that can't be
+--                                     read; the goals that read are kept
 --
 -- Saved data: the character's settings.goals, a list of
 --   { item = <item key>, count = <whole count >= 1>, recipe = <name>? }
@@ -19,17 +23,21 @@ local _, ns = ...
 -- not touch it.
 --
 --   ItemGoals.Claims(snapshot, goals, recipes) -> claims, skipped
---     pure. Per goal: with a recipe, ItemPlan.Build over the snapshot and
---     ItemPlan.Claims(plan, "goal:" .. item, "goal"); with none, the item
---     itself (kind "item", amount count, from the bags or the bank). Every
---     claim is marked selected: the player picked it. A goal that is not a
---     table, names no item, has no whole count of at least 1, or names a
---     recipe that recipes does not know (or ItemPlan can't plan) is skipped
---     and counted; a saved value that is no list counts as one, and so does
---     each entry outside 1..#goals (after a hole, or under a name).
+--     pure. Per goal: with a recipe that recipes knows and ItemPlan can
+--     plan, ItemPlan.Build over the snapshot and ItemPlan.Claims(plan,
+--     "goal:" .. item, "goal"); otherwise the item itself (kind "item",
+--     amount count, from the bags or the bank). Every claim is marked
+--     selected: the player picked it. A goal that is not a table, names no
+--     item, or has no whole count of at least 1 is skipped and counted; a
+--     saved value that is no list counts as one, and so does each entry
+--     outside 1..#goals (after a hole, or under a name).
 --     recipes: { [name] = { makes, yield, mats } } as ItemPlan reads them.
---     Z-Flow holds no such data yet, so the source passes none and a goal
---     with a recipe is skipped until it does.
+--     Section 225 (GS-2): a recipe part never makes a goal skipped. Z-Flow
+--     holds no recipe data yet, so the source passes none and a goal with a
+--     recipe holds its item and count, as a goal with none does; the list
+--     says the recipe part is not used yet.
+--   ItemGoals.Unread(n) -> line   what the word says while n saved entries
+--                                 can't be read (section 225, GS-3)
 --   ItemGoals.Run(k, rest) -> lines, changed      the goal word
 --   ItemGoals.Start(k, diag) -> { run = fn }      adds the word
 --
@@ -53,11 +61,28 @@ Goals.OWNER = "goal:"
 
 Goals.NOT_LOADED = ns.ItemPresent.KEEP_NOT_LOADED
 Goals.FAILED = "That could not be saved, so nothing was changed."
+Goals.MAX_COUNT = 100000      -- the most a goal keeps (section 223, G-6)
+Goals.RECIPE_MAX = 40         -- the most of a recipe part the list shows (G-8)
 do
     local cmd = tostring(ns.id.slash) .. " " .. Goals.WORD
-    Goals.USAGE = "Say " .. cmd .. " add <item link> <count>, " .. cmd .. " remove <item link>, or "
-        .. cmd .. " list."
+    Goals.CLEAN = cmd .. " clean"
+    Goals.USAGE = "Say " .. cmd .. " add <item link> <count>, " .. cmd .. " remove <item link>, "
+        .. cmd .. " list, or " .. Goals.CLEAN .. "."
     Goals.EMPTY = "You have no goals. Say " .. cmd .. " add <item link> <count> to keep that many for later."
+    Goals.UNREADABLE = "Your saved goals can't be read, so nothing was changed. Say " .. Goals.CLEAN
+        .. " to clear them."
+    Goals.CLEAN_NONE = "Every saved goal can be read, so nothing was removed."
+    Goals.CLEAN_ORDER = "Every saved goal can be read now; they are back in one list."
+end
+
+-- Section 225 (GS-3): while a saved entry can't be read the source gives no
+-- list, so no sell advice rests on the goals. The player is told so, and how
+-- to clear it, whenever the word sees one.
+function Goals.Unread(n)
+    local one = n == 1
+    return n .. (one and " saved goal" or " saved goals") .. " could not be read. While "
+        .. (one and "it is" or "they are") .. " saved, Z-Flow can't say what your goals keep, so it gives"
+        .. " no sell advice. Say " .. Goals.CLEAN .. " to remove " .. (one and "it" or "them") .. "."
 end
 
 local function isCount(n)
@@ -68,12 +93,12 @@ local function trim(text)
     return (tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", ""))
 end
 
--- One goal's item key and count, or nil when it is malformed.
+-- One goal's item key and count, or nil when it is malformed. The recipe
+-- part is not read here (section 225, GS-2): it never makes a goal skipped.
 local function readGoal(g)
     if type(g) ~= "table" then return nil end
     local key = ns.Items.Key(g.item)
     if key == nil or not isCount(g.count) then return nil end
-    if g.recipe ~= nil and (type(g.recipe) ~= "string" or g.recipe == "") then return nil end
     return key, g.count
 end
 
@@ -87,12 +112,9 @@ function Goals.Claims(snapshot, goals, recipes)
         local key, count = readGoal(g)
         if key == nil then
             skipped = skipped + 1
-        elseif g.recipe == nil then
-            claims[#claims + 1] = { owner = Goals.OWNER .. key, activity = Goals.ACTIVITY, kind = "item",
-                                    key = key, amount = count, bank = true, selected = true }
         else
             local plan
-            if type(recipes) == "table" and recipes[g.recipe] ~= nil then
+            if type(g.recipe) == "string" and type(recipes) == "table" and recipes[g.recipe] ~= nil then
                 plan = ns.ItemPlan.Build({ recipe = g.recipe, count = count },
                     { recipes = recipes, snapshot = snapshot })
             end
@@ -102,7 +124,8 @@ function Goals.Claims(snapshot, goals, recipes)
                     claims[#claims + 1] = c
                 end
             else
-                skipped = skipped + 1
+                claims[#claims + 1] = { owner = Goals.OWNER .. key, activity = Goals.ACTIVITY, kind = "item",
+                                        key = key, amount = count, bank = true, selected = true }
             end
         end
     end
@@ -146,9 +169,10 @@ end
 --        active and gives no list. The status is "unavailable", never "none".
 --   G-2  "nothing in it" is next(raw) == nil: a list with a hole at 1 or only
 --        named entries is not taken for no goals.
---   G-3  a skipped goal (can't be read, or a recipe Z-Flow can't plan) may
---        hold an item the player wants kept, so any skipped goal gives no
---        list either: "unavailable", and no sell advice rests on it.
+--   G-3  a skipped goal (one that can't be read) may hold an item the
+--        player wants kept, so any skipped goal gives no list either:
+--        "unavailable", and no sell advice rests on it. The word says so
+--        and how to clear it (section 225, GS-1 and GS-3: goal clean).
 ns.Reservations.Source(Goals.SOURCE, function(snapshot, k)
     k = k or ns
     if not storeOpen(k) then return nil end
@@ -179,70 +203,108 @@ local function nameOf(k, key)
     return ns.ItemPresent.Name(key, names)
 end
 
--- The saved list as a fresh list of the goals that read, and how many did not.
-local function copyOf(raw)
-    local list, bad = {}, 0
-    if raw == nil then return list, 0 end
-    if type(raw) ~= "table" then return list, 1 end
-    for i = 1, #raw do
-        local g = raw[i]
-        local key, count = readGoal(g)
-        if key == nil then
-            bad = bad + 1
-        else
-            list[#list + 1] = { item = key, count = count, recipe = g.recipe }
+-- Section 223 (G-4): every entry of the saved list (a table), in order, and
+-- what it holds under any other key. Entries 1..#raw come first, then each
+-- whole-number key past them (after a hole) in order, so nothing is lost and
+-- the list written back has no hole. Anything under another key (a name, 0,
+-- a fraction) is returned apart, to be written back under that key.
+local function entries(raw)
+    local seq, other, later, n = {}, {}, {}, #raw
+    for i = 1, n do
+        if raw[i] ~= nil then seq[#seq + 1] = raw[i] end
+    end
+    for key, value in pairs(raw) do
+        local whole = type(key) == "number" and key < math.huge and key == math.floor(key)
+        if whole and key > n then
+            later[#later + 1] = key
+        elseif not (whole and key >= 1 and key <= n) then
+            other[key] = value
         end
     end
-    return list, bad
+    table.sort(later)
+    for _, key in ipairs(later) do seq[#seq + 1] = raw[key] end
+    return seq, other
 end
 
--- The saved list to write back, and where the goal for key is in it (nil:
--- none). Entries that do not read are kept as they are, so a change made
--- with the word never loses what it can't read; they stay skipped.
-local function rewrite(raw, key)
-    local list, at = {}, nil
-    if type(raw) ~= "table" then return list, nil end
-    for i = 1, #raw do
-        local g = raw[i]
-        local k2, count = readGoal(g)
-        if k2 == nil then
-            list[#list + 1] = g
-        else
-            list[#list + 1] = { item = k2, count = count, recipe = g.recipe }
-            if k2 == key and at == nil then at = #list end
-        end
-    end
-    return list, at
+local function withOthers(list, other)
+    for key, value in pairs(other) do list[key] = value end
+    return list
 end
 
 local function plural(n, one, many) return n .. " " .. (n == 1 and one or many) end
 
-local function listLines(k, raw)
-    local list, bad = copyOf(raw)
-    if #list == 0 and bad == 0 then return { Goals.EMPTY } end
-    local rows = {}
-    for _, g in ipairs(list) do
-        local text = g.count .. " x " .. nameOf(k, g.item)
-        if g.recipe then text = text .. " (to make, recipe " .. g.recipe .. ")" end
-        rows[#rows + 1] = text
-    end
-    local lines = { "Your goals (" .. #list .. "):" }
-    for i = 1, #rows do lines[#lines + 1] = rows[i] end
-    if bad > 0 then
-        lines[#lines + 1] = plural(bad, "saved goal", "saved goals")
-            .. (bad == 1 and " could not be read and is skipped." or " could not be read and are skipped.")
-    end
+-- How many saved entries the source would skip: the count Claims gives.
+local function unread(raw)
+    local _, skipped = Goals.Claims(nil, raw)
+    return skipped
+end
+
+-- A reply, with the unread line after it when the list written still holds
+-- an entry that can't be read (section 225, GS-3).
+local function withUnread(lines, list)
+    local bad = unread(list)
+    if bad > 0 then lines[#lines + 1] = Goals.Unread(bad) end
     return lines
 end
 
--- The words after "add": an item (a link or an ID, maybe with spaces in a
--- link's name) and, last, a whole count.
+-- Section 223 (G-8): a recipe part as the list shows it. No control
+-- characters, at most RECIPE_MAX bytes (a cut never leaves half a
+-- character), and each "|" doubled so chat shows it and it starts no link
+-- or colour.
+local function shown(text)
+    text = tostring(text):gsub("%c", "")
+    if #text > Goals.RECIPE_MAX then
+        text = text:sub(1, Goals.RECIPE_MAX):gsub("[\192-\255][\128-\191]*$", "") .. "..."
+    end
+    return (text:gsub("|", "||"))
+end
+
+local function listLines(k, raw)
+    local rows = {}
+    if type(raw) == "table" then
+        for i = 1, #raw do
+            local g = raw[i]
+            local key, count = readGoal(g)
+            if key ~= nil then
+                local text = count .. " x " .. nameOf(k, key)
+                if g.recipe ~= nil then text = text .. " (recipe part not used yet: " .. shown(g.recipe) .. ")" end
+                rows[#rows + 1] = text
+            end
+        end
+    end
+    local bad = unread(raw)
+    if #rows == 0 and bad == 0 then return { Goals.EMPTY } end
+    local lines = { "Your goals (" .. #rows .. "):" }
+    for i = 1, #rows do lines[#lines + 1] = rows[i] end
+    if bad > 0 then lines[#lines + 1] = Goals.Unread(bad) end
+    return lines
+end
+
+-- Section 223 (G-7): an item as the word takes it: an item ID (digits only)
+-- or exactly one item link with nothing after it. Words around a link, a
+-- second link, and an "id:suffix" or "item:" string typed by hand are
+-- refused. The slash command hands a link over lower-cased, so the escape
+-- letters are matched in either case.
+local function parseItem(text)
+    text = trim(text)
+    if text:match("^%d+$") then return ns.Items.Key(text) end
+    local body = text:gsub("^|[cC]%x%x%x%x%x%x%x%x", "", 1)
+    local item, after = body:match("^|[hH](item:[%-%d:]+)|[hH]%[.-%]|[hH](.*)$")
+    if item == nil then return nil end
+    if after ~= "" and not after:match("^|[rR]$") then return nil end
+    return ns.Items.Key(item)
+end
+
+-- The words after "add": an item (one link or an ID; a link's name may
+-- hold spaces) and, last, a count. Section 223 (G-6): the count is digits
+-- only, 1 to MAX_COUNT, so "0x10", "1e3" or "+8" is refused.
 local function parseAdd(rest)
     local what, n = rest:match("^(.-)%s+(%S+)$")
     if not what then return nil end
+    if not n:match("^%d+$") or #n > #tostring(Goals.MAX_COUNT) then return nil end
     local count = tonumber(n)
-    if not isCount(count) then return nil end
-    local key = ns.Items.Key(trim(what))
+    if not isCount(count) or count > Goals.MAX_COUNT then return nil end
+    local key = parseItem(what)
     if key == nil then return nil end
     return key, count
 end
@@ -250,7 +312,10 @@ end
 local function save(k, list)
     local ok, reason = k.store:set("char", Goals.PATH, list)
     if not ok then
-        -- The store's reason names internal paths: kept for diagnostics.
+        -- The store's reason names internal paths: kept for diagnostics
+        -- only, never printed (section 223, G-8). Its reasons name a scope,
+        -- a path or a schema number, not the character; a migration step's
+        -- own error text is passed through as it is.
         if type(k.problems) == "table" then k.problems:add("goals", "save", tostring(reason)) end
         return false
     end
@@ -268,24 +333,71 @@ function Goals.Run(k, rest)
         return listLines(k, raw), false
     end
 
+    -- Section 223 (G-4): a saved value that is no list is not written over;
+    -- the player is told to clear it. Each saved entry is written back as it
+    -- is (G-4 iii); only the changed goal is copied, with its new count.
+    -- (G-5) add sets the first entry for the item and drops later ones;
+    -- remove drops every one.
     if word == "add" then
         local key, count = parseAdd(more)
         if key == nil then return { Goals.USAGE }, false end
-        local list, at = rewrite(raw, key)
-        if at then list[at] = { item = key, count = count, recipe = list[at].recipe }
-        else list[#list + 1] = { item = key, count = count } end
+        if raw ~= nil and type(raw) ~= "table" then return { Goals.UNREADABLE }, false end
+        local seq, other = entries(raw or {})
+        local list, set = {}, false
+        for _, g in ipairs(seq) do
+            if readGoal(g) == key then
+                if not set then
+                    local copy = {}
+                    for field, value in pairs(g) do copy[field] = value end
+                    copy.count = count
+                    list[#list + 1] = copy
+                    set = true
+                end
+            else
+                list[#list + 1] = g
+            end
+        end
+        if not set then list[#list + 1] = { item = key, count = count } end
+        list = withOthers(list, other)
         if not save(k, list) then return { Goals.FAILED }, false end
-        return { "Goal set: keep " .. count .. " x " .. nameOf(k, key) .. "." }, true
+        return withUnread({ "Goal set: keep " .. count .. " x " .. nameOf(k, key) .. "." }, list), true
     end
 
     if word == "remove" then
-        local key = ns.Items.Key(trim(more))
+        local key = parseItem(more)
         if key == nil then return { Goals.USAGE }, false end
-        local list, at = rewrite(raw, key)
-        if not at then return { nameOf(k, key) .. " is not one of your goals." }, false end
-        table.remove(list, at)
+        if raw ~= nil and type(raw) ~= "table" then return { Goals.UNREADABLE }, false end
+        local seq, other = entries(raw or {})
+        local list, found = {}, false
+        for _, g in ipairs(seq) do
+            if readGoal(g) == key then found = true else list[#list + 1] = g end
+        end
+        if not found then return { nameOf(k, key) .. " is not one of your goals." }, false end
+        list = withOthers(list, other)
         if not save(k, list) then return { Goals.FAILED }, false end
-        return { nameOf(k, key) .. " is off your goals." }, true
+        return withUnread({ nameOf(k, key) .. " is off your goals." }, list), true
+    end
+
+    -- Section 225 (GS-1): remove what the source can't read (an entry that
+    -- is no goal, one under a name, a saved value that is no list) and keep
+    -- every goal that reads, in order. An entry past a hole that reads is
+    -- kept and put back in the list.
+    if word == "clean" then
+        if more ~= "" then return { Goals.USAGE }, false end
+        if unread(raw) == 0 then return { Goals.CLEAN_NONE }, false end
+        local list, removed = {}, 1
+        if type(raw) == "table" then
+            removed = 0
+            local seq, other = entries(raw)
+            for _, g in ipairs(seq) do
+                if readGoal(g) ~= nil then list[#list + 1] = g else removed = removed + 1 end
+            end
+            for _ in pairs(other) do removed = removed + 1 end
+        end
+        if not save(k, list) then return { Goals.FAILED }, false end
+        if removed == 0 then return { Goals.CLEAN_ORDER }, true end
+        return { "Removed " .. plural(removed, "saved goal", "saved goals")
+            .. " that could not be read. Your other goals are kept." }, true
     end
 
     return { Goals.USAGE }, false
