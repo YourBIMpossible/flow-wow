@@ -769,6 +769,22 @@ tests["paladin N58: Oath of Light only once you cast it; auto, a reload, buffs r
     t.eq(picked(c, "oath"), "Oath of Light", line)
 end
 
+-- PC-8: a made-up id; the real one was never read from a WoW: Forever trainer.
+local CRUSADER = 990201
+
+tests["paladin PC-8: in melee with Crusader Strike known, it comes once Judgement is on cooldown"] = function(t)
+    local c, addon, icon = start()
+    learn(c, "Crusader Strike", CRUSADER)
+    on(c, addon); fighting(c)
+    c.setInRange(CRUSADER, true); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Judgement", "Judgement first")
+    c.setSpellCooldown(IDS["Judgement"], true); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Crusader Strike", "Judgement on cooldown: Crusader Strike")
+    t.ok(said(c):find("suggesting Crusader Strike", 1, true), said(c))
+    c.setTarget({ exists = false }); c.advance(1, 5)
+    t.ok(not (icon.shown and icon.texture == "tex:Crusader Strike"), "no target: no strike")
+end
+
 tests["a class with no pack: on, and it says so"] = function(t)
     local c, addon, icon = start({ class = "DEATHKNIGHT" })
     c.setPlayerBuffs({}); on(c, addon)
