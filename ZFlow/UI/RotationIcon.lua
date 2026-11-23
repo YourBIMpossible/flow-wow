@@ -92,6 +92,29 @@ local function texture(client, spell)
     return nil
 end
 
+-- Section 226 (CF-30): the item id of a driver view that suggests an item
+-- (Well Fed food), or nil.
+function I.Item(view)
+    if type(view) ~= "table" or type(view.suggestion) ~= "table" then return nil end
+    local id = view.suggestion.itemId
+    if type(id) ~= "number" or id <= 0 or id % 1 ~= 0 then return nil end
+    return id
+end
+
+-- The icon's texture for a driver view: the spell's, else the item's, as
+-- the client gives it; nil when it gives none.
+function I.Texture(client, view)
+    local spell = I.Spell(view)
+    if spell then return texture(client, spell) end
+    local item = I.Item(view)
+    if not item or type(client.itemTexture) ~= "function" then return nil end
+    local ok, tex = pcall(client.itemTexture, item)
+    if not ok then return nil end
+    if type(tex) == "number" and tex > 0 then return tex end
+    if type(tex) == "string" and tex ~= "" then return tex end
+    return nil
+end
+
 function I.Declare(k)
     local icon
     local api = {}
@@ -156,8 +179,7 @@ function I.Declare(k)
 
             ctx.bus:on(I.NAME, D.EVENT, function(view)
                 if not icon then return end
-                local spell = k.settings:get(D.SETTING) == true and I.Spell(view) or nil
-                local tex = spell and texture(client, spell) or nil
+                local tex = k.settings:get(D.SETTING) == true and I.Texture(client, view) or nil
                 if not tex or says(client, "petBattle") or says(client, "vehicle") then
                     hide()
                     return

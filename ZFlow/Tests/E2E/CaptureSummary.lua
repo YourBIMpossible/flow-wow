@@ -75,7 +75,7 @@ end
 
 local OWN = { auction = true, prices = true, ["for"] = true, item = true, s = true, on = true, from = true,
     search = true, es = true, way = true, meet = true, here = true, sell = true, says = true, build = true,
-    Talk = true, to = true, Then = true }
+    Talk = true, to = true, Then = true, talk = true, ["then"] = true }
 
 tests["capture mask: only the add-on's own words and numbers are printed; the rest is counted"] = function(t)
     local title = ns.id.title .. ": "
@@ -422,12 +422,17 @@ end
 -- both empty it finds no folder; with only a fallback that is not there
 -- it finds none either. Fails if tempFile stops reading the lists.
 tests["capture summary CS-5: tempFile follows the lists it is given"] = function(t)
+    -- MyBuddy CS4-2: the lists are put back even when tempFile raises.
     local env, fallback = ns.offline.TEMP_ENV, ns.offline.TEMP_FALLBACK
-    ns.offline.TEMP_ENV, ns.offline.TEMP_FALLBACK = {}, {}
-    local none = { ns.offline.tempFile("x") }
-    ns.offline.TEMP_FALLBACK = { "/zz-made-up-folder-that-is-not-there" }
-    local missing = { ns.offline.tempFile("x") }
+    local none, missing
+    local ok = pcall(function()
+        ns.offline.TEMP_ENV, ns.offline.TEMP_FALLBACK = {}, {}
+        none = { ns.offline.tempFile("x") }
+        ns.offline.TEMP_FALLBACK = { "/zz-made-up-folder-that-is-not-there" }
+        missing = { ns.offline.tempFile("x") }
+    end)
     ns.offline.TEMP_ENV, ns.offline.TEMP_FALLBACK = env, fallback
+    t.ok(ok, "tempFile did not raise")
     t.eq(none, { nil, "no temp folder" }, "no name and no folder: none")
     t.eq(missing, { nil, "the file did not open" }, "a folder that is not there: none")
 end
@@ -447,17 +452,19 @@ tests["capture summary C3-1: problems added before a raise in the run are kept"]
     t.eq(rows[1].problems, 3, "two added by the word, one for the raise")
 end
 
--- MyBuddy C3-2: own words come from every quoted text of the add-on, data
--- names too. A capitalised own word is printed only at the start of a line
--- or a sentence; inside a line it is a name and is left out.
-tests["capture summary C3-2: a capitalised own word inside a line is not printed"] = function(t)
-    local own = { you = true, met = true, Brannoch = true, here = true }
-    t.eq({ Capture.Mask("you met Brannoch here", {}, own) }, { "you met _ here", 1 },
-        "spelt like a quoted text of the add-on, inside a line: left out")
-    t.eq({ Capture.Mask("Brannoch: here", {}, own) }, { "Brannoch: here", 0 },
-        "at the start of a line: printed (the add-on's own heading words stand there)")
-    t.eq({ Capture.Mask("here. Brannoch met you", {}, own) }, { "here. Brannoch met you", 0 },
-        "at the start of a sentence: printed")
+-- MyBuddy C3-2 and CS4-1 (lead section 228): own words come from every
+-- quoted text of the add-on, data names too. A capitalised own word is
+-- printed only when the add-on also writes it in lower case ("Then" and
+-- "then"); a name it holds only capitalised is left out wherever it stands:
+-- inside a line, at its start, or after ": . ! ?".
+tests["capture summary C3-2: a capitalised own word the add-on never writes in lower case is not printed"] = function(t)
+    local own = { you = true, met = true, Brannoch = true, here = true, guild = true, Then = true, ["then"] = true }
+    t.eq({ Capture.Mask("you met Brannoch here", {}, own) }, { "you met _ here", 1 }, "inside a line")
+    t.eq({ Capture.Mask("Brannoch: here", {}, own) }, { "_: here", 1 }, "at the start of a line")
+    t.eq({ Capture.Mask("here. Brannoch met you", {}, own) }, { "here. _ met you", 1 }, "after a full stop")
+    t.eq({ Capture.Mask("guild: Brannoch", {}, own) }, { "guild: _", 1 }, "CS4-1: after a colon")
+    t.eq({ Capture.Mask("Then: you met", {}, own) }, { "Then: you met", 0 },
+        "a word the add-on writes in lower case too is printed, so the test can fail the other way")
 end
 
 return tests

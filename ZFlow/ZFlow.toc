@@ -69,6 +69,7 @@ Gear\MerchantShow.lua
 Gear\RollHint.lua
 Rotation\Pack.lua
 Rotation\Snapshot.lua
+Rotation\BuffFood.lua
 Rotation\Choose.lua
 Rotation\KeyPlan.lua
 Rotation\Cast.lua
@@ -141,6 +142,7 @@ UI\SellList.lua
 UI\BankList.lua
 UI\CraftBar.lua
 Items\Keep.lua
+Items\RecipeBook.lua
 Items\Goals.lua
 UI\Arrow.lua
 UI\MinimapPin.lua
@@ -151,6 +153,7 @@ UI\PlateCombo.lua
 Rotation\CastEdge.lua
 Rotation\Audit.lua
 Rotation\FormSpells.lua
+Rotation\OwnCasts.lua
 Fight\Choices.lua
 Rotation\Queue.lua
 UI\RotationQueue.lua
@@ -158,3 +161,4 @@ Items\Banker.lua
 Items\Posting.lua
 Items\Trader.lua
 Nav\Try.lua
+Rotation\Gather.lua

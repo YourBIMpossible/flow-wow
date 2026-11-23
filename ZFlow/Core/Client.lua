@@ -522,6 +522,46 @@ function ns.make.client(env)
         return out
     end
 
+    -- Section 227 (P-GOALS-RECIPE): one recipe's product, how many one
+    -- craft makes, and its required basic mats:
+    --   { makes = item ID, yield = n, mats = { [item ID] = n a craft } }
+    -- from C_TradeSkillUI.GetRecipeSchematic(id, false). Optional and
+    -- finishing slots are left out; a required slot names its first reagent.
+    -- Anything that can't be read makes the whole answer nil: never a
+    -- shorter list. The field names are first guesses, not seen in game.
+    function c.recipeSchematic(id)
+        if type(id) ~= "number" then return nil end
+        local ui = env.C_TradeSkillUI
+        if type(ui) ~= "table" then return nil end
+        local ok, s = call(ui.GetRecipeSchematic, id, false)
+        if not ok or type(s) ~= "table" then return nil end
+        local function count(n, least)
+            return wholeCount(n) and n < math.huge and n >= least
+        end
+        local makes = s.outputItemID
+        if not count(makes, 1) then return nil end
+        local yield = s.quantityMin
+        if yield == nil then yield = 1 end
+        if not count(yield, 1) then return nil end
+        local slots = s.reagentSlotSchematics
+        if type(slots) ~= "table" then return nil end
+        local mats = {}
+        for i = 1, #slots do
+            local slot = slots[i]
+            if type(slot) ~= "table" then return nil end
+            local basic = slot.reagentType == nil or slot.reagentType == 1
+            if basic and slot.required ~= false then
+                local first = type(slot.reagents) == "table" and slot.reagents[1] or nil
+                local item = type(first) == "table" and first.itemID or nil
+                local n = slot.quantityRequired
+                if not count(item, 1) or not count(n, 1) then return nil end
+                mats[item] = (mats[item] or 0) + n
+            end
+        end
+        if next(mats) == nil then return nil end
+        return { makes = makes, yield = yield, mats = mats }
+    end
+
     -- A string the client gave and did not mark secret, or nil.
     local function text(ok, v)
         if not ok or v == nil or hidden(v) or type(v) ~= "string" or v == "" then return nil end
@@ -950,6 +990,41 @@ function ns.make.client(env)
         return n
     end
 
+    -- Section 226 (CF-30): an item's tooltip text, left side, top to bottom,
+    -- from C_TooltipInfo.GetItemByID(id), or GetHyperlink for a link; nil
+    -- when the data cannot be read. First guess, not seen in game on 16001.
+    function c.itemLines(item)
+        local group = env.C_TooltipInfo
+        if type(group) ~= "table" then return nil end
+        local fn = (type(item) == "number" and group.GetItemByID) or (type(item) == "string" and group.GetHyperlink) or nil
+        local ok, data = call(fn, item)
+        if not ok or type(data) ~= "table" or hidden(data) or type(data.lines) ~= "table" then return nil end
+        local out = {}
+        for i = 1, #data.lines do
+            local line = data.lines[i]
+            local s = type(line) == "table" and text(true, line.leftText) or nil
+            if s then out[#out + 1] = s end
+        end
+        return out
+    end
+
+    -- Section 226 (CF-30): an item's icon texture by id or link:
+    -- C_Item.GetItemIconByID, then the older GetItemIcon. nil when neither
+    -- gives one. First guess, not seen in game on 16001.
+    function c.itemTexture(item)
+        if item == nil then return nil end
+        local group = env.C_Item
+        local reads = { type(group) == "table" and group.GetItemIconByID or false, env.GetItemIcon or false }
+        for i = 1, 2 do
+            local ok, tex = call(reads[i], item)
+            if ok and not hidden(tex) then
+                if type(tex) == "number" and tex > 0 then return tex end
+                if type(tex) == "string" and tex ~= "" then return tex end
+            end
+        end
+        return nil
+    end
+
     -- Told each time the game's item tooltip has been filled for an item:
     --   client.onItemTooltip(fn) -> cancel;  fn(link, add);  add(text, r, g, b)
     -- add appends one line to that tooltip. fn's errors stay here. Route A:
@@ -1228,6 +1303,89 @@ function ns.make.client(env)
     -- client is asked: C_Spell.GetSpellTexture, then the older
     -- GetSpellTexture. First guess, not seen in game; no texture comes from
     -- a table in this addon.
+    -- P-GATHER. Is this minimap tracking (Find Minerals, Find Herbs) on?
+    -- true / false; nil when it cant be told. C_Minimap's tracking list by
+    -- name, else the one tracking texture against the spell's own. First
+    -- guess, as Flow read it (Modules/Rotation/Actions.lua); not seen in game.
+    function c.tracking(spell)
+        if type(spell) ~= "string" or spell == "" then return nil end
+        local M = env.C_Minimap
+        if type(M) == "table" then
+            local okN, n = call(M.GetNumTrackingTypes)
+            if okN and type(n) == "number" and not hidden(n) then
+                for i = 1, n do
+                    local ok, a, _, active = call(M.GetTrackingInfo, i)
+                    if ok then
+                        local name, on = a, active
+                        if type(a) == "table" then name, on = a.name, a.active end
+                        if not hidden(name) and name == spell and not hidden(on) then return on and true or false end
+                    end
+                end
+            end
+        end
+        local okT, cur = call(env.GetTrackingTexture)
+        if okT and not hidden(cur) then
+            if cur == nil then return false end
+            local tex = c.spellTexture(c.spellId(spell))
+            if tex ~= nil then return cur == tex end
+        end
+        return nil
+    end
+
+    -- GT-1. Is any minimap tracking on (Flow's X.AnyTracked)? true / false;
+    -- nil when it cant be told. First guess; not seen in game.
+    function c.anyTracking()
+        local M = env.C_Minimap
+        if type(M) == "table" then
+            local okN, n = call(M.GetNumTrackingTypes)
+            if okN and type(n) == "number" and not hidden(n) then
+                for i = 1, n do
+                    local ok, a, _, active = call(M.GetTrackingInfo, i)
+                    if ok then
+                        local on = active
+                        if type(a) == "table" then on = a.active end
+                        if on == true and not hidden(on) then return true end
+                    end
+                end
+                return false
+            end
+        end
+        local okT, cur = call(env.GetTrackingTexture)
+        if okT and not hidden(cur) then return cur ~= nil end
+        return nil
+    end
+
+    -- P-GATHER. The professions you have: { [name] = true }, empty when read
+    -- and none, nil when the client gives no read. GetProfessions with
+    -- GetProfessionInfo, else the skill lines (GetNumSkillLines,
+    -- GetSkillLineInfo, headers left out). First guess; not seen in game.
+    function c.professions()
+        local out, read = {}, false
+        local okP, a, b, c3, d, e = call(env.GetProfessions)
+        if okP then
+            read = true
+            for _, index in ipairs({ a, b, c3, d, e }) do
+                if type(index) == "number" and not hidden(index) then
+                    local ok, name = call(env.GetProfessionInfo, index)
+                    if ok and type(name) == "string" and not hidden(name) and name ~= "" then out[name] = true end
+                end
+            end
+        end
+        if next(out) == nil then
+            local okN, n = call(env.GetNumSkillLines)
+            if okN and type(n) == "number" and not hidden(n) then
+                read = true
+                for i = 1, n do
+                    local ok, name, header = call(env.GetSkillLineInfo, i)
+                    if ok and not header and type(name) == "string" and not hidden(name) and name ~= "" then
+                        out[name] = true
+                    end
+                end
+            end
+        end
+        return read and out or nil
+    end
+
     function c.spellTexture(id)
         if type(id) ~= "number" then return nil end
         local group = env.C_Spell
@@ -5803,6 +5961,30 @@ function ns.make.client(env)
         return true
     end
     -- ------------------------------------------------------- end craft
+
+    -- ------------------------------------------- spell name by id (CF-32)
+    -- c.spellName(id) -> the spell's name, or nil when not read. The same
+    -- read the learned-spell watch uses above: C_Spell.GetSpellInfo(id).name
+    -- where the client has it, else GetSpellInfo's first answer; no rank.
+    -- For your own casts, which the client names by id
+    -- (UNIT_SPELLCAST_SUCCEEDED): Rotation/OwnCasts.lua and
+    -- Rotation/FormSpells.lua. A first guess, not seen in game.
+    function c.spellName(id)
+        if type(id) ~= "number" or hidden(id) then return nil end
+        local name = spellName(id)
+        return name
+    end
+    -- --------------------------------------------- end spell name by id
+
+    -- ------------------------------------------- your own buffs (N13)
+    -- c.ownBuffs() -> { [name] = secondsLeft or true } or nil
+    --   the buffs on you that you put up yourself: read as playerBuffs, with
+    --   the filter "HELPFUL|PLAYER" (the PLAYER filter targetDebuffs uses
+    --   for your own debuffs). Another paladin's aura on you is not in it.
+    --   The same not known as playerBuffs. A first guess from the API pages
+    --   (API_C_UnitAuras.GetAuraDataByIndex, API_UnitBuff), not seen in game.
+    function c.ownBuffs() return aurasOf("player", "HELPFUL|PLAYER", env.UnitBuff) end
+    -- ------------------------------------------ end your own buffs
     return c
 end
 

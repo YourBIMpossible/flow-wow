@@ -35,12 +35,13 @@ local KIND = {
 local READS = {
     now = false, clock = true, clockMs = false, addonLoaded = true, listenFaults = true, uptime = true, inCombat = true,
     money = true, bags = true, bagItems = true, bankOpen = true, bankItems = true, merchantOpen = false,
-    merchantItems = false, recipes = true, trainer = false, faction = false, class = true,
+    merchantItems = false, recipes = true, recipeSchematic = false, trainer = false, faction = false, class = true,
     stealthed = true, target = true, inRange = true, level = false, gear = false, spellCooldown = true,
     spellId = true, spellTexture = false, facing = true, spell = true, position = true, dead = true,
     ghost = true, corpse = true, waypoint = false, mapSize = true, mapCont = false, zone = true,
     combatLockdown = true, version = false, screen = false, questLog = true, questFocus = true,
     questFocusReads = false, questieModule = false, minimap = false, itemInfo = false,
+    itemLines = false, itemTexture = false, tracking = false, anyTracking = false, professions = false,
     durability = false, lootWindow = false, windowState = false, form = true, petBattle = false,
     vehicle = false, guid = false, playerGUID = false, petGUID = false, serviceNpc = false,
     merchantRepairs = false, bindLocation = false, hearthCooldown = false, targetRank = false,
@@ -53,6 +54,10 @@ local READS = {
     pet = true,
     -- Lead section 226: the craft bar reads (P-CRAFT); the capture asks none.
     recipeReagents = false, recipeUsable = false, moving = false,
+    -- CF-32: a spell's name by id, for your own casts (Rotation/OwnCasts.lua).
+    spellName = false,
+    -- N13: the buffs you put up yourself (Classes/Paladin.lua auras).
+    ownBuffs = false,
 }
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).
