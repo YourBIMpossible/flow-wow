@@ -10803,6 +10803,16 @@ function ns.make.client(env)
             return page
         end
     end
+
+    -- Lead section 303 (d), the in-dungeon tracker: the name of the instance
+    -- you are in, the first answer of GetInstanceInfo(), or nil when not
+    -- known (no call, a failed call, a secret or empty answer). Only reads.
+    -- A first guess: not seen in game on 16001.
+    function c.instanceName()
+        local ok, name = call(env.GetInstanceInfo)
+        if not ok or hidden(name) or type(name) ~= "string" or name == "" then return nil end
+        return name
+    end
     return c
 end
 

@@ -195,6 +195,9 @@ local READS = {
     -- Nav/DungeonRead.lua only. Their names (UnitRace,
     -- C_QuestLog.IsQuestFlaggedCompleted) are in Diag.NAMES.
     raceId = false, questDone = false,
+    -- Lead section 303 (d): the instance name, read by UI/DungeonTracker.lua
+    -- only. Its name (GetInstanceInfo) is in Diag.NAMES.
+    instanceName = false,
 }
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).

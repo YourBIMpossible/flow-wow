@@ -246,5 +246,7 @@ return {
     "Nav/BossKills.lua",
     -- Lead section 318: the Dungeon Quests window, on the kit (after Kit and the dungeon data).
     "UI/DungeonWindow.lua",
+    -- Lead section 303 (d): the in-dungeon tracker, on the kit (after BossKills and the dungeon data).
+    "UI/DungeonTracker.lua",
     },
 }
