@@ -21,8 +21,13 @@ local _, ns = ...
 -- bar does, so the player sees "move closer" and not "press this now". Any
 -- other suggestion puts the plain colour back.
 --
--- Not tested in game: client.icon, client.spellTexture and the tint are
--- first guesses.
+-- Lead section 340: the icon says what it is in its tooltip (I.Tip): it
+-- shows the next spell and casts nothing; the Flow button casts
+-- (Rotation/FlowButton.lua). The Flow button's default place stands well
+-- below this icon (FB.DEFAULT_POINT), so the two never stand side by side.
+--
+-- Not tested in game: client.icon, client.spellTexture, the tint and the
+-- tooltip on the icon (client.hoverTip) are first guesses.
 local I = {}
 ns.RotationIcon = I
 
@@ -43,6 +48,13 @@ function I.Spell(view)
     local spell = s.spell
     if type(spell) ~= "string" or spell == "" then return nil end
     return spell
+end
+
+-- Lead section 340: the tooltip line. spell: the spell shown, or nil.
+function I.Tip(spell)
+    local what = "the next spell"
+    if type(spell) == "string" and spell ~= "" then what = "the next spell, " .. spell end
+    return "Rotation icon. Shows " .. what .. "; it casts nothing. Click the Flow button to cast."
 end
 
 -- The icon's mark for a driver view: "far" when the suggestion is the
@@ -201,6 +213,11 @@ function I.Declare(k)
             end
 
             hide()
+            local shownSpell = nil
+            if type(client.hoverTip) == "function" then
+                pcall(client.hoverTip, { frame = ns.id.framePrefix .. "RotationIcon",
+                    text = function() return I.Tip(shownSpell) end })
+            end
             local w, h = screen()
             icon.place(ns.Nav.ClampPoint(savedPoint(), I.SIZE, w, h)
                 or ns.Nav.ClampPoint(I.DEFAULT_POINT, I.SIZE, w, h)
@@ -227,6 +244,7 @@ function I.Declare(k)
                 -- stage. No reveal module, or any doubt: shown.
                 local held = type(ns.Reveal) == "table" and type(ns.Reveal.Open) == "function"
                     and ns.Reveal.Open(k, "icon") == false
+                shownSpell = nil
                 if not tex or held or says(client, "petBattle") or says(client, "vehicle") then
                     hide()
                     if not tex and not held and not emptySaid and k.settings:get(D.SETTING) == true
@@ -239,6 +257,7 @@ function I.Declare(k)
                     return
                 end
                 if icon.setTexture(tex) then
+                    shownSpell = I.Spell(view)
                     mark(I.Mark(view))
                     caption(I.Words(view))
                     icon.show(true)

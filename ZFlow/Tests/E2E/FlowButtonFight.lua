@@ -13,8 +13,8 @@ local _, ns = ...
 --   3. Three buttons, each saying what it is: the rotation icon shows the
 --      next spell and casts nothing, the Flow button casts, the buff button
 --      casts self buffs. The buff button stands apart by default. The
---      rotation icon is not shown beside the Flow button holding the same
---      spell.
+--      rotation icon and the Flow button do not stand side by side by
+--      default.
 --
 -- What the fake client cannot express: the click, the swing, the order of
 -- PLAYER_REGEN_DISABLED and the lock in game. Spell ids are made up.
@@ -192,23 +192,22 @@ tests["flow fight: the buff button stands apart from the Flow button by default"
     local dx = math.abs(s.point[3] - f.point[3])
     local dy = math.abs(s.point[4] - f.point[4])
     t.ok(dx >= FB.SIZE + FB.DOCK_GAP or dy >= FB.SIZE + FB.DOCK_GAP, "apart from the Flow button, not touching it")
-    addon.settings:set(FB.DOCK, true); c.advance(3, 5)
+    local c2 = start({ account = { settings = { buffButton = { dock = true } } } })
+    s = rowOf(c2, SELF)
+    if not s then t.ok(false, "the buff button, docked"); return end
     local p = FB.DEFAULT_POINT
     t.eq(s.point, { p[1], p[2], p[3], p[4] - 26 - FB.DOCK_GAP - 26 }, "docked on: under the Flow button")
 end
 
-tests["flow fight: the rotation icon is not shown beside the Flow button holding the same spell"] = function(t)
+tests["flow fight: the rotation icon and the Flow button do not stand side by side"] = function(t)
     local c = start()
     pull(c)
-    local h = icon(c)
-    if not h then t.ok(false, "the rotation icon"); return end
+    local h, f = icon(c), rowOf(c, FLOW)
+    if not (h and f) then t.ok(false, "the rotation icon and the Flow button"); return end
     t.eq(held(c), "Attack")
-    t.eq(h.shown, false, "the same spell as the Flow button: the icon is hidden")
-    fightStarts(c)
-    c.setCurrentSpell(ATTACK_ID, false); c.advance(3, 5)
-    t.eq(held(c), "Stormstrike")
-    t.eq(h.shown, true, "the suggestion differs from what the click casts: the icon shows it")
-    t.eq(h.texture, "tex:Attack")
+    t.eq(h.shown, true, "the icon shows the next spell")
+    local gap = math.abs(h.point[4] - f.point[4]) - (ns.RotationIcon.SIZE + FB.SIZE) / 2
+    t.ok(gap >= FB.SIZE, "a full button apart, not touching: " .. gap)
 end
 
 return tests

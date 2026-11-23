@@ -3075,6 +3075,26 @@ function ns.make.fakeClient(opts)
         if not ok or type(text) ~= "string" then return nil end
         return text
     end
+    -- Lead section 340: hoverTip also takes a named icon (c.icon with
+    -- spec.name), as the real client takes any named frame: the rotation
+    -- icon's tooltip.
+    local iconNames = {}
+    local namedIcon = c.icon
+    function c.icon(spec)
+        local h = namedIcon(spec)
+        if type(h) == "table" and type(spec) == "table" and type(spec.name) == "string" then
+            iconNames[spec.name] = true
+        end
+        return h
+    end
+    local rowTip = c.hoverTip
+    function c.hoverTip(spec)
+        if type(spec) == "table" and type(spec.text) == "function" and iconNames[spec.frame] then
+            c.hoverTips[spec.frame] = spec
+            return true
+        end
+        return rowTip(spec)
+    end
 
 
 

@@ -26,9 +26,19 @@ local _, ns = ...
 -- (client.buttonFace), so a missing part never stops the button showing.
 --
 -- Size and place come from the Flow import (Import/Stored.lua): the Flow
--- button at layout.rotation.frame and scale, the self button docked under
--- it (buffButton.dock, on by default) at the dock scale, or at
--- layout.buffButton.frame and scale. The grip beside either one (the S29
+-- button at layout.rotation.frame and scale, the self button at
+-- layout.buffButton.frame and scale, else beside the Flow button at
+-- FB.SELF_DEFAULT_POINT, or docked under it (buffButton.dock, off by
+-- default: lead section 340) at the dock scale.
+--
+-- Lead section 340: three things on screen, each saying what it is in its
+-- tooltip. The rotation icon (UI/RotationIcon.lua) shows the next spell and
+-- casts nothing; the Flow button casts on a click; the self button is the
+-- buff button, for your self buffs. In a fight the Flow button cannot
+-- change: its tooltip says what the click casts and, when the rotation now
+-- suggests something else, that it changes after the fight. As the fight
+-- starts, a Flow button holding the swing takes the fight spell
+-- (RotationDriver view.fight). The grip beside either one (the S29
 -- move handle, UI/MoveHandle.lua) moves it, out of a fight; the place is
 -- kept at those same paths. Moving a docked self button undocks it.
 -- Lead section 305 item 1: nothing drags the secure button itself. It acts
@@ -66,7 +76,12 @@ FB.FRAME = "FlowButton"
 FB.SELF_FRAME = "SelfButton"
 FB.SIZE = 52                         -- legacy BuffButton.lua BB.SIZE
 FB.DOCK_GAP = 17                     -- legacy DOCK_GAP
-FB.DEFAULT_POINT = { "CENTER", "CENTER", 0, -215 } -- authored: under the rotation icon
+FB.DEFAULT_POINT = { "CENTER", "CENTER", 0, -270 } -- authored: well under the rotation icon, not beside it
+-- Lead section 340: the buff button apart from the Flow button by default,
+-- to its right, one button and a gap clear of it (authored).
+FB.SELF_DEFAULT_POINT = { "CENTER", "CENTER", 100, -270 }
+FB.FLOW_NAME = "Flow button"
+FB.SELF_NAME = "Buff button, for your self buffs"
 FB.SELF_LABEL = "Show the self buff button"
 FB.DOCK_LABEL = "Keep the self button under the Flow button"
 FB.PARTS = { "type", "spell", "unit", "item" }
@@ -179,14 +194,29 @@ function FB.DockPoint(point, flowSize, selfSize)
     return { point[1], point[2], x, y }
 end
 
--- The hover line.
-function FB.Tip(which, why, hold)
-    if type(hold) == "table" then
-        local what = hold.spell or hold.item
-        if which == "self" then return "Casts " .. tostring(what) .. " on you when you click it." end
-        return "Casts " .. tostring(what) .. " when you click it."
+-- The hover line: which button it is, then what a click casts, or what is
+-- missing. now: in a fight, the spell the rotation suggests now (nil out of
+-- a fight); when the Flow button holds something else, the line says the
+-- button changes after the fight.
+function FB.Tip(which, why, hold, now)
+    local name = FB.FLOW_NAME
+    if which == "self" then name = FB.SELF_NAME end
+    if type(hold) ~= "table" then return name .. ". " .. tostring(why) end
+    local what = hold.spell or hold.item
+    if which == "self" then return name .. ". Casts " .. tostring(what) .. " on you when you click it." end
+    local line = name .. ". Casts " .. tostring(what) .. " when you click it."
+    if type(now) == "string" and now ~= what and not (ns.cast.ATTACK[now] and ns.cast.ATTACK[what]) then
+        line = line .. " The rotation now suggests " .. now .. "; this button changes after the fight."
     end
-    return tostring(why)
+    return line
+end
+
+-- Lead section 340: the Flow button's pick as the fight starts, from the
+-- driver's view.fight; nil when the view has none.
+function FB.FightPick(view)
+    if type(view) ~= "table" or type(view.fight) ~= "table" or view.fight.ok ~= true then return nil end
+    local plan = ns.ClickSlots.Plan(view.fight.button, nil)
+    return plan.key
 end
 
 local function texture(client, e)
@@ -248,7 +278,7 @@ function FB.Declare(k)
     end
 
     local function docked()
-        return setting(FB.DOCK) ~= false
+        return setting(FB.DOCK) == true
     end
 
     local function selfSize()
@@ -268,12 +298,28 @@ function FB.Declare(k)
         return ns.Nav.ClampPoint(point, size, w, h, size) or point
     end
 
-    -- Docked: under where the Flow button stands on the screen.
+    -- Docked: under where the Flow button stands on the screen. Not
+    -- docked: its own place, else FB.SELF_DEFAULT_POINT.
     local function selfPoint()
-        local saved = St.Point(setting(FB.SELF_LAYOUT))
-        if saved and not docked() then return saved end
+        if not docked() then
+            local saved = St.Point(setting(FB.SELF_LAYOUT))
+            if saved then return saved end
+            local p = FB.SELF_DEFAULT_POINT
+            return { p[1], p[2], p[3], p[4] }
+        end
         local fs = flowSize()
         return FB.DockPoint(clamp(flowPoint(), fs), fs, selfSize())
+    end
+
+    -- In a fight (the lock not a plain false), the spell the rotation
+    -- suggests now; nil out of a fight or with no suggestion.
+    local function suggestedNow()
+        if lockdown() == false then return nil end
+        local v = lastView
+        if type(v) ~= "table" or type(v.suggestion) ~= "table" then return nil end
+        local spell = v.suggestion.spell
+        if type(spell) ~= "string" then return nil end
+        return spell
     end
 
     -- One button: made once, out of a fight; set through a KeyFrame.
@@ -365,7 +411,11 @@ function FB.Declare(k)
             local size = sizeOf()
             ns.MoveHandle.Attach(k, client, { target = name, width = size, height = size, save = moved })
             if type(client.hoverTip) == "function" then
-                pcall(client.hoverTip, { frame = name .. "1", text = function() return FB.Tip(which, u.why, u.hold) end })
+                local function line()
+                    if which == "flow" then return FB.Tip(which, u.why, u.hold, suggestedNow()) end
+                    return FB.Tip(which, u.why, u.hold)
+                end
+                pcall(client.hoverTip, { frame = name .. "1", text = line })
             end
             kf = K.New({ button = ns.ClickSlots.Button(row), lockdown = lockdown,
                          rows = function(plan) return FB.Rows(plan.hold) end, signature = FB.Signature })
@@ -399,6 +449,14 @@ function FB.Declare(k)
     function api.made() return units.flow.made() end
     function api.selfMade() return units.self.made() end
     function api.status() return { flow = units.flow.status(), self = units.self.status() } end
+    -- Lead section 340: the spell or item the Flow button holds now (set on
+    -- the button), or nil: off, not made, or holding nothing.
+    function api.held()
+        if setting(FB.SETTING) ~= true or not units.flow.made() then return nil end
+        local h = units.flow.hold
+        if type(h) ~= "table" then return nil end
+        return h.spell or h.item
+    end
 
     local function pack()
         if not client or type(client.class) ~= "function" then return nil end
@@ -447,10 +505,10 @@ function FB.Declare(k)
             synonyms = { "buff", "self", "button", "buff button", "self buff" },
             help = "A button that holds a buff you are missing, cast on you when you click it. Seals, shouts and forms stay on the Flow button. Set outside fights only. It binds no key and presses nothing for you.",
         }, {
-            key = FB.DOCK, scope = "account", type = "bool", default = true,
+            key = FB.DOCK, scope = "account", type = "bool", default = false,
             label = FB.DOCK_LABEL, group = "combat",
             synonyms = { "dock", "buff button", "self", "under" },
-            help = "On, the self button stands under the Flow button. Moving the self button with its grip turns this off.",
+            help = "On, the self button stands under the Flow button. Off (the default), it stands apart, to the right of it. Moving the self button with its grip turns this off.",
         }, {
             key = FB.LAYOUT, scope = "account", type = "table", path = FB.PATH,
             label = "Flow button position", group = "combat", synonyms = { "flow", "button", "position", "move" },
