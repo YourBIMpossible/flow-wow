@@ -20,7 +20,7 @@ function R.Declare(k)
     if k:Setting({ key = "ui.intro", scope = "char", type = "bool", default = true,
         label = "Welcome at first login", group = R.GROUP, synonyms = { "welcome", "intro", "first login" },
         help = "Shows the welcome once, the first time this character logs in." }) then made = made + 1 end
-    if k:Setting({ key = "buttons.worldMap", scope = "account", type = "bool", default = false,
+    if k:Setting({ key = "buttons.worldMap", scope = "account", type = "bool", default = true,
         label = "Button on the world map", group = R.GROUP, synonyms = { "button", "map", "arrow menu" },
         help = "A button on the world map that opens the arrow menu." }) then made = made + 1 end
     if k:Setting({ key = "buttons.merchant", scope = "account", type = "bool", default = false,

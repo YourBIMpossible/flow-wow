@@ -72,7 +72,7 @@ local function start(opts)
     c.fire("ADDON_LOADED", ns.id.addon)
     c.fire("PLAYER_LOGIN")
     c.fire("PLAYER_ENTERING_WORLD")
-    if opts.enabled then k.settings:set(D.SETTING, true) end
+    k.settings:set(D.SETTING, opts.enabled == true)
     return k, c, api, calls
 end
 

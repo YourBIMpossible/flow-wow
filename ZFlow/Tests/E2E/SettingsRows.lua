@@ -70,11 +70,11 @@ tests["the rows the features left to the lead can be set and read back"] = funct
     end
 end
 
-tests["the window buttons' settings are rows and start off"] = function(t)
+tests["the window buttons' settings are rows; the world map one starts on, the merchant one off"] = function(t)
     local addon = boot()
-    for _, key in ipairs({ "buttons.worldMap", "buttons.merchant" }) do
+    for key, start in pairs({ ["buttons.worldMap"] = true, ["buttons.merchant"] = false }) do
         t.ok(addon.settings:row(key) ~= nil, key .. " is a row")
-        t.eq(addon.settings:get(key), false, key .. " starts off")
+        t.eq(addon.settings:get(key), start, key .. " starts " .. (start and "on" or "off"))
     end
 end
 

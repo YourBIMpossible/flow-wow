@@ -149,7 +149,7 @@ local _, ns = ...
 --           refused, reason             from keys, when the keys are refused,
 --           step, result, note, spell   the last row of the trace }
 --
--- The module is declared off: char setting D.SETTING. While off nothing is
+-- The module is declared on (lead section 293, as legacy Flow): char setting D.SETTING. While off nothing is
 -- read and no view is held. Switched on, each tick publishes its view on
 -- the bus as D.EVENT; switched off, one D.EVENT with no view, then nothing.
 -- A tick whose read fails keeps the last good view (a copy marked stale),
@@ -752,7 +752,7 @@ function D.Declare(k, packs)
         name = D.NAME,
         needs = { "client", "store", "bus" },
         settings = { {
-            key = D.SETTING, scope = "char", type = "bool", default = false,
+            key = D.SETTING, scope = "char", type = "bool", default = true,
             label = "Suggest the next spell",
             help = "Works out which spell to press next. It presses nothing for you.",
             group = "combat.rotation", synonyms = { "rotation", "next spell", "suggest", "icon", "combat" },
