@@ -36,6 +36,10 @@ local _, ns = ...
 --   current       { [spell] = true or false }        queued or toggled on (Attack, Maul)
 --     each of the four maps is nil when not read: a rule that needs one
 --       does not fire on nil (section 183). An empty map is read, nothing there.
+--   pet           { exists, dead, inCombat, family, happiness, powerKind }  your pet
+--     nil when not read (never "no pet"); { exists = false } when the client
+--       says there is none. Each other field is nil when not known. Ask it
+--       through R.PetUp, R.NoPet and R.PetDead (below), not the bare fields.
 --   spells        { [name] = { known, usable, onCooldown, inRange, noPower, castMs } }
 --     onCooldown not known (nil): the spell is not castable; it is not read
 --       as off cooldown.
@@ -82,6 +86,38 @@ end
 -- for out of a fight; never the bare flag.
 function R.InFight(s) return s.inCombat ~= false end
 function R.OutOfFight(s) return s.inCombat == false end
+
+-- The pet (lead section 197). Each answers true, false, or nil when it
+-- cannot be told; a rule fires only on true, so a pet nobody read is never
+-- "no pet" and never "dead".
+--   R.PetUp(s)    a pet is out and alive: nil when whether there is one, or
+--                 (with one) whether it is dead, was not read
+--   R.NoPet(s)    the client said there is no pet: nil when not read
+--   R.PetDead(s)  there is a pet and it is dead: false with no pet; nil when
+--                 not read, or dead not read
+local function petOf(s)
+    local p = s.pet
+    if type(p) ~= "table" or type(p.exists) ~= "boolean" then return nil end
+    return p
+end
+function R.NoPet(s)
+    local p = petOf(s)
+    if p == nil then return nil end
+    return not p.exists
+end
+function R.PetDead(s)
+    local p = petOf(s)
+    if p == nil then return nil end
+    if not p.exists then return false end
+    if type(p.dead) ~= "boolean" then return nil end
+    return p.dead
+end
+function R.PetUp(s)
+    local dead = R.PetDead(s)
+    if dead == nil then return nil end
+    if R.NoPet(s) then return false end
+    return not dead
+end
 
 function R.Knows(s, name)
     local r = row(s, name)

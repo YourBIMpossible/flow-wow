@@ -126,6 +126,8 @@ Diag.NAMES = {
     "UnitIsFriend", "UnitIsGhost", "UnitIsPlayer", "UnitIsUnit", "UnitOnTaxi", "geterrorhandler",
     "hash_SlashCmdList", "print", "seterrorhandler", "time", "C_TaxiMap", "C_TaxiMap.GetTaxiNodesForMap",
     "GetTaxiNodesForMap", "UnitThreatSituation", "C_NamePlate.GetNamePlates",
+    -- Lead section 197: the pet read (client.pet) asks these two as well.
+    "UnitCreatureFamily", "GetPetHappiness",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns
@@ -595,6 +597,8 @@ Diag.ANSWERS = {
     { "zone" }, { "worldPosition" }, { "questLog" }, { "questFocus" }, { "taxiNodes" },
     { "spell", 6603 }, { "currentSpell", 6603 }, { "inRange", 6603 }, { "spellCooldown", 61304 },
     { "itemCount", 6948 }, { "unitBuff", "player", {} },
+    -- Lead section 197: the pet state; forms only, the family word is not kept.
+    { "pet" },
 }
 Diag.ANSWER_COUNTS = { "playerBuffs", "targetDebuffs" }
 Diag.ANSWER_MAPS = { "mapCorners", "mapSize" }
@@ -966,6 +970,7 @@ Diag.READ_WORDS = {
     formKnown = "which form you are in",
     buffs = "your buffs",
     targetDebuffs = "your debuffs on the target",
+    pet = "your pet",
 }
 
 -- The pack's reads that came back not known, as one list of words, or nil.

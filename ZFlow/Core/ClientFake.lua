@@ -1737,6 +1737,39 @@ function ns.make.fakeClient(opts)
         c.mapPinSets[#c.mapPinSets + 1] = h
         return h
     end
+
+    -- Pet state (lead section 197), as the real client's pet(): not known
+    -- (nil) until set; a copy each time.
+    --   c.setPet({ exists = true or false, dead, inCombat, family, happiness, powerKind })
+    --   c.setPet(nil), or no plain exists: not known again
+    -- dead and inCombat: true or false, else not known; family: a non-empty
+    -- word; happiness: "unhappy", "content" or "happy"; powerKind: a number.
+    -- Anything else is left out (not known). With exists false the rest is
+    -- dropped.
+    local PET_MOODS = { unhappy = true, content = true, happy = true }
+    function c.setPet(r)
+        if type(r) ~= "table" or type(r.exists) ~= "boolean" then
+            s.pet = nil
+            return
+        end
+        if not r.exists then
+            s.pet = { exists = false }
+            return
+        end
+        local function yesNo(v) if type(v) == "boolean" then return v end return nil end
+        s.pet = {
+            exists = true, dead = yesNo(r.dead), inCombat = yesNo(r.inCombat),
+            family = (type(r.family) == "string" and r.family ~= "") and r.family or nil,
+            happiness = PET_MOODS[r.happiness or ""] and r.happiness or nil,
+            powerKind = (type(r.powerKind) == "number" and r.powerKind == r.powerKind) and r.powerKind or nil,
+        }
+    end
+    function c.pet()
+        if type(s.pet) ~= "table" then return nil end
+        local out = {}
+        for k, v in pairs(s.pet) do out[k] = v end
+        return out
+    end
     return c
 end
 
