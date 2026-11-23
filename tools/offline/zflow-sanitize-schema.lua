@@ -1,0 +1,134 @@
+-- Lead section 188: what the sanitizer (zflow-sanitize.lua) knows of a
+-- capture. Every field ZFlow saves, with its kind; see the spec kinds at the
+-- top of zflow-sanitize.lua. A field not here is refused.
+--
+-- Where the names are (read from the code, ZFlow/):
+--   diag.snaps[].timing.character / .realm        Core/Diag.lua session()
+--   diag.snaps[].shapes.realm, .realmNormalized,
+--     .fullName (name, realm)                     Core/Diag.lua probes
+--   learned.prices.auction / .auctionHistory keys "<realm>-<faction>"
+--                                                 Import/FromFlow.lua,
+--                                                 Items/AuctionLog.lua
+--   learned.fights.deaths[].by (the killer)       Import/FromFlow.lua
+--   learned.fights.mobs keys (target names) on the character
+-- Free text (error lines, problem texts, import notes, export lines, typed
+-- labels, other add-ons' globals) is kept with every name found above
+-- replaced inside it. No code reads guild, account, mail or chat text: those
+-- kinds have no field here, so a capture holding one is refused.
+--
+-- OPEN marks a subtree the add-on fills with keys it does not fix (copied
+-- from Flow, learned game data, recovered skeleton keys): any keys and
+-- plain values, every text key and value treated as free text. A name that
+-- is only ever in such a subtree, and never in a field above, is not known
+-- to be a name and is kept.
+
+local OPEN = { key = { any = { "num", "free" } } }
+OPEN.map = { any = { "num", "bool", "free", OPEN } }
+
+local function fields(t, open) return { fields = t, open = open } end
+local function list(spec) return { list = spec } end
+local function map(spec, key) return { map = spec, key = key } end
+
+-- A probe answer (Core/Diag.lua shape()): v1..vN are plain or a table of
+-- plain fields; an answer that failed holds the error text: free.
+local VALUE = { any = { "num", "bool", "free", map({ any = { "num", "bool", "free" } }, "str") } }
+local function shape(values)
+    return fields({
+        ok = "bool", n = "num", types = list("str"),
+        values = values or map(VALUE, "str"),
+        error = "free",
+    })
+end
+local NAME_VALUES = fields({ v1 = { any = { "char", "free" } }, v2 = { any = { "realm", "free" } } }, VALUE)
+local REALM_VALUES = fields({ v1 = { any = { "realm", "free" } } }, VALUE)
+
+local SNAP = fields({
+    why = "str", at = "num", clock = "num",
+    reads = OPEN,
+    known = map("bool", "str"),
+    shapes = fields({
+        realm = shape(REALM_VALUES),
+        realmNormalized = shape(REALM_VALUES),
+        fullName = shape(NAME_VALUES),
+    }, shape()),
+    kernel = fields({
+        phase = "str", paused = "bool", pauseText = "free", storeOpened = "bool",
+        blocked = map("free", "str"),
+        problems = list(fields({ kind = "str", owner = "str", text = "free", count = "num" })),
+        eventsNotRegistered = list("str"),
+        eventsExpectedAbsent = list("str"),
+        eventFrameNotMade = "bool", tickFrameNotMade = "bool",
+        meter = OPEN,
+    }),
+    timing = fields({
+        order = list("str"),
+        start = "num",
+        character = "char",
+        realm = "realm",
+        errors = list(fields({ text = "free", count = "num", at = "num", phase = "str", ours = "bool" })),
+    }, "num"),
+})
+
+local DIAG = fields({
+    starts = "num", count = "num",
+    names = fields({ build = "str", names = map("str", "str") }),
+    api = fields({
+        namespaces = map({ any = { "bool", map("free", "str") } }, "str"),
+        globals = map(list("free"), "str"),
+    }),
+    reads = list(fields({ at = "num", build = "str", reads = OPEN })),
+    snaps = list(SNAP),
+})
+
+local PRICE = fields({ value = "num", basis = "str", source = "str" })
+local HISTORY = fields({ h = list("num") })
+
+local IMPORT = fields({
+    source = "str", sourceVersion = "scalar", importer = "scalar", schema = "scalar",
+    counts = OPEN, merge = OPEN,
+    vendorChoices = OPEN, sameAsFlowDefault = OPEN,
+    vendorSameAsFlowDefault = OPEN, vendorConfirmed = OPEN,
+    refused = "free",
+    dropped = list(fields({ key = "free", why = "str", reason = "free" })),
+    adjusted = list(fields({ key = "free", from = OPEN.map, to = OPEN.map, reason = "free" })),
+})
+
+local ACCOUNT_LEARNED = fields({
+    prices = fields({
+        vendor = map(PRICE, { any = { "num", "str" } }),
+        auction = map(map(PRICE, { any = { "num", "str" } }), "realmFaction"),
+        auctionHistory = map(map(HISTORY, { any = { "num", "str" } }), "realmFaction"),
+    }),
+    fights = fields({
+        deaths = list(fields({ at = "num", by = "char", level = "num" })),
+    }, OPEN),
+}, OPEN)
+
+local CHAR_LEARNED = fields({
+    fights = fields({ mobs = map(OPEN.map, "char") }, OPEN),
+}, OPEN)
+
+return {
+    globals = {
+        ZFlowDB = fields({
+            schema = "num",
+            recovered = OPEN,
+            settings = OPEN,
+            layout = OPEN,
+            learned = ACCOUNT_LEARNED,
+            imports = list(IMPORT),
+            facts = OPEN,
+            diag = DIAG,
+        }),
+        ZFlowCharDB = fields({
+            schema = "num",
+            recovered = OPEN,
+            settings = OPEN,
+            layout = OPEN,
+            state = OPEN,
+            learned = CHAR_LEARNED,
+            audit = OPEN,
+            export = fields({ at = "num", lines = list("free") }),
+        }),
+    },
+}
