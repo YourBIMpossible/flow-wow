@@ -17,6 +17,12 @@
 --   R.List(st) -> { { key, name, minQ, maxQ, ids } }   in level order
 --   R.Pane(st, client, key) -> the pane (Nav/DungeonStates.lua S.Pane),
 --                              or one saying why there is none yet
+--   R.Loot(st, client, key, book) -> the Bosses tab's data (lead section
+--     305): { title, why, bosses = { { name, kills, items = { { item,
+--     times } } } }, unplaced }. book is this account's own seen loot,
+--     account "learned.bossLoot" as UI/BossLoot.lua keeps it; a boss is in
+--     the dungeon where Questie spawns one of its creatures. Most-seen
+--     items first. No loot table: only what this account saw.
 --
 -- Client reads: questieModule, level, class, raceId, faction, questLog,
 -- questDone. Only reads. Not tested in game: every Questie call here is
@@ -40,6 +46,8 @@ R.SKIP = { [2597] = true, [3277] = true, [3358] = true }
 
 R.WHY_BUILDING = { "Reading Questie's dungeon quests.",
     "This takes a moment the first time; the list fills in by itself." }
+R.WHY_NO_LOOT = { "No boss loot seen here on this account yet.",
+    "Kill a boss of this dungeon with loot recording on and its drops will appear here." }
 R.WHY_LIST = { "Questie's dungeon list could not be read.",
     "Type the slash command with diag to see why." }
 
@@ -339,4 +347,44 @@ function R.Pane(st, client, key)
         if q then quests[#quests + 1] = q end
     end
     return S.Pane({ available = true, dungeon = d, quests = quests, ctx = ctx })
+end
+
+function R.Loot(st, client, key, book)
+    if type(st) ~= "table" or st.state == "noquestie" then return S.Pane({ available = false }) end
+    if st.state == "failed" then return waiting(R.WHY_LIST) end
+    if st.state ~= "ready" then return waiting(R.WHY_BUILDING) end
+    local d = key ~= nil and st.byKey[key] or nil
+    if not d then return S.Pane({ available = true }) end
+    local db = questieModule(client, "QuestieDB")
+    if not db then return S.Pane({ available = false }) end
+    local out = { title = d.name, bosses = {}, unplaced = 0 }
+    for _, entry in pairs(type(book) == "table" and book or {}) do
+        if type(entry) == "table" then
+            local here, any = false, false
+            for npc in pairs(type(entry.npcs) == "table" and entry.npcs or {}) do
+                if type(npc) == "number" then
+                    any = true
+                    if placeOf(st, db, "npc", npc) == d.key then here = true end
+                end
+            end
+            if not any then
+                out.unplaced = out.unplaced + 1
+            elseif here then
+                local items = {}
+                for item, v in pairs(type(entry.items) == "table" and entry.items or {}) do
+                    local times = type(v) == "table" and tonumber(v.times) or nil
+                    if times and times > 0 then items[#items + 1] = { item = item, times = times } end
+                end
+                table.sort(items, function(a, b)
+                    if a.times ~= b.times then return a.times > b.times end
+                    return tostring(a.item) < tostring(b.item)
+                end)
+                out.bosses[#out.bosses + 1] = { name = type(entry.name) == "string" and entry.name or nil,
+                    kills = tonumber(entry.kills) or 0, items = items }
+            end
+        end
+    end
+    table.sort(out.bosses, function(a, b) return tostring(a.name) < tostring(b.name) end)
+    if #out.bosses == 0 then out.why = R.WHY_NO_LOOT end
+    return out
 end
