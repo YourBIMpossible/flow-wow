@@ -50,6 +50,8 @@
 --     functions, no table that holds itself, no number that is not finite)
 --     and carries copies of result.dropped and result.adjusted
 --     (record.dropped, record.adjusted).
+--     It replaces a record of the same import (source, sourceVersion,
+--     importer), and account.imports keeps the newest Import.IMPORTS_MAX.
 --     confirmed = { ["sell.autoRepair"] = true, ... }: the vendor automations
 --     the player confirmed, by Flow key. Only a true counts. An automation
 --     the import found on and the player did not confirm stays off, however
@@ -142,6 +144,8 @@ local _, ns = ...
 --    in report.incompatible, its skipped line says so, and the stored
 --    record's merge counts carry incompatible (D8, GH1).
 local IMPORTER_VERSION = 4
+-- F-011: at most this many import records are kept, newest last.
+local IMPORTS_MAX = 5
 -- The highest Flow data version this importer understands. Flow's version is
 -- the highest migration it has run (Core.lua:251-276) and Flow registers no
 -- migration, so every known Flow data set is at 0 (or carries no version).
@@ -1524,8 +1528,18 @@ local function Merge(existingAccount, existingChar, imported, defaults, confirme
     if type(record.adjusted) ~= "table" then record.adjusted = plain(imported.adjusted) end
     record.merge = copy(report.counts)
     record.vendorConfirmed = vendorConfirmed
-    local imports = result.account.imports
-    imports[#imports + 1] = record
+    -- F-011: the import record stays bounded. A record of the same import
+    -- (same source, source version and importer) is replaced, not added
+    -- again, and only the newest IMPORTS_MAX records are kept.
+    local kept = {}
+    for _, old in ipairs(result.account.imports) do
+        local same = type(old) == "table" and old.source == record.source
+            and old.sourceVersion == record.sourceVersion and old.importer == record.importer
+        if not same then kept[#kept + 1] = old end
+    end
+    kept[#kept + 1] = record
+    while #kept > IMPORTS_MAX do table.remove(kept, 1) end
+    result.account.imports = kept
     return result.account, result.char, report
 end
 
@@ -1535,4 +1549,5 @@ ns.Import.Merge = Merge
 ns.Import.VendorGate = vendorGate
 ns.Import.flowMap = MAP
 ns.Import.flowImporterVersion = IMPORTER_VERSION
+ns.Import.IMPORTS_MAX = IMPORTS_MAX
 ns.Import.flowKnownVersion = KNOWN_FLOW_VERSION
