@@ -18,7 +18,7 @@ local function start(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
     c.setSaved(ns.id.accountDB, opts.account or {})
-    local char = {}
+    local char = opts.char or {}
     if opts.goals then char.settings = { goals = opts.goals } end
     if opts.book then char.learned = { facts = { recipeBook = opts.book } } end
     c.setSaved(ns.id.charDB, char)
@@ -466,6 +466,121 @@ tests["craft bar: off in settings: never shown, nothing crafts"] = function(t)
     local bar = barOf(c)
     t.ok(bar == nil or bar.shown() == false, "not shown")
     t.eq(#(c.crafts or {}), 0)
+end
+
+-- Lead section 237 item 1, section 236 item 2: each craft the click asked
+-- is kept on the character (learned.craftRuns, newest last, at most
+-- CraftBar.RUNS_KEEP), so the capture shows whether the client took the
+-- repeat count: asked, made (finishes counted), and how it ended.
+local function runs(c)
+    local char = c.saved(ns.id.charDB)
+    return type(char.learned) == "table" and char.learned.craftRuns or nil
+end
+
+local function plain(r)
+    return { recipe = r.recipe, asked = r.asked, made = r.made, stop = r.stop, why = r.why }
+end
+
+tests["craft bar: each asked craft is kept for the capture, with how it ended"] = function(t)
+    local c = start({ tin = 5 })
+    local bar = barOf(c)
+    if not bar then t.ok(false, "no craft bar") return end
+    tick(bar, { [COPPER_BAR] = 2, [TIN_BAR] = 1 })
+    local r = runs(c)
+    t.eq(type(r), "table", "kept when asked")
+    if type(r) ~= "table" then return end
+    t.eq(#r, 1)
+    t.eq(plain(r[1]), { recipe = COPPER_BAR, asked = 2, made = 0 }, "open while it runs")
+    t.eq(type(r[1].at), "number", "when it was asked")
+    done(c, COPPER_BAR)
+    done(c, COPPER_BAR)
+    t.eq(plain(r[1]), { recipe = COPPER_BAR, asked = 2, made = 2, stop = "done" })
+    bar.press("start")
+    c.fire("PLAYER_STARTED_MOVING")
+    t.eq(#r, 2)
+    t.eq(plain(r[2]), { recipe = TIN_BAR, asked = 1, made = 0, stop = "moving" })
+end
+
+tests["craft bar: a craft the client refused is kept as refused, and the next click recovers"] = function(t)
+    local c, addon = start()
+    local bar = barOf(c)
+    if not bar then t.ok(false, "no craft bar") return end
+    c.setCraftFails("raised")
+    tick(bar, { [COPPER_BAR] = 2 })
+    t.eq(#c.crafts, 0)
+    t.eq(addon.craftBar.running(), false)
+    local r = runs(c) or {}
+    t.eq(r[1] and plain(r[1]), { recipe = COPPER_BAR, asked = 2, made = 0, stop = "refused", why = "raised" })
+    c.setCraftFails(nil)
+    bar.press("start")
+    t.eq(c.crafts, { { id = COPPER_BAR, n = 2 } }, "the next click asks again")
+    done(c, COPPER_BAR)
+    done(c, COPPER_BAR)
+    t.eq(#r, 2)
+    t.eq(r[2] and plain(r[2]), { recipe = COPPER_BAR, asked = 2, made = 2, stop = "done" })
+end
+
+tests["craft bar: only the newest runs are kept"] = function(t)
+    local c = start({ copper = 50 })
+    local bar = barOf(c)
+    if not bar then t.ok(false, "no craft bar") return end
+    local keep = ns.CraftBar.RUNS_KEEP
+    t.eq(type(keep), "number")
+    if type(keep) ~= "number" then return end
+    for i = 1, keep + 2 do
+        bar.press("count:" .. COPPER_BAR, i)
+        bar.press("start")
+        bar.press("start")
+    end
+    local r = runs(c) or {}
+    t.eq(#r, keep)
+    t.eq(r[1] and r[1].asked, 3, "the two oldest dropped")
+    t.eq(r[keep] and r[keep].asked, keep + 2)
+    t.eq(r[keep] and r[keep].stop, "click")
+end
+
+-- Section 236 item 2: a reload in the middle of a run. The new session
+-- starts idle; nothing crafts from the old run, and the kept record of it
+-- is read back as it was saved.
+tests["craft bar: a reload mid-run starts idle, crafts nothing, keeps the record"] = function(t)
+    local c = start()
+    local bar = barOf(c)
+    if not bar then t.ok(false, "no craft bar") return end
+    tick(bar, { [COPPER_BAR] = 3 })
+    done(c, COPPER_BAR)
+    local account, char = c.saved(ns.id.accountDB), c.saved(ns.id.charDB)
+    local c2, addon2 = start({ account = account, char = char })
+    local bar2 = barOf(c2)
+    if not bar2 then t.ok(false, "no craft bar after the reload") return end
+    t.eq(addon2.craftBar.running(), false, "idle after the reload")
+    done(c2, COPPER_BAR)
+    c2.advance(30, 60)
+    c2.fire("TRADE_SKILL_LIST_UPDATE")
+    t.eq(#c2.crafts, 0, "no craft without a click in the new session")
+    t.eq(rowOf(bar2, "start").label, "Start")
+    local r = runs(c2) or {}
+    t.eq(r[1] and plain(r[1]), { recipe = COPPER_BAR, asked = 3, made = 1 }, "read back as saved")
+    t.eq(rowOf(bar2, "count:" .. COPPER_BAR).value, 0, "the counts are not kept over a reload")
+    tick(bar2, { [COPPER_BAR] = 2 })
+    t.eq(c2.crafts, { { id = COPPER_BAR, n = 2 } }, "a click after the reload asks from the new counts")
+    t.eq(#r, 2, "the new ask is kept after the old record")
+end
+
+-- Section 236 item 2: data arriving late. The window opens before the
+-- recipe can be read; Smelt all then smelts nothing. When the list update
+-- brings the recipe, the next click smelts.
+tests["craft bar: a recipe read that arrives late is used on the next click"] = function(t)
+    local c, addon = start({ copper = 4, schematic = false })
+    local bar = barOf(c)
+    if not bar then t.ok(false, "no craft bar") return end
+    bar.press("all")
+    t.eq(#c.crafts, 0, "not read yet, nothing smelted")
+    c.setRecipeSchematic(COPPER_BAR, { makes = ITEM_COPPER_BAR, yield = 1, mats = { [ORE_COPPER] = 1 } })
+    c.fire("TRADE_SKILL_LIST_UPDATE")
+    t.eq(#c.crafts, 0, "the late answer itself asks nothing")
+    bar.press("all")
+    t.eq(c.crafts, { { id = COPPER_BAR, n = 4 } })
+    t.eq(addon.craftBar.running(), true)
 end
 
 tests["craft bar: closing the bar stops it"] = function(t)
