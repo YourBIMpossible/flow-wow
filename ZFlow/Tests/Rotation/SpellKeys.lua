@@ -103,6 +103,29 @@ tests["swing: read with no Attack row in the pack, through the client's spell id
     t.eq(D.Read(swingClient(true), {}, {}, "dps", extra)("canStartAttack"), false, "already swinging")
 end
 
+-- SE-4: the no-auto-attack list kept and the target's name not read: not
+-- known (nil), never "gave up"; each such read is counted in extra.counts.
+tests["gave up: a target name not read with the list kept is not known, and counted"] = function(t)
+    local D = ns.RotationDriver
+    local c = ns.make.fakeClient()
+    c.setTargetName(nil)
+    local counts = {}
+    local extra = { spellKeys = { keyOn = true, noAttack = { Dummy = true } }, counts = counts }
+    t.eq(D.Read(c, {}, {}, "dps", extra)("engageGaveUp"), nil, "not known")
+    t.eq(counts.targetNameUnread, 1, "counted")
+    c.targetName = function() error("not now") end
+    t.eq(D.Read(c, {}, {}, "dps", extra)("engageGaveUp"), nil, "a read that raises: not known")
+    t.eq(counts.targetNameUnread, 2)
+    c.setTargetName("Dummy")
+    c.targetName = nil
+    t.eq(D.Read(c, {}, {}, "dps", extra)("engageGaveUp"), nil, "no read at all: not known")
+    local c2 = ns.make.fakeClient()
+    c2.setTargetName("Dummy")
+    t.eq(D.Read(c2, {}, {}, "dps", extra)("engageGaveUp"), true, "listed and read: gave up")
+    c2.setTargetName("Wolf")
+    t.eq(D.Read(c2, {}, {}, "dps", extra)("engageGaveUp"), false, "read, not listed")
+end
+
 tests["swing: no id from the pack or the client is not known"] = function(t)
     local D = ns.RotationDriver
     local c = ns.make.fakeClient()

@@ -259,6 +259,25 @@ tests["auto attack: an enemy on the no-auto-attack list never gets it, kept thro
     t.eq(attr(c2, "spell"), "Attack")
 end
 
+-- SE-4: a target whose name is not read, with the list kept, is not known:
+-- the attack is not given up for it. Counted, and a diag timing mark says
+-- it happened.
+tests["auto attack: a target name not read with the list kept: not given up, counted, marked"] = function(t)
+    local c, addon = start()
+    pull(c)
+    slash(c, "attack never")
+    c.advance(1, 5)
+    t.ok(not engaged(addon), "listed: not suggested")
+    t.eq(addon.diag.timing.ROTATION_TARGET_NAME_UNREAD, nil, "no mark while the name is read")
+    c.setTargetName(nil)
+    c.advance(1, 5)
+    t.ok(engaged(addon), "the name not read: not given up")
+    local counts = type(addon.rotationDriver.counts) == "function" and addon.rotationDriver.counts() or {}
+    t.ok((counts.targetNameUnread or 0) >= 1, "counted")
+    t.ok(type(addon.diag.timing.ROTATION_TARGET_NAME_UNREAD) == "table", "the diag timing has the mark")
+    nothingWritten(t, c)
+end
+
 tests["auto attack: Attack read late: nothing until it is read, then the key holds it"] = function(t)
     local c, addon = start({ noAttack = true })
     pull(c)
