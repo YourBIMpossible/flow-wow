@@ -201,6 +201,12 @@ function ns.make.store(k)
             for scope, name in pairs(names) do
                 if type(c) == "table" and type(c.savedExists) == "function" then
                     local ok, v = pcall(c.savedExists, name)
+                    -- Lead (section 274): a table the add-on made itself before
+                    -- this (a read ahead of the saved data) was not there.
+                    if ok and v == true and type(c.savedMadeHere) == "function" then
+                        local ok2, made = pcall(c.savedMadeHere, name)
+                        if ok2 and made == true then v = false end
+                    end
                     if ok and type(v) == "boolean" then self.existed[scope] = v end
                 end
             end

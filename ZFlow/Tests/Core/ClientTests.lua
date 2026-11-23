@@ -171,6 +171,18 @@ return {
         t.ok(c.saved("SomeDB") == loaded, "the client's replacement is seen")
     end,
 
+    ["client: a table it made itself is told from a loaded one"] = function(t)
+        local env = gameEnv()
+        local c = ns.make.client(env)
+        t.eq(c.savedMadeHere("SomeDB"), false, "nothing yet")
+        c.saved("SomeDB")
+        t.eq(c.savedMadeHere("SomeDB"), true, "made by the read")
+        env.SomeDB = { a = 1 }
+        t.eq(c.savedMadeHere("SomeDB"), false, "the client loaded a saved one")
+        env.Other = {}
+        t.eq(c.savedMadeHere("Other"), false, "one that was already there")
+    end,
+
     ["fake client: the clock moves only when told"] = function(t)
         local c = ns.make.fakeClient({ now = 50 })
         t.eq(c.now(), 50)

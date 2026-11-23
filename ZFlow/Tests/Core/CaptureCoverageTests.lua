@@ -33,7 +33,7 @@ local KIND = {
              "speak", "stopSpeech",
              -- N68: the one alert sound (output only; changes nothing in the game).
              "playAlert" },
-    tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "slash",
+    tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "savedMadeHere", "slash",
              "slashTaken", "unslash" },
     -- Hands back or runs a sound restart: never asked by the capture.
     -- craftRecipe (lead section 226, acting): one craft on the player click.

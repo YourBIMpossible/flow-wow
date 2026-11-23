@@ -1817,13 +1817,23 @@ function ns.make.client(env)
     -- The saved-variable table of that name, created empty when the client
     -- has not loaded one. Never cached by callers: the client replaces the
     -- global when it loads saved data.
+    local madeHere = {}
     function c.saved(name)
         local t = env[name]
         if type(t) ~= "table" then
             t = {}
             env[name] = t
+            madeHere[name] = t
         end
         return t
+    end
+
+    -- True when the table of that name is an empty one c.saved made itself
+    -- (asked before the client loaded saved data, or nothing was saved):
+    -- it is not proof of an earlier login. The client replaces the global
+    -- when it loads a saved one, and then this is false.
+    function c.savedMadeHere(name)
+        return madeHere[name] ~= nil and env[name] == madeHere[name]
     end
 
     -- True when a table of that name already exists; creates nothing.
