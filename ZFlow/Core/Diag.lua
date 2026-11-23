@@ -218,6 +218,14 @@ Diag.NAMES = {
     -- combatLogFile and their two writes). GetCVar and C_CVar.GetCVar are
     -- listed above.
     "LoggingCombat", "C_CVar.SetCVar", "SetCVar",
+    -- N60a (UI/Chat.lua; Core/Client.lua chatLines, chatFilter, onLinkClick
+    -- and pratModule): the chat filter under its new and its older name,
+    -- the link click, a chat window's lines, and Prat's object. First
+    -- guesses, never asked of 16001; hooksecurefunc is listed above.
+    "ChatFrameUtil.AddMessageEventFilter", "ChatFrameUtil.RemoveMessageEventFilter",
+    "ChatFrame_AddMessageEventFilter", "ChatFrame_RemoveMessageEventFilter",
+    "SetItemRef", "ChatFrame1", "ChatFrame1.GetNumMessages", "ChatFrame1.GetMessageInfo",
+    "Prat", "Prat.GetModule", "Prat.Addon",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns
@@ -399,6 +407,11 @@ function Diag.Collect(k, why)
         -- their data is kept in a snapshot.
         gatherMateLoaded = client.addonLoaded(k.id.gatherMate or ns.id.gatherMate),
         attuneLoaded = client.addonLoaded(k.id.attune or ns.id.attune),
+        -- N60a: whether Prat is loaded and whether its two modules this
+        -- add-on's chat part stands down for are on (nil: it does not say).
+        pratLoaded = client.addonLoaded(k.id.prat or ns.id.prat),
+        pratUrlCopy = client.pratModule("UrlCopy"),
+        pratCopyChat = client.pratModule("CopyChat"),
     }
     -- Whether each read came back known: a nil above leaves no trace when saved.
     snap.known = {}

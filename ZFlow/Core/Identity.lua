@@ -21,4 +21,7 @@ ns.id = {
     -- required, never written, nothing of theirs saved (Nav/AddonSources.lua).
     gatherMate = "GatherMate2",
     attune = "Attune",
+    -- N60a: the chat add-on this one stands down for, feature by feature,
+    -- when both are loaded (UI/Chat.lua). Read only, never required.
+    prat = "Prat-3.0",
 }

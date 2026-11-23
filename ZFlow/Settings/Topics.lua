@@ -39,6 +39,7 @@ ns.Settings.Topics = T
 T.LIST = {
     { id = "general", name = "General and Appearance", sections = {
         { id = "windows", name = "Windows and buttons" },
+        { id = "chat", name = "Chat" },
     } },
     { id = "travel", name = "Travel and Questing", sections = {
         { id = "arrow", name = "The arrow" },

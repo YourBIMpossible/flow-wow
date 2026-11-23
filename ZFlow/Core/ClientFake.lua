@@ -3211,6 +3211,122 @@ function ns.make.fakeClient(opts)
             return plainMoney()
         end
     end
+    -- N60a: chat (UI/Chat.lua). chatLines, chatFilter, onLinkClick and
+    -- pratModule answer as the real client's do. The test's controls:
+    --   c.setChatLines(index, { text, ... })  what a chat window holds; nil:
+    --                              the window is not there (the start)
+    --   c.pushChat(event, text[, index]) -> shown
+    --                              one chat line arrives: it goes through
+    --                              every filter of that event, as the game
+    --                              runs them, and what comes out is added to
+    --                              window `index` (1 when left out) and
+    --                              returned. What is no text passes unread.
+    --   c.chatFilterCount(event)   how many filters that event has now
+    --   c.clickLink(link) -> n     the player clicks a chat link (the text
+    --                              between |H and |h): the game handles it
+    --                              itself (c.linkClicks, every click in
+    --                              order), then every listener of its kind
+    --                              is told; n is how many were
+    --   c.setPratModule(name, on)  what Prat says of its module: true,
+    --                              false, or nil for nothing (the start)
+    --   c.setChatFilters(false)    a client with no chat filter
+    --   c.setLinkHook(false)       a client with no link click to follow
+    do
+        local CHAT_LINES_MAX = 500
+        local windows, filters, kinds, prat = {}, {}, {}, {}
+        c.linkClicks = {}
+
+        function c.setChatLines(index, list)
+            if type(list) ~= "table" then windows[index] = nil return end
+            local copy = {}
+            for i = 1, #list do copy[i] = list[i] end
+            windows[index] = copy
+        end
+        function c.chatLines(index, max)
+            local all = windows[index]
+            if type(all) ~= "table" then return nil end
+            max = math.floor(tonumber(max) or CHAT_LINES_MAX)
+            if max < 1 then max = 1 end
+            if max > CHAT_LINES_MAX then max = CHAT_LINES_MAX end
+            local texts = {}
+            for i = 1, #all do
+                if type(all[i]) == "string" then texts[#texts + 1] = all[i] end
+            end
+            local from = #texts - max + 1
+            if from < 1 then from = 1 end
+            local out = {}
+            for i = from, #texts do out[#out + 1] = texts[i] end
+            return out
+        end
+
+        function c.setChatFilters(on) s.noChatFilter = on == false end
+        function c.chatFilter(events, fn)
+            if s.noChatFilter or type(events) ~= "table" or type(fn) ~= "function" then return nil end
+            local entry = { events = {}, fn = fn }
+            local any = false
+            for _, event in ipairs(events) do
+                if type(event) == "string" and event ~= "" then
+                    entry.events[event] = true
+                    any = true
+                end
+            end
+            if not any then return nil end
+            filters[#filters + 1] = entry
+            return function()
+                for i = #filters, 1, -1 do
+                    if filters[i] == entry then table.remove(filters, i) end
+                end
+            end
+        end
+        function c.chatFilterCount(event)
+            local n = 0
+            for i = 1, #filters do
+                if filters[i].events[event] then n = n + 1 end
+            end
+            return n
+        end
+        function c.pushChat(event, text, index)
+            local shown = text
+            for i = 1, #filters do
+                if filters[i].events[event] and type(shown) == "string" then
+                    local ok, new = pcall(filters[i].fn, shown, event)
+                    if ok and type(new) == "string" then shown = new end
+                end
+            end
+            index = index or 1
+            windows[index] = windows[index] or {}
+            table.insert(windows[index], shown)
+            return shown
+        end
+
+        function c.setLinkHook(on) s.noLinkHook = on == false end
+        function c.onLinkClick(kind, fn)
+            if s.noLinkHook or type(kind) ~= "string" or kind == "" or type(fn) ~= "function" then return nil end
+            kinds[kind] = fn
+            return function()
+                if kinds[kind] == fn then kinds[kind] = nil end
+            end
+        end
+        function c.clickLink(link)
+            c.linkClicks[#c.linkClicks + 1] = link
+            if type(link) ~= "string" then return 0 end
+            local n = 0
+            for kind, fn in pairs(kinds) do
+                if link:sub(1, #kind + 1) == kind .. ":" then
+                    n = n + 1
+                    pcall(fn, link:sub(#kind + 2))
+                end
+            end
+            return n
+        end
+
+        function c.setPratModule(name, on) prat[name] = on end
+        function c.pratModule(name)
+            local on = prat[name]
+            if type(on) ~= "boolean" then return nil end
+            return on
+        end
+    end
     return c
 end
 
