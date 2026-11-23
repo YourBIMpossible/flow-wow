@@ -220,4 +220,39 @@ tests["dungeon read 305: without the entrance in Questie's list, the follow-up w
     t.eq(groupOf(R.Pane(st, c, DM), "At The Door"), "later")
 end
 
+-- Lead section 305: the data for the Bosses tab: this account's own seen
+-- loot (UI/BossLoot.lua keeps it, account "learned.bossLoot"), placed in a
+-- dungeon by where Questie spawns the boss. No loot table of any kind.
+local function book()
+    return {
+        ["e:1001"] = { name = "Cookie", kills = 3, npcs = { [601] = true },
+            items = { ["item:1"] = { times = 1 }, ["item:2"] = { times = 3 } } },
+        ["n:602"] = { name = "Outside Thug", kills = 1, npcs = { [602] = true },
+            items = { ["item:3"] = { times = 1 } } },
+        ["e:1009"] = { name = "No Unit Seen", kills = 1, items = { ["item:4"] = { times = 1 } } },
+    }
+end
+
+tests["dungeon read 305: the bosses of a dungeon with the loot this account saw, most seen first"] = function(t)
+    local c = client({ more = true })
+    local st = indexed(c)
+    local loot = R.Loot(st, c, DM, book())
+    t.eq(loot.why, nil)
+    t.eq(#loot.bosses, 1, "only the boss that lives in the Deadmines")
+    local b = loot.bosses[1]
+    t.eq({ b.name, b.kills }, { "Cookie", 3 })
+    t.eq(b.items, { { item = "item:2", times = 3 }, { item = "item:1", times = 1 } })
+    t.eq(loot.unplaced, 1, "a boss whose creature was never seen cannot be placed")
+end
+
+tests["dungeon read 305: no loot seen says so, never an empty tab"] = function(t)
+    local c = client({ more = true })
+    local st = indexed(c)
+    t.eq(R.Loot(st, c, DM, nil).why, R.WHY_NO_LOOT)
+    t.eq(R.Loot(st, c, SFK, book()).why, R.WHY_NO_LOOT, "nothing seen from this dungeon's bosses")
+    t.eq(#R.WHY_NO_LOOT, 2)
+    t.eq(R.Loot(R.Start(client({ questie = false })), c, DM, book()).why, S.WHY.noQuestie)
+    t.eq(R.Loot(st, c, nil, book()).why, S.WHY.noDungeon)
+end
+
 return tests
