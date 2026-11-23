@@ -1,8 +1,9 @@
 -- Owner decisions D2 and D10 on the frames, over the fake client.
 -- D2: with the direction unknown the arrow art is not drawn; the faded
 -- frame and its "direction unknown" line stay. A profession needle that is
--- "off" still shows its text: in the stack of the quest arrow, or on its
--- own frame (no needle drawn) when it has one.
+-- "off" still shows its text on its own frame, with no needle drawn: stacked,
+-- that frame is on the quest arrow and the lines stand on the other side of
+-- it from the quest lines (lead section 341).
 -- D10: a trainer on another map is a line of text, with no needle and no
 -- distance. No game client is involved. Not seen in game.
 local _, ns = ...
@@ -111,23 +112,27 @@ return {
         t.eq(q.faded, a.state().view.quest.alpha)
     end,
 
-    ["needle off, stacked: its text is in the stack of the quest arrow, no needle is drawn"] = function(t)
+    ["needle off, stacked: its text stands opposite the quest lines, no needle is drawn"] = function(t)
         local _, c, a = start({ facing = false })
         a.setGuide(function() return { quest = QUEST, prof = PROF } end)
         local q, p = c.arrows[1], c.arrows[2]
         t.eq(a.state().view.prof.mode, "off", "no facing: the needle cannot point")
-        t.eq(p.shown, false, "no second frame under the quest arrow")
-        t.eq(q.lines, { "Kill boars", "100 yd N", A.UNKNOWN_TURN, "Copper vein", "300 yd E" },
-            "its lines are there; the unknown line is said once")
+        t.eq(p.shown, true, "its frame is there for its lines (section 341)")
+        t.eq(q.lines, { "Kill boars", "100 yd N", A.UNKNOWN_TURN })
+        t.eq(p.lines, { "Copper vein", "300 yd E", A.UNKNOWN_TURN },
+            "its lines are there; the unknown line is said once on each frame")
+        c.advance(0.1, 2)
+        t.eq(type(p.drawn) == "table" and p.drawn.body, 0, "no needle")
     end,
 
-    ["needle off, stacked, by a step that is text only: the text is in the stack"] = function(t)
+    ["needle off, stacked, by a step that is text only: the text stands opposite the quest lines"] = function(t)
         local _, c, a = start()
         a.setGuide(function() return { quest = QUEST, prof = TEXT } end)
         local q, p = c.arrows[1], c.arrows[2]
         t.eq(a.state().view.prof.mode, "off")
-        t.eq(p.shown, false)
-        t.eq(q.lines, { "Kill boars", "100 yd N", "Vein on another map" })
+        t.eq(p.shown, true)
+        t.eq(q.lines, { "Kill boars", "100 yd N" })
+        t.eq(p.lines, { "Vein on another map" })
         t.eq(q.faded, a.state().view.quest.alpha, "the quest arrow knows its way: not faded")
         c.advance(0.1, 2)
         t.eq(q.drawn.body, 1, "and is drawn")
@@ -191,18 +196,20 @@ return {
         a.setGuide(function() return { quest = QUEST, prof = PROF } end)
         local q, p = c.arrows[1], c.arrows[2]
         t.eq(p.shown, true)
-        t.eq(q.lines, { "Kill boars", "100 yd N", "Copper vein", "300 yd E" })
+        t.eq(q.lines, { "Kill boars", "100 yd N" })
+        t.eq(p.lines, { "Copper vein", "300 yd E" })
         c.advance(0.1, 2)
         t.eq(p.drawn.body, 1)
         t.eq(q.drawn.body, 1)
     end,
 
-    ["trainer on another map (D10): with a waypoint, one line in the stack, no needle, no distance"] = function(t)
+    ["trainer on another map (D10): with a waypoint, one line opposite the quest lines, no needle, no distance"] = function(t)
         local c, a = capped(1412, true)
         local q, p = c.arrows[1], c.arrows[2]
         t.eq(a.state().view.prof.mode, "off")
-        t.eq(p.shown, false)
-        t.eq(q.lines, { N.WAYPOINT_LABEL, "100 yd N", OTHER_MAP })
+        t.eq(p.shown, true, "the frame for the line (section 341)")
+        t.eq(q.lines, { N.WAYPOINT_LABEL, "100 yd N" })
+        t.eq(p.lines, { OTHER_MAP })
         t.eq(q.faded, a.state().view.quest.alpha)
     end,
 
@@ -223,15 +230,18 @@ return {
         local c, a = capped(1412, true)
         c.setMapSize(1412, 800, 400)
         a.relayout()
-        t.eq(c.arrows[1].lines, { N.WAYPOINT_LABEL, "100 yd N", OTHER_MAP }, "still no distance")
-        t.eq(c.arrows[2].shown, false)
+        t.eq(c.arrows[1].lines, { N.WAYPOINT_LABEL, "100 yd N" })
+        t.eq(c.arrows[2].lines, { OTHER_MAP }, "still no distance")
+        t.eq(c.arrows[2].shown, true)
+        t.eq(a.state().view.prof.mode, "off", "still no needle")
     end,
 
     ["trainer on this map: the needle and its distance as before"] = function(t)
         local c, a = capped(1411, true)
         local q, p = c.arrows[1], c.arrows[2]
         t.eq(p.shown, true)
-        t.eq(q.lines, { N.WAYPOINT_LABEL, "100 yd N", "Mining trainer", "300 yd E" })
+        t.eq(q.lines, { N.WAYPOINT_LABEL, "100 yd N" })
+        t.eq(p.lines, { "Mining trainer", "300 yd E" })
         t.ok(a.state().view.prof.mode ~= "off")
     end,
 }
