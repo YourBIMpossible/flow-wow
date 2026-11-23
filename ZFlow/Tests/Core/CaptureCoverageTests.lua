@@ -111,6 +111,10 @@ local READS = {
     channel = false, weaponEnchant = false, totems = false, targetBuffs = false,
     buffLength = false, enemiesNear = false, plateCasts = false, creatureType = false,
     plateEnemies = false,
+    -- G16: the skill lines you know, for the untrained weapon line and the
+    -- weapon master step; the capture asks none. Its names (GetNumSkillLines,
+    -- GetSkillLineInfo) are in Diag.NAMES and Diag's skillLines field.
+    weaponSkills = false,
 }
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).
