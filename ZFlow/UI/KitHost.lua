@@ -18,6 +18,10 @@ local _, ns = ...
 --                    plain panel's own name
 --     opts.panel     the plain panel (client.rowPanel), or nil
 --     opts.onClose   told when the player closes the kit window
+--     opts.place     place() -> where the kit window first stands
+--                    ({ anchor, screen anchor, x, y }), or nil for the
+--                    view's own point; asked when the window is first made
+--     opts.onMoved   onMoved(point) after the player drags the kit window
 --   host.draw(view, rows, act)   view for the kit; rows and act for the
 --                                plain panel
 --   host.show(on)
@@ -63,9 +67,16 @@ function KitHost.New(k, client, opts)
         local tree, why = Kit.Window(view)
         if not tree then return nil, why end
         local building, told = true, nil
+        local point
+        if handle == nil and type(opts.place) == "function" then
+            local okP, at = pcall(opts.place)
+            if okP and type(at) == "table" then point = at end
+        end
         local ok, h = pcall(client.kitWindow, view.id, tree, {
             name = opts.name,
+            point = point,
             onClose = opts.onClose,
+            onMoved = opts.onMoved,
             failed = function(err)
                 if building then
                     told = err
