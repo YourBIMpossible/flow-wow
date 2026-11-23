@@ -338,3 +338,37 @@ function S.Order(dungeons)
     end)
     return out
 end
+
+-- Lead DISPATCH 343: the words the Dungeon Quests window shows for a
+-- dungeon, worked out here so the window computes nothing.
+--   S.LevelText(d) -> "Levels 18-22" | "Level 27" | nil   from d.minQ, d.maxQ
+--   S.ListText(d)  -> "The Deadmines (18-22)", or the name alone
+--   S.CountText(n) -> "1 quest" | "n quests" | "No quests"
+local function range(d)
+    if type(d) ~= "table" then return nil, nil end
+    local lo, hi = tonumber(d.minQ), tonumber(d.maxQ)
+    if not lo then return nil, nil end
+    return lo, hi or lo
+end
+
+function S.LevelText(d)
+    local lo, hi = range(d)
+    if not lo then return nil end
+    if lo == hi then return "Level " .. lo end
+    return "Levels " .. lo .. "-" .. hi
+end
+
+function S.ListText(d)
+    local name = tostring(type(d) == "table" and d.name or "")
+    local lo, hi = range(d)
+    if not lo then return name end
+    if lo == hi then return name .. " (" .. lo .. ")" end
+    return name .. " (" .. lo .. "-" .. hi .. ")"
+end
+
+function S.CountText(n)
+    n = tonumber(n) or 0
+    if n <= 0 then return "No quests" end
+    if n == 1 then return "1 quest" end
+    return n .. " quests"
+end
