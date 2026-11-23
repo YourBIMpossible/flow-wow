@@ -11,7 +11,10 @@ local _, ns = ...
 --   ns.use(GearMerchantShow.NAME) -> { Shown = api.shown, Errors = api.errors }
 --
 -- One prompt per line of GearMerchantMarks.Text: "2 upgrades on sale here",
--- then one per item ("<item link>: Upgrade for your head piece (+5, dps)"),
+-- then one per item ("<item link>: Upgrade for your head piece (+5, dps);
+-- 25s 40c", with ", more than you have" when it costs more than the
+-- player's money: client.money(), pcall'd; no read, or one that raises,
+-- says no such thing),
 -- or "No upgrades on sale here" when gear was looked at and none is. No gear
 -- on sale, or a merchant that cannot be read: no prompt.
 --
@@ -29,6 +32,14 @@ M.NAME = "gearMerchantShow"
 M.SETTING = "gear.merchantMarks"
 M.ID = "gear.merchant."      -- prompt ids: this and the line number
 M.PRIORITY = 1
+
+-- The player's copper, or nil: no read, a read that raises, not a number.
+local function moneyOf(client)
+    if type(client) ~= "table" or type(client.money) ~= "function" then return nil end
+    local ok, copper = pcall(client.money)
+    if ok and type(copper) == "number" then return copper end
+    return nil
+end
 
 function M.Declare(k, packs)
     local api = {}
@@ -73,7 +84,7 @@ function M.Declare(k, packs)
                     end
                     return
                 end
-                local lines = ns.GearMerchantMarks.Text(marks, info)
+                local lines = ns.GearMerchantMarks.Text(marks, info, { money = moneyOf(ctx.client) })
                 for i = 1, #lines do
                     local id = M.ID .. i
                     if advisor.Add(id, lines[i], M.PRIORITY) then shown[#shown + 1] = id end

@@ -8250,6 +8250,121 @@ function ns.make.client(env)
             return shown
         end
     end
+    -- S20 vendor marks (lead section 230): the per-role badge on the
+    -- merchant's item buttons, as legacy Flow's Modules/Gear/SpecBadge.lua
+    -- drew it: per role, a green arrow up (better than what you wear), the
+    -- same arrow turned over and red (worse), a short grey bar (about the
+    -- same); the chosen role first, the others fainter. Drawn on a frame of
+    -- ours made a child of each button: no region of the button is touched
+    -- and nothing of the window is called. The page is read as
+    -- markMerchantButtons reads it; none on the buyback tab. New, added at
+    -- the end. First guesses, none seen in game on 16001: CreateFrame with
+    -- a parent, Texture SetTexCoord / SetVertexColor / SetColorTexture, and
+    -- the names markMerchantButtons already guesses (MerchantItem<i>ItemButton,
+    -- MerchantFrame.page and .selectedTab, MERCHANT_ITEMS_PER_PAGE).
+    --   c.markMerchantSpecs(badges) -> how many buttons carry a badge; nil
+    --     (every badge hidden) when no merchant window is open or its page
+    --     cannot be read. badges: { [the merchant's item number] = { { role,
+    --     state = "up" / "down" / "same" } ... } }; {} hides them all.
+    do
+        local SPEC_BUTTONS, SPEC_ROLES, SPEC_SIZE = 12, 3, 10
+        local specFrames = {}
+        local function specFrame(i)
+            local okB, b = pcall(function() return env["MerchantItem" .. i .. "ItemButton"] end)
+            if not okB or type(b) ~= "table" then return nil end -- not kept: it may come later
+            local known = specFrames[b]
+            if known ~= nil then return known or nil end
+            local okF, f = call(env.CreateFrame, "Frame", nil, b)
+            if not okF or type(f) ~= "table" then
+                specFrames[b] = false
+                return nil
+            end
+            method(f, "SetSize", SPEC_SIZE * SPEC_ROLES + 2 * (SPEC_ROLES - 1), SPEC_SIZE)
+            method(f, "SetPoint", "BOTTOMLEFT", b, "BOTTOMLEFT", 1, 1)
+            local h = { frame = f, slots = {} }
+            for r = 1, SPEC_ROLES do
+                local okT, t = method(f, "CreateTexture", nil, "OVERLAY", nil, 7)
+                if okT and t ~= nil then
+                    method(t, "SetPoint", "BOTTOMLEFT", f, "BOTTOMLEFT", (r - 1) * (SPEC_SIZE + 2), 0)
+                    method(t, "Hide")
+                    h.slots[r] = t
+                end
+            end
+            method(f, "Hide")
+            specFrames[b] = h
+            return h
+        end
+        local function paint(t, state, first)
+            local alpha = first and 1 or 0.7
+            if state == "same" then
+                method(t, "SetTexCoord", 0, 1, 0, 1)
+                method(t, "SetSize", SPEC_SIZE - 2, 2)
+                method(t, "SetVertexColor", 1, 1, 1, 1)
+                method(t, "SetColorTexture", 0.7, 0.7, 0.7, alpha)
+                method(t, "Show")
+                return
+            end
+            method(t, "SetSize", SPEC_SIZE, SPEC_SIZE)
+            local okA, set = method(t, "SetAtlas", "bags-greenarrow")
+            if not okA or set == false then
+                if state == "up" then
+                    method(t, "SetColorTexture", 0.3, 1, 0.3, alpha)
+                else
+                    method(t, "SetColorTexture", 1, 0.3, 0.3, alpha)
+                end
+            elseif state == "up" then
+                method(t, "SetTexCoord", 0, 1, 0, 1)
+                method(t, "SetVertexColor", 1, 1, 1, alpha)
+            else
+                method(t, "SetTexCoord", 0, 1, 1, 0)  -- turned over
+                method(t, "SetVertexColor", 1, 0.3, 0.3, alpha)
+            end
+            method(t, "Show")
+        end
+        function c.markMerchantSpecs(badges)
+            badges = type(badges) == "table" and badges or {}
+            local frame = env.MerchantFrame
+            local okP, page = pcall(function() return frame.page end)
+            local okT, tab = pcall(function() return frame.selectedTab end)
+            local per = env.MERCHANT_ITEMS_PER_PAGE
+            local readable = c.merchantOpen() == true and okP and type(page) == "number" and page >= 1
+                and type(per) == "number" and per >= 1
+            local buyback = okT and tab ~= nil and tab ~= 1
+            local n = 0
+            for i = 1, SPEC_BUTTONS do
+                local h = specFrame(i)
+                if h then
+                    local list = nil
+                    if readable and not buyback and i <= per then
+                        list = badges[(page - 1) * per + i]
+                    end
+                    local any = false
+                    for r = 1, SPEC_ROLES do
+                        local t = h.slots[r]
+                        local b, state = nil, nil
+                        if type(list) == "table" then b = list[r] end
+                        if type(b) == "table" then state = b.state end
+                        if t ~= nil then
+                            if state == "up" or state == "down" or state == "same" then
+                                paint(t, state, r == 1)
+                                any = true
+                            else
+                                method(t, "Hide")
+                            end
+                        end
+                    end
+                    if any then
+                        method(h.frame, "Show")
+                        n = n + 1
+                    else
+                        method(h.frame, "Hide")
+                    end
+                end
+            end
+            if not readable then return nil end
+            return n
+        end
+    end
     return c
 end
 

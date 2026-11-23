@@ -140,6 +140,40 @@ tests["merchant marks: no upgrades says so only when gear was looked at"] = func
     t.eq(M.Text(nil, { why = M.REASON.merchant }), {}, "no answer: nothing is said")
 end
 
+tests["merchant marks: per-role badges - up, down, same; can't use and no verdict give none"] = function(t)
+    local c = client({ row(BETTER), row(WORSE), row(HELM), row(PLATE), row(POTION), row(UNREAD) })
+    local badges = M.Specs(c, packs(), "")
+    t.eq(badges[1], { { role = "dps", state = "up" }, { role = "tank", state = "up" } })
+    t.eq(badges[2], { { role = "dps", state = "down" }, { role = "tank", state = "down" } })
+    t.eq(badges[3], { { role = "dps", state = "same" }, { role = "tank", state = "same" } })
+    t.eq(badges[4], nil, "can't use: no badge")
+    t.eq(badges[5], nil, "not gear: no badge")
+    t.eq(badges[6], nil, "no verdict: no badge")
+end
+
+tests["merchant marks: per-role badges - the chosen role first"] = function(t)
+    local badges = M.Specs(client({ row(BETTER) }), packs(), "tank")
+    t.eq(badges[1], { { role = "tank", state = "up" }, { role = "dps", state = "up" } })
+    badges = M.Specs(client({ row(BETTER) }), packs(), "heal")
+    t.eq(badges[1][1].role, "dps", "a role the pack has no weights for: name order")
+end
+
+tests["merchant marks: per-role badges - no merchant read, nil"] = function(t)
+    local c = client({ row(BETTER) })
+    c.setMerchantOpen(false)
+    t.eq(M.Specs(c, packs(), "dps"), nil)
+end
+
+tests["merchant marks: the price, and 'more than you have' only when money was read"] = function(t)
+    local marks, info = M.Marks(client({ row(BETTER, 2540) }), packs())
+    t.eq(marks[1].price, 2540)
+    local tail = "Upgrade for your head piece (+5, dps); Upgrade for your head piece (+15, tank)"
+    t.eq(M.Text(marks, info, { money = 1000 })[2], BETTER .. ": " .. tail .. "; 25s 40c, more than you have")
+    t.eq(M.Text(marks, info, { money = 2540 })[2], BETTER .. ": " .. tail .. "; 25s 40c")
+    t.eq(M.Text(marks, info, {})[2], BETTER .. ": " .. tail .. "; 25s 40c", "money not read")
+    t.eq(M.Text(marks, info)[2], BETTER .. ": " .. tail, "no opts: as before")
+end
+
 tests["merchant marks: it only reads; nothing is bought"] = function(t)
     local c = client({ row(BETTER) })
     local calls = 0

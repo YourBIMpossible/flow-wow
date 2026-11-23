@@ -34,7 +34,9 @@ local KIND = {
              -- N68: the one alert sound (output only; changes nothing in the game).
              "playAlert",
              -- G14: the mark on the best quest reward choice (Gear/RewardMark.lua).
-             "markRewardChoice" },
+             "markRewardChoice",
+             -- S20: the per-role badges on the merchant's item buttons.
+             "markMerchantSpecs" },
     tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "savedMadeHere", "slash",
              "slashTaken", "unslash" },
     -- Hands back or runs a sound restart: never asked by the capture.
