@@ -79,6 +79,10 @@ Q.UNKNOWN_PLACE = "location unknown"
 Q.ELSEWHERE = "on another map"
 Q.TURN_IN = "Turn in"
 Q.TURN_IN_TO = "Turn in: %s"
+-- F-028: a turn-in that may not be ready is held, in words, and says why.
+Q.HELD_LINE = "Turn-in held: %s"
+Q.HELD_NOT_READ = "objectives not read yet"
+Q.HELD_PREREQ = "a quest before it is not done"
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -91,6 +95,39 @@ end
 
 local function usable(row)
     return type(row) == "table" and row.id ~= nil and type(row.title) == "string" and row.failed ~= true
+end
+
+function Q.HeldLine(why) return Q.HELD_LINE:format(tostring(why)) end
+
+-- F-028: why a complete quest's turn-in is held, or nil when it is ready.
+-- An empty objective list is ready only when Questie says the quest has
+-- no objectives (places[id].objectiveCount == 0); an objective with no
+-- text has not been read yet; places[id].prereqMissing (a quest before it
+-- read as not done) holds it too. A row with no objectives list at all is
+-- taken as given.
+function Q.TurnInHold(row, places)
+    if type(row) ~= "table" or row.complete ~= true then return nil end
+    local p = type(places) == "table" and places[row.id] or nil
+    if type(p) ~= "table" then p = nil end
+    local list = row.objectives
+    if type(list) == "table" then
+        if #list == 0 then
+            if not (p and p.objectiveCount == 0) then return Q.HELD_NOT_READ end
+        else
+            for _, o in ipairs(list) do
+                if type(o) ~= "table" or type(o.text) ~= "string" or o.text == "" then return Q.HELD_NOT_READ end
+            end
+        end
+    end
+    if p and p.prereqMissing == true then return Q.HELD_PREREQ end
+    return nil
+end
+
+-- The step of a held turn-in: words only, no place, so no needle.
+local function heldStep(row, why)
+    local line = Q.HeldLine(why)
+    return { quest = row.id, objective = nil, turnIn = true, held = true, label = row.title, detail = line,
+             lines = { row.title, line }, still = true }
 end
 
 -- The objectives of a row still to do: { { i, text } }.
@@ -164,6 +201,8 @@ end
 -- nil when the quest has nothing left to do.
 local function ofQuest(row, places, here, canPoint)
     if row.complete == true then
+        local why = Q.TurnInHold(row, places)
+        if why then return heldStep(row, why) end
         local spot = spotOf(places, row.id, nil)
         local pt = canPoint and nearest(spot, here) or nil
         if pt then return placed(row, nil, Q.TurnInLine(spot.name), pt, here) end
@@ -203,7 +242,7 @@ local function byRules(rows, places, here, canPoint)
         if best then return best end
         -- 2. the nearest turn-in of a complete quest on this map.
         for _, row in ipairs(rows) do
-            if usable(row) and row.complete == true then
+            if usable(row) and row.complete == true and Q.TurnInHold(row, places) == nil then
                 local spot = spotOf(places, row.id, nil)
                 local pt, d = nearest(spot, here)
                 if pt and (not best or d < bestD) then
@@ -218,6 +257,8 @@ local function byRules(rows, places, here, canPoint)
     for _, row in ipairs(rows) do
         if usable(row) then
             if row.complete == true then
+                local why = Q.TurnInHold(row, places)
+                if why then return heldStep(row, why) end
                 local spot = spotOf(places, row.id, nil)
                 return worded(row, nil, Q.TurnInLine(spot and spot.name), spot, here)
             end
