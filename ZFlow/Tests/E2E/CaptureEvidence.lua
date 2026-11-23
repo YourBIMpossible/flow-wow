@@ -294,6 +294,16 @@ tests["capture replay: a recorded answer is given only for the recorded argument
     t.eq(replay.GetBuildInfo, { answered = 1, unanswered = 1 })
 end
 
+-- A boot wrap: each look-up of a top-level name the replayed calls do not
+-- hold is counted in into[name]. A call the capture lacks is still asked;
+-- this counts the ask instead of losing it (MyBuddy EB-2).
+local function countNotHeld(env, into)
+    setmetatable(env, { __index = function(_, name)
+        if type(name) == "string" then into[name] = (into[name] or 0) + 1 end
+        return nil
+    end })
+end
+
 -- The diag word on a booted add-on, and the recorded calls it asked:
 -- asked (answered) and unanswered in all, and by[path] for each call.
 -- The counts are taken right before the word and the difference is
@@ -500,11 +510,20 @@ end
 
 -- CE-2: a call the capture does not hold has no replay count; it is never
 -- said to have been asked as recorded.
+-- MyBuddy EB-2: the diag word still asks such a call, and that ask is
+-- counted as one on a call the capture does not hold, never lost.
+-- Lead ZEB-1: the capture holds an answer for UnitHealth but not the name,
+-- so no count is a finding of the replay, not of an empty capture.
 tests["capture replay: a call missing from the capture is not counted as answered"] = function(t)
-    local c, _, _, replay = boot(made())
+    local cap = made()
+    cap.account.diag.snaps[1].shapes.health = row(240)
+    local notHeld = {}
+    local c, _, _, replay = boot(cap, nil, function(env) countNotHeld(env, notHeld) end)
     t.eq(replay.UnitHealth, nil, "UnitHealth is not in the capture: no count")
+    local before = notHeld.UnitHealth or 0
     local _, _, by = diagAsks(c, replay)
     t.eq(by.UnitHealth, nil, "and the diag word is not credited with asking it as recorded")
+    t.ok((notHeld.UnitHealth or 0) > before, "the diag word asked it: counted as not in the capture")
 end
 
 -- CE-4: no line at all, with no proves.
@@ -572,7 +591,9 @@ end
 -- CE-8: a problem count that is not a number is not known, and a run with
 -- an unknown count is neither a smoke test nor a verification.
 tests["capture evidence: a problem count that is not a number is unknown, never zero"] = function(t)
-    for _, problems in ipairs({ "0", "none", true }) do
+    -- Lead ZEB-2: 0/0 (not a number, yet of type number). MyBuddy EB-1: a
+    -- negative count is no count of problems either.
+    for _, problems in ipairs({ "0", "none", true, 0 / 0, -1, -0.5 }) do
         local v = Evidence.Judge("banker", { cap = made(), report = { set = {} }, problems = problems,
             lines = { ns.ItemPresent.BANK_HEADER }, synthetic = { "bag items" } })
         t.eq({ v.result, v.verified, v.smoke }, { Evidence.NOT_EXERCISED, false, false }, tostring(problems))
