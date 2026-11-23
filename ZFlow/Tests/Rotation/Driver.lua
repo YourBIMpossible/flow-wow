@@ -468,7 +468,7 @@ tests["rotation driver RD11: a step presses nothing and asks only its sixteen re
         -- at the debuffs field). N50's tree read asks only spell and spellId,
         -- and only for a pack with options.trees (this one has none).
         t.eq(other, { "lowHealth", "unitDebuffTypes", "playerDebuffs", "fishingPole", "bagItems", "mounted", "onTaxi", "bagItems", "tracking", "tracking",
-            "professions", "anyTracking", "ownBuffs", "grouped", "party" },
+            "professions", "anyTracking", "ownBuffs", "grouped", "party", "plateEnemies", "plateCasts" },
             "nothing else asked of the client but the warning, debuff, pole, bag, tracking, profession, gather-guard, grouped and group reads it lacks")
         local names = {}
         for name in pairs(calls) do names[#names + 1] = name end
