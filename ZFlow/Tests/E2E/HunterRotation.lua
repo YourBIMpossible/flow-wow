@@ -176,8 +176,12 @@ tests["hunter: range not read is named; melee in reach takes over from the shots
     local line = said(c)
     t.ok(line:find("not known whether it is in range", 1, true), line)
     t.ok(line:find("Arcane Shot", 1, true), "names the spell: " .. line)
+    c.setCurrentSpell(IDS["Raptor Strike"], false)
     reach(c, false, true); c.advance(1, 5)
     t.eq(icon.texture, "tex:Raptor Strike", "too close for the shots, in melee reach: raptor strike")
+    -- HU3: whether Raptor Strike is queued not read: it is not asked for.
+    c.setCurrentSpell(IDS["Raptor Strike"], nil); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Mongoose Bite", "raptor strike's queued read not given: passed by")
     reach(c, true, false); c.advance(1, 5)
     t.eq(icon.texture, "tex:Arcane Shot", "back at range")
 end
