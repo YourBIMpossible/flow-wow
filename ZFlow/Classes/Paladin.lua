@@ -245,7 +245,8 @@ local buffs = {
           return left == nil or (type(left) == "number" and left < 30)
       end },
     -- N58, B3 (PARTLY): your oath, out of a fight, buffs read and none
-    -- named "Oath of" up. Read as a buff on you: a first guess.
+    -- named "Oath of" up. Read as a buff on you: a first guess. Capture
+    -- fields oathSpell and oathAura (Core/Diag.lua) show it in game.
     { spell = "Oath of Light", kind = "buff", reason = "Your oath is not on (first guess: read as a buff on you)",
       when = function(s)
           return outOfFight(s) and buffsRead(s) and ns.PaladinOath(s) == "Oath of Light"
