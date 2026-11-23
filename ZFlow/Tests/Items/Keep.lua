@@ -31,6 +31,7 @@ local function start(opts)
     end
     local k = ns.Kernel({}, c)
     local diag = ns.Diag.Start(k)
+    ns.Reservations.Declare(k)
     local sell = ns.SellList.Declare(k)
     local keep = K.Start(k, diag, sell)
     k:Boot()

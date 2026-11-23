@@ -29,6 +29,7 @@ local function start(opts)
     if opts.setting ~= nil then
         k:Setting({ key = L.SETTING, scope = "char", type = "bool", default = true, label = "Vendor sell list" })
     end
+    ns.Reservations.Declare(k)
     local api = L.Declare(k)
     if not opts.noBoot then
         k:Boot()

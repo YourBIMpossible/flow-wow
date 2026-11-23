@@ -30,6 +30,14 @@
 -- Saved data (read only): the character's never-sell list at
 -- settings.sell.never (imported from Flow) and the price book at
 -- learned.prices (account).
+-- Reservations (lead section 209): one evaluation per merchant visit
+-- (ns.use(Reservations.NAME).Current, made at the first listing of the visit
+-- and kept until the window closes). What it holds in the bags
+-- (Reservations.HeldIn(grants, "bags")) goes to Disposition as the grants,
+-- so a held part is kept, not offered. "none" (no producer, or nothing
+-- claimed) changes nothing. "unavailable" (a producer failed, or the module
+-- is not there) offers nothing for sale and says the reservations are not
+-- known, as the bank list does (UI/BankList.lua).
 -- Not tested in game: MERCHANT_SHOW and the item read are first guesses.
 local _, ns = ...
 
@@ -49,6 +57,8 @@ SellList.PRICES_PATH = "learned.prices"
 SellList.NOT_STARTED = "the sell list has not started"
 SellList.NO_MERCHANT = "no merchant window is open"
 SellList.NO_PANEL = "this client cannot draw the panel"
+-- Player text when the reservations could not be worked out.
+SellList.RESERVATIONS_UNKNOWN = "Reservations not known: nothing is offered for sale, as what your goals hold is not known."
 
 -- The player's never-sell list as Disposition takes it: { never = { [key] = true } }.
 -- Takes a set ({ [item] = true }) or a list ({ item, ... }); anything that is
@@ -71,15 +81,45 @@ function SellList.Choices(store)
     return { never = never }
 end
 
+-- One evaluation of the reservations, through use (ctx.use). The module not
+-- being there, or raising, is "unavailable", never "none".
+function SellList.Current(use)
+    local ok, mod = pcall(use, ns.Reservations.NAME)
+    if ok and type(mod) == "table" and type(mod.Current) == "function" then
+        local fine, r = pcall(mod.Current)
+        if fine and type(r) == "table" then return r end
+    end
+    return { status = ns.Reservations.UNAVAILABLE }
+end
+
+-- What the bags hold, from an evaluation: the grants Disposition takes.
+function SellList.Held(r)
+    return ns.Reservations.HeldIn(ns.Reservations.Grants(r), "bags")
+end
+
 -- One listing, as lines for the panel.
-function SellList.Lines(client, store)
+-- grants: what the bags hold (SellList.Held), or nil. r: the evaluation the
+-- grants came from, when there is one; "unavailable" lists nothing to sell
+-- and says so (not when the bags themselves weren't read: the list already
+-- says it can't be made).
+function SellList.Lines(client, store, grants, r)
     local stacks = type(client) == "table" and type(client.bagItems) == "function" and client.bagItems() or nil
     local read = type(client) == "table" and type(client.itemInfo) == "function" and client.itemInfo or nil
     local bag = ns.SellView.Bag(stacks, read)
     local book = type(store) == "table" and type(store.get) == "function"
         and store:get("account", SellList.PRICES_PATH) or nil
-    local context = { choices = SellList.Choices(store), book = type(book) == "table" and book or nil }
-    return ns.ItemPresent.SellLines(ns.ItemSell.List(bag, context), ns.SellView.Kept(bag, context))
+    local context = { choices = SellList.Choices(store), book = type(book) == "table" and book or nil,
+        grants = grants }
+    local kept = ns.SellView.Kept(bag, context)
+    if bag ~= nil and type(r) == "table" and r.status == ns.Reservations.UNAVAILABLE then
+        local lines = { SellList.RESERVATIONS_UNKNOWN }
+        if #kept.rows > 0 then
+            lines[#lines + 1] = ns.ItemPresent.KEPT_HEADER
+            for _, k in ipairs(kept.rows) do lines[#lines + 1] = ns.ItemPresent.KeptText(k) end
+        end
+        return lines
+    end
+    return ns.ItemPresent.SellLines(ns.ItemSell.List(bag, context), kept)
 end
 
 -- Declares the module on kernel k. Usable at once: before the first listing
@@ -89,6 +129,9 @@ function SellList.Declare(k)
     local last, shows = nil, 0
     local panel
     local open, relist = false, nil
+    -- The reservations evaluation of this merchant visit: made at its first
+    -- listing, kept until the window closes.
+    local visit = nil
     function api.last() return last end
     function api.shows() return shows end
     -- Lists again while a merchant window is open (the never-sell list
@@ -132,7 +175,8 @@ function SellList.Declare(k)
                     hide()
                     return
                 end
-                local lines = SellList.Lines(client, ctx.store)
+                if not visit then visit = SellList.Current(ctx.use) end
+                local lines = SellList.Lines(client, ctx.store, SellList.Held(visit), visit)
                 shows = shows + 1
                 last = lines
                 if panel then
@@ -143,11 +187,13 @@ function SellList.Declare(k)
             ctx.bus:on(SellList.NAME, "MERCHANT_SHOW", function()
                 open = true
                 asked = false       -- a new window: nothing was asked for yet
+                visit = nil         -- and no evaluation yet
                 relist()
             end)
             ctx.bus:on(SellList.NAME, "MERCHANT_CLOSED", function()
                 open = false
                 asked = false
+                visit = nil
                 hide()
             end)
             -- Something was sold, bought or moved by the player: the list
@@ -170,6 +216,7 @@ function SellList.Declare(k)
             open = false
             asked = false
             started = false
+            visit = nil
             hide()
         end,
     })
