@@ -182,13 +182,13 @@ end
 
 -- VM-2: the fake's badges as the real client draws them (Core/Client.lua
 -- markMerchantSpecs): at most 12 buttons, and none on the buyback tab.
-local function badge(role) return { { role = role, state = "up" } } end
+local function upBadge(role) return { { role = role, state = "up" } } end
 
 tests["vendor marks fake: at most 12 buttons are drawn, whatever the page size"] = function(t)
     local c = ns.make.fakeClient()
     c.setMerchantOpen(true)
     c.setMerchantPage(1, 14)
-    local n = c.markMerchantSpecs({ [1] = badge("dps"), [12] = badge("dps"), [13] = badge("dps") })
+    local n = c.markMerchantSpecs({ [1] = upBadge("dps"), [12] = upBadge("dps"), [13] = upBadge("dps") })
     t.eq(n, 2, "button 13 is past the 12 the client has")
     local shown = c.merchantButtons()
     t.ok(shown[12] ~= nil, "button 12 drawn")
@@ -200,10 +200,10 @@ tests["vendor marks fake: the buyback tab draws no badge, then the sale tab does
     c.setMerchantOpen(true)
     c.setMerchantPage(1, 10)
     c.setMerchantTab(2)
-    t.eq(c.markMerchantSpecs({ [1] = badge("dps") }), 0, "buyback: readable, nothing drawn")
+    t.eq(c.markMerchantSpecs({ [1] = upBadge("dps") }), 0, "buyback: readable, nothing drawn")
     t.eq(c.merchantButtons(), {}, "buyback: no button shows anything")
     c.setMerchantTab(1)
-    t.eq(c.markMerchantSpecs({ [1] = badge("dps") }), 1, "back on sale: the badge")
+    t.eq(c.markMerchantSpecs({ [1] = upBadge("dps") }), 1, "back on sale: the badge")
 end
 
 return tests
