@@ -8,7 +8,7 @@
 local _, ns = ...
 
 local ANSWER = { templates = { SearchBoxTemplate = "present", BasicFrameTemplateWithInset = "no such template" },
-    textures = { ["Interface\MoneyFrame\UI-GoldIcon"] = "unset" }, globals = { ITEM_QUALITY_COLORS = "table" } }
+    textures = { ["Interface\\MoneyFrame\\UI-GoldIcon"] = "unset" }, globals = { ITEM_QUALITY_COLORS = "table" } }
 
 -- opts.combat: in combat at login. opts.raises: the probe raises.
 -- opts.noProbe: a client with no such read.
