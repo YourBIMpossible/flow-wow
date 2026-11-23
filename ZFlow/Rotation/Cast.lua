@@ -183,6 +183,17 @@ C.ON_YOU = { heal = true, emergency = true, buff = true }
 -- is only shown (look = true, Rotation/Group.lua), never put on the key.
 C.UNITS = { player = true, pet = true, target = true }
 C.ATTACK = { ["Attack"] = true, ["Auto Attack"] = true }
+-- Section 249 (CT-1): the one name the key casts the swing by. A suggestion
+-- or a slot may say "Auto Attack" (the rows name either); the secure button
+-- is always given "Attack", so a name the client cannot cast never leaves
+-- the key doing nothing.
+C.ATTACK_SPELL = "Attack"
+
+-- A spell name as the button casts it: either swing name becomes "Attack".
+local function castName(v)
+    if v ~= nil and C.ATTACK[v] then return C.ATTACK_SPELL end
+    return v
+end
 
 local function row(list, attr, value)
     list[#list + 1] = { attr = attr, value = value }
@@ -223,8 +234,9 @@ function C.Attributes(suggestion, plan, applied, lockdown, form)
         -- Section 246 (N63-E): the Attack spell itself under the name the
         -- suggestion gives, with no unit (the game's own target rules), as
         -- legacy Flow did; not a "/startattack" macro, which does not act
-        -- on this client.
-        kind = "spell"
+        -- on this client. Section 249 (CT-1): always under the name
+        -- "Attack", whichever swing name the suggestion gives.
+        spell, kind = C.ATTACK_SPELL, "spell"
     elseif spell then
         kind = "spell"
         unit = C.UNITS[suggestion.unit] and suggestion.unit or (C.ON_YOU[suggestion.kind] and "player") or nil
@@ -235,7 +247,7 @@ function C.Attributes(suggestion, plan, applied, lockdown, form)
         item = itemOf(suggestion)
         kind = "item"
     else
-        spell, source = slotOf(states, form, "key"), "plan"
+        spell, source = castName(slotOf(states, form, "key")), "plan"
         if spell then
             kind, unit = "spell", "target"
         else
@@ -257,7 +269,7 @@ function C.Attributes(suggestion, plan, applied, lockdown, form)
             row(button, "*spell-alt", nil)
             row(button, "*unit-alt", nil)
         else
-            local v = slotOf(states, form, slot)
+            local v = castName(slotOf(states, form, slot))
             row(button, "*type-" .. slot, v and "spell" or nil)
             row(button, "*spell-" .. slot, v)
             row(button, "*unit-" .. slot, v and "target" or nil)
@@ -273,7 +285,7 @@ function C.Attributes(suggestion, plan, applied, lockdown, form)
     local header = {}
     for state = 0, lastState() do
         for _, slot in ipairs(C.SLOTS) do
-            row(header, slot .. "-" .. state, slotOf(states, state, slot) or "")
+            row(header, slot .. "-" .. state, castName(slotOf(states, state, slot)) or "")
         end
     end
 

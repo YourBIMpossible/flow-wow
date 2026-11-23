@@ -459,6 +459,16 @@ function Diag.Collect(k, why)
         S.spellKnown = ask(client, "IsPlayerSpell", spellID)
     end
     S.spellByName = ask(client, "C_Spell.GetSpellInfo", "Attack")
+    -- OC-1 (section 248): Oath of Light (Classes/Paladin.lua) is read as a
+    -- buff on you, a first guess. The spell by name, then the aura on you by
+    -- its id, so one game session can show whether it is a buff. Both names
+    -- (C_Spell.GetSpellInfo, C_UnitAuras.GetPlayerAuraBySpellID) are in
+    -- Diag.NAMES.
+    S.oathSpell = ask(client, "C_Spell.GetSpellInfo", "Oath of Light")
+    local oathID = S.oathSpell.ok and type(S.oathSpell.values.v1) == "table" and S.oathSpell.values.v1.spellID
+    if type(oathID) == "number" then
+        S.oathAura = ask(client, "C_UnitAuras.GetPlayerAuraBySpellID", oathID)
+    end
     S.aura1 = ask(client, "C_UnitAuras.GetAuraDataByIndex", "player", 1, "HELPFUL")
     -- Section 183 (C1, C5): the reads the rotation now takes, so one game
     -- session can show them. 6603 as the Attack spell id is a first guess.

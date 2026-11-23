@@ -1145,7 +1145,10 @@ function ns.make.fakeClient(opts)
     -- c.secureGiven = { { name, attr, value } } over every button.
     -- c.secureMacros() lists the rows of c.secureGiven that make a button
     -- a macro: a type attribute ("type", "*type-alt", "shift-type1", ...)
-    -- given "macro", or a macro text attribute given a value. A macro-type
+    -- given "macro", or a macro or macro text attribute ("macro",
+    -- "macrotext", "*macrotext-alt", ...) given a value. Section 249 (CT-2):
+    -- names and values are compared lower-cased, so "MACRO" is caught too.
+    -- A macro-type
     -- secure button does not act on this client (the press arrives with the
     -- right macro and nothing is cast), so no Z-Flow button may be one.
     c.secureButtons = {}
@@ -1171,9 +1174,11 @@ function ns.make.fakeClient(opts)
     function c.secureMacros()
         local out = {}
         for _, g in ipairs(c.secureGiven) do
-            local attr = tostring(g.attr)
-            if (attr:find("type", 1, true) and g.value == "macro")
-                or (attr:find("macrotext", 1, true) and g.value ~= nil) then
+            local attr = string.lower(tostring(g.attr))
+            local value = type(g.value) == "string" and string.lower(g.value) or g.value
+            local isType = attr:find("type", 1, true) ~= nil
+            if (isType and value == "macro")
+                or (not isType and attr:find("macro", 1, true) and g.value ~= nil) then
                 out[#out + 1] = g
             end
         end

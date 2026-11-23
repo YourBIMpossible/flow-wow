@@ -102,13 +102,26 @@ end
 local FORM_NAMES = { "Bear Form", "Dire Bear Form", "Cat Form" }
 local IS_KEPT_FORM = { ["Bear Form"] = true, ["Dire Bear Form"] = true, ["Cat Form"] = true }
 local TEMPORARY_FORM = { ["Travel Form"] = true, ["Aquatic Form"] = true }
+
+-- Section 247 item 2 (lead decision): for the healer role every form you
+-- cast is for a moment, never kept, in a fight or out of one; a healer's
+-- form is kept only when chosen with the form word (form auto forgets it).
+-- Tank and damage: only Travel Form and Aquatic Form are for a moment.
+local function temporaryForm(name, ctx)
+    if TEMPORARY_FORM[name] then return true end
+    return type(ctx) == "table" and ctx.role == "heal"
+end
 local IS_FORM = { ["Bear Form"] = true, ["Dire Bear Form"] = true, ["Cat Form"] = true,
                   ["Travel Form"] = true, ["Aquatic Form"] = true }
 
 -- The kept form while known. A kept Bear Form is asked as Dire Bear Form
 -- once you know that: the same form, its later rank.
+-- Section 247 item 2: a healer's form is only the word's choice (formSet);
+-- a form saved for the healer role by an older build is not asked for.
+local HEAL_KEYS = { "formSet" }
 local function keptForm(s)
-    local name = ns.OwnCasts and ns.OwnCasts.Kept(s, IS_KEPT_FORM, "form") or nil
+    local keys = s.role == "heal" and HEAL_KEYS or nil
+    local name = ns.OwnCasts and ns.OwnCasts.Kept(s, IS_KEPT_FORM, "form", keys) or nil
     if name == "Bear Form" and knows(s, "Dire Bear Form") then return "Dire Bear Form" end
     return name
 end
@@ -431,12 +444,13 @@ local pack = {
         -- Reads the rules lean on; one not given is named by diag (187).
         reads = { "formKnown", "buffs", "targetDebuffs" },
         -- N58 (lead section 241): the form you cast is kept for your role;
-        -- Travel Form and Aquatic Form never are. `form <name>` chooses one,
+        -- Travel Form and Aquatic Form never are, nor any form a healer
+        -- casts (section 247 item 2). `form <name>` chooses one,
         -- `form auto` goes back. pick (PC-1): the form asked for now; a cast
         -- of it is not kept.
         sticky = {
             { prefix = "", only = IS_FORM, key = "form", word = "form", names = FORM_NAMES,
-              temporary = TEMPORARY_FORM, pick = function(s) return ns.DruidForm(s) end },
+              temporary = temporaryForm, pick = function(s) return ns.DruidForm(s) end },
         },
     },
 }
