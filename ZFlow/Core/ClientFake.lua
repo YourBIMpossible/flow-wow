@@ -56,6 +56,8 @@ end
 function ns.make.fakeClient(opts)
     opts = opts or {}
     local s = { t = opts.now or 1000, ms = 0, combat = false, bankOpen = false, merchantOpen = false, loaded = {}, saved = {}, listening = {}, eventFaults = {}, frames = 0 }
+    -- The craft repeat runner step (section 240), set in the craft section.
+    local repeatFrame
     local c = { printed = {} }
 
     local events = ns.make.listeners(
@@ -704,6 +706,7 @@ function ns.make.fakeClient(opts)
         for i = 1, frames do
             s.t = t0 + seconds * i / frames
             ticks.call("frame", seconds / frames)
+            if repeatFrame then repeatFrame() end
         end
     end
     function c.fire(event, ...) events.call(event, ...) end
@@ -1882,16 +1885,41 @@ function ns.make.fakeClient(opts)
     c.crafts = {}
     local craftFails
     function c.setCraftFails(why) craftFails = why end
+    -- Section 240, the repeat runner: setCraftRepeat(seconds) makes each
+    -- craft asked with a repeat count n finish n times by itself, one
+    -- UNIT_SPELLCAST_SUCCEEDED ("player", a cast guid, the recipe) each
+    -- `seconds` of advance(). stopCraftRepeat drops the finishes still to
+    -- come; a new ask replaces the run. nil: nothing finishes by itself
+    -- (the tests fire each finish). How the real client paces its repeat
+    -- and orders its events is not known: Needs game test.
+    local repeatEvery, repeatRun
+    function c.setCraftRepeat(seconds) repeatEvery, repeatRun = seconds, nil end
     function c.craftRecipe(id, n)
         if s.combat ~= false then return nil, "combat" end
         if craftFails then return nil, craftFails end
         c.crafts[#c.crafts + 1] = { id = id, n = n }
+        if type(repeatEvery) == "number" and repeatEvery > 0 then
+            repeatRun = { id = id, left = type(n) == "number" and n or 1, at = s.t + repeatEvery }
+        end
         return true
+    end
+    -- One frame of the runner (called from advance, after the frame
+    -- ticks): each finish that is due, in order. No frame listener, so the
+    -- tick counts other tests pin do not change.
+    function repeatFrame()
+        while repeatRun and repeatRun.left > 0 and s.t >= repeatRun.at do
+            local run = repeatRun
+            run.left = run.left - 1
+            run.at = run.at + repeatEvery
+            if run.left <= 0 then repeatRun = nil end
+            events.call("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-fake", run.id)
+        end
     end
     -- How many times the add-on asked the game to stop a craft repeat.
     c.repeatStops = 0
     function c.stopCraftRepeat()
         c.repeatStops = c.repeatStops + 1
+        repeatRun = nil
         return true
     end
 
