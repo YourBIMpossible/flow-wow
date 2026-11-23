@@ -35,7 +35,8 @@ local _, ns = ...
 --   temporary          a set of names, or function(name, ctx) -> true: a
 --                      cast for a moment (Travel Form, a demon summoned in
 --                      a fight), never kept. ctx = { inCombat = true, false
---                      or nil (not read) }. A function that raises: kept.
+--                      or nil (not read), role = the role a cast is kept
+--                      under (OC.Role) }. A function that raises: kept.
 --   fightOnly = true   a cast in a fight (or with the fight not read) is
 --                      kept for that fight only; the role's stays.
 --   window = seconds   a cast held that long before it is kept; a cast of
@@ -67,8 +68,9 @@ local _, ns = ...
 --   OC.Temporary(row, name, ctx) -> true when the cast is for a moment
 --   OC.FightOnly(row, ctx)       -> true when it is kept for the fight only
 --   OC.Keys(key)                 -> { key.."Fight", key.."Set", key }
---   OC.Kept(s, set, key)         -> the first of those in snapshot.chosen
---                                   that is in the set and known, or nil
+--   OC.Kept(s, set, key, keys)   -> the first of those in snapshot.chosen
+--                                   that is in the set and known, or nil;
+--                                   keys (optional): look in only these
 -- Module (ns.use("ownCasts")):
 --   Chosen()                     -> the map above, or nil when it holds nothing
 -- Not tested in game.
@@ -156,11 +158,12 @@ function OC.Keys(key)
     return { key .. "Fight", key .. "Set", key }
 end
 
-function OC.Kept(s, set, key)
+function OC.Kept(s, set, key, keys)
     if type(s) ~= "table" or type(s.chosen) ~= "table" or type(set) ~= "table" or type(key) ~= "string" then
         return nil
     end
-    for _, k in ipairs(OC.Keys(key)) do
+    if keys ~= nil and type(keys) ~= "table" then return nil end
+    for _, k in ipairs(keys or OC.Keys(key)) do
         local name = s.chosen[k]
         local r = type(name) == "string" and set[name] and type(s.spells) == "table" and s.spells[name] or nil
         if type(r) == "table" and r.known then return name end
@@ -355,7 +358,9 @@ function OC.Declare(k, diag, packs)
         local v
         if client then v = read(client.inCombat) end
         if type(v) ~= "boolean" then v = nil end
-        return { inCombat = v }
+        -- Section 247 item 2: the role, for a row whose casts are for a
+        -- moment in one role (a healer's Bear or Cat Form).
+        return { inCombat = v, role = role() }
     end
 
     -- N58: a cast taken; a fight-only row's cast in a fight is this fight's.
