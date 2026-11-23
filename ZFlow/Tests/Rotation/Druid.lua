@@ -45,6 +45,30 @@ local function anyWhen(list, spell, s)
 end
 
 return {
+    -- Section 242, DRUID-3: each talent in the levelling build says why it
+    -- is taken, in words of our own, and the build keeps its carried-over
+    -- mark (the order and the meaning of each reason came with it).
+    ["druid talent build: every talent says why, under the carried-over mark"] = function(t)
+        local builds = ns.Packs.DRUID and ns.Packs.DRUID.talentBuilds or {}
+        t.eq(#builds, 1, "one build")
+        local build = builds[1] or {}
+        t.eq(build.evidence, "first guess", "still a first guess")
+        t.ok(type(build.note) == "string" and build.note:find("carried over", 1, true) ~= nil, "the carried-over mark")
+        local order = build.order or {}
+        t.eq(#order, 20, "twenty talents")
+        local seen = {}
+        for i, row in ipairs(order) do
+            local why = row.why
+            t.ok(type(why) == "string" and #why > 10, "talent " .. i .. " has a reason")
+            if type(why) == "string" then
+                t.eq(why:sub(-1), ".", "talent " .. i .. " ends as a sentence")
+                t.ok(not why:find("Flow", 1, true), "talent " .. i .. " never names the add-on")
+                t.ok(not seen[why], "talent " .. i .. " has its own reason")
+                seen[why] = true
+            end
+        end
+    end,
+
     ["druid pack passes PackCheck"] = function(t)
         local ok, problems = ns.PackCheck(ns.Packs.DRUID)
         t.eq(table.concat(problems, "; "), "", "no problems")
