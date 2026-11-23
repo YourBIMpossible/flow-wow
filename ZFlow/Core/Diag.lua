@@ -188,6 +188,13 @@ Diag.NAMES = {
     -- pet hurt); first guesses, so a capture says which exist.
     "CheckInteractDistance", "GetTotemInfo", "UnitHealthPercent", "UnitCreatureType",
     "C_Item.GetWeaponEnchantInfo",
+    -- G60 (lead section 226): NPC words read aloud (client.speech, speak,
+    -- stopSpeech, npcText; UI/NpcSpeech.lua). First guesses, never asked
+    -- of 16001, so a normal login records which exist.
+    "C_VoiceChat", "C_VoiceChat.GetTtsVoices", "C_VoiceChat.SpeakText", "C_VoiceChat.StopSpeakingText",
+    "TextToSpeech_Speak", "Enum.VoiceTtsDestination", "Enum.VoiceTtsDestination.LocalPlayback",
+    "C_GossipInfo", "C_GossipInfo.GetText", "GetGossipText", "GetGreetingText", "GetQuestText",
+    "GetObjectiveText", "GetProgressText", "GetRewardText",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns
