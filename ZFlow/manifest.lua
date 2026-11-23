@@ -235,5 +235,7 @@ return {
     "Nav/DungeonStates.lua",
     -- Lead section 303: the Dungeon Quests reader (Questie at runtime).
     "Nav/DungeonRead.lua",
+    -- Lead section 305: boss kills as the client reports them (after Diag).
+    "Nav/BossKills.lua",
     },
 }
