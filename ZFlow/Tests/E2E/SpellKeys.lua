@@ -196,6 +196,39 @@ tests["auto attack: Attack on the key, then the fight starts: the key no longer 
     nothingWritten(t, c)
 end
 
+-- SE6-1: the other order. The lock is already on when PLAYER_REGEN_DISABLED
+-- is handled: Attack cannot be taken off and stays on the key all fight.
+-- The add-on cannot change that; a diag timing mark says it happened.
+tests["auto attack: the lock is on before the fight starts: Attack stays, a diag mark says so"] = function(t)
+    local c, addon = start()
+    pull(c)
+    t.eq(attr(c, "spell"), "Attack", "the key holds Attack before the press")
+    t.eq(addon.diag.timing.KEYS_FIGHT_START_WAITED, nil, "no mark before the fight")
+    c.setCurrentSpell(ATTACK_ID, true)
+    c.setLockdown(true)
+    c.setCombat(true)
+    t.eq(attr(c, "spell"), "Attack", "the lock was on: nothing could be set")
+    local m = addon.diag.timing.KEYS_FIGHT_START_WAITED
+    t.ok(type(m) == "table", "the diag timing has the mark")
+    local listed = false
+    for _, e in ipairs(addon.diag.timing.order) do
+        if e == "KEYS_FIGHT_START_WAITED" then listed = true end
+    end
+    t.ok(listed, "listed in the timing order")
+    nothingWritten(t, c)
+end
+
+-- SE6-1: the usual order leaves no mark.
+tests["auto attack: the fight starts before the lock: no waited mark"] = function(t)
+    local c, addon = start()
+    pull(c)
+    c.setLockdown(false)
+    c.setCurrentSpell(ATTACK_ID, true)
+    c.setCombat(true)
+    c.setLockdown(true)
+    t.eq(addon.diag.timing.KEYS_FIGHT_START_WAITED, nil, "Attack came off: no mark")
+end
+
 tests["auto attack: the setting off: the key does not hold Attack"] = function(t)
     local c, addon = start()
     addon.settings:set(ATTACK, false)
