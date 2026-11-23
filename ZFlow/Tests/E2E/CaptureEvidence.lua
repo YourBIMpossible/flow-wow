@@ -57,9 +57,11 @@ local function made()
 end
 
 -- The whole add-on on the capture. prepare(c) makes up what the capture
--- does not hold, before the add-on starts.
-local function boot(cap, prepare)
+-- does not hold, before the add-on starts. wrap(env), when given, changes
+-- the replayed calls before the client is made.
+local function boot(cap, prepare, wrap)
     local env, replay = Capture.Env(cap)
+    if wrap then wrap(env) end
     local c = ns.make.fakeClient({ env = env })
     local report = Capture.Apply(c, cap)
     c.setScreen(1024, 768)
@@ -291,6 +293,20 @@ tests["capture replay: a recorded answer is given only for the recorded argument
     t.eq(replay.GetBuildInfo, { answered = 1, unanswered = 1 })
 end
 
+-- The diag word on a booted add-on, and the recorded calls it asked:
+-- asked (answered) and unanswered in all, and by[path] for each call.
+local function diagAsks(c, replay)
+    c.slashes[ns.id.slash]("diag")
+    c.advance(2, 8)
+    local asked, unanswered, by = 0, 0, {}
+    for path, count in pairs(replay) do
+        by[path] = { answered = count.answered, unanswered = count.unanswered }
+        asked = asked + count.answered
+        unanswered = unanswered + count.unanswered
+    end
+    return asked, unanswered, by
+end
+
 tests["capture replay: the recorded arguments are the ones the diag asks with"] = function(t)
     for key in pairs(Capture.ARGS) do
         t.ok(Capture.CALLS[key] ~= nil, key .. ": a recorded call")
@@ -299,18 +315,52 @@ tests["capture replay: the recorded arguments are the ones the diag asks with"] 
     -- again. Had Capture.ARGS drifted from Core/Diag.lua, a call would go
     -- unanswered here.
     local c, _, _, replay = boot(made())
-    c.slashes[ns.id.slash]("diag")
-    c.advance(2, 8)
-    local asked, unanswered = 0, 0
-    for _, count in pairs(replay) do
-        asked = asked + count.answered
-        unanswered = unanswered + count.unanswered
-    end
+    local asked, unanswered, by = diagAsks(c, replay)
     t.ok(asked > 0, "the diag asked recorded calls")
     t.eq(unanswered, 0, "calls the diag made with arguments the loader does not hold (count)")
     for _, path in ipairs({ "UnitClass", "UnitLevel", "UnitFactionGroup", "UnitHealthMax", "C_Map.GetBestMapForUnit" }) do
-        t.ok(replay[path] and replay[path].answered > 0, path .. ": asked with the recorded arguments")
+        t.ok(by[path] and by[path].answered > 0, path .. ": asked with the recorded arguments")
     end
+end
+
+-- MyBuddy CE-01: what is counted is the diag word, not the whole boot.
+tests["capture replay: an ask with other arguments before the diag word is not counted against it"] = function(t)
+    -- Asked at boot, before the add-on starts and while it starts, with
+    -- arguments the capture does not hold: another unit, a pet.
+    local booting = { on = true }
+    local c, _, _, replay = boot(made(), function(c0)
+        c0.raw("UnitClass", "target")
+        c0.raw("C_Map.GetBestMapForUnit", "party1")
+    end, function(env)
+        local real = env.UnitLevel
+        env.UnitLevel = function(...)
+            if booting.on then real("pet") end
+            return real(...)
+        end
+    end)
+    booting.on = false
+    local before = 0
+    for _, count in pairs(replay) do before = before + count.unanswered end
+    t.ok(before >= 2, "the boot asked with other arguments: " .. before)
+    local asked, unanswered = diagAsks(c, replay)
+    t.ok(asked > 0, "the diag asked recorded calls")
+    t.eq(unanswered, 0, "calls the diag word made with other arguments (count)")
+end
+
+tests["capture replay: a diag ask with other arguments is counted"] = function(t)
+    -- The boot asks as recorded; then every UnitClass ask is for the target.
+    local wrong = { on = false }
+    local c, _, _, replay = boot(made(), nil, function(env)
+        local real = env.UnitClass
+        env.UnitClass = function(...)
+            if wrong.on then return real("target") end
+            return real(...)
+        end
+    end)
+    wrong.on = true
+    local _, unanswered, by = diagAsks(c, replay)
+    t.ok(unanswered > 0, "the diag word asked with other arguments: " .. unanswered)
+    t.ok(by.UnitClass ~= nil and by.UnitClass.unanswered > 0, "UnitClass: the wrong ask is counted")
 end
 
 -- 5. Enough evidence -------------------------------------------------------------
