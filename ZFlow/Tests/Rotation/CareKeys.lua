@@ -209,6 +209,22 @@ tests["friends: with the pack, each care spell's reach is read; not known stays 
     t.eq(CK.Friends(c)[1].reach, nil, "no pack: no reach read")
 end
 
+-- K7-1 (P-KEYS-RAID-REACH): in a raid the reach is read for raid units the
+-- same way; a spell whose reach is not given stays not known, never false.
+tests["friends: in a raid, each care spell's reach is read for the raid unit; not known stays not known (K7-1)"] = function(t)
+    local c = ns.make.fakeClient()
+    c.setParty({ { unit = "raid3", guid = "Player-3" } })
+    c.setUnitCare("raid3", { exists = true, friend = true, isSelf = false, dead = false, hurt = true })
+    c.setSpellId("Flash Heal", 2061); c.setSpellId("Dispel Magic", 527)
+    c.setReach("raid3", 2061, true)
+    local list = CK.Friends(c, ns.Packs.PRIEST)
+    t.eq(list and list[1].unit, "raid3")
+    t.eq(list and list[1].reach, { ["Flash Heal"] = true }, "Dispel Magic not given: left out, not known")
+    c.setReach("raid3", 527, false)
+    list = CK.Friends(c, ns.Packs.PRIEST)
+    t.eq(list and list[1].reach, { ["Flash Heal"] = true, ["Dispel Magic"] = false })
+end
+
 tests["friend heal: Shield when no heal is ready; a skipped or unread spell is passed by"] = function(t)
     local s = friendSnap({ { unit = "target", dead = false, hurt = true } })
     for _, name in ipairs({ "Flash Heal", "Lesser Heal", "Heal", "Renew" }) do s.spells[name].onCooldown = true end

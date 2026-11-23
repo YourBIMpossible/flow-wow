@@ -8211,6 +8211,138 @@ function ns.make.client(env)
         return h
     end
 
+    -- Flow and self buttons (Rotation/FlowButton.lua). Three helpers on a
+    -- button clickRow made; each answers nil when there is no frame by
+    -- that name. Not seen in game.
+    --
+    -- c.buttonFace(spec) -> handle or nil. spec = { button }. A plain face
+    -- drawn with colour only, no art path (lead section 297 item 5): a dark
+    -- backing under the icon, and over it a dark panel with a "?" shown
+    -- while the button holds nothing or no icon was read.
+    --   h.empty(on) -> true, or false and "refused".
+    -- First guess: CreateTexture with a sub level as its fourth argument.
+    function c.buttonFace(spec)
+        if type(spec) ~= "table" then return nil end
+        local b = guideFrame(spec.button)
+        if b == nil then return nil end
+        local okB, back = method(b, "CreateTexture", nil, "BACKGROUND")
+        if okB and type(back) == "table" then
+            method(back, "SetAllPoints", b)
+            if not method(back, "SetColorTexture", 0.1, 0.1, 0.1, 0.8) then
+                method(back, "SetTexture", 0.1, 0.1, 0.1, 0.8)
+            end
+        end
+        local okP, panel = method(b, "CreateTexture", nil, "OVERLAY", nil, -1)
+        if not okP or type(panel) ~= "table" then return nil end
+        method(panel, "SetAllPoints", b)
+        if not method(panel, "SetColorTexture", 0.15, 0.15, 0.15, 1) then
+            method(panel, "SetTexture", 0.15, 0.15, 0.15, 1)
+        end
+        local okM, mark = method(b, "CreateFontString", nil, "OVERLAY", "GameFontNormalSmall")
+        if not okM or type(mark) ~= "table" then mark = nil end
+        if mark ~= nil then
+            method(mark, "SetPoint", "CENTER", b, "CENTER", 0, 0)
+            method(mark, "SetText", "?")
+        end
+        local h = {}
+        function h.empty(on)
+            local called
+            if on == true then called = method(panel, "Show") else called = method(panel, "Hide") end
+            if mark ~= nil then
+                if on == true then method(mark, "Show") else method(mark, "Hide") end
+            end
+            if not called then return false, "refused" end
+            return true
+        end
+        return h
+    end
+
+    -- Lead section 305 item 1: no add-on file calls this now. The Flow and
+    -- self buttons move by moveHandle; a drag on a secure button that acts
+    -- on the press down would also cast. Kept in place (shared file).
+    -- c.ctrlDrag(spec) -> true or nil. spec = { target, button, onMoved }.
+    -- A left-button drag on the button named spec.button moves the frame
+    -- named spec.target, only when IsControlKeyDown answers true and
+    -- InCombatLockdown a plain false as the drag starts. Let go as
+    -- moveHandle does (SC-3): a drag that ends in a fight waits for
+    -- PLAYER_REGEN_ENABLED; the client layout cache is not written and
+    -- onMoved({ point, relativePoint, x, y }) is called. Set up only while
+    -- the lock is a plain false.
+    -- First guess: RegisterForDrag and the OnDragStart / OnDragStop scripts
+    -- on a SecureActionButtonTemplate button, and IsControlKeyDown.
+    function c.ctrlDrag(spec)
+        if type(spec) ~= "table" then return nil end
+        local target = guideFrame(spec.target)
+        local b = guideFrame(spec.button)
+        if target == nil or b == nil then return nil end
+        local function unlocked()
+            local okLock, locked = call(env.InCombatLockdown)
+            return okLock and locked == false
+        end
+        local function ctrl()
+            local okC, down = call(env.IsControlKeyDown)
+            return okC and down == true
+        end
+        if not unlocked() then return nil end
+        if not method(b, "RegisterForDrag", "LeftButton") then return nil end
+        local dragging = false
+        method(b, "SetScript", "OnDragStart", function()
+            if not unlocked() or not ctrl() then return end
+            dragging = true
+            method(target, "StartMoving")
+        end)
+        local waitStop
+        local onStop
+        onStop = function()
+            if not dragging then return end
+            if not unlocked() then
+                if waitStop == nil then
+                    waitStop = c.listen("PLAYER_REGEN_ENABLED", function()
+                        if not unlocked() then return end
+                        local cancel = waitStop
+                        waitStop = nil
+                        if type(cancel) == "function" then cancel() end
+                        onStop()
+                    end)
+                end
+                return
+            end
+            dragging = false
+            method(target, "StopMovingOrSizing")
+            method(target, "SetUserPlaced", false)
+            local okP, a, _, r, x, y = method(target, "GetPoint", 1)
+            if not okP or type(a) ~= "string" or type(x) ~= "number" or type(y) ~= "number" then return end
+            if type(r) ~= "string" then r = a end
+            if type(spec.onMoved) == "function" then pcall(spec.onMoved, { a, r, x, y }) end
+        end
+        method(b, "SetScript", "OnDragStop", onStop)
+        return true
+    end
+
+    -- c.hoverTip(spec) -> true or nil. spec = { frame, text }. Pointing at
+    -- the frame named spec.frame shows text() as one line in the game
+    -- tooltip; leaving it hides the tooltip. A text() that raises, or gives
+    -- no text, shows nothing.
+    -- First guess: GameTooltip SetOwner(frame, "ANCHOR_RIGHT"), SetText,
+    -- Show and Hide, hooked with HookScript OnEnter / OnLeave so the
+    -- template scripts stay.
+    function c.hoverTip(spec)
+        if type(spec) ~= "table" or type(spec.text) ~= "function" then return nil end
+        local f = guideFrame(spec.frame)
+        local tip = guideFrame("GameTooltip")
+        if f == nil or tip == nil then return nil end
+        local hooked = method(f, "HookScript", "OnEnter", function()
+            local okT, text = pcall(spec.text)
+            if not okT or type(text) ~= "string" or text == "" then return end
+            method(tip, "SetOwner", f, "ANCHOR_RIGHT")
+            method(tip, "SetText", text)
+            method(tip, "Show")
+        end)
+        if not hooked then return nil end
+        method(f, "HookScript", "OnLeave", function() method(tip, "Hide") end)
+        return true
+    end
+
     -- c.moveHandle(spec) -> handle or nil. spec = { target, width, height,
     -- onMoved }. A grip on the left edge of the frame named target (nil
     -- when there is no such frame). Dragging it moves that frame, only when

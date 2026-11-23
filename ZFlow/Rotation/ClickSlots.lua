@@ -344,7 +344,12 @@ function S.Declare(k, diag)
         if kf then after(kf:want(nil)) end
     end
 
+    -- K7-2 (P-KEYS-TOKEN-REINDEX): the last view seen, so a roster change
+    -- can plan the care slot again by the new group tokens.
+    local lastView, rosterStale = nil, false
+
     local function onView(view)
+        lastView = view
         if not (switchedOn() and type(view) == "table" and view.pack == true) then
             clear()
             return
@@ -370,6 +375,19 @@ function S.Declare(k, diag)
         end
         if not ensure() then return end
         after(kf:want(plan))
+    end
+
+    -- GROUP_ROSTER_UPDATE: party1 may now be someone else. Out of a fight
+    -- the last view is planned again at once; in a fight, or the lock not
+    -- read, nothing is written and it waits for PLAYER_REGEN_ENABLED.
+    local function refreshRoster()
+        local okLock, lock = pcall(client.combatLockdown)
+        if not okLock or lock ~= false then
+            rosterStale = true
+            return
+        end
+        rosterStale = false
+        if lastView ~= nil then onView(lastView) end
     end
 
     local function run(rest)
@@ -400,8 +418,10 @@ function S.Declare(k, diag)
             client = ctx.client
             ctx.bus:on(S.NAME, D.EVENT, onView)
             client.listen("PLAYER_REGEN_ENABLED", function()
+                if rosterStale then refreshRoster() end
                 if kf then after(kf:try(true)) end
             end)
+            ctx.bus:on(S.NAME, "GROUP_ROSTER_UPDATE", refreshRoster)
         end,
     })
 

@@ -133,6 +133,46 @@ tests["priest care key: the target changes in a fight; the key keeps the friend"
     neverTarget(t, h)
 end
 
+-- Lead section 305 item 6 (P-KEYS-TOKEN-REINDEX, K7-2): the group order
+-- changes, so the friend the key holds by "party1" is now "party2". On
+-- GROUP_ROSTER_UPDATE the key is planned again at once, out of a fight;
+-- in a fight nothing is written until PLAYER_REGEN_ENABLED.
+local function swap(c)
+    c.setParty({ { unit = "party1", guid = "Player-2" }, { unit = "party2", guid = "Player-1" } })
+    c.setUnitCare("party1", { exists = true, friend = true, isSelf = false, dead = false, hurt = false })
+    c.setUnitCare("party2", FRIEND)
+end
+
+tests["priest care key: two members swap places, the key follows the friend"] = function(t)
+    local c = start({ on = true })
+    targetInGroup(c, FRIEND); c.advance(3, 5)
+    local h = button(c)
+    if not h then t.ok(false, "no button"); return end
+    t.eq(h.attrs.unit, "party1", "planned on the friend you target")
+    swap(c)
+    c.fire("GROUP_ROSTER_UPDATE")
+    t.eq(h.attrs.unit, "party2", "the roster changed: the same friend, by its new token")
+    t.eq(h.attrs.spell, "Flash Heal")
+    neverTarget(t, h)
+    noBindsNoMacros(t, c)
+end
+
+tests["priest care key: two members swap in a fight, set again once it ends"] = function(t)
+    local c = start({ on = true })
+    targetInGroup(c, FRIEND); c.advance(3, 5)
+    local h = button(c)
+    if not h then t.ok(false, "no button"); return end
+    c.setCombat(true); c.advance(1, 5)
+    local given = #c.secureGiven
+    swap(c)
+    c.fire("GROUP_ROSTER_UPDATE")
+    t.eq(#c.secureGiven, given, "nothing written in the fight")
+    t.eq(h.attrs.unit, "party1", "it keeps what it had")
+    c.setCombat(false)
+    t.eq(h.attrs.unit, "party2", "set to the new token as the fight ends")
+    neverTarget(t, h)
+end
+
 tests["priest care key: a friendly target not in your group is left out"] = function(t)
     local c = start({ on = true })
     c.setGuid("target", "Player-9")
