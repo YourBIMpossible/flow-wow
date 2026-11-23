@@ -1,8 +1,10 @@
 local _, ns = ...
 
--- The Priest and Shaman packs: they pass PackCheck, they hold what the old
--- shared tables said and nothing else, and with nothing known the chooser,
--- the key plan and the cast plan all answer "nothing" without failing.
+-- The Priest and Shaman packs: they pass PackCheck and hold what the old
+-- shared tables said. The Shaman pack holds nothing else, and with nothing
+-- known the chooser, the key plan and the cast plan all answer "nothing"
+-- without failing. The Priest pack (section 197) is filled: every row a
+-- first guess, nothing for another player, and its key rows are planned.
 
 local EQUIP = {
     PRIEST = { [4] = { 0, 1 }, [2] = { 4, 10, 15, 19, 20 } },
@@ -57,6 +59,18 @@ for _, class in ipairs({ "PRIEST", "SHAMAN" }) do
         t.eq(items, REAGENTS[class], "reagents")
     end
 
+    tests[name .. " pack: nothing observed, nothing for another player"] = function(t)
+        local p = ns.Packs[class]
+        t.ok(not string.find(p.provenance.facts, "observed in", 1, true), "no observation claimed")
+        t.eq(p.groups, {}, "no group rows")
+        t.eq(p.spells.Resurrection, nil, "no Resurrection")
+        t.eq(p.spells["Ancestral Spirit"], nil, "no Ancestral Spirit")
+    end
+end
+
+for _, class in ipairs({ "SHAMAN" }) do
+    local name = string.lower(class)
+
     tests[name .. " pack: what is not known is empty, and listed as unknown"] = function(t)
         local p = ns.Packs[class]
         for _, key in ipairs(EMPTY) do
@@ -68,14 +82,6 @@ for _, class in ipairs({ "PRIEST", "SHAMAN" }) do
         for _, key in ipairs({ "lists", "spells", "keys", "roles", "weights" }) do
             t.ok(unknown[key], key .. " is listed as unknown")
         end
-    end
-
-    tests[name .. " pack: nothing observed, nothing for another player"] = function(t)
-        local p = ns.Packs[class]
-        t.ok(not string.find(p.provenance.facts, "observed in", 1, true), "no observation claimed")
-        t.eq(p.groups, {}, "no group rows")
-        t.eq(p.spells.Resurrection, nil, "no Resurrection")
-        t.eq(p.spells["Ancestral Spirit"], nil, "no Ancestral Spirit")
     end
 
     tests[name .. " pack: the chooser suggests nothing and says why"] = function(t)
@@ -92,6 +98,36 @@ for _, class in ipairs({ "PRIEST", "SHAMAN" }) do
         t.eq(r.spell, nil, "the key casts nothing")
         t.eq(r.apply.counts, { set = 0, clear = 0, unchanged = 0 }, "nothing to bind")
     end
+end
+
+tests["priest pack: every row is filled, each spell a first guess"] = function(t)
+    local p = ns.Packs.PRIEST
+    local count = 0
+    for spell, row in pairs(p.spells) do
+        count = count + 1
+        t.eq(row.evidence, "first guess", spell)
+    end
+    t.ok(count > 0, "spells written")
+    t.ok(#p.lists.default > 0, "a default list")
+    t.ok(#p.heals.self > 0, "heals for yourself")
+    t.ok(p.roles.dps ~= nil and p.roles.heal ~= nil, "two roles")
+    t.ok(p.weights.dps ~= nil and p.weights.heal ~= nil, "weights per role")
+    t.eq(p.unknown, nil, "nothing left listed as unknown")
+    for _, rule in ipairs(p.lists.default) do
+        t.eq(rule.evidence, "first guess", rule.spell)
+    end
+end
+
+tests["priest pack: Power Word: Shield is a key, never a list step"] = function(t)
+    for _, rule in ipairs(ns.Packs.PRIEST.lists.default) do
+        t.ok(rule.spell ~= "Power Word: Shield", "no Weakened Soul read: not suggested")
+    end
+end
+
+tests["priest pack: the key plan has rows for no form and Shadowform"] = function(t)
+    local kp = ns.KeyPlan(ns.Packs.PRIEST, { forms = { { name = "Shadowform", index = 1 } } })
+    t.ok(kp.states[0] ~= nil, "a row for no form")
+    t.ok(kp.states[1] ~= nil, "a row for Shadowform")
 end
 
 tests["priest and shaman packs are separate tables"] = function(t)
