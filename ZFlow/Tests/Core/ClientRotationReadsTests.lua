@@ -278,4 +278,75 @@ return {
         t.ok(c.currentSpell(6603) == nil)
         t.ok(c.currentSpell("6603") == nil)
     end,
+
+    -- -------------------------------------------------------- targetDebuffs
+    -- Section 187: there was no read of your debuffs on the target, so
+    -- Rake, Rip and Moonfire (missing on the target) were never suggested.
+    ["187 targetDebuffs: the aura data route asks the target for your harmful auras"] = function(t)
+        local asked = {}
+        local env = { GetTime = function() return 100 end }
+        env.C_UnitAuras = {
+            GetAuraDataByIndex = function(unit, i, filter)
+                asked[#asked + 1] = unit .. " " .. filter
+                if unit ~= "target" or filter ~= "HARMFUL|PLAYER" then return nil end
+                return ({ { name = "Rake", expirationTime = 109 }, { name = "Moonfire", expirationTime = 112 } })[i]
+            end,
+        }
+        local c = ns.make.client(env)
+        t.ok(type(c.targetDebuffs) == "function", "the client has the read")
+        if type(c.targetDebuffs) ~= "function" then return end
+        t.eq(c.targetDebuffs(), { Rake = 9, Moonfire = 12 })
+        t.eq(asked[1], "target HARMFUL|PLAYER")
+    end,
+
+    ["187 targetDebuffs: the old route asks UnitDebuff, never UnitBuff"] = function(t)
+        local env = { GetTime = function() return 100 end }
+        env.UnitDebuff = function(unit, i, filter)
+            if unit ~= "target" or filter ~= "HARMFUL|PLAYER" or i > 1 then return nil end
+            return "Rip", "icon", 1, nil, 12, 106
+        end
+        env.UnitBuff = function() return "Wrong", "icon", 1, nil, 12, 106 end
+        local c = ns.make.client(env)
+        if type(c.targetDebuffs) ~= "function" then t.ok(false, "no targetDebuffs read"); return end
+        t.eq(c.targetDebuffs(), { Rip = 6 })
+    end,
+
+    ["187 targetDebuffs: no read, a raise or a hidden name is not known; none is empty"] = function(t)
+        local c = ns.make.client({ GetTime = function() return 1 end })
+        if type(c.targetDebuffs) ~= "function" then t.ok(false, "no targetDebuffs read"); return end
+        t.ok(c.targetDebuffs() == nil, "no read")
+        t.ok(ns.make.client({ GetTime = function() return 1 end, UnitDebuff = boom }).targetDebuffs() == nil, "raises")
+        local secret = {}
+        local env = secretEnv({ GetTime = function() return 1 end }, secret)
+        env.C_UnitAuras = { GetAuraDataByIndex = function(_, i) if i == 1 then return { name = secret } end end }
+        t.ok(ns.make.client(env).targetDebuffs() == nil, "hidden name")
+        env = { GetTime = function() return 1 end, C_UnitAuras = { GetAuraDataByIndex = function() return nil end } }
+        t.eq(ns.make.client(env).targetDebuffs(), {}, "read, and none")
+    end,
+
+    ["187 playerBuffs: still asks the player for helpful auras after the target read was added"] = function(t)
+        local asked
+        local env = { GetTime = function() return 100 end }
+        env.C_UnitAuras = { GetAuraDataByIndex = function(unit, i, filter)
+            asked = unit .. " " .. filter
+            if i == 1 then return { name = "Thorns", expirationTime = 130 } end
+        end }
+        t.eq(ns.make.client(env).playerBuffs(), { Thorns = 30 })
+        t.eq(asked, "player HELPFUL")
+    end,
+
+    ["187 fake: target debuffs start not known and are handed back as a copy"] = function(t)
+        local c = ns.make.fakeClient()
+        if type(c.targetDebuffs) ~= "function" then t.ok(false, "no targetDebuffs read"); return end
+        t.ok(c.targetDebuffs() == nil)
+        c.setTargetDebuffs({ Rake = 9 })
+        local got = c.targetDebuffs()
+        t.eq(got, { Rake = 9 })
+        got.Rake = nil
+        t.eq(c.targetDebuffs(), { Rake = 9 })
+        c.setTargetDebuffs({})
+        t.eq(c.targetDebuffs(), {})
+        c.setTargetDebuffs(nil)
+        t.ok(c.targetDebuffs() == nil)
+    end,
 }

@@ -516,7 +516,8 @@ function ns.make.fakeClient(opts)
     end
 
     -- Every icon made is in c.icons, in order: .spec, .shown, .texture,
-    -- .point, .places. setTexture(nil) clears and answers false, as on the
+    -- .point, .places, .marked ("far" or nil, the last mark).
+    -- setTexture(nil) clears and answers false, as on the
     -- client. drag(point) is the test's control: the player let it go
     -- there; without the move key (c.setMoveKey(false)) nothing happens.
     c.icons = {}
@@ -534,6 +535,10 @@ function ns.make.fakeClient(opts)
             h.places = h.places + 1
         end
         function h.show(on) h.shown = on and true or false end
+        function h.mark(look)
+            h.marked = look == "far" and "far" or nil
+            return true
+        end
         function h.onMoved(fn, failed)
             moved = fn
             movedFailed = type(failed) == "function" and failed or nil
@@ -1638,6 +1643,15 @@ function ns.make.fakeClient(opts)
         return out
     end
     function c.setPlayerBuffs(map) s.playerBuffs = type(map) == "table" and map or nil end
+    -- Section 187: your debuffs on the target, the same way. Starts not
+    -- known (nil). setTargetDebuffs(map or nil): handed back as a copy.
+    function c.targetDebuffs()
+        if type(s.targetDebuffs) ~= "table" then return nil end
+        local out = {}
+        for k, v in pairs(s.targetDebuffs) do out[k] = v end
+        return out
+    end
+    function c.setTargetDebuffs(map) s.targetDebuffs = type(map) == "table" and map or nil end
     function c.formName()
         if s.formKnown ~= true then return nil, false end
         return s.formName, true

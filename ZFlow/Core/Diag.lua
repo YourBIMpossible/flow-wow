@@ -865,6 +865,23 @@ local function skippedClause(view)
     return skippedCount(notLearned, "not learned or not found by name") .. skippedCount(notRead, "not read")
 end
 
+-- Section 187: the reads a pack leans on, in the player's words.
+Diag.READ_WORDS = {
+    formKnown = "which form you are in",
+    buffs = "your buffs",
+    targetDebuffs = "your debuffs on the target",
+}
+
+-- The pack's reads that came back not known, as one list of words, or nil.
+local function notReadWords(view)
+    if type(view.notRead) ~= "table" or #view.notRead == 0 then return nil end
+    local words = {}
+    for _, field in ipairs(view.notRead) do
+        words[#words + 1] = Diag.READ_WORDS[field] or tostring(field)
+    end
+    return table.concat(words, ", ")
+end
+
 local function rotationRow(view)
     if view.pack ~= true then return "class not known, or no spell list for it; nothing suggested." end
     local s = type(view.snapshot) == "table" and view.snapshot or {}
@@ -881,7 +898,13 @@ local function rotationRow(view)
     elseif picked ~= nil then
         line = head .. "suggesting " .. tostring(picked) .. " (" .. tostring(why.step or "step not known") .. ")."
     else
-        line = head .. "nothing to suggest (" .. tostring(why.note or "no reason given") .. ")."
+        -- Section 187: a read the pack leans on that was not given is named.
+        -- Before, a druid whose form was not read was told only "nothing out
+        -- of range" or "no enemy targeted".
+        local note = tostring(why.note or "no reason given")
+        local unread = notReadWords(view)
+        if unread ~= nil then note = note .. "; not read: " .. unread end
+        line = head .. "nothing to suggest (" .. note .. ")."
     end
     return line .. skippedClause(view)
 end
@@ -931,6 +954,22 @@ function Diag.RotationCooldownLine(view)
     table.sort(passed)
     return "rotation: " .. plural(#passed, "spell", "spells") .. " passed by: "
         .. R.COOLDOWN_UNKNOWN .. ": " .. table.concat(passed, ", ") .. "."
+end
+
+-- Diag.RotationReadsLine(view) -> line or nil
+--   Section 187: with a spell suggested, the reads the pack leans on that
+--   came back not known. Before, the spells that wait on them (Mark of the
+--   Wild with your buffs not read, Rake with your debuffs on the target not
+--   read) were passed by and nothing said so. nil when every read was
+--   given, nothing was picked (the rotation line names them then), or no
+--   choosing happened.
+function Diag.RotationReadsLine(view)
+    local s = choosing(view)
+    if s == nil then return nil end
+    if type(view.suggestion) ~= "table" or view.suggestion.spell == nil then return nil end
+    local unread = notReadWords(view)
+    if unread == nil then return nil end
+    return "rotation: not read: " .. unread .. "; spells that need them are passed by."
 end
 
 function Diag.RotationStealthLine(view)
@@ -1200,6 +1239,7 @@ function Diag.Start(k)
         lines[#lines + 1] = Diag.RotationLine(state, view, enabled)
         lines[#lines + 1] = Diag.RotationCooldownLine(view)
         lines[#lines + 1] = Diag.RotationStealthLine(view)
+        lines[#lines + 1] = Diag.RotationReadsLine(view)
         return lines
     end
 

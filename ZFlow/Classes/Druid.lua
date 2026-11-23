@@ -382,6 +382,8 @@ local pack = {
     options = {
         shapeshifts = true,
         nextSwing = { "Maul" },
+        -- Reads the rules lean on; one not given is named by diag (187).
+        reads = { "formKnown", "buffs", "targetDebuffs" },
     },
 }
 
