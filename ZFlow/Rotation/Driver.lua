@@ -7,7 +7,7 @@ local _, ns = ...
 --
 --   D.Read(client, pack, ids[, role]) -> read(field)
 --     the reader ns.Snapshot takes. dead, inCombat, stealthed, hostile,
---     spells, buffs, targetDebuffs, form and current are asked of the
+--     spells, buffs, targetDebuffs, form, current and pet are asked of the
 --     client; role is the
 --     one handed in; every other field answers nil (not known), never a
 --     guess.
@@ -35,6 +35,10 @@ local _, ns = ...
 --                  ids, from client.currentSpell(id); a spell whose answer
 --                  was not read is left out; nil when the client has no
 --                  such read or no spell was read
+--       pet        client.pet() as it answered (lead section 197): nil when
+--                  not known or the client has no such read; { exists =
+--                  false } for no pet; else exists, dead, inCombat, family,
+--                  happiness, powerKind, each nil when not known
 --       spells     each row also gets inRange = client.inRange(spell id)
 --                  when the client has that read and the answer is true or
 --                  false; otherwise range stays not known
@@ -62,7 +66,7 @@ local _, ns = ...
 --     attrs       ns.cast.Attributes(suggestion, plan, applied, lockdown)
 --     unread      the pack's spells that could not be read (sorted)
 --     notRead     the reads the pack names in options.reads (formKnown,
---                 buffs, targetDebuffs) that came back not known, in the
+--                 buffs, targetDebuffs, pet) that came back not known, in the
 --                 pack's order; {} when every one was read (section 187)
 --     missing     the pack's spells with no id (sorted)
 --     passed      the spells the chooser's steps passed by only because
@@ -213,6 +217,10 @@ function D.Read(client, pack, ids, role)
         end
         if field == "current" then return currentOf(client, ids) end
         if field == "conjured" then return conjuredOf(client, pack) end
+        if field == "pet" then
+            if type(client.pet) ~= "function" then return nil end
+            return client.pet()
+        end
         return nil
     end
 end

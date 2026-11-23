@@ -32,6 +32,8 @@ R.SNAPSHOT_FIELDS = {
     { "loc", "value" }, { "lowHealth", "flag" }, { "hurt", "number" },
     { "buffs", "map" }, { "targetDebuffs", "map" }, { "debuffTypes", "map" }, { "current", "map" },
     { "conjured", "map" },
+    -- Lead section 197: your pet (Choose.lua, R.PetUp); nil when not read.
+    { "pet", "map" },
     { "spells", "spells" },
 }
 -- Names that would be made from a health or power amount. This client hides
