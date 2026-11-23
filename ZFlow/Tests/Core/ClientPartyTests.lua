@@ -44,6 +44,14 @@ tests["c.party 248: realm and GUID when the client gives them, never a secret"] 
     end)(), "UnitGUID is in the capture's name list")
 end
 
+-- Item 19: a role read that raises leaves the role out (roster order), no error.
+tests["c.party 19: the role read raises: no role, no error"] = function(t)
+    local env = groupEnv({ UnitGroupRolesAssigned = function() error("x") end })
+    local ok, got = pcall(ns.make.client(env).party)
+    t.ok(ok, "no error")
+    t.eq(got and got[1] and { got[1].unit, got[1].role }, { "party1" }, "the role left out")
+end
+
 tests["c.party: each other member, each field as the client gave it"] = function(t)
     local env = groupEnv()
     t.eq(ns.make.client(env).party(), {
