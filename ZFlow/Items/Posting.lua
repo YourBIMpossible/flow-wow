@@ -1,7 +1,11 @@
 local _, ns = ...
 
--- S3 slice 1: what in your bags is worth the auction house, the price to
--- ask and the gain over a vendor. Legacy Flow's Modules/Items/Posting.lua
+-- S3 slices 1-3: what in your bags is worth the auction house, the price to
+-- ask and the gain over a vendor; slice 2 puts that advice on the item
+-- tooltip (setting auction.postAdvice); slice 3 counts the auctions that
+-- came back unsold, from the game's own lines (CHAT_MSG_SYSTEM), and a sale
+-- clears the count, as legacy did. A count is a floor ("at least"): a line
+-- missed (another addon, a reload, a fight) is not counted. Legacy Flow's Modules/Items/Posting.lua
 -- (0.35.214) and Disposition's WorthAuction, its pure rules ported
 -- verbatim. Research: WoW/from-plexy/RESEARCH-posting.md.
 --
@@ -15,8 +19,11 @@ local _, ns = ...
 --   Posting.WorthAuction(ahPrice, vendorPrice) -> bool
 --   Posting.Candidate(decision, item) -> bool   (also the trader's, S2)
 --   Posting.List(bag, decide, seen) -> rows
---   Posting.Lines(rows, now, title, max) -> lines
---   Posting.Declare(k, diag) -> api   (api.runs())
+--   Posting.Lines(rows, now, title, max, unsold) -> lines
+--                    unsold: itemID -> how many came back unsold, or nil
+--   Posting.TipLine(row, now, unsold) -> text, r, g, b; or nil
+--   Posting.Note(record, outcome) -> the new { expired, sold }, or nil
+--   Posting.Declare(k, diag) -> api   (api.runs(), api.tipBuilds())
 --
 --   <slash> auctions   the list
 local Po = {}
@@ -31,6 +38,10 @@ Po.CUT = 0.05       -- the house's cut of a sale
 Po.FEE = 0.30       -- legacy's listing fee, of the vendor price ("not checked on WoW: Forever")
 Po.MAX = 10         -- rows shown (legacy P.ROWS)
 Po.TRADE_GOODS = 7  -- unused trade goods go to the auction house (legacy 0.35.362)
+Po.SETTING = "auction.postAdvice"
+Po.UNSOLD = "learned.auction.unsold"   -- char: itemID -> { expired, sold }
+Po.TIP_CACHE = 5    -- seconds one bag read serves a run of tooltips
+Po.COLOUR = { 1, 0.82, 0 }
 
 -- Keep rules that are only a fallback: what they keep may still be offered.
 local GENERIC = { notGear = true }
@@ -113,7 +124,33 @@ end
 
 local function coin(n) return ns.Prices.Coin(n) or "?" end
 
-function Po.Lines(rows, now, title, max)
+local function unsoldText(n)
+    if isCount(n) and n > 0 then return " (unsold at least " .. n .. "x)" end
+    return ""
+end
+
+-- One expired or sold line for an item: a sale clears the unsold count
+-- (legacy P.Note). nil when the outcome is neither.
+function Po.Note(rec, outcome)
+    if outcome ~= "sold" and outcome ~= "expired" then return nil end
+    local expired = type(rec) == "table" and isCount(rec.expired) and rec.expired or 0
+    local sold = type(rec) == "table" and isCount(rec.sold) and rec.sold or 0
+    if outcome == "sold" then return { expired = 0, sold = sold + 1 } end
+    return { expired = expired + 1, sold = sold }
+end
+
+-- The tooltip line for a listed row; nil without a price.
+function Po.TipLine(row, now, unsold)
+    if type(row) ~= "table" or not isCount(row.each) or not isCount(row.seen) then return nil end
+    local text = "Auction: ask " .. coin(row.each) .. " each (" .. coin(row.seen - row.each) .. " under "
+        .. coin(row.seen)
+    if isCount(now) and isCount(row.seenAt) and now >= row.seenAt then
+        text = text .. ", seen " .. ns.PriceChart.Span(now - row.seenAt) .. " ago"
+    end
+    return text .. ")" .. unsoldText(unsold), Po.COLOUR[1], Po.COLOUR[2], Po.COLOUR[3]
+end
+
+function Po.Lines(rows, now, title, max, unsold)
     title = tostring(title)
     local foot = "Posting is yours, in the auction window: " .. title .. " posts nothing."
     if type(rows) ~= "table" or #rows == 0 then return { title .. " Auctions: 0 thing(s) to post", foot } end
@@ -127,8 +164,10 @@ function Po.Lines(rows, now, title, max)
             seenText = seenText .. ", " .. ns.PriceChart.Span(now - r.seenAt) .. " ago"
         end
         local gain = (r.gain or 0) >= 0 and ("+" .. coin(r.gain or 0)) or ("-" .. coin(-r.gain))
-        lines[#lines + 1] = string.format("%s x %s: ask %s each (seen %s; a vendor pays %s; about %s over vendoring, the deposit not counted)",
-            tostring(r.count), name, coin(r.each), seenText, coin(r.vendor), gain)
+        local id = ns.Items.Id(r.id) or r.id
+        lines[#lines + 1] = string.format("%s x %s: ask %s each (seen %s; a vendor pays %s; about %s over vendoring, the deposit not counted)%s",
+            tostring(r.count), name, coin(r.each), seenText, coin(r.vendor), gain,
+            unsoldText(type(unsold) == "table" and unsold[id] or nil))
     end
     if #rows > max then lines[#lines + 1] = "and " .. (#rows - max) .. " more." end
     lines[#lines + 1] = foot
@@ -138,7 +177,10 @@ end
 function Po.Declare(k, diag)
     local api = {}
     local ctx, runs = nil, 0
+    local tipRows, tipAt, builds = nil, nil, 0
+    local cancelTip, cancelSystem
     function api.runs() return runs end
+    function api.tipBuilds() return builds end
 
     -- The latest look at an item in the player's own searches on this realm.
     local function seenOn(store, client)
@@ -153,6 +195,67 @@ function Po.Declare(k, diag)
         end
     end
 
+    local function rowsNow(c, store)
+        local bag = ns.Bank.Entries(c.bagItems(), c.itemInfo)
+        local context = ns.BankList.Context(store, nil)
+        return Po.List(bag, function(item) return ns.Disposition.Decide(item, context) end, seenOn(store, c))
+    end
+
+    -- itemID -> how many came back unsold since the last sale.
+    local function unsoldCounts(store)
+        local out = {}
+        local saved = store:get("char", Po.UNSOLD)
+        if type(saved) ~= "table" then return out end
+        for id, rec in pairs(saved) do
+            if type(rec) == "table" and isCount(rec.expired) and rec.expired > 0 then out[id] = rec.expired end
+        end
+        return out
+    end
+
+    -- A run of tooltips shares one bag read for TIP_CACHE seconds.
+    local function tipList(c, store)
+        local now = c.clock()
+        if tipRows and isCount(now) and isCount(tipAt) and now >= tipAt and now - tipAt <= Po.TIP_CACHE then
+            return tipRows
+        end
+        tipRows, tipAt = rowsNow(c, store), now
+        builds = builds + 1
+        return tipRows
+    end
+
+    -- A sold or expired line: the item is found by its name among the bags
+    -- and the items with a seen price on this realm. Saved only when the
+    -- name is one item; a name that matches none, or two, is passed over.
+    local function outcome(c, store, line)
+        local kind, name = c.auctionOutcome(line)
+        if (kind ~= "sold" and kind ~= "expired") or type(name) ~= "string" or name == "" then return end
+        local found = {}
+        local function consider(id, itemName)
+            if id ~= nil and itemName == name then found[id] = true end
+        end
+        for _, item in ipairs(ns.Bank.Entries(c.bagItems(), c.itemInfo) or {}) do
+            if type(item) == "table" then consider(ns.Items.Id(item.key), item.name) end
+        end
+        local rk = ns.AuctionLog.RealmKey(c.realm(), c.faction())
+        local priced = rk and store:get("account", ns.AuctionLog.PATH .. "." .. rk)
+        if type(priced) == "table" then
+            for id in pairs(priced) do
+                local info = c.itemInfo(id)
+                consider(id, type(info) == "table" and info.name or nil)
+            end
+        end
+        local only, n = nil, 0
+        for id in pairs(found) do only, n = id, n + 1 end
+        if n ~= 1 then return end
+        local saved = store:get("char", Po.UNSOLD)
+        local t = {}
+        if type(saved) == "table" then for key, v in pairs(saved) do t[key] = v end end
+        local rec = Po.Note(t[only], kind)
+        if not rec then return end
+        t[only] = rec
+        store:set("char", Po.UNSOLD, t)
+    end
+
     local function run()
         local client = k.client
         if not ctx then client.print(k.id.title .. ": " .. Po.WORD .. ": not started yet") return end
@@ -160,10 +263,7 @@ function Po.Declare(k, diag)
         local store = ctx.store
         local ok, lines = pcall(function()
             local c = ctx.client
-            local bag = ns.Bank.Entries(c.bagItems(), c.itemInfo)
-            local context = ns.BankList.Context(store, nil)
-            local rows = Po.List(bag, function(item) return ns.Disposition.Decide(item, context) end, seenOn(store, c))
-            return Po.Lines(rows, c.clock(), k.id.title)
+            return Po.Lines(rowsNow(c, store), c.clock(), k.id.title, nil, unsoldCounts(store))
         end)
         if not ok or type(lines) ~= "table" then
             client.print(k.id.title .. ": " .. Po.WORD .. ": could not be listed this time.")
@@ -179,9 +279,42 @@ function Po.Declare(k, diag)
 
     k:Module({
         name = Po.NAME,
-        needs = { "client", "store" },
-        start = function(c) ctx = c end,
-        stop = function() ctx = nil end,
+        needs = { "client", "store", "settings" },
+        settings = { {
+            key = Po.SETTING, scope = "account", type = "bool", default = true,
+            label = "Auction advice on item tooltips",
+            help = "For a thing in your bags worth the auction house: the price to ask, from your own searches, "
+                .. "and how often it came back unsold (at least). It posts nothing.",
+            group = "Vendor",
+        } },
+        start = function(c)
+            ctx = c
+            local client = c.client
+            if type(client.onItemTooltip) == "function" then
+                cancelTip = client.onItemTooltip(function(link, add)
+                    if type(add) ~= "function" or c.settings:get(Po.SETTING) ~= true then return end
+                    local ok, text, r, g, b = pcall(function()
+                        local id = ns.Items.Id(link)
+                        if id == nil then return nil end
+                        for _, row in ipairs(tipList(client, c.store)) do
+                            if ns.Items.Id(row.id) == id then
+                                return Po.TipLine(row, client.clock(), unsoldCounts(c.store)[id])
+                            end
+                        end
+                        return nil
+                    end)
+                    if ok and type(text) == "string" then add(text, r, g, b) end
+                end)
+            end
+            if type(client.onSystemMessage) == "function" and type(client.auctionOutcome) == "function" then
+                cancelSystem = client.onSystemMessage(function(line) pcall(outcome, client, c.store, line) end)
+            end
+        end,
+        stop = function()
+            if type(cancelTip) == "function" then cancelTip() end
+            if type(cancelSystem) == "function" then cancelSystem() end
+            cancelTip, cancelSystem, tipRows, tipAt, ctx = nil, nil, nil, nil, nil
+        end,
     })
     return api
 end
