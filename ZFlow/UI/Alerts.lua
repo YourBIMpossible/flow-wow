@@ -33,7 +33,7 @@ A.NO_SOUND = "Alert sound not played"
 A.KINDS = {
     { kind = "repair", prefixes = { "l6c." }, label = "Repair",
         synonyms = { "repair", "durability", "broken" } },
-    { kind = "trainer", prefixes = { "aps.trainer", "aps.classQuest" }, label = "Trainer and class quests",
+    { kind = "trainer", prefixes = { "aps.trainer", "aps.classQuest", "aps.rankup." }, label = "Trainer and class quests",
         synonyms = { "trainer", "spells", "class quest", "training" } },
     { kind = "professions", prefixes = { "aps.prof." }, label = "Professions",
         synonyms = { "profession", "crafting", "skill" } },
