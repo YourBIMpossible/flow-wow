@@ -2869,7 +2869,8 @@ function ns.make.fakeClient(opts)
         if type(s.speech) ~= "table" then return nil end
         local voices = {}
         for i, v in ipairs(s.speech.voices or {}) do voices[i] = { voiceID = v.voiceID, name = v.name } end
-        return { voices = voices }
+        -- Lead section 270: as given to setSpeech; left out (nil) is unknown.
+        return { voices = voices, localPlayback = s.speech.localPlayback }
     end
     function c.speak(text, voice)
         s.speakCalls = s.speakCalls + 1

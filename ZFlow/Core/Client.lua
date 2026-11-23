@@ -7973,7 +7973,18 @@ function ns.make.client(env)
                 voices[#voices + 1] = one
             end
         end
-        return { voices = voices }
+        -- Lead section 270: localPlayback is true only when speak can reach
+        -- the player's own speakers without a guessed enum value: the game's
+        -- TextToSpeech_Speak helper, or Enum.VoiceTtsDestination.LocalPlayback
+        -- a number. Otherwise false, and the feature is not offered.
+        local known = type(env.TextToSpeech_Speak) == "function"
+        local enum = env.Enum
+        if type(enum) == "table" and type(enum.VoiceTtsDestination) == "table"
+            and type(enum.VoiceTtsDestination.LocalPlayback) == "number"
+            and not hidden(enum.VoiceTtsDestination.LocalPlayback) then
+            known = true
+        end
+        return { voices = voices, localPlayback = known }
     end
 
     -- c.speak(text, voice) -> true, or false and why. The game's own helper
