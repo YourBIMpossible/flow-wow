@@ -65,6 +65,8 @@ local function questie(over)
         end
     end
     local zones = {}
+    -- Area 40 (outside the Deadmines) is on map 1436.
+    function zones.GetUiMapIdByAreaId(area) return ({ [40] = 1436 })[area] end
     function zones:GetDungeons()
         if over.badList then error("no list") end
         local dm = { "The Deadmines" }
@@ -229,6 +231,15 @@ end
 -- Lead section 305: the data for the Bosses tab: this account's own seen
 -- loot (UI/BossLoot.lua keeps it, account "learned.bossLoot"), placed in a
 -- dungeon by where Questie spawns the boss. No loot table of any kind.
+-- The item and how often it was seen, of each loot row. Since lead section
+-- 318 a row also carries the name, quality and icon the client read (pinned
+-- in their own case below); these cases pin the order and the counts.
+local function seen(items)
+    local out = {}
+    for i, it in ipairs(items or {}) do out[i] = { item = it.item, times = it.times } end
+    return out
+end
+
 local function book()
     return {
         -- As UI/BossLoot.lua writes them (B.Kill): npcs only on e: keys.
@@ -247,7 +258,7 @@ tests["dungeon read 305: the bosses of a dungeon with the loot this account saw,
     t.eq(#loot.bosses, 1, "only the boss that lives in the Deadmines")
     local b = loot.bosses[1]
     t.eq({ b.name, b.kills }, { "Cookie", 3 })
-    t.eq(b.items, { { item = 2, times = 3 }, { item = 1, times = 1 } })
+    t.eq(seen(b.items), { { item = 2, times = 3 }, { item = 1, times = 1 } })
     t.eq(loot.unplaced, 1, "a boss whose creature was never seen cannot be placed")
 end
 
@@ -259,7 +270,7 @@ tests["dungeon read F5: an n: entry is placed by the creature in its key"] = fun
     local loot = R.Loot(st, c, DM, { ["n:601"] = { name = "Cookie", kills = 2, items = { ["item:5"] = { times = 2 } } } })
     t.eq(loot.why, nil, "loot was seen: said, not hidden")
     t.eq(#loot.bosses, 1)
-    t.eq(loot.bosses[1].items, { { item = 5, times = 2 } })
+    t.eq(seen(loot.bosses[1].items), { { item = 5, times = 2 } })
 end
 
 -- F7: the e: and n: entries of one creature are one boss, as the boss
@@ -272,7 +283,7 @@ tests["dungeon read F7: the encounter and the creature entries of one boss are o
     local loot = R.Loot(st, c, DM, b)
     t.eq(#loot.bosses, 1, "one Cookie, not two")
     t.eq(loot.bosses[1].kills, 4)
-    t.eq(loot.bosses[1].items, { { item = 2, times = 4 }, { item = 1, times = 1 },
+    t.eq(seen(loot.bosses[1].items), { { item = 2, times = 4 }, { item = 1, times = 1 },
         { item = 6, times = 1 } })
 end
 
@@ -325,6 +336,53 @@ tests["dungeon read 305: no loot seen says so, never an empty tab"] = function(t
     t.eq(#R.WHY_NO_LOOT, 2)
     t.eq(R.Loot(R.Start(client({ questie = false })), c, DM, book()).why, S.WHY.noQuestie)
     t.eq(R.Loot(st, c, nil, book()).why, S.WHY.noDungeon)
+end
+
+-- Lead section 318: what the window shows and does, worked out here so the
+-- window computes nothing.
+tests["dungeon read 318: the entrance as a map point the waypoint takes"] = function(t)
+    local c = client({ more = true })
+    local st = indexed(c)
+    local e = R.Entrance(st, c, DM)
+    t.eq({ e.map, e.x, e.y, e.label }, { 1436, 42.5, 71.8, "The Deadmines" })
+    t.eq(e.text, "42.5 71.8 The Deadmines", "the words the waypoint parses")
+    local none, why = R.Entrance(st, c, SFK)
+    t.eq(none, nil)
+    t.eq(why, R.WHY_NO_ENTRANCE)
+    t.eq(#R.WHY_NO_ENTRANCE, 2)
+end
+
+tests["dungeon read 318: search narrows the dungeon list, any case, empty text is all"] = function(t)
+    local st = indexed(client())
+    local list = R.List(st)
+    local names = {}
+    for i, d in ipairs(R.Search(list, "SHADOW")) do names[i] = d.name end
+    t.eq(names, { "Shadowfang Keep" })
+    t.eq(#R.Search(list, ""), 2)
+    t.eq(#R.Search(list, nil), 2)
+    t.eq(#R.Search(list, "zzz"), 0)
+    t.eq(#R.Search(list, "("), 0, "a pattern sign is a plain letter")
+end
+
+tests["dungeon read 318: loot items carry their name, quality and icon as the client reads them"] = function(t)
+    local c = client({ more = true })
+    c.setItemInfo({ [2] = { name = "Cookie's Tenderizer", quality = 2 } })
+    c.setItemTexture(2, "tex:tenderizer")
+    local st = indexed(c)
+    local items = R.Loot(st, c, DM, book()).bosses[1].items
+    t.eq({ items[1].name, items[1].quality, items[1].icon }, { "Cookie's Tenderizer", 2, "tex:tenderizer" })
+    t.eq(items[2].name, R.ITEM_UNREAD, "an item the client has not read yet says so")
+end
+
+-- Twin review 18:06, F4: a quality the kit cannot draw is left out, so one
+-- odd item never stops the window.
+tests["dungeon read F4: an item quality outside 0 to 5, or not whole, is left out"] = function(t)
+    local c = client({ more = true })
+    c.setItemInfo({ [2] = { name = "Odd", quality = 9 }, [1] = { name = "Half", quality = 2.5 } })
+    local st = indexed(c)
+    local items = R.Loot(st, c, DM, book()).bosses[1].items
+    t.eq({ items[1].name, items[1].quality }, { "Odd", nil })
+    t.eq({ items[2].name, items[2].quality }, { "Half", nil })
 end
 
 return tests

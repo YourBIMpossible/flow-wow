@@ -76,6 +76,9 @@ KIND.show[#KIND.show + 1] = "kitWindow"
 -- the listener told what each window drew. Neither asks the game anything.
 KIND.tool[#KIND.tool + 1] = "kitKnown"
 KIND.listen[#KIND.listen + 1] = "onKitDrawn"
+-- The settings in one kit window (lead section 285 item 3): it hands the
+-- caller's tree to kitWindow and asks the game nothing.
+KIND.show[#KIND.show + 1] = "settingsWindow"
 
 -- Section 285 item 2b: the face, Ctrl-drag and hover tip of the Flow and
 -- self buttons (Rotation/FlowButton.lua).

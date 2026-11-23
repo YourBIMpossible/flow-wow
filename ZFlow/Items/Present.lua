@@ -236,10 +236,10 @@ local function plural(n, one, many)
     return n .. " " .. (n == 1 and one or many)
 end
 
--- One row of ItemSell.List, as a text.
-function Present.SellRowText(r, names)
-    local name = type(r.name) == "string" and r.name ~= "" and r.name or Present.Name(r.key, names)
-    local head = isCount(r.count) and (r.count .. " x " .. name) or (name .. " (how many not known)")
+-- The price half of one row of ItemSell.List: what a row says after its
+-- name. The kit sell list (UI/SellList.lua) shows it as the note of a row
+-- whose price is not an observed total.
+function Present.SellPriceText(r)
     local Prices = ns.Prices
     local price
     if r.basis == Prices.OBSERVED and isCount(r.unit) then
@@ -252,7 +252,14 @@ function Present.SellRowText(r, names)
     else
         price = Present.VENDOR_PRICE_UNKNOWN
     end
-    return head .. ": " .. price
+    return price
+end
+
+-- One row of ItemSell.List, as a text.
+function Present.SellRowText(r, names)
+    local name = type(r.name) == "string" and r.name ~= "" and r.name or Present.Name(r.key, names)
+    local head = isCount(r.count) and (r.count .. " x " .. name) or (name .. " (how many not known)")
+    return head .. ": " .. Present.SellPriceText(r)
 end
 
 -- The price lookup (L6-H): PriceLookup.Find's result as lines. One line for
@@ -335,6 +342,20 @@ function Present.KeepText(what, value)
     return "That could not be saved, so nothing was changed."
 end
 
+-- What could not be listed, one text each: bag slots that were not read,
+-- and items a rule would sell that no merchant takes.
+function Present.SellNotes(list)
+    local notes = {}
+    if type(list) ~= "table" then return notes end
+    if isCount(list.unread) and list.unread > 0 then
+        notes[#notes + 1] = plural(list.unread, "bag slot", "bag slots") .. " could not be read"
+    end
+    if isCount(list.unsellable) and list.unsellable > 0 then
+        notes[#notes + 1] = plural(list.unsellable, "item", "items") .. " to sell can't be sold to a merchant"
+    end
+    return notes
+end
+
 -- The whole list, top to bottom: what would be sold, its total, notes on
 -- what could not be listed, then what is kept and why.
 function Present.SellLines(list, kept, names)
@@ -353,12 +374,7 @@ function Present.SellLines(list, kept, names)
         local total = Present.SellTotal(list)
         if total then lines[#lines + 1] = total end
     end
-    if isCount(list.unread) and list.unread > 0 then
-        lines[#lines + 1] = plural(list.unread, "bag slot", "bag slots") .. " could not be read"
-    end
-    if isCount(list.unsellable) and list.unsellable > 0 then
-        lines[#lines + 1] = plural(list.unsellable, "item", "items") .. " to sell can't be sold to a merchant"
-    end
+    for _, note in ipairs(Present.SellNotes(list)) do lines[#lines + 1] = note end
     local keptRows = type(kept) == "table" and type(kept.rows) == "table" and kept.rows or {}
     if #keptRows > 0 then
         lines[#lines + 1] = Present.KEPT_HEADER
@@ -409,6 +425,17 @@ Present.BANK_HEADER = "To bank (nothing is moved for you):"
 Present.HELD_HEADER = "Staying with you, held for your steps:"
 Present.NOTHING_TO_BANK = "Nothing to bank"
 
+-- Items whose kind was not read. alone: nothing else is listed, so it is
+-- the whole answer; else it follows the rows that were.
+Present.BANK_UNREAD_HEAD = "Can't tell what to bank"
+function Present.BankUnreadText(unread, alone)
+    if alone then
+        return unread .. (unread == 1 and " item was" or " items were") .. " not read yet."
+    end
+    return unread .. (unread == 1 and " more item was not read yet, so it is not listed."
+        or " more items were not read yet, so they are not listed.")
+end
+
 local function bankHead(r, names)
     local name = type(r.name) == "string" and r.name ~= "" and r.name or Present.Name(r.key, names)
     return isCount(r.count) and (r.count .. " x " .. name) or name
@@ -423,8 +450,7 @@ function Present.BankLines(pick, names)
     -- Items whose kind was not read are not "nothing to bank": they are said.
     local unread = isCount(pick.unread) and pick.unread or 0
     if #rows == 0 and unread > 0 then
-        lines[#lines + 1] = "Can't tell what to bank: " .. unread
-            .. (unread == 1 and " item was" or " items were") .. " not read yet."
+        lines[#lines + 1] = Present.BANK_UNREAD_HEAD .. ": " .. Present.BankUnreadText(unread, true)
     elseif #rows == 0 then
         lines[#lines + 1] = Present.NOTHING_TO_BANK
     else
@@ -433,8 +459,7 @@ function Present.BankLines(pick, names)
             lines[#lines + 1] = bankHead(r, names) .. ": " .. tostring(r.reason or "kept for later")
         end
         if unread > 0 then
-            lines[#lines + 1] = unread .. (unread == 1 and " more item was not read yet, so it is not listed."
-                or " more items were not read yet, so they are not listed.")
+            lines[#lines + 1] = Present.BankUnreadText(unread, false)
         end
     end
     local held = type(pick.held) == "table" and pick.held or {}

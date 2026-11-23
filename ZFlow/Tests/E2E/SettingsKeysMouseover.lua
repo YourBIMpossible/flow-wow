@@ -94,7 +94,8 @@ tests["mouseover key: one row on the Combat topic, with its synonyms, found by s
     open(c)
     if not ready(t, c, addon) then return end
     local r = rowOf(c, KEY)
-    t.eq({ r.kind, r.group, r.shown }, { "actions", "combat", addon.SettingsKeys.NOT_SET })
+    -- Changed for the window (lead section 285 item 3): it asserted kind "actions".
+    t.eq({ r.kind, r.group, r.shown }, { "bind", "combat", addon.SettingsKeys.NOT_SET })
     for _, word in ipairs({ "mouseover", "heal", "cure", "friendly", "key", "bind" }) do
         local found = false
         for _, s in ipairs(r.synonyms or {}) do if s == word then found = true end end

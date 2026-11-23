@@ -1,7 +1,8 @@
 -- Window buttons (U-E, S22): one Z-Flow button on the world map and one on
--- the merchant window. Both are OFF by default, and stay off until the
--- owner's per-window checks (WoW\from-zen\U-C-game-window-buttons-note.md)
--- are on record.
+-- the merchant window. The world map's is OFF by default, and stays off
+-- until the owner's per-window check
+-- (WoW\from-zen\U-C-game-window-buttons-note.md) is on record. The
+-- merchant's is ON by default (lead section 294 item 3; UI/Rows.lua).
 --
 -- LOOK ONLY. A button is a plain, non-secure button on the window. A click
 -- only shows a Z-Flow panel:
@@ -37,8 +38,9 @@
 --   WindowButtons.Declare(k, diag) also adds the word WB.WORD, which
 --   prints those lines.
 --
--- Settings: "buttons.worldMap" and "buttons.merchant" (bool, account,
--- default off). The rows are the lead's to add; a missing row is off.
+-- Settings: "buttons.worldMap" (bool, account, default off) and
+-- "buttons.merchant" (bool, account, default on). The rows are UI/Rows.lua's;
+-- a missing row is off.
 --
 -- Reads (through the injected client):
 --   client.windowButton(frameName, spec) -> h | nil    CLIENT NEED
