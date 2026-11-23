@@ -175,6 +175,7 @@ Nav\Try.lua
 Rotation\Gather.lua
 Rotation\Group.lua
 Rotation\Mouseover.lua
+Rotation\CareKeys.lua
 Rotation\Enchant.lua
 UI\BossLoot.lua
 UI\SettingsShare.lua

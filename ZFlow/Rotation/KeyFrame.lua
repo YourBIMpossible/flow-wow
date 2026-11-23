@@ -111,6 +111,13 @@ function K.New(opts)
     local button = type(opts.button) == "table" and opts.button or nil
     local lockdown = type(opts.lockdown) == "function" and opts.lockdown or function() return nil end
     local formOf = type(opts.form) == "function" and opts.form or nil
+    -- S12 care key (P-KEYS slice A): a button with rows of its own.
+    -- opts.rows(plan) -> { { attr, value }, ... } replaces the rotation's
+    -- rows; opts.signature(plan) -> text tells a changed plan. Left out:
+    -- the rotation button as before.
+    local rowsOf = nil
+    if type(opts.rows) == "function" then rowsOf = opts.rows end
+    local signature = type(opts.signature) == "function" and opts.signature or signature
 
     local kf = {}
     local held = {}
@@ -170,6 +177,13 @@ function K.New(opts)
             table.sort(names)
             rows = {}
             for i, attr in ipairs(names) do rows[i] = { attr = attr } end
+        elseif rowsOf then
+            local made, got = pcall(rowsOf, wanted)
+            if not made or type(got) ~= "table" then
+                stuck = true
+                return now("failed", { reason = "plan", text = "the plan could not be made into parts" })
+            end
+            rows = got
         else
             local f = formOf and formOf() or nil
             formRead = type(f) == "number"

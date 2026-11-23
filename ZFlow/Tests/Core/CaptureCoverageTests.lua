@@ -85,6 +85,8 @@ local READS = {
     party = false, reach = false, unitDebuffTypes = false,
     -- N72: the spells for the macro icon search; the capture asks none.
     spellbookIcons = false,
+    -- S12 (P-KEYS slice A): a friend for the care key; the capture asks none.
+    unitCare = false,
 
     -- N55 (the boss loot panel): the boss unit and whether you are in an
     -- instance; read by UI/BossLoot.lua only. The names they ask

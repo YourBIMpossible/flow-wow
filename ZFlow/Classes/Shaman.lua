@@ -24,9 +24,9 @@ local _, ns = ...
 -- addon: each needs a check in the game client.
 --
 -- Not in this pack yet (tasks):
---   * Ancestral Spirit, and the heals and cures on anyone but yourself:
---     needs a party member read and a chooser step for other players (the
---     pack holds nothing for them yet);
+--   * SHAMAN-1 (P-KEYS slice A) holds Ancestral Spirit and the heals for
+--     another player in `care`, on the care key only (Rotation/CareKeys.lua);
+--     Chain Heal and the totems for a party are not in it;
 --   * the weapon imbues (Rockbiter, Flametongue, Frostbrand, Windfury) in the
 --     list: no read gives the enchant on your weapon yet, so "is it on"
 --     cannot be told. They are on the Alt key row, for you to press;
@@ -135,6 +135,8 @@ end
 local spells = {
     ["Lightning Bolt"]      = sp(1,  { "DPS" }),
     ["Healing Wave"]        = sp(1,  { "Healing" }),
+    -- SHAMAN-1: on a dead friend, out of a fight only (the care key).
+    ["Ancestral Spirit"]    = sp(12, { "Utility" }),
     ["Rockbiter Weapon"]    = sp(1,  { "DPS" }, nil, "a weapon imbue; no read shows it"),
     ["Earth Shock"]         = sp(4,  { "DPS", "Control" }),
     ["Stoneskin Totem"]     = sp(4,  { "Survival" }, nil, "a totem; no read shows it"),
@@ -215,6 +217,14 @@ local pack = {
     dispels = {
         { spell = "Cure Poison", types = { Poison = true }, evidence = GUESS },
         { spell = "Cure Disease", types = { Disease = true }, evidence = GUESS },
+    },
+
+    -- SHAMAN-1 (P-KEYS slice A): for another player, on the care key only
+    -- (Rotation/CareKeys.lua, R.FriendHeal). The cures are the dispels above.
+    care = {
+        friend = { "Lesser Healing Wave", "Healing Wave" },
+        revive = "Ancestral Spirit",
+        evidence = GUESS,
     },
 
     keys = { none = keys },

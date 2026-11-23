@@ -2759,6 +2759,24 @@ function ns.make.fakeClient(opts)
         for k, v in pairs(s.playerDebuffs) do out[k] = v end
         return out
     end
+    -- S12 care key (P-KEYS slice A): the twin of Core/Client.lua c.unitCare.
+    --   c.setUnitCare(unit, row)   { exists, friend, isSelf, dead, hurt }
+    --                              (a field left out: not known); nil: not known
+    --   c.setUnitCareFails(on)     the read raises while on (lead section
+    --                              236: a read that fails, then recovers)
+    function c.setUnitCare(unit, row)
+        s.unitCare = s.unitCare or {}
+        if type(row) == "table" then s.unitCare[unit] = row else s.unitCare[unit] = nil end
+    end
+    function c.setUnitCareFails(on) s.unitCareFails = (on == true) end
+    function c.unitCare(unit)
+        if s.unitCareFails then error("unit care read failed (test)") end
+        local row = s.unitCare and s.unitCare[unit]
+        if type(row) ~= "table" then return nil end
+        local out = {}
+        for k, v in pairs(row) do out[k] = v end
+        return out
+    end
     return c
 end
 

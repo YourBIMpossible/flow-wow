@@ -217,6 +217,12 @@ function ns.PackCheck(pack)
         end
     end
 
+    -- PRIEST-1, SHAMAN-1 (P-KEYS slice A): the care rows name spells too.
+    if type(pack.care) == "table" then
+        checkNames(pack, pack.care.friend, "care.friend", problems)
+        if pack.care.revive ~= nil then needSpell(pack, pack.care.revive, "care.revive", problems) end
+    end
+
     if type(pack.keys) == "table" then
         for form, row in pairs(pack.keys) do
             if type(row) == "table" then

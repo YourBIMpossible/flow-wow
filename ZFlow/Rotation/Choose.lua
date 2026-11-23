@@ -683,6 +683,69 @@ end
 R.STEPS[#R.STEPS + 1] = "group"
 R._steps = steps   -- (tests)
 
+-- CHOOSE-2 (P-KEYS slice A): a heal, cure or revive for a friend, for the
+-- care key only (Rotation/CareKeys.lua); not one of R.STEPS, so the main
+-- key never casts on anyone but you or your target. Reads s.friends, a list
+-- of { unit, dead, hurt, debuffTypes } (CK.Friends), and pack.care:
+-- { friend = { heal names, in order }, revive = name }. In order:
+--   1. out of a fight only, the first dead friend: the revive;
+--   2. the first friend read as alive and hurt: the first friend heal that
+--      is allowed and ready (Power Word: Shield is one; Weakened Soul on
+--      another player is not read, a first guess);
+--   3. the first friend with a debuff a pack.dispels row removes.
+-- Not read is never yes: dead, hurt and inCombat nil each count as no.
+-- The reason names neither the unit nor the debuff.
+function steps.friendHeal(s, pack, prefs, _, unread)
+    if type(s) ~= "table" or type(pack) ~= "table" then return nil, "no snapshot or no pack" end
+    local care = pack.care
+    if type(care) ~= "table" then return nil, "no heals for another player" end
+    if s.dead ~= false then return nil, "not known that you are alive" end
+    local friends = s.friends
+    if type(friends) ~= "table" then return nil, "no friend read" end
+    unread = unread or {}
+    local function pick(spell, unit, reason)
+        return { spell = spell, kind = "buff", unit = unit, step = "friendHeal", reason = reason }
+    end
+    if R.OutOfFight(s) and type(care.revive) == "string" and allowed(prefs, care.revive) then
+        for _, f in ipairs(friends) do
+            if type(f) == "table" and f.dead == true and type(f.unit) == "string"
+                and ready(s, care.revive, nil, unread) then
+                return pick(care.revive, f.unit, "A friend is dead: " .. care.revive)
+            end
+        end
+    end
+    for _, f in ipairs(friends) do
+        if type(f) == "table" and f.dead == false and f.hurt == true and type(f.unit) == "string" then
+            for _, spell in ipairs(type(care.friend) == "table" and care.friend or {}) do
+                if allowed(prefs, spell) and ready(s, spell, nil, unread) then
+                    return pick(spell, f.unit, "A friend is hurt: " .. spell)
+                end
+            end
+        end
+    end
+    for _, f in ipairs(friends) do
+        local types = nil
+        if type(f) == "table" and f.dead == false then types = f.debuffTypes end
+        if type(types) == "table" and type(f.unit) == "string" then
+            for _, rule in ipairs(type(pack.dispels) == "table" and pack.dispels or {}) do
+                if type(rule) == "table" and R.Knows(s, rule.spell) and allowed(prefs, rule.spell) then
+                    for kind in pairs(rule.types or {}) do
+                        if types[kind] and ready(s, rule.spell, nil, unread) then
+                            return pick(rule.spell, f.unit, "A friend has something you can remove: " .. rule.spell)
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return nil, noteWith("no friend needs care", unread)
+end
+
+-- R.FriendHeal(s, pack, prefs) -> suggestion or nil, note (CHOOSE-2).
+function R.FriendHeal(s, pack, prefs)
+    return steps.friendHeal(s, pack, prefs, nil, {})
+end
+
 function ns.Choose(snapshot, pack, prefs, bias)
     local trace = {}
     if type(snapshot) ~= "table" or type(pack) ~= "table" then

@@ -7594,6 +7594,38 @@ function ns.make.client(env)
         if ok and type(got) == "table" then return got end
         return nil
     end
+
+    -- S12 care key (P-KEYS slice A): c.unitCare(unit) -> nil
+    --   | { exists = false } | { exists = true, friend, isSelf, dead, hurt }
+    --   One unit (your target, a party member) as the care key needs it.
+    --   exists UnitExists(unit); friend UnitIsFriend("player", unit); isSelf
+    --   UnitIsUnit(unit, "player"); dead UnitIsDead(unit); hurt as c.pet():
+    --   UnitHealth below UnitHealthMax when both are plain, else
+    --   UnitHealthPercent (above 1: on a scale of 100). Each true, false, or
+    --   nil when not known; a yes or no only, no amount is kept or handed
+    --   on. nil when unit is not a name or whether it exists is not known.
+    --   A first guess: none of these reads was seen in game for this use.
+    function c.unitCare(unit)
+        if type(unit) ~= "string" or unit == "" then return nil end
+        local exists = yesNo(call(env.UnitExists, unit))
+        if exists == nil then return nil end
+        if not exists then return { exists = false } end
+        local out = { exists = true }
+        out.friend = yesNo(call(env.UnitIsFriend, "player", unit))
+        out.isSelf = yesNo(call(env.UnitIsUnit, unit, "player"))
+        out.dead = yesNo(call(env.UnitIsDead, unit))
+        local okNow, now = call(env.UnitHealth, unit)
+        local okMost, most = call(env.UnitHealthMax, unit)
+        if okNow and okMost and plainNumber(now) and plainNumber(most) and most > 0 then
+            out.hurt = now < most
+        else
+            local okShare, share = call(env.UnitHealthPercent, unit)
+            if okShare and plainNumber(share) then
+                if share > 1 then out.hurt = share < 100 else out.hurt = share < 1 end
+            end
+        end
+        return out
+    end
     return c
 end
 

@@ -200,6 +200,7 @@ return {
     "Rotation/Group.lua",
     -- N63: heal and cures on the unit under your mouse, off by default.
     "Rotation/Mouseover.lua",
+    "Rotation/CareKeys.lua",
     -- N64: the weapon enchant reminder, a line in chat only (after Group).
     "Rotation/Enchant.lua",
     -- N55: the boss loot panel, look only (after Gear, Items/Drops and the classes).
