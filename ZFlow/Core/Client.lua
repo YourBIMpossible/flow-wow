@@ -672,6 +672,8 @@ function ns.make.client(env)
     --   whole is never set here: no reliable read of the "have materials"
     --   box or the name search box is known, so whether they hide rows is
     --   unknown, and RecipeBook drops nothing from this read.
+    --   Section 253 (RB4-1): RecipeBook now counts collapsed = false and
+    --   filtered = false as every learned recipe, as legacy Flow did.
     -- All first guesses, needs game test (Core/Diag.lua NAMES lists the
     -- names, and the candidates for the two unknown reads).
     local function allShown(fn)
@@ -4181,14 +4183,27 @@ function ns.make.client(env)
                     end
                     y = y - 28
                 elseif r.kind == "actions" then
+                    -- Added for the key rows (UI/SettingsKeys.lua), all
+                    -- optional: label (and shown) as a line above the
+                    -- buttons, an action's enabled = false greys it, and
+                    -- why stands after the buttons.
+                    if type(r.label) == "string" then
+                        local line = r.label
+                        if r.shown ~= nil then line = line .. ": " .. tostring(r.shown) end
+                        label(b, line, 16, y - 2)
+                        y = y - 20
+                    end
                     local x = 8
                     for _, action in ipairs(type(r.actions) == "table" and r.actions or {}) do
                         local name, words = action.key, tostring(action.label or action.key or "")
                         local width = 20 + 6 * #words
                         button(b, words, x, y, width, function()
                             if type(nav) == "function" then pcall(nav, "action", name) end
-                        end, false, true)
+                        end, false, action.enabled ~= false)
                         x = x + width + 8
+                    end
+                    if type(r.why) == "string" and r.why ~= "" then
+                        label(b, r.why, x, y - 2, "GameFontDisableSmall")
                     end
                     y = y - 28
                 else
@@ -6699,6 +6714,280 @@ function ns.make.client(env)
         return h
     end
     -- --------------------------------------------- end text entry
+    -- ---------------------------------------------------------- N57 keys
+    -- Key bindings for the rotation key (lead section 249 item 2; Plexy's
+    -- note 1 of section 250, from CLIENT-NAMES-16001, wowless's 1.60.1 API
+    -- list and the game's own Blizzard_Keybindings.lua). Added at the end:
+    -- no handle above is changed. Called only from the settings page on the
+    -- player's own key press (UI/SettingsKeys.lua); nothing here binds on
+    -- load, on an event or on a timer.
+    --   reads (allowed in combat; nil when the client does not say):
+    --   c.bindingKeys(action) -> { key, ... }   GetBindingKey(action, nil,
+    --       context); an empty list when none is bound
+    --   c.bindingAction(key, forAction) -> action text, "" for none;
+    --       GetBindingAction(key, nil, context) - in wowless and the game's
+    --       panel, never asked of 16001 (a capture field)
+    --   The context is C_KeyBindings.GetBindingContextForAction(action),
+    --   passed when the client gives one (Plexy, change 1).
+    --   writes (acting; each refused with "lockdown" while InCombatLockdown
+    --   is not a plain false - not known counts as locked; false and why,
+    --   never an error):
+    --   c.setBindingClick(key, button) -> SetBindingClick(key, button, "LeftButton")
+    --   c.clearBinding(key, forAction) -> SetBinding(key, nil, context)
+    --   c.saveBindings()               -> SaveBindings(GetCurrentBindingSet())
+    --   c.overrideBindingClick(key, button) -> SetOverrideBindingClick(owner,
+    --       true, key, button, "LeftButton"): for this session only, the
+    --       game's own binding kept under it; owner is a frame of the client's
+    --   c.clearOverrideKeys()          -> ClearOverrideBindings(owner)
+    --   the overlay (show):
+    --   c.keyCapture(spec) -> h | nil   spec = { name } a full-screen button
+    --       that takes the keyboard (legacy Flow's Modules/Settings.lua:920:
+    --       EnableKeyboard, SetPropagateKeyboardInput(false), OnKeyDown)
+    --     h.start(text, onKey, onCancel) -> true   shows it with text; the
+    --       next key press: Escape -> onCancel(); a bare modifier
+    --       (IsKeyPressIgnoredForBinding, else the modifier keys) waits;
+    --       any other -> onKey(chord), the chord from
+    --       CreateKeyChordStringUsingMetaKeyState(key), else ALT-CTRL-SHIFT-
+    --       from the modifiers held. It hides itself before either is called.
+    --     h.stop()   hides it;  h.open() -> true while it waits
+    --   Mouse buttons are not taken. First guesses: not seen in game.
+    local function bindingContext(action)
+        local group = env.C_KeyBindings
+        if type(action) ~= "string" or type(group) ~= "table" then return nil end
+        local ok, context = call(group.GetBindingContextForAction, action)
+        if not ok or context == nil or hidden(context) then return nil end
+        return context
+    end
+    -- true only when the lock is read and is plainly off.
+    local function unlocked()
+        local ok, locked = call(env.InCombatLockdown)
+        return ok and locked == false
+    end
+    local function bindingCall(fn, ...)
+        if not unlocked() then return false, "lockdown" end
+        if type(fn) ~= "function" then return false, "absent" end
+        local ok, result = pcall(fn, ...)
+        if not ok then return false, tostring(result) end
+        if result == false then return false, "refused" end
+        return true
+    end
+
+    function c.bindingKeys(action)
+        if type(action) ~= "string" then return nil end
+        local context = bindingContext(action)
+        local got
+        if context ~= nil then
+            got = { call(env.GetBindingKey, action, nil, context) }
+        else
+            got = { call(env.GetBindingKey, action) }
+        end
+        if not got[1] then return nil end
+        local keys = {}
+        for i = 2, table.maxn(got) do
+            local key = got[i]
+            if type(key) == "string" and key ~= "" and not hidden(key) then keys[#keys + 1] = key end
+        end
+        return keys
+    end
+
+    function c.bindingAction(key, forAction)
+        if type(key) ~= "string" or key == "" then return nil end
+        local context = bindingContext(forAction)
+        local ok, action
+        if context ~= nil then
+            ok, action = call(env.GetBindingAction, key, nil, context)
+        else
+            ok, action = call(env.GetBindingAction, key)
+        end
+        if not ok or hidden(action) then return nil end
+        if action == nil then return "" end
+        if type(action) ~= "string" then return nil end
+        return action
+    end
+
+    function c.setBindingClick(key, button)
+        if type(key) ~= "string" or type(button) ~= "string" then return false, "no key" end
+        return bindingCall(env.SetBindingClick, key, button, "LeftButton")
+    end
+
+    function c.clearBinding(key, forAction)
+        if type(key) ~= "string" then return false, "no key" end
+        local context = bindingContext(forAction)
+        if context ~= nil then return bindingCall(env.SetBinding, key, nil, context) end
+        return bindingCall(env.SetBinding, key)
+    end
+
+    function c.saveBindings()
+        if not unlocked() then return false, "lockdown" end
+        local ok, set = call(env.GetCurrentBindingSet)
+        if not ok or type(set) ~= "number" then return false, "the game did not say which binding set is in use" end
+        return bindingCall(env.SaveBindings, set)
+    end
+
+    local overrideOwner
+    function c.overrideBindingClick(key, button)
+        if type(key) ~= "string" or type(button) ~= "string" then return false, "no key" end
+        if not unlocked() then return false, "lockdown" end
+        if not overrideOwner then overrideOwner = newFrame() end
+        if not overrideOwner then return false, "no frame" end
+        return bindingCall(env.SetOverrideBindingClick, overrideOwner, true, key, button, "LeftButton")
+    end
+
+    function c.clearOverrideKeys()
+        if not unlocked() then return false, "lockdown" end
+        if not overrideOwner then return true end
+        return bindingCall(env.ClearOverrideBindings, overrideOwner)
+    end
+
+    local MODIFIER_KEYS = { LSHIFT = true, RSHIFT = true, LCTRL = true, RCTRL = true, LALT = true, RALT = true,
+                            LMETA = true, RMETA = true, UNKNOWN = true }
+    local function bareModifier(key)
+        local ok, ignored = call(env.IsKeyPressIgnoredForBinding, key)
+        if ok then return ignored == true end
+        return MODIFIER_KEYS[key] == true
+    end
+    local function chordOf(key)
+        local ok, chord = call(env.CreateKeyChordStringUsingMetaKeyState, key)
+        if ok and type(chord) == "string" and chord ~= "" and not hidden(chord) then return chord end
+        local prefix = ""
+        for _, m in ipairs({ { env.IsAltKeyDown, "ALT-" }, { env.IsControlKeyDown, "CTRL-" },
+                             { env.IsShiftKeyDown, "SHIFT-" } }) do
+            local okM, down = call(m[1])
+            if okM and down == true then prefix = prefix .. m[2] end
+        end
+        return prefix .. key
+    end
+
+    function c.keyCapture(spec)
+        spec = type(spec) == "table" and spec or {}
+        local ok, f = call(env.CreateFrame, "Button", spec.name, env.UIParent)
+        if not ok or type(f) ~= "table" then return nil end
+        method(f, "SetAllPoints", env.UIParent)
+        method(f, "SetFrameStrata", "FULLSCREEN_DIALOG")
+        method(f, "EnableMouse", true)
+        local okT, label = method(f, "CreateFontString", nil, "OVERLAY", "GameFontNormalLarge")
+        if not okT then label = nil end
+        if label then method(label, "SetPoint", "CENTER", f, "CENTER", 0, 0) end
+        method(f, "Hide")
+        local h, waiting, onKey, onCancel = {}, false, nil, nil
+        local function finish()
+            waiting = false
+            method(f, "EnableKeyboard", false)
+            method(f, "Hide")
+        end
+        method(f, "SetScript", "OnKeyDown", function(_, key)
+            if not waiting or type(key) ~= "string" or hidden(key) then return end
+            if key == "ESCAPE" then
+                local cancel = onCancel
+                finish()
+                if type(cancel) == "function" then pcall(cancel) end
+                return
+            end
+            if bareModifier(key) then return end
+            local chord, take = chordOf(key), onKey
+            finish()
+            if type(take) == "function" then pcall(take, chord) end
+        end)
+        function h.start(text, keyFn, cancelFn)
+            onKey, onCancel, waiting = keyFn, cancelFn, true
+            if label then method(label, "SetText", type(text) == "string" and text or "") end
+            method(f, "EnableKeyboard", true)
+            method(f, "SetPropagateKeyboardInput", false)
+            method(f, "Show")
+            return true
+        end
+        function h.stop() finish() end
+        function h.open() return waiting end
+        return h
+    end
+    -- ------------------------------------------------------------ end N57
+
+    -- ------------------------------------------------------------ N67
+    -- Other add-ons' data, read at runtime only (research items 16 and 26).
+    -- Nothing is written to them, and nothing of theirs is copied into this
+    -- add-on's files or saved data: reading an installed add-on's tables
+    -- while the game runs copies none of its code or database. A missing
+    -- add-on, a shape not as expected, or a read that raises is nil.
+    local function unitNumber(v)
+        return type(v) == "number" and v == v and v >= 0 and v <= 1
+    end
+
+    -- GatherMate2's nodes on one map (a uiMapID), or nil:
+    --   { { kind, x, y, node } }  kind: one of GATHERMATE_KINDS; x, y 0..1;
+    --                             node: its name, nil when not said
+    -- Read through GatherMate2's global object GatherMate2: the methods
+    -- GetNodesForZone(map, kind) (an iterator of coord, nodeId),
+    -- DecodeLoc(coord) -> x, y and GetNameForNode(kind, nodeId) -> name.
+    -- First guesses from GatherMate2's public source as the research note
+    -- names it; not seen in game on 16001. At most GATHERMATE_NODES_MAX
+    -- rows. A map with none, GatherMate2 there: an empty list.
+    local GATHERMATE_KINDS = { "Mining", "Herb Gathering", "Fishing", "Treasure" }
+    local GATHERMATE_NODES_MAX = 500
+    function c.gatherMateNodes(map)
+        if type(map) ~= "number" then return nil end
+        local gm = env.GatherMate2
+        if type(gm) ~= "table" then return nil end
+        local out, any = {}, false
+        local ok = pcall(function()
+            for _, kind in ipairs(GATHERMATE_KINDS) do
+                local okI, iter, state, init = method(gm, "GetNodesForZone", map, kind)
+                if okI and type(iter) == "function" then
+                    any = true
+                    for coord, nodeId in iter, state, init do
+                        if #out >= GATHERMATE_NODES_MAX then return end
+                        local okL, x, y = method(gm, "DecodeLoc", coord)
+                        if okL and unitNumber(x) and unitNumber(y) then
+                            local row = { kind = kind, x = x, y = y }
+                            local okN, name = method(gm, "GetNameForNode", kind, nodeId)
+                            if okN and type(name) == "string" and name ~= "" then row.node = name end
+                            out[#out + 1] = row
+                        end
+                    end
+                end
+            end
+        end)
+        if not ok or not any then return nil end
+        return out
+    end
+
+    -- This character's attunements as Attune keeps them, or nil:
+    --   { { id, name, percent } }  percent 0..100, nil when not known
+    -- Read from Attune's globals: Attune_Data.attunes (rows with ID and
+    -- NAME) and its saved data Attune_DB.toons["<name>-<realm>"].attuned[ID].
+    -- The character's key is made here only to look the row up; it is never
+    -- handed out. First guesses from Attune (wow-forever @6f488c1,
+    -- AttuneData.lua) as the research note names it; not seen in game.
+    -- At most ATTUNE_ROWS_MAX rows.
+    local ATTUNE_ROWS_MAX = 60
+    function c.attuneProgress()
+        local data, db = env.Attune_Data, env.Attune_DB
+        if type(data) ~= "table" or type(db) ~= "table" then return nil end
+        local ok, out = pcall(function()
+            local list, toons = data.attunes, db.toons
+            if type(list) ~= "table" or type(toons) ~= "table" then return nil end
+            local attuned
+            local okN, name = call(env.UnitName, "player")
+            local okR, realm = call(env.GetRealmName)
+            if okN and okR and type(name) == "string" and type(realm) == "string" then
+                local toon = toons[name .. "-" .. realm]
+                if type(toon) == "table" and type(toon.attuned) == "table" then attuned = toon.attuned end
+            end
+            local rows = {}
+            for _, a in ipairs(list) do
+                if #rows >= ATTUNE_ROWS_MAX then break end
+                if type(a) == "table" and type(a.ID) == "number" and type(a.NAME) == "string" and a.NAME ~= "" then
+                    local row = { id = a.ID, name = a.NAME }
+                    local p = attuned and attuned[a.ID]
+                    if type(p) == "number" and p == p and p >= 0 and p <= 100 then row.percent = p end
+                    rows[#rows + 1] = row
+                end
+            end
+            return rows
+        end)
+        if not ok or type(out) ~= "table" then return nil end
+        return out
+    end
+    -- ------------------------------------------------------------ end N67
     do
     -- --------------------------------------------- macro icon window (N72)
     -- Lead section 248 item 4. The icon window of the macro editor is the

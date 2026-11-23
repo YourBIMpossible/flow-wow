@@ -15,12 +15,39 @@ local _, ns = ...
 -- by the recipe name, the goal by the profession name, and a schematic the
 -- client gave only in part counts as mats unknown. The setting turned on
 -- with the window already open shows the panel at the next look.
+-- Lead section 249 item 4 (PF-1): one key rule for the colour history in
+-- both reads. A recipe is kept by its name, so the same recipe seen in a
+-- classic window and a modern one keeps one history; a modern recipe the
+-- client gave no name for is kept by its id. A history kept by the recipe
+-- id before (zflow-prof) is folded into the name when the window shows
+-- that recipe with both, and the id entry is removed.
 -- Needs game test: the colour and skill up fields of the recipe read
 -- (Core/Client.lua c.recipes; Diag capture fields recipeDifficulty and
 -- recipeSkillUps), and where the panel sits beside the window.
 
 local ProfHelper = ns.ProfHelper or {}
 ns.ProfHelper = ProfHelper
+
+-- Folds a colour history kept by the recipe id into the row key, for each
+-- row { key =, id = } whose key is not its id: each colour span is widened
+-- into seen[key] and seen[id] is removed. Returns seen.
+function ProfHelper.Fold(seen, rows)
+    if type(seen) ~= "table" or type(rows) ~= "table" then return seen end
+    local U = ns.SkillUps
+    for _, r in ipairs(rows) do
+        local id = type(r) == "table" and r.id or nil
+        if id ~= nil and r.key ~= nil and r.key ~= id and type(seen[id]) == "table" then
+            for colour, span in pairs(seen[id]) do
+                if type(span) == "table" and type(span.lo) == "number" and type(span.hi) == "number" then
+                    U.Observe(seen, { { key = r.key, difficulty = colour } }, span.lo)
+                    U.Observe(seen, { { key = r.key, difficulty = colour } }, span.hi)
+                end
+            end
+            seen[id] = nil
+        end
+    end
+    return seen
+end
 
 ProfHelper.NAME = "profHelper"
 ProfHelper.SETTING = "prof.helper"
@@ -136,8 +163,9 @@ function ProfHelper.Declare(k)
                     local rows = {}
                     for _, r in ipairs(w.recipes) do
                         if type(r) == "table" and r.learned == true and type(r.id) == "number" then
-                            rows[#rows + 1] = { key = r.id,
-                                name = type(r.name) == "string" and r.name or ("recipe " .. r.id),
+                            local named = type(r.name) == "string"
+                            rows[#rows + 1] = { key = named and r.name or r.id, id = r.id,
+                                name = named and r.name or ("recipe " .. r.id),
                                 difficulty = r.difficulty, mats = mats(r.id) }
                         end
                     end
@@ -177,7 +205,10 @@ function ProfHelper.Declare(k)
                     colours[#colours + 1] = { key = r.key, difficulty = r.difficulty }
                 end
                 local seen = ctx.store:table("char", ProfHelper.COLORS_PATH)
-                if type(seen) == "table" then U.Observe(seen, colours, skill) end
+                if type(seen) == "table" then
+                    ProfHelper.Fold(seen, window.rows)
+                    U.Observe(seen, colours, skill)
+                end
 
                 local g = goals()
                 local goal = type(g) == "table" and g[window.profession] or nil

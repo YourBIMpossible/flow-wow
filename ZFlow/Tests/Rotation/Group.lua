@@ -423,6 +423,40 @@ tests["group 243: the icon's mark is look for a look-only suggestion"] = functio
     t.eq(I.Mark({ suggestion = { spell = MOTW, look = false, step = "group" } }), nil, "look must be true")
 end
 
+-- Item 19 (lead section 247, N61 "no tank-first order"): your group's buffs
+-- go tank first, then the healer, then everyone else in roster order, each
+-- member's missing buff before the next member's. The role is what the
+-- read gave (kind); a role not read is roster order, never a guess.
+tests["group 19: the tank's missing buff first, wherever the tank is in the roster"] = function(t)
+    local s = choose({
+        missing("party1", { [MOTW] = false }, { class = "ROGUE", kind = "melee" }),
+        member("party2", { class = "MAGE", kind = "caster", name = OTHER }),
+        missing("party3", { [THORNS] = false }, { role = "TANK", kind = "tank", name = OTHER }),
+    })
+    t.eq(s and { s.spell, s.unit } or nil, { THORNS, "party3" }, "the tank's Thorns before the rogue's Mark")
+end
+
+tests["group 19: the healer before the rest; ties keep roster order"] = function(t)
+    local s = choose({
+        missing("party1", { [MOTW] = false }, { class = "ROGUE", kind = "melee" }),
+        missing("party2", { [MOTW] = false }, { class = "PRIEST", role = "HEALER", kind = "healer", name = OTHER }),
+    })
+    t.eq(s and s.unit, "party2", "the healer first")
+    s = choose({
+        missing("party1", { [MOTW] = false }, { class = "ROGUE", kind = "melee" }),
+        missing("party2", { [MOTW] = false }, { name = OTHER }),
+    })
+    t.eq(s and s.unit, "party1", "two of the same kind: roster order")
+end
+
+tests["group 19: role not read: roster order, never a guess"] = function(t)
+    local s = choose({
+        missing("party1", { [MOTW] = false }, { class = "ROGUE", kind = "melee", role = "nil" }),
+        missing("party2", { [THORNS] = false }, { role = "nil", kind = "melee", name = OTHER }),
+    })
+    t.eq(s and { s.spell, s.unit } or nil, { MOTW, "party1" }, "a warrior with no role read is not taken for the tank")
+end
+
 tests["group: look only - nothing in it casts, targets or clicks"] = function(t)
     for name in pairs(ns.PartyGroup) do
         local n = tostring(name):lower()

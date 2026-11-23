@@ -285,7 +285,12 @@ return {
         t.eq(type(run), "function")
         run("diag")
         t.eq(c.saved(ns.id.accountDB).diag.count, 2)
-        t.ok(c.printed[#c.printed]:find("snapshot 2", 1, true), c.printed[#c.printed])
+        -- The snapshot line is said first; state lines (N67 sources) may follow it.
+        local said = false
+        for _, line in ipairs(c.printed) do
+            if line:find("snapshot 2", 1, true) then said = true end
+        end
+        t.ok(said, c.printed[#c.printed])
         run(" DIAG clear ")
         t.eq(c.saved(ns.id.accountDB).diag, nil)
         run("")
@@ -766,6 +771,26 @@ return {
         S = ns.Diag.Collect(ns.Kernel({}, ns.make.fakeClient({ env = e })), "test").shapes
         t.eq(S.recipeDifficulty and S.recipeDifficulty.types[1], "nil", "a field the client leaves out reads as nil")
         t.eq(S.recipeSkillUps and S.recipeSkillUps.ok, true)
+    end,
+
+    -- Lead section 249 item 4 (PF-2): a capture asks the client for the
+    -- recipe info once, and the three fields it fills still read it.
+    ["profession: the recipe info is asked once a capture"] = function(t)
+        local e = env()
+        local asked = 0
+        e.C_TradeSkillUI = {
+            GetAllRecipeIDs = function() return { 2660 } end,
+            GetRecipeInfo = function(recipe)
+                asked = asked + 1
+                return { recipeID = recipe, relativeDifficulty = 1, numSkillUps = 2 }
+            end,
+        }
+        local S = ns.Diag.Collect(ns.Kernel({}, ns.make.fakeClient({ env = e })), "test").shapes
+        t.eq(asked, 1, "asked once")
+        t.eq(S.recipeInfo and S.recipeInfo.ok, true)
+        t.eq(S.recipeInfo and S.recipeInfo.types[1], "table")
+        t.eq(S.recipeDifficulty and S.recipeDifficulty.values.v1, 1)
+        t.eq(S.recipeSkillUps and S.recipeSkillUps.values.v1, 2)
     end,
 
     -- Lead section 248 OC-1 (LOW): Oath of Light, read as a buff on you (a

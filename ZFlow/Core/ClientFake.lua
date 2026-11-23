@@ -1445,6 +1445,25 @@ function ns.make.fakeClient(opts)
         s.unitBuffs = s.unitBuffs or {}
         s.unitBuffs[unit] = rows
     end
+    -- N64: the enchant on your weapons, in the shape Plexy's P-READS note
+    -- names for the real read (item 5, not yet in Core/Client.lua):
+    --   c.weaponEnchant() -> { main = { has, left, charges }, off = ... } or nil
+    -- has true or false, left seconds (nil: not known), charges a number or
+    -- nil; a hand not read is left out. setWeaponEnchant(nil): not read;
+    -- setWeaponEnchantFails(true): the read raises.
+    function c.weaponEnchant()
+        if s.weaponEnchantFails then error("weapon enchant read failed (test)") end
+        if type(s.weaponEnchant) ~= "table" then return nil end
+        local out = {}
+        for hand, row in pairs(s.weaponEnchant) do
+            if type(row) == "table" then
+                out[hand] = { has = row.has, left = row.left, charges = row.charges }
+            end
+        end
+        return out
+    end
+    function c.setWeaponEnchant(t) s.weaponEnchant = t end
+    function c.setWeaponEnchantFails(on) s.weaponEnchantFails = (on == true) end
     -- Plays the game filling its tooltip for `unit`: every onUnitTooltip
     -- listener is told, and what they added comes back as
     -- { { text, r, g, b } ... }.
@@ -2306,6 +2325,126 @@ function ns.make.fakeClient(opts)
             return h
         end
     end
+    -- N57: the game's key bindings and the key-capture overlay, as the real
+    -- client's wrappers (Core/Client.lua, end). Added last.
+    --   c.setBindings({ { key, action }, ... })   the game's binding set as
+    --     loaded: live and saved alike, in that order
+    --   c.bindingMap() / c.savedBindingMap()   key -> action, copies: what
+    --     is bound now, and what SaveBindings last kept (a reload reads it)
+    --   c.overrideKeys()   key -> button, this session's override bindings
+    --   c.bindingCalls()   the names of the binding writes that went through
+    --   c.setBindingReads(false)   bindingKeys and bindingAction answer nil
+    --     (the client does not say); true: they answer again
+    --   c.setBindingWriteFault(n)  the next n setBindingClick calls raise
+    --   c.pressKey(chord) -> true when an open overlay took it; "ESCAPE"
+    --     cancels it.  c.keyCaptureOpen() -> true while one waits
+    -- The writes refuse with "lockdown" while combatLockdown() is not false.
+    do
+        local live, saved, order, overrides, calls = {}, {}, {}, {}, {}
+        local unread, faults = false, 0
+        local capture
+        local function copy(t)
+            local out = {}
+            for k2, v in pairs(t) do out[k2] = v end
+            return out
+        end
+        local function unbind(key)
+            live[key] = nil
+            for i = #order, 1, -1 do
+                if order[i] == key then table.remove(order, i) end
+            end
+        end
+        local function bind(key, action)
+            unbind(key)
+            live[key] = action
+            order[#order + 1] = key
+        end
+        local function locked() return c.combatLockdown() ~= false end
+        function c.setBindings(list)
+            live, saved, order = {}, {}, {}
+            for _, pair in ipairs(list or {}) do
+                bind(pair[1], pair[2])
+                saved[pair[1]] = pair[2]
+            end
+        end
+        function c.bindingMap() return copy(live) end
+        function c.savedBindingMap() return copy(saved) end
+        function c.overrideKeys() return copy(overrides) end
+        function c.bindingCalls() return copy(calls) end
+        function c.setBindingReads(on) unread = (on == false) end
+        function c.setBindingWriteFault(n) faults = tonumber(n) or 0 end
+
+        function c.bindingKeys(action)
+            if unread or type(action) ~= "string" then return nil end
+            local out = {}
+            for _, key in ipairs(order) do
+                if live[key] == action then out[#out + 1] = key end
+            end
+            return out
+        end
+        function c.bindingAction(key)
+            if unread or type(key) ~= "string" or key == "" then return nil end
+            return live[key] or ""
+        end
+        function c.setBindingClick(key, button)
+            if locked() then return false, "lockdown" end
+            if faults > 0 then
+                faults = faults - 1
+                error("SetBindingClick failed (test)", 0)
+            end
+            bind(key, "CLICK " .. tostring(button) .. ":LeftButton")
+            calls[#calls + 1] = "setBindingClick"
+            return true
+        end
+        function c.clearBinding(key)
+            if locked() then return false, "lockdown" end
+            unbind(key)
+            calls[#calls + 1] = "clearBinding"
+            return true
+        end
+        function c.saveBindings()
+            if locked() then return false, "lockdown" end
+            saved = copy(live)
+            calls[#calls + 1] = "saveBindings"
+            return true
+        end
+        function c.overrideBindingClick(key, button)
+            if locked() then return false, "lockdown" end
+            overrides[key] = button
+            calls[#calls + 1] = "overrideBindingClick"
+            return true
+        end
+        function c.clearOverrideKeys()
+            if locked() then return false, "lockdown" end
+            overrides = {}
+            calls[#calls + 1] = "clearOverrideKeys"
+            return true
+        end
+
+        function c.keyCapture()
+            local h = { waiting = false }
+            function h.start(text, onKey, onCancel)
+                h.waiting, h.text, h.onKey, h.onCancel = true, text, onKey, onCancel
+                return true
+            end
+            function h.stop() h.waiting = false end
+            function h.open() return h.waiting end
+            capture = h
+            return h
+        end
+        function c.keyCaptureOpen() return capture ~= nil and capture.waiting == true end
+        function c.pressKey(chord)
+            if not c.keyCaptureOpen() then return false end
+            local h = capture
+            h.waiting = false
+            if chord == "ESCAPE" then
+                if type(h.onCancel) == "function" then h.onCancel() end
+            elseif type(h.onKey) == "function" then
+                h.onKey(chord)
+            end
+            return true
+        end
+    end
 
     -- Slider rows of the Options page (row N57), as the real page draws
     -- them. Added last, around the page above.
@@ -2384,6 +2523,42 @@ function ns.make.fakeClient(opts)
         return h
     end
 
+    -- N67: other add-ons' data as the real client reads it.
+    -- setGatherMateNodes(map, rows): GatherMate2 is there with those rows
+    -- on that map ({ { kind, x, y, node } }); a map not set has none.
+    -- setGatherMateNodes(nil): GatherMate2 is gone. c.gatherMateAsks counts
+    -- every ask. setAttuneProgress(rows | nil): Attune's rows, or none.
+    -- Each answer is a copy.
+    c.gatherMateAsks = 0
+    local function copyRows(rows)
+        local out = {}
+        for i, r in ipairs(rows) do
+            local row = {}
+            for key, v in pairs(r) do row[key] = v end
+            out[i] = row
+        end
+        return out
+    end
+    function c.setGatherMateNodes(map, rows)
+        if map == nil then
+            s.gatherMate = nil
+            return
+        end
+        s.gatherMate = s.gatherMate or {}
+        s.gatherMate[map] = rows
+    end
+    function c.gatherMateNodes(map)
+        c.gatherMateAsks = c.gatherMateAsks + 1
+        if type(s.gatherMate) ~= "table" or type(map) ~= "number" then return nil end
+        local rows = s.gatherMate[map]
+        if type(rows) ~= "table" then return {} end
+        return copyRows(rows)
+    end
+    function c.setAttuneProgress(rows) s.attune = rows end
+    function c.attuneProgress()
+        if type(s.attune) ~= "table" then return nil end
+        return copyRows(s.attune)
+    end
     -- The macro icon window (N72), as the real client's macroPopup: nil and
     -- { "MacroPopupFrame" } until setMacroPopup{ icons } or { missing }.
     -- Every window set with icons is in c.macroPopups, in order. The test's

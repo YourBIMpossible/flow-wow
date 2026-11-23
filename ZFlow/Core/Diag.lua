@@ -164,6 +164,17 @@ Diag.NAMES = {
     -- Row N73: the feedback report takes the guild name out of its text
     -- (UI/Feedback.lua Names). Saved in the snapshot's names table.
     "GetGuildInfo",
+    -- N57 (Plexy's note 1 of section 250): binding names in wowless's 1.60.1
+    -- API list but never asked of 16001, and the game's key-chord helpers
+    -- the capture overlay asks (client.bindingAction, client.keyCapture).
+    "GetBindingAction", "SetOverrideBinding", "SetBindingSpell", "SetBindingMacro", "SetBindingItem",
+    "GetBinding", "GetNumBindings", "LoadBindings", "C_KeyBindings.GetBindingContextForAction",
+    "C_KeyBindings.GetBindingByKey", "C_KeyBindings.GetBindingIndex", "RunBinding",
+    "CreateKeyChordStringUsingMetaKeyState", "IsKeyPressIgnoredForBinding", "GetConvertedKeyOrButton",
+    -- N67: the other add-ons' globals read at runtime (client.gatherMateNodes,
+    -- client.attuneProgress); first guesses, so a capture says which exist.
+    "GatherMate2", "GatherMate2.GetNodesForZone", "GatherMate2.DecodeLoc", "GatherMate2.GetNameForNode",
+    "Attune_Data", "Attune_Data.attunes", "Attune_DB", "Attune_DB.toons",
     -- Row N72: the macro icon search (UI/MacroIcons.lua, Core/Client.lua
     -- macroPopup and spellbookIcons). Saved in the snapshot's names table.
     "MacroPopupFrame", "MacroPopupFrame.IconSelector", "IconSelectorPopupFrameTemplateMixin",
@@ -346,6 +357,10 @@ function Diag.Collect(k, why)
         predecessorLoaded = client.addonLoaded(k.id.predecessor),
         predecessorData = client.savedExists(k.id.predecessorDB),
         selfLoaded = client.addonLoaded(k.id.addon),
+        -- N67: whether each optional source add-on is loaded; nothing of
+        -- their data is kept in a snapshot.
+        gatherMateLoaded = client.addonLoaded(k.id.gatherMate or ns.id.gatherMate),
+        attuneLoaded = client.addonLoaded(k.id.attune or ns.id.attune),
     }
     -- Whether each read came back known: a nil above leaves no trace when saved.
     snap.known = {}
@@ -515,11 +530,15 @@ function Diag.Collect(k, why)
     local recipe = okRecipes and type(recipes) == "table" and recipes[1]
     if type(recipe) ~= "number" then recipe = okShown and type(shown) == "table" and shown[1] end
     if type(recipe) == "number" then
-        S.recipeInfo = ask(client, "C_TradeSkillUI.GetRecipeInfo", recipe)
+        -- Lead section 249 item 4 (PF-2): the recipe info is asked once;
+        -- recipeInfo and the two fields below are read from that answer.
+        local function pack(...) return select("#", ...), { ... } end
+        local infoCount, infoAnswer = pack(client.raw("C_TradeSkillUI.GetRecipeInfo", recipe))
+        S.recipeInfo = shapeWith(function(v) return Diag.IsSecret(client, v) end, unpack(infoAnswer, 1, infoCount))
         -- Lead section 245 item 2: the two recipe fields c.recipes reads
         -- (Core/Client.lua), each its own capture field: nil when the
         -- client leaves the field out.
-        local okInfo, info = client.raw("C_TradeSkillUI.GetRecipeInfo", recipe)
+        local okInfo, info = infoAnswer[1], infoAnswer[2]
         local difficulty, skillUps
         if type(info) == "table" then difficulty, skillUps = info.relativeDifficulty, info.numSkillUps end
         S.recipeDifficulty = shapeWith(function(v) return Diag.IsSecret(client, v) end, okInfo, difficulty)
@@ -1536,6 +1555,12 @@ function Diag.Start(k)
             local line = rotation[i]
             say("rotation", function() return line end)
         end
+        -- N67: the optional GatherMate2 and Attune sources (Nav/AddonSources.lua).
+        say("sources", function()
+            local sources = ns.Nav and ns.Nav.AddonSources
+            if type(sources) ~= "table" or type(sources.Line) ~= "function" then return nil end
+            return sources.Line(k)
+        end)
     end
 
     -- The help word: every word in commands, one line each. It reads the
