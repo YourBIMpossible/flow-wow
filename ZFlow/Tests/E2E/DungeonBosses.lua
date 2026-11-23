@@ -53,7 +53,7 @@ local function boot(book)
     c.setItemTexture(5197, "tex:tenderizer")
     local db, zones = questie()
     c.setQuestieModule("QuestieDB", db); c.setQuestieModule("ZoneDB", zones)
-    local addon = ns.offline.addon(c)
+    ns.offline.addon(c)
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
     c.advance(2, 10)
     -- The tree the kit draws, kept as it is drawn and redrawn.
