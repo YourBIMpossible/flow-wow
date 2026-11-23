@@ -28,7 +28,7 @@ local _, ns = ...
 --     never sends a hunter into melee.
 
 local GUESS = "first guess"
-local MADE = "written for Z-Flow on 2026-11-23 from general knowledge of the class; not read from the game"
+local MADE = "written for this pack on 2026-11-23 from general knowledge of the class; not read from the game"
 
 local function knows(s, name)
     local r = s.spells and s.spells[name]
@@ -168,7 +168,7 @@ local pack = {
     provenance = {
         author = "Flow",
         date = "2026-11-23",
-        method = "Written for Z-Flow (lead section 197) on the shape of Classes/Paladin.lua and Classes/Druid.lua. "
+        method = "Written for this pack (lead section 197) on the shape of Classes/Paladin.lua and Classes/Druid.lua. "
             .. "No earlier hunter file existed in the repository; proficiency follows Modules/Gear/Score.lua's HUNTER "
             .. "row, with mail from level 40 (D3).",
         facts = "No value here was read from the game and none comes from a list of client observations. Every "
