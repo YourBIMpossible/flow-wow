@@ -620,4 +620,44 @@ return {
         c.tradeSkillSchematic(2).mats[2589] = 9
         t.eq(c.tradeSkillSchematic(2), { makes = 2996, yield = 1, mats = { [2589] = 2 } })
     end,
+
+    -- Section 235 item 4 ---------------------------------------------------
+    ["fishingPole(): the main hand's class and subclass say it"] = function(t)
+        local env = frameEnv()
+        local held = { [6256] = { 2, 20 }, [25] = { 2, 7 } }
+        local id = 6256
+        local asked
+        function env.GetInventoryItemID(unit, slot) asked = { unit, slot } return id end
+        env.C_Item = { GetItemInfoInstant = function(item)
+            local r = held[item]
+            if not r then return nil end
+            return item, "Weapon", "x", "INVTYPE_2HWEAPON", 0, r[1], r[2]
+        end }
+        local c = ns.make.client(env)
+        t.eq(c.fishingPole(), true, "weapon 2, subclass 20")
+        t.eq(asked, { "player", 16 }, "the main hand")
+        id = 25
+        t.eq(c.fishingPole(), false, "a sword")
+        id = nil
+        t.eq(c.fishingPole(), false, "nothing in the main hand")
+        id = 7777
+        t.eq(c.fishingPole(), nil, "a class not read: not known, never false")
+        id = "6256"
+        t.eq(c.fishingPole(), nil, "an id that is no number")
+        env.GetInventoryItemID = function() error("no") end
+        t.eq(c.fishingPole(), nil, "a failed call")
+        env.GetInventoryItemID = nil
+        t.eq(c.fishingPole(), nil, "no such read")
+    end,
+
+    ["fishingPole(): the fake is not known until set"] = function(t)
+        local c = ns.make.fakeClient()
+        t.eq(c.fishingPole(), nil)
+        c.setFishingPole(true)
+        t.eq(c.fishingPole(), true)
+        c.setFishingPole(false)
+        t.eq(c.fishingPole(), false)
+        c.setFishingPole(nil)
+        t.eq(c.fishingPole(), nil)
+    end,
 }

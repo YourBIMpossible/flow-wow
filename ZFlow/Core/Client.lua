@@ -4732,6 +4732,23 @@ function ns.make.client(env)
         return flag(call(env.IsMounted))
     end
 
+    -- Section 235 item 4: is a fishing pole in your main hand. True, false,
+    -- or nil when not known. GetInventoryItemID("player", 16) (the main
+    -- hand; no id: nothing there, false), then the item's class and
+    -- subclass from GetItemInfoInstant (C_Item first, as c.gear): weapon 2,
+    -- subclass 20 is a fishing pole. A class not read: nil, never false.
+    -- Both names are in CLIENT-NAMES-16001; the read is a first guess, not
+    -- seen in game. It only reads.
+    function c.fishingPole()
+        local ok, id = call(env.GetInventoryItemID, "player", 16)
+        if not ok then return nil end
+        if id == nil then return false end
+        if hidden(id) or type(id) ~= "number" then return nil end
+        local class, subclass = itemType(id)
+        if class == nil or subclass == nil then return nil end
+        return class == 2 and subclass == 20
+    end
+
     -- S42 quest item on the quest arrow (LEDGER 169/172;
     -- WoW/from-zen/RESEARCH-S42.md). Three reads, each only reads: nothing
     -- uses an item here (no UseQuestLogSpecialItem, no secure button; the

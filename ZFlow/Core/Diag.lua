@@ -604,6 +604,8 @@ Diag.ANSWERS = {
     { "itemCount", 6948 }, { "unitBuff", "player", {} },
     -- Lead section 197: the pet state; forms only, the family word is not kept.
     { "pet" },
+    -- Section 235 item 4: a fishing pole in the main hand.
+    { "fishingPole" },
 }
 Diag.ANSWER_COUNTS = { "playerBuffs", "targetDebuffs" }
 Diag.ANSWER_MAPS = { "mapCorners", "mapSize" }

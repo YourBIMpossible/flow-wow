@@ -1412,6 +1412,12 @@ function ns.make.fakeClient(opts)
     function c.setMounted(v)
         if v == nil then s.mounted = nil else s.mounted = v and true or false end
     end
+    -- Section 235 item 4: fishingPole() is unknown (nil) until set.
+    --   c.setFishingPole(true / false)   c.setFishingPole(nil): not known
+    function c.fishingPole() return s.fishingPole end
+    function c.setFishingPole(v)
+        if v == nil then s.fishingPole = nil else s.fishingPole = v and true or false end
+    end
 
     -- S42: questItem(questID), itemCount(item), itemUse(item), all unknown
     -- (nil) until set.

@@ -55,6 +55,8 @@ local READS = {
     spellName = false,
     -- N13: the buffs you put up yourself (Classes/Paladin.lua auras).
     ownBuffs = false,
+    -- Section 235 item 4: the food read asks it (Rotation/Driver.lua).
+    fishingPole = true,
 }
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).
@@ -63,6 +65,7 @@ local FEATURE = {
     "spellCooldown", "spellId", "stealthed", "target", "targetDebuffs", "unitBuff",
     "facing", "itemCount", "mapCorners", "mapSize", "onTaxi", "position", "questFocus", "questItem",
     "questLog", "taxiNodes", "worldPosition", "zone", "corpse", "ghost", "pet",
+    "fishingPole",
 }
 
 local TEXTS = { "Orgrimmar", "Devotion Aura", "Attack", "Rend", "Bear Form", "Wolves" }
