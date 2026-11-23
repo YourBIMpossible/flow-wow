@@ -16,15 +16,20 @@ local _, ns = ...
 -- Pure parts:
 --   NpcSpeech.Clean(text) -> the words only (no colour codes, links,
 --     textures; "$B" breaks as spaces), or nil when nothing is left.
---   NpcSpeech.Voice(speech) -> the voice to use from client.speech(): the
---     first one, or nil.
+--   NpcSpeech.Voice(speech[, sex]) -> the voice to use from
+--     client.speech(): for sex "female" or "male" the first voice whose
+--     name is a woman's or a man's (P-QOL, as Flow picks), else the first
+--     one; nil when there is none.
 --
 -- Module: NpcSpeech.Declare(k) -> api. Listens to GOSSIP_SHOW,
 --   QUEST_GREETING, QUEST_DETAIL, QUEST_PROGRESS, QUEST_COMPLETE (speak)
 --   and GOSSIP_CLOSED, QUEST_FINISHED (stop). A window whose text is not
 --   read yet is asked again every RETRY seconds, up to TRIES times, while
 --   it is open. A speak call that raises is a recorded problem; the next
---   window is read as usual.
+--   window is read as usual. A computer with no voices is said once, in
+--   chat.
+-- Word (P-QOL): "speech" says where it stands, "speech on|off" sets the
+--   setting, "speech say" speaks a test line.
 -- Settings "general.npcSpeech" (bool, default false) and "general.bonus"
 --   (bool, default true). The speech row is greyed with its reason while
 --   the client has no speech call or the bonus switch is off.
@@ -42,6 +47,10 @@ S.BONUS = "general.bonus"
 S.NO_CALL = "Your game client has no text-to-speech call"
 S.NO_DEST = "Your game client gives no local playback destination for speech"
 S.BONUS_OFF = "Bonus extras are off"
+S.NO_VOICE = "This computer has no text-to-speech voices, so NPCs cannot be read aloud."
+S.WORD = "speech"
+S.HELP = "NPCs reading their words aloud: where it stands; on, off, or say for a test line"
+S.TEST = "Hello, traveller. NPC speech is working."
 S.RETRY = 0.5
 S.TRIES = 10
 
@@ -65,16 +74,41 @@ function S.Clean(text)
     return s
 end
 
-function S.Voice(speech)
+-- Words in a voice's name that tell a woman's from a man's (Windows names
+-- its voices "Microsoft Zira", "Microsoft David", ...). "female" holds
+-- "male", so a man's voice is never one with "female" in its name.
+local NAMES = {
+    female = { "zira", "hazel", "susan", "eva", "helena", "female", "samantha", "victoria", "karen" },
+    male = { "david", "mark", "george", "james", "male", "alex", "daniel", "fred" },
+}
+
+function S.Voice(speech, sex)
     if type(speech) ~= "table" or type(speech.voices) ~= "table" then return nil end
-    local v = speech.voices[1]
+    local voices = speech.voices
+    local want
+    if type(sex) == "string" then want = NAMES[sex] end
+    if want then
+        for i = 1, #voices do
+            local v = voices[i]
+            if type(v) == "table" and type(v.name) == "string" then
+                local name = v.name:lower()
+                if not (sex == "male" and name:find("female", 1, true)) then
+                    for j = 1, #want do
+                        if name:find(want[j], 1, true) then return v end
+                    end
+                end
+            end
+        end
+    end
+    local v = voices[1]
     if type(v) ~= "table" then return nil end
     return v
 end
 
-function S.Declare(k)
+function S.Declare(k, diag)
     local api = {}
     local ctx
+    local told = false   -- the no-voice line, once a session
     local pending, tries = nil, 0   -- an open window's kind whose text is not read yet
     local speaking = false
 
@@ -113,6 +147,24 @@ function S.Declare(k)
         if not ok then fail("stop", err) end
     end
 
+    -- Speak these words in the voice for the open window's NPC. where: the
+    -- name a problem is recorded under. No voice: said once, nothing asked.
+    local function speak(where, text)
+        local voice = S.Voice(ask("speech"), ask("npcSex"))
+        if not voice then
+            if not told then
+                told = true
+                ctx.client.print(ns.id.title .. ": " .. S.NO_VOICE)
+            end
+            return
+        end
+        stop()   -- one voice at a time: the new window's words replace the last
+        local ok, said, why = pcall(ctx.client.speak, text, voice)
+        if not ok then fail(where, said) return end
+        if said ~= true then fail(where, why) return end
+        speaking = true
+    end
+
     local function say(kind)
         pending = nil
         if not on() then return end
@@ -121,11 +173,7 @@ function S.Declare(k)
             pending = kind
             return
         end
-        stop()   -- one voice at a time: the new window's words replace the last
-        local ok, said, why = pcall(ctx.client.speak, text, S.Voice(ask("speech")))
-        if not ok then fail(kind, said) return end
-        if said ~= true then fail(kind, why) return end
-        speaking = true
+        speak(kind, text)
     end
 
     local function opened(kind)
@@ -145,6 +193,28 @@ function S.Declare(k)
     end
 
     function api.speaking() return speaking end
+
+    -- Where it stands: { on, why, voices }. why: the reason it cannot
+    -- speak (no call, no destination, bonus off), or nil.
+    function api.status()
+        local out = { on = false, voices = 0 }
+        if not ctx then return out end
+        out.why = blocked()
+        if out.why == nil and ctx.settings:get(S.BONUS) == false then out.why = S.BONUS_OFF end
+        out.on = ctx.settings:get(S.SETTING) == true
+        local sp = ask("speech")
+        if type(sp) == "table" and type(sp.voices) == "table" then out.voices = #sp.voices end
+        return out
+    end
+
+    -- What the word prints, in one line.
+    function api.line()
+        local st = api.status()
+        if st.why then return "NPC speech cannot play: " .. st.why .. "." end
+        if not st.on then return "NPC speech is off (" .. S.WORD .. " on | off | say)." end
+        if st.voices == 0 then return "NPC speech is on. " .. S.NO_VOICE end
+        return string.format("NPC speech is on, %d voices found (%s on | off | say).", st.voices, S.WORD)
+    end
 
     k:Setting({ key = S.BONUS, scope = "account", type = "bool", default = true,
         label = "Bonus extras", group = "general",
@@ -176,7 +246,7 @@ function S.Declare(k)
     k:Module({
         name = S.NAME,
         needs = { "client", "settings" },
-        provides = { Speaking = api.speaking },
+        provides = { Speaking = api.speaking, Status = api.status },
         events = events,
         ticks = { { every = S.RETRY, when = "always", run = function() retry() end } },
         start = function(c) ctx = c end,
@@ -185,9 +255,25 @@ function S.Declare(k)
             speaking, pending, ctx = false, nil, nil
         end,
     })
+
+    if diag and type(diag.commands) == "table" then
+        diag.commands[S.WORD] = function(rest)
+            if not ctx then return end
+            local word = tostring(rest or ""):lower():match("^%s*(%S*)")
+            if word == "on" or word == "off" then
+                ctx.settings:set(S.SETTING, word == "on")
+                if word == "off" then stop() end
+            elseif word == "say" and on() then
+                speak("say", S.TEST)
+                return
+            end
+            ctx.client.print(ns.id.title .. ": " .. api.line())
+        end
+        if type(diag.help) == "table" then diag.help[S.WORD] = S.HELP end
+    end
     return api
 end
 
 -- The addon's own: declared when this file loads. Silent until the
 -- setting is turned on.
-ns.npcSpeech = S.Declare(ns)
+ns.npcSpeech = S.Declare(ns, ns.diag)

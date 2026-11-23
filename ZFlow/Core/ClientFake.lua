@@ -3224,6 +3224,13 @@ function ns.make.fakeClient(opts)
         if type(v) ~= "string" or v == "" then return nil end
         return v
     end
+    -- P-QOL: the open window's NPC, "male", "female" or nil (not known,
+    -- the start), as the real client's npcSex.
+    function c.setNpcSex(v) s.npcSex = v end
+    function c.npcSex()
+        if s.npcSex == "male" or s.npcSex == "female" then return s.npcSex end
+        return nil
+    end
     -- N39 and N40 (P-KEYS slice E): the target's name and the spell it
     -- casts, as the real client's; setTargetCastFails makes the read raise.
     function c.setTargetName(name) s.targetName = name end

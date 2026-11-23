@@ -188,6 +188,8 @@ local READS = {
     -- an open gossip or quest window; read by UI/NpcSpeech.lua only, the
     -- capture asks none. Their names are in Diag.NAMES.
     speech = false, npcText = false,
+    -- P-QOL: the NPC's sex for the voice; read by UI/NpcSpeech.lua only.
+    npcSex = false,
     -- N39 and N40 (P-KEYS slice E): the target's name (the no-auto-attack
     -- list) and the spell it casts (the stop-a-cast advice); read by the
     -- rotation only, the capture asks neither. Their names (UnitName,

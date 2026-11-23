@@ -197,6 +197,9 @@ Diag.NAMES = {
     "TextToSpeech_Speak", "Enum.VoiceTtsDestination", "Enum.VoiceTtsDestination.LocalPlayback",
     "C_GossipInfo", "C_GossipInfo.GetText", "GetGossipText", "GetGreetingText", "GetQuestText",
     "GetObjectiveText", "GetProgressText", "GetRewardText",
+    -- P-QOL: the open window's NPC, a man or a woman, for the voice
+    -- (client.npcSex; UI/NpcSpeech.lua). First guess.
+    "UnitSex",
     -- N68: the alert sound (UI/Alerts.lua, Core/Client.lua playAlert).
     "PlaySound", "SOUNDKIT.RAID_WARNING",
     -- G14 (lead sections 229, 236): the quest reward choice and its button

@@ -8696,6 +8696,18 @@ function ns.make.client(env)
         return words(env[name])
     end
 
+    -- c.npcSex() -> "male", "female", or nil (absent, raised, hidden, or
+    --   neither) for the NPC whose window is open: UnitSex("npc"), 2 a man,
+    --   3 a woman. P-QOL, read by UI/NpcSpeech.lua for its voice. First guess.
+    function c.npcSex()
+        if type(env.UnitSex) ~= "function" then return nil end
+        local ok, v = call(env.UnitSex, "npc")
+        if not ok or hidden(v) then return nil end
+        if v == 2 then return "male" end
+        if v == 3 then return "female" end
+        return nil
+    end
+
     -- N39 (P-KEYS slice E): your target's name, for the no-auto-attack
     -- list; nil with no target or when the client does not say.
     -- UnitName("target"), a first guess for this use: not seen in game on
