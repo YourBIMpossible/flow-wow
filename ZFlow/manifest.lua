@@ -157,6 +157,7 @@ return {
         "UI/DevPanel.lua",
         "UI/SettingsSlash.lua",
         "UI/SettingsPage.lua",
+        "UI/SettingsKeys.lua",
         "UI/SettingsPanel.lua",
         "UI/SettingsOptions.lua",
         "UI/Rows.lua",

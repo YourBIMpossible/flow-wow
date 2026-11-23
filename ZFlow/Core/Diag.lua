@@ -164,6 +164,13 @@ Diag.NAMES = {
     -- Row N73: the feedback report takes the guild name out of its text
     -- (UI/Feedback.lua Names). Saved in the snapshot's names table.
     "GetGuildInfo",
+    -- N57 (Plexy's note 1 of section 250): binding names in wowless's 1.60.1
+    -- API list but never asked of 16001, and the game's key-chord helpers
+    -- the capture overlay asks (client.bindingAction, client.keyCapture).
+    "GetBindingAction", "SetOverrideBinding", "SetBindingSpell", "SetBindingMacro", "SetBindingItem",
+    "GetBinding", "GetNumBindings", "LoadBindings", "C_KeyBindings.GetBindingContextForAction",
+    "C_KeyBindings.GetBindingByKey", "C_KeyBindings.GetBindingIndex", "RunBinding",
+    "CreateKeyChordStringUsingMetaKeyState", "IsKeyPressIgnoredForBinding", "GetConvertedKeyOrButton",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns
