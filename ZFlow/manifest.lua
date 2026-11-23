@@ -88,6 +88,7 @@ return {
         "Rotation/Pack.lua",
         "Rotation/Snapshot.lua",
         "Rotation/BuffFood.lua",
+        "Rotation/HealItems.lua",
         "Rotation/Choose.lua",
         "Rotation/KeyPlan.lua",
         "Rotation/Cast.lua",
