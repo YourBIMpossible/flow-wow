@@ -166,14 +166,34 @@ tests["shaman: cooldown is passed by and comes back; out of range is said"] = fu
     t.ok(not said(c):find("out of range", 1, true), "not told out of range: " .. said(c))
     inRange(c, false); c.advance(1, 5)
     t.ok(said(c):find("out of range", 1, true), "told it is out of range: " .. said(c))
+    -- Section 220 (Zen's section 218 read): a spell really passed by for
+    -- range. None of your debuffs on the target, so Flame Shock is wanted
+    -- and, in range, shown before Earth Shock. Read out of range, it is
+    -- passed by: Earth Shock (in range) is shown and nothing says out of range.
+    c.setTargetDebuffs({}); inRange(c, true); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Flame Shock", "Flame Shock wanted and in range: shown first")
+    c.setInRange(IDS["Flame Shock"], false); c.advance(1, 5)
+    t.ok(not showing(icon, "Flame Shock"), "Flame Shock out of range: not shown")
+    t.eq(icon.texture, "tex:Earth Shock", "the next spell in range is shown")
+    t.ok(not said(c):find("out of range", 1, true), "not told out of range: " .. said(c))
 end
 
+-- Section 220 (Zen's section 218 read): the pack's target rules, written out
+-- here by hand, in list order, so a change to the pack is seen. A rule
+-- added or a `target = true` dropped in Classes/Shaman.lua makes this differ;
+-- the writer then decides whether the spell joins IDS (and so reach()).
+local TARGET_RULES = { "Lightning Bolt", "Attack", "Auto Attack", "Stormstrike", "Flame Shock", "Earth Shock" }
+
 tests["shaman: every learned target rule is put out of range by the test"] = function(t)
+    local targets = {}
+    for _, rule in ipairs(ns.Packs.SHAMAN.lists.default) do
+        if rule.target then targets[#targets + 1] = rule.spell end
+    end
+    t.eq(targets, TARGET_RULES, "the pack's target rules, as written out here")
+    -- Of those, the ones this test teaches (IDS): reach() is exactly these.
+    t.eq(reach(), { "Lightning Bolt", "Attack", "Flame Shock", "Earth Shock" }, "what the test puts out of range")
     local names = {}
     for _, name in ipairs(reach()) do names[name] = true end
-    for _, rule in ipairs(ns.Packs.SHAMAN.lists.default) do
-        if rule.target and IDS[rule.spell] then t.ok(names[rule.spell], "in reach: " .. rule.spell) end
-    end
     for _, name in ipairs({ "Lightning Bolt", "Flame Shock", "Earth Shock", "Attack" }) do
         t.ok(names[name], "in reach: " .. name)
     end

@@ -119,6 +119,31 @@ tests["goals at merchant: bags not read with a goal saved gives no sell advice a
     t.eq(peltRows(lines), {}, "no pelt offered: " .. joined(lines))
     t.ok(not has(lines, ns.ItemPresent.SELL_HEADER), "no sell header: " .. joined(lines))
     t.ok(not has(lines, ns.ItemPresent.NOTHING_TO_SELL), "not told there is nothing to sell either: " .. joined(lines))
+    -- Section 220 (Zen's section 218 read): the panel above does NOT depend
+    -- on the goal. With the bags not read the sell list says it can't list
+    -- before it looks at the reservations (UI/SellList.lua Lines: the
+    -- unavailable case needs the bags read), so the same bags with no goal
+    -- saved give the same panel. Only the status depends on the goal:
+    -- unavailable with it, none without it. Both halves are pinned here.
+    local c2, addon2 = start(nil, true)
+    t.eq(addon2.reservations.Current().status, addon2.Reservations.NONE,
+        "no goal, bags not read: nothing reserved, not unavailable")
+    local shown2, lines2 = visit(c2)
+    t.ok(shown2, "the sell panel is shown with no goal too")
+    t.eq(lines2, lines, "the same panel with no goal: the goal shows only in the status")
+end
+
+-- Section 216 case (5), through settings.goals: a goal for more than the
+-- bags hold holds what the bags hold, never more, and offers none of it.
+tests["goals at merchant: a saved goal of 30 with 20 in the bags offers none and says 20 are held"] = function(t)
+    local c, addon = start({ { item = PELT, count = 30 } })
+    t.eq(addon.reservations.Current().status, addon.Reservations.OK, "the goal is worked out")
+    local shown, lines = visit(c)
+    t.ok(shown, "the sell panel is shown at the merchant")
+    t.eq(peltRows(lines), {}, "no pelt offered: " .. joined(lines))
+    t.ok(has(lines, "Ruined Pelt: 20 held for your steps"), "twenty held, the bag count: " .. joined(lines))
+    t.ok(not finds(lines, "30 held"), "never the goal's thirty: " .. joined(lines))
+    t.ok(not finds(lines, "eservations not known"), "no unknown line: " .. joined(lines))
 end
 
 tests["goals at merchant: no goal saved gives the sell advice there was before goals"] = function(t)
