@@ -120,6 +120,56 @@ tests["fake client: the icon row records its icons, presses as the player and is
     t.eq(moved, { "TOPLEFT", "TOPLEFT", 10, -20 })
 end
 
+-- ACTING (S19): c.equipItem(item, slot) -> true | nil, why. EquipItemByName
+-- under pcall, only when InCombatLockdown answers a plain false.
+tests["c.equipItem: puts the item on out of combat only, one call each"] = function(t)
+    local calls = {}
+    local env = { InCombatLockdown = function() return false end,
+        EquipItemByName = function(...) calls[#calls + 1] = { ... } end }
+    local c = ns.make.client(env)
+    t.eq({ c.equipItem("item:1000:0:0:0:0:0:0:0") }, { true })
+    t.eq({ c.equipItem(2000, 16) }, { true })
+    t.eq(calls, { { "item:1000:0:0:0:0:0:0:0" }, { 2000, 16 } })
+    env.InCombatLockdown = function() return true end
+    t.eq({ ns.make.client(env).equipItem(1000) }, { nil, "combat" })
+    env.InCombatLockdown = function() return nil end
+    t.eq({ ns.make.client(env).equipItem(1000) }, { nil, "combat" }, "not a plain false: no call")
+    env.InCombatLockdown = function() error("no") end
+    t.eq({ ns.make.client(env).equipItem(1000) }, { nil, "combat" }, "the lock read raised: no call")
+    env.InCombatLockdown = nil
+    t.eq({ ns.make.client(env).equipItem(1000) }, { nil, "combat" }, "no lock read: no call")
+    t.eq(#calls, 2, "nothing asked unless out of combat")
+end
+
+tests["c.equipItem: refuses what it cannot ask, and a raise is said"] = function(t)
+    local calls = 0
+    local env = { InCombatLockdown = function() return false end,
+        EquipItemByName = function() calls = calls + 1 end }
+    local c = ns.make.client(env)
+    for _, bad in ipairs({ { nil }, { "" }, { 0 }, { 1.5 }, { false }, { 1000, 0 }, { 1000, 20 }, { 1000, "16" } }) do
+        t.eq({ c.equipItem(bad[1], bad[2]) }, { nil, "bad" }, tostring(bad[1]) .. " / " .. tostring(bad[2]))
+    end
+    t.eq(calls, 0)
+    t.eq({ ns.make.client({ InCombatLockdown = function() return false end }).equipItem(1000) }, { nil, "noCall" })
+    env.EquipItemByName = function() error("no") end
+    t.eq({ ns.make.client(env).equipItem(1000) }, { nil, "raised" })
+end
+
+tests["fake client: equipItem counts every call, refuses in combat or not known, raises on ask"] = function(t)
+    local c = ns.make.fakeClient()
+    t.eq({ c.equipItem(1000) }, { true })
+    c.setCombat(true)
+    t.eq({ c.equipItem(1000) }, { nil, "combat" })
+    c.setCombatUnknown(true)
+    t.eq({ c.equipItem(1000) }, { nil, "combat" })
+    c.setCombatUnknown(false)
+    c.setEquipFails(1)
+    t.eq({ c.equipItem(2000) }, { nil, "raised" })
+    t.eq({ c.equipItem(2000, 16) }, { true })
+    t.eq(c.equipCalls, 5)
+    t.eq(c.equips, { { item = 1000 }, { item = 2000, slot = 16 } })
+end
+
 -- S19: the game's own equipment sets are not used on 16001 (never asked);
 -- their names, and EquipItemByName, are recorded at login.
 tests["diag: the equip and equipment set names are recorded at login"] = function(t)

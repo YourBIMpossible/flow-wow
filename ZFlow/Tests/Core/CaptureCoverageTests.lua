@@ -44,7 +44,10 @@ local KIND = {
     -- N57 (lead section 249 item 2): the binding writes, each only on the
     -- player's own key press on the settings page, out of combat.
     act = { "restartSound", "soundWays", "craftRecipe", "stopCraftRepeat",
-            "setBindingClick", "clearBinding", "saveBindings", "overrideBindingClick", "clearOverrideKeys" },
+            "setBindingClick", "clearBinding", "saveBindings", "overrideBindingClick", "clearOverrideKeys",
+            -- S19 (P-SETS branch 2): one piece put on, only on the player's
+            -- own click on a set icon, out of combat.
+            "equipItem" },
     -- Reads a chat line handed in, not the client.
     -- lootLine (N55): the item of anyone's loot line, never the looter.
     parse = { "ownLoot", "auctionOutcome", "lootLine" },

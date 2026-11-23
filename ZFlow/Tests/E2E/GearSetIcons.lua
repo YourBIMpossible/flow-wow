@@ -126,7 +126,7 @@ tests["set icons: hovering a set lists its pieces"] = function(t)
     say(c, "set save tank")
     local icon = iconOf(rowOf(c), "tank")
     if not icon then t.ok(false, "no tank icon") return end
-    t.eq(icon.tip, { "tank", "You wear all of it.", "Dull Ring", "Frayed Cloak", "Bent Sword" })
+    t.eq(icon.tip, { "tank", "You wear all of it.", "Dull Ring", "Frayed Cloak", "Bent Sword", ns.GearSetIcons.CLICK })
 end
 
 -- Lead section 236: what is worn is read late (not known at login).
@@ -136,7 +136,8 @@ tests["set icons: what you wear read late: no edge until it is known"] = functio
     local row = rowOf(c)
     if not row then t.ok(false, "no set icon row") return end
     t.eq(iconOf(row, "tank").edge, false, "not known: no edge")
-    t.eq(iconOf(row, "tank").tip, { "tank", "Dull Ring", "Frayed Cloak", "Bent Sword" }, "no wear line while not known")
+    t.eq(iconOf(row, "tank").tip, { "tank", "Dull Ring", "Frayed Cloak", "Bent Sword", ns.GearSetIcons.CLICK },
+        "no wear line while not known")
     for slot, link in pairs(WORN) do c.setWorn(slot, link) end
     c.fire("PLAYER_EQUIPMENT_CHANGED", 16, false)
     t.eq(iconOf(row, "tank").edge, true, "known now: edged")
@@ -166,6 +167,132 @@ tests["set icons: a reload keeps the setting and the row's place"] = function(t)
     -- Nothing saved holds a character name: the place is anchors and numbers.
     local saved = c.saved(ns.id.accountDB).layout.setIcons
     t.eq(saved, { point = { "TOPLEFT", "TOPLEFT", 120, -240 } })
+end
+
+-- Equip on click (ACTING) ---------------------------------------------------
+
+local function items(c)
+    local out = {}
+    for i, e in ipairs(c.equips) do out[i] = e.item end
+    return out
+end
+
+-- Saved wearing all three; then the cloak and the sword come off. In the
+-- bags: the cloak and a helm (not in the set); the sword is gone.
+local function offAndClick(opts)
+    opts = opts or {}
+    local c, addon = start({ on = true, worn = WORN,
+        bag = opts.bag or { { item = LINK.cloak, count = 1 }, { item = LINK.helm, count = 1 } } })
+    say(c, "set save tank")
+    c.setWorn(15, false)
+    c.setWorn(16, false)
+    c.fire("PLAYER_EQUIPMENT_CHANGED", 15, true)
+    return c, addon
+end
+
+local function click(c, key)
+    local from = #c.printed
+    local pressed = rowOf(c).press(key)
+    local out, p = {}, ns.id.title .. ": "
+    for i = from + 1, #c.printed do
+        local line = tostring(c.printed[i])
+        if line:sub(1, #p) == p then line = line:sub(#p + 1) end
+        out[#out + 1] = line
+    end
+    return pressed, out
+end
+
+-- Fails before: the row's act is nil (look only) and c.equipItem is absent.
+tests["set icons: a click out of combat puts on the set's pieces from the bags, one call each"] = function(t)
+    local c = offAndClick()
+    local pressed, said = click(c, "tank")
+    t.eq(pressed, true, "the icon took the click")
+    t.eq(c.equipCalls, 1, "one call: the one piece in the bags and not worn")
+    t.eq(items(c), { LINK.cloak }, "the cloak; never the helm (not in the set), the ring (worn) or the sword (not in the bags)")
+    t.eq(said, { "Equipped 1 piece of tank; 1 not in your bags." })
+end
+
+tests["set icons: two of one piece take two from the bags, never more than the set holds"] = function(t)
+    local c = start({ on = true, char = { state = { gearSets = { savedSet("rings", { "15234:588", "15234:588" }) } } },
+        worn = { [11] = false }, bag = { { item = LINK.ringBear, count = 3 } } })
+    local _, said = click(c, "rings")
+    t.eq(items(c), { LINK.ringBear, LINK.ringBear })
+    t.eq(said, { "Equipped 2 pieces of rings; 0 not in your bags." })
+end
+
+-- Fails before: the click handler (GearSetIcons equipSet) is absent.
+tests["set icons: a click in combat, or with combat not known, equips nothing and says why"] = function(t)
+    local c = offAndClick()
+    c.setCombat(true)
+    local _, said = click(c, "tank")
+    t.eq(c.equipCalls, 0, "no call in combat")
+    t.eq(said, { ns.GearSetIcons.IN_COMBAT })
+    c.setCombatUnknown(true)
+    _, said = click(c, "tank")
+    t.eq(c.equipCalls, 0, "no call while combat is not known")
+    t.eq(said, { ns.GearSetIcons.COMBAT_UNKNOWN })
+    c.setCombatUnknown(false)
+    click(c, "tank")
+    t.eq(c.equipCalls, 1, "out of combat again: the click equips")
+end
+
+tests["set icons: what you wear not read: nothing is equipped"] = function(t)
+    local c = offAndClick()
+    c.setWornUnread(true)
+    local _, said = click(c, "tank")
+    t.eq(said, { ns.GearSetIcons.CANT_READ_WORN })
+    t.eq(c.equipCalls, 0)
+    -- The plan alone: the bags not read asks nothing either.
+    local plan, why = ns.GearSetIcons.Plan({ name = "tank", items = { CLOAK } }, {}, nil)
+    t.eq(plan, nil)
+    t.eq(why, ns.GearSetIcons.CANT_READ_BAGS)
+end
+
+-- Lead section 236: the call raises once, then works; no retry by itself.
+tests["set icons: equip raising once says so; the next click puts it on"] = function(t)
+    local c = offAndClick()
+    c.setEquipFails(1)
+    local _, said = click(c, "tank")
+    t.eq(c.equipCalls, 1, "one call, no retry")
+    t.eq(#c.equips, 0)
+    t.eq(said, { "Equipped 0 pieces of tank; 1 not in your bags. 1 piece could not be put on; click again to try." })
+    c.advance(30, 60)
+    c.fire("PLAYER_EQUIPMENT_CHANGED", 15, false)
+    t.eq(c.equipCalls, 1, "nothing retried by a timer or an event")
+    _, said = click(c, "tank")
+    t.eq(items(c), { LINK.cloak })
+    t.eq(said, { "Equipped 1 piece of tank; 1 not in your bags." })
+end
+
+-- SR-6 style recorder: c.equipCalls counts every call, refused ones too.
+-- Boot, events, ticks, a reload, the set word, the setting: zero calls.
+tests["set icons: nothing is equipped without the click"] = function(t)
+    local c = offAndClick()
+    for _, ev in ipairs({ "PLAYER_EQUIPMENT_CHANGED", "PLAYER_ENTERING_WORLD", "BAG_UPDATE", "BAG_UPDATE_DELAYED",
+        "PLAYER_REGEN_ENABLED", "UNIT_INVENTORY_CHANGED", "EQUIPMENT_SWAP_FINISHED" }) do
+        c.fire(ev)
+    end
+    c.setCombat(true)
+    c.setCombat(false)
+    c.advance(120, 240)
+    say(c, "set")
+    say(c, "set save heal")
+    t.eq(c.equipCalls, 0, "no call before a reload")
+    local again = start({ account = c.saved(ns.id.accountDB), char = c.saved(ns.id.charDB),
+        bag = { { item = LINK.cloak, count = 1 } } })
+    again.fire("PLAYER_EQUIPMENT_CHANGED")
+    again.advance(60, 120)
+    t.eq(again.equipCalls, 0, "no call after a reload")
+    t.ok(rowOf(again) ~= nil and #rowOf(again).icons == 2, "the icons are there to click")
+end
+
+tests["set icons: a click on the row with the setting off is not possible"] = function(t)
+    local c, addon = offAndClick()
+    local row = rowOf(c)
+    addon.settings:set(ns.GearSetIcons.SETTING, false)
+    t.eq(row.shown(), false, "hidden once off")
+    t.eq(row.press("tank"), false, "no icon to click once off")
+    t.eq(c.equipCalls, 0)
 end
 
 return tests

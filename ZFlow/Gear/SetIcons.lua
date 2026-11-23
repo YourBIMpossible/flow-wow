@@ -17,8 +17,20 @@ local _, ns = ...
 --   point = GearSetIcons.Point(saved)
 --   api   = GearSetIcons.Declare(k)               api.row(), api.redraw()
 --
--- Reads only: client.wornLinks, client.itemInfo, client.itemTexture. It
--- saves only the row's place; never a character name.
+-- ACTING, the click only (lead sections 227 item 4 and 230): a left click
+-- on an icon puts on that set's pieces that are in the bags and not worn,
+-- one client.equipItem (EquipItemByName) per piece, in one pass. What
+-- starts it: the player's own click (the row's act). What stops it:
+-- combat, or combat not known (nothing is asked), what is worn or the bags
+-- not read (nothing is asked). No timer, no event, no retry: a piece the
+-- game refused stays off until the next click. It says what it did:
+-- "Equipped N pieces of <set>; M not in your bags."
+--   plan, why = GearSetIcons.Plan(set, wornLinks, bagItems)
+--   line      = GearSetIcons.Done(name, equipped, missing, failed)
+--
+-- Reads: client.wornLinks, client.bagItems, client.inCombat,
+-- client.itemInfo, client.itemTexture. It saves only the row's place; never
+-- a character name.
 
 local SetIcons = {}
 ns.GearSetIcons = SetIcons
@@ -32,6 +44,13 @@ SetIcons.DEFAULT_POINT = { "BOTTOM", "BOTTOM", 0, 160 }
 SetIcons.TEXTURE = "Interface\\Icons\\INV_Chest_Chain_04"
 SetIcons.WORN = "You wear all of it."
 SetIcons.WEARING = "You wear %d of its %d pieces."
+SetIcons.CLICK = "Click: put on its pieces from your bags (out of combat)."
+SetIcons.IN_COMBAT = "You are in combat, so nothing was equipped. Click the set again after the fight."
+SetIcons.COMBAT_UNKNOWN = "Can't tell whether you are in combat, so nothing was equipped."
+SetIcons.CANT_READ_WORN = "Can't read what you wear right now, so nothing was equipped."
+SetIcons.CANT_READ_BAGS = "Can't read your bags right now, so nothing was equipped."
+SetIcons.NO_SET = "You have no set named %s."
+SetIcons.ALREADY = "You already wear all of %s that is in your bags."
 
 local function finite(n)
     return type(n) == "number" and n == n and n > -math.huge and n < math.huge
@@ -100,6 +119,7 @@ function SetIcons.Icons(sets, wornKeys, nameOf, textureOf)
             tip[#tip + 1] = SetIcons.WEARING:format(wearing, total)
         end
         for _, key in ipairs(set.items) do tip[#tip + 1] = nameOf(key) or ("item " .. tostring(key)) end
+        tip[#tip + 1] = SetIcons.CLICK
         local texture = SetIcons.TEXTURE
         if total > 0 then
             local got = textureOf(set.items[1])
@@ -108,6 +128,54 @@ function SetIcons.Icons(sets, wornKeys, nameOf, textureOf)
         out[#out + 1] = { key = set.name, edge = worn, texture = texture, tip = tip }
     end
     return out
+end
+
+-- What one click puts on: each piece of the set not worn whose item is in
+-- the bags (two of one ring take two from the bags). -> { equip = { item
+-- as the bags list it, ... }, missing = pieces neither worn nor in the
+-- bags }; or nil and why when what is worn or the bags are not known.
+function SetIcons.Plan(set, wornLinks, bagItems)
+    local worn = SetIcons.WornKeys(wornLinks)
+    if worn == nil then return nil, SetIcons.CANT_READ_WORN end
+    if type(bagItems) ~= "table" then return nil, SetIcons.CANT_READ_BAGS end
+    local have = tally(worn)
+    -- [key] = { item, ... } one entry per item in the bags.
+    local bag = {}
+    for _, stack in ipairs(bagItems) do
+        local key
+        if type(stack) == "table" then key = ns.Items.Key(stack.item) end
+        if key ~= nil then
+            local n = 1
+            if type(stack.count) == "number" and stack.count >= 1 and stack.count < 1000 then n = math.floor(stack.count) end
+            local list = bag[key] or {}
+            bag[key] = list
+            for _ = 1, n do list[#list + 1] = stack.item end
+        end
+    end
+    local plan = { equip = {}, missing = 0 }
+    for _, key in ipairs(set.items) do
+        if (have[key] or 0) > 0 then
+            have[key] = have[key] - 1
+        elseif bag[key] and #bag[key] > 0 then
+            plan.equip[#plan.equip + 1] = table.remove(bag[key], 1)
+        else
+            plan.missing = plan.missing + 1
+        end
+    end
+    return plan
+end
+
+local function pieces(n)
+    if n == 1 then return "1 piece" end
+    return n .. " pieces"
+end
+
+-- The line one click prints.
+function SetIcons.Done(name, equipped, missing, failed)
+    if equipped == 0 and missing == 0 and failed == 0 then return SetIcons.ALREADY:format(name) end
+    local line = "Equipped " .. pieces(equipped) .. " of " .. name .. "; " .. missing .. " not in your bags."
+    if failed > 0 then line = line .. " " .. pieces(failed) .. " could not be put on; click again to try." end
+    return line
 end
 
 function SetIcons.Declare(k)
@@ -156,10 +224,46 @@ function SetIcons.Declare(k)
         return row
     end
 
-    local act
+    local function say(line)
+        local id = k.id or ns.id
+        pcall(ctx.client.print, id.title .. ": " .. line)
+    end
+
+    local draw
+
+    -- ACTING (S19): the only caller of client.equipItem. Reached only from
+    -- act, which only the row's own left click asks (c.iconRow OnClick).
+    -- One pass over the set's pieces: no timer, no event, no retry.
+    local function equipSet(name)
+        local set
+        for _, s in ipairs(ns.GearSets.Saved(ctx.store)) do
+            if s.name == name then set = s end
+        end
+        if not set then return say(SetIcons.NO_SET:format(tostring(name))) end
+        local combat = read("inCombat")
+        if combat == true then return say(SetIcons.IN_COMBAT) end
+        if combat ~= false then return say(SetIcons.COMBAT_UNKNOWN) end
+        local plan, why = SetIcons.Plan(set, read("wornLinks"), read("bagItems"))
+        if not plan then return say(why) end
+        local equipped, failed = 0, 0
+        for _, item in ipairs(plan.equip) do
+            local ok, put = false, nil
+            if type(ctx.client.equipItem) == "function" then ok, put = pcall(ctx.client.equipItem, item) end
+            if ok and put == true then equipped = equipped + 1 else failed = failed + 1 end
+        end
+        say(SetIcons.Done(set.name, equipped, plan.missing, failed))
+        draw()
+    end
+
+    -- The row's click: a left click on the icon of set `key`.
+    local function act(key)
+        if not ctx then return end
+        local ok, err = pcall(equipSet, key)
+        if not ok and type(k.problems) == "table" then k.problems:add(SetIcons.NAME, "click", tostring(err)) end
+    end
 
     -- Draws what is saved and worn now. Off, or no set saved: hidden.
-    local function draw()
+    draw = function()
         if not ctx then return end
         if ctx.settings:get(SetIcons.SETTING) ~= true then
             if row then
@@ -194,7 +298,8 @@ function SetIcons.Declare(k)
             key = SetIcons.SETTING, scope = "account", type = "bool", default = false,
             label = "Set icons",
             help = "A small row with an icon for each set you saved (set save <name>): the set you wear has a "
-                .. "gold edge, and hovering one lists its pieces. Drag the row by its edge to move it.",
+                .. "gold edge, and hovering one lists its pieces. Click one to put on its pieces from your bags, "
+                .. "out of combat only. Drag the row by its edge to move it.",
             group = "gear", synonyms = { "set", "sets", "icons", "outfit", "equip", "swap" },
         } },
         provides = { Row = api.row },

@@ -3005,6 +3005,27 @@ function ns.make.fakeClient(opts)
         c.iconRows[#c.iconRows + 1] = h
         return h
     end
+
+    -- S19 (acting): equipItem, as the real client's. Every call is counted
+    -- in c.equipCalls (the recorder: a call without the click is seen);
+    -- each item put on is in c.equips { item =, slot = }. Out of combat
+    -- only: combat true or not known (setCombatUnknown) answers "combat".
+    -- setEquipFails(n): the next n calls raise ("raised"), then it works.
+    c.equips, c.equipCalls = {}, 0
+    function c.setEquipFails(n) s.equipFails = n end
+    function c.setCombatUnknown(on)
+        if on then s.combat = nil else s.combat = false end
+    end
+    function c.equipItem(item, slot)
+        c.equipCalls = c.equipCalls + 1
+        if s.combat ~= false then return nil, "combat" end
+        if (s.equipFails or 0) > 0 then
+            s.equipFails = s.equipFails - 1
+            return nil, "raised"
+        end
+        c.equips[#c.equips + 1] = { item = item, slot = slot }
+        return true
+    end
     return c
 end
 

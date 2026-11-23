@@ -8255,6 +8255,37 @@ function ns.make.client(env)
         end
         return h
     end
+
+    -- ACTING (S19, lead sections 227 item 4 and 230): puts one item on,
+    -- only on the player's own left click on a set icon (Gear/SetIcons.lua
+    -- equipSet, the row's act); never from an event, a timer, the tick or
+    -- a load. EquipItemByName(item[, slot]) under pcall. item: an item ID
+    -- or a link, as the bags list it; slot: an inventory slot 1..19, or nil
+    -- for the game's choice. Only when InCombatLockdown answers a plain
+    -- false: true, a secret, a raise or no such call asks nothing.
+    -- -> true | nil, "combat" | "bad" | "noCall" | "raised". One call, no
+    -- retry. Needs game test: EquipItemByName is in the 16001 name list;
+    -- what it does with a link and a slot is not seen in game.
+    function c.equipItem(item, slot)
+        local okLock, locked = call(env.InCombatLockdown)
+        if not okLock or hidden(locked) or locked ~= false then return nil, "combat" end
+        if type(item) == "number" then
+            if hidden(item) or item ~= item or item < 1 or item >= math.huge or item ~= math.floor(item) then
+                return nil, "bad"
+            end
+        elseif type(item) ~= "string" or hidden(item) or item == "" then
+            return nil, "bad"
+        end
+        if slot ~= nil then
+            if type(slot) ~= "number" or slot < 1 or slot > 19 or slot ~= math.floor(slot) then return nil, "bad" end
+        end
+        local fn = env.EquipItemByName
+        if type(fn) ~= "function" then return nil, "noCall" end
+        local ok
+        if slot == nil then ok = pcall(fn, item) else ok = pcall(fn, item, slot) end
+        if not ok then return nil, "raised" end
+        return true
+    end
     return c
 end
 
