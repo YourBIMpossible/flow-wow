@@ -124,7 +124,8 @@ tests["gear sets: set save keeps what you wear, by item key, for this character 
     local fields = {}
     for key in pairs(set) do fields[#fields + 1] = tostring(key) end
     table.sort(fields)
-    t.eq(fields, { "items", "name" }, "a set holds its name and its keys, nothing else (no character name)")
+    t.eq(fields, { "items", "name", "slots" }, "a set holds its name, its keys and their slots (no character name)")
+    t.eq(set.slots, { 11, 15, 16 }, "the slot each key was worn in, in the same order")
     local account = c.saved(ns.id.accountDB)
     t.eq(account.state, nil, "nothing saved account wide")
 end

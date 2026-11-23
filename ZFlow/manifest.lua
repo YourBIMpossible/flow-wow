@@ -88,6 +88,7 @@ return {
         "Gear/MerchantShow.lua",
         "Gear/RollHint.lua",
         "Gear/Sets.lua",
+        "Gear/SetIcons.lua",
 
         -- Rotation and classes
         "Rotation/Pack.lua",

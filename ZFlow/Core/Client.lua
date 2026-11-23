@@ -602,6 +602,38 @@ function ns.make.client(env)
     -- it is left out, never saved as it came.
     local ROW_DIFFICULTY = { optimal = "optimal", medium = "medium", easy = "easy", trivial = "trivial", difficult = "difficult" }
 
+    -- N24 (lead section 274 item 2): the tools a classic recipe row needs,
+    -- GetTradeSkillTools(index), answered in pairs (name, carried):
+    --   { { name =, has = true | false } }, {} when the recipe needs none.
+    -- Carried 1 or true is carried; nothing, 0 or false is not. nil when the
+    -- call is missing or raises, the row is no whole number from 1, a name
+    -- is empty, not text or secret, or a carried answer is any other value.
+    -- Look only. Needs game test: the call and its answer shape on 16001.
+    local function packed(...) return select("#", ...), { ... } end
+    function c.tradeSkillTools(index)
+        if not wholeCount(index) or index < 1 or index == math.huge then return nil end
+        local n, a = packed(call(env.GetTradeSkillTools, index))
+        if a[1] ~= true then return nil end
+        local out = {}
+        for i = 2, n, 2 do
+            local name, carried = a[i], a[i + 1]
+            if name ~= nil or carried ~= nil then
+                if type(name) ~= "string" or hidden(name) or name == "" then return nil end
+                if carried ~= nil and hidden(carried) then return nil end
+                local has
+                if carried == 1 or carried == true then
+                    has = true
+                elseif carried == nil or carried == 0 or carried == false then
+                    has = false
+                else
+                    return nil
+                end
+                out[#out + 1] = { name = name, has = has }
+            end
+        end
+        return out
+    end
+
     -- Section 231 item 1: the fallback for recipeSchematic when the client
     -- has no C_TradeSkillUI.GetRecipeSchematic (not in CLIENT-NAMES-16001).
     -- The classic reads of the open trade skill window, by row index, not
@@ -819,6 +851,16 @@ function ns.make.client(env)
         end
         return out
     end
+    -- N23 (lead section 274 item 2): the profession skill a trainer recipe
+    -- needs, the second answer of GetTrainerServiceSkillReq(i) (the first is
+    -- the skill name); a whole number from 1, else nil and left out of the
+    -- row. Needs game test: the answer order on 16001.
+    local function skillReq(i)
+        local ok, _, skill = call(env.GetTrainerServiceSkillReq, i)
+        local v = wholeOrNil(ok, skill)
+        if v == nil or v < 1 then return nil end
+        return v
+    end
     local function trainerServices()
         local n = wholeOrNil(call(env.GetNumTrainerServices))
         if not n then return nil, trainerFilter() end
@@ -845,6 +887,7 @@ function ns.make.client(env)
                     name = name, rank = text(ok, rank), state = state,
                     cost = wholeOrNil(call(env.GetTrainerServiceCost, i)),
                     level = wholeOrNil(call(env.GetTrainerServiceLevelReq, i)),
+                    skill = skillReq(i),
                 }
             end
         end
@@ -8250,6 +8293,205 @@ function ns.make.client(env)
             return shown
         end
     end
+
+    -- S21 (lead section 275): the Need or Greed value on a loot roll's item
+    -- (Gear/RollHint.lua). A first guess, not seen in game on 16001: the
+    -- roll frame's item picture is its IconFrame field (legacy Flow's
+    -- Modules/Gear/RollHint.lua IconHost read it on this client); without
+    -- one the roll frame itself holds the value. The roll frame is found as
+    -- onLootRoll finds it (rollFrame, F4). The names are in Diag.NAMES
+    -- (GroupLootFrame1, GroupLootFrame1.IconFrame).
+    --   c.rollValue(rollID, text, r, g, b) -> true when that roll's frame
+    --     carries the text (no text, or "": hidden); nil when no frame shows
+    --     that roll, or one of ours could not be made there.
+    -- The text sits on a frame of ours made as a child of the item picture,
+    -- one per roll frame, reused; it takes no clicks. Nothing of the game's
+    -- frame is called or written, and nothing rolls.
+    -- In a do block: make.client is near Lua 5.1's 200 locals.
+    do
+        local rollValues = {}   -- roll frame -> { holder, text }, or false
+        local function rollValueMark(frame)
+            local known = rollValues[frame]
+            if known ~= nil then return known or nil end
+            local host = frame
+            local okI, icon = pcall(function() return frame.IconFrame end)
+            if okI and type(icon) == "table" then host = icon end
+            local okF, holder = call(env.CreateFrame, "Frame", nil, host)
+            if not okF or type(holder) ~= "table" then
+                rollValues[frame] = false
+                return nil
+            end
+            local okT, fs = method(holder, "CreateFontString", nil, "OVERLAY", "GameFontNormalSmall")
+            if not okT or type(fs) ~= "table" then
+                rollValues[frame] = false
+                return nil
+            end
+            method(holder, "SetAllPoints", host)
+            method(holder, "EnableMouse", false)
+            method(fs, "SetPoint", "TOPLEFT", holder, "TOPLEFT", 2, -2)
+            local m = { holder = holder, text = fs }
+            rollValues[frame] = m
+            return m
+        end
+        function c.rollValue(rollID, s, r, g, b)
+            if type(rollID) ~= "number" or hidden(rollID) then return nil end
+            local frame = rollFrame(rollID)
+            if frame == nil then return nil end
+            local m = rollValueMark(frame)
+            if m == nil then return nil end
+            if type(s) ~= "string" or s == "" then
+                method(m.holder, "Hide")
+                return true
+            end
+            method(m.text, "SetText", s)
+            if type(r) == "number" and type(g) == "number" and type(b) == "number" then
+                method(m.text, "SetTextColor", r, g, b)
+            end
+            method(m.holder, "Show")
+            return true
+        end
+    end
+
+    -- S19 (P-SETS branch 2, Gear/SetIcons.lua): a movable row of small
+    -- picture buttons, one per saved set, or nil when the client cannot
+    -- make a frame. The row is c.panel's frame (moved by a drag on its
+    -- edge, h.onMoved told where it stands), with the buttons on it.
+    --   spec = { name = global frame name, size = button size in pixels }
+    --   h.draw(icons, act): icons = { { key =, texture =, edge = true or
+    --       false, tip = { line, ... } } }, at most 12 drawn.
+    --       edge true: a gold edge, else a thin dark one. Hover shows the
+    --       tip lines on the game tooltip (the first in gold). A left
+    --       click asks act(key) under pcall; any other button asks
+    --       nothing. The row keeps no state of its own: the next draw
+    --       replaces it, and buttons past the icons are hidden.
+    --   h.place(point), h.show(on), h.shown(), h.onMoved(fn, failed): as
+    --       the panel's.
+    -- The row itself acts on nothing: what a click does is act's.
+    -- Needs game test: the button layout, RegisterForClicks and the
+    -- tooltip owner (GameTooltip:SetOwner, AddLine, Show, Hide).
+    function c.iconRow(spec)
+        local ICON_ROW_MAX = 12
+        local own = {}
+        for key, v in pairs(type(spec) == "table" and spec or {}) do own[key] = v end
+        own.closable = nil
+        local size = tonumber(own.size) or 28
+        own.width, own.height = size + 8, size + 8
+        local h, f, isOpen = panelFrame(own)
+        if h == nil then return nil end
+        h.shown = isOpen
+        local GAP, PAD = 4, 4
+        local buttons = {}
+
+        local function button(i)
+            if buttons[i] == nil then
+                local ok, b = call(env.CreateFrame, "Button", nil, f)
+                if not ok or b == nil then return nil end
+                local okE, edge = method(b, "CreateTexture", nil, "BACKGROUND")
+                if not okE then edge = nil end
+                if edge ~= nil then
+                    method(edge, "SetPoint", "TOPLEFT", b, "TOPLEFT", -2, 2)
+                    method(edge, "SetPoint", "BOTTOMRIGHT", b, "BOTTOMRIGHT", 2, -2)
+                end
+                local okT, tex = method(b, "CreateTexture", nil, "ARTWORK")
+                if not okT then tex = nil end
+                if tex ~= nil then method(tex, "SetAllPoints", b) end
+                method(b, "RegisterForClicks", "LeftButtonUp")
+                buttons[i] = { frame = b, edge = edge, tex = tex }
+            end
+            return buttons[i]
+        end
+        local function colour(tex, r, g, b, a)
+            if tex == nil then return end
+            if not method(tex, "SetColorTexture", r, g, b, a) then method(tex, "SetTexture", r, g, b, a) end
+        end
+
+        function h.draw(icons, act)
+            local used = 0
+            for _, icon in ipairs(type(icons) == "table" and icons or {}) do
+                if used >= ICON_ROW_MAX then break end
+                if type(icon) == "table" then
+                    used = used + 1
+                    local parts = button(used)
+                    if parts == nil then break end
+                    local b, key = parts.frame, icon.key
+                    local tip = {}
+                    for i, line in ipairs(type(icon.tip) == "table" and icon.tip or {}) do tip[i] = tostring(line) end
+                    if not method(b, "SetSize", size, size) then
+                        method(b, "SetWidth", size)
+                        method(b, "SetHeight", size)
+                    end
+                    method(b, "ClearAllPoints")
+                    method(b, "SetPoint", "TOPLEFT", f, "TOPLEFT", PAD + (used - 1) * (size + GAP), -PAD)
+                    if parts.tex ~= nil then method(parts.tex, "SetTexture", icon.texture) end
+                    if icon.edge == true then
+                        colour(parts.edge, 1, 0.82, 0, 1)
+                    else
+                        colour(parts.edge, 0, 0, 0, 0.9)
+                    end
+                    method(b, "SetScript", "OnClick", function(_, which)
+                        if which ~= nil and which ~= "LeftButton" then return end
+                        if type(act) == "function" then pcall(act, key) end
+                    end)
+                    method(b, "SetScript", "OnEnter", function()
+                        local gt = env.GameTooltip
+                        if gt == nil or #tip == 0 then return end
+                        method(gt, "SetOwner", b, "ANCHOR_TOPLEFT")
+                        for i, line in ipairs(tip) do
+                            if i == 1 then
+                                method(gt, "AddLine", line, 1, 0.82, 0)
+                            else
+                                method(gt, "AddLine", line, 1, 1, 1, true)
+                            end
+                        end
+                        method(gt, "Show")
+                    end)
+                    method(b, "SetScript", "OnLeave", function()
+                        local gt = env.GameTooltip
+                        if gt ~= nil then method(gt, "Hide") end
+                    end)
+                    method(b, "Show")
+                end
+            end
+            for i = used + 1, #buttons do method(buttons[i].frame, "Hide") end
+            local count = used
+            if count < 1 then count = 1 end
+            method(f, "SetWidth", PAD * 2 + count * size + (count - 1) * GAP)
+            method(f, "SetHeight", PAD * 2 + size)
+        end
+        return h
+    end
+
+    -- ACTING (S19, lead sections 227 item 4 and 230): puts one item on,
+    -- only on the player's own left click on a set icon (Gear/SetIcons.lua
+    -- equipSet, the row's act); never from an event, a timer, the tick or
+    -- a load. EquipItemByName(item[, slot]) under pcall. item: an item ID
+    -- or a link, as the bags list it; slot: an inventory slot 1..19, or nil
+    -- for the game's choice. Only when InCombatLockdown answers a plain
+    -- false: true, a secret, a raise or no such call asks nothing.
+    -- -> true | nil, "combat" | "bad" | "noCall" | "raised". One call, no
+    -- retry. first guess: EquipItemByName is in the 16001 name list;
+    -- what it does with a link and a slot is not seen in game.
+    function c.equipItem(item, slot)
+        local okLock, locked = call(env.InCombatLockdown)
+        if not okLock or hidden(locked) or locked ~= false then return nil, "combat" end
+        if type(item) == "number" then
+            if hidden(item) or item ~= item or item < 1 or item >= math.huge or item ~= math.floor(item) then
+                return nil, "bad"
+            end
+        elseif type(item) ~= "string" or hidden(item) or item == "" then
+            return nil, "bad"
+        end
+        if slot ~= nil then
+            if type(slot) ~= "number" or slot < 1 or slot > 19 or slot ~= math.floor(slot) then return nil, "bad" end
+        end
+        local fn = env.EquipItemByName
+        if type(fn) ~= "function" then return nil, "noCall" end
+        local ok
+        if slot == nil then ok = pcall(fn, item) else ok = pcall(fn, item, slot) end
+        if not ok then return nil, "raised" end
+        return true
+    end
+
     -- S20 vendor marks (lead section 230): the per-role badge on the
     -- merchant's item buttons, as legacy Flow's Modules/Gear/SpecBadge.lua
     -- drew it: per role, a green arrow up (better than what you wear), the
@@ -8259,7 +8501,8 @@ function ns.make.client(env)
     -- and nothing of the window is called. The page is read as
     -- markMerchantButtons reads it; none on the buyback tab. New, added at
     -- the end. First guesses, none seen in game on 16001: CreateFrame with
-    -- a parent, Texture SetTexCoord / SetVertexColor / SetColorTexture, and
+    -- a parent, the frame's CreateTexture, Texture SetTexCoord /
+    -- SetVertexColor / SetColorTexture / SetAtlas / SetSize, and
     -- the names markMerchantButtons already guesses (MerchantItem<i>ItemButton,
     -- MerchantFrame.page and .selectedTab, MERCHANT_ITEMS_PER_PAGE).
     --   c.markMerchantSpecs(badges) -> how many buttons carry a badge; nil

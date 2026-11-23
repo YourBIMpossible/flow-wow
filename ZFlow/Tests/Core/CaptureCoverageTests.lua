@@ -35,6 +35,11 @@ local KIND = {
              "playAlert",
              -- G14: the mark on the best quest reward choice (Gear/RewardMark.lua).
              "markRewardChoice",
+             -- S21: the Need or Greed value on a loot roll's item (Gear/RollHint.lua).
+             "rollValue",
+             -- S19 (P-SETS branch 2): the set icon row; a click asks only
+             -- what the caller's act does.
+             "iconRow",
              -- S20: the per-role badges on the merchant's item buttons.
              "markMerchantSpecs" },
     tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "savedMadeHere", "slash",
@@ -45,7 +50,10 @@ local KIND = {
     -- N57 (lead section 249 item 2): the binding writes, each only on the
     -- player's own key press on the settings page, out of combat.
     act = { "restartSound", "soundWays", "craftRecipe", "stopCraftRepeat",
-            "setBindingClick", "clearBinding", "saveBindings", "overrideBindingClick", "clearOverrideKeys" },
+            "setBindingClick", "clearBinding", "saveBindings", "overrideBindingClick", "clearOverrideKeys",
+            -- S19 (P-SETS branch 2): one piece put on, only on the player's
+            -- own click on a set icon, out of combat.
+            "equipItem" },
     -- Reads a chat line handed in, not the client.
     -- lootLine (N55): the item of anyone's loot line, never the looter.
     parse = { "ownLoot", "auctionOutcome", "lootLine" },
@@ -55,7 +63,7 @@ local KIND = {
 local READS = {
     now = false, clock = true, clockMs = false, addonLoaded = true, listenFaults = true, uptime = true, inCombat = true,
     money = true, bags = true, bagItems = true, bankOpen = true, bankItems = true, merchantOpen = false,
-    merchantItems = false, recipes = true, recipeSchematic = false, tradeSkillSchematic = true, tradeSkillRows = true, trainer = false, faction = false, class = true,
+    merchantItems = false, recipes = true, recipeSchematic = false, tradeSkillSchematic = true, tradeSkillRows = true, tradeSkillTools = true, trainer = false, faction = false, class = true,
     stealthed = true, target = true, inRange = true, level = false, gear = false, spellCooldown = true,
     spellId = true, spellTexture = false, facing = true, spell = true, position = true, dead = true,
     ghost = true, corpse = true, waypoint = false, mapSize = true, mapCont = false, zone = true,

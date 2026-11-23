@@ -65,6 +65,8 @@ M.ROLE = "spec.role"                    -- Rotation/Role.lua's setting
 -- G11 words. Authored here.
 M.SCORE_WORD = "Score"
 M.WEARING = "You're wearing this."
+-- GT2-1: what a slot known to be empty is held up as.
+M.NOTHING_WORN = "nothing worn"
 M.WORD = "gear"
 M.WHY_CAP = 20
 M.HELP = "why: each piece of gear in your bags with its verdict and score for your role. It changes nothing."
@@ -168,11 +170,19 @@ local function scoreLines(scored, worn)
                 order[#order + 1] = what
             end
             local group = groups[what]
-            group[#group + 1] = amount(result.against) .. " (" .. scored[i].role .. ")"
+            -- GT2-1: a slot known to be empty is "nothing worn", once, not a 0 per role.
+            if result.empty == true then
+                group.empty = true
+            else
+                group[#group + 1] = amount(result.against) .. " (" .. scored[i].role .. ")"
+            end
         end
     end
     for i = 1, #order do
-        out[#out + 1] = { text = "vs " .. order[i] .. ": " .. table.concat(groups[order[i]], ", "), tone = "info" }
+        local group = groups[order[i]]
+        local against = M.NOTHING_WORN
+        if group.empty ~= true then against = table.concat(group, ", ") end
+        out[#out + 1] = { text = "vs " .. order[i] .. ": " .. against, tone = "info" }
     end
     return out
 end
@@ -255,19 +265,21 @@ function M.Why(client, packs, chosen)
     if not ok or type(stacks) ~= "table" then return { M.BAGS_UNREAD } end
     local pack, level, skills = whoOf(client, packs)
     local role = roleFor(rolesOf(pack), chosen)
-    local found, seen = {}, {}
+    local found, seen, failed = {}, {}, 0
     for i = 1, #stacks do
         local link = nil
         if type(stacks[i]) == "table" then link = stacks[i].item end
         if type(link) == "string" and link ~= "" and not seen[link] then
             seen[link] = true
-            local gear = ask(client, "gear", link)
+            -- GT2-3: one item's read raising is skipped and counted.
+            local okGear, gear = pcall(ask, client, "gear", link)
+            if not okGear then failed = failed + 1 end
             local lines, detail = nil, nil
-            if type(gear) == "table" then
+            if okGear and type(gear) == "table" then
                 lines, detail = ns.GearVerdict.Lines(gear, { pack = pack, role = role, level = level,
                                                              skills = skills })
             end
-            if type(lines) == "table" and type(lines[1]) == "table" then
+            if type(lines) == "table" and type(lines[1]) == "table" and type(detail) == "table" then
                 local text = link .. ": " .. lines[1].text
                 local result = detail.result
                 local usable = type(detail.use) == "table" and detail.use.can == true
@@ -278,12 +290,20 @@ function M.Why(client, packs, chosen)
             end
         end
     end
-    if #found == 0 then return { M.NO_GEAR } end
-    local title = "Gear in your bags:"
-    if role ~= nil then title = "Gear in your bags, for " .. role .. ":" end
-    local out = { title }
-    for i = 1, math.min(#found, M.WHY_CAP) do out[#out + 1] = found[i] end
-    if #found > M.WHY_CAP then out[#out + 1] = "and " .. (#found - M.WHY_CAP) .. " more" end
+    if #found == 0 and failed == 0 then return { M.NO_GEAR } end
+    local out = {}
+    if #found > 0 then
+        local title = "Gear in your bags:"
+        if role ~= nil then title = "Gear in your bags, for " .. role .. ":" end
+        out[1] = title
+        for i = 1, math.min(#found, M.WHY_CAP) do out[#out + 1] = found[i] end
+        if #found > M.WHY_CAP then out[#out + 1] = "and " .. (#found - M.WHY_CAP) .. " more" end
+    end
+    if failed > 0 then
+        local noun = "items"
+        if failed == 1 then noun = "item" end
+        out[#out + 1] = failed .. " " .. noun .. " could not be read."
+    end
     return out
 end
 

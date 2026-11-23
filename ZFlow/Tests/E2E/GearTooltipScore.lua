@@ -19,9 +19,21 @@ local tests = {}
 local STA, STR = "ITEM_MOD_STAMINA_SHORT", "ITEM_MOD_STRENGTH_SHORT"
 local WORN, STRONG, LATE = "item:4101", "item:4102", "item:4103"
 local BIG, SMALL = "item:4111", "item:4112"
+local RING_A, RING_B, RING_NEW = "item:4121", "item:4122", "item:4123"
+local GREAT = "item:4131"
 
 local function helm(stats)
     return { kind = "INVTYPE_HEAD", stats = stats, classID = 4, subclassID = 3, minLevel = 1, unmet = {} }
+end
+
+local function ring(stats)
+    return { kind = "INVTYPE_FINGER", stats = stats, classID = 4, subclassID = 0, minLevel = 1, unmet = {} }
+end
+
+-- A two-handed sword (Warrior proficiency 2/8, skill "Two-Handed Swords").
+local function greatsword(stats)
+    return { kind = "INVTYPE_2HWEAPON", stats = stats, classID = 2, subclassID = 8, minLevel = 1, unmet = {},
+             speed = 3.5 }
 end
 
 local function sword(stats)
@@ -222,6 +234,63 @@ tests["gear why: no gear, bags not read, another word"] = function(t)
     local usage = said(c, "gear")
     t.eq(#usage, 1)
     t.ok((usage[1] or ""):find(ns.id.slash .. " gear why", 1, true) ~= nil, "says how: " .. tostring(usage[1]))
+end
+
+-- GT2-1: a slot known to be empty is "nothing worn", not a score of 0.
+tests["gear tooltip score: an empty slot says nothing worn"] = function(t)
+    local c = boot({ role = "dps", prepare = function(c) c.setWorn(1, false) end })
+    local lines = hover(c, STRONG)
+    t.eq(lines[1], "Upgrade for your head piece (+10, dps)")
+    t.ok(at(lines, "vs your head piece: nothing worn") ~= nil, "empty: " .. table.concat(lines, " | "))
+    t.eq(at(lines, "vs your head piece: 0 (dps), 0 (tank)"), nil, "no score of 0 for an empty slot")
+end
+
+-- GT2-2: a ring is held up to both ring slots; the one it gains most on is
+-- named (dps: 6 vs 4 and 2; tank: 3.6 vs 2.4 and 1.2).
+tests["gear tooltip score: a ring, vs the ring it beats most"] = function(t)
+    local c = boot({ role = "dps", prepare = function(c)
+        c.setItem(RING_A, ring({ [STR] = 4 }))
+        c.setItem(RING_B, ring({ [STR] = 2 }))
+        c.setItem(RING_NEW, ring({ [STR] = 6 }))
+        c.setWorn(11, RING_A)
+        c.setWorn(12, RING_B)
+    end })
+    local lines = hover(c, RING_NEW)
+    t.eq(lines[1], "Upgrade for your second ring (+4, dps)")
+    t.ok(at(lines, "Score 6 (dps), 3.6 (tank)") ~= nil, "score: " .. table.concat(lines, " | "))
+    t.ok(at(lines, "vs your second ring: 2 (dps), 1.2 (tank)") ~= nil, "vs: " .. table.concat(lines, " | "))
+end
+
+-- GT2-2: a two-hander is held up to the main hand and the off hand together
+-- (the main hand's 20 dps / 12 tank, the off hand empty: 0).
+tests["gear tooltip score: a two-hander, vs your main hand and off hand"] = function(t)
+    local c = boot({ role = "dps", prepare = function(c)
+        c.setWeaponSkills({ "Swords", "Two-Handed Swords", "Defense" })
+        c.setItem(GREAT, greatsword({ [STR] = 30 }))
+    end })
+    local lines = hover(c, GREAT)
+    t.eq(lines[1], "Upgrade for your main hand and off hand (+10, dps)")
+    t.ok(at(lines, "Score 30 (dps), 18 (tank)") ~= nil, "score: " .. table.concat(lines, " | "))
+    t.ok(at(lines, "vs your main hand and off hand: 20 (dps), 12 (tank)") ~= nil,
+         "vs: " .. table.concat(lines, " | "))
+end
+
+-- GT2-3: one item's read raising is skipped and counted; the rest are listed.
+tests["gear why: an item read that raises is skipped and counted"] = function(t)
+    local c = boot({ role = "dps" })
+    local real = c.gear
+    c.gear = function(link)
+        if link == SMALL then error("gear read failed (test)") end
+        return real(link)
+    end
+    c.setBagItems({ { item = STRONG, count = 1 }, { item = SMALL, count = 1 } })
+    local out = said(c, "gear why")
+    t.eq(out[1], line("Gear in your bags, for dps:"))
+    t.eq(out[2], line(STRONG .. ": Upgrade for your head piece (+7.3, dps); score 10"))
+    t.eq(out[3], line("1 item could not be read."))
+    t.eq(#out, 3, table.concat(out, " | "))
+    c.setBagItems({ { item = SMALL, count = 1 } })
+    t.eq(said(c, "gear why"), { line("1 item could not be read.") }, "only a failed read: no 'no gear'")
 end
 
 return tests
