@@ -25,11 +25,14 @@ local function itemClaims(claims)
 end
 
 -- The whole add-on on a fake client, logged in. goals: what settings.goals
--- holds for this character (nil: none saved).
-local function start(goals, bagsUnread)
+-- holds for this character (nil: none saved). book: the character's saved
+-- recipe book (Items/RecipeBook.lua; nil: none).
+local function start(goals, bagsUnread, book)
     local c = ns.make.fakeClient()
     c.setSaved(ns.id.accountDB, {})
-    c.setSaved(ns.id.charDB, goals ~= nil and { settings = { goals = goals } } or {})
+    local char = goals ~= nil and { settings = { goals = goals } } or {}
+    if book ~= nil then char.learned = { facts = { recipeBook = book } } end
+    c.setSaved(ns.id.charDB, char)
     c.setItemInfo(INFO)
     if not bagsUnread then
         c.setBagItems({ { item = LINEN, count = 15 }, { item = LINEN, count = 5 }, { item = POTION, count = 5 } })
@@ -48,6 +51,11 @@ local function unopened(goals)
     c.setItemInfo(INFO)
     return c, ns.offline.addon(c)
 end
+
+-- Section 227 (P-GOALS-RECIPE): a recipe book that has seen the bolt.
+local BOLT_RECIPE = "Bolt of Linen Cloth"
+local BOOK = { [BOLT_RECIPE] = { id = 2963, makes = BOLT, yield = 1, mats = { [LINEN] = 2 }, profession = "Tailoring" } }
+local RECIPES = { bolt = { makes = BOLT, yield = 1, mats = { [LINEN] = 2 } } }
 
 -- A read with the bags read: 20 Linen.
 local READ = { items = function() return { [LINEN] = 20 } end }
@@ -410,14 +418,16 @@ end
 
 -- G-8 and GS-2. Fails before the repair: the recipe part was printed as it
 -- was saved, so a "|" in it started a colour or a link.
-tests["goal list: a recipe part is shown as not used yet, made safe for chat"] = function(t)
+-- Section 227: a recipe not seen yet is said so, and the goal keeps the
+-- item itself (it was "not used yet" before).
+tests["goal list: a recipe part is shown as not seen yet, made safe for chat"] = function(t)
     local long = string.rep("x", 60)
     local c = start({ { item = BOLT, count = 2, recipe = "a|cffff0000red|r\nb" },
                       { item = BOLT, count = 1, recipe = long } })
     t.eq(say(c, "list"), { "Your goals (2):",
-        "2 x Bolt of Linen Cloth (recipe part not used yet: a||cffff0000red||rb)",
-        "1 x Bolt of Linen Cloth (recipe part not used yet: "
-            .. string.rep("x", ns.ItemGoals.RECIPE_MAX) .. "...)" })
+        "2 x Bolt of Linen Cloth, made by a||cffff0000red||rb: " .. ns.ItemGoals.NOT_SEEN,
+        "1 x Bolt of Linen Cloth, made by "
+            .. string.rep("x", ns.ItemGoals.RECIPE_MAX) .. "...: " .. ns.ItemGoals.NOT_SEEN })
 end
 
 -- GS-2. Fails before the repair: a goal whose recipe Z-Flow does not know
@@ -436,6 +446,110 @@ tests["goals: a recipe Z-Flow does not know is read as the item and count"] = fu
     local r = addon.reservations.Current()
     t.eq(r.status, addon.Reservations.OK, "the goals are read")
     t.eq(addon.Reservations.HeldIn(addon.Reservations.Grants(r), "bags"):Held(LINEN), 8)
+end
+
+-------------------------------------------------------------------------------
+-- Section 227 (P-GOALS-RECIPE): recipe-backed goals
+-------------------------------------------------------------------------------
+
+-- Fails before section 227: the mats for all 3 were claimed (6 Linen) and
+-- the bolt already in the bags was not held.
+tests["goals: a recipe goal holds the product already owned, then the mats for the rest"] = function(t)
+    local G = ns.ItemGoals
+    local claims, skipped = G.Claims(snap({ [LINEN] = 20, [BOLT] = 1 }), { { item = BOLT, count = 3, recipe = "bolt" } }, RECIPES)
+    t.eq(skipped, 0)
+    local items = itemClaims(claims)
+    t.eq(#items, 2)
+    t.eq(items[1].key, BOLT, "the bolt owned first")
+    t.eq(items[1].amount, 1)
+    t.eq(items[1].selected, true)
+    t.eq(items[2].key, LINEN, "then the mats for 2 more")
+    t.eq(items[2].amount, 4)
+end
+
+tests["goals: a recipe goal the product already covers holds no mats"] = function(t)
+    local G = ns.ItemGoals
+    local claims = G.Claims(snap({ [LINEN] = 20, [BOLT] = 5 }), { { item = BOLT, count = 3, recipe = "bolt" } }, RECIPES)
+    local items = itemClaims(claims)
+    t.eq(#items, 1)
+    t.eq(items[1].key, BOLT)
+    t.eq(items[1].amount, 3, "only the count the goal keeps")
+end
+
+tests["goals: a product in the bank counts once the bank is seen"] = function(t)
+    local G = ns.ItemGoals
+    local s = ns.Resources.Fake({ bags = { [LINEN] = 20 }, bank = { [BOLT] = 2 } })
+    local items = itemClaims(G.Claims(s, { { item = BOLT, count = 3, recipe = "bolt" } }, RECIPES))
+    t.eq(items[1].key, BOLT)
+    t.eq(items[1].amount, 2, "the two in the bank")
+    t.eq(items[2].key, LINEN)
+    t.eq(items[2].amount, 2, "the mats for one more")
+end
+
+-- Fails before section 227: the source passed no recipes, so the goal held
+-- 3 bolts and no Linen.
+tests["goals: the source plans a recipe goal from the recipe book"] = function(t)
+    local _, addon = start({ { item = BOLT, count = 3, recipe = BOLT_RECIPE } }, false, BOOK)
+    local r = addon.reservations.Current()
+    t.eq(r.status, addon.Reservations.OK)
+    t.eq(addon.Reservations.HeldIn(addon.Reservations.Grants(r), "bags"):Held(LINEN), 6, "2 a bolt, 3 bolts")
+end
+
+tests["goal make: saves the recipe the book knows for the item"] = function(t)
+    local c = start(nil, false, BOOK)
+    t.eq(say(c, "make 2996 3"), { "Goal set: make 3 x Bolt of Linen Cloth (recipe: Bolt of Linen Cloth)." })
+    t.eq(saved(c), { { item = BOLT, count = 3, recipe = BOLT_RECIPE } })
+    t.eq(say(c, "make 2996 5"), { "Goal set: make 5 x Bolt of Linen Cloth (recipe: Bolt of Linen Cloth)." })
+    t.eq(saved(c), { { item = BOLT, count = 5, recipe = BOLT_RECIPE } }, "set again: the count changes, one entry")
+end
+
+tests["goal make: an item no recipe seen makes says how, and saves nothing"] = function(t)
+    local c = start(nil, false, BOOK)
+    t.eq(say(c, "make 2589 3"), { ns.ItemGoals.NoRecipe("Linen Cloth") })
+    t.eq(saved(c), nil, "nothing written")
+    t.eq(say(c, "make 2996"), { ns.ItemGoals.USAGE }, "no count")
+    t.eq(say(c, "make bolt 3"), { ns.ItemGoals.USAGE }, "no item")
+end
+
+tests["goal list: a recipe goal shows what is missing, or that it is ready"] = function(t)
+    local c = start({ { item = BOLT, count = 15, recipe = BOLT_RECIPE } }, false, BOOK)
+    local lines = say(c, "list")
+    t.eq(lines[1], "Your goals (1):")
+    local want = "15 x Bolt of Linen Cloth, made by Bolt of Linen Cloth: missing 10 x Linen Cloth"
+    t.eq(tostring(lines[2]):sub(1, #want), want, "20 Linen of 30")
+    local c2 = start({ { item = BOLT, count = 3, recipe = BOLT_RECIPE } }, false, BOOK)
+    t.eq(say(c2, "list"), { "Your goals (1):", "3 x Bolt of Linen Cloth, made by Bolt of Linen Cloth: ready to make 3" })
+end
+
+tests["goals: Crafts lists each recipe goal, in order, with what it needs"] = function(t)
+    local _, addon = start({ { item = LINEN, count = 8 },
+                             { item = BOLT, count = 15, recipe = BOLT_RECIPE },
+                             { item = POTION, count = 2, recipe = "Not Seen" } }, false, BOOK)
+    local rows = addon.ItemGoals.Crafts(addon)
+    t.eq(#rows, 2, "only the goals with a recipe")
+    local b = rows[1]
+    t.eq(b.item, BOLT)
+    t.eq(b.count, 15)
+    t.eq(b.recipe, BOLT_RECIPE)
+    t.eq(b.known, true)
+    t.eq(b.recipeId, 2963, "what P-CRAFT crafts")
+    t.eq(b.makes, BOLT)
+    t.eq(b.have, 0)
+    t.eq(b.times, 15)
+    t.ok(b.ready ~= true, "not ready: Linen is missing")
+    t.eq(b.missing, { { key = LINEN, count = 10 } })
+    t.eq(rows[2].item, POTION)
+    t.eq(rows[2].known, false, "a recipe not seen yet")
+    t.eq(rows[2].times, nil)
+end
+
+tests["goals: Crafts is nil while the goals can't be read"] = function(t)
+    local _, addon = unopened({ { item = BOLT, count = 3, recipe = BOLT_RECIPE } })
+    t.eq(addon.ItemGoals.Crafts(addon), nil, "the store is not open")
+    local _, addon2 = start("junk")
+    t.eq(addon2.ItemGoals.Crafts(addon2), nil, "a saved value that is no list")
+    local _, addon3 = start(nil)
+    t.eq(addon3.ItemGoals.Crafts(addon3), {}, "no goals: none to craft")
 end
 
 -- GS-1. Fails before the repair: there was no clean word, so an entry that
