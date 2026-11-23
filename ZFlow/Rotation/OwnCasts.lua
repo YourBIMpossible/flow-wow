@@ -542,7 +542,7 @@ function OC.Declare(k, diag, packs)
             key = OC.SAY, scope = "account", type = "bool", default = true,
             label = "Say when a choice you cast is kept",
             help = "One line in chat when a seal, blessing, aura, stance, form, aspect, armor, demon or curse you cast becomes the one suggested for your role. It casts nothing.",
-            group = "Rotation",
+            group = "combat", synonyms = { "seal", "blessing", "aura", "stance", "form", "aspect", "armor", "demon", "curse", "oath", "kept" },
         } },
         start = function(ctx)
             client = ctx.client
