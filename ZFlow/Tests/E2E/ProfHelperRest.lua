@@ -272,4 +272,52 @@ tests["prof helper N24: the helper turned off: no tool prompt"] = function(t)
     t.eq(#c.crafts, 0)
 end
 
+-- P4-3 (lead section 279): the prompt must not stick.
+
+tests["prof helper N24: a recipe that raised the prompt and leaves the list takes the prompt with it"] = function(t)
+    local c, addon = start({ classic = true, tools = { [2] = { { name = "Sewing Kit", has = false } } } })
+    if not panelOf(c) then t.ok(false, "no helper panel") return end
+    t.eq(#prompts(addon, "aps.prof.tool."), 1, "raised by Linen Bolt")
+    c.setTradeSkillRows({ name = "Tailoring", skill = 40, max = 75, rows = {
+        { index = 3, name = "Linen Belt", difficulty = "medium" },
+        { index = 4, name = "Linen Cap", difficulty = "trivial" },
+    } })
+    c.setTradeSkillTools(3, {})
+    c.setTradeSkillTools(4, {})
+    c.fire("TRADE_SKILL_LIST_UPDATE")
+    for _, line in ipairs(infos(panelOf(c))) do
+        t.ok(not line:find("Sewing Kit", 1, true), "no line for a recipe not listed")
+    end
+    t.eq(#prompts(addon, "aps.prof.tool."), 0, "Linen Bolt is no longer listed: the prompt goes")
+end
+
+tests["prof helper N24: a listed recipe whose read stops answering still keeps the prompt"] = function(t)
+    local c, addon = start({ classic = true, tools = { [2] = { { name = "Sewing Kit", has = false } } } })
+    if not panelOf(c) then t.ok(false, "no helper panel") return end
+    c.setTradeSkillTools(2, nil)
+    c.setTradeSkillTools(3, {})
+    c.setTradeSkillTools(4, {})
+    c.fire("TRADE_SKILL_LIST_UPDATE")
+    t.eq(#prompts(addon, "aps.prof.tool."), 1, "still listed, read not answered: unknown is not carried")
+end
+
+tests["prof helper N24: the helper turned off after the prompt was raised withdraws it"] = function(t)
+    local c, addon = start({ classic = true, tools = { [2] = { { name = "Sewing Kit", has = false } } } })
+    if not panelOf(c) then t.ok(false, "no helper panel") return end
+    t.eq(#prompts(addon, "aps.prof.tool."), 1, "raised with the helper on")
+    addon.settings:set("prof.helper", false)
+    c.advance(2, 4)
+    t.eq(#prompts(addon, "aps.prof.tool."), 0, "turned off with the window open: the prompt goes")
+end
+
+tests["prof helper N24: the helper turned off after the window closed withdraws the prompt"] = function(t)
+    local c, addon = start({ classic = true, tools = { [2] = { { name = "Sewing Kit", has = false } } } })
+    if not panelOf(c) then t.ok(false, "no helper panel") return end
+    c.fire("TRADE_SKILL_CLOSE")
+    t.eq(#prompts(addon, "aps.prof.tool."), 1, "the prompt stays after the window closes")
+    addon.settings:set("prof.helper", false)
+    c.advance(2, 4)
+    t.eq(#prompts(addon, "aps.prof.tool."), 0, "turned off later: the prompt goes")
+end
+
 return tests
