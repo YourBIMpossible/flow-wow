@@ -95,6 +95,7 @@ function Lookup.Start(k, diag)
     end
     if diag and type(diag.commands) == "table" then
         diag.commands[Lookup.WORD] = run
+        if type(diag.help) == "table" then diag.help[Lookup.WORD] = "price <item>: what is known of an item's price, and how it is known" end
     end
     return { run = run }
 end

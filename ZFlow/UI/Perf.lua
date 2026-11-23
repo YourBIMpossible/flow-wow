@@ -143,6 +143,7 @@ function Perf.Start(k, diag)
     end
     if diag and type(diag.commands) == "table" then
         diag.commands[Perf.WORD] = run
+        if type(diag.help) == "table" then diag.help[Perf.WORD] = "the slowest modules' timings; perf <n> for n rows, perf all for every one" end
     end
     return { run = run }
 end
