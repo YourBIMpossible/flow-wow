@@ -9278,9 +9278,31 @@ function ns.make.client(env)
                 -- handed on only when it is plain text.
                 local who = nil
                 if author ~= nil and not hidden(author) and type(author) == "string" then who = author end
-                local ok, new = pcall(fn, text, event, who)
-                if not ok or type(new) ~= "string" or new == text then return false end
-                return false, new, author, ...
+                -- N60d: info { guid =, channel = }, each only when plain
+                -- text: the game's 12th argument (the GUID) and 4th (the
+                -- channel text, "1. General - Zone"). fn's second answer
+                -- { channel = } replaces the channel text. First guess.
+                local n = select("#", ...)
+                local args = { ... }
+                local info = {}
+                if args[2] ~= nil and not hidden(args[2]) and type(args[2]) == "string" then
+                    info.channel = args[2]
+                end
+                if args[10] ~= nil and not hidden(args[10]) and type(args[10]) == "string" then
+                    info.guid = args[10]
+                end
+                local ok, new, change = pcall(fn, text, event, who, info)
+                if not ok then return false end
+                local channel = nil
+                if type(change) == "table" and type(change.channel) == "string" and info.channel ~= nil
+                    and change.channel ~= info.channel then
+                    channel = change.channel
+                end
+                if type(new) ~= "string" or new == text then new = nil end
+                if new == nil and channel == nil then return false end
+                if new == nil then new = text end
+                if channel ~= nil then args[2] = channel end
+                return false, new, author, unpack(args, 1, n)
             end
             local added = {}
             for _, event in ipairs(events) do
@@ -11575,6 +11597,92 @@ function ns.make.client(env)
             end
             if #chain > 0 then parts[#parts + 1] = "on " .. table.concat(chain, " < ") end
             return table.concat(parts, "; ")
+        end
+    end
+
+    ---------------------------------------------------------------------
+    -- N60d: chat part 4 (UI/Chat.lua). All first guesses, not seen in game
+    -- on 16001.
+    --
+    --   client.classOfGuid(guid) -> class file ("MAGE") | nil
+    --     GetPlayerInfoByGUID(guid), its second answer (warcraft.wiki.gg,
+    --     API GetPlayerInfoByGUID). nil for no call, a failed call, or a
+    --     secret or odd answer.
+    --   client.chatNameByClass(chatType) -> true | false | nil
+    --   client.setChatNameByClass(chatType, on) -> true | nil
+    --     The game's own "colour names by class" of one chat kind ("GUILD",
+    --     "CHANNEL1"): ChatTypeInfo[chatType].colorNameByClass, set through
+    --     SetChatColorNameByClass(chatType, on). The game then colours the
+    --     author's name itself, inside its own player link.
+    --   client.chatTypeHeader(name) -> text | nil
+    --   client.setChatTypeHeader(name, text) -> true | nil
+    --     The game's label text of a chat kind, the global CHAT_<name>_GET
+    --     ("|Hchannel:GUILD|h[Guild]|h %s: "). A global string write; the
+    --     chat frame's own code reads it when it shows a line.
+    --   client.editBox() -> { alt =, history = } | nil
+    --   client.setEditBox(alt, history) -> true | nil
+    --     ChatFrame1EditBox: Get/SetAltArrowKeyMode and Get/SetHistoryLines
+    --     (warcraft.wiki.gg, Widget API EditBox). The game's own edit-box
+    --     history is used: nothing is hooked.
+    ---------------------------------------------------------------------
+    do
+        function c.classOfGuid(guid)
+            if type(guid) ~= "string" or guid == "" then return nil end
+            local ok, _, class = call(env.GetPlayerInfoByGUID, guid)
+            if not ok or hidden(class) or type(class) ~= "string" or class == "" then return nil end
+            return class
+        end
+
+        local function typeInfo(chatType)
+            if type(chatType) ~= "string" or chatType == "" then return nil end
+            local okT, all = pcall(function() return env.ChatTypeInfo end)
+            if not okT or type(all) ~= "table" then return nil end
+            local okI, info = pcall(function() return all[chatType] end)
+            if not okI or type(info) ~= "table" then return nil end
+            return info
+        end
+        function c.chatNameByClass(chatType)
+            local info = typeInfo(chatType)
+            if info == nil then return nil end
+            local okV, v = pcall(function() return info.colorNameByClass end)
+            if not okV or hidden(v) then return nil end
+            return v == true
+        end
+        function c.setChatNameByClass(chatType, on)
+            if typeInfo(chatType) == nil or type(on) ~= "boolean" then return nil end
+            if not call(env.SetChatColorNameByClass, chatType, on) then return nil end
+            return true
+        end
+
+        function c.chatTypeHeader(name)
+            if type(name) ~= "string" or name == "" then return nil end
+            local okH, text = pcall(function() return env["CHAT_" .. name .. "_GET"] end)
+            if not okH or hidden(text) or type(text) ~= "string" then return nil end
+            return text
+        end
+        function c.setChatTypeHeader(name, text)
+            if c.chatTypeHeader(name) == nil or type(text) ~= "string" then return nil end
+            local okS = pcall(function() env["CHAT_" .. name .. "_GET"] = text end)
+            if not okS then return nil end
+            return true
+        end
+
+        function c.editBox()
+            local box = env.ChatFrame1EditBox
+            if type(box) ~= "table" then return nil end
+            local okA, alt = method(box, "GetAltArrowKeyMode")
+            if not okA or hidden(alt) or type(alt) ~= "boolean" then return nil end
+            local out = { alt = alt }
+            local okH, n = method(box, "GetHistoryLines")
+            if okH and not hidden(n) and type(n) == "number" then out.history = n end
+            return out
+        end
+        function c.setEditBox(alt, history)
+            local box = env.ChatFrame1EditBox
+            if type(box) ~= "table" or type(alt) ~= "boolean" then return nil end
+            if not method(box, "SetAltArrowKeyMode", alt) then return nil end
+            if type(history) == "number" then method(box, "SetHistoryLines", history) end
+            return true
         end
     end
     return c

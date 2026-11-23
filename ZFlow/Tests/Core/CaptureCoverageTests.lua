@@ -102,6 +102,11 @@ KIND.show[#KIND.show + 1] = "setChatFont"
 KIND.show[#KIND.show + 1] = "setChatFading"
 KIND.show[#KIND.show + 1] = "chatTabAlpha"
 KIND.listen[#KIND.listen + 1] = "chatWheel"
+-- N60d: chat part 4 (UI/Chat.lua). The game's class colour option of a
+-- chat kind, its chat labels and the edit box's arrow keys and history.
+KIND.show[#KIND.show + 1] = "setChatNameByClass"
+KIND.show[#KIND.show + 1] = "setChatTypeHeader"
+KIND.show[#KIND.show + 1] = "setEditBox"
 
 -- Every read, and whether the capture asks it (true) or not (false).
 local READS = {
@@ -227,6 +232,10 @@ local READS = {
     -- N60c: the player's own name for chat mentions; read by UI/Chat.lua
     -- only. Its name (UnitName) is in Diag.NAMES.
     playerName = false,
+    -- N60d: a GUID's class, a chat kind's class colour option and label,
+    -- and the edit box; read by UI/Chat.lua only. Their names
+    -- (GetPlayerInfoByGUID, ChatTypeInfo and the rest) are in Diag.NAMES.
+    classOfGuid = false, chatNameByClass = false, chatTypeHeader = false, editBox = false,
 }
 -- Lead section 337 item 1: the bag stacks with their bag and slot, and one
 -- slot read again before it is sold; read by Items/SellThese.lua only, on

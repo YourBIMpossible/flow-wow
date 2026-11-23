@@ -259,6 +259,12 @@ Diag.NAMES = {
     -- Lead section 340: the frame under the mouse (c.kitFocus), and the
     -- settings window's large page heading.
     "GetMouseFocus", "GetMouseFoci", "GameFontHighlightHuge",
+    -- N60d (UI/Chat.lua; Core/Client.lua classOfGuid, chatNameByClass,
+    -- setChatNameByClass, chatTypeHeader, setChatTypeHeader, editBox,
+    -- setEditBox). First guesses, never asked of 16001.
+    "GetPlayerInfoByGUID", "ChatTypeInfo", "SetChatColorNameByClass", "CHAT_GUILD_GET",
+    "ChatFrame1EditBox", "ChatFrame1EditBox.GetAltArrowKeyMode", "ChatFrame1EditBox.SetAltArrowKeyMode",
+    "ChatFrame1EditBox.GetHistoryLines", "ChatFrame1EditBox.SetHistoryLines",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns

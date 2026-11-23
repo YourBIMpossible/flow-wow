@@ -3548,18 +3548,29 @@ function ns.make.fakeClient(opts)
             end
             return n
         end
-        function c.pushChat(event, text, index, author)
+        -- N60d: info { guid =, channel = } is the line's GUID and channel
+        -- text; a filter's second answer { channel = } changes the channel
+        -- text. The channel text shown is the second return.
+        function c.pushChat(event, text, index, author, info)
             local shown = text
+            local channel = nil
+            if type(info) == "table" then channel = info.channel end
             for i = 1, #filters do
                 if filters[i].events[event] and type(shown) == "string" then
-                    local ok, new = pcall(filters[i].fn, shown, event, author)
+                    local view = {}
+                    if type(info) == "table" then view.guid = info.guid end
+                    view.channel = channel
+                    local ok, new, change = pcall(filters[i].fn, shown, event, author, view)
                     if ok and type(new) == "string" then shown = new end
+                    if ok and type(change) == "table" and type(change.channel) == "string" and channel ~= nil then
+                        channel = change.channel
+                    end
                 end
             end
             index = index or 1
             windows[index] = windows[index] or {}
             table.insert(windows[index], shown)
-            return shown
+            return shown, channel
         end
 
         function c.setLinkHook(on) s.noLinkHook = on == false end
@@ -4199,6 +4210,64 @@ function ns.make.fakeClient(opts)
         function c.setKitFocus(line)
             if type(line) == "string" then focusLine = line end
         end
+    end
+
+    -- N60d: chat part 4 (UI/Chat.lua). classOfGuid, chatNameByClass,
+    -- setChatNameByClass, chatTypeHeader, setChatTypeHeader, editBox and
+    -- setEditBox answer as the real client's do. The test's controls:
+    --   c.setGuidClass(guid, class)   the class file a GUID reads as
+    --   c.setGuidClassFails(on)       true: the GUID read raises, until false
+    --   c.nameByClass(chatType)       the game's "colour names by class" now
+    --   c.chatHeader(name)            the game's label text of a chat kind now
+    --   c.editBoxState() -> { alt =, history = }  the main edit box now
+    do
+        local guidClass, guidFails = {}, false
+        local byClass = {}
+        local headers = {
+            SAY = "%s says: ", YELL = "%s yells: ",
+            GUILD = "|Hchannel:GUILD|h[Guild]|h %s: ", OFFICER = "|Hchannel:OFFICER|h[Officer]|h %s: ",
+            PARTY = "|Hchannel:PARTY|h[Party]|h %s: ", PARTY_LEADER = "|Hchannel:PARTY|h[Party Leader]|h %s: ",
+            RAID = "|Hchannel:RAID|h[Raid]|h %s: ", RAID_LEADER = "|Hchannel:RAID|h[Raid Leader]|h %s: ",
+            RAID_WARNING = "[Raid Warning] %s: ",
+            INSTANCE_CHAT = "|Hchannel:INSTANCE_CHAT|h[Instance]|h %s: ",
+            INSTANCE_CHAT_LEADER = "|Hchannel:INSTANCE_CHAT|h[Instance Leader]|h %s: ",
+        }
+        local edit = { alt = true, history = 32 }
+
+        function c.setGuidClass(guid, class) guidClass[guid] = class end
+        function c.setGuidClassFails(on) guidFails = on == true end
+        function c.classOfGuid(guid)
+            if guidFails then error("GUID read failed (test)") end
+            if type(guid) ~= "string" then return nil end
+            return guidClass[guid]
+        end
+
+        function c.chatNameByClass(chatType)
+            if type(chatType) ~= "string" then return nil end
+            return byClass[chatType] == true
+        end
+        function c.setChatNameByClass(chatType, on)
+            if type(chatType) ~= "string" or type(on) ~= "boolean" then return nil end
+            byClass[chatType] = on
+            return true
+        end
+        function c.nameByClass(chatType) return byClass[chatType] == true end
+
+        function c.chatTypeHeader(name) return headers[name] end
+        function c.setChatTypeHeader(name, text)
+            if headers[name] == nil or type(text) ~= "string" then return nil end
+            headers[name] = text
+            return true
+        end
+        function c.chatHeader(name) return headers[name] end
+
+        function c.editBox() return { alt = edit.alt, history = edit.history } end
+        function c.setEditBox(alt, history)
+            if type(alt) ~= "boolean" or type(history) ~= "number" then return nil end
+            edit.alt, edit.history = alt, history
+            return true
+        end
+        function c.editBoxState() return { alt = edit.alt, history = edit.history } end
     end
     return c
 end
