@@ -75,7 +75,7 @@ end
 
 local OWN = { auction = true, prices = true, ["for"] = true, item = true, s = true, on = true, from = true,
     search = true, es = true, way = true, meet = true, here = true, sell = true, says = true, build = true,
-    talk = true, to = true, ["then"] = true }
+    Talk = true, to = true, Then = true }
 
 tests["capture mask: only the add-on's own words and numbers are printed; the rest is counted"] = function(t)
     local title = ns.id.title .. ": "
@@ -318,6 +318,92 @@ tests["capture real summary: the real run's summary goes to ZFLOW_SUMMARY (skipp
     local text = Capture.SummaryText(Capture.Summarize(c, addon, report, cap, ns.offline.ownWords()))
     local ok, why = ns.offline.writeSummary(out, text, { path, charPath })
     t.eq({ ok, why }, { true }, "the summary is written")
+end
+
+-- Lead section 220, MyBuddy CS2-1 to CS2-3 on f1aea21, and the older CS-4
+-- and CS-5. Every name here is made up.
+
+-- A summary from a stand-in client and add-on, for the guard tests.
+local function standIn(word, opts)
+    opts = opts or {}
+    local c = { slashes = { [ns.id.slash] = word or function() end }, printed = {}, advance = function() end }
+    if opts.noPrinted then c.printed = nil end
+    local addon = { problems = { list = function() return {} end }, settings = opts.settings }
+    return c, addon
+end
+
+tests["capture summary CS2-1: a raised word's row says one problem"] = function(t)
+    local c, addon = standIn(function() error("made-up boom") end)
+    local rows = Capture.Summarize(c, addon, { set = {} }, {}, {})
+    t.eq(rows[1].problems, 1, "the raise counts")
+    t.ok(Capture.SummaryText({ rows[1] }):find("words ran no, problems 1,", 1, true) ~= nil, "and is said")
+end
+
+tests["capture summary CS2-2: a row with no verdict is counted, and the counts add up"] = function(t)
+    local rows = {
+        { feature = "made", ran = true, problems = 0, unknowns = 0, hidden = 0, lines = {} },
+        { feature = "other", ran = true, problems = 0, unknowns = 0, hidden = 0, lines = {},
+          verdict = { feature = "other", result = ns.CaptureEvidence.NOT_EXERCISED, missing = { "x" }, synthetic = {},
+            smoke = true } },
+    }
+    local text = Capture.SummaryText(rows)
+    t.ok(text:find("not exercised 1, Lua problem 0, no verdict 1, of 2", 1, true) ~= nil, text)
+    local none = Capture.SummaryText({ rows[1] })
+    t.ok(none:find("no verdict 1, of 1", 1, true) ~= nil, "counted with no verdict at all: " .. none)
+end
+
+tests["capture summary CS2-3: a raise in the run, the mask, the settings or the unknowns leaves the rest going"] = function(t)
+    local function noBoom(text, why) t.eq(tostring(text):find("boom", 1, true), nil, why .. ": no error text") end
+    -- The run itself raises (the client has no printed list).
+    local c, addon = standIn(nil, { noPrinted = true })
+    local ok, rows = pcall(Capture.Summarize, c, addon, { set = {} }, {}, {})
+    t.ok(ok and #rows == #Capture.FEATURES, "the run raised: every row still made")
+    if ok then
+        t.eq(rows[1].ran, false, "said as not run")
+        noBoom(Capture.SummaryText(rows), "run")
+    end
+    -- The mask raises (a word list that raises when asked).
+    c, addon = standIn(function() c.printed[#c.printed + 1] = "made up line" end)
+    local own = setmetatable({}, { __index = function() error("made-up boom") end })
+    ok, rows = pcall(Capture.Summarize, c, addon, { set = {} }, {}, own)
+    t.ok(ok and #rows == #Capture.FEATURES, "the mask raised: every row still made")
+    if ok then
+        t.eq(rows[1].lines, { "_" }, "the line it could not mask is left out")
+        noBoom(Capture.SummaryText(rows), "mask")
+    end
+    -- The settings rows raise.
+    c, addon = standIn(nil, { settings = { each = function() error("made-up boom") end } })
+    ok, rows = pcall(Capture.Summarize, c, addon, { set = {} }, {}, {})
+    t.ok(ok and #rows == #Capture.FEATURES, "the settings raised: every row still made")
+    if ok then
+        t.eq(rows[#rows].lines, {}, "no settings lines")
+        t.ok(rows[#rows].problems >= 1, "counted as a problem")
+    end
+    -- The unknowns raise (a report that raises when read).
+    c, addon = standIn()
+    local report = setmetatable({}, { __index = function() error("made-up boom") end })
+    ok, rows = pcall(Capture.Summarize, c, addon, report, {}, {})
+    t.ok(ok and #rows == #Capture.FEATURES, "the unknowns raised: every row still made")
+    if ok then
+        t.ok(rows[1].problems >= 1, "counted as a problem")
+        noBoom(Capture.SummaryText(rows), "unknowns")
+    end
+end
+
+tests["capture summary CS-4: an own word is kept only as the add-on writes it"] = function(t)
+    t.eq({ Capture.Mask("Way way WAY", {}, { way = true }) }, { "_ way _", 2 },
+        "a name spelt like a lower-case word of the add-on is not printed")
+    local own = ns.offline.ownWords()
+    t.ok(own.waypoint == true, "the add-on writes waypoint")
+    t.eq(own.WAYPOINT, nil, "as written, not in every case")
+end
+
+tests["capture summary CS-5: the temp folder is looked for in more places"] = function(t)
+    local env, fallback = {}, {}
+    for _, name in ipairs(ns.offline.TEMP_ENV or {}) do env[name] = true end
+    for _, dir in ipairs(ns.offline.TEMP_FALLBACK or {}) do fallback[dir] = true end
+    t.ok(env.TEMP and env.TMP and env.TMPDIR and env.TEMPDIR, "the usual names")
+    t.ok(fallback["/tmp"] and fallback["/var/tmp"], "and the usual folders when none is set")
 end
 
 return tests
