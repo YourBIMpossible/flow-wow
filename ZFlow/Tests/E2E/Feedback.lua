@@ -254,8 +254,17 @@ tests["feedback diagnostics: off by default with no diagnostics line at all; on,
     local on = copied(c, p)
     t.ok(hasLine(on, F.DIAG_HEAD), "the diagnostics block: " .. tostring(on))
     t.ok(hasLine(on, "Version: 0.1.0; game build: 1.16.1 (7777)"), "version and build, read by the add-on")
-    t.ok(hasLine(on, "The add-on's own recent errors: 0"))
     t.ok(hasLine(on, "State: running; paused: no; saved data loaded: yes"))
+    local starts = {}
+    for _, line in ipairs(lines(on)) do starts[#starts + 1] = line:match("^[^:]+") end
+    for _, head in ipairs({ "Snapshot", "Client names asked", "Reads known", "Reads", "Events not registered",
+        "Snapshots", "The add-on's own problems, newest first" }) do
+        local found = false
+        for _, start in ipairs(starts) do
+            if start == head then found = true end
+        end
+        t.ok(found, "the allowlisted line: " .. head)
+    end
     t.ok(#lines(on) - 2 <= F.MAX_DIAG_LINES and #on <= F.MAX_BYTES, "inside its caps")
     p.press("preview")
     t.eq(boxOf(c, "Preview").text, on, "the preview shows the diagnostics too: exactly what is copied")
@@ -264,63 +273,184 @@ tests["feedback diagnostics: off by default with no diagnostics line at all; on,
     t.eq(copied(c, p), off, "off again: gone")
 end
 
--- Privacy ---------------------------------------------------------------------
+-- Privacy (lead section 251) -----------------------------------------------------
 
--- Fails before: no feedback module.
-tests["feedback privacy: names seeded in the errors, in the snapshot and in the typed text never reach the report"] = function(t)
+local function lowHas(text, word)
+    return tostring(text):lower():find(word, 1, true) ~= nil
+end
+
+-- A made-up problem of the add-on's own, with everything that must not be
+-- shared in it: a Windows user folder, the character's and realm's names,
+-- quoted text and an item link.
+local function seededProblem(addon)
+    addon.problems:add("made", "Zarkon", "C:\\Users\\Marlowe\\WoW\\Interface\\AddOns\\" .. ns.id.addon
+        .. "\\UI\\Made.lua:12: Zarkon of Stormrage said \"meet Brannoch at dusk\" about "
+        .. "|cff0070dd|Hitem:4321:0:0|h[Sword of Brannoch]|h|r in Knights of Zar")
+end
+
+-- Fails before the section 251 rework: the block read Diag's error list
+-- (timing.errors), printed problem texts with only names masked (the path,
+-- the quoted text and the link stayed), and typed paths were not cut.
+tests["feedback privacy: names and a user folder seeded in the problems, in the error list and in the description never reach the preview"] = function(t)
     local c, addon = boot()
     if not ready(t, c, addon) then return end
     local F = addon.Feedback
-    -- In an error of the add-on's own, in a problem the snapshot holds, in
-    -- another add-on's error, and in what the player types.
-    c.raise("Interface\\AddOns\\" .. ns.id.addon .. "\\UI\\Made.lua:12: Zarkon of Stormrage has no bags")
+    seededProblem(addon)
+    -- Diag's error list (timing.errors): the add-on's own line and another add-on's.
+    c.raise("C:\\Users\\Marlowe\\WoW\\Interface\\AddOns\\" .. ns.id.addon .. "\\UI\\Made.lua:12: Zarkon of Stormrage has no bags")
     c.raise("Interface\\AddOns\\Elsewhere\\Other.lua:3: whisper from Zarkon: the vault code is plum")
-    addon.problems:add("made", "Zarkon", "the guild Knights of Zar could not be read for ZARKON")
     local p = open(t, c)
     if not p then return end
     p.press("kind.problem")
-    write(c, p, "description", "zarkon cannot loot on Stormrage")
+    write(c, p, "description", "zarkon cannot loot on Stormrage, see C:\\Users\\Marlowe\\shot.png")
     write(c, p, "happened", "Knights of Zar bank tab stayed shut")
     p.press("diag")
-    local report = copied(c, p)
-    t.ok(type(report) == "string" and hasLine(report, F.DIAG_HEAD), "a report with diagnostics")
-    if type(report) ~= "string" then return end
-    local low = report:lower()
-    for _, name in ipairs({ "zarkon", "stormrage", "knights of zar" }) do
-        t.eq(low:find(name, 1, true), nil, name .. " is not in the report: " .. report)
+    t.eq(p.press("preview"), true)
+    local preview = boxOf(c, "Preview") and boxOf(c, "Preview").text
+    t.ok(type(preview) == "string" and hasLine(preview, F.DIAG_HEAD), "a preview with diagnostics")
+    if type(preview) ~= "string" then return end
+    for _, word in ipairs({ "zarkon", "stormrage", "knights of zar", "marlowe", "users", "brannoch", "4321" }) do
+        t.eq(lowHas(preview, word), false, word .. " is not in the preview: " .. preview)
     end
-    t.ok(report:find(F.HIDDEN .. " cannot loot on " .. F.HIDDEN, 1, true) ~= nil, "the typed text is there, masked")
-    t.ok(report:find("has no bags", 1, true) ~= nil, "the add-on's own error is there, masked")
-    t.ok(hasLine(report, "The add-on's own recent errors: 1"), "only its own are counted")
-    t.eq(low:find("elsewhere", 1, true), nil, "another add-on's error is not read")
-    t.eq(low:find("plum", 1, true), nil)
-    t.ok(report:find("could not be read for " .. F.HIDDEN, 1, true) ~= nil, "the snapshot's problem is there, masked")
-    p.press("preview")
-    t.eq(boxOf(c, "Preview").text, report)
+    -- The error list is never read: not the add-on's own line, not another add-on's.
+    t.eq(lowHas(preview, "has no bags"), false, "Diag's error list is not read")
+    t.eq(lowHas(preview, "elsewhere"), false)
+    t.eq(lowHas(preview, "plum"), false)
+    -- The typed words are there, with only the names and the path replaced.
+    t.ok(preview:find("Description: " .. F.HIDDEN .. " cannot loot on " .. F.HIDDEN .. ", see " .. F.PATH, 1, true) ~= nil,
+        "the description: " .. preview)
+    t.ok(preview:find("What happened: " .. F.HIDDEN .. " bank tab stayed shut", 1, true) ~= nil)
+    -- The add-on's own problem is there, cleaned: its file from the add-on's
+    -- folder on, the names, the quoted text and the link replaced.
+    t.ok(preview:find("made, " .. F.HIDDEN .. ": " .. ns.id.addon .. "\\UI\\Made.lua:12: " .. F.HIDDEN .. " of " .. F.HIDDEN
+        .. " said " .. F.QUOTED .. " about " .. F.LINK .. " in " .. F.HIDDEN, 1, true) ~= nil, "the cleaned problem: " .. preview)
+    -- The copied text is the preview, byte for byte.
+    local report = copied(c, p)
+    t.eq(report == preview, true, "the copy is the preview")
+    t.eq(#tostring(report), #preview, "to the byte")
+end
+
+-- Fails before: the link stayed in the printed problem text.
+tests["feedback privacy: an item link in one of the add-on's problems is stripped, bare item strings too"] = function(t)
+    local c, addon = boot()
+    if not ready(t, c, addon) then return end
+    local F = addon.Feedback
+    addon.problems:add("made", "loot", "could not price |cffffffff|Hitem:9876:0:0:0|h[Odd Trinket]|h|r nor item:5555:1")
+    local p = open(t, c)
+    if not p then return end
+    p.press("kind.problem")
+    write(c, p, "description", "Prices are missing")
+    p.press("diag")
+    local report = copied(c, p)
+    t.ok(type(report) == "string" and report:find("could not price " .. F.LINK .. " nor " .. F.LINK, 1, true) ~= nil,
+        "both are replaced: " .. tostring(report))
+    for _, word in ipairs({ "9876", "5555", "odd trinket", "|h" }) do
+        t.eq(lowHas(report, word), false, word)
+    end
+end
+
+-- Fails before: there was no cleaner to raise, and no line for one left out.
+tests["feedback privacy: the cleaner raising on one problem leaves the others and the written feedback"] = function(t)
+    local c, addon = boot()
+    if not ready(t, c, addon) then return end
+    local F = addon.Feedback
+    t.ok(type(F.Clean) == "function", "the module has its cleaner")
+    if type(F.Clean) ~= "function" then return end
+    addon.problems:add("made", "one", "the first is fine")
+    addon.problems:add("made", "two", "the second is the boomline")
+    addon.problems:add("made", "three", "the third is fine too")
+    local p = open(t, c)
+    if not p then return end
+    p.press("kind.problem")
+    write(c, p, "description", "The bags do not open")
+    p.press("diag")
+    local clean, n = F.Clean, #c.printed
+    F.Clean = function(text, ...)
+        if tostring(text):find("boomline", 1, true) then error("the cleaner raised") end
+        return clean(text, ...)
+    end
+    local report = copied(c, p)
+    F.Clean = clean
+    t.ok(type(report) == "string", "there is a report")
+    if type(report) ~= "string" then return end
+    t.ok(hasLine(report, "Description: The bags do not open"), "the written feedback is whole")
+    t.ok(report:find("the third is fine too", 1, true) ~= nil and report:find("the first is fine", 1, true) ~= nil,
+        "the other problems are there: " .. report)
+    t.eq(lowHas(report, "boomline"), false, "the one it raised on is left out")
+    t.ok(hasLine(report, F.ERROR_DROPPED), "and one line says so")
+    t.eq(#c.printed, n, "nothing is said to the player")
+    -- Newest first.
+    t.ok(report:find("the third is fine too", 1, true) < report:find("the first is fine", 1, true), "newest first")
+end
+
+-- Fails before: the block was not an allowlist test target (no snapshot
+-- field but the kernel's was read; this pins that none can be added).
+tests["feedback privacy: a field added to the snapshot, or text put where a count belongs, does not reach the report"] = function(t)
+    local c, addon = boot()
+    if not ready(t, c, addon) then return end
+    local F = addon.Feedback
+    local p = open(t, c)
+    if not p then return end
+    p.press("kind.idea")
+    write(c, p, "description", "A thought")
+    p.press("diag")
+    local collect = addon.Diag.Collect
+    addon.Diag.Collect = function(k, why)
+        local snap = collect(k, why)
+        -- New fields nobody cleared.
+        snap.plumtree = "plumtree"
+        snap.shapes = { realm = { values = { v1 = "plumtree" } }, fullName = { values = { v1 = "plumtree" } } }
+        snap.timing = { character = "plumtree", realm = "plumtree", errors = { { text = "plumtree", ours = true, count = 1 } } }
+        snap.kernel.plumtree = "plumtree"
+        snap.kernel.pauseText = "plumtree"
+        snap.kernel.blocked = { account = "plumtree" }
+        snap.reads.plumtree = "plumtree"
+        snap.reads.money = "plumtree"
+        snap.reads.position = { map = "plumtree" }
+        snap.known.plumtree = true
+        -- Text where a count, a yes or no, or a fixed word belongs.
+        snap.at = "plumtree"
+        snap.clock = "plumtree"
+        snap.reads.inCombat = "plumtree"
+        snap.reads.bagStacks = "plumtree"
+        snap.kernel.phase = "plumtree"
+        snap.kernel.eventsNotRegistered = { "plumtree" }
+        snap.names = { plumtree = "plumtree" }
+        return snap
+    end
+    local report = copied(c, p)
+    addon.Diag.Collect = collect
+    t.ok(type(report) == "string" and hasLine(report, F.DIAG_HEAD), "a report with diagnostics")
+    t.eq(lowHas(report, "plumtree"), false, "none of it is in the report: " .. tostring(report))
+    t.ok(hasLine(report, "State: other; paused: no; saved data loaded: yes"), "a phase that is not the kernel's reads other")
+    t.ok(report:find("Client names asked: 1; missing: 0", 1, true) ~= nil, "the names table is two counts")
+    t.ok(report:find("Events not registered: 1", 1, true) ~= nil, "an event list is a count")
 end
 
 -- (a) Data late: the character's name is not readable yet.
--- Fails before: no feedback module.
-tests["feedback late names: until the character's name can be read, error and problem texts are left out; then they come, masked"] = function(t)
+-- Fails before the rework: the texts came from Diag's error list.
+tests["feedback late names: until the character's name can be read, the problems are only counted; then they come, cleaned"] = function(t)
     local c, addon, who = boot({ who = {} })
     if not ready(t, c, addon) then return end
     local F = addon.Feedback
-    c.raise("Interface\\AddOns\\" .. ns.id.addon .. "\\UI\\Made.lua:12: Zarkon has no bags")
+    addon.problems:add("made", "bags", "Zarkon has no bags")
     local p = open(t, c)
     if not p then return end
     p.press("kind.problem")
     write(c, p, "description", "The bags do not open")
     p.press("diag")
     local early = copied(c, p)
-    t.ok(hasLine(early, "The add-on's own recent errors: 1"), "the error is counted: " .. tostring(early))
-    t.eq(early:find("has no bags", 1, true), nil, "but its text is left out")
-    t.eq(early:lower():find("zarkon", 1, true), nil)
-    t.ok(early:find("left out", 1, true) ~= nil, "and the report says why")
+    t.ok(type(early) == "string" and early:find("The add-on's own problems, newest first: ", 1, true) ~= nil,
+        "the problems are counted: " .. tostring(early))
+    t.eq(lowHas(early, "has no bags"), false, "but their texts are left out")
+    t.eq(lowHas(early, "zarkon"), false)
+    t.ok(hasLine(early, F.TEXTS_OUT), "and the report says why")
     -- The name arrives.
     who.name, who.realm = NAMES.name, NAMES.realm
     local late = copied(c, p)
-    t.ok(late:find(F.HIDDEN .. " has no bags", 1, true) ~= nil, "the text is there now, masked: " .. tostring(late))
-    t.eq(late:lower():find("zarkon", 1, true), nil)
+    t.ok(late:find("made, bags: " .. F.HIDDEN .. " has no bags", 1, true) ~= nil, "the text is there now, cleaned: " .. tostring(late))
+    t.eq(lowHas(late, "zarkon"), false)
+    t.eq(hasLine(late, F.TEXTS_OUT), false)
 end
 
 -- (c) A diagnostics read that raises, then recovers; and one that answers nothing.
