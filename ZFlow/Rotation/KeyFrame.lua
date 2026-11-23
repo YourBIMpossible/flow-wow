@@ -96,6 +96,11 @@ local function signature(plan)
             if plan.units[slot] ~= nil then out[#out + 1] = "*unit-" .. slot .. "=" .. tostring(plan.units[slot]) end
         end
     end
+    -- P-KEYS slice D: the key action (plan.action) is part of the plan.
+    local a = plan.action
+    if type(a) == "table" then
+        out[#out + 1] = "action=" .. tostring(a.itemId) .. "/" .. tostring(a.spell) .. "/" .. tostring(a.unit)
+    end
     return table.concat(out, "|")
 end
 

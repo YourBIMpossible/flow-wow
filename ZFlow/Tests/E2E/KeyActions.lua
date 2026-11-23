@@ -85,7 +85,8 @@ end
 
 local function suggested(addon)
     local view = addon.rotationDriver.view()
-    return type(view) == "table" and view.suggestion or nil
+    if type(view) ~= "table" then return nil end
+    return view.suggestion
 end
 
 local function nothingWritten(t, c)

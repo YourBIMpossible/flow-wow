@@ -208,6 +208,8 @@ return {
     -- S15 click slots and S29 move handle (P-KEYS slice C).
     "UI/MoveHandle.lua",
     "Rotation/ClickSlots.lua",
+    -- N1, N2, N20, N5 key actions (P-KEYS slice D).
+    "Rotation/KeyActions.lua",
     -- N64: the weapon enchant reminder, a line in chat only (after Group).
     "Rotation/Enchant.lua",
     -- N55: the boss loot panel, look only (after Gear, Items/Drops and the classes).

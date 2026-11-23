@@ -12,6 +12,8 @@ local _, ns = ...
 --     extra.chosen: the seals and blessings from the ownCasts module (below).
 --     extra.combo: the combo module's counted combo points (below).
 --     extra.controls: the key controls (N41, Rotation/KeyControls.lua).
+--     extra.keyActions: the key actions' input (N1, N2, N20, N5,
+--     Rotation/KeyActions.lua).
 --     the reader ns.Snapshot takes. dead, inCombat, stealthed, hostile,
 --     spells, buffs, targetDebuffs, form, current and pet are asked of the
 --     client; role is the
@@ -650,6 +652,29 @@ function D.Step(client, pack, prefs, bias, applied, role, extra)
     local KC = ns.KeyControls
     local controls = nil
     if type(extra) == "table" then controls = extra.controls end
+    -- N1, N2, N20, N5 (P-KEYS slice D): out of a fight, the key actions
+    -- (Rotation/KeyActions.lua), extra.keyActions, may take the key's place
+    -- of a weak suggestion; never with the key's actions row off.
+    local KA = ns.KeyActions
+    local actions = nil
+    if type(extra) == "table" then actions = extra.keyActions end
+    if type(KA) == "table" and type(actions) == "table"
+        and not (type(controls) == "table" and controls.actions == false) then
+        local okA, act = pcall(function() return KA.Pick(KA.Read(client, actions, pack, role, lockdown), suggestion) end)
+        if okA and type(act) == "table" then
+            suggestion = act
+            -- The key frame holds the plan, not the suggestion: an action
+            -- the key may hold goes on the plan (a spell or an item, never
+            -- a look). The fresh plan from ns.KeyPlan, out of a fight only.
+            if act.look ~= true and type(plan) == "table" and lockdown == false then
+                if type(act.itemId) == "number" then
+                    plan.action = { itemId = act.itemId }
+                elseif type(act.spell) == "string" then
+                    plan.action = { spell = act.spell, unit = act.unit }
+                end
+            end
+        end
+    end
     local onKey = suggestion
     if type(KC) == "table" and type(controls) == "table" then
         KC.Shape(plan, controls, snapshot, pack, KC.Friend(client))
@@ -720,6 +745,18 @@ local function comboOf(k)
     return nil
 end
 
+-- P-KEYS slice D: the key actions' input (Rotation/KeyActions.lua), asked
+-- each tick; nil when the kernel has no such module or it is off. Resolved
+-- when called, as chosenOf.
+local function keyActionsOf(k, settings)
+    if type(k) ~= "table" or type(k.use) ~= "function" then return nil end
+    local ok, mod = pcall(k.use, "keyActions")
+    if not ok or type(mod) ~= "table" or type(mod.Input) ~= "function" then return nil end
+    local asked, got = pcall(mod.Input, settings)
+    if asked and type(got) == "table" then return got end
+    return nil
+end
+
 function D.Declare(k, packs)
     local api = {}
     local view, errors, lastError = nil, 0, nil
@@ -747,8 +784,11 @@ function D.Declare(k, packs)
         -- N41: the key controls' rows, read each tick.
         local controls = nil
         if type(ns.KeyControls) == "table" then controls = ns.KeyControls.Read(ctx.settings) end
+        -- N1, N2, N20, N5: the key actions' rows and what they keep.
+        local keyActions = keyActionsOf(k, ctx.settings)
         local ok, got = pcall(work, ctx.client, packs or ns.Packs, ctx.settings:get(D.ROLE),
-            { food = food, heal = heal, chosen = chosenOf(k), combo = comboOf(k), controls = controls })
+            { food = food, heal = heal, chosen = chosenOf(k), combo = comboOf(k), controls = controls,
+              keyActions = keyActions })
         if ok then
             view = got
         else

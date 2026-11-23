@@ -36,7 +36,10 @@ local function fishing(over)
     return s
 end
 
-local function stepOf(x) return type(x) == "table" and x.step or nil end
+local function stepOf(x)
+    if type(x) ~= "table" then return nil end
+    return x.step
+end
 local function field(x, name) if type(x) ~= "table" then return nil end return x[name] end
 
 -- N1 ---------------------------------------------------------------------

@@ -12,7 +12,8 @@ local _, ns = ...
 --                 fastest direct heal on the target; with none, the pack's
 --                 own Ctrl spell (rotation.ctrlFriend)
 --   the key       gathering: the gathering tracking step (P-GATHER, step
---                 "track"); fishing: a hook only, no action yet
+--                 "track"); fishing, a corpse, a station and an upgrade
+--                 (N1, N2, N20, N5: Rotation/KeyActions.lua)
 --                 (rotation.keyActions)
 --
 --   KC.Read(settings) -> { shift, alt, ctrl, actions } (a row not false
@@ -26,9 +27,9 @@ local _, ns = ...
 --   KC.Gate(suggestion, controls) -> the suggestion; with the key's
 --                 actions off, a gathering step is marked keyOff = true:
 --                 still shown, never put on the key
---   KC.Fishing(s) -> nil. The hook for the key doing fishing: nothing is
---                 built yet (no fishing action is defined), so it gives
---                 nothing and the row gates nothing else.
+--   KC.Fishing(s) -> the key's fishing step (N1, P-KEYS slice D):
+--                 Rotation/KeyActions.lua KA.Fishing, asked when called;
+--                 nil without it.
 -- Pure but for the settings rows. Nothing is bound, no macro is made
 -- (section 246), and nothing acts on a timer or an event. Fake client
 -- only; not tested in game.
@@ -137,10 +138,11 @@ function KC.Gate(suggestion, controls)
     return suggestion
 end
 
--- The fishing hook: no fishing action is defined yet, so nothing is put on
--- the key. The row (KC.ACTIONS) is there for when one is.
-function KC.Fishing(_)
-    return nil
+-- The fishing hook: N1 (P-KEYS slice D) builds it in Rotation/KeyActions.lua.
+function KC.Fishing(s)
+    local KA = ns.KeyActions
+    if type(KA) ~= "table" or type(KA.Fishing) ~= "function" then return nil end
+    return KA.Fishing(s)
 end
 
 -- The addon's own rows; the driver reads them each tick.
@@ -165,8 +167,8 @@ function KC.Declare(k)
             group = "combat.rotation", synonyms = { "ctrl", "control", "friend", "heal", "target", "modifier", "easy key" },
         }, {
             key = KC.ACTIONS, scope = "char", type = "bool", default = true,
-            label = "The key does gathering",
-            help = "Lets the gathering tracking step count as something the key does. Fishing is not built yet. Off: the step is still shown, but kept off the key.",
+            label = "The key does gathering and its out-of-fight actions",
+            help = "Lets the gathering tracking step count as something the key does, and the key's fishing, corpse, station and upgrade actions. Off: the step is still shown, but kept off the key, and none of those actions is put on it.",
             group = "combat.rotation", synonyms = { "gather", "gathering", "fishing", "tracking", "mining", "herbalism", "easy key" },
         } },
     })

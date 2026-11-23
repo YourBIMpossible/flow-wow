@@ -8132,6 +8132,67 @@ function ns.make.client(env)
         return h
     end
 
+    -- N2 corpse key (P-KEYS slice D): c.targetCorpse() -> nil
+    --   | { exists = false } | { exists = true, dead, player, lootable, needs }
+    --   The corpse you target as the rotation key needs it. exists
+    --   UnitExists("target"); dead UnitIsDead; player UnitIsPlayer; lootable
+    --   CanLootUnit(UnitGUID("target")), its first answer; needs the
+    --   profession the target's tooltip (C_TooltipInfo.GetUnit("target"))
+    --   names: "Skinnable" is Skinning, "Requires <name>" is that name. Each
+    --   true, false, or nil when not known; nil when whether the target
+    --   exists is not known. Only the target is asked about.
+    --   A first guess: none of these reads was seen in game for this use.
+    function c.targetCorpse()
+        local exists = yesNo(call(env.UnitExists, "target"))
+        if exists == nil then return nil end
+        if not exists then return { exists = false } end
+        local out = { exists = true }
+        out.dead = yesNo(call(env.UnitIsDead, "target"))
+        out.player = yesNo(call(env.UnitIsPlayer, "target"))
+        local guid = text(call(env.UnitGUID, "target"))
+        if guid then out.lootable = yesNo(call(env.CanLootUnit, guid)) end
+        local tips = env.C_TooltipInfo
+        if type(tips) == "table" then
+            local okTip, tip = call(tips.GetUnit, "target")
+            if okTip and type(tip) == "table" and type(tip.lines) == "table" then
+                for _, line in ipairs(tip.lines) do
+                    local left = type(line) == "table" and text(true, line.leftText)
+                    if left == "Skinnable" then
+                        out.needs = "Skinning"
+                        break
+                    end
+                    local named = left and string.match(left, "^Requires (%a+)$")
+                    if named then
+                        out.needs = named
+                        break
+                    end
+                end
+            end
+        end
+        return out
+    end
+
+    -- N20 station key (P-KEYS slice D): c.tradeSkillTools() -> nil
+    --   | { { name, met }, ... }. The tools the open profession window asks
+    --   for (GetTradeSkillTools: name, met pairs), each met true when the
+    --   client says you are by it. {} when it names none; nil when the call
+    --   is missing or fails. A name that is not plain text is left out.
+    --   A first guess: not seen in game.
+    function c.tradeSkillTools()
+        local got = { call(env.GetTradeSkillTools) }
+        if got[1] ~= true then return nil end
+        local out = {}
+        local n = table.maxn(got)
+        for i = 2, n, 2 do
+            local name = text(true, got[i])
+            if name then
+                local met = got[i + 1]
+                out[#out + 1] = { name = name, met = met == true or met == 1 }
+            end
+        end
+        return out
+    end
+
     return c
 end
 

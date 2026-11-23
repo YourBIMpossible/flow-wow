@@ -93,6 +93,9 @@ local READS = {
     spellbookIcons = false,
     -- S12 (P-KEYS slice A): a friend for the care key; the capture asks none.
     unitCare = false,
+    -- N2 and N20 (P-KEYS slice D): the corpse you target and the
+    -- profession window's tools; the capture asks neither.
+    targetCorpse = false, tradeSkillTools = false,
 
     -- N55 (the boss loot panel): the boss unit and whether you are in an
     -- instance; read by UI/BossLoot.lua only. The names they ask

@@ -2863,6 +2863,32 @@ function ns.make.fakeClient(opts)
         for k, v in pairs(row) do out[k] = v end
         return out
     end
+    -- N2 and N20 (P-KEYS slice D): the twins of Core/Client.lua
+    -- c.targetCorpse and c.tradeSkillTools; each nil (not known) until set.
+    --   c.setTargetCorpse(row)       { exists, dead, player, lootable, needs }
+    --   c.setTargetCorpseFails(on)   the read raises while on (lead section
+    --                                236: a read that fails, then recovers)
+    --   c.setTradeSkillTools(list)   { { name, met }, ... }; nil: not known
+    function c.setTargetCorpse(row)
+        if type(row) == "table" then s.targetCorpse = row else s.targetCorpse = nil end
+    end
+    function c.setTargetCorpseFails(on) s.targetCorpseFails = (on == true) end
+    function c.targetCorpse()
+        if s.targetCorpseFails then error("target corpse read failed (test)") end
+        if type(s.targetCorpse) ~= "table" then return nil end
+        local out = {}
+        for k, v in pairs(s.targetCorpse) do out[k] = v end
+        return out
+    end
+    function c.setTradeSkillTools(list)
+        if type(list) == "table" then s.tradeSkillTools = list else s.tradeSkillTools = nil end
+    end
+    function c.tradeSkillTools()
+        if type(s.tradeSkillTools) ~= "table" then return nil end
+        local out = {}
+        for i, tool in ipairs(s.tradeSkillTools) do out[i] = { name = tool.name, met = tool.met } end
+        return out
+    end
     -- S15 click slots and S29 move handle (P-KEYS slice C). clickRow keeps
     -- every row it makes in c.clickRows: h.spec, h.slots[i] = { attrs,
     -- shown, icon }, h.shown (the row), h.point and h.given (every set

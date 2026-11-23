@@ -9,6 +9,10 @@ local _, ns = ...
 -- plan      what ns.KeyPlan returned: { states, condition, stealthForm },
 --           plus altItem (N8): an item id the Alt slot uses instead of its
 --           spell, or nil. N8 stays PARTLY until seen in the client.
+--           Plus action (P-KEYS slice D, Rotation/KeyActions.lua): what the
+--           key itself holds instead of its slot spell, out of a fight only:
+--           { spell, unit } (unit player, target or none) or { itemId }; the
+--           spell or item type, never a macro (section 246).
 -- applied   the plan in place now (the `plan` field of the last result that
 --           was carried out), or nil when nothing is bound yet
 -- lockdown  true while the game refuses binding changes (in combat), false
@@ -85,6 +89,23 @@ local function unitsOf(p)
     return out
 end
 
+-- P-KEYS slice D: a plan's key action, checked, as a fresh table; nil when
+-- there is none or it is not one the key may hold.
+local function actionOf(p)
+    local a = p.action
+    if type(a) ~= "table" then return nil end
+    local id = a.itemId
+    if type(id) == "number" and id > 0 and id % 1 == 0 then return { itemId = id } end
+    if type(a.spell) ~= "string" or a.spell == "" then return nil end
+    if a.unit ~= nil and a.unit ~= "player" and a.unit ~= "target" then return nil end
+    return { spell = a.spell, unit = a.unit }
+end
+
+local function actionText(a)
+    if type(a) ~= "table" then return "-" end
+    return tostring(a.itemId) .. "|" .. tostring(a.spell) .. "|" .. tostring(a.unit)
+end
+
 local function unitsText(units)
     local parts = {}
     for _, slot in ipairs(C.MODIFIERS) do
@@ -112,6 +133,7 @@ local function copyPlan(p)
         stealthForm = type(p.stealthForm) == "number" and p.stealthForm or nil,
         altItem = (type(p.altItem) == "number" and p.altItem > 0 and p.altItem % 1 == 0) and p.altItem or nil,
         units = unitsOf(p),
+        action = actionOf(p),
     }
 end
 
@@ -141,6 +163,7 @@ function C.Apply(plan, applied, lockdown)
     end
     local conditionChanged = new.condition ~= old.condition
     local unitsChanged = unitsText(new.units) ~= unitsText(old.units)
+        or actionText(new.action) ~= actionText(old.action)
     return {
         ok = true,
         ops = ops,
@@ -271,6 +294,12 @@ function C.Attributes(suggestion, plan, applied, lockdown, form)
         -- type, item = "item:ID", as legacy Flow did; not a macro.
         item = itemOf(suggestion)
         kind = "item"
+    elseif type(apply.plan.action) == "table" and apply.plan.action.itemId ~= nil then
+        -- P-KEYS slice D: the plan's key action, an item (the item type).
+        item, kind, source = apply.plan.action.itemId, "item", "plan"
+    elseif type(apply.plan.action) == "table" then
+        -- P-KEYS slice D: the plan's key action, a spell on its unit.
+        spell, kind, unit, source = apply.plan.action.spell, "spell", apply.plan.action.unit, "plan"
     else
         spell, source = castName(slotOf(states, form, "key")), "plan"
         if spell then
