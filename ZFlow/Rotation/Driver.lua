@@ -221,6 +221,10 @@ function D.Read(client, pack, ids, role)
             return client.pet()
         end
         if field == "conjured" then return conjuredOf(client, pack) end
+        -- P-GATHER: the gathering tracking reads (Rotation/Gather.lua).
+        if field == "tracking" or field == "trackKnown" or field == "professions" or field == "gatherOn" then
+            return type(ns.Gather) == "table" and ns.Gather.Read(client, field) or nil
+        end
         return nil
     end
 end

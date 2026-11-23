@@ -34,6 +34,8 @@ R.SNAPSHOT_FIELDS = {
     -- Lead section 197: your pet (Choose.lua, R.PetUp); nil when not read.
     { "pet", "map" },
     { "conjured", "map" },
+    -- P-GATHER (Rotation/Gather.lua): gathering tracking, read by G.Read.
+    { "tracking", "map" }, { "trackKnown", "map" }, { "professions", "map" }, { "gatherOn", "flag" },
     { "spells", "spells" },
 }
 -- Names that would be made from a health or power amount. This client hides

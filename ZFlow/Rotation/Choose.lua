@@ -502,6 +502,13 @@ function steps.farOpener(s, pack, prefs, _, unread)
 end
 
 R.STEPS = { "breakFree", "heal", "interrupt", "dispel", "engage", "list", "farOpener" }
+-- 8. P-GATHER: out of a fight, a gathering tracking that is off and can be
+-- turned on (Rotation/Gather.lua G.Step). Last: anything above comes first.
+steps.track = function(s)
+    if type(ns.Gather) ~= "table" then return nil, "no gathering tracking" end
+    return ns.Gather.Step(s)
+end
+R.STEPS[#R.STEPS + 1] = "track"
 R._steps = steps   -- (tests)
 
 function ns.Choose(snapshot, pack, prefs, bias)

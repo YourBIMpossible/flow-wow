@@ -1228,6 +1228,66 @@ function ns.make.client(env)
     -- client is asked: C_Spell.GetSpellTexture, then the older
     -- GetSpellTexture. First guess, not seen in game; no texture comes from
     -- a table in this addon.
+    -- P-GATHER. Is this minimap tracking (Find Minerals, Find Herbs) on?
+    -- true / false; nil when it cant be told. C_Minimap's tracking list by
+    -- name, else the one tracking texture against the spell's own. First
+    -- guess, as Flow read it (Modules/Rotation/Actions.lua); not seen in game.
+    function c.tracking(spell)
+        if type(spell) ~= "string" or spell == "" then return nil end
+        local M = env.C_Minimap
+        if type(M) == "table" then
+            local okN, n = call(M.GetNumTrackingTypes)
+            if okN and type(n) == "number" and not hidden(n) then
+                for i = 1, n do
+                    local ok, a, _, active = call(M.GetTrackingInfo, i)
+                    if ok then
+                        local name, on = a, active
+                        if type(a) == "table" then name, on = a.name, a.active end
+                        if not hidden(name) and name == spell and not hidden(on) then return on and true or false end
+                    end
+                end
+            end
+        end
+        local okT, cur = call(env.GetTrackingTexture)
+        if okT and not hidden(cur) then
+            if cur == nil then return false end
+            local tex = c.spellTexture(c.spellId(spell))
+            if tex ~= nil then return cur == tex end
+        end
+        return nil
+    end
+
+    -- P-GATHER. The professions you have: { [name] = true }, empty when read
+    -- and none, nil when the client gives no read. GetProfessions with
+    -- GetProfessionInfo, else the skill lines (GetNumSkillLines,
+    -- GetSkillLineInfo, headers left out). First guess; not seen in game.
+    function c.professions()
+        local out, read = {}, false
+        local okP, a, b, c3, d, e = call(env.GetProfessions)
+        if okP then
+            read = true
+            for _, index in ipairs({ a, b, c3, d, e }) do
+                if type(index) == "number" and not hidden(index) then
+                    local ok, name = call(env.GetProfessionInfo, index)
+                    if ok and type(name) == "string" and not hidden(name) and name ~= "" then out[name] = true end
+                end
+            end
+        end
+        if next(out) == nil then
+            local okN, n = call(env.GetNumSkillLines)
+            if okN and type(n) == "number" and not hidden(n) then
+                read = true
+                for i = 1, n do
+                    local ok, name, header = call(env.GetSkillLineInfo, i)
+                    if ok and not header and type(name) == "string" and not hidden(name) and name ~= "" then
+                        out[name] = true
+                    end
+                end
+            end
+        end
+        return read and out or nil
+    end
+
     function c.spellTexture(id)
         if type(id) ~= "number" then return nil end
         local group = env.C_Spell

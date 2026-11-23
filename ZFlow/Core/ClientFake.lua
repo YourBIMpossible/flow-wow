@@ -1747,6 +1747,24 @@ function ns.make.fakeClient(opts)
     -- Anything else is left out (not known). With exists false the rest is
     -- dropped.
     local PET_MOODS = { unhappy = true, content = true, happy = true }
+    -- P-GATHER. c.setTracking(spell, on): true / false; nil: not known.
+    -- c.setProfessions({ name, ... }) or nil: not read.
+    function c.tracking(spell) return s.trackingOn and s.trackingOn[spell] end
+    function c.setTracking(spell, on)
+        s.trackingOn = s.trackingOn or {}
+        if on == nil then s.trackingOn[spell] = nil else s.trackingOn[spell] = on and true or false end
+    end
+    function c.professions()
+        if not s.professions then return nil end
+        local out = {}
+        for k, v in pairs(s.professions) do out[k] = v end
+        return out
+    end
+    function c.setProfessions(list)
+        if type(list) ~= "table" then s.professions = nil return end
+        s.professions = {}
+        for _, name in ipairs(list) do s.professions[name] = true end
+    end
     function c.setPet(r)
         if type(r) ~= "table" or type(r.exists) ~= "boolean" then
             s.pet = nil
