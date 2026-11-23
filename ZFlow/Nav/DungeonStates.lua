@@ -307,6 +307,23 @@ function S.Pane(input)
     return pane
 end
 
+-- The one place every objective of a quest shares (lead section 305, a port
+-- of legacy D.ObjectivesTop): tops holds, per objective, a dungeon key, nil
+-- (placed nowhere) or false (more than one place). nil when there is no
+-- one place.
+function S.ObjectivesTop(tops)
+    local top
+    for i = 1, #(type(tops) == "table" and tops or {}) do
+        local t = tops[i]
+        if t == false then return nil end
+        if t ~= nil then
+            if top and top ~= t then return nil end
+            top = t
+        end
+    end
+    return top
+end
+
 function S.Order(dungeons)
     local out = {}
     for _, d in ipairs(list(dungeons)) do

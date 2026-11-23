@@ -3,10 +3,11 @@
 -- dungeon list (ZoneDB:GetDungeons) and its quests (QuestieDB). No quest,
 -- dungeon or loot table ships here, and nothing of DungeonJournal is used.
 -- A port of the index of legacy Flow's Modules/Nav/Dungeons.lua
--- (buildDungeons, buildIndex): a quest belongs to the dungeon its zone is
--- in. Not yet ported: legacy's placing of a quest by where its objectives
--- are, and the giver-at-the-entrance check (so a follow-up whose giver is
--- at the door reads as the next run).
+-- (buildDungeons, buildIndex, placer, giverInside, giverAtEntrance): a
+-- quest belongs to the dungeon its zone is in, else the one dungeon all its
+-- objectives are in (lead section 305). A giver inside, or within
+-- R.DOOR map units of an entrance Questie lists, makes a follow-up the same
+-- run.
 --
 --   R.Available(client) -> bool        Questie's two modules are there
 --   R.Start(client) -> st              st.state: "noquestie" | "failed" |
@@ -28,6 +29,7 @@ ns.DungeonRead = R
 local S = ns.DungeonStates
 
 R.SLICE = 300   -- quests filed per step
+R.DOOR = 4      -- map units (0..100) from an entrance that count as at the door (legacy)
 
 -- Dire Maul's wings and Stratholme's Gauntlet are listed by Questie as
 -- dungeons of their own: one dungeon here (legacy ALIAS). Battlegrounds
@@ -79,7 +81,8 @@ function R.Start(client)
                 if okN and type(n) == "string" and n ~= "" then name = n end
             end
             if not name and type(entry[1]) == "string" then name = entry[1] end
-            d = { key = key, name = name or ("Dungeon " .. tostring(key)), ids = {} }
+            d = { key = key, name = name or ("Dungeon " .. tostring(key)), ids = {}, areas = { [key] = true },
+                  entrances = type(entry[4]) == "table" and entry[4] or {} }
             byKey[key] = d
             areaTop[key] = key
         end
@@ -89,7 +92,11 @@ function R.Start(client)
         if type(area) == "number" and not R.SKIP[area] and type(entry) == "table" then
             local d = top(area)
             areaTop[area] = d.key
-            for _, alt in ipairs(type(entry[2]) == "table" and entry[2] or {}) do areaTop[alt] = d.key end
+            d.areas[area] = true
+            for _, alt in ipairs(type(entry[2]) == "table" and entry[2] or {}) do
+                areaTop[alt] = d.key
+                d.areas[alt] = true
+            end
         end
     end
     local db = questieModule(client, "QuestieDB")
@@ -100,7 +107,8 @@ function R.Start(client)
         end
     end
     table.sort(ids)
-    return { state = "building", byKey = byKey, areaTop = areaTop, ids = ids, at = 0, dungeonOf = {}, quests = {} }
+    return { state = "building", byKey = byKey, areaTop = areaTop, ids = ids, at = 0, dungeonOf = {}, quests = {},
+             place = { npc = {}, object = {}, item = {} } }
 end
 
 -- One field of quest id: the quick query when Questie has it, else the
@@ -117,6 +125,72 @@ local function field(db, id, name, questField)
     return nil
 end
 
+-- The dungeon a set of spawns ({ [area] = points }) lies in: its key, false
+-- (outside or more than one place) or nil (no spawns).
+local function topOf(st, spawns)
+    if type(spawns) ~= "table" then return nil end
+    local t
+    for area in pairs(spawns) do
+        local z = st.areaTop[area]
+        if not z or (t and t ~= z) then return false end
+        t = z
+    end
+    return t
+end
+
+local function merge(a, b)
+    if a == false or b == false then return false end
+    if a == nil then return b end
+    if b == nil or a == b then return a end
+    return false
+end
+
+-- The query of db for one kind of thing, or nil.
+local function query(db, name, id, field)
+    if type(db[name]) ~= "function" then return nil end
+    local ok, v = pcall(db[name], id, field)
+    if ok then return v end
+    return nil
+end
+
+-- Where Questie places a creature, object or item: kept per id in st.place.
+local function placeOf(st, db, kind, id)
+    local cache = st.place[kind]
+    if cache[id] == nil then
+        local t
+        if kind == "item" then
+            local npcs = query(db, "QueryItemSingle", id, "npcDrops")
+            for _, n in ipairs(type(npcs) == "table" and npcs or {}) do t = merge(t, placeOf(st, db, "npc", n)) end
+            local objs = query(db, "QueryItemSingle", id, "objectDrops")
+            for _, o in ipairs(type(objs) == "table" and objs or {}) do t = merge(t, placeOf(st, db, "object", o)) end
+        else
+            local fn = kind == "npc" and "QueryNPCSingle" or "QueryObjectSingle"
+            t = topOf(st, query(db, fn, id, "spawns"))
+        end
+        if t == nil then cache[id] = "none" else cache[id] = t end
+    end
+    local t = cache[id]
+    if t == "none" then return nil end
+    return t
+end
+
+-- The dungeon all of a quest's objectives are in (Questie's raw form:
+-- { creatures, objects, items, reputation, kill credit }), or nil.
+local function placeByObjectives(st, db, obj)
+    if type(obj) ~= "table" then return nil end
+    local function each(v) return type(v) == "table" and v or {} end
+    local tops = {}
+    for _, c in ipairs(each(obj[1])) do tops[#tops + 1] = placeOf(st, db, "npc", each(c)[1]) end
+    for _, o in ipairs(each(obj[2])) do tops[#tops + 1] = placeOf(st, db, "object", each(o)[1]) end
+    for _, it in ipairs(each(obj[3])) do tops[#tops + 1] = placeOf(st, db, "item", each(it)[1]) end
+    for _, kc in ipairs(each(obj[5])) do
+        local t
+        for _, n in ipairs(each(each(kc)[1])) do t = merge(t, placeOf(st, db, "npc", n)) end
+        tops[#tops + 1] = t
+    end
+    return S.ObjectivesTop(tops)
+end
+
 function R.Step(st, client, n)
     if type(st) ~= "table" or st.state ~= "building" then return end
     local db = questieModule(client, "QuestieDB")
@@ -129,6 +203,9 @@ function R.Step(st, client, n)
         local id = st.ids[i]
         local zone = field(db, id, "zoneOrSort")
         local key = type(zone) == "number" and zone > 0 and st.areaTop[zone] or nil
+        if not key and type(db.QueryQuestSingle) == "function" then
+            key = placeByObjectives(st, db, query(db, "QueryQuestSingle", id, "objectives"))
+        end
         if key then
             local d = st.byKey[key]
             d.ids[#d.ids + 1] = id
@@ -189,12 +266,42 @@ local function quest(st, db, id)
     local giver = type(starts.NPC) == "table" and starts.NPC[1] or nil
     if giver and type(db.GetNPC) == "function" then
         local ok, npc = pcall(db.GetNPC, giver)
-        if ok and type(npc) == "table" and type(npc.friendlyToFaction) == "string" then
-            out.giverFaction = npc.friendlyToFaction
+        if ok and type(npc) == "table" then
+            if type(npc.friendlyToFaction) == "string" then out.giverFaction = npc.friendlyToFaction end
+            if type(npc.spawns) == "table" then out.giverSpawns = npc.spawns end
         end
     end
     st.quests[id] = out
     return out
+end
+
+-- The giver of q stands only inside dungeon d.
+local function giverInside(q, d)
+    if type(q.giverSpawns) ~= "table" then return false end
+    local any = false
+    for area in pairs(q.giverSpawns) do
+        if not d.areas[area] then return false end
+        any = true
+    end
+    return any
+end
+
+-- The giver of q stands inside d, or within R.DOOR of one of its entrances
+-- ({ area, x, y }).
+local function giverAtEntrance(q, d)
+    if giverInside(q, d) then return true end
+    if type(q.giverSpawns) ~= "table" then return false end
+    for _, e in ipairs(d.entrances or {}) do
+        local points = type(e) == "table" and q.giverSpawns[e[1]] or nil
+        for _, p in ipairs(type(points) == "table" and points or {}) do
+            if type(p) == "table" and type(p[1]) == "number" and type(p[2]) == "number"
+                and type(e[2]) == "number" and type(e[3]) == "number"
+                and math.abs(p[1] - e[2]) < R.DOOR and math.abs(p[2] - e[3]) < R.DOOR then
+                return true
+            end
+        end
+    end
+    return false
 end
 
 local function waiting(why, title)
@@ -223,7 +330,8 @@ function R.Pane(st, client, key)
         get = function(id) return quest(st, db, id) end,
         eligible = function(q) return S.Eligible(q, me) end,
         dungeonOf = function(id) return st.dungeonOf[id] end,
-        inside = function(q) return q.startsByItem == true end,
+        inside = function(q) return q.startsByItem == true or giverInside(q, d) end,
+        atEntrance = function(q) return giverAtEntrance(q, d) end,
     }
     local quests = {}
     for _, id in ipairs(d.ids) do
