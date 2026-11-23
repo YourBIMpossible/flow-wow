@@ -18,8 +18,9 @@ end
 -- for the setting, so a switch would do nothing and none is shown. The day
 -- a feature reads one, it declares the row and the name leaves this list
 -- (the last test fails until it does).
+-- (Section 187 section 7: nav.mapFlights and nav.taxiMark left it; their
+-- modules now read them.)
 local UNREAD = {
-    ["nav.mapFlights"] = true, ["nav.taxiMark"] = true,
 }
 
 -- Every string held in a field named SETTING (or ending _SETTING) anywhere
