@@ -32,6 +32,7 @@ return {
         "Core/Sound.lua",
         "UI/MoveGuides.lua",
         "Core/Facts.lua",
+        "Core/InviteAdvice.lua",
         "UI/Export.lua",
         "Items/PriceChart.lua",
         "Items/HaveTip.lua",
@@ -266,11 +267,11 @@ return {
     "UI/Chat.lua",
     -- G48 (P-TRIP): the party route over add-on messages (after TripRoute).
     "Nav/PartyRoute.lua",
+    -- P-EVIDENCE+ (sections 252, 262): look-only capture fields saved under diag (after Diag).
+    "Core/AutoEvidence.lua",
     -- P-TRIP slice 1: the trip list of stops for the route (after TripRoute, Errand, DungeonRead).
     "Nav/Trip.lua",
     -- G43 (P-TRIP): the route tracker window and the current step's map pin (after Trip, TripRoute, the kit).
     "UI/RouteTracker.lua",
-    -- P-EVIDENCE+ (sections 252, 262): look-only capture fields saved under diag (after Diag).
-    "Core/AutoEvidence.lua",
     },
 }

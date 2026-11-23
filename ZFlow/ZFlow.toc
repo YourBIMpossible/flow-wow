@@ -25,6 +25,7 @@ UI\Perf.lua
 Core\Sound.lua
 UI\MoveGuides.lua
 Core\Facts.lua
+Core\InviteAdvice.lua
 UI\Export.lua
 Items\PriceChart.lua
 Items\HaveTip.lua
@@ -220,6 +221,6 @@ Nav\Follow.lua
 Nav\Nodes.lua
 UI\Chat.lua
 Nav\PartyRoute.lua
+Core\AutoEvidence.lua
 Nav\Trip.lua
 UI\RouteTracker.lua
-Core\AutoEvidence.lua
