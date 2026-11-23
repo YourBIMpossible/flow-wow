@@ -30,8 +30,10 @@ local KIND = {
              "macroPopup",
              -- G60: NPC words read aloud on the player's own speakers, and
              -- stopped; an output like print, not a game action.
-             "speak", "stopSpeech" },
-    tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "slash",
+             "speak", "stopSpeech",
+             -- N68: the one alert sound (output only; changes nothing in the game).
+             "playAlert" },
+    tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "savedMadeHere", "slash",
              "slashTaken", "unslash" },
     -- Hands back or runs a sound restart: never asked by the capture.
     -- craftRecipe (lead section 226, acting): one craft on the player click.
@@ -139,6 +141,11 @@ local READS = {
     -- rotation only, the capture asks neither. Their names (UnitName,
     -- UnitCastingInfo, UnitChannelInfo) are in Diag.NAMES.
     targetName = false, targetCast = false,
+
+    -- G51: the creature on a nameplate and the quest mark over it; read by
+    -- UI/PlateQuests.lua only. Their names (UnitGUID, C_NamePlate.
+    -- GetNamePlateForUnit, CreateFrame) are in Diag.NAMES.
+    plateCreature = false, plateQuestMark = false,
 }
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).

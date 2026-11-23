@@ -16,6 +16,11 @@
 --     Bad arguments are refused with a reason and change nothing.
 --   Advisor.Remove(id) -> true when the prompt was there, else false
 --   Advisor.List()     -> copies, in shown order: { { id, text, priority }, ... }
+--   Advisor.Watch(fn)  -> cancel | nil (N68). fn(id, text) is told when a
+--               prompt id that was not there is added: a rule that turned
+--               true. A replaced text is not new; a prompt removed and added
+--               again is. A watcher that raises breaks nothing. nil for a
+--               non-function.
 -- These three are the addon's own advisor. A module reaches the same API
 -- through its needs, which also orders its start after the advisor's:
 --   ns:Module{ name = "...", needs = { "advisor" },
@@ -25,7 +30,7 @@
 --
 --   Advisor.Declare(k) -> api        declares the module on kernel k
 --     api.Add, api.Remove, api.List  as above, for that kernel
---   ns.use("advisor") -> { Add, Remove, List }
+--   ns.use("advisor") -> { Add, Remove, List, Watch }
 --
 -- The panel shows at most Advisor.MAX_SHOWN prompts, then "and N more".
 --
@@ -62,6 +67,8 @@ function Advisor.Declare(k)
     local entries = {}         -- { id, text, priority, seq }
     local seq = 0
     local panel, ctx, cancelWatch
+    local watchers = {}        -- by token: fn(id, text)
+    local watchSeq = 0
 
     local function sorted()
         local list = {}
@@ -78,9 +85,16 @@ function Advisor.Declare(k)
         return ctx ~= nil and ctx.settings:get(Advisor.SETTING) ~= false
     end
 
+    -- G55 (UI/Reveal.lua): a new player's panel waits for its stage. No
+    -- reveal module, or any doubt: shown.
+    local function held()
+        local R = ns.Reveal
+        return type(R) == "table" and type(R.Open) == "function" and R.Open(k, "advice") == false
+    end
+
     local function render()
         if not panel then return end
-        if not enabled() or #entries == 0 then
+        if not enabled() or #entries == 0 or held() then
             panel.show(false)
             return
         end
@@ -118,7 +132,24 @@ function Advisor.Declare(k)
             entries[#entries + 1] = { id = id, text = text, priority = priority, seq = seq }
         end
         render()
+        if not at then
+            local tokens = {}
+            for token in pairs(watchers) do tokens[#tokens + 1] = token end
+            table.sort(tokens)
+            for _, token in ipairs(tokens) do
+                local fn = watchers[token]
+                if fn then pcall(fn, id, text) end
+            end
+        end
         return true
+    end
+
+    function api.Watch(fn)
+        if type(fn) ~= "function" then return nil end
+        watchSeq = watchSeq + 1
+        local token = watchSeq
+        watchers[token] = fn
+        return function() watchers[token] = nil end
     end
 
     function api.Remove(id)
@@ -149,7 +180,7 @@ function Advisor.Declare(k)
     k:Module({
         name = Advisor.NAME,
         needs = { "client", "store", "settings" },
-        provides = { Add = api.Add, Remove = api.Remove, List = api.List },
+        provides = { Add = api.Add, Remove = api.Remove, List = api.List, Watch = api.Watch },
         start = function(c)
             ctx = c
             -- Follow the setting while running: turning it off hides the
@@ -158,6 +189,11 @@ function Advisor.Declare(k)
             local scope = row and row.scope or "char"
             local path = row and row.path or ("settings." .. Advisor.SETTING)
             cancelWatch = c.store:watch(scope, path, function() render() end)
+            -- G55: a stage shown or reset draws the panel again.
+            local R = ns.Reveal
+            if type(R) == "table" and type(R.EVENT) == "string" and type(c.bus) == "table" then
+                c.bus:on(Advisor.NAME, R.EVENT, function() render() end)
+            end
             -- The frame last, after everything that can switch the module off.
             local id = k.id or ns.id
             panel = c.client.panel({ name = id.framePrefix .. "Advisor",
@@ -178,3 +214,4 @@ ns.advisor = Advisor.Declare(ns)
 Advisor.Add = ns.advisor.Add
 Advisor.Remove = ns.advisor.Remove
 Advisor.List = ns.advisor.List
+Advisor.Watch = ns.advisor.Watch

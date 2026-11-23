@@ -32,6 +32,7 @@ Gear\MerchantButtons.lua
 Items\AuctionLog.lua
 UI\CopyBox.lua
 UI\Advisor.lua
+UI\Alerts.lua
 UI\Setup.lua
 Import\FromFlow.lua
 Import\Stored.lua
@@ -163,6 +164,7 @@ UI\InfoBar.lua
 Rotation\Pulse.lua
 UI\PlateThreat.lua
 UI\PlateCombo.lua
+UI\PlateQuests.lua
 Rotation\CastEdge.lua
 Rotation\Audit.lua
 Rotation\FormSpells.lua
@@ -188,4 +190,5 @@ Rotation\SpellKeys.lua
 Rotation\Enchant.lua
 UI\BossLoot.lua
 UI\NpcSpeech.lua
+UI\Reveal.lua
 UI\SettingsShare.lua
