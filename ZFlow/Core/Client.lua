@@ -100,6 +100,30 @@ function ns.make.client(env)
             eventFrame = newFrame()
             if eventFrame then
                 eventFrame:SetScript("OnEvent", function(_, name, ...)
+                    -- P-READS (lead section 248): an argument the client
+                    -- marks secret, or will not say about, is handed on as
+                    -- nil; the count of arguments is kept. issecretvalue is
+                    -- a first guess on this client. Only nil arguments are
+                    -- never asked about.
+                    if type(env.issecretvalue) == "function" then
+                        local n = select("#", ...)
+                        local args, found = { ... }, false
+                        for i = 1, n do
+                            if args[i] ~= nil then
+                                local okSecret, secret = pcall(env.issecretvalue, args[i])
+                                if not okSecret or secret ~= false then
+                                    args[i] = nil
+                                    found = true
+                                end
+                            end
+                        end
+                        if found then
+                            local ownSecret = first[name]
+                            if ownSecret then ownSecret(unpack(args, 1, n)) end
+                            events.call(name, unpack(args, 1, n))
+                            return
+                        end
+                    end
                     local own = first[name]
                     if own then own(...) end
                     events.call(name, ...)
@@ -5806,6 +5830,117 @@ function ns.make.client(env)
 
             return h
         end
+
+        -- P-READS (lead sections 237 item 4, 260 item 1; Plexy's
+        -- RESEARCH-P-READS.md): the enemy plates around you, read only.
+        -- First guesses, none seen in game: C_NamePlate.GetNamePlates() for
+        -- the list, each plate's namePlateUnitToken (else UnitFrame.unit),
+        -- UnitCanAttack, UnitAffectingCombat, UnitThreatSituation,
+        -- UnitIsUnit, CheckInteractDistance (3: about ten yards),
+        -- UnitCastingInfo, UnitChannelInfo, UnitCreatureType.
+        local function plateList()
+            local group = env.C_NamePlate
+            if type(group) ~= "table" then return nil end
+            local ok, list = call(group.GetNamePlates)
+            if not ok or list == nil or hidden(list) or type(list) ~= "table" then return nil end
+            return list
+        end
+
+        local function plateToken(plate)
+            if type(plate) ~= "table" then return nil end
+            local unit = field(plate, "namePlateUnitToken")
+            if unit == nil then
+                local frame = field(plate, "UnitFrame")
+                if type(frame) == "table" then unit = field(frame, "unit") end
+            end
+            if unit == nil or hidden(unit) or not plateUnit(unit) then return nil end
+            return unit
+        end
+
+        -- c.enemiesNear() -> near, close, onYou, or nil when not known
+        --   near   plates you can attack that are in a fight
+        --   close  of those, the ones within CheckInteractDistance(unit, 3);
+        --          nil when that read is refused for any of them
+        --   onYou  of those, the ones with you on their threat list, else
+        --          the ones whose target is you
+        -- nil when the list or any plate's attack or fight answer is not
+        -- read: never 0 in place of not known. No plates: 0, 0, 0.
+        function c.enemiesNear()
+            local list = plateList()
+            if list == nil then return nil end
+            local near, close, onYou, closeKnown = 0, 0, 0, true
+            for _, plate in ipairs(list) do
+                local unit = plateToken(plate)
+                if unit == nil then return nil end
+                local attack = yesNo(call(env.UnitCanAttack, "player", unit))
+                if attack == nil then return nil end
+                if attack then
+                    local fighting = yesNo(call(env.UnitAffectingCombat, unit))
+                    if fighting == nil then return nil end
+                    if fighting then
+                        near = near + 1
+                        local okNear, d = call(env.CheckInteractDistance, unit, 3)
+                        if not okNear or (d ~= nil and hidden(d)) then
+                            closeKnown = false
+                        elseif d == true or d == 1 then
+                            close = close + 1
+                        end
+                        local okThreat, status = call(env.UnitThreatSituation, "player", unit)
+                        if okThreat and threatStatus(status) ~= nil then
+                            onYou = onYou + 1
+                        elseif yesNo(call(env.UnitIsUnit, unit .. "target", "player")) then
+                            onYou = onYou + 1
+                        end
+                    end
+                end
+            end
+            if not closeKnown then close = nil end
+            return near, close, onYou
+        end
+
+        -- c.plateCasts() -> { { unit, name, spellId, channel, endsAt,
+        --   interruptible } ... } or nil when the plate list is not read.
+        -- UnitCastingInfo (name, text, texture, startMs, endMs, tradeSkill,
+        -- castID, notInterruptible, spellId), else UnitChannelInfo (the same
+        -- less castID). A cast whose name is hidden is left out; a hidden
+        -- spellId, end or interrupt answer leaves that field out. endsAt is
+        -- in the clock of c.now().
+        function c.plateCasts()
+            local list = plateList()
+            if list == nil then return nil end
+            local out = {}
+            for _, plate in ipairs(list) do
+                local unit = plateToken(plate)
+                if unit ~= nil then
+                    local ok, name, _, _, _, endMs, _, _, locked, id = call(env.UnitCastingInfo, unit)
+                    local channel = false
+                    if not ok or name == nil then
+                        local okCh, chName, _, _, _, chEnd, _, chLocked, chId = call(env.UnitChannelInfo, unit)
+                        ok, name, endMs, locked, id, channel = okCh, chName, chEnd, chLocked, chId, true
+                    end
+                    name = text(ok, name)
+                    if name ~= nil then
+                        local row = { unit = unit, name = name, channel = channel }
+                        if endMs ~= nil and not hidden(endMs) and type(endMs) == "number" then
+                            row.endsAt = endMs / 1000
+                        end
+                        if locked ~= nil and not hidden(locked) and type(locked) == "boolean" then
+                            row.interruptible = not locked
+                        end
+                        if id ~= nil and not hidden(id) and type(id) == "number" then row.spellId = id end
+                        out[#out + 1] = row
+                    end
+                end
+            end
+            return out
+        end
+
+        -- c.creatureType(unit) -> the client's word ("Beast", "Humanoid"...)
+        -- or nil. Only "target" or a plate unit is asked about.
+        function c.creatureType(unit)
+            if unit ~= "target" and not plateUnit(unit) then return nil end
+            return text(call(env.UnitCreatureType, unit))
+        end
     end
     -- ------------------------------------------------------------- end S8
 
@@ -5869,6 +6004,191 @@ function ns.make.client(env)
     end
     function c.playerBuffs() return aurasOf("player", "HELPFUL", env.UnitBuff) end
     function c.targetDebuffs() return aurasOf("target", "HARMFUL|PLAYER", env.UnitDebuff) end
+
+    -- ------------------------------------------------- shared reads (P-READS)
+    -- Lead sections 237 item 4, 243 (N64), 248, 260 item 1; Plexy's
+    -- RESEARCH-P-READS.md. Reads only; each answers nil when not known,
+    -- never 0, false or an empty list in its place. Every client name here
+    -- is a first guess unless the client names table lists it; none was
+    -- seen in game.
+    local function plainNumber(v)
+        return v ~= nil and not hidden(v) and type(v) == "number" and v == v
+    end
+
+    -- c.channel() -> { name, spellId, endsAt } | false | nil
+    --   UnitChannelInfo("player"): name, text, texture, startMs, endMs,
+    --   tradeSkill, notInterruptible, spellId. false: not channelling.
+    --   endsAt is in the clock of c.now(). A hidden name or end: nil; a
+    --   hidden spellId is left out.
+    function c.channel()
+        local ok, name, _, _, _, endMs, _, _, id = call(env.UnitChannelInfo, "player")
+        if not ok then return nil end
+        if name == nil then return false end
+        name = text(true, name)
+        if name == nil or not plainNumber(endMs) then return nil end
+        local out = { name = name, endsAt = endMs / 1000 }
+        if plainNumber(id) then out.spellId = id end
+        return out
+    end
+
+    -- c.weaponEnchant() -> { main = { has, left, charges }, off = ... } or nil
+    --   C_Item.GetWeaponEnchantInfo(slot) per hand (0 main, 1 off), a list
+    --   of rows or one row { hasEnchant, timeLeft (ms), charges }; an empty
+    --   list is a bare hand, no answer a hand not known. Else the old
+    --   GetWeaponEnchantInfo() with no argument: hasMain, mainMs,
+    --   mainCharges, mainId, hasOff, offMs, offCharges, offId. left is in
+    --   seconds. A hidden part is left out; left and charges only for a hand
+    --   that has one. nil: no read, a read that raised, or an answer hidden
+    --   whole.
+    local function enchantHand(row)
+        local out = {}
+        local has = row.hasEnchant
+        if has == nil or hidden(has) or type(has) ~= "boolean" then return out end
+        out.has = has
+        if not has then return out end
+        if plainNumber(row.timeLeft) and row.timeLeft >= 0 then out.left = row.timeLeft / 1000 end
+        if plainNumber(row.charges) then out.charges = row.charges end
+        return out
+    end
+    function c.weaponEnchant()
+        local items = env.C_Item
+        local byHand
+        if type(items) == "table" then byHand = items.GetWeaponEnchantInfo end
+        if type(byHand) == "function" then
+            local out = {}
+            local hands = { "main", "off" }
+            for slot = 0, 1 do
+                local hand = hands[slot + 1]
+                local ok, v = pcall(byHand, slot)
+                if not ok or (v ~= nil and hidden(v)) then return nil end
+                if type(v) == "table" then
+                    local row = v
+                    if v.hasEnchant == nil then
+                        row = v[1]
+                        if row ~= nil and hidden(row) then return nil end
+                    end
+                    if type(row) == "table" then
+                        out[hand] = enchantHand(row)
+                    else
+                        out[hand] = { has = false }
+                    end
+                else
+                    out[hand] = {}
+                end
+            end
+            return out
+        end
+        local got = { call(env.GetWeaponEnchantInfo) }
+        if not got[1] then return nil end
+        return {
+            main = enchantHand({ hasEnchant = got[2], timeLeft = got[3], charges = got[4] }),
+            off = enchantHand({ hasEnchant = got[6], timeLeft = got[7], charges = got[8] }),
+        }
+    end
+
+    -- c.totems() -> { [slot] = { name, spellId, left } or false } or nil
+    --   GetTotemInfo(slot) for slots 1 to 4: haveTotem, name, startTime,
+    --   duration, icon, modRate, spellId. false: no totem in the slot. A slot
+    --   whose answer or name is hidden is left out; a hidden spellId or time
+    --   leaves that field out. nil: no read or a read that raised.
+    function c.totems()
+        if type(env.GetTotemInfo) ~= "function" then return nil end
+        local out = {}
+        for slot = 1, 4 do
+            local ok, have, name, start, length, _, _, id = call(env.GetTotemInfo, slot)
+            if not ok then return nil end
+            local there = yesNo(true, have)
+            if there == false then
+                out[slot] = false
+            elseif there then
+                name = text(true, name)
+                if name ~= nil then
+                    local row = { name = name }
+                    if plainNumber(id) then row.spellId = id end
+                    if plainNumber(start) and plainNumber(length) then row.left = start + length - c.now() end
+                    out[slot] = row
+                end
+            end
+        end
+        return out
+    end
+
+    -- Every row of a unit's buffs, in order, as { name, duration, expires }:
+    -- the name from the spell id (spellName) when the row has none. nil for
+    -- no read, a read that raised, or a row or a name not read.
+    local function buffRows(unit)
+        local auras = env.C_UnitAuras
+        local byIndex
+        if type(auras) == "table" then byIndex = auras.GetAuraDataByIndex end
+        local old = env.UnitBuff
+        if type(byIndex) ~= "function" and type(old) ~= "function" then return nil end
+        local rows = {}
+        for i = 1, 40 do
+            local name, length, expires
+            if type(byIndex) == "function" then
+                local ok, row = pcall(byIndex, unit, i, "HELPFUL")
+                if not ok then return nil end
+                if row == nil then return rows end
+                if hidden(row) or type(row) ~= "table" then return nil end
+                name, length, expires = row.name, row.duration, row.expirationTime
+                if name == nil and plainNumber(row.spellId) then name = spellName(row.spellId) end
+            else
+                local got = { pcall(old, unit, i, "HELPFUL") }
+                if not got[1] then return nil end
+                if got[2] == nil then return rows end
+                name, length, expires = got[2], got[6], got[7]
+            end
+            if name == nil or hidden(name) or type(name) ~= "string" then return nil end
+            rows[#rows + 1] = { name = name, duration = length, expires = expires }
+        end
+        return rows
+    end
+
+    -- c.targetBuffs() -> { [name] = secondsLeft or true } or nil
+    --   your target's buffs, read as playerBuffs is, the name from the
+    --   spell id when the row gives none. secondsLeft math.huge for no end,
+    --   true when the end is not read. No buff: an empty table.
+    function c.targetBuffs()
+        local rows = buffRows("target")
+        if rows == nil then return nil end
+        local out = {}
+        for _, row in ipairs(rows) do
+            local left, expires = true, row.expires
+            if plainNumber(expires) then
+                if expires == 0 then left = math.huge else left = expires - c.now() end
+            end
+            local had = out[row.name]
+            if had == nil or left == true or (type(had) == "number" and type(left) == "number" and left > had) then
+                out[row.name] = left
+            end
+        end
+        return out
+    end
+
+    -- c.buffLength(unit, names) -> seconds, name | nil, name | false | nil
+    --   The CLIENT NEED from N64: the whole length of the first buff on the
+    --   unit that is one of the names, from the client (the row duration;
+    --   the fifth answer of UnitBuff). 0 is no end: math.huge. A hidden
+    --   length gives nil and the name. false: read, none there. nil: not
+    --   known.
+    function c.buffLength(unit, names)
+        if type(unit) ~= "string" or unit == "" or type(names) ~= "table" then return nil end
+        local rows = buffRows(unit)
+        if rows == nil then return nil end
+        local wanted = {}
+        for i = 1, #names do
+            if type(names[i]) == "string" then wanted[names[i]] = true end
+        end
+        for _, row in ipairs(rows) do
+            if wanted[row.name] then
+                if not plainNumber(row.duration) then return nil, row.name end
+                if row.duration == 0 then return math.huge, row.name end
+                return row.duration, row.name
+            end
+        end
+        return false
+    end
+    -- ------------------------------------------------- end shared reads
 
     -- c.formName() -> name or nil, known
     --   GetShapeshiftForm(): 0 gives nil, true (no form). A form number gives
@@ -6234,6 +6554,20 @@ function ns.make.client(env)
         local okKind, kind = call(env.UnitPowerType, "pet")
         if okKind and kind ~= nil and not hidden(kind) and type(kind) == "number" and kind == kind then
             out.powerKind = kind
+        end
+        -- P-READS (lead section 237 item 4): hurt, a yes or no only; no
+        -- amount is kept or handed on. UnitHealth below UnitHealthMax when
+        -- both are plain, else UnitHealthPercent (above 1: on a scale of
+        -- 100), else not known. UnitHealthPercent is a first guess.
+        local okNow, now = call(env.UnitHealth, "pet")
+        local okMost, most = call(env.UnitHealthMax, "pet")
+        if okNow and okMost and plainNumber(now) and plainNumber(most) and most > 0 then
+            out.hurt = now < most
+        else
+            local okShare, share = call(env.UnitHealthPercent, "pet")
+            if okShare and plainNumber(share) then
+                if share > 1 then out.hurt = share < 100 else out.hurt = share < 1 end
+            end
         end
         return out
     end

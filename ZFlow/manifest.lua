@@ -129,6 +129,7 @@ return {
         "Spells/TrainerList.lua",
         "Spells/TrainerListRankUp.lua",
         "Spells/TrainerModule.lua",
+        "Spells/ClassQuests.lua",
         "Nav/RoutePlan.lua",
         "Nav/HearthStep.lua",
         "Nav/HearthSeen.lua",

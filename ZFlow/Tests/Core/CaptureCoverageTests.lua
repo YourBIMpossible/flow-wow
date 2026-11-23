@@ -106,6 +106,11 @@ local READS = {
     -- progress); read by Nav/AddonSources.lua only. The globals they read
     -- are in Diag.NAMES; the capture keeps only whether each is loaded.
     gatherMateNodes = false, attuneProgress = false,
+
+    -- P-READS (section 260 item 1): the shared reads for the class packs;
+    -- the capture asks none. Their names are in Diag.NAMES.
+    channel = false, weaponEnchant = false, totems = false, targetBuffs = false,
+    buffLength = false, enemiesNear = false, plateCasts = false, creatureType = false,
 }
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).
