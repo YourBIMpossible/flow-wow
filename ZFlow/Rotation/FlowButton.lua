@@ -496,6 +496,19 @@ function FB.Declare(k)
         refresh()
     end
 
+    -- Lead section 340: the fight starts. Handled while the lock is still a
+    -- plain false (a first guess, not seen in game): a Flow button holding
+    -- Attack takes the fight spell now, as a second click on Attack would
+    -- toggle the swing off and the lock keeps the button from changing.
+    local function fightStarts()
+        if not client or lockdown() ~= false or setting(FB.SETTING) ~= true then return end
+        local h = units.flow.hold
+        if type(h) ~= "table" or type(h.spell) ~= "string" or ns.cast.ATTACK[h.spell] ~= true then return end
+        local pick = FB.FightPick(lastView)
+        if pick == nil then return end
+        units.flow.want(true, pick, units.flow.why)
+    end
+
     k:Module({
         name = FB.NAME,
         needs = { "client", "store", "bus", D.NAME },
@@ -523,6 +536,7 @@ function FB.Declare(k)
         start = function(ctx)
             client, store = ctx.client, ctx.store
             ctx.bus:on(FB.NAME, D.EVENT, onView)
+            client.listen("PLAYER_REGEN_DISABLED", fightStarts)
             client.listen("PLAYER_REGEN_ENABLED", function()
                 units.flow.try()
                 units.self.try()
