@@ -878,8 +878,6 @@ local function addGiven(names, given)
     return nil
 end
 
--- One of the game's own reads, through the fake client's c.raw: the
--- answers, or nothing when the client has no such read or it raised.
 -- True when the client has the read and it answered (with a name or none).
 local function asked(c, fn, ...)
     if type(c.raw) ~= "function" then return false end
@@ -887,6 +885,8 @@ local function asked(c, fn, ...)
     return ok and done == true
 end
 
+-- One of the game's own reads, through the fake client's c.raw: the
+-- answers, or nothing when the client has no such read or it raised.
 local function read(c, fn, ...)
     if type(c.raw) ~= "function" then return nil end
     local got = { pcall(c.raw, fn, ...) }
@@ -926,6 +926,8 @@ function M.names(c, addon, given, shortNames)
         if type(id) == "table" and type(c.savedExists) == "function" and c.savedExists(id.accountDB) then
             local diag = c.saved(id.accountDB).diag
             local snaps = type(diag) == "table" and list(diag.snaps) or {}
+            -- SP-5: made up can be shown from kept snapshots only when there are some.
+            if #snaps > 0 then names.snapsRead = true end
             for i = 1, #snaps do
                 local timing = type(snaps[i]) == "table" and snaps[i].timing or nil
                 if type(timing) == "table" then
@@ -1213,16 +1215,17 @@ local function wordsCut(text)
 end
 
 -- The folders whose next part is a user's name (N4 rest 1 and 2).
-M.HOMES = { "users", "home" }
+M.HOMES = { "users", "home", "documents and settings" }
 
 -- Where the next home folder at or after i is: the start of its word and
 -- the place of the separator after it, or nil. Only one that stands at the
--- start of the text or right after a separator counts.
+-- start of the text, or right after a separator, a blank, a tab or a line
+-- break (lead section 223, SP-1) counts.
 local function nextHome(low, i)
     local s, e
     for _, word in ipairs(M.HOMES) do
         local a, b = low:find(word .. "[\\/]", i)
-        while a and a > 1 and not low:sub(a - 1, a - 1):find("[\\/]") do
+        while a and a > 1 and not low:sub(a - 1, a - 1):find("[\\/%s]") do
             a, b = low:find(word .. "[\\/]", a + 1)
         end
         if a and (not s or a < s) then s, e = a, b end
@@ -1231,13 +1234,15 @@ local function nextHome(low, i)
 end
 
 -- The text with the part after each home folder taken out whole: up to the
--- next separator, ": ", the line's end or the end, "_" in its place.
+-- next separator, ": ", a tab, a double quote, the line's end or the end,
+-- "_" in its place (SP-3: what follows a tab or a closing quote stays). A
+-- blank or an apostrophe does not end it: a user's folder can hold either.
 local function userParts(text)
     local low, out, from = text:lower(), {}, 1
     local _, e = nextHome(low, 1)
     while e do
         local stop = #text + 1
-        local sep = text:find("[\\/\r\n]", e + 1)
+        local sep = text:find("[\\/\r\n\t\"]", e + 1)
         if sep and sep < stop then stop = sep end
         local colon = text:find(": ", e + 1, true)
         if colon and colon < stop then stop = colon end
@@ -1391,8 +1396,8 @@ function M.seen(c, addon, opts)
     }
 
     -- N2: made up is shown only when a name read answered or an add-on's
-    -- kept snapshots were read.
-    local shown = names.asked == true or type(addon) == "table"
+    -- kept snapshots were read (SP-5: an add-on table alone is not enough).
+    local shown = names.asked == true or names.snapsRead == true
     local lines, problems = { M.HEAD, namesLine(names, absent, madeUp, shown), "words: " .. whose }, {}
     for _, name in ipairs(M.SECTIONS) do
         lines[#lines + 1] = "== " .. name .. " =="
