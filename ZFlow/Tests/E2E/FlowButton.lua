@@ -82,7 +82,9 @@ local function noBindsNoMacros(t, c)
         local name = tostring(g.name)
         if name:find(FLOW, 1, true) or name:find(SELF, 1, true) then
             local attr = tostring(g.attr)
-            if attr:find("type", 1, true) and g.value ~= nil then
+            if attr == FB.CTRL_ATTR and g.value ~= nil then
+                t.eq(g.value, "", "Ctrl: the empty type only, never a cast")
+            elseif attr:find("type", 1, true) and g.value ~= nil then
                 t.ok(g.value == "spell" or g.value == "item", "type is spell or item only: " .. tostring(g.value))
             end
         end
@@ -228,6 +230,30 @@ tests["flow button: Ctrl-drag moves it out of a fight only, the place kept"] = f
     t.eq(c.ctrlDragTo(FLOW, to, true), true, "Ctrl held, out of a fight: moved")
     t.eq(h.point, to, "placed there")
     t.eq(addon.settings:get(FB.LAYOUT), to, "kept in the add-on's layout")
+end
+
+-- Lead section 305 item 1: a Ctrl press on either button never casts, so
+-- the Ctrl-drag that moves it cannot cast as the drag starts (the buttons
+-- act on the press down). The fake client cannot press; the attribute the
+-- template reads for Ctrl with the left button is pinned instead.
+tests["flow and self buttons: a Ctrl click holds no cast, so a Ctrl-drag never casts"] = function(t)
+    if type(FB) ~= "table" then t.ok(false, "no module"); return end
+    t.eq(FB.CTRL_ATTR, "ctrl-type1", "the attribute for Ctrl with the left button")
+    local c = start({ on = true })
+    for _, name in ipairs({ FLOW, SELF }) do
+        local h = rowOf(c, name)
+        t.ok(h ~= nil, name .. " made")
+        if h then
+            local a = h.slots[1].attrs
+            t.eq(a.type, "spell", name .. ": a plain click casts")
+            t.eq(a[FB.CTRL_ATTR], "", name .. ": Ctrl held, the empty type: nothing cast")
+        end
+    end
+    noBindsNoMacros(t, c)
+    local d = start()
+    local h = rowOf(d, FLOW)
+    t.eq(h and h.slots[1].attrs[FB.CTRL_ATTR], nil, "holding nothing: nothing written for Ctrl either")
+    t.eq(castGiven(d), 0, "a default profile still writes no cast")
 end
 
 tests["flow button: a reload keeps its place and the key the player bound"] = function(t)
