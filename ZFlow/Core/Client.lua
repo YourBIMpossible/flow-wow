@@ -6283,7 +6283,8 @@ function ns.make.client(env)
     -- it suggests for another player is only shown, never cast. First
     -- guesses, not seen in game on 16001. Each call under pcall; any answer
     -- not given, raised, secret or of the wrong kind is nil (not known).
-    -- Your own party only (party1..4; in a raid, your own subgroup).
+    -- Your party (party1..4), or in a raid every other raid member
+    -- (raid1..40, yourself left out by UnitIsUnit).
     local PARTY_UNITS = { party1 = true, party2 = true, party3 = true, party4 = true }
     -- 243: in a raid, raid1..40 as well.
     for i = 1, 40 do PARTY_UNITS["raid" .. i] = true end
@@ -6316,7 +6317,12 @@ function ns.make.client(env)
             end
             if there then
                 local row = { unit = unit }
-                row.name = text(call(env.UnitName, unit))
+                -- 248 PP2-2: the realm (UnitName's second answer) and the
+                -- GUID, for memory of your casts only: never saved.
+                local okName, name, realm = call(env.UnitName, unit)
+                row.name = text(okName, name)
+                row.realm = text(okName, realm)
+                row.guid = text(call(env.UnitGUID, unit))
                 local okClass, _, class = call(env.UnitClass, unit)
                 row.class = text(okClass, class)
                 row.role = text(call(env.UnitGroupRolesAssigned, unit))
