@@ -254,6 +254,17 @@ tests["capture coverage (a): no listed name is stale or listed twice"] = functio
     for name in pairs(READS) do one(name) end
 end
 
+-- SD-1: the first guesses the corpse and tools reads lean on (N2, N20:
+-- c.targetCorpse, c.tradeSkillTools) are saved in the snapshot's names
+-- table, so a normal login records which exist.
+tests["capture coverage (a): the corpse and tools first guesses are in Diag.NAMES"] = function(t)
+    local listed = {}
+    for _, name in ipairs(ns.Diag.NAMES) do listed[name] = true end
+    for _, name in ipairs({ "CanLootUnit", "GetTradeSkillTools", "C_TooltipInfo.GetUnit" }) do
+        t.ok(listed[name], "in Diag.NAMES: " .. name)
+    end
+end
+
 tests["capture coverage (a): every feature read is a listed read"] = function(t)
     for _, name in ipairs(FEATURE) do t.eq(kindOf(name), "read", name) end
 end
