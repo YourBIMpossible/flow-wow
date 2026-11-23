@@ -166,7 +166,7 @@ tests["chat polish 236: short channel labels - numbered channels to their number
     t.eq(addon.settings:set(addon.Chat.SHORT_CHANNELS, false), true)
     t.eq(c.chatHeader("GUILD"), guild, "off gives the game's label back")
     text, channel = c.pushChat(CHANNEL, line, nil, OTHER, { channel = GENERAL })
-    t.eq(channel, GENERAL)
+    t.eq({ text, channel }, { line, GENERAL }, "off again: as it came")
 end
 
 tests["chat polish 236: Prat's ChannelNames on - short labels stand down"] = function(t)
