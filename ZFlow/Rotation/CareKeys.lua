@@ -131,10 +131,42 @@ function CK.Signature(plan)
     return table.concat(out, "|")
 end
 
+-- CK.TargetUnit(client) -> "party1".."party4" | "raid1".."raid40" | nil
+--   The stable group token of the unit you target: the party row whose
+--   guid is your target's (client.guid("target")). PK-1: a secure unit
+--   attribute of "target" re-resolves at the press, after the target may
+--   have changed in a fight; a group token does not. nil when the target
+--   is not in your group or either read raised or gave nothing. Read only.
+local function partyRows(client)
+    if type(client) ~= "table" or type(client.party) ~= "function" then return nil end
+    local ok, rows = pcall(client.party)
+    if not ok or type(rows) ~= "table" then return nil end
+    return rows
+end
+
+local function targetIn(client, rows)
+    if type(rows) ~= "table" or type(client.guid) ~= "function" then return nil end
+    local ok, id = pcall(client.guid, "target")
+    if not ok or type(id) ~= "string" or id == "" then return nil end
+    for _, m in ipairs(rows) do
+        if type(m) == "table" and m.guid == id and type(m.unit) == "string" and m.unit ~= "target" then
+            return m.unit
+        end
+    end
+    return nil
+end
+
+function CK.TargetUnit(client)
+    if type(client) ~= "table" then return nil end
+    return targetIn(client, partyRows(client))
+end
+
 -- CK.Friends(client) -> { { unit, dead, hurt, debuffTypes }, ... } or nil
---   Your target, then each party member, when the client says it is there,
---   friendly and not you. A unit whose read raised or gave nothing is left
---   out; nil when no unit was read at all. Read only.
+--   Each party member when the client says it is there, friendly and not
+--   you; the one you target first (CK.TargetUnit), by its group token. A
+--   friendly target not in your group is left out: never "target" (PK-1).
+--   A unit whose read raised or gave nothing is left out; nil when no unit
+--   was read at all. Read only.
 function CK.Friends(client)
     if type(client) ~= "table" or type(client.unitCare) ~= "function" then return nil end
     local list, read = {}, false
@@ -150,12 +182,13 @@ function CK.Friends(client)
         end
         list[#list + 1] = entry
     end
-    add("target")
-    if type(client.party) == "function" then
-        local ok, rows = pcall(client.party)
-        if ok and type(rows) == "table" then
-            for _, m in ipairs(rows) do
-                if type(m) == "table" and type(m.unit) == "string" and m.unit ~= "target" then add(m.unit) end
+    local rows = partyRows(client)
+    if rows then
+        local first = targetIn(client, rows)
+        if first then add(first) end
+        for _, m in ipairs(rows) do
+            if type(m) == "table" and type(m.unit) == "string" and m.unit ~= "target" and m.unit ~= first then
+                add(m.unit)
             end
         end
     end

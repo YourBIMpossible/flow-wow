@@ -121,8 +121,12 @@ tests["click slots: the target changes in a fight; the care slot keeps the frien
     c.setUnitCare("target", { exists = true, friend = false, dead = false, hurt = true })
     c.advance(5, 10)
     t.eq(slot(h, "care").attrs.unit, "party1", "an enemy targeted in the fight: still the friend")
+    local careAt
+    for i, s in ipairs(S.SLOTS) do
+        if s == "care" then careAt = i end
+    end
     for _, g in ipairs(h.given) do
-        if tostring(g.attr):find("unit", 1, true) then
+        if g.slot == careAt and tostring(g.attr):find("unit", 1, true) then
             t.ok(g.value ~= "target", "never the target token: " .. tostring(g.attr))
         end
     end

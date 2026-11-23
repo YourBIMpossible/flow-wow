@@ -9,7 +9,9 @@ local _, ns = ...
 --   Alt + key     the healthstone or potion (N8: plan.altItem)
 --                 (rotation.altItem)
 --   Ctrl + key    with a friend targeted (N63: client.unitCare), your
---                 fastest direct heal on the target; with none, the pack's
+--                 fastest direct heal on that friend by its group token
+--                 (KC-1: never "target", which re-resolves at the press);
+--                 with none, or a friend not in your group, the pack's
 --                 own Ctrl spell (rotation.ctrlFriend)
 --   the key       gathering: the gathering tracking step (P-GATHER, step
 --                 "track"); fishing, a corpse, a station and an upgrade
@@ -20,10 +22,14 @@ local _, ns = ...
 --                 is on); nil without settings
 --   KC.Shape(plan, controls, s, pack, friend) -> plan, the same table
 --                 changed; plan or controls not a table: plan as it was.
---                 Slot units go in plan.units (ns.cast puts them on the
---                 button; a slot with none casts on the target)
+--                 friend: the group token from KC.FriendUnit, else no
+--                 Ctrl heal. Slot units go in plan.units (ns.cast puts
+--                 them on the button; a slot with none casts on the target)
 --   KC.Friend(client) -> true when the target exists, is friendly and is
 --                 not you; a read that fails or gives nothing is false
+--   KC.FriendUnit(client) -> the group token of a friendly target that is
+--                 not you (ns.CareKeys.TargetUnit), or nil: not in your
+--                 group, not friendly, or a read that fails
 --   KC.Gate(suggestion, controls) -> the suggestion; with the key's
 --                 actions off, a gathering step is marked keyOff = true:
 --                 still shown, never put on the key
@@ -89,7 +95,7 @@ function KC.Shape(plan, controls, s, pack, friend)
     if type(plan.units) == "table" then
         for slot, unit in pairs(plan.units) do units[slot] = unit end
     end
-    local ctrlHeal = controls.ctrl and friend == true and quick ~= nil
+    local ctrlHeal = controls.ctrl and type(friend) == "string" and friend ~= "target" and quick ~= nil
     for state = 0, R.STEALTH_STATE do
         local row = plan.states[state]
         if type(row) == "table" then
@@ -115,7 +121,7 @@ function KC.Shape(plan, controls, s, pack, friend)
     if not controls.ctrl then
         units.ctrl = nil
     elseif ctrlHeal then
-        units.ctrl = "target"
+        units.ctrl = friend
     end
     if next(units) == nil then
         plan.units = nil
@@ -130,6 +136,17 @@ function KC.Friend(client)
     local ok, row = pcall(client.unitCare, "target")
     if not ok or type(row) ~= "table" then return false end
     return row.exists == true and row.friend == true and row.isSelf ~= true
+end
+
+function KC.FriendUnit(client)
+    if type(client) ~= "table" or type(client.unitCare) ~= "function" then return nil end
+    if type(ns.CareKeys) ~= "table" or type(ns.CareKeys.TargetUnit) ~= "function" then return nil end
+    local unit = ns.CareKeys.TargetUnit(client)
+    if type(unit) ~= "string" then return nil end
+    local ok, row = pcall(client.unitCare, unit)
+    if not ok or type(row) ~= "table" then return nil end
+    if row.exists ~= true or row.friend ~= true or row.isSelf == true then return nil end
+    return unit
 end
 
 function KC.Gate(suggestion, controls)

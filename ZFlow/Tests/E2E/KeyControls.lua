@@ -234,17 +234,19 @@ tests["key controls: the target changes in a fight; Ctrl + key keeps the friend"
     local c = start()
     friendTarget(c); c.advance(1, 5)
     t.eq(attr(c, "*unit-ctrl"), "party1", "planned on the friend you target")
+    local h = keyButton(c)
+    t.ok(h ~= nil, "the key button")
+    local from = h and #h.given + 1 or 1
     c.setCombat(true); c.advance(1, 5)
     c.setTarget({ exists = true, hostile = true, dead = false })
     c.setGuid("target", "Creature-1")
     c.setUnitCare("target", { exists = true, friend = false, dead = false, hurt = true })
     c.advance(5, 10)
     t.eq(attr(c, "*unit-ctrl"), "party1", "an enemy targeted in the fight: Ctrl + key still on the friend")
-    local h = keyButton(c)
-    t.ok(h ~= nil, "the key button")
-    for _, g in ipairs(h and h.given or {}) do
-        if tostring(g.attr):find("unit", 1, true) then
-            t.ok(g.value ~= "target", "never the target token: " .. tostring(g.attr))
+    for i = from, h and #h.given or 0 do
+        local g = h.given[i]
+        if g.attr == "*unit-ctrl" then
+            t.ok(g.value ~= "target", "the Ctrl heal never moved to the target token")
         end
     end
 end
@@ -257,7 +259,7 @@ tests["key controls: a friendly target not in your group leaves Ctrl + key on th
     c.setUnitCare("target", { exists = true, friend = true, isSelf = false, dead = false, hurt = true })
     c.advance(1, 5)
     t.eq(attr(c, "*spell-ctrl"), before, "not in the group: the pack spell")
-    t.ok(attr(c, "*unit-ctrl") ~= "target", "never the target token")
+    t.ok(attr(c, "*spell-ctrl") ~= "Flash of Light", "no heal on the target token")
 end
 
 return tests

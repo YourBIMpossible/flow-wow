@@ -75,13 +75,21 @@ local function slotOf(states, state, slot)
 end
 
 -- N41 (P-KEYS slice B): a plan may name the unit a modifier slot casts on
--- (plan.units[slot], one of C.UNITS); a slot with none casts on the target.
+-- (plan.units[slot], one of C.UNITS, or a group token: KC-1, the Ctrl heal
+-- on the friend you target by its stable party or raid token, since
+-- "target" re-resolves at the press); a slot with none casts on the target.
+local function groupUnit(u)
+    if u == "party1" or u == "party2" or u == "party3" or u == "party4" then return true end
+    local n = tonumber(u:match("^raid(%d%d?)$") or "")
+    return n ~= nil and n >= 1 and n <= 40
+end
+
 local function unitsOf(p)
     local out
     if type(p.units) ~= "table" then return nil end
     for _, slot in ipairs(C.MODIFIERS) do
         local u = p.units[slot]
-        if type(u) == "string" and C.UNITS[u] then
+        if type(u) == "string" and (C.UNITS[u] or groupUnit(u)) then
             out = out or {}
             out[slot] = u
         end

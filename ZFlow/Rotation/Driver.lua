@@ -752,7 +752,7 @@ function D.Step(client, pack, prefs, bias, applied, role, extra)
     end
     local onKey = suggestion
     if type(KC) == "table" and type(controls) == "table" then
-        KC.Shape(plan, controls, snapshot, pack, KC.Friend(client))
+        KC.Shape(plan, controls, snapshot, pack, KC.FriendUnit(client))
         suggestion = KC.Gate(suggestion, controls)
         if type(suggestion) == "table" and suggestion.keyOff == true then onKey = nil end
     end
