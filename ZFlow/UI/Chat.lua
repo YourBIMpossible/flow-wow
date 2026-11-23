@@ -92,13 +92,61 @@ Chat.TLDS = {
     dev = true, xyz = true,
 }
 
-Chat.HELP = "how the chat links and the chat copy button stand; chat copy [n] puts the main chat "
-    .. "window's last n lines in a box to copy"
-Chat.LABEL = { urls = "chat links", copy = "chat copy button" }
+-- Part 2 (row N60b): readability. Each its own row, each off at first:
+-- each changes how the game's own chat windows look or move, so the
+-- player turns it on (timestamps too: the game has its own option).
+--   chat.fontSize     text size of every chat window, 0 = the game's
+--   chat.keepLines    lines stay instead of fading
+--   chat.fadeTime     seconds before a line fades, 0 = the game's
+--   chat.scrollLines  lines per wheel notch, Ctrl+wheel to the top,
+--                     Shift+wheel to the bottom; 0 = the game's scrolling
+--   chat.timestamps   "off", "HH:MM" or "HH:MM:SS" before each chat line
+--   chat.tabsVisible  the chat tabs do not fade away
+-- Turned off, or the module stopped: each window gets back what the game
+-- had before this add-on changed it. Beside Prat: its Font, Fading and
+-- Timestamps modules (module names as its files name them) stand the
+-- matching part down, as for part 1; the game's own timestamps
+-- (showTimestamps not "none") stand the timestamps down. No line is
+-- stamped twice. A line the client hides is passed on unread.
+Chat.FONT, Chat.KEEP, Chat.FADE = "chat.fontSize", "chat.keepLines", "chat.fadeTime"
+Chat.SCROLL, Chat.STAMPS, Chat.TABS = "chat.scrollLines", "chat.timestamps", "chat.tabsVisible"
+Chat.PRAT_FONT, Chat.PRAT_FADE, Chat.PRAT_STAMPS = "Font", "Fading", "Timestamps"
+-- The chat windows looked at: ChatFrame1 to ChatFrame10, the game's
+-- NUM_CHAT_WINDOWS on current clients (first guess for 16001). A window
+-- that is not there is passed over.
+Chat.WINDOWS = 10
+Chat.FONT_MIN, Chat.FONT_MAX = 10, 20
+Chat.FADE_MAX, Chat.SCROLL_MAX = 600, 10
+Chat.TAB_ALPHA = 1
+-- The game's own timestamp option (Interface options, Social); "none" is
+-- off (warcraft.wiki.gg, CVar showTimestamps).
+Chat.GAME_STAMPS, Chat.GAME_STAMPS_OFF = "showTimestamps", "none"
+Chat.STAMP_OFF = "off"
+Chat.STAMP_CHOICES = { "off", "HH:MM", "HH:MM:SS" }
+Chat.STAMP_FORMAT = { ["HH:MM"] = "[%02d:%02d] ", ["HH:MM:SS"] = "[%02d:%02d:%02d] " }
+Chat.READ_PARTS = { "font", "fade", "scroll", "stamps", "tabs" }
+
+Chat.HELP = "how the chat links, the chat copy button and the chat readability settings stand; chat copy "
+    .. "[n] puts the main chat window's last n lines in a box to copy"
+Chat.LABEL = {
+    urls = "chat links", copy = "chat copy button", font = "chat text size", fade = "chat fading",
+    scroll = "chat wheel scrolling", stamps = "chat timestamps", tabs = "chat tabs kept visible",
+}
 Chat.STATE = {
     on = "on", off = "off (its setting is off)", prat = "standing down",
     unavailable = "not available", waiting = "not made yet",
+    game = "standing down",
 }
+Chat.GAME_STAMPS_WHY = "the game's own chat timestamps are on"
+
+-- The stamp put before a chat line, or nil when the format is not one of
+-- Chat.STAMP_FORMAT or a part of the time is not a number.
+function Chat.Stamp(format, h, m, s)
+    local pattern = Chat.STAMP_FORMAT[format]
+    if pattern == nil or type(h) ~= "number" or type(m) ~= "number" or type(s) ~= "number" then return nil end
+    if format == "HH:MM" then return string.format(pattern, h, m) end
+    return string.format(pattern, h, m, s)
+end
 Chat.COPY_OFF = "copying chat text is off: turn on \"Copy chat text\" in the settings."
 Chat.NO_LINES = "this client does not give the chat window's lines."
 Chat.READ_FAILED = "the chat lines could not be read; it is kept as a problem."
@@ -300,7 +348,8 @@ function Chat.Declare(k, diag)
     local ctx = nil
     local cancels = {}
     local cancelFilter, cancelClick, button, box = nil, nil, nil, nil
-    local state = { urls = "off", copy = "off" }
+    local state = { urls = "off", copy = "off", font = "off", fade = "off", scroll = "off", stamps = "off",
+        tabs = "off" }
     local why, told, seen = {}, {}, {}
     local errors = 0
     function api.state(part) return state[part] end
@@ -525,20 +574,252 @@ function Chat.Declare(k, diag)
         state.copy = "on"
     end
 
+    -------------------------------------------------------------------
+    -- Part 2: readability. What each window had before this add-on
+    -- changed it is kept, and given back when the part is turned off.
+    -------------------------------------------------------------------
+    local fontSaved, fontSet = {}, {}
+    local fadeSaved, fadeSet = {}, {}
+    local wheelCancels, scrollLines = {}, 0
+    local cancelStamps, stampFormat = nil, nil
+    local tabsHeld = {}
+
+    -- A client call that may raise: its answers, or nil and a problem.
+    local function ask(what, fn, ...)
+        if type(fn) ~= "function" then return nil end
+        local ok, a, b, c3 = pcall(fn, ...)
+        if not ok then
+            problem(what, a)
+            return nil
+        end
+        return a, b, c3
+    end
+
+    local function prattled(part, module)
+        local says = pratSays(module)
+        if says == "on" or says == "unknown" then
+            standDown(part, module, says)
+            return true
+        end
+        return false
+    end
+
+    local function restoreFonts()
+        local c = client()
+        for i, size in pairs(fontSaved) do
+            if fontSet[i] ~= nil then ask("chat text size", c.setChatFont, i, size) end
+        end
+        fontSaved, fontSet = {}, {}
+    end
+
+    local function syncFont()
+        why.font = nil
+        local size = tonumber(ctx.settings:get(Chat.FONT)) or 0
+        if size <= 0 then
+            restoreFonts()
+            state.font = "off"
+            return
+        end
+        if prattled("font", Chat.PRAT_FONT) then
+            restoreFonts()
+            return
+        end
+        size = math.floor(size)
+        if size < Chat.FONT_MIN then size = Chat.FONT_MIN end
+        if size > Chat.FONT_MAX then size = Chat.FONT_MAX end
+        local c, any = ctx.client, false
+        for i = 1, Chat.WINDOWS do
+            if fontSaved[i] == nil then
+                local now = ask("chat text size", c.chatFont, i)
+                if type(now) == "number" then fontSaved[i] = now end
+            end
+            if fontSaved[i] ~= nil and fontSet[i] ~= size then
+                if ask("chat text size", c.setChatFont, i, size) == true then fontSet[i] = size end
+            end
+            if fontSet[i] ~= nil then any = true end
+        end
+        state.font = "unavailable"
+        if any then state.font = "on" end
+    end
+
+    local function restoreFades()
+        local c = client()
+        for i, was in pairs(fadeSaved) do
+            if fadeSet[i] ~= nil then ask("chat fading", c.setChatFading, i, was.fading, was.time) end
+        end
+        fadeSaved, fadeSet = {}, {}
+    end
+
+    local function syncFade()
+        why.fade = nil
+        local keep = ctx.settings:get(Chat.KEEP) == true
+        local time = math.floor(tonumber(ctx.settings:get(Chat.FADE)) or 0)
+        if keep == false and time <= 0 then
+            restoreFades()
+            state.fade = "off"
+            return
+        end
+        if prattled("fade", Chat.PRAT_FADE) then
+            restoreFades()
+            return
+        end
+        local c, any = ctx.client, false
+        for i = 1, Chat.WINDOWS do
+            if fadeSaved[i] == nil then
+                local now = ask("chat fading", c.chatFading, i)
+                if type(now) == "table" and type(now.time) == "number" then
+                    fadeSaved[i] = { fading = now.fading == true, time = now.time }
+                end
+            end
+            local was = fadeSaved[i]
+            if was ~= nil then
+                local wantTime = was.time
+                if time > 0 then wantTime = time end
+                local want = tostring(not keep) .. ":" .. tostring(wantTime)
+                if fadeSet[i] ~= want and ask("chat fading", c.setChatFading, i, not keep, wantTime) == true then
+                    fadeSet[i] = want
+                end
+            end
+            if fadeSet[i] ~= nil then any = true end
+        end
+        state.fade = "unavailable"
+        if any then state.fade = "on" end
+    end
+
+    -- One wheel notch on a chat window, after the game's own line.
+    local function wheel(_, ctrl, shift)
+        if scrollLines <= 0 then return nil end
+        if ctrl then return "top" end
+        if shift then return "bottom" end
+        return scrollLines - 1
+    end
+
+    local function dropWheels()
+        for _, cancel in pairs(wheelCancels) do pcall(cancel) end
+        wheelCancels = {}
+    end
+
+    local function syncScroll()
+        why.scroll = nil
+        local n = math.floor(tonumber(ctx.settings:get(Chat.SCROLL)) or 0)
+        if n > Chat.SCROLL_MAX then n = Chat.SCROLL_MAX end
+        scrollLines = n
+        if n <= 0 then
+            dropWheels()
+            state.scroll = "off"
+            return
+        end
+        local c = ctx.client
+        for i = 1, Chat.WINDOWS do
+            if wheelCancels[i] == nil then
+                local cancel = ask("chat wheel", c.chatWheel, i, wheel)
+                if type(cancel) == "function" then wheelCancels[i] = cancel end
+            end
+        end
+        state.scroll = "unavailable"
+        if next(wheelCancels) ~= nil then state.scroll = "on" end
+    end
+
+    -- The stamp before a chat line. A line that is no text, or a time not
+    -- known, leaves the line as it came.
+    local function stampFilter(text)
+        if ctx == nil or state.stamps ~= "on" or type(text) ~= "string" then return nil end
+        local h, m, s = ask("chat clock", ctx.client.localTime)
+        local stamp = Chat.Stamp(stampFormat, h, m, s)
+        if stamp == nil then return nil end
+        return stamp .. text
+    end
+
+    local function dropStamps()
+        if cancelStamps then pcall(cancelStamps) end
+        cancelStamps = nil
+    end
+
+    -- Whether the game's own timestamps are on; false when not known.
+    local function gameStamps()
+        local v = ask("chat timestamps", ctx.client.gameSetting, Chat.GAME_STAMPS)
+        return type(v) == "string" and v ~= "" and v ~= Chat.GAME_STAMPS_OFF
+    end
+
+    local function syncStamps()
+        why.stamps = nil
+        local format = ctx.settings:get(Chat.STAMPS)
+        if Chat.STAMP_FORMAT[format] == nil then
+            dropStamps()
+            state.stamps = "off"
+            return
+        end
+        if gameStamps() then
+            dropStamps()
+            state.stamps = "game"
+            why.stamps = Chat.GAME_STAMPS_WHY
+            if not told.game then
+                told.game = true
+                say(Chat.LABEL.stamps .. ": standing down, " .. why.stamps .. ".")
+            end
+            return
+        end
+        if prattled("stamps", Chat.PRAT_STAMPS) then
+            dropStamps()
+            return
+        end
+        stampFormat = format
+        local c = ctx.client
+        if cancelStamps == nil and type(c.chatFilter) == "function" then
+            local got = ask("chat timestamps", c.chatFilter, Chat.EVENTS, stampFilter)
+            if type(got) == "function" then cancelStamps = got end
+        end
+        if cancelStamps then
+            state.stamps = "on"
+        else
+            state.stamps = "unavailable"
+            why.stamps = "this client gives no chat filter"
+        end
+    end
+
+    local function releaseTabs()
+        local c = client()
+        for i in pairs(tabsHeld) do ask("chat tabs", c.chatTabAlpha, i, nil) end
+        tabsHeld = {}
+    end
+
+    local function syncTabs()
+        why.tabs = nil
+        if ctx.settings:get(Chat.TABS) ~= true then
+            releaseTabs()
+            state.tabs = "off"
+            return
+        end
+        local c = ctx.client
+        for i = 1, Chat.WINDOWS do
+            if tabsHeld[i] == nil and ask("chat tabs", c.chatTabAlpha, i, Chat.TAB_ALPHA) == true then
+                tabsHeld[i] = true
+            end
+        end
+        state.tabs = "unavailable"
+        if next(tabsHeld) ~= nil then state.tabs = "on" end
+    end
+
+    local PARTS = {
+        { "chat links", syncUrls }, { "chat copy", syncCopy }, { "chat text size", syncFont },
+        { "chat fading", syncFade }, { "chat wheel", syncScroll }, { "chat timestamps", syncStamps },
+        { "chat tabs", syncTabs },
+    }
+
     -- Each part made to stand as its setting, Prat and the client say.
     -- Safe to call again and again: nothing is made twice.
     local function sync()
         if ctx == nil then return end
-        local ok, err = pcall(syncUrls)
-        if not ok then problem("chat links", err) end
-        ok, err = pcall(syncCopy)
-        if not ok then problem("chat copy", err) end
+        for _, part in ipairs(PARTS) do
+            local ok, err = pcall(part[2])
+            if not ok then problem(part[1], err) end
+        end
     end
 
     function api.lines()
         if ctx == nil then return { Chat.NOT_STARTED } end
         local out = {}
-        for _, part in ipairs({ "urls", "copy" }) do
+        for _, part in ipairs({ "urls", "copy", "font", "fade", "scroll", "stamps", "tabs" }) do
             local line = Chat.LABEL[part] .. ": " .. tostring(Chat.STATE[state[part]])
             if why[part] then line = line .. " (" .. why[part] .. ")" end
             out[#out + 1] = line .. "."
@@ -582,11 +863,50 @@ function Chat.Declare(k, diag)
                 .. "to copy. It never opens a browser. Item and player links stay as they are. With Prat's "
                 .. "UrlCopy on, this stands down.",
             group = Chat.GROUP, synonyms = { "chat", "copy", "url", "link", "text", "prat" },
+        }, {
+            key = Chat.FONT, scope = "account", type = "number", default = 0, min = 0, max = Chat.FONT_MAX, step = 1,
+            label = "Chat text size",
+            help = "The size of the text in every chat window, from " .. Chat.FONT_MIN .. " to " .. Chat.FONT_MAX
+                .. ". 0 keeps the game's own size, and gives it back. With Prat's Font on, this stands down.",
+            group = Chat.GROUP, synonyms = { "chat", "readability", "font", "size", "text", "prat" },
+        }, {
+            key = Chat.KEEP, scope = "account", type = "bool", default = false,
+            label = "Keep chat lines from fading",
+            help = "Chat lines stay in the chat windows instead of fading away. Off gives the game's fading back. "
+                .. "With Prat's Fading on, this stands down.",
+            group = Chat.GROUP, synonyms = { "chat", "readability", "fade", "fading", "lines", "prat" },
+        }, {
+            key = Chat.FADE, scope = "account", type = "number", default = 0, min = 0, max = Chat.FADE_MAX, step = 10,
+            label = "Chat fade time (seconds)",
+            help = "How long a chat line stays before it fades. 0 keeps the game's own time, and gives it back.",
+            group = Chat.GROUP, synonyms = { "chat", "readability", "fade", "fading", "time", "seconds" },
+        }, {
+            key = Chat.SCROLL, scope = "account", type = "number", default = 0, min = 0, max = Chat.SCROLL_MAX,
+            step = 1,
+            label = "Chat lines per wheel notch",
+            help = "How many lines one mouse-wheel notch scrolls a chat window. Then Ctrl+wheel goes to the top "
+                .. "and Shift+wheel to the newest line. 0 keeps the game's own scrolling.",
+            group = Chat.GROUP, synonyms = { "chat", "readability", "scroll", "wheel", "mouse", "lines" },
+        }, {
+            key = Chat.STAMPS, scope = "account", type = "choice", default = Chat.STAMP_OFF,
+            choices = Chat.STAMP_CHOICES,
+            label = "Chat timestamps",
+            help = "The time before each chat line: off, HH:MM or HH:MM:SS. Off at first: the game has its own "
+                .. "timestamp option. With the game's timestamps or Prat's Timestamps on, this stands down, so "
+                .. "no line has two.",
+            group = Chat.GROUP, synonyms = { "chat", "readability", "time", "timestamp", "clock", "prat" },
+        }, {
+            key = Chat.TABS, scope = "account", type = "bool", default = false,
+            label = "Keep chat tabs visible",
+            help = "The chat window tabs stay fully shown instead of fading when the mouse is away. Off gives the "
+                .. "game's fading back.",
+            group = Chat.GROUP, synonyms = { "chat", "readability", "tab", "tabs", "fade", "visible" },
         } },
         provides = { State = api.state, Lines = api.lines },
         start = function(c)
             ctx = c
-            for _, key in ipairs({ Chat.COPY, Chat.URLS }) do
+            for _, key in ipairs({ Chat.COPY, Chat.URLS, Chat.FONT, Chat.KEEP, Chat.FADE, Chat.SCROLL, Chat.STAMPS,
+                Chat.TABS }) do
                 local row = c.settings:row(key)
                 if type(row) == "table" then
                     local cancel = c.store:watch(row.scope, row.path or ("settings." .. key), sync)
@@ -608,7 +928,13 @@ function Chat.Declare(k, diag)
             cancelClick = nil
             hideButton()
             if box then pcall(box.show, false) end
-            state.urls, state.copy = "off", "off"
+            restoreFonts()
+            restoreFades()
+            dropWheels()
+            scrollLines = 0
+            dropStamps()
+            releaseTabs()
+            for part in pairs(state) do state[part] = "off" end
             ctx = nil
         end,
     })

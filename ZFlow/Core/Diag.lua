@@ -247,6 +247,15 @@ Diag.NAMES = {
     "GRAY_FONT_COLOR",
     "GameFontNormal", "GameFontHighlight", "GameFontDisable", "GameFontNormalSmall", "GameFontHighlightSmall",
     "GameFontDisableSmall", "GameFontNormalLarge", "GameFontRed", "GameFontGreen",
+    -- N60b (UI/Chat.lua; Core/Client.lua chatFont, setChatFont, chatFading,
+    -- setChatFading, chatWheel, chatTabAlpha, localTime): the chat window's
+    -- font, fading, wheel hook and scroll steps, its tab's alpha, and the
+    -- local clock. First guesses, never asked of 16001; ChatFrame1,
+    -- hooksecurefunc, IsControlKeyDown and IsShiftKeyDown are listed above.
+    "ChatFrame1.GetFont", "ChatFrame1.SetFont", "ChatFrame1.GetFading", "ChatFrame1.SetFading",
+    "ChatFrame1.GetTimeVisible", "ChatFrame1.SetTimeVisible", "ChatFrame1.HookScript",
+    "ChatFrame1.ScrollUp", "ChatFrame1.ScrollDown", "ChatFrame1.ScrollToTop", "ChatFrame1.ScrollToBottom",
+    "ChatFrame1Tab", "ChatFrame1Tab.SetAlpha", "ChatFrame1Tab.GetAlpha", "date",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns

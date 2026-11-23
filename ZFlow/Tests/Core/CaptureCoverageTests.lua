@@ -88,6 +88,13 @@ KIND.show[#KIND.show + 1] = "buttonFace"
 KIND.show[#KIND.show + 1] = "ctrlDrag"
 KIND.show[#KIND.show + 1] = "hoverTip"
 
+-- N60b: chat readability (UI/Chat.lua). How a chat window looks (text
+-- size, fading, the tab held up) and the wheel hook after the game's own.
+KIND.show[#KIND.show + 1] = "setChatFont"
+KIND.show[#KIND.show + 1] = "setChatFading"
+KIND.show[#KIND.show + 1] = "chatTabAlpha"
+KIND.listen[#KIND.listen + 1] = "chatWheel"
+
 -- Every read, and whether the capture asks it (true) or not (false).
 local READS = {
     now = false, clock = true, clockMs = false, addonLoaded = true, listenFaults = true, uptime = true, inCombat = true,
@@ -198,6 +205,10 @@ local READS = {
     -- login records it. Their names (ChatFrame1.GetNumMessages, Prat.
     -- GetModule and the rest) are in Diag.NAMES.
     chatLines = false, pratModule = true,
+    -- N60b: a chat window's text size and fading, and the local clock for
+    -- the chat timestamps; read by UI/Chat.lua only. Their names
+    -- (ChatFrame1.GetFont, date and the rest) are in Diag.NAMES.
+    chatFont = false, chatFading = false, localTime = false,
     -- Lead section 303: race number and quests handed in; read by
     -- Nav/DungeonRead.lua only. Their names (UnitRace,
     -- C_QuestLog.IsQuestFlaggedCompleted) are in Diag.NAMES.

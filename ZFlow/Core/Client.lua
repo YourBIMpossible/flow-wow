@@ -10954,6 +10954,167 @@ function ns.make.client(env)
             return page
         end
     end
+    ---------------------------------------------------------------------
+    -- N60b: chat readability (UI/Chat.lua). How a chat window looks:
+    -- nothing is sent and no chat frame's own function or script is
+    -- replaced. Every call is a first guess, not seen in game on 16001;
+    -- the names are in Diag.NAMES. Window i is the global ChatFrame<i>,
+    -- its tab ChatFrame<i>Tab (warcraft.wiki.gg, ScrollingMessageFrame,
+    -- FontInstance, ScriptObject).
+    --
+    --   client.chatFont(i) -> size | nil
+    --     frame:GetFont() second answer. nil: no window, a raise, hidden.
+    --   client.setChatFont(i, size) -> true | nil
+    --     frame:SetFont(path, size, flags) with the path and flags the
+    --     window has now. For this session only: the game's own saved chat
+    --     size is not written.
+    --   client.chatFading(i) -> { fading = bool, time = n } | nil
+    --     frame:GetFading() and frame:GetTimeVisible().
+    --   client.setChatFading(i, fading[, time]) -> true | nil
+    --     frame:SetFading(fading), then frame:SetTimeVisible(time) when a
+    --     time above 0 is given.
+    --   client.chatWheel(i, fn) -> cancel | nil
+    --     fn(delta, ctrl, shift) after the game's own wheel step on window
+    --     i; it answers "top", "bottom", a number of extra lines in the
+    --     wheel's direction (at most 50), or nothing. Through
+    --     frame:HookScript("OnMouseWheel"): runs after the game's handler,
+    --     never in its place, so the game's own scrolling and its secure
+    --     state are untouched. A hook cannot be taken off: cancel makes it
+    --     do nothing. IsControlKeyDown / IsShiftKeyDown for the keys.
+    --   client.chatTabAlpha(i, alpha | nil) -> true | nil
+    --     Holds tab i at least `alpha` against the game's fade:
+    --     hooksecurefunc(tab, "SetAlpha") puts it back up after each lower
+    --     alpha the game asks. nil lets go and gives the tab the alpha the
+    --     game asked last.
+    --   client.localTime() -> hour, min, sec | nil
+    --     date("*t"), the computer's local time.
+    ---------------------------------------------------------------------
+    do
+        local WHEEL_MOST = 50
+
+        local function chatWindow(i)
+            if type(i) ~= "number" or i < 1 or i ~= math.floor(i) then return nil end
+            local frame = env["ChatFrame" .. i]
+            if type(frame) ~= "table" then return nil end
+            return frame
+        end
+
+        function c.chatFont(i)
+            local ok, _, size = method(chatWindow(i), "GetFont")
+            if not ok or hidden(size) or type(size) ~= "number" then return nil end
+            return size
+        end
+
+        function c.setChatFont(i, size)
+            if type(size) ~= "number" or size <= 0 then return nil end
+            local frame = chatWindow(i)
+            local ok, path, now, flags = method(frame, "GetFont")
+            if not ok or hidden(path) or hidden(now) or hidden(flags) or type(path) ~= "string" then return nil end
+            if not method(frame, "SetFont", path, size, flags) then return nil end
+            return true
+        end
+
+        function c.chatFading(i)
+            local frame = chatWindow(i)
+            local okF, fading = method(frame, "GetFading")
+            local okT, time = method(frame, "GetTimeVisible")
+            if not okF or not okT or hidden(fading) or hidden(time) or type(time) ~= "number" then return nil end
+            return { fading = fading == true, time = time }
+        end
+
+        function c.setChatFading(i, fading, time)
+            if type(fading) ~= "boolean" then return nil end
+            local frame = chatWindow(i)
+            if not method(frame, "SetFading", fading) then return nil end
+            if type(time) == "number" and time > 0 then
+                if not method(frame, "SetTimeVisible", time) then return nil end
+            end
+            return true
+        end
+
+        local function keyDown(fn)
+            local ok, down = call(fn)
+            if not ok or hidden(down) then return false end
+            return down ~= nil and down ~= false and down ~= 0
+        end
+
+        local wheels = {}
+        function c.chatWheel(i, fn)
+            if type(fn) ~= "function" then return nil end
+            local frame = chatWindow(i)
+            if frame == nil then return nil end
+            local w = wheels[i]
+            if w == nil or w.frame ~= frame then
+                w = { frame = frame }
+                local function onWheel(_, delta)
+                    local f = w.fn
+                    if f == nil or hidden(delta) or type(delta) ~= "number" or delta == 0 then return end
+                    local okF, what = pcall(f, delta, keyDown(env.IsControlKeyDown), keyDown(env.IsShiftKeyDown))
+                    if not okF then return end
+                    if what == "top" then
+                        method(frame, "ScrollToTop")
+                    elseif what == "bottom" then
+                        method(frame, "ScrollToBottom")
+                    elseif type(what) == "number" and what >= 1 then
+                        local step = "ScrollDown"
+                        if delta > 0 then step = "ScrollUp" end
+                        local n = math.floor(what)
+                        if n > WHEEL_MOST then n = WHEEL_MOST end
+                        for _ = 1, n do method(frame, step) end
+                    end
+                end
+                if not method(frame, "HookScript", "OnMouseWheel", onWheel) then return nil end
+                wheels[i] = w
+            end
+            w.fn = fn
+            return function()
+                if w.fn == fn then w.fn = nil end
+            end
+        end
+
+        local tabs = {}
+        function c.chatTabAlpha(i, alpha)
+            if type(i) ~= "number" then return nil end
+            local tab = env["ChatFrame" .. i .. "Tab"]
+            if type(tab) ~= "table" then return nil end
+            local held = tabs[i]
+            if held == nil or held.tab ~= tab then
+                if type(env.hooksecurefunc) ~= "function" then return nil end
+                held = { tab = tab, busy = false }
+                local okA, now = method(tab, "GetAlpha")
+                if okA and not hidden(now) and type(now) == "number" then held.asked = now end
+                local function onAlpha(_, a)
+                    if held.busy or hidden(a) or type(a) ~= "number" then return end
+                    held.asked = a
+                    if held.hold ~= nil and a < held.hold then
+                        held.busy = true
+                        method(tab, "SetAlpha", held.hold)
+                        held.busy = false
+                    end
+                end
+                if not pcall(env.hooksecurefunc, tab, "SetAlpha", onAlpha) then return nil end
+                tabs[i] = held
+            end
+            held.busy = true
+            if type(alpha) == "number" then
+                held.hold = alpha
+                method(tab, "SetAlpha", alpha)
+            else
+                held.hold = nil
+                if held.asked ~= nil then method(tab, "SetAlpha", held.asked) end
+            end
+            held.busy = false
+            return true
+        end
+
+        function c.localTime()
+            local ok, t = call(env.date, "*t")
+            if not ok or hidden(t) or type(t) ~= "table" then return nil end
+            local h, m, s = tonumber(t.hour), tonumber(t.min), tonumber(t.sec)
+            if h == nil or m == nil or s == nil then return nil end
+            return h, m, s
+        end
+    end
     return c
 end
 
