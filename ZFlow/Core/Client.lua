@@ -7965,6 +7965,173 @@ function ns.make.client(env)
         end
         return out
     end
+    -- S15 click slots and S29 move handle (P-KEYS slice C). First guesses,
+    -- none seen in game: CreateFrame with SecureActionButtonTemplate on a
+    -- plain holder frame, RegisterForClicks("AnyUp", "AnyDown"), and the
+    -- holder moved by StartMoving / StopMovingOrSizing from a grip.
+    --
+    -- c.clickRow(spec) -> handle or nil. spec = { name, count, size, gap }.
+    -- A hidden holder frame `name` on the screen with `count` secure buttons
+    -- name1..nameN on it, each hidden until it holds something. Each button
+    -- casts what it holds only on the player click on it; nothing here
+    -- clicks, binds, registers a state driver or casts. Made only when
+    -- InCombatLockdown answers a plain false; nil otherwise, with count
+    -- below 1, or when CreateFrame fails. Slot i is button i; slot 0 is the
+    -- holder.
+    --   h.set(i, attr, value) -> true, or false and "absent" (no slot i),
+    --                            "lockdown" (anything but a plain false from
+    --                            InCombatLockdown: the frame is not touched)
+    --                            or "refused" (SetAttribute failed).
+    --   h.get(i, attr)        -> what button i holds for attr, or nil.
+    --   h.show(i, on)         -> as set, for showing slot i (0: the row).
+    --   h.isShown(i)          -> true or false.
+    --   h.icon(i, texture)    -> true, or false with no texture or no slot.
+    --   h.place(point)        -> as set; point = { point, relativePoint, x, y }
+    --                            against the screen.
+    function c.clickRow(spec)
+        if type(spec) ~= "table" or type(spec.name) ~= "string" or spec.name == "" then return nil end
+        local count = spec.count
+        if type(count) ~= "number" or count < 1 or count % 1 ~= 0 then return nil end
+        local function unlocked()
+            local okLock, locked = call(env.InCombatLockdown)
+            return okLock and locked == false
+        end
+        if not unlocked() then return nil end
+        local size, gap = 32, 4
+        if type(spec.size) == "number" and spec.size > 0 then size = spec.size end
+        if type(spec.gap) == "number" and spec.gap >= 0 then gap = spec.gap end
+        local okH, holder = call(env.CreateFrame, "Frame", spec.name, env.UIParent)
+        if not okH or holder == nil then return nil end
+        method(holder, "Hide")
+        method(holder, "SetSize", count * size + (count - 1) * gap, size)
+        method(holder, "SetFrameStrata", "MEDIUM")
+        method(holder, "SetClampedToScreen", true)
+        method(holder, "SetMovable", true)
+        local buttons, icons = {}, {}
+        for i = 1, count do
+            local okB, b = call(env.CreateFrame, "Button", spec.name .. i, holder, "SecureActionButtonTemplate")
+            if not okB or b == nil then return nil end
+            method(b, "Hide")
+            method(b, "SetSize", size, size)
+            method(b, "SetPoint", "LEFT", holder, "LEFT", (i - 1) * (size + gap), 0)
+            method(b, "RegisterForClicks", "AnyUp", "AnyDown")
+            local okT, tex = method(b, "CreateTexture", nil, "ARTWORK")
+            if okT and type(tex) == "table" then
+                method(tex, "SetAllPoints", b)
+                icons[i] = tex
+            end
+            method(b, "SetHighlightTexture", "Interface\\Buttons\\ButtonHilight-Square")
+            buttons[i] = b
+        end
+        local function frameOf(i)
+            if i == 0 then return holder end
+            return buttons[i]
+        end
+        local h = {}
+        function h.set(i, attr, value)
+            local b = buttons[i]
+            if b == nil then return false, "absent" end
+            if not unlocked() then return false, "lockdown" end
+            if not method(b, "SetAttribute", attr, value) then return false, "refused" end
+            return true
+        end
+        function h.get(i, attr)
+            local b = buttons[i]
+            if b == nil then return nil end
+            local okGet, v = method(b, "GetAttribute", attr)
+            if not okGet then return nil end
+            return v
+        end
+        function h.show(i, on)
+            local f = frameOf(i)
+            if f == nil then return false, "absent" end
+            if not unlocked() then return false, "lockdown" end
+            local called
+            if on == true then called = method(f, "Show") else called = method(f, "Hide") end
+            if not called then return false, "refused" end
+            return true
+        end
+        function h.isShown(i)
+            local f = frameOf(i)
+            if f == nil then return false end
+            local okS, shown = method(f, "IsShown")
+            return okS and shown == true
+        end
+        function h.icon(i, texture)
+            local tex = icons[i]
+            if tex == nil or texture == nil then return false end
+            return method(tex, "SetTexture", texture) == true
+        end
+        function h.place(point)
+            if type(point) ~= "table" then return false, "refused" end
+            if not unlocked() then return false, "lockdown" end
+            method(holder, "ClearAllPoints")
+            if not method(holder, "SetPoint", point[1], env.UIParent, point[2], point[3], point[4]) then
+                return false, "refused"
+            end
+            return true
+        end
+        return h
+    end
+
+    -- c.moveHandle(spec) -> handle or nil. spec = { target, width, height,
+    -- onMoved }. A grip on the left edge of the frame named target (nil
+    -- when there is no such frame). Dragging it moves that frame, only when
+    -- InCombatLockdown answers a plain false as the drag starts; let go,
+    -- the client layout cache is not written (SetUserPlaced(false)) and
+    -- onMoved({ point, relativePoint, x, y }) is called. An onMoved that
+    -- raises does not escape. The add-on keeps the place in its own saved
+    -- settings; no other file is written.
+    --   h.show(on) -> true, or false and "lockdown" or "refused".
+    function c.moveHandle(spec)
+        if type(spec) ~= "table" then return nil end
+        local target = guideFrame(spec.target)
+        if target == nil then return nil end
+        local function unlocked()
+            local okLock, locked = call(env.InCombatLockdown)
+            return okLock and locked == false
+        end
+        local okG, grip = call(env.CreateFrame, "Frame", nil, target)
+        if not okG or grip == nil then return nil end
+        local width, height = 10, 32
+        if type(spec.width) == "number" and spec.width > 0 then width = spec.width end
+        if type(spec.height) == "number" and spec.height > 0 then height = spec.height end
+        method(grip, "SetSize", width, height)
+        method(grip, "SetPoint", "RIGHT", target, "LEFT", -2, 0)
+        local okT, tex = method(grip, "CreateTexture", nil, "BACKGROUND")
+        if okT and type(tex) == "table" then
+            method(tex, "SetAllPoints", grip)
+            method(tex, "SetColorTexture", 1, 0.82, 0, 0.6)
+        end
+        method(grip, "EnableMouse", true)
+        method(grip, "RegisterForDrag", "LeftButton")
+        local dragging = false
+        method(grip, "SetScript", "OnDragStart", function()
+            if not unlocked() then return end
+            dragging = true
+            method(target, "StartMoving")
+        end)
+        method(grip, "SetScript", "OnDragStop", function()
+            if not dragging then return end
+            dragging = false
+            method(target, "StopMovingOrSizing")
+            method(target, "SetUserPlaced", false)
+            local okP, a, _, r, x, y = method(target, "GetPoint", 1)
+            if not okP or type(a) ~= "string" or type(x) ~= "number" or type(y) ~= "number" then return end
+            if type(r) ~= "string" then r = a end
+            if type(spec.onMoved) == "function" then pcall(spec.onMoved, { a, r, x, y }) end
+        end)
+        local h = {}
+        function h.show(on)
+            if not unlocked() then return false, "lockdown" end
+            local called
+            if on == true then called = method(grip, "Show") else called = method(grip, "Hide") end
+            if not called then return false, "refused" end
+            return true
+        end
+        return h
+    end
+
     return c
 end
 

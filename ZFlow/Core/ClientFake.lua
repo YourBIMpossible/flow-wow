@@ -2863,6 +2863,85 @@ function ns.make.fakeClient(opts)
         for k, v in pairs(row) do out[k] = v end
         return out
     end
+    -- S15 click slots and S29 move handle (P-KEYS slice C). clickRow keeps
+    -- every row it makes in c.clickRows: h.spec, h.slots[i] = { attrs,
+    -- shown, icon }, h.shown (the row), h.point and h.given (every set
+    -- asked, in order). Each set is also kept in c.secureGiven under the
+    -- button name spec.name .. i, so secureMacros() sees it. Not made
+    -- (nil) with frames off or while combatLockdown() is not a plain false;
+    -- set, show and place answer false, "lockdown" then. moveHandle keeps
+    -- spec in c.moveHandles[target] for a target a row was made under, and
+    -- dragHandle(target, point) stands in for a drag that ends at point:
+    -- false, "lockdown" in a fight, false, "absent" with no handle, else
+    -- onMoved(point) and true.
+    c.clickRows = {}
+    c.moveHandles = {}
+    function c.clickRow(spec)
+        if s.noFrames then return nil end
+        if type(spec) ~= "table" or type(spec.name) ~= "string" then return nil end
+        if type(spec.count) ~= "number" or spec.count < 1 then return nil end
+        if c.combatLockdown() ~= false then return nil end
+        local h = { spec = spec, slots = {}, shown = false, point = nil, given = {} }
+        for i = 1, spec.count do h.slots[i] = { attrs = {}, shown = false, icon = nil } end
+        function h.set(i, attr, value)
+            local slot = h.slots[i]
+            if slot == nil then return false, "absent" end
+            h.given[#h.given + 1] = { slot = i, attr = attr, value = value }
+            c.secureGiven[#c.secureGiven + 1] = { name = spec.name .. i, attr = attr, value = value }
+            if c.combatLockdown() ~= false then return false, "lockdown" end
+            if secureFail[attr] then return false, "refused" end
+            slot.attrs[attr] = value
+            return true
+        end
+        function h.get(i, attr)
+            local slot = h.slots[i]
+            if slot == nil then return nil end
+            return slot.attrs[attr]
+        end
+        function h.show(i, on)
+            if i ~= 0 and h.slots[i] == nil then return false, "absent" end
+            if c.combatLockdown() ~= false then return false, "lockdown" end
+            if i == 0 then h.shown = on == true else h.slots[i].shown = on == true end
+            return true
+        end
+        function h.isShown(i)
+            if i == 0 then return h.shown end
+            local slot = h.slots[i]
+            return slot ~= nil and slot.shown
+        end
+        function h.icon(i, texture)
+            local slot = h.slots[i]
+            if slot == nil or texture == nil then return false end
+            slot.icon = texture
+            return true
+        end
+        function h.place(point)
+            if type(point) ~= "table" then return false, "refused" end
+            if c.combatLockdown() ~= false then return false, "lockdown" end
+            h.point = { point[1], point[2], point[3], point[4] }
+            return true
+        end
+        c.clickRows[#c.clickRows + 1] = h
+        return h
+    end
+    function c.moveHandle(spec)
+        if type(spec) ~= "table" or type(spec.target) ~= "string" then return nil end
+        local found = false
+        for _, row in ipairs(c.clickRows) do
+            if row.spec.name == spec.target then found = true end
+        end
+        if not found then return nil end
+        c.moveHandles[spec.target] = spec
+        return { show = function() return true end }
+    end
+    function c.dragHandle(target, point)
+        local spec = c.moveHandles[target]
+        if spec == nil then return false, "absent" end
+        if c.combatLockdown() ~= false then return false, "lockdown" end
+        if type(spec.onMoved) == "function" then pcall(spec.onMoved, point) end
+        return true
+    end
+
     return c
 end
 

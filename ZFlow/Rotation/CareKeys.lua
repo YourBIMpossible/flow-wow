@@ -163,6 +163,30 @@ function CK.Friends(client)
     return list
 end
 
+-- CK.FromView(client, view) -> the care plan for a driver view, or nil:
+-- the same plan the care key is given (S15 click slots, P-KEYS slice C,
+-- show it on a slot of their own). Reads only.
+function CK.FromView(client, view)
+    if type(client) ~= "table" or type(view) ~= "table" or view.pack ~= true then return nil end
+    if type(client.class) ~= "function" or type(ns.Packs) ~= "table" then return nil end
+    local okClass, class = pcall(client.class)
+    if not okClass or type(class) ~= "string" then return nil end
+    local pack = ns.Packs[class]
+    local snap = view.snapshot
+    if type(pack) ~= "table" or type(snap) ~= "table" then return nil end
+    local s = setmetatable({ friends = CK.Friends(client) }, { __index = snap })
+    local friend = R.FriendHeal(s, pack)
+    local altItem = nil
+    local hi = snap.healItem
+    if type(hi) == "table" then
+        altItem = hi.alt
+        if altItem == nil then altItem = hi.stone end
+        if altItem == nil then altItem = hi.potion end
+    end
+    if type(altItem) ~= "number" then altItem = nil end
+    return CK.Plan(pack, s, friend, altItem)
+end
+
 -- What the button holds, as text.
 local function holds(held)
     held = type(held) == "table" and held or {}

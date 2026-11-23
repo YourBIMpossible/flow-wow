@@ -41,6 +41,10 @@ local KIND = {
     -- lootLine (N55): the item of anyone's loot line, never the looter.
     parse = { "ownLoot", "auctionOutcome", "lootLine" },
 }
+-- S15 click slots and S29 move handle (P-KEYS slice C): a row of secure
+-- buttons, each cast only on the player click, and the grip that moves it.
+KIND.show[#KIND.show + 1] = "clickRow"
+KIND.show[#KIND.show + 1] = "moveHandle"
 
 -- Every read, and whether the capture asks it (true) or not (false).
 local READS = {

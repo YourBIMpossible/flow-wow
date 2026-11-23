@@ -31,7 +31,7 @@ local function start(opts)
     c.setScreen(1000, 600)
     c.setPlayerBuffs({})
     for name, id in pairs(IDS) do
-        if not (opts.late and name == "Renew") then c.setSpellId(name, id) end
+        if name ~= opts.late then c.setSpellId(name, id) end
         c.setSpell(id, { known = true, usable = true })
         c.setSpellCooldown(id, false)
         c.setSpellTexture(id, "tex:" .. name)
@@ -145,13 +145,15 @@ tests["click slots: the lock not known waits, then sets when it is a plain false
 end
 
 tests["click slots: late spell data fills the slot when it arrives"] = function(t)
-    local c = start({ on = true, late = true })
+    local late = "Power Word: Fortitude"
+    local c = start({ on = true, late = late })
     local h = slotRow(c)
     if not h then t.ok(false, "no row"); return end
-    t.eq(slot(h, "ctrl").attrs.spell, nil, "Renew not known yet")
-    c.setSpellId("Renew", IDS["Renew"]); c.advance(3, 5)
-    local care = slot(h, "care")
-    t.eq(care.attrs.spell, "Flash Heal")
+    t.ok(slot(h, "key").attrs.spell ~= late, "not suggested while its id is not known")
+    c.setSpellId(late, IDS[late]); c.advance(3, 5)
+    t.eq(slot(h, "key").attrs.spell, late, "on the key slot once it is known")
+    t.eq(slot(h, "key").icon, "tex:" .. late)
+    t.eq(slot(h, "care").attrs.spell, "Flash Heal")
     noBindsNoMacros(t, c)
 end
 

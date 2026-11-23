@@ -154,6 +154,8 @@ G.FRAMES = {
     { key = "RotationIcon" },
     { key = "QuestArrow", middle = true },
     { key = "ProfArrow", middle = true },
+    -- S15 click slots (P-KEYS slice C): made only once switched on.
+    { key = "ClickSlots" },
 }
 
 function G.Declare(k)
@@ -227,6 +229,15 @@ function G.Declare(k)
         end
         tries = tries + 1
         if missing and tries < G.TRIES then ctx.sched:after(G.NAME, G.RETRY, hook) end
+    end
+
+    -- A frame made after start (the click slots): look for every frame again
+    -- at once, with the tries counted from zero.
+    function api.again()
+        if not ctx then return end
+        ctx.sched:off(G.NAME)
+        tries = 0
+        hook()
     end
 
     k:Module({
