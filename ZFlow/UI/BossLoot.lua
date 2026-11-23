@@ -350,7 +350,9 @@ function B.Rows(found, facts, who)
                     end
                 end
             end
-            local can = type(use) == "table" and use.can or nil
+            -- Not `x and v or nil`: that turns "cannot use" into "not known".
+            local can
+            if type(use) == "table" then can = use.can end
             if isGear and can ~= false then
                 if can ~= true then
                     row.state = "unsure"
