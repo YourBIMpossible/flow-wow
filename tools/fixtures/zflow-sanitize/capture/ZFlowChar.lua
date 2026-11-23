@@ -21,6 +21,15 @@ ZFlowCharDB = {
 ["kills"] = 5,
 },
 },
+["records"] = {
+{
+["target"] = "Fenwick",
+["at"] = 1700000150,
+["casts"] = {
+["Wrath"] = 4,
+},
+}, -- [1]
+},
 },
 },
 ["export"] = {
