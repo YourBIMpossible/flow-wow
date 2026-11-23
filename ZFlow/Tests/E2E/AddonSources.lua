@@ -66,6 +66,12 @@ local function diagLine(c)
     return ""
 end
 
+-- A field of the first node, or nil.
+local function first(list, key)
+    if type(list) ~= "table" or type(list[1]) ~= "table" then return nil end
+    return list[1][key]
+end
+
 local function has(text, part) return type(text) == "string" and text:find(part, 1, true) ~= nil end
 
 local function holds(v, text, depth)
@@ -92,8 +98,8 @@ tests["addon sources 236: both loaded at login: nodes on this map, the attunemen
     local c, addon = start({ gm = true, attune = true })
     local got = nodes(addon)
     t.eq(type(got) == "table" and #got or got, 2, "the two nodes on this map")
-    t.eq(type(got) == "table" and got[1].source or nil, GM, "each node says where it came from")
-    t.eq(type(got) == "table" and got[1].node or nil, "Copper Vein")
+    t.eq(first(got, "source"), GM, "each node says where it came from")
+    t.eq(first(got, "node"), "Copper Vein")
     t.eq(advice(addon), "Attunements under way: Onyxia 40%.",
         "done (100%) and not known are left out")
     local line = diagLine(c)
@@ -105,7 +111,7 @@ tests["addon sources 236: both loaded at login: nodes on this map, the attunemen
     c.fire("ZONE_CHANGED_NEW_AREA")
     got = nodes(addon)
     t.eq(type(got) == "table" and #got or got, 1, "the new map's node")
-    t.eq(type(got) == "table" and got[1].node or nil, "Tin Vein")
+    t.eq(first(got, "node"), "Tin Vein")
 end
 
 tests["addon sources 236: loaded late: ADDON_LOADED of each after login brings it in"] = function(t)

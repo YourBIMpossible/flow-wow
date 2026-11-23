@@ -139,6 +139,7 @@ return {
         "Nav/RepairStep.lua",
         "Nav/QuestSource.lua",
         "Nav/QuestRead.lua",
+        "Nav/AddonSources.lua",
         "Nav/Rides.lua",
         "Nav/TravelSpells.lua",
         "Nav/TravelIcon.lua",

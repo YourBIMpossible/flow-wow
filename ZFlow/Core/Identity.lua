@@ -17,4 +17,8 @@ ns.id = {
     predecessor = "Flow",         -- the addon this one replaces; never loaded alongside
     predecessorDB = "FlowDB",     -- its account table: a second sign that it is loaded
     predecessorCharDB = "FlowCharDB", -- its character table (read by the import only)
+    -- N67: other add-ons read at runtime only when they are loaded; never
+    -- required, never written, nothing of theirs saved (Nav/AddonSources.lua).
+    gatherMate = "GatherMate2",
+    attune = "Attune",
 }

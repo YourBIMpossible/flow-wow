@@ -79,7 +79,8 @@ tests["client gatherMateNodes: at most GATHERMATE_NODES_MAX rows"] = function(t)
     local many = {}
     for i = 1, 600 do many[i] = { pack((i % 100) / 100, 0.5), 1 } end
     local rows = ns.make.client({ GatherMate2 = gatherMate({ [MAP] = { Mining = many } }) }).gatherMateNodes(MAP)
-    t.eq(type(rows) == "table" and #rows or nil, 500)
+    t.eq(type(rows), "table")
+    if type(rows) == "table" then t.eq(#rows, 500) end
 end
 
 -- A made-up Attune: its list and this character's progress, keyed by a

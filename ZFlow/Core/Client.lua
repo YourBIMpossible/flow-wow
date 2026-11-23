@@ -6899,6 +6899,93 @@ function ns.make.client(env)
         return h
     end
     -- ------------------------------------------------------------ end N57
+
+    -- ------------------------------------------------------------ N67
+    -- Other add-ons' data, read at runtime only (research items 16 and 26).
+    -- Nothing is written to them, and nothing of theirs is copied into this
+    -- add-on's files or saved data: reading an installed add-on's tables
+    -- while the game runs copies none of its code or database. A missing
+    -- add-on, a shape not as expected, or a read that raises is nil.
+    local function unitNumber(v)
+        return type(v) == "number" and v == v and v >= 0 and v <= 1
+    end
+
+    -- GatherMate2's nodes on one map (a uiMapID), or nil:
+    --   { { kind, x, y, node } }  kind: one of GATHERMATE_KINDS; x, y 0..1;
+    --                             node: its name, nil when not said
+    -- Read through GatherMate2's global object GatherMate2: the methods
+    -- GetNodesForZone(map, kind) (an iterator of coord, nodeId),
+    -- DecodeLoc(coord) -> x, y and GetNameForNode(kind, nodeId) -> name.
+    -- First guesses from GatherMate2's public source as the research note
+    -- names it; not seen in game on 16001. At most GATHERMATE_NODES_MAX
+    -- rows. A map with none, GatherMate2 there: an empty list.
+    local GATHERMATE_KINDS = { "Mining", "Herb Gathering", "Fishing", "Treasure" }
+    local GATHERMATE_NODES_MAX = 500
+    function c.gatherMateNodes(map)
+        if type(map) ~= "number" then return nil end
+        local gm = env.GatherMate2
+        if type(gm) ~= "table" then return nil end
+        local out, any = {}, false
+        local ok = pcall(function()
+            for _, kind in ipairs(GATHERMATE_KINDS) do
+                local okI, iter, state, init = method(gm, "GetNodesForZone", map, kind)
+                if okI and type(iter) == "function" then
+                    any = true
+                    for coord, nodeId in iter, state, init do
+                        if #out >= GATHERMATE_NODES_MAX then return end
+                        local okL, x, y = method(gm, "DecodeLoc", coord)
+                        if okL and unitNumber(x) and unitNumber(y) then
+                            local row = { kind = kind, x = x, y = y }
+                            local okN, name = method(gm, "GetNameForNode", kind, nodeId)
+                            if okN and type(name) == "string" and name ~= "" then row.node = name end
+                            out[#out + 1] = row
+                        end
+                    end
+                end
+            end
+        end)
+        if not ok or not any then return nil end
+        return out
+    end
+
+    -- This character's attunements as Attune keeps them, or nil:
+    --   { { id, name, percent } }  percent 0..100, nil when not known
+    -- Read from Attune's globals: Attune_Data.attunes (rows with ID and
+    -- NAME) and its saved data Attune_DB.toons["<name>-<realm>"].attuned[ID].
+    -- The character's key is made here only to look the row up; it is never
+    -- handed out. First guesses from Attune (wow-forever @6f488c1,
+    -- AttuneData.lua) as the research note names it; not seen in game.
+    -- At most ATTUNE_ROWS_MAX rows.
+    local ATTUNE_ROWS_MAX = 60
+    function c.attuneProgress()
+        local data, db = env.Attune_Data, env.Attune_DB
+        if type(data) ~= "table" or type(db) ~= "table" then return nil end
+        local ok, out = pcall(function()
+            local list, toons = data.attunes, db.toons
+            if type(list) ~= "table" or type(toons) ~= "table" then return nil end
+            local attuned
+            local okN, name = call(env.UnitName, "player")
+            local okR, realm = call(env.GetRealmName)
+            if okN and okR and type(name) == "string" and type(realm) == "string" then
+                local toon = toons[name .. "-" .. realm]
+                if type(toon) == "table" and type(toon.attuned) == "table" then attuned = toon.attuned end
+            end
+            local rows = {}
+            for _, a in ipairs(list) do
+                if #rows >= ATTUNE_ROWS_MAX then break end
+                if type(a) == "table" and type(a.ID) == "number" and type(a.NAME) == "string" and a.NAME ~= "" then
+                    local row = { id = a.ID, name = a.NAME }
+                    local p = attuned and attuned[a.ID]
+                    if type(p) == "number" and p == p and p >= 0 and p <= 100 then row.percent = p end
+                    rows[#rows + 1] = row
+                end
+            end
+            return rows
+        end)
+        if not ok or type(out) ~= "table" then return nil end
+        return out
+    end
+    -- ------------------------------------------------------------ end N67
     return c
 end
 
