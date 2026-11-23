@@ -96,17 +96,28 @@ local function settingRow(e, found)
     }
 end
 
-function O.Rows(k)
+-- keys (optional): UI/SettingsKeys.lua's rows, shown on their topic and
+-- when a search finds them (N57).
+function O.Rows(k, keys)
     local page = ns.SettingsPage.Page(k)
     local rows = {
         { kind = "search", label = O.SEARCH, value = page.query or "", clear = O.CLEAR },
         { kind = "topics", topics = page.topics },
     }
+    local keyRows
+    if type(keys) == "table" then
+        local SK = ns.SettingsKeys
+        local onTopic = page.mode ~= "search" and page.topic ~= nil and page.topic.id == SK.GROUP
+        local found = page.mode == "search" and keys.matches(page.query)
+        if onTopic or found then keyRows = keys.rows() end
+    end
     if page.mode == "search" then
-        if #page.results == 0 then
+        local n = #page.results
+        if keyRows then n = n + #ns.SettingsKeys.SLOTS end
+        if n == 0 then
             rows[#rows + 1] = { kind = "note", text = page.none }
         else
-            rows[#rows + 1] = { kind = "group", text = #page.results .. O.FOUND .. '"' .. page.query .. '"' }
+            rows[#rows + 1] = { kind = "group", text = n .. O.FOUND .. '"' .. page.query .. '"' }
             for _, e in ipairs(page.results) do rows[#rows + 1] = settingRow(e, true) end
         end
     elseif page.topic then
@@ -118,6 +129,10 @@ function O.Rows(k)
     else
         rows[#rows + 1] = { kind = "note", text = O.NONE }
     end
+    if keyRows then
+        rows[#rows + 1] = { kind = "section", text = ns.SettingsKeys.SECTION }
+        for _, r in ipairs(keyRows) do rows[#rows + 1] = r end
+    end
     return rows, page
 end
 
@@ -125,6 +140,12 @@ function O.Declare(k)
     local api = {}
     local page, ctx, none
     local cancels, watched = {}, {}
+    -- N57: the rotation key's rows; the text page reads them too.
+    local keys
+    if ns.SettingsKeys then
+        keys = ns.SettingsKeys.New(k)
+        k.keysPage = keys
+    end
 
     local act, nav, draw
     -- A row declared after login is followed too, from the next draw on.
@@ -142,7 +163,7 @@ function O.Declare(k)
     draw = function(statusText)
         if not page or not ctx then return end
         watch()
-        local rows, view = O.Rows(k)
+        local rows, view = O.Rows(k, keys)
         page.draw(rows, act, nav)
         if statusText then
             page.status(statusText)
@@ -175,6 +196,10 @@ function O.Declare(k)
             if not P.Goto(k, value) then return false end
         elseif kind == "search" then
             P.Find(k, value)
+        elseif kind == "action" then
+            -- A key row's button (N57): it says what it did and redraws.
+            if not keys then return false end
+            return keys.press(value)
         else
             return false
         end
@@ -236,6 +261,7 @@ function O.Declare(k)
         provides = { Open = api.open },
         start = function(c)
             ctx = c
+            if keys then keys.attach(c.client, function(text) draw(text) end) end
             -- A value changed elsewhere (/zflow setting) shows at once on an
             -- open page: draw() follows every row it has drawn.
             if ensure() then watch() end

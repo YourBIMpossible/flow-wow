@@ -114,6 +114,13 @@ function SP.Lines(k)
             if section.name then lines[#lines + 1] = " " .. section.name end
             for i = 1, #section.rows do lines[#lines + 1] = rowLine(section.rows[i], page.loaded, false) end
         end
+        -- N57: the rotation key's bindings, read from the game; set on the
+        -- Options page only (UI/SettingsKeys.lua).
+        local SK, keys = ns.SettingsKeys, k.keysPage
+        if SK and type(keys) == "table" and page.topic.id == SK.GROUP then
+            lines[#lines + 1] = " " .. SK.SECTION
+            for _, line in ipairs(keys.lines()) do lines[#lines + 1] = "  " .. line end
+        end
     end
     lines[#lines + 1] = ""
     lines[#lines + 1] = "To see a topic, type " .. tostring(id.slash) .. " " .. SP.WORD .. " " .. SP.TOPIC_WORD

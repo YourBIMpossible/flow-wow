@@ -2301,6 +2301,126 @@ function ns.make.fakeClient(opts)
             return h
         end
     end
+    -- N57: the game's key bindings and the key-capture overlay, as the real
+    -- client's wrappers (Core/Client.lua, end). Added last.
+    --   c.setBindings({ { key, action }, ... })   the game's binding set as
+    --     loaded: live and saved alike, in that order
+    --   c.bindingMap() / c.savedBindingMap()   key -> action, copies: what
+    --     is bound now, and what SaveBindings last kept (a reload reads it)
+    --   c.overrideKeys()   key -> button, this session's override bindings
+    --   c.bindingCalls()   the names of the binding writes that went through
+    --   c.setBindingReads(false)   bindingKeys and bindingAction answer nil
+    --     (the client does not say); true: they answer again
+    --   c.setBindingWriteFault(n)  the next n setBindingClick calls raise
+    --   c.pressKey(chord) -> true when an open overlay took it; "ESCAPE"
+    --     cancels it.  c.keyCaptureOpen() -> true while one waits
+    -- The writes refuse with "lockdown" while combatLockdown() is not false.
+    do
+        local live, saved, order, overrides, calls = {}, {}, {}, {}, {}
+        local unread, faults = false, 0
+        local capture
+        local function copy(t)
+            local out = {}
+            for k2, v in pairs(t) do out[k2] = v end
+            return out
+        end
+        local function unbind(key)
+            live[key] = nil
+            for i = #order, 1, -1 do
+                if order[i] == key then table.remove(order, i) end
+            end
+        end
+        local function bind(key, action)
+            unbind(key)
+            live[key] = action
+            order[#order + 1] = key
+        end
+        local function locked() return c.combatLockdown() ~= false end
+        function c.setBindings(list)
+            live, saved, order = {}, {}, {}
+            for _, pair in ipairs(list or {}) do
+                bind(pair[1], pair[2])
+                saved[pair[1]] = pair[2]
+            end
+        end
+        function c.bindingMap() return copy(live) end
+        function c.savedBindingMap() return copy(saved) end
+        function c.overrideKeys() return copy(overrides) end
+        function c.bindingCalls() return copy(calls) end
+        function c.setBindingReads(on) unread = (on == false) end
+        function c.setBindingWriteFault(n) faults = tonumber(n) or 0 end
+
+        function c.bindingKeys(action)
+            if unread or type(action) ~= "string" then return nil end
+            local out = {}
+            for _, key in ipairs(order) do
+                if live[key] == action then out[#out + 1] = key end
+            end
+            return out
+        end
+        function c.bindingAction(key)
+            if unread or type(key) ~= "string" or key == "" then return nil end
+            return live[key] or ""
+        end
+        function c.setBindingClick(key, button)
+            if locked() then return false, "lockdown" end
+            if faults > 0 then
+                faults = faults - 1
+                error("SetBindingClick failed (test)", 0)
+            end
+            bind(key, "CLICK " .. tostring(button) .. ":LeftButton")
+            calls[#calls + 1] = "setBindingClick"
+            return true
+        end
+        function c.clearBinding(key)
+            if locked() then return false, "lockdown" end
+            unbind(key)
+            calls[#calls + 1] = "clearBinding"
+            return true
+        end
+        function c.saveBindings()
+            if locked() then return false, "lockdown" end
+            saved = copy(live)
+            calls[#calls + 1] = "saveBindings"
+            return true
+        end
+        function c.overrideBindingClick(key, button)
+            if locked() then return false, "lockdown" end
+            overrides[key] = button
+            calls[#calls + 1] = "overrideBindingClick"
+            return true
+        end
+        function c.clearOverrideKeys()
+            if locked() then return false, "lockdown" end
+            overrides = {}
+            calls[#calls + 1] = "clearOverrideKeys"
+            return true
+        end
+
+        function c.keyCapture()
+            local h = { waiting = false }
+            function h.start(text, onKey, onCancel)
+                h.waiting, h.text, h.onKey, h.onCancel = true, text, onKey, onCancel
+                return true
+            end
+            function h.stop() h.waiting = false end
+            function h.open() return h.waiting end
+            capture = h
+            return h
+        end
+        function c.keyCaptureOpen() return capture ~= nil and capture.waiting == true end
+        function c.pressKey(chord)
+            if not c.keyCaptureOpen() then return false end
+            local h = capture
+            h.waiting = false
+            if chord == "ESCAPE" then
+                if type(h.onCancel) == "function" then h.onCancel() end
+            elseif type(h.onKey) == "function" then
+                h.onKey(chord)
+            end
+            return true
+        end
+    end
     return c
 end
 

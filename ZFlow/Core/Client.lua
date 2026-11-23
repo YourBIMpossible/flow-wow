@@ -4163,6 +4163,21 @@ function ns.make.client(env)
                         else
                             label(b, tostring(r.value or ""), 224, y - 2)
                         end
+                    elseif r.kind == "actions" then
+                        -- N57: a label, what it holds, and buttons that ask
+                        -- nav("action", id). { kind = "actions", key, label,
+                        -- shown, settable, why, buttons = { { text, id,
+                        -- enabled }, ... } }
+                        label(b, r.shown ~= nil and (text .. ": " .. tostring(r.shown)) or text, 16, y - 2)
+                        local x = 220
+                        for _, a in ipairs(type(r.buttons) == "table" and r.buttons or {}) do
+                            local id = a.id
+                            local width = 16 + 7 * #tostring(a.text or "")
+                            button(b, tostring(a.text or ""), x, y, width, function()
+                                if type(nav) == "function" then pcall(nav, "action", id) end
+                            end, false, a.enabled == true)
+                            x = x + width + 4
+                        end
                     else
                         label(b, text .. ": " .. tostring(r.shown or ""), 16, y - 2)
                     end
@@ -6514,6 +6529,194 @@ function ns.make.client(env)
         return nil
     end
     -- ------------------------------------------------------------ end N55
+
+    -- ---------------------------------------------------------- N57 keys
+    -- Key bindings for the rotation key (lead section 249 item 2; Plexy's
+    -- note 1 of section 250, from CLIENT-NAMES-16001, wowless's 1.60.1 API
+    -- list and the game's own Blizzard_Keybindings.lua). Added at the end:
+    -- no handle above is changed. Called only from the settings page on the
+    -- player's own key press (UI/SettingsKeys.lua); nothing here binds on
+    -- load, on an event or on a timer.
+    --   reads (allowed in combat; nil when the client does not say):
+    --   c.bindingKeys(action) -> { key, ... }   GetBindingKey(action, nil,
+    --       context); an empty list when none is bound
+    --   c.bindingAction(key, forAction) -> action text, "" for none;
+    --       GetBindingAction(key, nil, context) - in wowless and the game's
+    --       panel, never asked of 16001 (a capture field)
+    --   The context is C_KeyBindings.GetBindingContextForAction(action),
+    --   passed when the client gives one (Plexy, change 1).
+    --   writes (acting; each refused with "lockdown" while InCombatLockdown
+    --   is not a plain false - not known counts as locked; false and why,
+    --   never an error):
+    --   c.setBindingClick(key, button) -> SetBindingClick(key, button, "LeftButton")
+    --   c.clearBinding(key, forAction) -> SetBinding(key, nil, context)
+    --   c.saveBindings()               -> SaveBindings(GetCurrentBindingSet())
+    --   c.overrideBindingClick(key, button) -> SetOverrideBindingClick(owner,
+    --       true, key, button, "LeftButton"): for this session only, the
+    --       game's own binding kept under it; owner is a frame of the client's
+    --   c.clearOverrideKeys()          -> ClearOverrideBindings(owner)
+    --   the overlay (show):
+    --   c.keyCapture(spec) -> h | nil   spec = { name } a full-screen button
+    --       that takes the keyboard (legacy Flow's Modules/Settings.lua:920:
+    --       EnableKeyboard, SetPropagateKeyboardInput(false), OnKeyDown)
+    --     h.start(text, onKey, onCancel) -> true   shows it with text; the
+    --       next key press: Escape -> onCancel(); a bare modifier
+    --       (IsKeyPressIgnoredForBinding, else the modifier keys) waits;
+    --       any other -> onKey(chord), the chord from
+    --       CreateKeyChordStringUsingMetaKeyState(key), else ALT-CTRL-SHIFT-
+    --       from the modifiers held. It hides itself before either is called.
+    --     h.stop()   hides it;  h.open() -> true while it waits
+    --   Mouse buttons are not taken. First guesses: not seen in game.
+    local function bindingContext(action)
+        local group = env.C_KeyBindings
+        if type(action) ~= "string" or type(group) ~= "table" then return nil end
+        local ok, context = call(group.GetBindingContextForAction, action)
+        if not ok or context == nil or hidden(context) then return nil end
+        return context
+    end
+    -- true only when the lock is read and is plainly off.
+    local function unlocked()
+        local ok, locked = call(env.InCombatLockdown)
+        return ok and locked == false
+    end
+    local function bindingCall(fn, ...)
+        if not unlocked() then return false, "lockdown" end
+        if type(fn) ~= "function" then return false, "absent" end
+        local ok, result = pcall(fn, ...)
+        if not ok then return false, tostring(result) end
+        if result == false then return false, "refused" end
+        return true
+    end
+
+    function c.bindingKeys(action)
+        if type(action) ~= "string" then return nil end
+        local context = bindingContext(action)
+        local got
+        if context ~= nil then
+            got = { call(env.GetBindingKey, action, nil, context) }
+        else
+            got = { call(env.GetBindingKey, action) }
+        end
+        if not got[1] then return nil end
+        local keys = {}
+        for i = 2, table.maxn(got) do
+            local key = got[i]
+            if type(key) == "string" and key ~= "" and not hidden(key) then keys[#keys + 1] = key end
+        end
+        return keys
+    end
+
+    function c.bindingAction(key, forAction)
+        if type(key) ~= "string" or key == "" then return nil end
+        local context = bindingContext(forAction)
+        local ok, action
+        if context ~= nil then
+            ok, action = call(env.GetBindingAction, key, nil, context)
+        else
+            ok, action = call(env.GetBindingAction, key)
+        end
+        if not ok or hidden(action) then return nil end
+        if action == nil then return "" end
+        if type(action) ~= "string" then return nil end
+        return action
+    end
+
+    function c.setBindingClick(key, button)
+        if type(key) ~= "string" or type(button) ~= "string" then return false, "no key" end
+        return bindingCall(env.SetBindingClick, key, button, "LeftButton")
+    end
+
+    function c.clearBinding(key, forAction)
+        if type(key) ~= "string" then return false, "no key" end
+        local context = bindingContext(forAction)
+        if context ~= nil then return bindingCall(env.SetBinding, key, nil, context) end
+        return bindingCall(env.SetBinding, key)
+    end
+
+    function c.saveBindings()
+        if not unlocked() then return false, "lockdown" end
+        local ok, set = call(env.GetCurrentBindingSet)
+        if not ok or type(set) ~= "number" then return false, "the game did not say which binding set is in use" end
+        return bindingCall(env.SaveBindings, set)
+    end
+
+    local overrideOwner
+    function c.overrideBindingClick(key, button)
+        if type(key) ~= "string" or type(button) ~= "string" then return false, "no key" end
+        if not unlocked() then return false, "lockdown" end
+        if not overrideOwner then overrideOwner = newFrame() end
+        if not overrideOwner then return false, "no frame" end
+        return bindingCall(env.SetOverrideBindingClick, overrideOwner, true, key, button, "LeftButton")
+    end
+
+    function c.clearOverrideKeys()
+        if not unlocked() then return false, "lockdown" end
+        if not overrideOwner then return true end
+        return bindingCall(env.ClearOverrideBindings, overrideOwner)
+    end
+
+    local MODIFIER_KEYS = { LSHIFT = true, RSHIFT = true, LCTRL = true, RCTRL = true, LALT = true, RALT = true,
+                            LMETA = true, RMETA = true, UNKNOWN = true }
+    local function bareModifier(key)
+        local ok, ignored = call(env.IsKeyPressIgnoredForBinding, key)
+        if ok then return ignored == true end
+        return MODIFIER_KEYS[key] == true
+    end
+    local function chordOf(key)
+        local ok, chord = call(env.CreateKeyChordStringUsingMetaKeyState, key)
+        if ok and type(chord) == "string" and chord ~= "" and not hidden(chord) then return chord end
+        local prefix = ""
+        for _, m in ipairs({ { env.IsAltKeyDown, "ALT-" }, { env.IsControlKeyDown, "CTRL-" },
+                             { env.IsShiftKeyDown, "SHIFT-" } }) do
+            local okM, down = call(m[1])
+            if okM and down == true then prefix = prefix .. m[2] end
+        end
+        return prefix .. key
+    end
+
+    function c.keyCapture(spec)
+        spec = type(spec) == "table" and spec or {}
+        local ok, f = call(env.CreateFrame, "Button", spec.name, env.UIParent)
+        if not ok or type(f) ~= "table" then return nil end
+        method(f, "SetAllPoints", env.UIParent)
+        method(f, "SetFrameStrata", "FULLSCREEN_DIALOG")
+        method(f, "EnableMouse", true)
+        local okT, label = method(f, "CreateFontString", nil, "OVERLAY", "GameFontNormalLarge")
+        if not okT then label = nil end
+        if label then method(label, "SetPoint", "CENTER", f, "CENTER", 0, 0) end
+        method(f, "Hide")
+        local h, waiting, onKey, onCancel = {}, false, nil, nil
+        local function finish()
+            waiting = false
+            method(f, "EnableKeyboard", false)
+            method(f, "Hide")
+        end
+        method(f, "SetScript", "OnKeyDown", function(_, key)
+            if not waiting or type(key) ~= "string" or hidden(key) then return end
+            if key == "ESCAPE" then
+                local cancel = onCancel
+                finish()
+                if type(cancel) == "function" then pcall(cancel) end
+                return
+            end
+            if bareModifier(key) then return end
+            local chord, take = chordOf(key), onKey
+            finish()
+            if type(take) == "function" then pcall(take, chord) end
+        end)
+        function h.start(text, keyFn, cancelFn)
+            onKey, onCancel, waiting = keyFn, cancelFn, true
+            if label then method(label, "SetText", type(text) == "string" and text or "") end
+            method(f, "EnableKeyboard", true)
+            method(f, "SetPropagateKeyboardInput", false)
+            method(f, "Show")
+            return true
+        end
+        function h.stop() finish() end
+        function h.open() return waiting end
+        return h
+    end
+    -- ------------------------------------------------------------ end N57
     return c
 end
 
