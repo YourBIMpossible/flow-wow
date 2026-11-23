@@ -12,13 +12,16 @@
 -- Setting: "bank.list" (bool, on by default); the row is the lead's to add.
 -- Until it is there the list is on.
 -- Reads: client.watchBank / BANKFRAME_OPENED / BANKFRAME_CLOSED,
+-- Reservations.CHANGED (internal, sent by a source),
 -- client.bagItems(), client.itemInfo(item) (CLIENT NEED, as the sell list).
 -- Saved data (read only): char settings.sell.never, account
 -- settings.banker.rules ({ [item] = "bank" | "carry" }, imported from Flow).
 -- grants: what the bags hold for the player's goals, from one Reservations
 -- evaluation (Reservations.HeldIn(grants, "bags")). The prompt and the panel
--- of one bank visit share that evaluation. When it is unavailable nothing is
--- shown as held, and the list says the reservations are not known.
+-- of one bank visit share that evaluation; a Reservations.CHANGED while the
+-- bank is open makes a new one and lists again, once (section 219). When it
+-- is unavailable nothing is shown as held, and the list says the
+-- reservations are not known.
 -- Not tested in game.
 local _, ns = ...
 
@@ -147,9 +150,12 @@ function BankList.Declare(k)
                     pcall(advisor.Remove, BankList.PROMPT_ID)
                 end
             end
-            ctx.bus:on(BankList.NAME, "PLAYER_ENTERING_WORLD", function() prompt() end)
-            ctx.bus:on(BankList.NAME, "BANKFRAME_OPENED", function()
-                -- One evaluation for the prompt and the panel of this visit.
+            -- The bank window is open: set on BANKFRAME_OPENED, cleared on
+            -- BANKFRAME_CLOSED.
+            local open = false
+            -- One evaluation for the prompt and the panel: made when the bank
+            -- opens, and again when the reservations change while it is open.
+            local function list()
                 local r = BankList.Current(ctx.use)
                 prompt(r)
                 if ctx.settings:get(BankList.SETTING) == false then
@@ -163,10 +169,23 @@ function BankList.Declare(k)
                     panel.setLines(lines)
                     panel.show(true)
                 end
+            end
+            ctx.bus:on(BankList.NAME, "PLAYER_ENTERING_WORLD", function() prompt() end)
+            ctx.bus:on(BankList.NAME, "BANKFRAME_OPENED", function()
+                open = true
+                list()
             end)
             ctx.bus:on(BankList.NAME, "BANKFRAME_CLOSED", function()
+                open = false
                 hide()
                 prompt()      -- the bags may have changed at the bank
+            end)
+            -- A source's claims changed (lead section 219): with the bank
+            -- open, the list and the prompt are made again, once. With the
+            -- bank closed nothing is drawn.
+            ctx.bus:on(BankList.NAME, ns.Reservations.CHANGED, function()
+                if not open then return end
+                list()
             end)
             -- The bags changed away from the bank too: the prompt follows
             -- them, and goes when there is nothing left to bank. A first

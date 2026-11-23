@@ -12,7 +12,9 @@ local _, ns = ...
 --   Reservations.Changed(k)         a source's claims changed (a goal added
 --                                   or removed): emits Reservations.CHANGED
 --                                   on k's bus, so a list that keeps an
---                                   evaluation (UI/SellList.lua) drops it
+--                                   evaluation drops it: the open sell list
+--                                   (UI/SellList.lua) and the open bank list
+--                                   (UI/BankList.lua) list again
 --
 -- One evaluation is one Resources.Take and one Resources.Resolve over every
 -- claim the sources give for that snapshot, so the bags and the bank are
