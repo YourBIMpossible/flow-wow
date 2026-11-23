@@ -4050,7 +4050,7 @@ function ns.make.client(env)
         -- value) and OnMouseUp, as legacy used them.
         local function sliderRow(b, r, text, key, can, y, changed)
             if type(r.min) ~= "number" or type(r.max) ~= "number" or type(r.value) ~= "number" then return false end
-            if not (r.max > r.min) then return false end
+            if r.max <= r.min or r.max ~= r.max or r.min ~= r.min then return false end
             local step = 1
             if type(r.step) == "number" and r.step > 0 then step = r.step end
             local w = take(b, "sliders", function()
