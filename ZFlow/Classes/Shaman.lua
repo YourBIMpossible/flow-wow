@@ -196,6 +196,7 @@ local pack = {
 
     -- Does not apply: nothing is cast on the group (totems are keys only).
     groups = {},
+    groupsNone = "A shaman's group help is its totems, keys only; Water Walking and Water Breathing are only for the moment they are needed.",
 
     heals = {
         self = { "Lesser Healing Wave", "Healing Wave" },

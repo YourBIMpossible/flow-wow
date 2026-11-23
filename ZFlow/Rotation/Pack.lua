@@ -21,6 +21,8 @@ local _, ns = ...
 --   heals        { self = { spell, ... }, hots = { ... }, lingers = { [spell] = seconds } }
 --   interrupts   { { spell, near, forms = { [formName or "none"] = true }, evidence }, ... }
 --   breakers     { { spell, types = { ROOT = true }, any, form, evidence }, ... }
+--   groupsNone, dispelsNone  optional words: why groups or dispels is empty
+--                (lead section 347); the group step shows it. Not beside rows.
 --   dispels      { { spell, types = { Poison = true }, evidence }, ... }  yours; the
 --                same rows are only shown for your group (P-PARTY)
 --   keys         { [formName or "none" or "stealth"] = { key, ctrl, shift, alt, more } }
@@ -226,6 +228,18 @@ function ns.PackCheck(pack)
         end
     end
     if pack.groupBuffs ~= nil then add(problems, "groupBuffs: the group rows are in groups now") end
+    -- Lead section 347: the reason an empty list is empty, in words, and
+    -- only where the list is empty.
+    for _, key in ipairs({ "groups", "dispels" }) do
+        local none = pack[key .. "None"]
+        if none ~= nil then
+            if type(none) ~= "string" or not none:find("%a") then
+                add(problems, "%sNone: the reason is not words", key)
+            elseif type(pack[key]) == "table" and #pack[key] > 0 then
+                add(problems, "%sNone: a reason beside rows", key)
+            end
+        end
+    end
 
     if type(pack.heals) == "table" then
         if pack.heals.self == nil then add(problems, "missing key \"heals.self\"") end

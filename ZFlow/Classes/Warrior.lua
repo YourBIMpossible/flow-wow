@@ -246,6 +246,7 @@ local pack = {
 
     -- Nothing is cast on the group (Battle Shout reaches it, but is kept for yourself).
     groups = {},
+    groupsNone = "A warrior has no buff cast on others: Battle Shout reaches the group but is kept as your own.",
 
     -- No heal of its own.
     heals = {
@@ -266,6 +267,7 @@ local pack = {
 
     -- The class removes nothing.
     dispels = {},
+    dispelsNone = "A warrior cannot remove a poison, curse, disease or magic from anyone.",
 
     keys = {
         none = noneKeys,
