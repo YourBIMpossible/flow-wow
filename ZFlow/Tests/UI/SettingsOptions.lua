@@ -1,6 +1,6 @@
--- The settings page with controls in the game's Options (UI/SettingsOptions.lua;
--- WoW/from-plexy/RESEARCH-settings-controls.md). Through the fake client's
--- optionsPage and a real kernel; hand-made rows only.
+-- The settings with controls, in the add-on's own window
+-- (UI/SettingsOptions.lua; lead section 285 item 3). Through the fake
+-- client's settingsWindow and a real kernel; hand-made rows only.
 local _, ns = ...
 
 local O = ns.SettingsOptions
@@ -37,13 +37,17 @@ local function row(c, key)
 end
 
 return {
+    -- Changed for the window (lead section 285 item 3): the search and the
+    -- topics stand beside the rows (the layout), not in them, so the
+    -- topic's name is the first row. It asserted rows[1].kind "search",
+    -- rows[2].kind "topics" and the name at rows[3].
     ["settings options: opening the page draws the search, the topics, then a control for each row of the topic"] = function(t)
         local _, c, api = start()
         t.eq(api.open(), true)
         local rows = c.optionsRows()
-        t.eq(rows[1].kind, "search")
-        t.eq(rows[2].kind, "topics")
-        t.eq(rows[3], { kind = "group", text = ns.Settings.Topics.Find("advanced").name })
+        t.eq(c.optionsLayout().search.value, "", "the search stands beside the rows")
+        t.eq(#c.optionsLayout().topics, 1, "and so do the topics")
+        t.eq(rows[1], { kind = "group", text = ns.Settings.Topics.Find("advanced").name })
         t.eq(row(c, "test.flag").kind, "toggle")
         t.eq(row(c, "test.flag").value, true)
         t.eq(row(c, "test.mode").kind, "choice")

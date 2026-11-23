@@ -10554,6 +10554,54 @@ function ns.make.client(env)
             return h
         end
     end
+    -- The settings window (lead sections 285 item 3 and 303 item 2): the
+    -- add-on's settings in one window of the kit above. New, added at the
+    -- end. No window system of its own and no game call of its own: it
+    -- hands the caller's tree to c.kitWindow, so every first guess is the
+    -- kit drawer's. LOOK ONLY: a control runs the caller's own function.
+    --   c.settingsWindow(spec) -> page | nil
+    --     spec: id (the kit window's id), build(rows, act, nav, layout) ->
+    --     a Kit.Window tree | nil, reason; optional name, point, width,
+    --     height, onMoved, onClose, failed (handed to c.kitWindow as they
+    --     are). nil for a spec without id or build.
+    --   page.draw(rows, act, nav, layout) -> true | false, reason
+    --     builds the tree and draws it; the window is made at the first
+    --     draw, hidden. A build that raises goes up to the caller.
+    --   page.open() -> true once it is shown; false before any draw
+    --   page.hide(), page.shown()
+    do
+        function c.settingsWindow(spec)
+            if type(spec) ~= "table" or type(spec.id) ~= "string" or type(spec.build) ~= "function" then
+                return nil
+            end
+            local extra = { name = spec.name, point = spec.point, width = spec.width, height = spec.height,
+                onMoved = spec.onMoved, onClose = spec.onClose, failed = spec.failed }
+            local h
+            local page = {}
+            function page.draw(rows, act, nav, layout)
+                local tree, why = spec.build(rows, act, nav, layout)
+                if type(tree) ~= "table" then return false, why or "the settings window has no tree" end
+                if h == nil then
+                    h = c.kitWindow(spec.id, tree, extra)
+                    if h == nil then return false end
+                    h.show(false)
+                    return true
+                end
+                if h.update(tree) ~= true then return false end
+                return true
+            end
+            function page.open()
+                if h == nil then return false end
+                h.show(true)
+                return true
+            end
+            function page.hide()
+                if h ~= nil then h.show(false) end
+            end
+            function page.shown() return h ~= nil and h.shown() == true end
+            return page
+        end
+    end
     return c
 end
 

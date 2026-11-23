@@ -44,7 +44,10 @@ local KIND = {
              "markMerchantSpecs",
              -- The window kit's drawer (lead sections 287 and 291): one
              -- window from a checked tree; a click runs the part's own function.
-             "kitWindow" },
+             "kitWindow",
+             -- The settings in one kit window (lead section 285 item 3): it
+             -- hands the caller's tree to kitWindow and asks the game nothing.
+             "settingsWindow" },
     tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "savedMadeHere", "slash",
              "slashTaken", "unslash",
              -- Lead sections 297 and 303: asks whether each part of the

@@ -35,8 +35,10 @@ ns.SettingsWindow = W
 
 W.ID = "settings"
 W.WIDTH, W.HEIGHT = 760, 520
-W.HEADER = "settings.header"
-W.TOPICS = "settings.topics"
+-- The names of the two parts a test (or a caller) finds by key. No setting
+-- key starts with "#".
+W.HEADER = "#header"
+W.TOPICS = "#topics"
 W.ONE_TOPIC = "1 topic"
 W.MANY_TOPICS = " topics"
 
@@ -68,9 +70,12 @@ local function controlOf(r, act)
             onSelect = function(i) act(r.key, r.choices[i]) end }
     end
     if (r.kind == "number" or r.kind == "slider") and type(r.value) == "number" then
-        local step
+        local step, low, high
         if type(r.step) == "number" and r.step > 0 then step = r.step end
-        return { kind = "number", key = r.key, value = r.value, min = r.min, max = r.max, step = step,
+        if type(r.min) == "number" then low = r.min end
+        if type(r.max) == "number" then high = r.max end
+        if low ~= nil and high ~= nil and low > high then low, high = nil, nil end
+        return { kind = "number", key = r.key, value = r.value, min = low, max = high, step = step,
             onChange = function(value) act(r.key, value) end }
     end
     if r.kind == "text" then
