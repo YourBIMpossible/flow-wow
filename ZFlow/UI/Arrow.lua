@@ -864,8 +864,10 @@ function Arrow.Start(k, diag, own)
     -- What the menu and the tooltip are made from (UI/ArrowMenu.lua).
     local function menuState()
         local saved = N.ArrowSaved(Arrow.Saved(k))
+        local Feedback = ns.Feedback
+        local feedback = type(Feedback) == "table" and k.use(Feedback.NAME) ~= nil
         return { stacked = saved.mode ~= "separate", hidden = saved.hidden, text = saved.text,
-                 styles = Arrow.Styles(style()), canShapes = canShapes() }
+                 styles = Arrow.Styles(style()), canShapes = canShapes(), feedback = feedback }
     end
     -- The tooltip's lines for one arrow, or nil when none is on the screen.
     -- The lines are the step's own, also for an arrow whose text is off.

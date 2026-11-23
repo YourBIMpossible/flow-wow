@@ -16,7 +16,8 @@ local MENUS = {
 }
 
 local function state(over)
-    local s = { stacked = true, hidden = {}, text = {}, styles = A.Styles("modern"), canShapes = true }
+    -- feedback: the feedback is reachable (paused by lead section 284; on here).
+    local s = { stacked = true, hidden = {}, text = {}, styles = A.Styles("modern"), canShapes = true, feedback = true }
     for key, v in pairs(over or {}) do s[key] = v end
     return s
 end
@@ -35,7 +36,9 @@ local function has(t)
 end
 
 local function start()
-    local c = ns.make.fakeClient()
+    -- The feedback row needs the feedback reachable: paused by lead section
+    -- 284, on here through the fake client internal switch and declared.
+    local c = ns.make.fakeClient({ internal = { feedback = true } })
     c.setSaved(ns.id.accountDB, { layout = { arrowIntroSeen = true } })
     c.setScreen(1024, 768)
     c.setZone(1, 1411)
@@ -45,6 +48,7 @@ local function start()
     local k = ns.Kernel({}, c)
     local d = ns.Diag.Start(k)
     local a = A.Declare(k, d)
+    ns.Feedback.Declare(k, d)
     k:Boot()
     c.fire("ADDON_LOADED", ns.id.addon)
     c.fire("PLAYER_LOGIN")
