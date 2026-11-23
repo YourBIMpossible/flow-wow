@@ -8146,6 +8146,115 @@ function ns.make.client(env)
         if not ok then return nil, "raised" end
         return true
     end
+
+    -- S19 (P-SETS branch 2, Gear/SetIcons.lua): a movable row of small
+    -- picture buttons, one per saved set, or nil when the client cannot
+    -- make a frame. The row is c.panel's frame (moved by a drag on its
+    -- edge, h.onMoved told where it stands), with the buttons on it.
+    --   spec = { name = global frame name, size = button size in pixels }
+    --   h.draw(icons, act): icons = { { key =, texture =, edge = true or
+    --       false, tip = { line, ... } } }, at most 12 drawn.
+    --       edge true: a gold edge, else a thin dark one. Hover shows the
+    --       tip lines on the game tooltip (the first in gold). A left
+    --       click asks act(key) under pcall; any other button asks
+    --       nothing. The row keeps no state of its own: the next draw
+    --       replaces it, and buttons past the icons are hidden.
+    --   h.place(point), h.show(on), h.shown(), h.onMoved(fn, failed): as
+    --       the panel's.
+    -- The row itself acts on nothing: what a click does is act's.
+    -- Needs game test: the button layout, RegisterForClicks and the
+    -- tooltip owner (GameTooltip:SetOwner, AddLine, Show, Hide).
+    function c.iconRow(spec)
+        local ICON_ROW_MAX = 12
+        local own = {}
+        for key, v in pairs(type(spec) == "table" and spec or {}) do own[key] = v end
+        own.closable = nil
+        local size = tonumber(own.size) or 28
+        own.width, own.height = size + 8, size + 8
+        local h, f, isOpen = panelFrame(own)
+        if h == nil then return nil end
+        h.shown = isOpen
+        local GAP, PAD = 4, 4
+        local buttons = {}
+
+        local function button(i)
+            if buttons[i] == nil then
+                local ok, b = call(env.CreateFrame, "Button", nil, f)
+                if not ok or b == nil then return nil end
+                local okE, edge = method(b, "CreateTexture", nil, "BACKGROUND")
+                if not okE then edge = nil end
+                if edge ~= nil then
+                    method(edge, "SetPoint", "TOPLEFT", b, "TOPLEFT", -2, 2)
+                    method(edge, "SetPoint", "BOTTOMRIGHT", b, "BOTTOMRIGHT", 2, -2)
+                end
+                local okT, tex = method(b, "CreateTexture", nil, "ARTWORK")
+                if not okT then tex = nil end
+                if tex ~= nil then method(tex, "SetAllPoints", b) end
+                method(b, "RegisterForClicks", "LeftButtonUp")
+                buttons[i] = { frame = b, edge = edge, tex = tex }
+            end
+            return buttons[i]
+        end
+        local function colour(tex, r, g, b, a)
+            if tex == nil then return end
+            if not method(tex, "SetColorTexture", r, g, b, a) then method(tex, "SetTexture", r, g, b, a) end
+        end
+
+        function h.draw(icons, act)
+            local used = 0
+            for _, icon in ipairs(type(icons) == "table" and icons or {}) do
+                if used >= ICON_ROW_MAX then break end
+                if type(icon) == "table" then
+                    used = used + 1
+                    local parts = button(used)
+                    if parts == nil then break end
+                    local b, key = parts.frame, icon.key
+                    local tip = {}
+                    for i, line in ipairs(type(icon.tip) == "table" and icon.tip or {}) do tip[i] = tostring(line) end
+                    if not method(b, "SetSize", size, size) then
+                        method(b, "SetWidth", size)
+                        method(b, "SetHeight", size)
+                    end
+                    method(b, "ClearAllPoints")
+                    method(b, "SetPoint", "TOPLEFT", f, "TOPLEFT", PAD + (used - 1) * (size + GAP), -PAD)
+                    if parts.tex ~= nil then method(parts.tex, "SetTexture", icon.texture) end
+                    if icon.edge == true then
+                        colour(parts.edge, 1, 0.82, 0, 1)
+                    else
+                        colour(parts.edge, 0, 0, 0, 0.9)
+                    end
+                    method(b, "SetScript", "OnClick", function(_, which)
+                        if which ~= nil and which ~= "LeftButton" then return end
+                        if type(act) == "function" then pcall(act, key) end
+                    end)
+                    method(b, "SetScript", "OnEnter", function()
+                        local gt = env.GameTooltip
+                        if gt == nil or #tip == 0 then return end
+                        method(gt, "SetOwner", b, "ANCHOR_TOPLEFT")
+                        for i, line in ipairs(tip) do
+                            if i == 1 then
+                                method(gt, "AddLine", line, 1, 0.82, 0)
+                            else
+                                method(gt, "AddLine", line, 1, 1, 1, true)
+                            end
+                        end
+                        method(gt, "Show")
+                    end)
+                    method(b, "SetScript", "OnLeave", function()
+                        local gt = env.GameTooltip
+                        if gt ~= nil then method(gt, "Hide") end
+                    end)
+                    method(b, "Show")
+                end
+            end
+            for i = used + 1, #buttons do method(buttons[i].frame, "Hide") end
+            local count = used
+            if count < 1 then count = 1 end
+            method(f, "SetWidth", PAD * 2 + count * size + (count - 1) * GAP)
+            method(f, "SetHeight", PAD * 2 + size)
+        end
+        return h
+    end
     return c
 end
 

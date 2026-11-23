@@ -32,7 +32,10 @@ local KIND = {
              -- stopped; an output like print, not a game action.
              "speak", "stopSpeech",
              -- N68: the one alert sound (output only; changes nothing in the game).
-             "playAlert" },
+             "playAlert",
+             -- S19 (P-SETS branch 2): the set icon row; a click asks only
+             -- what the caller's act does.
+             "iconRow" },
     tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "savedMadeHere", "slash",
              "slashTaken", "unslash" },
     -- Hands back or runs a sound restart: never asked by the capture.

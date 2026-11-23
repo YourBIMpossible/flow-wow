@@ -72,6 +72,7 @@ Gear\MerchantMarks.lua
 Gear\MerchantShow.lua
 Gear\RollHint.lua
 Gear\Sets.lua
+Gear\SetIcons.lua
 Rotation\Pack.lua
 Rotation\Snapshot.lua
 Rotation\BuffFood.lua

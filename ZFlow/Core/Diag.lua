@@ -197,6 +197,12 @@ Diag.NAMES = {
     "GetObjectiveText", "GetProgressText", "GetRewardText",
     -- N68: the alert sound (UI/Alerts.lua, Core/Client.lua playAlert).
     "PlaySound", "SOUNDKIT.RAID_WARNING",
+    -- S19 (P-SETS branch 2): the set icons' equip on click (Core/Client.lua
+    -- equipItem: EquipItemByName) and the game's own equipment sets, which
+    -- are NOT used: capture fields only, so a login records whether 16001
+    -- has them before any branch asks them.
+    "EquipItemByName", "C_EquipmentSet", "C_EquipmentSet.GetEquipmentSetIDs",
+    "C_EquipmentSet.GetEquipmentSetInfo", "C_EquipmentSet.UseEquipmentSet",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns
