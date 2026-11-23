@@ -10,7 +10,14 @@ local D = ns.RotationDriver
 local IDS = {
     ["Devotion Aura"] = 465, ["Seal of Righteousness"] = 21084, ["Blessing of Might"] = 19740,
     ["Attack"] = 6603, ["Judgement"] = 20271,
+    -- CF-32 / CF-33c: a second seal, the long blessings and Righteous Fury,
+    -- known; with no role chosen none of them changes the present rule.
+    ["Seal of the Crusader"] = 21082, ["Blessing of Kings"] = 20217, ["Blessing of Wisdom"] = 19742,
+    ["Blessing of Protection"] = 1022, ["Righteous Fury"] = 25780,
 }
+-- A seal with an id (so its name can be read from a cast) that you do not
+-- know: as after a talent reset took it away.
+local UNKNOWN = { ["Seal of Justice"] = 20164 }
 local AURA = { ["Devotion Aura"] = true }
 local READY = { ["Devotion Aura"] = true, ["Blessing of Might"] = 200 }
 local SEALED = { ["Devotion Aura"] = true, ["Blessing of Might"] = 200, ["Seal of Righteousness"] = 25 }
@@ -30,6 +37,12 @@ local function start(opts)
             c.setSpellCooldown(id, false)
         end
         if not (opts.noTexture and opts.noTexture[name]) then c.setSpellTexture(id, "tex:" .. name) end
+    end
+    for name, id in pairs(UNKNOWN) do
+        c.setSpellId(name, id)
+        c.setSpell(id, { known = false })
+        c.setSpellCooldown(id, false)
+        c.setSpellTexture(id, "tex:" .. name)
     end
     local addon = ns.offline.addon(c)
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
@@ -180,6 +193,104 @@ tests["paladin: the switch is kept over a reload"] = function(t)
     c2.setPlayerBuffs({}); c2.advance(1, 5)
     t.eq(icon2.shown, true, "and suggesting with no word typed")
     t.eq(icon2.texture, "tex:Devotion Aura")
+end
+
+-- ---------------------------------------- CF-32, CF-33c (lead sections 226, 227)
+
+-- You cast a spell yourself (or `unit` did): the client tells of it by id.
+local function cast(c, name, unit)
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", unit or "player", "Cast-3-0-0-0-0-0", IDS[name] or UNKNOWN[name])
+    c.advance(1, 5)
+end
+
+-- What is kept for this character: the seal or the blessing, or nil.
+local function kept(c, key)
+    local char = c.saved(ns.id.charDB)
+    local state = type(char) == "table" and char.state or nil
+    local own = type(state) == "table" and state.ownCasts or nil
+    return type(own) == "table" and own[key] or nil
+end
+
+local function reload(c)
+    return start({ account = c.saved(ns.id.accountDB), char = c.saved(ns.id.charDB) })
+end
+
+tests["paladin: a seal you cast yourself is the seal from then on, and over a reload"] = function(t)
+    local c, addon, icon = start()
+    c.setPlayerBuffs(READY); on(c, addon)
+    t.eq(icon.texture, "tex:Seal of Righteousness", "before any cast: the present rule")
+    cast(c, "Seal of the Crusader")
+    t.eq(kept(c, "seal"), "Seal of the Crusader", "kept for the character")
+    t.eq(icon.texture, "tex:Seal of the Crusader", "seal down: the one you cast")
+    c.setCombat(true); c.advance(1, 5); c.setCombat(false); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Seal of the Crusader", "a fight ending does not drop it")
+    cast(c, "Seal of Righteousness")
+    t.eq(icon.texture, "tex:Seal of Righteousness", "another seal cast: that one")
+    cast(c, "Seal of the Crusader")
+    local c2, _, icon2 = reload(c)
+    c2.setPlayerBuffs(READY); c2.advance(1, 5)
+    t.eq(icon2.shown, true, "on after the reload")
+    t.eq(icon2.texture, "tex:Seal of the Crusader", "the seal you cast, kept over a reload")
+end
+
+tests["paladin: only your own cast of a seal you know changes the seal"] = function(t)
+    local c, addon, icon = start()
+    c.setPlayerBuffs(READY); on(c, addon)
+    cast(c, "Seal of the Crusader", "party1")
+    cast(c, "Seal of the Crusader", "target")
+    t.eq(kept(c, "seal"), nil, "another unit's cast: nothing kept")
+    t.eq(icon.texture, "tex:Seal of Righteousness", "and the present rule holds")
+    cast(c, "Judgement")
+    t.eq(kept(c, "seal"), nil, "a spell that is no seal: nothing kept")
+    t.eq(kept(c, "blessing"), nil)
+    t.eq(icon.texture, "tex:Seal of Righteousness")
+    cast(c, "Seal of Justice")
+    t.eq(kept(c, "seal"), "Seal of Justice", "a seal is kept as cast")
+    t.eq(icon.texture, "tex:Seal of Righteousness", "not known now: the present rule")
+    cast(c, "Seal of the Crusader")
+    t.eq(icon.texture, "tex:Seal of the Crusader", "your own cast of a seal you know: that one")
+end
+
+tests["paladin: a long blessing you cast yourself sticks; Protection does not"] = function(t)
+    local c, addon, icon = start()
+    c.setPlayerBuffs(AURA); on(c, addon)
+    t.eq(icon.texture, "tex:Blessing of Might", "before any cast: the present rule")
+    cast(c, "Blessing of Kings")
+    t.eq(icon.texture, "tex:Blessing of Kings", "blessing down: the one you cast")
+    cast(c, "Blessing of Protection")
+    t.eq(kept(c, "blessing"), "Blessing of Kings", "a short blessing is not kept")
+    t.eq(icon.texture, "tex:Blessing of Kings")
+    cast(c, "Blessing of Wisdom")
+    t.eq(icon.texture, "tex:Blessing of Wisdom", "another long blessing: that one")
+    local c2, _, icon2 = reload(c)
+    c2.setPlayerBuffs(AURA); c2.advance(1, 5)
+    t.eq(icon2.texture, "tex:Blessing of Wisdom", "kept over a reload")
+end
+
+tests["paladin: Righteous Fury for a tank, out of a fight, when it is not up"] = function(t)
+    local c, addon, icon = start()
+    addon.settings:set(D.ROLE, "tank")
+    c.setPlayerBuffs(READY); on(c, addon)
+    t.eq(icon.texture, "tex:Righteous Fury", "tank, known, not up, out of a fight")
+    t.ok(said(c):find("suggesting Righteous Fury", 1, true), said(c))
+    c.setPlayerBuffs({ ["Devotion Aura"] = true, ["Blessing of Might"] = 200, ["Righteous Fury"] = 1500 })
+    c.advance(1, 5)
+    t.eq(icon.texture, "tex:Seal of Righteousness", "up: the seal next")
+    c.setPlayerBuffs(READY); c.setCombat(true); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Seal of Righteousness", "in a fight: not asked for")
+end
+
+tests["paladin: Righteous Fury never for a role that is not tank"] = function(t)
+    for _, role in ipairs({ "dps", "heal", "none" }) do
+        local c, addon, icon = start()
+        if role ~= "none" then addon.settings:set(D.ROLE, role) end
+        c.setPlayerBuffs(READY); on(c, addon)
+        t.eq(icon.texture, "tex:Seal of Righteousness", role .. ": known and not up, still not asked for")
+        if role == "none" then
+            addon.settings:set(D.ROLE, "tank"); c.advance(1, 5)
+            t.eq(icon.texture, "tex:Righteous Fury", "the same, as a tank: asked for")
+        end
+    end
 end
 
 tests["a class with no pack: on, and it says so"] = function(t)

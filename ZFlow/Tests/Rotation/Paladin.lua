@@ -69,10 +69,11 @@ return {
         t.eq(p.heals.self, { "Flash of Light", "Holy Light" }, "heals are the self list")
     end,
 
+    -- Righteous Fury and Blessing of Salvation go on yourself: the pack may
+    -- suggest them (CF-33c; Salvation only once you cast it yourself).
     ["no rule suggests a spell cast on another player"] = function(t)
         local other = { ["Lay on Hands"] = true, ["Blessing of Protection"] = true, ["Redemption"] = true,
-                        ["Righteous Fury"] = true, ["Blessing of Freedom"] = true, ["Blessing of Salvation"] = true,
-                        ["Divine Intervention"] = true }
+                        ["Blessing of Freedom"] = true, ["Divine Intervention"] = true }
         local p = ns.Packs.PALADIN
         for name, list in pairs(p.lists) do
             for _, rule in ipairs(list) do t.ok(not other[rule.spell], name .. ": " .. rule.spell) end
@@ -93,11 +94,143 @@ return {
         end
     end,
 
-    ["the rows taken out of the old spell list stay out"] = function(t)
-        for _, name in ipairs({ "Holy Strike", "Seal of Fury", "Consecration", "Blessing of Kings",
+    ["spells no rule of this pack uses yet have no row"] = function(t)
+        for _, name in ipairs({ "Holy Strike", "Consecration",
                                 "Judgment", "Crusader Strike", "Shield of the Righteous", "Word of Glory" }) do
             t.eq(ns.Packs.PALADIN.spells[name], nil, name)
         end
+    end,
+
+    -- CF-32 / CF-33c: every seal and long blessing a rule can now suggest
+    -- has a row (PackCheck names a rule's spell with none), with no level
+    -- carried over from a guide.
+    ["the seals and blessings the pack can suggest have a row"] = function(t)
+        for _, name in ipairs({ "Seal of Fury", "Blessing of Kings", "Blessing of Light", "Blessing of Sanctuary",
+                                "Righteous Fury", "Seal of the Crusader", "Seal of Justice", "Seal of Light",
+                                "Seal of Wisdom", "Blessing of Salvation" }) do
+            local row = ns.Packs.PALADIN.spells[name]
+            t.ok(type(row) == "table", name .. " has a row")
+            if type(row) == "table" then t.eq(row.evidence, "first guess", name) end
+        end
+        for _, name in ipairs({ "Seal of Fury", "Blessing of Kings", "Blessing of Light", "Blessing of Sanctuary" }) do
+            t.eq(ns.Packs.PALADIN.spells[name] and ns.Packs.PALADIN.spells[name].level, nil, name .. ": no level")
+        end
+    end,
+
+    ["the pack names the casts it keeps: any seal, and the long blessings only"] = function(t)
+        local rows = ns.Packs.PALADIN.options.sticky
+        t.eq(type(rows), "table", "options.sticky")
+        local by = {}
+        for _, row in ipairs(rows or {}) do by[row.key] = row end
+        t.eq(by.seal and by.seal.prefix, "Seal of ", "seal row")
+        t.eq(by.blessing and by.blessing.prefix, "Blessing of ", "blessing row")
+        t.eq(by.blessing and by.blessing.only, {
+            ["Blessing of Might"] = true, ["Blessing of Wisdom"] = true, ["Blessing of Kings"] = true,
+            ["Blessing of Salvation"] = true, ["Blessing of Light"] = true, ["Blessing of Sanctuary"] = true,
+        }, "the long blessings; not Protection, Freedom or Sacrifice")
+        t.eq(ns.Packs.PALADIN.options.reads, { "buffs" }, "chosen is not a read: nil is no cast yet")
+    end,
+
+    -- CF-32: the seal kept up. A seal you cast yourself (snapshot.chosen.seal)
+    -- while you know it; else the role's seal; else Righteousness.
+    ["the seal picked: the one you cast while known, else the role's"] = function(t)
+        local R, C, F, X = "Seal of Righteousness", "Seal of Command", "Seal of Fury", "Seal of the Crusader"
+        local cases = {
+            { "dps, Righteousness only", { role = "dps" }, { R }, R },
+            { "dps knows Command", { role = "dps" }, { R, C }, C },
+            { "no role, knows Command", {}, { R, C }, C },
+            { "healer knows Command", { role = "heal" }, { R, C }, R },
+            { "tank knows Fury", { role = "tank" }, { R, C, F }, F },
+            { "tank without Fury", { role = "tank" }, { R, C }, R },
+            { "dps knows Fury: Fury is for a tank", { role = "dps" }, { R, F }, R },
+            { "cast and known", { role = "tank", chosen = { seal = X } }, { R, F, X }, X },
+            { "cast and known, dps with Command", { role = "dps", chosen = { seal = X } }, { R, C, X }, X },
+            { "cast, not known now", { role = "dps", chosen = { seal = X } }, { R, C }, C },
+            { "cast, no seal of this pack", { chosen = { seal = "Seal of Nothing" } }, { R, "Seal of Nothing" }, R },
+            { "only a blessing cast", { chosen = { blessing = "Blessing of Kings" } }, { R, "Blessing of Kings" }, R },
+        }
+        for _, case in ipairs(cases) do
+            local s = { spells = {} }
+            for k, v in pairs(case[2]) do s[k] = v end
+            for _, name in ipairs(case[3]) do s.spells[name] = { known = true } end
+            t.eq(ns.PaladinSeal(s), case[4], case[1])
+        end
+    end,
+
+    -- The same rule for the blessing (lead section 227).
+    ["the blessing picked: the long one you cast while known, else the role's"] = function(t)
+        local M, W, K = "Blessing of Might", "Blessing of Wisdom", "Blessing of Kings"
+        local cases = {
+            { "dps", { role = "dps" }, { M, W }, M },
+            { "healer knows Wisdom", { role = "heal" }, { M, W }, W },
+            { "healer without Wisdom", { role = "heal" }, { M }, M },
+            { "cast and known", { role = "heal", chosen = { blessing = K } }, { M, W, K }, K },
+            { "cast, not known now", { role = "heal", chosen = { blessing = K } }, { M, W }, W },
+            { "Protection cast: not a blessing to keep", { chosen = { blessing = "Blessing of Protection" } },
+              { M, "Blessing of Protection" }, M },
+            { "Salvation cast", { role = "tank", chosen = { blessing = "Blessing of Salvation" } },
+              { M, "Blessing of Salvation" }, "Blessing of Salvation" },
+        }
+        for _, case in ipairs(cases) do
+            local s = { spells = {} }
+            for k, v in pairs(case[2]) do s[k] = v end
+            for _, name in ipairs(case[3]) do s.spells[name] = { known = true } end
+            t.eq(ns.PaladinBlessing(s), case[4], case[1])
+        end
+    end,
+
+    ["a seal or blessing you cast is the one asked for; one up is left alone"] = function(t)
+        local knows = { "Seal of Righteousness", "Seal of the Crusader", "Judgement" }
+        local b = { ["Devotion Aura"] = true, ["Blessing of Might"] = true }
+        local chosen = { seal = "Seal of the Crusader" }
+        t.eq(advice({ chosen = chosen }, knows, b), "Seal of the Crusader", "none up: the seal you cast")
+        t.eq(advice({ chosen = chosen }, knows, { ["Devotion Aura"] = true, ["Blessing of Might"] = true,
+                                                  ["Seal of Righteousness"] = true }), "Judgement",
+             "another seal up: left alone")
+        t.eq(advice(nil, knows, b), "Seal of Righteousness", "nothing cast: the present rule")
+        t.eq(advice({ hostile = false, inCombat = false, chosen = { blessing = "Blessing of Kings" } },
+                    { "Blessing of Might", "Blessing of Kings" }, { ["Devotion Aura"] = true }),
+             "Blessing of Kings", "no blessing up: the one you cast")
+    end,
+
+    -- CF-33c: Righteous Fury for a tank, out of a fight, when it is not up.
+    ["Righteous Fury: role tank, out of a fight, read and not up"] = function(t)
+        local function fury(over, buffs)
+            local s = { role = "tank", inCombat = false, hostile = false, dead = false, buffs = buffs or {},
+                        spells = { ["Righteous Fury"] = { known = true, onCooldown = false } } }
+            for k, v in pairs(over or {}) do s[k] = v end
+            return s
+        end
+        t.ok(fires("Righteous Fury", fury()), "tank, out of a fight, not up")
+        t.ok(not fires("Righteous Fury", fury(nil, { ["Righteous Fury"] = true })), "up")
+        t.ok(not fires("Righteous Fury", fury(nil, { ["Righteous Fury"] = 600 })), "up, time shown")
+        t.ok(not fires("Righteous Fury", fury({ inCombat = true })), "in a fight")
+        local s = fury()
+        s.inCombat = nil
+        t.ok(not fires("Righteous Fury", s), "not known whether a fight is on")
+        s = fury()
+        s.buffs = nil
+        t.ok(not fires("Righteous Fury", s), "buffs not read")
+        for _, role in ipairs({ "dps", "heal" }) do
+            t.ok(not fires("Righteous Fury", fury({ role = role })), role .. ": never")
+        end
+        s = fury()
+        s.role = nil
+        t.ok(not fires("Righteous Fury", s), "no role: never")
+        local knows = { "Righteous Fury", "Devotion Aura", "Blessing of Might", "Seal of Righteousness" }
+        t.eq(advice({ role = "tank", hostile = false, inCombat = false }, knows, { ["Devotion Aura"] = true }),
+             "Righteous Fury", "before the blessing and the seal")
+        t.eq(advice({ role = "dps", hostile = false, inCombat = false }, knows, { ["Devotion Aura"] = true }),
+             "Blessing of Might", "dps: the blessing")
+    end,
+
+    ["the snapshot and the driver carry the seal and blessing you cast"] = function(t)
+        local s = ns.SnapshotOf({ chosen = { seal = "Seal of Light", blessing = "Blessing of Kings" } })
+        t.eq(s.chosen, { seal = "Seal of Light", blessing = "Blessing of Kings" }, "kept in the snapshot")
+        t.eq(ns.SnapshotOf({}).chosen, nil, "none given: nil")
+        local read = ns.RotationDriver.Read({}, ns.Packs.PALADIN, {}, nil, { seal = "Seal of Light" })
+        t.eq(read("chosen"), { seal = "Seal of Light" }, "the driver hands it on")
+        t.eq(ns.RotationDriver.Read({}, ns.Packs.PALADIN, {}, nil, nil)("chosen"), nil, "none: nil")
     end,
 
     ["out of a fight: aura, then blessing, then seal, then nothing"] = function(t)
