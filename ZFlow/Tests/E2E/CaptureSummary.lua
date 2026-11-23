@@ -587,4 +587,17 @@ tests["capture asks: no ask said is said as none, and an old row with no asks st
     t.ok(not Capture.SummaryText({}, raises):find("calls asked", 1, true), "a report that raises: left out, not guessed")
 end
 
+tests["capture asks: a row counts only the asks made during its own run"] = function(t)
+    local cap = made()
+    local c, addon, report = boot(cap)
+    report.notHeld.UnitHealth = (report.notHeld.UnitHealth or 0) + 1000
+    report.notHeld.MadeUpCall = 3
+    local before = report.notHeld.UnitHealth
+    local rows = Capture.Summarize(c, addon, report, cap, ns.offline.ownWords())
+    local during = report.notHeld.UnitHealth - before
+    t.ok(during > 0, "the rotation run asked UnitHealth")
+    t.eq(asks(rows[1].notHeld, "UnitHealth"), during, "the row holds the run asks, not the asks before it")
+    t.eq(asks(rows[1].notHeld, "MadeUpCall"), nil, "a call asked only before the run is not listed")
+end
+
 return tests
