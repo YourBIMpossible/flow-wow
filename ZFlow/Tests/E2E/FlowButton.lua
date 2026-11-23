@@ -312,10 +312,11 @@ tests["self button: shown by default holding a missing buff on you"] = function(
     t.ok(h ~= nil, "the self button was made")
     if not h then return end
     local a = h.slots[1].attrs
-    t.eq({ a.type, a.spell, a.unit }, { "spell", "Power Word: Fortitude", "player" }, "the buff, on you")
+    t.eq({ a.type, a.spell, a.unit }, { "spell", "Inner Fire", "player" },
+        "the buff, on you: the next one, the Flow button shows Fortitude")
     t.eq(h.shown, true, "shown: it has something")
-    t.eq(h.slots[1].icon, "tex:Power Word: Fortitude")
-    t.eq(tip(c, SELF), "Casts Power Word: Fortitude on you when you click it.")
+    t.eq(h.slots[1].icon, "tex:Inner Fire")
+    t.eq(tip(c, SELF), "Casts Inner Fire on you when you click it.")
     noBindsNoMacros(t, c)
 end
 
@@ -330,6 +331,23 @@ tests["self button: nothing to cast, it still shows, its tooltip says why"] = fu
     t.eq(empty(c, SELF), true, "the plain empty face")
     local line = tip(c, SELF)
     t.ok(type(line) == "string" and line:find("every self buff", 1, true) ~= nil, "says what is missing: " .. tostring(line))
+end
+
+-- Lead section 305 item 2: the two buttons never show the same buff. The
+-- self button passes by what the Flow button holds; the Flow button's
+-- suggestion stays as the rotation made it.
+tests["self button: never the buff the Flow button shows"] = function(t)
+    if type(FB) ~= "table" then t.ok(false, "no module"); return end
+    local c, addon = start({ on = true })
+    t.eq(held(rowOf(c, FLOW)), "Power Word: Fortitude", "the Flow button keeps the rotation's suggestion")
+    t.eq(held(rowOf(c, SELF)), "Inner Fire", "the self button the next missing buff")
+    c.setPlayerBuffs({ ["Inner Fire"] = 600 }); c.advance(3, 5)
+    t.eq(held(rowOf(c, FLOW)), "Power Word: Fortitude")
+    t.eq(held(rowOf(c, SELF)), nil, "only the Flow button's buff missing: the self button holds nothing")
+    t.ok((tip(c, SELF) or ""):find("every self buff you know is up or on the Flow button", 1, true) ~= nil, "its tooltip says why: " .. tostring(tip(c, SELF)))
+    addon.settings:set(FB.SETTING, false); c.advance(3, 5)
+    t.eq(held(rowOf(c, SELF)), "Power Word: Fortitude", "the Flow button off: the self button takes it")
+    noBindsNoMacros(t, c)
 end
 
 tests["self button: docked under the Flow button by default"] = function(t)
@@ -383,11 +401,12 @@ tests["self button: a change in a fight waits, set after it ends"] = function(t)
     if not h then t.ok(false, "no self button"); return end
     c.setCombat(true); c.advance(1, 5)
     local given = #h.given
-    c.setPlayerBuffs({ ["Power Word: Fortitude"] = 1800 }); c.advance(5, 10)
+    c.setPlayerBuffs({ ["Inner Fire"] = 600 }); c.advance(5, 10)
     t.eq(#h.given, given, "nothing written in the fight")
-    t.eq(held(h), "Power Word: Fortitude", "it keeps what it had")
+    t.eq(held(h), "Inner Fire", "it keeps what it had")
     c.setCombat(false); c.fire("PLAYER_REGEN_ENABLED"); c.advance(3, 5)
-    t.eq(held(h), "Inner Fire", "set after the fight")
+    t.eq(held(h), nil, "set after the fight: Fortitude is on the Flow button, nothing else is missing")
+    t.eq(h.shown, true, "still shown")
     noBindsNoMacros(t, c)
 end
 
@@ -407,7 +426,7 @@ tests["self button: a reload keeps its place and the key the player bound"] = fu
     if not h then t.ok(false, "no self button after the reload"); return end
     t.eq(h.point, to, "the place read back")
     t.eq(c2.bindingMap()["G"], action, "the key read back")
-    t.eq(held(h), "Power Word: Fortitude")
+    t.eq(held(h), "Inner Fire")
     t.eq(c2.bindingCalls(), {}, "the reload bound nothing")
 end
 
@@ -448,7 +467,7 @@ tests["flow and self buttons: late spell data fills them once it comes"] = funct
     t.ok(held(rowOf(c, FLOW)) ~= "Power Word: Fortitude", "no id yet: not planned")
     c.setSpellId("Power Word: Fortitude", PRIEST["Power Word: Fortitude"]); c.advance(3, 5)
     t.eq(held(rowOf(c, FLOW)), "Power Word: Fortitude", "the Flow button once the id comes")
-    t.eq(held(rowOf(c, SELF)), "Power Word: Fortitude", "the self button too")
+    t.eq(held(rowOf(c, SELF)), "Inner Fire", "the self button the next one, not the same")
 end
 
 tests["flow and self buttons: a lock read that fails, then recovers"] = function(t)
@@ -471,7 +490,7 @@ tests["flow and self buttons: a lock read that fails, then recovers"] = function
     local h = rowOf(c, FLOW)
     t.ok(h ~= nil, "made once the lock reads a plain false")
     t.eq(held(h), "Power Word: Fortitude")
-    t.eq(held(rowOf(c, SELF)), "Power Word: Fortitude")
+    t.eq(held(rowOf(c, SELF)), "Inner Fire")
 end
 
 tests["flow and self buttons: the lock not known waits, then sets"] = function(t)
