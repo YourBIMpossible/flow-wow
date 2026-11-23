@@ -152,4 +152,22 @@ tests["dungeon window: close, and open again from the arrow menu"] = function(t)
     t.eq(c.kitWindows()[ID].shown, true, "open again")
 end
 
+-- Lead section 319: the Z-Flow (arrow) menu row is the main way in; the
+-- slash word is the shortcut. Opened first from the menu, nothing before.
+tests["dungeon window 319: the Z-Flow menu row opens it the first time"] = function(t)
+    local c = boot()
+    t.eq(c.kitWindows()[ID], nil, "not made before it is asked for")
+    c.slashes[ns.id.slash]("arrow demo")
+    c.advance(0.1, 2)
+    local q = c.arrows[1]
+    t.ok(q ~= nil, "an arrow to right-click")
+    if not q then return end
+    q.click("right")
+    t.eq(q.pickRow("dungeons"), true, "the menu has the Dungeon quests row")
+    c.advance(2, 20)
+    local rec = c.kitWindows()[ID]
+    t.eq(rec and rec.shown, true, "open from the menu")
+    t.ok(texts(rec):find("Red Silk", 1, true) ~= nil, "with the first dungeon's quests: " .. texts(rec))
+end
+
 return tests
