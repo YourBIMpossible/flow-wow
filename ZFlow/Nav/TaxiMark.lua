@@ -28,7 +28,7 @@ local _, ns = ...
 --        that is not known gives no pick: nothing is guessed.
 --   text = TaxiMark.Label(stepText)   the words under the ring
 --
--- Setting (for the module, when built): "nav.taxiMark", bool, on by
+-- Setting (read by the module at the end of this file): "nav.taxiMark", bool, on by
 -- default, as Flow's.
 
 local TM = ns.TaxiMark or {}

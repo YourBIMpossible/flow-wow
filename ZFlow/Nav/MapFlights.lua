@@ -10,8 +10,8 @@ local _, ns = ...
 --
 -- This file is the pure rules only, ported from Flow's
 -- Modules/Nav/MapFlights.lua (0.35.377, :44-130 and :240-299); see
--- WoW/from-zen/RESEARCH-S31.md. LOOK ONLY: it makes lists and words. It
--- draws nothing, changes nothing on the game's map and takes no flight.
+-- WoW/from-zen/RESEARCH-S31.md. LOOK ONLY: the pure part makes lists and words;
+-- the module draws pins only, changes nothing on the game's map and takes no flight.
 --
 -- The drawing is the module at the end of this file (section 187 section
 -- 7), through client.mapPins; the world-map button is another seat's.
@@ -40,7 +40,7 @@ local _, ns = ...
 --   d            = MapFlights.SegDist(px, py, ax, ay, bx, by)
 --   name         = MapFlights.LineAt(lines, px, py, reach)
 --
--- Setting (for the module, when built): "nav.mapFlights", bool, off by
+-- Setting (read by the module at the end of this file): "nav.mapFlights", bool, off by
 -- default, as Flow's (the map is busy enough until the player asks).
 
 local MF = ns.MapFlights or {}
