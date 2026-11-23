@@ -514,4 +514,53 @@ return {
         c.setRecipes({ profession = 164, name = "Blacksmithing", skill = 1, max = 75, recipes = {} })
         t.eq(c.recipes().name, "Blacksmithing")
     end,
+
+    -- Section 227 (P-GOALS-RECIPE) ---------------------------------------
+    ["recipeSchematic(): the product, the yield and the required basic mats"] = function(t)
+        local env = frameEnv()
+        local answer = {
+            outputItemID = 2996, quantityMin = 1,
+            reagentSlotSchematics = {
+                { reagentType = 1, required = true, quantityRequired = 2, reagents = { { itemID = 2589 } } },
+                { reagentType = 0, required = false, quantityRequired = 1, reagents = { { itemID = 4340 } } },
+                { reagentType = 1, quantityRequired = 1, reagents = { { itemID = 2320 }, { itemID = 2321 } } },
+            },
+        }
+        local asked
+        env.C_TradeSkillUI = { GetRecipeSchematic = function(id, recraft) asked = { id, recraft }; return answer end }
+        local c = ns.make.client(env)
+        t.eq(c.recipeSchematic(2963), { makes = 2996, yield = 1, mats = { [2589] = 2, [2320] = 1 } },
+            "the optional slot is left out; a slot names its first reagent")
+        t.eq(asked, { 2963, false }, "asked for the recipe, not a recraft")
+        answer.quantityMin = nil
+        t.eq(c.recipeSchematic(2963).yield, 1, "no yield given: one a craft")
+    end,
+
+    ["recipeSchematic(): nil when the client can't say"] = function(t)
+        local env = frameEnv()
+        local answer
+        env.C_TradeSkillUI = { GetRecipeSchematic = function() return answer end }
+        local c = ns.make.client(env)
+        t.eq(c.recipeSchematic("2963"), nil, "an id that is no number")
+        t.eq(c.recipeSchematic(2963), nil, "no answer")
+        answer = { quantityMin = 1, reagentSlotSchematics = {} }
+        t.eq(c.recipeSchematic(2963), nil, "no product")
+        answer = { outputItemID = 2996, quantityMin = 1,
+                   reagentSlotSchematics = { { reagentType = 1, quantityRequired = 2, reagents = {} } } }
+        t.eq(c.recipeSchematic(2963), nil, "a required slot with no reagent: never a shorter list")
+        answer = { outputItemID = 2996, quantityMin = 0, reagentSlotSchematics = {} }
+        t.eq(c.recipeSchematic(2963), nil, "a yield below 1")
+        env.C_TradeSkillUI.GetRecipeSchematic = boom
+        t.eq(c.recipeSchematic(2963), nil, "the read raised")
+        env.C_TradeSkillUI = nil
+        t.eq(c.recipeSchematic(2963), nil, "no trade skill API")
+    end,
+
+    ["fake: recipeSchematic() hands out a copy"] = function(t)
+        local c = ns.make.fakeClient()
+        t.eq(c.recipeSchematic(2963), nil, "none set")
+        c.setRecipeSchematic(2963, { makes = 2996, yield = 1, mats = { [2589] = 2 } })
+        c.recipeSchematic(2963).mats[2589] = 9
+        t.eq(c.recipeSchematic(2963), { makes = 2996, yield = 1, mats = { [2589] = 2 } })
+    end,
 }
