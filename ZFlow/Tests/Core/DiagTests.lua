@@ -767,4 +767,24 @@ return {
         t.eq(S.recipeDifficulty and S.recipeDifficulty.types[1], "nil", "a field the client leaves out reads as nil")
         t.eq(S.recipeSkillUps and S.recipeSkillUps.ok, true)
     end,
+
+    -- Lead section 249 item 4 (PF-2): a capture asks the client for the
+    -- recipe info once, and the three fields it fills still read it.
+    ["profession: the recipe info is asked once a capture"] = function(t)
+        local e = env()
+        local asked = 0
+        e.C_TradeSkillUI = {
+            GetAllRecipeIDs = function() return { 2660 } end,
+            GetRecipeInfo = function(recipe)
+                asked = asked + 1
+                return { recipeID = recipe, relativeDifficulty = 1, numSkillUps = 2 }
+            end,
+        }
+        local S = ns.Diag.Collect(ns.Kernel({}, ns.make.fakeClient({ env = e })), "test").shapes
+        t.eq(asked, 1, "asked once")
+        t.eq(S.recipeInfo and S.recipeInfo.ok, true)
+        t.eq(S.recipeInfo and S.recipeInfo.types[1], "table")
+        t.eq(S.recipeDifficulty and S.recipeDifficulty.values.v1, 1)
+        t.eq(S.recipeSkillUps and S.recipeSkillUps.values.v1, 2)
+    end,
 }
