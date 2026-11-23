@@ -19,19 +19,47 @@ local _, ns = ...
 -- The report (Feedback.Build) is the description, for a problem what
 -- happened and what was expected, and, only when "Attach relevant
 -- diagnostics" is on (off by default), a short block the add-on puts
--- together itself: its version and the game build, its own recent Lua
--- errors (Core/Diag.lua's bounded list, the add-on's lines only) and a
--- short summary of a Diag snapshot taken now and not saved. Every part has
--- a fixed cap (the MAX_ constants). With the setting off the report has no
--- diagnostics line at all.
+-- together itself. With the setting off the report has no diagnostics line
+-- at all.
 --
--- Names: the character's, the realm's and the guild's names are read when
--- the report is built and taken out of the whole text, the player's own
--- words included (Feedback.Mask: the capture mask's name rule,
--- Core/Capture.lua maskNames, which is an offline file and does not ship).
--- When the character's name cannot be read, error and problem texts are
--- left out and only counted, so no name can ride in on one. No chat, no
--- saved-data dump and nothing of another add-on is ever read for it.
+-- PRIVACY (lead section 251, from Plexy's walk of Core/Diag.lua): nothing
+-- in Diag is masked in the game, so the block is an ALLOWLIST. It is put
+-- together field by field from these and nothing else:
+--   the add-on's version and the game build
+--   of a Diag snapshot taken now and not saved: at, whether there is a
+--     clock; the names table as two counts (types only); `known`, for the
+--     reads named in Feedback.KNOWN; of `reads`, the counts and yes/no
+--     answers named in Feedback.READS; of the kernel, phase (one of
+--     Feedback.PHASES), paused, storeOpened, how many events were not
+--     registered or expected absent, and the two frame flags
+--   of the saved diag: starts, count and how many read records are kept
+--   the add-on's own problems (the kernel's list in that snapshot), newest
+--     first, MAX_ERRORS at most, each one line through Feedback.Clean
+-- Every value above is printed as a number, as yes or no, or as one of a
+-- fixed set of words; a field that is not named here is never read, so a
+-- field added to the snapshot later cannot reach a report.
+-- NEVER read: the snapshot's shapes (realm, realmNormalized, fullName, item
+-- and merchant links among them), timing.character and timing.realm,
+-- timing.errors (any add-on's Lua errors: not the add-on's own to share),
+-- the kernel's pauseText and blocked reasons, reads.money, position, zone,
+-- bags and recipes, the saved diag.api, chat, and saved data.
+--
+-- Feedback.Clean is the in-game cleaner every problem line goes through:
+--   colour codes and textures are taken off; a link, and a bare item,
+--     spell, enchant or quest string, becomes Feedback.LINK
+--   paths: from the first to the last word holding a slash is one path;
+--     of it only the part from "<add-on folder>/" on is kept (the file and
+--     line in the add-on), and any other path becomes Feedback.PATH whole
+--   text in double or single quotes becomes Feedback.QUOTED
+--   the player's own character, realm and guild names, read at that
+--     moment through the client's guarded call, become Feedback.HIDDEN
+--   the line is cut at MAX_ERROR_CHARS
+-- A line the cleaner raises on is left out, and one line says an error
+-- could not be included. While the character's name cannot be read, the
+-- problems are only counted.
+-- What the player typed is theirs: only their own names are replaced, and
+-- a file path (a word with a backslash or a drive letter) is cut the same
+-- way; no other word is altered.
 --
 -- A diagnostics read that raises, or a snapshot that comes back empty,
 -- leaves the written feedback whole with one line saying so.
@@ -41,15 +69,16 @@ local _, ns = ...
 -- (which counts as on, as for the settings page), only adds one line
 -- saying so; nothing of the game's is opened or changed either way.
 --
---   Feedback.Build(form, diag, names, title) -> text   pure
+--   Feedback.Build(form, diag, names, title, addon) -> text   pure
 --     form   { kind, description, happened, expected }
---     diag   nil (not attached), false (could not be collected), or
---            { version, build, errors = { { text, count } }, errorCount,
---              phase, paused, loaded, problems = { { kind, owner, text,
---              count } }, problemCount, texts = true | false }
---   Feedback.Mask(text, names) -> text, how many were taken out
---   Feedback.Collect(k, diag) -> the diag table above, or false
---   Feedback.Names(k, diag) -> names, known (true when the character's is)
+--     diag   nil (not attached), false (could not be collected), or what
+--            Feedback.Collect answers
+--   Feedback.Clean(text, names, addon) -> one cleaned line
+--   Feedback.CleanTyped(text, names, addon) -> the player's words, names
+--                                              and file paths taken out
+--   Feedback.Mask(text, names) -> text, how many names were replaced
+--   Feedback.Collect(k, names, known) -> the allowlisted values, or false
+--   Feedback.Names(k) -> names, known (true when the character's is)
 --   Feedback.Declare(k, diag) -> api
 --     api.open() -> true when the window is on the screen
 --     api.report() -> the text as it would be copied now, or nil and why
@@ -67,15 +96,27 @@ F.HELP = "write a problem, a suggestion or an idea, and get a report to copy"
 -- so and shows no address. The one place it is written.
 F.DESTINATION = ""
 
--- The caps. Bytes of one typed field; bytes of one diagnostics line;
--- how many of the add-on's errors and of its problems are listed; lines of
--- the diagnostics block; bytes of the whole report.
+-- The caps. Bytes of one typed field; bytes of one diagnostics line; how
+-- many of the add-on's own problems are listed and the bytes of each after
+-- cleaning; lines of the diagnostics block; bytes of the whole report.
 F.MAX_FIELD = 600
 F.MAX_LINE = 240
 F.MAX_ERRORS = 5
-F.MAX_PROBLEMS = 5
-F.MAX_DIAG_LINES = 16
+F.MAX_ERROR_CHARS = 160
+F.MAX_DIAG_LINES = 18
 F.MAX_BYTES = 3000
+
+-- The allowlist's fixed names (see PRIVACY above). KNOWN: the reads whose
+-- known flag is printed. READS: the counts and yes/no answers of the
+-- snapshot's reads, each with the words it is printed under. PHASES: the
+-- kernel's phases; any other is printed as "other".
+F.KNOWN = { "money", "combatLockdown", "bags", "bagStacks", "bankOpen", "bankStacks", "position", "zone" }
+F.READS = {
+    { "inCombat", "in combat" }, { "combatLockdown", "combat lock" }, { "bagStacks", "bag stacks" },
+    { "bankOpen", "bank open" }, { "bankStacks", "bank stacks" }, { "predecessorLoaded", "old add-on loaded" },
+    { "predecessorData", "old add-on data" }, { "selfLoaded", "add-on loaded" },
+}
+F.PHASES = { "declare", "wire", "running", "paused" }
 
 F.KINDS = {
     { key = "problem", pick = "Report a problem", head = "Problem report" },
@@ -113,6 +154,11 @@ F.DIAG_HEAD = "Diagnostics"
 F.NO_DIAG = "Diagnostics could not be collected."
 F.CUT = "(cut short at the size limit)"
 F.HIDDEN = "(name)"
+F.LINK = "(link)"
+F.PATH = "(path)"
+F.QUOTED = "(text)"
+F.ERROR_DROPPED = "An error could not be included."
+F.TEXTS_OUT = "Their texts are left out: your character's name could not be read to take it out."
 F.ROW_LABEL = "Attach relevant diagnostics to feedback"
 F.ROW_OPEN = "Write feedback"
 F.WIDTH = 380
@@ -144,9 +190,9 @@ function F.Field(text)
     return clip(trim(plain), F.MAX_FIELD)
 end
 
--- Every place a name stands, whatever its capitals, is taken out. Also the
--- folder after "Account" in a path, which is the account's name. Answers
--- the text and how many were taken out.
+-- Every place one of the names stands, whatever its capitals, becomes
+-- F.HIDDEN. Answers the text and how many were replaced. (The name rule of
+-- the capture mask, Core/Capture.lua maskNames, which does not ship.)
 function F.Mask(text, names)
     text = tostring(text)
     local n = 0
@@ -166,9 +212,77 @@ function F.Mask(text, names)
             text = table.concat(out)
         end
     end
-    local paths
-    text, paths = text:gsub("([Aa]ccount[\\/])[^\\/%s]+", "%1" .. F.HIDDEN)
-    return text, n + paths
+    return text, n
+end
+
+-- Whether a word is (part of) a file path. In a line the add-on wrote, any
+-- word with a slash is; in the player's own words only one with a
+-- backslash, or one that starts with a drive letter.
+local function pathWord(word, typed)
+    if typed then
+        if word:find("\\", 1, true) then return true end
+        return word:find("^%a:[\\/]") ~= nil
+    end
+    return word:find("[\\/]") ~= nil
+end
+
+-- From the first to the last path word is one path (a folder name may hold
+-- blanks). Of it only the part from "<addon>/" on is kept, when the last
+-- word has one; any other path becomes F.PATH whole.
+function F.CutPaths(text, addon, typed)
+    text = tostring(text)
+    local words, first, last = {}, nil, nil
+    for gap, word in text:gmatch("(%s*)(%S+)") do
+        words[#words + 1] = { gap = gap, word = word }
+        if pathWord(word, typed) then
+            if not first then first = #words end
+            last = #words
+        end
+    end
+    if not first then return text end
+    local keep = F.PATH
+    local tail, lead = words[last].word, tostring(addon or "")
+    if lead ~= "" then
+        local at, from = nil, 1
+        while true do
+            local a = tail:find(lead, from, true)
+            if not a then break end
+            local after = tail:sub(a + #lead, a + #lead)
+            if after == "/" or after == "\\" then at = a end
+            from = a + 1
+        end
+        if at then keep = tail:sub(at) end
+    end
+    local out = {}
+    for i = 1, first - 1 do out[#out + 1] = words[i].gap .. words[i].word end
+    out[#out + 1] = words[first].gap .. keep
+    for i = last + 1, #words do out[#out + 1] = words[i].gap .. words[i].word end
+    return table.concat(out)
+end
+
+local LINK_KINDS = { "item", "spell", "enchant", "quest", "talent", "achievement", "trade", "player" }
+
+-- One line of the add-on's own, cleaned for sharing (see the header).
+function F.Clean(text, names, addon)
+    local s = tostring(text):gsub("%c", " ")
+    s = s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    s = s:gsub("|H.-|h.-|h", F.LINK)
+    s = s:gsub("|T.-|t", ""):gsub("|A.-|a", "")
+    for i = 1, #LINK_KINDS do
+        s = s:gsub(LINK_KINDS[i] .. ":[%-%w:]+", F.LINK)
+    end
+    s = F.CutPaths(s, addon, false)
+    s = s:gsub('"[^"]*"', F.QUOTED):gsub("'[^']*'", F.QUOTED)
+    s = F.Mask(s, names)
+    return clip(trim(s), F.MAX_ERROR_CHARS)
+end
+
+-- What the player typed: their own names and a file path taken out, no
+-- other word altered.
+function F.CleanTyped(text, names, addon)
+    local s = F.CutPaths(tostring(text), addon, true)
+    s = F.Mask(s, names)
+    return s
 end
 
 local function kindOf(key)
@@ -178,31 +292,69 @@ local function kindOf(key)
     return nil
 end
 
-local function yes(v) return v and "yes" or "no" end
+local function yes(v)
+    if v == true then return "yes" end
+    return "no"
+end
 
--- The lines of the diagnostics block, MAX_DIAG_LINES at most.
+-- A whole number as text; anything that is not a number is "unknown".
+local function numText(v)
+    if type(v) ~= "number" or v ~= v or v == math.huge or v == -math.huge then return "unknown" end
+    return tostring(math.floor(v))
+end
+
+local function inList(list, value)
+    for i = 1, #list do
+        if list[i] == value then return true end
+    end
+    return false
+end
+
+-- The lines of the diagnostics block, MAX_DIAG_LINES at most. Only numbers,
+-- yes or no, the fixed words and the cleaned problem lines are printed.
 local function diagLines(diag)
     if diag == false then return { F.NO_DIAG } end
     local lines = { F.DIAG_HEAD }
-    lines[#lines + 1] = "Version: " .. tostring(diag.version or "unknown") .. "; game build: "
-        .. tostring(diag.build or "unknown")
-    local errors = type(diag.errors) == "table" and diag.errors or {}
-    lines[#lines + 1] = "The add-on's own recent errors: " .. tostring(diag.errorCount or #errors)
-    for i = 1, math.min(#errors, F.MAX_ERRORS) do
-        lines[#lines + 1] = "  " .. tostring(errors[i].text) .. " (x" .. tostring(errors[i].count or 1) .. ")"
+    local version, build = "unknown", "unknown"
+    if type(diag.version) == "string" and diag.version ~= "" then version = diag.version end
+    if type(diag.build) == "string" and diag.build ~= "" then build = diag.build end
+    lines[#lines + 1] = "Version: " .. version .. "; game build: " .. build
+    lines[#lines + 1] = "Snapshot: seconds since start " .. numText(diag.at) .. "; wall clock: " .. yes(diag.clock)
+    lines[#lines + 1] = "Client names asked: " .. numText(diag.namesAsked) .. "; missing: " .. numText(diag.namesMissing)
+    local known = {}
+    for _, row in ipairs(type(diag.known) == "table" and diag.known or {}) do
+        if type(row) == "table" and inList(F.KNOWN, row[1]) then known[#known + 1] = row[1] .. " " .. yes(row[2]) end
     end
-    lines[#lines + 1] = "State: " .. tostring(diag.phase or "unknown") .. "; paused: " .. yes(diag.paused)
+    if #known > 0 then lines[#lines + 1] = "Reads known: " .. table.concat(known, ", ") end
+    local labels, reads = {}, {}
+    for i = 1, #F.READS do labels[i] = F.READS[i][2] end
+    for _, row in ipairs(type(diag.reads) == "table" and diag.reads or {}) do
+        if type(row) == "table" and inList(labels, row[1]) then
+            if type(row[2]) == "boolean" then
+                reads[#reads + 1] = row[1] .. " " .. yes(row[2])
+            elseif type(row[2]) == "number" then
+                reads[#reads + 1] = row[1] .. " " .. numText(row[2])
+            end
+        end
+    end
+    if #reads > 0 then lines[#lines + 1] = "Reads: " .. table.concat(reads, "; ") end
+    local phase = "other"
+    if inList(F.PHASES, diag.phase) then phase = diag.phase end
+    lines[#lines + 1] = "State: " .. phase .. "; paused: " .. yes(diag.paused)
         .. "; saved data loaded: " .. yes(diag.loaded)
-    local problems = type(diag.problems) == "table" and diag.problems or {}
-    lines[#lines + 1] = "Problems the add-on listed: " .. tostring(diag.problemCount or #problems)
-    for i = 1, math.min(#problems, F.MAX_PROBLEMS) do
-        local p = problems[i]
-        lines[#lines + 1] = "  " .. tostring(p.kind) .. " / " .. tostring(p.owner) .. ": " .. tostring(p.text)
-            .. " (x" .. tostring(p.count or 1) .. ")"
+    lines[#lines + 1] = "Events not registered: " .. numText(diag.eventsNot) .. "; expected absent: "
+        .. numText(diag.eventsAbsent) .. "; event frame missing: " .. yes(diag.noEventFrame)
+        .. "; tick frame missing: " .. yes(diag.noTickFrame)
+    lines[#lines + 1] = "Snapshots: starts " .. numText(diag.starts) .. "; kept " .. numText(diag.count)
+        .. "; read records " .. numText(diag.readRecords)
+    lines[#lines + 1] = "The add-on's own problems, newest first: " .. numText(diag.problemCount)
+    local problems = {}
+    if type(diag.problems) == "table" then problems = diag.problems end
+    for i = 1, math.min(#problems, F.MAX_ERRORS) do
+        if type(problems[i]) == "string" then lines[#lines + 1] = "  " .. problems[i] end
     end
-    if diag.texts == false then
-        lines[#lines + 1] = "Their texts are left out: your character's name could not be read to take it out."
-    end
+    if diag.dropped == true then lines[#lines + 1] = F.ERROR_DROPPED end
+    if diag.texts == false then lines[#lines + 1] = F.TEXTS_OUT end
     while #lines > F.MAX_DIAG_LINES do lines[#lines] = nil end
     for i = 1, #lines do
         lines[i] = clip((lines[i]:gsub("%c", " ")), F.MAX_LINE)
@@ -210,20 +362,22 @@ local function diagLines(diag)
     return lines
 end
 
-function F.Build(form, diag, names, title)
+function F.Build(form, diag, names, title, addon)
     form = type(form) == "table" and form or {}
     local kind = kindOf(form.kind)
-    local lines = { tostring(title or "") .. " feedback: " .. (kind and kind.head or "?") }
+    local head = "?"
+    if kind then head = kind.head end
+    local lines = { tostring(title or "") .. " feedback: " .. head }
     for _, field in ipairs(F.FIELDS) do
-        local text = F.Field(form[field.key])
-        if text ~= "" and (not field.problem or (kind and kind.key == "problem")) then
-            lines[#lines + 1] = field.label .. ": " .. text
-        end
+        local text = F.CleanTyped(F.Field(form[field.key]), names, addon)
+        local wanted = not field.problem
+        if kind and kind.key == "problem" then wanted = true end
+        if text ~= "" and wanted then lines[#lines + 1] = field.label .. ": " .. text end
     end
     if diag ~= nil then
         for _, line in ipairs(diagLines(diag)) do lines[#lines + 1] = line end
     end
-    local text = F.Mask(table.concat(lines, "\n"), names)
+    local text = table.concat(lines, "\n")
     if #text > F.MAX_BYTES then
         text = clip(text, F.MAX_BYTES - #F.CUT - 1) .. "\n" .. F.CUT
     end
@@ -237,10 +391,10 @@ local function nameOf(client, v)
     return v
 end
 
--- The names to take out: the character's, the realm's (both spellings) and
--- the guild's, read now through the client's guarded call. known is true
--- when the character's own name was read.
-function F.Names(k, diag)
+-- The player's own names: the character's, the realm's (both spellings)
+-- and the guild's, read at this moment through the client's guarded call
+-- and from nowhere else. known is true when the character's own was read.
+function F.Names(k)
     local client = k.client
     local out, seen, known = {}, {}, false
     local function add(v)
@@ -250,12 +404,6 @@ function F.Names(k, diag)
             out[#out + 1] = name
         end
         return name ~= nil
-    end
-    local timing
-    if type(diag) == "table" and type(diag.timing) == "table" then timing = diag.timing end
-    if timing then
-        if add(timing.character) then known = true end
-        add(timing.realm)
     end
     -- The first two answers of a client name, or nothing when it is not
     -- there or raised.
@@ -279,42 +427,91 @@ function F.Names(k, diag)
     return out, known
 end
 
--- The diagnostics for a report, read now; false when a read raised or the
--- snapshot came back empty. Nothing is saved.
-function F.Collect(k, diag, known)
+local function count(v)
+    if type(v) ~= "table" then return 0 end
+    local n = 0
+    for _ in pairs(v) do n = n + 1 end
+    return n
+end
+
+-- A version or build text as the client gave it: letters, digits, dots,
+-- dashes, blanks and brackets only, 40 at most. nil for anything else.
+local function plainWord(v)
+    if type(v) ~= "string" and type(v) ~= "number" then return nil end
+    local s = tostring(v):gsub("[^%w%.%-%s%(%)]", "")
+    return clip(trim(s), 40)
+end
+
+-- The diagnostics for a report, read now, field by field from the
+-- allowlist in the header; false when a read raised or the snapshot came
+-- back empty. Nothing is saved, and no field that is not named here is read.
+--   names, known   as F.Names answers: the names to take out of the
+--                  problem lines; with known not true they are only counted
+function F.Collect(k, names, known)
     local ok, out = pcall(function()
-        local client = k.client
+        local client, id = k.client, k.id
         local got = { texts = known == true }
-        got.version = client.version(k.id.addon)
-        got.build = ns.Diag.BuildKey(client)
-        got.errors, got.errorCount = {}, 0
-        local timing
-        if type(diag) == "table" and type(diag.timing) == "table" then timing = diag.timing end
-        local kept = {}
-        if timing and type(timing.errors) == "table" then kept = timing.errors end
-        for i = 1, #kept do
-            local row = kept[i]
-            if type(row) == "table" and row.ours == true and type(row.text) == "string" then
-                got.errorCount = got.errorCount + 1
-                if got.texts then
-                    got.errors[#got.errors + 1] = { text = (row.text:match("^[^\r\n]*")), count = row.count }
+        got.version = plainWord(client.version(id.addon))
+        got.build = plainWord(ns.Diag.BuildKey(client))
+        local snap = ns.Diag.Collect(k, F.NAME)
+        if type(snap) ~= "table" or type(snap.kernel) ~= "table" then return false end
+        if type(snap.at) == "number" then got.at = snap.at end
+        got.clock = type(snap.clock) == "number"
+        got.namesAsked, got.namesMissing = 0, 0
+        if type(snap.names) == "table" then
+            for _, kind in pairs(snap.names) do
+                got.namesAsked = got.namesAsked + 1
+                if kind == "nil" then got.namesMissing = got.namesMissing + 1 end
+            end
+        end
+        got.known = {}
+        if type(snap.known) == "table" then
+            for _, name in ipairs(F.KNOWN) do
+                local v = snap.known[name]
+                if type(v) == "boolean" then got.known[#got.known + 1] = { name, v } end
+            end
+        end
+        got.reads = {}
+        if type(snap.reads) == "table" then
+            for _, row in ipairs(F.READS) do
+                local v = snap.reads[row[1]]
+                if type(v) == "boolean" or type(v) == "number" then got.reads[#got.reads + 1] = { row[2], v } end
+            end
+        end
+        local kernel = snap.kernel
+        if type(kernel.phase) == "string" then got.phase = kernel.phase end
+        got.paused, got.loaded = kernel.paused == true, kernel.storeOpened == true
+        got.eventsNot, got.eventsAbsent = count(kernel.eventsNotRegistered), count(kernel.eventsExpectedAbsent)
+        got.noEventFrame, got.noTickFrame = kernel.eventFrameNotMade == true, kernel.tickFrameNotMade == true
+        local saved = client.saved(id.accountDB)
+        local kept
+        if type(saved) == "table" then kept = saved.diag end
+        if type(kept) == "table" then
+            if type(kept.starts) == "number" then got.starts = kept.starts end
+            if type(kept.count) == "number" then got.count = kept.count end
+            got.readRecords = count(kept.reads)
+        end
+        -- The add-on's own problems, newest first, each through the cleaner.
+        local listed = {}
+        if type(kernel.problems) == "table" then listed = kernel.problems end
+        got.problems, got.problemCount, got.dropped = {}, #listed, false
+        if got.texts then
+            for i = #listed, 1, -1 do
+                if #got.problems >= F.MAX_ERRORS then break end
+                local p = listed[i]
+                if type(p) == "table" then
+                    local times = 1
+                    if type(p.count) == "number" then times = p.count end
+                    local okClean, line = pcall(F.Clean,
+                        tostring(p.kind) .. ", " .. tostring(p.owner) .. ": " .. tostring(p.text), names, id.addon)
+                    if okClean and type(line) == "string" then
+                        got.problems[#got.problems + 1] = line .. " (x" .. numText(times) .. ")"
+                    else
+                        got.dropped = true
+                    end
                 end
             end
         end
-        -- The newest are the ones worth reading.
-        while #got.errors > F.MAX_ERRORS do table.remove(got.errors, 1) end
-        local snap = ns.Diag.Collect(k, F.NAME)
-        if type(snap) ~= "table" or type(snap.kernel) ~= "table" then return false end
-        local kernel = snap.kernel
-        got.phase, got.paused, got.loaded = kernel.phase, kernel.paused == true, kernel.storeOpened == true
-        got.problems, got.problemCount = {}, 0
-        local listed = {}
-        if type(kernel.problems) == "table" then listed = kernel.problems end
-        for i = 1, #listed do
-            got.problemCount = got.problemCount + 1
-            if got.texts then got.problems[#got.problems + 1] = listed[i] end
-        end
-        while #got.problems > F.MAX_PROBLEMS do table.remove(got.problems, 1) end
         return got
     end)
     if not ok or type(out) ~= "table" then return false end
@@ -349,11 +546,11 @@ function F.Declare(k, diag)
         if not kindOf(form.kind) then return nil, F.NEED_KIND end
         if F.Field(form.description) == "" then return nil, F.NEED_TEXT end
         local id = k.id or ns.id
-        local okNames, names, known = pcall(F.Names, k, diag)
+        local okNames, names, known = pcall(F.Names, k)
         if not okNames or type(names) ~= "table" then names, known = {}, false end
         local got
-        if attach() then got = F.Collect(k, diag, known) end
-        return F.Build(form, got, names, id.title)
+        if attach() then got = F.Collect(k, names, known) end
+        return F.Build(form, got, names, id.title, id.addon)
     end
 
     local function lock()
@@ -495,7 +692,7 @@ function F.Declare(k, diag)
             key = F.SETTING, scope = "account", type = "bool", default = false,
             label = F.ROW_LABEL,
             help = "Off: a feedback report holds only what you write. On: the add-on's version, the game build, "
-                .. "its own recent errors and a short state summary are added, with names taken out. "
+                .. "its own listed problems and a short state summary are added, with names and paths taken out. "
                 .. "You see all of it before you copy it. " .. k.id.slash .. " " .. F.WORD .. " opens the window.",
             group = "general", synonyms = { "feedback", "bug", "report", "problem", "idea", "suggest" },
             open = { text = F.ROW_OPEN, run = function() return api.open() end },
