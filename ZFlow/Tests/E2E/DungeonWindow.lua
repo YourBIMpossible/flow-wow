@@ -18,8 +18,12 @@ local function questie()
             Starts = { NPC = { 501 } }, preQuestSingle = { 101 }, nextQuestInChain = 0 },
         [201] = { Id = 201, name = "Arugal Must Die", level = 27, requiredLevel = 18, zoneOrSort = SFK,
             Starts = { NPC = { 503 } } },
+        -- Its giver is inside the Deadmines (Twin low note, icons by group).
+        [108] = { Id = 108, name = "Deep Inside", level = 18, requiredLevel = 14, zoneOrSort = DM,
+            Starts = { NPC = { 505 } } },
     }
-    local npcs = { [501] = { name = "Gryan", friendlyToFaction = "A" }, [503] = { name = "Sorcerer", friendlyToFaction = "AH" } }
+    local npcs = { [501] = { name = "Gryan", friendlyToFaction = "A" }, [503] = { name = "Sorcerer", friendlyToFaction = "AH" },
+        [505] = { name = "Prisoner", friendlyToFaction = "A", spawns = { [DM] = { { 10, 10 } } } } }
     local db = { QuestPointers = {} }
     for id in pairs(quests) do db.QuestPointers[id] = true end
     function db.GetQuest(id) return quests[id] end
@@ -38,13 +42,15 @@ local function questie()
     return db, zones
 end
 
--- opts: questie (false: none), account (the saved account table).
+-- opts: questie (false: none), account (the saved account table),
+-- faction, log (the quest log rows).
 local function boot(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
     c.setSaved(ns.id.accountDB, opts.account or {}); c.setSaved(ns.id.charDB, {})
-    c.setClass("WARRIOR"); c.setRaceId(1); c.setFaction("Alliance"); c.setLevel(18)
-    for _, id in ipairs({ 101, 103, 201 }) do c.setQuestDone(id, false) end
+    c.setClass("WARRIOR"); c.setRaceId(1); c.setFaction(opts.faction or "Alliance"); c.setLevel(18)
+    for _, id in ipairs({ 101, 103, 108, 201 }) do c.setQuestDone(id, false) end
+    if opts.log then c.setQuestLog(opts.log) end
     c.setZone(1, 1436); c.setPosition(1436, 0.5, 0.5)
     if opts.questie ~= false then
         local db, zones = questie()
@@ -219,6 +225,41 @@ tests["dungeon window F3: each quest line carries the kit's icon for its group"]
     local look = ns.Kit.look.icon
     t.eq(icons["Red Silk"], look.questAvailable, "a pickup: available")
     t.eq(icons["The Defias Brotherhood"], look.questLater, "a later quest: later")
+end
+
+-- Twin low note: the other three groups' icons. unfold: a group to open
+-- first (Not for you is folded at first).
+local function iconsOf(c, unfold)
+    local last
+    local real = c.kitWindow
+    c.kitWindow = function(id, tree, extra)
+        last = tree
+        local h = real(id, tree, extra)
+        if type(h) == "table" then
+            local update = h.update
+            h.update = function(now)
+                last = now
+                return update(now)
+            end
+        end
+        return h
+    end
+    open(c)
+    if unfold then c.kitClick(ID, "group." .. unfold) end
+    local icons = {}
+    ns.Kit.Each(last, function(part)
+        if part.kind == "line" and type(part.text) == "string" then icons[part.text] = part.icon end
+    end)
+    return icons
+end
+
+tests["dungeon window icons: in your log, inside, and not for you"] = function(t)
+    local look = ns.Kit.look.icon
+    local icons = iconsOf((boot({ log = { { id = 101, title = "Red Silk", objectives = {} } } })))
+    t.eq(icons["Red Silk"], look.questInLog, "in your log")
+    t.eq(icons["Deep Inside"], look.questAvailable, "inside: the available mark")
+    local horde = iconsOf((boot({ faction = "Horde" })), "notforyou")
+    t.eq(horde["Red Silk"], look.questNotForYou, "the other faction's quest")
 end
 
 return tests
