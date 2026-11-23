@@ -259,7 +259,14 @@ local function plateEnv(units, extra)
         UnitCanAttack = function(_, u) return by[u] and by[u].attack end,
         UnitAffectingCombat = function(u) return by[u] and by[u].combat end,
         UnitThreatSituation = function(_, u) return by[u] and by[u].threat end,
+        UnitName = function(u) return by[u] and by[u].name end,
+        C_UnitAuras = { GetAuraDataByIndex = function(u, i, filter)
+            local d = filter == "HARMFUL" and by[u] and by[u].debuffs
+            if d == SECRET then return SECRET end
+            if type(d) == "table" and d[i] ~= nil then return { name = d[i] } end
+        end },
         UnitIsUnit = function(a, b)
+            if b == "target" then return by[a] and by[a].isTarget end
             local u = a:match("^(nameplate%d+)target$")
             return u ~= nil and b == "player" and by[u] ~= nil and by[u].targetsYou == true
         end,
@@ -295,18 +302,52 @@ tests["reads enemiesNear: no plate list, or a plate not read, is not known; none
     t.eq(ns.make.client(bad).enemiesNear(), nil, "a plate with no plate unit")
 end
 
-tests["reads plateCasts: casts and channels on plate units"] = function(t)
+-- Lead section 262: the row shapes of Twin 10:02Z INTERFACE line. plateCasts
+-- rows { unit, name (the enemy), spell (the spell name), interruptible,
+-- isTarget }, plus spellId, channel and endsAt.
+tests["reads plateCasts: casts and channels on plate units, in the class-b row shape"] = function(t)
     local env = plateEnv({
-        { unit = "nameplate1", cast = { "Fireball", "", 1, 999000, 1002500, false, "id", false, 133 } },
-        { unit = "nameplate2", channel = { "Drain Life", "", 1, 999000, 1004000, false, true, 689 } },
-        { unit = "nameplate3" },
+        { unit = "nameplate1", name = "Kobold Geomancer", isTarget = true,
+          cast = { "Fireball", "", 1, 999000, 1002500, false, "id", false, 133 } },
+        { unit = "nameplate2", name = "Defias Warlock", isTarget = false,
+          channel = { "Drain Life", "", 1, 999000, 1004000, false, true, 689 } },
+        { unit = "nameplate3", name = "Murloc" },
         { unit = "nameplate4", cast = { SECRET, "", 1, 1, 2, false, "id", false, 1 } },
+        { unit = "nameplate5", name = SECRET, isTarget = SECRET,
+          cast = { "Frostbolt", "", 1, 999000, 1003000, false, "id", false, 116 } },
     })
     t.eq(ns.make.client(env).plateCasts(), {
-        { unit = "nameplate1", name = "Fireball", spellId = 133, channel = false, endsAt = 1002.5, interruptible = true },
-        { unit = "nameplate2", name = "Drain Life", spellId = 689, channel = true, endsAt = 1004, interruptible = false },
-    }, "a hidden cast is left out")
+        { unit = "nameplate1", name = "Kobold Geomancer", spell = "Fireball", spellId = 133, channel = false,
+          endsAt = 1002.5, interruptible = true, isTarget = true },
+        { unit = "nameplate2", name = "Defias Warlock", spell = "Drain Life", spellId = 689, channel = true,
+          endsAt = 1004, interruptible = false, isTarget = false },
+        { unit = "nameplate5", spell = "Frostbolt", spellId = 116, channel = false, endsAt = 1003, interruptible = true },
+    }, "a hidden spell: left out; a hidden enemy name or target answer: that field left out")
     t.eq(ns.make.client(plateEnv(nil)).plateCasts(), nil, "no plate list")
+end
+
+-- plateEnemies rows { unit, name, isTarget, creature, controlled, threat }:
+-- the plates you can attack. controlled: a crowd-control debuff on it (first
+-- guess names). A field not read is left out; never false in its place.
+tests["reads plateEnemies: the plates you can attack, in the class-b row shape"] = function(t)
+    local env = plateEnv({
+        { unit = "nameplate1", name = "Kobold Geomancer", attack = true, isTarget = true, kind = "Humanoid",
+          threat = 3, debuffs = {} },
+        { unit = "nameplate2", name = "Young Wolf", attack = true, isTarget = false, kind = "Beast",
+          threat = SECRET, debuffs = { "Rend", "Polymorph" } },
+        { unit = "nameplate3", name = "Guard", attack = false, kind = "Humanoid" },
+        { unit = "nameplate4", name = "Odd", attack = SECRET, kind = "Humanoid" },
+        { unit = "nameplate5", name = SECRET, attack = true, isTarget = false, kind = SECRET, threat = 0,
+          debuffs = SECRET },
+    })
+    t.eq(ns.make.client(env).plateEnemies(), {
+        { unit = "nameplate1", name = "Kobold Geomancer", isTarget = true, creature = "Humanoid", threat = 3,
+          controlled = false },
+        { unit = "nameplate2", name = "Young Wolf", isTarget = false, creature = "Beast", controlled = true },
+        { unit = "nameplate5", isTarget = false, threat = 0 },
+    }, "not attackable or not known: left out; a hidden field: left out")
+    t.eq(ns.make.client(plateEnv(nil)).plateEnemies(), nil, "no plate list: nil")
+    t.eq(ns.make.client(plateEnv({})).plateEnemies(), {}, "a list with none: empty")
 end
 
 tests["reads creatureType: target or a plate unit, as the client names it"] = function(t)
@@ -322,6 +363,7 @@ tests["reads fake: each read answers what was set, and nil before"] = function(t
     local c = ns.make.fakeClient()
     t.eq(c.channel(), nil); t.eq(c.totems(), nil); t.eq(c.targetBuffs(), nil)
     t.eq(c.enemiesNear(), nil); t.eq(c.plateCasts(), nil); t.eq(c.creatureType("target"), nil)
+    t.eq(c.plateEnemies(), nil)
     c.setChannel({ name = "Evocation", spellId = 12051, endsAt = 20 })
     t.eq(c.channel(), { name = "Evocation", spellId = 12051, endsAt = 20 })
     c.setChannel(false); t.eq(c.channel(), false)
@@ -331,8 +373,10 @@ tests["reads fake: each read answers what was set, and nil before"] = function(t
     t.eq(c.targetBuffs(), { ["Mark of the Wild"] = 300 })
     c.setEnemiesNear(3, 1, 2)
     t.eq({ c.enemiesNear() }, { 3, 1, 2 })
-    c.setPlateCasts({ { unit = "nameplate1", name = "Fireball", channel = false } })
-    t.eq(c.plateCasts(), { { unit = "nameplate1", name = "Fireball", channel = false } })
+    c.setPlateCasts({ { unit = "nameplate1", name = "Kobold", spell = "Fireball", isTarget = false } })
+    t.eq(c.plateCasts(), { { unit = "nameplate1", name = "Kobold", spell = "Fireball", isTarget = false } })
+    c.setPlateEnemies({ { unit = "nameplate1", name = "Kobold", creature = "Humanoid", controlled = false } })
+    t.eq(c.plateEnemies(), { { unit = "nameplate1", name = "Kobold", creature = "Humanoid", controlled = false } })
     c.setCreatureType("target", "Beast")
     t.eq(c.creatureType("target"), "Beast")
 end
@@ -351,6 +395,45 @@ tests["reads fake: pet hurt, the buff length and a secret event argument"] = fun
     c.listen("UNIT_SPELLCAST_SUCCEEDED", function(...) got = { n = select("#", ...), ... } end)
     c.fireSecret("UNIT_SPELLCAST_SUCCEEDED", "player", c.SECRET, 5176)
     t.eq(got, { n = 3, "player", nil, 5176 }, "as the real client hands it on: nil")
+end
+
+-- Lead section 263 READS-2 item 2: the rows of the real read (on a stubbed
+-- client) and of the fake are taken by Rotation/Choose.lua plateCast and cc.
+local function chooseStep(name, over, pack)
+    local R = ns.Rotation
+    local fn = R and R._steps and R._steps[name]
+    if type(fn) ~= "function" then return nil, "no step " .. name end
+    local s = { dead = false, inCombat = true, spells = {} }
+    for _, spell in ipairs({ "Counterspell", "Polymorph" }) do
+        s.spells[spell] = { known = true, onCooldown = false, inRange = true }
+    end
+    for k, v in pairs(over) do s[k] = v end
+    return fn(s, pack, nil, nil, {})
+end
+
+local MAGE = {
+    interrupts = { { spell = "Counterspell", evidence = "test" } },
+    options = { crowdControl = { { spell = "Polymorph", creatures = { humanoid = true } } } },
+}
+
+tests["reads plate rows: the real read and the fake both feed the plateCast and cc steps"] = function(t)
+    local env = plateEnv({
+        { unit = "nameplate1", name = "Gnoll", attack = true, isTarget = true, kind = "Humanoid", debuffs = {} },
+        { unit = "nameplate2", name = "Kobold Geomancer", attack = true, isTarget = false, kind = "Humanoid",
+          debuffs = {}, cast = { "Fireball", "", 1, 999000, 1002500, false, "id", false, 133 } },
+    })
+    local real = ns.make.client(env)
+    local fake = ns.make.fakeClient()
+    fake.setPlateCasts(real.plateCasts())
+    fake.setPlateEnemies(real.plateEnemies())
+    for _, c in ipairs({ real, fake }) do
+        local s, why = chooseStep("plateCast", { plateCasts = c.plateCasts() }, MAGE)
+        t.eq(s and { s.spell, s.look, s.unit, s.member } or why,
+            { "Counterspell", true, "nameplate2", "Kobold Geomancer" }, "plate cast taken")
+        s, why = chooseStep("cc", { enemies = c.plateEnemies() }, MAGE)
+        t.eq(s and { s.spell, s.look, s.unit, s.member } or why,
+            { "Polymorph", true, "nameplate2", "Kobold Geomancer" }, "enemies taken")
+    end
 end
 
 return tests

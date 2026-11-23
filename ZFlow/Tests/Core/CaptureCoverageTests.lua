@@ -111,6 +111,7 @@ local READS = {
     -- the capture asks none. Their names are in Diag.NAMES.
     channel = false, weaponEnchant = false, totems = false, targetBuffs = false,
     buffLength = false, enemiesNear = false, plateCasts = false, creatureType = false,
+    plateEnemies = false,
 }
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).

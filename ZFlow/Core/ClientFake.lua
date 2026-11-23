@@ -1480,8 +1480,7 @@ function ns.make.fakeClient(opts)
     --   totems() -> { [slot] = { name, spellId, left } or false } | nil
     --   targetBuffs() -> { [name] = secondsLeft or true } | nil
     --   enemiesNear() -> near, close, onYou | nil
-    --   plateCasts() -> { { unit, name, spellId, channel, endsAt,
-    --                       interruptible } ... } | nil
+    --   plateCasts and plateEnemies: the class-b twins further down.
     --   creatureType(unit) -> text | nil
     --   buffLength(unit, names) -> the row field `length` of setUnitBuffs,
     --                              name | false | nil
@@ -1506,8 +1505,6 @@ function ns.make.fakeClient(opts)
         if near == nil then s.enemiesNear = nil return end
         s.enemiesNear = { near = near, close = close, onYou = onYou }
     end
-    function c.plateCasts() return copied(s.plateCasts) end
-    function c.setPlateCasts(v) s.plateCasts = v end
     function c.creatureType(unit)
         if type(s.creatureTypes) ~= "table" then return nil end
         return s.creatureTypes[unit]
