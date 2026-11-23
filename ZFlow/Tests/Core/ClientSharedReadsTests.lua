@@ -397,4 +397,43 @@ tests["reads fake: pet hurt, the buff length and a secret event argument"] = fun
     t.eq(got, { n = 3, "player", nil, 5176 }, "as the real client hands it on: nil")
 end
 
+-- Lead section 263 READS-2 item 2: the rows of the real read (on a stubbed
+-- client) and of the fake are taken by Rotation/Choose.lua plateCast and cc.
+local function chooseStep(name, over, pack)
+    local R = ns.Rotation
+    local fn = R and R._steps and R._steps[name]
+    if type(fn) ~= "function" then return nil, "no step " .. name end
+    local s = { dead = false, inCombat = true, spells = {} }
+    for _, spell in ipairs({ "Counterspell", "Polymorph" }) do
+        s.spells[spell] = { known = true, onCooldown = false, inRange = true }
+    end
+    for k, v in pairs(over) do s[k] = v end
+    return fn(s, pack, nil, nil, {})
+end
+
+local MAGE = {
+    interrupts = { { spell = "Counterspell", evidence = "test" } },
+    options = { crowdControl = { { spell = "Polymorph", creatures = { humanoid = true } } } },
+}
+
+tests["reads plate rows: the real read and the fake both feed the plateCast and cc steps"] = function(t)
+    local env = plateEnv({
+        { unit = "nameplate1", name = "Gnoll", attack = true, isTarget = true, kind = "Humanoid", debuffs = {} },
+        { unit = "nameplate2", name = "Kobold Geomancer", attack = true, isTarget = false, kind = "Humanoid",
+          debuffs = {}, cast = { "Fireball", "", 1, 999000, 1002500, false, "id", false, 133 } },
+    })
+    local real = ns.make.client(env)
+    local fake = ns.make.fakeClient()
+    fake.setPlateCasts(real.plateCasts())
+    fake.setPlateEnemies(real.plateEnemies())
+    for _, c in ipairs({ real, fake }) do
+        local s, why = chooseStep("plateCast", { plateCasts = c.plateCasts() }, MAGE)
+        t.eq(s and { s.spell, s.look, s.unit, s.member } or why,
+            { "Counterspell", true, "nameplate2", "Kobold Geomancer" }, "plate cast taken")
+        s, why = chooseStep("cc", { enemies = c.plateEnemies() }, MAGE)
+        t.eq(s and { s.spell, s.look, s.unit, s.member } or why,
+            { "Polymorph", true, "nameplate2", "Kobold Geomancer" }, "enemies taken")
+    end
+end
+
 return tests
