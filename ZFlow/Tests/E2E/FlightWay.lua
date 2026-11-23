@@ -74,7 +74,9 @@ tests["flight way: a far quest with two known flight masters, fly first"] = func
     t.eq(a.shown, true)
     t.eq(a.lines[1], Flights.LABEL:format(FAR_POST))
     t.eq(a.lines[2], Travel.THEN:format("Wolves"))
-    t.ok(type(a.lines[3]) == "string" and a.lines[3]:match("^%d+ yd") ~= nil, "a distance line: " .. tostring(a.lines[3]))
+    -- Section 286: the route line, then the distance (pin updated, section 208).
+    t.eq(a.lines[3], Flights.ROUTE and Flights.ROUTE:format("Home Post", FAR_POST, 20), "the route line")
+    t.ok(type(a.lines[4]) == "string" and a.lines[4]:match("^%d+ yd") ~= nil, "a distance line: " .. tostring(a.lines[4]))
 
     -- At the flight master: still the flight step (Pick boards here).
     c.setPosition(1411, 0.7, 0.5)
