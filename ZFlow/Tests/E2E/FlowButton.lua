@@ -430,6 +430,20 @@ tests["self button: a reload keeps its place and the key the player bound"] = fu
     t.eq(c2.bindingCalls(), {}, "the reload bound nothing")
 end
 
+-- Lead section 305 item 3: the setting's help names the visible Flow
+-- button, not a hidden one.
+tests["flow button: the setting's help names the Flow button, not a hidden button"] = function(t)
+    if type(FB) ~= "table" then t.ok(false, "no module"); return end
+    local _, addon = start()
+    local row = addon.settings:row(FB.SETTING)
+    t.ok(row ~= nil, "a settings row")
+    local help = ""
+    if type(row) == "table" and type(row.help) == "string" then help = row.help end
+    t.eq(help:find("hidden", 1, true), nil, "no hidden button: " .. help)
+    t.ok(help:find("Flow button", 1, true) ~= nil, "names the Flow button: " .. help)
+    t.ok(help:find("presses nothing for you", 1, true) ~= nil, "still presses nothing: " .. help)
+end
+
 tests["self button: a saved choice is kept, only the unset default is on"] = function(t)
     if type(FB) ~= "table" then t.ok(false, "no module"); return end
     local c, addon = start({ char = { settings = { rotation = { keyFrame = false } } },
