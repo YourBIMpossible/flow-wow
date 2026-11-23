@@ -98,6 +98,8 @@ local function given(name)
 end
 function ns.offline.capturePath() return given("ZFLOW_CAPTURE") end
 function ns.offline.captureCharPath() return given("ZFLOW_CAPTURE_CHAR") end
+-- Section 196: where the name-free summary of a real run goes (outside the repo).
+function ns.offline.summaryPath() return given("ZFLOW_SUMMARY") end
 
 -- True when path is inside the repo, or cannot be told (a relative path).
 local function norm(p)
@@ -108,6 +110,114 @@ function ns.offline.inRepo(path)
     if not (p:match("^%a:/") or p:sub(1, 1) == "/") then return true end
     local r = norm(root)
     return p == r or p:sub(1, #r + 1) == r .. "/"
+end
+
+-- Folder names that mean a game folder (lead section 199, MyBuddy S3): the
+-- saved files, the add-ons, the game's own folder. Matched on the
+-- lower-case path with forward slashes. A folder holding one of GAME_EXES
+-- is a game folder too.
+local GAME_PARTS = { "/wtf/", "/interface/addons/", "/savedvariables/", "world of warcraft" }
+local GAME_EXES = { "Wow.exe", "WowClassic.exe", "Wow-64.exe", "WowT.exe", "WowB.exe" }
+
+local function inGameFolder(path)
+    local p = norm(path) .. "/"
+    for _, part in ipairs(GAME_PARTS) do
+        if p:find(part, 1, true) then return true end
+    end
+    local dir = tostring(path):gsub("\\", "/")
+    while true do
+        dir = dir:match("^(.*)/[^/]*$")
+        if not dir or dir == "" or dir:match("^%a:$") then break end
+        for _, exe in ipairs(GAME_EXES) do
+            local fh = io.open(dir .. "/" .. exe, "rb")
+            if fh then
+                fh:close()
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- Writes the summary text (Core/Capture.lua Capture.SummaryText) to path:
+-- true, or nil and a short reason. Never inside the repo or a relative
+-- path (it could be), never inside a game folder, never the same file as
+-- one of `inputs` (the capture's saved files), never over a file that is
+-- already there (S3: the summary can never overwrite a saved file).
+function ns.offline.writeSummary(path, text, inputs)
+    if type(path) ~= "string" or path == "" then return nil, "no path given" end
+    if ns.offline.inRepo(path) then return nil, "inside the repo" end
+    if inGameFolder(path) then return nil, "inside a game folder" end
+    for _, input in ipairs(type(inputs) == "table" and inputs or {}) do
+        if type(input) == "string" and norm(input) == norm(path) then return nil, "the same file as an input" end
+    end
+    local there = io.open(path, "rb")
+    if there then
+        there:close()
+        return nil, "the file is already there"
+    end
+    local fh = io.open(path, "wb")
+    if not fh then return nil, "the file did not open" end
+    fh:write(tostring(text))
+    fh:close()
+    return true
+end
+
+-- Made-up files for tests that need a file to be there (lead section 208:
+-- a test file names no file or system call; only this runner does). Made
+-- in the system temp folder, never inside the repo.
+--   tempFile(text) -> path of a new file holding text, or nil and a reason
+--   readFile(path) -> its text, or nil
+--   removeFile(path) -> true when it was removed
+local made = 0
+function ns.offline.tempFile(text)
+    local dir = os.getenv("TEMP") or os.getenv("TMPDIR") or os.getenv("TMP")
+    if type(dir) ~= "string" or dir == "" then return nil, "no temp folder" end
+    if ns.offline.inRepo(dir) then return nil, "the temp folder is inside the repo" end
+    made = made + 1
+    local path = dir .. "/zflow-test-" .. tostring(os.time()) .. "-" .. made .. ".txt"
+    local fh = io.open(path, "wb")
+    if not fh then return nil, "the file did not open" end
+    fh:write(tostring(text))
+    fh:close()
+    return path
+end
+function ns.offline.readFile(path)
+    local fh = type(path) == "string" and io.open(path, "rb") or nil
+    if not fh then return nil end
+    local text = fh:read("*a")
+    fh:close()
+    return text
+end
+function ns.offline.removeFile(path)
+    if type(path) ~= "string" or ns.offline.inRepo(path) then return false end
+    return os.remove(path) and true or false
+end
+
+-- The add-on's own words (lead section 199, MyBuddy S1): every word inside a
+-- quoted text in the files the game loads (the manifest, dev files left
+-- out), lower case. A summary prints only these; any other word is counted.
+-- Read once.
+local ownWords
+function ns.offline.ownWords()
+    if ownWords then return ownWords end
+    local words = {}
+    for _, f in ipairs(manifest.files) do
+        if not f.dev then
+            local fh = io.open(L.join(root, L.ADDON .. "/" .. f.path), "rb")
+            if fh then
+                local text = fh:read("*a")
+                fh:close()
+                for _, quote in ipairs({ '"([^"\n]*)"', "'([^'\n]*)'" }) do
+                    for literal in text:gmatch(quote) do
+                        for word in literal:gmatch("%a+") do words[word:lower()] = true end
+                    end
+                end
+            end
+        end
+    end
+    ownWords = words
+    return words
 end
 
 -- The sanitizer (Lazy's tools/offline/zflow-sanitize.lua), for its parser,
@@ -164,6 +274,25 @@ function ns.offline.readSaved(...)
         end
     end
     return vars
+end
+
+-- The seen-result snapshot (zflow-seen.lua, lead section 188): one text
+-- block of what the player sees on a fake client, and the compare of two.
+-- Test tooling, never shipped. A file that does not load fails only the
+-- tests that ask for it, with the reason.
+do
+    local chunk, err = loadfile(here .. "/zflow-seen.lua")
+    local ok, seen = false, err
+    if chunk then ok, seen = pcall(chunk) end
+    if ok and type(seen) == "table" then
+        ns.offline.seen, ns.offline.seenDiff, ns.offline.seenParts = seen.seen, seen.compare, seen
+        seen.RUN_ROOT = root
+    else
+        local why = "tools/offline/zflow-seen.lua did not load: " .. tostring(seen)
+        local function broken() error(why, 2) end
+        ns.offline.seen, ns.offline.seenDiff = broken, broken
+        ns.offline.seenParts = setmetatable({}, { __index = broken })
+    end
 end
 
 for _, f in ipairs(manifest.files) do
