@@ -34,6 +34,9 @@ R.SNAPSHOT_FIELDS = {
     -- Lead section 197: your pet (Choose.lua, R.PetUp); nil when not read.
     { "pet", "map" },
     { "conjured", "map" },
+    -- Section 226 (CF-30): the best Well Fed food in your bags for your role,
+    -- { name, item, score }; {} when the bags hold none; nil when not read.
+    { "buffFood", "map" },
     { "spells", "spells" },
 }
 -- Names that would be made from a health or power amount. This client hides

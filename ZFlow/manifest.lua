@@ -85,6 +85,7 @@ return {
         -- Rotation and classes
         "Rotation/Pack.lua",
         "Rotation/Snapshot.lua",
+        "Rotation/BuffFood.lua",
         "Rotation/Choose.lua",
         "Rotation/KeyPlan.lua",
         "Rotation/Cast.lua",

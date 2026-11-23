@@ -68,8 +68,10 @@ local _, ns = ...
 --
 -- The steps, in the order Modules/Rotation/Engine.lua E:Choose runs them:
 --   1 breakFree  2 heal  3 interrupt  4 dispel  5 engage  6 list  7 farOpener
--- Left out here on purpose: items (healthstone, potion, bandage, food, drink),
--- anything for another player (friend heal, group buffs, group dispels).
+-- and then 8 food (section 226, CF-30): Well Fed food out of a fight, last,
+-- so a pull, a rotation rule or the far opener comes first. Built here.
+-- Other items (healthstone, potion, bandage, drink) and anything for another
+-- player (friend heal, group buffs, group dispels): Task, not built yet.
 
 ns.Rotation = ns.Rotation or {}
 local R = ns.Rotation
@@ -501,7 +503,24 @@ function steps.farOpener(s, pack, prefs, _, unread)
     return nil, noteWith("nothing out of range", unread)
 end
 
-R.STEPS = { "breakFree", "heal", "interrupt", "dispel", "engage", "list", "farOpener" }
+-- Section 226 (CF-30): eat Well Fed food. Out of a fight only, with your
+-- buffs read and no Well Fed among them, and a Well Fed food in your bags
+-- (snapshot.buffFood, the driver's pick for your role). Buffs not read is
+-- not "no Well Fed": nothing is suggested.
+function steps.food(s)
+    if not R.OutOfFight(s) then return nil, "not out of a fight" end
+    if type(s.buffs) ~= "table" then return nil, "your buffs not read" end
+    if s.buffs[ns.BuffFood.WELL_FED] then return nil, "Well Fed is on you" end
+    local f = s.buffFood
+    if type(f) ~= "table" then return nil, "your food not read" end
+    if type(f.name) ~= "string" or f.name == "" or type(f.item) ~= "number" then
+        return nil, "no Well Fed food in your bags"
+    end
+    return { item = f.name, itemId = f.item, kind = "food",
+             reason = "Eat " .. f.name .. ": Well Fed is not on you" }
+end
+
+R.STEPS = { "breakFree", "heal", "interrupt", "dispel", "engage", "list", "farOpener", "food" }
 R._steps = steps   -- (tests)
 
 function ns.Choose(snapshot, pack, prefs, bias)
@@ -522,7 +541,8 @@ function ns.Choose(snapshot, pack, prefs, bias)
         if s then
             s.fightType = snapshot.fightType
             s.step = name
-            trace[#trace + 1] = { step = name, result = "pick", spell = s.spell, note = s.reason, passed = passed }
+            trace[#trace + 1] = { step = name, result = "pick", spell = s.spell, item = s.item, note = s.reason,
+                                  passed = passed }
             return s, trace
         end
         trace[#trace + 1] = { step = name, result = "skip", note = note, passed = passed }
