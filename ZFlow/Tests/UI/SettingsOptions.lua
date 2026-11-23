@@ -48,7 +48,7 @@ return {
         t.eq(row(c, "test.flag").value, true)
         t.eq(row(c, "test.mode").kind, "choice")
         t.eq(row(c, "test.mode").choices, { "low", "high" })
-        t.eq(row(c, "test.count").kind, "number")
+        t.eq(row(c, "test.count").kind, "slider", "a number with both limits is a slider (row N57)")
         t.eq({ row(c, "test.count").min, row(c, "test.count").max }, { 1, 3 })
         t.eq(row(c, "test.place").kind, "info", "a place is shown, not changed")
         t.eq(row(c, "test.place").settable, false)
@@ -180,5 +180,119 @@ return {
         api.open()
         t.eq(row(c, "test.helped").help, "What it does, in a sentence.")
         t.eq(row(c, "test.flag").help, nil, "none is made up")
+    end,
+
+    -- Row N57 (lead section 249 item 2). Fails before: a number row was
+    -- always kind "number", and the fake has no optionsDrag.
+    ["settings options: a number with both limits is a slider; dragging it saves through the same checked set"] = function(t)
+        local k, c, api = start()
+        k:Setting({ key = "test.free", scope = "account", type = "number", default = 4, label = "No limits", group = "advanced" })
+        k:Setting({ key = "test.share", scope = "account", type = "number", min = 0, max = 1, default = 0.2,
+            label = "A share", group = "advanced" })
+        api.open()
+        t.eq(row(c, "test.count").kind, "slider")
+        t.eq({ row(c, "test.count").min, row(c, "test.count").max, row(c, "test.count").step }, { 1, 3, 1 })
+        t.eq(row(c, "test.free").kind, "number", "no limits: the stepper")
+        t.ok(type(c.optionsDrag) == "function", "the fake page can be dragged")
+        if type(c.optionsDrag) ~= "function" then return end
+        t.eq(c.optionsDrag("test.count", 3), true)
+        t.eq(k.settings:get("test.count"), 3)
+        t.eq(row(c, "test.count").value, 3, "redrawn")
+        t.eq(c.optionsStatus(), O.SAVED .. "test.count")
+        t.eq(c.optionsDrag("test.share", 0.52), true)
+        t.eq(k.settings:get("test.share"), 0.5, "on the row's step")
+        t.eq(c.optionsDrag("test.share", 9), true)
+        t.eq(k.settings:get("test.share"), 1, "a slider cannot go past its limit")
+        t.eq(c.optionsDrag("test.free", 2), false, "not a slider")
+        t.eq(c.optionsDrag("test.flag", 1), false)
+        c.combatLockdown = function() return true end
+        c.optionsDrag("test.count", 1)
+        t.eq(k.settings:get("test.count"), 3, "no change in combat, as for every control")
+        t.eq(c.optionsStatus(), O.IN_COMBAT)
+    end,
+
+    -- Fails before: the fake has no setSliders, and the page gave no slider.
+    ["settings options: on a client with no slider the same row is the stepper and still changes"] = function(t)
+        local k, c, api = start()
+        t.ok(type(c.setSliders) == "function", "the fake can play a client with no slider")
+        if type(c.setSliders) ~= "function" then return end
+        c.setSliders(false)
+        api.open()
+        t.eq(row(c, "test.count").kind, "number")
+        t.eq(c.optionsDrag("test.count", 3), false, "nothing to drag")
+        t.eq((c.optionsAct("test.count", 3)), true, "plus still works")
+        t.eq(k.settings:get("test.count"), 3)
+    end,
+
+    -- The legacy page's two buttons (Modules/Settings.lua :884, :900).
+    -- Fails before: SettingsPage has no Actions / Act and the page no
+    -- "actions" row.
+    ["settings options: Use the suggestions sets each suggested value through the checked set; Keep my settings changes none"] = function(t)
+        local k, c, api = start()
+        local P = ns.SettingsPage
+        t.ok(type(P.Actions) == "function" and type(P.Act) == "function", "the page has its actions")
+        if type(P.Act) ~= "function" then return end
+        k:Setting({ key = "test.home", scope = "account", type = "bool", default = true, label = "A general row",
+            group = "general" })
+        api.open()
+        t.eq(c.optionsNav("topic", "general"), true)
+        local actions
+        for _, r in ipairs(c.optionsRows()) do
+            if r.kind == "actions" then actions = r.actions end
+        end
+        t.ok(type(actions) == "table" and #actions == 2, "two buttons under the General topic")
+        if type(actions) ~= "table" then return end
+        t.eq({ actions[1].key, actions[2].key }, { "suggest", "keep" })
+        t.eq(actions[1].label, "Use " .. ns.id.title .. "'s suggestions")
+        t.eq(actions[2].label, "Keep my settings")
+        c.optionsNav("topic", "advanced")
+        for _, r in ipairs(c.optionsRows()) do t.ok(r.kind ~= "actions", "only under General") end
+
+        local shipped = ns.Setup.SUGGESTIONS
+        local ok, err = pcall(function()
+            -- None shipped: it says so and changes nothing.
+            ns.Setup.SUGGESTIONS = {}
+            t.eq(c.optionsNav("action", "suggest"), true)
+            t.eq(c.optionsStatus(), P.NO_SUGGESTIONS)
+            t.eq(k.store:get("char", ns.Setup.OFFERED_PATH), nil, "nothing to finish yet")
+            -- Some: each goes through the checked set.
+            ns.Setup.SUGGESTIONS = {
+                { key = "test.flag", value = false, why = "Quieter." },
+                { key = "test.count", value = 3, why = "More." },
+                { key = "test.count", value = 9, why = "Too many: outside its limits." },
+                { key = "test.mode", value = "low", why = "Already so." },
+                { key = "test.nosuch", value = true, why = "No such row." },
+            }
+            t.eq(c.optionsNav("action", "suggest"), true)
+            t.eq({ k.settings:get("test.flag"), k.settings:get("test.count"), k.settings:get("test.mode") },
+                { false, 3, "low" })
+            t.ok(c.optionsStatus():find("2 ", 1, true) == 1, "it says how many changed: " .. tostring(c.optionsStatus()))
+            t.ok(c.optionsStatus():find("1 ", 1, true) ~= nil, "and that one was refused: " .. tostring(c.optionsStatus()))
+            t.eq(k.store:get("char", ns.Setup.OFFERED_PATH), true, "the suggestions are done with for this character")
+            t.eq(c.saved(ns.id.accountDB).settings.test.count, 3, "saved where it always was")
+            -- Again: nothing left to change.
+            ns.Setup.SUGGESTIONS = { { key = "test.flag", value = false, why = "Quieter." } }
+            c.optionsNav("action", "suggest")
+            t.eq(c.optionsStatus(), P.ALREADY)
+        end)
+        ns.Setup.SUGGESTIONS = shipped
+        t.ok(ok, tostring(err))
+
+        -- Keep my settings: no value moves; the suggestions are done with.
+        local k2, c2, api2 = start()
+        api2.open()
+        local before = { k2.settings:get("test.flag"), k2.settings:get("test.count"), k2.settings:get("test.mode") }
+        t.eq(c2.optionsNav("action", "keep"), true)
+        t.eq(c2.optionsStatus(), P.KEPT)
+        t.eq({ k2.settings:get("test.flag"), k2.settings:get("test.count"), k2.settings:get("test.mode") }, before)
+        t.eq(k2.store:get("char", ns.Setup.OFFERED_PATH), true)
+        t.eq(c2.optionsNav("action", "nosuch"), false)
+        -- In combat a press is refused, as a change is.
+        local k3, c3, api3 = start()
+        api3.open()
+        c3.combatLockdown = function() return true end
+        t.eq(c3.optionsNav("action", "keep"), false)
+        t.eq(c3.optionsStatus(), O.IN_COMBAT)
+        t.eq(k3.store:get("char", ns.Setup.OFFERED_PATH), nil)
     end,
 }

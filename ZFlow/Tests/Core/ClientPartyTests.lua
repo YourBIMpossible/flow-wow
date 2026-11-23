@@ -26,6 +26,24 @@ local function groupEnv(extra)
     return env
 end
 
+-- Lead section 248 PP2-2: the realm (UnitName's second answer) and the
+-- GUID, each left out when not known or secret.
+tests["c.party 248: realm and GUID when the client gives them, never a secret"] = function(t)
+    local secret = {}
+    local env = groupEnv({ UnitName = function() return NAME, "Otherrealm" end,
+        UnitGUID = function() return "Player-2-0000BBBB" end })
+    local got = ns.make.client(env).party()
+    t.eq(got and got[1] and { got[1].realm, got[1].guid }, { "Otherrealm", "Player-2-0000BBBB" })
+    env = groupEnv({ issecretvalue = function(v) return v == secret end, UnitGUID = function() return secret end,
+        UnitName = function() return NAME, "" end })
+    got = ns.make.client(env).party()
+    t.eq(got and got[1] and { got[1].name, got[1].realm, got[1].guid }, { NAME }, "secret GUID, empty realm: left out")
+    t.ok((function()
+        for _, n in ipairs(ns.Diag.NAMES) do if n == "UnitGUID" then return true end end
+        return false
+    end)(), "UnitGUID is in the capture's name list")
+end
+
 tests["c.party: each other member, each field as the client gave it"] = function(t)
     local env = groupEnv()
     t.eq(ns.make.client(env).party(), {

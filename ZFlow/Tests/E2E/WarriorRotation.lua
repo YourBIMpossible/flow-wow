@@ -323,13 +323,28 @@ tests["warrior N58: the stance you cast is kept after 6 s and asked for in no st
     local c, addon, icon = start()
     c.setFormName("Battle Stance", true); c.setPlayerBuffs({}); on(c, addon)
     castId(c, "Defensive Stance")
-    t.eq(kept(c, "stance"), nil, "held: inside the window nothing is kept yet")
+    t.eq(kept(c, "stance"), "Defensive Stance", "OC-2: held, and saved at once")
     waitOut(c)
     t.eq(kept(c, "stance"), "Defensive Stance", "past 6 s: kept for the role")
     c.setFormName(nil, true); c.advance(1, 5)
     t.eq(icon.texture, "tex:Defensive Stance", "in no stance: the one you cast, not Battle Stance")
     c.setFormName("Battle Stance", true); c.advance(1, 5)
     t.ok(icon.texture ~= "tex:Defensive Stance", "dps in a stance: not asked to change it, as before")
+end
+
+-- Lead section 248 OC-2 (LOW): a held cast was kept only at the next
+-- chosen(), cast or fight end, so a reload inside the 6 s window dropped
+-- it. Gap: on the old code the reload check below is red (nothing saved).
+tests["warrior OC-2: a stance held over a reload inside the window is kept"] = function(t)
+    local c, addon, icon = start()
+    c.setFormName(nil, true); c.setPlayerBuffs({}); on(c, addon)
+    t.eq(icon.texture, "tex:Battle Stance", "nothing kept: Battle Stance")
+    castId(c, "Defensive Stance")
+    t.eq(icon.texture, "tex:Battle Stance", "inside the window: still the one before it")
+    local c2, _, icon2 = reload(c)
+    c2.setFormName(nil, true); c2.setPlayerBuffs({}); c2.advance(1, 5)
+    t.eq(kept(c2, "stance"), "Defensive Stance", "after the reload: kept")
+    t.eq(icon2.texture, "tex:Defensive Stance", "and asked for in no stance")
 end
 
 -- Gap: the 6 s window. Without it the Battle Stance cast would be kept at

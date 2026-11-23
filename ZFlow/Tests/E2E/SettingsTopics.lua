@@ -707,7 +707,7 @@ tests["settings number row: the repair share moves in steps on the page, is save
     local r = drawnRow(c, "repair.warnBelow")
     t.ok(r ~= nil, "found by search")
     if not r then return end
-    t.eq({ r.kind, r.value, r.min, r.max, r.step }, { "number", 0.2, 0, 1, 0.05 })
+    t.eq({ r.kind, r.value, r.min, r.max, r.step }, { "slider", 0.2, 0, 1, 0.05 })
     t.ok(type(r.help) == "string" and r.help:find("durability", 1, true) ~= nil, "its description is drawn too")
     t.eq((c.optionsAct("repair.warnBelow", r.value + (r.step or 0))), true, "the plus button")
     t.eq(addon.settings:get("repair.warnBelow"), 0.25)
@@ -716,6 +716,150 @@ tests["settings number row: the repair share moves in steps on the page, is save
     t.eq(c.optionsAct("repair.warnBelow", 1.05), false, "the row's limits hold")
     local _, addon2 = reload(c)
     t.eq(addon2.settings:get("repair.warnBelow"), 0.3)
+end
+
+-- Row N57 rows without key binding (lead section 249 item 2) ---------------------
+
+-- Fails before: the page gave the repair share as a stepper (kind
+-- "number") and the fake has no optionsDrag.
+tests["settings slider: the repair share is dragged on the page, saved, and read back after a reload"] = function(t)
+    local c, addon = boot()
+    if not ready(t, c) then return end
+    t.ok(type(c.optionsDrag) == "function", "the fake page has sliders")
+    if type(c.optionsDrag) ~= "function" then return end
+    slash(c, "settings topic bags")
+    local r = drawnRow(c, "repair.warnBelow")
+    t.eq({ r.kind, r.min, r.max, r.step, r.value }, { "slider", 0, 1, 0.05, 0.2 })
+    t.eq(c.optionsDrag("repair.warnBelow", 0.41), true)
+    t.eq(addon.settings:get("repair.warnBelow"), 0.4, "on its step")
+    t.eq(drawnRow(c, "repair.warnBelow").value, 0.4, "the page shows it")
+    t.eq(c.saved(ns.id.accountDB).settings.repair.warnBelow, 0.4)
+    t.eq(c.optionsDrag("repair.warnBelow", 3), true)
+    t.eq(addon.settings:get("repair.warnBelow"), 1, "its limits hold")
+    c.optionsDrag("repair.warnBelow", 0.35)
+    -- A reload in the middle.
+    local c2, addon2 = reload(c)
+    t.eq(addon2.settings:get("repair.warnBelow"), 0.35)
+    slash(c2, "settings repair")
+    t.eq(drawnRow(c2, "repair.warnBelow").value, 0.35, "the slider stands where it was left")
+end
+
+-- Fails before: the fake has no setSliders; the row was never a slider.
+tests["settings slider absent: a client with no slider gets the stepper for the same row, and it still saves"] = function(t)
+    local c, addon = boot({ before = function(cl)
+        if type(cl.setSliders) == "function" then cl.setSliders(false) end
+    end })
+    if not ready(t, c) then return end
+    t.ok(type(c.setSliders) == "function", "the fake can play a client with no slider")
+    if type(c.setSliders) ~= "function" then return end
+    slash(c, "settings topic bags")
+    local r = drawnRow(c, "repair.warnBelow")
+    t.eq({ r.kind, r.step }, { "number", 0.05 }, "the minus and plus stepper")
+    t.eq(c.optionsDrag("repair.warnBelow", 0.5), false)
+    t.eq((c.optionsAct("repair.warnBelow", r.value + r.step)), true, "plus")
+    t.eq(addon.settings:get("repair.warnBelow"), 0.25)
+    local _, addon2 = reload(c)
+    t.eq(addon2.settings:get("repair.warnBelow"), 0.25)
+end
+
+local function actionsOn(c)
+    for _, r in ipairs(c.optionsRows() or {}) do
+        if r.kind == "actions" then return r.actions end
+    end
+    return nil
+end
+
+-- Fails before: the page had no buttons (SettingsPage.Act is nil).
+tests["settings buttons: Use the suggestions sets them through the page, a reload keeps them; with none it says so"] = function(t)
+    local c, addon = boot()
+    if not ready(t, c) then return end
+    local P = addon.SettingsPage
+    t.ok(type(P.Act) == "function", "the page has its actions")
+    if type(P.Act) ~= "function" then return end
+    slash(c, "settings")
+    local actions = actionsOn(c)
+    t.ok(type(actions) == "table" and #actions == 2, "the two buttons are on the first page")
+    if type(actions) ~= "table" then return end
+    t.eq(actions[1].label, "Use " .. ns.id.title .. "'s suggestions")
+    -- As shipped there are none: it says so, nothing changes, nothing is marked.
+    local before = { copy(c.saved(ns.id.accountDB)), copy(c.saved(ns.id.charDB)) }
+    if #addon.Setup.SUGGESTIONS == 0 then
+        t.eq(c.optionsNav("action", "suggest"), true)
+        t.eq(c.optionsStatus(), P.NO_SUGGESTIONS)
+        t.eq({ c.saved(ns.id.accountDB), c.saved(ns.id.charDB) }, before, "nothing was written")
+    end
+    -- With a list (made up, of real rows): through the same checked set.
+    addon.Setup.SUGGESTIONS = {
+        { key = "vendor.list", value = false, why = "Made up." },
+        { key = "repair.warnBelow", value = 0.3, why = "Made up." },
+        { key = "repair.warnBelow", value = 7, why = "Outside its limits: refused." },
+    }
+    t.eq(c.optionsNav("action", "suggest"), true)
+    t.eq(addon.settings:get("vendor.list"), false)
+    t.eq(addon.settings:get("repair.warnBelow"), 0.3)
+    t.ok(c.optionsStatus():find("2 ", 1, true) == 1, "two changed: " .. tostring(c.optionsStatus()))
+    -- Reload: the values are kept, and this character is not offered them again.
+    local c2, addon2 = reload(c)
+    t.eq({ addon2.settings:get("vendor.list"), addon2.settings:get("repair.warnBelow") }, { false, 0.3 })
+    t.eq(addon2.store:get("char", addon2.Setup.OFFERED_PATH), true)
+    t.ok(c2 ~= nil)
+end
+
+-- Fails before: no buttons.
+tests["settings buttons: Keep my settings changes no value; in combat a press is refused as a change is"] = function(t)
+    local c, addon = boot()
+    if not ready(t, c) then return end
+    local P = addon.SettingsPage
+    t.ok(type(P.Act) == "function", "the page has its actions")
+    if type(P.Act) ~= "function" then return end
+    slash(c, "settings")
+    -- The fight starts with the page open.
+    c.setCombat(true)
+    local before = { copy(c.saved(ns.id.accountDB)), copy(c.saved(ns.id.charDB)) }
+    t.eq(c.optionsNav("action", "keep"), false)
+    t.eq(c.optionsStatus(), addon.SettingsOptions.IN_COMBAT)
+    t.eq(c.optionsNav("action", "suggest"), false)
+    t.eq({ c.saved(ns.id.accountDB), c.saved(ns.id.charDB) }, before, "nothing was written in the fight")
+    c.setCombat(false)
+    local values = {}
+    for row in addon.settings:each() do
+        if row.type ~= "table" then values[row.key] = addon.settings:get(row.key) end
+    end
+    t.eq(c.optionsNav("action", "keep"), true)
+    t.eq(c.optionsStatus(), P.KEPT)
+    for key, value in pairs(values) do t.eq(addon.settings:get(key), value, key .. " is as it was") end
+    local _, addon2 = reload(c)
+    t.eq(addon2.store:get("char", addon2.Setup.OFFERED_PATH), true, "kept across the reload")
+end
+
+-- Fails before: the text page printed no descriptions and the setting word
+-- one flat list.
+tests["settings text: the text page shows descriptions, and the setting word lists every row under its topic"] = function(t)
+    local c, addon = boot({ before = function(cl) cl.setOptionsPage(false) end })
+    if not ready(t, c) then return end
+    slash(c, "settings topic bags")
+    local p = panelOf(c, "Settings")
+    t.ok(p ~= nil and p.shown == true, "the text page")
+    if not p then return end
+    t.ok(lineWith(p.lines, "A list of what you might sell") ~= nil, "a row's description is on the page")
+    local n = #c.printed
+    slash(c, "setting")
+    local heads, rows, lastHead = {}, 0, 0
+    for i = n + 1, #c.printed do
+        local line = tostring(c.printed[i]):sub(#ns.id.title + 3)
+        for at, topic in ipairs(T.LIST) do
+            if line == topic.name .. ":" then
+                heads[#heads + 1] = at
+                t.ok(at > lastHead, topic.name .. " comes in the list's order")
+                lastHead = at
+            end
+        end
+        if line:find("^[%w%.]+ = ") then rows = rows + 1 end
+    end
+    t.ok(#heads >= 6, "a heading for each topic: " .. #heads)
+    local all = 0
+    for _ in addon.settings:each() do all = all + 1 end
+    t.eq(rows, all, "every row is listed once")
 end
 
 return tests

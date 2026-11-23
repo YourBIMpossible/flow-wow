@@ -292,7 +292,7 @@ return {
             c.optionsNav("search", "arrow size")
             t.eq(drawn(c), { "arrow.size" })
             t.eq(drawnRow(c, "arrow.size").value, 7)
-            t.eq(drawnRow(c, "arrow.size").kind, "number", "the same control as in its topic")
+            t.eq(drawnRow(c, "arrow.size").kind, "slider", "the same control as in its topic")
             t.eq({ drawnRow(c, "arrow.size").min, drawnRow(c, "arrow.size").max }, { 1, 10 })
             t.eq((c.optionsAct("arrow.size", 3)), true, "from the result")
             t.eq(drawnRow(c, "arrow.size").value, 3, "the result shows the new value, the search still on")
@@ -463,5 +463,72 @@ return {
         t.eq(n, SP.MAX_RESULTS)
         t.ok(lineWith(p.lines, "4" .. SP.MORE) ~= nil, "and the rest are counted")
         t.eq(#P.Search(k, "lantern").results, SP.MAX_RESULTS + 4, "the search itself holds them all")
+    end,
+
+    -- Row N57 (lead section 249 item 2): descriptions on the text page.
+    -- Fails before: SettingsPanel.Lines printed no help.
+    ["text page: each row's description stands under it, wrapped and cut at a fixed number of lines"] = function(t)
+        if not has(t) then return end
+        local long = string.rep("word ", 60)
+        local k, c = start({ noPage = true, rows = {
+            { key = "a.one", scope = "account", type = "bool", default = true, label = "One",
+              help = "A short description.", group = "bags" },
+            { key = "a.two", scope = "account", type = "bool", default = true, label = "Two", group = "bags" },
+            { key = "a.three", scope = "account", type = "bool", default = true, label = "Three", help = long, group = "bags" },
+        } })
+        slash(c, "settings")
+        local lines = panelOf(c).lines
+        local at = {}
+        for i, l in ipairs(lines) do
+            if l:find("[a.one]", 1, true) then at.one = i end
+            if l:find("[a.two]", 1, true) then at.two = i end
+            if l:find("[a.three]", 1, true) then at.three = i end
+        end
+        t.ok(at.one and at.two and at.three, "the three rows")
+        if not (at.one and at.two and at.three) then return end
+        t.ok(type(SP.WRAP) == "number" and type(SP.HELP_LINES) == "number", "the wrap and the cap are constants")
+        if type(SP.WRAP) ~= "number" then return end
+        t.eq(lines[at.one + 1], SP.HELP_INDENT .. "A short description.")
+        t.eq(at.two, at.one + 2, "one line of help, then the next row")
+        t.eq(at.three, at.two + 1, "a row with no description has no line under it")
+        local helps = 0
+        for i = at.three + 1, #lines do
+            if lines[i]:sub(1, #SP.HELP_INDENT + 4) == SP.HELP_INDENT .. "word" then
+                helps = helps + 1
+                t.ok(#lines[i] <= #SP.HELP_INDENT + SP.WRAP + 3, "a wrapped line is short: " .. #lines[i])
+            end
+        end
+        t.eq(helps, SP.HELP_LINES, "cut at the fixed number of lines")
+        t.eq(lines[at.three + SP.HELP_LINES]:sub(-3), "...", "and the cut is shown")
+        -- In search results too.
+        slash(c, "settings one")
+        lines = panelOf(c).lines
+        t.ok(lineWith(lines, SP.HELP_INDENT .. "A short description.") ~= nil, "a result has its description")
+        t.ok(SP.Tallest(k) >= #SP.Lines(k) - 6, "the panel is made tall enough for them")
+    end,
+
+    -- Fails before: SettingsSlash.Run listed every row in one flat list.
+    ["slash setting: with no argument the rows are listed under their topics, in the list's order"] = function(t)
+        if not has(t) then return end
+        local k = start()
+        local lines = ns.SettingsSlash.Run(k, "")
+        local at = {}
+        for i, l in ipairs(lines) do
+            for _, id in ipairs({ "travel", "buffs", "bags" }) do
+                if l == T.Find(id).name .. ":" then at[id] = i end
+            end
+            for _, row in ipairs(ROWS) do
+                if l:find(row.key .. " = ", 1, true) == 1 then at[row.key] = i end
+            end
+        end
+        t.ok(at.travel and at.buffs and at.bags, "a heading for each topic that holds a row")
+        if not (at.travel and at.buffs and at.bags) then return end
+        t.ok(at.travel < at.buffs and at.buffs < at.bags, "topics in the list's order, not the order declared")
+        for _, row in ipairs(ROWS) do t.ok(at[row.key] ~= nil, row.key .. " is listed, as before") end
+        t.ok(at.travel < at["arrow.look"] and at["way.zone"] < at.buffs, "the travel rows under Travel")
+        t.ok(at.buffs < at["food.offer"] and at["food.drink"] < at.bags, "the buffs rows under Buffs")
+        t.ok(at.bags < at["sell.list"] and at.bags < at["bank.list"], "the bags rows under Bags")
+        t.eq(#lines, 1 + 3 + #ROWS, "the first line, three headings, and one line a row")
+        t.ok(lines[1]:find(ns.id.slash, 1, true) ~= nil, "the first line still says how to change one")
     end,
 }

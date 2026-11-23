@@ -316,4 +316,74 @@ tests["druid N58: the spell name raising once: not kept; read again: kept"] = fu
     t.eq(kept(c, "form"), "Bear Form", "read again: kept")
 end
 
+-- ------------------------- section 247 item 2: a healer's form, a moment
+
+-- A healing druid knowing Bear Form, in no form, buffed, an enemy targeted.
+local function healer(opts)
+    local c, addon, icon = start(opts)
+    learn(c, "Bear Form", FORM_IDS["Bear Form"])
+    caster(c, BUFFED); c.setTarget(ENEMY); on(c, addon, "heal")
+    return c, addon, icon
+end
+
+-- Gap: before this, a healer's Bear Form cast in a fight was kept for the
+-- healer role, and asked for in every fight after. Red on the old code at
+-- the kept check and the next-fight icon check.
+tests["druid 247: a healer casts Bear in a fight, leaves it, and is not asked for Bear in the next"] = function(t)
+    local c, _, icon = healer()
+    c.setCombat(true); c.advance(1, 5)
+    t.ok(icon.texture ~= "tex:Bear Form", "a healer is not asked for Bear before any cast")
+    castId(c, "Bear Form")
+    c.setFormName("Bear Form"); c.advance(1, 5)
+    t.eq(kept(c, "form", "heal"), nil, "the cast is not kept for the healer role")
+    c.setCombat(false); c.fire("PLAYER_REGEN_ENABLED"); c.advance(1, 5)
+    caster(c, BUFFED)
+    c.setCombat(true); c.advance(1, 5)
+    t.ok(icon.texture ~= "tex:Bear Form", "the next fight: not asked for Bear")
+    t.eq(kept(c, "form", "heal"), nil, "still nothing kept")
+end
+
+tests["druid 247: a healer's form out of a fight is not kept either"] = function(t)
+    local c, _, icon = healer()
+    castId(c, "Bear Form")
+    t.eq(kept(c, "form", "heal"), nil, "out of a fight: not kept")
+    c.setCombat(true); c.advance(1, 5)
+    t.ok(icon.texture ~= "tex:Bear Form", "the fight after: not asked for Bear")
+end
+
+tests["druid 247: a healer's form word keeps it; form auto forgets it"] = function(t)
+    local c, _, icon = healer()
+    local line = word(c, "form bear")
+    t.eq(picked(c, "form"), "Bear Form", line)
+    c.setCombat(true); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Bear Form", "the chosen form is asked for in a fight")
+    c.setCombat(false); c.fire("PLAYER_REGEN_ENABLED"); c.advance(1, 5)
+    line = word(c, "form auto")
+    t.eq(picked(c, "form"), nil, line)
+    c.setCombat(true); c.advance(1, 5)
+    t.ok(icon.texture ~= "tex:Bear Form", "auto: not asked for Bear")
+end
+
+tests["druid 247: a healer's form saved by an older build is not asked for"] = function(t)
+    local c = healer()
+    local char = c.saved(ns.id.charDB)
+    char.state = char.state or {}
+    char.state.ownCasts = { heal = { form = "Bear Form" } }
+    local c2, addon2, icon2 = start({ account = c.saved(ns.id.accountDB), char = char })
+    learn(c2, "Bear Form", FORM_IDS["Bear Form"])
+    caster(c2, BUFFED); c2.setTarget(ENEMY); on(c2, addon2, "heal")
+    c2.setCombat(true); c2.advance(1, 5)
+    t.ok(icon2.texture ~= "tex:Bear Form", "the old saved healer form is ignored")
+end
+
+tests["druid 247: tank and damage keep the form they cast, as built"] = function(t)
+    local c, addon = ready()
+    castId(c, "Bear Form")
+    t.eq(kept(c, "form"), "Bear Form", "damage: kept")
+    addon.settings:set(D.ROLE, "tank"); c.advance(1, 5)
+    c.setCombat(true); c.advance(1, 5)
+    castId(c, "Cat Form")
+    t.eq(kept(c, "form", "tank"), "Cat Form", "tank: kept")
+end
+
 return tests
