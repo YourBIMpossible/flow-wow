@@ -1325,12 +1325,15 @@ function ns.make.client(env)
     -- Still a first guess: CANCEL_LOOT_ROLL, and a child frame of ours on the
     -- roll frame staying free of taint.
     --
-    --   client.onLootRoll(fn) -> cancel;  fn(rollID, link, show);  show(text, r, g, b)
+    --   client.onLootRoll(fn) -> cancel;  fn(rollID, link, show)
+    --   show(text, r, g, b[, opts])
     -- show puts one short text above that roll's frame, on a frame of ours
     -- made as a child of it, so it hides with it; one per roll frame, reused.
     -- Nothing of the game's frame is called or written, and nothing rolls.
     -- When the roll frame cannot be found, show prints the link and the text
-    -- once instead. No link, or a secret one: fn is not told.
+    -- once instead; not when told opts.quiet == true (RH-1: the listener
+    -- says the roll in chat itself, or has said this one already).
+    -- No link, or a secret one: fn is not told.
     local rollListeners, rollWatched = {}, false
     local rollMarks = {}      -- roll frame -> { holder, text, rollID }
     -- Source: Flow's Modules/Gear/RollHint.lua framesFor, used on this
@@ -1378,12 +1381,13 @@ function ns.make.client(env)
         local link = text(call(env.GetLootRollItemLink, rollID))
         if not link then return end
         local printed = false
-        local function show(s, r, g, b)
+        local function show(s, r, g, b, opts)
             if type(s) ~= "string" or s == "" then return end
             local frame = rollFrame(rollID)
             local m = frame and rollMark(frame) or nil
             if not m then
-                if not printed then
+                local quiet = type(opts) == "table" and opts.quiet == true
+                if not printed and not quiet then
                     printed = true
                     c.print((ns.id and ns.id.title or "") .. ": " .. link .. " " .. s)
                 end
