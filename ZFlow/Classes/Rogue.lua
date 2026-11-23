@@ -161,6 +161,8 @@ local function weights(values)
 end
 
 local pack = {
+    -- Stealth before the swing at the pull (Rotation/Choose.lua, engage).
+    beforeEngage = { "Stealth" },
     provenance = {
         author = "Flow",
         date = "2026-11-22",
