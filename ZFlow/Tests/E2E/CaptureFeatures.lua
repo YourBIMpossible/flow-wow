@@ -49,14 +49,6 @@ local function made()
     }
 end
 
--- "kind owner" of each problem, sorted; the text is left out.
-local function problems(addon)
-    local out = {}
-    for _, p in ipairs(addon.problems:list()) do out[#out + 1] = tostring(p.kind) .. " " .. tostring(p.owner) end
-    table.sort(out)
-    return out
-end
-
 local function boot(cap)
     local c, report = Capture.Client(cap)
     c.setScreen(1024, 768)
