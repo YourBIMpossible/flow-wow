@@ -576,6 +576,7 @@ function Goals.Start(k, diag)
     end
     if diag and type(diag.commands) == "table" then
         diag.commands[Goals.WORD] = run
+        if type(diag.help) == "table" then diag.help[Goals.WORD] = "your goals: goal add|make <item> <count>, goal remove <item>, goal list, goal clean" end
     end
     return { run = run }
 end

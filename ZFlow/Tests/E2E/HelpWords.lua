@@ -103,9 +103,8 @@ tests["help words: help <word> prints that word's line only"] = function(t)
         t.eq(#lines, 1, word .. " is not one line")
         t.eq(wordOfLine(lines[1] or ""), word, "the line is not " .. word .. "'s: " .. tostring(lines[1]))
     end
-    local lines = said(c, "help nosuchword")
-    t.eq(#lines, 1)
-    t.ok(lines[1]:find(ns.id.slash .. " help", 1, true) ~= nil, "an unknown word does not point at help: " .. lines[1])
+    -- A word that is not known lists the first page, as plain help does.
+    t.eq(said(c, "help nosuchword"), said(c, "help"))
 end
 
 tests["help words: a word registered after login is listed; non-text help is missing, no error"] = function(t)

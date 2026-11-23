@@ -125,6 +125,7 @@ function CopyBox.Start(k, diag)
 
     if diag and type(diag.commands) == "table" then
         diag.commands[CopyBox.WORD] = run
+        if type(diag.help) == "table" then diag.help[CopyBox.WORD] = "show the last thing said in a box to copy; copy all for every kept line" end
     end
     return { last = log.last, all = log.all, run = run }
 end

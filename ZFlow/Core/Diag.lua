@@ -1236,7 +1236,12 @@ Diag.NO_HELP = "no description given"
 --               gets NO_HELP; a text without a word lists nothing. A line
 --               break in a text becomes a space: a word is one line.
 --     slash     the slash command as typed, put in front of each word.
-function Diag.HelpLines(commands, help, slash)
+--     page      which page of HELP_PAGE words (default 1). With more words
+--               than one page holds, the heading names the page and the
+--               last line names the next page's command.
+Diag.HELP_PAGE = 20
+
+local function runnableWords(commands)
     local words = {}
     if type(commands) == "table" then
         for word, fn in pairs(commands) do
@@ -1244,14 +1249,45 @@ function Diag.HelpLines(commands, help, slash)
         end
     end
     table.sort(words)
-    local lines = { "commands (" .. #words .. "):" }
-    for i = 1, #words do
-        local said = type(help) == "table" and help[words[i]] or nil
-        if type(said) ~= "string" or said == "" then said = Diag.NO_HELP end
-        said = said:gsub("[\r\n]+", " ")
-        lines[#lines + 1] = tostring(slash) .. " " .. words[i] .. " - " .. said
+    return words
+end
+
+-- One word's line: "<slash> <word> - <text>", NO_HELP when the text is
+-- missing, blank or not text.
+local function helpLine(help, slash, word)
+    local said
+    if type(help) == "table" then said = help[word] end
+    if type(said) ~= "string" or said:match("^%s*$") then said = Diag.NO_HELP end
+    said = said:gsub("[\r\n]+", " ")
+    return tostring(slash) .. " " .. word .. " - " .. said
+end
+
+function Diag.HelpLines(commands, help, slash, page)
+    local words = runnableWords(commands)
+    local pages = math.max(1, math.ceil(#words / Diag.HELP_PAGE))
+    page = math.floor(tonumber(page) or 1)
+    if page < 1 then page = 1 end
+    if page > pages then page = pages end
+    local head = "commands (" .. #words .. ")"
+    if pages > 1 then head = head .. ", page " .. page .. " of " .. pages end
+    local lines = { head .. ":" }
+    for i = (page - 1) * Diag.HELP_PAGE + 1, math.min(#words, page * Diag.HELP_PAGE) do
+        lines[#lines + 1] = helpLine(help, slash, words[i])
+    end
+    if page < pages then
+        lines[#lines + 1] = "more: " .. tostring(slash) .. " help " .. (page + 1)
     end
     return lines
+end
+
+-- The help word with what was typed after it: a word that can run prints
+-- its one line; a page number lists that page; anything else lists page 1.
+function Diag.HelpFor(commands, help, slash, rest)
+    local arg = tostring(rest or ""):lower():match("^%s*(%S*)")
+    if arg ~= "" and type(commands) == "table" and type(commands[arg]) == "function" then
+        return { helpLine(help, slash, arg) }
+    end
+    return Diag.HelpLines(commands, help, slash, arg:match("^%d+$") and tonumber(arg) or 1)
 end
 
 function Diag.Start(k)
@@ -1583,9 +1619,10 @@ function Diag.Start(k)
     -- The help word: every word in commands, one line each. It reads the
     -- table when it is typed, so a word another file adds is listed and
     -- there is no second list to keep.
-    help.help = "list these commands"
-    commands.help = function()
-        local lines = Diag.HelpLines(commands, help, id.slash)
+    help.help = "list these commands, " .. Diag.HELP_PAGE .. " to a page; help <n> for page n,"
+        .. " help <command> for one command"
+    commands.help = function(rest)
+        local lines = Diag.HelpFor(commands, help, id.slash, rest)
         for i = 1, #lines do client.print(id.title .. ": " .. lines[i]) end
     end
 
