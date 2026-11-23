@@ -123,4 +123,15 @@ return {
         t.eq(plan.states[9].key, "Rake", "prowl: no opener known, so Rake")
         t.eq(plan.condition, "[form:1,stealth] 9; [form:1] 1; 0", "condition")
     end,
+    ["a stealth row with no form: stealth in any form, written first, stealthForm 0"] = function(t)
+        local keys = { keys = { none = { key = "A" }, stealth = { key = { "S" } } } }
+        local plan = ns.KeyPlan(keys, nil)
+        t.eq(plan.condition, "[stealth] 9; 0", "no forms")
+        t.eq(plan.states[ns.Rotation.STEALTH_STATE], { key = "S" }, "the stealth row")
+        t.eq(plan.states[0], { key = "A" }, "the row for no form")
+        t.eq(plan.stealthForm, 0, "0: the stealth row belongs to no shapeshift form")
+        local formed = ns.KeyPlan(keys, { forms = { { name = "Stealth", index = 1 } } })
+        t.eq(formed.condition, "[stealth] 9; [form:1] 1; 0", "the stealth clause before any form clause")
+        t.eq(formed.stealthForm, 0)
+    end,
 }
