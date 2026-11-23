@@ -135,6 +135,15 @@ function ns.make.fakeClient(opts)
         for item, n in pairs(type(r.mats) == "table" and r.mats or {}) do mats[item] = n end
         return { makes = r.makes, yield = r.yield, mats = mats }
     end
+    -- Section 231 item 1: the classic fallback, by trade skill row index; a
+    -- copy, nil when none is set for that index.
+    function c.tradeSkillSchematic(index)
+        local r = s.tradeSchematics and s.tradeSchematics[index]
+        if type(r) ~= "table" then return nil end
+        local mats = {}
+        for item, n in pairs(type(r.mats) == "table" and r.mats or {}) do mats[item] = n end
+        return { makes = r.makes, yield = r.yield, mats = mats }
+    end
     function c.spell(id)
         if type(id) ~= "number" then return nil end
         local r = s.spells and s.spells[id] or {}
@@ -736,6 +745,12 @@ function ns.make.fakeClient(opts)
     function c.setRecipeSchematic(id, r)
         s.schematics = s.schematics or {}
         s.schematics[id] = r
+    end
+    -- One trade skill row's schematic (section 231), as above; nil: the
+    -- client can't read it.
+    function c.setTradeSkillSchematic(index, r)
+        s.tradeSchematics = s.tradeSchematics or {}
+        s.tradeSchematics[index] = r
     end
     -- One spell's answers: { known =, usable =, noPower = }; a field left
     -- out reads as not known.
