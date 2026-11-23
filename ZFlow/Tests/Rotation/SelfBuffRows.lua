@@ -89,6 +89,7 @@ tests["P-SELFBUFF: the driver serves your weapon enchant by hand; raised or no r
     local D = ns.RotationDriver
     local c = ns.make.fakeClient()
     local pack = ns.Packs.SHAMAN
+    c.setWorn(16, "item:25"); c.setWorn(17, "item:26")
     c.setWeaponEnchant({ main = { has = true, left = 600 }, off = { has = false } })
     local read = D.Read(c, pack, {})
     t.eq(read("weaponEnchant"), { main = 600, off = false }, "seconds left on, false bare")
@@ -101,6 +102,23 @@ tests["P-SELFBUFF: the driver serves your weapon enchant by hand; raised or no r
     c.setWeaponEnchantFails(true)
     t.eq(read("weaponEnchant"), nil, "a read that raises: nil")
     t.eq(D.Read({}, pack, {})("weaponEnchant"), nil, "no such read: nil")
+end
+
+tests["P-SELFBUFF: only a worn weapon counts; slot 16 empty or unread leaves the main hand out"] = function(t)
+    local D = ns.RotationDriver
+    local c = ns.make.fakeClient()
+    local pack = ns.Packs.SHAMAN
+    c.setWeaponEnchant({ main = { has = false } })
+    c.setWorn(16, false)
+    local read = D.Read(c, pack, {})
+    t.eq(read("weaponEnchant"), {}, "slot 16 empty (unarmed): the main hand is left out")
+    c.setWornUnread(true)
+    t.eq(read("weaponEnchant"), {}, "slot 16 not read: left out")
+    c.setWornUnread(false); c.setWorn(16, "item:25")
+    t.eq(read("weaponEnchant"), { main = false }, "a weapon worn and bare: false")
+    local raising = { weaponEnchant = function() return { main = { has = false } } end,
+                      wornLinks = function() error("broke") end }
+    t.eq(D.Read(raising, pack, {})("weaponEnchant"), {}, "the worn read raising: left out")
 end
 
 -- The shaman's imbue, chosen by the pack: out of a fight, the main hand

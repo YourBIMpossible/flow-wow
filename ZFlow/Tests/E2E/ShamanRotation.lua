@@ -347,8 +347,18 @@ local function imbueReady(opts)
     c.setSpellId("Rockbiter Weapon", ROCKBITER); c.setSpell(ROCKBITER, { known = true, usable = true })
     c.setSpellCooldown(ROCKBITER, false); c.setSpellTexture(ROCKBITER, "tex:Rockbiter Weapon")
     c.setPlayerBuffs(SHIELDED); c.setTargetDebuffs({})
+    if not (opts and opts.unarmed) then c.setWorn(16, "item:25") end
     on(c, addon)
     return c, addon, icon
+end
+
+tests["shaman P-SELFBUFF: unarmed (slot 16 empty) is never asked for an imbue"] = function(t)
+    local c, _, icon = imbueReady({ unarmed = true })
+    c.setWorn(16, false)
+    c.setWeaponEnchant({ main = { has = false } }); c.advance(1, 5)
+    t.ok(not showing(icon, "Rockbiter Weapon"), "no weapon worn: no imbue")
+    c.setWorn(16, "item:25"); c.advance(1, 5)
+    t.ok(showing(icon, "Rockbiter Weapon"), "a weapon put on, bare: the imbue")
 end
 
 tests["shaman P-SELFBUFF: the read comes late; a bare main hand asks for the imbue, one on clears it"] = function(t)
