@@ -110,18 +110,57 @@ function ns.offline.inRepo(path)
     return p == r or p:sub(1, #r + 1) == r .. "/"
 end
 
--- The globals a saved-variables file assigns, each file run in an empty
--- table of its own (no game, no os, no io). nil and a short reason when one
--- does not read or run; the reason never quotes the file.
+-- The sanitizer (Lazy's tools/offline/zflow-sanitize.lua), for its parser,
+-- and its schema. Loaded as files beside this one; the sanitizer's own
+-- command line runs only when it is the script given to lua.
+local offlineDir = here   -- this file's folder, found at the top
+local sanitizer
+local function sanitize()
+    if sanitizer == nil then
+        local ok, S = pcall(dofile, offlineDir .. "/zflow-sanitize.lua")
+        sanitizer = ok and type(S) == "table" and type(S.parse) == "function" and S or false
+    end
+    return sanitizer or nil
+end
+function ns.offline.schema()
+    local ok, schema = pcall(dofile, offlineDir .. "/zflow-sanitize-schema.lua")
+    return ok and type(schema) == "table" and schema or nil
+end
+
+-- A saved-variables file's text as the globals it assigns: { name = value }.
+-- PARSED with the sanitizer's parser, never run (lead section 192, L3): only
+-- Name = data is accepted; a call, a function or an expression is refused.
+-- nil and a short reason that never quotes the text.
+function ns.offline.parseSaved(text)
+    local S = sanitize()
+    if not S then return nil, "the sanitizer's parser is not there" end
+    if type(text) ~= "string" then return nil, "not saved-variables data" end
+    local ok, globals = pcall(S.parse, text)
+    if not ok or type(globals) ~= "table" then
+        local twice = type(globals) == "table" and type(globals.msg) == "string" and globals.msg:find("a global given twice", 1, true)
+        return nil, twice and "a global given twice" or "not saved-variables data"
+    end
+    return globals
+end
+
+-- The globals of one or more saved files (the account file, the character
+-- file), each parsed by ns.offline.parseSaved. A global in two files is
+-- refused. nil and a short reason naming the file by its place only.
 function ns.offline.readSaved(...)
     local vars = {}
     for i = 1, select("#", ...) do
         local path = select(i, ...)
         if path ~= nil then
-            local chunk = loadfile(path)
-            if not chunk then return nil, "file " .. i .. " did not load" end
-            setfenv(chunk, vars)
-            if not pcall(chunk) then return nil, "file " .. i .. " did not run" end
+            local fh = io.open(path, "rb")
+            if not fh then return nil, "file " .. i .. " did not open" end
+            local text = fh:read("*a")
+            fh:close()
+            local globals, why = ns.offline.parseSaved(text)
+            if not globals then return nil, "file " .. i .. ": " .. why end
+            for name, value in pairs(globals) do
+                if vars[name] ~= nil then return nil, "file " .. i .. ": a global given twice" end
+                vars[name] = value
+            end
         end
     end
     return vars
