@@ -235,4 +235,117 @@ return {
         t.ok(texts["What it does, in a sentence."], "the help is drawn")
         t.ok(texts["Saved for account"], "beside who it is saved for")
     end,
+
+    -- Row N57 (lead section 249 item 2): the legacy slider. A Slider frame
+    -- made from plain parts, as legacy Flow's was (no template). opts for
+    -- the environment: noSlider (no Slider frame can be made), bare (a
+    -- Slider with none of its own methods).
+    -- Fails before: Core/Client.lua draw knows no "slider" row (it fell
+    -- through to a plain label).
+    ["optionsPage: a slider row is a Slider frame with the row's limits and step; letting go tells act once"] = function(t)
+        local env = gameEnv("settings")
+        local plain = env.CreateFrame
+        function env.CreateFrame(kind, name, parent, template)
+            local f = plain(kind, name, parent, template)
+            if kind == "Slider" then
+                function f:SetOrientation(o) self.orientation = o end
+                function f:EnableMouse() end
+                function f:CreateTexture() return { SetPoint = function() end, SetHeight = function() end,
+                    SetColorTexture = function() end, SetSize = function() end, SetVertexColor = function() end } end
+                function f:SetThumbTexture(tex) self.thumb = tex end
+                function f:GetThumbTexture() return self:CreateTexture() end
+                function f:SetMinMaxValues(lo, hi) self.lo, self.hi = lo, hi end
+                function f:SetValueStep(step) self.step = step end
+                function f:SetObeyStepOnDrag() end
+                function f:SetValue(v)
+                    self.value = v
+                    if self.scripts.OnValueChanged then self.scripts.OnValueChanged(self, v) end
+                end
+            end
+            return f
+        end
+        local h = ns.make.client(env).optionsPage({ title = "Z-Flow" })
+        local got = {}
+        local rows = { { kind = "slider", key = "n", label = "N", value = 0.25, min = 0, max = 1, step = 0.25, settable = true } }
+        h.draw(rows, function(key, value) got[#got + 1] = { key, value } end)
+        local sliders = find(env, "Slider")
+        t.eq(#sliders, 1, "one Slider frame")
+        local s = sliders[1]
+        if not s then return end
+        t.eq(s.template, nil, "made from plain parts, no template")
+        t.eq({ s.lo, s.hi, s.step, s.value, s.orientation }, { 0, 1, 0.25, 0.25, "HORIZONTAL" })
+        t.eq(s.enabled, true)
+        t.eq(#find(env, "Button", "UIPanelButtonTemplate"), 0, "no minus and plus beside a slider")
+        t.eq(got, {}, "drawing it tells nothing")
+        -- The player drags: the value moves, nothing is told until the button is let go.
+        s.scripts.OnValueChanged(s, 0.6)
+        t.eq(got, {}, "not while dragging")
+        s.scripts.OnMouseUp(s)
+        t.eq(got, { { "n", 0.5 } }, "let go: told once, on the row's step")
+        s.scripts.OnValueChanged(s, 7)
+        s.scripts.OnMouseUp(s)
+        t.eq(got[2], { "n", 1 }, "never past its highest value")
+        -- Let go where it was: nothing to tell.
+        h.draw(rows, function(key, value) got[#got + 1] = { key, value } end)
+        local before = #got
+        s.scripts.OnMouseUp(s)
+        t.eq(#got, before, "no change, no call")
+        -- A row that cannot be set is greyed and tells nothing.
+        rows[1].settable, rows[1].why = false, "not now"
+        h.draw(rows, function(key, value) got[#got + 1] = { key, value } end)
+        t.eq(s.enabled, false)
+        s.scripts.OnValueChanged(s, 0.75)
+        s.scripts.OnMouseUp(s)
+        t.eq(#got, before)
+        t.eq(#find(env, "Slider"), 1, "a redraw reuses the slider")
+    end,
+
+    -- Fails before: no "slider" row; with it, a client that cannot make the
+    -- frame must still give the stepper.
+    ["optionsPage: with no Slider frame, or one that lacks its methods, a slider row is the minus and plus stepper"] = function(t)
+        local env = gameEnv("settings")
+        local plain = env.CreateFrame
+        function env.CreateFrame(kind, name, parent, template)
+            if kind == "Slider" then return nil end
+            return plain(kind, name, parent, template)
+        end
+        local h = ns.make.client(env).optionsPage({ title = "Z-Flow" })
+        local got = {}
+        local rows = { { kind = "slider", key = "n", label = "N", value = 0.5, min = 0, max = 1, step = 0.25, settable = true } }
+        t.eq(h.draw(rows, function(key, value) got[#got + 1] = value end), true)
+        local buttons = find(env, "Button", "UIPanelButtonTemplate")
+        t.eq(#buttons, 2, "minus and plus")
+        buttons[1].scripts.OnClick(buttons[1])
+        buttons[2].scripts.OnClick(buttons[2])
+        t.eq(got, { 0.25, 0.75 }, "the same step, the same act")
+        -- A Slider frame with none of a slider's methods (the plain stub).
+        local bare = gameEnv("settings")
+        local h2 = ns.make.client(bare).optionsPage({ title = "Z-Flow" })
+        t.eq(h2.draw(rows, function() end), true)
+        t.eq(#find(bare, "Button", "UIPanelButtonTemplate"), 2, "the stepper again")
+        local labels = 0
+        for _, f in ipairs(find(bare, "FontString")) do
+            if f.text == "N" then labels = labels + 1 end
+        end
+        t.eq(labels, 1, "the row's name is drawn once, not by both tries")
+    end,
+
+    -- Row N57: the page's two buttons. Fails before: no "actions" row.
+    ["optionsPage: an actions row is a button each, and a press tells nav, not act"] = function(t)
+        local env = gameEnv("settings")
+        local h = ns.make.client(env).optionsPage({ title = "Z-Flow" })
+        local got, went = {}, {}
+        h.draw({ { kind = "actions", actions = { { key = "suggest", label = "Use the suggestions" },
+            { key = "keep", label = "Keep my settings" } } } },
+            function(key) got[#got + 1] = key end, function(kind, value) went[#went + 1] = { kind, value } end)
+        local buttons = find(env, "Button", "UIPanelButtonTemplate")
+        t.eq(#buttons, 2)
+        t.eq({ buttons[1].text, buttons[2].text }, { "Use the suggestions", "Keep my settings" })
+        buttons[1].scripts.OnClick(buttons[1])
+        buttons[2].scripts.OnClick(buttons[2])
+        t.eq(went, { { "action", "suggest" }, { "action", "keep" } })
+        t.eq(got, {})
+        h.draw({ { kind = "actions", actions = { { key = "keep", label = "Keep my settings" } } } }, function() end)
+        t.eq(pcall(buttons[1].scripts.OnClick, buttons[1]), true, "with no nav nothing is raised")
+    end,
 }

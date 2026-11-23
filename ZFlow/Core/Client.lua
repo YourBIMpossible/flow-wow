@@ -3975,7 +3975,7 @@ function ns.make.client(env)
         local h, showFns, built = {}, {}, nil
         local function build()
             if built then return built end
-            local b = { checks = {}, buttons = {}, labels = {}, edits = {}, n = {} }
+            local b = { checks = {}, buttons = {}, labels = {}, edits = {}, sliders = {}, n = {} }
             local okS, scroll = call(env.CreateFrame, "ScrollFrame", nil, canvas, "UIPanelScrollFrameTemplate")
             if not okS or type(scroll) ~= "table" then return nil end
             method(scroll, "SetPoint", "TOPLEFT", canvas, "TOPLEFT", 0, -40)
@@ -4034,6 +4034,78 @@ function ns.make.client(env)
             return w
         end
 
+        -- A slider row (row N57, lead section 249): a Slider frame made from
+        -- plain parts, as legacy Flow's page made its own on this client
+        -- (Modules/Settings.lua slider: no game template, since which slider
+        -- templates a client has varies). -> true when it was drawn; false,
+        -- with nothing drawn, when the row has no two limits or the client
+        -- gives no Slider frame or one without a slider's calls: the caller
+        -- then draws the minus and plus stepper.
+        -- Dragging moves the value shown beside it; changed(key, value) is
+        -- told once, when the mouse button is let go, with the value put on
+        -- the row's step and inside its limits. Setting it from a draw
+        -- tells nothing. First guesses, not seen in game: Slider
+        -- SetOrientation, SetThumbTexture, GetThumbTexture, SetMinMaxValues,
+        -- SetValueStep, SetObeyStepOnDrag, SetValue, OnValueChanged (self,
+        -- value) and OnMouseUp, as legacy used them.
+        local function sliderRow(b, r, text, key, can, y, changed)
+            if type(r.min) ~= "number" or type(r.max) ~= "number" or type(r.value) ~= "number" then return false end
+            if r.max <= r.min or r.max ~= r.max or r.min ~= r.min then return false end
+            local step = 1
+            if type(r.step) == "number" and r.step > 0 then step = r.step end
+            local w = take(b, "sliders", function()
+                local ok, f = call(env.CreateFrame, "Slider", nil, b.body)
+                if not ok or f == nil then return nil end
+                if not method(f, "SetOrientation", "HORIZONTAL") then return nil end
+                if not method(f, "SetThumbTexture", "Interface\\Buttons\\WHITE8X8") then return nil end
+                method(f, "EnableMouse", true)
+                local okT, track = method(f, "CreateTexture", nil, "BACKGROUND")
+                if okT and track ~= nil then
+                    method(track, "SetPoint", "LEFT", f, "LEFT", 0, 0)
+                    method(track, "SetPoint", "RIGHT", f, "RIGHT", 0, 0)
+                    method(track, "SetHeight", 4)
+                    method(track, "SetColorTexture", 1, 1, 1, 0.2)
+                end
+                local okG, thumb = method(f, "GetThumbTexture")
+                if okG and thumb ~= nil then
+                    method(thumb, "SetSize", 8, 18)
+                    method(thumb, "SetVertexColor", 1, 0.82, 0.25, 1)
+                end
+                return f
+            end)
+            if not w then return false end
+            -- The last draw's script is taken off first: setting the value
+            -- below must not write into a label that row no longer has.
+            method(w, "SetScript", "OnValueChanged", nil)
+            method(w, "SetScript", "OnMouseUp", nil)
+            if not (method(w, "SetMinMaxValues", r.min, r.max) and method(w, "SetValueStep", step)
+                and method(w, "SetValue", r.value)) then
+                method(w, "Hide")
+                return false
+            end
+            method(w, "SetObeyStepOnDrag", true)
+            method(w, "SetSize", 150, 18)
+            method(w, "SetPoint", "TOPLEFT", b.body, "TOPLEFT", 220, y - 2)
+            if can then method(w, "Enable") else method(w, "Disable") end
+            label(b, text, 16, y - 2)
+            local shownValue = label(b, tostring(r.value), 378, y - 2)
+            local pending = r.value
+            method(w, "SetScript", "OnValueChanged", function(_, v)
+                if type(v) ~= "number" or hidden(v) or v ~= v then return end
+                v = r.min + math.floor((v - r.min) / step + 0.5) * step
+                if v < r.min then v = r.min end
+                if v > r.max then v = r.max end
+                v = math.floor(v * 1000000 + 0.5) / 1000000
+                pending = v
+                if shownValue then method(shownValue, "SetText", tostring(v)) end
+            end)
+            method(w, "SetScript", "OnMouseUp", function()
+                if not can or pending == r.value then return end
+                changed(key, pending)
+            end)
+            return true
+        end
+
         -- Topics and search (lead sections 238, 239). nav(kind, value) is told
         -- "topic" and its id, or "search" and the typed text ("" for Clear);
         -- it changes no setting. More row kinds:
@@ -4041,6 +4113,11 @@ function ns.make.client(env)
         --   { kind = "topics", topics = { { id, name, on }, ... } }
         --                                    a button each, wrapped in lines
         --   { kind = "section", text }, { kind = "note", text }   one line
+        --   { kind = "slider", key, label, value, min, max, step, settable, why }
+        --                                    sliderRow above, else the stepper
+        --   { kind = "actions", actions = { { key, label }, ... } }
+        --                                    a button each; a press asks
+        --                                    nav("action", key), never act
         -- and on a setting row: under (a small line below it), jump and
         -- jumpText (a button on that line that asks nav for topic `jump`),
         -- help (the row's description, small, wrapped, below those).
@@ -4048,7 +4125,7 @@ function ns.make.client(env)
         function h.draw(rows, act, nav)
             local b = build()
             if not b then return false end
-            for _, kind in ipairs({ "checks", "buttons", "labels", "edits" }) do
+            for _, kind in ipairs({ "checks", "buttons", "labels", "edits", "sliders" }) do
                 for _, w in ipairs(b[kind]) do if w then method(w, "Hide") end end
                 b.n[kind] = 0
             end
@@ -4103,6 +4180,17 @@ function ns.make.client(env)
                         x = x + width + 4
                     end
                     y = y - 28
+                elseif r.kind == "actions" then
+                    local x = 8
+                    for _, action in ipairs(type(r.actions) == "table" and r.actions or {}) do
+                        local name, words = action.key, tostring(action.label or action.key or "")
+                        local width = 20 + 6 * #words
+                        button(b, words, x, y, width, function()
+                            if type(nav) == "function" then pcall(nav, "action", name) end
+                        end, false, true)
+                        x = x + width + 8
+                    end
+                    y = y - 28
                 else
                     local text = tostring(r.label or r.key or "")
                     local can = r.settable == true
@@ -4133,7 +4221,10 @@ function ns.make.client(env)
                                 choice == r.value, can)
                             x = x + width + 4
                         end
-                    elseif r.kind == "number" then
+                    elseif r.kind == "slider" and sliderRow(b, r, text, key, can, y, changed) then
+                        -- Drawn as a slider. One that could not be made
+                        -- falls through to the stepper below.
+                    elseif r.kind == "number" or r.kind == "slider" then
                         label(b, text, 16, y - 2)
                         local step = (type(r.step) == "number" and r.step > 0) and r.step or 1
                         local value = type(r.value) == "number" and r.value or nil
