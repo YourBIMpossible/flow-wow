@@ -43,7 +43,8 @@ local KINDS = {
             fields = {
                 char = "char", realm = "realm", guild = "guild", account = "account",
                 chat = { list = "chat" }, mail = "mail", who = "charRealm",
-                again = "char", note = "free",
+                again = "char", note = "free", stamp = "free", short = "char", shortNote = "free",
+                onlyFree = "free",
                 byChar = { map = "num", key = "char" },
             },
         },
@@ -60,12 +61,17 @@ local KINDS_TEXT = table.concat({
     "[\"who\"] = \"Brannoch-Cinder-Reach\",",
     "[\"again\"] = \"Aldwynne\",",
     "[\"note\"] = \"Aldwynne of Mossvale, Order of the Pale Lantern, WREN1234#5678, Brannoch\",",
+    "[\"stamp\"] = \"12:04:55 1.16.1 [3/5]\",",
+    "[\"short\"] = \"Bo\",",
+    "[\"shortNote\"] = \"Bo was here\",",
+    "[\"onlyFree\"] = \"whisper from Fenwick\",",
     "[\"byChar\"] = { [\"Kestrelle\"] = 3, },",
     "}",
 }, "\n")
 local REAL = {
     "Aldwynne", "Mossvale", "Order of the Pale Lantern", "WREN1234", "lfg deadmines",
     "selling copper", "Thanks for the bags", "Brannoch", "Cinder-Reach", "Kestrelle",
+    "Bo was", "\"Bo\"", "Fenwick",
 }
 
 case("every kind of name is replaced by its made-up one", function(t)
@@ -73,7 +79,7 @@ case("every kind of name is replaced by its made-up one", function(t)
     t.ok(out ~= nil, "refused: " .. tostring(kind) .. " " .. tostring(msg))
     for _, real in ipairs(REAL) do t.hasNot(out, real, "a real name left") end
     for _, fake in ipairs({ "Character1", "Realm1", "Guild1", "ACCOUNT1", "chat text 1", "chat text 2",
-            "mail text 1", "Character3-Realm2" }) do
+            "mail text 1", "Character4-Realm2" }) do
         t.has(out, fake)
     end
 end)
@@ -85,9 +91,41 @@ case("the same name gets the same made-up name; a second run gives the same byte
     t.ok(out == S.text(KINDS_TEXT, KINDS), "two runs differ")
 end)
 
-case("free text is scrubbed of every name found, the longest first", function(t)
+-- Section 190, gaps (2) and (4): a name seen only in free text, and a name
+-- of fewer than three letters, are gone because free text is not kept.
+case("free text is replaced whole; text with no letter is kept", function(t)
     local g = S.parse(S.text(KINDS_TEXT, KINDS))
-    t.ok(g.Kinds.note == "Character1 of Realm1, Guild1, ACCOUNT1, Character3", "note: " .. tostring(g.Kinds.note))
+    for _, k in ipairs({ "note", "shortNote", "onlyFree" }) do
+        t.ok(tostring(g.Kinds[k]):match("^text %d+$"), k .. ": " .. tostring(g.Kinds[k]))
+    end
+    t.ok(g.Kinds.note ~= g.Kinds.onlyFree, "two texts, two made-up ones")
+    t.ok(g.Kinds.stamp == "12:04:55 1.16.1 [3/5]", "no letter: kept: " .. tostring(g.Kinds.stamp))
+end)
+
+case("a name of two letters is replaced in its field and gone from free text", function(t)
+    local g = S.parse(S.text(KINDS_TEXT, KINDS))
+    t.ok(tostring(g.Kinds.short):match("^Character%d+$"), "short: " .. tostring(g.Kinds.short))
+    t.ok(g.Kinds.shortNote ~= "Bo was here", "shortNote kept")
+end)
+
+case("keys of an open table: add-on words kept, anything else replaced", function(t)
+    local schema1 = { globals = { G = { map = "num", key = "fieldKey" } } }
+    local out = S.text("G = { [\"lastSeen\"] = 1, [\"Fenwick\"] = 2, [\"bo\"] = 3, [\"Kobold Miner\"] = 4, }", schema1)
+    local g = out and S.parse(out).G or {}
+    t.ok(g.lastSeen == 1 and g.bo == 3, "lower-case words kept")
+    t.hasNot(out, "Fenwick")
+    t.hasNot(out, "Kobold")
+end)
+
+case("a name seen only in free text is gone", function(t)
+    local out = S.text(KINDS_TEXT, KINDS)
+    t.hasNot(out, "Fenwick")
+end)
+
+case("a letter above ASCII makes text free text: replaced", function(t)
+    local schema1 = { globals = { G = { fields = { n = "free" } } } }
+    local out = S.text("G = { [\"n\"] = \"12 " .. string.char(195, 134) .. "\", }", schema1)
+    t.ok(out ~= nil and S.parse(out).G.n == "text 1", "out: " .. tostring(out))
 end)
 
 -- The ZFlow capture: both files in one run, the real schema.
@@ -112,11 +150,11 @@ case("ZFlow capture: no made-up real name left in either file; the shapes kept",
     t.ok(snap.shapes.build.values.v1 == "1.16.1", "game text kept")
     t.ok(a.ZFlowDB.learned.prices.auction["Realm1-Alliance"] ~= nil, "auction key: realm replaced, faction kept")
     t.ok(a.ZFlowDB.learned.prices.auctionHistory["Realm2-Horde"] ~= nil, "a realm with a hyphen in it")
-    t.has(snap.timing.errors[1].text, "Character1-Realm1 has no guild", "error text")
-    t.ok(c.ZFlowCharDB.state.nav.waypoint.label == "meet Character2 here",
-        "a name from the account file scrubbed in the character file: " .. tostring(c.ZFlowCharDB.state.nav.waypoint.label))
+    local function made(v) return type(v) == "string" and v:match("^text %d+$") ~= nil end
+    t.ok(made(snap.timing.errors[1].text), "error text: " .. tostring(snap.timing.errors[1].text))
+    t.ok(made(c.ZFlowCharDB.state.nav.waypoint.label), "label: " .. tostring(c.ZFlowCharDB.state.nav.waypoint.label))
     t.ok(c.ZFlowCharDB.learned.fights.mobs["Kobold Miner"] == nil, "mob keys treated as names")
-    t.ok(c.ZFlowCharDB.export.lines[1] == "E^quest^title=The Realm1 Road", "export line scrubbed")
+    t.ok(made(c.ZFlowCharDB.export.lines[1]), "export line: " .. tostring(c.ZFlowCharDB.export.lines[1]))
 end)
 
 case("a field the schema does not know is refused, and its value is not in the message", function(t)
@@ -165,22 +203,32 @@ case("text that is not saved-variables data is not parsed: calls, cut off files"
     end
 end)
 
-case("two keys that become the same key are refused", function(t)
-    -- An open subtree keyed by free text: "Brannoch" becomes "Character2",
-    -- which is already a key there.
+-- Before section 190 this pair collided ("Brannoch" was scrubbed to
+-- "Character2"). Free keys are now replaced whole, one made-up key per
+-- text, so they cannot meet; the refusal stays in the walk as a guard.
+case("keys of an open table that held a name stay two keys, the name gone", function(t)
     local text = CHAR:gsub("%[\"nav\"%] = {",
         "[\"notes\"] = { [\"Brannoch\"] = 1, [\"Character2\"] = 2, },\n[\"nav\"] = {", 1)
-    local out, kind = S.texts({ ACCOUNT, text }, schema)
-    t.ok(out == nil and kind == "refuse", "kind: " .. tostring(kind))
+    local outs, kind, msg = S.texts({ ACCOUNT, text }, schema)
+    t.ok(outs ~= nil, "refused: " .. tostring(kind) .. " " .. tostring(msg))
+    if not outs then return end
+    t.hasNot(outs[2], "Brannoch")
+    local n = 0
+    for _ in pairs(S.parse(outs[2]).ZFlowCharDB.state.notes) do n = n + 1 end
+    t.ok(n == 2, "keys: " .. n)
 end)
 
 case("the output reads back the same through the parser", function(t)
     local outs = S.texts({ ACCOUNT, CHAR }, schema)
     t.ok(outs ~= nil, "refused")
     if not outs then return end
-    local again = S.texts({ outs[1], outs[2] }, schema)
-    t.ok(again ~= nil, "the copy itself refused")
-    t.ok(again and again[1] == outs[1] and again[2] == outs[2], "a second pass changed the copy")
+    for i = 1, 2 do
+        local g, order = S.parse(outs[i])
+        t.ok(S.write(g, order) == outs[i], "file " .. i .. " does not read back the same")
+    end
+    -- Made-up keys sort differently from the real ones, so a second pass
+    -- may number them in another order; it must still be accepted.
+    t.ok(S.texts({ outs[1], outs[2] }, schema) ~= nil, "the copy itself refused")
 end)
 
 print(string.format("%d of %d cases passed", cases - failed, cases))

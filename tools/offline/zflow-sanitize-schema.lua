@@ -12,17 +12,19 @@
 --   learned.fights.deaths[].by (the killer)       Import/FromFlow.lua
 --   learned.fights.mobs keys (target names) on the character
 -- Free text (error lines, problem texts, import notes, export lines, typed
--- labels, other add-ons' globals) is kept with every name found above
--- replaced inside it. No code reads guild, account, mail or chat text: those
--- kinds have no field here, so a capture holding one is refused.
+-- labels, other add-ons' globals) is replaced whole by a made-up "text N"
+-- unless it holds no letter (section 190). No code reads guild, account,
+-- mail or chat text: those kinds have no field here, so a capture holding
+-- one is refused.
 --
 -- OPEN marks a subtree the add-on fills with keys it does not fix (copied
 -- from Flow, learned game data, recovered skeleton keys): any keys and
--- plain values, every text key and value treated as free text. A name that
--- is only ever in such a subtree, and never in a field above, is not known
--- to be a name and is kept.
+-- plain values. Every text value is free text (replaced whole); a key is
+-- kept only when it is a lower-case-first ASCII word, as add-on fields are,
+-- and is replaced otherwise (character and realm names start with a
+-- capital), so a name only ever in such a subtree does not reach the copy.
 
-local OPEN = { key = { any = { "num", "free" } } }
+local OPEN = { key = { any = { "num", "fieldKey" } } }
 OPEN.map = { any = { "num", "bool", "free", OPEN } }
 
 local function fields(t, open) return { fields = t, open = open } end

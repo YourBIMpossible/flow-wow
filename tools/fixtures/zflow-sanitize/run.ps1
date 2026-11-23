@@ -4,7 +4,7 @@
   Every name in these files is made up.
 
   test.lua    the engine on made-up captures: every kind of name replaced,
-              the same name the same made-up one, free text scrubbed, the
+              the same name the same made-up one, free text replaced, the
               ZFlow capture (capture/ZFlow.lua and capture/ZFlowChar.lua in
               one run) left with no made-up real name, unknown fields, wrong
               types, unknown globals and text that is not saved data refused.
