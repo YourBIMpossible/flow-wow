@@ -99,8 +99,7 @@ end
 
 -- Every read the mark needs is set: the log, Questie, the creature on the
 -- plate, the plate on screen and whether it can be attacked.
-local function start(opts)
-    opts = opts or {}
+local function start()
     local c = ns.make.fakeClient()
     local k = ns.Kernel({}, c)
     local d = ns.Diag.Start(k)

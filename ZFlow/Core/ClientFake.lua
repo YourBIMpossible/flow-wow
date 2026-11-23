@@ -2891,6 +2891,7 @@ function ns.make.fakeClient(opts)
         local v = s.npcText[kind]
         if type(v) ~= "string" or v == "" then return nil end
         return v
+    end
 
     -- G51: the creature on a nameplate and the quest mark over it, as the
     -- real client.plateCreature and client.plateQuestMark:

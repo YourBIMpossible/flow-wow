@@ -8036,6 +8036,7 @@ function ns.make.client(env)
         local name = NPC_TEXT[kind]
         if not name then return nil end
         return words(env[name])
+    end
 
     -- G51 (UI/PlateQuests.lua): a quest mark over an enemy's nameplate.
     -- LOOK ONLY: nothing clicks, targets or casts; no frame is secure or

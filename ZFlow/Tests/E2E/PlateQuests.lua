@@ -39,6 +39,9 @@ local function log(kills, done)
     }
 end
 
+local atBoot = setmetatable({}, { __mode = "k" })
+local function newProblems(addon) return addon.problems:count() - atBoot[addon] end
+
 -- opts: account, char (saved tables), noLog, noQuestie, fails, before(c).
 local function boot(opts)
     opts = opts or {}
@@ -54,6 +57,9 @@ local function boot(opts)
     local addon = ns.offline.addon(c)
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
     c.advance(5, 20)
+    -- Lead (section 271): the fake has no cast read and no spell tooltip hook,
+    -- so a whole-addon boot already lists problems. Count from here.
+    atBoot[addon] = addon.problems:count()
     return c, addon
 end
 
@@ -87,7 +93,7 @@ tests["plate quests: a plate added for a quest mob gets its mark"] = function(t)
     mob(c, "nameplate2", GNOLL)
     t.eq(shows(c, "nameplate1"), "3/8", "the kill objective's count")
     t.eq(shows(c, "nameplate2"), "0/5", "the mob that drops the quest item")
-    t.eq(addon.problems:count(), 0)
+    t.eq(newProblems(addon), 0, "no problem listed after boot")
 end
 
 tests["plate quests: the objective completes - the mark goes"] = function(t)
@@ -149,7 +155,7 @@ tests["plate quests: a read raising, then recovering"] = function(t)
     c.setPlateCreatureFails(false)
     logChanged(c)
     t.eq(shows(c, "nameplate2"), "3/8", "the creature read recovered")
-    t.eq(addon.problems:count(), 0)
+    t.eq(newProblems(addon), 0, "no problem listed after boot")
 end
 
 tests["plate quests: a reload - the marks come back, the switch is kept"] = function(t)
@@ -162,7 +168,7 @@ tests["plate quests: a reload - the marks come back, the switch is kept"] = func
     local c3, addon3 = boot()
     mob(c3, "nameplate1", VERMIN)
     t.eq(shows(c3, "nameplate1"), "3/8", "on: the mark after a reload")
-    t.eq(addon3.problems:count(), 0)
+    t.eq(newProblems(addon3), 0, "no problem listed after boot")
 end
 
 tests["plate quests: the setting row is on by default and filed under nameplates"] = function(t)
