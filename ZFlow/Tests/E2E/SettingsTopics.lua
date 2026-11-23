@@ -234,8 +234,10 @@ local BEFORE = {
     ["rotationIcon.layout"] = { "account", "table", nil, "layout.rotationIcon" },
     ["rotationQueue.enabled"] = { "account", "bool", true },
     ["ui.intro"] = { "char", "bool", true },
+    -- Both on by default: the world map's (default-on) and the merchant's
+    -- (lead section 294 item 3).
     ["buttons.worldMap"] = { "account", "bool", true },
-    ["buttons.merchant"] = { "account", "bool", false },
+    ["buttons.merchant"] = { "account", "bool", true },
     ["plateCombo.off"] = { "account", "bool", false },
     ["plateThreat.off"] = { "account", "bool", false },
     ["plateThreat.always"] = { "account", "bool", false },

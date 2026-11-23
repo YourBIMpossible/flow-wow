@@ -31,6 +31,7 @@ local function start(opts)
     end
     ns.Reservations.Declare(k)
     local api = L.Declare(k)
+    c.lists = { SellList = api }
     if not opts.noBoot then
         k:Boot()
         c.fire("ADDON_LOADED", ns.id.addon)
@@ -41,11 +42,18 @@ local function start(opts)
     return k, c, api
 end
 
+-- The list as the player has it since it moved to the window kit (lead
+-- section 303): whether its kit window is shown, and the text lines of the
+-- last listing (what the text panel shows on a client that cannot draw the
+-- kit). Read each time it is asked, as a panel's own fields were.
 local function panelOf(c)
-    for _, p in ipairs(c.panels) do
-        if type(p.spec) == "table" and p.spec.name == ns.id.framePrefix .. "SellList" then return p end
-    end
-    return nil
+    local id = "SellList"
+    if type(c.kitWindows()[id]) ~= "table" then return nil end
+    return setmetatable({}, { __index = function(_, field)
+        if field == "shown" then return c.kitWindows()[id].shown end
+        if field == "lines" then return c.lists[id].last() or {} end
+        return nil
+    end })
 end
 
 local function has(lines, text)
@@ -142,9 +150,11 @@ tests["sell list Show: look only"] = function(t)
     local before = #c.printed
     k.use(L.NAME).Show()
     t.eq(#c.printed, before, "it prints nothing")
-    for field in pairs(panelOf(c).spec) do
-        local f = tostring(field):lower()
-        t.ok(not (f:find("button") or f:find("click") or f:find("secure")), "no acting field on the panel: " .. f)
+    local parts = c.kitWindows().SellList.parts
+    t.ok(#parts > 0, "the window has parts")
+    for _, part in ipairs(parts) do
+        t.ok(part.kind ~= "button" and part.kind ~= "bind" and part.kind ~= "checkbox",
+            "no acting part in the window: " .. part.kind)
     end
 end
 
@@ -183,7 +193,8 @@ tests["sell list Show: it reads the bags and the item facts, draws, and does not
     t.eq(k.use(L.NAME).Show(), true)
 
     k.store.set, k.store.table = set, tableOf
-    local readsAllowed = { bagItems = true, itemInfo = true, saved = true }
+    -- itemTexture: the icon of an item line (lead section 303), a read.
+    local readsAllowed = { bagItems = true, itemInfo = true, itemTexture = true, saved = true }
     for name in pairs(called) do
         t.ok(readsAllowed[name], "Show() called client." .. name .. ", which is not one of its reads")
     end
@@ -191,7 +202,8 @@ tests["sell list Show: it reads the bags and the item facts, draws, and does not
     t.eq(called.merchantItems, nil, "no merchant read")
     t.eq(called.raw, nil, "no raw game call")
     t.eq(called.print, nil, "nothing printed")
-    t.eq(called.panel, nil, "no new frame: the one panel is reused")
+    t.eq(called.panel, nil, "no new frame: no text panel is made when the kit draws")
+    t.eq(called.kitWindow, nil, "and no new window: the one kit window is reused")
     t.eq(writes, 0, "no store write")
     t.eq(c.saved(ns.id.accountDB), accountWas, "the account's saved data is as it was")
     t.eq(c.saved(ns.id.charDB), charWas, "and the character's")

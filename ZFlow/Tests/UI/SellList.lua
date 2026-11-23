@@ -2,6 +2,8 @@ local _, ns = ...
 
 -- Tests for ZFlow/UI/SellList.lua (L6-A): the look-only sell list shown
 -- while a merchant window is open. Fake client; not tested in game.
+-- Since lead section 303 the list is a kit window (Tests/UI/SellListKit.lua
+-- has what it draws); these read whether it is shown and its text lines.
 --
 -- The item facts come through client.itemInfo(item), a CLIENT NEED the lead
 -- adds to Core/Client.lua and Core/ClientFake.lua. Until the fake has its
@@ -49,6 +51,7 @@ local function start(opts)
     end
     if not opts.noReservations then ns.Reservations.Declare(k) end
     local api = L.Declare(k)
+    c.lists = { SellList = api }
     k:Boot()
     c.fire("ADDON_LOADED", ns.id.addon)
     c.fire("PLAYER_LOGIN")
@@ -57,11 +60,18 @@ local function start(opts)
     return k, c, api
 end
 
+-- The list as the player has it since it moved to the window kit (lead
+-- section 303): whether its kit window is shown, and the text lines of the
+-- last listing (what the text panel shows on a client that cannot draw the
+-- kit). Read each time it is asked, as a panel's own fields were.
 local function panelOf(c)
-    for _, p in ipairs(c.panels) do
-        if type(p.spec) == "table" and p.spec.name == ns.id.framePrefix .. "SellList" then return p end
-    end
-    return nil
+    local id = "SellList"
+    if type(c.kitWindows()[id]) ~= "table" then return nil end
+    return setmetatable({}, { __index = function(_, field)
+        if field == "shown" then return c.kitWindows()[id].shown end
+        if field == "lines" then return c.lists[id].last() or {} end
+        return nil
+    end })
 end
 
 local function has(lines, text)
@@ -159,10 +169,14 @@ end
 tests["sell list panel: look only - no buttons, no clicks, only the two reads"] = function(t)
     local _, c = start()
     c.setMerchantOpen(true)
-    local p = panelOf(c)
-    for field in pairs(p.spec) do
-        local f = tostring(field):lower()
-        t.ok(not (f:find("button") or f:find("click") or f:find("secure")), "no acting field on the panel: " .. f)
+    -- Nothing drawn can be pressed: no button part, and no part with a
+    -- click of its own.
+    local parts = c.kitWindows().SellList.parts
+    t.ok(#parts > 0, "the window has parts")
+    for _, part in ipairs(parts) do
+        t.ok(part.kind ~= "button" and part.kind ~= "bind" and part.kind ~= "checkbox",
+            "no acting part in the window: " .. part.kind)
+        t.eq(c.kitClick("SellList", part.path), false, "nothing happens on a click: " .. part.kind)
     end
     -- A listing over a client that has only the two reads: anything else it
     -- touched would be nil and raise. (Diag's own window snapshot is not
