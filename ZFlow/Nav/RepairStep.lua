@@ -175,7 +175,8 @@ function RS.Declare(k)
     end
 
     k:Setting({ key = "nav.repairStep", scope = "account", type = "bool", default = true,
-        label = "Repair step" })
+        label = "Repair step", group = "travel.route",
+        synonyms = { "repair", "route", "step", "durability" } })
 
     k:Module({
         name = RS.NAME,

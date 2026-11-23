@@ -133,6 +133,12 @@ Diag.NAMES = {
     "GetTaxiNodesForMap", "UnitThreatSituation", "C_NamePlate.GetNamePlates",
     -- Lead section 197: the pet read (client.pet) asks these two as well.
     "UnitCreatureFamily", "GetPetHappiness",
+    -- Lead sections 238 and 239: which Options route this client has, and
+    -- whether the game's own settings search and subcategories are there
+    -- (UI/SettingsOptions.lua). Saved in the snapshot's names table.
+    "Settings.RegisterCanvasLayoutCategory", "Settings.RegisterCanvasLayoutSubcategory",
+    "Settings.RegisterAddOnCategory", "Settings.OpenToCategory", "SettingsPanel",
+    "SettingsPanel.SearchBox", "InterfaceOptionsFrame",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns

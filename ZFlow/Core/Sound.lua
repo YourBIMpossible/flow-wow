@@ -122,7 +122,7 @@ function Sound.Declare(k, diag)
             label = "Restart the game's sound when your speakers change",
             help = "When your speakers come back after a sleeping screen or Remote Desktop and the game stays silent, "
                 .. "restart its sound a few seconds later. The sound may cut out for a moment. " .. k.id.slash .. " audioreset does it by hand.",
-            group = "Other",
+            group = "advanced", synonyms = { "sound", "audio", "speakers", "silent", "mute" },
         } },
         provides = { Changes = api.changes },
         start = function(c)

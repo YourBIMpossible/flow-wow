@@ -66,7 +66,7 @@ function CraftBar.Declare(k)
             help = "Tick how many of each recipe to make and click Start: each click makes one recipe at its "
                 .. "count, and the next recipe waits for your next click. It stops on combat, moving, full bags "
                 .. "or a missing reagent. Nothing crafts without your click.",
-            group = "Other",
+            group = "professions", synonyms = { "craft", "crafting", "profession", "recipes", "batch", "smelt" },
         } },
         provides = { Running = api.running, Status = api.status },
         start = function(ctx)

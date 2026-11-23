@@ -338,7 +338,7 @@ function FS.Declare(k, diag, packs)
             key = FS.SETTING, scope = "account", type = "bool", default = true,
             label = "Learn which spells break your form",
             help = "Watches your own casts and says on a spell's tooltip whether it keeps your form. It casts nothing.",
-            group = "Rotation",
+            group = "combat.rotation", synonyms = { "druid", "form", "shapeshift", "bear", "cat" },
         } },
         start = function(ctx)
             client = ctx.client

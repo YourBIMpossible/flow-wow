@@ -3,7 +3,12 @@
 --
 --   ns:Setting{ key = "sell.autoJunk", scope = "char", type = "bool",
 --               default = false, label = "Sell junk", help = "...",
---               group = "Vendor", requires = function(settings) ... end }
+--               group = "bags", synonyms = { "junk" },
+--               requires = function(settings) ... end, needs = "vendor.list" }
+-- group is the row's topic in Settings/Topics.lua ("bags", or with one of
+-- that topic's sections, "travel.flights"); synonyms are more words the
+-- settings search finds it by; needs names the row or rows its requires
+-- leans on. None of the three is stored or changes what the row holds.
 --   settings:get(key) / :set(key, value) / :reset(key | group | "all")
 --   settings:each([group]) / :row(key) / :available(key)
 --

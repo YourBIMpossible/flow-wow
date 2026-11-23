@@ -152,7 +152,7 @@ function T.Declare(k, packs)
             key = T.SETTING, scope = "account", type = "bool", default = true,
             label = "Your buffs on a player's tooltip",
             help = "Hover another friendly player to read which of your group buffs they have. It casts nothing.",
-            group = "Group",
+            group = "party", synonyms = { "buffs", "group", "party", "raid", "tooltip" },
         } },
         provides = { Hooked = api.hooked, Errors = api.errors },
         start = function(ctx)

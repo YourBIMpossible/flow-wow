@@ -57,7 +57,7 @@ function Arrow.Row(k)
     if row or refused[k] then return row end
     row = k:Setting({
         key = Arrow.SETTING, scope = "account", type = "table", path = Arrow.PATH,
-        label = "Arrow positions", group = "Arrows", keepOnResetAll = true,
+        label = "Arrow positions", group = "travel.arrow", synonyms = { "arrow", "position", "move", "stack" }, keepOnResetAll = true,
         help = "Where the arrows stand and whether they are stacked. Resetting puts them back.",
     })
     if not row then
@@ -86,7 +86,7 @@ function Arrow.StyleRow(k)
     row = k:Setting({
         key = Arrow.STYLE, scope = "account", type = "choice", choices = choices,
         default = choices[1], path = Arrow.STYLE_PATH,
-        label = "Arrow style", group = "Arrows",
+        label = "Arrow style", group = "travel.arrow", synonyms = { "arrow", "look", "style", "3d" },
         help = "How the quest arrow is drawn: the modern arrow, the 3D arrow with pillars, or flat lines.",
     })
     if not row then
@@ -114,7 +114,7 @@ function Arrow.PaletteRow(k)
     row = k:Setting({
         key = Arrow.PALETTE, scope = "account", type = "choice", choices = choices,
         default = choices[1], path = Arrow.PALETTE_PATH,
-        label = "Arrow colours", group = "Arrows",
+        label = "Arrow colours", group = "travel.arrow", synonyms = { "arrow", "colour", "color", "colorblind" },
         help = "The colours the arrow uses: the standard ones, or ones picked to be told apart by colour-blind players.",
     })
     if not row then
@@ -846,11 +846,33 @@ function Arrow.Start(k, diag, own)
     end
     -- The menu row with this key was clicked. A row that is not there or
     -- not offered asks for nothing.
-    local function choose(key)
+    -- The menu is shown one level at a time (UI/ArrowMenu.lua, N57): a row
+    -- that opens a level shows it on the same arrow, and a row that opens
+    -- the settings asks the settings page. Neither saves anything.
+    local choose
+    local function showMenu(h, level)
+        h.menu(M.Level(M.Items(menuState()), level and { level } or nil),
+            script("menu", guarded(function(key) choose(key, h) end)))
+    end
+    local function openSettings(topic)
+        local name = ns.SettingsPanel and ns.SettingsPanel.NAME or nil
+        local page = name and k.use and k.use(name) or nil
+        if not page or type(page.Show) ~= "function" then
+            say("the settings page is not ready.")
+            return
+        end
+        local ok, err = pcall(page.Show, topic ~= true and topic or nil)
+        if not ok then k.problems:add("arrow", "settings", err) end
+    end
+    choose = function(key, h)
         if not ready or not live() then return end
         local action = M.Action(key, menuState())
         if not action then return end
-        if action.style then
+        if action.open ~= nil then
+            if h and type(h.menu) == "function" then showMenu(h, action.open or nil) end
+        elseif action.settings then
+            openSettings(action.settings)
+        elseif action.style then
             local ok, reason = setStyle(action.style)
             if not ok then say(tostring(reason) .. ".") end
         else
@@ -866,7 +888,7 @@ function Arrow.Start(k, diag, own)
         for _, key in ipairs(N.ARROW_KEYS) do
             local h = handles[key]
             if h and type(h.menu) == "function" then
-                h.menu(M.Items(menuState()), script("menu", guarded(choose)))
+                showMenu(h)
                 return true
             end
         end
@@ -893,7 +915,7 @@ function Arrow.Start(k, diag, own)
                     if not ready or not live() then return end
                     if button == "right" then
                         h.tip(nil)
-                        h.menu(M.Items(menuState()), script("menu", guarded(choose)))
+                        showMenu(h)
                     elseif button == "left" and drawer then
                         local ok, err = pcall(drawer, key)
                         if not ok then k.problems:add("arrow", "drawer", err) end

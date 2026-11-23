@@ -89,7 +89,7 @@ function H.Declare(k)
             label = "How many you have, on item tooltips",
             help = "A line on an item's tooltip saying how many you have, in your bags and in your bank. "
                 .. "The bank's count is from the last time you had it open.",
-            group = "Vendor",
+            group = "bags", synonyms = { "count", "bags", "bank", "tooltip", "stock" },
         } },
         provides = { Hooked = api.hooked, BankReads = api.bankReads },
         start = function(c)
