@@ -40,7 +40,7 @@ return {
     ["fights probe: a client with none of the reads says each one is absent"] = function(t)
         local c = start()
         t.eq(said(c, "fights probe"), {
-            "probe: combat-log read absent; feed not taken; combat-log events since login: 0.",
+            "probe: combat-log read C_CombatLog.GetCurrentEventInfo absent, CombatLogGetCurrentEventInfo absent; feed not taken; combat-log events since login: 0.",
             "probe: game damage meter (C_DamageMeter) absent; death recap (C_DeathRecap.GetRecapEvents) absent.",
             "probe: hits on you since login (UNIT_COMBAT): 0, with a readable amount: 0.",
         })
@@ -51,7 +51,7 @@ return {
         c.combatLog()
         c.combatLog()
         local lines = said(c, "fights probe")
-        t.eq(lines[1], "probe: combat-log read present; feed taken; combat-log events since login: 2.")
+        t.eq(lines[1], "probe: combat-log read C_CombatLog.GetCurrentEventInfo absent, CombatLogGetCurrentEventInfo present; feed taken; combat-log events since login: 2.")
         t.eq(lines[2], "probe: game damage meter (C_DamageMeter) present; death recap (C_DeathRecap.GetRecapEvents) present.")
     end,
 
@@ -68,7 +68,8 @@ return {
     ["fights probe: a client without the reads says so, not absent"] = function(t)
         local c = start({ noUnitCombat = true, noApiRead = true })
         local lines = said(c, "fights probe")
-        t.eq(lines[1], "probe: combat-log read not known; feed not taken; combat-log events since login: 0.")
+        t.eq(lines[1], "probe: combat-log read C_CombatLog.GetCurrentEventInfo not known, CombatLogGetCurrentEventInfo not known; feed not taken;"
+            .. " combat-log events since login: 0.")
         t.eq(lines[3], "probe: hits on you (UNIT_COMBAT) are not followed: this client has no such read.")
     end,
 
