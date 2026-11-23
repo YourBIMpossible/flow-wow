@@ -70,8 +70,9 @@ local _, ns = ...
 --   1 breakFree  2 heal  3 interrupt  4 dispel  5 engage  6 list  7 farOpener
 -- and then 8 food (section 226, CF-30): Well Fed food out of a fight, last,
 -- so a pull, a rotation rule or the far opener comes first. Built here.
--- Other items (healthstone, potion, bandage, drink) and anything for another
--- player (friend heal, group buffs, group dispels): Task, not built yet.
+-- Not in the chooser yet (tasks): other items (healthstone, potion, bandage,
+-- drink), and anything for another player (friend heal, group buffs, group
+-- dispels), which needs a party member read.
 
 ns.Rotation = ns.Rotation or {}
 local R = ns.Rotation

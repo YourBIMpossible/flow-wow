@@ -23,23 +23,26 @@ local _, ns = ...
 -- weight is a "first guess" written without a guide, a database or another
 -- addon: each needs a check in the game client.
 --
--- Not written, on purpose:
---   * Ancestral Spirit, and the heals and cures on anyone but yourself (a
---     pack holds nothing for other players);
+-- Not in this pack yet (tasks):
+--   * Ancestral Spirit, and the heals and cures on anyone but yourself:
+--     needs a party member read and a chooser step for other players (the
+--     pack holds nothing for them yet);
 --   * the weapon imbues (Rockbiter, Flametongue, Frostbrand, Windfury) in the
---     list: no read gives the enchant on your weapon, so "is it on" cannot be
---     told. They are on the Alt key row, for you to press;
+--     list: no read gives the enchant on your weapon yet, so "is it on"
+--     cannot be told. They are on the Alt key row, for you to press;
 --   * totems in the list: no read says which totem is down or how far it is,
 --     and most totems reach the group. Searing, Stoneskin and Earthbind are
 --     on the key rows, for you to press;
 --   * Lightning Bolt as a filler in a fight, and Lightning Bolt or the swing
---     chosen by mana: no read gives mana (no amounts). Lightning Bolt opens a
---     pull; in a fight the list is the swing and the shocks;
+--     chosen by mana: the client hides power amounts from addon code
+--     (R.FROM_AMOUNT in Rotation/Snapshot.lua). Lightning Bolt opens a pull;
+--     in a fight the list is the swing and the shocks;
 --   * an aoe list: Chain Lightning and Fire Nova Totem, as no read counts the
 --     enemies near you;
---   * Purge on the target (no read gives the target's buffs; on the Ctrl key
---     row), and Ghost Wolf (travel, no step of the chooser uses it; on the
---     Shift key row).
+--   * Purge on the target: no read gives the target's buffs (on the Ctrl key
+--     row);
+--   * Ghost Wolf: travel, no step of the chooser uses it (on the Shift key
+--     row).
 
 local GUESS = "first guess"
 local OLD = "carried over from the old shared tables on zflow; authorship unrecorded"
@@ -184,7 +187,7 @@ local pack = {
         { spell = "Lightning Shield", seconds = SHIELD, evidence = GUESS },
     },
 
-    -- No aoe list: see "Not written" above.
+    -- No aoe list yet: see "Not in this pack yet" above.
     lists = {
         default = join(buffs, damage),
     },

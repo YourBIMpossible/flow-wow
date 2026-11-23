@@ -17,15 +17,15 @@ local _, ns = ...
 -- Z-Flow; each needs a check in the game client. The stat weights are an
 -- "authored" model with their note. No guide, database or other addon used.
 --
--- Left out, on purpose:
+-- Not in this pack yet (tasks):
 --   * Mend Pet: it needs the pet's health, and no pet health is read (D1);
---   * ammunition: no read for it; a shot without ammunition is refused by
---     the game (its usable / noPower answer), and that is all used here;
+--   * ammunition: no read for it yet; a shot without ammunition is refused
+--     by the game (its usable / noPower answer), and that is all used here;
 --   * traps, Feign Death, Disengage, Concussive Shot, Scatter Shot, Aimed
---     Shot and Rapid Fire as advice (situational or talents; the spells are
---     listed, and on the key row where they fit, but no rule asks for them);
---   * starting a melee swing: there is no "Attack" row, so the engage step
---     never sends a hunter into melee.
+--     Shot and Rapid Fire as advice: no rule asks for them yet (situational
+--     or talents; the spells are listed, and on the key row where they fit);
+--   * starting a melee swing: there is no "Attack" row yet, so the engage
+--     step never sends a hunter into melee.
 --
 -- Not seen in the game, named on their own (review notes, lead section 208):
 --   * HU2: ns.HunterHasAspect matches the English prefix "Aspect of " on
