@@ -501,7 +501,25 @@ local pack = {
     spells = spells,
 
     -- The old talent plan is empty.
-    talentBuilds = {},
+    talentBuilds = {
+        { name = "Retribution levelling build", role = "dps", evidence = GUESS, note = "written for this pack on 2026-11-23 from general knowledge of the class; not read from the game",
+          trees = { "Holy", "Protection", "Retribution" },
+          order = {
+              { "Benediction", 5, why = "Your seals and judgements cost less mana." },
+              { "Improved Judgement", 2, why = "You can judge more often." },
+              { "Deflection", 3, why = "You parry more, so you take less damage while you fight." },
+              { "Conviction", 5, why = "More critical hits with your weapon." },
+              { "Seal of Command", 1, why = "A seal that adds holy damage to your slow two-handed swings." },
+              { "Vindication", 3, why = "Your hits now and then lower the strength and agility of the enemy." },
+              { "Pursuit of Justice", 1, why = "You run faster, so less time walking between pulls." },
+              { "Two-Handed Weapon Specialization", 3, why = "More damage with the two-handed weapon you level with." },
+              { "Sanctity Aura", 1, why = "An aura that adds to the holy damage of your seal." },
+              { "Eye for an Eye", 1, why = "Part of the damage of a critical hit on you is dealt back." },
+              { "Vengeance", 5, why = "After a critical hit, your damage goes up for a while." },
+              { "Repentance", 1, why = "Holds one humanoid still, for a second enemy that joins the fight." },
+          },
+        },
+    },
 
     options = {
         crowdControl = { { spell = "Turn Undead", creatures = { undead = true } } },

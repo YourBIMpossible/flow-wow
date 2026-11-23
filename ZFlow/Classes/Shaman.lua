@@ -271,7 +271,24 @@ local pack = {
 
     -- Does not apply: no talent plan is written; the rotation plays the role
     -- you choose and reads no talent.
-    talentBuilds = {},
+    talentBuilds = {
+        { name = "Enhancement levelling build", role = "dps", evidence = GUESS, note = "written for this pack on 2026-11-23 from general knowledge of the class; not read from the game",
+          trees = { "Elemental", "Enhancement", "Restoration" },
+          order = {
+              { "Ancestral Knowledge", 5, why = "More mana, so longer between drinking breaks." },
+              { "Thundering Strikes", 5, why = "More critical hits with your weapon." },
+              { "Two-Handed Axes and Maces", 1, why = "Lets you wield a two-handed axe or mace." },
+              { "Improved Ghost Wolf", 2, why = "Ghost Wolf comes faster, so less time walking between pulls." },
+              { "Enhancing Totems", 2, why = "Your strength and agility totems give more." },
+              { "Flurry", 5, why = "After a critical hit, your next few swings come faster." },
+              { "Elemental Weapons", 3, why = "Your Rockbiter and Windfury weapon enchants are stronger." },
+              { "Parry", 1, why = "You can parry, so you take less damage while you fight." },
+              { "Toughness", 1, why = "More armor from your items." },
+              { "Weapon Mastery", 5, why = "More damage with every weapon." },
+              { "Stormstrike", 1, why = "A strike that hits twice and makes your next nature spells hit harder." },
+          },
+        },
+    },
 
     options = {
         crowdControl = { none = "no shaman spell in this client holds a second enemy" },

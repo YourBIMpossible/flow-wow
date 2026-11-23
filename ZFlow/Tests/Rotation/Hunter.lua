@@ -62,7 +62,9 @@ tests["hunter pack: every data row is a first guess but the authored weights"] =
     t.eq(type(p.weights.dps.provenance), "string", "an authored row says who and how")
     t.eq(p.weights.heal, nil)
     t.eq(p.weights.tank, nil)
-    t.eq(p.talentBuilds, {}, "not authored yet")
+    -- Section 208 pin moved: CLASS-B-TALENTS (section 309) authors the build;
+    -- its shape is checked in Tests/Rotation/ClassB.lua.
+    t.eq(#p.talentBuilds, 1, "one levelling build, a first guess")
 end
 
 tests["hunter pack: no swing row, so going into melee is never suggested to start"] = function(t)
