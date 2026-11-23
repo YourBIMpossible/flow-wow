@@ -26,10 +26,26 @@ local function questie(over)
             Starts = { NPC = { 503 } } },
         [999] = { Id = 999, name = "Somewhere Else", level = 10, requiredLevel = 5, zoneOrSort = 12 },
     }
+    -- over.more (lead section 305): quests filed by where their objectives
+    -- are, a giver at the entrance and a giver inside. Zone 40 is outside.
+    if over.more then
+        quests[105] = { Id = 105, name = "Oh Brother", level = 20, requiredLevel = 15, zoneOrSort = 40,
+            Starts = { NPC = { 502 } }, objectives = { { { 601 } } } }
+        quests[106] = { Id = 106, name = "Split Up", level = 20, requiredLevel = 15, zoneOrSort = 40,
+            Starts = { NPC = { 502 } }, objectives = { { { 601 }, { 602 } } } }
+        quests[107] = { Id = 107, name = "At The Door", level = 18, requiredLevel = 14, zoneOrSort = DM,
+            Starts = { NPC = { 504 } }, preQuestSingle = { 101 } }
+        quests[108] = { Id = 108, name = "Deep Inside", level = 18, requiredLevel = 14, zoneOrSort = DM,
+            Starts = { NPC = { 505 } } }
+    end
     local npcs = {
         [501] = { name = "Gryan", friendlyToFaction = "A" },
         [502] = { name = "Wilder", friendlyToFaction = "A" },
         [503] = { name = "High Sorcerer", friendlyToFaction = "AH" },
+        [504] = { name = "Door Keeper", friendlyToFaction = "A", spawns = { [40] = { { 42.6, 71.9 } } } },
+        [505] = { name = "Prisoner", friendlyToFaction = "A", spawns = { [DM] = { { 10, 10 } } } },
+        [601] = { name = "Cookie", spawns = { [DM] = { { 20, 20 } } } },
+        [602] = { name = "Outside Thug", spawns = { [40] = { { 30, 30 } } } },
     }
     local db = { QuestPointers = {} }
     for id in pairs(quests) do db.QuestPointers[id] = true end
@@ -42,11 +58,17 @@ local function questie(over)
             if field == "questLevel" then return qt.level end
             return qt[field]
         end
+        function db.QueryNPCSingle(id, field)
+            local n = npcs[id]
+            return n and n[field] or nil
+        end
     end
     local zones = {}
     function zones:GetDungeons()
         if over.badList then error("no list") end
-        return { [DM] = { "The Deadmines" }, [SFK] = { "Shadowfang Keep" }, [AV] = { "Alterac Valley" } }
+        local dm = { "The Deadmines" }
+        if over.more then dm = { "The Deadmines", {}, nil, { { 40, 42.5, 71.8 } } } end
+        return { [DM] = dm, [SFK] = { "Shadowfang Keep" }, [AV] = { "Alterac Valley" } }
     end
     return db, zones, quests
 end
@@ -163,6 +185,39 @@ tests["dungeon read: while the index is building the pane says so"] = function(t
     t.eq(R.Pane(st, c, DM).why, R.WHY_BUILDING)
     t.eq(#R.WHY_BUILDING, 2)
     t.eq(#R.WHY_LIST, 2)
+end
+
+-- Lead section 305: the two parts first left out.
+local function groupOf(pane, name)
+    for _, g in ipairs(pane.groups) do
+        for _, r in ipairs(g.rows) do
+            if r.name == name then return g.id end
+        end
+    end
+    return nil
+end
+
+tests["dungeon read 305: a quest filed outside goes to the dungeon all its objectives are in"] = function(t)
+    local st = indexed(client({ more = true }))
+    t.eq(st.dungeonOf[105], DM, "its one creature lives only in the Deadmines")
+    t.eq(st.dungeonOf[106], nil, "objectives in two places: not filed")
+end
+
+tests["dungeon read 305: a giver at the entrance makes a follow-up the same run, not Later"] = function(t)
+    local c = client({ more = true })
+    local st = indexed(c)
+    local pane = R.Pane(st, c, DM)
+    t.eq(groupOf(pane, "At The Door"), "inside", "its giver stands at the door: same run")
+    t.eq(groupOf(pane, "Deep Inside"), "inside", "its giver is inside")
+    t.eq(groupOf(pane, "Red Silk"), "pickup", "a giver outside stays a pickup")
+end
+
+tests["dungeon read 305: without the entrance in Questie's list, the follow-up waits"] = function(t)
+    local c = client({ more = true })
+    local st = indexed(c)
+    st.byKey[DM].entrances = {}
+    st.quests = {}
+    t.eq(groupOf(R.Pane(st, c, DM), "At The Door"), "later")
 end
 
 return tests

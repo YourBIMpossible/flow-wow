@@ -189,4 +189,11 @@ tests["dungeon list: by the lowest quest level, then by name; no level known las
     t.eq(names, { "Ragefire Chasm", "Deadmines", "Blackfathom Deeps", "Shadowfang Keep", "Zul'Farrak" })
 end
 
+tests["dungeon states 305: the one place all objectives share, or none"] = function(t)
+    t.eq(S.ObjectivesTop({ 7, 7, nil }), 7)
+    t.eq(S.ObjectivesTop({ 7, 8 }), nil, "two places")
+    t.eq(S.ObjectivesTop({ 7, false }), nil, "one objective in more than one place")
+    t.eq(S.ObjectivesTop({}), nil)
+end
+
 return tests
