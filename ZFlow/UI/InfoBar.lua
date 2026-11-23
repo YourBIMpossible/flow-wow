@@ -2,8 +2,9 @@ local _, ns = ...
 -- N59 (lead section 243): the info bar. A small movable strip or box that
 -- shows the metrics the player chose (four by default): gold, free bag
 -- slots, durability, experience, the watched reputation, server time,
--- hearthstone cooldown, frame rate and latency. Off until the player turns
--- it on. Each metric is read from its own game event; the clock, frame rate,
+-- hearthstone cooldown, frame rate and latency. Shown by default (lead
+-- section 294: it is the info display); the player can turn it off, and a
+-- saved choice is kept. Each metric is read from its own game event; the clock, frame rate,
 -- latency and hearthstone on a slow timer only while the bar is shown. A
 -- read the client does not answer shows as not available, never as zero.
 -- Hover gives the details; a click opens the settings page only. A hidden
@@ -421,9 +422,9 @@ function IB.Declare(k)
         name = IB.NAME,
         needs = { "client", "store", "bus", "settings", "sched" },
         settings = {
-            row({ key = "infoBar.shown", type = "bool", default = false, label = "Info bar",
+            row({ key = "infoBar.shown", type = "bool", default = true, label = "Info bar",
                 help = "A small bar with gold, free bag slots, durability and experience. "
-                    .. "Hover for the details; a click opens these settings." }),
+                    .. "Shown until you turn it off. Hover for the details; a click opens these settings." }),
             row({ key = "infoBar.metrics", type = "string", default = IB.DEFAULT, label = "Info bar metrics",
                 help = "The metrics shown, in order: gold, bags, durability, xp, rep, clock, hearth, fps, latency." }),
             row({ key = "infoBar.layout", type = "choice", choices = { "strip", "box" }, default = "strip",
