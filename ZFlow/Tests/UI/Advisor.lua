@@ -17,6 +17,9 @@ local function start(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
     c.setSaved(ns.id.accountDB, {})
+    -- The plain panel cases: the kit window is refused, so the advisor
+    -- draws on the plain panel (Tests/UI/AdvisorKit.lua has the kit's).
+    if type(c.setKitFails) == "function" then c.setKitFails(math.huge) end
     if opts.noFrames then c.setFrames(false) end
     local k = ns.Kernel({}, c)
     ns.Diag.Start(k)
@@ -163,6 +166,9 @@ end
 tests["advisor panel: a prompt added before login shows once the panel starts"] = function(t)
     local c = ns.make.fakeClient()
     c.setSaved(ns.id.accountDB, {})
+    -- The plain panel cases: the kit window is refused, so the advisor
+    -- draws on the plain panel (Tests/UI/AdvisorKit.lua has the kit's).
+    if type(c.setKitFails) == "function" then c.setKitFails(math.huge) end
     local k = ns.Kernel({}, c)
     ns.Diag.Start(k)
     local api = A.Declare(k)
