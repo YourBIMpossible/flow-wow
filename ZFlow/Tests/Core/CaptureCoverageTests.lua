@@ -41,10 +41,7 @@ local KIND = {
              -- what the caller's act does.
              "iconRow",
              -- S20: the per-role badges on the merchant's item buttons.
-             "markMerchantSpecs",
-             -- The window kit's drawer (lead sections 287 and 291): one
-             -- window from a checked tree; a click runs the part's own function.
-             "kitWindow" },
+             "markMerchantSpecs" },
     tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "savedMadeHere", "slash",
              "slashTaken", "unslash" },
     -- Hands back or runs a sound restart: never asked by the capture.
@@ -72,6 +69,9 @@ KIND.show[#KIND.show + 1] = "moveHandle"
 -- kit's list is there, on hidden frames; run once per login by
 -- UI/KitProbe.lua, never by the capture.
 KIND.tool[#KIND.tool + 1] = "kitProbe"
+-- The window kit's drawer (lead sections 287, 291 and 303): one window
+-- from a checked tree; a click runs the part's own function.
+KIND.show[#KIND.show + 1] = "kitWindow"
 
 -- Every read, and whether the capture asks it (true) or not (false).
 local READS = {

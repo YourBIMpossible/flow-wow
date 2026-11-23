@@ -236,6 +236,9 @@ Diag.NAMES = {
     "GRAY_FONT_COLOR",
     "GameFontNormal", "GameFontHighlight", "GameFontDisable", "GameFontNormalSmall", "GameFontHighlightSmall",
     "GameFontDisableSmall", "GameFontNormalLarge", "GameFontRed", "GameFontGreen",
+    -- The kit window's frame (Core/Client.lua kitWindow): the game's call
+    -- that hides the portrait of ButtonFrameTemplate. A first guess.
+    "ButtonFrameTemplate_HidePortrait",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns
