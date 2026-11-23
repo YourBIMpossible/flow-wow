@@ -77,7 +77,9 @@ local function hasKind(rec, kind)
     return false
 end
 
-tests["dungeon window: the slash word opens it, built from kit parts, Quests first"] = function(t)
+-- A topic list always has one picked (UI/Kit.lua: the first unless told),
+-- so the window opens on the lowest-level dungeon, its Quests tab.
+tests["dungeon window: the slash word opens it, built from kit parts, on the first dungeon's Quests"] = function(t)
     local c = boot()
     local rec = open(c)
     t.ok(rec ~= nil, "a kit window")
@@ -86,7 +88,7 @@ tests["dungeon window: the slash word opens it, built from kit parts, Quests fir
     t.ok(hasKind(rec, "tabs"), "the tabs")
     t.ok(hasKind(rec, "header"), "the header with search")
     local words = texts(rec)
-    t.ok(words:find("Pick a dungeon", 1, true) ~= nil, "nothing picked yet says so: " .. words)
+    t.ok(words:find("Red Silk", 1, true) ~= nil, "the Deadmines first: " .. words)
 end
 
 tests["dungeon window: a dungeon picked shows its quests by group; Show on map sets the waypoint"] = function(t)
