@@ -16,10 +16,22 @@ local _, ns = ...
 -- Saved: account "learned.prices.auctionHistory"[realm key][itemID] =
 -- { h = { at, price, ... } }, realm key = "<realm>-<faction>" as legacy
 -- Flow wrote it (a "." in it becomes "_": the store splits paths on dots).
+-- While the faction is not known nothing is recorded or read (PA6): legacy
+-- filed such looks under "<realm>-?", a bucket that mixed both factions. An
+-- old "-?" bucket is left as it was.
+--
+-- This is the one writer of auction prices (PA8): the price word reads them
+-- here (AuctionLog.Read); the price book keeps no second copy.
+--
+-- The realm table is read from the store once a session and kept (PA10); a
+-- look adds its own item to that same table, with no copy of the rest. A
+-- new realm table written through the store at the same path replaces the
+-- kept one (store:watch). One written at a parent path is not seen.
 --
 --   AuctionLog.UnitFrom(row) -> copper for one, or nil   (legacy, verbatim)
 --   AuctionLog.AddPoint(h, price, at, max, same) -> h     (legacy, verbatim)
 --   AuctionLog.RealmKey(realm, faction) -> key, or nil
+--   AuctionLog.Read(store, client, id) -> { h = ... } or nil   reads only
 --   AuctionLog.ProbeLines(present) -> lines for `auction probe`
 --   AuctionLog.Declare(k, diag) -> api   (api.looks() -> looks recorded)
 --
@@ -82,6 +94,22 @@ function AL.RealmKey(realm, faction)
     return (key:gsub("%.", "_"))
 end
 
+local function known(faction)
+    return type(faction) == "string" and faction ~= ""
+end
+
+-- One item's saved looks on this realm and faction, or nil. Reads only.
+function AL.Read(store, client, id)
+    if type(store) ~= "table" or type(client) ~= "table" or type(id) ~= "number" then return nil end
+    if type(client.realm) ~= "function" or type(client.faction) ~= "function" then return nil end
+    local faction = client.faction()
+    if not known(faction) then return nil end
+    local rk = AL.RealmKey(client.realm(), faction)
+    local saved = rk and store:get("account", AL.PATH .. "." .. rk)
+    local e = type(saved) == "table" and saved[id] or nil
+    return (type(e) == "table" and type(e.h) == "table") and e or nil
+end
+
 function AL.ProbeLines(present)
     local have, missing = {}, {}
     for _, name in ipairs(AL.PROBE) do
@@ -97,16 +125,30 @@ end
 function AL.Declare(k, diag)
     local api = {}
     local ctx, looks, cancel = nil, 0, nil
+    local kept, unwatch = {}, {}   -- [rk] = { t = the realm table or nil }; this session
     function api.looks() return looks end
 
+    -- nil while the realm or the faction is not known.
     local function realmKey()
         local client = ctx.client
-        return AL.RealmKey(client.realm(), client.faction())
+        local faction = client.faction()
+        if not known(faction) then return nil end
+        return AL.RealmKey(client.realm(), faction)
     end
 
     local function entries(rk)
-        local saved = rk and ctx.store:get("account", AL.PATH .. "." .. rk)
-        return type(saved) == "table" and saved or nil
+        if not rk then return nil end
+        local slot = kept[rk]
+        if not slot then
+            local path = AL.PATH .. "." .. rk
+            local saved = ctx.store:get("account", path)
+            slot = { t = type(saved) == "table" and saved or nil }
+            kept[rk] = slot
+            unwatch[#unwatch + 1] = ctx.store:watch("account", path, function(value)
+                slot.t = type(value) == "table" and value or nil
+            end)
+        end
+        return slot.t
     end
 
     local function record(id, row)
@@ -115,17 +157,25 @@ function AL.Declare(k, diag)
         local at = ctx.client.clock()
         local rk = realmKey()
         if not unit or not finite(at) or not rk then return end
-        -- The realm's table is copied one level and the item's history in
-        -- full, so a refused save leaves what was saved as it was.
-        local copy = {}
-        for key, e in pairs(entries(rk) or {}) do copy[key] = e end
-        local old = copy[id]
+        -- Only the item's own history is copied; it goes into the realm
+        -- table after the store takes the save, so a refused save leaves
+        -- what was saved as it was.
+        local path = AL.PATH .. "." .. rk
+        local t = entries(rk)
+        local old = t and t[id]
         local h = {}
         if type(old) == "table" and type(old.h) == "table" then
             for i, v in ipairs(old.h) do h[i] = v end
         end
-        copy[id] = { h = AL.AddPoint(h, math.floor(unit + 0.5), at) }
-        if ctx.store:set("account", AL.PATH .. "." .. rk, copy) then looks = looks + 1 end
+        local e = { h = AL.AddPoint(h, math.floor(unit + 0.5), at) }
+        if t then
+            if ctx.store:set("account", path, t) then
+                t[id] = e
+                looks = looks + 1
+            end
+        elseif ctx.store:set("account", path, { [id] = e }) then
+            looks = looks + 1
+        end
     end
 
     if diag and type(diag.commands) == "table" then
@@ -175,6 +225,8 @@ function AL.Declare(k, diag)
         stop = function()
             if type(cancel) == "function" then cancel() end
             cancel = nil
+            for _, off in ipairs(unwatch) do pcall(off) end
+            kept, unwatch = {}, {}
         end,
     })
     return api
