@@ -85,6 +85,11 @@ tests["a setting no feature reads yet has no switch"] = function(t)
         t.ok(names[key] ~= nil, key .. " is still named by its file")
         t.eq(addon.settings:row(key), nil, key .. " has no row until a feature reads it")
     end
+    -- With the list empty, the check is that nothing is left waiting: every
+    -- named setting has its row.
+    if next(UNREAD) == nil then
+        for key in pairs(names) do t.ok(addon.settings:row(key) ~= nil, key .. " has a row") end
+    end
 end
 
 return tests
