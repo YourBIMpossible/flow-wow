@@ -78,6 +78,9 @@ local function start(opts)
     if opts.setting ~= nil then
         k:Setting({ key = N.SETTING, scope = "char", type = "bool", default = true, label = "Junk loot note" })
     end
+    -- Lead section 220 (SR-1, SR-2): with no reservations module the status
+    -- is unavailable and nothing is advised for sale; this kernel has one.
+    ns.Reservations.Declare(k)
     local api = N.Declare(k)
     k:Boot()
     c.fire("ADDON_LOADED", ns.id.addon)
