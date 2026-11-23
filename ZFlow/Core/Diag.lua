@@ -223,6 +223,9 @@ Diag.NAMES = {
     -- combatLogFile and their two writes). GetCVar and C_CVar.GetCVar are
     -- listed above.
     "LoggingCombat", "C_CVar.SetCVar", "SetCVar",
+    -- Lead section 303: quests handed in, for the Dungeon Quests pane
+    -- (client.questDone). UnitRace (client.raceId) is listed above.
+    "C_QuestLog.IsQuestFlaggedCompleted",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns

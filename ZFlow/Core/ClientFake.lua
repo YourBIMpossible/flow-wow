@@ -3384,6 +3384,19 @@ function ns.make.fakeClient(opts)
             return plainValue(rollID, ...)
         end
     end
+
+    -- Lead section 303 (Dungeon Quests). c.setRaceId(n) (nil: not known);
+    -- c.setQuestDone(id, true / false / nil). Not set: not known.
+    function c.setRaceId(n) s.raceId = n end
+    function c.raceId() return s.raceId end
+    function c.setQuestDone(id, v)
+        s.questDone = s.questDone or {}
+        s.questDone[id] = v
+    end
+    function c.questDone(id)
+        if type(id) ~= "number" then return nil end
+        return s.questDone and s.questDone[id]
+    end
     return c
 end
 
