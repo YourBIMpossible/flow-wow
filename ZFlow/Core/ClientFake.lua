@@ -2559,6 +2559,113 @@ function ns.make.fakeClient(opts)
         if type(s.attune) ~= "table" then return nil end
         return copyRows(s.attune)
     end
+    -- The macro icon window (N72), as the real client's macroPopup: nil and
+    -- { "MacroPopupFrame" } until setMacroPopup{ icons } or { missing }.
+    -- Every window set with icons is in c.macroPopups, in order. The test's
+    -- controls on one: p.open() (a fresh provider, OnShow), p.close(),
+    -- p.visible() (what the grid shows), p.click(i) (p.selected), p.type(s)
+    -- (the player typing in the box; false with no box), p.filter(kind) (a
+    -- filter button); p.box = { text, hint, shown } once the box is made.
+    -- setFrames(false): no box. setSpellbook(list) sets what
+    -- spellbookIcons() answers; c.spellbookReads counts the reads.
+    c.macroPopups = {}
+    c.spellbookReads = 0
+    function c.setMacroPopup(spec)
+        spec = spec or {}
+        if type(spec.missing) == "table" and #spec.missing > 0 then
+            s.macroMissing = {}
+            for i = 1, #spec.missing do s.macroMissing[i] = spec.missing[i] end
+            s.macroPopup = nil
+            return
+        end
+        s.macroMissing = nil
+        local p = { icons = {}, isOpen = false }
+        for i, v in ipairs(spec.icons or {}) do p.icons[i] = v end
+        local h, showFn, hideFn, onText, onFilter
+        local list
+        function p.visible()
+            local out = {}
+            for i, v in ipairs(list or p.icons) do out[i] = v end
+            return out
+        end
+        function p.open()
+            p.isOpen, list = true, nil
+            if showFn then showFn() end
+        end
+        function p.close()
+            p.isOpen, list = false, nil
+            if hideFn then hideFn() end
+        end
+        function p.click(i) p.selected = p.visible()[i] end
+        function p.type(text)
+            if not p.box then return false end
+            p.box.text = tostring(text)
+            if onText then onText(p.box.text) end
+            return true
+        end
+        function p.filter(kind)
+            if not p.box then return false end
+            if onFilter then onFilter(kind) end
+            return true
+        end
+        h = {}
+        function h.shown() return p.isOpen end
+        function h.count()
+            if not p.isOpen then return nil end
+            return #p.icons
+        end
+        function h.icon(i)
+            if not p.isOpen then return nil end
+            return p.icons[i]
+        end
+        function h.show(shown)
+            if not p.isOpen then return false end
+            if shown == nil then
+                list = nil
+                return true
+            end
+            list = {}
+            for i, v in ipairs(shown) do list[i] = v end
+            return true
+        end
+        function h.onShow(fn) showFn = type(fn) == "function" and fn or nil end
+        function h.onHide(fn) hideFn = type(fn) == "function" and fn or nil end
+        local b
+        function h.addBox(boxSpec)
+            if b then return b end
+            if s.noFrames or type(boxSpec) ~= "table" then return nil end
+            onText, onFilter = boxSpec.onText, boxSpec.onFilter
+            p.box = { text = "", hint = nil, shown = true }
+            b = {}
+            function b.setText(text)
+                p.box.text = type(text) == "string" and text or ""
+                if onText then onText(p.box.text) end
+            end
+            function b.hint(text) p.box.hint = type(text) == "string" and text or "" end
+            function b.show(on) p.box.shown = on and true or false end
+            return b
+        end
+        p.handle = h
+        s.macroPopup = p
+        c.macroPopups[#c.macroPopups + 1] = p
+    end
+    function c.macroPopup()
+        if s.macroMissing then
+            local out = {}
+            for i = 1, #s.macroMissing do out[i] = s.macroMissing[i] end
+            return nil, out
+        end
+        if not s.macroPopup then return nil, { "MacroPopupFrame" } end
+        return s.macroPopup.handle
+    end
+    function c.setSpellbook(list) s.spellbook = list end
+    function c.spellbookIcons()
+        c.spellbookReads = c.spellbookReads + 1
+        if type(s.spellbook) ~= "table" then return nil end
+        local out = {}
+        for i, row in ipairs(s.spellbook) do out[i] = { name = row.name, icon = row.icon } end
+        return out
+    end
     return c
 end
 

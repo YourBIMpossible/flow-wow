@@ -6988,6 +6988,267 @@ function ns.make.client(env)
         return out
     end
     -- ------------------------------------------------------------ end N67
+    do
+    -- --------------------------------------------- macro icon window (N72)
+    -- Lead section 248 item 4. The icon window of the macro editor is the
+    -- icon selector popup MacroPopupFrame, made by Blizzard_MacroUI (load
+    -- on demand: the caller asks only after that add-on loaded). Each time
+    -- it opens it makes a fresh icon data provider (popup.iconDataProvider,
+    -- of IconDataProviderMixin) and its grid reads the icons through it, by
+    -- index; a click selects through the popup's own callback, which reads
+    -- the icon of that index through the same provider. So a list is shown
+    -- by answering the provider's GetNumIcons, GetIconByIndex and
+    -- GetIndexOfIcon from it and redrawing the popup (popup:Update, else
+    -- the selector's UpdateSelections): the click still selects through the
+    -- normal editor. The hook pattern is that of LargerMacroIconSelection
+    -- (GPL-3), reused with its notice; no code and no data copied. Names
+    -- read from warcraft.wiki.gg and Plexy's list: IconSelectorPopupFrame
+    -- TemplateMixin, IconDataProviderMixin, GetMacroIcons. First guesses, not
+    -- seen in game on 16001: Needs game test (taint of the provider fields,
+    -- the redraw call, the box placement).
+    --
+    --   c.macroPopup() -> handle | nil, missing names (in a fixed order)
+    --   handle.shown() -> true while the window is on the screen
+    --   handle.count() / handle.icon(i) -> the full list of the provider the
+    --       window made, even while a list is shown; nil before it opened
+    --   handle.show(list) -> shows only those icons; nil: the full list again.
+    --       false when the window has made no provider
+    --   handle.onShow(fn) / handle.onHide(fn) -> the last fn given is told;
+    --       one HookScript each, the window's own scripts stay
+    --   handle.addBox{ onText(text), onFilter(kind) } -> box | nil, made once:
+    --       a plain search edit box and three plain buttons (All, Spells,
+    --       Items), never a secure template. box.setText(s), box.hint(s),
+    --       box.show(on)
+    local MACRO_FILTERS = { { "all", "All" }, { "spells", "Spells" }, { "items", "Items" } }
+    local macroHandle
+
+    local function field(obj, key)
+        local ok, v = pcall(function() return obj[key] end)
+        if ok then return v end
+        return nil
+    end
+
+    function c.macroPopup()
+        local missing = {}
+        local popup = env.MacroPopupFrame
+        if type(popup) ~= "table" then missing[#missing + 1] = "MacroPopupFrame" end
+        if type(env.IconSelectorPopupFrameTemplateMixin) ~= "table" then
+            missing[#missing + 1] = "IconSelectorPopupFrameTemplateMixin"
+        end
+        if type(env.IconDataProviderMixin) ~= "table" then missing[#missing + 1] = "IconDataProviderMixin" end
+        if type(env.GetMacroIcons) ~= "function" then missing[#missing + 1] = "GetMacroIcons" end
+        local selector = type(popup) == "table" and field(popup, "IconSelector") or nil
+        if type(selector) ~= "table" then missing[#missing + 1] = "MacroPopupFrame.IconSelector" end
+        if #missing > 0 then return nil, missing end
+        if macroHandle and macroHandle.popup == popup then return macroHandle.h end
+
+        local h = {}
+        local saved          -- { p, raw = { three fields }, num, at, index }
+        local showFn, hideFn, hooked = nil, nil, {}
+        local box
+
+        local function provider()
+            local p = field(popup, "iconDataProvider")
+            if type(p) ~= "table" then return nil end
+            return p
+        end
+        local function redraw()
+            if not method(popup, "Update") then method(selector, "UpdateSelections") end
+        end
+        -- The provider's own calls while a list is shown over it.
+        local function own(p)
+            if saved and saved.p == p then return saved.num, saved.at end
+            return field(p, "GetNumIcons"), field(p, "GetIconByIndex")
+        end
+
+        function h.shown()
+            local ok, on = method(popup, "IsShown")
+            return ok and on == true
+        end
+        function h.count()
+            local p = provider()
+            if not p then return nil end
+            local num = own(p)
+            local ok, n = call(num, p)
+            if ok and type(n) == "number" and not hidden(n) then return n end
+            return nil
+        end
+        function h.icon(i)
+            local p = provider()
+            if not p then return nil end
+            local _, at = own(p)
+            local ok, icon = call(at, p, i)
+            if not ok or hidden(icon) then return nil end
+            if type(icon) == "number" or type(icon) == "string" then return icon end
+            return nil
+        end
+        function h.show(list)
+            local p = provider()
+            if not p then return false end
+            if saved and saved.p ~= p then saved = nil end
+            if list == nil then
+                if saved then
+                    local raw = saved.raw
+                    local ok = pcall(function()
+                        rawset(p, "GetNumIcons", raw[1])
+                        rawset(p, "GetIconByIndex", raw[2])
+                        rawset(p, "GetIndexOfIcon", raw[3])
+                    end)
+                    saved = nil
+                    if not ok then return false end
+                end
+                redraw()
+                return true
+            end
+            if type(list) ~= "table" then return false end
+            local shown, index = {}, {}
+            for i = 1, #list do
+                shown[i] = list[i]
+                if index[list[i]] == nil then index[list[i]] = i end
+            end
+            if not saved then
+                local okRaw, raw = pcall(function()
+                    return { rawget(p, "GetNumIcons"), rawget(p, "GetIconByIndex"), rawget(p, "GetIndexOfIcon") }
+                end)
+                if not okRaw then return false end
+                saved = { p = p, raw = raw, num = field(p, "GetNumIcons"), at = field(p, "GetIconByIndex") }
+            end
+            local ok = pcall(function()
+                rawset(p, "GetNumIcons", function() return #shown end)
+                rawset(p, "GetIconByIndex", function(_, i) return shown[i] end)
+                rawset(p, "GetIndexOfIcon", function(_, icon) return index[icon] end)
+            end)
+            if not ok then return false end
+            redraw()
+            return true
+        end
+
+        local function hook(script, tell)
+            if hooked[script] then return end
+            hooked[script] = true
+            method(popup, "HookScript", script, tell)
+        end
+        function h.onShow(fn)
+            showFn = type(fn) == "function" and fn or nil
+            hook("OnShow", function() if showFn then pcall(showFn) end end)
+        end
+        function h.onHide(fn)
+            hideFn = type(fn) == "function" and fn or nil
+            hook("OnHide", function() if hideFn then pcall(hideFn) end end)
+        end
+
+        function h.addBox(spec)
+            if box then return box end
+            if type(spec) ~= "table" then return nil end
+            local onText, onFilter = spec.onText, spec.onFilter
+            local okE, edit = call(env.CreateFrame, "EditBox", nil, popup, "SearchBoxTemplate")
+            if not okE or edit == nil then return nil end
+            method(edit, "SetSize", 180, 20)
+            method(edit, "SetPoint", "TOPLEFT", popup, "BOTTOMLEFT", 16, -2)
+            method(edit, "SetAutoFocus", false)
+            local okO, old = method(edit, "GetScript", "OnTextChanged")
+            if not okO or type(old) ~= "function" then old = nil end
+            method(edit, "SetScript", "OnTextChanged", function(self, ...)
+                if old then pcall(old, self, ...) end
+                local okT, typed = method(self, "GetText")
+                if type(onText) == "function" and okT and type(typed) == "string" and not hidden(typed) then
+                    pcall(onText, typed)
+                end
+            end)
+            local okH, hint = method(edit, "CreateFontString", nil, "OVERLAY", "GameFontHighlightSmall")
+            if not okH then hint = nil end
+            if hint ~= nil then method(hint, "SetPoint", "TOPLEFT", edit, "BOTTOMLEFT", 0, -2) end
+            local buttons, prev = {}, edit
+            for i = 1, #MACRO_FILTERS do
+                local kind, label = MACRO_FILTERS[i][1], MACRO_FILTERS[i][2]
+                local okB, b = call(env.CreateFrame, "Button", nil, popup, "UIPanelButtonTemplate")
+                if okB and b ~= nil then
+                    method(b, "SetSize", 60, 20)
+                    method(b, "SetPoint", "LEFT", prev, "RIGHT", 4, 0)
+                    method(b, "SetText", label)
+                    method(b, "SetScript", "OnClick", function()
+                        if type(onFilter) == "function" then pcall(onFilter, kind) end
+                    end)
+                    buttons[#buttons + 1] = b
+                    prev = b
+                end
+            end
+            local b = {}
+            function b.setText(s) method(edit, "SetText", type(s) == "string" and s or "") end
+            function b.hint(s)
+                if hint ~= nil then method(hint, "SetText", type(s) == "string" and s or "") end
+            end
+            function b.show(on)
+                local how = on and "Show" or "Hide"
+                method(edit, how)
+                if hint ~= nil then method(hint, how) end
+                for i = 1, #buttons do method(buttons[i], how) end
+            end
+            box = b
+            return b
+        end
+
+        macroHandle = { popup = popup, h = h }
+        return h
+    end
+
+    -- The player's spells as { name, icon } rows, for the macro icon search
+    -- (N72): C_SpellBook (skill lines, then items of the player bank) where
+    -- the client has it, else the older tab calls GetNumSpellTabs,
+    -- GetSpellTabInfo, GetSpellBookItemName and GetSpellBookItemTexture
+    -- (book "spell"). nil when neither is there or a read raised. A row
+    -- without a name or an icon is left out. First guesses, not seen in
+    -- game on 16001.
+    local function iconOk(icon)
+        if hidden(icon) then return false end
+        return (type(icon) == "number" and icon > 0) or (type(icon) == "string" and icon ~= "")
+    end
+    local function nameOk(name)
+        return type(name) == "string" and name ~= "" and not hidden(name)
+    end
+
+    function c.spellbookIcons()
+        local book, enum = env.C_SpellBook, env.Enum
+        local bank = type(enum) == "table" and type(enum.SpellBookSpellBank) == "table"
+            and enum.SpellBookSpellBank.Player or nil
+        if type(book) == "table" and type(book.GetNumSpellBookSkillLines) == "function" and bank ~= nil then
+            local ok, lines = call(book.GetNumSpellBookSkillLines)
+            if not ok or type(lines) ~= "number" or hidden(lines) then return nil end
+            local out = {}
+            for l = 1, lines do
+                local okL, line = call(book.GetSpellBookSkillLineInfo, l)
+                if not okL or type(line) ~= "table" then return nil end
+                local from, n = field(line, "itemIndexOffset"), field(line, "numSpellBookItems")
+                if type(from) ~= "number" or type(n) ~= "number" then return nil end
+                for i = from + 1, from + n do
+                    local okI, item = call(book.GetSpellBookItemInfo, i, bank)
+                    if not okI then return nil end
+                    if type(item) == "table" then
+                        local name, icon = field(item, "name"), field(item, "iconID")
+                        if nameOk(name) and iconOk(icon) then out[#out + 1] = { name = name, icon = icon } end
+                    end
+                end
+            end
+            return out
+        end
+        if type(env.GetNumSpellTabs) ~= "function" then return nil end
+        local ok, tabs = call(env.GetNumSpellTabs)
+        if not ok or type(tabs) ~= "number" or hidden(tabs) then return nil end
+        local out = {}
+        for t = 1, tabs do
+            local okT, _, _, from, n = call(env.GetSpellTabInfo, t)
+            if not okT or type(from) ~= "number" or type(n) ~= "number" then return nil end
+            for i = from + 1, from + n do
+                local okN, name = call(env.GetSpellBookItemName, i, "spell")
+                local okI, icon = call(env.GetSpellBookItemTexture, i, "spell")
+                if not okN or not okI then return nil end
+                if nameOk(name) and iconOk(icon) then out[#out + 1] = { name = name, icon = icon } end
+            end
+        end
+        return out
+    end
+    -- --------------------------------------------- end macro icon window
+    end
     return c
 end
 

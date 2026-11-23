@@ -175,6 +175,11 @@ Diag.NAMES = {
     -- client.attuneProgress); first guesses, so a capture says which exist.
     "GatherMate2", "GatherMate2.GetNodesForZone", "GatherMate2.DecodeLoc", "GatherMate2.GetNameForNode",
     "Attune_Data", "Attune_Data.attunes", "Attune_DB", "Attune_DB.toons",
+    -- Row N72: the macro icon search (UI/MacroIcons.lua, Core/Client.lua
+    -- macroPopup and spellbookIcons). Saved in the snapshot's names table.
+    "MacroPopupFrame", "MacroPopupFrame.IconSelector", "IconSelectorPopupFrameTemplateMixin",
+    "IconDataProviderMixin", "GetMacroIcons", "GetMacroItemIcons", "GetSpellBookItemTexture",
+    "GetItemIcon", "C_Item.GetItemIconByID",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns
@@ -558,6 +563,17 @@ function Diag.Collect(k, why)
     S.bankCanView = ask(client, "C_Bank.CanViewBank", 0)
     S.bankTabs = ask(client, "C_Bank.FetchPurchasedBankTabIDs", 0)
     S.activeTalentConfig = ask(client, "C_ClassTalents.GetActiveConfigID")
+    -- Row N72 (lead section 248 item 4): the names the macro icon search
+    -- hooks, one level deep, and how many icons GetMacroIcons lists. The
+    -- macro window is there only after it opened once.
+    S.iconSelectorMixin = shape(true, client.peek("IconSelectorPopupFrameTemplateMixin", 80))
+    S.iconDataProviderMixin = shape(true, client.peek("IconDataProviderMixin", 80))
+    S.macroPopup = shape(true, client.peek("MacroPopupFrame", 80))
+    do
+        local into = {}
+        local okM = client.raw("GetMacroIcons", into)
+        S.macroIcons = shape(okM, #into, into[1])
+    end
 
     local K = snap.kernel
     K.phase, K.paused = k.phase, k.paused and true or false
@@ -1433,6 +1449,22 @@ function Diag.Start(k)
             .. "; last: " .. said .. "."
     end
 
+    -- The macro icon search (N72): how far it got, read through what the
+    -- module provides. nil on a kernel without the module.
+    local function macroIconsLine()
+        local search = ns.MacroIcons
+        local name = type(search) == "table" and search.NAME or nil
+        local state = name and k:ModuleState(name) or nil
+        if state == nil then return nil end
+        local got = k.use(name)
+        if state ~= "started" or type(got) ~= "table" or type(got.Status) ~= "function" then
+            return "macro icon search: not running (" .. tostring(state) .. ")."
+        end
+        local status = got.Status()
+        if status == nil then return nil end
+        return "macro icon search: " .. tostring(status)
+    end
+
     -- The rotation driver's lines, read through what the module provides.
     -- The view is asked for once for the three of them: a driver that
     -- raises is one problem and one line, not three.
@@ -1513,6 +1545,7 @@ function Diag.Start(k)
                 .. (held == 1 and " job is" or " jobs are") .. " held until it is."
         end)
         say("price watch", priceWatchLine)
+        say("macro icon search", macroIconsLine)
         local rotation
         say("rotation", function()
             rotation = rotationLines()
