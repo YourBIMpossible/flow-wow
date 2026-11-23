@@ -225,8 +225,10 @@ function M.Lines(client, packs, link, opts)
     -- the second value.
     local ok, speed = pcall(function()
         local W = ns.GearWeaponSpeed
-        local prefs = type(pack) == "table" and pack.weaponSpeed or nil
-        local chosen = type(opts) == "table" and opts.role or nil
+        local prefs
+        if type(pack) == "table" then prefs = pack.weaponSpeed end
+        local chosen
+        if type(opts) == "table" then chosen = opts.role end
         if type(prefs) == "table" and type(chosen) == "string" and type(prefs[chosen]) == "table" then
             prefs = { [chosen] = prefs[chosen] }
         end
