@@ -19,13 +19,17 @@ local _, ns = ...
 -- timing and stat weight is a "first guess" written for section 197 with no
 -- outside source: each needs a check in the game client.
 --
--- Not built, on purpose:
---   * a talent order (talentBuilds is empty: one written from memory would be
---     guide-shaped, and no capture backs one);
---   * Berserker Rage as a fear breaker (breakers is empty: it needs Berserker
---     Stance, and whether the fear read names the effect type is not known);
---   * anything that waits on a rage amount, a swing timer or a block, dodge
---     or parry event: the reactive strikes wait on the game's usable answer.
+-- Not in this pack yet (tasks):
+--   * a talent order: talentBuilds is empty, as no capture backs one (one
+--     written from memory would be guide-shaped);
+--   * Berserker Rage as a fear breaker: breakers is empty; it needs
+--     Berserker Stance, and whether the fear read names the effect type is
+--     not known yet;
+--   * anything that waits on a rage amount: the client hides power amounts
+--     from addon code (R.FROM_AMOUNT in Rotation/Snapshot.lua);
+--   * anything that waits on a swing timer or a block, dodge or parry event:
+--     no read for them yet. The reactive strikes wait on the game's usable
+--     answer.
 
 local GUESS = "first guess"
 local NOTE = "written for lead section 197; no outside source; needs a check in the game client"
@@ -239,7 +243,7 @@ local pack = {
         { spell = "Shield Bash", forms = { [BATTLE] = true, [DEFENSIVE] = true }, evidence = GUESS },
     },
 
-    -- Not built: see the header (Berserker Rage).
+    -- Not in this pack yet: see the header (Berserker Rage).
     breakers = {},
 
     -- The class removes nothing.

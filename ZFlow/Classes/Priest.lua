@@ -22,20 +22,23 @@ local _, ns = ...
 -- weight is a "first guess" written without a guide, a database or another
 -- addon: each needs a check in the game client.
 --
--- Not written, on purpose:
+-- Not in this pack yet (tasks):
 --   * Resurrection, and the heals, Fortitude, Shield and Dispel Magic on
---     anyone but yourself (a pack holds nothing for other players);
+--     anyone but yourself: needs a party member read and a chooser step for
+--     other players (the pack holds nothing for them yet);
 --   * Power Word: Shield in the list: the shield leaves Weakened Soul on you,
 --     and no read gives your own debuffs by name, so "can it go on again"
 --     cannot be told. It is on the Alt key row, for you to press;
 --   * an aoe list: Holy Nova is a talent and hits only what is near you,
 --     and no read says how many enemies are near;
---   * Smite or the wand chosen by mana: no read gives mana (no amounts), so
---     the list cannot say "wand now to save mana". Smite comes before the
---     wand, and is not suggested while the wand is already shooting;
---   * Fade, Mind Soothe, Shackle Undead, Mind Control and Levitate (no step
---     of the chooser uses them; Fade is on the Alt key row);
---   * the food choice for a spirit healer (BuffItems.lua).
+--   * Smite or the wand chosen by mana: the client hides power amounts from
+--     addon code (R.FROM_AMOUNT in Rotation/Snapshot.lua), so the list
+--     cannot say "wand now to save mana". Smite comes before the wand, and
+--     is not suggested while the wand is already shooting;
+--   * Fade, Mind Soothe, Shackle Undead, Mind Control and Levitate: no step
+--     of the chooser uses them yet (Fade is on the Alt key row);
+--   * the food choice for a spirit healer: not carried over yet from the
+--     old BuffItems.lua.
 
 local GUESS = "first guess"
 local OLD = "carried over from the old shared tables on zflow; authorship unrecorded"
@@ -204,7 +207,7 @@ local pack = {
         { spell = "Inner Fire", seconds = INNER, evidence = GUESS },
     },
 
-    -- No aoe list: see "Not written" above.
+    -- No aoe list yet: see "Not in this pack yet" above.
     lists = {
         default = join(buffs, damage),
     },

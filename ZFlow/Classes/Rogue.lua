@@ -24,14 +24,16 @@ local _, ns = ...
 -- and stat weight is a "first guess" written for section 197 with no
 -- outside source: each needs a check in the game client.
 --
--- Not built, on purpose:
---   * poisons (putting one on a weapon is the use of an item; no poison row);
---   * the finisher read (combo points; see above);
---   * a talent order (talentBuilds is empty: one written from memory would be
---     guide-shaped, and no capture backs one);
---   * Vanish and Blind as breakers (breakers is empty: whether the control
---     read names the effect type is not known);
---   * a tank role (the class has none).
+-- Not in this pack yet (tasks):
+--   * poisons: putting one on a weapon is the use of an item, there is no
+--     poison row, and no read of the weapon's enchant;
+--   * the finisher read: combo points are a hidden amount (see above), and
+--     no reader builds finisherReady from anything else yet;
+--   * a talent order: talentBuilds is empty, as no capture backs one (one
+--     written from memory would be guide-shaped);
+--   * Vanish and Blind as breakers: breakers is empty, as whether the
+--     control read names the effect type is not known yet.
+-- A rogue has no tank spec in this game, so there is no tank role.
 
 local GUESS = "first guess"
 local NOTE = "written for lead section 197; no outside source; needs a check in the game client"
@@ -186,7 +188,8 @@ local pack = {
     },
 
     -- One list: no spell of the class hits several enemies at this stage
-    -- (Blade Flurry is a talent; not built), so there is no aoe list.
+    -- (Blade Flurry is a talent and not in this pack yet), so there is no
+    -- aoe list.
     lists = {
         default = join(survive, stealth, opener, swing, finish, build),
     },
@@ -207,7 +210,7 @@ local pack = {
         { spell = "Kick", evidence = GUESS },
     },
 
-    -- Not built: see the header (Vanish, Blind).
+    -- Not in this pack yet: see the header (Vanish, Blind).
     breakers = {},
 
     -- The class removes nothing.
