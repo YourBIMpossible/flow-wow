@@ -131,6 +131,7 @@ function Keep.Start(k, diag, sellList)
     end
     if diag and type(diag.commands) == "table" then
         diag.commands[Keep.WORD] = run
+        if type(diag.help) == "table" then diag.help[Keep.WORD] = "the never-sell list: keep <item> adds, keep remove <item> takes off" end
     end
     return { run = run }
 end

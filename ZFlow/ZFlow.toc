@@ -62,6 +62,7 @@ Gear\Score.lua
 Gear\Read.lua
 Gear\CanUse.lua
 Gear\Usable.lua
+Gear\WeaponSkill.lua
 Gear\WeaponSpeed.lua
 Gear\Verdict.lua
 Gear\Tooltip.lua
@@ -119,6 +120,7 @@ Nav\ServiceNearest.lua
 Nav\ServiceSeen.lua
 Nav\Errand.lua
 Nav\RepairStep.lua
+Nav\WeaponMasterStep.lua
 Nav\QuestSource.lua
 Nav\QuestRead.lua
 Nav\AddonSources.lua
@@ -184,4 +186,5 @@ Rotation\ClickSlots.lua
 Rotation\KeyActions.lua
 Rotation\Enchant.lua
 UI\BossLoot.lua
+UI\NpcSpeech.lua
 UI\SettingsShare.lua

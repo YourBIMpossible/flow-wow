@@ -77,6 +77,7 @@ return {
         "Gear/Read.lua",
         "Gear/CanUse.lua",
         "Gear/Usable.lua",
+        "Gear/WeaponSkill.lua",
         "Gear/WeaponSpeed.lua",
         "Gear/Verdict.lua",
         "Gear/Tooltip.lua",
@@ -138,6 +139,7 @@ return {
         "Nav/ServiceSeen.lua",
         "Nav/Errand.lua",
         "Nav/RepairStep.lua",
+        "Nav/WeaponMasterStep.lua",
         "Nav/QuestSource.lua",
         "Nav/QuestRead.lua",
         "Nav/AddonSources.lua",
@@ -214,6 +216,8 @@ return {
     "Rotation/Enchant.lua",
     -- N55: the boss loot panel, look only (after Gear, Items/Drops and the classes).
     "UI/BossLoot.lua",
+    -- G60: NPC words read aloud, off by default (after the settings page).
+    "UI/NpcSpeech.lua",
     -- N70: settings export and import as data (after Export, Diag and the settings page).
     "UI/SettingsShare.lua",
     },

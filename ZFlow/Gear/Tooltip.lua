@@ -73,6 +73,10 @@ function T.Lines(result, use, opts)
         local reason = type(use) == "table" and words(use.reason) and use.reason or T.REASON.use
         return { line("No verdict: " .. reason, "none") }
     end
+    -- G16: a weapon skill not trained yet (Gear/WeaponSkill.lua): "yet", not "your class".
+    if use.can == false and use.why == "untrained" and words(use.reason) then
+        return { line("Can't use yet: " .. use.reason, "bad") }
+    end
     if use.can ~= true then
         local text = "Can't use: " .. (words(use.reason) and use.reason or T.REASON.use)
         if use.why == "class" and words(use.evidence) then text = text .. " (" .. use.evidence .. ")" end

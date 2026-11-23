@@ -20,6 +20,9 @@ local _, ns = ...
 --     client.class()      which class pack (packs[class])
 --     client.level()      your level; no such read, or no answer: not known
 --   Not known is never an upgrade (Gear/Verdict.lua).
+--   Then, for a weapon whose speed was read, one speed line (G15,
+--   Gear/WeaponSpeed.lua). An error working that line out leaves it off,
+--   keeps the others, and is the second value: lines, err.
 --
 -- The module: one setting row, account wide, on by default:
 --   gear.tooltip   "Gear verdict on item tooltips"
@@ -43,6 +46,7 @@ M.COLOUR = {
     same = { 1, 1, 1 },
     bad = { 1, 0.3, 0.3 },
     none = { 0.6, 0.6, 0.6 },
+    info = { 0.6, 0.6, 0.6 },   -- a note, not a verdict (the weapon speed line)
 }
 
 -- One read of the client; nil when it has no such read.
@@ -69,6 +73,10 @@ function M.Lines(client, packs, link)
     local class = ask(client, "class")
     local pack = type(packs) == "table" and class ~= nil and packs[class] or nil
     local level = ask(client, "level")
+    -- G16: the skill lines you know; a read that raises is not read.
+    local skills = nil
+    local okSkills, readSkills = pcall(ask, client, "weaponSkills")
+    if okSkills and type(readSkills) == "table" then skills = readSkills end
     local roles = rolesOf(pack)
 
     local out, said = {}, {}
@@ -82,12 +90,24 @@ function M.Lines(client, packs, link)
     end
     -- With no role to score by, one pass still says why there is no verdict.
     for i = 1, math.max(#roles, 1) do
-        local lines, detail = ns.GearVerdict.Lines(gear, { pack = pack, role = roles[i], level = level })
+        local lines, detail = ns.GearVerdict.Lines(gear, { pack = pack, role = roles[i], level = level,
+                                                            skills = skills })
         if lines == nil then return nil end
         keep(lines)
         -- Whether you can use it does not depend on the role.
         if type(detail.use) ~= "table" or detail.use.can ~= true then break end
     end
+    -- G15: a weapon's speed, last. No pack carries speed preferences yet, so
+    -- no prefs are passed and the line names no role. An error here keeps
+    -- the verdict lines and comes back as the second value.
+    local ok, speed = pcall(function()
+        local W = ns.GearWeaponSpeed
+        return W.Line(W.From(gear))
+    end)
+    if not ok then return out, speed end
+    -- Its own tone, "info": readers of these lines (RollHint, MerchantMarks)
+    -- take "none" as a no-verdict, which a speed note is not.
+    if type(speed) == "table" then keep({ { text = speed.text, tone = "info" } }) end
     return out
 end
 
@@ -114,16 +134,18 @@ function M.Declare(k, packs)
                 if ctx.settings:get(M.SETTING) ~= true or type(add) ~= "function" then return end
                 -- Every line is worked out before the first is added, so an
                 -- error leaves the tooltip as the game made it.
-                local ok, lines = pcall(M.Lines, ctx.client, packs or ns.Packs, link)
-                if not ok then
+                local ok, lines, partErr = pcall(M.Lines, ctx.client, packs or ns.Packs, link)
+                local err = partErr
+                if not ok then err = lines end
+                if err ~= nil then
                     errors = errors + 1
-                    local text = tostring(lines)
+                    local text = tostring(err)
                     if not seen[text] then
                         seen[text] = true
                         k.problems:add("gear", "tooltip", text)
                     end
-                    return
                 end
+                if not ok then return end
                 for i = 1, #(lines or {}) do
                     local colour = M.COLOUR[lines[i].tone] or M.COLOUR.none
                     add(lines[i].text, colour[1], colour[2], colour[3])

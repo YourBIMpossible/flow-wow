@@ -555,6 +555,16 @@ function Arrow.Start(k, diag, own)
                 step = repair.Step()
                 if step then from = "a repair stop" end
             end
+            -- Then the weapon master stop (G16, Nav/WeaponMasterStep.lua), only
+            -- when a weapon master is saved: a words-only step has no needle.
+            local weaponMaster = k.use and k.use("weaponMasterStep")
+            if step == nil and weaponMaster and weaponMaster.Step then
+                local ok, wm = pcall(weaponMaster.Step)
+                if ok and type(wm) == "table" and type(wm.place) == "table" then
+                    step = wm
+                    from = "a weapon master stop"
+                end
+            end
             -- The player's own pin (/way, then the map pin) wins over the player's quests.
             if step == nil and quests and Arrow.QuestArrowOn(k) then
                 step = quests.step()
@@ -1025,6 +1035,9 @@ function Arrow.Start(k, diag, own)
     end
 
     if diag and type(diag.commands) == "table" then
+        if type(diag.help) == "table" then
+            diag.help.arrow = "the arrows: why, demo, near, separate, stack, reset, modern|3d|flat, hide|text quest|prof"
+        end
         diag.commands.arrow = function(rest)
             local word, key = (rest or ""):match("^(%S*)%s*(%S*)")
             if word == "why" then
@@ -1102,6 +1115,7 @@ function Arrow.Start(k, diag, own)
         end
     end
     if diag and type(diag.commands) == "table" then diag.commands.way = way end
+    if diag and type(diag.help) == "table" then diag.help.way = "way x y [label]: point at your own waypoint; way clear removes it" end
     -- Only when free, as legacy Flow did (Modules/Nav/Waypoint.lua:260-262):
     -- another addon's "/way" (TomTom, legacy Flow) is never overwritten.
     -- Asked when this file loads and again at login, since an addon may

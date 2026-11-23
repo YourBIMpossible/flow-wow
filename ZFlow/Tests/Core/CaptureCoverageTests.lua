@@ -27,7 +27,10 @@ local KIND = {
              -- N57: the key-capture overlay on the settings page.
              "keyCapture",
              -- N72 (section 248 item 4): the macro icon window; shows a list on it.
-             "macroPopup" },
+             "macroPopup",
+             -- G60: NPC words read aloud on the player's own speakers, and
+             -- stopped; an output like print, not a game action.
+             "speak", "stopSpeech" },
     tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "slash",
              "slashTaken", "unslash" },
     -- Hands back or runs a sound restart: never asked by the capture.
@@ -123,6 +126,14 @@ local READS = {
     channel = false, weaponEnchant = false, totems = false, targetBuffs = false,
     buffLength = false, enemiesNear = false, plateCasts = false, creatureType = false,
     plateEnemies = false,
+    -- G16: the skill lines you know, for the untrained weapon line and the
+    -- weapon master step; the capture asks none. Its names (GetNumSkillLines,
+    -- GetSkillLineInfo) are in Diag.NAMES and Diag's skillLines field.
+    weaponSkills = false,
+    -- G60: whether the client can speak (its voices) and the NPC's words in
+    -- an open gossip or quest window; read by UI/NpcSpeech.lua only, the
+    -- capture asks none. Their names are in Diag.NAMES.
+    speech = false, npcText = false,
 }
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).
