@@ -518,4 +518,80 @@ tests["boss loot 236(c): a recognition read raises, then answers: no boss claime
         "the read answers: the panel")
 end
 
+-- Lead section 245 item 3 ----------------------------------------------------
+
+-- Named for the merge repair 5c87f566. Fails if BossLoot.Rows reads the
+-- can-use answer as `type(use) == "table" and use.can or nil` again (the
+-- lines under "Not `x and v or nil`" in UI/BossLoot.lua): a "cannot use"
+-- (false) then becomes "not known" (nil) and the dagger is listed.
+tests["boss loot 245: an item the player cannot use is not listed, never as 'not known'"] = function(t)
+    local c = start()
+    -- The dagger: the game's marks are read and say cannot use.
+    killWith(c, { DAGGER, HELM })
+    pull(c)
+    local lines = shownLines(c)
+    t.ok(lines ~= nil, "shown, so this test can fail")
+    t.ok(not holds(lines, "Needle of Spite"), "marked by the game as not usable: not listed: " .. joined(lines))
+    t.ok(not holds(lines, "not known whether you can use it"), "and nothing reads as not known: " .. joined(lines))
+    t.ok(holds(lines, "Thornhelm: upgrade +25 for Protection"), "what can be used is still listed: " .. joined(lines))
+    -- The marks not read. The dagger: the class table's no stands, still not
+    -- listed. The helm: the class table's yes alone is no yes, so it is
+    -- listed faded as not known, never as an upgrade.
+    local dagger, helm = {}, {}
+    for key, v in pairs(DROPS[DAGGER]) do dagger[key] = v end
+    for key, v in pairs(DROPS[HELM]) do helm[key] = v end
+    dagger.unmet, helm.unmet = nil, nil
+    c.setItem(plain(DAGGER), dagger)
+    c.setItem(plain(HELM), helm)
+    c.fire("GET_ITEM_INFO_RECEIVED", HELM, true)
+    t.eq(shownLines(c), {
+        BOSS .. ": loot you have seen drop",
+        FADED .. "Thornhelm: not known whether you can use it, seen 1 of 1 kill" .. END,
+    }, joined(shownLines(c)))
+end
+
+-- Lead section 245 item 1. Events are not globals, so they are not in
+-- Diag.NAMES (those are asked with typeOf). An event's availability is
+-- captured where the kernel records it: every event something listens to
+-- is asked of the client, and one the client refuses is saved in each
+-- snapshot's kernel.eventsNotRegistered.
+-- Fails before: UI/BossLoot.lua has no BossLoot.EVENTS list.
+tests["boss loot 245: every event it needs is asked of the client, and a refused one is in the capture"] = function(t)
+    local c, addon = start()
+    local events = addon.BossLoot and addon.BossLoot.EVENTS
+    t.ok(type(events) == "table", "the list BossLoot.EVENTS")
+    if type(events) ~= "table" then return end
+    local named = {}
+    for _, event in ipairs(events) do named[event] = true end
+    for _, event in ipairs({ "ENCOUNTER_START", "ENCOUNTER_END", "CHAT_MSG_LOOT", "GET_ITEM_INFO_RECEIVED",
+        "PLAYER_TARGET_CHANGED" }) do
+        t.ok(named[event], "listed: " .. event)
+    end
+    local asked = {}
+    for _, event in ipairs(c.events()) do asked[event] = true end
+    for _, event in ipairs(events) do
+        t.ok(asked[event], "asked of the client: " .. event)
+        c.setEventFault(event, true)                 -- this client refuses it
+    end
+    c.advance(10, 5)                                 -- the settled snapshot
+    local d = c.saved(ns.id.accountDB).diag
+    local snaps = type(d) == "table" and type(d.snaps) == "table" and d.snaps or {}
+    local last = snaps[#snaps]
+    local refused = type(last) == "table" and type(last.kernel) == "table" and last.kernel.eventsNotRegistered or {}
+    local got = {}
+    for _, event in ipairs(refused) do got[event] = true end
+    for _, event in ipairs(events) do t.ok(got[event], "in kernel.eventsNotRegistered: " .. event) end
+end
+
+-- Lead section 245 item 2.
+-- Fails before: the row's help does not say the time is a first guess.
+tests["boss loot 245: the setting's help says the time after a kill is a first guess"] = function(t)
+    local _, addon = start()
+    local row = addon.settings:row(SETTING)
+    local help = type(row) == "table" and tostring(row.help) or ""
+    t.ok(help:find("first guess", 1, true) ~= nil, "says first guess: " .. help)
+    t.ok(help:find("3 minutes", 1, true) ~= nil, "and the time: " .. help)
+    t.eq(addon.BossLoot and addon.BossLoot.WINDOW, 180)
+end
+
 return tests
