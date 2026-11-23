@@ -58,7 +58,9 @@ local _, ns = ...
 --     map's corners) under its name, and the target place itself under
 --     Try.LAND_NAME. In memory only; nothing is saved.
 --   api.nodes()     the saved points (a copy), or nil
---   ns.use("flights") -> { Way = api.way, Nodes = api.nodes }
+--   api.last()      the flight the last way found (a copy), or nil; for
+--                   Nav/TaxiMark.lua and Nav/MapFlights.lua (section 187 s7)
+--   ns.use("flights") -> { Way = api.way, Nodes = api.nodes, Last = api.last }
 ns.Nav = ns.Nav or {}
 local N = ns.Nav
 
@@ -217,7 +219,31 @@ function Flights.Declare(k)
         return out
     end
 
+    -- The flight of the last way that found one (section 187 section 7, for
+    -- the taxiMark and mapFlights readers):
+    --   { from, to, board = { map, x, y } (the step's place), there =
+    --     { cont, wx, wy } (the target), points = the preview's points or nil }
+    -- nil after a way that found none. In memory only.
+    local last
+
+    local function points(known)
+        local out = {}
+        for name, p in pairs(known) do out[name] = { cont = p.cont, wx = p.wx, wy = p.wy } end
+        return out
+    end
+
+    function api.last()
+        if type(last) ~= "table" then return nil end
+        return {
+            from = last.from, to = last.to,
+            board = { map = last.board.map, x = last.board.x, y = last.board.y },
+            there = { cont = last.there.cont, wx = last.there.wx, wy = last.there.wy },
+            points = last.points and points(last.points) or nil,
+        }
+    end
+
     function api.way(place)
+        last = nil
         if not ctx then return nil, "not started" end
         if type(place) ~= "table" or place.map == nil or not finite(place.x) or not finite(place.y) then
             return nil, "no place"
@@ -240,6 +266,7 @@ function Flights.Declare(k)
         -- master and the target itself, in memory only, in place of the
         -- saved points. Nothing is saved.
         local okTry, try = pcall(function() return k.use and k.use("try") or nil end)
+        local preview = false
         if okTry and type(try) == "table" and type(try.Flight) == "function" then
             local okMade, made = pcall(try.Flight)
             if okMade and type(made) == "table" and type(made.name) == "string" then
@@ -250,12 +277,19 @@ function Flights.Declare(k)
                         [made.name] = { cont = mcont, wx = mx, wy = my },
                         [(N.Try and N.Try.LAND_NAME) or "the made-up landing"] = { cont = tcont, wx = tx, wy = ty },
                     }
+                    preview = true
                 end
             end
         end
         local pick, reason = Flights.Pick(known, { cont = cont, wx = px, wy = py },
             { cont = tcont, wx = tx, wy = ty }, home, seconds, Flights.RUN, rate)
         if not pick then return nil, reason end
+        last = {
+            from = pick.from, to = pick.to,
+            board = { map = pos.map, x = pick.x, y = pick.y },
+            there = { cont = tcont, wx = tx, wy = ty },
+            points = preview and points(known) or nil,
+        }
         return {
             kind = Flights.KIND,
             label = Flights.LABEL:format(pick.to),
@@ -270,6 +304,7 @@ function Flights.Declare(k)
         provides = {
             Way = function(place) return api.way(place) end,
             Nodes = function() return api.nodes() end,
+            Last = function() return api.last() end,
         },
         start = function(c)
             ctx = c

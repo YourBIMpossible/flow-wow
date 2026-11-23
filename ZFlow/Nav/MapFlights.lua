@@ -13,9 +13,8 @@ local _, ns = ...
 -- WoW/from-zen/RESEARCH-S31.md. LOOK ONLY: it makes lists and words. It
 -- draws nothing, changes nothing on the game's map and takes no flight.
 --
--- The drawing is NOT built here: it needs a surface on the world map that
--- the client boundary does not have yet (CLIENT NEED client.mapPins, posted
--- with this item), and the world-map button is another seat's.
+-- The drawing is the module at the end of this file (section 187 section
+-- 7), through client.mapPins; the world-map button is another seat's.
 --
 -- Everything is in world yards, as Flow kept it: { cont, wx, wy }.
 --
@@ -212,3 +211,119 @@ function MF.FlightText(a, b, flown, estimate, fmt)
     if finite(estimate) then return route .. ": about " .. fmt(estimate), true end
     return route .. ": flight time not known yet", true
 end
+
+-- ------------------------------------------------------------------ module
+-- Lead DISPATCH section 187 section 7: the reader of nav.mapFlights.
+--
+--   MF.Declare(k) -> api
+--     At each MF.EVERY seconds: with the setting on and the world map
+--     shown (client.mapPins(), made once; h.map()), MF.Pins of your flight
+--     points (k.use("flights").Nodes(), char learned.flights.nodes; while a
+--     travel preview made the arrow's flight, <slash> try flight, its
+--     points in their place, from the flights module's Last), with the
+--     roles of the flight the arrow is on (Nav/TaxiMark.lua's StepFlight).
+--     The pins on the shown map's continent and inside it (client.mapCorners
+--     and Nav/Flights.lua's ToShare) are drawn, with one line from "from"
+--     to "to" when both are on it. No masters list is read yet (no Z-Flow
+--     source of flight masters you have not learned), so there are no
+--     "new" pins. The map closed or the setting off: cleared.
+--     api.draw() -> pins, lines as drawn, or nil
+--   Look only: the pins take no mouse (so no tooltip and no click
+--   selection yet, MF.TipLines and MF.Click stay unused). Not tested in game.
+MF.NAME = "mapFlights"
+MF.EVERY = 0.5          -- seconds between looks
+MF.ROW_LABEL = "Show my flight paths on the world map"
+MF.ROW_HELP = "Pins on the world map for the flight paths you have, and a line for the flight your next step takes."
+
+local function ask(client, name, ...)
+    if type(client) ~= "table" or type(client[name]) ~= "function" then return nil end
+    local ok, v = pcall(client[name], ...)
+    if not ok then return nil end
+    return v
+end
+
+function MF.Declare(k)
+    local api = {}
+    local ctx, handle
+    local drawn = false
+
+    local function on()
+        if not ctx then return false end
+        local ok, v = pcall(ctx.settings.get, ctx.settings, MF.SETTING)
+        return ok and v == true
+    end
+
+    local function clear()
+        if handle and drawn then pcall(handle.clear) end
+        drawn = false
+    end
+
+    -- Your points (or the preview's) and the arrow's flight, or nil.
+    local function points()
+        local flight = nil
+        local TM = ns.TaxiMark
+        if type(TM) == "table" and type(TM.StepFlight) == "function" then
+            local ok, f = pcall(TM.StepFlight, k)
+            if ok then flight = f end
+        end
+        if type(flight) == "table" and type(flight.points) == "table" then return flight.points, flight end
+        local known
+        local flights = k.use and k.use("flights")
+        if type(flights) == "table" and type(flights.Nodes) == "function" then
+            local ok, n = pcall(flights.Nodes)
+            if ok and type(n) == "table" then known = n end
+        end
+        return known, flight
+    end
+
+    function api.draw()
+        if not ctx then return nil end
+        local Flights = ns.Nav and ns.Nav.Flights
+        if not on() or type(Flights) ~= "table" then clear() return nil end
+        local client = ctx.client
+        if not handle then
+            handle = ask(client, "mapPins")
+            if type(handle) ~= "table" then handle = nil return nil end
+        end
+        local okMap, map = pcall(handle.map)
+        if not okMap or map == nil then clear() return nil end
+        local corners = ask(client, "mapCorners", map)
+        if type(corners) ~= "table" then clear() return nil end
+        local known, flight = points()
+        local air = flight and { from = flight.from, to = flight.to } or nil
+        local out, at = {}, {}
+        for _, p in ipairs(MF.Pins(known or {}, {}, nil, nil, air)) do
+            if p.cont == corners.cont then
+                local x, y = Flights.ToShare(corners, p.wx, p.wy)
+                if x and x >= 0 and x <= 1 and y >= 0 and y <= 1 then
+                    local pin = { name = p.name, kind = p.kind, role = p.role, x = x, y = y }
+                    out[#out + 1] = pin
+                    at[p.name] = pin
+                end
+            end
+        end
+        local lines = {}
+        if air and at[air.from] and at[air.to] then
+            local a, b = at[air.from], at[air.to]
+            lines[1] = { from = air.from, to = air.to, ax = a.x, ay = a.y, bx = b.x, by = b.y }
+        end
+        local ok = pcall(handle.draw, out, lines)
+        drawn = ok
+        return out, lines
+    end
+
+    k:Setting({ key = MF.SETTING, scope = "account", type = "bool", default = false, group = "Arrows",
+        label = MF.ROW_LABEL, help = MF.ROW_HELP })
+
+    k:Module({
+        name = MF.NAME,
+        needs = { "client", "settings" },
+        ticks = { { every = MF.EVERY, when = "always", run = function() api.draw() end } },
+        start = function(c) ctx = c end,
+        stop = function() clear() end,
+    })
+    return api
+end
+
+-- The addon's own: declared when this file loads, started at login.
+ns.mapFlights = MF.Declare(ns)

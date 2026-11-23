@@ -89,6 +89,14 @@ M.ROWS = {
     -- plateCombo.off: combo points on your target's nameplate
     -- (UI/PlateCombo.lua, S8). On by default, as in legacy Flow.
     { key = "plateCombo.off", type = "bool", default = false },
+    -- nav.taxiMark: a ring on the open flight map at the flight master for
+    -- your next step (Nav/TaxiMark.lua, S31, lead section 187). On by
+    -- default, as in legacy Flow.
+    { key = "nav.taxiMark", type = "bool", default = true },
+    -- nav.mapFlights: your flight paths as pins on the world map
+    -- (Nav/MapFlights.lua, S31, lead section 187). Off by default, as in
+    -- legacy Flow.
+    { key = "nav.mapFlights", type = "bool", default = false },
 }
 
 -- ---------------------------------------------------------------- helpers

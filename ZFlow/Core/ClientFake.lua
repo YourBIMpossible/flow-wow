@@ -1684,6 +1684,53 @@ function ns.make.fakeClient(opts)
         end
         return { map = r.map, here = r.here, nodes = nodes }
     end
+
+    -- Flight marks (lead section 187 section 7), as the real client's
+    -- taxiMark() and mapPins(). nil when setFrames(false). Each made is
+    -- kept in order:
+    --   c.taxiMarks[1].node / .label / .shown / .marks / .hides
+    --   c.mapPinSets[1].pins / .lines / .shown / .draws / .clears
+    --   c.setWorldMap(uiMapID or nil): what h.map() answers (nil: the world
+    --   map is not shown).
+    c.taxiMarks = {}
+    function c.taxiMark()
+        if s.noFrames then return nil end
+        local h = { shown = false, marks = 0, hides = 0 }
+        function h.mark(node, text)
+            if type(node) ~= "table" then return false end
+            h.node = { name = node.name, x = node.x, y = node.y }
+            h.label = text
+            h.shown = true
+            h.marks = h.marks + 1
+            return true
+        end
+        function h.hide()
+            h.shown = false
+            h.hides = h.hides + 1
+        end
+        c.taxiMarks[#c.taxiMarks + 1] = h
+        return h
+    end
+    c.mapPinSets = {}
+    function c.setWorldMap(map) s.worldMap = map end
+    function c.mapPins()
+        if s.noFrames then return nil end
+        local h = { pins = {}, lines = {}, shown = false, draws = 0, clears = 0 }
+        function h.map() return s.worldMap end
+        function h.draw(pins, lines)
+            h.pins = copyRows(type(pins) == "table" and pins or {})
+            h.lines = copyRows(type(lines) == "table" and lines or {})
+            h.shown = #h.pins > 0 or #h.lines > 0
+            h.draws = h.draws + 1
+            return true
+        end
+        function h.clear()
+            h.pins, h.lines, h.shown = {}, {}, false
+            h.clears = h.clears + 1
+        end
+        c.mapPinSets[#c.mapPinSets + 1] = h
+        return h
+    end
     return c
 end
 
