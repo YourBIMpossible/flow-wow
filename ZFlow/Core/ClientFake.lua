@@ -1838,9 +1838,7 @@ function ns.make.fakeClient(opts)
 
     -- ------------------------------------------------------- craft (P-CRAFT)
     -- The craft reads: not known (nil) until a test sets them.
-    local reagentsOf, usableOf, whyOf = {}, {}, {}
-    function c.setRecipeReagents(id, rows) reagentsOf[id] = copyRows(rows) end
-    function c.recipeReagents(id) return copyRows(reagentsOf[id]) end
+    local usableOf, whyOf = {}, {}
     function c.setRecipeUsable(id, v, why) usableOf[id], whyOf[id] = v, why end
     function c.recipeUsable(id) return usableOf[id], whyOf[id] end
     function c.setMoving(on) s.moving = on end

@@ -1,7 +1,6 @@
 -- The client reads and the bar the craft queue needs (P-CRAFT, lead section
 -- 226: #34 Smelt All, G21 the craft bar). The real client over a
 -- hand-built environment; ClientFake's own versions are checked after.
---   c.recipeReagents(id) -> { { item =, count = }, ... } | nil
 --   c.recipeUsable(id)   -> true | false, why | nil
 --   c.moving()           -> true | false | nil
 --   c.rowPanel(spec)     -> h: draw(rows, act), show(on), shown(), place(point), onClose
@@ -11,51 +10,6 @@
 local _, ns = ...
 
 local tests = {}
-
-local ORE, FLUX = 2770, 2880
-
-local function schematic(slots)
-    return { C_TradeSkillUI = { GetRecipeSchematic = function(id, recraft)
-        if id ~= 2657 then return nil end
-        return { reagentSlotSchematics = slots, recraft = recraft }
-    end } }
-end
-
-tests["c.recipeReagents: each required slot with its item and count"] = function(t)
-    local asked
-    local env = schematic({
-        { reagents = { { itemID = ORE } }, quantityRequired = 2, required = true },
-        { reagents = { { itemID = FLUX } }, quantityRequired = 1 },
-        { reagents = { { itemID = 9999 } }, quantityRequired = 1, required = false },
-    })
-    local real = env.C_TradeSkillUI.GetRecipeSchematic
-    env.C_TradeSkillUI.GetRecipeSchematic = function(...)
-        asked = { ... }
-        return real(...)
-    end
-    t.eq(ns.make.client(env).recipeReagents(2657), { { item = ORE, count = 2 }, { item = FLUX, count = 1 } },
-        "an optional slot is left out")
-    t.eq(asked, { 2657, false }, "asked for the recipe, not a recraft")
-end
-
-tests["c.recipeReagents: not known for any shape it cannot read"] = function(t)
-    t.eq(ns.make.client({}).recipeReagents(2657), nil, "no such call")
-    t.eq(ns.make.client(schematic({})).recipeReagents(1), nil, "no schematic")
-    t.eq(ns.make.client(schematic({})).recipeReagents(2657), {}, "a recipe with no reagent")
-    for _, bad in ipairs({
-        { { reagents = {}, quantityRequired = 1 } },
-        { { reagents = { { itemID = "x" } }, quantityRequired = 1 } },
-        { { reagents = { { itemID = ORE } }, quantityRequired = 0 } },
-        { { reagents = { { itemID = ORE } }, quantityRequired = 1.5 } },
-        { { reagents = { { itemID = ORE } } } },
-        { "slot" },
-    }) do
-        t.eq(ns.make.client(schematic(bad)).recipeReagents(2657), nil, "one slot not read: the whole list is not known")
-    end
-    local raised = { C_TradeSkillUI = { GetRecipeSchematic = function() error("no") end } }
-    t.eq(ns.make.client(raised).recipeReagents(2657), nil, "raised")
-    t.eq(ns.make.client(schematic({})).recipeReagents("2657"), nil, "not a recipe number")
-end
 
 local function info(row)
     return { C_TradeSkillUI = { GetRecipeInfo = function(id) if id == 2657 then return row end end } }
@@ -234,9 +188,6 @@ end
 
 tests["fake client: the craft reads are unknown until set, and crafts are logged"] = function(t)
     local c = ns.make.fakeClient()
-    t.eq(c.recipeReagents(2657), nil)
-    c.setRecipeReagents(2657, { { item = ORE, count = 1 } })
-    t.eq(c.recipeReagents(2657), { { item = ORE, count = 1 } })
     t.eq(c.recipeUsable(2657), nil)
     c.setRecipeUsable(2657, false, "Requires Anvil")
     t.eq({ c.recipeUsable(2657) }, { false, "Requires Anvil" })

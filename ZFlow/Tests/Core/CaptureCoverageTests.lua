@@ -53,7 +53,7 @@ local READS = {
     -- Lead section 197: the pet state the rotation reads.
     pet = true,
     -- Lead section 226: the craft bar reads (P-CRAFT); the capture asks none.
-    recipeReagents = false, recipeUsable = false, moving = false,
+    recipeUsable = false, moving = false,
     -- CF-32: a spell's name by id, for your own casts (Rotation/OwnCasts.lua).
     spellName = false,
     -- N13: the buffs you put up yourself (Classes/Paladin.lua auras).

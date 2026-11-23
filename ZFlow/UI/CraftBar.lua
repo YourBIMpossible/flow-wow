@@ -22,6 +22,8 @@ CraftBar.WATCHDOG = 10
 CraftBar.HINT = "Tick a count, then click Start."
 CraftBar.NOTHING = "Tick a count first."
 CraftBar.NOTHING_TO_SMELT = "Nothing to smelt: no ore for a learned recipe."
+-- Section 231: From goals found no goal still to craft in this window.
+CraftBar.NO_GOALS = "No goal to craft in this window."
 
 function CraftBar.Declare(k)
     local Q = ns.CraftQueue
@@ -83,6 +85,17 @@ function CraftBar.Declare(k)
                 local r = read("recipes")
                 book = (type(r) == "table" and type(r.recipes) == "table") and r or { recipes = {} }
             end
+            -- A recipe reagents as the craft queue reads them,
+            -- { { item, count } } by item, from c.recipeSchematic (the read
+            -- the recipe book uses; section 231). nil when not read.
+            local function reagents(id)
+                local sc = read("recipeSchematic", id)
+                if type(sc) ~= "table" or type(sc.mats) ~= "table" then return nil end
+                local out = {}
+                for item, n in pairs(sc.mats) do out[#out + 1] = { item = item, count = n } end
+                table.sort(out, function(a, b) return a.item < b.item end)
+                return out
+            end
             local function learned()
                 local out = {}
                 for _, r in ipairs(book.recipes) do
@@ -117,7 +130,7 @@ function CraftBar.Declare(k)
                     usable = usable,
                     why = why,
                     free = freeSlots(),
-                    reagents = read("recipeReagents", row.id),
+                    reagents = reagents(row.id),
                     have = function(item) return read("itemCount", item) end,
                 }
             end
@@ -135,6 +148,7 @@ function CraftBar.Declare(k)
                 if Q.SMELTS[book.profession] then
                     rows[#rows + 1] = { kind = "button", key = "all", label = "Smelt all", enabled = not running }
                 end
+                rows[#rows + 1] = { kind = "button", key = "goals", label = "From goals", enabled = not running }
                 rows[#rows + 1] = { kind = "button", key = "clear", label = "Clear", enabled = not running }
                 rows[#rows + 1] = { kind = "info", text = status or CraftBar.HINT }
                 panel.draw(rows, act)
@@ -200,7 +214,7 @@ function CraftBar.Declare(k)
                 elseif running then
                     return
                 elseif key == "all" then
-                    local picks = Q.MakeAll(learned(), function(id) return read("recipeReagents", id) end,
+                    local picks = Q.MakeAll(learned(), reagents,
                         function(item) return read("itemCount", item) end)
                     counts = {}
                     for _, p in ipairs(picks) do counts[p.id] = p.count end
@@ -210,6 +224,25 @@ function CraftBar.Declare(k)
                         return
                     end
                     begin()
+                elseif key == "goals" then
+                    -- Section 231: ItemGoals.Crafts as it is. Each goal whose
+                    -- recipe is learned in this window and still needs
+                    -- crafts sets that count; the others are left as they
+                    -- are. Fills counts only: Start is still the click.
+                    local G = ns.ItemGoals
+                    local ok, goals = false, nil
+                    if type(G) == "table" and type(G.Crafts) == "function" then ok, goals = pcall(G.Crafts, k) end
+                    local here, filled = {}, 0
+                    for _, r in ipairs(learned()) do here[r.id] = true end
+                    for _, g in ipairs(ok and type(goals) == "table" and goals or {}) do
+                        local n = type(g) == "table" and g.times or nil
+                        if g.known == true and here[g.recipeId] and type(n) == "number" and n >= 1 and n == math.floor(n) then
+                            counts[g.recipeId] = math.min(n, Q.MAX)
+                            filled = filled + 1
+                        end
+                    end
+                    status = filled == 0 and CraftBar.NO_GOALS or nil
+                    draw()
                 elseif key == "clear" then
                     counts, status = {}, nil
                     draw()

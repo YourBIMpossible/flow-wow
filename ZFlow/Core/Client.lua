@@ -5779,33 +5779,6 @@ function ns.make.client(env)
             and n == math.floor(n)
     end
 
-    -- A recipe reagents, { { item =, count = }, ... }, from
-    -- C_TradeSkillUI.GetRecipeSchematic(id, false).reagentSlotSchematics:
-    -- each slot first reagent and its quantityRequired. A slot marked
-    -- required == false (an optional reagent) is left out. One slot not
-    -- read makes the whole list not known (nil); {} is a recipe with none.
-    function c.recipeReagents(id)
-        if not wholeId(id) then return nil end
-        local ui = env.C_TradeSkillUI
-        if type(ui) ~= "table" then return nil end
-        local ok, schematic = call(ui.GetRecipeSchematic, id, false)
-        if not ok or type(schematic) ~= "table" then return nil end
-        local slots = schematic.reagentSlotSchematics
-        if type(slots) ~= "table" then return nil end
-        local out = {}
-        for i = 1, #slots do
-            local slot = slots[i]
-            if type(slot) ~= "table" then return nil end
-            if slot.required ~= false then
-                local first = type(slot.reagents) == "table" and slot.reagents[1] or nil
-                local item = type(first) == "table" and first.itemID or nil
-                if not wholeId(item) or not wholeId(slot.quantityRequired) then return nil end
-                out[#out + 1] = { item = item, count = slot.quantityRequired }
-            end
-        end
-        return out
-    end
-
     -- Whether the recipe can be made here and now: true; false and the
     -- client reason (disabledReason) when it gives one; nil when not
     -- known. From C_TradeSkillUI.GetRecipeInfo(id): learned, disabled.
