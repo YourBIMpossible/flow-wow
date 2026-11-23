@@ -261,5 +261,7 @@ return {
     "Nav/Trails.lua",
     "Nav/Follow.lua",
     "Nav/Nodes.lua",
+    -- N60a: copy chat text and clickable web addresses in chat (after the settings page).
+    "UI/Chat.lua",
     },
 }

@@ -18,7 +18,9 @@ local KIND = {
     listen = { "listen", "onFrame", "watchBank", "watchMerchant", "watchTrainer",
                "onSpellLearned", "onItemTooltip", "onLootRoll", "onPrint", "onError", "watchCombatLog",
                "watchSoundDevices", "watchUnitCombat", "watchMoves", "onMerchantRedraw",
-               "watchAuctionResults", "onUnitTooltip", "watchAuctionRows", "onSystemMessage" },
+               "watchAuctionResults", "onUnitTooltip", "watchAuctionRows", "onSystemMessage",
+               -- N60a: the chat filter and the link click (UI/Chat.lua).
+               "chatFilter", "onLinkClick" },
     show = { "print", "panel", "minimapPin", "copyBox", "icon", "arrow", "windowButton", "secureButton",
              "optionsPage", "guideLines", "taxiMark", "mapPins", "comboBar", "slotIcon",
              "markMerchantButtons", "rowPanel", "textEntry",
@@ -202,6 +204,11 @@ local READS = {
     -- buttons) are in Diag.NAMES.
     questChoices = false,
 
+    -- N60a: a chat window's lines, read by UI/Chat.lua only, on the player's
+    -- own ask; and whether a Prat module is on, which the capture asks so a
+    -- login records it. Their names (ChatFrame1.GetNumMessages, Prat.
+    -- GetModule and the rest) are in Diag.NAMES.
+    chatLines = false, pratModule = true,
     -- Lead section 303: race number and quests handed in; read by
     -- Nav/DungeonRead.lua only. Their names (UnitRace,
     -- C_QuestLog.IsQuestFlaggedCompleted) are in Diag.NAMES.

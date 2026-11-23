@@ -52,6 +52,11 @@ return {
         topic, section = T.Find("travel.flights")
         t.eq(topic and topic.id, "travel")
         t.eq(section and section.id, "flights")
+        -- N60a: the chat rows stand in their own section of General.
+        topic, section = T.Find("general.chat")
+        t.eq(topic and topic.id, "general")
+        t.eq(section and section.id, "chat")
+        t.eq(section and section.name, "Chat")
         for _, bad in ipairs({ "Other", "Vendor", "Arrows", "Test", "", "travel.", "travel.nosuch", "gear.flights",
             "Travel" }) do
             t.eq(T.Find(bad), nil, "not a topic: " .. bad)
