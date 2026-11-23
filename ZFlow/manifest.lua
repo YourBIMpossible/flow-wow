@@ -265,5 +265,7 @@ return {
     "UI/Chat.lua",
     -- G48 (P-TRIP): the party route over add-on messages (after TripRoute).
     "Nav/PartyRoute.lua",
+    -- P-EVIDENCE+ (sections 252, 262): look-only capture fields saved under diag (after Diag).
+    "Core/AutoEvidence.lua",
     },
 }
