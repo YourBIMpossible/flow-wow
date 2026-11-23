@@ -163,7 +163,9 @@ T["errand: no stop until one is asked for, and the arrow shows none"] = function
     local k, c, e = start({ services = services() })
     t.eq(e.stop(), nil)
     t.eq(e.step(), nil)
-    t.eq(c.arrows[1].shown, false)
+    -- Lead section 294 item 5: no step, the quest arrow says why.
+    t.eq(c.arrows[1].shown, true)
+    t.eq(c.arrows[1].lines, { ns.Arrow.NO_QUEST })
     t.eq(k.use(E.NAME).Step(), nil)
     t.eq(k.problems:count(), 0)
 end
@@ -212,7 +214,7 @@ T["errand: stop off takes the stop off the arrow"] = function(t)
     say(c, "vendor")
     say(c, "off")
     t.eq(e.stop(), nil)
-    t.eq(c.arrows[1].shown, false)
+    t.eq(c.arrows[1].lines, { ns.Arrow.NO_QUEST }, "the stop is off the arrow; it says why")
     t.ok(has(last(c), "no stop chosen"), last(c))
 end
 
@@ -269,7 +271,7 @@ T["errand: stop hearth says the bind place and when the stone is ready"] = funct
     say(c, "hearth")
     t.ok(has(last(c), "ready in 11 min."), last(c))
     t.eq(e.stop(), nil, "the hearthstone is said, not pointed at")
-    t.eq(c.arrows[1].shown, false)
+    t.eq(c.arrows[1].lines, { ns.Arrow.NO_QUEST }, "not pointed at: the quest arrow says why (lead section 294 item 5)")
 end
 
 T["errand hearth: the words, from the reads alone"] = function(t)

@@ -395,6 +395,35 @@ function Arrow.QuestArrowOn(k)
     return not (ok and v == false)
 end
 
+-- Lead section 294 item 5: with no quest step the quest arrow stays up and
+-- says why in one line, unless the player hid it or turned the quest arrow
+-- setting off (those choices are read, never written). NO_QUEST: the quest
+-- log has no quest in it, or it is not known. NO_ROUTE: the log has quests
+-- and none gives a step (no objective left to go to and not complete).
+Arrow.NO_QUEST = "No quest tracked"
+Arrow.NO_ROUTE = "No route known to this objective"
+
+-- The why step for the quest arrow, or nil when the player chose not to see
+-- it. quests: the N.QuestWatch the step was asked of (nil: not loaded).
+function Arrow.WhyStep(k, quests, prof)
+    if not Arrow.QuestArrowOn(k) then return nil end
+    local N = ns.Nav
+    local okSaved, saved = pcall(N.ArrowSaved, Arrow.Saved(k))
+    if not okSaved or type(saved) ~= "table" then return nil end
+    if type(saved.hidden) == "table" and saved.hidden.quest == true then return nil end
+    -- Stacked, a profession step takes the stack's place (Nav/ArrowLayout.lua)
+    -- and the stack is not silent: the why line would push it under. Apart,
+    -- the quest arrow has its own frame and says why.
+    if prof ~= nil and saved.mode ~= "separate" then return nil end
+    local rows
+    if type(quests) == "table" and type(quests.state) == "function" then
+        local okState, st = pcall(quests.state)
+        if okState and type(st) == "table" then rows = st.rows end
+    end
+    local text = (type(rows) == "number" and rows > 0) and Arrow.NO_ROUTE or Arrow.NO_QUEST
+    return { still = true, lines = { text }, why = true }
+end
+
 -- Whether what is left on this map comes before the quest log order (lead
 -- section 187): the setting row ns.Nav.LEAVING_SETTING, on unless it says
 -- a plain false.
@@ -508,6 +537,9 @@ function Arrow.Start(k, diag, own)
     -- place). Heading() gives a copy (lead section 169 B: Nav/Legs.lua
     -- reads it to know which step the player is going to).
     local heading = nil
+    -- saying: the quest step of the last source is the why line (lead
+    -- section 294 item 5): words only, no needle drawn.
+    local saying = false
     local function placeOf(step)
         local p = type(step) == "table" and step.place or nil
         if type(p) ~= "table" or p.map == nil or type(p.x) ~= "number" or type(p.y) ~= "number" then return nil end
@@ -516,6 +548,7 @@ function Arrow.Start(k, diag, own)
     end
     local function source()
         mine = false
+        saying = false
         from = "demo"
         heading = nil
         if demo then return Arrow.DemoSource(client, Arrow.Saved(k), near, Arrow.Palette(k)) end
@@ -608,7 +641,24 @@ function Arrow.Start(k, diag, own)
                     end
                 end
             end
-            local prof = N.ProfStepFrom(client, k.store)
+            -- The profession step (Nav/ProfStep.lua), behind its module:
+            -- with nav.profArrow off it gives none.
+            local profStep = k.use and k.use(N.PROF_STEP)
+            local prof = nil
+            if profStep and type(profStep.Step) == "function" then
+                local okProf, got = pcall(profStep.Step)
+                if okProf then prof = got end
+            end
+            -- No quest step: the quest arrow says why (lead section 294 item 5),
+            -- once the world is entered (nothing is shown under the loading
+            -- screen).
+            if step == nil and entered then
+                local okWhy, why = pcall(Arrow.WhyStep, k, quests, prof)
+                if okWhy and why then
+                    step = why
+                    saying = true
+                end
+            end
             guide = (step or prof) and { quest = step, prof = prof } or nil
         end
         if type(guide) ~= "table" then
@@ -717,7 +767,7 @@ function Arrow.Start(k, diag, own)
                 -- not drawn (D2). The faded frame and the text stay.
                 N.ArrowAim(motion[key], { turn = src.turns[key], colour = ops.colour,
                                           arrived = ops.mode == "ring",
-                                          bare = (lost or ops.bare) and true or false })
+                                          bare = (lost or ops.bare or (key == "quest" and saying)) and true or false })
             end
         end
         current = view
