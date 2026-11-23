@@ -13,7 +13,7 @@
 --   c.setBagItems{ { item = 2318, count = 4 } }; c.setBank{ ... }
 --   c.setRecipes{ profession = 164, skill = 104, max = 150, recipes = { ... } }
 --   c.setRecipeSchematic(2963, { makes = 2996, yield = 1, mats = { [2589] = 2 } })
---   c.setTradeSkillRows{ name = "Tailoring", rows = { { index = 2, name = "Bolt of Linen Cloth" } } }
+--   c.setTradeSkillRows{ name = "Tailoring", rows = { { index = 2, name = "Bolt of Linen Cloth" } }, whole = true }
 --   c.setSpell(5176, { known = true, usable = false, noPower = true })
 --   c.setSpellId("Wrath", 5176)   c.setFacing(1.57)
 --   c.setMapSize(1411, 5287.5, 3525); c.setMapCont(1411, 1)
@@ -141,11 +141,13 @@ function ns.make.fakeClient(opts)
     -- Section 231 item 1: the classic fallback, by trade skill row index; a
     -- copy, nil when none is set for that index.
     -- Section 233 (GR2-1): the classic window's rows, a copy; nil when none
-    -- are set.
+    -- are set. Section 245 (RB2-2): collapsed, filtered and whole as set;
+    -- not set, they are nil: unknown, never "every learned recipe".
     function c.tradeSkillRows()
         local r = s.tradeRows
         if type(r) ~= "table" then return nil end
-        return { name = r.name, skill = r.skill, max = r.max, rows = copyRows(r.rows) or {} }
+        return { name = r.name, skill = r.skill, max = r.max, rows = copyRows(r.rows) or {},
+                 collapsed = r.collapsed, filtered = r.filtered, whole = r.whole }
     end
     -- Section 238: name, difficulty and partial too, as the client gives.
     function c.tradeSkillSchematic(index)
@@ -766,7 +768,10 @@ function ns.make.fakeClient(opts)
         s.tradeSchematics[index] = r
     end
     -- The classic window's rows (section 233): { name =, rows = { { index =,
-    -- name = } } }; nil: no classic window answers.
+    -- name = } } }; nil: no classic window answers. Section 245 (RB2-2):
+    -- collapsed = true / filtered = true say the window hid rows; whole =
+    -- true says the rows are every learned recipe (the real client does not
+    -- say so yet). Left out: unknown, and RecipeBook drops nothing.
     function c.setTradeSkillRows(r) s.tradeRows = r end
     -- One spell's answers: { known =, usable =, noPower = }; a field left
     -- out reads as not known.

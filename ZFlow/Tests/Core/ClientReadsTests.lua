@@ -682,6 +682,24 @@ return {
         t.eq(c.tradeSkillSchematic(2).partial, nil, "all read again: not partial")
     end,
 
+    -- Lead section 245 item 1 (LOW). Fails at 1b4e461f: the schematic kept
+    -- the kind word as it came, so a word the window never gives a recipe
+    -- row was saved as its difficulty.
+    ["tradeSkillSchematic(): a difficulty word it does not know is left out"] = function(t)
+        local env = frameEnv()
+        local kind = "purple"
+        function env.GetTradeSkillInfo() return "Bolt", kind, 0, true end
+        function env.GetTradeSkillItemLink() return "|cffffffff|Hitem:2996::::::::|h[Bolt]|h|r" end
+        function env.GetTradeSkillNumReagents() return 1 end
+        function env.GetTradeSkillReagentItemLink() return "|cffffffff|Hitem:2589::::::::|h[Linen]|h|r" end
+        function env.GetTradeSkillReagentInfo() return "Linen", nil, 2, 0 end
+        local c = ns.make.client(env)
+        t.eq(c.tradeSkillSchematic(2), { name = "Bolt", makes = 2996, yield = 1, mats = { [2589] = 2 } },
+            "an unknown word: the recipe read, no difficulty")
+        kind = "medium"
+        t.eq(c.tradeSkillSchematic(2).difficulty, "medium", "a known word kept")
+    end,
+
     -- Section 233 (GR2-1) ---------------------------------------------------
     ["tradeSkillRows(): the classic window's recipe rows, headers left out"] = function(t)
         local env = frameEnv()
@@ -695,7 +713,8 @@ return {
         function env.GetTradeSkillInfo(i) return info[i][1], info[i][2], 0, true end
         local c = ns.make.client(env)
         -- P-PROF (N23): each row carries its colour word as the window gives it.
-        t.eq(c.tradeSkillRows(), { name = "Tailoring", skill = 50, max = 75, rows = {
+        -- Section 245: the one header expanded, no filter read: filtered unknown.
+        t.eq(c.tradeSkillRows(), { name = "Tailoring", skill = 50, max = 75, collapsed = false, rows = {
             { index = 2, name = "Bolt of Linen Cloth", difficulty = "trivial" },
             { index = 3, name = "Brown Linen Robe", difficulty = "optimal" } } })
         info[2][2] = "purple"
@@ -720,12 +739,60 @@ return {
         t.eq(c.tradeSkillRows(), nil, "a row of no kind")
     end,
 
+    -- Section 245 (RB2-2). Fails at 1b4e461f: the answer said nothing of
+    -- collapsed headers or filters (both checks got nil), so a read under
+    -- either counted as every learned recipe.
+    ["tradeSkillRows(): says when a header is collapsed or a filter is on, and never whole"] = function(t)
+        local env = frameEnv()
+        local expanded = { true, true, true }
+        local info = {
+            { "Cloth", "header" },
+            { "Bolt of Linen Cloth", "trivial" },
+            { "Robes", "header" },
+        }
+        function env.GetTradeSkillLine() return "Tailoring", 50, 75 end
+        function env.GetNumTradeSkills() return #info end
+        function env.GetTradeSkillInfo(i) return info[i][1], info[i][2], 0, expanded[i] end
+        local sub, slot = true, true
+        function env.GetTradeSkillSubClassFilter() return sub end
+        function env.GetTradeSkillInvSlotFilter() return slot end
+        local c = ns.make.client(env)
+        local r = c.tradeSkillRows()
+        t.eq(r.collapsed, false, "every header expanded")
+        t.eq(r.filtered, false, "both filters on all")
+        t.eq(r.whole, nil, "no read of the materials box or the search box: never whole")
+        expanded[3] = false
+        t.eq(c.tradeSkillRows().collapsed, true, "a header collapsed")
+        expanded[3] = 1
+        t.eq(c.tradeSkillRows().collapsed, false, "1 counts as expanded")
+        expanded[3] = nil
+        t.eq(c.tradeSkillRows().collapsed, nil, "nil: unknown (may be collapsed on a 1/nil client)")
+        expanded[1] = false
+        t.eq(c.tradeSkillRows().collapsed, true, "one collapsed is enough, whatever the other says")
+        expanded[1], expanded[3] = true, true
+        slot = false
+        t.eq(c.tradeSkillRows().filtered, true, "a slot filter on")
+        slot, sub = true, nil
+        t.eq(c.tradeSkillRows().filtered, true, "nil: not all (a 1/nil client)")
+        sub = 1
+        t.eq(c.tradeSkillRows().filtered, false, "1 counts as all")
+        env.GetTradeSkillSubClassFilter = function() error("no filter read") end
+        t.eq(c.tradeSkillRows().filtered, nil, "a filter read that fails: unknown")
+        env.GetTradeSkillSubClassFilter = nil
+        t.eq(c.tradeSkillRows().filtered, nil, "a filter read missing: unknown")
+        t.eq(#c.tradeSkillRows().rows, 1, "the rows read as before")
+    end,
+
     ["tradeSkillRows(): the fake gives a copy"] = function(t)
         local c = ns.make.fakeClient()
         t.eq(c.tradeSkillRows(), nil, "none set")
         c.setTradeSkillRows({ name = "Tailoring", rows = { { index = 2, name = "Bolt" } } })
         c.tradeSkillRows().rows[1].name = "x"
         t.eq(c.tradeSkillRows(), { name = "Tailoring", rows = { { index = 2, name = "Bolt" } } })
+        -- Section 245 (RB2-2): what the test sets of the window, given back;
+        -- nothing set says nothing.
+        c.setTradeSkillRows({ name = "Tailoring", rows = {}, collapsed = true, filtered = false, whole = false })
+        t.eq(c.tradeSkillRows(), { name = "Tailoring", rows = {}, collapsed = true, filtered = false, whole = false })
     end,
 
     ["tradeSkillSchematic(): the fake gives a copy"] = function(t)

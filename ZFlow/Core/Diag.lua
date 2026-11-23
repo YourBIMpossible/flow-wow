@@ -74,6 +74,13 @@ Diag.NAMES = {
     "GetTradeSkillReagentInfo", "GetTradeSkillItemLink", "GetTradeSkillRecipeLink",
     -- Section 231 item 1: the rest of the classic schematic read.
     "GetTradeSkillNumMade", "GetTradeSkillReagentItemLink",
+    -- Section 245 (RB2-2): whether the classic window hides recipe rows
+    -- (client.tradeSkillRows). The two filter reads are used, first guesses;
+    -- the rest are candidates for the "have materials" box and the name
+    -- search box, not read yet: the capture says which this client has.
+    "GetTradeSkillSubClassFilter", "GetTradeSkillInvSlotFilter",
+    "TradeSkillOnlyShowMakeable", "GetTradeSkillItemNameFilter",
+    "TradeSkillFrameAvailableFilterCheckButton", "TradeSkillFrameEditBox", "TradeSkillFrameSearchBox",
     "C_TradeSkillUI.GetAllRecipeIDs", "GetNumCrafts", "GetCraftInfo",
     "GetNumTrainerServices", "GetTrainerServiceInfo", "GetTrainerServiceCost", "GetTrainerServiceSkillReq",
     "GetMerchantNumItems", "GetMerchantItemInfo", "GetMerchantItemLink", "C_MerchantFrame.GetItemInfo",
@@ -401,6 +408,9 @@ function Diag.Collect(k, why)
     -- Section 233 (GR2-1): the classic window's rows, as the recipe book walks them.
     S.tradeSkillRows = shape(true, type(client.tradeSkillRows) == "function"
         and client.tradeSkillRows() or nil)
+    -- Section 245 (RB2-2): the two filter reads behind tradeSkillRows().filtered.
+    S.tradeSkillSubClassFilter = ask(client, "GetTradeSkillSubClassFilter", 0)
+    S.tradeSkillInvSlotFilter = ask(client, "GetTradeSkillInvSlotFilter", 0)
     S.crafts = ask(client, "GetNumCrafts")
     S.taxiNodes = ask(client, "NumTaxiNodes")
 
