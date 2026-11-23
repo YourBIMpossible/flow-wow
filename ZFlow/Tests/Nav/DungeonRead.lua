@@ -65,6 +65,8 @@ local function questie(over)
         end
     end
     local zones = {}
+    -- Area 40 (outside the Deadmines) is on map 1436.
+    function zones.GetUiMapIdByAreaId(area) return ({ [40] = 1436 })[area] end
     function zones:GetDungeons()
         if over.badList then error("no list") end
         local dm = { "The Deadmines" }
@@ -325,6 +327,42 @@ tests["dungeon read 305: no loot seen says so, never an empty tab"] = function(t
     t.eq(#R.WHY_NO_LOOT, 2)
     t.eq(R.Loot(R.Start(client({ questie = false })), c, DM, book()).why, S.WHY.noQuestie)
     t.eq(R.Loot(st, c, nil, book()).why, S.WHY.noDungeon)
+end
+
+-- Lead section 318: what the window shows and does, worked out here so the
+-- window computes nothing.
+tests["dungeon read 318: the entrance as a map point the waypoint takes"] = function(t)
+    local c = client({ more = true })
+    local st = indexed(c)
+    local e = R.Entrance(st, c, DM)
+    t.eq({ e.map, e.x, e.y, e.label }, { 1436, 42.5, 71.8, "The Deadmines" })
+    t.eq(e.text, "42.5 71.8 The Deadmines", "the words the waypoint parses")
+    local none, why = R.Entrance(st, c, SFK)
+    t.eq(none, nil)
+    t.eq(why, R.WHY_NO_ENTRANCE)
+    t.eq(#R.WHY_NO_ENTRANCE, 2)
+end
+
+tests["dungeon read 318: search narrows the dungeon list, any case, empty text is all"] = function(t)
+    local st = indexed(client())
+    local list = R.List(st)
+    local names = {}
+    for i, d in ipairs(R.Search(list, "SHADOW")) do names[i] = d.name end
+    t.eq(names, { "Shadowfang Keep" })
+    t.eq(#R.Search(list, ""), 2)
+    t.eq(#R.Search(list, nil), 2)
+    t.eq(#R.Search(list, "zzz"), 0)
+    t.eq(#R.Search(list, "("), 0, "a pattern sign is a plain letter")
+end
+
+tests["dungeon read 318: loot items carry their name, quality and icon as the client reads them"] = function(t)
+    local c = client({ more = true })
+    c.setItemInfo({ [2] = { name = "Cookie's Tenderizer", quality = 2 } })
+    c.setItemTexture(2, "tex:tenderizer")
+    local st = indexed(c)
+    local items = R.Loot(st, c, DM, book()).bosses[1].items
+    t.eq({ items[1].name, items[1].quality, items[1].icon }, { "Cookie's Tenderizer", 2, "tex:tenderizer" })
+    t.eq(items[2].name, R.ITEM_UNREAD, "an item the client has not read yet says so")
 end
 
 return tests

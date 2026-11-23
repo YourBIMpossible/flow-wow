@@ -101,7 +101,9 @@ return {
         local top = M.Level(items)
         local keys = {}
         for i, r in ipairs(top) do keys[i] = r.sep and "-" or r.key end
-        t.eq(keys, { "layout", "show", "style", "-", "settings.travel", "settings", "feedback" })
+        t.eq(keys, { "layout", "show", "style", "dungeons", "-", "settings.travel", "settings", "feedback" })
+        t.eq(rowAt(top, "dungeons").text, T.MENU.dungeons, "lead section 318: the Dungeon Quests window")
+        t.eq(M.Action("dungeons", state()), { window = "dungeonWindow" })
         t.eq(rowAt(top, "feedback").text, T.MENU.feedback, "row N73: the feedback window")
         t.eq(rowAt(top, "layout").text, T.MENU.layout .. M.MORE)
         t.eq(rowAt(top, "layout").more, true)
