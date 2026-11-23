@@ -202,6 +202,11 @@ Diag.NAMES = {
     -- markRewardChoice). First guesses, never asked of 16001; saved in the
     -- snapshot's names table so a normal login records which exist.
     "GetNumQuestChoices", "GetQuestItemLink", "QuestInfoRewardsFrameQuestInfoItem1", "QuestRewardItem1",
+    -- SD-1 (N2, N20; P-KEYS slice D): the corpse you target and the
+    -- profession window's tools (Core/Client.lua targetCorpse and
+    -- tradeSkillTools). First guesses, never asked of 16001; saved here so
+    -- a normal login records which exist.
+    "CanLootUnit", "C_TooltipInfo.GetUnit", "GetTradeSkillTools",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns
