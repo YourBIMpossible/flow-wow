@@ -115,6 +115,10 @@ local READS = {
     -- weapon master step; the capture asks none. Its names (GetNumSkillLines,
     -- GetSkillLineInfo) are in Diag.NAMES and Diag's skillLines field.
     weaponSkills = false,
+    -- G51: the creature on a nameplate and the quest mark over it; read by
+    -- UI/PlateQuests.lua only. Their names (UnitGUID, C_NamePlate.
+    -- GetNamePlateForUnit, CreateFrame) are in Diag.NAMES.
+    plateCreature = false, plateQuestMark = false,
 }
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).
