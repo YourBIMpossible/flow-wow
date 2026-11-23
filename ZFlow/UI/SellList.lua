@@ -45,7 +45,7 @@
 --   client.watchMerchant / MERCHANT_SHOW / MERCHANT_CLOSED   the window
 --   client.bagItems()                                        the bag stacks
 --   client.itemInfo(item)    CLIENT NEED: name, quality, sell price, class
---   client.itemTexture(item)   the item's icon, when it is a texture name
+--   client.itemTexture(item)   the item's icon: a texture name or file number
 --   client.kitWindow(id, tree, extra)   the window (client.panel when the
 --                                       kit cannot draw)
 -- Saved data (read only): the character's never-sell list at
@@ -98,6 +98,12 @@ SellList.SELL_SECTION = "To sell"
 SellList.KEPT_SECTION = "Kept, and why"
 SellList.TOTAL = "Total"
 SellList.NO_TOTAL = "No total"
+-- The footer when some rows are not in the total, and when none is.
+SellList.TOTAL_SEEN = "Total of the prices seen"
+SellList.PRICES_UNKNOWN = "Prices not known"
+-- Items in the bags whose facts were not read yet: not "nothing to sell".
+SellList.ITEMS_UNREAD_HEAD = "Items not read yet"
+SellList.ITEMS_UNREAD_HOW = "Reopen the merchant window to list them."
 SellList.NOTHING = "Nothing to sell."
 SellList.UNKNOWN_HEAD = "Reservations not known"
 SellList.UNKNOWN_HOW = "Nothing is offered for sale until what your goals hold is known."
@@ -161,7 +167,13 @@ function SellList.Listing(client, store, grants, r)
         grants = grants }
     -- P-SETS: saved gear set pieces are kept (Disposition's inSet).
     context.sets = ns.GearSets and ns.GearSets.Facts(store) or nil
-    local out = { stacks = stacks, kept = ns.SellView.Kept(bag, context) }
+    local out = { stacks = stacks, kept = ns.SellView.Kept(bag, context), notRead = 0 }
+    -- Items whose facts were not read yet (no name, quality or price).
+    for _, e in ipairs(type(bag) == "table" and bag or {}) do
+        if e.key ~= nil and e.name == nil and e.quality == nil and e.sellPrice == nil then
+            out.notRead = out.notRead + 1
+        end
+    end
     -- An evaluation that is missing or not a table is unavailable too
     -- (MyBuddy SR-3): no sell advice without reservations that can be trusted.
     if bag ~= nil and (type(r) ~= "table" or r.status == ns.Reservations.UNAVAILABLE) then
@@ -198,8 +210,15 @@ end
 -- itself (for the tooltip), its quality and its icon. Each only when the
 -- client gives it in the shape the kit takes; a read that raises gives
 -- nothing. The icon is the item fact's own `icon` when it has one, else
--- client.itemTexture's when that is a texture name (a first guess: not seen
+-- client.itemTexture's when that is a texture name or file number (a first guess: not seen
 -- in game which of the two this client answers).
+-- An icon the kit draws: a texture path, or a file number above 0 (what
+-- client.itemTexture gives first in game).
+local function isIcon(v)
+    if type(v) == "string" then return v ~= "" end
+    return type(v) == "number" and v > 0
+end
+
 function SellList.Look(client, stacks)
     local look = {}
     if type(client) ~= "table" or type(stacks) ~= "table" then return look end
@@ -213,12 +232,12 @@ function SellList.Look(client, stacks)
                 local ok, info = pcall(client.itemInfo, s.item)
                 if ok and type(info) == "table" then
                     if isWhole(info.quality) and info.quality <= 5 then entry.quality = info.quality end
-                    if type(info.icon) == "string" and info.icon ~= "" then entry.icon = info.icon end
+                    if isIcon(info.icon) then entry.icon = info.icon end
                 end
             end
             if entry.icon == nil and type(client.itemTexture) == "function" then
                 local ok, tex = pcall(client.itemTexture, s.item)
-                if ok and type(tex) == "string" and tex ~= "" then entry.icon = tex end
+                if ok and isIcon(tex) then entry.icon = tex end
             end
             look[key] = entry
         end
@@ -256,6 +275,9 @@ function SellList.TreeOf(listing, client, id)
     if type(listing.list) == "table" then list = listing.list end
     local rows = list and list.ok and type(list.rows) == "table" and list.rows or {}
     local title, total = SellList.TITLE, nil
+    -- footText: what the footer total covers when not every row is in it.
+    local footText = nil
+    local notRead = (tonumber(listing.notRead) or 0) + (list and tonumber(list.unread) or 0)
     local body = {}
     if listing.unavailable then
         title = SellList.UNKNOWN_HEAD
@@ -264,6 +286,9 @@ function SellList.TreeOf(listing, client, id)
         local why = list and type(list.problem) == "string" and list.problem ~= "" and list.problem
             or ns.ItemSell.BAGS_UNREAD
         body[#body + 1] = { kind = "empty", text = SellList.UNREAD_HEAD .. ".", how = why }
+    elseif #rows == 0 and notRead > 0 then
+        body[#body + 1] = { kind = "empty", text = SellList.ITEMS_UNREAD_HEAD .. ".",
+            how = Present.BankUnreadText(notRead, true) .. " " .. SellList.ITEMS_UNREAD_HOW }
     elseif #rows == 0 then
         title = Present.NOTHING_TO_SELL
         total = 0
@@ -272,6 +297,7 @@ function SellList.TreeOf(listing, client, id)
     else
         title = plural(#rows, "item", "items") .. " to sell"
         total = 0
+        local seen = 0
         body[#body + 1] = { kind = "section", text = SellList.SELL_SECTION }
         for _, r in ipairs(rows) do
             local line = SellList.ItemLine(r, look)
@@ -280,11 +306,20 @@ function SellList.TreeOf(listing, client, id)
             if r.basis == Prices.OBSERVED and isWhole(r.total) then
                 line.money = r.total
                 total = total + r.total
+                seen = seen + 1
             else
                 line.note = Present.SellPriceText(r)
                 if not isWhole(r.count) then line.note = line.note .. "; " .. SellList.COUNT_UNKNOWN end
             end
             body[#body + 1] = line
+        end
+        -- No price seen: no money, as unknown is not 0. Some seen: the
+        -- total says it covers only those.
+        if seen == 0 then
+            total = nil
+            footText = SellList.PRICES_UNKNOWN
+        elseif seen < #rows then
+            footText = SellList.TOTAL_SEEN
         end
         -- The estimate and the prices nobody saw, apart from the total.
         local t = type(list.total) == "table" and list.total or {}
@@ -307,7 +342,11 @@ function SellList.TreeOf(listing, client, id)
         end
     end
     local footer = { kind = "footer", text = SellList.TOTAL, money = total, slot = SellList.SLOT }
-    if total == nil then footer.text = SellList.NO_TOTAL end
+    if footText then
+        footer.text = footText
+    elseif total == nil then
+        footer.text = SellList.NO_TOTAL
+    end
     return {
         id = SellList.KIT_ID, title = tostring(id.title) .. ": " .. SellList.TITLE,
         width = SellList.KIT_WIDTH, height = SellList.KIT_HEIGHT, point = SellList.DEFAULT_POINT,

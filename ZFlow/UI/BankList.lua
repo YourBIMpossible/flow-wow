@@ -21,7 +21,7 @@
 -- Reads: client.watchBank / BANKFRAME_OPENED / BANKFRAME_CLOSED,
 -- Reservations.CHANGED (internal, sent by a source),
 -- client.bagItems(), client.itemInfo(item) (CLIENT NEED, as the sell list).
--- client.itemTexture(item) (the icon, when it is a texture name),
+-- client.itemTexture(item) (the icon: a texture name or file number),
 -- client.kitWindow(id, tree, extra) (client.panel when the kit cannot draw).
 -- Saved data (read only): char settings.sell.never, account
 -- settings.banker.rules ({ [item] = "bank" | "carry" }, imported from Flow).
@@ -232,6 +232,9 @@ function BankList.Declare(k)
     -- win: the kit window. panel: the text panel, made only when the kit
     -- cannot draw.
     local win, panel
+    -- The player closed the window (its close button, Escape): it stays
+    -- closed for that bank visit; the next BANKFRAME_OPENED clears it.
+    local closed = false
     function api.last() return last end
     function api.shows() return shows end
     function api.window() return win end
@@ -328,10 +331,12 @@ function BankList.Declare(k)
             ctx.bus:on(BankList.NAME, "PLAYER_ENTERING_WORLD", function() prompt() end)
             ctx.bus:on(BankList.NAME, "BANKFRAME_OPENED", function()
                 open = true
+                closed = false
                 list()
             end)
             ctx.bus:on(BankList.NAME, "BANKFRAME_CLOSED", function()
                 open = false
+                closed = false
                 hide()
                 prompt()      -- the bags may have changed at the bank
             end)
@@ -340,6 +345,10 @@ function BankList.Declare(k)
             -- bank closed nothing is drawn.
             ctx.bus:on(BankList.NAME, ns.Reservations.CHANGED, function()
                 if not open then return end
+                if closed then
+                    prompt()
+                    return
+                end
                 list()
             end)
             -- The bags changed away from the bank too: the prompt follows
@@ -364,6 +373,9 @@ function BankList.Declare(k)
                         ctx.store:set("account", BankList.LAYOUT,
                             { point = { to[1], to[2], to[3], to[4] }, width = w, height = h })
                     end,
+                    onClose = function()
+                        closed = true
+                    end,
                     failed = function(err)
                         if not making then k.problems:add(BankList.NAME, "window", tostring(err)) end
                     end,
@@ -376,7 +388,10 @@ function BankList.Declare(k)
                 textPanel()
             end
         end,
-        stop = hide,
+        stop = function()
+            hide()
+            closed = false
+        end,
     })
     return api
 end
