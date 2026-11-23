@@ -61,7 +61,9 @@ function ProfHelper.Declare(k)
             label = "Skill-up helper beside the profession window",
             help = "Shows your skill, a goal you type, how many points your bags can make, and the cheapest "
                 .. "recipes that give a point now. It reads the window only and never crafts.",
-            group = "Other",
+            -- A topic of Settings/Topics.lua (N56).
+            group = "professions",
+            synonyms = { "skill", "skill-up", "leveling", "profession", "recipes", "helper" },
         } },
         start = function(ctx)
             local client = ctx.client

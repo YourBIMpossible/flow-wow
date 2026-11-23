@@ -54,7 +54,7 @@ function M.Declare(k, packs)
             key = M.SETTING, scope = "account", type = "bool", default = true,
             label = "Point out upgrades at merchants",
             help = "When you open a merchant, list the items on sale that are upgrades for you. It buys nothing.",
-            group = "Gear",
+            group = "gear", synonyms = { "upgrade", "vendor", "merchant", "buy" },
         } },
         provides = { Shown = api.shown, Errors = api.errors },
         start = function(ctx)

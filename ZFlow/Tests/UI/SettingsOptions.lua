@@ -13,13 +13,13 @@ local function start(opts)
     if opts.noPage then c.setOptionsPage(false) end
     local k = ns.Kernel({}, c)
     local d = ns.Diag.Start(k)
-    k:Setting({ key = "test.flag", scope = "account", type = "bool", default = true, label = "A flag", group = "Test" })
+    k:Setting({ key = "test.flag", scope = "account", type = "bool", default = true, label = "A flag", group = "advanced" })
     k:Setting({ key = "test.mode", scope = "char", type = "choice", choices = { "low", "high" }, default = "low",
-        label = "A mode", group = "Test" })
+        label = "A mode", group = "advanced" })
     k:Setting({ key = "test.count", scope = "account", type = "number", min = 1, max = 3, default = 2,
-        label = "A count", group = "Test" })
+        label = "A count", group = "advanced" })
     k:Setting({ key = "test.place", scope = "account", type = "table", path = "layout.testPlace",
-        label = "A place", group = "Test" })
+        label = "A place", group = "advanced" })
     ns.SettingsPanel.Declare(k, d)
     local api = O.Declare(k)
     k:Boot()
@@ -37,11 +37,13 @@ local function row(c, key)
 end
 
 return {
-    ["settings options: opening the page draws a control for each row, under its group"] = function(t)
+    ["settings options: opening the page draws the search, the topics, then a control for each row of the topic"] = function(t)
         local _, c, api = start()
         t.eq(api.open(), true)
         local rows = c.optionsRows()
-        t.eq(rows[1], { kind = "group", text = "Test" })
+        t.eq(rows[1].kind, "search")
+        t.eq(rows[2].kind, "topics")
+        t.eq(rows[3], { kind = "group", text = ns.Settings.Topics.Find("advanced").name })
         t.eq(row(c, "test.flag").kind, "toggle")
         t.eq(row(c, "test.flag").value, true)
         t.eq(row(c, "test.mode").kind, "choice")
@@ -112,7 +114,7 @@ return {
         local keys = {}
         for r in k.settings:each() do keys[r.key] = true end
         for _, r in ipairs(c.optionsRows()) do
-            if r.kind ~= "group" then t.ok(keys[r.key], tostring(r.key)) end
+            if r.key ~= nil then t.ok(keys[r.key], tostring(r.key)) end
         end
     end,
 }

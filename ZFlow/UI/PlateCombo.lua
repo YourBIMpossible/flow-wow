@@ -205,7 +205,8 @@ function PC.Declare(k, diag)
 
     -- The switch (lead section 178; its model row is in Settings/Model.lua).
     k:Setting({ key = PC.OFF, scope = "account", type = "bool", default = false,
-        label = "Hide combo points on your target's nameplate" })
+        label = "Hide combo points on your target's nameplate", group = "combat.plates",
+        synonyms = { "combo points", "nameplate", "rogue", "druid" } })
 
     k:Module({
         name = PC.NAME,

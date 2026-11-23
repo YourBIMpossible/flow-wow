@@ -173,7 +173,7 @@ function Ro.Declare(k, diag, packs)
             label = "Your role",
             help = "The role you play this character as. You are told when the rotation plays another one."
                 .. " It changes nothing by itself.",
-            group = "Rotation",
+            group = "combat.rotation", synonyms = { "role", "spec", "tank", "healer", "dps" },
         } },
         start = function(ctx)
             client = ctx.client

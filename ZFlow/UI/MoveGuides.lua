@@ -237,7 +237,7 @@ function G.Declare(k)
             label = "Alignment lines while you Ctrl-drag the arrows or the rotation icon",
             help = "While you move one, a line shows when it lines up with the middle of the screen or with the other one; "
                 .. "let go near a line and it settles on it.",
-            group = "Other",
+            group = "general", synonyms = { "align", "snap", "drag", "move", "lines" },
         } },
         provides = { Watched = api.watched },
         start = function(c)

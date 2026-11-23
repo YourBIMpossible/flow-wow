@@ -68,7 +68,7 @@ function R.Declare(k, packs)
             key = R.SETTING, scope = "account", type = "bool", default = true,
             label = "Upgrade hint on loot rolls",
             help = "When the game offers you a roll on gear, say whether it is an upgrade. It never rolls for you.",
-            group = "Gear",
+            group = "gear", synonyms = { "roll", "need", "greed", "loot", "upgrade" },
         } },
         provides = { Hooked = api.hooked, Errors = api.errors },
         start = function(ctx)

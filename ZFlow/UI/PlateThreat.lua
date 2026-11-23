@@ -281,9 +281,11 @@ function PT.Declare(k, diag)
 
     -- The switches (lead section 178; their model rows are in Settings/Model.lua).
     k:Setting({ key = PT.OFF, scope = "account", type = "bool", default = false,
-        label = "Hide your threat on enemy nameplates" })
+        label = "Hide your threat on enemy nameplates", group = "combat.plates",
+        synonyms = { "threat", "aggro", "nameplate" } })
     k:Setting({ key = PT.ALWAYS, scope = "account", type = "bool", default = false,
-        label = "Show your threat on enemy nameplates when alone too" })
+        label = "Show your threat on enemy nameplates when alone too", group = "combat.plates",
+        synonyms = { "threat", "aggro", "nameplate", "solo" } })
 
     k:Module({
         name = PT.NAME,

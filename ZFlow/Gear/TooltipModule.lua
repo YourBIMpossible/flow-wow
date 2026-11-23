@@ -105,7 +105,7 @@ function M.Declare(k, packs)
             key = M.SETTING, scope = "account", type = "bool", default = true,
             label = "Gear verdict on item tooltips",
             help = "Hover a piece of gear to read whether it is an upgrade for what you wear. It changes nothing.",
-            group = "Gear",
+            group = "gear", synonyms = { "upgrade", "tooltip", "compare", "armor", "weapon" },
         } },
         provides = { Hooked = api.hooked, Errors = api.errors },
         start = function(ctx)

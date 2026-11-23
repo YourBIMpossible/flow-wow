@@ -13,18 +13,18 @@ local _, ns = ...
 local R = {}
 ns.UIRows = R
 
-R.GROUP = "Windows" -- authored
+R.GROUP = "general.windows" -- a topic and section of Settings/Topics.lua
 
 function R.Declare(k)
     local made = 0
     if k:Setting({ key = "ui.intro", scope = "char", type = "bool", default = true,
-        label = "Welcome at first login", group = R.GROUP,
+        label = "Welcome at first login", group = R.GROUP, synonyms = { "welcome", "intro", "first login" },
         help = "Shows the welcome once, the first time this character logs in." }) then made = made + 1 end
     if k:Setting({ key = "buttons.worldMap", scope = "account", type = "bool", default = false,
-        label = "Button on the world map", group = R.GROUP,
+        label = "Button on the world map", group = R.GROUP, synonyms = { "button", "map", "arrow menu" },
         help = "A button on the world map that opens the arrow menu." }) then made = made + 1 end
     if k:Setting({ key = "buttons.merchant", scope = "account", type = "bool", default = false,
-        label = "Button on the merchant window", group = R.GROUP,
+        label = "Button on the merchant window", group = R.GROUP, synonyms = { "button", "merchant", "vendor", "sell" },
         help = "A button on the merchant window that shows the sell list." }) then made = made + 1 end
     return made
 end

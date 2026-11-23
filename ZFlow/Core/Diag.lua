@@ -145,6 +145,12 @@ Diag.NAMES = {
     -- LOOT_ITEM_SELF_MULTIPLE above; client.bossUnit asks UnitExists,
     -- UnitGUID and UnitName, above. The journal names are Plexy's to add.
     "IsInInstance", "GetInstanceInfo", "LOOT_ITEM", "LOOT_ITEM_MULTIPLE",
+    -- Lead sections 238 and 239: which Options route this client has, and
+    -- whether the game's own settings search and subcategories are there
+    -- (UI/SettingsOptions.lua). Saved in the snapshot's names table.
+    "Settings.RegisterCanvasLayoutCategory", "Settings.RegisterCanvasLayoutSubcategory",
+    "Settings.RegisterAddOnCategory", "Settings.OpenToCategory", "SettingsPanel",
+    "SettingsPanel.SearchBox", "InterfaceOptionsFrame",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns

@@ -233,7 +233,7 @@ function AL.Declare(k, diag)
             key = AL.SETTING, scope = "account", type = "bool", default = true,
             label = "Auction price history on item tooltips",
             help = "The cheapest buyout for one you saw in your own auction searches, and how it moved. It buys and posts nothing.",
-            group = "Vendor",
+            group = "auctions", synonyms = { "auction", "price", "history", "ah", "tooltip" },
         } },
         provides = { Looks = api.looks },
         start = function(c)

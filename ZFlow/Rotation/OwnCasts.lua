@@ -423,7 +423,7 @@ function OC.Declare(k, diag, packs)
             key = OC.SAY, scope = "account", type = "bool", default = true,
             label = "Say when a seal or blessing you cast is kept",
             help = "One line in chat when a seal or blessing you cast becomes the one suggested for your role. It casts nothing.",
-            group = "Rotation",
+            group = "buffs", synonyms = { "seal", "blessing", "kept", "paladin" },
         } },
         start = function(ctx)
             client = ctx.client

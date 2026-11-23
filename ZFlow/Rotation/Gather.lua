@@ -143,7 +143,7 @@ function G.Declare(k)
             label = "Offer gathering tracking",
             help = "Out of a fight, the rotation icon offers Find Minerals or Find Herbs when you have the "
                 .. "profession and that tracking is off. It casts nothing by itself.",
-            group = "Rotation",
+            group = "professions", synonyms = { "tracking", "herbs", "minerals", "mining", "herbalism", "gather" },
         } },
         start = function(c) ctx = c end,
         stop = function() ctx = nil end,

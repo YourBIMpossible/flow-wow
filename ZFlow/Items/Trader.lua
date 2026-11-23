@@ -272,7 +272,7 @@ function T.Declare(k, diag)
             label = "Trader: say nothing of deals",
             help = "On: no chat line and no tooltip line for a deal in your own auction searches. "
                 .. "The trader word still lists them. It never buys.",
-            group = "Vendor",
+            group = "auctions", synonyms = { "deals", "auction", "bargain", "flip", "ah" },
         } },
         provides = { Deals = api.deals, Followed = api.followed },
         start = function(c)
