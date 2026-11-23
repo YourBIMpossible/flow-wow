@@ -249,6 +249,21 @@ if ((Test-ZSavedTable $kitDrawn) -and $kitDrawn.Keys.Count -gt 0) {
     }
 } else { Write-Output '   none saved (no kit window was opened)' }
 
+# The sell list's first grey item and the rule applied to it (lead section
+# 340; ZFlow/UI/SellList.lua saves diag.sellGrey at each listing).
+Write-Output ''
+Write-Output '=== Sell list: first grey item ==='
+$sellGrey = Get-ZSaved $diag 'sellGrey'
+if (Test-ZSavedTable $sellGrey) {
+    $greyItem = Get-ZSaved $sellGrey 'item'
+    $greyWhy = Get-ZSaved $sellGrey 'why'
+    if ($null -eq $greyItem) { $greyItem = '(none)' }
+    $greyLine = "   {0}: {1}" -f (Format-Plain $greyItem), (Format-Plain (Get-ZSaved $sellGrey 'rule'))
+    if ($null -ne $greyWhy) { $greyLine += (" ({0})" -f (Format-Plain $greyWhy)) }
+    Write-Output $greyLine
+    Write-Output ("   listing: {0}" -f (Format-Plain (Get-ZSaved $sellGrey 'counts')))
+} else { Write-Output '   none saved (no merchant window was opened)' }
+
 Write-Output ''
 Write-Output '=== Layout (saved for the account) ==='
 $layout = Get-ZSaved $db 'layout'

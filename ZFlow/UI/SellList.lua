@@ -73,6 +73,11 @@
 -- claimed) changes nothing. "unavailable" (a producer failed, or the module
 -- is not there) offers nothing for sale and says the reservations are not
 -- known, as the bank list does (UI/BankList.lua).
+-- Lead section 340: every bag item neither offered nor kept by a rule has a
+-- row under "Not sold, and why" (no vendor price, price not read yet,
+-- reservations not known, no rule sells it); the list is made again on
+-- GET_ITEM_INFO_RECEIVED; the first grey item and what was done with it go
+-- to the saved diagnostics (diag.sellGrey, read by tools/zflow-read-diag.ps1).
 -- Not tested in game: MERCHANT_SHOW and the item read are first guesses.
 local _, ns = ...
 
@@ -121,6 +126,24 @@ SellList.UNREAD_HEAD = "Can't list what to sell"
 SellList.CLOSED_HEAD = "No merchant window is open."
 SellList.CLOSED_HOW = "Talk to a merchant to see what would be sold."
 SellList.COUNT_UNKNOWN = "how many not known"
+-- Lead section 340: every bag item the list does not offer for sale, and
+-- that no rule keeps, still has a row with why (a grey item never
+-- vanishes). Player text.
+SellList.OTHER_SECTION = "Not sold, and why"
+SellList.WHY_NO_PRICE = "can't be sold to a merchant"
+SellList.WHY_NOT_READ = "price not read yet"
+SellList.WHY_RESERVATIONS = "reservations not known"
+SellList.WHY_NO_RULE = "no rule says to sell it"
+-- No row to sell while some prices are not read yet: not "nothing to sell".
+SellList.PRICES_UNREAD_HEAD = "Prices not read yet"
+SellList.PRICES_UNREAD_HOW = "The list is drawn again when the game reads them."
+-- Item facts arrived late (the game read an item it had not loaded): the
+-- list is made again while a merchant window is open. The repo's other
+-- modules listen to it too (Gear/RewardMark.lua, Rotation/Driver.lua).
+SellList.INFO_EVENT = "GET_ITEM_INFO_RECEIVED"
+-- The saved diagnostics' line for the first grey item in the bags
+-- (diag.sellGrey, account): { item, rule, why, counts }, all text.
+SellList.DIAG_KEY = "sellGrey"
 
 -- The player's never-sell list as Disposition takes it: { never = { [key] = true } }.
 -- Takes a set ({ [item] = true }) or a list ({ item, ... }); anything that is
@@ -194,6 +217,92 @@ function SellList.Listing(client, store, grants, r)
     else
         out.list = ns.ItemSell.List(bag, context)
     end
+    out.others = SellList.Others(bag, out, context.book)
+    out.grey = SellList.Grey(bag, out)
+    return out
+end
+
+-- The bag items a listing neither offers for sale nor keeps by a rule,
+-- each with why (lead section 340). Items not read at all (no name,
+-- quality or price) are left to listing.notRead. -> { { key, name, count,
+-- reason, why = the WHY_ text's own key } }
+function SellList.Others(bag, listing, book)
+    local rows = {}
+    if type(bag) ~= "table" then return rows end
+    local shown = {}
+    local list = type(listing.list) == "table" and listing.list or nil
+    for _, r in ipairs(list and type(list.rows) == "table" and list.rows or {}) do shown[r.key] = true end
+    for _, k in ipairs(type(listing.kept) == "table" and listing.kept.rows or {}) do shown[k.key] = true end
+    local items = ns.ItemSell.Gather(bag)
+    for _, item in ipairs(items) do
+        local unread = item.name == nil and item.quality == nil and item.sellPrice == nil
+        if not shown[item.key] and not unread then
+            local why
+            if listing.unavailable then
+                why = "WHY_RESERVATIONS"
+            elseif ns.ItemSell.PriceOf(item, book) == nil then
+                why = "WHY_NO_PRICE"
+            elseif item.sellPrice == nil then
+                why = "WHY_NOT_READ"
+            else
+                why = "WHY_NO_RULE"
+            end
+            rows[#rows + 1] = {
+                key = item.key,
+                name = type(item.name) == "string" and item.name ~= "" and item.name or nil,
+                count = item.count, reason = SellList[why], why = why,
+            }
+        end
+    end
+    return rows
+end
+
+-- What a "Not sold" row's why is in the diagnostics' words.
+local GREY_RULE = {
+    WHY_RESERVATIONS = "reservations unknown", WHY_NO_PRICE = "unsellable",
+    WHY_NOT_READ = "not read", WHY_NO_RULE = "not sold",
+}
+
+-- The first grey item in the bags and what the listing did with it, for
+-- the saved diagnostics: { item, rule, why, counts }, all text (why and
+-- item nil when not known). rule: "sold", "kept", "unsellable",
+-- "not read", "reservations unknown", "not sold", "no grey item" or
+-- "bags not read". A grey item not read at all is not known to be grey.
+function SellList.Grey(bag, listing)
+    local list = type(listing.list) == "table" and listing.list or nil
+    local sell = list and type(list.rows) == "table" and list.rows or {}
+    local kept = type(listing.kept) == "table" and listing.kept.rows or {}
+    local others = type(listing.others) == "table" and listing.others or {}
+    local out = { counts = string.format("to sell %d, kept %d, not sold %d, not read %d",
+        #sell, #kept, #others, tonumber(listing.notRead) or 0) }
+    if type(bag) ~= "table" then out.rule = "bags not read" return out end
+    local first
+    for _, e in ipairs(bag) do
+        if type(e) == "table" and e.key ~= nil and e.quality == 0 then first = e break end
+    end
+    if not first then out.rule = "no grey item" return out end
+    out.item = type(first.name) == "string" and first.name or tostring(first.key)
+    local function find(rows)
+        for _, r in ipairs(rows) do if r.key == first.key then return r end end
+        return nil
+    end
+    local r = find(sell)
+    if r then
+        out.rule, out.why = "sold", r.reason
+        return out
+    end
+    r = find(kept)
+    if r then
+        out.rule = r.rule == "unsellable" and "unsellable" or "kept"
+        out.why = r.reason
+        return out
+    end
+    r = find(others)
+    if r then
+        out.rule, out.why = GREY_RULE[r.why] or "not sold", r.reason
+        return out
+    end
+    out.rule = "not sold"
     return out
 end
 
@@ -206,9 +315,22 @@ function SellList.LinesOf(listing)
             lines[#lines + 1] = ns.ItemPresent.KEPT_HEADER
             for _, k in ipairs(kept.rows) do lines[#lines + 1] = ns.ItemPresent.KeptText(k) end
         end
-        return lines
+        return SellList.OtherLines(lines, listing)
     end
-    return ns.ItemPresent.SellLines(listing.list, kept)
+    return SellList.OtherLines(ns.ItemPresent.SellLines(listing.list, kept), listing)
+end
+
+-- The "Not sold" rows added to text lines: "<name>: <why>".
+function SellList.OtherLines(lines, listing)
+    local others = type(listing.others) == "table" and listing.others or {}
+    if #others == 0 then return lines end
+    lines[#lines + 1] = SellList.OTHER_SECTION .. ":"
+    for _, o in ipairs(others) do
+        local name = o.name
+        if type(name) ~= "string" or name == "" then name = ns.ItemPresent.Name(o.key) end
+        lines[#lines + 1] = tostring(name) .. ": " .. tostring(o.reason)
+    end
+    return lines
 end
 
 function SellList.Lines(client, store, grants, r)
@@ -291,6 +413,12 @@ function SellList.TreeOf(listing, client, id, action)
     -- footText: what the footer total covers when not every row is in it.
     local footText = nil
     local notRead = (tonumber(listing.notRead) or 0) + (list and tonumber(list.unread) or 0)
+    local others = type(listing.others) == "table" and listing.others or {}
+    -- Rows whose price is not read yet: the list is drawn again then.
+    local waiting = 0
+    for _, o in ipairs(others) do
+        if o.why == "WHY_NOT_READ" then waiting = waiting + 1 end
+    end
     local body = {}
     if listing.unavailable then
         title = SellList.UNKNOWN_HEAD
@@ -302,6 +430,9 @@ function SellList.TreeOf(listing, client, id, action)
     elseif #rows == 0 and notRead > 0 then
         body[#body + 1] = { kind = "empty", text = SellList.ITEMS_UNREAD_HEAD .. ".",
             how = Present.BankUnreadText(notRead, true) .. " " .. SellList.ITEMS_UNREAD_HOW }
+    elseif #rows == 0 and waiting > 0 then
+        body[#body + 1] = { kind = "empty", text = SellList.PRICES_UNREAD_HEAD .. ".",
+            how = SellList.PRICES_UNREAD_HOW }
     elseif #rows == 0 then
         title = Present.NOTHING_TO_SELL
         total = 0
@@ -351,6 +482,15 @@ function SellList.TreeOf(listing, client, id, action)
             local line = SellList.ItemLine(k, look)
             line.note = tostring(k.reason or "kept")
             line.tone = "good"
+            body[#body + 1] = line
+        end
+    end
+    if #others > 0 then
+        body[#body + 1] = { kind = "section", text = SellList.OTHER_SECTION }
+        for _, o in ipairs(others) do
+            local line = SellList.ItemLine(o, look)
+            line.note = tostring(o.reason)
+            line.tone = "warn"
             body[#body + 1] = line
         end
     end
@@ -516,6 +656,21 @@ function SellList.Declare(k)
                 win.show(true)
                 return true
             end
+            -- Lead section 340: the first grey item and what the listing
+            -- did with it, in the saved diagnostics (diag.sellGrey), as
+            -- UI/KitProbe.lua keeps diag.kitDrawn. Text fields only.
+            local function saveGrey(listing)
+                local g = type(listing) == "table" and listing.grey or nil
+                if type(g) ~= "table" or type(client.saved) ~= "function" then return end
+                local ok, db = pcall(client.saved, id.accountDB)
+                if not ok or type(db) ~= "table" then return end
+                if type(db.diag) ~= "table" then db.diag = {} end
+                local row = {}
+                for _, f in ipairs({ "item", "rule", "why", "counts" }) do
+                    if type(g[f]) == "string" then row[f] = g[f] end
+                end
+                db.diag[SellList.DIAG_KEY] = row
+            end
             -- byAsk: true when the player asked for the list (Show()).
             relist = function(byAsk)
                 -- Off only when the player turned it off; a missing row is on.
@@ -529,6 +684,7 @@ function SellList.Declare(k)
                 if not visit then visit = SellList.Current(ctx.use) end
                 local listing = SellList.Listing(client, ctx.store, SellList.Held(visit), visit)
                 local lines = SellList.LinesOf(listing)
+                saveGrey(listing)
                 shows = shows + 1
                 last = lines
                 if draw(listing) then
@@ -563,6 +719,20 @@ function SellList.Declare(k)
             -- follows the bags. Nothing when no merchant window is open.
             ctx.bus:on(SellList.NAME, SellList.BAG_EVENT, function()
                 api.refresh()
+            end)
+            -- Item facts arrived late (lead section 340): a row whose price
+            -- was not read yet becomes what it is. Nothing when no merchant
+            -- window is open.
+            -- A cold visit fires a burst of these: at most one relist per
+            -- frame (the scheduler's next frame).
+            local infoPending = false
+            ctx.bus:on(SellList.NAME, SellList.INFO_EVENT, function()
+                if infoPending or not open then return end
+                infoPending = true
+                ctx.sched:nextFrame(SellList.NAME, function()
+                    infoPending = false
+                    api.refresh()
+                end)
             end)
             -- The reservations changed (a goal added or removed): this
             -- visit's evaluation is old, so drop it and list once again.
