@@ -213,6 +213,9 @@ local READS = {
     -- Nav/DungeonRead.lua only. Their names (UnitRace,
     -- C_QuestLog.IsQuestFlaggedCompleted) are in Diag.NAMES.
     raceId = false, questDone = false,
+    -- N60c: the player's own name for chat mentions; read by UI/Chat.lua
+    -- only. Its name (UnitName) is in Diag.NAMES.
+    playerName = false,
 }
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).

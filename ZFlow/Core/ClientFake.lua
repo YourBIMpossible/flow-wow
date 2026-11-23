@@ -3483,11 +3483,11 @@ function ns.make.fakeClient(opts)
             end
             return n
         end
-        function c.pushChat(event, text, index)
+        function c.pushChat(event, text, index, author)
             local shown = text
             for i = 1, #filters do
                 if filters[i].events[event] and type(shown) == "string" then
-                    local ok, new = pcall(filters[i].fn, shown, event)
+                    local ok, new = pcall(filters[i].fn, shown, event, author)
                     if ok and type(new) == "string" then shown = new end
                 end
             end
@@ -4072,6 +4072,20 @@ function ns.make.fakeClient(opts)
         function c.localTime()
             if clockNow == nil then return nil end
             return clockNow[1], clockNow[2], clockNow[3]
+        end
+    end
+    -- N60c: the player's own name, as the real client's playerName().
+    --   c.setPlayerName(name)        the name; nil: not known (the start)
+    --   c.setPlayerNameFails(on)     true: the read raises, until false
+    -- c.pushChat's fourth argument is the line's author.
+    do
+        local playerNow, nameFails = nil, false
+        function c.setPlayerName(name) playerNow = name end
+        function c.setPlayerNameFails(on) nameFails = on == true end
+        function c.playerName()
+            if nameFails then error("player name read failed (test)") end
+            if type(playerNow) ~= "string" or playerNow == "" then return nil end
+            return playerNow
         end
     end
     return c

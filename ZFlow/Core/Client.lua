@@ -9130,7 +9130,9 @@ function ns.make.client(env)
     --     first guess.
     --
     --   client.chatFilter(events, fn) -> cancel | nil
-    --     fn(text, event) for every chat line of the named events before it
+    --     fn(text, event, author) for every chat line of the named events
+    --     (author: the sender as the game names it, nil when hidden or no
+    --     text; N60c) before it
     --     is shown; a text it gives back replaces the line's text, anything
     --     else leaves the line as it was. fn runs under pcall. A text the
     --     client hides (issecretvalue), or that is no text, is handed on
@@ -9199,12 +9201,16 @@ function ns.make.client(env)
             end
             if type(add) ~= "function" then return nil end
             local dead = false
-            local function filter(_, event, text, ...)
+            local function filter(_, event, text, author, ...)
                 if dead or text == nil then return false end
                 if hidden(text) or type(text) ~= "string" then return false end
-                local ok, new = pcall(fn, text, event)
+                -- N60c: the line's author (the game's second argument),
+                -- handed on only when it is plain text.
+                local who = nil
+                if author ~= nil and not hidden(author) and type(author) == "string" then who = author end
+                local ok, new = pcall(fn, text, event, who)
                 if not ok or type(new) ~= "string" or new == text then return false end
-                return false, new, ...
+                return false, new, author, ...
             end
             local added = {}
             for _, event in ipairs(events) do
@@ -11113,6 +11119,17 @@ function ns.make.client(env)
             local h, m, s = tonumber(t.hour), tonumber(t.min), tonumber(t.sec)
             if h == nil or m == nil or s == nil then return nil end
             return h, m, s
+        end
+    end
+    -- N60c (UI/Chat.lua, chat mentions): c.playerName() -> name | nil.
+    --   The player's own name, UnitName("player")'s first answer, without a
+    --   realm; nil when not known (no call, a failed call, a secret or
+    --   empty answer). A first guess on 16001, not seen in game. Read only.
+    do
+        function c.playerName()
+            local ok, name = call(env.UnitName, "player")
+            if not ok or name == nil or hidden(name) or type(name) ~= "string" or name == "" then return nil end
+            return name
         end
     end
     return c

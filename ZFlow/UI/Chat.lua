@@ -126,11 +126,65 @@ Chat.STAMP_CHOICES = { "off", "HH:MM", "HH:MM:SS" }
 Chat.STAMP_FORMAT = { ["HH:MM"] = "[%02d:%02d] ", ["HH:MM:SS"] = "[%02d:%02d:%02d] " }
 Chat.READ_PARTS = { "font", "fade", "scroll", "stamps", "tabs" }
 
-Chat.HELP = "how the chat links, the chat copy button and the chat readability settings stand; chat copy "
-    .. "[n] puts the main chat window's last n lines in a box to copy"
+-- Part 3 (row N60c): mentions. A chat line from someone else holding the
+-- player's own name (read from the client, without a realm) or a word of
+-- the player's keyword list has that word shown in a chosen colour, and,
+-- when the player picks it, the alert sound plays (client.playAlert, the
+-- one sound this add-on has; at most once in Chat.SOUND_GAP seconds). A
+-- word counts whole and in any case; it is found as plain text, never as a
+-- pattern. Nothing inside a link or a colour code is looked into, so links
+-- stay the very bytes. The player's own lines (the author is the player,
+-- or a whisper the player sent) never count. Which chat kinds count is a
+-- switch each; whispers count at first, public channels do not.
+--   chat.mentions        the part, off at first
+--   chat.keywords        words, comma-separated, at most Chat.KEYWORDS_MAX
+--   chat.mentionColour   one of Chat.COLOUR_CHOICES
+--   chat.mentionSound    "off" or "alert"
+--   chat.mention<Kind>   the kinds, Chat.SCOPE
+-- Beside Prat: its CustomFilters module (the colouring) and Sounds module
+-- (module names inferred, first guess) stand down the matching half. A
+-- line the client hides is passed on unread.
+Chat.MENTIONS, Chat.KEYWORDS = "chat.mentions", "chat.keywords"
+Chat.MENTION_COLOUR, Chat.MENTION_SOUND = "chat.mentionColour", "chat.mentionSound"
+Chat.PRAT_MARK, Chat.PRAT_SOUND = "CustomFilters", "Sounds"
+Chat.KEYWORDS_MAX, Chat.KEYWORD_LEN = 10, 32
+Chat.SOUND_GAP = 10
+Chat.SOUND_OFF, Chat.SOUND_ALERT = "off", "alert"
+Chat.SOUND_CHOICES = { "off", "alert" }
+Chat.COLOUR_CHOICES = { "gold", "orange", "green", "pink" }
+Chat.COLOURS = { gold = "ffffd100", orange = "ffff8000", green = "ff1eff00", pink = "ffff66cc" }
+Chat.SCOPE_ORDER = { "say", "party", "raid", "guild", "whisper", "channel" }
+Chat.SCOPE = {
+    say = "chat.mentionSay", party = "chat.mentionParty", raid = "chat.mentionRaid",
+    guild = "chat.mentionGuild", whisper = "chat.mentionWhisper", channel = "chat.mentionChannel",
+}
+Chat.SCOPE_DEFAULT = { say = true, party = true, raid = true, guild = true, whisper = true, channel = false }
+Chat.SCOPE_LABEL = {
+    say = "say, yell and emote", party = "party and instance chat", raid = "raid chat and raid warnings",
+    guild = "guild and officer chat", whisper = "whispers to you", channel = "chat channels (trade, general...)",
+}
+-- Each chat event that may hold a mention and its kind. A whisper the
+-- player sent (the _INFORM events) is no event here.
+Chat.SCOPE_EVENTS = {
+    CHAT_MSG_SAY = "say", CHAT_MSG_YELL = "say", CHAT_MSG_EMOTE = "say",
+    CHAT_MSG_PARTY = "party", CHAT_MSG_PARTY_LEADER = "party", CHAT_MSG_INSTANCE_CHAT = "party",
+    CHAT_MSG_INSTANCE_CHAT_LEADER = "party",
+    CHAT_MSG_RAID = "raid", CHAT_MSG_RAID_LEADER = "raid", CHAT_MSG_RAID_WARNING = "raid",
+    CHAT_MSG_GUILD = "guild", CHAT_MSG_OFFICER = "guild",
+    CHAT_MSG_WHISPER = "whisper", CHAT_MSG_BN_WHISPER = "whisper",
+    CHAT_MSG_CHANNEL = "channel",
+}
+Chat.MENTION_EVENTS = {}
+for _, event in ipairs(Chat.EVENTS) do
+    if Chat.SCOPE_EVENTS[event] then Chat.MENTION_EVENTS[#Chat.MENTION_EVENTS + 1] = event end
+end
+
+Chat.HELP = "how the chat links, the chat copy button, the chat readability settings and chat mentions "
+    .. "stand; chat copy [n] puts the main chat window's last n lines in a box to copy"
 Chat.LABEL = {
     urls = "chat links", copy = "chat copy button", font = "chat text size", fade = "chat fading",
     scroll = "chat wheel scrolling", stamps = "chat timestamps", tabs = "chat tabs kept visible",
+    mentions = "chat mentions", sound = "chat mention sound",
 }
 Chat.STATE = {
     on = "on", off = "off (its setting is off)", prat = "standing down",
@@ -339,6 +393,107 @@ function Chat.Plain(text, prefix)
     return table.concat(out)
 end
 
+-- Part 3, pure: the keyword list, names, and the colouring of words.
+
+-- The player's keyword text as words, lower case: split at commas, spaces
+-- at either end taken off, empty, too long and repeated words left out, at
+-- most Chat.KEYWORDS_MAX.
+function Chat.Keywords(text)
+    local out, seenWord = {}, {}
+    if type(text) ~= "string" then return out end
+    for piece in (text .. ","):gmatch("([^,]*),") do
+        local word = piece:match("^%s*(.-)%s*$"):lower()
+        if word ~= "" and #word <= Chat.KEYWORD_LEN and not seenWord[word] and #out < Chat.KEYWORDS_MAX then
+            seenWord[word] = true
+            out[#out + 1] = word
+        end
+    end
+    return out
+end
+
+-- True when the author is the player: the name before any "-realm", in
+-- any case.
+function Chat.SameName(author, name)
+    if type(author) ~= "string" or type(name) ~= "string" or name == "" then return false end
+    local bare = author:match("^([^%-]*)") or author
+    return bare:lower() == name:lower()
+end
+
+-- A byte that belongs to a word: a letter or digit, or part of a letter
+-- written in more than one byte.
+local function wordByte(s, i)
+    if i < 1 or i > #s then return false end
+    if s:byte(i) >= 128 then return true end
+    return s:sub(i, i):find("%w") ~= nil
+end
+
+-- The first whole-word match of any word at or after `from` in `low`
+-- (both lower case), the longest when two start at one place.
+local function nextWord(low, words, from)
+    local bestA, bestB = nil, nil
+    for i = 1, #words do
+        local word, init = words[i], from
+        while true do
+            local a, b = low:find(word, init, true)
+            if a == nil then break end
+            if bestA ~= nil and a > bestA then break end
+            if not wordByte(low, a - 1) and not wordByte(low, b + 1) then
+                if bestA == nil or a < bestA or b > bestB then bestA, bestB = a, b end
+                break
+            end
+            init = a + 1
+        end
+    end
+    return bestA, bestB
+end
+
+local function markPlain(chunk, words, colour)
+    local low, out, pos, n = chunk:lower(), {}, 1, 0
+    while true do
+        local a, b = nextWord(low, words, pos)
+        if a == nil then break end
+        out[#out + 1] = chunk:sub(pos, a - 1)
+        out[#out + 1] = "|c" .. colour .. chunk:sub(a, b) .. "|r"
+        n = n + 1
+        pos = b + 1
+    end
+    if n == 0 then return chunk, 0 end
+    out[#out + 1] = chunk:sub(pos)
+    return table.concat(out), n
+end
+
+-- The line with each whole word of `words` (lower case) in `colour`
+-- ("aarrggbb"), and how many were. Nothing inside a link and nothing
+-- already coloured is looked into. With none, the very text given.
+function Chat.Mark(text, words, colour)
+    if type(text) ~= "string" or text == "" or type(words) ~= "table" or #words == 0 then return text, 0 end
+    if type(colour) ~= "string" then return text, 0 end
+    local parts, out, n, inLink, coloured = tokens(text), {}, 0, false, false
+    for i = 1, #parts do
+        local part = parts[i]
+        if part.code ~= nil then
+            if part.code == "H" then
+                inLink = true
+            elseif part.code == "h" then
+                inLink = false
+            elseif part.code == "c" and #part.raw == 10 then
+                coloured = true
+            elseif part.code == "r" then
+                coloured = false
+            end
+            out[i] = part.raw
+        elseif inLink or coloured then
+            out[i] = part.text
+        else
+            local piece, found = markPlain(part.text, words, colour)
+            out[i] = piece
+            n = n + found
+        end
+    end
+    if n == 0 then return text, 0 end
+    return table.concat(out), n
+end
+
 ---------------------------------------------------------------------------
 -- The module.
 ---------------------------------------------------------------------------
@@ -349,7 +504,7 @@ function Chat.Declare(k, diag)
     local cancels = {}
     local cancelFilter, cancelClick, button, box = nil, nil, nil, nil
     local state = { urls = "off", copy = "off", font = "off", fade = "off", scroll = "off", stamps = "off",
-        tabs = "off" }
+        tabs = "off", mentions = "off", sound = "off" }
     local why, told, seen = {}, {}, {}
     local errors = 0
     function api.state(part) return state[part] end
@@ -800,10 +955,98 @@ function Chat.Declare(k, diag)
         if next(tabsHeld) ~= nil then state.tabs = "on" end
     end
 
+    -------------------------------------------------------------------
+    -- Part 3: mentions.
+    -------------------------------------------------------------------
+    local cancelMentions, mentionWords, mentionColour = nil, {}, nil
+    local marking, ringing, myName, lastSound = false, false, nil, nil
+
+    -- The player's name, read once it is known; nil while not known.
+    local function me()
+        if myName ~= nil then return myName end
+        local c = ctx.client
+        if type(c.playerName) ~= "function" then return nil end
+        local ok, name = pcall(c.playerName)
+        if not ok then
+            problem("chat player name", name)
+            return nil
+        end
+        if type(name) == "string" and name ~= "" then myName = name end
+        return myName
+    end
+
+    local function ring()
+        local c = ctx.client
+        if type(c.now) ~= "function" or type(c.playAlert) ~= "function" then return end
+        local okNow, now = pcall(c.now)
+        if not okNow or type(now) ~= "number" then return end
+        if lastSound ~= nil and now - lastSound < Chat.SOUND_GAP then return end
+        lastSound = now
+        local ok, err = pcall(c.playAlert)
+        if not ok then problem("chat mention sound", err) end
+    end
+
+    local function mentionFilter(text, event, author)
+        if ctx == nil or type(text) ~= "string" then return nil end
+        if marking == false and ringing == false then return nil end
+        local kind = Chat.SCOPE_EVENTS[event]
+        if kind == nil or ctx.settings:get(Chat.SCOPE[kind]) ~= true then return nil end
+        local name = me()
+        if name == nil or Chat.SameName(author, name) then return nil end
+        local words = { name:lower() }
+        for i = 1, #mentionWords do words[#words + 1] = mentionWords[i] end
+        local new, n = Chat.Mark(text, words, mentionColour)
+        if n == 0 then return nil end
+        if ringing then ring() end
+        if marking then return new end
+        return nil
+    end
+
+    local function dropMentions()
+        if cancelMentions then pcall(cancelMentions) end
+        cancelMentions = nil
+        marking, ringing = false, false
+    end
+
+    local function syncMentions()
+        why.mentions, why.sound = nil, nil
+        if ctx.settings:get(Chat.MENTIONS) ~= true then
+            dropMentions()
+            state.mentions, state.sound = "off", "off"
+            return
+        end
+        mentionWords = Chat.Keywords(ctx.settings:get(Chat.KEYWORDS))
+        mentionColour = Chat.COLOURS[ctx.settings:get(Chat.MENTION_COLOUR)] or Chat.COLOURS.gold
+        marking = prattled("mentions", Chat.PRAT_MARK) == false
+        ringing = false
+        if ctx.settings:get(Chat.MENTION_SOUND) ~= Chat.SOUND_ALERT then
+            state.sound = "off"
+        elseif prattled("sound", Chat.PRAT_SOUND) == false then
+            ringing = true
+        end
+        if marking == false and ringing == false then
+            dropMentions()
+            return
+        end
+        local c = ctx.client
+        if cancelMentions == nil and type(c.chatFilter) == "function" then
+            local got = ask("chat mentions", c.chatFilter, Chat.MENTION_EVENTS, mentionFilter)
+            if type(got) == "function" then cancelMentions = got end
+        end
+        if cancelMentions == nil then
+            marking, ringing = false, false
+            state.mentions, state.sound = "unavailable", "unavailable"
+            why.mentions = "this client gives no chat filter"
+            return
+        end
+        if marking then state.mentions = "on" end
+        if ringing then state.sound = "on" end
+    end
+
     local PARTS = {
         { "chat links", syncUrls }, { "chat copy", syncCopy }, { "chat text size", syncFont },
         { "chat fading", syncFade }, { "chat wheel", syncScroll }, { "chat timestamps", syncStamps },
-        { "chat tabs", syncTabs },
+        { "chat tabs", syncTabs }, { "chat mentions", syncMentions },
     }
 
     -- Each part made to stand as its setting, Prat and the client say.
@@ -819,7 +1062,7 @@ function Chat.Declare(k, diag)
     function api.lines()
         if ctx == nil then return { Chat.NOT_STARTED } end
         local out = {}
-        for _, part in ipairs({ "urls", "copy", "font", "fade", "scroll", "stamps", "tabs" }) do
+        for _, part in ipairs({ "urls", "copy", "font", "fade", "scroll", "stamps", "tabs", "mentions", "sound" }) do
             local line = Chat.LABEL[part] .. ": " .. tostring(Chat.STATE[state[part]])
             if why[part] then line = line .. " (" .. why[part] .. ")" end
             out[#out + 1] = line .. "."
@@ -901,12 +1144,70 @@ function Chat.Declare(k, diag)
             help = "The chat window tabs stay fully shown instead of fading when the mouse is away. Off gives the "
                 .. "game's fading back.",
             group = Chat.GROUP, synonyms = { "chat", "readability", "tab", "tabs", "fade", "visible" },
+        }, {
+            key = Chat.MENTIONS, scope = "account", type = "bool", default = false,
+            label = "Highlight mentions in chat",
+            help = "When someone else's chat line holds your name, or one of your mention keywords, that word is "
+                .. "shown in your mention colour. Item and player links are never changed. With Prat's "
+                .. "CustomFilters on, the colouring stands down.",
+            group = Chat.GROUP, synonyms = { "chat", "mention", "mentions", "highlight", "name", "prat" },
+        }, {
+            key = Chat.KEYWORDS, scope = "account", type = "string", default = "",
+            label = "Mention keywords",
+            help = "More words that count as a mention, separated by commas (\"onyxia, tank\"). At most "
+                .. Chat.KEYWORDS_MAX .. " words of up to " .. Chat.KEYWORD_LEN .. " letters; whole words, any case.",
+            group = Chat.GROUP, synonyms = { "chat", "mention", "keyword", "keywords", "highlight", "words" },
+        }, {
+            key = Chat.MENTION_COLOUR, scope = "account", type = "choice", default = "gold",
+            choices = Chat.COLOUR_CHOICES,
+            label = "Mention colour",
+            help = "The colour a mentioned word is shown in: gold, orange, green or pink.",
+            group = Chat.GROUP, synonyms = { "chat", "mention", "colour", "color", "highlight" },
+        }, {
+            key = Chat.MENTION_SOUND, scope = "account", type = "choice", default = Chat.SOUND_OFF,
+            choices = Chat.SOUND_CHOICES,
+            label = "Mention sound",
+            help = "Off, or the alert sound when you are mentioned, at most once every " .. Chat.SOUND_GAP
+                .. " seconds. With Prat's Sounds on, this stands down.",
+            group = Chat.GROUP, synonyms = { "chat", "mention", "sound", "alert", "ping", "prat" },
+        }, {
+            key = Chat.SCOPE.say, scope = "account", type = "bool", default = Chat.SCOPE_DEFAULT.say,
+            label = "Mentions in say, yell and emote",
+            help = "Mentions count in " .. Chat.SCOPE_LABEL.say .. ".",
+            group = Chat.GROUP, synonyms = { "chat", "mention", "say", "yell", "emote" },
+        }, {
+            key = Chat.SCOPE.party, scope = "account", type = "bool", default = Chat.SCOPE_DEFAULT.party,
+            label = "Mentions in party chat",
+            help = "Mentions count in " .. Chat.SCOPE_LABEL.party .. ".",
+            group = Chat.GROUP, synonyms = { "chat", "mention", "party", "group", "instance" },
+        }, {
+            key = Chat.SCOPE.raid, scope = "account", type = "bool", default = Chat.SCOPE_DEFAULT.raid,
+            label = "Mentions in raid chat",
+            help = "Mentions count in " .. Chat.SCOPE_LABEL.raid .. ".",
+            group = Chat.GROUP, synonyms = { "chat", "mention", "raid", "warning" },
+        }, {
+            key = Chat.SCOPE.guild, scope = "account", type = "bool", default = Chat.SCOPE_DEFAULT.guild,
+            label = "Mentions in guild chat",
+            help = "Mentions count in " .. Chat.SCOPE_LABEL.guild .. ".",
+            group = Chat.GROUP, synonyms = { "chat", "mention", "guild", "officer" },
+        }, {
+            key = Chat.SCOPE.whisper, scope = "account", type = "bool", default = Chat.SCOPE_DEFAULT.whisper,
+            label = "Mentions in whispers",
+            help = "Mentions count in " .. Chat.SCOPE_LABEL.whisper .. ". Whispers you send never count.",
+            group = Chat.GROUP, synonyms = { "chat", "mention", "whisper", "tell" },
+        }, {
+            key = Chat.SCOPE.channel, scope = "account", type = "bool", default = Chat.SCOPE_DEFAULT.channel,
+            label = "Mentions in chat channels",
+            help = "Mentions count in " .. Chat.SCOPE_LABEL.channel .. ". Off at first: busy channels say a lot.",
+            group = Chat.GROUP, synonyms = { "chat", "mention", "channel", "trade", "general" },
         } },
         provides = { State = api.state, Lines = api.lines },
         start = function(c)
             ctx = c
-            for _, key in ipairs({ Chat.COPY, Chat.URLS, Chat.FONT, Chat.KEEP, Chat.FADE, Chat.SCROLL, Chat.STAMPS,
-                Chat.TABS }) do
+            local keys = { Chat.COPY, Chat.URLS, Chat.FONT, Chat.KEEP, Chat.FADE, Chat.SCROLL, Chat.STAMPS,
+                Chat.TABS, Chat.MENTIONS, Chat.KEYWORDS, Chat.MENTION_COLOUR, Chat.MENTION_SOUND }
+            for _, kind in ipairs(Chat.SCOPE_ORDER) do keys[#keys + 1] = Chat.SCOPE[kind] end
+            for _, key in ipairs(keys) do
                 local row = c.settings:row(key)
                 if type(row) == "table" then
                     local cancel = c.store:watch(row.scope, row.path or ("settings." .. key), sync)
@@ -934,6 +1235,8 @@ function Chat.Declare(k, diag)
             scrollLines = 0
             dropStamps()
             releaseTabs()
+            dropMentions()
+            myName, lastSound = nil, nil
             for part in pairs(state) do state[part] = "off" end
             ctx = nil
         end,
