@@ -574,7 +574,7 @@ tests["capture asks: a capture that holds the call says no ask for it"] = functi
     local c, addon, report = boot(cap)
     local rows = Capture.Summarize(c, addon, report, cap, ns.offline.ownWords())
     t.eq(asks(rows[1].notHeld, "UnitHealth"), nil, "UnitHealth held: not listed")
-    t.ok(not Capture.SummaryText(rows, report):find("UnitHealth", 1, true), "and never said")
+    t.ok(not Capture.SummaryText(rows, report):find("[ ,:]UnitHealth %d"), "and never said (UnitHealthMax is another call)")
 end
 
 tests["capture asks: no ask said is said as none, and an old row with no asks still prints"] = function(t)
@@ -583,6 +583,8 @@ tests["capture asks: no ask said is said as none, and an old row with no asks st
     t.ok(text:find("\ncalls asked that the capture does not hold: none\n", 1, true) ~= nil, "none is said")
     t.ok(not text:find("feature made asked", 1, true), "a row with no asks says no ask line")
     t.ok(not Capture.SummaryText({}):find("calls asked", 1, true), "no report: the line is left out, not guessed")
+    local raises = setmetatable({}, { __index = function() error("made-up boom") end })
+    t.ok(not Capture.SummaryText({}, raises):find("calls asked", 1, true), "a report that raises: left out, not guessed")
 end
 
 return tests
