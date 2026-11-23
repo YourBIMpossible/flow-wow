@@ -13,7 +13,12 @@ local _, ns = ...
 
 local tests = {}
 
-local function client(env) return ns.make.client(env) end
+-- Out of a fight unless a test says otherwise (lead section 266 GO-1: the
+-- writes are refused when the combat state is not known).
+local function client(env)
+    if env.InCombatLockdown == nil then env.InCombatLockdown = function() return false end end
+    return ns.make.client(env)
+end
 
 local function recorder(answer)
     local calls = {}
@@ -112,6 +117,26 @@ tests["the module asks the two writes by these names"] = function(t)
     local c = ns.make.fakeClient({ env = {} })
     t.ok(type(c.setGameSetting) == "function" and type(c.setCombatLogFile) == "function",
         "the fake has the same two names")
+end
+
+-- GO-1 (lead section 266): no write in a fight. A combat state the game
+-- does not give counts as a fight.
+tests["c.setGameSetting and c.setCombatLogFile: refused in a fight, the game is not asked"] = function(t)
+    local fn, calls = recorder(true)
+    local log, logCalls = recorder(true)
+    local fight = true
+    local c = ns.make.client({ C_CVar = { SetCVar = fn }, LoggingCombat = log,
+        InCombatLockdown = function() return fight end })
+    if type(c.setGameSetting) ~= "function" then t.ok(false, "c.setGameSetting"); return end
+    t.eq({ c.setGameSetting("showTimestamps", "none") }, { nil, "combat" })
+    t.eq({ c.setCombatLogFile(true) }, { nil, "combat" })
+    t.eq(#calls + #logCalls, 0, "nothing asked in the fight")
+    fight = false
+    t.eq({ c.setGameSetting("showTimestamps", "none") }, { true })
+    t.eq({ c.setCombatLogFile(true) }, { true })
+    local unknown = ns.make.client({ C_CVar = { SetCVar = fn }, LoggingCombat = log })
+    t.eq({ unknown.setGameSetting("showTimestamps", "none") }, { nil, "combat" }, "not known: refused")
+    t.eq({ unknown.setCombatLogFile(true) }, { nil, "combat" }, "not known: refused")
 end
 
 return tests

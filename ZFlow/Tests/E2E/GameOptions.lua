@@ -197,4 +197,85 @@ tests["g59 e2e: a put-back the game refuses keeps the value for the next try"] =
     t.eq(c.gameSetting(CAMERA), "1.9", "the first value found, not the pulled-back one")
 end
 
+-- MyBuddy review of ec8514e9 (lead section 266), one regression test each.
+-- GO-1: no write in a fight; the change is made when the fight ends.
+tests["g59 go-1: turned on or off in a fight, nothing is written until the fight ends"] = function(t)
+    local c, addon = boot({ camera = "1.9", logging = false })
+    if not ready(t, c) then return end
+    c.setCombat(true)
+    local text = say(c, "setting game.cameraZoom on")
+    say(c, "setting game.combatLogFile on")
+    t.eq(writes(c), 0, "nothing written in the fight")
+    t.ok(text:find("after the fight", 1, true) ~= nil, "a line says when: " .. text)
+    t.eq(addon.GameOptions.Found(addon, "cameraZoom"), nil, "nothing read or kept in the fight")
+    c.setCombat(false)
+    t.eq(c.gameSetting(CAMERA), "4", "made when the fight ended")
+    t.eq(c.combatLogFile(), true)
+    c.setCombat(true)
+    say(c, "setting game.cameraZoom off")
+    t.eq(c.gameSetting(CAMERA), "4", "not put back in the fight")
+    c.setCombat(false)
+    t.eq(c.gameSetting(CAMERA), "1.9", "put back when the fight ended")
+end
+
+tests["g59 go-1: on and off again in the same fight writes nothing at all"] = function(t)
+    local c, addon = boot({ camera = "1.9" })
+    if not ready(t, c) then return end
+    c.setCombat(true)
+    say(c, "setting game.cameraZoom on")
+    say(c, "setting game.cameraZoom off")
+    c.setCombat(false)
+    t.eq(writes(c), 0, "the player changed their mind: nothing to do")
+    t.eq(addon.GameOptions.Found(addon, "cameraZoom"), nil, "nothing kept")
+    t.eq(c.gameSetting(CAMERA), "1.9")
+end
+
+tests["g59 go-1: a write the client refuses for the fight is made when it ends"] = function(t)
+    local c = boot({ camera = "1.9" })
+    if not ready(t, c) then return end
+    c.setGameSettingFails("combat")
+    say(c, "setting game.cameraZoom on")
+    c.setGameSettingFails(nil)
+    c.setCombat(true)
+    c.setCombat(false)
+    t.eq(c.gameSetting(CAMERA), "4", "tried again when the fight ended")
+end
+
+-- GO-2: off reads the value first and writes nothing when the read fails.
+tests["g59 go-2: off writes nothing when the game does not say its value; kept for the next try"] = function(t)
+    local c, addon = boot({ camera = "1.9", logging = false })
+    if not ready(t, c) then return end
+    say(c, "setting game.cameraZoom on")
+    say(c, "setting game.combatLogFile on")
+    local before, beforeLog = #c.gameSettingWrites, #c.logFileWrites
+    c.putGameSetting(CAMERA, nil)
+    c.putCombatLogFile(nil)
+    local text = say(c, "setting game.cameraZoom off")
+    say(c, "setting game.combatLogFile off")
+    t.eq(#c.gameSettingWrites, before, "no camera write without a read")
+    t.eq(#c.logFileWrites, beforeLog, "no log file write without a read")
+    t.ok(text:find("not put back", 1, true) ~= nil, text)
+    t.eq(addon.GameOptions.Found(addon, "cameraZoom"), "1.9", "kept")
+    t.eq(addon.GameOptions.Found(addon, "combatLogFile"), false, "kept")
+    c.putGameSetting(CAMERA, "4")
+    say(c, "setting game.cameraZoom on")
+    say(c, "setting game.cameraZoom off")
+    t.eq(c.gameSetting(CAMERA), "1.9", "put back on the next try")
+end
+
+-- GO-3: on writes nothing when the game already has the value.
+tests["g59 go-3: on writes nothing when the value is already the one wanted"] = function(t)
+    local c, addon = boot({ camera = "4", stamps = "%H:%M:%S ", logging = true })
+    if not ready(t, c) then return end
+    say(c, "setting game.cameraZoom on")
+    say(c, "setting game.chatTimes on")
+    say(c, "setting game.combatLogFile on")
+    t.eq(writes(c), 0, "nothing written: nothing to change")
+    t.eq(addon.GameOptions.Found(addon, "cameraZoom"), "4", "the value found is still kept")
+    say(c, "setting game.cameraZoom off")
+    say(c, "setting game.chatTimes off")
+    say(c, "setting game.combatLogFile off")
+    t.eq(writes(c), 0, "and nothing to put back")
+end
+
 return tests
