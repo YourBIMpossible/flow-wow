@@ -80,6 +80,9 @@ ProfHelper.GOAL_MAX = 999
 ProfHelper.GOALS_PATH = "state.profGoals"
 ProfHelper.COLORS_PATH = "learned.recipeColors"
 ProfHelper.PRICES_PATH = "learned.prices"
+-- The heading that folds the helper (lead section 341).
+ProfHelper.FOLD = "Skill-ups"
+ProfHelper.FOLD_FOLDED = "Skill-ups (click to open)"
 
 ProfHelper.READING = "Reading this profession window."
 ProfHelper.SKILL = "Skill %d of %d."
@@ -184,17 +187,40 @@ end
 --          goal        the goal kept, or nil
 --          state       what SkillUps.Goal answered, or nil
 --          bags        { sure, maybe }, or nil while no recipe's mats are read
---          recipes     { { name, chance, difficulty, cost, icon } }, best first
+--          recipes     { { name, chance, difficulty, cost, icon, quality } },
+--                      best first; quality the item quality of what it
+--                      makes (0 to 5) or nil
 --          notes       lines of text, or nil
+--          folded      true: collapsed to the heading and the goal line;
+--                      false: open under a heading that folds; nil: open,
+--                      no heading (lead section 341)
+--          dock        a slot of CraftBar.Dock, or nil for the helper's own
+--                      place (lead section 340 item 2)
 --   act    act("goal", value) when a goal button is pressed; 0 clears it.
+--          act("fold", true | false) when the heading is pressed.
 -- Each part the tests and the module look up has a key.
 function ProfHelper.View(model, act)
     local view = { id = "ProfHelper", title = ProfHelper.TITLE, children = {},
         width = ProfHelper.KIT_WIDTH, height = ProfHelper.KIT_HEIGHT, point = ProfHelper.KIT_POINT }
     local kids = view.children
-    if type(model) ~= "table" or model.reading == true then
+    if type(model) ~= "table" then model = { reading = true } end
+    local CB = ns.CraftBar
+    local docked = false
+    if type(CB) == "table" and type(CB.Place) == "function" then docked = CB.Place(view, model.dock) end
+    local folded = model.folded == true
+    local function fold()
+        if type(model.folded) ~= "boolean" then return end
+        local heading = ProfHelper.FOLD
+        if folded then heading = ProfHelper.FOLD_FOLDED end
+        kids[#kids + 1] = { kind = "section", key = "fold", text = heading, folded = folded,
+            onFold = function(now)
+                if type(act) == "function" then act("fold", now == true) end
+            end }
+    end
+    if model.reading == true then
         kids[1] = { kind = "header", title = ProfHelper.TITLE }
-        kids[2] = { kind = "empty", key = "reading", text = ProfHelper.READING, how = ProfHelper.READING_HOW }
+        fold()
+        kids[#kids + 1] = { kind = "empty", key = "reading", text = ProfHelper.READING, how = ProfHelper.READING_HOW }
         return view
     end
 
@@ -203,6 +229,7 @@ function ProfHelper.View(model, act)
     else
         kids[1] = { kind = "header", title = ProfHelper.HEAD_NONAME:format(model.skill, model.max) }
     end
+    fold()
 
     local function set(value)
         if type(act) == "function" then act("goal", value) end
@@ -214,6 +241,8 @@ function ProfHelper.View(model, act)
     local up = math.min(ProfHelper.GOAL_MAX, from + ProfHelper.GOAL_STEP)
     local down = math.max(0, from - ProfHelper.GOAL_STEP)
     kids[#kids + 1] = { kind = "row", key = "goal", label = goalLabel(model) }
+    if folded then return view end
+    if docked then kids = CB.Body(view, true) end
     kids[#kids + 1] = { kind = "button", key = "goalDown", text = ProfHelper.GOAL_DOWN, enabled = hasGoal,
         tooltip = "Lower your skill goal by " .. ProfHelper.GOAL_STEP .. ". Below that, the goal is cleared.",
         onClick = function() if hasGoal then set(down) end end }
@@ -250,6 +279,11 @@ function ProfHelper.View(model, act)
         if type(r.cost) == "number" and r.cost >= 0 then line.money = math.floor(r.cost + 0.5) end
         -- Kit ask: a line colour that is not an item quality (the skill colour).
         if type(r.difficulty) == "string" then line.color = ProfHelper.COLOURS[r.difficulty] end
+        -- The kit colours the line by the quality of what the recipe makes.
+        local quality = r.quality
+        if type(quality) == "number" and quality >= 0 and quality <= 5 and quality == math.floor(quality) then
+            line.quality = quality
+        end
         kids[#kids + 1] = line
     end
 
@@ -323,12 +357,31 @@ function ProfHelper.Declare(k)
                 if type(sc) ~= "table" or type(sc.mats) ~= "table" then return nil end
                 return sc.mats
             end
+            -- The item a recipe makes, or nil when not read.
+            local function makes(id)
+                local sc = read("recipeSchematic", id)
+                if type(sc) ~= "table" or sc.makes == nil then sc = saved(id) end
+                if type(sc) ~= "table" then return nil end
+                return sc.makes
+            end
+            -- The item quality (0 to 5) of an item, or nil when not read.
+            local function quality(item)
+                if item == nil then return nil end
+                local info = read("itemInfo", item)
+                if type(info) ~= "table" then return nil end
+                return info.quality
+            end
+            -- The merchant prices seen, or nil.
+            local function prices()
+                local book = ctx.store:get("account", ProfHelper.PRICES_PATH)
+                if type(book) ~= "table" then return nil end
+                return book
+            end
             -- What one craft costs at the merchant buy prices seen; nil when
             -- the mats or any one price are not known.
             local function cost(m)
                 if type(m) ~= "table" then return nil end
-                local book = ctx.store:get("account", ProfHelper.PRICES_PATH)
-                book = type(book) == "table" and book or nil
+                local book = prices()
                 local function info(item) return read("itemInfo", item) end
                 local total = 0
                 for item, n in pairs(m) do
@@ -355,7 +408,7 @@ function ProfHelper.Declare(k)
                             local named = type(r.name) == "string"
                             rows[#rows + 1] = { key = named and r.name or r.id, id = r.id,
                                 name = named and r.name or ("recipe " .. r.id),
-                                difficulty = r.difficulty, mats = mats(r.id), icon = r.icon }
+                                difficulty = r.difficulty, mats = mats(r.id), icon = r.icon, makes = makes(r.id) }
                         end
                     end
                     return { profession = w.profession, skill = w.skill, max = w.max, rows = rows }
@@ -370,10 +423,11 @@ function ProfHelper.Declare(k)
                 for _, r in ipairs(w.rows) do
                     if type(r) == "table" and type(r.name) == "string" and type(r.index) == "number" then
                         local sc = read("tradeSkillSchematic", r.index)
-                        local m
+                        local m, made
                         if type(sc) == "table" and not sc.partial and type(sc.mats) == "table" then m = sc.mats end
+                        if type(sc) == "table" then made = sc.makes end
                         rows[#rows + 1] = { key = r.name, name = r.name, difficulty = r.difficulty, mats = m,
-                            index = r.index }
+                            index = r.index, makes = made }
                     end
                 end
                 return { profession = w.name, skill = w.skill, max = w.max, rows = rows }
@@ -396,10 +450,28 @@ function ProfHelper.Declare(k)
                     end
                     return have
                 end })
+                -- Lead section 340 item 2: each mat by its name, and bought
+                -- where a merchant price for it was seen. A mat with neither
+                -- still reads "item N" and "source unknown".
+                local book = prices() or {}
+                local function info(item) return read("itemInfo", item) end
+                local function name(item)
+                    if item == made then return row.name end
+                    local i = info(item)
+                    if type(i) == "table" and type(i.name) == "string" and i.name ~= "" then return i.name end
+                    return nil
+                end
+                local sources = {}
+                for item in pairs(row.mats) do
+                    local found = ns.PriceLookup.Find(item, info, book)
+                    if type(found) == "table" and type(found.buy) == "table" and type(found.buy.unit) == "number" then
+                        sources[item] = { vendor = true }
+                    end
+                end
                 local hint = ns.CraftHint.Build({ recipe = key, count = count }, {
                     recipes = { [key] = { makes = made, yield = 1, mats = row.mats } },
-                    names = { [made] = row.name },
-                    snapshot = snapshot, book = {}, sources = {}, useBank = false,
+                    names = name,
+                    snapshot = snapshot, book = book, sources = sources, useBank = false,
                 })
                 if type(hint) ~= "table" or hint.ok ~= true or type(hint.lines) ~= "table" then return end
                 for _, line in ipairs(hint.lines) do
@@ -459,12 +531,26 @@ function ProfHelper.Declare(k)
                 advisor.Remove(id)
             end
 
+            -- Section 341: the helper opens collapsed. The player's fold is
+            -- kept for the session, not saved.
+            local folded = true
+            -- Where the helper stands under the profession window; false:
+            -- asked and none. Asked once, at the first draw: the kit places
+            -- and sizes a window only when it is first made.
+            local dock
             local act
             local function draw()
                 if not host then return end
+                if dock == nil then
+                    dock = false
+                    if type(ns.CraftBar) == "table" and type(ns.CraftBar.Slot) == "function" then
+                        dock = ns.CraftBar.Slot(client, "goal") or false
+                    end
+                end
                 window = readWindow()
                 if not window then
-                    model = { reading = true }
+                    model = { reading = true, folded = folded }
+                    if dock then model.dock = dock end
                     host.draw(ProfHelper.View(model, act), { { kind = "info", text = ProfHelper.READING } }, act)
                     return
                 end
@@ -472,7 +558,7 @@ function ProfHelper.Declare(k)
                 local rows, colours = {}, {}
                 for _, r in ipairs(window.rows) do
                     rows[#rows + 1] = { key = r.key, name = r.name, difficulty = r.difficulty,
-                        cost = cost(r.mats), mats = r.mats, index = r.index, icon = r.icon }
+                        cost = cost(r.mats), mats = r.mats, index = r.index, icon = r.icon, makes = r.makes }
                     colours[#colours + 1] = { key = r.key, difficulty = r.difficulty }
                 end
                 local seen = ctx.store:table("char", ProfHelper.COLORS_PATH)
@@ -501,7 +587,8 @@ function ProfHelper.Declare(k)
 
                 local ranked = U.Rank(rows)
                 local shown = { profession = window.profession, skill = skill, max = max, state = state,
-                    recipes = {}, notes = {} }
+                    recipes = {}, notes = {}, folded = folded }
+                if dock then shown.dock = dock end
                 if type(goal) == "number" then shown.goal = goal end
                 if #ranked == 0 then
                     out[#out + 1] = { kind = "info", text = ProfHelper.NONE }
@@ -532,7 +619,7 @@ function ProfHelper.Declare(k)
                             or ProfHelper.ROW_NOCOST:format(r.name, word)
                         out[#out + 1] = { kind = "info", text = text }
                         shown.recipes[#shown.recipes + 1] = { name = r.name, chance = r.chance,
-                            difficulty = r.difficulty, cost = r.cost, icon = r.icon }
+                            difficulty = r.difficulty, cost = r.cost, icon = r.icon, quality = quality(r.makes) }
                     end
                     local count = 1
                     if state and not state.overCap and state.need > 0 then count = state.need end
@@ -551,6 +638,12 @@ function ProfHelper.Declare(k)
             -- The player typed a goal: kept per profession on the character;
             -- zero clears it. Nothing else is asked of the game.
             act = function(key, value)
+                -- Folding changes the look only.
+                if key == "fold" then
+                    folded = value == true
+                    draw()
+                    return
+                end
                 if key ~= "goal" or not window or type(value) ~= "number" then return end
                 local g = goals()
                 if type(g) ~= "table" then return end

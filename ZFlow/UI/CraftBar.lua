@@ -44,16 +44,124 @@ CraftBar.TITLE = "Craft bar"
 CraftBar.NO_RECIPES = "You know no recipe in this window."
 CraftBar.NO_RECIPES_HOW = "Learn one at your profession trainer, then open this window again."
 
+-- Lead sections 340 item 2 and 341: the bar and the skill-up helper stand
+-- under the profession window, the list at its bottom left and the goal at
+-- its bottom right, as the old add-on stood. Pure: the rectangle and the
+-- screen are handed in.
+-- The game's profession windows by their global names, classic then modern.
+-- First guesses, not seen in game (both are in Diag.NAMES): only their
+-- place is read (client.frameRect), nothing of theirs is changed.
+CraftBar.DOCK_FRAMES = { "TradeSkillFrame", "ProfessionsFrame" }
+-- The gap between the profession window, the two windows and the screen's
+-- bottom edge; the least room under the profession window worth a dock; and
+-- what a docked window's title, header, heading and first line take, so
+-- the rest is the scroll's. First guesses.
+CraftBar.DOCK_GAP = 8
+CraftBar.DOCK_MIN = 90
+CraftBar.DOCK_HEAD = 96
+CraftBar.DOCK_SCROLL_MIN = 40
+CraftBar.LIST = "Craft list"
+CraftBar.LIST_FOLDED = "Craft list (click to open)"
+
+local function isSide(n)
+    return type(n) == "number" and n == n and n > -math.huge and n < math.huge
+end
+
+-- CraftBar.Dock(rect, screenWidth, screenHeight)
+--   rect  the profession window as client.frameRect gives it: { l, r, b, t }
+--   -> { list = { point, height }, goal = { point, height } }; one of the
+--      two is left out when it would stand past the screen's right edge.
+--      nil when the rectangle or the screen is not read, or there is too
+--      little room under the window.
+-- A point is { "TOPLEFT", "BOTTOMLEFT", x, y }: the kit window's top left
+-- corner, from the screen's bottom left. A height is the room under the
+-- profession window, never more than the window's own.
+function CraftBar.Dock(rect, screenWidth, screenHeight)
+    if type(rect) ~= "table" or not isSide(rect.l) or not isSide(rect.r) or not isSide(rect.b)
+        or not isSide(rect.t) then
+        return nil
+    end
+    if not isSide(screenWidth) or not isSide(screenHeight) or screenWidth <= 0 or screenHeight <= 0 then
+        return nil
+    end
+    local gap = CraftBar.DOCK_GAP
+    local top = rect.b - gap
+    local room = top - gap
+    if room < CraftBar.DOCK_MIN then return nil end
+    local H = ns.ProfHelper
+    local goalWidth, goalHeight = CraftBar.KIT_WIDTH, CraftBar.KIT_HEIGHT
+    if type(H) == "table" and isSide(H.KIT_WIDTH) and isSide(H.KIT_HEIGHT) then
+        goalWidth, goalHeight = H.KIT_WIDTH, H.KIT_HEIGHT
+    end
+    local out, any = {}, false
+    if rect.l >= 0 and rect.l + CraftBar.KIT_WIDTH <= screenWidth then
+        out.list = { point = { "TOPLEFT", "BOTTOMLEFT", rect.l, top }, height = math.min(CraftBar.KIT_HEIGHT, room) }
+        any = true
+    end
+    -- The goal's right edge is the profession window's, but never on the list.
+    local x = math.max(rect.r - goalWidth, rect.l + CraftBar.KIT_WIDTH + gap)
+    if x >= 0 and x + goalWidth <= screenWidth then
+        out.goal = { point = { "TOPLEFT", "BOTTOMLEFT", x, top }, height = math.min(goalHeight, room) }
+        any = true
+    end
+    if not any then return nil end
+    return out
+end
+
+-- The place of one of the two ("list" or "goal") under the profession
+-- window that is up now, or nil. Reads only.
+function CraftBar.Slot(client, which)
+    if type(client) ~= "table" or type(client.frameRect) ~= "function" or type(client.screen) ~= "function" then
+        return nil
+    end
+    local okS, sw, sh = pcall(client.screen)
+    if not okS then return nil end
+    for _, name in ipairs(CraftBar.DOCK_FRAMES) do
+        local okR, rect = pcall(client.frameRect, name)
+        if okR and type(rect) == "table" then
+            local d = CraftBar.Dock(rect, sw, sh)
+            if d == nil then return nil end
+            return d[which]
+        end
+    end
+    return nil
+end
+
+-- Puts a docked view where its slot says; true when it was. A slot that
+-- does not read leaves the view's own place and size.
+function CraftBar.Place(view, slot)
+    if type(slot) ~= "table" or type(slot.point) ~= "table" or not isSide(slot.height) or slot.height <= 0 then
+        return false
+    end
+    view.point, view.height = slot.point, slot.height
+    return true
+end
+
+-- The list the open body is added to: in a docked (short) window a scroll,
+-- else the window's own children.
+function CraftBar.Body(view, docked)
+    if not docked then return view.children end
+    local body = {}
+    view.children[#view.children + 1] = { kind = "scroll", key = "body", children = body,
+        height = math.max(CraftBar.DOCK_SCROLL_MIN, view.height - CraftBar.DOCK_HEAD) }
+    return body
+end
+
 -- CraftBar.View(model[, act]) -> a kit window spec
---   model  { recipes, running, smelts, status }:
---          recipes  { { id, name, count, difficulty, icon } } the learned
---                   recipes, count the number queued
+--   model  { recipes, running, smelts, status, folded, dock }:
+--          recipes  { { id, name, count, difficulty, icon, quality } } the
+--                   learned recipes, count the number queued, quality the
+--                   item quality of what it makes (0 to 5) or nil
+--          folded   true: collapsed to the heading, the status and, while a
+--                   craft runs, Stop; false: open under a heading that
+--                   folds; nil: open, no heading
+--          dock     a slot of CraftBar.Dock, or nil for the bar's own place
 --          running  a craft the click asked is under way
 --          smelts   the window smelts, so Smelt all is offered
 --          status   why the bar stopped or what it waits for, or nil
 --   act    the bar's own click: act("start"), act("all"), act("goals"),
---          act("clear"), act("count:<id>", n). A button that is off passes
---          nothing on.
+--          act("clear"), act("count:<id>", n), act("fold", true | false). A
+--          button that is off passes nothing on.
 -- The count buttons stand in for a number control the kit does not have
 -- yet (kit ask).
 function CraftBar.View(model, act)
@@ -67,14 +175,31 @@ function CraftBar.View(model, act)
         if type(act) == "function" then act(key, value) end
     end
 
+    local docked = CraftBar.Place(view, model.dock)
     kids[1] = { kind = "header", title = CraftBar.TITLE }
+    local folded = model.folded == true
+    if type(model.folded) == "boolean" then
+        local heading = CraftBar.LIST
+        if folded then heading = CraftBar.LIST_FOLDED end
+        kids[#kids + 1] = { kind = "section", key = "fold", text = heading, folded = folded,
+            onFold = function(now) click("fold", now == true) end }
+    end
     local status = CraftBar.HINT
     if type(model.status) == "string" and model.status ~= "" then status = model.status end
-    kids[2] = { kind = "row", key = "status", label = status }
+    kids[#kids + 1] = { kind = "row", key = "status", label = status }
+    if folded then
+        -- A craft under way can always be stopped.
+        if running then
+            kids[#kids + 1] = { kind = "button", key = "start", text = "Stop", enabled = true,
+                tooltip = "Stops the craft under way.", onClick = function() click("start") end }
+        end
+        return view
+    end
+    kids = CraftBar.Body(view, docked)
 
     local recipes = model.recipes
     if type(recipes) ~= "table" or #recipes == 0 then
-        kids[3] = { kind = "empty", key = "recipes", text = CraftBar.NO_RECIPES, how = CraftBar.NO_RECIPES_HOW }
+        kids[#kids + 1] = { kind = "empty", key = "recipes", text = CraftBar.NO_RECIPES, how = CraftBar.NO_RECIPES_HOW }
         return view
     end
 
@@ -93,6 +218,11 @@ function CraftBar.View(model, act)
         end
         -- Kit ask: a line colour that is not an item quality (the skill colour).
         if type(colours) == "table" and type(r.difficulty) == "string" then line.color = colours[r.difficulty] end
+        -- The kit colours the line by the quality of what the recipe makes.
+        local quality = r.quality
+        if type(quality) == "number" and quality >= 0 and quality <= 5 and quality == math.floor(quality) then
+            line.quality = quality
+        end
         kids[#kids + 1] = line
         local less, more = not running and count > 0, not running and count < Q.MAX
         kids[#kids + 1] = { kind = "button", key = "less:" .. r.id, text = "-", enabled = less,
@@ -221,6 +351,16 @@ function CraftBar.Declare(k)
                 table.sort(out, function(a, b) return a.item < b.item end)
                 return out
             end
+            -- The item quality (0 to 5) of what a recipe makes, or nil when
+            -- its product or that item is not read.
+            local function quality(id)
+                local sc = read("recipeSchematic", id)
+                if type(sc) ~= "table" or sc.makes == nil then sc = saved(id) end
+                if type(sc) ~= "table" or sc.makes == nil then return nil end
+                local info = read("itemInfo", sc.makes)
+                if type(info) ~= "table" then return nil end
+                return info.quality
+            end
             local function learned()
                 local out = {}
                 for _, r in ipairs(book.recipes) do
@@ -260,15 +400,24 @@ function CraftBar.Declare(k)
                 }
             end
 
+            -- Section 341: the bar opens collapsed. The player's fold is
+            -- kept for the session, not saved.
+            local folded = true
+            -- Where the bar stands under the profession window; false: asked
+            -- and none. Asked once, at the first draw: the kit places and
+            -- sizes a window only when it is first made.
+            local dock
             local act
             local function draw()
                 if not host then return end
+                if dock == nil then dock = CraftBar.Slot(client, "list") or false end
                 local rows = {}
                 local shown = { recipes = {}, running = running, smelts = Q.SMELTS[book.profession] == true,
-                    status = status }
+                    status = status, folded = folded }
+                if dock then shown.dock = dock end
                 for _, r in ipairs(learned()) do
                     shown.recipes[#shown.recipes + 1] = { id = r.id, name = r.name, count = counts[r.id] or 0,
-                        difficulty = r.difficulty, icon = r.icon }
+                        difficulty = r.difficulty, icon = r.icon, quality = quality(r.id) }
                     rows[#rows + 1] = { kind = "number", key = "count:" .. r.id,
                         label = type(r.name) == "string" and r.name or ("recipe " .. r.id),
                         value = counts[r.id] or 0, min = 0, max = Q.MAX, enabled = not running }
@@ -406,6 +555,12 @@ function CraftBar.Declare(k)
             -- The player click. Start goes on with a run that waits for it,
             -- or begins one from the counts.
             act = function(key, value)
+                -- Folding is no craft and drops no run: only the look changes.
+                if key == "fold" then
+                    folded = value == true
+                    draw()
+                    return
+                end
                 if key == "start" then
                     if running then stop("click")
                     elseif q and Q.Current(q) then askRow()

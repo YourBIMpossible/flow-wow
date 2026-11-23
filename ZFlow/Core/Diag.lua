@@ -86,6 +86,9 @@ Diag.NAMES = {
     "GetTradeSkillSubClassFilter", "GetTradeSkillInvSlotFilter",
     "TradeSkillOnlyShowMakeable", "GetTradeSkillItemNameFilter",
     "TradeSkillFrameAvailableFilterCheckButton", "TradeSkillFrameEditBox", "TradeSkillFrameSearchBox",
+    -- Lead section 340 item 2: the profession windows the craft bar and the
+    -- skill-up helper stand under (UI/CraftBar.lua DOCK_FRAMES), first guesses.
+    "TradeSkillFrame", "ProfessionsFrame",
     "C_TradeSkillUI.GetAllRecipeIDs", "GetNumCrafts", "GetCraftInfo",
     "GetNumTrainerServices", "GetTrainerServiceInfo", "GetTrainerServiceCost", "GetTrainerServiceSkillReq",
     "GetMerchantNumItems", "GetMerchantItemInfo", "GetMerchantItemLink", "C_MerchantFrame.GetItemInfo",
