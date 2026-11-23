@@ -235,7 +235,8 @@ local BEFORE = {
     ["rotationQueue.enabled"] = { "account", "bool", true },
     ["ui.intro"] = { "char", "bool", true },
     ["buttons.worldMap"] = { "account", "bool", false },
-    ["buttons.merchant"] = { "account", "bool", false },
+    -- Lead section 294 item 3: on by default (it was false here).
+    ["buttons.merchant"] = { "account", "bool", true },
     ["plateCombo.off"] = { "account", "bool", false },
     ["plateThreat.off"] = { "account", "bool", false },
     ["plateThreat.always"] = { "account", "bool", false },

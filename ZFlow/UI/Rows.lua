@@ -23,7 +23,7 @@ function R.Declare(k)
     if k:Setting({ key = "buttons.worldMap", scope = "account", type = "bool", default = false,
         label = "Button on the world map", group = R.GROUP, synonyms = { "button", "map", "arrow menu" },
         help = "A button on the world map that opens the arrow menu." }) then made = made + 1 end
-    if k:Setting({ key = "buttons.merchant", scope = "account", type = "bool", default = false,
+    if k:Setting({ key = "buttons.merchant", scope = "account", type = "bool", default = true,
         label = "Button on the merchant window", group = R.GROUP, synonyms = { "button", "merchant", "vendor", "window" },
         help = "A button on the merchant window that shows the sell list." }) then made = made + 1 end
     return made

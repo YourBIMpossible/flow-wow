@@ -73,12 +73,26 @@ tests["the rows the features left to the lead can be set and read back"] = funct
     end
 end
 
-tests["the window buttons' settings are rows and start off"] = function(t)
+-- Lead section 294 item 3: the merchant window's button starts on (it was
+-- off: get("buttons.merchant") gave false here); the world map's stays off.
+tests["the window buttons' settings are rows: the world map's starts off, the merchant's on"] = function(t)
     local addon = boot()
     for _, key in ipairs({ "buttons.worldMap", "buttons.merchant" }) do
         t.ok(addon.settings:row(key) ~= nil, key .. " is a row")
-        t.eq(addon.settings:get(key), false, key .. " starts off")
     end
+    t.eq(addon.settings:get("buttons.worldMap"), false, "buttons.worldMap starts off")
+    t.eq(addon.settings:get("buttons.merchant"), true, "buttons.merchant starts on")
+end
+
+tests["a merchant button saved off stays off in the loaded add-on"] = function(t)
+    local c = ns.make.fakeClient({ internal = { feedback = true } })
+    c.setSaved(ns.id.accountDB, { settings = { buttons = { merchant = false } } })
+    c.setWindow("MerchantFrame", { shown = true })
+    local addon = ns.offline.addon(c)
+    c.fire("ADDON_LOADED", ns.id.addon)
+    c.fire("PLAYER_LOGIN")
+    t.eq(addon.settings:get("buttons.merchant"), false, "the saved choice, not the default")
+    t.eq(#c.windowButtons, 0, "no button is made")
 end
 
 tests["a setting no feature reads yet has no switch"] = function(t)
