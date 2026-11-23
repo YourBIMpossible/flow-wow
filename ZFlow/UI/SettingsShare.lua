@@ -75,7 +75,7 @@ S.NAME = "settingsShare"
 S.WORD = "settings"
 S.SETTING = "share.exportScope"
 S.SCOPES = { "all", "account", "char" }
-S.HEADER = "ZFLOW-EXPORT:1"
+S.HEADER = ns.id.bindingHeader .. "-EXPORT:1"   -- the add-on's binding header, read from Core/Identity.lua
 S.END = "END"
 S.MAX_BYTES = 16384
 S.MAX_ITEMS = 600
@@ -88,7 +88,7 @@ S.TYPE_WORD = { bool = "bool", number = "num", choice = "choice" }
 S.WORD_TYPE = { bool = "bool", num = "number", choice = "choice" }
 S.TAKES = { bool = "on or off", number = "a number", choice = "one of its choices" }
 
-S.NOT_EXPORT = "This is not a Z-Flow settings export (it starts with " .. S.HEADER .. "); nothing was read."
+S.NOT_EXPORT = "This is not a " .. ns.id.title .. " settings export (it starts with " .. S.HEADER .. "); nothing was read."
 S.TOO_LONG = "The text is too long (more than " .. S.MAX_BYTES .. " characters); nothing was read."
 S.TOO_MANY = "The text has more than " .. S.MAX_ITEMS .. " parts; nothing was read."
 S.CUT_SHORT = "The text is cut short or changed (its END count does not match); nothing was read."
@@ -112,7 +112,7 @@ S.NO_ENTRY = "The box to paste into could not be made."
 S.NO_WINDOW = "The share window could not be made."
 S.NOTHING = "There is nothing to apply."
 S.CANCELLED = "Nothing was imported."
-S.ASK = "Paste a Z-Flow settings export (Ctrl+V), then press Enter."
+S.ASK = "Paste a " .. ns.id.title .. " settings export (Ctrl+V), then press Enter."
 S.INTRO = "Export: your settings as text to copy. Import: paste such text; you see every change before anything is set."
 S.EXPORT_BUTTON = "Export my settings"
 S.IMPORT_BUTTON = "Import settings"
