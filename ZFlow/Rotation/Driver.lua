@@ -135,6 +135,21 @@ local function roleIn(pack, role)
 end
 
 function D.Read(client, pack, ids, role)
+    -- Lead section 187: the form is asked of the client once for a read,
+    -- and both fields (form, formKnown) come from that one answer.
+    -- The answer is kept only for the other field of the pair, and used
+    -- once: a field asked again asks the client again.
+    local kept
+    local function form(field)
+        if kept ~= nil and kept.field ~= field then
+            local name, known = kept.name, kept.known
+            kept = nil
+            return name, known
+        end
+        local name, known = client.formName()
+        kept = { field = field, name = name, known = known }
+        return name, known
+    end
     return function(field)
         if field == "role" then return roleIn(pack, role) end
         if field == "dead" then return client.dead() end
@@ -151,12 +166,12 @@ function D.Read(client, pack, ids, role)
         end
         if field == "form" then
             if type(client.formName) ~= "function" then return nil end
-            local name = client.formName()
+            local name = form("form")
             return type(name) == "string" and name or nil
         end
         if field == "formKnown" then
             if type(client.formName) ~= "function" then return nil end
-            local name, known = client.formName()
+            local name, known = form("formKnown")
             if known ~= true then return nil end
             if name == nil or type(name) == "string" then return true end
             return nil

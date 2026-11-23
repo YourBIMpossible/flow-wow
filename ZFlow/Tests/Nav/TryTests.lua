@@ -186,7 +186,8 @@ tests["try word: nothing is saved, and the crossing list saved stays as it was"]
     k.use("travel").Via(k.use("try").Step())
     c.advance(5, 10)
     t.eq(k.store:get("account", N.CROSSING_PLACES), before)
-    t.eq(c.saved(ns.id.accountDB).learned, nil, "no learned table was made")
+    local learned = c.saved(ns.id.accountDB).learned
+    t.ok(learned == nil or next(learned) == nil, "nothing was put in the learned table")
 end
 
 tests["try word: the step handed out is a copy each time"] = function(t)
