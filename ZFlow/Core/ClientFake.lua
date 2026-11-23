@@ -167,6 +167,14 @@ function ns.make.fakeClient(opts)
         return { name = r.name, difficulty = r.difficulty, makes = r.makes, yield = r.yield, mats = mats,
                  partial = r.partial }
     end
+    -- N24: the tools one classic row needs, a copy; nil when not set.
+    function c.tradeSkillTools(index)
+        local list = s.tradeTools and s.tradeTools[index]
+        if type(list) ~= "table" then return nil end
+        local out = {}
+        for i, tool in ipairs(list) do out[i] = { name = tool.name, has = tool.has } end
+        return out
+    end
     function c.spell(id)
         if type(id) ~= "number" then return nil end
         local r = s.spells and s.spells[id] or {}
@@ -792,6 +800,12 @@ function ns.make.fakeClient(opts)
     -- true says the rows are every learned recipe (the real client does not
     -- say so yet). Left out: unknown, and RecipeBook drops nothing.
     function c.setTradeSkillRows(r) s.tradeRows = r end
+    -- N24: the tools one classic row needs, { { name =, has = } }; nil: the
+    -- client can not read them.
+    function c.setTradeSkillTools(index, list)
+        s.tradeTools = s.tradeTools or {}
+        s.tradeTools[index] = list
+    end
     -- One spell's answers: { known =, usable =, noPower = }; a field left
     -- out reads as not known.
     function c.setSpell(id, row)

@@ -602,6 +602,38 @@ function ns.make.client(env)
     -- it is left out, never saved as it came.
     local ROW_DIFFICULTY = { optimal = "optimal", medium = "medium", easy = "easy", trivial = "trivial", difficult = "difficult" }
 
+    -- N24 (lead section 274 item 2): the tools a classic recipe row needs,
+    -- GetTradeSkillTools(index), answered in pairs (name, carried):
+    --   { { name =, has = true | false } }, {} when the recipe needs none.
+    -- Carried 1 or true is carried; nothing, 0 or false is not. nil when the
+    -- call is missing or raises, the row is no whole number from 1, a name
+    -- is empty, not text or secret, or a carried answer is any other value.
+    -- Look only. Needs game test: the call and its answer shape on 16001.
+    local function packed(...) return select("#", ...), { ... } end
+    function c.tradeSkillTools(index)
+        if not wholeCount(index) or index < 1 or index == math.huge then return nil end
+        local n, a = packed(call(env.GetTradeSkillTools, index))
+        if a[1] ~= true then return nil end
+        local out = {}
+        for i = 2, n, 2 do
+            local name, carried = a[i], a[i + 1]
+            if name ~= nil or carried ~= nil then
+                if type(name) ~= "string" or hidden(name) or name == "" then return nil end
+                if carried ~= nil and hidden(carried) then return nil end
+                local has
+                if carried == 1 or carried == true then
+                    has = true
+                elseif carried == nil or carried == 0 or carried == false then
+                    has = false
+                else
+                    return nil
+                end
+                out[#out + 1] = { name = name, has = has }
+            end
+        end
+        return out
+    end
+
     -- Section 231 item 1: the fallback for recipeSchematic when the client
     -- has no C_TradeSkillUI.GetRecipeSchematic (not in CLIENT-NAMES-16001).
     -- The classic reads of the open trade skill window, by row index, not
@@ -819,6 +851,16 @@ function ns.make.client(env)
         end
         return out
     end
+    -- N23 (lead section 274 item 2): the profession skill a trainer recipe
+    -- needs, the second answer of GetTrainerServiceSkillReq(i) (the first is
+    -- the skill name); a whole number from 1, else nil and left out of the
+    -- row. Needs game test: the answer order on 16001.
+    local function skillReq(i)
+        local ok, _, skill = call(env.GetTrainerServiceSkillReq, i)
+        local v = wholeOrNil(ok, skill)
+        if v == nil or v < 1 then return nil end
+        return v
+    end
     local function trainerServices()
         local n = wholeOrNil(call(env.GetNumTrainerServices))
         if not n then return nil, trainerFilter() end
@@ -845,6 +887,7 @@ function ns.make.client(env)
                     name = name, rank = text(ok, rank), state = state,
                     cost = wholeOrNil(call(env.GetTrainerServiceCost, i)),
                     level = wholeOrNil(call(env.GetTrainerServiceLevelReq, i)),
+                    skill = skillReq(i),
                 }
             end
         end

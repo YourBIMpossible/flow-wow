@@ -77,6 +77,8 @@ Diag.NAMES = {
     "GetTradeSkillReagentInfo", "GetTradeSkillItemLink", "GetTradeSkillRecipeLink",
     -- Section 231 item 1: the rest of the classic schematic read.
     "GetTradeSkillNumMade", "GetTradeSkillReagentItemLink",
+    -- Lead section 274 item 2 (N24): the tools a classic recipe needs.
+    "GetTradeSkillTools",
     -- Section 245 (RB2-2): whether the classic window hides recipe rows
     -- (client.tradeSkillRows). The two filter reads are used, first guesses;
     -- the rest are candidates for the "have materials" box and the name
@@ -462,6 +464,9 @@ function Diag.Collect(k, why)
     -- Section 231 item 1: the classic schematic read for row 2, all of it.
     S.tradeSkill2Schematic = shape(true, type(client.tradeSkillSchematic) == "function"
         and client.tradeSkillSchematic(2) or nil)
+    -- Lead section 274 item 2 (N24): the tools row 2 needs, as the helper reads them.
+    S.tradeSkill2Tools = shape(true, type(client.tradeSkillTools) == "function"
+        and client.tradeSkillTools(2) or nil)
     -- Section 233 (GR2-1): the classic window's rows, as the recipe book walks them.
     S.tradeSkillRows = shape(true, type(client.tradeSkillRows) == "function"
         and client.tradeSkillRows() or nil)
