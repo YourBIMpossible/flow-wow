@@ -21,7 +21,7 @@ local _, ns = ...
 --   * Mend Pet: it needs the pet's health, and no pet health is read (D1);
 --   * ammunition: no read for it yet; a shot without ammunition is refused
 --     by the game (its usable / noPower answer), and that is all used here;
---   * traps, Feign Death, Disengage, Concussive Shot, Scatter Shot, Aimed
+--   * traps, Disengage, Concussive Shot, Scatter Shot, Aimed
 --     Shot and Rapid Fire as advice: no rule asks for them yet (situational
 --     or talents; the spells are listed, and on the key row where they fit);
 --   * starting a melee swing: there is no "Attack" row yet, so the engage
@@ -207,6 +207,7 @@ local spells = {
     ["Arcane Shot"]          = sp(6,  { "DPS" }),
     ["Hunter's Mark"]        = sp(6,  { "DPS" }),
     ["Concussive Shot"]      = sp(8,  { "Control" }),
+    ["Scare Beast"]          = sp(14, { "Control" }),
     ["Aspect of the Hawk"]   = sp(10, { "DPS" }),
     ["Call Pet"]             = sp(10, { "Pet" }, nil, "from the class quest that teaches taming"),
     ["Revive Pet"]           = sp(10, { "Pet" }, nil, "from the class quest that teaches taming"),
@@ -330,6 +331,8 @@ local pack = {
     talentBuilds = {},
 
     options = {
+        crowdControl = { { spell = "Scare Beast", creatures = { beast = true } } },
+        threatDrop = { spell = "Feign Death" },
         -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,
         -- in order: the first you know names your tree (snapshot.tree,
         -- Rotation/Driver.lua). Which spell is a talent of which tree: a first

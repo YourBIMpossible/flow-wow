@@ -232,6 +232,7 @@ local spells = {
     ["Life Tap"]          = sp(6,  { "Mana" }, nil, "trades health for mana: not suggested (no health read)"),
     ["Curse of Agony"]    = sp(8,  { "DPS" }),
     ["Fear"]              = sp(8,  { "Control" }),
+    ["Banish"]            = sp(28, { "Control" }),
     ["Drain Soul"]        = sp(10, { "Utility" }, nil, CHANNEL),
     ["Summon Voidwalker"] = sp(10, { "Survival" }, { "a soul shard" }),
     ["Health Funnel"]     = sp(12, { "Utility" }, nil, CHANNEL),
@@ -349,13 +350,21 @@ local pack = {
         { name = "Affliction levelling build", role = "dps", evidence = GUESS, note = MADE,
           trees = { "Affliction", "Demonology", "Destruction" },
           order = {
-              { "Improved Corruption", 5 }, { "Improved Curse of Agony", 3 }, { "Suppression", 2 },
-              { "Amplify Curse", 1 }, { "Nightfall", 2 }, { "Fel Concentration", 5 }, { "Grim Reach", 2 },
-              { "Siphon Life", 1 }, { "Shadow Mastery", 5 },
+              { "Improved Corruption", 5, why = "Corruption casts faster, then instantly." },
+              { "Improved Curse of Agony", 3, why = "More damage from Curse of Agony." },
+              { "Suppression", 2, why = "Fewer of your affliction spells are resisted." },
+              { "Amplify Curse", 1, why = "Makes your next curse stronger." },
+              { "Nightfall", 2, why = "Your drains sometimes give an instant Shadow Bolt." },
+              { "Fel Concentration", 5, why = "Damage taken pushes back your drains less." },
+              { "Grim Reach", 2, why = "Your affliction spells reach farther." },
+              { "Siphon Life", 1, why = "A damage over time that heals you." },
+              { "Shadow Mastery", 5, why = "More damage from every shadow spell." },
           } },
     },
 
     options = {
+        crowdControl = { { spell = "Banish", creatures = { demon = true, elemental = true } } },
+        threatDrop = { none = "no warlock spell drops threat at once" },
         -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,
         -- in order: the first you know names your tree (snapshot.tree,
         -- Rotation/Driver.lua). Which spell is a talent of which tree: a first

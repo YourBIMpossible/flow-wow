@@ -287,6 +287,7 @@ local spells = {
     ["Hibernate"]             = sp(18, { "Control" }),
     ["Cat Form"]              = sp(20, { "DPS" }),
     ["Claw"]                  = sp(20, { "DPS" }, "Cat Form"),
+    ["Cower"]                 = sp(28, { "Survival" }, "Cat Form"),
     ["Rake"]                  = sp(20, { "DPS" }, "Cat Form"),
     ["Prowl"]                 = sp(20, { "Control" }, "Cat Form"),
     ["Starfire"]              = sp(20, { "DPS" }),
@@ -470,6 +471,8 @@ local pack = {
     },
 
     options = {
+        crowdControl = { { spell = "Hibernate", creatures = { beast = true, dragonkin = true } } },
+        threatDrop = { spell = "Cower", forms = { ["Cat Form"] = true } },
         -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,
         -- in order: the first you know names your tree (snapshot.tree,
         -- Rotation/Driver.lua). Which spell is a talent of which tree: a first

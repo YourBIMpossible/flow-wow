@@ -146,6 +146,7 @@ local spells = {
     ["Gouge"]           = sp(6,  { "Control" }),
     ["Evasion"]         = sp(8,  { "Survival" }),
     ["Sap"]             = sp(10, { "Control" }, "from stealth, out of a fight"),
+    ["Feint"]           = sp(16, { "Survival" }),
     ["Slice and Dice"]  = sp(10, { "DPS" }, "a finisher"),
     ["Sprint"]          = sp(10, { "Survival" }),
     ["Kick"]            = sp(12, { "Control" }),
@@ -262,6 +263,8 @@ local pack = {
     talentBuilds = {},
 
     options = {
+        crowdControl = { none = "Sap works only from stealth on an enemy not yet in a fight, and Gouge holds your own target only" },
+        threatDrop = { spell = "Feint" },
         -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,
         -- in order: the first you know names your tree (snapshot.tree,
         -- Rotation/Driver.lua). Which spell is a talent of which tree: a first
