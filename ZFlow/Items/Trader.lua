@@ -10,19 +10,28 @@ local _, ns = ...
 -- delivered for your own search are judged (at most 50), so a deal further
 -- down a long list is not seen.
 --
---   usual, n = Trader.Usual(h[, min])       the middle price of the visits
+-- A resell deal is judged on a commodity search only: an item search's rows
+-- are one kind of item among many (their level, their stats), and one usual
+-- price for its itemID would mix them (R4, lead section 179). A vendor deal
+-- is judged on both kinds of search. The usual price is made from visits
+-- older than AuctionLog.SAME_LOOK, so the search being judged is not one of
+-- them (R1).
+--
+--   usual, n = Trader.Usual(h[, min[, before]])   the middle price of the
+--                                            visits, those at `before` or older
 --   agg      = Trader.Listing(agg, count, buyout, vendor, usual)
 --   rows     = Trader.Deals(aggs[, name, ok, minGain])
 --   text     = Trader.Line(row, coin)
 --   text     = Trader.Plain(text)           colour marks taken off
 --   lines    = Trader.TipLines(row, coin)   the advice for one deal
---   text, r, g, b = Trader.TipLine(row, coin)   one line for an item tooltip
+--   text, r, g, b = Trader.TipLine(row, coin[, now])   one line for an item
+--                                            tooltip; with now, how long ago
 --   api      = Trader.Declare(k, diag)
 --     api.deals()      this session's deals, the larger gain first
 --     api.followed()   true once your searches are being followed
 --
 -- A deal row: { id, name, kind = "vendor" | "resell", qty, cost, gain, limit,
--- usual (resell only) }. Money is copper. The session's list is memory only:
+-- usual (resell only), at (when the search showed it) }. Money is copper. The session's list is memory only:
 -- nothing is saved.
 
 ns.Trader = {}
@@ -41,9 +50,14 @@ T.COLOUR = { vendor = { 0.25, 1, 0.25 }, resell = { 1, 0.82, 0 } }
 
 -- The usual price: the middle one of the prices seen on your visits, kept
 -- as h = { time, price, time, price ... }. nil until there are `min` visits.
-function T.Usual(h, min)
+-- With `before`, a visit later than it is left out.
+function T.Usual(h, min, before)
     local prices = {}
-    for i = 2, #(h or {}), 2 do prices[#prices + 1] = h[i] end
+    for i = 2, #(h or {}), 2 do
+        if type(before) ~= "number" or (type(h[i - 1]) == "number" and h[i - 1] <= before) then
+            prices[#prices + 1] = h[i]
+        end
+    end
     if #prices < (min or T.MIN_LOOKS) then return nil, #prices end
     table.sort(prices)
     local mid = math.floor((#prices + 1) / 2)
@@ -124,18 +138,24 @@ function T.TipLines(row, coin)
 end
 
 -- The one line an item's tooltip gets while it is in the session's list,
--- with its colour; nil when there is nothing to say.
-function T.TipLine(row, coin)
+-- with its colour; nil when there is nothing to say. Given now, it says how
+-- long ago the search showed it, in the auction line's words (R2).
+function T.TipLine(row, coin, now)
     if type(row) ~= "table" or type(row.qty) ~= "number" or row.qty <= 0 or type(row.cost) ~= "number" then
         return nil
     end
     local each = coin(row.cost / row.qty)
+    local seen = ""
+    if type(now) == "number" and type(row.at) == "number" and now >= row.at then
+        seen = " (seen " .. ns.PriceChart.Span(now - row.at) .. " ago)"
+    end
     if row.kind == "vendor" then
         local c = T.COLOUR.vendor
-        return string.format("Deal: listed at %s each, under a vendor's %s", each, coin(row.limit)), c[1], c[2], c[3]
+        return string.format("Deal: listed at %s each, under a vendor's %s%s", each, coin(row.limit), seen),
+            c[1], c[2], c[3]
     end
     local c = T.COLOUR.resell
-    return string.format("Deal: listed at %s each, usually %s", each, coin(row.usual)), c[1], c[2], c[3]
+    return string.format("Deal: listed at %s each, usually %s%s", each, coin(row.usual), seen), c[1], c[2], c[3]
 end
 
 function T.Declare(k, diag)
@@ -177,24 +197,27 @@ function T.Declare(k, diag)
         return ok and yes == true
     end
 
-    -- The usual price here, from your own recorded looks (Items/AuctionLog).
+    -- The usual price here, from your own recorded looks (Items/AuctionLog):
+    -- the realm table AuctionLog keeps this session, not a read a search.
     local function usualFor(id)
-        local client = ctx.client
-        local rk = ns.AuctionLog.RealmKey(client.realm(), client.faction())
-        local saved = rk and ctx.store:get("account", ns.AuctionLog.PATH .. "." .. rk)
+        local rk = ns.AuctionLog.Key(ctx.client)
+        local saved = rk and ns.AuctionLog.Kept(ctx.store).realm(rk)
         local e = type(saved) == "table" and saved[id] or nil
         if type(e) ~= "table" or type(e.h) ~= "table" then return nil end
-        return (T.Usual(e.h))
+        local now = ctx.client.clock()
+        if type(now) ~= "number" then return nil end
+        return (T.Usual(e.h, nil, now - ns.AuctionLog.SAME_LOOK))
     end
 
-    -- One of your searches answered: rows = { { unit =, qty = } ... }. The
-    -- item's place in the list is made again from these rows alone. A row
-    -- without a count is passed over: how many is not guessed.
-    local function judge(id, rows)
+    -- One of your searches answered: rows = { { unit =, qty = } ... }, kind
+    -- "commodity" or "item". The item's place in the list is made again from
+    -- these rows alone. A row without a count is passed over: how many is
+    -- not guessed. A usual price is used for a commodity search only.
+    local function judge(id, rows, kind)
         if type(id) ~= "number" or type(rows) ~= "table" then return end
         local item = entry(id)
         local vendor = type(item) == "table" and type(item.sellPrice) == "number" and item.sellPrice or nil
-        local usual = usualFor(id)
+        local usual = kind == "commodity" and usualFor(id) or nil
         local agg
         for i = 1, #rows do
             local row = rows[i]
@@ -205,6 +228,7 @@ function T.Declare(k, diag)
         local found = agg and T.Deals({ [id] = agg }, function()
             return type(item) == "table" and type(item.name) == "string" and item.name or nil
         end, candidate)[1] or nil
+        if found then found.at = ctx.client.clock() end
         local was = deals[id]
         deals[id] = found
         if found and not was and not off() then
@@ -255,14 +279,14 @@ function T.Declare(k, diag)
             ctx = c
             local client = c.client
             if type(client.watchAuctionRows) == "function" then
-                followed = client.watchAuctionRows(function(id, rows) pcall(judge, id, rows) end) == true
+                followed = client.watchAuctionRows(function(id, rows, kind) pcall(judge, id, rows, kind) end) == true
             end
             if type(client.onItemTooltip) == "function" then
                 cancel = client.onItemTooltip(function(link, add)
                     if type(add) ~= "function" or off() then return end
                     local ok, text, r, g, b = pcall(function()
                         local id = ns.Items.Id(link)
-                        return T.TipLine(id ~= nil and deals[id] or nil, coin)
+                        return T.TipLine(id ~= nil and deals[id] or nil, coin, ctx.client.clock())
                     end)
                     if ok and type(text) == "string" then add(text, r, g, b) end
                 end)

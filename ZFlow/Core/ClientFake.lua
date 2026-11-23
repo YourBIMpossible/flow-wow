@@ -1386,16 +1386,65 @@ function ns.make.fakeClient(opts)
     end
 
     -- S2 trader. As the real client's: watchAuctionRows(fn) -> true, or nil
-    -- after setAuctionHouse(false); auctionRows(id, rows) plays one of the
-    -- player's searches answering with rows = { { unit =, qty = } ... }.
+    -- after setAuctionHouse(false); auctionRows(id, rows[, kind]) plays one
+    -- of the player's searches answering with rows = { { unit =, qty = } ... }.
+    -- kind is "commodity" (when not given) or "item". A watcher's error
+    -- stays here, as in the real client (R7).
     function c.watchAuctionRows(fn)
         if s.noAuctionHouse or type(fn) ~= "function" then return nil end
         s.auctionRowsFns = s.auctionRowsFns or {}
         table.insert(s.auctionRowsFns, fn)
         return true
     end
-    function c.auctionRows(id, rows)
-        for _, fn in ipairs({ unpack(s.auctionRowsFns or {}) }) do fn(id, rows) end
+    function c.auctionRows(id, rows, kind)
+        kind = kind or "commodity"
+        for _, fn in ipairs({ unpack(s.auctionRowsFns or {}) }) do pcall(fn, id, rows, kind) end
+    end
+    -- S3 slice 3. As the real client's: globalText(name),
+    -- onSystemMessage(fn) -> cancel, auctionOutcome(line).
+    -- setGlobalText(name, text) sets one of the client's texts;
+    -- systemMessage(text) plays one CHAT_MSG_SYSTEM line: a non-text line is
+    -- dropped and a listener's error stays here, as in the real client.
+    function c.setGlobalText(name, text)
+        s.globalTexts = s.globalTexts or {}
+        s.globalTexts[name] = text
+    end
+    function c.globalText(name)
+        local v = s.globalTexts and s.globalTexts[name]
+        if type(v) ~= "string" or v == "" then return nil end
+        return v
+    end
+    function c.onSystemMessage(fn)
+        if type(fn) ~= "function" then return nil end
+        s.systemFns = s.systemFns or {}
+        table.insert(s.systemFns, fn)
+        return function()
+            for i = #s.systemFns, 1, -1 do
+                if s.systemFns[i] == fn then table.remove(s.systemFns, i) end
+            end
+        end
+    end
+    function c.systemMessage(text)
+        if type(text) ~= "string" then return end
+        for _, fn in ipairs({ unpack(s.systemFns or {}) }) do pcall(fn, text) end
+    end
+    -- A text with one %s and no other % as a whole-line pattern.
+    local function outcomePattern(fmt)
+        if type(fmt) ~= "string" then return nil end
+        local a, b = fmt:find("%s", 1, true)
+        if not a then return nil end
+        local head, tail = fmt:sub(1, a - 1), fmt:sub(b + 1)
+        if head:find("%", 1, true) or tail:find("%", 1, true) then return nil end
+        return "^" .. head:gsub("%W", "%%%0") .. "(.+)" .. tail:gsub("%W", "%%%0") .. "$"
+    end
+    function c.auctionOutcome(line)
+        if type(line) ~= "string" or line == "" then return nil end
+        for _, o in ipairs({ { "sold", "ERR_AUCTION_SOLD_S" }, { "expired", "ERR_AUCTION_EXPIRED_S" } }) do
+            local pattern = outcomePattern(c.globalText(o[2]))
+            local name = pattern and line:match(pattern)
+            if name then return o[1], name end
+        end
+        return nil
     end
 
     -- S8 nameplate threat and combo points. As the real client's; every
