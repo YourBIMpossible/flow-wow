@@ -27,7 +27,8 @@ local _, ns = ...
 --   targetNear                            true when the target is within a few yards
 --   targetMelee, targetOnYou, hittingYou  target has no mana; target is on you; it hit you just now
 --   attacking, canStartAttack             you are swinging; the key can start a swing
---   engageGaveUp                          starting the attack was tried and did not take
+--   engageGaveUp                          your target is on the no-auto-attack list, or its name
+--                                         was not read with that list kept (Driver.lua gaveUpOf)
 --   loc                                   the loss-of-control type holding you ("ROOT"), or nil
 --   lowHealth, hurt                       the game's warning; seconds of hits (estimate)
 --   buffs         { [name] = secondsLeft or true }   on you
