@@ -176,12 +176,86 @@ tests["kit probe: a probe that raises is a problem, saves nothing and is not ask
     t.eq(c.kitProbeCalls, 1)
 end
 
-tests["kit probe: a client with no such read saves nothing and raises nothing"] = function(t)
+tests["kit probe: a client with no such read saves nothing, raises nothing, and says why"] = function(t)
     local c, k, api = start(t, { noProbe = true })
     if c == nil then return end
     t.eq(kept(c), nil)
     t.eq(api.result(), nil)
-    t.eq(k.problems:count(ns.KitProbe.KIND), 0)
+    t.eq(k.problems:count(ns.KitProbe.KIND), 1, "no data is never silent: one problem says why")
+end
+
+tests["kit probe: a journal re-ask that fails says why, and the old answer is not left standing"] = function(t)
+    local c, k = start(t)
+    if c == nil then return end
+    t.eq(kept(c).rows.EJ_LOADED, "no")
+    local before = k.problems:count(ns.KitProbe.KIND)
+    c.setKitProbeCombat(true)
+    c.setLoaded("Blizzard_EncounterJournal", true)
+    c.fire("ADDON_LOADED", "Blizzard_EncounterJournal")
+    t.eq(kept(c).rows.EJ_LOADED, ns.KitProbe.NOT_KNOWN, "a re-ask in a fight: not known, not the old no")
+    t.eq(k.problems:count(ns.KitProbe.KIND), before + 1, "and one problem says the re-ask was refused")
+    t.eq(kept(c).rows.T2, "works", "the other answers are kept")
+end
+
+-- The REAL client's kitProbe (Core/Client.lua), on a hand-built client
+-- table: a template counts only when the frame handed back carries one of
+-- the row's proof fields; every frame made to ask with is unnamed, never
+-- shown, and let go afterwards; no add-on is loaded.
+tests["kit probe: the real client tells a template from a plain frame, and lets every frame go"] = function(t)
+    local made, loads = {}, 0
+    local env = { UIParent = {} }
+    env.InCombatLockdown = function() return false end
+    env.IsAddOnLoaded = function() return false end
+    env.LoadAddOn = function() loads = loads + 1 end
+    env.GameTooltip = {}
+    env.CreateFrame = function(kind, name, parent, template)
+        if template == "MissingTemplate" then error("Couldn't find inherited node: MissingTemplate", 0) end
+        local f = { kind = kind, name = name, parent = parent, template = template, shown = false, shows = 0 }
+        function f:Hide() self.shown = false end
+        function f:Show()
+            self.shown = true
+            self.shows = self.shows + 1
+        end
+        function f:ClearAllPoints() end
+        function f:SetParent(p)
+            self.parent = p
+            self.freed = p == nil
+        end
+        if template == "RealTemplate" then f.CloseButton = {} end
+        made[#made + 1] = f
+        return f
+    end
+    local c = ns.make.client(env)
+    t.eq(type(c.kitProbe), "function", "the client answers kitProbe")
+    if type(c.kitProbe) ~= "function" then return end
+    local rows = {
+        { id = "A", kind = "template", name = "RealTemplate", frameType = "Frame", proof = { "CloseButton" } },
+        { id = "B", kind = "template", name = "PlainTemplate", frameType = "Frame", proof = { "CloseButton" } },
+        { id = "C", kind = "template", name = "MissingTemplate", frameType = "Frame", proof = { "CloseButton" } },
+        { id = "D", kind = "global", name = "GameTooltip" },
+        { id = "E", kind = "global", name = "C_Texture.GetAtlasInfo" },
+    }
+    local out, why = c.kitProbe(rows)
+    t.ok(type(out) == "table", "an answer: " .. tostring(why))
+    if type(out) ~= "table" then return end
+    t.eq(out.A, "works", "the frame carries a field the template is known by")
+    t.eq(out.B, "made, not confirmed", "a frame with none of them is not counted as the template")
+    t.ok(type(out.C) == "string" and out.C:find("MissingTemplate", 1, true) ~= nil, "a raise is the row's text: " .. tostring(out.C))
+    t.eq({ out.D, out.E }, { "works (table)", "nil" }, "client names")
+    t.eq(out.EJ_LOADED, "no")
+    t.eq(loads, 0, "no add-on is loaded")
+    t.eq(#made, 3, "one holder and the two frames the client made; the missing one made none")
+    for i, f in ipairs(made) do
+        t.eq(f.name, nil, "frame " .. i .. " is unnamed: no global is made")
+        t.eq({ f.shows, f.shown, f.freed }, { 0, false, true }, "frame " .. i .. ": never shown, hidden and let go")
+    end
+    made = {}
+    out = c.kitProbe({})
+    t.eq({ type(out) == "table" and out.EJ_LOADED, #made }, { "no", 0 }, "with no rows no frame is made at all")
+    env.InCombatLockdown = function() return true end
+    local none, reason = c.kitProbe(rows)
+    t.eq(none, nil, "nothing is asked in a fight")
+    t.eq(reason, "combat")
 end
 
 tests["kit probe: the journal loading later re-records only whether it is loaded"] = function(t)
@@ -203,7 +277,7 @@ tests["kit probe: Works says true, false, or nil for a row not asked yet"] = fun
     t.ok(ok, "ns.KitProbe answers Works")
     if not ok then return end
     local record = { rows = { T2 = "works", G1 = "works (table)", T56 = "works (as Button)", T5 = "no such template",
-        A1 = "set, not confirmed", A2 = "no atlas info", G4 = "nil", X1 = "workshop", EJ_LOADED = "no" } }
+        A1 = "made, not confirmed", A2 = "no atlas info", G4 = "nil", X1 = "workshop", EJ_LOADED = "no" } }
     t.eq(P.Works(record, "T2"), true)
     t.eq(P.Works(record, "G1"), true, "a client name that is there")
     t.eq(P.Works(record, "T56"), true, "made as its second kind")
