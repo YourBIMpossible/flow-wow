@@ -73,6 +73,7 @@ Gear\RewardMark.lua
 Gear\MerchantShow.lua
 Gear\RollHint.lua
 Gear\Sets.lua
+Gear\SetIcons.lua
 Rotation\Pack.lua
 Rotation\Snapshot.lua
 Rotation\BuffFood.lua
@@ -153,6 +154,7 @@ UI\WindowButtons.lua
 UI\ArrowMenu.lua
 UI\Feedback.lua
 UI\MacroIcons.lua
+UI\GameOptions.lua
 UI\SellList.lua
 UI\BankList.lua
 UI\CraftBar.lua

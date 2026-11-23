@@ -88,6 +88,7 @@ return {
         "Gear/MerchantShow.lua",
         "Gear/RollHint.lua",
         "Gear/Sets.lua",
+        "Gear/SetIcons.lua",
 
         -- Rotation and classes
         "Rotation/Pack.lua",
@@ -174,6 +175,7 @@ return {
         "UI/ArrowMenu.lua",
         "UI/Feedback.lua",
         "UI/MacroIcons.lua",
+        "UI/GameOptions.lua",
         "UI/SellList.lua",
         "UI/BankList.lua",
         "UI/CraftBar.lua",

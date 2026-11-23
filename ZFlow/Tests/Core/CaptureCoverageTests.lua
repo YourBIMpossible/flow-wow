@@ -37,6 +37,9 @@ local KIND = {
              "markRewardChoice",
              -- S21: the Need or Greed value on a loot roll's item (Gear/RollHint.lua).
              "rollValue",
+             -- S19 (P-SETS branch 2): the set icon row; a click asks only
+             -- what the caller's act does.
+             "iconRow",
              -- S20: the per-role badges on the merchant's item buttons.
              "markMerchantSpecs" },
     tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "savedMadeHere", "slash",
@@ -47,7 +50,13 @@ local KIND = {
     -- N57 (lead section 249 item 2): the binding writes, each only on the
     -- player's own key press on the settings page, out of combat.
     act = { "restartSound", "soundWays", "craftRecipe", "stopCraftRepeat",
-            "setBindingClick", "clearBinding", "saveBindings", "overrideBindingClick", "clearOverrideKeys" },
+            "setBindingClick", "clearBinding", "saveBindings", "overrideBindingClick", "clearOverrideKeys",
+            -- S19 (P-SETS branch 2): one piece put on, only on the player's
+            -- own click on a set icon, out of combat.
+            "equipItem",
+            -- G59 (lead section 226, ACTS): the game option writes, each on
+            -- the player own choice only.
+            "setGameSetting", "setCombatLogFile" },
     -- Reads a chat line handed in, not the client.
     -- lootLine (N55): the item of anyone's loot line, never the looter.
     parse = { "ownLoot", "auctionOutcome", "lootLine" },
@@ -112,6 +121,10 @@ local READS = {
     -- instance; read by UI/BossLoot.lua only. The names they ask
     -- (IsInInstance, GetInstanceInfo and the rest) are in Diag.NAMES.
     bossUnit = false, instance = false,
+    -- G59: a game setting by name and the combat log file, read by
+    -- UI/GameOptions.lua only, on the player choice. The names they ask
+    -- (C_CVar.GetCVar, GetCVar, LoggingCombat) are in Diag.NAMES.
+    gameSetting = false, combatLogFile = false,
 
     -- N59 (the info bar): read by UI/InfoBar.lua only. The names they ask
     -- (UnitXP, GetWatchedFactionInfo and the rest) are in Diag.NAMES.

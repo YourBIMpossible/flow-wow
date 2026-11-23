@@ -2127,6 +2127,40 @@ function ns.make.fakeClient(opts)
         return true
     end
 
+    -- G59: the game settings by name. c.putGameSetting seeds a value (not a write);
+    -- c.gameSettingLimit(name, most) makes the game keep its value on a write above
+    -- most (the call still answers true); c.setGameSettingFails(why) makes every
+    -- write answer nil, why. Every write asked for is in c.gameSettingWrites as
+    -- { name, value }. Not seeded: nil, not known.
+    local cvars, cvarMost, cvarFail = {}, {}, nil
+    c.gameSettingWrites = {}
+    function c.putGameSetting(name, v) cvars[name] = v end
+    function c.gameSettingLimit(name, most) cvarMost[name] = most end
+    function c.setGameSettingFails(why) cvarFail = why end
+    function c.gameSetting(name) return cvars[name] end
+    function c.setGameSetting(name, v)
+        if s.combat ~= false then return nil, "combat" end   -- as the client: not asked in a fight
+        c.gameSettingWrites[#c.gameSettingWrites + 1] = { name, v }
+        if cvarFail then return nil, cvarFail end
+        local most, n = cvarMost[name], tonumber(v)
+        if most and n and n > most then return true end
+        cvars[name] = v
+        return true
+    end
+    -- G59: the combat log file, on or off; seeded by c.putCombatLogFile, nil
+    -- until then. Every write asked for is in c.logFileWrites.
+    local logging
+    c.logFileWrites = {}
+    function c.putCombatLogFile(on) logging = on end
+    function c.combatLogFile() return logging end
+    function c.setCombatLogFile(on)
+        if s.combat ~= false then return nil, "combat" end   -- as the client: not asked in a fight
+        c.logFileWrites[#c.logFileWrites + 1] = on
+        if type(on) ~= "boolean" then return nil, "bad" end
+        logging = on
+        return true
+    end
+
     -- Every row panel made, in order. h.rows is the last draw (copied);
     -- press(key, value) is the player clicking that row: false for an
     -- info row, a row not enabled, no act, or a number outside min..max;
@@ -3164,6 +3198,82 @@ function ns.make.fakeClient(opts)
         end
     end
 
+    -- S19 (P-SETS branch 2): the set icon row, as the real client's
+    -- iconRow(spec). c.iconRows[i] is each row made, in order: .spec,
+    -- .icons (the last draw, copied, at most 12), .point (the last place),
+    -- shown(). press(key) is the player's left click on that icon: false
+    -- when no such icon is drawn or no act was given, else act(key) under
+    -- pcall and true. drag(point) is the player moving the row: the
+    -- onMoved fn is told point (its error goes to the failed fn).
+    c.iconRows = {}
+    function c.iconRow(spec)
+        if s.noFrames then return nil end
+        local h = { spec = spec, icons = {}, places = 0 }
+        local open, act, moved, movedFailed = false, nil, nil, nil
+        function h.draw(icons, fn)
+            h.icons = {}
+            for _, icon in ipairs(type(icons) == "table" and icons or {}) do
+                if #h.icons >= 12 then break end
+                if type(icon) == "table" then
+                    local copy = {}
+                    for k, v in pairs(icon) do copy[k] = v end
+                    h.icons[#h.icons + 1] = copy
+                end
+            end
+            act = type(fn) == "function" and fn or nil
+        end
+        function h.show(on) open = on and true or false end
+        function h.shown() return open end
+        function h.place(point)
+            if type(point) ~= "table" then return end
+            h.point = { point[1], point[2], point[3], point[4] }
+            h.places = h.places + 1
+        end
+        function h.onMoved(fn, failed)
+            moved = type(fn) == "function" and fn or nil
+            movedFailed = type(failed) == "function" and failed or nil
+        end
+        function h.press(key)
+            for _, icon in ipairs(h.icons) do
+                if icon.key == key then
+                    if not act then return false end
+                    pcall(act, key)
+                    return true
+                end
+            end
+            return false
+        end
+        function h.drag(point)
+            h.point = { point[1], point[2], point[3], point[4] }
+            if not moved then return end
+            local ok, err = pcall(moved, point)
+            if not ok and movedFailed then pcall(movedFailed, err) end
+        end
+        c.iconRows[#c.iconRows + 1] = h
+        return h
+    end
+
+    -- S19 (acting): equipItem, as the real client's. Every call is counted
+    -- in c.equipCalls (the recorder: a call without the click is seen);
+    -- each item put on is in c.equips { item =, slot = }. Out of combat
+    -- only: combat true or not known (setCombatUnknown) answers "combat".
+    -- setEquipFails(n): the next n calls raise ("raised"), then it works.
+    c.equips, c.equipCalls = {}, 0
+    function c.setEquipFails(n) s.equipFails = n end
+    function c.setCombatUnknown(on)
+        if on then s.combat = nil else s.combat = false end
+    end
+    function c.equipItem(item, slot)
+        c.equipCalls = c.equipCalls + 1
+        if s.combat ~= false then return nil, "combat" end
+        if (s.equipFails or 0) > 0 then
+            s.equipFails = s.equipFails - 1
+            return nil, "raised"
+        end
+        c.equips[#c.equips + 1] = { item = item, slot = slot }
+        return true
+    end
+
     -- S20 vendor marks (lead section 230): the merchant's pages, the
     -- per-role badges, and the money read raising. As the real client's
     -- markMerchantSpecs(badges) (badges { [item number] = { { role, state }
@@ -3240,6 +3350,33 @@ function ns.make.fakeClient(opts)
         function c.money()
             if s.moneyFails then error("money read failed (test)") end
             return plainMoney()
+        end
+    end
+    -- RH-1 (lead section 279): a client on which no roll frame is found.
+    -- c.setRollFrame(false): as the real client's show (F4) then does,
+    -- offerRoll's show prints the link and the text once per roll offered,
+    -- unless told { quiet = true } (show's trailing table), nothing is
+    -- shown above a roll, and rollValue draws nothing (nil).
+    -- c.setRollFrame(true): roll frames are found again (as made).
+    do
+        local plainOffer, plainValue = c.offerRoll, c.rollValue
+        function c.setRollFrame(on) s.noRollFrame = on == false end
+        function c.offerRoll(rollID, link)
+            if not s.noRollFrame then return plainOffer(rollID, link) end
+            local printed = false
+            local function show(text, _, _, _, opts)
+                if type(text) ~= "string" or text == "" then return end
+                local quiet = type(opts) == "table" and opts.quiet == true
+                if printed or quiet then return end
+                printed = true
+                c.print(ns.id.title .. ": " .. tostring(link) .. " " .. text)
+            end
+            for _, fn in ipairs({ unpack(s.rollListeners or {}) }) do fn(rollID, link, show) end
+            return {}
+        end
+        function c.rollValue(rollID, ...)
+            if s.noRollFrame then return nil end
+            return plainValue(rollID, ...)
         end
     end
     return c

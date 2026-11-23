@@ -244,6 +244,19 @@ local pack = {
         }),
     },
 
+    -- G15, lead section 280: the weapon speed each role likes, and why, for
+    -- the speed line on a weapon's tooltip (Gear/WeaponSpeed.lua). "any":
+    -- speed does not matter for the role. Not counted in the score.
+    weaponSpeed = {
+        evidence = GUESS,
+        note = "written for lead section 280 from the game's rules as remembered; no outside source;"
+            .. " not read from the game",
+        dps = { prefer = "slow",
+                why = "Windfury Weapon and Stormstrike hit for weapon damage, so a slow weapon makes each extra"
+                    .. " swing bigger" },
+        heal = { prefer = "any", why = "healing spells do not use the weapon's swing" },
+    },
+
     -- What the class can equip, by item class and subclass ids, as the old
     -- table gave them. Armor (4): 0, 1, 2, 3 mail from level 40 (section
     -- 205, D3: a level in place of true), 6, 9. Weapons (2): 0, 1, 4, 5,

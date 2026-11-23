@@ -321,7 +321,7 @@ tests["capture real summary: the real run's summary goes to ZFLOW_SUMMARY (skipp
     t.ok(cap ~= nil, "a capture")
     if not cap then return end
     local c, addon, report = boot(cap)
-    local text = Capture.SummaryText(Capture.Summarize(c, addon, report, cap, ns.offline.ownWords()))
+    local text = Capture.SummaryText(Capture.Summarize(c, addon, report, cap, ns.offline.ownWords()), report)
     local ok, why = ns.offline.writeSummary(out, text, { path, charPath })
     t.eq({ ok, why }, { true }, "the summary is written")
 end
@@ -498,6 +498,106 @@ tests["capture summary CM-1: a capitalised word the add-on also writes in lower 
     t.ok(n >= 1, "counted as hidden")
     line = Capture.Mask("you met Hunter here", {}, real)
     t.ok(not line:find("Hunter", 1, true), "real list: Hunter is not printed inside a line: " .. line)
+end
+
+
+-- Lead section 225 EB-2, product half (zflow-evidence-ask): a call the
+-- capture does not hold is asked, and the product says so. Capture.Env
+-- counts each ask of a Capture.CALLS name the replay does not hold, by API
+-- name only: a look-up of a name the capture lacks (it stays absent, unknown
+-- stays unknown), a call of a stand-in the capture names with no answer, and
+-- a look-up of an absent namespace under the namespace name. Every capture
+-- here is made up.
+
+local function asks(rows, name)
+    for _, a in ipairs(rows or {}) do
+        if a.name == name then return a.n end
+    end
+    return nil
+end
+
+tests["capture asks: a call the capture lacks is counted when asked, and stays absent"] = function(t)
+    local cap = made()
+    cap.account.diag.names.names.GetLocale = "function"
+    cap.account.diag.names.names["C_QuestLog.GetInfo"] = "function"
+    local env, replay, notHeld = Capture.Env(cap)
+    t.ok(type(notHeld) == "table", "Env gives the asks not held")
+    if type(notHeld) ~= "table" then return end
+    local c = ns.make.fakeClient({ env = env })
+    t.eq(c.typeOf("UnitHealth"), "nil", "a name the capture lacks stays absent")
+    t.eq({ c.raw("UnitHealth", "player") }, { false, "not a function" }, "and answers nothing")
+    t.eq(notHeld.UnitHealth, 2, "each look-up of it is one ask")
+    t.eq({ c.raw("GetLocale") }, { true }, "a named call with no recorded answer is a stand-in")
+    t.eq(notHeld.GetLocale, 1, "and its call is one ask")
+    t.eq(c.typeOf("C_Map.GetBestMapForUnit"), "nil", "an absent namespace stays absent")
+    t.eq(notHeld.C_Map, 1, "and is counted under the namespace name")
+    t.eq(c.raw("C_QuestLog.GetNumQuestLogEntries"), false, "a member the capture lacks in a namespace it holds")
+    t.eq(notHeld["C_QuestLog.GetNumQuestLogEntries"], 1, "is counted under its own name")
+    t.eq({ c.raw("UnitClass", "player") }, { true, "Paladin", "PALADIN", 2 }, "a held call answers")
+    t.eq(notHeld.UnitClass, nil, "and is not counted here")
+    t.eq(replay.UnitClass.answered, 1, "it is counted as answered")
+    t.eq(replay.UnitHealth, nil, "the replay holds no count for a call it lacks")
+    c.raw("GetMoney")
+    t.eq(notHeld.GetMoney, nil, "a name outside the recorded calls is not counted")
+    t.eq(c.globalNames("^UnitHealth$"), {}, "the env lists no name it lacks")
+end
+
+tests["capture asks: the loaded client reports the asks through the diag word"] = function(t)
+    local c, addon, report = boot(made())
+    t.ok(type(report.notHeld) == "table", "the report holds the asks not held")
+    if type(report.notHeld) ~= "table" then return end
+    local before = report.notHeld.UnitHealth or 0
+    c.slashes[ns.id.slash]("diag")
+    t.ok((report.notHeld.UnitHealth or 0) > before, "diag asked UnitHealth, which the capture lacks")
+    t.eq(report.notHeld.UnitClass, nil, "a held call is not counted")
+    t.ok(addon ~= nil, "the whole add-on booted")
+end
+
+tests["capture asks: the summary says which calls each feature asked that the capture lacks"] = function(t)
+    local cap = made()
+    local c, addon, report = boot(cap)
+    local rows = Capture.Summarize(c, addon, report, cap, ns.offline.ownWords())
+    t.eq(rows[1].feature, "rotation")
+    t.ok((asks(rows[1].notHeld, "UnitHealth") or 0) > 0, "the rotation row (diag) asked UnitHealth")
+    t.eq(asks(rows[1].notHeld, "UnitClass"), nil, "a held call is not listed")
+    local text = Capture.SummaryText(rows, report)
+    local line = text:match("\nfeature rotation asked calls the capture does not hold: ([^\n]*)")
+    t.ok(line ~= nil and line:find("UnitHealth %d") ~= nil, "the row says UnitHealth and its count")
+    local total = text:match("\ncalls asked that the capture does not hold: ([^\n]*)")
+    t.ok(total ~= nil and total:find("UnitHealth %d") ~= nil, "the whole run says UnitHealth and its count")
+end
+
+tests["capture asks: a capture that holds the call says no ask for it"] = function(t)
+    local cap = made()
+    cap.account.diag.names.names.UnitHealth = "function"
+    cap.account.diag.snaps[1].shapes.health = row(240)
+    local c, addon, report = boot(cap)
+    local rows = Capture.Summarize(c, addon, report, cap, ns.offline.ownWords())
+    t.eq(asks(rows[1].notHeld, "UnitHealth"), nil, "UnitHealth held: not listed")
+    t.ok(not Capture.SummaryText(rows, report):find("[ ,:]UnitHealth %d"), "and never said (UnitHealthMax is another call)")
+end
+
+tests["capture asks: no ask said is said as none, and an old row with no asks still prints"] = function(t)
+    local text = Capture.SummaryText({ { feature = "made", ran = true, problems = 0, unknowns = 0, hidden = 0, lines = {} } },
+        { notHeld = {} })
+    t.ok(text:find("\ncalls asked that the capture does not hold: none\n", 1, true) ~= nil, "none is said")
+    t.ok(not text:find("feature made asked", 1, true), "a row with no asks says no ask line")
+    t.ok(not Capture.SummaryText({}):find("calls asked", 1, true), "no report: the line is left out, not guessed")
+    local raises = setmetatable({}, { __index = function() error("made-up boom") end })
+    t.ok(not Capture.SummaryText({}, raises):find("calls asked", 1, true), "a report that raises: left out, not guessed")
+end
+
+tests["capture asks: a row counts only the asks made during its own run"] = function(t)
+    local cap = made()
+    local c, addon, report = boot(cap)
+    report.notHeld.UnitHealth = (report.notHeld.UnitHealth or 0) + 1000
+    report.notHeld.MadeUpCall = 3
+    local before = report.notHeld.UnitHealth
+    local rows = Capture.Summarize(c, addon, report, cap, ns.offline.ownWords())
+    local during = report.notHeld.UnitHealth - before
+    t.ok(during > 0, "the rotation run asked UnitHealth")
+    t.eq(asks(rows[1].notHeld, "UnitHealth"), during, "the row holds the run asks, not the asks before it")
+    t.eq(asks(rows[1].notHeld, "MadeUpCall"), nil, "a call asked only before the run is not listed")
 end
 
 return tests

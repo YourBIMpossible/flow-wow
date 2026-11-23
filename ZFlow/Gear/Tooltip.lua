@@ -38,6 +38,10 @@ T.REASON = {
     use = "not known whether you can use it",
 }
 
+-- G16: how a line about a weapon skill not trained yet begins, so its
+-- readers (Gear/RollHint.lua) tell it from "Can't use: " (your class).
+T.UNTRAINED = "Can't use yet: "
+
 -- The scorer's slot names, in words.
 local PLACE = {
     head = "head piece", neck = "neck", shoulder = "shoulders", back = "back", chest = "chest",
@@ -86,7 +90,7 @@ function T.Lines(result, use, opts)
     end
     -- G16: a weapon skill not trained yet (Gear/WeaponSkill.lua): "yet", not "your class".
     if use.can == false and use.why == "untrained" and words(use.reason) then
-        return { line("Can't use yet: " .. use.reason, "bad") }
+        return { line(T.UNTRAINED .. use.reason, "bad") }
     end
     if use.can ~= true then
         local text = "Can't use: " .. (words(use.reason) and use.reason or T.REASON.use)

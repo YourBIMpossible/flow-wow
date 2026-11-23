@@ -19,6 +19,8 @@ local _, ns = ...
 --   text   "Upgrade"      at least one role's line is an upgrade
 --          "Unknown"      no upgrade line, and at least one line is a "No
 --                         verdict" (or a note that something was not known)
+--          "Not trained yet"  a weapon your class can learn but you have
+--                         not trained (the "Can't use yet: " line, G12/G16)
 --          "No upgrade"   every line is a known no: the same, worse, or
 --                         "Can't use"
 --   tone   "good" for an upgrade, else "none"
@@ -44,8 +46,17 @@ local _, ns = ...
 --   gear.rollChat   "Need or Greed advice in chat on loot rolls": one chat
 --                   line per roll id, once there is advice
 -- At start it asks the client to be told about loot rolls:
---   client.onLootRoll(fn) -> cancel;  fn(rollId, link, show);  show(text, r, g, b)
+--   client.onLootRoll(fn) -> cancel;  fn(rollId, link, show)
+--   show(text, r, g, b, { quiet = true or false })
 --   client.rollValue(rollId, text, r, g, b)   the value on the roll's item
+-- With no roll frame found the client's show says the hint in chat instead
+-- (Core/Client.lua, F4). It is told quiet, so it says nothing, when
+-- gear.rollChat is on (the advice line is the one chat line for a roll) and
+-- when this roll's hint was handed to it before (a roll offered again).
+-- A roll the game cancels (CANCEL_LOOT_ROLL, the roll id) is dropped: not
+-- worked out again, and its id is a new roll when it is offered again.
+-- A roll offered with gear.rollHint off: a value this module drew earlier
+-- is taken off that roll (the game uses its roll frames again).
 -- A client without the roll hook (see Core/Client.lua, F4) leaves the
 -- module started and quiet. A roll with no advice yet (the item not loaded,
 -- what you wear not read, a read raising) is worked out again every TICK
@@ -72,22 +83,29 @@ R.HELP = "<item link>: Need or Greed for that item, by the gear verdict for your
 R.NEED = "Need"
 R.GREED = "Greed"
 R.CANT_USE = "Greed (can't use)"
-R.NO_ADVICE = "no advice: not gear, or not known yet."
+R.NOT_TRAINED = "Greed (not trained yet)"
+R.NO_ADVICE ="no advice: not gear, or not known yet."
 
 function R.Hint(client, packs, link)
     if type(client) ~= "table" or type(link) ~= "string" or link == "" then return nil end
     local lines = ns.GearTooltipModule.Lines(client, packs, link)
     if type(lines) ~= "table" or #lines == 0 then return nil end
-    local good, all, unknown = {}, {}, false
+    local good, all, unknown, untrained = {}, {}, false, false
+    local prefix = ns.GearTooltip.UNTRAINED
     for i = 1, #lines do
         all[i] = lines[i].text
         if lines[i].tone == "good" then
             good[#good + 1] = lines[i].text
         elseif lines[i].tone == "none" then
             unknown = true
+        elseif lines[i].text:sub(1, #prefix) == prefix then
+            untrained = true
         end
     end
     if #good > 0 then return { text = "Upgrade", tone = "good", lines = good } end
+    -- G12: a weapon skill not trained yet is told apart from "your class
+    -- can't use this" (that stays "No upgrade").
+    if untrained then return { text = "Not trained yet", tone = "none", lines = all } end
     if unknown then return { text = "Unknown", tone = "none", lines = all } end
     return { text = "No upgrade", tone = "none", lines = all }
 end
@@ -144,6 +162,11 @@ function R.Advice(client, packs, link, role)
         local can = nil
         if type(detail) == "table" and type(detail.use) == "table" then can = detail.use.can end
         if can == false then
+            -- G12: a weapon skill not trained yet is said apart from a
+            -- kind the class can never use.
+            if detail.use.why == "untrained" then
+                return { word = "greed", text = R.NOT_TRAINED, value = R.GREED, tone = "none" }
+            end
             return { word = "greed", text = R.CANT_USE, value = R.GREED, tone = "none" }
         end
         if can ~= true then return nil end
@@ -182,8 +205,9 @@ end
 
 function R.Declare(k, packs, diag)
     local api = {}
-    local hooked, errors, cancel = false, 0, nil
+    local hooked, errors, cancel, offCancel = false, 0, nil, nil
     local seen, said, pending = {}, {}, {}
+    local told, valued = {}, false      -- roll id -> the hint handed to show; a value was drawn
     local ctx, ticker = nil, nil
     function api.hooked() return hooked end
     function api.errors() return errors end
@@ -225,6 +249,7 @@ function R.Declare(k, packs, diag)
         if advice ~= nil then
             text = advice.value
             colour = ns.GearTooltipModule.COLOUR[advice.tone] or ns.GearTooltipModule.COLOUR.none
+            valued = true
         end
         local ok, err
         if colour ~= nil then
@@ -259,7 +284,11 @@ function R.Declare(k, packs, diag)
         if hint ~= nil and hint.text ~= entry.shown then
             entry.shown = hint.text
             local colour = ns.GearTooltipModule.COLOUR[hint.tone] or ns.GearTooltipModule.COLOUR.none
-            entry.show(hint.text, colour[1], colour[2], colour[3])
+            -- No roll frame: show says it in chat unless told quiet (RH-1).
+            local mark = entry.link .. " " .. hint.text
+            local quiet = told[rollID] == mark or ctx.settings:get(R.CHAT_SETTING) == true
+            told[rollID] = mark
+            entry.show(hint.text, colour[1], colour[2], colour[3], { quiet = quiet })
         end
         value(rollID, advice)
         if advice == nil then
@@ -307,7 +336,11 @@ function R.Declare(k, packs, diag)
             ctx = c
             if type(c.client.onLootRoll) ~= "function" then return end
             local got = c.client.onLootRoll(function(rollID, link, show)
-                if c.settings:get(R.SETTING) ~= true or type(show) ~= "function" then return end
+                if c.settings:get(R.SETTING) ~= true then
+                    if valued then value(rollID, nil) end
+                    return
+                end
+                if type(show) ~= "function" then return end
                 if type(link) ~= "string" or link == "" then return end
                 local entry = { link = link, show = show, tries = 0 }
                 pending[rollID] = nil
@@ -318,11 +351,18 @@ function R.Declare(k, packs, diag)
             end)
             if type(got) == "function" then
                 cancel, hooked = got, true
+                -- A roll that is over (RH-4): nothing more is worked out or
+                -- said for it.
+                offCancel = c.bus:on(R.NAME, "CANCEL_LOOT_ROLL", function(rollID)
+                    if type(rollID) ~= "number" then return end
+                    pending[rollID], said[rollID], told[rollID] = nil, nil, nil
+                end)
             end
         end,
         stop = function()
             if cancel then cancel() end
-            cancel, hooked = nil, false
+            if offCancel then offCancel() end
+            cancel, offCancel, hooked = nil, nil, false
             stopTicker()
             pending = {}
         end,
