@@ -2347,6 +2347,42 @@ function ns.make.fakeClient(opts)
         end
         return false
     end
+
+    -- Text entry (N73), as the real client's textEntry: every one made is
+    -- in c.textEntries, in order: { spec, shown, words, text }. The test's
+    -- controls: e.type(text) is the player typing that and pressing Enter
+    -- (false when it is not on the screen), e.escape() is Escape.
+    -- setTextEntry(false) plays a client that cannot make one.
+    c.textEntries = {}
+    function c.setTextEntry(on) s.noTextEntry = (on == false) end
+    function c.textEntry(spec)
+        if s.noFrames or s.noTextEntry then return nil end
+        local e = { spec = spec, shown = false, words = "", text = "" }
+        local h, told = {}, nil
+        function h.ask(words, text, fn)
+            told = nil
+            if type(fn) == "function" then told = fn end
+            e.words, e.text = "", ""
+            if type(words) == "string" then e.words = words end
+            if type(text) == "string" then e.text = text end
+            e.shown = true
+        end
+        function h.show(on)
+            if on then return end
+            e.shown, told = false, nil
+        end
+        function h.shown() return e.shown end
+        function e.type(text)
+            if not e.shown then return false end
+            local fn = told
+            e.shown, told = false, nil
+            if fn then fn(tostring(text)) end
+            return true
+        end
+        function e.escape() e.shown, told = false, nil end
+        c.textEntries[#c.textEntries + 1] = e
+        return h
+    end
     return c
 end
 

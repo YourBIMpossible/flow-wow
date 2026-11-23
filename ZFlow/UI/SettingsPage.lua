@@ -28,7 +28,9 @@ local _, ns = ...
 --                  press of minus or plus moves it), choices (a copy), available,
 --                  settable, why (the reason when it cannot be set, else
 --                  nil), because (what an unavailable row depends on and
---                  what its `requires` said, when either is known)
+--                  what its `requires` said, when either is known), opens
+--                  (the words of the row's own button, for a row with a
+--                  window of its own: SettingsPage.Open(k, key) runs it)
 --     kind         "toggle" (bool), "number", "choice", "text" (string) or
 --                  "place" (table). A place is never handed out or spelled
 --                  out: it reads "set" or "not set", and is not set here.
@@ -174,6 +176,11 @@ local function entryOf(k, row, isLoaded)
     if row.type == "choice" then
         e.choices = {}
         for i = 1, #row.choices do e.choices[i] = row.choices[i] end
+    end
+    -- A row with a window of its own (row.open): the words of its button.
+    if type(row.open) == "table" and type(row.open.run) == "function" then
+        e.opens = "Open"
+        if type(row.open.text) == "string" and row.open.text ~= "" then e.opens = row.open.text end
     end
     if not isLoaded then
         e.why = P.NOT_LOADED
@@ -358,6 +365,21 @@ local function modelAllows(key, value)
     local model = Model.Default()
     if type(model) ~= "table" or model:row(key) == nil then return true end
     return model:check(key, value)
+end
+
+-- Runs the row's own opener (row.open.run), as the button beside it asks.
+-- -> true when it ran; false for a row with none, or one that raised (kept
+-- as a problem). It saves nothing by itself.
+function P.Open(k, key)
+    local row
+    if type(key) == "string" then row = k.settings:row(key) end
+    if type(row) ~= "table" or type(row.open) ~= "table" or type(row.open.run) ~= "function" then return false end
+    local ok, err = pcall(row.open.run)
+    if not ok then
+        k.problems:add("settings", key, err)
+        return false
+    end
+    return true
 end
 
 function P.Set(k, key, value)
