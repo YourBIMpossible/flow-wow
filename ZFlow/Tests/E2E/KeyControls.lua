@@ -68,6 +68,12 @@ local function start(opts)
     return c, addon
 end
 
+-- The suggestion in the driver's view, or nil.
+local function suggested(view)
+    if type(view) ~= "table" then return nil end
+    return view.suggestion
+end
+
 -- One attribute on the rotation button.
 local function attr(c, name)
     for _, h in ipairs(c.secureButtons) do
@@ -160,12 +166,12 @@ end
 tests["key controls: the key does gathering; off, the gathering step stays on the icon but off the key"] = function(t)
     local c, addon = start({ gather = true })
     local view = addon.rotationDriver.view()
-    local s = type(view) == "table" and view.suggestion or nil
+    local s = suggested(view)
     t.eq(type(s) == "table" and s.spell, MINERALS, "the gathering step is suggested")
     t.eq(type(view) == "table" and type(view.attrs) == "table" and view.attrs.source, "suggestion", "on the key")
     set(c, addon, ACTIONS, false)
     view = addon.rotationDriver.view()
-    s = type(view) == "table" and view.suggestion or nil
+    s = suggested(view)
     t.eq(type(s) == "table" and s.spell, MINERALS, "off: still shown")
     t.eq(type(s) == "table" and s.keyOff, true, "off: marked as not on the key")
     t.ok(type(view) == "table" and type(view.attrs) == "table" and view.attrs.source ~= "suggestion", "off: not on the key")
