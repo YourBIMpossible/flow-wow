@@ -53,6 +53,9 @@ PT.WORD = "threat"
 PT.HELP = "your threat on enemy nameplates: what shows and why; threat on or threat off switches it"
 PT.OFF = "plateThreat.off"
 PT.ALWAYS = "plateThreat.always"
+-- When it appears, in one line (lead section 296): its settings row and the
+-- buttons word say it, so a player who sees nothing can find out why.
+PT.WHEN = "Shows in a fight when you are in a group or have a pet out; tick \"when alone too\" for solo fights."
 PT.ROLE = "spec.role"           -- Rotation/Role.lua's setting
 PT.TICK = 0.5                   -- seconds between looks, only in a fight
 PT.OVER, PT.HIGH, PT.MID = 100, 90, 50
@@ -281,10 +284,10 @@ function PT.Declare(k, diag)
 
     -- The switches (lead section 178; their model rows are in Settings/Model.lua).
     k:Setting({ key = PT.OFF, scope = "account", type = "bool", default = false,
-        label = "Hide your threat on enemy nameplates", group = "combat.plates",
+        label = "Hide your threat on enemy nameplates", group = "combat.plates", help = PT.WHEN,
         synonyms = { "threat", "aggro", "nameplate" } })
     k:Setting({ key = PT.ALWAYS, scope = "account", type = "bool", default = false,
-        label = "Show your threat on enemy nameplates when alone too", group = "combat.plates",
+        label = "Show your threat on enemy nameplates when alone too", group = "combat.plates", help = PT.WHEN,
         synonyms = { "threat", "aggro", "nameplate", "solo" } })
 
     k:Module({

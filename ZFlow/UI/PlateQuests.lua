@@ -44,6 +44,9 @@ PQ.NAME = "plateQuests"
 PQ.WORD = "questmarks"
 PQ.HELP = "quest marks on enemy nameplates: what shows and why; questmarks on or questmarks off switches it"
 PQ.OFF = "plateQuests.off"
+-- When it appears, in one line (lead section 296): its settings row and the
+-- buttons word say it, so a player who sees nothing can find out why.
+PQ.WHEN = "Shows over an enemy that counts toward an unfinished objective in your quest log."
 PQ.DROPS = "learned.drops"
 PQ.WAIT = 0.5
 PQ.LOOK = 0.5      -- seconds between looks at the switch (lead section 274 PM-3)
@@ -352,7 +355,7 @@ function PQ.Declare(k, diag)
     end
 
     k:Setting({ key = PQ.OFF, scope = "account", type = "bool", default = false,
-        label = "Hide quest marks on enemy nameplates", group = "combat.plates",
+        label = "Hide quest marks on enemy nameplates", group = "combat.plates", help = PQ.WHEN,
         synonyms = { "quest", "nameplate", "objective", "mark", "kill" } })
 
     k:Module({

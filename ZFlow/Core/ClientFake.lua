@@ -702,6 +702,11 @@ function ns.make.fakeClient(opts)
     -- nil: the client will not say how big the screen is.
     function c.setScreen(w, h) s.screen = (w and h) and { w, h } or nil end
     function c.setVersion(text) s.version = text end
+    -- Internal switches for the tests only (opts.internal = { name = true }):
+    -- the feedback, paused by lead section 284, answers on here. The game
+    -- client has no such call.
+    local internal = type(opts.internal) == "table" and opts.internal or {}
+    function c.internal(name) return internal[name] == true end
     -- false: a client that cannot make frames (panel() answers nil).
     function c.setFrames(on) s.noFrames = not on end
     -- false: a client where a closable panel gets neither a close button

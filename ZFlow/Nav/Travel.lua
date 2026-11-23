@@ -171,6 +171,14 @@ function N.TravelVia(step, ways, skipped)
         out.via = "far"
         return out, "far"
     end
+    -- Lead section 286: a far goal with no flight says why under it (the
+    -- flights way's line). Still the waypoint itself.
+    if not skipped and type(ways.flightHint) == "string" and step.lines == nil then
+        local out = {}
+        for key, v in pairs(step) do out[key] = v end
+        out.hint = ways.flightHint
+        return out
+    end
     return step
 end
 
@@ -246,8 +254,12 @@ function Travel.Declare(k, diag)
         for _, w in ipairs(Travel.WAYS) do
             local provider = k.use and k.use(w.module)
             if type(provider) == "table" and type(provider.Way) == "function" then
-                local okWay, way = pcall(provider.Way, { cont = target.cont, map = target.map, x = target.x, y = target.y })
-                if okWay then ways[w.key] = way end
+                local okWay, way, _, line = pcall(provider.Way,
+                    { cont = target.cont, map = target.map, x = target.x, y = target.y })
+                if okWay then
+                    ways[w.key] = way
+                    if way == nil and type(line) == "string" then ways[w.key .. "Hint"] = line end
+                end
             end
         end
 
