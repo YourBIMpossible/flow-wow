@@ -405,3 +405,163 @@ function Capture.Unknowns(lines, report)
     end
     return n
 end
+
+-- Section 196: a name-free summary of the feature run, for White to post.
+--   Capture.Names(cap)                  -> names the capture holds, longest first
+--   Capture.Mask(line, names)           -> the line with numbers and names replaced
+--   Capture.RunFeature(c, addon, f)     -> lines, problems added, ran (true when
+--                                          every word ran without raising)
+--   Capture.Summarize(c, addon, report, names) -> { { feature, ran, problems,
+--                                          unknowns, lines = masked } } in FEATURES order
+--   Capture.SummaryText(rows)           -> the text written to ZFLOW_SUMMARY
+-- Masking keeps the fixed words: every number becomes "#"; a name the
+-- capture holds becomes "<name>" in any case; a word with a byte past ASCII
+-- becomes "<name>"; a capitalised word not in Capture.FIXED becomes "<Name>";
+-- bracketed text (an item) becomes "[<item>]"; colour and link codes go.
+-- A name written only in lower case and not held in a capture field stays:
+-- the summary is still treated as holding names until reviewed.
+Capture.SUMMARY_HEAD = "capture summary (names and numbers replaced)"
+Capture.FIXED = {}
+for _, word in ipairs({ "A", "All", "An", "And", "At", "Bank", "Buy", "Cast", "Fly", "For", "From", "Hearth", "In",
+    "It", "Keep", "Next", "No", "Not", "Nothing", "Off", "On", "Out", "Preview", "Sell", "Talk", "The", "Then", "To",
+    "Travel", "Walk", "Way", "When", "You", "Your" }) do
+    Capture.FIXED[word] = true
+end
+
+local function addName(out, seen, v)
+    if type(v) ~= "string" or v == "" or v == ns.id.title then return end
+    local spellings = { v, (v:gsub("%s+", "")), (v:gsub("%s+", "-")) }
+    for _, s in ipairs(spellings) do
+        if s ~= "" and not seen[s] then
+            seen[s] = true
+            out[#out + 1] = s
+        end
+    end
+end
+
+local function shapeText(shapes, key, i)
+    local r = type(shapes) == "table" and shapes[key] or nil
+    if type(r) ~= "table" or type(r.values) ~= "table" then return nil end
+    return r.values["v" .. i]
+end
+
+function Capture.Names(cap)
+    local out, seen = {}, {}
+    local d = diagOf(cap)
+    local snaps = d and type(d.snaps) == "table" and d.snaps or {}
+    for _, snap in ipairs(snaps) do
+        if type(snap) == "table" then
+            local timing = type(snap.timing) == "table" and snap.timing or {}
+            addName(out, seen, timing.character)
+            addName(out, seen, timing.realm)
+            addName(out, seen, shapeText(snap.shapes, "realm", 1))
+            addName(out, seen, shapeText(snap.shapes, "realmNormalized", 1))
+            addName(out, seen, shapeText(snap.shapes, "fullName", 1))
+            addName(out, seen, shapeText(snap.shapes, "fullName", 2))
+        end
+    end
+    -- The realm part of the auction price keys "<realm>-<faction>".
+    local learned = type(cap) == "table" and type(cap.account) == "table" and cap.account.learned
+    local prices = type(learned) == "table" and type(learned.prices) == "table" and learned.prices or {}
+    for _, part in ipairs({ "auctionHistory", "auction" }) do
+        if type(prices[part]) == "table" then
+            for key in pairs(prices[part]) do
+                if type(key) == "string" then addName(out, seen, key:match("^(.*)%-[^%-]*$")) end
+            end
+        end
+    end
+    table.sort(out, function(a, b)
+        if #a ~= #b then return #a > #b end
+        return a < b
+    end)
+    return out
+end
+
+-- Every place a name is, in any case, replaced by "<name>".
+local function maskNames(line, names)
+    for _, name in ipairs(names or {}) do
+        if type(name) == "string" and name ~= "" then
+            local low, find = name:lower(), 1
+            local out = {}
+            while true do
+                local a, b = line:lower():find(low, find, true)
+                if not a then break end
+                out[#out + 1] = line:sub(find, a - 1)
+                out[#out + 1] = "<name>"
+                find = b + 1
+            end
+            out[#out + 1] = line:sub(find)
+            line = table.concat(out)
+        end
+    end
+    return line
+end
+
+local function maskWord(word)
+    if word:find("[\128-\255]") then return "<name>" end
+    local first = word:sub(1, 1)
+    if first:match("%u") and not Capture.FIXED[word] then return "<Name>" end
+    return word
+end
+
+function Capture.Mask(line, names)
+    line = tostring(line)
+    local head = ns.id.title .. ": "
+    local prefix = ""
+    if line:sub(1, #head) == head then
+        prefix, line = head, line:sub(#head + 1)
+    end
+    line = line:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|H[^|]*|h", ""):gsub("|h", "")
+    line = maskNames(line, names)
+    line = line:gsub("%[[^%]]*%]", "[<item>]")
+    line = line:gsub("[%w\128-\255][%w\128-\255'%-]*", maskWord)
+    line = line:gsub("%d+", "#")
+    return prefix .. line
+end
+
+local function problemCount(addon)
+    local n = 0
+    for _, p in ipairs(addon.problems:list()) do n = n + (p.count or 1) end
+    return n
+end
+
+function Capture.RunFeature(c, addon, feature)
+    local before = problemCount(addon)
+    for i = #c.printed, 1, -1 do c.printed[i] = nil end
+    local ran = true
+    for _, words in ipairs(feature.words) do
+        if not pcall(c.slashes[ns.id.slash], words) then ran = false end
+    end
+    c.advance(2, 8)
+    local lines = {}
+    for _, line in ipairs(c.printed) do lines[#lines + 1] = tostring(line) end
+    for _, a in ipairs(c.arrows or {}) do
+        if a.shown then for _, line in ipairs(a.lines or {}) do lines[#lines + 1] = tostring(line) end end
+    end
+    for _, p in ipairs(c.panels or {}) do
+        if p.shown then for _, line in ipairs(p.lines or {}) do lines[#lines + 1] = tostring(line) end end
+    end
+    return lines, problemCount(addon) - before, ran
+end
+
+function Capture.Summarize(c, addon, report, names)
+    local rows = {}
+    for _, feature in ipairs(Capture.FEATURES) do
+        local lines, added, ran = Capture.RunFeature(c, addon, feature)
+        local masked = {}
+        for i, line in ipairs(lines) do masked[i] = Capture.Mask(line, names) end
+        rows[#rows + 1] = { feature = feature.name, ran = ran, problems = added,
+            unknowns = Capture.Unknowns(lines, report), lines = masked }
+    end
+    return rows
+end
+
+function Capture.SummaryText(rows)
+    local out = { Capture.SUMMARY_HEAD }
+    for _, r in ipairs(rows or {}) do
+        out[#out + 1] = string.format("feature %s: ran %s, problems %d, unknown %d, lines %d", tostring(r.feature),
+            r.ran and "yes" or "no", tonumber(r.problems) or 0, tonumber(r.unknowns) or 0, #(r.lines or {}))
+        for _, line in ipairs(r.lines or {}) do out[#out + 1] = "  " .. line end
+    end
+    return table.concat(out, "\n") .. "\n"
+end

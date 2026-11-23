@@ -98,6 +98,8 @@ local function given(name)
 end
 function ns.offline.capturePath() return given("ZFLOW_CAPTURE") end
 function ns.offline.captureCharPath() return given("ZFLOW_CAPTURE_CHAR") end
+-- Section 196: where the name-free summary of a real run goes (outside the repo).
+function ns.offline.summaryPath() return given("ZFLOW_SUMMARY") end
 
 -- True when path is inside the repo, or cannot be told (a relative path).
 local function norm(p)
@@ -108,6 +110,19 @@ function ns.offline.inRepo(path)
     if not (p:match("^%a:/") or p:sub(1, 1) == "/") then return true end
     local r = norm(root)
     return p == r or p:sub(1, #r + 1) == r .. "/"
+end
+
+-- Writes the summary text (Core/Capture.lua Capture.SummaryText) to path:
+-- true, or nil and a short reason. Never inside the repo, and never a
+-- relative path (it could be).
+function ns.offline.writeSummary(path, text)
+    if type(path) ~= "string" or path == "" then return nil, "no path given" end
+    if ns.offline.inRepo(path) then return nil, "inside the repo" end
+    local fh = io.open(path, "wb")
+    if not fh then return nil, "the file did not open" end
+    fh:write(tostring(text))
+    fh:close()
+    return true
 end
 
 -- The sanitizer (Lazy's tools/offline/zflow-sanitize.lua), for its parser,
