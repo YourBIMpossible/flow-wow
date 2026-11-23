@@ -754,6 +754,12 @@ function D.Step(client, pack, prefs, bias, applied, role, extra)
     if type(KA) == "table" and type(actions) == "table"
         and not (type(controls) == "table" and controls.actions == false) then
         local okA, act = pcall(function() return KA.Pick(KA.Read(client, actions, pack, role, lockdown), suggestion) end)
+        -- SD-3: a read that raises leaves the suggestion as it is, and is
+        -- counted (extra.counts.keyActionsRaised), which the driver turns
+        -- into a diag mark (D.Declare).
+        if not okA and type(extra) == "table" and type(extra.counts) == "table" then
+            extra.counts.keyActionsRaised = (extra.counts.keyActionsRaised or 0) + 1
+        end
         if okA and type(act) == "table" then
             suggestion = act
             -- The key frame holds the plan, not the suggestion: an action

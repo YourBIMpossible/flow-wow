@@ -55,7 +55,8 @@ KA.STATIONS_MAX = 200
 KA.REACH = 0.004
 -- Ores that smelt (first guess: classic copper to thorium).
 KA.ORES = { 2770, 2771, 2775, 2772, 2776, 3858, 7911, 10620, 11370 }
--- The profession a corpse needs, and the spell that gathers it.
+-- The profession a corpse needs, and the spell that gathers it (the spell
+-- names are a first guess, SD-4).
 -- Engineering has no gathering spell: nothing is put on the key.
 KA.GATHER_SPELL = { Skinning = "Skinning", Herbalism = "Herb Gathering", Mining = "Mining" }
 KA.WEAK = { food = true, track = true, group = true }
