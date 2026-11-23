@@ -569,7 +569,7 @@ function SellList.Declare(k)
 
     k:Module({
         name = SellList.NAME,
-        needs = { "client", "store", "bus", "settings" },
+        needs = { "client", "store", "bus", "settings", "sched" },
         provides = { Last = api.last, Shows = api.shows, Show = function() return api.show() end,
             Window = function() return api.window() end },
         start = function(ctx)
@@ -662,8 +662,16 @@ function SellList.Declare(k)
             -- Item facts arrived late (lead section 340): a row whose price
             -- was not read yet becomes what it is. Nothing when no merchant
             -- window is open.
+            -- A cold visit fires a burst of these: at most one relist per
+            -- frame (the scheduler's next frame).
+            local infoPending = false
             ctx.bus:on(SellList.NAME, SellList.INFO_EVENT, function()
-                api.refresh()
+                if infoPending or not open then return end
+                infoPending = true
+                ctx.sched:nextFrame(SellList.NAME, function()
+                    infoPending = false
+                    api.refresh()
+                end)
             end)
             -- The reservations changed (a goal added or removed): this
             -- visit's evaluation is old, so drop it and list once again.
