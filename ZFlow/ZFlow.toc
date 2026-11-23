@@ -34,6 +34,7 @@ UI\CopyBox.lua
 UI\Advisor.lua
 UI\Alerts.lua
 UI\Setup.lua
+UI\Kit.lua
 Import\FromFlow.lua
 Import\Stored.lua
 Settings\Model.lua

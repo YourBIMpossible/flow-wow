@@ -41,6 +41,7 @@ return {
         "UI/Advisor.lua",
         "UI/Alerts.lua",
         "UI/Setup.lua",
+        "UI/Kit.lua",
 
         -- Import
         "Import/FromFlow.lua",
