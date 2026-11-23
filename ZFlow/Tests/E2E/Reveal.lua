@@ -29,7 +29,10 @@ local function questie()
 end
 
 -- opts: account, char (saved tables; left out: none saved before, a new
--- player), early(c, addon) runs after the files load and before login.
+-- player), early(c, addon) runs after the files load and before login,
+-- staged (false: leave the setting at its default). Lead section 294 made
+-- the setting off by default; these tests are of the stages, so they turn
+-- it on as a player would, after login.
 local function boot(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
@@ -51,6 +54,7 @@ local function boot(opts)
     local addon = ns.offline.addon(c)
     if opts.early then opts.early(c, addon) end
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
+    if opts.staged ~= false then addon.settings:set(ns.Reveal.SETTING, true) end
     c.advance(10, 40)
     return c, addon
 end
@@ -306,12 +310,30 @@ tests["reveal 236: a read raising then recovering"] = function(t)
     t.eq(revealProblems(addon), 0)
 end
 
+-- Lead section 294: staging must not hold back the arrow, the icon or the
+-- advice on any character unless the player turned it on.
+tests["reveal 294: off by default: a new player at a default profile sees the arrow, the icon and the advice"] = function(t)
+    local c, addon = boot({ staged = false })
+    t.eq(addon.settings:get(R.SETTING), false, "the default")
+    t.eq(arrowShown(c), true, "the arrow")
+    t.eq(iconShown(c, addon), true, "the icon")
+    t.eq(adviceShown(c, addon), true, "the advice panel")
+end
+
+tests["reveal 294: an account that turned staging on keeps it"] = function(t)
+    local c, addon = boot({ staged = false, account = { settings = { general = { reveal = true } } },
+        char = {} })
+    t.eq(addon.settings:get(R.SETTING), true, "the saved choice")
+    addon.store:set("char", R.PATH, {})
+    t.eq(arrowShown(c), false, "stages from the start: the arrow waits")
+end
+
 tests["reveal: the setting turns staging off (everything shown); filed under general with its words"] = function(t)
     local c, addon = boot()
     local row = addon.settings:row(R.SETTING)
     t.eq(row and row.type, "bool")
     t.eq(row and row.group, "general")
-    t.eq(row and row.default, true, "on by default, as legacy: a new player gets the stages")
+    t.eq(row and row.default, false, "off by default (lead section 294)")
     local words = table.concat(row and row.synonyms or {}, " ")
     for _, w in ipairs({ "reveal", "new player", "stages", "intro" }) do
         t.ok(words:find(w, 1, true) ~= nil, "synonym " .. w .. ": " .. words)

@@ -563,4 +563,37 @@ tests["fake icon: it stands in for the client's"] = function(t)
     t.eq(c.spellTexture(1), nil)
 end
 
+-- Lead section 294: an icon that is on but has nothing to suggest in a
+-- fight says so once, instead of staying away without a word.
+local function saidEmpty(c)
+    local n = 0
+    for _, line in ipairs(c.printed) do
+        if tostring(line):find(I.EMPTY, 1, true) then n = n + 1 end
+    end
+    return n
+end
+
+tests["rotation icon 294: on, in a fight, nothing to suggest: one line saying why, once a session"] = function(t)
+    local k, c = start({ enabled = true })
+    c.setCombat(true)
+    suggest(k, nil)
+    t.eq(c.icons[1].shown, false, "nothing to show")
+    t.eq(saidEmpty(c), 1, "one line")
+    t.ok(tostring(c.printed[#c.printed]):find(ns.id.title, 1, true) == 1, "from the add-on, by its title")
+    suggest(k, nil)
+    suggest(k, nil)
+    t.eq(saidEmpty(c), 1, "not again")
+end
+
+tests["rotation icon 294: out of a fight, or switched off, nothing to suggest says nothing"] = function(t)
+    local k, c = start({ enabled = true })
+    c.setCombat(false)
+    suggest(k, nil)
+    t.eq(saidEmpty(c), 0, "out of a fight")
+    local k2, c2 = start()
+    c2.setCombat(true)
+    suggest(k2, nil)
+    t.eq(saidEmpty(c2), 0, "switched off")
+end
+
 return tests

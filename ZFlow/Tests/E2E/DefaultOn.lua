@@ -84,4 +84,18 @@ tests["default on: an account that switched the world map button off keeps it of
     t.eq(mapButton(c), nil, "no button")
 end
 
+-- Lead section 294: the dev panel is not shown to a player who did not
+-- ask for it (`/zflow panel`).
+tests["default on: no dev panel at a default profile; the panel word shows it"] = function(t)
+    local c = boot()
+    local panel
+    for _, h in ipairs(c.panels) do
+        if h.spec and h.spec.name == ns.id.framePrefix .. "DevPanel" then panel = h end
+    end
+    t.ok(panel ~= nil, "made, for when it is asked for")
+    t.eq(panel and panel.shown, false, "not shown")
+    c.slashes[ns.id.slash]("panel")
+    t.eq(panel and panel.shown, true, "asked for: shown")
+end
+
 return tests
