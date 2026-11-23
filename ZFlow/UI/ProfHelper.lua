@@ -133,11 +133,134 @@ end
 
 local WORD = { sure = "SURE", maybe = "MAYBE", unknown = "UNKNOWN" }
 
+-- The helper on the shared kit (lead sections 287 and 291): what it shows as
+-- a kit window spec (UI/Kit.lua, K.Window). Pure: no client, no kernel.
+ProfHelper.TITLE = "Skill-up helper"
+ProfHelper.HEAD = "%s: skill %d of %d"
+ProfHelper.HEAD_NONAME = "Skill %d of %d"
+-- How far one press of a goal button moves the goal.
+ProfHelper.GOAL_STEP = 5
+ProfHelper.GOAL = "Skill goal: %d."
+ProfHelper.GOAL_UP = "Goal +"
+ProfHelper.GOAL_DOWN = "Goal -"
+ProfHelper.NO_GOAL = "No skill goal set. Goal + sets one."
+ProfHelper.RECIPES = "Recipes that give a point"
+ProfHelper.NOTES = "Notes"
+ProfHelper.READING_HOW = "Wait a moment, or close the profession window and open it again."
+ProfHelper.BAGS_HOW = "Buy or gather what a recipe below takes."
+ProfHelper.UNREAD_HOW = "Wait a moment: the game sends what each recipe takes after the window opens."
+ProfHelper.NONE_HOW = "Learn a new recipe at your trainer: none you know gives a point at this skill."
+-- The game's own recipe colours, by the difficulty the recipe read gives.
+-- Carried over from the old add-on (orange, yellow, green) and grey for a
+-- recipe that gives no point; not read from this client.
+ProfHelper.COLOURS = {
+    optimal = { hex = "ff8040", r = 1, g = 0.5, b = 0.25 },
+    medium = { hex = "ffff00", r = 1, g = 1, b = 0 },
+    easy = { hex = "40c040", r = 0.25, g = 0.75, b = 0.25 },
+    trivial = { hex = "808080", r = 0.5, g = 0.5, b = 0.5 },
+}
+
+-- The goal as one line: the goal, then how far it is.
+local function goalLabel(m)
+    if type(m.goal) ~= "number" then return ProfHelper.NO_GOAL end
+    local label = ProfHelper.GOAL:format(m.goal)
+    local state = m.state
+    if type(state) ~= "table" then return label end
+    if state.overCap then return label .. " " .. ProfHelper.OVER_CAP:format(m.goal, m.max) end
+    if type(state.need) == "number" and state.need > 0 then
+        return label .. " " .. ProfHelper.TO_GOAL:format(state.need, m.goal)
+    end
+    return label .. " " .. ProfHelper.AT_GOAL:format(m.goal)
+end
+
+-- ProfHelper.View(model[, act]) -> a kit window spec
+--   model  { reading = true }, or
+--          { profession, skill, max, goal, state, bags, recipes, notes }:
+--          profession  the window's name for it (a number names none)
+--          goal        the goal kept, or nil
+--          state       what SkillUps.Goal answered, or nil
+--          bags        { sure, maybe }, or nil while no recipe's mats are read
+--          recipes     { { name, chance, difficulty, cost, icon } }, best first
+--          notes       lines of text, or nil
+--   act    act("goal", value) when a goal button is pressed; 0 clears it.
+-- Each part the tests and the module look up has a key.
+function ProfHelper.View(model, act)
+    local view = { id = "ProfHelper", title = ProfHelper.TITLE, children = {} }
+    local kids = view.children
+    if type(model) ~= "table" or model.reading == true then
+        kids[1] = { kind = "header", title = ProfHelper.TITLE }
+        kids[2] = { kind = "empty", key = "reading", text = ProfHelper.READING, how = ProfHelper.READING_HOW }
+        return view
+    end
+
+    if type(model.profession) == "string" and model.profession ~= "" then
+        kids[1] = { kind = "header", title = ProfHelper.HEAD:format(model.profession, model.skill, model.max) }
+    else
+        kids[1] = { kind = "header", title = ProfHelper.HEAD_NONAME:format(model.skill, model.max) }
+    end
+
+    local function set(value)
+        if type(act) == "function" then act("goal", value) end
+    end
+    local hasGoal = type(model.goal) == "number"
+    -- The first goal starts from the skill.
+    local from = model.skill
+    if hasGoal then from = model.goal end
+    local up = math.min(ProfHelper.GOAL_MAX, from + ProfHelper.GOAL_STEP)
+    local down = math.max(0, from - ProfHelper.GOAL_STEP)
+    kids[#kids + 1] = { kind = "row", key = "goal", label = goalLabel(model) }
+    kids[#kids + 1] = { kind = "button", key = "goalDown", text = ProfHelper.GOAL_DOWN, enabled = hasGoal,
+        tooltip = "Lower your skill goal by " .. ProfHelper.GOAL_STEP .. ". Below that, the goal is cleared.",
+        onClick = function() if hasGoal then set(down) end end }
+    kids[#kids + 1] = { kind = "button", key = "goalUp", text = ProfHelper.GOAL_UP, enabled = from < ProfHelper.GOAL_MAX,
+        tooltip = "Raise your skill goal by " .. ProfHelper.GOAL_STEP .. ".",
+        onClick = function() if from < ProfHelper.GOAL_MAX then set(up) end end }
+
+    local recipes = model.recipes
+    if type(recipes) ~= "table" then recipes = {} end
+    if #recipes > 0 then
+        local bags = model.bags
+        if type(bags) ~= "table" then
+            kids[#kids + 1] = { kind = "empty", key = "bags", text = ProfHelper.BAGS_UNREAD, how = ProfHelper.UNREAD_HOW }
+        elseif bags.sure + bags.maybe == 0 then
+            kids[#kids + 1] = { kind = "empty", key = "bags", text = ProfHelper.BAGS_NONE, how = ProfHelper.BAGS_HOW }
+        else
+            kids[#kids + 1] = { kind = "row", key = "bags", label = ProfHelper.BAGS:format(bags.sure, bags.maybe) }
+        end
+    end
+
+    kids[#kids + 1] = { kind = "section", text = ProfHelper.RECIPES }
+    if #recipes == 0 then
+        kids[#kids + 1] = { kind = "empty", key = "recipes", text = ProfHelper.NONE, how = ProfHelper.NONE_HOW }
+    end
+    for _, r in ipairs(recipes) do
+        local line = { kind = "itemLine", name = r.name .. " (" .. ProfHelper[WORD[r.chance] or "UNKNOWN"] .. ")" }
+        if type(r.icon) == "string" or type(r.icon) == "number" then line.icon = r.icon end
+        -- The kit takes whole copper only; a cost not known is no money.
+        if type(r.cost) == "number" and r.cost >= 0 then line.money = math.floor(r.cost + 0.5) end
+        -- Kit ask: a line colour that is not an item quality (the skill colour).
+        if type(r.difficulty) == "string" then line.color = ProfHelper.COLOURS[r.difficulty] end
+        kids[#kids + 1] = line
+    end
+
+    if type(model.notes) == "table" and #model.notes > 0 then
+        kids[#kids + 1] = { kind = "section", text = ProfHelper.NOTES }
+        for _, text in ipairs(model.notes) do
+            if type(text) == "string" and text ~= "" then kids[#kids + 1] = { kind = "row", label = text } end
+        end
+    end
+    return view
+end
+
 function ProfHelper.Declare(k)
     local U = ns.SkillUps
     local api = {}
     local panel
+    -- What the open window reads as, for ProfHelper.View; nil while the
+    -- helper shows nothing.
+    local model
     local function hide()
+        model = nil
         if panel then panel.show(false) end
     end
 
@@ -220,7 +343,7 @@ function ProfHelper.Declare(k)
                             local named = type(r.name) == "string"
                             rows[#rows + 1] = { key = named and r.name or r.id, id = r.id,
                                 name = named and r.name or ("recipe " .. r.id),
-                                difficulty = r.difficulty, mats = mats(r.id) }
+                                difficulty = r.difficulty, mats = mats(r.id), icon = r.icon }
                         end
                     end
                     return { profession = w.profession, skill = w.skill, max = w.max, rows = rows }
@@ -329,6 +452,7 @@ function ProfHelper.Declare(k)
                 if not panel then return end
                 window = readWindow()
                 if not window then
+                    model = { reading = true }
                     panel.draw({ { kind = "info", text = ProfHelper.READING } }, act)
                     return
                 end
@@ -336,7 +460,7 @@ function ProfHelper.Declare(k)
                 local rows, colours = {}, {}
                 for _, r in ipairs(window.rows) do
                     rows[#rows + 1] = { key = r.key, name = r.name, difficulty = r.difficulty,
-                        cost = cost(r.mats), mats = r.mats, index = r.index }
+                        cost = cost(r.mats), mats = r.mats, index = r.index, icon = r.icon }
                     colours[#colours + 1] = { key = r.key, difficulty = r.difficulty }
                 end
                 local seen = ctx.store:table("char", ProfHelper.COLORS_PATH)
@@ -364,6 +488,9 @@ function ProfHelper.Declare(k)
                 end
 
                 local ranked = U.Rank(rows)
+                local shown = { profession = window.profession, skill = skill, max = max, state = state,
+                    recipes = {}, notes = {} }
+                if type(goal) == "number" then shown.goal = goal end
                 if #ranked == 0 then
                     out[#out + 1] = { kind = "info", text = ProfHelper.NONE }
                 else
@@ -379,6 +506,7 @@ function ProfHelper.Declare(k)
                             have = function(item) return read("itemCount", item) end,
                             skill = skill, max = max, seen = type(seen) == "table" and seen or {},
                         })
+                        shown.bags = { sure = bags.sure, maybe = bags.maybe }
                         if bags.sure + bags.maybe == 0 then
                             out[#out + 1] = { kind = "info", text = ProfHelper.BAGS_NONE }
                         else
@@ -391,13 +519,20 @@ function ProfHelper.Declare(k)
                         local text = r.cost and ProfHelper.ROW:format(r.name, word, ns.Prices.Coin(r.cost))
                             or ProfHelper.ROW_NOCOST:format(r.name, word)
                         out[#out + 1] = { kind = "info", text = text }
+                        shown.recipes[#shown.recipes + 1] = { name = r.name, chance = r.chance,
+                            difficulty = r.difficulty, cost = r.cost, icon = r.icon }
                     end
                     local count = 1
                     if state and not state.overCap and state.need > 0 then count = state.need end
+                    local before = #out
                     plan(out, ranked[1], count)
+                    for i = before + 1, #out do shown.notes[#shown.notes + 1] = out[i].text end
                 end
+                local before = #out
                 trainers(out, window)
                 tools(out, window, ranked)
+                for i = before + 1, #out do shown.notes[#shown.notes + 1] = out[i].text end
+                model = shown
                 panel.draw(out, act)
             end
 
@@ -409,6 +544,13 @@ function ProfHelper.Declare(k)
                 if type(g) ~= "table" then return end
                 g[window.profession] = value > 0 and value or nil
                 draw()
+            end
+
+            -- The helper as a kit window spec now, or nil while it shows
+            -- nothing (the window closed, or the setting off).
+            function api.view()
+                if model == nil then return nil end
+                return ProfHelper.View(model, act)
             end
 
             local function on() return ctx.settings:get(ProfHelper.SETTING) ~= false end
