@@ -737,8 +737,9 @@ function Arrow.Start(k, diag, own)
         for _, key in ipairs(N.ARROW_KEYS) do
             local ops, h = view[key], handles[key]
             -- A bare needle keeps its frame for its text when the lines are
-            -- its own: stacked under a shown quest arrow they are in that
-            -- arrow's stack, and no second frame is put up.
+            -- its own (stacked, that is when they stand opposite the quest
+            -- lines); when they are in the quest arrow's stack no second
+            -- frame is put up.
             local shown = (ops.shown or (ops.bare and #lines[key] > 0)) and true or false
             up[key] = shown
             h.show(shown)

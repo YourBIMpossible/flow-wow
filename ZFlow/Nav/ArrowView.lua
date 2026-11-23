@@ -159,10 +159,27 @@ function N.ArrowView(state)
     local pNeed = finite(p.textHeight) and p.textHeight or 0
     local pText
     if under then
-        -- One stack of lines on the quest arrow: same side, same first gap.
+        -- The fallback: one stack of lines on the quest arrow, same side,
+        -- same first gap.
         -- The needle's lines are shown while the needle is "off" too (owner
         -- decision D2), so they take their room then as well.
         pText = textOps(lp.text, "quest", lq.position, size, sw, sh, stackClear, qNeed + pNeed, travel)
+        -- Lead section 341: with the quest lines shown, the needle's lines
+        -- stand on the other side of the arrow, on the needle's own frame,
+        -- with the same first gap. Only when the screen is known and they
+        -- fit there; otherwise the one stack above stays.
+        local qt = quest.text
+        if qt.shown and pText.shown and knownScreen(sw, sh) and lq.position then
+            local _, bottom = N.ArrowCorner(lq.position, size, sw, sh)
+            local first = qt.first
+            if qt.side == "above" and bottom - first - pNeed >= 0 then
+                pText = { shown = true, to = "prof", side = "below",
+                          point = { "TOP", "BOTTOM", 0, -first }, first = first }
+            elseif qt.side == "below" and bottom + size + first + pNeed <= sh then
+                pText = { shown = true, to = "prof", side = "above",
+                          point = { "BOTTOM", "TOP", 0, first }, first = first }
+            end
+        end
     else
         local clear = lp.look == "needle" and N.NeedleClearance(size) or nil
         pText = textOps(lp.shown and lp.text, "prof", lp.position, size, sw, sh, clear, pNeed, false)
