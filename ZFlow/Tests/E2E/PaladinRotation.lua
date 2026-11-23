@@ -132,7 +132,9 @@ end
 -- and Judgement ready and stopped on the range; the player was told
 -- "nothing out of range".
 tests["paladin: range not read is the reason given, not that nothing is out of range"] = function(t)
-    local c, addon, icon = start()
+    -- The key frame (on by default) would put Attack up; this test reads
+    -- the suggestion without it.
+    local c, addon, icon = start({ char = { settings = { rotation = { keyFrame = false } } } })
     c.setPlayerBuffs(SEALED); c.setTarget(ENEMY); c.setStealthed(false)
     c.setCurrentSpell(IDS["Attack"], false); on(c, addon)
     t.eq(icon.shown, false, "range not known: nothing suggested")

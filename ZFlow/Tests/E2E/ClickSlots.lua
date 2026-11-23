@@ -106,6 +106,36 @@ tests["click slots: the key, the care key and the plan's parts, shown with their
     noBindsNoMacros(t, c)
 end
 
+-- Lead section 305 item 6 (P-KEYS-TOKEN-REINDEX, K7-2): two members swap
+-- places; the care slot follows the friend by its new token, at once out of
+-- a fight, after PLAYER_REGEN_ENABLED in one.
+tests["click slots: two members swap places, the care slot follows the friend"] = function(t)
+    local c = start({ on = true })
+    local h = slotRow(c)
+    if not h then t.ok(false, "no row"); return end
+    local hurt = { exists = true, friend = true, isSelf = false, dead = false, hurt = true }
+    local well = { exists = true, friend = true, isSelf = false, dead = false, hurt = false }
+    c.setGuid("target", "Player-1")
+    c.setParty({ { unit = "party1", guid = "Player-1" } })
+    c.setUnitCare("target", hurt); c.setUnitCare("party1", hurt)
+    c.advance(3, 5)
+    t.eq(slot(h, "care").attrs.unit, "party1", "planned on the friend you target")
+    c.setParty({ { unit = "party1", guid = "Player-2" }, { unit = "party2", guid = "Player-1" } })
+    c.setUnitCare("party1", well); c.setUnitCare("party2", hurt)
+    c.fire("GROUP_ROSTER_UPDATE")
+    t.eq(slot(h, "care").attrs.unit, "party2", "the roster changed: the new token at once")
+    c.setCombat(true); c.advance(1, 5)
+    local given = #h.given
+    c.setParty({ { unit = "party1", guid = "Player-1" }, { unit = "party2", guid = "Player-2" } })
+    c.setUnitCare("party1", hurt); c.setUnitCare("party2", well)
+    c.fire("GROUP_ROSTER_UPDATE")
+    t.eq(#h.given, given, "nothing written in the fight")
+    t.eq(slot(h, "care").attrs.unit, "party2", "it keeps what it had")
+    c.setCombat(false)
+    t.eq(slot(h, "care").attrs.unit, "party1", "set to the new token as the fight ends")
+    noBindsNoMacros(t, c)
+end
+
 tests["click slots: the target changes in a fight; the care slot keeps the friend"] = function(t)
     local c = start({ on = true })
     local h = slotRow(c)
