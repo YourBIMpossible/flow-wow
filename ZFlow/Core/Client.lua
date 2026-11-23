@@ -353,6 +353,35 @@ function ns.make.client(env)
         return stacks(bagIds())
     end
 
+    -- Lead section 337 item 1 (the sell list's "Sell these" button): the
+    -- bag stacks with where each one is, and one slot read again before it
+    -- is sold. Read with the same C_Container calls as bagItems above
+    -- (GetContainerNumSlots, GetContainerItemInfo); first guess, not seen
+    -- in game, that a slot's answer is the same one bagItems reads.
+    --   c.bagSlots() -> { { bag = id, slot = n, item = link or ID, count = n }, ... }
+    --     in bag then slot order; nil when any bag or slot could not be read
+    --   c.bagSlot(bag, slot) -> item, count; nil for an empty slot; false
+    --     when it could not be read or bag and slot are not whole numbers
+    function c.bagSlots()
+        local slotsOf = container("GetContainerNumSlots")
+        local out = {}
+        for _, bag in ipairs(bagIds()) do
+            local ok, total = call(slotsOf, bag)
+            if not ok or not wholeCount(total) then return nil end
+            for slot = 1, total do
+                local item, count = slotItem(bag, slot)
+                if item == false then return nil end
+                if item ~= nil then out[#out + 1] = { bag = bag, slot = slot, item = item, count = count } end
+            end
+        end
+        return out
+    end
+
+    function c.bagSlot(bag, slot)
+        if not wholeCount(bag) or not wholeCount(slot) or slot < 1 then return false end
+        return slotItem(bag, slot)
+    end
+
     -- The character's bank tabs, as the client lists them:
     -- C_Bank.FetchPurchasedBankTabIDs(Enum.BankType.Character). Never the
     -- account-wide bank. On 16001 the bank is tabs only (seen in game: one
@@ -450,6 +479,25 @@ function ns.make.client(env)
         if env.issecretvalue == nil then return false end
         local okSecret, secret = call(env.issecretvalue, v)
         return not okSecret or secret ~= false
+    end
+
+    -- Lead section 337 item 1 (ACTING): sells one bag slot to the open
+    -- merchant, only on the player click (Items/SellThese.lua). First guess,
+    -- not seen in game on 16001: C_Container.UseContainerItem(bag, slot)
+    -- sells the slot while the merchant window is open. Asked only when
+    -- InCombatLockdown answers a plain false and the merchant is open, both
+    -- read again here for each slot.
+    --   c.sellBagItem(bag, slot) -> true, or nil and why:
+    --     "combat", "closed", "bad" (not a bag slot), "noCall", "raised"
+    function c.sellBagItem(bag, slot)
+        local okLock, locked = call(env.InCombatLockdown)
+        if not okLock or hidden(locked) or locked ~= false then return nil, "combat" end
+        if c.merchantOpen() ~= true then return nil, "closed" end
+        if not wholeCount(bag) or not wholeCount(slot) or slot < 1 then return nil, "bad" end
+        local fn = container("UseContainerItem")
+        if fn == nil then return nil, "noCall" end
+        if not pcall(fn, bag, slot) then return nil, "raised" end
+        return true
     end
 
     -- What the window shows for one item on sale: read?, price, stack,
@@ -8482,6 +8530,28 @@ function ns.make.client(env)
         return out
     end
 
+    -- Lead section 337 item 2 (P-INV G6): c.skillRanks() -> { [skill line
+    --   name] = { rank, max } } or nil: GetNumSkillLines, then
+    --   GetSkillLineInfo(i) (name, header, _, rank, _, _, max), headers left
+    --   out. nil when there is no such read or any read raised. First guess,
+    --   not seen in game.
+    function c.skillRanks()
+        local okN, n = call(env.GetNumSkillLines)
+        if not okN or type(n) ~= "number" or hidden(n) or n ~= n or n < 0 then return nil end
+        local out = {}
+        for i = 1, math.floor(n) do
+            local ok, name, header, _, rank, _, _, max = call(env.GetSkillLineInfo, i)
+            if not ok then return nil end
+            if not header and type(name) == "string" and not hidden(name) and name ~= "" then
+                local row = {}
+                if type(rank) == "number" and not hidden(rank) then row.rank = rank end
+                if type(max) == "number" and not hidden(max) then row.max = max end
+                out[name] = row
+            end
+        end
+        return out
+    end
+
     -- G60: NPC words read aloud (UI/NpcSpeech.lua). Text-to-speech plays on
     --   the player's own speakers: an output like print, not a game action,
     --   so no combat lockdown or protected-call concern. Every name here is
@@ -9353,6 +9423,18 @@ function ns.make.client(env)
         -- who is told what each window drew (UI/KitProbe.lua, both).
         local kitSaid = {}
         local kitDrawnFn = nil
+        -- Lead section 340: every frame a kit window made, and that window's
+        -- id, for the diagnostics line (c.kitFocus). Weak: a frame the
+        -- client drops is not kept here.
+        local kitOwned = setmetatable({}, { __mode = "k" })
+        -- A template-made scroll frame gets a name of ours: the stock scroll
+        -- templates of older clients build their bar's name from it.
+        local kitScrolls = 0
+        -- frame -> the id of the kit window that made it, or nil.
+        function c.kitOwner(frame)
+            if frame == nil then return nil end
+            return kitOwned[frame]
+        end
         local NOT_CONFIRMED = "made, not confirmed"
         -- The game's templates the kit asks for, here and nowhere else. A
         -- part with a row in the parts list takes its name from that row;
@@ -9460,6 +9542,8 @@ function ns.make.client(env)
             -- in a draw is the nth made. A draw starts every count at 0 and
             -- at its end hides what was not asked for.
             local pools, on, wired, firstOf = {}, {}, {}, {}
+            -- Lead section 340: each scroll's offset before this draw.
+            local keeps = {}
             local function take(parent, key, make, loose)
                 local by = pools[parent]
                 if by == nil then
@@ -9476,6 +9560,7 @@ function ns.make.client(env)
                     obj = make()
                     if obj == nil then return nil end
                     slot.items[slot.n + 1] = obj
+                    kitOwned[obj] = id
                 end
                 slot.n = slot.n + 1
                 on[obj] = nil
@@ -9535,11 +9620,14 @@ function ns.make.client(env)
             -- asked for by a protected create; a template the client lacks
             -- gets the one of the part named alt
             -- (when given), else a plain frame. -> frame, "first" | "fallback"
-            local function made(kind, parent, key, alt)
+            local function made(kind, parent, key, alt, named)
                 local obj = take(parent, kind .. ":" .. key, function()
                     local first = templateOf(key)
                     if first ~= nil then
-                        local ok, f = call(env.CreateFrame, kind, nil, parent, first)
+                        -- named: a function giving the new frame's name.
+                        local frameName1 = nil
+                        if type(named) == "function" then frameName1 = named() end
+                        local ok, f = call(env.CreateFrame, kind, frameName1, parent, first)
                         if ok and f ~= nil then
                             firstOf[f] = key
                             return f
@@ -9675,12 +9763,16 @@ function ns.make.client(env)
             method(f, "SetClampedToScreen", true)
             method(f, "SetToplevel", true)
             method(f, "EnableMouse", true)
+            kitOwned[f] = id
 
             local width, height = tonumber(cb.width) or tree.width, tonumber(cb.height) or tree.height
             local open = false
             local slots = {}
             local body
             local draw
+            -- Lead section 340: true while the tree drawn has a topic list;
+            -- the header's search then stands over it, at the left.
+            local topicsInWindow = false
 
             local function playerClosed()
                 if not open then return end
@@ -9874,15 +9966,27 @@ function ns.make.client(env)
                 if well == nil then error("the client made no frame for a list") end
                 method(well, "SetPoint", "TOPLEFT", parent1, "TOPLEFT", x, -y)
                 sized(well, w, h)
+                -- Lead section 340: the well is decoration and takes no mouse.
+                method(well, "EnableMouse", false)
                 backing(well, color.inset, "inset")
                 border(well)
                 local innerW = w - size.scrollBar - size.gap - size.edge
-                local scroll = made("ScrollFrame", well, "scroll")
+                local scroll = made("ScrollFrame", well, "scroll", nil, function()
+                    if type(ns.id) ~= "table" or type(ns.id.framePrefix) ~= "string" then return nil end
+                    kitScrolls = kitScrolls + 1
+                    return ns.id.framePrefix .. "KitScroll" .. kitScrolls
+                end)
                 if scroll == nil then return well, innerW, false end
                 method(scroll, "SetPoint", "TOPLEFT", well, "TOPLEFT", size.edge, -size.edge)
                 method(scroll, "SetPoint", "BOTTOMRIGHT", well, "BOTTOMRIGHT", -(size.scrollBar + size.gap), size.edge)
                 local child = plain("Frame", scroll, "child", true)
                 if child == nil then return well, innerW, false end
+                method(child, "EnableMouse", false)
+                -- Where the player had scrolled, put back once the draw has
+                -- sized the child (setting the child may put it at 0).
+                local okV, was = method(scroll, "GetVerticalScroll")
+                if not okV or type(was) ~= "number" or hidden(was) or was < 0 then was = 0 end
+                keeps[#keeps + 1] = { scroll = scroll, child = child, at = was, view = h - 2 * size.edge }
                 method(scroll, "SetScrollChild", child)
                 method(scroll, "EnableMouseWheel", true)
                 hook(scroll, "OnMouseWheel", function(_, delta)
@@ -9905,6 +10009,10 @@ function ns.make.client(env)
                 if b == nil then error("the client made no frame for a part") end
                 method(b, "SetPoint", "TOPLEFT", pane.parent, "TOPLEFT", pane.x, -pane.y)
                 sized(b, pane.w, h)
+                -- Lead section 340: a part's frame takes no mouse unless the
+                -- part asks (a click, a fold, a tooltip with nothing above).
+                -- Set at every draw: the frame may be one used before.
+                method(b, "EnableMouse", false)
                 pane.y = pane.y + h
                 return b
             end
@@ -9926,6 +10034,7 @@ function ns.make.client(env)
                 local b = button(on1, part.text, colW, live and part.enabled ~= false,
                     function() tell(part.onClick) end, part.tooltip)
                 if b ~= nil then method(b, "SetPoint", "LEFT", on1, "LEFT", x, 0) end
+                return { b }
             end
             function CONTROL.bind(part, on1, x, colW, live)
                 local b = button(on1, part.text, colW, live and part.enabled ~= false, function() tell(part.onClick) end)
@@ -9940,6 +10049,7 @@ function ns.make.client(env)
                 else
                     inked(fs, color.text)
                 end
+                return { b }
             end
             function CONTROL.checkbox(part, on1, x, colW, live)
                 local okay = live and part.enabled ~= false
@@ -9975,6 +10085,7 @@ function ns.make.client(env)
                         method(l, "SetText", part.label)
                     end
                 end
+                return { b }
             end
             function CONTROL.choice(part, on1, x, colW, live)
                 local okay = live and part.enabled ~= false
@@ -9987,9 +10098,10 @@ function ns.make.client(env)
                         sized(b, colW, size.button)
                         method(b, "SetPoint", "LEFT", on1, "LEFT", x, 0)
                     end
-                    return
+                    return { b }
                 end
                 local each = (colW - (n - 1) * size.gapSmall) / n
+                local all = {}
                 for i = 1, n do
                     local b = button(on1, part.items[i], each, okay, function()
                         if i ~= part.selected then tell(part.onSelect, i) end
@@ -9999,8 +10111,10 @@ function ns.make.client(env)
                         method(b, "SetPoint", "LEFT", on1, "LEFT", x + (i - 1) * (each + size.gapSmall), 0)
                         -- The one in use stays in its pushed look.
                         if i == part.selected then method(b, "SetButtonState", "PUSHED", true) end
+                        all[#all + 1] = b
                     end
                 end
+                return all
             end
             function CONTROL.number(part, on1, x, colW, live)
                 local okay = live and part.enabled ~= false
@@ -10030,6 +10144,10 @@ function ns.make.client(env)
                     sized(plus, size.button, size.button)
                     method(plus, "SetPoint", "LEFT", on1, "LEFT", x + size.button + size.numberValue, 0)
                 end
+                local all = {}
+                if minus ~= nil then all[#all + 1] = minus end
+                if plus ~= nil then all[#all + 1] = plus end
+                return all
             end
             function CONTROL.text(part, on1, x, colW, live)
                 local okay = live and part.enabled ~= false
@@ -10055,6 +10173,7 @@ function ns.make.client(env)
                     method(e, "SetText", part.text)
                     method(e, "ClearFocus")
                 end)
+                return { e }
             end
 
             local DRAW = {}
@@ -10067,19 +10186,32 @@ function ns.make.client(env)
 
             function DRAW.header(part, pane)
                 local h = box(pane, size.header, "header")
+                local search = part.search
+                -- Lead section 340: beside a topic list the search stands at
+                -- the left, over the list, as the retail Settings window has
+                -- it, and the summary starts over the pane at its right.
+                local left = topicsInWindow and search ~= nil
                 local s = words(h, font.small, "summary")
                 if s ~= nil then
-                    method(s, "SetPoint", "LEFT", h, "LEFT", 0, 0)
+                    if left then
+                        method(s, "SetPoint", "LEFT", h, "LEFT", size.topicWidth + size.pad, 0)
+                    else
+                        method(s, "SetPoint", "LEFT", h, "LEFT", 0, 0)
+                    end
                     inked(s, color.textDim)
                     method(s, "SetText", part.title)
                 end
                 edgeLine(h, "BOTTOM", color.divider, "d")
-                local search = part.search
                 if search ~= nil then
                     local e, which = made("EditBox", h, "search", "input")
                     if e ~= nil then
-                        sized(e, size.search, size.button)
-                        method(e, "SetPoint", "RIGHT", h, "RIGHT", 0, 0)
+                        if left then
+                            sized(e, size.topicWidth, size.button)
+                            method(e, "SetPoint", "LEFT", h, "LEFT", 0, 0)
+                        else
+                            sized(e, size.search, size.button)
+                            method(e, "SetPoint", "RIGHT", h, "RIGHT", 0, 0)
+                        end
                         method(e, "SetAutoFocus", false)
                         local hint
                         if which == "first" then
@@ -10211,11 +10343,29 @@ function ns.make.client(env)
 
             function DRAW.section(part, pane)
                 if not pane.first then pane.y = pane.y + size.gap end
-                local h = box(pane, size.section, "section")
-                local s = words(h, font.heading, "heading")
+                -- Lead section 340: a big section is the pane's page heading
+                -- (the retail Settings window's category title) in the large
+                -- font; the plain form, when the client lacks that font, is
+                -- the kit's big font.
+                local big = part.big == true
+                local hgt = size.section
+                if big then hgt = size.pageTitle or size.section end
+                local h = box(pane, hgt, "section")
+                local s
+                if big then
+                    s = words(h, font.pageTitle, "pageTitle")
+                    if s ~= nil then
+                        note("pageTitle", "first")
+                    else
+                        s = words(h, font.big, "pageTitlePlain")
+                        note("pageTitle", "fallback")
+                    end
+                else
+                    s = words(h, font.heading, "heading")
+                end
                 if s ~= nil then
                     method(s, "SetPoint", "LEFT", h, "LEFT", 0, 0)
-                    inked(s, color.accent)
+                    if big then inked(s, color.text) else inked(s, color.accent) end
                     method(s, "SetText", part.text)
                 end
                 edgeLine(h, "BOTTOM", color.divider, "d")
@@ -10346,10 +10496,29 @@ function ns.make.client(env)
                 end
                 local tipText = part.tooltip
                 if tipText == nil then tipText = part.description end
-                hover(h, tipText)
                 local control = part.control
+                local frames = nil
                 if control ~= nil and CONTROL[control.kind] ~= nil then
-                    CONTROL[control.kind](control, h, pane.w - controlW, controlW, not off)
+                    frames = CONTROL[control.kind](control, h, pane.w - controlW, controlW, not off)
+                end
+                -- Lead section 340: a row with a control takes no mouse (box
+                -- set it off); its control stands two levels above it and
+                -- carries the row's tooltip. A row with no control and a
+                -- tooltip takes the mouse for the tooltip alone.
+                if type(frames) == "table" and #frames > 0 then
+                    local okL, level = method(h, "GetFrameLevel")
+                    for _, one in ipairs(frames) do
+                        if okL and type(level) == "number" and not hidden(level) then
+                            method(one, "SetFrameLevel", level + 2)
+                        end
+                        local own = on[one]
+                        if type(tipText) == "string" and tipText ~= "" and (own == nil or own.OnEnter == nil) then
+                            hook(one, "OnEnter", function() tipShow(one, tipText) end, true)
+                            hook(one, "OnLeave", function() tipHide(one) end, true)
+                        end
+                    end
+                elseif type(tipText) == "string" and tipText ~= "" then
+                    hover(h, tipText)
                 end
             end
 
@@ -10655,11 +10824,16 @@ function ns.make.client(env)
                 chrome(now)
                 body = plain("Frame", f, "body")
                 if body == nil then error("the client made no frame for the content") end
+                method(body, "EnableMouse", false)
                 method(body, "SetPoint", "TOPLEFT", f, "TOPLEFT", size.pad, -(size.title + size.pad))
                 method(body, "SetPoint", "BOTTOMRIGHT", f, "BOTTOMRIGHT", -size.pad, size.pad)
                 local w, h = width - 2 * size.pad, height - size.title - 2 * size.pad
                 local kids = now.children
                 local lastFlow, hasFooter = 0, false
+                topicsInWindow = false
+                for i = 1, #kids do
+                    if kids[i].kind == "topicList" then topicsInWindow = true end
+                end
                 for i = 1, #kids do
                     if kids[i].kind == "footer" then
                         footer(kids[i], w)
@@ -10678,8 +10852,20 @@ function ns.make.client(env)
                 reread()
                 sweepStart()
                 slots = {}
+                keeps = {}
                 local ok, err = pcall(drawParts, now)
                 sweepEnd()
+                -- Lead section 340: each scroll back where it was, never
+                -- past the end of what is drawn now.
+                for _, keep in ipairs(keeps) do
+                    local okH, childH = method(keep.child, "GetHeight")
+                    local most = 0
+                    if okH and type(childH) == "number" and not hidden(childH) then most = childH - keep.view end
+                    if most < 0 then most = 0 end
+                    local to = keep.at
+                    if to > most then to = most end
+                    method(keep.scroll, "SetVerticalScroll", to)
+                end
                 -- Lead section 319: which parts were the game's own and
                 -- which the plain form, for the diagnostics.
                 if kitDrawnFn ~= nil then
@@ -10779,6 +10965,62 @@ function ns.make.client(env)
                 onMoved = spec.onMoved, onClose = spec.onClose, failed = spec.failed }
             local h
             local page = {}
+            -- Lead section 340: at most one draw a drawn frame. A draw asked
+            -- for after one already ran in this frame is held, and only the
+            -- last one held is drawn at the next frame. A tree the same as
+            -- the one drawn (functions aside) is not drawn again.
+            local drewThisFrame, held, ticking, deferOk, lastSig = false, nil, false, true, nil
+            local function signature(v, out, depth)
+                local kind = type(v)
+                if kind == "table" then
+                    if depth > 40 then
+                        out[#out + 1] = "~"
+                        return
+                    end
+                    local keys = {}
+                    for key, value in pairs(v) do
+                        if type(value) ~= "function" then
+                            keys[#keys + 1] = { name = type(key) .. ":" .. tostring(key), key = key }
+                        end
+                    end
+                    table.sort(keys, function(a, b) return a.name < b.name end)
+                    out[#out + 1] = "{"
+                    for _, one in ipairs(keys) do
+                        out[#out + 1] = one.name .. "="
+                        signature(v[one.key], out, depth + 1)
+                        out[#out + 1] = ","
+                    end
+                    out[#out + 1] = "}"
+                elseif kind ~= "function" then
+                    out[#out + 1] = kind .. ":" .. tostring(v)
+                end
+            end
+            local function sigOf(tree)
+                local out = {}
+                signature(tree, out, 0)
+                return table.concat(out)
+            end
+            local function drawNow(tree, sig)
+                drewThisFrame = true
+                if h.update(tree) ~= true then return false, "the kit could not draw the settings window again" end
+                lastSig = sig
+                return true
+            end
+            local function tick()
+                drewThisFrame = false
+                if held ~= nil then
+                    local one = held
+                    held = nil
+                    drawNow(one.tree, one.sig)
+                end
+            end
+            local function startTicking()
+                if ticking then return end
+                ticking = true
+                c.onFrame(tick)
+                local okF, faults = pcall(c.listenFaults)
+                if okF and type(faults) == "table" and faults.noTickFrame == true then deferOk = false end
+            end
             function page.draw(rows, act, nav, layout)
                 local tree, why = spec.build(rows, act, nav, layout)
                 if type(tree) ~= "table" then return false, why or "the settings window has no tree" end
@@ -10786,10 +11028,19 @@ function ns.make.client(env)
                     h = c.kitWindow(spec.id, tree, extra)
                     if h == nil then return false, "the kit could not draw the settings window" end
                     h.show(false)
+                    lastSig = sigOf(tree)
+                    drewThisFrame = true
+                    startTicking()
                     return true
                 end
-                if h.update(tree) ~= true then return false, "the kit could not draw the settings window again" end
-                return true
+                local sig = sigOf(tree)
+                if held == nil and sig == lastSig then return true end
+                if drewThisFrame and deferOk then
+                    held = { tree = tree, sig = sig }
+                    return true
+                end
+                held = nil
+                return drawNow(tree, sig)
             end
             function page.open()
                 if h == nil then return false, "the settings window was not drawn" end
@@ -10801,6 +11052,199 @@ function ns.make.client(env)
             end
             function page.shown() return h ~= nil and h.shown() == true end
             return page
+        end
+    end
+    -- The minimap button (lead DISPATCH sections 340 and 303(g);
+    -- UI/MinimapButton.lua): a small round button on the minimap's rim, or
+    -- nil and why when the client cannot make it.
+    --   spec = { name = global frame name or nil, title = the add-on's title
+    --            (its first letter is the plain look's face) }
+    --   h.place(x, y)    its middle x right and y up from the minimap's middle
+    --   h.show(on)
+    --   h.onClick(fn)    fn() on a left click; nothing else is done
+    --   h.onDrag(fn)     fn(dx, dy, done) while dragged with the left button:
+    --                    the cursor's offset from the minimap's middle, in the
+    --                    minimap's own units; done true once, at the drop
+    --   h.tip(lines)     the tooltip lines shown on hover (nil: none)
+    -- LOOK: the Blizzard minimap-button look. These texture paths move to
+    -- the kit's theme (UI/Kit/Theme.lua) when the kit owner adds a
+    -- minimap-button part; until then they are named here only:
+    --   border     Interface\Minimap\MiniMap-TrackingBorder
+    --   background Interface\Minimap\UI-Minimap-Background
+    --   highlight  Interface\Minimap\UI-Minimap-ZoomButton-Highlight
+    --   icon       Interface\Icons\INV_Misc_Map_01 (the add-on has no icon file
+    --              of its own yet)
+    -- A texture that does not set (SetTexture raises or answers false) gives
+    -- the plain look instead: a square button with the title's first letter.
+    -- First guesses, none seen in game on 16001. Docs (warcraft.wiki.gg):
+    -- API CreateFrame ("Button", name, parent); Button RegisterForClicks,
+    -- RegisterForDrag; Frame SetScript OnClick, OnDragStart, OnDragStop,
+    -- OnUpdate, OnEnter, OnLeave; Region GetCenter, GetEffectiveScale; API
+    -- GetCursorPosition (screen pixels, scaled by the effective scale);
+    -- GameTooltip SetOwner, AddLine, Show, Hide; TextureBase SetTexture
+    -- (returns success on recent clients; nil is taken as set).
+    function c.minimapButton(spec)
+        spec = type(spec) == "table" and spec or {}
+        local map = env.Minimap
+        if map == nil then return nil, "no minimap" end
+        local ok, b = call(env.CreateFrame, "Button", spec.name, map)
+        if not ok or b == nil then return nil, "no frame" end
+        local BORDER = "Interface\\Minimap\\MiniMap-TrackingBorder"
+        local BACK = "Interface\\Minimap\\UI-Minimap-Background"
+        local HIGHLIGHT = "Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight"
+        local ICON = "Interface\\Icons\\INV_Misc_Map_01"
+        method(b, "Hide")
+        method(b, "SetFrameStrata", "MEDIUM")
+        method(b, "SetFrameLevel", 8)
+        if not method(b, "SetSize", 31, 31) then
+            method(b, "SetWidth", 31)
+            method(b, "SetHeight", 31)
+        end
+        method(b, "RegisterForClicks", "LeftButtonUp")
+        method(b, "RegisterForDrag", "LeftButton")
+        local function texture(layer, path, w, h, x, y)
+            local okT, tex = method(b, "CreateTexture", nil, layer)
+            if not okT or tex == nil then return nil, false end
+            local okS, set = method(tex, "SetTexture", path)
+            if not method(tex, "SetSize", w, h) then
+                method(tex, "SetWidth", w)
+                method(tex, "SetHeight", h)
+            end
+            method(tex, "SetPoint", "TOPLEFT", b, "TOPLEFT", x, y)
+            return tex, okS and set ~= false and not hidden(set)
+        end
+        local back, okBack = texture("BACKGROUND", BACK, 20, 20, 7, -5)
+        local icon, okIcon = texture("ARTWORK", ICON, 17, 17, 7, -6)
+        local border, okBorder = texture("OVERLAY", BORDER, 53, 53, 0, 0)
+        local okHigh = method(b, "SetHighlightTexture", HIGHLIGHT)
+        if not (okBack and okIcon and okBorder and okHigh) then
+            -- The plain look: one square face with the title's first letter.
+            for _, tex in ipairs({ back, icon, border }) do method(tex, "Hide") end
+            local okF, face = method(b, "CreateTexture", nil, "BACKGROUND")
+            if okF and face ~= nil then
+                method(face, "SetAllPoints", b)
+                if not method(face, "SetColorTexture", 0, 0, 0, 0.7) then method(face, "SetTexture", 0, 0, 0, 0.7) end
+            end
+            local okL, letter = method(b, "CreateFontString", nil, "OVERLAY", "GameFontNormal")
+            if okL and letter ~= nil then
+                method(letter, "SetPoint", "CENTER", b, "CENTER", 0, 0)
+                local title = type(spec.title) == "string" and spec.title or "?"
+                method(letter, "SetText", title:sub(1, 1))
+            end
+        end
+        local clickFn, dragFn, lines
+        local function cursor()
+            local okC, cx, cy = method(map, "GetCenter")
+            local okE, scale = method(map, "GetEffectiveScale")
+            local okP, px, py = call(env.GetCursorPosition)
+            if not (okC and okE and okP) or hidden(cx) or hidden(cy) or hidden(scale) or hidden(px) or hidden(py) then
+                return nil
+            end
+            if type(cx) ~= "number" or type(cy) ~= "number" or type(px) ~= "number" or type(py) ~= "number"
+                or type(scale) ~= "number" or scale <= 0 then
+                return nil
+            end
+            return px / scale - cx, py / scale - cy
+        end
+        local function drag(done)
+            if type(dragFn) ~= "function" then return end
+            local dx, dy = cursor()
+            if dx ~= nil then pcall(dragFn, dx, dy, done) end
+        end
+        method(b, "SetScript", "OnClick", function()
+            if type(clickFn) == "function" then pcall(clickFn) end
+        end)
+        method(b, "SetScript", "OnDragStart", function(self)
+            method(self, "SetScript", "OnUpdate", function() drag(false) end)
+        end)
+        method(b, "SetScript", "OnDragStop", function(self)
+            method(self, "SetScript", "OnUpdate", nil)
+            drag(true)
+        end)
+        method(b, "SetScript", "OnEnter", function(self)
+            local tip = env.GameTooltip
+            if tip == nil or type(lines) ~= "table" then return end
+            method(tip, "SetOwner", self, "ANCHOR_LEFT")
+            for _, line in ipairs(lines) do method(tip, "AddLine", tostring(line), 1, 1, 1) end
+            method(tip, "Show")
+        end)
+        method(b, "SetScript", "OnLeave", function()
+            if env.GameTooltip ~= nil and type(lines) == "table" then method(env.GameTooltip, "Hide") end
+        end)
+        local h = {}
+        function h.place(x, y)
+            if type(x) ~= "number" or type(y) ~= "number" or x ~= x or y ~= y then return end
+            method(b, "ClearAllPoints")
+            method(b, "SetPoint", "CENTER", map, "CENTER", x, y)
+        end
+        function h.show(on)
+            if on then method(b, "Show") else method(b, "Hide") end
+        end
+        function h.onClick(fn) clickFn = fn end
+        function h.onDrag(fn) dragFn = fn end
+        function h.tip(t) lines = type(t) == "table" and t or nil end
+        return h
+    end
+
+    -- Lead section 340: one diagnostics line naming the frame under the
+    -- mouse, for a window that takes no clicks. New, added at the end.
+    --   c.kitFocus() -> line
+    --     the frame's name (or "unnamed"), its object type, its frame level,
+    --     whether it takes the mouse, whether a kit window made it (and
+    --     which), and up to 4 frames it stands on.
+    -- First guesses on 16001: GetMouseFocus (the older clients'), else
+    -- GetMouseFoci()[1] (the newer clients'); Frame GetName,
+    -- GetObjectType, GetParent, GetFrameLevel and IsMouseEnabled.
+    do
+        local function nameOf(frame)
+            local ok, n = method(frame, "GetName")
+            if ok and type(n) == "string" and n ~= "" then return n end
+            return "unnamed"
+        end
+        local function typeOf(frame)
+            local ok, kind = method(frame, "GetObjectType")
+            if ok and type(kind) == "string" and kind ~= "" then return kind end
+            return "?"
+        end
+        function c.kitFocus()
+            local focus
+            if type(env.GetMouseFocus) == "function" then
+                local ok, f = call(env.GetMouseFocus)
+                if ok then focus = f end
+            elseif type(env.GetMouseFoci) == "function" then
+                local ok, list = call(env.GetMouseFoci)
+                if ok and type(list) == "table" then focus = list[1] end
+            else
+                return "focus: the client has neither GetMouseFocus nor GetMouseFoci"
+            end
+            if focus == nil then return "focus: nothing under the mouse" end
+            local parts = { "focus: " .. nameOf(focus) .. " " .. typeOf(focus) }
+            local okL, level = method(focus, "GetFrameLevel")
+            if okL and type(level) == "number" then parts[#parts + 1] = "level " .. level end
+            local okM, mouse = method(focus, "IsMouseEnabled")
+            if okM and mouse == true then
+                parts[#parts + 1] = "takes the mouse"
+            elseif okM and mouse == false then
+                parts[#parts + 1] = "no mouse"
+            end
+            local owner = c.kitOwner(focus)
+            if type(owner) == "string" then
+                parts[#parts + 1] = "kit " .. owner
+            else
+                parts[#parts + 1] = "not the kit's"
+            end
+            local chain, at = {}, focus
+            for _ = 1, 4 do
+                local okP, up = method(at, "GetParent")
+                if not okP or up == nil then break end
+                local word = nameOf(up) .. " " .. typeOf(up)
+                local upOwner = c.kitOwner(up)
+                if type(upOwner) == "string" then word = word .. " (kit)" end
+                chain[#chain + 1] = word
+                at = up
+            end
+            if #chain > 0 then parts[#parts + 1] = "on " .. table.concat(chain, " < ") end
+            return table.concat(parts, "; ")
         end
     end
     return c

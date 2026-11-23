@@ -58,10 +58,12 @@ Items\Plan.lua
 Items\Present.lua
 Items\CraftHint.lua
 Items\SkillUps.lua
+Items\SkillBoosters.lua
 Items\CraftQueue.lua
 Items\Sell.lua
 Items\Repair.lua
 Items\SellView.lua
+Items\SellThese.lua
 Items\PriceLookup.lua
 Gear\Score.lua
 Gear\Read.lua
@@ -210,3 +212,5 @@ Nav\BossKills.lua
 UI\DungeonWindow.lua
 Nav\QuestSpots.lua
 Nav\TripRoute.lua
+UI\MinimapPlace.lua
+UI\MinimapButton.lua

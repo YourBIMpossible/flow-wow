@@ -58,7 +58,9 @@ BankList.UNREAD_HEAD = "Can't list what to bank"
 BankList.NEVER_SEEN = "No bank data yet."
 BankList.DEFAULT_POINT = { "TOPLEFT", "TOPLEFT", 360, -120 }
 -- The advisor prompt (UI/Advisor.lua: Add(id, text, priority), Remove(id)):
--- "N kinds of item to put in the bank." while there is something to bank.
+-- "Bank: Linen Cloth x12, Copper Ore x5" (ItemPresent.BankPrompt) while
+-- the bank window is open and there is something to bank; removed when the
+-- bank closes (lead sections 340/341: raised only at the bank).
 -- A low priority, a first guess: it is a chore, not a warning.
 BankList.ADVISOR = "advisor"
 BankList.PROMPT_ID = "l6d.bank"
@@ -277,9 +279,10 @@ function BankList.Declare(k)
             -- Given only on a change of the text, so nothing is re-added on
             -- every check and nothing is removed that was never added.
             local prompted = nil
+            local open
             local function prompt(r)
                 local text = nil
-                if ctx.settings:get(BankList.SETTING) ~= false then
+                if open and ctx.settings:get(BankList.SETTING) ~= false then
                     r = r or BankList.Current(ctx.use)
                     local ok, pick = pcall(BankList.Pick, client, ctx.store, BankList.Held(r))
                     text = ok and ns.ItemPresent.BankPrompt(pick) or nil
@@ -302,7 +305,7 @@ function BankList.Declare(k)
             -- BANKFRAME_OPENED, cleared on BANKFRAME_CLOSED. Not known is
             -- not open. Needs game test: the first read before any bank
             -- event is BankFrame:IsShown() (Core/Client.lua).
-            local open = type(client.bankOpen) == "function" and client.bankOpen() == true
+            open = type(client.bankOpen) == "function" and client.bankOpen() == true
             -- One evaluation for the prompt and the panel: made when the bank
             -- opens, and again when the reservations change while it is open.
             local function list()
@@ -338,7 +341,7 @@ function BankList.Declare(k)
                 open = false
                 closed = false
                 hide()
-                prompt()      -- the bags may have changed at the bank
+                prompt()      -- away from the bank: the prompt goes
             end)
             -- A source's claims changed (lead section 219): with the bank
             -- open, the list and the prompt are made again, once. With the
@@ -351,9 +354,9 @@ function BankList.Declare(k)
                 end
                 list()
             end)
-            -- The bags changed away from the bank too: the prompt follows
-            -- them, and goes when there is nothing left to bank. A first
-            -- guess: not seen in game.
+            -- The bags changed: at the bank the prompt follows them, and goes
+            -- when there is nothing left to bank; away from it there is none.
+            -- A first guess: not seen in game.
             ctx.bus:on(BankList.NAME, BankList.BAG_EVENT, function()
                 prompt()
             end)

@@ -173,10 +173,14 @@ tests["sell list panel: look only - no buttons, no clicks, only the two reads"] 
     -- click of its own.
     local parts = c.kitWindows().SellList.parts
     t.ok(#parts > 0, "the window has parts")
+    -- But one: the Sell these button (lead section 337 item 1), whose
+    -- click is tested in Tests/E2E/SellThese.lua.
     for _, part in ipairs(parts) do
-        t.ok(part.kind ~= "button" and part.kind ~= "bind" and part.kind ~= "checkbox",
-            "no acting part in the window: " .. part.kind)
-        t.eq(c.kitClick("SellList", part.path), false, "nothing happens on a click: " .. part.kind)
+        if part.key ~= ns.SellThese.KEY then
+            t.ok(part.kind ~= "button" and part.kind ~= "bind" and part.kind ~= "checkbox",
+                "no acting part in the window: " .. part.kind)
+            t.eq(c.kitClick("SellList", part.path), false, "nothing happens on a click: " .. part.kind)
+        end
     end
     -- A listing over a client that has only the two reads: anything else it
     -- touched would be nil and raise. (Diag's own window snapshot is not
@@ -191,7 +195,9 @@ tests["sell list panel: look only - no buttons, no clicks, only the two reads"] 
         return nil
     end }), nil, nil, { status = ns.Reservations.NONE })
     t.ok(type(lines) == "table" and #lines > 0, "a listing")
-    t.eq(called, { bagItems = true, itemInfo = true }, "the bag read and the item read, nothing else")
+    -- Plus the skill rank read for the skill boosters (lead section 337 item 2).
+    t.eq(called, { bagItems = true, itemInfo = true, ["other:skillRanks"] = true },
+        "the bag read, the item read and the skill rank read, nothing else")
     for name in pairs(L) do
         local n = tostring(name):lower()
         t.ok(not (n:find("^sell$") or n:find("buy") or n:find("click")), "no acting function: " .. n)
