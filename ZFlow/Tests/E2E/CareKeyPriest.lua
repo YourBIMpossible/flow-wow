@@ -162,6 +162,43 @@ tests["priest care key: a dead friend out of a fight; in a fight it waits"] = fu
     noBindsNoMacros(t, c)
 end
 
+local HEALS = { "Flash Heal", "Lesser Heal", "Renew", "Power Word: Shield" }
+
+local function twoHurt(c)
+    c.setParty({ { unit = "party1", guid = "Player-1" }, { unit = "party2", guid = "Player-2" } })
+    c.setUnitCare("party1", FRIEND); c.setUnitCare("party2", FRIEND)
+end
+
+local function far(c, unit, v)
+    for _, name in ipairs(HEALS) do c.setReach(unit, IDS[name], v) end
+end
+
+tests["priest care key: a friend known out of reach is passed by (PK-3)"] = function(t)
+    local c = start({ on = true })
+    twoHurt(c); c.advance(3, 5)
+    local h = button(c)
+    if not h then t.ok(false, "no button"); return end
+    t.eq(h.attrs.unit, "party1", "reach not known: the first hurt friend")
+    far(c, "party1", false); c.advance(3, 5)
+    t.eq({ h.attrs.spell, h.attrs.unit }, { "Flash Heal", "party2" }, "late data: party1 out of reach, the next friend")
+    c.setReachFails(true)
+    t.eq(pcall(c.advance, 3, 5), true, "a reach read that raises: no error escapes")
+    t.eq(h.attrs.unit, "party1", "the reach read raised: not known, not excluded")
+    c.setReachFails(false); c.advance(3, 5)
+    t.eq(h.attrs.unit, "party2", "the read recovers")
+    far(c, "party1", true); c.advance(3, 5)
+    t.eq(h.attrs.unit, "party1", "back in reach")
+    noBindsNoMacros(t, c)
+end
+
+tests["priest care key: out of reach is read again after a reload (PK-3)"] = function(t)
+    local c = start({ on = true })
+    local c2 = start({ on = true, account = c.saved(ns.id.accountDB), char = c.saved(ns.id.charDB) })
+    twoHurt(c2); far(c2, "party1", false); c2.advance(3, 5)
+    local h = button(c2)
+    t.eq(h and h.attrs.unit, "party2", "after the reload: the friend in reach")
+end
+
 tests["priest care key: the setting is read back after a reload"] = function(t)
     local c = start({ on = true })
     local c2, addon2 = start({ account = c.saved(ns.id.accountDB), char = c.saved(ns.id.charDB) })

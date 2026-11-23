@@ -163,6 +163,52 @@ tests["friend heal: a cure for a friend's debuff the class removes"] = function(
     t.eq(R.FriendHeal(s, ns.Packs.PRIEST), nil, "a curse: a priest removes none")
 end
 
+tests["friend heal: a friend known out of reach is passed by; reach not known never excludes (PK-3)"] = function(t)
+    local far = {}
+    for _, name in ipairs({ "Flash Heal", "Lesser Heal", "Heal", "Renew", "Power Word: Shield" }) do far[name] = false end
+    local friends = {
+        { unit = "party1", dead = false, hurt = true, reach = far },
+        { unit = "party2", dead = false, hurt = true },
+    }
+    local got = R.FriendHeal(friendSnap(friends), ns.Packs.PRIEST)
+    t.eq(got and got.unit, "party2", "the first friend is out of reach: the next")
+    t.eq(got and got.spell, "Flash Heal")
+    got = R.FriendHeal(friendSnap({ { unit = "party1", dead = false, hurt = true, reach = { ["Flash Heal"] = false } } }),
+        ns.Packs.PRIEST)
+    t.eq(got and got.spell, "Lesser Heal", "one heal out of reach: the next heal that may reach")
+    got = R.FriendHeal(friendSnap({ { unit = "party1", dead = false, hurt = true, reach = {} } }), ns.Packs.PRIEST)
+    t.eq(got and got.unit, "party1", "reach not known: not excluded")
+    got = R.FriendHeal(friendSnap({ { unit = "party1", dead = false, hurt = true, reach = { ["Flash Heal"] = true } } }),
+        ns.Packs.PRIEST)
+    t.eq(got and got.spell, "Flash Heal", "in reach")
+    got = R.FriendHeal(friendSnap({ { unit = "party1", dead = true, reach = { Resurrection = false } },
+        { unit = "party2", dead = true } }), ns.Packs.PRIEST)
+    t.eq(got and got.unit, "party2", "a revive out of reach: the next dead friend")
+    got = R.FriendHeal(friendSnap({ { unit = "party1", dead = false, hurt = false, debuffTypes = { Magic = "Sleep" },
+        reach = { ["Dispel Magic"] = false } } }), ns.Packs.PRIEST)
+    t.eq(got, nil, "a cure out of reach: none")
+end
+
+tests["friends: with the pack, each care spell's reach is read; not known stays not known (PK-3)"] = function(t)
+    local c = ns.make.fakeClient()
+    c.setParty({ { unit = "party1", guid = "Player-1" } })
+    c.setUnitCare("party1", { exists = true, friend = true, isSelf = false, dead = false, hurt = true })
+    c.setSpellId("Flash Heal", 2061); c.setSpellId("Dispel Magic", 527)
+    local list = CK.Friends(c, ns.Packs.PRIEST)
+    t.eq(list and list[1].reach, {}, "late data: no reach read yet, nothing excluded")
+    c.setReach("party1", 2061, false); c.setReach("party1", 527, true)
+    list = CK.Friends(c, ns.Packs.PRIEST)
+    t.eq(list and list[1].reach, { ["Flash Heal"] = false, ["Dispel Magic"] = true })
+    c.setReachFails(true)
+    list = CK.Friends(c, ns.Packs.PRIEST)
+    t.eq(list and #list, 1, "the reach read raised: the friend stays")
+    t.eq(list and list[1].reach, {}, "the reach read raised: not known")
+    c.setReachFails(false)
+    list = CK.Friends(c, ns.Packs.PRIEST)
+    t.eq(list and list[1].reach and list[1].reach["Flash Heal"], false, "the read recovers")
+    t.eq(CK.Friends(c)[1].reach, nil, "no pack: no reach read")
+end
+
 tests["friend heal: Shield when no heal is ready; a skipped or unread spell is passed by"] = function(t)
     local s = friendSnap({ { unit = "target", dead = false, hurt = true } })
     for _, name in ipairs({ "Flash Heal", "Lesser Heal", "Heal", "Renew" }) do s.spells[name].onCooldown = true end
