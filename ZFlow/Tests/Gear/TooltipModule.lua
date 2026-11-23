@@ -252,6 +252,101 @@ tests["gear tooltip: switched off by the kernel, the hook is given back"] = func
     t.eq(c.hover(HELM), {})
 end
 
+-- G15 weapon speed ------------------------------------------------------------
+
+local STAFF, DPS = "item:7", "ITEM_MOD_DAMAGE_PER_SECOND_SHORT"
+local STAFF_LINE = "Speed 3.60 (slow), 50.0 damage per second"
+
+-- A client whose STAFF is a 3.6 s two-hander; c.speeds[link] is the speed
+-- c.gear answers (a test takes it out to play the speed not read).
+local function weaponClient()
+    local c = client()
+    c.setItem(STAFF, { kind = "INVTYPE_2HWEAPON", stats = { [STR] = 4, [DPS] = 50 } })
+    c.speeds = { [STAFF] = 3.6, [HELM] = 3.6 }
+    local gear = c.gear
+    c.gear = function(link)
+        local g = gear(link)
+        if c.speeds[link] ~= nil then g.speed = c.speeds[link] end
+        return g
+    end
+    return c
+end
+
+local function speedLines(added)
+    local out = {}
+    for i = 1, #added do
+        if string.find(added[i].text, "^Speed ") then out[#out + 1] = added[i] end
+    end
+    return out
+end
+
+tests["gear tooltip G15: hovering a 3.6 s weapon adds the speed line, after the verdict"] = function(t)
+    local c = weaponClient()
+    start(c)
+    local added = c.hover(STAFF)
+    t.eq(texts(speedLines(added)), { STAFF_LINE })
+    t.eq(added[#added].text, STAFF_LINE, "the speed line comes last")
+    t.eq(#added > 1, true, "the verdict lines stay")
+    t.eq({ added[#added].r, added[#added].g, added[#added].b }, M.COLOUR.info)
+    t.eq(M.COLOUR.info, M.COLOUR.none, "drawn like none")
+    local lines = M.Lines(c, packs(), STAFF)
+    t.eq(lines[#lines], { text = STAFF_LINE, tone = "info" },
+        "its own tone, so no reader takes it for a no-verdict")
+end
+
+tests["gear tooltip G15: a non-weapon, even one with a speed read, adds no speed line"] = function(t)
+    local c = weaponClient()
+    start(c)
+    t.eq(texts(c.hover(HELM)), { "Upgrade for your head piece (+4, dps)", "Upgrade for your head piece (+12, tank)" })
+end
+
+tests["gear tooltip G15: a weapon whose speed is not read adds no speed line"] = function(t)
+    local c = weaponClient()
+    c.speeds[STAFF] = nil
+    start(c)
+    local added = c.hover(STAFF)
+    t.eq(speedLines(added), {})
+    t.eq(#added > 0, true, "the verdict still shows")
+end
+
+tests["gear tooltip G15: with the setting off there is no speed line either"] = function(t)
+    local c = weaponClient()
+    local k = start(c)
+    t.eq(k.settings:set(M.SETTING, false), true)
+    t.eq(c.hover(STAFF), {})
+end
+
+tests["gear tooltip G15: item data late - no speed on the first hover, the line on the next"] = function(t)
+    local c = weaponClient()
+    c.speeds[STAFF] = nil
+    start(c)
+    t.eq(speedLines(c.hover(STAFF)), {})
+    c.speeds[STAFF] = 3.6
+    t.eq(texts(speedLines(c.hover(STAFF))), { STAFF_LINE })
+end
+
+tests["gear tooltip G15: a speed line that raises adds no speed line, keeps the verdict, is counted"] = function(t)
+    local W = ns.GearWeaponSpeed
+    local c = weaponClient()
+    local k, api = start(c)
+    local verdict = texts(c.hover(STAFF))
+    table.remove(verdict)   -- the speed line
+    local line, from = W.Line, W.From
+    W.Line = function() error("speed broke") end
+    local ok, added = pcall(c.hover, STAFF)
+    W.Line = line
+    t.eq(ok, true, "no error escapes the hover")
+    t.eq(texts(added), verdict, "the other lines stay")
+    t.eq(api.errors(), 1)
+    t.eq(k.problems:count("gear"), 1)
+    W.From = function() error("from broke") end
+    ok, added = pcall(c.hover, STAFF)
+    W.From = from
+    t.eq(ok, true)
+    t.eq(texts(added), verdict)
+    t.eq(api.errors(), 2)
+end
+
 tests["gear tooltip: it only reads; nothing is equipped or picked up"] = function(t)
     local c = client()
     local calls = 0
