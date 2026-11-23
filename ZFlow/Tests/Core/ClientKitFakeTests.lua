@@ -229,9 +229,11 @@ tests["fake kitWindow: a click on a list row and on a folding section tells the 
     t.eq(c.kitClick("FakeRows", "later"), true, "the folding section is clicked")
     t.eq(folds, { false }, "and is told to unfold")
     t.eq(c.kitClick("FakeRows", "open"), false, "a plain section does not fold")
-    local texts = {}
-    for _, p in ipairs(c.kitWindows().FakeRows.parts) do texts[#texts + 1] = p.text end
-    t.eq(texts[4], "Oh Brother...", "the record carries the row's name")
+    local row = nil
+    for _, p in ipairs(c.kitWindows().FakeRows.parts) do
+        if p.key == "q1" then row = p end
+    end
+    t.eq(row and row.text, "Oh Brother...", "the record carries the row's name")
 end
 
 return tests
