@@ -39,6 +39,9 @@ Po.FEE = 0.30       -- legacy's listing fee, of the vendor price ("not checked o
 Po.MAX = 10         -- rows shown (legacy P.ROWS)
 Po.TRADE_GOODS = 7  -- unused trade goods go to the auction house (legacy 0.35.362)
 Po.SETTING = "auction.postAdvice"
+-- Said by the auctions word when the reservations can't be worked out
+-- (lead section 220, SR-2): nothing is offered then.
+Po.RESERVATIONS_UNKNOWN = "Reservations not known: nothing is offered for the auction house, as what your goals hold is not known."
 Po.UNSOLD = "learned.auction.unsold"   -- char: itemID -> { expired, sold }
 Po.TIP_CACHE = 5    -- seconds one bag read serves a run of tooltips
 Po.COLOUR = { 1, 0.82, 0 }
@@ -195,10 +198,15 @@ function Po.Declare(k, diag)
         end
     end
 
+    -- The rows now, and whether the reservations were known. What a goal
+    -- holds is kept (Disposition's held count), so it is never a candidate;
+    -- reservations unavailable: no rows at all (SR-2).
     local function rowsNow(c, store)
+        local r = ns.SellList.Current(ctx.use)
+        if type(r) ~= "table" or r.status == ns.Reservations.UNAVAILABLE then return {}, false end
         local bag = ns.Bank.Entries(c.bagItems(), c.itemInfo)
-        local context = ns.BankList.Context(store, nil)
-        return Po.List(bag, function(item) return ns.Disposition.Decide(item, context) end, seenOn(store, c))
+        local context = ns.BankList.Context(store, ns.SellList.Held(r))
+        return Po.List(bag, function(item) return ns.Disposition.Decide(item, context) end, seenOn(store, c)), true
     end
 
     -- itemID -> how many came back unsold since the last sale.
@@ -218,7 +226,7 @@ function Po.Declare(k, diag)
         if tipRows and isCount(now) and isCount(tipAt) and now >= tipAt and now - tipAt <= Po.TIP_CACHE then
             return tipRows
         end
-        tipRows, tipAt = rowsNow(c, store), now
+        tipRows, tipAt = (rowsNow(c, store)), now
         builds = builds + 1
         return tipRows
     end
@@ -263,7 +271,9 @@ function Po.Declare(k, diag)
         local store = ctx.store
         local ok, lines = pcall(function()
             local c = ctx.client
-            return Po.Lines(rowsNow(c, store), c.clock(), k.id.title, nil, unsoldCounts(store))
+            local rows, known = rowsNow(c, store)
+            if not known then return { k.id.title .. ": " .. Po.RESERVATIONS_UNKNOWN } end
+            return Po.Lines(rows, c.clock(), k.id.title, nil, unsoldCounts(store))
         end)
         if not ok or type(lines) ~= "table" then
             client.print(k.id.title .. ": " .. Po.WORD .. ": could not be listed this time.")

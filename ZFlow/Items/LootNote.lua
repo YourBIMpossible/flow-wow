@@ -9,7 +9,14 @@ local _, ns = ...
 -- needs no protected action: the note comes after the item is in your bags.
 --
 --   text = LootNote.Note(item, count, itemInfo, context)   pure; nil: no note
---   text = LootNote.FromClient(client, store, chatText)    nil: no note
+--   text = LootNote.FromClient(client, store, chatText, r)  nil: no note
+--                                     r: the reservations evaluation now
+--                                     (UI/SellList.lua SellList.Current).
+--                                     What a goal holds is kept, not noted
+--                                     to sell; r unavailable, or not given,
+--                                     gives no note (lead section 220, SR-1:
+--                                     no sell advice on any path while the
+--                                     reservations can't be worked out).
 --   api  = LootNote.Declare(k)        api.notes() = how many were printed
 --
 -- Reads (through the injected client):
@@ -90,15 +97,17 @@ local function neverOf(store)
     return never
 end
 
-function LootNote.FromClient(client, store, chatText)
+function LootNote.FromClient(client, store, chatText, r)
     if type(client) ~= "table" then return nil end
     local own = client.ownLoot
     if type(own) ~= "function" then return nil end
     local ok, item, count = pcall(own, chatText)
     if not ok or item == nil then return nil end
+    local R = ns.Reservations
+    if type(r) ~= "table" or r.status == R.UNAVAILABLE then return nil end
     local read = client.itemInfo
     local text = LootNote.Note(item, count, type(read) == "function" and read or nil,
-        { choices = { never = neverOf(store) } })
+        { choices = { never = neverOf(store) }, grants = R.HeldIn(R.Grants(r), "bags") })
     if not text then return nil end
     return text, ns.Items.Key(item)
 end
@@ -118,7 +127,9 @@ function LootNote.Declare(k)
         start = function(ctx)
             ctx.bus:on(LootNote.NAME, LootNote.EVENT, function(chatText)
                 if ctx.settings:get(LootNote.SETTING) == false then return end
-                local text, key = LootNote.FromClient(ctx.client, ctx.store, chatText)
+                -- The reservations now: one evaluation for this loot.
+                local r = ns.SellList.Current(ctx.use)
+                local text, key = LootNote.FromClient(ctx.client, ctx.store, chatText, r)
                 if not text then return end
                 -- No flood while grinding: one note per item per REPEAT_S
                 -- seconds; with no time from the client, once a session.
