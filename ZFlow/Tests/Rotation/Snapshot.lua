@@ -21,12 +21,13 @@ return {
 
     ["given fields are kept, by kind"] = function(t)
         local s = ns.SnapshotOf({
-            inCombat = 1, role = "dps", form = "Cat Form", finisherReady = 1, hurt = 4.5,
+            inCombat = 1, role = "dps", form = "Cat Form", formKnown = 1, finisherReady = 1, hurt = 4.5,
             buffs = { ["Mark of the Wild"] = true }, debuffTypes = { Poison = true },
         })
         t.eq(s.inCombat, true, "a flag becomes true or false")
         t.eq(s.role, "dps", "role")
         t.eq(s.form, "Cat Form", "form")
+        t.eq(s.formKnown, true, "formKnown is a flag (section 186)")
         t.eq(s.finisherReady, true, "finisherReady")
         t.eq(s.hurt, 4.5, "hurt")
         t.eq(s.buffs, { ["Mark of the Wild"] = true }, "buffs")

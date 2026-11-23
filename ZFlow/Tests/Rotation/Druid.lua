@@ -6,12 +6,17 @@ local _, ns = ...
 local FORMS = { "Dire Bear Form", "Bear Form", "Cat Form" }
 
 -- An enemy targeted, not fighting yet, already swinging (so the engage step
--- stays out of the way), knowing only the form spells named.
+-- stays out of the way), knowing only the form spells named. The form, your
+-- buffs and the target's debuffs are read (section 186). A case that wants one
+-- of these not read passes it as false in over, and it is then left nil.
+local UNREAD = { formKnown = true, buffs = true, targetDebuffs = true, current = true }
 local function snap(role, form, tree, knows, over)
-    local s = { role = role, form = form, tree = tree, hostile = true, inCombat = false, dead = false,
-                attacking = true, spells = {} }
+    local s = { role = role, form = form, formKnown = true, tree = tree, hostile = true, inCombat = false,
+                dead = false, attacking = true, spells = {}, buffs = {}, targetDebuffs = {} }
     for _, name in ipairs(knows or FORMS) do s.spells[name] = { known = true, onCooldown = false, inRange = true } end
-    for k, v in pairs(over or {}) do s[k] = v end
+    for k, v in pairs(over or {}) do
+        if v == false and UNREAD[k] then s[k] = nil else s[k] = v end
+    end
     return s
 end
 
@@ -24,6 +29,19 @@ local function find(list, spell)
     for _, rule in ipairs(list) do
         if rule.spell == spell then return rule end
     end
+end
+
+-- True when any rule of that spell in the list says yes to s.
+local function anyWhen(list, spell, s)
+    local seen = false
+    for _, rule in ipairs(list) do
+        if rule.spell == spell then
+            seen = true
+            if rule.when(s) then return true end
+        end
+    end
+    assert(seen, "no rule for " .. spell)
+    return false
 end
 
 return {
@@ -179,7 +197,7 @@ return {
             for _, form in ipairs({ "Cat Form", "Bear Form", "Dire Bear Form" }) do
                 local function animal(over)
                     local s = snap("dps", form, "Feral", { swing }, over)
-                    s.inCombat, s.current = true, {}
+                    s.inCombat, s.current = true, { [swing] = false }
                     local got = ns.Choose(s, ns.Packs.DRUID)
                     return got and got.spell or nil
                 end
@@ -198,7 +216,8 @@ return {
         end
         local list = ns.Packs.DRUID.lists.default
         local function pull(stealthed)
-            return { dead = false, inCombat = false, hostile = true, form = "Cat Form", stealthed = stealthed }
+            return { dead = false, inCombat = false, hostile = true, form = "Cat Form", stealthed = stealthed,
+                     current = { Attack = false, ["Auto Attack"] = false } }
         end
         t.eq(when(list, "Prowl", pull(false)), true, "Prowl: read, not stealthed")
         t.eq(when(list, "Prowl", pull(nil)), false, "Prowl: not read")
@@ -239,5 +258,101 @@ return {
         t.eq(s and s.unit, "player", "on yourself")
         s = ns.Choose(snap("heal", nil, "Restoration", known, { inCombat = true, debuffTypes = { Poison = "Venom" } }), ns.Packs.DRUID)
         t.eq(s, nil, "nothing in a fight, also as a healer")
+    end,
+
+    -- Section 186 (C1): a read that is nil is not known, and the rule skips.
+    ["186 buffs not read: no Mark of the Wild, Thorns or Nature's Grasp"] = function(t)
+        local list = ns.Packs.DRUID.lists.default
+        for _, name in ipairs({ "Mark of the Wild", "Thorns" }) do
+            local s = { dead = false, inCombat = false, hostile = true, formKnown = true }
+            t.eq(anyWhen(list, name, s), false, name .. ": buffs not read")
+            s.buffs = {}
+            t.eq(anyWhen(list, name, s), true, name .. ": read, not up")
+            s.buffs = { [name] = 1200 }
+            t.eq(anyWhen(list, name, s), false, name .. ": read, up")
+        end
+        local grasp = { dead = false, inCombat = true, hostile = true, formKnown = true, targetMelee = true,
+                        targetOnYou = true, hittingYou = true, targetDebuffs = {} }
+        t.eq(anyWhen(list, "Nature's Grasp", grasp), false, "Nature's Grasp: buffs not read")
+        grasp.buffs = {}
+        t.eq(anyWhen(list, "Nature's Grasp", grasp), true, "Nature's Grasp: read, not up")
+        grasp.buffs = { ["Nature's Grasp"] = true }
+        t.eq(anyWhen(list, "Nature's Grasp", grasp), false, "Nature's Grasp: read, up")
+    end,
+
+    ["186 target debuffs not read: no Rip, Rake, Roar, roots, Grasp or Moonfire"] = function(t)
+        local list = ns.Packs.DRUID.lists.default
+        local cases = {
+            { "Rip", "Rip", { form = "Cat Form", finisherReady = true } },
+            { "Rake", "Rake", { form = "Cat Form" } },
+            { "Demoralizing Roar", "Demoralizing Roar", { form = "Bear Form" } },
+            { "Moonfire", "Moonfire", { formKnown = true } },
+            { "Entangling Roots", "Entangling Roots", { formKnown = true, targetMelee = true, targetOnYou = true } },
+            { "Nature's Grasp", "Entangling Roots", { formKnown = true, targetMelee = true, targetOnYou = true,
+                                                     hittingYou = true } },
+        }
+        for _, case in ipairs(cases) do
+            local spell, debuff = case[1], case[2]
+            local s = { dead = false, inCombat = true, hostile = true, buffs = {} }
+            for k, v in pairs(case[3]) do s[k] = v end
+            t.eq(anyWhen(list, spell, s), false, spell .. ": target debuffs not read")
+            s.targetDebuffs = {}
+            t.eq(anyWhen(list, spell, s), true, spell .. ": read, not on it")
+            s.targetDebuffs = { [debuff] = true }
+            t.eq(anyWhen(list, spell, s), false, spell .. ": read, on it")
+        end
+        local known = { "Cat Form", "Rake", "Claw" }
+        local got = advice("dps", "Cat Form", "Feral", known, { inCombat = true, targetDebuffs = false })
+        t.eq(got, "Claw", "Cat Form, target debuffs not read: the builder, not Rake")
+        t.eq(advice("dps", "Cat Form", "Feral", known, { inCombat = true }), "Rake", "read, not on it: Rake")
+    end,
+
+    ["186 current not read: no swing, no Maul, no weapon fallback"] = function(t)
+        local list = ns.Packs.DRUID.lists.default
+        for _, swing in ipairs({ "Attack", "Auto Attack" }) do
+            local s = { dead = false, inCombat = true, hostile = true, form = "Cat Form", stealthed = false }
+            t.eq(anyWhen(list, swing, s), false, swing .. ": current not read")
+            s.current = {}
+            t.eq(anyWhen(list, swing, s), false, swing .. ": left out of current, not known")
+            s.current = { [swing] = true }
+            t.eq(anyWhen(list, swing, s), false, swing .. ": read, already on")
+            s.current = { [swing] = false }
+            t.eq(anyWhen(list, swing, s), true, swing .. ": read, off")
+        end
+        local bear = { dead = false, inCombat = true, hostile = true, form = "Bear Form" }
+        t.eq(anyWhen(list, "Maul", bear), false, "Maul: current not read")
+        bear.current = {}
+        t.eq(anyWhen(list, "Maul", bear), false, "Maul: left out of current, not known")
+        bear.current = { Maul = true }
+        t.eq(anyWhen(list, "Maul", bear), false, "Maul: read, queued")
+        bear.current = { Maul = false }
+        t.eq(anyWhen(list, "Maul", bear), true, "Maul: read, not queued")
+        for _, swing in ipairs({ "Attack", "Auto Attack" }) do
+            local s = { dead = false, inCombat = true, hostile = true, formKnown = true,
+                        spells = { Wrath = { known = true, noPower = true } } }
+            t.eq(anyWhen(list, swing, s), false, swing .. " for a caster out of mana: current not read")
+            s.current = { [swing] = false }
+            t.eq(anyWhen(list, swing, s), true, swing .. " for a caster out of mana: read, off")
+        end
+    end,
+
+    ["186 form not known: not caster, and no Cat Form"] = function(t)
+        local list = ns.Packs.DRUID.lists.default
+        local function with(formKnown, form)
+            return { dead = false, inCombat = false, hostile = true, buffs = {}, targetDebuffs = {},
+                     targetMelee = true, role = "dps", tree = "Feral", form = form, formKnown = formKnown }
+        end
+        for _, spell in ipairs({ "Mark of the Wild", "Thorns", "Moonfire", "Wrath", "Entangling Roots", "Cat Form" }) do
+            t.eq(anyWhen(list, spell, with(nil)), false, spell .. ": form not known")
+            t.eq(anyWhen(list, spell, with(true)), true, spell .. ": read, no form")
+        end
+        t.eq(anyWhen(list, "Wrath", with(nil, "Moonkin Form")), true, "Moonkin Form named: caster")
+        t.eq(anyWhen(list, "Cat Form", with(nil, "Moonkin Form")), false, "Moonkin Form named: no Cat Form")
+        local cure = find(ns.Packs.DRUID.dispels, "Cure Poison")
+        t.eq(cure.when(with(nil)) and true or false, false, "Cure Poison: form not known")
+        t.eq(cure.when(with(true)) and true or false, true, "Cure Poison: read, no form")
+        t.eq(advice("dps", nil, "Feral", nil, { formKnown = false }), nil, "form not known: no Cat Form")
+        t.eq(advice("dps", nil, "Feral"), "Cat Form", "read, no form: Cat Form")
+        t.eq(ns.DruidWantsCat("dps", true, nil, "Feral"), true, "the predicate itself is unchanged")
     end,
 }

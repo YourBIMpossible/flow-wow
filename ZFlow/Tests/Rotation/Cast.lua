@@ -268,7 +268,7 @@ return {
         local kp = ns.KeyPlan(ns.Packs.DRUID, { forms = {
             { name = "Bear Form", index = 1 }, { name = "Cat Form", index = 3 },
         } })
-        local s = ns.Choose({ role = "dps", hostile = true, inCombat = false, dead = false,
+        local s = ns.Choose({ role = "dps", hostile = true, inCombat = false, dead = false, formKnown = true,
                              spells = { Wrath = { known = true, onCooldown = false, inRange = true } } },
             ns.Packs.DRUID)
         t.ok(s and type(s.spell) == "string", "a suggestion")
