@@ -416,7 +416,7 @@ function K.Declare(k, diag)
         settings = { {
             key = K.SETTING, scope = "char", type = "bool", default = true,
             label = K.LABEL,
-            help = "Puts your form's spells on one hidden button, outside fights only. It presses nothing for you.",
+            help = "Shows the Flow button holding the rotation's next spell, set outside fights only. Click it, or bind a key to it on this page. It binds no key by itself and presses nothing for you.",
             group = "combat.rotation", synonyms = { "key", "button", "keybind", "macro", "form", "easy key" },
         } },
         start = function(ctx)
