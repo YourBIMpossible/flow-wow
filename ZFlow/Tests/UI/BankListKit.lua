@@ -165,4 +165,28 @@ tests["bank list kit: where the player left it is saved"] = function(t)
     t.eq(drawn(c2).point, { "CENTER", "CENTER", -30, 40 })
 end
 
+tests["bank list kit: an icon given as a file number is kept on the line"] = function(t)
+    local c = bags({ { item = CLOTH, count = 20 } })
+    c.setItemTexture(CLOTH, 134400)
+    local tree = treeOf(t, c)
+    if not tree then return end
+    local line = part(tree, "itemLine", "Linen Cloth")
+    t.ok(line ~= nil, "the line")
+    if not line then return end
+    t.eq(line.icon, 134400, "the file number the client gives")
+end
+
+tests["bank list kit: closed by the player, it stays closed for that bank visit"] = function(t)
+    local k, c = start()
+    if type(drawn(c)) ~= "table" then t.ok(false, "a kit window") return end
+    c.setBankOpen(true)
+    t.eq(drawn(c).shown, true)
+    t.eq(c.kitClose("BankList"), true)
+    k.bus:emit(ns.Reservations.CHANGED)
+    t.eq(drawn(c).shown, false, "a change of the claims does not bring it back")
+    c.setBankOpen(false)
+    c.setBankOpen(true)
+    t.eq(drawn(c).shown, true, "the next bank visit shows it again")
+end
+
 return tests

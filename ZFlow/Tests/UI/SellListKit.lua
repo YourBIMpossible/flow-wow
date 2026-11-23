@@ -169,7 +169,39 @@ tests["sell list kit: an observed price shows as money, an estimate as a labelle
     local odd = part(est, "itemLine", "Odd Thing")
     t.eq(odd.money, nil)
     t.eq(odd.note, ns.ItemPresent.VENDOR_PRICE_UNKNOWN, "an unknown price says so, with no figure")
-    t.eq(part(est, "footer").money, 0, "neither is in the total")
+    local foot = part(est, "footer")
+    t.eq(foot.money, nil, "no price seen: no money in the footer, not 0")
+    t.eq(foot.text, "Prices not known", "it says the prices are not known")
+end
+
+tests["sell list kit: the footer total says it covers only the prices seen"] = function(t)
+    local P = ns.Prices
+    local listing = {
+        list = { ok = true, unread = 0, unsellable = 0,
+            total = { known = 40, estimated = 60, unknown = 0 },
+            rows = {
+                { key = 3002, name = "Seen Thing", count = 2, unit = 20, total = 40, basis = P.OBSERVED },
+                { key = 3000, name = "Grey Mystery", count = 2, unit = 30, total = 60,
+                  basis = P.ESTIMATED, source = "price list" },
+            } },
+        kept = { ok = true, rows = {} },
+    }
+    local tree = K.Window(L.TreeOf(listing))
+    if not tree then t.ok(false, "the kit takes it") return end
+    local foot = part(tree, "footer")
+    t.eq(foot.money, 40, "only the seen price")
+    t.eq(foot.text, "Total of the prices seen", "it says what the total covers")
+end
+
+tests["sell list kit: an icon given as a file number is kept on the line"] = function(t)
+    local c = bags({ { item = FANG, count = 3 } })
+    c.setItemTexture(FANG, 134400)
+    local tree = treeOf(t, c)
+    if not tree then return end
+    local line = part(tree, "itemLine", "Broken Fang")
+    t.ok(line ~= nil, "the line")
+    if not line then return end
+    t.eq(line.icon, 134400, "the file number the client gives")
 end
 
 tests["sell list kit: the kept section says why"] = function(t)

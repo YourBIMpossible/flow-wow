@@ -114,12 +114,17 @@ tests["sell and bank look: nothing to sell says so, and names the add-on from th
     t.eq(newProblems(addon), 0)
 end
 
-tests["sell and bank look: item facts late - nothing to sell, then the line once they are read"] = function(t)
+tests["sell and bank look: item facts late - not read yet, then the line once they are read"] = function(t)
     local c, addon = boot({ info = false })
     if type(c.kitWindows().SellList) ~= "table" then t.ok(false, "a kit window") return end
     c.setMerchantOpen(true)
     t.eq(count(c.kitWindows().SellList, "itemLine"), 0, "nothing is claimed of an item not read")
-    t.ok(shows(c.kitWindows().SellList, "empty", "Nothing to sell."), "the empty state meanwhile")
+    t.ok(not shows(c.kitWindows().SellList, "empty", "Nothing to sell."), "not read is not nothing to sell")
+    t.ok(shows(c.kitWindows().SellList, "empty", "Items not read yet."), "the empty state meanwhile")
+    local tree = ns.Kit.Window(addon.SellList.Tree(c, addon.store, nil, { status = addon.Reservations.NONE }))
+    local how
+    ns.Kit.Each(tree, function(p) if p.kind == "empty" then how = p.how end end)
+    t.eq(how, "3 items were not read yet. Reopen the merchant window to list them.", "the count, and how to get it")
     c.setItemInfo(INFO)
     c.fire(addon.SellList.BAG_EVENT)
     c.advance(1, 4)
