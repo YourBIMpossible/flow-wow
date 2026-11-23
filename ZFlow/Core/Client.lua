@@ -11611,6 +11611,17 @@ function ns.make.client(env)
         end
         return out
     end
+
+    -- P-QUEST (lead section 354 item 4): whether quest id can be shared
+    -- with your group: true, false, or nil when not known.
+    -- C_QuestLog.IsPushableQuest(id), a first guess: not seen in game on
+    -- 16001. Only reads: no quest is selected in the log and none is shared.
+    function c.questShareable(id)
+        if type(id) ~= "number" then return nil end
+        local log = env.C_QuestLog
+        if type(log) ~= "table" then return nil end
+        return yesNo(call(log.IsPushableQuest, id))
+    end
     return c
 end
 

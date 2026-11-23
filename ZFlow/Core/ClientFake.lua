@@ -4166,6 +4166,17 @@ function ns.make.fakeClient(opts)
     function c.trackingRaw() return evidenceCopy(s.evidenceTracking) end
     function c.setTradeSkillAnswers(r) s.evidenceTradeAnswers = evidenceCopy(r) end
     function c.tradeSkillAnswers() return evidenceCopy(s.evidenceTradeAnswers) end
+
+    -- P-QUEST (lead section 354 item 4): c.setQuestShareable(id, true /
+    -- false / nil). Not set: not known.
+    function c.setQuestShareable(id, v)
+        s.questShareable = s.questShareable or {}
+        s.questShareable[id] = v
+    end
+    function c.questShareable(id)
+        if type(id) ~= "number" then return nil end
+        return s.questShareable and s.questShareable[id]
+    end
     return c
 end
 

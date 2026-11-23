@@ -224,6 +224,10 @@ local READS = {
 -- the player click. The capture asks neither.
 READS.bagSlots = false
 READS.bagSlot = false
+-- P-QUEST (lead section 354 item 4): whether a quest can be shared; read by
+-- Nav/QuestAdvice.lua only. Its name (C_QuestLog.IsPushableQuest) is in
+-- Diag.NAMES. The capture does not ask it.
+READS.questShareable = false
 -- Lead section 337 item 1 (ACTING): one bag slot sold to the open merchant,
 -- only on the player click on Sell these, out of combat. Never the capture.
 KIND.act[#KIND.act + 1] = "sellBagItem"

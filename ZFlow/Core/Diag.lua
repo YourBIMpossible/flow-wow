@@ -252,6 +252,9 @@ Diag.NAMES = {
     -- Lead section 340: the frame under the mouse (c.kitFocus), and the
     -- settings window's large page heading.
     "GetMouseFocus", "GetMouseFoci", "GameFontHighlightHuge",
+    -- P-QUEST (lead section 354 item 4): whether a quest can be shared
+    -- (client.questShareable). A first guess on 16001.
+    "C_QuestLog.IsPushableQuest",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns
