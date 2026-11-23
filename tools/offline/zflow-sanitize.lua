@@ -1,5 +1,8 @@
 -- Lead section 188: the capture sanitizer. Lua 5.1.
 --   lua5.1 tools/offline/zflow-sanitize.lua <capture> <out> [<capture> <out> ...]
+--   lua5.1 tools/offline/zflow-sanitize.lua --all-refusals <capture> [<capture> ...]
+--     (section 194) lists every refusal of the run, reason and path only,
+--     one line each, instead of stopping at the first; writes nothing.
 --
 -- A capture is a saved-variables file as the game writes it (ZFlow.lua:
 -- ZFlowDB = { ... }; the per-character file: ZFlowCharDB = { ... }). The
@@ -33,6 +36,17 @@
 -- told from the other words, and a name of one or two letters cannot be
 -- found in text without breaking ordinary words, so free text is not
 -- searched for names; it is not kept.
+--
+-- Section 192 (S6): a character, realm, guild or account name is matched in
+-- any case and with spaces, punctuation and hyphens ignored, so "Cinder
+-- Reach", "CinderReach" and "cinder-reach" are one realm with one made-up
+-- name. Text that is kept as it is ("str", a text "scalar", a key of an open
+-- table) is replaced whole like free text when it holds a known name: the
+-- whole text is the name, a word of it is the name (any length, so a name
+-- of one or two letters is caught as a word), or a name of four letters or
+-- more is inside it with spaces and punctuation ignored. This replaces more
+-- than it must (an item or a word that is also a name); that is the side it
+-- errs on. Letters above ASCII are matched as bytes, not by case.
 --
 -- Exit code: 0 = written, 1 = refused (a field, type or global the schema
 -- does not know), 2 = could not run (bad arguments, no capture, not
@@ -226,11 +240,18 @@ end
 --                                 faction (after the last "-") kept
 --   "free"                        replaced whole ("text 1" ...), unless
 --                                 it holds no letter: then kept
+--   "typeName"                    kept when it is a Lua type name the
+--                                 client peek writes for a value it does
+--                                 not copy (function, table, userdata,
+--                                 thread), else as "free"
 --   "fieldKey"                    a key of an open table: kept when it is
 --                                 a lower-case-first ASCII word (an add-on
 --                                 field such as money or lastSeen; a
 --                                 character or realm name always starts
---                                 with a capital), else as "free"
+--                                 with a capital) and holds no known name,
+--                                 else as "free"
+-- Kept text ("str", text "scalar", a kept "fieldKey") that holds a known
+-- name is replaced as "free" (S6).
 --   "nothing"                     never saved: refused when present
 --   { fields = { key = spec }, open = spec }   a table with these text
 --                                 keys; open: any other key, of that spec
@@ -245,7 +266,35 @@ local NAME_KINDS = {
 }
 S.NAME_KINDS = NAME_KINDS
 
+-- The kinds matched in any spelling (S6), and in kept text.
+local FOLDED = { char = true, realm = true, guild = true, account = true }
+
+-- norm(text) -> lower case, every ASCII space, control and punctuation byte
+-- removed. Bytes above 127 are kept as they are.
+local function norm(s)
+    return (s:lower():gsub("[%c%p%s]", ""))
+end
+S.norm = norm
+
 local function refuse(path, what) error({ sanitize = "refuse", msg = what .. " at " .. path }, 0) end
+
+-- A run made by S.refusals has run.refusals: a refusal is noted there
+-- (once for each reason and path) and the walk goes on with the next
+-- entry, instead of stopping the run.
+local function note(run, msg)
+    if run.refusalSeen[msg] then return end
+    run.refusalSeen[msg] = true
+    run.refusals[#run.refusals + 1] = msg
+end
+
+-- fail: refuse, or in a run that lists refusals, note and go on (the
+-- caller skips the entry).
+local function fail(run, path, what)
+    if not run.refusals then refuse(path, what) end
+    note(run, what .. " at " .. path)
+end
+
+local TYPE_NAMES = { ["function"] = true, table = true, userdata = true, thread = true }
 
 -- A path names keys that are fixed words; a key that is data is <key>,
 -- so a refusal never prints a name.
@@ -262,15 +311,55 @@ function S.new()
     return run
 end
 
+-- madeUp: a name kind is keyed by norm(real), so every spelling of one
+-- name gets one made-up name; chat, mail and free text are keyed as they are.
 local function madeUp(run, kind, real)
     if real == "" then return "" end
-    local got = run.names[kind][real]
+    local key = real
+    if FOLDED[kind] then
+        key = norm(real)
+        if key == "" then key = real end
+    end
+    local got = run.names[kind][key]
     if got then return got end
     run.counts[kind] = run.counts[kind] + 1
     got = NAME_KINDS[kind] .. run.counts[kind]
-    run.names[kind][real] = got
+    run.names[kind][key] = got
     return got
 end
+
+-- S.know(run): after pass one, the names found, for holdsName.
+function S.know(run)
+    local set, long = {}, {}
+    for kind in pairs(FOLDED) do
+        for key in pairs(run.names[kind]) do
+            if not set[key] then
+                set[key] = true
+                if #key >= 4 then long[#long + 1] = key end
+            end
+        end
+    end
+    table.sort(long)
+    run.known = { set = set, long = long }
+end
+
+-- holdsName(run, text) -> true when the text is a known name, a word of it
+-- is one, or a known name of four bytes or more is inside it, all compared
+-- through norm. False before S.know.
+local function holdsName(run, text)
+    local k = run.known
+    if not k then return false end
+    local n = norm(text)
+    if k.set[n] then return true end
+    for w in text:gmatch("[^%c%p%s]+") do
+        if k.set[w:lower()] then return true end
+    end
+    for _, name in ipairs(k.long) do
+        if n:find(name, 1, true) then return true end
+    end
+    return false
+end
+S.holdsName = holdsName
 
 local function charRealm(run, v)
     local name, realm = v:match("^([^%-]+)%-(.+)$")
@@ -317,21 +406,39 @@ local function leaf(run, spec, v, path, copy)
     if spec == "nothing" then refuse(path, "a field that is never saved") end
     if spec == "num" or spec == "bool" or spec == "scalar" then
         if not fits(spec, v) then refuse(path, "a " .. tv .. " where " .. spec .. " is saved") end
+        if copy and tv == "string" and holdsName(run, v) then return S.free(run, v) end
         return v
     end
     if tv ~= "string" then refuse(path, "a " .. tv .. " where text is saved") end
-    if spec == "str" then return v end
+    if spec == "str" then
+        if copy and holdsName(run, v) then return S.free(run, v) end
+        return v
+    end
     -- Before the name kinds: "free" is one of them, but text with no
     -- letter is kept.
     if spec == "free" then return S.free(run, v) end
+    if spec == "typeName" then
+        if TYPE_NAMES[v] and not (copy and holdsName(run, v)) then return v end
+        return S.free(run, v)
+    end
     if spec == "fieldKey" then
-        if v:match("^%l[%w_]*$") then return v end
+        if v:match("^%l[%w_]*$") and not (copy and holdsName(run, v)) then return v end
         return S.free(run, v)
     end
     if NAME_KINDS[spec] then return madeUp(run, spec, v) end
     if spec == "charRealm" then return charRealm(run, v) end
     if spec == "realmFaction" then return realmFaction(run, v) end
     refuse(path, "a schema kind the sanitizer does not know")
+end
+
+-- guarded: walk one entry; in a run that lists refusals, a refusal inside
+-- it is noted and the entry is nil.
+local function guarded(run, spec, v, path, copy)
+    if not run.refusals then return walk(run, spec, v, path, copy) end
+    local ok, r = pcall(walk, run, spec, v, path, copy)
+    if ok then return r end
+    if type(r) == "table" and r.sanitize == "refuse" then note(run, r.msg); return nil end
+    error(r, 0)
 end
 
 walk = function(run, spec, v, path, copy)
@@ -346,7 +453,7 @@ walk = function(run, spec, v, path, copy)
     local out = {}
     if spec.list then
         if not isList(v) then refuse(path, "a key that is not a list index") end
-        for i = 1, #v do out[i] = walk(run, spec.list, v[i], pathOf(path, i), copy) end
+        for i = 1, #v do out[i] = guarded(run, spec.list, v[i], pathOf(path, i), copy) end
         return out
     end
     if spec.map then
@@ -354,9 +461,14 @@ walk = function(run, spec, v, path, copy)
         for _, k in ipairs(sortedKeys(v)) do
             -- A map key is data: never printed in a refusal.
             local kp = pathOf(path, k, true)
-            local nk = walk(run, keySpec, k, path .. "[<key>]", copy)
-            if out[nk] ~= nil then refuse(kp, "two keys that become the same made-up key") end
-            out[nk] = walk(run, spec.map, v[k], kp, copy)
+            local nk = guarded(run, keySpec, k, path .. "[<key>]", copy)
+            if nk ~= nil then
+                if out[nk] ~= nil then
+                    fail(run, kp, "two keys that become the same made-up key")
+                else
+                    out[nk] = guarded(run, spec.map, v[k], kp, copy)
+                end
+            end
         end
         return out
     end
@@ -365,27 +477,58 @@ walk = function(run, spec, v, path, copy)
             local s = type(k) == "string" and spec.fields[k] or nil
             local known = s ~= nil
             if s == nil then s = spec.open end
-            if s == nil then refuse(pathOf(path, k, true), "a field the schema does not know") end
-            out[k] = walk(run, s, v[k], pathOf(path, k, not known), copy)
+            if s == nil then
+                fail(run, pathOf(path, k, true), "a field the schema does not know")
+            else
+                out[k] = guarded(run, s, v[k], pathOf(path, k, not known), copy)
+            end
         end
         return out
     end
     refuse(path, "a schema entry with no fields, list or map")
 end
 
--- S.sanitize(globals, order, schema) -> copy, run   (raises { sanitize, msg })
+-- S.sanitize(globals, order, schema[, run]) -> copy, run   (raises { sanitize, msg })
 --   schema.globals[name] is the spec of that saved table; any other global
 --   is refused. Pass one finds every name and numbers them; pass two
---   copies with the numbers pass one gave.
-function S.sanitize(globals, order, schema)
+--   copies with the numbers pass one gave, and replaces kept text that
+--   holds a name pass one found (S6).
+function S.sanitize(globals, order, schema, run)
+    run = run or S.new()
+    local known = {}
     for _, name in ipairs(order) do
-        if not schema.globals[name] then refuse("<global>", "a global the schema does not know") end
+        if schema.globals[name] then
+            known[#known + 1] = name
+        else
+            fail(run, "<global>", "a global the schema does not know")
+        end
     end
-    local run = S.new()
-    for _, name in ipairs(order) do walk(run, schema.globals[name], globals[name], name, false) end
+    for _, name in ipairs(known) do guarded(run, schema.globals[name], globals[name], name, false) end
+    S.know(run)
     local copy = {}
-    for _, name in ipairs(order) do copy[name] = walk(run, schema.globals[name], globals[name], name, true) end
+    for _, name in ipairs(known) do copy[name] = guarded(run, schema.globals[name], globals[name], name, true) end
     return copy, run
+end
+
+-- parseAll: the globals of every file, in one table; a global saved in two
+-- files is refused.
+local function parseAll(texts, run)
+    local all, allOrder, orders = {}, {}, {}
+    for i, text in ipairs(texts) do
+        local g, order = S.parse(text)
+        local kept = {}
+        for _, name in ipairs(order) do
+            if all[name] ~= nil then
+                fail(run, "<global>", "a global saved in two files")
+            else
+                all[name] = g[name]
+                allOrder[#allOrder + 1] = name
+                kept[#kept + 1] = name
+            end
+        end
+        orders[i] = kept
+    end
+    return all, allOrder, orders
 end
 
 -- S.texts(texts, schema) -> { sanitized text, ... }, or nil, kind, message
@@ -396,17 +539,9 @@ end
 --   kind: "parse" (not saved-variables data), "refuse" (the schema), "bug"
 function S.texts(texts, schema)
     local ok, a = pcall(function()
-        local all, allOrder, orders = {}, {}, {}
-        for i, text in ipairs(texts) do
-            local g, order = S.parse(text)
-            for _, name in ipairs(order) do
-                if all[name] ~= nil then refuse("<global>", "a global saved in two files") end
-                all[name] = g[name]
-                allOrder[#allOrder + 1] = name
-            end
-            orders[i] = order
-        end
-        local copy = S.sanitize(all, allOrder, schema)
+        local run = S.new()
+        local all, allOrder, orders = parseAll(texts, run)
+        local copy = S.sanitize(all, allOrder, schema, run)
         local outs = {}
         for i, order in ipairs(orders) do outs[i] = S.write(copy, order) end
         return outs
@@ -414,6 +549,23 @@ function S.texts(texts, schema)
     if ok then return a end
     if type(a) == "table" and a.sanitize then return nil, a.sanitize, a.msg end
     return nil, "bug", tostring(a)
+end
+
+-- S.refusals(texts, schema) -> { message, ... }, or nil, kind, message
+--   Section 194: every refusal of the run, each reason and path once, in
+--   the order met (an empty list: the run would write). Each message is
+--   the same as the one S.texts stops at: a path and a reason, never a
+--   value. Text that is not saved-variables data still stops it ("parse").
+function S.refusals(texts, schema)
+    local run = S.new()
+    run.refusals, run.refusalSeen = {}, {}
+    local ok, err = pcall(function()
+        local all, allOrder = parseAll(texts, run)
+        S.sanitize(all, allOrder, schema, run)
+    end)
+    if ok then return run.refusals end
+    if type(err) == "table" and err.sanitize then return nil, err.sanitize, err.msg end
+    return nil, "bug", tostring(err)
 end
 
 -- S.text(text, schema) -> sanitized text, or nil, kind, message
@@ -426,9 +578,47 @@ end
 -- -------------------------------------------------------------------- cli
 --   zflow-sanitize.lua <capture> <out> [<capture> <out> ...]
 -- One pair for each file of the capture; every pair in one run.
+--   zflow-sanitize.lua --all-refusals <capture> [<capture> ...]
+-- Every refusal, one line each on stderr; nothing written. Exit 0 when
+-- there is none, 1 when there is one or more, 2 when a file cannot be
+-- read or is not saved-variables data.
+
+local function readAll(inputs)
+    local texts = {}
+    for i, input in ipairs(inputs) do
+        local f = io.open(input, "rb")
+        if not f then return nil, i end
+        texts[i] = f:read("*a")
+        f:close()
+    end
+    return texts
+end
+
+local function allRefusals(here, inputs)
+    if #inputs == 0 then
+        io.stderr:write("usage: zflow-sanitize.lua --all-refusals <capture> [<capture> ...]\n")
+        return 2
+    end
+    local texts, bad = readAll(inputs)
+    if not texts then io.stderr:write("zflow-sanitize: no capture at path " .. bad .. "\n"); return 2 end
+    local schema = dofile(here .. "/zflow-sanitize-schema.lua")
+    local list, kind, msg = S.refusals(texts, schema)
+    if not list then
+        io.stderr:write("zflow-sanitize: " .. kind .. ": " .. tostring(msg) .. "; nothing written\n")
+        return 2
+    end
+    for _, m in ipairs(list) do io.stderr:write("zflow-sanitize: refuse: " .. m .. "\n") end
+    io.stderr:write("zflow-sanitize: " .. #list .. " refusal(s); nothing written\n")
+    return #list == 0 and 0 or 1
+end
 
 local function main(argv)
     local here = (argv[0] or ""):match("^(.*)[/\\][^/\\]*$") or "."
+    if argv[1] == "--all-refusals" then
+        local inputs = {}
+        for i = 2, #argv do inputs[#inputs + 1] = argv[i] end
+        return allRefusals(here, inputs)
+    end
     local n = #argv
     if n == 0 or n % 2 ~= 0 then
         io.stderr:write("usage: zflow-sanitize.lua <capture> <out> [<capture> <out> ...]\n")
@@ -447,13 +637,8 @@ local function main(argv)
         local exists = io.open(output, "rb")
         if exists then exists:close(); io.stderr:write("zflow-sanitize: <out> " .. i .. " exists; not overwritten\n"); return 2 end
     end
-    local texts = {}
-    for i, input in ipairs(inputs) do
-        local f = io.open(input, "rb")
-        if not f then io.stderr:write("zflow-sanitize: no capture at path " .. i .. "\n"); return 2 end
-        texts[i] = f:read("*a")
-        f:close()
-    end
+    local texts, bad = readAll(inputs)
+    if not texts then io.stderr:write("zflow-sanitize: no capture at path " .. bad .. "\n"); return 2 end
     local schema = dofile(here .. "/zflow-sanitize-schema.lua")
     local outs, kind, msg = S.texts(texts, schema)
     if not outs then
