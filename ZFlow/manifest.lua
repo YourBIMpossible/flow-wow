@@ -233,5 +233,7 @@ return {
     "UI/SettingsShare.lua",
     -- Lead section 303: the Dungeon Quests pane's data (pure).
     "Nav/DungeonStates.lua",
+    -- Lead section 303: the Dungeon Quests reader (Questie at runtime).
+    "Nav/DungeonRead.lua",
     },
 }

@@ -198,3 +198,4 @@ UI\NpcSpeech.lua
 UI\Reveal.lua
 UI\SettingsShare.lua
 Nav\DungeonStates.lua
+Nav\DungeonRead.lua
