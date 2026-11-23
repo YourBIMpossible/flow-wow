@@ -85,9 +85,12 @@ function CraftBar.View(model, act)
         local name = "recipe " .. tostring(r.id)
         if type(r.name) == "string" and r.name ~= "" then name = r.name end
         local line = { kind = "itemLine", name = name, count = count }
-        -- The kit takes an icon as text only; a numbered icon is left out
-        -- (kit ask).
-        if type(r.icon) == "string" and r.icon ~= "" then line.icon = r.icon end
+        -- The kit takes a texture path or the game's file number; anything
+        -- else is left out, so it cannot cost the window.
+        local icon = r.icon
+        if (type(icon) == "string" and icon ~= "") or (type(icon) == "number" and icon > 0 and icon < math.huge) then
+            line.icon = icon
+        end
         -- Kit ask: a line colour that is not an item quality (the skill colour).
         if type(colours) == "table" and type(r.difficulty) == "string" then line.color = colours[r.difficulty] end
         kids[#kids + 1] = line

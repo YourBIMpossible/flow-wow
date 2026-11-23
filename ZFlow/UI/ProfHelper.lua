@@ -240,9 +240,12 @@ function ProfHelper.View(model, act)
     end
     for _, r in ipairs(recipes) do
         local line = { kind = "itemLine", name = r.name .. " (" .. ProfHelper[WORD[r.chance] or "UNKNOWN"] .. ")" }
-        -- The kit takes an icon as text only; a numbered icon is left out
-        -- (kit ask).
-        if type(r.icon) == "string" and r.icon ~= "" then line.icon = r.icon end
+        -- The kit takes a texture path or the game's file number; anything
+        -- else is left out, so it cannot cost the window.
+        local icon = r.icon
+        if (type(icon) == "string" and icon ~= "") or (type(icon) == "number" and icon > 0 and icon < math.huge) then
+            line.icon = icon
+        end
         -- The kit takes whole copper only; a cost not known is no money.
         if type(r.cost) == "number" and r.cost >= 0 then line.money = math.floor(r.cost + 0.5) end
         -- Kit ask: a line colour that is not an item quality (the skill colour).
