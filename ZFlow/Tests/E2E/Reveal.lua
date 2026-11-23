@@ -195,6 +195,37 @@ tests["reveal 236: a reload keeps the revealed stages"] = function(t)
     t.eq(iconShown(c2, addon2), false)
 end
 
+-- RV-1 (lead section 274): when the arrow came in is saved with the
+-- stages, as the client's clock gives it, so a reload does not restart
+-- the ten-minute wait for the advice panel.
+tests["reveal 236: a reload keeps the ten-minute wait: advice at T+600 s, not T+900 s"] = function(t)
+    local T = 50000
+    local c, addon = boot({ early = function(c0) c0.setClock(T) end })
+    c.fire("QUEST_ACCEPTED", 1, 303)
+    c.advance(1, 4)
+    t.eq(addon.revealed("arrow"), true, "the arrow at T")
+    t.eq(addon.store:get("char", R.PATH .. ".arrowAt"), T, "saved with the stages")
+    local account, char = c.saved(ns.id.accountDB), c.saved(ns.id.charDB)
+    local c2, addon2 = boot({ account = account, char = char, early = function(c0) c0.setClock(T + 300) end })
+    t.eq(addon2.revealed("advice"), false, "reloaded at T+300 s: not yet")
+    c2.setClock(T + 590)
+    c2.advance(1, 4)
+    t.eq(addon2.revealed("advice"), false, "T+590 s: not yet")
+    c2.setClock(T + 601)
+    c2.advance(1, 4)
+    t.eq(addon2.revealed("advice"), true, "T+600 s: the advice panel, not T+900 s")
+    t.eq(adviceShown(c2, addon2), true)
+end
+
+tests["reveal: with no clock known the wait is this session's, as before"] = function(t)
+    local c, addon = boot()
+    c.fire("QUEST_ACCEPTED", 1, 303)
+    c.advance(1, 4)
+    t.eq(addon.store:get("char", R.PATH .. ".arrowAt"), nil, "nothing saved without a clock")
+    c.advance(610, 20)
+    t.eq(addon.revealed("advice"), true, "ten minutes of this session: the advice panel")
+end
+
 tests["reveal 236: reveal all shows everything now; reveal reset starts over"] = function(t)
     local c, addon = boot()
     local lines = said(c, R.WORD .. " all")

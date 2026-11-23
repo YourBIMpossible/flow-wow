@@ -235,4 +235,63 @@ tests["plate quests: look only - nothing casts, clicks, targets or writes a CVar
     t.eq(#c.secureButtons, 0, "no secure button made")
 end
 
+-- ---------------------------------------------------------------- lead section 274
+
+-- PM-1: Questie with names, its ObjectiveData in another order than the log.
+local function namedQuestie(data)
+    local npcs = { [VERMIN] = { name = "Kobold Vermin" }, [STRANGER] = { name = "Murloc" } }
+    local items = { [PAW] = { name = "Gnoll Paw", npcDrops = { GNOLL } } }
+    return {
+        GetQuest = function(id) if id == 101 then return { ObjectiveData = data } end return nil end,
+        GetNPC = function(id) return npcs[id] end,
+        GetItem = function(id) return items[id] end,
+    }
+end
+
+tests["plate quests index (PM-1): a log objective is matched to Questie's by its name, not its place"] = function(t)
+    if type(PQ) ~= "table" then return t.ok(false, "no module") end
+    local reordered = { { Type = "item", Id = PAW }, { Type = "monster", Id = VERMIN } }
+    local index = PQ.Index({ log()[1] }, namedQuestie(reordered), nil)
+    t.eq(index[VERMIN] and index[VERMIN][1].label, "3/8", "the kill count on the kill creature")
+    t.eq(index[GNOLL] and index[GNOLL][1].label, "0/5", "the item count on the creature that drops it")
+end
+
+tests["plate quests index (PM-1): names that match no objective give no mark, never a guess"] = function(t)
+    if type(PQ) ~= "table" then return t.ok(false, "no module") end
+    local other = { { Type = "monster", Id = STRANGER }, { Type = "monster", Id = STRANGER } }
+    local index = PQ.Index({ log()[1] }, namedQuestie(other), nil)
+    t.eq(index[STRANGER], nil, "Questie names a Murloc; the log speaks of Kobold Vermin and Gnoll Paw")
+end
+
+tests["plate quests index (PM-2): a '.' call answering no table is no answer; the ':' form is asked"] = function(t)
+    if type(PQ) ~= "table" then return t.ok(false, "no module") end
+    local db = {
+        GetQuest = function(a, b)
+            if type(a) == "table" then
+                return { ObjectiveData = { { Type = "monster", Id = VERMIN } } }
+            end
+            return "not a quest"
+        end,
+    }
+    local index = PQ.Index({ log()[1] }, db, nil)
+    t.eq(index[VERMIN] and index[VERMIN][1].label, "3/8", "the ':' form's table is taken")
+    db.GetQuest = function() return 7 end
+    t.eq(PQ.Index({ log()[1] }, db, nil), {}, "neither form a table: nothing")
+end
+
+tests["plate quests module (PM-3): switching off by the setting hides the marks on the next look"] = function(t)
+    if type(PQ) ~= "table" then return t.ok(false, "no module") end
+    local k, c, api = start()
+    mob(c, "nameplate1", VERMIN)
+    local m = markOf(c, "nameplate1")
+    t.eq(m and m.shown, true)
+    k.settings:set(PQ.OFF, true)
+    c.advance(PQ.LOOK or 0.5, 1)
+    t.eq(m and m.shown, false, "hidden with no quest event and no plate change")
+    t.eq(api.status().shown, 0)
+    k.settings:set(PQ.OFF, false)
+    c.advance(1, 2)
+    t.eq(m and m.shown, true, "on again: back")
+end
+
 return tests
