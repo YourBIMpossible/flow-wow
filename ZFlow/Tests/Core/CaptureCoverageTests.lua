@@ -50,6 +50,9 @@ local READS = {
     targetDebuffs = true, formName = true, currentSpell = true, taxiNodes = true,
     -- Lead section 197: the pet state the rotation reads.
     pet = true,
+    -- Section 226 (P-FOOD): the food's tooltip lines and icon; the capture
+    -- does not ask them.
+    itemLines = false, itemTexture = false,
 }
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).
