@@ -38,11 +38,11 @@ local function questie()
     return db, zones
 end
 
--- opts: questie (false: none).
+-- opts: questie (false: none), account (the saved account table).
 local function boot(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
-    c.setSaved(ns.id.accountDB, {}); c.setSaved(ns.id.charDB, {})
+    c.setSaved(ns.id.accountDB, opts.account or {}); c.setSaved(ns.id.charDB, {})
     c.setClass("WARRIOR"); c.setRaceId(1); c.setFaction("Alliance"); c.setLevel(18)
     for _, id in ipairs({ 101, 103, 201 }) do c.setQuestDone(id, false) end
     c.setZone(1, 1436); c.setPosition(1436, 0.5, 0.5)
@@ -168,6 +168,29 @@ tests["dungeon window 319: the Z-Flow menu row opens it the first time"] = funct
     local rec = c.kitWindows()[ID]
     t.eq(rec and rec.shown, true, "open from the menu")
     t.ok(texts(rec):find("Red Silk", 1, true) ~= nil, "with the first dungeon's quests: " .. texts(rec))
+end
+
+-- Twin review 18:06, F1: the window has a name (so the game's Escape list
+-- can close it; the kit wires Escape for a named window) and its place is
+-- kept when moved, and given back at the next open.
+tests["dungeon window F1: a name for Escape, and its place kept over a reload"] = function(t)
+    local c, addon = boot()
+    local asked
+    local real = c.kitWindow
+    c.kitWindow = function(id, tree, extra)
+        asked = extra
+        return real(id, tree, extra)
+    end
+    open(c)
+    t.eq(asked and asked.name, ns.id.framePrefix .. "DungeonWindow", "a name of its own")
+    t.ok(asked and type(asked.onMoved) == "function", "told when moved")
+    t.eq(c.kitDrag(ID, { "CENTER", "CENTER", 30, -40 }, 720, 520), true)
+    local saved = addon.store:get("account", ns.DungeonWindow.PATH)
+    t.eq(saved, { point = { "CENTER", "CENTER", 30, -40 }, width = 720, height = 520 })
+    local c2 = boot({ account = c.saved(ns.id.accountDB) })
+    local rec = open(c2)
+    t.eq(rec and rec.point, { "CENTER", "CENTER", 30, -40 }, "where it was left")
+    t.eq(rec and { rec.width, rec.height }, { 720, 520 }, "the size it was left at")
 end
 
 return tests

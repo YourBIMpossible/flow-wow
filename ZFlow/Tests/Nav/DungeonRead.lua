@@ -365,4 +365,15 @@ tests["dungeon read 318: loot items carry their name, quality and icon as the cl
     t.eq(items[2].name, R.ITEM_UNREAD, "an item the client has not read yet says so")
 end
 
+-- Twin review 18:06, F4: a quality the kit cannot draw is left out, so one
+-- odd item never stops the window.
+tests["dungeon read F4: an item quality outside 0 to 5, or not whole, is left out"] = function(t)
+    local c = client({ more = true })
+    c.setItemInfo({ [2] = { name = "Odd", quality = 9 }, [1] = { name = "Half", quality = 2.5 } })
+    local st = indexed(c)
+    local items = R.Loot(st, c, DM, book()).bosses[1].items
+    t.eq({ items[1].name, items[1].quality }, { "Odd", nil })
+    t.eq({ items[2].name, items[2].quality }, { "Half", nil })
+end
+
 return tests
