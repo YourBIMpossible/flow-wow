@@ -83,8 +83,9 @@ function MB.Declare(k)
     local function make()
         if button or failed then return end
         local maker = ctx.client.minimapButton
-        local ok, h, why = false, nil, "the client has no minimap button"
+        local h, why = nil, "the client has no minimap button"
         if type(maker) == "function" then
+            local ok
             ok, h, why = pcall(maker, { name = id().framePrefix .. "MinimapButton", title = id().title })
             if not ok then
                 why = h
