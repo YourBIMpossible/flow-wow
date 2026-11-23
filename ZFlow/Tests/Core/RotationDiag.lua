@@ -149,10 +149,11 @@ tests["rotation diag RG1: in a fight still shows the suggestion, or why there is
     t.eq(line(view(over)), "rotation: in a fight (keys unchanged); nothing to suggest (nothing ready).")
 end
 
-tests["rotation diag RG1: the fight clause comes before the spells not read, and a kept view still says so"] = function(t)
+tests["rotation diag RG1: the fight clause comes before the suggestion and the spells not read, and a kept view still says so"] = function(t)
     local over = { snapshot = snap({ inCombat = true }), lockdown = true, keys = refused("lockdown"),
         unread = { "Wrath" } }
-    t.eq(line(view(over)), "rotation: in a fight (keys unchanged); 1 spell not read; it is skipped.")
+    t.eq(line(view(over)), "rotation: in a fight (keys unchanged); suggesting Moonfire (rotation)."
+        .. " 1 spell not read; it is skipped.")
     over.unread = {}
     local v = view(over)
     v.stale = true
@@ -171,9 +172,46 @@ tests["rotation diag RG1: dead, no pack and no view are still the whole line in 
     t.eq(line(nil, "started", true), "rotation: no reading yet.")
 end
 
-tests["rotation diag RD15: spells not read are counted"] = function(t)
-    t.eq(line(view({ unread = { "Moonfire", "Wrath" } })), "rotation: 2 spells not read; they are skipped.")
-    t.eq(line(view({ unread = { "Wrath" } })), "rotation: 1 spell not read; it is skipped.")
+tests["rotation diag RD15: spells not read are counted, after the suggestion"] = function(t)
+    t.eq(line(view({ unread = { "Starfire", "Thorns" } })),
+        "rotation: suggesting Moonfire (rotation). 2 spells not read; they are skipped.")
+    t.eq(line(view({ unread = { "Thorns" } })),
+        "rotation: suggesting Moonfire (rotation). 1 spell not read; it is skipped.")
+    t.eq(line(view({ unread = { "Thorns" }, missing = "nil" })),
+        "rotation: suggesting Moonfire (rotation). 1 spell not read; it is skipped.",
+        "a view without the missing list: every spell not read is counted as not read")
+end
+
+-- C2 (RESEARCH-blockC): a low-level character knows a handful of the pack's
+-- spells. The ones it has not learned have no id (view.missing); they must
+-- not hide the suggestion or the reason there is none.
+tests["rotation diag C2: spells not learned do not hide the suggestion"] = function(t)
+    t.eq(line(view({ unread = { "Starfire", "Thorns" }, missing = { "Starfire", "Thorns" } })),
+        "rotation: suggesting Moonfire (rotation). 2 spells not learned or not found by name; they are skipped.")
+    t.eq(line(view({ unread = { "Thorns" }, missing = { "Thorns" } })),
+        "rotation: suggesting Moonfire (rotation). 1 spell not learned or not found by name; it is skipped.")
+end
+
+tests["rotation diag C2: spells not learned do not hide why nothing is suggested"] = function(t)
+    local v = view({ unread = { "Thorns" }, missing = { "Thorns" }, suggestion = "nil",
+        trace = { { step = "rotation", result = "skip", note = "nothing ready" } } })
+    t.eq(line(v), "rotation: nothing to suggest (nothing ready). 1 spell not learned or not found by name; it is skipped.")
+    local over = { snapshot = snap({ inCombat = true }), lockdown = true, keys = refused("lockdown"),
+        unread = { "Thorns" }, missing = { "Thorns" } }
+    t.eq(line(view(over)), "rotation: in a fight (keys unchanged); suggesting Moonfire (rotation)."
+        .. " 1 spell not learned or not found by name; it is skipped.")
+end
+
+tests["rotation diag C2: not learned and not read are counted apart, not learned first"] = function(t)
+    t.eq(line(view({ unread = { "Starfire", "Thorns", "Wrath" }, missing = { "Starfire", "Thorns" } })),
+        "rotation: suggesting Moonfire (rotation). 2 spells not learned or not found by name; they are skipped."
+        .. " 1 spell not read; it is skipped.")
+    t.eq(line(view({ unread = {}, missing = { "Thorns" } })), "rotation: suggesting Moonfire (rotation).",
+        "a name in missing that is not unread is not counted")
+    local v = view({ unread = { "Thorns" }, missing = { "Thorns" } })
+    v.stale = true
+    t.eq(line(v), "rotation: suggesting Moonfire (rotation). 1 spell not learned or not found by name;"
+        .. " it is skipped. An earlier reading: the last read failed.", "the kept-view note comes last")
 end
 
 tests["rotation diag RD15: a suggestion names the spell and the step"] = function(t)
@@ -210,19 +248,21 @@ tests["rotation diag RD15: the first row that holds is the one said"] = function
     everything.snapshot = snap({ dead = true, inCombat = "nil" })
     t.eq(line(view(everything)), "rotation: dead; nothing suggested.", "then dead")
     everything.snapshot = snap({ inCombat = "nil" })
+    everything.trace = { { step = "rotation", result = "skip", note = "nothing ready" } }
+    local tail = " nothing to suggest (nothing ready). 1 spell not read; it is skipped."
     t.eq(line(view(everything)),
-        "rotation: fight not known, counted as a fight (keys unchanged); 1 spell not read; it is skipped.",
+        "rotation: fight not known, counted as a fight (keys unchanged);" .. tail,
         "then the fight not known, as a clause")
     everything.snapshot = snap({ inCombat = true })
     t.eq(line(view(everything)),
-        "rotation: not known whether you are in a fight (keys unchanged); 1 spell not read; it is skipped.",
+        "rotation: not known whether you are in a fight (keys unchanged);" .. tail,
         "then lockdown not known, as a clause")
     everything.lockdown, everything.keys = true, refused("lockdown")
-    t.eq(line(view(everything)), "rotation: in a fight (keys unchanged); 1 spell not read; it is skipped.",
+    t.eq(line(view(everything)), "rotation: in a fight (keys unchanged);" .. tail,
         "then lockdown, as a clause")
     everything.lockdown, everything.keys = false, { ok = true, ops = {} }
     everything.snapshot = snap({})
-    t.eq(line(view(everything)), "rotation: 1 spell not read; it is skipped.", "then the spells not read")
+    t.eq(line(view(everything)), "rotation:" .. tail, "then the reason, and the spells not read after it")
 end
 
 -- CD2 -------------------------------------------------------------------
@@ -329,7 +369,7 @@ local function pack()
     }
 end
 
-local function start(cooldown)
+local function start(cooldown, extra)
     local c = ns.make.fakeClient()
     c.setSaved(ns.id.accountDB, {})
     c.setSaved(ns.id.charDB, {})
@@ -350,7 +390,10 @@ local function start(cooldown)
     c.setInRange(MOONFIRE, true)
     local k = ns.Kernel({}, c)
     Diag.Start(k)
-    D.Declare(k, { [CLASS] = pack() })
+    local p = pack()
+    -- extra: more pack spells, given no id (not learned yet).
+    for _, name in ipairs(extra or {}) do p.spells[name] = { evidence = "test" } end
+    D.Declare(k, { [CLASS] = p })
     k:Boot()
     c.fire("ADDON_LOADED", ns.id.addon)
     c.fire("PLAYER_LOGIN")
@@ -398,6 +441,16 @@ tests["rotation diag RD15: the slash command says the driver's line"] = function
     k:SwitchOff(D.NAME, "test")
     t.eq(diag(c, head .. "not running (off)."), 1)
     t.eq(said(c, "rotation: "), 1, "and nothing else of the rotation")
+end
+
+tests["rotation diag C2: the slash command says the suggestion with spells not learned yet"] = function(t)
+    local k, c = start(false, { "Starfire", "Thorns" })
+    k.settings:set(D.SETTING, true)
+    tick(c)
+    local head = ns.id.title .. ": rotation: "
+    t.eq(diag(c, head .. "suggesting Moonfire ("), 1, "the suggestion is said")
+    t.eq(said(c, "). 2 spells not learned or not found by name; they are skipped."), 1, "after it, the count")
+    t.eq(said(c, "not read;"), 0, "a spell not learned is not counted as not read")
 end
 
 tests["rotation diag ST1: the driver reads no stealth, and the slash command says so"] = function(t)
