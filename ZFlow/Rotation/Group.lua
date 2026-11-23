@@ -209,8 +209,10 @@ local function readMember(client, m, pack, ids)
                 if ok and up == true then
                     row.has[rule.spell] = (type(left) == "number" and left == left) and left or true
                     -- READS-2: a whole length that ends; no end or not read: nil.
+                    -- R2-1: of your own cast only; another caster's, or a
+                    -- caster not read, gives none (the time-left fallback stays).
                     if type(client.buffLength) == "function" then
-                        local okLen, secs = pcall(client.buffLength, m.unit, names)
+                        local okLen, secs = pcall(client.buffLength, m.unit, names, true)
                         if okLen and type(secs) == "number" and secs == secs and secs > 0 and secs < math.huge then
                             length = secs
                         end
