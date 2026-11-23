@@ -143,6 +143,7 @@ local function holdsCaptureName(text)
     return nil
 end
 
+local function made(v) return type(v) == "string" and v:match("^text %d+$") ~= nil end
 case("ZFlow capture: no made-up real name left in either file; the shapes kept", function(t)
     local outs, kind, msg = S.texts({ ACCOUNT, CHAR }, schema)
     t.ok(outs ~= nil, "refused: " .. tostring(kind) .. " " .. tostring(msg))
@@ -167,7 +168,6 @@ case("ZFlow capture: no made-up real name left in either file; the shapes kept",
     t.ok(made(c.ZFlowCharDB.export.lines[1]), "export line: " .. tostring(c.ZFlowCharDB.export.lines[1]))
 end)
 
-local function made(v) return type(v) == "string" and v:match("^text %d+$") ~= nil end
 
 -- Section 192 S3: learned.fights.deaths holds the text lines the import
 -- copies from Flow deathReports, the player name inside. Fails at d4ea0cc:
