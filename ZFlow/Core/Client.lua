@@ -7933,6 +7933,106 @@ function ns.make.client(env)
         end
         return out
     end
+
+    -- G60: NPC words read aloud (UI/NpcSpeech.lua). Text-to-speech plays on
+    --   the player's own speakers: an output like print, not a game action,
+    --   so no combat lockdown or protected-call concern. Every name here is
+    --   a first guess, none seen in game on 16001 (CLIENT-NAMES-16001.txt
+    --   never asked them); all are in Diag.NAMES so a normal login records
+    --   which exist. Each call is pcall'd; absent or raising gives nil/false.
+    --
+    -- c.speech() -> { voices = { { voiceID, name }, ... } } or nil: nil when
+    --   C_VoiceChat.GetTtsVoices is absent, raises or gives no table. An
+    --   empty voices list means the call is there but this computer has none.
+    local function voiceChat()
+        local vc = env.C_VoiceChat
+        if type(vc) ~= "table" then return nil end
+        return vc
+    end
+
+    function c.speech()
+        local vc = voiceChat()
+        if not vc then return nil end
+        local ok, list = call(vc.GetTtsVoices)
+        if not ok or type(list) ~= "table" then return nil end
+        local voices = {}
+        for _, v in ipairs(list) do
+            if type(v) == "table" and type(v.voiceID) == "number" and not hidden(v.voiceID) then
+                local one = { voiceID = v.voiceID }
+                if type(v.name) == "string" and not hidden(v.name) then one.name = v.name end
+                voices[#voices + 1] = one
+            end
+        end
+        return { voices = voices }
+    end
+
+    -- c.speak(text, voice) -> true, or false and why. The game's own helper
+    --   TextToSpeech_Speak(text, voice) first when it is there (it knows
+    --   this client's way of calling); else C_VoiceChat.SpeakText(voiceID,
+    --   text, destination, rate, volume) - the retail order, a first guess
+    --   for 16001 - with destination Enum.VoiceTtsDestination.LocalPlayback,
+    --   or 1 (its retail value) when that enum is absent; rate 0, volume 100.
+    function c.speak(text, voice)
+        if type(text) ~= "string" or text == "" then return false, "no text" end
+        local helper = env.TextToSpeech_Speak
+        if type(helper) == "function" then
+            local ok, err = call(helper, text, voice)
+            if ok then return true end
+            return false, tostring(err)
+        end
+        local vc = voiceChat()
+        if not vc or type(vc.SpeakText) ~= "function" then return false, "no text-to-speech call" end
+        if type(voice) ~= "table" or type(voice.voiceID) ~= "number" then return false, "no voice" end
+        local dest = 1
+        local enum = env.Enum
+        if type(enum) == "table" and type(enum.VoiceTtsDestination) == "table"
+            and type(enum.VoiceTtsDestination.LocalPlayback) == "number" then
+            dest = enum.VoiceTtsDestination.LocalPlayback
+        end
+        local ok, err = call(vc.SpeakText, voice.voiceID, text, dest, 0, 100)
+        if ok then return true end
+        return false, tostring(err)
+    end
+
+    -- c.stopSpeech() -> true, or false when C_VoiceChat.StopSpeakingText is
+    --   absent or raised.
+    function c.stopSpeech()
+        local vc = voiceChat()
+        if not vc then return false end
+        local ok = call(vc.StopSpeakingText)
+        return ok == true
+    end
+
+    -- c.npcText(kind) -> the words of the open NPC window, or nil (absent,
+    --   raised, or empty: not read yet). kind: "gossip" (C_GossipInfo.GetText,
+    --   else GetGossipText), "greeting" (GetGreetingText), "detail"
+    --   (GetQuestText, then GetObjectiveText after a space), "progress"
+    --   (GetProgressText), "reward" (GetRewardText). First guesses.
+    local NPC_TEXT = { greeting = "GetGreetingText", progress = "GetProgressText", reward = "GetRewardText" }
+
+    local function words(fn)
+        local ok, v = call(fn)
+        if not ok or type(v) ~= "string" or hidden(v) or v == "" then return nil end
+        return v
+    end
+
+    function c.npcText(kind)
+        if kind == "gossip" then
+            local gi = env.C_GossipInfo
+            if type(gi) == "table" and type(gi.GetText) == "function" then return words(gi.GetText) end
+            return words(env.GetGossipText)
+        end
+        if kind == "detail" then
+            local story = words(env.GetQuestText)
+            if not story then return nil end
+            local goal = words(env.GetObjectiveText)
+            if goal then return story .. " " .. goal end
+            return story
+        end
+        local name = NPC_TEXT[kind]
+        if not name then return nil end
+        return words(env[name])
+    end
     return c
 end
 
