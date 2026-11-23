@@ -31,10 +31,14 @@ local _, ns = ...
 --
 --   SK.New(k) -> keys
 --     keys.attach(client, status)   status(text) redraws the page with text
---     keys.rows() -> the page rows: { kind = "actions", key, label, shown,
---                    group, topic, synonyms, settable, why, under,
---                    actions = { { key, label, enabled } } } per slot, and the
---                    question row (key SK.IN_USE_KEY) under the slot asked
+--     keys.rows() -> the page rows: { kind = "bind", key, label, shown,
+--                    bound (true when a key is set), waiting (true while
+--                    the overlay waits for this slot's key), group, topic,
+--                    synonyms, settable, why, under,
+--                    actions = { { key, label, enabled } } } per slot (the
+--                    first action sets the key: the bind button's press),
+--                    and the question row (kind "actions", key
+--                    SK.IN_USE_KEY) under the slot asked
 --     keys.matches(query) -> true when a search finds the rows
 --     keys.press(id)   a button of the rows was clicked (ids start "keys.")
 --     keys.lines() -> "label: shown" for the text page
@@ -76,7 +80,7 @@ SK.CLEAR = "Clear"
 SK.ANYWAY = "Use it anyway"
 SK.UNBIND = "Use it and unbind"
 SK.OTHER = "Pick another"
-SK.NOT_SET = "not set"
+SK.NOT_SET = "Not Bound"
 SK.NOT_KNOWN = "not known"
 SK.SESSION = " (until you reload)"
 SK.LOCKED = "Keys can't change in combat."
@@ -406,7 +410,8 @@ function SK.New(k)
             local why2 = why
             if why2 == nil then why2 = need end
             out[#out + 1] = {
-                kind = "actions", key = slot.key, label = slot.label, shown = shownOf(slot, held),
+                kind = "bind", key = slot.key, label = slot.label, shown = shownOf(slot, held),
+                bound = has, waiting = keys.capturing == slot.n,
                 group = SK.GROUP, topic = SK.GROUP, synonyms = copyList(slot.synonyms or SK.SYNONYMS),
                 settable = can and need == nil, why = why2, under = under(),
                 actions = {
