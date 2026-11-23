@@ -5896,6 +5896,12 @@ function ns.make.client(env)
 
         -- Debuff names read as a crowd control that holds the enemy (first
         -- guess names; Polymorph by any of its forms).
+        -- Named limit (review R2-2): English names only. On a client in
+        -- another language none matches, so controlled reads false for an
+        -- enemy that is held. Matching by spell id would fix it, but no id
+        -- of these effects is in the repo data and guessing them is not
+        -- allowed. Evidence still needed: the spell ids of the held effects
+        -- on Forever, from a capture (the debuff rows' spellId).
         local HELD = {
             ["Shackle Undead"] = true, ["Hibernate"] = true, ["Sap"] = true,
             ["Freezing Trap Effect"] = true, ["Banish"] = true, ["Fear"] = true,

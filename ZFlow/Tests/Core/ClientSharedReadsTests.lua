@@ -399,6 +399,21 @@ tests["reads plateEnemies: the plates you can attack, in the class-b row shape"]
     t.eq(ns.make.client(plateEnv({})).plateEnemies(), {}, "a list with none: empty")
 end
 
+-- Review R2-2, a named limit: the held debuffs are matched by English name
+-- only (no spell id of them is in the repo data). The same effect under
+-- another language's name reads as not held. This test pins that until a
+-- capture gives the ids. The other-language name is made up.
+tests["reads plateEnemies R2-2: held by English name only (named limit)"] = function(t)
+    local env = plateEnv({
+        { unit = "nameplate1", name = "Kobold", attack = true, isTarget = false, kind = "Humanoid", debuffs = { "Sap" } },
+        { unit = "nameplate2", name = "Gnoll", attack = true, isTarget = false, kind = "Humanoid",
+          debuffs = { "Sap (made-up other-language name)" } },
+    })
+    local rows = ns.make.client(env).plateEnemies()
+    t.eq(rows[1].controlled, true, "English name: held")
+    t.eq(rows[2].controlled, false, "another language: read as not held (the limit)")
+end
+
 tests["reads creatureType: target or a plate unit, as the client names it"] = function(t)
     local c = ns.make.client(plateEnv({ { unit = "nameplate1", kind = "Beast" }, { unit = "nameplate2", kind = SECRET } }))
     t.eq(c.creatureType("target"), "Humanoid")
