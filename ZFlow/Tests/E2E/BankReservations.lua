@@ -261,4 +261,26 @@ tests["bank reservations: look only - no acting client call during any of it"] =
     end
 end
 
+-- The player's own goals list (Items/Goals.lua), saved for the character,
+-- with no test-only source: the add-on's "goals" source alone holds them.
+tests["bank reservations: a saved goal holds its count, the rest goes to the bank"] = function(t)
+    local c, addon = start({ source = false,
+                             char = { settings = { goals = { { item = LINEN, count = 8 } } } } })
+    local lines = visit(t, c)
+    t.ok(has(lines, "12 x Linen Cloth: kept for later"), "the free 12 to the bank: " .. joined(lines))
+    t.ok(has(lines, ns.ItemPresent.HELD_HEADER) and has(lines, "8 x Linen Cloth"), "8 held: " .. joined(lines))
+    t.eq(promptOf(addon), "1 kind of item to put in the bank.")
+end
+
+tests["bank reservations: a goal added with the goal word holds at the next look"] = function(t)
+    local c, addon = start({ source = false })
+    local lines = visit(t, c)
+    t.ok(has(lines, "20 x Linen Cloth: kept for later"), "no goal yet: all 20: " .. joined(lines))
+    c.slashes[ns.id.slash]("goal add " .. LINEN .. " 8")
+    bumpBags(c)
+    lines = visit(t, c)
+    t.ok(has(lines, "12 x Linen Cloth: kept for later") and has(lines, "8 x Linen Cloth"), joined(lines))
+    t.eq(promptOf(addon), "1 kind of item to put in the bank.")
+end
+
 return tests

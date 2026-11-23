@@ -5,7 +5,8 @@ local _, ns = ...
 --
 --   r = ns.reservations.Current()   one evaluation: { status, snapshot, grants }
 --   Reservations.Evaluate(read)     the same from a `read` table (pure but for read)
---   Reservations.Source(name, fn)   a producer of claims; fn(snapshot) -> claims
+--   Reservations.Source(name, fn, active?)   a producer of claims;
+--                                   fn(snapshot) -> claims, active() -> false: idle
 --   Reservations.Grants(r)          r's grants, or nil when unavailable
 --   Reservations.HeldIn(grants, "bags" | "bank")   what they hold in one place
 --
@@ -17,17 +18,22 @@ local _, ns = ...
 --   "ok"           claims were resolved; grants holds them
 --   "none"         nothing claims anything: no active reservations. grants is
 --                  a real, empty resolve, so Held is 0 for every item
---   "unavailable"  a source is registered and the bags could not be read,
+--   "unavailable"  an active source is registered and the bags were not read,
 --                  or a source failed (raised, or gave no list): Z-Flow
 --                  can't say what is reserved. grants is nil, and nothing may
 --                  be advised to be sold on the strength of it
 --
 -- Sources: a producer that plans in goals or steps (ItemPlan.Claims,
 -- Resources.ClaimsOf) registers once, by name; they are asked in name order.
--- None is registered at this commit, so the status is "none" until one is.
+-- One is registered: "goals" (Items/Goals.lua), the player's goals list.
+-- A source may also give an active() test: while it answers false (the
+-- goals source: no goal saved) the source is not asked and counts as not
+-- registered, so with no goal the status is "none", bags read or not. An
+-- active() that raises counts as active.
 --
 -- READ ONLY. Nothing here deposits, withdraws, moves, sells, buys or uses
--- anything, adds an event, a window or saved data. Fresh on every call: the
+-- anything, adds an event, a window or saved data (the goals list is
+-- Items/Goals.lua's own). Fresh on every call: the
 -- callers already re-ask on the game's bag and bank events, so nothing polls.
 -- Not tested in game.
 
@@ -39,17 +45,29 @@ Reservations.OK = "ok"
 Reservations.NONE = "none"
 Reservations.UNAVAILABLE = "unavailable"
 
-local sources = {}
+local sources, actives = {}, {}
 
-function Reservations.Source(name, fn)
+function Reservations.Source(name, fn, active)
     if type(name) ~= "string" or name == "" then error("a reservation source needs a name", 2) end
     if fn ~= nil and type(fn) ~= "function" then error("a reservation source is a function", 2) end
+    if active ~= nil and type(active) ~= "function" then error("a source's active test is a function", 2) end
     sources[name] = fn
+    actives[name] = fn and active or nil
+end
+
+-- Is the source to be asked? Only an active() answering false says no.
+local function isActive(name)
+    local active = actives[name]
+    if not active then return true end
+    local ok, on = pcall(active)
+    return not ok or on ~= false
 end
 
 local function sourceNames()
     local names = {}
-    for name in pairs(sources) do names[#names + 1] = name end
+    for name in pairs(sources) do
+        if isActive(name) then names[#names + 1] = name end
+    end
     table.sort(names)
     return names
 end
