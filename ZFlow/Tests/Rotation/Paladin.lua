@@ -140,6 +140,30 @@ return {
         t.eq(by.aura and by.aura.word, "aura", "N58: the aura word")
         t.eq(by.aura and by.aura.only, { ["Devotion Aura"] = true, ["Retribution Aura"] = true,
                                         ["Concentration Aura"] = true }, "N58: the auras in the pack")
+        t.eq(by.oath and by.oath.word, "oath", "N58, B3: the oath word")
+        t.eq(by.oath and by.oath.only, { ["Oath of Light"] = true }, "N58, B3: Oath of Light only")
+    end,
+
+    -- N58, B3 (PARTLY): Oath of Light only once you cast or chose it.
+    ["N58: Oath of Light is asked for only once you chose it, out of a fight, while not up"] = function(t)
+        local mine = { chosen = { oath = "Oath of Light" } }
+        local function with(over)
+            local o = { hostile = false, inCombat = false, chosen = mine.chosen }
+            for k, v in pairs(over or {}) do o[k] = v end
+            return o
+        end
+        local know = { "Oath of Light" }
+        t.eq(fires("Oath of Light", snap(IDLE, know, {})), false, "auto: never the add-on's pick")
+        t.eq(fires("Oath of Light", snap(with(), know, {})), true, "chosen, not up: asked for")
+        t.eq(fires("Oath of Light", snap(with(), know, { ["Oath of Light"] = true })), false, "up: not asked")
+        t.eq(fires("Oath of Light", snap(with(), {}, {})), false, "not known: not asked")
+        t.eq(fires("Oath of Light", snap(with({ inCombat = true, hostile = true }), know, {})), false, "in a fight")
+        t.eq(fires("Oath of Light", unread(with(), know)), false, "buffs not read: not asked")
+        t.eq(ns.PaladinOath(snap({ chosen = { oathSet = "Oath of Light" } }, know)), "Oath of Light", "the word's choice")
+        t.eq(ns.PaladinOath(snap({ chosen = { oath = "Oath of Wrath" } }, know)), nil, "not an oath in the list")
+        local row = ns.Packs.PALADIN.spells["Oath of Light"]
+        t.eq(row and row.evidence, "first guess", "a first guess")
+        t.eq(row and row.level, nil, "no trainer level")
     end,
 
     -- CF-32: the seal kept up. A seal you cast yourself (snapshot.chosen.seal)

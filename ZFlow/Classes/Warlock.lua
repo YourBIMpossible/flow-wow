@@ -23,9 +23,12 @@ local _, ns = ...
 -- other addon used.
 --
 -- Accepted gaps, stated (as sections 200 and 203 did for other classes):
---   * soul shards: no shard read exists in the shared system. A summon that
---     needs a shard is refused by the game when there is none (its usable
---     or noPower answer), and that answer is all used here;
+--   * soul shards: N58 (lead section 241) counts them in your bags with the
+--     shared bag count read (options.conjure below; R.Conjured). Not read:
+--     the summon is asked for as before, and the game's usable answer is
+--     all there is. Read as none: no summon that needs one is asked for
+--     (the imp instead, said so). The demon you keep is never cleared for
+--     want of a shard;
 --   * channelled spells (Drain Life, Drain Soul, Drain Mana, Health Funnel,
 --     Rain of Fire, Hellfire): no read of your own channel, so a suggestion
 --     could cut one short. They are listed, not suggested;
@@ -41,6 +44,21 @@ local MADE = "written for this pack on 2026-11-23 from general knowledge of the 
 local ARMORS = { "Demon Armor", "Demon Skin" }
 -- The demon to summon: the first one known, in this order.
 local DEMONS = { "Summon Voidwalker", "Summon Imp" }
+-- N58 (lead section 241): the demons and curses you can choose, by a cast
+-- or a word: the summons and curses in the spell list below.
+local DEMON_NAMES = { "Summon Imp", "Summon Voidwalker", "Summon Succubus", "Summon Felhunter" }
+local CURSE_NAMES = { "Curse of Agony", "Curse of Weakness", "Curse of Tongues" }
+local function set(list)
+    local out = {}
+    for _, name in ipairs(list) do out[name] = true end
+    return out
+end
+local IS_ARMOR, IS_DEMON, IS_CURSE = set(ARMORS), set(DEMON_NAMES), set(CURSE_NAMES)
+-- N58: a Soul Shard (item id 6265, a first guess); every summon here but
+-- the imp's uses one. SHARD is the name the count goes under in the
+-- shared bag count read (snapshot.conjured).
+local SHARD, SHARD_ITEM = "Soul Shard", 6265
+local NO_SHARD_NEEDED = { ["Summon Imp"] = true }
 
 local function knows(s, name)
     local r = s.spells and s.spells[name]
@@ -72,14 +90,61 @@ local function armorUp(s)
     return false
 end
 
-local function wantsArmor(s, name)
-    return outOfFight(s) and firstKnown(s, ARMORS) == name and armorUp(s) == false
+-- N58: the armor to put up: the one you cast or chose, while known; else
+-- the first known (the old rule). New: Flow had no armor choice.
+function ns.WarlockArmor(s)
+    return ns.OwnCasts.Kept(s, IS_ARMOR, "armor") or firstKnown(s, ARMORS)
 end
 
--- No demon out, or a dead one: read, and out of a fight.
-local function wantsDemon(s, name)
-    if not outOfFight(s) or firstKnown(s, DEMONS) ~= name then return false end
-    return ns.Rotation.NoPet(s) == true or ns.Rotation.PetDead(s) == true
+-- N58: the demon you keep: the one you summoned or chose last, while
+-- known; else the first known (the old rule). New: Flow had no demon
+-- choice.
+function ns.WarlockDemon(s)
+    return ns.OwnCasts.Kept(s, IS_DEMON, "demon") or firstKnown(s, DEMONS)
+end
+
+-- N58: Soul Shards in your bags; nil when not read.
+function ns.WarlockShards(s)
+    return ns.Rotation.Conjured(s, SHARD)
+end
+
+-- N58: the summon to ask for now, and true when it is the imp standing in
+-- for a demon that needs a shard you do not have (read as none). Shards
+-- not read: the demon you keep. The kept demon is not changed here.
+function ns.WarlockSummon(s)
+    local want = ns.WarlockDemon(s)
+    if want == nil or NO_SHARD_NEEDED[want] or ns.WarlockShards(s) ~= 0 then return want, false end
+    if knows(s, "Summon Imp") then return "Summon Imp", true end
+    return nil, false
+end
+
+-- N58: the curse to put on: the one you cast or chose, while known; else
+-- Curse of Agony (the old rule). New: Flow had no curse choice.
+function ns.WarlockCurse(s)
+    return ns.OwnCasts.Kept(s, IS_CURSE, "curse") or "Curse of Agony"
+end
+
+local function wantsArmor(s, name)
+    return outOfFight(s) and ns.WarlockArmor(s) == name and armorUp(s) == false
+end
+
+-- No demon out, or a dead one: read, and out of a fight. short: the imp
+-- asked for because there is no Soul Shard.
+local function wantsDemon(s, name, short)
+    if not outOfFight(s) then return false end
+    if not (ns.Rotation.NoPet(s) == true or ns.Rotation.PetDead(s) == true) then return false end
+    local summon, noShard = ns.WarlockSummon(s)
+    return summon == name and noShard == short
+end
+
+-- N58: is a curse of yours on the target? Any "Curse of" counts, also one
+-- this pack does not list. nil when your debuffs on it were not read.
+local function curseOn(s)
+    if type(s.targetDebuffs) ~= "table" then return nil end
+    for name, v in pairs(s.targetDebuffs) do
+        if v and type(name) == "string" and string.sub(name, 1, 9) == "Curse of " then return true end
+    end
+    return false
 end
 
 local function tag(list)
@@ -96,16 +161,29 @@ local armor = tag({
       when = function(s) return wantsArmor(s, "Demon Skin") end },
 })
 
+-- N58: one rule per demon; the one you keep is asked for.
+local function demonRule(name)
+    return { spell = name, kind = "buff",
+             reason = "No demon is out: summon your " .. string.lower(string.sub(name, 8)),
+             when = function(s) return wantsDemon(s, name, false) end }
+end
+
 local demon = tag({
-    { spell = "Summon Voidwalker", kind = "buff", reason = "No demon is out: summon your voidwalker",
-      when = function(s) return wantsDemon(s, "Summon Voidwalker") end },
-    { spell = "Summon Imp", kind = "buff", reason = "No demon is out: summon your imp",
-      when = function(s) return wantsDemon(s, "Summon Imp") end },
+    demonRule("Summon Voidwalker"), demonRule("Summon Imp"), demonRule("Summon Succubus"),
+    demonRule("Summon Felhunter"),
+    { spell = "Summon Imp", kind = "buff", reason = "No demon is out: summon your imp (no Soul Shard)",
+      when = function(s) return wantsDemon(s, "Summon Imp", true) end },
 })
 
+-- N58: one rule per curse; with no curse of yours on the target, the one
+-- you keep is asked for.
+local function curseRule(name)
+    return { spell = name, target = true, reason = name .. " is not on your target",
+             when = function(s) return hostile(s) and curseOn(s) == false and ns.WarlockCurse(s) == name end }
+end
+
 local dots = tag({
-    { spell = "Curse of Agony", target = true, reason = "Curse of Agony is not on your target",
-      when = function(s) return hostile(s) and missingOnTarget(s, "Curse of Agony") end },
+    curseRule("Curse of Agony"), curseRule("Curse of Weakness"), curseRule("Curse of Tongues"),
     { spell = "Corruption", target = true, reason = "Corruption is not on your target",
       when = function(s) return hostile(s) and missingOnTarget(s, "Corruption") end },
     { spell = "Immolate", target = true, reason = "Immolate is not on your target",
@@ -270,6 +348,24 @@ local pack = {
     options = {
         -- Reads the rules lean on; one not given is named by diag (187).
         reads = { "buffs", "targetDebuffs", "pet" },
+        -- N58: the Soul Shards in your bags, through the shared bag count
+        -- read (snapshot.conjured[SHARD]); only a count, never a cast.
+        conjure = {
+            { spell = SHARD, items = { SHARD_ITEM } },
+        },
+        -- N58 (lead section 241): the armor, the demon and the curse you
+        -- cast are kept for your role; the words armor, demon and curse
+        -- choose one. pick (PC-1): the one the rotation asks for on that
+        -- snapshot; a cast of it is not kept. `only` holds each row to the
+        -- pack's own names (a mount's Summon, a curse not listed: not kept).
+        sticky = {
+            { prefix = "", only = IS_ARMOR, key = "armor", word = "armor", names = ARMORS,
+              pick = function(s) return ns.WarlockArmor(s) end },
+            { prefix = "Summon ", only = IS_DEMON, key = "demon", word = "demon", names = DEMON_NAMES,
+              pick = function(s) return (ns.WarlockSummon(s)) end },
+            { prefix = "Curse of ", only = IS_CURSE, key = "curse", word = "curse", names = CURSE_NAMES,
+              pick = function(s) return ns.WarlockCurse(s) end },
+        },
     },
 }
 

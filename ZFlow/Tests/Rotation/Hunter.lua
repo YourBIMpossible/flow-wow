@@ -137,22 +137,100 @@ tests["hunter chooser: melee only in melee reach; ranged first"] = function(t)
 end
 
 -- HU1 (review): the hawk is in `maintain`, while the aspect rule takes any
--- aspect as on. An aspect the player chose is never swapped for the hawk:
--- not out of a fight, not at any step of a fight, in either list.
-tests["hunter chooser: the cheetah or the pack on is never swapped for the hawk (HU1)"] = function(t)
+-- aspect as on. Out of a fight an aspect the player chose is never swapped
+-- for the hawk. N58 (lead section 241) changes the fight half: in a fight
+-- the cheetah and the pack do not count as your aspect, so the hawk is
+-- asked for first, in either list. Red before N58: in a fight the old rule
+-- read the cheetah as an aspect on and asked for the mark.
+tests["hunter chooser N58: the cheetah or the pack is left alone out of a fight, not in one (HU1)"] = function(t)
     if type(hunter()) ~= "table" then t.ok(false, "no pack") return end
     for _, aspect in ipairs({ "Aspect of the Cheetah", "Aspect of the Pack" }) do
         local buffs = { [aspect] = true }
         t.eq(pick({ buffs = buffs }), nil, aspect .. ", out of a fight: nothing asked for")
+        t.eq(pick({ buffs = buffs, inCombat = "nil" }), nil, aspect .. ", fight not read: nothing asked for")
         local enemy = { buffs = buffs, hostile = true, inCombat = true }
-        t.eq(pick(enemy), "Hunter's Mark", aspect .. ", in a fight: the mark, not an aspect")
-        t.eq(pick(enemy, nil, "aoe"), "Hunter's Mark", aspect .. ", several enemies: the mark, not an aspect")
+        t.eq(pick(enemy), "Aspect of the Hawk", aspect .. ", in a fight: the hawk, not the mark")
+        t.eq(pick(enemy, nil, "aoe"), "Aspect of the Hawk", aspect .. ", several enemies: the hawk")
         enemy.targetDebuffs = { ["Hunter's Mark"] = true, ["Serpent Sting"] = true }
         enemy.current = { ["Auto Shot"] = true }
-        t.eq(pick(enemy), "Arcane Shot", aspect .. ", shooting: arcane shot, not an aspect")
+        t.eq(pick(enemy), "Aspect of the Hawk", aspect .. ", shooting: the hawk before arcane shot")
+        enemy.buffs = { [aspect] = true, ["Aspect of the Hawk"] = true }
+        t.eq(pick(enemy), "Arcane Shot", aspect .. " and the hawk on: arcane shot")
     end
     t.eq(pick({ buffs = { ["Aspect of the Cheetah"] = true } }, { "Aspect of the Monkey" }), nil,
-        "the monkey is not asked for over the cheetah either")
+        "the monkey is not asked for over the cheetah either, out of a fight")
+    t.eq(pick({ buffs = { ["Aspect of the Cheetah"] = true }, inCombat = true }, { "Aspect of the Monkey" }),
+        "Aspect of the Monkey", "in a fight, no hawk learned: the monkey over the cheetah")
+end
+
+-- ------------------------------------- N58 (lead section 241): your choice
+
+local HAWK, MONKEY = "Aspect of the Hawk", "Aspect of the Monkey"
+local CHEETAH, PACK = "Aspect of the Cheetah", "Aspect of the Pack"
+local ASPECTS = { HAWK, MONKEY, CHEETAH, PACK }
+
+local function aspectRow()
+    local p = hunter()
+    local sticky = type(p) == "table" and type(p.options) == "table" and p.options.sticky or nil
+    for _, row in ipairs(type(sticky) == "table" and sticky or {}) do
+        if row.key == "aspect" then return row end
+    end
+    return nil
+end
+
+tests["hunter N58: the aspect row: prefix, word, names, travel aspects never kept"] = function(t)
+    local row = aspectRow()
+    t.ok(row ~= nil, "options.sticky has the aspect row")
+    if not row then return end
+    t.eq(row.prefix, "Aspect of ")
+    t.eq(row.word, "aspect")
+    t.eq(row.names, ASPECTS, "the aspects in the pack's spell list")
+    t.eq(row.only, { [HAWK] = true, [MONKEY] = true, [CHEETAH] = true, [PACK] = true })
+    for _, name in ipairs(row.names) do t.ok(hunter().spells[name] ~= nil, name .. " is in the spell list") end
+    t.eq(row.onYou, nil, "an aspect only ever goes on you")
+    t.eq(row.fightOnly, nil)
+    t.eq(type(row.temporary), "function")
+    t.eq(ns.OwnCasts.Temporary(row, CHEETAH, { inCombat = false }), true, "the cheetah: never kept")
+    t.eq(ns.OwnCasts.Temporary(row, PACK, { inCombat = true }), true, "the pack: never kept")
+    t.eq(ns.OwnCasts.Temporary(row, MONKEY, { inCombat = false }), false, "the monkey: kept")
+    t.eq(ns.OwnCasts.Temporary(row, HAWK, {}), false, "the hawk: kept")
+    t.eq(row.pick(snap({ buffs = {} })), HAWK, "pick: the hawk, nothing kept")
+    t.eq(row.pick(snap({ buffs = {} }, { MONKEY })), MONKEY, "pick: no hawk learned, the monkey")
+    t.eq(row.pick(snap({ buffs = {}, chosen = { aspect = MONKEY } })), MONKEY, "pick: the kept one")
+end
+
+tests["hunter N58: the aspect kept is the one asked for; nothing kept, the hawk"] = function(t)
+    if type(hunter()) ~= "table" then t.ok(false, "no pack") return end
+    t.eq(pick({ buffs = {} }), HAWK, "nothing kept: the hawk, as before")
+    t.eq(ns.HunterAspect(snap({ buffs = {} })), HAWK)
+    t.eq(pick({ buffs = {}, chosen = { aspect = MONKEY } }), MONKEY, "cast for the role: the monkey")
+    t.eq(pick({ buffs = {}, chosen = { aspectSet = MONKEY, aspect = HAWK } }), MONKEY, "the word over the cast")
+    t.eq(pick({ buffs = {}, chosen = { aspectFight = MONKEY, aspectSet = HAWK } }), MONKEY, "this fight's first")
+    t.eq(pick({ buffs = {}, chosen = { aspect = MONKEY }, inCombat = true }), MONKEY, "in a fight too")
+    t.eq(pick({ buffs = { [HAWK] = true }, chosen = { aspect = MONKEY } }), nil, "an aspect on: left alone")
+    t.eq(pick({ buffs = "nil", chosen = { aspect = MONKEY } }), nil, "buffs not read: nothing")
+end
+
+tests["hunter N58: a kept aspect you do not know: the hawk, as before"] = function(t)
+    if type(hunter()) ~= "table" then t.ok(false, "no pack") return end
+    local known = { HAWK }
+    t.eq(pick({ buffs = {}, chosen = { aspect = MONKEY } }, known), HAWK, "the monkey not known: the hawk")
+    t.eq(pick({ buffs = {}, chosen = { aspect = "Aspect of Nothing" } }), HAWK, "not an aspect of this pack")
+    t.eq(pick({ buffs = {}, chosen = { aspect = MONKEY } }, { MONKEY }), MONKEY, "no hawk, the monkey kept")
+end
+
+tests["hunter N58: a travel aspect chosen with the word holds out of a fight only"] = function(t)
+    if type(hunter()) ~= "table" then t.ok(false, "no pack") return end
+    local known = { HAWK, MONKEY, CHEETAH, PACK }
+    t.eq(pick({ buffs = {}, chosen = { aspectSet = CHEETAH } }, known), CHEETAH, "out of a fight: the cheetah")
+    t.eq(pick({ buffs = {}, chosen = { aspectSet = PACK } }, known), PACK, "out of a fight: the pack")
+    t.eq(pick({ buffs = {}, chosen = { aspectSet = CHEETAH }, inCombat = true }, known), HAWK,
+        "in a fight: the hawk")
+    t.eq(pick({ buffs = {}, chosen = { aspectSet = CHEETAH, aspect = MONKEY }, inCombat = true }, known), MONKEY,
+        "in a fight: the one cast for the role, past the travel choice")
+    t.eq(pick({ buffs = { [CHEETAH] = true }, chosen = { aspectSet = CHEETAH } }, known), nil,
+        "the cheetah on, out of a fight: left alone")
+    t.eq(pick({ buffs = {}, chosen = { aspectSet = CHEETAH } }, { HAWK }), HAWK, "the cheetah not known: the hawk")
 end
 
 -- HU3 (review): Raptor Strike is asked for only when the queued read was

@@ -255,6 +255,146 @@ tests["hunter: the switch is kept over a reload"] = function(t)
     t.eq(icon2.texture, "tex:Aspect of the Hawk")
 end
 
+-- ------------------------------------- N58 (lead section 241): your choice
+
+-- The travel aspects; ids plausible, not read here.
+local TRAVEL_IDS = { ["Aspect of the Cheetah"] = 5118, ["Aspect of the Pack"] = 13159 }
+
+local function learn(c, name, id)
+    c.setSpellId(name, id)
+    c.setSpell(id, { known = true, usable = true })
+    c.setSpellCooldown(id, false)
+    c.setSpellTexture(id, "tex:" .. name)
+end
+local function learnTravel(c)
+    for name, id in pairs(TRAVEL_IDS) do learn(c, name, id) end
+end
+
+-- Your own cast went off, then a frame or so.
+local function cast(c, name)
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-3-0-0-0-0-0", IDS[name] or TRAVEL_IDS[name])
+    c.advance(1, 5)
+end
+
+-- The aspect kept for the role (none chosen: dps), or nil.
+local function kept(c, key, role)
+    local char = c.saved(ns.id.charDB)
+    local state = type(char) == "table" and char.state or nil
+    local own = type(state) == "table" and state.ownCasts or nil
+    local mine = type(own) == "table" and own[role or "dps"] or nil
+    return type(mine) == "table" and mine[key] or nil
+end
+
+-- The aspect chosen with the word, or nil.
+local function picked(c, key)
+    local char = c.saved(ns.id.charDB)
+    local state = type(char) == "table" and char.state or nil
+    local choice = type(state) == "table" and state.ownChoice or nil
+    return type(choice) == "table" and choice[key] or nil
+end
+
+-- The lines a slash word prints, as one.
+local function word(c, text)
+    local from = #c.printed + 1
+    c.slashes[ns.id.slash](text)
+    c.advance(1, 5)
+    local out = {}
+    for i = from, #c.printed do out[#out + 1] = tostring(c.printed[i]) end
+    return table.concat(out, " / ")
+end
+
+local function reload(c)
+    return start({ account = c.saved(ns.id.accountDB), char = c.saved(ns.id.charDB) })
+end
+
+local function asksAspect(icon)
+    return icon.shown == true and tostring(icon.texture):find("Aspect of ", 1, true) ~= nil
+end
+
+tests["hunter N58: the aspect you cast is kept; the cheetah and the pack never are; over a reload"] = function(t)
+    local c, addon, icon = start()
+    learnTravel(c)
+    c.setPlayerBuffs({}); c.setPet(WOLF); on(c, addon)
+    t.eq(icon.texture, "tex:Aspect of the Hawk", "none cast: the hawk")
+    cast(c, "Aspect of the Hawk")
+    t.eq(kept(c, "aspect"), nil, "the one asked for: not kept (PC-1)")
+    cast(c, "Aspect of the Monkey")
+    t.eq(kept(c, "aspect"), "Aspect of the Monkey", "kept for the role")
+    t.eq(icon.texture, "tex:Aspect of the Monkey", "no aspect on: the one you cast")
+    cast(c, "Aspect of the Cheetah")
+    t.eq(kept(c, "aspect"), "Aspect of the Monkey", "the cheetah: for travel, not kept")
+    cast(c, "Aspect of the Pack")
+    t.eq(kept(c, "aspect"), "Aspect of the Monkey", "the pack: for travel, not kept")
+    t.eq(icon.texture, "tex:Aspect of the Monkey", "still the monkey")
+    local c2, _, icon2 = reload(c)
+    c2.setPlayerBuffs({}); c2.setPet(WOLF); c2.advance(1, 5)
+    t.eq(icon2.texture, "tex:Aspect of the Monkey", "over a reload")
+end
+
+-- The gap (lead section 241): the cheetah or the pack on counted as your
+-- aspect in a fight, so the hawk was never asked for. Red before N58: the
+-- icon showed Arcane Shot with the cheetah on.
+tests["hunter N58: in a fight the cheetah or the pack on asks for the aspect to fight in"] = function(t)
+    local c, addon, icon = start()
+    learnTravel(c)
+    c.setPet(WOLF); on(c, addon)
+    fighting(c)
+    t.eq(icon.texture, "tex:Arcane Shot", "the hawk on: arcane shot")
+    c.setPlayerBuffs({ ["Aspect of the Cheetah"] = true }); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Aspect of the Hawk", "the cheetah on in a fight: the hawk")
+    c.setPlayerBuffs({ ["Aspect of the Pack"] = true }); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Aspect of the Hawk", "the pack on in a fight: the hawk")
+    cast(c, "Aspect of the Monkey")
+    t.eq(kept(c, "aspect"), "Aspect of the Monkey", "cast in a fight: kept for the role")
+    t.eq(icon.texture, "tex:Aspect of the Monkey", "the pack on in a fight: the kept aspect")
+    c.setPlayerBuffs({ ["Aspect of the Cheetah"] = true }); c.setTarget({ exists = false }); c.setCombat(false); c.advance(1, 5)
+    t.ok(not asksAspect(icon), "out of a fight, the cheetah on: left alone, as before")
+end
+
+tests["hunter N58: the aspect word chooses one; a travel one out of a fight only; auto"] = function(t)
+    local c, addon, icon = start()
+    learnTravel(c)
+    c.setPlayerBuffs({}); c.setPet(WOLF); on(c, addon)
+    local line = word(c, "aspect monkey")
+    t.ok(line:find("Aspect of the Monkey", 1, true), line)
+    t.eq(picked(c, "aspect"), "Aspect of the Monkey")
+    t.eq(icon.texture, "tex:Aspect of the Monkey", "the chosen aspect")
+    line = word(c, "aspect cheetah")
+    t.eq(picked(c, "aspect"), "Aspect of the Cheetah", line)
+    t.eq(icon.texture, "tex:Aspect of the Cheetah", "out of a fight: the chosen travel aspect")
+    c.setCombat(true); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Aspect of the Hawk", "in a fight: the hawk")
+    c.setCombat(false); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Aspect of the Cheetah", "the fight over: the chosen one again")
+    local c2, _, icon2 = reload(c)
+    learnTravel(c2)
+    c2.setPlayerBuffs({}); c2.setPet(WOLF); c2.advance(1, 5)
+    t.eq(icon2.texture, "tex:Aspect of the Cheetah", "the word's choice over a reload")
+    line = word(c, "aspect auto")
+    t.ok(line:find("auto", 1, true), line)
+    t.eq(picked(c, "aspect"), nil, "auto clears the choice")
+    t.eq(icon.texture, "tex:Aspect of the Hawk", "auto: the hawk")
+end
+
+tests["hunter N58: a read that fails keeps nothing and clears nothing; read again, fine"] = function(t)
+    local c, addon, icon = start()
+    c.setPlayerBuffs({}); c.setPet(WOLF); on(c, addon)
+    local nameRead = c.spellName
+    c.spellName = function() error("made-up failure") end
+    cast(c, "Aspect of the Monkey")
+    t.eq(kept(c, "aspect"), nil, "the spell name not read: nothing kept")
+    c.spellName = nameRead; c.advance(1, 5)
+    cast(c, "Aspect of the Monkey")
+    t.eq(kept(c, "aspect"), "Aspect of the Monkey", "read again: kept")
+    local buffsRead = c.playerBuffs
+    c.playerBuffs = function() error("made-up failure") end
+    c.advance(1, 5)
+    t.ok(not asksAspect(icon), "your buffs not read: no aspect asked for")
+    c.playerBuffs = buffsRead; c.advance(1, 5)
+    t.eq(icon.texture, "tex:Aspect of the Monkey", "read again: the kept aspect")
+    t.eq(kept(c, "aspect"), "Aspect of the Monkey", "the failed read did not clear it")
+end
+
 -- The gear verdict's lines among what the tooltip was given (other
 -- modules may add lines of their own to the same tooltip).
 local VERDICT = { "Can't use: ", "No verdict: ", "Upgrade for ", "Same as ", "Not an upgrade for " }

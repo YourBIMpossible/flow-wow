@@ -733,6 +733,42 @@ tests["paladin N58: the aura word chooses one; your buffs not read, then read"] 
     t.eq(icon.texture, "tex:Retribution Aura", "read again: the chosen aura")
 end
 
+-- N58, B3 (PARTLY): Oath of Light. A made-up spell id: the real one was
+-- never read from a WoW: Forever trainer.
+local OATH = 990101
+
+tests["paladin N58: Oath of Light only once you cast it; auto, a reload, buffs read again"] = function(t)
+    local c, addon, icon = start()
+    learn(c, "Oath of Light", OATH)
+    c.setPlayerBuffs(READY); on(c, addon)
+    t.ok(icon.texture ~= "tex:Oath of Light", "never cast: not asked for (auto)")
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-3-0-0-0-0-0", OATH); c.advance(1, 5)
+    t.eq(kept(c, "oath"), "Oath of Light", "your cast is kept for the role")
+    t.eq(icon.texture, "tex:Oath of Light", "not up: asked for")
+    local up = {}
+    for k, v in pairs(READY) do up[k] = v end
+    up["Oath of Light"] = true
+    c.setPlayerBuffs(up); c.advance(1, 5)
+    t.ok(icon.texture ~= "tex:Oath of Light", "up: not asked")
+    c.setPlayerBuffs(READY)
+    local buffs = c.playerBuffs
+    c.playerBuffs = function() error("made-up failure") end
+    c.advance(1, 5)
+    t.ok(not (icon.shown and icon.texture == "tex:Oath of Light"), "buffs not read: not asked")
+    c.playerBuffs = buffs; c.advance(1, 5)
+    t.eq(icon.texture, "tex:Oath of Light", "read again: asked for")
+    local c2, _, icon2 = reload(c)
+    learn(c2, "Oath of Light", OATH)
+    c2.setPlayerBuffs(READY); c2.advance(1, 5)
+    t.eq(icon2.texture, "tex:Oath of Light", "over a reload")
+    local line = word(c, "oath auto")
+    t.ok(line:find("auto", 1, true), line)
+    t.eq(kept(c, "oath"), nil, "auto forgets the cast")
+    t.ok(icon.texture ~= "tex:Oath of Light", "auto: not asked for")
+    line = word(c, "oath light")
+    t.eq(picked(c, "oath"), "Oath of Light", line)
+end
+
 tests["a class with no pack: on, and it says so"] = function(t)
     local c, addon, icon = start({ class = "DEATHKNIGHT" })
     c.setPlayerBuffs({}); on(c, addon)

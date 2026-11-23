@@ -250,6 +250,11 @@ local pack = {
     options = {
         -- Reads the rules lean on; one not given is named by diag (187).
         reads = { "stealthed", "buffs", "targetDebuffs" },
+        -- N58 (lead section 241): no own-choice row yet. No rule here
+        -- suggests a poison, the poisons are not in the spell list (putting
+        -- one on is the use of an item) and no read gives the enchant on your
+        -- weapon (see the header). The row (prefix "", key "poison", word
+        -- "poison") waits for that read and a rule that uses it.
         -- ROGUE-2 (section 236): when a finisher is due. need: the combo
         -- points a finisher waits for; builders: the points each of your
         -- strikes gives; finishers: the spells that spend them all. Every

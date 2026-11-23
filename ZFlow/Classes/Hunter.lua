@@ -31,6 +31,9 @@ local _, ns = ...
 --   * HU2: ns.HunterHasAspect matches the English prefix "Aspect of " on
 --     the buff names; a client in another language would read no aspect on
 --     and ask for the hawk. Unchecked against a real buff list;
+--   * N58 (lead section 241): the cheetah and the pack are told apart from
+--     the other aspects by their English names; another language would
+--     count them as an aspect to fight in;
 --   * HU4: the pet's happiness is read from GetPetHappiness() as 1, 2, 3 =
 --     "unhappy", "content", "happy" (Core/Client.lua); that mapping, and
 --     Feed Pet firing on "unhappy" alone, are unchecked in the client.
@@ -60,14 +63,51 @@ local function inReach(s, name)
     return (r and r.inRange == true) and true or false
 end
 
--- Is an aspect on? true, false, or nil when your buffs were not read. Any
--- aspect counts: one you chose (the cheetah, the pack) is left alone.
+-- N58 (lead section 241): the aspects the aspect word names (the ones in
+-- this pack's spell list). The cheetah and the pack are for travel: a cast
+-- of either is never kept, and in a fight neither counts as your aspect.
+local ASPECTS = { "Aspect of the Hawk", "Aspect of the Monkey", "Aspect of the Cheetah", "Aspect of the Pack" }
+local TRAVEL = { ["Aspect of the Cheetah"] = true, ["Aspect of the Pack"] = true }
+local IS_ASPECT, IS_FIGHT_ASPECT = {}, {}
+for _, name in ipairs(ASPECTS) do
+    IS_ASPECT[name] = true
+    if not TRAVEL[name] then IS_FIGHT_ASPECT[name] = true end
+end
+
+-- Is an aspect on? true, false, or nil when your buffs were not read. Out
+-- of a fight (or the fight not read) any aspect counts: one you chose (the
+-- cheetah, the pack) is left alone. N58 (lead section 241): in a fight
+-- (inCombat true) the cheetah and the pack do not count, so the aspect to
+-- fight in is asked for.
 function ns.HunterHasAspect(s)
     if type(s.buffs) ~= "table" then return nil end
+    local fight = s.inCombat == true
     for name in pairs(s.buffs) do
-        if type(name) == "string" and string.sub(name, 1, 10) == "Aspect of " then return true end
+        if type(name) == "string" and string.sub(name, 1, 10) == "Aspect of "
+            and not (fight and TRAVEL[name]) then
+            return true
+        end
     end
     return false
+end
+
+-- N58: the aspect to put up when none is on: the one you cast or chose,
+-- while known; else the hawk, as before (the monkey rule covers a hawk not
+-- known). A travel aspect chosen with the word holds out of a fight only.
+-- New: Flow had no aspect choice.
+function ns.HunterAspect(s)
+    local OC = ns.OwnCasts
+    local set = (s.inCombat == true) and IS_FIGHT_ASPECT or IS_ASPECT
+    local kept = OC and OC.Kept(s, set, "aspect") or nil
+    return kept or "Aspect of the Hawk"
+end
+
+-- N58: the aspect the rotation asks for now (PC-1: a cast of it is not
+-- kept): the hawk not known is the monkey, as the rules below.
+local function aspectNow(s)
+    local want = ns.HunterAspect(s)
+    if want == "Aspect of the Hawk" and not knows(s, want) then return "Aspect of the Monkey" end
+    return want
 end
 
 local function tag(list)
@@ -77,11 +117,23 @@ local function tag(list)
     return list
 end
 
+-- N58: one rule per aspect; each asks only for the one ns.HunterAspect
+-- gives. The monkey also stands in for a hawk not known, as before.
+local function aspectRule(name)
+    return { spell = name, kind = "buff", reason = "No aspect is on",
+             when = function(s) return ns.HunterHasAspect(s) == false and ns.HunterAspect(s) == name end }
+end
+
 local aspect = tag({
-    { spell = "Aspect of the Hawk", kind = "buff", reason = "No aspect is on",
-      when = function(s) return ns.HunterHasAspect(s) == false end },
+    aspectRule("Aspect of the Hawk"),
     { spell = "Aspect of the Monkey", kind = "buff", reason = "No aspect is on",
-      when = function(s) return ns.HunterHasAspect(s) == false and not knows(s, "Aspect of the Hawk") end },
+      when = function(s)
+          if ns.HunterHasAspect(s) ~= false then return false end
+          local want = ns.HunterAspect(s)
+          return want == "Aspect of the Monkey" or (want == "Aspect of the Hawk" and not knows(s, want))
+      end },
+    aspectRule("Aspect of the Cheetah"),
+    aspectRule("Aspect of the Pack"),
 })
 
 -- Your pet, only when it was read (R.NoPet, R.PetDead, R.PetUp answer nil
@@ -270,6 +322,15 @@ local pack = {
         -- The shots have a minimum range: out of range is too far or too
         -- close (Choose.lua farOpener, Diag's rotation line).
         minRange = true,
+        -- N58 (lead section 241): the aspect you cast is the one asked for
+        -- (OwnCasts.lua). The cheetah and the pack are for travel, never
+        -- kept from a cast. word: the word that chooses one of `names`.
+        -- pick (PC-1): the one asked for now; a cast of it is not kept.
+        sticky = {
+            { prefix = "Aspect of ", key = "aspect", word = "aspect", names = ASPECTS, only = IS_ASPECT,
+              temporary = function(name) return TRAVEL[name] == true end,
+              pick = aspectNow },
+        },
     },
 }
 

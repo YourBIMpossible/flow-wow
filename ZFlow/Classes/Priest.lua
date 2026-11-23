@@ -271,6 +271,8 @@ local pack = {
     talentBuilds = {},
 
     options = {
+        -- N58 (lead section 241): no own-choice row: Priest has no aura,
+        -- stance, form or armor choice in this rotation.
         -- Reads the rules lean on; one not given is named by diag (187).
         reads = { "buffs", "targetDebuffs", "formKnown" },
     },
