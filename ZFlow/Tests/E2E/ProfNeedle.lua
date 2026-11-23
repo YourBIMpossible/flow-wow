@@ -193,4 +193,25 @@ tests["prof needle: a reading saved during play changes the line with no reload"
     t.eq(c.arrows[2].lines, { fmt(N.PROF_CRAFT_SURE, "Bolt of Linen Cloth", "Tailoring") }, "after: the craft")
 end
 
+-- Mutation regressions (PN5, PN16, PN14): a capped profession gains no
+-- point from a node or a craft, so with no trainer known it says why; and a
+-- recipe of another profession is never offered as this one's craft.
+tests["prof needle: a capped gatherer with a node near, and no trainer known, says why, not the node"] = function(t)
+    local c = start({ professions = { "Mining" }, nodes = { COPPER }, skill = { Mining = { skill = 75, max = 75 } } })
+    textOnly(t, c, { fmt(N.PROF_WHY_TRAINER, "Mining", 75, "Mining") }, "capped gatherer")
+end
+
+tests["prof needle: a capped crafter whose craft is orange, and no trainer known, says why, not the craft"] = function(t)
+    local c = start({ professions = { "Tailoring" }, skill = { Tailoring = { skill = 75, max = 75 } }, book = BOOK,
+        colours = { ["Bolt of Linen Cloth"] = { optimal = { lo = 40, hi = 90 } } } })
+    textOnly(t, c, { fmt(N.PROF_WHY_TRAINER, "Tailoring", 75, "Tailoring") }, "capped crafter")
+end
+
+tests["prof needle: a recipe of another profession is not offered as the craft"] = function(t)
+    local c = start({ professions = { "Tailoring" }, skill = { Tailoring = { skill = 50, max = 75 } }, book = BOOK,
+        colours = { ["Rough Arrow"] = { optimal = { lo = 1, hi = 99 } },
+                    ["Linen Bag"] = { trivial = { lo = 40, hi = 60 } } } })
+    textOnly(t, c, { fmt(N.PROF_WHY_NO_POINT, "Tailoring", 50) }, "only an Engineering recipe gives a point")
+end
+
 return tests
