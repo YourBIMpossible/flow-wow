@@ -35,13 +35,18 @@ local _, ns = ...
 --   temporary          a set of names, or function(name, ctx) -> true: a
 --                      cast for a moment (Travel Form, a demon summoned in
 --                      a fight), never kept. ctx = { inCombat = true, false
---                      or nil (not read) }. A function that raises: kept.
+--                      or nil (not read), role = the role a cast is kept
+--                      under (OC.Role) }. A function that raises: kept.
 --   fightOnly = true   a cast in a fight (or with the fight not read) is
 --                      kept for that fight only; the role's stays.
 --   window = seconds   a cast held that long before it is kept; a cast of
 --                      the one in use before it, inside that time, undoes
 --                      it (a stance swapped for one ability and back). The
---                      time not read: kept at once.
+--                      time not read: kept at once. OC-2 (section 248): a
+--                      held cast is saved at once, so a reload inside the
+--                      window keeps it; until the window is over the
+--                      rotation still gets the one before it, and an undo
+--                      puts that one back.
 --
 -- Saved for the character: state.ownCasts[role][key] = name (your casts)
 -- and state.ownChoice[key] = name (the words). Spell names only.
@@ -67,8 +72,9 @@ local _, ns = ...
 --   OC.Temporary(row, name, ctx) -> true when the cast is for a moment
 --   OC.FightOnly(row, ctx)       -> true when it is kept for the fight only
 --   OC.Keys(key)                 -> { key.."Fight", key.."Set", key }
---   OC.Kept(s, set, key)         -> the first of those in snapshot.chosen
---                                   that is in the set and known, or nil
+--   OC.Kept(s, set, key, keys)   -> the first of those in snapshot.chosen
+--                                   that is in the set and known, or nil;
+--                                   keys (optional): look in only these
 -- Module (ns.use("ownCasts")):
 --   Chosen()                     -> the map above, or nil when it holds nothing
 -- Not tested in game.
@@ -156,11 +162,12 @@ function OC.Keys(key)
     return { key .. "Fight", key .. "Set", key }
 end
 
-function OC.Kept(s, set, key)
+function OC.Kept(s, set, key, keys)
     if type(s) ~= "table" or type(s.chosen) ~= "table" or type(set) ~= "table" or type(key) ~= "string" then
         return nil
     end
-    for _, k in ipairs(OC.Keys(key)) do
+    if keys ~= nil and type(keys) ~= "table" then return nil end
+    for _, k in ipairs(keys or OC.Keys(key)) do
         local name = s.chosen[k]
         local r = type(name) == "string" and set[name] and type(s.spells) == "table" and s.spells[name] or nil
         if type(r) == "table" and r.known then return name end
@@ -312,6 +319,14 @@ function OC.Declare(k, diag, packs)
             end
         end
         for key, name in pairs(fight) do put(key .. "Fight", name) end
+        -- OC-2: a held cast is saved already; inside its window the
+        -- rotation gets the one before it.
+        if held then
+            local key = held.row.key
+            if held.wroteRole and role() == held.role then out[key] = held.kept end
+            out[key .. "Fight"] = held.fightWas
+            any = next(out) ~= nil
+        end
         return any and out or nil
     end
 
@@ -338,7 +353,8 @@ function OC.Declare(k, diag, packs)
 
     -- A cast taken: for this fight, and for the role unless a word chose.
     -- PC-7: a change of the one kept for the role is said in one line.
-    local function accept(row, name)
+    -- OC-2: quiet = a held cast, said when its window is over.
+    local function accept(row, name, quiet)
         local key = row.key
         fight[key] = name
         if choiceOf(key) ~= nil then return end
@@ -346,7 +362,7 @@ function OC.Declare(k, diag, packs)
         local path = OC.PATH .. "." .. r .. "." .. key
         local was = k.store:get("char", path)
         k.store:set("char", path, name)
-        if was ~= name and sayOn() then say(OC.Line(row, name, OC.ROLE_WORDS[r] or r, k.id.slash)) end
+        if was ~= name and not quiet and sayOn() then say(OC.Line(row, name, OC.ROLE_WORDS[r] or r, k.id.slash)) end
     end
 
     -- N58: whether a fight is on when you cast: true, false, or nil.
@@ -355,16 +371,37 @@ function OC.Declare(k, diag, packs)
         local v
         if client then v = read(client.inCombat) end
         if type(v) ~= "boolean" then v = nil end
-        return { inCombat = v }
+        -- Section 247 item 2: the role, for a row whose casts are for a
+        -- moment in one role (a healer's Bear or Cat Form).
+        return { inCombat = v, role = role() }
     end
 
     -- N58: a cast taken; a fight-only row's cast in a fight is this fight's.
-    local function take(row, name, ctx)
+    local function take(row, name, ctx, quiet)
         if OC.FightOnly(row, ctx) then
             fight[row.key] = name
             return
         end
-        accept(row, name)
+        accept(row, name, quiet)
+    end
+
+    -- OC-2: a cast held for its row's window, saved at once (quiet), with
+    -- what it replaced, so an undo can put that back.
+    local function hold(row, name, t, ctx, was)
+        local key = row.key
+        local r = role()
+        local path = OC.PATH .. "." .. r .. "." .. key
+        local h = { row = row, name = name, at = t, ctx = ctx, was = was, role = r, path = path,
+                    fightWas = fight[key], kept = k.store:get("char", path) }
+        h.wroteRole = not OC.FightOnly(row, ctx) and choiceOf(key) == nil
+        take(row, name, ctx, true)
+        held = h
+    end
+
+    -- OC-2: the undo puts back what the held cast replaced.
+    local function undo(h)
+        fight[h.row.key] = h.fightWas
+        if h.wroteRole then k.store:set("char", h.path, h.kept) end
     end
 
     -- The one in use for a key before a cast: this fight's, the word's, the
@@ -383,7 +420,10 @@ function OC.Declare(k, diag, packs)
         if not t or t - held.at <= held.row.window then return end
         local h = held
         held = nil
-        take(h.row, h.name, h.ctx)
+        -- OC-2: saved when held; the line is said now.
+        if h.wroteRole and h.kept ~= h.name and sayOn() then
+            say(OC.Line(h.row, h.name, OC.ROLE_WORDS[h.role] or h.role, k.id.slash))
+        end
     end
 
     local function nameOf(id)
@@ -437,9 +477,12 @@ function OC.Declare(k, diag, packs)
         -- N58: a held cast whose window is over is kept; one still held is
         -- undone by a cast of the one in use before it.
         settle()
+        -- OC-2: a held cast is saved; a second cast of its key puts back
+        -- what it replaced first, so the one before it is what is weighed.
         if held and held.row.key == row.key then
             local h = held
             held = nil
+            undo(h)
             if name == h.was then return end
         end
         -- PC-1: the one picked or suggested when you cast it: not your choice.
@@ -448,7 +491,7 @@ function OC.Declare(k, diag, packs)
         if not row.onYou then
             local t = now()
             if type(row.window) == "number" and row.window > 0 and t then
-                held = { row = row, name = name, at = t, ctx = ctx, was = current(row.key) }
+                hold(row, name, t, ctx, current(row.key))
             else
                 take(row, name, ctx)
             end
@@ -563,6 +606,8 @@ function OC.Declare(k, diag, packs)
             client.listen(OC.FIGHT_END, function()
                 settle()
                 fight = {}
+                -- OC-2: this fight's casts are gone; an undo leaves none.
+                if held then held.fightWas = nil end
             end)
             if diag and type(diag.commands) == "table" then
                 for _, w in ipairs(words()) do

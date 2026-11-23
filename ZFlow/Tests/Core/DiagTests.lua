@@ -787,4 +787,32 @@ return {
         t.eq(S.recipeDifficulty and S.recipeDifficulty.values.v1, 1)
         t.eq(S.recipeSkillUps and S.recipeSkillUps.values.v1, 2)
     end,
+
+    -- Lead section 248 OC-1 (LOW): Oath of Light, read as a buff on you (a
+    -- first guess), gets capture fields: the spell by name and the aura by
+    -- its id. Made-up spell id; not seen in game.
+    ["paladin oath: the spell and the aura on you are captured"] = function(t)
+        local e = env()
+        local asked = {}
+        e.C_Spell = { GetSpellInfo = function(v)
+            if v == "Oath of Light" then return { name = v, spellID = 99001 } end
+        end }
+        e.C_UnitAuras = { GetPlayerAuraBySpellID = function(id)
+            asked[#asked + 1] = id
+            return { name = "Oath of Light", spellId = id, duration = 0 }
+        end }
+        local S = ns.Diag.Collect(ns.Kernel({}, ns.make.fakeClient({ env = e })), "test").shapes
+        t.eq(S.oathSpell and S.oathSpell.ok, true)
+        t.eq(asked, { 99001 }, "the aura asked by the spell id")
+        t.eq(S.oathAura and S.oathAura.ok, true)
+        t.eq(S.oathAura and S.oathAura.types[1], "table")
+        e.C_Spell.GetSpellInfo = function() return nil end
+        S = ns.Diag.Collect(ns.Kernel({}, ns.make.fakeClient({ env = e })), "test").shapes
+        t.eq(S.oathSpell and S.oathSpell.types[1], "nil", "the spell not known")
+        t.eq(S.oathAura, nil, "no id: the aura not asked")
+        local named = {}
+        for _, n in ipairs(ns.Diag.NAMES) do named[n] = true end
+        t.ok(named["C_UnitAuras.GetPlayerAuraBySpellID"], "the aura read is named")
+        t.ok(named["C_Spell.GetSpellInfo"], "the spell read is named")
+    end,
 }
