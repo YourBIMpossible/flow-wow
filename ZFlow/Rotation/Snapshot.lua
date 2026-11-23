@@ -39,6 +39,8 @@ R.SNAPSHOT_FIELDS = {
     { "buffFood", "map" },
     -- P-GATHER (Rotation/Gather.lua): gathering tracking, read by G.Read.
     { "tracking", "map" }, { "trackKnown", "map" }, { "professions", "map" }, { "gatherOn", "flag" },
+    -- GT-1, GT-2 (Rotation/Gather.lua): any tracking on; mounted; on a flight path.
+    { "trackingAny", "flag" }, { "mounted", "flag" }, { "onTaxi", "flag" },
     -- CF-32, N12: the seals and blessings you cast or chose, by key
     -- (Rotation/OwnCasts.lua); nil when there is none.
     { "chosen", "map" },

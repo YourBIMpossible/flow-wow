@@ -272,6 +272,11 @@ function D.Read(client, pack, ids, role, extra)
             return client.ownBuffs()
         end
         if field == "buffFood" then return buffFoodOf(client, pack, role) end
+        -- GT-1, GT-2: the gather guards' reads (Rotation/Gather.lua).
+        if field == "trackingAny" or field == "mounted" or field == "onTaxi" then
+            if type(ns.Gather) ~= "table" then return nil end
+            return ns.Gather.Read(client, field)
+        end
         -- P-GATHER: the gathering tracking reads (Rotation/Gather.lua).
         if field == "tracking" or field == "trackKnown" or field == "professions" or field == "gatherOn" then
             -- Lead: no "and ... or nil" here; a false answer (the setting off) must stay false.
