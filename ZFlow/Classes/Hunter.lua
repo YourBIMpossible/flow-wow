@@ -328,7 +328,24 @@ local pack = {
     spells = spells,
 
     -- Not authored yet.
-    talentBuilds = {},
+    talentBuilds = {
+        { name = "Beast Mastery levelling build", role = "dps", evidence = GUESS, note = "written for this pack on 2026-11-23 from general knowledge of the class; not read from the game",
+          trees = { "Beast Mastery", "Marksmanship", "Survival" },
+          order = {
+              { "Improved Aspect of the Hawk", 5, why = "Your ranged attacks now and then gain speed, with the aspect you keep on." },
+              { "Endurance Training", 5, why = "Your pet has more health, so it holds the enemy longer." },
+              { "Unleashed Fury", 5, why = "Your pet hits harder, and it does much of your killing." },
+              { "Ferocity", 5, why = "Your pet lands more critical hits." },
+              { "Spirit Bond", 2, why = "You and your pet heal over time, so fewer rests between pulls." },
+              { "Intimidation", 1, why = "A pet attack that stuns the enemy and pulls it back off you." },
+              { "Bestial Swiftness", 1, why = "Your pet runs faster outdoors, so it reaches the enemy first." },
+              { "Improved Mend Pet", 2, why = "Mend Pet costs less and can clear a curse or poison from your pet." },
+              { "Bestial Discipline", 2, why = "Your pet builds focus faster, so it uses its attacks more often." },
+              { "Frenzy", 5, why = "Your pet attacks faster after its critical hits." },
+              { "Bestial Wrath", 1, why = "A cooldown that makes your pet hit much harder for a short time." },
+          },
+        },
+    },
 
     options = {
         crowdControl = { { spell = "Scare Beast", creatures = { beast = true } } },

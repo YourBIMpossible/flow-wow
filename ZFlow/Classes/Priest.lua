@@ -316,7 +316,25 @@ local pack = {
 
     -- Does not apply: no talent plan is written; the rotation plays the role
     -- you choose and reads no talent.
-    talentBuilds = {},
+    talentBuilds = {
+        { name = "Shadow levelling build", role = "dps", evidence = GUESS, note = "written for this pack on 2026-11-23 from general knowledge of the class; not read from the game",
+          trees = { "Discipline", "Holy", "Shadow" },
+          order = {
+              { "Spirit Tap", 5, why = "A kill gives you spirit, so your mana comes back faster between pulls." },
+              { "Improved Shadow Word: Pain", 2, why = "Shadow Word: Pain lasts longer for the same mana." },
+              { "Shadow Focus", 5, why = "Fewer of your shadow spells are resisted." },
+              { "Mind Flay", 1, why = "A channelled spell that damages and slows the enemy, your main filler." },
+              { "Improved Mind Blast", 2, why = "Mind Blast is ready again sooner." },
+              { "Shadow Reach", 3, why = "Your shadow spells reach farther." },
+              { "Improved Fade", 2, why = "Fade is ready again sooner, for when the enemy turns on you in a group." },
+              { "Vampiric Embrace", 1, why = "Part of your shadow damage heals you and your group." },
+              { "Shadow Affinity", 3, why = "Your shadow spells make less threat." },
+              { "Silence", 1, why = "Stops an enemy caster from casting for a few seconds." },
+              { "Darkness", 5, why = "More damage from every shadow spell." },
+              { "Shadowform", 1, why = "More shadow damage and less physical damage taken." },
+          },
+        },
+    },
 
     options = {
         -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,
