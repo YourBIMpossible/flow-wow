@@ -83,6 +83,24 @@ function ns.offline.addon(client)
     return fresh
 end
 
+-- The seen-result snapshot (zflow-seen.lua, lead section 188): one text
+-- block of what the player sees on a fake client, and the compare of two.
+-- Test tooling, never shipped. A file that does not load fails only the
+-- tests that ask for it, with the reason.
+do
+    local chunk, err = loadfile(here .. "/zflow-seen.lua")
+    local ok, seen = false, err
+    if chunk then ok, seen = pcall(chunk) end
+    if ok and type(seen) == "table" then
+        ns.offline.seen, ns.offline.seenDiff, ns.offline.seenParts = seen.seen, seen.compare, seen
+    else
+        local why = "tools/offline/zflow-seen.lua did not load: " .. tostring(seen)
+        local function broken() error(why, 2) end
+        ns.offline.seen, ns.offline.seenDiff = broken, broken
+        ns.offline.seenParts = setmetatable({}, { __index = broken })
+    end
+end
+
 for _, f in ipairs(manifest.files) do
     local ok, err = loadOne(f.path)
     if not ok then
