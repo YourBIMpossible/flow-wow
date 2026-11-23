@@ -444,6 +444,24 @@ tests["flow button: the setting's help names the Flow button, not a hidden butto
     t.ok(help:find("presses nothing for you", 1, true) ~= nil, "still presses nothing: " .. help)
 end
 
+-- Lead section 305 item 4: the imported legacy key, key2 and always are
+-- kept but not applied: nothing is bound at load, and the self button is
+-- shown either way.
+tests["self button: imported legacy key, key2 and always are not applied"] = function(t)
+    if type(FB) ~= "table" then t.ok(false, "no module"); return end
+    for _, always in ipairs({ false, true }) do
+        local c = start({ account = { settings = { buffButton = { key = "F", key2 = "SHIFT-G", always = always } } } })
+        local tag = "always " .. tostring(always) .. ": "
+        if type(c.bindingCalls) == "function" then t.eq(c.bindingCalls(), {}, tag .. "nothing bound at load") end
+        if type(c.bindingMap) == "function" then
+            t.eq(c.bindingMap()["F"], nil, tag .. "key not bound")
+            t.eq(c.bindingMap()["SHIFT-G"], nil, tag .. "key2 not bound")
+        end
+        local h = rowOf(c, SELF)
+        t.eq(h and h.shown, true, tag .. "the self button is shown")
+    end
+end
+
 tests["self button: a saved choice is kept, only the unset default is on"] = function(t)
     if type(FB) ~= "table" then t.ok(false, "no module"); return end
     local c, addon = start({ char = { settings = { rotation = { keyFrame = false } } },

@@ -48,6 +48,15 @@ FB.NAME = "flowButton"
 FB.SETTING = K.SETTING               -- rotation.keyFrame: the Flow button
 FB.LABEL = K.LABEL
 FB.SELF_SETTING = "buffButton.enabled"
+-- Lead section 305 item 4: the imported legacy buffButton.key, key2 and
+-- always (Import/FromFlow.lua, kept under settings.buffButton) are not
+-- applied. The add-on binds a key only when the player presses Set key on
+-- the settings page (keys.flow, keys.self); binding an imported key at
+-- load would be the add-on binding by itself. The player sets them again
+-- on that page. always is not mapped: section 294 keeps the self button
+-- shown even when it holds nothing, which is what always=true did, so
+-- always=false (hide when empty) is not offered. Pinned in
+-- Tests/E2E/FlowButton.lua.
 FB.DOCK = "buffButton.dock"
 FB.LAYOUT = "flowButton.place"
 FB.PATH = "layout.rotation.frame"
