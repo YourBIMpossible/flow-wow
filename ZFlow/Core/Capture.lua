@@ -398,7 +398,7 @@ Capture.FEATURES = {
     { name = "arrow", words = { "arrow why" } },
     { name = "flights", words = { "try flight", "arrow why", "try off" } },
     { name = "banker", words = { "banker" } },
-    { name = "settings", words = { "settings" } },
+    { name = "settings", words = { "settings" }, fromRows = true },   -- summed up from the rows (S2)
 }
 
 -- The words a feature says when a read is not known, by the read the
@@ -430,25 +430,30 @@ end
 
 -- Section 196: a name-free summary of the feature run, for White to post.
 --   Capture.Names(cap)                  -> names the capture holds, longest first
---   Capture.Mask(line, names)           -> the line with numbers and names replaced
+--   Capture.Mask(line, names, own)      -> the line with only own words and
+--                                          numbers printed, and how many words
+--                                          were left out
+--   Capture.SettingsLines(settings)     -> one line per declared setting
 --   Capture.RunFeature(c, addon, f)     -> lines, problems added, ran (true when
 --                                          every word ran without raising)
---   Capture.Summarize(c, addon, report, names) -> { { feature, ran, problems,
---                                          unknowns, lines = masked } } in FEATURES order
+--   Capture.Summarize(c, addon, report, names, own [, features]) -> { { feature,
+--                                          ran, problems, unknowns, hidden,
+--                                          lines = masked } } in FEATURES order
 --   Capture.SummaryText(rows)           -> the text written to ZFLOW_SUMMARY
--- Masking keeps the fixed words: every number becomes "#"; a name the
--- capture holds becomes "<name>" in any case; a word with a byte past ASCII
--- becomes "<name>"; a capitalised word not in Capture.FIXED becomes "<Name>";
--- bracketed text (an item) becomes "[<item>]"; colour and link codes go.
--- A name written only in lower case and not held in a capture field stays:
--- the summary is still treated as holding names until reviewed.
-Capture.SUMMARY_HEAD = "capture summary (names and numbers replaced)"
-Capture.FIXED = {}
-for _, word in ipairs({ "A", "All", "An", "And", "At", "Bank", "Buy", "Cast", "Fly", "For", "From", "Hearth", "In",
-    "It", "Keep", "Next", "No", "Not", "Nothing", "Off", "On", "Out", "Preview", "Sell", "Talk", "The", "Then", "To",
-    "Travel", "Walk", "Way", "When", "You", "Your" }) do
-    Capture.FIXED[word] = true
-end
+-- Masking (lead section 199, MyBuddy S1): a line keeps only the add-on's own
+-- words and the numbers' places. `own` is the set of lower-case words in
+-- the add-on's own source (ns.offline.ownWords). Colour and link codes go;
+-- a name the capture holds, a bracketed item, a word with a byte past
+-- ASCII and every word not in `own` become "_"; every number becomes "#".
+-- Each "_" is counted (hidden), never printed: typed labels, chat and any
+-- name not held in a capture field are counted, not shown. With no `own`
+-- list, no word is printed.
+-- Settings (S2): the settings feature is summed up from the declared rows,
+-- not from the page: each row's key and kind, and its value only when it
+-- is one of the row's declared choices (on or off for a switch).
+Capture.SUMMARY_HEAD = "capture summary (only the add-on's own words; numbers and other words replaced)"
+Capture.HIDE = "_"
+Capture.KIND = { string = "text", choice = "choice", bool = "on or off", number = "number", table = "table" }
 
 local function addName(out, seen, v)
     if type(v) ~= "string" or v == "" or v == ns.id.title then return end
@@ -499,46 +504,79 @@ function Capture.Names(cap)
     return out
 end
 
--- Every place a name is, in any case, replaced by "<name>".
+-- A stand-in byte for a left-out word while a line is worked on; it is
+-- turned into Capture.HIDE at the end.
+local GAP = "\1"
+
+-- Every place a name is, in any case, left out. Answers the line and how many.
 local function maskNames(line, names)
+    local n = 0
     for _, name in ipairs(names or {}) do
         if type(name) == "string" and name ~= "" then
-            local low, find = name:lower(), 1
+            local low, from = name:lower(), 1
             local out = {}
             while true do
-                local a, b = line:lower():find(low, find, true)
+                local a, b = line:lower():find(low, from, true)
                 if not a then break end
-                out[#out + 1] = line:sub(find, a - 1)
-                out[#out + 1] = "<name>"
-                find = b + 1
+                out[#out + 1] = line:sub(from, a - 1)
+                out[#out + 1] = GAP
+                n = n + 1
+                from = b + 1
             end
-            out[#out + 1] = line:sub(find)
+            out[#out + 1] = line:sub(from)
             line = table.concat(out)
         end
     end
-    return line
+    return line, n
 end
 
-local function maskWord(word)
-    if word:find("[\128-\255]") then return "<name>" end
-    local first = word:sub(1, 1)
-    if first:match("%u") and not Capture.FIXED[word] then return "<Name>" end
-    return word
-end
-
-function Capture.Mask(line, names)
+function Capture.Mask(line, names, own)
     line = tostring(line)
+    own = type(own) == "table" and own or {}
     local head = ns.id.title .. ": "
     local prefix = ""
     if line:sub(1, #head) == head then
         prefix, line = head, line:sub(#head + 1)
     end
     line = line:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|H[^|]*|h", ""):gsub("|h", "")
-    line = maskNames(line, names)
-    line = line:gsub("%[[^%]]*%]", "[<item>]")
-    line = line:gsub("[%w\128-\255][%w\128-\255'%-]*", maskWord)
-    line = line:gsub("%d+", "#")
-    return prefix .. line
+    local hidden
+    line, hidden = maskNames(line, names)
+    local items
+    line, items = line:gsub("%[[^%]]*%]", "[" .. GAP .. "]")
+    hidden = hidden + items
+    line = line:gsub("[%a\128-\255]+", function(word)
+        if not word:find("[\128-\255]") and own[word:lower()] then return word end
+        hidden = hidden + 1
+        return GAP
+    end)
+    line = line:gsub("%d+", "#"):gsub(GAP, Capture.HIDE)
+    return prefix .. line, hidden
+end
+
+-- One line per declared setting (S2): its key and kind, and its value only
+-- when that is one of the row's declared choices (true or false for a switch).
+function Capture.SettingsLines(settings)
+    local out = {}
+    if type(settings) ~= "table" or type(settings.each) ~= "function" then return out end
+    for row in settings:each() do
+        if type(row) == "table" and type(row.key) == "string" then
+            local kind = Capture.KIND[row.type] or "other"
+            local line = "setting " .. row.key .. ": " .. kind
+            local ok, v = pcall(settings.get, settings, row.key)
+            if ok and row.type == "bool" and type(v) == "boolean" then
+                line = line .. " = " .. tostring(v)
+            elseif ok and row.type == "choice" and type(row.choices) == "table" then
+                for _, choice in ipairs(row.choices) do
+                    if v ~= nil and choice == v and (type(v) == "string" or type(v) == "number") then
+                        line = line .. " = " .. tostring(v)
+                        break
+                    end
+                end
+            end
+            out[#out + 1] = line
+        end
+    end
+    return out
 end
 
 local function problemCount(addon)
@@ -566,14 +604,22 @@ function Capture.RunFeature(c, addon, feature)
     return lines, problemCount(addon) - before, ran
 end
 
-function Capture.Summarize(c, addon, report, names)
+function Capture.Summarize(c, addon, report, names, own, features)
     local rows = {}
-    for _, feature in ipairs(Capture.FEATURES) do
+    for _, feature in ipairs(features or Capture.FEATURES) do
         local lines, added, ran = Capture.RunFeature(c, addon, feature)
-        local masked = {}
-        for i, line in ipairs(lines) do masked[i] = Capture.Mask(line, names) end
+        local masked, hidden = {}, 0
+        if feature.fromRows then
+            masked = Capture.SettingsLines(addon.settings)
+        else
+            for i, line in ipairs(lines) do
+                local n
+                masked[i], n = Capture.Mask(line, names, own)
+                hidden = hidden + n
+            end
+        end
         rows[#rows + 1] = { feature = feature.name, ran = ran, problems = added,
-            unknowns = Capture.Unknowns(lines, report), lines = masked }
+            unknowns = Capture.Unknowns(lines, report), hidden = hidden, lines = masked }
     end
     return rows
 end
@@ -581,8 +627,9 @@ end
 function Capture.SummaryText(rows)
     local out = { Capture.SUMMARY_HEAD }
     for _, r in ipairs(rows or {}) do
-        out[#out + 1] = string.format("feature %s: ran %s, problems %d, unknown %d, lines %d", tostring(r.feature),
-            r.ran and "yes" or "no", tonumber(r.problems) or 0, tonumber(r.unknowns) or 0, #(r.lines or {}))
+        out[#out + 1] = string.format("feature %s: ran %s, problems %d, unknown %d, hidden %d, lines %d",
+            tostring(r.feature), r.ran and "yes" or "no", tonumber(r.problems) or 0, tonumber(r.unknowns) or 0,
+            tonumber(r.hidden) or 0, #(r.lines or {}))
         for _, line in ipairs(r.lines or {}) do out[#out + 1] = "  " .. line end
     end
     return table.concat(out, "\n") .. "\n"
