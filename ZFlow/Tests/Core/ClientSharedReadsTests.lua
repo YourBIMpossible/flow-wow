@@ -210,6 +210,55 @@ tests["reads buffLength: the whole length of a unit's buff, from the client"] = 
     t.eq(ns.make.client(base()).buffLength("party1", { "Thorns" }), nil, "no read")
 end
 
+-- Review R2-1: buffLength(unit, names, true) counts only a buff you cast:
+-- the row's sourceUnit, else UnitBuff's seventh answer (first guesses, not
+-- in the client names table, not seen in game). Another caster's row is
+-- passed over; a caster hidden or not read gives nil and the name.
+tests["reads buffLength R2-1: yours only, by the caster of the row"] = function(t)
+    local rows = {
+        { name = "Mark of the Wild", duration = 7200, expirationTime = 8000, sourceUnit = "party2" },
+        { name = "Thorns", duration = 600, expirationTime = 1500, sourceUnit = "player" },
+        { name = "Arcane Intellect", duration = 1800, expirationTime = 2000, sourceUnit = SECRET },
+        { name = "Mark of the Wild", duration = 3600, expirationTime = 4598, sourceUnit = "player" },
+        { name = "Blessing of Might", duration = 300, expirationTime = 1200 },
+    }
+    local env = base({ C_UnitAuras = { GetAuraDataByIndex = function(_, i) return rows[i] end } })
+    local c = ns.make.client(env)
+    t.eq({ c.buffLength("party1", { "Mark of the Wild" }, true) }, { 3600, "Mark of the Wild" }, "theirs passed over")
+    t.eq({ c.buffLength("party1", { "Mark of the Wild" }) }, { 7200, "Mark of the Wild" }, "no third argument: as before")
+    t.eq({ c.buffLength("party1", { "Thorns" }, true) }, { 600, "Thorns" })
+    t.eq({ c.buffLength("party1", { "Arcane Intellect" }, true) }, { nil, "Arcane Intellect" }, "caster hidden")
+    t.eq({ c.buffLength("party1", { "Blessing of Might" }, true) }, { nil, "Blessing of Might" }, "caster not read")
+    local theirs = base({ C_UnitAuras = { GetAuraDataByIndex = function(_, i)
+        if i == 1 then return rows[1] end
+    end } })
+    t.eq(ns.make.client(theirs).buffLength("party1", { "Mark of the Wild" }, true), false, "only theirs: none of yours")
+    local old = base({ UnitBuff = function(_, i)
+        if i == 1 then return "Thorns", 1, 0, nil, 600, 1500, "party2" end
+        if i == 2 then return "Mark of the Wild", 1, 0, nil, 3600, 4598, "player" end
+    end })
+    local oc = ns.make.client(old)
+    t.eq(oc.buffLength("party1", { "Thorns" }, true), false, "UnitBuff: theirs")
+    t.eq({ oc.buffLength("party1", { "Mark of the Wild" }, true) }, { 3600, "Mark of the Wild" }, "UnitBuff: yours")
+end
+
+tests["reads fake buffLength R2-1: the row field caster"] = function(t)
+    local c = ns.make.fakeClient()
+    c.setUnitBuffs("party1", {
+        { name = "Mark of the Wild", left = 500, length = 7200, caster = "party2" },
+        { name = "Thorns", left = 500, length = 600, caster = "player" },
+        { name = "Mark of the Wild", left = 500, length = 3600, caster = "player" },
+        { name = "Arcane Intellect", left = 500, length = 1800 },
+        { name = "Blessing of Might", left = 500, length = 300, caster = c.SECRET },
+    })
+    t.eq({ c.buffLength("party1", { "Mark of the Wild" }, true) }, { 3600, "Mark of the Wild" })
+    t.eq({ c.buffLength("party1", { "Mark of the Wild" }) }, { 7200, "Mark of the Wild" }, "no third argument: as before")
+    t.eq({ c.buffLength("party1", { "Arcane Intellect" }, true) }, { nil, "Arcane Intellect" }, "caster not set")
+    t.eq({ c.buffLength("party1", { "Blessing of Might" }, true) }, { nil, "Blessing of Might" }, "caster hidden")
+    c.setUnitBuffs("party2", { { name = "Thorns", left = 500, length = 600, caster = "party1" } })
+    t.eq(c.buffLength("party2", { "Thorns" }, true), false, "only theirs")
+end
+
 -- ----------------------------------------------------------------- pet hurt
 local function petEnv(extra)
     extra = extra or {}
