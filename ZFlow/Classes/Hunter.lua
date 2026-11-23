@@ -26,6 +26,14 @@ local _, ns = ...
 --     listed, and on the key row where they fit, but no rule asks for them);
 --   * starting a melee swing: there is no "Attack" row, so the engage step
 --     never sends a hunter into melee.
+--
+-- Not seen in the game, named on their own (review notes, lead section 208):
+--   * HU2: ns.HunterHasAspect matches the English prefix "Aspect of " on
+--     the buff names; a client in another language would read no aspect on
+--     and ask for the hawk. Unchecked against a real buff list;
+--   * HU4: the pet's happiness is read from GetPetHappiness() as 1, 2, 3 =
+--     "unhappy", "content", "happy" (Core/Client.lua); that mapping, and
+--     Feed Pet firing on "unhappy" alone, are unchecked in the client.
 
 local GUESS = "first guess"
 local MADE = "written for this pack on 2026-11-23 from general knowledge of the class; not read from the game"
@@ -36,10 +44,9 @@ local function knows(s, name)
 end
 local function hostile(s) return s.hostile == true end
 local function outOfFight(s) return ns.Rotation.OutOfFight(s) end
--- Read as off / on (section 183): a current map not read, or a spell left
--- out of it, is neither, and the rule that wants one does not fire.
+-- Read as off (section 183): a current map not read, or a spell left out
+-- of it, is not off, and the rule that wants it off does not fire.
 local function readOff(s, name) return type(s.current) == "table" and s.current[name] == false end
-local function readOn(s, name) return type(s.current) == "table" and s.current[name] == true end
 -- Target debuffs not read: not known, so not missing (section 186).
 local function missingOnTarget(s, name)
     if type(s.targetDebuffs) ~= "table" then return false end
@@ -108,7 +115,9 @@ local multi = tag({
 })
 local melee = tag({
     { spell = "Raptor Strike", target = true, reason = "In melee: Raptor Strike",
-      when = function(s) return hostile(s) and inReach(s, "Raptor Strike") and not readOn(s, "Raptor Strike") end },
+      -- Strict, as Auto Shot: only when the queued read was given and says
+      -- no. Not read is not "not queued" (review note HU3).
+      when = function(s) return hostile(s) and inReach(s, "Raptor Strike") and readOff(s, "Raptor Strike") end },
     { spell = "Mongoose Bite", target = true, reason = "In melee: Mongoose Bite",
       when = function(s) return hostile(s) and inReach(s, "Mongoose Bite") end },
     { spell = "Wing Clip", target = true, reason = "In melee: Wing Clip, then step back to shoot",

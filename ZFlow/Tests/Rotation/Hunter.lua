@@ -122,7 +122,7 @@ end
 
 tests["hunter chooser: melee only in melee reach; ranged first"] = function(t)
     if type(hunter()) ~= "table" then t.ok(false, "no pack") return end
-    local s = snap({ hostile = true, inCombat = true, current = { ["Auto Shot"] = true },
+    local s = snap({ hostile = true, inCombat = true, current = { ["Auto Shot"] = true, ["Raptor Strike"] = false },
         targetDebuffs = { ["Hunter's Mark"] = true, ["Serpent Sting"] = true } })
     for _, name in ipairs({ "Hunter's Mark", "Serpent Sting", "Auto Shot", "Arcane Shot", "Multi-Shot" }) do
         s.spells[name].inRange = false
@@ -134,6 +134,50 @@ tests["hunter chooser: melee only in melee reach; ranged first"] = function(t)
     t.eq(got and got.spell, "Arcane Shot", "nothing in reach: the shot to get to")
     t.eq(got and got.step, "farOpener")
     t.eq(got and got.minRange, true, "too far or too close: not only move closer")
+end
+
+-- HU1 (review): the hawk is in `maintain`, while the aspect rule takes any
+-- aspect as on. An aspect the player chose is never swapped for the hawk:
+-- not out of a fight, not at any step of a fight, in either list.
+tests["hunter chooser: the cheetah or the pack on is never swapped for the hawk (HU1)"] = function(t)
+    if type(hunter()) ~= "table" then t.ok(false, "no pack") return end
+    for _, aspect in ipairs({ "Aspect of the Cheetah", "Aspect of the Pack" }) do
+        local buffs = { [aspect] = true }
+        t.eq(pick({ buffs = buffs }), nil, aspect .. ", out of a fight: nothing asked for")
+        local enemy = { buffs = buffs, hostile = true, inCombat = true }
+        t.eq(pick(enemy), "Hunter's Mark", aspect .. ", in a fight: the mark, not an aspect")
+        t.eq(pick(enemy, nil, "aoe"), "Hunter's Mark", aspect .. ", several enemies: the mark, not an aspect")
+        enemy.targetDebuffs = { ["Hunter's Mark"] = true, ["Serpent Sting"] = true }
+        enemy.current = { ["Auto Shot"] = true }
+        t.eq(pick(enemy), "Arcane Shot", aspect .. ", shooting: arcane shot, not an aspect")
+    end
+    t.eq(pick({ buffs = { ["Aspect of the Cheetah"] = true } }, { "Aspect of the Monkey" }), nil,
+        "the monkey is not asked for over the cheetah either")
+end
+
+-- HU3 (review): Raptor Strike is asked for only when the queued read was
+-- given and says it is not queued, as Auto Shot is. In a fight, too close for
+-- the shots (and Arcane Shot on cooldown), Mongoose Bite on cooldown, Wing
+-- Clip on: Raptor Strike is the only melee rule left.
+local function tooClose(current)
+    local s = snap({ hostile = true, inCombat = true, current = current,
+        targetDebuffs = { ["Hunter's Mark"] = true, ["Serpent Sting"] = true, ["Wing Clip"] = true } })
+    for _, name in ipairs({ "Hunter's Mark", "Serpent Sting", "Auto Shot", "Arcane Shot", "Multi-Shot" }) do
+        s.spells[name].inRange = false
+    end
+    s.spells["Arcane Shot"].onCooldown = true
+    s.spells["Multi-Shot"].onCooldown = true
+    s.spells["Mongoose Bite"].onCooldown = true
+    local got = ns.Choose(s, hunter())
+    return got and got.spell or nil
+end
+
+tests["hunter chooser: raptor strike only on a queued read that says no (HU3)"] = function(t)
+    if type(hunter()) ~= "table" then t.ok(false, "no pack") return end
+    t.eq(tooClose("nil"), nil, "nothing queued was read: raptor strike not asked for")
+    t.eq(tooClose({ ["Auto Shot"] = true }), nil, "raptor strike left out of the read: not asked for")
+    t.eq(tooClose({ ["Auto Shot"] = true, ["Raptor Strike"] = false }), "Raptor Strike", "read, not queued: asked for")
+    t.eq(tooClose({ ["Auto Shot"] = true, ["Raptor Strike"] = true }), nil, "read, already queued: not again")
 end
 
 tests["hunter chooser: the engage step never asks for a swing"] = function(t)
