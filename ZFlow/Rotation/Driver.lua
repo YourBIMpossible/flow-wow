@@ -5,7 +5,7 @@ local _, ns = ...
 -- nothing: no attribute, binding, cast or frame is touched here, and the
 -- key plan is only worked out, never applied.
 --
---   D.Read(client, pack, ids[, role, chosen]) -> read(field)
+--   D.Read(client, pack, ids[, role, extra]) -> read(field)
 --     the reader ns.Snapshot takes. dead, inCombat, stealthed, hostile,
 --     spells, buffs, targetDebuffs, form, current and pet are asked of the
 --     client; role is the
@@ -42,14 +42,15 @@ local _, ns = ...
 --       spells     each row also gets inRange = client.inRange(spell id)
 --                  when the client has that read and the answer is true or
 --                  false; otherwise range stays not known
---       chosen     the one handed in (CF-32, N12): the seals and blessings
+--       chosen     extra.chosen as handed in (CF-32, N12; lead section 232:
+--                  one trailing options table, extra, with named fields): the seals and blessings
 --                  you cast or chose, by key, from the ownCasts module
 --                  (Rotation/OwnCasts.lua); nil when it is not a table
 --                  (none, or the module is not there)
 --       ownBuffs   client.ownBuffs() as it answered (N13): the buffs on you
 --                  that you put up yourself; nil when not known or the
 --                  client has no such read
---   D.Step(client, pack[, prefs, bias, applied, role, chosen]) -> view
+--   D.Step(client, pack[, prefs, bias, applied, role, extra]) -> view
 --     one read and one choice. A read that fails is an error (not caught
 --     here; the tick catches it).
 --   D.Why(snapshot, trace, keys, lockdown) -> why
@@ -212,7 +213,8 @@ local function buffFoodOf(client, pack, role)
     return {}
 end
 
-function D.Read(client, pack, ids, role, chosen)
+function D.Read(client, pack, ids, role, extra)
+    local chosen = type(extra) == "table" and extra.chosen or nil
     -- Lead section 187: the form is asked of the client once for a read,
     -- and both fields (form, formKnown) come from that one answer.
     -- The answer is kept only for the other field of the pair, and used
@@ -334,12 +336,12 @@ function D.Why(snapshot, trace, keys, lockdown)
     return why
 end
 
-function D.Step(client, pack, prefs, bias, applied, role, chosen)
+function D.Step(client, pack, prefs, bias, applied, role, extra)
     if type(pack) ~= "table" then
         return { pack = false, trace = {}, why = { pack = false } }
     end
     local ids, missing = RR.SpellIds(pack, client.spellId)
-    local snapshot = ns.Snapshot(D.Read(client, pack, ids, role, chosen))
+    local snapshot = ns.Snapshot(D.Read(client, pack, ids, role, extra))
     local suggestion, trace = ns.Choose(snapshot, pack, prefs, bias)
     local passed = passedIn(trace)
     if suggestion and #passed > 0 then suggestion.passed = passed end
@@ -380,10 +382,10 @@ function D.Step(client, pack, prefs, bias, applied, role, chosen)
 end
 
 -- One tick's work: the class's pack, then a step.
-local function work(client, packs, role, chosen)
+local function work(client, packs, role, extra)
     local class = type(client.class) == "function" and client.class() or nil
     local pack = type(class) == "string" and type(packs) == "table" and packs[class] or nil
-    return D.Step(client, pack, nil, nil, nil, role, chosen)
+    return D.Step(client, pack, nil, nil, nil, role, extra)
 end
 
 -- CF-32: what the ownCasts module keeps (Rotation/OwnCasts.lua), asked
@@ -413,7 +415,7 @@ function D.Declare(k, packs)
             end
             return
         end
-        local ok, got = pcall(work, ctx.client, packs or ns.Packs, ctx.settings:get(D.ROLE), chosenOf(k))
+        local ok, got = pcall(work, ctx.client, packs or ns.Packs, ctx.settings:get(D.ROLE), { chosen = chosenOf(k) })
         if ok then
             view = got
         else
