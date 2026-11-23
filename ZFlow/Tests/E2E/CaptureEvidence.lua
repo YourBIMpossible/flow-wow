@@ -208,7 +208,8 @@ tests["capture evidence: class, level, faction and place alone do not verify rot
 
     local banker = judge(cap, "banker")
     t.eq({ banker.result, banker.verified }, { Evidence.NOT_EXERCISED, false })
-    t.eq(banker.missing, { "bag items" }, "banker: a capture holds no bag items")
+    -- Section 220 (CE-3): with no bag items there is no list line either.
+    t.eq(banker.missing, { Evidence.NO_BEHAVIOUR, "bag items" }, "banker: a capture holds no bag items")
 
     local arrow = judge(cap, "arrow")
     t.eq({ arrow.result, arrow.verified }, { Evidence.NOT_EXERCISED, false })

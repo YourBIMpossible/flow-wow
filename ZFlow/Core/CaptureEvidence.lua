@@ -36,6 +36,10 @@ Evidence.NOT_EXERCISED, Evidence.ERROR = "not exercised", "error"
 Evidence.SNAPSHOT, Evidence.SAVED_SETTINGS = "a snapshot", "saved settings"
 Evidence.NOTHING_SAID = "any line from it"
 Evidence.NO_BEHAVIOUR = "a line showing its behaviour"
+-- A proves check that raised: the check did not run, so nothing is shown.
+Evidence.CHECK_FAILED = "a check of the add-on that ran without a Lua error"
+-- A problem count that is not a number: not known, so never zero.
+Evidence.PROBLEMS_UNKNOWN = "a count of Lua problems while it ran"
 
 -- Per feature (the names of Capture.FEATURES):
 --   asserts   what a verified run shows
@@ -51,7 +55,8 @@ Evidence.NO_BEHAVIOUR = "a line showing its behaviour"
 --   shows     words one of which a line must hold for the behaviour to have
 --             shown; none: any line that is not idle
 --   proves    function(run) -> true | false, what is missing: a check on
---             the add-on instead of on lines
+--             the add-on instead of on lines; one that raises is not a
+--             verification (CHECK_FAILED)
 Evidence.REQUIRES = {
     rotation = {
         asserts = "the rotation line of the diag word gives a suggestion, or the reason there is none",
@@ -101,6 +106,10 @@ Evidence.REQUIRES = {
             ["the bags have not been read yet"] = "bag items",
             ["banker: not started yet"] = "the banker started",
         },
+        -- The bank list header (Items/Present.lua BANK_HEADER): only a
+        -- list shows the banker at work. The other banker lines (bank not
+        -- seen, nothing to bank) are said with or without bag items.
+        shows = { "To bank (" },
     },
     settings = {
         asserts = "a setting saved in the capture reads back through the add-on's settings",
@@ -172,11 +181,16 @@ function Evidence.Judge(feature, run)
     run = type(run) == "table" and run or {}
     local spec = Evidence.REQUIRES[feature]
     local lines = type(run.lines) == "table" and run.lines or {}
-    local problems = type(run.problems) == "number" and run.problems or 0
+    -- A count that is not a number is not known: never read as zero.
+    local problems = type(run.problems) == "number" and run.problems == run.problems and run.problems or nil
     local v = { feature = tostring(feature), missing = {}, synthetic = {}, verified = false,
         smoke = problems == 0, recorded = false }
     if not spec then
         v.result, v.missing = Evidence.NOT_EXERCISED, { "a requirement list for this feature" }
+        return v
+    end
+    if problems == nil then
+        v.result, v.missing = Evidence.NOT_EXERCISED, { Evidence.PROBLEMS_UNKNOWN }
         return v
     end
     if problems > 0 then
@@ -205,8 +219,12 @@ function Evidence.Judge(feature, run)
     -- Then what the run itself showed: an idle line names what it lacked,
     -- whatever the test says it supplied.
     if spec.proves then
-        local ok, why = spec.proves(run)
-        if not ok then add(v.missing, missSeen, tostring(why or Evidence.NO_BEHAVIOUR)) end
+        local ran, ok, why = pcall(spec.proves, run)
+        if not ran then
+            add(v.missing, missSeen, Evidence.CHECK_FAILED)
+        elseif not ok then
+            add(v.missing, missSeen, tostring(why or Evidence.NO_BEHAVIOUR))
+        end
     else
         local shown = false
         for _, line in ipairs(lines) do
