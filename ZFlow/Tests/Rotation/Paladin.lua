@@ -246,14 +246,18 @@ return {
         end
     end,
 
-    ["a seal or blessing you cast is the one asked for; one up is left alone"] = function(t)
+    -- PC-2: in a fight another seal up counts as missing (legacy needSeal);
+    -- out of a fight any seal up is left alone (legacy wantSeal).
+    ["a seal or blessing you cast is the one asked for; another seal up only out of a fight is left alone"] = function(t)
         local knows = { "Seal of Righteousness", "Seal of the Crusader", "Judgement" }
         local b = { ["Devotion Aura"] = true, ["Blessing of Might"] = true }
         local chosen = { seal = "Seal of the Crusader" }
+        local other = { ["Devotion Aura"] = true, ["Blessing of Might"] = true, ["Seal of Righteousness"] = true }
         t.eq(advice({ chosen = chosen }, knows, b), "Seal of the Crusader", "none up: the seal you cast")
-        t.eq(advice({ chosen = chosen }, knows, { ["Devotion Aura"] = true, ["Blessing of Might"] = true,
-                                                  ["Seal of Righteousness"] = true }), "Judgement",
-             "another seal up: left alone")
+        t.eq(advice({ chosen = chosen }, knows, other), "Seal of the Crusader",
+             "another seal up in a fight: counts as missing")
+        t.eq(advice({ chosen = chosen, hostile = false, inCombat = false }, knows, other), nil,
+             "another seal up out of a fight: left alone")
         t.eq(advice(nil, knows, b), "Seal of Righteousness", "nothing cast: the present rule")
         t.eq(advice({ hostile = false, inCombat = false, chosen = { blessing = "Blessing of Kings" } },
                     { "Blessing of Might", "Blessing of Kings" }, { ["Devotion Aura"] = true }),
@@ -271,6 +275,10 @@ return {
         t.ok(fires("Righteous Fury", fury()), "tank, out of a fight, not up")
         t.ok(not fires("Righteous Fury", fury(nil, { ["Righteous Fury"] = true })), "up")
         t.ok(not fires("Righteous Fury", fury(nil, { ["Righteous Fury"] = 600 })), "up, time shown")
+        -- PC-4: legacy needFury refreshed it under 30 s out of a fight.
+        t.ok(fires("Righteous Fury", fury(nil, { ["Righteous Fury"] = 20 })), "under 30 s left: refreshed")
+        t.ok(not fires("Righteous Fury", fury({ inCombat = true }, { ["Righteous Fury"] = 20 })),
+             "under 30 s in a fight: left alone")
         t.ok(not fires("Righteous Fury", fury({ inCombat = true })), "in a fight")
         local s = fury()
         s.inCombat = nil
@@ -312,9 +320,15 @@ return {
     ["the driver's extra table: chosen and food together, chosen reaches the snapshot"] = function(t)
         local c = ns.make.fakeClient()
         c.setClass("PALADIN"); c.setDead(false); c.setCombat(false)
-        local extra = { food = { name = "Made-up Bread", item = 1 }, chosen = { seal = "Seal of Light" } }
+        -- PC-6: extra.food in the driver's own cache shape (Driver.lua
+        -- buffFoodKept): { on, kept, value, pack, role, pole }, a kept read.
+        local value = { name = "Made-up Bread", item = 1, score = 3 }
+        local food = { on = true, kept = true, value = value, pack = ns.Packs.PALADIN, role = nil, pole = nil }
+        local extra = { food = food, chosen = { seal = "Seal of Light" } }
         local v = ns.RotationDriver.Step(c, ns.Packs.PALADIN, nil, nil, nil, nil, extra)
         t.eq(v.snapshot.chosen, { seal = "Seal of Light" }, "chosen from extra.chosen, not the whole table")
+        t.eq(v.snapshot.buffFood, value, "and the kept food from extra.food, as the driver keeps it")
+        t.eq(v.snapshot.foodOn, true, "the food setting beside it")
         local read = ns.RotationDriver.Read(c, ns.Packs.PALADIN, {}, nil, extra)
         t.eq(read("chosen"), { seal = "Seal of Light" }, "the read gives extra.chosen alone")
     end,
@@ -341,9 +355,40 @@ return {
              "Judgement", "none up, in a fight")
     end,
 
-    ["a blessing you put up yourself is left alone"] = function(t)
+    -- PC-2: legacy needBlessing(want): another blessing up counts as missing;
+    -- a Greater one of the same name counts as up.
+    ["another blessing up does not hide yours; a Greater one counts as yours"] = function(t)
         t.eq(advice(IDLE, nil, { ["Devotion Aura"] = true, ["Blessing of Kings"] = 600,
-                                 ["Seal of Righteousness"] = true }), nil, "another blessing")
+                                 ["Seal of Righteousness"] = true }), "Blessing of Might", "another blessing")
+        t.eq(advice(IDLE, nil, { ["Devotion Aura"] = true, ["Greater Blessing of Might"] = 600,
+                                 ["Seal of Righteousness"] = true }), nil, "Greater Blessing of Might")
+        t.eq(advice(IDLE, nil, { ["Devotion Aura"] = true, ["Greater Blessing of Might"] = 20,
+                                 ["Seal of Righteousness"] = true }), "Blessing of Might", "Greater, under 30 s")
+        t.eq(ns.PaladinWantsBlessing({ inCombat = false, buffs = { ["Blessing of Kings"] = 600 } },
+                                     "Blessing of Kings"), false, "the one asked about is up")
+    end,
+
+    -- PC-3: legacy roleSeal: a healer in a group gets Seal of Wisdom.
+    ["a healer in a group is given Seal of Wisdom; alone or not read, Righteousness"] = function(t)
+        local R, W, C = "Seal of Righteousness", "Seal of Wisdom", "Seal of Command"
+        local cases = {
+            { "healer, grouped", { role = "heal", grouped = true }, { R, W }, W },
+            { "healer, alone", { role = "heal", grouped = false }, { R, W }, R },
+            { "healer, group not read", { role = "heal" }, { R, W }, R },
+            { "healer, grouped, Wisdom not known", { role = "heal", grouped = true }, { R }, R },
+            { "dps, grouped", { role = "dps", grouped = true }, { R, W, C }, C },
+            { "tank, grouped", { role = "tank", grouped = true }, { R, W }, R },
+        }
+        for _, case in ipairs(cases) do
+            local s = { spells = {} }
+            for k, v in pairs(case[2]) do s[k] = v end
+            for _, name in ipairs(case[3]) do s.spells[name] = { known = true } end
+            t.eq(ns.PaladinSeal(s), case[4], case[1])
+        end
+        t.eq(ns.SnapshotOf({ grouped = true }).grouped, true, "the snapshot keeps grouped")
+        local read = ns.RotationDriver.Read({ grouped = function() return true end }, ns.Packs.PALADIN, {})
+        t.eq(read("grouped"), true, "the driver asks the client")
+        t.eq(ns.RotationDriver.Read({}, ns.Packs.PALADIN, {})("grouped"), nil, "no such read: nil")
     end,
 
     ["a healer who knows Blessing of Wisdom is given it; otherwise Might"] = function(t)
@@ -363,7 +408,13 @@ return {
         t.eq(advice({ inCombat = false }, nil, with(20)), "Judgement", "20 s, before the pull")
         t.eq(advice(IDLE, nil, with(5)), nil, "5 s, no enemy: left alone")
         t.eq(ns.PaladinWantsSeal({ buffs = {} }), true, "none up")
-        t.eq(ns.PaladinWantsSeal({ buffs = { ["Seal of Light"] = true }, inCombat = true }), false, "another seal")
+        -- PC-2: in a fight another seal than the one picked counts as missing.
+        t.eq(ns.PaladinWantsSeal({ buffs = { ["Seal of Light"] = true }, inCombat = true }), true,
+             "another seal, in a fight")
+        t.eq(ns.PaladinWantsSeal({ buffs = { ["Seal of Light"] = true }, inCombat = false, hostile = false }), false,
+             "another seal, out of a fight")
+        t.eq(ns.PaladinWantsSeal({ buffs = { ["Seal of Light"] = 2 }, inCombat = true }, "Seal of Light"), true,
+             "the one asked about, 2 s left in a fight")
     end,
 
     ["a dps paladin who knows Seal of Command is given it"] = function(t)
