@@ -46,6 +46,7 @@ M.COLOUR = {
     same = { 1, 1, 1 },
     bad = { 1, 0.3, 0.3 },
     none = { 0.6, 0.6, 0.6 },
+    info = { 0.6, 0.6, 0.6 },   -- a note, not a verdict (the weapon speed line)
 }
 
 -- One read of the client; nil when it has no such read.
@@ -99,7 +100,9 @@ function M.Lines(client, packs, link)
         return W.Line(W.From(gear))
     end)
     if not ok then return out, speed end
-    if type(speed) == "table" then keep({ speed }) end
+    -- Its own tone, "info": readers of these lines (RollHint, MerchantMarks)
+    -- take "none" as a no-verdict, which a speed note is not.
+    if type(speed) == "table" then keep({ { text = speed.text, tone = "info" } }) end
     return out
 end
 
