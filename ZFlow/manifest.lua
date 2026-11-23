@@ -32,6 +32,7 @@ return {
         "Core/Sound.lua",
         "UI/MoveGuides.lua",
         "Core/Facts.lua",
+        "Core/InviteAdvice.lua",
         "UI/Export.lua",
         "Items/PriceChart.lua",
         "Items/HaveTip.lua",
