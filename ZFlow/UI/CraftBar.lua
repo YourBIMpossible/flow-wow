@@ -204,9 +204,10 @@ function CraftBar.Declare(k)
                 while #runs > CraftBar.RUNS_KEEP do table.remove(runs, 1) end
             end
 
-            -- How the kept run ended; the first reason stands.
+            -- How the kept run ended. Clears it, so a later stop of the
+            -- same run does not overwrite the reason.
             local function ended(why, detail)
-                if run and run.stop == nil then
+                if run then
                     run.stop = why
                     run.why = detail
                 end
