@@ -231,6 +231,15 @@ end
 -- Lead section 305: the data for the Bosses tab: this account's own seen
 -- loot (UI/BossLoot.lua keeps it, account "learned.bossLoot"), placed in a
 -- dungeon by where Questie spawns the boss. No loot table of any kind.
+-- The item and how often it was seen, of each loot row. Since lead section
+-- 318 a row also carries the name, quality and icon the client read (pinned
+-- in their own case below); these cases pin the order and the counts.
+local function seen(items)
+    local out = {}
+    for i, it in ipairs(items or {}) do out[i] = { item = it.item, times = it.times } end
+    return out
+end
+
 local function book()
     return {
         -- As UI/BossLoot.lua writes them (B.Kill): npcs only on e: keys.
@@ -249,7 +258,7 @@ tests["dungeon read 305: the bosses of a dungeon with the loot this account saw,
     t.eq(#loot.bosses, 1, "only the boss that lives in the Deadmines")
     local b = loot.bosses[1]
     t.eq({ b.name, b.kills }, { "Cookie", 3 })
-    t.eq(b.items, { { item = 2, times = 3 }, { item = 1, times = 1 } })
+    t.eq(seen(b.items), { { item = 2, times = 3 }, { item = 1, times = 1 } })
     t.eq(loot.unplaced, 1, "a boss whose creature was never seen cannot be placed")
 end
 
@@ -261,7 +270,7 @@ tests["dungeon read F5: an n: entry is placed by the creature in its key"] = fun
     local loot = R.Loot(st, c, DM, { ["n:601"] = { name = "Cookie", kills = 2, items = { ["item:5"] = { times = 2 } } } })
     t.eq(loot.why, nil, "loot was seen: said, not hidden")
     t.eq(#loot.bosses, 1)
-    t.eq(loot.bosses[1].items, { { item = 5, times = 2 } })
+    t.eq(seen(loot.bosses[1].items), { { item = 5, times = 2 } })
 end
 
 -- F7: the e: and n: entries of one creature are one boss, as the boss
@@ -274,7 +283,7 @@ tests["dungeon read F7: the encounter and the creature entries of one boss are o
     local loot = R.Loot(st, c, DM, b)
     t.eq(#loot.bosses, 1, "one Cookie, not two")
     t.eq(loot.bosses[1].kills, 4)
-    t.eq(loot.bosses[1].items, { { item = 2, times = 4 }, { item = 1, times = 1 },
+    t.eq(seen(loot.bosses[1].items), { { item = 2, times = 4 }, { item = 1, times = 1 },
         { item = 6, times = 1 } })
 end
 

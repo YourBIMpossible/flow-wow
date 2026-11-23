@@ -152,7 +152,7 @@ return {
         t.ok(type(q.enter) == "function" and type(q.pickRow) == "function", "the fake arrow has submenu rows")
         if type(q.enter) ~= "function" then return end
         q.click("right")
-        t.eq(#q.menuItems, 7)
+        t.eq(#q.menuItems, 8, "seven rows and the Dungeon quests row (lead section 318)")
         t.eq(q.menuDepth, 0)
         t.eq(q.pickRow("separate"), false, "not offered on the top level")
         t.eq(q.enter("settings"), false, "not a submenu row")
