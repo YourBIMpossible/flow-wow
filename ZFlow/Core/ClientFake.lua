@@ -135,6 +135,15 @@ function ns.make.fakeClient(opts)
         for item, n in pairs(type(r.mats) == "table" and r.mats or {}) do mats[item] = n end
         return { makes = r.makes, yield = r.yield, mats = mats }
     end
+    -- Section 231 item 1: the classic fallback, by trade skill row index; a
+    -- copy, nil when none is set for that index.
+    function c.tradeSkillSchematic(index)
+        local r = s.tradeSchematics and s.tradeSchematics[index]
+        if type(r) ~= "table" then return nil end
+        local mats = {}
+        for item, n in pairs(type(r.mats) == "table" and r.mats or {}) do mats[item] = n end
+        return { makes = r.makes, yield = r.yield, mats = mats }
+    end
     function c.spell(id)
         if type(id) ~= "number" then return nil end
         local r = s.spells and s.spells[id] or {}
@@ -736,6 +745,12 @@ function ns.make.fakeClient(opts)
     function c.setRecipeSchematic(id, r)
         s.schematics = s.schematics or {}
         s.schematics[id] = r
+    end
+    -- One trade skill row's schematic (section 231), as above; nil: the
+    -- client can't read it.
+    function c.setTradeSkillSchematic(index, r)
+        s.tradeSchematics = s.tradeSchematics or {}
+        s.tradeSchematics[index] = r
     end
     -- One spell's answers: { known =, usable =, noPower = }; a field left
     -- out reads as not known.
@@ -1942,6 +1957,20 @@ function ns.make.fakeClient(opts)
         for k, v in pairs(from) do out[k] = v end
         return out
     end
+
+    -- Worn links (P-SETS), as the real client's wornLinks(): { [slot] =
+    -- link } from what setWorn was given (a link worn; false or nil: none
+    -- there). nil (not known) until setWorn is called, or after
+    -- setWornUnread(true).
+    function c.wornLinks()
+        if s.wornUnread or type(s.worn) ~= "table" then return nil end
+        local out = {}
+        for slot, link in pairs(s.worn) do
+            if type(link) == "string" and link ~= "" then out[slot] = link end
+        end
+        return out
+    end
+    function c.setWornUnread(on) s.wornUnread = on and true or nil end
     return c
 end
 

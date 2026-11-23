@@ -72,6 +72,8 @@ Diag.NAMES = {
     "GetNumSkillLines", "GetSkillLineInfo", "GetProfessions", "GetProfessionInfo",
     "GetNumTradeSkills", "GetTradeSkillInfo", "GetTradeSkillLine", "GetTradeSkillNumReagents",
     "GetTradeSkillReagentInfo", "GetTradeSkillItemLink", "GetTradeSkillRecipeLink",
+    -- Section 231 item 1: the rest of the classic schematic read.
+    "GetTradeSkillNumMade", "GetTradeSkillReagentItemLink",
     "C_TradeSkillUI.GetAllRecipeIDs", "GetNumCrafts", "GetCraftInfo",
     "GetNumTrainerServices", "GetTrainerServiceInfo", "GetTrainerServiceCost", "GetTrainerServiceSkillReq",
     "GetMerchantNumItems", "GetMerchantItemInfo", "GetMerchantItemLink", "C_MerchantFrame.GetItemInfo",
@@ -369,6 +371,9 @@ function Diag.Collect(k, why)
     S.tradeSkill2 = ask(client, "GetTradeSkillInfo", 2)
     S.tradeSkill2Reagents = ask(client, "GetTradeSkillNumReagents", 2)
     S.tradeSkill2Reagent1 = ask(client, "GetTradeSkillReagentInfo", 2, 1)
+    -- Section 231 item 1: the classic schematic read for row 2, all of it.
+    S.tradeSkill2Schematic = shape(true, type(client.tradeSkillSchematic) == "function"
+        and client.tradeSkillSchematic(2) or nil)
     S.crafts = ask(client, "GetNumCrafts")
     S.taxiNodes = ask(client, "NumTaxiNodes")
 

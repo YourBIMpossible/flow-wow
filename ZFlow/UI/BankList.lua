@@ -70,6 +70,8 @@ function BankList.Context(store, grants)
         choices = { never = never },
         bankRules = byKey(saved(store, "account", "settings.banker.rules"),
             function(v) return v == "bank" or v == "carry" end),
+        -- P-SETS: saved gear set pieces are kept (Disposition's inSet).
+        sets = ns.GearSets and ns.GearSets.Facts(store) or nil,
     }
 end
 
