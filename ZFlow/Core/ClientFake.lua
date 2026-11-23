@@ -3725,6 +3725,131 @@ function ns.make.fakeClient(opts)
             return true
         end
     end
+    -- The settings window (lead sections 285 item 3 and 303 item 2), as the
+    -- real client's c.settingsWindow: the caller's tree goes to c.kitWindow
+    -- above (so c.kitWindows, c.kitClick, c.kitSelect and c.kitType play the
+    -- player on it), and what was drawn is kept where the Options page's
+    -- was, so the reads a test already has are the window's:
+    --   c.optionsRows(), c.optionsStatus(), c.optionsAct(key, value),
+    --   c.optionsNav(kind, value), c.optionsDrag, c.optionsOpened(),
+    --   c.optionsHide() (the player closes it), c.optionsPagesMade()
+    -- and new here:
+    --   c.optionsLayout() -> what stands beside the rows (a copy of the
+    --     layout last drawn): title, topics, topic, search ...
+    --   c.optionsShown() -> true while the window is shown
+    --   c.setSettingsDrawFault(n)  the next n draws of the window raise;
+    --     nothing is kept of a draw that raised
+    -- setOptionsPage(false) plays a client with no settings window and no
+    -- entry in the game's Options; setOptionsPageFault(n) makes the next n
+    -- asks for the window raise.
+    --
+    -- The add-on's entry in the game's Options > AddOns is a page asked for
+    -- with spec.entry = true. It is kept apart from the window:
+    --   c.optionsEntry() -> { title, rows, status, shown } (the live record)
+    --     or nil when no entry was asked for
+    --   c.optionsEntryShow() -> true: the player opens the entry
+    --   c.optionsEntryPress(key) -> true when that button of the entry is
+    --     there and what it ran answered true
+    do
+        local pageBase = c.optionsPage
+        local drawFaults = 0
+        local entryNav, entryShow
+
+        local function copyOf(v)
+            if type(v) ~= "table" then return v end
+            local out = {}
+            for key, value in pairs(v) do out[key] = copyOf(value) end
+            return out
+        end
+
+        function c.setSettingsDrawFault(n) drawFaults = tonumber(n) or 0 end
+        function c.optionsLayout() return s.options and s.options.layout end
+        function c.optionsShown() return s.options ~= nil and s.options.shown == true end
+
+        function c.optionsPage(spec)
+            if type(spec) ~= "table" or spec.entry ~= true then return pageBase(spec) end
+            if s.noOptionsPage then return nil end
+            local e = { title = spec.title, shown = false }
+            local h, showFns = {}, {}
+            s.optionsEntry, entryShow, entryNav = e, showFns, nil
+            function h.open() return false end
+            function h.onShow(fn) showFns[#showFns + 1] = fn end
+            function h.shown() return e.shown end
+            function h.draw(rows, _, nav)
+                e.rows = copyOf(rows or {})
+                entryNav = nil
+                if type(nav) == "function" then entryNav = nav end
+                return true
+            end
+            function h.status(text) e.status = text end
+            return h
+        end
+        function c.optionsEntry() return s.optionsEntry end
+        function c.optionsEntryShow()
+            if not s.optionsEntry then return false end
+            s.optionsEntry.shown = true
+            for _, fn in ipairs(entryShow) do fn() end
+            return true
+        end
+        function c.optionsEntryPress(key)
+            if not s.optionsEntry or type(entryNav) ~= "function" then return false end
+            for _, r in ipairs(s.optionsEntry.rows or {}) do
+                for _, action in ipairs(type(r.actions) == "table" and r.actions or {}) do
+                    if action.key == key and action.enabled ~= false then
+                        return entryNav("action", key) == true
+                    end
+                end
+            end
+            return false
+        end
+
+        function c.settingsWindow(spec)
+            if type(spec) ~= "table" or type(spec.id) ~= "string" or type(spec.build) ~= "function" then
+                return nil
+            end
+            local base = pageBase({ title = spec.title, name = spec.name })
+            if not base then return nil end
+            local record = s.options
+            local extra = { name = spec.name, point = spec.point, width = spec.width, height = spec.height,
+                onMoved = spec.onMoved, failed = spec.failed }
+            -- The player closing the kit window closes what the reads show.
+            function extra.onClose()
+                record.shown = false
+                if type(spec.onClose) == "function" then spec.onClose() end
+            end
+            local h
+            local page = {}
+            function page.draw(rows, act, nav, layout)
+                if drawFaults > 0 then
+                    drawFaults = drawFaults - 1
+                    error("the settings window could not be drawn (test)", 0)
+                end
+                local tree, why = spec.build(rows, act, nav, layout)
+                if type(tree) ~= "table" then return false, why or "the settings window has no tree" end
+                if h == nil then
+                    h = c.kitWindow(spec.id, tree, extra)
+                    if h == nil then return false, "the kit could not draw the settings window" end
+                elseif h.update(tree) ~= true then
+                    return false, "the kit could not draw the settings window again"
+                end
+                base.draw(rows, act, nav)
+                record.layout = copyOf(layout)
+                if type(layout) == "table" and layout.status ~= nil then base.status(layout.status) end
+                return true
+            end
+            function page.open()
+                if h == nil then return false, "the settings window was not drawn" end
+                h.show(true)
+                return base.open()
+            end
+            function page.hide()
+                if h ~= nil then h.show(false) end
+                record.shown = false
+            end
+            function page.shown() return record.shown == true end
+            return page
+        end
+    end
     return c
 end
 

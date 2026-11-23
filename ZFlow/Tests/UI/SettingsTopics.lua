@@ -76,11 +76,28 @@ local function drawnRow(c, key)
     return nil
 end
 
+-- Since the settings window (lead section 285 item 3) the search and the
+-- topics stand beside the rows: "search" and "topics" are read from the
+-- window's layout (value; topics), every other kind from the rows.
 local function ofKind(c, kind)
+    if kind == "search" or kind == "topics" then
+        local layout
+        if type(c.optionsLayout) == "function" then layout = c.optionsLayout() end
+        if type(layout) ~= "table" then return nil end
+        if kind == "search" then return layout.search end
+        return layout
+    end
     for _, r in ipairs(c.optionsRows() or {}) do
         if r.kind == kind then return r end
     end
     return nil
+end
+
+local function tipHolds(r, text)
+    for _, line in ipairs(type(r) == "table" and type(r.tip) == "table" and r.tip or {}) do
+        if tostring(line):find(text, 1, true) ~= nil then return true end
+    end
+    return false
 end
 
 local function panelOf(c)
@@ -137,13 +154,15 @@ return {
         local _, c = start()
         slash(c, "settings")
         t.eq(c.optionsOpened(), 1)
+        -- Changed for the window (lead section 285 item 3). It asserted the
+        -- search at rows[1], the topics at rows[2], the name at rows[3] and
+        -- a section heading at rows[4]; a topic of three rows has no
+        -- section heading now.
         local rows = c.optionsRows()
-        t.eq(rows[1].kind, "search")
-        t.eq(rows[1].value, "")
-        t.eq(rows[2].kind, "topics")
-        t.eq(#rows[2].topics, 3)
-        t.eq(rows[3], { kind = "group", text = T.Find("travel").name })
-        t.eq(rows[4].kind, "section")
+        t.eq(ofKind(c, "search").value, "")
+        t.eq(#ofKind(c, "topics").topics, 3)
+        t.eq(rows[1], { kind = "group", text = T.Find("travel").name })
+        t.eq(rows[2].key, "arrow.look", "a small topic has no section heading")
         t.eq(drawn(c), { "arrow.look", "arrow.size", "way.zone" })
         t.eq(c.optionsNav("topic", "buffs"), true)
         t.eq(drawn(c), { "food.offer", "food.cafe", "food.drink" }, "the other topics' rows are not drawn")
@@ -251,13 +270,16 @@ return {
         slash(c, "settings eat")
         local r = drawnRow(c, "food.offer")
         t.ok(r ~= nil, "the result is drawn")
+        -- Changed for the window: who it is saved for was in r.under; it
+        -- is in the row's tooltip now.
         t.ok(r.under:find(T.Find("buffs").name, 1, true) ~= nil, "its topic: " .. r.under)
-        t.ok(r.under:find("this character", 1, true) ~= nil, "who it is saved for: " .. r.under)
+        t.ok(tipHolds(r, "this character"), "who it is saved for, in the tooltip")
         t.eq(r.jump, "buffs")
         -- In a topic the scope is still on each row; the topic is the heading.
         c.optionsNav("topic", "bags")
         r = drawnRow(c, "sell.list")
-        t.ok(r.under:find("account", 1, true) ~= nil, r.under)
+        t.eq(r.under, nil, "nothing under a row of a topic")
+        t.ok(tipHolds(r, "account"), "saved for the account, in the tooltip")
         t.eq(r.scope, "account")
         t.eq(r.jump, nil, "nothing to jump to from its own topic")
     end,
