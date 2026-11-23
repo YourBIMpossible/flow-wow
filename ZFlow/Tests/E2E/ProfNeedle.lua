@@ -1,0 +1,196 @@
+local _, ns = ...
+-- Lead section 288 (zflow-prof-arrow, N25 widened): the profession needle
+-- on any character with a profession, on by default. The next step by
+-- priority: the trainer when capped; else the nearest known node of a
+-- gathering profession; else the craft that gives a point, as one text line
+-- under the arrow. Nothing to point at: one line that says why and how the
+-- player supplies it. No profession: nothing. Whole add-on loaded the way
+-- the game loads it (ns.offline.addon) on a fake client, made-up places and
+-- names only. Look only. Not tested in game.
+local tests = {}
+local N = ns.Nav
+
+-- opts: professions (client.professions names), skill (char profSkill),
+-- book (char recipeBook), colours (char recipeColors), nodes (GatherMate2
+-- rows on map 1411), npcs (account), account (the account saved table),
+-- charSettings (the settings of the character).
+local function start(opts)
+    opts = opts or {}
+    local c = ns.make.fakeClient()
+    local account = opts.account or {}
+    account.layout = account.layout or {}
+    account.layout.arrowIntroSeen = true
+    if opts.npcs then account.learned = { places = { npcs = opts.npcs } } end
+    c.setSaved(ns.id.accountDB, account)
+    c.setSaved(ns.id.charDB, { settings = opts.charSettings, learned = {
+        facts = { profSkill = opts.skill, recipeBook = opts.book },
+        recipeColors = opts.colours,
+    } })
+    c.setScreen(1024, 768)
+    c.setZone(1, 1411)
+    c.setFacing(0)
+    c.setFaction("Horde")
+    c.setPosition(1411, 0.5, 0.5)
+    c.setMapSize(1411, 1000, 500)
+    if opts.professions then c.setProfessions(opts.professions) end
+    if opts.nodes then c.setGatherMateNodes(1411, opts.nodes) end
+    local addon = ns.offline.addon(c)
+    c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
+    c.advance(5, 20)
+    return c, addon
+end
+
+local function fmt(pattern, ...)
+    if type(pattern) ~= "string" then return nil end
+    return pattern:format(...)
+end
+
+-- Every line any shown arrow says.
+local function said(c)
+    local out = {}
+    for _, h in ipairs(c.arrows or {}) do
+        if h.shown then
+            for _, line in ipairs(type(h.lines) == "table" and h.lines or {}) do out[#out + 1] = line end
+        end
+    end
+    return out
+end
+
+-- The profession frame is up with exactly these lines and no needle.
+local function textOnly(t, c, lines, what)
+    local p = c.arrows[2]
+    t.eq(p and p.shown, true, what .. ": the profession frame is up")
+    t.eq(p and p.lines, lines, what .. ": its words")
+    c.advance(0.1, 2)
+    t.eq(p and type(p.drawn) == "table" and p.drawn.body, 0, what .. ": no needle")
+end
+
+local COPPER = { kind = "Mining", x = 0.6, y = 0.5, node = "Copper Vein" }
+local FAR_COPPER = { kind = "Mining", x = 0.9, y = 0.9, node = "Copper Vein" }
+local HERB = { kind = "Herb Gathering", x = 0.51, y = 0.5, node = "Peacebloom" }
+
+-- Fails before: a fresh gathering character gets no needle and no word.
+tests["prof needle: a fresh Mining character with no node source says why and how"] = function(t)
+    local c = start({ professions = { "Mining" } })
+    t.ok(N.PROF_WHY_GM_ABSENT ~= nil, "the line exists")
+    textOnly(t, c, { fmt(N.PROF_WHY_GM_ABSENT, "Mining") }, "no GatherMate2")
+end
+
+-- Fails before: no needle to a known node.
+tests["prof needle: a gathering profession points at the nearest known node of its kind"] = function(t)
+    local c = start({ professions = { "Mining" }, nodes = { FAR_COPPER, HERB, COPPER } })
+    local p = c.arrows[2]
+    t.eq(p.shown, true, "the profession needle is up")
+    t.eq(p.lines and p.lines[1], "Copper Vein", "the name of the node")
+    t.eq(p.lines and p.lines[2], fmt(N.PROF_NODE_DETAIL, "Mining"), "what it is")
+    t.ok(type(p.lines and p.lines[3]) == "string" and p.lines[3]:match("^100 yd") ~= nil,
+        "the nearer vein, 100 yd away: " .. tostring(p.lines and p.lines[3]))
+    c.advance(0.1, 2)
+    t.ok(type(p.drawn) == "table" and p.drawn.body ~= 0, "the needle is drawn")
+end
+
+tests["prof needle: a node source turned off, or with no node of the kind here, says so"] = function(t)
+    local c = start({ professions = { "Mining" }, nodes = { HERB },
+        charSettings = { professions = { gatherMateNodes = false } } })
+    textOnly(t, c, { fmt(N.PROF_WHY_GM_OFF, "Mining") }, "source off")
+    local c2 = start({ professions = { "Mining" }, nodes = { HERB } })
+    textOnly(t, c2, { fmt(N.PROF_WHY_NODE, "Mining") }, "no Mining node on this map")
+end
+
+-- Fails before: a fresh crafting character gets nothing.
+tests["prof needle: a fresh Tailoring character is told to open the window once"] = function(t)
+    local c = start({ professions = { "Tailoring" } })
+    t.ok(N.PROF_WHY_READ ~= nil, "the line exists")
+    textOnly(t, c, { fmt(N.PROF_WHY_READ, "Tailoring") }, "no reading")
+end
+
+local BOOK = {
+    ["Bolt of Linen Cloth"] = { profession = "Tailoring" },
+    ["Linen Bag"] = { profession = "Tailoring" },
+    ["Rough Arrow"] = { profession = "Engineering" },
+}
+
+-- Fails before: the craft that gives a point is said only in the window.
+tests["prof needle: a crafting profession says the craft that gives a point, as text"] = function(t)
+    local c = start({ professions = { "Tailoring" }, skill = { Tailoring = { skill = 50, max = 75 } }, book = BOOK,
+        colours = {
+            ["Linen Bag"] = { medium = { lo = 45, hi = 55 } },
+            ["Bolt of Linen Cloth"] = { optimal = { lo = 40, hi = 60 } },
+            ["Rough Arrow"] = { optimal = { lo = 1, hi = 99 } },
+        } })
+    t.ok(N.PROF_CRAFT_SURE ~= nil, "the line exists")
+    textOnly(t, c, { fmt(N.PROF_CRAFT_SURE, "Bolt of Linen Cloth", "Tailoring") }, "orange first")
+
+    local c2 = start({ professions = { "Tailoring" }, skill = { Tailoring = { skill = 50, max = 75 } }, book = BOOK,
+        colours = { ["Linen Bag"] = { medium = { lo = 45, hi = 55 } },
+                    ["Bolt of Linen Cloth"] = { trivial = { lo = 40, hi = 60 } } } })
+    textOnly(t, c2, { fmt(N.PROF_CRAFT_MAYBE, "Linen Bag", "Tailoring") }, "yellow when no orange")
+end
+
+tests["prof needle: a crafting profession with nothing that gives a point says why"] = function(t)
+    local c = start({ professions = { "Tailoring" }, skill = { Tailoring = { skill = 50, max = 75 } }, book = BOOK,
+        colours = { ["Bolt of Linen Cloth"] = { trivial = { lo = 40, hi = 60 } },
+                    ["Linen Bag"] = { optimal = { lo = 10, hi = 20 } } } })
+    textOnly(t, c, { fmt(N.PROF_WHY_NO_POINT, "Tailoring", 50) }, "all grey at 50")
+    local c2 = start({ professions = { "Tailoring" }, skill = { Tailoring = { skill = 50, max = 75 } } })
+    textOnly(t, c2, { fmt(N.PROF_WHY_RECIPES, "Tailoring") }, "no recipe colours seen")
+end
+
+-- Fails before: a capped profession with no trainer seen says nothing.
+tests["prof needle: capped with no trainer known, or already visited, says why"] = function(t)
+    local c = start({ skill = { Mining = { skill = 75, max = 75 } } })
+    textOnly(t, c, { fmt(N.PROF_WHY_TRAINER, "Mining", 75, "Mining") }, "no trainer seen")
+    local c2 = start({ skill = { Mining = { skill = 75, max = 75, visitedAtCap = 75 } } })
+    textOnly(t, c2, { fmt(N.PROF_WHY_TRAIN, "Mining", 75) }, "visited at this cap")
+end
+
+-- Passes before for the trainer; fails before for the order with the rest.
+tests["prof needle: the trainer when capped comes first, then a node, then a craft"] = function(t)
+    local npcs = { ["Test Trainer"] = { map = 1411, x = 0.8, y = 0.5, trains = { Mining = true },
+                                        factions = { Horde = true }, seen = 10 } }
+    local colours = { ["Bolt of Linen Cloth"] = { optimal = { lo = 40, hi = 60 } } }
+    local c = start({ professions = { "Mining", "Tailoring" }, npcs = npcs, nodes = { COPPER }, book = BOOK,
+        colours = colours, skill = { Mining = { skill = 75, max = 75 }, Tailoring = { skill = 50, max = 75 } } })
+    t.eq(c.arrows[2].lines and c.arrows[2].lines[1], "Mining trainer", "capped: the trainer")
+
+    local c2 = start({ professions = { "Mining", "Tailoring" }, nodes = { COPPER }, book = BOOK, colours = colours,
+        skill = { Mining = { skill = 30, max = 75 }, Tailoring = { skill = 50, max = 75 } } })
+    t.eq(c2.arrows[2].lines and c2.arrows[2].lines[1], "Copper Vein", "not capped: the node before the craft")
+
+    local c3 = start({ professions = { "Mining", "Tailoring" }, book = BOOK, colours = colours,
+        skill = { Mining = { skill = 30, max = 75 }, Tailoring = { skill = 50, max = 75 } } })
+    textOnly(t, c3, { fmt(N.PROF_CRAFT_SURE, "Bolt of Linen Cloth", "Tailoring") }, "no node: the craft")
+end
+
+-- Passes before: a guard that a character with no profession sees nothing.
+tests["prof needle: no profession, or only weapon skills, shows nothing"] = function(t)
+    for name, list in pairs({ none = false, skills = { "Swords", "Defense" } }) do
+        local c = start({ professions = list or nil })
+        t.eq(c.arrows[2] and c.arrows[2].shown, false, name .. ": no profession frame")
+        t.eq(said(c), {}, name .. ": no line at all")
+    end
+end
+
+-- Fails before: the why line the setting must also silence does not exist.
+tests["prof needle: nav.profArrow off says nothing, even a why line; a saved non-boolean is on"] = function(t)
+    local c = start({ professions = { "Mining" }, account = { settings = { nav = { profArrow = false } } } })
+    t.eq(c.arrows[2] and c.arrows[2].shown, false, "off: no profession frame")
+    t.eq(said(c), {}, "off: no line")
+    t.ok(N.PROF_WHY_GM_ABSENT ~= nil, "the line exists")
+    local c2 = start({ professions = { "Mining" }, account = { settings = { nav = { profArrow = "no" } } } })
+    t.eq(c2.arrows[2] and c2.arrows[2].lines, { fmt(N.PROF_WHY_GM_ABSENT, "Mining") }, "not false: on")
+end
+
+-- Fails before: the line follows what the windows of the player save,
+-- during play, with no reload.
+tests["prof needle: a reading saved during play changes the line with no reload"] = function(t)
+    local c, addon = start({ professions = { "Tailoring" }, book = BOOK,
+        colours = { ["Bolt of Linen Cloth"] = { optimal = { lo = 40, hi = 60 } } } })
+    t.ok(N.PROF_WHY_READ ~= nil and N.PROF_CRAFT_SURE ~= nil, "the lines exist")
+    t.eq(c.arrows[2].lines, { fmt(N.PROF_WHY_READ, "Tailoring") }, "before: open the window")
+    addon.store:set("char", "learned.facts.profSkill", { Tailoring = { skill = 50, max = 75 } })
+    c.advance(2, 8)
+    t.eq(c.arrows[2].lines, { fmt(N.PROF_CRAFT_SURE, "Bolt of Linen Cloth", "Tailoring") }, "after: the craft")
+end
+
+return tests
