@@ -42,10 +42,13 @@ local _, ns = ...
 --       spells     each row also gets inRange = client.inRange(spell id)
 --                  when the client has that read and the answer is true or
 --                  false; otherwise range stays not known
---       chosen     the one handed in (CF-32): the seal and blessing you
---                  last cast yourself, { seal, blessing }, from the
---                  ownCasts module (Rotation/OwnCasts.lua); nil when it is
---                  not a table (none cast, or the module is not there)
+--       chosen     the one handed in (CF-32, N12): the seals and blessings
+--                  you cast or chose, by key, from the ownCasts module
+--                  (Rotation/OwnCasts.lua); nil when it is not a table
+--                  (none, or the module is not there)
+--       ownBuffs   client.ownBuffs() as it answered (N13): the buffs on you
+--                  that you put up yourself; nil when not known or the
+--                  client has no such read
 --   D.Step(client, pack[, prefs, bias, applied, role, chosen]) -> view
 --     one read and one choice. A read that fails is an error (not caught
 --     here; the tick catches it).
@@ -226,6 +229,10 @@ function D.Read(client, pack, ids, role, chosen)
         end
         if field == "conjured" then return conjuredOf(client, pack) end
         if field == "chosen" then return type(chosen) == "table" and chosen or nil end
+        if field == "ownBuffs" then
+            if type(client.ownBuffs) ~= "function" then return nil end
+            return client.ownBuffs()
+        end
         return nil
     end
 end

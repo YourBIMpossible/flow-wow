@@ -1780,6 +1780,22 @@ function ns.make.fakeClient(opts)
         end
         return nil
     end
+
+    -- Your own buffs, as the real client's ownBuffs() (N13): a copy of the
+    -- map setOwnBuffs gave (nil: not known). Until setOwnBuffs is called,
+    -- every buff setPlayerBuffs gave counts as yours.
+    function c.setOwnBuffs(map)
+        s.ownBuffsSet = true
+        s.ownBuffs = type(map) == "table" and map or nil
+    end
+    function c.ownBuffs()
+        local from = s.playerBuffs
+        if s.ownBuffsSet then from = s.ownBuffs end
+        if type(from) ~= "table" then return nil end
+        local out = {}
+        for k, v in pairs(from) do out[k] = v end
+        return out
+    end
     return c
 end
 

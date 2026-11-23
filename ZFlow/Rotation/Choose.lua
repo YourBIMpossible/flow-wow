@@ -42,9 +42,11 @@ local _, ns = ...
 --     nil when not read (never "no pet"); { exists = false } when the client
 --       says there is none. Each other field is nil when not known. Ask it
 --       through R.PetUp, R.NoPet and R.PetDead (below), not the bare fields.
---   chosen        { seal = name, blessing = name }   what you last cast yourself
---     (Rotation/OwnCasts.lua, CF-32); nil when none was cast. Only a class
---       pack reads it; nothing here does.
+--   chosen        { [key] = name }   the seals and blessings you cast or chose
+--     (Rotation/OwnCasts.lua, CF-32, N12); nil when there is none. Only a
+--       class pack reads it; nothing here does.
+--   ownBuffs      { [name] = secondsLeft or true }   on you, put up by you (N13);
+--     nil when not read. Only a class pack reads it.
 --   spells        { [name] = { known, usable, onCooldown, inRange, noPower, castMs } }
 --     onCooldown not known (nil): the spell is not castable; it is not read
 --       as off cooldown.

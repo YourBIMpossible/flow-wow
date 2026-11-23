@@ -34,9 +34,12 @@ R.SNAPSHOT_FIELDS = {
     -- Lead section 197: your pet (Choose.lua, R.PetUp); nil when not read.
     { "pet", "map" },
     { "conjured", "map" },
-    -- CF-32: the seal and blessing you last cast yourself, { seal = name,
-    -- blessing = name } (Rotation/OwnCasts.lua); nil when none was cast.
+    -- CF-32, N12: the seals and blessings you cast or chose, by key
+    -- (Rotation/OwnCasts.lua); nil when there is none.
     { "chosen", "map" },
+    -- N13: the buffs on you that you put up yourself (client.ownBuffs),
+    -- the same shape as buffs; nil when not read.
+    { "ownBuffs", "map" },
     { "spells", "spells" },
 }
 -- Names that would be made from a health or power amount. This client hides

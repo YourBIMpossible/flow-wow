@@ -5617,6 +5617,16 @@ function ns.make.client(env)
         return name
     end
     -- --------------------------------------------- end spell name by id
+
+    -- ------------------------------------------- your own buffs (N13)
+    -- c.ownBuffs() -> { [name] = secondsLeft or true } or nil
+    --   the buffs on you that you put up yourself: read as playerBuffs, with
+    --   the filter "HELPFUL|PLAYER" (the PLAYER filter targetDebuffs uses
+    --   for your own debuffs). Another paladin's aura on you is not in it.
+    --   The same not known as playerBuffs. A first guess from the API pages
+    --   (API_C_UnitAuras.GetAuraDataByIndex, API_UnitBuff), not seen in game.
+    function c.ownBuffs() return aurasOf("player", "HELPFUL|PLAYER", env.UnitBuff) end
+    -- ------------------------------------------ end your own buffs
     return c
 end
 

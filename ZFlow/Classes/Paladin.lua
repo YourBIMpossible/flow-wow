@@ -9,15 +9,22 @@ local _, ns = ...
 -- is for you or your own target: nothing heals, buffs, cleanses, shields or
 -- revives another player.
 --
--- Seal and blessing (CF-32, lead sections 226, 227): the seal kept up is the
--- one you last cast yourself, while you know it (snapshot.chosen.seal, kept
--- for the character by Rotation/OwnCasts.lua from options.sticky below, over
--- a reload, until you cast another); before any cast, the role's seal (a
--- tank who knows Seal of Fury: Fury; Command for a role that is not heal or
--- tank, once known; else Righteousness). The blessing the same way, for the
--- long blessings only; before any cast Wisdom for a healer who knows it,
--- else Might. Righteous Fury (CF-33c): for role tank only, out of a fight,
--- when it is not up.
+-- Seal and blessing (CF-32, N12; lead sections 226 to 228). Rotation/
+-- OwnCasts.lua keeps, from options.sticky below, what you cast yourself and
+-- what you choose with the seal and blessing words; snapshot.chosen holds it
+-- for the role you play. Each counts only while you know it.
+--   Seal: one you cast this fight (sealFight); else the word's choice
+--   (sealSet); else the one you last cast for this role (seal, saved over a
+--   reload); else the role's: a tank who knows Seal of Fury gets Fury;
+--   Command for a role that is not heal or tank, once known; else
+--   Righteousness.
+--   Blessing (the long ones only; one cast on someone else does not count):
+--   the word's choice (blessingSet); else the one you last cast on yourself
+--   for this role (blessing); else the role's: healing Wisdom, tanking
+--   Kings, once known; else Might; Kings when you know no Might.
+-- Righteous Fury (CF-33c): for role tank only, out of a fight, when it is
+-- not up. An aura (N13): only your own counts (snapshot.ownBuffs, or the
+-- aura shown as your stance); another paladin's does not.
 --
 -- Evidence. Nothing in this pack was read from the game by this file, and the
 -- repository holds no list of client observations for the Paladin, so nothing
@@ -35,8 +42,7 @@ local _, ns = ...
 --   * advice to use Divine Protection or Divine Shield (the chooser has no
 --     step for it; both are on the Alt key row);
 --   * Seal of Wisdom for a healer in a group (needs a group read);
---   * a seal or blessing set by a command or a setting (only your own cast
---     sets one here).
+--   * a seal or blessing chosen on the settings page (the words choose one).
 
 local GUESS = "first guess"
 local OLD = "carried over from Classes/Paladin on zflow; authorship unrecorded"
@@ -62,13 +68,14 @@ local function inFight(s) return ns.Rotation.InFight(s) end
 local function outOfFight(s) return ns.Rotation.OutOfFight(s) end
 local function fight(s) return (s.hostile == true or inFight(s)) and true or false end
 
--- Is an aura on? true, false, or nil when it cannot be told: the form
--- counts only as a yes (nil form is "no form" and "not known" alike), and
--- "no aura" needs the buffs read.
+-- Is an aura of yours on? true, false, or nil when it cannot be told: the
+-- form counts only as a yes (nil form is "no form" and "not known" alike),
+-- and "no aura" needs your own buffs read (N13: another paladin's aura on
+-- you is in s.buffs, not in s.ownBuffs).
 local function hasAura(s)
     if AURAS[s.form or ""] then return true end
-    if not buffsRead(s) then return nil end
-    for name in pairs(s.buffs) do
+    if type(s.ownBuffs) ~= "table" then return nil end
+    for name in pairs(s.ownBuffs) do
         if AURAS[name] then return true end
     end
     return false
@@ -128,28 +135,38 @@ local function set(list)
 end
 local IS_SEAL, IS_BLESSING = set(SEALS), set(BLESSINGS)
 
--- The one you cast yourself (snapshot.chosen[key]), when it is one of the
--- list's and you know it; nil otherwise.
-local function chosen(s, key, list)
-    local name = type(s.chosen) == "table" and s.chosen[key] or nil
-    if type(name) == "string" and list[name] and knows(s, name) then return name end
+-- The first of snapshot.chosen[keys...] that is one of the list's and that
+-- you know; nil when none is.
+local function chosen(s, list, keys)
+    if type(s.chosen) ~= "table" then return nil end
+    for _, key in ipairs(keys) do
+        local name = s.chosen[key]
+        if type(name) == "string" and list[name] and knows(s, name) then return name end
+    end
     return nil
 end
 
--- The seal to keep up (CF-32): the one you cast while known; else the role's.
+-- The seal to keep up (CF-32, N12): this fight's cast, the word's choice,
+-- the one cast for this role, each while known; else the role's.
+local SEAL_KEYS = { "sealFight", "sealSet", "seal" }
 function ns.PaladinSeal(s)
-    local own = chosen(s, "seal", IS_SEAL)
+    local own = chosen(s, IS_SEAL, SEAL_KEYS)
     if own then return own end
     if s.role == "tank" and knows(s, "Seal of Fury") then return "Seal of Fury" end
     if command(s) then return "Seal of Command" end
     return "Seal of Righteousness"
 end
 
--- The blessing to keep up: the long one you cast while known; else the role's.
+-- The blessing to keep up (N12): the word's choice, the one cast on
+-- yourself for this role, each while known; else the role's.
+local BLESSING_KEYS = { "blessingSet", "blessing" }
 function ns.PaladinBlessing(s)
-    local own = chosen(s, "blessing", IS_BLESSING)
+    local own = chosen(s, IS_BLESSING, BLESSING_KEYS)
     if own then return own end
     if wisdom(s) then return "Blessing of Wisdom" end
+    if s.role == "tank" and knows(s, "Blessing of Kings") then return "Blessing of Kings" end
+    if knows(s, "Blessing of Might") then return "Blessing of Might" end
+    if knows(s, "Blessing of Kings") then return "Blessing of Kings" end
     return "Blessing of Might"
 end
 
@@ -375,12 +392,15 @@ local pack = {
     options = {
         -- Reads the rules lean on; one not given is named by diag (187).
         -- snapshot.chosen is not one: nil there is "nothing cast yet".
-        reads = { "buffs" },
-        -- CF-32: your own casts kept by Rotation/OwnCasts.lua, by key:
-        -- any seal; a blessing only when it is one kept on yourself.
+        reads = { "buffs", "ownBuffs" },
+        -- CF-32, N12: your own casts kept by Rotation/OwnCasts.lua, by key:
+        -- any seal; a blessing only when it is one kept on yourself, and
+        -- only once it lands on you (onYou). word: the word that chooses
+        -- one of `names`.
         sticky = {
-            { prefix = "Seal of ", key = "seal" },
-            { prefix = "Blessing of ", key = "blessing", only = IS_BLESSING },
+            { prefix = "Seal of ", key = "seal", word = "seal", names = SEALS },
+            { prefix = "Blessing of ", key = "blessing", only = IS_BLESSING, onYou = true,
+              word = "blessing", names = BLESSINGS },
         },
     },
 }
