@@ -295,14 +295,23 @@ end
 
 -- The diag word on a booted add-on, and the recorded calls it asked:
 -- asked (answered) and unanswered in all, and by[path] for each call.
+-- The counts are taken right before the word and the difference is
+-- returned, so an ask made at boot (or by anything before the word) is
+-- not counted against it (MyBuddy CE-01).
 local function diagAsks(c, replay)
+    local before = {}
+    for path, count in pairs(replay) do
+        before[path] = { answered = count.answered, unanswered = count.unanswered }
+    end
     c.slashes[ns.id.slash]("diag")
     c.advance(2, 8)
     local asked, unanswered, by = 0, 0, {}
     for path, count in pairs(replay) do
-        by[path] = { answered = count.answered, unanswered = count.unanswered }
-        asked = asked + count.answered
-        unanswered = unanswered + count.unanswered
+        local was = before[path] or { answered = 0, unanswered = 0 }
+        local d = { answered = count.answered - was.answered, unanswered = count.unanswered - was.unanswered }
+        by[path] = d
+        asked = asked + d.answered
+        unanswered = unanswered + d.unanswered
     end
     return asked, unanswered, by
 end
