@@ -41,6 +41,12 @@ W.HEADER = "#header"
 W.TOPICS = "#topics"
 W.ONE_TOPIC = "1 topic"
 W.MANY_TOPICS = " topics"
+-- A search hit's button that goes to its topic: its part key is the row's
+-- key and this (Twin F1).
+W.TOPIC_JUMP = ".topic"
+-- A row that could be set but has no control for its kind of value (Twin F2).
+W.NO_CONTROL = "This cannot be changed in this window."
+W.NO_CONTROL_THERE = "This cannot be changed here; use "
 
 local function isText(v) return type(v) == "string" and v ~= "" end
 
@@ -124,12 +130,22 @@ local function addRow(out, r, act, nav)
         row.enabled = true
         row.reason = nil
         if isText(r.shown) then row.label = label .. ": " .. r.shown end
+    elseif row.control == nil and row.enabled then
+        -- Nothing here to change it with: greyed, saying so (and where, when
+        -- the row has a window of its own).
+        row.enabled = false
+        row.reason = W.NO_CONTROL
+        if r.jumpKind == "open" and isText(r.jumpText) then row.reason = W.NO_CONTROL_THERE .. r.jumpText .. "." end
     end
     out[#out + 1] = row
     -- A row with a window of its own: the button that opens it.
     if r.jumpKind == "open" and isText(r.jumpText) then
         out[#out + 1] = { kind = "button", key = r.key .. ".open", text = r.jumpText,
             onClick = function() nav("open", r.jump) end }
+    elseif r.jumpKind == nil and r.jump ~= nil and isText(r.jumpText) then
+        -- A search hit: the button that shows its topic (and ends the search).
+        out[#out + 1] = { kind = "button", key = r.key .. W.TOPIC_JUMP, text = r.jumpText,
+            onClick = function() nav("topic", r.jump) end }
     end
 end
 
