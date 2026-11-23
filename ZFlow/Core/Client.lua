@@ -8987,8 +8987,8 @@ function ns.make.client(env)
     --     the client said, EJ_LOADED = "yes" | "no" | "not known" }
     --     | nil, "combat"
     --   rows: the list in UI/Kit/Parts.lua (KitParts.rows): { id =, kind =
-    --     "template" | "atlas" | "texture" | "global", name =, frameType =,
-    --     frameTypeElse = }. A row with no text id is passed over.
+    --     "template" | "global", name =, frameType =, proof = }. A row with
+    --     no text id is passed over. With no rows no frame is made at all.
     -- LOOK ONLY. Nothing is shown, no setting is changed, nothing acts and
     -- no add-on is loaded: LoadAddOn and its kin are never called. Asked
     -- only when InCombatLockdown answers a plain false, judged as
@@ -8998,41 +8998,23 @@ function ns.make.client(env)
     -- text is cut to PROBE_TEXT characters.
     --
     -- EVERY GAME NAME HERE IS A FIRST GUESS, none seen in game on 16001:
-    -- the rows' own names, and CreateFrame with a name, a parent and a
-    -- template, UIParent, the frame's CreateTexture, Texture SetTexture /
-    -- GetTexture / SetAtlas / GetAtlas, C_Texture.GetAtlasInfo,
+    -- the rows' own names and proof fields, and CreateFrame with a parent
+    -- and a template, UIParent, Frame Hide / ClearAllPoints / SetParent,
     -- C_AddOns.IsAddOnLoaded and IsAddOnLoaded.
     --
     --   template  pcall(CreateFrame, frameType or "Frame", nil, holder,
     --             name); the frame made is hidden at once. holder is one
-    --             frame of ours, a child of UIParent, made once, hidden
-    --             when made and never shown, so nothing made under it is
-    --             drawn. It carries a name of ours so that a template's
-    --             "$parent" child names start with ours, not UIParent's.
-    --             "works" when a frame comes back, "no frame" when nothing
-    --             does, else the error text. A row with frameTypeElse says
-    --             which kind made it ("works (as Button)"): frameType
-    --             first, frameTypeElse when that create raised; when both
-    --             raise, the second error text. What this cannot tell: a
-    --             client that hands back a frame for a template it does
-    --             not have reads "works". The frames made are kept by the
-    --             client until the next reload; there is no call to drop
-    --             one.
-    --   atlas     with C_Texture.GetAtlasInfo: "works" when it answers a
-    --             table for the name, else "no atlas info" (SetAtlas is
-    --             then not called). Without it, a protected SetAtlas on a
-    --             hidden texture of the holder: the error text when it
-    --             raises, "SetAtlas answered false" for a false, "works"
-    --             for any other answer but nil. A SetAtlas that answers
-    --             nothing cannot tell a missing atlas from one that is
-    --             there: "works" then only when GetAtlas reads the same
-    --             name back, else "set, not confirmed".
-    --   texture   a protected SetTexture(path) on the hidden texture, then
-    --             GetTexture: "works" when it reads back anything but nil,
-    --             "set, read back nil" otherwise, the error text on a
-    --             raise, "SetTexture answered false" for a false. A client
-    --             that reads back the path it was given for a file it does
-    --             not have reads "works".
+    --             unnamed frame of ours per asking, a child of UIParent,
+    --             hidden when made and never shown, so nothing made under
+    --             it is drawn and no global is made. "works" only when the
+    --             frame handed back carries one of the row's proof fields
+    --             (a field that template is known by); a frame with none
+    --             of them is "made, not confirmed", so a client that hands
+    --             back a plain frame for a template it lacks records no
+    --             positive. "no frame" when nothing comes back, else the
+    --             error text. When the asking is over every frame made,
+    --             and the holder, is hidden, taken off its parent and let
+    --             go; the client has no call to destroy a frame.
     --   global    looked up in the client's globals along the dotted name:
     --             "works (" .. its Lua type .. ")", or "nil".
     --   EJ_LOADED whether the Encounter Journal add-on is loaded:
@@ -9041,7 +9023,6 @@ function ns.make.client(env)
     do
         local PROBE_TEXT = 120
         local JOURNAL = "Blizzard_EncounterJournal"
-        local probeHolder, probeTexture = nil, nil
 
         local function short(v)
             local text = tostring(v)
@@ -9049,84 +9030,53 @@ function ns.make.client(env)
             return text
         end
 
-        -- method() answers one false for "no such method" and false plus
-        -- the error for a raise: this says which, as the row's text.
-        local function refused(what, err)
-            if err == nil then return "no " .. what end
-            return short(err)
-        end
 
+        -- One unnamed, hidden holder per asking; nothing is named, so no
+        -- global is made. Every frame made to ask with is hidden, taken off
+        -- its parent and let go when the asking is over (a frame cannot be
+        -- destroyed, so this is all a release can be).
         local function holder()
-            if probeHolder ~= nil then return probeHolder end
-            local name = "KitProbeHolder"
-            if type(ns.id) == "table" and type(ns.id.framePrefix) == "string" then name = ns.id.framePrefix .. name end
-            local ok, f = call(env.CreateFrame, "Frame", name, env.UIParent)
+            local ok, f = call(env.CreateFrame, "Frame", nil, env.UIParent)
             if not ok or type(f) ~= "table" then return nil end
             method(f, "Hide")
-            probeHolder = f
             return f
         end
 
-        local function texture(parent)
-            if probeTexture ~= nil then return probeTexture end
-            if parent == nil then return nil end
-            local ok, x = method(parent, "CreateTexture", nil, "ARTWORK")
-            if not ok or x == nil then return nil end
-            method(x, "Hide")
-            probeTexture = x
-            return x
+        local function release(made, parent)
+            for i = 1, #made do
+                method(made[i], "Hide")
+                method(made[i], "ClearAllPoints")
+                method(made[i], "SetParent", nil)
+            end
+            if parent ~= nil then
+                method(parent, "Hide")
+                method(parent, "SetParent", nil)
+            end
         end
 
-        local function askTemplate(row, parent)
+        -- A frame handed back is the template asked for only when it carries
+        -- one of the fields that template is known by (row.proof). A client
+        -- that hands back a plain frame for a name it lacks is told apart:
+        -- "made, not confirmed". The proof fields are first guesses.
+        local function askTemplate(row, parent, made)
             local make = env.CreateFrame
             if type(make) ~= "function" then return "no CreateFrame" end
             if parent == nil then return "no holder frame" end
-            local kind, other = row.frameType, row.frameTypeElse
+            local kind = row.frameType
             if type(kind) ~= "string" then kind = "Frame" end
-            local made = kind
             local ok, f = pcall(make, kind, nil, parent, row.name)
-            if not ok and type(other) == "string" then
-                made = other
-                ok, f = pcall(make, other, nil, parent, row.name)
-            end
             if not ok then return short(f) end
-            if f == nil then return "no frame" end
+            if type(f) ~= "table" then return "no frame" end
+            made[#made + 1] = f
             method(f, "Hide")
-            if type(other) == "string" then return "works (as " .. made .. ")" end
-            return "works"
-        end
-
-        local function askAtlas(row, x)
-            local group = env.C_Texture
-            local info = nil
-            if type(group) == "table" then info = group.GetAtlasInfo end
-            if type(info) == "function" then
-                local ok, got = pcall(info, row.name)
-                if not ok then return short(got) end
-                if type(got) == "table" then return "works" end
-                return "no atlas info"
+            local proof = row.proof
+            if type(proof) == "table" then
+                for i = 1, #proof do
+                    local okP, v = pcall(function() return f[proof[i]] end)
+                    if okP and v ~= nil then return "works" end
+                end
             end
-            if x == nil then return "no texture to ask with" end
-            method(x, "SetTexture", nil)
-            local ok, set = method(x, "SetAtlas", row.name)
-            if not ok then return refused("SetAtlas", set) end
-            if set == false then return "SetAtlas answered false" end
-            if set ~= nil then return "works" end
-            local okG, got = method(x, "GetAtlas")
-            if okG and got ~= nil and got == row.name then return "works" end
-            return "set, not confirmed"
-        end
-
-        local function askTexture(row, x)
-            if x == nil then return "no texture to ask with" end
-            method(x, "SetTexture", nil)
-            local ok, set = method(x, "SetTexture", row.name)
-            if not ok then return refused("SetTexture", set) end
-            if set == false then return "SetTexture answered false" end
-            local okG, got = method(x, "GetTexture")
-            if not okG then return refused("GetTexture", got) end
-            if got == nil then return "set, read back nil" end
-            return "works"
+            return "made, not confirmed"
         end
 
         local function askGlobal(row)
@@ -9139,11 +9089,10 @@ function ns.make.client(env)
             return "works (" .. type(at) .. ")"
         end
 
-        local function ask(row, parent, x)
+        -- The rows are templates and client names only (lead section 308).
+        local function ask(row, parent, made)
             if type(row.name) ~= "string" or row.name == "" then return "no name" end
-            if row.kind == "template" then return askTemplate(row, parent) end
-            if row.kind == "atlas" then return askAtlas(row, x) end
-            if row.kind == "texture" then return askTexture(row, x) end
+            if row.kind == "template" then return askTemplate(row, parent, made) end
             if row.kind == "global" then return askGlobal(row) end
             return "unknown kind"
         end
@@ -9168,18 +9117,19 @@ function ns.make.client(env)
             local okLock, locked = call(env.InCombatLockdown)
             if not okLock or hidden(locked) or locked ~= false then return nil, "combat" end
             local out = {}
-            local okH, parent = pcall(holder)
-            if not okH then parent = nil end
-            local okX, x = pcall(texture, parent)
-            if not okX then x = nil end
-            if type(rows) == "table" then
+            -- No rows (the journal re-ask): no frame is made at all.
+            if type(rows) == "table" and #rows > 0 then
+                local made = {}
+                local okH, parent = pcall(holder)
+                if not okH then parent = nil end
                 for i = 1, #rows do
                     local row = rows[i]
                     if type(row) == "table" and type(row.id) == "string" then
-                        local ok, text = pcall(ask, row, parent, x)
+                        local ok, text = pcall(ask, row, parent, made)
                         if ok then out[row.id] = text else out[row.id] = short(text) end
                     end
                 end
+                pcall(release, made, parent)
             end
             local okJ, journal = pcall(journalLoaded)
             if okJ then out.EJ_LOADED = journal else out.EJ_LOADED = "not known" end
@@ -9288,8 +9238,15 @@ function ns.make.client(env)
             end
             -- True when the client took the picture: a raise, no such call
             -- or a plain false is a no.
+            -- A picture is a path, or the file number the game hands out for
+            -- an item's icon.
             local function pictured(tex, path)
-                if tex == nil or type(path) ~= "string" then return false end
+                if tex == nil then return false end
+                if type(path) == "number" then
+                    if path ~= path or path <= 0 then return false end
+                elseif type(path) ~= "string" or path == "" then
+                    return false
+                end
                 local ok, took = method(tex, "SetTexture", path)
                 return ok and took ~= false
             end
@@ -10077,7 +10034,7 @@ function ns.make.client(env)
                 local holder = plain("Frame", h, "icon")
                 if holder ~= nil then
                     local icon = texture(holder, "ARTWORK", "icon")
-                    local own = icon ~= nil and type(part.icon) == "string" and part.icon ~= "" and pictured(icon, part.icon)
+                    local own = icon ~= nil and part.icon ~= nil and pictured(icon, part.icon)
                     if own then
                         sized(holder, size.icon, size.icon)
                         method(holder, "SetPoint", "LEFT", h, "LEFT", size.gapSmall, 0)
@@ -10230,7 +10187,7 @@ function ns.make.client(env)
                     local icon = texture(holder, "ARTWORK", "icon")
                     if icon ~= nil then
                         method(icon, "SetAllPoints", holder)
-                        local own = type(part.icon) == "string" and part.icon ~= "" and pictured(icon, part.icon)
+                        local own = part.icon ~= nil and pictured(icon, part.icon)
                         if not own then
                             if pictured(icon, art.iconMissing) then
                                 note("iconMissing", "first")

@@ -16,11 +16,12 @@
 -- EVERY NAME IS A FIRST GUESS: none has been seen on build 16001. A wrong
 -- name costs nothing: the probe reads it as missing and the element draws
 -- the fallback in its row. frameType (templates) is the widget kind the
--- template is made as, a first guess too; frameTypeElse is tried when a
--- create with frameType raises.
+-- template is made as, a first guess too. proof names fields that template
+-- is known by (first guesses): a frame handed back counts as the template
+-- only when it carries one of them.
 --
 --   row = { id =, kind = "template" | "atlas" | "texture" | "global", name =,
---           frameType = (templates), frameTypeElse = (optional),
+--           frameType = (templates), proof = { field ... } (templates),
 --           element = the kit element, fallback = what draws without it }
 --   KitParts.rows          the rows, in table order
 --   KitParts.KINDS         the four kinds, in table order
@@ -39,13 +40,13 @@ KitParts.KINDS = { "template", "atlas", "texture", "global" }
 
 KitParts.rows = {
     -- Templates.
-    { id = "T2", kind = "template", name = "ButtonFrameTemplate", frameType = "Frame", element = "window frame (second choice)", fallback = "plain panel: dark fill, thin edge, title strip" },
-    { id = "T5", kind = "template", name = "SearchBoxTemplate", frameType = "EditBox", element = "header search box (the journal's search box)", fallback = "plain edit box with a dim Search text" },
-    { id = "T7", kind = "template", name = "PanelTabButtonTemplate", frameType = "Button", element = "tab strip", fallback = "flat tab: text, gold when selected, tinted backing" },
-    { id = "T10", kind = "template", name = "MinimalScrollBar", frameType = "EventFrame", element = "scroll bar (the journal's bar on newer clients)", fallback = "none: mouse wheel only" },
-    { id = "T16", kind = "template", name = "UIPanelButtonTemplate", frameType = "Button", element = "button, bind button, choice", fallback = "plain button: tinted fill, thin edge, text" },
-    { id = "T24", kind = "template", name = "TabSystemTemplate", frameType = "Frame", element = "tabs (newer system)", fallback = "T7, else its flat tab" },
-    { id = "T25", kind = "template", name = "WowScrollBoxList", frameType = "Frame", element = "scroll list (newer system, with T10)", fallback = "plain scroll frame, mouse wheel only" },
+    { id = "T2", kind = "template", name = "ButtonFrameTemplate", frameType = "Frame", proof = { "CloseButton", "TitleContainer", "TitleText", "Inset", "NineSlice" }, element = "window frame (second choice)", fallback = "plain panel: dark fill, thin edge, title strip" },
+    { id = "T5", kind = "template", name = "SearchBoxTemplate", frameType = "EditBox", proof = { "searchIcon", "clearButton", "Instructions" }, element = "header search box (the journal's search box)", fallback = "plain edit box with a dim Search text" },
+    { id = "T7", kind = "template", name = "PanelTabButtonTemplate", frameType = "Button", proof = { "Text", "Left", "LeftActive", "LeftDisabled" }, element = "tab strip", fallback = "flat tab: text, gold when selected, tinted backing" },
+    { id = "T10", kind = "template", name = "MinimalScrollBar", frameType = "EventFrame", proof = { "Track", "Back", "Forward", "SetScrollPercentage" }, element = "scroll bar (the journal's bar on newer clients)", fallback = "none: mouse wheel only" },
+    { id = "T16", kind = "template", name = "UIPanelButtonTemplate", frameType = "Button", proof = { "Text", "Left", "Middle", "Right" }, element = "button, bind button, choice", fallback = "plain button: tinted fill, thin edge, text" },
+    { id = "T24", kind = "template", name = "TabSystemTemplate", frameType = "Frame", proof = { "AddTab", "SetTabSelectedCallback", "tabPool" }, element = "tabs (newer system)", fallback = "T7, else its flat tab" },
+    { id = "T25", kind = "template", name = "WowScrollBoxList", frameType = "Frame", proof = { "SetDataProvider", "Init", "ScrollTarget" }, element = "scroll list (newer system, with T10)", fallback = "plain scroll frame, mouse wheel only" },
 
 
 

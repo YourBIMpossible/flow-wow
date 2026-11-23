@@ -211,6 +211,11 @@ return {
         refused(t, ok, why, "onClick", "a click that is not a function")
         ok, why = K.Check({ kind = "line", text = "N", tone = "loud" })
         refused(t, ok, why, "tone", "a tone the kit has not")
+        -- The game hands out an item's icon as a file number.
+        t.eq((K.Check({ kind = "line", text = "N", icon = 134400 })), true, "an icon by file number")
+        t.eq((K.Check({ kind = "itemLine", name = "N", icon = 134400 })), true, "on an item line too")
+        ok, why = K.Check({ kind = "itemLine", name = "N", icon = true })
+        refused(t, ok, why, "icon", "an icon that is neither a path nor a number")
         ok, why = K.Check({ kind = "line", text = "N", sub = 3 })
         refused(t, ok, why, "sub", "a second line that is not text")
     end,
