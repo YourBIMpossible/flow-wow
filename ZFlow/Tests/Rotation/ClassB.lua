@@ -404,4 +404,38 @@ tests["class b parity: a threat drop tied to a form (Cower) waits for that form,
     t.eq((run("threat", at(nil, false), druid)), nil, "form not read: no Cower")
 end
 
+
+-- CLASS-B-TALENTS (section 309, the section 280 follow-up of class b): each
+-- of the nine classes has a levelling build, marked a first guess, three
+-- trees named, a role the pack has, each talent once, one to five ranks, no
+-- more than the 51 points of level 60, and a reason in words for each row.
+tests["class b talents: every class has a levelling build, a first guess, each row with its reason"] = function(t)
+    for _, class in ipairs(NINE) do
+        local pack = packOf(class)
+        local builds = type(pack) == "table" and type(pack.talentBuilds) == "table" and pack.talentBuilds or {}
+        t.ok(#builds >= 1, class .. ": a talent build")
+        local build = builds[1]
+        if type(build) == "table" then
+            t.eq(build.evidence, "first guess", class .. ": marked a first guess")
+            t.ok(words(build.note), class .. ": a note says where it came from")
+            t.ok(words(build.name), class .. ": the build has a name")
+            t.ok(type(build.trees) == "table" and #build.trees == 3, class .. ": three trees")
+            t.ok(type(pack.roles) == "table" and pack.roles[build.role] ~= nil, class .. ": a role the pack has")
+            local order = type(build.order) == "table" and build.order or {}
+            t.ok(#order >= 8, class .. ": at least eight talents")
+            local seen, points = {}, 0
+            for j, row in ipairs(order) do
+                local name, ranks = row[1], row[2]
+                t.ok(words(name), string.format("%s talent %d is named", class, j))
+                t.ok(seen[name] == nil, string.format("%s talent %s is taken once", class, tostring(name)))
+                seen[name] = true
+                t.ok(type(ranks) == "number" and ranks >= 1 and ranks <= 5 and ranks % 1 == 0,
+                    string.format("%s talent %s: one to five ranks", class, tostring(name)))
+                points = points + (type(ranks) == "number" and ranks or 0)
+                t.ok(words(row.why), string.format("%s talent %s: the reason is words", class, tostring(name)))
+            end
+            t.ok(points >= 1 and points <= 51, class .. ": no more than 51 points")
+        end
+    end
+end
 return tests
