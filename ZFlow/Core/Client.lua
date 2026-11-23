@@ -4657,6 +4657,478 @@ function ns.make.client(env)
         return rowsFollowed or nil
     end
     -- ------------------------------------------------------------- end S2
+
+    -- ---------------------------------------------------------------- S3
+    -- S3 slice 3 (lead section 181): the lines that say an auction sold or
+    -- came back unsold.
+    --   client.globalText(name) -> the client's own text of that name, or nil
+    --   client.onSystemMessage(fn) -> cancel | nil;  fn(line), CHAT_MSG_SYSTEM
+    --   client.auctionOutcome(line) -> "sold" | "expired", item name; or nil
+    -- The texts are the client's own ERR_AUCTION_SOLD_S and
+    -- ERR_AUCTION_EXPIRED_S; no English is written here. A hidden or
+    -- non-text line never reaches a listener. Needs game test on 16001:
+    -- that these lines come as CHAT_MSG_SYSTEM, and in these texts.
+    function c.globalText(name)
+        if type(name) ~= "string" then return nil end
+        local ok, v = pcall(function() return env[name] end)
+        if not ok or type(v) ~= "string" or v == "" or hidden(v) then return nil end
+        return v
+    end
+
+    local systemFns, systemFollowed = {}, false
+    local function systemLine(line)
+        if type(line) ~= "string" or hidden(line) then return end
+        for _, fn in ipairs({ unpack(systemFns) }) do pcall(fn, line) end
+    end
+    function c.onSystemMessage(fn)
+        if type(fn) ~= "function" then return nil end
+        if not systemFollowed then
+            events.add("CHAT_MSG_SYSTEM", systemLine)
+            systemFollowed = true
+        end
+        systemFns[#systemFns + 1] = fn
+        return function()
+            for i = #systemFns, 1, -1 do
+                if systemFns[i] == fn then table.remove(systemFns, i) end
+            end
+        end
+    end
+
+    local OUTCOMES = { { "sold", "ERR_AUCTION_SOLD_S" }, { "expired", "ERR_AUCTION_EXPIRED_S" } }
+    function c.auctionOutcome(line)
+        if type(line) ~= "string" or line == "" or hidden(line) then return nil end
+        for _, o in ipairs(OUTCOMES) do
+            local pattern, kinds = lootPattern(c.globalText(o[2]))
+            if pattern and #kinds == 1 and kinds[1] == "s" then
+                local name = line:match(pattern)
+                if name then return o[1], name end
+            end
+        end
+        return nil
+    end
+    -- ------------------------------------------------------------- end S3
+
+    -- ----------------------------------------------------------------- S8
+    -- Nameplate threat and combo points (lead section 178; WoW/from-lazy/
+    -- RESEARCH-S8.md): UI/PlateThreat.lua and UI/PlateCombo.lua. LOOK ONLY:
+    -- nothing here clicks, targets, casts or writes a CVar; no frame is
+    -- secure or takes the mouse. Only "player", "target" and enemy
+    -- nameplate units ("nameplateN") are named: no party or raid unit.
+    --
+    -- THE DISPLAY SINK (lead section 178, option A). A threat share and a
+    -- combo count are amounts this client may hide (secret values). A
+    -- hidden one never leaves this file: the label or the bar that read it
+    -- writes it onto its own widget (FontString:SetFormattedText,
+    -- StatusBar:SetValue) and the caller is told only "hidden". Nothing
+    -- hidden is compared, added to or kept. A plain one is handed back as a
+    -- number and the caller draws it.
+    --
+    --   client.plates(fn) -> cancel | nil   fn("added" | "removed", unit) on
+    --                     NAME_PLATE_UNIT_ADDED / _REMOVED; unit is always
+    --                     "nameplateN" (any other, or a hidden one, is not told)
+    --   client.canAttack(unit) -> true | false | nil   "target" or nameplateN
+    --                     only; any other unit is nil and not asked about
+    --   client.grouped() -> true | false | nil   IsInGroup()
+    --   client.plateLabel(unit) -> h | nil   a small text at the right of
+    --                     that unit's nameplate (one frame per plate frame,
+    --                     made the first time). nil: no nameplate unit, no
+    --                     plate on screen, no frames.
+    --     h.show(on), h.text(s), h.color(r, g, b), h.alpha(a)
+    --     h.threat() -> "shown", status, pct   pct plain; not drawn here
+    --                 -> "hidden", status      pct hidden; written here
+    --                 -> nil                   on no threat list, or not known
+    --                 status: the game's 0..3, or nil when hidden or odd
+    --   client.comboBar() -> h | nil   a bar for combo points, hidden until shown
+    --     h.hang(unit) -> "power" | "health" | "plate" | nil   under that
+    --                 unit's plate ("target" or nameplateN): under its power
+    --                 bar when one shows, else its health bar, else the plate;
+    --                 nil when no plate is on screen. Hung again only when
+    --                 the plate or the part changed.
+    --     h.sections(n) -> true | false   n whole, 1..10: the fill's range and
+    --                 a divider at each point
+    --     h.fill(n), h.color(r, g, b), h.show(on)
+    --     h.fillFromGame() -> "shown", n   n plain, whole, 0 or more; not drawn
+    --                      -> "hidden"     hidden; set on the bar here
+    --                      -> nil          not known (never 0 in its place)
+    --   client.combo() -> { points, max }   plain whole numbers only; a field
+    --                     not known is left out
+    --   client.comboColor() -> { r, g, b } | nil   PowerBarColor's combo row
+    --
+    -- FIRST GUESSES, none seen in game on 1.60.1 (16001) and none seen in an
+    -- installed addon. Docs read on warcraft.wiki.gg 2026-11-22 (see
+    -- RESEARCH-S8.md): API_UnitDetailedThreatSituation (isTanking, status,
+    -- scaledPercentage, rawPercentage, rawThreat = (unit, mobUnit); secret
+    -- when unit threat values are restricted; may return nothing),
+    -- API_C_NamePlate.GetNamePlateForUnit (unitToken; friendly plates in
+    -- instances are not handed out; the frame has UnitFrame),
+    -- NAME_PLATE_UNIT_ADDED and NAME_PLATE_UNIT_REMOVED (payload
+    -- "nameplateN"), API_GetComboPoints ((unit, target) -> 0..5; 0 for a
+    -- friendly or missing target), API_UnitPower (combo points are power
+    -- type 4; secret when unit power is restricted), API_issecretvalue and
+    -- Secret_Values (a hidden value may be stored, passed on and given to
+    -- string.format; comparing or adding one raises), API_StatusBar_SetValue
+    -- (takes a hidden value). FontString:SetFormattedText taking a hidden
+    -- value is from the page summary only (the fetch was cut): less firm.
+    -- Not read: the pages of UnitPowerMax, IsInGroup, UnitCanAttack (c.target
+    -- uses it already) and PowerBarColor; legacy Flow 0.35.377 uses each
+    -- (Modules/PlateThreat.lua, Modules/PlateCombo.lua). The nameplate's
+    -- parts (UnitFrame.powerBar / healthBar ...) are legacy Flow's guess too.
+    do
+        local THREAT_FORMAT = "%.0f%%"
+        local LABEL_GAP, LABEL_RAISE, LABEL_FONT = 2, 12, 10
+        local BAR_WIDTH, BAR_HEIGHT, BAR_DROP = 110, 5, 1
+        local BAR_TEXTURE = "Interface\\TargetingFrame\\UI-StatusBar"
+        local COMBO_POWER = 4
+
+        local function plateUnit(unit)
+            return type(unit) == "string" and unit:find("^nameplate%d+$") ~= nil
+        end
+
+        -- obj[key] under pcall: a frame may refuse a field read.
+        local function field(obj, key)
+            local ok, v = pcall(function() return obj[key] end)
+            if ok then return v end
+            return nil
+        end
+
+        local function plateOf(unit)
+            local group = env.C_NamePlate
+            if type(group) ~= "table" then return nil end
+            local ok, plate = call(group.GetNamePlateForUnit, unit)
+            if not ok or type(plate) ~= "table" then return nil end
+            return plate
+        end
+
+        local function levelOf(f)
+            local ok, n = method(f, "GetFrameLevel")
+            if ok and type(n) == "number" and not hidden(n) then return n end
+            return nil
+        end
+
+        local function sized(f, w, ht)
+            if not method(f, "SetSize", w, ht) then
+                method(f, "SetWidth", w)
+                method(f, "SetHeight", ht)
+            end
+        end
+
+        function c.plates(fn)
+            if type(fn) ~= "function" then return nil end
+            local function tell(what)
+                return function(unit)
+                    if unit == nil or hidden(unit) or not plateUnit(unit) then return end
+                    pcall(fn, what, unit)
+                end
+            end
+            local offAdded = events.add("NAME_PLATE_UNIT_ADDED", tell("added"))
+            local offRemoved = events.add("NAME_PLATE_UNIT_REMOVED", tell("removed"))
+            return function()
+                offAdded()
+                offRemoved()
+            end
+        end
+
+        function c.canAttack(unit)
+            if unit ~= "target" and not plateUnit(unit) then return nil end
+            return yesNo(call(env.UnitCanAttack, "player", unit))
+        end
+
+        function c.grouped()
+            return yesNo(call(env.IsInGroup))
+        end
+
+        -- The labels made, by plate frame (the game hands a plate frame out
+        -- again for another unit). Weak keys: a frame the game lets go is
+        -- not held here. Nothing is written onto the game's own frames.
+        local labels = setmetatable({}, { __mode = "k" })
+
+        -- As legacy Flow's label: a frame on the plate, at its right, raised
+        -- clear of the level, in the game's font, 10, outlined.
+        local function makeLabel(plate)
+            local ok, f = call(env.CreateFrame, "Frame", nil, plate)
+            if not ok or f == nil then return nil end
+            method(f, "Hide")
+            sized(f, 1, LABEL_RAISE)
+            method(f, "SetPoint", "LEFT", plate, "RIGHT", LABEL_GAP, LABEL_RAISE)
+            method(f, "EnableMouse", false)
+            local level = levelOf(plate)
+            if level then method(f, "SetFrameLevel", level + 10) end
+            local okText, fs = method(f, "CreateFontString", nil, "OVERLAY", "GameFontNormalSmall")
+            if not okText then fs = nil end
+            if fs ~= nil then
+                local font = env.STANDARD_TEXT_FONT
+                if type(font) ~= "string" or font == "" then font = "Fonts\\FRIZQT__.TTF" end
+                method(fs, "SetFont", font, LABEL_FONT, "OUTLINE")
+                method(fs, "SetPoint", "LEFT", f, "LEFT", 0, 0)
+            end
+            return { frame = f, text = fs }
+        end
+
+        -- The game's threat status, 0..3, when plain and whole; else nil.
+        local function threatStatus(v)
+            if v == nil or hidden(v) or type(v) ~= "number" then return nil end
+            if v ~= math.floor(v) or v < 0 or v > 3 then return nil end
+            return v
+        end
+
+        function c.plateLabel(unit)
+            if not plateUnit(unit) then return nil end
+            local plate = plateOf(unit)
+            if plate == nil then return nil end
+            local made = labels[plate]
+            if made == nil then
+                made = makeLabel(plate)
+                if made == nil then return nil end
+                labels[plate] = made
+            end
+            local f, fs = made.frame, made.text
+            local h = {}
+            function h.show(on) method(f, on and "Show" or "Hide") end
+            function h.text(s)
+                if fs ~= nil and type(s) == "string" then method(fs, "SetText", s) end
+            end
+            function h.color(r, g, b)
+                if fs ~= nil and type(r) == "number" and type(g) == "number" and type(b) == "number" then
+                    method(fs, "SetTextColor", r, g, b)
+                end
+            end
+            function h.alpha(a)
+                if fs ~= nil and type(a) == "number" then method(fs, "SetAlpha", a) end
+            end
+            -- Your own share only ("player" against this plate's unit); the
+            -- raw share first, else the scaled one (legacy Flow's P.Read).
+            function h.threat()
+                local ok, _, status, scaled, raw = call(env.UnitDetailedThreatSituation, "player", unit)
+                if not ok then return nil end
+                local st = threatStatus(status)
+                local pct = raw
+                if pct == nil then pct = scaled end
+                if pct == nil then return nil end
+                if hidden(pct) then
+                    -- The sink: onto the label as it is, and no further.
+                    if fs == nil then return nil end
+                    if method(fs, "SetFormattedText", THREAT_FORMAT, pct) then return "hidden", st end
+                    local okF, s = pcall(string.format, THREAT_FORMAT, pct)
+                    if okF and type(s) == "string" and method(fs, "SetText", s) then return "hidden", st end
+                    return nil
+                end
+                if type(pct) ~= "number" or pct ~= pct or pct < 0 or pct == math.huge then return nil end
+                return "shown", st, pct
+            end
+            return h
+        end
+
+        -- Combo points' power type: the client's own number for it, else 4.
+        local function comboType()
+            local enum = env.Enum
+            local kinds = type(enum) == "table" and field(enum, "PowerType") or nil
+            local n = type(kinds) == "table" and field(kinds, "ComboPoints") or nil
+            if type(n) == "number" and not hidden(n) then return n end
+            return COMBO_POWER
+        end
+
+        -- true and the count as the client gave it (perhaps hidden), or
+        -- false. GetComboPoints("player", "target") first, UnitPower second,
+        -- as legacy Flow (Modules/Rotation/Compat.lua A.ComboPoints), but an
+        -- answer not given is not known, never 0.
+        local function comboRead()
+            local ok, n = call(env.GetComboPoints, "player", "target")
+            if ok and n ~= nil then return true, n end
+            ok, n = call(env.UnitPower, "player", comboType())
+            if ok and n ~= nil then return true, n end
+            return false, nil
+        end
+
+        function c.combo()
+            local _, n = comboRead()
+            local okMax, most = call(env.UnitPowerMax, "player", comboType())
+            local max = wholeOrNil(okMax, most)
+            if max == 0 then max = nil end
+            return { points = wholeOrNil(true, n), max = max }
+        end
+
+        local function share(v)
+            if v == nil or hidden(v) or type(v) ~= "number" or v ~= v or v < 0 or v > 1 then return nil end
+            return v
+        end
+
+        function c.comboColor()
+            local colors = env.PowerBarColor
+            if type(colors) ~= "table" then return nil end
+            local row = field(colors, "COMBO_POINTS")
+            if type(row) ~= "table" then row = field(colors, COMBO_POWER) end
+            if type(row) ~= "table" then return nil end
+            local r, g, b = share(field(row, "r")), share(field(row, "g")), share(field(row, "b"))
+            if r == nil or g == nil or b == nil then return nil end
+            return { r = r, g = g, b = b }
+        end
+
+        local function isShown(frame)
+            local ok, v = method(frame, "IsShown")
+            if not ok or v == nil then return false end
+            return flag(ok, v) == true
+        end
+
+        -- What a bar hangs under on a plate (legacy Flow's PC.Under): the
+        -- power bar when one shows, else the health bar, else the plate.
+        local POWER_PARTS = { "powerBar", "PowerBar", "manabar", "ManaBar" }
+        local function partOf(plate)
+            local uf = field(plate, "UnitFrame")
+            if type(uf) == "table" then
+                for i = 1, #POWER_PARTS do
+                    local p = field(uf, POWER_PARTS[i])
+                    if type(p) == "table" and isShown(p) then return p, "power" end
+                end
+                local hb = field(uf, "healthBar") or field(uf, "HealthBar")
+                if hb == nil then
+                    local box = field(uf, "HealthBarsContainer")
+                    if type(box) == "table" then hb = field(box, "healthBar") or box end
+                end
+                if type(hb) == "table" and isShown(hb) then return hb, "health" end
+            end
+            return plate, "plate"
+        end
+
+        -- As legacy Flow's bar: 5 high, the game's bar texture, a dark back
+        -- and a thin dark edge; the dividers each ride an unseen bar filled
+        -- to that many points, so nothing is measured.
+        function c.comboBar()
+            local ok, f = call(env.CreateFrame, "Frame", nil, env.UIParent)
+            if not ok or f == nil then return nil end
+            method(f, "Hide")
+            sized(f, BAR_WIDTH, BAR_HEIGHT)
+            method(f, "EnableMouse", false)
+            local okFill, fill = call(env.CreateFrame, "StatusBar", nil, f)
+            if not okFill or fill == nil then return nil end
+            method(fill, "SetAllPoints", f)
+            method(fill, "SetStatusBarTexture", BAR_TEXTURE)
+            local okEdge, edge = method(f, "CreateTexture", nil, "BACKGROUND", nil, -2)
+            if okEdge and edge ~= nil then
+                method(edge, "SetPoint", "TOPLEFT", f, "TOPLEFT", -1, 1)
+                method(edge, "SetPoint", "BOTTOMRIGHT", f, "BOTTOMRIGHT", 1, -1)
+                if not method(edge, "SetColorTexture", 0, 0, 0, 0.9) then method(edge, "SetTexture", 0, 0, 0, 0.9) end
+            end
+            local okBack, back = method(f, "CreateTexture", nil, "BACKGROUND", nil, -1)
+            if okBack and back ~= nil then
+                method(back, "SetAllPoints", f)
+                method(back, "SetTexture", BAR_TEXTURE)
+                method(back, "SetVertexColor", 0.18, 0.17, 0.1, 0.9)
+            end
+            local okLines, lines = call(env.CreateFrame, "Frame", nil, f)
+            if not okLines then lines = nil end
+            if lines ~= nil then
+                method(lines, "SetAllPoints", f)
+                local level = levelOf(fill)
+                if level then method(lines, "SetFrameLevel", level + 2) end
+            end
+
+            local marks, dividers = {}, {}
+            local most, plateNow, partNow, whatNow
+            local h = {}
+
+            -- The unseen bar and the divider for point k, made the first time.
+            local function mark(k)
+                if marks[k] ~= nil then return marks[k], dividers[k] end
+                local okM, m = call(env.CreateFrame, "StatusBar", nil, f)
+                if not okM or m == nil then return nil end
+                method(m, "SetAllPoints", f)
+                method(m, "SetStatusBarTexture", BAR_TEXTURE)
+                method(m, "SetStatusBarColor", 0, 0, 0, 0)
+                local d = false
+                if lines ~= nil then
+                    local okD, tex = method(lines, "CreateTexture", nil, "OVERLAY")
+                    if okD and tex ~= nil then
+                        d = tex
+                        if not method(d, "SetColorTexture", 0, 0, 0, 1) then method(d, "SetTexture", 0, 0, 0, 1) end
+                        method(d, "SetWidth", 1)
+                        local okEnd, ends = method(m, "GetStatusBarTexture")
+                        if okEnd and ends ~= nil then
+                            method(d, "SetPoint", "TOP", ends, "TOPRIGHT", 0, 0)
+                            method(d, "SetPoint", "BOTTOM", ends, "BOTTOMRIGHT", 0, 0)
+                        end
+                    end
+                end
+                marks[k], dividers[k] = m, d
+                return m, d
+            end
+
+            function h.sections(n)
+                if type(n) ~= "number" or n ~= n or n < 1 or n > 10 or n ~= math.floor(n) then return false end
+                if n == most then return true end
+                most = n
+                method(fill, "SetMinMaxValues", 0, n)
+                for k = 1, 9 do
+                    if k <= n - 1 then
+                        local m, d = mark(k)
+                        if m ~= nil then
+                            method(m, "SetMinMaxValues", 0, n)
+                            method(m, "SetValue", k)
+                            method(m, "Show")
+                            if d then method(d, "Show") end
+                        end
+                    elseif marks[k] ~= nil then
+                        method(marks[k], "Hide")
+                        if dividers[k] then method(dividers[k], "Hide") end
+                    end
+                end
+                return true
+            end
+
+            function h.fill(n)
+                if type(n) ~= "number" or n ~= n then return false end
+                return (method(fill, "SetValue", n))
+            end
+
+            function h.color(r, g, b)
+                if type(r) == "number" and type(g) == "number" and type(b) == "number" then
+                    method(fill, "SetStatusBarColor", r, g, b)
+                end
+            end
+
+            function h.show(on) method(f, on and "Show" or "Hide") end
+
+            function h.hang(unit)
+                if unit ~= "target" and not plateUnit(unit) then return nil end
+                local plate = plateOf(unit)
+                if plate == nil then
+                    plateNow, partNow, whatNow = nil, nil, nil
+                    return nil
+                end
+                local part, what = partOf(plate)
+                if plate == plateNow and part == partNow then return whatNow end
+                plateNow, partNow, whatNow = plate, part, what
+                method(f, "SetParent", plate)
+                method(f, "ClearAllPoints")
+                if what == "plate" then
+                    sized(f, BAR_WIDTH, BAR_HEIGHT)
+                    method(f, "SetPoint", "TOP", plate, "BOTTOM", 0, -BAR_DROP - 2)
+                else
+                    method(f, "SetHeight", BAR_HEIGHT)
+                    method(f, "SetPoint", "TOPLEFT", part, "BOTTOMLEFT", 0, -BAR_DROP - 1)
+                    method(f, "SetPoint", "TOPRIGHT", part, "BOTTOMRIGHT", 0, -BAR_DROP - 1)
+                end
+                local level = levelOf(plate)
+                if level then method(f, "SetFrameLevel", level + 10) end
+                return what
+            end
+
+            function h.fillFromGame()
+                local okRead, n = comboRead()
+                if not okRead then return nil end
+                if hidden(n) then
+                    -- The sink: onto the bar as it is, and no further.
+                    if method(fill, "SetValue", n) then return "hidden" end
+                    return nil
+                end
+                local plain = wholeOrNil(true, n)
+                if plain == nil then return nil end
+                return "shown", plain
+            end
+
+            return h
+        end
+    end
+    -- ------------------------------------------------------------- end S8
     return c
 end
 

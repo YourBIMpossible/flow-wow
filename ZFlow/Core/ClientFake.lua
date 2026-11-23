@@ -1400,6 +1400,223 @@ function ns.make.fakeClient(opts)
         kind = kind or "commodity"
         for _, fn in ipairs({ unpack(s.auctionRowsFns or {}) }) do pcall(fn, id, rows, kind) end
     end
+    -- S3 slice 3. As the real client's: globalText(name),
+    -- onSystemMessage(fn) -> cancel, auctionOutcome(line).
+    -- setGlobalText(name, text) sets one of the client's texts;
+    -- systemMessage(text) plays one CHAT_MSG_SYSTEM line: a non-text line is
+    -- dropped and a listener's error stays here, as in the real client.
+    function c.setGlobalText(name, text)
+        s.globalTexts = s.globalTexts or {}
+        s.globalTexts[name] = text
+    end
+    function c.globalText(name)
+        local v = s.globalTexts and s.globalTexts[name]
+        if type(v) ~= "string" or v == "" then return nil end
+        return v
+    end
+    function c.onSystemMessage(fn)
+        if type(fn) ~= "function" then return nil end
+        s.systemFns = s.systemFns or {}
+        table.insert(s.systemFns, fn)
+        return function()
+            for i = #s.systemFns, 1, -1 do
+                if s.systemFns[i] == fn then table.remove(s.systemFns, i) end
+            end
+        end
+    end
+    function c.systemMessage(text)
+        if type(text) ~= "string" then return end
+        for _, fn in ipairs({ unpack(s.systemFns or {}) }) do pcall(fn, text) end
+    end
+    -- A text with one %s and no other % as a whole-line pattern.
+    local function outcomePattern(fmt)
+        if type(fmt) ~= "string" then return nil end
+        local a, b = fmt:find("%s", 1, true)
+        if not a then return nil end
+        local head, tail = fmt:sub(1, a - 1), fmt:sub(b + 1)
+        if head:find("%", 1, true) or tail:find("%", 1, true) then return nil end
+        return "^" .. head:gsub("%W", "%%%0") .. "(.+)" .. tail:gsub("%W", "%%%0") .. "$"
+    end
+    function c.auctionOutcome(line)
+        if type(line) ~= "string" or line == "" then return nil end
+        for _, o in ipairs({ { "sold", "ERR_AUCTION_SOLD_S" }, { "expired", "ERR_AUCTION_EXPIRED_S" } }) do
+            local pattern = outcomePattern(c.globalText(o[2]))
+            local name = pattern and line:match(pattern)
+            if name then return o[1], name end
+        end
+        return nil
+    end
+
+    -- S8 nameplate threat and combo points. As the real client's; every
+    -- read is unknown (nil) until set.
+    --   c.SECRET   stands in for a value the game hides: it may be stored
+    --              and handed on; adding, comparing, indexing or joining it
+    --              raises, so a module that looked at it fails its test.
+    --   c.addPlate(unit[, part]) / c.removePlate(unit)   a nameplate comes
+    --              into view / goes (the client's events fire). part: what a
+    --              bar hangs under there, "power", "health" (the default)
+    --              or "plate"
+    --   c.setPlate(unit, part)   the same without the event ("target" too);
+    --              nil: no plate for it on screen
+    --   c.setThreat(unit, status, pct)   pct a number, c.SECRET or nil;
+    --              status a number, c.SECRET or nil; c.setThreat(unit): on
+    --              no threat list there
+    --   c.setCanAttack(unit, v)   c.setGrouped(v)   nil: not known
+    --   c.setCombo(points, max)   points a number, c.SECRET or nil
+    --   c.setComboColor(r, g, b)  c.setComboColor(nil): not known
+    -- c.plateLabels[i]: .unit, .shown, .says (the text set, or c.SECRET as
+    --   the client passed it through), .format (what the hidden value was
+    --   formatted with), .rgb, .alphaNow, .reads (threat reads)
+    -- c.comboBars[i]: .shown, .hung, .under, .max, .value (a number, or
+    --   c.SECRET as the client passed it through), .rgb, .reads, .hangs
+    local function refuse() error("a hidden value was looked at", 2) end
+    c.SECRET = setmetatable({}, {
+        __index = refuse, __newindex = refuse, __call = refuse, __concat = refuse, __len = refuse,
+        __unm = refuse, __add = refuse, __sub = refuse, __mul = refuse, __div = refuse, __mod = refuse,
+        __pow = refuse, __lt = refuse, __le = refuse,
+        __tostring = function() return "(a hidden value)" end,
+    })
+    local function plateUnit(unit)
+        return type(unit) == "string" and unit:find("^nameplate%d+$") ~= nil
+    end
+    local PARTS = { power = true, health = true, plate = true }
+    function c.setPlate(unit, part)
+        s.plates = s.plates or {}
+        if part == true then part = "health" end
+        s.plates[unit] = PARTS[part] and part or nil
+    end
+    function c.addPlate(unit, part)
+        c.setPlate(unit, part or "health")
+        events.call("NAME_PLATE_UNIT_ADDED", unit)
+    end
+    function c.removePlate(unit)
+        c.setPlate(unit, nil)
+        events.call("NAME_PLATE_UNIT_REMOVED", unit)
+    end
+    function c.plates(fn)
+        if type(fn) ~= "function" then return nil end
+        local function tell(what)
+            return function(unit)
+                if plateUnit(unit) then pcall(fn, what, unit) end
+            end
+        end
+        local offAdded = events.add("NAME_PLATE_UNIT_ADDED", tell("added"))
+        local offRemoved = events.add("NAME_PLATE_UNIT_REMOVED", tell("removed"))
+        return function()
+            offAdded()
+            offRemoved()
+        end
+    end
+    function c.canAttack(unit)
+        if unit ~= "target" and not plateUnit(unit) then return nil end
+        if not s.attackable then return nil end
+        return s.attackable[unit]
+    end
+    function c.setCanAttack(unit, v)
+        s.attackable = s.attackable or {}
+        if v == nil then s.attackable[unit] = nil else s.attackable[unit] = v and true or false end
+    end
+    function c.grouped() return s.grouped end
+    function c.setGrouped(v)
+        if v == nil then s.grouped = nil else s.grouped = v and true or false end
+    end
+    function c.setThreat(unit, status, pct)
+        s.threats = s.threats or {}
+        if status == nil and pct == nil then
+            s.threats[unit] = nil
+        else
+            s.threats[unit] = { status = status, pct = pct }
+        end
+    end
+    local function rgbOf(r, g, b)
+        if type(r) == "number" and type(g) == "number" and type(b) == "number" then return { r, g, b } end
+        return nil
+    end
+    c.plateLabels = {}
+    function c.plateLabel(unit)
+        if s.noFrames or not plateUnit(unit) or not (s.plates and s.plates[unit]) then return nil end
+        local h = { unit = unit, shown = false, reads = 0 }
+        function h.show(on) h.shown = on and true or false end
+        function h.text(text)
+            if type(text) ~= "string" then return end
+            h.says, h.format = text, nil
+        end
+        function h.color(r, g, b) h.rgb = rgbOf(r, g, b) or h.rgb end
+        function h.alpha(a)
+            if type(a) == "number" then h.alphaNow = a end
+        end
+        function h.threat()
+            h.reads = h.reads + 1
+            local r = s.threats and s.threats[unit]
+            if type(r) ~= "table" or r.pct == nil then return nil end
+            local status = type(r.status) == "number" and r.status or nil
+            if rawequal(r.pct, c.SECRET) then
+                h.says, h.format = r.pct, "%.0f%%"
+                return "hidden", status
+            end
+            if type(r.pct) ~= "number" then return nil end
+            return "shown", status, r.pct
+        end
+        c.plateLabels[#c.plateLabels + 1] = h
+        return h
+    end
+    c.comboBars = {}
+    function c.comboBar()
+        if s.noFrames then return nil end
+        local h = { shown = false, reads = 0, hangs = 0 }
+        function h.hang(unit)
+            h.hangs = h.hangs + 1
+            if unit ~= "target" and not plateUnit(unit) then return nil end
+            local part = s.plates and s.plates[unit] or nil
+            h.hung, h.under = part and unit or nil, part
+            return part
+        end
+        function h.sections(n)
+            if type(n) ~= "number" or n < 1 or n > 10 or n ~= math.floor(n) then return false end
+            h.max = n
+            return true
+        end
+        function h.fill(n)
+            if type(n) ~= "number" then return false end
+            h.value = n
+            return true
+        end
+        function h.color(r, g, b) h.rgb = rgbOf(r, g, b) or h.rgb end
+        function h.show(on) h.shown = on and true or false end
+        function h.fillFromGame()
+            h.reads = h.reads + 1
+            local p = s.comboPoints
+            if p == nil then return nil end
+            if rawequal(p, c.SECRET) then
+                h.value = p
+                return "hidden"
+            end
+            if type(p) ~= "number" then return nil end
+            return "shown", p
+        end
+        c.comboBars[#c.comboBars + 1] = h
+        return h
+    end
+    function c.combo()
+        local p = s.comboPoints
+        return { points = type(p) == "number" and p or nil, max = s.comboMax }
+    end
+    function c.setCombo(points, max)
+        s.comboPoints = points
+        s.comboMax = type(max) == "number" and max or nil
+    end
+    function c.comboColor()
+        local col = s.comboColor
+        if not col then return nil end
+        return { r = col.r, g = col.g, b = col.b }
+    end
+    function c.setComboColor(r, g, b)
+        if type(r) == "number" and type(g) == "number" and type(b) == "number" then
+            s.comboColor = { r = r, g = g, b = b }
+        else
+            s.comboColor = nil
+        end
+    end
     return c
 end
 

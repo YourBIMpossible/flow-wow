@@ -58,7 +58,7 @@ AL.PROBE = {
     "C_AuctionHouse", "C_AuctionHouse.GetCommoditySearchResultInfo", "C_AuctionHouse.GetItemSearchResultInfo",
     "C_AuctionHouse.GetNumCommoditySearchResults", "C_AuctionHouse.GetNumItemSearchResults",
     "C_AuctionHouse.SendSearchQuery", "C_AuctionHouse.MakeItemKey", "C_AuctionHouse.ReplicateItems",
-    "QueryAuctionItems", "GetRealmName",
+    "QueryAuctionItems", "GetRealmName", "ERR_AUCTION_SOLD_S", "ERR_AUCTION_EXPIRED_S",
 }
 
 local function finite(v)
@@ -207,8 +207,13 @@ function AL.Declare(k, diag)
             local function say(s) k.client.print(k.id.title .. ": " .. s) end
             if not ctx then say("auction: not started yet") return end
             if type(arg) == "string" and arg:find("probe", 1, true) then
-                local present = ctx.client.apiPresent
-                if type(present) ~= "function" then say("auction probe: this client cannot be asked") return end
+                local apiPresent, globalText = ctx.client.apiPresent, ctx.client.globalText
+                if type(apiPresent) ~= "function" then say("auction probe: this client cannot be asked") return end
+                -- A game text (S3 slice 3) is had when the client gives it.
+                local function present(name)
+                    if apiPresent(name) then return true end
+                    return type(globalText) == "function" and globalText(name) ~= nil
+                end
                 for _, line in ipairs(AL.ProbeLines(present)) do say(line) end
                 return
             end
