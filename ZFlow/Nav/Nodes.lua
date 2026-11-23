@@ -164,9 +164,13 @@ function X.Declare(k, diag)
         local p = ask("position")
         if type(p) ~= "table" or p.map == nil or not finite(p.x) or not finite(p.y) then return nil end
         local now = ask("clock")
+        -- The cast window is timed on the session clock (client.now,
+        -- GetTime), not the wall clock: it is always there and finer than a
+        -- second. The wall clock stays the saved "at" of a node.
+        local since = ask("now")
         local prof
-        if lastCast and finite(now) and finite(lastCast.at) and now - lastCast.at <= X.CAST_WINDOW
-            and have[lastCast.prof] then
+        if lastCast and finite(since) and finite(lastCast.at) and since - lastCast.at >= 0
+            and since - lastCast.at <= X.CAST_WINDOW and have[lastCast.prof] then
             prof = lastCast.prof
         end
         lastCast = nil
@@ -287,7 +291,7 @@ function X.Declare(k, diag)
                 if unit ~= "player" then return end
                 local spell = ask("spellName", id)
                 local prof = type(spell) == "string" and X.CAST[spell] or nil
-                if prof then lastCast = { prof = prof, at = ask("clock") } end
+                if prof then lastCast = { prof = prof, at = ask("now") } end
             end)
             c.bus:on(X.NAME, X.EVENT, function()
                 local ok, err = pcall(api.loot)
