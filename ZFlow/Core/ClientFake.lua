@@ -714,6 +714,16 @@ function ns.make.fakeClient(opts)
         end
     end
     function c.fire(event, ...) events.call(event, ...) end
+    -- P-READS: plays the real client handing on a secret event argument:
+    -- each argument that is c.SECRET reaches the listeners as nil.
+    function c.fireSecret(event, ...)
+        local n = select("#", ...)
+        local args = { ... }
+        for i = 1, n do
+            if rawequal(args[i], c.SECRET) then args[i] = nil end
+        end
+        events.call(event, unpack(args, 1, n))
+    end
     -- What clock() gives; nil: the client will not say. advance() does not
     -- move it.
     function c.setClock(seconds) s.clock = seconds end
@@ -1464,6 +1474,61 @@ function ns.make.fakeClient(opts)
     end
     function c.setWeaponEnchant(t) s.weaponEnchant = t end
     function c.setWeaponEnchantFails(on) s.weaponEnchantFails = (on == true) end
+    -- P-READS twins (lead section 260 item 1): each answers what a test set,
+    -- and nil (not known) before. Shapes as on the real client:
+    --   channel() -> { name, spellId, endsAt } | false | nil
+    --   totems() -> { [slot] = { name, spellId, left } or false } | nil
+    --   targetBuffs() -> { [name] = secondsLeft or true } | nil
+    --   enemiesNear() -> near, close, onYou | nil
+    --   plateCasts() -> { { unit, name, spellId, channel, endsAt,
+    --                       interruptible } ... } | nil
+    --   creatureType(unit) -> text | nil
+    --   buffLength(unit, names) -> the row field `length` of setUnitBuffs,
+    --                              name | false | nil
+    local function copied(v)
+        if type(v) ~= "table" then return v end
+        local out = {}
+        for k, x in pairs(v) do out[k] = copied(x) end
+        return out
+    end
+    function c.channel() return copied(s.channel) end
+    function c.setChannel(v) s.channel = v end
+    function c.totems() return copied(s.totems) end
+    function c.setTotems(v) s.totems = v end
+    function c.targetBuffs() return copied(s.targetBuffs) end
+    function c.setTargetBuffs(v) s.targetBuffs = v end
+    function c.enemiesNear()
+        local e = s.enemiesNear
+        if type(e) ~= "table" then return nil end
+        return e.near, e.close, e.onYou
+    end
+    function c.setEnemiesNear(near, close, onYou)
+        if near == nil then s.enemiesNear = nil return end
+        s.enemiesNear = { near = near, close = close, onYou = onYou }
+    end
+    function c.plateCasts() return copied(s.plateCasts) end
+    function c.setPlateCasts(v) s.plateCasts = v end
+    function c.creatureType(unit)
+        if type(s.creatureTypes) ~= "table" then return nil end
+        return s.creatureTypes[unit]
+    end
+    function c.setCreatureType(unit, v)
+        s.creatureTypes = s.creatureTypes or {}
+        s.creatureTypes[unit] = v
+    end
+    function c.buffLength(unit, names)
+        if type(unit) ~= "string" or unit == "" or type(names) ~= "table" then return nil end
+        local rows = s.unitBuffs and s.unitBuffs[unit]
+        if type(rows) ~= "table" then return nil end
+        for i = 1, #rows do
+            local row = rows[i]
+            if type(row) ~= "table" or type(row.name) ~= "string" then return nil end
+            for j = 1, #names do
+                if names[j] == row.name then return row.length, row.name end
+            end
+        end
+        return false
+    end
     -- Plays the game filling its tooltip for `unit`: every onUnitTooltip
     -- listener is told, and what they added comes back as
     -- { { text, r, g, b } ... }.
@@ -1953,6 +2018,7 @@ function ns.make.fakeClient(opts)
         local function yesNo(v) if type(v) == "boolean" then return v end return nil end
         s.pet = {
             exists = true, dead = yesNo(r.dead), inCombat = yesNo(r.inCombat),
+            hurt = yesNo(r.hurt),
             family = (type(r.family) == "string" and r.family ~= "") and r.family or nil,
             happiness = PET_MOODS[r.happiness or ""] and r.happiness or nil,
             powerKind = (type(r.powerKind) == "number" and r.powerKind == r.powerKind) and r.powerKind or nil,

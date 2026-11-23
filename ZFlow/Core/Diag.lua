@@ -180,6 +180,11 @@ Diag.NAMES = {
     "MacroPopupFrame", "MacroPopupFrame.IconSelector", "IconSelectorPopupFrameTemplateMixin",
     "IconDataProviderMixin", "GetMacroIcons", "GetMacroItemIcons", "GetSpellBookItemTexture",
     "GetItemIcon", "C_Item.GetItemIconByID",
+    -- P-READS (lead section 260 item 1): the shared reads in Core/Client.lua
+    -- (channel, weaponEnchant, totems, enemiesNear, plateCasts, creatureType,
+    -- pet hurt); first guesses, so a capture says which exist.
+    "CheckInteractDistance", "GetTotemInfo", "UnitHealthPercent", "UnitCreatureType",
+    "C_Item.GetWeaponEnchantInfo",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns
