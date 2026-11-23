@@ -68,7 +68,7 @@ local _, ns = ...
 --     api.errors()  how many times something here failed (kept as problems)
 --   ns.use(BossLoot.NAME) -> { View = api.view, Errors = api.errors }
 --
--- Setting: "loot.bossPanel" (bool, account, on by default, group Gear).
+-- Setting: "loot.bossPanel" (bool, account, on by default, topic Party and Dungeons).
 -- The panel can be dragged; where it was left is kept (account,
 -- "layout.bossLoot"). It starts at the left edge below the middle, clear of
 -- the middle of the screen.
@@ -745,7 +745,9 @@ function B.Declare(k, packs)
             label = "Boss loot panel",
             help = "While you fight a boss, lists the drops you have seen from it before, your role's upgrades first. "
                 .. "It only shows them: it never rolls or picks for you.",
-            group = "Gear",
+            -- A topic of Settings/Topics.lua (zflow-settings-groups, N56).
+            group = "party",
+            synonyms = { "boss", "loot", "drops", "dungeon", "upgrade", "panel" },
         } },
         provides = { View = api.view, Errors = api.errors },
         ticks = { { every = B.TICK, when = "always", run = function() evaluate() end } },
