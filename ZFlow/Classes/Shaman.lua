@@ -274,6 +274,8 @@ local pack = {
     talentBuilds = {},
 
     options = {
+        crowdControl = { none = "no shaman spell in this client holds a second enemy" },
+        threatDrop = { none = "no shaman spell in this client drops threat" },
         -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,
         -- in order: the first you know names your tree (snapshot.tree,
         -- Rotation/Driver.lua). Which spell is a talent of which tree: a first
