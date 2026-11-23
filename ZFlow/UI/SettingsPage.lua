@@ -24,10 +24,13 @@ local _, ns = ...
 --     entry        key, label, help (nil when the row has none), kind,
 --                  value, shown (the value as text), savedFor, scope
 --                  ("account" or "character"), topic, topicName, section,
---                  sectionName, min, max, choices (a copy), available,
+--                  sectionName, min, max, step (a number row: how far one
+--                  press of minus or plus moves it), choices (a copy), available,
 --                  settable, why (the reason when it cannot be set, else
 --                  nil), because (what an unavailable row depends on and
---                  what its `requires` said, when either is known)
+--                  what its `requires` said, when either is known), opens
+--                  (the words of the row's own button, for a row with a
+--                  window of its own: SettingsPage.Open(k, key) runs it)
 --     kind         "toggle" (bool), "number", "choice", "text" (string) or
 --                  "place" (table). A place is never handed out or spelled
 --                  out: it reads "set" or "not set", and is not set here.
@@ -39,6 +42,14 @@ local _, ns = ...
 --     row's type and limits, saved at the row's own scope and place) and,
 --     for a key the settings model (Settings/Model.lua) also holds, through
 --     the model's check for that key. A refusal changes nothing.
+--
+--   SettingsPage.Step(row) -> the step of a number row: its own `step`
+--     when it gives one above 0, else 0.05 for a row whose limits are 1 or
+--     less apart (a share), else 1. nil for any other row.
+--   SettingsPage.Snap(row, value) -> a number a control sent for a number
+--     row, put on the row's steps and cleared of the stray digits adding
+--     leaves (0.30000000000000004 is 0.3). Anything else is handed back
+--     as it is. The row's limits are not applied here: Set refuses.
 --
 --   SettingsPage.Search(k, query [, view]) -> found, or nil for an empty
 --     search (then the page is browsed by topic)
@@ -130,6 +141,23 @@ local function because(k, row)
     return table.concat(parts, "; ")
 end
 
+function P.Step(row)
+    if type(row) ~= "table" or row.type ~= "number" then return nil end
+    if type(row.step) == "number" and row.step > 0 then return row.step end
+    if type(row.min) == "number" and type(row.max) == "number" and row.max - row.min <= 1 then return 0.05 end
+    return 1
+end
+
+function P.Snap(row, value)
+    local step = P.Step(row)
+    if step == nil or type(value) ~= "number" or value ~= value
+        or value == math.huge or value == -math.huge then
+        return value
+    end
+    local snapped = math.floor(value / step + 0.5) * step
+    return math.floor(snapped * 1000000 + 0.5) / 1000000
+end
+
 local function entryOf(k, row, isLoaded)
     local kind = KINDS[row.type]
     local e = {
@@ -141,12 +169,18 @@ local function entryOf(k, row, isLoaded)
         scope = P.SCOPE_WORDS[row.scope] or tostring(row.scope),
         min = row.min,
         max = row.max,
+        step = P.Step(row),
         shown = "",
         settable = false,
     }
     if row.type == "choice" then
         e.choices = {}
         for i = 1, #row.choices do e.choices[i] = row.choices[i] end
+    end
+    -- A row with a window of its own (row.open): the words of its button.
+    if type(row.open) == "table" and type(row.open.run) == "function" then
+        e.opens = "Open"
+        if type(row.open.text) == "string" and row.open.text ~= "" then e.opens = row.open.text end
     end
     if not isLoaded then
         e.why = P.NOT_LOADED
@@ -333,6 +367,21 @@ local function modelAllows(key, value)
     return model:check(key, value)
 end
 
+-- Runs the row's own opener (row.open.run), as the button beside it asks.
+-- -> true when it ran; false for a row with none, or one that raised (kept
+-- as a problem). It saves nothing by itself.
+function P.Open(k, key)
+    local row
+    if type(key) == "string" then row = k.settings:row(key) end
+    if type(row) ~= "table" or type(row.open) ~= "table" or type(row.open.run) ~= "function" then return false end
+    local ok, err = pcall(row.open.run)
+    if not ok then
+        k.problems:add("settings", key, err)
+        return false
+    end
+    return true
+end
+
 function P.Set(k, key, value)
     if not loaded(k) then return false, P.NOT_LOADED end
     local row = type(key) == "string" and k.settings:row(key) or nil
@@ -347,4 +396,65 @@ function P.Set(k, key, value)
     if not ok then return false, tostring(reason or "the store refused it") end
     if k.settings:get(row.key) ~= value then return false, "it did not read back as saved" end
     return true
+end
+
+-- The page's own two buttons (row N57; legacy Flow's page had them at its
+-- foot, Modules/Settings.lua :884 and :900).
+--   SettingsPage.Actions(k) -> { { key = "suggest", label }, { key = "keep", label } }
+--   SettingsPage.Act(k, key) -> how many settings changed, and what to say;
+--     nil for a key that is no action.
+--     "suggest"  every entry of UI/Setup.lua's Setup.SUGGESTIONS whose row
+--                exists and holds another value is set through Set above
+--                (the row's type, limits, availability and the model's
+--                check all apply; a refusal is counted and changes
+--                nothing). With no suggestions it says so and does nothing
+--                more. Otherwise this character is marked as offered
+--                (Setup.OFFERED_PATH), so the advisor does not offer them
+--                again.
+--     "keep"     no setting changes; the character is marked the same way.
+P.NO_SUGGESTIONS = "There are no suggestions yet; nothing changed."
+P.ALREADY = "Your settings already match the suggestions; nothing changed."
+P.KEPT = "Your settings stay as they are."
+P.CHANGED = " setting(s) changed to the suggestions"
+P.REFUSED = " could not be set"
+
+function P.Actions(k)
+    local id = k.id or ns.id
+    return {
+        { key = "suggest", label = "Use " .. tostring(id.title) .. "'s suggestions" },
+        { key = "keep", label = "Keep my settings" },
+    }
+end
+
+local function markOffered(k)
+    local Setup = ns.Setup
+    if type(Setup) ~= "table" or type(Setup.OFFERED_PATH) ~= "string" then return end
+    local ok, why = k.store:set("char", Setup.OFFERED_PATH, true)
+    if not ok then k.problems:add("settings", "offered", why) end
+end
+
+function P.Act(k, key)
+    if key ~= "suggest" and key ~= "keep" then return nil end
+    if not loaded(k) then return 0, P.NOT_LOADED end
+    if key == "keep" then
+        markOffered(k)
+        return 0, P.KEPT
+    end
+    local Setup = ns.Setup
+    local list = {}
+    if type(Setup) == "table" and type(Setup.SUGGESTIONS) == "table" then list = Setup.SUGGESTIONS end
+    if #list == 0 or type(Setup.Pick) ~= "function" then return 0, P.NO_SUGGESTIONS end
+    local changed, refused = 0, 0
+    for i = 1, #list do
+        -- Setup.Pick says whether the entry is sound, has a row and differs.
+        local pick = Setup.Pick(k.settings, { list[i] })[1]
+        if pick then
+            if P.Set(k, pick.key, pick.value) then changed = changed + 1 else refused = refused + 1 end
+        end
+    end
+    markOffered(k)
+    if changed == 0 and refused == 0 then return 0, P.ALREADY end
+    local said = changed .. P.CHANGED
+    if refused > 0 then said = said .. "; " .. refused .. P.REFUSED end
+    return changed, said .. "."
 end

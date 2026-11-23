@@ -48,6 +48,8 @@ local function start(opts)
     if opts.open ~= false then
         c.fire("TRADE_SKILL_SHOW")
         c.fire("TRADE_SKILL_LIST_UPDATE")
+        -- Section 245 (RB2-1): the book reads once the window settles.
+        c.advance(addon.RecipeBook.SETTLE, 1)
     end
     return c, addon
 end

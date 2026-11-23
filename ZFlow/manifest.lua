@@ -140,6 +140,7 @@ return {
         "Nav/RepairStep.lua",
         "Nav/QuestSource.lua",
         "Nav/QuestRead.lua",
+        "Nav/AddonSources.lua",
         "Nav/Rides.lua",
         "Nav/TravelSpells.lua",
         "Nav/TravelIcon.lua",
@@ -158,12 +159,14 @@ return {
         "UI/DevPanel.lua",
         "UI/SettingsSlash.lua",
         "UI/SettingsPage.lua",
+        "UI/SettingsKeys.lua",
         "UI/SettingsPanel.lua",
         "UI/SettingsOptions.lua",
         "UI/Rows.lua",
         "UI/Intro.lua",
         "UI/WindowButtons.lua",
         "UI/ArrowMenu.lua",
+        "UI/Feedback.lua",
         "UI/SellList.lua",
         "UI/BankList.lua",
         "UI/CraftBar.lua",
@@ -194,6 +197,10 @@ return {
     "Rotation/Gather.lua",
     -- P-PARTY: your group's buffs and dispels, look only (after GroupTip and Choose).
     "Rotation/Group.lua",
+    -- N63: heal and cures on the unit under your mouse, off by default.
+    "Rotation/Mouseover.lua",
+    -- N64: the weapon enchant reminder, a line in chat only (after Group).
+    "Rotation/Enchant.lua",
     -- N55: the boss loot panel, look only (after Gear, Items/Drops and the classes).
     "UI/BossLoot.lua",
     },

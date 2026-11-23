@@ -89,7 +89,18 @@ B.RECORD = "loot.record"        -- Items/Drops.lua's setting: off, nothing is le
 B.PATH = "learned.bossLoot"     -- account
 B.DROPS = "learned.drops"       -- char: Items/Drops.lua's book, read only
 B.LAYOUT = "layout.bossLoot"    -- account: { point = { anchor, relative anchor, x, y } }
-B.WINDOW = 180                  -- seconds after a kill that rolls and loot lines are its; a first guess
+-- Seconds after a kill that rolls and loot lines are its. A FIRST GUESS,
+-- not a measured number. What would settle it: how long after ENCOUNTER_END
+-- the rolls and loot lines of that kill really come. No capture field holds
+-- that today (a snapshot's `at` is the snapshot's own time only); one is
+-- needed, e.g. account diag.bossLoot.gaps = the seconds from each kill to
+-- each roll and loot line that followed it (numbers only, no names).
+B.WINDOW = 180
+-- The client events this module listens to. They are not globals, so they
+-- are not in Diag.NAMES; one the client refuses is saved by the capture in
+-- each snapshot's kernel.eventsNotRegistered (Core/Diag.lua).
+B.EVENTS = { "ENCOUNTER_START", "ENCOUNTER_END", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED",
+             "PLAYER_TARGET_CHANGED", "GET_ITEM_INFO_RECEIVED", "LOOT_OPENED", "CHAT_MSG_LOOT" }
 B.TICK = 1                      -- seconds between looks while the add-on runs
 B.REFRESH = 5                   -- seconds a worked-out list is kept while nothing changed
 B.MAX_SHOWN = 10
@@ -687,7 +698,7 @@ function B.Declare(k, packs)
     -- fn (when given) first, then a look. same = true: the event changes
     -- who is fought, not what is known of the drops, so a list already
     -- worked out for the same boss stands.
-    local function on(event, fn, same)
+    local function listen(event, fn, same)
         ctx.bus:on(B.NAME, event, function(...)
             if fn then
                 local ok, err = pcall(fn, ...)
@@ -746,7 +757,9 @@ function B.Declare(k, packs)
             key = B.SETTING, scope = "account", type = "bool", default = true,
             label = "Boss loot panel",
             help = "While you fight a boss, lists the drops you have seen from it before, your role's upgrades first. "
-                .. "It only shows them: it never rolls or picks for you.",
+                .. "It only shows them: it never rolls or picks for you. "
+                .. "What is rolled or looted in the 3 minutes after a kill counts as that boss's; "
+                .. "the 3 minutes are a first guess.",
             -- A topic of Settings/Topics.lua (zflow-settings-groups, N56).
             group = "party",
             synonyms = { "boss", "loot", "drops", "dungeon", "upgrade", "panel" },
@@ -755,6 +768,10 @@ function B.Declare(k, packs)
         ticks = { { every = B.TICK, when = "always", run = function() evaluate() end } },
         start = function(c)
             ctx = c
+            -- What each event does; they are registered from B.EVENTS below,
+            -- the one list (MyBuddy PT-1): an event missing from it is not heard.
+            local handlers = {}
+            local function on(event, fn, same) handlers[event] = { fn = fn, same = same } end
             on("ENCOUNTER_START", function(id, name)
                 win = nil
                 if finite(id) then enc = { id = id, name = words(name) and name or nil } end
@@ -783,6 +800,10 @@ function B.Declare(k, packs)
                 local link = read("lootLine", line)
                 if link ~= nil then teach(to.key, link) end
             end)
+            for _, event in ipairs(B.EVENTS) do
+                local h = handlers[event]
+                if h then listen(event, h.fn, h.same) end
+            end
             if type(c.client.onLootRoll) == "function" then
                 local ok, cancel = pcall(c.client.onLootRoll, function(_, link)
                     -- Reads the item offered. Never rolls, and shows nothing on the roll.

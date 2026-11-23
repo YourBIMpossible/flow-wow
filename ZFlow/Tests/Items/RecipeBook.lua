@@ -35,9 +35,13 @@ end
 
 local function book(c) return at(c.saved(ns.id.charDB), "learned", "facts", "recipeBook") end
 
+-- Section 245 (RB2-1): the book reads once the window's events stop.
+local function settle(c, addon) c.advance(addon.RecipeBook.SETTLE, 1) end
+
 local function seen(c, addon, r)
     c.setRecipes(r)
     c.fire(addon.RecipeBook.EVENT)
+    settle(c, addon)
 end
 
 local function tailoring()
@@ -120,11 +124,15 @@ end
 
 -- Section 233 -------------------------------------------------------------------
 
--- The classic window only: no C_TradeSkillUI answer, these rows.
-local function classic(c, addon, rows)
+-- The classic window only: no C_TradeSkillUI answer, these rows. how:
+-- what the window says of them (section 245: collapsed, filtered, whole).
+local function classic(c, addon, rows, how)
+    how = how or {}
     c.setRecipes(nil)
-    c.setTradeSkillRows({ name = "Tailoring", rows = rows })
+    c.setTradeSkillRows({ name = "Tailoring", rows = rows, collapsed = how.collapsed, filtered = how.filtered,
+                          whole = how.whole })
     c.fire(addon.RecipeBook.EVENT)
+    settle(c, addon)
 end
 
 -- GR2-1. Fails before: the classic rows were not read, so nothing was saved.
@@ -211,7 +219,9 @@ tests["recipe book GR2-4: a read that changes nothing writes nothing"] = functio
         return real(self, scope, path, ...)
     end
     c.fire(addon.RecipeBook.EVENT)
+    settle(c, addon)
     c.fire(addon.RecipeBook.EVENT)
+    settle(c, addon)
     t.eq(writes, 0, "the same window twice")
     t.eq(addon.recipeBook.last().unchanged, true)
     t.eq(addon.recipeBook.last().ok, true)
@@ -261,6 +271,7 @@ tests["recipe book RF-3: a recipe read in part is kept, said partial, and left o
     t.eq(addon.RecipeBook.For(addon, BOLT), nil)
     c.setTradeSkillSchematic(2, { makes = BOLT, yield = 1, mats = { [LINEN] = 2 } })
     c.fire(addon.RecipeBook.EVENT)
+    settle(c, addon)
     t.eq(book(c), { ["Bolt of Linen Cloth"] = CLASSIC_BOLT }, "read whole later: the whole one saved")
     t.eq(addon.RecipeBook.For(addon, BOLT), "Bolt of Linen Cloth")
 end
@@ -273,6 +284,100 @@ tests["recipe book RF-3: a recipe read in part does not write over the same reci
     t.eq(book(c), { ["Bolt of Linen Cloth"] = CLASSIC_BOLT })
     t.eq(addon.recipeBook.last().ok, true)
     t.eq(addon.RecipeBook.For(addon, BOLT), "Bolt of Linen Cloth")
+end
+
+-- Section 245 -------------------------------------------------------------------
+
+local ROBE = 6238
+local CLASSIC_ROBE = { makes = ROBE, yield = 1, mats = { [LINEN] = 3 }, profession = "Tailoring" }
+
+-- RB2-2. Fails at 1b4e461f: every row the classic window gave was read, so
+-- the read counted as every learned recipe and the robe, hidden under a
+-- collapsed header, was dropped as no longer learned (the fake had no
+-- collapsed, filtered or whole to give).
+tests["recipe book RB2-2: a classic read with rows hidden drops nothing"] = function(t)
+    local c, addon = start({ learned = { facts = { recipeBook = {
+        ["Bolt of Linen Cloth"] = CLASSIC_BOLT, ["Brown Linen Robe"] = CLASSIC_ROBE } } } })
+    c.setTradeSkillSchematic(2, { makes = BOLT, yield = 1, mats = { [LINEN] = 2 } })
+    local rows = { { index = 2, name = "Bolt of Linen Cloth" } }
+    classic(c, addon, rows, { collapsed = true })
+    t.eq(book(c)["Brown Linen Robe"], CLASSIC_ROBE, "a header collapsed: the robe stays")
+    t.eq(addon.recipeBook.last().ok, true)
+    classic(c, addon, rows, { collapsed = false, filtered = true })
+    t.eq(book(c)["Brown Linen Robe"], CLASSIC_ROBE, "a filter on: the robe stays")
+    classic(c, addon, rows)
+    t.eq(book(c)["Brown Linen Robe"], CLASSIC_ROBE, "the window says nothing either way: the robe stays")
+    classic(c, addon, rows, { collapsed = false, filtered = false, whole = true })
+    t.eq(book(c), { ["Bolt of Linen Cloth"] = CLASSIC_BOLT },
+        "the window says every learned recipe is shown: the robe is no longer learned")
+end
+
+-- Lead section 245 item 1 (LOW). Fails at 1b4e461f: the saved enchant has
+-- no product, so it did not read as whole, and the part read wrote over it.
+tests["recipe book: a recipe read in part does not write over a saved enchant"] = function(t)
+    local saved = { yield = 1, mats = { [LINEN] = 1 }, difficulty = "optimal", profession = "Tailoring" }
+    local c, addon = start({ learned = { facts = { recipeBook = { [ENCHANT] = saved } } } })
+    c.setTradeSkillSchematic(3, { name = ENCHANT, yield = 1, mats = {}, partial = true })
+    classic(c, addon, { { index = 3, name = ENCHANT } })
+    t.eq(book(c)[ENCHANT], saved, "the saved enchant kept")
+    t.eq(addon.recipeBook.last().ok, true)
+end
+
+-- GR2-4 (in part). Fails at 1b4e461f: two same-name rows with no id were
+-- keyed in row order, so the same two recipes in the other order swapped
+-- "name" and "name (2)", and the book was written again.
+tests["recipe book GR2-4: two recipes of one name keep their keys in any row order"] = function(t)
+    local c, addon = start()
+    local A = { makes = BOLT, yield = 1, mats = { [LINEN] = 2 } }
+    local B = { makes = BANDAGE, yield = 1, mats = { [LINEN] = 1 } }
+    local rows = { { index = 2, name = "Bolt of Linen Cloth" }, { index = 3, name = "Bolt of Linen Cloth" } }
+    c.setTradeSkillSchematic(2, A)
+    c.setTradeSkillSchematic(3, B)
+    local want = {
+        ["Bolt of Linen Cloth"] = { makes = BANDAGE, yield = 1, mats = { [LINEN] = 1 }, profession = "Tailoring" },
+        ["Bolt of Linen Cloth (2)"] = { makes = BOLT, yield = 1, mats = { [LINEN] = 2 }, profession = "Tailoring" },
+    }
+    classic(c, addon, rows)
+    t.eq(book(c), want, "ordered by what each makes and takes, not by row")
+    t.eq(addon.recipeBook.last().collided, 1)
+    c.setTradeSkillSchematic(2, B)
+    c.setTradeSkillSchematic(3, A)
+    classic(c, addon, rows)
+    t.eq(book(c), want, "the other row order: the same keys")
+    t.eq(addon.recipeBook.last().unchanged, true, "nothing written")
+end
+
+-- RB4-1 (lead section 253, MyBuddy LOW). Fails at 8aa468bd: the client
+-- never says whole, so a classic read never dropped a recipe no longer
+-- learned, even with every header open and no filter on; legacy Flow
+-- replaced the list each read. Now a classic read with every header
+-- expanded (collapsed = false) and both filters on all (filtered = false)
+-- counts as every learned recipe of that profession. Made-up rows.
+tests["recipe book RB4-1: every header open and no filter: what is no longer learned is dropped"] = function(t)
+    local bandage = { id = BANDAGE_ID, makes = BANDAGE, yield = 1, mats = { [LINEN] = 1 }, profession = "First Aid" }
+    local c, addon = start({ learned = { facts = { recipeBook = {
+        ["Bolt of Linen Cloth"] = CLASSIC_BOLT, ["Brown Linen Robe"] = CLASSIC_ROBE, ["Linen Bandage"] = bandage } } } })
+    c.setTradeSkillSchematic(2, { makes = BOLT, yield = 1, mats = { [LINEN] = 2 } })
+    local rows = { { index = 2, name = "Bolt of Linen Cloth" } }
+    classic(c, addon, rows, { collapsed = false })
+    t.eq(book(c)["Brown Linen Robe"], CLASSIC_ROBE, "filters not known: the robe stays")
+    classic(c, addon, rows, { filtered = false })
+    t.eq(book(c)["Brown Linen Robe"], CLASSIC_ROBE, "headers not known: the robe stays")
+    classic(c, addon, rows, { collapsed = false, filtered = false })
+    t.eq(addon.recipeBook.last().ok, true)
+    t.eq(book(c), { ["Bolt of Linen Cloth"] = CLASSIC_BOLT, ["Linen Bandage"] = bandage },
+        "nothing hidden, no filter: the robe is no longer learned; another profession's recipe stays")
+end
+
+-- RB4-1: a row whose schematic can't be read leaves the read short, so it
+-- still drops nothing, headers open and no filter or not.
+tests["recipe book RB4-1: a row not read: nothing dropped"] = function(t)
+    local c, addon = start({ learned = { facts = { recipeBook = {
+        ["Bolt of Linen Cloth"] = CLASSIC_BOLT, ["Brown Linen Robe"] = CLASSIC_ROBE } } } })
+    c.setTradeSkillSchematic(2, { makes = BOLT, yield = 1, mats = { [LINEN] = 2 } })
+    classic(c, addon, { { index = 2, name = "Bolt of Linen Cloth" }, { index = 3, name = "Unread" } },
+        { collapsed = false, filtered = false })
+    t.eq(book(c)["Brown Linen Robe"], CLASSIC_ROBE, "one row unread: the robe stays")
 end
 
 return tests

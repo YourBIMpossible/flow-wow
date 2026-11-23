@@ -35,7 +35,10 @@ local _, ns = ...
 --   SettingsOptions.Declare(k) -> api
 --     api.open([to]) -> true when the game's Options was asked to open at
 --                   the page; false on a client with no page (the text
---                   panel, UI/SettingsPanel.lua, is the fallback there).
+--                   panel, UI/SettingsPanel.lua, is the fallback there);
+--                   false and why (LOCKED, LOCK_UNKNOWN) when the game's
+--                   combat lock is on or cannot be read: then the Options
+--                   are not asked to open at all.
 --                   to = { topic = id } or { query = text } goes there first.
 --   ns.use(SettingsOptions.NAME) -> { Open = api.open }
 --
@@ -56,8 +59,24 @@ O.JUMP = "Open topic"
 O.SAVED_FOR = "Saved for "
 O.FOUND = " found for "
 O.NONE = "There are no settings yet."
+-- Why the game's Options were not asked to open (lead section 247): the
+-- game's own windows are not opened while its lock is on, and a lock that
+-- cannot be read counts as on.
+O.LOCKED = "the game's Options can't be opened in combat"
+O.LOCK_UNKNOWN = "the game won't say whether you are in combat, so its Options stay closed"
 
 local DRAW = { toggle = "toggle", choice = "choice", number = "number", text = "text", place = "info" }
+
+-- Row N57: a number row with both limits is drawn as a slider (the client
+-- draws the stepper when it cannot make one); any other number row is the
+-- stepper. The page's two buttons stand under this topic.
+O.ACTIONS_TOPIC = "general"
+local function drawKind(e)
+    if e.kind == "number" and type(e.min) == "number" and type(e.max) == "number" and e.max > e.min then
+        return "slider"
+    end
+    return DRAW[e.kind] or "info"
+end
 
 local function settingRow(e, found)
     local under = O.SAVED_FOR .. tostring(e.savedFor)
@@ -67,7 +86,7 @@ local function settingRow(e, found)
     end
     if e.because then under = under .. " - " .. e.because end
     return {
-        kind = DRAW[e.kind] or "info",
+        kind = drawKind(e),
         key = e.key,
         label = e.label or e.key,
         value = e.value,
@@ -75,6 +94,8 @@ local function settingRow(e, found)
         choices = e.choices,
         min = e.min,
         max = e.max,
+        step = e.step,
+        help = e.help,
         settable = e.settable == true,
         why = e.why,
         scope = e.scope,
@@ -86,27 +107,53 @@ local function settingRow(e, found)
     }
 end
 
-function O.Rows(k)
+-- A row with a window of its own gets that button in place of Open topic.
+local function withOpener(row, e)
+    if e.opens then row.jump, row.jumpText, row.jumpKind = e.key, e.opens, "open" end
+    return row
+end
+
+-- keys (optional): UI/SettingsKeys.lua's rows, shown on their topic and
+-- when a search finds them (N57).
+function O.Rows(k, keys)
     local page = ns.SettingsPage.Page(k)
     local rows = {
         { kind = "search", label = O.SEARCH, value = page.query or "", clear = O.CLEAR },
         { kind = "topics", topics = page.topics },
     }
+    local keyRows
+    if type(keys) == "table" then
+        local SK = ns.SettingsKeys
+        local onTopic = page.mode ~= "search" and page.topic ~= nil and page.topic.id == SK.GROUP
+        local found = page.mode == "search" and keys.matches(page.query)
+        if onTopic or found then keyRows = keys.rows() end
+    end
     if page.mode == "search" then
-        if #page.results == 0 then
+        local n = #page.results
+        if keyRows then n = n + #ns.SettingsKeys.SLOTS end
+        if n == 0 then
             rows[#rows + 1] = { kind = "note", text = page.none }
         else
-            rows[#rows + 1] = { kind = "group", text = #page.results .. O.FOUND .. '"' .. page.query .. '"' }
-            for _, e in ipairs(page.results) do rows[#rows + 1] = settingRow(e, true) end
+            rows[#rows + 1] = { kind = "group", text = n .. O.FOUND .. '"' .. page.query .. '"' }
+            for _, e in ipairs(page.results) do rows[#rows + 1] = withOpener(settingRow(e, true), e) end
         end
     elseif page.topic then
         rows[#rows + 1] = { kind = "group", text = page.topic.name }
         for _, section in ipairs(page.topic.sections) do
             if section.name then rows[#rows + 1] = { kind = "section", text = section.name } end
-            for _, e in ipairs(section.rows) do rows[#rows + 1] = settingRow(e, false) end
+            for _, e in ipairs(section.rows) do rows[#rows + 1] = withOpener(settingRow(e, false), e) end
         end
     else
         rows[#rows + 1] = { kind = "note", text = O.NONE }
+    end
+    -- The page's own buttons (SettingsPage.Actions), under one topic only.
+    if page.mode == "topic" and page.topic and page.topic.id == O.ACTIONS_TOPIC
+        and type(ns.SettingsPage.Actions) == "function" then
+        rows[#rows + 1] = { kind = "actions", actions = ns.SettingsPage.Actions(k) }
+    end
+    if keyRows then
+        rows[#rows + 1] = { kind = "section", text = ns.SettingsKeys.SECTION }
+        for _, r in ipairs(keyRows) do rows[#rows + 1] = r end
     end
     return rows, page
 end
@@ -115,6 +162,12 @@ function O.Declare(k)
     local api = {}
     local page, ctx, none
     local cancels, watched = {}, {}
+    -- N57: the rotation key's rows; the text page reads them too.
+    local keys
+    if ns.SettingsKeys then
+        keys = ns.SettingsKeys.New(k)
+        k.keysPage = keys
+    end
 
     local act, nav, draw
     -- A row declared after login is followed too, from the next draw on.
@@ -132,7 +185,7 @@ function O.Declare(k)
     draw = function(statusText)
         if not page or not ctx then return end
         watch()
-        local rows, view = O.Rows(k)
+        local rows, view = O.Rows(k, keys)
         page.draw(rows, act, nav)
         if statusText then
             page.status(statusText)
@@ -146,6 +199,10 @@ function O.Declare(k)
             draw(O.IN_COMBAT)
             return false, O.IN_COMBAT
         end
+        -- A number a control sent is put on its row's steps first.
+        local row
+        if type(key) == "string" then row = k.settings:row(key) end
+        if row then value = ns.SettingsPage.Snap(row, value) end
         local ok, why = ns.SettingsPage.Set(k, key, value)
         if ok then
             draw(O.SAVED .. tostring(key))
@@ -161,11 +218,38 @@ function O.Declare(k)
             if not P.Goto(k, value) then return false end
         elseif kind == "search" then
             P.Find(k, value)
+        elseif kind == "open" then
+            -- The button of a row with a window of its own.
+            return P.Open(k, value)
         else
             return false
         end
         draw("")
         return true
+    end
+
+    -- A press on one of the page's own buttons (row N57). It goes the way
+    -- a change goes: refused in combat lockdown, done by SettingsPage.Act
+    -- through the one checked set, and the page is drawn again with what it
+    -- said. -> true when the button was one of the page's and ran.
+    local plainNav = nav
+    nav = function(kind, value)
+        if kind ~= "action" then return plainNav(kind, value) end
+        -- A key row's button (UI/SettingsKeys.lua): its own lock check, it
+        -- says what it did and redraws.
+        if type(value) == "string" and value:sub(1, 5) == "keys." then
+            if not keys then return false end
+            return keys.press(value)
+        end
+        local client = ctx and ctx.client
+        if client and type(client.combatLockdown) == "function" and client.combatLockdown() == true then
+            draw(O.IN_COMBAT)
+            return false, O.IN_COMBAT
+        end
+        local n, said = ns.SettingsPage.Act(k, value)
+        if n == nil then return false end
+        draw(tostring(said))
+        return true, said
     end
 
     -- The client's page, asked for once it can be; nil when there is none
@@ -192,11 +276,20 @@ function O.Declare(k)
     end
 
     function api.open(to)
-        if not ensure() then return false end
         if type(to) == "table" then
             if to.topic ~= nil then ns.SettingsPage.Goto(k, to.topic) end
             if to.query ~= nil then ns.SettingsPage.Find(k, to.query) end
         end
+        if none or not ctx then return false end
+        -- Nothing of the game's is made or opened unless the lock is a
+        -- plain false: true is a fight, anything else is not known.
+        local lock
+        if type(ctx.client.combatLockdown) == "function" then lock = ctx.client.combatLockdown() end
+        if lock ~= false then
+            if lock == true then return false, O.LOCKED end
+            return false, O.LOCK_UNKNOWN
+        end
+        if not ensure() then return false end
         local ok, opened = pcall(page.open)
         if not ok then
             k.problems:add(O.NAME, "open", opened)
@@ -213,6 +306,7 @@ function O.Declare(k)
         provides = { Open = api.open },
         start = function(c)
             ctx = c
+            if keys then keys.attach(c.client, function(text) draw(text) end) end
             -- A value changed elsewhere (/zflow setting) shows at once on an
             -- open page: draw() follows every row it has drawn.
             if ensure() then watch() end

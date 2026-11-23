@@ -492,7 +492,8 @@ function ns.make.client(env)
     -- difficulty is the window colour (optimal, medium, easy, trivial) from
     -- relativeDifficulty 0 to 3, and skillUps is numSkillUps when it is a
     -- whole count; each is left out when the client gives anything else.
-    -- Needs game test: relativeDifficulty and numSkillUps on 16001 (P-PROF).
+    -- Needs game test: relativeDifficulty and numSkillUps on 16001 (P-PROF);
+    -- captured as the Diag fields recipeDifficulty and recipeSkillUps.
     -- nil when no profession window is open or the client will not say.
     -- Seen in game on 16001 (Blacksmithing): for a moment after the window
     -- opens the client says "ready" but is still changing its data source,
@@ -571,6 +572,12 @@ function ns.make.client(env)
         return { makes = makes, yield = yield, mats = mats }
     end
 
+    -- P-PROF (N23): the colour words the classic window gives a recipe row.
+    -- Needs game test: the words on 16001. Section 245 (lead item 1, LOW):
+    -- one table for tradeSkillRows and tradeSkillSchematic; a word not in
+    -- it is left out, never saved as it came.
+    local ROW_DIFFICULTY = { optimal = "optimal", medium = "medium", easy = "easy", trivial = "trivial", difficult = "difficult" }
+
     -- Section 231 item 1: the fallback for recipeSchematic when the client
     -- has no C_TradeSkillUI.GetRecipeSchematic (not in CLIENT-NAMES-16001).
     -- The classic reads of the open trade skill window, by row index, not
@@ -581,7 +588,8 @@ function ns.make.client(env)
     -- of GetTradeSkillReagentInfo(index, r) for how many a craft takes.
     -- Section 238 (RF-1 to RF-3, as Flow's readClassic in
     -- Modules/Crafting/Recipes.lua): GetTradeSkillInfo(index) first, for the
-    -- row's name and kind (its difficulty); a "header" or "subheader" row is
+    -- row's name and kind (its difficulty, a ROW_DIFFICULTY word or left
+    -- out); a "header" or "subheader" row is
     -- no recipe: nil (RF-2). A product link that is no item link (an
     -- enchant) gives makes nil, the reagents kept (RF-1); no product link
     -- yet gives makes nil and partial. A reagent whose item or count is not
@@ -636,7 +644,8 @@ function ns.make.client(env)
                 partial = true
             end
         end
-        return { name = name, difficulty = kind, makes = makes, yield = yield, mats = mats, partial = partial }
+        return { name = name, difficulty = ROW_DIFFICULTY[kind], makes = makes, yield = yield, mats = mats,
+                 partial = partial }
     end
 
     -- Section 233 (GR2-1): the rows of the classic trade skill window, for
@@ -647,12 +656,33 @@ function ns.make.client(env)
     -- Every other row is a recipe the player has learned. Only what the
     -- window shows: a collapsed header hides its rows. Section 238 (RF-2):
     -- each row keeps its kind as its difficulty, as Flow did.
-    --   { name =, skill =, max =, rows = { { index = i, name =, difficulty = } } }
+    --   { name =, skill =, max =, rows = { { index = i, name =, difficulty = } },
+    --     collapsed =, filtered = }   (section 245, below)
     -- Anything that can't be read makes the whole answer nil: never a
     -- shorter list. First guesses, not seen in game.
-    -- P-PROF (N23): the colour words the classic window gives a recipe row.
-    -- Needs game test: the words on 16001.
-    local ROW_DIFFICULTY = { optimal = "optimal", medium = "medium", easy = "easy", trivial = "trivial", difficult = "difficult" }
+    -- Section 245 (RB2-2): whether the rows are every learned recipe.
+    --   collapsed = true when a header's fourth GetTradeSkillInfo answer
+    --     (isExpanded) is false; false when every header says true (or 1);
+    --     nil when one says anything else (nil may be a collapsed header
+    --     on clients that answer 1/nil). No header: false.
+    --   filtered = false when GetTradeSkillSubClassFilter(0) and
+    --     GetTradeSkillInvSlotFilter(0) both say "all" (true or 1); true
+    --     when one answers anything else; nil when one is missing, fails or
+    --     is secret.
+    --   whole is never set here: no reliable read of the "have materials"
+    --   box or the name search box is known, so whether they hide rows is
+    --   unknown, and RecipeBook drops nothing from this read.
+    --   Section 253 (RB4-1): RecipeBook now counts collapsed = false and
+    --   filtered = false as every learned recipe, as legacy Flow did.
+    -- All first guesses, needs game test (Core/Diag.lua NAMES lists the
+    -- names, and the candidates for the two unknown reads).
+    local function allShown(fn)
+        if fn == nil then return nil end
+        local ok, on = call(fn, 0)
+        if not ok then return nil end
+        if on ~= nil and hidden(on) then return nil end
+        return on == true or on == 1
+    end
 
     function c.tradeSkillRows()
         local okLine, name, skill, max = call(env.GetTradeSkillLine)
@@ -661,16 +691,28 @@ function ns.make.client(env)
         end
         local okN, n = call(env.GetNumTradeSkills)
         if not okN or not wholeCount(n) or n < 1 or n == math.huge then return nil end
-        local rows = {}
+        local rows, collapsed = {}, false
         for i = 1, n do
-            local okInfo, rowName, kind = call(env.GetTradeSkillInfo, i)
+            local okInfo, rowName, kind, _, expanded = call(env.GetTradeSkillInfo, i)
             if not okInfo or type(kind) ~= "string" or hidden(kind) then return nil end
             if kind ~= "header" and kind ~= "subheader" then
                 if type(rowName) ~= "string" or hidden(rowName) or rowName == "" then return nil end
                 rows[#rows + 1] = { index = i, name = rowName, difficulty = ROW_DIFFICULTY[kind] }
+            elseif expanded == nil or hidden(expanded) then
+                if collapsed ~= true then collapsed = nil end
+            elseif expanded == false then
+                collapsed = true
+            elseif expanded ~= true and expanded ~= 1 then
+                if collapsed ~= true then collapsed = nil end
             end
         end
-        local out = { name = name, rows = rows }
+        local out = { name = name, rows = rows, collapsed = collapsed }
+        local sub, slot = allShown(env.GetTradeSkillSubClassFilter), allShown(env.GetTradeSkillInvSlotFilter)
+        if sub == false or slot == false then
+            out.filtered = true
+        elseif sub == true and slot == true then
+            out.filtered = false
+        end
         if wholeCount(skill) and not hidden(skill) then out.skill = skill end
         if wholeCount(max) and not hidden(max) then out.max = max end
         return out
@@ -1446,21 +1488,36 @@ function ns.make.client(env)
         return nil
     end
 
-    -- GT-1. Is any minimap tracking on (Flow's X.AnyTracked)? true / false;
-    -- nil when it cant be told. First guess; not seen in game.
+    -- GT-1. Is any minimap tracking you chose on (Flow's X.AnyTracked)?
+    -- true / false; nil when it cant be told. First guess; not seen in game.
+    -- GK-2: the town kinds (the client's type or category "townsfolk" or
+    -- "other": Flight Master, Repair, Mailbox) are no spell you cast and are
+    -- left out, as Flow's Compat.lua TrackingEntry. A kind not named counts
+    -- as yours. GK-3: one of yours whose active is not given or hidden makes
+    -- the answer nil (not known), never false, unless another is on.
+    local TOWN_TRACKING = { townsfolk = true, other = true }
     function c.anyTracking()
         local M = env.C_Minimap
         if type(M) == "table" then
             local okN, n = call(M.GetNumTrackingTypes)
             if okN and type(n) == "number" and not hidden(n) then
+                local unknown = false
                 for i = 1, n do
-                    local ok, a, _, active = call(M.GetTrackingInfo, i)
-                    if ok then
-                        local on = active
-                        if type(a) == "table" then on = a.active end
-                        if on == true and not hidden(on) then return true end
+                    local ok, a, _, active, category = call(M.GetTrackingInfo, i)
+                    if ok and a ~= nil then
+                        local on, kind = active, category
+                        if type(a) == "table" then on, kind = a.active, a.type end
+                        if kind ~= nil and hidden(kind) then kind = nil end
+                        if not (type(kind) == "string" and TOWN_TRACKING[kind]) then
+                            if on == nil or hidden(on) then
+                                unknown = true
+                            elseif on then
+                                return true
+                            end
+                        end
                     end
                 end
+                if unknown then return nil end
                 return false
             end
         end
@@ -3920,7 +3977,7 @@ function ns.make.client(env)
         local h, showFns, built = {}, {}, nil
         local function build()
             if built then return built end
-            local b = { checks = {}, buttons = {}, labels = {}, edits = {}, n = {} }
+            local b = { checks = {}, buttons = {}, labels = {}, edits = {}, sliders = {}, n = {} }
             local okS, scroll = call(env.CreateFrame, "ScrollFrame", nil, canvas, "UIPanelScrollFrameTemplate")
             if not okS or type(scroll) ~= "table" then return nil end
             method(scroll, "SetPoint", "TOPLEFT", canvas, "TOPLEFT", 0, -40)
@@ -3979,6 +4036,78 @@ function ns.make.client(env)
             return w
         end
 
+        -- A slider row (row N57, lead section 249): a Slider frame made from
+        -- plain parts, as legacy Flow's page made its own on this client
+        -- (Modules/Settings.lua slider: no game template, since which slider
+        -- templates a client has varies). -> true when it was drawn; false,
+        -- with nothing drawn, when the row has no two limits or the client
+        -- gives no Slider frame or one without a slider's calls: the caller
+        -- then draws the minus and plus stepper.
+        -- Dragging moves the value shown beside it; changed(key, value) is
+        -- told once, when the mouse button is let go, with the value put on
+        -- the row's step and inside its limits. Setting it from a draw
+        -- tells nothing. First guesses, not seen in game: Slider
+        -- SetOrientation, SetThumbTexture, GetThumbTexture, SetMinMaxValues,
+        -- SetValueStep, SetObeyStepOnDrag, SetValue, OnValueChanged (self,
+        -- value) and OnMouseUp, as legacy used them.
+        local function sliderRow(b, r, text, key, can, y, changed)
+            if type(r.min) ~= "number" or type(r.max) ~= "number" or type(r.value) ~= "number" then return false end
+            if r.max <= r.min or r.max ~= r.max or r.min ~= r.min then return false end
+            local step = 1
+            if type(r.step) == "number" and r.step > 0 then step = r.step end
+            local w = take(b, "sliders", function()
+                local ok, f = call(env.CreateFrame, "Slider", nil, b.body)
+                if not ok or f == nil then return nil end
+                if not method(f, "SetOrientation", "HORIZONTAL") then return nil end
+                if not method(f, "SetThumbTexture", "Interface\\Buttons\\WHITE8X8") then return nil end
+                method(f, "EnableMouse", true)
+                local okT, track = method(f, "CreateTexture", nil, "BACKGROUND")
+                if okT and track ~= nil then
+                    method(track, "SetPoint", "LEFT", f, "LEFT", 0, 0)
+                    method(track, "SetPoint", "RIGHT", f, "RIGHT", 0, 0)
+                    method(track, "SetHeight", 4)
+                    method(track, "SetColorTexture", 1, 1, 1, 0.2)
+                end
+                local okG, thumb = method(f, "GetThumbTexture")
+                if okG and thumb ~= nil then
+                    method(thumb, "SetSize", 8, 18)
+                    method(thumb, "SetVertexColor", 1, 0.82, 0.25, 1)
+                end
+                return f
+            end)
+            if not w then return false end
+            -- The last draw's script is taken off first: setting the value
+            -- below must not write into a label that row no longer has.
+            method(w, "SetScript", "OnValueChanged", nil)
+            method(w, "SetScript", "OnMouseUp", nil)
+            if not (method(w, "SetMinMaxValues", r.min, r.max) and method(w, "SetValueStep", step)
+                and method(w, "SetValue", r.value)) then
+                method(w, "Hide")
+                return false
+            end
+            method(w, "SetObeyStepOnDrag", true)
+            method(w, "SetSize", 150, 18)
+            method(w, "SetPoint", "TOPLEFT", b.body, "TOPLEFT", 220, y - 2)
+            if can then method(w, "Enable") else method(w, "Disable") end
+            label(b, text, 16, y - 2)
+            local shownValue = label(b, tostring(r.value), 378, y - 2)
+            local pending = r.value
+            method(w, "SetScript", "OnValueChanged", function(_, v)
+                if type(v) ~= "number" or hidden(v) or v ~= v then return end
+                v = r.min + math.floor((v - r.min) / step + 0.5) * step
+                if v < r.min then v = r.min end
+                if v > r.max then v = r.max end
+                v = math.floor(v * 1000000 + 0.5) / 1000000
+                pending = v
+                if shownValue then method(shownValue, "SetText", tostring(v)) end
+            end)
+            method(w, "SetScript", "OnMouseUp", function()
+                if not can or pending == r.value then return end
+                changed(key, pending)
+            end)
+            return true
+        end
+
         -- Topics and search (lead sections 238, 239). nav(kind, value) is told
         -- "topic" and its id, or "search" and the typed text ("" for Clear);
         -- it changes no setting. More row kinds:
@@ -3986,13 +4115,19 @@ function ns.make.client(env)
         --   { kind = "topics", topics = { { id, name, on }, ... } }
         --                                    a button each, wrapped in lines
         --   { kind = "section", text }, { kind = "note", text }   one line
+        --   { kind = "slider", key, label, value, min, max, step, settable, why }
+        --                                    sliderRow above, else the stepper
+        --   { kind = "actions", actions = { { key, label }, ... } }
+        --                                    a button each; a press asks
+        --                                    nav("action", key), never act
         -- and on a setting row: under (a small line below it), jump and
-        -- jumpText (a button on that line that asks nav for topic `jump`).
+        -- jumpText (a button on that line that asks nav for topic `jump`),
+        -- help (the row's description, small, wrapped, below those).
         -- First guesses as the rest of the page: not seen in game.
         function h.draw(rows, act, nav)
             local b = build()
             if not b then return false end
-            for _, kind in ipairs({ "checks", "buttons", "labels", "edits" }) do
+            for _, kind in ipairs({ "checks", "buttons", "labels", "edits", "sliders" }) do
                 for _, w in ipairs(b[kind]) do if w then method(w, "Hide") end end
                 b.n[kind] = 0
             end
@@ -4047,6 +4182,30 @@ function ns.make.client(env)
                         x = x + width + 4
                     end
                     y = y - 28
+                elseif r.kind == "actions" then
+                    -- Added for the key rows (UI/SettingsKeys.lua), all
+                    -- optional: label (and shown) as a line above the
+                    -- buttons, an action's enabled = false greys it, and
+                    -- why stands after the buttons.
+                    if type(r.label) == "string" then
+                        local line = r.label
+                        if r.shown ~= nil then line = line .. ": " .. tostring(r.shown) end
+                        label(b, line, 16, y - 2)
+                        y = y - 20
+                    end
+                    local x = 8
+                    for _, action in ipairs(type(r.actions) == "table" and r.actions or {}) do
+                        local name, words = action.key, tostring(action.label or action.key or "")
+                        local width = 20 + 6 * #words
+                        button(b, words, x, y, width, function()
+                            if type(nav) == "function" then pcall(nav, "action", name) end
+                        end, false, action.enabled ~= false)
+                        x = x + width + 8
+                    end
+                    if type(r.why) == "string" and r.why ~= "" then
+                        label(b, r.why, x, y - 2, "GameFontDisableSmall")
+                    end
+                    y = y - 28
                 else
                     local text = tostring(r.label or r.key or "")
                     local can = r.settable == true
@@ -4077,7 +4236,10 @@ function ns.make.client(env)
                                 choice == r.value, can)
                             x = x + width + 4
                         end
-                    elseif r.kind == "number" then
+                    elseif r.kind == "slider" and sliderRow(b, r, text, key, can, y, changed) then
+                        -- Drawn as a slider. One that could not be made
+                        -- falls through to the stepper below.
+                    elseif r.kind == "number" or r.kind == "slider" then
                         label(b, text, 16, y - 2)
                         local step = (type(r.step) == "number" and r.step > 0) and r.step or 1
                         local value = type(r.value) == "number" and r.value or nil
@@ -4117,13 +4279,26 @@ function ns.make.client(env)
                         local ux = 40
                         if r.jump ~= nil then
                             local to = r.jump
+                            -- jumpKind "open": the row's own window, not a topic.
+                            local how = "topic"
+                            if r.jumpKind == "open" then how = "open" end
                             button(b, tostring(r.jumpText or ">"), 40, y - 22, 90, function()
-                                if type(nav) == "function" then pcall(nav, "topic", to) end
+                                if type(nav) == "function" then pcall(nav, how, to) end
                             end, false, true)
                             ux = 136
                         end
                         label(b, r.under, ux, y - 24, "GameFontDisableSmall")
                         y = y - (r.jump ~= nil and 22 or 14)
+                    end
+                    -- The row's description, wrapped over as many lines as
+                    -- its length asks for (a guess at 90 letters a line).
+                    if type(r.help) == "string" and r.help ~= "" then
+                        local fs = label(b, r.help, 40, y - 24, "GameFontDisableSmall")
+                        if fs then
+                            method(fs, "SetWidth", 500)
+                            method(fs, "SetJustifyH", "LEFT")
+                        end
+                        y = y - 12 * math.ceil(#r.help / 90) - 2
                     end
                     y = y - 26
                 end
@@ -6232,8 +6407,11 @@ function ns.make.client(env)
     -- it suggests for another player is only shown, never cast. First
     -- guesses, not seen in game on 16001. Each call under pcall; any answer
     -- not given, raised, secret or of the wrong kind is nil (not known).
-    -- Your own party only (party1..4; in a raid, your own subgroup).
+    -- Your party (party1..4), or in a raid every other raid member
+    -- (raid1..40, yourself left out by UnitIsUnit).
     local PARTY_UNITS = { party1 = true, party2 = true, party3 = true, party4 = true }
+    -- 243: in a raid, raid1..40 as well.
+    for i = 1, 40 do PARTY_UNITS["raid" .. i] = true end
 
     -- c.party() -> { { unit, name, class, role, power, dead, connected }, ... } | nil
     --   the other players in your party, in party order; {} when you are
@@ -6243,15 +6421,32 @@ function ns.make.client(env)
     --   role UnitGroupRolesAssigned; power UnitPowerType's first answer (a
     --   kind, never an amount); dead UnitIsDead; connected UnitIsConnected.
     --   The name is for the live caption only: never saved.
+    --   Lead section 243: in a raid (UnitExists("raid1")), every other raid
+    --   member, raid1..40, you left out by UnitIsUnit(unit, "player"); nil
+    --   when that cannot be told for one of them.
     function c.party()
         local out = {}
-        for i = 1, 4 do
-            local unit = "party" .. i
+        local inRaid = yesNo(call(env.UnitExists, "raid1"))
+        if inRaid == nil then return nil end
+        local prefix, last = "party", 4
+        if inRaid then prefix, last = "raid", 40 end
+        for i = 1, last do
+            local unit = prefix .. i
             local there = yesNo(call(env.UnitExists, unit))
             if there == nil then return nil end
+            if there and inRaid then
+                local you = yesNo(call(env.UnitIsUnit, unit, "player"))
+                if you == nil then return nil end
+                if you then there = false end
+            end
             if there then
                 local row = { unit = unit }
-                row.name = text(call(env.UnitName, unit))
+                -- 248 PP2-2: the realm (UnitName's second answer) and the
+                -- GUID, for memory of your casts only: never saved.
+                local okName, name, realm = call(env.UnitName, unit)
+                row.name = text(okName, name)
+                row.realm = text(okName, realm)
+                row.guid = text(call(env.UnitGUID, unit))
                 local okClass, _, class = call(env.UnitClass, unit)
                 row.class = text(okClass, class)
                 row.role = text(call(env.UnitGroupRolesAssigned, unit))
@@ -6321,6 +6516,28 @@ function ns.make.client(env)
             if type(h) ~= "table" or type(spec) ~= "table" or type(spec.name) ~= "string" then return h end
             local okFrame, frame = pcall(function() return env[spec.name] end)
             if not okFrame or frame == nil then return h end
+            -- Lead section 243: the look-only mark, a blue tint over the
+            -- picture (made the first time it is asked for). "look" puts
+            -- the picture's own colour back and shows the tint; any other
+            -- mark hides the tint and goes to the icon's own mark.
+            local plainMark, tint = h.mark, nil
+            function h.mark(look, ...)
+                if look == "look" then
+                    if tint == nil then
+                        local okMade, made = method(frame, "CreateTexture", nil, "OVERLAY")
+                        if not okMade or made == nil then return false end
+                        tint = made
+                        method(tint, "SetAllPoints", frame)
+                        method(tint, "SetColorTexture", 0.35, 0.65, 1, 0.45)
+                    end
+                    if type(plainMark) == "function" then pcall(plainMark, nil) end
+                    local okShow = method(tint, "Show")
+                    return okShow and true or false
+                end
+                if tint ~= nil then method(tint, "Hide") end
+                if type(plainMark) ~= "function" then return false end
+                return plainMark(look, ...)
+            end
             local line
             function h.caption(words)
                 local shown = type(words) == "string" and words ~= ""
@@ -6412,6 +6629,365 @@ function ns.make.client(env)
         return nil
     end
     -- ------------------------------------------------------------ end N55
+
+    -- ------------------------------------------------- text entry (N73)
+    -- c.textEntry(spec) -> h, or nil when the client cannot make one. A
+    -- small plain frame with a line of words and ONE edit box, for a line
+    -- the player types (UI/Feedback.lua). spec = { name = global frame
+    -- name or nil, width }. A new one is hidden.
+    --   h.ask(words, text, fn)  shows it with `words` above the box and
+    --                           `text` in it; fn(typed) is told once, when
+    --                           the player presses Enter, after it is hidden
+    --   h.show(false)           hides it; nothing is told
+    --   h.shown() -> true while it is on the screen
+    -- Escape hides it and tells nothing. As the copy box, it never takes
+    -- the keyboard by itself (auto-focus off: the player clicks in the box)
+    -- and gives focus back whenever it is hidden; a client that will not
+    -- turn auto-focus off gets none. It is a plain Frame and EditBox: no
+    -- secure template, no attribute, nothing of the game's is opened, and
+    -- what is typed goes only to fn. A first guess, not seen in game; every
+    -- name is one the copy box and the Options page already use
+    -- (CreateFrame, InputBoxTemplate, SetAutoFocus, OnEnterPressed,
+    -- OnEscapePressed, SetColorTexture).
+    function c.textEntry(spec)
+        spec = type(spec) == "table" and spec or {}
+        local name = spec.name
+        if type(name) ~= "string" or name == "" or env[name] ~= nil then name = nil end
+        local ok, f = call(env.CreateFrame, "Frame", name, env.UIParent)
+        if not ok or f == nil then return nil end
+        method(f, "Hide")
+        local width = tonumber(spec.width) or 420
+        method(f, "SetSize", width, 70)
+        method(f, "SetPoint", "CENTER", env.UIParent, "CENTER", 0, 140)
+        method(f, "SetFrameStrata", "DIALOG")
+        method(f, "EnableMouse", true)
+        local okB, back = method(f, "CreateTexture", nil, "BACKGROUND")
+        if okB and back ~= nil then
+            method(back, "SetAllPoints", f)
+            method(back, "SetColorTexture", 0.05, 0.05, 0.05, 0.92)
+        end
+        local okT, title = method(f, "CreateFontString", nil, "OVERLAY", "GameFontNormal")
+        if not okT then title = nil end
+        if title ~= nil then method(title, "SetPoint", "TOPLEFT", f, "TOPLEFT", 12, -10) end
+        local okE, edit = call(env.CreateFrame, "EditBox", nil, f, "InputBoxTemplate")
+        if not okE or edit == nil then return nil end
+        if not method(edit, "SetAutoFocus", false) then return nil end
+        method(edit, "SetSize", width - 32, 20)
+        method(edit, "SetPoint", "TOPLEFT", f, "TOPLEFT", 18, -36)
+
+        local h, told = {}, nil
+        local function close()
+            method(edit, "ClearFocus")
+            method(f, "Hide")
+        end
+        method(edit, "SetScript", "OnEnterPressed", function(self)
+            local okG, typed = method(self, "GetText")
+            local fn = told
+            told = nil
+            close()
+            if fn and okG and type(typed) == "string" and not hidden(typed) then pcall(fn, typed) end
+        end)
+        method(edit, "SetScript", "OnEscapePressed", function()
+            told = nil
+            close()
+        end)
+        method(f, "SetScript", "OnHide", function() method(edit, "ClearFocus") end)
+        function h.ask(words, text, fn)
+            told = nil
+            if type(fn) == "function" then told = fn end
+            local shownWords, shownText = "", ""
+            if type(words) == "string" then shownWords = words end
+            if type(text) == "string" then shownText = text end
+            if title ~= nil then method(title, "SetText", shownWords) end
+            method(edit, "SetText", shownText)
+            method(f, "Show")
+        end
+        function h.show(on)
+            if on then return end
+            told = nil
+            close()
+        end
+        function h.shown()
+            local okV, on = method(f, "IsVisible")
+            return okV and on == true
+        end
+        return h
+    end
+    -- --------------------------------------------- end text entry
+    -- ---------------------------------------------------------- N57 keys
+    -- Key bindings for the rotation key (lead section 249 item 2; Plexy's
+    -- note 1 of section 250, from CLIENT-NAMES-16001, wowless's 1.60.1 API
+    -- list and the game's own Blizzard_Keybindings.lua). Added at the end:
+    -- no handle above is changed. Called only from the settings page on the
+    -- player's own key press (UI/SettingsKeys.lua); nothing here binds on
+    -- load, on an event or on a timer.
+    --   reads (allowed in combat; nil when the client does not say):
+    --   c.bindingKeys(action) -> { key, ... }   GetBindingKey(action, nil,
+    --       context); an empty list when none is bound
+    --   c.bindingAction(key, forAction) -> action text, "" for none;
+    --       GetBindingAction(key, nil, context) - in wowless and the game's
+    --       panel, never asked of 16001 (a capture field)
+    --   The context is C_KeyBindings.GetBindingContextForAction(action),
+    --   passed when the client gives one (Plexy, change 1).
+    --   writes (acting; each refused with "lockdown" while InCombatLockdown
+    --   is not a plain false - not known counts as locked; false and why,
+    --   never an error):
+    --   c.setBindingClick(key, button) -> SetBindingClick(key, button, "LeftButton")
+    --   c.clearBinding(key, forAction) -> SetBinding(key, nil, context)
+    --   c.saveBindings()               -> SaveBindings(GetCurrentBindingSet())
+    --   c.overrideBindingClick(key, button) -> SetOverrideBindingClick(owner,
+    --       true, key, button, "LeftButton"): for this session only, the
+    --       game's own binding kept under it; owner is a frame of the client's
+    --   c.clearOverrideKeys()          -> ClearOverrideBindings(owner)
+    --   the overlay (show):
+    --   c.keyCapture(spec) -> h | nil   spec = { name } a full-screen button
+    --       that takes the keyboard (legacy Flow's Modules/Settings.lua:920:
+    --       EnableKeyboard, SetPropagateKeyboardInput(false), OnKeyDown)
+    --     h.start(text, onKey, onCancel) -> true   shows it with text; the
+    --       next key press: Escape -> onCancel(); a bare modifier
+    --       (IsKeyPressIgnoredForBinding, else the modifier keys) waits;
+    --       any other -> onKey(chord), the chord from
+    --       CreateKeyChordStringUsingMetaKeyState(key), else ALT-CTRL-SHIFT-
+    --       from the modifiers held. It hides itself before either is called.
+    --     h.stop()   hides it;  h.open() -> true while it waits
+    --   Mouse buttons are not taken. First guesses: not seen in game.
+    local function bindingContext(action)
+        local group = env.C_KeyBindings
+        if type(action) ~= "string" or type(group) ~= "table" then return nil end
+        local ok, context = call(group.GetBindingContextForAction, action)
+        if not ok or context == nil or hidden(context) then return nil end
+        return context
+    end
+    -- true only when the lock is read and is plainly off.
+    local function unlocked()
+        local ok, locked = call(env.InCombatLockdown)
+        return ok and locked == false
+    end
+    local function bindingCall(fn, ...)
+        if not unlocked() then return false, "lockdown" end
+        if type(fn) ~= "function" then return false, "absent" end
+        local ok, result = pcall(fn, ...)
+        if not ok then return false, tostring(result) end
+        if result == false then return false, "refused" end
+        return true
+    end
+
+    function c.bindingKeys(action)
+        if type(action) ~= "string" then return nil end
+        local context = bindingContext(action)
+        local got
+        if context ~= nil then
+            got = { call(env.GetBindingKey, action, nil, context) }
+        else
+            got = { call(env.GetBindingKey, action) }
+        end
+        if not got[1] then return nil end
+        local keys = {}
+        for i = 2, table.maxn(got) do
+            local key = got[i]
+            if type(key) == "string" and key ~= "" and not hidden(key) then keys[#keys + 1] = key end
+        end
+        return keys
+    end
+
+    function c.bindingAction(key, forAction)
+        if type(key) ~= "string" or key == "" then return nil end
+        local context = bindingContext(forAction)
+        local ok, action
+        if context ~= nil then
+            ok, action = call(env.GetBindingAction, key, nil, context)
+        else
+            ok, action = call(env.GetBindingAction, key)
+        end
+        if not ok or hidden(action) then return nil end
+        if action == nil then return "" end
+        if type(action) ~= "string" then return nil end
+        return action
+    end
+
+    function c.setBindingClick(key, button)
+        if type(key) ~= "string" or type(button) ~= "string" then return false, "no key" end
+        return bindingCall(env.SetBindingClick, key, button, "LeftButton")
+    end
+
+    function c.clearBinding(key, forAction)
+        if type(key) ~= "string" then return false, "no key" end
+        local context = bindingContext(forAction)
+        if context ~= nil then return bindingCall(env.SetBinding, key, nil, context) end
+        return bindingCall(env.SetBinding, key)
+    end
+
+    function c.saveBindings()
+        if not unlocked() then return false, "lockdown" end
+        local ok, set = call(env.GetCurrentBindingSet)
+        if not ok or type(set) ~= "number" then return false, "the game did not say which binding set is in use" end
+        return bindingCall(env.SaveBindings, set)
+    end
+
+    local overrideOwner
+    function c.overrideBindingClick(key, button)
+        if type(key) ~= "string" or type(button) ~= "string" then return false, "no key" end
+        if not unlocked() then return false, "lockdown" end
+        if not overrideOwner then overrideOwner = newFrame() end
+        if not overrideOwner then return false, "no frame" end
+        return bindingCall(env.SetOverrideBindingClick, overrideOwner, true, key, button, "LeftButton")
+    end
+
+    function c.clearOverrideKeys()
+        if not unlocked() then return false, "lockdown" end
+        if not overrideOwner then return true end
+        return bindingCall(env.ClearOverrideBindings, overrideOwner)
+    end
+
+    local MODIFIER_KEYS = { LSHIFT = true, RSHIFT = true, LCTRL = true, RCTRL = true, LALT = true, RALT = true,
+                            LMETA = true, RMETA = true, UNKNOWN = true }
+    local function bareModifier(key)
+        local ok, ignored = call(env.IsKeyPressIgnoredForBinding, key)
+        if ok then return ignored == true end
+        return MODIFIER_KEYS[key] == true
+    end
+    local function chordOf(key)
+        local ok, chord = call(env.CreateKeyChordStringUsingMetaKeyState, key)
+        if ok and type(chord) == "string" and chord ~= "" and not hidden(chord) then return chord end
+        local prefix = ""
+        for _, m in ipairs({ { env.IsAltKeyDown, "ALT-" }, { env.IsControlKeyDown, "CTRL-" },
+                             { env.IsShiftKeyDown, "SHIFT-" } }) do
+            local okM, down = call(m[1])
+            if okM and down == true then prefix = prefix .. m[2] end
+        end
+        return prefix .. key
+    end
+
+    function c.keyCapture(spec)
+        spec = type(spec) == "table" and spec or {}
+        local ok, f = call(env.CreateFrame, "Button", spec.name, env.UIParent)
+        if not ok or type(f) ~= "table" then return nil end
+        method(f, "SetAllPoints", env.UIParent)
+        method(f, "SetFrameStrata", "FULLSCREEN_DIALOG")
+        method(f, "EnableMouse", true)
+        local okT, label = method(f, "CreateFontString", nil, "OVERLAY", "GameFontNormalLarge")
+        if not okT then label = nil end
+        if label then method(label, "SetPoint", "CENTER", f, "CENTER", 0, 0) end
+        method(f, "Hide")
+        local h, waiting, onKey, onCancel = {}, false, nil, nil
+        local function finish()
+            waiting = false
+            method(f, "EnableKeyboard", false)
+            method(f, "Hide")
+        end
+        method(f, "SetScript", "OnKeyDown", function(_, key)
+            if not waiting or type(key) ~= "string" or hidden(key) then return end
+            if key == "ESCAPE" then
+                local cancel = onCancel
+                finish()
+                if type(cancel) == "function" then pcall(cancel) end
+                return
+            end
+            if bareModifier(key) then return end
+            local chord, take = chordOf(key), onKey
+            finish()
+            if type(take) == "function" then pcall(take, chord) end
+        end)
+        function h.start(text, keyFn, cancelFn)
+            onKey, onCancel, waiting = keyFn, cancelFn, true
+            if label then method(label, "SetText", type(text) == "string" and text or "") end
+            method(f, "EnableKeyboard", true)
+            method(f, "SetPropagateKeyboardInput", false)
+            method(f, "Show")
+            return true
+        end
+        function h.stop() finish() end
+        function h.open() return waiting end
+        return h
+    end
+    -- ------------------------------------------------------------ end N57
+
+    -- ------------------------------------------------------------ N67
+    -- Other add-ons' data, read at runtime only (research items 16 and 26).
+    -- Nothing is written to them, and nothing of theirs is copied into this
+    -- add-on's files or saved data: reading an installed add-on's tables
+    -- while the game runs copies none of its code or database. A missing
+    -- add-on, a shape not as expected, or a read that raises is nil.
+    local function unitNumber(v)
+        return type(v) == "number" and v == v and v >= 0 and v <= 1
+    end
+
+    -- GatherMate2's nodes on one map (a uiMapID), or nil:
+    --   { { kind, x, y, node } }  kind: one of GATHERMATE_KINDS; x, y 0..1;
+    --                             node: its name, nil when not said
+    -- Read through GatherMate2's global object GatherMate2: the methods
+    -- GetNodesForZone(map, kind) (an iterator of coord, nodeId),
+    -- DecodeLoc(coord) -> x, y and GetNameForNode(kind, nodeId) -> name.
+    -- First guesses from GatherMate2's public source as the research note
+    -- names it; not seen in game on 16001. At most GATHERMATE_NODES_MAX
+    -- rows. A map with none, GatherMate2 there: an empty list.
+    local GATHERMATE_KINDS = { "Mining", "Herb Gathering", "Fishing", "Treasure" }
+    local GATHERMATE_NODES_MAX = 500
+    function c.gatherMateNodes(map)
+        if type(map) ~= "number" then return nil end
+        local gm = env.GatherMate2
+        if type(gm) ~= "table" then return nil end
+        local out, any = {}, false
+        local ok = pcall(function()
+            for _, kind in ipairs(GATHERMATE_KINDS) do
+                local okI, iter, state, init = method(gm, "GetNodesForZone", map, kind)
+                if okI and type(iter) == "function" then
+                    any = true
+                    for coord, nodeId in iter, state, init do
+                        if #out >= GATHERMATE_NODES_MAX then return end
+                        local okL, x, y = method(gm, "DecodeLoc", coord)
+                        if okL and unitNumber(x) and unitNumber(y) then
+                            local row = { kind = kind, x = x, y = y }
+                            local okN, name = method(gm, "GetNameForNode", kind, nodeId)
+                            if okN and type(name) == "string" and name ~= "" then row.node = name end
+                            out[#out + 1] = row
+                        end
+                    end
+                end
+            end
+        end)
+        if not ok or not any then return nil end
+        return out
+    end
+
+    -- This character's attunements as Attune keeps them, or nil:
+    --   { { id, name, percent } }  percent 0..100, nil when not known
+    -- Read from Attune's globals: Attune_Data.attunes (rows with ID and
+    -- NAME) and its saved data Attune_DB.toons["<name>-<realm>"].attuned[ID].
+    -- The character's key is made here only to look the row up; it is never
+    -- handed out. First guesses from Attune (wow-forever @6f488c1,
+    -- AttuneData.lua) as the research note names it; not seen in game.
+    -- At most ATTUNE_ROWS_MAX rows.
+    local ATTUNE_ROWS_MAX = 60
+    function c.attuneProgress()
+        local data, db = env.Attune_Data, env.Attune_DB
+        if type(data) ~= "table" or type(db) ~= "table" then return nil end
+        local ok, out = pcall(function()
+            local list, toons = data.attunes, db.toons
+            if type(list) ~= "table" or type(toons) ~= "table" then return nil end
+            local attuned
+            local okN, name = call(env.UnitName, "player")
+            local okR, realm = call(env.GetRealmName)
+            if okN and okR and type(name) == "string" and type(realm) == "string" then
+                local toon = toons[name .. "-" .. realm]
+                if type(toon) == "table" and type(toon.attuned) == "table" then attuned = toon.attuned end
+            end
+            local rows = {}
+            for _, a in ipairs(list) do
+                if #rows >= ATTUNE_ROWS_MAX then break end
+                if type(a) == "table" and type(a.ID) == "number" and type(a.NAME) == "string" and a.NAME ~= "" then
+                    local row = { id = a.ID, name = a.NAME }
+                    local p = attuned and attuned[a.ID]
+                    if type(p) == "number" and p == p and p >= 0 and p <= 100 then row.percent = p end
+                    rows[#rows + 1] = row
+                end
+            end
+            return rows
+        end)
+        if not ok or type(out) ~= "table" then return nil end
+        return out
+    end
+    -- ------------------------------------------------------------ end N67
     return c
 end
 

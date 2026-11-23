@@ -48,6 +48,54 @@ G.ORDER = { tank = 1, healer = 2 }
 local ctx
 local kept   -- { client, pack, at, value }
 
+-- Lead section 243 item 5, as Flow had them (Engine.lua:1084, 1399-1420 at
+-- a529eea), kept in memory only (names are never saved):
+--   memory   [name][spell] = when your cast of it on them went through
+--            (UNIT_SPELLCAST_SENT names whom, UNIT_SPELLCAST_SUCCEEDED says
+--            it landed): when the game hides their buffs, the time left is
+--            the row's minutes less the time since
+--   bounced  [name][spell] = when the game refused it ("a more powerful
+--            spell is already active", UI_ERROR_MESSAGE right after your
+--            cast of it on them): counted as up for G.BOUNCE seconds
+G.BOUNCE = 300
+-- Lead section 248 PP2-1: the refusal is the client's own text of this
+-- name, as Flow compared it (Engine.lua:1084-1101 at a529eea); no English is
+-- written here. Not given: no refusal is known, and nothing is kept.
+G.BOUNCE_GLOBAL = "SPELL_FAILED_AURA_BOUNCED"
+G.SENT_WINDOW = 2
+-- N64 (lead section 243): how long a buff lasts, from the client's own
+-- answer, over the pack's guessed minutes. A member's buffs read with the
+-- time left within G.LEARN_WINDOW seconds of your own cast of it on them
+-- landing: the whole length is that time left plus the seconds since the
+-- cast. Kept per spell, in memory only, like the casts it is used with;
+-- the pack's minutes stay the first guess until a read gives it.
+G.LEARN_WINDOW = 10
+local memory, bounced, sent, last = {}, {}, {}, nil
+local learned = {}
+-- Lead section 248 PP2-2: the members of the last read, by the name a cast
+-- names them with ("Name", or "Name-Realm" for another realm), to the key
+-- memory is kept under: their GUID where it was read, else that full name.
+-- false: two members answer to the name, so it is nobody's. Memory only.
+local roster = {}
+
+local function fullName(m)
+    local name, realm = m.name, m.realm
+    if type(name) ~= "string" or name == "" then return nil end
+    if type(realm) == "string" and realm ~= "" then return name .. "-" .. realm end
+    return name
+end
+
+local function noted(store, name, spell)
+    local byName = store[name]
+    if type(byName) ~= "table" then return nil end
+    return byName[spell]
+end
+
+local function note(store, name, spell, at)
+    store[name] = store[name] or {}
+    store[name][spell] = at
+end
+
 -- Is the row for this player? "all", or a list holding their kind or class.
 function G.Fits(who, kind, class)
     if who == "all" then return true end
@@ -85,6 +133,48 @@ local function spellsOf(pack)
     return out
 end
 
+-- What you remember of this member and spell, over what the read gave:
+-- refused a moment ago (up); else, their buffs not known, your own cast's
+-- time left. A read "missing" stays missing unless the game refused it.
+local function remembered(row, rule, now, name)
+    if type(name) ~= "string" or type(now) ~= "number" then return end
+    local refusedAt = noted(bounced, name, rule.spell)
+    if type(refusedAt) == "number" and now - refusedAt < G.BOUNCE then
+        row.has[rule.spell] = true
+        return
+    end
+    local castAt = noted(memory, name, rule.spell)
+    local seen = row.has[rule.spell]
+    -- N64: the time left read just after your cast landed gives its length.
+    if type(castAt) == "number" and type(seen) == "number" and seen == seen and seen < math.huge
+        and seen > 0 and now >= castAt and now - castAt <= G.LEARN_WINDOW then
+        learned[rule.spell] = seen + (now - castAt)
+    end
+    if seen ~= nil or type(castAt) ~= "number" then return end
+    local whole = G.Length(rule)
+    if whole == nil then return end
+    local left = whole - (now - castAt)
+    if left < 0 then left = 0 end
+    row.has[rule.spell] = left
+end
+
+-- N64: the seconds a buff lasts: what the client answered (above), else
+-- the row's guessed minutes; nil when neither is known.
+function G.Length(rule)
+    if type(rule) ~= "table" then return nil end
+    local got = learned[rule.spell]
+    if type(got) == "number" then return got end
+    if type(rule.minutes) == "number" then return rule.minutes * 60 end
+    return nil
+end
+
+-- N64: { [spell] = seconds } learned this session; a copy.
+function G.Learned()
+    local out = {}
+    for spell, secs in pairs(learned) do out[spell] = secs end
+    return out
+end
+
 local function readMember(client, m, pack, ids)
     local row = {
         unit = m.unit, name = text(m.name), class = text(m.class), role = text(m.role),
@@ -116,6 +206,7 @@ local function readMember(client, m, pack, ids)
                 elseif ok and up == false then
                     row.has[rule.spell] = false
                 end
+                remembered(row, rule, clock(client), text(m.guid) or fullName(m))
             end
         end
     end
@@ -137,12 +228,22 @@ end
 local function readParty(client, pack, ids)
     local ok, list = pcall(client.party)
     if not ok or type(list) ~= "table" then return nil end
-    local out = {}
+    local out, names = {}, {}
     for _, m in ipairs(list) do
         if type(m) == "table" and type(m.unit) == "string" and m.unit ~= "" then
             out[#out + 1] = readMember(client, m, pack, ids)
+            local full = fullName(m)
+            if full then
+                if names[full] == nil then
+                    local key = text(m.guid) or full
+                    names[full] = key
+                else
+                    names[full] = false
+                end
+            end
         end
     end
+    roster = names
     return out
 end
 
@@ -271,13 +372,16 @@ function G.Step(s, pack, prefs)
         end
         wanted[i] = w
     end
-    -- Each row in order, for each member in order (Flow's order).
+    -- Item 19 (lead section 247): each member in order (the tank, then the
+    -- healer, then the rest in roster order), each of their rows in order.
+    -- Flow went row by row over the roster, so a rogue's Mark came before
+    -- the tank's Thorns.
     local unsure = false
-    for j, row in ipairs(rows) do
-        if type(row) == "table" and type(row.spell) == "string" and castable(s, row.spell) then
-            local rebuff = type(row.rebuff) == "number" and row.rebuff or G.REBUFF
-            for i, m in ipairs(members) do
-                if wanted[i][j] then
+    for i, m in ipairs(members) do
+        for j, row in ipairs(rows) do
+            if wanted[i][j] and type(row) == "table" and type(row.spell) == "string" and castable(s, row.spell) then
+                local rebuff = type(row.rebuff) == "number" and row.rebuff or G.REBUFF
+                do
                     -- Not `t and t[k] or nil`: a read "missing" (false) must stay false.
                     local reach, has
                     if type(m.reach) == "table" then reach = m.reach[row.spell] end
@@ -307,23 +411,69 @@ function G.Declare(k)
     local api = {}
     k:Module({
         name = G.NAME,
-        needs = { "settings", "bus" },
+        needs = { "client", "settings", "bus" },
         settings = { {
             key = G.SETTING, scope = "account", type = "bool", default = true,
             label = "Suggest buffs for your group",
-            help = "Out of a fight, names a party member who is missing one of your buffs, or has a curse or "
-                .. "poison you can remove, with the spell. It casts nothing; your key is unchanged.",
+            help = "Out of a fight, names a party member who is missing one of your buffs, or has something "
+                .. "on them your spells can remove, with the spell. It casts nothing; your key is unchanged.",
             group = "party", synonyms = { "group", "party", "buffs", "blessing", "mark of the wild", "fortitude", "cure" },
         } },
         start = function(c)
             ctx = c
             kept = nil
+            memory, bounced, sent, last = {}, {}, {}, nil
+            learned = {}
+            roster = {}
             -- Someone joined or left: read the group again at once.
             c.bus:on(G.NAME, "GROUP_ROSTER_UPDATE", function() kept = nil end)
+            -- 243 item 5: your casts on others, and the game's refusal.
+            local function now() return clock(c.client) end
+            c.bus:on(G.NAME, "UNIT_SPELLCAST_SENT", function(unit, target, castGUID, spellID)
+                if unit ~= "player" or type(target) ~= "string" or target == "" or type(spellID) ~= "number" then return end
+                if type(c.client.spellName) ~= "function" then return end
+                local ok, spell = pcall(c.client.spellName, spellID)
+                if not ok or type(spell) ~= "string" or spell == "" then return end
+                -- 248 PP2-2: whom, by the key their memory is kept under.
+                local key = roster[target]
+                if type(key) ~= "string" then
+                    last = nil
+                    return
+                end
+                local at = now()
+                if castGUID ~= nil then sent[castGUID] = { name = key, spell = spell } end
+                last = { name = key, spell = spell, at = at }
+            end)
+            c.bus:on(G.NAME, "UNIT_SPELLCAST_SUCCEEDED", function(unit, castGUID)
+                if unit ~= "player" or castGUID == nil then return end
+                local e = sent[castGUID]
+                sent[castGUID] = nil
+                local at = now()
+                if type(e) ~= "table" or type(at) ~= "number" then return end
+                note(memory, e.name, e.spell, at)
+                kept = nil
+            end)
+            c.bus:on(G.NAME, "UI_ERROR_MESSAGE", function(...)
+                -- 248 PP2-1: the client's own text, compared whole; none given: no refusal.
+                if type(c.client.globalText) ~= "function" then return end
+                local okText, want = pcall(c.client.globalText, G.BOUNCE_GLOBAL)
+                if not okText or type(want) ~= "string" or want == "" then return end
+                local said = false
+                for i = 1, select("#", ...) do
+                    if select(i, ...) == want then said = true end
+                end
+                local at = now()
+                if not said or type(last) ~= "table" or type(at) ~= "number" or type(last.at) ~= "number" then return end
+                if at - last.at > G.SENT_WINDOW then return end
+                note(bounced, last.name, last.spell, at)
+                kept = nil
+            end)
         end,
         stop = function()
             ctx = nil
             kept = nil
+            memory, bounced, sent, last = {}, {}, {}, nil
+            learned = {}
         end,
     })
     return api

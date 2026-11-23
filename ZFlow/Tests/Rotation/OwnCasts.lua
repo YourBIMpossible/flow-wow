@@ -34,6 +34,75 @@ tests["own casts: anything else is no key"] = function(t)
     t.eq(OC().Note({ { key = "seal" }, "x", { prefix = "Seal of " } }, "Seal of Light"), nil, "rows without prefix or key")
 end
 
+-- Lead repair at the own-choice merge: "/zflow oath light" found nothing,
+-- the word had to start the whole name.
+tests["own casts: a word may start any word of an unprefixed name, when only one answers"] = function(t)
+    local OC = ns.OwnCasts
+    t.eq(OC.Find({ "Oath of Light" }, "", "light"), "Oath of Light")
+    t.eq(OC.Find({ "Oath of Light" }, "", "oath"), "Oath of Light", "the start, as before")
+    t.eq(OC.Find({ "Mage Armor", "Ice Armor", "Frost Armor" }, "", "armor"), nil, "three answer: none")
+    t.eq(OC.Find({ "Mage Armor", "Ice Armor", "Frost Armor" }, "", "ice"), "Ice Armor")
+    t.eq(OC.Find({ "Oath of Light" }, "", "ight"), nil, "not inside a word")
+end
+
+tests["own casts N58: a row with no prefix takes only the names in `only`"] = function(t)
+    local rows = { { prefix = "", key = "aura", only = { ["Devotion Aura"] = true } },
+                   { key = "stance", only = { ["Battle Stance"] = true } },
+                   { key = "x", only = "Devotion Aura" } }
+    t.eq(OC().Note(rows, "Devotion Aura"), "aura")
+    t.eq(OC().Note(rows, "Battle Stance"), "stance", "prefix absent")
+    t.eq(OC().Note(rows, "Retribution Aura"), nil, "not in only")
+    t.eq(OC().Note({ { prefix = "", key = "aura" } }, "Devotion Aura"), nil, "no prefix and no only")
+    t.eq(OC().Note({ { key = "x", only = "Devotion Aura" } }, "Devotion Aura"), nil, "only not a set")
+end
+
+tests["own casts N58: temporary by a set or a function; a function that raises is not"] = function(t)
+    t.eq(OC().Temporary({ temporary = { ["Travel Form"] = true } }, "Travel Form"), true)
+    t.eq(OC().Temporary({ temporary = { ["Travel Form"] = true } }, "Bear Form"), false)
+    local inFight = { temporary = function(_, ctx) return ctx.inCombat ~= false end }
+    t.eq(OC().Temporary(inFight, "Summon Imp", { inCombat = true }), true)
+    t.eq(OC().Temporary(inFight, "Summon Imp", { inCombat = false }), false)
+    t.eq(OC().Temporary(inFight, "Summon Imp", { }), true, "the fight not read counts as one")
+    t.eq(OC().Temporary({ temporary = function() error("x") end }, "Summon Imp", {}), false)
+    t.eq(OC().Temporary({ temporary = function() return 1 end }, "Summon Imp", {}), false, "only true")
+    t.eq(OC().Temporary({}, "Bear Form"), false)
+    t.eq(OC().Temporary(nil, "Bear Form"), false)
+end
+
+tests["own casts N58: fight only in a fight, or with the fight not read"] = function(t)
+    local row = { fightOnly = true }
+    t.eq(OC().FightOnly(row, { inCombat = true }), true)
+    t.eq(OC().FightOnly(row, { inCombat = false }), false)
+    t.eq(OC().FightOnly(row, {}), true, "not read")
+    t.eq(OC().FightOnly(row, nil), true, "no context")
+    t.eq(OC().FightOnly({}, { inCombat = true }), false, "a row not fight-only")
+end
+
+tests["own casts N58: the kept one is this fight's, the word's, the role's, while known"] = function(t)
+    t.eq(OC().Keys("aura"), { "auraFight", "auraSet", "aura" })
+    local set = { ["Retribution Aura"] = true, ["Devotion Aura"] = true }
+    local spells = { ["Retribution Aura"] = { known = true }, ["Devotion Aura"] = { known = true },
+                     ["Concentration Aura"] = { known = true } }
+    local s = { spells = spells, chosen = { aura = "Retribution Aura", auraSet = "Devotion Aura" } }
+    t.eq(OC().Kept(s, set, "aura"), "Devotion Aura", "the word before the role's")
+    s.chosen.auraFight = "Retribution Aura"
+    t.eq(OC().Kept(s, set, "aura"), "Retribution Aura", "this fight's first")
+    s = { spells = spells, chosen = { aura = "Concentration Aura" } }
+    t.eq(OC().Kept(s, set, "aura"), nil, "not in the set")
+    s = { spells = { ["Retribution Aura"] = { known = false } }, chosen = { aura = "Retribution Aura" } }
+    t.eq(OC().Kept(s, set, "aura"), nil, "not known")
+    t.eq(OC().Kept({ spells = spells }, set, "aura"), nil, "nothing chosen")
+    t.eq(OC().Kept(nil, set, "aura"), nil)
+end
+
+tests["own casts N58: the paladin aura row takes the three auras only"] = function(t)
+    local rows = ns.Packs.PALADIN.options.sticky
+    for _, name in ipairs({ "Devotion Aura", "Retribution Aura", "Concentration Aura" }) do
+        t.eq(OC().Note(rows, name), "aura", name)
+    end
+    t.eq(OC().Note(rows, "Crusader Aura"), nil, "not in this pack's spells")
+end
+
 tests["own casts: the paladin pack's rows keep any seal and the six long blessings"] = function(t)
     local rows = ns.Packs.PALADIN.options.sticky
     for _, name in ipairs({ "Seal of Righteousness", "Seal of the Crusader", "Seal of Command", "Seal of Justice",
@@ -45,7 +114,7 @@ tests["own casts: the paladin pack's rows keep any seal and the six long blessin
         t.eq(OC().Note(rows, name), "blessing", name)
     end
     for _, name in ipairs({ "Blessing of Protection", "Blessing of Freedom", "Blessing of Sacrifice",
-                            "Righteous Fury", "Devotion Aura" }) do
+                            "Righteous Fury" }) do
         t.eq(OC().Note(rows, name), nil, name)
     end
 end

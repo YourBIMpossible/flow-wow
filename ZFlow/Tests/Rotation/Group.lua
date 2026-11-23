@@ -401,6 +401,62 @@ tests["group: the setting row, on by default, where Flow's import puts it"] = fu
     t.ok(type(row.label) == "string" and row.label ~= "" and type(row.help) == "string" and row.help ~= "", "label and help")
 end
 
+-- Lead section 243 item 2: the help says what the rows do; the priest's and
+-- the paladin's dispels remove magic and disease too, not only curses and
+-- poisons.
+tests["group 243: the setting's help does not narrow the cures to curses and poisons"] = function(t)
+    local spec
+    ns.PartyGroup.Declare({ Module = function(_, m) spec = m end })
+    local row = type(spec) == "table" and type(spec.settings) == "table" and spec.settings[1] or {}
+    local help = tostring(row.help):lower()
+    t.ok(not help:find("curse or poison", 1, true), "not only curses and poisons: " .. help)
+    t.ok(help:find("remove", 1, true) ~= nil, "says something can be removed: " .. help)
+    t.ok(help:find("casts nothing", 1, true) ~= nil, "and that it casts nothing: " .. help)
+end
+
+-- Lead section 243 item 1: the icon's mark says the key will not cast it.
+tests["group 243: the icon's mark is look for a look-only suggestion"] = function(t)
+    local I = ns.RotationIcon
+    t.eq(I.Mark({ suggestion = { spell = MOTW, kind = "group", look = true, unit = "party1", step = "group" } }), "look")
+    t.eq(I.Mark({ suggestion = { spell = MOTW, kind = "buff", step = "list" } }), nil, "your own buff: no mark")
+    t.eq(I.Mark({ suggestion = { spell = "Wrath", step = "farOpener" } }), "far", "out of range: still far")
+    t.eq(I.Mark({ suggestion = { spell = MOTW, look = false, step = "group" } }), nil, "look must be true")
+end
+
+-- Item 19 (lead section 247, N61 "no tank-first order"): your group's buffs
+-- go tank first, then the healer, then everyone else in roster order, each
+-- member's missing buff before the next member's. The role is what the
+-- read gave (kind); a role not read is roster order, never a guess.
+tests["group 19: the tank's missing buff first, wherever the tank is in the roster"] = function(t)
+    local s = choose({
+        missing("party1", { [MOTW] = false }, { class = "ROGUE", kind = "melee" }),
+        member("party2", { class = "MAGE", kind = "caster", name = OTHER }),
+        missing("party3", { [THORNS] = false }, { role = "TANK", kind = "tank", name = OTHER }),
+    })
+    t.eq(s and { s.spell, s.unit } or nil, { THORNS, "party3" }, "the tank's Thorns before the rogue's Mark")
+end
+
+tests["group 19: the healer before the rest; ties keep roster order"] = function(t)
+    local s = choose({
+        missing("party1", { [MOTW] = false }, { class = "ROGUE", kind = "melee" }),
+        missing("party2", { [MOTW] = false }, { class = "PRIEST", role = "HEALER", kind = "healer", name = OTHER }),
+    })
+    t.eq(s and s.unit, "party2", "the healer first")
+    s = choose({
+        missing("party1", { [MOTW] = false }, { class = "ROGUE", kind = "melee" }),
+        missing("party2", { [MOTW] = false }, { name = OTHER }),
+    })
+    t.eq(s and s.unit, "party1", "two of the same kind: roster order")
+end
+
+tests["group 19: role not read: roster order, never a guess"] = function(t)
+    local s = choose({
+        missing("party1", { [MOTW] = false }, { class = "ROGUE", kind = "melee", role = "nil" }),
+        missing("party2", { [THORNS] = false }, { role = "nil", kind = "melee", name = OTHER }),
+    })
+    t.eq(s and { s.spell, s.unit } or nil, { MOTW, "party1" }, "a warrior with no role read is not taken for the tank")
+end
+
 tests["group: look only - nothing in it casts, targets or clicks"] = function(t)
     for name in pairs(ns.PartyGroup) do
         local n = tostring(name):lower()

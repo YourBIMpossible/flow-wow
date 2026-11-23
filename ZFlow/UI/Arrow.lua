@@ -872,6 +872,18 @@ function Arrow.Start(k, diag, own)
             if h and type(h.menu) == "function" then showMenu(h, action.open or nil) end
         elseif action.settings then
             openSettings(action.settings)
+        elseif action.feedback then
+            -- Row N73: the feedback window. It opens its own plain frame.
+            local name
+            if ns.Feedback then name = ns.Feedback.NAME end
+            local feedback
+            if name and k.use then feedback = k.use(name) end
+            if type(feedback) == "table" and type(feedback.Open) == "function" then
+                local ok, err = pcall(feedback.Open)
+                if not ok then k.problems:add("arrow", "feedback", err) end
+            else
+                say("feedback is not ready.")
+            end
         elseif action.style then
             local ok, reason = setStyle(action.style)
             if not ok then say(tostring(reason) .. ".") end

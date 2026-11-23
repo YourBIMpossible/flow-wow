@@ -196,7 +196,7 @@ return {
         local h = ns.make.client(env).secureButton({ name = "TestKey" })
         h.set("type", "spell")
         env.lock = true
-        local ok, why = h.set("type", "macro")
+        local ok, why = h.set("type", "item")
         t.eq(ok, false)
         t.eq(why, "lockdown")
         t.eq(count(env.made[1].frame.calls, "SetAttribute"), 1, "only the one from outside the fight")
@@ -289,7 +289,7 @@ return {
         c.setCombat(false)
         t.eq({ h.set("type", "spell") }, { true })
         c.setLockdown(nil)
-        t.eq({ h.set("type", "macro") }, { false, "lockdown" })
+        t.eq({ h.set("type", "item") }, { false, "lockdown" })
         t.eq(h.get("type"), "spell")
     end,
 
@@ -312,5 +312,50 @@ return {
         c.setFrames(false)
         t.eq(c.secureButton({ name = "TestKey" }), nil)
         t.eq(#c.secureButtons, 0)
+    end,
+
+    -- Section 246 (N63-E): the fake logs every set, kept or refused, and
+    -- names the ones that would make a button a macro.
+    ["fake client: every secure set is logged, and a macro is named"] = function(t)
+        local c = ns.make.fakeClient()
+        local h = c.secureButton({ name = "TestKey" })
+        h.set("type", "spell")
+        h.set("*type-alt", "item")
+        h.set("*item-alt", "item:5512")
+        h.set("macrotext", nil)
+        t.eq(#h.given, 4, "four sets on the button")
+        t.eq(#c.secureGiven, 4, "four over every button")
+        t.eq(c.secureGiven[3], { name = "TestKey", attr = "*item-alt", value = "item:5512" })
+        t.eq(#c.secureMacros(), 0, "no macro: a cleared macro text is none")
+        c.setCombat(true)
+        h.set("shift-type1", "macro")
+        t.eq(#c.secureGiven, 5, "a refused set is logged too")
+        c.setCombat(false)
+        h.set("*macrotext-alt", "/use item:5512")
+        local m = c.secureMacros()
+        t.eq(#m, 2, "both named")
+        t.eq(m[1].attr, "shift-type1")
+        t.eq(m[2].attr, "*macrotext-alt")
+    end,
+
+    -- Section 249 (CT-2): upper case and the plain "macro" attribute are
+    -- caught too; each on its own fresh client.
+    ["fake client: MACRO in any case and the plain macro attribute are named"] = function(t)
+        local cases = {
+            { "type", "MACRO" }, { "Type", "Macro" }, { "*TYPE-alt", "macro" },
+            { "macro", "MyMacro" }, { "macro", 3 }, { "*macro-alt", "X" },
+            { "MacroText", "/cast Wrath" }, { "MACROTEXT", "/startattack" },
+        }
+        for _, case in ipairs(cases) do
+            local c = ns.make.fakeClient()
+            local h = c.secureButton({ name = "TestKey" })
+            h.set(case[1], case[2])
+            local m = c.secureMacros()
+            t.eq(#m, 1, tostring(case[1]) .. " = " .. tostring(case[2]) .. ": named")
+        end
+        local c = ns.make.fakeClient()
+        local h = c.secureButton({ name = "TestKey" })
+        h.set("type", "spell"); h.set("macro", nil); h.set("MACROTEXT", nil); h.set("spell", "Macro Shield")
+        t.eq(#c.secureMacros(), 0, "cleared macro rows and a spell named Macro are none")
     end,
 }

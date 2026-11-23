@@ -121,6 +121,7 @@ Nav\Errand.lua
 Nav\RepairStep.lua
 Nav\QuestSource.lua
 Nav\QuestRead.lua
+Nav\AddonSources.lua
 Nav\Rides.lua
 Nav\TravelSpells.lua
 Nav\TravelIcon.lua
@@ -137,12 +138,14 @@ UI\ProfCard.lua
 UI\DevPanel.lua
 UI\SettingsSlash.lua
 UI\SettingsPage.lua
+UI\SettingsKeys.lua
 UI\SettingsPanel.lua
 UI\SettingsOptions.lua
 UI\Rows.lua
 UI\Intro.lua
 UI\WindowButtons.lua
 UI\ArrowMenu.lua
+UI\Feedback.lua
 UI\SellList.lua
 UI\BankList.lua
 UI\CraftBar.lua
@@ -170,4 +173,6 @@ Items\Trader.lua
 Nav\Try.lua
 Rotation\Gather.lua
 Rotation\Group.lua
+Rotation\Mouseover.lua
+Rotation\Enchant.lua
 UI\BossLoot.lua

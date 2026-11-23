@@ -285,7 +285,12 @@ return {
         t.eq(type(run), "function")
         run("diag")
         t.eq(c.saved(ns.id.accountDB).diag.count, 2)
-        t.ok(c.printed[#c.printed]:find("snapshot 2", 1, true), c.printed[#c.printed])
+        -- The snapshot line is said first; state lines (N67 sources) may follow it.
+        local said = false
+        for _, line in ipairs(c.printed) do
+            if line:find("snapshot 2", 1, true) then said = true end
+        end
+        t.ok(said, c.printed[#c.printed])
         run(" DIAG clear ")
         t.eq(c.saved(ns.id.accountDB).diag, nil)
         run("")
@@ -732,5 +737,87 @@ return {
         local last = p[#p]
         t.ok(last ~= nil and last.owner == "price watch" and tostring(last.text):find("shows broke", 1, true) ~= nil,
             "the problem row names the line and carries the error")
+    end,
+    -- Lead section 245 item 2 (LOW-MED): the profession window opening and
+    -- closing are kept in the timing marks, so a capture shows each event
+    -- fired on the client (an event name is not a global, so Diag.NAMES
+    -- can not say it).
+    ["windows: the profession window show and close are marked"] = function(t)
+        local _, c, d = start()
+        c.setSaved(ns.id.accountDB, {})
+        login(c)
+        c.fire("TRADE_SKILL_SHOW")
+        c.fire("TRADE_SKILL_CLOSE")
+        d.snapshot("after")
+        local saved = c.saved(ns.id.accountDB).diag
+        local timing = saved.snaps[#saved.snaps].timing
+        t.ok(type(timing.TRADE_SKILL_SHOW) == "table", "the show marked")
+        t.ok(type(timing.TRADE_SKILL_CLOSE) == "table", "the close marked")
+        t.eq({ timing.order[5], timing.order[6] }, { "TRADE_SKILL_SHOW", "TRADE_SKILL_CLOSE" })
+    end,
+
+    -- Lead section 245 item 2 (LOW-MED): the recipe colour and skill up
+    -- fields c.recipes reads each get a capture field of their own.
+    ["profession: the recipe colour and skill up fields are captured"] = function(t)
+        local e = env()
+        e.C_TradeSkillUI = {
+            GetAllRecipeIDs = function() return { 2660 } end,
+            GetRecipeInfo = function(recipe) return { recipeID = recipe, relativeDifficulty = 1, numSkillUps = 2 } end,
+        }
+        local S = ns.Diag.Collect(ns.Kernel({}, ns.make.fakeClient({ env = e })), "test").shapes
+        t.eq(S.recipeDifficulty and S.recipeDifficulty.values.v1, 1)
+        t.eq(S.recipeSkillUps and S.recipeSkillUps.values.v1, 2)
+        e.C_TradeSkillUI.GetRecipeInfo = function(recipe) return { recipeID = recipe } end
+        S = ns.Diag.Collect(ns.Kernel({}, ns.make.fakeClient({ env = e })), "test").shapes
+        t.eq(S.recipeDifficulty and S.recipeDifficulty.types[1], "nil", "a field the client leaves out reads as nil")
+        t.eq(S.recipeSkillUps and S.recipeSkillUps.ok, true)
+    end,
+
+    -- Lead section 249 item 4 (PF-2): a capture asks the client for the
+    -- recipe info once, and the three fields it fills still read it.
+    ["profession: the recipe info is asked once a capture"] = function(t)
+        local e = env()
+        local asked = 0
+        e.C_TradeSkillUI = {
+            GetAllRecipeIDs = function() return { 2660 } end,
+            GetRecipeInfo = function(recipe)
+                asked = asked + 1
+                return { recipeID = recipe, relativeDifficulty = 1, numSkillUps = 2 }
+            end,
+        }
+        local S = ns.Diag.Collect(ns.Kernel({}, ns.make.fakeClient({ env = e })), "test").shapes
+        t.eq(asked, 1, "asked once")
+        t.eq(S.recipeInfo and S.recipeInfo.ok, true)
+        t.eq(S.recipeInfo and S.recipeInfo.types[1], "table")
+        t.eq(S.recipeDifficulty and S.recipeDifficulty.values.v1, 1)
+        t.eq(S.recipeSkillUps and S.recipeSkillUps.values.v1, 2)
+    end,
+
+    -- Lead section 248 OC-1 (LOW): Oath of Light, read as a buff on you (a
+    -- first guess), gets capture fields: the spell by name and the aura by
+    -- its id. Made-up spell id; not seen in game.
+    ["paladin oath: the spell and the aura on you are captured"] = function(t)
+        local e = env()
+        local asked = {}
+        e.C_Spell = { GetSpellInfo = function(v)
+            if v == "Oath of Light" then return { name = v, spellID = 99001 } end
+        end }
+        e.C_UnitAuras = { GetPlayerAuraBySpellID = function(id)
+            asked[#asked + 1] = id
+            return { name = "Oath of Light", spellId = id, duration = 0 }
+        end }
+        local S = ns.Diag.Collect(ns.Kernel({}, ns.make.fakeClient({ env = e })), "test").shapes
+        t.eq(S.oathSpell and S.oathSpell.ok, true)
+        t.eq(asked, { 99001 }, "the aura asked by the spell id")
+        t.eq(S.oathAura and S.oathAura.ok, true)
+        t.eq(S.oathAura and S.oathAura.types[1], "table")
+        e.C_Spell.GetSpellInfo = function() return nil end
+        S = ns.Diag.Collect(ns.Kernel({}, ns.make.fakeClient({ env = e })), "test").shapes
+        t.eq(S.oathSpell and S.oathSpell.types[1], "nil", "the spell not known")
+        t.eq(S.oathAura, nil, "no id: the aura not asked")
+        local named = {}
+        for _, n in ipairs(ns.Diag.NAMES) do named[n] = true end
+        t.ok(named["C_UnitAuras.GetPlayerAuraBySpellID"], "the aura read is named")
+        t.ok(named["C_Spell.GetSpellInfo"], "the spell read is named")
     end,
 }

@@ -17,7 +17,8 @@ local _, ns = ...
 -- of which could be read, is reported as RecipeBook.UNREAD, not as no window.
 -- Entries already saved (another profession's) are kept; one with the same
 -- name is replaced. Section 233 (GR2-3): two recipes of one name in one
--- read are both saved: the first (by id, then as read) under the name, each
+-- read are both saved: the first (by id, then by what it makes and takes,
+-- then as read; section 245) under the name, each
 -- other under "name (id)", or "name (n)" without an id; report.collided
 -- counts them. When every learned recipe of a named profession was read,
 -- a saved entry of that profession not in the read is no longer learned and
@@ -30,6 +31,27 @@ local _, ns = ...
 -- is in Recipes or For: ItemPlan can make nothing of it. A recipe read in
 -- part does not write over the same recipe saved whole. A schematic that
 -- names another recipe than its row (the rows moved) is not saved.
+-- Section 245 (RB2-2): "every learned recipe read" also needs the window
+-- to say it showed them all. C_TradeSkillUI.GetAllRecipeIDs lists every
+-- recipe, not what the window shows (first guess, needs game test), so a
+-- modern read counts as all. A classic read counts only when
+-- client.tradeSkillRows() says whole = true; a collapsed header, a filter,
+-- or anything unknown: nothing is dropped. Today the client never says so
+-- (Core/Client.lua). Section 253 (RB4-1, MyBuddy LOW): as legacy Flow
+-- replaced the list each read, a classic read also counts as all when the
+-- client says every header is expanded (collapsed = false) and both filters
+-- are on all (filtered = false). The "have materials" box and the name
+-- search box are not read (first guesses, on the capture wish list): with
+-- either on, a learned recipe it hides is dropped until the next read
+-- without it.
+-- Section 245 (RB2-1): read when the window opens (TRADE_SKILL_SHOW) and
+-- when its list changes (TRADE_SKILL_LIST_UPDATE), once, RecipeBook.SETTLE
+-- seconds after the last of them; TRADE_SKILL_CLOSE cancels a read not yet
+-- run. Section 245 (lead item 1, LOW): a recipe read in part never writes
+-- over a saved entry of that name that was not read in part, an enchant
+-- (makes nil) too. Two recipes of one name with no id are put in order by
+-- what they make and take, not by row order, so "name (n)" stays the same
+-- recipe from read to read.
 --
 --   RecipeBook.Read(client, store) -> report   one profession window read
 --     report = { ok, reason (when not ok), saved = entries written,
@@ -42,6 +64,7 @@ local _, ns = ...
 --     item (the first by name when several do)
 --   RecipeBook.Declare(k) -> api   declares the module on kernel k
 --     api.last()   the report of the last window read, nil before the first
+--     (the read runs RecipeBook.SETTLE seconds after the window's events)
 --
 -- This only reads the client. Not tested in game: the schematic read is a
 -- first guess (Core/Client.lua).
@@ -51,6 +74,12 @@ ns.RecipeBook = RecipeBook
 
 RecipeBook.NAME = "recipeBook"
 RecipeBook.EVENT = "TRADE_SKILL_LIST_UPDATE"
+-- Section 245 (RB2-1): the window opening, and closing.
+RecipeBook.SHOW = "TRADE_SKILL_SHOW"
+RecipeBook.CLOSE = "TRADE_SKILL_CLOSE"
+-- Seconds with no more window events before the read. First guess, needs
+-- game test: long enough for a burst of list updates to end.
+RecipeBook.SETTLE = 1
 RecipeBook.PATH = "learned.facts.recipeBook"
 
 local function whole(n, least)
@@ -115,12 +144,14 @@ local function classicEntry(e, row)
 end
 
 -- One window read: { profession, rows = learned rows met, list = { { name,
--- entry, at } } }, or nil when that read did not answer. Every read comes
--- before the write.
+-- entry, at } }, whole = the rows are every learned recipe }, or nil when
+-- that read did not answer. Every read comes before the write.
 local function readModern(client)
     local r = ask(client, "recipes")
     if type(r) ~= "table" or type(r.recipes) ~= "table" then return nil end
-    local got = { profession = named(r.name), rows = 0, list = {} }
+    -- Section 245 (RB2-2): GetAllRecipeIDs is every recipe, whatever the
+    -- window shows (first guess, needs game test).
+    local got = { profession = named(r.name), rows = 0, list = {}, whole = true }
     for _, row in ipairs(r.recipes) do
         if type(row) == "table" and row.learned == true and named(row.name) and whole(row.id, 1) then
             got.rows = got.rows + 1
@@ -139,7 +170,10 @@ end
 local function readClassic(client)
     local r = ask(client, "tradeSkillRows")
     if type(r) ~= "table" or type(r.rows) ~= "table" then return nil end
-    local got = { profession = named(r.name), rows = 0, list = {} }
+    -- Section 245 (RB2-2): every learned recipe only when the client says so.
+    -- Section 253 (RB4-1): or nothing hidden and no filter on.
+    local shown = r.collapsed == false and r.filtered == false
+    local got = { profession = named(r.name), rows = 0, list = {}, whole = r.whole == true or shown }
     for _, row in ipairs(r.rows) do
         if type(row) == "table" and named(row.name) and whole(row.index, 1) then
             got.rows = got.rows + 1
@@ -153,9 +187,21 @@ local function readClassic(client)
     return got
 end
 
+-- Section 245 (GR2-4, in part): what an entry makes and takes as one
+-- string, so two recipes of one name sort the same in every read.
+local function signature(e)
+    local mats = {}
+    for item, n in pairs(type(e.mats) == "table" and e.mats or {}) do
+        mats[#mats + 1] = tostring(item) .. "x" .. tostring(n)
+    end
+    table.sort(mats)
+    return tostring(e.makes or 0) .. "/" .. tostring(e.yield or 1) .. "/" .. table.concat(mats, ",")
+end
+
 -- Section 233 (GR2-3): the names to save under. Two recipes of one name are
--- not written over each other: the first by id (then as read) keeps the
--- name, each other gets "name (id)", or "name (n)" without an id.
+-- not written over each other: the first by id (then by signature, then as
+-- read) keeps the name, each other gets "name (id)", or "name (n)" without
+-- an id.
 local function keyed(list, report)
     local byName, order = {}, {}
     for _, it in ipairs(list) do
@@ -170,9 +216,11 @@ local function keyed(list, report)
     for _, name in ipairs(order) do
         local same = byName[name]
         if #same > 1 then
+            for _, it in ipairs(same) do it.sig = signature(it.entry) end
             table.sort(same, function(a, b)
                 local ia, ib = a.entry.id or math.huge, b.entry.id or math.huge
                 if ia ~= ib then return ia < ib end
+                if a.sig ~= b.sig then return a.sig < b.sig end
                 return a.at < b.at
             end)
             report.collided = (report.collided or 0) + #same - 1
@@ -198,6 +246,11 @@ local function same(a, b)
     return true
 end
 
+-- Section 245 (lead item 1, LOW): a saved entry that was not read in part.
+local function savedWhole(e)
+    return type(e) == "table" and e.partial ~= true and type(e.mats) == "table" and next(e.mats) ~= nil
+end
+
 function RecipeBook.Read(client, store)
     local report = { saved = 0 }
     local got = readModern(client)
@@ -219,7 +272,9 @@ function RecipeBook.Read(client, store)
     local found = keyed(got.list, report)
     -- GR2-3: every learned recipe of a named profession read: what is saved
     -- of that profession and not in this read is no longer learned.
-    local complete = got.profession ~= nil and got.rows == #got.list
+    -- Section 245 (RB2-2): and the window showed them all (got.whole). A
+    -- collapsed header or a filter hides rows; that read drops nothing.
+    local complete = got.profession ~= nil and got.whole == true and got.rows == #got.list
     local out = {}
     for key, value in pairs(cur or {}) do
         local gone = complete and type(value) == "table" and value.profession == got.profession
@@ -228,8 +283,10 @@ function RecipeBook.Read(client, store)
     local n = 0
     for key, value in pairs(found) do
         -- Section 238 (RF-3): a recipe read in part (its data not here yet)
-        -- does not write over the same recipe saved whole.
-        local kept = cur ~= nil and value.partial == true and readEntry(cur[key]) ~= nil
+        -- does not write over the same recipe saved whole. Section 245 (lead
+        -- item 1, LOW): whole means not read in part, with mats; an enchant
+        -- (makes nil) too, which readEntry would refuse.
+        local kept = cur ~= nil and value.partial == true and savedWhole(cur[key])
         if kept then
             out[key] = cur[key]
         else
@@ -276,21 +333,37 @@ function RecipeBook.For(k, item)
     return names[1]
 end
 
--- Declares the module on kernel k. Usable at once: before the first event
--- last() is nil.
+-- Declares the module on kernel k. Usable at once: before the first read
+-- last() is nil. Section 245 (RB2-1): the window opening or its list
+-- changing (re)starts a wait of RecipeBook.SETTLE seconds on the kernel's
+-- scheduler; the read runs once, when it ends. The window closing cancels
+-- it.
 function RecipeBook.Declare(k)
     local api = {}
-    local last
+    local last, pending
     function api.last() return last end
+    local function cancel()
+        if pending then pending() end
+        pending = nil
+    end
     k:Module({
         name = RecipeBook.NAME,
-        needs = { "client", "store", "bus" },
+        needs = { "client", "store", "bus", "sched" },
         provides = { Last = api.last },
         start = function(ctx)
-            ctx.bus:on(RecipeBook.NAME, RecipeBook.EVENT, function()
+            local function settled()
+                pending = nil
                 last = RecipeBook.Read(ctx.client, ctx.store)
-            end)
+            end
+            local function heard()
+                cancel()
+                pending = ctx.sched:after(RecipeBook.NAME, RecipeBook.SETTLE, settled)
+            end
+            ctx.bus:on(RecipeBook.NAME, RecipeBook.SHOW, heard)
+            ctx.bus:on(RecipeBook.NAME, RecipeBook.EVENT, heard)
+            ctx.bus:on(RecipeBook.NAME, RecipeBook.CLOSE, cancel)
         end,
+        stop = cancel,
     })
     return api
 end

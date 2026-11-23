@@ -74,6 +74,13 @@ Diag.NAMES = {
     "GetTradeSkillReagentInfo", "GetTradeSkillItemLink", "GetTradeSkillRecipeLink",
     -- Section 231 item 1: the rest of the classic schematic read.
     "GetTradeSkillNumMade", "GetTradeSkillReagentItemLink",
+    -- Section 245 (RB2-2): whether the classic window hides recipe rows
+    -- (client.tradeSkillRows). The two filter reads are used, first guesses;
+    -- the rest are candidates for the "have materials" box and the name
+    -- search box, not read yet: the capture says which this client has.
+    "GetTradeSkillSubClassFilter", "GetTradeSkillInvSlotFilter",
+    "TradeSkillOnlyShowMakeable", "GetTradeSkillItemNameFilter",
+    "TradeSkillFrameAvailableFilterCheckButton", "TradeSkillFrameEditBox", "TradeSkillFrameSearchBox",
     "C_TradeSkillUI.GetAllRecipeIDs", "GetNumCrafts", "GetCraftInfo",
     "GetNumTrainerServices", "GetTrainerServiceInfo", "GetTrainerServiceCost", "GetTrainerServiceSkillReq",
     "GetMerchantNumItems", "GetMerchantItemInfo", "GetMerchantItemLink", "C_MerchantFrame.GetItemInfo",
@@ -140,6 +147,9 @@ Diag.NAMES = {
     -- UnitClass, UnitGroupRolesAssigned, UnitPowerType, UnitIsDead,
     -- C_Spell.IsSpellInRange, C_UnitAuras.GetAuraDataByIndex) are above.
     "UnitIsConnected",
+    -- Lead section 248 PP2-1: the client's own refusal text Rotation/Group.lua
+    -- compares UI_ERROR_MESSAGE against (read through client.globalText).
+    "SPELL_FAILED_AURA_BOUNCED",
     -- N55 (the boss loot panel, RESEARCH-N55): client.instance asks these
     -- two, client.lootLine these two texts beside LOOT_ITEM_SELF and
     -- LOOT_ITEM_SELF_MULTIPLE above; client.bossUnit asks UnitExists,
@@ -151,6 +161,20 @@ Diag.NAMES = {
     "Settings.RegisterCanvasLayoutCategory", "Settings.RegisterCanvasLayoutSubcategory",
     "Settings.RegisterAddOnCategory", "Settings.OpenToCategory", "SettingsPanel",
     "SettingsPanel.SearchBox", "InterfaceOptionsFrame",
+    -- Row N73: the feedback report takes the guild name out of its text
+    -- (UI/Feedback.lua Names). Saved in the snapshot's names table.
+    "GetGuildInfo",
+    -- N57 (Plexy's note 1 of section 250): binding names in wowless's 1.60.1
+    -- API list but never asked of 16001, and the game's key-chord helpers
+    -- the capture overlay asks (client.bindingAction, client.keyCapture).
+    "GetBindingAction", "SetOverrideBinding", "SetBindingSpell", "SetBindingMacro", "SetBindingItem",
+    "GetBinding", "GetNumBindings", "LoadBindings", "C_KeyBindings.GetBindingContextForAction",
+    "C_KeyBindings.GetBindingByKey", "C_KeyBindings.GetBindingIndex", "RunBinding",
+    "CreateKeyChordStringUsingMetaKeyState", "IsKeyPressIgnoredForBinding", "GetConvertedKeyOrButton",
+    -- N67: the other add-ons' globals read at runtime (client.gatherMateNodes,
+    -- client.attuneProgress); first guesses, so a capture says which exist.
+    "GatherMate2", "GatherMate2.GetNodesForZone", "GatherMate2.DecodeLoc", "GatherMate2.GetNameForNode",
+    "Attune_Data", "Attune_Data.attunes", "Attune_DB", "Attune_DB.toons",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns
@@ -328,6 +352,10 @@ function Diag.Collect(k, why)
         predecessorLoaded = client.addonLoaded(k.id.predecessor),
         predecessorData = client.savedExists(k.id.predecessorDB),
         selfLoaded = client.addonLoaded(k.id.addon),
+        -- N67: whether each optional source add-on is loaded; nothing of
+        -- their data is kept in a snapshot.
+        gatherMateLoaded = client.addonLoaded(k.id.gatherMate or ns.id.gatherMate),
+        attuneLoaded = client.addonLoaded(k.id.attune or ns.id.attune),
     }
     -- Whether each read came back known: a nil above leaves no trace when saved.
     snap.known = {}
@@ -401,6 +429,9 @@ function Diag.Collect(k, why)
     -- Section 233 (GR2-1): the classic window's rows, as the recipe book walks them.
     S.tradeSkillRows = shape(true, type(client.tradeSkillRows) == "function"
         and client.tradeSkillRows() or nil)
+    -- Section 245 (RB2-2): the two filter reads behind tradeSkillRows().filtered.
+    S.tradeSkillSubClassFilter = ask(client, "GetTradeSkillSubClassFilter", 0)
+    S.tradeSkillInvSlotFilter = ask(client, "GetTradeSkillInvSlotFilter", 0)
     S.crafts = ask(client, "GetNumCrafts")
     S.taxiNodes = ask(client, "NumTaxiNodes")
 
@@ -449,6 +480,16 @@ function Diag.Collect(k, why)
         S.spellKnown = ask(client, "IsPlayerSpell", spellID)
     end
     S.spellByName = ask(client, "C_Spell.GetSpellInfo", "Attack")
+    -- OC-1 (section 248): Oath of Light (Classes/Paladin.lua) is read as a
+    -- buff on you, a first guess. The spell by name, then the aura on you by
+    -- its id, so one game session can show whether it is a buff. Both names
+    -- (C_Spell.GetSpellInfo, C_UnitAuras.GetPlayerAuraBySpellID) are in
+    -- Diag.NAMES.
+    S.oathSpell = ask(client, "C_Spell.GetSpellInfo", "Oath of Light")
+    local oathID = S.oathSpell.ok and type(S.oathSpell.values.v1) == "table" and S.oathSpell.values.v1.spellID
+    if type(oathID) == "number" then
+        S.oathAura = ask(client, "C_UnitAuras.GetPlayerAuraBySpellID", oathID)
+    end
     S.aura1 = ask(client, "C_UnitAuras.GetAuraDataByIndex", "player", 1, "HELPFUL")
     -- Section 183 (C1, C5): the reads the rotation now takes, so one game
     -- session can show them. 6603 as the Attack spell id is a first guess.
@@ -484,7 +525,19 @@ function Diag.Collect(k, why)
     local recipe = okRecipes and type(recipes) == "table" and recipes[1]
     if type(recipe) ~= "number" then recipe = okShown and type(shown) == "table" and shown[1] end
     if type(recipe) == "number" then
-        S.recipeInfo = ask(client, "C_TradeSkillUI.GetRecipeInfo", recipe)
+        -- Lead section 249 item 4 (PF-2): the recipe info is asked once;
+        -- recipeInfo and the two fields below are read from that answer.
+        local function pack(...) return select("#", ...), { ... } end
+        local infoCount, infoAnswer = pack(client.raw("C_TradeSkillUI.GetRecipeInfo", recipe))
+        S.recipeInfo = shapeWith(function(v) return Diag.IsSecret(client, v) end, unpack(infoAnswer, 1, infoCount))
+        -- Lead section 245 item 2: the two recipe fields c.recipes reads
+        -- (Core/Client.lua), each its own capture field: nil when the
+        -- client leaves the field out.
+        local okInfo, info = infoAnswer[1], infoAnswer[2]
+        local difficulty, skillUps
+        if type(info) == "table" then difficulty, skillUps = info.relativeDifficulty, info.numSkillUps end
+        S.recipeDifficulty = shapeWith(function(v) return Diag.IsSecret(client, v) end, okInfo, difficulty)
+        S.recipeSkillUps = shapeWith(function(v) return Diag.IsSecret(client, v) end, okInfo, skillUps)
         S.recipeSchematic = ask(client, "C_TradeSkillUI.GetRecipeSchematic", recipe, false)
         S.recipeItemLink = ask(client, "C_TradeSkillUI.GetRecipeItemLink", recipe)
         -- What a recipe needs: the first reagent slot and its first reagent.
@@ -1254,6 +1307,11 @@ function Diag.Start(k)
     end)
     client.listen("VARIABLES_LOADED", function() mark("VARIABLES_LOADED") end)
     client.listen("PLAYER_LOGIN", function() mark("PLAYER_LOGIN") end)
+    -- Lead section 245 item 2: the profession window show and close, kept
+    -- in the timing marks so a capture says each fired on this client (an
+    -- event name is not a global: Diag.NAMES can not say it).
+    client.listen("TRADE_SKILL_SHOW", function() mark("TRADE_SKILL_SHOW") end)
+    client.listen("TRADE_SKILL_CLOSE", function() mark("TRADE_SKILL_CLOSE") end)
     client.listen("PLAYER_ENTERING_WORLD", function()
         if mark("PLAYER_ENTERING_WORLD") then
             session()
@@ -1464,6 +1522,12 @@ function Diag.Start(k)
             local line = rotation[i]
             say("rotation", function() return line end)
         end
+        -- N67: the optional GatherMate2 and Attune sources (Nav/AddonSources.lua).
+        say("sources", function()
+            local sources = ns.Nav and ns.Nav.AddonSources
+            if type(sources) ~= "table" or type(sources.Line) ~= "function" then return nil end
+            return sources.Line(k)
+        end)
     end
 
     -- The help word: every word in commands, one line each. It reads the

@@ -100,20 +100,79 @@ local function tag(list)
     return list
 end
 
+-- N58 (lead section 241): the form you cast or chose. FORM_NAMES: the
+-- forms the rules can ask for (the word's list). The row also takes Travel
+-- Form and Aquatic Form, as casts for a moment: never kept.
+-- New: Flow had no form choice.
+local FORM_NAMES = { "Bear Form", "Dire Bear Form", "Cat Form" }
+local IS_KEPT_FORM = { ["Bear Form"] = true, ["Dire Bear Form"] = true, ["Cat Form"] = true }
+local TEMPORARY_FORM = { ["Travel Form"] = true, ["Aquatic Form"] = true }
+
+-- Section 247 item 2 (lead decision): for the healer role every form you
+-- cast is for a moment, never kept, in a fight or out of one; a healer's
+-- form is kept only when chosen with the form word (form auto forgets it).
+-- Tank and damage: only Travel Form and Aquatic Form are for a moment.
+local function temporaryForm(name, ctx)
+    if TEMPORARY_FORM[name] then return true end
+    return type(ctx) == "table" and ctx.role == "heal"
+end
+local IS_FORM = { ["Bear Form"] = true, ["Dire Bear Form"] = true, ["Cat Form"] = true,
+                  ["Travel Form"] = true, ["Aquatic Form"] = true }
+
+-- The kept form while known. A kept Bear Form is asked as Dire Bear Form
+-- once you know that: the same form, its later rank.
+-- Section 247 item 2: a healer's form is only the word's choice (formSet);
+-- a form saved for the healer role by an older build is not asked for.
+local HEAL_KEYS = { "formSet" }
+local function keptForm(s)
+    local keys = s.role == "heal" and HEAL_KEYS or nil
+    local name = ns.OwnCasts and ns.OwnCasts.Kept(s, IS_KEPT_FORM, "form", keys) or nil
+    if name == "Bear Form" and knows(s, "Dire Bear Form") then return "Dire Bear Form" end
+    return name
+end
+
+-- The role's own form, as before N58: a tank's bear (Dire Bear Form when
+-- known), a dps's Cat Form; none for a healer.
+local function roleForm(s)
+    if s.role == "tank" then return knows(s, "Dire Bear Form") and "Dire Bear Form" or "Bear Form" end
+    if s.role == "dps" then return "Cat Form" end
+    return nil
+end
+
+-- The form the rotation asks for now: the kept one, else the role's.
+function ns.DruidForm(s)
+    return keptForm(s) or roleForm(s)
+end
+
+-- Whether to ask for that form now. A tank: a fight to take and not in it
+-- (any bear counts as a bear), as DruidWantsBear. Anyone else: in no form
+-- and a fight to take; the role's own Cat Form also not for a Balance
+-- build, as DruidWantsCat. Nothing kept: the same as before N58.
+local function wantsForm(s, name)
+    if ns.DruidForm(s) ~= name then return false end
+    local fightNow = fight(s)
+    if s.role == "tank" then
+        local inIt
+        if BEAR[name] then inIt = inBear(s) else inIt = s.form == name end
+        return fightNow and not inIt
+    end
+    if keptForm(s) == nil then return noForm(s) and ns.DruidWantsCat(s.role, fightNow, s.form, s.tree) end
+    return noForm(s) and fightNow
+end
+
 local buffs = tag({
     { spell = "Mark of the Wild", kind = "buff", reason = "Mark of the Wild missing or running out",
       when = function(s) return outOfFight(s) and caster(s) and needBuff(s, "Mark of the Wild", 60) end },
     { spell = "Thorns", kind = "buff", reason = "Thorns missing or running out",
       when = function(s) return outOfFight(s) and caster(s) and needBuff(s, "Thorns", 30) end },
-    { spell = "Dire Bear Form", kind = "buff", reason = "Tanking: Bear Form",
-      when = function(s) return ns.DruidWantsBear(s.role, fight(s), inBear(s)) end },
-    { spell = "Bear Form", kind = "buff", reason = "Tanking: Bear Form",
-      when = function(s)
-          return ns.DruidWantsBear(s.role, fight(s), inBear(s)) and not knows(s, "Dire Bear Form")
-      end },
-    { spell = "Cat Form", kind = "buff", reason = "Suggested for DPS: Cat Form",
+    -- N58: one rule per form, only for the one asked for (ns.DruidForm).
+    { spell = "Dire Bear Form", kind = "buff", reason = "Bear Form: for tanking, or the form you chose",
+      when = function(s) return wantsForm(s, "Dire Bear Form") end },
+    { spell = "Bear Form", kind = "buff", reason = "Bear Form: for tanking, or the form you chose",
+      when = function(s) return wantsForm(s, "Bear Form") end },
+    { spell = "Cat Form", kind = "buff", reason = "Suggested for DPS, or the form you chose: Cat Form",
       evidence = "authored", provenance = CAT_PROVENANCE,
-      when = function(s) return noForm(s) and ns.DruidWantsCat(s.role, fight(s), s.form, s.tree) end },
+      when = function(s) return wantsForm(s, "Cat Form") end },
     { spell = "Prowl", kind = "buff", reason = "Prowl before you pull: your key then holds your opener from stealth",
       when = function(s) return outOfFight(s) and s.hostile and inCat(s) and unstealthed(s) end },
 })
@@ -403,6 +462,15 @@ local pack = {
         nextSwing = { "Maul" },
         -- Reads the rules lean on; one not given is named by diag (187).
         reads = { "formKnown", "buffs", "targetDebuffs" },
+        -- N58 (lead section 241): the form you cast is kept for your role;
+        -- Travel Form and Aquatic Form never are, nor any form a healer
+        -- casts (section 247 item 2). `form <name>` chooses one,
+        -- `form auto` goes back. pick (PC-1): the form asked for now; a cast
+        -- of it is not kept.
+        sticky = {
+            { prefix = "", only = IS_FORM, key = "form", word = "form", names = FORM_NAMES,
+              temporary = temporaryForm, pick = function(s) return ns.DruidForm(s) end },
+        },
     },
 }
 

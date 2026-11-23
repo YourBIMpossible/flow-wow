@@ -170,4 +170,10 @@ return {
         t.eq(ns.Packs.ROGUE.talentBuilds, {})
         t.eq(ns.Packs.ROGUE.spells["Instant Poison"], nil, "no poison row")
     end,
+
+    -- N58 (lead section 241): no own-choice row while no rule suggests a
+    -- poison (Classes/Rogue.lua says what the row waits for).
+    ["N58 rogue pack: no poison choice row while no rule suggests a poison"] = function(t)
+        t.eq(ns.Packs.ROGUE.options.sticky, nil, "no sticky rows")
+    end,
 }

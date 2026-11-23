@@ -55,6 +55,7 @@ SP.NOT_READY = "the settings page is not ready until login."
 SP.TOPICS = "Topics"
 SP.SEARCH = "Search: "
 SP.NO_TOPIC = "no topic is called "
+SP.TEXT_INSTEAD = "; the text page is shown instead."
 SP.MAX_RESULTS = 16
 SP.MORE = " more: add a word to narrow the search."
 SP.WIDTH = 460
@@ -68,6 +69,35 @@ local function trim(text)
 end
 
 -- One row as a line. found: it is a search result, so its topic is said.
+-- A row's description as lines under it (row N57): wrapped at SP.WRAP
+-- letters, SP.HELP_LINES lines at most, the cut shown by three dots.
+SP.WRAP = 64
+SP.HELP_LINES = 2
+SP.HELP_INDENT = "      "
+function SP.HelpLines(help)
+    local out = {}
+    if type(help) ~= "string" then return out end
+    local line, cut = "", false
+    for word in help:gmatch("%S+") do
+        if line == "" then
+            line = word
+        elseif #line + 1 + #word <= SP.WRAP then
+            line = line .. " " .. word
+        elseif #out + 1 < SP.HELP_LINES then
+            out[#out + 1] = SP.HELP_INDENT .. line
+            line = word
+        else
+            cut = true
+            break
+        end
+    end
+    if line ~= "" then
+        if cut then line = line .. "..." end
+        out[#out + 1] = SP.HELP_INDENT .. line
+    end
+    return out
+end
+
 local function rowLine(e, isLoaded, found)
     local line = "  " .. tostring(e.label or e.key)
     if isLoaded then
@@ -104,14 +134,27 @@ function SP.Lines(k)
         lines[#lines + 1] = SP.SEARCH .. page.query
         if #page.results == 0 then lines[#lines + 1] = page.none end
         local shown = math.min(#page.results, SP.MAX_RESULTS)
-        for i = 1, shown do lines[#lines + 1] = rowLine(page.results[i], page.loaded, true) end
+        for i = 1, shown do
+            lines[#lines + 1] = rowLine(page.results[i], page.loaded, true)
+            for _, help in ipairs(SP.HelpLines(page.results[i].help)) do lines[#lines + 1] = help end
+        end
         if #page.results > shown then lines[#lines + 1] = "  " .. (#page.results - shown) .. SP.MORE end
     elseif page.topic then
         lines[#lines + 1] = tostring(page.topic.name)
         for s = 1, #page.topic.sections do
             local section = page.topic.sections[s]
             if section.name then lines[#lines + 1] = " " .. section.name end
-            for i = 1, #section.rows do lines[#lines + 1] = rowLine(section.rows[i], page.loaded, false) end
+            for i = 1, #section.rows do
+                lines[#lines + 1] = rowLine(section.rows[i], page.loaded, false)
+                for _, help in ipairs(SP.HelpLines(section.rows[i].help)) do lines[#lines + 1] = help end
+            end
+        end
+        -- N57: the rotation key's bindings, read from the game; set on the
+        -- Options page only (UI/SettingsKeys.lua).
+        local SK, keys = ns.SettingsKeys, k.keysPage
+        if SK and type(keys) == "table" and page.topic.id == SK.GROUP then
+            lines[#lines + 1] = " " .. SK.SECTION
+            for _, line in ipairs(keys.lines()) do lines[#lines + 1] = "  " .. line end
         end
     end
     lines[#lines + 1] = ""
@@ -136,9 +179,11 @@ function SP.Tallest(k)
     local most = 0
     for i = 1, #view.topics do
         local n = #view.topics[i].rows + #view.topics[i].sections
+        for _, e in ipairs(view.topics[i].rows) do n = n + #SP.HelpLines(e.help) end
         if n > most then most = n end
     end
-    if most < SP.MAX_RESULTS + 1 then most = SP.MAX_RESULTS + 1 end
+    local results = SP.MAX_RESULTS * (1 + SP.HELP_LINES) + 1
+    if most < results then most = results end
     return most + #view.topics + 9
 end
 
@@ -222,12 +267,26 @@ function SP.Declare(k, diag)
         return nil
     end
 
+    -- Asks the Options page to open. -> true when it did; false, and true
+    -- when it was refused for the game's combat lock (said in chat: the
+    -- text page is what the player gets).
+    local function openOptions()
+        local page = options()
+        if not page then return false, false end
+        local opened, why = page.Open()
+        if opened == true then return true, false end
+        if type(why) == "string" then
+            say(why .. SP.TEXT_INSTEAD)
+            return false, true
+        end
+        return false, false
+    end
+
     function api.show(topic, query)
         local P = ns.SettingsPage
         if topic ~= nil and not P.Goto(k, topic) then return nil end
         if query ~= nil then P.Find(k, query) end
-        local page = options()
-        if page and page.Open() == true then return "options" end
+        if openOptions() then return "options" end
         return show()
     end
 
@@ -235,9 +294,10 @@ function SP.Declare(k, diag)
         diag.commands[SP.WORD] = function(rest)
             rest = trim(rest)
             if rest == "" then
-                local page = options()
-                if page and page.Open() == true then return end
-                api.toggle()
+                local opened, locked = openOptions()
+                if opened then return end
+                -- Locked: the text page is shown, never hidden by the word.
+                if locked then show() else api.toggle() end
                 return
             end
             local first, tail = rest:match("^(%S+)%s*(.-)$")
@@ -247,7 +307,9 @@ function SP.Declare(k, diag)
                     api.show()
                     return
                 end
-                local topic = ns.Settings.Topics.Pick(tail)
+                local rows = {}
+                for row in k.settings:each() do rows[#rows + 1] = row end
+                local topic = ns.Settings.Topics.Pick(tail, rows)
                 if not topic then
                     local names = {}
                     for _, one in ipairs(ns.Settings.Topics.LIST) do names[#names + 1] = one.name end

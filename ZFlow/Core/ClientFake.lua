@@ -13,7 +13,7 @@
 --   c.setBagItems{ { item = 2318, count = 4 } }; c.setBank{ ... }
 --   c.setRecipes{ profession = 164, skill = 104, max = 150, recipes = { ... } }
 --   c.setRecipeSchematic(2963, { makes = 2996, yield = 1, mats = { [2589] = 2 } })
---   c.setTradeSkillRows{ name = "Tailoring", rows = { { index = 2, name = "Bolt of Linen Cloth" } } }
+--   c.setTradeSkillRows{ name = "Tailoring", rows = { { index = 2, name = "Bolt of Linen Cloth" } }, whole = true }
 --   c.setSpell(5176, { known = true, usable = false, noPower = true })
 --   c.setSpellId("Wrath", 5176)   c.setFacing(1.57)
 --   c.setMapSize(1411, 5287.5, 3525); c.setMapCont(1411, 1)
@@ -141,11 +141,13 @@ function ns.make.fakeClient(opts)
     -- Section 231 item 1: the classic fallback, by trade skill row index; a
     -- copy, nil when none is set for that index.
     -- Section 233 (GR2-1): the classic window's rows, a copy; nil when none
-    -- are set.
+    -- are set. Section 245 (RB2-2): collapsed, filtered and whole as set;
+    -- not set, they are nil: unknown, never "every learned recipe".
     function c.tradeSkillRows()
         local r = s.tradeRows
         if type(r) ~= "table" then return nil end
-        return { name = r.name, skill = r.skill, max = r.max, rows = copyRows(r.rows) or {} }
+        return { name = r.name, skill = r.skill, max = r.max, rows = copyRows(r.rows) or {},
+                 collapsed = r.collapsed, filtered = r.filtered, whole = r.whole }
     end
     -- Section 238: name, difficulty and partial too, as the client gives.
     function c.tradeSkillSchematic(index)
@@ -766,7 +768,10 @@ function ns.make.fakeClient(opts)
         s.tradeSchematics[index] = r
     end
     -- The classic window's rows (section 233): { name =, rows = { { index =,
-    -- name = } } }; nil: no classic window answers.
+    -- name = } } }; nil: no classic window answers. Section 245 (RB2-2):
+    -- collapsed = true / filtered = true say the window hid rows; whole =
+    -- true says the rows are every learned recipe (the real client does not
+    -- say so yet). Left out: unknown, and RecipeBook drops nothing.
     function c.setTradeSkillRows(r) s.tradeRows = r end
     -- One spell's answers: { known =, usable =, noPower = }; a field left
     -- out reads as not known.
@@ -1135,12 +1140,27 @@ function ns.make.fakeClient(opts)
     -- combatLockdown() is not false (it follows setCombat / setLockdown).
     -- failSecureAttr(attr, true): setting that one is "refused".
     -- dropSecureAttr(attr, true): setting it answers true and keeps nothing.
+    -- Section 246 (N63-E): every set asked for, kept or refused, is logged
+    -- in order: h.given = { { attr, value } } on the button, and
+    -- c.secureGiven = { { name, attr, value } } over every button.
+    -- c.secureMacros() lists the rows of c.secureGiven that make a button
+    -- a macro: a type attribute ("type", "*type-alt", "shift-type1", ...)
+    -- given "macro", or a macro or macro text attribute ("macro",
+    -- "macrotext", "*macrotext-alt", ...) given a value. Section 249 (CT-2):
+    -- names and values are compared lower-cased, so "MACRO" is caught too.
+    -- A macro-type
+    -- secure button does not act on this client (the press arrives with the
+    -- right macro and nothing is cast), so no Z-Flow button may be one.
     c.secureButtons = {}
+    c.secureGiven = {}
     local secureFail, secureDrop = {}, {}
     function c.secureButton(spec)
         if s.noFrames then return nil end
-        local h = { spec = spec, attrs = {} }
+        local h = { spec = spec, attrs = {}, given = {} }
         function h.set(attr, value)
+            h.given[#h.given + 1] = { attr = attr, value = value }
+            c.secureGiven[#c.secureGiven + 1] = {
+                name = type(spec) == "table" and spec.name or nil, attr = attr, value = value }
             if c.combatLockdown() ~= false then return false, "lockdown" end
             if secureFail[attr] then return false, "refused" end
             if not secureDrop[attr] then h.attrs[attr] = value end
@@ -1151,6 +1171,19 @@ function ns.make.fakeClient(opts)
         return h
     end
     function c.failSecureAttr(attr, on) secureFail[attr] = on and true or nil end
+    function c.secureMacros()
+        local out = {}
+        for _, g in ipairs(c.secureGiven) do
+            local attr = string.lower(tostring(g.attr))
+            local value = type(g.value) == "string" and string.lower(g.value) or g.value
+            local isType = attr:find("type", 1, true) ~= nil
+            if (isType and value == "macro")
+                or (not isType and attr:find("macro", 1, true) and g.value ~= nil) then
+                out[#out + 1] = g
+            end
+        end
+        return out
+    end
     function c.dropSecureAttr(attr, on) secureDrop[attr] = on and true or nil end
 
     -- F2 errand stops: the same reads as Core/Client.lua, set by a test.
@@ -1412,6 +1445,25 @@ function ns.make.fakeClient(opts)
         s.unitBuffs = s.unitBuffs or {}
         s.unitBuffs[unit] = rows
     end
+    -- N64: the enchant on your weapons, in the shape Plexy's P-READS note
+    -- names for the real read (item 5, not yet in Core/Client.lua):
+    --   c.weaponEnchant() -> { main = { has, left, charges }, off = ... } or nil
+    -- has true or false, left seconds (nil: not known), charges a number or
+    -- nil; a hand not read is left out. setWeaponEnchant(nil): not read;
+    -- setWeaponEnchantFails(true): the read raises.
+    function c.weaponEnchant()
+        if s.weaponEnchantFails then error("weapon enchant read failed (test)") end
+        if type(s.weaponEnchant) ~= "table" then return nil end
+        local out = {}
+        for hand, row in pairs(s.weaponEnchant) do
+            if type(row) == "table" then
+                out[hand] = { has = row.has, left = row.left, charges = row.charges }
+            end
+        end
+        return out
+    end
+    function c.setWeaponEnchant(t) s.weaponEnchant = t end
+    function c.setWeaponEnchantFails(on) s.weaponEnchantFails = (on == true) end
     -- Plays the game filling its tooltip for `unit`: every onUnitTooltip
     -- listener is told, and what they added comes back as
     -- { { text, r, g, b } ... }.
@@ -1845,9 +1897,33 @@ function ns.make.fakeClient(opts)
         s.trackingOn = s.trackingOn or {}
         if on == nil then s.trackingOn[spell] = nil else s.trackingOn[spell] = on and true or false end
     end
+    -- GK-4: the whole tracking list as the client lists it, town kinds and
+    -- entries whose active is not known included:
+    --   c.setTrackingList({ { name, active = true | false | nil, town = true }, ... })
+    -- nil clears it (back to setTracking's spells). While a list is set,
+    -- anyTracking answers from it by the real client's rule (GK-2, GK-3):
+    -- town entries left out; one of yours on: true; else one not known: nil;
+    -- else false.
+    function c.setTrackingList(list)
+        if type(list) ~= "table" then s.trackingList = nil return end
+        s.trackingList = {}
+        for i, e in ipairs(list) do
+            s.trackingList[i] = { name = e.name, active = e.active, town = e.town == true }
+        end
+    end
     -- GT-1: any tracking on: true when one set on is, false when any was set
     -- and none is on, nil when none was set.
     function c.anyTracking()
+        if s.trackingList then
+            local unknown = false
+            for _, e in ipairs(s.trackingList) do
+                if not e.town then
+                    if e.active == nil then unknown = true elseif e.active then return true end
+                end
+            end
+            if unknown then return nil end
+            return false
+        end
         if not s.trackingOn then return nil end
         for _, on in pairs(s.trackingOn) do
             if on == true then return true end
@@ -2220,6 +2296,268 @@ function ns.make.fakeClient(opts)
             return true
         end
         return h
+    end
+
+    -- Lead section 243 (P-PARTY 2). setUnitBuffFails(unit, on): that unit's
+    -- buff read raises while on (one member's aura read failing). And the
+    -- icon's look-only mark, as the real client's: mark("look") keeps
+    -- "look" in h.marked; any other mark is the icon's own.
+    do
+        local failing = {}
+        function c.setUnitBuffFails(unit, on) failing[unit] = on and true or nil end
+        local plainBuff = c.unitBuff
+        function c.unitBuff(unit, names)
+            if failing[unit] then error("buff read failed (test)") end
+            return plainBuff(unit, names)
+        end
+        local plainIcon = c.icon
+        function c.icon(spec)
+            local h = plainIcon(spec)
+            if type(h) ~= "table" then return h end
+            local plainMark = h.mark
+            function h.mark(look, ...)
+                if look == "look" then
+                    h.marked = "look"
+                    return true
+                end
+                return plainMark(look, ...)
+            end
+            return h
+        end
+    end
+    -- N57: the game's key bindings and the key-capture overlay, as the real
+    -- client's wrappers (Core/Client.lua, end). Added last.
+    --   c.setBindings({ { key, action }, ... })   the game's binding set as
+    --     loaded: live and saved alike, in that order
+    --   c.bindingMap() / c.savedBindingMap()   key -> action, copies: what
+    --     is bound now, and what SaveBindings last kept (a reload reads it)
+    --   c.overrideKeys()   key -> button, this session's override bindings
+    --   c.bindingCalls()   the names of the binding writes that went through
+    --   c.setBindingReads(false)   bindingKeys and bindingAction answer nil
+    --     (the client does not say); true: they answer again
+    --   c.setBindingWriteFault(n)  the next n setBindingClick calls raise
+    --   c.pressKey(chord) -> true when an open overlay took it; "ESCAPE"
+    --     cancels it.  c.keyCaptureOpen() -> true while one waits
+    -- The writes refuse with "lockdown" while combatLockdown() is not false.
+    do
+        local live, saved, order, overrides, calls = {}, {}, {}, {}, {}
+        local unread, faults = false, 0
+        local capture
+        local function copy(t)
+            local out = {}
+            for k2, v in pairs(t) do out[k2] = v end
+            return out
+        end
+        local function unbind(key)
+            live[key] = nil
+            for i = #order, 1, -1 do
+                if order[i] == key then table.remove(order, i) end
+            end
+        end
+        local function bind(key, action)
+            unbind(key)
+            live[key] = action
+            order[#order + 1] = key
+        end
+        local function locked() return c.combatLockdown() ~= false end
+        function c.setBindings(list)
+            live, saved, order = {}, {}, {}
+            for _, pair in ipairs(list or {}) do
+                bind(pair[1], pair[2])
+                saved[pair[1]] = pair[2]
+            end
+        end
+        function c.bindingMap() return copy(live) end
+        function c.savedBindingMap() return copy(saved) end
+        function c.overrideKeys() return copy(overrides) end
+        function c.bindingCalls() return copy(calls) end
+        function c.setBindingReads(on) unread = (on == false) end
+        function c.setBindingWriteFault(n) faults = tonumber(n) or 0 end
+
+        function c.bindingKeys(action)
+            if unread or type(action) ~= "string" then return nil end
+            local out = {}
+            for _, key in ipairs(order) do
+                if live[key] == action then out[#out + 1] = key end
+            end
+            return out
+        end
+        function c.bindingAction(key)
+            if unread or type(key) ~= "string" or key == "" then return nil end
+            return live[key] or ""
+        end
+        function c.setBindingClick(key, button)
+            if locked() then return false, "lockdown" end
+            if faults > 0 then
+                faults = faults - 1
+                error("SetBindingClick failed (test)", 0)
+            end
+            bind(key, "CLICK " .. tostring(button) .. ":LeftButton")
+            calls[#calls + 1] = "setBindingClick"
+            return true
+        end
+        function c.clearBinding(key)
+            if locked() then return false, "lockdown" end
+            unbind(key)
+            calls[#calls + 1] = "clearBinding"
+            return true
+        end
+        function c.saveBindings()
+            if locked() then return false, "lockdown" end
+            saved = copy(live)
+            calls[#calls + 1] = "saveBindings"
+            return true
+        end
+        function c.overrideBindingClick(key, button)
+            if locked() then return false, "lockdown" end
+            overrides[key] = button
+            calls[#calls + 1] = "overrideBindingClick"
+            return true
+        end
+        function c.clearOverrideKeys()
+            if locked() then return false, "lockdown" end
+            overrides = {}
+            calls[#calls + 1] = "clearOverrideKeys"
+            return true
+        end
+
+        function c.keyCapture()
+            local h = { waiting = false }
+            function h.start(text, onKey, onCancel)
+                h.waiting, h.text, h.onKey, h.onCancel = true, text, onKey, onCancel
+                return true
+            end
+            function h.stop() h.waiting = false end
+            function h.open() return h.waiting end
+            capture = h
+            return h
+        end
+        function c.keyCaptureOpen() return capture ~= nil and capture.waiting == true end
+        function c.pressKey(chord)
+            if not c.keyCaptureOpen() then return false end
+            local h = capture
+            h.waiting = false
+            if chord == "ESCAPE" then
+                if type(h.onCancel) == "function" then h.onCancel() end
+            elseif type(h.onKey) == "function" then
+                h.onKey(chord)
+            end
+            return true
+        end
+    end
+
+    -- Slider rows of the Options page (row N57), as the real page draws
+    -- them. Added last, around the page above.
+    --   c.optionsDrag(key, value)  the player drags that row's slider to
+    --     value and lets go: act(key, value on the row's step, inside its
+    --     limits). false when the row is not a slider or cannot be set.
+    --   c.setSliders(false)        a client that gives no Slider frame:
+    --     every slider row is drawn as the stepper (kind "number")
+    local optionsWithNav = c.optionsPage
+    function c.setSliders(on) s.noSliders = (on == false) end
+    function c.optionsPage(spec)
+        local h = optionsWithNav(spec)
+        if not h then return h end
+        local draw = h.draw
+        function h.draw(rows, act, nav)
+            local ok = draw(rows, act, nav)
+            if s.noSliders and s.options and type(s.options.rows) == "table" then
+                for _, row in ipairs(s.options.rows) do
+                    if row.kind == "slider" then row.kind = "number" end
+                end
+            end
+            return ok
+        end
+        return h
+    end
+    function c.optionsDrag(key, value)
+        if not s.options or type(s.options.rows) ~= "table" or type(value) ~= "number" then return false end
+        for _, row in ipairs(s.options.rows) do
+            if row.key == key and row.kind == "slider" then
+                if row.settable ~= true or type(s.options.act) ~= "function" then return false end
+                local step = 1
+                if type(row.step) == "number" and row.step > 0 then step = row.step end
+                local v = row.min + math.floor((value - row.min) / step + 0.5) * step
+                if v < row.min then v = row.min end
+                if v > row.max then v = row.max end
+                s.options.act(key, v)
+                return true
+            end
+        end
+        return false
+    end
+
+    -- Text entry (N73), as the real client's textEntry: every one made is
+    -- in c.textEntries, in order: { spec, shown, words, text }. The test's
+    -- controls: e.type(text) is the player typing that and pressing Enter
+    -- (false when it is not on the screen), e.escape() is Escape.
+    -- setTextEntry(false) plays a client that cannot make one.
+    c.textEntries = {}
+    function c.setTextEntry(on) s.noTextEntry = (on == false) end
+    function c.textEntry(spec)
+        if s.noFrames or s.noTextEntry then return nil end
+        local e = { spec = spec, shown = false, words = "", text = "" }
+        local h, told = {}, nil
+        function h.ask(words, text, fn)
+            told = nil
+            if type(fn) == "function" then told = fn end
+            e.words, e.text = "", ""
+            if type(words) == "string" then e.words = words end
+            if type(text) == "string" then e.text = text end
+            e.shown = true
+        end
+        function h.show(on)
+            if on then return end
+            e.shown, told = false, nil
+        end
+        function h.shown() return e.shown end
+        function e.type(text)
+            if not e.shown then return false end
+            local fn = told
+            e.shown, told = false, nil
+            if fn then fn(tostring(text)) end
+            return true
+        end
+        function e.escape() e.shown, told = false, nil end
+        c.textEntries[#c.textEntries + 1] = e
+        return h
+    end
+
+    -- N67: other add-ons' data as the real client reads it.
+    -- setGatherMateNodes(map, rows): GatherMate2 is there with those rows
+    -- on that map ({ { kind, x, y, node } }); a map not set has none.
+    -- setGatherMateNodes(nil): GatherMate2 is gone. c.gatherMateAsks counts
+    -- every ask. setAttuneProgress(rows | nil): Attune's rows, or none.
+    -- Each answer is a copy.
+    c.gatherMateAsks = 0
+    local function copyRows(rows)
+        local out = {}
+        for i, r in ipairs(rows) do
+            local row = {}
+            for key, v in pairs(r) do row[key] = v end
+            out[i] = row
+        end
+        return out
+    end
+    function c.setGatherMateNodes(map, rows)
+        if map == nil then
+            s.gatherMate = nil
+            return
+        end
+        s.gatherMate = s.gatherMate or {}
+        s.gatherMate[map] = rows
+    end
+    function c.gatherMateNodes(map)
+        c.gatherMateAsks = c.gatherMateAsks + 1
+        if type(s.gatherMate) ~= "table" or type(map) ~= "number" then return nil end
+        local rows = s.gatherMate[map]
+        if type(rows) ~= "table" then return {} end
+        return copyRows(rows)
+    end
+    function c.setAttuneProgress(rows) s.attune = rows end
+    function c.attuneProgress()
+        if type(s.attune) ~= "table" then return nil end
+        return copyRows(s.attune)
     end
     return c
 end

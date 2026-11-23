@@ -21,13 +21,18 @@ local KIND = {
                "watchAuctionResults", "onUnitTooltip", "watchAuctionRows", "onSystemMessage" },
     show = { "print", "panel", "minimapPin", "copyBox", "icon", "arrow", "windowButton", "secureButton",
              "optionsPage", "guideLines", "taxiMark", "mapPins", "comboBar", "slotIcon",
-             "markMerchantButtons", "rowPanel" },
+             "markMerchantButtons", "rowPanel", "textEntry",
+             -- N57: the key-capture overlay on the settings page.
+             "keyCapture" },
     tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "slash",
              "slashTaken", "unslash" },
     -- Hands back or runs a sound restart: never asked by the capture.
     -- craftRecipe (lead section 226, acting): one craft on the player click.
     -- stopCraftRepeat (section 234): stops the game repeat; not a craft.
-    act = { "restartSound", "soundWays", "craftRecipe", "stopCraftRepeat" },
+    -- N57 (lead section 249 item 2): the binding writes, each only on the
+    -- player's own key press on the settings page, out of combat.
+    act = { "restartSound", "soundWays", "craftRecipe", "stopCraftRepeat",
+            "setBindingClick", "clearBinding", "saveBindings", "overrideBindingClick", "clearOverrideKeys" },
     -- Reads a chat line handed in, not the client.
     -- lootLine (N55): the item of anyone's loot line, never the looter.
     parse = { "ownLoot", "auctionOutcome", "lootLine" },
@@ -77,6 +82,15 @@ local READS = {
     -- instance; read by UI/BossLoot.lua only. The names they ask
     -- (IsInInstance, GetInstanceInfo and the rest) are in Diag.NAMES.
     bossUnit = false, instance = false,
+
+    -- N57: the rotation key's bindings and what a key does; read by the
+    -- settings page only. Their names are in Diag.NAMES.
+    bindingKeys = false, bindingAction = false,
+
+    -- N67: other add-ons' data at runtime (GatherMate2's nodes, Attune's
+    -- progress); read by Nav/AddonSources.lua only. The globals they read
+    -- are in Diag.NAMES; the capture keeps only whether each is loaded.
+    gatherMateNodes = false, attuneProgress = false,
 }
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).
