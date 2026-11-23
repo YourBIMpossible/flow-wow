@@ -26,7 +26,7 @@ local _, ns = ...
 --   changed     true when any op is a set or a clear, or the condition differs
 --   condition   the state condition string to drive the states with
 --   conditionChanged  true when it differs from the one in place
---   stealthForm the form the stealth state belongs to, or nil
+--   stealthForm the form the stealth state belongs to, 0 for no form (any form), or nil
 --   plan        a copy of the new plan: hand it back as `applied` next time
 --
 -- result, when it is refused: { ok = false, refused, reason, ops = {} }

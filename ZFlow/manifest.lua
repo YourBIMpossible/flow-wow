@@ -97,6 +97,7 @@ return {
         "Classes/Druid.lua",
         "Classes/Paladin.lua",
         "Classes/Priest.lua",
+        "Classes/Rogue.lua",
         "Classes/Shaman.lua",
         "Rotation/GroupTip.lua",
 

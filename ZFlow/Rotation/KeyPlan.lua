@@ -9,6 +9,9 @@ local _, ns = ...
 --
 -- pack.keys: { [formName or "none"] = { key, ctrl, shift, alt, more },
 --              stealth = { form = formName, key, ... } }
+--   A stealth row with no form (a rogue: stealth is not a shapeshift form)
+--   holds while stealthed in any form: "[stealth] 9" is written first and
+--   stealthForm is 0. [stealth] as a key state condition: needs game test.
 --   Each slot is a spell name or a list of names: the first one you know
 --   that the row has not used already.
 --
@@ -24,7 +27,8 @@ local _, ns = ...
 --              a row is { key, ctrl, shift, alt, more } of spell names; a
 --              state with nothing to cast has no row
 --   condition  the state condition string, stealth first ("[form:3,stealth] 9; [form:3] 3; 0")
---   stealthForm  the index of the form the stealth row belongs to, or nil
+--   stealthForm  the index of the form the stealth row belongs to, 0 when
+--                it belongs to no form (stealthed in any form), or nil
 --
 -- The logic is the pure form plan of Modules/Rotation/Cast.lua (C.FormPlan).
 
@@ -68,11 +72,20 @@ function ns.KeyPlan(pack, prefs)
     local known, skip = prefs.known, prefs.skip
     local cond, states = {}, { [0] = entry(keys.none, slots, known, skip) }
     local out = { states = states }
+    -- A stealth row with no form: stealthed in any form, so it comes first.
+    local st = keys.stealth
+    if type(st) == "table" and st.form == nil then
+        local e = entry(st, slots, known, skip)
+        if e then
+            cond[#cond + 1] = string.format("[stealth] %d", R.STEALTH_STATE)
+            states[R.STEALTH_STATE] = e
+            out.stealthForm = 0
+        end
+    end
     for _, f in ipairs(prefs.forms or {}) do
         if type(f) == "table" and type(f.index) == "number" and f.index >= 1 and f.index <= R.FORM_STATES then
             -- Stealthed in this form first: the first condition that holds is taken.
-            local st = keys.stealth
-            if type(st) == "table" and st.form == f.name then
+            if type(st) == "table" and st.form ~= nil and st.form == f.name then
                 local e = entry(st, slots, known, skip)
                 if e then
                     cond[#cond + 1] = string.format("[form:%d,stealth] %d", f.index, R.STEALTH_STATE)

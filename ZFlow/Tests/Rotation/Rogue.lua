@@ -118,7 +118,9 @@ return {
     end,
 
     ["a finisher due, buffs not read: Eviscerate, no Slice and Dice"] = function(t)
-        t.eq(advice({ finisherReady = true, buffs = nil }), "Eviscerate")
+        local s = snap({ finisherReady = true })
+        s.buffs = nil
+        t.eq(ns.Choose(s, ns.Packs.ROGUE).spell, "Eviscerate")
     end,
 
     ["low health (the game's warning) in a fight: Evasion"] = function(t)

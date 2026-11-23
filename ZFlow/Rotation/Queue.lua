@@ -33,11 +33,12 @@ end
 
 -- The key plan row for the form you are in: { key, ctrl, shift, alt, more },
 -- or nil when the plan or the form is not known. Stealthed in the stealth
--- form, the stealth row where the plan has one.
+-- form, the stealth row where the plan has one. A stealthForm of 0 is a
+-- stealth row that belongs to no form (KeyPlan): it holds in any form.
 function Q.Row(plan, form, stealthed, stealthForm)
     if type(plan) ~= "table" or type(plan.states) ~= "table" or type(form) ~= "number" then return nil end
     local row
-    if stealthed == true and stealthForm == form then
+    if stealthed == true and (stealthForm == form or stealthForm == 0) then
         local R = ns.Rotation
         row = R and R.STEALTH_STATE and plan.states[R.STEALTH_STATE] or nil
     end
