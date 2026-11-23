@@ -109,7 +109,8 @@ local _, ns = ...
 --                  no rows, none is known, or a read raised
 --       weaponEnchant  P-SELFBUFF: client.weaponEnchant() by hand: the
 --                  seconds left, true (on, time not shown) or false (bare);
---                  a hand with nothing known is left out. nil when not
+--                  a hand with nothing known, or with no weapon worn in
+--                  its slot (client.wornLinks 16/17), is left out. nil when not
 --                  known, the read raised, or the client has no such read
 --       debuffs    PRIEST-3: client.playerDebuffs(): your own debuffs by
 --                  name, as playerBuffs; nil when not known, the read
@@ -330,15 +331,26 @@ local function treeOf(client, pack, ids)
 end
 
 -- P-SELFBUFF: the enchant on your weapons (see the header). A read that
--- raises, or answers no table, gives nil: not known.
+-- raises, or answers no table, gives nil: not known. A hand counts only
+-- with a weapon worn in its slot (client.wornLinks: 16 main, 17 off): an
+-- empty slot, a slot not read, or a worn read that raises leaves it out,
+-- so an unarmed player is never asked for an enchant.
+local ENCHANT_SLOTS = { main = 16, off = 17 }
 local function enchantOf(client)
     if type(client.weaponEnchant) ~= "function" then return nil end
     local ok, got = pcall(client.weaponEnchant)
     if not ok or type(got) ~= "table" then return nil end
+    local worn
+    if type(client.wornLinks) == "function" then
+        local wornOk, links = pcall(client.wornLinks)
+        if wornOk and type(links) == "table" then worn = links end
+    end
     local out = {}
     for _, hand in ipairs({ "main", "off" }) do
         local row = got[hand]
-        if type(row) == "table" then
+        local link
+        if worn then link = worn[ENCHANT_SLOTS[hand]] end
+        if type(row) == "table" and type(link) == "string" and link ~= "" then
             if row.has == false then
                 out[hand] = false
             elseif row.has == true then
