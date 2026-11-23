@@ -221,6 +221,26 @@ tests["click slots: late spell data fills the slot when it arrives"] = function(
     noBindsNoMacros(t, c)
 end
 
+-- SC-4: the icons are remembered by what was put on the row, not by the
+-- plan: an icon not given (its texture not known yet) is given once the
+-- texture is known, with the plan unchanged.
+tests["click slots: an icon not given at first is given once its texture is known"] = function(t)
+    local late = "Power Word: Fortitude"
+    local c, addon = start()
+    c.setSpellTexture(IDS[late], nil)
+    addon.settings:set(D.SETTING, true)
+    addon.settings:set(S.SETTING, true)
+    c.advance(3, 5)
+    local h = slotRow(c)
+    if not h then t.ok(false, "no row"); return end
+    t.eq(slot(h, "key").attrs.spell, late, "the key slot holds it")
+    t.eq(slot(h, "key").icon, nil, "no icon while its texture is not known")
+    c.setSpellTexture(IDS[late], "tex:" .. late); c.advance(3, 5)
+    t.eq(slot(h, "key").attrs.spell, late, "the plan is the same")
+    t.eq(slot(h, "key").icon, "tex:" .. late, "the icon is given once known")
+    noBindsNoMacros(t, c)
+end
+
 tests["click slots: the handle moves the row out of a fight and the place is kept"] = function(t)
     local c, addon = start({ on = true })
     local h = slotRow(c)
