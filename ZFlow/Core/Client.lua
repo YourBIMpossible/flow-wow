@@ -522,6 +522,46 @@ function ns.make.client(env)
         return out
     end
 
+    -- Section 227 (P-GOALS-RECIPE): one recipe's product, how many one
+    -- craft makes, and its required basic mats:
+    --   { makes = item ID, yield = n, mats = { [item ID] = n a craft } }
+    -- from C_TradeSkillUI.GetRecipeSchematic(id, false). Optional and
+    -- finishing slots are left out; a required slot names its first reagent.
+    -- Anything that can't be read makes the whole answer nil: never a
+    -- shorter list. The field names are first guesses, not seen in game.
+    function c.recipeSchematic(id)
+        if type(id) ~= "number" then return nil end
+        local ui = env.C_TradeSkillUI
+        if type(ui) ~= "table" then return nil end
+        local ok, s = call(ui.GetRecipeSchematic, id, false)
+        if not ok or type(s) ~= "table" then return nil end
+        local function count(n, least)
+            return wholeCount(n) and n < math.huge and n >= least
+        end
+        local makes = s.outputItemID
+        if not count(makes, 1) then return nil end
+        local yield = s.quantityMin
+        if yield == nil then yield = 1 end
+        if not count(yield, 1) then return nil end
+        local slots = s.reagentSlotSchematics
+        if type(slots) ~= "table" then return nil end
+        local mats = {}
+        for i = 1, #slots do
+            local slot = slots[i]
+            if type(slot) ~= "table" then return nil end
+            local basic = slot.reagentType == nil or slot.reagentType == 1
+            if basic and slot.required ~= false then
+                local first = type(slot.reagents) == "table" and slot.reagents[1] or nil
+                local item = type(first) == "table" and first.itemID or nil
+                local n = slot.quantityRequired
+                if not count(item, 1) or not count(n, 1) then return nil end
+                mats[item] = (mats[item] or 0) + n
+            end
+        end
+        if next(mats) == nil then return nil end
+        return { makes = makes, yield = yield, mats = mats }
+    end
+
     -- A string the client gave and did not mark secret, or nil.
     local function text(ok, v)
         if not ok or v == nil or hidden(v) or type(v) ~= "string" or v == "" then return nil end

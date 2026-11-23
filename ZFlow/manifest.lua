@@ -161,6 +161,7 @@ return {
         "UI/SellList.lua",
         "UI/BankList.lua",
         "Items/Keep.lua",
+        "Items/RecipeBook.lua",
         "Items/Goals.lua",
     "UI/Arrow.lua",
     "UI/MinimapPin.lua",
