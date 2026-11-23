@@ -52,6 +52,7 @@ local function start(class, opts)
     end
     addon.settings:set(D.SETTING, true)
     c.setPlayerBuffs(buffs); c.setTarget(ENEMY); c.setStealthed(false)
+    if opts.form ~= nil then c.setFormName(opts.form or nil, true) end
     if opts.grouped ~= nil then c.setGrouped(opts.grouped) end
     if opts.enemies then c.setPlateEnemies(opts.enemies) end
     if opts.casts then c.setPlateCasts(opts.casts) end
@@ -171,6 +172,78 @@ tests["class b e2e: the spell card shows the tip for Levitate, and none for Fade
     out = {}
     for i = before + 1, #c.printed do out[#out + 1] = tostring(c.printed[i]) end
     t.eq(#out, 1, "Fade: the name line only")
+end
+
+-- Lead section 280 (class parity): the same two steps for the other
+-- classes, through the whole add-on. Made-up names and spell ids.
+SPELLS.DRUID = { ["Wrath"] = 9301, ["Hibernate"] = 9302, ["Cower"] = 9303, ["Claw"] = 9304 }
+SPELLS.HUNTER = { ["Raptor Strike"] = 9401, ["Scare Beast"] = 9402, ["Feign Death"] = 9403 }
+SPELLS.PALADIN = { ["Seal of Righteousness"] = 9501, ["Turn Undead"] = 9502 }
+SPELLS.WARLOCK = { ["Shadow Bolt"] = 9601, ["Banish"] = 9602 }
+SPELLS.ROGUE["Feint"] = 9203
+SPELLS.WARRIOR = { ["Heroic Strike"] = 9701 }
+SPELLS.SHAMAN = { ["Lightning Bolt"] = 9801 }
+
+local WOLF = { unit = "nameplate2", name = "Wolf", isTarget = false, creature = "Beast", controlled = false }
+local IMP = { unit = "nameplate2", name = "Imp", isTarget = false, creature = "Demon", controlled = false }
+local ON_YOU = { { unit = "nameplate1", name = "Gnoll", isTarget = true, threat = 3 } }
+
+local PARITY_CC = {
+    { class = "DRUID", second = WOLF, spell = "Hibernate" },
+    { class = "HUNTER", second = WOLF, spell = "Scare Beast" },
+    { class = "PALADIN", second = GHOUL, spell = "Turn Undead" },
+    { class = "WARLOCK", second = IMP, spell = "Banish" },
+}
+for _, case in ipairs(PARITY_CC) do
+    tests["class b parity e2e: " .. string.lower(case.class) .. ", a second " .. string.lower(case.second.creature)
+        .. ": " .. case.spell .. " named on the caption, the key untouched"] = function(t)
+        local _, addon, icon = start(case.class, { enemies = { GNOLL, case.second } })
+        local s = picked(addon)
+        t.ok(s ~= nil, "a suggestion")
+        if not s then return end
+        t.eq({ s.step, s.spell, s.unit, s.member, s.look }, { "cc", case.spell, "nameplate2", case.second.name, true })
+        t.eq(icon and icon.captionText, case.spell .. " on " .. case.second.name)
+        keyUntouched(t, addon, case.class, case.spell, "nameplate2")
+    end
+end
+
+local PARITY_DROP = {
+    { class = "HUNTER", spell = "Feign Death" },
+    { class = "ROGUE", spell = "Feint" },
+    { class = "DRUID", spell = "Cower", form = "Cat Form" },
+}
+for _, case in ipairs(PARITY_DROP) do
+    tests["class b parity e2e: " .. string.lower(case.class) .. " in a group, an enemy on you: "
+        .. case.spell .. ", cast on you; alone: none"] = function(t)
+        local c, addon, icon = start(case.class, { grouped = true, enemies = ON_YOU, form = case.form })
+        local s = picked(addon)
+        t.eq(s and s.step, "threat")
+        t.eq(s and s.spell, case.spell)
+        t.eq(s and s.look, nil, "cast on you: not look only")
+        t.eq(icon and icon.texture, "tex:" .. case.spell)
+        t.ok(said(c):find("suggesting " .. case.spell, 1, true) ~= nil, said(c))
+        local _, alone = start(case.class, { grouped = false, enemies = ON_YOU, form = case.form })
+        local s2 = picked(alone)
+        t.ok(s2 == nil or s2.spell ~= case.spell, "alone: no " .. case.spell)
+    end
+end
+
+tests["class b parity e2e: druid not in cat form, an enemy on you in a group: no Cower"] = function(t)
+    local _, addon = start("DRUID", { grouped = true, enemies = ON_YOU, form = false })
+    local s = picked(addon)
+    t.ok(s == nil or s.spell ~= "Cower", "caster form: no Cower")
+end
+
+tests["class b parity e2e: warrior and shaman say they have no crowd control or threat drop, and show none"] = function(t)
+    for _, class in ipairs({ "WARRIOR", "SHAMAN" }) do
+        local _, addon = start(class, { grouped = true, enemies = { { unit = "nameplate1", name = "Gnoll", isTarget = true,
+            creature = "Humanoid", controlled = false, threat = 3 }, KOBOLD } })
+        local s = picked(addon)
+        t.ok(s == nil or (s.step ~= "cc" and s.step ~= "threat"), class .. ": " .. tostring(s and s.step))
+        local o = ns.Packs[class].options
+        t.ok(type(o.crowdControl) == "table" and type(o.crowdControl.none) == "string", class .. ": crowd control none, stated")
+        t.ok(type(o.threatDrop) == "table" and type(o.threatDrop.none) == "string", class .. ": threat drop none, stated")
+    end
 end
 
 return tests

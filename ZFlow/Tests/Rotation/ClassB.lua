@@ -317,4 +317,125 @@ tests["class b spell card: Mind Soothe, Mind Control and Levitate carry a tip; a
     t.eq(nopack, { "New spell: Levitate" }, "no pack: no tip")
 end
 
+-- Lead section 280 (class parity) on section 242: every one of the nine
+-- packs names its crowd control and its threat drop, or says in words why
+-- it has none; no class has the step while the others are silent.
+
+local NINE = { "DRUID", "HUNTER", "MAGE", "PALADIN", "PRIEST", "ROGUE", "SHAMAN", "WARLOCK", "WARRIOR" }
+
+local function packOf(class)
+    return type(ns.Packs) == "table" and ns.Packs[class] or nil
+end
+
+local function words(v) return type(v) == "string" and v:find("%a") ~= nil end
+
+tests["class b parity: every pack names its crowd control, or says why it has none"] = function(t)
+    for _, class in ipairs(NINE) do
+        local pack = packOf(class)
+        local opts = type(pack) == "table" and pack.options or nil
+        local rules = type(opts) == "table" and opts.crowdControl or nil
+        t.ok(type(rules) == "table", class .. ": options.crowdControl is stated")
+        if type(rules) == "table" then
+            if #rules == 0 then
+                t.ok(words(rules.none), class .. ": no crowd control, and the reason is words")
+            end
+            for _, r in ipairs(rules) do
+                t.ok(type(r.spell) == "string" and type(pack.spells) == "table" and pack.spells[r.spell] ~= nil,
+                    class .. ": " .. tostring(r.spell) .. " is a spell of the pack")
+                t.ok(type(r.creatures) == "table" and next(r.creatures) ~= nil, class .. ": the creatures it holds are named")
+            end
+        end
+    end
+end
+
+tests["class b parity: every pack names its threat drop, or says why it has none"] = function(t)
+    for _, class in ipairs(NINE) do
+        local pack = packOf(class)
+        local opts = type(pack) == "table" and pack.options or nil
+        local drop = type(opts) == "table" and opts.threatDrop or nil
+        t.ok(type(drop) == "table", class .. ": options.threatDrop is stated")
+        if type(drop) == "table" then
+            if drop.spell == nil then
+                t.ok(words(drop.none), class .. ": no threat drop, and the reason is words")
+            else
+                t.ok(type(pack.spells) == "table" and pack.spells[drop.spell] ~= nil,
+                    class .. ": " .. tostring(drop.spell) .. " is a spell of the pack")
+            end
+        end
+    end
+end
+
+tests["class b parity: every talent in every build says why it is taken"] = function(t)
+    for _, class in ipairs(NINE) do
+        local pack = packOf(class)
+        for i, build in ipairs(type(pack) == "table" and type(pack.talentBuilds) == "table" and pack.talentBuilds or {}) do
+            for j, row in ipairs(type(build.order) == "table" and build.order or {}) do
+                t.ok(words(row.why), string.format("%s build %d talent %d (%s): the reason is words", class, i, j, tostring(row[1])))
+            end
+        end
+    end
+end
+
+tests["class b parity: a crowd control or threat drop that says none is no step"] = function(t)
+    local none = {
+        options = {
+            crowdControl = { none = "no spell holds a second enemy" },
+            threatDrop = { none = "no spell drops threat" },
+        },
+    }
+    local onYou = { { unit = "nameplate1", isTarget = true, threat = 3 } }
+    local s, why = run("cc", snap({}, { enemies = TWO }), none)
+    t.eq(s, nil); t.eq(why, "no crowd control")
+    s, why = run("threat", snap({}, { grouped = true, role = "dps", enemies = onYou }), none)
+    t.eq(s, nil); t.eq(why, "no threat drop")
+end
+
+tests["class b parity: a threat drop tied to a form (Cower) waits for that form, read"] = function(t)
+    local druid = { options = { threatDrop = { spell = "Cower", forms = { ["Cat Form"] = true } } } }
+    local onYou = { { unit = "nameplate1", isTarget = true, threat = 3 } }
+    local function at(form, known)
+        return snap({ "Cower" }, { grouped = true, role = "dps", enemies = onYou, form = form, formKnown = known })
+    end
+    local s, why = run("threat", at("Cat Form", true), druid)
+    t.eq(s and s.spell, "Cower", "in cat form: " .. tostring(why))
+    t.eq(s and s.unit, "player")
+    t.eq((run("threat", at("Bear Form", true), druid)), nil, "bear form: no Cower")
+    t.eq((run("threat", at("none", true), druid)), nil, "caster form: no Cower")
+    t.eq((run("threat", at(nil, false), druid)), nil, "form not read: no Cower")
+end
+
+
+-- CLASS-B-TALENTS (section 309, the section 280 follow-up of class b): each
+-- of the nine classes has a levelling build, marked a first guess, three
+-- trees named, a role the pack has, each talent once, one to five ranks, no
+-- more than the 51 points of level 60, and a reason in words for each row.
+tests["class b talents: every class has a levelling build, a first guess, each row with its reason"] = function(t)
+    for _, class in ipairs(NINE) do
+        local pack = packOf(class)
+        local builds = type(pack) == "table" and type(pack.talentBuilds) == "table" and pack.talentBuilds or {}
+        t.ok(#builds >= 1, class .. ": a talent build")
+        local build = builds[1]
+        if type(build) == "table" then
+            t.eq(build.evidence, "first guess", class .. ": marked a first guess")
+            t.ok(words(build.note), class .. ": a note says where it came from")
+            t.ok(words(build.name), class .. ": the build has a name")
+            t.ok(type(build.trees) == "table" and #build.trees == 3, class .. ": three trees")
+            t.ok(type(pack.roles) == "table" and pack.roles[build.role] ~= nil, class .. ": a role the pack has")
+            local order = type(build.order) == "table" and build.order or {}
+            t.ok(#order >= 8, class .. ": at least eight talents")
+            local seen, points = {}, 0
+            for j, row in ipairs(order) do
+                local name, ranks = row[1], row[2]
+                t.ok(words(name), string.format("%s talent %d is named", class, j))
+                t.ok(seen[name] == nil, string.format("%s talent %s is taken once", class, tostring(name)))
+                seen[name] = true
+                t.ok(type(ranks) == "number" and ranks >= 1 and ranks <= 5 and ranks % 1 == 0,
+                    string.format("%s talent %s: one to five ranks", class, tostring(name)))
+                points = points + (type(ranks) == "number" and ranks or 0)
+                t.ok(words(row.why), string.format("%s talent %s: the reason is words", class, tostring(name)))
+            end
+            t.ok(points >= 1 and points <= 51, class .. ": no more than 51 points")
+        end
+    end
+end
 return tests
