@@ -317,6 +317,20 @@ local pack = {
     talentBuilds = {},
 
     options = {
+        -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,
+        -- in order: the first you know names your tree (snapshot.tree,
+        -- Rotation/Driver.lua). Which spell is a talent of which tree: a first
+        -- guess from the 1.12 talent trees as remembered, not read from the game.
+        trees = {
+            { spell = "Trueshot Aura", tree = "Marksmanship", evidence = GUESS },
+            { spell = "Bestial Wrath", tree = "Beast Mastery", evidence = GUESS },
+            { spell = "Wyvern Sting", tree = "Survival", evidence = GUESS },
+            { spell = "Intimidation", tree = "Beast Mastery", evidence = GUESS },
+            { spell = "Counterattack", tree = "Survival", evidence = GUESS },
+            { spell = "Scatter Shot", tree = "Marksmanship", evidence = GUESS },
+            { spell = "Aimed Shot", tree = "Marksmanship", evidence = GUESS },
+            { spell = "Deterrence", tree = "Survival", evidence = GUESS },
+        },
         -- Reads the rules lean on; one not given is named by diag (187, 197).
         reads = { "buffs", "targetDebuffs", "pet" },
         -- The shots have a minimum range: out of range is too far or too

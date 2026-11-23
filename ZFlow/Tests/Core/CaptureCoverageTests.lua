@@ -67,6 +67,10 @@ local READS = {
     spellName = false,
     -- N13: the buffs you put up yourself (Classes/Paladin.lua auras).
     ownBuffs = false,
+    -- PRIEST-3 (P-SELFBUFF): your own debuffs by name (Weakened Soul), read
+    -- by the rotation only. Its names (UnitDebuff, C_UnitAuras.
+    -- GetAuraDataByIndex) are in Diag.NAMES, which the capture asks.
+    playerDebuffs = false,
 
     -- P-SETS: what is worn, read by the set word only.
     wornLinks = false,

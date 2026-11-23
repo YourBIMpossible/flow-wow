@@ -97,6 +97,14 @@ local _, ns = ...
 --       party, groupOn  your group and the "suggest buffs for your group"
 --                  setting, from Rotation/Group.lua (ns.PartyGroup.Read,
 --                  handed the pack and ids already here: no new argument)
+--       tree       N50 (lead sections 227, 228, 232): the pack's
+--                  options.trees rows { spell, tree } in order; the first
+--                  whose spell client.spell reads as known names the tree
+--                  (id from ids, else client.spellId). nil when the pack has
+--                  no rows, none is known, or a read raised
+--       debuffs    PRIEST-3: client.playerDebuffs(): your own debuffs by
+--                  name, as playerBuffs; nil when not known, the read
+--                  raised, or the client has no such read
 --   D.Step(client, pack[, prefs, bias, applied, role, extra]) -> view
 --     extra is handed to D.Read as it is (section 232).
 --     one read and one choice. A read that fails is an error (not caught
@@ -221,6 +229,31 @@ local function spellRows(client, pack, ids)
         if asked and type(near) == "boolean" then row.inRange = near end
     end
     return rows
+end
+
+-- N50 / GAP DRUID-2: the known-spell tree (see the header). A read that
+-- raises gives nil for the whole field: nothing is said about the tree.
+local function treeOf(client, pack, ids)
+    local options = type(pack) == "table" and pack.options or nil
+    local rows = type(options) == "table" and options.trees or nil
+    if type(rows) ~= "table" or type(client.spell) ~= "function" then return nil end
+    for _, row in ipairs(rows) do
+        if type(row) == "table" and type(row.spell) == "string" and type(row.tree) == "string" then
+            local id
+            if type(ids) == "table" then id = ids[row.spell] end
+            if type(id) ~= "number" and type(client.spellId) == "function" then
+                local ok, got = pcall(client.spellId, row.spell)
+                if not ok then return nil end
+                id = got
+            end
+            if type(id) == "number" then
+                local ok, got = pcall(client.spell, id)
+                if not ok then return nil end
+                if type(got) == "table" and got.known == true then return row.tree end
+            end
+        end
+    end
+    return nil
 end
 
 local ROLES = { dps = true, heal = true, tank = true }
@@ -410,6 +443,14 @@ function D.Read(client, pack, ids, role, extra)
     end
     return function(field)
         if field == "role" then return roleIn(pack, role) end
+        if field == "tree" then return treeOf(client, pack, ids) end
+        -- PRIEST-3: your own debuffs by name; a read that raises is not known.
+        if field == "debuffs" then
+            if type(client.playerDebuffs) ~= "function" then return nil end
+            local ok, v = pcall(client.playerDebuffs)
+            if ok and type(v) == "table" then return v end
+            return nil
+        end
         if field == "dead" then return client.dead() end
         if field == "inCombat" then return client.inCombat() end
         if field == "stealthed" then

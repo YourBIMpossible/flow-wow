@@ -439,10 +439,31 @@ local pack = {
     },
 
     options = {
+        -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,
+        -- in order: the first you know names your tree (snapshot.tree,
+        -- Rotation/Driver.lua). Which spell is a talent of which tree: a first
+        -- guess from the 1.12 talent trees as remembered, not read from the game.
+        trees = {
+            { spell = "Moonkin Form", tree = "Balance", evidence = GUESS },
+            { spell = "Swiftmend", tree = "Restoration", evidence = GUESS },
+            { spell = "Feral Charge", tree = "Feral", evidence = GUESS },
+            { spell = "Insect Swarm", tree = "Balance", evidence = GUESS },
+            { spell = "Nature's Swiftness", tree = "Restoration", evidence = GUESS },
+        },
         shapeshifts = true,
         nextSwing = { "Maul" },
         -- Reads the rules lean on; one not given is named by diag (187).
         reads = { "formKnown", "buffs", "targetDebuffs" },
+        -- Lead section 238 (ROGUE-2's machinery, Rotation/Combo.lua): when the
+        -- cat's finisher is due. need: the points Ferocious Bite and Rip wait
+        -- for; builders: the points each cat strike gives; finishers: the
+        -- spells that spend them all. Every value a first guess.
+        combo = {
+            evidence = GUESS,
+            need = 5, max = 5,
+            builders = { ["Claw"] = 1, ["Rake"] = 1, ["Shred"] = 1, ["Ravage"] = 1, ["Pounce"] = 1 },
+            finishers = { ["Ferocious Bite"] = true, ["Rip"] = true },
+        },
         -- N58 (lead section 241): the form you cast is kept for your role;
         -- Travel Form and Aquatic Form never are, nor any form a healer
         -- casts (section 247 item 2). `form <name>` chooses one,
