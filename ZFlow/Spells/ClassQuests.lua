@@ -109,7 +109,8 @@ function M.Declare(k)
             label = "Class quest reminders",
             help = "Says when your class trainer has a quest for a new form, and keeps which quest it was "
                 .. "for your other characters of that class. It reads your quest log only.",
-            group = "Spells",
+            group = "combat.spells",
+            synonyms = { "quest", "form", "trainer" },
         } },
         start = function(ctx)
             local client = ctx.client
