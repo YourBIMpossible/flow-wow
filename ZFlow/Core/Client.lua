@@ -6234,6 +6234,8 @@ function ns.make.client(env)
     -- not given, raised, secret or of the wrong kind is nil (not known).
     -- Your own party only (party1..4; in a raid, your own subgroup).
     local PARTY_UNITS = { party1 = true, party2 = true, party3 = true, party4 = true }
+    -- 243: in a raid, raid1..40 as well.
+    for i = 1, 40 do PARTY_UNITS["raid" .. i] = true end
 
     -- c.party() -> { { unit, name, class, role, power, dead, connected }, ... } | nil
     --   the other players in your party, in party order; {} when you are
@@ -6243,12 +6245,24 @@ function ns.make.client(env)
     --   role UnitGroupRolesAssigned; power UnitPowerType's first answer (a
     --   kind, never an amount); dead UnitIsDead; connected UnitIsConnected.
     --   The name is for the live caption only: never saved.
+    --   Lead section 243: in a raid (UnitExists("raid1")), every other raid
+    --   member, raid1..40, you left out by UnitIsUnit(unit, "player"); nil
+    --   when that cannot be told for one of them.
     function c.party()
         local out = {}
-        for i = 1, 4 do
-            local unit = "party" .. i
+        local inRaid = yesNo(call(env.UnitExists, "raid1"))
+        if inRaid == nil then return nil end
+        local prefix, last = "party", 4
+        if inRaid then prefix, last = "raid", 40 end
+        for i = 1, last do
+            local unit = prefix .. i
             local there = yesNo(call(env.UnitExists, unit))
             if there == nil then return nil end
+            if there and inRaid then
+                local you = yesNo(call(env.UnitIsUnit, unit, "player"))
+                if you == nil then return nil end
+                if you then there = false end
+            end
             if there then
                 local row = { unit = unit }
                 row.name = text(call(env.UnitName, unit))
@@ -6321,6 +6335,28 @@ function ns.make.client(env)
             if type(h) ~= "table" or type(spec) ~= "table" or type(spec.name) ~= "string" then return h end
             local okFrame, frame = pcall(function() return env[spec.name] end)
             if not okFrame or frame == nil then return h end
+            -- Lead section 243: the look-only mark, a blue tint over the
+            -- picture (made the first time it is asked for). "look" puts
+            -- the picture's own colour back and shows the tint; any other
+            -- mark hides the tint and goes to the icon's own mark.
+            local plainMark, tint = h.mark, nil
+            function h.mark(look, ...)
+                if look == "look" then
+                    if tint == nil then
+                        local okMade, made = method(frame, "CreateTexture", nil, "OVERLAY")
+                        if not okMade or made == nil then return false end
+                        tint = made
+                        method(tint, "SetAllPoints", frame)
+                        method(tint, "SetColorTexture", 0.35, 0.65, 1, 0.45)
+                    end
+                    if type(plainMark) == "function" then pcall(plainMark, nil) end
+                    local okShow = method(tint, "Show")
+                    return okShow and true or false
+                end
+                if tint ~= nil then method(tint, "Hide") end
+                if type(plainMark) ~= "function" then return false end
+                return plainMark(look, ...)
+            end
             local line
             function h.caption(words)
                 local shown = type(words) == "string" and words ~= ""

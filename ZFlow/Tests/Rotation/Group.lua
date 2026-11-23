@@ -401,6 +401,28 @@ tests["group: the setting row, on by default, where Flow's import puts it"] = fu
     t.ok(type(row.label) == "string" and row.label ~= "" and type(row.help) == "string" and row.help ~= "", "label and help")
 end
 
+-- Lead section 243 item 2: the help says what the rows do; the priest's and
+-- the paladin's dispels remove magic and disease too, not only curses and
+-- poisons.
+tests["group 243: the setting's help does not narrow the cures to curses and poisons"] = function(t)
+    local spec
+    ns.PartyGroup.Declare({ Module = function(_, m) spec = m end })
+    local row = type(spec) == "table" and type(spec.settings) == "table" and spec.settings[1] or {}
+    local help = tostring(row.help):lower()
+    t.ok(not help:find("curse or poison", 1, true), "not only curses and poisons: " .. help)
+    t.ok(help:find("remove", 1, true) ~= nil, "says something can be removed: " .. help)
+    t.ok(help:find("casts nothing", 1, true) ~= nil, "and that it casts nothing: " .. help)
+end
+
+-- Lead section 243 item 1: the icon's mark says the key will not cast it.
+tests["group 243: the icon's mark is look for a look-only suggestion"] = function(t)
+    local I = ns.RotationIcon
+    t.eq(I.Mark({ suggestion = { spell = MOTW, kind = "group", look = true, unit = "party1", step = "group" } }), "look")
+    t.eq(I.Mark({ suggestion = { spell = MOTW, kind = "buff", step = "list" } }), nil, "your own buff: no mark")
+    t.eq(I.Mark({ suggestion = { spell = "Wrath", step = "farOpener" } }), "far", "out of range: still far")
+    t.eq(I.Mark({ suggestion = { spell = MOTW, look = false, step = "group" } }), nil, "look must be true")
+end
+
 tests["group: look only - nothing in it casts, targets or clicks"] = function(t)
     for name in pairs(ns.PartyGroup) do
         local n = tostring(name):lower()
