@@ -89,9 +89,11 @@ Capture.NO_TEXT = { "account", "chat", "guild", "mail" }
 --   Capture.Check(cap)           -> true | nil, why
 --   Capture.FromSaved(vars)      -> capture | nil, why
 --   Capture.Newest(cap)          -> the newest snapshot, or nil
---   Capture.Env(cap)             -> the env table for ns.make.fakeClient
+--   Capture.Env(cap)             -> the env table for ns.make.fakeClient,
+--                                   replay, notHeld (see Capture.Env)
 --   Capture.Apply(c, cap)        -> report { set = { read }, unknown = { read } }
---   Capture.Client(cap [, opts]) -> fake client, report | nil, why
+--   Capture.Client(cap [, opts]) -> fake client, report | nil, why; the
+--                                   report also holds notHeld from Capture.Env
 --                                   opts.now: the fake client's start time
 
 -- The shapes Diag.Collect records, with the call that made them. Only calls
@@ -214,6 +216,54 @@ local function depth(path)
     return n
 end
 
+-- EB-2: counts the asks of each Capture.CALLS path the replay does not
+-- hold, into notHeld. An absent name is watched by an __index that answers
+-- nil (so it stays absent, and pairs over env is unchanged); a stand-in
+-- function is wrapped so its call counts and it still answers nothing.
+local function watchNotHeld(env, replay, notHeld)
+    local watched = {}   -- table -> { segment -> name to count }
+    local function watch(at, seg, name)
+        local w = watched[at]
+        if not w then
+            w = {}
+            watched[at] = w
+        end
+        w[seg] = name
+    end
+    for _, path in pairs(Capture.CALLS) do
+        if replay[path] == nil then
+            local at, prefix, segs = env, nil, {}
+            for seg in path:gmatch("[^%.]+") do segs[#segs + 1] = seg end
+            for i, seg in ipairs(segs) do
+                prefix = prefix and (prefix .. "." .. seg) or seg
+                local v = rawget(at, seg)
+                if i < #segs then
+                    if type(v) ~= "table" then
+                        if v == nil then watch(at, seg, prefix) end
+                        break
+                    end
+                    at = v
+                elseif v == nil then
+                    watch(at, seg, path)
+                elseif type(v) == "function" then
+                    local name = path
+                    rawset(at, seg, function(...)
+                        notHeld[name] = (notHeld[name] or 0) + 1
+                        return v(...)
+                    end)
+                end
+            end
+        end
+    end
+    for at, w in pairs(watched) do
+        setmetatable(at, { __index = function(_, key)
+            local name = w[key]
+            if name then notHeld[name] = (notHeld[name] or 0) + 1 end
+            return nil
+        end })
+    end
+end
+
 -- The arguments each recorded call was made with. A capture does not store
 -- them: they are fixed in Core/Diag.lua, which asks every unit call about
 -- the player and every other call with no argument (a test holds the two
@@ -228,13 +278,22 @@ Capture.ARGS = {
     bestMap = { "player" },
 }
 
--- Capture.Env(cap) -> env, replay. replay[path] = { answered = n,
+-- Capture.Env(cap) -> env, replay, notHeld. replay[path] = { answered = n,
 -- unanswered = n }: how often a recorded call was asked with the recorded
 -- arguments, and how often with others (those got no answer).
+-- notHeld[name] = n (lead section 225 EB-2): how often a Capture.CALLS call
+-- the replay does not hold was asked. A look-up of a name the capture lacks
+-- counts under its path, and it stays absent (unknown stays unknown); a call
+-- of a stand-in the capture names with no recorded answer counts under its
+-- path; a look-up of an absent namespace counts under the namespace name.
+-- API names only, never an argument or an answer.
 function Capture.Env(cap)
-    local env, replay = {}, {}
+    local env, replay, notHeld = {}, {}, {}
     local d = diagOf(cap)
-    if not d then return env, replay end
+    if not d then
+        watchNotHeld(env, replay, notHeld)
+        return env, replay, notHeld
+    end
     local names = type(d.names) == "table" and type(d.names.names) == "table" and d.names.names or {}
 
     -- A secret answer: a token only this client's issecretvalue knows.
@@ -308,7 +367,8 @@ function Capture.Env(cap)
             end
         end
     end
-    return env, replay
+    watchNotHeld(env, replay, notHeld)
+    return env, replay, notHeld
 end
 
 function Capture.Apply(c, cap)
@@ -420,8 +480,11 @@ function Capture.Client(cap, opts)
     local ok, why = Capture.Check(cap)
     if not ok then return nil, why end
     opts = opts or {}
-    local c = ns.make.fakeClient({ env = Capture.Env(cap), now = opts.now })
-    return c, Capture.Apply(c, cap)
+    local env, _, notHeld = Capture.Env(cap)
+    local c = ns.make.fakeClient({ env = env, now = opts.now })
+    local report = Capture.Apply(c, cap)
+    report.notHeld = notHeld
+    return c, report
 end
 
 -- Section 191: the features run on a capture, each by the words a player
@@ -483,9 +546,12 @@ end
 --                                          every word ran without raising)
 --   Capture.Summarize(c, addon, report, cap, own [, features]) -> { { feature,
 --                                          ran, problems, unknowns, hidden,
---                                          verdict, lines = masked } } in
+--                                          verdict, lines = masked, notHeld =
+--                                          { { name, n } } asked in the run } } in
 --                                          FEATURES order; names from Capture.Names(cap)
---   Capture.SummaryText(rows)           -> the text written to ZFLOW_SUMMARY
+--   Capture.SummaryText(rows [, report]) -> the text written to ZFLOW_SUMMARY;
+--                                          each row's notHeld asks, and with
+--                                          a report the whole run's (EB-2)
 -- The verdict (lead section 206): each row is judged by
 -- ns.CaptureEvidence.Judge on the run's own lines, and the text leads with
 -- ns.CaptureEvidence.Text of those verdicts. A feature whose words only ran
@@ -674,6 +740,40 @@ function Capture.RunFeature(c, addon, feature)
     return lines, problemCount(addon) - before, ran
 end
 
+-- EB-2: the asks of calls the capture does not hold (report.notHeld from
+-- Capture.Client), counted around one feature run. API names only.
+local function copyCounts(report)
+    local out = {}
+    local from = type(report) == "table" and type(report.notHeld) == "table" and report.notHeld or {}
+    for name, n in pairs(from) do
+        if type(name) == "string" and type(n) == "number" then out[name] = n end
+    end
+    return out
+end
+
+-- -> { { name, n } } sorted by name: the asks added since `before`.
+local function askedSince(before, report)
+    local out = {}
+    for name, n in pairs(copyCounts(report)) do
+        local added = n - (before[name] or 0)
+        if added > 0 then out[#out + 1] = { name = name, n = added } end
+    end
+    table.sort(out, function(a, b) return a.name < b.name end)
+    return out
+end
+
+-- "UnitHealth 2, C_Map 1" in name order, or nil for none.
+local function askText(list)
+    local parts = {}
+    for _, a in ipairs(type(list) == "table" and list or {}) do
+        if type(a) == "table" and type(a.name) == "string" and type(a.n) == "number" then
+            parts[#parts + 1] = a.name .. " " .. a.n
+        end
+    end
+    if #parts == 0 then return nil end
+    return table.concat(parts, ", ")
+end
+
 function Capture.Summarize(c, addon, report, cap, own, features)
     local rows = {}
     local okNames, names = pcall(Capture.Names, cap)
@@ -686,7 +786,15 @@ function Capture.Summarize(c, addon, report, cap, own, features)
         -- C3-1: the problems counted around the run, so those a word added
         -- before a raise in the run stay on the row.
         local okBefore, before = pcall(problemCount, addon)
+        -- A report that raises when read leaves the asks not known (nil):
+        -- no ask line, never a guessed none.
+        local okAsks, asksBefore = pcall(copyCounts, report)
         local okRun, lines, added, ran = pcall(Capture.RunFeature, c, addon, feature)
+        local asked = nil
+        if okAsks then
+            local okSince, got = pcall(askedSince, asksBefore, report)
+            if okSince then asked = got end
+        end
         if not okRun or type(lines) ~= "table" then
             local okAfter, after = pcall(problemCount, addon)
             added = (okBefore and okAfter) and math.max(after - before, 0) or 0
@@ -720,15 +828,17 @@ function Capture.Summarize(c, addon, report, cap, own, features)
         end
         -- MyBuddy CS2-1: the row says the problems the verdict was judged on.
         rows[#rows + 1] = { feature = feature.name, ran = ran, problems = (tonumber(added) or 0) + (ran and 0 or 1) + faults,
-            unknowns = unknowns, hidden = hidden, verdict = verdict, lines = masked }
+            unknowns = unknowns, hidden = hidden, verdict = verdict, lines = masked, notHeld = asked }
     end
     return rows
 end
 
 -- A row with no verdict is not verified: it is said so, never left out.
 local NO_VERDICT = ": no verdict; not verified"
+Capture.ASKED_ROW = "feature %s asked calls the capture does not hold: %s"
+Capture.ASKED_ALL = "calls asked that the capture does not hold: "
 
-function Capture.SummaryText(rows)
+function Capture.SummaryText(rows, report)
     local out = { Capture.SUMMARY_HEAD }
     local Evidence = ns.CaptureEvidence
     local verdicts = {}
@@ -753,7 +863,18 @@ function Capture.SummaryText(rows)
         out[#out + 1] = string.format("feature %s: words ran %s, problems %d, unknown %d, hidden %d, lines %d",
             tostring(r.feature), r.ran and "yes" or "no", tonumber(r.problems) or 0, tonumber(r.unknowns) or 0,
             tonumber(r.hidden) or 0, #(r.lines or {}))
+        local asked = askText(r.notHeld)
+        if asked then
+            out[#out + 1] = string.format(Capture.ASKED_ROW, tostring(r.feature), asked)
+        end
         for _, line in ipairs(r.lines or {}) do out[#out + 1] = "  " .. line end
+    end
+    -- EB-2: the whole run's asks of calls the capture does not hold. With no
+    -- report the line is left out, not guessed.
+    local okAll, all = pcall(askedSince, {}, report)
+    local okHeld, held = pcall(function() return type(report) == "table" and type(report.notHeld) == "table" end)
+    if okAll and okHeld and held then
+        out[#out + 1] = Capture.ASKED_ALL .. (askText(all) or "none")
     end
     return table.concat(out, "\n") .. "\n"
 end
