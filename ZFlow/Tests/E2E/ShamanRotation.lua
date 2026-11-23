@@ -183,6 +183,9 @@ end
 -- added or a `target = true` dropped in Classes/Shaman.lua makes this differ;
 -- the writer then decides whether the spell joins IDS (and so reach()).
 local TARGET_RULES = { "Lightning Bolt", "Attack", "Auto Attack", "Stormstrike", "Flame Shock", "Earth Shock" }
+-- The target rules this file does not teach (not in IDS, so never learned
+-- and never shown here). Any other target rule must be in reach().
+local NOT_TAUGHT = { ["Auto Attack"] = true, ["Stormstrike"] = true }
 
 tests["shaman: every learned target rule is put out of range by the test"] = function(t)
     local targets = {}
@@ -190,12 +193,18 @@ tests["shaman: every learned target rule is put out of range by the test"] = fun
         if rule.target then targets[#targets + 1] = rule.spell end
     end
     t.eq(targets, TARGET_RULES, "the pack's target rules, as written out here")
-    -- Of those, the ones this test teaches (IDS): reach() is exactly these.
-    t.eq(reach(), { "Lightning Bolt", "Attack", "Flame Shock", "Earth Shock" }, "what the test puts out of range")
-    local names = {}
-    for _, name in ipairs(reach()) do names[name] = true end
-    for _, name in ipairs({ "Lightning Bolt", "Flame Shock", "Earth Shock", "Attack" }) do
-        t.ok(names[name], "in reach: " .. name)
+    -- MyBuddy SN-2: no hand-kept list of what is in reach. Every target rule
+    -- of the pack is in reach unless it is named below as not taught here;
+    -- reach() leaves a spell out only when IDS lacks it, so a later target
+    -- rule whose spell is not in IDS fails here instead of being skipped.
+    local inReach = {}
+    for _, name in ipairs(reach()) do inReach[name] = true end
+    for _, name in ipairs(targets) do
+        if NOT_TAUGHT[name] then
+            t.ok(IDS[name] == nil and not inReach[name], "not taught here, so not in reach: " .. name)
+        else
+            t.ok(inReach[name], "in reach: " .. name)
+        end
     end
 end
 

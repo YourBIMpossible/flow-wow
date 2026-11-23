@@ -239,6 +239,14 @@ tests["sell reservations: away from a merchant nothing is listed; the next visit
     local c, addon, holds, calls = start({ holds = { [PELT] = 2 } })
     c.setMerchantOpen(true)
     t.ok(starts(addon.sellList.last(), "1 x Ruined Pelt: "), "the first visit: " .. joined(addon.sellList.last()))
+    -- MyBuddy SR2-1: at the merchant the same two calls do list again, so
+    -- that they list nothing away from it (below) is the away guard, not a
+    -- refresh or bag event that does nothing at all.
+    local atVisit = addon.sellList.shows()
+    addon.sellList.refresh()
+    t.eq(addon.sellList.shows() - atVisit, 1, "refresh at the merchant lists again")
+    c.fire("BAG_UPDATE_DELAYED"); c.advance(1, 5)
+    t.eq(addon.sellList.shows() - atVisit, 2, "a bag event at the merchant lists again")
     c.setMerchantOpen(false)
     local made, kept = addon.sellList.shows(), addon.sellList.last()
     holds[PELT] = 3

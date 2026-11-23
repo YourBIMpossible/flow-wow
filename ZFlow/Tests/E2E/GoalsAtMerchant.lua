@@ -154,9 +154,13 @@ tests["goals at merchant: no goal saved gives the sell advice there was before g
     t.eq(peltRows(lines), { 20 }, "all twenty offered: " .. joined(lines))
     t.ok(not finds(lines, "held for your steps"), "nothing held: " .. joined(lines))
     t.ok(not finds(lines, "eservations not known"), "no unknown line: " .. joined(lines))
-    -- The same list as one made with no reservations at all (no grants, no
-    -- evaluation): what the sell list said before goals existed.
-    t.eq(lines, addon.SellList.Lines(c, nil, nil, nil), "the list with no reservations")
+    -- The same list as one made with an explicit "none" evaluation and no
+    -- grants: what the sell list said before goals existed. (Lead section
+    -- 222, SR-3 and MyBuddy GE-1: an explicit evaluation, not nil, so the
+    -- comparison stays a real one once Lines treats a missing evaluation as
+    -- unavailable. The guard that carries the case is the asserts above.)
+    t.eq(lines, addon.SellList.Lines(c, nil, nil, { status = addon.Reservations.NONE }),
+        "the list with nothing reserved")
 end
 
 return tests
