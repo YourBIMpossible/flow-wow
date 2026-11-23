@@ -5,8 +5,10 @@ local _, ns = ...
 -- snapshot it is given (ZFlow/Rotation/Choose.lua lists the fields) and
 -- nothing else.
 --
--- Scope: damage on your own target and care for yourself. Nothing here
--- heals, buffs, shields, cleanses or revives another player.
+-- Scope: damage on your own target and care for yourself. PRIEST-1 (P-KEYS
+-- slice A): `care` holds the heals, Shield and Resurrection for another
+-- player, suggested only on the care key (Rotation/CareKeys.lua), never on
+-- the rotation key.
 --
 -- Section 197. The old code has no Priest class module, so the spell rows,
 -- lists, keys, weights and roles below were written for this pack. From the
@@ -23,9 +25,9 @@ local _, ns = ...
 -- addon: each needs a check in the game client.
 --
 -- Not in this pack yet (tasks):
---   * Resurrection, and the heals, Fortitude, Shield and Dispel Magic on
---     anyone but yourself: needs a party member read and a chooser step for
---     other players (the pack holds nothing for them yet);
+--   * Fortitude on another player as a key suggestion (P-PARTY shows it
+--     only), and Weakened Soul read on another player before Shield (no
+--     read for it: Shield is the last friend heal, a first guess);
 --   * Power Word: Shield out of a fight (PRIEST-3 puts it in the list only
 --     in a fight, read against Weakened Soul); it stays on the Alt key row;
 --   * an aoe list: Holy Nova is a talent and hits only what is near you,
@@ -167,6 +169,8 @@ local spells = {
     ["Power Word: Fortitude"] = sp(1,  { "Survival" }),
     ["Shadow Word: Pain"]     = sp(4,  { "DPS" }),
     ["Power Word: Shield"]    = sp(6,  { "Survival" }),
+    -- PRIEST-1: on a dead friend, out of a fight only (the care key).
+    ["Resurrection"]          = sp(10, { "Utility" }),
     ["Renew"]                 = sp(8,  { "Healing" }),
     ["Fade"]                  = sp(8,  { "Survival" }),
     ["Mind Blast"]            = sp(10, { "DPS" }),
@@ -261,6 +265,15 @@ local pack = {
         { spell = "Dispel Magic", types = { Magic = true }, evidence = GUESS },
         { spell = "Abolish Disease", types = { Disease = true }, evidence = GUESS },
         { spell = "Cure Disease", types = { Disease = true }, evidence = GUESS },
+    },
+
+    -- PRIEST-1 (P-KEYS slice A): for another player, on the care key only
+    -- (Rotation/CareKeys.lua, R.FriendHeal): the heals in order, Shield
+    -- last, and the revive. The cures are the dispels above.
+    care = {
+        friend = { "Flash Heal", "Lesser Heal", "Heal", "Greater Heal", "Renew", "Power Word: Shield" },
+        revive = "Resurrection",
+        evidence = GUESS,
     },
 
     keys = { none = casterKeys, Shadowform = shadowKeys },
