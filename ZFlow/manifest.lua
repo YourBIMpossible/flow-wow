@@ -235,5 +235,11 @@ return {
     "UI/Reveal.lua",
     -- N70: settings export and import as data (after Export, Diag and the settings page).
     "UI/SettingsShare.lua",
+    -- Lead section 303: the Dungeon Quests pane's data (pure).
+    "Nav/DungeonStates.lua",
+    -- Lead section 303: the Dungeon Quests reader (Questie at runtime).
+    "Nav/DungeonRead.lua",
+    -- Lead section 305: boss kills as the client reports them (after Diag).
+    "Nav/BossKills.lua",
     },
 }

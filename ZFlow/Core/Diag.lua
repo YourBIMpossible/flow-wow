@@ -239,6 +239,9 @@ Diag.NAMES = {
     -- The kit window's frame (Core/Client.lua kitWindow): the game's call
     -- that hides the portrait of ButtonFrameTemplate. A first guess.
     "ButtonFrameTemplate_HidePortrait",
+    -- Lead section 303: quests handed in, for the Dungeon Quests pane
+    -- (client.questDone). UnitRace (client.raceId) is listed above.
+    "C_QuestLog.IsQuestFlaggedCompleted",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns
