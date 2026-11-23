@@ -67,6 +67,22 @@ local function loadOne(rel)
     return xpcall(function() return chunk(L.ADDON, ns) end, trace)
 end
 
+-- The whole add-on, loaded again into a fresh table the way the game loads
+-- it, on a fake client the test has set up: ns.offline.addon(c) returns the
+-- add-on's table after Core/Kernel.lua booted it on c. The test then fires
+-- ADDON_LOADED, PLAYER_LOGIN and the rest, and reads what c shows.
+ns.offline = {}
+function ns.offline.addon(client)
+    local fresh = {}
+    for _, f in ipairs(manifest.files) do
+        local chunk, err = loadfile(L.join(root, L.ADDON .. "/" .. f.path))
+        if not chunk then error(f.path .. ": " .. tostring(err), 2) end
+        chunk(L.ADDON, fresh)
+        if f.path == "Core/ClientFake.lua" then fresh.client = client end
+    end
+    return fresh
+end
+
 for _, f in ipairs(manifest.files) do
     local ok, err = loadOne(f.path)
     if not ok then

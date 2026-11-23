@@ -47,6 +47,7 @@ return {
 
         -- Settings
         "Settings/Model.lua",
+        "Settings/Rows.lua",
 
         -- Items
         "Items/Key.lua",
