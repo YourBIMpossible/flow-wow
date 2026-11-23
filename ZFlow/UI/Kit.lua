@@ -67,7 +67,10 @@ Kit.SCROLL_HEIGHT = 240
 -- reads it; no window and no part writes a colour or a size of its own.
 -- Each art entry is the name tried first and what is drawn when this client
 -- does not have it. None of the art names has been seen in game on 16001
--- except those Core/Client.lua already used: first guesses.
+-- except those Core/Client.lua already used: first guesses. `unproven` names
+-- the art not yet seen there: the client draws the fallback for each of
+-- those without trying the name (lead section 292). Taking a key out of
+-- `unproven` makes its first choice the one that is tried.
 Kit.look = {
     size = {
         pad = 12, gap = 8, gapSmall = 4,
@@ -81,6 +84,7 @@ Kit.look = {
         check = 24, search = 180, scrollBar = 18,
         footer = 36, grip = 16, numberValue = 60,
         wheelLines = 3,
+        edge = 1, gripCorner = 12, choiceButtons = 3,
     },
     color = {
         accent = { 1, 0.82, 0, 1 },
@@ -97,6 +101,18 @@ Kit.look = {
         stripe = { 1, 1, 1, 0.04 },
         hover = { 1, 1, 1, 0.08 },
         selected = { 1, 0.82, 0, 0.18 },
+        -- The coin letters, drawn when a coin icon is missing.
+        gold = { 1, 0.82, 0, 1 },
+        silver = { 0.78, 0.78, 0.78, 1 },
+        copper = { 0.72, 0.45, 0.2, 1 },
+    },
+    -- How strongly a stock highlight picture is drawn (blended in).
+    alpha = { rowHighlight = 0.5, topicHighlight = 0.6 },
+    coinLetter = { gold = "g", silver = "s", copper = "c" },
+    unproven = {
+        frame = true, search = true, tab = true,
+        rowHighlight = true, topicHighlight = true, iconBorder = true,
+        grip = true, gripOver = true, gripDown = true,
     },
     font = {
         title = "GameFontNormal",

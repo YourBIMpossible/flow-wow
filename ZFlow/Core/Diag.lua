@@ -218,6 +218,11 @@ Diag.NAMES = {
     -- combatLogFile and their two writes). GetCVar and C_CVar.GetCVar are
     -- listed above.
     "LoggingCombat", "C_CVar.SetCVar", "SetCVar",
+    -- The window kit (lead section 292): asked for its type only, by the
+    -- login probe (Core/Client.lua kitProbe). The kit's item colours are
+    -- its own table. Its templates and texture paths are not globals: the
+    -- probe says those (diag.kitProbe, UI/KitProbe.lua).
+    "ITEM_QUALITY_COLORS",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns

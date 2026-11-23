@@ -41,9 +41,16 @@ local KIND = {
              -- what the caller's act does.
              "iconRow",
              -- S20: the per-role badges on the merchant's item buttons.
-             "markMerchantSpecs" },
+             "markMerchantSpecs",
+             -- The window kit's drawer (lead sections 287 and 291): one
+             -- window from a checked tree; a click runs the part's own function.
+             "kitWindow" },
     tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "savedMadeHere", "slash",
-             "slashTaken", "unslash" },
+             "slashTaken", "unslash",
+             -- Lead section 292: asks which stock art names the client has, on
+             -- hidden frames; run once per login by UI/KitProbe.lua, never by
+             -- the capture.
+             "kitProbe" },
     -- Hands back or runs a sound restart: never asked by the capture.
     -- craftRecipe (lead section 226, acting): one craft on the player click.
     -- stopCraftRepeat (section 234): stops the game repeat; not a craft.

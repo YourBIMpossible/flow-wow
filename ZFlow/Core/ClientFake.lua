@@ -3238,6 +3238,200 @@ function ns.make.fakeClient(opts)
             return plainValue(rollID, ...)
         end
     end
+    -- The window kit (lead sections 287, 291 item 1 and 292): c.kitWindow
+    -- and c.kitProbe, as the real client's. Nothing is drawn; a window is
+    -- recorded by its id.
+    --   c.kitWindows() -> { [id] = { shown, point, width, height,
+    --     parts = { { kind, path, key, text } ... in Kit.Each order } } }
+    --     (a copy)
+    -- The test's controls, each standing in for the player; each answers
+    -- true when the part's own function was run, false when there is no such
+    -- window or part, the part is not of that kind, or it is disabled (a
+    -- part is disabled by its own enabled = false or its row's):
+    --   c.kitClick(id, pathOrKey)        a button, a bind button, or a check
+    --                                    box (which turns over and tells
+    --                                    onToggle its new state)
+    --   c.kitSelect(id, pathOrKey, i)    tabs, a topic list, a choice
+    --   c.kitType(id, pathOrKey, text)   a header's search box, a text box
+    --   c.kitChange(id, pathOrKey, v)    a number, within its min and max
+    --   c.kitClose(id)                   the player closes it: onClose once;
+    --                                    false when it is not shown
+    --   c.kitDrag(id, point, w, h)       moved or resized: onMoved
+    --   c.setKitFails(n)                 the next n kitWindow calls answer
+    --                                    nil (and tell failed)
+    --   c.setKitProbe(result, reason)    what kitProbe answers out of
+    --                                    combat (nil, reason for none)
+    -- A caller function that raises goes to extra.failed, as on the real
+    -- client. setFrames(false) makes kitWindow answer nil. The art is the
+    -- default client's: every name in Kit.look.unproven is "fallback".
+    do
+        local kits = {}   -- id -> { handle =, rec =, tree =, cb =, parts = { [path or key] = entry }, slots = }
+        local kitFails = 0
+        local probeResult, probeReason = { templates = {}, textures = {}, globals = {} }, nil
+
+        local function deep(v)
+            if type(v) ~= "table" then return v end
+            local out = {}
+            for key, value in pairs(v) do out[key] = deep(value) end
+            return out
+        end
+        local function told(w, fn, ...)
+            if type(fn) ~= "function" then return end
+            local ok, err = pcall(fn, ...)
+            if not ok and type(w.cb.failed) == "function" then pcall(w.cb.failed, err) end
+        end
+        -- Reads a tree into the window: the record's parts, and each part
+        -- by its path and by its key, with whether it can be used.
+        local function read(w, tree)
+            local list, byName, slots = {}, {}, {}
+            local function one(part, live)
+                local entry = { part = part, live = live and part.enabled ~= false, checked = part.checked == true }
+                list[#list + 1] = { kind = part.kind, path = part.path, key = part.key, text = ns.Kit.TextOf(part) }
+                byName[part.path] = entry
+                if part.kind ~= "bind" and part.key ~= nil then byName[part.key] = entry end
+                if part.kind == "footer" and part.slot ~= nil then slots[part.slot] = { slot = part.slot } end
+                return entry
+            end
+            local function walk(parts)
+                for i = 1, #(parts or {}) do
+                    local part = parts[i]
+                    local entry = one(part, true)
+                    if part.control then one(part.control, entry.live) end
+                    if part.children then walk(part.children) end
+                    if part.buttons then walk(part.buttons) end
+                end
+            end
+            walk(tree.children)
+            w.tree, w.parts, w.slots, w.rec.parts = tree, byName, slots, list
+        end
+        -- The window, and the part of that path or key when it can be used.
+        local function entryOf(id, name)
+            local w = kits[id]
+            if w == nil or name == nil then return nil, nil end
+            local entry = w.parts[name]
+            if entry == nil or not entry.live then return w, nil end
+            return w, entry
+        end
+
+        function c.setKitFails(n) kitFails = tonumber(n) or 0 end
+        function c.kitWindow(id, tree, extra)
+            local cb = type(extra) == "table" and extra or {}
+            local bad = s.noFrames or type(id) ~= "string" or type(tree) ~= "table" or tree.kind ~= "window"
+                or type(tree.children) ~= "table"
+            if kitFails > 0 then
+                kitFails = kitFails - 1
+                bad = true
+            end
+            if bad then
+                if type(cb.failed) == "function" then pcall(cb.failed, "no kit window (test)") end
+                return nil
+            end
+            local w = kits[id]
+            if w ~= nil then
+                w.cb = cb
+                read(w, tree)
+                return w.handle
+            end
+            local point = type(cb.point) == "table" and cb.point or tree.point
+            w = { cb = cb, rec = { shown = false, point = { point[1], point[2], point[3], point[4] },
+                width = tonumber(cb.width) or tree.width, height = tonumber(cb.height) or tree.height } }
+            read(w, tree)
+            local h = {}
+            function h.update(now)
+                if type(now) ~= "table" or now.kind ~= "window" or type(now.children) ~= "table" then return false end
+                read(w, now)
+                return true
+            end
+            function h.show(on) w.rec.shown = on and true or false end
+            function h.shown() return w.rec.shown end
+            function h.close() w.rec.shown = false end
+            function h.art()
+                local out = { close = "first", button = "first", check = "first", input = "first", scroll = "first" }
+                for key in pairs(ns.Kit.look.unproven or {}) do out[key] = "fallback" end
+                return out
+            end
+            function h.slot(name) return w.slots[name] end
+            w.handle = h
+            kits[id] = w
+            return h
+        end
+        function c.kitWindows()
+            local out = {}
+            for id, w in pairs(kits) do out[id] = deep(w.rec) end
+            return out
+        end
+        function c.kitClick(id, name)
+            local w, entry = entryOf(id, name)
+            if entry == nil then return false end
+            local part = entry.part
+            if part.kind == "button" or part.kind == "bind" then
+                told(w, part.onClick)
+                return true
+            end
+            if part.kind == "checkbox" then
+                entry.checked = not entry.checked
+                told(w, part.onToggle, entry.checked)
+                return true
+            end
+            return false
+        end
+        function c.kitSelect(id, name, i)
+            local w, entry = entryOf(id, name)
+            if entry == nil then return false end
+            local part = entry.part
+            if part.kind ~= "tabs" and part.kind ~= "topicList" and part.kind ~= "choice" then return false end
+            if type(i) ~= "number" or part.items[i] == nil then return false end
+            told(w, part.onSelect, i)
+            return true
+        end
+        function c.kitType(id, name, text)
+            local w, entry = entryOf(id, name)
+            if entry == nil or type(text) ~= "string" then return false end
+            local part = entry.part
+            if part.kind == "header" and part.search ~= nil then
+                told(w, part.search.onText, text)
+                return true
+            end
+            if part.kind == "text" then
+                told(w, part.onText, text)
+                return true
+            end
+            return false
+        end
+        function c.kitChange(id, name, value)
+            local w, entry = entryOf(id, name)
+            if entry == nil or type(value) ~= "number" then return false end
+            local part = entry.part
+            if part.kind ~= "number" then return false end
+            if part.min ~= nil and value < part.min then return false end
+            if part.max ~= nil and value > part.max then return false end
+            told(w, part.onChange, value)
+            return true
+        end
+        function c.kitClose(id)
+            local w = kits[id]
+            if w == nil or not w.rec.shown then return false end
+            w.rec.shown = false
+            told(w, w.cb.onClose)
+            return true
+        end
+        function c.kitDrag(id, point, width, height)
+            local w = kits[id]
+            if w == nil or type(point) ~= "table" then return false end
+            w.rec.point = { point[1], point[2], point[3], point[4] }
+            if type(width) == "number" then w.rec.width = width end
+            if type(height) == "number" then w.rec.height = height end
+            told(w, w.cb.onMoved, { point[1], point[2], point[3], point[4] }, w.rec.width, w.rec.height)
+            return true
+        end
+
+        function c.setKitProbe(result, reason) probeResult, probeReason = result, reason end
+        function c.kitProbe()
+            if s.combat ~= false then return nil, "combat" end
+            if type(probeResult) ~= "table" then return nil, probeReason or "noFrames" end
+            return deep(probeResult)
+        end
+    end
     return c
 end
 
