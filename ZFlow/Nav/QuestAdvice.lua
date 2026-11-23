@@ -5,6 +5,10 @@ local _, ns = ...
 --   ready to hand in   one prompt naming the quests that are complete in
 --                      the log: "Ready to hand in: A, B". It goes when the
 --                      player has handed them in, or the setting is off.
+--   share              in a group, one prompt naming the quests the client
+--                      says can be shared: "You can share with your group:
+--                      A, B". Only while you are known to be in a group; a
+--                      quest not known to be shareable is never named.
 -- TEXT ONLY. Nothing here accepts, shares, hands in or abandons a quest,
 -- picks a reward or talks to anyone: the player does all of that. The rows
 -- that act stay held for the owner.
@@ -17,9 +21,16 @@ local _, ns = ...
 --                          each title once
 --   A.Names(titles[, max]) "A, B, C and 2 more"; nil for none
 --   A.TurnInText(rows)     the hand-in line, or nil when none is ready
+--   A.Shareable(rows, can) the titles not complete, not failed, for which
+--                          can(id) is a plain true; log order, each once
+--   A.ShareText(rows, can, grouped)  the share line, or nil
 --
--- Reads: client.questLog() through ns.Nav.QuestLogRows. Writes: none.
--- Setting (char, on by default): general.questTurnIn "Quests ready to hand in".
+-- Reads: client.questLog() through ns.Nav.QuestLogRows, client.grouped(),
+-- client.questShareable(id) (a first guess, Core/Client.lua). Writes: none.
+-- Not seen in game: whether the client answers questShareable at all; where
+-- it does not, there is no share prompt.
+-- Settings (char, on by default): general.questTurnIn "Quests ready to hand
+-- in", general.questShare "Quests you can share".
 
 local A = {}
 ns.QuestAdvice = A
@@ -27,11 +38,14 @@ ns.QuestAdvice = A
 A.NAME = "questAdvice"
 A.TURN_IN_SETTING = "general.questTurnIn"
 A.TURN_IN_PROMPT = "quest.turnIn"
+A.SHARE_SETTING = "general.questShare"
+A.SHARE_PROMPT = "quest.share"
 A.PRIORITY = 1
 -- No more titles than this are named in one line.
 A.MAX_NAMES = 3
 
 A.TURN_IN = "Ready to hand in: %s"
+A.SHARE = "You can share with your group: %s"
 A.MORE = "%s and %d more"
 
 function A.Ready(rows)
@@ -63,7 +77,40 @@ function A.TurnInText(rows)
     return A.TURN_IN:format(names)
 end
 
-local LOG_EVENTS = { "QUEST_LOG_UPDATE", "QUEST_ACCEPTED", "QUEST_REMOVED", "QUEST_TURNED_IN", "PLAYER_ENTERING_WORLD" }
+function A.Shareable(rows, can)
+    local out, seen = {}, {}
+    if type(rows) ~= "table" or type(can) ~= "function" then return out end
+    for _, r in ipairs(rows) do
+        if type(r) == "table" and r.complete ~= true and r.failed ~= true
+            and type(r.title) == "string" and r.title ~= "" and not seen[r.title] then
+            local ok, yes = pcall(can, r.id)
+            if ok and yes == true then
+                seen[r.title] = true
+                out[#out + 1] = r.title
+            end
+        end
+    end
+    return out
+end
+
+function A.ShareText(rows, can, grouped)
+    if grouped ~= true then return nil end
+    local names = A.Names(A.Shareable(rows, can))
+    if names == nil then return nil end
+    return A.SHARE:format(names)
+end
+
+local function ask(client, read, ...)
+    if type(client) ~= "table" or type(client[read]) ~= "function" then return nil end
+    local ok, v = pcall(client[read], ...)
+    if not ok then return nil end
+    return v
+end
+
+local EVENTS = {
+    "QUEST_LOG_UPDATE", "QUEST_ACCEPTED", "QUEST_REMOVED", "QUEST_TURNED_IN", "PLAYER_ENTERING_WORLD",
+    "GROUP_ROSTER_UPDATE",
+}
 
 function A.Declare(k)
     local api = {}
@@ -79,30 +126,53 @@ function A.Declare(k)
                 .. "It reads your quest log only and hands nothing in.",
             group = "general",
             synonyms = { "quest", "quests", "turn in", "hand in", "complete", "advice" },
+        }, {
+            key = A.SHARE_SETTING, scope = "char", type = "bool", default = true,
+            label = "Quests you can share",
+            help = "In a group, names the quests in your log that can be shared, so you remember to offer them. "
+                .. "It reads your quest log only and shares nothing.",
+            group = "party",
+            synonyms = { "quest", "quests", "share", "group", "party", "advice" },
         } },
         start = function(ctx)
             local advisor = ctx.use("advisor")
             if type(advisor) ~= "table" then return end
-            -- The last log read that answered, and the line shown for it.
-            local last, shown
+            local client = ctx.client
+            -- The last log read that answered, and the line shown for each prompt.
+            local last
+            local shown = {}
+
+            local function show(id, text)
+                if text == shown[id] then return end
+                if text then advisor.Add(id, text, A.PRIORITY) else advisor.Remove(id) end
+                shown[id] = text
+            end
+
+            local function can(id) return ask(client, "questShareable", id) end
 
             local function refresh()
-                local rows = ns.Nav.QuestLogRows(ctx.client)
+                local rows = ns.Nav.QuestLogRows(client)
                 if type(rows) == "table" then last = rows end
-                local text
-                if ctx.settings:get(A.TURN_IN_SETTING) ~= false then text = A.TurnInText(last) end
-                if text == shown then return end
-                if text then advisor.Add(A.TURN_IN_PROMPT, text, A.PRIORITY) else advisor.Remove(A.TURN_IN_PROMPT) end
-                shown = text
+                local turnIn, share
+                if ctx.settings:get(A.TURN_IN_SETTING) ~= false then turnIn = A.TurnInText(last) end
+                if ctx.settings:get(A.SHARE_SETTING) ~= false then
+                    local grouped = ask(client, "grouped")
+                    -- Asked only in a group: alone, no quest is asked about.
+                    if grouped == true then share = A.ShareText(last, can, grouped) end
+                end
+                show(A.TURN_IN_PROMPT, turnIn)
+                show(A.SHARE_PROMPT, share)
             end
 
-            for _, ev in ipairs(LOG_EVENTS) do
+            for _, ev in ipairs(EVENTS) do
                 ctx.bus:on(A.NAME, ev, refresh)
             end
-            local row = ctx.settings:row(A.TURN_IN_SETTING)
-            if type(row) == "table" then
-                local cancel = ctx.store:watch(row.scope, row.path or ("settings." .. A.TURN_IN_SETTING), refresh)
-                if type(cancel) == "function" then cancels[#cancels + 1] = cancel end
+            for _, key in ipairs({ A.TURN_IN_SETTING, A.SHARE_SETTING }) do
+                local row = ctx.settings:row(key)
+                if type(row) == "table" then
+                    local cancel = ctx.store:watch(row.scope, row.path or ("settings." .. key), refresh)
+                    if type(cancel) == "function" then cancels[#cancels + 1] = cancel end
+                end
             end
             refresh()
         end,
