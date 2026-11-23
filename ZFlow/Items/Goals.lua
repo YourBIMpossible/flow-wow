@@ -25,7 +25,8 @@ local _, ns = ...
 --     claim is marked selected: the player picked it. A goal that is not a
 --     table, names no item, has no whole count of at least 1, or names a
 --     recipe that recipes does not know (or ItemPlan can't plan) is skipped
---     and counted; a saved value that is no list counts as one.
+--     and counted; a saved value that is no list counts as one, and so does
+--     each entry outside 1..#goals (after a hole, or under a name).
 --     recipes: { [name] = { makes, yield, mats } } as ItemPlan reads them.
 --     Z-Flow holds no such data yet, so the source passes none and a goal
 --     with a recipe is skipped until it does.
@@ -79,7 +80,8 @@ function Goals.Claims(snapshot, goals, recipes)
     local claims, skipped = {}, 0
     if goals == nil then return claims, 0 end
     if type(goals) ~= "table" then return claims, 1 end
-    for i = 1, #goals do
+    local n = #goals
+    for i = 1, n do
         local g = goals[i]
         local key, count = readGoal(g)
         if key == nil then
@@ -103,6 +105,11 @@ function Goals.Claims(snapshot, goals, recipes)
             end
         end
     end
+    -- Section 220 (G-2): what the list holds past a hole or under a name is
+    -- not read by the loop above; it is counted, not dropped.
+    for i in pairs(goals) do
+        if not (type(i) == "number" and i >= 1 and i <= n and i == math.floor(i)) then skipped = skipped + 1 end
+    end
     return claims, skipped
 end
 
@@ -119,20 +126,39 @@ local function loaded(k)
     return type(c.saved) == "function" and type(c.saved(k.id.charDB)) == "table"
 end
 
+local function storeOpen(k)
+    return type(k) == "table" and type(k.store) == "table" and k.store.opened and true or false
+end
+
 local function savedGoals(k)
-    if type(k.store) ~= "table" or not k.store.opened then return nil end
+    if not storeOpen(k) then return nil end
     return k.store:get("char", Goals.PATH)
 end
 
--- The reservations source: the saved list over the evaluation's snapshot.
--- Idle while nothing is saved (or the store is not open yet), so a player
--- with no goal sees what they saw before goals existed, bags read or not.
--- Anything saved, even an entry that can't be read, makes it active.
-ns.Reservations.Source(Goals.SOURCE, function(snapshot)
-    return (Goals.Claims(snapshot, savedGoals(ns)))
-end, function()
-    local raw = savedGoals(ns)
-    return raw ~= nil and not (type(raw) == "table" and #raw == 0)
+-- The reservations source: the saved list of the evaluating kernel (k; nil:
+-- the add-on's own) over the evaluation's snapshot. Idle only when the store
+-- is open and nothing is saved (nil, or a table with nothing in it), so a
+-- player with no goal sees what they saw before goals existed, bags read or
+-- not. Anything saved, even an entry that can't be read, makes it active.
+-- Section 220:
+--   G-1  the store not open: the saved goals can't be read, so the source is
+--        active and gives no list. The status is "unavailable", never "none".
+--   G-2  "nothing in it" is next(raw) == nil: a list with a hole at 1 or only
+--        named entries is not taken for no goals.
+--   G-3  a skipped goal (can't be read, or a recipe Z-Flow can't plan) may
+--        hold an item the player wants kept, so any skipped goal gives no
+--        list either: "unavailable", and no sell advice rests on it.
+ns.Reservations.Source(Goals.SOURCE, function(snapshot, k)
+    k = k or ns
+    if not storeOpen(k) then return nil end
+    local claims, skipped = Goals.Claims(snapshot, savedGoals(k))
+    if skipped > 0 then return nil end
+    return claims
+end, function(k)
+    k = k or ns
+    if not storeOpen(k) then return true end
+    local raw = savedGoals(k)
+    return raw ~= nil and not (type(raw) == "table" and next(raw) == nil)
 end)
 
 -------------------------------------------------------------------------------
