@@ -232,7 +232,8 @@ tests["window buttons: the word prints the lines"] = function(t)
     local n = #c.printed
     diag.commands[W.WORD]("")
     local lines = api.lines()
-    t.eq(#c.printed, n + #lines)
+    for _, line in ipairs(api.surfaceLines()) do lines[#lines + 1] = line end
+    t.eq(#c.printed, n + #lines, "the buttons' lines, then the other surfaces' (lead section 296)")
     t.eq(c.printed[n + 2], ns.id.title .. ": button on the merchant window: not made (no window); window not there.")
     for i = 1, #lines do
         t.ok(not lines[i]:find("Flow", 1, true), "no name spelled out: " .. lines[i])
