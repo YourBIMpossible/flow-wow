@@ -208,9 +208,13 @@ end
 -- Section 205: mail (4/3) from level 40, as the Hunter pack has it.
 tests["shaman gear: mail is refused below level 40 and scored from 40"] = function(t)
     local mail = { unmet = {}, classID = 4, subclassID = 3, minLevel = 30 }
+    -- Below 40 with the game's own marks not read, the class table's no is
+    -- shown (lead fix at the merge: with unmet = {} the game says it can be
+    -- worn, and the game's answer outranks the table; White ran it).
+    local unread = { classID = 4, subclassID = 3, minLevel = 30 }
     for _, level in ipairs({ 10, 39 }) do
         local who = { pack = ns.Packs.SHAMAN, role = "dps", level = level }
-        t.eq(ns.GearVerdict.Lines(gear(mail), who),
+        t.eq(ns.GearVerdict.Lines(gear(unread), who),
             { { text = "Can't use: your class can use this kind from level 40 (first guess)", tone = "bad" } },
             "mail at " .. level .. ": not yet")
     end

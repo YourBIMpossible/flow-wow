@@ -31,7 +31,10 @@ for _, class in ipairs({ "PRIEST", "SHAMAN" }) do
 
     tests[name .. " pack: what it can equip is the old table's"] = function(t)
         local p = ns.Packs[class].proficiency
-        t.eq(p[4], asSet(EQUIP[class][4]), "armor")
+        local armor = asSet(EQUIP[class][4])
+        -- Section 205: the Shaman learns mail (3) at level 40.
+        if class == "SHAMAN" then armor[3] = 40 end
+        t.eq(p[4], armor, "armor")
         t.eq(p[2], asSet(EQUIP[class][2]), "weapons")
         t.eq(p.evidence, "first guess", "evidence")
     end
