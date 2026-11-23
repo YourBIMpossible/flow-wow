@@ -572,7 +572,8 @@ function ns.make.client(env)
     -- of GetTradeSkillReagentInfo(index, r) for how many a craft takes.
     -- The same answer as recipeSchematic: { makes =, yield =, mats = }.
     -- Anything that can't be read makes the whole answer nil: never a
-    -- shorter list. First guesses, not seen in game; nothing calls it yet.
+    -- shorter list. First guesses, not seen in game. Items/RecipeBook.lua
+    -- calls it for each row of tradeSkillRows (section 233, GR2-1).
     function c.tradeSkillSchematic(index)
         if not wholeCount(index) or index < 1 or index == math.huge then return nil end
         local function itemOf(ok, link)
@@ -603,6 +604,38 @@ function ns.make.client(env)
             mats[item] = (mats[item] or 0) + need
         end
         return { makes = makes, yield = yield, mats = mats }
+    end
+
+    -- Section 233 (GR2-1): the rows of the classic trade skill window, for
+    -- when C_TradeSkillUI can't be read. GetTradeSkillLine() for the
+    -- profession's name, skill and max ("UNKNOWN" or no name: no window),
+    -- GetNumTradeSkills() rows (0: no window), and GetTradeSkillInfo(i) for
+    -- each row's name and kind; "header" and "subheader" rows are left out.
+    -- Every other row is a recipe the player has learned. Only what the
+    -- window shows: a collapsed header hides its rows.
+    --   { name =, skill =, max =, rows = { { index = i, name = } } }
+    -- Anything that can't be read makes the whole answer nil: never a
+    -- shorter list. First guesses, not seen in game.
+    function c.tradeSkillRows()
+        local okLine, name, skill, max = call(env.GetTradeSkillLine)
+        if not okLine or type(name) ~= "string" or hidden(name) or name == "" or name == "UNKNOWN" then
+            return nil
+        end
+        local okN, n = call(env.GetNumTradeSkills)
+        if not okN or not wholeCount(n) or n < 1 or n == math.huge then return nil end
+        local rows = {}
+        for i = 1, n do
+            local okInfo, rowName, kind = call(env.GetTradeSkillInfo, i)
+            if not okInfo or type(kind) ~= "string" or hidden(kind) then return nil end
+            if kind ~= "header" and kind ~= "subheader" then
+                if type(rowName) ~= "string" or hidden(rowName) or rowName == "" then return nil end
+                rows[#rows + 1] = { index = i, name = rowName }
+            end
+        end
+        local out = { name = name, rows = rows }
+        if wholeCount(skill) and not hidden(skill) then out.skill = skill end
+        if wholeCount(max) and not hidden(max) then out.max = max end
+        return out
     end
 
     -- A string the client gave and did not mark secret, or nil.
@@ -5845,6 +5878,28 @@ function ns.make.client(env)
     --   (API_C_UnitAuras.GetAuraDataByIndex, API_UnitBuff), not seen in game.
     function c.ownBuffs() return aurasOf("player", "HELPFUL|PLAYER", env.UnitBuff) end
     -- ------------------------------------------ end your own buffs
+
+    -- ------------------------------------------------ worn links (P-SETS)
+    -- c.wornLinks() -> { [slot] = link } for inventory slots 1..19, or nil
+    -- Read only (Gear/Sets.lua saves a set from it). An empty slot is left
+    -- out. nil means not known, never "nothing worn": GetInventoryItemLink
+    -- is missing, raised for a slot, or gave a secret or non-text answer.
+    -- A first guess, not seen in game on 16001 (Flow's Modules/Gear/Sets.lua
+    -- saveWorn reads the same call for slots 1..19).
+    function c.wornLinks()
+        if type(env.GetInventoryItemLink) ~= "function" then return nil end
+        local out = {}
+        for slot = 1, 19 do
+            local ok, link = call(env.GetInventoryItemLink, "player", slot)
+            if not ok then return nil end
+            if link ~= nil then
+                if hidden(link) or type(link) ~= "string" then return nil end
+                if link ~= "" then out[slot] = link end
+            end
+        end
+        return out
+    end
+    -- --------------------------------------------------- end worn links
     return c
 end
 

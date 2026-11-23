@@ -34,7 +34,7 @@ local KIND = {
 local READS = {
     now = false, clock = true, clockMs = false, addonLoaded = true, listenFaults = true, uptime = true, inCombat = true,
     money = true, bags = true, bagItems = true, bankOpen = true, bankItems = true, merchantOpen = false,
-    merchantItems = false, recipes = true, recipeSchematic = false, tradeSkillSchematic = true, trainer = false, faction = false, class = true,
+    merchantItems = false, recipes = true, recipeSchematic = false, tradeSkillSchematic = true, tradeSkillRows = true, trainer = false, faction = false, class = true,
     stealthed = true, target = true, inRange = true, level = false, gear = false, spellCooldown = true,
     spellId = true, spellTexture = false, facing = true, spell = true, position = true, dead = true,
     ghost = true, corpse = true, waypoint = false, mapSize = true, mapCont = false, zone = true,
@@ -57,6 +57,9 @@ local READS = {
     ownBuffs = false,
     -- Section 235 item 4: the food read asks it (Rotation/Driver.lua).
     fishingPole = true,
+
+    -- P-SETS: what is worn, read by the set word only.
+    wornLinks = false,
 }
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).

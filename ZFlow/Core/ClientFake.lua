@@ -13,6 +13,7 @@
 --   c.setBagItems{ { item = 2318, count = 4 } }; c.setBank{ ... }
 --   c.setRecipes{ profession = 164, skill = 104, max = 150, recipes = { ... } }
 --   c.setRecipeSchematic(2963, { makes = 2996, yield = 1, mats = { [2589] = 2 } })
+--   c.setTradeSkillRows{ name = "Tailoring", rows = { { index = 2, name = "Bolt of Linen Cloth" } } }
 --   c.setSpell(5176, { known = true, usable = false, noPower = true })
 --   c.setSpellId("Wrath", 5176)   c.setFacing(1.57)
 --   c.setMapSize(1411, 5287.5, 3525); c.setMapCont(1411, 1)
@@ -137,6 +138,13 @@ function ns.make.fakeClient(opts)
     end
     -- Section 231 item 1: the classic fallback, by trade skill row index; a
     -- copy, nil when none is set for that index.
+    -- Section 233 (GR2-1): the classic window's rows, a copy; nil when none
+    -- are set.
+    function c.tradeSkillRows()
+        local r = s.tradeRows
+        if type(r) ~= "table" then return nil end
+        return { name = r.name, skill = r.skill, max = r.max, rows = copyRows(r.rows) or {} }
+    end
     function c.tradeSkillSchematic(index)
         local r = s.tradeSchematics and s.tradeSchematics[index]
         if type(r) ~= "table" then return nil end
@@ -752,6 +760,9 @@ function ns.make.fakeClient(opts)
         s.tradeSchematics = s.tradeSchematics or {}
         s.tradeSchematics[index] = r
     end
+    -- The classic window's rows (section 233): { name =, rows = { { index =,
+    -- name = } } }; nil: no classic window answers.
+    function c.setTradeSkillRows(r) s.tradeRows = r end
     -- One spell's answers: { known =, usable =, noPower = }; a field left
     -- out reads as not known.
     function c.setSpell(id, row)
@@ -1882,6 +1893,20 @@ function ns.make.fakeClient(opts)
         for k, v in pairs(from) do out[k] = v end
         return out
     end
+
+    -- Worn links (P-SETS), as the real client's wornLinks(): { [slot] =
+    -- link } from what setWorn was given (a link worn; false or nil: none
+    -- there). nil (not known) until setWorn is called, or after
+    -- setWornUnread(true).
+    function c.wornLinks()
+        if s.wornUnread or type(s.worn) ~= "table" then return nil end
+        local out = {}
+        for slot, link in pairs(s.worn) do
+            if type(link) == "string" and link ~= "" then out[slot] = link end
+        end
+        return out
+    end
+    function c.setWornUnread(on) s.wornUnread = on and true or nil end
     return c
 end
 

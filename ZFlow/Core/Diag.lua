@@ -374,6 +374,9 @@ function Diag.Collect(k, why)
     -- Section 231 item 1: the classic schematic read for row 2, all of it.
     S.tradeSkill2Schematic = shape(true, type(client.tradeSkillSchematic) == "function"
         and client.tradeSkillSchematic(2) or nil)
+    -- Section 233 (GR2-1): the classic window's rows, as the recipe book walks them.
+    S.tradeSkillRows = shape(true, type(client.tradeSkillRows) == "function"
+        and client.tradeSkillRows() or nil)
     S.crafts = ask(client, "GetNumCrafts")
     S.taxiNodes = ask(client, "NumTaxiNodes")
 

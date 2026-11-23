@@ -53,6 +53,9 @@ local _, ns = ...
 --         missing = { { key, count } } (still to get, not crafted),
 --         bankUnseen (some may be in the bank), bagsUnread }
 --   ItemGoals.NoRecipe(name) -> line   make, for an item no recipe makes
+--   ItemGoals.NotRead(name) -> line    make, when the last profession window
+--                                      was open but none of its recipes
+--                                      could be read (section 233, GR2-1)
 --   ItemGoals.Unread(n) -> line   what the word says while n saved entries
 --                                 can't be read (section 225, GS-3)
 --   ItemGoals.Run(k, rest) -> lines, changed      the goal word
@@ -92,6 +95,11 @@ do
     function Goals.NoRecipe(name)
         return "No recipe you have seen makes " .. tostring(name) .. ". Open the profession window that makes"
             .. " it, then say " .. cmd .. " make again."
+    end
+    -- Section 233 (GR2-1): make, when the window was seen but not read.
+    function Goals.NotRead(name)
+        return "Your profession window was open, but " .. tostring(ns.id.title) .. " could not read its recipes, so none that makes "
+            .. tostring(name) .. " is saved."
     end
     Goals.EMPTY = "You have no goals. Say " .. cmd .. " add <item link> <count> to keep that many for later."
     Goals.UNREADABLE = "Your saved goals can't be read, so nothing was changed. Say " .. Goals.CLEAN
@@ -481,7 +489,14 @@ function Goals.Run(k, rest)
         local recipe
         if word == "make" then
             recipe = ns.RecipeBook.For(k, key)
-            if recipe == nil then return { Goals.NoRecipe(nameOf(k, key)) }, false end
+            if recipe == nil then
+                local rb = type(k) == "table" and k.recipeBook or nil
+                local last = type(rb) == "table" and type(rb.last) == "function" and rb.last() or nil
+                if type(last) == "table" and last.reason == ns.RecipeBook.UNREAD then
+                    return { Goals.NotRead(nameOf(k, key)) }, false
+                end
+                return { Goals.NoRecipe(nameOf(k, key)) }, false
+            end
         end
         local seq, other = entries(raw or {})
         local list, set = {}, false
@@ -491,7 +506,8 @@ function Goals.Run(k, rest)
                     local copy = {}
                     for field, value in pairs(g) do copy[field] = value end
                     copy.count = count
-                    if recipe ~= nil then copy.recipe = recipe end
+                    -- Section 233 (GR2-2): add keeps the item, not a recipe.
+                    copy.recipe = recipe
                     list[#list + 1] = copy
                     set = true
                 end
