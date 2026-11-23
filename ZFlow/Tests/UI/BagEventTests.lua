@@ -77,6 +77,7 @@ return {
         c.fire(S.BAG_EVENT)
         t.eq(api.shows(), 0)
         for _, p in ipairs(c.panels) do t.ok(not p.shown, "no panel is shown") end
+        t.eq(c.kitWindows().SellList.shown, false, "and the sell list's window is not shown")
         c.setMerchantOpen(true)
         c.setMerchantOpen(false)
         local before = api.shows()
@@ -112,5 +113,6 @@ return {
         for i, p in ipairs(c.panels) do
             t.ok(not p.shown or before[i], "no panel is shown by the bag change")
         end
+        t.eq(c.kitWindows().BankList.shown, false, "and the bank list's window is not shown")
     end,
 }
