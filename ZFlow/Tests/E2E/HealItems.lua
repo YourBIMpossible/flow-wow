@@ -10,7 +10,9 @@ local _, ns = ...
 --
 -- What the fake client cannot express: the press itself. A secure button
 -- acts only on a hardware click; the test sees the attributes set on it
--- ("*type-alt", "*macrotext-alt"), not the item used.
+-- ("*type-alt", "*item-alt"), not the item used. Section 246 (N63-E): the
+-- item type ("*item-alt" = "item:ID"), never a macro. N8 stays PARTLY
+-- until seen in the client.
 local tests = {}
 
 local D = ns.RotationDriver
@@ -69,9 +71,9 @@ end
 local function onAlt(c)
     for _, h in ipairs(c.secureButtons) do
         if tostring(h.spec and h.spec.name):find("RotationKey", 1, true) then
-            local m = h.attrs["*macrotext-alt"]
-            if h.attrs["*type-alt"] == "macro" and type(m) == "string" then
-                return tonumber(m:match("^/use item:(%d+)$"))
+            local m = h.attrs["*item-alt"]
+            if h.attrs["*type-alt"] == "item" and type(m) == "string" then
+                return tonumber(m:match("^item:(%d+)$"))
             end
             return nil
         end

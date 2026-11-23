@@ -52,8 +52,12 @@ local _, ns = ...
 --
 -- Not tested in game: the template, the attribute names and the two client
 -- needs are first guesses until seen in this client.
--- The template and the attribute names type, spell and macrotext are on
+-- The template and the attribute names type, spell and item are on
 -- warcraft.wiki.gg (SecureActionButtonTemplate).
+-- Section 246 (N63-E): the button is never given the type "macro" (a
+-- macro-type secure button does not act on this client). The healing item
+-- on Alt (N8) is the item type, "*type-alt" = "item", "*item-alt" =
+-- "item:ID"; N8 stays PARTLY until seen in the client.
 local K = {}
 ns.KeyFrame = K
 
@@ -82,8 +86,10 @@ local function signature(plan)
             out[#out + 1] = type(row) == "table" and tostring(row[slot]) or "-"
         end
     end
-    -- N8: the item on Alt is part of the plan; a changed item is a changed plan.
-    if plan.altItem ~= nil then out[#out + 1] = "alt:" .. tostring(plan.altItem) end
+    -- N8: the item on Alt is part of the plan; a changed item is a changed
+    -- plan. Section 246 (N63-E): named as the attribute it puts on the
+    -- button ("*item-alt=item:ID"), the item type, never a macro.
+    if plan.altItem ~= nil then out[#out + 1] = "*item-alt=item:" .. tostring(plan.altItem) end
     return table.concat(out, "|")
 end
 
@@ -227,10 +233,11 @@ end
 local function holds(held)
     held = type(held) == "table" and held or {}
     local out = {}
-    local key = held.spell or held.macrotext
+    -- Section 246 (N63-E): a spell or an item ("item:ID"); never a macro.
+    local key = held.spell or held.item
     if key then out[#out + 1] = "key: " .. tostring(key) end
     for _, slot in ipairs(C.MODIFIERS) do
-        local spell = held["*spell-" .. slot] or held["*macrotext-" .. slot]
+        local spell = held["*spell-" .. slot] or held["*item-" .. slot]
         if spell then out[#out + 1] = slot .. ": " .. tostring(spell) end
     end
     return table.concat(out, "; ")
