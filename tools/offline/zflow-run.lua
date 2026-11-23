@@ -6,10 +6,13 @@
 -- loads every test file named in the list file (one path per line, relative
 -- to ZFlow/) the same way. A test file returns
 --   { ["test name"] = function(t) ... end }
--- and a test may use only t.ok(value, msg) and t.eq(got, want, msg).
+-- and a test may use only t.ok(value, msg), t.eq(got, want, msg) and
+-- t.skip(reason) (it cannot run here: SKIP, never PASS).
 --
 --   PASS   every check held, and there was at least one
 --   FAIL   a check did not hold, or the test made no check at all
+--   SKIP   the test called t.skip and no check failed: not a pass, and
+--          not counted against the exit code
 --   ERROR  the test raised an error; also a file that does not load, a test
 --          file that returns no table, and a problem the kernel recorded
 --          while the manifest files loaded
@@ -54,7 +57,7 @@ end
 table.sort(tests)
 
 local ns = {}
-local counts = { run = 0, pass = 0, fail = 0, error = 0 }
+local counts = { run = 0, pass = 0, fail = 0, error = 0, skip = 0 }
 local loadErrors = 0
 
 local function trace(err)
@@ -81,6 +84,47 @@ function ns.offline.addon(client)
         if f.path == "Core/ClientFake.lua" then fresh.client = client end
     end
     return fresh
+end
+
+-- A real capture (lead section 188, 3): read only from a path outside the
+-- repo, given in ZFLOW_CAPTURE (the account saved file) and, if wanted,
+-- ZFLOW_CAPTURE_CHAR (the character saved file). nil when not given. Real
+-- captures never enter the repo; a test that needs one calls t.skip when
+-- there is none.
+local function given(name)
+    local v = os.getenv(name)
+    if type(v) ~= "string" or v == "" then return nil end
+    return v
+end
+function ns.offline.capturePath() return given("ZFLOW_CAPTURE") end
+function ns.offline.captureCharPath() return given("ZFLOW_CAPTURE_CHAR") end
+
+-- True when path is inside the repo, or cannot be told (a relative path).
+local function norm(p)
+    return (tostring(p):gsub("\\", "/"):gsub("/+$", ""):lower())
+end
+function ns.offline.inRepo(path)
+    local p = norm(path)
+    if not (p:match("^%a:/") or p:sub(1, 1) == "/") then return true end
+    local r = norm(root)
+    return p == r or p:sub(1, #r + 1) == r .. "/"
+end
+
+-- The globals a saved-variables file assigns, each file run in an empty
+-- table of its own (no game, no os, no io). nil and a short reason when one
+-- does not read or run; the reason never quotes the file.
+function ns.offline.readSaved(...)
+    local vars = {}
+    for i = 1, select("#", ...) do
+        local path = select(i, ...)
+        if path ~= nil then
+            local chunk = loadfile(path)
+            if not chunk then return nil, "file " .. i .. " did not load" end
+            setfenv(chunk, vars)
+            if not pcall(chunk) then return nil, "file " .. i .. " did not run" end
+        end
+    end
+    return vars
 end
 
 for _, f in ipairs(manifest.files) do
@@ -129,8 +173,13 @@ local function show(v)
 end
 
 local function runTest(file, name, fn)
-    local checks, failures = 0, {}
+    local checks, failures, skipped = 0, {}, nil
     local t = {}
+    -- A test that cannot run here (no real capture given) says so: SKIP,
+    -- with its reason, never PASS. Checks made before it still count.
+    function t.skip(reason)
+        skipped = tostring(reason or "skipped")
+    end
     function t.ok(value, msg)
         checks = checks + 1
         if not value then failures[#failures + 1] = tostring(msg or "check " .. checks) end
@@ -154,6 +203,9 @@ local function runTest(file, name, fn)
         counts.fail = counts.fail + 1
         print("FAIL   " .. label)
         for _, text in ipairs(failures) do print("       " .. text) end
+    elseif skipped then
+        counts.skip = counts.skip + 1
+        print("SKIP   " .. label .. ": " .. skipped)
     elseif checks == 0 then
         counts.fail = counts.fail + 1
         print("FAIL   " .. label .. "\n       the test made no checks")
@@ -194,6 +246,7 @@ counts.error = counts.error + loadErrors
 print(string.format("zflow tests: %d files, %d run: %d pass, %d fail, %d error%s",
     fileCount, counts.run, counts.pass, counts.fail, counts.error,
     loadErrors > 0 and (" (" .. loadErrors .. " outside a test: see ERROR lines)") or ""))
+if counts.skip > 0 then print("zflow tests: " .. counts.skip .. " skipped (not passed; see SKIP lines)") end
 
 local code = 0
 if counts.fail > 0 or counts.error > 0 then code = 1
