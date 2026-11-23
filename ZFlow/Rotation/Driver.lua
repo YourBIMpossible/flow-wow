@@ -97,6 +97,10 @@ local _, ns = ...
 --       party, groupOn  your group and the "suggest buffs for your group"
 --                  setting, from Rotation/Group.lua (ns.PartyGroup.Read,
 --                  handed the pack and ids already here: no new argument)
+--       enemies, plateCasts  client.plateEnemies() and client.plateCasts()
+--                  (lead section 242; the real reads are P-READS, Plexy):
+--                  the list as it answered; nil when not known, the read
+--                  raised or answered no list, or the client has no such read
 --   D.Step(client, pack[, prefs, bias, applied, role, extra]) -> view
 --     extra is handed to D.Read as it is (section 232).
 --     one read and one choice. A read that fails is an error (not caught
@@ -464,6 +468,16 @@ function D.Read(client, pack, ids, role, extra)
             if type(client.grouped) ~= "function" then return nil end
             local ok, v = pcall(client.grouped)
             if ok and type(v) == "boolean" then return v end
+            return nil
+        end
+        -- Lead section 242: the enemies on nameplates and the casts on them
+        -- (client.plateEnemies, client.plateCasts; P-READS, Plexy). A read
+        -- that raises, or answers anything but a list, is not known.
+        if field == "enemies" or field == "plateCasts" then
+            local fn = client[field == "enemies" and "plateEnemies" or "plateCasts"]
+            if type(fn) ~= "function" then return nil end
+            local ok, v = pcall(fn)
+            if ok and type(v) == "table" then return v end
             return nil
         end
         if field == "buffFood" then return buffFoodKept(client, pack, role, food, pole) end

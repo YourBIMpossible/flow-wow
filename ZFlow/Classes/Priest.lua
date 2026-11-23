@@ -35,8 +35,11 @@ local _, ns = ...
 --     addon code (R.FROM_AMOUNT in Rotation/Snapshot.lua), so the list
 --     cannot say "wand now to save mana". Smite comes before the wand, and
 --     is not suggested while the wand is already shooting;
---   * Fade, Mind Soothe, Shackle Undead, Mind Control and Levitate: no step
---     of the chooser uses them yet (Fade is on the Alt key row);
+--   * Mind Soothe, Mind Control and Levitate as steps: lead section 242
+--     makes them tips on the new-spell card (`tip` on the spell row), not
+--     rules. Shackle Undead is the crowd-control step (options.crowdControl,
+--     shown only) and Fade the threat step in a group (options.threatDrop);
+--     both wait on the nameplate reads (P-READS, Plexy);
 --   * the food choice for a spirit healer: not carried over yet from the
 --     old BuffItems.lua.
 
@@ -171,9 +174,18 @@ local spells = {
     ["Greater Heal"]          = sp(40, { "Healing" }),
     ["Mind Flay"]             = sp(nil, { "DPS" }, nil, "a Shadow talent"),
     ["Silence"]               = sp(nil, { "Control" }, nil, "a Shadow talent"),
+    ["Shackle Undead"]        = sp(20, { "Control" }),
+    ["Mind Soothe"]           = sp(20, { "Utility" }),
+    ["Mind Control"]          = sp(30, { "Control" }),
+    ["Levitate"]              = sp(34, { "Utility" }, "Light Feather"),
     ["Shadowform"]            = sp(nil, { "DPS" }, nil, "a Shadow talent"),
     ["Shoot"]                 = sp(nil, { "DPS" }, nil, "needs a wand in the ranged slot"),
 }
+-- Lead section 242: a tip for the new-spell card (UI/SpellCard.lua), for
+-- spells that are help, not rules. First guesses: Needs game test.
+spells["Mind Soothe"].tip = "a humanoid notices you from closer, so you can slip past it"
+spells["Mind Control"].tip = "you control a humanoid while you channel; you stand still meanwhile"
+spells["Levitate"].tip = "you fall slowly and can walk on water; it uses a Light Feather"
 
 local function weights(values)
     return { evidence = GUESS, values = values }
@@ -280,6 +292,12 @@ local pack = {
         -- stance, form or armor choice in this rotation.
         -- Reads the rules lean on; one not given is named by diag (187).
         reads = { "buffs", "targetDebuffs", "formKnown" },
+        -- Lead section 242: the crowd-control step (Rotation/Choose.lua cc)
+        -- holds a second undead enemy, shown only; the threat step casts
+        -- Fade on you in a group with an enemy on you. English creature
+        -- type names; first guesses, Needs game test.
+        crowdControl = { { spell = "Shackle Undead", creatures = { undead = true } } },
+        threatDrop = { spell = "Fade" },
     },
 
     -- Beyond the sixteen rows, from the old shared tables.

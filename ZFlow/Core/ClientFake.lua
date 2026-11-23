@@ -1678,6 +1678,23 @@ function ns.make.fakeClient(opts)
         s.attackable = s.attackable or {}
         if v == nil then s.attackable[unit] = nil else s.attackable[unit] = v and true or false end
     end
+    -- Lead section 242: the enemies on nameplates and the casts on them, as
+    -- the real client.plateEnemies and client.plateCasts (P-READS, Plexy):
+    -- nil until set (not read); each answer is a fresh copy of the rows.
+    local function copyPlateRows(list)
+        if type(list) ~= "table" then return nil end
+        local out = {}
+        for i, row in ipairs(list) do
+            local r = {}
+            for k, v in pairs(row) do r[k] = v end
+            out[i] = r
+        end
+        return out
+    end
+    function c.setPlateEnemies(list) s.plateEnemies = copyPlateRows(list) end
+    function c.plateEnemies() return copyPlateRows(s.plateEnemies) end
+    function c.setPlateCasts(list) s.plateCasts = copyPlateRows(list) end
+    function c.plateCasts() return copyPlateRows(s.plateCasts) end
     function c.grouped() return s.grouped end
     function c.setGrouped(v)
         if v == nil then s.grouped = nil else s.grouped = v and true or false end

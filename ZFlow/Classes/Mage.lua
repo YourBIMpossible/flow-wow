@@ -27,9 +27,9 @@ local _, ns = ...
 --     They stay in the spell list; the chooser does not suggest them;
 --   * Frost Nova and Blink as steps: they answer an enemy next to you, and
 --     the driver reads no such thing yet. Both are on the key rows;
---   * Polymorph: the chooser has no crowd-control step;
---   * Counterspell on anyone's cast but your target's: no read of another
---     unit's cast;
+--   * Polymorph and Counterspell on another enemy are shown only, never on
+--     the key (lead section 242: the crowd-control and plate-cast steps of
+--     Rotation/Choose.lua); both wait on the nameplate reads (P-READS);
 --   * Amplify and Dampen Magic: no rule asks for them;
 --   * Arcane Brilliance, and anything cast on another player (P-PARTY:
 --     Arcane Intellect for your group is only shown, never cast).
@@ -301,6 +301,10 @@ local pack = {
     options = {
         -- Reads the rules lean on; one not given is named by diag (187).
         reads = { "buffs", "conjured" },
+        -- Lead section 242: the crowd-control step holds a second beast or
+        -- humanoid enemy, shown only. English creature type names; first
+        -- guess, Needs game test.
+        crowdControl = { { spell = "Polymorph", creatures = { beast = true, humanoid = true } } },
         -- What each conjuring spell makes, for the shared `conjured` read.
         conjure = {
             { spell = "Conjure Water", items = WATER },

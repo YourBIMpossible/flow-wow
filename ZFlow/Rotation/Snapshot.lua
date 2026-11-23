@@ -63,6 +63,13 @@ R.SNAPSHOT_FIELDS = {
     -- has, debuffTypes } (kind "party"); nil when not read. The names are
     -- for the live caption only: never saved. groupOn: the setting.
     { "party", "party" }, { "groupOn", "flag" },
+    -- Lead section 242 (Rotation/Choose.lua steps cc, plateCast, threat):
+    -- the enemies on nameplates, rows of { unit, name, isTarget, creature,
+    -- controlled, threat } (client.plateEnemies), and the casts on them,
+    -- rows of { unit, name, spell, interruptible, isTarget }
+    -- (client.plateCasts); kind "plates". nil when not read, an empty list
+    -- when read and none. The names are for the live caption only.
+    { "enemies", "plates" }, { "plateCasts", "plates" },
     { "spells", "spells" },
 }
 -- Names that would be made from a health or power amount. This client hides
@@ -141,6 +148,24 @@ local function copyParty(list)
     return out
 end
 
+-- Lead section 242: a nameplate list, row by row: only the plain fields
+-- (text, number, true or false) are kept. A row with no unit is left out.
+local function copyPlates(list)
+    if type(list) ~= "table" then return nil end
+    local out = {}
+    for _, row in ipairs(list) do
+        if type(row) == "table" and type(row.unit) == "string" and row.unit ~= "" then
+            local r = {}
+            for k, v in pairs(row) do
+                local tv = type(v)
+                if type(k) == "string" and (tv == "string" or tv == "number" or tv == "boolean") then r[k] = v end
+            end
+            out[#out + 1] = r
+        end
+    end
+    return out
+end
+
 local function shape(kind, v)
     if kind == "flag" then
         if v == nil then return nil end
@@ -155,6 +180,7 @@ local function shape(kind, v)
     end
     if kind == "spells" then return copySpells(v) end
     if kind == "party" then return copyParty(v) end
+    if kind == "plates" then return copyPlates(v) end
     if type(v) == "table" or type(v) == "function" then return nil end
     return v
 end
