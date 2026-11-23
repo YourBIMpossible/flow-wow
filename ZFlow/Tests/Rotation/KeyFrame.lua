@@ -228,6 +228,40 @@ tests["key frame: a fight that starts in the middle of an apply stops it"] = fun
     t.eq(h.attrs["*unit-ctrl"], "target")
 end
 
+-- SE6-2: the lock comes on inside an attribute set of the fight-start walk
+-- (Attack taken off the key). No set is asked while the lock is not a
+-- plain false; the walk is finished by the forced try PLAYER_REGEN_ENABLED
+-- makes, and nothing is set twice.
+tests["key frame: the lock comes on inside the fight-start walk: it stops, then finishes after the fight"] = function(t)
+    local kf, h, s = make({ form = 0 })
+    local p = plan()
+    p.action = { spell = "Attack" }
+    t.eq(kf:want(p).state, "set")
+    t.eq(h.attrs.spell, "Attack", "Attack on the key before the fight")
+    local before = #h.reached
+    h.onSet = function(n)
+        if n == before + 1 then s.lock = true end
+    end
+    local st, removing = kf:fightStarts()
+    t.eq(removing, true, "Attack was taken off the wanted plan")
+    t.eq(st.state, "waiting", "the walk stopped at the lock")
+    t.eq(#h.reached, before + 1, "one set got as far as the game before the lock")
+    t.eq(h.inLock, 0, "no set was asked while the lock was on")
+    h.onSet = nil
+    s.lock = false
+    st = kf:try(true)
+    t.eq(st.state, "set", "finished after the fight")
+    t.eq(h.attrs.spell, "Wrath", "the plan's key spell, Attack gone")
+    t.eq(h.attrs["*spell-ctrl"], "Moonfire")
+    t.eq(h.inLock, 0)
+    local seen, twice = {}, false
+    for i = before + 1, #h.reached do
+        if seen[h.reached[i]] then twice = true end
+        seen[h.reached[i]] = true
+    end
+    t.ok(not twice, "nothing set twice in the resumed walk")
+end
+
 -- ------------------------------------------------------------ a failed apply
 tests["key frame: an attribute the client refuses is named, the rest is set"] = function(t)
     local kf, h = make({ form = 0 })

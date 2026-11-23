@@ -210,6 +210,17 @@ return {
     "Rotation/Group.lua",
     -- N63: heal and cures on the unit under your mouse, off by default.
     "Rotation/Mouseover.lua",
+    "Rotation/CareKeys.lua",
+    -- N41 key controls and S23 click-casting check (P-KEYS slice B).
+    "Rotation/KeyControls.lua",
+    "UI/ClickCheck.lua",
+    -- S15 click slots and S29 move handle (P-KEYS slice C).
+    "UI/MoveHandle.lua",
+    "Rotation/ClickSlots.lua",
+    -- N1, N2, N20, N5 key actions (P-KEYS slice D).
+    "Rotation/KeyActions.lua",
+    -- N39, N40, N26, N27: auto attack, the spells list and the placed notice (P-KEYS slice E).
+    "Rotation/SpellKeys.lua",
     -- N64: the weapon enchant reminder, a line in chat only (after Group).
     "Rotation/Enchant.lua",
     -- N55: the boss loot panel, look only (after Gear, Items/Drops and the classes).
