@@ -2831,6 +2831,20 @@ function ns.make.fakeClient(opts)
         for k, v in pairs(s.playerDebuffs) do out[k] = v end
         return out
     end
+
+    -- G16: the skill lines you know, as the real client's weaponSkills():
+    --   c.setWeaponSkills({ "Swords", ... }) or nil (not read, the start);
+    --   c.setWeaponSkillsFails(on): the read raises while on (lead
+    --   section 236: a read that fails, then recovers).
+    function c.setWeaponSkills(list) s.weaponSkills = type(list) == "table" and list or nil end
+    function c.setWeaponSkillsFails(on) s.weaponSkillsFails = on and true or nil end
+    function c.weaponSkills()
+        if s.weaponSkillsFails then error("weapon skill read failed (test)") end
+        if type(s.weaponSkills) ~= "table" then return nil end
+        local out = {}
+        for _, name in ipairs(s.weaponSkills) do out[name] = true end
+        return out
+    end
     return c
 end
 

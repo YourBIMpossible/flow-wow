@@ -555,6 +555,16 @@ function Arrow.Start(k, diag, own)
                 step = repair.Step()
                 if step then from = "a repair stop" end
             end
+            -- Then the weapon master stop (G16, Nav/WeaponMasterStep.lua), only
+            -- when a weapon master is saved: a words-only step has no needle.
+            local weaponMaster = k.use and k.use("weaponMasterStep")
+            if step == nil and weaponMaster and weaponMaster.Step then
+                local ok, wm = pcall(weaponMaster.Step)
+                if ok and type(wm) == "table" and type(wm.place) == "table" then
+                    step = wm
+                    from = "a weapon master stop"
+                end
+            end
             -- The player's own pin (/way, then the map pin) wins over the player's quests.
             if step == nil and quests and Arrow.QuestArrowOn(k) then
                 step = quests.step()
