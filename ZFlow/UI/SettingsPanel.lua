@@ -55,6 +55,7 @@ SP.NOT_READY = "the settings page is not ready until login."
 SP.TOPICS = "Topics"
 SP.SEARCH = "Search: "
 SP.NO_TOPIC = "no topic is called "
+SP.TEXT_INSTEAD = "; the text page is shown instead."
 SP.MAX_RESULTS = 16
 SP.MORE = " more: add a word to narrow the search."
 SP.WIDTH = 460
@@ -222,12 +223,26 @@ function SP.Declare(k, diag)
         return nil
     end
 
+    -- Asks the Options page to open. -> true when it did; false, and true
+    -- when it was refused for the game's combat lock (said in chat: the
+    -- text page is what the player gets).
+    local function openOptions()
+        local page = options()
+        if not page then return false, false end
+        local opened, why = page.Open()
+        if opened == true then return true, false end
+        if type(why) == "string" then
+            say(why .. SP.TEXT_INSTEAD)
+            return false, true
+        end
+        return false, false
+    end
+
     function api.show(topic, query)
         local P = ns.SettingsPage
         if topic ~= nil and not P.Goto(k, topic) then return nil end
         if query ~= nil then P.Find(k, query) end
-        local page = options()
-        if page and page.Open() == true then return "options" end
+        if openOptions() then return "options" end
         return show()
     end
 
@@ -235,9 +250,10 @@ function SP.Declare(k, diag)
         diag.commands[SP.WORD] = function(rest)
             rest = trim(rest)
             if rest == "" then
-                local page = options()
-                if page and page.Open() == true then return end
-                api.toggle()
+                local opened, locked = openOptions()
+                if opened then return end
+                -- Locked: the text page is shown, never hidden by the word.
+                if locked then show() else api.toggle() end
                 return
             end
             local first, tail = rest:match("^(%S+)%s*(.-)$")
@@ -247,7 +263,9 @@ function SP.Declare(k, diag)
                     api.show()
                     return
                 end
-                local topic = ns.Settings.Topics.Pick(tail)
+                local rows = {}
+                for row in k.settings:each() do rows[#rows + 1] = row end
+                local topic = ns.Settings.Topics.Pick(tail, rows)
                 if not topic then
                     local names = {}
                     for _, one in ipairs(ns.Settings.Topics.LIST) do names[#names + 1] = one.name end

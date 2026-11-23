@@ -27,7 +27,9 @@ local _, ns = ...
 --   Topics.Fold(text)             -> lower case, accents and marks taken off
 --   Topics.Words(text)            -> the folded words of a search
 --   Topics.Match(row, words)      -> a score when every word is found, else nil
---   Topics.Pick(text)             -> the topic a typed name means, or nil
+--   Topics.Pick(text [, rows])    -> the topic a typed name means, or nil:
+--                                 the best match, not the first. With the
+--                                 rows given, a row's synonym names its topic.
 --   Topics.MENU, Topics.MENU_MAX  the menus' own headings and the most rows
 --                                 one level of a menu may hold
 ns.Settings = ns.Settings or {}
@@ -176,7 +178,50 @@ function T.Match(row, words)
     return score
 end
 
-function T.Pick(text)
+-- How well one typed word names a topic: 4 its id or a whole word of its
+-- name, 3 the start of a word of its name, 2 a synonym (or a word of one)
+-- of a row filed under it, 1 letters inside a word of its name, 0 nothing.
+local function wordScore(topic, word, synonyms)
+    if topic.id == word then return 4 end
+    local best = 0
+    for part in T.Fold(topic.name):gmatch("%S+") do
+        if part == word then return 4 end
+        if part:sub(1, #word) == word then
+            if best < 3 then best = 3 end
+        elseif best < 1 and part:find(word, 1, true) then
+            best = 1
+        end
+    end
+    if best < 2 and synonyms[word] then best = 2 end
+    return best
+end
+
+-- The synonyms of the rows filed under each topic, folded, each whole and
+-- by its words: { [topic id] = { [word] = true } }.
+local function synonymsByTopic(rows)
+    local out = {}
+    if type(rows) ~= "table" then return out end
+    for i = 1, #rows do
+        local row = rows[i]
+        if type(row) == "table" and type(row.synonyms) == "table" then
+            local id = T.Of(row).id
+            out[id] = out[id] or {}
+            for s = 1, #row.synonyms do
+                local folded = T.Fold(row.synonyms[s])
+                if folded ~= "" then
+                    out[id][folded] = true
+                    for part in folded:gmatch("%S+") do out[id][part] = true end
+                end
+            end
+        end
+    end
+    return out
+end
+
+-- The topic a typed name means. Its id or its whole name is that topic.
+-- Otherwise every typed word must name the topic in some way, and the
+-- topic the words name best wins; equal topics go by the list's order.
+function T.Pick(text, rows)
     local want = T.Fold(text)
     if want == "" then return nil end
     for i = 1, #T.LIST do
@@ -184,14 +229,20 @@ function T.Pick(text)
         if topic.id == want or T.Fold(topic.name) == want then return topic end
     end
     local words = T.Words(want)
+    local synonyms = synonymsByTopic(rows)
+    local best, bestScore = nil, 0
     for i = 1, #T.LIST do
         local topic = T.LIST[i]
-        local hay = T.Fold(topic.name) .. " " .. topic.id
-        local all = true
+        local total = 0
         for w = 1, #words do
-            if not hay:find(words[w], 1, true) then all = false break end
+            local score = wordScore(topic, words[w], synonyms[topic.id] or {})
+            if score == 0 then
+                total = 0
+                break
+            end
+            total = total + score
         end
-        if all then return topic end
+        if total > bestScore then best, bestScore = topic, total end
     end
-    return nil
+    return best
 end

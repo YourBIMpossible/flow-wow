@@ -117,4 +117,68 @@ return {
             if r.key ~= nil then t.ok(keys[r.key], tostring(r.key)) end
         end
     end,
+
+    -- Lead section 247 item 5 (MyBuddy, MED). Fails before: api.open asked
+    -- the client's page to open with no lockdown check
+    -- (UI/SettingsOptions.lua api.open).
+    ["settings options: in combat lockdown, or with the lock not known, the page is not asked to open and open says why"] = function(t)
+        local _, c, api = start()
+        c.setLockdown(true)
+        local ok, why = api.open()
+        t.eq(ok, false)
+        t.eq(why, O.LOCKED)
+        t.ok(type(O.LOCKED) == "string" and O.LOCKED ~= "", "there is a line for it")
+        t.eq(c.optionsOpened(), 0)
+        c.setLockdown(nil)
+        ok, why = api.open()
+        t.eq(ok, false)
+        t.eq(why, O.LOCK_UNKNOWN)
+        t.ok(type(O.LOCK_UNKNOWN) == "string" and O.LOCK_UNKNOWN ~= O.LOCKED, "not known has its own line")
+        t.eq(c.optionsOpened(), 0, "not known counts as locked")
+        c.setLockdown(false)
+        t.eq((api.open()), true)
+        t.eq(c.optionsOpened(), 1, "after the fight it opens")
+    end,
+
+    ["settings options: a client with no Options page says nothing of combat"] = function(t)
+        local _, c, api = start({ noPage = true })
+        c.setLockdown(true)
+        local ok, why = api.open()
+        t.eq(ok, false)
+        t.eq(why, nil)
+    end,
+
+    -- Carry-forward of the legacy slider (lead section 247 item 5). Fails
+    -- before: a number row was drawn with no step, so the client stepped by
+    -- 1 and a 0 to 1 row could not be moved at all.
+    ["settings options: a number row carries its step; a 0 to 1 row moves in twentieths and saves a clean value"] = function(t)
+        local k, c, api = start()
+        k:Setting({ key = "test.share", scope = "account", type = "number", min = 0, max = 1, default = 0.2,
+            label = "A share", group = "advanced" })
+        k:Setting({ key = "test.half", scope = "account", type = "number", min = 0, max = 3, default = 1, step = 0.5,
+            label = "By halves", group = "advanced" })
+        api.open()
+        t.eq(row(c, "test.count").step, 1, "a whole-number row steps by one")
+        t.eq(row(c, "test.share").step, 0.05)
+        t.eq(row(c, "test.half").step, 0.5, "a row's own step is used")
+        t.eq((c.optionsAct("test.share", 0.2 + 0.05)), true)
+        t.eq(k.settings:get("test.share"), 0.25)
+        t.eq((c.optionsAct("test.share", 0.25 + 0.05)), true)
+        t.eq(k.settings:get("test.share"), 0.3, "no stray digits from the adding")
+        t.eq(c.optionsAct("test.share", 1.05), false, "its limits still hold")
+        t.eq(k.settings:get("test.share"), 0.3)
+        t.eq((c.optionsAct("test.count", 3)), true)
+        t.eq(k.settings:get("test.count"), 3)
+    end,
+
+    -- SETTINGS-UX-01 item 4: help understandable. Fails before: the row the
+    -- page draws carried no help.
+    ["settings options: a row's description is drawn with it"] = function(t)
+        local k, c, api = start()
+        k:Setting({ key = "test.helped", scope = "account", type = "bool", default = true, label = "Helped",
+            help = "What it does, in a sentence.", group = "advanced" })
+        api.open()
+        t.eq(row(c, "test.helped").help, "What it does, in a sentence.")
+        t.eq(row(c, "test.flag").help, nil, "none is made up")
+    end,
 }

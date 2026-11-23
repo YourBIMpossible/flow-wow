@@ -295,7 +295,7 @@ function Po.Declare(k, diag)
             label = "Auction advice on item tooltips",
             help = "For a thing in your bags worth the auction house: the price to ask, from your own searches, "
                 .. "and how often it came back unsold (at least). It posts nothing.",
-            group = "auctions", synonyms = { "auction", "post", "sell", "price", "ah" },
+            group = "auctions", synonyms = { "auction", "post", "listing", "price", "ah" },
         } },
         start = function(c)
             ctx = c

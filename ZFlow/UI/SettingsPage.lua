@@ -24,7 +24,8 @@ local _, ns = ...
 --     entry        key, label, help (nil when the row has none), kind,
 --                  value, shown (the value as text), savedFor, scope
 --                  ("account" or "character"), topic, topicName, section,
---                  sectionName, min, max, choices (a copy), available,
+--                  sectionName, min, max, step (a number row: how far one
+--                  press of minus or plus moves it), choices (a copy), available,
 --                  settable, why (the reason when it cannot be set, else
 --                  nil), because (what an unavailable row depends on and
 --                  what its `requires` said, when either is known), opens
@@ -41,6 +42,14 @@ local _, ns = ...
 --     row's type and limits, saved at the row's own scope and place) and,
 --     for a key the settings model (Settings/Model.lua) also holds, through
 --     the model's check for that key. A refusal changes nothing.
+--
+--   SettingsPage.Step(row) -> the step of a number row: its own `step`
+--     when it gives one above 0, else 0.05 for a row whose limits are 1 or
+--     less apart (a share), else 1. nil for any other row.
+--   SettingsPage.Snap(row, value) -> a number a control sent for a number
+--     row, put on the row's steps and cleared of the stray digits adding
+--     leaves (0.30000000000000004 is 0.3). Anything else is handed back
+--     as it is. The row's limits are not applied here: Set refuses.
 --
 --   SettingsPage.Search(k, query [, view]) -> found, or nil for an empty
 --     search (then the page is browsed by topic)
@@ -132,6 +141,23 @@ local function because(k, row)
     return table.concat(parts, "; ")
 end
 
+function P.Step(row)
+    if type(row) ~= "table" or row.type ~= "number" then return nil end
+    if type(row.step) == "number" and row.step > 0 then return row.step end
+    if type(row.min) == "number" and type(row.max) == "number" and row.max - row.min <= 1 then return 0.05 end
+    return 1
+end
+
+function P.Snap(row, value)
+    local step = P.Step(row)
+    if step == nil or type(value) ~= "number" or value ~= value
+        or value == math.huge or value == -math.huge then
+        return value
+    end
+    local snapped = math.floor(value / step + 0.5) * step
+    return math.floor(snapped * 1000000 + 0.5) / 1000000
+end
+
 local function entryOf(k, row, isLoaded)
     local kind = KINDS[row.type]
     local e = {
@@ -143,6 +169,7 @@ local function entryOf(k, row, isLoaded)
         scope = P.SCOPE_WORDS[row.scope] or tostring(row.scope),
         min = row.min,
         max = row.max,
+        step = P.Step(row),
         shown = "",
         settable = false,
     }
