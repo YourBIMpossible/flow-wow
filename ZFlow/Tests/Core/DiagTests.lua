@@ -795,4 +795,12 @@ return {
         t.ok(named["C_UnitAuras.GetPlayerAuraBySpellID"], "the aura read is named")
         t.ok(named["C_Spell.GetSpellInfo"], "the spell read is named")
     end,
+
+    ["slash: diag has no macro icon search line on a kernel that has no macro icon search (N72)"] = function(t)
+        local _, c = start()
+        login(c)
+        c.slashes[ns.id.slash]("diag")
+        t.eq(said(c, "macro icon search"), 0)
+        t.ok(#c.printed > 0, "the snapshot line is printed")
+    end,
 }
