@@ -22,6 +22,12 @@ ZFlowDB = {
 },
 ["diag"] = {
 ["starts"] = 7,
+["sellGrey"] = {
+["item"] = "Cracked Bone",
+["rule"] = "not read",
+["why"] = "price not read yet",
+["counts"] = "to sell 0, kept 1, not sold 1, not read 0",
+},
 ["count"] = 31,
 ["kitProbe"] = {
 ["at"] = 12.5,
