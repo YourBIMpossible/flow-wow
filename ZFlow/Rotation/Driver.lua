@@ -7,7 +7,8 @@ local _, ns = ...
 --
 --   D.Read(client, pack, ids[, role]) -> read(field)
 --     the reader ns.Snapshot takes. dead, inCombat, stealthed, hostile,
---     spells, buffs, form and current are asked of the client; role is the
+--     spells, buffs, targetDebuffs, form and current are asked of the
+--     client; role is the
 --     one handed in; every other field answers nil (not known), never a
 --     guess.
 --       role       the role you chose (the setting D.ROLE), when it is
@@ -23,6 +24,8 @@ local _, ns = ...
 --       buffs      client.playerBuffs() as it answered: { [name] = seconds
 --                  left or true }, {} for read and none, nil when not known
 --                  or the client has no such read
+--       targetDebuffs  client.targetDebuffs(): your own debuffs on the
+--                  target, the same shape and the same not known (187)
 --       form       client.formName(): the form name, or nil for no form
 --                  and for not known alike
 --       formKnown  true when client.formName() said its answer is known
@@ -58,6 +61,9 @@ local _, ns = ...
 --     keys        ns.cast.Apply(plan, applied, lockdown)
 --     attrs       ns.cast.Attributes(suggestion, plan, applied, lockdown)
 --     unread      the pack's spells that could not be read (sorted)
+--     notRead     the reads the pack names in options.reads (formKnown,
+--                 buffs, targetDebuffs) that came back not known, in the
+--                 pack's order; {} when every one was read (section 187)
 --     missing     the pack's spells with no id (sorted)
 --     passed      the spells the chooser's steps passed by only because
 --                 nobody read their cooldown (sorted, each once): the trace
@@ -164,6 +170,10 @@ function D.Read(client, pack, ids, role)
             if type(client.playerBuffs) ~= "function" then return nil end
             return client.playerBuffs()
         end
+        if field == "targetDebuffs" then
+            if type(client.targetDebuffs) ~= "function" then return nil end
+            return client.targetDebuffs()
+        end
         if field == "form" then
             if type(client.formName) ~= "function" then return nil end
             local name = form("form")
@@ -249,6 +259,13 @@ function D.Step(client, pack, prefs, bias, applied, role)
     end
     table.sort(notRead)
 
+    -- The reads the pack leans on that came back not known (section 187).
+    local readsMissing = {}
+    local options = type(pack.options) == "table" and pack.options or {}
+    for _, field in ipairs(type(options.reads) == "table" and options.reads or {}) do
+        if snapshot[field] == nil then readsMissing[#readsMissing + 1] = field end
+    end
+
     return {
         pack = true,
         snapshot = snapshot,
@@ -258,6 +275,7 @@ function D.Step(client, pack, prefs, bias, applied, role)
         keys = keys,
         attrs = attrs,
         unread = notRead,
+        notRead = readsMissing,
         missing = missing,
         passed = passed,
         why = D.Why(snapshot, trace, keys, lockdown),

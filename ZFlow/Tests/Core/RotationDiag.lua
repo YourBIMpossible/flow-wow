@@ -497,4 +497,50 @@ tests["rotation diag RD15: a driver that raises costs its lines only"] = functio
     t.eq(k.problems:count("diag"), before + 1, "one problem, not one for each line")
 end
 
+-- Section 187 (defect): a druid whose form was not read was told only
+-- "nothing to suggest (nothing out of range)"; the read the pack needed was
+-- never named.
+tests["rotation diag 187: nothing picked names the reads that were not given"] = function(t)
+    local v = view({ suggestion = "nil", notRead = { "formKnown", "targetDebuffs" },
+                     trace = { { step = "farOpener", result = "skip", note = "nothing out of range" } } })
+    t.eq(line(v), "rotation: nothing to suggest (nothing out of range; not read: which form you are in, "
+        .. "your debuffs on the target).")
+end
+
+tests["rotation diag 187: every read given adds nothing to the line"] = function(t)
+    local v = view({ suggestion = "nil", notRead = {},
+                     trace = { { step = "farOpener", result = "skip", note = "nothing out of range" } } })
+    t.eq(line(v), "rotation: nothing to suggest (nothing out of range).")
+end
+
+-- Section 187 (defect): with a spell picked, a read that was not given
+-- (buffs: Mark of the Wild passed by) was never said at all.
+tests["rotation diag 187: a pick with reads not given gets its own line"] = function(t)
+    t.ok(type(Diag.RotationReadsLine) == "function", "Diag.RotationReadsLine exists")
+    if type(Diag.RotationReadsLine) ~= "function" then return end
+    t.eq(Diag.RotationReadsLine(view({ notRead = { "buffs" } })),
+        "rotation: not read: your buffs; spells that need them are passed by.")
+    t.ok(Diag.RotationReadsLine(view({ notRead = {} })) == nil, "all read: no line")
+    t.ok(Diag.RotationReadsLine(view({})) == nil, "a view with no list: no line")
+    t.ok(Diag.RotationReadsLine(view({ suggestion = "nil", notRead = { "buffs" } })) == nil,
+        "nothing picked: the rotation line names them instead")
+    t.ok(Diag.RotationReadsLine(view({ pack = false, notRead = { "buffs" } })) == nil, "no pack")
+end
+
+tests["rotation diag 187: the driver lists the pack's reads that came back not known, in order"] = function(t)
+    local c = ns.make.fakeClient()
+    c.setDead(false)
+    local p = pack()
+    p.options = { reads = { "formKnown", "buffs", "targetDebuffs" } }
+    local v = D.Step(c, p)
+    t.eq(v.notRead, { "formKnown", "buffs", "targetDebuffs" }, "nothing given")
+    c.setFormName(nil, true)
+    c.setPlayerBuffs({})
+    c.setTargetDebuffs({ Rake = 4 })
+    v = D.Step(c, p)
+    t.eq(v.notRead, {}, "all three given")
+    t.eq(v.snapshot.targetDebuffs, { Rake = 4 }, "the target read reaches the snapshot")
+    t.eq(D.Step(c, pack()).notRead, {}, "a pack that names no reads")
+end
+
 return tests

@@ -2355,6 +2355,9 @@ function ns.make.client(env)
     --                   spellTexture gave (a file id or a path); nil clears
     --                   the picture and answers false.
     --   h.place(point), h.show(on), h.onMoved(fn, failed): as the panel's.
+    --   h.mark(look) -> true when the client took it. "far" tints the
+    --                   picture red (the action bar's out of range colour);
+    --                   anything else puts the plain colour back.
     -- It moves only while Ctrl is held, like the arrows; a client that will
     -- not say whether Ctrl is held starts no drag. It takes no click and
     -- holds no secure action. A new icon is hidden and has no place.
@@ -2424,6 +2427,13 @@ function ns.make.client(env)
         end
         function h.show(on)
             method(f, on and "Show" or "Hide")
+        end
+        function h.mark(look)
+            if tex == nil then return false end
+            if look == "far" then
+                return (method(tex, "SetVertexColor", 1, 0.3, 0.3)) and true or false
+            end
+            return (method(tex, "SetVertexColor", 1, 1, 1)) and true or false
         end
         function h.onMoved(fn, failed)
             moved = fn
@@ -5151,6 +5161,14 @@ function ns.make.client(env)
     -- GetAuraDataByIndex, API_UnitBuff, API_GetShapeshiftForm,
     -- API_GetShapeshiftFormInfo, API_IsCurrentSpell).
     --
+    -- c.targetDebuffs() -> { [name] = secondsLeft or true } or nil
+    --   Section 187: your own debuffs on your target, read the same way as
+    --   playerBuffs with the unit "target" and the filter "HARMFUL|PLAYER":
+    --   C_UnitAuras.GetAuraDataByIndex where present, else UnitDebuff. No
+    --   target reads as an empty list. A first guess from the API pages
+    --   (API_C_UnitAuras.GetAuraDataByIndex, API_UnitDebuff), not seen in
+    --   game.
+    --
     -- c.playerBuffs() -> { [name] = secondsLeft or true } or nil
     --   every buff on you, read to the end of the list. secondsLeft is
     --   math.huge for a buff with no end; true when the end time is hidden or
@@ -5159,22 +5177,21 @@ function ns.make.client(env)
     --   known). A full read with no buff gives an empty table.
     --   C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL") where present,
     --   else UnitBuff("player", i, "HELPFUL"); at most 40 rows.
-    function c.playerBuffs()
+    local function aurasOf(unit, filter, old)
         local auras = env.C_UnitAuras
         local byIndex = type(auras) == "table" and auras.GetAuraDataByIndex or nil
-        local old = env.UnitBuff
         if type(byIndex) ~= "function" and type(old) ~= "function" then return nil end
         local out = {}
         for i = 1, 40 do
             local name, expires
             if type(byIndex) == "function" then
-                local ok, row = pcall(byIndex, "player", i, "HELPFUL")
+                local ok, row = pcall(byIndex, unit, i, filter)
                 if not ok then return nil end
                 if row == nil then return out end
                 if hidden(row) or type(row) ~= "table" then return nil end
                 name, expires = row.name, row.expirationTime
             else
-                local got = { pcall(old, "player", i, "HELPFUL") }
+                local got = { pcall(old, unit, i, filter) }
                 if not got[1] then return nil end
                 if got[2] == nil then return out end
                 name, expires = got[2], got[7]
@@ -5195,6 +5212,8 @@ function ns.make.client(env)
         end
         return out
     end
+    function c.playerBuffs() return aurasOf("player", "HELPFUL", env.UnitBuff) end
+    function c.targetDebuffs() return aurasOf("target", "HARMFUL|PLAYER", env.UnitDebuff) end
 
     -- c.formName() -> name or nil, known
     --   GetShapeshiftForm(): 0 gives nil, true (no form). A form number gives

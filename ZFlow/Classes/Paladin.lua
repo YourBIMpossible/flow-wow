@@ -311,7 +311,10 @@ local pack = {
     -- The old talent plan is empty.
     talentBuilds = {},
 
-    options = {},
+    options = {
+        -- Reads the rules lean on; one not given is named by diag (187).
+        reads = { "buffs" },
+    },
 }
 
 ns.Packs = ns.Packs or {}
