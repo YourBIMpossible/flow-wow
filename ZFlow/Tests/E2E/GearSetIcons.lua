@@ -237,6 +237,48 @@ tests["set icons: two of one piece take two from the bags, each to its saved slo
     end
 end
 
+-- S3-1: a pair saved in two slots, the first slot's piece off (the second
+-- still wears its own), one more in the bags: the bag piece goes to the
+-- first slot, the empty one. Matched by saved slot, not by item key.
+-- Fails before: the worn piece in the second slot counts for the first, so
+-- the bag piece is sent to the second slot ({ 12 }, { 14 }, { 17 }).
+tests["set icons: one of a pair off: the bag piece goes to the empty saved slot"] = function(t)
+    for _, pair in ipairs({ { 11, 12 }, { 13, 14 }, { 16, 17 } }) do
+        local c = start({ on = true,
+            char = { state = { gearSets = { savedSet("pair", { "15234:588", "15234:588" }, pair) } } },
+            worn = { [pair[1]] = false, [pair[2]] = LINK.ringBear }, bag = { { item = LINK.ringBear, count = 1 } } })
+        local _, said = click(c, "pair")
+        t.eq(slotsAsked(c), { pair[1] }, "the empty slot is asked, once")
+        t.eq(said, { "Asked to equip 1 piece of pair; 0 not in your bags." })
+    end
+end
+
+-- S3-1: both of a pair worn where saved: nothing is asked.
+tests["set icons: a pair worn in its saved slots asks nothing"] = function(t)
+    local c = start({ on = true,
+        char = { state = { gearSets = { savedSet("pair", { "15234:588", "15234:588" }, { 11, 12 }) } } },
+        worn = { [11] = LINK.ringBear, [12] = LINK.ringBear }, bag = { { item = LINK.ringBear, count = 1 } } })
+    local _, said = click(c, "pair")
+    t.eq(c.equipCalls, 0)
+    t.eq(said, { ns.GearSetIcons.ALREADY:format("pair") })
+end
+
+-- S3-2: one bad saved slot drops only that piece's slot; the others keep
+-- theirs, and the tip says how many have none.
+-- Fails before: one bad slot drops every slot ({ "none", "none" }) and the
+-- tip has no line for it.
+tests["set icons: a bad saved slot drops only that piece's slot, and is said"] = function(t)
+    local c = start({ on = true,
+        char = { state = { gearSets = { savedSet("mixed", { "15234:588", CLOAK }, { 11, 99 }) } } },
+        worn = { [11] = false }, bag = { { item = LINK.ringBear, count = 1 }, { item = LINK.cloak, count = 1 } } })
+    local icon = iconOf(rowOf(c), "mixed")
+    if not icon then t.ok(false, "no mixed icon") return end
+    t.eq(icon.tip[#icon.tip - 1], "Pieces with no saved slot: 1 (the game picks where they go).",
+        "the tip counts the pieces without a slot")
+    click(c, "mixed")
+    t.eq(slotsAsked(c), { 11, "none" }, "the ring keeps its slot; the cloak gets the game's choice")
+end
+
 -- A set saved before slots were kept: the game picks the slot, as before.
 tests["set icons: a set saved without slots asks no slot"] = function(t)
     local c = start({ on = true, char = { state = { gearSets = { savedSet("rings", { "15234:588" }) } } },
