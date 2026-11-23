@@ -9,6 +9,8 @@ local _, ns = ...
 --            about, it answers "shown") until one exists
 --   icon     a live hostile target, or a fight starts
 --   advice   a level up, or R.ADVICE_AFTER seconds after the arrow came in
+--            (measured on the client clock and saved with the stages, so
+--            a reload keeps the wait; with no clock, this session's time)
 -- The stages are kept per character at R.PATH (char). A character with
 -- none kept yet is decided once: when the account's saved table was not
 -- there before this login (a new install), the stages; else (a player who
@@ -41,7 +43,8 @@ R.STAGES = { "arrow", "tracker", "icon", "advice" }
 R.ABSENT = { tracker = "no tracker yet" }
 R.WALK = 10            -- yards walked before the arrow comes in (legacy)
 R.ADVICE_AFTER = 600   -- seconds after the arrow before the advice (legacy)
-R.EVERY = 0.5          -- seconds between looks at the walk and the clock
+R.ARROW_AT = "arrowAt" -- saved with the stages: the client clock (seconds) when the arrow came in
+R.EVERY = 0.5         -- seconds between looks at the walk and the clock
 
 -- One line per stage saying what came in.
 function R.Hints()
@@ -144,7 +147,11 @@ function R.Declare(k, diag)
         if not d then return false end
         k.store:set("char", R.PATH .. "." .. stage, true)
         if complete(d) then k.store:set("char", R.PATH .. ".all", true) end
-        if stage == "arrow" then arrowAt = read("now") end
+        if stage == "arrow" then
+            arrowAt = read("now")
+            local wall = read("clock")
+            if type(wall) == "number" then k.store:set("char", R.PATH .. "." .. R.ARROW_AT, wall) end
+        end
         if not quiet then
             local hint = R.Hints()[stage]
             if hint then say(hint) end
@@ -185,6 +192,19 @@ function R.Declare(k, diag)
             if R.Moved(start, p, R.WALK) then api.Show("arrow") end
             return
         end
+        -- RV-1: with the client's clock known, the wait is measured from
+        -- the saved R.ARROW_AT, so a reload does not restart it.
+        local wall = read("clock")
+        if type(wall) == "number" then
+            local at = d[R.ARROW_AT]
+            if type(at) ~= "number" then
+                at = wall
+                k.store:set("char", R.PATH .. "." .. R.ARROW_AT, wall)
+            end
+            if d.advice ~= true and wall - at > R.ADVICE_AFTER then api.Show("advice") end
+            return
+        end
+        -- No clock: this session's time, not saved.
         if type(now) ~= "number" then return end
         if type(arrowAt) ~= "number" then arrowAt = now end
         if d.advice ~= true and now - arrowAt > R.ADVICE_AFTER then api.Show("advice") end
