@@ -161,15 +161,59 @@ function CK.TargetUnit(client)
     return targetIn(client, partyRows(client))
 end
 
--- CK.Friends(client) -> { { unit, dead, hurt, debuffTypes }, ... } or nil
+-- The pack's care spells, each once: care.friend in order, care.revive,
+-- then each pack.dispels row's spell. nil without a pack.
+local function careSpells(pack)
+    if type(pack) ~= "table" then return nil end
+    local out, seen = {}, {}
+    local function put(name)
+        if type(name) == "string" and name ~= "" and not seen[name] then
+            seen[name] = true
+            out[#out + 1] = name
+        end
+    end
+    local care = pack.care
+    if type(care) == "table" then
+        if type(care.friend) == "table" then
+            for _, name in ipairs(care.friend) do put(name) end
+        end
+        put(care.revive)
+    end
+    if type(pack.dispels) == "table" then
+        for _, rule in ipairs(pack.dispels) do
+            if type(rule) == "table" then put(rule.spell) end
+        end
+    end
+    return out
+end
+
+-- PK-3: { [spell] = true | false } for one unit, from client.spellId and
+-- client.reach (C_Spell.IsSpellInRange, party units only). A spell with no
+-- id, a read that raised or gave nothing is left out: not known.
+local function reachOf(client, unit, spells)
+    local out = {}
+    if type(client.reach) ~= "function" or type(client.spellId) ~= "function" then return out end
+    for _, name in ipairs(spells) do
+        local okId, id = pcall(client.spellId, name)
+        if okId and type(id) == "number" then
+            local ok, v = pcall(client.reach, id, unit)
+            if ok and type(v) == "boolean" then out[name] = v end
+        end
+    end
+    return out
+end
+
+-- CK.Friends(client, pack) -> { { unit, dead, hurt, debuffTypes, reach }, ... } or nil
 --   Each party member when the client says it is there, friendly and not
 --   you; the one you target first (CK.TargetUnit), by its group token. A
 --   friendly target not in your group is left out: never "target" (PK-1).
---   A unit whose read raised or gave nothing is left out; nil when no unit
---   was read at all. Read only.
-function CK.Friends(client)
+--   With a pack, reach = { [care spell] = true | false } (PK-3), a spell
+--   whose reach is not known left out. A unit whose read raised or gave
+--   nothing is left out; nil when no unit was read at all. Read only.
+function CK.Friends(client, pack)
     if type(client) ~= "table" or type(client.unitCare) ~= "function" then return nil end
     local list, read = {}, false
+    local spells = careSpells(pack)
     local function add(unit)
         local ok, row = pcall(client.unitCare, unit)
         if not ok or type(row) ~= "table" then return end
@@ -180,6 +224,7 @@ function CK.Friends(client)
             local okTypes, types = pcall(client.unitDebuffTypes, unit)
             if okTypes and type(types) == "table" then entry.debuffTypes = types end
         end
+        if spells then entry.reach = reachOf(client, unit, spells) end
         list[#list + 1] = entry
     end
     local rows = partyRows(client)
@@ -207,7 +252,7 @@ function CK.FromView(client, view)
     local pack = ns.Packs[class]
     local snap = view.snapshot
     if type(pack) ~= "table" or type(snap) ~= "table" then return nil end
-    local s = setmetatable({ friends = CK.Friends(client) }, { __index = snap })
+    local s = setmetatable({ friends = CK.Friends(client, pack) }, { __index = snap })
     local friend = R.FriendHeal(s, pack)
     local altItem = nil
     local hi = snap.healItem
@@ -337,7 +382,7 @@ function CK.Declare(k, diag)
         local pack = okClass and type(class) == "string" and type(ns.Packs) == "table" and ns.Packs[class] or nil
         local snap = view.snapshot
         if type(pack) ~= "table" or type(snap) ~= "table" then return end
-        local s = setmetatable({ friends = CK.Friends(client) }, { __index = snap })
+        local s = setmetatable({ friends = CK.Friends(client, pack) }, { __index = snap })
         local friend = R.FriendHeal(s, pack)
         local hi = snap.healItem
         local altItem = type(hi) == "table" and (hi.alt or hi.stone or hi.potion) or nil

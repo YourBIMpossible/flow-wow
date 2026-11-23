@@ -695,7 +695,13 @@ R._steps = steps   -- (tests)
 --      another player is not read, a first guess);
 --   3. the first friend with a debuff a pack.dispels row removes.
 -- Not read is never yes: dead, hurt and inCombat nil each count as no.
+-- PK-3: a friend whose reach (CK.Friends) says false for a spell is passed
+-- by for that spell; a reach not known never excludes.
 -- The reason names neither the unit nor the debuff.
+local function inReach(f, spell)
+    return type(f.reach) ~= "table" or f.reach[spell] ~= false
+end
+
 function steps.friendHeal(s, pack, prefs, _, unread)
     if type(s) ~= "table" or type(pack) ~= "table" then return nil, "no snapshot or no pack" end
     local care = pack.care
@@ -710,7 +716,7 @@ function steps.friendHeal(s, pack, prefs, _, unread)
     if R.OutOfFight(s) and type(care.revive) == "string" and allowed(prefs, care.revive) then
         for _, f in ipairs(friends) do
             if type(f) == "table" and f.dead == true and type(f.unit) == "string"
-                and ready(s, care.revive, nil, unread) then
+                and inReach(f, care.revive) and ready(s, care.revive, nil, unread) then
                 return pick(care.revive, f.unit, "A friend is dead: " .. care.revive)
             end
         end
@@ -718,7 +724,7 @@ function steps.friendHeal(s, pack, prefs, _, unread)
     for _, f in ipairs(friends) do
         if type(f) == "table" and f.dead == false and f.hurt == true and type(f.unit) == "string" then
             for _, spell in ipairs(type(care.friend) == "table" and care.friend or {}) do
-                if allowed(prefs, spell) and ready(s, spell, nil, unread) then
+                if allowed(prefs, spell) and inReach(f, spell) and ready(s, spell, nil, unread) then
                     return pick(spell, f.unit, "A friend is hurt: " .. spell)
                 end
             end
@@ -731,7 +737,7 @@ function steps.friendHeal(s, pack, prefs, _, unread)
             for _, rule in ipairs(type(pack.dispels) == "table" and pack.dispels or {}) do
                 if type(rule) == "table" and R.Knows(s, rule.spell) and allowed(prefs, rule.spell) then
                     for kind in pairs(rule.types or {}) do
-                        if types[kind] and ready(s, rule.spell, nil, unread) then
+                        if types[kind] and inReach(f, rule.spell) and ready(s, rule.spell, nil, unread) then
                             return pick(rule.spell, f.unit, "A friend has something you can remove: " .. rule.spell)
                         end
                     end
