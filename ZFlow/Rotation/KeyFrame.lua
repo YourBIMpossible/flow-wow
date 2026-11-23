@@ -251,6 +251,20 @@ function K.New(opts)
         return kf:try()
     end
 
+    -- SE-1: the fight is starting. A key action of Attack (N39) would stay
+    -- on the key all through combat lockdown, and a second press toggles
+    -- the swing off (first guess, not seen in game), so the wanted plan
+    -- loses it now. Written only while the lock is a plain false (kf:try
+    -- asks before every set); PLAYER_REGEN_DISABLED handled before the lock
+    -- is on is a first guess: with the lock already on it waits.
+    function kf:fightStarts()
+        if not has or type(wanted) ~= "table" or type(wanted.action) ~= "table" then return kf:status() end
+        if not C.ATTACK[wanted.action.spell] then return kf:status() end
+        local plan = copy(wanted)
+        plan.action = nil
+        return kf:want(plan)
+    end
+
     return kf
 end
 
@@ -407,6 +421,10 @@ function K.Declare(k, diag)
             ctx.bus:on(K.NAME, D.EVENT, onView)
             client.listen("PLAYER_REGEN_ENABLED", function()
                 if kf then after(kf:try(true)) end
+            end)
+            -- SE-1: Attack off the key as the fight starts (kf:fightStarts).
+            client.listen("PLAYER_REGEN_DISABLED", function()
+                if kf then after(kf:fightStarts()) end
             end)
             client.listen("UPDATE_SHAPESHIFT_FORM", function()
                 if kf then after(kf:reform()) end

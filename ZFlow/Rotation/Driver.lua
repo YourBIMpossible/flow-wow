@@ -744,7 +744,8 @@ function D.Step(client, pack, prefs, bias, applied, role, extra)
         end
     end
     -- N39 (P-KEYS slice E): the engage step's Attack goes on the plan, a
-    -- spell (never a macro), out of combat lockdown only.
+    -- spell (never a macro), out of combat lockdown only. SE-1: the key
+    -- frame takes it off again as the fight starts (Rotation/KeyFrame.lua).
     if type(suggestion) == "table" and suggestion.engage == true and type(suggestion.spell) == "string"
         and type(plan) == "table" and plan.action == nil and lockdown == false then
         plan.action = { spell = suggestion.spell }
