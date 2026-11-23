@@ -348,4 +348,24 @@ tests["buff food BF-3: the food step says it is switched off"] = function(t)
     t.ok(type(why) == "string" and why:find("switched off", 1, true) ~= nil, tostring(why))
 end
 
+-- Section 232: D.Read and D.Step take one trailing options table, extra,
+-- with named fields. extra.food reaches the food read with another field
+-- (Zen's extra.chosen) beside it; that one is Zen's to assert.
+tests["buff food: extra.food reaches the food read with extra.chosen beside it (section 232)"] = function(t)
+    local c = client({ RIBS }, {})
+    local n, real = 0, c.bagItems
+    c.bagItems = function(...) n = n + 1 return real(...) end
+    local off = { food = { on = false }, chosen = { spell = "Wrath" } }
+    local read = D.Read(c, pack(), {}, "dps", off)
+    t.eq(read("foodOn"), false, "foodOn from extra.food")
+    t.eq(read("buffFood"), nil, "switched off: no food")
+    t.eq(n, 0, "and no bag read")
+    local on = { food = { on = true }, chosen = { spell = "Wrath" } }
+    t.eq(D.Read(c, pack(), {}, "dps", on)("buffFood").name, "Spiced Wolf Ribs", "on: the food")
+    t.eq(on.food.kept, true, "kept in extra.food")
+    local v = D.Step(c, pack(), nil, nil, nil, "dps", { food = { on = false }, chosen = { spell = "Wrath" } })
+    t.ok(not (v.suggestion and v.suggestion.step == "food"), "D.Step hands extra on: no food when off")
+    t.eq(D.Read(c, pack(), {}, "dps", { chosen = { spell = "Wrath" } })("foodOn"), nil, "no extra.food: not known")
+end
+
 return tests
