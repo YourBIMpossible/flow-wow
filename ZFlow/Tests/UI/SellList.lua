@@ -196,8 +196,10 @@ tests["sell list panel: look only - no buttons, no clicks, only the two reads"] 
     end }), nil, nil, { status = ns.Reservations.NONE })
     t.ok(type(lines) == "table" and #lines > 0, "a listing")
     -- Plus the skill rank read for the skill boosters (lead section 337 item 2).
-    t.eq(called, { bagItems = true, itemInfo = true, ["other:skillRanks"] = true },
-        "the bag read, the item read and the skill rank read, nothing else")
+    -- Plus the class read for the keep-off-spec rule (P-SETS G13, Gear/OffSpec.lua;
+    -- section 208: a new read of the sell list, a read only; no class pack, so no more).
+    t.eq(called, { bagItems = true, itemInfo = true, ["other:skillRanks"] = true, ["other:class"] = true },
+        "the bag read, the item read, the skill rank read and the class read, nothing else")
     for name in pairs(L) do
         local n = tostring(name):lower()
         t.ok(not (n:find("^sell$") or n:find("buy") or n:find("click")), "no acting function: " .. n)

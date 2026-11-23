@@ -10,7 +10,8 @@ local _, ns = ...
 --   facts = GearOffSpec.Facts(client, store, packs, stacks)
 --     -> { gear = { [item key] = { canUse = true, diffs = { [role] = n } } },
 --          role, keptRoles = { [role] = true } or nil (the setting off),
---          roleNames = { [role] = "Protection" } }, or nil when the class or
+--          roleNames = { [role] = "Protection" }, level = your level or nil },
+--          or nil when the class or
 --          its pack's weights are not known.
 --   GearOffSpec.Apply(context, client, store, packs, stacks)
 --     the same facts written into a Disposition context; a read that raises
@@ -86,7 +87,11 @@ local function factsOf(client, link, who, roles)
         end
     end
     if not canUse then return nil end
-    return { canUse = true, diffs = diffs }
+    -- The gear read's own level need, so the sell list can say "wear now"
+    -- when the item read gave none (Disposition laterOrOtherRole).
+    local minLevel = nil
+    if plain(gear.minLevel) then minLevel = gear.minLevel end
+    return { canUse = true, diffs = diffs, minLevel = minLevel }
 end
 
 function O.Facts(client, store, packs, stacks)
@@ -107,6 +112,7 @@ function O.Facts(client, store, packs, stacks)
     end
 
     local who = { pack = pack, level = ask(client, "level") }
+    out.level = who.level
     local okSkills, skills = pcall(ask, client, "weaponSkills")
     if okSkills and type(skills) == "table" then who.skills = skills end
     local info = nil
@@ -140,6 +146,7 @@ function O.Apply(context, client, store, packs, stacks)
     context.role = facts.role
     context.keptRoles = facts.keptRoles
     context.roleNames = facts.roleNames
+    if plain(facts.level) then context.level = facts.level end
     return true
 end
 

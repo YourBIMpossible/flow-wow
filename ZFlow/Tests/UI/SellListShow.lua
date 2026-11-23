@@ -199,7 +199,10 @@ tests["sell list Show: it reads the bags and the item facts, draws, and does not
     -- section 337 item 1), a read. Never sellBagItem.
     -- skillRanks, itemLines: the skill boosters' reads (lead section 337 item 2).
     local readsAllowed = { bagItems = true, itemInfo = true, itemTexture = true, saved = true, bagSlots = true,
-        skillRanks = true, itemLines = true }
+        skillRanks = true, itemLines = true,
+        -- class, level, gear, weaponSkills: the keep-off-spec rule's reads
+        -- (P-SETS G13, Gear/OffSpec.lua; section 208), reads only.
+        class = true, level = true, gear = true, weaponSkills = true }
     for name in pairs(called) do
         t.ok(readsAllowed[name], "Show() called client." .. name .. ", which is not one of its reads")
     end

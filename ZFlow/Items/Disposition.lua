@@ -278,11 +278,14 @@ Disposition.RULES = {
             -- Flow's own "wear it now" rule (equip, order 10) is not ported, so
             -- an upgrade whose level you have reached is said as that, not as
             -- "later". A level that is not known is not guessed.
+            -- The item read's level need, else the gear read's (g.minLevel).
+            local need = nil
+            if isCount(i.minLevel) then need = i.minLevel elseif isCount(g.minLevel) then need = g.minLevel end
             local at
-            if isCount(i.minLevel) and isCount(c.level) and i.minLevel <= c.level then
+            if need ~= nil and isCount(c.level) and need <= c.level then
                 at = "an upgrade you can wear now"
-            elseif isCount(i.minLevel) then
-                at = "upgrade at level " .. i.minLevel
+            elseif need ~= nil then
+                at = "upgrade at level " .. need
             else
                 at = "upgrade at a later level"
             end
