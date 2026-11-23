@@ -4,9 +4,13 @@ local _, ns = ...
 -- the bank list, the bank prompt and the banker word to share.
 --
 --   r = ns.reservations.Current()   one evaluation: { status, snapshot, grants }
---   Reservations.Evaluate(read)     the same from a `read` table (pure but for read)
+--   Reservations.Evaluate(read, k?) the same from a `read` table (pure but for
+--                                   read); k is the kernel whose saved data
+--                                   the sources read (nil: the add-on's own)
 --   Reservations.Source(name, fn, active?)   a producer of claims;
---                                   fn(snapshot) -> claims, active() -> false: idle
+--                                   fn(snapshot, k) -> claims, active(k) ->
+--                                   false: idle. A name is registered once:
+--                                   again is an error; fn nil removes it
 --   Reservations.Grants(r)          r's grants, or nil when unavailable
 --   Reservations.HeldIn(grants, "bags" | "bank")   what they hold in one place
 --   Reservations.Changed(k)         a source's claims changed (a goal added
@@ -34,8 +38,10 @@ local _, ns = ...
 -- One is registered: "goals" (Items/Goals.lua), the player's goals list.
 -- A source may also give an active() test: while it answers false (the
 -- goals source: no goal saved) the source is not asked and counts as not
--- registered, so with no goal the status is "none", bags read or not. An
--- active() that raises counts as active.
+-- registered, so with no goal the status is "none", bags read or not.
+-- Section 220 (G-9): an active() that raises, or answers anything but true
+-- or false, makes the evaluation "unavailable": Z-Flow can't say whether
+-- that source holds anything.
 --
 -- READ ONLY. Nothing here deposits, withdraws, moves, sells, buys or uses
 -- anything, adds a client event, a window or saved data (the goals list is
@@ -59,6 +65,11 @@ function Reservations.Source(name, fn, active)
     if type(name) ~= "string" or name == "" then error("a reservation source needs a name", 2) end
     if fn ~= nil and type(fn) ~= "function" then error("a reservation source is a function", 2) end
     if active ~= nil and type(active) ~= "function" then error("a source's active test is a function", 2) end
+    -- Section 220 (G-9): registering a name again would silently drop its
+    -- active test; remove it first (fn nil) to replace it.
+    if fn ~= nil and sources[name] ~= nil then
+        error("a reservation source named " .. name .. " is already registered", 2)
+    end
     sources[name] = fn
     actives[name] = fn and active or nil
 end
@@ -71,36 +82,46 @@ function Reservations.Changed(k)
     pcall(bus.emit, bus, Reservations.CHANGED)
 end
 
--- Is the source to be asked? Only an active() answering false says no.
-local function isActive(name)
+-- Is the source to be asked? true: ask it. false: idle. nil: its active()
+-- raised or answered something that is not true or false.
+local function activeState(name, k)
     local active = actives[name]
     if not active then return true end
-    local ok, on = pcall(active)
-    return not ok or on ~= false
+    local ok, on = pcall(active, k)
+    if ok and type(on) == "boolean" then return on end
+    return nil
 end
 
-local function sourceNames()
-    local names = {}
+-- The names to ask, in order, and the first source whose active() could not
+-- answer (nil: none).
+local function sourceNames(k)
+    local names, broken = {}, nil
     for name in pairs(sources) do
-        if isActive(name) then names[#names + 1] = name end
+        local state = activeState(name, k)
+        if state == nil then
+            if broken == nil or name < broken then broken = name end
+        elseif state then
+            names[#names + 1] = name
+        end
     end
     table.sort(names)
-    return names
+    return names, broken
 end
 
 local function unavailable(snapshot, why)
     return { status = Reservations.UNAVAILABLE, snapshot = snapshot, why = why }
 end
 
-function Reservations.Evaluate(read)
+function Reservations.Evaluate(read, k)
     local R = ns.Resources
     local snapshot = R.Take(read)
-    local names = sourceNames()
+    local names, broken = sourceNames(k)
+    if broken ~= nil then return unavailable(snapshot, broken) end
     -- With no source at all nothing can be reserved, read or not.
     if #names > 0 and type(snapshot.bags) ~= "table" then return unavailable(snapshot, "bags") end
     local claims = {}
     for _, name in ipairs(names) do
-        local ok, got = pcall(sources[name], snapshot)
+        local ok, got = pcall(sources[name], snapshot, k)
         if not ok or type(got) ~= "table" then return unavailable(snapshot, name) end
         for i = 1, #got do claims[#claims + 1] = got[i] end
     end
@@ -143,7 +164,7 @@ function Reservations.Declare(k)
 
     function api.Current()
         if not read then return unavailable(nil, "not started") end
-        local ok, r = pcall(Reservations.Evaluate, read)
+        local ok, r = pcall(Reservations.Evaluate, read, k)
         if not ok or type(r) ~= "table" then return unavailable(nil, "failed") end
         return r
     end
