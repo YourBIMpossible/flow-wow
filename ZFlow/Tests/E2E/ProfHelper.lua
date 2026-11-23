@@ -128,9 +128,9 @@ tests["prof helper: the colours seen in the window are kept on the character"] =
     local c = start()
     local char = c.saved(ns.id.charDB)
     local seen = type(char.learned) == "table" and char.learned.recipeColors or {}
-    t.eq(seen[BOLT], { optimal = { lo = 40, hi = 40 } })
-    t.eq(seen[BELT], { medium = { lo = 40, hi = 40 } })
-    t.eq(seen[CAP], { trivial = { lo = 40, hi = 40 } })
+    t.eq(seen["Linen Bolt"], { optimal = { lo = 40, hi = 40 } })
+    t.eq(seen["Linen Belt"], { medium = { lo = 40, hi = 40 } })
+    t.eq(seen["Linen Cap"], { trivial = { lo = 40, hi = 40 } })
 end
 
 -- Section 236: data arriving late. The window opens before the recipes can
@@ -173,7 +173,7 @@ tests["prof helper: a reload keeps the goal and the colours seen"] = function(t)
     t.ok(has(infos(p2), string.format(H().TO_GOAL or "", 20, 60)), "the goal read back")
     local char2 = c2.saved(ns.id.charDB)
     local seen = type(char2.learned) == "table" and char2.learned.recipeColors or {}
-    t.eq(seen[BOLT], { optimal = { lo = 40, hi = 40 } })
+    t.eq(seen["Linen Bolt"], { optimal = { lo = 40, hi = 40 } })
 end
 
 tests["prof helper: closing the window or the setting off hides it"] = function(t)
@@ -286,6 +286,56 @@ tests["prof helper: in combat beside the craft bar, still nothing is crafted"] =
     c.advance(2, 10)
     t.eq(#c.crafts, 0, "nothing crafted in combat")
     t.eq(p.shown(), true)
+end
+
+-- Lead section 249 item 4 (PF-1): one key rule for the colour history. A
+-- recipe is kept by its name in both reads, so the same recipe seen in a
+-- classic window and in a modern one keeps one history, and a history kept
+-- by the recipe id before is folded into the name.
+local function seenOf(c)
+    local char = c.saved(ns.id.charDB)
+    return type(char.learned) == "table" and type(char.learned.recipeColors) == "table" and char.learned.recipeColors or {}
+end
+
+local function setModernAt(c, skill, colour)
+    c.setRecipes({ profession = TAILORING, skill = skill, max = 75, recipes = {
+        { id = BOLT, name = "Linen Bolt", learned = true, difficulty = colour },
+    } })
+end
+
+tests["prof helper: the same recipe seen classic then modern keeps one colour history"] = function(t)
+    local c = start({ recipes = false, schematic = false, open = false })
+    setClassic(c)
+    c.fire("TRADE_SKILL_SHOW"); c.fire("TRADE_SKILL_LIST_UPDATE")
+    setModernAt(c, 45, "optimal")
+    c.fire("TRADE_SKILL_LIST_UPDATE")
+    local seen = seenOf(c)
+    t.eq(seen["Linen Bolt"], { optimal = { lo = 40, hi = 45 } }, "one span across both reads")
+    t.eq(seen[BOLT], nil, "nothing kept by the id")
+end
+
+tests["prof helper: the same recipe seen modern then classic keeps one colour history"] = function(t)
+    local c = start({ recipes = false, schematic = false, open = false })
+    setModernAt(c, 35, "optimal")
+    c.fire("TRADE_SKILL_SHOW"); c.fire("TRADE_SKILL_LIST_UPDATE")
+    c.setRecipes(nil)
+    setClassic(c)
+    c.fire("TRADE_SKILL_LIST_UPDATE")
+    local seen = seenOf(c)
+    t.eq(seen["Linen Bolt"], { optimal = { lo = 35, hi = 40 } }, "one span across both reads")
+    t.eq(seen[BOLT], nil, "nothing kept by the id")
+end
+
+tests["prof helper: a colour history kept by the recipe id is folded into its name"] = function(t)
+    local c = start({ char = { learned = { recipeColors = {
+        [BOLT] = { optimal = { lo = 30, hi = 45 }, medium = { lo = 46, hi = 50 } },
+        ["Linen Bolt"] = { optimal = { lo = 20, hi = 35 } },
+        [99] = { trivial = { lo = 1, hi = 2 } },
+    } } } })
+    local seen = seenOf(c)
+    t.eq(seen["Linen Bolt"], { optimal = { lo = 20, hi = 45 }, medium = { lo = 46, hi = 50 } }, "the spans joined")
+    t.eq(seen[BOLT], nil, "the id entry gone once folded")
+    t.eq(seen[99], { trivial = { lo = 1, hi = 2 } }, "an id the window did not show is left as it is")
 end
 
 return tests
