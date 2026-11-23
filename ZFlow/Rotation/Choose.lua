@@ -57,7 +57,8 @@ local _, ns = ...
 -- bias:  { [spell] = number } what the player has been pressing (used only
 --        between neighbouring rules marked adaptive).
 --
--- suggestion: { spell, kind, reason, fightType, step } or nil.
+-- suggestion: { spell, kind, reason, fightType, step } or nil; farOpener's
+-- also has label, and minRange = true for a pack with options.minRange.
 -- trace: a list of { step, result, spell, note, passed }, one row per step
 -- looked at, in order; the last row is the step that answered (result
 -- "pick"). passed: the spells that step passed by only because nobody read
@@ -473,15 +474,26 @@ function steps.list(s, pack, prefs, bias, unread)
 end
 
 -- 7. An enemy targeted and the first rule that wants it is only out of range.
+-- A pack whose spells have a minimum range (options.minRange = true, lead
+-- section 197: the hunter's dead zone) gets minRange = true on the
+-- suggestion and "too far or too close" in its reason: the client's range
+-- read answers false inside the dead zone as well as too far away, so
+-- "move closer" alone would be wrong.
 function steps.farOpener(s, pack, prefs, _, unread)
     if s.hostile == nil then return nil, R.TARGET_UNKNOWN end
     if not s.hostile then return nil, "no enemy targeted" end
     unread = unread or {}
+    local minRange = type(pack.options) == "table" and pack.options.minRange == true
     for _, rule in ipairs(listFor(s, pack)) do
         if rule.target and ruleWants(s, rule, prefs) and row(s, rule.spell).inRange == false
             and ready(s, rule.spell, nil, unread) then
-            return { spell = rule.spell, kind = rule.kind or "damage", label = "Out of range",
-                     reason = (rule.reason or rule.spell) .. " (out of range)" }
+            local out = { spell = rule.spell, kind = rule.kind or "damage", label = "Out of range",
+                          reason = (rule.reason or rule.spell) .. " (out of range)" }
+            if minRange then
+                out.minRange = true
+                out.reason = (rule.reason or rule.spell) .. " (out of range: too far or too close)"
+            end
+            return out
         end
     end
     return nil, noteWith("nothing out of range", unread)

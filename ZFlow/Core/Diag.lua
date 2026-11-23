@@ -995,7 +995,13 @@ local function rotationRow(view)
     local line
     if picked ~= nil and why.step == "farOpener" then
         -- Lead section 187: the spell shown is out of range, and the words say so.
-        line = head .. tostring(picked) .. " is next, but out of range: move closer (farOpener)."
+        -- Section 197: a spell with a minimum range (the hunter's dead zone)
+        -- reads false too close as well, so the words say both.
+        if view.suggestion.minRange == true then
+            line = head .. tostring(picked) .. " is next, but out of range: too far away or too close (farOpener)."
+        else
+            line = head .. tostring(picked) .. " is next, but out of range: move closer (farOpener)."
+        end
     elseif picked ~= nil then
         line = head .. "suggesting " .. tostring(picked) .. " (" .. tostring(why.step or "step not known") .. ")."
     else
