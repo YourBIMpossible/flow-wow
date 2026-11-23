@@ -382,7 +382,10 @@ tests["self button: N15 the seal stays on the Flow button"] = function(t)
     t.eq(self and self.slots[1].attrs.spell, nil, "holding nothing")
     c.setPlayerBuffs(AURA); c.advance(3, 5)
     self = rowOf(c, SELF)
-    t.eq(held(self), "Blessing of Might", "a blessing goes on the self button")
+    -- Lead section 305 item 2: the Flow button now holds the blessing, so
+    -- the self button does not show it too.
+    t.eq(held(rowOf(c, FLOW)), "Blessing of Might", "the Flow button holds the blessing")
+    t.eq(held(self), nil, "never the same buff on the self button")
     t.eq(self and self.shown, true)
     for _, name in ipairs({ "Seal of Light", "Battle Shout", "Lightning Shield", "Hunter" .. string.char(39) .. "s Mark",
                             "Bear Form", "Dire Bear Form", "Cat Form", "Moonkin Form" }) do

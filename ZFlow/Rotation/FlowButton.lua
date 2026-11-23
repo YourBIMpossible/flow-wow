@@ -84,8 +84,11 @@ end
 
 -- The self button's pick: the first buff rule of the list for this fight
 -- that is not N15, wanted (its own when), known and ready. nil: nothing.
--- s: the driver's snapshot; pack: the class pack.
-function FB.SelfPick(s, pack)
+-- s: the driver's snapshot; pack: the class pack. skip: what the Flow
+-- button holds ({ spell } or nil): lead section 305 item 2, the two
+-- buttons never show the same buff, and the Flow button keeps the
+-- rotation's suggestion, so the self button passes it by.
+function FB.SelfPick(s, pack, skip)
     if type(s) ~= "table" or type(pack) ~= "table" then return nil end
     if s.dead ~= false then return nil end
     local R = ns.Rotation
@@ -95,9 +98,11 @@ function FB.SelfPick(s, pack)
     local list = lists.default
     if s.fightType and type(lists[s.fightType]) == "table" then list = lists[s.fightType] end
     if type(list) ~= "table" then return nil end
+    local skipSpell = nil
+    if type(skip) == "table" and type(skip.spell) == "string" then skipSpell = skip.spell end
     for _, rule in ipairs(list) do
         if type(rule) == "table" and rule.kind == "buff" and type(rule.spell) == "string"
-            and not FB.OnAction(rule.spell) and R.Knows(s, rule.spell) then
+            and rule.spell ~= skipSpell and not FB.OnAction(rule.spell) and R.Knows(s, rule.spell) then
             local wants = true
             if type(rule.when) == "function" then
                 local ok, got = pcall(rule.when, s)
@@ -437,9 +442,11 @@ function FB.Declare(k)
         if live then
             flowHold = FB.FlowPick(view)
             flowWhy = "Nothing to cast now: the rotation has no suggestion yet."
-            local okPick, pick = pcall(FB.SelfPick, view.snapshot, pack())
+            local shown = nil
+            if setting(FB.SETTING) == true then shown = flowHold end
+            local okPick, pick = pcall(FB.SelfPick, view.snapshot, pack(), shown)
             if okPick then selfHold = pick end
-            selfWhy = "Nothing to cast now: every self buff you know is up (seals, shouts and forms stay on the Flow button)."
+            selfWhy = "Nothing to cast now: every self buff you know is up or on the Flow button (seals, shouts and forms stay there)."
         end
         units.flow.want(setting(FB.SETTING) == true, flowHold, flowWhy)
         units.self.want(setting(FB.SELF_SETTING) == true, selfHold, selfWhy)
