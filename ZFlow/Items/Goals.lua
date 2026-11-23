@@ -98,7 +98,7 @@ do
     end
     -- Section 233 (GR2-1): make, when the window was seen but not read.
     function Goals.NotRead(name)
-        return "Your profession window was open, but Z-Flow could not read its recipes, so none that makes "
+        return "Your profession window was open, but " .. tostring(ns.id.title) .. " could not read its recipes, so none that makes "
             .. tostring(name) .. " is saved."
     end
     Goals.EMPTY = "You have no goals. Say " .. cmd .. " add <item link> <count> to keep that many for later."

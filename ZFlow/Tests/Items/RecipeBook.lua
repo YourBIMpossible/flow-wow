@@ -205,9 +205,10 @@ tests["recipe book GR2-4: a read that changes nothing writes nothing"] = functio
     local c, addon = start()
     seen(c, addon, tailoring())
     local writes, real = 0, addon.store.set
-    addon.store.set = function(self, ...)
-        writes = writes + 1
-        return real(self, ...)
+    -- Other modules write on the same event; count the book's own path only.
+    addon.store.set = function(self, scope, path, ...)
+        if path == addon.RecipeBook.PATH then writes = writes + 1 end
+        return real(self, scope, path, ...)
     end
     c.fire(addon.RecipeBook.EVENT)
     c.fire(addon.RecipeBook.EVENT)
