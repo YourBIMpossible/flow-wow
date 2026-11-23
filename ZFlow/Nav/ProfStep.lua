@@ -231,8 +231,9 @@ end
 --      GatherMate2 on the map the player is on (Nav/AddonSources.lua);
 --   3. the craft that gives a point, from the recipe book of this character
 --      and the recipe colours its profession windows showed, as one line;
---   4. else one line that says why there is nothing to point at, and how
---      the player supplies it, for the first profession by name.
+--   4. else one line per profession, by name, that says why there is
+--      nothing to point at, and how the player supplies it (Lead section
+--      339: before, only the first profession by name got a line).
 -- No profession: nil, "no profession".
 --
 -- N.ProfNext(input) -> step, or nil and a reason. Pure; input fields:
@@ -246,7 +247,8 @@ end
 -- A node step: { place = { cont, map, x, y }, radius = N.PROF_NEAR,
 --   label = the node name (or "<profession> node" over the limit),
 --   detail = N.PROF_NODE_DETAIL }. A craft or why step:
---   { still = true, lines = { text }, label = text when within the limit }.
+--   { still = true, lines = { text, ... }, label = the text when there is
+--   one line within the limit }.
 --
 -- The names client.professions gives are kept only when they are on
 -- N.PROF_NAMES (the real client also gives weapon and other skill lines).
@@ -287,9 +289,11 @@ end
 
 local function capped(r) return r ~= nil and r.skill >= r.max end
 
-local function textStep(text)
-    local step = { still = true, lines = { text } }
-    if #text <= (N.Waypoint and N.Waypoint.LABEL_MAX or 40) then step.label = text end
+-- lines: one text, or a list of texts (one per profession).
+local function textStep(lines)
+    if type(lines) == "string" then lines = { lines } end
+    local step = { still = true, lines = lines }
+    if #lines == 1 and #lines[1] <= (N.Waypoint and N.Waypoint.LABEL_MAX or 40) then step.label = lines[1] end
     return step
 end
 
@@ -406,32 +410,29 @@ function N.ProfNext(input)
         return textStep(words:format(pick, pickProf))
     end
 
-    -- Why, for the first profession by name.
-    local prof = names[1]
-    local r = reading(input.readings, prof)
-    local text
-    if capped(r) then
-        local _, why = N.ProfStep({ [prof] = r }, input.npcs, input.tierSeen, here)
-        if why == "visited" or why == "unavailable" then
-            text = N.PROF_WHY_TRAIN:format(prof, r.max)
-        else
-            text = N.PROF_WHY_TRAINER:format(prof, r.max, prof)
+    -- Why, one line for each profession by name.
+    local function whyFor(prof)
+        local r = reading(input.readings, prof)
+        if capped(r) then
+            local _, why = N.ProfStep({ [prof] = r }, input.npcs, input.tierSeen, here)
+            if why == "visited" or why == "unavailable" then
+                return N.PROF_WHY_TRAIN:format(prof, r.max)
+            end
+            return N.PROF_WHY_TRAINER:format(prof, r.max, prof)
+        elseif N.PROF_GATHER[prof] then
+            return nodeWhy(prof, input.nodeState)
+        elseif N.PROF_GATHER[prof] == false then
+            return N.PROF_WHY_NOTHING:format(prof)
+        elseif not r then
+            return N.PROF_WHY_READ:format(prof)
         end
-    elseif N.PROF_GATHER[prof] then
-        text = nodeWhy(prof, input.nodeState)
-    elseif N.PROF_GATHER[prof] == false then
-        text = N.PROF_WHY_NOTHING:format(prof)
-    elseif not r then
-        text = N.PROF_WHY_READ:format(prof)
-    else
         local _, _, seen = craftFor(prof, r.skill, input.book, input.colours)
-        if seen then
-            text = N.PROF_WHY_NO_POINT:format(prof, r.skill)
-        else
-            text = N.PROF_WHY_RECIPES:format(prof)
-        end
+        if seen then return N.PROF_WHY_NO_POINT:format(prof, r.skill) end
+        return N.PROF_WHY_RECIPES:format(prof)
     end
-    return textStep(text)
+    local lines = {}
+    for _, prof in ipairs(names) do lines[#lines + 1] = whyFor(prof) end
+    return textStep(lines)
 end
 
 -- N.ProfNextFrom(client, store, nodeSource) -> N.ProfNext read from the
