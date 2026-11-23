@@ -15,7 +15,6 @@ local IDS = {
 local SHIELDED = { ["Lightning Shield"] = true }
 local FLAME = { ["Flame Shock"] = true }
 local ENEMY = { exists = true, hostile = true, dead = false }
-local REACH = { "Lightning Bolt", "Flame Shock", "Earth Shock", "Attack" }
 local ATTACKS = { "Lightning Bolt", "Flame Shock", "Earth Shock", "Attack" }
 
 local function start(opts)
@@ -62,8 +61,21 @@ local function said(c)
     return table.concat(out, " / ")
 end
 
-local function inRange(c, yes)
-    for _, name in ipairs(REACH) do c.setInRange(IDS[name], yes) end
+-- Section 212 (S-02): what is in reach is every target rule of the pack's
+-- list, not a list kept by hand here. A spell added to IDS later is then put
+-- out of range with the rest. keep, when given, is left as it is.
+local function reach()
+    local out = {}
+    for _, rule in ipairs(ns.Packs.SHAMAN.lists.default) do
+        if rule.target and IDS[rule.spell] then out[#out + 1] = rule.spell end
+    end
+    return out
+end
+
+local function inRange(c, yes, keep)
+    for _, name in ipairs(reach()) do
+        if name ~= keep then c.setInRange(IDS[name], yes) end
+    end
 end
 
 -- A shaman with Lightning Shield up, an enemy targeted, every read given,
@@ -146,8 +158,63 @@ tests["shaman: cooldown is passed by and comes back; out of range is said"] = fu
     t.ok(not showing(icon, "Earth Shock"), "on cooldown: not shown")
     c.setSpellCooldown(IDS["Earth Shock"], false); c.advance(1, 5)
     t.eq(icon.texture, "tex:Earth Shock", "ready again")
+    -- One attack left in range: it is suggested, and the words do not say
+    -- out of range (section 208 mistake 1). This is what the check below
+    -- would see if reach() missed a learned attack.
+    inRange(c, false, "Earth Shock"); c.advance(1, 5)
+    t.eq(icon.texture, "tex:Earth Shock", "the one left in range")
+    t.ok(not said(c):find("out of range", 1, true), "not told out of range: " .. said(c))
     inRange(c, false); c.advance(1, 5)
     t.ok(said(c):find("out of range", 1, true), "told it is out of range: " .. said(c))
+end
+
+tests["shaman: every learned target rule is put out of range by the test"] = function(t)
+    local names = {}
+    for _, name in ipairs(reach()) do names[name] = true end
+    for _, rule in ipairs(ns.Packs.SHAMAN.lists.default) do
+        if rule.target and IDS[rule.spell] then t.ok(names[rule.spell], "in reach: " .. rule.spell) end
+    end
+    for _, name in ipairs({ "Lightning Bolt", "Flame Shock", "Earth Shock", "Attack" }) do
+        t.ok(names[name], "in reach: " .. name)
+    end
+end
+
+-- Section 212 (S-03): Flame Shock on the target counts only when it is
+-- yours. The pack reads s.targetDebuffs as it is given; the client fills it
+-- with the filter "HARMFUL|PLAYER" (Core/Client.lua c.targetDebuffs), so
+-- another player's Flame Shock never reaches the rule. This pins both ends.
+local function flameRule()
+    for _, rule in ipairs(ns.Packs.SHAMAN.lists.default) do
+        if rule.spell == "Flame Shock" then return rule end
+    end
+end
+
+local function targetEnv(theirs, mine)
+    local env = { GetTime = function() return 100 end }
+    env.C_UnitAuras = {
+        GetAuraDataByIndex = function(unit, i, filter)
+            if unit ~= "target" then return nil end
+            local rows = {}
+            if theirs and filter == "HARMFUL" then rows[#rows + 1] = { name = "Flame Shock", expirationTime = 110 } end
+            if mine and (filter == "HARMFUL" or filter == "HARMFUL|PLAYER") then
+                rows[#rows + 1] = { name = "Flame Shock", expirationTime = 112 }
+            end
+            return rows[i]
+        end,
+    }
+    return env
+end
+
+tests["shaman: another player's Flame Shock does not hide yours"] = function(t)
+    local rule = flameRule()
+    t.ok(rule ~= nil, "a Flame Shock rule")
+    if not rule then return end
+    local theirs = ns.make.client(targetEnv(true, false)).targetDebuffs()
+    t.eq(theirs, {}, "the read leaves out a Flame Shock that is not yours")
+    t.eq(rule.when({ hostile = true, targetDebuffs = theirs }), true, "yours is not on it: suggested")
+    local mine = ns.make.client(targetEnv(true, true)).targetDebuffs()
+    t.eq(mine, { ["Flame Shock"] = 12 }, "yours is read")
+    t.eq(rule.when({ hostile = true, targetDebuffs = mine }), false, "yours is on it: not suggested")
 end
 
 tests["shaman: the enemy dying, no target, and your own death take the attack away"] = function(t)
