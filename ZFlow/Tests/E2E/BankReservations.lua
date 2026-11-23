@@ -51,6 +51,7 @@ local function start(opts)
     end
     if opts.bank then c.setBank(opts.bank) end
     local addon = ns.offline.addon(c)
+    c.lists = { SellList = addon.sellList, BankList = addon.bankList }
     local goals = opts.goals or {}
     if opts.source then
         addon.Reservations.Source("test", opts.source)
@@ -62,11 +63,18 @@ local function start(opts)
     return c, addon, goals
 end
 
+-- The list as the player has it since it moved to the window kit (lead
+-- section 303): whether its kit window is shown, and the text lines of the
+-- last listing (what the text panel shows on a client that cannot draw the
+-- kit). Read each time it is asked, as a panel's own fields were.
 local function panelOf(c)
-    for _, p in ipairs(c.panels) do
-        if type(p.spec) == "table" and p.spec.name == ns.id.framePrefix .. "BankList" then return p end
-    end
-    return nil
+    local id = "BankList"
+    if type(c.kitWindows()[id]) ~= "table" then return nil end
+    return setmetatable({}, { __index = function(_, field)
+        if field == "shown" then return c.kitWindows()[id].shown end
+        if field == "lines" then return c.lists[id].last() or {} end
+        return nil
+    end })
 end
 
 local function promptOf(addon)
@@ -287,10 +295,11 @@ end
 -- the same saved goal: the player is not offered what the goal keeps.
 local function sellLines(c)
     c.setMerchantOpen(true)
+    -- The sell list is a kit window (lead section 303): its text lines
+    -- are the last listing's, while the window is shown.
     local lines
-    for _, p in ipairs(c.panels) do
-        if type(p.spec) == "table" and p.spec.name == ns.id.framePrefix .. "SellList" then lines = p.lines end
-    end
+    local win = c.kitWindows().SellList
+    if type(win) == "table" and win.shown then lines = c.lists.SellList.last() end
     c.setMerchantOpen(false)
     return lines
 end

@@ -20,16 +20,24 @@ local function start()
     c.setItemInfo(INFO)
     c.setBagItems(BAG)
     local addon = ns.offline.addon(c)
+    c.lists = { SellList = addon.sellList, BankList = addon.bankList }
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
     c.advance(5, 20)
     return c, addon
 end
 
+-- The list as the player has it since it moved to the window kit (lead
+-- section 303): whether its kit window is shown, and the text lines of the
+-- last listing (what the text panel shows on a client that cannot draw the
+-- kit). Read each time it is asked, as a panel's own fields were.
 local function panelOf(c)
-    for _, p in ipairs(c.panels) do
-        if type(p.spec) == "table" and p.spec.name == ns.id.framePrefix .. "SellList" then return p end
-    end
-    return nil
+    local id = "SellList"
+    if type(c.kitWindows()[id]) ~= "table" then return nil end
+    return setmetatable({}, { __index = function(_, field)
+        if field == "shown" then return c.kitWindows()[id].shown end
+        if field == "lines" then return c.lists[id].last() or {} end
+        return nil
+    end })
 end
 
 local function joined(lines) return table.concat(lines or {}, " / ") end
