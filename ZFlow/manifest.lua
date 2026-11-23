@@ -156,6 +156,7 @@ return {
         "Nav/Legs.lua",
         "Nav/QuestItems.lua",
         "UI/ProfCard.lua",
+        "UI/ProfPick.lua",
 
         -- On screen (after Nav: the panel uses its saved-point rules)
         "UI/DevPanel.lua",
