@@ -19,7 +19,6 @@ end
 -- a feature reads one, it declares the row and the name leaves this list
 -- (the last test fails until it does).
 local UNREAD = {
-    ["nav.crossings"] = true, ["nav.zoneFirst"] = true,
     ["nav.mapFlights"] = true, ["nav.taxiMark"] = true,
 }
 
