@@ -391,6 +391,17 @@ function Arrow.QuestArrowOn(k)
     return not (ok and v == false)
 end
 
+-- Whether what is left on this map comes before the quest log order (lead
+-- section 187): the setting row ns.Nav.LEAVING_SETTING, on unless it says
+-- a plain false.
+function Arrow.ZoneFirstOn(k)
+    local s = type(k) == "table" and k.settings or nil
+    local key = ns.Nav and ns.Nav.LEAVING_SETTING
+    if type(s) ~= "table" or type(s.get) ~= "function" or key == nil then return true end
+    local ok, v = pcall(s.get, s, key)
+    return not (ok and v == false)
+end
+
 -- The name the arrows are declared under as a module.
 Arrow.NAME = "arrow"
 
@@ -451,7 +462,8 @@ function Arrow.Start(k, diag, own)
     local guideFn = nil
     -- The player's own quests (S43, Nav/QuestRead.lua): the quest step when
     -- there is no waypoint. Read-only; nil when that file is not loaded.
-    local quests = N.QuestWatch and N.QuestSource and N.QuestWatch(client) or nil
+    local quests = N.QuestWatch and N.QuestSource
+        and N.QuestWatch(client, { zoneFirst = function() return Arrow.ZoneFirstOn(k) end }) or nil
     -- introWanted: this install has not seen the intro and it has not ended.
     -- entered: the world has been entered. introShown: the last layout had
     -- the intro on the quest arrow. introUntil: when it ends, nil until the

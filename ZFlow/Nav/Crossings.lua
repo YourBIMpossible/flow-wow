@@ -55,6 +55,9 @@ local _, ns = ...
 -- api.sample() reads where the player is, and when the continent changes
 -- between two places read off a flight it saves what N.CrossingSeen gives
 -- (the hearthstone home, char N.Crossings.BIND, is not a crossing).
+-- The setting N.CROSSING_SETTING (lead section 187): a plain false and
+-- api.way gives nil, so a place over the sea is told as far; trips are
+-- still sampled and saved, and used once it is on again.
 --   N.Crossings.Declare(k) -> api
 --   ns.use("crossings") -> { Way = api.way }
 --   api.sample() -> key, what or nil: one trip sample (the tick)
@@ -534,6 +537,8 @@ function Crossings.Declare(k)
 
     function api.way(place)
         if not ctx or not whole(place) then return nil end
+        local okS, on = pcall(ctx.settings.get, ctx.settings, N.CROSSING_SETTING)
+        if okS and on == false then return nil end
         local client = ctx.client
         local pos, zone = ask(client, "position"), ask(client, "zone")
         if type(pos) ~= "table" or type(zone) ~= "table" then return nil end
@@ -562,7 +567,7 @@ function Crossings.Declare(k)
 
     k:Module({
         name = Crossings.NAME,
-        needs = { "client", "store", "sched" },
+        needs = { "client", "store", "sched", "settings" },
         provides = { Way = function(place) return api.way(place) end },
         ticks = { { every = Crossings.EVERY, when = "always", run = function() api.sample() end } },
         start = function(c) ctx = c end,
