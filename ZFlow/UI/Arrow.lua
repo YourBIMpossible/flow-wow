@@ -560,6 +560,10 @@ function Arrow.Start(k, diag, own)
     -- from: where the quest step of the last source came from, for the
     -- arrow's own report (arrow why).
     local from = "not asked yet"
+    -- stepName: the label of the quest arrow's step in the last source, or
+    -- nil (none, the demo, or the words-only why line). The menu's first
+    -- row (UI/ArrowMenu.lua M.StepRow, lead section 387 R3).
+    local stepName = nil
     -- heading: the place of the quest arrow's step in the last source, as
     -- { cont, map, x, y }, or nil (none, the demo, or a step with no map
     -- place). Heading() gives a copy (lead section 169 B: Nav/Legs.lua
@@ -615,6 +619,14 @@ function Arrow.Start(k, diag, own)
                 from = "nothing"
                 if step then
                     mine, from = true, "your own waypoint"
+                    -- One picked on another map (Alt + click on the world
+                    -- map, a pasted map number): that map's own continent,
+                    -- where the client says it.
+                    local to = step.place
+                    if to.cont == nil and type(client.mapCont) == "function" then
+                        local okC, cont = pcall(client.mapCont, to.map)
+                        if okC and type(cont) == "number" then to.cont = cont end
+                    end
                 else
                     step = N.WaypointStep(client)
                     if step then from = "the map pin" end
@@ -662,6 +674,16 @@ function Arrow.Start(k, diag, own)
                 if ok and type(pp) == "table" and type(pp.place) == "table" then
                     step = pp
                     from = "a profession trainer stop"
+                end
+            end
+            -- Then the class trainer stop (G44, Nav/ClassTrainerStep.lua): new
+            -- class spells at the level and a class trainer saved on this map.
+            local classTrainer = k.use and k.use("classTrainerStep")
+            if step == nil and classTrainer and classTrainer.Step then
+                local ok, ct = pcall(classTrainer.Step)
+                if ok and type(ct) == "table" and type(ct.place) == "table" then
+                    step = ct
+                    from = "a class trainer stop"
                 end
             end
             -- The player's own pin (/way, then the map pin) wins over the player's quests.
@@ -733,6 +755,10 @@ function Arrow.Start(k, diag, own)
             guide = {}
         end
         heading = placeOf(guide.quest)
+        stepName = nil
+        if not saying and type(guide.quest) == "table" and type(guide.quest.label) == "string" then
+            stepName = guide.quest.label
+        end
         return Arrow.GuideSource(client, Arrow.Saved(k), guide, playing, Arrow.Palette(k))
     end
 
@@ -996,9 +1022,27 @@ function Arrow.Start(k, diag, own)
             local okParty, list = pcall(follow.Members)
             if okParty and type(list) == "table" then party = list end
         end
+        -- Lead section 382: the Professions tick (Nav/ProfFeed.lua's setting).
+        local professions
+        local okProf, profOn = pcall(k.settings.get, k.settings, N.ProfFeed and N.ProfFeed.SETTING or "nav.professions")
+        if okProf then professions = profOn end
+        -- Lead section 387, R3: the step, the kinds with a place already
+        -- seen (Nav/Errand.lua E.Find: saved data only), and the waypoint.
+        local nearest = {}
+        local E = ns.Errand
+        if type(E) == "table" and type(E.Find) == "function" and type(M.NEAREST_KINDS) == "table" then
+            for _, n in ipairs(M.NEAREST_KINDS) do
+                local okFind, place = pcall(E.Find, n.kind, client, k.store)
+                if okFind and type(place) == "table" then nearest[n.kind] = true end
+            end
+        end
+        local waypoint = false
+        if W and W.Get(k.store:get(W.SCOPE, W.PATH)) then waypoint = true end
+        if not waypoint and N.WaypointStep and N.WaypointStep(client) then waypoint = true end
         return { stacked = saved.mode ~= "separate", hidden = saved.hidden, text = saved.text,
                  styles = Arrow.Styles(style()), canShapes = canShapes(), feedback = feedback,
-                 party = party }
+                 party = party, step = { name = stepName, from = from, open = drawer ~= nil },
+                 nearest = nearest, waypoint = waypoint, professions = professions }
     end
     -- The tooltip's lines for one arrow, or nil when none is on the screen.
     -- The lines are the step's own, also for an arrow whose text is off.
@@ -1021,9 +1065,15 @@ function Arrow.Start(k, diag, own)
     -- The menu is shown one level at a time (UI/ArrowMenu.lua, N57): a row
     -- that opens a level shows it on the same arrow, and a row that opens
     -- the settings asks the settings page. Neither saves anything.
-    local choose
+    local choose, routeChoose
     local function showMenu(h, level)
-        h.menu(M.Level(M.Items(menuState()), level and { level } or nil),
+        local items = M.Items(menuState())
+        local path = nil
+        if level then
+            path = { level }
+            if M.PathTo then path = M.PathTo(items, level) or path end
+        end
+        h.menu(M.Level(items, path),
             script("menu", guarded(function(key) choose(key, h) end)))
     end
     local function openSettings(topic)
@@ -1035,6 +1085,52 @@ function Arrow.Start(k, diag, own)
         end
         local ok, err = pcall(page.Show, topic ~= true and topic or nil)
         if not ok then k.problems:add("arrow", "settings", err) end
+    end
+    -- Lead section 387, R3: Hide this step, Go to the nearest..., Your
+    -- waypoint. Each drops or picks what the arrow points at; nothing is
+    -- bought, flown, cast or used.
+    local function using(name, fn)
+        if not k.use then return nil end
+        local mod = k.use(name)
+        if type(mod) ~= "table" or type(mod[fn]) ~= "function" then return nil end
+        return mod[fn]
+    end
+    local function run(what, fn, ...)
+        if not fn then
+            say(what .. " is not ready.")
+            return false
+        end
+        local ok, err = pcall(fn, ...)
+        if not ok then k.problems:add("arrow", what, err) end
+        return ok
+    end
+    function routeChoose(action)
+        if action.hide == "route" then
+            run("the route", using("tripRoute", "Skip"))
+        elseif action.hide == "errand" then
+            run("the errand stop", using("errand", "Clear"))
+        elseif action.hide == "follow" then
+            run("pointing at a party member", using("follow", "Stop"))
+        elseif action.hide == "waypoint" then
+            local slot = W and W.Slot(k.store)
+            if slot then W.Clear(slot) end
+        elseif action.nearest then
+            local pick = using("errand", "Choose")
+            if pick then
+                local ok, place = pcall(pick, action.nearest)
+                if not ok or place == nil then say("no " .. action.nearest .. " you have seen is on this map.") end
+            else
+                say("the nearest stop is not ready.")
+            end
+        elseif action.waypoint then
+            -- Your own waypoint is the quest step once nothing set by hand
+            -- is in front of it: a party member, an errand stop.
+            local stopFollow = using("follow", "Stop")
+            if stopFollow then pcall(stopFollow) end
+            local clear = using("errand", "Clear")
+            if clear then pcall(clear) end
+        end
+        relayout()
     end
     choose = function(key, h)
         if not ready or not live() then return end
@@ -1075,6 +1171,17 @@ function Arrow.Start(k, diag, own)
             else
                 say("pointing at a party member is not ready.")
             end
+        elseif action.professions ~= nil then
+            -- Lead section 382: the Professions tick (Nav/ProfFeed.lua).
+            local ok, err = pcall(k.settings.set, k.settings,
+                N.ProfFeed and N.ProfFeed.SETTING or "nav.professions", action.professions)
+            if not ok then k.problems:add("arrow", "professions", err) end
+        elseif action.drawer then
+            -- Lead section 387, R3: Open it, as a left click on the quest arrow.
+            local ok, err = pcall(drawer, "quest")
+            if not ok then k.problems:add("arrow", "drawer", err) end
+        elseif action.hide or action.nearest or action.waypoint then
+            routeChoose(action)
         elseif action.style then
             local ok, reason = setStyle(action.style)
             if not ok then say(tostring(reason) .. ".") end
@@ -1269,7 +1376,8 @@ function Arrow.Start(k, diag, own)
     local function way(rest)
         local text = type(rest) == "string" and rest:match("^%s*(.-)%s*$") or ""
         local cmd = wayHeld and "/way" or (id.slash .. " way")
-        local HOW = cmd .. " x y [label] sets a waypoint on the map you are on; " .. cmd .. " clear removes it."
+        local HOW = cmd .. " x y [label] sets a waypoint on the map you are on; " .. cmd .. " clear removes it. "
+            .. "Or hold Alt and click a spot on the world map."
         if not W then
             say("waypoints are not loaded.")
         elseif not ready then
@@ -1286,7 +1394,9 @@ function Arrow.Start(k, diag, own)
                 say(W.REASON.unset .. ".")
             end
         else
-            local wp, why = W.Set(W.Slot(k.store), ask(client, "position"), text)
+            local here = ask(client, "position")
+            local okN, zoneName = pcall(function() return client.mapName(here.map) end)
+            local wp, why = W.Set(W.Slot(k.store), here, text, okN and zoneName or nil)
             if wp then
                 say("waypoint set: " .. tostring(W.Text(wp)) .. ".")
                 relayout()
@@ -1315,6 +1425,30 @@ function Arrow.Start(k, diag, own)
     end
     claimWay()
     listen("PLAYER_LOGIN", claimWay)
+
+    -- Alt + click on the world map sets the same waypoint at that spot
+    -- (G35). It only points: the map's own click is left as it is.
+    local function mapWay(map, x, y)
+        if not W or not ready then return end
+        local wp, why = W.SetAt(W.Slot(k.store), map, x, y)
+        if wp then
+            local okN, name = pcall(function() return client.mapName(map) end)
+            local where = okN and type(name) == "string" and (" in " .. name) or ""
+            say("waypoint set: " .. tostring(W.Text(wp)) .. where .. ". "
+                .. (wayHeld and "/way" or (id.slash .. " way")) .. " clear removes it.")
+            relayout()
+        else
+            say(tostring(why) .. "; nothing changed.")
+        end
+    end
+    local mapHooked = false
+    local function hookMap()
+        if mapHooked or type(client.mapClick) ~= "function" then return end
+        local ok, done = pcall(client.mapClick, mapWay)
+        mapHooked = ok and done == true
+    end
+    hookMap()
+    listen("PLAYER_LOGIN", hookMap)
 
     local function setGuide(fn)
         guideFn = type(fn) == "function" and fn or nil
