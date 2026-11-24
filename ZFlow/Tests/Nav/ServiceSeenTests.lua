@@ -59,7 +59,7 @@ tests["service seen: the names are the ones agreed"] = function(t)
     local kinds = {}
     for _, row in ipairs(S.EVENTS) do kinds[row.event] = row.kind end
     t.eq(kinds, { MERCHANT_SHOW = "vendor", BANKFRAME_OPENED = "banker", TAXIMAP_OPENED = "flight",
-                  CONFIRM_BINDER = "innkeeper", MAIL_SHOW = "mailbox" })
+                  CONFIRM_BINDER = "innkeeper", MAIL_SHOW = "mailbox", AUCTION_HOUSE_SHOW = "auction" })
 end
 
 tests["service seen: before any event nothing is saved"] = function(t)
