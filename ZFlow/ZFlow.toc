@@ -271,3 +271,4 @@ Items\AuctionWatch.lua
 Gear\BagBadge.lua
 Nav\FollowAdvice.lua
 UI\RouteArea.lua
+UI\MapRouteLines.lua
