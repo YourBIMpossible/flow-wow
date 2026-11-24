@@ -95,7 +95,7 @@ tests["party route: a route shared by one client is offered to and taken by the 
     t.eq(count(b, "route take"), 1, "one offer line")
     t.eq(count(a, "route take"), 0, "the sharer is not offered its own route")
     slash(b, "route take")
-    t.eq(first(b), "Boars", "the taken route's first stop is on the other client's arrow")
+    t.eq(first(b), "Anna: Boars", "the taken route's first stop is on the other client's arrow")
 end
 
 -- FLOW-PARITY B-36: the offer has two links; the player clicks one.
@@ -115,7 +115,7 @@ tests["party route: the offer's two links follow the route or keep your own"] = 
     local sent = #d.addonSent
     t.eq(d.clickLink(kind .. ":take"), 1)
     t.ok(said(d, "Following the route from Anna"))
-    t.eq(first(d), "Boars", "follow puts the shared route on the arrow")
+    t.eq(first(d), "Anna: Boars", "follow puts the shared route on the arrow")
     t.eq(#d.addonSent, sent, "a click sends nothing")
 end
 
@@ -132,6 +132,25 @@ tests["party route: route keep by word keeps your own route; route take after it
     t.eq(#b.addonSent, sent, "keep sends nothing")
     slash(b, "route keep")
     t.eq(count(b, "No party route to take."), 2, "keep with no offer says so")
+end
+
+-- FLOW-PARITY B-43: whose step it is, and "(done for you)" from the own log.
+tests["party route: taken steps name the member and say done for you"] = function(t)
+    local a = boot("Anna")
+    local b = boot("Bert", { { id = 401, title = "Boars", complete = true,
+        objectives = { { text = "Boars slain: 4/4", done = true } } } })
+    a.linkAddon(b); b.linkAddon(a)
+    slash(a, "route"); slash(a, "route share")
+    local sent = #b.addonSent
+    slash(b, "route take")
+    t.eq(first(b), "Anna: Boars (done for you)", "own log has it complete")
+    t.eq(#b.addonSent, sent, "labelling sends nothing")
+    local P = ns.Nav.PartyRoute
+    t.eq(P.Label("Anna-Elsewhere", { label = "Herbs" }, {}).label, "Anna: Herbs", "the part after the dash is left off")
+    local long = string.rep("x", 39)
+    local got = P.Label("Anna", { label = long }, { { title = long, complete = true } })
+    t.eq(got.label, long, "never cut")
+    t.eq(got.detail, "Anna's step, done for you")
 end
 
 tests["party route: a refused send says not shared and nothing else changes"] = function(t)
@@ -180,7 +199,7 @@ tests["party route: a late joiner asks and the sharer answers once"] = function(
     slash(b, "route ask")
     t.eq(#a.addonSent, again, "a second ask at once is not answered")
     slash(b, "route take")
-    t.eq(first(b), "Boars")
+    t.eq(first(b), "Anna: Boars")
 end
 
 tests["party route: a lost chunk says the route is incomplete"] = function(t)

@@ -141,6 +141,52 @@ function P.Decode(payload)
     return { title = unesc(head[2]), steps = steps }
 end
 
+-- FLOW-PARITY B-43: a taken route's steps say whose they are ("<name>:
+-- <label>") and "(done for you)" when that quest is complete in this
+-- player's own log (log rows as client.questLog gives them: title,
+-- complete, objectives { text, done }). Read from the local log only:
+-- nothing is sent. A label that would be over N.Waypoint.LABEL_MAX keeps
+-- its own text and the words go to the step's detail (never cut).
+P.DONE = " (done for you)"
+
+local function labelMax()
+    return ns.Nav and ns.Nav.Waypoint and ns.Nav.Waypoint.LABEL_MAX or 40
+end
+
+local function doneFor(step, log)
+    if type(log) ~= "table" then return false end
+    for _, q in ipairs(log) do
+        if type(q) == "table" and q.title == step.label then
+            if q.complete == true then return true end
+            for _, o in ipairs(type(q.objectives) == "table" and q.objectives or {}) do
+                if type(o) == "table" and o.done == true and step.detail ~= nil and o.text == step.detail then return true end
+            end
+            return false
+        end
+    end
+    return false
+end
+
+function P.Label(from, step, log)
+    if type(step) ~= "table" or type(step.label) ~= "string" then return step end
+    local who = type(from) == "string" and from:match("^([^%-]+)") or nil
+    local out = {}
+    for key, v in pairs(step) do out[key] = v end
+    local extra = {}
+    local label = step.label
+    if who and #(who .. ": " .. label) <= labelMax() then label = who .. ": " .. label
+    elseif who then extra[#extra + 1] = who .. "'s step" end
+    if doneFor(step, log) then
+        if #(label .. P.DONE) <= labelMax() then label = label .. P.DONE else extra[#extra + 1] = "done for you" end
+    end
+    out.label = label
+    if #extra > 0 then
+        local more = table.concat(extra, ", ")
+        out.detail = step.detail and (step.detail .. " (" .. more .. ")") or more
+    end
+    return out
+end
+
 function P.Chunks(sid, payload, ver)
     if type(payload) ~= "string" or payload == "" then return nil, "nothing to send" end
     local fixed = tostring(ver) .. "|R|" .. tostring(sid) .. "|"
@@ -263,7 +309,14 @@ function P.Declare(k, diag)
         if not offer then return say(P.NO_OFFER) end
         local tr = k.use and k.use("tripRoute")
         if not tr then return say(P.NOT_SHARED:format(P.WHY_NO_TRIP)) end
-        say(P.TAKEN:format(offer.from, tostring(tr.Run(offer.run))))
+        local c = client()
+        local okLog, log = false, nil
+        if type(c) == "table" and type(c.questLog) == "function" then okLog, log = pcall(c.questLog) end
+        local run = {}
+        for key, v in pairs(offer.run) do run[key] = v end
+        run.steps = {}
+        for i, st in ipairs(offer.run.steps or {}) do run.steps[i] = P.Label(offer.from, st, okLog and log or nil) end
+        say(P.TAKEN:format(offer.from, tostring(tr.Run(run))))
     end
 
     local function chunk(p, sender)
