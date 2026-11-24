@@ -93,6 +93,7 @@ H.PAGES = {
       },
       words = {
           { word = "dungeons", text = "Open the Dungeon Quests window" },
+          { word = "dungeon", text = "Say the dungeon you are in: your quests for it and the bosses killed" },
       } },
     { id = "gear", title = "Gear",
       about = {
