@@ -239,3 +239,4 @@ Nav\ProfFeed.lua
 Nav\HearthAdvice.lua
 Nav\GateWords.lua
 Items\RecipeFacts.lua
+Items\VendorRecipes.lua

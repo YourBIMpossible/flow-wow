@@ -299,5 +299,7 @@ return {
     "Nav/GateWords.lua",
     -- Lead section 406 item 3: recipe facts for the profession plan, seen in game then shipped (read by ProfPlan at call time).
     "Items/RecipeFacts.lua",
+    -- Lead section 422 item 1: recipes seen for sale at vendors, for the profession plan (read by ProfPlan at call time).
+    "Items/VendorRecipes.lua",
     },
 }

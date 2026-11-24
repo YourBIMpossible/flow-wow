@@ -714,6 +714,11 @@ function N.ProfChoose(picked, pick, older)
         and (step.outgrown == true or older.doable == true) then
         return older
     end
+    -- Lead section 422 item 1: "no point yet" with no place never beats an
+    -- older step that names something the player can do now.
+    if type(older) == "table" and type(step) == "table" and step.kind == "no_point" and older.doable == true then
+        return older
+    end
     local training = type(pick.step) == "table" and pick.step.kind == "train_tier"
     if rank <= 5 and not (training and type(older) == "table") then return picked end
     if type(older) == "table" then return older end

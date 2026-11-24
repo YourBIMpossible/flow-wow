@@ -46,6 +46,12 @@ local _, ns = ...
 -- (Items/ProfSources.lua), ahead of the rest; without source reads a
 -- recipe short of materials gives no step.
 --   here, nodes, vendorPrice   as ProfSources.For takes them (C3)
+--   vendorRecipes        account "learned.vendorRecipes" rows (Items/VendorRecipes.lua)
+-- Lead section 422 item 1: between trainer ranks, with nothing known giving
+-- a point and nothing to learn at a trainer with a place, a buy_recipe step
+-- (a vendor recipe at or below the skill, not known, not on another
+-- continent), else one no_point step (the nearest node seen, else the next
+-- skill a seen trainer teaches at).
 
 ns.ProfPlan = {}
 local P = ns.ProfPlan
@@ -105,6 +111,11 @@ P.LOOK = {
     forge = "Look for a forge, by a blacksmith or a mining trainer in a town. Its place is saved once you smelt there.",
     fire = "Look for a cooking fire or a stove, or light your own. Its place is saved once you cook there.",
 }
+-- Lead section 422 item 1: a recipe seen at a vendor, and the plain line
+-- when nothing known gives a point (short: it is the needle's label).
+P.BUY_RECIPE = "Buy %s from %s (%s)"
+P.NONE_GATHER = "No point yet; gather %s"
+P.NONE_RANK = "No point yet; next rank at %d"
 P.CHANCE = { optimal = "sure", medium = "maybe" }
 
 local function whole(n)
@@ -277,11 +288,19 @@ end
 -- Section 400 item 4: a trainer whose place is on another continent than
 -- the player's is never a step (no training trip). Both continents known,
 -- or it is not away.
-local function away(input, npc)
-    local n, here = placeOf(input, npc), input.here
-    if not n or type(here) ~= "table" or here.map == nil or type(input.contOf) ~= "function" then return false end
+-- Lead section 422 item 1: the same rule for any place seen (a vendor).
+local function awayAt(input, n)
+    local here = input.here
+    if type(n) ~= "table" or n.map == nil or type(here) ~= "table" or here.map == nil
+        or type(input.contOf) ~= "function" then
+        return false
+    end
     local mine, theirs = input.contOf(here.map), input.contOf(n.map)
     return mine ~= nil and theirs ~= nil and mine ~= theirs
+end
+
+local function away(input, npc)
+    return awayAt(input, placeOf(input, npc))
 end
 
 -- Section 402 item 3: how far a trainer is; one on another map, or with no
@@ -370,6 +389,72 @@ local function pointRecipe(input)
     end
     table.sort(names)
     return names[1]
+end
+
+-- Lead section 422 item 1 (a): a recipe seen for sale at a vendor the
+-- player opened, of this profession, whose skill (read from its tooltip)
+-- is at or below the player's, not in the book, and not on another
+-- continent: "Buy <recipe> from <vendor>". The nearest, then by name.
+-- A row with no skill read is left out: it is not known to give a point.
+local function vendorStep(input)
+    local book = type(input.book) == "table" and input.book or {}
+    local here = input.here
+    local best, bestD
+    for _, r in ipairs(type(input.vendorRecipes) == "table" and input.vendorRecipes or {}) do
+        if type(r) == "table" and r.prof == input.prof and whole(r.skill) and r.skill <= input.skill
+            and type(r.name) == "string" and type(r.vendor) == "string" and r.map ~= nil
+            and type(r.x) == "number" and type(r.y) == "number"
+            and book[r.name] == nil and (r.recipe == nil or book[r.recipe] == nil)
+            and not awayAt(input, r) then
+            local d = math.huge
+            if type(here) == "table" and here.map == r.map then
+                d = (r.x - (here.x or 0)) ^ 2 + (r.y - (here.y or 0)) ^ 2
+            end
+            if not best or d < bestD or (d == bestD and r.name < best.name) then best, bestD = r, d end
+        end
+    end
+    if not best then return nil end
+    return { kind = "buy_recipe", item = best.item, recipe = best.recipe or best.name, npc = best.vendor,
+        target = { map = best.map, x = best.x, y = best.y },
+        text = string.format(P.BUY_RECIPE, best.name, best.vendor, reading(input)) }
+end
+
+-- Lead section 422 item 1 (b): nothing known gives a point. One plain
+-- line: the nearest gathering node seen on this map, else the lowest skill
+-- a seen trainer (never one away) teaches something new at. nil when
+-- neither was seen.
+local function nothingStep(input)
+    local here = input.here
+    if type(here) == "table" and here.map ~= nil then
+        local best, bestD
+        for _, n in ipairs(type(input.nodes) == "table" and input.nodes or {}) do
+            if type(n) == "table" and n.map == here.map and type(n.node) == "string" and n.node ~= ""
+                and type(n.x) == "number" and type(n.y) == "number" then
+                local d = (n.x - (here.x or 0)) ^ 2 + (n.y - (here.y or 0)) ^ 2
+                if not best or d < bestD then best, bestD = n, d end
+            end
+        end
+        if best then
+            return { kind = "no_point", node = best.node, target = { map = best.map, x = best.x, y = best.y },
+                text = string.format(P.NONE_GATHER, best.node) }
+        end
+    end
+    local skill, npc
+    for _, key in ipairs(sortedKeys(type(input.trainerLists) == "table" and input.trainerLists or {})) do
+        local l = input.trainerLists[key]
+        if type(l) == "table" and l.profession == input.prof and type(l.npc) == "string" and type(l.rows) == "table"
+            and not away(input, l.npc) then
+            for _, row in ipairs(l.rows) do
+                if type(row) == "table" and row.state ~= "known" and whole(row.skill) and row.skill > input.skill
+                    and (not skill or row.skill < skill) then
+                    skill, npc = row.skill, l.npc
+                end
+            end
+        end
+    end
+    if not skill then return nil end
+    return { kind = "no_point", npc = npc, skill = skill, target = npcTarget(input, npc),
+        text = string.format(P.NONE_RANK, skill) }
 end
 
 local function firstRecipeStep(input)
@@ -650,6 +735,11 @@ function P.Plan(input)
     local known = pointRecipe(input)
     if known then return empty("known recipe", input, known) end
     local learn = learnStep(input)
+    -- Lead section 422 item 1: a trainer step with no place never beats a
+    -- vendor recipe whose place is known.
+    if learn and learn.target then return { learn } end
+    local buy = vendorStep(input)
+    if buy then return { buy } end
     if learn then return { learn } end
     -- Review of section 405 item 4: every learned recipe outgrown and no
     -- trainer list of this profession seen: a trainer is the next step.
@@ -658,6 +748,8 @@ function P.Plan(input)
         step.outgrown = true
         return { step }
     end
+    local none = nothingStep(input)
+    if none then return { none } end
     return empty("no recipe", input)
 end
 
@@ -805,6 +897,8 @@ function P.Input(client, store, prof, nodeSource)
             return get(info, "name")
         end,
         trainerLists = facts.trainerLists,
+        -- Lead section 422 item 1: recipes seen at vendors (Items/VendorRecipes.lua).
+        vendorRecipes = ns.VendorRecipes and ns.VendorRecipes.Rows(store) or nil,
         npcs = saved(store, "account", "learned.places.npcs"),
         contOf = function(map) return ask(client, "mapCont", map) end,
         station = kind,
