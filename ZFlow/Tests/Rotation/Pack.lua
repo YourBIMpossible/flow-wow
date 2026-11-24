@@ -342,4 +342,40 @@ return {
         t.eq(table.concat(problems, "|"), table.concat(sorted, "|"), "sorted")
         t.eq(pack.lists.default[1].spell, "Bolt", "the pack is as it was")
     end,
+
+    -- G31: the levelling recommendation. A pack may have none; one given
+    -- names one of the pack's roles, carries an evidence class and says why
+    -- in words.
+    ["a levelling row is optional, and a complete one passes"] = function(t)
+        local pack = good()
+        t.eq(pack.levelling, nil, "the good pack has none")
+        t.eq(ns.PackCheck(pack), true, "none passes")
+        pack.levelling = { role = "dps", why = { "A reason in words." }, evidence = "first guess" }
+        local ok, problems = ns.PackCheck(pack)
+        t.eq(table.concat(problems, "; "), "", "no problems")
+        t.eq(ok, true, "ok")
+    end,
+
+    ["a levelling row that is wrong is reported, each fault by name"] = function(t)
+        local function row() return { role = "dps", why = { "A reason in words." }, evidence = "first guess" } end
+        local cases = {
+            { function(p) p.levelling = "dps" end, "levelling: not a table" },
+            { function(p) p.levelling.role = "tank" end, "levelling: the role is not one of the pack's roles" },
+            { function(p) p.levelling.role = nil end, "levelling: the role is not one of the pack's roles" },
+            { function(p) p.levelling.why = nil end, "levelling: no reason given" },
+            { function(p) p.levelling.why = {} end, "levelling: no reason given" },
+            { function(p) p.levelling.why = { "Words.", "" } end, "levelling.why[2]: the reason is not words" },
+            { function(p) p.levelling.why = { 5 } end, "levelling.why[1]: the reason is not words" },
+            { function(p) p.levelling.evidence = nil end, "levelling: no evidence class" },
+            { function(p) p.levelling.evidence = "a guide" end, "levelling: unknown evidence class" },
+        }
+        for i, case in ipairs(cases) do
+            local pack = good()
+            pack.levelling = row()
+            case[1](pack)
+            local ok, problems = ns.PackCheck(pack)
+            t.eq(ok, false, "case " .. i .. " fails")
+            t.ok(has(problems, case[2]), "case " .. i .. " names it: " .. table.concat(problems, "; "))
+        end
+    end,
 }
