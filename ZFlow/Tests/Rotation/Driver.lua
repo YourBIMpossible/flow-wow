@@ -471,7 +471,9 @@ tests["rotation driver RD11: a step presses nothing and asks only its sixteen re
         -- enchant read (weaponEnchant); this client has none, so the look is all.
         -- Section 401 (section 208 pin update): the close-enemy reads
         -- (targetClose, hitOnYouAge); this client has none, so the look is all.
-        t.eq(other, { "targetClose", "hitOnYouAge", "lowHealth", "unitDebuffTypes", "playerDebuffs", "weaponEnchant", "fishingPole", "bagItems", "mounted", "onTaxi", "bagItems", "tracking", "tracking",
+        -- G25 (section 208 pin update): and what holds you (heldBy, at the loc
+        -- field); this client has none, so the look is all.
+        t.eq(other, { "targetClose", "hitOnYouAge", "heldBy", "lowHealth", "unitDebuffTypes", "playerDebuffs", "weaponEnchant", "fishingPole", "bagItems", "mounted", "onTaxi", "bagItems", "tracking", "tracking",
             "professions", "anyTracking", "ownBuffs", "grouped", "party", "plateEnemies", "plateCasts" },
             "nothing else asked of the client but the warning, debuff, weapon enchant, pole, bag, tracking, profession, gather-guard, grouped and group reads it lacks")
         local names = {}

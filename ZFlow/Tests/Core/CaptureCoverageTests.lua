@@ -493,6 +493,10 @@ KIND.act[#KIND.act + 1] = "addonSend"
 -- profession window opens or changes; never by the capture.
 READS.trackingRaw = false
 READS.tradeSkillAnswers = false
+-- Lead section 404 item 4 (G25): what holds you, read by the rotation
+-- driver for break free. Its names are in Diag.NAMES. The capture does not
+-- ask it.
+READS.heldBy = false
 
 -- Section 401: the close-enemy reads, read by the rotation only
 -- (Rotation/Driver.lua); never by the capture.
