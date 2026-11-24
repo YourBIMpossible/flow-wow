@@ -157,8 +157,12 @@ tests["flow row: in a fight the rotation icon shows only what the locked button 
     local c = shaman()
     c.setTarget({ exists = true, hostile = true, dead = false }); c.setTargetName("Training Dummy")
     c.advance(3, 5)
-    t.eq(held(c, FLOW), "Attack", "before the pull: Attack on the Flow button")
-    t.eq(icon(c).faded, true, "same spell: no second picture")
+    -- zflow-btn-pull-spell (lead section 430 item 1): the Flow button never
+    -- holds Attack; before the pull it already holds the fight spell, and the
+    -- rotation icon alone advises starting the attack.
+    t.eq(held(c, FLOW), "Stormstrike", "before the pull: the fight spell on the Flow button")
+    t.eq({ icon(c).shown, icon(c).faded }, { true, false }, "the icon shows Attack, which the button does not hold")
+    t.eq(icon(c).texture, "tex:Attack")
     c.setLockdown(false); c.setCurrentSpell(6603, true); c.setCombat(true); c.setLockdown(true)
     c.advance(3, 5)
     t.eq(held(c, FLOW), "Stormstrike", "the fight spell, kept through the fight")
@@ -169,7 +173,8 @@ tests["flow row: in a fight the rotation icon shows only what the locked button 
     t.eq({ icon(c).shown, icon(c).faded }, { true, false }, "the rotation icon shows the new suggestion the button cannot take")
     t.eq(icon(c).texture, "tex:Attack")
     c.setLockdown(false); c.setCombat(false); c.advance(3, 5)
-    t.eq(icon(c).faded, true, "after the fight the button takes it: one picture again")
+    t.eq(held(c, FLOW), "Stormstrike", "after the fight the button still never takes Attack")
+    t.eq({ icon(c).shown, icon(c).faded }, { true, false }, "the icon alone shows Attack")
     noMacros(t, c)
 end
 
