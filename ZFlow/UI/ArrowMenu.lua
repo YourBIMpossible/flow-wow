@@ -25,6 +25,7 @@ local function read(s)
         canShapes = s.canShapes == true,
         feedback = s.feedback == true,
         party = type(s.party) == "table" and s.party or {},
+        route = type(s.route) == "table" and s.route or {},
     }
 end
 
@@ -86,6 +87,8 @@ function M.Items(state)
     end
     -- Lead section 318: the Dungeon Quests window.
     rows[#rows + 1] = { key = M.DUNGEONS, text = T.MENU.dungeons }
+    -- Lead section 387 R3: what the route includes (M.RouteRow).
+    rows[#rows + 1] = M.RouteRow(s.route)
     -- G47 (Nav/Follow.lua): point the arrow at a party member, only while
     -- in a group. A level holds T.MENU_MAX rows with its heading, the stop
     -- row and the way back, so a raid shows its first members only.
@@ -121,6 +124,64 @@ M.FOLLOW_STOP = "Stop pointing at them"
 -- The window a row opens, by the module that owns it (lead section 318).
 M.WINDOWS = { [M.DUNGEONS] = "dungeonWindow" }
 M.MORE = "  >"
+
+-- Lead section 387 R3: the Route level of the menu. Show and advise only.
+M.ROUTE = "route"
+M.SUGGEST_SETTING = "nav.dungeonSuggest"
+M.ROUTE_TEXT = "Route includes %d of %d"
+M.ROUTE_ROWS = { { "zones", "Zones" }, { "steps", "Steps" }, { "dungeons", "Dungeons" } }
+M.SUGGEST_TEXT = "Suggest dungeons"
+
+local function mapOf(stop)
+    local p = type(stop) == "table" and stop.place or nil
+    return type(p) == "table" and p.map or nil
+end
+
+-- What the route includes, counted from the trip list (all: Nav/Trip.lua
+-- List, stops with kind, label, place) and the stops the arrow walks (on:
+-- Nav/TripRoute.lua Current().stops). -> { steps, zones, dungeons }, each
+-- { n, m }: n on the route, m in the trip and the route together. A
+-- dungeon is a trip stop of kind "dungeon"; it is on the route when a
+-- walked stop has its label. First guess at the counts: no list of every
+-- dungeon or zone ships here.
+function M.RouteCounts(all, on)
+    all = type(all) == "table" and all or {}
+    on = type(on) == "table" and on or {}
+    local zonesOn, zonesAll, nOn, nAll = {}, {}, 0, 0
+    local labelsOn = {}
+    for _, stop in ipairs(on) do
+        local map = mapOf(stop)
+        if map ~= nil and not zonesOn[map] then zonesOn[map], nOn = true, nOn + 1 end
+        if map ~= nil and not zonesAll[map] then zonesAll[map], nAll = true, nAll + 1 end
+        if type(stop) == "table" and stop.label ~= nil then labelsOn[stop.label] = true end
+    end
+    local dOn, dAll = 0, 0
+    for _, stop in ipairs(all) do
+        local map = mapOf(stop)
+        if map ~= nil and not zonesAll[map] then zonesAll[map], nAll = true, nAll + 1 end
+        if type(stop) == "table" and stop.kind == "dungeon" then
+            dAll = dAll + 1
+            if stop.label ~= nil and labelsOn[stop.label] then dOn = dOn + 1 end
+        end
+    end
+    return { steps = { #on, math.max(#on, #all) }, zones = { nOn, nAll }, dungeons = { dOn, dAll } }
+end
+
+-- The top-level Route row and its level: the count rows (ticked when the
+-- route holds any), then the Suggest dungeons switch.
+-- route: { all, on, suggest } as M.RouteCounts takes them.
+function M.RouteRow(route)
+    route = type(route) == "table" and route or {}
+    local n = M.RouteCounts(route.all, route.on)
+    local children = {}
+    for _, r in ipairs(M.ROUTE_ROWS) do
+        local c = n[r[1]]
+        children[#children + 1] = { key = M.ROUTE .. "." .. r[1], text = ("%s %d of %d"):format(r[2], c[1], c[2]),
+            checked = c[1] > 0, disabled = true }
+    end
+    children[#children + 1] = { key = M.ROUTE .. ".suggest", text = M.SUGGEST_TEXT, checked = route.suggest == true }
+    return { key = M.ROUTE, text = M.ROUTE_TEXT:format(n.steps[1], n.steps[2]), children = children }
+end
 
 local function childrenOf(items, key)
     for i = 1, #items do
@@ -205,6 +266,9 @@ function M.Action(key, state)
         return nil
     end
     if key == "settings" then return { settings = true } end
+    -- Lead section 387 R3: the Route level; its count rows choose nothing.
+    if key == M.ROUTE then return { open = key } end
+    if key == M.ROUTE .. ".suggest" then return { setting = M.SUGGEST_SETTING, on = s.route.suggest ~= true } end
     if M.WINDOWS[key] then return { window = M.WINDOWS[key] } end
     -- G47: the follow level, a member (by unit), or stop ({ follow = false }).
     if key == M.FOLLOW then return { open = key } end
