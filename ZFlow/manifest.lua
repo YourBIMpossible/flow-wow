@@ -291,6 +291,8 @@ return {
     "Nav/ProfFeed.lua",
     -- G46 (lead section 391 item 2): when hearthing saves the walk, and where to set home (after Trip, TripRoute).
     "Nav/HearthAdvice.lua",
+    -- S35 (section 395 item 3): gate words for trip legs (after Gates, Trip).
+    "Nav/GateWords.lua",
     -- Lead section 406 item 3: recipe facts for the profession plan, seen in game then shipped (read by ProfPlan at call time).
     "Items/RecipeFacts.lua",
     },

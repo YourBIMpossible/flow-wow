@@ -235,4 +235,5 @@ Items\ProfSources.lua
 UI\ProfDock.lua
 Nav\ProfFeed.lua
 Nav\HearthAdvice.lua
+Nav\GateWords.lua
 Items\RecipeFacts.lua
