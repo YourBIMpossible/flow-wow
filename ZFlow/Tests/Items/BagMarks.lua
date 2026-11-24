@@ -63,7 +63,7 @@ end
 
 tests["bag marks: every kind has a game texture and a word"] = function(t)
     for _, kind in ipairs({ "quest", "sell", "upgrade", "material" }) do
-        t.ok(type(B().TEXTURE[kind]) == "string" and B().TEXTURE[kind]:find("^Interface\\") ~= nil, kind)
+        t.ok(type(B().TEXTURE[kind]) == "string" and B().TEXTURE[kind]:sub(1, 10) == "Interface\\", kind)
         t.ok(type(B().WORD[kind]) == "string", kind)
     end
 end

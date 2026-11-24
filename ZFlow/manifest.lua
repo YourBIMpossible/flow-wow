@@ -93,6 +93,7 @@ return {
         "Gear/MerchantMarks.lua",
         "Gear/RewardMark.lua",
         "Gear/MerchantShow.lua",
+        "Items/BagMarks.lua",
         "Gear/RollHint.lua",
         "Gear/Sets.lua",
         "Gear/SetIcons.lua",
