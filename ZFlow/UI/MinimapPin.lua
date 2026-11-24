@@ -28,7 +28,10 @@ local _, ns = ...
 --     report = { shown = true, x, y, edge, distance }
 --            or { shown = false, reason }
 --       reason: "no waypoint", "no pin frame", or a reason of N.MinimapPin
---   MinimapPin.Declare(k) -> api    declares the module
+--   MinimapPin.Declare(k) -> api    declares the module and its setting
+--     Pin.SETTING (on at first; lead section 519 slice 2): off, the pin is
+--     hidden and no look reads the client; the report's reason is Pin.OFF.
+--     Only this pin: the arrow and the world map are not touched.
 --     api.last()    the report of the last look, nil before the first
 --     api.update()  looks now; nil before the module has started
 --   ns.use(MinimapPin.NAME) -> { Last = api.last }
@@ -39,6 +42,10 @@ local Pin = ns.MinimapPin or {}
 ns.MinimapPin = Pin
 
 Pin.NAME = "minimapPin"
+Pin.SETTING = "nav.waypointPin"
+Pin.LABEL = "Show your waypoint on the minimap"
+Pin.HELP = "Shows a pin on the minimap at the waypoint you set, at the rim when it is farther away. Off hides only this pin: the arrow and the lines on the world map stay."
+Pin.OFF = "turned off"
 Pin.EVERY = 0.1        -- seconds between looks. A first guess.
 Pin.SIZE = 12          -- how wide the pin is. A first guess.
 
@@ -114,14 +121,29 @@ function Pin.Declare(k)
         if not look then return nil end
         return look()
     end
+    k:Setting({ key = Pin.SETTING, scope = "account", type = "bool", default = true,
+        label = Pin.LABEL, group = "travel.route", help = Pin.HELP,
+        synonyms = { "waypoint", "minimap", "pin", "mark", "dot", "way" } })
+
+    -- Off only when the setting says false; a read that fails is not off.
+    local function off(s)
+        if type(s) ~= "table" or type(s.get) ~= "function" then return false end
+        local ok, v = pcall(s.get, s, Pin.SETTING)
+        return ok and v == false
+    end
+
     k:Module({
         name = Pin.NAME,
-        needs = { "client", "store", "sched" },
+        needs = { "client", "store", "sched", "settings" },
         provides = { Last = api.last },
         start = function(ctx)
             local client = ctx.client
             if type(client.minimap) ~= "function" or type(client.minimapPin) ~= "function" then return end
             look = function()
+                if off(ctx.settings) then
+                    last = hidden(state, Pin.OFF)
+                    return last
+                end
                 last = Pin.Update(client, ctx.store, state)
                 return last
             end

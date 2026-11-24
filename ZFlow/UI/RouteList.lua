@@ -5,7 +5,9 @@
 -- its reason. With no route it says so and how to plan one. It opens and
 -- closes with the game's quest log and stands at its right edge
 -- (client.questLogFrame); the setting RL.SETTING (on at first) turns it and
--- the world map pieces (UI/MapRoute.lua) off.
+-- the world map pieces (UI/MapRoute.lua: the numbers and the zone card)
+-- off. The lines on the world map are not its to turn off: they have their
+-- own setting (UI/MapRouteLines.lua; lead section 519 slice 2).
 --
 -- It shows only what the route holds: the stops, their words and their
 -- places are the route's (the quest log's own titles and objective lines,
@@ -343,7 +345,7 @@ function RL.Declare(k, diag)
 
     k:Setting({ key = RL.SETTING, scope = "account", type = "bool", default = true,
         label = "Show the route beside the quest log and on the map", group = "travel.route",
-        help = "Shows the stops of your route in order beside the quest log while it is open, and numbers them on the world map with a card for the zone.",
+        help = "Shows the stops of your route in order beside the quest log while it is open, and numbers them on the world map with a card for the zone. Off hides the list, the numbers and the card. The lines on the world map are not hidden by this: they have their own setting, Show route lines on the map.",
         synonyms = { "route", "list", "quest", "log", "map", "pins", "stops", "zone" } })
 
     k:Module({
