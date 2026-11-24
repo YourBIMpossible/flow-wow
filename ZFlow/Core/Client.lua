@@ -1588,6 +1588,22 @@ function ns.make.client(env)
         return true
     end
 
+    -- Seconds left on one of your spells' cooldown, by spell id: 0 when it
+    -- is ready or has run out, nil when not known (no such spell, no call,
+    -- no clock, an odd or secret answer, or a cooldown waiting to start).
+    -- The global cooldown is not told apart here. This only reads.
+    function c.spellCooldownLeft(id)
+        if type(id) ~= "number" then return nil end
+        local ok, start, length, _, waiting = cooldownTimes(id)
+        if not ok or waiting then return nil end
+        if start <= 0 or length <= 0 then return 0 end
+        local okNow, now = call(env.GetTime)
+        if not okNow or hidden(now) or type(now) ~= "number" then return nil end
+        local left = start + length - now
+        if left < 0 then return 0 end
+        return left
+    end
+
     local function flag(ok, v)
         if not ok or hidden(v) or type(v) ~= "boolean" then return nil end
         return v
