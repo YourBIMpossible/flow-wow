@@ -250,6 +250,7 @@ Nav\InvitePrompt.lua
 Items\QuestBags.lua
 Spells\TrainAdvice.lua
 Spells\Talents.lua
+UI\TalentsWindow.lua
 Nav\RoutePickups.lua
 Nav\RidingStep.lua
 Items\ProfPlan.lua
