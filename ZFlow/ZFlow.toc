@@ -231,3 +231,4 @@ UI\RouteTracker.lua
 Nav\QuestAdvice.lua
 Spells\TrainAdvice.lua
 Nav\HearthAdvice.lua
+UI\DungeonTracker.lua

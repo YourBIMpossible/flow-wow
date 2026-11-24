@@ -276,4 +276,39 @@ tests["dungeon window 343: a summary line above the tabs: name, level range, que
     t.eq(s and { s.text, s.right, s.sub }, { "Shadowfang Keep", "Level 27", "1 quest" }, "follows the pick")
 end
 
+-- Twin low note: the other three groups' icons. unfold: a group to open
+-- first (Not for you is folded at first).
+local function iconsOf(c, unfold)
+    local last
+    local real = c.kitWindow
+    c.kitWindow = function(id, tree, extra)
+        last = tree
+        local h = real(id, tree, extra)
+        if type(h) == "table" then
+            local update = h.update
+            h.update = function(now)
+                last = now
+                return update(now)
+            end
+        end
+        return h
+    end
+    open(c)
+    if unfold then c.kitClick(ID, "group." .. unfold) end
+    local icons = {}
+    ns.Kit.Each(last, function(part)
+        if part.kind == "line" and type(part.text) == "string" then icons[part.text] = part.icon end
+    end)
+    return icons
+end
+
+tests["dungeon window icons: in your log, inside, and not for you"] = function(t)
+    local look = ns.Kit.look.icon
+    local icons = iconsOf((boot({ log = { { id = 101, title = "Red Silk", objectives = {} } } })))
+    t.eq(icons["Red Silk"], look.questInLog, "in your log")
+    t.eq(icons["Deep Inside"], look.questAvailable, "inside: the available mark")
+    local horde = iconsOf((boot({ faction = "Horde" })), "notforyou")
+    t.eq(horde["Red Silk"], look.questNotForYou, "the other faction's quest")
+end
+
 return tests
