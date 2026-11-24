@@ -32,8 +32,9 @@ local _, ns = ...
 -- that order; or the one gather_skill step of a gathering profession with
 -- no craft to make (P.GATHER; adds gather = the profession and, with a
 -- node seen, node and target). why (with no steps): "no reading", "no recipe" (nothing gives
--- a point and nothing can be learned at this skill), "no colours" (the
--- window's colours were never read) or "no materials"; say is then the one
+-- a point and nothing can be learned at this skill) or "no materials";
+-- colours never read is one open_window step, and a short material with no
+-- source seen one find_material step (review of section 405 item 4); say is then the one
 -- thing a new player does next, in plain words (section 383).
 --
 -- Only orange (sure) and yellow (maybe) give a point. Sure comes first,
@@ -59,6 +60,7 @@ P.SAY = {
     ["no colours"] = "Open your %s window once",
     ["no materials"] = "Get the materials for %s",
     ["no recipe"] = "Visit a %s trainer for new recipes",
+    ["known recipe"] = "Make %s",
     ["at the top"] = "%s is done: the top rank is reached",
 }
 -- Section 400 item 2: the last rank's end in Classic. No rank past it to train.
@@ -87,8 +89,22 @@ P.GATHER_NEAR = "%s; the nearest seen is %s"
 P.SAY_GATHER = "Learn %s from a trainer, then gather once"
 -- "no recipe" with a trainer of this profession seen.
 P.SAY_TRAINER = "Visit %s for new %s recipes"
+-- Review of section 405 item 4: the steps for the two plans that ended
+-- with a line only. The window's colours were never read; a short material
+-- with no source seen (never the auction house).
+P.OPEN_WINDOW = "Open your %s window"
+P.FIND = "Find %s: no source seen yet"
+P.FIND_UNNAMED = "the materials for %s"
 P.SMELT_PROF = "Mining"
 P.SMELT_STATION = "forge"
+-- Lead section 414: a craft on a colour last seen at a lower skill, and
+-- what to look for when no place of a station is known.
+P.STALE = "%s; last seen giving points at %d"
+P.LOOK = {
+    anvil = "Look for an anvil, by a blacksmith in a town. Its place is saved once you craft there.",
+    forge = "Look for a forge, by a blacksmith or a mining trainer in a town. Its place is saved once you smelt there.",
+    fire = "Look for a cooking fire or a stove, or light your own. Its place is saved once you cook there.",
+}
 P.CHANCE = { optimal = "sure", medium = "maybe" }
 
 local function whole(n)
@@ -145,6 +161,28 @@ local function colourAt(spans, skill)
     return nil
 end
 
+-- Lead section 414 (a): the skill has risen past every skill at which this
+-- recipe was seen giving a point, and it was never seen green or grey at or
+-- below the skill: the last skill it was seen orange or yellow at. A colour
+-- only goes down, so it may still give a point; it is not known to. nil
+-- when it was seen easier, or never seen giving a point below the skill.
+local function staleAt(spans, skill)
+    if type(spans) ~= "table" then return nil end
+    for _, d in ipairs({ "easy", "trivial" }) do
+        local s = spans[d]
+        if type(s) == "table" and type(s.lo) == "number" and s.lo <= skill then return nil end
+    end
+    local last
+    for _, d in ipairs({ "optimal", "medium" }) do
+        local s = spans[d]
+        if type(s) == "table" and type(s.lo) == "number" and type(s.hi) == "number"
+            and s.hi < skill and (not last or s.hi > last) then
+            last = s.hi
+        end
+    end
+    return last
+end
+
 local function cost(input, mats)
     local total = 0
     for item, per in pairs(mats) do
@@ -176,13 +214,20 @@ function P.Candidates(input)
         if type(r) == "table" and r.profession == input.prof and r.partial ~= true
             and type(r.mats) == "table" and next(r.mats) ~= nil then
             local chance, span = colourAt(colours[name], input.skill)
+            local stale
+            if not chance then
+                stale = staleAt(colours[name], input.skill)
+                if stale then chance = "maybe" end
+            end
             if chance then
-                out[#out + 1] = { recipe = name, entry = r, chance = chance, span = span,
+                out[#out + 1] = { recipe = name, entry = r, chance = chance, span = span, stale = stale,
                     cost = cost(input, r.mats) }
             end
         end
     end
     table.sort(out, function(a, b)
+        -- A colour seen at this skill comes before one only seen lower.
+        if (a.stale == nil) ~= (b.stale == nil) then return a.stale == nil end
         if a.chance ~= b.chance then return a.chance == "sure" end
         if (a.cost == nil) ~= (b.cost == nil) then return a.cost ~= nil end
         if a.cost ~= b.cost then return a.cost < b.cost end
@@ -217,6 +262,8 @@ end
 -- the cap; never past the cap.
 local function limit(input, c)
     local left = input.max - input.skill
+    -- A colour last seen below this skill: one craft, then look again.
+    if c.stale then return math.min(left, 1) end
     if c.chance == "sure" then return math.min(left, c.span.hi - input.skill + 1) end
     return left
 end
@@ -292,11 +339,37 @@ local function learnStep(input)
 end
 
 -- Section 400 item 2: the book read holds no recipe of this profession.
+-- Was a trainer list of this profession, with its trainer named, seen?
+-- (A shipped list names no trainer.)
+local function trainerSeen(input)
+    for _, l in pairs(type(input.trainerLists) == "table" and input.trainerLists or {}) do
+        if type(l) == "table" and l.profession == input.prof and type(l.npc) == "string" then return true end
+    end
+    return false
+end
+
 local function bookEmpty(input)
     for _, r in pairs(type(input.book) == "table" and input.book or {}) do
         if type(r) == "table" and r.profession == input.prof then return false end
     end
     return true
+end
+
+-- Lead section 419: the first known recipe of this profession, by name,
+-- that gives a point at this skill: orange or yellow seen here, or (section
+-- 414 a) last seen orange or yellow lower and never seen green or grey.
+-- Its materials need not be known. nil when none does.
+local function pointRecipe(input)
+    local colours = type(input.colours) == "table" and input.colours or {}
+    local names = {}
+    for name, r in pairs(type(input.book) == "table" and input.book or {}) do
+        if type(r) == "table" and r.profession == input.prof
+            and (colourAt(colours[name], input.skill) or staleAt(colours[name], input.skill)) then
+            names[#names + 1] = name
+        end
+    end
+    table.sort(names)
+    return names[1]
 end
 
 local function firstRecipeStep(input)
@@ -352,6 +425,13 @@ local function matLine(input, item, need, bags, bank, smelt)
     return m
 end
 
+-- Lead section 414 (b): no place of this station is known: what to look
+-- for, said with the step (input.looks, set by the live read).
+local function lookFor(input, kind, target)
+    if input.looks ~= true or input.atStation == true or target ~= nil then return nil end
+    return P.LOOK[kind]
+end
+
 local function craftSteps(input, c)
     local n = limit(input, c)
     for item, per in pairs(c.entry.mats) do
@@ -379,6 +459,7 @@ local function craftSteps(input, c)
             end
             parts[#parts + 1] = { kind = "make_part", item = item, count = short, recipe = smelt,
                 station = P.SMELT_STATION, from = { item = ore, count = short * per },
+                target = input.smeltTarget, look = lookFor(input, P.SMELT_STATION, input.smeltTarget),
                 text = string.format("Smelt %d %s at %s, for %s", short, itemName(input, item),
                     article(P.SMELT_STATION), c.recipe) }
         end
@@ -387,8 +468,10 @@ local function craftSteps(input, c)
     for _, s in ipairs(ores) do steps[#steps + 1] = s end
     for _, s in ipairs(parts) do steps[#steps + 1] = s end
     for _, s in ipairs(banks) do steps[#steps + 1] = s end
-    local at = ""
+    local at, read, look = "", reading(input), nil
+    if c.stale then read = string.format(P.STALE, read, c.stale) end
     if type(input.station) == "string" then
+        look = lookFor(input, input.station, input.stationTarget)
         at = " at " .. article(input.station)
         if input.atStation ~= true then
             steps[#steps + 1] = { kind = "go_station", station = input.station, target = input.stationTarget,
@@ -396,8 +479,8 @@ local function craftSteps(input, c)
         end
     end
     steps[#steps + 1] = { kind = "craft", recipe = c.recipe, item = c.entry.makes, count = n,
-        station = input.station, text = string.format("Make %d %s%s (%s)", n, c.recipe, at, reading(input)),
-        mats = mats }
+        station = input.station, text = string.format("Make %d %s%s (%s)", n, c.recipe, at, read),
+        mats = mats, stale = c.stale, look = look }
     return steps
 end
 
@@ -435,6 +518,11 @@ local function sourcedSteps(input, c)
     return steps
 end
 
+-- The step that reads the window's recipe colours.
+local function openStep(input)
+    return { kind = "open_window", prof = input.prof, text = string.format(P.OPEN_WINDOW, input.prof) }
+end
+
 local function sourced(input)
     return type(ns.ProfSources) == "table" and (input.nodes ~= nil or input.vendorPrice ~= nil)
 end
@@ -448,6 +536,30 @@ local function coloursRead(input)
         end
     end
     return false
+end
+
+-- A short-materials plan whose craft cannot follow yet: per short
+-- material, the source seen for it (the auction house too, lead section
+-- 407 item 1), else a step to find it. nil when
+-- nothing is short.
+local function materialSteps(input, c)
+    local n = math.max(1, limit(input, c))
+    local steps = {}
+    for _, item in ipairs(sortedKeys(c.entry.mats)) do
+        local short = c.entry.mats[item] * n - have(input, item)
+        if short > 0 then
+            local s = sourced(input) and ns.ProfSources.For(input, item, short) or nil
+            if not s then
+                local name = call(input.name, item)
+                if type(name) ~= "string" or name == "" then name = string.format(P.FIND_UNNAMED, c.recipe) end
+                s = { kind = "find_material", item = item, count = short, text = string.format(P.FIND, name) }
+            end
+            s.recipe = c.recipe
+            steps[#steps + 1] = s
+        end
+    end
+    if #steps == 0 then return nil end
+    return steps
 end
 
 local function empty(why, input, about)
@@ -526,11 +638,26 @@ function P.Plan(input)
         local steps = sourcedSteps(input, list[1])
         if steps then return thenLine(input, list, list[1], steps) end
     end
-    if #list > 0 then return empty("no materials", input, list[1].recipe) end
+    if #list > 0 then
+        local steps = materialSteps(input, list[1])
+        if steps then return steps end
+        return empty("no materials", input, list[1].recipe)
+    end
     if bookEmpty(input) then return { learnStep(input) or firstRecipeStep(input) } end
-    if not coloursRead(input) then return empty("no colours", input) end
+    if not coloursRead(input) then return { openStep(input) } end
+    -- Lead section 419: a known recipe that gives a point is named before
+    -- any trainer step; a trainer step only when none does.
+    local known = pointRecipe(input)
+    if known then return empty("known recipe", input, known) end
     local learn = learnStep(input)
     if learn then return { learn } end
+    -- Review of section 405 item 4: every learned recipe outgrown and no
+    -- trainer list of this profession seen: a trainer is the next step.
+    if not trainerSeen(input) then
+        local step = firstRecipeStep(input)
+        step.outgrown = true
+        return { step }
+    end
     return empty("no recipe", input)
 end
 
@@ -567,8 +694,42 @@ local function stationTarget(stations, kind, pos)
     return { map = best.map, x = best.x, y = best.y }
 end
 
+-- Lead section 414 (a): the saved readings, each with the skill the game's
+-- own skill line has now when that is at or past the saved one. A reading
+-- is saved when the profession window is seen; the skill line moves with
+-- every point, window or no window. Only professions with a saved reading;
+-- a new table, the saved one is not written.
+function P.Readings(client, readings)
+    if type(readings) ~= "table" then return readings end
+    local lines = ask(client, "skillRanks")
+    if type(lines) ~= "table" then return readings end
+    local out = {}
+    for prof, r in pairs(readings) do
+        out[prof] = r
+        local line = lines[prof]
+        if type(r) == "table" and whole(r.skill) and whole(r.max) and type(line) == "table"
+            and whole(line.rank) and whole(line.max) and line.rank <= line.max
+            and line.rank >= r.skill and line.max >= r.max
+            and (line.rank ~= r.skill or line.max ~= r.max) then
+            local live = {}
+            for k, v in pairs(r) do live[k] = v end
+            live.skill, live.max = line.rank, line.max
+            out[prof] = live
+        end
+    end
+    return out
+end
+
+-- The stations seen: the key's own and where a craft succeeded
+-- (Items/CraftSpots.lua).
+local function stationsSeen(store)
+    local CS = ns.CraftSpots
+    if type(CS) == "table" and type(CS.All) == "function" then return CS.All(store) end
+    return saved(store, "account", "learned.keyStations")
+end
+
 function P.Input(client, store, prof, nodeSource)
-    local readings = saved(store, "char", "learned.facts.profSkill")
+    local readings = P.Readings(client, saved(store, "char", "learned.facts.profSkill"))
     local r = get(readings, prof)
     -- Queue item A2: a profession with no window (Herbalism, Skinning) never
     -- saves a reading, so its skill is read from the skill lines.
@@ -583,9 +744,18 @@ function P.Input(client, store, prof, nodeSource)
     local prices = saved(store, "account", "learned.prices")
     local kind = get(get(ns.Nav, "PROF_STATION"), prof)
     local pos = ask(client, "position")
-    local stations = saved(store, "account", "learned.keyStations")
+    local stations = stationsSeen(store)
     local target
     if kind then target = stationTarget(stations, kind, pos) end
+    -- Lead section 406 item 3: recipe facts through one interface (seen in
+    -- game, then the shipped table); seen only when it is not loaded.
+    local facts
+    if ns.RecipeFacts then facts = ns.RecipeFacts.Read(store) end
+    if type(facts) ~= "table" then
+        facts = { book = saved(store, "char", "learned.facts.recipeBook"),
+            trainerLists = saved(store, "char", "learned.trainerLists") }
+    end
+    local smeltTarget = stationTarget(stations, P.SMELT_STATION, pos)
     local nodes
     if type(nodeSource) == "table" and type(nodeSource.Nodes) == "function" then
         local ok, list = pcall(nodeSource.Nodes)
@@ -613,7 +783,7 @@ function P.Input(client, store, prof, nodeSource)
         end,
         skill = get(r, "skill"),
         max = get(r, "max"),
-        book = saved(store, "char", "learned.facts.recipeBook"),
+        book = facts.book,
         colours = saved(store, "char", "learned.recipeColors"),
         bags = bags or {},
         bank = bank,
@@ -634,11 +804,13 @@ function P.Input(client, store, prof, nodeSource)
             local info = ask(client, "itemInfo", item)
             return get(info, "name")
         end,
-        trainerLists = saved(store, "char", "learned.trainerLists"),
+        trainerLists = facts.trainerLists,
         npcs = saved(store, "account", "learned.places.npcs"),
         contOf = function(map) return ask(client, "mapCont", map) end,
         station = kind,
         stationTarget = target,
+        smeltTarget = smeltTarget,
+        looks = true,
         atStation = false,
     }
 end

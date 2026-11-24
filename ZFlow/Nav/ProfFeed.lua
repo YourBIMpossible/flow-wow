@@ -140,7 +140,14 @@ local function candidate(prof, first, input, say)
     if not first then return { prof = prof, rank = 6, text = say or F.OPEN:format(prof) } end
     local c = { prof = prof, step = first, text = first.text }
     if not placed(first.target) then
+        -- Lead section 414: no place known: what to look for goes with it.
+        if type(first.look) == "string" and first.look ~= "" then c.look = first.look end
         if F.HERE[first.kind] then c.rank, c.seconds = 1, 0 else c.rank = 4 end
+        return c
+    end
+    -- A smelt whose forge the player stands at is done here.
+    if F.HERE[first.kind] and call(input.reached, first.target) == true then
+        c.rank, c.seconds = 1, 0
         return c
     end
     local cont = call(input.contOf, first.target.map)
@@ -200,8 +207,8 @@ function F.Pick(input)
     return { rows = rows, pick = best }
 end
 
-local function textStep(text)
-    local step = { still = true, lines = { text } }
+local function textStep(text, look)
+    local step = { still = true, lines = { text, look } }
     if #text <= (N.Waypoint and N.Waypoint.LABEL_MAX or 40) then step.label = text end
     return step
 end
@@ -209,7 +216,7 @@ end
 function F.Step(result)
     local pick = type(result) == "table" and result.pick or nil
     if type(pick) ~= "table" then return nil end
-    if pick.rank ~= 2 and pick.rank ~= 3 then return textStep(pick.text) end
+    if pick.rank ~= 2 and pick.rank ~= 3 then return textStep(pick.text, pick.look) end
     local to = pick.step.target
     local step = { place = { cont = pick.cont, map = to.map, x = to.x, y = to.y },
                    radius = N.PROF_NEAR or 10 }
@@ -343,6 +350,9 @@ function F.Declare(k, diag)
         if not ctx or type(ctx.store) ~= "table" then return nil end
         local ok, v = pcall(ctx.store.get, ctx.store, "char", "learned.facts.profSkill")
         if not ok then return nil end
+        -- Lead section 414: at the skill the game has now, window or not.
+        local P = ns.ProfPlan
+        if type(P) == "table" and type(P.Readings) == "function" then return P.Readings(ctx.client, v) end
         return v
     end
 

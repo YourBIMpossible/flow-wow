@@ -193,6 +193,10 @@ return {
         "Items/Keep.lua",
         "Items/Buyback.lua",
         "Items/RecipeBook.lua",
+        -- Lead section 413: the profession window's row colours, saved for the profession plan (after RecipeBook).
+        "Items/RecipeColours.lua",
+        -- Lead section 414: where a craft of the player's succeeded, saved as an anvil, forge or fire for the profession plan (after RecipeBook, ProfStep).
+        "Items/CraftSpots.lua",
         "Items/RecipeLearned.lua",
         "Items/ProfRecipes.lua",
         "Items/Goals.lua",
@@ -294,5 +298,7 @@ return {
     "Nav/HearthAdvice.lua",
     -- S35 (section 395 item 3): gate words for trip legs (after Gates, Trip).
     "Nav/GateWords.lua",
+    -- Lead section 406 item 3: recipe facts for the profession plan, seen in game then shipped (read by ProfPlan at call time).
+    "Items/RecipeFacts.lua",
     },
 }
