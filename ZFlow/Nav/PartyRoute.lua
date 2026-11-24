@@ -377,6 +377,9 @@ function P.Declare(k, diag)
         local run, why = P.Decode(table.concat(buf.parts))
         if not run then return problem(why) end
         offer = { from = sender, run = run }
+        -- The offer line is under the arrow at once (B-40): redraw it.
+        local arrow = k.use and k.use("arrow")
+        if type(arrow) == "table" and type(arrow.Redraw) == "function" then pcall(arrow.Redraw) end
         local key = sender .. "|" .. p.sid
         if not offered[key] then
             offered[key] = true
