@@ -517,7 +517,7 @@ function Crossings.Declare(k)
     -- it. When the continent changes between two places read off a
     -- flight, N.CrossingSeen gets both and its list is saved. Only what
     -- this client showed; nothing is copied in.
-    local last
+    local last, lastName
     -- S32: the still run the player stands in, the last one long enough to
     -- be a wait (where the boat was boarded), and the place words read.
     local still, board
@@ -530,7 +530,7 @@ function Crossings.Declare(k)
         local here = { cont = zone.cont, map = pos.map, x = pos.x, y = pos.y }
         if not whole(here) then return nil end
         if ask(client, "onTaxi") ~= false then
-            last, still, board = nil, nil, nil
+            last, lastName, still, board = nil, nil, nil, nil
             return nil
         end
         local hereName = N.CrossingName and N.CrossingName(ask(client, "placeText")) or nil
@@ -542,12 +542,12 @@ function Crossings.Declare(k)
             end
         end
         if board and N.CrossingBoardKept then board = N.CrossingBoardKept(board, hereName) end
-        local before = last
-        last = here
+        local before, beforeName = last, lastName
+        last, lastName = here, hereName
         if before == nil or before.cont == here.cont then return nil end
         local apart = N.CrossingApart(function(map) return ask(client, "mapSize", map) end)
         local boarded = board
-        if boarded and N.CrossingBoardKept then boarded = N.CrossingBoardKept(boarded, nil, before, apart) end
+        if boarded and N.CrossingBoardKept then boarded = N.CrossingBoardKept(boarded, beforeName, before, apart) end
         board = nil
         local okBind, bind = pcall(ctx.store.get, ctx.store, "char", Crossings.BIND)
         local list, key, what = N.CrossingSeen(saved(), before, here, {
@@ -600,7 +600,7 @@ function Crossings.Declare(k)
         provides = { Way = function(place) return api.way(place) end },
         ticks = { { every = Crossings.EVERY, when = "always", run = function() api.sample() end } },
         start = function(c) ctx = c end,
-        stop = function() ctx, last, still, board = nil, nil, nil, nil end,
+        stop = function() ctx, last, lastName, still, board = nil, nil, nil, nil, nil end,
     })
     return api
 end
