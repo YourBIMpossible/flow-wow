@@ -93,6 +93,11 @@ local function texts(added)
     return out
 end
 
+-- C-26: the score lines HELM gets after its verdicts with nothing switched
+-- (the head slot read as empty; the pack's weights a first guess).
+local HELM_SCORE = { "Score 4 (dps), 12 (tank)", "vs your head piece: nothing worn",
+                     "Scores use first-guess stat weights." }
+
 -- Lines: client reads to lines ---------------------------------------------
 
 tests["gear tooltip lines: one line for each role the pack has weights for, in name order"] = function(t)
@@ -214,7 +219,8 @@ tests["gear tooltip: hovering gear adds its lines to the tooltip, coloured by to
     local k = start(c)
     t.eq(k:ModuleState(M.NAME), "started")
     local added = c.hover(HELM)
-    t.eq(texts(added), { "Upgrade for your head piece (+4, dps)", "Upgrade for your head piece (+12, tank)" })
+    t.eq(texts(added), { "Upgrade for your head piece (+4, dps)", "Upgrade for your head piece (+12, tank)",
+                         HELM_SCORE[1], HELM_SCORE[2], HELM_SCORE[3] })
     t.eq({ added[1].r, added[1].g, added[1].b }, M.COLOUR.good)
     added = c.hover(PLATE)
     t.eq(texts(added), { "Can't use: " .. ns.GearUsable.REASON.unmet .. ": Plate" })
@@ -232,11 +238,11 @@ tests["gear tooltip: the setting is on by default, and off adds nothing"] = func
     local c = client()
     local k = start(c)
     t.eq(k.settings:get(M.SETTING), true, "on by default")
-    t.eq(#c.hover(HELM), 2)
+    t.eq(#c.hover(HELM), 2 + #HELM_SCORE)
     t.eq(k.settings:set(M.SETTING, false), true)
     t.eq(c.hover(HELM), {}, "switched off")
     t.eq(k.settings:set(M.SETTING, true), true)
-    t.eq(#c.hover(HELM), 2, "and on again, with no reload")
+    t.eq(#c.hover(HELM), 2 + #HELM_SCORE, "and on again, with no reload")
 end
 
 tests["gear tooltip: the row is a bool named gear.tooltip"] = function(t)
@@ -334,7 +340,8 @@ end
 tests["gear tooltip G15: a non-weapon, even one with a speed read, adds no speed line"] = function(t)
     local c = weaponClient()
     start(c)
-    t.eq(texts(c.hover(HELM)), { "Upgrade for your head piece (+4, dps)", "Upgrade for your head piece (+12, tank)" })
+    t.eq(texts(c.hover(HELM)), { "Upgrade for your head piece (+4, dps)", "Upgrade for your head piece (+12, tank)",
+                                 HELM_SCORE[1], HELM_SCORE[2], HELM_SCORE[3] })
 end
 
 tests["gear tooltip G15: a weapon whose speed is not read adds no speed line"] = function(t)

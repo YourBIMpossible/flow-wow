@@ -26,13 +26,21 @@ local _, ns = ...
 --   only "good" and "none" lines and lines[1], and pass no opts):
 --     "Score 10 (dps), 6 (tank)"   the item's score per role the pack has
 --                                  weights for, `role` (spec.role) first
---     "vs your head piece: 2.7 (dps), 3.2 (tank)"   the score of what it was
---                                  held up to; roles held up to different
---                                  slots get a line each
+--     "vs your head piece: +7.3 (dps), +2.8 (tank)"   C-26: what it gains or
+--                                  loses on what it was held up to, per
+--                                  role; roles held up to different slots
+--                                  get a line each
+--     "vs your head piece: nothing worn"   a slot known to be empty (GT2-1)
+--     "vs your head piece: not known"   what you wear there, or its stats,
+--                                  was not read: never a number. The
+--                                  item's own score is still said.
 --     "You're wearing this."       in place of the vs lines, when
 --                                  client.wornLinks() names the same item
 --                                  (Items.Same); not read, or raising: not
 --                                  known, so not said
+--     "Scores use first-guess stat weights."   last, when the pack marks the
+--                                  weights so; with the roles in brackets
+--                                  when only some are
 --   Then, for a weapon whose speed was read, one speed line (G15,
 --   Gear/WeaponSpeed.lua). An error working that line out leaves it off,
 --   keeps the others, and is the second value: lines, err.
@@ -45,7 +53,9 @@ local _, ns = ...
 --
 -- The module: two setting rows, account wide:
 --   gear.tooltip        "Gear verdict on item tooltips", on by default
---   gear.tooltipScore   "Gear score on item tooltips", off by default (G11)
+--   gear.tooltipScore   "Gear score on item tooltips", on by default (G11;
+--                       C-26: the predecessor always showed its score). A
+--                       saved off stays off.
 -- and the word `<slash> gear why` (with its help line) when diag is given.
 -- At start it asks the client to be told about item tooltips:
 --   client.onItemTooltip(fn) -> cancel;  fn(link, add);  add(text, r, g, b)
@@ -68,6 +78,11 @@ M.SCORE_WORD = "Score"
 M.WEARING = "You're wearing this."
 -- GT2-1: what a slot known to be empty is held up as.
 M.NOTHING_WORN = "nothing worn"
+-- C-26: what a slot that was not read is held up as, and the note under
+-- scores made with weights the class pack marks FIRST_GUESS.
+M.NOT_KNOWN = "not known"
+M.FIRST_GUESS = "first guess"
+M.GUESS_NOTE = "Scores use first-guess stat weights"
 M.WORD = "gear"
 M.WHY_CAP = 20
 M.HELP = "why: each piece of gear in your bags with its verdict and score for your role. It changes nothing."
@@ -112,6 +127,25 @@ local function amount(n)
     return string.format("%.1f", rounded)
 end
 
+-- C-26: a gain or loss with its sign ("+7.3", "-15"); one too small to
+-- show (GearTooltip.SAME) is "0".
+local function signed(n)
+    if math.abs(n) < ns.GearTooltip.SAME then return "0" end
+    if n < 0 then return "-" .. amount(-n) end
+    return "+" .. amount(n)
+end
+
+-- C-26: the slot a "no verdict" could not read what you wear in ("head"),
+-- or nil when that is not why there is no verdict.
+local function unreadSlot(result)
+    if result.verdict ~= "none" or type(result.reason) ~= "string" then return nil end
+    local heads = { ns.GearScore.REASON.worn .. ": ", ns.GearScore.REASON.wornStat .. ": " }
+    for i = 1, #heads do
+        if result.reason:sub(1, #heads[i]) == heads[i] then return result.reason:sub(#heads[i] + 1) end
+    end
+    return nil
+end
+
 -- The roles with `first` ahead of the others when it is one of them.
 local function firstOf(roles, first)
     local out = {}
@@ -150,40 +184,65 @@ local function wearing(client, link)
 end
 
 -- G11: the score lines, all "info": the item's score per role, then what it
--- was held up to with that item's score (roles held up to the same slot
--- share a line), or "You're wearing this." in place of those.
+-- was held up to with the gain or loss on it (C-26; roles held up to the
+-- same slot share a line), or "You're wearing this." in place of those,
+-- then the note when the weights are a first guess.
+--   scored  { { role, result, weights, unread } ... }: `weights` the
+--           evidence label of the role's weights; `unread` the slot whose
+--           worn item was not read (then result has the score alone)
 local function scoreLines(scored, worn)
     if #scored == 0 then return {} end
-    local parts = {}
-    for i = 1, #scored do parts[i] = amount(scored[i].result.score) .. " (" .. scored[i].role .. ")" end
+    local parts, guessed = {}, {}
+    for i = 1, #scored do
+        parts[i] = amount(scored[i].result.score) .. " (" .. scored[i].role .. ")"
+        if scored[i].weights == M.FIRST_GUESS then guessed[#guessed + 1] = scored[i].role end
+    end
     local out = { { text = M.SCORE_WORD .. " " .. table.concat(parts, ", "), tone = "info" } }
     if worn == true then
         out[2] = { text = M.WEARING, tone = "info" }
-        return out
-    end
-    local groups, order = {}, {}
-    for i = 1, #scored do
-        local result = scored[i].result
-        if finite(result.against) then
-            local what = ns.GearTooltip.What(result)
-            if groups[what] == nil then
-                groups[what] = {}
-                order[#order + 1] = what
+    else
+        local groups, order = {}, {}
+        for i = 1, #scored do
+            local result, unread = scored[i].result, scored[i].unread
+            local what = nil
+            if unread ~= nil then
+                what = ns.GearTooltip.What({ slot = unread })
+            elseif finite(result.delta) then
+                what = ns.GearTooltip.What(result)
             end
-            local group = groups[what]
-            -- GT2-1: a slot known to be empty is "nothing worn", once, not a 0 per role.
-            if result.empty == true then
-                group.empty = true
-            else
-                group[#group + 1] = amount(result.against) .. " (" .. scored[i].role .. ")"
+            if what ~= nil then
+                if groups[what] == nil then
+                    groups[what] = { unknown = 0 }
+                    order[#order + 1] = what
+                end
+                local group = groups[what]
+                if unread ~= nil then
+                    -- Not read is not known: no number, and not "nothing worn".
+                    group.unknown = group.unknown + 1
+                    group[#group + 1] = M.NOT_KNOWN .. " (" .. scored[i].role .. ")"
+                elseif result.empty == true then
+                    -- GT2-1: a slot known to be empty is "nothing worn", once, not a 0 per role.
+                    group.empty = true
+                else
+                    group[#group + 1] = signed(result.delta) .. " (" .. scored[i].role .. ")"
+                end
             end
         end
+        for i = 1, #order do
+            local group = groups[order[i]]
+            local against = table.concat(group, ", ")
+            if group.unknown > 0 and group.unknown == #group then
+                against = M.NOT_KNOWN   -- for every role: said once
+            elseif group.empty == true then
+                against = M.NOTHING_WORN
+            end
+            out[#out + 1] = { text = "vs " .. order[i] .. ": " .. against, tone = "info" }
+        end
     end
-    for i = 1, #order do
-        local group = groups[order[i]]
-        local against = M.NOTHING_WORN
-        if group.empty ~= true then against = table.concat(group, ", ") end
-        out[#out + 1] = { text = "vs " .. order[i] .. ": " .. against, tone = "info" }
+    if #guessed > 0 then
+        local note = M.GUESS_NOTE
+        if #guessed < #scored then note = note .. " (" .. table.concat(guessed, ", ") .. ")" end
+        out[#out + 1] = { text = note .. ".", tone = "info" }
     end
     return out
 end
@@ -223,8 +282,21 @@ function M.Lines(client, packs, link, opts)
         local usable = type(detail.use) == "table" and detail.use.can == true
         if not usable or only == nil or roles[i] == only then keep(lines) end
         if not usable then break end
-        if roles[i] ~= nil and type(detail.result) == "table" and finite(detail.result.score) then
-            scored[#scored + 1] = { role = roles[i], result = detail.result }
+        if roles[i] ~= nil and type(detail.result) == "table" then
+            if finite(detail.result.score) then
+                scored[#scored + 1] = { role = roles[i], result = detail.result, weights = detail.weights }
+            elseif withScore then
+                -- C-26: what you wear was not read, so the scorer gave no
+                -- number at all. The item's own score does not need it.
+                local unread = unreadSlot(detail.result)
+                if unread ~= nil then
+                    local own = ns.GearScore.Score((ns.GearRead.Stats(gear.stats)), pack.weights[roles[i]].values)
+                    if finite(own) then
+                        scored[#scored + 1] = { role = roles[i], result = { score = own }, weights = detail.weights,
+                                                unread = unread }
+                    end
+                end
+            end
         end
     end
     -- G11: the score lines, after every verdict line (lines[1] stays the
@@ -364,10 +436,12 @@ function M.Declare(k, packs, diag)
             help = "Hover a piece of gear to read whether it is an upgrade for what you wear. It changes nothing.",
             group = "gear", synonyms = { "upgrade", "tooltip", "compare", "armor", "weapon" },
         }, {
-            key = M.SCORE_SETTING, scope = "account", type = "bool", default = false,
+            -- C-26: on unless you saved it off, as the predecessor showed it.
+            key = M.SCORE_SETTING, scope = "account", type = "bool", default = true,
             label = "Gear score on item tooltips",
-            help = "With the gear verdict on, also show the item's score for each role, the score of "
-                .. "what you wear in that slot, or that you are wearing it. It changes nothing.",
+            help = "With the gear verdict on, also show the item's score for each role and how much it "
+                .. "gains or loses on what you wear in that slot, or that you are wearing it. Says so "
+                .. "when the stat weights are a first guess or what you wear was not read. It changes nothing.",
             group = "gear", synonyms = { "score", "worn", "stats", "points" },
         } },
         provides = { Hooked = api.hooked, Errors = api.errors },
