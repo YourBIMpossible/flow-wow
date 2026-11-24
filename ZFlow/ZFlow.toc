@@ -230,6 +230,8 @@ Core\AutoEvidence.lua
 Nav\Trip.lua
 UI\RouteTracker.lua
 Nav\QuestAdvice.lua
+Nav\Activities.lua
+Nav\CrossingWords.lua
 Spells\TrainAdvice.lua
 Nav\ClassTrainerStep.lua
 Items\ProfPlan.lua
