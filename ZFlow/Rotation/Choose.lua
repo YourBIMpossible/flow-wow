@@ -518,10 +518,14 @@ function steps.list(s, pack, prefs, bias, unread)
     bias = bias or {}
     unread = unread or {}
     local gaps = newGaps()
+    local shown   -- F1b: a ready look-only rule, shown only when nothing else is ready
     local i, n = 1, #list
     while i <= n do
         local rule = list[i]
-        if rule.adaptive then
+        if rule.look == true then
+            if not shown and ruleReady(s, rule, prefs, unread, gaps) then shown = rule end
+            i = i + 1
+        elseif rule.adaptive then
             local best, bestBias
             while i <= n and list[i].adaptive do
                 local r = list[i]
@@ -536,6 +540,11 @@ function steps.list(s, pack, prefs, bias, unread)
             if ruleReady(s, rule, prefs, unread, gaps) then return suggest(rule) end
             i = i + 1
         end
+    end
+    -- Only with nothing left unread: a gap's reason is the truer line.
+    if shown and next(gaps.target) == nil and next(gaps.range) == nil and not gaps.declined
+        and next(unread) == nil then
+        return suggest(shown)
     end
     return nil, noteWith("no rule ready", unread, gaps)
 end

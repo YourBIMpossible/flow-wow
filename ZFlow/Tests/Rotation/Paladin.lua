@@ -43,7 +43,8 @@ local function fires(spell, s)
     local rules = rulesFor(spell)
     assert(#rules > 0, "no rule for " .. spell)
     for _, rule in ipairs(rules) do
-        if rule.when(s) then return true end
+        -- F1b: a look-only rule is shown, never cast; it does not fire.
+        if rule.look ~= true and rule.when(s) then return true end
     end
     return false
 end
@@ -416,6 +417,13 @@ return {
         s = fury()
         s.role = nil
         t.ok(not fires("Righteous Fury", s), "no role: never")
+        -- F1b: with no role the look-only "Choose a role" line is ready instead.
+        local look
+        for _, rule in ipairs(rulesFor("Righteous Fury")) do
+            if rule.look == true then look = rule end
+        end
+        t.ok(look and look.label == "Choose a role" and look.when(s), "no role: Choose a role shown")
+        t.ok(look and not look.when(fury()), "tank: no Choose a role line")
         local knows = { "Righteous Fury", "Devotion Aura", "Blessing of Might", "Seal of Righteousness" }
         t.eq(advice({ role = "tank", hostile = false, inCombat = false }, knows, { ["Devotion Aura"] = true }),
              "Righteous Fury", "before the blessing and the seal")
