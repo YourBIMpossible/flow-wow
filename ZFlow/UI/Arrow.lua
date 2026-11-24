@@ -1325,30 +1325,6 @@ function Arrow.Start(k, diag, own)
                 relayout()
             end)
             listen("QUEST_LOG_UPDATE", changed)
-            -- R7 (section 387): leaving a zone with quests still open there
-            -- says so once in chat. Asked before the quests are read again,
-            -- so what is open is still that of the zone left.
-            if type(quests.openHere) == "function" and N.LeavingSay then
-                local leavingMemo, zoneWas = {}, nil
-                local function zoneNow()
-                    local z = ask(client, "zone")
-                    if type(z) ~= "table" then return nil end
-                    return z.zone
-                end
-                zoneWas = zoneNow()
-                listen("ZONE_CHANGED_NEW_AREA", guarded(function()
-                    local from, to = zoneWas, zoneNow()
-                    zoneWas = to
-                    if from == nil or to == nil or from == to or not Arrow.ZoneFirstOn(k) then return end
-                    local toName
-                    if type(client.mapName) == "function" then
-                        local okName, n = pcall(client.mapName, to)
-                        if okName then toName = n end
-                    end
-                    N.LeavingSay(leavingMemo, function(line) client.print(id.title .. ": " .. line) end,
-                        from, toName, (quests.openHere()))
-                end))
-            end
             listen("ZONE_CHANGED_NEW_AREA", changed)
             -- The quest the player follows changed, or a quest came or went
             -- (sections 131 and 133). The names are on warcraft.wiki.gg, each

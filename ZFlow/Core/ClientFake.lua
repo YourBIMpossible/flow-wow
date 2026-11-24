@@ -464,16 +464,6 @@ function ns.make.fakeClient(opts)
     function c.mapCont(map)
         return s.mapConts and s.mapConts[map] or nil
     end
-    -- R7: a map's name; leave it out for not known.
-    function c.mapName(map)
-        local names = s.mapNames
-        if names == nil then return nil end
-        return names[map]
-    end
-    function c.setMapName(map, name)
-        s.mapNames = s.mapNames or {}
-        s.mapNames[map] = name
-    end
     function c.position()
         if not s.position then return nil end
         return { map = s.position.map, x = s.position.x, y = s.position.y }

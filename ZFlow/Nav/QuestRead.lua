@@ -318,30 +318,5 @@ function N.QuestWatch(client, opts)
                  quest = last.quest, from = last.from }
     end
 
-    -- R7: the titles of the quests with something left on the map last
-    -- read, in log order: an unfinished objective with a point there, or a
-    -- complete quest handed in there. The map it was read for comes too.
-    local function openHere()
-        local names = {}
-        if type(rows) ~= "table" or type(places) ~= "table" then return names, map end
-        local function has(spot) return type(spot) == "table" and type(spot.points) == "table" and #spot.points > 0 end
-        for _, row in ipairs(rows) do
-            local e = places[row.id]
-            local open = false
-            if type(e) == "table" and not row.failed then
-                if row.complete then
-                    open = has(e.turnIn)
-                else
-                    local spots = type(e.objectives) == "table" and e.objectives or {}
-                    for i, o in ipairs(row.objectives or {}) do
-                        if not o.done and has(spots[i]) then open = true end
-                    end
-                end
-            end
-            if open and type(row.title) == "string" then names[#names + 1] = row.title end
-        end
-        return names, map
-    end
-
-    return { step = step, refresh = refresh, state = state, openHere = openHere }
+    return { step = step, refresh = refresh, state = state }
 end

@@ -474,9 +474,6 @@ KIND.act[#KIND.act + 1] = "addonSend"
 -- profession window opens or changes; never by the capture.
 READS.trackingRaw = false
 READS.tradeSkillAnswers = false
--- R7 (section 387): a map's name for the leaving-zone chat line
--- (UI/Arrow.lua); never by the capture.
-READS.mapName = false
 
 
 -- S32: the zone and sub-zone words behind client.placeText, read by
