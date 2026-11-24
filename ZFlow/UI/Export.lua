@@ -9,11 +9,14 @@ local _, ns = ...
 -- Fields are split by "^" because the game reads "|" in a chat line as the
 -- start of a colour or link code; no "^" inside a value. Kinds written here:
 --   export  the version of this format, the game time, the addon
---   you     class, faction, level, money, bag room, where you are
+--   you     class, faction, level, money, bag room, where you are,
+--           experience (xp, xpmax, rested), the hearthstone (hearthleft
+--           seconds until ready, hearth the place it is set to)
 --   quest   a quest in your log;   obj  one of its objectives
 --   skill   a profession and its rank, as last seen in its window
+--   improve one line of the advice panel (importance, id, text)
 --   end     how many lines there are
--- Legacy Flow's goal, plan, opt, flight, fm, gate, ride and improve records
+-- Legacy Flow's goal, plan, opt, flight, fm, gate and ride records
 -- need Z-Flow's route in a settled shape; they are not written yet (see the
 -- note). Nothing personal is in it but your class: no name, no realm.
 --
@@ -28,7 +31,8 @@ local _, ns = ...
 --     nil values left out
 --   Export.Parse(line) -> { kind =, key = value, ... } or nil
 --   Export.Lines(r) -> every record, from the reads r (Export.Read's shape)
---   Export.Read(client, store) -> the reads, each nil when not read
+--   Export.Read(client, store[, advice]) -> the reads, each nil when not
+--     read; advice() answers the advice panel's list ({ id, text, priority })
 --   Export.Declare(k, diag) -> api   (api.lines() -> the last lines made)
 local X = {}
 ns.Export = X
@@ -37,7 +41,7 @@ X.VERSION = 1
 X.NAME = "export"
 X.WORD = "export"
 X.PATH = "export"
-X.HELP = "your class, quests and professions as lines a script reads (export dump prints them)"
+X.HELP = "your class, quests, professions and advice as lines a script reads (export dump prints them)"
 
 -- A value as text with nothing that breaks a line or a field.
 function X.Clean(v)
@@ -89,10 +93,17 @@ function X.Lines(r)
 
     local pos = type(r.position) == "table" and r.position or {}
     local zone = type(r.zone) == "table" and r.zone or {}
+    -- P-QOL (lead section 368): experience and the hearthstone, after the
+    -- fields that were there. A place name is text, so it goes last.
+    local xp = type(r.xp) == "table" and r.xp or {}
+    local hearth
+    if type(r.hearth) == "string" and r.hearth ~= "" then hearth = r.hearth end
     add("you", {
         { "class", r.class }, { "faction", r.faction }, { "level", num(r.level) }, { "money", num(r.money) },
         { "bagsfree", num(r.bagsFree) }, { "cont", num(zone.cont) }, { "zone", num(zone.zone) },
         { "map", num(pos.map) }, { "x", num(pos.x) and pos.x * 100 or nil }, { "y", num(pos.y) and pos.y * 100 or nil },
+        { "xp", num(xp.cur) }, { "xpmax", num(xp.max) }, { "rested", num(xp.rested) },
+        { "hearthleft", num(r.hearthLeft) }, { "hearth", hearth },
     })
 
     for _, q in ipairs(type(r.quests) == "table" and r.quests or {}) do
@@ -119,6 +130,15 @@ function X.Lines(r)
         add("skill", { { "rank", num(s.skill) }, { "max", num(s.max) }, { "name", name } })
     end
 
+    -- P-QOL (lead section 368): the advice panel's lines, in its order.
+    for _, e in ipairs(type(r.improve) == "table" and r.improve or {}) do
+        if type(e) == "table" and type(e.text) == "string" and e.text ~= "" then
+            local id
+            if type(e.id) == "string" then id = e.id end
+            add("improve", { { "importance", num(e.priority) }, { "id", id }, { "text", e.text } })
+        end
+    end
+
     add("end", { { "lines", #out + 1 } })
     return out
 end
@@ -131,7 +151,7 @@ local function read(client, name)
     return nil
 end
 
-function X.Read(client, store)
+function X.Read(client, store, advice)
     local free
     local bags = read(client, "bags")
     if type(bags) == "table" then
@@ -141,7 +161,14 @@ function X.Read(client, store)
         end
     end
     local skills = store and store:get("char", "learned.facts.profSkill")
+    local improve
+    if type(advice) == "function" then
+        local ok, list = pcall(advice)
+        if ok and type(list) == "table" then improve = list end
+    end
     return {
+        xp = read(client, "xp"), hearth = read(client, "bindLocation"), hearthLeft = read(client, "hearthCooldown"),
+        improve = improve,
         at = read(client, "clock"), class = read(client, "class"), faction = read(client, "faction"),
         level = read(client, "level"), money = read(client, "money"), bagsFree = free,
         zone = read(client, "zone"), position = read(client, "position"), quests = read(client, "questLog"),
@@ -158,7 +185,12 @@ function X.Declare(k, diag)
         diag.commands[X.WORD] = function(arg)
             local function say(s) k.client.print(k.id.title .. ": " .. s) end
             if not ctx then say("export: not started yet") return end
-            local r = X.Read(ctx.client, ctx.store)
+            -- The advice panel is asked for only when it is there.
+            local advisor
+            if type(k.use) == "function" then advisor = k.use("advisor") end
+            local advice
+            if type(advisor) == "table" and type(advisor.List) == "function" then advice = advisor.List end
+            local r = X.Read(ctx.client, ctx.store, advice)
             r.addon = k.id.addon
             local lines = X.Lines(r)
             made = lines
