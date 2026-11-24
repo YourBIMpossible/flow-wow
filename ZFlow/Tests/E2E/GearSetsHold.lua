@@ -8,6 +8,10 @@ local _, ns = ...
 -- Offline: the reads are the fake client's, not the game's. Not tested in game.
 -- Made-up items only.
 local tests = {}
+-- Item names carry the game's quality colour (Items/Present.lua, Tint; the
+-- colour itself is tested in Tests/Items/ItemColourTests.lua). These tests are
+-- about the words, so they read them with the colour taken off.
+local plain = ns.ItemPresent.Plain
 
 local CLOAK, SWORD, RING, HELM = 1000, 2000, 15234, 3000
 local LINK = {
@@ -49,14 +53,14 @@ local function joined(lines) return table.concat(lines or {}, " / ") end
 
 local function has(lines, text)
     for _, l in ipairs(lines or {}) do
-        if l == text then return true end
+        if plain(l) == text then return true end
     end
     return false
 end
 
 local function starts(lines, prefix)
     for _, l in ipairs(lines or {}) do
-        if l:sub(1, #prefix) == prefix then return true end
+        if plain(l):sub(1, #prefix) == prefix then return true end
     end
     return false
 end
@@ -64,7 +68,7 @@ end
 local function count(lines, prefix)
     local n = 0
     for _, l in ipairs(lines or {}) do
-        if l:sub(1, #prefix) == prefix then n = n + 1 end
+        if plain(l):sub(1, #prefix) == prefix then n = n + 1 end
     end
     return n
 end
@@ -243,7 +247,7 @@ tests["gear sets: a set piece in the bank is not offered for sale by the banker 
         local lines, part = say(c, "banker"), nil
         local out = {}
         for _, l in ipairs(lines) do
-            if l:find("^In your bank") then part = l:find("sell", 1, true) and "sell" or "bank" end
+            if plain(l):find("^In your bank") then part = plain(l):find("sell", 1, true) and "sell" or "bank" end
             if part == "sell" then out[#out + 1] = l end
         end
         return out
@@ -280,7 +284,7 @@ tests["gear sets: looting a set piece gives no sell note; once forgotten it does
     from = #c.printed
     c.fire("CHAT_MSG_LOOT", "loot cloak")
     t.eq(#c.printed, from + 1, "a note once the set is forgotten")
-    t.ok(tostring(c.printed[#c.printed]):find("Junk: 1 x Frayed Cloak", 1, true) ~= nil,
+    t.ok(ns.ItemPresent.Plain(tostring(c.printed[#c.printed])):find("Junk: 1 x Frayed Cloak", 1, true) ~= nil,
         "the junk note: " .. tostring(c.printed[#c.printed]))
 end
 
@@ -298,6 +302,13 @@ tests["gear sets: hovering a set piece adds the keep line; another suffix gets n
     t.ok(has(lines(LINK.cloak), "Keep: in your tank set"), "the keep line: " .. joined(lines(LINK.cloak)))
     t.ok(has(lines(LINK.ringBear), "Keep: in your tank set"), "the worn ring too")
     t.ok(not has(lines(LINK.ringEagle), "Keep: in your tank set"), "not the other ring: " .. joined(lines(LINK.ringEagle)))
+end
+
+for name, fn in pairs(tests) do
+    tests[name] = function(t)
+        return fn(setmetatable({ eq = function(got, want, msg) return t.eq(plain(got), plain(want), msg) end },
+            { __index = t }))
+    end
 end
 
 return tests

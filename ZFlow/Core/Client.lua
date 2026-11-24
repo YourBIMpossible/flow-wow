@@ -557,6 +557,39 @@ function ns.make.client(env)
         return out
     end
 
+    -- G3: what is on the open merchant's Buyback tab, in the tab's order:
+    --   { { index = n, item = link, name = text, price = copper to buy it
+    --       back, count = how many }, ... }
+    -- A field the client did not give is left out, never guessed. nil
+    -- unless the merchant window is known to be open, and nil when the
+    -- count or any one item could not be read or is marked secret: never a
+    -- shorter list. This only reads. Nothing here buys anything back.
+    -- First guesses, not seen in game on 16001: GetNumBuybackItems,
+    -- GetBuybackItemLink(index), GetBuybackItemInfo(index) answering name,
+    -- texture, price, quantity.
+    function c.returnableItems()
+        if c.merchantOpen() ~= true then return nil end
+        local ok, count = call(env.GetNumBuybackItems)
+        if not ok or hidden(count) or not wholeCount(count) then return nil end
+        local out = {}
+        for index = 1, count do
+            local okLink, link = call(env.GetBuybackItemLink, index)
+            if not okLink or (link ~= nil and hidden(link)) then return nil end
+            local okInfo, name, _, price, quantity = call(env.GetBuybackItemInfo, index)
+            if not okInfo or (name ~= nil and hidden(name)) or (price ~= nil and hidden(price))
+                or (quantity ~= nil and hidden(quantity)) then
+                return nil
+            end
+            local row = { index = index }
+            if type(link) == "string" then row.item = link end
+            if type(name) == "string" and name ~= "" then row.name = name end
+            if wholeCount(price) then row.price = price end
+            if wholeCount(quantity) and quantity > 0 then row.count = quantity end
+            out[index] = row
+        end
+        return out
+    end
+
     -- The profession whose window is open, and every recipe in it:
     --   { profession = skill line, skill = n, max = n,
     --     recipes = { { id =, name =, learned = true / false,
@@ -6815,6 +6848,17 @@ function ns.make.client(env)
         return nil
     end
 
+    -- How fast the player is moving, in yards a second: GetUnitSpeed(
+    -- "player") (0 standing still), or nil when it cannot be read.
+    function c.speed()
+        local ok, speed = call(env.GetUnitSpeed, "player")
+        if ok and type(speed) == "number" and not hidden(speed) and speed == speed and speed >= 0
+            and speed < math.huge then
+            return speed
+        end
+        return nil
+    end
+
     -- A panel of rows (the craft bar): c.panel h, always closable, with
     -- shown() and draw(rows, act). rows, top to bottom:
     --   { kind = "info", text = }
@@ -9679,7 +9723,10 @@ function ns.make.client(env)
         -- no row. First guesses, none seen in game on 16001.
         local KIT_ROW = { frame = "T2", search = "T5", tab = "T7", button = "T16" }
         local KIT_OWN = { close = "UIPanelCloseButton", check = "UICheckButtonTemplate",
-            input = "InputBoxTemplate", scroll = "UIPanelScrollFrameTemplate" }
+            input = "InputBoxTemplate", scroll = "UIPanelScrollFrameTemplate", slider = "OptionsSliderTemplate" }
+        -- A template-made slider gets a name of ours: the stock slider
+        -- template names its labels from it.
+        local kitSliders = 0
         -- The template to ask for a part, or nil when the probe found it
         -- missing: then no create is tried and the plain form draws. A row
         -- not asked yet, one that works and one made but not confirmed are
@@ -9781,6 +9828,14 @@ function ns.make.client(env)
             local pools, on, wired, firstOf = {}, {}, {}, {}
             -- Lead section 340: each scroll's offset before this draw.
             local keeps = {}
+            -- The one dropdown list that is open, or nil. Closed by a pick, a
+            -- second press on its box, a turn of the wheel, a draw and the
+            -- window hiding.
+            local openDrop = nil
+            local function closeDrop()
+                if openDrop ~= nil then method(openDrop, "Hide") end
+                openDrop = nil
+            end
             local function take(parent, key, make, loose)
                 local by = pools[parent]
                 if by == nil then
@@ -10231,6 +10286,7 @@ function ns.make.client(env)
                     local okC, cur = method(scroll, "GetVerticalScroll")
                     local okR, range = method(scroll, "GetVerticalScrollRange")
                     if not okC or not okR or type(cur) ~= "number" or type(range) ~= "number" then return end
+                    closeDrop()
                     local to = cur - delta * size.wheelLines * size.lineHeight
                     if to > range then to = range end
                     if to < 0 then to = 0 end
@@ -10324,8 +10380,135 @@ function ns.make.client(env)
                 end
                 return { b }
             end
+            -- A choice as the game's dropdown: one box showing the item in
+            -- use; a press opens the list under it, a press on an item picks
+            -- it. The list stands on the window, above the rows, so no row
+            -- and no scroll cuts it.
+            local function dropdown(part, on1, x, colW, okay)
+                local n = #part.items
+                local list
+                local b = button(on1, part.items[part.selected] or "", colW, okay, function()
+                    if list == nil then return end
+                    local mine = openDrop == list
+                    closeDrop()
+                    if mine then return end
+                    method(list, "Show")
+                    method(list, "Raise")
+                    openDrop = list
+                end)
+                if b == nil then return {} end
+                sized(b, colW, size.button)
+                method(b, "SetPoint", "LEFT", on1, "LEFT", x, 0)
+                local arrow = texture(b, "OVERLAY", "drop")
+                if arrow ~= nil then
+                    sized(arrow, size.check, size.check)
+                    method(arrow, "SetPoint", "RIGHT", b, "RIGHT", -size.gapSmall, 0)
+                    if not pictured(arrow, "Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up") then method(arrow, "Hide") end
+                end
+                list = plain("Frame", f, "drop")
+                if list == nil then return { b } end
+                method(list, "SetFrameStrata", "DIALOG")
+                method(list, "EnableMouse", true)
+                method(list, "SetPoint", "TOPLEFT", b, "BOTTOMLEFT", 0, 0)
+                sized(list, colW, n * size.button + 2 * size.edge)
+                backing(list, color.fill, "fill")
+                border(list)
+                for i = 1, n do
+                    local item = plain("Button", list, "item")
+                    if item ~= nil then
+                        sized(item, colW - 2 * size.edge, size.button)
+                        method(item, "SetPoint", "TOPLEFT", list, "TOPLEFT", size.edge, -(size.edge + (i - 1) * size.button))
+                        local over = texture(item, "HIGHLIGHT", "over")
+                        if over ~= nil then
+                            method(over, "SetAllPoints", item)
+                            paint(over, color.hover)
+                        end
+                        local t = words(item, font.label, "item")
+                        if t ~= nil then
+                            method(t, "SetPoint", "LEFT", item, "LEFT", size.gapSmall, 0)
+                            if i == part.selected then inked(t, color.accent) else inked(t, color.text) end
+                            method(t, "SetText", part.items[i])
+                        end
+                        hook(item, "OnClick", function()
+                            closeDrop()
+                            if i ~= part.selected then tell(part.onSelect, i) end
+                        end)
+                    end
+                end
+                method(list, "Hide")
+                return { b }
+            end
+            -- A number with two limits as the game's slider, the value
+            -- beside it. Dragging moves the value shown; onChange is told
+            -- once, when the mouse button is let go. -> the slider, or nil
+            -- with nothing left showing when the client gives no slider or
+            -- one without a slider's calls: the caller draws the stepper.
+            -- First guesses, not seen in game: the template name, and the
+            -- Slider calls as the page's own slider uses them (sliderRow).
+            local function slider(part, on1, x, colW, okay)
+                if part.min == nil or part.max == nil or part.max <= part.min then return nil end
+                local s, which = made("Slider", on1, "slider", nil, function()
+                    if type(ns.id) ~= "table" or type(ns.id.framePrefix) ~= "string" then return nil end
+                    kitSliders = kitSliders + 1
+                    return ns.id.framePrefix .. "KitSlider" .. kitSliders
+                end)
+                if s == nil then return nil end
+                if which ~= "first" then
+                    if not (method(s, "SetOrientation", "HORIZONTAL")
+                        and method(s, "SetThumbTexture", "Interface\\Buttons\\WHITE8X8")) then
+                        method(s, "Hide")
+                        return nil
+                    end
+                    local track = texture(s, "BACKGROUND", "track")
+                    if track ~= nil then
+                        method(track, "SetPoint", "LEFT", s, "LEFT", 0, 0)
+                        method(track, "SetPoint", "RIGHT", s, "RIGHT", 0, 0)
+                        method(track, "SetHeight", size.gapSmall)
+                        paint(track, color.edge)
+                    end
+                    local okT, thumb = method(s, "GetThumbTexture")
+                    if okT and thumb ~= nil then
+                        sized(thumb, size.gap, size.check)
+                        method(thumb, "SetVertexColor", color.accent[1], color.accent[2], color.accent[3], color.accent[4])
+                    end
+                end
+                if not (method(s, "SetMinMaxValues", part.min, part.max) and method(s, "SetValueStep", part.step)
+                    and method(s, "SetValue", part.value)) then
+                    method(s, "Hide")
+                    return nil
+                end
+                method(s, "SetObeyStepOnDrag", true)
+                method(s, "EnableMouse", true)
+                local w = colW - size.numberValue
+                sized(s, w, size.check)
+                method(s, "SetPoint", "LEFT", on1, "LEFT", x, 0)
+                able(s, okay)
+                local v = words(on1, font.label, "value")
+                if v ~= nil then
+                    method(v, "SetPoint", "LEFT", on1, "LEFT", x + w, 0)
+                    method(v, "SetWidth", size.numberValue)
+                    method(v, "SetJustifyH", "CENTER")
+                    if okay then inked(v, color.text) else inked(v, color.textOff) end
+                    method(v, "SetText", tostring(part.value))
+                end
+                local pending = part.value
+                hook(s, "OnValueChanged", function(_, now)
+                    if type(now) ~= "number" or hidden(now) or now ~= now then return end
+                    now = part.min + math.floor((now - part.min) / part.step + 0.5) * part.step
+                    if now < part.min then now = part.min end
+                    if now > part.max then now = part.max end
+                    now = math.floor(now * 1000000 + 0.5) / 1000000
+                    pending = now
+                    if v ~= nil then method(v, "SetText", tostring(now)) end
+                end, true)
+                hook(s, "OnMouseUp", function()
+                    if okay and pending ~= part.value then tell(part.onChange, pending) end
+                end, true)
+                return s
+            end
             function CONTROL.choice(part, on1, x, colW, live)
                 local okay = live and part.enabled ~= false
+                if part.drop == true then return dropdown(part, on1, x, colW, okay) end
                 local n = #part.items
                 if n > size.choiceButtons then
                     local b = button(on1, part.items[part.selected] or "", colW, okay, function()
@@ -10355,6 +10538,8 @@ function ns.make.client(env)
             end
             function CONTROL.number(part, on1, x, colW, live)
                 local okay = live and part.enabled ~= false
+                local slid = slider(part, on1, x, colW, okay)
+                if slid ~= nil then return { slid } end
                 local function stepped(dir)
                     local v = part.value + dir * part.step
                     if part.min ~= nil and v < part.min then v = part.min end
@@ -11087,6 +11272,7 @@ function ns.make.client(env)
             end
             draw = function(now)
                 reread()
+                closeDrop()
                 sweepStart()
                 slots = {}
                 keeps = {}
@@ -11167,6 +11353,7 @@ function ns.make.client(env)
             -- open: shown by show(true) and not since hidden by the add-on
             -- or closed by the player. Only a hide while open is the player's.
             function h.show(shown)
+                closeDrop()
                 open = shown and true or false
                 method(f, open and "Show" or "Hide")
             end
@@ -11536,7 +11723,11 @@ function ns.make.client(env)
     --            (its first letter is the plain look's face) }
     --   h.place(x, y)    its middle x right and y up from the minimap's middle
     --   h.show(on)
-    --   h.onClick(fn)    fn() on a left click; nothing else is done
+    --   h.onClick(fn)    fn(button) on a click, button "left" or "right";
+    --                    nothing else is done
+    --   h.menu(items, pick)  the arrows' menu (menuOpen above) at the
+    --                    pointer with these rows; pick(key) is told the row
+    --                    chosen. nil or no rows closes this button's menu.
     --   h.onDrag(fn)     fn(dx, dy, done) while dragged with the left button:
     --                    the cursor's offset from the minimap's middle, in the
     --                    minimap's own units; done true once, at the drop
@@ -11575,7 +11766,7 @@ function ns.make.client(env)
             method(b, "SetWidth", 31)
             method(b, "SetHeight", 31)
         end
-        method(b, "RegisterForClicks", "LeftButtonUp")
+        method(b, "RegisterForClicks", "LeftButtonUp", "RightButtonUp")
         method(b, "RegisterForDrag", "LeftButton")
         local function texture(layer, path, w, h, x, y)
             local okT, tex = method(b, "CreateTexture", nil, layer)
@@ -11626,8 +11817,8 @@ function ns.make.client(env)
             local dx, dy = cursor()
             if dx ~= nil then pcall(dragFn, dx, dy, done) end
         end
-        method(b, "SetScript", "OnClick", function()
-            if type(clickFn) == "function" then pcall(clickFn) end
+        method(b, "SetScript", "OnClick", function(_, button)
+            if type(clickFn) == "function" then pcall(clickFn, button == "RightButton" and "right" or "left") end
         end)
         method(b, "SetScript", "OnDragStart", function(self)
             method(self, "SetScript", "OnUpdate", function() drag(false) end)
@@ -11653,11 +11844,23 @@ function ns.make.client(env)
             method(b, "SetPoint", "CENTER", map, "CENTER", x, y)
         end
         function h.show(on)
-            if on then method(b, "Show") else method(b, "Hide") end
+            if on then
+                method(b, "Show")
+            else
+                if menu.owner == h then menuClose() end
+                method(b, "Hide")
+            end
         end
         function h.onClick(fn) clickFn = fn end
         function h.onDrag(fn) dragFn = fn end
         function h.tip(t) lines = type(t) == "table" and t or nil end
+        function h.menu(items, pick)
+            if type(items) ~= "table" or #items == 0 then
+                if menu.owner == h then menuClose() end
+                return
+            end
+            menuOpen(h, b, items, pick, spec.name)
+        end
         return h
     end
 
@@ -11955,6 +12158,27 @@ function ns.make.client(env)
         end
         return out
     end
+    -- Lead section 382 (Nav/ProfFeed.lua): the name of the continent a map
+    -- lies on, for "Next time you are in <continent>". C_Map.GetMapInfo up
+    -- the parents to the first of Enum.UIMapType.Continent (2 when the enum
+    -- is not there). nil when the client will not say; never guessed. A
+    -- first guess, not seen in game.
+    function c.mapContName(map)
+        if type(map) ~= "number" then return nil end
+        local kinds = type(env.Enum) == "table" and env.Enum.UIMapType
+        local contType = type(kinds) == "table" and tonumber(kinds.Continent) or 2
+        for _ = 1, 8 do
+            local ok, info = mapCall("GetMapInfo", map)
+            if not ok or type(info) ~= "table" then return nil end
+            if tonumber(info.mapType) == contType then
+                if type(info.name) ~= "string" or hidden(info.name) or info.name == "" then return nil end
+                return info.name
+            end
+            if type(info.parentMapID) ~= "number" or info.parentMapID == 0 then return nil end
+            map = info.parentMapID
+        end
+        return nil
+    end
 
     -- P-QUEST (lead section 354 item 4): whether quest id can be shared
     -- with your group: true, false, or nil when not known.
@@ -11965,6 +12189,16 @@ function ns.make.client(env)
         local log = env.C_QuestLog
         if type(log) ~= "table" then return nil end
         return yesNo(call(log.IsPushableQuest, id))
+    end
+    -- S32: the words the client shows for where the player stands:
+    -- { zone = GetRealZoneText(), sub = GetSubZoneText() }, each a name or
+    -- nil; nil when neither is known. Read to name the dock a boat or
+    -- zeppelin was taken from and the place it landed. Only reads.
+    function c.placeText()
+        local zone = text(call(env.GetRealZoneText))
+        local sub = text(call(env.GetSubZoneText))
+        if zone == nil and sub == nil then return nil end
+        return { zone = zone, sub = sub }
     end
     return c
 end

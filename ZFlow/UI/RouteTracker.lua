@@ -212,8 +212,13 @@ function RT.Declare(k, diag)
             wasOn, hadRoute = false, cur ~= nil
             return
         end
-        local opening = cur ~= nil and (not hadRoute or not wasOn)
-        wasOn, hadRoute = true, cur ~= nil
+        -- A new player's staged reveal (UI/Reveal.lua) may hold the window
+        -- back: it does not open by itself until its stage is in, then it
+        -- does. The word opens it at any time.
+        local held = type(ns.Reveal) == "table" and type(ns.Reveal.Open) == "function"
+            and ns.Reveal.Open(k, "tracker") == false
+        local opening = not held and cur ~= nil and (not hadRoute or not wasOn)
+        wasOn, hadRoute = not held, cur ~= nil
         if opening then
             api.Open()
         elseif handle and handle.shown() then

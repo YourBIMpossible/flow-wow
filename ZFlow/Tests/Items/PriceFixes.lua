@@ -10,6 +10,10 @@ local _, ns = ...
 
 local AL, L = ns.AuctionLog, ns.PriceLookup
 local tests = {}
+-- Item names carry the game's quality colour (Items/Present.lua, Tint; the
+-- colour itself is tested in Tests/Items/ItemColourTests.lua). These tests are
+-- about the words, so they read them with the colour taken off.
+local plain = ns.ItemPresent.Plain
 local REALM = "Old Blanchy-Horde"
 local INFO = { [2589] = { name = "Linen Cloth", quality = 1, sellPrice = 13 } }
 local VENDOR_LINE = "Linen Cloth: a vendor pays 13c each (the item's own sell price)"
@@ -207,6 +211,13 @@ tests["R3: the trader judges on a realm table written later in the session"] = f
         { [2589] = { h = { 1, 400, 2, 400, 3, 400, 4, 400 } } }), true)
     c.auctionRows(2589, { { unit = 100, qty = 10 } })
     t.eq(#trader.deals(), 1, "the new table is read")
+end
+
+for name, fn in pairs(tests) do
+    tests[name] = function(t)
+        return fn(setmetatable({ eq = function(got, want, msg) return t.eq(plain(got), plain(want), msg) end },
+            { __index = t }))
+    end
 end
 
 return tests

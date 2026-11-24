@@ -6,6 +6,10 @@ local _, ns = ...
 
 local K = ns.ItemKeep
 local tests = {}
+-- Item names carry the game's quality colour (Items/Present.lua, Tint; the
+-- colour itself is tested in Tests/Items/ItemColourTests.lua). These tests are
+-- about the words, so they read them with the colour taken off.
+local plain = ns.ItemPresent.Plain
 
 local INFO = {
     [97] = { name = "Broken Fang", quality = 0, sellPrice = 4 },
@@ -51,14 +55,14 @@ end
 
 local function said(c, part)
     for _, p in ipairs(c.printed) do
-        if p:find(part, 1, true) then return true end
+        if plain(p):find(part, 1, true) then return true end
     end
     return false
 end
 
 local function has(lines, text)
     for _, l in ipairs(lines or {}) do
-        if l == text then return true end
+        if plain(l) == text then return true end
     end
     return false
 end
@@ -225,6 +229,13 @@ tests["keep: it writes only the never-sell list"] = function(t)
     t.eq(saved.settings.sell.mine, { [5] = "keep" }, "other choices untouched")
     t.eq(saved.settings.other, 1)
     t.eq(saved.learned, { x = 1 })
+end
+
+for name, fn in pairs(tests) do
+    tests[name] = function(t)
+        return fn(setmetatable({ eq = function(got, want, msg) return t.eq(plain(got), plain(want), msg) end },
+            { __index = t }))
+    end
 end
 
 return tests
