@@ -261,6 +261,9 @@ KIND.act[#KIND.act + 1] = "sellBagItem"
 -- Lead section 382: a map's continent name; read by Nav/ProfFeed.lua only.
 -- Its name (C_Map.GetMapInfo, Enum.UIMapType) is in Diag.NAMES.
 READS.mapContName = false
+-- Lead section 404 item 2: seconds left on a spell's cooldown, the same
+-- client calls as spellCooldown. The capture does not ask it.
+READS.spellCooldownLeft = false
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).
 local FEATURE = {
