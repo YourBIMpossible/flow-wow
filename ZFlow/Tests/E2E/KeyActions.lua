@@ -297,6 +297,25 @@ tests["key actions F1: no role chosen: the better item is advice only, not on th
     nothingWritten(t, c)
 end
 
+-- §447 F1 / Twin's Ask 1: the whole add-on, a paladin tank with Righteous
+-- Fury missing and a better item in the bags. The buff stays on the key.
+tests["key actions F1: tank, Righteous Fury missing, a better bag item: the key shows Righteous Fury, not the item"] = function(t)
+    local c, addon = start()
+    learn(c, "Righteous Fury", 25780)
+    gear(c, addon, "tank"); c.advance(1, 5)
+    local s = suggested(addon)
+    t.eq(type(s) == "table" and s.spell, "Righteous Fury", "the buff is suggested")
+    t.eq(attr(c, "type"), "spell", "the key casts")
+    t.ok(attr(c, "item") ~= "item:4321", "the better item is not on the key")
+    -- Fury up: now the item comes onto the key.
+    local up = {}
+    for k, v in pairs(SEALED) do up[k] = v end
+    up["Righteous Fury"] = 1800
+    c.setPlayerBuffs(up); c.advance(1, 5)
+    t.eq(attr(c, "item"), "item:4321", "with Fury up the item is on the key")
+    nothingWritten(t, c)
+end
+
 tests["key actions: the key's actions row off: none of these is put on the key"] = function(t)
     local c, addon = start()
     gear(c, addon)
