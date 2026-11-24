@@ -264,7 +264,9 @@ tests["key actions: the station row off: nothing is learned"] = function(t)
     t.ok(attr(c, "spell") ~= "Smelting", "no forge learned")
 end
 
-local function gear(c)
+local function gear(c, addon, role)
+    -- §447 F1: the key equips only with a role chosen (KA.Sure).
+    if addon and role ~= false then addon.settings:set("spec.role", role or "dps") end
     c.setItem(HEAD, { kind = "INVTYPE_HEAD", stats = { [STR] = 4 }, unmet = {} })
     c.setItem(BETTER, { kind = "INVTYPE_HEAD", stats = { [STR] = 9 }, unmet = {} })
     c.setWorn(1, HEAD)
@@ -273,7 +275,7 @@ end
 
 tests["key actions: a better item in the bags: the key equips it, out of a fight only"] = function(t)
     local c, addon = start()
-    gear(c); c.advance(1, 5)
+    gear(c, addon); c.advance(1, 5)
     t.eq(attr(c, "type"), "item")
     t.eq(attr(c, "item"), "item:4321")
     set(c, addon, UPGRADE, false)
@@ -286,9 +288,18 @@ tests["key actions: a better item in the bags: the key equips it, out of a fight
     nothingWritten(t, c)
 end
 
+tests["key actions F1: no role chosen: the better item is advice only, not on the key"] = function(t)
+    local c, addon = start()
+    gear(c, addon, false); c.advance(1, 5)
+    t.ok(attr(c, "item") ~= "item:4321", "not equipped by the key")
+    local s = suggested(addon)
+    t.ok(type(s) == "table" and s.look == true and s.step == "upgradeAdvice", "shown as advice")
+    nothingWritten(t, c)
+end
+
 tests["key actions: the key's actions row off: none of these is put on the key"] = function(t)
     local c, addon = start()
-    gear(c)
+    gear(c, addon)
     set(c, addon, ACTIONS, false)
     t.ok(attr(c, "item") ~= "item:4321", "off")
     set(c, addon, ACTIONS, true)
