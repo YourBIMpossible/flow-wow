@@ -270,6 +270,9 @@ Diag.NAMES = {
     "GetPlayerInfoByGUID", "ChatTypeInfo", "SetChatColorNameByClass", "CHAT_GUILD_GET",
     "ChatFrame1EditBox", "ChatFrame1EditBox.GetAltArrowKeyMode", "ChatFrame1EditBox.SetAltArrowKeyMode",
     "ChatFrame1EditBox.GetHistoryLines", "ChatFrame1EditBox.SetHistoryLines",
+    -- P-QUEST (lead section 354 item 4): whether a quest can be shared
+    -- (client.questShareable). A first guess on 16001.
+    "C_QuestLog.IsPushableQuest",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns

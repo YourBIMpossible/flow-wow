@@ -274,5 +274,7 @@ return {
     "Nav/Trip.lua",
     -- G43 (P-TRIP): the route tracker window and the current step's map pin (after Trip, TripRoute, the kit).
     "UI/RouteTracker.lua",
+    -- P-QUEST (lead section 354 item 4): quest advice text (after QuestRead and the advisor).
+    "Nav/QuestAdvice.lua",
     },
 }
