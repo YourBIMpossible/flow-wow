@@ -159,6 +159,15 @@ tests["dungeon window 426: Bosses lists every boss and its drops before the firs
         t.ok(words:find("777", 1, true) == nil, "no bare creature number")
         t.ok(words:find(ns.DungeonRead.BOSS_NO_DATA[1], 1, true) ~= nil, "a boss with no list says so")
         t.eq(notes(rec), ns.DungeonRead.SEEN, "only the drop this account saw is marked")
+        -- From zflow-dungeon-bosses 01af5a3a (section 303 (e)): each drop is
+        -- an item line that carries its item, so the kit shows the game's
+        -- own item tooltip on hover; this tab has no Show on map footer.
+        local items = {}
+        for _, p in ipairs(rec.parts or {}) do
+            if p.kind == "itemLine" then items[#items + 1] = p.item end
+        end
+        t.eq(items, { 11, 12 }, "each item line carries its item")
+        t.eq(hasKind(rec, "footer"), false, "no Show on map footer on the Bosses tab")
     end
 end
 
