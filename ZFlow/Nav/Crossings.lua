@@ -335,9 +335,14 @@ function N.CrossingSteps(input)
                 details = details,
                 -- S32 (Nav/CrossingWords.lua): only a crossing learned from
                 -- the player's trips says its dock, landing and wait.
-                hint = (best.crossing.seen ~= nil and N.CrossingHint)
-                    and N.CrossingHint(best.how, best.from.name, best.to.name, best.from.wait) or nil,
+                -- B-03: standing at the boarding place with no wait known
+                -- says to wait there; the time stays unknown.
             }
+            if best.crossing.seen ~= nil and N.CrossingHint then
+                local atBoard = false
+                if num(best.toBoard) and best.toBoard <= (N.CROSSING_AT_BOARD or 0) then atBoard = true end
+                steps[#steps].hint = N.CrossingHint(best.how, best.from.name, best.to.name, best.from.wait, atBoard)
+            end
         end
     end
     return steps, unjoined
@@ -512,7 +517,7 @@ function Crossings.Declare(k)
     -- it. When the continent changes between two places read off a
     -- flight, N.CrossingSeen gets both and its list is saved. Only what
     -- this client showed; nothing is copied in.
-    local last
+    local last, lastName
     -- S32: the still run the player stands in, the last one long enough to
     -- be a wait (where the boat was boarded), and the place words read.
     local still, board
@@ -525,7 +530,7 @@ function Crossings.Declare(k)
         local here = { cont = zone.cont, map = pos.map, x = pos.x, y = pos.y }
         if not whole(here) then return nil end
         if ask(client, "onTaxi") ~= false then
-            last, still, board = nil, nil, nil
+            last, lastName, still, board = nil, nil, nil, nil
             return nil
         end
         local hereName = N.CrossingName and N.CrossingName(ask(client, "placeText")) or nil
@@ -536,14 +541,21 @@ function Crossings.Declare(k)
                 board = ended
             end
         end
-        local before = last
-        last = here
+        -- Only on the side the wait was read on: the landing's word never
+        -- judges the dock's wait (the crossing itself is judged below).
+        if board and N.CrossingBoardKept and (last == nil or last.cont == here.cont) then
+            board = N.CrossingBoardKept(board, hereName)
+        end
+        local before, beforeName = last, lastName
+        last, lastName = here, hereName
         if before == nil or before.cont == here.cont then return nil end
+        local apart = N.CrossingApart(function(map) return ask(client, "mapSize", map) end)
         local boarded = board
+        if boarded and N.CrossingBoardKept then boarded = N.CrossingBoardKept(boarded, beforeName, before, apart) end
         board = nil
         local okBind, bind = pcall(ctx.store.get, ctx.store, "char", Crossings.BIND)
         local list, key, what = N.CrossingSeen(saved(), before, here, {
-            apart = N.CrossingApart(function(map) return ask(client, "mapSize", map) end),
+            apart = apart,
             bind = okBind and type(bind) == "table" and bind or nil,
         })
         if key == nil then return nil, what end
@@ -592,7 +604,7 @@ function Crossings.Declare(k)
         provides = { Way = function(place) return api.way(place) end },
         ticks = { { every = Crossings.EVERY, when = "always", run = function() api.sample() end } },
         start = function(c) ctx = c end,
-        stop = function() ctx, last, still, board = nil, nil, nil, nil end,
+        stop = function() ctx, last, lastName, still, board = nil, nil, nil, nil, nil end,
     })
     return api
 end

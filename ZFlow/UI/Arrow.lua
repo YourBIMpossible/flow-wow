@@ -716,6 +716,16 @@ function Arrow.Start(k, diag, own)
                 step = repair.Step()
                 if step then from = "a repair stop" end
             end
+            -- Then the inn to set the hearthstone at (B-34, Nav/HearthAdvice.lua),
+            -- after the planned route, errand and repair (lead section 466): a spoken-to innkeeper only. Points only.
+            local hearth = k.use and k.use("hearthAdvice")
+            if step == nil and hearth and type(hearth.Step) == "function" then
+                local okH, hs = pcall(hearth.Step)
+                if okH and type(hs) == "table" and type(hs.place) == "table" then
+                    step = hs
+                    from = "a hearthstone to set"
+                end
+            end
             -- Then the weapon master stop (G16, Nav/WeaponMasterStep.lua), only
             -- when a weapon master is saved: a words-only step has no needle.
             local weaponMaster = k.use and k.use("weaponMasterStep")
@@ -906,6 +916,14 @@ function Arrow.Start(k, diag, own)
         if refit then
             view = N.ArrowView(src.view)
             lines = Arrow.Lines(view, src.lines, src.lost)
+        end
+        -- FLOW-PARITY B-40: the party route line under the quest arrow's
+        -- lines (Nav/PartyRoute.lua). It says only; nothing is sent.
+        local party = k.use and k.use("partyRoute")
+        if type(party) == "table" and type(party.Line) == "function" and type(lines.quest) == "table"
+            and #lines.quest > 0 then
+            local okLine, line = pcall(party.Line)
+            if okLine and type(line) == "string" then lines.quest[#lines.quest + 1] = line end
         end
         for _, key in ipairs(N.ARROW_KEYS) do
             local ops, h = view[key], handles[key]
@@ -1755,7 +1773,10 @@ function Arrow.Declare(k, diag)
         name = Arrow.NAME,
         needs = { "client", "store", "bus", "sched" },
         provides = { OpenMenu = function() return api.openMenu() end,
-                     Heading = function() return api.heading() end },
+                     Heading = function() return api.heading() end,
+                     -- Lead section 466: a chat-link click (Nav/PartyRoute.lua)
+                     -- redraws at once, as a slash word's pass does.
+                     Redraw = function() return api.relayout() end },
         start = function(ctx)
             local own = { loaded = true }
             function own.listen(event, fn) ctx.bus:on(Arrow.NAME, event, fn) end

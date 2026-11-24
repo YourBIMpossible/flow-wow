@@ -14,7 +14,10 @@ local _, ns = ...
 --   N.CrossingName(placeText) -> the sub-zone, else the zone, else nil
 --   N.CrossingTake(how, fromName, toName) -> line or nil
 --   N.CrossingWaitLine(how, seconds) -> line or nil
---   N.CrossingHint(how, fromName, toName, seconds) -> line or nil
+--   N.CrossingHint(how, fromName, toName, seconds, atBoard) -> line or nil
+--        atBoard: the player stands where it is boarded (FLOW-PARITY B-03);
+--        with no wait known it says to wait there, and that when it leaves
+--        is not known: no minutes are made up.
 --   N.CrossingStill(run, here, now, name) -> run, ended or nil
 --        run = { cont, map, x, y, name, since }; ended = { cont, name, secs }
 --   N.CrossingNameTrip(old, list, key, before, board, landName) -> list
@@ -32,6 +35,9 @@ local N = ns.Nav
 N.CROSSING_WAIT_MIN = 5      -- seconds: shorter still time is not a wait
 N.CROSSING_WAIT_MAX = 600    -- seconds: longer is away from the keys, not a wait
 N.CROSSING_STILL = 0.0005    -- map share: this little a move is standing still
+N.CROSSING_AT_BOARD = 30     -- yards: this close to the boarding place is standing at it (a first guess)
+N.CROSSING_DOCK_REACH = 200  -- yards: a wait read farther than this from the last spot before the crossing is no wait (a first guess)
+N.CROSSING_WAIT_UNKNOWN = "Wait here for it: when it leaves is not known yet."
 
 local WHAT = { boat = "boat", zeppelin = "zeppelin" }
 local AT = { boat = "dock", zeppelin = "tower" }
@@ -69,10 +75,16 @@ function N.CrossingWaitLine(how, seconds)
     return string.format("The %s leaves about every %s: wait %s.", what, every, ON[how])
 end
 
-function N.CrossingHint(how, fromName, toName, seconds)
+function N.CrossingHint(how, fromName, toName, seconds, atBoard)
     local take = N.CrossingTake(how, fromName, toName)
-    if take == nil then return nil end
     local wait = N.CrossingWaitLine(how, seconds)
+    if wait == nil and atBoard == true then wait = N.CROSSING_WAIT_UNKNOWN end
+    -- Lead section 472: the wait alone (no dock names) only at the dock;
+    -- elsewhere a crossing with no names has no hint, as before.
+    if take == nil then
+        if atBoard == true then return wait end
+        return nil
+    end
     if wait == nil then return take end
     return take .. " " .. wait
 end
@@ -88,7 +100,28 @@ function N.CrossingStill(run, here, now, name)
     local fresh = { cont = here.cont, map = here.map, x = here.x, y = here.y,
                     name = named(name) and name or nil, since = now }
     if type(run) ~= "table" or not num(run.since) then return fresh, nil end
-    return fresh, { cont = run.cont, name = run.name, secs = now - run.since }
+    return fresh, { cont = run.cont, map = run.map, x = run.x, y = run.y, name = run.name, secs = now - run.since }
+end
+
+-- Lead section 473: the still run kept as the boat's wait is the wait only
+-- while the player is still where it was read. Both place words known and
+-- different (the stop was in town, then the player walked to the dock):
+-- it is no wait, nil. Words not known: at the crossing, "at" (the last
+-- spot before it) and "apart" (yards between two spots) tell them apart;
+-- read farther than N.CROSSING_DOCK_REACH from "at" is no wait. Only at
+-- the crossing: on board the boat moves, so a spot read while sailing
+-- would drop a real wait. Distance not readable keeps it.
+function N.CrossingBoardKept(board, name, at, apart)
+    if type(board) ~= "table" then return nil end
+    if named(board.name) and named(name) then
+        if board.name ~= name then return nil end
+        return board
+    end
+    if type(at) == "table" and type(apart) == "function" then
+        local ok, d = pcall(apart, board, at)
+        if ok and num(d) and d > N.CROSSING_DOCK_REACH then return nil end
+    end
+    return board
 end
 
 local function copy(t)

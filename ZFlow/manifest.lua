@@ -320,6 +320,8 @@ return {
     "Nav/RoutePickups.lua",
     -- G45: the riding step and its advisor line (after the advisor, the arrow and Prices).
     "Nav/RidingStep.lua",
+    -- FLOW-PARITY B-25 (lead section 460): save up, learn riding, then the mount (after RidingStep).
+    "Nav/MountMilestone.lua",
     -- P-COACH C1 (section 382): the profession plan, steps toward the next point (after RecipeBook, HaveTip, Prices, ProfStep).
     "Items/ProfPlan.lua",
     -- P-COACH C3 (section 382): where the plan's short materials come from (after ProfPlan, Prices).
