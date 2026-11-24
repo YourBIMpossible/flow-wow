@@ -118,6 +118,15 @@ tests["hearth advice: a spoken-to inn near the quests: a Set hearthstone step th
     t.eq(s and s.place, { map = MAP, x = 0.61, y = 0.51 })
 end
 
+tests["hearth advice: the Set hearthstone step is on the arrow before the route"] = function(t)
+    local c = boot(farley(), nil, 0)
+    c.setMapName(MAP, "Elwynn Forest")
+    c.slashes[ns.id.slash]("route")
+    c.advance(10, 20)
+    local a = c.arrows[1]
+    t.eq(a and a.lines and a.lines[1], "Set hearthstone: Farley (Elwynn Forest)", "the arrow names the inn")
+end
+
 tests["hearth advice: no inn spoken to, or the home already there: no Set hearthstone step"] = function(t)
     local c, addon = boot({}, nil, 0)
     c.slashes[ns.id.slash]("route"); c.advance(10, 20)

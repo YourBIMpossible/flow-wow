@@ -666,6 +666,16 @@ function Arrow.Start(k, diag, own)
                     if step then from = "the map pin" end
                 end
             end
+            -- Then the inn to set the hearthstone at (B-34, Nav/HearthAdvice.lua),
+            -- before the route it is near: a spoken-to innkeeper only. Points only.
+            local hearth = k.use and k.use("hearthAdvice")
+            if step == nil and hearth and type(hearth.Step) == "function" then
+                local okH, hs = pcall(hearth.Step)
+                if okH and type(hs) == "table" and type(hs.place) == "table" then
+                    step = hs
+                    from = "a hearthstone to set"
+                end
+            end
             -- Then the route the player planned (P-TRIP, Nav/TripRoute.lua):
             -- the quest route of the route word, or a dungeon run from the
             -- Dungeon Quests window. Waypoints only.
