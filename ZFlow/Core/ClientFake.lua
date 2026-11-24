@@ -3235,6 +3235,54 @@ function ns.make.fakeClient(opts)
         c.buttonFaces[spec.button] = face
         return { empty = function(on) face.empty = on == true; return true end }
     end
+    -- Lead section 409: the face also keeps label (spec.label) and dimmed
+    -- (the last h.dim mode: "picture", "gone" or nil).
+    -- Lead section 409: every icon also has h.fade(on); h.faded is the last.
+    local unfadedIcon = c.icon
+    function c.icon(spec)
+        local h = unfadedIcon(spec)
+        if type(h) ~= "table" then return h end
+        function h.fade(on)
+            h.faded = on == true
+            return true
+        end
+        return h
+    end
+    local plainButtonFace = c.buttonFace
+    function c.buttonFace(spec)
+        local h = plainButtonFace(spec)
+        if h == nil then return nil end
+        local face = c.buttonFaces[spec.button]
+        face.label = spec.label
+        function h.dim(mode)
+            if mode == "picture" or mode == "gone" then face.dimmed = mode else face.dimmed = nil end
+            return true
+        end
+        return h
+    end
+    -- Lead section 415: dim also takes "word" (the plain face, no "?"),
+    -- and h.mouse(on) keeps face.mouse; under the lock it changes nothing,
+    -- answers false, "lockdown" and counts face.mouseInLock.
+    local dimmedButtonFace = c.buttonFace
+    function c.buttonFace(spec)
+        local h = dimmedButtonFace(spec)
+        if h == nil then return nil end
+        local face = c.buttonFaces[spec.button]
+        local dimOld = h.dim
+        function h.dim(mode)
+            if mode == "word" then face.dimmed = "word"; return true end
+            return dimOld(mode)
+        end
+        function h.mouse(on)
+            if c.combatLockdown() ~= false then
+                face.mouseInLock = (face.mouseInLock or 0) + 1
+                return false, "lockdown"
+            end
+            face.mouse = on == true
+            return true
+        end
+        return h
+    end
     function c.ctrlDrag(spec)
         if type(spec) ~= "table" or not rowButton(spec.target) or not rowButton(spec.button) then return nil end
         if c.combatLockdown() ~= false then return nil end

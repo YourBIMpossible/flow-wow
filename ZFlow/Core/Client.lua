@@ -3073,6 +3073,14 @@ function ns.make.client(env)
             moved = fn
             movedFailed = type(failed) == "function" and failed or nil
         end
+        -- Lead section 409 item 2: h.fade(on) draws nothing and takes no
+        -- mouse while on (the Flow button shows the same picture); off puts
+        -- it back. The icon stays shown. First guess: SetAlpha, EnableMouse.
+        function h.fade(on)
+            local okA = method(f, "SetAlpha", on == true and 0 or 1)
+            method(f, "EnableMouse", on ~= true)
+            return okA and true or false
+        end
         return h
     end
 
@@ -8706,6 +8714,58 @@ function ns.make.client(env)
             if not called then return false, "refused" end
             return true
         end
+        -- Lead section 409: a word under the button (spec.label), so the
+        -- buttons are told apart without hovering, and h.dim(mode), set
+        -- after h.empty: "picture" dims the icon under the panel and hides
+        -- the "?"; "gone" draws nothing at all (no backing, panel, "?" or
+        -- word); nil puts the plain face back. First guess: SetAlpha on the
+        -- textures, a FontString under the button in GameFontNormalSmall.
+        local word = nil
+        if type(spec.label) == "string" and spec.label ~= "" then
+            local okW, w = method(b, "CreateFontString", nil, "OVERLAY", "GameFontNormalSmall")
+            if okW and type(w) == "table" then
+                word = w
+                method(word, "SetPoint", "TOP", b, "BOTTOM", 0, -1)
+                method(word, "SetText", spec.label)
+            end
+        end
+        function h.dim(mode)
+            if mode == "picture" then
+                method(panel, "Show")
+                method(panel, "SetAlpha", 0.6)
+                if okB and type(back) == "table" then method(back, "SetAlpha", 1) end
+                if mark ~= nil then method(mark, "Hide") end
+                if word ~= nil then method(word, "Show") end
+            elseif mode == "word" then
+                -- Lead section 415: the plain face with no "?": the
+                -- panel and the word under the button only.
+                method(panel, "Show")
+                method(panel, "SetAlpha", 1)
+                if okB and type(back) == "table" then method(back, "SetAlpha", 1) end
+                if mark ~= nil then method(mark, "Hide") end
+                if word ~= nil then method(word, "Show") end
+            elseif mode == "gone" then
+                method(panel, "SetAlpha", 0)
+                if okB and type(back) == "table" then method(back, "SetAlpha", 0) end
+                if mark ~= nil then method(mark, "Hide") end
+                if word ~= nil then method(word, "Hide") end
+            else
+                method(panel, "SetAlpha", 1)
+                if okB and type(back) == "table" then method(back, "SetAlpha", 1) end
+                if word ~= nil then method(word, "Show") end
+            end
+            return true
+        end
+        -- Lead section 415: h.mouse(on), whether the button takes the
+        -- mouse. Changed only while InCombatLockdown() reads a plain false;
+        -- else false and "lockdown", nothing changed. First guess:
+        -- EnableMouse on the button.
+        function h.mouse(on)
+            local okLock, locked = call(env.InCombatLockdown)
+            if not okLock or locked ~= false then return false, "lockdown" end
+            if not method(b, "EnableMouse", on == true) then return false, "refused" end
+            return true
+        end
         return h
     end
 
@@ -8823,6 +8883,19 @@ function ns.make.client(env)
         if okT and type(tex) == "table" then
             method(tex, "SetAllPoints", grip)
             method(tex, "SetColorTexture", 1, 0.82, 0, 0.6)
+        end
+        -- Lead section 409 item 3: spec.quiet = true, the yellow bar is not
+        -- drawn until the mouse is over the grip or the frame it moves; the
+        -- grip still takes the drag. First guess: SetAlpha on the texture,
+        -- HookScript OnEnter and OnLeave on the frame.
+        if spec.quiet == true and okT and type(tex) == "table" then
+            method(tex, "SetAlpha", 0)
+            local function lit() method(tex, "SetAlpha", 1) end
+            local function unlit() method(tex, "SetAlpha", 0) end
+            method(grip, "SetScript", "OnEnter", lit)
+            method(grip, "SetScript", "OnLeave", unlit)
+            method(target, "HookScript", "OnEnter", lit)
+            method(target, "HookScript", "OnLeave", unlit)
         end
         method(grip, "EnableMouse", true)
         method(grip, "RegisterForDrag", "LeftButton")

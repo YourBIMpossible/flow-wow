@@ -89,6 +89,25 @@ function I.Words(view)
     return spell .. " on " .. who
 end
 
+-- Lead section 409 item 2: true when the Flow button shows this view's
+-- spell or item itself (Rotation/FlowButton.lua api.picture), and the icon
+-- adds no mark (out of range, or a spell for another player).
+function I.OnButton(view)
+    if I.Mark(view) ~= nil then return false end
+    local fb = ns.flowButton
+    if type(fb) ~= "table" or type(fb.picture) ~= "function" then return false end
+    local ok, shown = pcall(fb.picture, view)
+    if not ok or shown == nil then return false end
+    local spell = I.Spell(view)
+    if spell ~= nil then
+        if shown == spell then return true end
+        local A = ns.cast and ns.cast.ATTACK
+        return type(A) == "table" and A[shown] == true and A[spell] == true
+    end
+    local item = I.Item(view)
+    return item ~= nil and shown == "item:" .. item
+end
+
 -- G27: below this many seconds left the text is not shown, so the global
 -- cooldown after every cast does not flash a number under the icon.
 I.MIN_LEFT = 1.5
@@ -244,6 +263,9 @@ function I.Declare(k)
             local function caption(words)
                 if type(icon.caption) == "function" then pcall(icon.caption, words) end
             end
+            local function fade(on)
+                if type(icon.fade) == "function" then pcall(icon.fade, on) end
+            end
             local function hide()
                 caption(nil)
                 mark(nil)
@@ -300,6 +322,13 @@ function I.Declare(k)
                     mark(I.Mark(view))
                     caption(I.Caption(view, cooldownLeft(client, shownSpell)))
                     icon.show(true)
+                    -- Lead section 409 item 2: one picture for the next
+                    -- spell. While the Flow button shows this same spell
+                    -- the icon stays on but draws nothing beside it; it is
+                    -- seen only for what the button does not show, such as
+                    -- the new suggestion in a fight while the locked button
+                    -- keeps what it had, out of range or another player's.
+                    fade(I.OnButton(view))
                 else
                     hide()
                 end
