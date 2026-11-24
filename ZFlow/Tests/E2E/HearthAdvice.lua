@@ -155,13 +155,18 @@ tests["hearth advice: a spoken-to inn near the quests: a Set hearthstone step th
     t.eq(s and s.place, { map = MAP, x = 0.61, y = 0.51 })
 end
 
-tests["hearth advice: the Set hearthstone step is on the arrow before the route"] = function(t)
-    local c = boot(farley(), nil, 0)
+-- Lead section 466: the Set hearthstone step comes AFTER the planned
+-- route, errand and repair on the arrow, not before them.
+tests["hearth advice: the planned route goes first on the arrow; the Set hearthstone step waits"] = function(t)
+    local c, addon = boot(farley(), nil, 0)
     c.setMapName(MAP, "Elwynn Forest")
     c.slashes[ns.id.slash]("route")
     c.advance(10, 20)
+    t.ok(step(addon) ~= nil, "the step is still offered")
     local a = c.arrows[1]
-    t.eq(a and a.lines and a.lines[1], "Set hearthstone: Farley (Elwynn Forest)", "the arrow names the inn")
+    local first = a and a.lines and a.lines[1]
+    t.ok(type(first) == "string", "the arrow shows a step")
+    t.ok(first ~= "Set hearthstone: Farley (Elwynn Forest)", "the route's stop, not the inn: " .. tostring(first))
 end
 
 tests["hearth advice: no inn spoken to, or the home already there: no Set hearthstone step"] = function(t)
