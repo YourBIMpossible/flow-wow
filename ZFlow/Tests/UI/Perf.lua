@@ -110,7 +110,16 @@ end
 
 tests["perf lines: nothing measured yet"] = function(t)
     t.eq(P.Lines({}), { P.NONE })
-    t.eq(P.Lines(nil), { P.NONE })
+end
+
+-- Lead section 403 (c): timings that could not be read are not "nothing has
+-- run". No report, or one whose every row is in the wrong shape, says so.
+tests["perf lines: timings that could not be read say so, not 'nothing has run'"] = function(t)
+    t.eq(P.UNREAD, "Could not read the timings: nothing to show.")
+    t.ok(P.UNREAD ~= P.NONE)
+    t.eq(P.Lines(nil), { P.UNREAD })
+    t.eq(P.Lines("x"), { P.UNREAD })
+    t.eq(P.Lines({ a = "x", b = 3 }), { P.UNREAD }, "every row in the wrong shape")
 end
 
 -- ------------------------------------------------------------------ command
@@ -145,6 +154,18 @@ tests["perf command: a number limits the rows, all shows every one"] = function(
     t.eq(#P.Run(k, "3"), 1 + 3 + 2)
     t.eq(#P.Run(k, "all"), 1 + 14 + 1)
     t.eq(P.DEFAULT_ROWS, 10)
+end
+
+tests["perf command: a meter whose report fails or is missing says the timings could not be read"] = function(t)
+    local k = start()
+    k.meter = { report = function() error("broken", 0) end }
+    t.eq(P.Run(k, ""), { P.UNREAD }, "a report that raises")
+    k.meter = { report = function() return nil end }
+    t.eq(P.Run(k, ""), { P.UNREAD }, "a report that answers nothing")
+    k.meter = nil
+    t.eq(P.Run(k, ""), { P.UNREAD }, "no meter at all")
+    k.meter = {}
+    t.eq(P.Run(k, "all"), { P.UNREAD }, "a meter with no report")
 end
 
 tests["perf command: running it changes no timing row"] = function(t)
