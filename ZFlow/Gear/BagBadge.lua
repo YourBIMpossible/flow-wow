@@ -1,12 +1,22 @@
 local _, ns = ...
 
--- The bag badge (G14, section 393): an item in the bags that is an upgrade
--- over what is worn carries a small badge on its bag slot naming the role
--- it is for: D (dps), T (tank), H (heal). The chosen role (spec.role) only
--- when the class pack has weights for it; none chosen, every role it is an
--- upgrade for. Look only: nothing here equips, moves or sells anything.
--- Legacy Flow's bag spec marks did the same on its own bag frame.
+-- The bag badge (G14, section 393; parity row E-03): a gear item in the
+-- bags carries a small badge on its bag slot: for each role its letter, D
+-- (dps), T (tank), H (heal), with a mark: + green, better than what you
+-- wear; - red, worse; = grey, the same. The chosen role (spec.role) only
+-- when the class pack has weights for it; none chosen, every role. A role
+-- whose answer is not known (what you wear there not read, no number) gets
+-- nothing, never "same". Look only: nothing here equips, moves or sells
+-- anything. Legacy Flow's bag spec marks (Modules/Items/BagIcons.lua, the
+-- bottom row) drew a spec icon with an arrow above it; the client draws
+-- text only (client.markBagSlots, top left), so the mark is a sign and a
+-- colour (the game's own colour codes in the text).
 --
+--   way   = GearBagBadge.Way(result)   "up", "down", "same", or nil when
+--     the scorer's answer (GearScore.Compare's) is not a known one. A gain
+--     or loss under GearTooltip.SAME is the same, as the tooltip says it.
+--   text  = GearBagBadge.Piece(role, way)   one role's letter and mark; ""
+--     when way is none of the three
 --   marks = GearBagBadge.Marks(client, packs, role)
 --     { { bag, slot, text } ... } in bag then slot order; nil when the bags
 --     cannot be read. An item not read yet, not gear, or one you cannot use
@@ -28,6 +38,9 @@ BB.NAME = "gearBagBadge"
 BB.SETTING = "gear.bagBadge"
 BB.ROLE = "spec.role"
 BB.LETTER = { dps = "D", tank = "T", heal = "H" }
+BB.SIGN = { up = "+", down = "-", same = "=" }
+-- The game's colour codes (alpha, red, green, blue): green, red, grey.
+BB.COLOUR = { up = "ff1aff1a", down = "ffff4040", same = "ffa0a0a0" }
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -49,7 +62,23 @@ local function rolesFor(pack, role)
     return out
 end
 
--- The letters of the roles this item is a usable upgrade for, or "".
+function BB.Way(result)
+    if type(result) ~= "table" or not finite(result.delta) then return nil end
+    local verdict = result.verdict
+    if verdict ~= "upgrade" and verdict ~= "worse" and verdict ~= "same" then return nil end
+    if verdict == "same" or math.abs(result.delta) < ns.GearTooltip.SAME then return "same" end
+    if verdict == "upgrade" then return "up" end
+    return "down"
+end
+
+function BB.Piece(role, way)
+    local sign = type(way) == "string" and BB.SIGN[way] or nil
+    if sign == nil or type(role) ~= "string" or role == "" then return "" end
+    return "|c" .. BB.COLOUR[way] .. (BB.LETTER[role] or role:sub(1, 1):upper()) .. sign .. "|r"
+end
+
+-- Each role's letter and mark for a usable gear item, or "" (not gear, not
+-- read, not usable, or no role with a known answer).
 local function letters(gear, pack, roles, level, skills)
     local text = ""
     for r = 1, #roles do
@@ -57,10 +86,7 @@ local function letters(gear, pack, roles, level, skills)
                                                             skills = skills })
         if lines == nil or type(detail) ~= "table" then return "" end
         if type(detail.use) ~= "table" or detail.use.can ~= true then return "" end
-        local res = type(detail.result) == "table" and detail.result or {}
-        if res.verdict == "upgrade" and finite(res.delta) and res.delta >= ns.GearTooltip.SAME then
-            text = text .. (BB.LETTER[roles[r]] or roles[r]:sub(1, 1):upper())
-        end
+        text = text .. BB.Piece(roles[r], BB.Way(detail.result))
     end
     return text
 end
@@ -128,9 +154,9 @@ function BB.Declare(k, packs)
         needs = { "client", "settings", "bus" },
         settings = { {
             key = BB.SETTING, scope = "account", type = "bool", default = true,
-            label = "Badge upgrades in your bags",
-            help = "An item in your bags that is an upgrade carries a letter for the role it is for"
-                .. " (D dps, T tank, H heal). It equips nothing.",
+            label = "Badge gear in your bags",
+            help = "Gear in your bags carries a letter for each role (D dps, T tank, H heal) with a mark:"
+                .. " + better than what you wear, - worse, = the same. It equips nothing.",
             group = "gear", synonyms = { "bag", "badge", "spec", "upgrade", "role" },
         } },
         provides = { Errors = api.errors },

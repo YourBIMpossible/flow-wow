@@ -203,9 +203,12 @@ tests["sell list panel: look only - no buttons, no clicks, only the two reads"] 
     -- Plus the professions read for the materials kept for a profession, and
     -- the class read for the keep-off-spec rule (P-SETS G13, Gear/OffSpec.lua;
     -- section 208: a new read of the sell list, a read only; no class pack, so no more).
+    -- Plus the tooltip lines read and the level read for the outgrown food
+    -- and drink rule (G5, lead section 451; Disposition.ConsumableFacts):
+    -- reads only. This client has neither, so the rule stays silent.
     t.eq(called, { bagItems = true, itemInfo = true, ["other:skillRanks"] = true, ["other:professions"] = true,
-        ["other:class"] = true },
-        "the bag read, the item read, the skill rank read, the professions read and the class read, nothing else")
+        ["other:class"] = true, ["other:itemLines"] = true, ["other:level"] = true },
+        "the bag read, the item read, the skill rank, professions, class, tooltip lines and level reads, nothing else")
     for name in pairs(L) do
         local n = tostring(name):lower()
         t.ok(not (n:find("^sell$") or n:find("buy") or n:find("click")), "no acting function: " .. n)

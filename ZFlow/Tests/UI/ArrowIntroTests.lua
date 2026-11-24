@@ -337,7 +337,7 @@ return {
         c.setDead(true)
         c.setCorpse(1411, 0.5, 0.3)
         login(c)
-        t.eq(c.arrows[1].lines, { "Corpse", "100 yd N" })
+        t.eq(c.arrows[1].lines, { "Your corpse", "100 yd N" })
     end,
 
     ["a client with no waypoint read, or one that fails: nothing shown"] = function(t)

@@ -9,6 +9,7 @@ local N = ns.Nav
 
 -- Exact values carried over from Flow.
 N.AT_POINT = 24                 -- yards: standing on a step's point
+N.AREA_YARDS = 45               -- yards: in an area step's area (A1-09, Flow AREA)
 N.PROF_RING_ALPHA = 0.35        -- the faint ring at the profession step
 N.PROF_LEN = 64.8               -- the needle's drawn length (54 * 0.8 * 1.5)
 N.TRAVEL_ICON = 38              -- the travel icon's size
@@ -117,14 +118,21 @@ function N.ArrowView(state)
     -- the quest arrow, the profession text over the profession arrow.
     local belowFirst = N.TEXT_GAP_BELOW
     if q.travel then belowFirst = math.max(belowFirst, (N.TRAVEL_ICON - size) / 2 + 4) end
-    local aboveFirst = profMode == "off" and N.TEXT_GAP_ABOVE or N.NeedleClearance(size)
+    -- Lead section 447 item 5 (F3): the needle keeps its place in the stack
+    -- while its step has a place to point at, even when the game gives no
+    -- facing yet (at load, or for a moment after). Without that the frame
+    -- stood on the quest arrow until the facing came back or the player
+    -- restacked. A step in words only (no place) still has no room (D2).
+    local slot = profMode ~= "off" or (p.bearingKnown and true or false)
+    local aboveFirst = N.TEXT_GAP_ABOVE
+    if slot then aboveFirst = N.NeedleClearance(size) end
 
     local L = N.ArrowLayout({
         layout = state.layout, gate = gate, screenW = sw, screenH = sh,
         size = state.size, defaultPoint = state.defaultPoint,
         quest = { hasStep = q.hasStep, overlay = q.overlay,
                   room = saved.text.quest ~= false and qNeed > 0 and qNeed + belowFirst or 0 },
-        prof = { hasStep = profStep, mode = profMode,
+        prof = { hasStep = profStep, mode = slot and "arrow" or "off",
                  room = saved.text.prof ~= false and pNeed > 0 and pNeed + aboveFirst or 0 },
     })
     local lq, lp = L.quest, L.prof

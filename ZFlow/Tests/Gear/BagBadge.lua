@@ -1,10 +1,13 @@
 local _, ns = ...
 
--- Tests for ZFlow/Gear/BagBadge.lua (G14, section 393): an item in the bags
--- that is an upgrade over what is worn carries a small badge on its bag
--- slot naming the role it is for (D dps, T tank, H heal). Look only. Fake
--- client (setBagItems, setItem, setWorn, markBagSlots, bagMarks) and a real
--- kernel. Made-up items; not tested in game.
+-- Tests for ZFlow/Gear/BagBadge.lua (G14, section 393): a gear item in the
+-- bags carries a small badge on its bag slot: the letter of each role (D
+-- dps, T tank, H heal) with its mark, better, worse or the same (parity row
+-- E-03; before it only an upgrade was badged, with a bare letter, and the
+-- texts here were "D", "T", "DT"). Look only. Fake client (setBagItems,
+-- setItem, setWorn, markBagSlots, bagMarks) and a real kernel. Made-up
+-- items; not tested in game. The marks themselves are tested in
+-- Tests/Gear/BagBadgeArrows.lua.
 --
 -- Red before the code: ns.GearBagBadge does not exist.
 
@@ -44,6 +47,9 @@ local function client()
     return c
 end
 
+-- One role's letter and mark, as the badge writes it.
+local function P(role, way) return BB().Piece(role, way) end
+
 local function bags(...)
     local out = {}
     for i, link in ipairs({ ... }) do out[i] = { bag = 0, slot = i, item = link, count = 1 } end
@@ -57,33 +63,41 @@ tests["bag badge: the module and its words exist"] = function(t)
     t.eq(BB().LETTER, { dps = "D", tank = "T", heal = "H" })
 end
 
-tests["bag badge: an upgrade in the bags is badged with the chosen role"] = function(t)
+tests["bag badge: gear in the bags is badged with the chosen role"] = function(t)
     if type(BB()) ~= "table" then return t.ok(false, "ns.GearBagBadge") end
     local c = client()
     c.setBagItems(bags(WEAK, STRONG, TOUGH))
-    -- Both helms beat the worn one for both roles (see the next test); a
-    -- chosen role puts only its own letter on them, and the weak one none.
-    t.eq(BB().Marks(c, packs(), "dps"), { { bag = 0, slot = 2, text = "D" }, { bag = 0, slot = 3, text = "D" } },
-        "dps only")
-    t.eq(BB().Marks(c, packs(), "tank"), { { bag = 0, slot = 2, text = "T" }, { bag = 0, slot = 3, text = "T" } },
-        "tank only")
+    -- Both helms beat the worn one for both roles (see the next test) and
+    -- the weak one is worse for both; a chosen role puts only its own
+    -- letter on them.
+    t.eq(BB().Marks(c, packs(), "dps"), {
+        { bag = 0, slot = 1, text = P("dps", "down") },
+        { bag = 0, slot = 2, text = P("dps", "up") },
+        { bag = 0, slot = 3, text = P("dps", "up") },
+    }, "dps only")
+    t.eq(BB().Marks(c, packs(), "tank"), {
+        { bag = 0, slot = 1, text = P("tank", "down") },
+        { bag = 0, slot = 2, text = P("tank", "up") },
+        { bag = 0, slot = 3, text = P("tank", "up") },
+    }, "tank only")
 end
 
-tests["bag badge: no role chosen - each upgrade names every role it is for"] = function(t)
+tests["bag badge: no role chosen - each piece names every role"] = function(t)
     if type(BB()) ~= "table" then return t.ok(false, "ns.GearBagBadge") end
     local c = client()
     c.setBagItems(bags(STRONG, TOUGH, WEAK))
     t.eq(BB().Marks(c, packs(), ""), {
-        { bag = 0, slot = 1, text = "DT" },
-        { bag = 0, slot = 2, text = "DT" },
-    }, "both beat the worn helm for both roles; the weak one for neither")
+        { bag = 0, slot = 1, text = P("dps", "up") .. P("tank", "up") },
+        { bag = 0, slot = 2, text = P("dps", "up") .. P("tank", "up") },
+        { bag = 0, slot = 3, text = P("dps", "down") .. P("tank", "down") },
+    }, "both beat the worn helm for both roles; the weak one is worse for both")
 end
 
 tests["bag badge: an item you cannot use, or not read yet, is never badged"] = function(t)
     if type(BB()) ~= "table" then return t.ok(false, "ns.GearBagBadge") end
     local c = client()
     c.setBagItems(bags(PLATE, "item:99", STRONG))
-    t.eq(BB().Marks(c, packs(), "dps"), { { bag = 0, slot = 3, text = "D" } })
+    t.eq(BB().Marks(c, packs(), "dps"), { { bag = 0, slot = 3, text = P("dps", "up") } })
 end
 
 tests["bag badge: the bags not readable - nil"] = function(t)
@@ -101,10 +115,11 @@ tests["bag badge: the module draws on login and bag changes; off draws none"] = 
     k:Boot()
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
     t.eq(k:ModuleState(BB().NAME), "started")
-    t.eq(c.bagMarks(), {})
+    local weak = { bag = 0, slot = 1, text = P("dps", "down") .. P("tank", "down") }
+    t.eq(c.bagMarks(), { weak }, "drawn at login")
     c.setBagItems(bags(WEAK, STRONG))
     c.fire("BAG_UPDATE_DELAYED")
-    t.eq(c.bagMarks(), { { bag = 0, slot = 2, text = "DT" } }, "no role chosen")
+    t.eq(c.bagMarks(), { weak, { bag = 0, slot = 2, text = P("dps", "up") .. P("tank", "up") } }, "no role chosen")
     t.eq(k.settings:set(BB().SETTING, false), true)
     c.fire("BAG_UPDATE_DELAYED")
     t.eq(c.bagMarks(), {})
