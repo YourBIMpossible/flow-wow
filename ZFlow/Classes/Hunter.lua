@@ -271,8 +271,8 @@ local pack = {
     },
 
     lists = {
-        default = join(aspect, pet, mark, sting, autoShot, slow, rapid, aimed, arcane, melee),
-        aoe = join(aspect, pet, mark, sting, autoShot, slow, rapid, multi, aimed, arcane, melee),
+        default = join(aspect, pet, mark, sting, autoShot, rapid, slow, aimed, arcane, melee),
+        aoe = join(aspect, pet, mark, sting, autoShot, rapid, slow, multi, aimed, arcane, melee),
     },
 
     -- Does not apply: no hunter spell here is cast on the group (Trueshot
