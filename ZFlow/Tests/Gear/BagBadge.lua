@@ -61,8 +61,12 @@ tests["bag badge: an upgrade in the bags is badged with the chosen role"] = func
     if type(BB()) ~= "table" then return t.ok(false, "ns.GearBagBadge") end
     local c = client()
     c.setBagItems(bags(WEAK, STRONG, TOUGH))
-    t.eq(BB().Marks(c, packs(), "dps"), { { bag = 0, slot = 2, text = "D" } }, "strength for dps")
-    t.eq(BB().Marks(c, packs(), "tank"), { { bag = 0, slot = 3, text = "T" } }, "stamina for a tank")
+    -- Both helms beat the worn one for both roles (see the next test); a
+    -- chosen role puts only its own letter on them, and the weak one none.
+    t.eq(BB().Marks(c, packs(), "dps"), { { bag = 0, slot = 2, text = "D" }, { bag = 0, slot = 3, text = "D" } },
+        "dps only")
+    t.eq(BB().Marks(c, packs(), "tank"), { { bag = 0, slot = 2, text = "T" }, { bag = 0, slot = 3, text = "T" } },
+        "tank only")
 end
 
 tests["bag badge: no role chosen - each upgrade names every role it is for"] = function(t)
