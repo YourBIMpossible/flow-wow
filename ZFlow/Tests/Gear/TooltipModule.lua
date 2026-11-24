@@ -384,6 +384,87 @@ tests["gear tooltip G15: a speed line that raises adds no speed line, keeps the 
     t.eq(api.errors(), 2)
 end
 
+-- C-26: the score lines, on by default ----------------------------------------
+
+local OLD_HELM = "item:3"
+local GUESS_NOTE = "Scores use first-guess stat weights"
+
+-- A client wearing a 1 Stamina helm: 3 for a tank, 1 for dps (HELM: 12, 4).
+local function wearingClient()
+    local c = client()
+    c.setItem(OLD_HELM, { kind = "INVTYPE_HEAD", stats = { [STA] = 1 } })
+    c.setWorn(1, OLD_HELM)
+    return c
+end
+
+tests["gear tooltip C-26: the score row is on by default"] = function(t)
+    local c = client()
+    local k = start(c)
+    t.eq(M.SCORE_SETTING, "gear.tooltipScore")
+    local row = k.settings:row(M.SCORE_SETTING)
+    t.eq(type(row), "table")
+    t.eq(row and row.type, "bool")
+    t.eq(row and row.default, true)
+    t.eq(k.settings:get(M.SCORE_SETTING), true)
+end
+
+tests["gear tooltip C-26: score per role, then the gain on what is worn, then the first-guess note"] = function(t)
+    local c = wearingClient()
+    t.eq(M.Lines(c, packs(), HELM, { role = "tank", score = true }), {
+        { text = "Upgrade for your head piece (+9, tank)", tone = "good" },
+        { text = "Score 12 (tank), 4 (dps)", tone = "info" },
+        { text = "vs your head piece: +9 (tank), +3 (dps)", tone = "info" },
+        { text = GUESS_NOTE .. ".", tone = "info" },
+    })
+end
+
+tests["gear tooltip C-26: a loss is a minus; no difference is 0, with no sign"] = function(t)
+    local c = wearingClient()
+    c.setItem(OLD_HELM, { kind = "INVTYPE_HEAD", stats = { [STA] = 4, [STR] = 3 } })
+    -- HELM: 12 tank, 4 dps. Worn: 12 tank, 10 dps.
+    local lines = M.Lines(c, packs(), HELM, { role = "dps", score = true })
+    t.eq(lines[1], { text = "Not an upgrade for your head piece (-6, dps)", tone = "bad" })
+    t.eq(lines[3], { text = "vs your head piece: -6 (dps), 0 (tank)", tone = "info" })
+end
+
+tests["gear tooltip C-26: the note names the roles when only some weights are a first guess"] = function(t)
+    local c = wearingClient()
+    local mixed = packs()
+    mixed.DRUID.weights.tank.evidence = "authored"
+    local lines = M.Lines(c, mixed, HELM, { role = "tank", score = true })
+    t.eq(lines[#lines], { text = GUESS_NOTE .. " (dps).", tone = "info" })
+    mixed.DRUID.weights.dps.evidence = "authored"
+    lines = M.Lines(c, mixed, HELM, { role = "tank", score = true })
+    t.eq(#lines, 3, "no note when no weights are a first guess")
+    t.eq(lines[3], { text = "vs your head piece: +9 (tank), +3 (dps)", tone = "info" })
+end
+
+tests["gear tooltip C-26: a worn slot that was not read is not known, never a number"] = function(t)
+    local c = client()
+    c.setWorn(1, nil)
+    t.eq(M.Lines(c, packs(), HELM, { role = "tank", score = true }), {
+        { text = "No verdict: " .. ns.GearScore.REASON.worn .. ": head", tone = "none" },
+        { text = "Score 12 (tank), 4 (dps)", tone = "info" },
+        { text = "vs your head piece: not known", tone = "info" },
+        { text = GUESS_NOTE .. ".", tone = "info" },
+    })
+    -- Not asked for the score: the lines the other readers always got.
+    t.eq(M.Lines(c, packs(), HELM, { role = "tank" }), {
+        { text = "No verdict: " .. ns.GearScore.REASON.worn .. ": head", tone = "none" },
+    })
+end
+
+tests["gear tooltip C-26: hovering shows the score lines with no setting touched; saved off, none"] = function(t)
+    local c = wearingClient()
+    local k = start(c)
+    t.eq(texts(c.hover(HELM)), {
+        "Upgrade for your head piece (+3, dps)", "Upgrade for your head piece (+9, tank)",
+        "Score 4 (dps), 12 (tank)", "vs your head piece: +3 (dps), +9 (tank)", GUESS_NOTE .. ".",
+    })
+    t.eq(k.settings:set(M.SCORE_SETTING, false), true)
+    t.eq(texts(c.hover(HELM)), { "Upgrade for your head piece (+3, dps)", "Upgrade for your head piece (+9, tank)" })
+end
+
 tests["gear tooltip: it only reads; nothing is equipped or picked up"] = function(t)
     local c = client()
     local calls = 0
