@@ -9,7 +9,6 @@ local N = ns.Nav
 -- Exact values carried over from Flow.
 N.ARROW_SIZE, N.ARROW_ART = 56, 64              -- button, art
 N.NEEDLE_W, N.NEEDLE_H = 25.6, 109.1            -- the profession needle
-N.ON_NEEDLE_SCALE, N.ON_NEEDLE_ALPHA = 0.8, 0.7 -- quest arrow while over the needle
 N.PROF_HOLDER_ALPHA = 0.85                      -- the profession arrow, always
 N.COLOR_NEAR, N.COLOR_FAR = 40, 600             -- yards: green at, orange at
 N.STACK_SNAP = 40                               -- drop this close to restack
@@ -265,8 +264,7 @@ local function stackPointOf(saved, defaultPoint, size, sw, sh)
 end
 
 -- Two arrows on one place: the quest arrow, and behind it the profession
--- arrow as its echo. STACK_GAP is kept for callers that still read it.
-N.STACK_GAP = 4
+-- arrow as its echo.
 
 -- How far under the quest arrow the echo stands. slid: straight below it.
 function N.EchoDrop(size, slid)

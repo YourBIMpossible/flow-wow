@@ -10,7 +10,6 @@ local N = ns.Nav
 -- Exact values carried over from Flow.
 N.AT_POINT = 24                 -- yards: standing on a step's point
 N.PROF_RING_ALPHA = 0.35        -- the faint ring at the profession step
-N.PROF_LEN = 64.8               -- the needle's drawn length (54 * 0.8 * 1.5)
 N.TRAVEL_ICON = 38              -- the travel icon's size
 N.TRAVEL_ARROW_SCALE = 0.5      -- the quest arrow while it stands beside that icon
 N.TEXT_GAP_BELOW, N.TEXT_GAP_ABOVE = 2, 4
@@ -36,12 +35,6 @@ function N.ProfArrowMode(mainAtPoint, profHere, canPoint)
     if profHere then return "ring" end
     if mainAtPoint or not canPoint then return "off" end
     return "arrow"
-end
-
--- How far the needle reaches past an arrow frame's edge, plus a little air.
-function N.NeedleClearance(size)
-    size = finite(size) and size or N.ARROW_SIZE
-    return math.max(0, math.ceil(N.PROF_LEN / 2 - size / 2)) + 2
 end
 
 -- Which side of an arrow its text goes: above when the arrow is in the top

@@ -16,9 +16,9 @@ local HERE = 1411
 
 -- The map is 1000 by 500 yards; the player stands in its middle, the
 -- waypoint 100 yards north. tx, ty: where the trainer stands.
-local function start(tx, ty, px, py)
+local function start(tx, ty, px, py, arrows)
     local c = ns.make.fakeClient()
-    c.setSaved(ns.id.accountDB, { layout = { arrowIntroSeen = true }, learned = { places = { npcs = {
+    c.setSaved(ns.id.accountDB, { layout = { arrowIntroSeen = true, arrows = arrows }, learned = { places = { npcs = {
         ["Test Trainer"] = { map = HERE, x = tx, y = ty, trains = { Mining = true },
                              factions = { Horde = true }, seen = 10 },
     } } } })
@@ -100,6 +100,31 @@ tests["arrow echo: never three arrows: nested, slid, separated or with no facing
         two(t, c, name .. ", no facing")
         c.setFacing(0); c.advance(2, 8)
         two(t, c, name .. ", facing back")
+        t.eq(problems(addon), 0, "no problem from the arrows")
+    end
+    -- Separated: the echo at a place of its own, far from the quest arrow,
+    -- whether the two steps are close together or far apart.
+    local own = { "CENTER", "CENTER", 300, -200 }
+    for name, at in pairs({ ["separated, 9 degrees"] = { 0.53, 0.1 }, ["separated, 90 degrees"] = { 0.8, 0.5 } }) do
+        local c, addon = start(at[1], at[2], nil, nil, { mode = "separate", points = { prof = own } })
+        local function apartFrames(when)
+            local q, p = c.arrows[1], c.arrows[2]
+            t.eq(#c.arrows, 2, when .. ": two arrow frames, never a third")
+            t.eq(q.shown, true, when .. ": the quest arrow")
+            t.eq(p.shown, true, when .. ": the echo")
+            t.eq(q.under, false, when .. ": the quest arrow takes the mouse")
+            t.eq(p.under, false, when .. ": the echo on its own takes the mouse too")
+            t.ok(p.lookIs ~= "needle", when .. ": no needle")
+            t.eq(p.point, own, when .. ": the echo at its own saved place")
+            t.ok(math.abs(q.point[3] - p.point[3]) > 56 or math.abs(q.point[4] - p.point[4]) > 56,
+                when .. ": the two do not overlap")
+            t.ok(p.faded < 1, when .. ": the echo is still see-through")
+        end
+        apartFrames(name)
+        c.setFacing(nil); c.advance(2, 8)
+        apartFrames(name .. ", no facing")
+        c.setFacing(0); c.advance(2, 8)
+        apartFrames(name .. ", facing back")
         t.eq(problems(addon), 0, "no problem from the arrows")
     end
 end

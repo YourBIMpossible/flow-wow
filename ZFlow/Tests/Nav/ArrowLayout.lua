@@ -97,7 +97,6 @@ return {
         t.eq(N.ECHO_NEST, 12, "constant nest"); t.eq(N.ECHO_ALPHA, 0.7, "constant echo alpha")
         t.eq(SLIDE, 64, "the slid drop"); t.eq(N.EchoDrop(56, true), SLIDE, "EchoDrop slid")
         t.eq(N.EchoDrop(56, false), NEST, "EchoDrop tucked")
-        t.eq(N.ON_NEEDLE_ALPHA, 0.7, "constant alpha"); t.eq(N.ON_NEEDLE_SCALE, 0.8, "constant scale")
         t.eq(N.PROF_HOLDER_ALPHA, 0.85, "constant holder alpha")
         t.eq(N.NEEDLE_W, 25.6, "needle width"); t.eq(N.NEEDLE_H, 109.1, "needle height")
     end,
