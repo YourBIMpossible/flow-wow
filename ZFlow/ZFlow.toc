@@ -238,3 +238,7 @@ UI\ProfDock.lua
 Nav\ProfFeed.lua
 Nav\HearthAdvice.lua
 Nav\GateWords.lua
+Nav\CrossingWords.lua
+Nav\Activities.lua
+UI\Lite.lua
+Nav\ClassTrainerStep.lua
