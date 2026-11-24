@@ -239,13 +239,15 @@ function PPP.Declare(k, diag)
         if name == nil then name = prof end
         local PATH, P = ns.ProfPath, ns.ProfPlan
         if not text(name) or type(PATH) ~= "table" or type(PATH.Path) ~= "function" then return nil end
+        local source
+        if type(P) == "table" and type(ctx.use) == "function" then
+            local ok, s = pcall(ctx.use, P.NODE_SOURCE)
+            if ok then source = s end
+        end
+        -- The one live plan, shared with the arrow's feed (same rev).
+        if type(PATH.Live) == "function" then return PATH.Live(ctx.client, ctx.store, name, source) end
         local input
         if type(P) == "table" and type(P.Input) == "function" then
-            local source
-            if type(ctx.use) == "function" then
-                local ok, s = pcall(ctx.use, P.NODE_SOURCE)
-                if ok then source = s end
-            end
             local ok, v = pcall(P.Input, ctx.client, ctx.store, name, source)
             -- One shape for every reader of the path (Items/ProfPath.lua).
             if ok and type(v) == "table" and type(PATH.FromPlanInput) == "function" then

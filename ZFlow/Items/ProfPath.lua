@@ -398,3 +398,31 @@ function ProfPath.FromPlanInput(p)
         bags = p.bags, bank = p.bank, bankSeen = p.bankSeen, prices = p.price, faction = p.faction,
         name = p.name }
 end
+
+-- The one live plan (lead section 450): the path panel and the arrow's feed
+-- both read it here, so one rev counts for both. The open profession
+-- window's own skill is the newest reading there is. source is ProfPlan's
+-- node source, or nil. nil when there is no path.
+function ProfPath.Live(client, store, prof, source)
+    if type(prof) ~= "string" or prof == "" or type(client) ~= "table" then return nil end
+    local P = ns.ProfPlan
+    local input
+    if type(P) == "table" and type(P.Input) == "function" then
+        local ok, v = pcall(P.Input, client, store, prof, source)
+        if ok and type(v) == "table" then input = ProfPath.FromPlanInput(v) end
+    end
+    if type(input) ~= "table" then input = { prof = prof } end
+    local r
+    for _, name in ipairs({ "recipes", "tradeSkillRows" }) do
+        if type(r) ~= "table" and type(client[name]) == "function" then
+            local ok, v = pcall(client[name])
+            if ok then r = v end
+        end
+    end
+    if type(r) == "table" and r.name == prof and whole(r.skill) and whole(r.max) then
+        input.skill, input.max = r.skill, r.max
+    end
+    local ok, path = pcall(ProfPath.Path, input)
+    if ok and type(path) == "table" then return path end
+    return nil
+end

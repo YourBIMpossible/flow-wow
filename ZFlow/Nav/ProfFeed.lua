@@ -421,6 +421,28 @@ function F.Declare(k, diag)
         return v
     end
 
+    -- Lead section 450: the one live plan of a profession (Items/ProfPath.lua,
+    -- the plan the path panel shows), and its rev. nil when there is no path:
+    -- never 0. A reader keeps the rev and drops its copy when it changes.
+    function api.path(prof)
+        local PATH, PL = ns.ProfPath, ns.ProfPlan
+        if not ctx or type(PATH) ~= "table" or type(PATH.Live) ~= "function" then return nil end
+        local source
+        if type(PL) == "table" and type(ctx.use) == "function" then
+            local okUse, s = pcall(ctx.use, PL.NODE_SOURCE)
+            if okUse then source = s end
+        end
+        local ok, path = pcall(PATH.Live, ctx.client, ctx.store, prof, source)
+        if ok and type(path) == "table" then return path end
+        return nil
+    end
+
+    function api.rev(prof)
+        local path = api.path(prof)
+        if type(path) == "table" and type(path.rev) == "number" then return path.rev end
+        return nil
+    end
+
     function api.result()
         if not ctx then return nil end
         local zone = ask("zone")
@@ -451,7 +473,12 @@ function F.Declare(k, diag)
     function api.step()
         if not ctx or api.off() or not planOf() then return nil end
         local result = api.result()
-        return F.Step(result), type(result) == "table" and result.pick or nil, result
+        local pick
+        if type(result) == "table" and type(result.pick) == "table" then
+            pick = result.pick
+            pick.rev = api.rev(pick.prof)
+        end
+        return F.Step(result), pick, result
     end
 
     function api.lines()
@@ -490,7 +517,7 @@ function F.Declare(k, diag)
     k:Module({
         name = F.NAME,
         needs = { "client", "store", "settings" },
-        provides = { Step = api.step, Off = api.off, Lines = api.lines },
+        provides = { Step = api.step, Off = api.off, Lines = api.lines, Path = api.path, Rev = api.rev },
         ticks = { { every = F.PIN_EVERY, when = "always", run = function() api.pin() end } },
         start = function(c) ctx = c end,
         stop = function()
