@@ -394,7 +394,7 @@ function Arrow.GuideSource(client, layout, guide, intro, palette)
             if type(d) == "number" then
                 local word = more[key].compass
                 if arrived then
-                    out[#out + 1] = Arrow.HERE_TEXT
+                    out[#out + 1] = type(step.there) == "string" and step.there or Arrow.HERE_TEXT
                 else
                     local far = word ~= nil
                         and Arrow.DISTANCE_COMPASS_TEXT:format(math.floor(d + 0.5), word)
@@ -801,6 +801,20 @@ function Arrow.Start(k, diag, own)
                 local okFly, fly = pcall(flightNow.Now, type(step) == "table" and step.label or nil)
                 if okFly and type(fly) == "table" then
                     step, from, saying = { still = true, lines = { fly.title, fly.sub } }, "your flight", true
+                end
+            end
+            -- A1-17 (Nav/PlateTarget.lua): at the step, a creature it needs
+            -- on a nameplate in view is named ("There: <name>") in place
+            -- of the here line; words only, the arrow is not turned.
+            local plateTarget = k.use and k.use("plateTarget")
+            if not saying and type(step) == "table" and step.quest ~= nil
+                and plateTarget and type(plateTarget.There) == "function" then
+                local okThere, there = pcall(plateTarget.There, tonumber(step.quest))
+                if okThere and type(there) == "string" then
+                    local copy = {}
+                    for key, v in pairs(step) do copy[key] = v end
+                    copy.there = there
+                    step = copy
                 end
             end
             -- No quest step: the quest arrow says why (lead section 294 item 5),
