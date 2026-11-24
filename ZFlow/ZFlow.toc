@@ -228,3 +228,4 @@ Nav\Trip.lua
 UI\RouteTracker.lua
 Nav\QuestAdvice.lua
 Spells\TrainAdvice.lua
+Nav\ClassTrainerStep.lua
