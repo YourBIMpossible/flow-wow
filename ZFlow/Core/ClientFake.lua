@@ -1307,6 +1307,14 @@ function ns.make.fakeClient(opts)
     function c.setMerchantRepairs(v)
         if v == true or v == false then s.merchantRepairs = v else s.merchantRepairs = nil end
     end
+    -- Copper, or nil for not known; given only at a merchant that repairs.
+    function c.repairCost()
+        if s.merchantRepairs ~= true then return nil end
+        return s.repairCost
+    end
+    function c.setRepairCost(v)
+        if type(v) == "number" and v >= 0 and v == math.floor(v) then s.repairCost = v else s.repairCost = nil end
+    end
     function c.bindLocation() return s.bindLocation end
     function c.setBindLocation(name) s.bindLocation = type(name) == "string" and name ~= "" and name or nil end
     function c.hearthCooldown() return s.hearthCooldown end
