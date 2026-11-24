@@ -285,5 +285,7 @@ return {
     "Spells/TrainAdvice.lua",
     -- G46 (lead section 391 item 2): when hearthing saves the walk, and where to set home (after Trip, TripRoute).
     "Nav/HearthAdvice.lua",
+    -- A10: the import word's "now", which copies the earlier add-on's saved data in (after Diag, SettingsShare).
+    "Import/Apply.lua",
     },
 }
