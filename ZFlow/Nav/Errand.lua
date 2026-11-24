@@ -290,7 +290,7 @@ function E.Declare(k, diag, arrow)
     k:Module({
         name = E.NAME,
         needs = { "client", "store" },
-        provides = { Step = api.step, Stop = api.stop },
+        provides = { Step = api.step, Stop = api.stop, Choose = api.choose, Clear = api.clear },
         start = function(ctx)
             client, store = ctx.client, ctx.store
         end,
