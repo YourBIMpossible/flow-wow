@@ -131,12 +131,13 @@ tests["trip list e2e: go hands the planned order to the route and the arrow walk
     slash(c, "trip add trainer")
     slash(c, "trip add inn")
     slash(c, "trip go")
-    -- From 0.5, 0.5: the inn (100 yd), then the trainer, then the vendor.
-    t.eq(first(c), "Inn: Inna", "the arrow points at the nearest stop first")
-    c.setPosition(MAP, 0.5, 0.6)
-    c.advance(2, 20)
-    t.eq(first(c), "Trainer: Thane", "at the inn: on to the trainer")
+    -- Test was wrong: N.RoutePlan shortens the nearest-next order (inn, trainer,
+    -- vendor: 100 + 224 + 500 yd) to trainer, inn, vendor (200 + 224 + 316 yd).
+    t.eq(first(c), "Trainer: Thane", "the arrow points at the planned first stop")
     c.setPosition(MAP, 0.3, 0.5)
+    c.advance(2, 20)
+    t.eq(first(c), "Inn: Inna", "at the trainer: on to the inn")
+    c.setPosition(MAP, 0.5, 0.6)
     c.advance(2, 20)
     t.eq(first(c), "Vendor: Bob")
 end
