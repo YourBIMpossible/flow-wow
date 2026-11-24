@@ -14,14 +14,18 @@ local _, ns = ...
 --   H.Hearth(o) -> line or nil, reason
 --     o = { bind = { name, map, x, y }, cooldown (seconds; not a number:
 --           no stone known), here = { map, x, y }, target = { map, x, y },
---           size = { w, h } of the target's map, legs }
+--           size = { w, h } of the target's map, legs,
+--           corners = function(map) -> client.mapCorners(map) or nil }
+--     FLOW-PARITY B-35: a walk or a home on another map is measured in
+--     world yards (Flow Modules/Hearth.lua:242-277, nav:ToWorld) when both
+--     maps' corners are known and on one continent; else as below.
 --     The first of these that holds:
 --       "no target"   target not placed
---       "far unknown" the player not on the target's map, or no size
+--       "far unknown" the player's walk to the target not measurable
 --       "near"        the walk is under H.SAVES + H.CAST: no advice
 --       "no home"     no bind name: H.NO_HOME
---       "bind place unknown" / "other map": where the home is not known
---                     on this map: nothing claimed
+--       "bind place unknown" / "other map": where the home is not known,
+--                     or not measurable to the target: nothing claimed
 --       "no saving"   walk - (H.CAST + walk from the home) < H.SAVES
 --       "no stone"    cooldown not a number
 --       "on cooldown" H.READY_IN when the stone is ready before the walk
@@ -102,19 +106,36 @@ function H.Walk(a, b, size, legs)
     return d / H.RUN
 end
 
+-- Seconds on foot from a to b: on one map as H.Walk; else in world yards
+-- through the maps' corners on one continent (Nav/Flights.lua ToWorld).
+local function walkOf(a, b, o)
+    if not (placed(a) and placed(b)) then return nil end
+    if a.map == b.map then return H.Walk(a, b, o.size, o.legs) end
+    if type(o.corners) ~= "function" or not (N.Flights and N.Flights.ToWorld) then return nil end
+    local okA, ma = pcall(o.corners, a.map)
+    local okB, mb = pcall(o.corners, b.map)
+    if not (okA and okB) then return nil end
+    local ca, ax, ay = N.Flights.ToWorld(ma, a.x, a.y)
+    local cb, bx, by = N.Flights.ToWorld(mb, b.x, b.y)
+    if ca == nil or ca ~= cb then return nil end
+    return math.sqrt((ax - bx) ^ 2 + (ay - by) ^ 2) / H.RUN
+end
+
 function H.Hearth(o)
     if type(o) ~= "table" then o = {} end
     local target, here = o.target, o.here
     if not placed(target) then return nil, "no target" end
-    if not placed(here) or here.map ~= target.map or not sized(o.size) then return nil, "far unknown" end
-    local walk = H.Walk(here, target, o.size, o.legs)
+    if placed(here) and here.map == target.map and not sized(o.size) then return nil, "far unknown" end
+    local walk = walkOf(here, target, o)
+    if not walk then return nil, "far unknown" end
     if walk < H.SAVES + H.CAST then return nil, "near" end
     local bind = type(o.bind) == "table" and o.bind or {}
     local name = named(bind.name)
     if not name then return H.NO_HOME, "no home" end
     if not placed(bind) then return nil, "bind place unknown" end
-    if bind.map ~= target.map then return nil, "other map" end
-    local saves = walk - H.CAST - H.Walk(bind, target, o.size, o.legs)
+    local fromHome = walkOf(bind, target, o)
+    if not fromHome then return nil, "other map" end
+    local saves = walk - H.CAST - fromHome
     if saves < H.SAVES then return nil, "no saving" end
     local cooldown = o.cooldown
     if not finite(cooldown) then return nil, "no stone" end
@@ -258,7 +279,8 @@ function H.Declare(k)
             if ok and type(fn) == "function" then legs = fn end
         end
         local line, why = H.Hearth({ bind = bind, cooldown = cooldown, here = here, target = target,
-                                     size = size, legs = legs })
+                                     size = size, legs = legs,
+                                     corners = function(map) return ask(client, "mapCorners", map) end })
         if line and not said[why] then
             said[why] = true
             say(line)
