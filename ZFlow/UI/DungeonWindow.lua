@@ -33,7 +33,16 @@ ns.DungeonWindow = W
 W.NAME = "dungeonWindow"
 W.ID = "dungeons"
 W.WORD = "dungeons"
-W.HELP = "open the Dungeon Quests window"
+W.HELP = "open the Dungeon Quests window; with a dungeon's name, plan that run"
+-- FLOW-PARITY B-49 (lead section 496 item 2): the word with a dungeon's name
+-- plans that run from chat, by the code of the Plan the run button, and
+-- says the planned stops.
+W.NO_SUCH = "no dungeon called \"%s\"."
+W.CLOSE = "Close matches: %s"
+W.SEE_ALL = "Type %s dungeons to see them all."
+W.STOP = "%d. %s"
+W.LEFT_OFF = "Left off: %s"
+W.CLOSE_MAX = 6
 W.HEADER = "Dungeon Quests"
 W.SEARCH = "Search dungeons"
 W.TABS = { "Quests", "Bosses", "Map" }
@@ -158,16 +167,17 @@ function W.Declare(k, diag)
         return steps, type(left) == "table" and left or {}
     end
 
-    local function planRun(d)
-        local run, why = R.Run(st, client(), d and d.key)
+    -- wing (B-57): that wing's run only. Answers true when a run is planned.
+    local function planRun(d, wing)
+        local run, why = R.Run(st, client(), d and d.key, wing)
         if not run then
             view.said = why[1]
-            return
+            return false
         end
         local trip = k.use and k.use(ns.Nav.TripRoute.NAME)
         if not trip or type(trip.Run) ~= "function" then
             view.said = W.NO_ROUTE
-            return
+            return false
         end
         -- B-52: the get-ready steps go first; the player does each.
         local ready, words = readySteps()
@@ -184,6 +194,7 @@ function W.Declare(k, diag)
             run.left = left
         end
         view.said = trip.Run(run)
+        return true
     end
 
     local function footer(d)
@@ -381,15 +392,78 @@ function W.Declare(k, diag)
         return handle ~= nil and handle.shown() == true
     end
 
+    -- B-49: the word with a name. Plans by planRun, the button's own code,
+    -- and says what was planned, stop by stop. Changes nothing else: the
+    -- window is not opened.
+    function api.PlanNamed(text)
+        local c = client()
+        if type(c) ~= "table" or type(c.print) ~= "function" then return false end
+        local function say(line, more)
+            if more then c.print("  " .. line) else c.print(id.title .. ": " .. line) end
+        end
+        index()
+        if type(st) ~= "table" or st.state ~= "ready" then
+            local why = R.WHY_BUILDING
+            if type(st) ~= "table" or st.state == "noquestie" then
+                why = ns.DungeonStates.WHY.noQuestie
+            elseif st.state == "failed" then
+                why = st.why or R.WHY_LIST
+            end
+            say(why[1])
+            if why[2] then say(why[2], true) end
+            return false
+        end
+        local d, wing, close = R.Find(st, text)
+        if not d then
+            say(W.NO_SUCH:format(tostring(text)))
+            if type(close) == "table" and #close > 0 then
+                local names = {}
+                for i = 1, math.min(#close, W.CLOSE_MAX) do names[i] = close[i] end
+                say(W.CLOSE:format(table.concat(names, ", ")), true)
+            else
+                say(W.SEE_ALL:format(tostring(id.slash)), true)
+            end
+            return false
+        end
+        local was = view.said
+        local planned = planRun(d, wing)
+        local said = view.said
+        -- The window's footer keeps what it said: this was asked in chat.
+        view.said = was
+        say((R.WingTitle(st, d.key, wing) or tostring(d.name)) .. ": " .. tostring(said))
+        if not planned then return false end
+        local trip = k.use and k.use(ns.Nav.TripRoute.NAME)
+        local route
+        if type(trip) == "table" and type(trip.View) == "function" then route = trip.View() end
+        for i, s in ipairs(type(route) == "table" and type(route.stops) == "table" and route.stops or {}) do
+            local line = W.STOP:format(i, tostring(s.label))
+            if s.detail then line = line .. " - " .. tostring(s.detail) end
+            say(line, true)
+        end
+        for _, l in ipairs(type(route) == "table" and type(route.left) == "table" and route.left or {}) do
+            local line = tostring(l.label)
+            if l.why then line = line .. " - " .. tostring(l.why) end
+            say(W.LEFT_OFF:format(line), true)
+        end
+        return true
+    end
+
     if diag and type(diag.commands) == "table" then
-        diag.commands[W.WORD] = function() api.Open() end
+        diag.commands[W.WORD] = function(rest)
+            local text = tostring(rest or ""):match("^%s*(.-)%s*$")
+            if text ~= "" then
+                api.PlanNamed(text)
+                return
+            end
+            api.Open()
+        end
         if type(diag.help) == "table" then diag.help[W.WORD] = W.HELP end
     end
 
     k:Module({
         name = W.NAME,
         needs = { "client", "store", "sched" },
-        provides = { Open = api.Open, Close = api.Close, Shown = api.Shown },
+        provides = { Open = api.Open, Close = api.Close, Shown = api.Shown, PlanNamed = api.PlanNamed },
         start = function(c) ctx = c end,
         stop = function()
             if cancelStep then cancelStep() end

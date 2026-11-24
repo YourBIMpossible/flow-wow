@@ -35,6 +35,10 @@
 --   R.WingOfBoss(st, client, key, bossName) -> the wing that boss is in
 --   R.WingTitle(st, key, wing) -> "Scarlet Monastery (Library)"
 --   R.Pane, R.Run and R.Entrance take a wing as their last argument.
+--   R.Find(st, text) -> dungeon, wing, close (FLOW-PARITY B-49): the
+--     dungeon a typed name means, any case: its whole name, a wing's run
+--     name, or the one dungeon whose name has the text in it. No such one:
+--     nil, nil and the names that come close, in the list's order.
 --   R.JournalLine(client) -> one line for the diag word: whether the
 --     client's dungeon journal answers
 --
@@ -1131,6 +1135,46 @@ function R.Ready(train, repair, bank, repairLow)
         add(readyStep(R.READY_BANK, { label = name }, bank))
     end
     return out, left
+end
+
+-- FLOW-PARITY B-49 (legacy Flow's D.Find): the dungeon a typed name means.
+R.FIND_WORD = 3   -- a word of the text counts for a close match from this length
+function R.Find(st, text)
+    local close = {}
+    if type(st) ~= "table" or type(st.byKey) ~= "table" or type(text) ~= "string" then return nil, nil, close end
+    local want = text:lower():match("^%s*(.-)%s*$")
+    if want == "" then return nil, nil, close end
+    local list = R.List(st)
+    for _, d in ipairs(list) do
+        if type(d.name) == "string" and d.name:lower() == want then return d end
+    end
+    -- A wing's run: its own name, or the dungeon's name and then the wing's.
+    for _, d in ipairs(list) do
+        for _, w in ipairs(R.Wings(st, d.key) or {}) do
+            local title = R.WingTitle(st, d.key, w.name)
+            if (type(title) == "string" and title:lower() == want)
+                or (tostring(d.name) .. " " .. w.name):lower() == want then
+                return d, w.name
+            end
+        end
+    end
+    local found = {}
+    for _, d in ipairs(list) do
+        if type(d.name) == "string" and d.name:lower():find(want, 1, true) then found[#found + 1] = d end
+    end
+    if #found == 1 then return found[1] end
+    for _, d in ipairs(found) do close[#close + 1] = d.name end
+    if #close > 0 then return nil, nil, close end
+    -- None has the whole text: the ones that have one of its words.
+    for _, d in ipairs(list) do
+        local name = type(d.name) == "string" and d.name:lower() or ""
+        local hit = false
+        for word in want:gmatch("%S+") do
+            if #word >= R.FIND_WORD and name:find(word, 1, true) then hit = true end
+        end
+        if hit then close[#close + 1] = d.name end
+    end
+    return nil, nil, close
 end
 
 -- The dungeon the client's instance name names (lead section 303 (d)), by
