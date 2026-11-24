@@ -160,6 +160,7 @@ return {
         "Nav/WeaponMasterSeen.lua",
         "Nav/QuestSource.lua",
         "Nav/QuestRead.lua",
+        "Nav/Focus.lua",
         "Nav/AddonSources.lua",
         "Nav/Rides.lua",
         "Nav/TravelSpells.lua",
