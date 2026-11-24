@@ -9573,6 +9573,10 @@ function ns.make.client(env)
     --     handle comes back.
     --   handle.update(tree) -> true | false   redraws; what was made is used
     --     again and what is left over is hidden.
+    --   handle.place(point, width, height) -> true | false, why   moves
+    --     and resizes the built window, keeping its frame and border (lead
+    --     section 348); point { anchor, screen anchor, x, y } or nil, a size
+    --     nil keeps that one; never below the least size; no onMoved.
     --   handle.show(on), handle.shown(), handle.close() (hides it; onClose
     --     is the player's close only)
     --   handle.art() -> { frame = "first" | "fallback", close =, search =,
@@ -11090,6 +11094,37 @@ function ns.make.client(env)
                     return false
                 end
                 tree = now
+                return true
+            end
+            -- Lead section 348: moves and resizes the built window, keeping its
+            -- frame and border: point = { anchor, screen anchor, x, y } or nil
+            -- (keep the place), width / height numbers above 0 or nil (keep
+            -- that one). The size is never below the window's least size. The
+            -- parts are drawn again in the new size. No onMoved: the player
+            -- did not move it. -> true | false, why
+            function h.place(point, w, ht)
+                if point ~= nil then
+                    if type(point) ~= "table" or type(point[1]) ~= "string" or type(point[2]) ~= "string"
+                        or type(point[3]) ~= "number" or type(point[4]) ~= "number" then
+                        return false, "a place is anchor, screen anchor, x, y"
+                    end
+                end
+                for _, v in ipairs({ w or 1, ht or 1 }) do
+                    if type(v) ~= "number" or v ~= v or v <= 0 or v == math.huge then
+                        return false, "a size is a number above 0"
+                    end
+                end
+                if point ~= nil then
+                    method(f, "ClearAllPoints")
+                    method(f, "SetPoint", point[1], parent, point[2], point[3], point[4])
+                end
+                if w ~= nil then width = math.max(w, tonumber(tree.minWidth) or 0) end
+                if ht ~= nil then height = math.max(ht, tonumber(tree.minHeight) or 0) end
+                local ok, err = pcall(draw, tree)
+                if not ok then
+                    fail(err)
+                    return false, "the window could not be drawn in its new size"
+                end
                 return true
             end
             -- open: shown by show(true) and not since hidden by the add-on

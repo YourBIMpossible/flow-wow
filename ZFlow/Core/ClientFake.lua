@@ -3831,6 +3831,25 @@ function ns.make.fakeClient(opts)
                 read(w, now)
                 return true
             end
+            -- As the real client's h.place (lead section 348): records the
+            -- new place and size; the size never below the least size.
+            function h.place(point, width, height)
+                if point ~= nil then
+                    if type(point) ~= "table" or type(point[1]) ~= "string" or type(point[2]) ~= "string"
+                        or type(point[3]) ~= "number" or type(point[4]) ~= "number" then
+                        return false, "a place is anchor, screen anchor, x, y"
+                    end
+                end
+                for _, v in ipairs({ width or 1, height or 1 }) do
+                    if type(v) ~= "number" or v ~= v or v <= 0 or v == math.huge then
+                        return false, "a size is a number above 0"
+                    end
+                end
+                if point ~= nil then w.rec.point = { point[1], point[2], point[3], point[4] } end
+                if width ~= nil then w.rec.width = math.max(width, tonumber(w.tree.minWidth) or 0) end
+                if height ~= nil then w.rec.height = math.max(height, tonumber(w.tree.minHeight) or 0) end
+                return true
+            end
             function h.show(on) w.rec.shown = on and true or false end
             function h.shown() return w.rec.shown end
             function h.close() w.rec.shown = false end
