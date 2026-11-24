@@ -14,10 +14,20 @@
 -- this file names no template, colour, font, size or picture, and works
 -- out nothing: the steps and distances are Nav/'s.
 --
+-- A quest stop whose quest hands the player something to use (S42,
+-- Nav/QuestItems.lua) gets that item under the current step: its real icon,
+-- its name in its rarity colour, how many are in the bags, and RT.ITEM_NOTE.
+-- The line only names the item: it is no button and uses nothing. The
+-- player uses it from the bags.
+--
 -- LOOK ONLY: nothing is moved, targeted, cast, clicked or sent. The skip
 -- button skips the route's stop (Nav/TripRoute.lua Skip), nothing else.
 --
---   RT.Children(rows) -> the window's parts (pure)
+--   RT.Children(rows[, item]) -> the window's parts (pure)
+--     item  the current stop's quest item, or nil:
+--           { id, name, count, quality, icon }; any may be absent, but not
+--           both id and name
+--   RT.ItemLine(item) -> that item as one item line, or nil
 --   RT.Declare(k, diag) -> api   api.Open(), api.Close(), api.Shown(),
 --                                api.Refresh()
 -- Not tested in game.
@@ -41,8 +51,27 @@ RT.EVERY = 1
 RT.TONE_NOW = "good"
 RT.PIN_KIND = "new"
 RT.PIN_ROLE = "route"
+RT.ITEM_NOTE = "Use this for the quest: it is in your bags"
+RT.ITEM_PLAIN = "The quest's own item"
 
-function RT.Children(rows)
+local function whole(v) return type(v) == "number" and v >= 0 and v == math.floor(v) and v < math.huge end
+
+-- A value the kit would turn down is left out, so the line never costs
+-- the window.
+function RT.ItemLine(item)
+    if type(item) ~= "table" then return nil end
+    local name = item.name
+    if type(name) ~= "string" or name == "" or name:find("[%c|]") then name = nil end
+    if name == nil and item.id == nil then return nil end
+    local line = { kind = "itemLine", key = "questItem", name = name or RT.ITEM_PLAIN, note = RT.ITEM_NOTE }
+    if whole(item.quality) and item.quality <= 5 then line.quality = item.quality end
+    if whole(item.count) and item.count > 0 then line.count = item.count end
+    if type(item.id) == "number" then line.item = item.id end
+    if (type(item.icon) == "string" and item.icon ~= "") or type(item.icon) == "number" then line.icon = item.icon end
+    return line
+end
+
+function RT.Children(rows, item)
     local kids = { { kind = "header", key = "header", title = RT.HEADER } }
     if type(rows) ~= "table" or #rows == 0 then
         kids[#kids + 1] = { kind = "empty", key = "empty", text = RT.EMPTY[1], how = RT.EMPTY[2] }
@@ -61,6 +90,7 @@ function RT.Children(rows)
             line.key = "next" .. (i - 1)
         end
         kids[#kids + 1] = line
+        if i == 1 then kids[#kids + 1] = RT.ItemLine(item) end
     end
     kids[#kids + 1] = { kind = "footer", key = "footer", text = "",
         buttons = { { kind = "button", key = "skip", text = RT.SKIP, onClick = function() end } } }
@@ -111,10 +141,25 @@ function RT.Declare(k, diag)
         return here
     end
 
+    -- The current stop's quest item (Nav/QuestItems.lua), with what the
+    -- client says of it; nil when the stop has no quest or no item to use.
+    local function itemOf(cur)
+        local s = type(cur) == "table" and type(cur.stops) == "table" and cur.stops[1] or nil
+        if type(s) ~= "table" or s.quest == nil then return nil end
+        local qi = k.use and k.use("questItems")
+        if not (qi and type(qi.For) == "function") then return nil end
+        local ok, item = pcall(qi.For, s.quest)
+        if not ok or type(item) ~= "table" then return nil end
+        local info = ask(client(), "itemInfo", item.id)
+        info = type(info) == "table" and info or {}
+        return { id = item.id, name = item.name, count = item.count, quality = info.quality,
+            icon = ask(client(), "itemTexture", item.id) }
+    end
+
     local function tree(cur)
         local T = ns.Nav and ns.Nav.Trip
         local rows = T and T.TrackRows(cur, hereNow()) or nil
-        local kids = RT.Children(rows)
+        local kids = RT.Children(rows, rows and itemOf(cur) or nil)
         local foot = kids[#kids]
         if foot.kind == "footer" then
             foot.buttons[1].onClick = function()
@@ -212,8 +257,13 @@ function RT.Declare(k, diag)
             wasOn, hadRoute = false, cur ~= nil
             return
         end
-        local opening = cur ~= nil and (not hadRoute or not wasOn)
-        wasOn, hadRoute = true, cur ~= nil
+        -- A new player's staged reveal (UI/Reveal.lua) may hold the window
+        -- back: it does not open by itself until its stage is in, then it
+        -- does. The word opens it at any time.
+        local held = type(ns.Reveal) == "table" and type(ns.Reveal.Open) == "function"
+            and ns.Reveal.Open(k, "tracker") == false
+        local opening = not held and cur ~= nil and (not hadRoute or not wasOn)
+        wasOn, hadRoute = not held, cur ~= nil
         if opening then
             api.Open()
         elseif handle and handle.shown() then

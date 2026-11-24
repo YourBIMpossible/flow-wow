@@ -39,12 +39,34 @@ tests["travel via: a spell the player knows comes first, the step is said next"]
     t.eq(step, boars(), "the chosen step is not changed")
 end
 
-tests["travel via: a spell to learn is no shortcut"] = function(t)
+-- Lead section 403 (b): a spell to learn is no shortcut, but the player is
+-- told where to learn it, as a line under the step (its hint).
+local LEARN = { label = "Learn " .. SPELL, text = true, spell = SPELL, learn = true, detail = "your class trainer" }
+
+tests["travel via: a spell to learn is no shortcut; where to learn it is said under the step"] = function(t)
     local step = boars()
-    local learn = { label = "Learn " .. SPELL, text = true, spell = SPELL, learn = true, detail = "your class trainer" }
-    local out, how = N.TravelVia(step, { spell = learn }, false)
-    t.ok(out == step)
-    t.eq(how, nil)
+    local out, how = N.TravelVia(step, { spell = LEARN }, false)
+    t.eq(how, nil, "not a way: no how")
+    t.eq(out, { label = "Kill boars", place = boars().place, hint = "Learn " .. SPELL .. " (your class trainer)" })
+    t.eq(step, boars(), "the chosen step is not changed")
+end
+
+tests["travel via: a spell to learn with no trainer known says the spell alone"] = function(t)
+    local learn = { label = "Learn " .. SPELL, text = true, spell = SPELL, learn = true }
+    t.eq(N.TravelVia(boars(), { spell = learn }, false).hint, "Learn " .. SPELL)
+end
+
+tests["travel via: the learn line gives way to a real way, a flight's own line and walking"] = function(t)
+    local hearth = { label = "Hearth to Nighthaven", text = true, saves = 900 }
+    local out, how = N.TravelVia(boars(), { spell = LEARN, hearth = hearth }, false)
+    t.eq(how, "hearth", "the stone is still the action")
+    t.eq(out.hint, nil)
+    local hinted = N.TravelVia(boars(), { spell = LEARN, flightHint = "No flight learned to there yet" }, false)
+    t.eq(hinted.hint, "No flight learned to there yet", "the flight's line is kept as it was")
+    local walked = N.TravelVia(boars(), { spell = LEARN }, true)
+    t.eq(walked.hint, nil, "walking: no travel line")
+    local had = boars(); had.hint = "Through the cave"
+    t.eq(N.TravelVia(had, { spell = LEARN }, false).hint, "Through the cave", "a step's own hint stays")
 end
 
 tests["travel via: the hearthstone only when its saving is a known number above 0"] = function(t)
@@ -184,10 +206,13 @@ tests["travel module: a druid who knows the spell is told to cast it"] = functio
     t.eq((k.use(T.NAME).Via(boars())).via, "spell", "the same through the kernel")
 end
 
-tests["travel module: spell not known, or the client did not say: the step stays"] = function(t)
+tests["travel module: spell not known: the step and where to learn it; the client did not say: the step stays"] = function(t)
     local _, _, api = start({ knows = false })
     local step = boars()
-    t.ok(api.via(step) == step, "not known: walk")
+    local out, how = api.via(step)
+    t.eq(how, nil, "not known: walk")
+    t.eq(out.label, "Kill boars")
+    t.eq(out.hint, "Learn " .. SPELL .. " (your class trainer, from level 10)", "where to learn it is said")
     local _, _, api2 = start({ knows = "unknown" })
     t.ok(api2.via(step) == step, "no answer is never taken as known")
 end
@@ -267,6 +292,14 @@ tests["travel module: the arrow shows the cast in place of the map pin's directi
     local k, c = start({ arrow = true, pin = { map = MOONGLADE, x = 0.4, y = 0.6 } })
     t.eq(c.arrows[1].shown, true)
     t.eq(c.arrows[1].lines, { "Cast " .. SPELL, "Then: " .. N.WAYPOINT_LABEL })
+    t.eq(k.problems:count(), 0)
+end
+
+tests["travel module: the arrow shows where to learn the spell under the map pin's step"] = function(t)
+    local k, c = start({ arrow = true, knows = false, pin = { map = MOONGLADE, x = 0.4, y = 0.6 } })
+    local lines = c.arrows[1].lines
+    t.eq(lines[1], N.WAYPOINT_LABEL)
+    t.eq(lines[2], "Learn " .. SPELL .. " (your class trainer, from level 10)", "the learn line under the step")
     t.eq(k.problems:count(), 0)
 end
 

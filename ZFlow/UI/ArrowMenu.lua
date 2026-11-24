@@ -25,6 +25,7 @@ local function read(s)
         canShapes = s.canShapes == true,
         feedback = s.feedback == true,
         party = type(s.party) == "table" and s.party or {},
+        professions = s.professions ~= false,
         step = type(s.step) == "table" and s.step or {},
         nearest = type(s.nearest) == "table" and s.nearest or {},
         waypoint = s.waypoint == true,
@@ -68,6 +69,8 @@ function M.Items(state)
     for _, key in ipairs(KEYS) do
         show[#show + 1] = { key = "show." .. key, text = "Show " .. NAMES[key]:lower(), checked = not s.hidden[key] }
     end
+    -- Lead section 382 (Nav/ProfFeed.lua): the profession coach on or off.
+    show[#show + 1] = { key = M.PROFESSIONS, text = M.PROFESSIONS_TEXT, checked = s.professions }
     local rows = {
         M.StepRow(s),
         { key = "layout", text = T.MENU.layout, children = layout },
@@ -236,6 +239,9 @@ M.DUNGEONS = "dungeons"
 M.FOLLOW = "follow"
 M.FOLLOW_TEXT = "Point at a party member"
 M.FOLLOW_STOP = "Stop pointing at them"
+-- Lead section 382: the Professions tick; state.professions is its setting.
+M.PROFESSIONS = "professions"
+M.PROFESSIONS_TEXT = "Professions"
 -- The window a row opens, by the module that owns it (lead section 318).
 M.WINDOWS = { [M.DUNGEONS] = "dungeonWindow" }
 M.MORE = "  >"
@@ -392,6 +398,8 @@ function M.Action(key, state)
         local route = type(state) == "table" and type(state.route) == "table" and state.route or {}
         return { setting = M.SUGGEST_SETTING, on = route.suggest ~= true }
     end
+    -- Lead section 382: { professions = the new value } for the tick.
+    if key == M.PROFESSIONS then return { professions = not s.professions } end
     if M.WINDOWS[key] then return { window = M.WINDOWS[key] } end
     -- G47: the follow level, a member (by unit), or stop ({ follow = false }).
     if key == M.FOLLOW then return { open = key } end
