@@ -31,7 +31,7 @@ W.WORD = "watch"
 W.SETTING = "items.auctionWatch"
 W.PATH = "items.auctionWatch"
 W.UNNAMED = "an item not loaded yet"
-W.HELP = "<item> [1g 2s 3c]: watch an item's auction price; <item> off drops it; alone: the list. It buys nothing."
+W.HELP = "<item> [price]: watch an item's auction price (amounts end in g, s or c); <item> off drops it; alone: the list. It buys nothing."
 
 local UNIT = { g = 10000, s = 100, c = 1 }
 
@@ -47,7 +47,7 @@ function W.Mark(text)
     return total
 end
 
-local function coin(copper) return ns.Prices.Coin(copper) or (tostring(copper) .. "c") end
+local function coin(copper) return ns.Prices.Coin(copper) or ns.Prices.UnknownText("auction") end
 
 local function sortedIds(list)
     local ids = {}
@@ -114,7 +114,7 @@ function W.Declare(k, diag)
         arg = type(arg) == "string" and arg:match("^%s*(.-)%s*$") or ""
         if arg == "" then
             local lines = W.Lines(list(), priceOf, nameOf)
-            if #lines == 0 then return say("nothing watched. watch <item> [price, as 1g 2s 3c] adds one.") end
+            if #lines == 0 then return say("nothing watched. watch <item> [price] adds one; an amount ends in g, s or c.") end
             for _, line in ipairs(lines) do say(line) end
             return
         end
@@ -122,7 +122,7 @@ function W.Declare(k, diag)
         local item, rest = arg:match("^(|c.-|r)%s*(.-)$")
         if not item then item, rest = arg:match("^(%S+)%s*(.-)$") end
         local id = ns.Items.Id(item)
-        if type(id) ~= "number" then return say("name an item: watch <item> [1g 2s 3c].") end
+        if type(id) ~= "number" then return say("name an item: watch <item> [price].") end
         local saved, copy = list(), {}
         for key, v in pairs(saved) do copy[key] = v end
         local name = nameOr(nameOf, id)
@@ -132,7 +132,7 @@ function W.Declare(k, diag)
             return
         end
         local mark = W.Mark(rest)
-        if rest ~= "" and mark == nil then return say("a price is coins, as 1g 2s 3c.") end
+        if rest ~= "" and mark == nil then return say("a price is amounts that end in g, s or c.") end
         copy[id] = mark or true
         if not ctx.store:set("char", W.PATH, copy) then return say("could not save the list.") end
         if mark then return say(string.format("%s, at or under %s.", name, coin(mark))) end

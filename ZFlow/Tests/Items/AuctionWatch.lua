@@ -62,7 +62,7 @@ end
 tests["auction watch: the word adds, lists with the last price, and drops"] = function(t)
     if type(W()) ~= "table" then return t.ok(false, "ns.AuctionWatch") end
     local _, c = start()
-    t.eq(say(c, "watch"), { T("watch: nothing watched. watch <item> [price, as 1g 2s 3c] adds one.") })
+    t.eq(say(c, "watch"), { T("watch: nothing watched. watch <item> [price] adds one; an amount ends in g, s or c.") })
     t.eq(say(c, "watch item:2589 15c"), { T("watch: Linen Cloth, at or under 15c.") })
     t.eq(say(c, "watch item:2592"), { T("watch: Wool Cloth.") })
     c.auctionResult(2589, { unitPrice = 12 })
