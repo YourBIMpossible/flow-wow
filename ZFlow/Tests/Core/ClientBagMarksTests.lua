@@ -29,7 +29,8 @@ local function button(slot, bagId)
 end
 
 local function shownPath(b)
-    return b.tex ~= nil and b.tex.shown and b.tex.path or nil
+    if b.tex == nil or not b.tex.shown then return nil end
+    return b.tex.path
 end
 
 tests["bag marks: the combined bags view gets marks, each slot's bag from its button"] = function(t)
