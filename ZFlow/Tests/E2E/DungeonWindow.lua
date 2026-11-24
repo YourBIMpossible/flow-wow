@@ -137,6 +137,26 @@ local function notes(rec)
     return table.concat(out, " | ")
 end
 
+-- The tree the kit was last handed for this window, kept as it is drawn and
+-- redrawn (the record's parts keep only kind, text and note).
+local function keepTree(c)
+    local last
+    local real = c.kitWindow
+    c.kitWindow = function(id, tree, extra)
+        if id == ID then last = tree end
+        local h = real(id, tree, extra)
+        if id == ID and type(h) == "table" and type(h.update) == "function" then
+            local update = h.update
+            h.update = function(now)
+                last = now
+                return update(now)
+            end
+        end
+        return h
+    end
+    return function() return last end
+end
+
 -- Fails before: the Bosses tab listed only bosses this account had killed,
 -- each headed "(N kills)" (UI/DungeonWindow.lua bossesPane).
 tests["dungeon window 426: Bosses lists every boss and its drops before the first kill, no kill count"] = function(t)
@@ -148,6 +168,7 @@ tests["dungeon window 426: Bosses lists every boss and its drops before the firs
             { npcs = { 777 }, items = {} },
         } } } }
         c.setItemInfo({ [11] = { name = "Made Up Blade", quality = 2 }, [12] = { name = "Made Up Hat", quality = 3 } })
+        local drawn = keepTree(c)
         open(c)
         c.kitSelect(ID, "dungeons", 1)
         t.eq(c.kitSelect(ID, "tabs", 2), true)
@@ -163,9 +184,9 @@ tests["dungeon window 426: Bosses lists every boss and its drops before the firs
         -- an item line that carries its item, so the kit shows the game's
         -- own item tooltip on hover; this tab has no Show on map footer.
         local items = {}
-        for _, p in ipairs(rec.parts or {}) do
-            if p.kind == "itemLine" then items[#items + 1] = p.item end
-        end
+        ns.Kit.Each(drawn(), function(part)
+            if part.kind == "itemLine" then items[#items + 1] = part.item end
+        end)
         t.eq(items, { 11, 12 }, "each item line carries its item")
         t.eq(hasKind(rec, "footer"), false, "no Show on map footer on the Bosses tab")
     end
