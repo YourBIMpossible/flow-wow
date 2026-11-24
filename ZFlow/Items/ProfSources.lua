@@ -65,7 +65,8 @@ end
 local function coin(copper)
     local text = call(ns.Prices and ns.Prices.Coin, copper)
     if type(text) == "string" then return text end
-    return string.format("%dc", copper)
+    -- No price reader: no figure is made up here (coin text is Prices' own).
+    return nil
 end
 
 function S.For(input, item, count)
@@ -81,8 +82,10 @@ function S.For(input, item, count)
     end
     local price = call(input.vendorPrice, item)
     if type(price) == "number" and price >= 0 then
+        local each = coin(price)
         return { kind = "buy_vendor", item = item, count = count,
-            text = string.format("Buy %d %s from a vendor (%s each)", count, name, coin(price)) }
+            text = each and string.format("Buy %d %s from a vendor (%s each)", count, name, each)
+                or string.format("Buy %d %s from a vendor", count, name) }
     end
     return { kind = "buy_auction", item = item, count = count,
         text = string.format("Buy %d %s at the auction house", count, name) }
