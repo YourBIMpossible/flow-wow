@@ -357,5 +357,7 @@ return {
     "Nav/FollowAdvice.lua",
     -- N43 (P-TRIP route display): the current step's area on the minimap (after TripRoute, MinimapPin).
     "UI/RouteArea.lua",
+    -- F7 (lead section 447 item 6): route and waypoint lines on the world map (after RouteList, MapRoute).
+    "UI/MapRouteLines.lua",
     },
 }
