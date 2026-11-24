@@ -94,7 +94,13 @@ end
 
 local function hostProblems(addon)
     local kind = ns.KitHost and ns.KitHost.PROBLEM or "kitHost"
-    return addon.problems:count(kind)
+    -- Only the windows this file is about: the docked profession panel
+    -- (UI/ProfDock.lua) hands over too, and its own tests cover that.
+    local n = 0
+    for _, e in ipairs(addon.problems:list(kind)) do
+        if e.owner ~= "ProfDock" then n = n + 1 end
+    end
+    return n
 end
 
 -- -------------------------------------------------------------- craft bar

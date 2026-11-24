@@ -277,5 +277,11 @@ return {
     "UI/RouteTracker.lua",
     -- P-QUEST (lead section 354 item 4): quest advice text (after QuestRead and the advisor).
     "Nav/QuestAdvice.lua",
+    -- P-COACH C1 (section 382): the profession plan, steps toward the next point (after RecipeBook, HaveTip, Prices, ProfStep).
+    "Items/ProfPlan.lua",
+    -- P-COACH C3 (section 382): where the plan's short materials come from (after ProfPlan, Prices).
+    "Items/ProfSources.lua",
+    -- Section 387: the next-step panel docked under the game's profession window (after ProfPlan, ProfSources, KitHost).
+    "UI/ProfDock.lua",
     },
 }
