@@ -36,6 +36,16 @@
 --                      is the whole dungeon's and one line says the wing is
 --                      not known yet.
 --
+--   worth it?          (B-54, section 496 item 3) one line, "Your last run:
+--                      about 1.8 times your questing XP per hour", in the
+--                      summary and after the stops the dungeons word plans.
+--                      Both rates are measured, never estimated: your
+--                      questing XP per hour from the XP you gained outside
+--                      dungeons (the last two hours of play, at least 15
+--                      minutes of it), and the run's from the XP you gained
+--                      inside it over its timed length (B-56). When either
+--                      is not known nothing is said.
+--
 -- Chat words only. LOOK ONLY: nothing is accepted, shared, targeted or
 -- clicked. No quest or dungeon table ships here: the quests are Questie's,
 -- read through Nav/DungeonRead.lua (its index is read in slices while you
@@ -49,15 +59,23 @@
 --   V.KillLine(kills, reported, total) -> the line of bosses killed
 --       (total: how many bosses the wing has, when the wing is known)
 --   V.Key(run) -> the name a run's time is kept under
---   V.Step(run, name, now) -> run, changed, finished, seconds
+--   V.Step(run, name, now) -> run, changed, finished, seconds, xp
 --       the saved run after an event: name is the dungeon you are in (nil:
 --       outside), now the clock (nil: not known). finished: the name of a
 --       run that ended; seconds: how long it took, or nil.
 --   V.RunTime(run) -> seconds or nil      V.TimeText(seconds) -> words or nil
 --   V.LastLine(seconds) -> the line
+--   V.Gain(before, now) -> XP gained between two readings { cur, max,
+--       level }, or nil when it cannot be told
+--   V.RateFrom(samples, now) -> questing XP per hour, or nil (legacy Flow's
+--       D.RateFrom): samples { { t, xp } } oldest first
+--   V.Ratio(xp, seconds, rate) -> the run's XP per hour over rate, or nil
 --
 -- Client reads: instance, instanceName, questLog, and DungeonRead's own.
--- Client reads also: clock.
+-- Client reads also: clock, xp, level.
+-- Saved data also: char V.SAMPLES = { { t, xp } } the XP gained outside
+-- dungeons, the newest V.SAMPLES_MAX; char V.RUN_XP = { [run name] = xp }
+-- the XP gained in the last run of each, kept with its time.
 -- Saved data: char V.RUN = { name, as, said, t, left }: the run you are in
 -- (as: the wing's run name, once the wing is known)
 -- (t: the clock at entering, left: at leaving), so a reload inside it says
@@ -73,6 +91,13 @@ V.NAME = "dungeonVisit"
 V.WORD = "dungeon"
 V.RUN = "dungeon.run"
 V.TIMES = "dungeon.times"
+V.RUN_XP = "dungeon.runXp"
+V.SAMPLES = "dungeon.xpSamples"
+V.SAMPLES_MAX = 200
+V.RATE_SPAN = 7200   -- questing rate: the last two hours
+V.RATE_GAP = 600     -- a gap longer than this (a break) counts as this
+V.RATE_MIN = 900     -- at least this much play, else the rate is not known
+V.RATE = "Your last run: about %.1f times your questing XP per hour"
 V.GRACE = 600
 V.SHORT = 300
 V.LONG = 240 * 60
@@ -207,6 +232,51 @@ local function clockOk(v)
     return type(v) == "number" and v == v and v > 0 and v ~= math.huge
 end
 
+local function num(v)
+    return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
+end
+
+function V.Gain(before, now)
+    if type(before) ~= "table" or type(now) ~= "table" then return nil end
+    for _, v in ipairs({ before.cur or false, before.max or false, before.level or false,
+                         now.cur or false, now.level or false }) do
+        if not num(v) then return nil end
+    end
+    if now.level == before.level then return now.cur - before.cur end
+    -- One level up: the rest of the old level and what is in the new one.
+    if now.level == before.level + 1 then return (before.max - before.cur) + now.cur end
+    return nil
+end
+
+function V.RateFrom(samples, now)
+    if not clockOk(now) then return nil end
+    local from = now - V.RATE_SPAN
+    local xp, secs, last = 0, 0, nil
+    for _, s in ipairs(type(samples) == "table" and samples or {}) do
+        if type(s) == "table" and clockOk(s.t) and s.t >= from and s.t <= now then
+            if last then
+                secs = secs + math.min(s.t - last, V.RATE_GAP)
+                if num(s.xp) then xp = xp + s.xp end
+            end
+            last = s.t
+        end
+    end
+    if secs < V.RATE_MIN or xp <= 0 then return nil end
+    return xp / secs * 3600
+end
+
+function V.Ratio(xp, seconds, rate)
+    if not num(xp) or xp <= 0 or not clockOk(seconds) then return nil end
+    if not num(rate) or rate <= 0 then return nil end
+    return (xp / seconds * 3600) / rate
+end
+
+-- The XP a run gained, or nil when a reading was missed inside it.
+function V.RunXp(run)
+    if type(run) ~= "table" or run.noXp == true or not num(run.xp) or run.xp <= 0 then return nil end
+    return run.xp
+end
+
 function V.Key(run)
     if type(run) ~= "table" then return nil end
     if type(run.as) == "string" and run.as ~= "" then return run.as end
@@ -255,7 +325,7 @@ function V.Step(run, name, now)
             end
         end
         local fresh = { name = name, t = t }
-        if has then return fresh, true, V.Key(run), V.RunTime(run) end
+        if has then return fresh, true, V.Key(run), V.RunTime(run), V.RunXp(run) end
         return fresh, true
     end
     if not has then return run, false end
@@ -264,7 +334,7 @@ function V.Step(run, name, now)
         return run, true
     end
     if not clockOk(run.left) or not t or t < run.left or t - run.left >= V.GRACE then
-        return {}, true, V.Key(run), V.RunTime(run)
+        return {}, true, V.Key(run), V.RunTime(run), V.RunXp(run)
     end
     return run, false
 end
@@ -322,29 +392,66 @@ function V.Declare(k, diag)
         end
     end
 
-    local function lastOf(name)
-        if not ctx or type(name) ~= "string" then return nil end
-        local ok, times = pcall(ctx.store.get, ctx.store, "char", V.TIMES)
-        if not ok or type(times) ~= "table" then return nil end
-        return times[name]
+    -- A copy of a saved table of this character, or an empty one.
+    local function saved(path)
+        local out = {}
+        if not ctx then return out end
+        local ok, t = pcall(ctx.store.get, ctx.store, "char", path)
+        if ok and type(t) == "table" then
+            for key, v in pairs(t) do out[key] = v end
+        end
+        return out
     end
 
-    -- A run that ended: its time is kept when it has one of a run's length.
-    local function record(name, seconds)
+    local function save(path, value, what)
+        local okSet, yes, why = pcall(ctx.store.set, ctx.store, "char", path, value)
+        if not okSet then
+            k.problems:add(V.NAME, what, tostring(yes))
+        elseif yes ~= true then
+            k.problems:add(V.NAME, what, tostring(why))
+        end
+    end
+
+    -- What is kept for the run of that name: the game's name for a dungeon
+    -- and Questie's may differ in case.
+    local function pick(path, name)
+        if type(name) ~= "string" then return nil end
+        local t = saved(path)
+        if t[name] ~= nil then return t[name] end
+        local want = name:lower()
+        for key, v in pairs(t) do
+            if type(key) == "string" and key:lower() == want then return v end
+        end
+        return nil
+    end
+
+    local function lastOf(name)
+        return pick(V.TIMES, name)
+    end
+
+    -- A run that ended: its time is kept when it has one of a run's length,
+    -- and with it the XP it gained (B-54), or no XP when that is not known.
+    local function record(name, seconds, xp)
         if not ctx or type(name) ~= "string" or not clockOk(seconds) then return end
         if seconds < V.SHORT or seconds > V.LONG then return end
-        local ok, times = pcall(ctx.store.get, ctx.store, "char", V.TIMES)
-        local out = {}
-        if ok and type(times) == "table" then
-            for key, v in pairs(times) do out[key] = v end
+        local times = saved(V.TIMES)
+        times[name] = seconds
+        save(V.TIMES, times, "times")
+        local gained = saved(V.RUN_XP)
+        if gained[name] ~= xp then
+            gained[name] = xp
+            save(V.RUN_XP, gained, "runXp")
         end
-        out[name] = seconds
-        local okSet, yes, why = pcall(ctx.store.set, ctx.store, "char", V.TIMES, out)
-        if not okSet then
-            k.problems:add(V.NAME, "times", tostring(yes))
-        elseif yes ~= true then
-            k.problems:add(V.NAME, "times", tostring(why))
-        end
+    end
+
+    -- B-54: the "about N times" line for the run of that name, or nil when
+    -- the run's rate or your questing rate is not measured.
+    function api.RateLine(name)
+        if not ctx or type(name) ~= "string" or name == "" then return nil end
+        local rate = V.RateFrom(saved(V.SAMPLES), ask(client(), "clock"))
+        local ratio = V.Ratio(pick(V.RUN_XP, name), pick(V.TIMES, name), rate)
+        if not ratio then return nil end
+        return V.RATE:format(ratio)
     end
 
     -- The bosses killed this visit, and whether the game reports kills.
@@ -465,6 +572,10 @@ function V.Declare(k, diag)
         out[#out + 1] = killLine(info)
         local last = api.LastLine(name)
         if last then out[#out + 1] = last end
+        if type(name) == "string" then
+            local rate = api.RateLine(wingTitle(name) or name)
+            if rate then out[#out + 1] = rate end
+        end
         return out
     end
 
@@ -509,8 +620,8 @@ function V.Declare(k, diag)
             -- Inside a dungeon the game does not name: nothing to keep.
             if type(name) ~= "string" or name == "" then return end
         end
-        local r, changed, finished, seconds = V.Step(run(), name, ask(client(), "clock"))
-        if finished then record(finished, seconds) end
+        local r, changed, finished, seconds, xp = V.Step(run(), name, ask(client(), "clock"))
+        if finished then record(finished, seconds, xp) end
         -- B-57: once the wing is known the run is that wing's.
         if name ~= nil and type(r) == "table" and r.name == name then
             local as = wingTitle(name)
@@ -522,6 +633,44 @@ function V.Declare(k, diag)
         if changed then keep(r) end
         pending = name ~= nil and type(r) == "table" and r.said ~= true
         sayEntered()
+    end
+
+    -- B-54: the XP gained since the last reading goes to the run you are
+    -- in, or, outside a dungeon, to the samples your questing rate is
+    -- worked out from. A reading that is missed inside a run leaves that
+    -- run's XP not known.
+    local lastXp
+    local function onXp()
+        if not ctx then return end
+        local xp = ask(client(), "xp")
+        local now
+        if type(xp) == "table" then now = { cur = xp.cur, max = xp.max, level = ask(client(), "level") } end
+        local gained = V.Gain(lastXp, now)
+        local isIn = inside()
+        if isIn and lastXp ~= nil and gained == nil then
+            local r = run()
+            if r and type(r.name) == "string" and r.left == nil and r.noXp ~= true then
+                r.noXp = true
+                keep(r)
+            end
+        end
+        lastXp = now
+        if not gained or gained <= 0 then return end
+        if isIn then
+            local r = run()
+            if r and type(r.name) == "string" and r.left == nil then
+                r.xp = (num(r.xp) and r.xp or 0) + gained
+                keep(r)
+            end
+            return
+        end
+        local t = ask(client(), "clock")
+        if not clockOk(t) then return end
+        local list = {}
+        for _, s in ipairs(saved(V.SAMPLES)) do list[#list + 1] = s end
+        list[#list + 1] = { t = t, xp = gained }
+        while #list > V.SAMPLES_MAX do table.remove(list, 1) end
+        save(V.SAMPLES, list, "samples")
     end
 
     if diag and type(diag.commands) == "table" then
@@ -542,7 +691,7 @@ function V.Declare(k, diag)
     k:Module({
         name = V.NAME,
         needs = { "client", "store", "settings", "bus", "sched" },
-        provides = { Lines = api.Lines, LastLine = api.LastLine },
+        provides = { Lines = api.Lines, LastLine = api.LastLine, RateLine = api.RateLine },
         start = function(c)
             ctx = c
             -- Inside a dungeon the index is read ahead, so the word answers
@@ -555,6 +704,11 @@ function V.Declare(k, diag)
             c.bus:on(V.NAME, "QUEST_LOG_UPDATE", function()
                 if pending then sayEntered() end
             end)
+            -- B-54: XP gained, for the run or for your questing rate.
+            for _, event in ipairs({ "PLAYER_XP_UPDATE", "PLAYER_LEVEL_UP" }) do
+                c.bus:on(V.NAME, event, function() onXp() end)
+            end
+            onXp()
             -- B-57: a boss killed may tell which wing this run is.
             c.bus:on(V.NAME, ns.BossKills.EVENT, function() entered() end)
             entered()

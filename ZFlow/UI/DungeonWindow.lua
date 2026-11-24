@@ -445,6 +445,12 @@ function W.Declare(k, diag)
             if l.why then line = line .. " - " .. tostring(l.why) end
             say(W.LEFT_OFF:format(line), true)
         end
+        -- B-54: how your last run of it paid, when both rates are measured.
+        local visit = k.use and k.use("dungeonVisit")
+        if type(visit) == "table" and type(visit.RateLine) == "function" then
+            local ok, rate = pcall(visit.RateLine, R.WingTitle(st, d.key, wing) or tostring(d.name))
+            if ok and type(rate) == "string" then say(rate, true) end
+        end
         return true
     end
 
