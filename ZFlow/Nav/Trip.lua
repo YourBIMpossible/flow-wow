@@ -241,6 +241,16 @@ function P.ViaText(step)
     return P.VIA:format(step.label)
 end
 
+-- S35: a leg through a learned gate gets the gate's line (Nav/GateWords.lua);
+-- any other leg, or a gate whose maps are not known, keeps P.ViaText.
+function P.GateVia(step, fromMap, toMap, stopLabel)
+    if type(step) == "table" and step.via == "gate" and type(N.GateWords) == "function" then
+        local line = N.GateWords(fromMap, toMap, stopLabel)
+        if line then return line end
+    end
+    return P.ViaText(step)
+end
+
 local function sizeOf(here)
     local s = type(here) == "table" and here.size or nil
     if type(s) == "table" and finite(s.w) and finite(s.h) and s.w > 0 and s.h > 0 then return s end
@@ -607,7 +617,7 @@ function P.Declare(k, diag)
             if placed(s) and s.place.map ~= here.map then
                 local ok, step = pcall(travel.Via, { label = s.label, detail = s.detail,
                     place = { map = s.place.map, x = s.place.x, y = s.place.y } })
-                if ok then vias[i] = P.ViaText(step) end
+                if ok then vias[i] = P.GateVia(step, here.map, s.place.map, s.label) end
             end
         end
         return vias
