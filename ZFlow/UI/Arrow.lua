@@ -353,6 +353,11 @@ function Arrow.GuideSource(client, layout, guide, intro, palette)
             if label ~= nil then out[#out + 1] = tostring(label) end
             -- A step may say one more line of its own under its label (S43).
             if step.detail ~= nil then out[#out + 1] = tostring(step.detail) end
+            -- Lead section 416 item 2: the other professions' next steps
+            -- (Nav/ProfFeed.lua F.Also), one line each. Not tested in game.
+            if type(step.also) == "table" then
+                for i = 1, #step.also do out[#out + 1] = tostring(step.also[i]) end
+            end
             -- How to get there, or why there is no way (section 286).
             if step.hint ~= nil then out[#out + 1] = tostring(step.hint) end
             -- The quest's own item in words (S42, Nav/QuestItems.lua).

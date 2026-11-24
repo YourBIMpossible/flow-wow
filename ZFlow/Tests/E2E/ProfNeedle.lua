@@ -247,9 +247,12 @@ tests["prof guide: a gatherer with no node and a capped crafter each get their l
         skill = { Herbalism = { skill = 20, max = 75 }, Tailoring = { skill = 75, max = 75 } } })
     -- The stack (section 382): one step across the professions, the next
     -- point it can get. Herbs need no node source to be picked, so the line
-    -- says to pick them; it no longer asks for a node add-on, and the capped
-    -- profession (no point until trained) waits its turn.
-    textOnly(t, c, { "Pick any herb you find (Herbalism 20 of 75)" },
+    -- says to pick them; it no longer asks for a node add-on. Lead section
+    -- 416 item 2: the capped profession no longer waits its turn; its
+    -- training follows, said short (the full line is over the label limit).
+    local F = N.ProfFeed
+    textOnly(t, c, { "Pick any herb you find (Herbalism 20 of 75)",
+        F.ALSO_SHORT and F.ALSO_SHORT:format("Tailoring", F.KIND_WORDS.train_tier) },
         "Herbalism with no node known, Tailoring capped")
 end
 
