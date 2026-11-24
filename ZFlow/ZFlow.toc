@@ -245,6 +245,7 @@ Nav\TravelAdvice.lua
 Nav\InvitePrompt.lua
 Spells\TrainAdvice.lua
 Nav\RoutePickups.lua
+Nav\RidingStep.lua
 Items\ProfPlan.lua
 Items\ProfSources.lua
 Items\VendorWares.lua

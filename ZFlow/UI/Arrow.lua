@@ -681,6 +681,16 @@ function Arrow.Start(k, diag, own)
                     from = "a profession trainer stop"
                 end
             end
+            -- Then the riding trainer stop (G45, Nav/RidingStep.lua), only when
+            -- a riding trainer is saved on this map: words only have no needle.
+            local riding = k.use and k.use("ridingStep")
+            if step == nil and riding and riding.Step then
+                local ok, rs = pcall(riding.Step)
+                if ok and type(rs) == "table" and type(rs.place) == "table" then
+                    step = rs
+                    from = "a riding trainer stop"
+                end
+            end
             -- Then the class trainer stop (G44, Nav/ClassTrainerStep.lua): new
             -- class spells at the level and a class trainer saved on this map.
             local classTrainer = k.use and k.use("classTrainerStep")

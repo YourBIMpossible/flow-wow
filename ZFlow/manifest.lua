@@ -307,6 +307,8 @@ return {
     "Spells/TrainAdvice.lua",
     -- Lead section 375 item 7 (TN-1): the quest route's pick-ups (after RoutePlan, DungeonStates).
     "Nav/RoutePickups.lua",
+    -- G45: the riding step and its advisor line (after the advisor, the arrow and Prices).
+    "Nav/RidingStep.lua",
     -- P-COACH C1 (section 382): the profession plan, steps toward the next point (after RecipeBook, HaveTip, Prices, ProfStep).
     "Items/ProfPlan.lua",
     -- P-COACH C3 (section 382): where the plan's short materials come from (after ProfPlan, Prices).
