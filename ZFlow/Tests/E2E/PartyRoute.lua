@@ -240,4 +240,40 @@ tests["party route: the setting row is off by default"] = function(t)
     t.eq(row and row.group, "travel.route")
 end
 
+
+-- FLOW-PARITY B-40: one line under the arrow says which route it walks and
+-- how to switch. It sends nothing.
+local function has(c, text)
+    local a = c.arrows[1]
+    for _, l in ipairs(a and a.lines or {}) do
+        if l == text then return true end
+    end
+    return false
+end
+
+tests["party route: a line under the arrow offers the route, then says it is followed and how to drop it"] = function(t)
+    local P = ns.Nav.PartyRoute
+    local a, b = pair()
+    slash(a, "route"); slash(a, "route share")
+    local sent = #b.addonSent
+    t.ok(has(b, P.LINE_OFFER:format("Anna", ns.id.slash)), "the offer line is under the arrow")
+    slash(b, "route take")
+    t.eq(first(b), "Anna: Boars")
+    t.ok(has(b, P.LINE_FOLLOW:format("Anna", ns.id.slash)), "the follow line replaces it")
+    t.eq(has(b, P.LINE_OFFER:format("Anna", ns.id.slash)), false)
+    slash(b, "route keep")
+    t.ok(said(b, P.DROPPED:format("Anna")))
+    t.eq(first(b), ns.Arrow.NO_QUEST, "the party route is dropped")
+    t.eq(has(b, P.LINE_FOLLOW:format("Anna", ns.id.slash)), false, "no line once dropped")
+    t.eq(#b.addonSent, sent, "the line and the switch send nothing")
+    t.eq(has(a, P.LINE_OFFER:format("Anna", ns.id.slash)), false, "the sharer gets no line")
+end
+
+tests["party route: the line words, pure"] = function(t)
+    local P = ns.Nav.PartyRoute
+    t.eq(P.Line(nil, nil, "/zf"), nil)
+    t.eq(P.Line("Anna", nil, "/zf"), "Party route from Anna: /zf route take to follow it.")
+    t.eq(P.Line("Anna", "Bert", "/zf"), "Following Bert's route: /zf route keep for your own.")
+end
+
 return tests

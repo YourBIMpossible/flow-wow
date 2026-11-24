@@ -35,7 +35,12 @@ local _, ns = ...
 --   P.Ask(nonce, ver) -> message
 --   P.Parse(message, ver) -> { type = "R", sid, seq, count, data }
 --                            | { type = "Q", nonce } or nil, why
--- Module "partyRoute" provides Share, Ask, Take.
+-- FLOW-PARITY B-40 (lead section 471): one line under the quest arrow says
+-- which route it walks and how to switch: an offer not taken yet, or the
+-- party route being followed. Local only: the line sends nothing; route
+-- keep while following drops the party route.
+--   P.Line(offerFrom, followFrom, slash) -> line or nil
+-- Module "partyRoute" provides Share, Ask, Take, Keep, Line.
 -- Not tested in game: the two-client game test is an owner item.
 ns.Nav = ns.Nav or {}
 local N = ns.Nav
@@ -70,13 +75,23 @@ function P.Choices(addon)
     local kind = P.Kind(addon)
     return "|H" .. kind .. ":take|h[" .. P.FOLLOW .. "]|h |H" .. kind .. ":keep|h[" .. P.KEEP .. "]|h"
 end
-P.WHY_OFF = "sharing is off in the settings (Share your route with your party)"
+P.LINE_OFFER = "Party route from %s: %s route take to follow it."
+P.LINE_FOLLOW = "Following %s's route: %s route keep for your own."
+P.DROPPED = "Dropped the route from %s; type the route word to plan your own."
+P.WHY_OFF = ""sharing is off in the settings (Share your route with your party)"
 P.WHY_ALONE = "you are not in a party"
 P.WHY_PREFIX = "the client did not take the add-on message prefix"
 P.WHY_NO_ROUTE = "no route planned; type the route word first"
 P.WHY_NO_TRIP = "the trip route is off"
 
 local HEAD = "Z1"
+
+function P.Line(offerFrom, followFrom, slash)
+    slash = tostring(slash or "")
+    if type(followFrom) == "string" then return P.LINE_FOLLOW:format(followFrom, slash) end
+    if type(offerFrom) == "string" then return P.LINE_OFFER:format(offerFrom, slash) end
+    return nil
+end
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -234,6 +249,7 @@ function P.Declare(k, diag)
     local answeredAt
     local bufs = {}          -- sender -> { sid, count, n, parts }
     local offer              -- { from, run }
+    local following          -- B-40: who sent the route being followed
     local offered, warned = {}, {}
     local made = 0
     local cancelClick
@@ -319,7 +335,24 @@ function P.Declare(k, diag)
         local own
         if okLog then own = log end
         for i, st in ipairs(offer.run.steps or {}) do run.steps[i] = P.Label(offer.from, st, own) end
-        say(P.TAKEN:format(offer.from, tostring(tr.Run(run))))
+        following = offer.from
+        say(P.TAKEN:format(following, tostring(tr.Run(run))))
+    end
+
+    -- B-40: the arrow's line; the followed route ended clears it.
+    function api.Line()
+        if following then
+            local tr = k.use and k.use("tripRoute")
+            local cur
+            if tr and type(tr.Current) == "function" then
+                local ok, v = pcall(tr.Current)
+                if ok then cur = v end
+            end
+            if not cur then following = nil end
+        end
+        local offerFrom
+        if offer then offerFrom = offer.from end
+        return P.Line(offerFrom, following, id().slash)
     end
 
     local function chunk(p, sender)
@@ -352,6 +385,13 @@ function P.Declare(k, diag)
     end
 
     function api.Keep()
+        if following then
+            local tr = k.use and k.use("tripRoute")
+            if tr and type(tr.Off) == "function" then pcall(tr.Off) end
+            local from = following
+            following, offer = nil, nil
+            return say(P.DROPPED:format(from))
+        end
         if not offer then return say(P.NO_OFFER) end
         local from = offer.from
         offer = nil
@@ -412,7 +452,8 @@ function P.Declare(k, diag)
     k:Module({
         name = P.NAME,
         needs = { "client", "settings" },
-        provides = { Share = api.Share, Ask = api.Ask, Take = api.Take, Keep = api.Keep },
+        provides = { Share = api.Share, Ask = api.Ask, Take = api.Take, Keep = api.Keep,
+                     Line = function() return api.Line() end },
         start = function(c)
             ctx = c
             local cl = c.client
