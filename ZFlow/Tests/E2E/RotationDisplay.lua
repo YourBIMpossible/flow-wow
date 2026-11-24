@@ -106,4 +106,33 @@ tests["barglow D-06: the glow changes nothing any button casts"] = function(t)
     t.eq(holds(c), before, "a failing glow leaves every button as it was")
 end
 
+-- ---------------------------------------------------------------- D-07
+tests["iconsweep D-07: the icon draws the suggested spell's cooldown sweep"] = function(t)
+    local c = start()
+    local spell = suggested(c)
+    t.ok(spell ~= nil, "a spell is suggested")
+    local id = IDS[spell or ""]
+    c.setSpellCooldownSpan(id, 7, 1.5)
+    c.advance(0.5, 2)
+    local h = icon(c)
+    t.eq(h and h.sweep, { 7, 1.5 }, "the sweep is the spell's start and length")
+    c.setSpellCooldownSpan(id, 0, 0)
+    c.advance(0.5, 2)
+    t.eq(h and h.sweep, { 0, 0 }, "ready: the sweep is cleared")
+end
+
+tests["iconsweep D-07: the swing badge shows while the swing is on"] = function(t)
+    local c = start()
+    local h = icon(c)
+    t.eq(h and h.swinging, false, "no swing: no badge")
+    local before = holds(c)
+    c.setCurrentSpell(ATTACK_ID, true)
+    c.advance(0.5, 2)
+    t.eq(h and h.swinging, true, "swinging: the badge")
+    c.setCurrentSpell(ATTACK_ID, false)
+    c.advance(0.5, 2)
+    t.eq(h and h.swinging, false, "the swing stops: no badge")
+    t.eq(holds(c), before, "the badge changes nothing any button casts")
+end
+
 return tests

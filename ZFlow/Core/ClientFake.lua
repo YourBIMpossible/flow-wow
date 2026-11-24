@@ -4933,6 +4933,35 @@ function ns.make.fakeClient(opts)
         c.barGlowing = name
         return 1
     end
+
+    -- FLOW-PARITY D-07: c.setSpellCooldownSpan(id, start, length) and
+    -- c.spellCooldownSpan(id) (nil: never set). Icons get h.cooldown
+    -- (kept in h.sweep = { start, length }) and h.swing (h.swinging).
+    function c.setSpellCooldownSpan(id, start, length)
+        s.spans = s.spans or {}
+        s.spans[id] = start ~= nil and { start, length } or nil
+    end
+    function c.spellCooldownSpan(id)
+        local span = s.spans and s.spans[id]
+        if span == nil then return nil end
+        return span[1], span[2]
+    end
+    do
+        local swingIcon = c.icon
+        function c.icon(spec)
+            local h = swingIcon(spec)
+            if type(h) ~= "table" then return h end
+            function h.cooldown(start, length)
+                h.sweep = { start, length }
+                return true
+            end
+            function h.swing(on)
+                h.swinging = on == true
+                return true
+            end
+            return h
+        end
+    end
     return c
 end
 

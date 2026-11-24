@@ -37,6 +37,9 @@ local _, ns = ...
 -- player's), or no spell: no glow. Asked only when the spell changes.
 -- Display only: it changes nothing a button casts.
 --
+-- Cooldown sweep and swing badge (FLOW-PARITY D-07, Flow Display.lua:70-80,
+-- :96, :304, :355): while shown, the icon draws the suggested spell's
+-- cooldown (client.spellCooldownSpan) and a badge while the swing is on.
 -- Not tested in game: client.icon, client.spellTexture, the tint, the
 -- caption and the tooltip on the icon (client.hoverTip) are first guesses.
 local I = {}
@@ -136,6 +139,34 @@ function I.Caption(view, left)
 end
 
 -- The suggested spell's seconds of cooldown left, or nil when not known.
+-- D-07: the spell's cooldown start and length for the sweep; 0, 0 when
+-- not known (the sweep is cleared, never guessed).
+local function cooldownSpan(client, spell)
+    if type(spell) ~= "string" or type(client.spellId) ~= "function"
+        or type(client.spellCooldownSpan) ~= "function" then return 0, 0 end
+    local okId, id = pcall(client.spellId, spell)
+    if not okId or type(id) ~= "number" then return 0, 0 end
+    local ok, start, length = pcall(client.spellCooldownSpan, id)
+    if not ok or type(start) ~= "number" or type(length) ~= "number" then return 0, 0 end
+    return start, length
+end
+
+-- D-07: is the swing on (any of ns.cast.ATTACK the client says is the
+-- current spell). Only reads.
+function I.Swinging(client)
+    local A = ns.cast and ns.cast.ATTACK
+    if type(A) ~= "table" or type(client.spellId) ~= "function"
+        or type(client.currentSpell) ~= "function" then return false end
+    for name in pairs(A) do
+        local okId, id = pcall(client.spellId, name)
+        if okId and type(id) == "number" then
+            local ok, on = pcall(client.currentSpell, id)
+            if ok and on == true then return true end
+        end
+    end
+    return false
+end
+
 local function cooldownLeft(client, spell)
     if type(spell) ~= "string" or type(client.spellId) ~= "function"
         or type(client.spellCooldownLeft) ~= "function" then return nil end
@@ -346,6 +377,11 @@ function I.Declare(k)
                     -- keeps what it had, out of range or another player's.
                     fade(I.OnButton(view))
                     glow(I.Mark(view) ~= "look" and shownSpell or nil)
+                    -- D-07: the sweep and the swing badge (display only).
+                    if type(icon.cooldown) == "function" then
+                        pcall(icon.cooldown, cooldownSpan(client, shownSpell))
+                    end
+                    if type(icon.swing) == "function" then pcall(icon.swing, I.Swinging(client)) end
                 else
                     hide()
                     glow(nil)

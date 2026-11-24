@@ -297,6 +297,9 @@ READS.spellCooldownLeft = false
 -- G50 (ACTING): one quest offered to the group, only on the player's own
 -- share word (Nav/QuestShare.lua). Never the capture.
 KIND.act[#KIND.act + 1] = "shareQuest"
+-- FLOW-PARITY D-07: a spell's cooldown start and length for the icon's
+-- sweep, the same client calls as spellCooldown. The capture does not ask it.
+READS.spellCooldownSpan = false
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).
 local FEATURE = {

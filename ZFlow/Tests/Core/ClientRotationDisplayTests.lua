@@ -85,4 +85,33 @@ tests["barglow D-06: no bar read: nil, nothing made"] = function(t)
     t.eq(#env.made, before, "nothing made")
 end
 
+-- ---------------------------------------------------------------- D-07
+tests["iconsweep D-07: the real icon has a cooldown sweep and a swing badge"] = function(t)
+    local env = env0()
+    local h = ns.make.client(env).icon({ name = "TestIcon", size = 48 })
+    local has = type(h) == "table" and type(h.cooldown) == "function" and type(h.swing) == "function"
+    t.ok(has, "the icon has cooldown and swing")
+    if not has then return end
+    t.eq(h.cooldown(10, 8), true)
+    local cd
+    for _, f in ipairs(env.made) do if f.kind == "Cooldown" then cd = f end end
+    t.ok(cd ~= nil and cd.template == "CooldownFrameTemplate", "a Cooldown frame on the icon")
+    t.eq(cd and last(cd, "SetCooldown"), { 10, 8 })
+    t.eq(h.swing(true), true)
+    t.eq(h.swing(false), true)
+end
+
+tests["iconsweep D-07: c.spellCooldownSpan is the spell's start and length"] = function(t)
+    local env = { C_Spell = { GetSpellCooldown = function(id)
+        if id == 1 then return { startTime = 5, duration = 10, isEnabled = true } end
+        return { startTime = 0, duration = 0, isEnabled = true }
+    end } }
+    local c = ns.make.client(env)
+    if type(c.spellCooldownSpan) ~= "function" then t.ok(false, "no span read"); return end
+    t.eq({ c.spellCooldownSpan(1) }, { 5, 10 })
+    t.eq({ c.spellCooldownSpan(2) }, { 0, 0 })
+    t.eq(c.spellCooldownSpan("x"), nil)
+    t.eq(ns.make.client({}).spellCooldownSpan(1), nil, "no call: not known")
+end
+
 return tests

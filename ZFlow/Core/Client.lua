@@ -13504,6 +13504,55 @@ function ns.make.client(env)
             return n
         end
     end
+
+    -- FLOW-PARITY D-07 (Flow Modules/Rotation/Display.lua:70-80, :96, :304,
+    -- :355): the icon's cooldown sweep and swing badge.
+    -- c.spellCooldownSpan(id) -> start, length (seconds; 0, 0 when ready),
+    -- nil when not known. Only reads.
+    function c.spellCooldownSpan(id)
+        if type(id) ~= "number" then return nil end
+        local ok, start, length = cooldownTimes(id)
+        if not ok then return nil end
+        return start, length
+    end
+    -- h.cooldown(start, length): a Cooldown frame (CooldownFrameTemplate)
+    -- over the picture, made the first time; 0, 0 clears it. h.swing(on):
+    -- a small sword badge left of the icon. Both answer true when drawn.
+    -- First guesses, not seen in game. Nothing here casts.
+    do
+        local swingIcon = c.icon
+        function c.icon(spec)
+            local h = swingIcon(spec)
+            if type(h) ~= "table" or type(spec) ~= "table" or type(spec.name) ~= "string" then return h end
+            local okFrame, frame = pcall(function() return env[spec.name] end)
+            if not okFrame or frame == nil then return h end
+            local cd, badge
+            function h.cooldown(start, length)
+                if type(start) ~= "number" or type(length) ~= "number" then return false end
+                if cd == nil then
+                    local okMade, made = call(env.CreateFrame, "Cooldown", nil, frame, "CooldownFrameTemplate")
+                    if not okMade or made == nil then return false end
+                    cd = made
+                    method(cd, "SetAllPoints", frame)
+                    method(cd, "SetHideCountdownNumbers", true)
+                end
+                return (method(cd, "SetCooldown", start, length)) and true or false
+            end
+            function h.swing(on)
+                if badge == nil then
+                    if on ~= true then return true end
+                    local okMade, made = method(frame, "CreateTexture", nil, "OVERLAY")
+                    if not okMade or made == nil then return false end
+                    badge = made
+                    method(badge, "SetSize", 16, 16)
+                    method(badge, "SetPoint", "RIGHT", frame, "LEFT", -2, 0)
+                    method(badge, "SetTexture", "Interface\Icons\INV_Sword_04")
+                end
+                return (method(badge, on == true and "Show" or "Hide")) and true or false
+            end
+            return h
+        end
+    end
     return c
 end
 
