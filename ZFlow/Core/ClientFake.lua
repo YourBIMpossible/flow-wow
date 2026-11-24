@@ -4920,3 +4920,22 @@ function ns.make.fakeClient(opts)
 end
 
 ns.client = ns.make.fakeClient()
+
+-- C-61, C-49 (Spells/Talents.lua): unspent talent points, as the real
+-- client's unspentTalents() is asked for. c.setUnspentTalents(n): a count,
+-- or nil for not known. c.setUnspentTalentsRaise(true): the read raises
+-- until set back to false.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local points, raises = nil, false
+        function c.setUnspentTalents(n) points = n end
+        function c.setUnspentTalentsRaise(on) raises = on == true end
+        function c.unspentTalents()
+            if raises then error("unspentTalents raised") end
+            return points
+        end
+        return c
+    end
+end
