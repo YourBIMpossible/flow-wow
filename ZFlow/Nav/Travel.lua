@@ -81,6 +81,8 @@ Travel.FAR = "On another continent: no boat or zeppelin learned yet"
 -- Under a step when the travel spell is one to learn (lead section 403 b):
 -- "Learn <spell> (<where>)".
 Travel.LEARN = "%s (%s)"
+-- Where a travel spell with no place of its own is learned.
+Travel.LEARN_AT = "your class trainer"
 -- S45: the ways asked of other modules, in no order of their own (the
 -- order is N.TravelVia's). module: its name for k.use; key: its field in ways.
 Travel.WAYS = { { module = "crossings", key = "crossing" }, { module = "flights", key = "flight" } }
@@ -177,27 +179,29 @@ function N.TravelVia(step, ways, skipped)
         out.via = "far"
         return out, "far"
     end
+    -- Lead section 403 (b): a spell this player has still to learn is no
+    -- way (N.TravelAction leaves it out), but where to learn it is said
+    -- under the step, so the hint is not lost. A step's own hint stays.
+    -- Parity B-32: it comes before the no-flight line (one hint only: the
+    -- spell is the shorter way once learned), and a spell with no place
+    -- of its own is learned at the class trainer (legacy
+    -- Modules/Nav/TravelSpells.lua:89).
+    local learn = ways.spell
+    if not skipped and type(learn) == "table" and learn.learn and type(learn.label) == "string"
+        and step.hint == nil then
+        local out = {}
+        for key, v in pairs(step) do out[key] = v end
+        local where = learn.detail
+        if type(where) ~= "string" or where == "" then where = Travel.LEARN_AT end
+        out.hint = Travel.LEARN:format(learn.label, where)
+        return out
+    end
     -- Lead section 286: a far goal with no flight says why under it (the
     -- flights way's line). Still the waypoint itself.
     if not skipped and type(ways.flightHint) == "string" and step.lines == nil then
         local out = {}
         for key, v in pairs(step) do out[key] = v end
         out.hint = ways.flightHint
-        return out
-    end
-    -- Lead section 403 (b): a spell this player has still to learn is no
-    -- way (N.TravelAction leaves it out), but where to learn it is said
-    -- under the step, so the hint is not lost. A step's own hint stays.
-    local learn = ways.spell
-    if not skipped and type(learn) == "table" and learn.learn and type(learn.label) == "string"
-        and step.hint == nil then
-        local out = {}
-        for key, v in pairs(step) do out[key] = v end
-        if type(learn.detail) == "string" and learn.detail ~= "" then
-            out.hint = Travel.LEARN:format(learn.label, learn.detail)
-        else
-            out.hint = learn.label
-        end
         return out
     end
     return step
@@ -293,14 +297,18 @@ function Travel.Declare(k, diag)
         return N.TravelVia(step, ways, skips[key] == true)
     end
 
-    function api.walk()
+    -- menu: true from the arrow menu's row (parity B-30), whose own row
+    -- brings the shortcut back; the typed word names itself.
+    function api.walk(menu)
         if not lastKey or (not lastHow and not skips[lastKey]) then
             say("no shortcut on this step: nothing to walk past.")
             return false
         end
         local on = not skips[lastKey]
         N.TravelSkip(skips, lastKey, on)
-        if on then
+        if on and menu then
+            say("you walk to this step. The arrow's menu has the shortcut back.")
+        elseif on then
             say("you walk to this step. Say " .. ns.id.slash .. " " .. Travel.WORD .. " again for the shortcut.")
         else
             say("the shortcut is back for this step; no more walk past it.")
@@ -308,10 +316,21 @@ function Travel.Declare(k, diag)
         return true
     end
 
+    -- Parity B-30: what the arrow menu's walk row reads. nil with no step;
+    -- else { how = the shortcut it would take or nil, skipped }.
+    function api.state()
+        if not lastKey then return nil end
+        return { how = lastHow, skipped = skips[lastKey] == true }
+    end
+
     k:Module({
         name = Travel.NAME,
         needs = { "client", "store" },
-        provides = { Via = function(step) return api.via(step) end },
+        provides = {
+            Via = function(step) return api.via(step) end,
+            State = function() return api.state() end,
+            Walk = function() return api.walk(true) end,
+        },
         start = function(c) ctx = c end,
         stop = function()
             skips, lastKey, lastHow = {}, nil, nil

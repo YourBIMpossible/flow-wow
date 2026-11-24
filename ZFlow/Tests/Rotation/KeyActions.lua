@@ -215,16 +215,57 @@ end
 
 tests["key actions: a better item in the bags: the key equips it"] = function(t)
     if not ready(t) then return end
-    local got = KA().Pick(base({ upgrade = { itemId = BETTER, text = "Upgrade for your head piece (+5, dps)" } }), nil)
+    local got = KA().Pick(base({ upgrade = { itemId = BETTER, text = "Upgrade for your head piece (+5, dps)", sure = true } }), nil)
     t.eq(field(got, "itemId"), BETTER)
     t.eq(stepOf(got), "upgrade")
+end
+
+-- §447 F1: buffs first; the key equips only a sure upgrade -----------------
+
+tests["key actions F1: a class buff is never replaced by gear, even on a weak step"] = function(t)
+    if not ready(t) then return end
+    local s = base({ upgrade = { itemId = BETTER, text = "x", sure = true } })
+    t.eq(KA().Pick(s, { spell = "Righteous Fury", kind = "buff", unit = "player" }), nil, "the buff stays")
+    t.eq(KA().Pick(s, { spell = "Blessing of Might", kind = "buff", step = "group" }), nil, "a group buff stays")
+end
+
+tests["key actions F1: an upgrade that is not sure is advice only, never on the key"] = function(t)
+    if not ready(t) then return end
+    local got = KA().Pick(base({ upgrade = { itemId = BETTER, text = "Upgrade for your head piece (+1, dps)", sure = false } }), nil)
+    t.eq(field(got, "look"), true, "look only")
+    t.eq(field(got, "itemId"), nil, "nothing for the key to equip")
+    t.eq(stepOf(got), "upgradeAdvice")
+    t.ok(type(field(got, "reason")) == "string" and field(got, "reason"):find("Upgrade for your head piece", 1, true) ~= nil, "the verdict text is kept")
+end
+
+tests["key actions F1: advice does not replace a weak step"] = function(t)
+    if not ready(t) then return end
+    local s = base({ upgrade = { itemId = BETTER, text = "x", sure = false } })
+    t.eq(KA().Pick(s, { spell = "Find Minerals", step = "track" }), nil)
+end
+
+tests["key actions F1: Sure needs a role, the game's yes, an upgrade and a clear gain"] = function(t)
+    if not ready(t) then return end
+    local function d(over)
+        local x = { result = { verdict = "upgrade", delta = 5, against = 20 }, use = { can = true, source = "client" } }
+        for k, v in pairs(over or {}) do x[k] = v end
+        return x
+    end
+    t.eq(KA().Sure(d(), true), true, "25% better, usable, role set")
+    t.eq(KA().Sure(d(), false), false, "no role chosen")
+    t.eq(KA().Sure(d({ use = { can = true } }), true), false, "usable only by the pack's first guess")
+    t.eq(KA().Sure(d({ use = { can = nil, source = "client" } }), true), false, "not read")
+    t.eq(KA().Sure(d({ result = { verdict = "upgrade", delta = 1, against = 20 } }), true), false, "5%: not clear")
+    t.eq(KA().Sure(d({ result = { verdict = "upgrade", delta = 3, against = 0 } }), true), true, "an empty slot")
+    t.eq(KA().Sure(d({ result = { verdict = "same", delta = 0, against = 20 } }), true), false, "not an upgrade")
+    t.eq(KA().Sure(nil, true), false)
 end
 
 -- The key's rules --------------------------------------------------------
 
 tests["key actions: in a fight, in lockdown, or not known: nothing"] = function(t)
     if not ready(t) then return end
-    local s = base({ upgrade = { itemId = BETTER, text = "x" } })
+    local s = base({ upgrade = { itemId = BETTER, text = "x", sure = true } })
     s.inCombat = true
     t.eq(KA().Pick(s, nil), nil, "in a fight")
     s.inCombat, s.lockdown = false, true
@@ -235,14 +276,14 @@ end
 
 tests["key actions: only a weak suggestion is replaced (food, tracking, group, or nothing)"] = function(t)
     if not ready(t) then return end
-    local s = base({ upgrade = { itemId = BETTER, text = "x" } })
+    local s = base({ upgrade = { itemId = BETTER, text = "x", sure = true } })
     t.eq(KA().Pick(s, { spell = "Blessing of Might", step = "list" }), nil, "the pack's own step stays")
     t.eq(field(KA().Pick(s, { spell = "Find Minerals", step = "track" }), "itemId"), BETTER, "tracking is replaced")
 end
 
 tests["key actions: each row off: that action is not offered"] = function(t)
     if not ready(t) then return end
-    local s = base({ upgrade = { itemId = BETTER, text = "x" } })
+    local s = base({ upgrade = { itemId = BETTER, text = "x", sure = true } })
     s.on.upgrade = false
     t.eq(KA().Pick(s, nil), nil)
     s = corpse({ exists = true, dead = true, player = false, lootable = false, needs = "Skinning" })
