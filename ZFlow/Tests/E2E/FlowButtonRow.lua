@@ -173,4 +173,65 @@ tests["flow row: in a fight the rotation icon shows only what the locked button 
     noMacros(t, c)
 end
 
+-- Lead section 415: the Flow button's own "?" (rotation off, or no
+-- suggestion) never shows: it shows the last spell dimmed, or the plain
+-- word "Flow" with no "?". The empty buff button takes no mouse; mouse
+-- changes are made only while the lock reads a plain false.
+local function question(c, name)
+    local f = face(c, name)
+    return f.empty == true and f.dimmed ~= "picture" and f.dimmed ~= "gone" and f.dimmed ~= "word"
+end
+
+tests["flow row: rotation off, the Flow button shows no question mark"] = function(t)
+    local c, addon = priest()
+    t.eq(question(c, FLOW), false, "on: no question mark")
+    addon.settings:set(D.SETTING, false); c.advance(3, 5)
+    t.eq(held(c, FLOW), nil, "off: the Flow button holds nothing")
+    t.eq(question(c, FLOW), false, "off: no question mark")
+    t.eq(face(c, FLOW).dimmed, "picture", "the last spell, dimmed")
+    t.eq(rowOf(c, FLOW).slots[1].icon, "tex:Power Word: Fortitude", "its own picture")
+    t.eq(rowOf(c, FLOW).slots[1].attrs.type, nil, "a click casts nothing")
+    noMacros(t, c)
+end
+
+-- Never held a spell (the rotation never switched on): the same empty-hold
+-- path the rotation takes when it has no suggestion yet.
+tests["flow row: rotation never on, the Flow button shows its word, no question mark"] = function(t)
+    local c = ns.make.fakeClient()
+    c.setSaved(ns.id.accountDB, {}); c.setSaved(ns.id.charDB, {})
+    c.setClass("PRIEST"); c.setFaction("Alliance"); c.setLevel(20)
+    c.setDead(false); c.setCombat(false); c.setScreen(1000, 768)
+    spells(c, PRIEST)
+    local addon = ns.offline.addon(c)
+    c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN")
+    addon.settings:set(D.SETTING, false)
+    c.fire("PLAYER_ENTERING_WORLD")
+    c.advance(5, 20)
+    t.ok(rowOf(c, FLOW) ~= nil, "the Flow button is made")
+    t.eq(held(c, FLOW), nil, "holds nothing")
+    t.eq(question(c, FLOW), false, "no question mark")
+    t.eq(face(c, FLOW).dimmed, "word", "the plain word Flow, never held a spell")
+    t.eq(face(c, FLOW).label, "Flow")
+    noMacros(t, c)
+end
+
+tests["flow row: the empty buff button takes no mouse"] = function(t)
+    local c = priest({ ["Power Word: Fortitude"] = 1800, ["Inner Fire"] = 600 })
+    t.eq(held(c, SELF), nil, "nothing to cast")
+    t.eq(face(c, SELF).mouse, false, "empty: takes no mouse")
+    c.setPlayerBuffs({}); c.advance(3, 5)
+    t.eq(held(c, SELF), "Inner Fire", "holds a buff")
+    t.eq(face(c, SELF).mouse, true, "holding one: takes the mouse")
+    -- In a fight the lock keeps it as it was; nothing is changed.
+    c.setCombat(true); c.setLockdown(true)
+    c.setPlayerBuffs({ ["Inner Fire"] = 600 }); c.advance(3, 5)
+    t.eq(face(c, SELF).mouse, true, "in a fight: unchanged")
+    t.eq(face(c, SELF).mouseInLock or 0, 0, "no mouse change made under the lock")
+    c.setLockdown(false); c.setCombat(false); c.advance(3, 5)
+    t.eq(held(c, SELF), nil, "after the fight: empty")
+    t.eq(face(c, SELF).mouse, false, "and takes no mouse")
+    t.eq(face(c, FLOW).mouse ~= false, true, "the Flow button holding a spell takes the mouse")
+    noMacros(t, c)
+end
+
 return tests
