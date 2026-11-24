@@ -36,7 +36,10 @@ local _, ns = ...
 --   "Need: upgrade for <role>"   an upgrade for that role (word "need",
 --                                value "Need +<gain>", tone "good")
 --   "Greed"                      usable, no upgrade for the role (word
---                                "greed", value "Greed", tone "none")
+--                                "greed", value "Greed", tone "none");
+--                                "Greed: sells for 25s 40c" (sells =
+--                                copper) when client.itemInfo's sellPrice
+--                                is read and above 0 (S21 fate)
 --   "Greed (can't use)"          you cannot use it (word "greed")
 --   Any role's verdict not known, with no upgrade found: no advice.
 --
@@ -184,6 +187,14 @@ function R.Advice(client, packs, link, role)
                  value = R.NEED .. " +" .. amount(bestGain), tone = "good" }
     end
     if unknown then return nil end
+    -- S21 fate (section 393): what it sells for, when that is read.
+    local info = ask(client, "itemInfo", link)
+    local sells = type(info) == "table" and info.sellPrice or nil
+    local coin = finite(sells) and sells > 0 and ns.Prices and ns.Prices.Coin(sells) or nil
+    if type(coin) == "string" then
+        return { word = "greed", text = R.GREED .. ": sells for " .. coin, value = R.GREED, tone = "none",
+                 sells = sells }
+    end
     return { word = "greed", text = R.GREED, value = R.GREED, tone = "none" }
 end
 

@@ -34,6 +34,9 @@ K.NAME = "bossKills"
 K.WORD = "bosskills"
 K.HELP = "say whether this client has reported boss kills, and how many"
 K.PATH = "diag.bossKills"
+-- Said on the bus after each new kill of this visit (lead section 303 (d):
+-- the in-dungeon tracker listens).
+K.EVENT = "bossKills.changed"
 K.EVENTS = { "ENCOUNTER_START", "ENCOUNTER_END", "BOSS_KILL", "PLAYER_ENTERING_WORLD" }
 K.NOT_YET = "no ENCOUNTER_END or BOSS_KILL has come on this account yet; kill a dungeon boss and ask again"
 
@@ -104,6 +107,14 @@ function K.Declare(k, diag)
         return out
     end
 
+    -- false only when the client took neither kill event: then no kill can
+    -- ever be reported, and the tracker shows nothing (lead section 303 (d)).
+    function api.Reported()
+        local refused = {}
+        for _, e in ipairs(refusedOf(ctx and ctx.client or k.client)) do refused[e] = true end
+        return not (refused.ENCOUNTER_END and refused.BOSS_KILL)
+    end
+
     function api.Record()
         local r = record()
         if not r then return nil end
@@ -124,8 +135,8 @@ function K.Declare(k, diag)
 
     k:Module({
         name = K.NAME,
-        needs = { "client", "store" },
-        provides = { Kills = api.Kills, Record = api.Record },
+        needs = { "client", "store", "bus" },
+        provides = { Kills = api.Kills, Record = api.Record, Reported = api.Reported },
         start = function(c)
             ctx = c
             local client = c.client
@@ -142,6 +153,7 @@ function K.Declare(k, diag)
                     r.ends = r.ends + 1
                     if new then r.kills = r.kills + 1 end
                 end)
+                if new then c.bus:emit(K.EVENT, id) end
             end)
             on("BOSS_KILL", function(id, name)
                 local new = kill(id, name)
@@ -149,6 +161,7 @@ function K.Declare(k, diag)
                     r.bossKill = (r.bossKill or 0) + 1
                     if new then r.kills = r.kills + 1 end
                 end)
+                if new then c.bus:emit(K.EVENT, id) end
             end)
             on("ENCOUNTER_START", function() end)
             local where
