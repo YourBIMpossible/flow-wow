@@ -230,5 +230,6 @@ Core\AutoEvidence.lua
 Nav\Trip.lua
 UI\RouteTracker.lua
 Nav\QuestAdvice.lua
+Nav\QuestShare.lua
 Spells\TrainAdvice.lua
 Nav\HearthAdvice.lua

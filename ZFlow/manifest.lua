@@ -280,6 +280,8 @@ return {
     "UI/RouteTracker.lua",
     -- P-QUEST (lead section 354 item 4): quest advice text (after QuestRead and the advisor).
     "Nav/QuestAdvice.lua",
+    -- G50 (ACTING): the share word, one quest for each word typed (after QuestAdvice).
+    "Nav/QuestShare.lua",
     -- R7 (sections 387, 388 b): spells to train, as advisor prompts (after the class packs and the advisor).
     "Spells/TrainAdvice.lua",
     -- G46 (lead section 391 item 2): when hearthing saves the walk, and where to set home (after Trip, TripRoute).

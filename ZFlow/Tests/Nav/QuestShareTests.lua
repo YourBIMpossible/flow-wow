@@ -34,7 +34,7 @@ tests["quest share: the line only while you are known to be in a group"] = funct
     local text = A().ShareText or none
     local rows = { row(1, "First"), row(2, "Second") }
     local both = can({ [1] = true, [2] = true })
-    t.eq(text(rows, both, true), "You can share with your group: First, Second")
+    t.eq(text(rows, both, true), "You can share with your group: First, Second. Type " .. ns.id.slash .. " share to offer one.")
     t.eq(text(rows, both, false), nil, "alone")
     t.eq(text(rows, both, nil), nil, "not known whether grouped")
     t.eq(text(rows, can({}), true), nil, "nothing shareable")

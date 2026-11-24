@@ -258,6 +258,9 @@ READS.questShareable = false
 -- Lead section 337 item 1 (ACTING): one bag slot sold to the open merchant,
 -- only on the player click on Sell these, out of combat. Never the capture.
 KIND.act[#KIND.act + 1] = "sellBagItem"
+-- G50 (ACTING): one quest offered to the group, only on the player's own
+-- share word (Nav/QuestShare.lua). Never the capture.
+KIND.act[#KIND.act + 1] = "shareQuest"
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).
 local FEATURE = {

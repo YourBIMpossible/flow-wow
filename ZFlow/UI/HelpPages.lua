@@ -83,6 +83,7 @@ H.PAGES = {
           { word = "stop", text = "Point the arrow at the nearest stop you have seen" },
           { word = "trip", text = "Make a list of stops to visit" },
           { word = "follow", text = "Point the arrow at a party member" },
+          { word = "share", text = "Offer one quest from your log to your group" },
           { word = "trails", text = "The paths you walked into caves" },
       } },
     { id = "dungeons", title = "Dungeons",
