@@ -274,5 +274,7 @@ return {
     "Nav/Trip.lua",
     -- G43 (P-TRIP): the route tracker window and the current step's map pin (after Trip, TripRoute, the kit).
     "UI/RouteTracker.lua",
+    -- Lead section 382 (C2 P-COACH): one profession step for the needle (after ProfStep, Legs).
+    "Nav/ProfFeed.lua",
     },
 }

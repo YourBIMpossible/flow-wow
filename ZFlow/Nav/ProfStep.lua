@@ -608,6 +608,22 @@ function N.ProfStepDeclare(k)
 
     function api.step()
         if not ctx or off() then return nil end
+        -- Lead section 382 (Nav/ProfFeed.lua): the Professions tick off
+        -- gives no profession step; with the planner there, its one step
+        -- picked across the professions comes first.
+        local feed
+        if type(ctx.use) == "function" then
+            local okFeed, f = pcall(ctx.use, N.ProfFeed and N.ProfFeed.NAME or "profFeed")
+            if okFeed and type(f) == "table" then feed = f end
+        end
+        if feed and type(feed.Off) == "function" then
+            local okOff, isOff = pcall(feed.Off)
+            if okOff and isOff then return nil end
+        end
+        if feed and type(feed.Step) == "function" then
+            local okStep, picked = pcall(feed.Step)
+            if okStep and type(picked) == "table" then return picked end
+        end
         local source
         if type(ctx.use) == "function" then
             local ok, s = pcall(ctx.use, "gatherMateSource")

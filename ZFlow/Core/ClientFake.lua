@@ -4388,6 +4388,15 @@ function ns.make.fakeClient(opts)
     function c.trackingRaw() return evidenceCopy(s.evidenceTracking) end
     function c.setTradeSkillAnswers(r) s.evidenceTradeAnswers = evidenceCopy(r) end
     function c.tradeSkillAnswers() return evidenceCopy(s.evidenceTradeAnswers) end
+    -- Lead section 382: the name of a map's continent; nil until set.
+    --   c.setMapContName(map, name)   name nil: not known
+    function c.mapContName(map)
+        return s.mapContNames and s.mapContNames[map] or nil
+    end
+    function c.setMapContName(map, name)
+        s.mapContNames = s.mapContNames or {}
+        s.mapContNames[map] = name
+    end
     return c
 end
 
