@@ -27,8 +27,8 @@ local _, ns = ...
 -- }
 -- step = { kind, text, item, count, target, recipe, npc, station }; make_part adds from = { item,
 -- count } (the ore); craft adds mats (one line per material), and for a
--- sure craft reach, after and thenText (section 388 a); kind one, kind one
--- of learn_recipe, train_tier, make_part, take_bank, go_station, craft, in
+-- sure craft reach, after and thenText (section 388 a);
+-- kind one of learn_recipe, train_tier, make_part, take_bank, go_station, craft, in
 -- that order. why (with no steps): "no reading", "no recipe" (nothing gives
 -- a point and nothing can be learned at this skill), "no colours" (the
 -- window's colours were never read) or "no materials"; say is then the one
