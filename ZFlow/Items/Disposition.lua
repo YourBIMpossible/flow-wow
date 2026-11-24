@@ -24,6 +24,9 @@ local _, ns = ...
 --     boosters   = { [key] = { skill, amount, cap, rank, max } }  skill
 --                  boosters (Items/SkillBoosters.lua, P-INV G6)
 --     level      = the player's level
+--     consumables = { [key] = { kind = "food" or "drink", minLevel, count,
+--                  buffFood } }  the food and drink in the bags
+--                  (Disposition.ConsumableFacts, G5)
 --     the keep rules ported from Flow (L6-B) read, each only when given:
 --     sets       = { [key] = { "Feral", ... } }     sets you keep it in
 --     materials  = { [key] = { { prof, what }, ... } }  professions that use it
@@ -98,6 +101,107 @@ Disposition.QUEST_CLASS = 12     -- the game's item class for quest items
 Disposition.UPGRADE_NOW = "an upgrade you can wear now"
 -- Lead section 418 item 4 (b): a kept material held past the steps' need.
 Disposition.SPARE = " (spare %d: sell at the auction house)"
+
+-- G5: food and drink you have outgrown, ported from Flow
+-- (Modules/Items/Disposition.lua:656-724). When you carry at least
+-- KEEP_BETTER of a better tier of the same kind (food, or drink) that you
+-- can use at your level, the weaker one may be sold. Tiers go by the level
+-- the item needs: TIER_STEP levels or more above is a better tier.
+-- Anything not known gives no answer, never "sell". Not tested in game.
+Disposition.KEEP_BETTER, Disposition.TIER_STEP = 10, 5
+Disposition.OUTGROWN = "outgrown: you carry %d+ better %s"
+local CONSUMABLE_KINDS = { food = true, drink = true }
+
+-- Food or drink, from the tooltip's lines: "food", "drink", or nil when the
+-- lines are not read, say neither, or say both. Flow asked the item's use
+-- spell by name; Z-Flow's read of it (client.itemUse) only says yes or no,
+-- so the words the tooltip ends on are read. English words, first guesses.
+function Disposition.ConsumableKind(lines)
+    if type(lines) ~= "table" then return nil end
+    local eats, drinks = false, false
+    for idx = 1, #lines do
+        local l = lines[idx]
+        if type(l) == "string" then
+            local low = l:lower()
+            if low:find("while eating", 1, true) then eats = true end
+            if low:find("while drinking", 1, true) then drinks = true end
+        end
+    end
+    if eats == drinks then return nil end
+    if eats then return "food" end
+    return "drink"
+end
+
+-- The best tier of a kind you carry enough of and can use at `level`: the
+-- level it needs, or nil. facts: context.consumables.
+function Disposition.BestTier(facts, kind, level)
+    if type(facts) ~= "table" or kind == nil or not CONSUMABLE_KINDS[kind] or not isCount(level) then return nil end
+    local best = nil
+    for _, f in pairs(facts) do
+        if type(f) == "table" and f.kind == kind and isCount(f.minLevel) and f.minLevel <= level
+            and isCount(f.count) and f.count >= Disposition.KEEP_BETTER
+            and (best == nil or f.minLevel > best) then
+            best = f.minLevel
+        end
+    end
+    return best
+end
+
+-- The verdict for one food or drink, or nil. best: Disposition.BestTier's.
+-- Well Fed food is never outgrown (it is eaten for the buff, not the
+-- health); food whose buff is not known (buffFood nil) is not sold either.
+function Disposition.OutgrownVerdict(kind, minLevel, best, buffFood)
+    if kind == nil or not CONSUMABLE_KINDS[kind] or not isCount(minLevel) or not isCount(best) then return nil end
+    if minLevel + Disposition.TIER_STEP > best then return nil end
+    if kind == "food" and buffFood ~= false then return nil end
+    return { action = "sell", basis = "recommendation",
+             reason = string.format(Disposition.OUTGROWN, Disposition.KEEP_BETTER, kind) }
+end
+
+-- context.consumables from the bag stacks ({ { item, count }, ... }) and
+-- two reads handed in (the client's itemInfo and itemLines): one row for
+-- each food or drink, its count summed over the stacks (nil when a stack
+-- had none). nil when the bags or a read are missing. An item whose facts
+-- or tooltip can't be read has no row. Nothing here asks the game itself.
+function Disposition.ConsumableFacts(stacks, itemInfo, itemLines)
+    local BF, Items = ns.BuffFood, ns.Items
+    if type(stacks) ~= "table" or type(itemInfo) ~= "function" or type(itemLines) ~= "function"
+        or type(BF) ~= "table" or type(Items) ~= "table" then
+        return nil
+    end
+    local out, seen = {}, {}
+    for idx = 1, #stacks do
+        local s = stacks[idx]
+        local key = type(s) == "table" and Items.Key(s.item) or nil
+        if key ~= nil then
+            if not seen[key] then
+                seen[key] = true
+                local id = Items.Id(s.item)
+                local okI, info = pcall(itemInfo, id)
+                if okI and type(info) == "table" and info.classID == BF.CLASS and info.subclassID == BF.SUBCLASS then
+                    local okL, lines = pcall(itemLines, id)
+                    local kind = nil
+                    if okL then kind = Disposition.ConsumableKind(lines) end
+                    if kind ~= nil then
+                        local f = { kind = kind, count = 0 }
+                        if isCount(info.minLevel) then f.minLevel = info.minLevel end
+                        if kind == "food" then f.buffFood = BF.IsBuffFood(lines) end
+                        out[key] = f
+                    end
+                end
+            end
+            local f = out[key]
+            if f ~= nil then
+                if f.count ~= nil and isCount(s.count) then
+                    f.count = f.count + s.count
+                else
+                    f.count = nil
+                end
+            end
+        end
+    end
+    return out
+end
 
 -- The built-in rules whose facts can all be passed in. (Gear, recipes,
 -- materials by profession, ammunition, reagents and spare bags come with the
@@ -197,6 +301,19 @@ Disposition.RULES = {
         if i.quality == 0 and isCount(i.sellPrice) and i.sellPrice > 0 then
             return { action = "sell", reason = "junk", basis = "recommendation" }
         end
+    end },
+    -- Flow Modules/Items/Disposition.lua:715-723, at Flow's order (22).
+    -- context.consumables[key] = { kind, minLevel, count, buffFood }, for
+    -- every food and drink in the bags; context.level = your level. Like
+    -- junk, it leaves a material of a profession of yours alone.
+    { key = "outgrownConsumable", order = 22, check = function(i, c)
+        if factOf(c, "materials", i.key) ~= nil or factOf(c, "everMaterials", i.key) ~= nil then
+            return nil
+        end
+        local f = factOf(c, "consumables", i.key)
+        if type(f) ~= "table" then return nil end
+        local best = Disposition.BestTier(c.consumables, f.kind, c.level)
+        return Disposition.OutgrownVerdict(f.kind, f.minLevel, best, f.buffFood)
     end },
     -- Flow Modules/Items/Disposition.lua:431-469. context.materials[key] =
     -- the professions you have or plan that still use it (not past it), in
