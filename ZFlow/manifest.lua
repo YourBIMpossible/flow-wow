@@ -331,6 +331,8 @@ return {
     "Nav/HearthAdvice.lua",
     -- Lead section 303 (d): the in-dungeon tracker, on the kit (after BossKills and the dungeon data).
     "UI/DungeonTracker.lua",
+    -- FLOW-PARITY B-48 (lead section 490): the dungeon you are in, in chat words (after BossKills, DungeonRead).
+    "Nav/DungeonVisit.lua",
     -- S35 (section 395 item 3): gate words for trip legs (after Gates, Trip).
     "Nav/GateWords.lua",
     -- Lead section 406 item 3: recipe facts for the profession plan, seen in game then shipped (read by ProfPlan at call time).

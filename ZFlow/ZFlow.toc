@@ -258,6 +258,7 @@ UI\ProfDock.lua
 Nav\ProfFeed.lua
 Nav\HearthAdvice.lua
 UI\DungeonTracker.lua
+Nav\DungeonVisit.lua
 Nav\GateWords.lua
 Items\RecipeFacts.lua
 Items\VendorRecipes.lua
