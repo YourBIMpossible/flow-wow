@@ -6,6 +6,10 @@ local _, ns = ...
 -- -> the sell list the player is shown. No test-only source.
 -- Offline: the reads are the fake client's, not the game's. Not tested in game.
 local tests = {}
+-- Item names carry the game's quality colour (Items/Present.lua, Tint; the
+-- colour itself is tested in Tests/Items/ItemColourTests.lua). These tests are
+-- about the words, so they read them with the colour taken off.
+local plain = ns.ItemPresent.Plain
 
 local PELT = 4865
 local INFO = {
@@ -46,14 +50,14 @@ local function joined(lines) return table.concat(lines or {}, " / ") end
 
 local function has(lines, text)
     for _, l in ipairs(lines or {}) do
-        if l == text then return true end
+        if plain(l) == text then return true end
     end
     return false
 end
 
 local function finds(lines, text)
     for _, l in ipairs(lines or {}) do
-        if l:find(text, 1, true) then return true end
+        if plain(l):find(text, 1, true) then return true end
     end
     return false
 end
@@ -62,7 +66,7 @@ end
 local function peltRows(lines)
     local out = {}
     for _, l in ipairs(lines or {}) do
-        local n = l:match("^(%d+) x Ruined Pelt: ")
+        local n = plain(l):match("^(%d+) x Ruined Pelt: ")
         if n then out[#out + 1] = tonumber(n) end
     end
     return out
@@ -169,6 +173,13 @@ tests["goals at merchant: no goal saved gives the sell advice there was before g
     -- unavailable. The guard that carries the case is the asserts above.)
     t.eq(lines, addon.SellList.Lines(c, nil, nil, { status = addon.Reservations.NONE }),
         "the list with nothing reserved")
+end
+
+for name, fn in pairs(tests) do
+    tests[name] = function(t)
+        return fn(setmetatable({ eq = function(got, want, msg) return t.eq(plain(got), plain(want), msg) end },
+            { __index = t }))
+    end
 end
 
 return tests

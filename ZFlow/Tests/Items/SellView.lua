@@ -7,6 +7,10 @@ local _, ns = ...
 
 local V, Present, P = ns.SellView, ns.ItemPresent, ns.Prices
 local tests = {}
+-- Item names carry the game's quality colour (Items/Present.lua, Tint; the
+-- colour itself is tested in Tests/Items/ItemColourTests.lua). These tests are
+-- about the words, so they read them with the colour taken off.
+local plain = ns.ItemPresent.Plain
 
 -- The item facts a client would give, by item ID (the CLIENT NEED itemInfo).
 local INFO = {
@@ -35,14 +39,14 @@ end
 
 local function has(lines, text)
     for _, l in ipairs(lines or {}) do
-        if l == text then return true end
+        if plain(l) == text then return true end
     end
     return false
 end
 
 local function contains(lines, part)
     for _, l in ipairs(lines or {}) do
-        if type(l) == "string" and l:find(part, 1, true) then return true end
+        if type(l) == "string" and plain(l):find(part, 1, true) then return true end
     end
     return false
 end
@@ -232,6 +236,13 @@ tests["sell view: nothing in here sells, buys or moves anything"] = function(t)
         local lower = tostring(name):lower()
         t.ok(not (lower:find("^sell$") or lower:find("buy") or lower:find("use") or lower:find("pickup")),
             "no acting function: " .. tostring(name))
+    end
+end
+
+for name, fn in pairs(tests) do
+    tests[name] = function(t)
+        return fn(setmetatable({ eq = function(got, want, msg) return t.eq(plain(got), plain(want), msg) end },
+            { __index = t }))
     end
 end
 

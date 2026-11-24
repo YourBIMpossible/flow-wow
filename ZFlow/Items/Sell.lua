@@ -213,7 +213,7 @@ function Sell.List(bag, context)
                     rows[#rows + 1] = {
                         key = item.key,
                         name = type(item.name) == "string" and item.name ~= "" and item.name or nil,
-                        count = count,
+                        count = count, quality = item.quality,
                         unit = price.unit, basis = price.basis, source = price.source,
                         priceText = priceText(price),
                         total = sum,
