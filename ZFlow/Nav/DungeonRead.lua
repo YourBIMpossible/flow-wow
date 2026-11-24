@@ -812,6 +812,42 @@ function R.Run(st, client, key)
     return { title = d.name, steps = steps, left = left }
 end
 
+-- FLOW-PARITY B-52 (lead section 471): "Get ready on the way" before the
+-- run, as advice steps put in front of it (Flow's Dungeons.lua Prepare
+-- lists them): training due, a repair (sell there too) while the gear is
+-- low, the bank. Each is a stop the player already saw; the player does
+-- each, nothing trains, sells, repairs or banks for them.
+--   R.Ready(train, repair, bank) -> steps
+--     train, repair: steps as classTrainerStep / repairStep give them, or nil
+--     bank: an Errand place { kind = "banker", name, map, x, y } or nil
+R.READY = "Get ready: %s"
+R.READY_TRAIN = "Train"
+R.READY_REPAIR = "Sell and repair"
+R.READY_BANK = "Bank"
+
+local function readyStep(what, src, place)
+    if type(place) ~= "table" or place.map == nil or type(place.x) ~= "number" or type(place.y) ~= "number" then
+        return nil
+    end
+    local detail
+    if type(src) == "table" and type(src.label) == "string" then detail = src.label end
+    return { kind = "ready", label = R.READY:format(what), detail = detail,
+             place = { map = place.map, x = place.x, y = place.y } }
+end
+
+function R.Ready(train, repair, bank)
+    local out = {}
+    local function add(s) if s then out[#out + 1] = s end end
+    if type(train) == "table" then add(readyStep(R.READY_TRAIN, train, train.place)) end
+    if type(repair) == "table" then add(readyStep(R.READY_REPAIR, repair, repair.place)) end
+    if type(bank) == "table" then
+        local name
+        if type(bank.name) == "string" and bank.name ~= "" then name = bank.name end
+        add(readyStep(R.READY_BANK, { label = name }, bank))
+    end
+    return out
+end
+
 -- The dungeon the client's instance name names (lead section 303 (d)), by
 -- Questie's name for it, any case; nil when none matches or the list is not
 -- read. A name Questie spells differently is not guessed at.
