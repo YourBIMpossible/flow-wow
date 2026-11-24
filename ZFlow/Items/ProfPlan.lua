@@ -59,7 +59,7 @@ P.SAY = {
     ["no colours"] = "Open your %s window once",
     ["no materials"] = "Get the materials for %s",
     ["no recipe"] = "Visit a %s trainer for new recipes",
-    ["at the top"] = "%s is at the top: no rank past it",
+    ["at the top"] = "%s is done: the top rank is reached",
 }
 -- Section 400 item 2: the last rank's end in Classic. No rank past it to train.
 P.TOP = 300
@@ -218,13 +218,39 @@ local function limit(input, c)
     return left
 end
 
+local function placeOf(input, npc)
+    local n = get(input.npcs, npc)
+    if type(n) == "table" and n.map ~= nil and type(n.x) == "number" and type(n.y) == "number" then return n end
+    return nil
+end
+
+-- Section 400 item 4: a trainer whose place is on another continent than
+-- the player's is never a step (no training trip). Both continents known,
+-- or it is not away.
+local function away(input, npc)
+    local n, here = placeOf(input, npc), input.here
+    if not n or type(here) ~= "table" or here.map == nil or type(input.contOf) ~= "function" then return false end
+    local mine, theirs = input.contOf(here.map), input.contOf(n.map)
+    return mine ~= nil and theirs ~= nil and mine ~= theirs
+end
+
+-- Section 402 item 3: how far a trainer is; one on another map, or with no
+-- place seen, comes after every one on this map.
+local function farness(input, npc)
+    local n, here = placeOf(input, npc), input.here
+    if not n or type(here) ~= "table" or n.map ~= here.map then return math.huge end
+    return (n.x - (here.x or 0)) ^ 2 + (n.y - (here.y or 0)) ^ 2
+end
+
+-- This profession's trainer list nearest the player, never one away.
 local function trainerAt(input)
-    local best
+    local best, bestD
     if type(input.trainerLists) ~= "table" then return nil end
     for _, key in ipairs(sortedKeys(input.trainerLists)) do
         local l = input.trainerLists[key]
-        if type(l) == "table" and l.profession == input.prof and type(l.npc) == "string" then
-            if not best or l.npc < best.npc then best = l end
+        if type(l) == "table" and l.profession == input.prof and type(l.npc) == "string" and not away(input, l.npc) then
+            local d = farness(input, l.npc)
+            if not best or d < bestD or (d == bestD and l.npc < best.npc) then best, bestD = l, d end
         end
     end
     return best
@@ -247,7 +273,8 @@ local function learnStep(input)
     if type(input.trainerLists) ~= "table" then return nil end
     for _, key in ipairs(sortedKeys(input.trainerLists)) do
         local l = input.trainerLists[key]
-        if type(l) == "table" and l.profession == input.prof and type(l.rows) == "table" then
+        if type(l) == "table" and l.profession == input.prof and type(l.rows) == "table"
+            and not away(input, l.npc) then
             for _, row in ipairs(l.rows) do
                 if type(row) == "table" and type(row.name) == "string" and row.state ~= "known"
                     and whole(row.skill) and row.skill <= input.skill then
@@ -573,6 +600,7 @@ function P.Input(client, store, prof, nodeSource)
         end,
         trainerLists = saved(store, "char", "learned.trainerLists"),
         npcs = saved(store, "account", "learned.places.npcs"),
+        contOf = function(map) return ask(client, "mapCont", map) end,
         station = kind,
         stationTarget = target,
         atStation = false,
