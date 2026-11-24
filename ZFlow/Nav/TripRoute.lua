@@ -57,6 +57,7 @@ T.HEADER = "Route: %d stops (%s)"
 T.RUN_SAID = "Run planned: %d stops; the arrow walks it."
 T.HELD_LINE = "Turn-in held: %s"
 T.HELD_NOT_COMPLETE = "not complete any more"
+T.LEFT = "%s left the route: its quest is no longer in your log."
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -196,12 +197,26 @@ function T.Held(stop, rows)
     return nil
 end
 
+-- Lead section 375: whether the stop's quest is still in the log (rows
+-- read); a stop with no quest is.
+function T.InLog(stop, rows)
+    if type(stop) ~= "table" or stop.quest == nil or type(rows) ~= "table" then return true end
+    for _, row in ipairs(rows) do
+        if type(row) == "table" and row.id == stop.quest then return true end
+    end
+    return false
+end
+
 function T.Lines(route, at)
     if type(route) ~= "table" or type(route.stops) ~= "table" then return {} end
-    local lines = { T.HEADER:format(#route.stops, tostring(route.label or N.ROUTE_STRAIGHT)) }
+    local shown = 0
+    for _, s in ipairs(route.stops) do
+        if not s.left then shown = shown + 1 end
+    end
+    local lines = { T.HEADER:format(shown, tostring(route.label or N.ROUTE_STRAIGHT)) }
     local held = {}
     for i, s in ipairs(route.stops) do
-        if s.held and not s.gone then
+        if s.held and not s.gone and not s.left then
             held[#held + 1] = "  " .. tostring(s.label) .. " - " .. T.HELD_LINE:format(tostring(s.held))
         end
         local dist = (finite(s.leg) and route.yards ~= false) and (tostring(math.floor(s.leg + 0.5)) .. " yd")
@@ -210,7 +225,8 @@ function T.Lines(route, at)
         if s.detail ~= nil then parts[#parts + 1] = tostring(s.detail) end
         parts[#parts + 1] = dist
         if s.gone then parts[#parts + 1] = "done" end
-        if not (s.held and not s.gone) then
+        -- A stop whose quest left the log is off the list (lead section 375).
+        if not s.left and not (s.held and not s.gone) then
             lines[#lines + 1] = (i == at and "> " or "") .. i .. ". " .. table.concat(parts, " - ")
         end
     end
@@ -301,6 +317,7 @@ function T.Declare(k, diag)
         local stops = {}
         for i, s in ipairs(run.steps) do
             stops[i] = { kind = s.kind or "run", quest = s.quest, label = s.label, detail = s.detail,
+                         logQuest = s.logQuest == true or nil,
                          place = { map = s.place.map, x = s.place.x, y = s.place.y } }
         end
         local yards = runLegs(stops, client())
@@ -308,8 +325,8 @@ function T.Declare(k, diag)
         for _, name in ipairs(type(run.left) == "table" and run.left or {}) do
             left[#left + 1] = { label = tostring(name), why = "giver's place not known" }
         end
-        route, at = { kind = "run", stops = stops, yards = yards, label = tostring(run.title or N.ROUTE_STRAIGHT),
-                      left = left }, 1
+        route, at, readAt = { kind = "run", stops = stops, yards = yards,
+                              label = tostring(run.title or N.ROUTE_STRAIGHT), left = left }, 1, nil
         return T.RUN_SAID:format(#stops)
     end
 
@@ -339,21 +356,52 @@ function T.Declare(k, diag)
         return d < (yards and T.ARRIVE_YARDS or T.ARRIVE_SHARE)
     end
 
+    local function tell(line)
+        local c = client()
+        if type(c) ~= "table" or type(c.print) ~= "function" then return end
+        local id = k.id or ns.id
+        c.print(id.title .. ": " .. tostring(line))
+    end
+
+    -- Lead section 375: a stop whose quest left the log (abandoned or handed
+    -- in, in any order) leaves the route, one line per quest. On a run only
+    -- the trip hand-in stops (logQuest) are checked: pick-up givers are not
+    -- in the log yet. Answers whether any left.
+    local function dropLeft(rows)
+        local told, any = {}, false
+        for _, s in ipairs(route.stops) do
+            local check = route.kind == "quests" or s.logQuest == true
+            if check and not s.gone and not T.InLog(s, rows) then
+                s.gone, s.left, any = true, true, true
+                if not told[s.quest] then
+                    told[s.quest] = true
+                    tell(T.LEFT:format(tostring(s.label)))
+                end
+            end
+        end
+        return any
+    end
+
     function api.Step()
         if not route or not on() then return nil end
         local c = client()
+        local now = ask(c, "now")
+        local rows
+        if not finite(now) or not finite(readAt) or now - readAt >= T.REREAD then
+            readAt = now
+            rows = N.QuestLogRows(c)
+        end
+        if rows and dropLeft(rows) and route.kind == "run" then
+            local trip = k.use and k.use("trip")
+            if trip and type(trip.Prune) == "function" then pcall(trip.Prune, rows) end
+        end
         if route.kind == "quests" then
-            local now = ask(c, "now")
-            if not finite(now) or not finite(readAt) or now - readAt >= T.REREAD then
-                readAt = now
-                local rows = N.QuestLogRows(c)
-                if rows then
-                    for _, s in ipairs(route.stops) do
-                        if not T.Live(s, rows) then
-                            s.gone = true
-                        else
-                            s.held = T.Held(s, rows)
-                        end
+            if rows then
+                for _, s in ipairs(route.stops) do
+                    if not T.Live(s, rows) then
+                        s.gone = true
+                    else
+                        s.held = T.Held(s, rows)
                     end
                 end
             end
@@ -423,10 +471,7 @@ function T.Declare(k, diag)
     end
 
     local function say(lines)
-        local c = client()
-        if type(c) ~= "table" or type(c.print) ~= "function" then return end
-        local id = k.id or ns.id
-        for _, line in ipairs(lines) do c.print(id.title .. ": " .. tostring(line)) end
+        for _, line in ipairs(lines) do tell(line) end
     end
 
     function api.Word(rest)

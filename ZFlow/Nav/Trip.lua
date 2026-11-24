@@ -343,13 +343,37 @@ function P.Run(ordered, label)
     local steps = {}
     for _, s in ipairs(type(ordered) == "table" and ordered or {}) do
         if placed(s) then
+            -- Lead section 375: a hand-in stop is checked against the log.
+            local logQuest = s.quest ~= nil and not s.pickUp
+            local quest
+            if logQuest then quest = s.quest end
             steps[#steps + 1] = { kind = "trip", label = s.label, detail = s.detail,
+                                  quest = quest, logQuest = logQuest,
                                   place = { map = s.place.map, x = s.place.x, y = s.place.y } }
         end
     end
     local title = P.TITLE
     if label ~= nil then title = title .. " (" .. tostring(label) .. ")" end
     return { title = title, steps = steps, left = {} }
+end
+
+-- Lead section 375: the stops whose quest is no longer in the log (rows
+-- read) leave the list; a pick-up stop is kept. Answers the labels taken.
+function P.Prune(list, rows)
+    local gone = {}
+    if type(list) ~= "table" or type(rows) ~= "table" then return gone end
+    local have = {}
+    for _, row in ipairs(rows) do
+        if type(row) == "table" and row.id ~= nil then have[row.id] = true end
+    end
+    for i = #list, 1, -1 do
+        local s = list[i]
+        if type(s) == "table" and s.quest ~= nil and not s.pickUp and not have[s.quest] then
+            local out = P.Remove(list, i)
+            if out then table.insert(gone, 1, out.label) end
+        end
+    end
+    return gone
 end
 
 local function yardsOf(n)
@@ -635,6 +659,13 @@ function P.Declare(k, diag)
         return tostring(line)
     end
 
+    function api.Prune(rows)
+        local list = load()
+        local gone = P.Prune(list, rows)
+        if #gone > 0 then save(list) end
+        return gone
+    end
+
     function api.Tip()
         local route = k.use and k.use("tripRoute")
         if not (route and type(route.Current) == "function") then return nil end
@@ -695,7 +726,7 @@ function P.Declare(k, diag)
     k:Module({
         name = P.NAME,
         needs = { "client", "store" },
-        provides = { List = api.List, Lines = api.Lines, Go = api.Go, Tip = api.Tip },
+        provides = { List = api.List, Lines = api.Lines, Go = api.Go, Tip = api.Tip, Prune = api.Prune },
         start = function(c) ctx = c end,
         stop = function() dungeons = nil end,
     })

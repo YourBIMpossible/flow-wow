@@ -2140,6 +2140,9 @@ function ns.make.fakeClient(opts)
     function c.recipeUsable(id) return usableOf[id], whyOf[id] end
     function c.setMoving(on) s.moving = on end
     function c.moving() return s.moving end
+    -- Yards a second (the arrow's time to arrive): not known until set.
+    function c.setSpeed(v) s.speed = v end
+    function c.speed() return s.speed end
 
     -- Every craft the add-on asked for, in order: { id =, n = }. A refused
     -- craft is not logged. setCraftFails(why) makes every craft answer
@@ -4234,7 +4237,10 @@ function ns.make.fakeClient(opts)
     -- The minimap button (UI/MinimapButton.lua). Every one made is in
     -- c.minimapButtons, in order; nil and "no frame" after c.setFrames(false).
     -- Test controls on a handle h:
-    --   h.click()        a left click
+    --   h.click(button)  a click: "right", else a left click
+    --   h.choose(key)    the player clicks the open menu's row with this
+    --                    key; the menu closes first, as on the client
+    --   h.menuItems      the open menu's rows; nil: closed
     --   h.drag(angle)    dragged to that angle (degrees, 0 right, 90 up) on
     --                    the rim and dropped: the drag function is told
     --                    dx, dy 50 from the middle at that angle, done true
@@ -4243,18 +4249,33 @@ function ns.make.fakeClient(opts)
     function c.minimapButton(spec)
         if s.noFrames then return nil, "no frame" end
         local h = { spec = spec, shown = false, places = 0 }
-        local clickFn, dragFn
+        local clickFn, dragFn, pick
         function h.place(x, y)
             if type(x) ~= "number" or type(y) ~= "number" then return end
             h.x, h.y = x, y
             h.places = h.places + 1
         end
-        function h.show(on) h.shown = on and true or false end
+        function h.show(on)
+            h.shown = on and true or false
+            if not h.shown then h.menuItems, pick = nil, nil end
+        end
+        function h.menu(items, fn)
+            if type(items) ~= "table" or #items == 0 then
+                h.menuItems, pick = nil, nil
+                return
+            end
+            h.menuItems, pick = items, type(fn) == "function" and fn or nil
+        end
+        function h.choose(key)
+            local fn = pick
+            h.menuItems, pick = nil, nil
+            if fn then fn(key) end
+        end
         function h.onClick(fn) clickFn = fn end
         function h.onDrag(fn) dragFn = fn end
         function h.tip(lines) h.tipLines = lines end
-        function h.click()
-            if type(clickFn) == "function" then clickFn() end
+        function h.click(button)
+            if type(clickFn) == "function" then clickFn(button == "right" and "right" or "left") end
         end
         function h.drag(angle)
             if type(dragFn) ~= "function" or type(angle) ~= "number" then return end
@@ -4459,6 +4480,17 @@ function ns.make.fakeClient(opts)
         end
         c.mapCards[#c.mapCards + 1] = h
         return h
+    end
+
+    -- P-QUEST (lead section 354 item 4): c.setQuestShareable(id, true /
+    -- false / nil). Not set: not known.
+    function c.setQuestShareable(id, v)
+        s.questShareable = s.questShareable or {}
+        s.questShareable[id] = v
+    end
+    function c.questShareable(id)
+        if type(id) ~= "number" then return nil end
+        return s.questShareable and s.questShareable[id]
     end
     return c
 end
