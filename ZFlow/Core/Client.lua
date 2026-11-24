@@ -6646,6 +6646,60 @@ function ns.make.client(env)
         return h
     end
 
+    -- The name of a map as the client says it (C_Map.GetMapInfo(map).name),
+    -- or nil. Checked on warcraft.wiki.gg (API C_Map.GetMapInfo). A first
+    -- guess on 16001: needs game test.
+    function c.mapName(map)
+        if type(map) ~= "number" then return nil end
+        local ok, info = mapCall("GetMapInfo", map)
+        if not ok or type(info) ~= "table" then return nil end
+        local name = info.name
+        if hidden(name) or type(name) ~= "string" or name == "" then return nil end
+        return name
+    end
+
+    -- c.mapClick(fn) -> true when the world map will tell of the player's
+    -- own Alt + left clicks on it, else nil and a reason. fn(map, x, y):
+    -- the uiMapID the map showed when the button went down and where the
+    -- cursor was on it then, as shares 0..1 (x right, y down). A click
+    -- outside the map, without Alt, or with another button tells nothing.
+    -- Hooks only (HookScript OnMouseDown / OnMouseUp on
+    -- WorldMapFrame.ScrollContainer): the map's own click still runs, and
+    -- nothing is clicked or moved for the player. Where the button went
+    -- down is kept, since the map's own click may have changed the map by
+    -- the time the button comes up. First guesses, not seen on 16001:
+    -- ScrollContainer:GetNormalizedCursorPosition (MapCanvasScrollController
+    -- Mixin), HookScript on it, IsAltKeyDown. Needs a game test.
+    function c.mapClick(fn)
+        if type(fn) ~= "function" then return nil, "no function" end
+        local wm = env.WorldMapFrame
+        if wm == nil then return nil, "no world map" end
+        local okS, scroll = pcall(function() return wm.ScrollContainer end)
+        if not okS or scroll == nil then return nil, "no map canvas" end
+        local function plain(v) return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge end
+        local down
+        local okD = method(scroll, "HookScript", "OnMouseDown", function(_, button)
+            down = nil
+            if button ~= "LeftButton" then return end
+            local okA, alt = call(env.IsAltKeyDown)
+            if not okA or hidden(alt) or not alt then return end
+            local okM, map = method(wm, "GetMapID")
+            local okP, x, y = method(scroll, "GetNormalizedCursorPosition")
+            if not okM or not okP or hidden(map) or hidden(x) or hidden(y) then return end
+            if type(map) ~= "number" or not plain(x) or not plain(y) then return end
+            if x < 0 or x > 1 or y < 0 or y > 1 then return end
+            down = { map, x, y }
+        end)
+        local okU = method(scroll, "HookScript", "OnMouseUp", function(_, button)
+            local at = down
+            down = nil
+            if at == nil or button ~= "LeftButton" then return end
+            pcall(fn, at[1], at[2], at[3])
+        end)
+        if not okD or not okU then return nil, "no hook" end
+        return true
+    end
+
     -- c.mapPins() -> h, or nil when there is no world map, no canvas
     -- (WorldMapFrame.ScrollContainer.Child) or no frame could be made. One
     -- plain frame over the canvas, no mouse; its dots and lines are made
