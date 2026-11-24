@@ -9245,7 +9245,9 @@ function ns.make.client(env)
     --     first guess.
     --
     --   client.chatFilter(events, fn) -> cancel | nil
-    --     fn(text, event) for every chat line of the named events before it
+    --     fn(text, event, author) for every chat line of the named events
+    --     (author: the sender as the game names it, nil when hidden or no
+    --     text; N60c) before it
     --     is shown; a text it gives back replaces the line's text, anything
     --     else leaves the line as it was. fn runs under pcall. A text the
     --     client hides (issecretvalue), or that is no text, is handed on
@@ -9314,12 +9316,47 @@ function ns.make.client(env)
             end
             if type(add) ~= "function" then return nil end
             local dead = false
-            local function filter(_, event, text, ...)
+            local function filter(_, event, text, author, ...)
                 if dead or text == nil then return false end
                 if hidden(text) or type(text) ~= "string" then return false end
-                local ok, new = pcall(fn, text, event)
-                if not ok or type(new) ~= "string" or new == text then return false end
-                return false, new, ...
+                -- N60c: the line's author (the game's second argument),
+                -- handed on only when it is plain text.
+                local who = nil
+                if author ~= nil and not hidden(author) and type(author) == "string" then who = author end
+                -- N60d: info { guid =, channel = }, each only when plain
+                -- text: the game's 12th argument (the GUID) and 4th (the
+                -- channel text, "1. General - Zone"). fn's second answer
+                -- { channel = } replaces the channel text. First guess.
+                local n = select("#", ...)
+                local args = { ... }
+                local info = {}
+                if args[2] ~= nil and not hidden(args[2]) and type(args[2]) == "string" then
+                    info.channel = args[2]
+                end
+                if args[10] ~= nil and not hidden(args[10]) and type(args[10]) == "string" then
+                    info.guid = args[10]
+                end
+                -- N60e: info.line, the game's 11th argument (the line id,
+                -- the same for one line in every window), only when a
+                -- plain number. fn's second answer { hide = true } hides
+                -- the line: the filter answers true, as the game's
+                -- contract has it. First guess for 16001.
+                if args[9] ~= nil and not hidden(args[9]) and type(args[9]) == "number" then
+                    info.line = args[9]
+                end
+                local ok, new, change = pcall(fn, text, event, who, info)
+                if not ok then return false end
+                if type(change) == "table" and change.hide == true then return true end
+                local channel = nil
+                if type(change) == "table" and type(change.channel) == "string" and info.channel ~= nil
+                    and change.channel ~= info.channel then
+                    channel = change.channel
+                end
+                if type(new) ~= "string" or new == text then new = nil end
+                if new == nil and channel == nil then return false end
+                if new == nil then new = text end
+                if channel ~= nil then args[2] = channel end
+                return false, new, author, unpack(args, 1, n)
             end
             local added = {}
             for _, event in ipairs(events) do
@@ -11285,6 +11322,179 @@ function ns.make.client(env)
             return page
         end
     end
+    ---------------------------------------------------------------------
+    -- N60b: chat readability (UI/Chat.lua). How a chat window looks:
+    -- nothing is sent and no chat frame's own function or script is
+    -- replaced. Every call is a first guess, not seen in game on 16001;
+    -- the names are in Diag.NAMES. Window i is the global ChatFrame<i>,
+    -- its tab ChatFrame<i>Tab (warcraft.wiki.gg, ScrollingMessageFrame,
+    -- FontInstance, ScriptObject).
+    --
+    --   client.chatFont(i) -> size | nil
+    --     frame:GetFont() second answer. nil: no window, a raise, hidden.
+    --   client.setChatFont(i, size) -> true | nil
+    --     frame:SetFont(path, size, flags) with the path and flags the
+    --     window has now. For this session only: the game's own saved chat
+    --     size is not written.
+    --   client.chatFading(i) -> { fading = bool, time = n } | nil
+    --     frame:GetFading() and frame:GetTimeVisible().
+    --   client.setChatFading(i, fading[, time]) -> true | nil
+    --     frame:SetFading(fading), then frame:SetTimeVisible(time) when a
+    --     time above 0 is given.
+    --   client.chatWheel(i, fn) -> cancel | nil
+    --     fn(delta, ctrl, shift) after the game's own wheel step on window
+    --     i; it answers "top", "bottom", a number of extra lines in the
+    --     wheel's direction (at most 50), or nothing. Through
+    --     frame:HookScript("OnMouseWheel"): runs after the game's handler,
+    --     never in its place, so the game's own scrolling and its secure
+    --     state are untouched. A hook cannot be taken off: cancel makes it
+    --     do nothing. IsControlKeyDown / IsShiftKeyDown for the keys.
+    --   client.chatTabAlpha(i, alpha | nil) -> true | nil
+    --     Holds tab i at least `alpha` against the game's fade:
+    --     hooksecurefunc(tab, "SetAlpha") puts it back up after each lower
+    --     alpha the game asks. nil lets go and gives the tab the alpha the
+    --     game asked last.
+    --   client.localTime() -> hour, min, sec | nil
+    --     date("*t"), the computer's local time.
+    ---------------------------------------------------------------------
+    do
+        local WHEEL_MOST = 50
+
+        local function chatWindow(i)
+            if type(i) ~= "number" or i < 1 or i ~= math.floor(i) then return nil end
+            local frame = env["ChatFrame" .. i]
+            if type(frame) ~= "table" then return nil end
+            return frame
+        end
+
+        function c.chatFont(i)
+            local ok, _, size = method(chatWindow(i), "GetFont")
+            if not ok or hidden(size) or type(size) ~= "number" then return nil end
+            return size
+        end
+
+        function c.setChatFont(i, size)
+            if type(size) ~= "number" or size <= 0 then return nil end
+            local frame = chatWindow(i)
+            local ok, path, now, flags = method(frame, "GetFont")
+            if not ok or hidden(path) or hidden(now) or hidden(flags) or type(path) ~= "string" then return nil end
+            if not method(frame, "SetFont", path, size, flags) then return nil end
+            return true
+        end
+
+        function c.chatFading(i)
+            local frame = chatWindow(i)
+            local okF, fading = method(frame, "GetFading")
+            local okT, time = method(frame, "GetTimeVisible")
+            if not okF or not okT or hidden(fading) or hidden(time) or type(time) ~= "number" then return nil end
+            return { fading = fading == true, time = time }
+        end
+
+        function c.setChatFading(i, fading, time)
+            if type(fading) ~= "boolean" then return nil end
+            local frame = chatWindow(i)
+            if not method(frame, "SetFading", fading) then return nil end
+            if type(time) == "number" and time > 0 then
+                if not method(frame, "SetTimeVisible", time) then return nil end
+            end
+            return true
+        end
+
+        local function keyDown(fn)
+            local ok, down = call(fn)
+            if not ok or hidden(down) then return false end
+            return down ~= nil and down ~= false and down ~= 0
+        end
+
+        local wheels = {}
+        function c.chatWheel(i, fn)
+            if type(fn) ~= "function" then return nil end
+            local frame = chatWindow(i)
+            if frame == nil then return nil end
+            local w = wheels[i]
+            if w == nil or w.frame ~= frame then
+                w = { frame = frame }
+                local function onWheel(_, delta)
+                    local f = w.fn
+                    if f == nil or hidden(delta) or type(delta) ~= "number" or delta == 0 then return end
+                    local okF, what = pcall(f, delta, keyDown(env.IsControlKeyDown), keyDown(env.IsShiftKeyDown))
+                    if not okF then return end
+                    if what == "top" then
+                        method(frame, "ScrollToTop")
+                    elseif what == "bottom" then
+                        method(frame, "ScrollToBottom")
+                    elseif type(what) == "number" and what >= 1 then
+                        local step = "ScrollDown"
+                        if delta > 0 then step = "ScrollUp" end
+                        local n = math.floor(what)
+                        if n > WHEEL_MOST then n = WHEEL_MOST end
+                        for _ = 1, n do method(frame, step) end
+                    end
+                end
+                if not method(frame, "HookScript", "OnMouseWheel", onWheel) then return nil end
+                wheels[i] = w
+            end
+            w.fn = fn
+            return function()
+                if w.fn == fn then w.fn = nil end
+            end
+        end
+
+        local tabs = {}
+        function c.chatTabAlpha(i, alpha)
+            if type(i) ~= "number" then return nil end
+            local tab = env["ChatFrame" .. i .. "Tab"]
+            if type(tab) ~= "table" then return nil end
+            local held = tabs[i]
+            if held == nil or held.tab ~= tab then
+                if type(env.hooksecurefunc) ~= "function" then return nil end
+                held = { tab = tab, busy = false }
+                local okA, now = method(tab, "GetAlpha")
+                if okA and not hidden(now) and type(now) == "number" then held.asked = now end
+                local function onAlpha(_, a)
+                    if held.busy or hidden(a) or type(a) ~= "number" then return end
+                    held.asked = a
+                    if held.hold ~= nil and a < held.hold then
+                        held.busy = true
+                        method(tab, "SetAlpha", held.hold)
+                        held.busy = false
+                    end
+                end
+                if not pcall(env.hooksecurefunc, tab, "SetAlpha", onAlpha) then return nil end
+                tabs[i] = held
+            end
+            held.busy = true
+            if type(alpha) == "number" then
+                held.hold = alpha
+                method(tab, "SetAlpha", alpha)
+            else
+                held.hold = nil
+                if held.asked ~= nil then method(tab, "SetAlpha", held.asked) end
+            end
+            held.busy = false
+            return true
+        end
+
+        function c.localTime()
+            local ok, t = call(env.date, "*t")
+            if not ok or hidden(t) or type(t) ~= "table" then return nil end
+            local h, m, s = tonumber(t.hour), tonumber(t.min), tonumber(t.sec)
+            if h == nil or m == nil or s == nil then return nil end
+            return h, m, s
+        end
+    end
+    -- N60c (UI/Chat.lua, chat mentions): c.playerName() -> name | nil.
+    --   The player's own name, UnitName("player")'s first answer, without a
+    --   realm; nil when not known (no call, a failed call, a secret or
+    --   empty answer). A first guess on 16001, not seen in game. Read only.
+    do
+        function c.playerName()
+            local ok, name = call(env.UnitName, "player")
+            if not ok or name == nil or hidden(name) or type(name) ~= "string" or name == "" then return nil end
+            return name
+        end
+    end
+
     -- G38: whether the player is indoors (a cave, a building): true or
     -- false, nil when the client will not say. IsIndoors() answers 1 or nil
     -- in the classic clients; a nil from a call that is there is read as
@@ -11512,6 +11722,93 @@ function ns.make.client(env)
             return table.concat(parts, "; ")
         end
     end
+
+    ---------------------------------------------------------------------
+    -- N60d: chat part 4 (UI/Chat.lua). All first guesses, not seen in game
+    -- on 16001.
+    --
+    --   client.classOfGuid(guid) -> class file ("MAGE") | nil
+    --     GetPlayerInfoByGUID(guid), its second answer (warcraft.wiki.gg,
+    --     API GetPlayerInfoByGUID). nil for no call, a failed call, or a
+    --     secret or odd answer.
+    --   client.chatNameByClass(chatType) -> true | false | nil
+    --   client.setChatNameByClass(chatType, on) -> true | nil
+    --     The game's own "colour names by class" of one chat kind ("GUILD",
+    --     "CHANNEL1"): ChatTypeInfo[chatType].colorNameByClass, set through
+    --     SetChatColorNameByClass(chatType, on). The game then colours the
+    --     author's name itself, inside its own player link.
+    --   client.chatTypeHeader(name) -> text | nil
+    --   client.setChatTypeHeader(name, text) -> true | nil
+    --     The game's label text of a chat kind, the global CHAT_<name>_GET
+    --     ("|Hchannel:GUILD|h[Guild]|h %s: "). A global string write; the
+    --     chat frame's own code reads it when it shows a line.
+    --   client.editBox() -> { alt =, history = } | nil
+    --   client.setEditBox(alt, history) -> true | nil
+    --     ChatFrame1EditBox: Get/SetAltArrowKeyMode and Get/SetHistoryLines
+    --     (warcraft.wiki.gg, Widget API EditBox). The game's own edit-box
+    --     history is used: nothing is hooked.
+    ---------------------------------------------------------------------
+    do
+        function c.classOfGuid(guid)
+            if type(guid) ~= "string" or guid == "" then return nil end
+            local ok, _, class = call(env.GetPlayerInfoByGUID, guid)
+            if not ok or hidden(class) or type(class) ~= "string" or class == "" then return nil end
+            return class
+        end
+
+        local function typeInfo(chatType)
+            if type(chatType) ~= "string" or chatType == "" then return nil end
+            local okT, all = pcall(function() return env.ChatTypeInfo end)
+            if not okT or type(all) ~= "table" then return nil end
+            local okI, info = pcall(function() return all[chatType] end)
+            if not okI or type(info) ~= "table" then return nil end
+            return info
+        end
+        function c.chatNameByClass(chatType)
+            local info = typeInfo(chatType)
+            if info == nil then return nil end
+            local okV, v = pcall(function() return info.colorNameByClass end)
+            if not okV or hidden(v) then return nil end
+            return v == true
+        end
+        function c.setChatNameByClass(chatType, on)
+            if typeInfo(chatType) == nil or type(on) ~= "boolean" then return nil end
+            if not call(env.SetChatColorNameByClass, chatType, on) then return nil end
+            return true
+        end
+
+        function c.chatTypeHeader(name)
+            if type(name) ~= "string" or name == "" then return nil end
+            local okH, text = pcall(function() return env["CHAT_" .. name .. "_GET"] end)
+            if not okH or hidden(text) or type(text) ~= "string" then return nil end
+            return text
+        end
+        function c.setChatTypeHeader(name, text)
+            if c.chatTypeHeader(name) == nil or type(text) ~= "string" then return nil end
+            local okS = pcall(function() env["CHAT_" .. name .. "_GET"] = text end)
+            if not okS then return nil end
+            return true
+        end
+
+        function c.editBox()
+            local box = env.ChatFrame1EditBox
+            if type(box) ~= "table" then return nil end
+            local okA, alt = method(box, "GetAltArrowKeyMode")
+            if not okA or hidden(alt) or type(alt) ~= "boolean" then return nil end
+            local out = { alt = alt }
+            local okH, n = method(box, "GetHistoryLines")
+            if okH and not hidden(n) and type(n) == "number" then out.history = n end
+            return out
+        end
+        function c.setEditBox(alt, history)
+            local box = env.ChatFrame1EditBox
+            if type(box) ~= "table" or type(alt) ~= "boolean" then return nil end
+            if not method(box, "SetAltArrowKeyMode", alt) then return nil end
+            if type(history) == "number" then method(box, "SetHistoryLines", history) end
+            return true
+        end
+    end
+
     -- G48 (P-TRIP): the party route's add-on messages (Nav/PartyRoute.lua),
     -- the add-on's only outward call. First guesses, not tested in game:
     -- C_ChatInfo.RegisterAddonMessagePrefix(prefix) and

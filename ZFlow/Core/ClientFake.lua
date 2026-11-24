@@ -3575,18 +3575,32 @@ function ns.make.fakeClient(opts)
             end
             return n
         end
-        function c.pushChat(event, text, index)
+        -- N60d: info { guid =, channel = } is the line's GUID and channel
+        -- text; a filter's second answer { channel = } changes the channel
+        -- text. The channel text shown is the second return.
+        function c.pushChat(event, text, index, author, info)
             local shown = text
+            local channel = nil
+            if type(info) == "table" then channel = info.channel end
             for i = 1, #filters do
                 if filters[i].events[event] and type(shown) == "string" then
-                    local ok, new = pcall(filters[i].fn, shown, event)
+                    local view = {}
+                    if type(info) == "table" then view.guid, view.line = info.guid, info.line end
+                    view.channel = channel
+                    local ok, new, change = pcall(filters[i].fn, shown, event, author, view)
+                    -- N60e: { hide = true } hides the line: no later
+                    -- filter sees it, no window gets it, nil comes back.
+                    if ok and type(change) == "table" and change.hide == true then return nil, channel end
                     if ok and type(new) == "string" then shown = new end
+                    if ok and type(change) == "table" and type(change.channel) == "string" and channel ~= nil then
+                        channel = change.channel
+                    end
                 end
             end
             index = index or 1
             windows[index] = windows[index] or {}
             table.insert(windows[index], shown)
-            return shown
+            return shown, channel
         end
 
         function c.setLinkHook(on) s.noLinkHook = on == false end
@@ -4077,6 +4091,129 @@ function ns.make.fakeClient(opts)
             return page
         end
     end
+    -- N60b: chat readability (UI/Chat.lua). chatFont, setChatFont,
+    -- chatFading, setChatFading, chatWheel, chatTabAlpha and localTime
+    -- answer as the real client's do. The test's controls:
+    --   c.setChatFrame(i, { font =, fading =, time = })  chat window i is
+    --                              there (nil: it is not, the start)
+    --   c.chatFrame(i) -> record   { font, fading, time, tabAlpha, moves }:
+    --                              moves lists each scroll step in order
+    --                              ("up", "down", "top", "bottom")
+    --   c.wheelChat(i, delta[, { ctrl =, shift = }])
+    --                              one wheel notch: the game scrolls one
+    --                              line, then the wheel hook runs
+    --   c.fadeTab(i, alpha)        the game sets tab i's alpha (its fade)
+    --   c.setLocalTime(h, m, s)    the local clock; nil: not known
+    do
+        local frames, wheels, tabHolds = {}, {}, {}
+        local clockNow = nil
+
+        function c.setChatFrame(i, spec)
+            if type(spec) ~= "table" then frames[i] = nil return end
+            frames[i] = { font = spec.font, fading = spec.fading == true, time = spec.time, tabAlpha = 1,
+                asked = 1, moves = {} }
+        end
+        function c.chatFrame(i) return frames[i] end
+
+        function c.chatFont(i)
+            local f = frames[i]
+            if f == nil then return nil end
+            return f.font
+        end
+        function c.setChatFont(i, size)
+            local f = frames[i]
+            if f == nil or type(size) ~= "number" or size <= 0 then return nil end
+            f.font = size
+            return true
+        end
+        function c.chatFading(i)
+            local f = frames[i]
+            if f == nil then return nil end
+            return { fading = f.fading, time = f.time }
+        end
+        function c.setChatFading(i, fading, time)
+            local f = frames[i]
+            if f == nil or type(fading) ~= "boolean" then return nil end
+            f.fading = fading
+            if type(time) == "number" and time > 0 then f.time = time end
+            return true
+        end
+
+        function c.chatWheel(i, fn)
+            if frames[i] == nil or type(fn) ~= "function" then return nil end
+            local w = wheels[i] or {}
+            wheels[i] = w
+            w.fn = fn
+            return function()
+                if w.fn == fn then w.fn = nil end
+            end
+        end
+        function c.wheelChat(i, delta, keys)
+            local f = frames[i]
+            if f == nil then return end
+            keys = keys or {}
+            local step = "down"
+            if delta > 0 then step = "up" end
+            f.moves[#f.moves + 1] = step
+            local w = wheels[i]
+            if w == nil or w.fn == nil then return end
+            local ok, what = pcall(w.fn, delta, keys.ctrl == true, keys.shift == true)
+            if not ok then return end
+            if what == "top" or what == "bottom" then
+                f.moves[#f.moves + 1] = what
+            elseif type(what) == "number" and what >= 1 then
+                for _ = 1, math.min(math.floor(what), 50) do f.moves[#f.moves + 1] = step end
+            end
+        end
+
+        function c.chatTabAlpha(i, alpha)
+            local f = frames[i]
+            if f == nil then return nil end
+            if type(alpha) == "number" then
+                tabHolds[i] = alpha
+                f.tabAlpha = alpha
+            else
+                tabHolds[i] = nil
+                f.tabAlpha = f.asked
+            end
+            return true
+        end
+        function c.fadeTab(i, alpha)
+            local f = frames[i]
+            if f == nil then return end
+            f.asked = alpha
+            local hold = tabHolds[i]
+            if hold ~= nil and alpha < hold then
+                f.tabAlpha = hold
+            else
+                f.tabAlpha = alpha
+            end
+        end
+
+        function c.setLocalTime(h, m, s)
+            if type(h) ~= "number" then clockNow = nil return end
+            clockNow = { h, m, s }
+        end
+        function c.localTime()
+            if clockNow == nil then return nil end
+            return clockNow[1], clockNow[2], clockNow[3]
+        end
+    end
+    -- N60c: the player's own name, as the real client's playerName().
+    --   c.setPlayerName(name)        the name; nil: not known (the start)
+    --   c.setPlayerNameFails(on)     true: the read raises, until false
+    -- c.pushChat's fourth argument is the line's author.
+    do
+        local playerNow, nameFails = nil, false
+        function c.setPlayerName(name) playerNow = name end
+        function c.setPlayerNameFails(on) nameFails = on == true end
+        function c.playerName()
+            if nameFails then error("player name read failed (test)") end
+            if type(playerNow) ~= "string" or playerNow == "" then return nil end
+            return playerNow
+        end
+    end
+
     -- G38: indoors; c.setIndoors(true | false | nil), nil for not known.
     function c.indoors() return s.indoors end
     function c.setIndoors(v)
@@ -4140,6 +4277,65 @@ function ns.make.fakeClient(opts)
             if type(line) == "string" then focusLine = line end
         end
     end
+
+    -- N60d: chat part 4 (UI/Chat.lua). classOfGuid, chatNameByClass,
+    -- setChatNameByClass, chatTypeHeader, setChatTypeHeader, editBox and
+    -- setEditBox answer as the real client's do. The test's controls:
+    --   c.setGuidClass(guid, class)   the class file a GUID reads as
+    --   c.setGuidClassFails(on)       true: the GUID read raises, until false
+    --   c.nameByClass(chatType)       the game's "colour names by class" now
+    --   c.chatHeader(name)            the game's label text of a chat kind now
+    --   c.editBoxState() -> { alt =, history = }  the main edit box now
+    do
+        local guidClass, guidFails = {}, false
+        local byClass = {}
+        local headers = {
+            SAY = "%s says: ", YELL = "%s yells: ",
+            GUILD = "|Hchannel:GUILD|h[Guild]|h %s: ", OFFICER = "|Hchannel:OFFICER|h[Officer]|h %s: ",
+            PARTY = "|Hchannel:PARTY|h[Party]|h %s: ", PARTY_LEADER = "|Hchannel:PARTY|h[Party Leader]|h %s: ",
+            RAID = "|Hchannel:RAID|h[Raid]|h %s: ", RAID_LEADER = "|Hchannel:RAID|h[Raid Leader]|h %s: ",
+            RAID_WARNING = "[Raid Warning] %s: ",
+            INSTANCE_CHAT = "|Hchannel:INSTANCE_CHAT|h[Instance]|h %s: ",
+            INSTANCE_CHAT_LEADER = "|Hchannel:INSTANCE_CHAT|h[Instance Leader]|h %s: ",
+        }
+        local edit = { alt = true, history = 32 }
+
+        function c.setGuidClass(guid, class) guidClass[guid] = class end
+        function c.setGuidClassFails(on) guidFails = on == true end
+        function c.classOfGuid(guid)
+            if guidFails then error("GUID read failed (test)") end
+            if type(guid) ~= "string" then return nil end
+            return guidClass[guid]
+        end
+
+        function c.chatNameByClass(chatType)
+            if type(chatType) ~= "string" then return nil end
+            return byClass[chatType] == true
+        end
+        function c.setChatNameByClass(chatType, on)
+            if type(chatType) ~= "string" or type(on) ~= "boolean" then return nil end
+            byClass[chatType] = on
+            return true
+        end
+        function c.nameByClass(chatType) return byClass[chatType] == true end
+
+        function c.chatTypeHeader(name) return headers[name] end
+        function c.setChatTypeHeader(name, text)
+            if headers[name] == nil or type(text) ~= "string" then return nil end
+            headers[name] = text
+            return true
+        end
+        function c.chatHeader(name) return headers[name] end
+
+        function c.editBox() return { alt = edit.alt, history = edit.history } end
+        function c.setEditBox(alt, history)
+            if type(alt) ~= "boolean" or type(history) ~= "number" then return nil end
+            edit.alt, edit.history = alt, history
+            return true
+        end
+        function c.editBoxState() return { alt = edit.alt, history = edit.history } end
+    end
+
     -- G48 (P-TRIP): the real client's c.addonPrefix and c.addonSend. A send
     -- is recorded in c.addonSent ({ prefix, text, channel }) and delivered
     -- to this client and every linked one that took the prefix, as

@@ -96,6 +96,18 @@ KIND.show[#KIND.show + 1] = "minimapButton"
 KIND.tool[#KIND.tool + 1] = "kitFocus"
 KIND.tool[#KIND.tool + 1] = "kitOwner"
 
+-- N60b: chat readability (UI/Chat.lua). How a chat window looks (text
+-- size, fading, the tab held up) and the wheel hook after the game's own.
+KIND.show[#KIND.show + 1] = "setChatFont"
+KIND.show[#KIND.show + 1] = "setChatFading"
+KIND.show[#KIND.show + 1] = "chatTabAlpha"
+KIND.listen[#KIND.listen + 1] = "chatWheel"
+-- N60d: chat part 4 (UI/Chat.lua). The game's class colour option of a
+-- chat kind, its chat labels and the edit box's arrow keys and history.
+KIND.show[#KIND.show + 1] = "setChatNameByClass"
+KIND.show[#KIND.show + 1] = "setChatTypeHeader"
+KIND.show[#KIND.show + 1] = "setEditBox"
+
 -- Every read, and whether the capture asks it (true) or not (false).
 local READS = {
     now = false, clock = true, clockMs = false, addonLoaded = true, listenFaults = true, uptime = true, inCombat = true,
@@ -211,10 +223,21 @@ local READS = {
     -- login records it. Their names (ChatFrame1.GetNumMessages, Prat.
     -- GetModule and the rest) are in Diag.NAMES.
     chatLines = false, pratModule = true,
+    -- N60b: a chat window's text size and fading, and the local clock for
+    -- the chat timestamps; read by UI/Chat.lua only. Their names
+    -- (ChatFrame1.GetFont, date and the rest) are in Diag.NAMES.
+    chatFont = false, chatFading = false, localTime = false,
     -- Lead section 303: race number and quests handed in; read by
     -- Nav/DungeonRead.lua only. Their names (UnitRace,
     -- C_QuestLog.IsQuestFlaggedCompleted) are in Diag.NAMES.
     raceId = false, questDone = false,
+    -- N60c: the player's own name for chat mentions; read by UI/Chat.lua
+    -- only. Its name (UnitName) is in Diag.NAMES.
+    playerName = false,
+    -- N60d: a GUID's class, a chat kind's class colour option and label,
+    -- and the edit box; read by UI/Chat.lua only. Their names
+    -- (GetPlayerInfoByGUID, ChatTypeInfo and the rest) are in Diag.NAMES.
+    classOfGuid = false, chatNameByClass = false, chatTypeHeader = false, editBox = false,
 
     -- G38 and G47: indoors and a party member's position; read by
     -- Nav/Trails.lua and Nav/Follow.lua only. Their names (IsIndoors,
