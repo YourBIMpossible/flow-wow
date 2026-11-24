@@ -32,8 +32,9 @@ local _, ns = ...
 -- that order; or the one gather_skill step of a gathering profession with
 -- no craft to make (P.GATHER; adds gather = the profession and, with a
 -- node seen, node and target). why (with no steps): "no reading", "no recipe" (nothing gives
--- a point and nothing can be learned at this skill), "no colours" (the
--- window's colours were never read) or "no materials"; say is then the one
+-- a point and nothing can be learned at this skill) or "no materials";
+-- colours never read is one open_window step, and a short material with no
+-- source seen one find_material step (review of section 405 item 4); say is then the one
 -- thing a new player does next, in plain words (section 383).
 --
 -- Only orange (sure) and yellow (maybe) give a point. Sure comes first,
@@ -87,6 +88,12 @@ P.GATHER_NEAR = "%s; the nearest seen is %s"
 P.SAY_GATHER = "Learn %s from a trainer, then gather once"
 -- "no recipe" with a trainer of this profession seen.
 P.SAY_TRAINER = "Visit %s for new %s recipes"
+-- Review of section 405 item 4: the steps for the two plans that ended
+-- with a line only. The window's colours were never read; a short material
+-- with no source seen (never the auction house).
+P.OPEN_WINDOW = "Open your %s window"
+P.FIND = "Find %s: no source seen yet"
+P.FIND_UNNAMED = "the materials for %s"
 P.SMELT_PROF = "Mining"
 P.SMELT_STATION = "forge"
 P.CHANCE = { optimal = "sure", medium = "maybe" }
@@ -444,6 +451,11 @@ local function sourcedSteps(input, c)
     return steps
 end
 
+-- The step that reads the window's recipe colours.
+local function openStep(input)
+    return { kind = "open_window", prof = input.prof, text = string.format(P.OPEN_WINDOW, input.prof) }
+end
+
 local function sourced(input)
     return type(ns.ProfSources) == "table" and (input.nodes ~= nil or input.vendorPrice ~= nil)
 end
@@ -457,6 +469,30 @@ local function coloursRead(input)
         end
     end
     return false
+end
+
+-- A short-materials plan whose craft cannot follow yet: per short
+-- material, the source seen for it, else a step to find it. nil when
+-- nothing is short.
+local function materialSteps(input, c)
+    local n = math.max(1, limit(input, c))
+    local steps = {}
+    for _, item in ipairs(sortedKeys(c.entry.mats)) do
+        local short = c.entry.mats[item] * n - have(input, item)
+        if short > 0 then
+            local s = sourced(input) and ns.ProfSources.For(input, item, short) or nil
+            if s and s.kind == "buy_auction" then s = nil end
+            if not s then
+                local name = call(input.name, item)
+                if type(name) ~= "string" or name == "" then name = string.format(P.FIND_UNNAMED, c.recipe) end
+                s = { kind = "find_material", item = item, count = short, text = string.format(P.FIND, name) }
+            end
+            s.recipe = c.recipe
+            steps[#steps + 1] = s
+        end
+    end
+    if #steps == 0 then return nil end
+    return steps
 end
 
 local function empty(why, input, about)
@@ -535,9 +571,13 @@ function P.Plan(input)
         local steps = sourcedSteps(input, list[1])
         if steps then return thenLine(input, list, list[1], steps) end
     end
-    if #list > 0 then return empty("no materials", input, list[1].recipe) end
+    if #list > 0 then
+        local steps = materialSteps(input, list[1])
+        if steps then return steps end
+        return empty("no materials", input, list[1].recipe)
+    end
     if bookEmpty(input) then return { learnStep(input) or firstRecipeStep(input) } end
-    if not coloursRead(input) then return empty("no colours", input) end
+    if not coloursRead(input) then return { openStep(input) } end
     local learn = learnStep(input)
     if learn then return { learn } end
     -- Review of section 405 item 4: every learned recipe outgrown and no
