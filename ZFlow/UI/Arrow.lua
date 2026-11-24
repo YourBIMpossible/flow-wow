@@ -958,22 +958,6 @@ function Arrow.Start(k, diag, own)
     local function say(text) client.print(id.title .. ": " .. text) end
     local setStyle
 
-    -- Lead section 387 R3: the trip list, the stops the arrow walks and the
-    -- Suggest dungeons switch, for the menu's Route level. Read only.
-    local function routeState()
-        local out = {}
-        local trip, walk = k.use and k.use("trip"), k.use and k.use("tripRoute")
-        if type(trip) == "table" and type(trip.List) == "function" then
-            local ok, list = pcall(trip.List)
-            if ok and type(list) == "table" then out.all = list end
-        end
-        if type(walk) == "table" and type(walk.Current) == "function" then
-            local ok, current = pcall(walk.Current)
-            if ok and type(current) == "table" and type(current.stops) == "table" then out.on = current.stops end
-        end
-        if k.settings and k.settings:row(M.SUGGEST_SETTING) then out.suggest = k.settings:get(M.SUGGEST_SETTING) == true end
-        return out
-    end
     -- What the menu and the tooltip are made from (UI/ArrowMenu.lua).
     local function menuState()
         local saved = N.ArrowSaved(Arrow.Saved(k))
@@ -988,7 +972,7 @@ function Arrow.Start(k, diag, own)
         end
         return { stacked = saved.mode ~= "separate", hidden = saved.hidden, text = saved.text,
                  styles = Arrow.Styles(style()), canShapes = canShapes(), feedback = feedback,
-                 party = party, route = routeState() }
+                 party = party }
     end
     -- The tooltip's lines for one arrow, or nil when none is on the screen.
     -- The lines are the step's own, also for an arrow whose text is off.
@@ -1005,6 +989,30 @@ function Arrow.Start(k, diag, own)
         return M.Tip({ key = key, stacked = current.prof.behind == true,
                        both = current.quest.shown == true and current.prof.shown == true,
                        drawer = drawer ~= nil, lines = shownLines, route = route })
+    end
+    -- Lead section 387 R3: the trip list, the stops the arrow walks and the
+    -- Suggest dungeons switch, for the menu's Route level. Read only.
+    local function routeState()
+        local out = {}
+        local trip, walk = k.use and k.use("trip"), k.use and k.use("tripRoute")
+        if type(trip) == "table" and type(trip.List) == "function" then
+            local ok, list = pcall(trip.List)
+            if ok and type(list) == "table" then out.all = list end
+        end
+        if type(walk) == "table" and type(walk.Current) == "function" then
+            local ok, current = pcall(walk.Current)
+            if ok and type(current) == "table" and type(current.stops) == "table" then out.on = current.stops end
+        end
+        if k.settings and k.settings:row(M.SUGGEST_SETTING) then out.suggest = k.settings:get(M.SUGGEST_SETTING) == true end
+        return out
+    end
+    -- The menu's state with the route added (kept apart from menuState so
+    -- each hunk stays small).
+    local baseState = menuState
+    menuState = function()
+        local st = baseState()
+        st.route = routeState()
+        return st
     end
     -- The menu row with this key was clicked. A row that is not there or
     -- not offered asks for nothing.
@@ -1046,6 +1054,11 @@ function Arrow.Start(k, diag, own)
             else
                 say("feedback is not ready.")
             end
+        elseif action.setting then
+            -- Lead section 387 R3: the Suggest dungeons switch; the level stays open.
+            local ok, why = k.settings:set(action.setting, action.on)
+            if not ok then say(tostring(why) .. ".") end
+            if h and type(h.menu) == "function" then showMenu(h, M.ROUTE) end
         elseif action.window then
             -- Lead section 318: a window of its own module (UI/ArrowMenu.lua M.WINDOWS).
             local win = k.use and k.use(action.window) or nil
@@ -1065,11 +1078,6 @@ function Arrow.Start(k, diag, own)
             else
                 say("pointing at a party member is not ready.")
             end
-        elseif action.setting then
-            -- Lead section 387 R3: the Suggest dungeons switch; the level stays open.
-            local ok, why = k.settings:set(action.setting, action.on)
-            if not ok then say(tostring(why) .. ".") end
-            if h and type(h.menu) == "function" then showMenu(h, M.ROUTE) end
         elseif action.style then
             local ok, reason = setStyle(action.style)
             if not ok then say(tostring(reason) .. ".") end

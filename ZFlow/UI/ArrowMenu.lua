@@ -25,7 +25,6 @@ local function read(s)
         canShapes = s.canShapes == true,
         feedback = s.feedback == true,
         party = type(s.party) == "table" and s.party or {},
-        route = type(s.route) == "table" and s.route or {},
     }
 end
 
@@ -88,7 +87,7 @@ function M.Items(state)
     -- Lead section 318: the Dungeon Quests window.
     rows[#rows + 1] = { key = M.DUNGEONS, text = T.MENU.dungeons }
     -- Lead section 387 R3: what the route includes (M.RouteRow).
-    rows[#rows + 1] = M.RouteRow(s.route)
+    rows[#rows + 1] = M.RouteRow(type(state) == "table" and state.route)
     -- G47 (Nav/Follow.lua): point the arrow at a party member, only while
     -- in a group. A level holds T.MENU_MAX rows with its heading, the stop
     -- row and the way back, so a raid shows its first members only.
@@ -133,8 +132,8 @@ M.ROUTE_ROWS = { { "zones", "Zones" }, { "steps", "Steps" }, { "dungeons", "Dung
 M.SUGGEST_TEXT = "Suggest dungeons"
 
 local function mapOf(stop)
-    local p = type(stop) == "table" and stop.place or nil
-    return type(p) == "table" and p.map or nil
+    if type(stop) ~= "table" or type(stop.place) ~= "table" then return nil end
+    return stop.place.map
 end
 
 -- What the route includes, counted from the trip list (all: Nav/Trip.lua
@@ -268,7 +267,10 @@ function M.Action(key, state)
     if key == "settings" then return { settings = true } end
     -- Lead section 387 R3: the Route level; its count rows choose nothing.
     if key == M.ROUTE then return { open = key } end
-    if key == M.ROUTE .. ".suggest" then return { setting = M.SUGGEST_SETTING, on = s.route.suggest ~= true } end
+    if key == M.ROUTE .. ".suggest" then
+        local route = type(state) == "table" and type(state.route) == "table" and state.route or {}
+        return { setting = M.SUGGEST_SETTING, on = route.suggest ~= true }
+    end
     if M.WINDOWS[key] then return { window = M.WINDOWS[key] } end
     -- G47: the follow level, a member (by unit), or stop ({ follow = false }).
     if key == M.FOLLOW then return { open = key } end
