@@ -254,6 +254,7 @@ Spells\TrainAdvice.lua
 Spells\Talents.lua
 Nav\RoutePickups.lua
 Nav\RidingStep.lua
+Nav\MountMilestone.lua
 Items\ProfPlan.lua
 Items\ProfSources.lua
 Items\VendorWares.lua
