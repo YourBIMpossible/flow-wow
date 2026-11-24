@@ -15,12 +15,13 @@ local BOOK = { ["Test Buckle"] = { profession = "Blacksmithing", makes = 50, mat
 local COLOURS = { ["Test Buckle"] = { optimal = { lo = 45, hi = 55 } } }
 local ANVIL = { kind = "anvil", map = 1411, x = 0.6, y = 0.5 }
 
--- opts: skill, max, bars (in the bags), bank (bars in the bank), stations
+-- opts: skill, max, bars (in the bags), bank (bars in the bank), stations,
+-- prices (the account's price book)
 local function start(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
     c.setSaved(ns.id.accountDB, { layout = { arrowIntroSeen = true },
-        learned = { keyStations = opts.stations } })
+        learned = { keyStations = opts.stations, prices = opts.prices } })
     c.setSaved(ns.id.charDB, { learned = {
         facts = { profSkill = { Blacksmithing = { skill = opts.skill or 50, max = opts.max or 75 } },
                   recipeBook = BOOK },
@@ -91,6 +92,22 @@ tests["real plan: nothing to make it from says what to get, never silence"] = fu
     local p = c.arrows[2]
     t.eq(p and p.shown, true)
     t.ok(#text(p) > 0, "a line is shown")
+end
+
+-- Lead section 388 point 4: the planner's buy step reaches the player. No
+-- bars, and a vendor price for them seen: the arrow's own line says what to
+-- buy, how many and what each costs.
+tests["real plan: no bars and a vendor price seen: the arrow says what to buy and the price"] = function(t)
+    local c, addon = start({ prices = { vendor = { [BAR] = { value = 50, basis = "observed" } } } })
+    local steps = addon.profPlan.plan("Blacksmithing")
+    t.eq(steps[1] and steps[1].kind, "buy_vendor", "the real plan starts at the vendor")
+    local p = c.arrows[2]
+    t.eq(p and p.shown, true, "the profession arrow is up")
+    t.ok(has(p, "Buy 12 Test Bar from a vendor (50c each)"), "its line is the buy step: " .. text(p))
+    local before = #c.printed
+    c.slashes[ns.id.slash]("prof plan")
+    local out = table.concat(c.printed, "\n", before + 1)
+    t.ok(out:find("Buy 12 Test Bar from a vendor (50c each)", 1, true) ~= nil, out)
 end
 
 tests["real plan: /zflow prof plan prints the real steps in order and the pick"] = function(t)

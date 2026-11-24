@@ -62,12 +62,9 @@ local function nearestNode(input, itemName)
     return best
 end
 
--- The price as the one money text (Items/Prices.lua); nil when it gives
--- none: the step then says where to buy and leaves the price out.
+-- A vendor price seen is an observed price: Prices.Text labels it.
 local function coin(copper)
-    local text = call(ns.Prices and ns.Prices.Coin, copper)
-    if type(text) == "string" and text ~= "" then return text end
-    return nil
+    return ns.Prices.Text({ value = copper, basis = ns.Prices.OBSERVED })
 end
 
 function S.For(input, item, count)
@@ -83,10 +80,8 @@ function S.For(input, item, count)
     end
     local price = call(input.vendorPrice, item)
     if type(price) == "number" and price >= 0 then
-        local each = coin(price)
-        local text = string.format("Buy %d %s from a vendor", count, name)
-        if each then text = string.format("%s (%s each)", text, each) end
-        return { kind = "buy_vendor", item = item, count = count, text = text }
+        return { kind = "buy_vendor", item = item, count = count,
+            text = string.format("Buy %d %s from a vendor (%s each)", count, name, coin(price)) }
     end
     return { kind = "buy_auction", item = item, count = count,
         text = string.format("Buy %d %s at the auction house", count, name) }
