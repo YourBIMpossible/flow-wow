@@ -87,16 +87,12 @@ tests["place: a stop on another map of the same continent lands beside the shown
     t.eq(MRL().Place({ map = 2, x = 0.5, y = 0.5 }, 1, nil), nil, "no corners: no place")
 end
 
-tests["paint: route blue, stronger first leg, green waypoint"] = function(t)
-    local r, g, b, a = MRL().Paint("first")
-    t.eq(b, 0xDD / 255)
-    t.eq(a, MRL().FIRST_ALPHA)
-    local _, _, _, ra = MRL().Paint("rest")
-    t.eq(ra, MRL().REST_ALPHA)
-    local _, wg = MRL().Paint("waypoint")
-    t.eq(wg, 1)
-    t.eq(r, 0)
-    t.eq(g, 0x70 / 255)
+-- Pathing UI slice 3: the one blue for the whole route is gone; the next
+-- leg is the step's distance colour and the later legs the gradient.
+tests["paint: the next leg is the stronger, both low in opacity"] = function(t)
+    t.eq(MRL().Paint, nil, "no colour of its own any more: RouteColor gives the next leg's")
+    t.ok(MRL().NEXT_ALPHA > MRL().LATER_ALPHA, "the next leg is the stronger")
+    t.ok(MRL().NEXT_ALPHA <= 0.6, "and the map shows through it")
 end
 
 tests["module: the shown map gets the lines with their colours"] = function(t)
@@ -107,10 +103,19 @@ tests["module: the shown map gets the lines with their colours"] = function(t)
     h.c.advance(1, 8)
     local set = h.c.routeLineSets[1]
     t.ok(set ~= nil, "a line handle is made")
-    t.eq(kinds(set.lines), "first,rest,rest,waypoint")
-    t.eq(set.lines[1].a, MRL().FIRST_ALPHA)
-    t.eq(set.lines[2].a, MRL().REST_ALPHA)
-    t.eq(set.lines[4].g, 1)
+    -- Pathing UI slice 3: each line is drawn as dots, and an X marks the
+    -- last stop (Tests/UI/MapRouteTrail.lua has the trail's own tests).
+    local seen, alpha, green = {}, {}, nil
+    for _, m in ipairs(set.lines) do
+        if not seen[m.kind] then seen[#seen + 1] = m.kind end
+        seen[m.kind] = true
+        alpha[m.kind] = m.a
+        if m.kind == "waypoint" then green = m.g end
+    end
+    t.eq(table.concat(seen, ","), "first,rest,waypoint,x", "the kinds drawn, in order")
+    t.eq(alpha.first, MRL().NEXT_ALPHA)
+    t.eq(alpha.rest, MRL().LATER_ALPHA)
+    t.eq(green, 1)
     local draws = set.draws
     h.c.advance(1, 8)
     t.eq(set.draws, draws, "unchanged lines are not drawn again")

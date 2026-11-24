@@ -4,11 +4,16 @@
 -- Modules/Nav/MapOverlay.lua (drawRoute, drawWaypoint, M.LegParts,
 -- M.ClipToMap, M.CrossesEdge), read only.
 --
---   The leg from you to the next stop is stronger (FIRST_ALPHA) than the
---   rest (REST_ALPHA). Z-Flow plans one order, nearest stop next
---   (Nav/RoutePlan.lua), so the route is drawn in the predecessor's colour
---   for that order (Shortest path blue); the other orders it had (Most XP,
---   custom) do not exist here and get no colour.
+--   Pathing UI slice 3 (lead sections 519 and 525; Muse's
+--   MUSE-TO-CLAUDE-PATHING-UI.md 4.3 and 6.4): the route is a treasure-map
+--   trail. Every leg is dots, MRL.DOT wide and MRL.GAP apart, low in
+--   opacity, so the map shows through; no leg is a solid line.
+--   The leg from you to the next stop takes that step's distance colour,
+--   the one the arrow has (Nav/RouteColor.lua RC.Of), at MRL.NEXT_ALPHA.
+--   The legs after it stay faint (MRL.LATER_ALPHA) and run through the
+--   route's gradient, purple to blue to orange, along their length.
+--   An X (two strokes, MRL.X_COLOR) marks the destination: the last stop
+--   of the route, when it is on the shown map. No dot is drawn under it.
 --   The next stop on another map of the same continent: the leg still
 --   starts at you and stops at the shown map's edge; looking at the stop's
 --   own map, it comes in from the edge. A stop on another continent, or on
@@ -16,9 +21,12 @@
 --   Later legs are drawn only between stops that are both on the shown map
 --   (the predecessor's rule: no line to a stop you are not walking to next).
 --   Your waypoint (client.waypoint, the one the arrow points at in green):
---   a green line from you to it, clipped at the map's edge the same way.
+--   a dotted green trail from you to it (RC.Of's waypoint colour), clipped
+--   at the map's edge the same way, with no X.
 -- Nothing is drawn when no line falls on the shown map. The setting
--- RL.SETTING (UI/RouteList.lua) turns it off with the list and the marks.
+-- RL.SETTING (UI/RouteList.lua) turns it off with the list and the marks;
+-- so does MRL.SETTING_LINES ("nav.mapLines", the map lines alone) once that
+-- key exists (slice 2): a key that is not there is read as on.
 --
 -- LOOK ONLY: nothing is moved, targeted, cast, clicked or sent.
 --
@@ -30,7 +38,15 @@
 --       line on the map
 --   MRL.Lines(rows, map, you, wp, cornersOf) -> lines   (pure)
 --       lines = { { ax, ay, bx, by, kind = "first" | "rest" | "waypoint" } }
---   MRL.Paint(kind) -> r, g, b, a
+--   MRL.Gradient(f) -> r, g, b   (pure) the route's gradient at share f
+--   MRL.Destination(rows, map, cornersOf) -> x, y or nil   (pure) the last
+--       stop of the route on the shown map
+--   MRL.Trail(lines, w, h, opts) -> marks   (pure) the dots and the X for
+--       a canvas w by h. opts: first = { r, g, b } the next leg's colour,
+--       waypoint = { r, g, b }, dest = { x, y }. marks = { { ax, ay, bx, by,
+--       r, g, b, a, thick, kind = "first" | "rest" | "waypoint" | "x" } }
+--   MRL.NextStep(rows, you, sizeOf) -> step, yards   (pure) what RC.Of is
+--       asked for the next leg
 --   MRL.Declare(k) -> api   api.Refresh() -> lines or nil, api.Shown()
 -- Not tested in game.
 local _, ns = ...
@@ -40,11 +56,24 @@ ns.MapRouteLines = MRL
 
 MRL.NAME = "mapRouteLines"
 MRL.EVERY = 0.25
-MRL.FIRST_ALPHA, MRL.REST_ALPHA = 0.8, 0.45
--- The predecessor's standard palette (Modules/Theme.lua): "distance" for
--- the route, "waypoint" for your own waypoint.
-MRL.ROUTE = { 0x00 / 255, 0x70 / 255, 0xDD / 255 }
-MRL.WAYPOINT = { 0x1E / 255, 0xFF / 255, 0x00 / 255 }
+MRL.SETTING_LINES = "nav.mapLines"
+-- Muse's values (PATHING-PLAYING-VIEW.html: a 2.5 stroke, dash "1 9", 0.55
+-- opacity; the X in gold at 0.9; the gradient's three stops). LATER_ALPHA
+-- keeps the old first-to-rest ratio (0.8 to 0.45) under the new 0.55.
+MRL.DOT, MRL.GAP = 2.5, 10
+MRL.NEXT_ALPHA, MRL.LATER_ALPHA = 0.55, 0.3
+MRL.X_SIZE, MRL.X_THICK, MRL.X_ALPHA = 14, 3, 0.9
+MRL.X_COLOR = { 0xE8 / 255, 0xC5 / 255, 0x47 / 255 }
+-- { share along the later legs, r, g, b }
+MRL.GRADIENT = {
+    { 0, 0x7C / 255, 0x5C / 255, 0xFF / 255 },
+    { 0.52, 0x2F / 255, 0x7B / 255, 0xFF / 255 },
+    { 1, 0xFF / 255, 0x7A / 255, 0x1A / 255 },
+}
+-- The world map canvas when the client does not say its size (a first
+-- guess: the classic map's canvas), and the most marks ever drawn.
+MRL.CANVAS = { 1002, 668 }
+MRL.MAX_MARKS = 400
 
 local function finite(v) return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge end
 
@@ -116,10 +145,122 @@ function MRL.Lines(rows, map, you, wp, cornersOf)
     return out
 end
 
-function MRL.Paint(kind)
-    if kind == "waypoint" then return MRL.WAYPOINT[1], MRL.WAYPOINT[2], MRL.WAYPOINT[3], MRL.FIRST_ALPHA end
-    if kind == "first" then return MRL.ROUTE[1], MRL.ROUTE[2], MRL.ROUTE[3], MRL.FIRST_ALPHA end
-    return MRL.ROUTE[1], MRL.ROUTE[2], MRL.ROUTE[3], MRL.REST_ALPHA
+function MRL.Gradient(f)
+    local G = MRL.GRADIENT
+    if not finite(f) or f <= G[1][1] then return G[1][2], G[1][3], G[1][4] end
+    for i = 2, #G do
+        local a, b = G[i - 1], G[i]
+        if f == b[1] then return b[2], b[3], b[4] end
+        if f < b[1] then
+            local t = (f - a[1]) / (b[1] - a[1])
+            return a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t, a[4] + (b[4] - a[4]) * t
+        end
+    end
+    local z = G[#G]
+    return z[2], z[3], z[4]
+end
+
+function MRL.Destination(rows, map, cornersOf)
+    local last
+    for _, r in ipairs(type(rows) == "table" and rows or {}) do
+        if type(r) == "table" and r.n then last = r end
+    end
+    if not last then return nil end
+    local x, y = MRL.Place(last.place, map, cornersOf)
+    if not x or not inside(x, y) then return nil end
+    return x, y
+end
+
+-- What RC.Of is asked for the leg to the next stop: the step (in another
+-- zone when it is on another map) and how far it is in yards, or nil when
+-- the map's size is not known. sizeOf(map) -> { w, h } in yards.
+function MRL.NextStep(rows, you, sizeOf)
+    local nextRow
+    for _, r in ipairs(type(rows) == "table" and rows or {}) do
+        if not nextRow and type(r) == "table" and r.n then nextRow = r end
+    end
+    local step = {}
+    if not nextRow or type(nextRow.place) ~= "table" or type(you) ~= "table" then return step, nil end
+    local p = nextRow.place
+    if p.map ~= you.map then
+        step.state = "away"
+        return step, nil
+    end
+    local size
+    if type(sizeOf) == "function" then size = sizeOf(p.map) end
+    if type(size) ~= "table" or not finite(size.w) or not finite(size.h) or size.w <= 0 or size.h <= 0 then
+        return step, nil
+    end
+    if not finite(p.x) or not finite(p.y) or not finite(you.x) or not finite(you.y) then return step, nil end
+    local dx, dy = (p.x - you.x) * size.w, (p.y - you.y) * size.h
+    return step, math.sqrt(dx * dx + dy * dy)
+end
+
+function MRL.Trail(lines, w, h, opts)
+    local out = {}
+    if not finite(w) or not finite(h) or w <= 0 or h <= 0 then return out end
+    opts = type(opts) == "table" and opts or {}
+    local legs, total, later = {}, 0, 0
+    for _, l in ipairs(type(lines) == "table" and lines or {}) do
+        if type(l) == "table" and finite(l.ax) and finite(l.ay) and finite(l.bx) and finite(l.by) then
+            local dx, dy = (l.bx - l.ax) * w, (l.by - l.ay) * h
+            local len = math.sqrt(dx * dx + dy * dy)
+            if len > 0 then
+                legs[#legs + 1] = { l = l, len = len, ux = dx / len, uy = dy / len, before = later }
+                total = total + len
+                if l.kind == "rest" then later = later + len end
+            end
+        end
+    end
+    -- A very long route gets a wider gap, never more marks.
+    local gap = MRL.GAP
+    local room = MRL.MAX_MARKS - 2
+    if total / gap > room then gap = total / room end
+    local dest
+    if type(opts.dest) == "table" and finite(opts.dest[1]) and finite(opts.dest[2]) then dest = opts.dest end
+    local clear = MRL.X_SIZE / 2 + MRL.DOT / 2
+    local first = type(opts.first) == "table" and opts.first or { 1, 1, 1 }
+    local wp = type(opts.waypoint) == "table" and opts.waypoint or { 1, 1, 1 }
+    for _, leg in ipairs(legs) do
+        local l = leg.l
+        local at = gap / 2
+        while at < leg.len and #out < room do
+            local cx, cy = l.ax * w + leg.ux * at, l.ay * h + leg.uy * at
+            local under = false
+            if dest then
+                local ex, ey = cx - dest[1] * w, cy - dest[2] * h
+                under = math.sqrt(ex * ex + ey * ey) < clear
+            end
+            if not under then
+                local r, g, b, a
+                if l.kind == "rest" then
+                    r, g, b = MRL.Gradient((leg.before + at) / later)
+                    a = MRL.LATER_ALPHA
+                elseif l.kind == "waypoint" then
+                    r, g, b, a = wp[1], wp[2], wp[3], MRL.NEXT_ALPHA
+                else
+                    r, g, b, a = first[1], first[2], first[3], MRL.NEXT_ALPHA
+                end
+                local half = MRL.DOT / 2
+                out[#out + 1] = {
+                    ax = (cx - leg.ux * half) / w, ay = (cy - leg.uy * half) / h,
+                    bx = (cx + leg.ux * half) / w, by = (cy + leg.uy * half) / h,
+                    r = r, g = g, b = b, a = a, thick = MRL.DOT, kind = l.kind,
+                }
+            end
+            at = at + gap
+        end
+    end
+    if dest then
+        local half = MRL.X_SIZE / 2
+        local x, y = dest[1] * w, dest[2] * h
+        local c = MRL.X_COLOR
+        out[#out + 1] = { ax = (x - half) / w, ay = (y - half) / h, bx = (x + half) / w, by = (y + half) / h,
+                          r = c[1], g = c[2], b = c[3], a = MRL.X_ALPHA, thick = MRL.X_THICK, kind = "x" }
+        out[#out + 1] = { ax = (x - half) / w, ay = (y + half) / h, bx = (x + half) / w, by = (y - half) / h,
+                          r = c[1], g = c[2], b = c[3], a = MRL.X_ALPHA, thick = MRL.X_THICK, kind = "x" }
+    end
+    return out
 end
 
 local function ask(client, name, ...)
@@ -139,7 +280,21 @@ function MRL.Declare(k)
         local s = ctx and ctx.settings
         if not RL or type(s) ~= "table" or type(s.get) ~= "function" then return true end
         local ok, v = pcall(s.get, s, RL.SETTING)
-        return not (ok and v == false)
+        if ok and v == false then return false end
+        -- Slice 2's key, the map lines alone. Not there yet: read as on.
+        local okL, lines = pcall(s.get, s, MRL.SETTING_LINES)
+        if okL and lines == false then return false end
+        return true
+    end
+
+    -- The arrow's saved palette word, for RC.Of; nil is the standard one.
+    local function palette()
+        local s = ctx and ctx.settings
+        local key = ns.Arrow and ns.Arrow.PALETTE
+        if type(s) ~= "table" or type(s.get) ~= "function" or type(key) ~= "string" then return nil end
+        local ok, v = pcall(s.get, s, key)
+        if ok then return v end
+        return nil
     end
 
     local function view()
@@ -172,17 +327,39 @@ function MRL.Declare(k)
         local rows = nil
         if v and RL then rows = RL.Rows(v, nil) end
         local function cornersOf(m) return ask(c, "mapCorners", m) end
-        local lines = MRL.Lines(rows, map, ask(c, "position"), ask(c, "waypoint"), cornersOf)
-        if #lines == 0 then clear() return lines end
-        local sig = { tostring(map) }
+        local you = ask(c, "position")
+        local lines = MRL.Lines(rows, map, you, ask(c, "waypoint"), cornersOf)
+        local dx, dy = MRL.Destination(rows, map, cornersOf)
+        if #lines == 0 and not dx then clear() return lines end
+        -- The canvas's size: the client's when it says, else the guess.
+        local w, ht = MRL.CANVAS[1], MRL.CANVAS[2]
+        if type(handle.size) == "function" then
+            local okS, sw, sh = pcall(handle.size)
+            if okS and finite(sw) and finite(sh) and sw > 0 and sh > 0 then w, ht = sw, sh end
+        end
+        -- The next leg's colour is the step's, as the arrow has it.
+        local RC = ns.RouteColor
+        local first, green = { 1, 1, 1 }, { 1, 1, 1 }
+        if type(RC) == "table" and type(RC.Of) == "function" then
+            local word = palette()
+            local step, yards = MRL.NextStep(rows, you, function(m) return ask(c, "mapSize", m) end)
+            local okF, r, g, b = pcall(RC.Of, step, yards, word)
+            if okF and finite(r) and finite(g) and finite(b) then first = { r, g, b } end
+            local okW, wr, wg, wb = pcall(RC.Of, { family = "waypoint" }, nil, word)
+            if okW and finite(wr) and finite(wg) and finite(wb) then green = { wr, wg, wb } end
+        end
+        local opts = { first = first, waypoint = green }
+        if dx then opts.dest = { dx, dy } end
+        local marks = MRL.Trail(lines, w, ht, opts)
+        if #marks == 0 then clear() return lines end
+        local sig = { tostring(map), tostring(w), tostring(ht),
+            string.format("%.3f|%.3f|%.3f", first[1], first[2], first[3]), tostring(dx), tostring(dy) }
         for _, l in ipairs(lines) do
-            local r, g, b, a = MRL.Paint(l.kind)
-            l.r, l.g, l.b, l.a = r, g, b, a
             sig[#sig + 1] = table.concat({ l.kind, l.ax, l.ay, l.bx, l.by }, "|")
         end
         sig = table.concat(sig, "\n")
         if drawn and sig == lastSig then return lines end
-        local ok = pcall(handle.draw, lines)
+        local ok = pcall(handle.draw, marks)
         drawn = ok
         if ok then lastSig = sig else lastSig = nil end
         return lines

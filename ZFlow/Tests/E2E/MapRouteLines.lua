@@ -19,12 +19,14 @@ tests["e2e: the open world map shows a green line to your waypoint"] = function(
     c.advance(5, 20)
     local set = type(c.routeLineSets) == "table" and c.routeLineSets[1] or nil
     t.ok(set ~= nil, "the add-on asks for map lines")
+    -- Pathing UI slice 3: the line is a dotted trail; its last dot ends just
+    -- short of the waypoint.
     local found = nil
     for _, l in ipairs(set and set.lines or {}) do
         if l.kind == "waypoint" then found = l end
     end
-    t.ok(found ~= nil, "a waypoint line is drawn")
-    t.eq(found and found.bx, 0.7)
+    t.ok(found ~= nil, "a waypoint trail is drawn")
+    t.ok(found ~= nil and found.bx <= 0.7 and found.bx > 0.65, "it runs to the waypoint: " .. tostring(found and found.bx))
     t.eq(found and found.g, 1)
 end
 

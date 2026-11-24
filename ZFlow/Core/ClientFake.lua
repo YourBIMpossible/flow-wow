@@ -2183,12 +2183,20 @@ function ns.make.fakeClient(opts)
 
     -- Route lines (section 447 F7), as the real client's c.mapRouteLines:
     -- each handle made is kept in c.routeLineSets; h.lines is the last
-    -- drawn, copied.
+    -- drawn, copied (a line's own thick is kept with it).
+    -- Pathing UI slice 3: h.size() -> the canvas's width and height, as
+    -- the real client's is asked for; c.setMapCanvas(w, h), nil: not known.
     c.routeLineSets = {}
+    function c.setMapCanvas(w, h) s.mapCanvas = w and h and { w, h } or false end
     function c.mapRouteLines()
         if s.noFrames then return nil end
         local h = { lines = {}, shown = false, draws = 0, clears = 0 }
         function h.map() return s.worldMap end
+        function h.size()
+            if s.mapCanvas == false then return nil end
+            local size = s.mapCanvas or { 1002, 668 }
+            return size[1], size[2]
+        end
         function h.draw(lines)
             h.lines = copyRows(type(lines) == "table" and lines or {})
             h.shown = #h.lines > 0
