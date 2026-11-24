@@ -14,21 +14,29 @@ local CORNERS = {
 }
 local function cornersOf(map) return CORNERS[map] end
 
+-- A table cannot hold "set this to nil", so a helper given NONE for a
+-- field takes the field away (a value the game did not say).
+local NONE = {}
+local function put(o, over)
+    for key, v in pairs(over or {}) do
+        if v == NONE then o[key] = nil else o[key] = v end
+    end
+    return o
+end
+
 -- here to target: 2400 yards on map A, about 343 seconds on foot.
 local function base(over)
     local o = {
         here = { map = A, x = 0.9, y = 0.5 }, target = { map = A, x = 0.1, y = 0.5 },
         cornersOf = cornersOf, spells = {}, mount = {},
     }
-    for key, v in pairs(over or {}) do o[key] = v end
-    return o
+    return put(o, over)
 end
 
 local function recall(over)
     local s = { kind = "recall", name = "Astral Recall", known = true, cooldown = false,
                 dest = { map = A, x = 0.15, y = 0.5 } }
-    for key, v in pairs(over or {}) do s[key] = v end
-    return s
+    return put(s, over)
 end
 
 local function advice(o)
@@ -58,13 +66,13 @@ end
 
 tests["travel advice: a spell on cooldown, or its cooldown not known, gives no line"] = function(t)
     t.eq({ advice(base({ spells = { recall({ cooldown = true }) } })) }, { nil, "no saving" })
-    t.eq({ advice(base({ spells = { recall({ cooldown = nil }) } })) }, { nil, "no saving" })
+    t.eq({ advice(base({ spells = { recall({ cooldown = NONE }) } })) }, { nil, "no saving" })
 end
 
 tests["travel advice: a spell not known, or not said, gives no line"] = function(t)
     t.eq({ advice(base({ spells = { recall({ known = false }) } })) }, { nil, "no saving" })
-    t.eq({ advice(base({ spells = { recall({ known = nil }) } })) }, { nil, "no saving" })
-    t.eq({ advice(base({ spells = { recall({ name = nil }) } })) }, { nil, "no saving" }, "no name read")
+    t.eq({ advice(base({ spells = { recall({ known = NONE }) } })) }, { nil, "no saving" })
+    t.eq({ advice(base({ spells = { recall({ name = NONE }) } })) }, { nil, "no saving" }, "no name read")
 end
 
 tests["travel advice: a saving under two minutes gives no line"] = function(t)
@@ -75,8 +83,8 @@ tests["travel advice: a saving under two minutes gives no line"] = function(t)
 end
 
 tests["travel advice: no stop, or a position not known, gives no line"] = function(t)
-    t.eq({ advice(base({ target = nil, spells = { recall() } })) }, { nil, "no target" })
-    t.eq({ advice(base({ here = nil, spells = { recall() } })) }, { nil, "far unknown" })
+    t.eq({ advice(base({ target = NONE, spells = { recall() } })) }, { nil, "no target" })
+    t.eq({ advice(base({ here = NONE, spells = { recall() } })) }, { nil, "far unknown" })
     t.eq({ advice(base({ here = { map = FAR, x = 0.5, y = 0.5 }, spells = { recall() } })) }, { nil, "far unknown" },
         "across a sea")
     t.eq({ advice(base({ spells = { recall({ dest = { map = 1, x = 0.5, y = 0.5 } }) } })) }, { nil, "no saving" },

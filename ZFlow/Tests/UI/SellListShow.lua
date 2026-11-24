@@ -6,6 +6,10 @@ local _, ns = ...
 
 local L = ns.SellList
 local tests = {}
+-- Item names carry the game's quality colour (Items/Present.lua, Tint; the
+-- colour itself is tested in Tests/Items/ItemColourTests.lua). These tests are
+-- about the words, so they read them with the colour taken off.
+local plain = ns.ItemPresent.Plain
 
 local INFO = { [97] = { name = "Broken Fang", quality = 0, sellPrice = 4 } }
 
@@ -58,7 +62,7 @@ end
 
 local function has(lines, text)
     for _, l in ipairs(lines or {}) do
-        if l == text then return true end
+        if plain(l) == text then return true end
     end
     return false
 end
@@ -213,6 +217,13 @@ tests["sell list Show: it reads the bags and the item facts, draws, and does not
     t.eq(c.saved(ns.id.accountDB), accountWas, "the account's saved data is as it was")
     t.eq(c.saved(ns.id.charDB), charWas, "and the character's")
     t.eq(p.shown, true, "and the panel is shown: that is all it does")
+end
+
+for name, fn in pairs(tests) do
+    tests[name] = function(t)
+        return fn(setmetatable({ eq = function(got, want, msg) return t.eq(plain(got), plain(want), msg) end },
+            { __index = t }))
+    end
 end
 
 return tests
