@@ -277,5 +277,7 @@ return {
     "UI/RouteTracker.lua",
     -- P-QUEST (lead section 354 item 4): quest advice text (after QuestRead and the advisor).
     "Nav/QuestAdvice.lua",
+    -- R7 (sections 387, 388 b): spells to train, as advisor prompts (after the class packs and the advisor).
+    "Spells/TrainAdvice.lua",
     },
 }
