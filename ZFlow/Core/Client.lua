@@ -1868,6 +1868,17 @@ function ns.make.client(env)
         return id
     end
 
+    -- A map's name as the game shows it ("Westfall"), or nil (R7, the
+    -- leaving-zone chat line). C_Map.GetMapInfo(map).name: first guess on
+    -- 16001, named on warcraft.wiki.gg, not seen in game.
+    function c.mapName(map)
+        if type(map) ~= "number" then return nil end
+        local ok, info = mapCall("GetMapInfo", map)
+        if not ok or type(info) ~= "table" or hidden(info.name) then return nil end
+        if type(info.name) ~= "string" or info.name == "" then return nil end
+        return info.name
+    end
+
     -- The zone a map belongs to: the map itself or the nearest parent that
     -- is a zone or wider (Flow's N.ZoneOf). nil when the client won't say.
     local function zoneOf(map)

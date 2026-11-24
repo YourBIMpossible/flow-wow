@@ -166,3 +166,50 @@ function N.LeavingWaits(zoneName)
     if not name then return "(after this zone)" end
     return "(" .. name .. ", after this zone)"
 end
+
+-- R7 (section 387): the chat line when the player is about to leave a zone with
+-- route steps still open there. Ported in spirit from legacy Flow
+-- (Modules/Nav/Leaving.lua:63). Pure: this file still prints nothing; the
+-- caller hands LeavingSay its own chat-print function (client.print, with
+-- the add-on's title in front, as Core/Diag.lua says its lines).
+--
+-- N.LEAVING_CHAT_MAX  how many step names the line lists (3)
+-- N.LeavingLine(nextZoneName, names) -> the line, or nil when no name in
+--   names reads (a non-empty string). Over N.LEAVING_CHAT_MAX names:
+--   "A, B, C and <n> more". No zone name: "another zone".
+-- N.LeavingSay(memo, say, fromZone, toZone, names) -> true when said
+--   Once per leaving: memo (a table the caller keeps) remembers the last
+--   fromZone -> toZone said; the same pair again says nothing until another
+--   pair is said or nothing open is seen for that pair (then the memo
+--   clears, so the next real leaving is said again). No line, no say
+--   function, or a say that fails: nothing said, false.
+N.LEAVING_CHAT_MAX = 3
+
+function N.LeavingLine(nextZoneName, names)
+    local shown, extra = {}, 0
+    for _, n in ipairs(type(names) == "table" and names or {}) do
+        if type(n) == "string" and n ~= "" then
+            if #shown < N.LEAVING_CHAT_MAX then shown[#shown + 1] = n else extra = extra + 1 end
+        end
+    end
+    if #shown == 0 then return nil end
+    local list = table.concat(shown, ", ")
+    if extra > 0 then list = list .. " and " .. extra .. " more" end
+    return "Your next step is in " .. (named(nextZoneName) or "another zone")
+        .. ". Still to do before you leave: " .. list
+end
+
+function N.LeavingSay(memo, say, fromZone, toZone, names)
+    if type(memo) ~= "table" then return false end
+    local key = tostring(fromZone) .. "\0" .. tostring(toZone)
+    local line = N.LeavingLine(toZone, names)
+    if line == nil then
+        if memo.last == key then memo.last = nil end
+        return false
+    end
+    if memo.last == key or type(say) ~= "function" then return false end
+    local ok = pcall(say, line)
+    if not ok then return false end
+    memo.last = key
+    return true
+end

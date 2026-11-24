@@ -156,4 +156,35 @@ T["the reason is for diagnostics only: no player text carries it"] = function(t)
     t.eq(step.reason, nil, "the step table carries no reason field a caller could show")
 end
 
+-- R7 (section 387): the chat line when the player is about to leave a zone with
+-- steps still open there. Pure: the line and the once-per-leaving memo.
+T["the leaving chat line names the next zone and what is left"] = function(t)
+    t.eq(N.LEAVING_CHAT_MAX, 3, "up to 3 step names")
+    t.eq(N.LeavingLine("Westfall", { "Kobold Camp Cleanup", "Wolves Across the Border" }),
+        "Your next step is in Westfall. Still to do before you leave: Kobold Camp Cleanup, Wolves Across the Border")
+    t.eq(N.LeavingLine("Westfall", { "A", "B", "C", "D", "E" }),
+        "Your next step is in Westfall. Still to do before you leave: A, B, C and 2 more")
+    t.eq(N.LeavingLine(nil, { "A" }), "Your next step is in another zone. Still to do before you leave: A")
+    t.eq(N.LeavingLine("Westfall", {}), nil, "nothing open: no line")
+    t.eq(N.LeavingLine("Westfall", nil), nil)
+    t.eq(N.LeavingLine("Westfall", { "", 5, "A" }), "Your next step is in Westfall. Still to do before you leave: A",
+        "only names that read")
+end
+
+T["the leaving chat line is said once per leaving"] = function(t)
+    local memo = {}
+    local said = {}
+    local function say(line) said[#said + 1] = line end
+    t.eq(N.LeavingSay(memo, say, "Elwynn Forest", "Westfall", { "A" }), true, "first time: said")
+    t.eq(N.LeavingSay(memo, say, "Elwynn Forest", "Westfall", { "A", "B" }), false, "same leaving: not again")
+    t.eq(#said, 1)
+    t.eq(N.LeavingSay(memo, say, "Westfall", "Elwynn Forest", { "C" }), true, "a new zone change: said")
+    t.eq(N.LeavingSay(memo, say, "Westfall", "Elwynn Forest", {}), false, "nothing open: nothing said")
+    t.eq(N.LeavingSay(memo, say, "Elwynn Forest", "Westfall", {}), false, "nothing open: nothing said")
+    t.eq(#said, 2)
+    t.eq(N.LeavingSay(memo, say, "Elwynn Forest", "Westfall", { "A" }), true, "leaving again after moving on")
+    t.eq(N.LeavingSay(memo, nil, "Duskwood", "Westfall", { "A" }), false, "no way to say: nothing")
+    t.eq(N.LeavingSay(memo, function() error("boom") end, "Redridge", "Westfall", { "A" }), false, "a failing say is caught")
+end
+
 return T
