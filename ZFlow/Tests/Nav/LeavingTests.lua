@@ -156,7 +156,7 @@ T["the reason is for diagnostics only: no player text carries it"] = function(t)
     t.eq(step.reason, nil, "the step table carries no reason field a caller could show")
 end
 
--- R7 (§387): the chat line when the player is about to leave a zone with
+-- R7 (section 387): the chat line when the player is about to leave a zone with
 -- steps still open there. Pure: the line and the once-per-leaving memo.
 T["the leaving chat line names the next zone and what is left"] = function(t)
     t.eq(N.LEAVING_CHAT_MAX, 3, "up to 3 step names")

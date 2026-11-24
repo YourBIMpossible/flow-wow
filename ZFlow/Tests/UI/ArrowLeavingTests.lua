@@ -92,7 +92,9 @@ return {
 
     ["the setting off: no line"] = function(t)
         local c, k = start({ boars(), wolves() })
-        k.settings:set(ns.Nav.LEAVING_SETTING, false)
+        k:Setting({ key = ns.Nav.LEAVING_SETTING, scope = "account", type = "bool", default = true,
+            group = "travel.route", label = "Finish quests in this zone first" })
+        t.eq(k.settings:set(ns.Nav.LEAVING_SETTING, false), true)
         leave(c)
         t.eq(#leavingLines(c), 0)
     end,

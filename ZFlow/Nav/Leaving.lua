@@ -167,7 +167,7 @@ function N.LeavingWaits(zoneName)
     return "(" .. name .. ", after this zone)"
 end
 
--- R7 (§387): the chat line when the player is about to leave a zone with
+-- R7 (section 387): the chat line when the player is about to leave a zone with
 -- route steps still open there. Ported in spirit from legacy Flow
 -- (Modules/Nav/Leaving.lua:63). Pure: this file still prints nothing; the
 -- caller hands LeavingSay its own chat-print function (client.print, with
