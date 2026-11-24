@@ -10,8 +10,8 @@ local tests = {}
 
 local function RC() return ns.RouteColor end
 
-local function of(step, yards, palette)
-    return { RC().Of(step, yards, palette) }
+local function of(step, yards, palette, byDistance)
+    return { RC().Of(step, yards, palette, byDistance) }
 end
 
 local function rgbOf(step, yards, palette)
@@ -19,8 +19,8 @@ local function rgbOf(step, yards, palette)
     return { c[1], c[2], c[3] }
 end
 
-local function hexOf(step, yards, palette)
-    return of(step, yards, palette)[5]
+local function hexOf(step, yards, palette, byDistance)
+    return of(step, yards, palette, byDistance)[5]
 end
 
 local function apart(a, b)
@@ -51,6 +51,22 @@ tests["route colour: away, far, mid, near and here are Muse's values, in both pa
         t.eq(hexOf({}, 5000, word), M.far, word .. ": past far stays far")
         t.eq(hexOf({}, 3, word), M.near, word .. ": closer than near stays near")
         t.eq(hexOf({}, nil, word), M.far, word .. ": a distance not known is far, never near")
+    end
+end
+
+tests["route colour: one colour when the player's setting says so (N43)"] = function(t)
+    for _, word in ipairs(PALETTES) do
+        local M = TABLE[word]
+        -- far, mid and near are all the near colour; away and here as they are
+        t.eq(hexOf({}, 600, word, false), M.near, word .. ": far is the near colour")
+        t.eq(hexOf({}, MID, word, false), M.near, word .. ": mid is the near colour")
+        t.eq(hexOf({}, 40, word, false), M.near, word .. ": near stays near")
+        t.eq(hexOf({ state = "away" }, 900, word, false), M.away, word .. ": away stays grey")
+        t.eq(hexOf({ state = "here" }, 0, word, false), M.here, word .. ": here stays blue")
+        t.eq(hexOf({ family = "waypoint" }, 100, word, false), M.waypoint, word .. ": the waypoint stays its green")
+        -- and with the setting on, or not passed, the ramp is the distance one
+        t.eq(hexOf({}, 600, word), M.far, word .. ": far with the setting on")
+        t.eq(hexOf({}, 600, word, true), M.far, word .. ": far with the setting passed on")
     end
 end
 
