@@ -183,7 +183,8 @@ function KA.Pick(s, current)
     if type(s) ~= "table" or s.inCombat ~= false or s.lockdown ~= false then return nil end
     -- §447 F1: the class pack's buffs (Righteous Fury, an aura, a blessing)
     -- come before any of the key's actions, whatever their step.
-    if type(current) == "table" and current.kind == "buff" then return nil end
+    -- CHANGES-1: a look-only buff (F1b "Choose a role") is weak, as weak() says.
+    if type(current) == "table" and current.kind == "buff" and current.look ~= true then return nil end
     local w = type(s.weapons) == "table" and s.weapons or {}
     if s.pole == true and s.enemy == true and (on(s, "fishing") or w.pending == true) then
         return KA.WeaponsBack(s)

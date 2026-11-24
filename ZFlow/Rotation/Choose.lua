@@ -828,6 +828,9 @@ function ns.Choose(snapshot, pack, prefs, bias)
                      note = snapshot.dead and "dead" or "not known whether you are dead" }
         return nil, trace
     end
+    -- CHANGES-1: a look-only pick from the list step (F1b "Choose a role")
+    -- is kept aside and returned only when every later step found nothing.
+    local held
     for _, name in ipairs(R.STEPS) do
         local unread = {}
         local s, note = steps[name](snapshot, pack, prefs, bias, unread)
@@ -835,11 +838,22 @@ function ns.Choose(snapshot, pack, prefs, bias)
         if s then
             s.fightType = snapshot.fightType
             s.step = name
-            trace[#trace + 1] = { step = name, result = "pick", spell = s.spell, item = s.item, note = s.reason,
-                                  passed = passed }
-            return s, trace
+            if name == "list" and s.look == true then
+                held = s
+                trace[#trace + 1] = { step = name, result = "held", spell = s.spell, note = s.reason,
+                                      passed = passed }
+            else
+                trace[#trace + 1] = { step = name, result = "pick", spell = s.spell, item = s.item, note = s.reason,
+                                      passed = passed }
+                return s, trace
+            end
+        else
+            trace[#trace + 1] = { step = name, result = "skip", note = note, passed = passed }
         end
-        trace[#trace + 1] = { step = name, result = "skip", note = note, passed = passed }
+    end
+    if held then
+        trace[#trace + 1] = { step = "list", result = "pick", spell = held.spell, note = held.reason }
+        return held, trace
     end
     return nil, trace
 end

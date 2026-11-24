@@ -318,6 +318,19 @@ function I.Declare(k)
                 if type(client.barGlow) == "function" then pcall(client.barGlow, spell) end
             end
             unglow = function() glow(nil) end
+            -- CHANGES-3: the bars change under the same spell (a dragged
+            -- spell, the page, the bonus bar, a stance): scan them again.
+            if type(client.listen) == "function" then
+                local function rescan()
+                    if type(glowing) == "string" and type(client.barGlow) == "function" then
+                        pcall(client.barGlow, glowing)
+                    end
+                end
+                for _, event in ipairs({ "ACTIONBAR_SLOT_CHANGED", "ACTIONBAR_PAGE_CHANGED",
+                                         "UPDATE_BONUS_ACTIONBAR", "UPDATE_SHAPESHIFT_FORM" }) do
+                    pcall(client.listen, event, rescan)
+                end
+            end
 
             hide()
             local shownSpell = nil
