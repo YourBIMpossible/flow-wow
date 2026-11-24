@@ -147,6 +147,8 @@ return {
         "Spells/TrainerListRankUp.lua",
         "Spells/TrainerModule.lua",
         "Spells/ClassQuests.lua",
+        -- C-07, C-54: class quests not done and class trainers, from Questie at runtime (after Diag).
+        "Spells/ClassQuestList.lua",
         "Nav/RoutePlan.lua",
         "Nav/HearthStep.lua",
         "Nav/HearthSeen.lua",

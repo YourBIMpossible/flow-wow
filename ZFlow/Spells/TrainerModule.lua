@@ -5,6 +5,8 @@ local _, ns = ...
 --                  (Spells/TrainerList.lua), and while the window is open an
 --                  advisor prompt says how many spells can be learned there
 --                  and names the first few, with cost
+--                  and the chat window lists every spell that can be learned
+--                  there with its cost (C-52)
 --   rank-ups       a prompt per spell with a higher rank you could learn at
 --                  your level, at a trainer seen before
 --                  (Spells/TrainerListRankUp.lua); kept in step at login, at
@@ -74,6 +76,30 @@ function M.LearnText(reading)
     return text
 end
 
+-- The chat list at an open trainer (C-52): a heading, then one line for
+-- each spell that can be learned now, with its rank and cost. With nothing
+-- to learn, one line says so. nil when the list cannot be read.
+M.CHAT_HEAD = "you can learn here:"
+M.CHAT_NONE = "nothing new to learn here right now."
+function M.ChatLines(reading)
+    if type(reading) ~= "table" or type(reading.services) ~= "table" then return nil end
+    local out = {}
+    for _, r in ipairs(reading.services) do
+        if type(r) == "table" and r.state == "available" and type(r.name) == "string" then
+            local name = r.name
+            if type(r.rank) == "string" and r.rank ~= "" then name = name .. " (" .. r.rank .. ")" end
+            local cost = ns.TrainerList.PRICE_UNKNOWN
+            if type(r.cost) == "number" and ns.Prices and ns.Prices.Coin then
+                cost = ns.Prices.Coin(r.cost) or cost
+            end
+            out[#out + 1] = "  " .. name .. " - " .. cost
+        end
+    end
+    if #out == 0 then return { M.CHAT_NONE } end
+    table.insert(out, 1, M.CHAT_HEAD)
+    return out
+end
+
 local function copy(t)
     if type(t) ~= "table" then return t end
     local out = {}
@@ -118,7 +144,7 @@ function M.Declare(k)
         settings = {
             { key = M.SETTING_LIST, scope = "char", type = "bool", default = true,
               label = "What you can learn at trainers",
-              help = "At a trainer, say what you can learn there and what it costs, and keep the list. It trains nothing.",
+              help = "At a trainer, list in chat what you can learn there and what it costs, and keep the list. It trains nothing.",
               group = "combat.spells", synonyms = { "trainer", "train", "spells", "cost" } },
             { key = M.SETTING_RANKUP, scope = "char", type = "bool", default = true,
               label = "Rank-up reminders",
@@ -140,6 +166,15 @@ function M.Declare(k)
                     if ctx.settings:get(M.SETTING_LIST) ~= true then return end
                     local reading = ask(ctx.client, "trainer")
                     if type(reading) ~= "table" then return end
+                    -- C-52: the list in chat, once for each time the window opens.
+                    local chat = M.ChatLines(reading)
+                    for i = 1, #(chat or {}) do
+                        if i == 1 then
+                            ctx.client.print(k.id.title .. ": " .. chat[i])
+                        else
+                            ctx.client.print(chat[i])
+                        end
+                    end
                     local text = M.LearnText(reading)
                     if text and type(advisor) == "table" then advisor.Add(M.PROMPT, text, M.PRIORITY) end
                     local before = lists()
