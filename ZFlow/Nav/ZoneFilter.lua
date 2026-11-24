@@ -3,12 +3,13 @@ local _, ns = ...
 -- section 488). The zones you pick are yours; the route's quest stops in
 -- them come first. The other zones' stops come after them with the setting
 -- ZF.SETTING on, and are left out (still in your log) with it off.
--- The picks are per character (store "char", ZF.PATH); not picked yet:
--- every zone is yours, as before.
+-- The picks are per character (store "char", ZF.PATH); not picked yet
+-- (nil, or an empty pick table): every zone is yours, as before.
 -- Not here yet: a caller and a place to pick. The route order is
 -- Nav/TripRoute.lua's (lane B's file; not edited), and ticking zones is a
 -- new UI surface that waits for a Muse note. Until then the player sees
--- only the settings row.
+-- nothing. The settings row (ZF.SETTING, words ZF.ROW_LABEL and
+-- ZF.ROW_HELP) is held back until the route reads it (lead section 507).
 -- Compared with Flow Modules/Nav/Nav.lua N.ZoneFilter, N.ZoneLine,
 -- N.SelectedZones, N.ZonesFirstOn and its "Finish the selected zones first"
 -- row: the same split and words. Flow also counts steps to accept and the
@@ -18,7 +19,7 @@ local _, ns = ...
 -- Pure:
 --   ZF.Order(stops, selected, first, zoneOf) -> ordered, summary, left
 --     stops     a list (tripRoute Current().stops or the like)
---     selected  { [zone] = true }, or nil: every zone
+--     selected  { [zone] = true }; nil or empty: every zone
 --     first     true: other zones after; else they are left out
 --     zoneOf(stop) -> zone or nil (a stop with no zone always stays)
 --     summary   { { zone, steps, off, later } }, most steps first
@@ -43,6 +44,7 @@ ZF.LATER = " - after your zones"
 
 function ZF.Order(stops, selected, first, zoneOf)
     local byZone, summary, mine, later, left = {}, {}, {}, {}, 0
+    if type(selected) ~= "table" or next(selected) == nil then selected = nil end
     for _, s in ipairs(type(stops) == "table" and stops or {}) do
         local zone = type(zoneOf) == "function" and zoneOf(s) or nil
         local out = zone ~= nil and type(selected) == "table" and selected[zone] ~= true
@@ -84,6 +86,7 @@ function ZF.Declare(k)
         if not ok or type(v) ~= "table" then return nil end
         local out = {}
         for zone, on in pairs(v) do if on == true then out[zone] = true end end
+        if next(out) == nil then return nil end
         return out
     end
 

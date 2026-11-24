@@ -2,9 +2,9 @@ local _, ns = ...
 
 -- Parity row A1-27 (lead section 488): the zone filter, selected zones
 -- first. Pure order and words, and the zoneFilter module on the whole
--- add-on with a fake client (the picks kept per character, the settings
--- row). Made-up zones. Not tested in game.
--- Fails before: there is no Nav/ZoneFilter.lua and no nav.zonesFirst row.
+-- add-on with a fake client (the picks kept per character; the settings
+-- row held back, lead section 507). Made-up zones. Not tested in game.
+-- Fails before: there is no Nav/ZoneFilter.lua.
 
 local tests = {}
 
@@ -47,7 +47,14 @@ tests["zone filter: on, the picked zones come first and the others after"] = fun
     t.eq(ZF.Line(later, function() return "Ashenvale" end), "Ashenvale: 1 step - after your zones")
 end
 
-tests["zone filter e2e: the row starts off; picks are kept; the module orders by them"] = function(t)
+tests["zone filter: an empty pick table is not picked yet: every zone is yours"] = function(t)
+    local ZF = ns.Nav.ZoneFilter
+    local ordered, _, left = ZF.Order(STOPS, {}, false, zoneOf)
+    t.eq(labels(ordered), "a,b,c,d,e", "as with nil")
+    t.eq(left, 0)
+end
+
+tests["zone filter e2e: picks are kept; the module orders by them; the row is held back"] = function(t)
     local c = ns.make.fakeClient()
     c.setSaved(ns.id.accountDB, {}); c.setSaved(ns.id.charDB, {})
     c.setClass("WARRIOR"); c.setLevel(10)
@@ -55,19 +62,16 @@ tests["zone filter e2e: the row starts off; picks are kept; the module orders by
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
     c.advance(2, 8)
     local ZF = ns.Nav.ZoneFilter
-    local row = addon.settings:row(ZF.SETTING)
-    t.ok(row ~= nil, "a settings row")
-    t.eq(row and row.label, ZF.ROW_LABEL)
-    t.eq(addon.settings:get(ZF.SETTING), false, "off by default")
+    t.eq(addon.settings:row(ZF.SETTING), nil, "no settings row yet (lead section 507)")
     local mod = addon.use("zoneFilter")
+    t.eq(mod.First(), false, "without the row: left out, not after")
     t.eq(mod.Selected(), nil, "nothing picked yet")
     t.ok(mod.SetZoneOn(2, true), "pick zone 2")
     t.eq(mod.Selected(), { [2] = true })
-    t.eq(labels((mod.Order(STOPS, zoneOf))), "b,e", "off: only zone 2 and the stop with no zone")
-    addon.settings:set(ZF.SETTING, true)
-    t.eq(labels((mod.Order(STOPS, zoneOf))), "b,e,a,c,d", "on: zone 2 first, then the rest")
+    t.eq(labels((mod.Order(STOPS, zoneOf))), "b,e", "only zone 2 and the stop with no zone")
     t.ok(mod.SetZoneOn(2, false), "unpick")
-    t.eq(mod.Selected(), {})
+    t.eq(mod.Selected(), nil, "an empty pick is not picked yet")
+    t.eq(labels((mod.Order(STOPS, zoneOf))), "a,b,c,d,e", "every zone again")
 end
 
 return tests

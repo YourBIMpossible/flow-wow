@@ -24,6 +24,8 @@ end
 -- (Section 187 section 7: nav.mapFlights and nav.taxiMark left it; their
 -- modules now read them.)
 local UNREAD = {
+    -- Lead section 507: held back until the route reads it (Nav/ZoneFilter.lua).
+    ["nav.zonesFirst"] = true,
 }
 
 -- Every string held in a field named SETTING (or ending _SETTING) anywhere
