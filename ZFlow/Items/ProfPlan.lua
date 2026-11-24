@@ -300,10 +300,13 @@ end
 
 -- Section 400 item 2: the book read holds no recipe of this profession.
 -- Was a trainer list of this profession, with its trainer named, seen?
--- (A shipped list names no trainer.)
+-- (A shipped list names no trainer.) Section 416 item 1: a trainer on
+-- another continent is not a step (section 400 item 4), so its list counts
+-- as not seen and the next step is a recipe at a trainer here.
 local function trainerSeen(input)
     for _, l in pairs(type(input.trainerLists) == "table" and input.trainerLists or {}) do
-        if type(l) == "table" and l.profession == input.prof and type(l.npc) == "string" then return true end
+        if type(l) == "table" and l.profession == input.prof and type(l.npc) == "string"
+            and not away(input, l.npc) then return true end
     end
     return false
 end
