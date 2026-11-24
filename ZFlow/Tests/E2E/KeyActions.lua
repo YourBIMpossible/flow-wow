@@ -299,7 +299,7 @@ end
 -- raw secure-attribute text the button is actually set with ("item:4321").
 tests["key actions: a better item in the bags: the Flow button's tooltip names it, not the raw item text"] = function(t)
     if type(FB) ~= "table" then t.ok(false, "no FlowButton module"); return end
-    local c, addon = start()
+    local c = start()
     gear(c)
     local info = {}
     for id, row in pairs(INFO) do info[id] = row end
