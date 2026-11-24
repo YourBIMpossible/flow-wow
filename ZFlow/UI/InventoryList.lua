@@ -193,7 +193,8 @@ function IL.TreeOf(listing, client, id)
     listing = type(listing) == "table" and listing or {}
     local SellList = ns.SellList
     local rows, slots = IL.Rows(listing)
-    local title, body = nil, {}
+    local title
+    local body = {}
     if not rows then
         title = IL.BAGS_UNREAD_HEAD
         body[1] = { kind = "empty", text = IL.BAGS_UNREAD, how = again(id) }
@@ -298,7 +299,9 @@ function IL.Declare(k, diag)
         local l = listing()
         last = IL.LinesOf(l, id)
         if draw(l, id) then return true end
-        for i = 1, #last do ctx.client.print(tostring(id.title) .. ": " .. last[i]) end
+        if type(ctx.client.print) == "function" then
+            for i = 1, #last do ctx.client.print(tostring(id.title) .. ": " .. last[i]) end
+        end
         return true
     end
 
