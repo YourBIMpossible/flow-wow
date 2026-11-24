@@ -302,5 +302,7 @@ return {
     "UI/Lite.lua",
     -- G44 (section 397 item 14): the class trainer route step (after TrainAdvice and the packs).
     "Nav/ClassTrainerStep.lua",
+    -- A10: the import word's "now", which copies the earlier add-on's saved data in (after Diag, SettingsShare).
+    "Import/Apply.lua",
     },
 }
