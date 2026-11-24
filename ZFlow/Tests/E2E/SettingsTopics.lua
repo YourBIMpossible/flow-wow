@@ -251,6 +251,7 @@ local BEFORE = {
     ["rotationIcon.layout"] = { "account", "table", nil, "layout.rotationIcon" },
     ["rotationQueue.enabled"] = { "account", "bool", true },
     ["ui.intro"] = { "char", "bool", true },
+    ["ui.setupList"] = { "char", "bool", true },
     -- Both on by default: the world map's (default-on) and the merchant's
     -- (lead section 294 item 3).
     ["buttons.worldMap"] = { "account", "bool", true },
@@ -293,7 +294,7 @@ tests["stored values: no row's key, scope, type, default or saved place changed 
             end
         end
     end
-    t.eq(n, 50)
+    t.eq(n, 51)
     t.eq(addon.settings:row("repair.warnBelow").min, 0)
     t.eq(addon.settings:row("repair.warnBelow").max, 1)
     t.eq(addon.settings:row("spec.role").choices, { "", "dps", "heal", "tank" })
@@ -324,7 +325,7 @@ tests["stored values: a saved table from before the change reads back, every val
         n = n + 1
         t.eq(addon.settings:get(key), value, key .. " reads back as saved")
     end
-    t.eq(n, 48, "every row that holds a plain value")
+    t.eq(n, 49, "every row that holds a plain value")
     -- And the saved tables still hold them where they were.
     t.eq(c.saved(ns.id.accountDB).settings.vendor.list, false)
     t.eq(c.saved(ns.id.accountDB).settings.repair.warnBelow, 0.35)
