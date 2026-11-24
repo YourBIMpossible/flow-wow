@@ -620,9 +620,16 @@ local function kitParts(c)
     return out
 end
 
+-- The kit host's problem lines for this window only: the whole add-on runs
+-- here, and every other window on the kit (the intro at login among them)
+-- says its own line when its kit window is refused.
 local function hostProblems(addon)
     local kind = ns.KitHost and ns.KitHost.PROBLEM or "kitHost"
-    return addon.problems:count(kind)
+    local n = 0
+    for _, p in ipairs(addon.problems:list(kind)) do
+        if p.owner == KIT then n = n + 1 end
+    end
+    return n
 end
 
 tests["boss loot kit: the list is a kit window: the boss, your role's upgrades, then the rest; hidden after the fight"] = function(t)

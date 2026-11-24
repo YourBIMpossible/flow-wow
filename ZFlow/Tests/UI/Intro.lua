@@ -11,6 +11,10 @@ local _, ns = ...
 -- with spec.closable = true, and the handle's h.onClose(fn), fn() when the
 -- player closes it. The fake has both: h.close() is the player closing it,
 -- and c.setCloseRoute(false) is a client without them.
+--
+-- The intro is drawn by the shared kit (Tests/UI/IntroKit.lua). These are
+-- the plain panel cases: the setup refuses the kit window, as a client
+-- without the kit does.
 
 local I = ns.Intro
 local tests = {}
@@ -31,6 +35,7 @@ local function start(opts)
     if char then c.setSaved(ns.id.charDB, char) end
     if opts.noFrames then c.setFrames(false) end
     if opts.noClose then c.setCloseRoute(false) end
+    if type(c.setKitFails) == "function" then c.setKitFails(math.huge) end
     local k = ns.Kernel({}, c)
     local diag = ns.Diag.Start(k)
     if opts.setting ~= nil then
