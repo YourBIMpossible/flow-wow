@@ -267,3 +267,4 @@ Items\DispositionTip.lua
 Import\Apply.lua
 Items\AuctionWatch.lua
 Gear\BagBadge.lua
+Nav\FollowAdvice.lua

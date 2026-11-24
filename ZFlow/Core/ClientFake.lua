@@ -4812,6 +4812,10 @@ function ns.make.fakeClient(opts)
             return out
         end
     end
+    -- G47 (lead section 397 item 15): c.setGroupLeader("player" / a unit /
+    -- false for not grouped / nil for not known).
+    function c.setGroupLeader(v) s.groupLeader = v end
+    function c.groupLeader() return s.groupLeader end
     return c
 end
 

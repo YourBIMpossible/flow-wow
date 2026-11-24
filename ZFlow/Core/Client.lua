@@ -13184,6 +13184,29 @@ function ns.make.client(env)
             return out
         end
     end
+    -- G47 (lead section 397 item 15): who leads your group, for the follow
+    -- advice line (Nav/FollowAdvice.lua). "player" when you do, a party or
+    -- raid unit (party1..4, raid1..40) when another does, false when you
+    -- are not in a group, nil when not known. IsInGroup and
+    -- UnitIsGroupLeader(unit); a first guess on 16001. Read only: nothing
+    -- is asked of the leader, followed or targeted.
+    function c.groupLeader()
+        local grouped = yesNo(call(env.IsInGroup))
+        if grouped == nil then return nil end
+        if not grouped then return false end
+        local you = yesNo(call(env.UnitIsGroupLeader, "player"))
+        if you == nil then return nil end
+        if you then return "player" end
+        local inRaid = yesNo(call(env.UnitExists, "raid1"))
+        if inRaid == nil then return nil end
+        local prefix, last = "party", 4
+        if inRaid then prefix, last = "raid", 40 end
+        for i = 1, last do
+            local unit = prefix .. i
+            if yesNo(call(env.UnitIsGroupLeader, unit)) then return unit end
+        end
+        return nil
+    end
     return c
 end
 

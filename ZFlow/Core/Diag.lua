@@ -1802,3 +1802,5 @@ ns.diag = Diag.Start(ns)
 -- snapshot records whether they exist.
 Diag.NAMES[#Diag.NAMES + 1] = "C_Minimap.GetNumTrackingTypes"
 Diag.NAMES[#Diag.NAMES + 1] = "C_Minimap.GetTrackingInfo"
+-- G47 (lead section 397 item 15): who leads the group (client.groupLeader).
+Diag.NAMES[#Diag.NAMES + 1] = "UnitIsGroupLeader"

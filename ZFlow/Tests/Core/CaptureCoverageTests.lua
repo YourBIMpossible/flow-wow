@@ -509,4 +509,8 @@ READS.placeText = false
 -- account diag.rewardButtons). Their names are in Diag.NAMES.
 READS.rewardButtons = false
 
+-- G47 (lead section 397 item 15): who leads the group; read by
+-- Nav/FollowAdvice.lua only. Its name (UnitIsGroupLeader) is in Diag.NAMES.
+READS.groupLeader = false
+
 return tests
