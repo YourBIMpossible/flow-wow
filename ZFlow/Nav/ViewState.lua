@@ -87,5 +87,9 @@ function N.ViewState(client, guide)
     end
 
     state.quest, state.prof = quest, prof
+    -- How far apart the two steps lie, as the player sees them: the echo
+    -- is tucked under the quest arrow or stands below it by this (lead
+    -- section 476). Bearings, not turns: it is known without a facing.
+    if finite(g.spread) then state.spread = g.spread end
     return state, { quest = beside(q), prof = beside(p) }
 end

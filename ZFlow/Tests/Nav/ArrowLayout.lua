@@ -6,8 +6,10 @@ local N = ns.Nav
 local W, H = 1000, 800
 -- The default point { "TOP", "TOP", 0, -120 } on this screen: left 472, bottom 624.
 local STACK_LEFT, STACK_BOTTOM = 472, 624
--- How far the profession arrow stands over the quest arrow in the stack.
-local RISE = 56 + N.NeedleClearance(56) + N.STACK_GAP
+-- How far the profession arrow (the echo) stands under the quest arrow in the
+-- stack: tucked under it, or slid straight below (one arrow and a gap).
+local NEST = N.ECHO_NEST
+local SLIDE = 56 + N.ARROW_GAP
 
 local function state(layout, over)
     local s = { layout = layout, gate = "open", screenW = W, screenH = H,
@@ -65,9 +67,10 @@ local function separated()
 end
 
 return {
-    -- Two arrows (zflow-prof-feed): the profession arrow stands over the
-    -- quest arrow, each at full size and strength, never one on the other.
-    ["O1 stacked look: the profession arrow over the quest arrow, both at full strength"] = function(t)
+    -- Two arrows (lead section 476): the profession arrow is the echo of the
+    -- quest arrow: the same arrow, purple and see-through, behind and below
+    -- it. The quest arrow keeps its size and strength.
+    ["O1 stacked look: the profession arrow is the echo behind the quest arrow, which stays at full strength"] = function(t)
         local L = N.ArrowLayout(state(nil))
         t.eq(L.stacked, true, "stacked is the default")
         t.eq(L.quest.shown, true, "quest shown")
@@ -76,16 +79,24 @@ return {
         t.eq(L.quest.small, false, "quest not small")
         t.eq(L.quest.look, "pointer", "quest look")
         t.eq(L.prof.shown, true, "prof shown")
-        t.eq(L.prof.alpha, 1, "prof at full strength")
+        t.eq(L.prof.alpha, N.ECHO_ALPHA, "prof see-through")
         t.eq(L.prof.scale, 1, "prof scale")
-        t.eq(L.prof.look, "needle", "prof is the needle")
+        t.eq(L.prof.look, "echo", "prof is the echo")
         t.eq(L.prof.anchor, "screen", "the profession arrow has its own place")
-        t.eq(L.prof.behind, false, "not behind the quest arrow")
-        t.eq(L.prof.above, true, "over the quest arrow")
-        t.eq(L.prof.tint, "own", "stacked needle keeps its own colour")
+        t.eq(L.prof.behind, true, "behind the quest arrow")
+        t.eq(L.prof.echo, true, "said to be the echo")
+        t.eq(L.prof.above, nil, "no longer over the quest arrow")
+        t.eq(L.prof.tint, "echo", "the echo's own purple")
+        t.eq(L.prof.slid, false, "no slid in the state: tucked under")
         at(t, L.quest.position, STACK_LEFT, STACK_BOTTOM, "quest at the default place")
-        at(t, L.prof.position, STACK_LEFT, STACK_BOTTOM + RISE, "the profession arrow over it")
-        t.ok(RISE >= 56 + N.NeedleClearance(56), "the needle's whole turning circle is clear of the quest arrow")
+        at(t, L.prof.position, STACK_LEFT, STACK_BOTTOM - NEST, "the echo tucked under it")
+        local S = N.ArrowLayout(state(nil, { slid = true }))
+        t.eq(S.prof.slid, true, "slid in the state")
+        at(t, S.quest.position, STACK_LEFT, STACK_BOTTOM, "slid: the quest arrow does not move")
+        at(t, S.prof.position, STACK_LEFT, STACK_BOTTOM - SLIDE, "slid: one arrow and a gap below")
+        t.eq(N.ECHO_NEST, 12, "constant nest"); t.eq(N.ECHO_ALPHA, 0.7, "constant echo alpha")
+        t.eq(SLIDE, 64, "the slid drop"); t.eq(N.EchoDrop(56, true), SLIDE, "EchoDrop slid")
+        t.eq(N.EchoDrop(56, false), NEST, "EchoDrop tucked")
         t.eq(N.ON_NEEDLE_ALPHA, 0.7, "constant alpha"); t.eq(N.ON_NEEDLE_SCALE, 0.8, "constant scale")
         t.eq(N.PROF_HOLDER_ALPHA, 0.85, "constant holder alpha")
         t.eq(N.NEEDLE_W, 25.6, "needle width"); t.eq(N.NEEDLE_H, 109.1, "needle height")
@@ -101,29 +112,45 @@ return {
         local bare = N.ArrowLayout(state(nil, { prof = { hasStep = true, mode = "off" } }))
         at(t, bare.quest.position, STACK_LEFT, STACK_BOTTOM, "bare: quest stays")
         at(t, bare.prof.position, STACK_LEFT, STACK_BOTTOM, "bare: the text frame on the quest arrow's place")
-        -- N.ArrowStack on its own: two points, the second higher by the rise.
+        -- N.ArrowStack on its own: two points, the second lower by the nest,
+        -- or by one arrow and a gap when slid. 20 is the quest text's room
+        -- (over the quest arrow), 30 the profession text's (under the echo).
         local q, p = N.ArrowStack({ "BOTTOMLEFT", "BOTTOMLEFT", 300, 300 }, 56, W, H, 20, 30, true)
-        at(t, q, 300, 300, "room on both sides: not moved"); at(t, p, 300, 300 + RISE, "prof over it")
-        -- Quest text would leave the bottom: the stack goes up, as one.
+        at(t, q, 300, 300, "room on both sides: not moved"); at(t, p, 300, 300 - NEST, "the echo tucked under it")
+        q, p = N.ArrowStack({ "BOTTOMLEFT", "BOTTOMLEFT", 300, 300 }, 56, W, H, 20, 30, true, true)
+        at(t, q, 300, 300, "slid: not moved"); at(t, p, 300, 300 - SLIDE, "slid: the echo straight below")
+        -- The slid place and the profession text would leave the bottom: the
+        -- stack goes up, as one. The room is kept tucked or slid, so the
+        -- quest arrow stands the same either way.
         q, p = N.ArrowStack({ "BOTTOMLEFT", "BOTTOMLEFT", 300, 10 }, 56, W, H, 20, 30, true)
-        at(t, q, 300, 30, "up by what the quest text needs"); at(t, p, 300, 30 + RISE, "the profession arrow with it")
-        -- Profession text would leave the top: the stack goes down.
+        at(t, q, 300, SLIDE + 30, "up by the slid place and what the profession text needs")
+        at(t, p, 300, SLIDE + 30 - NEST, "the echo with it")
+        q, p = N.ArrowStack({ "BOTTOMLEFT", "BOTTOMLEFT", 300, 10 }, 56, W, H, 20, 30, true, true)
+        at(t, q, 300, SLIDE + 30, "slid: the quest arrow at the same place")
+        at(t, p, 300, 30, "slid: its text ends at the bottom edge")
+        -- No echo drawn: only its text takes room, on the quest arrow's place.
+        q, p = N.ArrowStack({ "BOTTOMLEFT", "BOTTOMLEFT", 300, 10 }, 56, W, H, 20, 30, false)
+        at(t, q, 300, 30, "not drawn: up by the profession text alone"); at(t, p, 300, 30, "not drawn: the same place")
+        -- Quest text would leave the top: the stack goes down.
         q, p = N.ArrowStack({ "BOTTOMLEFT", "BOTTOMLEFT", 300, H - 56 }, 56, W, H, 20, 30, true)
-        at(t, p, 300, H - 56 - 20, "its text ends at the top edge"); at(t, q, 300, H - 56 - 20 - RISE, "the quest arrow under it")
-        -- Screen size unknown: nothing is moved, only the rise.
+        at(t, q, 300, H - 56 - 20, "its text ends at the top edge"); at(t, p, 300, H - 56 - 20 - NEST, "the echo under it")
+        -- Screen size unknown: nothing is moved, only the drop.
         q, p = N.ArrowStack({ "CENTER", "CENTER", 0, 0 }, 56, nil, nil, 20, 30, true)
         t.eq(q, { "CENTER", "CENTER", 0, 0 }, "unknown screen: quest as given")
-        t.eq(p, { "CENTER", "CENTER", 0, RISE }, "unknown screen: prof over it")
+        t.eq(p, { "CENTER", "CENTER", 0, -NEST }, "unknown screen: the echo under it")
+        q, p = N.ArrowStack({ "CENTER", "CENTER", 0, 0 }, 56, nil, nil, 20, 30, true, true)
+        t.eq(q, { "CENTER", "CENTER", 0, 0 }, "unknown screen, slid: quest as given")
+        t.eq(p, { "CENTER", "CENTER", 0, -SLIDE }, "unknown screen, slid: straight below")
     end,
 
-    ["O1 quest arrow is full size when no needle is under it"] = function(t)
+    ["O1 quest arrow is full size when no echo is behind it"] = function(t)
         local L = N.ArrowLayout(state(nil, { prof = { hasStep = false } }))
         t.eq(L.quest.alpha, 1, "alpha"); t.eq(L.quest.scale, 1, "scale"); t.eq(L.quest.small, false, "small")
         t.eq(L.prof.shown, false, "prof hidden")
         L = N.ArrowLayout(state(nil, { prof = { hasStep = true, mode = "text" } }))
         t.eq(L.quest.alpha, 1, "text-only profession lane leaves the quest arrow alone")
         L = N.ArrowLayout(state({ arrows = { hidden = { prof = true } } }))
-        t.eq(L.quest.scale, 1, "hidden needle leaves the quest arrow alone")
+        t.eq(L.quest.scale, 1, "hidden echo leaves the quest arrow alone")
     end,
 
     ["O1 stacked with no quest step: profession step takes the stack's place"] = function(t)
@@ -205,7 +232,7 @@ return {
         local s = N.ArrowApply(nil, { op = "move", key = "quest", point = { "BOTTOMLEFT", "BOTTOMLEFT", 300, 300 } }, CTX)
         local L = N.ArrowLayout(state(s))
         t.eq(L.stacked, true, "still stacked")
-        at(t, L.quest.position, 300, 300, "stack moved"); at(t, L.prof.position, 300, 300 + RISE, "the profession arrow went with it")
+        at(t, L.quest.position, 300, 300, "stack moved"); at(t, L.prof.position, 300, 300 - NEST, "the profession arrow went with it")
         s = N.ArrowApply(s, { op = "move", key = "prof", point = { "BOTTOMLEFT", "BOTTOMLEFT", 600, 100 } }, CTX)
         L = N.ArrowLayout(state(s))
         t.eq(L.stacked, false, "now separate"); at(t, L.prof.position, 600, 100, "prof own place")
@@ -255,14 +282,36 @@ return {
         local L = N.ArrowLayout(state(o))
         t.eq(L.stacked, false, "40 px away stays separate")
         at(t, L.prof.position, STACK_LEFT + 40, STACK_BOTTOM, "and stands where dropped")
+        -- The echo's slid place, straight below the quest arrow, belongs to
+        -- the stack: let go within the snap of it, the two are stacked.
+        r = N.ArrowApply(s, { op = "drop", key = "prof",
+            point = { "BOTTOMLEFT", "BOTTOMLEFT", STACK_LEFT, STACK_BOTTOM - SLIDE - 39 } }, CTX)
+        sameLayout(t, N.ArrowLayout(state(r)), want, "prof dropped 39 px under the slid place")
+        o = N.ArrowApply(s, { op = "drop", key = "prof",
+            point = { "BOTTOMLEFT", "BOTTOMLEFT", STACK_LEFT, STACK_BOTTOM - SLIDE - 40 } }, CTX)
+        L = N.ArrowLayout(state(o))
+        t.eq(L.stacked, false, "40 px under the slid place stays separate")
+        at(t, L.prof.position, STACK_LEFT, STACK_BOTTOM - SLIDE - 40, "and stands where dropped")
+        -- Over the quest arrow there is no place of the stack any more.
+        o = N.ArrowApply(s, { op = "drop", key = "prof",
+            point = { "BOTTOMLEFT", "BOTTOMLEFT", STACK_LEFT, STACK_BOTTOM + SLIDE } }, CTX)
+        t.eq(N.ArrowLayout(state(o)).stacked, false, "one arrow and a gap above: separate")
         -- The quest arrow dropped on the separated profession arrow stacks too.
         local q = N.ArrowApply(s, { op = "drop", key = "quest",
             point = { "BOTTOMLEFT", "BOTTOMLEFT", STACK_LEFT + 10, STACK_BOTTOM - 64 + 10 } }, CTX)
         t.eq(N.ArrowLayout(state(q)).stacked, true, "quest dropped on prof")
         -- While stacked, dropping the quest arrow anywhere just moves the stack.
-        local mv = N.ArrowApply(nil, { op = "drop", key = "quest", point = { "BOTTOMLEFT", "BOTTOMLEFT", 50, 50 } }, CTX)
+        local mv = N.ArrowApply(nil, { op = "drop", key = "quest", point = { "BOTTOMLEFT", "BOTTOMLEFT", 50, 100 } }, CTX)
         L = N.ArrowLayout(state(mv))
-        t.eq(L.stacked, true, "stack stays a stack"); at(t, L.quest.position, 50, 50, "stack moved")
+        t.eq(L.stacked, true, "stack stays a stack"); at(t, L.quest.position, 50, 100, "stack moved")
+        at(t, L.prof.position, 50, 100 - NEST, "the echo with it")
+        -- Let go too low for the echo's slid place: the place dropped at is
+        -- saved, and the two are drawn up from it by what is missing.
+        mv = N.ArrowApply(nil, { op = "drop", key = "quest", point = { "BOTTOMLEFT", "BOTTOMLEFT", 50, 50 } }, CTX)
+        t.eq(mv.arrows.points.quest, { "BOTTOMLEFT", "BOTTOMLEFT", 50, 50 }, "the dropped place is saved as it is")
+        L = N.ArrowLayout(state(mv))
+        t.eq(L.stacked, true, "low: stack stays a stack"); at(t, L.quest.position, 50, SLIDE, "low: room kept for the slid place")
+        at(t, N.ArrowLayout(state(mv, { prof = { hasStep = false } })).quest.position, 50, 50, "low, quest alone: where dropped")
         t.eq(N.StackSnap(39, 0), true, "39 snaps"); t.eq(N.StackSnap(40, 0), false, "40 does not")
         t.eq(N.StackSnap(30, 30), false, "diagonal 42 does not"); t.eq(N.StackSnap(5, 5, 8), true, "own snap")
     end,
@@ -280,9 +329,9 @@ return {
         t.eq(r.arrows.points, nil, "no saved places"); t.eq(r.arrows.mode, nil, "no saved mode")
     end,
 
-    ["O7 separated profession arrow wears the quest arrow's colour meanings"] = function(t)
+    ["O7 the profession arrow wears the echo's purples by distance, separated or stacked"] = function(t)
         local L = N.ArrowLayout(state(separated()))
-        t.eq(L.prof.tint, "quest", "tint"); t.eq(L.prof.pinTint, nil, "the layout has no pinTint field")
+        t.eq(L.prof.tint, "echo", "tint"); t.eq(L.prof.pinTint, nil, "the layout has no pinTint field")
         -- Neither entry has a field for map pins or paths, stacked or
         -- separated: the layout says nothing about them.
         for name, layout in pairs({ separated = L, stacked = N.ArrowLayout(state(nil)) }) do
@@ -298,26 +347,46 @@ return {
         end
         local own = { 0.9, 0.1, 0.9 }
         local P = N.ARROW_PALETTE.standard
+        local E = N.ECHO_PALETTE
+        colour(t, E.far[1], E.far[2], E.far[3], { 90 / 255, 51 / 255, 145 / 255 }, "echo far purple")
+        colour(t, E.mid[1], E.mid[2], E.mid[3], { 155 / 255, 93 / 255, 229 / 255 }, "echo mid purple")
+        colour(t, E.near[1], E.near[2], E.near[3], { 217 / 255, 168 / 255, 1 }, "echo near purple")
+        colour(t, E.away[1], E.away[2], E.away[3], { 138 / 255, 132 / 255, 160 / 255 }, "echo away grey")
+        colour(t, E.here[1], E.here[2], E.here[3], { 240 / 255, 217 / 255, 1 }, "echo here")
         local r, g, b, a = N.ArrowPaint(L.prof, "zone", 40, nil, own)
-        colour(t, r, g, b, P.near, "green at 40 yd, not the activity's colour"); t.eq(a, 0.85, "at 0.85")
-        r, g, b = N.ArrowPaint(L.prof, "zone", 600, nil, own); colour(t, r, g, b, P.far, "orange at 600 yd")
-        r, g, b = N.ArrowPaint(L.prof, "away", 100, nil, own); colour(t, r, g, b, P.away, "grey away")
-        r, g, b = N.ArrowPaint(L.prof, "here", 0, nil, own); colour(t, r, g, b, P.here, "blue inside")
+        colour(t, r, g, b, E.near, "bright purple at 40 yd, not the activity's colour"); t.eq(a, N.ECHO_ALPHA, "at the echo's alpha")
+        r, g, b = N.ArrowPaint(L.prof, "zone", 600, nil, own); colour(t, r, g, b, E.far, "dim purple at 600 yd")
+        r, g, b = N.ArrowPaint(L.prof, "away", 100, nil, own); colour(t, r, g, b, E.away, "greyed away")
+        r, g, b = N.ArrowPaint(L.prof, "here", 0, nil, own); colour(t, r, g, b, E.here, "brightest inside")
+        -- 250 yd is 0.625 of the way from far to near: a quarter from mid to near.
         local qr, qg, qb, qa = N.ArrowPaint(L.quest, "zone", 250, nil, own)
+        colour(t, qr, qg, qb, { P.mid[1] + (P.near[1] - P.mid[1]) * 0.25, P.mid[2] + (P.near[2] - P.mid[2]) * 0.25,
+            P.mid[3] + (P.near[3] - P.mid[3]) * 0.25 }, "the quest arrow keeps its own palette")
+        t.eq(qa, 1, "quest at full opacity")
         r, g, b = N.ArrowPaint(L.prof, "zone", 250, nil, own)
-        colour(t, r, g, b, { qr, qg, qb }, "same colour as the quest arrow would be"); t.eq(qa, 1, "quest at full opacity")
-        -- Stacked, the needle keeps its own colour.
+        local mid250 = { E.mid[1] + (E.near[1] - E.mid[1]) * 0.25, E.mid[2] + (E.near[2] - E.mid[2]) * 0.25,
+                         E.mid[3] + (E.near[3] - E.mid[3]) * 0.25 }
+        colour(t, r, g, b, mid250, "the same far-to-near step as the quest arrow, in the echo's purples")
+        local er, eg, eb = N.EchoColor("zone", 250)
+        colour(t, er, eg, eb, mid250, "which is N.EchoColor")
+        r, g, b = N.ArrowPaint(L.prof, "zone", 250, N.ARROW_PALETTE.colourBlind, own)
+        colour(t, r, g, b, mid250, "whatever the palette")
+        -- Stacked, the echo is the same purple at the same alpha.
         local S = N.ArrowLayout(state(nil))
-        t.eq(S.prof.tint, "own", "stacked tint")
+        t.eq(S.prof.tint, "echo", "stacked tint")
         r, g, b, a = N.ArrowPaint(S.prof, "zone", 40, nil, own)
-        colour(t, r, g, b, own, "stacked needle own colour"); t.eq(a, 1, "stacked needle at full strength")
+        colour(t, r, g, b, E.near, "stacked echo: purple, not the activity's colour"); t.eq(a, N.ECHO_ALPHA, "stacked echo at its alpha")
+        -- With no quest step it is the one pointer, in the quest arrow's colours.
+        local alone = N.ArrowLayout(state(nil, { quest = {} }))
+        r, g, b, a = N.ArrowPaint(alone.prof, "zone", 40, nil, own)
+        colour(t, r, g, b, P.near, "alone: green at 40 yd"); t.eq(a, N.PROF_HOLDER_ALPHA, "alone: at 0.85")
     end,
 
     ["O8 separated profession arrow stays faint and secondary"] = function(t)
         local L = N.ArrowLayout(state(separated()))
-        t.eq(L.prof.faint, true, "faint"); t.eq(L.prof.alpha, 0.85, "alpha 0.85")
+        t.eq(L.prof.faint, true, "faint"); t.eq(L.prof.alpha, N.ECHO_ALPHA, "the echo's alpha")
         t.ok(L.prof.alpha < L.quest.alpha, "lower opacity than the quest arrow")
-        t.eq(L.prof.look, "needle", "still the needle"); t.eq(L.prof.emphasis, "secondary", "secondary")
+        t.eq(L.prof.look, "echo", "still the echo"); t.eq(L.prof.emphasis, "secondary", "secondary")
         t.eq(L.prof.scale, 1, "scale"); t.eq(L.prof.behind, false, "not behind anything")
         t.eq(L.quest.faint, false, "quest not faint"); t.eq(L.quest.emphasis, "primary", "quest primary")
     end,
@@ -380,14 +449,18 @@ return {
         at(t, L.quest.position, STACK_LEFT, STACK_BOTTOM, "quest default"); at(t, L.prof.position, 20, 30, "prof from saved")
         L = N.ArrowLayout(state({ arrows = { points = { prof = { "BOTTOMLEFT", "BOTTOMLEFT", 20, 30 } } } }))
         t.eq(L.stacked, true, "a saved place without a mode is still stacked")
-        at(t, L.prof.position, STACK_LEFT, STACK_BOTTOM + RISE, "and stands with the stack")
-        -- At the very top the stack of two is moved down, as one, so the
-        -- profession arrow stays on the screen.
+        at(t, L.prof.position, STACK_LEFT, STACK_BOTTOM - NEST, "and stands with the stack")
+        -- At the very top the quest arrow stays at the top edge: the echo
+        -- is under it, so nothing of the two leaves the screen.
         L = N.ArrowLayout(state({ arrows = { points = { quest = { "TOP" } } } }))
-        at(t, L.quest.position, 472, 744 - RISE, "anchor only: relative anchor and offsets default")
-        at(t, L.prof.position, 472, 744, "the profession arrow at the top edge")
+        at(t, L.quest.position, 472, 744, "anchor only: relative anchor and offsets default")
+        at(t, L.prof.position, 472, 744 - NEST, "the echo under the top edge's arrow")
         L = N.ArrowLayout(state({ arrows = { points = { quest = { "TOP", nil, 10 } } } }))
-        at(t, L.quest.position, 482, 744 - RISE, "x only")
+        at(t, L.quest.position, 482, 744, "x only")
+        -- At the very bottom the two are moved up, as one, by the slid place.
+        L = N.ArrowLayout(state({ arrows = { points = { quest = { "BOTTOM" } } } }))
+        at(t, L.quest.position, 472, SLIDE, "bottom edge: up by one arrow and a gap")
+        at(t, L.prof.position, 472, SLIDE - NEST, "the echo under it, on the screen")
         L = N.ArrowLayout(state({ arrows = { points = { quest = { "TOP" } } } }, { prof = { hasStep = false } }))
         at(t, L.quest.position, 472, 744, "one arrow: where the single arrow stands")
         L = N.ArrowLayout(state({ arrows = { hidden = { prof = true } } }))

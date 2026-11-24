@@ -1,7 +1,7 @@
 -- The arrow acceptance of F1, end to end over the fake client: the two
 -- arrows separate, keep their places over a reload, restack from the menu
 -- and separate again to the same places, and the quest arrow keeps its
--- colour while the separated needle stays the fainter one. The pure layout
+-- colour while the separated echo stays the fainter one, in its purple. The pure layout
 -- rules are in Tests/Nav/ArrowLayout.lua; these pin the module on top of
 -- them. No game client is involved.
 local _, ns = ...
@@ -81,7 +81,7 @@ return {
         t.eq(k.problems:count() + k2.problems:count(), 0)
     end,
 
-    ["arrow acceptance: Restack from the menu puts the profession arrow back over the quest arrow, which stays"] = function(t)
+    ["arrow acceptance: Restack from the menu puts the profession arrow back behind the quest arrow, which stays"] = function(t)
         local k, c, d = start()
         local ok, q, p = both(t, c)
         if not ok then return end
@@ -89,9 +89,13 @@ return {
         q.click("right")
         q.choose("restack")
         t.eq(layout(c).mode, "stacked")
-        t.eq(p.attached, nil, "the profession arrow has its own place, over the quest arrow")
-        t.eq(p.under, false, "not under it")
-        t.eq(p.lookIs, "needle", "drawn as the stack's profession arrow again")
+        t.eq(p.attached, nil, "the profession arrow has its own place, below the quest arrow")
+        t.eq(p.under, true, "behind it, as its echo")
+        t.eq(q.under, false, "the quest arrow in front")
+        t.eq(p.lookIs, "pointer", "drawn as the quest arrow's echo again, no needle")
+        t.eq(p.faded, N.ECHO_ALPHA, "see-through")
+        t.eq(p.point, { STACK[1], STACK[2], STACK[3], STACK[4] - (N.ARROW_SIZE + N.ARROW_GAP) },
+            "the demo gives no spread: slid one arrow and a gap straight down")
         t.eq(layout(c).points.quest, STACK, "the quest arrow did not move")
         t.eq(q.point, STACK)
         t.eq(k.problems:count(), 0)
@@ -127,8 +131,9 @@ return {
         t.eq(layout(c2).mode, "stacked")
         t.eq(q2.point, STACK)
         t.eq(p2.attached, nil)
-        t.eq(p2.under, false)
-        t.eq(p2.lookIs, "needle")
+        t.eq(p2.under, true, "the echo behind the quest arrow")
+        t.eq(p2.lookIs, "pointer", "no needle")
+        t.eq(p2.point, { STACK[1], STACK[2], STACK[3], STACK[4] - (N.ARROW_SIZE + N.ARROW_GAP) })
         t.eq(k2.problems:count(), 0)
     end,
 
@@ -147,17 +152,20 @@ return {
         t.eq(k.problems:count(), 0)
     end,
 
-    ["arrow acceptance: the separated needle wears the quest colour meanings and stays the fainter arrow"] = function(t)
+    ["arrow acceptance: the separated echo wears its own purple by distance and stays the fainter arrow"] = function(t)
         local k, c, d = start()
         local ok, q, p = both(t, c)
         if not ok then return end
         apart(c, d)
         c.advance(3, 60)
-        local r, g, b = N.ArrowColor("zone", N.ARROW_DEMO_PROF or A.DEMO.profDistance)
-        t.ok(near(p.drawn.colour, { r, g, b }), "the colour the quest arrow would have at that distance")
+        local r, g, b = N.EchoColor("zone", N.ARROW_DEMO_PROF or A.DEMO.profDistance)
+        t.ok(near(p.drawn.colour, { r, g, b }), "the echo's purple at that distance")
+        local qr, qg, qb = N.ArrowColor("zone", N.ARROW_DEMO_PROF or A.DEMO.profDistance)
+        t.ok(not near(p.drawn.colour, { qr, qg, qb }), "not the colour the quest arrow would have there")
+        t.eq(p.lookIs, "pointer", "the echo's look, no needle")
         t.eq(q.faded, 1, "the quest arrow at full opacity")
-        t.eq(p.faded, N.PROF_HOLDER_ALPHA)
-        t.ok(p.faded < q.faded, "the needle is the fainter one")
+        t.eq(p.faded, N.ECHO_ALPHA)
+        t.ok(p.faded < q.faded, "the echo is the fainter one")
         t.eq(k.problems:count(), 0)
     end,
 }

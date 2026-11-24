@@ -168,7 +168,7 @@ tests["player walk 2b: no anvil known: the craft in words, and what to look for"
     t.eq(addon.problems:count(), before)
 end
 
-tests["player walk 2b: a craft that succeeds saves the anvil; from then on the needle points at it"] = function(t)
+tests["player walk 2b: a craft that succeeds saves the anvil; from then on the profession arrow points at it"] = function(t)
     local c, addon, before = boot({ bags = { { item = BAR, count = 6 } } })
     window(c, "Blacksmithing", 50, { belt() })
     crafted(c, 901)
@@ -183,8 +183,8 @@ tests["player walk 2b: a craft that succeeds saves the anvil; from then on the n
     walk(c, 0.3, 0.5)
     local p = prof(c)
     t.eq(p.shown, true)
-    t.ok(p.drawn.body ~= 0, "the needle is drawn")
-    t.eq(p.lookIs, "needle")
+    t.ok(p.drawn.body ~= 0, "the profession arrow is drawn")
+    t.eq(p.lookIs, "pointer", "as the quest arrow's echo, no needle")
     t.ok(has(said(p), "anvil"), said(p))
     t.ok(not has(said(p), "Look for"), "a place is known: " .. said(p))
     t.eq(addon.problems:count(), before)

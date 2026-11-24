@@ -63,7 +63,11 @@ T["only the fields the arrow view names"] = function(t)
                  other = "dropped" },
     })
     t.eq(keys(s), { layout = true, screenW = true, screenH = true, size = true, defaultPoint = true,
-                    gate = true, palette = true, player = true, facingKnown = true, quest = true, prof = true })
+                    gate = true, palette = true, player = true, facingKnown = true, quest = true, prof = true,
+                    spread = true })
+    -- The quest step lies due north, the profession step due east.
+    near(t, s.spread, math.pi / 2, "spread: the angle between the two bearings")
+    t.eq(N.ViewState(client(), { quest = share(1411, 0.5, 0.3) }).spread, nil, "one step only: no spread")
     t.eq(keys(s.quest), { hasStep = true, overlay = true, target = true, here = true, distance = true,
                           travel = true, textHeight = true })
     t.eq(keys(s.prof), { on = true, hasStep = true, target = true, here = true, distance = true,

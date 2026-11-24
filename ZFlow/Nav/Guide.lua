@@ -136,6 +136,13 @@ function N.Guide(input)
     local p = leg(input.prof, from, fromWhy, facing, input.link)
     -- The compass word (G40) is said from the bearing before it is dropped.
     q.compass, p.compass = N.Compass(q.bearing), N.Compass(p.bearing)
+    -- How far apart the two steps lie from here, 0 to pi: the echo arrow
+    -- goes by it (lead section 476). nil when either has no bearing.
+    if finite(q.bearing) and finite(p.bearing) then
+        local diff = math.abs(q.bearing - p.bearing) % (2 * math.pi)
+        if diff > math.pi then diff = 2 * math.pi - diff end
+        state.spread = diff
+    end
     q.bearing = nil
     p.bearingKnown = p.bearing ~= nil
     p.bearing = nil

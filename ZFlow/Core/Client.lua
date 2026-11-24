@@ -3115,7 +3115,7 @@ function ns.make.client(env)
     --   h.place({ anchor, relative anchor, x, y })   against the screen
     --   h.attach(other)        centred on another arrow handle, following it
     --   h.show(on)             hiding ends a drag in progress
-    --   h.look("pointer" | "needle")
+    --   h.look("pointer" | "echo" | "needle")
     --   h.draw(d)              one frame of Nav/ArrowMotion's ArrowStep table.
     --                          Makes no table or function, and looks no
     --                          method up, after the arrow is made. The ripple
@@ -3450,7 +3450,10 @@ function ns.make.client(env)
         -- texture; elsewhere it takes the sheet's cells as the pointer does.
         local current, turns = "pointer", false
         local function shape(look)
-            current = look == "needle" and "needle" or "pointer"
+            -- "echo": the pointer's own cells and size, drawn quieter with
+            -- more glow (lead section 476). The needle is kept until the
+            -- arrow's own file stops asking for it.
+            current = (look == "needle" or look == "echo") and look or "pointer"
             turns = false
             if current == "needle" then
                 turns = fast(body, "SetRotation", 0) and true or false
@@ -3597,6 +3600,15 @@ function ns.make.client(env)
                 fast(body, "SetAlpha", on * 0.9)
                 fast(shine, "SetAlpha", on * 0.55)
                 fast(shadow, "SetAlpha", on * 0.45)
+            elseif current == "echo" then
+                -- The echo: the same arrow as a see-through shape with a
+                -- glow at its edge. Little shine, no shadow, no float, so it
+                -- reads as the arrow's echo and not as a second solid arrow.
+                fast(body, "SetAlpha", on)
+                fast(shine, "SetAlpha", on * 0.35)
+                fast(shadow, "SetAlpha", 0)
+                fast(pool, "SetAlpha", on * 0.6)
+                fast(body, "SetPoint", "CENTER", holder, "CENTER", 0, 0)
             else
                 fast(body, "SetAlpha", on)
                 fast(shine, "SetAlpha", d.shine or 0.9)

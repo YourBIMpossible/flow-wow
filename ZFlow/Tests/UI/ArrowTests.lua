@@ -79,7 +79,7 @@ return {
         t.eq(c.savedExists(ns.id.accountDB) and savedArrows(c) or nil, nil, "nothing saved")
     end,
 
-    ["demo: stacked, the profession arrow over the quest arrow, its text above, the quest text below"] = function(t)
+    ["demo: stacked, the profession arrow is the echo behind and below the quest arrow, its text below, the quest text above"] = function(t)
         local _, c, a, d = start()
         login(c)
         cmd(d, "demo")
@@ -88,17 +88,20 @@ return {
         t.eq(p.shown, true)
         t.eq(q.point, N.ARROW_DEFAULT_POINT)
         t.eq(p.attached, nil, "stacked: the profession arrow has its own place")
-        t.ok(type(p.point) == "table" and p.point ~= q.point, "over the quest arrow, not on it")
-        t.eq(p.lookIs, "needle")
-        t.eq(p.under, false)
+        local at = N.ARROW_DEFAULT_POINT
+        t.eq(p.point, { at[1], at[2], at[3], at[4] - (N.ARROW_SIZE + N.ARROW_GAP) },
+            "no spread in the demo: slid one arrow and a gap below the quest arrow, not on it")
+        t.eq(p.lookIs, "pointer", "the echo, no needle")
+        t.eq(p.under, true, "behind the quest arrow")
+        t.eq(p.scaled, 1, "the same size as the quest arrow")
         t.eq(q.under, false)
         t.eq(q.scaled, 1, "the quest arrow is not shrunk")
         t.eq(q.faded, 1, "nor dimmed")
-        t.eq(p.faded, 1, "the profession arrow at full strength")
+        t.eq(p.faded, N.ECHO_ALPHA, "the echo is see-through")
         t.eq(q.lines, { "Demo: north", "300 yd" })
         t.eq(p.lines, { "Demo: east" }, "its text is on its own frame")
-        t.eq(q.textPoint, { "TOP", "BOTTOM", 0, -2 }, "quest lines below the quest arrow")
-        t.eq(p.textPoint, { "BOTTOM", "TOP", 0, 7 }, "profession lines above the profession arrow")
+        t.eq(q.textPoint, { "BOTTOM", "TOP", 0, N.TEXT_GAP_ABOVE }, "quest lines above the quest arrow")
+        t.eq(p.textPoint, { "TOP", "BOTTOM", 0, -N.TEXT_GAP_BELOW }, "profession lines below the echo")
         c.advance(0.5, 30)
         t.ok(q.draws > 0 and p.draws > 0, "both are drawn every frame")
         t.ok(a.state().demo)
@@ -172,7 +175,7 @@ return {
         t.eq(q.lines[2], "10 yd")
     end,
 
-    ["separate: the needle has its own place, quest colours, still faint"] = function(t)
+    ["separate: the echo has its own place, its own purple, still faint"] = function(t)
         local _, c, _, d = start()
         login(c)
         cmd(d, "demo")
@@ -181,17 +184,20 @@ return {
         t.eq(p.attached, nil)
         t.ok(p.point ~= nil, "placed on the screen")
         t.eq(p.under, false)
-        t.eq(p.lookIs, "needle")
-        t.eq(p.faded, N.PROF_HOLDER_ALPHA)
+        t.eq(p.lookIs, "pointer", "the echo's look, no needle")
+        t.eq(p.faded, N.ECHO_ALPHA)
         t.eq(q.scaled, 1, "the quest arrow is full size once alone")
         t.eq(q.faded, 1, "and full opacity")
         t.eq(p.lines, { "Demo: east" }, "its own text")
         t.eq(savedArrows(c).mode, "separate")
         c.advance(3, 60)
         local qc, pc = q.drawn.colour, p.drawn.colour
-        local r, g, b = N.ArrowColor("zone", N.ARROW_DEMO_PROF or A.DEMO.profDistance)
+        local r, g, b = N.EchoColor("zone", N.ARROW_DEMO_PROF or A.DEMO.profDistance)
         t.ok(math.abs(pc[1] - r) + math.abs(pc[2] - g) + math.abs(pc[3] - b) < 0.02,
-            "the needle takes the quest arrow's colour meanings")
+            "the echo takes its own purple for that distance")
+        local qr, qg, qb = N.ArrowColor("zone", N.ARROW_DEMO_PROF or A.DEMO.profDistance)
+        t.ok(math.abs(pc[1] - qr) + math.abs(pc[2] - qg) + math.abs(pc[3] - qb) > 0.02,
+            "not the quest arrow's colour meanings")
         t.eq(#qc, 3)
     end,
 
@@ -213,7 +219,13 @@ return {
         c2.arrows[2].drag({ "CENTER", "CENTER", 110, 45 })
         t.eq(savedArrows(c2).mode, nil, "dropped on the quest arrow: stacked again")
         t.eq(c2.arrows[2].attached, nil)
-        t.eq(c2.arrows[2].lookIs, "needle", "the profession arrow of the stack again")
+        t.eq(c2.arrows[2].lookIs, "pointer", "the echo of the stack again, no needle")
+        t.eq(c2.arrows[2].under, true, "behind the quest arrow")
+        -- The slid place under the quest arrow is part of the stack too.
+        cmd(d2, "separate")
+        t.eq(savedArrows(c2).mode, "separate")
+        c2.arrows[2].drag({ "CENTER", "CENTER", 100, 50 - (N.ARROW_SIZE + N.ARROW_GAP) - 10 })
+        t.eq(savedArrows(c2).mode, nil, "dropped on the slid place: stacked again")
     end,
 
     ["commands: stack, reset, hide and text"] = function(t)
@@ -224,8 +236,9 @@ return {
         cmd(d, "stack")
         t.eq(savedArrows(c).mode, nil, "stacked is the default mode")
         t.eq(c.arrows[2].attached, nil, "the profession arrow has its own place in the stack")
-        t.eq(c.arrows[2].lookIs, "needle")
-        t.ok(savedArrows(c).points ~= nil, "the needle's own place is kept for the next separation")
+        t.eq(c.arrows[2].lookIs, "pointer", "the quest arrow's echo, no needle")
+        t.eq(c.arrows[2].under, true, "behind the quest arrow")
+        t.ok(savedArrows(c).points ~= nil, "the profession arrow's own place is kept for the next separation")
         cmd(d, "hide prof")
         t.eq(c.arrows[2].shown, false)
         t.eq(savedArrows(c).hidden, { prof = true })
@@ -233,7 +246,7 @@ return {
         t.eq(c.arrows[2].shown, true)
         cmd(d, "text quest")
         t.eq(c.arrows[1].lines, {}, "the quest lines are off")
-        t.eq(c.arrows[2].lines, { "Demo: east" }, "the needle's stay, on its own arrow")
+        t.eq(c.arrows[2].lines, { "Demo: east" }, "the echo's stay, on its own arrow")
         cmd(d, "text quest")
         c.arrows[1].drag({ "CENTER", "CENTER", 10, 10 })
         cmd(d, "reset")

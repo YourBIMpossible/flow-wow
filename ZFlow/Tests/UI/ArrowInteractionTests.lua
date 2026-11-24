@@ -261,14 +261,18 @@ return {
         t.eq(k.problems:count(), 0)
     end,
 
-    ["hover: stacked, each arrow has its own tooltip with its own lines"] = function(t)
+    ["hover: stacked, the quest arrow in front says both steps, the echo its own"] = function(t)
         local k, c = start()
         if not has(t, c) then return end
         local q, p = c.arrows[1], c.arrows[2]
-        t.eq(p.under, false, "the profession arrow is over the quest arrow, not under it, and takes the mouse")
+        t.eq(p.under, true, "the profession arrow is the echo behind the quest arrow")
+        t.eq(q.under, false, "the quest arrow in front")
         q.hover(true)
         t.ok(hasLine(q.tipLines, "Demo: north"))
-        t.ok(not hasLine(q.tipLines, "Demo: east"), "the quest arrow's tooltip is the quest step's alone")
+        -- The echo lies behind the quest arrow and takes no pointer of its
+        -- own in the game, so the arrow in front says the echo's step too.
+        t.ok(hasLine(q.tipLines, "Profession arrow"), "the quest arrow's tooltip names the echo behind it")
+        t.ok(hasLine(q.tipLines, "Demo: east"), "and says the echo's step")
         q.hover(false)
         p.hover(true)
         t.ok(hasLine(p.tipLines, "Profession arrow"))

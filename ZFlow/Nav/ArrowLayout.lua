@@ -14,6 +14,14 @@ N.PROF_HOLDER_ALPHA = 0.85                      -- the profession arrow, always
 N.COLOR_NEAR, N.COLOR_FAR = 40, 600             -- yards: green at, orange at
 N.STACK_SNAP = 40                               -- drop this close to restack
 N.ARROW_GAP = 8
+-- The profession arrow is an echo of the quest arrow (lead section 476): the
+-- same arrow in purple, see-through, behind it. Tucked this far under it
+-- while the two steps lie within the spread of each other; beyond that it
+-- stands straight below, one arrow and a gap down. The band keeps it from
+-- flickering between the two at the edge.
+N.ECHO_NEST = 12
+N.ECHO_SPREAD, N.ECHO_BAND = 30 * math.pi / 180, 5 * math.pi / 180
+N.ECHO_ALPHA = 0.7
 N.ARROW_DEFAULT_POINT = { "TOP", "TOP", 0, -120 }
 N.CORPSE_RED = { 1, 0.2, 0.2 }
 N.ARROW_KEYS = { "quest", "prof" }
@@ -168,6 +176,12 @@ function N.ArrowState(p, pt, here)
     return "zone"
 end
 
+-- The echo's own colours: one purple family, dim far to bright near, the
+-- brightest at its own step, greyed in another zone. Never one flat colour
+-- (owner, lead section 476). Fixed: not a palette choice yet.
+N.ECHO_PALETTE = { away = rgb("8A84A0"), far = rgb("5A3391"), mid = rgb("9B5DE5"),
+                   near = rgb("D9A8FF"), here = rgb("F0D9FF") }
+
 local function mix(a, b, t)
     return a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t
 end
@@ -185,13 +199,24 @@ function N.ArrowColor(state, d, palette)
     return mix(th.mid, th.near, near * 2 - 1)
 end
 
+-- The echo's colour for a state and a distance in yards -> r, g, b: the
+-- quest arrow's far-to-near steps, in the echo's purples.
+function N.EchoColor(state, d)
+    return N.ArrowColor(state, d, N.ECHO_PALETTE)
+end
+
 -- The colour and opacity one arrow is drawn with -> r, g, b, a.
 --   entry: one arrow from N.ArrowLayout. own: { r, g, b } used when the
---   entry's tint is "own" (the needle under the quest arrow).
+--   entry's tint is "own".
 -- A tint of "quest" means the quest arrow's colour meanings at the entry's
--- own (lower) opacity: never a colour of the activity.
+-- own (lower) opacity: never a colour of the activity. A tint of "echo" is
+-- the echo's purple by its own distance, whatever the palette.
 function N.ArrowPaint(entry, state, d, palette, own)
     local a = entry and entry.alpha or 1
+    if entry and entry.tint == "echo" then
+        local er, eg, eb = N.EchoColor(state, d)
+        return er, eg, eb, a
+    end
     if entry and entry.tint == "own" and own then return own[1], own[2], own[3], a end
     local r, g, b = N.ArrowColor(state, d, palette)
     return r, g, b, a
@@ -239,33 +264,40 @@ local function stackPointOf(saved, defaultPoint, size, sw, sh)
         or N.ClampPoint(N.ARROW_DEFAULT_POINT, size, sw, sh)
 end
 
--- Two arrows in one stack: the profession arrow above, the quest arrow
--- below. The needle is longer than its frame and turns, so the gap is
--- kept between the quest arrow and the needle's whole turning circle
--- (N.NeedleClearance, Nav/ArrowView.lua).
+-- Two arrows on one place: the quest arrow, and behind it the profession
+-- arrow as its echo. STACK_GAP is kept for callers that still read it.
 N.STACK_GAP = 4
 
+-- How far under the quest arrow the echo stands. slid: straight below it.
+function N.EchoDrop(size, slid)
+    size = finite(size) and size or N.ARROW_SIZE
+    return slid and (size + N.ARROW_GAP) or N.ECHO_NEST
+end
+
 -- Where the two stand when both are shown. point: the stack's place (the
--- quest arrow's). above, below: the room the profession text takes over
--- the stack and the quest text takes under it. drawn: the profession arrow
--- is drawn (false: only its text, on the quest arrow's own place).
--- On a known screen the stack is moved down or up, as one, so neither text
+-- quest arrow's). above: the room the quest text takes over the quest
+-- arrow. below: the room the profession text takes under the echo. drawn:
+-- the echo is drawn (false: only its text, on the quest arrow's own place).
+-- slid: the echo stands straight below instead of tucked under.
+-- The room for the place below is kept whether the echo is there or not, so
+-- the quest arrow does not move when the echo slides out or back. On a
+-- known screen the two are moved up or down, as one, so neither text
 -- leaves it. -> questPoint, profPoint
-function N.ArrowStack(point, size, sw, sh, above, below, drawn)
+function N.ArrowStack(point, size, sw, sh, above, below, drawn, slid)
     size = finite(size) and size or N.ARROW_SIZE
     above = finite(above) and above > 0 and above or 0
     below = finite(below) and below > 0 and below or 0
-    local clear = type(N.NeedleClearance) == "function" and N.NeedleClearance(size) or 0
-    local rise = drawn and (size + clear + N.STACK_GAP) or 0
+    local room = below + (drawn and N.EchoDrop(size, true) or 0)
+    local drop = drawn and N.EchoDrop(size, slid) or 0
     local shift = 0
     if knownScreen(sw, sh) then
         local _, bottom = corner(point, size, sw, sh)
-        if bottom - below < 0 then shift = below - bottom end
-        local top = bottom + shift + size + rise + above
+        if bottom - room < 0 then shift = room - bottom end
+        local top = bottom + shift + size + above
         if top > sh then shift = shift - (top - sh) end
     end
     return { point[1], point[2], point[3], point[4] + shift },
-           { point[1], point[2], point[3], point[4] + shift + rise }
+           { point[1], point[2], point[3], point[4] + shift - drop }
 end
 
 -- ------------------------------------------------------------------ layout
@@ -276,12 +308,14 @@ end
 --   prof    = { hasStep, mode, room },      -- mode "off": only its text
 --   room: the height its text takes beyond the arrow, 0 or nil for none.
 --   screenW, screenH, size, defaultPoint,
+--   slid = the echo stands straight below the quest arrow (N.ArrowView
+--          decides it from the two bearings),
 -- }
 -- -> { quest = {...}, prof = {...}, stacked = bool }, each arrow:
 --   shown, anchor ("screen"), position { a, r, x, y } on the screen, look
---   ("pointer" or "needle"), behind, small, scale, alpha, tint ("quest" or
---   "own"), faint, emphasis, text; prof.above: it stands over the quest
---   arrow, its text above it and the quest text below the quest arrow. Map
+--   ("pointer" or "echo"), behind, small, scale, alpha, tint ("quest" or
+--   "echo"), faint, emphasis, text; prof.echo: it stands behind the quest
+--   arrow as its echo, prof.slid: straight below it, not tucked under. Map
 --   and path styling is not decided here: it does not change when the
 --   arrows are separated.
 function N.ArrowLayout(state)
@@ -309,27 +343,29 @@ function N.ArrowLayout(state)
     local prof = {
         shown = profShown, position = stackPoint, behind = false, small = false,
         scale = 1, alpha = N.PROF_HOLDER_ALPHA, faint = true, emphasis = "secondary",
-        text = saved.text.prof ~= false,
+        text = saved.text.prof ~= false, echo = false, slid = false,
     }
 
     local separate = saved.mode == "separate"
     if separate then
-        -- On its own: still the needle, still faint, quest colour meanings.
-        prof.anchor, prof.look, prof.tint = "screen", "needle", "quest"
+        -- On its own: still the echo, see-through and purple, at its own
+        -- place with nothing in front of it.
+        prof.anchor, prof.look, prof.tint = "screen", "echo", "echo"
+        prof.alpha = N.ECHO_ALPHA
         prof.position = N.ClampPoint(saved.points.prof, size, sw, sh)
             or N.ArrowBeside(stackPoint, size, sw, sh) or stackPoint
     elseif not questShown then
         -- Nothing to stand under: the profession step takes the stack's place.
         prof.anchor, prof.look, prof.tint = "screen", "pointer", "quest"
     else
-        -- Two arrows, one over the other: the profession arrow on top, in
-        -- its own colour and at full strength, so the two never overlap or
-        -- read as one. The quest arrow keeps its size.
-        prof.anchor, prof.look, prof.tint = "screen", "needle", "own"
-        prof.above, prof.alpha, prof.faint = true, 1, false
+        -- The echo: the same arrow, purple and see-through, behind the
+        -- quest arrow. The quest arrow keeps its size, strength and place.
+        prof.anchor, prof.look, prof.tint = "screen", "echo", "echo"
+        prof.behind, prof.alpha, prof.echo = true, N.ECHO_ALPHA, true
+        prof.slid = state.slid and true or false
         if profShown then
             quest.position, prof.position = N.ArrowStack(stackPoint, size, sw, sh,
-                p.room, q.room, p.mode ~= "off")
+                q.room, p.room, p.mode ~= "off", prof.slid)
         end
     end
     return { quest = quest, prof = prof, stacked = not separate }
@@ -391,11 +427,11 @@ function N.ArrowApply(layout, action, ctx)
         if to and other and knownScreen(sw, sh) then
             local ax, ay = centre(to, size, sw, sh)
             local bx, by = centre(other, size, sw, sh)
-            -- The profession arrow stands one rise over the quest arrow in
-            -- the stack: let go near that place it is stacked too.
-            local rise = size + N.NeedleClearance(size) + N.STACK_GAP
+            -- The echo's place straight below the quest arrow belongs to the
+            -- stack: let go near that place it is stacked too.
+            local drop = N.EchoDrop(size, true)
             if N.StackSnap(ax - bx, ay - by, ctx.snap)
-                or (key == "prof" and N.StackSnap(ax - bx, ay - by - rise, ctx.snap)) then
+                or (key == "prof" and N.StackSnap(ax - bx, ay - by + drop, ctx.snap)) then
                 -- Stacked again where the quest arrow stands; places kept.
                 s.mode = "stacked"
                 return withArrows(layout, s)

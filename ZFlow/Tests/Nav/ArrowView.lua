@@ -7,11 +7,13 @@ local W, H = 1000, 800
 -- The default point { "TOP", "TOP", 0, -120 } on this screen: left 472, bottom 624.
 local STACK_LEFT, STACK_BOTTOM = 472, 624
 local SEPARATE = { arrows = { mode = "separate" } }
--- How far the profession arrow stands over the quest arrow in the stack.
-local RISE = 56 + N.NeedleClearance(56) + N.STACK_GAP
+-- How far the echo stands under the quest arrow in the stack: straight below
+-- it (the two bearings apart or unknown), or tucked under it (spread = 0).
+local SLID, NEST = 56 + N.ARROW_GAP, N.ECHO_NEST
 local CTX = { screenW = W, screenH = H }
 
--- A state where the needle shows under a pointing quest arrow.
+-- A state where the echo shows behind a pointing quest arrow. No spread is
+-- given, so the echo stands straight below; spread = 0 tucks it under.
 local function state(over, questOver, profOver)
     local s = {
         gate = "open", screenW = W, screenH = H, facingKnown = true,
@@ -50,23 +52,37 @@ end
 
 local T = {}
 
-T["stacked: both arrows at full size and strength, the profession arrow over the quest arrow"] = function(t)
+T["stacked: the quest arrow at full size and strength, the profession arrow its echo behind it"] = function(t)
     local v = N.ArrowView(state())
     t.eq(v.stacked, true, "stacked")
     t.eq(v.quest.shown, true, "quest shown")
-    full(t, v.quest, "quest under the profession arrow")
+    full(t, v.quest, "quest in front of the echo")
     t.eq(v.quest.mode, "arrow", "quest points")
-    t.eq(v.prof.shown, true, "needle shown")
-    t.eq(v.prof.look, "needle", "needle look")
-    t.eq(v.prof.mode, "arrow", "needle points")
-    t.eq(v.prof.behind, false, "not behind the quest arrow")
-    t.eq(v.prof.above, true, "over it")
+    t.eq(v.prof.shown, true, "echo shown")
+    t.eq(v.prof.look, "echo", "echo look")
+    t.eq(v.prof.mode, "arrow", "echo points")
+    t.eq(v.prof.behind, true, "behind the quest arrow")
+    t.eq(v.prof.above, nil, "never over it")
+    t.eq(v.prof.slid, true, "bearings unknown: straight below")
     t.eq(v.prof.anchor, "screen", "on its own place")
-    t.eq(v.prof.scale, 1, "needle scale")
-    t.eq(v.prof.alpha, 1, "needle alpha")
-    colour(t, v.prof.colour, 0.2, 0.2, 0.2, "needle keeps its own colour stacked")
+    t.eq(v.prof.scale, 1, "echo scale")
+    t.eq(v.prof.alpha, N.ECHO_ALPHA, "echo alpha")
+    -- The echo's purple by its own distance, not the activity's own colour.
+    local er, eg, eb = N.EchoColor("zone", 200)
+    colour(t, v.prof.colour, er, eg, eb, "echo colour stacked")
     local l, b = edge(v.quest.point)
     t.eq(l, STACK_LEFT, "left"); t.eq(b, STACK_BOTTOM, "bottom")
+    local pl, pb = edge(v.prof.point)
+    t.eq(pl, STACK_LEFT, "echo: same column"); t.eq(pb, STACK_BOTTOM - SLID, "echo: one arrow and a gap down")
+    -- Both steps the same way: tucked under, the quest arrow where it was.
+    local n = N.ArrowView(state({ spread = 0 }))
+    t.eq(n.prof.slid, false, "same bearing: tucked under")
+    t.eq(n.prof.behind, true, "tucked: behind the quest arrow")
+    full(t, n.quest, "quest in front of the tucked echo")
+    local nl, nb = edge(n.prof.point)
+    t.eq(nl, STACK_LEFT, "tucked: same column"); t.eq(nb, STACK_BOTTOM - NEST, "tucked: the nest down")
+    local _, qb = edge(n.quest.point)
+    t.eq(qb, STACK_BOTTOM, "the quest arrow does not move")
 end
 
 T["stacked: quest arrow is full size and alpha with or without a pointing needle"] = function(t)
@@ -121,11 +137,11 @@ T["NV2 arrived ring is full size and alpha inside the area but off the point"] =
     full(t, v.quest, "ring off the point")
     t.eq(v.prof.shown, true, "needle still shown")
     t.eq(v.prof.mode, "arrow", "needle still points")
-    t.eq(v.prof.alpha, 1, "needle alpha")
+    t.eq(v.prof.alpha, N.ECHO_ALPHA, "echo alpha")
     local th = N.ARROW_PALETTE.standard.here
     colour(t, v.quest.colour, th[1], th[2], th[3], "ring is the in-area colour")
-    -- On the point: ring, full, and the profession arrow stays (it stands
-    -- over the quest arrow, so a quest stop does not switch it off).
+    -- On the point: ring, full, and the profession arrow stays (it has its
+    -- own place behind the quest arrow, so a quest stop does not switch it off).
     local on = N.ArrowView(state(nil, { here = true, distance = 5 }))
     t.eq(on.quest.mode, "ring", "ring on the point")
     full(t, on.quest, "ring on the point")
@@ -138,10 +154,9 @@ T["NV3 travel icon: scale and alpha are a pair, never scale 1 with alpha 0.7"] =
     t.eq(with.quest.beside, true, "quest arrow stands beside the icon")
     t.eq(with.quest.scale, 0.5, "beside the icon: 0.5")
     t.eq(with.quest.alpha, 1, "beside the icon: alpha 1")
-    -- Icon gone again: back to full, both values, with the profession
-    -- arrow over it.
+    -- Icon gone again: back to full, both values, with the echo behind it.
     local after = N.ArrowView(state(nil, { travel = false }))
-    full(t, after.quest, "icon gone, profession arrow over it")
+    full(t, after.quest, "icon gone, echo behind it")
     -- Icon gone and needle gone: back to full, both values.
     full(t, N.ArrowView(state(nil, { travel = false }, { hasStep = false })).quest, "icon gone, no needle")
     -- No travel icon on the corpse arrow or the ring.
@@ -166,10 +181,8 @@ T["scale and alpha only ever take an allowed pair, over every combination"] = fu
                                         { here = qHere, distance = qd, travel = travel },
                                         { hasStep = pStep, here = pHere, bearingKnown = can }))
                                     local s, a = v.quest.scale, v.quest.alpha
-                                    local needle = v.stacked and v.prof.shown and v.prof.mode == "arrow"
-                                        and v.prof.anchor == "quest"
+                                    -- The echo never makes the quest arrow smaller or fainter.
                                     local ok = (s == 1 and a == 1) or (s == 0.5 and a == 1 and v.quest.beside)
-                                        or (s == 0.8 and a == 0.7 and needle and v.quest.mode == "arrow")
                                     n = n + 1
                                     if not ok then
                                         t.ok(false, string.format("bad pair %s/%s at %s %s here=%s d=%s travel=%s",
@@ -189,31 +202,39 @@ T["scale and alpha only ever take an allowed pair, over every combination"] = fu
     t.eq(n, 512, "combinations checked")
 end
 
-T["separated: quest arrow always full, profession arrow faint with quest colour meanings"] = function(t)
+T["separated: quest arrow always full, profession arrow the see-through echo in its own purples"] = function(t)
     local v = N.ArrowView(state({ layout = SEPARATE }))
     t.eq(v.stacked, false, "separated")
     full(t, v.quest, "separated quest arrow")
     t.eq(v.prof.shown, true, "profession arrow shown")
+    t.eq(v.prof.look, "echo", "still the echo")
     t.eq(v.prof.anchor, "screen", "its own place")
     t.eq(v.prof.behind, false, "not behind")
+    t.eq(v.prof.slid, false, "no place in a stack")
     t.eq(v.prof.scale, 1, "full scale")
-    t.eq(v.prof.alpha, 0.85, "lower opacity")
+    t.eq(v.prof.alpha, N.ECHO_ALPHA, "lower opacity")
     -- Directly below the quest arrow: 56 + 8 lower.
     local l, b = edge(v.prof.point)
     t.eq(l, STACK_LEFT, "left"); t.eq(b, STACK_BOTTOM - 64, "bottom")
-    -- Quest colour meanings at every state, never its own colour.
-    local th = N.ARROW_PALETTE.standard
+    -- The echo's purples at every state: never the quest palette, never the
+    -- activity's own colour.
+    local th = N.ECHO_PALETTE
     for _, d in ipairs({ 40, 320, 600, 2000 }) do
-        local r, g, bl = N.ArrowColor("zone", d)
+        local r, g, bl = N.EchoColor("zone", d)
         colour(t, N.ArrowView(state({ layout = SEPARATE }, nil, { distance = d })).prof.colour, r, g, bl, "at " .. d)
     end
+    colour(t, N.ArrowView(state({ layout = SEPARATE }, nil, { distance = 40 })).prof.colour,
+        th.near[1], th.near[2], th.near[3], "at 40: the near purple")
+    colour(t, N.ArrowView(state({ layout = SEPARATE }, nil, { distance = 600 })).prof.colour,
+        th.far[1], th.far[2], th.far[3], "at 600: the far purple")
     local away = N.ArrowView(state({ layout = SEPARATE }, nil, { target = { cont = 1, zone = 11 } }))
-    colour(t, away.prof.colour, th.away[1], th.away[2], th.away[3], "another zone: grey")
-    t.eq(away.prof.alpha, 0.85, "grey at lower opacity")
+    colour(t, away.prof.colour, th.away[1], th.away[2], th.away[3], "another zone: greyed purple")
+    t.eq(away.prof.alpha, N.ECHO_ALPHA, "greyed at lower opacity")
     local here = N.ArrowView(state({ layout = SEPARATE }, nil, { here = true }))
-    colour(t, here.prof.colour, th.here[1], th.here[2], th.here[3], "in the area: blue")
+    colour(t, here.prof.colour, th.here[1], th.here[2], th.here[3], "in the area: the brightest purple")
     t.eq(here.prof.mode, "ring", "ring at its step")
-    t.eq(here.prof.alpha, 0.35, "ring fainter still")
+    t.eq(here.prof.alpha, N.PROF_RING_ALPHA, "ring fainter still")
+    t.eq(N.PROF_RING_ALPHA, 0.35)
     -- The main step's point does not switch a separated profession arrow off.
     local onMain = N.ArrowView(state({ layout = SEPARATE }, { distance = 5 }))
     t.eq(onMain.prof.shown, true, "still shown on the main point")
@@ -283,29 +304,38 @@ T["reset returns the default stacked view; restack returns the stacked view"] = 
     local wanted = N.ArrowView(state({ layout = { arrows = { points = {
         quest = { "BOTTOMLEFT", "BOTTOMLEFT", 100, 100 } } } } }))
     t.eq(restacked, wanted, "restack equals the stacked view at the quest arrow's place")
-    full(t, restacked.quest, "restacked quest under the profession arrow")
+    full(t, restacked.quest, "restacked quest in front of the echo")
     t.eq(restacked.prof.anchor, "screen", "the profession arrow on its own place")
-    t.eq(restacked.prof.above, true, "over the quest arrow again")
+    t.eq(restacked.prof.look, "echo", "the echo again")
+    t.eq(restacked.prof.behind, true, "behind the quest arrow again")
     local ql, qb = edge(restacked.quest.point)
     local pl, pb = edge(restacked.prof.point)
-    t.eq(pl, ql, "same column"); t.eq(pb, qb + RISE, "one rise over it")
+    t.eq(ql, 100, "quest left kept"); t.eq(qb, 100, "quest bottom kept")
+    t.eq(pl, ql, "same column"); t.eq(pb, qb - SLID, "one arrow and a gap under it")
 end
 
-T["text anchors: below or above by screen half, clear of the needle"] = function(t)
+T["text anchors: one arrow below or above by screen half; with the echo, quest above and echo below"] = function(t)
     -- Default place is in the top half and the lines fit above it.
     local plain = N.ArrowView(state(nil, nil, { hasStep = false }))
     t.eq(plain.quest.text.shown, true, "text shown")
     t.eq(plain.quest.text.to, "quest", "on the quest arrow")
     t.eq(plain.quest.text.side, "above", "top half: above")
     t.eq(plain.quest.text.point, { "BOTTOM", "TOP", 0, 4 }, "above, 4 clear")
-    -- With the needle: the lines move out by its clearance (7 on a 56 frame).
-    t.eq(N.NeedleClearance(56), 7, "needle clearance")
+    -- With the echo: the quest lines stay above the quest arrow, 4 clear.
+    t.eq(N.TEXT_GAP_ABOVE, 4); t.eq(N.TEXT_GAP_BELOW, 2)
     local stacked = N.ArrowView(state())
-    t.eq(stacked.quest.text.point, { "TOP", "BOTTOM", 0, -2 }, "two arrows: the quest lines below, 2 clear")
-    -- The needle's lines are on its own frame, above it, clear of the needle.
-    t.eq(stacked.prof.text.to, "prof", "needle text is on its own frame")
-    t.eq(stacked.prof.text.side, "above", "over the profession arrow")
-    t.eq(stacked.prof.text.point, { "BOTTOM", "TOP", 0, 7 }, "clear of the needle")
+    t.eq(stacked.quest.text.side, "above", "two arrows: the quest lines above")
+    t.eq(stacked.quest.text.point, { "BOTTOM", "TOP", 0, N.TEXT_GAP_ABOVE }, "two arrows: the quest lines above, 4 clear")
+    -- The echo's lines are on its own frame, below it, with the plain gap.
+    t.eq(stacked.prof.text.to, "prof", "echo text is on its own frame")
+    t.eq(stacked.prof.text.side, "below", "under the echo")
+    t.eq(stacked.prof.text.point, { "TOP", "BOTTOM", 0, -N.TEXT_GAP_BELOW }, "under the echo, 2 clear")
+    t.eq(stacked.prof.text.first, N.TEXT_GAP_BELOW, "no needle to clear")
+    -- The same with the stack in the bottom half.
+    local lowStack = N.ArrowView(state({ layout = { arrows = { points = {
+        quest = { "BOTTOMLEFT", "BOTTOMLEFT", 100, 100 } } } } }))
+    t.eq(lowStack.quest.text.point, { "BOTTOM", "TOP", 0, N.TEXT_GAP_ABOVE }, "bottom half: quest lines still above")
+    t.eq(lowStack.prof.text.point, { "TOP", "BOTTOM", 0, -N.TEXT_GAP_BELOW }, "bottom half: echo lines still below")
     -- Bottom half: below.
     local low = { arrows = { points = { quest = { "BOTTOMLEFT", "BOTTOMLEFT", 100, 100 } } } }
     local below = N.ArrowView(state({ layout = low }, nil, { hasStep = false }))
@@ -322,8 +352,10 @@ T["text anchors: below or above by screen half, clear of the needle"] = function
     -- Separated: the profession text hangs on its own arrow.
     local sep = N.ArrowView(state({ layout = SEPARATE }))
     t.eq(sep.prof.text.to, "prof", "own arrow")
-    t.eq(sep.prof.text.first, 7, "clear of its own needle")
-    t.eq(sep.quest.text.first, 4, "quest text back to its plain gap")
+    -- Its own arrow stands in the top half (bottom 560): above, the plain gap.
+    t.eq(sep.prof.text.side, "above", "its own screen half")
+    t.eq(sep.prof.text.first, N.TEXT_GAP_ABOVE, "its plain gap: no needle to clear")
+    t.eq(sep.quest.text.first, 4, "quest text at its plain gap")
 end
 
 T["gate off and hidden arrows: nothing shown, values still computed"] = function(t)
@@ -362,104 +394,137 @@ T["pure: the state is not changed and the same state gives the same view"] = fun
 end
 
 
--- LD1, then owner decision D2: stacked, the needle's lines count toward the
+-- LD1, then owner decision D2: stacked, the echo's lines count toward the
 -- room the text needs whenever they are shown, and they are shown while the
--- needle is "off" too (it is bare: its text without its art).
--- The top of the profession text and the bottom of the quest text.
+-- echo is "off" too (it is bare: its text without its art).
+-- The top of the quest text and the bottom of the profession text.
 local function reach(v, qNeed, pNeed)
     local _, pb = edge(v.prof.point)
     local _, qb = edge(v.quest.point)
-    return pb + 56 + v.prof.text.first + pNeed, qb - v.quest.text.first - qNeed
+    return qb + 56 + v.quest.text.first + qNeed, pb - v.prof.text.first - pNeed
 end
 
-T["stack of two: profession text above its arrow, quest text below its arrow, never between"] = function(t)
+T["stack of two: quest text above the quest arrow, profession text below the echo, never between"] = function(t)
     local v = N.ArrowView(state(nil, { textHeight = 14 }, { textHeight = 28 }))
-    t.eq(v.prof.above, true, "the profession arrow is the upper one")
+    t.eq(v.prof.behind, true, "the echo is behind the quest arrow")
+    t.eq(v.prof.above, nil, "never the upper one")
     local ql, qb = edge(v.quest.point)
     local pl, pb = edge(v.prof.point)
-    t.eq(pl, ql, "one column"); t.eq(pb, qb + RISE, "one rise over the quest arrow")
-    t.ok(pb >= qb + 56 + N.NeedleClearance(56), "the two never overlap")
-    t.eq(v.quest.text.to, "quest"); t.eq(v.quest.text.side, "below", "quest text below the quest arrow")
-    t.eq(v.prof.text.to, "prof"); t.eq(v.prof.text.side, "above", "profession text above the profession arrow")
-    t.eq(v.quest.text.point, { "TOP", "BOTTOM", 0, -N.TEXT_GAP_BELOW }, "hangs under the quest arrow")
-    t.eq(v.prof.text.point, { "BOTTOM", "TOP", 0, N.NeedleClearance(56) }, "stands over the needle")
+    t.eq(qb, STACK_BOTTOM, "the quest arrow where the single arrow stands")
+    t.eq(pl, ql, "one column"); t.eq(pb, qb - SLID, "one arrow and a gap under the quest arrow")
+    t.eq(pb + 56 + N.ARROW_GAP, qb, "slid out, the two never overlap")
+    t.eq(v.quest.text.to, "quest"); t.eq(v.quest.text.side, "above", "quest text above the quest arrow")
+    t.eq(v.prof.text.to, "prof"); t.eq(v.prof.text.side, "below", "profession text below the echo")
+    t.eq(v.quest.text.point, { "BOTTOM", "TOP", 0, N.TEXT_GAP_ABOVE }, "stands over the quest arrow")
+    t.eq(v.prof.text.point, { "TOP", "BOTTOM", 0, -N.TEXT_GAP_BELOW }, "hangs under the echo")
+    -- Tucked under: the same sides, the quest arrow in the same place.
+    local n = N.ArrowView(state({ spread = 0 }, { textHeight = 14 }, { textHeight = 28 }))
+    local _, nqb = edge(n.quest.point)
+    local _, npb = edge(n.prof.point)
+    t.eq(nqb, qb, "tucked: the quest arrow does not move"); t.eq(npb, qb - NEST, "tucked: the nest under it")
+    t.eq(n.quest.text.point, { "BOTTOM", "TOP", 0, N.TEXT_GAP_ABOVE }, "tucked: quest text still above")
+    t.eq(n.prof.text.point, { "TOP", "BOTTOM", 0, -N.TEXT_GAP_BELOW }, "tucked: profession text still below")
 end
 
-T["stack of two: lines of a needle that is off stand right over the quest arrow (D2)"] = function(t)
-    -- Arrow top 40 under the screen top: the stack is moved down so the
-    -- profession arrow and its two lines stay on the screen.
+T["stack of two: lines of an echo that is not drawn stand right under the quest arrow (D2)"] = function(t)
+    -- Arrow top 40 under the screen top: the quest line and its gap (18) fit
+    -- above it, so the stack stays where it was saved.
     local top = { arrows = { points = { quest = { "TOP", "TOP", 0, -40 } } } }
     local drawn = N.ArrowView(state({ layout = top }, { textHeight = 14 }, { textHeight = 28 }))
     t.eq(drawn.prof.shown, true)
-    t.eq(drawn.quest.text.side, "below", "the quest line is below")
+    t.eq(drawn.quest.text.side, "above", "the quest line is above")
     t.eq(drawn.prof.text.to, "prof", "section 341: on its own frame")
-    t.eq(drawn.prof.text.side, "above", "needle drawn: its lines are over it")
+    t.eq(drawn.prof.text.side, "below", "echo drawn: its lines are under it")
+    local _, dqb = edge(drawn.quest.point)
+    t.eq(dqb, H - 40 - 56, "it fits: the stack is not moved")
     local topEdge, bottomEdge = reach(drawn, 14, 28)
-    t.ok(topEdge <= H, "the profession lines end on the screen")
-    t.ok(bottomEdge >= 0, "the quest line ends on the screen")
-    -- The needle cannot point (no bearing): it is not drawn, its lines still are.
+    t.eq(topEdge, H - 40 + N.TEXT_GAP_ABOVE + 14, "the quest line ends on the screen")
+    t.ok(topEdge <= H, "under the top edge")
+    t.eq(bottomEdge, dqb - SLID - N.TEXT_GAP_BELOW - 28, "the profession lines end under the echo")
+    t.ok(bottomEdge >= 0, "on the screen")
+    -- The echo cannot point (no bearing): it is not drawn, its lines still are.
     local off = N.ArrowView(state({ layout = top }, { textHeight = 14 }, { textHeight = 28, bearingKnown = false }))
     t.eq(off.prof.mode, "off")
     t.eq(off.prof.shown, false)
+    t.eq(off.prof.bare, true)
     t.eq(off.prof.text.shown, true)
     t.eq(off.prof.text.to, "prof")
-    t.eq(off.prof.text.side, "above", "its lines are above, as when it is drawn")
-    t.eq(off.prof.text.point, { "BOTTOM", "TOP", 0, N.TEXT_GAP_ABOVE }, "with the plain gap: no needle to clear")
+    t.eq(off.prof.text.side, "below", "its lines are below, as when it is drawn")
+    t.eq(off.prof.text.point, { "TOP", "BOTTOM", 0, -N.TEXT_GAP_BELOW }, "with the plain gap")
     t.eq(off.prof.point, off.quest.point, "its frame stands on the quest arrow's place")
-    t.eq(off.quest.text.side, "below", "so the quest line is still below, never under the profession lines")
+    t.eq(off.quest.text.side, "above", "so the quest line is still above, never under the profession lines")
     -- The quest step at its point: the profession arrow is still drawn.
     local here = N.ArrowView(state({ layout = top }, { textHeight = 14, distance = 0 }, { textHeight = 28 }))
     t.eq(here.prof.mode, "arrow", "a quest stop does not switch it off")
-    t.eq(here.prof.text.side, "above", "at the quest's point: its lines are over it")
+    t.eq(here.prof.text.side, "below", "at the quest's point: its lines are under it")
 end
 
--- Lead section 341. The needle's lines go on the other side only when that
--- can be worked out and they fit there; otherwise the one stack on the quest
--- arrow, as before.
-T["stacked text: the needle's lines mirror the quest lines, above when those are below"] = function(t)
+-- Lead section 476 (it replaces section 341's mirror): with the echo the
+-- sides are fixed. The quest lines stand above the quest arrow and the
+-- echo's lines below the echo, whatever the screen half.
+T["stacked text: the quest lines are above and the echo's lines below, in the bottom half too"] = function(t)
     local low = { arrows = { points = { quest = { "BOTTOMLEFT", "BOTTOMLEFT", 100, 100 } } } }
     local v = N.ArrowView(state({ layout = low }, { textHeight = 28 }, { textHeight = 28 }))
-    t.eq(v.quest.text.side, "below", "bottom half: quest lines below")
+    t.eq(v.quest.text.side, "above", "bottom half: quest lines above")
+    t.eq(v.quest.text.point, { "BOTTOM", "TOP", 0, N.TEXT_GAP_ABOVE })
     t.eq(v.prof.text.to, "prof")
-    t.eq(v.prof.text.side, "above")
-    t.eq(v.prof.text.point, { "BOTTOM", "TOP", 0, 7 })
+    t.eq(v.prof.text.side, "below")
+    t.eq(v.prof.text.point, { "TOP", "BOTTOM", 0, -N.TEXT_GAP_BELOW })
+    -- The echo and its lines (64 + 2 + 28) fit under an arrow 100 up: not moved.
+    local _, qb = edge(v.quest.point)
+    t.eq(qb, 100, "it fits: the stack is not moved")
 end
 
 T["stack of two: at a screen edge the stack is moved so no text is cut off"] = function(t)
-    -- Saved at the very top: the stack goes down by what the profession
-    -- arrow and its lines need.
+    -- Saved at the very top: the stack goes down by what the quest line
+    -- over the quest arrow needs.
     local top = { arrows = { points = { quest = { "TOP", "TOP", 0, -5 } } } }
     local v = N.ArrowView(state({ layout = top }, { textHeight = 14 }, { textHeight = 28 }))
-    t.eq(v.quest.text.side, "below"); t.eq(v.prof.text.to, "prof"); t.eq(v.prof.text.side, "above")
+    t.eq(v.quest.text.side, "above"); t.eq(v.prof.text.to, "prof"); t.eq(v.prof.text.side, "below")
     local topEdge, bottomEdge = reach(v, 14, 28)
-    t.eq(topEdge, H, "the profession lines end at the top edge")
-    t.ok(bottomEdge >= 0, "the quest line is on the screen")
-    -- Saved at the very bottom: the stack goes up by what the quest line needs.
+    t.eq(topEdge, H, "the quest line ends at the top edge")
+    t.ok(bottomEdge >= 0, "the profession lines are on the screen")
+    local _, qb = edge(v.quest.point)
+    t.eq(qb, H - 14 - N.TEXT_GAP_ABOVE - 56, "down by the quest line and its gap")
+    -- Saved at the very bottom: the stack goes up by what the echo and its
+    -- lines need.
     local low = { arrows = { points = { quest = { "BOTTOM", "BOTTOM", 0, 0 } } } }
     v = N.ArrowView(state({ layout = low }, { textHeight = 14 }, { textHeight = 28 }))
     topEdge, bottomEdge = reach(v, 14, 28)
-    t.eq(bottomEdge, 0, "the quest line ends at the bottom edge")
-    t.ok(topEdge <= H, "the profession lines are on the screen")
+    t.eq(bottomEdge, 0, "the profession lines end at the bottom edge")
+    t.ok(topEdge <= H, "the quest line is on the screen")
+    _, qb = edge(v.quest.point)
+    t.eq(qb, SLID + N.TEXT_GAP_BELOW + 28, "up by the echo's place and its lines")
+    -- Tucked under, the room of the place below is still kept: the quest
+    -- arrow stands where it stood, and nothing is cut off.
+    local n = N.ArrowView(state({ layout = low, spread = 0 }, { textHeight = 14 }, { textHeight = 28 }))
+    local _, nqb = edge(n.quest.point)
+    t.eq(nqb, qb, "tucked: the quest arrow does not move")
+    local _, nBottom = reach(n, 14, 28)
+    t.eq(nBottom, SLID - NEST, "tucked: the profession lines end higher")
     -- With one arrow only the saved place is kept as it is.
     local one = N.ArrowView(state({ layout = top }, { textHeight = 14 }, { hasStep = false }))
     local _, b = edge(one.quest.point)
     t.eq(b, H - 5 - 56, "one arrow: where the single arrow stands")
 end
 
-T["stacked text: screen size unknown, each text still on its own arrow's outer side"] = function(t)
+T["stacked text: screen size unknown, the quest text still above its arrow, the echo's below"] = function(t)
     local v = N.ArrowView(state({ screenW = false, screenH = false }))
     t.eq(v.prof.text.to, "prof")
-    t.eq(v.prof.text.side, "above")
-    t.eq(v.quest.text.side, "below")
+    t.eq(v.prof.text.side, "below")
+    t.eq(v.prof.text.point, { "TOP", "BOTTOM", 0, -N.TEXT_GAP_BELOW })
+    t.eq(v.quest.text.side, "above")
+    t.eq(v.quest.text.point, { "BOTTOM", "TOP", 0, N.TEXT_GAP_ABOVE })
 end
 
-T["stacked text: quest text off, the needle's lines stay where they were"] = function(t)
+T["stacked text: quest text off, the echo's lines stay where they were"] = function(t)
     local hidden = { arrows = { text = { quest = false } } }
     local v = N.ArrowView(state({ layout = hidden }))
     t.eq(v.quest.text.shown, false)
     t.eq(v.prof.text.shown, true)
     t.eq(v.prof.text.to, "prof", "on its own arrow")
-    t.eq(v.prof.text.side, "above", "above it, as with the quest text on")
+    t.eq(v.prof.text.side, "below", "below it, as with the quest text on")
+    t.eq(v.prof.text.point, { "TOP", "BOTTOM", 0, -N.TEXT_GAP_BELOW })
 end
 
 return T

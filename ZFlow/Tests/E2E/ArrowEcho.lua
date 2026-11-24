@@ -32,6 +32,16 @@ local function start(tx, ty, px, py)
     return c, addon
 end
 
+-- The problems the run added, but for the two this bare fake client always
+-- has (no cast read, no spell tooltip hook): they are not the arrows'.
+local function problems(addon)
+    local n = 0
+    for _, pr in ipairs(addon.problems:list()) do
+        if pr.owner ~= "read" and pr.owner ~= "tooltip" then n = n + (pr.count or 1) end
+    end
+    return n
+end
+
 local function two(t, c, when)
     local q, p = c.arrows[1], c.arrows[2]
     t.eq(#c.arrows, 2, when .. ": two arrow frames, never a third")
@@ -65,7 +75,7 @@ tests["arrow echo: both steps within 30 degrees: the echo is tucked 12 px under 
     t.ok((p.lines or {})[1] ~= nil, "the profession step is said")
     t.eq(p.textPoint and p.textPoint[1], "TOP", "its lines below it")
     t.eq(q.textPoint and q.textPoint[1], "BOTTOM", "the quest lines above the quest arrow")
-    t.eq(addon.problems:count(), 0)
+    t.eq(problems(addon), 0, "no problem from the arrows")
 end
 
 tests["arrow echo: the steps more than 30 degrees apart: the echo slides straight down"] = function(t)
@@ -79,7 +89,7 @@ tests["arrow echo: the steps more than 30 degrees apart: the echo slides straigh
     q, p = two(t, c, "turned")
     t.eq(q.point[4], qy, "the quest arrow stays")
     t.eq(q.point[4] - p.point[4], 56 + N.ARROW_GAP, "the echo stays below")
-    t.eq(addon.problems:count(), 0)
+    t.eq(problems(addon), 0, "no problem from the arrows")
 end
 
 tests["arrow echo: never three arrows: nested, slid, separated or with no facing"] = function(t)
@@ -90,7 +100,7 @@ tests["arrow echo: never three arrows: nested, slid, separated or with no facing
         two(t, c, name .. ", no facing")
         c.setFacing(0); c.advance(2, 8)
         two(t, c, name .. ", facing back")
-        t.eq(addon.problems:count(), 0)
+        t.eq(problems(addon), 0, "no problem from the arrows")
     end
 end
 

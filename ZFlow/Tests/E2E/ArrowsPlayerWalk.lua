@@ -95,7 +95,7 @@ local function has(text, part) return text:find(part, 1, true) ~= nil end
 
 -- Case 1 ---------------------------------------------------------------
 
-tests["player walk 1: a quest step and a craft at an anvil: two arrows, one over the other"] = function(t)
+tests["player walk 1: a quest step and a craft at an anvil: two arrows, the echo below the quest arrow"] = function(t)
     -- Saved ahead: an anvil this player used earlier.
     local c, addon, before = boot({ bags = { { item = BAR, count = 6 } },
         account = { learned = { keyStations = { { kind = "anvil", map = HERE, x = 0.6, y = 0.5 } } } } })
@@ -107,28 +107,32 @@ tests["player walk 1: a quest step and a craft at an anvil: two arrows, one over
     t.ok(has(said(q), "Wolves"), said(q))
     t.ok(has(said(p), "anvil"), said(p))
     t.ok(q.drawn.body ~= 0, "the quest arrow is drawn")
-    t.ok(p.drawn.body ~= 0, "the profession needle is drawn")
-    t.eq(p.lookIs, "needle", "its own look")
+    t.ok(p.drawn.body ~= 0, "the profession arrow is drawn")
+    t.eq(p.lookIs, "pointer", "the quest arrow's echo, no needle")
+    t.eq(p.under, true, "behind the quest arrow")
+    t.eq(q.under, false, "the quest arrow in front")
+    t.eq(p.faded, N.ECHO_ALPHA, "see-through")
     t.eq(p.point[3], q.point[3], "same column")
-    t.eq(p.point[4] - q.point[4], 56 + N.NeedleClearance(56) + N.STACK_GAP,
-        "one arrow, the needle's turning room and a gap higher: they do not touch")
-    t.eq(q.textPoint[1], "TOP", "the quest text hangs under its arrow")
-    t.eq(p.textPoint[1], "BOTTOM", "the profession text stands over its arrow")
+    -- The wolves are north and the anvil east: more than 30 degrees apart.
+    t.eq(q.point[4] - p.point[4], 56 + N.ARROW_GAP,
+        "slid straight down, one arrow and a gap lower: they do not touch")
+    t.eq(q.textPoint[1], "BOTTOM", "the quest text stands over its arrow")
+    t.eq(p.textPoint[1], "TOP", "the profession text hangs under the echo")
     t.eq(addon.problems:count(), before)
 end
 
-tests["player walk 1: a step in words only: its line stands over the quest arrow, the quest text under"] = function(t)
+tests["player walk 1: a step in words only: its line hangs under the quest arrow, the quest text over"] = function(t)
     local c, addon, before = boot({ bags = { { item = BAR, count = 6 } } })
     window(c, "Blacksmithing", 50, { belt() })
     close(c)
     local q, p = quest(c), prof(c)
     t.eq(q.shown, true)
     t.eq(p.shown, true)
-    t.eq(p.drawn.body, 0, "no place known: no needle is drawn over the quest arrow")
+    t.eq(p.drawn.body, 0, "no place known: no echo is drawn with the quest arrow")
     t.ok(q.drawn.body ~= 0, "the quest arrow is the one arrow drawn there")
     t.eq(first(p), "Make 1 Test Belt at an anvil (Blacksmithing 50 of 75)")
-    t.eq(p.textPoint[1], "BOTTOM", "the profession line is over the arrow")
-    t.eq(q.textPoint[1], "TOP", "the quest text is under it")
+    t.eq(p.textPoint[1], "TOP", "the profession line is under the arrow")
+    t.eq(q.textPoint[1], "BOTTOM", "the quest text is over it")
     t.eq(addon.problems:count(), before)
 end
 

@@ -30,8 +30,8 @@ end
 
 -- What the profession arrow draws: "ring" at its own step; "off" when it
 -- cannot point, or when mainAtPoint is given; else "arrow". The arrow view
--- gives mainAtPoint false: the profession arrow has its own place over the
--- quest arrow, so it stays at a quest stop.
+-- gives mainAtPoint false: the profession arrow has its own place behind
+-- the quest arrow, so it stays at a quest stop.
 function N.ProfArrowMode(mainAtPoint, profHere, canPoint)
     if profHere then return "ring" end
     if mainAtPoint or not canPoint then return "off" end
@@ -72,6 +72,18 @@ local function textOps(shown, to, position, size, sw, sh, clear, need, travel)
     return { shown = shown and true or false, to = to, side = side, point = point, first = first }
 end
 
+-- The echo stands straight below the quest arrow (true) or tucked under it
+-- (false). spread: radians between the two bearings, nil = unknown, which
+-- reads as apart. was: the answer of the update before (nil = none): the
+-- edge moves by N.ECHO_BAND towards the other side, so an echo at the edge
+-- does not flicker.
+function N.EchoSlid(spread, was)
+    if not finite(spread) then return true end
+    local edge = N.ECHO_SPREAD
+    if was == true then edge = edge - N.ECHO_BAND elseif was == false then edge = edge + N.ECHO_BAND end
+    return math.abs(spread) > edge
+end
+
 local function point4(p)
     return p and { p[1], p[2], p[3], p[4] } or nil
 end
@@ -82,6 +94,8 @@ end
 --   palette,                 -- N.ARROW_PALETTE row, nil = standard
 --   player = { cont, zone }, -- nil = unknown
 --   facingKnown,             -- the player's facing can be read
+--   spread,                  -- radians between the two steps' bearings, nil = unknown
+--   echoSlid,                -- prof.slid of the update before, nil = none
 --   quest = { hasStep, overlay, target = { cont, zone }, here, distance,
 --             travel, textHeight },
 --   prof  = { on, hasStep, target = { cont, zone }, here, distance,
@@ -92,9 +106,10 @@ end
 --   profession arrow setting is off.
 -- -> { quest = ops, prof = ops, stacked = bool }, ops:
 --   shown, anchor ("screen" or "quest"), point { a, r, x, y } on the screen,
---   scale, alpha, colour { r, g, b }, look ("pointer" or "needle"),
+--   scale, alpha, colour { r, g, b }, look ("pointer" or "echo"),
 --   mode ("arrow", "ring", "off", "corpse", "intro"), behind, beside,
---   text { shown, to, side, point, first }.
+--   text { shown, to, side, point, first }; prof.slid: the echo stands
+--   straight below the quest arrow.
 function N.ArrowView(state)
     state = type(state) == "table" and state or {}
     local q = type(state.quest) == "table" and state.quest or {}
@@ -113,31 +128,29 @@ function N.ArrowView(state)
     local profStep = (p.on ~= false and p.hasStep) and true or false
     local qNeed = finite(q.textHeight) and q.textHeight or 0
     local pNeed = finite(p.textHeight) and p.textHeight or 0
-    -- The first gap of each text in the stack of two: the quest text under
-    -- the quest arrow, the profession text over the profession arrow.
-    local belowFirst = N.TEXT_GAP_BELOW
-    if q.travel then belowFirst = math.max(belowFirst, (N.TRAVEL_ICON - size) / 2 + 4) end
-    -- Lead section 447 item 5 (F3): the needle keeps its place in the stack
-    -- while its step has a place to point at, even when the game gives no
-    -- facing yet (at load, or for a moment after). Without that the frame
-    -- stood on the quest arrow until the facing came back or the player
-    -- restacked. A step in words only (no place) still has no room (D2).
-    local slot = profMode ~= "off" or (p.bearingKnown and true or false)
+    -- The first gap of each text with the echo: the quest text over the
+    -- quest arrow, the profession text under the echo.
     local aboveFirst = N.TEXT_GAP_ABOVE
-    if slot then aboveFirst = N.NeedleClearance(size) end
+    if q.travel then aboveFirst = math.max(aboveFirst, (N.TRAVEL_ICON - size) / 2 + 4) end
+    local belowFirst = N.TEXT_GAP_BELOW
+    -- Lead section 447 item 5 (F3): the profession arrow keeps its place
+    -- while its step has a place to point at, even when the game gives no
+    -- facing yet (at load, or for a moment after). A step in words only (no
+    -- place) has no arrow and no room (D2).
+    local slot = profMode ~= "off" or (p.bearingKnown and true or false)
 
     local L = N.ArrowLayout({
         layout = state.layout, gate = gate, screenW = sw, screenH = sh,
         size = state.size, defaultPoint = state.defaultPoint,
+        slid = N.EchoSlid(state.spread, state.echoSlid),
         quest = { hasStep = q.hasStep, overlay = q.overlay,
-                  room = saved.text.quest ~= false and qNeed > 0 and qNeed + belowFirst or 0 },
+                  room = saved.text.quest ~= false and qNeed > 0 and qNeed + aboveFirst or 0 },
         prof = { hasStep = profStep, mode = slot and "arrow" or "off",
-                 room = saved.text.prof ~= false and pNeed > 0 and pNeed + aboveFirst or 0 },
+                 room = saved.text.prof ~= false and pNeed > 0 and pNeed + belowFirst or 0 },
     })
     local lq, lp = L.quest, L.prof
-    local under = lp.shown and lp.anchor == "quest" and lq.shown   -- not laid out any more
-    -- The stack of two: the profession arrow over the quest arrow.
-    local over = (lp.shown and lp.above and lq.shown) and true or false
+    -- The two together: the echo behind the quest arrow.
+    local echo = (lp.shown and lp.echo and lq.shown) and true or false
 
     -- ---------------------------------------------------------- quest arrow
     local qMode = "arrow"
@@ -149,29 +162,23 @@ function N.ArrowView(state)
         qMode = "ring"
     end
     local travel = (lq.shown and qMode == "arrow" and q.travel) and true or false
-    -- 0.8 / 0.7 only while the needle really is drawn under a pointing quest
-    -- arrow. Never for the corpse arrow, the arrived ring or the intro, and
-    -- never beside the travel icon. Scale and alpha are always set together.
+    -- The quest arrow keeps its size and strength with the echo behind it;
+    -- only the travel icon makes it smaller.
     local scale, alpha = 1, 1
-    if travel then
-        scale = N.TRAVEL_ARROW_SCALE
-    elseif under and profMode == "arrow" and qMode == "arrow" then
-        scale, alpha = N.ON_NEEDLE_SCALE, N.ON_NEEDLE_ALPHA
-    end
+    if travel then scale = N.TRAVEL_ARROW_SCALE end
     local qState = qMode == "corpse" and "corpse" or N.ArrowState(state.player, q.target, questHere)
     local qr, qg, qb = N.ArrowColor(qState, q.distance, state.palette)
-    local stackClear = under and N.NeedleClearance(size) or nil
     local quest = {
         shown = lq.shown, anchor = "screen", point = point4(lq.position),
         scale = scale, alpha = alpha, colour = { qr, qg, qb },
         look = "pointer", mode = qMode, behind = false, beside = travel,
         text = textOps(lq.shown and lq.text, "quest", lq.position, size, sw, sh,
-                       stackClear, qNeed, travel),
+                       nil, qNeed, travel),
     }
-    if over then
-        -- Its text below it, always: the profession arrow stands above.
-        quest.text = { shown = (lq.shown and lq.text) and true or false, to = "quest", side = "below",
-                       point = { "TOP", "BOTTOM", 0, -belowFirst }, first = belowFirst }
+    if echo then
+        -- Its text above it, always: the echo and its text are below.
+        quest.text = { shown = (lq.shown and lq.text) and true or false, to = "quest", side = "above",
+                       point = { "BOTTOM", "TOP", 0, aboveFirst }, first = aboveFirst }
     end
 
     -- ----------------------------------------------------- profession arrow
@@ -179,55 +186,24 @@ function N.ArrowView(state)
     local pr, pg, pb, pa = N.ArrowPaint(lp, pState, p.distance, state.palette, p.own)
     if profMode == "ring" then pa = N.PROF_RING_ALPHA end
     local pText
-    if over then
-        -- Its text above it, always: never between the two arrows. With no
-        -- needle drawn its frame stands on the quest arrow's place, so the
-        -- lines stand right over the quest arrow.
-        pText = { shown = lp.text and true or false, to = "prof", side = "above",
-                  point = { "BOTTOM", "TOP", 0, aboveFirst }, first = aboveFirst }
-    elseif under then
-        -- The fallback: one stack of lines on the quest arrow, same side,
-        -- same first gap.
-        -- The needle's lines are shown while the needle is "off" too (owner
-        -- decision D2), so they take their room then as well.
-        pText = textOps(lp.text, "quest", lq.position, size, sw, sh, stackClear, qNeed + pNeed, travel)
-        -- Lead section 341: with the quest lines shown, the needle's lines
-        -- stand on the other side of the arrow, on the needle's own frame,
-        -- with the same first gap. Only when the screen is known and they
-        -- fit there; otherwise the one stack above stays.
-        -- Lead section 387 R2 (owner, the original look): stacked, the
-        -- profession step's lines stand above the arrows and the quest lines
-        -- below, wherever the stack is, when both fit there; else as 341.
-        local qt = quest.text
-        if qt.shown and pText.shown and knownScreen(sw, sh) and lq.position then
-            local _, bottom = N.ArrowCorner(lq.position, size, sw, sh)
-            local first = qt.first
-            if bottom + size + first + pNeed <= sh and bottom - first - qNeed >= 0 then
-                quest.text = { shown = true, to = "quest", side = "below",
-                               point = { "TOP", "BOTTOM", 0, -first }, first = first }
-                pText = { shown = true, to = "prof", side = "above",
-                          point = { "BOTTOM", "TOP", 0, first }, first = first }
-            elseif qt.side == "above" and bottom - first - pNeed >= 0 then
-                pText = { shown = true, to = "prof", side = "below",
-                          point = { "TOP", "BOTTOM", 0, -first }, first = first }
-            elseif qt.side == "below" and bottom + size + first + pNeed <= sh then
-                pText = { shown = true, to = "prof", side = "above",
-                          point = { "BOTTOM", "TOP", 0, first }, first = first }
-            end
-        end
+    if echo then
+        -- Its text under it, always: the other side from the quest text.
+        -- With no echo drawn its frame stands on the quest arrow's place,
+        -- so the lines stand right under the quest arrow.
+        pText = { shown = lp.text and true or false, to = "prof", side = "below",
+                  point = { "TOP", "BOTTOM", 0, -belowFirst }, first = belowFirst }
     else
-        local clear = lp.look == "needle" and N.NeedleClearance(size) or nil
-        pText = textOps(lp.shown and lp.text, "prof", lp.position, size, sw, sh, clear, pNeed, false)
+        pText = textOps(lp.shown and lp.text, "prof", lp.position, size, sw, sh, nil, pNeed, false)
     end
     local prof = {
         shown = (lp.shown and profMode ~= "off") and true or false,
-        -- Bare (D2): there is a step and the needle is "off". No needle is
+        -- Bare (D2): there is a step and the arrow is "off". No echo is
         -- drawn; its text still is, on the quest arrow or on its own frame.
         bare = (lp.shown and profMode == "off") and true or false,
         anchor = lp.anchor, point = point4(lp.position),
         scale = 1, alpha = pa, colour = { pr, pg, pb },
         look = lp.look, mode = profMode, behind = lp.behind and true or false, beside = false,
-        above = over,
+        slid = (lp.slid and lp.shown) and true or false,
         text = pText,
     }
     return { quest = quest, prof = prof, stacked = L.stacked }

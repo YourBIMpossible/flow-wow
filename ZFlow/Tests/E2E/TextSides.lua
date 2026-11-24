@@ -1,9 +1,9 @@
 local _, ns = ...
 -- Owner, 2026-11-23: "We need to separate the Leveling text on one side and
 -- the profession text on the other." With a quest step and a profession
--- step both up, the profession step's words stand above the arrows, on the
--- needle's own frame, and the quest step's words below, on the quest
--- arrow's frame; neither frame carries the other's words. The same in the
+-- step both up, the quest step's words stand above the arrows, on the quest
+-- arrow's frame, and the profession step's words below, on the echo's own
+-- frame (lead section 476; the reverse before it); neither frame carries the other's words. The same in the
 -- top and the bottom half of the screen (lead section 387 R2). The whole
 -- add-on loaded the way the game loads it (ns.offline.addon) on a fake
 -- client; the entry is the player's: logging in with a waypoint set and a
@@ -47,22 +47,22 @@ end
 local function ownWords(t, c, what)
     local q, p = c.arrows[1], c.arrows[2]
     t.eq(q and q.shown, true, what .. ": the quest arrow is up")
-    t.eq(p and p.shown, true, what .. ": the profession needle is up")
+    t.eq(p and p.shown, true, what .. ": the profession arrow is up")
     t.eq(says(q, "Waypoint"), true, what .. ": the quest arrow says its step")
-    t.eq(says(p, FISH.text), true, what .. ": the needle says the profession step")
+    t.eq(says(p, FISH.text), true, what .. ": the echo says the profession step")
     t.eq(says(q, FISH.text), false, what .. ": no profession words on the quest arrow")
-    t.eq(says(p, "Waypoint"), false, what .. ": no quest words on the needle")
+    t.eq(says(p, "Waypoint"), false, what .. ": no quest words on the echo")
     return q, p
 end
 
-tests["text sides: stacked, the profession words are above the arrows and the quest words below"] = function(t)
+tests["text sides: stacked, the quest words are above the arrows and the profession words below"] = function(t)
     local low = { points = { quest = { "BOTTOMLEFT", "BOTTOMLEFT", 100, 100 } } }
     for what, arrows in pairs({ ["top half"] = false, ["bottom half"] = low }) do
         local c, addon, before = start(arrows or nil)
         local q, p = ownWords(t, c, what)
         if not (q and p and q.textPoint and p.textPoint) then t.ok(false, what .. ": both have a text point") return end
-        t.eq({ p.textPoint[1], p.textPoint[2] }, { "BOTTOM", "TOP" }, what .. ": profession words hang above the needle")
-        t.eq({ q.textPoint[1], q.textPoint[2] }, { "TOP", "BOTTOM" }, what .. ": quest words hang below the quest arrow")
+        t.eq({ p.textPoint[1], p.textPoint[2] }, { "TOP", "BOTTOM" }, what .. ": profession words hang below the echo")
+        t.eq({ q.textPoint[1], q.textPoint[2] }, { "BOTTOM", "TOP" }, what .. ": quest words stand above the quest arrow")
         t.eq(addon.problems:count(), before)
     end
 end
