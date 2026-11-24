@@ -192,6 +192,7 @@ return {
         "UI/ProfHelper.lua",
         "UI/KitHost.lua",
         "Items/Keep.lua",
+        "Items/Buyback.lua",
         "Items/RecipeBook.lua",
         "Items/RecipeLearned.lua",
         "Items/Goals.lua",

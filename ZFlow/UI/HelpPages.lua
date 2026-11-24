@@ -113,6 +113,7 @@ H.PAGES = {
       },
       words = {
           { word = "banker", text = "What to put in the bank now" },
+          { word = "buyback", text = "At a merchant: what you can buy back" },
           { word = "auctions", text = "What in your bags is worth the auction house" },
           { word = "auction", text = "The prices seen in your own searches" },
           { word = "trader", text = "Deals among your own searches this session" },
