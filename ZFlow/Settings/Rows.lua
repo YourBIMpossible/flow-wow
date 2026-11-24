@@ -38,6 +38,11 @@ R.ROWS = {
       synonyms = { "route", "order", "zone", "quest" },
       label = "Finish quests in this zone first",
       help = "On, what is left near you on this map comes first. Off, the quest arrow follows your quest log order, even when that leads away." },
+    -- Lead section 387 R3: the arrow menu's Route level switch (UI/ArrowMenu.lua).
+    { key = "nav.dungeonSuggest", scope = "account", type = "bool", default = false, group = "travel.route",
+      synonyms = { "dungeon", "suggest", "instance", "route" },
+      label = "Suggest dungeons",
+      help = "Advice only: dungeons with quests you hold may be suggested for your route. Nothing is joined or queued for you." },
     { key = "vendor.list", scope = "account", type = "bool", default = true, group = "bags",
       synonyms = { "sell", "vendor", "junk", "merchant", "grey" },
       label = "Show the sell list at a merchant",
