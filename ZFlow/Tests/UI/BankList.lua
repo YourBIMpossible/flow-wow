@@ -7,6 +7,10 @@ local _, ns = ...
 
 local L = ns.BankList
 local tests = {}
+-- Item names carry the game's quality colour (Items/Present.lua, Tint; the
+-- colour itself is tested in Tests/Items/ItemColourTests.lua). These tests are
+-- about the words, so they read them with the colour taken off.
+local plain = ns.ItemPresent.Plain
 
 local INFO = {
     [2589] = { name = "Linen Cloth", quality = 1, sellPrice = 13, classID = 7 },
@@ -65,7 +69,7 @@ end
 
 local function has(lines, text)
     for _, l in ipairs(lines or {}) do
-        if l == text then return true end
+        if plain(l) == text then return true end
     end
     return false
 end
@@ -135,6 +139,13 @@ tests["bank list panel: look only - only the bag and item reads, no acting names
     for name in pairs(L) do
         local n = tostring(name):lower()
         t.ok(not (n:find("deposit") or n:find("withdraw") or n:find("click")), "no acting function: " .. n)
+    end
+end
+
+for name, fn in pairs(tests) do
+    tests[name] = function(t)
+        return fn(setmetatable({ eq = function(got, want, msg) return t.eq(plain(got), plain(want), msg) end },
+            { __index = t }))
     end
 end
 

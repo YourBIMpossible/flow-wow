@@ -14,7 +14,7 @@ local PRICE = 200000
 local function boot(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
-    c.setSaved(ns.id.accountDB, {})
+    c.setSaved(ns.id.accountDB, opts.account or {})
     c.setSaved(ns.id.charDB, {})
     c.setClass("WARRIOR")
     c.setLevel(opts.level or 40)
@@ -87,9 +87,16 @@ end
 
 -- The riding step does not listen to PLAYER_MONEY: the info bar's own
 -- event (Tests/E2E/InfoBar.lua: a hidden bar listens to nothing of its own).
+-- The bar is shown by default and then listens for itself, so the player
+-- here has turned it off: any PLAYER_MONEY left would be the riding step's.
 tests["riding step: it never listens to PLAYER_MONEY"] = function(t)
-    local c = boot()
+    local c, addon = boot({ account = { settings = { infoBar = { shown = false } } } })
     for _, ev in ipairs(c.events()) do t.ok(ev ~= "PLAYER_MONEY", "PLAYER_MONEY not listened to") end
+    for _, ev in ipairs(ns.RidingStep.EVENTS) do t.ok(ev ~= "PLAYER_MONEY", "not in the step's own list") end
+    t.ok(addon.settings:set("infoBar.shown", true), "the bar's setting is there")
+    local heard = false
+    for _, ev in ipairs(c.events()) do heard = heard or ev == "PLAYER_MONEY" end
+    t.ok(heard, "shown, the bar listens for itself: the check above can fail")
 end
 
 return tests

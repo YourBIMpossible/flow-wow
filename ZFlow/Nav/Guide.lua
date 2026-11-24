@@ -143,7 +143,7 @@ function N.Guide(input)
     local profHere = (p.here or N.AtPoint(p.distance)) and true or false
     local canPoint = p.bearingKnown and state.facingKnown
     if p.hasStep then
-        p.mode = N.ProfArrowMode(not input.separate and N.AtPoint(q.distance), profHere, canPoint)
+        p.mode = N.ProfArrowMode(false, profHere, canPoint)
     else
         p.mode = "off"
     end

@@ -65,7 +65,7 @@ T["errand: the names are the ones agreed"] = function(t)
     t.eq(E.NAME, "errand")
     t.eq(E.WORD, "stop")
     t.eq(E.NPCS, "learned.places.npcs")
-    t.eq(E.ORDER, { "vendor", "repair", "bank", "inn", "flight", "mail", "trainer" })
+    t.eq(E.ORDER, { "vendor", "repair", "bank", "inn", "flight", "mail", "auction", "trainer" })
     for _, word in ipairs(E.ORDER) do
         t.ok(E.LABELS[E.KINDS[word]] ~= nil, word .. " has a kind and a label")
     end

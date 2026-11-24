@@ -180,6 +180,10 @@ function ns.make.fakeClient(opts)
         if s.merchantOpen ~= true then return nil end
         return copyRows(s.merchant)
     end
+    function c.returnableItems()
+        if s.merchantOpen ~= true then return nil end
+        return copyRows(s.buyback)
+    end
     function c.recipes()
         local r = s.recipes
         if type(r) ~= "table" then return nil end
@@ -829,6 +833,11 @@ function ns.make.fakeClient(opts)
     -- window that cannot be read. merchantItems() gives it only while the
     -- window is open.
     function c.setMerchant(rows) s.merchant = copyRows(rows) end
+    -- G3: the merchant's Buyback tab, in the shape of returnableItems():
+    -- { { index =, item =, name =, price =, count = }, ... }; nil for a tab
+    -- that cannot be read. returnableItems() gives it only while the window is
+    -- open.
+    function c.setReturnable(rows) s.buyback = copyRows(rows) end
     -- true / false fire the merchant event; nil is "not known" and fires nothing.
     function c.setMerchantOpen(on)
         if on == nil then s.merchantOpen = nil return end
@@ -4409,6 +4418,15 @@ function ns.make.fakeClient(opts)
     function c.trackingRaw() return evidenceCopy(s.evidenceTracking) end
     function c.setTradeSkillAnswers(r) s.evidenceTradeAnswers = evidenceCopy(r) end
     function c.tradeSkillAnswers() return evidenceCopy(s.evidenceTradeAnswers) end
+    -- Lead section 382: the name of a map's continent; nil until set.
+    --   c.setMapContName(map, name)   name nil: not known
+    function c.mapContName(map)
+        return s.mapContNames and s.mapContNames[map] or nil
+    end
+    function c.setMapContName(map, name)
+        s.mapContNames = s.mapContNames or {}
+        s.mapContNames[map] = name
+    end
 
     -- P-QUEST (lead section 354 item 4): c.setQuestShareable(id, true /
     -- false / nil). Not set: not known.

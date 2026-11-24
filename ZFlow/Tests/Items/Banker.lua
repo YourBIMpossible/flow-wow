@@ -5,6 +5,10 @@ local _, ns = ...
 
 local B = ns.Banker
 local tests = {}
+-- Item names carry the game's quality colour (Items/Present.lua, Tint; the
+-- colour itself is tested in Tests/Items/ItemColourTests.lua). These tests are
+-- about the words, so they read them with the colour taken off.
+local plain = ns.ItemPresent.Plain
 local HOUR = 3600
 
 local INFO = {
@@ -74,7 +78,7 @@ end
 tests["banker: what in your bank you would now sell, by the sell rules"] = function(t)
     local items = B.Items(SAVED, info)
     local rows = B.SellRows(items, {})
-    t.eq(rows, { { key = 4865, name = "Ruined Pelt", count = 3, reason = "junk" } })
+    t.eq(rows, { { key = 4865, name = "Ruined Pelt", quality = 0, count = 3, reason = "junk" } })
     t.eq(B.SellLines(rows), { B.SELL_HEADER, "3 x Ruined Pelt: junk" })
     t.eq(B.SellRows(items, { choices = { never = { [4865] = true } } }), {}, "on your never-sell list: kept")
     t.eq(B.SellLines({}), { B.NOTHING_TO_SELL })
@@ -181,6 +185,13 @@ tests["banker word: help names it, and nothing is moved"] = function(t)
         if line:find("banker", 1, true) then found = true end
     end
     t.ok(found, "help lists the banker word")
+end
+
+for name, fn in pairs(tests) do
+    tests[name] = function(t)
+        return fn(setmetatable({ eq = function(got, want, msg) return t.eq(plain(got), plain(want), msg) end },
+            { __index = t }))
+    end
 end
 
 return tests
