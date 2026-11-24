@@ -133,6 +133,8 @@ local READS = {
     pet = true,
     -- Lead section 226: the craft bar reads (P-CRAFT); the capture asks none.
     recipeUsable = false, moving = false,
+    -- G58: the party invite line reads the friends list; the capture asks none.
+    isFriend = false,
     -- G40: the arrow's time to arrive reads the speed; the capture asks none.
     speed = false,
     -- CF-32: a spell's name by id, for your own casts (Rotation/OwnCasts.lua).

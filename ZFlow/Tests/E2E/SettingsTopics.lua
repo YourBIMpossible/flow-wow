@@ -230,6 +230,7 @@ local BEFORE = {
     ["auction.postAdvice"] = { "account", "bool", true },
     ["trader.off"] = { "account", "bool", false },
     ["nav.mapFlights"] = { "account", "bool", false },
+    ["invites.friends"] = { "account", "bool", false },
     ["nav.taxiMark"] = { "account", "bool", true },
     ["nav.learnLegs"] = { "account", "bool", true },
     ["nav.repairStep"] = { "account", "bool", true },
@@ -295,7 +296,7 @@ tests["stored values: no row's key, scope, type, default or saved place changed 
             end
         end
     end
-    t.eq(n, 50, "section 380: craft.queue removed with the craft bar")
+    t.eq(n, 51, "section 380: craft.queue removed with the craft bar; the invite advice row added")
     t.eq(addon.settings:row("repair.warnBelow").min, 0)
     t.eq(addon.settings:row("repair.warnBelow").max, 1)
     t.eq(addon.settings:row("spec.role").choices, { "", "dps", "heal", "tank" })
@@ -326,7 +327,7 @@ tests["stored values: a saved table from before the change reads back, every val
         n = n + 1
         t.eq(addon.settings:get(key), value, key .. " reads back as saved")
     end
-    t.eq(n, 48, "every row that holds a plain value (section 380: craft.queue removed)")
+    t.eq(n, 49, "every row that holds a plain value (section 380: craft.queue removed; the invite advice row added)")
     -- And the saved tables still hold them where they were.
     t.eq(c.saved(ns.id.accountDB).settings.vendor.list, false)
     t.eq(c.saved(ns.id.accountDB).settings.repair.warnBelow, 0.35)

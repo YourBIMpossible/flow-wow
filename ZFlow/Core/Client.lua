@@ -6902,6 +6902,16 @@ function ns.make.client(env)
         return nil
     end
 
+    -- Is the player with this id on the friends list? C_FriendList.IsFriend(
+    -- guid): true, false, or nil when the game does not say. A first guess:
+    -- not seen in game.
+    function c.isFriend(guid)
+        if type(guid) ~= "string" or guid == "" then return nil end
+        local list = env.C_FriendList
+        if type(list) ~= "table" then return nil end
+        return yesNo(call(list.IsFriend, guid))
+    end
+
     -- How fast the player is moving, in yards a second: GetUnitSpeed(
     -- "player") (0 standing still), or nil when it cannot be read.
     function c.speed()

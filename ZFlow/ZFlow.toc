@@ -235,6 +235,7 @@ UI\RouteTracker.lua
 UI\BuffStrip.lua
 Nav\QuestAdvice.lua
 Nav\TravelAdvice.lua
+Nav\InvitePrompt.lua
 Spells\TrainAdvice.lua
 Items\ProfPlan.lua
 Items\ProfSources.lua

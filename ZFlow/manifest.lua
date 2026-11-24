@@ -289,6 +289,7 @@ return {
     "Nav/QuestAdvice.lua",
     -- S33 (lead section 395 item 4): travel spell and mount advice text (after TripRoute, Arrow, the advisor).
     "Nav/TravelAdvice.lua",
+    "Nav/InvitePrompt.lua",
     -- R7 (sections 387, 388 b): spells to train, as advisor prompts (after the class packs and the advisor).
     "Spells/TrainAdvice.lua",
     -- P-COACH C1 (section 382): the profession plan, steps toward the next point (after RecipeBook, HaveTip, Prices, ProfStep).

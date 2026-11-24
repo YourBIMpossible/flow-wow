@@ -1917,6 +1917,9 @@ function ns.make.fakeClient(opts)
     function c.setPlateCasts(list) s.plateCasts = copyPlateRows(list) end
     function c.plateCasts() return copyPlateRows(s.plateCasts) end
     function c.grouped() return s.grouped end
+    -- The friends list, by player id (party invites): not known until set.
+    function c.setFriend(guid, v) s.friends = s.friends or {}; s.friends[guid] = v end
+    function c.isFriend(guid) return s.friends and s.friends[guid] or nil end
     function c.setGrouped(v)
         if v == nil then s.grouped = nil else s.grouped = v and true or false end
     end
