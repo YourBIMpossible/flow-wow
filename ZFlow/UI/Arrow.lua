@@ -268,10 +268,14 @@ end
 -- unknown-direction line is added and the frame is not faded. It counts
 -- only on a step with no place: a step with a place has a direction, and
 -- when that is unknown it is said and the frame is faded.
+-- A1-14 (Nav/CorpseHint.lua): the hint words are Flow's: a second line
+-- before release, the other-map line, and "Here: resurrect" in place of
+-- the here line at the corpse.
 local function corpseStep(client)
+    local CH = ns.Nav.CorpseHint
     local ghost = ask(client, "ghost")
     if ghost == false then
-        return { label = Arrow.RELEASE_LABEL, lines = { Arrow.RELEASE_LABEL }, still = true }
+        return { label = Arrow.RELEASE_LABEL, lines = { Arrow.RELEASE_LABEL, CH.RELEASE }, still = true }
     end
     local step = { label = Arrow.CORPSE_LABEL }
     local ok, at = false, nil
@@ -283,8 +287,9 @@ local function corpseStep(client)
         -- c.corpse, which answers only for the player's own map (R5). A
         -- client.corpse put in its place is not held to that here.
         step.place = { cont = type(zone) == "table" and zone.cont or nil, map = at.map, x = at.x, y = at.y }
+        step.there = CH.HERE
     elseif at == false and ghost == true then
-        step.lines = { Arrow.CORPSE_LABEL, Arrow.CORPSE_ELSEWHERE }
+        step.lines = { Arrow.CORPSE_LABEL, CH.ELSEWHERE }
         step.still = true
     end
     return step

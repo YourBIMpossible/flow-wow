@@ -186,7 +186,7 @@ return {
         t.eq(src.view.gate, "corpse")
         t.eq(src.view.quest.distance, nil)
         t.eq(src.turns.quest, nil)
-        t.eq(src.lines.quest, { A.RELEASE_LABEL })
+        t.eq(src.lines.quest, { A.RELEASE_LABEL, ns.Nav.CorpseHint.RELEASE })
     end,
 
     ["dead, not a ghost: a corpse place the client gives is not pointed at"] = function(t)
@@ -197,7 +197,7 @@ return {
         local src = source(c)
         t.eq(src.view.quest.distance, nil)
         t.eq(src.turns.quest, nil)
-        t.eq(src.lines.quest, { A.RELEASE_LABEL })
+        t.eq(src.lines.quest, { A.RELEASE_LABEL, ns.Nav.CorpseHint.RELEASE })
     end,
 
     ["a ghost on the corpse's map: pointed at the corpse"] = function(t)
@@ -221,7 +221,7 @@ return {
         t.eq(src.view.gate, "corpse")
         t.eq(src.view.quest.distance, nil)
         t.eq(src.turns.quest, nil)
-        t.eq(src.lines.quest, { "Corpse", A.CORPSE_ELSEWHERE })
+        t.eq(src.lines.quest, { "Corpse", ns.Nav.CorpseHint.ELSEWHERE })
         t.eq(src.still.quest, true, "nowhere to turn to")
     end,
 
@@ -323,10 +323,10 @@ return {
         c.setCorpse(false)
         c.setGhost(true)
         local src = source(c)
-        t.eq(src.lines.quest, { "Corpse", A.CORPSE_ELSEWHERE })
+        t.eq(src.lines.quest, { "Corpse", ns.Nav.CorpseHint.ELSEWHERE })
         t.eq(src.still.quest, true)
         c.setGhost(false)
-        t.eq(source(c).lines.quest, { A.RELEASE_LABEL }, "not released: the release label still wins")
+        t.eq(source(c).lines.quest, { A.RELEASE_LABEL, ns.Nav.CorpseHint.RELEASE }, "not released: the release label still wins")
         c.setGhost(nil)
         t.eq(source(c).lines.quest, { "Corpse", A.UNKNOWN_TURN }, "unknown again")
     end,
@@ -341,7 +341,7 @@ return {
         t.eq(q.faded, a.state().view.quest.alpha * A.LOST_ALPHA, "direction unknown: faded")
         c.setGhost(true)
         a.relayout()
-        t.eq(q.lines, { "Corpse", A.CORPSE_ELSEWHERE })
+        t.eq(q.lines, { "Corpse", ns.Nav.CorpseHint.ELSEWHERE })
         t.eq(q.faded, a.state().view.quest.alpha, "a ghost, another map: the view's own alpha")
     end,
 
@@ -384,12 +384,12 @@ return {
         c.setGhost(false)
         a.setGuide(function() return steps() end)
         local q = c.arrows[1]
-        t.eq(q.lines, { A.RELEASE_LABEL })
+        t.eq(q.lines, { A.RELEASE_LABEL, ns.Nav.CorpseHint.RELEASE })
         t.eq(q.faded, a.state().view.quest.alpha, "release: the view's own alpha")
         c.setGhost(true)
         c.setCorpse(false)
         a.relayout()
-        t.eq(q.lines, { "Corpse", A.CORPSE_ELSEWHERE })
+        t.eq(q.lines, { "Corpse", ns.Nav.CorpseHint.ELSEWHERE })
         t.eq(q.faded, a.state().view.quest.alpha, "another map: the view's own alpha")
         c.setCorpse(nil)
         a.relayout()
@@ -405,7 +405,7 @@ return {
         a.setGuide(function() return steps() end)
         local q = c.arrows[1]
         t.eq(q.shown, true)
-        t.eq(q.lines, { A.RELEASE_LABEL })
+        t.eq(q.lines, { A.RELEASE_LABEL, ns.Nav.CorpseHint.RELEASE })
         t.eq(a.state().view.quest.mode, "corpse")
         c.setGhost(true)
         a.relayout()
