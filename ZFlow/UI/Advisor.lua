@@ -64,7 +64,17 @@ Advisor.DEFAULT_POINT = { "TOPRIGHT", "TOPRIGHT", -220, -200 }
 -- also the plain panel's first line. Advisor.TITLE is the words after it.
 Advisor.TITLE = "Advice"
 Advisor.KIT_ID = "Advisor"
-Advisor.KIT_WIDTH, Advisor.KIT_HEIGHT = 320, 220
+Advisor.KIT_WIDTH = 320
+
+-- Advisor.KitHeight(lines) -> the height of a kit window of that many
+-- one-row lines: the title bar, the padding above and below, the lines.
+-- Lead section 408: the window is as tall as its lines. The client fits it
+-- at every draw (a wrapped line is taller); this is where it starts.
+function Advisor.KitHeight(lines)
+    local size = ns.Kit.look.size
+    if type(lines) ~= "number" or lines < 1 then lines = 1 end
+    return size.title + 2 * size.pad + lines * size.lineHeight
+end
 
 local function isFinite(n)
     return type(n) == "number" and n == n and n ~= math.huge and n ~= -math.huge
@@ -87,18 +97,22 @@ end
 -- close it: advice should not go with every Escape.
 function Advisor.View(lines, title)
     if type(title) ~= "string" or title == "" then title = Advisor.Title() end
+    -- Lead section 408: the title stands in the title bar only (no header
+    -- part repeats it), a long line wraps and is never cut, and the window
+    -- is as tall as its lines.
     local view = { id = Advisor.KIT_ID, title = title, children = {},
-        width = Advisor.KIT_WIDTH, height = Advisor.KIT_HEIGHT, point = Advisor.DEFAULT_POINT,
-        escape = false }
+        width = Advisor.KIT_WIDTH, point = Advisor.DEFAULT_POINT,
+        escape = false, fit = true }
     local kids = view.children
-    kids[1] = { kind = "header", title = title }
-    if type(lines) ~= "table" then return view end
-    for i = 1, #lines do
-        local text = lines[i]
-        if type(text) == "string" and text:find("%S") then
-            kids[#kids + 1] = { kind = "line", key = "prompt" .. i, text = text }
+    if type(lines) == "table" then
+        for i = 1, #lines do
+            local text = lines[i]
+            if type(text) == "string" and text:find("%S") then
+                kids[#kids + 1] = { kind = "line", key = "prompt" .. i, text = text, wrap = true }
+            end
         end
     end
+    view.height = Advisor.KitHeight(#kids)
     return view
 end
 

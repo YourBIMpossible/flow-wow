@@ -585,4 +585,15 @@ tests["dungeon read 426: the diag word prints the journal line"] = function(t)
     t.ok(found, "the line is in what the diag word prints")
 end
 
+-- Lead section 303 (d): the dungeon the player is in, by the instance name
+-- the client gives, as Questie names it.
+tests["dungeon read (d): the dungeon of an instance name, any case; unknown is nil"] = function(t)
+    local st = indexed(client())
+    t.eq(R.DungeonNamed(st, "The Deadmines").key, DM)
+    t.eq(R.DungeonNamed(st, "the deadmines").key, DM)
+    t.eq(R.DungeonNamed(st, "Nowhere Keep"), nil)
+    t.eq(R.DungeonNamed(st, nil), nil)
+    t.eq(R.DungeonNamed(nil, "The Deadmines"), nil)
+end
+
 return tests
