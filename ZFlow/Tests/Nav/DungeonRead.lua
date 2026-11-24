@@ -385,4 +385,15 @@ tests["dungeon read F4: an item quality outside 0 to 5, or not whole, is left ou
     t.eq({ items[2].name, items[2].quality }, { "Half", nil })
 end
 
+-- Lead section 303 (d): the dungeon the player is in, by the instance name
+-- the client gives, as Questie names it.
+tests["dungeon read (d): the dungeon of an instance name, any case; unknown is nil"] = function(t)
+    local st = indexed(client())
+    t.eq(R.DungeonNamed(st, "The Deadmines").key, DM)
+    t.eq(R.DungeonNamed(st, "the deadmines").key, DM)
+    t.eq(R.DungeonNamed(st, "Nowhere Keep"), nil)
+    t.eq(R.DungeonNamed(st, nil), nil)
+    t.eq(R.DungeonNamed(nil, "The Deadmines"), nil)
+end
+
 return tests

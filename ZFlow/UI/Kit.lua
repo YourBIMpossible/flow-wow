@@ -13,7 +13,8 @@
 --   Kit.Window(spec) -> tree | nil, reason
 --     spec: id (a word: letters, digits, _), title, children (a list of
 --     parts); optional width, height, point, movable, closable, escape,
---     resizable. A tree is a checked copy with every default filled in and
+--     resizable, fit (true: as tall as its parts, whatever height says).
+--     A tree is a checked copy with every default filled in and
 --     a `path` on every part ("3", "5.1" for a row's control, "8.2" for the
 --     second part in a scroll). A window that lists things (a scroll, a
 --     topic list or an item line) can be resized unless told otherwise.
@@ -35,7 +36,8 @@
 --   section    text; folded (true | false) with onFold(folded) when it folds
 --              big (true): the pane's page heading (lead section 340)
 --   line       text, icon, sub (a second line), right (a short text at the
---              right), tone, tooltip, enabled, onClick()
+--              right), tone, tooltip, enabled, onClick(), wrap (true: a
+--              long text runs on to more rows instead of being cut)
 --   row        label, description, tooltip, enabled, reason, control (one
 --              of: checkbox, bind, button, choice, number, text)
 --   button     text, onClick(), enabled, tooltip
@@ -298,6 +300,12 @@ function PARTS.line(p, out)
     end
     ok, why = flag(p, out, "enabled", true, "a line")
     if not ok then return nil, why end
+    -- wrap (lead section 408): the text runs on to as many rows as it
+    -- needs, instead of being cut at the pane's edge.
+    if p.wrap ~= nil then
+        ok, why = flag(p, out, "wrap", false, "a line")
+        if not ok then return nil, why end
+    end
     if p.onClick ~= nil then
         if type(p.onClick) ~= "function" then return nil, "a line: onClick must be a function" end
         out.onClick = p.onClick
@@ -519,6 +527,12 @@ function Kit.Window(spec)
     tree.minWidth, tree.minHeight = math.min(width, Kit.MIN_WIDTH), math.min(height, Kit.MIN_HEIGHT)
     for _, field in ipairs({ "movable", "closable", "escape" }) do
         ok, why = flag(spec, tree, field, true, "a window")
+        if not ok then return nil, why end
+    end
+    -- fit (lead section 408): the client makes the window as tall as its
+    -- parts at every draw; height is then only where it starts.
+    if spec.fit ~= nil then
+        ok, why = flag(spec, tree, "fit", false, "a window")
         if not ok then return nil, why end
     end
     local point = spec.point

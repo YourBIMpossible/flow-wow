@@ -32,7 +32,7 @@
 --     input = { available (Questie there), dungeon = { key, name }, quests, ctx }
 --     pane  = { title, why = { what is missing, how to get it } or nil,
 --               groups = { { id, title, folded, rows } }, count, unplaced }
---     row   = { id, name, level, state, note, chain }
+--     row   = { id, name, level, state, note, chain, next }
 --   S.Order(dungeons) -> a new list: lowest quest level first, then name;
 --     a dungeon with no level known last
 local _, ns = ...
@@ -198,6 +198,18 @@ local GROUP_OF = {
 
 function S.GroupOf(state) return GROUP_OF[state] end
 
+-- What the player does next with a quest in each state, said under its row
+-- (row.next). A quest not for you has nothing to do.
+S.NEXT = {
+    ready = "Do it on this run.",
+    pickup = "Pick it up before you go in.",
+    unlock = "Do the quests named first, then pick this one up.",
+    inside = "You pick it up inside, during the run.",
+    followup = "It opens during the run; pick it up there.",
+    nextrun = "Come back for it on a later run.",
+    toolong = "Its lead-in is long; leave it for a later run.",
+}
+
 -- What the pane says instead of rows: what is missing, then how to get it.
 S.WHY = {
     noQuestie = { "Dungeon quests need Questie.",
@@ -298,6 +310,7 @@ function S.Pane(input)
             rows[#rows + 1] = {
                 id = q.Id, name = tostring(q.name or ("Quest " .. tostring(q.Id))), level = q.level,
                 state = state, note = noteOf(q, state, info, ctx.level or 0), chain = okC and chain or nil,
+                next = S.NEXT[state],
             }
             pane.count = pane.count + 1
         end

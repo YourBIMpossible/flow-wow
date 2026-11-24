@@ -170,7 +170,7 @@ function W.Declare(k, diag)
                 if not folded then
                     for _, r in ipairs(g.rows) do
                         rows[#rows + 1] = { kind = "line", text = r.name, icon = iconOf(g.id),
-                            sub = join(r.chain, r.note),
+                            sub = join(join(r.chain, r.note), r.next),
                             right = r.level and ("Level " .. tostring(r.level)) or nil, tone = TONE[g.id] }
                     end
                 end
