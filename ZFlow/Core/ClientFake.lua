@@ -4916,6 +4916,19 @@ function ns.make.fakeClient(opts)
         c.sharedQuests[#c.sharedQuests + 1] = id
         return true
     end
+    -- KNOW lane (C-48, C-56): the spells on the action bars, as the real
+    -- client's c.actionSpells() answers them: { [spell name] = slot }.
+    -- c.setActionSpells(map or nil); nil (as made): the bars are not known.
+    do
+        local barSpells = nil
+        function c.setActionSpells(map) barSpells = map end
+        function c.actionSpells()
+            if type(barSpells) ~= "table" then return nil end
+            local out = {}
+            for name, slot in pairs(barSpells) do out[name] = slot end
+            return out
+        end
+    end
     return c
 end
 

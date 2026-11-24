@@ -345,6 +345,8 @@ return {
     "UI/Lite.lua",
     -- G44 (section 397 item 14): the class trainer route step (after TrainAdvice and the packs).
     "Nav/ClassTrainerStep.lua",
+    -- KNOW lane (C-48, C-56, C-58): the spells window, the spellkeys word and the bar advice (after Kit, the advisor, the packs).
+    "UI/SpellsWindow.lua",
     -- G4 (section 395): keep or sell on item tooltips (after LootNote, SellList, Reservations).
     "Items/DispositionTip.lua",
     -- A10: the import word's "now", which copies the earlier add-on's saved data in (after Diag, SettingsShare).

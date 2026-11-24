@@ -265,6 +265,7 @@ Nav\CrossingWords.lua
 Nav\Activities.lua
 UI\Lite.lua
 Nav\ClassTrainerStep.lua
+UI\SpellsWindow.lua
 Items\DispositionTip.lua
 Import\Apply.lua
 Items\AuctionWatch.lua
