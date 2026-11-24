@@ -34,11 +34,15 @@ local function questie()
     return db, zones
 end
 
--- A player outside a dungeon at clock `clock`. opts: char (saved ahead).
+-- A player outside a dungeon at clock `clock`, who has been in a dungeon
+-- before (so XP is measured from login). opts: char (saved ahead), fresh
+-- (true: a character that never was in one and never asked).
 local function boot(clock, opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
-    c.setSaved(ns.id.accountDB, {}); c.setSaved(ns.id.charDB, opts.char or {})
+    local char = opts.char
+    if not char and not opts.fresh then char = { dungeon = { measure = true } } end
+    c.setSaved(ns.id.accountDB, {}); c.setSaved(ns.id.charDB, char or {})
     c.setClass("WARRIOR"); c.setRaceId(1); c.setFaction("Alliance"); c.setLevel(18)
     c.setQuestDone(101, false)
     c.setZone(1, MAP); c.setPosition(MAP, 0.5, 0.5); c.setFacing(0)
@@ -177,6 +181,39 @@ tests["dungeon rate: both rates are kept over a reload"] = function(t)
     local c2, addon2, base2 = boot(now + 20, { char = c.saved(ns.id.charDB) })
     t.ok(has(asked(c2, "dungeons the deadmines"), RATE_LINE), "said after the reload")
     t.eq(addon2.problems:count(), base2, "no new problem")
+end
+
+-- White's run (lead section 539): a character that never was in a dungeon
+-- and never asked costs no XP read and no XP event. Red on 63f99da0: XP was
+-- read at login and its event listened to for every character.
+tests["dungeon rate: XP is not read or listened to until the character enters a dungeon or asks"] = function(t)
+    local function listens(c)
+        for _, event in ipairs(c.events()) do
+            if event == "PLAYER_XP_UPDATE" then return true end
+        end
+        return false
+    end
+    local c, addon = boot(1000, { fresh = true })
+    local reads = 0
+    local real = c.xp
+    c.xp = function(...)
+        reads = reads + 1
+        return real(...)
+    end
+    c.advance(30, 60)
+    gain(c, 1300, 500)
+    t.eq(listens(c), false, "a fresh character: the XP event is not listened to")
+    t.eq(addon.store:get("char", "dungeon.xpSamples"), nil, "and nothing is sampled")
+    local before = reads
+    walkIn(c, 1400)
+    t.eq(listens(c), true, "in a dungeon: measured from now on")
+    t.ok(reads > before, "and the XP is read")
+    t.eq(addon.store:get("char", "dungeon.measure"), true, "kept for the next login")
+    local c2 = boot(2000, { fresh = true })
+    typed(c2, "dungeon")
+    t.eq(listens(c2), true, "asking the dungeon word starts it too")
+    local c3 = boot(3000, { char = c.saved(ns.id.charDB) })
+    t.eq(listens(c3), true, "after a reload it is measured from login")
 end
 
 -- Red on a8fc438f: there is no V.Gain (the call raises).

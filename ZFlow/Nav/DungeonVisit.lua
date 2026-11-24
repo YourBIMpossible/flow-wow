@@ -45,6 +45,12 @@
 --                      minutes of it), and the run's from the XP you gained
 --                      inside it over its timed length (B-56). When either
 --                      is not known nothing is said.
+--                      The XP is read and its events listened to only once
+--                      this character has been in a dungeon or asked one of
+--                      the dungeon words (char V.MEASURE): a character that
+--                      never does either costs no XP read at all (White's
+--                      run, lead section 539: the info bar's "a hidden bar
+--                      reads nothing" check).
 --
 --   not known          (Plexy, lead section 504 CHANGES-2) whether you are in
 --                      a dungeon has three answers: inside, outside, and
@@ -102,6 +108,8 @@ V.RUN = "dungeon.run"
 V.TIMES = "dungeon.times"
 V.RUN_XP = "dungeon.runXp"
 V.SAMPLES = "dungeon.xpSamples"
+V.MEASURE = "dungeon.measure"
+V.XP_EVENTS = { "PLAYER_XP_UPDATE", "PLAYER_LEVEL_UP" }
 V.SAMPLES_MAX = 200
 V.RATE_SPAN = 7200   -- questing rate: the last two hours
 V.RATE_GAP = 600     -- a gap longer than this (a break) counts as this
@@ -353,6 +361,7 @@ function V.Declare(k, diag)
     local api = {}
     local ctx, st, cancelStep
     local afterIndex
+    local measure
     local id = k.id or ns.id
     local R = ns.DungeonRead
 
@@ -461,6 +470,8 @@ function V.Declare(k, diag)
     -- the run's rate or your questing rate is not measured.
     function api.RateLine(name)
         if not ctx or type(name) ~= "string" or name == "" then return nil end
+        -- Asked for a rate: from now on this character's XP is measured.
+        if measure then measure() end
         local rate = V.RateFrom(saved(V.SAMPLES), ask(client(), "clock"))
         local ratio = V.Ratio(pick(V.RUN_XP, name), pick(V.TIMES, name), rate)
         if not ratio then return nil end
@@ -635,6 +646,8 @@ function V.Declare(k, diag)
         if isIn == nil then return end
         if isIn then
             index()
+            -- In a dungeon: from now on this character's XP is measured.
+            if measure then measure() end
             name = ask(client(), "instanceName")
             -- Inside a dungeon the game does not name: nothing to keep.
             if type(name) ~= "string" or name == "" then return end
@@ -698,8 +711,23 @@ function V.Declare(k, diag)
         save(V.SAMPLES, list, "samples")
     end
 
+    -- B-54: starts measuring XP for this character, once: the first XP
+    -- reading and the XP events. Kept, so later sessions measure from login.
+    local measuring = false
+    measure = function()
+        if measuring or not ctx then return end
+        measuring = true
+        local ok, on = pcall(ctx.store.get, ctx.store, "char", V.MEASURE)
+        if not ok or on ~= true then save(V.MEASURE, true, "measure") end
+        for _, event in ipairs(V.XP_EVENTS) do
+            ctx.bus:on(V.NAME, event, function() onXp() end)
+        end
+        onXp()
+    end
+
     if diag and type(diag.commands) == "table" then
         diag.commands[V.WORD] = function()
+            if measure then measure() end
             -- A run that ended since the last event is closed first.
             if ctx then pcall(entered) end
             local ok, lines, why = pcall(api.Lines)
@@ -730,11 +758,10 @@ function V.Declare(k, diag)
             c.bus:on(V.NAME, "QUEST_LOG_UPDATE", function()
                 if pending then sayEntered() end
             end)
-            -- B-54: XP gained, for the run or for your questing rate.
-            for _, event in ipairs({ "PLAYER_XP_UPDATE", "PLAYER_LEVEL_UP" }) do
-                c.bus:on(V.NAME, event, function() onXp() end)
-            end
-            onXp()
+            -- B-54: XP gained, for the run or for your questing rate, only
+            -- for a character that has been in a dungeon or asked before.
+            local okM, on = pcall(c.store.get, c.store, "char", V.MEASURE)
+            if okM and on == true then measure() end
             -- B-57: a boss killed may tell which wing this run is.
             c.bus:on(V.NAME, ns.BossKills.EVENT, function() entered() end)
             entered()
@@ -742,6 +769,7 @@ function V.Declare(k, diag)
         stop = function()
             if cancelStep then cancelStep() end
             cancelStep = nil
+            measuring = false
             ctx = nil
         end,
     })

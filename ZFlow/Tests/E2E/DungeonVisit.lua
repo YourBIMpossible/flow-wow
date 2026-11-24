@@ -310,7 +310,7 @@ end
 -- Red on 339e7683: XP gained while it is not known where you are is counted
 -- as questing XP (a sample is kept).
 tests["dungeon visit: XP gained while it is not known where you are counts for neither rate"] = function(t)
-    local c, addon = boot({ outside = true, clock = 1000 })
+    local c, addon = boot({ outside = true, clock = 1000, char = { dungeon = { measure = true } } })
     c.setXp({ cur = 100, max = 10000, rested = 0 })
     c.fire("PLAYER_XP_UPDATE", "player")
     c.setInstance(nil)
