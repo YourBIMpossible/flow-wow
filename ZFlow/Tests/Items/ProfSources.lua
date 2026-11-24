@@ -96,4 +96,10 @@ tests["prof sources: the plan names where the short materials come from"] = func
     t.eq(plan[3] and plan[3].count, 3)
 end
 
+tests["prof sources: a name not read yet is never a number (section 383)"] = function(t)
+    if type(S()) ~= "table" then return t.ok(false, "ns.ProfSources") end
+    local s = S().For(input({ name = function() return nil end }), 3, 6)
+    t.eq(s and s.text, "Buy 6 of the materials at the auction house")
+end
+
 return tests

@@ -198,4 +198,35 @@ tests["prof plan: a recipe read in part, or with no materials, is no candidate"]
     t.eq(P().Candidates(input({ book = book })), {})
 end
 
+-- Section 383 (owner): never silent, no item numbers. An empty plan says the
+-- one thing to do so Z-Flow will know; a name not read yet is never a number.
+tests["prof plan: an empty plan says the one thing to do next"] = function(t)
+    if type(P()) ~= "table" then return t.ok(false, "ns.ProfPlan") end
+    local _, why, say = P().Plan(input({ skill = "50" }))
+    t.eq(why, "no reading")
+    t.eq(say, "Open your Blacksmithing window once")
+    _, _, say = P().Plan(nil)
+    t.eq(say, "Open a profession window once")
+    _, why, say = P().Plan(input({ colours = {} }))
+    t.eq(why, "no colours", "no recipe colour read for this profession")
+    t.eq(say, "Open your Blacksmithing window once")
+    _, why, say = P().Plan(input())
+    t.eq(why, "no materials")
+    t.eq(say, "Get the materials for Test Buckle")
+    local grey = { ["Test Buckle"] = { trivial = { lo = 40, hi = 60 } } }
+    _, why, say = P().Plan(input({ colours = grey }))
+    t.eq(why, "no recipe")
+    t.eq(say, "Visit a Blacksmithing trainer for new recipes")
+end
+
+tests["prof plan: a material whose name is not read yet is never a number"] = function(t)
+    if type(P()) ~= "table" then return t.ok(false, "ns.ProfPlan") end
+    local steps = P().Plan(input({ prof = "Tailoring", bags = { [3] = 1 }, bank = { [3] = 10, [4] = 5 },
+        name = function() return nil end }))
+    t.eq(steps[1] and steps[1].text, "Take 5 of the materials from your bank, for Test Bolt")
+    for _, s in ipairs(steps) do
+        t.eq(s.text:find("%d%d") == nil and s.text:find("item %d") == nil, true, s.text)
+    end
+end
+
 return tests
