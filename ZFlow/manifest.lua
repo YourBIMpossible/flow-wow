@@ -111,6 +111,7 @@ return {
         "Rotation/Driver.lua",
         "Rotation/KeyFrame.lua",
         "Rotation/Role.lua",
+        "Rotation/Spec.lua",
         "Rotation/Fights.lua",
         "UI/FightLog.lua",
         "Classes/Druid.lua",

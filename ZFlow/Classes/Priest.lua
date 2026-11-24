@@ -220,6 +220,17 @@ local pack = {
         heal = { name = "Holy", evidence = GUESS },
     },
 
+    -- G31: the spec recommended while levelling alone, and why. Written for
+    -- this pack in its own words from general knowledge of the class; nothing
+    -- here was read from the game or taken from a guide.
+    levelling = {
+        role = "dps", evidence = GUESS,
+        why = {
+            "Damage that ticks over time, behind a shield, kills at a steady pace alone.",
+            "Healing talents kill slowly alone. You can still heal a dungeon at your level without them.",
+        },
+    },
+
     resources = {
         { name = "Mana", forms = { "none", "Shadowform" }, evidence = GUESS, note = OLD },
     },

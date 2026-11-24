@@ -261,6 +261,17 @@ local pack = {
         dps = { name = "Marksmanship", evidence = GUESS },
     },
 
+    -- G31: the spec recommended while levelling alone, and why. Written for
+    -- this pack in its own words from general knowledge of the class; nothing
+    -- here was read from the game or taken from a guide.
+    levelling = {
+        role = "dps", evidence = GUESS,
+        why = {
+            "Your pet holds the enemy while you shoot from range, so you take few hits.",
+            "Little time is lost between fights: it is the pet's health you look after, not your own.",
+        },
+    },
+
     resources = {
         { name = "Mana", forms = { "none" }, evidence = GUESS },
     },
