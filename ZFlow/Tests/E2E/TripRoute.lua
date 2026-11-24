@@ -333,4 +333,24 @@ tests["trip route: a riding trainer seen on this map is a stop of the route"] = 
     t.eq(aside[1].why, "not on this map: Far Rider")
 end
 
+-- Twin, lead section 545: the town stops row gates four stops (sell, repair,
+-- riding trainer, set hearthstone); its label and help name all four. Red on
+-- 3e9e8b77: the label names two.
+tests["trip route: the town stops row names all four stops it switches"] = function(t)
+    local _, addon = boot()
+    local row = addon.settings:row(ns.Nav.TripRoute.TOWN_SETTING)
+    t.ok(row ~= nil, "a settings row")
+    if not row then return end
+    t.eq(row.label, "Add town stops: selling, repair, riding trainer and hearthstone")
+    local help = tostring(row.help)
+    for _, word in ipairs({ "bags fill", "repair vendor", "riding trainer", "hearthstone", "nothing is done for you" }) do
+        t.ok(help:find(word, 1, true) ~= nil, "the help says: " .. word)
+    end
+    local has = {}
+    for _, syn in ipairs(type(row.synonyms) == "table" and row.synonyms or {}) do has[syn] = true end
+    t.eq(has.selling, true, "found by selling")
+    t.eq(has.sell, nil, "sell belongs to the bags topic alone")
+    t.eq(has.repair, nil, "repair is already a bags topic word")
+end
+
 return tests

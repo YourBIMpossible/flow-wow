@@ -911,11 +911,19 @@ function T.Declare(k, diag)
         synonyms = { "route", "quest", "dungeon", "run", "order", "plan" } })
 
     k:Setting({ key = T.TOWN_SETTING, scope = "account", type = "bool", default = true,
-        label = "Add town stops: selling and hearthstone", group = "travel.route",
-        help = "Acts when you plan a quest route with the route word: a vendor you have seen when your bags fill, and a seen inn near most of your quests to set your hearthstone. You sell and set it; nothing is done for you.",
+        -- Twin, lead section 545: this row gates all four town stops (townOn(): the sell
+        -- stop, the repair stop, the riding trainer stop and the set-hearthstone stop), so
+        -- the label and the help name all four.
+        label = "Add town stops: selling, repair, riding trainer and hearthstone", group = "travel.route",
+        help = "Acts when you plan a quest route with the route word. It adds a vendor you have seen when your bags fill,"
+            .. " a repair vendor you have seen when your gear is worn, the riding trainer you have seen when riding is due,"
+            .. " and a seen inn near most of your quests to set your hearthstone."
+            .. " You sell, repair, train and set it; nothing is done for you.",
         -- Not "sell": that word and "junk" each belong to the bags topic alone, and the
         -- settings topic word goes there (Tests/E2E/SettingsTopics.lua; White, lead section 539).
-        -- The search still finds this row by "selling" in its label.
+        -- Not "repair" either: it is already a synonym of rows in the bags topic
+        -- (Settings/Rows.lua repair.warnBelow, repair.costLine). The search still finds
+        -- this row by "selling" and "repair" in its label.
         synonyms = { "route", "selling", "vendor", "bags", "hearth", "inn", "town" } })
 
     k:Setting({ key = T.PICKUP_SETTING, scope = "account", type = "bool", default = true,
