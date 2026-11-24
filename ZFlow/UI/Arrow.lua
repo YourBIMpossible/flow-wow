@@ -970,9 +970,13 @@ function Arrow.Start(k, diag, own)
             local okParty, list = pcall(follow.Members)
             if okParty and type(list) == "table" then party = list end
         end
+        -- Lead section 382: the Professions tick (Nav/ProfFeed.lua's setting).
+        local professions
+        local okProf, profOn = pcall(k.settings.get, k.settings, N.ProfFeed and N.ProfFeed.SETTING or "nav.professions")
+        if okProf then professions = profOn end
         return { stacked = saved.mode ~= "separate", hidden = saved.hidden, text = saved.text,
                  styles = Arrow.Styles(style()), canShapes = canShapes(), feedback = feedback,
-                 party = party }
+                 party = party, professions = professions }
     end
     -- The tooltip's lines for one arrow, or nil when none is on the screen.
     -- The lines are the step's own, also for an arrow whose text is off.
@@ -1049,6 +1053,11 @@ function Arrow.Start(k, diag, own)
             else
                 say("pointing at a party member is not ready.")
             end
+        elseif action.professions ~= nil then
+            -- Lead section 382: the Professions tick (Nav/ProfFeed.lua).
+            local ok, err = pcall(k.settings.set, k.settings,
+                N.ProfFeed and N.ProfFeed.SETTING or "nav.professions", action.professions)
+            if not ok then k.problems:add("arrow", "professions", err) end
         elseif action.style then
             local ok, reason = setStyle(action.style)
             if not ok then say(tostring(reason) .. ".") end

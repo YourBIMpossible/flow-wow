@@ -285,5 +285,7 @@ return {
     "Items/ProfSources.lua",
     -- Section 387: the next-step panel docked under the game's profession window (after ProfPlan, ProfSources, KitHost).
     "UI/ProfDock.lua",
+    -- Lead section 382 (C2 P-COACH): one profession step for the needle (after ProfStep, Legs, ProfPlan, ProfSources).
+    "Nav/ProfFeed.lua",
     },
 }

@@ -256,6 +256,9 @@ READS.questShareable = false
 -- Lead section 337 item 1 (ACTING): one bag slot sold to the open merchant,
 -- only on the player click on Sell these, out of combat. Never the capture.
 KIND.act[#KIND.act + 1] = "sellBagItem"
+-- Lead section 382: a map's continent name; read by Nav/ProfFeed.lua only.
+-- Its name (C_Map.GetMapInfo, Enum.UIMapType) is in Diag.NAMES.
+READS.mapContName = false
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).
 local FEATURE = {
