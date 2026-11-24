@@ -16,7 +16,11 @@
 --     steps = { { bag, slot, key, count } ... } in bag then slot order.
 --     why: SellThese.NOTHING, NOT_KNOWN, NOT_READ or NOT_WHOLE (the
 --     button's words when it can't be pressed)
+--   SellThese.PlanRow(listing, slots, key) -> steps, or nil and why
+--     G1: the same for one row of the list (its item key) only; why
+--     NOTHING when that item is not on the list.
 --   SellThese.Tip(why) -> the button's tooltip for that why
+--   SellThese.RowTip(why) -> a row button's tooltip for that why
 --   SellThese.Note(result) -> the player's words after a run:
 --     result = { sold = items, skipped = stacks, stopped = why or nil }
 --   SellThese.Runner(client, sched, done) -> runner
@@ -52,6 +56,14 @@ SellThese.TIPS = {
     [SellThese.SELLING] = "Selling the listed items, one stack at a time.",
 }
 SellThese.TIP = "Sells the items listed above, one stack at a time. You can buy them back on the merchant's Buyback tab."
+-- G1: each listed row's own button (UI/SellList.lua draws it under the row).
+SellThese.ROW_KEY = "sellRow."
+SellThese.ROW_TEXT = "Sell"
+SellThese.ROW_LABEL = "Only %s"
+SellThese.ROW_TIP = "Sells only this item, every stack of it in your bags. You can buy it back on the merchant's Buyback tab."
+SellThese.ROW_TIPS = {
+    [SellThese.NOT_WHOLE] = "A goal holds part of this item, and a stack can't be split here. Sell it by hand.",
+}
 SellThese.BUYBACK = "Changed your mind? Buy them back on the merchant's Buyback tab."
 -- Why a run stopped, in the player's words.
 SellThese.WHY = {
@@ -71,7 +83,8 @@ local function bySlot(a, b)
     return a.slot < b.slot
 end
 
-function SellThese.Plan(listing, slots)
+-- only: an item key, to plan that row alone; nil for every row.
+local function planOf(listing, slots, only)
     if type(listing) ~= "table" then return nil, SellThese.NOT_READ end
     if listing.unavailable then return nil, SellThese.NOT_KNOWN end
     local list = listing.list
@@ -94,19 +107,37 @@ function SellThese.Plan(listing, slots)
             total[key] = (total[key] or 0) + s.count
         end
     end
-    local steps = {}
+    local steps, listed = {}, false
     for _, row in ipairs(list.rows) do
-        if whole(row.count) and row.count > 0 and total[row.key] == row.count then
-            for _, step in ipairs(byKey[row.key]) do steps[#steps + 1] = step end
+        if only == nil or row.key == only then
+            listed = true
+            if whole(row.count) and row.count > 0 and total[row.key] == row.count then
+                for _, step in ipairs(byKey[row.key]) do steps[#steps + 1] = step end
+            end
         end
     end
+    if not listed then return nil, SellThese.NOTHING end
     if #steps == 0 then return nil, SellThese.NOT_WHOLE end
     table.sort(steps, bySlot)
     return steps
 end
 
+function SellThese.Plan(listing, slots)
+    return planOf(listing, slots, nil)
+end
+
+function SellThese.PlanRow(listing, slots, key)
+    if key == nil then return nil, SellThese.NOTHING end
+    return planOf(listing, slots, key)
+end
+
 function SellThese.Tip(why)
     return SellThese.TIPS[why] or SellThese.TIP
+end
+
+function SellThese.RowTip(why)
+    if why == nil then return SellThese.ROW_TIP end
+    return SellThese.ROW_TIPS[why] or SellThese.Tip(why)
 end
 
 local function plural(n, one, many)
