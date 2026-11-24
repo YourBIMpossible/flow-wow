@@ -300,5 +300,7 @@ return {
     "Nav/Activities.lua",
     -- G57: lite mode, the perf.lite row and the lite word (after Diag and every module it switches off).
     "UI/Lite.lua",
+    -- G44 (section 397 item 14): the class trainer route step (after TrainAdvice and the packs).
+    "Nav/ClassTrainerStep.lua",
     },
 }
