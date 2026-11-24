@@ -12,8 +12,9 @@ local _, ns = ...
 -- The word (`<slash> zone`) lists them. The line on leaving is said only
 -- while the setting N.LEAVING_SETTING ("Finish quests in this zone first")
 -- is on, and only when the client names both the zone left and the zone
--- entered. The zone's name is not read (the client has no reader for it
--- here yet), so the lines say "here" and "the zone behind you".
+-- entered. The zone is named where the client names its map
+-- (client.mapName, C_Map.GetMapInfo); where it does not, the lines say
+-- "here" and "the zone behind you".
 --
 -- Pure:
 --   Z.Left(rows, places, here) -> list, elsewhere
@@ -22,8 +23,9 @@ local _, ns = ...
 --                quest log order: quests with a stop on the player's map
 --     elsewhere  how many other quests have something left, none of it on
 --                this map
---   Z.Lines(list, elsewhere) -> the word's lines
---   Z.Notice(list) -> the one line on leaving, or nil with nothing left
+--   Z.Lines(list, elsewhere, name) -> the word's lines
+--   Z.Notice(list, name) -> the one line on leaving, or nil with nothing left
+--     name  the zone's name, or nil when the client does not give it
 -- Module "zoneLeft" provides Left, Lines. Not tested in game.
 ns.Nav = ns.Nav or {}
 local N = ns.Nav
@@ -38,6 +40,9 @@ Z.NAMED = 3              -- quests named in the line on leaving
 Z.HEADER_ONE = "Still worth doing here before you leave: 1 quest"
 Z.HEADER = "Still worth doing here before you leave: %d quests"
 Z.NONE = "Nothing is left for your quests on this map: you can move on."
+Z.HEADER_ONE_IN = "Still worth doing in %s before you leave: 1 quest"
+Z.HEADER_IN = "Still worth doing in %s before you leave: %d quests"
+Z.NONE_IN = "Nothing is left for your quests in %s: you can move on."
 Z.STEP_ONE = "  %s: 1 step left here"
 Z.STEPS = "  %s: %d steps left here"
 Z.TURN_IN = "  %s: ready to hand in here"
@@ -48,7 +53,10 @@ Z.WHY_NO_MAP = "Your map is not known yet; try again in a moment."
 Z.WHY_NO_LOG = "Your quest log could not be read."
 Z.LEFT_ONE = "You left 1 quest unfinished in the zone behind you: %s. Go back for it, or carry on."
 Z.LEFT = "You left %d quests unfinished in the zone behind you: %s. Go back for them, or carry on."
+Z.LEFT_ONE_IN = "You left 1 quest unfinished in %s: %s. Go back for it, or carry on."
+Z.LEFT_IN = "You left %d quests unfinished in %s: %s. Go back for them, or carry on."
 Z.MORE = "%s and %d more"
+Z.NAME_MAX = 60          -- bytes: a longer name is not a zone's name
 
 local function ask(client, name, ...)
     if type(client) ~= "table" or type(client[name]) ~= "function" then return nil end
@@ -93,14 +101,27 @@ local function waits()
     return type(N.LeavingWaits) == "function" and N.LeavingWaits(nil) or "(after this zone)"
 end
 
-function Z.Lines(list, elsewhere)
+-- A zone name fit to say: a short string, with nothing that would be read
+-- as a format or a colour code. Else nil.
+function Z.Named(name)
+    if type(name) ~= "string" or name == "" or #name > Z.NAME_MAX then return nil end
+    if name:find("[%%|%c]") then return nil end
+    return name
+end
+
+function Z.Lines(list, elsewhere, name)
     list = type(list) == "table" and list or {}
     elsewhere = type(elsewhere) == "number" and elsewhere or 0
+    name = Z.Named(name)
     local lines = {}
     if #list == 0 then
-        lines[1] = Z.NONE
+        lines[1] = name and Z.NONE_IN:format(name) or Z.NONE
+    elseif name then
+        lines[1] = #list == 1 and Z.HEADER_ONE_IN:format(name) or Z.HEADER_IN:format(name, #list)
     else
         lines[1] = #list == 1 and Z.HEADER_ONE or Z.HEADER:format(#list)
+    end
+    if #list > 0 then
         for _, e in ipairs(list) do
             local title = tostring(e.title)
             if e.turnIn then
@@ -120,12 +141,17 @@ function Z.Lines(list, elsewhere)
     return lines
 end
 
-function Z.Notice(list)
+function Z.Notice(list, name)
     if type(list) ~= "table" or #list == 0 then return nil end
+    name = Z.Named(name)
     local names = {}
     for i = 1, math.min(#list, Z.NAMED) do names[i] = tostring(list[i].title) end
     local said = table.concat(names, ", ")
     if #list > Z.NAMED then said = Z.MORE:format(said, #list - Z.NAMED) end
+    if name then
+        if #list == 1 then return Z.LEFT_ONE_IN:format(name, said) end
+        return Z.LEFT_IN:format(#list, name, said)
+    end
     if #list == 1 then return Z.LEFT_ONE:format(said) end
     return Z.LEFT:format(#list, said)
 end
@@ -171,6 +197,12 @@ function Z.Declare(k, diag)
         return Z.Left(rows, places or {}, here)
     end
 
+    -- The name of the zone a map is in, as the client says it, or nil.
+    local function nameOf(zone, map)
+        local c = client()
+        return Z.Named(ask(c, "mapName", zone)) or Z.Named(ask(c, "mapName", map))
+    end
+
     function api.Left()
         local pos = ask(client(), "position")
         local map = type(pos) == "table" and pos.map or nil
@@ -181,7 +213,10 @@ function Z.Declare(k, diag)
     function api.Lines()
         local list, elsewhere, why = api.Left()
         if not list then return { why } end
-        local lines = Z.Lines(list, elsewhere)
+        local c = client()
+        local z, pos = ask(c, "zone"), ask(c, "position")
+        local lines = Z.Lines(list, elsewhere,
+            nameOf(type(z) == "table" and z.zone or nil, type(pos) == "table" and pos.map or nil))
         local T = N.TripRoute
         if #list > 0 and T and T.WORD then
             local id = k.id or ns.id
@@ -202,7 +237,7 @@ function Z.Declare(k, diag)
         last = { zone = zone, map = map }
         if not was or was.zone == zone or not noticeOn() then return end
         local list = leftOn(was.map)
-        local line = Z.Notice(list)
+        local line = Z.Notice(list, nameOf(was.zone, was.map))
         if line then tell(line) end
     end
 

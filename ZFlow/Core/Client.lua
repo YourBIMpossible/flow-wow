@@ -2481,6 +2481,61 @@ function ns.make.client(env)
         return mod
     end
 
+    -- One boss as the dungeon journal of the client gives it (lead DISPATCH
+    -- 426), or nil when the client has no journal calls or does not answer:
+    --   { name = text or nil, items = { item id, ... }, shown = true or nil }
+    -- instance, encounter: the journal's own numbers. The name is the first
+    -- answer of EJ_GetEncounterInfo(encounter). withLoot: also ask the loot
+    -- (EJ_SelectInstance, EJ_SelectEncounter, EJ_GetNumLoot, then
+    -- C_EncounterJournal.GetLootInfoByIndex(i).itemID). Selecting turns the
+    -- page of the journal, so the loot is not asked while the journal
+    -- window is shown (shown = true then). Read only: nothing is cast,
+    -- bought, moved or clicked. First guesses, from the retail client's
+    -- call names: whether a 16001 client has them is what Nav/DungeonRead.lua
+    -- R.JournalLine reports. Not seen in game.
+    function c.journalBoss(instance, encounter, withLoot)
+        if type(instance) ~= "number" or type(encounter) ~= "number" then return nil end
+        if type(env.EJ_GetEncounterInfo) ~= "function" then return nil end
+        local okName, name = call(env.EJ_GetEncounterInfo, encounter)
+        if not okName then return nil end
+        local out = { name = text(true, name), items = {} }
+        if not withLoot then
+            if out.name == nil then return nil end
+            return out
+        end
+        local frame = env.EncounterJournal
+        if type(frame) == "table" then
+            local okShown, shown = method(frame, "IsShown")
+            if okShown and shown then
+                out.shown = true
+                return out
+            end
+        end
+        local group = env.C_EncounterJournal
+        if type(group) ~= "table" or type(group.GetLootInfoByIndex) ~= "function" then
+            if out.name == nil then return nil end
+            return out
+        end
+        if not call(env.EJ_SelectInstance, instance) or not call(env.EJ_SelectEncounter, encounter) then
+            if out.name == nil then return nil end
+            return out
+        end
+        local okCount, count = call(env.EJ_GetNumLoot)
+        count = whole(okCount, count) or 0
+        if count > 500 then count = 500 end
+        local had = {}
+        for i = 1, count do
+            local okInfo, info = call(group.GetLootInfoByIndex, i)
+            local id = okInfo and type(info) == "table" and whole(true, info.itemID) or nil
+            if id and id > 0 and not had[id] then
+                had[id] = true
+                out.items[#out.items + 1] = id
+            end
+        end
+        if out.name == nil and #out.items == 0 then return nil end
+        return out
+    end
+
     -- The minimap as the client says it is (F1), or nil without one:
     --   { size =, radius =, rotates =, square = }
     -- size: how wide the frame is. radius: yards from the middle to the
@@ -4023,6 +4078,18 @@ function ns.make.client(env)
         if v == true or v == 1 then return true end
         if v == false or v == 0 then return false end
         return nil
+    end
+
+    -- c.repairCost() -> what repairing everything costs at the open
+    -- merchant, in copper (0: nothing to repair), or nil when not known or
+    -- the merchant does not repair. A read only: nothing is repaired.
+    -- First guess, not seen in game: GetRepairAllCost() -> cost, canRepair
+    -- (warcraft.wiki.gg, API GetRepairAllCost).
+    function c.repairCost()
+        if c.merchantRepairs() ~= true then return nil end
+        local ok, cost = call(env.GetRepairAllCost)
+        if not ok or cost == nil or hidden(cost) or not wholeCount(cost) then return nil end
+        return cost
     end
 
     -- c.bindLocation() -> the name of the place the hearthstone is set to,
@@ -6902,6 +6969,16 @@ function ns.make.client(env)
         return nil
     end
 
+    -- Is the player with this id on the friends list? C_FriendList.IsFriend(
+    -- guid): true, false, or nil when the game does not say. A first guess:
+    -- not seen in game.
+    function c.isFriend(guid)
+        if type(guid) ~= "string" or guid == "" then return nil end
+        local list = env.C_FriendList
+        if type(list) ~= "table" then return nil end
+        return yesNo(call(list.IsFriend, guid))
+    end
+
     -- How fast the player is moving, in yards a second: GetUnitSpeed(
     -- "player") (0 standing still), or nil when it cannot be read.
     function c.speed()
@@ -7889,6 +7966,186 @@ function ns.make.client(env)
         function h.open() return waiting end
         return h
     end
+    -- Lead section 410: Z-Flow's settings as the game's own rows, under
+    -- Options > AddOns. One entry for the add-on, one under it for each
+    -- topic; each setting is a checkbox, slider or dropdown the game builds,
+    -- so look, spacing, scrolling, search and Defaults are the game's.
+    --
+    -- NOT CONFIRMED ON THIS CLIENT. No add-on installed on 16001 and no copy
+    -- of the client's interface source uses these calls; every installed
+    -- add-on registers a canvas (Questie's QuestieOptionsEngine.lua,
+    -- ForeverDungeonJournal's OptionsPanel.lua, Ace3's AceConfigDialog-3.0).
+    -- The names and argument orders below are the ones of the game's
+    -- Settings API as later clients have it, so every one is looked for
+    -- before anything is registered, and the answer is nil (the caller keeps
+    -- its own window) when one is missing. RegisterProxySetting has had two
+    -- argument orders; a setting that is never shown is registered first to
+    -- learn which one this client reads, and nil is the answer when neither
+    -- reads back. The add-on's entry is added to the list last, so a client
+    -- that fails part way shows no empty entry.
+    --
+    --   c.optionsNative(spec) -> h | nil   (show)
+    --   spec = { title, name, rows = { row, ... },
+    --            topics = { { id, name, rows = { row, ... } }, ... } }
+    --   row = { kind = "header", text }
+    --       | { kind = "button", label, text, tip, run = fn }
+    --       | { kind = "toggle" | "number" | "choice", key, label, tip,
+    --           default, get = fn() -> value, set = fn(value),
+    --           can = fn() -> true when it may be changed now,
+    --           tags = { word, ... }, min, max, step (number),
+    --           choices = { { value, label }, ... } (choice) }
+    --   h.open(topicId or nil) -> true when the game's Options was asked to
+    --     open at that topic's entry (the add-on's own entry for nil)
+    --   h.count() -> how many rows the game took
+    --   h.order() -> "new" | "old": the argument order that read back
+    function c.optionsNative(spec)
+        spec = type(spec) == "table" and spec or {}
+        local S = env.Settings
+        if type(S) ~= "table" then return nil end
+        local NEED = { "RegisterVerticalLayoutCategory", "RegisterVerticalLayoutSubcategory",
+            "RegisterAddOnCategory", "RegisterProxySetting", "OpenToCategory", "CreateSlider",
+            "CreateSliderOptions", "CreateControlTextContainer" }
+        for i = 1, #NEED do
+            if type(S[NEED[i]]) ~= "function" then return nil end
+        end
+        local checkbox = S.CreateCheckbox or S.CreateCheckBox
+        local dropdown = S.CreateDropdown or S.CreateDropDown
+        if type(checkbox) ~= "function" or type(dropdown) ~= "function" then return nil end
+        local title = type(spec.title) == "string" and spec.title or "Add-on"
+        local prefix = (type(spec.name) == "string" and spec.name or "AddOn") .. "_"
+        local okP, parent, parentLayout = call(S.RegisterVerticalLayoutCategory, title)
+        if not okP or type(parent) ~= "table" then return nil end
+
+        local VT = type(S.VarType) == "table" and S.VarType or {}
+        local function varType(v)
+            if type(v) == "boolean" then return VT.Boolean or "boolean" end
+            if type(v) == "number" then return VT.Number or "number" end
+            return VT.String or "string"
+        end
+        local order = "new"
+        local function proxy(cat, variable, default, label, get, set)
+            local ok, setting
+            if order == "new" then
+                ok, setting = call(S.RegisterProxySetting, cat, variable, varType(default), label, default, get, set)
+            else
+                ok, setting = call(S.RegisterProxySetting, cat, variable, {}, varType(default), label, default, get, set)
+            end
+            if ok and type(setting) == "table" then return setting end
+            return nil
+        end
+        local function readsBack(setting)
+            if not setting then return false end
+            local ok, v = method(setting, "GetValue")
+            return ok and v == true
+        end
+        local function yes() return true end
+        local function nothing() end
+        if not readsBack(proxy(parent, prefix .. "probe", false, title, yes, nothing)) then
+            order = "old"
+            if not readsBack(proxy(parent, prefix .. "probe2", false, title, yes, nothing)) then return nil end
+        end
+
+        local made = 0
+        local function add(layout, init)
+            if type(layout) ~= "table" or type(init) ~= "table" then return false end
+            return (method(layout, "AddInitializer", init)) == true
+        end
+        local function control(cat, r, setting)
+            if r.kind == "toggle" then return call(checkbox, cat, setting, r.tip) end
+            if r.kind == "number" then
+                local okO, opts = call(S.CreateSliderOptions, r.min, r.max, r.step)
+                if not okO or type(opts) ~= "table" then return false end
+                local M = env.MinimalSliderWithSteppersMixin
+                if type(M) == "table" and type(M.Label) == "table" and M.Label.Right ~= nil then
+                    method(opts, "SetLabelFormatter", M.Label.Right)
+                end
+                return call(S.CreateSlider, cat, setting, opts, r.tip)
+            end
+            if r.kind == "choice" then
+                local function options()
+                    local okC, box = call(S.CreateControlTextContainer)
+                    if not okC or type(box) ~= "table" then return {} end
+                    for _, choice in ipairs(type(r.choices) == "table" and r.choices or {}) do
+                        method(box, "Add", choice.value, choice.label)
+                    end
+                    local okD, data = method(box, "GetData")
+                    if okD and type(data) == "table" then return data end
+                    return {}
+                end
+                return call(dropdown, cat, setting, options, r.tip)
+            end
+            return false
+        end
+        local function rowsInto(cat, layout, rows)
+            for _, r in ipairs(type(rows) == "table" and rows or {}) do
+                if type(r) ~= "table" then
+                    -- not a row
+                elseif r.kind == "header" then
+                    local ok, init = call(env.CreateSettingsListSectionHeaderInitializer, r.text)
+                    if ok then add(layout, init) end
+                elseif r.kind == "button" then
+                    local run = r.run
+                    local ok, init = call(env.CreateSettingsButtonInitializer, r.label, r.text, function()
+                        if type(run) == "function" then pcall(run) end
+                    end, r.tip, true)
+                    if ok and add(layout, init) then made = made + 1 end
+                elseif type(r.key) == "string" and type(r.get) == "function" and type(r.set) == "function" then
+                    local get, set = r.get, r.set
+                    local setting = proxy(cat, prefix .. r.key, r.default, r.label, function()
+                        local ok, v = pcall(get)
+                        if ok and v ~= nil then return v end
+                        return r.default
+                    end, function(v)
+                        if hidden(v) then return end
+                        pcall(set, v)
+                    end)
+                    if setting then
+                        local ok, init = control(cat, r, setting)
+                        if ok and type(init) == "table" then
+                            made = made + 1
+                            local can = r.can
+                            if type(can) == "function" then
+                                method(init, "AddModifyPredicate", function()
+                                    local okC, may = pcall(can)
+                                    return okC and may == true
+                                end)
+                            end
+                            if type(r.tags) == "table" and #r.tags > 0 then
+                                method(init, "AddSearchTags", unpack(r.tags))
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        local byId = {}
+        rowsInto(parent, parentLayout, spec.rows)
+        for _, topic in ipairs(type(spec.topics) == "table" and spec.topics or {}) do
+            if type(topic) == "table" then
+                local ok, sub, layout = call(S.RegisterVerticalLayoutSubcategory, parent, tostring(topic.name))
+                if ok and type(sub) == "table" then
+                    if topic.id ~= nil then byId[topic.id] = sub end
+                    rowsInto(sub, layout, topic.rows)
+                end
+            end
+        end
+        if made == 0 then return nil end
+        call(S.RegisterAddOnCategory, parent)
+
+        local h = {}
+        function h.open(topicId)
+            local cat = topicId ~= nil and byId[topicId] or parent
+            local id = cat
+            local okI, got = method(cat, "GetID")
+            if okI and got ~= nil then id = got end
+            return (call(S.OpenToCategory, id)) == true
+        end
+        function h.count() return made end
+        function h.order() return order end
+        return h
+    end
+
     -- ------------------------------------------------------------ end N57
 
     -- ------------------------------------------------------------ N67
@@ -8949,7 +9206,9 @@ function ns.make.client(env)
     --     yet (the item not loaded).
     --   c.markRewardChoice(index) -> true when that choice's button carries
     --     the mark; nil when no button was found. Every other mark is
-    --     hidden; index nil hides them all.
+    --     hidden; index nil hides them all. kind "coin" (G14, section 393:
+    --     nothing is an upgrade, this sells for the most) draws the gold
+    --     coin icon instead of the arrow.
     -- In a do block: make.client is near Lua 5.1's 200 locals.
     do
         local REWARD_BUTTONS = 10
@@ -8993,12 +9252,23 @@ function ns.make.client(env)
             rewardBadges[b] = t
             return t
         end
-        function c.markRewardChoice(index)
+        local function rewardLook(t, kind)
+            if kind == "coin" then
+                method(t, "SetTexture", "Interface\\MoneyFrame\\UI-GoldIcon")
+                return
+            end
+            local okA, set = method(t, "SetAtlas", "bags-greenarrow")
+            if not okA or set == false then
+                method(t, "SetTexture", "Interface\\PetBattles\\BattleBar-AbilityBadge-Strong")
+            end
+        end
+        function c.markRewardChoice(index, kind)
             local shown = nil
             for i = 1, REWARD_BUTTONS do
                 local t = rewardBadge(i)
                 if t then
                     if i == index then
+                        rewardLook(t, kind)
                         method(t, "Show")
                         shown = true
                     else
@@ -9007,6 +9277,81 @@ function ns.make.client(env)
                 end
             end
             return shown
+        end
+    end
+
+    -- G14 bag badge (section 393): a few letters on bag slots (the role an
+    -- upgrade is for). First guess, not seen in game on 16001: the bag
+    -- windows are ContainerFrame1..NUM_CONTAINER_FRAMES (13 when not given),
+    -- each window's GetID() its bag and its buttons <window>Item1..36 with
+    -- GetID() their slot, as the classic bag code builds them.
+    --   c.markBagSlots({ { bag, slot, text } ... }) -> how many slots carry
+    --     a letter now. Every other letter is hidden; {} hides them all.
+    -- The marks are kept and drawn again when a bag window opens (a window
+    -- may show another bag than last time). Our own font string on each
+    -- button, reused; nothing of the game's is written, nothing is clicked.
+    -- In a do block: make.client is near Lua 5.1's 200 locals.
+    do
+        local bagLetters, bagWanted, bagHooked = {}, {}, {}
+        local function bagLetter(button)
+            local known = bagLetters[button]
+            if known ~= nil then return known or nil end
+            local okT, fs = method(button, "CreateFontString", nil, "OVERLAY", "NumberFontNormalSmall")
+            if not okT or fs == nil then
+                bagLetters[button] = false
+                return nil
+            end
+            method(fs, "SetPoint", "TOPLEFT", button, "TOPLEFT", 2, -2)
+            method(fs, "SetTextColor", 0.1, 1, 0.1)
+            method(fs, "Hide")
+            bagLetters[button] = fs
+            return fs
+        end
+        local function bagDraw()
+            local okN, frames = pcall(function() return env.NUM_CONTAINER_FRAMES end)
+            if not okN or type(frames) ~= "number" then frames = 13 end
+            local shown = 0
+            for f = 1, frames do
+                local name = "ContainerFrame" .. f
+                local okF, frame = pcall(function() return env[name] end)
+                if okF and type(frame) == "table" then
+                    if not bagHooked[frame] then
+                        bagHooked[frame] = true
+                        method(frame, "HookScript", "OnShow", function() bagDraw() end)
+                    end
+                    local okB, bag = method(frame, "GetID")
+                    local row = okB and bagWanted[bag] or nil
+                    for i = 1, 36 do
+                        local okI, button = pcall(function() return env[name .. "Item" .. i] end)
+                        if okI and type(button) == "table" then
+                            local okS, slot = method(button, "GetID")
+                            local text = row and okS and row[slot] or nil
+                            local fs = (text or bagLetters[button]) and bagLetter(button) or nil
+                            if fs then
+                                if text then
+                                    method(fs, "SetText", text)
+                                    method(fs, "Show")
+                                    shown = shown + 1
+                                else
+                                    method(fs, "Hide")
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            return shown
+        end
+        function c.markBagSlots(marks)
+            bagWanted = {}
+            for _, m in ipairs(type(marks) == "table" and marks or {}) do
+                if type(m) == "table" and type(m.bag) == "number" and type(m.slot) == "number"
+                    and type(m.text) == "string" and m.text ~= "" then
+                    bagWanted[m.bag] = bagWanted[m.bag] or {}
+                    bagWanted[m.bag][m.slot] = m.text
+                end
+            end
+            return bagDraw()
         end
     end
 
@@ -10914,7 +11259,24 @@ function ns.make.client(env)
                     method(nm, "SetWidth", math.max(pane.w - left - right, 1))
                     method(nm, "SetJustifyH", "LEFT")
                     if off then inked(nm, color.textOff) else inked(nm, color.text) end
+                    local wraps = part.wrap == true and not hasSub
+                    -- words() turns wrapping off, and the name is kept from
+                    -- draw to draw: set it each time.
+                    method(nm, "SetWordWrap", wraps)
                     method(nm, "SetText", part.text)
+                    -- Lead section 408: a line that wraps is as tall as its
+                    -- text, and the parts under it start below it. A height
+                    -- the client does not give leaves the line one row high.
+                    if wraps then
+                        local okH, textH = method(nm, "GetStringHeight")
+                        if okH and type(textH) == "number" and not hidden(textH) and textH > 0 then
+                            local tall = math.ceil(textH) + 2 * size.gapSmall
+                            if tall > hgt then
+                                sized(h, pane.w, tall)
+                                pane.y = pane.y + tall - hgt
+                            end
+                        end
+                    end
                 end
                 local sub = words(h, font.small, "sub")
                 if sub ~= nil then
@@ -11322,6 +11684,17 @@ function ns.make.client(env)
                 local pane = { parent = body, x = 0, y = 0, w = w, h = h, first = true, rows = 0 }
                 for i = 1, #kids do
                     if kids[i].kind ~= "footer" then place(kids[i], pane, i == lastFlow) end
+                end
+                -- Lead section 408: a window that fits is as tall as what
+                -- was just drawn in it: the title bar, the padding, the
+                -- parts and the footer. Its width stays.
+                if now.fit == true then
+                    local want = size.title + 2 * size.pad + pane.y
+                    if hasFooter then want = want + size.footer end
+                    if want ~= height then
+                        height = want
+                        sized(f, width, height)
+                    end
                 end
             end
             draw = function(now)
@@ -12212,6 +12585,255 @@ function ns.make.client(env)
         end
         return out
     end
+    -- --------------------------------- route beside the quest log and on the map
+    -- The seams UI/RouteList.lua and UI/MapRoute.lua draw through. All of
+    -- it is a first guess, not seen on 16001: QuestLogFrame and its
+    -- IsShown / GetRight / GetTop / GetHeight; ToggleWorldMap, ShowUIPanel
+    -- and WorldMapFrame:SetMapID; C_Map.GetMapInfo and C_Map.GetMapLevels;
+    -- the canvas WorldMapFrame.ScrollContainer.Child (as c.mapPins above),
+    -- the portrait mask picture, GameTooltip, TooltipBackdropTemplate.
+    -- Needs a game test.
+
+    local function finiteNumber(v)
+        return v ~= nil and not hidden(v) and type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
+    end
+
+    -- c.questLogFrame() -> { shown, right, top, height } or nil when the
+    -- game has no quest log frame or it will not say. right and top are
+    -- the frame's own edges (screen units, from the bottom left); they
+    -- are nil while it is hidden or does not answer plain numbers.
+    function c.questLogFrame()
+        local f = env.QuestLogFrame
+        if f == nil then return nil end
+        local okS, shown = method(f, "IsShown")
+        if not okS or hidden(shown) then return nil end
+        local out = { shown = shown == true }
+        if not out.shown then return out end
+        local okR, right = method(f, "GetRight")
+        local okT, top = method(f, "GetTop")
+        local okH, height = method(f, "GetHeight")
+        if okR and finiteNumber(right) then out.right = right end
+        if okT and finiteNumber(top) then out.top = top end
+        if okH and finiteNumber(height) then out.height = height end
+        return out
+    end
+
+    -- c.showMap(map) -> true when the world map was asked to show that
+    -- uiMapID. The world map is opened first when it is closed. Nothing is
+    -- done unless InCombatLockdown answers a plain false.
+    function c.showMap(map)
+        if not finiteNumber(map) then return false end
+        local okLock, locked = call(env.InCombatLockdown)
+        if not okLock or hidden(locked) or locked ~= false then return false end
+        local wm = env.WorldMapFrame
+        if wm == nil then return false end
+        local okS, shown = method(wm, "IsShown")
+        if not okS or hidden(shown) then return false end
+        if shown ~= true then
+            local opened = false
+            if type(env.ToggleWorldMap) == "function" then opened = call(env.ToggleWorldMap) end
+            if not opened and type(env.ShowUIPanel) == "function" then opened = call(env.ShowUIPanel, wm) end
+            if not opened then return false end
+        end
+        local okM = method(wm, "SetMapID", map)
+        return okM == true
+    end
+
+    -- c.mapInfo(map) -> { name, low, high } or nil when the game will not
+    -- say anything about that uiMapID. name: the game's own name for the
+    -- map. low, high: the levels the game itself gives for it; nil when it
+    -- gives none (never 0).
+    function c.mapInfo(map)
+        if not finiteNumber(map) then return nil end
+        local cm = env.C_Map
+        if type(cm) ~= "table" then return nil end
+        local out = {}
+        local okI, info = call(cm.GetMapInfo, map)
+        if okI and type(info) == "table" and type(info.name) == "string" and not hidden(info.name)
+            and info.name ~= "" then
+            out.name = info.name
+        end
+        local okL, low, high = call(cm.GetMapLevels, map)
+        if okL and finiteNumber(low) and finiteNumber(high) and low > 0 and high >= low then
+            out.low, out.high = low, high
+        end
+        if out.name == nil and out.low == nil then return nil end
+        return out
+    end
+
+    -- c.routePins() -> h, or nil when there is no world map, no canvas or
+    -- no frame could be made. Round numbered marks over the map's canvas,
+    -- made as needed and kept; each shows a tooltip under the mouse.
+    --   h.map() -> the uiMapID the world map shows, or nil (as c.mapPins)
+    --   h.draw(pins)   pins = { { n, x, y, text, sub, now } }: x, y shares
+    --       (x right, y down) of the shown map; n the number written on
+    --       the mark; text, sub the tooltip's lines; now marks the stop
+    --       the arrow points at. Marks past the count are hidden.
+    --   h.clear()   hides them all
+    -- The canvas's own scale is not read (as c.mapPins): the marks may
+    -- draw small or large when the map is zoomed.
+    function c.routePins()
+        local wm = env.WorldMapFrame
+        if wm == nil then return nil end
+        local okC, canvas = pcall(function() return wm.ScrollContainer.Child end)
+        if not okC or canvas == nil then return nil end
+        local ok, host = call(env.CreateFrame, "Frame", nil, canvas)
+        if not ok or host == nil then return nil end
+        method(host, "SetAllPoints", canvas)
+        method(host, "SetFrameStrata", "HIGH")
+        local marks, count = {}, 0
+        local SIZE = 22
+
+        local function make()
+            local okB, b = call(env.CreateFrame, "Button", nil, host)
+            if not okB or b == nil then return false end
+            method(b, "SetSize", SIZE, SIZE)
+            local m = { button = b }
+            local okD, disc = method(b, "CreateTexture", nil, "BACKGROUND")
+            if okD and disc ~= nil then
+                method(disc, "SetAllPoints", b)
+                method(disc, "SetTexture", "Interface\\CharacterFrame\\TempPortraitAlphaMask")
+                m.disc = disc
+            end
+            local okF, fs = method(b, "CreateFontString", nil, "OVERLAY", "GameFontNormalSmall")
+            if okF and fs ~= nil then
+                method(fs, "SetPoint", "CENTER", b, "CENTER", 0, 0)
+                m.label = fs
+            end
+            method(b, "SetScript", "OnEnter", function()
+                local tip = env.GameTooltip
+                if tip == nil or m.text == nil then return end
+                method(tip, "SetOwner", b, "ANCHOR_RIGHT")
+                method(tip, "SetText", m.text)
+                if m.sub ~= nil then method(tip, "AddLine", m.sub, 1, 1, 1, true) end
+                method(tip, "Show")
+            end)
+            method(b, "SetScript", "OnLeave", function()
+                local tip = env.GameTooltip
+                if tip ~= nil then method(tip, "Hide") end
+            end)
+            return m
+        end
+
+        local h = {}
+        function h.map()
+            local okS, shown = method(wm, "IsShown")
+            if not okS or shown ~= true then return nil end
+            local okM, map = method(wm, "GetMapID")
+            if not okM or not finiteNumber(map) then return nil end
+            return map
+        end
+        function h.clear()
+            for i = 1, count do if marks[i] then method(marks[i].button, "Hide") end end
+            count = 0
+        end
+        function h.draw(pins)
+            local okW, w = method(canvas, "GetWidth")
+            local okH, ht = method(canvas, "GetHeight")
+            if not okW or not okH or not finiteNumber(w) or not finiteNumber(ht) or w <= 0 or ht <= 0 then
+                h.clear()
+                return false
+            end
+            local n = 0
+            for _, p in ipairs(type(pins) == "table" and pins or {}) do
+                if type(p) == "table" and finiteNumber(p.x) and finiteNumber(p.y) then
+                    n = n + 1
+                    local m = marks[n]
+                    if m == nil then
+                        m = make()
+                        marks[n] = m
+                    end
+                    if m then
+                        m.text = type(p.text) == "string" and p.text or nil
+                        m.sub = type(p.sub) == "string" and p.sub ~= "" and p.sub or nil
+                        if m.disc then
+                            if p.now == true then
+                                method(m.disc, "SetVertexColor", 0.1, 0.45, 0.1, 0.95)
+                            else
+                                method(m.disc, "SetVertexColor", 0.1, 0.1, 0.1, 0.9)
+                            end
+                        end
+                        if m.label then method(m.label, "SetText", tostring(p.n or "")) end
+                        method(m.button, "ClearAllPoints")
+                        method(m.button, "SetPoint", "CENTER", canvas, "TOPLEFT", p.x * w, -p.y * ht)
+                        method(m.button, "Show")
+                    end
+                end
+            end
+            for i = n + 1, count do if marks[i] then method(marks[i].button, "Hide") end end
+            count = n
+            return true
+        end
+        return h
+    end
+
+    -- c.mapCard() -> h, or nil when there is no world map or no frame
+    -- could be made. One small card in the map's top left corner, in the
+    -- game's tooltip look, as wide and tall as its words.
+    --   h.show({ title, lines = { text, ... } })   draws it
+    --   h.hide()
+    function c.mapCard()
+        local wm = env.WorldMapFrame
+        if wm == nil then return nil end
+        local okC, area = pcall(function() return wm.ScrollContainer end)
+        if not okC or area == nil then area = wm end
+        local ok, f = call(env.CreateFrame, "Frame", nil, wm, "TooltipBackdropTemplate")
+        if not ok or f == nil then
+            ok, f = call(env.CreateFrame, "Frame", nil, wm)
+            if not ok or f == nil then return nil end
+            local okBg, bg = method(f, "CreateTexture", nil, "BACKGROUND")
+            if okBg and bg ~= nil then
+                method(bg, "SetAllPoints", f)
+                method(bg, "SetColorTexture", 0, 0, 0, 0.8)
+            end
+        end
+        method(f, "SetFrameStrata", "HIGH")
+        method(f, "SetPoint", "TOPLEFT", area, "TOPLEFT", 10, -10)
+        method(f, "Hide")
+        local PAD, GAP = 10, 3
+        local strings = {}
+        local function str(i)
+            if strings[i] == nil then
+                local okF, fs = method(f, "CreateFontString", nil, "OVERLAY",
+                    i == 1 and "GameFontNormal" or "GameFontHighlightSmall")
+                strings[i] = okF and fs or false
+                if strings[i] then method(strings[i], "SetJustifyH", "LEFT") end
+            end
+            return strings[i]
+        end
+
+        local h = {}
+        function h.hide() method(f, "Hide") end
+        function h.show(card)
+            if type(card) ~= "table" then
+                h.hide()
+                return false
+            end
+            local words = { tostring(card.title or "") }
+            for _, l in ipairs(type(card.lines) == "table" and card.lines or {}) do words[#words + 1] = tostring(l) end
+            local width, y = 0, PAD
+            for i, text in ipairs(words) do
+                local fs = str(i)
+                if fs then
+                    method(fs, "SetText", text)
+                    method(fs, "ClearAllPoints")
+                    method(fs, "SetPoint", "TOPLEFT", f, "TOPLEFT", PAD, -y)
+                    method(fs, "Show")
+                    local okW, sw = method(fs, "GetStringWidth")
+                    local okH, sh = method(fs, "GetStringHeight")
+                    if okW and finiteNumber(sw) and sw > width then width = sw end
+                    y = y + ((okH and finiteNumber(sh) and sh > 0) and sh or 12) + GAP
+                end
+            end
+            for i = #words + 1, #strings do if strings[i] then method(strings[i], "Hide") end end
+            if width <= 0 then width = 160 end
+            method(f, "SetSize", width + PAD * 2, y - GAP + PAD)
+            method(f, "Show")
+            return true
+        end
+        return h
+    end
+    -- ----------------------------- end route beside the quest log and on the map
     -- Lead section 382 (Nav/ProfFeed.lua): the name of the continent a map
     -- lies on, for "Next time you are in <continent>". C_Map.GetMapInfo up
     -- the parents to the first of Enum.UIMapType.Continent (2 when the enum
@@ -12244,6 +12866,17 @@ function ns.make.client(env)
         if type(log) ~= "table" then return nil end
         return yesNo(call(log.IsPushableQuest, id))
     end
+
+    -- Lead section 303 (d), the in-dungeon tracker: the name of the instance
+    -- you are in, the first answer of GetInstanceInfo(), or nil when not
+    -- known (no call, a failed call, a secret or empty answer). Only reads.
+    -- A first guess: not seen in game on 16001.
+    function c.instanceName()
+        local ok, name = call(env.GetInstanceInfo)
+        if not ok or hidden(name) or type(name) ~= "string" or name == "" then return nil end
+        return name
+    end
+
     -- S32: the words the client shows for where the player stands:
     -- { zone = GetRealZoneText(), sub = GetSubZoneText() }, each a name or
     -- nil; nil when neither is known. Read to name the dock a boat or

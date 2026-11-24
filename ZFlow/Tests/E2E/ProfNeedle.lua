@@ -135,10 +135,25 @@ end
 tests["prof needle: a crafting profession with nothing that gives a point says why"] = function(t)
     local c = start({ professions = { "Tailoring" }, skill = { Tailoring = { skill = 50, max = 75 } }, book = BOOK,
         colours = { ["Bolt of Linen Cloth"] = { trivial = { lo = 40, hi = 60 } },
-                    ["Linen Bag"] = { optimal = { lo = 10, hi = 20 } } } })
+                    ["Linen Bag"] = { optimal = { lo = 10, hi = 20 }, trivial = { lo = 45, hi = 55 } } } })
+    -- Lead section 421 point 2: "all grey" means every known recipe was
+    -- seen grey, so Linen Bag is marked seen grey here.
     textOnly(t, c, { fmt(N.PROF_WHY_NO_POINT, "Tailoring", 50) }, "all grey at 50")
     local c2 = start({ professions = { "Tailoring" }, skill = { Tailoring = { skill = 50, max = 75 } } })
     textOnly(t, c2, { fmt(N.PROF_WHY_RECIPES, "Tailoring") }, "no recipe colours seen")
+end
+
+-- Lead section 421 point 2: a recipe last seen orange at 20 with the skill
+-- now 50 was never seen grey, so it stays the step, worded as not
+-- confirmed: the craft, then when it was last seen giving points and the
+-- window to open. Fails before: "No known Tailoring recipe gives a point at 50".
+tests["prof needle: a recipe last seen orange at 20, skill now 50, is the step, not confirmed"] = function(t)
+    local c = start({ professions = { "Tailoring" }, skill = { Tailoring = { skill = 50, max = 75 } }, book = BOOK,
+        colours = { ["Bolt of Linen Cloth"] = { trivial = { lo = 40, hi = 60 } },
+                    ["Linen Bag"] = { optimal = { lo = 10, hi = 20 } } } })
+    t.ok(N.PROF_CRAFT_STALE ~= nil and N.PROF_STALE_CHECK ~= nil, "the lines exist")
+    textOnly(t, c, { fmt(N.PROF_CRAFT_STALE, "Linen Bag"), fmt(N.PROF_STALE_CHECK, 20, "Tailoring") },
+        "last seen orange at 20, skill now 50")
 end
 
 -- Fails before: a capped profession with no trainer seen says nothing.
@@ -176,7 +191,10 @@ tests["prof needle: the trainer when capped comes first, then a node, then a cra
     -- Linen Cloth", a craft this character cannot make. The one step is now
     -- the point it can get: any ore vein. (With the materials in the bags
     -- the craft comes first: Tests/E2E/ProfFeedRealPlan.lua.)
-    textOnly(t, c3, { "Mine any ore vein you find (Mining 30 of 75)" }, "no node, no materials: the vein")
+    -- Lead sections 416 item 2 and 419: Tailoring's own line follows. The
+    -- book here holds no materials, so the plan names its known recipe.
+    textOnly(t, c3, { "Mine any ore vein you find (Mining 30 of 75)", "Make Bolt of Linen Cloth" },
+        "no node, no materials: the vein, then Tailoring's line")
 end
 
 -- Passes before: a guard that a character with no profession sees nothing.
@@ -243,13 +261,18 @@ tests["prof guide: nothing to point at says one line for each profession, not on
 end
 
 tests["prof guide: a gatherer with no node and a capped crafter each get their line"] = function(t)
-    local c = start({ professions = { "Herbalism", "Tailoring" },
+    -- book = {}: the recipe book was read; without it the planner has no
+    -- reading and the capped profession gets no training line.
+    local c = start({ professions = { "Herbalism", "Tailoring" }, book = {},
         skill = { Herbalism = { skill = 20, max = 75 }, Tailoring = { skill = 75, max = 75 } } })
     -- The stack (section 382): one step across the professions, the next
     -- point it can get. Herbs need no node source to be picked, so the line
-    -- says to pick them; it no longer asks for a node add-on, and the capped
-    -- profession (no point until trained) waits its turn.
-    textOnly(t, c, { "Pick any herb you find (Herbalism 20 of 75)" },
+    -- says to pick them; it no longer asks for a node add-on. Lead section
+    -- 416 item 2: the capped profession no longer waits its turn; its
+    -- training follows, said short (the full line is over the label limit).
+    local F = N.ProfFeed
+    textOnly(t, c, { "Pick any herb you find (Herbalism 20 of 75)",
+        F.ALSO_SHORT and F.ALSO_SHORT:format("Tailoring", F.KIND_WORDS.train_tier) },
         "Herbalism with no node known, Tailoring capped")
 end
 

@@ -106,6 +106,9 @@ local function neverOf(store)
     return never
 end
 
+-- The never-sell list as a set by item key (Items/DispositionTip.lua reads it too).
+LootNote.Never = neverOf
+
 function LootNote.Own(client, chatText)
     if type(client) ~= "table" then return nil end
     local own = client.ownLoot

@@ -194,4 +194,51 @@ tests["reward mark: switched off, nothing is marked"] = function(t)
     t.eq(c.rewardMarked(), nil)
 end
 
+-- G14 coin (section 393): no choice is an upgrade - the choice that sells
+-- for the most carries a coin instead ("take this to sell"). Prices from
+-- itemInfo().sellPrice; any price not read, a tie, or nothing sells: no coin.
+local function prices(c, rows)
+    c.setItemInfo(rows)
+end
+
+tests["reward coin: none an upgrade - the best sell price is the coin"] = function(t)
+    local c = client()
+    c.setQuestChoices(choices(WEAK, WORN))
+    prices(c, { [14] = { sellPrice = 30 }, [11] = { sellPrice = 75 } })
+    t.eq(type(RM.Coin), "function", "GearRewardMark.Coin")
+    if type(RM.Coin) ~= "function" then return end
+    t.eq(RM.Coin(c), 2)
+end
+
+tests["reward coin: a price not read, a tie, or nothing sells - no coin"] = function(t)
+    if type(RM.Coin) ~= "function" then return t.ok(false, "GearRewardMark.Coin") end
+    local c = client()
+    c.setQuestChoices(choices(WEAK, WORN))
+    prices(c, { [14] = { sellPrice = 30 } })
+    t.eq(RM.Coin(c), nil, "one price not read: never a guess")
+    prices(c, { [14] = { sellPrice = 30 }, [11] = { sellPrice = 30 } })
+    t.eq(RM.Coin(c), nil, "a tie")
+    prices(c, { [14] = { sellPrice = 0 }, [11] = { sellPrice = 0 } })
+    t.eq(RM.Coin(c), nil, "nothing sells")
+    c.setQuestChoices(nil)
+    t.eq(RM.Coin(c), nil, "the choices not readable")
+end
+
+tests["reward coin: the module shows the coin when nothing is an upgrade"] = function(t)
+    local c = client()
+    c.setQuestChoices(choices(WEAK, WORN))
+    prices(c, { [14] = { sellPrice = 30 }, [11] = { sellPrice = 75 } })
+    local k = ns.Kernel({}, c)
+    RM.Declare(k, packs())
+    k:Boot()
+    c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
+    c.fire("QUEST_COMPLETE")
+    t.eq(c.rewardMarked(), 2)
+    t.eq(c.rewardMarkKind and c.rewardMarkKind(), "coin")
+    c.setQuestChoices(choices(WEAK, STRONG))
+    c.fire("QUEST_COMPLETE")
+    t.eq(c.rewardMarked(), 2)
+    t.eq(c.rewardMarkKind and c.rewardMarkKind(), "upgrade", "an upgrade: the arrow, not the coin")
+end
+
 return tests

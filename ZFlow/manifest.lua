@@ -68,6 +68,8 @@ return {
         "Items/Bank.lua",
         "Items/Reservations.lua",
         "Items/LootNote.lua",
+        -- G2, show only (lead section 397 lane B item 9): the repair cost said at a merchant that repairs (after Prices).
+        "Items/RepairCost.lua",
         "Items/Plan.lua",
         "Items/Present.lua",
         "Items/CraftHint.lua",
@@ -161,6 +163,8 @@ return {
         "Nav/TravelIcon.lua",
         "Nav/Leaving.lua",
         "Nav/FlightPaths.lua",
+        -- S30: that step on the quest arrow and under the route word (after FlightPaths).
+        "Nav/FlightStep.lua",
         "Nav/MapFlights.lua",
         "Nav/TaxiMark.lua",
         -- S30: the flight paths still to learn, said in words (after FlightPaths).
@@ -178,6 +182,7 @@ return {
         "UI/DevPanel.lua",
         "UI/SettingsSlash.lua",
         "UI/SettingsPage.lua",
+        "UI/SettingsNative.lua",
         "UI/SettingsKeys.lua",
         "UI/SettingsPanel.lua",
         "UI/SettingsWindow.lua",
@@ -195,6 +200,10 @@ return {
         "Items/Keep.lua",
         "Items/Buyback.lua",
         "Items/RecipeBook.lua",
+        -- Lead section 413: the profession window's row colours, saved for the profession plan (after RecipeBook).
+        "Items/RecipeColours.lua",
+        -- Lead section 414: where a craft of the player's succeeded, saved as an anvil, forge or fire for the profession plan (after RecipeBook, ProfStep).
+        "Items/CraftSpots.lua",
         "Items/RecipeLearned.lua",
         "Items/ProfRecipes.lua",
         "Items/Goals.lua",
@@ -250,6 +259,8 @@ return {
     "UI/SettingsShare.lua",
     -- Lead section 303: the Dungeon Quests pane's data (pure).
     "Nav/DungeonStates.lua",
+    -- Lead DISPATCH 426: which items each dungeon and raid boss can drop, ids only (made by tools/zflow-boss-loot.ps1).
+    "Nav/BossLootData.lua",
     -- Lead section 303: the Dungeon Quests reader (Questie at runtime).
     "Nav/DungeonRead.lua",
     -- Lead section 305: boss kills as the client reports them (after Diag).
@@ -282,22 +293,44 @@ return {
     "Nav/Trip.lua",
     -- G43 (P-TRIP): the route tracker window and the current step's map pin (after Trip, TripRoute, the kit).
     "UI/RouteTracker.lua",
+    -- R4, R5: the route beside the quest log, and its marks and zone card on the world map.
+    "UI/RouteList.lua",
+    "UI/MapRoute.lua",
+    -- Old-Flow parity R6: your class buffs with the time left, under the player frame (after the class packs and the kit).
+    "UI/BuffStrip.lua",
     -- P-QUEST (lead section 354 item 4): quest advice text (after QuestRead and the advisor).
     "Nav/QuestAdvice.lua",
+    -- S33 (lead section 395 item 4): travel spell and mount advice text (after TripRoute, Arrow, the advisor).
+    "Nav/TravelAdvice.lua",
+    "Nav/InvitePrompt.lua",
+    -- S41 (lead section 395 item 1): quest items in the bags, leftover and to buy (after QuestRead and the advisor).
+    "Items/QuestBags.lua",
     -- R7 (sections 387, 388 b): spells to train, as advisor prompts (after the class packs and the advisor).
     "Spells/TrainAdvice.lua",
+    -- Lead section 375 item 7 (TN-1): the quest route's pick-ups (after RoutePlan, DungeonStates).
+    "Nav/RoutePickups.lua",
+    -- G45: the riding step and its advisor line (after the advisor, the arrow and Prices).
+    "Nav/RidingStep.lua",
     -- P-COACH C1 (section 382): the profession plan, steps toward the next point (after RecipeBook, HaveTip, Prices, ProfStep).
     "Items/ProfPlan.lua",
     -- P-COACH C3 (section 382): where the plan's short materials come from (after ProfPlan, Prices).
     "Items/ProfSources.lua",
+    -- Queue item A5: which vendor sold what and where, for the plan's buy line (after Items/Key).
+    "Items/VendorWares.lua",
     -- Section 387: the next-step panel docked under the game's profession window (after ProfPlan, ProfSources, KitHost).
     "UI/ProfDock.lua",
     -- Lead section 382 (C2 P-COACH): one profession step for the needle (after ProfStep, Legs, ProfPlan, ProfSources).
     "Nav/ProfFeed.lua",
     -- G46 (lead section 391 item 2): when hearthing saves the walk, and where to set home (after Trip, TripRoute).
     "Nav/HearthAdvice.lua",
+    -- Lead section 303 (d): the in-dungeon tracker, on the kit (after BossKills and the dungeon data).
+    "UI/DungeonTracker.lua",
     -- S35 (section 395 item 3): gate words for trip legs (after Gates, Trip).
     "Nav/GateWords.lua",
+    -- Lead section 406 item 3: recipe facts for the profession plan, seen in game then shipped (read by ProfPlan at call time).
+    "Items/RecipeFacts.lua",
+    -- Lead section 422 item 1: recipes seen for sale at vendors, for the profession plan (read by ProfPlan at call time).
+    "Items/VendorRecipes.lua",
     -- S32: boat and zeppelin dock names and wait words (Crossings calls them at run time).
     "Nav/CrossingWords.lua",
     -- S38 (lead section 395 item 6): activities and route lanes (after Trip, Nodes).
@@ -306,5 +339,13 @@ return {
     "UI/Lite.lua",
     -- G44 (section 397 item 14): the class trainer route step (after TrainAdvice and the packs).
     "Nav/ClassTrainerStep.lua",
+    -- G4 (section 395): keep or sell on item tooltips (after LootNote, SellList, Reservations).
+    "Items/DispositionTip.lua",
+    -- A10: the import word's "now", which copies the earlier add-on's saved data in (after Diag, SettingsShare).
+    "Import/Apply.lua",
+    -- G9 (section 393): the auction watch list (after AuctionLog, which it reads).
+    "Items/AuctionWatch.lua",
+    -- G14 (section 393): the role badge on bag upgrades (after the verdict and the reward mark).
+    "Gear/BagBadge.lua",
     },
 }
