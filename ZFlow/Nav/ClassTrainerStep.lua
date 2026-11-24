@@ -181,7 +181,9 @@ function C.Declare(k)
     -- or a read that failed) is asked again, but no sooner than C.RETRY
     -- seconds later and C.TRIES times in all: the arrow asks for this step
     -- on every frame, and one ask reads every NPC Questie knows. A client
-    -- that gives no time (now() not a number) gets the C.TRIES asks in a row.
+    -- with no time answers now() as 0 (Core/Client.lua): 0, or anything that
+    -- is not a number above 0, is read as "not known", and with no time to
+    -- wait by the C.TRIES asks come in a row (lead section 493).
     local asked, questie, tries, last = nil, nil, 0, nil
     local function fromQuestie(class)
         if asked == class then return questie end
@@ -189,11 +191,12 @@ function C.Declare(k)
         local db = ask("questieModule", "QuestieDB")
         if type(L) ~= "table" or type(db) ~= "table" then return nil end
         local now = ask("now")
-        if finite(now) and finite(last) and now >= last and now - last < C.RETRY then return nil end
+        if not finite(now) or now <= 0 then now = nil end
+        if now and last and now >= last and now - last < C.RETRY then return nil end
         local ok, found = pcall(L.Trainers, db, ask("questieModule", "ZoneDB"), class, ask("faction"))
         if not ok or type(found) ~= "table" then found = {} end
         tries = tries + 1
-        if finite(now) then last = now else last = nil end
+        last = now
         if next(found) ~= nil or tries >= C.TRIES then asked, questie = class, found end
         return found
     end

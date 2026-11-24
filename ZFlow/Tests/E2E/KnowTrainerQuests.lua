@@ -55,7 +55,8 @@ local function questie(class, state)
     return db, zones
 end
 
--- opts: class, account (saved ahead), questie (false: none), state
+-- opts: class, account (saved ahead), questie (false: none), state,
+-- noTime (the client has no time: now() answers 0)
 local function boot(opts)
     opts = opts or {}
     local class = opts.class or "WARRIOR"
@@ -64,6 +65,7 @@ local function boot(opts)
     c.setSaved(ns.id.charDB, {})
     c.setClass(class); c.setFaction("Alliance"); c.setLevel(20)
     c.setPosition(MAP, 0.5, 0.5)
+    if opts.noTime then c.setTime(false) end
     c.setMapName(MAP, "Test City")
     c.setQuestLog({})
     c.setQuestDone(Q_OPEN, false); c.setQuestDone(Q_DONE, true)
@@ -245,6 +247,33 @@ tests["know 1: a Questie with no answer yet is not asked on every frame, and is 
     c.advance(ns.ClassTrainerStep.RETRY * 3, 6)
     a.Step()
     t.eq(state.scans, n, "an answer with a trainer is kept: Questie is not asked again")
+end
+
+-- Lead section 493. Red on 80283ea0: with no time now() is 0, the wait
+-- never ends, and Questie is asked once and never again (scans stays 1 and
+-- the place stays nil). Questie is set after login here, so the arrow's
+-- own asks during login count for nothing.
+local function lateQuestie(state)
+    local c, addon = boot({ questie = false, noTime = true })
+    local db, zones = questie("WARRIOR", state)
+    c.setQuestieModule("QuestieDB", db); c.setQuestieModule("ZoneDB", zones)
+    return stepApi(addon)
+end
+
+tests["know 1: a client with no time asks Questie again at once, and stops at the tries"] = function(t)
+    local state = { raise = true }
+    local a = lateQuestie(state)
+    if not a then return t.ok(false, "no classTrainerStep") end
+    a.Step(); a.Step()
+    t.eq(state.scans, 2, "asked each time: there is no time to wait by")
+    state.raise = false
+    local s = a.Step()
+    t.eq(s and s.name, "Test Trainer", "the place once Questie answers")
+    local never = { raise = true }
+    local a2 = lateQuestie(never)
+    if not a2 then return t.ok(false, "no classTrainerStep") end
+    for _ = 1, ns.ClassTrainerStep.TRIES + 3 do a2.Step() end
+    t.eq(never.scans, ns.ClassTrainerStep.TRIES, "no more than the tries")
 end
 
 -- Section 236: a reload. The trainer the player opened is kept and wins
