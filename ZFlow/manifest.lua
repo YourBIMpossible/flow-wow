@@ -277,5 +277,7 @@ return {
     "UI/RouteTracker.lua",
     -- P-QUEST (lead section 354 item 4): quest advice text (after QuestRead and the advisor).
     "Nav/QuestAdvice.lua",
+    -- S32: boat and zeppelin dock names and wait words (Crossings calls them at run time).
+    "Nav/CrossingWords.lua",
     },
 }
