@@ -292,6 +292,7 @@ return {
     "Nav/Trails.lua",
     "Nav/Follow.lua",
     "Nav/Nodes.lua",
+    "Nav/NodeRest.lua",
     -- N60a: copy chat text and clickable web addresses in chat (after the settings page).
     "UI/Chat.lua",
     -- G48 (P-TRIP): the party route over add-on messages (after TripRoute).
