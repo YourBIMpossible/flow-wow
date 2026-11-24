@@ -25,6 +25,11 @@ local _, ns = ...
 --   host.draw(view, rows, act)   view for the kit; rows and act for the
 --                                plain panel
 --   host.show(on)
+--   host.place(point, width, height)   moves and sizes the kit window (each
+--                                may be nil: left as it is); the plain panel
+--                                takes the place only. Before the window is
+--                                first made it does nothing: opts.place and
+--                                the view's own size say where it starts
 --   host.shown() -> true | false   false once the player closed it
 --   host.plain() -> true | false   the plain panel has taken over
 --   host.dead()  -> true | false   nothing can draw: no kit, no plain panel
@@ -136,6 +141,14 @@ function KitHost.New(k, client, opts)
             if panel then panel.show(want) end
         elseif handle ~= nil then
             pcall(handle.show, want)
+        end
+    end
+
+    function host.place(point, width, height)
+        if plain then
+            if panel and type(point) == "table" then pcall(panel.place, point) end
+        elseif handle ~= nil and type(handle.place) == "function" then
+            pcall(handle.place, point, width, height)
         end
     end
 

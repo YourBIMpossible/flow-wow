@@ -1,7 +1,8 @@
 local _, ns = ...
 
 -- ServiceSeen (G37): the module that saves where this player met a vendor,
--- a repair vendor, a banker, an innkeeper, a flight master or a mailbox,
+-- a repair vendor, a banker, an innkeeper, a flight master, a mailbox or
+-- an auctioneer (G36),
 -- for N.Nearest (Nav/ServiceNearest.lua) to read. The same pattern as
 -- Nav/ProfSeen.lua: only what this client showed, nothing authored,
 -- nothing printed. It only reads; it opens no window and talks to no one.
@@ -14,6 +15,7 @@ local _, ns = ...
 --   TAXIMAP_OPENED    a flight master
 --   CONFIRM_BINDER    an innkeeper (the player asked to make the inn home)
 --   MAIL_SHOW         a mailbox
+--   AUCTION_HOUSE_SHOW  an auctioneer (the auction house window opened)
 --
 -- Saved per character, char "learned.places.services"[key] =
 --   { name, guid, map, x, y, kinds = { [kind] = true }, seen, n }
@@ -43,7 +45,8 @@ local _, ns = ...
 -- Not tested in game: the event names and every client read used here are
 -- first guesses.
 -- The event names are on warcraft.wiki.gg (BANKFRAME_OPENED,
--- CONFIRM_BINDER, MAIL_SHOW, MERCHANT_SHOW, TAXIMAP_OPENED).
+-- CONFIRM_BINDER, MAIL_SHOW, MERCHANT_SHOW, TAXIMAP_OPENED,
+-- AUCTION_HOUSE_SHOW).
 
 local ServiceSeen = ns.ServiceSeen or {}
 ns.ServiceSeen = ServiceSeen
@@ -58,9 +61,10 @@ ServiceSeen.EVENTS = {
     { event = "TAXIMAP_OPENED", kind = "flight" },
     { event = "CONFIRM_BINDER", kind = "innkeeper" },
     { event = "MAIL_SHOW", kind = "mailbox" },
+    { event = "AUCTION_HOUSE_SHOW", kind = "auction" },
 }
 
-local KINDS = { vendor = true, banker = true, flight = true, innkeeper = true, mailbox = true }
+local KINDS = { vendor = true, banker = true, flight = true, innkeeper = true, mailbox = true, auction = true }
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
