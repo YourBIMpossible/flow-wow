@@ -95,6 +95,7 @@ UI\SpellCard.lua
 Rotation\Driver.lua
 Rotation\KeyFrame.lua
 Rotation\Role.lua
+Rotation\Spec.lua
 Rotation\Fights.lua
 UI\FightLog.lua
 Classes\Druid.lua
@@ -174,6 +175,7 @@ UI\KitHost.lua
 Items\Keep.lua
 Items\RecipeBook.lua
 Items\RecipeLearned.lua
+Items\ProfRecipes.lua
 Items\Goals.lua
 UI\Arrow.lua
 UI\MinimapPin.lua
@@ -231,3 +233,4 @@ Nav\Trip.lua
 UI\RouteTracker.lua
 Nav\QuestAdvice.lua
 Spells\TrainAdvice.lua
+Nav\HearthAdvice.lua
