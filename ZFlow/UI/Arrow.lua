@@ -251,8 +251,8 @@ end
 
 -- The step that stands in for the quest step while the gate is "corpse".
 -- Never the quest step: that is not where to go.
---   client.ghost a plain false (dead, not released): no place, and the one
---     line is the release label. A corpse place the client gives is not
+--   client.ghost a plain false (dead, not released): no place, and the
+--     lines are the label and the release hint. A corpse place the client gives is not
 --     pointed at. The step is still.
 --   otherwise (a ghost, or not known), by client.corpse:
 --     a place: the corpse there.
@@ -271,9 +271,9 @@ end
 local function corpseStep(client)
     local ghost = ask(client, "ghost")
     if ghost == false then
-        return { label = Arrow.RELEASE_LABEL, lines = { Arrow.RELEASE_LABEL }, still = true }
+        return { label = Arrow.RELEASE_LABEL, lines = { Arrow.CORPSE_LABEL, Arrow.RELEASE_HINT }, still = true }
     end
-    local step = { label = Arrow.CORPSE_LABEL }
+    local step = { label = Arrow.CORPSE_LABEL, corpse = true }
     local ok, at = false, nil
     if type(client.corpse) == "function" then ok, at = pcall(client.corpse) end
     if not ok then return step end
@@ -290,10 +290,16 @@ local function corpseStep(client)
     return step
 end
 
--- Player-visible words, authored here (not taken from the game or from Flow).
-Arrow.CORPSE_LABEL = "Corpse"
+-- Player-visible words. The corpse run's are Flow's (N:ShowCorpse, parity
+-- row A1-14): "Your corpse" over the release hint while not released, over
+-- the other-map line, over the yards, and CORPSE_HERE at the corpse.
+Arrow.CORPSE_LABEL = "Your corpse"
 Arrow.RELEASE_LABEL = "Release your spirit"
-Arrow.CORPSE_ELSEWHERE = "corpse is on another map"
+Arrow.RELEASE_HINT = "Release your spirit, then follow the red arrow"
+Arrow.CORPSE_ELSEWHERE = "On another map: follow the graveyard path"
+Arrow.CORPSE_HERE = "Here: resurrect"
+-- Within N.AREA_YARDS of an area step's nearest point (parity row A1-09).
+Arrow.AREA_TEXT = "You're in the area"
 -- The distance line (G40): the yards, then the compass word when there is
 -- one. Inside the arrival radius the line is HERE_TEXT and no distance.
 Arrow.DISTANCE_TEXT = "%d yd"
@@ -394,7 +400,9 @@ function Arrow.GuideSource(client, layout, guide, intro, palette)
             if type(d) == "number" then
                 local word = more[key].compass
                 if arrived then
-                    out[#out + 1] = Arrow.HERE_TEXT
+                    out[#out + 1] = step.corpse and Arrow.CORPSE_HERE or Arrow.HERE_TEXT
+                elseif step.area == true and d < N.AREA_YARDS then
+                    out[#out + 1] = Arrow.AREA_TEXT
                 else
                     local far = word ~= nil
                         and Arrow.DISTANCE_COMPASS_TEXT:format(math.floor(d + 0.5), word)
@@ -457,8 +465,23 @@ end
 -- setting off (those choices are read, never written). NO_QUEST: the quest
 -- log has no quest in it, or it is not known. NO_ROUTE: the log has quests
 -- and none gives a step (no objective left to go to and not complete).
+-- NO_DIRECTIONS over INSTALL_QUESTIE: the log has quests and Questie's
+-- QuestieDB is not there (Arrow.HasQuestie).
 Arrow.NO_QUEST = "No quest tracked"
 Arrow.NO_ROUTE = "No route known to this objective"
+-- Quests in the log and no places read for them (Questie not there or not
+-- ready): Flow's pair (parity row A1-16).
+Arrow.NO_DIRECTIONS = "No directions yet"
+Arrow.INSTALL_QUESTIE = "Install Questie + QuestieDB for quest locations"
+
+-- Whether the client gives Questie's QuestieDB module (client.questieModule).
+-- A failing or absent read is no.
+function Arrow.HasQuestie(k)
+    local c = type(k) == "table" and k.client or nil
+    if type(c) ~= "table" or type(c.questieModule) ~= "function" then return false end
+    local ok, m = pcall(c.questieModule, "QuestieDB")
+    return ok and m ~= nil
+end
 
 -- The why step for the quest arrow, or nil when the player chose not to see
 -- it. quests: the N.QuestWatch the step was asked of (nil: not loaded).
@@ -476,6 +499,9 @@ function Arrow.WhyStep(k, quests, prof)
     if type(quests) == "table" and type(quests.state) == "function" then
         local okState, st = pcall(quests.state)
         if okState and type(st) == "table" then rows = st.rows end
+    end
+    if type(rows) == "number" and rows > 0 and not Arrow.HasQuestie(k) then
+        return { still = true, lines = { Arrow.NO_DIRECTIONS, Arrow.INSTALL_QUESTIE }, why = true }
     end
     local text = (type(rows) == "number" and rows > 0) and Arrow.NO_ROUTE or Arrow.NO_QUEST
     return { still = true, lines = { text }, why = true }
