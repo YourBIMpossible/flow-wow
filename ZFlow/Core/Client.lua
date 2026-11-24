@@ -8192,6 +8192,132 @@ function ns.make.client(env)
         function h.order() return order end
         return h
     end
+    -- G34: hover-to-bind (UI/HoverBind.lua; legacy Flow's Modules/BindMode.lua).
+    --   c.setBinding(key, command) -> SetBinding(key, command): one of the
+    --     game's own binding commands ("ACTIONBUTTON1") put on a key. Acting;
+    --     refused like the writes above. Called only from the mode's Save,
+    --     the player's own click.
+    --   c.bindHover(spec) -> h | nil   (show) spec = { name }
+    --     h.start(targets, onKey, onCancel, onClear) -> how many buttons took
+    --       a cover. targets = { { frame = the button's global name, id } }.
+    --       Each button on the screen gets a see-through cover that knows
+    --       when the mouse is on it; a full-screen frame takes the keyboard
+    --       (the mouse passes through it). A key press: Escape ->
+    --       onCancel(); a bare modifier waits; any other, with the mouse on
+    --       a cover -> onKey(chord, id); with the mouse on none ->
+    --       onKey(chord, nil).
+    --       A right click on a cover -> onClear(id). Nothing is bound here.
+    --     h.labels({ [id] = text })  the short text on each cover
+    --     h.stop()   covers and frame hidden;  h.open() -> true while on
+    --   Mouse buttons are not taken as keys. First guesses: not seen in game.
+    function c.setBinding(key, command)
+        if type(key) ~= "string" or key == "" or type(command) ~= "string" or command == "" then
+            return false, "no key"
+        end
+        return bindingCall(env.SetBinding, key, command)
+    end
+
+    function c.bindHover(spec)
+        spec = type(spec) == "table" and spec or {}
+        local ok, f = call(env.CreateFrame, "Frame", spec.name, env.UIParent)
+        if not ok or type(f) ~= "table" then return nil end
+        method(f, "SetAllPoints", env.UIParent)
+        method(f, "SetFrameStrata", "FULLSCREEN")
+        method(f, "EnableMouse", false)
+        method(f, "Hide")
+        local h, on, hovered = {}, false, nil
+        local onKey, onCancel, onClear
+        local covers, shown = {}, {}
+        method(f, "SetScript", "OnKeyDown", function(_, key)
+            if not on or type(key) ~= "string" or hidden(key) then return end
+            if key == "ESCAPE" then
+                if type(onCancel) == "function" then pcall(onCancel) end
+                return
+            end
+            if bareModifier(key) then return end
+            if type(onKey) == "function" then pcall(onKey, chordOf(key), hovered) end
+        end)
+        local function cover(button, id)
+            local cv = covers[id]
+            if not cv then
+                local okC, made = call(env.CreateFrame, "Button", nil, button)
+                if not okC or type(made) ~= "table" then return nil end
+                cv = { frame = made }
+                method(made, "SetAllPoints", button)
+                local okT, tex = method(made, "CreateTexture", nil, "OVERLAY")
+                if okT and type(tex) == "table" then
+                    cv.tex = tex
+                    method(tex, "SetAllPoints", made)
+                end
+                local okF, fs = method(made, "CreateFontString", nil, "OVERLAY", "NumberFontNormalSmall")
+                if okF and type(fs) == "table" then
+                    cv.text = fs
+                    method(fs, "SetPoint", "TOPRIGHT", made, "TOPRIGHT", -2, -2)
+                end
+                method(made, "RegisterForClicks", "AnyUp")
+                method(made, "SetScript", "OnEnter", function()
+                    hovered = id
+                    if cv.tex then method(cv.tex, "SetColorTexture", 1, 0.82, 0, 0.45) end
+                end)
+                method(made, "SetScript", "OnLeave", function()
+                    if hovered == id then hovered = nil end
+                    if cv.tex then method(cv.tex, "SetColorTexture", 1, 0.82, 0, 0.15) end
+                end)
+                method(made, "SetScript", "OnClick", function(_, which)
+                    if on and which == "RightButton" and type(onClear) == "function" then pcall(onClear, id) end
+                end)
+                covers[id] = cv
+            end
+            local okL, level = method(button, "GetFrameLevel")
+            if okL and type(level) == "number" and not hidden(level) then
+                method(cv.frame, "SetFrameLevel", level + 30)
+            end
+            if cv.tex then method(cv.tex, "SetColorTexture", 1, 0.82, 0, 0.15) end
+            if cv.text then method(cv.text, "SetText", "") end
+            method(cv.frame, "Show")
+            return cv
+        end
+        function h.stop()
+            on, hovered = false, nil
+            method(f, "EnableKeyboard", false)
+            method(f, "Hide")
+            for id in pairs(shown) do
+                if covers[id] then method(covers[id].frame, "Hide") end
+            end
+            shown = {}
+        end
+        function h.start(targets, keyFn, cancelFn, clearFn)
+            h.stop()
+            local n = 0
+            for _, target in ipairs(type(targets) == "table" and targets or {}) do
+                local button = nil
+                if type(target) == "table" and type(target.frame) == "string" then button = env[target.frame] end
+                if type(button) == "table" and target.id ~= nil then
+                    local okV, visible = method(button, "IsVisible")
+                    if okV and visible == true and cover(button, target.id) then
+                        shown[target.id] = true
+                        n = n + 1
+                    end
+                end
+            end
+            if n == 0 then return 0 end
+            onKey, onCancel, onClear, on = keyFn, cancelFn, clearFn, true
+            method(f, "EnableKeyboard", true)
+            method(f, "SetPropagateKeyboardInput", false)
+            method(f, "Show")
+            return n
+        end
+        function h.labels(texts)
+            for id in pairs(shown) do
+                local cv = covers[id]
+                local text = nil
+                if type(texts) == "table" then text = texts[id] end
+                if cv and cv.text then method(cv.text, "SetText", type(text) == "string" and text or "") end
+            end
+        end
+        function h.open() return on end
+        return h
+    end
 
     -- ------------------------------------------------------------ end N57
 

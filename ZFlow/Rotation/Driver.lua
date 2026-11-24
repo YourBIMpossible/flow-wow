@@ -86,6 +86,9 @@ local _, ns = ...
 --                  the client has no such read
 --       loc        G25: client.heldBy(), the kind of hold on you ("ROOT",
 --                  ...); nil when not held, not known or not read
+--       hurt       G26: extra.hurt, the driver's estimate of seconds of
+--                  hits (D.HURT, D.StepHurt) as a whole number; nil when
+--                  none is given
 --       healItem   N8: your healthstone and healing potion
 --                  (Rotation/HealItems.lua): { stone, stoneName, potion,
 --                  potionName } kept in extra.heal until the bags change
@@ -188,6 +191,25 @@ D.HEAL = "rotation.emergencyItems"
 -- The role you chose (Rotation/Role.lua declares the row).
 D.ROLE = "spec.role"
 D.EVERY = 0.2
+
+-- G26: Flow's estimate of being hurt, in seconds of hits since you last
+-- healed (Flow's Modules/Rotation/Engine.lua E.HURT and E.StepHurt), kept
+-- by the driver and handed to the snapshot as hurt (a whole number). Up in
+-- a fight by how much an enemy is on you: the client has no threat read,
+-- so Flow's own rate for "the game won't say" (unknownHit). Down out of a
+-- fight (no eating read here, so the slower rate). At least low while the
+-- game's low-health warning is on; 0 when dead; kept within 0 and max. A
+-- tick with combat not known makes no step. gap: a longer pause between
+-- ticks counts as this many seconds at most. Suggest only.
+D.HURT = { low = 40, regen = 1 / 3, eat = 3, max = 60, unknownHit = 0.5, gap = 1 }
+
+function D.StepHurt(hurt, dt, inCombat, hit, eat, low)
+    local H = D.HURT
+    if inCombat then hurt = hurt + dt * hit
+    else hurt = hurt - dt * (eat and H.eat or H.regen) end
+    if low then hurt = math.max(hurt, H.low) end
+    return math.max(0, math.min(H.max, hurt))
+end
 -- SE-4, SD-3: each count (D.Declare's counts) and the diag timing mark
 -- added the first time it rises.
 D.MARKS = {
@@ -717,6 +739,11 @@ function D.Read(client, pack, ids, role, extra)
             if ok and type(v) == "string" then return v end
             return nil
         end
+        -- G26: the driver's estimate (D.HURT), nil when none was given.
+        if field == "hurt" then
+            if type(extra) == "table" and type(extra.hurt) == "number" then return extra.hurt end
+            return nil
+        end
         if field == "mounted" or field == "onTaxi" then
             if type(client[field]) ~= "function" then return nil end
             local ok, v = pcall(client[field])
@@ -812,7 +839,13 @@ end
 -- swing is left out: the chooser asked again on a copy of the snapshot read
 -- as in a fight, with Attack and Auto Attack skipped and the engage step
 -- off, the plan without its key action. nil when it gives nothing.
-function D.FightAttrs(snapshot, pack, prefs, bias, plan, applied, lockdown)
+-- zflow-btn-pull-spell: the chooser's pick for the fight, as above (the
+-- snapshot read as in a fight, Attack and Auto Attack skipped, the engage
+-- step off). Flow's class pull spell (Flow Modules/Rotation/Cast.lua, the
+-- PLAYER_REGEN_DISABLED handler: def.pullLock) comes from the class file;
+-- Z-Flow's packs have no pull row, so their fight list gives it. nil when
+-- it gives nothing.
+function D.PullPick(snapshot, pack, prefs, bias)
     if type(snapshot) ~= "table" or type(pack) ~= "table" then return nil end
     local s = {}
     for key, value in pairs(snapshot) do s[key] = value end
@@ -828,6 +861,12 @@ function D.FightAttrs(snapshot, pack, prefs, bias, plan, applied, lockdown)
     p.skip, p.autoAttack = skip, false
     local pick = ns.Choose(s, pack, p, bias)
     if type(pick) ~= "table" then return nil end
+    return pick
+end
+
+function D.FightAttrs(snapshot, pack, prefs, bias, plan, applied, lockdown)
+    local pick = D.PullPick(snapshot, pack, prefs, bias)
+    if pick == nil then return nil end
     local fightPlan = plan
     if type(plan) == "table" and plan.action ~= nil then
         fightPlan = {}
@@ -915,6 +954,32 @@ function D.Step(client, pack, prefs, bias, applied, role, extra)
     if type(onKey) == "table" and type(prefs) == "table" and type(prefs.bar) == "table"
         and type(onKey.spell) == "string" and prefs.bar[onKey.spell] then
         onKey = nil
+    end
+    -- zflow-btn-pull-spell (lead section 430 item 1): Flow's way (Flow
+    -- Modules/Rotation/Cast.lua C.FightLock and its PLAYER_REGEN_DISABLED
+    -- handler). The Attack spell toggles: a second press turns the swing
+    -- off (first guess, not seen in game), and the key and the Flow button
+    -- cannot change once the lock is on. Flow keeps Attack on its key only
+    -- through the game's Start Attack binding, which Z-Flow does not make;
+    -- so neither the key nor the Flow button holds Attack. They hold the
+    -- spell for the fight (D.PullPick) now, before the pull, so the lock
+    -- coming on early changes nothing; with no pick, nothing is added (as
+    -- Flow's setAction(nil)). The suggestion, and so the icon, still says
+    -- to start the attack.
+    if type(onKey) == "table" and ns.cast.ATTACK[onKey.spell] then
+        local pull = D.PullPick(snapshot, pack, prefs, bias)
+        if type(pull) == "table" and pull.look == true then pull = nil end
+        onKey = pull
+        if type(plan) == "table" and type(plan.action) == "table" and ns.cast.ATTACK[plan.action.spell] then
+            plan.action = nil
+            if type(pull) == "table" and lockdown == false then
+                if type(pull.itemId) == "number" then
+                    plan.action = { itemId = pull.itemId }
+                elseif type(pull.spell) == "string" then
+                    plan.action = { spell = pull.spell, unit = pull.unit }
+                end
+            end
+        end
     end
     local keys = ns.cast.Apply(plan, applied, lockdown)
     local attrs = ns.cast.Attributes(onKey, plan, applied, lockdown, nil)
@@ -1019,6 +1084,24 @@ function D.Declare(k, packs)
     -- N8: the healing items read, kept until the bags change or item data
     -- arrives; alt (what is on Alt + the key) is kept through both.
     local heal = {}
+    -- G26: the hurt estimate (D.StepHurt) and the time of its last step.
+    local hurt, hurtAt = 0, nil
+    local function ask(client, name)
+        if type(client[name]) ~= "function" then return nil end
+        local ok, v = pcall(client[name])
+        if ok then return v end
+        return nil
+    end
+    local function stepHurt(client)
+        local now = ask(client, "now")
+        if type(now) ~= "number" then return end
+        local dt = hurtAt and math.max(0, math.min(D.HURT.gap, now - hurtAt)) or 0
+        hurtAt = now
+        if ask(client, "dead") == true then hurt = 0 return end
+        local inCombat = ask(client, "inCombat")
+        if type(inCombat) ~= "boolean" then return end
+        hurt = D.StepHurt(hurt, dt, inCombat, D.HURT.unknownHit, false, ask(client, "lowHealth") == true)
+    end
     function api.view() return view end
     function api.errors() return errors end
     function api.lastError() return lastError end
@@ -1033,12 +1116,14 @@ function D.Declare(k, packs)
 
     local function tick(ctx)
         if ctx.settings:get(D.SETTING) ~= true then
+            hurt, hurtAt = 0, nil
             if view ~= nil then
                 view = nil
                 ctx.bus:emit(D.EVENT, nil)
             end
             return
         end
+        stepHurt(ctx.client)
         food.on = ctx.settings:get(D.FOOD) ~= false
         heal.on = ctx.settings:get(D.HEAL) ~= false
         local K = ns.KeyFrame
@@ -1055,7 +1140,8 @@ function D.Declare(k, packs)
         local before = api.counts()
         local ok, got = pcall(work, ctx.client, packs or ns.Packs, ctx.settings:get(D.ROLE),
             { food = food, heal = heal, chosen = chosenOf(k), combo = comboOf(k), controls = controls,
-              keyActions = keyActions, spellKeys = spellKeys, counts = counts })
+              keyActions = keyActions, spellKeys = spellKeys, counts = counts,
+              hurt = math.floor(hurt) })
         local Dg = ns.Diag
         if type(Dg) == "table" and type(Dg.MARK_EVENT) == "string" then
             for key, name in pairs(D.MARKS) do
@@ -1100,13 +1186,17 @@ function D.Declare(k, packs)
         ticks = { { every = D.EVERY, run = tick } },
         start = function(c)
             food, heal = {}, {}
+            hurt, hurtAt = 0, nil
             -- The bags changed: the food kept may be gone, or a better one there.
             c.bus:on(D.NAME, "BAG_UPDATE_DELAYED", function() food, heal = {}, { alt = heal.alt } end)
             -- Item data arrived (lead section 238): a read made without it
             -- may change.
             c.bus:on(D.NAME, "GET_ITEM_INFO_RECEIVED", function() food, heal = {}, { alt = heal.alt } end)
         end,
-        stop = function() food, heal = {}, {} end,
+        stop = function()
+            food, heal = {}, {}
+            hurt, hurtAt = 0, nil
+        end,
     })
     return api
 end
