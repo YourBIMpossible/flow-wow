@@ -311,7 +311,7 @@ end
 -- the window can say it is open.
 M.BUTTONS = "buttons"
 M.BUTTONS_TEXT = "Buttons"
-M.BUTTONS_NONE = "No Z-Flow buttons"
+M.BUTTONS_NONE = "No buttons on any window"
 M.FLOW = "windows"
 M.FLOW_TEXT = "Flow windows"
 -- name: the module (k.use); open: what opens it; close and shown: what
