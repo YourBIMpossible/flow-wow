@@ -12195,7 +12195,12 @@ function ns.make.client(env)
     -- written. First guesses, none seen in game on 16001: ContainerFrame<i>
     -- (i up to NUM_CONTAINER_FRAMES, else 13) whose GetID() is the bag,
     -- its buttons ContainerFrame<i>Item<j> whose GetID() is the slot, and
-    -- ContainerFrame_Update to follow the window's redraw.
+    -- ContainerFrame_Update to follow the window's redraw. Section 425
+    -- item 1, as Flow origin/HEAD Modules/Items/BagIcons.lua:126-150 walks
+    -- them: ContainerFrameCombinedBags first, then ContainerFrame<i>; per
+    -- shown frame its EnumerateValidItems(), else its Items list, else the
+    -- named <frame name>Item<j>; the bag from the button's GetBagID(), else
+    -- the frame's GetID(). The combined view's UpdateItems is followed too.
     --   c.markBagSlots(marks) marks = { [bag] = { [slot] = texture path } }
     --     shows those, hides every other mark of ours; how many shown.
     --   c.onBagRedraw(fn) -> true when followed, nil when not.
@@ -12214,30 +12219,79 @@ function ns.make.client(env)
         bagMarkTex[button] = made
         return made
     end
+    local function envRead(name)
+        local ok, v = pcall(function() return env[name] end)
+        if ok then return v end
+        return nil
+    end
+    -- Every item button of a bag frame, in order; none for a frame that
+    -- raises or gives none.
+    local function bagButtons(f, fallbackName)
+        local out = {}
+        local okE, it, state, at = method(f, "EnumerateValidItems")
+        if okE and type(it) == "function" then
+            for _ = 1, 400 do
+                local okN, k, b = pcall(it, state, at)
+                if not okN or k == nil then break end
+                at = k
+                if type(b) == "table" then out[#out + 1] = b end
+            end
+            if #out > 0 then return out end
+        end
+        local okI, items = pcall(function() return f.Items end)
+        if okI and type(items) == "table" then
+            for j = 1, #items do
+                if type(items[j]) == "table" then out[#out + 1] = items[j] end
+            end
+            if #out > 0 then return out end
+        end
+        local okName, name = method(f, "GetName")
+        if not okName or type(name) ~= "string" then name = fallbackName end
+        if type(name) ~= "string" then return out end
+        for j = 1, 40 do
+            local b = envRead(name .. "Item" .. j)
+            if type(b) ~= "table" then break end
+            out[#out + 1] = b
+        end
+        return out
+    end
     function c.markBagSlots(marks)
         marks = type(marks) == "table" and marks or {}
         for _, t in pairs(bagMarkTex) do
             if t then method(t, "Hide") end
         end
-        local frames = type(env.NUM_CONTAINER_FRAMES) == "number" and env.NUM_CONTAINER_FRAMES or 13
-        local n = 0
-        for i = 1, frames do
-            local okF, f = pcall(function() return env["ContainerFrame" .. i] end)
-            local okId, bag = false, nil
-            if okF and type(f) == "table" then okId, bag = method(f, "GetID") end
-            local want = okId and type(bag) == "number" and marks[bag] or nil
-            if type(want) == "table" then
-                for j = 1, 40 do
-                    local okB, b = pcall(function() return env["ContainerFrame" .. i .. "Item" .. j] end)
-                    if not okB or type(b) ~= "table" then break end
-                    local okS, slot = method(b, "GetID")
-                    local path = okS and want[slot] or nil
-                    if type(path) == "string" then
-                        local t = bagMarkOn(b)
-                        if t then
-                            method(t, "SetTexture", path)
-                            method(t, "Show")
-                            n = n + 1
+        local frames = {}
+        local combined = envRead("ContainerFrameCombinedBags")
+        if type(combined) == "table" then frames[#frames + 1] = { combined, nil } end
+        local count = type(env.NUM_CONTAINER_FRAMES) == "number" and env.NUM_CONTAINER_FRAMES or 13
+        for i = 1, count do
+            local f = envRead("ContainerFrame" .. i)
+            if type(f) == "table" then frames[#frames + 1] = { f, "ContainerFrame" .. i } end
+        end
+        local n, done = 0, {}
+        for _, pair in ipairs(frames) do
+            local f = pair[1]
+            local okShown, shown = method(f, "IsShown")
+            if not (okShown and shown == false) then
+                local okId, frameBag = method(f, "GetID")
+                for _, b in ipairs(bagButtons(f, pair[2])) do
+                    if not done[b] then
+                        done[b] = true
+                        local okB, bag = method(b, "GetBagID")
+                        if not okB or type(bag) ~= "number" then
+                            bag = nil
+                            if okId then bag = frameBag end
+                        end
+                        local want = type(bag) == "number" and marks[bag] or nil
+                        local okS, slot = method(b, "GetID")
+                        local path = type(want) == "table" and okS and want[slot] or nil
+                        if type(path) == "string" then
+                            local t = bagMarkOn(b)
+                            if t then
+                                method(t, "SetTexture", path)
+                                method(t, "Show")
+                                n = n + 1
+                            end
                         end
                     end
                 end
@@ -12246,18 +12300,25 @@ function ns.make.client(env)
         return n
     end
     local bagRedraw, bagFollowed = {}, false
+    local function bagRedrawAll()
+        for _, f in ipairs({ unpack(bagRedraw) }) do pcall(f) end
+    end
     function c.onBagRedraw(fn)
         if type(fn) ~= "function" then return nil end
         bagRedraw[#bagRedraw + 1] = fn
         if bagFollowed then return true end
-        if type(env.hooksecurefunc) == "function" and type(env.ContainerFrame_Update) == "function"
-            and pcall(env.hooksecurefunc, "ContainerFrame_Update", function()
-                for _, f in ipairs({ unpack(bagRedraw) }) do pcall(f) end
-            end) then
+        if type(env.hooksecurefunc) ~= "function" then return nil end
+        if type(env.ContainerFrame_Update) == "function"
+            and pcall(env.hooksecurefunc, "ContainerFrame_Update", bagRedrawAll) then
             bagFollowed = true
-            return true
         end
-        return nil
+        local combined = envRead("ContainerFrameCombinedBags")
+        local okU, upd = pcall(function() return type(combined) == "table" and combined.UpdateItems end)
+        if okU and type(upd) == "function"
+            and pcall(env.hooksecurefunc, combined, "UpdateItems", bagRedrawAll) then
+            bagFollowed = true
+        end
+        return bagFollowed or nil
     end
 
     -- S32: the words the client shows for where the player stands:
