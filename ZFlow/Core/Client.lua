@@ -2481,6 +2481,61 @@ function ns.make.client(env)
         return mod
     end
 
+    -- One boss as the dungeon journal of the client gives it (lead DISPATCH
+    -- 426), or nil when the client has no journal calls or does not answer:
+    --   { name = text or nil, items = { item id, ... }, shown = true or nil }
+    -- instance, encounter: the journal's own numbers. The name is the first
+    -- answer of EJ_GetEncounterInfo(encounter). withLoot: also ask the loot
+    -- (EJ_SelectInstance, EJ_SelectEncounter, EJ_GetNumLoot, then
+    -- C_EncounterJournal.GetLootInfoByIndex(i).itemID). Selecting turns the
+    -- page of the journal, so the loot is not asked while the journal
+    -- window is shown (shown = true then). Read only: nothing is cast,
+    -- bought, moved or clicked. First guesses, from the retail client's
+    -- call names: whether a 16001 client has them is what Nav/DungeonRead.lua
+    -- R.JournalLine reports. Not seen in game.
+    function c.journalBoss(instance, encounter, withLoot)
+        if type(instance) ~= "number" or type(encounter) ~= "number" then return nil end
+        if type(env.EJ_GetEncounterInfo) ~= "function" then return nil end
+        local okName, name = call(env.EJ_GetEncounterInfo, encounter)
+        if not okName then return nil end
+        local out = { name = text(true, name), items = {} }
+        if not withLoot then
+            if out.name == nil then return nil end
+            return out
+        end
+        local frame = env.EncounterJournal
+        if type(frame) == "table" then
+            local okShown, shown = method(frame, "IsShown")
+            if okShown and shown then
+                out.shown = true
+                return out
+            end
+        end
+        local group = env.C_EncounterJournal
+        if type(group) ~= "table" or type(group.GetLootInfoByIndex) ~= "function" then
+            if out.name == nil then return nil end
+            return out
+        end
+        if not call(env.EJ_SelectInstance, instance) or not call(env.EJ_SelectEncounter, encounter) then
+            if out.name == nil then return nil end
+            return out
+        end
+        local okCount, count = call(env.EJ_GetNumLoot)
+        count = whole(okCount, count) or 0
+        if count > 500 then count = 500 end
+        local had = {}
+        for i = 1, count do
+            local okInfo, info = call(group.GetLootInfoByIndex, i)
+            local id = okInfo and type(info) == "table" and whole(true, info.itemID) or nil
+            if id and id > 0 and not had[id] then
+                had[id] = true
+                out.items[#out.items + 1] = id
+            end
+        end
+        if out.name == nil and #out.items == 0 then return nil end
+        return out
+    end
+
     -- The minimap as the client says it is (F1), or nil without one:
     --   { size =, radius =, rotates =, square = }
     -- size: how wide the frame is. radius: yards from the middle to the
