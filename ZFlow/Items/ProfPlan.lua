@@ -292,6 +292,15 @@ local function learnStep(input)
 end
 
 -- Section 400 item 2: the book read holds no recipe of this profession.
+-- Was a trainer list of this profession, with its trainer named, seen?
+-- (A shipped list names no trainer.)
+local function trainerSeen(input)
+    for _, l in pairs(type(input.trainerLists) == "table" and input.trainerLists or {}) do
+        if type(l) == "table" and l.profession == input.prof and type(l.npc) == "string" then return true end
+    end
+    return false
+end
+
 local function bookEmpty(input)
     for _, r in pairs(type(input.book) == "table" and input.book or {}) do
         if type(r) == "table" and r.profession == input.prof then return false end
@@ -531,6 +540,9 @@ function P.Plan(input)
     if not coloursRead(input) then return empty("no colours", input) end
     local learn = learnStep(input)
     if learn then return { learn } end
+    -- Review of section 405 item 4: every learned recipe outgrown and no
+    -- trainer list of this profession seen: a trainer is the next step.
+    if not trainerSeen(input) then return { firstRecipeStep(input) } end
     return empty("no recipe", input)
 end
 

@@ -214,9 +214,9 @@ tests["prof plan: an empty plan says the one thing to do next"] = function(t)
     t.eq(why, "no materials")
     t.eq(say, "Get the materials for Test Buckle")
     local grey = { ["Test Buckle"] = { trivial = { lo = 40, hi = 60 } } }
-    _, why, say = P().Plan(input({ colours = grey }))
-    t.eq(why, "no recipe")
-    t.eq(say, "Visit a Blacksmithing trainer for new recipes")
+    -- Review of section 405 item 4: no trainer list seen is a step to one.
+    local steps = P().Plan(input({ colours = grey }))
+    t.eq(steps[1] and steps[1].kind, "learn_recipe")
 end
 
 tests["prof plan: a material whose name is not read yet is never a number"] = function(t)
