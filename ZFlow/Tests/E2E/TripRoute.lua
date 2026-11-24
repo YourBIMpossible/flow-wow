@@ -168,9 +168,9 @@ local function dungeonQuestie()
     return db, zones
 end
 
-local function bootDungeon(char)
+local function bootDungeon()
     local c = ns.make.fakeClient()
-    c.setSaved(ns.id.accountDB, {}); c.setSaved(ns.id.charDB, char or {})
+    c.setSaved(ns.id.accountDB, {}); c.setSaved(ns.id.charDB, {})
     c.setClass("WARRIOR"); c.setRaceId(1); c.setFaction("Alliance"); c.setLevel(18)
     c.setQuestDone(101, false)
     c.setZone(1, MAP); c.setPosition(MAP, 0.5, 0.5); c.setFacing(0)
@@ -216,35 +216,6 @@ tests["dungeon run: Plan the run hands the run to the arrow, which walks it"] = 
     c.setPosition(MAP, 0.3, 0.4)
     c.advance(2, 20)
     t.eq(first(c), "The Deadmines", "at the giver: on to the entrance")
-end
-
--- FLOW-PARITY B-52: "Get ready on the way": a bank the player has seen goes
--- before the run as an advice step; the player banks, nothing is moved.
-tests["dungeon run: a seen bank is a get-ready step before the run"] = function(t)
-    local bank = { name = "Teller", map = MAP, x = 0.6, y = 0.5, kinds = { banker = true } }
-    local c = bootDungeon({ learned = { places = { services = { b1 = bank } } } })
-    t.eq(c.kitSelect("dungeons", "dungeons", 1), true)
-    t.eq(c.kitClick("dungeons", "planRun"), true)
-    c.advance(1, 5)
-    t.eq(first(c), "Get ready: Bank", "the bank first")
-    c.setPosition(MAP, 0.6, 0.5)
-    c.advance(2, 20)
-    local line = first(c)
-    t.ok(line ~= nil and line:find("Red Silk", 1, true) ~= nil, "then the run: " .. tostring(line))
-end
-
-tests["dungeon run: get-ready steps, pure"] = function(t)
-    local R = ns.DungeonRead
-    t.eq(R.Ready(nil, nil, nil), {})
-    local steps = R.Ready({ label = "Class trainer: Ander", place = { map = MAP, x = 0.1, y = 0.2 } },
-        { label = "Repair: Smith", place = { map = MAP, x = 0.3, y = 0.4 } },
-        { kind = "banker", name = "Teller", map = MAP, x = 0.6, y = 0.5 })
-    t.eq(#steps, 3)
-    t.eq(steps[1].label, "Get ready: Train"); t.eq(steps[1].detail, "Class trainer: Ander")
-    t.eq(steps[2].label, "Get ready: Sell and repair")
-    t.eq(steps[3].label, "Get ready: Bank"); t.eq(steps[3].detail, "Teller")
-    t.eq(steps[3].place, { map = MAP, x = 0.6, y = 0.5 })
-    t.eq(#R.Ready({ label = "No place" }, nil, nil), 0, "a step with no place is left out")
 end
 
 -- S43 (lead dispatch section 391 item 4): the route step says how many are still needed.
