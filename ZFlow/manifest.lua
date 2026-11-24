@@ -286,6 +286,8 @@ return {
     -- the nodes you gathered (after the arrow, Waypoint and Gather).
     "Nav/Trails.lua",
     "Nav/Follow.lua",
+    -- Lead section 460 (A1-39, A1-41, A1-42): /way zone names, places, members.
+    "Nav/WayWords.lua",
     "Nav/Nodes.lua",
     -- N60a: copy chat text and clickable web addresses in chat (after the settings page).
     "UI/Chat.lua",

@@ -104,14 +104,17 @@ function M.Items(state)
     -- G47 (Nav/Follow.lua): point the arrow at a party member, only while
     -- in a group. A level holds T.MENU_MAX rows with its heading, the stop
     -- row and the way back, so a raid shows its first members only.
+    -- Parity A1-42 (Nav/WayWords.lua): each member also has "Waypoint at
+    -- <name>", a waypoint where they stand now, so a level holds half.
     if #s.party > 0 then
         local members = {}
         for i = 1, #s.party do
             local m = s.party[i]
-            if #members >= T.MENU_MAX - 3 then break end
+            if #members >= T.MENU_MAX - 4 then break end
             if type(m) == "table" and type(m.unit) == "string" then
-                members[#members + 1] = { key = M.FOLLOW .. "." .. m.unit,
-                    text = type(m.name) == "string" and m.name or m.unit }
+                local name = type(m.name) == "string" and m.name or m.unit
+                members[#members + 1] = { key = M.FOLLOW .. "." .. m.unit, text = name }
+                members[#members + 1] = { key = M.WAY_AT .. "." .. m.unit, text = M.WAY_AT_TEXT:format(name) }
             end
         end
         members[#members + 1] = { key = M.FOLLOW .. ".stop", text = M.FOLLOW_STOP }
@@ -268,6 +271,8 @@ M.FEEDBACK = "feedback"
 M.DUNGEONS = "dungeons"
 M.FOLLOW = "follow"
 M.FOLLOW_TEXT = "Point at a party member"
+M.WAY_AT = "wayat"
+M.WAY_AT_TEXT = "Waypoint at %s"
 M.FOLLOW_STOP = "Stop pointing at them"
 -- Lead section 382: the Professions tick; state.professions is its setting.
 M.PROFESSIONS = "professions"
@@ -506,6 +511,9 @@ function M.Action(key, state)
     -- Lead section 387 R3: Buttons and Flow windows.
     if key == M.BUTTONS or key == M.FLOW then return { open = key } end
     if key:match("^buttons%.") or key:match("^windows%.") then return M.WindowAction(key, s) end
+    -- Parity A1-42: a waypoint where a member (by unit) stands now.
+    local at = key:match("^wayat%.(.+)$")
+    if at then return { wayAt = at } end
     -- G47: the follow level, a member (by unit), or stop ({ follow = false }).
     if key == M.FOLLOW then return { open = key } end
     local unit = key:match("^follow%.(.+)$")
