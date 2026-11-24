@@ -13148,6 +13148,65 @@ function ns.make.client(env)
         if zone == nil and sub == nil then return nil end
         return { zone = zone, sub = sub }
     end
+    -- G14 probe (lead section 275, RM-1): which choice each quest reward
+    -- button shows. Read only, when the quest's rewards are open
+    -- (Gear/RewardMark.lua saves it in account diag.rewardButtons). First
+    -- guess, unseen on 16001: each button QuestInfoRewardsFrameQuestInfoItem<i>
+    -- (else QuestRewardItem<i>) answers its own number with GetID() and its
+    -- kind in a `type` field ("choice" or "reward"), as later clients' quest
+    -- info buttons do. The names are in Diag.NAMES.
+    --   c.rewardButtons() -> { { index, id, kind } ... } for each button
+    --     found (id, kind nil when not given), or nil when none is found.
+    -- In a do block: make.client is near Lua 5.1's 200 locals.
+    do
+        local PROBE_BUTTONS = 10
+        function c.rewardButtons()
+            local out = {}
+            for i = 1, PROBE_BUTTONS do
+                local b = nil
+                for _, name in ipairs({ "QuestInfoRewardsFrameQuestInfoItem" .. i, "QuestRewardItem" .. i }) do
+                    local okB, found = pcall(function() return env[name] end)
+                    if okB and type(found) == "table" then
+                        b = found
+                        break
+                    end
+                end
+                if b ~= nil then
+                    local row = { index = i }
+                    local okI, id = method(b, "GetID")
+                    if okI and type(id) == "number" and id == id then row.id = id end
+                    local okK, kind = pcall(function() return b.type end)
+                    if okK and type(kind) == "string" and #kind <= 16 then row.kind = kind end
+                    out[#out + 1] = row
+                end
+            end
+            if #out == 0 then return nil end
+            return out
+        end
+    end
+    -- G47 (lead section 397 item 15): who leads your group, for the follow
+    -- advice line (Nav/FollowAdvice.lua). "player" when you do, a party or
+    -- raid unit (party1..4, raid1..40) when another does, false when you
+    -- are not in a group, nil when not known. IsInGroup and
+    -- UnitIsGroupLeader(unit); a first guess on 16001. Read only: nothing
+    -- is asked of the leader, followed or targeted.
+    function c.groupLeader()
+        local grouped = yesNo(call(env.IsInGroup))
+        if grouped == nil then return nil end
+        if not grouped then return false end
+        local you = yesNo(call(env.UnitIsGroupLeader, "player"))
+        if you == nil then return nil end
+        if you then return "player" end
+        local inRaid = yesNo(call(env.UnitExists, "raid1"))
+        if inRaid == nil then return nil end
+        local prefix, last = "party", 4
+        if inRaid then prefix, last = "raid", 40 end
+        for i = 1, last do
+            local unit = prefix .. i
+            if yesNo(call(env.UnitIsGroupLeader, unit)) then return unit end
+        end
+        return nil
+    end
     return c
 end
 

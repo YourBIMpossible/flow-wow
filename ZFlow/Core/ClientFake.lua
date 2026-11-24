@@ -4797,6 +4797,25 @@ function ns.make.fakeClient(opts)
         if p == nil then return nil end
         return { zone = p.zone, sub = p.sub }
     end
+    -- G14 probe: the quest reward buttons as c.rewardButtons() answers them
+    -- (Core/Client.lua); setRewardButtons(list or nil) sets them, nil:
+    -- none found.
+    do
+        local rewardButtonRows = nil
+        function c.setRewardButtons(rows) rewardButtonRows = rows end
+        function c.rewardButtons()
+            if type(rewardButtonRows) ~= "table" then return nil end
+            local out = {}
+            for i, r in ipairs(rewardButtonRows) do
+                out[i] = { index = r.index, id = r.id, kind = r.kind }
+            end
+            return out
+        end
+    end
+    -- G47 (lead section 397 item 15): c.setGroupLeader("player" / a unit /
+    -- false for not grouped / nil for not known).
+    function c.setGroupLeader(v) s.groupLeader = v end
+    function c.groupLeader() return s.groupLeader end
     return c
 end
 

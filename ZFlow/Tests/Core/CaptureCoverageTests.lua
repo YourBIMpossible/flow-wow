@@ -503,4 +503,14 @@ READS.hitOnYouAge = false
 -- S32: the zone and sub-zone words behind client.placeText, read by
 -- Nav/Crossings.lua to name a dock; never by the capture.
 READS.placeText = false
+
+-- G14 probe (RM-1): the reward buttons' numbers and kinds; read by
+-- Gear/RewardMark.lua only, when a quest's rewards are open (saved in
+-- account diag.rewardButtons). Their names are in Diag.NAMES.
+READS.rewardButtons = false
+
+-- G47 (lead section 397 item 15): who leads the group; read by
+-- Nav/FollowAdvice.lua only. Its name (UnitIsGroupLeader) is in Diag.NAMES.
+READS.groupLeader = false
+
 return tests

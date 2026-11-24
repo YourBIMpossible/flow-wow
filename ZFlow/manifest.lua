@@ -99,6 +99,7 @@ return {
         "Gear/RollHint.lua",
         "Gear/Sets.lua",
         "Gear/SetIcons.lua",
+        "Gear/OffSpec.lua",
 
         -- Rotation and classes
         "Rotation/Pack.lua",
@@ -348,5 +349,7 @@ return {
     "Items/AuctionWatch.lua",
     -- G14 (section 393): the role badge on bag upgrades (after the verdict and the reward mark).
     "Gear/BagBadge.lua",
+    -- G47 (lead section 397 item 15): follow advice text, leader far (after Bearing and the advisor).
+    "Nav/FollowAdvice.lua",
     },
 }

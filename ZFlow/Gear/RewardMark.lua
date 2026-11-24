@@ -40,6 +40,7 @@ ns.GearRewardMark = RM
 
 RM.NAME = "gearRewardMark"
 RM.SETTING = "gear.rewardMark"
+RM.PROBE_PATH = "diag.rewardButtons"  -- account: the G14 reward button probe
 RM.ROLE = "spec.role"           -- Rotation/Role.lua's setting
 RM.TICK = 1
 
@@ -203,6 +204,28 @@ function RM.Declare(k, packs)
         return okC and type(list) == "table" and #list < 2
     end
 
+    -- G14 probe (RM-1): each reward button's own number and kind, saved
+    -- once per reward window in account RM.PROBE_PATH, so a capture says
+    -- whether choice i is button i. It changes no mark. A read that is
+    -- absent or raises saves nothing.
+    local function probe()
+        if type(ctx.client.rewardButtons) ~= "function" then return end
+        local okR, rows = pcall(ctx.client.rewardButtons)
+        if not okR then return end
+        local old = ctx.store:get("account", RM.PROBE_PATH)
+        local seen = 0
+        if type(old) == "table" and type(old.seen) == "number" then seen = old.seen end
+        local record = { seen = seen + 1, found = type(rows) == "table" }
+        if type(rows) == "table" then
+            record.rows = {}
+            for i = 1, math.min(#rows, 10) do
+                local r = type(rows[i]) == "table" and rows[i] or {}
+                record.rows[i] = { index = r.index, id = r.id, kind = r.kind }
+            end
+        end
+        ctx.store:set("account", RM.PROBE_PATH, record)
+    end
+
     local function close()
         open = false
         if tick then tick() end
@@ -212,7 +235,7 @@ function RM.Declare(k, packs)
 
     k:Module({
         name = RM.NAME,
-        needs = { "client", "settings", "bus", "sched" },
+        needs = { "client", "settings", "bus", "sched", "store" },
         settings = { {
             key = RM.SETTING, scope = "account", type = "bool", default = true,
             label = "Mark the best quest reward",
@@ -232,6 +255,11 @@ function RM.Declare(k, packs)
             -- P-QOL: the offer (detail) as well as the turn-in, as Flow did.
             local function opened()
                 open = true
+                local okP, why = pcall(probe)
+                if not okP and not seen[tostring(why)] then
+                    seen[tostring(why)] = true
+                    k.problems:add("gear", "reward buttons probe", tostring(why))
+                end
                 update()
                 repeatIfMany()
             end

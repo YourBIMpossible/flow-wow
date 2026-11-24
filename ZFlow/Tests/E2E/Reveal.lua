@@ -446,13 +446,17 @@ end
 -- by the stage tests above.
 tests["reveal 294: staging off by default: a new install gets the intro at first login; the intro word shows it again"] = function(t)
     local c = boot({ staged = false })
-    local p = named(c.panels, "Intro")
-    t.ok(p ~= nil, "the intro panel is made")
-    t.eq(p and p.shown, true, "first login of a new install: the intro")
-    p.close()
-    t.eq(p and p.shown, false, "closed")
+    -- Drawn by the kit (UI/Intro.lua): the window "Intro".
+    local function shown()
+        local w = type(c.kitWindows) == "function" and c.kitWindows().Intro
+        return type(w) == "table" and w.shown == true
+    end
+    t.ok(named(c.panels, "Intro") ~= nil, "the intro's plain panel is made, behind the kit")
+    t.eq(shown(), true, "first login of a new install: the intro")
+    t.eq(type(c.kitClose) == "function" and c.kitClose("Intro"), true, "the player closes it")
+    t.eq(shown(), false, "closed")
     said(c, "intro")
-    t.eq(p and p.shown, true, "asked for: shown again")
+    t.eq(shown(), true, "asked for: shown again")
 end
 
 tests["reveal: walking is measured on one continent only"] = function(t)
