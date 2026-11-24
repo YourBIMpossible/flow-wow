@@ -78,7 +78,12 @@ function N.CrossingHint(how, fromName, toName, seconds, atBoard)
     local take = N.CrossingTake(how, fromName, toName)
     local wait = N.CrossingWaitLine(how, seconds)
     if wait == nil and atBoard == true then wait = N.CROSSING_WAIT_UNKNOWN end
-    if take == nil then return wait end
+    -- Lead section 472: the wait alone (no dock names) only at the dock;
+    -- elsewhere a crossing with no names has no hint, as before.
+    if take == nil then
+        if atBoard == true then return wait end
+        return nil
+    end
     if wait == nil then return take end
     return take .. " " .. wait
 end

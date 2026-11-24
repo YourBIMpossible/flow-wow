@@ -100,6 +100,11 @@ end
 -- are made up. Away from the dock it says nothing about waiting.
 tests["boat docks: at the dock with no wait known, wait here; the time stays unknown"] = function(t)
     local c = start()
+    -- The 10 s stood still at the start would be kept as the wait (the
+    -- last still run of 5 s or more before a crossing). A flight ends that
+    -- run: no wait is known from here on.
+    c.setOnTaxi(true); c.advance(1, 4)
+    c.setOnTaxi(false); c.advance(1, 4)
     local function dock()
         c.setPlaceText("Wetlands", "Menethil Harbor"); c.setZone(0, 1437); c.setPosition(1437, 0.1, 0.5); c.advance(1, 4)
     end
@@ -127,6 +132,7 @@ tests["boat docks: the wait words are pure and never guess a time"] = function(t
         "Take the boat or zeppelin at Menethil Harbor to Auberdine. " .. N.CROSSING_WAIT_UNKNOWN)
     t.eq(N.CrossingHint(nil, nil, nil, nil, true), N.CROSSING_WAIT_UNKNOWN, "no names: the wait words alone")
     t.eq(N.CrossingHint(nil, nil, nil, nil, false), nil)
+    t.eq(N.CrossingHint(nil, nil, nil, 180, false), nil, "no names, away from the dock: no hint, so the distance line stays")
     t.eq(N.CrossingHint("boat", "Menethil Harbor", "Auberdine", 180, true),
         "Take the boat at Menethil Harbor's dock to Auberdine. The boat leaves about every 3 minutes: wait on the dock.",
         "a wait learned wins over the unknown words")
