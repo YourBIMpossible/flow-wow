@@ -31,6 +31,7 @@ local function read(s)
         waypoint = s.waypoint == true,
         route = type(s.route) == "table" and s.route or {},
         buttons = type(s.buttons) == "table" and s.buttons or {},
+        focus = type(s.focus) == "table" and s.focus or {},
         windows = type(s.windows) == "table" and s.windows or {},
     }
 end
@@ -169,7 +170,50 @@ local function named(step)
     return type(step.name) == "string" and step.name ~= ""
 end
 
--- The step row and its level: s.step = { name, from, open }, open true
+-- Parity rows A1-44 and A1-45 (lead section 481): the custom route rows
+-- of the step (Nav/Focus.lua), with Flow's words (Modules/Nav/Focus.lua
+-- F.MenuItems and "Go here next"). s.step.quest: the step's quest id, or
+-- nil (a step with no quest offers neither row); s.focus = { has = true
+-- while that quest is on a custom route line, title = the line's title }.
+-- Go here next adds the quest's line; the two Remove rows show only while
+-- it is on one.
+M.FOCUS_ADD = "step.focus"
+M.FOCUS_FROM = "step.focusFrom"
+M.FOCUS_LINE = "step.focusLine"
+M.FOCUS_ADD_TEXT = "Go here next"
+M.FOCUS_FROM_TEXT = "Remove this step and what follows it (custom route)"
+M.FOCUS_LINE_TEXT = "Remove its whole quest line: %s"
+M.FOCUS_UNNAMED = "this line"
+
+local function questOf(step) return tonumber(step.quest) end
+
+function M.FocusRows(state)
+    local s = read(state)
+    local quest = questOf(s.step)
+    if not quest then return {} end
+    if s.focus.has ~= true then
+        return { { key = M.FOCUS_ADD, text = M.FOCUS_ADD_TEXT } }
+    end
+    local title = type(s.focus.title) == "string" and s.focus.title ~= "" and s.focus.title or M.FOCUS_UNNAMED
+    return {
+        { key = M.FOCUS_FROM, text = M.FOCUS_FROM_TEXT },
+        { key = M.FOCUS_LINE, text = M.FOCUS_LINE_TEXT:format(title) },
+    }
+end
+
+-- What a custom route row asks: { focus = "add" | "from" | "line", quest },
+-- or nil when the row is not offered now.
+local function focusAction(key, s)
+    for _, row in ipairs(M.FocusRows(s)) do
+        if row.key == key then
+            local how = (key == M.FOCUS_ADD and "add") or (key == M.FOCUS_FROM and "from") or "line"
+            return { focus = how, quest = questOf(s.step) }
+        end
+    end
+    return nil
+end
+
+-- The step row and its level: s.step = { name, from, open, quest }, open true
 -- while the arrow has a details window to open; s.nearest = { [kind] =
 -- true } for the kinds with a place already seen; s.waypoint true while a
 -- waypoint of the player's own is set.
@@ -184,15 +228,18 @@ function M.StepRow(state)
     local has = named(s.step)
     local text = M.STEP_NONE
     if has then text = s.step.name end
-    return { key = M.STEP, text = text, children = {
+    local children = {
         { key = M.OPEN, text = "Open it", disabled = (not (has and s.step.open == true)) or nil },
         { key = M.HIDE, text = "Hide this step", disabled = (not (has and hideOf(s.step))) or nil },
-        { key = M.NEAREST, text = "Go to the nearest...", children = nearest },
-        { key = M.WAYPOINT, text = "Your waypoint", disabled = (not s.waypoint) or nil },
-        -- Lead section 387 R3: what the route includes, one level down so
-        -- the top level stays short (M.RouteRow).
-        M.RouteRow(s.route),
-    } }
+    }
+    -- A1-44 / A1-45: after Hide this step, only for a step with a quest.
+    for _, row in ipairs(M.FocusRows(s)) do children[#children + 1] = row end
+    children[#children + 1] = { key = M.NEAREST, text = "Go to the nearest...", children = nearest }
+    children[#children + 1] = { key = M.WAYPOINT, text = "Your waypoint", disabled = (not s.waypoint) or nil }
+    -- Lead section 387 R3: what the route includes, one level down so
+    -- the top level stays short (M.RouteRow).
+    children[#children + 1] = M.RouteRow(s.route)
+    return { key = M.STEP, text = text, children = children }
 end
 
 -- The keys from the top to the level the row `key` opens, or nil when no
@@ -451,6 +498,8 @@ function M.Action(key, state)
     local s = read(state)
     if key == M.BACK then return { open = false } end
     -- Lead section 387, R3: the route rows.
+    -- A1-44 / A1-45: the custom route rows.
+    if key == M.FOCUS_ADD or key == M.FOCUS_FROM or key == M.FOCUS_LINE then return focusAction(key, s) end
     if key == M.STEP or key == M.NEAREST or key == M.OPEN or key == M.HIDE or key == M.WAYPOINT
         or key:match("^nearest%.") then
         return routeAction(key, s)
