@@ -64,4 +64,11 @@ tests["arrow status: the next stop is the one after the arrow's"] = function(t)
     t.eq(WS.Lines(nil, nil, nil), { "Arrow: no step now (from nothing).", WS.NO_ROUTE })
 end
 
+tests["arrow status: tripRoute Current() as given, stops inside"] = function(t)
+    local WS = ns.Nav.WaypointStatus
+    local current = { kind = "quests", label = "Route", stops = { { label = "Kill boars" }, { label = "Hand in: Boars" } } }
+    t.eq(WS.Lines("Kill boars", "your route", current),
+        { "Arrow: Kill boars (from your route).", "Next stop: Hand in: Boars." })
+end
+
 return tests

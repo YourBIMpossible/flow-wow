@@ -106,4 +106,10 @@ tests["flight times e2e: a newer flight replaces the old time"] = function(t)
     t.ok(type(s) == "number" and s >= 59 and s <= 62, tostring(s))
 end
 
+tests["flight times: each line names both ends"] = function(t)
+    local T = ns.Nav.FlightTimes
+    t.eq(T.Lines({ ["Stonegate>Rivermouth"] = 90 }),
+        { T.HEADER, T.LINE:format("Stonegate", "Rivermouth", 90) })
+end
+
 return tests

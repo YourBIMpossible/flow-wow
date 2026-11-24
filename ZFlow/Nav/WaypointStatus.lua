@@ -31,6 +31,8 @@ end
 function WS.Lines(stepName, from, stops)
     local name, source = text(stepName), text(from) or "nothing"
     local first = name and WS.POINTS:format(name, source) or WS.NOTHING:format(source)
+    -- tripRoute Current() is { kind, label, stops }: its stops are the list.
+    if type(stops) == "table" and type(stops.stops) == "table" then stops = stops.stops end
     if type(stops) ~= "table" or #stops == 0 then return { first, WS.NO_ROUTE } end
     local i = 1
     if name and type(stops[1]) == "table" and stops[1].label == name then i = 2 end
