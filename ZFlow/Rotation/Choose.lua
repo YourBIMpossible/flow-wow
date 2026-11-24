@@ -498,9 +498,16 @@ local function ruleReady(s, rule, prefs, unread, gaps)
     return ready(s, rule.spell, true, unread, gaps.range)
 end
 
+-- F1b (§451): a rule marked look = true is shown only (with its label),
+-- never put on the key (Rotation/Cast.lua skips look-only suggestions).
 local function suggest(rule, learned)
-    return { spell = rule.spell, kind = rule.kind or "damage",
-             reason = (rule.reason or rule.spell) .. (learned and " (learned)" or "") }
+    local out = { spell = rule.spell, kind = rule.kind or "damage",
+                  reason = (rule.reason or rule.spell) .. (learned and " (learned)" or "") }
+    if rule.look == true then
+        out.look = true
+        out.label = rule.label
+    end
+    return out
 end
 
 -- 6. The priority list for this kind of fight: the first ready rule wins.

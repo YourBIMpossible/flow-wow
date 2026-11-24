@@ -256,6 +256,15 @@ local buffs = {
           local left = s.buffs["Righteous Fury"]
           return left == nil or (type(left) == "number" and left < 30)
       end },
+    -- F1b (§451, Twin's Ask 2): no role chosen, so Righteous Fury waits on
+    -- the role. Shown where the buff would show, look only: never cast.
+    { spell = "Righteous Fury", kind = "buff", look = true, label = "Choose a role",
+      reason = "Choose a role: Righteous Fury waits on the tank role",
+      when = function(s)
+          if not ((s.role == nil or s.role == "") and outOfFight(s) and buffsRead(s)) then return false end
+          local left = s.buffs["Righteous Fury"]
+          return left == nil or (type(left) == "number" and left < 30)
+      end },
     -- N58, B3 (PARTLY): your oath, out of a fight, buffs read and none
     -- named "Oath of" up. Read as a buff on you: a first guess. Capture
     -- fields oathSpell and oathAura (Core/Diag.lua) show it in game.

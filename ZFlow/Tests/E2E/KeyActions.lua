@@ -335,6 +335,24 @@ tests["key actions F1: Find Minerals off, a better bag item: the key shows Find 
     nothingWritten(t, c)
 end
 
+-- F1b (§451, Twin's Ask 2): a paladin with no role chosen and Righteous
+-- Fury missing. The icon says "Choose a role" where the buff would show;
+-- look only, the key never casts it. Red on 4be35c3f (nothing shown).
+tests["key actions F1b: no role, Righteous Fury missing: Choose a role shows, the key does not cast it"] = function(t)
+    local c, addon = start()
+    learn(c, "Righteous Fury", 25780)
+    gear(c, addon, false); c.advance(1, 5)
+    local s = suggested(addon)
+    t.ok(type(s) == "table" and s.spell == "Righteous Fury" and s.look == true, "Righteous Fury shown, look only")
+    t.eq(type(s) == "table" and s.label, "Choose a role", "the line says Choose a role")
+    t.ok(not (attr(c, "type") == "spell" and attr(c, "spell") == "Righteous Fury"), "the key does not cast it")
+    -- A role chosen: the line goes and the buff is offered as usual.
+    gear(c, addon, "tank"); c.advance(1, 5)
+    s = suggested(addon)
+    t.ok(type(s) == "table" and s.spell == "Righteous Fury" and s.look ~= true, "tank: the buff itself")
+    nothingWritten(t, c)
+end
+
 tests["key actions: the key's actions row off: none of these is put on the key"] = function(t)
     local c, addon = start()
     gear(c, addon)
