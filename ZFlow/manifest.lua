@@ -274,5 +274,7 @@ return {
     "Nav/Trip.lua",
     -- G43 (P-TRIP): the route tracker window and the current step's map pin (after Trip, TripRoute, the kit).
     "UI/RouteTracker.lua",
+    -- Lead section 375 item 7 (TN-1): the quest route's pick-ups (after RoutePlan, DungeonStates).
+    "Nav/RoutePickups.lua",
     },
 }
