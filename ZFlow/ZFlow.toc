@@ -242,3 +242,5 @@ Nav\GateWords.lua
 Items\RecipeFacts.lua
 Nav\CrossingWords.lua
 Nav\Activities.lua
+UI\Lite.lua
+Nav\ClassTrainerStep.lua
