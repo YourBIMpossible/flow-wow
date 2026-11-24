@@ -6815,6 +6815,16 @@ function ns.make.client(env)
         return nil
     end
 
+    -- Is the player with this id on the friends list? C_FriendList.IsFriend(
+    -- guid): true, false, or nil when the game does not say. A first guess:
+    -- not seen in game.
+    function c.isFriend(guid)
+        if type(guid) ~= "string" or guid == "" then return nil end
+        local list = env.C_FriendList
+        if type(list) ~= "table" then return nil end
+        return yesNo(call(list.IsFriend, guid))
+    end
+
     -- A panel of rows (the craft bar): c.panel h, always closable, with
     -- shown() and draw(rows, act). rows, top to bottom:
     --   { kind = "info", text = }
