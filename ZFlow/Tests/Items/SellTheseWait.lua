@@ -95,8 +95,8 @@ tests["sell these wait: a slot that changed while waiting counts as sold"] = fun
     local client, sched, w = world()
     local result
     local runner = SellThese.Runner(client, sched, function(r) result = r end)
-    runner.start({ { bag = 0, slot = 1, key = ns.Items.Key(FANG), count = 3 } })
     w.bags["0:1"] = { item = FANG, count = 3 }
+    runner.start({ { bag = 0, slot = 1, key = ns.Items.Key(FANG), count = 3 } })
     w.frame()
     t.eq(runner.running(), true)
     -- Something else landed in the slot the fangs left.
@@ -129,8 +129,8 @@ tests["sell these wait: with no clock, a stack is given up on after a count of f
     client.now = nil
     local result
     local runner = SellThese.Runner(client, sched, function(r) result = r end)
-    runner.start({ { bag = 0, slot = 1, key = ns.Items.Key(FANG), count = 3 } })
     w.bags["0:1"] = { item = FANG, count = 3 }
+    runner.start({ { bag = 0, slot = 1, key = ns.Items.Key(FANG), count = 3 } })
     for _ = 1, SellThese.WAIT_FRAMES + 2 do w.frame() end
     t.eq(runner.running(), false, "the run ends")
     t.eq(result and { result.sold, result.gaveUp }, { 0, 1 })

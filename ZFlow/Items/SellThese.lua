@@ -1,10 +1,16 @@
 -- Sell these (lead section 337 item 1): the sell list's button (UI/SellList.lua)
 -- sells the rows the list shows, by bag and slot, on the player's own click
--- only, with the merchant open and out of combat. One stack per frame; a
+-- only, with the merchant open and out of combat. One stack at a time; a
 -- merchant closing, combat or a refused sale stops the run. Each slot is
 -- read again just before it is sold, and skipped when it no longer holds
 -- the same item and count. Never automatic and never on merchant open: only
 -- runner.start sells, and only the button's click calls it.
+--
+-- It waits for the bag (lead section 450, as the predecessor's
+-- Modules/Items/Vendor.lua): after a sale is sent, the slot is read each
+-- frame; the sale is counted, and the next stack sent, only once the slot
+-- has emptied or changed. A stack still there after SellThese.WAIT seconds
+-- is given up on: not counted, said in the note, and the run goes on.
 --
 -- A row is sold only when the list sells every one of that item in the
 -- bags: a stack can't be split here, so a row the list sells only part of
@@ -18,9 +24,11 @@
 --     button's words when it can't be pressed)
 --   SellThese.Tip(why) -> the button's tooltip for that why
 --   SellThese.Note(result) -> the player's words after a run:
---     result = { sold = items, skipped = stacks, stopped = why or nil }
+--     result = { sold = items, skipped = stacks, gaveUp = stacks,
+--                stopped = why or nil }
 --   SellThese.Runner(client, sched, done) -> runner
---     runner.start(steps)  sells steps[1] now, then one each frame;
+--     runner.start(steps)  sells steps[1] now, then each next one once
+--                          the one before has left the bags;
 --                          done(result) once at the end
 --     runner.stop(why)     ends the run now (why: "closed", ...)
 --     runner.running()     true while a run is on
@@ -29,6 +37,7 @@
 --   client.merchantOpen(), client.combatLockdown()   before each sale
 --   client.bagSlot(bag, slot)                        the slot read again
 --   client.sellBagItem(bag, slot) -> true, or nil and why   ACTING: the sale
+--   client.now()                                     the wait's clock, if any
 -- Not tested in game.
 local _, ns = ...
 
@@ -53,6 +62,11 @@ SellThese.TIPS = {
 }
 SellThese.TIP = "Sells the items listed above, one stack at a time. You can buy them back on the merchant's Buyback tab."
 SellThese.BUYBACK = "Changed your mind? Buy them back on the merchant's Buyback tab."
+-- How long a stack sold may take to leave the bags before the run goes on
+-- without it (the predecessor's Vendor.lua V.WAIT); with no clock to read,
+-- that many frames instead.
+SellThese.WAIT = 1.5
+SellThese.WAIT_FRAMES = 300
 -- Why a run stopped, in the player's words.
 SellThese.WHY = {
     combat = "you are in combat",
@@ -118,6 +132,7 @@ function SellThese.Note(result)
     if type(result) ~= "table" then result = {} end
     local sold = tonumber(result.sold) or 0
     local skipped = tonumber(result.skipped) or 0
+    local gaveUp = tonumber(result.gaveUp) or 0
     local text = "Nothing sold"
     if sold > 0 then text = "Sold " .. plural(sold, "item", "items") end
     if result.stopped ~= nil then
@@ -129,6 +144,11 @@ function SellThese.Note(result)
         if skipped == 1 then its = "its bag slot" end
         text = text .. "; " .. plural(skipped, "stack", "stacks") .. " skipped, as " .. its .. " changed"
     end
+    if gaveUp > 0 then
+        local so = "so they are not counted"
+        if gaveUp == 1 then so = "so it is not counted" end
+        text = text .. "; " .. plural(gaveUp, "stack", "stacks") .. " did not leave your bags, " .. so
+    end
     text = text .. "."
     if sold > 0 then text = text .. " " .. SellThese.BUYBACK end
     return text
@@ -136,23 +156,70 @@ end
 
 function SellThese.Runner(client, sched, done)
     local runner = {}
-    local run = nil     -- { steps, at, sold, skipped }
+    -- { steps, at, sold, skipped, gaveUp, waiting, since, frames }
+    -- waiting: the step whose sale was sent and has not been seen to leave
+    -- the bags; since: the clock then, nil with no clock; frames: the
+    -- frames waited so far.
+    local run = nil
+
+    local function clock()
+        if type(client.now) ~= "function" then return nil end
+        local t = client.now()
+        if type(t) ~= "number" or t ~= t then return nil end
+        return t
+    end
+
+    -- The stack sent last: "none" (nothing is waited for), "left" (its slot
+    -- emptied or changed: counted), "gave up" (still there past the time
+    -- allowed: not counted) or "waiting". last: the run is ending, so a
+    -- stack still there is left as it is.
+    local function settle(last)
+        local s = run.waiting
+        if s == nil then return "none" end
+        local item, count = client.bagSlot(s.bag, s.slot)
+        local same = false
+        if item then same = ns.Items.Key(item) == s.key and count == s.count end
+        if not same then
+            run.waiting = nil
+            run.sold = run.sold + s.count
+            return "left"
+        end
+        if last then return "waiting" end
+        run.frames = run.frames + 1
+        local now = clock()
+        local late = run.frames >= SellThese.WAIT_FRAMES
+        if now ~= nil and run.since ~= nil and now - run.since >= SellThese.WAIT then late = true end
+        if late then
+            run.waiting = nil
+            run.gaveUp = run.gaveUp + 1
+            return "gave up"
+        end
+        return "waiting"
+    end
 
     local function finish(stopped)
         if run == nil then return end
-        local result = { sold = run.sold, skipped = run.skipped, stopped = stopped }
+        -- A stack sent and gone by now is counted; one still there is not.
+        settle(true)
+        local result = { sold = run.sold, skipped = run.skipped, gaveUp = run.gaveUp, stopped = stopped }
         run = nil
         sched:off(SellThese.OWNER)
         if type(done) == "function" then done(result) end
     end
 
-    -- One sale, after passing over the slots that changed; the next one a
-    -- frame later. The merchant and the combat lock are read before each.
+    -- One sale, after passing over the slots that changed; the next one
+    -- only once that stack has left the bags. The merchant and the combat
+    -- lock are read before each.
     local function step()
         if run == nil then return end
+        local was = settle(false)
         if client.merchantOpen() ~= true then return finish("closed") end
         if client.combatLockdown() ~= false then return finish("combat") end
         if type(client.sellBagItem) ~= "function" then return finish("noCall") end
+        if was == "waiting" then
+            sched:nextFrame(SellThese.OWNER, step)
+            return
+        end
         while run.at <= #run.steps do
             local s = run.steps[run.at]
             run.at = run.at + 1
@@ -162,8 +229,7 @@ function SellThese.Runner(client, sched, done)
             if same then
                 local ok, why = client.sellBagItem(s.bag, s.slot)
                 if not ok then return finish(why or "raised") end
-                run.sold = run.sold + s.count
-                if run.at > #run.steps then return finish(nil) end
+                run.waiting, run.since, run.frames = s, clock(), 0
                 sched:nextFrame(SellThese.OWNER, step)
                 return
             end
@@ -175,7 +241,7 @@ function SellThese.Runner(client, sched, done)
     function runner.running() return run ~= nil end
     function runner.start(steps)
         if run ~= nil or type(steps) ~= "table" or #steps == 0 then return false end
-        run = { steps = steps, at = 1, sold = 0, skipped = 0 }
+        run = { steps = steps, at = 1, sold = 0, skipped = 0, gaveUp = 0, frames = 0 }
         step()
         return true
     end

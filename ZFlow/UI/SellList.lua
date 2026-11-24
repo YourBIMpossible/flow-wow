@@ -701,7 +701,8 @@ function SellList.Declare(k)
             end
             local runner = SellThese.Runner(client, ctx.sched, function(result)
                 local tone = "warn"
-                if result.sold > 0 and result.stopped == nil and result.skipped == 0 then tone = "good" end
+                if result.sold > 0 and result.stopped == nil and result.skipped == 0
+                    and (result.gaveUp or 0) == 0 then tone = "good" end
                 note = { text = SellThese.Note(result), tone = tone }
                 api.refresh()
             end)
