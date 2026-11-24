@@ -3424,6 +3424,24 @@ function ns.make.fakeClient(opts)
         -- G14 coin: "upgrade" (the arrow) or "coin" (sell it), or nil.
         function c.rewardMarkKind() return rewardKind end
     end
+    -- G14 bag badge: the marks drawn on bag slots, as the real client's
+    -- markBagSlots(marks): c.bagMarks() is a copy of the last marks, {}
+    -- before any.
+    do
+        local bagMarks = {}
+        function c.markBagSlots(marks)
+            bagMarks = {}
+            for i, m in ipairs(type(marks) == "table" and marks or {}) do
+                bagMarks[i] = { bag = m.bag, slot = m.slot, text = m.text }
+            end
+            return #bagMarks
+        end
+        function c.bagMarks()
+            local out = {}
+            for i, m in ipairs(bagMarks) do out[i] = { bag = m.bag, slot = m.slot, text = m.text } end
+            return out
+        end
+    end
     -- S21: the value on a loot roll's item, as the real client's
     -- rollValue(rollID, text, r, g, b): true, kept per roll; no text clears
     -- it. c.rollValueOf(rollID) -> { text, r, g, b } shown now, or nil.

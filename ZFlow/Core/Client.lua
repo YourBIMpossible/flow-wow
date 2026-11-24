@@ -9213,6 +9213,81 @@ function ns.make.client(env)
         end
     end
 
+    -- G14 bag badge (section 393): a few letters on bag slots (the role an
+    -- upgrade is for). First guess, not seen in game on 16001: the bag
+    -- windows are ContainerFrame1..NUM_CONTAINER_FRAMES (13 when not given),
+    -- each window's GetID() its bag and its buttons <window>Item1..36 with
+    -- GetID() their slot, as the classic bag code builds them.
+    --   c.markBagSlots({ { bag, slot, text } ... }) -> how many slots carry
+    --     a letter now. Every other letter is hidden; {} hides them all.
+    -- The marks are kept and drawn again when a bag window opens (a window
+    -- may show another bag than last time). Our own font string on each
+    -- button, reused; nothing of the game's is written, nothing is clicked.
+    -- In a do block: make.client is near Lua 5.1's 200 locals.
+    do
+        local bagLetters, bagWanted, bagHooked = {}, {}, {}
+        local function bagLetter(button)
+            local known = bagLetters[button]
+            if known ~= nil then return known or nil end
+            local okT, fs = method(button, "CreateFontString", nil, "OVERLAY", "NumberFontNormalSmall")
+            if not okT or fs == nil then
+                bagLetters[button] = false
+                return nil
+            end
+            method(fs, "SetPoint", "TOPLEFT", button, "TOPLEFT", 2, -2)
+            method(fs, "SetTextColor", 0.1, 1, 0.1)
+            method(fs, "Hide")
+            bagLetters[button] = fs
+            return fs
+        end
+        local function bagDraw()
+            local okN, frames = pcall(function() return env.NUM_CONTAINER_FRAMES end)
+            if not okN or type(frames) ~= "number" then frames = 13 end
+            local shown = 0
+            for f = 1, frames do
+                local name = "ContainerFrame" .. f
+                local okF, frame = pcall(function() return env[name] end)
+                if okF and type(frame) == "table" then
+                    if not bagHooked[frame] then
+                        bagHooked[frame] = true
+                        method(frame, "HookScript", "OnShow", function() bagDraw() end)
+                    end
+                    local okB, bag = method(frame, "GetID")
+                    local row = okB and bagWanted[bag] or nil
+                    for i = 1, 36 do
+                        local okI, button = pcall(function() return env[name .. "Item" .. i] end)
+                        if okI and type(button) == "table" then
+                            local okS, slot = method(button, "GetID")
+                            local text = row and okS and row[slot] or nil
+                            local fs = (text or bagLetters[button]) and bagLetter(button) or nil
+                            if fs then
+                                if text then
+                                    method(fs, "SetText", text)
+                                    method(fs, "Show")
+                                    shown = shown + 1
+                                else
+                                    method(fs, "Hide")
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            return shown
+        end
+        function c.markBagSlots(marks)
+            bagWanted = {}
+            for _, m in ipairs(type(marks) == "table" and marks or {}) do
+                if type(m) == "table" and type(m.bag) == "number" and type(m.slot) == "number"
+                    and type(m.text) == "string" and m.text ~= "" then
+                    bagWanted[m.bag] = bagWanted[m.bag] or {}
+                    bagWanted[m.bag][m.slot] = m.text
+                end
+            end
+            return bagDraw()
+        end
+    end
+
     -- S21 (lead section 275): the Need or Greed value on a loot roll's item
     -- (Gear/RollHint.lua). A first guess, not seen in game on 16001: the
     -- roll frame's item picture is its IconFrame field (legacy Flow's

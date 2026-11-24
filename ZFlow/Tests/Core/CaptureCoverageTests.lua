@@ -37,6 +37,8 @@ local KIND = {
              "playAlert",
              -- G14: the mark on the best quest reward choice (Gear/RewardMark.lua).
              "markRewardChoice",
+             -- G14 bag badge: the role letters on bag upgrades (Gear/BagBadge.lua).
+             "markBagSlots",
              -- S21: the Need or Greed value on a loot roll's item (Gear/RollHint.lua).
              "rollValue",
              -- S19 (P-SETS branch 2): the set icon row; a click asks only

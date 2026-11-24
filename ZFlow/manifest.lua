@@ -327,5 +327,7 @@ return {
     "Import/Apply.lua",
     -- G9 (section 393): the auction watch list (after AuctionLog, which it reads).
     "Items/AuctionWatch.lua",
+    -- G14 (section 393): the role badge on bag upgrades (after the verdict and the reward mark).
+    "Gear/BagBadge.lua",
     },
 }
