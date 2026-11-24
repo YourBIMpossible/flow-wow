@@ -393,6 +393,25 @@ function ns.make.fakeClient(opts)
     function c.questieModule(name)
         return s.questie and s.questie[name] or nil
     end
+    -- The dungeon journal: nil (as made) is a client with no journal
+    -- calls. setJournal({ [encounter] = { name =, items = { id } } }, shown)
+    -- makes one; shown: its window is open, so no loot is given.
+    function c.setJournal(map, shown) s.journal, s.journalShown = map, shown and true or nil end
+    c.journalAsks = {}
+    function c.journalBoss(instance, encounter, withLoot)
+        c.journalAsks[#c.journalAsks + 1] = { instance = instance, encounter = encounter, withLoot = withLoot }
+        if type(s.journal) ~= "table" then return nil end
+        local row = s.journal[encounter]
+        if type(row) ~= "table" then return nil end
+        local out = { name = row.name, items = {} }
+        if not withLoot then return out end
+        if s.journalShown then
+            out.shown = true
+            return out
+        end
+        for i, id in ipairs(row.items or {}) do out.items[i] = id end
+        return out
+    end
     function c.minimap()
         local r = s.minimap
         if type(r) ~= "table" then return nil end
@@ -3736,7 +3755,7 @@ function ns.make.fakeClient(opts)
     -- and c.kitProbe, as the real client's. Nothing is drawn; a window is
     -- recorded by its id.
     --   c.kitWindows() -> { [id] = { shown, point, width, height,
-    --     parts = { { kind, path, key, text } ... in Kit.Each order } } }
+    --     parts = { { kind, path, key, text, note } ... in Kit.Each order } } }
     --     (a copy)
     -- The test's controls, each standing in for the player; each answers
     -- true when the part's own function was run, false when there is no such
@@ -3779,7 +3798,8 @@ function ns.make.fakeClient(opts)
             local list, byName, slots = {}, {}, {}
             local function one(part, live)
                 local entry = { part = part, live = live and part.enabled ~= false, checked = part.checked == true }
-                list[#list + 1] = { kind = part.kind, path = part.path, key = part.key, text = ns.Kit.TextOf(part) }
+                list[#list + 1] = { kind = part.kind, path = part.path, key = part.key, text = ns.Kit.TextOf(part),
+                    note = part.note }
                 byName[part.path] = entry
                 if part.kind ~= "bind" and part.key ~= nil then byName[part.key] = entry end
                 if part.kind == "footer" and part.slot ~= nil then slots[part.slot] = { slot = part.slot } end

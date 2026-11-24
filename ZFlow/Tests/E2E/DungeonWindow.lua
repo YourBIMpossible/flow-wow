@@ -118,8 +118,46 @@ tests["dungeon window: search narrows the list"] = function(t)
     t.ok(texts(c.kitWindows()[ID]):find(ns.DungeonRead.WHY_NO_MATCH[1], 1, true) ~= nil, "nothing found says so")
 end
 
+-- Lead DISPATCH 426: the made-up Questie uses real area numbers, so a case
+-- about the Bosses tab gives the add-on it loaded (its own table, made
+-- fresh by boot) the boss list it runs on.
+
+local function notes(rec)
+    local out = {}
+    for _, p in ipairs(rec and rec.parts or {}) do
+        if p.note ~= nil then out[#out + 1] = tostring(p.note) end
+    end
+    return table.concat(out, " | ")
+end
+
+-- Fails before: the Bosses tab listed only bosses this account had killed,
+-- each headed "(N kills)" (UI/DungeonWindow.lua bossesPane).
+tests["dungeon window 426: Bosses lists every boss and its drops before the first kill, no kill count"] = function(t)
+    do
+        local c, addon = boot({ account = { learned = { bossLoot = {
+            ["n:501"] = { name = "Gryan", kills = 3, items = { ["item:12"] = { times = 2 } } } } } } })
+        addon.BossLootData = { instances = { { id = 9001, area = DM, bosses = {
+            { npcs = { 501 }, items = { 11, 12 } },
+            { npcs = { 777 }, items = {} },
+        } } } }
+        c.setItemInfo({ [11] = { name = "Made Up Blade", quality = 2 }, [12] = { name = "Made Up Hat", quality = 3 } })
+        open(c)
+        c.kitSelect(ID, "dungeons", 1)
+        t.eq(c.kitSelect(ID, "tabs", 2), true)
+        local rec = c.kitWindows()[ID]
+        local words = texts(rec)
+        t.ok(words:find("Gryan", 1, true) ~= nil, "the boss by its name: " .. words)
+        t.ok(words:find("kill", 1, true) == nil, "no kill count: " .. words)
+        t.ok(words:find(ns.DungeonRead.BOSS_UNNAMED, 1, true) ~= nil, "a boss nothing names says so, never a number")
+        t.ok(words:find("777", 1, true) == nil, "no bare creature number")
+        t.ok(words:find(ns.DungeonRead.BOSS_NO_DATA[1], 1, true) ~= nil, "a boss with no list says so")
+        t.eq(notes(rec), ns.DungeonRead.SEEN, "only the drop this account saw is marked")
+    end
+end
+
 tests["dungeon window: Bosses with no loot seen, and Map with no entrance, say why"] = function(t)
-    local c = boot()
+    local c, addon = boot()
+    addon.BossLootData = { instances = {} }
     open(c)
     c.kitType(ID, "header", "shadow")
     c.kitSelect(ID, "dungeons", 1)

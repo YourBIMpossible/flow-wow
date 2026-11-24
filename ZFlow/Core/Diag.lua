@@ -1731,6 +1731,13 @@ function Diag.Start(k)
             if type(sources) ~= "table" or type(sources.Line) ~= "function" then return nil end
             return sources.Line(k)
         end)
+        -- Lead DISPATCH 426 item 4: whether the dungeon journal of this
+        -- client answers (Nav/DungeonRead.lua R.JournalLine).
+        say("dungeon journal", function()
+            local read = ns.DungeonRead
+            if type(read) ~= "table" or type(read.JournalLine) ~= "function" then return nil end
+            return read.JournalLine(client)
+        end)
     end
 
     -- The help word: every word in commands, one line each. It reads the

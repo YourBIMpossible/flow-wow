@@ -248,6 +248,8 @@ return {
     "UI/SettingsShare.lua",
     -- Lead section 303: the Dungeon Quests pane's data (pure).
     "Nav/DungeonStates.lua",
+    -- Lead DISPATCH 426: which items each dungeon and raid boss can drop, ids only (made by tools/zflow-boss-loot.ps1).
+    "Nav/BossLootData.lua",
     -- Lead section 303: the Dungeon Quests reader (Questie at runtime).
     "Nav/DungeonRead.lua",
     -- Lead section 305: boss kills as the client reports them (after Diag).

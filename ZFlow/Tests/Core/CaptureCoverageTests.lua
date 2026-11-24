@@ -249,6 +249,8 @@ local READS = {
 -- Lead section 337 item 1: the bag stacks with their bag and slot, and one
 -- slot read again before it is sold; read by Items/SellThese.lua only, on
 -- the player click. The capture asks neither.
+-- Lead DISPATCH 426: the dungeon journal, asked by the Bosses tab and the diag word.
+READS.journalBoss = false
 READS.bagSlots = false
 READS.bagSlot = false
 -- P-QUEST (lead section 354 item 4): whether a quest can be shared; read by

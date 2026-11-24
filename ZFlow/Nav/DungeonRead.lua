@@ -1,7 +1,9 @@
 -- The Dungeon Quests reader (lead section 303 item 7, data route A). Reads
 -- Questie at runtime through the client (client.questieModule): its
--- dungeon list (ZoneDB:GetDungeons) and its quests (QuestieDB). No quest,
--- dungeon or loot table ships here, and nothing of DungeonJournal is used.
+-- dungeon list (ZoneDB:GetDungeons) and its quests (QuestieDB). No quest
+-- or dungeon table ships here, and nothing of DungeonJournal is used. The
+-- one shipped table is which items each boss can drop, as ids only
+-- (Nav/BossLootData.lua, lead DISPATCH 426).
 -- A port of the index of legacy Flow's Modules/Nav/Dungeons.lua
 -- (buildDungeons, buildIndex, placer, giverInside, giverAtEntrance): a
 -- quest belongs to the dungeon its zone is in, else the one dungeon all its
@@ -17,15 +19,17 @@
 --   R.List(st) -> { { key, name, minQ, maxQ, ids } }   in level order
 --   R.Pane(st, client, key) -> the pane (Nav/DungeonStates.lua S.Pane),
 --                              or one saying why there is none yet
---   R.Loot(st, client, key, book) -> the Bosses tab's data (lead section
---     305): { title, why, bosses = { { name, kills, items = { { item,
---     times } } } }, unplaced }. book is this account's own seen loot,
---     account "learned.bossLoot" as UI/BossLoot.lua keeps it; a boss is in
---     the dungeon where Questie spawns one of its creatures. Most-seen
---     items first. No loot table: only what this account saw.
+--   R.Loot(st, client, key, book, drops, data) -> the Bosses tab's data
+--     (lead DISPATCH 426): every boss of the dungeon and what it can drop,
+--     from the shipped table, else the client's dungeon journal, else
+--     Questie. book is this account's own seen loot, account
+--     "learned.bossLoot" as UI/BossLoot.lua keeps it: it marks the drops
+--     seen, it does not make the list.
+--   R.JournalLine(client) -> one line for the diag word: whether the
+--     client's dungeon journal answers
 --
 -- Client reads: questieModule, level, class, raceId, faction, questLog,
--- questDone. Only reads. Not tested in game: every Questie call here is
+-- questDone, itemInfo, itemTexture, journalBoss. Only reads. Not tested in game: every Questie call here is
 -- the one legacy Flow made, not seen through this add-on on 16001.
 local _, ns = ...
 
@@ -60,8 +64,12 @@ R.WHY_NO_ENTRANCE = { "No entrance known for this dungeon.",
     "Questie lists none for it; walk there once and set a waypoint by hand with the way word." }
 R.WHY_NO_MATCH = { "No dungeon matches the search.", "Clear the search box to see every dungeon." }
 R.ITEM_UNREAD = "Item not read yet"
-R.WHY_NO_LOOT = { "No boss loot seen here on this account yet.",
-    "Kill a boss of this dungeon with loot recording on and its drops will appear here." }
+R.WHY_NO_LOOT = { "No boss list for this dungeon yet.",
+    "Kill a boss of this dungeon with loot recording on and it is added here with what it dropped." }
+-- Lead DISPATCH 426: a boss no source names is never a bare number.
+R.BOSS_UNNAMED = "Boss not named yet (its name shows once you meet it)"
+R.BOSS_NO_DATA = { "What this boss drops is not known yet.", "Drops you see from it are added here." }
+R.SEEN = "you have seen this drop"
 -- P-TRIP (S40): the dungeon run, R.Run below.
 R.WHY_NO_RUN = { "Nothing to plan for this dungeon.",
     "No quest to pick up before you go has a giver Questie places, and no entrance is known." }
@@ -402,11 +410,136 @@ local function creaturesOf(key, entry)
     return out
 end
 
--- Twin review 17:11: F5 (n: entries are placed by their key), F6 (loot
--- placed nowhere says so), F7 (one boss from its e: and n: entries, merged
--- by UI/BossLoot.lua B.Lookup, the boss panel's own reading). drops: the
--- character's learned.drops, or nil.
-function R.Loot(st, client, key, book, drops)
+-- One item row: its name, quality and icon as the client reads them (lead
+-- section 318); one not read yet says so and is counted by the caller.
+local function itemRow(client, item, times)
+    local it = { item = item, times = times or 0, seen = (times or 0) > 0 }
+    local info = ask(client, "itemInfo", item)
+    if type(info) == "table" then
+        if type(info.name) == "string" and info.name ~= "" then it.name = info.name end
+        -- Twin review 18:06, F4: only a quality the kit draws
+        -- (whole, 0 to 5); any other is left out, never a stop.
+        local q = info.quality
+        if type(q) == "number" and q >= 0 and q <= 5 and q == math.floor(q) then it.quality = q end
+    end
+    if not it.name then it.name, it.unread = R.ITEM_UNREAD, true end
+    local icon = ask(client, "itemTexture", item)
+    if type(icon) == "string" or type(icon) == "number" then it.icon = icon end
+    return it
+end
+
+local function idList(v)
+    local out = {}
+    for _, id in ipairs(type(v) == "table" and v or {}) do
+        if type(id) == "number" then out[#out + 1] = id end
+    end
+    return out
+end
+
+-- The shipped instances (Nav/BossLootData.lua) that are the dungeon d: by
+-- the area id both name; one with no area id by where Questie places its
+-- creatures. Kept per table and dungeon in st.
+local function instancesOf(st, db, d, data)
+    st.lootInst = st.lootInst or {}
+    local cache = st.lootInst[data]
+    if not cache then
+        cache = {}
+        st.lootInst[data] = cache
+    end
+    if cache[d.key] then return cache[d.key] end
+    local list = {}
+    for _, inst in ipairs(type(data.instances) == "table" and data.instances or {}) do
+        if type(inst) == "table" then
+            local at
+            if type(inst.area) == "number" then
+                at = R.ALIAS[inst.area] or inst.area
+            else
+                for _, b in ipairs(type(inst.bosses) == "table" and inst.bosses or {}) do
+                    for _, npc in ipairs(idList(type(b) == "table" and b.npcs or nil)) do
+                        at = at or placeOf(st, db, "npc", npc) or nil
+                    end
+                    if at then break end
+                end
+            end
+            if at == d.key then list[#list + 1] = inst end
+        end
+    end
+    cache[d.key] = list
+    return list
+end
+
+-- What Questie says the creatures of this dungeon drop for its quests:
+-- { [creature] = { item, ... } }. The same read original Flow made
+-- (Modules/Nav/Dungeons.lua droppers(): QueryItemSingle(item, "npcDrops")),
+-- over the items the quests of the dungeon ask for. Kept per dungeon in st.
+local function questDrops(st, db, d)
+    st.lootQuest = st.lootQuest or {}
+    if st.lootQuest[d.key] then return st.lootQuest[d.key] end
+    local out, had = {}, {}
+    for _, id in ipairs(type(d.ids) == "table" and d.ids or {}) do
+        local obj = query(db, "QueryQuestSingle", id, "objectives")
+        for _, entry in ipairs(type(obj) == "table" and type(obj[3]) == "table" and obj[3] or {}) do
+            local item = type(entry) == "table" and entry[1] or nil
+            if type(item) == "number" and not had[item] then
+                had[item] = true
+                for _, npc in ipairs(idList(query(db, "QueryItemSingle", item, "npcDrops"))) do
+                    out[npc] = out[npc] or {}
+                    out[npc][#out[npc] + 1] = item
+                end
+            end
+        end
+    end
+    st.lootQuest[d.key] = out
+    return out
+end
+
+-- What this account saw from the creatures npcs (UI/BossLoot.lua B.Lookup,
+-- the boss panel's own reading): { name, kills, items = { [item key] = times } }.
+local function ownOf(book, drops, npcs)
+    local B = ns.BossLoot
+    local out = { kills = 0, items = {} }
+    if type(B) ~= "table" or type(B.Lookup) ~= "function" then return out end
+    for _, npc in ipairs(npcs) do
+        local ok, got = pcall(B.Lookup, book, drops, { npc = npc })
+        if ok and type(got) == "table" then
+            if out.name == nil and type(got.name) == "string" and got.name ~= "" then out.name = got.name end
+            local kills = tonumber(got.kills) or 0
+            if kills > out.kills then out.kills = kills end
+            for item, times in pairs(type(got.items) == "table" and got.items or {}) do
+                if type(times) == "number" and times > 0 and times > (out.items[item] or 0) then
+                    out.items[item] = times
+                end
+            end
+        end
+    end
+    return out
+end
+
+local function byTimes(a, b)
+    if a.times ~= b.times then return a.times > b.times end
+    return tostring(a.item) < tostring(b.item)
+end
+
+-- The bosses of a dungeon and what each can drop (lead DISPATCH 426; the
+-- owner: "We need to populate the loot table from research data. We can't
+-- just populate it by how many times you fought a boss."). The list comes,
+-- for each boss, from the first of these that has items:
+--   1. the shipped table (Nav/BossLootData.lua; data, for the tests);
+--   2. the client's own dungeon journal, where the client answers
+--      (client.journalBoss) and the boss has an encounter id;
+--   3. Questie: the quest items it says the creatures of the boss drop.
+-- What this account saw (book, drops) never makes the list: it marks a row
+-- as seen (it.seen, it.times), and adds a drop it saw that no list has. A
+-- boss this account killed that no list names is still shown, after the
+-- listed ones, as before. The name of a boss: the journal's, else
+-- Questie's, else the one seen at a kill, else R.BOSS_UNNAMED (b.named
+-- false).
+--   -> { title, bosses = { { name, named, kills, source, items = { { item,
+--        times, seen, name, quality, icon, unread } } } }, unplaced, unread,
+--        unnamed, why }
+-- Twin review 17:11 stands: F5 (n: entries are placed by their key), F6
+-- (loot placed nowhere says so), F7 (one boss from its e: and n: entries).
+function R.Loot(st, client, key, book, drops, data)
     if type(st) ~= "table" or st.state == "noquestie" then return S.Pane({ available = false }) end
     if st.state == "failed" then return waiting(st.why or R.WHY_LIST) end
     if st.state ~= "ready" then return waiting(R.WHY_BUILDING) end
@@ -414,9 +547,86 @@ function R.Loot(st, client, key, book, drops)
     if not d then return S.Pane({ available = true }) end
     local db = questieModule(client, "QuestieDB")
     if not db then return S.Pane({ available = false }) end
-    local B = ns.BossLoot
-    local out = { title = d.name, bosses = {}, unplaced = 0 }
+    if type(data) ~= "table" then data = type(ns.BossLootData) == "table" and ns.BossLootData or {} end
+    local out = { title = d.name, bosses = {}, unplaced = 0, unread = 0, unnamed = 0 }
     book = type(book) == "table" and book or {}
+    local covered = {}
+
+    local function finish(b, items)
+        for _, it in ipairs(items) do
+            if it.unread then out.unread = out.unread + 1 end
+        end
+        b.items = items
+        if not b.named then out.unnamed = out.unnamed + 1 end
+        out.bosses[#out.bosses + 1] = b
+    end
+
+    local function cover(npc)
+        covered[npc] = true
+        -- The other creatures of the same kills are this boss too.
+        for k, entry in pairs(book) do
+            if type(entry) == "table" and type(entry.npcs) == "table" and entry.npcs[npc] == true then
+                for _, other in ipairs(creaturesOf(k, entry)) do covered[other] = true end
+            end
+        end
+    end
+
+    local function questieName(npcs)
+        for _, npc in ipairs(npcs) do
+            local n = query(db, "QueryNPCSingle", npc, "name")
+            if type(n) == "string" and n ~= "" then return n end
+        end
+        return nil
+    end
+
+    local quest
+    for _, inst in ipairs(instancesOf(st, db, d, data)) do
+        for _, boss in ipairs(type(inst.bosses) == "table" and inst.bosses or {}) do
+            if type(boss) == "table" then
+                local npcs = idList(boss.npcs)
+                for _, npc in ipairs(npcs) do cover(npc) end
+                local list, source = idList(boss.items), "shipped"
+                local journal
+                if type(boss.e) == "number" then
+                    journal = ask(client, "journalBoss", inst.id, boss.e, #list == 0)
+                    if type(journal) ~= "table" then journal = nil end
+                end
+                if #list == 0 and journal then list, source = idList(journal.items), "journal" end
+                if #list == 0 then
+                    quest = quest or questDrops(st, db, d)
+                    local had = {}
+                    for _, npc in ipairs(npcs) do
+                        for _, item in ipairs(quest[npc] or {}) do
+                            if not had[item] then
+                                had[item] = true
+                                list[#list + 1] = item
+                            end
+                        end
+                    end
+                    source = "questie"
+                end
+                local own = ownOf(book, drops, npcs)
+                local name = journal and type(journal.name) == "string" and journal.name ~= "" and journal.name or nil
+                name = name or questieName(npcs) or own.name
+                local items, listed = {}, {}
+                for _, item in ipairs(list) do
+                    listed[item] = true
+                    items[#items + 1] = itemRow(client, item, own.items[item])
+                end
+                local extra = {}
+                for item, times in pairs(own.items) do
+                    if not listed[item] then extra[#extra + 1] = { item = item, times = times } end
+                end
+                table.sort(extra, byTimes)
+                for _, e in ipairs(extra) do items[#items + 1] = itemRow(client, e.item, e.times) end
+                if #list == 0 then source = #extra > 0 and "seen" or nil end
+                finish({ name = name or R.BOSS_UNNAMED, named = name ~= nil, kills = own.kills, source = source,
+                    encounter = type(boss.e) == "number" and boss.e or nil }, items)
+            end
+        end
+    end
+
+    -- What this account killed here that no list names.
     local here, seen, named = {}, false, false
     for k, entry in pairs(book) do
         if type(entry) == "table" then
@@ -424,58 +634,58 @@ function R.Loot(st, client, key, book, drops)
             local creatures = creaturesOf(k, entry)
             if #creatures == 0 then out.unplaced = out.unplaced + 1 else named = true end
             for _, npc in ipairs(creatures) do
-                if placeOf(st, db, "npc", npc) == d.key then here[npc] = true end
+                if not covered[npc] and placeOf(st, db, "npc", npc) == d.key then here[npc] = true end
             end
         end
     end
     local npcs = {}
     for npc in pairs(here) do npcs[#npcs + 1] = npc end
     table.sort(npcs)
-    local covered = {}
+    local extras = {}
     for _, npc in ipairs(npcs) do
-        if not covered[npc] and type(B) == "table" and type(B.Lookup) == "function" then
-            covered[npc] = true
-            -- The other creatures of the same encounters are this boss too.
-            for k, entry in pairs(book) do
-                if type(entry) == "table" and type(entry.npcs) == "table" and entry.npcs[npc] == true then
-                    for _, other in ipairs(creaturesOf(k, entry)) do covered[other] = true end
-                end
-            end
-            local ok, got = pcall(B.Lookup, book, drops, { npc = npc })
-            if ok and type(got) == "table" then
-                local items = {}
-                for item, times in pairs(type(got.items) == "table" and got.items or {}) do
-                    if type(times) == "number" and times > 0 then items[#items + 1] = { item = item, times = times } end
-                end
-                table.sort(items, function(a, b)
-                    if a.times ~= b.times then return a.times > b.times end
-                    return tostring(a.item) < tostring(b.item)
-                end)
-                -- Lead section 318: each item's name, quality and icon, as the
-                -- client reads them; one not read yet says so.
-                for _, it in ipairs(items) do
-                    local info = ask(client, "itemInfo", it.item)
-                    if type(info) == "table" then
-                        if type(info.name) == "string" and info.name ~= "" then it.name = info.name end
-                        -- Twin review 18:06, F4: only a quality the kit draws
-                        -- (whole, 0 to 5); any other is left out, never a stop.
-                        local q = info.quality
-                        if type(q) == "number" and q >= 0 and q <= 5 and q == math.floor(q) then it.quality = q end
-                    end
-                    it.name = it.name or R.ITEM_UNREAD
-                    local icon = ask(client, "itemTexture", it.item)
-                    if type(icon) == "string" or type(icon) == "number" then it.icon = icon end
-                end
-                out.bosses[#out.bosses + 1] = { name = got.name, kills = tonumber(got.kills) or 0, items = items }
-            end
+        if not covered[npc] then
+            cover(npc)
+            local own = ownOf(book, drops, { npc })
+            local items = {}
+            for item, times in pairs(own.items) do items[#items + 1] = { item = item, times = times } end
+            table.sort(items, byTimes)
+            for i, it in ipairs(items) do items[i] = itemRow(client, it.item, it.times) end
+            local name = own.name or questieName({ npc })
+            extras[#extras + 1] = { b = { name = name or R.BOSS_UNNAMED, named = name ~= nil, kills = own.kills,
+                source = "seen" }, items = items }
         end
     end
-    table.sort(out.bosses, function(a, b) return tostring(a.name) < tostring(b.name) end)
+    table.sort(extras, function(a, b) return tostring(a.b.name) < tostring(b.b.name) end)
+    for _, e in ipairs(extras) do finish(e.b, e.items) end
     if #out.bosses == 0 then
         -- Loot seen, none of it tied to any creature: that, not "no loot".
         out.why = (seen and not named) and R.WHY_LOOT_UNPLACED or R.WHY_NO_LOOT
     end
     return out
+end
+
+-- One line for `<slash> diag` (lead DISPATCH 426 item 4): whether the
+-- dungeon journal of this client answers for the first shipped boss that
+-- has an encounter id. Read only.
+function R.JournalLine(client, data)
+    if type(data) ~= "table" then data = type(ns.BossLootData) == "table" and ns.BossLootData or {} end
+    for _, inst in ipairs(type(data.instances) == "table" and data.instances or {}) do
+        for _, boss in ipairs(type(inst) == "table" and type(inst.bosses) == "table" and inst.bosses or {}) do
+            if type(boss) == "table" and type(boss.e) == "number" then
+                local at = "instance " .. tostring(inst.id) .. ", encounter " .. tostring(boss.e)
+                local got = ask(client, "journalBoss", inst.id, boss.e, true)
+                if type(got) ~= "table" then
+                    return "dungeon journal: this client does not answer (" .. at
+                        .. "); boss loot comes from the shipped list."
+                end
+                return "dungeon journal: this client answers (" .. at .. "): name "
+                    .. (type(got.name) == "string" and "given" or "not given") .. ", "
+                    .. tostring(#idList(got.items)) .. " items"
+                    .. (got.shown and " (journal window open: loot not asked)" or "") .. "."
+            end
+        end
+    end
+    return "dungeon journal: not asked; the shipped list names no encounter."
 end
 
 -- The dungeons of list whose name holds text, any case, as plain letters.
