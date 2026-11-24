@@ -58,7 +58,10 @@ local KIND = {
             "equipItem",
             -- G59 (lead section 226, ACTS): the game option writes, each on
             -- the player own choice only.
-            "setGameSetting", "setCombatLogFile" },
+            "setGameSetting", "setCombatLogFile",
+            -- G34: one of the game's binding commands put on a key, only
+            -- from the hover-to-bind mode's Save (UI/HoverBind.lua).
+            "setBinding" },
     -- Reads a chat line handed in, not the client.
     -- lootLine (N55): the item of anyone's loot line, never the looter.
     parse = { "ownLoot", "auctionOutcome", "lootLine" },
@@ -66,6 +69,8 @@ local KIND = {
 -- S15 click slots and S29 move handle (P-KEYS slice C): a row of secure
 -- buttons, each cast only on the player click, and the grip that moves it.
 KIND.show[#KIND.show + 1] = "clickRow"
+-- G34: the hover-to-bind covers on the action buttons; binds nothing.
+KIND.show[#KIND.show + 1] = "bindHover"
 KIND.show[#KIND.show + 1] = "moveHandle"
 -- Lead sections 297, 303 and 308: asks whether each part of the window
 -- kit's list is there, on hidden frames; run once per login by

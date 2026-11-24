@@ -254,6 +254,8 @@ return {
     "Nav/BossKills.lua",
     -- Lead section 318: the Dungeon Quests window, on the kit (after Kit and the dungeon data).
     "UI/DungeonWindow.lua",
+    -- G34: hover over an action button and press a key (after Kit and Diag).
+    "UI/HoverBind.lua",
     "UI/HelpPages.lua",
     "UI/SetupList.lua",
     -- P-TRIP (S43): quest spots learned from the player's own play (after QuestRead and Diag).
