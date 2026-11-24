@@ -557,6 +557,39 @@ function ns.make.client(env)
         return out
     end
 
+    -- G3: what is on the open merchant's Buyback tab, in the tab's order:
+    --   { { index = n, item = link, name = text, price = copper to buy it
+    --       back, count = how many }, ... }
+    -- A field the client did not give is left out, never guessed. nil
+    -- unless the merchant window is known to be open, and nil when the
+    -- count or any one item could not be read or is marked secret: never a
+    -- shorter list. This only reads. Nothing here buys anything back.
+    -- First guesses, not seen in game on 16001: GetNumBuybackItems,
+    -- GetBuybackItemLink(index), GetBuybackItemInfo(index) answering name,
+    -- texture, price, quantity.
+    function c.returnableItems()
+        if c.merchantOpen() ~= true then return nil end
+        local ok, count = call(env.GetNumBuybackItems)
+        if not ok or hidden(count) or not wholeCount(count) then return nil end
+        local out = {}
+        for index = 1, count do
+            local okLink, link = call(env.GetBuybackItemLink, index)
+            if not okLink or (link ~= nil and hidden(link)) then return nil end
+            local okInfo, name, _, price, quantity = call(env.GetBuybackItemInfo, index)
+            if not okInfo or (name ~= nil and hidden(name)) or (price ~= nil and hidden(price))
+                or (quantity ~= nil and hidden(quantity)) then
+                return nil
+            end
+            local row = { index = index }
+            if type(link) == "string" then row.item = link end
+            if type(name) == "string" and name ~= "" then row.name = name end
+            if wholeCount(price) then row.price = price end
+            if wholeCount(quantity) and quantity > 0 then row.count = quantity end
+            out[index] = row
+        end
+        return out
+    end
+
     -- The profession whose window is open, and every recipe in it:
     --   { profession = skill line, skill = n, max = n,
     --     recipes = { { id =, name =, learned = true / false,

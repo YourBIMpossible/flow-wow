@@ -102,21 +102,23 @@ for _, prof in ipairs(CRAFTS) do
     end
 
     tests["every profession: " .. prof .. " with colours never read says to open its window"] = function(t)
-        local steps, why, say = P().Plan(craftInput(prof, { colours = {} }))
-        t.eq(#steps, 0, "no step")
-        t.eq(why, "no colours", "no colours")
-        t.eq(say, "Open your " .. prof .. " window once", "how the player teaches it")
+        local steps = P().Plan(craftInput(prof, { colours = {} }))
+        t.eq(#steps, 1, "one step")
+        t.eq(steps[1] and steps[1].kind, "open_window")
+        t.eq(steps[1] and steps[1].text, "Open your " .. prof .. " window", "how the player teaches it")
     end
 
     tests["every profession: " .. prof .. " with nothing left to make says to see a trainer"] = function(t)
         local recipe = "Test " .. prof .. " Thing"
         local grey = { [recipe] = { trivial = { lo = 1, hi = 75 } } }
-        local steps, why, say = P().Plan(craftInput(prof, { skill = 40, colours = grey }))
-        t.eq(#steps, 0, "no step")
-        t.eq(why, "no recipe", "no recipe")
-        t.eq(say, "Visit a " .. prof .. " trainer for new recipes", "no trainer seen: any trainer")
+        -- Review of section 405 item 4: no trainer list seen is a step.
+        local steps = P().Plan(craftInput(prof, { skill = 40, colours = grey }))
+        t.eq(steps[1] and steps[1].kind, "learn_recipe", "no trainer seen: a step to any trainer")
+        t.eq(steps[1] and steps[1].text, "Learn a " .. prof .. " recipe at a trainer (" .. prof .. " 40 of 75)")
         local lists = { a = { profession = prof, npc = "Test Trainer", rows = {} } }
-        local _, _, named = P().Plan(craftInput(prof, { skill = 40, colours = grey, trainerLists = lists }))
+        local none, why, named = P().Plan(craftInput(prof, { skill = 40, colours = grey, trainerLists = lists }))
+        t.eq(#none, 0, "no step")
+        t.eq(why, "no recipe", "no recipe")
         t.eq(named, "Visit Test Trainer for new " .. prof .. " recipes", "a trainer seen is named")
     end
 

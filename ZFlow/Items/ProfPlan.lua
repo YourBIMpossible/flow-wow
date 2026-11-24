@@ -32,8 +32,9 @@ local _, ns = ...
 -- that order; or the one gather_skill step of a gathering profession with
 -- no craft to make (P.GATHER; adds gather = the profession and, with a
 -- node seen, node and target). why (with no steps): "no reading", "no recipe" (nothing gives
--- a point and nothing can be learned at this skill), "no colours" (the
--- window's colours were never read) or "no materials"; say is then the one
+-- a point and nothing can be learned at this skill) or "no materials";
+-- colours never read is one open_window step, and a short material with no
+-- source seen one find_material step (review of section 405 item 4); say is then the one
 -- thing a new player does next, in plain words (section 383).
 --
 -- Only orange (sure) and yellow (maybe) give a point. Sure comes first,
@@ -87,6 +88,12 @@ P.GATHER_NEAR = "%s; the nearest seen is %s"
 P.SAY_GATHER = "Learn %s from a trainer, then gather once"
 -- "no recipe" with a trainer of this profession seen.
 P.SAY_TRAINER = "Visit %s for new %s recipes"
+-- Review of section 405 item 4: the steps for the two plans that ended
+-- with a line only. The window's colours were never read; a short material
+-- with no source seen (never the auction house).
+P.OPEN_WINDOW = "Open your %s window"
+P.FIND = "Find %s: no source seen yet"
+P.FIND_UNNAMED = "the materials for %s"
 P.SMELT_PROF = "Mining"
 P.SMELT_STATION = "forge"
 P.CHANCE = { optimal = "sure", medium = "maybe" }
@@ -292,6 +299,18 @@ local function learnStep(input)
 end
 
 -- Section 400 item 2: the book read holds no recipe of this profession.
+-- Was a trainer list of this profession, with its trainer named, seen?
+-- (A shipped list names no trainer.) Section 416 item 1: a trainer on
+-- another continent is not a step (section 400 item 4), so its list counts
+-- as not seen and the next step is a recipe at a trainer here.
+local function trainerSeen(input)
+    for _, l in pairs(type(input.trainerLists) == "table" and input.trainerLists or {}) do
+        if type(l) == "table" and l.profession == input.prof and type(l.npc) == "string"
+            and not away(input, l.npc) then return true end
+    end
+    return false
+end
+
 local function bookEmpty(input)
     for _, r in pairs(type(input.book) == "table" and input.book or {}) do
         if type(r) == "table" and r.profession == input.prof then return false end
@@ -435,6 +454,11 @@ local function sourcedSteps(input, c)
     return steps
 end
 
+-- The step that reads the window's recipe colours.
+local function openStep(input)
+    return { kind = "open_window", prof = input.prof, text = string.format(P.OPEN_WINDOW, input.prof) }
+end
+
 local function sourced(input)
     return type(ns.ProfSources) == "table" and (input.nodes ~= nil or input.vendorPrice ~= nil)
 end
@@ -448,6 +472,30 @@ local function coloursRead(input)
         end
     end
     return false
+end
+
+-- A short-materials plan whose craft cannot follow yet: per short
+-- material, the source seen for it (the auction house too, lead section
+-- 407 item 1), else a step to find it. nil when
+-- nothing is short.
+local function materialSteps(input, c)
+    local n = math.max(1, limit(input, c))
+    local steps = {}
+    for _, item in ipairs(sortedKeys(c.entry.mats)) do
+        local short = c.entry.mats[item] * n - have(input, item)
+        if short > 0 then
+            local s = sourced(input) and ns.ProfSources.For(input, item, short) or nil
+            if not s then
+                local name = call(input.name, item)
+                if type(name) ~= "string" or name == "" then name = string.format(P.FIND_UNNAMED, c.recipe) end
+                s = { kind = "find_material", item = item, count = short, text = string.format(P.FIND, name) }
+            end
+            s.recipe = c.recipe
+            steps[#steps + 1] = s
+        end
+    end
+    if #steps == 0 then return nil end
+    return steps
 end
 
 local function empty(why, input, about)
@@ -526,11 +574,18 @@ function P.Plan(input)
         local steps = sourcedSteps(input, list[1])
         if steps then return thenLine(input, list, list[1], steps) end
     end
-    if #list > 0 then return empty("no materials", input, list[1].recipe) end
+    if #list > 0 then
+        local steps = materialSteps(input, list[1])
+        if steps then return steps end
+        return empty("no materials", input, list[1].recipe)
+    end
     if bookEmpty(input) then return { learnStep(input) or firstRecipeStep(input) } end
-    if not coloursRead(input) then return empty("no colours", input) end
+    if not coloursRead(input) then return { openStep(input) } end
     local learn = learnStep(input)
     if learn then return { learn } end
+    -- Review of section 405 item 4: every learned recipe outgrown and no
+    -- trainer list of this profession seen: a trainer is the next step.
+    if not trainerSeen(input) then return { firstRecipeStep(input) } end
     return empty("no recipe", input)
 end
 
@@ -586,6 +641,14 @@ function P.Input(client, store, prof, nodeSource)
     local stations = saved(store, "account", "learned.keyStations")
     local target
     if kind then target = stationTarget(stations, kind, pos) end
+    -- Lead section 406 item 3: recipe facts through one interface (seen in
+    -- game, then the shipped table); seen only when it is not loaded.
+    local facts
+    if ns.RecipeFacts then facts = ns.RecipeFacts.Read(store) end
+    if type(facts) ~= "table" then
+        facts = { book = saved(store, "char", "learned.facts.recipeBook"),
+            trainerLists = saved(store, "char", "learned.trainerLists") }
+    end
     local nodes
     if type(nodeSource) == "table" and type(nodeSource.Nodes) == "function" then
         local ok, list = pcall(nodeSource.Nodes)
@@ -613,7 +676,7 @@ function P.Input(client, store, prof, nodeSource)
         end,
         skill = get(r, "skill"),
         max = get(r, "max"),
-        book = saved(store, "char", "learned.facts.recipeBook"),
+        book = facts.book,
         colours = saved(store, "char", "learned.recipeColors"),
         bags = bags or {},
         bank = bank,
@@ -634,7 +697,7 @@ function P.Input(client, store, prof, nodeSource)
             local info = ask(client, "itemInfo", item)
             return get(info, "name")
         end,
-        trainerLists = saved(store, "char", "learned.trainerLists"),
+        trainerLists = facts.trainerLists,
         npcs = saved(store, "account", "learned.places.npcs"),
         contOf = function(map) return ask(client, "mapCont", map) end,
         station = kind,
