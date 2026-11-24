@@ -42,7 +42,9 @@
 --   checkbox   checked, onToggle(checked), label, enabled
 --   bind       key (the bound key's name, or nil), onClick(), waiting
 --   choice     items = { text ... }, selected, onSelect(i)        (a control)
+--              drop = true: one box that opens the list (a dropdown)
 --   number     value, min, max, step, onChange(value)             (a control)
+--              with both min and max it is drawn as a slider
 --   text       text, onText(text)                                 (a control)
 --   scroll     children, height. No scroll, header, tabs, topic list or
 --              footer stands in a scroll.
@@ -245,7 +247,16 @@ local function picker(what, least)
     end
 end
 PARTS.tabs = picker("tabs", 1)
-PARTS.choice = picker("a choice", 1)
+do
+    local plainChoice = picker("a choice", 1)
+    -- drop = true: drawn as one box showing the item in use, which opens
+    -- the list of items under it (the game's dropdown), not a row of buttons.
+    function PARTS.choice(p, out)
+        if p.drop ~= nil and type(p.drop) ~= "boolean" then return nil, "a choice: drop must be true or false" end
+        if p.drop == true then out.drop = true end
+        return plainChoice(p, out)
+    end
+end
 
 do
     local topics = picker("a topic list", 0)

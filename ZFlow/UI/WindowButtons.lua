@@ -143,10 +143,10 @@ WB.WINDOWS = {
         tip = "show the sell list",
         point = { "TOPRIGHT", "TOPRIGHT", -40, -40 },
     },
-    -- Queue item A4 (S22): the profession and bank windows. Each opens the
-    -- settings at its own topic (args go to the provided call), where the
-    -- help for that window is. Both points are the merchant's, as a first
-    -- guess: not seen in game.
+    -- Queue item A4 (S22): the profession and bank windows. The profession
+    -- button opens the settings at its topic (args go to the provided
+    -- call), where the help for that window is. Both points are the
+    -- merchant's, as a first guess: not seen in game.
     {
         key = "profession", frame = "TradeSkillFrame", setting = "buttons.profession",
         label = "Button on the profession window", says = "profession window",
@@ -159,8 +159,14 @@ WB.WINDOWS = {
         key = "bank", frame = "BankFrame", setting = "buttons.bank",
         label = "Button on the bank window", says = "bank window",
         retry = "BANKFRAME_OPENED",
-        opens = "settingsPanel", call = "Show", args = { "bags" },
-        tip = "bag and bank help and settings",
+        -- Owner, 2026-11-23: a button that said only the add-on's name did
+        -- not say what it was for. It says "Bank list" and brings the bank
+        -- list back (UI/BankList.lua), also after the player closed it.
+        -- text: what the button says, in place of the add-on's name.
+        -- tipText: the whole tooltip, in place of name and tip.
+        opens = "bankList", call = "Show",
+        text = "Bank list", tip = "what to store and take out",
+        tipText = "Bank list: what to store and take out",
         point = { "TOPRIGHT", "TOPRIGHT", -40, -40 },
     },
 }
@@ -287,7 +293,7 @@ function WB.Declare(k, diag)
                 local p = place.point
                 h, why = make(win.frame, {
                     name = id.framePrefix .. "Button" .. win.frame,
-                    text = id.title, tip = id.title .. ": " .. win.tip,
+                    text = win.text or id.title, tip = win.tipText or (id.title .. ": " .. win.tip),
                     point = { p[1], p[2], p[3], p[4] },
                     inside = place.inside, strata = win.strata,
                 })
