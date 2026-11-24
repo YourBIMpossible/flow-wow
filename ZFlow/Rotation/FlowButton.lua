@@ -619,7 +619,7 @@ function FB.Declare(k)
             keepOnResetAll = true,
             help = "Where the Flow button stands. Drag the grip on its left to move it, outside fights. Resetting puts it back.",
         }, {
-            key = FB.SCALE, scope = "account", type = "number", path = FB.SCALE_PATH,
+            key = FB.SCALE, scope = "account", type = "number", path = FB.SCALE_PATH, default = 1,
             label = "Flow button size", group = "combat",
             synonyms = { "flow", "button", "size", "scale", "resize", "bigger", "smaller" },
             keepOnResetAll = true,

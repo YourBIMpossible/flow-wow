@@ -262,7 +262,7 @@ tests["flow button: Ctrl + wheel resizes it out of a fight only, half to double,
     local c, addon = start({ on = true })
     local h = rowOf(c, FLOW)
     if not h then t.ok(false, "no Flow button"); return end
-    t.eq(addon.settings:get(FB.SCALE), nil, "no saved size yet")
+    t.eq(addon.settings:get(FB.SCALE), 1, "no saved size yet: the default, full size")
 
     c.setCombat(true); c.advance(1, 5)
     t.eq(c.wheelHandle(FLOW, 1), false, "no resize in a fight")
