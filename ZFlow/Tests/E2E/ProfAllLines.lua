@@ -14,10 +14,12 @@ local tests = {}
 local N = ns.Nav
 
 -- opts: professions, skill (char profSkill), plan (a stand-in for the
--- planner's live read: { [profession] = { step, ... } }, nil: the real one).
+-- planner's live read: { [profession] = { step, ... } }, nil: the real one),
+-- npcs (account learned.places.npcs).
 local function start(opts)
     local c = ns.make.fakeClient()
-    c.setSaved(ns.id.accountDB, { layout = { arrowIntroSeen = true } })
+    c.setSaved(ns.id.accountDB, { layout = { arrowIntroSeen = true },
+        learned = opts.npcs and { places = { npcs = opts.npcs } } or nil })
     c.setSaved(ns.id.charDB, { learned = { facts = { profSkill = opts.skill } } })
     c.setScreen(1024, 768)
     c.setZone(1, 1411)
@@ -72,6 +74,50 @@ tests["prof all lines: a picked place keeps its needle; the others follow its la
     t.ok(type(l[4]) == "string" and l[4]:match("^50 yd") ~= nil, "then how far the pick is: " .. tostring(l[4]))
     c.advance(0.1, 2)
     t.ok(p and type(p.drawn) == "table" and p.drawn.body ~= 0, "the needle is drawn, at the pick")
+end
+
+-- Lead section 418 item 6: N.ProfChoose (Nav/ProfStep.lua) may pick the
+-- older step (the trainer it knows) over the feed's training in words; the
+-- other professions' lines follow that step too, none for the profession
+-- it covers.
+local TRAIN = { kind = "train_tier", text = "Train Cooking at Test Tutor" }
+local PICK = { kind = "buy_vendor", text = "Buy 2 Test Picks" }
+
+local function tutor(map)
+    return { ["Test Tutor"] = { map = map, x = 0.7, y = 0.5, roles = { trainer = true },
+        trains = { Cooking = true }, factions = { Horde = true }, id = 4711, seen = 90, n = 1 } }
+end
+
+local function older(map)
+    local c = start({ professions = { "Alchemy", "Cooking", "Mining" },
+        skill = { Cooking = { skill = 75, max = 75 }, Mining = { skill = 30, max = 75 } },
+        plan = { Cooking = { TRAIN }, Mining = { PICK } }, npcs = tutor(map) })
+    return c
+end
+
+tests["prof all lines: the older trainer step with a place, then the other professions"] = function(t)
+    local c = older(1411)
+    local p = c.arrows[2]
+    local l = p and p.lines or {}
+    t.eq(l[1], "Cooking trainer", "the older step: the trainer it knows")
+    t.eq(l[2], N.ProfFeed.OPEN:format("Alchemy"), "then Alchemy, not read")
+    t.eq(l[3], PICK.text, "then Mining's own step")
+    for _, line in ipairs(l) do t.ok(line ~= TRAIN.text, "no line for Cooking, the step covers it") end
+    t.ok(type(l[4]) == "string" and l[4]:match("^%d+ yd") ~= nil, "then how far the trainer is: " .. tostring(l[4]))
+    c.advance(0.1, 2)
+    t.ok(p and type(p.drawn) == "table" and p.drawn.body ~= 0, "the needle is drawn, at the trainer")
+end
+
+tests["prof all lines: the older trainer step in words, then the other professions"] = function(t)
+    local c = older(1453)
+    local p = c.arrows[2]
+    t.eq(p and p.lines, {
+        "Cooking trainer" .. N.PROF_OTHER_MAP,
+        N.ProfFeed.OPEN:format("Alchemy"),
+        PICK.text,
+    }, "the trainer on another map, then Alchemy and Mining")
+    c.advance(0.1, 2)
+    t.eq(p and type(p.drawn) == "table" and p.drawn.body, 0, "no needle: the step has no place")
 end
 
 return tests
