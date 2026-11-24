@@ -100,10 +100,12 @@ end
 
 tests["spec e2e: nothing is said at login"] = function(t)
     local c = boot()
+    local hits = {}
     for _, text in ipairs(c.printed) do
-        t.eq(tostring(text):find("levelling spec", 1, true), nil, "said at login: " .. tostring(text))
-        t.eq(tostring(text):find("talents unlocked", 1, true), nil, "said at login: " .. tostring(text))
+        local s = tostring(text)
+        if s:find("levelling spec", 1, true) or s:find("talents unlocked", 1, true) then hits[#hits + 1] = s end
     end
+    t.eq(hits, {}, "nothing of the spec or talents is said at login")
 end
 
 tests["spec e2e: the role setting changed - the last line follows it"] = function(t)
@@ -195,9 +197,12 @@ tests["spec e2e: other levels say nothing of talents"] = function(t)
     c.fire("PLAYER_LEVEL_UP", 9)
     c.fire("PLAYER_LEVEL_UP", 11)
     c.fire("PLAYER_LEVEL_UP", 20)
+    local hits = {}
     for i = before + 1, #c.printed do
-        t.eq(tostring(c.printed[i]):find("talents unlocked", 1, true), nil, tostring(c.printed[i]))
+        local s = tostring(c.printed[i])
+        if s:find("talents unlocked", 1, true) then hits[#hits + 1] = s end
     end
+    t.eq(hits, {}, "levels 9, 11 and 20 say nothing of talents")
 end
 
 -- A reload at level 10 is a login, not a level-up: the line is not said again.
@@ -207,9 +212,12 @@ tests["spec e2e: a reload at level 10 does not say talents unlocked again"] = fu
     c.fire("PLAYER_LEVEL_UP", 10)
     local again = boot({ class = "ROGUE", level = 10, account = c.saved(ns.id.accountDB),
                          char = c.saved(ns.id.charDB) })
+    local hits = {}
     for _, text in ipairs(again.printed) do
-        t.eq(tostring(text):find("talents unlocked", 1, true), nil, tostring(text))
+        local s = tostring(text)
+        if s:find("talents unlocked", 1, true) then hits[#hits + 1] = s end
     end
+    t.eq(hits, {}, "the reload at 10 does not say talents unlocked")
 end
 
 -- --------------------------------------------------- the role and the tooltip

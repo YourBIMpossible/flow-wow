@@ -178,9 +178,11 @@ end
 
 tests["spec module: it says nothing at login"] = function(t)
     local _, c = start()
+    local hits = {}
     for _, said in ipairs(c.printed) do
-        t.eq(said:find("levelling spec", 1, true), nil, "said at login: " .. said)
+        if tostring(said):find("levelling spec", 1, true) then hits[#hits + 1] = tostring(said) end
     end
+    t.eq(hits, {}, "nothing of the spec is said at login")
 end
 
 tests["spec module: the word follows the role setting"] = function(t)
