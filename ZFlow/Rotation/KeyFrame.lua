@@ -428,7 +428,7 @@ function K.Declare(k, diag)
             -- SE-1: Attack off the key as the fight starts (kf:fightStarts).
             -- SE6-1: the lock was already on, so Attack stays on the key
             -- this fight; a diag timing mark says so.
-            client.listen("PLAYER_REGEN_DISABLED", function()
+            local function attackOff()
                 if not kf then return end
                 local st, removing = kf:fightStarts()
                 if removing == true and type(st) == "table" and st.state == "waiting"
@@ -436,7 +436,14 @@ function K.Declare(k, diag)
                     diag.mark(K.FIGHT_START_WAITED)
                 end
                 after(st)
-            end)
+            end
+            client.listen("PLAYER_REGEN_DISABLED", attackOff)
+            -- SE6-1: PLAYER_ENTER_COMBAT (first guess: fires as the swing
+            -- starts, before PLAYER_REGEN_DISABLED and before the lock)
+            -- takes Attack off earlier, so a fight whose lock is already on
+            -- at PLAYER_REGEN_DISABLED does not keep Attack on the key.
+            -- The same kf:try lock check guards every set.
+            client.listen("PLAYER_ENTER_COMBAT", attackOff)
             client.listen("UPDATE_SHAPESHIFT_FORM", function()
                 if kf then after(kf:reform()) end
             end)
