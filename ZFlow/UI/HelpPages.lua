@@ -76,7 +76,7 @@ H.PAGES = {
     { id = "stops", title = "Vendors, inns and other stops",
       about = {
           { "The arrow can point at places you have seen.",
-            "A vendor, a repairer, a bank, an inn or a flight master." },
+            "A vendor, a repairer, a bank, an inn, a flight master or an auction house." },
           { "A trip is your own list of stops, walked in order." },
       },
       words = {
