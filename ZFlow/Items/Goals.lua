@@ -315,15 +315,8 @@ end
 
 local function nameOf(k, key)
     local client = k.client
-    local names
-    if type(client) == "table" and type(client.itemInfo) == "function" then
-        names = function(item)
-            local ok, info = pcall(client.itemInfo, ns.Items.Id(item) or item)
-            if ok and type(info) == "table" then return info.name end
-            return nil
-        end
-    end
-    return ns.ItemPresent.Name(key, names)
+    -- Coloured by the item's quality (ItemPresent.Tint).
+    return ns.ItemPresent.Name(key, ns.ItemPresent.Names(type(client) == "table" and client.itemInfo or nil))
 end
 
 -- Section 223 (G-4): every entry of the saved list (a table), in order, and

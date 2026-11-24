@@ -13,7 +13,8 @@ local _, ns = ...
 --
 -- Lines: the lines for one item link, { { text, tone } ... }, or nil when
 -- nothing is to be said (not gear, or no gear read on this client).
---   One line per role, in name order, when you can use the item. A line
+--   One line per role, in name order, when you can use the item; with
+--   opts.role a role the pack scores (G31), that role's line alone. A line
 --   that would read the same for every role (can't use; no verdict) is
 --   said once. Each of these is asked of the client and may be missing:
 --     client.gear(link)   the item, what you wear, dual wield
@@ -204,14 +205,24 @@ function M.Lines(client, packs, link, opts)
             end
         end
     end
+    -- G31: the role you chose (opts.role), when the pack scores it, is the
+    -- only one whose verdict is said; none chosen, or one the pack does not
+    -- score: every role's. Every role is still scored for the score lines.
+    local only = nil
+    if type(opts) == "table" then
+        for i = 1, #roles do
+            if roles[i] == opts.role then only = opts.role end
+        end
+    end
     -- With no role to score by, one pass still says why there is no verdict.
     for i = 1, math.max(#roles, 1) do
         local lines, detail = ns.GearVerdict.Lines(gear, { pack = pack, role = roles[i], level = level,
                                                             skills = skills })
         if lines == nil then return nil end
-        keep(lines)
         -- Whether you can use it does not depend on the role.
-        if type(detail.use) ~= "table" or detail.use.can ~= true then break end
+        local usable = type(detail.use) == "table" and detail.use.can == true
+        if not usable or only == nil or roles[i] == only then keep(lines) end
+        if not usable then break end
         if roles[i] ~= nil and type(detail.result) == "table" and finite(detail.result.score) then
             scored[#scored + 1] = { role = roles[i], result = detail.result }
         end

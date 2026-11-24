@@ -180,6 +180,10 @@ function ns.make.fakeClient(opts)
         if s.merchantOpen ~= true then return nil end
         return copyRows(s.merchant)
     end
+    function c.returnableItems()
+        if s.merchantOpen ~= true then return nil end
+        return copyRows(s.buyback)
+    end
     function c.recipes()
         local r = s.recipes
         if type(r) ~= "table" then return nil end
@@ -829,6 +833,11 @@ function ns.make.fakeClient(opts)
     -- window that cannot be read. merchantItems() gives it only while the
     -- window is open.
     function c.setMerchant(rows) s.merchant = copyRows(rows) end
+    -- G3: the merchant's Buyback tab, in the shape of returnableItems():
+    -- { { index =, item =, name =, price =, count = }, ... }; nil for a tab
+    -- that cannot be read. returnableItems() gives it only while the window is
+    -- open.
+    function c.setReturnable(rows) s.buyback = copyRows(rows) end
     -- true / false fire the merchant event; nil is "not known" and fires nothing.
     function c.setMerchantOpen(on)
         if on == nil then s.merchantOpen = nil return end
@@ -2029,6 +2038,25 @@ function ns.make.fakeClient(opts)
     end
     c.mapPinSets = {}
     function c.setWorldMap(map) s.worldMap = map end
+    -- Map names: c.setMapName(map, name); mapName(map) is nil until told.
+    function c.setMapName(map, name)
+        s.mapNames = s.mapNames or {}
+        s.mapNames[map] = name
+    end
+    function c.mapName(map) return s.mapNames and s.mapNames[map] or nil end
+    -- The player's Alt + left click on the world map: mapClick(fn) keeps
+    -- fn (nil and a reason with no frames); c.clickMap(map, x, y) is the
+    -- player doing it.
+    c.mapClicks = {}
+    function c.mapClick(fn)
+        if s.noFrames then return nil, "no world map" end
+        if type(fn) ~= "function" then return nil, "no function" end
+        c.mapClicks[#c.mapClicks + 1] = fn
+        return true
+    end
+    function c.clickMap(map, x, y)
+        for _, fn in ipairs(c.mapClicks) do fn(map, x, y) end
+    end
     function c.mapPins()
         if s.noFrames then return nil end
         local h = { pins = {}, lines = {}, shown = false, draws = 0, clears = 0 }
@@ -2140,6 +2168,9 @@ function ns.make.fakeClient(opts)
     function c.recipeUsable(id) return usableOf[id], whyOf[id] end
     function c.setMoving(on) s.moving = on end
     function c.moving() return s.moving end
+    -- Yards a second (the arrow's time to arrive): not known until set.
+    function c.setSpeed(v) s.speed = v end
+    function c.speed() return s.speed end
 
     -- Every craft the add-on asked for, in order: { id =, n = }. A refused
     -- craft is not logged. setCraftFails(why) makes every craft answer
@@ -4234,7 +4265,10 @@ function ns.make.fakeClient(opts)
     -- The minimap button (UI/MinimapButton.lua). Every one made is in
     -- c.minimapButtons, in order; nil and "no frame" after c.setFrames(false).
     -- Test controls on a handle h:
-    --   h.click()        a left click
+    --   h.click(button)  a click: "right", else a left click
+    --   h.choose(key)    the player clicks the open menu's row with this
+    --                    key; the menu closes first, as on the client
+    --   h.menuItems      the open menu's rows; nil: closed
     --   h.drag(angle)    dragged to that angle (degrees, 0 right, 90 up) on
     --                    the rim and dropped: the drag function is told
     --                    dx, dy 50 from the middle at that angle, done true
@@ -4243,18 +4277,33 @@ function ns.make.fakeClient(opts)
     function c.minimapButton(spec)
         if s.noFrames then return nil, "no frame" end
         local h = { spec = spec, shown = false, places = 0 }
-        local clickFn, dragFn
+        local clickFn, dragFn, pick
         function h.place(x, y)
             if type(x) ~= "number" or type(y) ~= "number" then return end
             h.x, h.y = x, y
             h.places = h.places + 1
         end
-        function h.show(on) h.shown = on and true or false end
+        function h.show(on)
+            h.shown = on and true or false
+            if not h.shown then h.menuItems, pick = nil, nil end
+        end
+        function h.menu(items, fn)
+            if type(items) ~= "table" or #items == 0 then
+                h.menuItems, pick = nil, nil
+                return
+            end
+            h.menuItems, pick = items, type(fn) == "function" and fn or nil
+        end
+        function h.choose(key)
+            local fn = pick
+            h.menuItems, pick = nil, nil
+            if fn then fn(key) end
+        end
         function h.onClick(fn) clickFn = fn end
         function h.onDrag(fn) dragFn = fn end
         function h.tip(lines) h.tipLines = lines end
-        function h.click()
-            if type(clickFn) == "function" then clickFn() end
+        function h.click(button)
+            if type(clickFn) == "function" then clickFn(button == "right" and "right" or "left") end
         end
         function h.drag(angle)
             if type(dragFn) ~= "function" or type(angle) ~= "number" then return end
@@ -4388,6 +4437,15 @@ function ns.make.fakeClient(opts)
     function c.trackingRaw() return evidenceCopy(s.evidenceTracking) end
     function c.setTradeSkillAnswers(r) s.evidenceTradeAnswers = evidenceCopy(r) end
     function c.tradeSkillAnswers() return evidenceCopy(s.evidenceTradeAnswers) end
+    -- Lead section 382: the name of a map's continent; nil until set.
+    --   c.setMapContName(map, name)   name nil: not known
+    function c.mapContName(map)
+        return s.mapContNames and s.mapContNames[map] or nil
+    end
+    function c.setMapContName(map, name)
+        s.mapContNames = s.mapContNames or {}
+        s.mapContNames[map] = name
+    end
 
     -- P-QUEST (lead section 354 item 4): c.setQuestShareable(id, true /
     -- false / nil). Not set: not known.
@@ -4398,6 +4456,17 @@ function ns.make.fakeClient(opts)
     function c.questShareable(id)
         if type(id) ~= "number" then return nil end
         return s.questShareable and s.questShareable[id]
+    end
+    -- S32: c.setPlaceText(zone, sub): the zone and sub-zone words; not set,
+    -- placeText() is nil (not known).
+    function c.setPlaceText(zone, sub)
+        local function w(v) return type(v) == "string" and v ~= "" and v or nil end
+        s.placeText = (w(zone) or w(sub)) and { zone = w(zone), sub = w(sub) } or nil
+    end
+    function c.placeText()
+        local p = s.placeText
+        if p == nil then return nil end
+        return { zone = p.zone, sub = p.sub }
     end
     return c
 end
