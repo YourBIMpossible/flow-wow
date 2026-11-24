@@ -234,6 +234,8 @@ UI\MinimapPlace.lua
 UI\MinimapButton.lua
 Nav\Trails.lua
 Nav\Follow.lua
+Nav\WayWords.lua
+Nav\WayTips.lua
 Nav\Nodes.lua
 UI\Chat.lua
 Nav\PartyRoute.lua
