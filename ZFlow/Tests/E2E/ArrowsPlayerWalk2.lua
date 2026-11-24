@@ -112,10 +112,28 @@ tests["player walk 2a: a colour seen at the skill wins over one only seen lower"
     t.eq(addon.problems:count(), before)
 end
 
-tests["player walk 2a: a recipe seen green or grey is never the step, however far the skill rose"] = function(t)
+-- Lead section 421 point 2: only a recipe seen grey has stopped giving
+-- points. One last seen green below the skill stays as the step, said as
+-- not confirmed.
+tests["player walk 2a: a recipe last seen green stays the step, said as not confirmed"] = function(t)
     local c, addon, before = boot({ bags = { { item = BAR, count = 40 } } })
     window(c, "Blacksmithing", 50, { belt() })
     window(c, "Blacksmithing", 60, { belt("easy") })
+    close(c)
+    ranks(c, 64)
+    c.advance(2, 8)
+    local line = said(prof(c))
+    t.eq(prof(c).shown, true, "still a step")
+    t.ok(has(line, "Make Test Belt"), "the craft is named: " .. line)
+    t.ok(has(line, "last seen giving points at 60; open your Blacksmithing window to check"),
+        "and said as not confirmed: " .. line)
+    t.eq(addon.problems:count(), before)
+end
+
+tests["player walk 2a: a recipe seen grey is never the step, however far the skill rose"] = function(t)
+    local c, addon, before = boot({ bags = { { item = BAR, count = 40 } } })
+    window(c, "Blacksmithing", 50, { belt() })
+    window(c, "Blacksmithing", 60, { belt("trivial") })
     close(c)
     ranks(c, 64)
     c.advance(2, 8)
