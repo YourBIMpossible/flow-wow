@@ -225,4 +225,43 @@ tests["route: no route is longer than the list in the order it was handed in"] =
     t.ok(near(sum, route.total), "the total is the legs")
 end
 
+-- Lead section 547 (slice 7 data): each stop says why it is where it is.
+tests["route why: the nearest next, then the last one left"] = function(t)
+    local route = N.RoutePlan({ at(0.3, 0.5), at(0.1, 0.5) }, MAP, SQUARE, at(0, 0.5))
+    t.eq(route.stops[1].index, 2)
+    t.eq(route.stops[1].why, "nearest")
+    t.eq(route.stops[2].why, "nearest")
+end
+
+tests["route why: no start known, the first stop is the start"] = function(t)
+    local route = N.RoutePlan({ at(0.1, 0.5), at(0.3, 0.5) }, MAP, SQUARE)
+    t.eq(route.stops[1].why, "start")
+    t.eq(route.stops[2].why, "nearest")
+end
+
+tests["route why: a nearer stop that must wait says after"] = function(t)
+    -- place 1 is nearer but must come after place 2
+    local route = N.RoutePlan({ at(0.1, 0.5), at(0.5, 0.5) }, MAP, SQUARE, at(0, 0.5), nil, { [1] = { 2 } })
+    t.eq(route.stops[1].index, 2)
+    t.eq(route.stops[1].why, "after")
+    t.eq(#route.stops[1].after, 1)
+    t.eq(route.stops[1].after[1], 1)
+    t.eq(route.stops[2].why, "nearest")
+end
+
+tests["route why: an optional stop on the way says its extra yards"] = function(t)
+    local route = N.RoutePlan({ at(0.1, 0.5), at(0.5, 0.5), at(0.3, 0.51) }, MAP, SQUARE, at(0, 0.5),
+        nil, nil, { [3] = true })
+    t.eq(route.stops[2].index, 3)
+    t.eq(route.stops[2].why, "onTheWay")
+    t.ok(near(route.stops[2].extra, 2 * math.sqrt(200 * 200 + 10 * 10) - 400), "extra yards")
+    t.eq(route.stops[1].extra, nil)
+end
+
+tests["route why: every reason has its words"] = function(t)
+    for _, key in ipairs({ "onTheWay", "start", "nearest", "after", "shorter" }) do
+        t.eq(type(N.ROUTE_WHY[key]), "string", key)
+    end
+end
+
 return tests

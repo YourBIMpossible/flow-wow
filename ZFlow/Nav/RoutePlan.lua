@@ -50,6 +50,17 @@ local _, ns = ...
 --                  --   Absent for the first stop when the start is not
 --                  --   known: never 0 for that.
 --                  -- how: "exact" or "area" when legs measured it, else nil
+--                  -- why (lead section 547, slice 7 data): one of the
+--                  --   N.ROUTE_WHY keys, the first that holds:
+--                  --   "onTheWay" an optional place put in on the way
+--                  --   "start"    the first stop, the start not known
+--                  --   "nearest"  no later stop is nearer the one before
+--                  --   "after"    a nearer stop waits: it must come after
+--                  --              this one (or a stop after it)
+--                  --   "shorter"  else: the shortening put it here
+--                  -- extra: for "onTheWay", the yards the stop adds
+--                  -- after: for "after", the indexes (in `places`) of the
+--                  --   nearer stops that must wait
 --     total,       -- the legs added up, in yards
 --     left = { { index, reason }, ... }   places not in the route:
 --                  -- "no place"   not a table, or no x, y in 0..1
@@ -89,6 +100,14 @@ N.ROUTE_LEARNED = "your own trip times where known, straight lines elsewhere"
 N.ROUTE_MAX = 40
 N.DETOUR = 250
 N.OFF_THE_WAY = "off the way"
+-- Words for each stop's why, for whoever shows them (slice 7).
+N.ROUTE_WHY = {
+    onTheWay = "on the way: a short detour",
+    start = "the first stop",
+    nearest = "the nearest stop from the one before",
+    after = "a nearer stop must come after this one",
+    shorter = "makes the whole route shorter",
+}
 
 local EPS = 1e-9
 local ROUNDS = 400
@@ -359,11 +378,23 @@ function N.RoutePlan(places, map, size, from, legs, after, optional)
     for _, p in ipairs(extra) do
         local k, d = cheapest(order, pts, start, far, p)
         if d <= N.DETOUR + EPS then
+            p.extra = d
             pts[#pts + 1] = p
             table.insert(order, k + 1, #pts)
         else
             left[#left + 1] = { index = p.index, reason = N.OFF_THE_WAY, detour = d }
         end
+    end
+
+    -- does pts number a have to follow pts number b, through any chain?
+    local function follows(a, b, seen)
+        seen = seen or {}
+        if seen[a] then return false end
+        seen[a] = true
+        for _, j in ipairs(need[a] or {}) do
+            if j == b or follows(j, b, seen) then return true end
+        end
+        return false
     end
 
     local stops, total, last = {}, 0, start
@@ -376,6 +407,32 @@ function N.RoutePlan(places, map, size, from, legs, after, optional)
             stop.how = howOf and howOf(last, p) or nil
             if stop.how then straight = false end
             total = total + stop.leg
+        end
+        if p.optional then
+            stop.why, stop.extra = "onTheWay", p.extra
+        elseif not last then
+            stop.why = "start"
+        else
+            local nearer, waits = false, {}
+            for k = i + 1, #order do
+                local q = pts[order[k]]
+                if not q.optional and far(last, q) < stop.leg - EPS then
+                    nearer = true
+                    for m = i, k - 1 do
+                        if follows(order[k], order[m]) then
+                            waits[#waits + 1] = q.index
+                            break
+                        end
+                    end
+                end
+            end
+            if not nearer then
+                stop.why = "nearest"
+            elseif #waits > 0 then
+                stop.why, stop.after = "after", waits
+            else
+                stop.why = "shorter"
+            end
         end
         stops[i], last = stop, p
     end
