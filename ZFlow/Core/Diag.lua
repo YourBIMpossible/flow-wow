@@ -1444,20 +1444,7 @@ function Diag.Start(k)
         if type(d.diag) ~= "table" then d.diag = {} end
         d.diag.starts = (tonumber(d.diag.starts) or 0) + 1
         timing.start = d.diag.starts
-        local okName, name = client.raw("UnitName", "player")
-        local okRealm, realm = client.raw("GetRealmName")
-        timing.character = okName and name or nil
-        -- The real client answered an empty realm at login: that is unknown.
-        if not (okRealm and type(realm) == "string" and realm ~= "") then
-            okRealm, realm = client.raw("GetNormalizedRealmName")
-        end
-        -- Both were empty in the game on 16001; UnitFullName's second value
-        -- had the realm.
-        if not (okRealm and type(realm) == "string" and realm ~= "") then
-            local okFull, _, own = client.raw("UnitFullName", "player")
-            okRealm, realm = okFull, own
-        end
-        timing.realm = okRealm and type(realm) == "string" and realm ~= "" and realm or nil
+        -- F-021: the character and realm names are not saved by default.
         local okApi, api = pcall(Diag.Api, client)
         d.diag.api = okApi and api or nil
     end
