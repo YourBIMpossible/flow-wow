@@ -281,20 +281,21 @@ tests["prof plan: trainer done: the known recipe most likely to give a point (se
     for name in pairs(book) do rows[#rows + 1] = { name = name, skill = 1, state = "known" } end
     local lists = { a = { profession = "Tailoring", npc = "Test Tailor", rows = rows } }
     local base = { prof = "Tailoring", skill = 110, max = 150, book = book, colours = colours,
-        trainerLists = lists, bags = { [4] = 1 } }
+        trainerLists = lists, bags = { [3] = 1 } }
     local steps, _, say = P().Plan(input(base))
     t.eq(kinds(steps), { "maybe_craft" }, "one step")
     local s = steps[1] or {}
-    t.eq(s.recipe, "Test Late Cap", "latest colour, materials held")
+    t.eq(s.recipe, "Test Late Belt", "latest colour, materials held (before the cheaper Cap)")
     t.eq(s.count, 1)
-    t.eq(s.text, "Make 1 Test Late Cap: may give a point (Tailoring 110 of 150)")
+    t.eq(s.text, "Make 1 Test Late Belt: may give a point (Tailoring 110 of 150)")
     t.eq(s.why, nil, "the say line is not on the step")
     t.eq(say, P().SAY_KNOWN_ONLY, "said once")
     t.eq(say, "This add-on does not know recipes sold by vendors or found as drops")
     base.bags = {}
     steps = P().Plan(input(base))
-    t.eq(steps[1] and steps[1].recipe, "Test Late Belt", "none held: the cheapest")
-    t.eq(steps[1] and steps[1].text, "Make 1 Test Late Belt: may give a point (Tailoring 110 of 150)")
+    -- By the prices above: the Cap's one of item 4 (5) is under the Belt's one of item 3 (10).
+    t.eq(steps[1] and steps[1].recipe, "Test Late Cap", "none held: the cheapest")
+    t.eq(steps[1] and steps[1].text, "Make 1 Test Late Cap: may give a point (Tailoring 110 of 150)")
     -- A recipe on the list not learned yet (later skill) is not trainer done.
     lists.a.rows = { { name = "Test Later", skill = 120, state = "unavailable" } }
     local none, why = P().Plan(input(base))
