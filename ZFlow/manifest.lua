@@ -312,5 +312,7 @@ return {
     "UI/Lite.lua",
     -- G44 (section 397 item 14): the class trainer route step (after TrainAdvice and the packs).
     "Nav/ClassTrainerStep.lua",
+    -- G4 (section 395): keep or sell on item tooltips (after LootNote, SellList, Reservations).
+    "Items/DispositionTip.lua",
     },
 }

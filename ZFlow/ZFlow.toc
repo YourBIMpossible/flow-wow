@@ -246,3 +246,4 @@ Nav\CrossingWords.lua
 Nav\Activities.lua
 UI\Lite.lua
 Nav\ClassTrainerStep.lua
+Items\DispositionTip.lua
