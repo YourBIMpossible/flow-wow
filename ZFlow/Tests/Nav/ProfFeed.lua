@@ -101,8 +101,8 @@ T["prof feed: a step with no place is text under the needle, and wins when it ca
     t.eq(r.pick and r.pick.prof, "Tailoring", "a craft is done where you stand")
     local step = F().Step(r)
     t.eq(step.place, nil)
-    -- Lead section 416 item 2: then Cooking, not read, by name.
-    t.eq(step.lines, { SEW.text, "Open your Cooking window once" })
+    -- Lead section 416 item 2: then Cooking, not read, and Mining's own step, by name.
+    t.eq(step.lines, { SEW.text, "Open your Cooking window once", MINE.text })
 end
 
 T["prof feed: nothing known says the one thing to do so it will be known"] = function(t)

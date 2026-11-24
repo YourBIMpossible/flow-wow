@@ -20,7 +20,9 @@ local function start(opts)
     local c = ns.make.fakeClient()
     c.setSaved(ns.id.accountDB, { layout = { arrowIntroSeen = true },
         learned = opts.npcs and { places = { npcs = opts.npcs } } or nil })
-    c.setSaved(ns.id.charDB, { learned = { facts = { profSkill = opts.skill } } })
+    -- book: the recipe book read (char recipeBook); without one the planner
+    -- has no reading and a capped profession gets no training line.
+    c.setSaved(ns.id.charDB, { learned = { facts = { profSkill = opts.skill, recipeBook = opts.book } } })
     c.setScreen(1024, 768)
     c.setZone(1, 1411)
     c.setFacing(0)
@@ -37,7 +39,7 @@ local function start(opts)
 end
 
 tests["prof all lines: the pick, then one line for each other profession, a capped one too"] = function(t)
-    local c = start({ professions = { "Alchemy", "Herbalism", "Tailoring" },
+    local c = start({ professions = { "Alchemy", "Herbalism", "Tailoring" }, book = {},
         skill = { Herbalism = { skill = 20, max = 75 }, Tailoring = { skill = 75, max = 75 } } })
     local p = c.arrows[2]
     t.eq(p and p.shown, true, "the profession frame is up")
