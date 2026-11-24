@@ -7,6 +7,10 @@ local _, ns = ...
 -- "goals" source, no test-only source.
 -- Offline: the reads are the fake client's, not the game's. Not tested in game.
 local tests = {}
+-- Item names carry the game's quality colour (Items/Present.lua, Tint; the
+-- colour itself is tested in Tests/Items/ItemColourTests.lua). These tests are
+-- about the words, so they read them with the colour taken off.
+local plain = ns.ItemPresent.Plain
 
 local LINEN = 2589
 local INFO = {
@@ -52,7 +56,7 @@ local function joined(lines) return table.concat(lines or {}, " / ") end
 
 local function has(lines, text)
     for _, l in ipairs(lines or {}) do
-        if l == text then return true end
+        if plain(l) == text then return true end
     end
     return false
 end
@@ -212,6 +216,13 @@ tests["goal mid bank visit: started with the bank closed or not known, a goal ch
         t.eq(addon.bankList.shows() - made, 0, "no listing: " .. tostring(open))
         t.ok(addon.bankList.last() == kept, "the last listing is unchanged: " .. tostring(open))
         t.eq(shown(c), nil, "no panel shown: " .. tostring(open))
+    end
+end
+
+for name, fn in pairs(tests) do
+    tests[name] = function(t)
+        return fn(setmetatable({ eq = function(got, want, msg) return t.eq(plain(got), plain(want), msg) end },
+            { __index = t }))
     end
 end
 

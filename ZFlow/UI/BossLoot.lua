@@ -354,7 +354,8 @@ function B.Rows(found, facts, who)
 
     for key, times in pairs(items) do
         local f = type(facts) == "table" and facts[key] or nil
-        local row = { key = key, times = times, name = type(f) == "table" and words(f.name) and f.name or nil }
+        local row = { key = key, times = times, name = type(f) == "table" and words(f.name) and f.name or nil,
+            quality = type(f) == "table" and f.quality or nil }
         if type(f) ~= "table" or f.loaded ~= true or type(f.gear) ~= "table" then
             row.state = "wait"
             waiting = waiting + 1
@@ -550,6 +551,9 @@ function B.View(found, rows, who, id)
         end
         local label, verdict = rowText(row, pack, found.kills)
         local line = { kind = "itemLine", name = label, note = verdict }
+        -- The name in the colour of the item's quality, as the game shows it.
+        local q = row.quality
+        if type(q) == "number" and q >= 0 and q <= 5 and q == math.floor(q) then line.quality = q end
         if top then line.tone = "good" end
         -- The item's number, for the game's own tooltip of it.
         local item = ns.Items.Id(row.key)
@@ -758,6 +762,7 @@ function B.Declare(k, packs)
             -- The client names an item only once it is loaded; until then
             -- nothing about it is taken as read.
             f.loaded = f.name ~= nil
+            if f.loaded and type(info.quality) == "number" then f.quality = info.quality end
             local link = B.Link(key)
             if f.loaded and link then
                 local gear = read("gear", link)

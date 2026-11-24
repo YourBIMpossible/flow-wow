@@ -115,7 +115,8 @@ function QI.Declare(k, diag)
         if got then
             local info = ask(client, "itemInfo", got)
             local name = type(info) == "table" and type(info.name) == "string" and info.name or nil
-            item = { id = got, name = name, count = count, line = N.QuestItemLine(name) }
+            item = { id = got, name = name, count = count, line = N.QuestItemLine(name),
+                quality = type(info) == "table" and info.quality or nil }
         end
         cache[questID] = { at = now, item = item or false, why = why }
         return item, why
@@ -136,7 +137,7 @@ function QI.Declare(k, diag)
         for _, row in ipairs(rows) do
             local item, why = api.forQuest(row.id)
             if item then
-                out[#out + 1] = ("  %s: %s (%d in your bags)"):format(row.title, item.name or "the quest's item", item.count)
+                out[#out + 1] = ("  %s: %s (%d in your bags)"):format(row.title, item.name and ns.ItemPresent.Tint(item.name, item.quality) or "the quest's item", item.count)
             elseif why ~= "no quest item" then
                 out[#out + 1] = ("  %s: not shown (%s)"):format(row.title, tostring(why))
             end
