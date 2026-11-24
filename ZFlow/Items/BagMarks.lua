@@ -188,6 +188,11 @@ function B.Context(client, store, settings, slots, packs)
     local level = call(client, "level")
     if type(level) == "number" then context.level = level end
     context.materials = materialsOf(store)
+    -- G5: the same facts the sell list gives the outgrown food and drink
+    -- rule, so a mark and the list agree. Not tested in game.
+    if type(client) == "table" then
+        context.consumables = ns.Disposition.ConsumableFacts(slots, client.itemInfo, client.itemLines)
+    end
     local class = call(client, "class")
     packs = packs or ns.Packs
     local pack = type(packs) == "table" and class ~= nil and packs[class] or nil
