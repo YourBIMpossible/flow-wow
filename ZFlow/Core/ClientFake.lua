@@ -4388,6 +4388,78 @@ function ns.make.fakeClient(opts)
     function c.trackingRaw() return evidenceCopy(s.evidenceTracking) end
     function c.setTradeSkillAnswers(r) s.evidenceTradeAnswers = evidenceCopy(r) end
     function c.tradeSkillAnswers() return evidenceCopy(s.evidenceTradeAnswers) end
+    -- The route beside the quest log and on the map, as the real client's
+    -- questLogFrame(), showMap(), mapInfo(), routePins() and mapCard().
+    --   c.setQuestLogFrame({ shown, right, top, height } or nil)
+    --   c.mapsShown: every uiMapID showMap was asked for, in order; the
+    --       world map then shows it (as c.setWorldMap).
+    --   c.setMapInfo(map, { name, low, high } or nil)
+    --   c.routePinSets[1].pins / .shown / .draws / .clears
+    --   c.mapCards[1].card / .shown / .shows / .hides
+    -- nil (or false for showMap) when setFrames(false).
+    function c.setQuestLogFrame(t)
+        s.questLogFrame = type(t) == "table"
+            and { shown = t.shown == true, right = t.right, top = t.top, height = t.height } or nil
+    end
+    function c.questLogFrame()
+        local t = s.questLogFrame
+        if s.noFrames or not t then return nil end
+        return { shown = t.shown, right = t.right, top = t.top, height = t.height }
+    end
+    c.mapsShown = {}
+    function c.showMap(map)
+        if s.noFrames or type(map) ~= "number" then return false end
+        c.mapsShown[#c.mapsShown + 1] = map
+        s.worldMap = map
+        return true
+    end
+    function c.setMapInfo(map, info)
+        s.mapInfo = s.mapInfo or {}
+        s.mapInfo[map] = type(info) == "table" and { name = info.name, low = info.low, high = info.high } or nil
+    end
+    function c.mapInfo(map)
+        local t = s.mapInfo and s.mapInfo[map]
+        if not t then return nil end
+        return { name = t.name, low = t.low, high = t.high }
+    end
+    c.routePinSets = {}
+    function c.routePins()
+        if s.noFrames then return nil end
+        local h = { pins = {}, shown = false, draws = 0, clears = 0 }
+        function h.map() return s.worldMap end
+        function h.draw(pins)
+            h.pins = copyRows(type(pins) == "table" and pins or {})
+            h.shown = #h.pins > 0
+            h.draws = h.draws + 1
+            return true
+        end
+        function h.clear()
+            h.pins, h.shown = {}, false
+            h.clears = h.clears + 1
+        end
+        c.routePinSets[#c.routePinSets + 1] = h
+        return h
+    end
+    c.mapCards = {}
+    function c.mapCard()
+        if s.noFrames then return nil end
+        local h = { shown = false, shows = 0, hides = 0 }
+        function h.show(card)
+            if type(card) ~= "table" then return false end
+            local lines = {}
+            for i, l in ipairs(type(card.lines) == "table" and card.lines or {}) do lines[i] = l end
+            h.card = { title = card.title, lines = lines }
+            h.shown = true
+            h.shows = h.shows + 1
+            return true
+        end
+        function h.hide()
+            h.shown = false
+            h.hides = h.hides + 1
+        end
+        c.mapCards[#c.mapCards + 1] = h
+        return h
+    end
     return c
 end
 

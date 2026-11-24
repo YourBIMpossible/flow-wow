@@ -225,3 +225,5 @@ Nav\PartyRoute.lua
 Core\AutoEvidence.lua
 Nav\Trip.lua
 UI\RouteTracker.lua
+UI\RouteList.lua
+UI\MapRoute.lua
