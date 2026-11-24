@@ -68,6 +68,22 @@ T.WHY_OFF = "Routes are switched off in the settings."
 -- Not under "quest.route": that path is a setting itself, and a path may
 -- not sit under another setting's.
 T.PICKUP_SETTING = "quest.routePickups"
+-- FLOW-PARITY A2-11 (Flow Modules/Items/Vendor.lua:804 navGoal "merchant",
+-- Modules/Hearth.lua:282 navGoal "hearth", route kind "town"): a sell stop
+-- at the nearest vendor this character has seen when the bags fill, and a
+-- set-hearthstone stop at the seen inn near most of the route's stops.
+-- Steps only: the player sells and sets the home; nothing is done for them.
+T.TOWN_SETTING = "quest.routeTown"
+T.SELL_FULL = 1          -- free slots: this few, the sell stop is planned even as a detour (Flow full)
+T.SELL_NEAR = 3          -- free slots: this few, the sell stop is taken only when on the way (Flow BAGS_NEARLY_FULL)
+T.SELL_FULL_LABEL = "Bags full: sell at %s"
+T.SELL_FULL_PLAIN = "Bags full: sell at a vendor"
+T.SELL_LABEL = "Sell at %s (bags nearly full)"
+T.SELL_PLAIN = "Sell at a vendor (bags nearly full)"
+T.SELL_DETAIL = "Sell what you choose; nothing is sold for you."
+T.HEARTH_LABEL = "Set hearthstone: %s"
+T.HEARTH_PLAIN = "Set hearthstone at this inn"
+T.HEARTH_DETAIL = "Talk to the innkeeper and make this inn your home; nothing is set for you."
 T.NOT_HERE = "not on this map"
 T.NO_DISTANCE = "distance not known"
 T.DONE = "Route done."
@@ -224,6 +240,51 @@ function T.TimeWords(secs)
     return T.MINUTES:format(m)
 end
 
+local function townName(v) return type(v) == "string" and v ~= "" and #v <= 40 and not v:find("[%c|%%]") end
+
+-- Free slots in plain bags (family 0, as Flow counts them), or nil when
+-- the bags were not read.
+function T.FreeSlots(bags)
+    if type(bags) ~= "table" then return nil end
+    local free, any = 0, false
+    for _, b in ipairs(bags) do
+        if type(b) == "table" and finite(b.free) and (b.family == nil or b.family == 0) then
+            free, any = free + b.free, true
+        end
+    end
+    return any and free or nil
+end
+
+-- Pure: the town stops, in the shape T.Plan takes as extras.
+--   o = { map, free (free slots or nil), vendor = { name, map, x, y },
+--         inn = { name, map, x, y } (H.Home's best inn, or nil) }
+-- A place not on this map gives no stop: nothing is guessed.
+function T.Town(o)
+    o = type(o) == "table" and o or {}
+    local out = {}
+    local function here(p)
+        return type(p) == "table" and p.map == o.map and finite(p.x) and finite(p.y)
+    end
+    local v = o.vendor
+    if finite(o.free) and o.free <= T.SELL_NEAR and here(v) then
+        local full = o.free <= T.SELL_FULL
+        local label
+        if townName(v.name) then
+            label = (full and T.SELL_FULL_LABEL or T.SELL_LABEL):format(v.name)
+        else
+            label = full and T.SELL_FULL_PLAIN or T.SELL_PLAIN
+        end
+        out[#out + 1] = { kind = "sell", label = label, detail = T.SELL_DETAIL, must = full or nil,
+                          place = { map = v.map, x = v.x, y = v.y } }
+    end
+    local inn = o.inn
+    if here(inn) then
+        out[#out + 1] = { kind = "hearth", label = townName(inn.name) and T.HEARTH_LABEL:format(inn.name) or T.HEARTH_PLAIN,
+                          detail = T.HEARTH_DETAIL, must = true, place = { map = inn.map, x = inn.x, y = inn.y } }
+    end
+    return out
+end
+
 function T.Plan(rows, places, here, legs, pickups, note)
     here = type(here) == "table" and here or {}
     if here.map == nil then return nil, T.WHY_NO_MAP end
@@ -244,9 +305,9 @@ function T.Plan(rows, places, here, legs, pickups, note)
     local optional = {}
     for _, p in ipairs(pickups) do
         if type(p) == "table" and type(p.place) == "table" and #stops < N.ROUTE_MAX then
-            stops[#stops + 1] = { kind = "pickup", quest = p.quest, label = tostring(p.label),
-                                  place = { map = p.place.map, x = p.place.x, y = p.place.y } }
-            optional[#stops] = true
+            stops[#stops + 1] = { kind = p.kind or "pickup", quest = p.quest, label = tostring(p.label),
+                                  detail = p.detail, place = { map = p.place.map, x = p.place.x, y = p.place.y } }
+            optional[#stops] = not p.must or nil
         end
     end
     local list = {}
@@ -279,7 +340,7 @@ function T.Live(stop, rows)
         end
         return true
     end
-    if stop.quest == nil or stop.kind ~= nil then return true end
+    if stop.quest == nil or stop.kind ~= nil then return true end -- a town stop: gone when reached
     for _, row in ipairs(type(rows) == "table" and rows or {}) do
         if type(row) == "table" and row.id == stop.quest then
             if row.failed == true then return false end
@@ -400,6 +461,36 @@ function T.Declare(k, diag)
         return not (ok and v == false)
     end
 
+    local function townOn()
+        local s = ctx and ctx.settings
+        if type(s) ~= "table" or type(s.get) ~= "function" then return true end
+        local ok, v = pcall(s.get, s, T.TOWN_SETTING)
+        return not (ok and v == false)
+    end
+
+    -- A2-11: the town stops for this plan, read once. stops are the
+    -- quest places (for the inn near most of them).
+    local function townStops(c, here, stops)
+        if not townOn() or not ctx then return {} end
+        local vendor = N.Nearest and N.Nearest("vendor", c, ctx.store) or nil
+        local inn
+        local H = N.HearthAdvice
+        if H and type(H.Home) == "function" then
+            local name = ask(c, "bindLocation")
+            local bind = { name = type(name) == "string" and name ~= "" and name or nil }
+            local okP, place = pcall(ctx.store.get, ctx.store, "char", N.HEARTH_BIND or "learned.places.bind")
+            if bind.name and okP and type(place) == "table" and place.name == bind.name then
+                bind.map, bind.x, bind.y = place.map, place.x, place.y
+            end
+            local services = ns.ServiceSeen and ns.ServiceSeen.PLACES or "learned.places.services"
+            local okS, seen = pcall(ctx.store.get, ctx.store, "char", services)
+            local okH, _, why, best = pcall(H.Home, { bind = bind, stops = stops,
+                inns = H.Inns(okS and seen or nil), size = function(map) return ask(c, "mapSize", map) end })
+            if okH and why == "set home" then inn = best end
+        end
+        return T.Town({ map = here.map, free = T.FreeSlots(ask(c, "bags")), vendor = vendor, inn = inn })
+    end
+
     local function hereNow()
         local c = client()
         local pos = ask(c, "position")
@@ -440,7 +531,23 @@ function T.Declare(k, diag)
             end
             pickups, note = RP.Read(c, here, log)
         end
-        local r, why = T.Plan(rows, places or {}, here, legs, pickups, note)
+        local spots = {}
+        local function spotAt(sp)
+            local pt = type(sp) == "table" and type(sp.points) == "table" and sp.points[1] or nil
+            if type(pt) == "table" and finite(pt.x) and finite(pt.y) then
+                spots[#spots + 1] = { map = here.map, x = pt.x, y = pt.y }
+            end
+        end
+        for _, q in pairs(places or {}) do
+            if type(q) == "table" then
+                spotAt(q.turnIn)
+                for _, o in pairs(type(q.objectives) == "table" and q.objectives or {}) do spotAt(o) end
+            end
+        end
+        local extras = {}
+        for _, p in ipairs(townStops(c, here, spots)) do extras[#extras + 1] = p end
+        for _, p in ipairs(type(pickups) == "table" and pickups or {}) do extras[#extras + 1] = p end
+        local r, why = T.Plan(rows, places or {}, here, legs, extras, note)
         if not r then return nil, why, note end
         route, at, readAt = r, 1, ask(c, "now")
         return r
@@ -537,6 +644,10 @@ function T.Declare(k, diag)
             if trip and type(trip.Prune) == "function" then pcall(trip.Prune, rows) end
         end
         if route.kind == "quests" then
+            local here = hereNow()
+            for _, s in ipairs(route.stops) do
+                if (s.kind == "sell" or s.kind == "hearth") and not s.gone and reached(s, here) then s.gone = true end
+            end
             if rows then
                 for _, s in ipairs(route.stops) do
                     if not T.Live(s, rows) then
@@ -663,6 +774,11 @@ function T.Declare(k, diag)
         label = "Walk a planned route with the arrow", group = "travel.route",
         help = "Shows when you plan a route with the route word or Plan the run: the quest arrow walks its stops in order.",
         synonyms = { "route", "quest", "dungeon", "run", "order", "plan" } })
+
+    k:Setting({ key = T.TOWN_SETTING, scope = "account", type = "bool", default = true,
+        label = "Add town stops: selling and hearthstone", group = "travel.route",
+        help = "Acts when you plan a quest route with the route word: a vendor you have seen when your bags fill, and a seen inn near most of your quests to set your hearthstone. You sell and set it; nothing is done for you.",
+        synonyms = { "route", "sell", "vendor", "bags", "hearth", "inn", "town" } })
 
     k:Setting({ key = T.PICKUP_SETTING, scope = "account", type = "bool", default = true,
         label = "Add quests to pick up on the way", group = "travel.route",

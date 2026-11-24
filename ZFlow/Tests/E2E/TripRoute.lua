@@ -38,7 +38,8 @@ local LOG = {
 local function boot(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
-    c.setSaved(ns.id.accountDB, {}); c.setSaved(ns.id.charDB, {})
+    c.setSaved(ns.id.accountDB, {}); c.setSaved(ns.id.charDB, opts.char or {})
+    if opts.bags then c.setBags(opts.bags) end
     c.setClass("WARRIOR"); c.setFaction("Alliance"); c.setLevel(18)
     c.setZone(1, MAP); c.setPosition(MAP, opts.x or 0.5, opts.y or 0.5); c.setFacing(0)
     c.setMapSize(MAP, 1000, 1000); c.setMapCont(MAP, 0)
@@ -255,6 +256,54 @@ tests["trip route: an unreadable count says no number at all"] = function(t)
     for _, line in ipairs(c.printed or {}) do
         t.ok(not tostring(line):find("still need", 1, true), tostring(line))
     end
+end
+
+-- FLOW-PARITY A2-11: town stops. Full bags put a sell stop at the vendor
+-- this character has seen; a seen inn near most of the quests puts a
+-- set-hearthstone stop. The arrow walks to them; the player sells and sets
+-- the home. Nothing is sold or set for them. Made-up places.
+local TOWN = { learned = { places = { services = {
+    v = { name = "Bread Seller", map = MAP, x = 0.52, y = 0.5, kinds = { vendor = true } },
+    i = { name = "Inn Keeper", map = MAP, x = 0.4, y = 0.5, kinds = { innkeeper = true } },
+} } } }
+
+tests["trip route: full bags and a seen inn add sell and hearthstone stops the player walks to"] = function(t)
+    local c = boot({ char = TOWN, bags = { { bag = 0, free = 0, total = 16 } } })
+    c.slashes[ns.id.slash]("route")
+    c.advance(1, 5)
+    t.ok(said(c, "Bags full: sell at Bread Seller") ~= nil, "the sell stop is in the route")
+    t.ok(said(c, "Set hearthstone: Inn Keeper") ~= nil, "the hearthstone stop is in the route")
+    t.eq(first(c), "Bags full: sell at Bread Seller", "the nearest stop: the vendor")
+    c.setPosition(MAP, 0.52, 0.5); c.advance(2, 5)
+    t.ok(first(c) ~= "Bags full: sell at Bread Seller", "at the vendor the stop is done; selling is the player's")
+end
+
+tests["trip route: room in the bags, or town stops off: no sell stop"] = function(t)
+    local c = boot({ char = TOWN, bags = { { bag = 0, free = 10, total = 16 } } })
+    c.slashes[ns.id.slash]("route"); c.advance(1, 5)
+    t.eq(said(c, "sell at"), nil, "bags not full: no sell stop")
+    local addon
+    c, addon = boot({ char = TOWN, bags = { { bag = 0, free = 0, total = 16 } } })
+    addon.settings:set("quest.routeTown", false)
+    c.slashes[ns.id.slash]("route"); c.advance(1, 5)
+    t.eq(said(c, "sell at"), nil, "setting off: no sell stop")
+    t.eq(said(c, "Set hearthstone"), nil, "setting off: no hearthstone stop")
+end
+
+tests["trip route: town stops are pure and guess no place"] = function(t)
+    local T = ns.Nav.TripRoute
+    local v = { name = "Bread Seller", map = MAP, x = 0.5, y = 0.5 }
+    t.eq(T.FreeSlots({ { free = 2 }, { free = 5, family = 8 }, { free = 1, family = 0 } }), 3, "special bags not counted")
+    t.eq(T.FreeSlots(nil), nil)
+    local full = T.Town({ map = MAP, free = 1, vendor = v })
+    t.eq(full[1].label, "Bags full: sell at Bread Seller"); t.eq(full[1].must, true)
+    local near = T.Town({ map = MAP, free = 3, vendor = v })
+    t.eq(near[1].label, "Sell at Bread Seller (bags nearly full)"); t.eq(near[1].must, nil, "nearly full: only when on the way")
+    t.eq(#T.Town({ map = MAP, free = 4, vendor = v }), 0)
+    t.eq(#T.Town({ map = MAP, free = nil, vendor = v }), 0, "bags not read: no stop")
+    t.eq(#T.Town({ map = MAP + 1, free = 0, vendor = v }), 0, "vendor on another map: no stop")
+    t.eq(T.Town({ map = MAP, free = 0, vendor = { map = MAP, x = 0.5, y = 0.5 } })[1].label, "Bags full: sell at a vendor")
+    t.eq(T.Town({ map = MAP, inn = { map = MAP, x = 0.4, y = 0.5, name = "50%s" } })[1].label, "Set hearthstone at this inn")
 end
 
 return tests
