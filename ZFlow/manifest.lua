@@ -274,5 +274,7 @@ return {
     "Nav/Trip.lua",
     -- G43 (P-TRIP): the route tracker window and the current step's map pin (after Trip, TripRoute, the kit).
     "UI/RouteTracker.lua",
+    -- N43 (P-TRIP route display): the current step's area on the minimap (after TripRoute, MinimapPin).
+    "UI/RouteArea.lua",
     },
 }

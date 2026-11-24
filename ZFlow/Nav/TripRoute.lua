@@ -45,6 +45,7 @@ T.ARRIVE_YARDS = 10      -- a run stop is reached this close
 T.ARRIVE_SHARE = 0.01    -- the same when the map's size is not known
 T.REREAD = 1             -- seconds between looks at the quest log
 
+T.AREA_MAX = 8           -- N43: points of a stop's spot kept as its area
 T.WHY_NO_MAP = "Your map is not known yet; try again in a moment."
 T.WHY_NO_LOG = "Your quest log could not be read."
 T.WHY_NONE = "No quest step on this map has a known place: no route."
@@ -95,6 +96,19 @@ local function pointOf(spot, here)
     return best
 end
 
+-- N43: the spot's points on here.map as the stop's area, pt (its nearest)
+-- first, no more than T.AREA_MAX; copies.
+local function areaOf(spot, here, pt)
+    local out = { { map = pt.map, x = pt.x, y = pt.y } }
+    for _, p in ipairs(spot.points) do
+        if #out >= T.AREA_MAX then break end
+        if type(p) == "table" and p ~= pt and p.map == here.map and finite(p.x) and finite(p.y) then
+            out[#out + 1] = { map = p.map, x = p.x, y = p.y }
+        end
+    end
+    return out
+end
+
 local function spotOf(places, id, i)
     local p = type(places) == "table" and places[id] or nil
     if type(p) ~= "table" then return nil end
@@ -107,10 +121,12 @@ function T.Stops(rows, places, here)
     local stops, left = {}, {}
     here = type(here) == "table" and here or {}
     local function add(row, i, detail)
-        local pt = pointOf(spotOf(places, row.id, i), here)
+        local spot = spotOf(places, row.id, i)
+        local pt = pointOf(spot, here)
         if pt then
             stops[#stops + 1] = { quest = row.id, objective = i, turnIn = i == nil, label = row.title,
-                                  detail = detail, place = { map = pt.map, x = pt.x, y = pt.y } }
+                                  detail = detail, place = { map = pt.map, x = pt.x, y = pt.y },
+                                  area = areaOf(spot, here, pt) }
         else
             left[#left + 1] = { quest = row.id, label = row.title, detail = detail, why = T.NOT_HERE }
         end
@@ -392,8 +408,13 @@ function T.Declare(k, diag)
         for i = at, #route.stops do
             local s = route.stops[i]
             if not s.gone and not s.held then
+                local area
+                if type(s.area) == "table" then
+                    area = {}
+                    for j, p in ipairs(s.area) do area[j] = { map = p.map, x = p.x, y = p.y } end
+                end
                 stops[#stops + 1] = { label = s.label, detail = s.detail,
-                                      place = { map = s.place.map, x = s.place.x, y = s.place.y } }
+                                      place = { map = s.place.map, x = s.place.x, y = s.place.y }, area = area }
             end
         end
         if #stops == 0 then return nil end
