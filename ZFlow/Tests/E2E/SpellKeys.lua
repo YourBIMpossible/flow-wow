@@ -154,12 +154,14 @@ end
 
 -- N39 -------------------------------------------------------------------
 
-tests["auto attack: an enemy targeted out of a fight: the key holds Attack until the swing is on"] = function(t)
+-- zflow-btn-pull-spell (lead section 430 item 1): Flow's way, the key never
+-- holds the Attack spell (it toggles); it holds the spell for the fight.
+tests["auto attack: an enemy targeted out of a fight: suggested, the key holds the fight spell"] = function(t)
     local c, addon = start()
     pull(c)
     t.ok(engaged(addon), "start attacking is suggested")
     t.eq(attr(c, "type"), "spell")
-    t.eq(attr(c, "spell"), "Attack", "the key holds Attack")
+    t.eq(attr(c, "spell"), "Judgement", "the key holds the fight spell, not Attack")
     c.setCurrentSpell(ATTACK_ID, true); c.advance(1, 5)
     t.ok(not engaged(addon), "swinging: not suggested again")
     t.ok(attr(c, "spell") ~= "Attack", "swinging: the key goes back to the rotation")
@@ -180,10 +182,10 @@ end
 -- swing off on the next press (Attack toggles; first guess, not seen in
 -- game). PLAYER_REGEN_DISABLED is handled before the lock is on (first
 -- guess, not seen in this client): Attack is taken off the key there.
-tests["auto attack: Attack on the key, then the fight starts: the key no longer holds Attack"] = function(t)
+tests["auto attack: Attack suggested, then the fight starts: the key never holds Attack"] = function(t)
     local c = start()
     pull(c)
-    t.eq(attr(c, "spell"), "Attack", "the key holds Attack before the press")
+    t.ok(onKey(c)["Attack"] == nil, "zflow-btn-pull-spell: no Attack on the key before the press")
     -- The press: the swing goes on and the fight starts before the next
     -- tick; the lock comes on after PLAYER_REGEN_DISABLED is handled.
     c.setLockdown(false)
@@ -199,22 +201,17 @@ end
 -- SE6-1: the other order. The lock is already on when PLAYER_REGEN_DISABLED
 -- is handled: Attack cannot be taken off and stays on the key all fight.
 -- The add-on cannot change that; a diag timing mark says it happened.
-tests["auto attack: the lock is on before the fight starts: Attack stays, a diag mark says so"] = function(t)
+-- zflow-btn-pull-spell: the fight spell was set before the pull, so the
+-- lock coming on first leaves no Attack on the key and nothing to wait for.
+tests["auto attack: the lock is on before the fight starts: the fight spell, no waited mark"] = function(t)
     local c, addon = start()
     pull(c)
-    t.eq(attr(c, "spell"), "Attack", "the key holds Attack before the press")
-    t.eq(addon.diag.timing.KEYS_FIGHT_START_WAITED, nil, "no mark before the fight")
+    t.eq(attr(c, "spell"), "Judgement", "the key holds the fight spell before the press")
     c.setCurrentSpell(ATTACK_ID, true)
     c.setLockdown(true)
     c.setCombat(true)
-    t.eq(attr(c, "spell"), "Attack", "the lock was on: nothing could be set")
-    local m = addon.diag.timing.KEYS_FIGHT_START_WAITED
-    t.ok(type(m) == "table", "the diag timing has the mark")
-    local listed = false
-    for _, e in ipairs(addon.diag.timing.order) do
-        if e == "KEYS_FIGHT_START_WAITED" then listed = true end
-    end
-    t.ok(listed, "listed in the timing order")
+    t.eq(attr(c, "spell"), "Judgement", "the lock was on: the fight spell stays")
+    t.eq(addon.diag.timing.KEYS_FIGHT_START_WAITED, nil, "no Attack to take off: no mark")
     nothingWritten(t, c)
 end
 
@@ -256,7 +253,7 @@ tests["auto attack: an enemy on the no-auto-attack list never gets it, kept thro
     slash(c2, "attack forget " .. ENEMY)
     c2.advance(1, 5)
     t.ok(engaged(addon2), "forgotten: suggested again")
-    t.eq(attr(c2, "spell"), "Attack")
+    t.ok(attr(c2, "spell") ~= "Attack", "the key still never holds Attack")
 end
 
 -- SE-4: a target whose name is not read, with the list kept, is not known:
@@ -303,7 +300,7 @@ tests["key actions: a read that raises is counted and marked, the tick goes on"]
     t.ok(addon.rotationDriver.view() ~= nil, "the suggestion stands")
 end
 
-tests["auto attack: Attack read late: nothing until it is read, then the key holds it"] = function(t)
+tests["auto attack: Attack read late: nothing until it is read, then suggested"] = function(t)
     local c, addon = start({ noAttack = true })
     pull(c)
     t.ok(not engaged(addon), "Attack not read: not suggested")
@@ -311,7 +308,7 @@ tests["auto attack: Attack read late: nothing until it is read, then the key hol
     c.setCurrentSpell(ATTACK_ID, false)
     c.advance(1, 5)
     t.ok(engaged(addon), "read: suggested")
-    t.eq(attr(c, "spell"), "Attack")
+    t.ok(attr(c, "spell") ~= "Attack", "the key never holds Attack")
 end
 
 -- N40 -------------------------------------------------------------------

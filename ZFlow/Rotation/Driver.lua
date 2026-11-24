@@ -766,7 +766,13 @@ end
 -- swing is left out: the chooser asked again on a copy of the snapshot read
 -- as in a fight, with Attack and Auto Attack skipped and the engage step
 -- off, the plan without its key action. nil when it gives nothing.
-function D.FightAttrs(snapshot, pack, prefs, bias, plan, applied, lockdown)
+-- zflow-btn-pull-spell: the chooser's pick for the fight, as above (the
+-- snapshot read as in a fight, Attack and Auto Attack skipped, the engage
+-- step off). Flow's class pull spell (Flow Modules/Rotation/Cast.lua, the
+-- PLAYER_REGEN_DISABLED handler: def.pullLock) comes from the class file;
+-- Z-Flow's packs have no pull row, so their fight list gives it. nil when
+-- it gives nothing.
+function D.PullPick(snapshot, pack, prefs, bias)
     if type(snapshot) ~= "table" or type(pack) ~= "table" then return nil end
     local s = {}
     for key, value in pairs(snapshot) do s[key] = value end
@@ -782,6 +788,12 @@ function D.FightAttrs(snapshot, pack, prefs, bias, plan, applied, lockdown)
     p.skip, p.autoAttack = skip, false
     local pick = ns.Choose(s, pack, p, bias)
     if type(pick) ~= "table" then return nil end
+    return pick
+end
+
+function D.FightAttrs(snapshot, pack, prefs, bias, plan, applied, lockdown)
+    local pick = D.PullPick(snapshot, pack, prefs, bias)
+    if pick == nil then return nil end
     local fightPlan = plan
     if type(plan) == "table" and plan.action ~= nil then
         fightPlan = {}
@@ -869,6 +881,32 @@ function D.Step(client, pack, prefs, bias, applied, role, extra)
     if type(onKey) == "table" and type(prefs) == "table" and type(prefs.bar) == "table"
         and type(onKey.spell) == "string" and prefs.bar[onKey.spell] then
         onKey = nil
+    end
+    -- zflow-btn-pull-spell (lead section 430 item 1): Flow's way (Flow
+    -- Modules/Rotation/Cast.lua C.FightLock and its PLAYER_REGEN_DISABLED
+    -- handler). The Attack spell toggles: a second press turns the swing
+    -- off (first guess, not seen in game), and the key and the Flow button
+    -- cannot change once the lock is on. Flow keeps Attack on its key only
+    -- through the game's Start Attack binding, which Z-Flow does not make;
+    -- so neither the key nor the Flow button holds Attack. They hold the
+    -- spell for the fight (D.PullPick) now, before the pull, so the lock
+    -- coming on early changes nothing; with no pick, nothing is added (as
+    -- Flow's setAction(nil)). The suggestion, and so the icon, still says
+    -- to start the attack.
+    if type(onKey) == "table" and ns.cast.ATTACK[onKey.spell] then
+        local pull = D.PullPick(snapshot, pack, prefs, bias)
+        if type(pull) == "table" and pull.look == true then pull = nil end
+        onKey = pull
+        if type(plan) == "table" and type(plan.action) == "table" and ns.cast.ATTACK[plan.action.spell] then
+            plan.action = nil
+            if type(pull) == "table" and lockdown == false then
+                if type(pull.itemId) == "number" then
+                    plan.action = { itemId = pull.itemId }
+                elseif type(pull.spell) == "string" then
+                    plan.action = { spell = pull.spell, unit = pull.unit }
+                end
+            end
+        end
     end
     local keys = ns.cast.Apply(plan, applied, lockdown)
     local attrs = ns.cast.Attributes(onKey, plan, applied, lockdown, nil)

@@ -120,8 +120,8 @@ tests["no macro: rotation, key frame, food, Attack and the Alt item give no butt
     s = type(v) == "table" and v.suggestion or nil
     t.eq(s and s.spell, "Attack", "Attack is suggested")
     k = key(v)
-    t.eq({ k.type, k.spell, k.unit, k.item, k.macrotext }, { "spell", "Attack", nil, nil, nil },
-        "Attack is the Attack spell, not a macro")
+    t.eq({ k.type, k.spell, k.unit, k.item, k.macrotext }, { "spell", "Judgement", nil, nil, nil },
+        "Attack suggested: the key holds the fight spell (zflow-btn-pull-spell), a spell, not a macro")
 
     -- The fight, swinging, then the low-health warning on.
     c.setCurrentSpell(IDS["Attack"], true); c.setCombat(true); c.advance(1, 5)
@@ -166,7 +166,8 @@ tests["CT-1: an Auto Attack suggestion puts the spell Attack on the key button"]
     local s = type(v) == "table" and v.suggestion or nil
     t.eq(s and s.spell, "Auto Attack", "the suggestion names Auto Attack")
     local k = key(v)
-    t.eq({ k.type, k.spell, k.unit }, { "spell", "Attack", nil }, "the driver's key rows: the spell Attack, no unit")
+    t.eq({ k.type, k.spell, k.unit }, { "spell", "Judgement", nil },
+        "the driver's key rows: never the swing (zflow-btn-pull-spell), the fight spell")
     -- The key frame's button holds the key plan, not the live suggestion
     -- (Rotation/KeyFrame.lua). A plan slot named "Auto Attack", set on a
     -- secure button the fake client makes, is given the spell "Attack".

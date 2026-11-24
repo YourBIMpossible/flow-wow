@@ -159,7 +159,7 @@ end
 tests["flow fight: Attack on the Flow button, the fight starts before the lock: the fight spell"] = function(t)
     local c = start()
     pull(c)
-    t.eq(held(c), "Attack", "before the pull the Flow button holds Attack")
+    t.eq(held(c), "Stormstrike", "zflow-btn-pull-spell: before the pull the Flow button already holds the fight spell")
     fightStarts(c)
     t.eq(held(c), "Stormstrike", "set as the fight starts, before the lock: the fight spell")
     c.advance(3, 5)
@@ -168,17 +168,16 @@ tests["flow fight: Attack on the Flow button, the fight starts before the lock: 
     noMacros(t, c)
 end
 
-tests["flow fight: the lock is on before the fight starts: Attack stays, the tooltip says so"] = function(t)
+tests["flow fight: the lock is on before the fight starts: the fight spell was already set"] = function(t)
     local c = start()
     pull(c)
     c.setCurrentSpell(ATTACK_ID, true)
     c.setLockdown(true)
     c.setCombat(true)
     c.advance(3, 5)
-    t.eq(held(c), "Attack", "the lock was on: nothing could be set")
+    t.eq(held(c), "Stormstrike", "zflow-btn-pull-spell: set before the pull, so the lock changes nothing")
     local line = tip(c, FLOW .. "1") or ""
-    t.ok(line:find("Attack", 1, true) ~= nil and line:find("after the fight", 1, true) ~= nil,
-        "the tooltip says the click casts Attack and that it changes after the fight: " .. line)
+    t.ok(line:find("Casts Stormstrike", 1, true) ~= nil, "the tooltip says the click casts the fight spell: " .. line)
     noMacros(t, c)
 end
 
@@ -233,7 +232,7 @@ tests["flow fight: the rotation icon and the Flow button do not stand side by si
     pull(c)
     local h, f = icon(c), rowOf(c, FLOW)
     if not (h and f) then t.ok(false, "the rotation icon and the Flow button"); return end
-    t.eq(held(c), "Attack")
+    t.eq(held(c), "Stormstrike")
     t.eq(h.shown, true, "the icon shows the next spell")
     local gap = math.abs(h.point[4] - f.point[4]) - (ns.RotationIcon.SIZE + FB.SIZE) / 2
     t.ok(gap >= FB.SIZE, "a full button apart, not touching: " .. gap)
