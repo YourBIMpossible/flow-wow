@@ -94,4 +94,18 @@ tests["trip route cast: pure plan, a nearer stop stays before the cast"] = funct
     t.eq(r.stops[2].cast, true)
 end
 
+-- Lead section 474: a Moonglade point behind a lower map (Teldrassil
+-- 1438 here) is still found.
+tests["trip route cast: a Moonglade spawn is found behind a lower other map"] = function(t)
+    local c = boot(true)
+    local db, zones = questie()
+    local npc = db.GetNPC(9202)
+    npc.spawns[141] = { { 20, 20 } }
+    local area = zones.GetUiMapIdByAreaId
+    function zones.GetUiMapIdByAreaId(a) if a == 141 then return 1438 end return area(a) end
+    c.setQuestieModule("QuestieDB", db); c.setQuestieModule("ZoneDB", zones)
+    c.slashes[ns.id.slash]("route"); c.advance(2, 20)
+    t.eq(first(c), CAST, "Moonglade (1450) is kept beside Teldrassil (1438)")
+end
+
 return tests

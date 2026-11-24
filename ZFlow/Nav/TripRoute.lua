@@ -128,13 +128,21 @@ local function pointOf(spot, here)
 end
 
 -- B-31: a copy of the spot's other-map point when a known travel spell
--- (here.casts) reaches its map, or nil.
+-- (here.casts) reaches its map, or nil. Lead section 474: any of the
+-- spot's other maps (spot.aways), the lowest such map when several are;
+-- spot.away alone when aways is not there.
 local function castPoint(spot, here)
-    if type(spot) ~= "table" then return nil end
-    local a = spot.away
-    if type(a) ~= "table" or type(here.casts) ~= "table" or here.casts[a.map] ~= true then return nil end
-    if a.map == here.map or not (finite(a.x) and finite(a.y)) then return nil end
-    return { map = a.map, x = a.x, y = a.y }
+    if type(spot) ~= "table" or type(here.casts) ~= "table" then return nil end
+    local best
+    local function try(a)
+        if type(a) ~= "table" or a.map == here.map or here.casts[a.map] ~= true then return end
+        if not (finite(a.x) and finite(a.y)) then return end
+        if best == nil or (type(a.map) == "number" and type(best.map) == "number" and a.map < best.map) then best = a end
+    end
+    try(spot.away)
+    for _, a in pairs(type(spot.aways) == "table" and spot.aways or {}) do try(a) end
+    if not best then return nil end
+    return { map = best.map, x = best.x, y = best.y }
 end
 
 -- N43: the spot's points on here.map as the stop's area, pt (its nearest)
@@ -464,11 +472,15 @@ function T.Declare(k, diag)
     local function castMaps(c, places)
         local out = {}
         if type(N.TravelSpellStepFrom) ~= "function" then return out end
-        local function look(spot)
-            local a = type(spot) == "table" and spot.away or nil
+        local function probe(a)
             if type(a) ~= "table" or a.map == nil or out[a.map] ~= nil then return end
             local ok, step = pcall(N.TravelSpellStepFrom, { map = a.map, x = a.x, y = a.y }, c)
             if ok and type(step) == "table" and not step.learn then out[a.map] = true else out[a.map] = false end
+        end
+        local function look(spot)
+            if type(spot) ~= "table" then return end
+            probe(spot.away)
+            for _, a in pairs(type(spot.aways) == "table" and spot.aways or {}) do probe(a) end
         end
         for _, e in pairs(type(places) == "table" and places or {}) do
             if type(e) == "table" then
