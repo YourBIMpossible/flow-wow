@@ -84,6 +84,11 @@ T.SELL_DETAIL = "Sell what you choose; nothing is sold for you."
 T.HEARTH_LABEL = "Set hearthstone: %s"
 T.HEARTH_PLAIN = "Set hearthstone at this inn"
 T.HEARTH_DETAIL = "Talk to the innkeeper and make this inn your home; nothing is set for you."
+-- FLOW-PARITY A2-10 (Flow route kind "town", repair): while the repair
+-- warning is on, the repair step (Nav/RepairStep.lua: the nearest repair
+-- vendor seen or imported) is a stop of the route, not only the arrow's
+-- fallback once the route is done.
+T.REPAIR_DETAIL = "Repair at the vendor; nothing is repaired for you."
 T.NOT_HERE = "not on this map"
 T.NO_DISTANCE = "distance not known"
 T.DONE = "Route done."
@@ -257,7 +262,8 @@ end
 
 -- Pure: the town stops, in the shape T.Plan takes as extras.
 --   o = { map, free (free slots or nil), vendor = { name, map, x, y },
---         inn = { name, map, x, y } (H.Home's best inn, or nil) }
+--         inn = { name, map, x, y } (H.Home's best inn, or nil),
+--         repair = RepairStep's step { label, place } (or nil) }
 -- A place not on this map gives no stop: nothing is guessed.
 function T.Town(o)
     o = type(o) == "table" and o or {}
@@ -276,6 +282,11 @@ function T.Town(o)
         end
         out[#out + 1] = { kind = "sell", label = label, detail = T.SELL_DETAIL, must = full or nil,
                           place = { map = v.map, x = v.x, y = v.y } }
+    end
+    local r = o.repair
+    if type(r) == "table" and here(r.place) then
+        out[#out + 1] = { kind = "repair", label = townName(r.label) and r.label or "Repair", detail = T.REPAIR_DETAIL,
+                          must = true, place = { map = r.place.map, x = r.place.x, y = r.place.y } }
     end
     local inn = o.inn
     if here(inn) then
@@ -488,7 +499,13 @@ function T.Declare(k, diag)
                 inns = H.Inns(okS and seen or nil), size = function(map) return ask(c, "mapSize", map) end })
             if okH and why == "set home" then inn = best end
         end
-        return T.Town({ map = here.map, free = T.FreeSlots(ask(c, "bags")), vendor = vendor, inn = inn })
+        local repair
+        local RS = k.use and k.use("repairStep")
+        if type(RS) == "table" and type(RS.Step) == "function" then
+            local okR, st = pcall(RS.Step)
+            if okR then repair = st end
+        end
+        return T.Town({ map = here.map, free = T.FreeSlots(ask(c, "bags")), vendor = vendor, inn = inn, repair = repair })
     end
 
     local function hereNow()
@@ -646,7 +663,7 @@ function T.Declare(k, diag)
         if route.kind == "quests" then
             local here = hereNow()
             for _, s in ipairs(route.stops) do
-                if (s.kind == "sell" or s.kind == "hearth") and not s.gone and reached(s, here) then s.gone = true end
+                if (s.kind == "sell" or s.kind == "hearth" or s.kind == "repair") and not s.gone and reached(s, here) then s.gone = true end
             end
             if rows then
                 for _, s in ipairs(route.stops) do

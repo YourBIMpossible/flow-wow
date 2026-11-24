@@ -126,4 +126,27 @@ tests["repair step: unknown data says nothing wrong"] = function(t)
     t.ok(not hasPrefix(lines(c), RS.LABEL), "no repair line")
 end
 
+-- FLOW-PARITY A2-10: with gear worn, the repair vendor is a stop of the
+-- planned route, so the route does not walk past it to the quests. The
+-- player repairs; nothing is repaired for them.
+tests["repair step: a planned route takes the repair vendor as a stop"] = function(t)
+    local c = boot({ durability = LOW })
+    c.slashes[ns.id.slash]("route"); c.advance(1, 5)
+    t.ok(said(c, "Repair: " .. SMITH), "the repair stop is listed in the route")
+    t.eq(lines(c)[1], "Repair: " .. SMITH, "the route walks to the smith first")
+    c.setPosition(MAP, 0.2, 0.5); c.advance(2, 5)
+    t.ok(lines(c)[1] ~= "Repair: " .. SMITH, "at the smith the route stop is done: the quest is next")
+end
+
+tests["repair step: gear fine, no repair stop in the route"] = function(t)
+    local c = boot({ durability = FINE })
+    c.slashes[ns.id.slash]("route"); c.advance(1, 5)
+    t.eq(said(c, "Repair: " .. SMITH), false)
+    local T = ns.Nav.TripRoute
+    local town = T.Town({ map = MAP, repair = { label = "Repair: " .. SMITH, place = { map = MAP, x = 0.2, y = 0.5 } } })
+    t.eq(town[1].kind, "repair"); t.eq(town[1].must, true)
+    t.eq(#T.Town({ map = MAP + 1, repair = { label = "Repair", place = { map = MAP, x = 0.2, y = 0.5 } } }), 0,
+        "a repair vendor on another map is not a stop here")
+end
+
 return tests
