@@ -85,11 +85,13 @@ for _, prof in ipairs(CRAFTS) do
         plain(t, steps[1].text, prof)
     end
 
-    tests["every profession: " .. prof .. " short of materials, no vendor price: never the auction house"] = function(t)
-        local steps, why = P().Plan(craftInput(prof, { bags = {}, nodes = {},
+    -- Lead section 407 item 1: only the gathering tool never comes from the
+    -- auction house; a short material does.
+    tests["every profession: " .. prof .. " short of materials, no vendor price: the auction house"] = function(t)
+        local steps = P().Plan(craftInput(prof, { bags = {}, nodes = {},
             vendorPrice = function() return nil end }))
-        t.eq(steps, {})
-        t.eq(why, "no materials")
+        t.eq(steps[1] and steps[1].kind, "buy_auction")
+        t.eq(steps[#steps] and steps[#steps].kind, "craft")
     end
 
     tests["every profession: " .. prof .. " never opened says to open its window"] = function(t)

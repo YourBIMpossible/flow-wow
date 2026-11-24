@@ -111,6 +111,7 @@ return {
         "Rotation/Driver.lua",
         "Rotation/KeyFrame.lua",
         "Rotation/Role.lua",
+        "Rotation/Spec.lua",
         "Rotation/Fights.lua",
         "UI/FightLog.lua",
         "Classes/Druid.lua",
@@ -192,6 +193,7 @@ return {
         "Items/Keep.lua",
         "Items/RecipeBook.lua",
         "Items/RecipeLearned.lua",
+        "Items/ProfRecipes.lua",
         "Items/Goals.lua",
     "UI/Arrow.lua",
     "UI/MinimapPin.lua",
@@ -287,5 +289,7 @@ return {
     "UI/ProfDock.lua",
     -- Lead section 382 (C2 P-COACH): one profession step for the needle (after ProfStep, Legs, ProfPlan, ProfSources).
     "Nav/ProfFeed.lua",
+    -- G46 (lead section 391 item 2): when hearthing saves the walk, and where to set home (after Trip, TripRoute).
+    "Nav/HearthAdvice.lua",
     },
 }
