@@ -42,8 +42,12 @@ local function start()
     c.advance(5, 20)
     local seen = {}
     addon.bus:on("e2eRotationQueue", D.EVENT, function(view) seen.view = view end)
-    -- In Battle Stance, the shout up, an enemy targeted, out of a fight.
-    c.setFormName("Battle Stance", true); c.setPlayerBuffs(SHOUT)
+    -- In no stance, the shout up, an enemy targeted, out of a fight. The
+    -- key plan the driver gives has one row, for no form (nothing hands it
+    -- the stance list), and the queue reads the form as the client's number:
+    -- so the form is set, to 0. In a stance the plan has no row and the
+    -- queue draws nothing; that is not what this file is about.
+    c.setFormName(nil, true); c.setForm(0); c.setPlayerBuffs(SHOUT)
     c.setTarget(ENEMY); c.setStealthed(false)
     for _, id in pairs(IDS) do c.setInRange(id, true) end
     c.advance(1, 5)
@@ -71,9 +75,17 @@ local function expected(c, view, held)
     return Q.Slots(row, I.Spell(view), held)
 end
 
+-- What the queue itself did that only a secure button may: attributes set
+-- on a button of its own, bindings, click rows. The rotation key and the
+-- flow button listen to the same view and set their own attributes when it
+-- changes; those are theirs and are not counted here.
 local function secureCount(c)
     local binds = type(c.bindingCalls) == "function" and #c.bindingCalls() or 0
-    return #c.secureGiven + binds + #(c.clickRows or {})
+    local own = 0
+    for _, g in ipairs(c.secureGiven) do
+        if tostring(g.name):find("RotationQueue", 1, true) then own = own + 1 end
+    end
+    return own + binds + #(c.clickRows or {})
 end
 
 local function isHeld(marked)
@@ -90,7 +102,7 @@ tests["rotation queue: an enemy targeted, the icons show what each modifier cast
     t.ok(type(view) == "table" and type(view.keys) == "table" and type(view.keys.plan) == "table",
         "the driver gave a view with a key plan")
     local want = expected(c, view, nil)
-    t.ok(want ~= nil, "a key plan row for the stance")
+    t.ok(want ~= nil, "a key plan row for no stance")
     if not want or #icons ~= #Q.ORDER then return end
     local shown = 0
     for i, e in ipairs(want) do
@@ -102,7 +114,7 @@ tests["rotation queue: an enemy targeted, the icons show what each modifier cast
             t.ok(h.point ~= nil, e.slot .. " placed beside the icon")
         end
     end
-    t.ok(shown > 0, "at least one modifier casts something in Battle Stance")
+    t.ok(shown > 0, "at least one modifier casts something")
 
     local before = secureCount(c)
     c.setModifiers(false, true, false)
