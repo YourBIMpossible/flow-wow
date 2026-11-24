@@ -444,6 +444,11 @@ end
 -- each time.
 -- Section 235 item 4: a fishing pole in your main hand: true, false, nil
 -- when the client has no such read or does not say.
+-- Section 401: the snapshot fields read from client.targetClose, and how
+-- long a hit on you counts as "just now" (a first guess, Needs game test).
+local CLOSE = { targetNear = "near", targetMelee = "noMana", targetOnYou = "onYou" }
+D.HIT_WINDOW = 3
+
 local function poleOf(client)
     if type(client.fishingPole) ~= "function" then return nil end
     local ok, v = pcall(client.fishingPole)
@@ -561,6 +566,18 @@ function D.Read(client, pack, ids, role, extra)
         if not poleRead then poleRead, poleValue = true, poleOf(client) end
         return poleValue
     end
+    -- Section 401: one read of the close-enemy answers for the three fields.
+    local closeRead, closeValue = false, nil
+    local function close()
+        if not closeRead then
+            closeRead = true
+            if type(client.targetClose) == "function" then
+                local ok, v = pcall(client.targetClose)
+                if ok and type(v) == "table" then closeValue = v end
+            end
+        end
+        return closeValue
+    end
     return function(field)
         if field == "role" then return roleIn(pack, role) end
         if field == "tree" then return treeOf(client, pack, ids) end
@@ -637,6 +654,24 @@ function D.Read(client, pack, ids, role, extra)
             if type(client.targetCast) ~= "function" then return nil end
             local ok, v = pcall(client.targetCast)
             if ok and (type(v) == "string" or v == false) then return v end
+            return nil
+        end
+        -- Section 401: the enemy next to you (client.targetClose) and an
+        -- enemy that hit you just now (client.hitOnYouAge, HIT_WINDOW
+        -- seconds). Each true or false as read; nil when not known.
+        if CLOSE[field] then
+            local r = close()
+            local v = nil
+            if type(r) == "table" then v = r[CLOSE[field]] end
+            if type(v) == "boolean" then return v end
+            return nil
+        end
+        if field == "hittingYou" then
+            if type(client.hitOnYouAge) ~= "function" then return nil end
+            local ok, age = pcall(client.hitOnYouAge)
+            if not ok then return nil end
+            if age == false then return false end
+            if type(age) == "number" then return age >= 0 and age <= D.HIT_WINDOW end
             return nil
         end
         if field == "grouped" then

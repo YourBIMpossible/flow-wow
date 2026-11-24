@@ -4736,6 +4736,18 @@ function ns.make.fakeClient(opts)
         if type(id) ~= "number" then return nil end
         return s.questShareable and s.questShareable[id]
     end
+    -- Section 401: the close-enemy reads, as the real client's; unknown (nil)
+    -- until set. setTargetClose({ near, noMana, onYou }); setHitOnYouAge(
+    -- seconds, false for no hit, or nil).
+    function c.targetClose()
+        local r = s.targetClose
+        if type(r) ~= "table" then return nil end
+        return { near = r.near, noMana = r.noMana, onYou = r.onYou }
+    end
+    function c.setTargetClose(r) s.targetClose = r end
+    function c.hitOnYouAge() return s.hitOnYouAge end
+    function c.setHitOnYouAge(v) s.hitOnYouAge = v end
+
     -- G4 bag marks, as the real client's c.markBagKinds: what was drawn is
     -- kept, by kind, for c.bagMarksDrawn() -> { [bag] = { [slot] = kind } }.
     -- The real client takes texture paths; a path is turned back into its

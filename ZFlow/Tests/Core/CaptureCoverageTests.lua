@@ -494,6 +494,11 @@ KIND.act[#KIND.act + 1] = "addonSend"
 READS.trackingRaw = false
 READS.tradeSkillAnswers = false
 
+-- Section 401: the close-enemy reads, read by the rotation only
+-- (Rotation/Driver.lua); never by the capture.
+READS.targetClose = false
+READS.hitOnYouAge = false
+
 
 -- S32: the zone and sub-zone words behind client.placeText, read by
 -- Nav/Crossings.lua to name a dock; never by the capture.

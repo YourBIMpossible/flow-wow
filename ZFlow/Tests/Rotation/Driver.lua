@@ -469,7 +469,9 @@ tests["rotation driver RD11: a step presses nothing and asks only its sixteen re
         -- and only for a pack with options.trees (this one has none).
         -- P-SELFBUFF (section 241, section 208 pin update): and the weapon
         -- enchant read (weaponEnchant); this client has none, so the look is all.
-        t.eq(other, { "lowHealth", "unitDebuffTypes", "playerDebuffs", "weaponEnchant", "fishingPole", "bagItems", "mounted", "onTaxi", "bagItems", "tracking", "tracking",
+        -- Section 401 (section 208 pin update): the close-enemy reads
+        -- (targetClose, hitOnYouAge); this client has none, so the look is all.
+        t.eq(other, { "targetClose", "hitOnYouAge", "lowHealth", "unitDebuffTypes", "playerDebuffs", "weaponEnchant", "fishingPole", "bagItems", "mounted", "onTaxi", "bagItems", "tracking", "tracking",
             "professions", "anyTracking", "ownBuffs", "grouped", "party", "plateEnemies", "plateCasts" },
             "nothing else asked of the client but the warning, debuff, weapon enchant, pole, bag, tracking, profession, gather-guard, grouped and group reads it lacks")
         local names = {}
