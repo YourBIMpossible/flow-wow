@@ -9,6 +9,7 @@ local N = ns.Nav
 
 -- Exact values carried over from Flow.
 N.AT_POINT = 24                 -- yards: standing on a step's point
+N.AREA_YARDS = 45               -- yards: in an area step's area (A1-09, Flow AREA)
 N.PROF_RING_ALPHA = 0.35        -- the faint ring at the profession step
 N.PROF_LEN = 64.8               -- the needle's drawn length (54 * 0.8 * 1.5)
 N.TRAVEL_ICON = 38              -- the travel icon's size
