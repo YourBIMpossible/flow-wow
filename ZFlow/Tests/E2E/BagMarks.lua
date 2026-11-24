@@ -27,7 +27,9 @@ local function start(on)
 end
 
 -- Fails before: Items/BagMarks.lua and c.markBagKinds are absent.
-tests["bag marks: a bag change marks junk and a quest item, and nothing else"] = function(t)
+-- Parity row E-01: the stone, a trade good nothing holds, is one the bank
+-- list would bank, so it carries the bank mark (it carried none before).
+tests["bag marks: a bag change marks junk, a quest item and a thing for the bank"] = function(t)
     local c = start()
     t.eq(c.bagMarksDrawn and c.bagMarksDrawn() or nil, {}, "empty bags: no marks")
     c.setBagItems({
@@ -36,7 +38,8 @@ tests["bag marks: a bag change marks junk and a quest item, and nothing else"] =
         { bag = 1, slot = 3, item = "item:7003:0:0:0:0:0:0:0", count = 9 },
     })
     c.fire("BAG_UPDATE_DELAYED")
-    t.eq(c.bagMarksDrawn and c.bagMarksDrawn() or nil, { [0] = { [1] = "sell", [2] = "quest" } })
+    t.eq(c.bagMarksDrawn and c.bagMarksDrawn() or nil,
+        { [0] = { [1] = "sell", [2] = "quest" }, [1] = { [3] = "bank" } })
     c.setBagItems({ { bag = 0, slot = 2, item = "item:7002:0:0:0:0:0:0:0", count = 1 } })
     c.fire("BAG_UPDATE_DELAYED")
     t.eq(c.bagMarksDrawn(), { [0] = { [2] = "quest" } }, "the sold junk's mark goes")
@@ -64,9 +67,9 @@ local function helm(stats)
     return { kind = "INVTYPE_HEAD", stats = stats, classID = 4, subclassID = 3, minLevel = 1, unmet = {} }
 end
 
-local function startGear(char)
+local function startGear(char, account)
     local c = ns.make.fakeClient()
-    c.setSaved(ns.id.accountDB, {})
+    c.setSaved(ns.id.accountDB, account or {})
     c.setSaved(ns.id.charDB, char or {})
     c.setClass("WARRIOR")
     c.setLevel(10)
@@ -101,12 +104,25 @@ tests["bag marks: an upgrade from the real gear read, not a worse piece"] = func
 end
 
 -- Fails before: BankList.Context carries no materials.
+-- Parity row E-01: a material nothing holds is one the bank list would
+-- bank, and the bank mark comes before the material's (BagMarks.ORDER), so
+-- the material mark is read here with the player's own "carry" rule for
+-- the cloth (account settings.banker.rules), which keeps it out of the bank.
 tests["bag marks: a mat of a saved recipe is marked kept for a profession"] = function(t)
+    local book = { ["Plain Bandage"] = { makes = 7105, yield = 1, mats = { [7104] = 2 }, profession = "First Aid" } }
+    local c = startGear({ learned = { facts = { recipeBook = book } } },
+        { settings = { banker = { rules = { [7104] = "carry" } } } })
+    c.setBagItems({ { bag = 1, slot = 4, item = CLOTH, count = 6 } })
+    c.fire("BAG_UPDATE_DELAYED")
+    t.eq(c.bagMarksDrawn(), { [1] = { [4] = "material" } })
+end
+
+tests["bag marks: a mat of a saved recipe that would be banked carries the bank mark"] = function(t)
     local book = { ["Plain Bandage"] = { makes = 7105, yield = 1, mats = { [7104] = 2 }, profession = "First Aid" } }
     local c = startGear({ learned = { facts = { recipeBook = book } } })
     c.setBagItems({ { bag = 1, slot = 4, item = CLOTH, count = 6 } })
     c.fire("BAG_UPDATE_DELAYED")
-    t.eq(c.bagMarksDrawn(), { [1] = { [4] = "material" } })
+    t.eq(c.bagMarksDrawn(), { [1] = { [4] = "bank" } })
 end
 
 -- No role chosen: the class pack's first role (as the gear why word).

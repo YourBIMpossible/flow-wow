@@ -22,9 +22,11 @@ local _, ns = ...
 --       each row: a tool you have) and kept in the add-on's own
 --       saved data (account learned.keyStations). Making the count stays
 --       the craft bar's own click.
---   N5  a better item in the bags (rotation.upgradeKey): the key equips it.
+--   N5  a better item in the bags (rotation.upgradeKey): the key equips it
+--       only when sure (KA.Sure, §447 F1: a role chosen, the game says you
+--       can use it, a clear gain); else it is advice to read, not equipped.
 --       Scored with the class pack's own weights (Gear/Verdict.lua), never a
---       second set of role tables.
+--       second set of role tables. A class buff suggestion is never replaced.
 --
 --   KA.Pick(s, current) -> a suggestion or nil. Only with s.inCombat and
 --       s.lockdown both a plain false. Weapons back with an enemy targeted
@@ -63,6 +65,10 @@ KA.WEAK = { food = true, track = true, group = true }
 KA.SPELLS = { "Fishing", "Skinning", "Herb Gathering", "Mining", "Smelting", "Blacksmithing", "Cooking" }
 KA.POLE_CLASS, KA.POLE_SUBCLASS = 2, 20
 KA.WEAPON_CLASS = 2
+-- §447 F1: the share of what it replaces an item must gain before the key
+-- equips it (first guess), and what advice says when it is not sure.
+KA.CLEAR = 0.10
+KA.NOT_SURE = " (not sure: check it and equip it yourself)"
 
 local function on(s, name) return type(s.on) == "table" and s.on[name] == true end
 local function has(t, key) return type(t) == "table" and t[key] == true end
@@ -146,7 +152,25 @@ function KA.Upgrade(s)
     if type(id) ~= "number" or id <= 0 or id % 1 ~= 0 then return nil end
     local text = "Equip a better item"
     if type(s.upgrade.text) == "string" then text = s.upgrade.text end
+    -- §447 F1: only a sure upgrade (KA.Sure) goes on the key; any other is
+    -- advice to read, as Flow's advisor gave it, and nothing is equipped.
+    if s.upgrade.sure ~= true then
+        return { look = true, step = "upgradeAdvice", reason = text .. KA.NOT_SURE }
+    end
     return { itemId = id, step = "upgrade", reason = text }
+end
+
+-- §447 F1: sure only with a role chosen (the pack's weights for it), the
+-- game's own yes that you can use it (not the pack's first guess), an
+-- upgrade verdict, and a gain of KA.CLEAR or more over what it replaces (an
+-- empty slot counts as clear). detail is GearVerdict.Lines' second answer.
+function KA.Sure(detail, byRole)
+    if byRole ~= true or type(detail) ~= "table" then return false end
+    local use, r = detail.use, detail.result
+    if type(use) ~= "table" or use.can ~= true or use.source ~= "client" then return false end
+    if type(r) ~= "table" or r.verdict ~= "upgrade" or type(r.delta) ~= "number" or r.delta <= 0 then return false end
+    if type(r.against) ~= "number" or r.against <= 0 then return true end
+    return r.delta / r.against >= KA.CLEAR
 end
 
 local function weak(current)
@@ -157,6 +181,9 @@ end
 
 function KA.Pick(s, current)
     if type(s) ~= "table" or s.inCombat ~= false or s.lockdown ~= false then return nil end
+    -- §447 F1: the class pack's buffs (Righteous Fury, an aura, a blessing)
+    -- come before any of the key's actions, whatever their step.
+    if type(current) == "table" and current.kind == "buff" then return nil end
     local w = type(s.weapons) == "table" and s.weapons or {}
     if s.pole == true and s.enemy == true and (on(s, "fishing") or w.pending == true) then
         return KA.WeaponsBack(s)
@@ -172,7 +199,10 @@ function KA.Pick(s, current)
     if got then return got end
     got = KA.Station(s)
     if got then return got end
-    return KA.Upgrade(s)
+    got = KA.Upgrade(s)
+    -- Advice (look only) shows only when nothing else is suggested.
+    if got and got.look == true and current ~= nil then return nil end
+    return got
 end
 
 function KA.Learn(list, pos, kind)
@@ -228,18 +258,18 @@ local function upgradeOf(client, links, skip, pack, role)
     for _, link in ipairs(links) do
         local id = idOf(link)
         if id and not skip[id] then
-            local lines
+            local lines, detail
             if byRole then
                 local gear = ask(client, "gear", link)
-                local ok, got = pcall(ns.GearVerdict.Lines, gear, { pack = pack, role = role, level = level })
-                if ok then lines = got end
+                local ok, got, more = pcall(ns.GearVerdict.Lines, gear, { pack = pack, role = role, level = level })
+                if ok then lines, detail = got, more end
             elseif type(class) == "string" and type(pack) == "table" then
                 local ok, got = pcall(ns.GearTooltipModule.Lines, client, { [class] = pack }, link)
                 if ok then lines = got end
             end
             for _, line in ipairs(type(lines) == "table" and lines or {}) do
                 if type(line) == "table" and line.tone == "good" then
-                    return { itemId = id, text = line.text }
+                    return { itemId = id, text = line.text, sure = KA.Sure(detail, byRole) }
                 end
             end
         end

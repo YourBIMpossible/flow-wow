@@ -32,6 +32,7 @@ local function read(s)
         route = type(s.route) == "table" and s.route or {},
         buttons = type(s.buttons) == "table" and s.buttons or {},
         windows = type(s.windows) == "table" and s.windows or {},
+        travel = type(s.travel) == "table" and s.travel or {},
     }
 end
 
@@ -103,14 +104,17 @@ function M.Items(state)
     -- G47 (Nav/Follow.lua): point the arrow at a party member, only while
     -- in a group. A level holds T.MENU_MAX rows with its heading, the stop
     -- row and the way back, so a raid shows its first members only.
+    -- Parity A1-42 (Nav/WayWords.lua): each member also has "Waypoint at
+    -- <name>", a waypoint where they stand now, so a level holds half.
     if #s.party > 0 then
         local members = {}
         for i = 1, #s.party do
             local m = s.party[i]
-            if #members >= T.MENU_MAX - 3 then break end
+            if #members >= T.MENU_MAX - 4 then break end
             if type(m) == "table" and type(m.unit) == "string" then
-                members[#members + 1] = { key = M.FOLLOW .. "." .. m.unit,
-                    text = type(m.name) == "string" and m.name or m.unit }
+                local name = type(m.name) == "string" and m.name or m.unit
+                members[#members + 1] = { key = M.FOLLOW .. "." .. m.unit, text = name }
+                members[#members + 1] = { key = M.WAY_AT .. "." .. m.unit, text = M.WAY_AT_TEXT:format(name) }
             end
         end
         members[#members + 1] = { key = M.FOLLOW .. ".stop", text = M.FOLLOW_STOP }
@@ -184,7 +188,7 @@ function M.StepRow(state)
     local has = named(s.step)
     local text = M.STEP_NONE
     if has then text = s.step.name end
-    return { key = M.STEP, text = text, children = {
+    local rows = {
         { key = M.OPEN, text = "Open it", disabled = (not (has and s.step.open == true)) or nil },
         { key = M.HIDE, text = "Hide this step", disabled = (not (has and hideOf(s.step))) or nil },
         { key = M.NEAREST, text = "Go to the nearest...", children = nearest },
@@ -192,7 +196,30 @@ function M.StepRow(state)
         -- Lead section 387 R3: what the route includes, one level down so
         -- the top level stays short (M.RouteRow).
         M.RouteRow(s.route),
-    } }
+    }
+    -- Parity B-30 (lead section 455): "Walk there instead" for a step with
+    -- a shortcut (a travel spell, the hearthstone, a ride, a flight), and
+    -- the way back once walking. Only the route choice changes
+    -- (Nav/Travel.lua api.walk); nothing is cast, used or moved. Last in
+    -- the level, and only while there is something to walk past.
+    local walk = M.WalkRow(s.travel)
+    local out = { key = M.STEP, text = text, children = rows }
+    if walk then rows[#rows + 1] = walk end
+    return out
+end
+
+M.WALK = "step.walk"
+M.WALK_TEXT = "Walk there instead"
+M.WALK_BACK = "Show the shortcut again"
+
+-- s.travel = { how, skipped } as Nav/Travel.lua api.state gives it: how is
+-- the shortcut this step would take ("spell", "hearth", "ride", "flight")
+-- or nil, skipped true while the player walks past it. nil: no row.
+function M.WalkRow(travel)
+    if type(travel) ~= "table" then return nil end
+    if travel.skipped == true then return { key = M.WALK, text = M.WALK_BACK } end
+    if type(travel.how) == "string" then return { key = M.WALK, text = M.WALK_TEXT } end
+    return nil
 end
 
 -- The keys from the top to the level the row `key` opens, or nil when no
@@ -244,6 +271,8 @@ M.FEEDBACK = "feedback"
 M.DUNGEONS = "dungeons"
 M.FOLLOW = "follow"
 M.FOLLOW_TEXT = "Point at a party member"
+M.WAY_AT = "wayat"
+M.WAY_AT_TEXT = "Waypoint at %s"
 M.FOLLOW_STOP = "Stop pointing at them"
 -- Lead section 382: the Professions tick; state.professions is its setting.
 M.PROFESSIONS = "professions"
@@ -463,6 +492,13 @@ function M.Action(key, state)
         return nil
     end
     if key == "settings" then return { settings = true } end
+    -- Parity B-30: { walk = true } to walk past the shortcut, false for
+    -- it back; only while the row is offered.
+    if key == M.WALK then
+        local row = M.WalkRow(s.travel)
+        if not row then return nil end
+        return { walk = row.text == M.WALK_TEXT }
+    end
     -- Lead section 387 R3: the Route level; its count rows choose nothing.
     if key == M.ROUTE then return { open = key } end
     if key == M.ROUTE .. ".suggest" then
@@ -475,6 +511,9 @@ function M.Action(key, state)
     -- Lead section 387 R3: Buttons and Flow windows.
     if key == M.BUTTONS or key == M.FLOW then return { open = key } end
     if key:match("^buttons%.") or key:match("^windows%.") then return M.WindowAction(key, s) end
+    -- Parity A1-42: a waypoint where a member (by unit) stands now.
+    local at = key:match("^wayat%.(.+)$")
+    if at then return { wayAt = at } end
     -- G47: the follow level, a member (by unit), or stop ({ follow = false }).
     if key == M.FOLLOW then return { open = key } end
     local unit = key:match("^follow%.(.+)$")

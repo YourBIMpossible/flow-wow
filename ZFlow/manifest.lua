@@ -286,6 +286,9 @@ return {
     -- the nodes you gathered (after the arrow, Waypoint and Gather).
     "Nav/Trails.lua",
     "Nav/Follow.lua",
+    -- Lead section 460 (A1-39, A1-41, A1-42): /way zone names, places, members.
+    "Nav/WayWords.lua",
+    "Nav/WayTips.lua",
     "Nav/Nodes.lua",
     -- N60a: copy chat text and clickable web addresses in chat (after the settings page).
     "UI/Chat.lua",
@@ -357,6 +360,8 @@ return {
     "Nav/FollowAdvice.lua",
     -- N43 (P-TRIP route display): the current step's area on the minimap (after TripRoute, MinimapPin).
     "UI/RouteArea.lua",
+    -- F7 (lead section 447 item 6): route and waypoint lines on the world map (after RouteList, MapRoute).
+    "UI/MapRouteLines.lua",
     -- C-30, C-31: bag upgrades as advice and the gear check word (after TooltipModule, whose gear word it keeps, and the advisor).
     "Gear/BagUpgrades.lua",
     },
