@@ -6,6 +6,9 @@ local _, ns = ...
 -- Row shape (docs/ZFLOW-TARGET.md, section 4):
 --   provenance   { author, date, method, facts }  who wrote the pack and how
 --   roles        { dps = { name, evidence }, heal = ..., tank = ... }
+--   levelling    { role, evidence, why = { "...", ... } }  optional (G31): the
+--                role recommended while levelling alone, one of `roles`, and
+--                the reasons in words (the spec word, Rotation/Spec.lua)
 --   resources    { { name, forms, evidence }, ... }
 --   maintain     { { spell, seconds, evidence }, ... }  buffs kept on yourself
 --   lists        { default = { rule, ... }, aoe = { ... } }
@@ -293,6 +296,28 @@ function ns.PackCheck(pack)
             if type(entry) == "table" and entry.why ~= nil
                 and (type(entry.why) ~= "string" or entry.why == "") then
                 problems[#problems + 1] = string.format("talentBuilds[%d].order[%d]: the reason is not words", i, j)
+            end
+        end
+    end
+    -- G31: the levelling recommendation, when a pack has one: one of the
+    -- pack's own roles, with reasons in words.
+    if pack.levelling ~= nil then
+        local lv = pack.levelling
+        if type(lv) ~= "table" then
+            add(problems, "levelling: not a table")
+        else
+            checkEvidence(lv, "levelling", problems)
+            if type(lv.role) ~= "string" or type(pack.roles) ~= "table" or type(pack.roles[lv.role]) ~= "table" then
+                add(problems, "levelling: the role is not one of the pack's roles")
+            end
+            if type(lv.why) ~= "table" or #lv.why == 0 then
+                add(problems, "levelling: no reason given")
+            else
+                for i, why in ipairs(lv.why) do
+                    if type(why) ~= "string" or why == "" then
+                        add(problems, "levelling.why[%d]: the reason is not words", i)
+                    end
+                end
             end
         end
     end
