@@ -11966,6 +11966,16 @@ function ns.make.client(env)
         if type(log) ~= "table" then return nil end
         return yesNo(call(log.IsPushableQuest, id))
     end
+    -- S32: the words the client shows for where the player stands:
+    -- { zone = GetRealZoneText(), sub = GetSubZoneText() }, each a name or
+    -- nil; nil when neither is known. Read to name the dock a boat or
+    -- zeppelin was taken from and the place it landed. Only reads.
+    function c.placeText()
+        local zone = text(call(env.GetRealZoneText))
+        local sub = text(call(env.GetSubZoneText))
+        if zone == nil and sub == nil then return nil end
+        return { zone = zone, sub = sub }
+    end
     return c
 end
 
