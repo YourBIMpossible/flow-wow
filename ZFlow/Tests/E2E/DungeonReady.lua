@@ -205,4 +205,26 @@ tests["dungeon ready: low gear with no repair place is a words-only row; a seen 
     t.eq(leftRow(addon2, "Get ready: Sell and repair"), nil, "and no words-only row")
 end
 
+-- Plexy, lead section 504 CHANGES-1. Red on f3a1550a: with the repair step
+-- switched off the words-only repair row is still in the left list.
+tests["dungeon ready: with the repair step switched off there is no repair row at all"] = function(t)
+    local low = { [5] = { cur = 5, max = 100 } }
+    local c, addon, base = boot({ durability = low })
+    addon.settings:set(ns.RepairStep.SETTING, false)
+    t.ok(plan(c), "the button is there and live")
+    t.eq(leftRow(addon, "Get ready: Sell and repair"), nil, "off: no words-only row")
+    addon.settings:set(ns.RepairStep.SETTING, true)
+    t.ok(plan(c), "planned again")
+    t.ok(leftRow(addon, "Get ready: Sell and repair") ~= nil, "on, gear low, no place: the row")
+    t.eq(addon.problems:count(), base, "no new problem")
+    -- Off with a repairer seen: no step for the arrow either.
+    local smith = { name = "Smith", map = MAP, x = 0.55, y = 0.5, kinds = { repair = true }, seen = 10, n = 1 }
+    local c2, addon2 = boot({ durability = low, char = { learned = { places = { services = { s1 = smith } } } } })
+    addon2.settings:set(ns.RepairStep.SETTING, false)
+    t.ok(plan(c2), "planned with the repairer seen")
+    local line = first(c2)
+    t.ok(line ~= nil and line:find("Red Silk", 1, true) ~= nil, "the run starts at the giver: " .. tostring(line))
+    t.eq(leftRow(addon2, "Get ready: Sell and repair"), nil)
+end
+
 return tests

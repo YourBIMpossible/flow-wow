@@ -156,10 +156,18 @@ function W.Declare(k, diag)
         end
         if type(R.Ready) ~= "function" then return {}, {} end
         -- The gear is low when the repair step has lines to say, with or
-        -- without a place to go to.
+        -- without a place to go to. With the repair step switched off
+        -- (nav.repairStep) nothing is said of repairs at all: its Lines do
+        -- not look at the setting, so it is asked here (Plexy, lead
+        -- section 504 CHANGES-1).
         local low = false
         local repairs = k.use and k.use("repairStep")
-        if type(repairs) == "table" and type(repairs.Lines) == "function" then
+        local wanted = true
+        if type(k.settings) == "table" and type(k.settings.get) == "function" and ns.RepairStep then
+            local ok, v = pcall(k.settings.get, k.settings, ns.RepairStep.SETTING)
+            if ok and v == false then wanted = false end
+        end
+        if wanted and type(repairs) == "table" and type(repairs.Lines) == "function" then
             local ok, lines = pcall(repairs.Lines)
             low = ok and type(lines) == "table" and #lines > 0
         end
