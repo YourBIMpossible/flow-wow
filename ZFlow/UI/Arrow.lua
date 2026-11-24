@@ -270,6 +270,27 @@ Arrow.CORPSE_ELSEWHERE = "corpse is on another map"
 Arrow.DISTANCE_TEXT = "%d yd"
 Arrow.DISTANCE_COMPASS_TEXT = "%d yd %s"
 Arrow.HERE_TEXT = "you're here"
+-- The time to arrive (G40), after the distance: "100 yd N, about 15 sec".
+-- A straight line at the speed the player moves now; standing still, at
+-- Arrow.RUN_SPEED (running on foot: a first guess, not measured in game).
+-- Seconds go up in fives, a minute and over in whole minutes, so the line
+-- does not flicker. No speed read (nil): no time is said.
+Arrow.RUN_SPEED = 7
+Arrow.ETA_JOIN = "%s, %s"
+Arrow.ETA_SEC = "about %d sec"
+Arrow.ETA_MIN = "about %d min"
+
+function Arrow.EtaText(distance, speed)
+    if type(distance) ~= "number" or type(speed) ~= "number" then return nil end
+    if distance ~= distance or speed ~= speed or distance < 0 or speed < 0 then return nil end
+    if distance == math.huge or speed == math.huge then return nil end
+    if speed < 1 then speed = Arrow.RUN_SPEED end
+    local seconds = distance / speed
+    if seconds < 60 then
+        return Arrow.ETA_SEC:format(math.max(5, math.ceil(seconds / 5) * 5))
+    end
+    return Arrow.ETA_MIN:format(math.floor(seconds / 60 + 0.5))
+end
 
 -- The arrow source for a guide's steps: ViewState's state and turns, with
 -- this install's saved layout and screen. A step's lines are its own lines,
@@ -340,10 +361,12 @@ function Arrow.GuideSource(client, layout, guide, intro, palette)
                 local word = more[key].compass
                 if arrived then
                     out[#out + 1] = Arrow.HERE_TEXT
-                elseif word ~= nil then
-                    out[#out + 1] = Arrow.DISTANCE_COMPASS_TEXT:format(math.floor(d + 0.5), word)
                 else
-                    out[#out + 1] = Arrow.DISTANCE_TEXT:format(math.floor(d + 0.5))
+                    local far = word ~= nil
+                        and Arrow.DISTANCE_COMPASS_TEXT:format(math.floor(d + 0.5), word)
+                        or Arrow.DISTANCE_TEXT:format(math.floor(d + 0.5))
+                    local eta = Arrow.EtaText(d, ask(client, "speed"))
+                    out[#out + 1] = eta and Arrow.ETA_JOIN:format(far, eta) or far
                 end
             end
         end
