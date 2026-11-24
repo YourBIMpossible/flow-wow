@@ -6815,6 +6815,17 @@ function ns.make.client(env)
         return nil
     end
 
+    -- How fast the player is moving, in yards a second: GetUnitSpeed(
+    -- "player") (0 standing still), or nil when it cannot be read.
+    function c.speed()
+        local ok, speed = call(env.GetUnitSpeed, "player")
+        if ok and type(speed) == "number" and not hidden(speed) and speed == speed and speed >= 0
+            and speed < math.huge then
+            return speed
+        end
+        return nil
+    end
+
     -- A panel of rows (the craft bar): c.panel h, always closable, with
     -- shown() and draw(rows, act). rows, top to bottom:
     --   { kind = "info", text = }

@@ -2140,6 +2140,9 @@ function ns.make.fakeClient(opts)
     function c.recipeUsable(id) return usableOf[id], whyOf[id] end
     function c.setMoving(on) s.moving = on end
     function c.moving() return s.moving end
+    -- Yards a second (the arrow's time to arrive): not known until set.
+    function c.setSpeed(v) s.speed = v end
+    function c.speed() return s.speed end
 
     -- Every craft the add-on asked for, in order: { id =, n = }. A refused
     -- craft is not logged. setCraftFails(why) makes every craft answer
