@@ -219,7 +219,7 @@ return {
         ns.Diag.Start(k2)
         k2:Boot()
         login(c2)
-        t.eq(c2.saved(ns.id.accountDB).diag.snaps[1].timing.realm, "Other")
+        t.eq(c2.saved(ns.id.accountDB).diag.snaps[1].timing.realm, nil, "F-021: the realm is not saved")
     end,
 
     ["session: with both realm calls empty, the realm comes from the full name"] = function(t)
@@ -232,7 +232,7 @@ return {
         ns.Diag.Start(k)
         k:Boot()
         login(c)
-        t.eq(c.saved(ns.id.accountDB).diag.snaps[1].timing.realm, "Fullrealm")
+        t.eq(c.saved(ns.id.accountDB).diag.snaps[1].timing.realm, nil, "F-021: the realm is not saved")
     end,
 
     ["api: namespace members and matching global names are saved at each start"] = function(t)
@@ -328,7 +328,7 @@ return {
         local d = c.saved(ns.id.accountDB).diag
         t.eq(d.starts, 1)
         t.eq(d.snaps[1].timing.start, 1)
-        t.eq(d.snaps[1].timing.realm, "Testrealm")
+        t.eq(d.snaps[1].timing.realm, nil, "F-021: the realm is not saved")
         t.eq(d.snaps[1].timing.character, nil, "a client that will not name the character leaves it unknown")
     end,
 
