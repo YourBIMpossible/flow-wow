@@ -98,9 +98,6 @@ local function walk(prof, state)
     return out
 end
 
--- The craft skill values that are not a rank's end, as ranges.
-local OUTGROWN = { "25-74", "76-149", "151-224", "226-299" }
-
 -- The coverage table: per state, the craft gaps. Gathering professions never
 -- end without a step (the gather line), so their gaps are none in every state.
 local CRAFT_GAPS = {
@@ -109,10 +106,9 @@ local CRAFT_GAPS = {
     ["ladder, none"] = {},
     -- Fixed: no trainer list seen, so the next step is a new recipe at one.
     ["outgrown"] = {},
-    -- Measured limit: every recipe on the seen trainer's list is known; the
-    -- plan says "Visit <trainer> for new <prof> recipes" (no vendor or drop
-    -- recipes are known to the addon; section 406).
-    ["trainer done"] = { ["no recipe"] = OUTGROWN },
+    -- Lead section 418 item 5: every recipe on the seen trainer's list is
+    -- known; the plan names the known recipe most likely to give a point.
+    ["trainer done"] = {},
     -- Review: colours never read is a step to open the window.
     ["no colours"] = {},
 }

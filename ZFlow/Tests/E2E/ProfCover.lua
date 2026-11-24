@@ -135,14 +135,10 @@ local function walk(prof, state)
     return out, ok and top or "error"
 end
 
--- The craft skill values that are not a rank's end, past the one learned
--- recipe's span.
-local OUTGROWN = { "25-74", "76-149", "151-224", "226-299" }
-
 -- Craft gaps per state. Gathering professions have none in any state.
-local CRAFT_GAPS = {
-    ["trainer done"] = { ["no recipe"] = OUTGROWN },
-}
+-- Lead section 418 item 5: "trainer done" names a known recipe that may
+-- give a point, so no state has a gap.
+local CRAFT_GAPS = {}
 
 for _, state in ipairs(STATES) do
     for _, prof in ipairs(CRAFT) do
