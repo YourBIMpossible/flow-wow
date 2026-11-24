@@ -119,6 +119,21 @@ tests["party route: the offer's two links follow the route or keep your own"] = 
     t.eq(#d.addonSent, sent, "a click sends nothing")
 end
 
+-- FLOW-PARITY B-38: share, take and keep by the slash word alone.
+tests["party route: route keep by word keeps your own route; route take after it has nothing"] = function(t)
+    local a, b = pair()
+    slash(a, "route"); slash(a, "route share")
+    local sent = #b.addonSent
+    slash(b, "route keep")
+    t.ok(said(b, "Keeping your own route; the route from Anna is not taken."))
+    t.eq(first(b), nil, "the arrow is as it was")
+    slash(b, "route take")
+    t.ok(said(b, "No party route to take."), "the kept offer is gone")
+    t.eq(#b.addonSent, sent, "keep sends nothing")
+    slash(b, "route keep")
+    t.eq(count(b, "No party route to take."), 2, "keep with no offer says so")
+end
+
 tests["party route: a refused send says not shared and nothing else changes"] = function(t)
     local a, b = pair()
     slash(a, "route")

@@ -13,7 +13,8 @@ local _, ns = ...
 -- shares by itself on plan. Nothing else here acts: it prints locally and
 -- hands a taken route to the trip route's own Run.
 --
--- Words (added to the route word): route share, route ask, route take.
+-- Words (added to the route word): route share, route ask, route take,
+-- route keep (FLOW-PARITY B-38: keep your own route, drop the offer).
 -- Any send the client does not answer as a success is "not shared"; each
 -- client keeps walking its own route.
 --
@@ -43,7 +44,7 @@ N.PartyRoute = P
 
 P.NAME = "partyRoute"
 P.WORD = "route"
-P.HELP = "route share: send your route to your party; route ask: ask the party for theirs; route take: follow it"
+P.HELP = "route share: send your route to your party; route ask: ask the party for theirs; route take: follow it; route keep: keep your own"
 P.SETTING = "party.routeShare"
 P.CHANNEL = "PARTY"
 P.MAX_BYTES = 255
@@ -294,14 +295,16 @@ function P.Declare(k, diag)
         end
     end
 
+    function api.Keep()
+        if not offer then return say(P.NO_OFFER) end
+        local from = offer.from
+        offer = nil
+        say(P.KEPT:format(from))
+    end
+
     local function clicked(rest)
         if rest == "take" then return api.Take() end
-        if rest == "keep" then
-            if not offer then return say(P.NO_OFFER) end
-            local from = offer.from
-            offer = nil
-            return say(P.KEPT:format(from))
-        end
+        if rest == "keep" then return api.Keep() end
     end
 
     local function receive(prefix, text, channel, sender)
@@ -328,6 +331,7 @@ function P.Declare(k, diag)
             if word == "share" then return api.Share() end
             if word == "ask" then return api.Ask() end
             if word == "take" then return api.Take() end
+            if word == "keep" then return api.Keep() end
             if type(prior) == "function" then return prior(rest) end
         end
         if type(diag.help) == "table" then
@@ -345,7 +349,7 @@ function P.Declare(k, diag)
     k:Module({
         name = P.NAME,
         needs = { "client", "settings" },
-        provides = { Share = api.Share, Ask = api.Ask, Take = api.Take },
+        provides = { Share = api.Share, Ask = api.Ask, Take = api.Take, Keep = api.Keep },
         start = function(c)
             ctx = c
             local cl = c.client
