@@ -4557,6 +4557,14 @@ function ns.make.fakeClient(opts)
         if type(id) ~= "number" then return nil end
         return s.questShareable and s.questShareable[id]
     end
+
+    -- Lead section 303 (d): c.setInstanceName(text) (nil: not known).
+    function c.setInstanceName(name) s.instanceName = name end
+    function c.instanceName()
+        if type(s.instanceName) ~= "string" or s.instanceName == "" then return nil end
+        return s.instanceName
+    end
+
     -- S32: c.setPlaceText(zone, sub): the zone and sub-zone words; not set,
     -- placeText() is nil (not known).
     function c.setPlaceText(zone, sub)

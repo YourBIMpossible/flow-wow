@@ -247,6 +247,9 @@ local READS = {
     -- Nav/Trails.lua and Nav/Follow.lua only. Their names (IsIndoors,
     -- C_Map.GetBestMapForUnit, C_Map.GetPlayerMapPosition) are in Diag.NAMES.
     indoors = false, unitPosition = false,
+    -- Lead section 303 (d): the instance name, read by UI/DungeonTracker.lua
+    -- only. Its name (GetInstanceInfo) is in Diag.NAMES.
+    instanceName = false,
 }
 -- Lead section 337 item 1: the bag stacks with their bag and slot, and one
 -- slot read again before it is sold; read by Items/SellThese.lua only, on

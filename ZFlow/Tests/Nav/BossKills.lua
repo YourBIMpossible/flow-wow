@@ -128,4 +128,24 @@ tests["boss kills: the counts are kept over a reload"] = function(t)
     t.eq(k2.store:get("account", K.PATH), { ends = 1, kills = 1 })
 end
 
+-- Lead section 303 (d): the tracker is told of each kill, and asks whether
+-- the client can report kills at all.
+tests["boss kills (d): each kill is said on the bus"] = function(t)
+    local k, c = start()
+    local said = {}
+    k.bus:on("test", K.EVENT, function() said[#said + 1] = true end)
+    c.fire("ENCOUNTER_END", 1001, "Rhahk'Zor", 1, 5, 1)
+    c.fire("ENCOUNTER_END", 1002, "Sneed", 1, 5, 0)
+    t.eq(#said, 1, "a kill, not an encounter lost")
+end
+
+tests["boss kills (d): reported unless the client took neither event"] = function(t)
+    local _, _, api = start()
+    t.eq(api.Reported(), true)
+    local _, _, one = start({ refused = { "BOSS_KILL" } })
+    t.eq(one.Reported(), true, "one event is enough")
+    local _, _, none = start({ refused = { "ENCOUNTER_END", "BOSS_KILL" } })
+    t.eq(none.Reported(), false)
+end
+
 return tests
