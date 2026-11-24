@@ -46,7 +46,6 @@ local _, ns = ...
 -- (Items/ProfSources.lua), ahead of the rest; without source reads a
 -- recipe short of materials gives no step.
 --   here, nodes, vendorPrice, vendorOf   as ProfSources.For takes them (C3, A5)
---   here, nodes, vendorPrice   as ProfSources.For takes them (C3)
 --   vendorRecipes        account "learned.vendorRecipes" rows (Items/VendorRecipes.lua)
 -- Lead section 422 item 1: between trainer ranks, with nothing known giving
 -- a point and nothing to learn at a trainer with a place, a buy_recipe step
