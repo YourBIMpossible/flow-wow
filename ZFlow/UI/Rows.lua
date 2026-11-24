@@ -7,6 +7,8 @@ local _, ns = ...
 --   ui.intro           bool, this character, on: the welcome at first login
 --   buttons.worldMap   bool, account, off: a button on the world map
 --   buttons.merchant   bool, account, off: a button on the merchant window
+--   buttons.profession bool, account, on: a button on the profession window
+--   buttons.bank       bool, account, on: a button on the bank window
 --
 --   UIRows.Declare(k) -> how many rows the kernel took. A row it refuses
 --   is a problem of kind "setting" there (Core/Settings.lua).
@@ -26,6 +28,17 @@ function R.Declare(k)
     if k:Setting({ key = "buttons.merchant", scope = "account", type = "bool", default = true,
         label = "Button on the merchant window", group = R.GROUP, synonyms = { "button", "merchant", "vendor", "window" },
         help = "A button on the merchant window that shows the sell list." }) then made = made + 1 end
+    if k:Setting({ key = "buttons.profession", scope = "account", type = "bool", default = true,
+        label = "Button on the profession window", group = R.GROUP,
+        synonyms = { "button", "profession", "crafting", "window" },
+        help = "A button on the profession window that opens the profession help and settings." }) then
+        made = made + 1
+    end
+    if k:Setting({ key = "buttons.bank", scope = "account", type = "bool", default = true,
+        label = "Button on the bank window", group = R.GROUP, synonyms = { "button", "bank", "window" },
+        help = "A button on the bank window that opens the bag and bank help and settings." }) then
+        made = made + 1
+    end
     return made
 end
 
