@@ -31,8 +31,10 @@ local _, ns = ...
 --     so there is no poison row here (P-SELFBUFF, options.selfBuffs.none).
 --     The weapon enchant reminder (Rotation/Enchant.lua, off by default)
 --     says when a poison runs out;
---   * Vanish and Blind as breakers: breakers is empty, as whether the
---     control read names the effect type is not known yet.
+--   * Vanish as a root breaker is in (N52 ROGUE-3/4); the type name it
+--     waits for ("ROOT") is a first guess, unchecked against the client's
+--     loss-of-control read. Blind is not a breaker: it is cast on an enemy
+--     and frees nobody.
 -- A rogue has no tank spec in this game, so there is no tank role.
 
 local GUESS = "first guess"
@@ -234,8 +236,11 @@ local pack = {
         { spell = "Kick", evidence = GUESS },
     },
 
-    -- Not in this pack yet: see the header (Vanish, Blind).
-    breakers = {},
+    -- N52 ROGUE-3/4 (lead sections 233, 394): Vanish breaks a root, shown
+    -- only. The type name (the loss-of-control read) is a first guess.
+    breakers = {
+        { spell = "Vanish", types = { ROOT = true }, evidence = GUESS },
+    },
 
     -- The class removes nothing.
     dispels = {},
