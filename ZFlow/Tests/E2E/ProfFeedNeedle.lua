@@ -1,7 +1,8 @@
 local _, ns = ...
 -- Lead section 382 (C2 P-COACH, zflow-prof-feed): the profession coach
--- through the whole add-on. With a Plan (C1's contract, a fake here: the
--- add-on's ns.ProfPlan.Plan) the needle shows the one step picked across
+-- through the whole add-on. With a stand-in for the planner's live read
+-- (the add-on's ns.profPlan.plan; the real planner is driven in
+-- Tests/E2E/ProfFeedRealPlan.lua) the needle shows the one step picked across
 -- the professions below their max: the nearest by travel time, a step on
 -- another continent as text. The "Professions" tick in the route menu turns
 -- it off. "/zflow prof plan" prints the plan. Loaded the way the game loads
@@ -35,7 +36,7 @@ local function start(steps)
     if type(c.setMapContName) == "function" then c.setMapContName(1453, "Eastern Kingdoms") end
     c.setProfessions({ "Cooking", "Mining" })
     local addon = ns.offline.addon(c)
-    addon.ProfPlan = { Plan = function(prof) return steps[prof] end }
+    addon.profPlan = { plan = function(prof) return steps[prof] end }
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
     c.advance(5, 20)
     return c, addon
@@ -127,6 +128,8 @@ tests["prof feed: no step with a place, no pin"] = function(t)
     local c = start({ Cooking = { FAR } })
     c.setWorldMap(1453)
     c.advance(2, 4)
+    t.eq(c.arrows[2] and c.arrows[2].lines, { "Next time you are in Eastern Kingdoms: " .. FAR.text },
+        "the step is held back as words")
     for _, h in ipairs(c.mapPinSets or {}) do
         t.ok(not (h.shown and h.pins[1] and h.pins[1].name == FISH.text), "no Cooking pin")
     end

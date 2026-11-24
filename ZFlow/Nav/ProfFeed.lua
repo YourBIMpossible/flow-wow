@@ -3,36 +3,43 @@ local _, ns = ...
 -- across all the character's professions, for the profession needle.
 -- LOOK ONLY: nothing here crafts, buys, trains or moves for the player.
 --
--- The steps come from the planner (C1, Items/ProfPlan.lua, MyBuddy) through
--- one seam: ns.ProfPlan.Plan(profession) -> { step, ... }, each step
+-- The steps come from the planner (C1, Items/ProfPlan.lua, with C3's
+-- Items/ProfSources.lua) through its declared module: ns.profPlan.plan(
+-- profession) -> steps, why, say, read live from the client and the store.
+-- Each step
 --   { kind, text, item, count, target }
 --   kind    learn_recipe | train_tier | craft | make_part | take_bank |
 --           gather | buy_vendor | buy_auction | go_station
 --   text    the plain instruction the player reads
 --   target  { map, x, y } (x, y shares 0..1 of map), or nil: text only
--- Until C1 lands there is no ns.ProfPlan and the needle keeps the step
--- Nav/ProfStep.lua's N.ProfNext gives. Tests put a stand-in at
--- ns.ProfPlan of the add-on they load. C1's contract was not on a pushed
--- branch when this was written; it is matched to the lead's text.
+-- With no steps, say is the one thing a new player does next.
 --
 -- F.Pick(input) -> result. Pure: plain tables in, nothing changed.
 --   input = { names = { profession, ... }, readings = { [p] = { skill, max } },
---             plan = function(p) -> steps, cont = the player's continent,
+--             plan = function(p) -> steps, why, say,
+--             cont = the player's continent,
+--             reached = function(target) -> true when the player stands there,
 --             cost = function(target) -> seconds or nil,
 --             contOf = function(map) -> continent or nil,
 --             contName = function(map) -> its continent's name or nil }
 --   result = { rows = { { prof, skill, max, capped, steps = { text, ... } } },
 --              pick = { prof, step, rank, seconds, held, text } or nil }
---   Only a profession below its max is a candidate; its candidate is its
---   plan's first step. Ranks, lowest first:
+--   A profession below its max is a candidate, and one at its max whose
+--   plan says to train the next rank (the only way to its next point).
+--   Its candidate is its plan's current step: the first, past a "go to a
+--   station" the player already stands at (or whose place was never seen,
+--   when the step after it names the station itself). Ranks, lowest first:
 --     1 a craft or part with no place: done where the player stands (0 s)
 --     2 a place on this continent with a travel time (with 1, by seconds)
 --     3 a place on this continent, how far not known
 --     4 no place known
 --     5 a place on another continent: held back, as text
---     6 nothing known (no reading, or no step): "Open your X window once"
+--     6 nothing known (no reading, or no step): the planner's own words
+--       for what to do next, else "Open your X window once"
 --   Ties: the lower profession name. pick is nil when no profession is
 --   below its max (or none is known).
+-- (The module's Step also gives the pick, for Nav/ProfStep.lua's
+-- N.ProfChoose between it and the older step.)
 -- F.Step(result) -> the step the needle takes (Nav/ProfStep.lua's shapes):
 --   a place: { place = { cont, map, x, y }, radius, label, detail }
 --   else text: { still = true, lines = { text }, label }
@@ -95,24 +102,42 @@ local function reading(readings, prof)
     return nil
 end
 
--- The usable steps of a plan answer: a table with non-empty text.
+-- The usable steps of a plan answer (a table with non-empty text), and
+-- the planner's words for an empty plan, or nil.
 local function stepsOf(plan, prof)
-    local got = call(plan, prof)
     local out = {}
-    if type(got) ~= "table" then return out end
-    for _, s in ipairs(got) do
-        if type(s) == "table" and type(s.text) == "string" and s.text ~= "" then out[#out + 1] = s end
+    if type(plan) ~= "function" then return out, nil end
+    local ok, got, _, say = pcall(plan, prof)
+    if not ok then return out, nil end
+    if type(got) == "table" then
+        for _, s in ipairs(got) do
+            if type(s) == "table" and type(s.text) == "string" and s.text ~= "" then out[#out + 1] = s end
+        end
     end
-    return out
+    if type(say) ~= "string" or say == "" then say = nil end
+    return out, say
 end
 
 local function placed(target)
     return type(target) == "table" and target.map ~= nil and share(target.x) and share(target.y)
 end
 
+-- The step the player is on: past each leading "go to a station" that is
+-- done (the player stands there) or that has no seen place while a later
+-- step follows.
+function F.Current(steps, reached)
+    local i = 1
+    while steps[i] and steps[i + 1] and steps[i].kind == "go_station" do
+        local to = steps[i].target
+        if placed(to) and call(reached, to) ~= true then break end
+        i = i + 1
+    end
+    return steps[i]
+end
+
 -- One profession's candidate: { prof, step, rank, seconds, held, text }.
-local function candidate(prof, first, input)
-    if not first then return { prof = prof, rank = 6, text = F.OPEN:format(prof) } end
+local function candidate(prof, first, input, say)
+    if not first then return { prof = prof, rank = 6, text = say or F.OPEN:format(prof) } end
     local c = { prof = prof, step = first, text = first.text }
     if not placed(first.target) then
         if F.HERE[first.kind] then c.rank, c.seconds = 1, 0 else c.rank = 4 end
@@ -160,13 +185,15 @@ function F.Pick(input)
     local rows, best = {}, nil
     for _, prof in ipairs(names) do
         local r = reading(input.readings, prof)
-        local steps = r and stepsOf(input.plan, prof) or {}
-        local row = { prof = prof, steps = {} }
+        local steps, say = {}, nil
+        if r then steps, say = stepsOf(input.plan, prof) end
+        local row = { prof = prof, steps = {}, say = say }
         if r then row.skill, row.max, row.capped = r.skill, r.max, r.skill >= r.max end
         for i, s in ipairs(steps) do row.steps[i] = s.text end
         rows[#rows + 1] = row
-        if not row.capped then
-            local c = candidate(prof, steps[1], input)
+        local now = F.Current(steps, input.reached)
+        if not row.capped or (now and now.kind == "train_tier") then
+            local c = candidate(prof, now, input, say)
             if not best or better(c, best) then best = c end
         end
     end
@@ -210,7 +237,7 @@ function F.Lines(result)
             out[#out + 1] = ("%s: %d of %d%s"):format(row.prof, row.skill, row.max,
                 row.capped and ", at its max" or "")
             if #row.steps == 0 and not row.capped then
-                out[#out + 1] = "  " .. F.OPEN:format(row.prof)
+                out[#out + 1] = "  " .. (row.say or F.OPEN:format(row.prof))
             end
             for i, text in ipairs(row.steps) do out[#out + 1] = ("  %d. %s"):format(i, text) end
         end
@@ -226,10 +253,10 @@ function F.Lines(result)
     return out
 end
 
--- The planner, through its one seam; nil until C1 lands.
+-- The planner's live read (Items/ProfPlan.lua's declared module), or nil.
 local function planOf()
-    local P = ns.ProfPlan
-    if type(P) == "table" and type(P.Plan) == "function" then return P.Plan end
+    local P = ns.profPlan
+    if type(P) == "table" and type(P.plan) == "function" then return P.plan end
     return nil
 end
 
@@ -281,6 +308,16 @@ function F.Declare(k, diag)
         return d / F.RUN
     end
 
+    -- Is the player standing at target (within the needle's own radius)?
+    local function reached(target)
+        local pos = ask("position")
+        if type(pos) ~= "table" or pos.map ~= target.map or not (share(pos.x) and share(pos.y)) then return false end
+        local size = ask("mapSize", pos.map)
+        if type(size) ~= "table" or not (finite(size.w) and finite(size.h)) then return false end
+        local d = math.sqrt(((pos.x - target.x) * size.w) ^ 2 + ((pos.y - target.y) * size.h) ^ 2)
+        return d <= (N.PROF_NEAR or 10)
+    end
+
     local function names()
         local out, has = {}, {}
         local function add(name)
@@ -323,6 +360,7 @@ function F.Declare(k, diag)
             plan = planOf(),
             cont = cont,
             cost = cost,
+            reached = reached,
             contOf = function(map)
                 local got = ask("mapCont", map)
                 if got ~= nil then return got end
@@ -336,7 +374,8 @@ function F.Declare(k, diag)
     -- The needle's step, or nil: off, no planner yet, or nothing below max.
     function api.step()
         if not ctx or api.off() or not planOf() then return nil end
-        return F.Step(api.result())
+        local result = api.result()
+        return F.Step(result), type(result) == "table" and result.pick or nil
     end
 
     function api.lines()

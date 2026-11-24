@@ -637,6 +637,27 @@ end
 N.PROF_STEP = "profStep"
 N.PROF_SETTING = "nav.profArrow"
 
+-- The feed's step (Nav/ProfFeed.lua: picked, with its pick) or the older
+-- step (N.ProfNext: gather nodes, the trainer at the cap, the station),
+-- whichever walks the player further:
+--   a pick to do here or to walk to on this continent (ranks 1 to 3),
+--   else the older step when it has a place,
+--   else a pick in words (also one on another continent), but training in
+--   words leaves it to the older step, which knows the trainer and the cap,
+--   else the older step's words, else the feed's one line of what to do.
+-- Never silent while either has something to say.
+function N.ProfChoose(picked, pick, older)
+    if type(picked) ~= "table" then return older end
+    local rank = type(pick) == "table" and pick.rank or nil
+    if type(rank) ~= "number" then return picked end
+    if rank <= 3 then return picked end
+    if type(older) == "table" and type(older.place) == "table" then return older end
+    local training = type(pick.step) == "table" and pick.step.kind == "train_tier"
+    if rank <= 5 and not (training and type(older) == "table") then return picked end
+    if type(older) == "table" then return older end
+    return picked
+end
+
 function N.ProfStepDeclare(k)
     local api = {}
     local ctx
@@ -662,16 +683,17 @@ function N.ProfStepDeclare(k)
             local okOff, isOff = pcall(feed.Off)
             if okOff and isOff then return nil end
         end
+        local picked, pick
         if feed and type(feed.Step) == "function" then
-            local okStep, picked = pcall(feed.Step)
-            if okStep and type(picked) == "table" then return picked end
+            local okStep, s, p = pcall(feed.Step)
+            if okStep and type(s) == "table" then picked, pick = s, p end
         end
         local source
         if type(ctx.use) == "function" then
             local ok, s = pcall(ctx.use, "gatherMateSource")
             if ok then source = s end
         end
-        return N.ProfNextFrom(ctx.client, ctx.store, source)
+        return N.ProfChoose(picked, pick, N.ProfNextFrom(ctx.client, ctx.store, source))
     end
 
     k:Setting({ key = N.PROF_SETTING, scope = "account", type = "bool", default = true,
