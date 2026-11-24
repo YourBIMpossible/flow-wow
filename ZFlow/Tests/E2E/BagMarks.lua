@@ -26,7 +26,7 @@ local function start(on)
     return c, addon
 end
 
--- Fails before: Items/BagMarks.lua and c.markBagSlots are absent.
+-- Fails before: Items/BagMarks.lua and c.markBagKinds are absent.
 tests["bag marks: a bag change marks junk and a quest item, and nothing else"] = function(t)
     local c = start()
     t.eq(c.bagMarksDrawn and c.bagMarksDrawn() or nil, {}, "empty bags: no marks")

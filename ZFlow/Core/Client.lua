@@ -12872,7 +12872,7 @@ function ns.make.client(env)
     -- (i up to NUM_CONTAINER_FRAMES, else 13) whose GetID() is the bag,
     -- its buttons ContainerFrame<i>Item<j> whose GetID() is the slot, and
     -- ContainerFrame_Update to follow the window's redraw.
-    --   c.markBagSlots(marks) marks = { [bag] = { [slot] = texture path } }
+    --   c.markBagKinds(marks) marks = { [bag] = { [slot] = texture path } }
     --     shows those, hides every other mark of ours; how many shown.
     --   c.onBagRedraw(fn) -> true when followed, nil when not.
     local bagMarkTex = {}
@@ -12890,7 +12890,7 @@ function ns.make.client(env)
         bagMarkTex[button] = made
         return made
     end
-    function c.markBagSlots(marks)
+    function c.markBagKinds(marks)
         marks = type(marks) == "table" and marks or {}
         for _, t in pairs(bagMarkTex) do
             if t then method(t, "Hide") end

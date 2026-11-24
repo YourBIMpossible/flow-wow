@@ -4678,13 +4678,13 @@ function ns.make.fakeClient(opts)
         if type(id) ~= "number" then return nil end
         return s.questShareable and s.questShareable[id]
     end
-    -- G4 bag marks, as the real client's c.markBagSlots: what was drawn is
+    -- G4 bag marks, as the real client's c.markBagKinds: what was drawn is
     -- kept, by kind, for c.bagMarksDrawn() -> { [bag] = { [slot] = kind } }.
     -- The real client takes texture paths; a path is turned back into its
     -- kind here (Items/BagMarks.lua TEXTURE), so a test reads kinds.
     do
         local drawnMarks = {}
-        function c.markBagSlots(marks)
+        function c.markBagKinds(marks)
             drawnMarks = {}
             local kindOf = {}
             for kind, path in pairs(ns.BagMarks and ns.BagMarks.TEXTURE or {}) do kindOf[path] = kind end
