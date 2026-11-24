@@ -300,6 +300,9 @@ KIND.act[#KIND.act + 1] = "shareQuest"
 -- FLOW-PARITY D-07: a spell's cooldown start and length for the icon's
 -- sweep, the same client calls as spellCooldown. The capture does not ask it.
 READS.spellCooldownSpan = false
+-- FLOW-PARITY D-08: the player's cast or channel, for the cast edge
+-- (Rotation/CastEdge.lua). The capture does not ask it.
+READS.casting = false
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).
 local FEATURE = {

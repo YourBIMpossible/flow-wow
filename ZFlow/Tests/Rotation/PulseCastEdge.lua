@@ -251,6 +251,8 @@ local function start(opts)
             if cast.raise then error("boom") end
             return cast.startMs, cast.endMs, cast.channel
         end
+    else
+        c.casting = nil -- the fake client has one now (D-08)
     end
     local icon = {}
     if opts.glow ~= false then icon.glow = region() end

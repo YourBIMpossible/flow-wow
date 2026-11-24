@@ -334,6 +334,8 @@ function FB.Declare(k)
         local madeSaid = false
 
         function u.made() return row ~= nil end
+        -- FLOW-PARITY D-08: the row handle, for drawing only (the cast edge).
+        function u.row() return row end
         function u.status()
             if kf then return kf:status() end
             return nil
@@ -494,6 +496,7 @@ function FB.Declare(k)
 
     function api.made() return units.flow.made() end
     function api.selfMade() return units.self.made() end
+    function api.selfRow() return units.self.row() end
     function api.status() return { flow = units.flow.status(), self = units.self.status() } end
     -- Lead section 340: the spell or item the Flow button holds now (set on
     -- the button), or nil: off, not made, or holding nothing.

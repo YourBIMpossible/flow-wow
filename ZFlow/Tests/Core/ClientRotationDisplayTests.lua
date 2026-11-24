@@ -114,4 +114,52 @@ tests["iconsweep D-07: c.spellCooldownSpan is the spell's start and length"] = f
     t.eq(ns.make.client({}).spellCooldownSpan(1), nil, "no call: not known")
 end
 
+-- ---------------------------------------------------------------- D-08
+tests["castedgedraw D-08: c.casting reads UnitCastingInfo, then UnitChannelInfo"] = function(t)
+    local cast, chan
+    local env = {
+        UnitCastingInfo = function(unit)
+            if unit == "player" and cast then return "Bolt", "", 1, cast[1], cast[2] end
+        end,
+        UnitChannelInfo = function(unit)
+            if unit == "player" and chan then return "Drain", "", 1, chan[1], chan[2] end
+        end,
+    }
+    local c = ns.make.client(env)
+    t.ok(type(c.casting) == "function", "the client has a cast read")
+    if type(c.casting) ~= "function" then return end
+    t.eq(c.casting(), nil, "nothing cast")
+    cast = { 1000, 3000 }
+    t.eq({ c.casting() }, { 1000, 3000, false })
+    cast, chan = nil, { 2000, 5000 }
+    t.eq({ c.casting() }, { 2000, 5000, true })
+    t.eq(ns.make.client({}).casting(), nil, "no call")
+    t.eq(ns.make.client({ UnitCastingInfo = error }).casting(), nil, "a call that raises")
+end
+
+tests["castedgedraw D-08: the icon and a click row have an edge bar"] = function(t)
+    local env = env0()
+    env.InCombatLockdown = function() return false end
+    local c = ns.make.client(env)
+    local h = c.icon({ name = "TestIcon", size = 48 })
+    t.ok(type(h) == "table" and type(h.edge) == "table", "the icon has an edge")
+    if not (type(h) == "table" and type(h.edge) == "table") then return end
+    t.eq(h.edge.set(0.25), true)
+    local bar
+    for _, f in ipairs(env.made) do if f.kind == "StatusBar" then bar = f end end
+    t.ok(bar ~= nil and bar.parent == env.TestIcon, "a status bar on the icon")
+    t.eq(bar and last(bar, "SetValue"), { 0.25 })
+    h.edge.show(true)
+    t.eq(bar and bar.shown, true)
+    h.edge.show(false)
+    t.eq(bar and bar.shown, false)
+    local r = c.clickRow({ name = "TestRow", count = 1, size = 40, gap = 0 })
+    t.ok(type(r) == "table" and type(r.edge) == "table", "the row has an edge")
+    if not (type(r) == "table" and type(r.edge) == "table") then return end
+    t.eq(r.edge.set(1), true)
+    local rbar
+    for _, f in ipairs(env.made) do if f.kind == "StatusBar" and f.parent == env.TestRow1 then rbar = f end end
+    t.ok(rbar ~= nil, "the bar is on the row's first button")
+end
+
 return tests

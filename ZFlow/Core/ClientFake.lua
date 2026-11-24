@@ -4962,6 +4962,38 @@ function ns.make.fakeClient(opts)
             return h
         end
     end
+
+    -- FLOW-PARITY D-08: c.setCasting(startMs, endMs, channel) (nil: no
+    -- cast) and c.casting(). Icons and click rows get h.edge = { set, show }
+    -- kept in h.edgeValue and h.edgeShown.
+    function c.setCasting(startMs, endMs, channel)
+        s.casting = startMs ~= nil and { startMs, endMs, channel and true or false } or nil
+    end
+    function c.casting()
+        local v = s.casting
+        if v == nil then return nil end
+        return v[1], v[2], v[3]
+    end
+    do
+        local function edge(h)
+            h.edgeShown = false
+            h.edge = {
+                set = function(p) h.edgeValue = p; return true end,
+                show = function(on) h.edgeShown = on == true; return true end,
+            }
+        end
+        local edgeIcon, edgeRow = c.icon, c.clickRow
+        function c.icon(spec)
+            local h = edgeIcon(spec)
+            if type(h) == "table" then edge(h) end
+            return h
+        end
+        function c.clickRow(spec)
+            local h = edgeRow(spec)
+            if type(h) == "table" then edge(h) end
+            return h
+        end
+    end
     return c
 end
 

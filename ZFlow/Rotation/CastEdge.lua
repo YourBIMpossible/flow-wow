@@ -10,17 +10,19 @@ local _, ns = ...
 --     Pure, as Flow: how far through the cast, 0..1; a channel counts
 --     down. nil: no cast, times not known, or a cast that is over (more
 --     than 5% past its end).
---   CE.Declare(k[, iconOf]) -> { shown = fn }
---     The module on kernel k. iconOf() gives the rotation icon handle.
+--   CE.Declare(k[, iconOf[, selfOf]]) -> { shown = fn }
+--     The module on kernel k. iconOf() gives the rotation icon handle;
+--     selfOf() the self button's row handle (FLOW-PARITY D-08: Flow drew
+--     on its buff button too, CastEdge.lua:47). Either may be absent.
 --
--- CLIENT NEEDS, neither is in Core/Client.lua yet. Until both are there
--- one problem is recorded and nothing is drawn:
+-- CLIENT NEEDS (Core/Client.lua, FLOW-PARITY D-08). Without them one
+-- problem is recorded and nothing is drawn:
 --   client.casting() -> startMs, endMs, channel | nil
 --     the cast or channel of the player now: the 4th and 5th values of
 --     UnitCastingInfo("player"), else of UnitChannelInfo("player") with
 --     channel = true. The times are on the clock client.now() reads, in
 --     milliseconds (warcraft.wiki.gg, API UnitCastingInfo).
---   the edge of the icon handle: handle.edge = { set(p), show(on) }
+--   the edge of a handle (icon or click row): handle.edge = { set(p), show(on) }
 --     p is 0..1; Flow drew it 3 high, gold over black.
 --
 -- Not tested in game: whether this client answers UnitCastingInfo for the
@@ -45,7 +47,7 @@ function CE.Progress(startMs, endMs, nowMs, channel)
     return p
 end
 
-function CE.Declare(k, iconOf)
+function CE.Declare(k, iconOf, selfOf)
     local client
     local shown = false
     local said = {}
@@ -58,23 +60,30 @@ function CE.Declare(k, iconOf)
         k.problems:add(CE.NAME, kind, text)
     end
 
-    local function edge()
-        if type(iconOf) ~= "function" then return nil end
-        local ok, icon = pcall(iconOf)
-        if not ok or type(icon) ~= "table" then return nil end
-        local e = icon.edge
+    local function edgeOf(of, says)
+        if type(of) ~= "function" then return nil end
+        local ok, h = pcall(of)
+        if not ok or type(h) ~= "table" then return nil end
+        local e = h.edge
         if type(e) ~= "table" or type(e.set) ~= "function" or type(e.show) ~= "function" then
-            problem("frame", "the icon has no edge bar; the cast edge is not drawn")
+            if says then problem("frame", "the icon has no edge bar; the cast edge is not drawn") end
             return nil
         end
         return e
     end
 
+    -- Every edge to draw on: the icon's, then the self button's.
+    local function edges()
+        local out = {}
+        out[#out + 1] = edgeOf(iconOf, true)
+        out[#out + 1] = edgeOf(selfOf, false)
+        return out
+    end
+
     local function hide()
         if not shown then return end
         shown = false
-        local e = edge()
-        if e then pcall(e.show, false) end
+        for _, e in ipairs(edges()) do pcall(e.show, false) end
     end
 
     local function frame()
@@ -90,12 +99,12 @@ function CE.Declare(k, iconOf)
             hide()
             return
         end
-        local e = edge()
-        if not e then return end
-        pcall(e.set, p)
+        local list = edges()
+        if #list == 0 then return end
+        for _, e in ipairs(list) do pcall(e.set, p) end
         if not shown then
             shown = true
-            pcall(e.show, true)
+            for _, e in ipairs(list) do pcall(e.show, true) end
         end
     end
 
@@ -114,8 +123,12 @@ function CE.Declare(k, iconOf)
     return api
 end
 
--- The addon's own: on the rotation icon, when that file has loaded.
+-- The addon's own: on the rotation icon and the self button, when those
+-- files have loaded.
 ns.castEdge = CE.Declare(ns, function()
     local icon = ns.rotationIcon
     return icon and icon.handle() or nil
+end, function()
+    local fb = ns.flowButton
+    return type(fb) == "table" and type(fb.selfRow) == "function" and fb.selfRow() or nil
 end)

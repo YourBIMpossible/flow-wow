@@ -135,4 +135,33 @@ tests["iconsweep D-07: the swing badge shows while the swing is on"] = function(
     t.eq(holds(c), before, "the badge changes nothing any button casts")
 end
 
+-- ---------------------------------------------------------------- D-08
+tests["castedgedraw D-08: a cast fills the edge of the icon and the self button"] = function(t)
+    local c, addon = start()
+    t.eq(addon.problems:count(ns.CastEdge.NAME), 0, "the client has the cast read")
+    local h, s = icon(c), row(c, SELF)
+    t.ok(h ~= nil and s ~= nil, "the icon and the self button are made")
+    if not (h and s) then return end
+    local now = c.now() * 1000
+    c.setCasting(now, now + 2000, false)
+    c.advance(1, 1)
+    t.eq(h.edgeShown, true, "the icon's edge is shown")
+    t.ok(type(h.edgeValue) == "number" and math.abs(h.edgeValue - 0.5) < 1e-6, "half way: " .. tostring(h.edgeValue))
+    t.eq(s.edgeShown, true, "the self button's edge is shown")
+    t.ok(type(s.edgeValue) == "number" and math.abs(s.edgeValue - 0.5) < 1e-6, "self: " .. tostring(s.edgeValue))
+    c.setCasting(nil)
+    c.advance(0.1, 1)
+    t.eq(h.edgeShown, false, "no cast: the icon's edge is hidden")
+    t.eq(s.edgeShown, false, "no cast: the self button's edge is hidden")
+end
+
+tests["castedgedraw D-08: a channel drains"] = function(t)
+    local c = start()
+    local h = icon(c)
+    local now = c.now() * 1000
+    c.setCasting(now, now + 4000, true)
+    c.advance(1, 1)
+    t.ok(h and type(h.edgeValue) == "number" and math.abs(h.edgeValue - 0.75) < 1e-6, "a quarter through: 0.75")
+end
+
 return tests

@@ -13553,6 +13553,81 @@ function ns.make.client(env)
             return h
         end
     end
+
+    -- FLOW-PARITY D-08 (Flow 0.35.233 Modules/Rotation/CastEdge.lua:47):
+    -- the cast read and the edge bar the cast edge draws on.
+    -- c.casting() -> startMs, endMs, channel | nil: the 4th and 5th values
+    -- of UnitCastingInfo("player"), else of UnitChannelInfo("player") with
+    -- channel = true. nil: nothing cast, no call, an odd or secret answer.
+    -- Only reads. First guess, not seen in game.
+    function c.casting()
+        for _, pair in ipairs({ { env.UnitCastingInfo, false }, { env.UnitChannelInfo, true } }) do
+            local ok, _, _, _, s, e = call(pair[1], "player")
+            if ok and type(s) == "number" and type(e) == "number" and not hidden(s) and not hidden(e)
+                and e > s then
+                return s, e, pair[2]
+            end
+        end
+        return nil
+    end
+    -- An edge bar on a frame: { set(p), show(on) }, a StatusBar 3 high
+    -- along the frame's bottom, gold over black (as Flow), made the first
+    -- time it is asked for. set and show answer true when drawn.
+    local function edgeOn(frameOf)
+        local bar
+        local function made()
+            if bar ~= nil then return bar end
+            local okF, frame = pcall(frameOf)
+            if not okF or frame == nil then return nil end
+            local ok, b = call(env.CreateFrame, "StatusBar", nil, frame)
+            if not ok or b == nil then return nil end
+            bar = b
+            method(bar, "SetHeight", 3)
+            method(bar, "SetPoint", "BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+            method(bar, "SetPoint", "BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+            method(bar, "SetStatusBarTexture", "Interface\Buttons\WHITE8X8")
+            method(bar, "SetStatusBarColor", 1, 0.82, 0.1)
+            method(bar, "SetMinMaxValues", 0, 1)
+            local okBack, back = method(bar, "CreateTexture", nil, "BACKGROUND")
+            if okBack and back ~= nil then
+                method(back, "SetAllPoints", bar)
+                method(back, "SetColorTexture", 0, 0, 0, 0.6)
+            end
+            method(bar, "Hide")
+            return bar
+        end
+        local e = {}
+        function e.set(p)
+            if type(p) ~= "number" then return false end
+            local b = made()
+            if b == nil then return false end
+            return (method(b, "SetValue", p)) and true or false
+        end
+        function e.show(on)
+            local b = made()
+            if b == nil then return false end
+            return (method(b, on == true and "Show" or "Hide")) and true or false
+        end
+        return e
+    end
+    do
+        local edgeIcon = c.icon
+        function c.icon(spec)
+            local h = edgeIcon(spec)
+            if type(h) == "table" and type(spec) == "table" and type(spec.name) == "string" then
+                h.edge = edgeOn(function() return env[spec.name] end)
+            end
+            return h
+        end
+        local edgeRow = c.clickRow
+        function c.clickRow(spec)
+            local h = edgeRow(spec)
+            if type(h) == "table" and type(spec) == "table" and type(spec.name) == "string" then
+                h.edge = edgeOn(function() return env[spec.name .. "1"] end)
+            end
+            return h
+        end
+    end
     return c
 end
 
