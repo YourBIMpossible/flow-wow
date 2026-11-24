@@ -89,6 +89,8 @@ local SMELT = { id = 902, name = "Test Smelt", colour = "easy", makes = BAR, mat
 local function quest(c) return c.arrows[1] end
 local function prof(c) return c.arrows[2] end
 local function said(h) return table.concat(h and h.lines or {}, " | ") end
+-- The step itself: its first line (section 414 adds what to look for under it).
+local function first(h) return h and h.lines and h.lines[1] or nil end
 local function has(text, part) return text:find(part, 1, true) ~= nil end
 
 -- Case 1 ---------------------------------------------------------------
@@ -124,7 +126,7 @@ tests["player walk 1: a step in words only: its line stands over the quest arrow
     t.eq(p.shown, true)
     t.eq(p.drawn.body, 0, "no place known: no needle is drawn over the quest arrow")
     t.ok(q.drawn.body ~= 0, "the quest arrow is the one arrow drawn there")
-    t.eq(said(p), "Make 1 Test Belt at an anvil (Blacksmithing 50 of 75)")
+    t.eq(first(p), "Make 1 Test Belt at an anvil (Blacksmithing 50 of 75)")
     t.eq(p.textPoint[1], "BOTTOM", "the profession line is over the arrow")
     t.eq(q.textPoint[1], "TOP", "the quest text is under it")
     t.eq(addon.problems:count(), before)
@@ -138,9 +140,9 @@ tests["player walk 2: the window opened once: the arrow names the craft, not the
     local c, addon, before = boot({ bags = { { item = BAR, count = 6 } } })
     t.ok(has(said(prof(c)), "Open your Blacksmithing window once"), said(prof(c)))
     window(c, "Blacksmithing", 50, { belt() })
-    t.eq(said(prof(c)), "Make 1 Test Belt at an anvil (Blacksmithing 50 of 75)")
+    t.eq(first(prof(c)), "Make 1 Test Belt at an anvil (Blacksmithing 50 of 75)")
     close(c)
-    t.eq(said(prof(c)), "Make 1 Test Belt at an anvil (Blacksmithing 50 of 75)", "closing the window keeps the step")
+    t.eq(first(prof(c)), "Make 1 Test Belt at an anvil (Blacksmithing 50 of 75)", "closing the window keeps the step")
     t.eq(addon.problems:count(), before)
 end
 
@@ -150,7 +152,7 @@ tests["player walk 2: ore but no bars: the smelt first, then the craft"] = funct
     close(c)
     window(c, "Blacksmithing", 50, { belt() })
     close(c)
-    t.eq(said(prof(c)), "Smelt 2 Test Bar at a forge, for Test Belt")
+    t.eq(first(prof(c)), "Smelt 2 Test Bar at a forge, for Test Belt")
     local steps = addon.profPlan.plan("Blacksmithing")
     local kinds = {}
     for i, s in ipairs(steps or {}) do kinds[i] = s.kind end
@@ -158,7 +160,7 @@ tests["player walk 2: ore but no bars: the smelt first, then the craft"] = funct
     t.eq(kinds[#kinds], "craft", "the craft is last")
     -- The player smelts: bars in the bags, less ore.
     bags(c, { { item = ORE, count = 2 }, { item = BAR, count = 2 } })
-    t.eq(said(prof(c)), "Make 1 Test Belt at an anvil (Blacksmithing 50 of 75)", "smelted: now the craft")
+    t.eq(first(prof(c)), "Make 1 Test Belt at an anvil (Blacksmithing 50 of 75)", "smelted: now the craft")
     t.eq(addon.problems:count(), before)
 end
 
@@ -243,7 +245,7 @@ tests["player walk 3: the bars run out mid-way: the step is the bars, then the c
     t.ok(has(line, "Test Bar"), "the bars are the step: " .. line)
     t.ok(not has(line, "Open your") and not has(line:lower(), "train"), line)
     bags(c, { { item = BAR, count = 2 } })
-    t.eq(said(prof(c)), "Make 1 Test Belt at an anvil (Blacksmithing 51 of 75)")
+    t.eq(first(prof(c)), "Make 1 Test Belt at an anvil (Blacksmithing 51 of 75)")
     t.eq(addon.problems:count(), before)
 end
 
@@ -253,10 +255,10 @@ tests["player walk 4: no trainer ever opened, nothing saved: a step from the fir
     local c, addon, before = boot({ bags = { { item = BAR, count = 6 } } })
     local p = prof(c)
     t.eq(p.shown, true, "a profession step at the first login")
-    t.eq(said(p), "Open your Blacksmithing window once to read your skill")
+    t.eq(first(p), "Open your Blacksmithing window once to read your skill")
     window(c, "Blacksmithing", 50, { belt() })
     close(c)
-    t.eq(said(prof(c)), "Make 1 Test Belt at an anvil (Blacksmithing 50 of 75)", "then the craft")
+    t.eq(first(prof(c)), "Make 1 Test Belt at an anvil (Blacksmithing 50 of 75)", "then the craft")
     window(c, "Blacksmithing", 75, { belt("medium") })
     close(c)
     t.eq(prof(c).shown, true, "and at the cap")

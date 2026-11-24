@@ -172,6 +172,7 @@ UI\KitHost.lua
 Items\Keep.lua
 Items\RecipeBook.lua
 Items\RecipeColours.lua
+Items\CraftSpots.lua
 Items\RecipeLearned.lua
 Items\ProfRecipes.lua
 Items\Goals.lua
