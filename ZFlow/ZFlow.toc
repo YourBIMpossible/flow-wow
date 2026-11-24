@@ -271,3 +271,5 @@ Items\AuctionWatch.lua
 Gear\BagBadge.lua
 Nav\FollowAdvice.lua
 UI\RouteArea.lua
+Items\ProfData.lua
+Items\ProfPath.lua

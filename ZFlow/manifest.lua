@@ -357,5 +357,8 @@ return {
     "Nav/FollowAdvice.lua",
     -- N43 (P-TRIP route display): the current step's area on the minimap (after TripRoute, MinimapPin).
     "UI/RouteArea.lua",
+    -- P-PATH-1 (section 449): shipped profession rows (first guesses from Flow), then the path to 300.
+    "Items/ProfData.lua",
+    "Items/ProfPath.lua",
     },
 }
