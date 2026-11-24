@@ -318,5 +318,7 @@ return {
     "Nav/ClassTrainerStep.lua",
     -- G4 (section 395): keep or sell on item tooltips (after LootNote, SellList, Reservations).
     "Items/DispositionTip.lua",
+    -- A10: the import word's "now", which copies the earlier add-on's saved data in (after Diag, SettingsShare).
+    "Import/Apply.lua",
     },
 }

@@ -250,3 +250,4 @@ Nav\Activities.lua
 UI\Lite.lua
 Nav\ClassTrainerStep.lua
 Items\DispositionTip.lua
+Import\Apply.lua
