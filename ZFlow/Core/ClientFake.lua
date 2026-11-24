@@ -4928,6 +4928,31 @@ function ns.make.fakeClient(opts)
             for name, slot in pairs(barSpells) do out[name] = slot end
             return out
         end
+        -- C-56 (ACTING), as the real client's c.placeSpell(id): the spell
+        -- is put on the first empty slot, out of a fight only. Each one
+        -- placed is kept in c.placedSpells ({ id, slot }), in order.
+        -- c.setPlaceRefuse(why): every placing answers nil, why.
+        c.placedSpells = {}
+        local refuse = nil
+        function c.setPlaceRefuse(why) refuse = why end
+        function c.placeSpell(id)
+            if type(id) ~= "number" then return nil, "bad" end
+            if c.inCombat() ~= false then return nil, "lockdown" end
+            if refuse ~= nil then return nil, refuse end
+            local used = {}
+            for _, slot in pairs(barSpells or {}) do used[slot] = true end
+            local free
+            for slot = 1, 12 do
+                if free == nil and not used[slot] then free = slot end
+            end
+            if free == nil then return nil, "full" end
+            barSpells = barSpells or {}
+            for name, spellId in pairs(s.spellIds or {}) do
+                if spellId == id then barSpells[name] = free end
+            end
+            c.placedSpells[#c.placedSpells + 1] = { id = id, slot = free }
+            return free
+        end
     end
     return c
 end

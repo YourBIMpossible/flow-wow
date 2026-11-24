@@ -20,13 +20,18 @@ local _, ns = ...
 --                        bar, under no key and not skipped (setting
 --                        spells.barAdvice).
 --
--- LOOK ONLY in this part: nothing is placed, bound, cast or clicked.
+-- ACTING, one thing only: the footer's "Place all on bar" button
+-- (api.PlaceAll below), on the player's own click, out of a fight. All the
+-- rest is look-only: nothing else is placed, and nothing is bound, cast or
+-- clicked.
 --
 -- Client reads: class, spellId, spell, bindingKeys, inCombat, now,
 -- onSpellLearned, kitWindow, and actionSpells() -> { [spell name] = slot }
--- or nil. actionSpells is asked for in the lane report (the lead writes
--- Core/Client.lua); while the client has no such read, where a spell sits
--- is "not known": the rows say so and no advice is given.
+-- or nil. Client act: placeSpell(id) -> slot, or nil and why. Both are
+-- asked for in the lane report (the lead writes Core/Client.lua); while the
+-- client has no actionSpells, where a spell sits is "not known": the rows
+-- say so and no advice is given; while it has no placeSpell there is no
+-- button.
 --
 -- Pure parts:
 --   W.State(name, bars, keys, skipped) -> "bar" | "key" | "skipped" |
@@ -68,6 +73,12 @@ W.NONE = { "No spell is waiting for a place.",
 W.SKIP, W.ASK = "Skip", "Ask again"
 W.FOOTER = "Type %s %s for the keys that cast a spell directly."
 W.ADVICE = "Put %s on your action bars"
+W.PLACE_ALL = "Place all on bar"
+W.PLACE_TIP = "Puts each spell listed as on no bar on the first empty action bar slot. Not in a fight."
+W.PLACE_FIGHT = "you are in a fight: nothing was placed. Press it again after the fight."
+W.PLACED_ONE = "1 spell placed on your bars."
+W.PLACED = "%d spells placed on your bars."
+W.PLACE_LEFT = "%d could not be placed: no empty slot, or the game refused."
 W.KEYS_HEAD = "keys that cast a spell directly (not from a bar):"
 W.KEYS_NONE = "no key casts a spell directly: they all go through your bars."
 W.KEYS_UNREAD = "the key bindings could not be read."
@@ -250,13 +261,65 @@ function W.Declare(k, diag)
         end
         children[#children + 1] = { kind = "scroll", key = "body", children = body }
         children[#children + 1] = { kind = "footer", key = "footer",
-            text = W.FOOTER:format(id.slash, W.KEYS_WORD), buttons = api.footerButtons(render) }
+            text = W.FOOTER:format(id.slash, W.KEYS_WORD), buttons = api.footerButtons() }
         return ns.Kit.Window({ id = W.ID, title = id.title .. ": " .. W.HEADER, resizable = true,
             width = W.WIDTH, height = W.HEIGHT, children = children })
     end
 
-    -- The footer's buttons: none in the look-only part.
-    function api.footerButtons() return nil end
+    -- ACTING (C-56): "Place all on bar". Only on the player's own click on
+    -- the button, only out of a fight (the client's own answer must be a
+    -- plain false), and only through client.placeSpell, which puts one
+    -- spell on the first empty bar slot. Every class spell known that is on
+    -- no bar, under no key and not skipped is placed, a to z; a spell
+    -- learned this session counts too. Nothing is placed for a bar that
+    -- could not be read. One line says what was done.
+    local function toPlace()
+        local out, seen = {}, {}
+        local bars, skip = ask("actionSpells"), skipped()
+        if type(bars) ~= "table" then return out end
+        local names = knownNames()
+        for _, f in ipairs(fresh) do names[#names + 1] = f.name end
+        for _, name in ipairs(names) do
+            if not seen[name] and W.State(name, bars, keyFor(name), skip) == "none" then
+                seen[name] = true
+                local spellId = ask("spellId", name)
+                if type(spellId) == "number" then out[#out + 1] = { name = name, id = spellId } end
+            end
+        end
+        return out
+    end
+
+    function api.PlaceAll()
+        local c = client()
+        if type(c) ~= "table" or type(c.placeSpell) ~= "function" then return 0 end
+        local function say(text) c.print(id.title .. ": " .. text) end
+        if ask("inCombat") ~= false then
+            say(W.PLACE_FIGHT)
+            return 0
+        end
+        local placed, left = 0, 0
+        for _, sp in ipairs(toPlace()) do
+            local ok, slot = pcall(c.placeSpell, sp.id)
+            if ok and type(slot) == "number" then placed = placed + 1 else left = left + 1 end
+        end
+        if placed == 1 then
+            say(W.PLACED_ONE)
+        elseif placed > 1 or left == 0 then
+            say(W.PLACED:format(placed))
+        end
+        if left > 0 then say(W.PLACE_LEFT:format(left)) end
+        refreshAdvice()
+        render()
+        return placed
+    end
+
+    function api.footerButtons()
+        local c = client()
+        if type(c) ~= "table" or type(c.placeSpell) ~= "function" then return nil end
+        if #toPlace() == 0 then return nil end
+        return { { kind = "button", key = "placeAll", text = W.PLACE_ALL, tooltip = W.PLACE_TIP,
+            onClick = function() api.PlaceAll() end } }
+    end
 
     render = function()
         if not handle then return end
@@ -396,7 +459,7 @@ function W.Declare(k, diag)
               group = "combat.spells", synonyms = { "bar", "action bar", "spell", "reminder", "key" } },
         },
         provides = { Open = api.Open, Close = api.Close, Shown = api.Shown, KeyLines = api.KeyLines,
-                     Fresh = api.Fresh },
+                     Fresh = api.Fresh, PlaceAll = api.PlaceAll },
         start = function(c)
             ctx = c
             advisor = c.use("advisor")
