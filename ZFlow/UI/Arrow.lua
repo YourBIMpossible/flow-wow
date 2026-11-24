@@ -641,6 +641,16 @@ function Arrow.Start(k, diag, own)
                     from = "a profession trainer stop"
                 end
             end
+            -- Then the riding trainer stop (G45, Nav/RidingStep.lua), only when
+            -- a riding trainer is saved on this map: words only have no needle.
+            local riding = k.use and k.use("ridingStep")
+            if step == nil and riding and riding.Step then
+                local ok, rs = pcall(riding.Step)
+                if ok and type(rs) == "table" and type(rs.place) == "table" then
+                    step = rs
+                    from = "a riding trainer stop"
+                end
+            end
             -- The player's own pin (/way, then the map pin) wins over the player's quests.
             if step == nil and quests and Arrow.QuestArrowOn(k) then
                 step = quests.step()

@@ -226,3 +226,4 @@ Core\AutoEvidence.lua
 Nav\Trip.lua
 UI\RouteTracker.lua
 Nav\QuestAdvice.lua
+Nav\RidingStep.lua

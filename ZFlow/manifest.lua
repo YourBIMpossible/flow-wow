@@ -276,5 +276,7 @@ return {
     "UI/RouteTracker.lua",
     -- P-QUEST (lead section 354 item 4): quest advice text (after QuestRead and the advisor).
     "Nav/QuestAdvice.lua",
+    -- G45: the riding step and its advisor line (after the advisor, the arrow and Prices).
+    "Nav/RidingStep.lua",
     },
 }
