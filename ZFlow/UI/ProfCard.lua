@@ -37,6 +37,7 @@ P.SEEN = "profSeen"
 P.ENTER_EVENT = "PLAYER_ENTERING_WORLD"
 P.PREFIX = "aps.prof."
 P.PRIORITY = 1
+P.LISTS = "learned.trainerLists" -- Spells/TrainerModule.lua M.PATH
 
 local function num(v) return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge end
 
@@ -53,8 +54,35 @@ local function trainersFor(npcs, profession, faction)
     return names
 end
 
--- { { id =, text =, priority = }, ... } sorted by id.
-function P.Prompts(readings, npcs, faction)
+-- P-PROF slice 3 (Lazy): the next rank of a profession from the saved
+-- trainer lists (Spells/TrainerModule.lua, char "learned.trainerLists"), as
+-- Flow's SkillPlan TierPriceLine: a row not known, of this profession, whose
+-- rank is one of P.RANKS (in rank, or "<rank> <profession>" as its name;
+-- first guess, needs a game test) and whose cost was read. The cheapest
+-- such row. Returns rank, copper, or nil.
+P.RANKS = { Apprentice = true, Journeyman = true, Expert = true, Artisan = true, Master = true }
+local function nextRank(lists, profession)
+    if type(lists) ~= "table" then return nil end
+    local bestRank, bestCost = nil, nil
+    for _, l in pairs(lists) do
+        if type(l) == "table" and l.profession == profession and type(l.rows) == "table" then
+            for _, r in ipairs(l.rows) do
+                if type(r) == "table" and r.state ~= "known" and num(r.cost) and type(r.name) == "string" then
+                    local rank = nil
+                    if r.name == profession and type(r.rank) == "string" and P.RANKS[r.rank] then rank = r.rank end
+                    local head = r.name:match("^(%S+) " .. profession:gsub("(%p)", "%%%1") .. "$")
+                    if head and P.RANKS[head] then rank = head end
+                    if rank and (bestCost == nil or r.cost < bestCost) then bestRank, bestCost = rank, r.cost end
+                end
+            end
+        end
+    end
+    return bestRank, bestCost
+end
+
+-- { { id =, text =, priority = }, ... } sorted by id. lists (slice 3,
+-- optional): the saved trainer lists, for the next rank's price.
+function P.Prompts(readings, npcs, faction, lists)
     local out = {}
     if type(readings) ~= "table" or type(npcs) ~= "table" then return out end
     if type(faction) ~= "string" or faction == "" then return out end
@@ -65,9 +93,12 @@ function P.Prompts(readings, npcs, faction)
             if #seen > 0 then
                 local who = seen[1]
                 if #seen > 1 then who = who .. ", and " .. (#seen - 1) .. " more" end
+                local text = string.format("%s is at its cap (%d/%d). Trainer seen: %s.", name, r.skill, r.max, who)
+                local rank, cost = nextRank(lists, name)
+                if rank then text = text .. " " .. rank .. " costs " .. ns.Prices.Coin(cost) .. "." end
                 out[#out + 1] = {
                     id = P.PREFIX .. name,
-                    text = string.format("%s is at its cap (%d/%d). Trainer seen: %s.", name, r.skill, r.max, who),
+                    text = text,
                     priority = P.PRIORITY,
                 }
             end
@@ -81,12 +112,12 @@ end
 -- added before that no longer apply. faction: the player's faction.
 -- shown: { [id] = true } from the last call (nil the first time). Returns
 -- the new shown set.
-function P.Sync(advisor, readings, npcs, faction, shown)
+function P.Sync(advisor, readings, npcs, faction, shown, lists)
     local now = {}
     if type(advisor) ~= "table" or type(advisor.Add) ~= "function" or type(advisor.Remove) ~= "function" then
         return now
     end
-    for _, p in ipairs(P.Prompts(readings, npcs, faction)) do
+    for _, p in ipairs(P.Prompts(readings, npcs, faction, lists)) do
         if advisor.Add(p.id, p.text, p.priority) then now[p.id] = true end
     end
     if type(shown) == "table" then
@@ -134,7 +165,7 @@ function P.Declare(k)
                 -- An advisor that raises costs this module nothing; what it
                 -- held before is kept as it was.
                 local okS, now = pcall(P.Sync, advisor, ctx.store:get("char", Seen.READINGS),
-                    ctx.store:get("account", Seen.NPCS), faction, shown)
+                    ctx.store:get("account", Seen.NPCS), faction, shown, ctx.store:get("char", P.LISTS))
                 if okS and type(now) == "table" then shown = now end
             end
             ctx.bus:on(P.NAME, P.ENTER_EVENT, sync)
