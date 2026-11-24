@@ -320,5 +320,7 @@ return {
     "Items/DispositionTip.lua",
     -- A10: the import word's "now", which copies the earlier add-on's saved data in (after Diag, SettingsShare).
     "Import/Apply.lua",
+    -- G9 (section 393): the auction watch list (after AuctionLog, which it reads).
+    "Items/AuctionWatch.lua",
     },
 }
