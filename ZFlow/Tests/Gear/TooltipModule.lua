@@ -461,6 +461,46 @@ tests["gear tooltip C-26: a worn slot that was not read is not known, never a nu
     })
 end
 
+-- Twin review of 3cc0a710 (lead section 456): a role with no weights and an
+-- unread worn slot must not raise and take every line with it.
+tests["gear tooltip C-26: a role with no weights and an unread slot keeps the lines, and raises nothing"] = function(t)
+    local c = client()
+    c.setWorn(1, nil)
+    for _, shape in ipairs({ "none", "no values" }) do
+        local broken = packs()
+        if shape == "none" then
+            broken.DRUID.weights.dps = nil
+        else
+            broken.DRUID.weights.dps = { evidence = "first guess" }
+        end
+        local ok, lines = pcall(M.Lines, c, broken, HELM, { role = "tank", score = true })
+        t.eq(ok, true, shape .. ": no raise: " .. tostring(lines))
+        t.ok(ok and type(lines) == "table" and #lines >= 1, shape .. ": the verdict line is still there")
+        if ok and type(lines) == "table" then
+            t.eq(lines[1], { text = "No verdict: " .. ns.GearScore.REASON.worn .. ": head", tone = "none" }, shape)
+        end
+    end
+end
+
+-- Same review, section 286: one role held up to a slot known to be empty and
+-- another to a slot that was not read is not "nothing worn" for both.
+tests["gear tooltip C-26: empty for one role and not read for another says both, never nothing worn alone"] = function(t)
+    t.eq(type(M.ScoreLines), "function", "the score lines can be asked for")
+    if type(M.ScoreLines) ~= "function" then return end
+    local lines = M.ScoreLines({
+        { role = "tank", result = { score = 12, delta = 12, empty = true, slot = "head" } },
+        { role = "dps", result = { score = 4 }, unread = "head" },
+    }, false)
+    t.eq(lines[1], { text = "Score 12 (tank), 4 (dps)", tone = "info" })
+    t.eq(lines[2], { text = "vs your head piece: nothing worn (tank), not read yet (dps)", tone = "info" })
+    -- Empty for every role is still said once (GT2-1).
+    local empty = M.ScoreLines({
+        { role = "tank", result = { score = 12, delta = 12, empty = true, slot = "head" } },
+        { role = "dps", result = { score = 4, delta = 4, empty = true, slot = "head" } },
+    }, false)
+    t.eq(empty[2], { text = "vs your head piece: nothing worn", tone = "info" })
+end
+
 tests["gear tooltip C-26: hovering shows the score lines with no setting touched; saved off, none"] = function(t)
     local c = wearingClient()
     local k = start(c)
