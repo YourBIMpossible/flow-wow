@@ -137,7 +137,10 @@ function W.Declare(k, diag)
             if ok then return v end
             return nil
         end
-        local E = ns.Nav and ns.Nav.Errand
+        -- The errand module is ns.Errand (Nav/Errand.lua), not under ns.Nav:
+        -- asked under the wrong name the bank was never found (White, lead
+        -- section 539).
+        local E = ns.Errand
         local bank
         if type(E) == "table" and type(E.Find) == "function" then
             local ok, v = pcall(E.Find, "banker", client(), k.store)
