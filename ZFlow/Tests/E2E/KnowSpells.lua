@@ -20,7 +20,8 @@ local function W() return ns.SpellsWindow or {} end
 -- The first three spell names of the class pack, a to z.
 local function three(class)
     local names = {}
-    local pack = type(ns.Packs) == "table" and ns.Packs[class] or nil
+    local pack
+    if type(ns.Packs) == "table" then pack = ns.Packs[class] end
     for name in pairs(type(pack) == "table" and type(pack.spells) == "table" and pack.spells or {}) do
         names[#names + 1] = name
     end
