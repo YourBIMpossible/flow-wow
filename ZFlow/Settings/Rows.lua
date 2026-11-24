@@ -72,6 +72,12 @@ R.ROWS = {
       label = "Show the advisor panel",
       help = ((ns.Advisor or {}).APPEARS or "The panel appears only while there is a prompt for you.")
           .. " Off hides the panel at once; its prompts are kept and show again when it is back on." },
+    -- Lead section 488, parity row A1-27: Nav/ZoneFilter.lua.
+    { key = "nav.zonesFirst", scope = "account", type = "bool", default = false, group = "travel.route",
+      synonyms = { "zone", "zones", "selected", "route", "order" },
+      label = "Finish the selected zones first",
+      help = "On: the route does your selected zones first, and the other zones' quests after them. "
+          .. "Off (default): a zone you have not selected is left out of the route; its quests stay in your log." },
 }
 
 -- Declares each row on kernel k that k does not hold yet. Returns how many.

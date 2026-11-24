@@ -362,5 +362,6 @@ return {
     -- A1-12 (lead section 488): the quest step's hover lines (after QuestRead, TripRoute).
     "Nav/StepTip.lua",
     "Nav/AirLine.lua",
+    "Nav/ZoneFilter.lua",
     },
 }
