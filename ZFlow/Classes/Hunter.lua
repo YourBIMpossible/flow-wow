@@ -21,9 +21,10 @@ local _, ns = ...
 --   * Mend Pet: it needs the pet's health, and no pet health is read (D1);
 --   * ammunition: no read for it yet; a shot without ammunition is refused
 --     by the game (its usable / noPower answer), and that is all used here;
---   * traps, Disengage, Concussive Shot, Scatter Shot, Aimed
---     Shot and Rapid Fire as advice: no rule asks for them yet (situational
---     or talents; the spells are listed, and on the key row where they fit);
+--   * traps, Disengage and Scatter Shot as advice: no rule asks for them
+--     yet (a trap and Disengage wait on the near-enemy count and the threat
+--     read, P-READS; Scatter Shot is a talent). Rapid Fire, Aimed Shot and
+--     Concussive Shot are asked for (N52 HUNTER-3/4, lead section 233);
 --   * starting a melee swing: there is no "Attack" row yet, so the engage
 --     step never sends a hunter into melee.
 --
@@ -159,6 +160,23 @@ local autoShot = tag({
     { spell = "Auto Shot", target = true, reason = "Start shooting",
       when = function(s) return hostile(s) and readOff(s, "Auto Shot") end },
 })
+-- N52 HUNTER-3/4 (lead section 233): shots as advice, shown only. The
+-- chooser asks only for a spell known, usable and off cooldown, so Rapid
+-- Fire is asked for while it is ready and Aimed Shot only once the talent
+-- is learned. Concussive Shot: a target read as in melee reach and not read
+-- as slowed is slowed, so you can step back and shoot.
+local rapid = tag({
+    { spell = "Rapid Fire", reason = "Rapid Fire is ready", when = hostile },
+})
+local aimed = tag({
+    { spell = "Aimed Shot", target = true, reason = "Aimed Shot", when = hostile },
+})
+local slow = tag({
+    { spell = "Concussive Shot", target = true, reason = "It is in melee: slow it, then step back to shoot",
+      when = function(s)
+          return hostile(s) and inReach(s, "Raptor Strike") and missingOnTarget(s, "Concussive Shot")
+      end },
+})
 local arcane = tag({
     { spell = "Arcane Shot", target = true, reason = "Arcane Shot", when = hostile },
 })
@@ -253,8 +271,8 @@ local pack = {
     },
 
     lists = {
-        default = join(aspect, pet, mark, sting, autoShot, arcane, melee),
-        aoe = join(aspect, pet, mark, sting, autoShot, multi, arcane, melee),
+        default = join(aspect, pet, mark, sting, autoShot, slow, rapid, aimed, arcane, melee),
+        aoe = join(aspect, pet, mark, sting, autoShot, slow, rapid, multi, aimed, arcane, melee),
     },
 
     -- Does not apply: no hunter spell here is cast on the group (Trueshot
