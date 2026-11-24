@@ -193,6 +193,7 @@ return {
         "UI/KitHost.lua",
         "Items/Keep.lua",
         "Items/RecipeBook.lua",
+        "Items/RecipeLearned.lua",
         "Items/Goals.lua",
     "UI/Arrow.lua",
     "UI/MinimapPin.lua",
@@ -252,6 +253,8 @@ return {
     "Nav/BossKills.lua",
     -- Lead section 318: the Dungeon Quests window, on the kit (after Kit and the dungeon data).
     "UI/DungeonWindow.lua",
+    "UI/HelpPages.lua",
+    "UI/SetupList.lua",
     -- P-TRIP (S43): quest spots learned from the player's own play (after QuestRead and Diag).
     "Nav/QuestSpots.lua",
     -- P-TRIP (S39/S43/S40): quest routes and dungeon runs for the arrow (after RoutePlan, QuestSpots).
@@ -276,6 +279,8 @@ return {
     "UI/RouteTracker.lua",
     -- P-QUEST (lead section 354 item 4): quest advice text (after QuestRead and the advisor).
     "Nav/QuestAdvice.lua",
+    -- R7 (sections 387, 388 b): spells to train, as advisor prompts (after the class packs and the advisor).
+    "Spells/TrainAdvice.lua",
     -- G45: the riding step and its advisor line (after the advisor, the arrow and Prices).
     "Nav/RidingStep.lua",
     },

@@ -172,6 +172,7 @@ UI\ProfHelper.lua
 UI\KitHost.lua
 Items\Keep.lua
 Items\RecipeBook.lua
+Items\RecipeLearned.lua
 Items\Goals.lua
 UI\Arrow.lua
 UI\MinimapPin.lua
@@ -213,6 +214,8 @@ Nav\DungeonStates.lua
 Nav\DungeonRead.lua
 Nav\BossKills.lua
 UI\DungeonWindow.lua
+UI\HelpPages.lua
+UI\SetupList.lua
 Nav\QuestSpots.lua
 Nav\TripRoute.lua
 UI\MinimapPlace.lua
@@ -226,4 +229,5 @@ Core\AutoEvidence.lua
 Nav\Trip.lua
 UI\RouteTracker.lua
 Nav\QuestAdvice.lua
+Spells\TrainAdvice.lua
 Nav\RidingStep.lua
