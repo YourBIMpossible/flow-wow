@@ -10,6 +10,10 @@ local _, ns = ...
 
 local Po, AL = ns.Posting, ns.AuctionLog
 local tests = {}
+-- Item names carry the game's quality colour (Items/Present.lua, Tint; the
+-- colour itself is tested in Tests/Items/ItemColourTests.lua). These tests are
+-- about the words, so they read them with the colour taken off.
+local plain = ns.ItemPresent.Plain
 local HOUR = 3600
 local REALM = "Old Blanchy-Horde"
 local SOLD, EXPIRED = "Sold: %s.", "%s did not sell."
@@ -313,6 +317,13 @@ tests["slice 3: auction probe names the two game texts"] = function(t)
     c.slashes[ns.id.slash]("auction probe")
     t.eq(c.printed[before + 1], ns.id.title .. ": auction probe: has ERR_AUCTION_SOLD_S")
     t.ok(tostring(c.printed[before + 2]):find("ERR_AUCTION_EXPIRED_S", 1, true) ~= nil, "the other is lacking")
+end
+
+for name, fn in pairs(tests) do
+    tests[name] = function(t)
+        return fn(setmetatable({ eq = function(got, want, msg) return t.eq(plain(got), plain(want), msg) end },
+            { __index = t }))
+    end
 end
 
 return tests

@@ -180,6 +180,10 @@ function ns.make.fakeClient(opts)
         if s.merchantOpen ~= true then return nil end
         return copyRows(s.merchant)
     end
+    function c.returnableItems()
+        if s.merchantOpen ~= true then return nil end
+        return copyRows(s.buyback)
+    end
     function c.recipes()
         local r = s.recipes
         if type(r) ~= "table" then return nil end
@@ -829,6 +833,11 @@ function ns.make.fakeClient(opts)
     -- window that cannot be read. merchantItems() gives it only while the
     -- window is open.
     function c.setMerchant(rows) s.merchant = copyRows(rows) end
+    -- G3: the merchant's Buyback tab, in the shape of returnableItems():
+    -- { { index =, item =, name =, price =, count = }, ... }; nil for a tab
+    -- that cannot be read. returnableItems() gives it only while the window is
+    -- open.
+    function c.setReturnable(rows) s.buyback = copyRows(rows) end
     -- true / false fire the merchant event; nil is "not known" and fires nothing.
     function c.setMerchantOpen(on)
         if on == nil then s.merchantOpen = nil return end

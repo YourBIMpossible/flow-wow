@@ -5,6 +5,10 @@ local _, ns = ...
 
 local Po = ns.Posting
 local tests = {}
+-- Item names carry the game's quality colour (Items/Present.lua, Tint; the
+-- colour itself is tested in Tests/Items/ItemColourTests.lua). These tests are
+-- about the words, so they read them with the colour taken off.
+local plain = ns.ItemPresent.Plain
 local HOUR = 3600
 
 local function near(t, a, b, msg)
@@ -91,8 +95,8 @@ local function seen(key) return SEEN[key] end
 tests["posting: the list, biggest ask first, only with a seen price"] = function(t)
     local rows = Po.List(BAG, decide, seen)
     t.eq(#rows, 3)
-    t.eq(rows[1], { id = 2589, name = "Linen Cloth", count = 20, each = 200, seen = 300, seenAt = 1000, vendor = 13, gain = 3540 })
-    t.eq(rows[2], { id = 4306, name = "Silk Cloth", count = 5, each = 300, seen = 400, seenAt = 2000, vendor = 150, gain = 675 })
+    t.eq(rows[1], { id = 2589, name = "Linen Cloth", quality = 1, count = 20, each = 200, seen = 300, seenAt = 1000, vendor = 13, gain = 3540 })
+    t.eq(rows[2], { id = 4306, name = "Silk Cloth", quality = 1, count = 5, each = 300, seen = 400, seenAt = 2000, vendor = 150, gain = 675 })
     t.eq(rows[3].id, 2318, "not worth it by price, but an unused trade good: listed")
     t.eq(rows[3].gain, 800)
     -- The potion is not a trade good and not worth it; the pelt has no
@@ -175,6 +179,13 @@ tests["posting word: no prices, no realm, nothing to post"] = function(t)
     c.slashes[ns.id.slash]("auctions")
     t.eq(c.printed[before + 1], ns.id.title .. " Auctions: 0 thing(s) to post")
     t.eq(Po.WORD, "auctions")
+end
+
+for name, fn in pairs(tests) do
+    tests[name] = function(t)
+        return fn(setmetatable({ eq = function(got, want, msg) return t.eq(plain(got), plain(want), msg) end },
+            { __index = t }))
+    end
 end
 
 return tests
