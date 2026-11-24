@@ -276,5 +276,7 @@ return {
     "UI/RouteTracker.lua",
     -- P-QUEST (lead section 354 item 4): quest advice text (after QuestRead and the advisor).
     "Nav/QuestAdvice.lua",
+    -- G14 (section 393): the role badge on bag upgrades (after the verdict and the reward mark).
+    "Gear/BagBadge.lua",
     },
 }
