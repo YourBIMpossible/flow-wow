@@ -10,7 +10,8 @@ local tests = {}
 local Arrow = ns.Arrow
 
 -- opts: log (the quest log rows; nil: not known), account, charSettings,
--- professions (client.professions names).
+-- professions (client.professions names), questie (a stand-in that knows
+-- nothing).
 local function start(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
@@ -27,6 +28,9 @@ local function start(opts)
     c.setMapSize(1411, 1000, 500)
     if opts.log then c.setQuestLog(opts.log) end
     if opts.professions then c.setProfessions(opts.professions) end
+    -- A Questie that knows nothing (parity row A1-16: with no Questie the
+    -- line is Flow's install pair, Tests/E2E/ArrowWords.lua).
+    if opts.questie then c.setQuestieModule("QuestieDB", {}) end
     local addon = ns.offline.addon(c)
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
     c.advance(5, 20)
@@ -58,7 +62,7 @@ end
 -- Fails before: a tracked quest with no known place hides the arrow.
 tests["quest arrow why: a quest with no known route to its objective says so"] = function(t)
     t.ok(Arrow ~= nil and Arrow.NO_ROUTE ~= nil, "the line exists")
-    local c = start({ log = LOG })
+    local c = start({ log = LOG, questie = true })
     whyOnly(t, c, { Arrow and Arrow.NO_ROUTE }, "no step known")
 end
 

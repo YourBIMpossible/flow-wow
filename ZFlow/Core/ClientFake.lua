@@ -2181,6 +2181,28 @@ function ns.make.fakeClient(opts)
         return h
     end
 
+    -- Route lines (section 447 F7), as the real client's c.mapRouteLines:
+    -- each handle made is kept in c.routeLineSets; h.lines is the last
+    -- drawn, copied.
+    c.routeLineSets = {}
+    function c.mapRouteLines()
+        if s.noFrames then return nil end
+        local h = { lines = {}, shown = false, draws = 0, clears = 0 }
+        function h.map() return s.worldMap end
+        function h.draw(lines)
+            h.lines = copyRows(type(lines) == "table" and lines or {})
+            h.shown = #h.lines > 0
+            h.draws = h.draws + 1
+            return true
+        end
+        function h.clear()
+            h.lines, h.shown = {}, false
+            h.clears = h.clears + 1
+        end
+        c.routeLineSets[#c.routeLineSets + 1] = h
+        return h
+    end
+
     -- Pet state (lead section 197), as the real client's pet(): not known
     -- (nil) until set; a copy each time.
     --   c.setPet({ exists = true or false, dead, inCombat, family, happiness, powerKind })

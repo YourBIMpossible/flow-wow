@@ -6920,6 +6920,81 @@ function ns.make.client(env)
     end
     -- --------------------------------------------------- end flight marks
 
+    -- ------------------------------------------- route lines (section 447 F7)
+    -- c.mapRouteLines() -> h, or nil, as c.mapPins: one plain frame over the
+    -- world map canvas, no mouse; its lines are made as needed and kept.
+    --   h.map() -> the uiMapID the world map shows, or nil
+    --   h.draw(lines)
+    --       lines = { { ax, ay, bx, by, r, g, b, a } }, shares of the shown
+    --       map (x right, y down); colour and opacity per line. Draws these
+    --       and hides any made before past their count; a line not placed
+    --       by plain numbers is skipped.
+    --   h.clear()   hides them all
+    -- The calls are the ones c.mapPins makes (and the predecessor's
+    -- MapOverlay.lua line()): CreateLine, SetThickness, SetColorTexture,
+    -- SetStartPoint, SetEndPoint. The canvas's own scale is not read, so the
+    -- thickness does not follow the map's zoom. Needs a game test.
+    function c.mapRouteLines()
+        local wm = env.WorldMapFrame
+        if wm == nil then return nil end
+        local okC, canvas = pcall(function() return wm.ScrollContainer.Child end)
+        if not okC or canvas == nil then return nil end
+        local ok, host = call(env.CreateFrame, "Frame", nil, canvas)
+        if not ok or host == nil then return nil end
+        method(host, "EnableMouse", false)
+        method(host, "SetAllPoints", canvas)
+        local made, up = {}, 0
+        local function plain(v) return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge end
+        local h = {}
+        function h.map()
+            local okS, shown = method(wm, "IsShown")
+            if not okS or shown ~= true then return nil end
+            local okM, map = method(wm, "GetMapID")
+            if not okM or map == nil or hidden(map) or type(map) ~= "number" or map ~= map then return nil end
+            return map
+        end
+        function h.clear()
+            for i = 1, up do if made[i] then method(made[i], "Hide") end end
+            up = 0
+        end
+        function h.draw(lines)
+            local okW, w = method(canvas, "GetWidth")
+            local okH, ht = method(canvas, "GetHeight")
+            if not okW or not okH or w == nil or ht == nil or hidden(w) or hidden(ht)
+                or not plain(w) or not plain(ht) or w <= 0 or ht <= 0 then
+                h.clear()
+                return false
+            end
+            local m = 0
+            for _, l in ipairs(type(lines) == "table" and lines or {}) do
+                if type(l) == "table" and plain(l.ax) and plain(l.ay) and plain(l.bx) and plain(l.by) then
+                    m = m + 1
+                    local line = made[m]
+                    if line == nil then
+                        local okL, new = method(host, "CreateLine", nil, "ARTWORK")
+                        line = okL and new or false
+                        made[m] = line
+                    end
+                    if line then
+                        local r, g, b, a = 1, 1, 1, 1
+                        if plain(l.r) and plain(l.g) and plain(l.b) then r, g, b = l.r, l.g, l.b end
+                        if plain(l.a) then a = l.a end
+                        method(line, "SetThickness", 2.5)
+                        method(line, "SetColorTexture", r, g, b, a)
+                        method(line, "SetStartPoint", "TOPLEFT", canvas, l.ax * w, -l.ay * ht)
+                        method(line, "SetEndPoint", "TOPLEFT", canvas, l.bx * w, -l.by * ht)
+                        method(line, "Show")
+                    end
+                end
+            end
+            for i = m + 1, up do if made[i] then method(made[i], "Hide") end end
+            up = m
+            return true
+        end
+        return h
+    end
+    -- ---------------------------------------------------- end route lines
+
     -- ------------------------------------------------ pet state (section 197)
     -- c.pet() -> nil | { exists = false }
     --          | { exists = true, dead, inCombat, family, happiness, powerKind }
