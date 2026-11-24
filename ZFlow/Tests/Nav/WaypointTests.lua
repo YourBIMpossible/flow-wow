@@ -117,7 +117,9 @@ return {
 
     ["parse: a comma is turned down, it could be a decimal or a separator"] = function(t)
         refused(t, "way 45,2 61,8", R.comma)
-        refused(t, "way 45, 61", R.comma)
+        refused(t, "way 45, 61,8", R.comma)
+        -- "x, y" with a space after the comma is a pasted pair, not a decimal.
+        t.eq(W.Parse("way 45, 61").label, nil)
         refused(t, "way 45 61,8", R.comma)
         refused(t, "way 45,61", R.usage)
         t.eq(W.Parse("way 45 61 ore, north side").label, "ore, north side", "a comma in the label")

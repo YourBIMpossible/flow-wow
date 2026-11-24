@@ -198,4 +198,32 @@ return {
         k.form = nil
         t.eq(ns.Choose(k, ns.Packs.WARRIOR).spell, "Berserker Stance", "known: the kept one")
     end,
+
+    -- N52 WARRIOR-1/4 (lead section 233; section 373 item 7): Berserker Rage
+    -- breaks a fear, shown only. The game's usable answer carries the stance:
+    -- outside Berserker Stance it is not usable, and nothing is asked.
+    ["warrior WARRIOR-1: feared in Berserker Stance, Berserker Rage breaks it"] = function(t)
+        local knows = { "Berserker Stance", "Berserker Rage", "Attack", "Battle Shout" }
+        local s = snap({ form = "Berserker Stance", loc = "FEAR" }, knows)
+        s.spells["Berserker Rage"].usable = true
+        local r = ns.Choose(s, ns.Packs.WARRIOR)
+        t.eq(r and r.spell, "Berserker Rage")
+        t.eq(r and r.kind, "emergency")
+    end,
+
+    ["warrior WARRIOR-1: not usable (another stance), not feared, or a stun: no Berserker Rage"] = function(t)
+        local knows = { "Battle Stance", "Berserker Rage", "Attack", "Battle Shout" }
+        local s = snap({ loc = "FEAR" }, knows)
+        s.spells["Berserker Rage"].usable = false
+        local r = ns.Choose(s, ns.Packs.WARRIOR)
+        t.ok(not r or r.spell ~= "Berserker Rage", "not usable")
+        s = snap({ form = "Berserker Stance", loc = "STUN" }, knows)
+        s.spells["Berserker Rage"].usable = true
+        r = ns.Choose(s, ns.Packs.WARRIOR)
+        t.ok(not r or r.spell ~= "Berserker Rage", "a stun is not broken by it")
+        s = snap({ form = "Berserker Stance" }, knows)
+        s.spells["Berserker Rage"].usable = true
+        r = ns.Choose(s, ns.Packs.WARRIOR)
+        t.ok(not r or r.kind ~= "emergency", "not held: no breaker step")
+    end,
 }

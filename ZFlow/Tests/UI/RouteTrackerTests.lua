@@ -72,4 +72,45 @@ tests["tracker parts: no more than RT.MAX stops are listed"] = function(t)
     t.ok(byKey(kids, "more") ~= nil, "says how many more")
 end
 
+-- S42: the quest's own item under the current step.
+tests["tracker parts: the quest's item is one item line right under the current step"] = function(t)
+    local rows = P().TrackRows(current(), HERE)
+    local kids = RT().Children(rows, { id = 7001, name = "Test Whistle", count = 3, quality = 2, icon = 134400 })
+    t.eq(kids[2].key, "current")
+    local item = kids[3]
+    t.eq(item.key, "questItem")
+    t.eq(item.kind, "itemLine")
+    t.eq(item.name, "Test Whistle")
+    t.eq(item.count, 3)
+    t.eq(item.quality, 2)
+    t.eq(item.icon, 134400)
+    t.eq(item.item, 7001)
+    t.eq(item.note, RT().ITEM_NOTE)
+    t.eq(item.onClick, nil, "no button: it uses nothing")
+    t.eq(kids[4].key, "next1", "the stops after it follow")
+    t.ok(ns.Kit.Window({ id = RT().ID, title = "x", children = kids }) ~= nil, "the kit takes the parts")
+end
+
+tests["tracker parts: no item, no line; no route, no line"] = function(t)
+    local rows = P().TrackRows(current(), HERE)
+    t.eq(byKey(RT().Children(rows), "questItem"), nil)
+    t.eq(byKey(RT().Children(rows, "x"), "questItem"), nil)
+    t.eq(byKey(RT().Children(rows, {}), "questItem"), nil)
+    t.eq(byKey(RT().Children(nil, { id = 7001, name = "Test Whistle" }), "questItem"), nil)
+end
+
+tests["tracker parts: an item with odd facts still gives a line the kit takes"] = function(t)
+    local rows = P().TrackRows(current(), HERE)
+    local kids = RT().Children(rows, { id = 7001, name = "a|cffb", count = -1, quality = 9, icon = "" })
+    local item = byKey(kids, "questItem")
+    t.eq(item and item.name, RT().ITEM_PLAIN, "a name that cannot be shown is not shown")
+    t.eq(item and item.count, nil)
+    t.eq(item and item.quality, nil)
+    t.eq(item and item.icon, nil)
+    t.ok(ns.Kit.Window({ id = RT().ID, title = "x", children = kids }) ~= nil, "the kit takes the parts")
+    local named = RT().ItemLine({ name = "Test Whistle" })
+    t.eq(named and named.name, "Test Whistle", "a name alone is enough")
+    t.eq(named and named.item, nil)
+end
+
 return tests

@@ -20,6 +20,11 @@ local _, ns = ...
 --                  ZONE_CHANGED_NEW_AREA; only a change from a place that
 --                  was read is said, so nothing at login and nothing while
 --                  the client does not say. A battleground is not one.
+--   alerts.list    on by default (P-QOL, as Flow's advisor.enabled, line
+--                  320): the top LIST_LOGIN_TOP ways to improve said
+--                  LIST_LOGIN seconds after login when there are any, and
+--                  the top LIST_LEVEL_TOP LIST_LEVEL seconds after a
+--                  level-up, or that there is nothing (lines 333-341).
 -- Nothing at login (prompts there before SETTLE seconds have passed are
 -- the state the player logged in to, not a change), nothing for a replaced
 -- text (the same rule, still true), and nothing for the same prompt again
@@ -45,6 +50,22 @@ A.LEFT = "You left the dungeon."
 -- The kinds of instance, as the game names them, that count as a dungeon.
 A.DUNGEON_KINDS = { party = true, raid = true }
 A.DUNGEON_EVENTS = { "PLAYER_ENTERING_WORLD", "ZONE_CHANGED_NEW_AREA" }
+A.LIST = "alerts.list"
+A.LIST_LOGIN, A.LIST_LOGIN_TOP = 6, 3
+A.LIST_LEVEL, A.LIST_LEVEL_TOP = 2, 5
+A.LIST_HEAD = "Ways to improve:"
+A.LIST_NONE = "Nothing to improve right now."
+
+-- The chat lines for the advisor's list: the head, then the first n
+-- numbered; nil for an empty list.
+function A.ListLines(list, n)
+    if type(list) ~= "table" or #list == 0 then return nil end
+    local out = { A.LIST_HEAD }
+    for i = 1, math.min(n, #list) do
+        out[#out + 1] = "  " .. i .. ". " .. tostring(list[i].text)
+    end
+    return out
+end
 
 -- Whether an instance read is inside a dungeon: true, false, or nil when
 -- the client did not say.
@@ -143,6 +164,19 @@ function A.Declare(k)
         if ctx.settings:get(A.SOUND) == true then sound() end
     end
 
+    -- The list in chat; empty says so only when asked (a level-up).
+    local function sayList(n, sayEmpty)
+        if not ctx or ctx.settings:get(A.LIST) ~= true then return end
+        local list = ctx.use("advisor").List()
+        local out = A.ListLines(list, n)
+        if not out then
+            if sayEmpty then say(A.LIST_NONE) end
+            return
+        end
+        say(out[1])
+        for i = 2, #out do ctx.client.print(out[i]) end
+    end
+
     local function readDungeon()
         if not ctx or type(ctx.client.instance) ~= "function" then return nil end
         local ok, read = pcall(ctx.client.instance)
@@ -182,6 +216,11 @@ function A.Declare(k)
             help = "With alerts on, says in chat when you go into a dungeon or a raid and when you come out. "
                 .. "Off until you turn it on.",
             synonyms = { "dungeon", "instance", "raid", "enter", "leave", "zone in" } },
+        { key = "alerts.list", scope = "account", type = "bool", default = true, group = "general",
+            label = "Ways to improve in chat at login and level-up",
+            help = "Says the top ways to improve your character in chat a few seconds after you log in "
+                .. "(when there are any) and after each level-up.",
+            synonyms = { "advice", "improve", "login", "level up", "list" } },
     }
     for _, kind in ipairs(A.KINDS) do
         settings[#settings + 1] = {
@@ -208,6 +247,16 @@ function A.Declare(k)
             cancelSettle = c.sched:after(A.NAME, A.SETTLE, function() settled = true end)
             cancelWatch = c.use("advisor").Watch(heard)
             inDungeon = readDungeon()
+            cancels[#cancels + 1] = c.sched:after(A.NAME, A.LIST_LOGIN, function()
+                local ok, err = pcall(sayList, A.LIST_LOGIN_TOP, false)
+                if not ok then k.problems:add(A.NAME, "list", tostring(err)) end
+            end)
+            cancels[#cancels + 1] = c.bus:on(A.NAME, "PLAYER_LEVEL_UP", function()
+                c.sched:after(A.NAME, A.LIST_LEVEL, function()
+                    local ok, err = pcall(sayList, A.LIST_LEVEL_TOP, true)
+                    if not ok then k.problems:add(A.NAME, "list", tostring(err)) end
+                end)
+            end)
             for _, event in ipairs(A.DUNGEON_EVENTS) do
                 cancels[#cancels + 1] = c.bus:on(A.NAME, event, function()
                     local ok, err = pcall(moved)

@@ -306,6 +306,9 @@ N.PROF_STATION_DETAIL = "nearest known %s"
 N.PROF_STATIONS_PATH = "learned.keyStations"
 N.PROF_CRAFT_SURE = "Make %s: a sure %s point"
 N.PROF_CRAFT_MAYBE = "Make %s: may give a %s point"
+-- P-PROF slice 4 (Lazy), as Flow's SkillPlan UseBank: the craft's mats are
+-- short in the bags but there with what the bank held at the last visit.
+N.PROF_BANK_NOTE = "Its mats are in your bank: visit the banker first."
 N.PROF_WHY_READ = "Open your %s window once to read your skill"
 N.PROF_WHY_TRAINER = "%s capped at %d: open a %s trainer once to mark it"
 N.PROF_WHY_TRAIN = "%s capped at %d: train the next rank when you can"
@@ -515,6 +518,26 @@ function N.ProfNext(input)
     return textNext(input, names, here)
 end
 
+-- Slice 4: true when one craft of rec is short in bags and not with bank
+-- added. bags, bank: { [item key] = count } (Items/HaveTip.lua); nil (not
+-- read, or the bank never seen) is never short.
+function N.ProfBankShort(rec, bags, bank)
+    if type(rec) ~= "table" or type(rec.mats) ~= "table" or type(bags) ~= "table" or type(bank) ~= "table" then
+        return false
+    end
+    local short = false
+    for item, need in pairs(rec.mats) do
+        local key = ns.Items.Key(item)
+        if key == nil or not finite(need) then return false end
+        local inBags, inBank = bags[key], bank[key]
+        if not finite(inBags) then inBags = 0 end
+        if not finite(inBank) then inBank = 0 end
+        if inBags + inBank < need then return false end
+        if inBags < need then short = true end
+    end
+    return short
+end
+
 -- Steps 3 and 4 of N.ProfNext: nothing has a place.
 textNext = function(input, names, here)
     -- The craft that gives a point: sure before maybe, then by profession.
@@ -530,7 +553,11 @@ textNext = function(input, names, here)
     end
     if pick then
         local words = pickKind == "sure" and N.PROF_CRAFT_SURE or N.PROF_CRAFT_MAYBE
-        return textStep(words:format(pick, pickProf))
+        local line = words:format(pick, pickProf)
+        if N.ProfBankShort(input.book[pick], input.bags, input.bank) then
+            return textStep({ line, N.PROF_BANK_NOTE })
+        end
+        return textStep(line)
     end
 
     -- Why, one line for each profession by name.
@@ -561,6 +588,19 @@ end
 -- N.ProfNextFrom(client, store, nodeSource) -> N.ProfNext read from the
 -- client, the saved tables and the GatherMate2 source module (or nil).
 -- It writes nothing; a read that fails is "not known".
+-- Slice 4: the bag and bank counts by item key, or nil when not read.
+local function bagCounts(client)
+    local stacks = ask(client, "bagItems")
+    if type(stacks) ~= "table" or type(ns.HaveTip) ~= "table" then return nil end
+    return ns.HaveTip.Counts(stacks, ns.Items.Key)
+end
+
+local function bankCounts(store)
+    local b = saved(store, "char", "learned.bankCounts")
+    if type(b) ~= "table" or type(b.counts) ~= "table" then return nil end
+    return b.counts
+end
+
 function N.ProfNextFrom(client, store, nodeSource)
     local nodes, state
     if type(nodeSource) == "table" then
@@ -589,11 +629,34 @@ function N.ProfNextFrom(client, store, nodeSource)
         book = saved(store, "char", "learned.facts.recipeBook"),
         colours = saved(store, "char", "learned.recipeColors"),
         stations = saved(store, "account", N.PROF_STATIONS_PATH),
+        bags = bagCounts(client),
+        bank = bankCounts(store),
     })
 end
 
 N.PROF_STEP = "profStep"
 N.PROF_SETTING = "nav.profArrow"
+
+-- The feed's step (Nav/ProfFeed.lua: picked, with its pick) or the older
+-- step (N.ProfNext: gather nodes, the trainer at the cap, the station),
+-- whichever walks the player further:
+--   a pick to do here or to walk to on this continent (ranks 1 to 3),
+--   else the older step when it has a place,
+--   else a pick in words (also one on another continent), but training in
+--   words leaves it to the older step, which knows the trainer and the cap,
+--   else the older step's words, else the feed's one line of what to do.
+-- Never silent while either has something to say.
+function N.ProfChoose(picked, pick, older)
+    if type(picked) ~= "table" then return older end
+    local rank = type(pick) == "table" and pick.rank or nil
+    if type(rank) ~= "number" then return picked end
+    if rank <= 3 then return picked end
+    if type(older) == "table" and type(older.place) == "table" then return older end
+    local training = type(pick.step) == "table" and pick.step.kind == "train_tier"
+    if rank <= 5 and not (training and type(older) == "table") then return picked end
+    if type(older) == "table" then return older end
+    return picked
+end
 
 function N.ProfStepDeclare(k)
     local api = {}
@@ -608,12 +671,29 @@ function N.ProfStepDeclare(k)
 
     function api.step()
         if not ctx or off() then return nil end
+        -- Lead section 382 (Nav/ProfFeed.lua): the Professions tick off
+        -- gives no profession step; with the planner there, its one step
+        -- picked across the professions comes first.
+        local feed
+        if type(ctx.use) == "function" then
+            local okFeed, f = pcall(ctx.use, N.ProfFeed and N.ProfFeed.NAME or "profFeed")
+            if okFeed and type(f) == "table" then feed = f end
+        end
+        if feed and type(feed.Off) == "function" then
+            local okOff, isOff = pcall(feed.Off)
+            if okOff and isOff then return nil end
+        end
+        local picked, pick
+        if feed and type(feed.Step) == "function" then
+            local okStep, s, p = pcall(feed.Step)
+            if okStep and type(s) == "table" then picked, pick = s, p end
+        end
         local source
         if type(ctx.use) == "function" then
             local ok, s = pcall(ctx.use, "gatherMateSource")
             if ok then source = s end
         end
-        return N.ProfNextFrom(ctx.client, ctx.store, source)
+        return N.ProfChoose(picked, pick, N.ProfNextFrom(ctx.client, ctx.store, source))
     end
 
     k:Setting({ key = N.PROF_SETTING, scope = "account", type = "bool", default = true,

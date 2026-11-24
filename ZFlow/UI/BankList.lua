@@ -13,8 +13,11 @@
 --   BankList.Tree(client, store, grants, r, id) -> a Kit.Window spec of the
 --     same listing. id: the identity for the title (default ns.id)
 --   BankList.Current(use) -> r, one Reservations evaluation (Items/Reservations.lua)
---   BankList.Declare(k) -> api   (api.last(), api.shows())
---   ns.use(BankList.NAME) -> { Last, Shows }
+--   BankList.Declare(k) -> api   (api.last(), api.shows(), api.show())
+--   ns.use(BankList.NAME) -> { Last, Shows, Show }
+--     Show: asked for (the bank window's button): lists now and shows the
+--     window, also after the player closed it and with "bank.list" off.
+--     Only while the bank window is open. -> true, or false and why.
 --
 -- Setting: "bank.list" (bool, on by default); the row is the lead's to add.
 -- Until it is there the list is on.
@@ -42,6 +45,9 @@ ns.BankList = BankList
 BankList.NAME = "bankList"
 BankList.BAG_EVENT = "BAG_UPDATE_DELAYED"
 BankList.SETTING = "bank.list"
+BankList.NOT_STARTED = "the bank list has not started"
+BankList.NO_BANK = "no bank window is open"
+BankList.NO_PANEL = "this client cannot draw the list"
 BankList.WIDTH, BankList.HEIGHT = 340, 260              -- the text panel
 BankList.KIT_ID = "BankList"
 BankList.KIT_WIDTH, BankList.KIT_HEIGHT = 420, 480
@@ -240,6 +246,13 @@ function BankList.Declare(k)
     function api.last() return last end
     function api.shows() return shows end
     function api.window() return win end
+    -- Set at the start: lists and shows, whatever the setting says.
+    local showNow = nil
+    local asked = false
+    function api.show()
+        if not showNow then return false, BankList.NOT_STARTED end
+        return showNow()
+    end
 
     local function hide()
         if win then win.show(false) end
@@ -249,7 +262,7 @@ function BankList.Declare(k)
     k:Module({
         name = BankList.NAME,
         needs = { "client", "store", "bus", "settings" },
-        provides = { Last = api.last, Shows = api.shows },
+        provides = { Last = api.last, Shows = api.shows, Show = function() return api.show() end },
         start = function(ctx)
             local client = ctx.client
             local id = k.id or ns.id
@@ -308,10 +321,12 @@ function BankList.Declare(k)
             open = type(client.bankOpen) == "function" and client.bankOpen() == true
             -- One evaluation for the prompt and the panel: made when the bank
             -- opens, and again when the reservations change while it is open.
+            -- asked: the player asked for it (the bank window's button), so
+            -- it is shown with "bank.list" off too, until the bank closes.
             local function list()
                 local r = BankList.Current(ctx.use)
                 prompt(r)
-                if ctx.settings:get(BankList.SETTING) == false then
+                if not asked and ctx.settings:get(BankList.SETTING) == false then
                     hide()
                     return
                 end
@@ -331,6 +346,13 @@ function BankList.Declare(k)
                     p.show(true)
                 end
             end
+            showNow = function()
+                if not open then return false, BankList.NO_BANK end
+                closed = false
+                asked = true
+                list()
+                return true
+            end
             ctx.bus:on(BankList.NAME, "PLAYER_ENTERING_WORLD", function() prompt() end)
             ctx.bus:on(BankList.NAME, "BANKFRAME_OPENED", function()
                 open = true
@@ -340,6 +362,7 @@ function BankList.Declare(k)
             ctx.bus:on(BankList.NAME, "BANKFRAME_CLOSED", function()
                 open = false
                 closed = false
+                asked = false
                 hide()
                 prompt()      -- away from the bank: the prompt goes
             end)
@@ -394,6 +417,8 @@ function BankList.Declare(k)
         stop = function()
             hide()
             closed = false
+            showNow = nil
+            asked = false
         end,
     })
     return api

@@ -39,7 +39,7 @@ tests["minimap button: made and shown at login by default, with the title and th
     t.eq(b and b.shown, true, "shown")
     t.eq(#c.minimapButtons, 1, "made once")
     t.eq(addon.settings:get("ui.minimapButton"), true, "on by default")
-    t.eq(b and b.tipLines, { ns.id.title, "Click: settings. Drag: move." })
+    t.eq(b and b.tipLines, { ns.id.title, "Click: settings. Right-click: route menu. Drag: move." })
     t.ok(b and type(b.x) == "number" and type(b.y) == "number", "placed")
     t.eq(mine(addon), 0, "no problem")
 end
@@ -49,6 +49,124 @@ tests["minimap button: a click opens the settings page"] = function(t)
     local opened = c.optionsOpened()
     button(c).click()
     t.eq(c.optionsOpened(), opened + 1, "the settings page opened")
+end
+
+local function row(items, key)
+    for _, item in ipairs(items or {}) do
+        if item.key == key then return item end
+    end
+    return nil
+end
+
+tests["minimap button: a right click opens the route menu and not the settings"] = function(t)
+    local c = boot()
+    local opened = c.optionsOpened()
+    local b = button(c)
+    b.click("right")
+    t.eq(c.optionsOpened(), opened, "the settings page stays shut")
+    t.ok(type(b.menuItems) == "table", "the menu is open")
+    t.eq(b.menuItems[1].title, true)
+    t.eq(b.menuItems[1].text, ns.id.title .. " route")
+    t.eq(row(b.menuItems, "plan").text, "Plan a route from my quest log")
+    t.eq(row(b.menuItems, "none").disabled, true, "no route: says so, nothing to skip or clear")
+    t.eq(row(b.menuItems, "skip"), nil)
+    t.eq(row(b.menuItems, "clear"), nil)
+    t.eq(row(b.menuItems, "window").checked, true, "the route window is on at first")
+    t.ok(row(b.menuItems, "settings") ~= nil)
+end
+
+tests["minimap button: the menu's settings row opens the settings page"] = function(t)
+    local c = boot()
+    local opened = c.optionsOpened()
+    local b = button(c)
+    b.click("right")
+    b.choose("settings")
+    t.eq(b.menuItems, nil, "the menu closed")
+    t.eq(c.optionsOpened(), opened + 1)
+end
+
+tests["minimap button: the menu's window row switches the route window's setting"] = function(t)
+    local c, addon = boot()
+    local b = button(c)
+    b.click("right")
+    b.choose("window")
+    t.eq(addon.settings:get("nav.tracker"), false)
+    b.click("right")
+    t.eq(row(b.menuItems, "window").checked, false)
+    b.choose("window")
+    t.eq(addon.settings:get("nav.tracker"), true)
+end
+
+tests["minimap button: hiding the button closes its menu"] = function(t)
+    local c, addon = boot()
+    local b = button(c)
+    b.click("right")
+    addon.settings:set("ui.minimapButton", false)
+    t.eq(b.menuItems, nil)
+end
+
+tests["minimap button: the route rows say what the route word says"] = function(t)
+    local c = ns.make.fakeClient()
+    c.setSaved(ns.id.accountDB, {})
+    local k = ns.Kernel({}, c)
+    ns.Diag.Start(k)
+    local said, has, stops = {}, false, 0
+    k:Module({ name = "tripRoute", provides = {
+        Lines = function() return has and { "Stops left: " .. stops } or nil end,
+        Plan = function()
+            said[#said + 1] = "new"
+            if stops == 0 then return nil, "No stop known." end
+            has = true
+            return {}
+        end,
+        Skip = function()
+            said[#said + 1] = "skip"
+            stops = stops - 1
+            if stops == 0 then has = false end
+            return has and {} or nil
+        end,
+        Off = function()
+            said[#said + 1] = "off"
+            has = false
+        end,
+    } })
+    ns.MinimapButton.Declare(k)
+    k:Boot()
+    c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
+    local b = c.minimapButtons[1]
+    t.ok(b ~= nil, "made")
+    b.click("right")
+    t.eq(row(b.menuItems, "window"), nil, "no route window here: no row for it")
+    local T, said0 = ns.Nav.TripRoute, #c.printed
+    b.choose("plan")
+    t.eq(c.printed[said0 + 1], ns.id.title .. ": No stop known.", "why no route, in chat")
+    stops = 2
+    b.click("right")
+    b.choose("plan")
+    t.eq(said, { "new", "new" })
+    t.eq(c.printed[said0 + 2], ns.id.title .. ": Stops left: 2")
+    b.click("right")
+    t.eq(row(b.menuItems, "plan").text, "Plan the route again")
+    t.eq(row(b.menuItems, "none"), nil)
+    b.choose("skip")
+    t.eq(c.printed[said0 + 3], ns.id.title .. ": Stops left: 1")
+    b.click("right")
+    b.choose("clear")
+    t.eq(c.printed[said0 + 4], ns.id.title .. ": " .. T.CLEARED)
+    t.eq(said, { "new", "new", "skip", "off" })
+    stops = 1
+    b.click("right")
+    b.choose("plan")
+    b.click("right")
+    b.choose("skip")
+    t.eq(c.printed[said0 + 6], ns.id.title .. ": " .. T.DONE, "the last stop skipped: done")
+    said = {}
+    b.click("right")
+    t.eq(row(b.menuItems, "skip"), nil, "cleared: nothing to skip")
+    b.choose("none")
+    b.click("right")
+    b.choose("nonsense")
+    t.eq(said, {}, "a row that is not offered does nothing")
 end
 
 tests["minimap button: a drag saves the angle and a reload puts it back"] = function(t)

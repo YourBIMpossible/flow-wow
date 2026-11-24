@@ -208,6 +208,17 @@ local pack = {
         heal = { name = "Restoration", evidence = GUESS },
     },
 
+    -- G31: the spec recommended while levelling alone, and why. Written for
+    -- this pack in its own words from general knowledge of the class; nothing
+    -- here was read from the game or taken from a guide.
+    levelling = {
+        role = "dps", evidence = GUESS,
+        why = {
+            "Weapon hits with a weapon enchant on, and a shock now and then, kill at a steady pace for little mana.",
+            "You can still heal yourself between fights, and heal a dungeon at your level without healing talents.",
+        },
+    },
+
     resources = {
         { name = "Mana", forms = { "none" }, evidence = GUESS, note = OLD },
     },

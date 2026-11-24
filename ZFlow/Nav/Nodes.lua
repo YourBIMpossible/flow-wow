@@ -240,10 +240,14 @@ function X.Declare(k, diag)
         for _, e in ipairs(type(list) == "table" and list or {}) do
             if type(e) == "table" and finite(e.x) and finite(e.y)
                 and ((e.prof == nil and #mine > 0) or (e.prof ~= nil and have[e.prof])) then
-                out[#out + 1] = { node = e, d = yards(e, p, size) }
+                out[#out + 1] = { node = e, d = yards(e, p, size), i = #out + 1 }
             end
         end
-        table.sort(out, function(a, b) return a.d < b.d end)
+        -- Equal distances keep the saved order: table.sort is not stable.
+        table.sort(out, function(a, b)
+            if a.d ~= b.d then return a.d < b.d end
+            return a.i < b.i
+        end)
         for i = #out, (max or X.SHOW) + 1, -1 do out[i] = nil end
         return out, size ~= nil, p
     end
