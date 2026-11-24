@@ -10,7 +10,9 @@ local _, ns = ...
 --
 --   kind        = BagMarks.KindOf(decision)
 --   marks, n    = BagMarks.Marks(slots, itemInfo, context)
---   api         = BagMarks.Declare(k)    api.drawn() (how many, last draw)
+--   api         = BagMarks.Declare(k, diag)   api.drawn() (how many, last draw)
+--   line        = BagMarks.StateLine(id, on)  what the bags word says
+--   line        = BagMarks.UsageLine(id)
 --
 --   kind    "quest"    a quest item (its item class, or the quest or
 --                      questNeeds rule)
@@ -30,12 +32,23 @@ local _, ns = ...
 -- the bag window's own redraw through client.onBagRedraw when it has one.
 -- Client (first guesses, not seen in game): client.markBagKinds(marks),
 -- client.onBagRedraw(fn).
+--
+-- The word (parity row E-05), added to diag.commands when a diag is given:
+--   <slash> bags       says whether the marks are on, and how to change it
+--   <slash> bags on    switches the setting bags.marks on
+--   <slash> bags off   switches it off
+-- Anything else after the word prints the usage line and changes nothing.
+-- It sets the settings row above, no switch of its own, and says on or off
+-- only after reading the setting back. Not tested in game.
 
 local B = {}
 ns.BagMarks = B
 
 B.NAME = "bagMarks"
 B.SETTING = "bags.marks"
+-- (B.SLASH, not B.WORD: B.WORD below is the table of the mark words.)
+B.SLASH = "bags"
+B.HELP = "bags on, bags off: the marks on your bag slots; bags alone says which it is"
 
 -- The game textures the client puts on a slot (first guesses, not seen in
 -- game on 16001).
@@ -99,6 +112,25 @@ function B.Marks(slots, itemInfo, context)
         end
     end
     return marks, n
+end
+
+-- The bags word's lines. id is the add-on's names (ns.id: title, slash);
+-- on is the setting as it was read back, true or false.
+local function wordOf(id)
+    return tostring(id.slash) .. " " .. B.SLASH
+end
+
+function B.StateLine(id, on)
+    if on then
+        return tostring(id.title) .. ": bag marks are on. Turn them off with " .. wordOf(id) .. " off."
+    end
+    return tostring(id.title) .. ": bag marks are off. Turn them on with " .. wordOf(id) .. " on."
+end
+
+function B.UsageLine(id)
+    local cmd = wordOf(id)
+    return tostring(id.title) .. ": " .. cmd .. " on or " .. cmd .. " off switches the marks on your bag slots; "
+        .. cmd .. " alone says which it is."
 end
 
 -- G4: the in-game context. UI/BankList.lua's Context (never-sell list,
@@ -207,7 +239,7 @@ function B.Context(client, store, settings, slots, packs)
     return context
 end
 
-function B.Declare(k)
+function B.Declare(k, diag)
     local api, ctx, drawn = {}, nil, 0
     function api.drawn() return drawn end
 
@@ -228,6 +260,63 @@ function B.Declare(k)
         end
         local ok, n = pcall(ctx.client.markBagKinds, marks)
         drawn = ok and type(n) == "number" and n or 0
+    end
+
+    -- The setting as it reads now: true or false, nil when it can't be read.
+    local function state()
+        if ctx == nil then return nil end
+        local ok, v = pcall(ctx.settings.get, ctx.settings, B.SETTING)
+        if ok and type(v) == "boolean" then return v end
+        return nil
+    end
+
+    -- The bags word. rest is what follows it, lower-cased by the slash
+    -- command. It writes the setting and redraws; it uses, sells and moves
+    -- nothing.
+    local function run(rest)
+        local id = k.id or ns.id
+        local client = ctx and ctx.client or k.client
+        local function say(line)
+            if type(client) == "table" and type(client.print) == "function" then client.print(line) end
+        end
+        local word = type(rest) == "string" and rest:lower():match("^%s*(.-)%s*$") or ""
+        if word ~= "" and word ~= "on" and word ~= "off" then
+            say(B.UsageLine(id))
+            return
+        end
+        if ctx == nil then
+            say(tostring(id.title) .. ": bag marks are not started yet, so the setting can't be read.")
+            return
+        end
+        if word == "" then
+            local now = state()
+            if now == nil then
+                say(tostring(id.title) .. ": the bag marks setting can't be read.")
+            else
+                say(B.StateLine(id, now))
+            end
+            return
+        end
+        local want = word == "on"
+        local ok, done, why = pcall(ctx.settings.set, ctx.settings, B.SETTING, want)
+        if not ok then done, why = false, done end
+        local now = state()
+        draw()
+        if done and now == want then
+            say(B.StateLine(id, now))
+        elseif now == nil then
+            say(tostring(id.title) .. ": the bag marks setting can't be read, so it is not known whether it is "
+                .. word .. (why ~= nil and (" (" .. tostring(why) .. ")") or "") .. ".")
+        else
+            say(tostring(id.title) .. ": the bag marks setting could not be changed"
+                .. (why ~= nil and (" (" .. tostring(why) .. ")") or "") .. ". Bag marks are still "
+                .. (now and "on" or "off") .. ".")
+        end
+    end
+
+    if diag and type(diag.commands) == "table" then
+        diag.commands[B.SLASH] = run
+        if type(diag.help) == "table" then diag.help[B.SLASH] = B.HELP end
     end
 
     k:Module({
@@ -257,4 +346,4 @@ function B.Declare(k)
 end
 
 -- The addon's own: declared when this file loads, started at login.
-ns.bagMarks = B.Declare(ns)
+ns.bagMarks = B.Declare(ns, ns.diag)
