@@ -209,6 +209,27 @@ return {
         t.eq(point and { point[1], point[3], point[4], point[5] }, { "TOPLEFT", "BOTTOMLEFT", 54, 96 })
     end,
 
+    ["panel (F4): every row has a highlight and a separator line; the line shows only on a sep row"] = function(t)
+        local e, made = env()
+        local c = ns.make.client(e)
+        local h = c.arrow(SPEC)
+        local before = #made
+        h.menu({ { title = true, text = "Route" }, { sep = true }, { text = "Reset", key = "reset" } }, function() end)
+        local rows = {}
+        for i = before + 1, #made do
+            if made[i].kind == "Button" and made[i].parent ~= e.UIParent then rows[#rows + 1] = made[i] end
+        end
+        t.eq(#rows, 3)
+        local function layers(row)
+            local out = {}
+            for _, cl in ipairs(row.calls) do
+                if cl.name == "CreateTexture" then out[#out + 1] = cl[2] end
+            end
+            return table.concat(out, ",")
+        end
+        t.eq(layers(rows[2]), "ARTWORK,HIGHLIGHT,ARTWORK", "check mark, highlight, separator line")
+    end,
+
     -- ---------------------------------------------------------------- AI2
     ["tip: a tooltip that cannot say whose it is is left alone"] = function(t)
         local e = env()

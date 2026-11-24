@@ -3200,6 +3200,14 @@ function ns.make.client(env)
             method(back, "SetAllPoints", panel)
             method(back, "SetColorTexture", 0.05, 0.05, 0.05, 0.92)
         end
+        -- Flow's menu: a 3px accent edge down the left side.
+        local okE, edge = method(panel, "CreateTexture", nil, "BORDER")
+        if okE and edge ~= nil then
+            method(edge, "SetPoint", "TOPLEFT", panel, "TOPLEFT", 0, 0)
+            method(edge, "SetPoint", "BOTTOMLEFT", panel, "BOTTOMLEFT", 0, 0)
+            method(edge, "SetWidth", 3)
+            method(edge, "SetColorTexture", 1, 0.82, 0, 0.9)
+        end
         return true
     end
     local function menuRow(i)
@@ -3219,6 +3227,22 @@ function ns.make.client(env)
         if okT and text ~= nil then
             r.text = text
             method(text, "SetPoint", "LEFT", button, "LEFT", MENU_MARK, 0)
+        end
+        -- Flow's menu: the row under the pointer lights up; a sep row is a line.
+        local okH, glow = method(button, "CreateTexture", nil, "HIGHLIGHT")
+        if okH and glow ~= nil then
+            r.glow = glow
+            method(glow, "SetAllPoints", button)
+            method(glow, "SetColorTexture", 1, 1, 1, 0.12)
+        end
+        local okL, line = method(button, "CreateTexture", nil, "ARTWORK")
+        if okL and line ~= nil then
+            r.line = line
+            method(line, "SetPoint", "LEFT", button, "LEFT", 4, 0)
+            method(line, "SetPoint", "RIGHT", button, "RIGHT", -4, 0)
+            method(line, "SetHeight", 1)
+            method(line, "SetColorTexture", 0.6, 0.6, 0.6, 0.5)
+            method(line, "Hide")
         end
         method(button, "RegisterForClicks", "AnyUp")
         method(button, "SetScript", "OnClick", function()
@@ -3260,6 +3284,8 @@ function ns.make.client(env)
                     if okW and type(w) == "number" and not hidden(w) and w > widest then widest = w end
                 end
                 if r.mark then method(r.mark, item.checked == true and "Show" or "Hide") end
+                if r.line then method(r.line, item.sep and "Show" or "Hide") end
+                if r.glow then method(r.glow, plain and "Show" or "Hide") end
                 method(r.button, "Show")
             end
         end
