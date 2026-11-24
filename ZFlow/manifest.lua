@@ -173,6 +173,7 @@ return {
         "Nav/TaxiMark.lua",
         -- S30: the flight paths still to learn, said in words (after FlightPaths).
         "Nav/FlightTimes.lua",
+        "Nav/FlightNow.lua",
         "Nav/FlightWord.lua",
         "Nav/Flights.lua",
         "Nav/Gates.lua",
