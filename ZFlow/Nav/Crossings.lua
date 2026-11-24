@@ -541,6 +541,7 @@ function Crossings.Declare(k)
                 board = ended
             end
         end
+        if board and N.CrossingBoardKept then board = N.CrossingBoardKept(board, hereName) end
         local before = last
         last = here
         if before == nil or before.cont == here.cont then return nil end

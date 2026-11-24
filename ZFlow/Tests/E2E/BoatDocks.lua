@@ -126,6 +126,32 @@ tests["boat docks: at the dock with no wait known, wait here; the time stays unk
     end
 end
 
+-- Lead section 473: a stop in town, then a walk to the dock and straight
+-- onto the boat: the stop in town is not the boat's wait.
+tests["boat docks: a stop away from the dock is not kept as the wait"] = function(t)
+    local c = start()
+    c.setPlaceText("Wetlands", "Trade District"); c.setPosition(1437, 0.5, 0.52); c.advance(10, 20)
+    local function dock()
+        c.setPlaceText("Wetlands", "Menethil Harbor"); c.setZone(0, 1437); c.setPosition(1437, 0.1, 0.5); c.advance(1, 4)
+    end
+    local function over()
+        c.setPlaceText("Darkshore", "Auberdine"); c.setZone(1, 1439); c.setPosition(1439, 0.3, 0.4); c.advance(1, 4)
+    end
+    c.setPlaceText("Wetlands", "Menethil Harbor"); c.setPosition(1437, 0.3, 0.5); c.advance(1, 4)
+    dock(); over(); dock(); over(); dock()
+    c.setPlaceText("Wetlands", nil); c.setPosition(1437, 0.5, 0.5); c.advance(2, 4)
+    local away = shown(c)
+    t.eq(away and away[1], "Crossing to Auberdine")
+    for _, line in ipairs(away or {}) do
+        t.ok(not line:find("minute", 1, true), "the town stop is no wait: " .. line)
+    end
+    local N = ns.Nav
+    local b = { name = "Trade District", secs = 10 }
+    t.eq(N.CrossingBoardKept(b, "Menethil Harbor"), nil)
+    t.eq(N.CrossingBoardKept(b, "Trade District"), b)
+    t.eq(N.CrossingBoardKept({ secs = 10 }, "Menethil Harbor") ~= nil, true, "words not known: kept")
+end
+
 tests["boat docks: the wait words are pure and never guess a time"] = function(t)
     local N = ns.Nav
     t.eq(N.CrossingHint(nil, "Menethil Harbor", "Auberdine", nil, true),

@@ -102,6 +102,16 @@ function N.CrossingStill(run, here, now, name)
     return fresh, { cont = run.cont, name = run.name, secs = now - run.since }
 end
 
+-- Lead section 473: the still run kept as the boat's wait is the wait only
+-- while the player is still where it was read. Both place words known and
+-- different (the stop was in town, then the player walked to the dock):
+-- it is no wait, nil. Words not known keep it (nothing tells them apart).
+function N.CrossingBoardKept(board, name)
+    if type(board) ~= "table" then return nil end
+    if named(board.name) and named(name) and board.name ~= name then return nil end
+    return board
+end
+
 local function copy(t)
     local out = {}
     for k, v in pairs(t) do out[k] = v end
