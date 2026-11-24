@@ -472,4 +472,8 @@ KIND.act[#KIND.act + 1] = "addonSend"
 READS.trackingRaw = false
 READS.tradeSkillAnswers = false
 
+
+-- S32: the zone and sub-zone words behind client.placeText, read by
+-- Nav/Crossings.lua to name a dock; never by the capture.
+READS.placeText = false
 return tests
