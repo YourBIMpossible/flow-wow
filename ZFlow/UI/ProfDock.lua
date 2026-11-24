@@ -33,6 +33,15 @@ local _, ns = ...
 --   ProfDock.Dock(rect, screenW, screenH, height) -> point, width | nil
 --   ProfDock.Declare(k) -> api
 --
+-- A free primary profession slot (queue item A3, G17/G18): while the panel
+-- is up it also says which profession to learn and why, one line each, in
+-- the panel itself; no window of its own. The advice is UI/ProfPick.lua's
+-- (Advice, StepOf, Lines), read here and never changed; its setting and its
+-- "not now" are honoured. Words only: nothing is trained.
+--   ProfDock.Pick(advice, where) -> { { name, text, sub, icon, tooltip } }
+--     advice  what ProfPick.Advice gave; where(name) -> a line saying
+--             where it is taught, or nil
+--
 -- Not seen in game: where the panel stands under the profession window, its
 -- width against that window, and whether every line fits.
 
@@ -62,6 +71,34 @@ D.READY = "Ready"
 D.NEED = "Need %d %s"
 D.MORE = " +%d more"
 D.UNNAMED = "of a material"
+
+D.HEAD_PICK = "Free profession slot"
+D.PICK_TEXT = "Learn %s"
+D.PICK_HEAD, D.PICK_ROW = 36, 40
+-- Why, in a few words, for the second line of each profession advised.
+D.PICK_WHY = {
+    Alchemy = "Potions from the herbs you gather",
+    Blacksmithing = "Armour and weapons from ore",
+    Enchanting = "Enchants from gear you do not need",
+    Engineering = "Gadgets and bombs from ore and stone",
+    Herbalism = "Gathers herbs as you level, to use or sell",
+    Leatherworking = "Armour from the leather you skin",
+    Mining = "Gathers ore as you level, to use or sell",
+    Skinning = "Leather from the beasts you kill",
+    Tailoring = "Bags and cloth gear from the cloth you loot",
+}
+D.PICK_ICON = {
+    Alchemy = "Interface\\Icons\\Trade_Alchemy",
+    Blacksmithing = "Interface\\Icons\\Trade_BlackSmithing",
+    Enchanting = "Interface\\Icons\\Trade_Engraving",
+    Engineering = "Interface\\Icons\\Trade_Engineering",
+    Herbalism = "Interface\\Icons\\Trade_Herbalism",
+    Leatherworking = "Interface\\Icons\\Trade_LeatherWorking",
+    Mining = "Interface\\Icons\\Trade_Mining",
+    Skinning = "Interface\\Icons\\INV_Misc_Pelt_Wolf_01",
+    Tailoring = "Interface\\Icons\\Trade_Tailoring",
+}
+D.PICK_ICON_ANY = "Interface\\Icons\\INV_Misc_Book_09"
 
 D.SMELT_PROF = "Mining"
 D.ICON = {
@@ -327,10 +364,31 @@ local function need(row)
     return said
 end
 
-function D.Height(rows)
+-- The lines for a free profession slot: one per profession advised, with
+-- why in a few words; the whole advice and where it is taught on hover.
+function D.Pick(advice, where)
+    local out = {}
+    if type(advice) ~= "table" or type(advice.wants) ~= "table" then return out end
+    for _, name in ipairs(advice.wants) do
+        if text(name) then
+            local tip = text(advice.text) and advice.text or nil
+            local at = type(where) == "function" and call(where, name) or nil
+            if text(at) then tip = tip and (tip .. "\n" .. at) or at end
+            out[#out + 1] = { name = name, text = string.format(D.PICK_TEXT, name),
+                sub = D.PICK_WHY[name] or (text(at) and at) or nil,
+                icon = D.PICK_ICON[name] or D.PICK_ICON_ANY, tooltip = tip }
+        end
+    end
+    return out
+end
+
+function D.Height(rows, pick)
     local n = type(rows) == "table" and #rows or 0
-    if n == 0 then return D.BASE_HEIGHT end
-    return D.BASE_HEIGHT + D.LIST_HEAD + n * D.ROW_HEIGHT
+    local p = type(pick) == "table" and #pick or 0
+    local h = D.BASE_HEIGHT
+    if n > 0 then h = h + D.LIST_HEAD + n * D.ROW_HEIGHT end
+    if p > 0 then h = h + D.PICK_HEAD + p * D.PICK_ROW end
+    return h
 end
 
 function D.View(model)
@@ -349,11 +407,19 @@ function D.View(model)
                 tooltip = row.tooltip }
         end
     end
+    local pick = type(model.pick) == "table" and model.pick or {}
+    if #pick > 0 then
+        children[#children + 1] = { kind = "section", key = "pickHead", text = D.HEAD_PICK }
+        for i, row in ipairs(pick) do
+            children[#children + 1] = { kind = "line", key = "pick" .. i, text = row.text, sub = row.sub,
+                icon = row.icon, tooltip = row.tooltip }
+        end
+    end
     return {
         id = D.ID,
         title = text(model.prof) and string.format(D.TITLE, title(), model.prof)
             or string.format(D.TITLE_PLAIN, title()),
-        width = model.width or D.WIDTH, height = model.height or D.Height(rows),
+        width = model.width or D.WIDTH, height = model.height or D.Height(rows, pick),
         point = D.DEFAULT_POINT, escape = false,
         children = children,
     }
@@ -367,6 +433,10 @@ function D.Plain(model)
     if text(nextStep.sub) then out[#out + 1] = { kind = "info", text = nextStep.sub } end
     for _, row in ipairs(type(model) == "table" and type(model.rows) == "table" and model.rows or {}) do
         out[#out + 1] = { kind = "info", text = row.name .. ": " .. (row.ready and D.READY or need(row)) }
+    end
+    for _, row in ipairs(type(model) == "table" and type(model.pick) == "table" and model.pick or {}) do
+        out[#out + 1] = { kind = "info", text = D.HEAD_PICK .. ": " .. row.text
+            .. (text(row.sub) and (". " .. row.sub) or "") }
     end
     return out
 end
@@ -469,6 +539,28 @@ function D.Declare(k)
                 return nil
             end
 
+            -- A free primary slot: the picker's own advice, with its
+            -- setting and its saved "not now" honoured.
+            local function pickRows(here)
+                local PP = ns.ProfPick
+                if type(PP) ~= "table" or type(PP.Advice) ~= "function" then return {} end
+                if ctx.settings:get(PP.SETTING) == false then return {} end
+                local function saved(scope, path)
+                    if type(path) ~= "string" then return nil end
+                    local ok, v = pcall(ctx.store.get, ctx.store, scope, path)
+                    if ok and type(v) == "table" then return v end
+                    return nil
+                end
+                local advice = call(PP.Advice, ask("professions"), ask("class"), ask("level"),
+                    saved("char", PP.STATE))
+                local npcs, faction = saved("account", PP.NPCS), ask("faction")
+                return D.Pick(advice, function(name)
+                    if type(PP.StepOf) ~= "function" or type(PP.Lines) ~= "function" then return nil end
+                    local lines = PP.Lines(PP.StepOf(name, here, npcs, faction))
+                    return type(lines) == "table" and lines[1] or nil
+                end)
+            end
+
             local function build()
                 local P = ns.ProfPlan
                 local prof, skill, max, known, icons = window()
@@ -503,10 +595,11 @@ function D.Declare(k)
                     if icon == nil and nextStep.item ~= nil then icon = picture(ask("itemTexture", nextStep.item)) end
                     nextStep.icon = icon or nextStep.icon
                 end
-                local height = D.Height(rows)
+                local pick = pickRows(input.here)
+                local height = D.Height(rows, pick)
                 local point, width = slot(height)
-                return { prof = prof, next = nextStep, rows = rows, height = height, width = width or D.WIDTH,
-                    point = point }
+                return { prof = prof, next = nextStep, rows = rows, pick = pick, height = height,
+                    width = width or D.WIDTH, point = point }
             end
 
             local function draw()
