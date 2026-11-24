@@ -15,7 +15,9 @@
 -- button: Items/SellThese.lua sells the rows the window shows, on the
 -- player's click only; this file draws the button, says on it why it
 -- can't be pressed, and shows the note after a run. Nothing is sold when
--- a merchant opens, and the text panel has no button.
+-- a merchant opens, and the text panel has no button. G1: each row to sell
+-- also has its own "Sell" button under it, which sells that item's stacks
+-- only, through the same run (SellThese.PlanRow).
 --
 -- LOOK ONLY. This file makes no button and nothing here sells, buys,
 -- deletes, moves or clicks anything; selling is a separate decision (G2)
@@ -27,7 +29,9 @@
 --   SellList.TreeOf(listing, client, id, action): action (optional) =
 --                                     { button = a kit button for the
 --                                     footer, note = { text, tone } shown
---                                     first in the list }
+--                                     first in the list, rowButton =
+--                                     function(row, name) -> a kit button
+--                                     drawn under that row, or nil }
 --   SellList.Tree(client, store, grants, r, id) -> a Kit.Window spec of the
 --                                     same listing. id: the identity for
 --                                     the title (default ns.id)
@@ -458,6 +462,14 @@ function SellList.TreeOf(listing, client, id, action)
                 if not isWhole(r.count) then line.note = line.note .. "; " .. SellList.COUNT_UNKNOWN end
             end
             body[#body + 1] = line
+            -- G1: the row's own Sell button (Items/SellThese.lua), under it.
+            if type(action) == "table" and type(action.rowButton) == "function" then
+                local button = action.rowButton(r, line.name)
+                if type(button) == "table" then
+                    body[#body + 1] = { kind = "row", control = button,
+                        label = string.format(ns.SellThese.ROW_LABEL, tostring(line.name)) }
+                end
+            end
         end
         -- No price seen: no money, as unknown is not 0. Some seen: the
         -- total says it covers only those.
@@ -635,19 +647,45 @@ function SellList.Declare(k)
                 end
                 api.refresh()
             end
+            -- G1: one row's Sell button, pressed: that item's stacks only.
+            local function rowClicked(key)
+                if not open or runner.running() then return end
+                local steps, why = SellThese.PlanRow(shownListing, bagSlots(), key)
+                if steps then
+                    runner.start(steps)
+                else
+                    note = { text = SellThese.RowTip(why), tone = "warn" }
+                end
+                api.refresh()
+            end
             local function action(listing)
+                local slots = bagSlots()
                 local button = { kind = "button", key = SellThese.KEY, text = SellThese.TEXT,
                     tooltip = SellThese.TIP, onClick = sellClicked }
-                if runner.running() then
+                local running = runner.running()
+                if running then
                     button.text, button.enabled = SellThese.SELLING, false
                     button.tooltip = SellThese.Tip(SellThese.SELLING)
                 else
-                    local steps, why = SellThese.Plan(listing, bagSlots())
+                    local steps, why = SellThese.Plan(listing, slots)
                     if not steps then
                         button.text, button.enabled, button.tooltip = why, false, SellThese.Tip(why)
                     end
                 end
-                return { button = button, note = note }
+                local function rowButton(row)
+                    if type(row) ~= "table" or row.key == nil then return nil end
+                    local key = row.key
+                    local b = { kind = "button", key = SellThese.ROW_KEY .. tostring(key), text = SellThese.ROW_TEXT,
+                        tooltip = SellThese.RowTip(nil), onClick = function() rowClicked(key) end }
+                    if running then
+                        b.enabled, b.tooltip = false, SellThese.Tip(SellThese.SELLING)
+                    else
+                        local steps, why = SellThese.PlanRow(listing, slots, key)
+                        if not steps then b.enabled, b.tooltip = false, SellThese.RowTip(why) end
+                    end
+                    return b
+                end
+                return { button = button, note = note, rowButton = rowButton }
             end
             -- The kit window of a listing: true when it was drawn.
             local function draw(listing)
