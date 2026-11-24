@@ -327,6 +327,8 @@ return {
     "UI/ProfDock.lua",
     -- Lead section 382 (C2 P-COACH): one profession step for the needle (after ProfStep, Legs, ProfPlan, ProfSources).
     "Nav/ProfFeed.lua",
+    -- Lead section 449 (P-PATH-2): the profession path panel (after ProfFeed, whose "prof" word it extends; KitHost).
+    "UI/ProfPathPanel.lua",
     -- G46 (lead section 391 item 2): when hearthing saves the walk, and where to set home (after Trip, TripRoute).
     "Nav/HearthAdvice.lua",
     -- Lead section 303 (d): the in-dungeon tracker, on the kit (after BossKills and the dungeon data).

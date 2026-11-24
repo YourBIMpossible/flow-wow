@@ -256,6 +256,7 @@ Items\ProfSources.lua
 Items\VendorWares.lua
 UI\ProfDock.lua
 Nav\ProfFeed.lua
+UI\ProfPathPanel.lua
 Nav\HearthAdvice.lua
 UI\DungeonTracker.lua
 Nav\GateWords.lua

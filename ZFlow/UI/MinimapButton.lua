@@ -45,6 +45,8 @@ MB.MENU_WINDOW = "Show the route window"
 MB.MENU_SETTINGS = "Settings"
 MB.MENU_ADVICE = "Show advice"
 MB.MENU_ADVICE_N = "Show advice (%d)"
+-- Lead section 449 (P-PATH-2): the profession path panel, without the profession window.
+MB.MENU_PROF = "Profession path"
 MB.SYNONYMS = { "minimap button", "minimap icon" }
 
 local function MP() return ns.MinimapPlace or {} end
@@ -52,6 +54,7 @@ local function MP() return ns.MinimapPlace or {} end
 -- The route menu's rows (the arrows' menu shape, UI/ArrowMenu.lua).
 -- state = { title = the add-on's title, route = a route is planned,
 --           window = the route window's setting (nil: no such setting),
+--           prof = the profession path panel is there (a row to open it),
 --           advice = how many prompts the advice panel holds (nil: no
 --           advisor, no row) }
 function MB.Menu(state)
@@ -76,6 +79,10 @@ function MB.Menu(state)
         items[#items + 1] = { sep = true }
         items[#items + 1] = { key = "advice",
             text = advice > 0 and MB.MENU_ADVICE_N:format(advice) or MB.MENU_ADVICE }
+    end
+    if state.prof == true then
+        items[#items + 1] = { sep = true }
+        items[#items + 1] = { key = "prof", text = MB.MENU_PROF }
     end
     items[#items + 1] = { sep = true }
     items[#items + 1] = { key = "settings", text = MB.MENU_SETTINGS }
@@ -152,7 +159,10 @@ function MB.Declare(k)
             local list = a.List()
             advice = type(list) == "table" and #list or 0
         end
-        return { title = id().title, route = lines ~= nil, window = window, advice = advice }
+        local PPP = ns.ProfPathPanel
+        local pp = k.use and PPP and k.use(PPP.NAME)
+        return { title = id().title, route = lines ~= nil, window = window, advice = advice,
+            prof = type(pp) == "table" and type(pp.Open) == "function" }
     end
 
     local function say(lines)
@@ -187,6 +197,14 @@ function MB.Declare(k)
                 local ok, why = ctx.settings:set(row, ctx.settings:get(row) ~= true)
                 if not ok and why ~= nil then problem("menu", why) end
             end
+        elseif key == "prof" then
+            local PPP = ns.ProfPathPanel
+            local pp = k.use and PPP and k.use(PPP.NAME)
+            if type(pp) ~= "table" or type(pp.Open) ~= "function" then
+                problem("menu", "the profession path panel is not ready")
+                return
+            end
+            pp.Open()
         elseif key == "advice" then
             local a = advisor()
             if not a then

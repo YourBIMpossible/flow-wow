@@ -616,8 +616,16 @@ function D.Declare(k)
                 host.show(false)
             end
 
+            -- Lead section 450: the profession path panel replaces this one
+            -- once Items/ProfPath.lua makes the plan; until then both stand.
+            local function replaced()
+                local PATH, PPP = ns.ProfPath, ns.ProfPathPanel
+                if type(PATH) ~= "table" or type(PATH.Path) ~= "function" or type(PPP) ~= "table" then return false end
+                return ctx.settings:get(PPP.SETTING) ~= false
+            end
+
             ctx.bus:on(D.NAME, "TRADE_SKILL_SHOW", function()
-                if ctx.settings:get(D.SETTING) == false then
+                if ctx.settings:get(D.SETTING) == false or replaced() then
                     hide()
                     return
                 end
