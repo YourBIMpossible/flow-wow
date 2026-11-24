@@ -277,5 +277,7 @@ return {
     "UI/RouteTracker.lua",
     -- P-QUEST (lead section 354 item 4): quest advice text (after QuestRead and the advisor).
     "Nav/QuestAdvice.lua",
+    -- G4 (section 395): keep or sell on item tooltips (after LootNote, SellList, Reservations).
+    "Items/DispositionTip.lua",
     },
 }

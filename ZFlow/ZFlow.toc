@@ -227,3 +227,4 @@ Core\AutoEvidence.lua
 Nav\Trip.lua
 UI\RouteTracker.lua
 Nav\QuestAdvice.lua
+Items\DispositionTip.lua
