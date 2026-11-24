@@ -129,6 +129,8 @@ function W.Declare(k, diag)
     -- while the gear is low (Nav/RepairStep.lua), and the nearest bank the
     -- player has seen on this map (Nav/Errand.lua). A module that is not
     -- loaded or a read that raises gives no step. Look only.
+    -- Second answer (lead section 493): words-only rows for the route's
+    -- left list, for training or a repair that is due with no place known.
     local function readySteps()
         local function stepOf(name)
             local m = k.use and k.use(name)
@@ -143,8 +145,17 @@ function W.Declare(k, diag)
             local ok, v = pcall(E.Find, "banker", client(), k.store)
             if ok then bank = v end
         end
-        if type(R.Ready) ~= "function" then return {} end
-        return R.Ready(stepOf("classTrainerStep"), stepOf("repairStep"), bank)
+        if type(R.Ready) ~= "function" then return {}, {} end
+        -- The gear is low when the repair step has lines to say, with or
+        -- without a place to go to.
+        local low = false
+        local repairs = k.use and k.use("repairStep")
+        if type(repairs) == "table" and type(repairs.Lines) == "function" then
+            local ok, lines = pcall(repairs.Lines)
+            low = ok and type(lines) == "table" and #lines > 0
+        end
+        local steps, left = R.Ready(stepOf("classTrainerStep"), stepOf("repairStep"), bank, low)
+        return steps, type(left) == "table" and left or {}
     end
 
     local function planRun(d)
@@ -159,12 +170,18 @@ function W.Declare(k, diag)
             return
         end
         -- B-52: the get-ready steps go first; the player does each.
-        local ready = readySteps()
+        local ready, words = readySteps()
         if #ready > 0 then
             local steps = {}
             for _, s in ipairs(ready) do steps[#steps + 1] = s end
             for _, s in ipairs(run.steps) do steps[#steps + 1] = s end
             run.steps = steps
+        end
+        if #words > 0 then
+            local left = {}
+            for _, row in ipairs(words) do left[#left + 1] = row end
+            for _, row in ipairs(type(run.left) == "table" and run.left or {}) do left[#left + 1] = row end
+            run.left = left
         end
         view.said = trip.Run(run)
     end

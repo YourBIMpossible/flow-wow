@@ -25,7 +25,7 @@
 --     Questie. book is this account's own seen loot, account
 --     "learned.bossLoot" as UI/BossLoot.lua keeps it: it marks the drops
 --     seen, it does not make the list.
---   R.Ready(train, repair, bank) -> the "Get ready" steps to put before
+--   R.Ready(train, repair, bank, repairLow) -> steps, left: the "Get ready" steps to put before
 --     a run (FLOW-PARITY B-52): each a place the player already saw.
 --   R.JournalLine(client) -> one line for the diag word: whether the
 --     client's dungeon journal answers
@@ -815,17 +815,27 @@ function R.Run(st, client, key)
 end
 
 -- FLOW-PARITY B-52 (lead section 471): "Get ready on the way" before the
--- run, as advice steps put in front of it (Flow's Dungeons.lua Prepare
--- lists them): training due, a repair (sell there too) while the gear is
--- low, the bank. Each is a stop the player already saw; the player does
--- each, nothing trains, sells, repairs or banks for them.
---   R.Ready(train, repair, bank) -> steps
+-- run, as advice steps put in front of it: training due, a repair (sell
+-- there too) while the gear is low, the bank. In Flow this is a tick on the
+-- run's menu ("Get ready on the way: training, selling and repairs, your
+-- bank", Modules/Nav/Dungeons.lua D:PrepOn); its planner then adds the
+-- stops, D:Prepare does not list them. Each is a stop the player already
+-- saw; the player does each, nothing trains, sells, repairs or banks for
+-- them.
+--   R.Ready(train, repair, bank, repairLow) -> steps, left
 --     train, repair: steps as classTrainerStep / repairStep give them, or nil
 --     bank: an Errand place { kind = "banker", name, map, x, y } or nil
+--     repairLow: true when the gear is low (repairStep has lines to say)
+--     left (lead section 493): words-only rows { label, why } for the
+--     route's left list: training is due but no class trainer's place is
+--     known, or the gear is low but no repair place is known. They have no
+--     place, so the arrow never points at them.
 R.READY = "Get ready: %s"
 R.READY_TRAIN = "Train"
 R.READY_REPAIR = "Sell and repair"
 R.READY_BANK = "Bank"
+R.READY_NO_TRAINER = "no class trainer's place is known on this map"
+R.READY_NO_REPAIR = "no repair vendor seen on this map yet"
 
 local function readyStep(what, src, place)
     if type(place) ~= "table" or place.map == nil or type(place.x) ~= "number" or type(place.y) ~= "number" then
@@ -837,17 +847,26 @@ local function readyStep(what, src, place)
              place = { map = place.map, x = place.x, y = place.y } }
 end
 
-function R.Ready(train, repair, bank)
-    local out = {}
+function R.Ready(train, repair, bank, repairLow)
+    local out, left = {}, {}
     local function add(s) if s then out[#out + 1] = s end end
-    if type(train) == "table" then add(readyStep(R.READY_TRAIN, train, train.place)) end
-    if type(repair) == "table" then add(readyStep(R.READY_REPAIR, repair, repair.place)) end
+    if type(train) == "table" then
+        local s = readyStep(R.READY_TRAIN, train, train.place)
+        add(s)
+        if not s then left[#left + 1] = { label = R.READY:format(R.READY_TRAIN), why = R.READY_NO_TRAINER } end
+    end
+    local fix
+    if type(repair) == "table" then fix = readyStep(R.READY_REPAIR, repair, repair.place) end
+    add(fix)
+    if not fix and (repairLow == true or type(repair) == "table") then
+        left[#left + 1] = { label = R.READY:format(R.READY_REPAIR), why = R.READY_NO_REPAIR }
+    end
     if type(bank) == "table" then
         local name
         if type(bank.name) == "string" and bank.name ~= "" then name = bank.name end
         add(readyStep(R.READY_BANK, { label = name }, bank))
     end
-    return out
+    return out, left
 end
 
 -- The dungeon the client's instance name names (lead section 303 (d)), by
