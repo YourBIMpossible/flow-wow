@@ -33,6 +33,13 @@ local INFO = {
 }
 local HEAD, BETTER = "item:4320", "item:4321"
 local STR = "ITEM_MOD_STRENGTH_SHORT"
+local FB = ns.FlowButton
+local FLOW = ns.id.framePrefix .. "FlowButton"
+
+local function tip(c, name)
+    if type(c.hoverTipText) ~= "function" then return nil end
+    return c.hoverTipText(name .. "1")
+end
 
 local function learn(c, name, id)
     c.setSpellId(name, id)
@@ -284,6 +291,26 @@ tests["key actions: a better item in the bags: the key equips it, out of a fight
     local s = suggested(addon)
     t.ok(not (type(s) == "table" and s.itemId == 4321), "in a fight: not suggested")
     nothingWritten(t, c)
+end
+
+-- Section 448 (F5): the Flow button holds the same key (FB.SETTING is
+-- K.SETTING), so the same equip-upgrade item that reaches the RotationKey
+-- button also reaches it; its tooltip must read the item's name, not the
+-- raw secure-attribute text the button is actually set with ("item:4321").
+tests["key actions: a better item in the bags: the Flow button's tooltip names it, not the raw item text"] = function(t)
+    if type(FB) ~= "table" then t.ok(false, "no FlowButton module"); return end
+    local c, addon = start()
+    gear(c)
+    local info = {}
+    for id, row in pairs(INFO) do info[id] = row end
+    info[4321] = { name = "Reinforced Circlet" }
+    c.setItemInfo(info); c.advance(1, 5)
+    t.eq(attr(c, "item"), "item:4321", "the key still casts by the raw item text")
+    local line = tip(c, FLOW)
+    t.ok(type(line) == "string" and line:find("Reinforced Circlet", 1, true) ~= nil,
+        "the tooltip names the item: " .. tostring(line))
+    t.ok(type(line) == "string" and line:find("item:4321", 1, true) == nil,
+        "never the raw item text: " .. tostring(line))
 end
 
 tests["key actions: the key's actions row off: none of these is put on the key"] = function(t)

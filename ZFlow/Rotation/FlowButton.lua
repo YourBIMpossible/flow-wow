@@ -223,6 +223,20 @@ function FB.FightPick(view)
     return plan.key
 end
 
+-- Section 448 (F5): the tooltip's own copy of what the button holds, its
+-- item resolved to the display name client.itemInfo gives (a link or an ID
+-- in, { name = } out) so the line reads a name, never the raw secure-
+-- attribute token ("item:28653") the button is actually set with; FB.Tip
+-- stays pure and unaware of the client. Unresolved (not yet loaded, or no
+-- client): falls back to the raw hold, unchanged from before this fix.
+local function tipHold(client, hold)
+    if type(hold) ~= "table" or type(hold.item) ~= "string" then return hold end
+    if type(client) ~= "table" or type(client.itemInfo) ~= "function" then return hold end
+    local ok, info = pcall(client.itemInfo, hold.item)
+    if not ok or type(info) ~= "table" or type(info.name) ~= "string" or info.name == "" then return hold end
+    return { item = info.name }
+end
+
 local function texture(client, e)
     if type(e) ~= "table" then return nil end
     if type(e.spell) == "string" then
@@ -458,8 +472,9 @@ function FB.Declare(k)
             ns.MoveHandle.Attach(k, client, { target = name, width = size, height = size, save = moved, quiet = true })
             if type(client.hoverTip) == "function" then
                 local function line()
-                    if which == "flow" then return FB.Tip(which, u.why, u.hold, suggestedNow()) end
-                    return FB.Tip(which, u.why, u.hold)
+                    local hold = tipHold(client, u.hold)
+                    if which == "flow" then return FB.Tip(which, u.why, hold, suggestedNow()) end
+                    return FB.Tip(which, u.why, hold)
                 end
                 pcall(client.hoverTip, { frame = name .. "1", text = line })
             end
