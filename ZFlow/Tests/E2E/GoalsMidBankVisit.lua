@@ -109,11 +109,11 @@ tests["goal mid bank visit: the bank prompt follows the goal while the bank is o
     local c, addon = start()
     c.setBankOpen(true)
     -- The prompt names the items now (sections 340/341).
-    t.eq(promptOf(addon), "Bank: Linen Cloth x20", "no goal: the linen to bank")
+    t.eq(promptOf(addon), "Put in your bank for later: Linen Cloth x20", "no goal: the linen to bank")
     word(c, "goal add " .. LINEN .. " 20")
     t.eq(promptOf(addon), nil, "every Linen held: nothing to bank, no prompt")
     word(c, "goal remove " .. LINEN)
-    t.eq(promptOf(addon), "Bank: Linen Cloth x20", "goal gone: the prompt is back")
+    t.eq(promptOf(addon), "Put in your bank for later: Linen Cloth x20", "goal gone: the prompt is back")
     c.setBankOpen(false)
     t.eq(promptOf(addon), nil, "the bank closed: the prompt is gone")
 end

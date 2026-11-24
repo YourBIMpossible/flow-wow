@@ -472,10 +472,13 @@ end
 
 -- The advisor's one-line prompt for the same pick, or nil when there is
 -- nothing to say: nothing to bank, or it can't be told (bags or item facts
--- not read). It names the items (lead sections 340/341): "Bank: Linen
--- Cloth x12, Copper Ore x5", the first BANK_PROMPT_NAMED then "and N more".
+-- not read). It names the items (lead sections 340/341): "Put in your bank
+-- for later: Linen Cloth x12, Copper Ore x5", the first BANK_PROMPT_NAMED then "and N more".
 -- A name not read is said so, never an item number; a count only when read.
-Present.BANK_PROMPT_HEAD = "Bank: "
+-- Owner, 2026-11-23 ("this one kind of item to put in the bank... I don't
+-- know what it is"): the line says what to do with them and why, not the
+-- one word "Bank".
+Present.BANK_PROMPT_HEAD = "Put in your bank for later: "
 Present.BANK_PROMPT_NAMED = 3
 Present.BANK_PROMPT_UNNAMED = "item not read yet"
 function Present.BankPrompt(pick)

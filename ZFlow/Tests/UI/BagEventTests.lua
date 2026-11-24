@@ -96,11 +96,11 @@ return {
         local p = bankPrompt(advisor)
         t.ok(p ~= nil, "registered at the bank")
         if not p then return end
-        t.eq(p.text, "Bank: Linen Cloth x20, Light Leather x4")
+        t.eq(p.text, "Put in your bank for later: Linen Cloth x20, Light Leather x4")
         c.setBagItems({ { item = 2318, count = 4 } })
         c.fire(B.BAG_EVENT)
         p = bankPrompt(advisor)
-        t.eq(p and p.text, "Bank: Light Leather x4")
+        t.eq(p and p.text, "Put in your bank for later: Light Leather x4")
         c.setBagItems({ { item = 858, count = 5 } })
         c.fire(B.BAG_EVENT)
         t.eq(bankPrompt(advisor), nil, "nothing left to bank: the prompt is gone")
