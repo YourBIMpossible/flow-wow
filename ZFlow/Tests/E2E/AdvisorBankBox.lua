@@ -6,6 +6,10 @@ local _, ns = ...
 -- nothing here moves an item.
 -- Offline: the reads are the fake client's, not the game's. Not tested in game.
 local tests = {}
+-- Item names carry the game's quality colour (Items/Present.lua, Tint; the
+-- colour itself is tested in Tests/Items/ItemColourTests.lua). These tests are
+-- about the words, so they read them with the colour taken off.
+local plain = ns.ItemPresent.Plain
 
 local LINEN, WOOL, COPPER, LEATHER, POTION = 2589, 2592, 2770, 2318, 858
 local INFO = {
@@ -46,9 +50,11 @@ tests["advisor bank box: the advisor window has a title, the add-on's own"] = fu
     addon.advisor.Add("boxTest", "Repair your gear.", 1)
     local w = c.kitWindows().Advisor
     t.ok(type(w) == "table" and w.shown == true, "the kit window is shown")
-    local head = w and w.parts and w.parts[1]
-    t.eq(head and head.kind, "header")
-    t.eq(head and head.text, TITLE)
+    -- Lead section 408: in the title bar only, not again as a part.
+    t.eq(w and w.title, TITLE)
+    for _, part in ipairs(w and w.parts or {}) do
+        t.ok(part.kind ~= "header" and part.text ~= TITLE, "the title is not shown twice")
+    end
 end
 
 tests["advisor bank box: the plain panel shows the same title above its prompts"] = function(t)
@@ -93,6 +99,13 @@ tests["advisor bank box: the bank prompt is there only while the bank is open"] 
     t.eq(promptOf(addon), nil, "the bank closed: the prompt is gone")
     c.fire("PLAYER_ENTERING_WORLD")
     t.eq(promptOf(addon), nil, "and entering the world does not bring it back")
+end
+
+for name, fn in pairs(tests) do
+    tests[name] = function(t)
+        return fn(setmetatable({ eq = function(got, want, msg) return t.eq(plain(got), plain(want), msg) end },
+            { __index = t }))
+    end
 end
 
 return tests

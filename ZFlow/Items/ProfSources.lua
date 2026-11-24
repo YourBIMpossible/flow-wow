@@ -4,8 +4,10 @@ local _, ns = ...
 -- plan (Items/ProfPlan.lua) lacks can come from, in this order:
 --   1. gather: a node seen on the map the player is on (GatherMate2's,
 --      through Nav/AddonSources.lua), the nearest;
---   2. buy_vendor: a vendor price seen (learned.prices kind "vendor"); text
---      only, as the price is saved without the vendor's name or place;
+--   2. buy_vendor: a vendor price seen (learned.prices kind "vendor").
+--      Queue item A5: when a vendor was seen selling it (Items/
+--      VendorWares.lua, through input.vendorOf) the line names that vendor
+--      and the step carries npc and target; else it is text only;
 --   3. buy_auction: the auction house, text only.
 -- The bank is the plan's own step (take_bank). Z-Flow never buys, posts or
 -- gathers for the player: each is a line of text, with a place only where
@@ -14,7 +16,8 @@ local _, ns = ...
 --   ok   = ProfSources.Gives(nodeName, itemName)
 --   step = ProfSources.For(input, item, count)   nil when count < 1
 -- input = { here = { map, x, y }, nodes = { { kind, node, map, x, y } },
---           name(item), vendorPrice(item) -> copper or nil }
+--           name(item), vendorPrice(item) -> copper or nil,
+--           vendorOf(item) -> { npc, map, x, y } or nil }
 --
 -- Gives is a first guess, not seen in game: a node gives the item of its
 -- own name (herbs), and "<X> Vein" or "<X> Deposit" gives "<X> Ore". A
@@ -62,11 +65,9 @@ local function nearestNode(input, itemName)
     return best
 end
 
+-- A vendor price seen is an observed price: Prices.Text labels it.
 local function coin(copper)
-    local text = call(ns.Prices and ns.Prices.Coin, copper)
-    if type(text) == "string" then return text end
-    -- No price reader: no figure is made up here (coin text is Prices' own).
-    return nil
+    return ns.Prices.Text({ value = copper, basis = ns.Prices.OBSERVED })
 end
 
 function S.For(input, item, count)
@@ -82,10 +83,17 @@ function S.For(input, item, count)
     end
     local price = call(input.vendorPrice, item)
     if type(price) == "number" and price >= 0 then
-        local each = coin(price)
+        local who = call(input.vendorOf, item)
+        if type(who) == "table" and type(who.npc) == "string" and who.npc ~= "" then
+            local step = { kind = "buy_vendor", item = item, count = count, npc = who.npc,
+                text = string.format("Buy %d %s from %s (%s each)", count, name, who.npc, coin(price)) }
+            if type(who.map) == "number" and type(who.x) == "number" and type(who.y) == "number" then
+                step.target = { map = who.map, x = who.x, y = who.y }
+            end
+            return step
+        end
         return { kind = "buy_vendor", item = item, count = count,
-            text = each and string.format("Buy %d %s from a vendor (%s each)", count, name, each)
-                or string.format("Buy %d %s from a vendor", count, name) }
+            text = string.format("Buy %d %s from a vendor (%s each)", count, name, coin(price)) }
     end
     return { kind = "buy_auction", item = item, count = count,
         text = string.format("Buy %d %s at the auction house", count, name) }

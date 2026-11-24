@@ -9,6 +9,10 @@ local _, ns = ...
 
 local L, Present = ns.BankList, ns.ItemPresent
 local tests = {}
+-- Item names carry the game's quality colour (Items/Present.lua, Tint; the
+-- colour itself is tested in Tests/Items/ItemColourTests.lua). These tests are
+-- about the words, so they read them with the colour taken off.
+local plain = ns.ItemPresent.Plain
 
 local INFO = {
     [2589] = { name = "Linen Cloth", quality = 1, sellPrice = 13, classID = 7 },
@@ -161,6 +165,13 @@ tests["bank prompt: an advisor that raises on Add and on Remove costs the module
     c.setBankOpen(false)
     t.eq(calls.remove, 1, "Remove was reached, and raised")
     t.eq((k:ModuleState(L.NAME)), "started")
+end
+
+for name, fn in pairs(tests) do
+    tests[name] = function(t)
+        return fn(setmetatable({ eq = function(got, want, msg) return t.eq(plain(got), plain(want), msg) end },
+            { __index = t }))
+    end
 end
 
 return tests

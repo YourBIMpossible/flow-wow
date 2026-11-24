@@ -601,3 +601,15 @@ function R.Run(st, client, key)
     if #steps == 0 then return nil, R.WHY_NO_RUN end
     return { title = d.name, steps = steps, left = left }
 end
+
+-- The dungeon the client's instance name names (lead section 303 (d)), by
+-- Questie's name for it, any case; nil when none matches or the list is not
+-- read. A name Questie spells differently is not guessed at.
+function R.DungeonNamed(st, name)
+    if type(st) ~= "table" or type(st.byKey) ~= "table" or type(name) ~= "string" or name == "" then return nil end
+    local want = name:lower()
+    for _, d in pairs(st.byKey) do
+        if type(d.name) == "string" and d.name:lower() == want then return d end
+    end
+    return nil
+end

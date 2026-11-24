@@ -29,7 +29,9 @@ local _, ns = ...
 -- count } (the ore); craft adds mats (one line per material), and for a
 -- sure craft reach, after and thenText (section 388 a);
 -- kind one of learn_recipe, train_tier, make_part, take_bank, go_station, craft, in
--- that order. why (with no steps): "no reading", "no recipe" (nothing gives
+-- that order; or the one gather_skill step of a gathering profession with
+-- no craft to make (P.GATHER; adds gather = the profession and, with a
+-- node seen, node and target). why (with no steps): "no reading", "no recipe" (nothing gives
 -- a point and nothing can be learned at this skill), "no colours" (the
 -- window's colours were never read) or "no materials"; say is then the one
 -- thing a new player does next, in plain words (section 383).
@@ -42,7 +44,7 @@ local _, ns = ...
 -- candidate's short materials get a gather, buy_vendor or buy_auction step
 -- (Items/ProfSources.lua), ahead of the rest; without source reads a
 -- recipe short of materials gives no step.
---   here, nodes, vendorPrice   as ProfSources.For takes them (C3)
+--   here, nodes, vendorPrice, vendorOf   as ProfSources.For takes them (C3, A5)
 
 ns.ProfPlan = {}
 local P = ns.ProfPlan
@@ -57,8 +59,34 @@ P.SAY = {
     ["no colours"] = "Open your %s window once",
     ["no materials"] = "Get the materials for %s",
     ["no recipe"] = "Visit a %s trainer for new recipes",
+    ["at the top"] = "%s is done: the top rank is reached",
 }
+-- Section 400 item 2: the last rank's end in Classic. No rank past it to train.
+P.TOP = 300
+-- Section 400 item 2: no recipe of this profession in the book read and no
+-- trainer list seen: the cheapest next step is a first recipe at a trainer.
+P.LEARN_ANY = "Learn a %s recipe at %s (%s)"
 P.SAY_NO_PROF = "Open a profession window once"
+-- Queue item A2: the gathering professions. Their points come from
+-- gathering, not from a recipe, so with no craft to make the plan is one
+-- gather_skill step: a line of text, with the nearest node seen on this
+-- map as its place when the profession has a node kind (never guessed).
+-- kind is the node kind Nav/AddonSources.lua gives. First guesses, not
+-- seen in game: the lines, and that any node gives a point.
+P.GATHER = {
+    Mining = { kind = "Mining", text = "Mine any ore vein you find", tool = "Mining Pick" },
+    Herbalism = { kind = "Herb Gathering", text = "Pick any herb you find" },
+    Fishing = { kind = "Fishing", text = "Fish in any water, with a fishing pole on", tool = "Fishing Pole" },
+    Skinning = { text = "Skin the beasts you kill, with a skinning knife in your bags", tool = "Skinning Knife" },
+}
+-- Section 402 item 4 (G19): the gathering tool, bought from a vendor at a
+-- price this account saw. Never the auction house; nothing is bought.
+P.BUY_TOOL = "Buy a %s from a vendor (%s)"
+P.GATHER_NEAR = "%s; the nearest seen is %s"
+-- A gathering profession with no skill read: it has no window to open.
+P.SAY_GATHER = "Learn %s from a trainer, then gather once"
+-- "no recipe" with a trainer of this profession seen.
+P.SAY_TRAINER = "Visit %s for new %s recipes"
 P.SMELT_PROF = "Mining"
 P.SMELT_STATION = "forge"
 P.CHANCE = { optimal = "sure", medium = "maybe" }
@@ -127,17 +155,24 @@ local function cost(input, mats)
     return total
 end
 
+local function gathers(input)
+    if type(input) ~= "table" or type(input.prof) ~= "string" then return nil end
+    return P.GATHER[input.prof]
+end
+
+-- A gathering profession needs no recipe book: its plan can be the gather
+-- step alone.
 local function usable(input)
     return type(input) == "table" and type(input.prof) == "string"
         and whole(input.skill) and whole(input.max) and input.max > 0
-        and type(input.book) == "table"
+        and (type(input.book) == "table" or gathers(input) ~= nil)
 end
 
 function P.Candidates(input)
     local out = {}
     if not usable(input) then return out end
     local colours = type(input.colours) == "table" and input.colours or {}
-    for name, r in pairs(input.book) do
+    for name, r in pairs(type(input.book) == "table" and input.book or {}) do
         if type(r) == "table" and r.profession == input.prof and r.partial ~= true
             and type(r.mats) == "table" and next(r.mats) ~= nil then
             local chance, span = colourAt(colours[name], input.skill)
@@ -158,7 +193,7 @@ end
 
 -- A known smelt that makes this item: name, entry (one ore item only).
 local function smeltFor(input, item)
-    for name, r in pairs(input.book) do
+    for name, r in pairs(type(input.book) == "table" and input.book or {}) do
         if type(r) == "table" and r.profession == P.SMELT_PROF and r.makes == item and r.partial ~= true
             and type(r.mats) == "table" then
             local ore, per, n = nil, nil, 0
@@ -169,11 +204,12 @@ local function smeltFor(input, item)
     return nil
 end
 
--- How many of this item can be had: bags, bank, then smelted from bag ore.
+-- How many of this item can be had: bags, bank, then smelted from ore in
+-- the bags and the bank (section 400 item 3).
 local function have(input, item)
     local bags, bank = count(input.bags, item), count(input.bank, item)
     local smelt, ore, per = smeltFor(input, item)
-    local made = smelt and math.floor(count(input.bags, ore) / per) or 0
+    local made = smelt and math.floor((count(input.bags, ore) + count(input.bank, ore)) / per) or 0
     return bags + bank + made, bags, bank, smelt
 end
 
@@ -185,13 +221,39 @@ local function limit(input, c)
     return left
 end
 
+local function placeOf(input, npc)
+    local n = get(input.npcs, npc)
+    if type(n) == "table" and n.map ~= nil and type(n.x) == "number" and type(n.y) == "number" then return n end
+    return nil
+end
+
+-- Section 400 item 4: a trainer whose place is on another continent than
+-- the player's is never a step (no training trip). Both continents known,
+-- or it is not away.
+local function away(input, npc)
+    local n, here = placeOf(input, npc), input.here
+    if not n or type(here) ~= "table" or here.map == nil or type(input.contOf) ~= "function" then return false end
+    local mine, theirs = input.contOf(here.map), input.contOf(n.map)
+    return mine ~= nil and theirs ~= nil and mine ~= theirs
+end
+
+-- Section 402 item 3: how far a trainer is; one on another map, or with no
+-- place seen, comes after every one on this map.
+local function farness(input, npc)
+    local n, here = placeOf(input, npc), input.here
+    if not n or type(here) ~= "table" or n.map ~= here.map then return math.huge end
+    return (n.x - (here.x or 0)) ^ 2 + (n.y - (here.y or 0)) ^ 2
+end
+
+-- This profession's trainer list nearest the player, never one away.
 local function trainerAt(input)
-    local best
+    local best, bestD
     if type(input.trainerLists) ~= "table" then return nil end
     for _, key in ipairs(sortedKeys(input.trainerLists)) do
         local l = input.trainerLists[key]
-        if type(l) == "table" and l.profession == input.prof and type(l.npc) == "string" then
-            if not best or l.npc < best.npc then best = l end
+        if type(l) == "table" and l.profession == input.prof and type(l.npc) == "string" and not away(input, l.npc) then
+            local d = farness(input, l.npc)
+            if not best or d < bestD or (d == bestD and l.npc < best.npc) then best, bestD = l, d end
         end
     end
     return best
@@ -214,7 +276,8 @@ local function learnStep(input)
     if type(input.trainerLists) ~= "table" then return nil end
     for _, key in ipairs(sortedKeys(input.trainerLists)) do
         local l = input.trainerLists[key]
-        if type(l) == "table" and l.profession == input.prof and type(l.rows) == "table" then
+        if type(l) == "table" and l.profession == input.prof and type(l.rows) == "table"
+            and not away(input, l.npc) then
             for _, row in ipairs(l.rows) do
                 if type(row) == "table" and type(row.name) == "string" and row.state ~= "known"
                     and whole(row.skill) and row.skill <= input.skill then
@@ -228,6 +291,20 @@ local function learnStep(input)
     return nil
 end
 
+-- Section 400 item 2: the book read holds no recipe of this profession.
+local function bookEmpty(input)
+    for _, r in pairs(type(input.book) == "table" and input.book or {}) do
+        if type(r) == "table" and r.profession == input.prof then return false end
+    end
+    return true
+end
+
+local function firstRecipeStep(input)
+    local npc = get(trainerAt(input), "npc")
+    return { kind = "learn_recipe", npc = npc, target = npcTarget(input, npc),
+        text = string.format(P.LEARN_ANY, input.prof, npc or "a trainer", reading(input)) }
+end
+
 local function tierStep(input)
     local l = trainerAt(input)
     local npc = get(l, "npc")
@@ -237,6 +314,28 @@ local function tierStep(input)
 end
 
 -- The steps for one candidate, or nil when its materials make none.
+-- Section 402 item 4 (G19): the gathering tool is not in the bags and a
+-- vendor price was seen for an item of that name: buy it first, with the
+-- cost. No price seen: no step (the gather line names the tool).
+local function toolStep(input)
+    local tool = get(gathers(input), "tool")
+    if type(tool) ~= "string" or type(input.name) ~= "function" then return nil end
+    for key in pairs(type(input.bags) == "table" and input.bags or {}) do
+        if count(input.bags, key) > 0 and input.name(key) == tool then return nil end
+    end
+    local keys = type(input.vendorItems) == "function" and input.vendorItems() or nil
+    if type(keys) ~= "table" then return nil end
+    table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+    for _, key in ipairs(keys) do
+        local price = type(input.vendorPrice) == "function" and input.vendorPrice(key) or nil
+        if input.name(key) == tool and type(price) == "number" and price >= 0 and ns.Prices then
+            local cost = ns.Prices.Text({ value = price, basis = ns.Prices.OBSERVED })
+            return { kind = "buy_tool", item = key, cost = price, text = string.format(P.BUY_TOOL, tool, cost) }
+        end
+    end
+    return nil
+end
+
 -- Section 388 (a), R1: one material's line, "Test Bar x4: 1 in your bags,
 -- 1 from your bank, smelt 2 from 4 Test Ore".
 local function matLine(input, item, need, bags, bank, smelt)
@@ -259,7 +358,7 @@ local function craftSteps(input, c)
         n = math.min(n, math.floor((have(input, item)) / per))
     end
     if n < 1 then return nil end
-    local parts, banks, mats = {}, {}, {}
+    local ores, parts, banks, mats = {}, {}, {}, {}
     for _, item in ipairs(sortedKeys(c.entry.mats)) do
         local need = c.entry.mats[item] * n
         local _, bags, bank, smelt = have(input, item)
@@ -272,6 +371,12 @@ local function craftSteps(input, c)
         end
         if short > 0 then
             local _, ore, per = smeltFor(input, item)
+            local oreBags = count(input.bags, ore)
+            local oreBank = math.min(count(input.bank, ore), math.max(0, short * per - oreBags))
+            if oreBank > 0 then
+                ores[#ores + 1] = { kind = "take_bank", item = ore, count = oreBank, recipe = c.recipe,
+                    text = string.format("Take %d %s from your bank, for %s", oreBank, itemName(input, ore), c.recipe) }
+            end
             parts[#parts + 1] = { kind = "make_part", item = item, count = short, recipe = smelt,
                 station = P.SMELT_STATION, from = { item = ore, count = short * per },
                 text = string.format("Smelt %d %s at %s, for %s", short, itemName(input, item),
@@ -279,6 +384,7 @@ local function craftSteps(input, c)
         end
     end
     local steps = {}
+    for _, s in ipairs(ores) do steps[#steps + 1] = s end
     for _, s in ipairs(parts) do steps[#steps + 1] = s end
     for _, s in ipairs(banks) do steps[#steps + 1] = s end
     local at = ""
@@ -306,6 +412,8 @@ local function sourcedSteps(input, c)
         local got = have(input, item)
         if need > got then
             local s = ns.ProfSources.For(input, item, need - got)
+            -- Lead section 407 item 1: G19 keeps the auction house out of the
+            -- gathering-tool step only; a short material may come from it.
             if s then
                 s.recipe = c.recipe
                 steps[#steps + 1] = s
@@ -334,7 +442,7 @@ end
 -- Was any recipe colour of this profession read?
 local function coloursRead(input)
     if type(input.colours) ~= "table" then return false end
-    for name, r in pairs(input.book) do
+    for name, r in pairs(type(input.book) == "table" and input.book or {}) do
         if type(r) == "table" and r.profession == input.prof and type(input.colours[name]) == "table" then
             return true
         end
@@ -344,7 +452,41 @@ end
 
 local function empty(why, input, about)
     if type(input) ~= "table" or type(input.prof) ~= "string" then return {}, why, P.SAY_NO_PROF end
+    if why == "no reading" and gathers(input) then return {}, why, string.format(P.SAY_GATHER, input.prof) end
+    if why == "no recipe" then
+        local npc = get(trainerAt(input), "npc")
+        if type(npc) == "string" and npc ~= "" then
+            return {}, why, string.format(P.SAY_TRAINER, npc, input.prof)
+        end
+    end
     return {}, why, string.format(P.SAY[why], about or input.prof)
+end
+
+-- Queue item A2: the one step of a gathering profession with no craft to
+-- make. target is the nearest node of its kind seen on the map the player
+-- is on, or nil.
+local function gatherStep(input)
+    local g = gathers(input)
+    local here, best, bestD = input.here, nil, nil
+    if type(g.kind) == "string" and type(here) == "table" and here.map ~= nil and type(input.nodes) == "table" then
+        for _, n in ipairs(input.nodes) do
+            if type(n) == "table" and n.kind == g.kind and n.map == here.map
+                and type(n.x) == "number" and type(n.y) == "number" then
+                local d = (n.x - (here.x or 0)) ^ 2 + (n.y - (here.y or 0)) ^ 2
+                if not best or d < bestD then best, bestD = n, d end
+            end
+        end
+    end
+    local line, step = g.text, { kind = "gather_skill", gather = input.prof }
+    if best then
+        step.target = { map = best.map, x = best.x, y = best.y }
+        if type(best.node) == "string" and best.node ~= "" then
+            step.node = best.node
+            line = string.format(P.GATHER_NEAR, line, best.node)
+        end
+    end
+    step.text = string.format("%s (%s)", line, reading(input))
+    return step
 end
 
 -- Section 388 (a), R1: the skill a sure craft reaches and the next recipe
@@ -366,17 +508,26 @@ end
 
 function P.Plan(input)
     if not usable(input) then return empty("no reading", input) end
-    if input.skill >= input.max then return { tierStep(input) } end
+    if input.skill >= input.max then
+        if input.max >= P.TOP then return empty("at the top", input) end
+        return { tierStep(input) }
+    end
     local list = P.Candidates(input)
     for _, c in ipairs(list) do
         local steps = craftSteps(input, c)
         if steps then return thenLine(input, list, c, steps) end
+    end
+    if gathers(input) then
+        local tool = toolStep(input)
+        if tool then return { tool, gatherStep(input) } end
+        return { gatherStep(input) }
     end
     if #list > 0 and sourced(input) then
         local steps = sourcedSteps(input, list[1])
         if steps then return thenLine(input, list, list[1], steps) end
     end
     if #list > 0 then return empty("no materials", input, list[1].recipe) end
+    if bookEmpty(input) then return { learnStep(input) or firstRecipeStep(input) } end
     if not coloursRead(input) then return empty("no colours", input) end
     local learn = learnStep(input)
     if learn then return { learn } end
@@ -419,6 +570,12 @@ end
 function P.Input(client, store, prof, nodeSource)
     local readings = saved(store, "char", "learned.facts.profSkill")
     local r = get(readings, prof)
+    -- Queue item A2: a profession with no window (Herbalism, Skinning) never
+    -- saves a reading, so its skill is read from the skill lines.
+    if type(r) ~= "table" then
+        local line = get(ask(client, "skillRanks"), prof)
+        if type(line) == "table" then r = { skill = line.rank, max = line.max } end
+    end
     local keyOf = ns.Items and ns.Items.Key or function(v) return v end
     local bags = call(get(ns.HaveTip, "Counts"), ask(client, "bagItems"), keyOf)
     local bank = get(saved(store, "char", "learned.bankCounts"), "counts")
@@ -426,6 +583,8 @@ function P.Input(client, store, prof, nodeSource)
     local prices = saved(store, "account", "learned.prices")
     local kind = get(get(ns.Nav, "PROF_STATION"), prof)
     local pos = ask(client, "position")
+    -- Queue item A5: who was seen selling what (Items/VendorWares.lua).
+    local wares = saved(store, "char", get(ns.VendorWares, "PATH") or "learned.vendorWares")
     local stations = saved(store, "account", "learned.keyStations")
     local target
     if kind then target = stationTarget(stations, kind, pos) end
@@ -454,6 +613,9 @@ function P.Input(client, store, prof, nodeSource)
             if type(p) == "table" and type(p.value) == "number" then return p.value end
             return nil
         end,
+        vendorOf = function(item)
+            return call(get(ns.VendorWares, "Of"), wares, item, pos)
+        end,
         skill = get(r, "skill"),
         max = get(r, "max"),
         book = saved(store, "char", "learned.facts.recipeBook"),
@@ -468,12 +630,18 @@ function P.Input(client, store, prof, nodeSource)
             end
             return nil
         end,
+        vendorItems = function()
+            local out = {}
+            for key in pairs(type(get(prices, "vendor")) == "table" and prices.vendor or {}) do out[#out + 1] = key end
+            return out
+        end,
         name = function(item)
             local info = ask(client, "itemInfo", item)
             return get(info, "name")
         end,
         trainerLists = saved(store, "char", "learned.trainerLists"),
         npcs = saved(store, "account", "learned.places.npcs"),
+        contOf = function(map) return ask(client, "mapCont", map) end,
         station = kind,
         stationTarget = target,
         atStation = false,

@@ -12,6 +12,10 @@ local _, ns = ...
 
 local L = ns.SellList
 local tests = {}
+-- Item names carry the game's quality colour (Items/Present.lua, Tint; the
+-- colour itself is tested in Tests/Items/ItemColourTests.lua). These tests are
+-- about the words, so they read them with the colour taken off.
+local plain = ns.ItemPresent.Plain
 
 local INFO = {
     [97] = { name = "Broken Fang", quality = 0, sellPrice = 4 },
@@ -76,7 +80,7 @@ end
 
 local function has(lines, text)
     for _, l in ipairs(lines or {}) do
-        if l == text then return true end
+        if plain(l) == text then return true end
     end
     return false
 end
@@ -228,6 +232,13 @@ tests["sell list lines: none changes nothing"] = function(t)
     -- Lead section 226: a missing evaluation is unavailable (SR-3), so the
     -- plain list is the one made with an explicit none on both sides.
     t.eq(L.Lines(c, nil, L.Held(r), r), L.Lines(c, nil, nil, r))
+end
+
+for name, fn in pairs(tests) do
+    tests[name] = function(t)
+        return fn(setmetatable({ eq = function(got, want, msg) return t.eq(plain(got), plain(want), msg) end },
+            { __index = t }))
+    end
 end
 
 return tests

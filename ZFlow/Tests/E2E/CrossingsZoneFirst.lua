@@ -79,7 +79,9 @@ local function shown(c)
     return a.lines
 end
 
-local BOAT_LINES = { "Boat to Tirisfal dock", "Then: Wolves", "200 yd N" }
+-- S32: a learned boat (seen) with both names also says where to take it.
+local BOAT_LINES = { "Boat to Tirisfal dock", "Then: Wolves",
+    "Take the boat at Durotar dock to Tirisfal dock.", "200 yd N" }
 local FAR_LINES = { "Wolves", "Wolves slain: 0/4", Travel.FAR }
 
 -- ------------------------------------------------------------- the rows
