@@ -118,6 +118,11 @@ local WIDE = {
     "hash_SlashCmdList", "print", "seterrorhandler", "time",
     "C_TaxiMap", "C_TaxiMap.GetTaxiNodesForMap", "GetTaxiNodesForMap", "UnitThreatSituation",
     "C_NamePlate.GetNamePlates",
+    "Settings.RegisterVerticalLayoutCategory", "Settings.RegisterVerticalLayoutSubcategory",
+    "Settings.RegisterProxySetting", "Settings.CreateCheckbox", "Settings.CreateCheckBox",
+    "Settings.CreateSlider", "Settings.CreateSliderOptions", "Settings.CreateDropdown",
+    "Settings.CreateDropDown", "Settings.CreateControlTextContainer",
+    "CreateSettingsButtonInitializer", "CreateSettingsListSectionHeaderInitializer",
 }
 
 tests["diag wide (a): every name Client.lua reads is in the name list"] = function(t)

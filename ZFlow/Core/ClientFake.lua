@@ -949,6 +949,68 @@ function ns.make.fakeClient(opts)
     function c.optionsAct(key, value)
         if s.options and type(s.options.act) == "function" then return s.options.act(key, value) end
     end
+    -- Lead section 410: the twin of c.optionsNative, the add-on's settings
+    -- as the game's own rows. Off until setOptionsNative(true): a client
+    -- with no such rows is the start, as nothing shows 16001 has them.
+    --   c.nativeOptions() -> { title, rows, topics, opened = { topic id or
+    --     false, ... } } or nil; c.nativeRow(key) -> the row of that key
+    --   c.nativeSet(key, value) -> plays the player changing the row: false
+    --     when the row's `can` says no, else what its set gave
+    --   c.nativePress(label) -> true when a button row of that label ran
+    function c.setOptionsNative(on) s.nativeOn = (on == true) end
+    function c.optionsNative(spec)
+        if not s.nativeOn or type(spec) ~= "table" then return nil end
+        local n = 0
+        local function count(rows)
+            for _, r in ipairs(rows or {}) do
+                if r.kind ~= "header" then n = n + 1 end
+            end
+        end
+        count(spec.rows)
+        for _, topic in ipairs(spec.topics or {}) do count(topic.rows) end
+        if n == 0 then return nil end
+        s.native = { title = spec.title, rows = spec.rows or {}, topics = spec.topics or {}, opened = {} }
+        local h = {}
+        function h.open(topicId)
+            if s.nativeOpenFails then return false end
+            s.native.opened[#s.native.opened + 1] = topicId or false
+            return true
+        end
+        function h.count() return n end
+        function h.order() return "new" end
+        return h
+    end
+    function c.setNativeOpenFails(on) s.nativeOpenFails = (on == true) end
+    function c.nativeOptions() return s.native end
+    local function nativeEach(fn)
+        if not s.native then return nil end
+        for _, r in ipairs(s.native.rows) do
+            local got = fn(r)
+            if got ~= nil then return got end
+        end
+        for _, topic in ipairs(s.native.topics) do
+            for _, r in ipairs(topic.rows or {}) do
+                local got = fn(r, topic)
+                if got ~= nil then return got end
+            end
+        end
+        return nil
+    end
+    function c.nativeRow(key)
+        return nativeEach(function(r) if r.key == key and r.kind ~= "button" then return r end end)
+    end
+    function c.nativeSet(key, value)
+        local r = c.nativeRow(key)
+        if not r then return nil end
+        if type(r.can) == "function" and r.can() ~= true then return false end
+        return r.set(value)
+    end
+    function c.nativePress(label)
+        local r = nativeEach(function(row) if row.kind == "button" and row.label == label then return row end end)
+        if not r then return false end
+        r.run()
+        return true
+    end
     -- S28 sound restart: setSound{ ways = { name, ... }, fail = text or nil,
     -- noEvent = true } and speakersChanged() to play the game's event.
     -- restarted() counts the restarts made, with byHand for each.
