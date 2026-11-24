@@ -1395,7 +1395,7 @@ function Arrow.Start(k, diag, own)
     end
 
     local USAGE = id.slash .. " arrow demo | near | separate | stack | reset | hide quest|prof | text quest|prof"
-        .. " | modern | 3d | flat | why"
+        .. " | modern | 3d | flat | why | status"
 
     -- arrow why: says what the quest arrow is made from right now. It only
     -- reads and prints; nothing is changed. Each read it names needs game
@@ -1456,12 +1456,21 @@ function Arrow.Start(k, diag, own)
 
     if diag and type(diag.commands) == "table" then
         if type(diag.help) == "table" then
-            diag.help.arrow = "the arrows: why, demo, near, separate, stack, reset, modern|3d|flat, hide|text quest|prof"
+            diag.help.arrow = "the arrows: why, status, demo, near, separate, stack, reset, modern|3d|flat, hide|text quest|prof"
         end
         diag.commands.arrow = function(rest)
             local word, key = (rest or ""):match("^(%S*)%s*(%S*)")
             if word == "why" then
                 why()
+            elseif word == "status" and N.WaypointStatus then
+                -- Parity row A1-33: what the arrow points at, why, the next stop.
+                local trip = k.use and k.use("tripRoute")
+                local stops
+                if trip and type(trip.Current) == "function" then
+                    local okStops, got = pcall(trip.Current)
+                    if okStops then stops = got end
+                end
+                for _, line in ipairs(N.WaypointStatus.Lines(stepName, from, stops)) do say(line) end
             elseif not handles then
                 say("this client cannot draw the arrows.")
             elseif not live() then
