@@ -36,7 +36,7 @@ function R.Declare(k)
     end
     if k:Setting({ key = "buttons.bank", scope = "account", type = "bool", default = true,
         label = "Button on the bank window", group = R.GROUP, synonyms = { "button", "bank", "window" },
-        help = "A button on the bank window that opens the bag and bank help and settings." }) then
+        help = "A button on the bank window that says Bank list and shows the list of what to store and take out." }) then
         made = made + 1
     end
     return made
