@@ -357,5 +357,7 @@ return {
     "Nav/FollowAdvice.lua",
     -- N43 (P-TRIP route display): the current step's area on the minimap (after TripRoute, MinimapPin).
     "UI/RouteArea.lua",
+    -- C-30, C-31: bag upgrades as advice and the gear check word (after TooltipModule, whose gear word it keeps, and the advisor).
+    "Gear/BagUpgrades.lua",
     },
 }
