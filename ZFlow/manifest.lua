@@ -348,5 +348,7 @@ return {
     "Items/AuctionWatch.lua",
     -- G14 (section 393): the role badge on bag upgrades (after the verdict and the reward mark).
     "Gear/BagBadge.lua",
+    -- N43 (P-TRIP route display): the current step's area on the minimap (after TripRoute, MinimapPin).
+    "UI/RouteArea.lua",
     },
 }
