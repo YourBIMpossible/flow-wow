@@ -71,4 +71,68 @@ tests["step tip: also here comes last, under its title"] = function(t)
     t.eq(ST.Lines({ objectives = {}, also = { "Hand in: Boars" } }), { "Also here", "  Hand in: Boars" })
 end
 
+
+-- Plexy CHANGES-2 (lead section 497): through the hover, as TripTip.lua.
+-- The quest arrow on quest 801 (its wolves placed by the Questie stand-in)
+-- shows the lines; after the demo is switched on they are gone.
+local function bootPlaced()
+    local c = ns.make.fakeClient()
+    c.setSaved(ns.id.accountDB, {}); c.setSaved(ns.id.charDB, {})
+    c.setClass("WARRIOR"); c.setLevel(10)
+    c.setZone(1, MAP); c.setPosition(MAP, 0.5, 0.5); c.setFacing(0)
+    c.setMapSize(MAP, 1000, 1000); c.setMapCont(MAP, 1)
+    c.setQuestLog({
+        { id = 801, title = "Wolves", complete = false, failed = false,
+          objectives = { { text = "Wolf Pelt: 1/4", done = false } } },
+    })
+    local db = {}
+    function db.QueryQuestSingle(id, field) if field == "questLevel" then return LEVELS[id] end end
+    function db.GetQuest(id)
+        if id == 801 then return { ObjectiveData = { { Type = "monster", Id = 9801 } } } end
+    end
+    function db.GetNPC(id)
+        if id == 9801 then return { name = "Grey Wolf", spawns = { [12] = { { 60, 50 } } } } end
+    end
+    local zones = {}
+    function zones.GetUiMapIdByAreaId(area) return ({ [12] = MAP })[area] end
+    c.setQuestieModule("QuestieDB", db); c.setQuestieModule("ZoneDB", zones)
+    local addon = ns.offline.addon(c)
+    c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
+    c.advance(10, 40)
+    return c, addon
+end
+
+local function tipOf(c)
+    local a = c.arrows[1]
+    if not a then return {} end
+    a.hover(false)
+    a.hover(true)
+    return a.tipLines or {}
+end
+
+local function has(list, text)
+    for _, line in ipairs(list) do
+        if type(line) == "string" and line:find(text, 1, true) then return true end
+    end
+    return false
+end
+
+tests["step tip e2e: hovering the quest arrow on quest 801 shows its lines"] = function(t)
+    local c = bootPlaced()
+    local tip = tipOf(c)
+    t.ok(has(tip, "Level 12"), table.concat(tip, " | "))
+    t.ok(has(tip, "  Wolf Pelt: 1/4"), table.concat(tip, " | "))
+    t.ok(has(tip, "XP: about"), table.concat(tip, " | "))
+end
+
+tests["step tip e2e: after switching to the demo, quest 801's lines are gone"] = function(t)
+    local c = bootPlaced()
+    t.ok(has(tipOf(c), "Wolf Pelt: 1/4"), "shown first")
+    c.slashes[ns.id.slash]("arrow demo")
+    c.advance(2, 8)
+    local tip = tipOf(c)
+    t.ok(not has(tip, "Wolf Pelt"), table.concat(tip, " | "))
+    t.ok(not has(tip, "Level 12"), table.concat(tip, " | "))
+end
+
 return tests

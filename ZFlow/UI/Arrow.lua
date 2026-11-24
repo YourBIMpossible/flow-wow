@@ -619,6 +619,7 @@ function Arrow.Start(k, diag, own)
         saying = false
         from = "demo"
         heading = nil
+        tipQuest = nil
         if demo then return Arrow.DemoSource(client, Arrow.Saved(k), near, Arrow.Palette(k)) end
         local playing = intro()
         local guide
