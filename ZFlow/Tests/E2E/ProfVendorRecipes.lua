@@ -116,8 +116,11 @@ end
 
 -- Fails before: the plan ends with no step and the trainer words.
 tests["prof vendor recipes: nothing known names the nearest gathering, else the next rank"] = function(t)
+    -- A later rank on the trainer list: the trainer is not done, so the known
+    -- recipe that may give a point (section 418 item 5) does not apply here.
     local _, addon = start({ nodes = { { kind = "Herb Gathering", x = 0.6, y = 0.5, node = "Test Bloom" },
-        { kind = "Mining", x = 0.9, y = 0.9, node = "Test Far Vein" } } })
+        { kind = "Mining", x = 0.9, y = 0.9, node = "Test Far Vein" } },
+        rows = { { name = "Test Late Rank", skill = 60, state = "unavailable" } } })
     local steps = plan(addon)
     t.eq(kindsOf(steps), { "no_point" }, "one plain step")
     t.eq(steps[1] and steps[1].text, "No point yet; gather Test Bloom", "the plain line with the nearest gathering")

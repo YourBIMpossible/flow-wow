@@ -300,9 +300,10 @@ tests["prof plan: trainer done: the known recipe most likely to give a point (se
     t.eq(steps[1] and steps[1].text, "Make 1 Test Late Cap: may give a point (Tailoring 110 of 150)")
     -- A recipe on the list not learned yet (later skill) is not trainer done.
     lists.a.rows = { { name = "Test Later", skill = 120, state = "unavailable" } }
-    local none, why = P().Plan(input(base))
-    t.eq(none, {}, "still waiting on the trainer")
-    t.eq(why, "no recipe")
+    -- Still waiting on the trainer: the plain next-rank step, not an empty plan.
+    local wait = P().Plan(input(base))
+    t.eq(kinds(wait), { "no_point" }, "still waiting on the trainer")
+    t.eq(wait[1] and wait[1].text, "No point yet; next rank at 120")
 end
 
 return tests
