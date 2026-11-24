@@ -9,8 +9,10 @@
 -- It waits for the bag (lead section 450, as the predecessor's
 -- Modules/Items/Vendor.lua): after a sale is sent, the slot is read each
 -- frame; the sale is counted, and the next stack sent, only once the slot
--- has emptied or changed. A stack still there after SellThese.WAIT seconds
--- is given up on: not counted, said in the note, and the run goes on.
+-- is empty or holds a different item (the same item with another count is
+-- not a sale). A stack still there after SellThese.WAIT seconds is given up
+-- on: not counted, said in the note, and the run goes on. A stack given up
+-- on that is seen to have left later in the run is counted after all.
 --
 -- A row is sold only when the list sells every one of that item in the
 -- bags: a stack can't be split here, so a row the list sells only part of
@@ -156,11 +158,33 @@ end
 
 function SellThese.Runner(client, sched, done)
     local runner = {}
-    -- { steps, at, sold, skipped, gaveUp, waiting, since, frames }
+    -- { steps, at, sold, skipped, gaveUp, waiting, since, frames, late }
     -- waiting: the step whose sale was sent and has not been seen to leave
     -- the bags; since: the clock then, nil with no clock; frames: the
-    -- frames waited so far.
+    -- frames waited so far; late: the steps given up on, still looked at.
     local run = nil
+
+    -- The stack of a step has left: its slot is empty or holds another
+    -- item. The same item with another count has not left, and a slot that
+    -- can't be read (false) is not known to be empty.
+    local function left(s)
+        local item = client.bagSlot(s.bag, s.slot)
+        if item == nil then return true end
+        if not item then return false end
+        return ns.Items.Key(item) ~= s.key
+    end
+
+    -- The stacks given up on that have left since: counted after all.
+    local function lateSales()
+        for i = #run.late, 1, -1 do
+            local s = run.late[i]
+            if left(s) then
+                table.remove(run.late, i)
+                run.sold = run.sold + s.count
+                run.gaveUp = run.gaveUp - 1
+            end
+        end
+    end
 
     local function clock()
         if type(client.now) ~= "function" then return nil end
@@ -170,16 +194,14 @@ function SellThese.Runner(client, sched, done)
     end
 
     -- The stack sent last: "none" (nothing is waited for), "left" (its slot
-    -- emptied or changed: counted), "gave up" (still there past the time
-    -- allowed: not counted) or "waiting". last: the run is ending, so a
-    -- stack still there is left as it is.
+    -- is empty or holds another item: counted), "gave up" (still there past
+    -- the time allowed: not counted) or "waiting". last: the run is ending,
+    -- so a stack still there is left as it is.
     local function settle(last)
+        lateSales()
         local s = run.waiting
         if s == nil then return "none" end
-        local item, count = client.bagSlot(s.bag, s.slot)
-        local same = false
-        if item then same = ns.Items.Key(item) == s.key and count == s.count end
-        if not same then
+        if left(s) then
             run.waiting = nil
             run.sold = run.sold + s.count
             return "left"
@@ -192,6 +214,7 @@ function SellThese.Runner(client, sched, done)
         if late then
             run.waiting = nil
             run.gaveUp = run.gaveUp + 1
+            run.late[#run.late + 1] = s
             return "gave up"
         end
         return "waiting"
@@ -241,7 +264,7 @@ function SellThese.Runner(client, sched, done)
     function runner.running() return run ~= nil end
     function runner.start(steps)
         if run ~= nil or type(steps) ~= "table" or #steps == 0 then return false end
-        run = { steps = steps, at = 1, sold = 0, skipped = 0, gaveUp = 0, frames = 0 }
+        run = { steps = steps, at = 1, sold = 0, skipped = 0, gaveUp = 0, frames = 0, late = {} }
         step()
         return true
     end
