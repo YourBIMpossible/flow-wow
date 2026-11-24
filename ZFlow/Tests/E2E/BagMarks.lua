@@ -51,4 +51,70 @@ tests["bag marks: the setting off draws none"] = function(t)
     t.eq(c.bagMarksDrawn and c.bagMarksDrawn() or nil, {})
 end
 
+-- G4 remaining: the in-game context carries the gear and the profession
+-- materials. Warrior weights (ZFlow/Classes/Warrior.lua): dps Strength 1.0,
+-- Stamina 0.35. The worn helm (2 Stamina, 2 Strength) scores 2.7 for dps;
+-- the bag helm (10 Strength) 10: an upgrade you can wear now. The cloth is
+-- a mat of a recipe this character's own profession window was read with
+-- (char learned.facts.recipeBook). Made-up items.
+local WORN, STRONG, WEAK, CLOTH = "item:7101", "item:7102", "item:7103", "item:7104"
+local STA, STR = "ITEM_MOD_STAMINA_SHORT", "ITEM_MOD_STRENGTH_SHORT"
+
+local function helm(stats)
+    return { kind = "INVTYPE_HEAD", stats = stats, classID = 4, subclassID = 3, minLevel = 1, unmet = {} }
+end
+
+local function startGear(char)
+    local c = ns.make.fakeClient()
+    c.setSaved(ns.id.accountDB, {})
+    c.setSaved(ns.id.charDB, char or {})
+    c.setClass("WARRIOR")
+    c.setLevel(10)
+    c.setDualWield(false)
+    c.setWeaponSkills({ "Swords", "Defense" })
+    c.setItemInfo({
+        [7101] = { name = "Worn Cap", quality = 1, sellPrice = 5, classID = 4, minLevel = 1 },
+        [7102] = { name = "Strong Cap", quality = 2, sellPrice = 9, classID = 4, minLevel = 1 },
+        [7103] = { name = "Weak Cap", quality = 1, sellPrice = 4, classID = 4, minLevel = 1 },
+        [7104] = { name = "Plain Cloth", quality = 1, sellPrice = 1, classID = 7 },
+    })
+    c.setItem(WORN, helm({ [STA] = 2, [STR] = 2 }))
+    c.setItem(STRONG, helm({ [STR] = 10 }))
+    c.setItem(WEAK, helm({ [STA] = 1 }))
+    c.setWorn(1, WORN)
+    c.setBagItems({})
+    local addon = ns.offline.addon(c)
+    c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
+    c.advance(5, 20)
+    return c, addon
+end
+
+-- Fails before: BankList.Context alone carries no gear, level or role.
+tests["bag marks: an upgrade from the real gear read, not a worse piece"] = function(t)
+    local c = startGear({ settings = { spec = { role = "dps" } } })
+    c.setBagItems({
+        { bag = 0, slot = 1, item = STRONG, count = 1 },
+        { bag = 0, slot = 2, item = WEAK, count = 1 },
+    })
+    c.fire("BAG_UPDATE_DELAYED")
+    t.eq(c.bagMarksDrawn(), { [0] = { [1] = "upgrade" } })
+end
+
+-- Fails before: BankList.Context carries no materials.
+tests["bag marks: a mat of a saved recipe is marked kept for a profession"] = function(t)
+    local book = { ["Plain Bandage"] = { makes = 7105, yield = 1, mats = { [7104] = 2 }, profession = "First Aid" } }
+    local c = startGear({ learned = { facts = { recipeBook = book } } })
+    c.setBagItems({ { bag = 1, slot = 4, item = CLOTH, count = 6 } })
+    c.fire("BAG_UPDATE_DELAYED")
+    t.eq(c.bagMarksDrawn(), { [1] = { [4] = "material" } })
+end
+
+-- No role chosen: the class pack's first role (as the gear why word).
+tests["bag marks: no role chosen still marks the upgrade"] = function(t)
+    local c = startGear()
+    c.setBagItems({ { bag = 0, slot = 1, item = STRONG, count = 1 } })
+    c.fire("BAG_UPDATE_DELAYED")
+    t.eq(c.bagMarksDrawn(), { [0] = { [1] = "upgrade" } })
+end
+
 return tests
