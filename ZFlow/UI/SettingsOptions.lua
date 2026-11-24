@@ -329,6 +329,10 @@ function O.Declare(k)
         elseif kind == "open" then
             -- The button of a row with a window of its own.
             return P.Open(k, value)
+        elseif kind == "close" then
+            -- The window's Close button: hidden, nothing else changes.
+            if not page then return false end
+            return (pcall(page.hide))
         else
             return false
         end
