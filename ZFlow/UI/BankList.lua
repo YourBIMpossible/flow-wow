@@ -64,7 +64,7 @@ BankList.UNREAD_HEAD = "Can't list what to bank"
 BankList.NEVER_SEEN = "No bank data yet."
 BankList.DEFAULT_POINT = { "TOPLEFT", "TOPLEFT", 360, -120 }
 -- The advisor prompt (UI/Advisor.lua: Add(id, text, priority), Remove(id)):
--- "Bank: Linen Cloth x12, Copper Ore x5" (ItemPresent.BankPrompt) while
+-- "Put in your bank for later: Linen Cloth x12, Copper Ore x5" (ItemPresent.BankPrompt) while
 -- the bank window is open and there is something to bank; removed when the
 -- bank closes (lead sections 340/341: raised only at the bank).
 -- A low priority, a first guess: it is a chore, not a warning.

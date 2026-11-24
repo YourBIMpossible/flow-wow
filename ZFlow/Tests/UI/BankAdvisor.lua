@@ -83,9 +83,9 @@ end
 -- Words changed (sections 340/341): the prompt names the items, not a count of kinds.
 tests["bank prompt words: the items by name, or nothing to say"] = function(t)
     t.eq(Present.BankPrompt({ ok = true, rows = { { name = "A", count = 2 }, { name = "B" }, {} }, unread = 0 }),
-        "Bank: A x2, B, item not read yet")
+        "Put in your bank for later: A x2, B, item not read yet")
     t.eq(Present.BankPrompt({ ok = true, rows = { { name = "Linen Cloth", count = 1 } }, unread = 0 }),
-        "Bank: Linen Cloth x1")
+        "Put in your bank for later: Linen Cloth x1")
     t.eq(Present.BankPrompt({ ok = true, rows = {}, unread = 0 }), nil, "nothing to bank: no prompt")
     t.eq(Present.BankPrompt({ ok = true, rows = {}, unread = 4 }), nil, "can't tell: no prompt, not a guess")
     t.eq(Present.BankPrompt({ ok = false, rows = {} }), nil, "bags not read: no prompt")
@@ -100,7 +100,7 @@ tests["bank prompt: at the bank, what could be banked is one prompt"] = function
     local p = prompts[L.PROMPT_ID]
     t.eq(L.PROMPT_ID, "l6d.bank")
     t.ok(p ~= nil, "registered")
-    t.eq(p and p.text, "Bank: Linen Cloth x20, Light Leather x4")
+    t.eq(p and p.text, "Put in your bank for later: Linen Cloth x20, Light Leather x4")
     t.eq(p.priority, L.PROMPT_PRIORITY)
 end
 
@@ -109,7 +109,7 @@ tests["bank prompt: it follows the bags at the bank, and goes when the bank clos
     local _, c, _, prompts = start()
     c.setBagItems({ { item = 2318, count = 4 } })       -- the linen went in
     c.fire(L.BAG_EVENT)
-    t.eq(prompts[L.PROMPT_ID] and prompts[L.PROMPT_ID].text, "Bank: Light Leather x4")
+    t.eq(prompts[L.PROMPT_ID] and prompts[L.PROMPT_ID].text, "Put in your bank for later: Light Leather x4")
     c.setBankOpen(false)
     t.eq(prompts[L.PROMPT_ID], nil, "the bank closed: the prompt is gone")
     c.setBankOpen(true)
