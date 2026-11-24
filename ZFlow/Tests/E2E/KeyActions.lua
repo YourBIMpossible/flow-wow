@@ -353,6 +353,40 @@ tests["key actions F1b: no role, Righteous Fury missing: Choose a role shows, th
     nothingWritten(t, c)
 end
 
+-- CHANGES-1 (F1b regression): the look-only "Choose a role" line is a last
+-- resort. With food to eat or a fish on the line, those still show. Red on
+-- beac9a92, where the look-only pick stopped the later steps and the key.
+tests["key actions F1b: no role, Righteous Fury missing, Well Fed food in the bags: the food shows"] = function(t)
+    local c, addon = start()
+    learn(c, "Righteous Fury", 25780)
+    local STEW = 9006
+    c.setItemInfo({ [STEW] = { name = "Stamina Stew", classID = 0, subclassID = 5 } })
+    c.setItemLines(STEW, { "Stamina Stew", "Use: If you spend at least 10 seconds eating you will become well fed and gain 10 Stamina for 15 min." })
+    c.setItemTexture(STEW, "tex:Stamina Stew")
+    c.setBagItems({ { item = POLE, count = 1 }, { item = STEW, count = 2 } })
+    c.fire("BAG_UPDATE_DELAYED"); c.fire("GET_ITEM_INFO_RECEIVED")
+    c.advance(1, 5)
+    local s = suggested(addon)
+    t.eq(type(s) == "table" and s.kind, "food", "the food is suggested, not Choose a role")
+    t.eq(type(s) == "table" and s.item, "Stamina Stew", "the Well Fed food")
+    t.ok(not (attr(c, "type") == "spell" and attr(c, "spell") == "Righteous Fury"), "the key does not cast the buff")
+    nothingWritten(t, c)
+end
+
+tests["key actions F1b: no role, Righteous Fury missing, a fish on the line: the fishing line shows"] = function(t)
+    local c, addon = start()
+    learn(c, "Righteous Fury", 25780)
+    set(c, addon, FISHING, true)
+    learn(c, "Fishing", 7620)
+    poleOn(c)
+    c.setChannel({ name = "Fishing", endsAt = 30 }); c.advance(1, 5)
+    local s = suggested(addon)
+    t.eq(type(s) == "table" and s.step, "fishing", "the fishing line, not Choose a role")
+    t.eq(type(s) == "table" and s.look, true, "shown only")
+    t.ok(attr(c, "spell") ~= "Fishing", "the key does not cast again")
+    t.ok(attr(c, "spell") ~= "Righteous Fury", "the key does not cast the buff")
+end
+
 tests["key actions: the key's actions row off: none of these is put on the key"] = function(t)
     local c, addon = start()
     gear(c, addon)
