@@ -192,6 +192,7 @@ return {
         "UI/BankList.lua",
         "UI/KitHost.lua",
         "Items/Keep.lua",
+        "Items/Buyback.lua",
         "Items/RecipeBook.lua",
         "Items/RecipeLearned.lua",
         "Items/ProfRecipes.lua",
