@@ -38,6 +38,26 @@ end
 -- opts: refused (event names the client does not take), outside (not in an
 -- instance), name (the instance name the client says), account (saved),
 -- questie (false: none), badList (Questie's dungeon list raises), noLevel.
+-- The fake kit's record keeps a part's text only, so the tree the tracker
+-- last gave the kit is kept here and read for the line under a text.
+local function watch(c)
+    local box = {}
+    local real = c.kitWindow
+    c.kitWindow = function(id, tree, extra)
+        if id == ID then box.tree = tree end
+        local h = real(id, tree, extra)
+        if id == ID and type(h) == "table" then
+            local update = h.update
+            h.update = function(now)
+                box.tree = now
+                return update(now)
+            end
+        end
+        return h
+    end
+    return box
+end
+
 local function boot(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
@@ -57,10 +77,11 @@ local function boot(opts)
         local db, zones = questie(opts)
         c.setQuestieModule("QuestieDB", db); c.setQuestieModule("ZoneDB", zones)
     end
+    local box = watch(c)
     local addon = ns.offline.addon(c)
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
     c.advance(3, 30)
-    return c, addon
+    return c, addon, box
 end
 
 local function texts(rec)
@@ -166,6 +187,51 @@ tests["dungeon tracker: stopped, it does not come back on a refresh"] = function
     c.fire("ENCOUNTER_END", 1001, "Rhahk'Zor", 1, 5, 1)
     c.advance(0.2, 2)
     t.eq((shown(c)), false, "still hidden")
+end
+
+-- Owner 2026-11-23 ("still needs some work"): every line that is not a kill
+-- says what the player does next, under it.
+local function under(box, text)
+    local sub
+    if type(box) ~= "table" or box.tree == nil then return nil end
+    ns.Kit.Each(box.tree, function(p)
+        if p.text == text then sub = p.sub end
+    end)
+    return sub
+end
+
+tests["dungeon tracker next: a quest in your log and no kill yet each say what to do"] = function(t)
+    local T = ns.DungeonTracker
+    local _, _, box = boot()
+    t.eq(under(box, T.NO_KILL), T.NO_KILL_NEXT, "no kill yet")
+    t.eq(under(box, "Red Silk"), T.QUEST_NEXT, "the quest in your log")
+end
+
+tests["dungeon tracker next: no quest of this dungeon in your log names the window that lists them"] = function(t)
+    local T = ns.DungeonTracker
+    local c, _, box = boot()
+    c.setQuestLog({})
+    c.fire("QUEST_LOG_UPDATE")
+    c.advance(0.2, 2)
+    local _, rec = shown(c)
+    local sub = under(box, T.NO_QUEST)
+    t.eq(sub, string.format(T.NO_QUEST_NEXT, ns.id.slash), texts(rec))
+    t.ok(type(sub) == "string" and sub:find(ns.id.slash .. " dungeons", 1, true) ~= nil, "the real command")
+end
+
+tests["dungeon tracker next: a dungeon not known, and each real reason, say how to get past it"] = function(t)
+    local T = ns.DungeonTracker
+    local function boxOf(opts)
+        local _, _, box = boot(opts)
+        return box
+    end
+    t.eq(under(boxOf({ name = "Nowhere Keep" }), T.NOT_KNOWN), string.format(T.NOT_KNOWN_NEXT, ns.id.slash), "not known")
+    local noLevel = boxOf({ noLevel = true })
+    t.eq(under(noLevel, ns.DungeonRead.WHY_NO_LEVEL[1]), ns.DungeonRead.WHY_NO_LEVEL[2], "level not known")
+    local noQ = boxOf({ questie = false })
+    t.eq(under(noQ, ns.DungeonStates.WHY.noQuestie[1]), ns.DungeonStates.WHY.noQuestie[2], "no Questie")
+    local bad = boxOf({ badList = true })
+    t.eq(under(bad, ns.DungeonRead.WHY_LIST[1]), ns.DungeonRead.WHY_LIST[2], "the list failed")
 end
 
 return tests
