@@ -3107,6 +3107,17 @@ function ns.make.fakeClient(opts)
     end
     -- Lead section 409: the face also keeps label (spec.label) and dimmed
     -- (the last h.dim mode: "picture", "gone" or nil).
+    -- Lead section 409: every icon also has h.fade(on); h.faded is the last.
+    local unfadedIcon = c.icon
+    function c.icon(spec)
+        local h = unfadedIcon(spec)
+        if type(h) ~= "table" then return h end
+        function h.fade(on)
+            h.faded = on == true
+            return true
+        end
+        return h
+    end
     local plainButtonFace = c.buttonFace
     function c.buttonFace(spec)
         local h = plainButtonFace(spec)

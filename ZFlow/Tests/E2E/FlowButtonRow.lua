@@ -8,7 +8,7 @@ local _, ns = ...
 --      with the last buff's own picture, or nothing drawn when it never
 --      held one. What a click casts is unchanged (nothing).
 --   2. One picture for the next spell, on the Flow button: the rotation
---      icon is not shown while the Flow button shows the same spell. It
+--      icon stays on but draws nothing (faded) while the Flow button shows the same spell. It
 --      shows only what the button does not: in a fight, the rotation's new
 --      suggestion while the locked button keeps what it had.
 --   3. The yellow bars are the move grips (UI/MoveHandle.lua). They are
@@ -111,7 +111,7 @@ tests["flow row: one picture for the next spell, on the Flow button"] = function
     t.eq(rowOf(c, FLOW).slots[1].icon, "tex:Power Word: Fortitude", "with its picture")
     t.eq(face(c, FLOW).dimmed, nil, "not dimmed")
     t.ok(icon(c).spec ~= nil, "the rotation icon is made")
-    t.eq(icon(c).shown, false, "the rotation icon does not show the same picture beside it")
+    t.eq(icon(c).faded, true, "the rotation icon draws nothing: it does not show the same picture beside it")
     noMacros(t, c)
 end
 
@@ -158,18 +158,18 @@ tests["flow row: in a fight the rotation icon shows only what the locked button 
     c.setTarget({ exists = true, hostile = true, dead = false }); c.setTargetName("Training Dummy")
     c.advance(3, 5)
     t.eq(held(c, FLOW), "Attack", "before the pull: Attack on the Flow button")
-    t.eq(icon(c).shown, false, "same spell: no second picture")
+    t.eq(icon(c).faded, true, "same spell: no second picture")
     c.setLockdown(false); c.setCurrentSpell(6603, true); c.setCombat(true); c.setLockdown(true)
     c.advance(3, 5)
     t.eq(held(c, FLOW), "Stormstrike", "the fight spell, kept through the fight")
-    t.eq(icon(c).shown, false, "the rotation suggests the same: no second picture")
+    t.eq(icon(c).faded, true, "the rotation suggests the same: no second picture")
     -- The swing stops: the rotation now suggests Attack; the locked button cannot change.
     c.setCurrentSpell(6603, false); c.advance(3, 5)
     t.eq(held(c, FLOW), "Stormstrike", "the click still casts what it held")
-    t.eq(icon(c).shown, true, "the rotation icon shows the new suggestion the button cannot take")
+    t.eq({ icon(c).shown, icon(c).faded }, { true, false }, "the rotation icon shows the new suggestion the button cannot take")
     t.eq(icon(c).texture, "tex:Attack")
     c.setLockdown(false); c.setCombat(false); c.advance(3, 5)
-    t.eq(icon(c).shown, false, "after the fight the button takes it: one picture again")
+    t.eq(icon(c).faded, true, "after the fight the button takes it: one picture again")
     noMacros(t, c)
 end
 
