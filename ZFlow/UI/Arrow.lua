@@ -891,6 +891,14 @@ function Arrow.Start(k, diag, own)
             view = N.ArrowView(src.view)
             lines = Arrow.Lines(view, src.lines, src.lost)
         end
+        -- FLOW-PARITY B-40: the party route line under the quest arrow's
+        -- lines (Nav/PartyRoute.lua). It says only; nothing is sent.
+        local party = k.use and k.use("partyRoute")
+        if type(party) == "table" and type(party.Line) == "function" and type(lines.quest) == "table"
+            and #lines.quest > 0 then
+            local okLine, line = pcall(party.Line)
+            if okLine and type(line) == "string" then lines.quest[#lines.quest + 1] = line end
+        end
         for _, key in ipairs(N.ARROW_KEYS) do
             local ops, h = view[key], handles[key]
             -- A bare needle keeps its frame for its text when the lines are
