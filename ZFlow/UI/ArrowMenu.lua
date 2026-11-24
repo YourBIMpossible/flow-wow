@@ -30,6 +30,8 @@ local function read(s)
         nearest = type(s.nearest) == "table" and s.nearest or {},
         waypoint = s.waypoint == true,
         route = type(s.route) == "table" and s.route or {},
+        buttons = type(s.buttons) == "table" and s.buttons or {},
+        windows = type(s.windows) == "table" and s.windows or {},
     }
 end
 
@@ -71,6 +73,10 @@ function M.Items(state)
     end
     -- Lead section 382 (Nav/ProfFeed.lua): the profession coach on or off.
     show[#show + 1] = { key = M.PROFESSIONS, text = M.PROFESSIONS_TEXT, checked = s.professions }
+    -- Lead section 387 R3: Buttons and Flow windows, under Show so the top
+    -- level stays at Topics.MENU_MAX.
+    show[#show + 1] = M.ButtonsRow(s.buttons)
+    show[#show + 1] = M.FlowRow(s.windows)
     local rows = {
         M.StepRow(s),
         { key = "layout", text = T.MENU.layout, children = layout },
@@ -304,6 +310,71 @@ function M.RouteRow(route)
     return { key = M.ROUTE, text = M.ROUTE_TEXT:format(n.steps[1], n.steps[2]), children = children }
 end
 
+-- Lead section 387 R3: the Buttons and Flow windows levels, one level under
+-- Show. Show and advise only: a button row flips its own setting
+-- (UI/WindowButtons.lua shows or hides the button, and makes none in
+-- combat); a window row opens the add-on's own window, or closes it when
+-- the window can say it is open.
+M.BUTTONS = "buttons"
+M.BUTTONS_TEXT = "Buttons"
+M.BUTTONS_NONE = "No buttons on any window"
+M.FLOW = "windows"
+M.FLOW_TEXT = "Flow windows"
+-- name: the module (k.use); open: what opens it; close and shown: what
+-- closes it and says it is open (both, or the row only opens it).
+M.FLOW_WINDOWS = {
+    { name = "dungeonWindow", text = "Dungeon quests", open = "Open", close = "Close", shown = "Shown" },
+    { name = "settingsPanel", text = "Settings", open = "Toggle" },
+    { name = "sellList", text = "Sell list", open = "Show" },
+    { name = "feedback", text = "Feedback", open = "Open" },
+}
+
+-- buttons: { { key, text, setting, on, there } }, there false while the
+-- setting row is missing.
+function M.ButtonsRow(buttons)
+    buttons = type(buttons) == "table" and buttons or {}
+    local children = {}
+    for _, b in ipairs(buttons) do
+        if #children >= topics().MENU_MAX - 2 then break end
+        if type(b) == "table" and type(b.key) == "string" then
+            children[#children + 1] = { key = M.BUTTONS .. "." .. b.key, text = tostring(b.text or b.key),
+                checked = b.on == true, disabled = (b.there ~= true) or nil }
+        end
+    end
+    if #children == 0 then children[1] = { key = M.BUTTONS .. ".none", text = M.BUTTONS_NONE, disabled = true } end
+    return { key = M.BUTTONS, text = M.BUTTONS_TEXT, children = children }
+end
+
+-- windows: { [name] = true } for each window that is ready.
+function M.FlowRow(windows)
+    windows = type(windows) == "table" and windows or {}
+    local children = {}
+    for _, w in ipairs(M.FLOW_WINDOWS) do
+        children[#children + 1] = { key = M.FLOW .. "." .. w.name, text = w.text,
+            disabled = (windows[w.name] ~= true) or nil }
+    end
+    return { key = M.FLOW, text = M.FLOW_TEXT, children = children }
+end
+
+-- What a Buttons or Flow windows row asks: { button = setting, on },
+-- { flowWindow = name }, or nil for a row not there or not offered.
+function M.WindowAction(key, s)
+    local b = key:match("^buttons%.(.+)$")
+    if b then
+        for _, row in ipairs(s.buttons) do
+            if type(row) == "table" and row.key == b and row.there == true and type(row.setting) == "string" then
+                return { button = row.setting, on = row.on ~= true }
+            end
+        end
+        return nil
+    end
+    local name = key:match("^windows%.(.+)$")
+    for _, w in ipairs(M.FLOW_WINDOWS) do
+        if w.name == name and s.windows[name] == true then return { flowWindow = name } end
+    end
+    return nil
+end
+
 local function childrenOf(items, key)
     for i = 1, #items do
         local row = items[i]
@@ -401,6 +472,9 @@ function M.Action(key, state)
     -- Lead section 382: { professions = the new value } for the tick.
     if key == M.PROFESSIONS then return { professions = not s.professions } end
     if M.WINDOWS[key] then return { window = M.WINDOWS[key] } end
+    -- Lead section 387 R3: Buttons and Flow windows.
+    if key == M.BUTTONS or key == M.FLOW then return { open = key } end
+    if key:match("^buttons%.") or key:match("^windows%.") then return M.WindowAction(key, s) end
     -- G47: the follow level, a member (by unit), or stop ({ follow = false }).
     if key == M.FOLLOW then return { open = key } end
     local unit = key:match("^follow%.(.+)$")

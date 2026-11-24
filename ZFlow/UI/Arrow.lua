@@ -1109,6 +1109,29 @@ function Arrow.Start(k, diag, own)
         st.route = routeState()
         return st
     end
+    -- Lead section 387 R3: the Buttons level (UI/WindowButtons.lua's
+    -- windows and their settings) and the Flow windows that are ready.
+    -- Read only.
+    local withRoute = menuState
+    menuState = function()
+        local st = withRoute()
+        local buttons, windows = {}, {}
+        local WB = ns.WindowButtons
+        for _, win in ipairs(type(WB) == "table" and type(WB.WINDOWS) == "table" and WB.WINDOWS or {}) do
+            if type(win) == "table" and type(win.key) == "string" and type(win.setting) == "string" then
+                local there = k.settings ~= nil and k.settings:row(win.setting) ~= nil
+                buttons[#buttons + 1] = { key = win.key, text = win.label, setting = win.setting,
+                    there = there, on = there and k.settings:get(win.setting) == true }
+            end
+        end
+        for _, w in ipairs(M.FLOW_WINDOWS or {}) do
+            local mod
+            if k.use then mod = k.use(w.name) end
+            if type(mod) == "table" and type(mod[w.open]) == "function" then windows[w.name] = true end
+        end
+        st.buttons, st.windows = buttons, windows
+        return st
+    end
     -- The menu row with this key was clicked. A row that is not there or
     -- not offered asks for nothing.
     -- The menu is shown one level at a time (UI/ArrowMenu.lua, N57): a row
@@ -1206,6 +1229,32 @@ function Arrow.Start(k, diag, own)
             local ok, why = k.settings:set(action.setting, action.on)
             if not ok then say(tostring(why) .. ".") end
             if h and type(h.menu) == "function" then showMenu(h, M.ROUTE) end
+        elseif action.button then
+            -- Lead section 387 R3: a button's own setting; UI/WindowButtons.lua
+            -- shows or hides it. The Buttons level stays open.
+            local ok, why = k.settings:set(action.button, action.on)
+            if not ok then say(tostring(why) .. ".") end
+            if h and type(h.menu) == "function" then showMenu(h, M.BUTTONS) end
+        elseif action.flowWindow then
+            -- Lead section 387 R3: open the window, or close it when it says it is open.
+            local spec
+            for _, w in ipairs(M.FLOW_WINDOWS) do
+                if w.name == action.flowWindow then spec = w end
+            end
+            local win
+            if spec and k.use then win = k.use(spec.name) end
+            if type(win) == "table" and type(win[spec.open]) == "function" then
+                local open = true
+                if spec.close and type(win[spec.close]) == "function" and type(win[spec.shown]) == "function" then
+                    local okShown, shown = pcall(win[spec.shown])
+                    open = not (okShown and shown == true)
+                end
+                local ok, err
+                if open then ok, err = pcall(win[spec.open]) else ok, err = pcall(win[spec.close]) end
+                if not ok then k.problems:add("arrow", "window", err) end
+            else
+                say("that window is not ready.")
+            end
         elseif action.window then
             -- Lead section 318: a window of its own module (UI/ArrowMenu.lua M.WINDOWS).
             local win = k.use and k.use(action.window) or nil
