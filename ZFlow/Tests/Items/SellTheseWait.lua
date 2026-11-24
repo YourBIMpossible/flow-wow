@@ -143,4 +143,57 @@ tests["sell these wait: the note says how many stacks did not leave the bags"] =
         "Nothing sold; 2 stacks did not leave your bags, so they are not counted.")
 end
 
+-- Twin review of e666adbe (lead section 454), points 2 and 3.
+tests["sell these wait: a stack whose count only changed is not counted as sold"] = function(t)
+    local client, sched, w = world()
+    local result
+    local runner = SellThese.Runner(client, sched, function(r) result = r end)
+    w.bags["0:1"] = { item = FANG, count = 3 }
+    runner.start({ { bag = 0, slot = 1, key = ns.Items.Key(FANG), count = 3 } })
+    -- The same item, fewer of it: nothing was sold.
+    w.bags["0:1"] = { item = FANG, count = 2 }
+    w.frame()
+    t.eq(runner.running(), true, "still waited for")
+    w.frame(SellThese.WAIT + 0.1)
+    t.eq(result and { result.sold, result.gaveUp }, { 0, 1 }, "given up on, not counted")
+end
+
+tests["sell these wait: a stack given up on that leaves later in the run is counted after all"] = function(t)
+    local client, sched, w = world()
+    local result
+    local runner = SellThese.Runner(client, sched, function(r) result = r end)
+    runner.start(steps(w))
+    w.frame(SellThese.WAIT + 0.1)
+    t.eq(w.sent, { "0:1", "0:4" }, "given up on the first, on to the second")
+    -- The first one leaves late, while the second is waited for.
+    w.bags["0:1"] = nil
+    w.frame()
+    t.eq(runner.running(), true)
+    w.bags["0:4"] = nil
+    w.frame()
+    t.eq(result and { result.sold, result.skipped, result.gaveUp, result.stopped }, { 5, 0, 0, nil },
+        "both counted, none given up")
+end
+
+tests["sell these wait: a stack given up on that has left by the end of the run is counted"] = function(t)
+    local client, sched, w = world()
+    local result
+    local runner = SellThese.Runner(client, sched, function(r) result = r end)
+    w.bags["0:1"] = { item = FANG, count = 3 }
+    runner.start({ { bag = 0, slot = 1, key = ns.Items.Key(FANG), count = 3 } })
+    -- It leaves in the very frame the run gives up and ends.
+    local read = client.bagSlot
+    client.now = nil
+    for _ = 1, SellThese.WAIT_FRAMES - 1 do w.frame() end
+    t.eq(runner.running(), true, "one frame short of giving up")
+    local n = 0
+    client.bagSlot = function(bag, slot)
+        n = n + 1
+        if n > 1 then return nil end
+        return read(bag, slot)
+    end
+    w.frame()
+    t.eq(result and { result.sold, result.gaveUp }, { 3, 0 }, "seen gone at the end: counted")
+end
+
 return tests

@@ -170,4 +170,68 @@ tests["sell these: an empty list says why on the button, and it cannot be presse
     t.eq(newProblems(addon), 0)
 end
 
+-- Twin review of e666adbe (lead section 454), point 1: the wait, through the
+-- real button (UI/SellList.lua, the fake client, the add-on's scheduler).
+-- The fake's sale empties the slot at once, so here the sale call only
+-- records, and the test takes the stack out of the bags when "the game" is
+-- done with it. Fails before the wait fix: the next stack was sent one
+-- frame after the one before, and counted at once.
+local function slowSales(c)
+    local sent = {}
+    c.sellBagItem = function(bag, slot)
+        sent[#sent + 1] = bag .. ":" .. slot
+        return true
+    end
+    return sent
+end
+
+local function without(bag, gone)
+    local out = {}
+    for _, row in ipairs(bag) do
+        if not gone[row.bag .. ":" .. row.slot] then out[#out + 1] = row end
+    end
+    return out
+end
+
+tests["sell these: the button waits for each stack to leave the bags, and says which did not"] = function(t)
+    local c, addon = boot()
+    c.setMerchantOpen(true)
+    local sent = slowSales(c)
+    t.eq(c.kitClick("SellList", "sellThese"), true, "the player presses it")
+    t.eq(sent, { "0:1" }, "the first stack at the click")
+    c.advance(0.2, 5)
+    t.eq(sent, { "0:1" }, "the second waits for the first to leave")
+    local button = part(c, "sellThese")
+    t.eq(button and button.text, "Selling...", "the button says it is still selling")
+    c.setBagItems(without(BAG, { ["0:1"] = true }))
+    c.advance(0.1, 2)
+    t.eq(sent, { "0:1", "0:4" }, "the first has left: the second is sent")
+    -- The second never leaves the bags.
+    c.advance(2, 20)
+    t.eq(sent, { "0:1", "0:4", "1:1" }, "given up on after the wait: on to the last")
+    c.setBagItems(without(BAG, { ["0:1"] = true, ["1:1"] = true }))
+    c.advance(0.2, 4)
+    t.ok(shows(c, "line", "Sold 4 items; 1 stack did not leave your bags, so it is not counted. "
+        .. "Changed your mind? Buy them back on the merchant's Buyback tab."), "the note says what did not leave")
+    local after = part(c, "sellThese")
+    t.ok(after ~= nil and after.text ~= "Selling...", "the run has ended")
+    t.eq(newProblems(addon), 0)
+end
+
+tests["sell these: a stack given up on that leaves before the run ends is counted"] = function(t)
+    local c, addon = boot()
+    c.setMerchantOpen(true)
+    local sent = slowSales(c)
+    c.kitClick("SellList", "sellThese")
+    c.setBagItems(without(BAG, { ["0:1"] = true }))
+    c.advance(0.1, 2)
+    c.advance(2, 20)
+    t.eq(sent, { "0:1", "0:4", "1:1" }, "the second was given up on")
+    -- Both leave now, the late one too.
+    c.setBagItems(without(BAG, { ["0:1"] = true, ["0:4"] = true, ["1:1"] = true }))
+    c.advance(0.2, 4)
+    t.ok(shows(c, "line", BUYBACK), "all six counted, nothing said about a stack that did not leave")
+    t.eq(newProblems(addon), 0)
+end
+
 return tests
