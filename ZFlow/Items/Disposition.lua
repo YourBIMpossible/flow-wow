@@ -93,6 +93,9 @@ local function diffFor(g, role)
 end
 
 Disposition.QUEST_CLASS = 12     -- the game's item class for quest items
+-- G4: the reason laterOrOtherRole gives an upgrade whose level you have
+-- reached (Items/BagMarks.lua marks it as an upgrade).
+Disposition.UPGRADE_NOW = "an upgrade you can wear now"
 -- Lead section 418 item 4 (b): a kept material held past the steps' need.
 Disposition.SPARE = " (spare %d: sell at the auction house)"
 
@@ -302,7 +305,7 @@ Disposition.RULES = {
             -- "later". A level that is not known is not guessed.
             local at
             if isCount(i.minLevel) and isCount(c.level) and i.minLevel <= c.level then
-                at = "an upgrade you can wear now"
+                at = Disposition.UPGRADE_NOW
             elseif isCount(i.minLevel) then
                 at = "upgrade at level " .. i.minLevel
             else

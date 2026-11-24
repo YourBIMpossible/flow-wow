@@ -19,11 +19,15 @@ local KIND = {
                "onSpellLearned", "onItemTooltip", "onLootRoll", "onPrint", "onError", "watchCombatLog",
                "watchSoundDevices", "watchUnitCombat", "watchMoves", "onMerchantRedraw",
                "watchAuctionResults", "onUnitTooltip", "watchAuctionRows", "onSystemMessage",
+               -- G4: the bag window's redraw (Items/BagMarks.lua).
+               "onBagRedraw",
                -- N60a: the chat filter and the link click (UI/Chat.lua).
                "chatFilter", "onLinkClick" },
     show = { "print", "panel", "minimapPin", "copyBox", "icon", "arrow", "windowButton", "secureButton",
              "optionsPage", "guideLines", "taxiMark", "mapPins", "mapClick", "comboBar", "slotIcon",
              "markMerchantButtons", "rowPanel", "textEntry",
+             -- G4: the marks on bag slots (Items/BagMarks.lua).
+             "markBagKinds",
              -- N59: the info bar, and its data broker feed where the library is loaded.
              "infoBar", "broker",
              -- N57: the key-capture overlay on the settings page.
