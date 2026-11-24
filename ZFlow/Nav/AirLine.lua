@@ -5,12 +5,16 @@ local _, ns = ...
 -- mapFlights module (Nav/MapFlights.lua) gives the line as AirLine().
 -- Not here yet: a caller. The arrow's route lines are a later hook; until
 -- then the player sees nothing new.
+-- Only when the leg's time was learned (lead section 497: flight.learned,
+-- Nav/Flights.lua Last(); the times are A1-32's): a guessed time says
+-- nothing, so an unknown stays unknown.
 -- Compared with Flow Modules/Nav/Nav.lua (N.AirRoute's route line):
 -- "Quicker by air: fly from %s to %s." The same words.
 -- Not tested in game.
 --
 -- Pure:
---   AL.Words(flight) -> the line, or nil without both names
+--   AL.Words(flight) -> the line, or nil without both names or without
+--                       flight.learned == true
 ns.Nav = ns.Nav or {}
 local N = ns.Nav
 local AL = {}
@@ -25,6 +29,6 @@ end
 
 function AL.Words(flight)
     if type(flight) ~= "table" or not (name(flight.from) and name(flight.to)) then return nil end
-    if flight.from == flight.to then return nil end
+    if flight.from == flight.to or flight.learned ~= true then return nil end
     return AL.TEXT:format(flight.from, flight.to)
 end

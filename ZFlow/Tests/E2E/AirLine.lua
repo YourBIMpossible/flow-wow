@@ -4,7 +4,8 @@ local _, ns = ...
 -- flight, mapFlights AirLine() says "Quicker by air: fly from A to B.".
 -- Setup as FlightMarks.lua: a far quest, two known flight masters. On the
 -- whole add-on with a fake client; made-up places. Not tested in game.
--- Fails before: there is no Nav/AirLine.lua and no AirLine().
+-- Fails before: there is no Nav/AirLine.lua and no AirLine(); a guessed
+-- time said the line before lead section 497.
 
 local tests = {}
 local MF = ns.MapFlights
@@ -41,9 +42,10 @@ local function taxiRead()
     } }
 end
 
-local function start()
+-- times: account learned.flights.times (A1-32's), or nil: guessed.
+local function start(times)
     local c = ns.make.fakeClient()
-    c.setSaved(ns.id.accountDB, {})
+    c.setSaved(ns.id.accountDB, times and { learned = { flights = { times = times } } } or {})
     c.setSaved(ns.id.charDB, { learned = { flights = { nodes = nodes() } } })
     c.setZone(1, 1411); c.setPosition(1411, 0.5, 0.5); c.setFacing(0)
     c.setMapSize(1411, 1000, 500); c.setMapCont(1411, 1)
@@ -61,21 +63,29 @@ local function start()
     return c, addon
 end
 
-tests["air line e2e: a flight step gives the quicker-by-air line, setting off or on"] = function(t)
-    local c, addon = start()
+tests["air line e2e: a flight step with a learned time gives the quicker-by-air line, pins off"] = function(t)
+    local c, addon = start({ [HOME_POST .. ">" .. FAR_POST] = 60 })
+    t.eq(c.arrows[1].lines[1], ns.Nav.Flights.LABEL:format(FAR_POST), "the arrow says to fly")
     local mod = addon.use("mapFlights")
     t.ok(mod ~= nil and type(mod.AirLine) == "function", "provided")
     t.eq(addon.settings:get(MF.SETTING), false, "pins off")
     t.eq(mod and mod.AirLine(), "Quicker by air: fly from " .. HOME_POST .. " to " .. FAR_POST .. ".")
 end
 
-tests["air line: without both names, or the same place, there is no line"] = function(t)
+tests["air line e2e: a flight step with a guessed time has no line"] = function(t)
+    local c, addon = start(nil)
+    t.eq(c.arrows[1].lines[1], ns.Nav.Flights.LABEL:format(FAR_POST), "still a flight step")
+    t.eq(addon.use("mapFlights").AirLine(), nil, "guessed: nothing said")
+end
+
+tests["air line: without both names, the same place or a learned time, there is no line"] = function(t)
     local AL = ns.Nav.AirLine
     t.eq(AL.Words(nil), nil)
     t.eq(AL.Words({ from = "A" }), nil)
     t.eq(AL.Words({ from = "", to = "B" }), nil)
     t.eq(AL.Words({ from = "A", to = "A" }), nil)
-    t.eq(AL.Words({ from = "A", to = "B" }), "Quicker by air: fly from A to B.")
+    t.eq(AL.Words({ from = "A", to = "B" }), nil, "a guessed time")
+    t.eq(AL.Words({ from = "A", to = "B", learned = true }), "Quicker by air: fly from A to B.")
 end
 
 return tests
