@@ -120,6 +120,9 @@ SellList.PRICES_UNKNOWN = "Prices not known"
 SellList.ITEMS_UNREAD_HEAD = "Items not read yet"
 SellList.ITEMS_UNREAD_HOW = "Reopen the merchant window to list them."
 SellList.NOTHING = "Nothing to sell."
+-- The bags read as holding no item at all (owner, 2026-11-23): said apart
+-- from bags that hold only things not to sell.
+SellList.BAGS_EMPTY = "No items were found in your bags. If they are not empty, reopen the merchant window."
 SellList.UNKNOWN_HEAD = "Reservations not known"
 SellList.UNKNOWN_HOW = "Nothing is offered for sale until what your goals hold is known."
 SellList.UNREAD_HEAD = "Can't list what to sell"
@@ -438,8 +441,9 @@ function SellList.TreeOf(listing, client, id, action)
     elseif #rows == 0 then
         title = Present.NOTHING_TO_SELL
         total = 0
-        body[#body + 1] = { kind = "empty", text = SellList.NOTHING,
-            how = "Bags hold nothing " .. tostring(id.title) .. " would sell." }
+        local how = "Bags hold nothing " .. tostring(id.title) .. " would sell."
+        if type(listing.stacks) == "table" and #listing.stacks == 0 then how = SellList.BAGS_EMPTY end
+        body[#body + 1] = { kind = "empty", text = SellList.NOTHING, how = how }
     else
         title = plural(#rows, "item", "items") .. " to sell"
         total = 0
