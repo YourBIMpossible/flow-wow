@@ -166,6 +166,13 @@ Diag.NAMES = {
     "Settings.RegisterCanvasLayoutCategory", "Settings.RegisterCanvasLayoutSubcategory",
     "Settings.RegisterAddOnCategory", "Settings.OpenToCategory", "SettingsPanel",
     "SettingsPanel.SearchBox", "InterfaceOptionsFrame",
+    -- Lead section 410: whether the game's own setting rows are there for
+    -- add-ons (c.optionsNative). No installed add-on shows they are.
+    "Settings.RegisterVerticalLayoutCategory", "Settings.RegisterVerticalLayoutSubcategory",
+    "Settings.RegisterProxySetting", "Settings.CreateCheckbox", "Settings.CreateCheckBox",
+    "Settings.CreateSlider", "Settings.CreateSliderOptions", "Settings.CreateDropdown",
+    "Settings.CreateDropDown", "Settings.CreateControlTextContainer",
+    "CreateSettingsButtonInitializer", "CreateSettingsListSectionHeaderInitializer",
     -- Row N73: the feedback report takes the guild name out of its text
     -- (UI/Feedback.lua Names). Saved in the snapshot's names table.
     "GetGuildInfo",

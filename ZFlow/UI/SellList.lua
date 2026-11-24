@@ -255,7 +255,7 @@ function SellList.Others(bag, listing, book)
             rows[#rows + 1] = {
                 key = item.key,
                 name = type(item.name) == "string" and item.name ~= "" and item.name or nil,
-                count = item.count, reason = SellList[why], why = why,
+                count = item.count, quality = item.quality, reason = SellList[why], why = why,
             }
         end
     end
@@ -333,7 +333,7 @@ function SellList.OtherLines(lines, listing)
     for _, o in ipairs(others) do
         local name = o.name
         if type(name) ~= "string" or name == "" then name = ns.ItemPresent.Name(o.key) end
-        lines[#lines + 1] = tostring(name) .. ": " .. tostring(o.reason)
+        lines[#lines + 1] = tostring(ns.ItemPresent.Tint(name, o.quality)) .. ": " .. tostring(o.reason)
     end
     return lines
 end
