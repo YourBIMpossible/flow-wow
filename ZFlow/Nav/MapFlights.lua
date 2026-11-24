@@ -316,12 +316,23 @@ function MF.Declare(k)
         return out, lines
     end
 
+    -- The "Quicker by air" line (Nav/AirLine.lua) for the arrow's flight,
+    -- or nil. Not tied to the setting: words only, no pins.
+    function api.airLine()
+        local AL, TM = ns.Nav and ns.Nav.AirLine, ns.TaxiMark
+        if type(AL) ~= "table" or type(TM) ~= "table" or type(TM.StepFlight) ~= "function" then return nil end
+        local ok, f = pcall(TM.StepFlight, k)
+        if not ok then return nil end
+        return AL.Words(f)
+    end
+
     k:Setting({ key = MF.SETTING, scope = "account", type = "bool", default = false, group = "travel.flights", synonyms = { "flight", "map", "pins", "taxi" },
         label = MF.ROW_LABEL, help = MF.ROW_HELP })
 
     k:Module({
         name = MF.NAME,
         needs = { "client", "settings" },
+        provides = { AirLine = function() return api.airLine() end },
         ticks = { { every = MF.EVERY, when = "always", run = function() api.draw() end } },
         start = function(c) ctx = c end,
         stop = function() clear() end,

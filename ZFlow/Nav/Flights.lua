@@ -43,8 +43,9 @@ local _, ns = ...
 --         OVERHEAD;
 --       - nil unless walking to the board point, flying and walking on
 --         takes less than SAVES of walking straight there (at speed).
---     -> { from, to, x, y, sec, walk, run }  (x, y: the board point on
---     `home`; run: yards from `to` to the target)
+--     -> { from, to, x, y, sec, walk, run, learned }  (x, y: the board
+--     point on `home`; run: yards from `to` to the target; learned: true
+--     when the flight seconds are your own time, false when guessed)
 --   line = Flights.Explain(nodes, me, there, reason)
 --     Lead section 286: what the arrow says under a far goal when Pick
 --     found no flight for `reason` (a Pick reason). nil on another
@@ -172,10 +173,10 @@ function Flights.Pick(nodes, me, there, home, seconds, speed, rate)
     if not from then return nil, "no flight point known on your map" end
     if not to then return nil, "no flight point known near the target" end
     if from == to then return nil, "the same flight point" end
-    local fly
+    local fly, learned = nil, false
     if type(seconds) == "function" then
         local ok, sec = pcall(seconds, from, to)
-        if ok and finite(sec) and sec > 0 then fly = sec end
+        if ok and finite(sec) and sec > 0 then fly, learned = sec, true end
     end
     if not fly then
         local a, b = nodes[from], nodes[to]
@@ -186,7 +187,7 @@ function Flights.Pick(nodes, me, there, home, seconds, speed, rate)
     local walk = dist(me.wx, me.wy, there.wx, there.wy)
     local sec = (d1 + d2) / speed + fly
     if sec >= (walk / speed) * Flights.SAVES then return nil, "walking is about as quick" end
-    return { from = from, to = to, x = bx, y = by, sec = sec, walk = walk, run = d2 }
+    return { from = from, to = to, x = bx, y = by, sec = sec, walk = walk, run = d2, learned = learned }
 end
 
 local NO_GAIN = { ["the same flight point"] = true, ["walking is about as quick"] = true }
@@ -255,7 +256,8 @@ function Flights.Declare(k)
     -- The flight of the last way that found one (section 187 section 7, for
     -- the taxiMark and mapFlights readers):
     --   { from, to, board = { map, x, y } (the step's place), there =
-    --     { cont, wx, wy } (the target), points = the preview's points or nil }
+    --     { cont, wx, wy } (the target), points = the preview's points or nil,
+    --     learned = true when the leg's time is your own (lead section 497) }
     -- nil after a way that found none. In memory only.
     local last
 
@@ -327,6 +329,7 @@ function Flights.Declare(k)
             board = { map = pos.map, x = pick.x, y = pick.y },
             there = { cont = tcont, wx = tx, wy = ty },
             points = preview and points(known) or nil,
+            learned = pick.learned == true,
         }
         return {
             kind = Flights.KIND,

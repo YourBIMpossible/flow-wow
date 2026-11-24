@@ -366,5 +366,9 @@ return {
     "UI/RouteArea.lua",
     -- F7 (lead section 447 item 6): route and waypoint lines on the world map (after RouteList, MapRoute).
     "UI/MapRouteLines.lua",
+    -- A1-12 (lead section 488): the quest step's hover lines (after QuestRead, TripRoute).
+    "Nav/StepTip.lua",
+    "Nav/AirLine.lua",
+    "Nav/ZoneFilter.lua",
     },
 }
