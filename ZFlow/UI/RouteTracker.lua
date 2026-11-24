@@ -9,6 +9,8 @@
 --
 -- The current step is also pinned on the world map when the map shows the
 -- step's map (client.mapPins, the same pins Nav/MapFlights.lua draws).
+-- N43: so is every stop after it on that map, numbered in route order in
+-- the pins' other look, joined by lines (RT.Pins; setting RT.MAP_SETTING).
 --
 -- Built from the kit's parts only (UI/Kit.lua, drawn by client.kitWindow):
 -- this file names no template, colour, font, size or picture, and works
@@ -41,6 +43,42 @@ RT.EVERY = 1
 RT.TONE_NOW = "good"
 RT.PIN_KIND = "new"
 RT.PIN_ROLE = "route"
+-- N43: the stops after the current one on the world map, in the map pins'
+-- other look (client.mapPins: "have"), numbered in route order.
+RT.PIN_NEXT_KIND = "have"
+RT.PIN_NEXT_ROLE = "routeNext"
+RT.PIN_NUMBERED = "%d. %s"
+RT.MAP_SETTING = "nav.routeMap"
+
+-- The world-map pins and lines of a route (pure). cur: TripRoute Current;
+-- map: the uiMapID the map shows; onlyCurrent: the first stop only (the
+-- whole-route setting off). -> pins, lines as client.mapPins h.draw takes
+-- them. Stops on another map are left out; their numbers are kept.
+function RT.Pins(cur, map, onlyCurrent)
+    local pins, lines = {}, {}
+    local stops = type(cur) == "table" and type(cur.stops) == "table" and cur.stops or nil
+    if not stops or map == nil then return pins, lines end
+    local last = onlyCurrent and 1 or #stops
+    local prev
+    for i = 1, last do
+        local s = stops[i]
+        local at = type(s) == "table" and type(s.place) == "table" and s.place or nil
+        if at and at.map == map then
+            if i == 1 then
+                pins[#pins + 1] = { name = tostring(s.label), kind = RT.PIN_KIND, role = RT.PIN_ROLE,
+                                    order = 1, x = at.x, y = at.y }
+            else
+                pins[#pins + 1] = { name = RT.PIN_NUMBERED:format(i, tostring(s.label)), kind = RT.PIN_NEXT_KIND,
+                                    role = RT.PIN_NEXT_ROLE, order = i, x = at.x, y = at.y }
+            end
+            if prev and prev.i == i - 1 then
+                lines[#lines + 1] = { from = i - 1, to = i, ax = prev.x, ay = prev.y, bx = at.x, by = at.y }
+            end
+            prev = { i = i, x = at.x, y = at.y }
+        end
+    end
+    return pins, lines
+end
 
 function RT.Children(rows)
     local kids = { { kind = "header", key = "header", title = RT.HEADER } }
@@ -131,9 +169,17 @@ function RT.Declare(k, diag)
         if pins then pcall(pins.clear) end
     end
 
+    -- N43: the whole route unless its setting is off.
+    local function wholeRoute()
+        local s = ctx and ctx.settings
+        if type(s) ~= "table" or type(s.get) ~= "function" then return true end
+        local ok, v = pcall(s.get, s, RT.MAP_SETTING)
+        return not (ok and v == false)
+    end
+
     local function pinStep(cur)
         local s = type(cur) == "table" and type(cur.stops) == "table" and cur.stops[1] or nil
-        if not s or type(s.place) ~= "table" then
+        if not s then
             clearPin()
             return
         end
@@ -145,12 +191,16 @@ function RT.Declare(k, diag)
             end
         end
         local okMap, map = pcall(pins.map)
-        if not okMap or map == nil or map ~= s.place.map then
+        if not okMap or map == nil then
             clearPin()
             return
         end
-        pcall(pins.draw, { { name = tostring(s.label), kind = RT.PIN_KIND, role = RT.PIN_ROLE,
-                             x = s.place.x, y = s.place.y } }, {})
+        local list, lines = RT.Pins(cur, map, not wholeRoute())
+        if #list == 0 then
+            clearPin()
+            return
+        end
+        pcall(pins.draw, list, lines)
     end
 
     local function draw(cur)
@@ -232,6 +282,11 @@ function RT.Declare(k, diag)
         label = "Show the route tracker window", group = "travel.route",
         help = "Shows the next stops of the route the arrow walks, with distances, while a route is planned.",
         synonyms = { "route", "tracker", "trip", "window", "stops" } })
+
+    k:Setting({ key = RT.MAP_SETTING, scope = "account", type = "bool", default = true,
+        label = "Show the whole route on the world map", group = "travel.route",
+        help = "Pins every stop still to walk on the world map, in order, joined by lines. Off: the current stop only.",
+        synonyms = { "route", "map", "world map", "stops", "pins" } })
 
     k:Module({
         name = RT.NAME,
