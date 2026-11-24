@@ -180,6 +180,10 @@ function ns.make.fakeClient(opts)
         if s.merchantOpen ~= true then return nil end
         return copyRows(s.merchant)
     end
+    function c.returnableItems()
+        if s.merchantOpen ~= true then return nil end
+        return copyRows(s.buyback)
+    end
     function c.recipes()
         local r = s.recipes
         if type(r) ~= "table" then return nil end
@@ -829,6 +833,11 @@ function ns.make.fakeClient(opts)
     -- window that cannot be read. merchantItems() gives it only while the
     -- window is open.
     function c.setMerchant(rows) s.merchant = copyRows(rows) end
+    -- G3: the merchant's Buyback tab, in the shape of returnableItems():
+    -- { { index =, item =, name =, price =, count = }, ... }; nil for a tab
+    -- that cannot be read. returnableItems() gives it only while the window is
+    -- open.
+    function c.setReturnable(rows) s.buyback = copyRows(rows) end
     -- true / false fire the merchant event; nil is "not known" and fires nothing.
     function c.setMerchantOpen(on)
         if on == nil then s.merchantOpen = nil return end
@@ -4428,6 +4437,17 @@ function ns.make.fakeClient(opts)
     function c.questShareable(id)
         if type(id) ~= "number" then return nil end
         return s.questShareable and s.questShareable[id]
+    end
+    -- S32: c.setPlaceText(zone, sub): the zone and sub-zone words; not set,
+    -- placeText() is nil (not known).
+    function c.setPlaceText(zone, sub)
+        local function w(v) return type(v) == "string" and v ~= "" and v or nil end
+        s.placeText = (w(zone) or w(sub)) and { zone = w(zone), sub = w(sub) } or nil
+    end
+    function c.placeText()
+        local p = s.placeText
+        if p == nil then return nil end
+        return { zone = p.zone, sub = p.sub }
     end
     return c
 end

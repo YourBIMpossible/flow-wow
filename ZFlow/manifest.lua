@@ -191,6 +191,7 @@ return {
         "UI/BankList.lua",
         "UI/KitHost.lua",
         "Items/Keep.lua",
+        "Items/Buyback.lua",
         "Items/RecipeBook.lua",
         -- Lead section 413: the profession window's row colours, saved for the profession plan (after RecipeBook).
         "Items/RecipeColours.lua",
@@ -299,5 +300,9 @@ return {
     "Nav/GateWords.lua",
     -- Lead section 406 item 3: recipe facts for the profession plan, seen in game then shipped (read by ProfPlan at call time).
     "Items/RecipeFacts.lua",
+    -- S32: boat and zeppelin dock names and wait words (Crossings calls them at run time).
+    "Nav/CrossingWords.lua",
+    -- S38 (lead section 395 item 6): activities and route lanes (after Trip, Nodes).
+    "Nav/Activities.lua",
     },
 }

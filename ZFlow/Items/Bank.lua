@@ -154,7 +154,7 @@ function Bank.Pick(bag, context)
             -- Holds come off the bags first (Resources.Resolve): what the
             -- bags have of it is all that can stay with you.
             local inBags = isCount(item.count) and math.min(n, item.count) or n
-            held[#held + 1] = { key = item.key, name = item.name, count = inBags }
+            held[#held + 1] = { key = item.key, name = item.name, count = inBags, quality = item.quality }
         end
     end
     local rules = type(context.bankRules) == "table" and context.bankRules or nil
@@ -181,7 +181,7 @@ function Bank.Pick(bag, context)
             yes, why, notRead = Bank.Banks(row, needed, rules, context.questWaits)
         end
         if yes then
-            rows[#rows + 1] = { key = item.key, name = item.name, count = count, reason = why }
+            rows[#rows + 1] = { key = item.key, name = item.name, count = count, reason = why, quality = item.quality }
         elseif notRead then
             unread = unread + 1
         end
