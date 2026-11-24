@@ -30,6 +30,12 @@ local _, ns = ...
 --     lists it as a held line with its reason, and it is walked again once
 --     it is ready.
 --   T.Lines(route, at) -> lines
+-- B-31 (lead section 470): here.casts = { [map] = true }, maps a travel
+--   spell the player knows reaches. A step with no point on this map whose
+--   other-map point (Questie's spot.away) is on such a map becomes a stop
+--   (stop.cast = true) in place of a "not on this map" line; T.Plan puts
+--   it in before the first leg longer than N.TRAVEL_SPELL_YARDS, as
+--   N.Trip.Order does. The arrow says to cast; nothing casts.
 -- Pick-ups (lead section 375 item 7, TN-1): with the pick-up setting on,
 -- quests the player can take now whose giver stands on this map
 -- (Nav/RoutePickups.lua, read once per plan, the nearest few) join the
@@ -149,6 +155,24 @@ local function pointOf(spot, here)
     return best
 end
 
+-- B-31: a copy of the spot's other-map point when a known travel spell
+-- (here.casts) reaches its map, or nil. Lead section 474: any of the
+-- spot's other maps (spot.aways), the lowest such map when several are;
+-- spot.away alone when aways is not there.
+local function castPoint(spot, here)
+    if type(spot) ~= "table" or type(here.casts) ~= "table" then return nil end
+    local best
+    local function try(a)
+        if type(a) ~= "table" or a.map == here.map or here.casts[a.map] ~= true then return end
+        if not (finite(a.x) and finite(a.y)) then return end
+        if best == nil or (type(a.map) == "number" and type(best.map) == "number" and a.map < best.map) then best = a end
+    end
+    try(spot.away)
+    for _, a in pairs(type(spot.aways) == "table" and spot.aways or {}) do try(a) end
+    if not best then return nil end
+    return { map = best.map, x = best.x, y = best.y }
+end
+
 -- N43: the spot's points on here.map as the stop's area, pt (its nearest)
 -- first, no more than T.AREA_MAX; copies.
 local function areaOf(spot, here, pt)
@@ -202,10 +226,15 @@ function T.Stops(rows, places, here)
     local function add(row, i, detail, need)
         local spot = spotOf(places, row.id, i)
         local pt = pointOf(spot, here)
+        local away = castPoint(spot, here)
         if pt then
             stops[#stops + 1] = { quest = row.id, objective = i, turnIn = i == nil, label = row.title,
                                   detail = detail, need = need, place = { map = pt.map, x = pt.x, y = pt.y },
                                   area = areaOf(spot, here, pt) }
+        elseif away then
+            stops[#stops + 1] = { quest = row.id, objective = i, turnIn = i == nil, label = row.title,
+                                  detail = detail, need = need, cast = true, place = away,
+                                  area = { { map = away.map, x = away.x, y = away.y } } }
         else
             left[#left + 1] = { quest = row.id, label = row.title, detail = detail, why = T.NOT_HERE }
         end
@@ -329,7 +358,9 @@ function T.Plan(rows, places, here, legs, pickups, note)
     -- No more than the planner takes: the nearest ones, room kept for the pick-ups.
     local room = N.ROUTE_MAX - #pickups
     if #stops > room and finite(here.x) and finite(here.y) then
+        local castYards = N.TRAVEL_SPELL_YARDS or 120
         local function far(s)
+            if s.cast then return castYards * castYards end
             local dx, dy = (s.place.x - here.x) * w, (s.place.y - here.y) * h
             return dx * dx + dy * dy
         end
@@ -344,19 +375,43 @@ function T.Plan(rows, places, here, legs, pickups, note)
             optional[#stops] = not p.must or nil
         end
     end
-    local list = {}
-    for i, s in ipairs(stops) do list[i] = s.place end
-    local route, why = N.RoutePlan(list, here.map, { w = w, h = h }, here, yards and legs or nil, nil, optional)
-    if not route then return nil, tostring(why) end
+    -- B-31: the cast stops are not planned on this map; they go in before
+    -- the first leg longer than the cast (a leg not known is never short).
+    local list, same, opt, cast = {}, {}, {}, {}
+    for i, s in ipairs(stops) do
+        if s.cast then
+            cast[#cast + 1] = s
+        else
+            list[#list + 1] = s.place
+            same[#list] = i
+            if optional[i] then opt[#list] = true end
+        end
+    end
+    local route, why
+    if #list > 0 then
+        route, why = N.RoutePlan(list, here.map, { w = w, h = h }, here, yards and legs or nil, nil, opt)
+        if not route then return nil, tostring(why) end
+    else
+        route = { stops = {}, left = {}, label = N.ROUTE_STRAIGHT }
+    end
     local ordered = {}
-    for i, rs in ipairs(route.stops) do
-        local s = stops[rs.index]
+    local castYards = N.TRAVEL_SPELL_YARDS or 120
+    local castIn = #cast == 0
+    for _, rs in ipairs(route.stops) do
+        local s = stops[same[rs.index]]
         s.leg = yards and rs.leg or nil
         s.secs = s.leg and T.Seconds(s.leg) or nil
-        ordered[i] = s
+        if not castIn and not (finite(s.leg) and s.leg <= castYards) then
+            for _, c in ipairs(cast) do ordered[#ordered + 1] = c end
+            castIn = true
+        end
+        ordered[#ordered + 1] = s
+    end
+    if not castIn then
+        for _, c in ipairs(cast) do ordered[#ordered + 1] = c end
     end
     for _, l in ipairs(type(route.left) == "table" and route.left or {}) do
-        local s = type(l) == "table" and stops[l.index] or nil
+        local s = type(l) == "table" and stops[same[l.index]] or nil
         if s and s.kind == "pickup" then
             left[#left + 1] = { quest = s.quest, label = s.label, why = N.RoutePickups.SKIPPED }
         end
@@ -550,6 +605,33 @@ function T.Declare(k, diag)
         return here
     end
 
+    -- B-31: the maps of the steps' other-map points that a travel spell the
+    -- client says is known reaches (a spell still to learn is not counted).
+    local function castMaps(c, places)
+        local out = {}
+        if type(N.TravelSpellStepFrom) ~= "function" then return out end
+        local function probe(a)
+            if type(a) ~= "table" or a.map == nil or out[a.map] ~= nil then return end
+            local ok, step = pcall(N.TravelSpellStepFrom, { map = a.map, x = a.x, y = a.y }, c)
+            if ok and type(step) == "table" and not step.learn then out[a.map] = true else out[a.map] = false end
+        end
+        local function look(spot)
+            if type(spot) ~= "table" then return end
+            probe(spot.away)
+            for _, a in pairs(type(spot.aways) == "table" and spot.aways or {}) do probe(a) end
+        end
+        for _, e in pairs(type(places) == "table" and places or {}) do
+            if type(e) == "table" then
+                look(e.turnIn)
+                for _, o in pairs(type(e.objectives) == "table" and e.objectives or {}) do look(o) end
+            end
+        end
+        for m, v in pairs(out) do
+            if v ~= true then out[m] = nil end
+        end
+        return out
+    end
+
     function api.Plan()
         if not on() then return nil, T.WHY_OFF end
         local c = client()
@@ -562,6 +644,7 @@ function T.Declare(k, diag)
         if QS and ctx then
             places = QS.Merge(places, QS.Places(ctx.store:get("account", QS.PATH), rows, here.map))
         end
+        here.casts = castMaps(c, places)
         local legs
         local L = k.use and k.use("legs")
         if L and type(L.Planner) == "function" then

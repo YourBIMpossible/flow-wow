@@ -297,6 +297,12 @@ READS.spellCooldownLeft = false
 -- G50 (ACTING): one quest offered to the group, only on the player's own
 -- share word (Nav/QuestShare.lua). Never the capture.
 KIND.act[#KIND.act + 1] = "shareQuest"
+-- KNOW lane (lead section 487): unspent talent points (Spells/Talents.lua),
+-- the spells on the action bars (UI/SpellsWindow.lua) and the talents the
+-- player has (UI/TalentsWindow.lua). The capture does not ask them.
+READS.unspentTalents = false
+READS.actionSpells = false
+READS.talentRanks = false
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).
 local FEATURE = {

@@ -36,6 +36,7 @@ local N = ns.Nav
 
 -- No more points than this are kept for one objective or turn-in.
 N.QUEST_POINTS_MAX = 200
+N.QUEST_AWAY_MAPS = 8     -- lead section 474: other maps kept, one point each
 -- No more creatures or objects than this are looked up for one of them.
 N.QUEST_SOURCES_MAX = 20
 -- While Questie is not ready, it is asked again after this many steps.
@@ -121,6 +122,20 @@ local function addSpawns(spot, spawns, zones, map, areaMap)
                         if map ~= nil and (a == nil or (type(m) == "number" and type(a.map) == "number" and m < a.map)) then
                             spot.away = { map = m, x = pt[1] / 100, y = pt[2] / 100 }
                         end
+                        -- Lead section 474: the first point of each other
+                        -- map too (up to N.QUEST_AWAY_MAPS), so a map a
+                        -- travel spell reaches is not hidden behind a
+                        -- lower one. spot.away stays as it was.
+                        if map ~= nil and type(m) == "number" then
+                            spot.aways = spot.aways or {}
+                            if spot.aways[m] == nil then
+                                local n = 0
+                                for _ in pairs(spot.aways) do n = n + 1 end
+                                if n < N.QUEST_AWAY_MAPS then
+                                    spot.aways[m] = { map = m, x = pt[1] / 100, y = pt[2] / 100 }
+                                end
+                            end
+                        end
                     end
                 end
             end
@@ -146,6 +161,7 @@ local function closed(spot, keepName)
     if keepName then out.name = spot.name end
     -- (Only when there is no point on this map: one on this map is nearer.)
     if #spot.points == 0 and spot.away ~= nil then out.away = spot.away end
+    if #spot.points == 0 and spot.aways ~= nil then out.aways = spot.aways end
     return out
 end
 

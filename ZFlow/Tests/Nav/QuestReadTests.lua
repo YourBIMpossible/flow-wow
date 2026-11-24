@@ -137,9 +137,11 @@ T["quest read: a place on another map only is said to be elsewhere, with no poin
     local places = N.QuestiePlaces(client(rows, (questie())), rows, 1411)
     -- No point on this map; since S44 (lead section 173) the first point
     -- seen on another map is kept beside it as `away`.
-    t.eq(places[303].objectives[1], { points = {}, elsewhere = true, away = { map = 1412, x = 0.5, y = 0.5 } })
+    t.eq(places[303].objectives[1], { points = {}, elsewhere = true, away = { map = 1412, x = 0.5, y = 0.5 },
+        aways = { [1412] = { map = 1412, x = 0.5, y = 0.5 } } })
     t.eq(places[303].turnIn, { points = {}, elsewhere = true, name = "Wanted Board",
-                               away = { map = 1412, x = 0.1, y = 0.1 } })
+                               away = { map = 1412, x = 0.1, y = 0.1 },
+                               aways = { [1412] = { map = 1412, x = 0.1, y = 0.1 } } })
     local there = N.QuestiePlaces(client(rows, (questie())), rows, 1412)
     t.eq(there[303].objectives[1].points, { { map = 1412, x = 0.5, y = 0.5 } })
 end

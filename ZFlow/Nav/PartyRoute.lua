@@ -13,7 +13,8 @@ local _, ns = ...
 -- shares by itself on plan. Nothing else here acts: it prints locally and
 -- hands a taken route to the trip route's own Run.
 --
--- Words (added to the route word): route share, route ask, route take.
+-- Words (added to the route word): route share, route ask, route take,
+-- route keep (FLOW-PARITY B-38: keep your own route, drop the offer).
 -- Any send the client does not answer as a success is "not shared"; each
 -- client keeps walking its own route.
 --
@@ -34,7 +35,12 @@ local _, ns = ...
 --   P.Ask(nonce, ver) -> message
 --   P.Parse(message, ver) -> { type = "R", sid, seq, count, data }
 --                            | { type = "Q", nonce } or nil, why
--- Module "partyRoute" provides Share, Ask, Take.
+-- FLOW-PARITY B-40 (lead section 471): one line under the quest arrow says
+-- which route it walks and how to switch: an offer not taken yet, or the
+-- party route being followed. Local only: the line sends nothing; route
+-- keep while following drops the party route.
+--   P.Line(offerFrom, followFrom, slash) -> line or nil
+-- Module "partyRoute" provides Share, Ask, Take, Keep, Line.
 -- Not tested in game: the two-client game test is an owner item.
 ns.Nav = ns.Nav or {}
 local N = ns.Nav
@@ -43,7 +49,7 @@ N.PartyRoute = P
 
 P.NAME = "partyRoute"
 P.WORD = "route"
-P.HELP = "route share: send your route to your party; route ask: ask the party for theirs; route take: follow it"
+P.HELP = "route share: send your route to your party; route ask: ask the party for theirs; route take: follow it; route keep: keep your own"
 P.SETTING = "party.routeShare"
 P.CHANNEL = "PARTY"
 P.MAX_BYTES = 255
@@ -59,6 +65,19 @@ P.OFFER = "%s shared a route (%d stops); type %s route take to follow it."
 P.INCOMPLETE = "The route from %s came incomplete; ask again with %s route ask."
 P.NO_OFFER = "No party route to take."
 P.TAKEN = "Following the route from %s: %s"
+-- FLOW-PARITY B-36: the offer carries two chat links, the player clicks one;
+-- nothing is taken until then. Kind "addon:<addon>:party", rest take|keep.
+P.FOLLOW = "Follow party route"
+P.KEEP = "Keep my route"
+P.KEPT = "Keeping your own route; the route from %s is not taken."
+function P.Kind(addon) return "addon:" .. tostring(addon) .. ":party" end
+function P.Choices(addon)
+    local kind = P.Kind(addon)
+    return "|H" .. kind .. ":take|h[" .. P.FOLLOW .. "]|h |H" .. kind .. ":keep|h[" .. P.KEEP .. "]|h"
+end
+P.LINE_OFFER = "Party route from %s: %s route take to follow it."
+P.LINE_FOLLOW = "Following %s's route: %s route keep for your own."
+P.DROPPED = "Dropped the route from %s; type the route word to plan your own."
 P.WHY_OFF = "sharing is off in the settings (Share your route with your party)"
 P.WHY_ALONE = "you are not in a party"
 P.WHY_PREFIX = "the client did not take the add-on message prefix"
@@ -66,6 +85,13 @@ P.WHY_NO_ROUTE = "no route planned; type the route word first"
 P.WHY_NO_TRIP = "the trip route is off"
 
 local HEAD = "Z1"
+
+function P.Line(offerFrom, followFrom, slash)
+    slash = tostring(slash or "")
+    if type(followFrom) == "string" then return P.LINE_FOLLOW:format(followFrom, slash) end
+    if type(offerFrom) == "string" then return P.LINE_OFFER:format(offerFrom, slash) end
+    return nil
+end
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -130,6 +156,53 @@ function P.Decode(payload)
     return { title = unesc(head[2]), steps = steps }
 end
 
+-- FLOW-PARITY B-43: a taken route's steps say whose they are ("<name>:
+-- <label>") and "(done for you)" when that quest is complete in this
+-- player's own log (log rows as client.questLog gives them: title,
+-- complete, objectives { text, done }). Read from the local log only:
+-- nothing is sent. A label that would be over N.Waypoint.LABEL_MAX keeps
+-- its own text and the words go to the step's detail (never cut).
+P.DONE = " (done for you)"
+
+local function labelMax()
+    return ns.Nav and ns.Nav.Waypoint and ns.Nav.Waypoint.LABEL_MAX or 40
+end
+
+local function doneFor(step, log)
+    if type(log) ~= "table" then return false end
+    for _, q in ipairs(log) do
+        if type(q) == "table" and q.title == step.label then
+            if q.complete == true then return true end
+            for _, o in ipairs(type(q.objectives) == "table" and q.objectives or {}) do
+                if type(o) == "table" and o.done == true and step.detail ~= nil and o.text == step.detail then return true end
+            end
+            return false
+        end
+    end
+    return false
+end
+
+function P.Label(from, step, log)
+    if type(step) ~= "table" or type(step.label) ~= "string" then return step end
+    local who
+    if type(from) == "string" then who = from:match("^([^%-]+)") end
+    local out = {}
+    for key, v in pairs(step) do out[key] = v end
+    local extra = {}
+    local label = step.label
+    if who and #(who .. ": " .. label) <= labelMax() then label = who .. ": " .. label
+    elseif who then extra[#extra + 1] = who .. "'s step" end
+    if doneFor(step, log) then
+        if #(label .. P.DONE) <= labelMax() then label = label .. P.DONE else extra[#extra + 1] = "done for you" end
+    end
+    out.label = label
+    if #extra > 0 then
+        local more = table.concat(extra, ", ")
+        out.detail = step.detail and (step.detail .. " (" .. more .. ")") or more
+    end
+    return out
+end
+
 function P.Chunks(sid, payload, ver)
     if type(payload) ~= "string" or payload == "" then return nil, "nothing to send" end
     local fixed = tostring(ver) .. "|R|" .. tostring(sid) .. "|"
@@ -176,8 +249,10 @@ function P.Declare(k, diag)
     local answeredAt
     local bufs = {}          -- sender -> { sid, count, n, parts }
     local offer              -- { from, run }
+    local following          -- B-40: who sent the route being followed
     local offered, warned = {}, {}
     local made = 0
+    local cancelClick
 
     local function client() return ctx and ctx.client or k.client end
     local function id() return k.id or ns.id end
@@ -251,7 +326,33 @@ function P.Declare(k, diag)
         if not offer then return say(P.NO_OFFER) end
         local tr = k.use and k.use("tripRoute")
         if not tr then return say(P.NOT_SHARED:format(P.WHY_NO_TRIP)) end
-        say(P.TAKEN:format(offer.from, tostring(tr.Run(offer.run))))
+        local c = client()
+        local okLog, log = false, nil
+        if type(c) == "table" and type(c.questLog) == "function" then okLog, log = pcall(c.questLog) end
+        local run = {}
+        for key, v in pairs(offer.run) do run[key] = v end
+        run.steps = {}
+        local own
+        if okLog then own = log end
+        for i, st in ipairs(offer.run.steps or {}) do run.steps[i] = P.Label(offer.from, st, own) end
+        following = offer.from
+        say(P.TAKEN:format(following, tostring(tr.Run(run))))
+    end
+
+    -- B-40: the arrow's line; the followed route ended clears it.
+    function api.Line()
+        if following then
+            local tr = k.use and k.use("tripRoute")
+            local cur
+            if tr and type(tr.Current) == "function" then
+                local ok, v = pcall(tr.Current)
+                if ok then cur = v end
+            end
+            if not cur then following = nil end
+        end
+        local offerFrom
+        if offer then offerFrom = offer.from end
+        return P.Line(offerFrom, following, id().slash)
     end
 
     local function chunk(p, sender)
@@ -276,11 +377,40 @@ function P.Declare(k, diag)
         local run, why = P.Decode(table.concat(buf.parts))
         if not run then return problem(why) end
         offer = { from = sender, run = run }
+        -- The offer line is under the arrow at once (B-40): redraw it.
+        local arrow = k.use and k.use("arrow")
+        if type(arrow) == "table" and type(arrow.Redraw) == "function" then pcall(arrow.Redraw) end
         local key = sender .. "|" .. p.sid
         if not offered[key] then
             offered[key] = true
-            say(P.OFFER:format(sender, #run.steps, id().slash))
+            say(P.OFFER:format(sender, #run.steps, id().slash) .. " " .. P.Choices(id().addon))
         end
+    end
+
+    function api.Keep()
+        if following then
+            local tr = k.use and k.use("tripRoute")
+            if tr and type(tr.Off) == "function" then pcall(tr.Off) end
+            local from = following
+            following, offer = nil, nil
+            return say(P.DROPPED:format(from))
+        end
+        if not offer then return say(P.NO_OFFER) end
+        local from = offer.from
+        offer = nil
+        say(P.KEPT:format(from))
+    end
+
+    -- A click redraws the arrow at once, as the slash word's own pass
+    -- does (lead section 466): the player clicks and sees the route.
+    local function redraw()
+        local arrow = k.use and k.use("arrow")
+        if type(arrow) == "table" and type(arrow.Redraw) == "function" then pcall(arrow.Redraw) end
+    end
+
+    local function clicked(rest)
+        if rest == "take" then api.Take(); return redraw() end
+        if rest == "keep" then api.Keep(); return redraw() end
     end
 
     local function receive(prefix, text, channel, sender)
@@ -307,6 +437,7 @@ function P.Declare(k, diag)
             if word == "share" then return api.Share() end
             if word == "ask" then return api.Ask() end
             if word == "take" then return api.Take() end
+            if word == "keep" then return api.Keep() end
             if type(prior) == "function" then return prior(rest) end
         end
         if type(diag.help) == "table" then
@@ -324,7 +455,8 @@ function P.Declare(k, diag)
     k:Module({
         name = P.NAME,
         needs = { "client", "settings" },
-        provides = { Share = api.Share, Ask = api.Ask, Take = api.Take },
+        provides = { Share = api.Share, Ask = api.Ask, Take = api.Take, Keep = api.Keep,
+                     Line = function() return api.Line() end },
         start = function(c)
             ctx = c
             local cl = c.client
@@ -336,10 +468,15 @@ function P.Declare(k, diag)
                 local ok, err = pcall(receive, ...)
                 if not ok then problem(err) end
             end)
+            if type(cl.onLinkClick) == "function" then
+                local ok, got = pcall(cl.onLinkClick, P.Kind(id().addon), clicked)
+                if ok and type(got) == "function" then cancelClick = got end
+            end
         end,
         stop = function()
             if type(cancel) == "function" then pcall(cancel) end
-            cancel = nil
+            if type(cancelClick) == "function" then pcall(cancelClick) end
+            cancel, cancelClick = nil, nil
             bufs, offer = {}, nil
         end,
     })

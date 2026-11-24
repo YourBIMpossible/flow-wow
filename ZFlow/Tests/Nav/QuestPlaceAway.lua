@@ -44,7 +44,8 @@ tests["away: QuestRead keeps the first point seen on another map, and only then"
     c.questieModule = questie()
     local rows = { wolves() }
     local spot = N.QuestiePlaces(c, rows, 1411)[303].objectives[1]
-    t.eq(spot, { points = {}, elsewhere = true, away = { map = 1412, x = 0.5, y = 0.5 } })
+    t.eq(spot, { points = {}, elsewhere = true, away = { map = 1412, x = 0.5, y = 0.5 },
+        aways = { [1412] = { map = 1412, x = 0.5, y = 0.5 } } })
     local there = N.QuestiePlaces(c, rows, 1412)[303].objectives[1]
     t.eq(there.away, nil, "points on the map asked for: no away point")
     t.eq(#there.points, 2)

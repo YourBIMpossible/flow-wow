@@ -13455,6 +13455,84 @@ function ns.make.client(env)
         if not pushed then return nil, "raised" end
         return true
     end
+
+    -- KNOW lane reads (lead section 487, Zen's lease). Only reads: nothing
+    -- is cast, clicked, placed or sent. First guesses from classic's call
+    -- names; none was seen in game on 16001.
+
+    -- C-61, C-49 (Spells/Talents.lua): the talent points not spent yet, the
+    -- first answer of UnitCharacterPoints("player"). nil when the call is
+    -- absent, raises, is hidden, or answers anything but a count.
+    function c.unspentTalents()
+        local ok, n = call(env.UnitCharacterPoints, "player")
+        if not ok or hidden(n) or type(n) ~= "number" or n ~= n or n < 0 or n == math.huge then return nil end
+        return n
+    end
+
+    -- C-48, C-56 (UI/SpellsWindow.lua): which spells are on the action
+    -- bars, { [spell name] = slot } for bar slots 1 to 120 and the stance
+    -- bar (slot 0). nil when the client has no HasAction or GetActionInfo,
+    -- or a read raised or was hidden: "not known", never "on no bar".
+    function c.actionSpells()
+        if type(env.HasAction) ~= "function" or type(env.GetActionInfo) ~= "function" then return nil end
+        local out = {}
+        for slot = 1, 120 do
+            local okHas, has = call(env.HasAction, slot)
+            if not okHas or hidden(has) then return nil end
+            if has then
+                local ok, kind, id = call(env.GetActionInfo, slot)
+                if not ok or hidden(kind) or hidden(id) then return nil end
+                if kind == "spell" and type(id) == "number" then
+                    local name = spellName(id)
+                    if type(name) == "string" and out[name] == nil then out[name] = slot end
+                end
+            end
+        end
+        if type(env.GetNumShapeshiftForms) == "function" and type(env.GetShapeshiftFormInfo) == "function" then
+            local okN, n = call(env.GetNumShapeshiftForms)
+            if okN and type(n) == "number" and not hidden(n) then
+                for i = 1, n do
+                    local ok, _, _, _, id = call(env.GetShapeshiftFormInfo, i)
+                    if ok and type(id) == "number" and not hidden(id) then
+                        local name = spellName(id)
+                        if type(name) == "string" and out[name] == nil then out[name] = 0 end
+                    end
+                end
+            end
+        end
+        return out
+    end
+
+    -- C-62 (UI/TalentsWindow.lua): the talents the player has,
+    -- { [talent name] = rank }, from the classic tab calls
+    -- GetNumTalentTabs(), GetNumTalents(tab) and GetTalentInfo(tab, i) ->
+    -- name, _, tier, column, rank. nil when a call is absent, a read raised
+    -- or was hidden, or no talent was named. Legacy Flow read C_ClassTalents
+    -- and C_Traits first on this client (Modules/Talents.lua readSheet): if
+    -- the tab calls answer nothing on 16001, that reader goes here.
+    function c.talentRanks()
+        if type(env.GetNumTalentTabs) ~= "function" or type(env.GetNumTalents) ~= "function"
+            or type(env.GetTalentInfo) ~= "function" then
+            return nil
+        end
+        local okT, tabs = call(env.GetNumTalentTabs)
+        if not okT or hidden(tabs) or type(tabs) ~= "number" then return nil end
+        local out, any = {}, false
+        for tab = 1, tabs do
+            local okN, n = call(env.GetNumTalents, tab)
+            if not okN or hidden(n) or type(n) ~= "number" then return nil end
+            for i = 1, n do
+                local ok, name, _, _, _, rank = call(env.GetTalentInfo, tab, i)
+                if not ok or hidden(name) or hidden(rank) then return nil end
+                if type(name) == "string" and type(rank) == "number" then
+                    out[name] = rank
+                    any = true
+                end
+            end
+        end
+        if not any then return nil end
+        return out
+    end
     return c
 end
 
