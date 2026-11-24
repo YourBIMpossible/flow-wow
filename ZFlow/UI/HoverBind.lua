@@ -185,8 +185,10 @@ function H.Declare(k, diag)
             { kind = "line", key = "intro", text = H.INTRO, sub = H.INTRO_SUB } }
         local lines = H.Lines(staged)
         for _, line in ipairs(lines) do kids[#kids + 1] = line end
+        local again = nil
+        if armed then again = string.format(H.AGAIN, #staged) end
         kids[#kids + 1] = { kind = "footer", key = "footer",
-            text = armed and string.format(H.AGAIN, #staged) or nil,
+            text = again,
             buttons = {
                 { kind = "button", key = "save", text = H.SAVE, enabled = #staged > 0, onClick = function() api.Save() end },
                 { kind = "button", key = "undo", text = H.UNDO, enabled = #staged > 0, onClick = function() api.Undo() end },
