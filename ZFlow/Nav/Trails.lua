@@ -27,8 +27,13 @@ local _, ns = ...
 -- the quest step). A step on the player's own map whose target is within
 -- T.NEAR yards of a trail point, with the player within T.JOIN yards of the
 -- same trail and more than T.NEAR yards from the target, is pointed at the
--- next trail point toward the target (T.Next). Otherwise the step is as
--- it was.
+-- furthest trail point toward the target within T.AHEAD yards of the
+-- player (T.Next; parity row A1-20). A trail T.DETOUR times the straight
+-- line or longer is not taken. Otherwise the step is as it was.
+-- Compared with Flow Modules/Nav/Nav.lua steerTo / N.Carrot /
+-- N.TrailWorthIt: the same 35 yd and the same 20x Flow allows a step
+-- inside. Flow's outdoor rules (1.5x, 60 degrees, straight under 80 yd)
+-- are not here: Z-Flow learns cave trails only.
 --
 --   T.Next(pts, here, there) -> index or nil     pure, yards
 --   T.Hint(pts, here, there) -> line or nil      pure, yards
@@ -56,6 +61,8 @@ T.MIN_POINTS = 4     -- shorter trails are not kept
 T.JUMP = 100         -- yards between two looks no walk explains
 T.NEAR = 25          -- yards: a target this close to a trail point is on it
 T.JOIN = 60          -- yards: the player this close to a trail may take it
+T.AHEAD = 35         -- yards: the arrow leads to the furthest trail point this close (Flow LOOKAHEAD)
+T.DETOUR = 20        -- a trail this many times the straight line or longer is not taken (Flow, inside)
 T.PER_MAP = 20
 T.MAPS = 60
 T.ON_TRAIL = "The way is through the cave: follow the arrow along the path you walked."
@@ -92,8 +99,17 @@ function T.Next(pts, here, there)
     local i, di = nearest(pts, here)
     if not i or di > T.JOIN or i == j then return nil end
     if di > T.STEP then return i end
-    if i < j then return i + 1 end
-    return i - 1
+    local dir = i < j and 1 or -1
+    local length = dj
+    for m = i, j - dir, dir do length = length + dist(pts[m], pts[m + dir]) end
+    if length >= dist(here, there) * T.DETOUR then return nil end
+    -- Lead forward: the furthest point toward the target within T.AHEAD.
+    local best = i + dir
+    for m = best + dir, j, dir do
+        if dist(pts[m], here) > T.AHEAD then break end
+        best = m
+    end
+    return best
 end
 
 -- The line the arrow says for a target on this trail: T.ON_TRAIL with the

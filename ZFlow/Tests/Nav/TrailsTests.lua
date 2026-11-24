@@ -107,7 +107,7 @@ tests["trails: the arrow follows the trail to a target in the cave"] = function(
     t.ok(type(h) == "table", "the arrow points somewhere")
     if type(h) ~= "table" then return end
     t.eq(h.map, MAP)
-    near(t, h.x, 0.512, "the next trail point, not the cave")
+    near(t, h.x, 0.524, "the furthest trail point within 35 yd (A1-20), not the cave")
     near(t, h.y, 0.5)
 end
 
@@ -147,10 +147,33 @@ end
 tests["trails pure: next point walks from the player's end toward the target"] = function(t)
     if not has(t) then return end
     local pts = { { x = 0, y = 0 }, { x = 10, y = 0 }, { x = 20, y = 0 }, { x = 20, y = 10 }, { x = 20, y = 20 } }
-    t.eq(N.Trails.Next(pts, { x = 0, y = 0 }, { x = 20, y = 20 }), 2)
-    t.eq(N.Trails.Next(pts, { x = 20, y = 20 }, { x = 0, y = 0 }), 4, "the other way")
+    -- A1-20: every point here is within T.AHEAD (35 yd), so the arrow leads
+    -- to the target's end of the trail, not the next point.
+    t.eq(N.Trails.Next(pts, { x = 0, y = 0 }, { x = 20, y = 20 }), 5)
+    t.eq(N.Trails.Next(pts, { x = 20, y = 20 }, { x = 0, y = 0 }), 1, "the other way")
     t.eq(N.Trails.Next(pts, { x = 200, y = 200 }, { x = 20, y = 20 }), nil, "far from the trail")
     t.eq(N.Trails.Next(pts, { x = 20, y = 18 }, { x = 20, y = 20 }), nil, "already there")
+end
+
+-- A1-20 (Flow N.Carrot, LOOKAHEAD 35): fails before, where the arrow
+-- took the next point only.
+tests["trails pure: the arrow leads to the furthest point within 35 yd, never back"] = function(t)
+    if not has(t) then return end
+    local pts = {}
+    for i = 0, 10 do pts[#pts + 1] = { x = i * 10, y = 0 } end
+    t.eq(N.Trails.Next(pts, { x = 0, y = 0 }, { x = 100, y = 0 }), 4, "30 yd ahead, not 40")
+    t.eq(N.Trails.Next(pts, { x = 50, y = 0 }, { x = 100, y = 0 }), 9, "from the middle: 40 yd on is too far")
+    t.eq(N.Trails.Next(pts, { x = 50, y = 0 }, { x = 0, y = 0 }), 3, "back the other way, 20 yd on")
+end
+
+-- A1-20 (Flow N.TrailWorthIt, inside 20x): a trail that winds far further
+-- than the straight line is not taken.
+tests["trails pure: a trail 20 times the straight line or longer is not taken"] = function(t)
+    if not has(t) then return end
+    local pts = {}
+    for i = 0, 30 do pts[#pts + 1] = { x = i * 10, y = 0 } end
+    for i = 29, 0, -1 do pts[#pts + 1] = { x = i * 10, y = 5 } end
+    t.eq(N.Trails.Next(pts, { x = 0, y = 0 }, { x = 0, y = 28 }), nil, "over 600 yd of trail for 28 yd straight")
 end
 
 tests["trails: the client read is there and its fake answers"] = function(t)
