@@ -81,7 +81,7 @@ return {
         t.eq(k.problems:count() + k2.problems:count(), 0)
     end,
 
-    ["arrow acceptance: Restack from the menu puts the needle back under, the quest arrow stays"] = function(t)
+    ["arrow acceptance: Restack from the menu puts the profession arrow back over the quest arrow, which stays"] = function(t)
         local k, c, d = start()
         local ok, q, p = both(t, c)
         if not ok then return end
@@ -89,8 +89,9 @@ return {
         q.click("right")
         q.choose("restack")
         t.eq(layout(c).mode, "stacked")
-        t.eq(p.attached, q, "the needle is fixed to the quest arrow again")
-        t.eq(p.under, true)
+        t.eq(p.attached, nil, "the profession arrow has its own place, over the quest arrow")
+        t.eq(p.under, false, "not under it")
+        t.eq(p.lookIs, "needle", "drawn as the stack's profession arrow again")
         t.eq(layout(c).points.quest, STACK, "the quest arrow did not move")
         t.eq(q.point, STACK)
         t.eq(k.problems:count(), 0)
@@ -125,8 +126,9 @@ return {
         if not ok2 then return end
         t.eq(layout(c2).mode, "stacked")
         t.eq(q2.point, STACK)
-        t.eq(p2.attached, q2)
-        t.eq(p2.under, true)
+        t.eq(p2.attached, nil)
+        t.eq(p2.under, false)
+        t.eq(p2.lookIs, "needle")
         t.eq(k2.problems:count(), 0)
     end,
 

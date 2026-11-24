@@ -209,7 +209,7 @@ T["profession arrow mode comes from N.ProfArrowMode"] = function(t)
     local i = standing(0)
     i.quest = step(1411, 500, 240)          -- 10 yards: standing on the main step's point
     i.prof = step(1411, 800, 250)
-    t.eq(N.Guide(i).prof.mode, "off", "stacked: off on the main step's point")
+    t.eq(N.Guide(i).prof.mode, "arrow", "stacked: it stays at a quest stop, over the quest arrow")
     i.separate = true
     t.eq(N.Guide(i).prof.mode, "arrow", "separated: it keeps pointing")
     i = standing(0)
