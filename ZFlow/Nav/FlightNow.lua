@@ -1,24 +1,39 @@
 local _, ns = ...
 -- Z-Flow: the arrow's words while on a flight (parity row A1-18, lead
--- section 481): where the flight lands, and in how long, from the time this
--- path took last (Nav/FlightTimes.lua). A path never flown whole stays
--- "landing time not known yet": nothing is guessed from the distance.
---   take-off  client.onTaxi() goes false -> true: from = the saved flight
---             point nearest where the player stands (FlightTimes.Nearest),
---             to = the flight the route planned from there (flights
---             Last(), when its from is this point), else not known.
+-- section 481).
+-- KNOWN: the player is on a flight (client.onTaxi()), and the saved flight
+--   point nearest where the take-off was seen (FlightTimes.Nearest).
+-- ADVICE, not a fact: where the flight lands. The player picks the
+--   destination on the flight map and there is no read of that pick. All
+--   there is: the flight the route advised last (flights Last()), used
+--   when its from is the take-off point. The player may have picked
+--   another, so it is said as the route's flight, never as "Flying to
+--   <place>", and the time that path took last (Nav/FlightTimes.lua) is
+--   said whole with "if that is yours": no countdown, which would read as
+--   certain. A path never flown whole says no time; with no advised flight
+--   from here the words are "landing time not known yet". Nothing is
+--   guessed from the distance or from the way the player moves.
+-- CLIENT REQUEST (for the lead; Core/Client.lua is not edited here): a
+--   read of the destination the player picked on the flight map, giving
+--   the node name, or nil when not known. Flow hooked TakeTaxiNode with a
+--   post-hook: a read of the player's own click, nothing is clicked for
+--   them. Until that read exists no words here may say "Flying to": there
+--   is no such constant and FN.Words takes no known destination.
+--   take-off  client.onTaxi() goes false -> true: from = the nearest saved
+--             flight point, advised = the route's flight from there, or nil.
 --   on board  Now(nextText) -> { title, sub }; on the ground or before a
 --             take-off was seen (a flight under way at login): nil.
 -- UI/Arrow.lua shows the two lines on the quest arrow (the lead-owned hook).
 -- Compared with Flow Modules/Nav/Nav.lua N.FlightWords, N.FlightNow and
--- N.TaxiLeft: the same words; Flow also guesses an unknown time from the
--- distance (N.FlightSeconds) and finds where a ride with no flight map
--- lands (Rides.lua). Neither is done here.
+-- N.TaxiLeft: Flow knows the picked destination (its TakeTaxiNode hook) and
+-- says "Flying to <place>, landing in <time>"; it also guesses an unknown
+-- time from the distance (N.FlightSeconds) and finds where a ride with no
+-- flight map lands (Rides.lua). None of that is done here.
 -- LOOK ONLY: nothing is clicked, flown or targeted. Not tested in game.
 --
 -- Pure:
---   FN.Left(times, from, to, start, now) -> seconds to landing, or nil
---   FN.Words(to, left, nextText) -> title, sub
+--   FN.Total(times, from, to) -> seconds that path took last, or nil
+--   FN.Words(advised, total, nextText) -> title, sub
 -- Module "flightNow" provides Now(nextText) -> { title, sub } or nil.
 ns.Nav = ns.Nav or {}
 local N = ns.Nav
@@ -28,9 +43,9 @@ N.FlightNow = FN
 FN.NAME = "flightNow"
 FN.EVERY = 1
 
-FN.TO = "Flying to %s"
 FN.ON = "On a flight"
-FN.LANDING = "landing in %s"
+FN.ADVISED = "The route's flight from here goes to %s"
+FN.IF_YOURS = "%s, %s if that is yours"
 FN.UNKNOWN = "landing time not known yet"
 FN.THEN = "%s, then: %s"
 
@@ -46,18 +61,24 @@ function FN.Format(sec)
     return ("~%dh %02dm"):format(math.floor(sec / 3600), math.floor(sec % 3600 / 60))
 end
 
-function FN.Left(times, from, to, start, now)
+function FN.Total(times, from, to)
     if type(times) ~= "table" or from == nil or to == nil then return nil end
     local total = times[tostring(from) .. ">" .. tostring(to)]
-    if not finite(total) or total <= 0 or not finite(start) or not finite(now) then return nil end
-    return math.max(1, total - (now - start))
+    if not finite(total) or total <= 0 then return nil end
+    return total
 end
 
-function FN.Words(to, left, nextText)
-    local title = (type(to) == "string" and to ~= "") and FN.TO:format(to) or FN.ON
-    local sub = finite(left) and FN.LANDING:format(FN.Format(left)) or FN.UNKNOWN
+-- advised: where the route's flight from the take-off point goes, or nil;
+-- total: the seconds that path took last, or nil. The title never names a
+-- place, and a time is only said beside the advised flight it belongs to.
+function FN.Words(advised, total, nextText)
+    local sub = FN.UNKNOWN
+    if type(advised) == "string" and advised ~= "" then
+        sub = FN.ADVISED:format(advised)
+        if finite(total) then sub = FN.IF_YOURS:format(sub, FN.Format(total)) end
+    end
     if type(nextText) == "string" and nextText ~= "" then sub = FN.THEN:format(sub, nextText) end
-    return title, sub
+    return FN.ON, sub
 end
 
 function FN.Declare(k)
@@ -89,7 +110,8 @@ function FN.Declare(k)
         return T.Nearest(nodes, ask("worldPosition"))
     end
 
-    local function planned(from)
+    -- The route's advice only: not where the player is flying.
+    local function advised(from)
         local mod = flights()
         if not mod or type(mod.Last) ~= "function" or from == nil then return nil end
         local ok, last = pcall(mod.Last)
@@ -102,7 +124,7 @@ function FN.Declare(k)
         if on == nil then return end
         if on and wasOn == false then
             local from = here()
-            trip = { from = from, to = planned(from), start = ask("now") }
+            trip = { from = from, advised = advised(from) }
         elseif not on then
             trip = nil
         end
@@ -115,8 +137,7 @@ function FN.Declare(k)
         local F = N.Flights
         local ok, v = pcall(ctx.store.get, ctx.store, "account", F and F.TIMES or "learned.flights.times")
         if ok then times = v end
-        local left = FN.Left(times, trip.from, trip.to, trip.start, ask("now"))
-        local title, sub = FN.Words(trip.to, left, nextText)
+        local title, sub = FN.Words(trip.advised, FN.Total(times, trip.from, trip.advised), nextText)
         return { title = title, sub = sub }
     end
 
