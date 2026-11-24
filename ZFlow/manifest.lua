@@ -188,8 +188,6 @@ return {
         "UI/GameOptions.lua",
         "UI/SellList.lua",
         "UI/BankList.lua",
-        "UI/CraftBar.lua",
-        "UI/ProfHelper.lua",
         "UI/KitHost.lua",
         "Items/Keep.lua",
         "Items/RecipeBook.lua",
