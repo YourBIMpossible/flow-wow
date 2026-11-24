@@ -6,7 +6,7 @@ local _, ns = ...
 -- pins the gap list of one state, so the list here is the coverage table:
 --   ladder, mats:   a learned recipe sure at every skill, materials in the bags
 --   ladder, none:   the same recipes, nothing in the bags, no source seen
---   outgrown:       one learned recipe, grey past 24, materials in the
+--   outgrown:       one learned recipe, grey past 25, materials in the
 --                   bags; no trainer list seen
 --   trainer done:   as outgrown, with a trainer list seen and all of it known
 --   no colours:     recipes learned, their colours never read
@@ -98,8 +98,9 @@ local function walk(prof, state)
     return out
 end
 
--- The craft skill values that are not a rank's end, as ranges.
-local OUTGROWN = { "25-74", "76-149", "151-224", "226-299" }
+-- The craft skill values past the one recipe (sure from 1 to 25) that are
+-- not a rank's end, as ranges.
+local OUTGROWN = { "26-74", "76-149", "151-224", "226-299" }
 
 -- The coverage table: per state, the craft gaps. Gathering professions never
 -- end without a step (the gather line), so their gaps are none in every state.

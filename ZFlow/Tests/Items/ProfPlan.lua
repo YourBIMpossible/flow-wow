@@ -126,7 +126,7 @@ tests["prof plan: ore in the bags and a known smelt: make the part first"] = fun
     t.eq(s.text, "Smelt 4 Test Bar at a forge, for Test Buckle")
     t.eq(steps[2] and steps[2].count, 2, "four bars make two buckles")
     steps = P().Plan(input({ book = { ["Test Buckle"] = BOOK["Test Buckle"] }, bags = { [1] = 9 } }))
-    t.eq(kinds(steps), {}, "no smelt recipe known: no part step")
+    t.eq(kinds(steps), { "find_material" }, "no smelt recipe known: no part step, the short bar is the step")
 end
 
 tests["prof plan: what the bags lack and the bank holds: take it from the bank"] = function(t)
