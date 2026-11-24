@@ -277,5 +277,7 @@ return {
     "UI/RouteTracker.lua",
     -- P-QUEST (lead section 354 item 4): quest advice text (after QuestRead and the advisor).
     "Nav/QuestAdvice.lua",
+    -- S33 (lead section 395 item 4): travel spell and mount advice text (after TripRoute, Arrow, the advisor).
+    "Nav/TravelAdvice.lua",
     },
 }
