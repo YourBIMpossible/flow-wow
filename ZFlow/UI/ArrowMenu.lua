@@ -25,6 +25,10 @@ local function read(s)
         canShapes = s.canShapes == true,
         feedback = s.feedback == true,
         party = type(s.party) == "table" and s.party or {},
+        professions = s.professions ~= false,
+        step = type(s.step) == "table" and s.step or {},
+        nearest = type(s.nearest) == "table" and s.nearest or {},
+        waypoint = s.waypoint == true,
     }
 end
 
@@ -64,7 +68,10 @@ function M.Items(state)
     for _, key in ipairs(KEYS) do
         show[#show + 1] = { key = "show." .. key, text = "Show " .. NAMES[key]:lower(), checked = not s.hidden[key] }
     end
+    -- Lead section 382 (Nav/ProfFeed.lua): the profession coach on or off.
+    show[#show + 1] = { key = M.PROFESSIONS, text = M.PROFESSIONS_TEXT, checked = s.professions }
     local rows = {
+        M.StepRow(s),
         { key = "layout", text = T.MENU.layout, children = layout },
         { key = "show", text = T.MENU.show, children = show },
     }
@@ -113,11 +120,124 @@ function M.Items(state)
 end
 
 M.BACK = "back"
+-- Lead section 387, R3: the route rows. The first row of the menu names the
+-- step the arrow points at; it opens the rows for that step.
+M.STEP = "step"
+M.STEP_NONE = "No step now"
+M.OPEN = "step.open"
+M.HIDE = "step.hide"
+M.NEAREST = "nearest"
+M.WAYPOINT = "waypoint"
+-- The kinds of Nav/Errand.lua (E.KINDS values): places this player has
+-- seen, saved by Nav/ServiceSeen.lua and Nav/ProfSeen.lua. Nothing authored.
+M.NEAREST_KINDS = {
+    { kind = "vendor", text = "Vendor" },
+    { kind = "repair", text = "Repair vendor" },
+    { kind = "banker", text = "Bank" },
+    { kind = "innkeeper", text = "Innkeeper" },
+    { kind = "flight", text = "Flight master" },
+    { kind = "mailbox", text = "Mailbox" },
+    { kind = "trainer", text = "Trainer" },
+}
+-- Where the arrow's step came from (UI/Arrow.lua `from`, its words) -> what
+-- Hide this step drops. A step from elsewhere (the player's quests) has
+-- nothing that drops it, so the row is off for it.
+M.HIDE_BY = {
+    { from = "your route", hide = "route" },
+    { from = "an errand stop", hide = "errand" },
+    { from = "a party member you point at", hide = "follow" },
+    { from = "your own waypoint", hide = "waypoint" },
+}
+
+local function hideOf(step)
+    if type(step.from) ~= "string" then return nil end
+    for i = 1, #M.HIDE_BY do
+        local by = M.HIDE_BY[i]
+        if step.from:sub(1, #by.from) == by.from then return by.hide end
+    end
+    return nil
+end
+
+local function named(step)
+    return type(step.name) == "string" and step.name ~= ""
+end
+
+-- The step row and its level: s.step = { name, from, open }, open true
+-- while the arrow has a details window to open; s.nearest = { [kind] =
+-- true } for the kinds with a place already seen; s.waypoint true while a
+-- waypoint of the player's own is set.
+function M.StepRow(state)
+    local s = read(state)
+    local nearest = {}
+    for i = 1, #M.NEAREST_KINDS do
+        local n = M.NEAREST_KINDS[i]
+        nearest[#nearest + 1] = { key = M.NEAREST .. "." .. n.kind, text = n.text,
+            disabled = (s.nearest[n.kind] ~= true) or nil }
+    end
+    local has = named(s.step)
+    local text = M.STEP_NONE
+    if has then text = s.step.name end
+    return { key = M.STEP, text = text, children = {
+        { key = M.OPEN, text = "Open it", disabled = (not (has and s.step.open == true)) or nil },
+        { key = M.HIDE, text = "Hide this step", disabled = (not (has and hideOf(s.step))) or nil },
+        { key = M.NEAREST, text = "Go to the nearest...", children = nearest },
+        { key = M.WAYPOINT, text = "Your waypoint", disabled = (not s.waypoint) or nil },
+    } }
+end
+
+-- The keys from the top to the level the row `key` opens, or nil when no
+-- row with children has that key.
+function M.PathTo(items, key)
+    local function walk(at, path)
+        for i = 1, #at do
+            local r = at[i]
+            if type(r) == "table" and type(r.children) == "table" and type(r.key) == "string" then
+                local deeper = {}
+                for p = 1, #path do deeper[p] = path[p] end
+                deeper[#deeper + 1] = r.key
+                if r.key == key then return deeper end
+                local found = walk(r.children, deeper)
+                if found then return found end
+            end
+        end
+        return nil
+    end
+    if type(items) ~= "table" then return nil end
+    return walk(items, {})
+end
+
+local function routeAction(key, s)
+    if key == M.STEP or key == M.NEAREST then return { open = key } end
+    local has = named(s.step)
+    if key == M.OPEN then
+        if has and s.step.open == true then return { drawer = true } end
+        return nil
+    end
+    if key == M.HIDE then
+        local hide = hideOf(s.step)
+        if has and hide then return { hide = hide } end
+        return nil
+    end
+    if key == M.WAYPOINT then
+        if s.waypoint then return { waypoint = true } end
+        return nil
+    end
+    local kind = key:match("^nearest%.(.+)$")
+    if kind and s.nearest[kind] == true then
+        for i = 1, #M.NEAREST_KINDS do
+            if M.NEAREST_KINDS[i].kind == kind then return { nearest = kind } end
+        end
+    end
+    return nil
+end
 M.FEEDBACK = "feedback"
 M.DUNGEONS = "dungeons"
 M.FOLLOW = "follow"
 M.FOLLOW_TEXT = "Point at a party member"
 M.FOLLOW_STOP = "Stop pointing at them"
+-- Lead section 382: the Professions tick; state.professions is its setting.
+M.PROFESSIONS = "professions"
+M.PROFESSIONS_TEXT = "Professions"
 -- The window a row opens, by the module that owns it (lead section 318).
 M.WINDOWS = { [M.DUNGEONS] = "dungeonWindow" }
 M.MORE = "  >"
@@ -197,6 +317,11 @@ function M.Action(key, state)
     if type(key) ~= "string" then return nil end
     local s = read(state)
     if key == M.BACK then return { open = false } end
+    -- Lead section 387, R3: the route rows.
+    if key == M.STEP or key == M.NEAREST or key == M.OPEN or key == M.HIDE or key == M.WAYPOINT
+        or key:match("^nearest%.") then
+        return routeAction(key, s)
+    end
     if key == "layout" or key == "show" then return { open = key } end
     if key == "style" then
         for i = 1, #s.styles do
@@ -205,6 +330,8 @@ function M.Action(key, state)
         return nil
     end
     if key == "settings" then return { settings = true } end
+    -- Lead section 382: { professions = the new value } for the tick.
+    if key == M.PROFESSIONS then return { professions = not s.professions } end
     if M.WINDOWS[key] then return { window = M.WINDOWS[key] } end
     -- G47: the follow level, a member (by unit), or stop ({ follow = false }).
     if key == M.FOLLOW then return { open = key } end
