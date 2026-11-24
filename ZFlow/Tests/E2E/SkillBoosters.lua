@@ -88,11 +88,10 @@ tests["skill boosters e2e: an item that is no booster gets no line"] = function(
     noneActs(t, c)
 end
 
--- Expected to fail: with the skills not read at all (skillRanks gives nil,
--- a first guess not seen in game), the tooltip still says "learn Mining
--- first", a guess that is wrong for a player who has Mining. SB.Facts keeps
--- nothing on unread skills; the tooltip should say nothing either.
-tests["skill boosters e2e: skills not read give no advice (expected to fail: says learn first)"] = function(t)
+-- With the skills not read at all (skillRanks gives nil, a first guess not
+-- seen in game), "learn Mining first" would be wrong for a player who has
+-- Mining. SB.Facts keeps nothing on unread skills; the tooltip says nothing.
+tests["skill boosters e2e: skills not read give no advice, never \"learn first\""] = function(t)
     local c = boot(false)
     t.eq(tip(c, BOOK), nil, "no guess about the skill")
 end
