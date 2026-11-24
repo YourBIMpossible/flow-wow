@@ -46,9 +46,11 @@ tests["advisor bank box: the advisor window has a title, the add-on's own"] = fu
     addon.advisor.Add("boxTest", "Repair your gear.", 1)
     local w = c.kitWindows().Advisor
     t.ok(type(w) == "table" and w.shown == true, "the kit window is shown")
-    local head = w and w.parts and w.parts[1]
-    t.eq(head and head.kind, "header")
-    t.eq(head and head.text, TITLE)
+    -- Lead section 408: in the title bar only, not again as a part.
+    t.eq(w and w.title, TITLE)
+    for _, part in ipairs(w and w.parts or {}) do
+        t.ok(part.kind ~= "header" and part.text ~= TITLE, "the title is not shown twice")
+    end
 end
 
 tests["advisor bank box: the plain panel shows the same title above its prompts"] = function(t)
