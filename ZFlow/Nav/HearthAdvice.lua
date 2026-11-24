@@ -35,6 +35,12 @@ local _, ns = ...
 --     "spread" no seen inn has more than half the stops within H.NEAR
 --     yards; "home already" the best inn is within H.SAME yards of the
 --     home; else "set home" and H.SET_HOME.
+--   H.SetStep(inn, town) -> step or nil (FLOW-PARITY B-34, section 456)
+--     inn: the seen inn H.Home named (an innkeeper the player has spoken
+--     to, Nav/ServiceSeen.lua); town: the client's name of its map, or
+--     nil. step = { label = "Set hearthstone: <inn> (<town>)", place }.
+--     Never from a shipped table. The arrow chain's one call (wired by
+--     the lead at merge): ns.use("hearthAdvice").Step().
 --
 -- Module "hearthAdvice": a look every H.EVERY seconds at the next stop
 -- (ns.use("tripRoute").Current(), else ns.use("arrow").Heading()). Each
@@ -60,6 +66,9 @@ H.READY_IN = "Your hearthstone is ready in %d minutes: then hearth to %s to save
 H.NO_HOME = "Talk to an innkeeper to set your home: then your hearthstone can save you long walks."
 H.SET_HOME = "Set your home at %s's inn: most of your quests are near it."
 H.SET_HOME_PLAIN = "Set your home at the inn near most of your quests."
+H.STEP = "Set hearthstone: %s (%s)"
+H.STEP_NO_TOWN = "Set hearthstone: %s"
+H.STEP_INN = "innkeeper"
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -165,6 +174,14 @@ function H.Home(o)
     return H.SET_HOME_PLAIN, "set home", best
 end
 
+function H.SetStep(inn, town)
+    if not placed(inn) then return nil end
+    local who = named(inn.name) or H.STEP_INN
+    local where = named(town)
+    local label = where and H.STEP:format(who, where) or H.STEP_NO_TOWN:format(who)
+    return { label = label, place = { map = inn.map, x = inn.x, y = inn.y } }
+end
+
 -- One read of the client, or nil when it has no such read or it fails.
 local function ask(client, read, ...)
     if type(client) ~= "table" or type(client[read]) ~= "function" then return nil end
@@ -185,6 +202,7 @@ function H.Declare(k)
     local ctx
     local said = {}          -- [reason] = true while that line stays said
     local lastHome = nil     -- the set-home line said last
+    local step = nil         -- the set-hearthstone step of the last look
 
     local function use(name)
         local m = k.use and k.use(name)
@@ -247,8 +265,9 @@ function H.Declare(k)
         end
 
         local services = ns.ServiceSeen and ns.ServiceSeen.PLACES or "learned.places.services"
-        local home = H.Home({ bind = bind, stops = stops, inns = H.Inns(saved(ctx.store, "char", services)),
+        local home, _, best = H.Home({ bind = bind, stops = stops, inns = H.Inns(saved(ctx.store, "char", services)),
                               size = function(map) return ask(client, "mapSize", map) end })
+        step = best and H.SetStep(best, ask(client, "mapName", best.map)) or nil
         if home and home ~= lastHome then
             lastHome = home
             say(home)
@@ -258,10 +277,10 @@ function H.Declare(k)
     k:Module({
         name = H.NAME,
         needs = { "client", "store" },
-        provides = { Look = function() api.look() end },
+        provides = { Look = function() api.look() end, Step = function() return step end },
         ticks = { { every = H.EVERY, when = "always", run = function() api.look() end } },
         start = function(c) ctx = c end,
-        stop = function() said, lastHome = {}, nil end,
+        stop = function() said, lastHome, step = {}, nil, nil end,
     })
     return api
 end

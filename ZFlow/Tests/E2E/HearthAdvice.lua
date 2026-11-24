@@ -45,10 +45,10 @@ local function boot(char, bindName, cooldown)
     local db, zones = questie()
     c.setQuestieModule("QuestieDB", db); c.setQuestieModule("ZoneDB", zones)
     c.setQuestLog(LOG)
-    ns.offline.addon(c)
+    local addon = ns.offline.addon(c)
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
     c.advance(10, 40)
-    return c
+    return c, addon
 end
 
 local function count(c, text)
@@ -92,6 +92,48 @@ tests["hearth advice: no home: talk to an innkeeper; a seen inn near the quests:
     c.advance(10, 20)
     t.eq((count(c, "Talk to an innkeeper to set your home")), 1)
     t.eq((count(c, "Set your home at Farley's inn: most of your quests are near it.")), 1)
+end
+
+-- FLOW-PARITY B-34 (section 456): a "Set hearthstone" step only from what
+-- the client shows: an innkeeper the player spoke to and the map's name.
+local function farley()
+    return { learned = { places = { services = {
+        ["Creature-0-1-2-3-295-0"] = { name = "Farley", map = MAP, x = 0.61, y = 0.51, kinds = { innkeeper = true } },
+    } } } }
+end
+
+local function step(addon)
+    local m = addon.use("hearthAdvice")
+    return m and m.Step and m.Step() or nil
+end
+
+tests["hearth advice: a spoken-to inn near the quests: a Set hearthstone step there"] = function(t)
+    local c, addon = boot(farley(), nil, 0)
+    c.setMapName(MAP, "Elwynn Forest")
+    c.slashes[ns.id.slash]("route")
+    c.advance(10, 20)
+    local s = step(addon)
+    t.ok(s ~= nil, "a step is offered")
+    t.eq(s and s.label, "Set hearthstone: Farley (Elwynn Forest)")
+    t.eq(s and s.place, { map = MAP, x = 0.61, y = 0.51 })
+end
+
+tests["hearth advice: no inn spoken to, or the home already there: no Set hearthstone step"] = function(t)
+    local c, addon = boot({}, nil, 0)
+    c.slashes[ns.id.slash]("route"); c.advance(10, 20)
+    t.eq(step(addon), nil, "no inn seen: nothing from a table")
+    local char = farley()
+    char.learned.places.bind = { name = "Farley", map = MAP, x = 0.61, y = 0.51 }
+    c, addon = boot(char, "Farley", 0)
+    c.slashes[ns.id.slash]("route"); c.advance(10, 20)
+    t.eq(step(addon), nil, "the home is already that inn")
+end
+
+tests["hearth advice: the step label without a town or inn name"] = function(t)
+    local H = ns.Nav.HearthAdvice
+    t.eq(H.SetStep({ name = "Farley", map = MAP, x = 0.5, y = 0.5 }, nil).label, "Set hearthstone: Farley")
+    t.eq(H.SetStep({ map = MAP, x = 0.5, y = 0.5 }, "Goldshire").label, "Set hearthstone: innkeeper (Goldshire)")
+    t.eq(H.SetStep({ name = "Farley" }, "Goldshire"), nil, "no place: no step")
 end
 
 return tests
