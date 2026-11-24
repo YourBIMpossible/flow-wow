@@ -193,6 +193,7 @@ return {
         "UI/KitHost.lua",
         "Items/Keep.lua",
         "Items/RecipeBook.lua",
+        "Items/RecipeLearned.lua",
         "Items/Goals.lua",
     "UI/Arrow.lua",
     "UI/MinimapPin.lua",
