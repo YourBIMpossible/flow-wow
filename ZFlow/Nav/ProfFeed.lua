@@ -59,6 +59,11 @@ F.HELD_UNNAMED = "Next time you are on that continent: %s"
 F.RUN = 7
 -- Kinds done where the player stands when the step has no place.
 F.HERE = { craft = true, make_part = true }
+-- Section 387 R5: the map pin's kind and role (the client's own colours
+-- for "new"), and how often it is looked at, in seconds. A first guess.
+F.PIN_KIND = "new"
+F.PIN_ROLE = "profession"
+F.PIN_EVERY = 1
 
 F.WHY = {
     "it can be done where you stand",
@@ -338,6 +343,31 @@ function F.Declare(k, diag)
         return F.Lines(api.result())
     end
 
+    -- Lead section 387 R5: the picked step with a place on this continent
+    -- is a labelled pin on the world map (client.mapPins, as
+    -- UI/RouteTracker.lua draws its stop), while the world map shows that
+    -- step's map. Cleared with no such step, or the tick off.
+    local pins
+    local function clearPin()
+        if pins then pcall(pins.clear) end
+    end
+    function api.pin()
+        if not ctx or api.off() or not planOf() then return clearPin() end
+        local result = api.result()
+        local pick = type(result) == "table" and result.pick or nil
+        if type(pick) ~= "table" or (pick.rank ~= 2 and pick.rank ~= 3) then return clearPin() end
+        if not pins then
+            local h = ask("mapPins")
+            if type(h) ~= "table" then return nil end
+            pins = h
+        end
+        local to = pick.step.target
+        local okMap, map = pcall(pins.map)
+        if not okMap or map == nil or map ~= to.map then return clearPin() end
+        pcall(pins.draw, { { name = pick.text, kind = F.PIN_KIND, role = F.PIN_ROLE, x = to.x, y = to.y } }, {})
+        return nil
+    end
+
     k:Setting({ key = F.SETTING, scope = "account", type = "bool", default = true,
         label = "Professions: show the next step", group = "professions",
         synonyms = { "profession", "professions", "coach", "arrow", "next step", "skill" } })
@@ -346,8 +376,12 @@ function F.Declare(k, diag)
         name = F.NAME,
         needs = { "client", "store", "settings" },
         provides = { Step = api.step, Off = api.off, Lines = api.lines },
+        ticks = { { every = F.PIN_EVERY, when = "always", run = function() api.pin() end } },
         start = function(c) ctx = c end,
-        stop = function() ctx = nil end,
+        stop = function()
+            clearPin()
+            ctx = nil
+        end,
     })
 
     if type(diag) == "table" and type(diag.commands) == "table" then

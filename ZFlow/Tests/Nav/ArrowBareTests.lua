@@ -138,8 +138,9 @@ T["view: stacked and off, the needle's lines take room"] = function(t)
     local top = { arrows = { points = { quest = { "TOP", "TOP", 0, -40 } } } }
     local off = N.ArrowView(state({ layout = top }, { textHeight = 14 }, { textHeight = 28, bearingKnown = false }))
     t.eq(off.prof.mode, "off")
-    t.eq(off.prof.text.side, "below", "the other side from the quest line")
-    t.eq(off.quest.text.side, "above", "the quest's own side is its own count, as before")
+    -- Lead section 387 R2 replaces section 341 here: stacked, profession text above, quest text below.
+    t.eq(off.prof.text.side, "above", "the profession step above")
+    t.eq(off.quest.text.side, "below", "the quest line below")
 end
 
 return T

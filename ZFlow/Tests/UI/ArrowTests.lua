@@ -96,8 +96,9 @@ return {
         t.eq(p.faded, N.PROF_HOLDER_ALPHA, "the needle stays the quieter arrow")
         t.eq(q.lines, { "Demo: north", "300 yd" })
         t.eq(p.lines, { "Demo: east" }, "its text is on its own frame")
-        t.eq(q.textPoint, { "BOTTOM", "TOP", 0, 7 }, "quest lines above")
-        t.eq(p.textPoint, { "TOP", "BOTTOM", 0, -7 }, "needle lines below")
+        -- Lead section 387 R2 replaces section 341 here: profession text above, quest text below.
+        t.eq(q.textPoint, { "TOP", "BOTTOM", 0, -7 }, "quest lines below")
+        t.eq(p.textPoint, { "BOTTOM", "TOP", 0, 7 }, "needle lines above")
         c.advance(0.5, 30)
         t.ok(q.draws > 0 and p.draws > 0, "both are drawn every frame")
         t.ok(a.state().demo)

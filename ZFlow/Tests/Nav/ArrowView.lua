@@ -289,12 +289,11 @@ T["text anchors: below or above by screen half, clear of the needle"] = function
     -- With the needle: the lines move out by its clearance (7 on a 56 frame).
     t.eq(N.NeedleClearance(56), 7, "needle clearance")
     local stacked = N.ArrowView(state())
-    t.eq(stacked.quest.text.point, { "BOTTOM", "TOP", 0, 7 }, "above, clear of the needle")
-    -- Lead section 341: the needle's lines go on the other side of the
-    -- arrow from the quest lines, on the needle's own frame, same first gap.
+    -- Lead section 387 R2 replaces section 341 here: stacked, profession text above, quest text below.
+    t.eq(stacked.quest.text.point, { "TOP", "BOTTOM", 0, -7 }, "below, clear of the needle")
     t.eq(stacked.prof.text.to, "prof", "needle text is on its own frame")
-    t.eq(stacked.prof.text.side, "below", "the other side from the quest lines")
-    t.eq(stacked.prof.text.point, { "TOP", "BOTTOM", 0, -7 }, "same first gap, mirrored")
+    t.eq(stacked.prof.text.side, "above", "the profession step above")
+    t.eq(stacked.prof.text.point, { "BOTTOM", "TOP", 0, 7 }, "same first gap, mirrored")
     t.eq(stacked.prof.text.first, stacked.quest.text.first, "same first gap")
     -- Bottom half: below.
     local low = { arrows = { points = { quest = { "BOTTOMLEFT", "BOTTOMLEFT", 100, 100 } } } }
@@ -361,21 +360,22 @@ T["stacked text: lines of a needle that is off still take their room (D2)"] = fu
     local top = { arrows = { points = { quest = { "TOP", "TOP", 0, -40 } } } }
     local drawn = N.ArrowView(state({ layout = top }, { textHeight = 14 }, { textHeight = 28 }))
     t.eq(drawn.prof.shown, true)
-    t.eq(drawn.quest.text.side, "above", "the quest line fits above")
+    -- Lead section 387 R2 replaces section 341 here: stacked, profession text above, quest text below.
+    t.eq(drawn.quest.text.side, "below", "the quest line below")
     t.eq(drawn.prof.text.to, "prof", "section 341: on its own frame")
-    t.eq(drawn.prof.text.side, "below", "needle drawn: its lines are on the other side")
+    t.eq(drawn.prof.text.side, "above", "needle drawn: its lines above")
     -- The needle cannot point (no bearing): it is not drawn, its lines still are.
     local off = N.ArrowView(state({ layout = top }, { textHeight = 14 }, { textHeight = 28, bearingKnown = false }))
     t.eq(off.prof.mode, "off")
     t.eq(off.prof.shown, false)
     t.eq(off.prof.text.shown, true)
     t.eq(off.prof.text.to, "prof")
-    t.eq(off.prof.text.side, "below", "its lines stand as when it is drawn")
+    t.eq(off.prof.text.side, "above", "its lines stand as when it is drawn (section 387 R2)")
     t.eq(off.prof.text.point, drawn.prof.text.point, "and they stand where they stood")
     -- Off because the quest step is at its point: the same.
     local here = N.ArrowView(state({ layout = top }, { textHeight = 14, distance = 0 }, { textHeight = 28 }))
     t.eq(here.prof.mode, "off")
-    t.eq(here.prof.text.side, "below", "at the quest's point: its lines are there too")
+    t.eq(here.prof.text.side, "above", "at the quest's point: its lines are there too (section 387 R2)")
 end
 
 -- Lead section 341. The needle's lines go on the other side only when that

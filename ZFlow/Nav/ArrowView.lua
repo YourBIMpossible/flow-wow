@@ -168,11 +168,19 @@ function N.ArrowView(state)
         -- stand on the other side of the arrow, on the needle's own frame,
         -- with the same first gap. Only when the screen is known and they
         -- fit there; otherwise the one stack above stays.
+        -- Lead section 387 R2 (owner, the original look): stacked, the
+        -- profession step's lines stand above the arrows and the quest lines
+        -- below, wherever the stack is, when both fit there; else as 341.
         local qt = quest.text
         if qt.shown and pText.shown and knownScreen(sw, sh) and lq.position then
             local _, bottom = N.ArrowCorner(lq.position, size, sw, sh)
             local first = qt.first
-            if qt.side == "above" and bottom - first - pNeed >= 0 then
+            if bottom + size + first + pNeed <= sh and bottom - first - qNeed >= 0 then
+                quest.text = { shown = true, to = "quest", side = "below",
+                               point = { "TOP", "BOTTOM", 0, -first }, first = first }
+                pText = { shown = true, to = "prof", side = "above",
+                          point = { "BOTTOM", "TOP", 0, first }, first = first }
+            elseif qt.side == "above" and bottom - first - pNeed >= 0 then
                 pText = { shown = true, to = "prof", side = "below",
                           point = { "TOP", "BOTTOM", 0, -first }, first = first }
             elseif qt.side == "below" and bottom + size + first + pNeed <= sh then
