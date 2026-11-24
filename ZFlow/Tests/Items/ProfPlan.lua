@@ -229,4 +229,31 @@ tests["prof plan: a material whose name is not read yet is never a number"] = fu
     end
 end
 
+tests["prof plan: the craft step lists each material: bags, bank, smelt (section 388 a)"] = function(t)
+    if type(P()) ~= "table" then return t.ok(false, "ns.ProfPlan") end
+    local steps = P().Plan(input({ station = "anvil", atStation = true,
+        bags = { [1] = 5, [2] = 1 }, bank = { [2] = 1 } }))
+    t.eq(kinds(steps), { "make_part", "take_bank", "craft" })
+    t.eq(steps[1] and steps[1].from, { item = 1, count = 4 }, "two bars from four ore")
+    local craft = steps[3] or {}
+    t.eq(craft.count, 2)
+    t.eq(craft.mats, { { item = 2, need = 4, bags = 1, bank = 1, smelt = 2, ore = 1, oreCount = 4,
+        text = "Test Bar x4: 1 in your bags, 1 from your bank, smelt 2 from 4 Test Ore" } })
+end
+
+tests["prof plan: the craft step says the skill it reaches and what comes after"] = function(t)
+    if type(P()) ~= "table" then return t.ok(false, "ns.ProfPlan") end
+    local steps = P().Plan(input({ bags = { [2] = 20 } }))
+    local craft = steps[#steps] or {}
+    t.eq(craft.recipe, "Test Buckle")
+    t.eq(craft.reach, 56, "orange to 55: six sure points from 50")
+    t.eq(craft.after, "Test Nail")
+    t.eq(craft.thenText, "Blacksmithing 50 -> 56, then Test Nail")
+    steps = P().Plan(input({ colours = { ["Test Nail"] = { medium = { lo = 48, hi = 60 } } }, bags = { [2] = 20 } }))
+    craft = steps[#steps] or {}
+    t.eq(craft.reach, nil, "yellow: only some give a point; no sure skill")
+    t.eq(craft.after, nil, "nothing else gives a point")
+    t.eq(craft.thenText, nil)
+end
+
 return tests
