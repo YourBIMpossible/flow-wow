@@ -1,0 +1,367 @@
+local _, ns = ...
+
+-- Profession plan (lead section 382, P-COACH C1): the ordered steps toward
+-- the next skill point of one profession, read from what this character
+-- already saved. A planner only (section 379): no ladder table, nothing is
+-- crafted, bought, posted, withdrawn or trained; every step is a line of
+-- text, with a place only where one was seen (target nil: never guessed).
+--
+--   steps, why = ProfPlan.Plan(input)        pure
+--   list       = ProfPlan.Candidates(input)  pure
+--   api        = ProfPlan.Declare(k)
+--     api.plan(profession) -> steps, why, read from the client and store
+--   ns.use(ProfPlan.NAME) -> { Plan = api.plan }
+--
+-- input = {
+--   prof, skill, max     the profession and its reading (whole numbers)
+--   book                 char "learned.facts.recipeBook"
+--   colours              char "learned.recipeColors": [name][difficulty] = { lo, hi }
+--   bags, bank           { [itemKey] = count }
+--   price(item)          copper for one, or nil when not known
+--   name(item)           the item's name, or nil
+--   trainerLists         char "learned.trainerLists"
+--   npcs                 account "learned.places.npcs"
+--   station              the station kind the craft needs ("anvil"), or nil
+--   stationTarget        { map, x, y } of one seen, or nil
+--   atStation            true when standing at one
+-- }
+-- step = { kind, text, item, count, target, recipe, npc, station }, kind one
+-- of learn_recipe, train_tier, make_part, take_bank, go_station, craft, in
+-- that order. why (with no steps): "no reading", "no recipe" (nothing gives
+-- a point and nothing can be learned at this skill) or "no materials".
+--
+-- Only orange (sure) and yellow (maybe) give a point. Sure comes first,
+-- then the cheapest by known prices (unpriced last), then by name.
+-- Materials come from the bags, then the bank, then a known Mining smelt
+-- of ore in the bags. Gathering, vendors and the auction house are C3
+-- (Items/ProfSources.lua); without them a recipe short of materials gives
+-- no step.
+
+ns.ProfPlan = {}
+local P = ns.ProfPlan
+
+P.NAME = "profPlan"
+P.SMELT_PROF = "Mining"
+P.SMELT_STATION = "forge"
+P.CHANCE = { optimal = "sure", medium = "maybe" }
+
+local function whole(n)
+    return type(n) == "number" and n == n and n >= 0 and n < math.huge and n == math.floor(n)
+end
+
+-- t[k] when t is a table, else nil.
+local function get(t, k)
+    if type(t) ~= "table" then return nil end
+    return t[k]
+end
+
+-- f(...) when f is a function, else nil.
+local function call(f, ...)
+    if type(f) ~= "function" then return nil end
+    return f(...)
+end
+
+local function count(t, item)
+    local n = get(t, item)
+    if whole(n) then return n end
+    return 0
+end
+
+local function article(word)
+    if word:match("^[AEIOUaeiou]") then return "an " .. word end
+    return "a " .. word
+end
+
+local function itemName(input, item)
+    local n = call(input.name, item)
+    if type(n) == "string" and n ~= "" then return n end
+    return "item " .. tostring(item)
+end
+
+local function sortedKeys(t)
+    local keys = {}
+    for k in pairs(t) do keys[#keys + 1] = k end
+    table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+    return keys
+end
+
+-- The span of a colour that holds this skill: chance, span. Sure wins over
+-- maybe when a recipe was saved with both.
+local function colourAt(spans, skill)
+    if type(spans) ~= "table" then return nil end
+    for _, d in ipairs({ "optimal", "medium" }) do
+        local s = spans[d]
+        if type(s) == "table" and type(s.lo) == "number" and type(s.hi) == "number"
+            and skill >= s.lo and skill <= s.hi then
+            return P.CHANCE[d], s
+        end
+    end
+    return nil
+end
+
+local function cost(input, mats)
+    local total = 0
+    for item, per in pairs(mats) do
+        local p = call(input.price, item)
+        if type(p) ~= "number" then return nil end
+        total = total + p * per
+    end
+    return total
+end
+
+local function usable(input)
+    return type(input) == "table" and type(input.prof) == "string"
+        and whole(input.skill) and whole(input.max) and input.max > 0
+        and type(input.book) == "table"
+end
+
+function P.Candidates(input)
+    local out = {}
+    if not usable(input) then return out end
+    local colours = type(input.colours) == "table" and input.colours or {}
+    for name, r in pairs(input.book) do
+        if type(r) == "table" and r.profession == input.prof and r.partial ~= true
+            and type(r.mats) == "table" and next(r.mats) ~= nil then
+            local chance, span = colourAt(colours[name], input.skill)
+            if chance then
+                out[#out + 1] = { recipe = name, entry = r, chance = chance, span = span,
+                    cost = cost(input, r.mats) }
+            end
+        end
+    end
+    table.sort(out, function(a, b)
+        if a.chance ~= b.chance then return a.chance == "sure" end
+        if (a.cost == nil) ~= (b.cost == nil) then return a.cost ~= nil end
+        if a.cost ~= b.cost then return a.cost < b.cost end
+        return a.recipe < b.recipe
+    end)
+    return out
+end
+
+-- A known smelt that makes this item: name, entry (one ore item only).
+local function smeltFor(input, item)
+    for name, r in pairs(input.book) do
+        if type(r) == "table" and r.profession == P.SMELT_PROF and r.makes == item and r.partial ~= true
+            and type(r.mats) == "table" then
+            local ore, per, n = nil, nil, 0
+            for k, v in pairs(r.mats) do ore, per, n = k, v, n + 1 end
+            if n == 1 and whole(per) and per > 0 then return name, ore, per end
+        end
+    end
+    return nil
+end
+
+-- How many of this item can be had: bags, bank, then smelted from bag ore.
+local function have(input, item)
+    local bags, bank = count(input.bags, item), count(input.bank, item)
+    local smelt, ore, per = smeltFor(input, item)
+    local made = smelt and math.floor(count(input.bags, ore) / per) or 0
+    return bags + bank + made, bags, bank, smelt
+end
+
+-- The most crafts for points: sure to the end of the orange span, maybe to
+-- the cap; never past the cap.
+local function limit(input, c)
+    local left = input.max - input.skill
+    if c.chance == "sure" then return math.min(left, c.span.hi - input.skill + 1) end
+    return left
+end
+
+local function trainerAt(input)
+    local best
+    if type(input.trainerLists) ~= "table" then return nil end
+    for _, key in ipairs(sortedKeys(input.trainerLists)) do
+        local l = input.trainerLists[key]
+        if type(l) == "table" and l.profession == input.prof and type(l.npc) == "string" then
+            if not best or l.npc < best.npc then best = l end
+        end
+    end
+    return best
+end
+
+local function npcTarget(input, npc)
+    if type(npc) ~= "string" then return nil end
+    local n = get(input.npcs, npc)
+    if type(n) == "table" and n.map ~= nil and type(n.x) == "number" and type(n.y) == "number" then
+        return { map = n.map, x = n.x, y = n.y }
+    end
+    return nil
+end
+
+local function reading(input)
+    return string.format("%s %d of %d", input.prof, input.skill, input.max)
+end
+
+local function learnStep(input)
+    if type(input.trainerLists) ~= "table" then return nil end
+    for _, key in ipairs(sortedKeys(input.trainerLists)) do
+        local l = input.trainerLists[key]
+        if type(l) == "table" and l.profession == input.prof and type(l.rows) == "table" then
+            for _, row in ipairs(l.rows) do
+                if type(row) == "table" and type(row.name) == "string" and row.state ~= "known"
+                    and whole(row.skill) and row.skill <= input.skill then
+                    local npc = l.npc
+                    return { kind = "learn_recipe", recipe = row.name, npc = npc, target = npcTarget(input, npc),
+                        text = string.format("Learn %s at %s (%s)", row.name, npc or "a trainer", reading(input)) }
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function tierStep(input)
+    local l = trainerAt(input)
+    local npc = get(l, "npc")
+    return { kind = "train_tier", npc = npc, target = npcTarget(input, npc),
+        text = string.format("Train the next %s rank at %s (%d of %d)", input.prof, npc or "a trainer",
+            input.skill, input.max) }
+end
+
+-- The steps for one candidate, or nil when its materials make none.
+local function craftSteps(input, c)
+    local n = limit(input, c)
+    for item, per in pairs(c.entry.mats) do
+        n = math.min(n, math.floor((have(input, item)) / per))
+    end
+    if n < 1 then return nil end
+    local parts, banks = {}, {}
+    for _, item in ipairs(sortedKeys(c.entry.mats)) do
+        local need = c.entry.mats[item] * n
+        local _, bags, bank, smelt = have(input, item)
+        local fromBank = math.min(bank, math.max(0, need - bags))
+        local short = need - bags - fromBank
+        if fromBank > 0 then
+            banks[#banks + 1] = { kind = "take_bank", item = item, count = fromBank, recipe = c.recipe,
+                text = string.format("Take %d %s from your bank, for %s", fromBank, itemName(input, item), c.recipe) }
+        end
+        if short > 0 then
+            parts[#parts + 1] = { kind = "make_part", item = item, count = short, recipe = smelt,
+                station = P.SMELT_STATION,
+                text = string.format("Smelt %d %s at %s, for %s", short, itemName(input, item),
+                    article(P.SMELT_STATION), c.recipe) }
+        end
+    end
+    local steps = {}
+    for _, s in ipairs(parts) do steps[#steps + 1] = s end
+    for _, s in ipairs(banks) do steps[#steps + 1] = s end
+    local at = ""
+    if type(input.station) == "string" then
+        at = " at " .. article(input.station)
+        if input.atStation ~= true then
+            steps[#steps + 1] = { kind = "go_station", station = input.station, target = input.stationTarget,
+                text = "Go to " .. article(input.station) }
+        end
+    end
+    steps[#steps + 1] = { kind = "craft", recipe = c.recipe, item = c.entry.makes, count = n,
+        station = input.station, text = string.format("Make %d %s%s (%s)", n, c.recipe, at, reading(input)) }
+    return steps
+end
+
+function P.Plan(input)
+    if not usable(input) then return {}, "no reading" end
+    if input.skill >= input.max then return { tierStep(input) } end
+    local list = P.Candidates(input)
+    for _, c in ipairs(list) do
+        local steps = craftSteps(input, c)
+        if steps then return steps end
+    end
+    if #list > 0 then return {}, "no materials" end
+    local learn = learnStep(input)
+    if learn then return { learn } end
+    return {}, "no recipe"
+end
+
+-- Live reads -------------------------------------------------------------
+
+local function ask(client, name, ...)
+    if type(client) ~= "table" or type(client[name]) ~= "function" then return nil end
+    local ok, v = pcall(client[name], ...)
+    if not ok then return nil end
+    return v
+end
+
+local function saved(store, scope, path)
+    if type(store) ~= "table" or type(store.get) ~= "function" then return nil end
+    local ok, v = pcall(store.get, store, scope, path)
+    if not ok then return nil end
+    return v
+end
+
+-- The nearest seen station on this map that serves the craft, or nil.
+local function stationTarget(stations, kind, pos)
+    local spots = get(get(ns.Nav, "PROF_STATION_SPOTS"), kind)
+    if type(spots) ~= "table" then spots = { [kind] = true } end
+    if type(stations) ~= "table" or type(pos) ~= "table" or pos.map == nil then return nil end
+    local best, bestD
+    for _, s in ipairs(stations) do
+        if type(s) == "table" and spots[s.kind] == true and s.map == pos.map
+            and type(s.x) == "number" and type(s.y) == "number" then
+            local d = (s.x - (pos.x or 0)) ^ 2 + (s.y - (pos.y or 0)) ^ 2
+            if not best or d < bestD then best, bestD = s, d end
+        end
+    end
+    if not best then return nil end
+    return { map = best.map, x = best.x, y = best.y }
+end
+
+function P.Input(client, store, prof)
+    local readings = saved(store, "char", "learned.facts.profSkill")
+    local r = get(readings, prof)
+    local keyOf = ns.Items and ns.Items.Key or function(v) return v end
+    local bags = call(get(ns.HaveTip, "Counts"), ask(client, "bagItems"), keyOf)
+    local bank = get(saved(store, "char", "learned.bankCounts"), "counts")
+    if type(bank) ~= "table" then bank = {} end
+    local prices = saved(store, "account", "learned.prices")
+    local kind = get(get(ns.Nav, "PROF_STATION"), prof)
+    local pos = ask(client, "position")
+    local stations = saved(store, "account", "learned.keyStations")
+    local target
+    if kind then target = stationTarget(stations, kind, pos) end
+    return {
+        prof = prof,
+        skill = get(r, "skill"),
+        max = get(r, "max"),
+        book = saved(store, "char", "learned.facts.recipeBook"),
+        colours = saved(store, "char", "learned.recipeColors"),
+        bags = bags or {},
+        bank = bank,
+        price = function(item)
+            if type(prices) ~= "table" or not ns.Prices then return nil end
+            for _, k in ipairs({ "auction", "vendor" }) do
+                local p = ns.Prices.Get(prices, item, k)
+                if type(p) == "table" and type(p.value) == "number" then return p.value end
+            end
+            return nil
+        end,
+        name = function(item)
+            local info = ask(client, "itemInfo", item)
+            return get(info, "name")
+        end,
+        trainerLists = saved(store, "char", "learned.trainerLists"),
+        npcs = saved(store, "account", "learned.places.npcs"),
+        station = kind,
+        stationTarget = target,
+        atStation = false,
+    }
+end
+
+function P.Declare(k)
+    local api = {}
+    local ctx
+    function api.plan(prof)
+        if not ctx then return {}, "no reading" end
+        return P.Plan(P.Input(ctx.client, ctx.store, prof))
+    end
+    k:Module({
+        name = P.NAME,
+        needs = { "client", "store" },
+        provides = { Plan = api.plan },
+        start = function(c) ctx = c end,
+        stop = function() ctx = nil end,
+    })
+    return api
+end
+
+-- The addon's own: declared when this file loads, started at login.
+ns.profPlan = P.Declare(ns)

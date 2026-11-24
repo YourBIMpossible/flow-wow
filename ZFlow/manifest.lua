@@ -274,5 +274,7 @@ return {
     "Nav/Trip.lua",
     -- G43 (P-TRIP): the route tracker window and the current step's map pin (after Trip, TripRoute, the kit).
     "UI/RouteTracker.lua",
+    -- P-COACH C1 (section 382): the profession plan, steps toward the next point (after RecipeBook, HaveTip, Prices, ProfStep).
+    "Items/ProfPlan.lua",
     },
 }
