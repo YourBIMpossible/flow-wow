@@ -140,6 +140,7 @@ return {
         "Nav/ViewState.lua",
         "Nav/WaypointStep.lua",
         "Nav/Waypoint.lua",
+        "Nav/WaypointStatus.lua",
         "Nav/MinimapPin.lua",
         "Nav/ProfStep.lua",
         "Nav/ProfSeen.lua",
