@@ -25,7 +25,9 @@ local _, ns = ...
 --   stationTarget        { map, x, y } of one seen, or nil
 --   atStation            true when standing at one
 -- }
--- step = { kind, text, item, count, target, recipe, npc, station }, kind one
+-- step = { kind, text, item, count, target, recipe, npc, station }; make_part adds from = { item,
+-- count } (the ore); craft adds mats (one line per material), and for a
+-- sure craft reach, after and thenText (section 388 a); kind one, kind one
 -- of learn_recipe, train_tier, make_part, take_bank, go_station, craft, in
 -- that order. why (with no steps): "no reading", "no recipe" (nothing gives
 -- a point and nothing can be learned at this skill), "no colours" (the
@@ -235,25 +237,43 @@ local function tierStep(input)
 end
 
 -- The steps for one candidate, or nil when its materials make none.
+-- Section 388 (a), R1: one material's line, "Test Bar x4: 1 in your bags,
+-- 1 from your bank, smelt 2 from 4 Test Ore".
+local function matLine(input, item, need, bags, bank, smelt)
+    local m = { item = item, need = need, bags = bags, bank = bank, smelt = smelt }
+    local say = {}
+    if bags > 0 then say[#say + 1] = string.format("%d in your bags", bags) end
+    if bank > 0 then say[#say + 1] = string.format("%d from your bank", bank) end
+    if smelt > 0 then
+        local _, ore, per = smeltFor(input, item)
+        m.ore, m.oreCount = ore, smelt * per
+        say[#say + 1] = string.format("smelt %d from %d %s", smelt, m.oreCount, itemName(input, ore))
+    end
+    m.text = string.format("%s x%d: %s", itemName(input, item), need, table.concat(say, ", "))
+    return m
+end
+
 local function craftSteps(input, c)
     local n = limit(input, c)
     for item, per in pairs(c.entry.mats) do
         n = math.min(n, math.floor((have(input, item)) / per))
     end
     if n < 1 then return nil end
-    local parts, banks = {}, {}
+    local parts, banks, mats = {}, {}, {}
     for _, item in ipairs(sortedKeys(c.entry.mats)) do
         local need = c.entry.mats[item] * n
         local _, bags, bank, smelt = have(input, item)
         local fromBank = math.min(bank, math.max(0, need - bags))
         local short = need - bags - fromBank
+        mats[#mats + 1] = matLine(input, item, need, math.min(bags, need), fromBank, short)
         if fromBank > 0 then
             banks[#banks + 1] = { kind = "take_bank", item = item, count = fromBank, recipe = c.recipe,
                 text = string.format("Take %d %s from your bank, for %s", fromBank, itemName(input, item), c.recipe) }
         end
         if short > 0 then
+            local _, ore, per = smeltFor(input, item)
             parts[#parts + 1] = { kind = "make_part", item = item, count = short, recipe = smelt,
-                station = P.SMELT_STATION,
+                station = P.SMELT_STATION, from = { item = ore, count = short * per },
                 text = string.format("Smelt %d %s at %s, for %s", short, itemName(input, item),
                     article(P.SMELT_STATION), c.recipe) }
         end
@@ -270,7 +290,8 @@ local function craftSteps(input, c)
         end
     end
     steps[#steps + 1] = { kind = "craft", recipe = c.recipe, item = c.entry.makes, count = n,
-        station = input.station, text = string.format("Make %d %s%s (%s)", n, c.recipe, at, reading(input)) }
+        station = input.station, text = string.format("Make %d %s%s (%s)", n, c.recipe, at, reading(input)),
+        mats = mats }
     return steps
 end
 
@@ -326,17 +347,34 @@ local function empty(why, input, about)
     return {}, why, string.format(P.SAY[why], about or input.prof)
 end
 
+-- Section 388 (a), R1: the skill a sure craft reaches and the next recipe
+-- that gives a point, on the craft step: "Blacksmithing 50 -> 56, then X".
+local function thenLine(input, list, c, steps)
+    local craft = steps[#steps]
+    if c.chance ~= "sure" then return steps end
+    craft.reach = input.skill + craft.count
+    craft.thenText = string.format("%s %d -> %d", input.prof, input.skill, craft.reach)
+    for _, other in ipairs(list) do
+        if other.recipe ~= c.recipe then
+            craft.after = other.recipe
+            craft.thenText = craft.thenText .. ", then " .. other.recipe
+            break
+        end
+    end
+    return steps
+end
+
 function P.Plan(input)
     if not usable(input) then return empty("no reading", input) end
     if input.skill >= input.max then return { tierStep(input) } end
     local list = P.Candidates(input)
     for _, c in ipairs(list) do
         local steps = craftSteps(input, c)
-        if steps then return steps end
+        if steps then return thenLine(input, list, c, steps) end
     end
     if #list > 0 and sourced(input) then
         local steps = sourcedSteps(input, list[1])
-        if steps then return steps end
+        if steps then return thenLine(input, list, list[1], steps) end
     end
     if #list > 0 then return empty("no materials", input, list[1].recipe) end
     if not coloursRead(input) then return empty("no colours", input) end
