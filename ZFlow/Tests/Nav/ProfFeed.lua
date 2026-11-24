@@ -78,7 +78,9 @@ T["prof feed: a step on another continent is held back as text, never an arrow"]
     local step = F().Step(held)
     t.eq(step.place, nil, "no place: no needle")
     t.eq(step.still, true)
-    t.eq(step.lines, { F().HELD:format("Eastern Kingdoms", FAR.text) })
+    -- Lead section 416 item 2: then one line for each other profession;
+    -- Mining has no step, Tailoring is at its max with no training step.
+    t.eq(step.lines, { F().HELD:format("Eastern Kingdoms", FAR.text), "Open your Mining window once" })
     t.eq(step.lines[1], "Next time you are in Eastern Kingdoms: " .. FAR.text)
 end
 
@@ -99,7 +101,8 @@ T["prof feed: a step with no place is text under the needle, and wins when it ca
     t.eq(r.pick and r.pick.prof, "Tailoring", "a craft is done where you stand")
     local step = F().Step(r)
     t.eq(step.place, nil)
-    t.eq(step.lines, { SEW.text })
+    -- Lead section 416 item 2: then Cooking, not read, and Mining's own step, by name.
+    t.eq(step.lines, { SEW.text, "Open your Cooking window once", MINE.text })
 end
 
 T["prof feed: nothing known says the one thing to do so it will be known"] = function(t)
