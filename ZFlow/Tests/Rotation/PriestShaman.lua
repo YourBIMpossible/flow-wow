@@ -141,9 +141,17 @@ tests["priest pack: the key plan has rows for no form and Shadowform"] = functio
     t.ok(kp.states[1] ~= nil, "a row for Shadowform")
 end
 
-tests["shaman pack: weapon imbues and totems are keys, never list steps"] = function(t)
+-- Section 208 pin update: section 203 had no weapon enchant read, so imbues
+-- were keys only. Section 241 (P-SELFBUFF) builds imbue rows once that read is
+-- in: an imbue may now be a step, but only a buff rule that waits on the read.
+-- Totems still have no read and stay keys.
+tests["shaman pack: totems are keys, never list steps; imbues only as buff rules on the enchant read"] = function(t)
     for _, rule in ipairs(ns.Packs.SHAMAN.lists.default) do
-        t.ok(not string.find(rule.spell, " Weapon", 1, true), "no weapon enchant read: " .. rule.spell)
+        if string.find(rule.spell, " Weapon", 1, true) then
+            t.eq(rule.kind, "buff", "an imbue step is a buff rule: " .. rule.spell)
+            t.eq(type(rule.when), "function", "an imbue step waits on a test: " .. rule.spell)
+            t.eq(rule.when({}), false, "no enchant read: no imbue step: " .. rule.spell)
+        end
         t.ok(not string.find(rule.spell, " Totem", 1, true), "no totem read: " .. rule.spell)
     end
 end

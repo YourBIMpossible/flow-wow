@@ -467,9 +467,11 @@ tests["rotation driver RD11: a step presses nothing and asks only its sixteen re
         -- PRIEST-3 (P-SELFBUFF): and your own debuffs by name (playerDebuffs,
         -- at the debuffs field). N50's tree read asks only spell and spellId,
         -- and only for a pack with options.trees (this one has none).
-        t.eq(other, { "lowHealth", "unitDebuffTypes", "playerDebuffs", "fishingPole", "bagItems", "mounted", "onTaxi", "bagItems", "tracking", "tracking",
+        -- P-SELFBUFF (section 241, section 208 pin update): and the weapon
+        -- enchant read (weaponEnchant); this client has none, so the look is all.
+        t.eq(other, { "lowHealth", "unitDebuffTypes", "playerDebuffs", "weaponEnchant", "fishingPole", "bagItems", "mounted", "onTaxi", "bagItems", "tracking", "tracking",
             "professions", "anyTracking", "ownBuffs", "grouped", "party", "plateEnemies", "plateCasts" },
-            "nothing else asked of the client but the warning, debuff, pole, bag, tracking, profession, gather-guard, grouped and group reads it lacks")
+            "nothing else asked of the client but the warning, debuff, weapon enchant, pole, bag, tracking, profession, gather-guard, grouped and group reads it lacks")
         local names = {}
         for name in pairs(calls) do names[#names + 1] = name end
         table.sort(names)
