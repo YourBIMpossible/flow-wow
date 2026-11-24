@@ -71,6 +71,10 @@ T.WHY_NO_MAP = "Your map is not known yet; try again in a moment."
 T.WHY_NO_LOG = "Your quest log could not be read."
 T.WHY_NONE = "No quest step on this map has a known place: no route."
 T.WHY_OFF = "Routes are switched off in the settings."
+-- A1-27 (lead sections 507 and 541): the route reads the zone filter
+-- (Nav/ZoneFilter.lua). A stop's zone is the map it is on.
+T.WHY_ZONES = "No quest step is in the zones you selected: no route. Their quests stay in your log."
+T.ZONE_LEFT = "not in a zone you selected"
 -- Not under "quest.route": that path is a setting itself, and a path may
 -- not sit under another setting's.
 T.PICKUP_SETTING = "quest.routePickups"
@@ -413,6 +417,33 @@ function T.Lines(route, at)
     return lines
 end
 
+-- A1-27: the planned stops through the zone filter. order(stops, zoneOf)
+-- is the zoneFilter module's Order: it answers the stops to keep, your
+-- zones' first. Answers the stops to walk, a row for each one left out
+-- ({ quest, label, detail, why }) and whether anything changed. With no
+-- zone filter, or one that raises, the stops are as planned.
+function T.Zoned(stops, order)
+    if type(stops) ~= "table" or type(order) ~= "function" then return stops, {}, false end
+    local function zoneOf(s)
+        if type(s) ~= "table" or type(s.place) ~= "table" then return nil end
+        return s.place.map
+    end
+    local ok, ordered = pcall(order, stops, zoneOf)
+    if not ok or type(ordered) ~= "table" then return stops, {}, false end
+    local kept, out = {}, {}
+    for _, s in ipairs(ordered) do kept[s] = true end
+    for _, s in ipairs(stops) do
+        if not kept[s] then
+            out[#out + 1] = { quest = s.quest, label = s.label, detail = s.detail, why = T.ZONE_LEFT }
+        end
+    end
+    local changed = #ordered ~= #stops
+    for i, s in ipairs(ordered) do
+        if stops[i] ~= s then changed = true end
+    end
+    return ordered, out, changed
+end
+
 -- Straight yards between run stops on one map with a known size; the first
 -- from where the player stands.
 local function runLegs(stops, client)
@@ -525,6 +556,26 @@ function T.Declare(k, diag)
         end
         local r, why = T.Plan(rows, places or {}, here, legs, pickups, note)
         if not r then return nil, why, note end
+        -- A1-27: the zones the player selected come first; a stop in another
+        -- zone is left out and named, or comes after them (ZF.SETTING).
+        -- Nothing selected: nothing changes.
+        local zones = k.use and k.use("zoneFilter")
+        if type(zones) == "table" and type(zones.Order) == "function" then
+            local ordered, out, changed = T.Zoned(r.stops, zones.Order)
+            if changed then
+                if #ordered == 0 then return nil, T.WHY_ZONES, note end
+                r.stops = ordered
+                -- The legs are between other stops now: straight yards anew,
+                -- where the map's size is known.
+                for _, s in ipairs(r.stops) do s.leg, s.secs = nil, nil end
+                runLegs(r.stops, c)
+                for _, s in ipairs(r.stops) do
+                    if finite(s.leg) then s.secs = T.Seconds(s.leg) end
+                end
+                r.left = type(r.left) == "table" and r.left or {}
+                for _, row in ipairs(out) do r.left[#r.left + 1] = row end
+            end
+        end
         route, at, readAt = r, 1, ask(c, "now")
         return r
     end
