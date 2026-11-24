@@ -78,7 +78,7 @@ end
 P.LINE_OFFER = "Party route from %s: %s route take to follow it."
 P.LINE_FOLLOW = "Following %s's route: %s route keep for your own."
 P.DROPPED = "Dropped the route from %s; type the route word to plan your own."
-P.WHY_OFF = ""sharing is off in the settings (Share your route with your party)"
+P.WHY_OFF = "sharing is off in the settings (Share your route with your party)"
 P.WHY_ALONE = "you are not in a party"
 P.WHY_PREFIX = "the client did not take the add-on message prefix"
 P.WHY_NO_ROUTE = "no route planned; type the route word first"
