@@ -103,11 +103,11 @@ tests["real plan: no bars and a vendor price seen: the arrow says what to buy an
     t.eq(steps[1] and steps[1].kind, "buy_vendor", "the real plan starts at the vendor")
     local p = c.arrows[2]
     t.eq(p and p.shown, true, "the profession arrow is up")
-    t.ok(has(p, "Buy 12 Test Bar from a vendor (50c each)"), "its line is the buy step: " .. text(p))
+    t.ok(has(p, "Buy 12 Test Bar from a trade goods vendor (50c each)"), "its line is the buy step: " .. text(p))
     local before = #c.printed
     c.slashes[ns.id.slash]("prof plan")
     local out = table.concat(c.printed, "\n", before + 1)
-    t.ok(out:find("Buy 12 Test Bar from a vendor (50c each)", 1, true) ~= nil, out)
+    t.ok(out:find("Buy 12 Test Bar from a trade goods vendor (50c each)", 1, true) ~= nil, out)
 end
 
 tests["real plan: /zflow prof plan prints the real steps in order and the pick"] = function(t)

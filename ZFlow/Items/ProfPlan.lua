@@ -45,7 +45,9 @@ local _, ns = ...
 -- candidate's short materials get a gather, buy_vendor or buy_auction step
 -- (Items/ProfSources.lua), ahead of the rest; without source reads a
 -- recipe short of materials gives no step.
---   here, nodes, vendorPrice, vendorOf   as ProfSources.For takes them (C3, A5)
+--   here, nodes, vendorPrice, vendorOf, tradeVendor   as ProfSources.For
+--                        takes them (C3, A5); both vendor reads keep to the
+--                        player's continent (P.OnContinent)
 --   vendorRecipes        account "learned.vendorRecipes" rows (Items/VendorRecipes.lua)
 -- Lead section 422 item 1: between trainer ranks, with nothing known giving
 -- a point and nothing to learn at a trainer with a place, a buy_recipe step
@@ -895,6 +897,45 @@ end
 
 -- The stations seen: the key's own and where a craft succeeded
 -- (Items/CraftSpots.lua).
+-- Is a place on map reachable without leaving the player's continent? The
+-- player's own map always is; another map only when contOf names the same
+-- continent for both.
+function P.OnContinent(map, pos, contOf)
+    if type(pos) ~= "table" or pos.map == nil or map == nil then return false end
+    if map == pos.map then return true end
+    local ok1, mine = pcall(call, contOf, pos.map)
+    if not ok1 or mine == nil then return false end
+    local ok2, theirs = pcall(call, contOf, map)
+    return ok2 and theirs == mine
+end
+
+-- The vendor to try for a buy with no vendor seen selling the item, out of
+-- the vendors this character has seen (Nav/ServiceSeen.lua): the nearest
+-- seen selling trade goods, the player's own map first, then the rest of
+-- the continent. nil when none.
+--   -> { name, map, x, y }
+function P.TradeVendor(places, pos, contOf)
+    if type(places) ~= "table" or type(pos) ~= "table" or pos.map == nil then return nil end
+    local keys = {}
+    for k in pairs(places) do keys[#keys + 1] = k end
+    table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+    local best, bestRank, bestD
+    for _, k in ipairs(keys) do
+        local e = places[k]
+        if type(e) == "table" and e.trade == true and type(e.kinds) == "table" and e.kinds.vendor == true
+            and type(e.name) == "string" and e.name ~= ""
+            and type(e.x) == "number" and type(e.y) == "number" and P.OnContinent(e.map, pos, contOf) then
+            local same = e.map == pos.map
+            local rank = same and 0 or 1
+            local d = same and ((e.x - (pos.x or 0)) ^ 2 + (e.y - (pos.y or 0)) ^ 2) or 0
+            if not best or rank < bestRank or (rank == bestRank and d < bestD) then
+                best, bestRank, bestD = { name = e.name, map = e.map, x = e.x, y = e.y }, rank, d
+            end
+        end
+    end
+    return best
+end
+
 local function stationsSeen(store)
     local CS = ns.CraftSpots
     if type(CS) == "table" and type(CS.All) == "function" then return CS.All(store) end
@@ -919,6 +960,7 @@ function P.Input(client, store, prof, nodeSource)
     local pos = ask(client, "position")
     -- Queue item A5: who was seen selling what (Items/VendorWares.lua).
     local wares = saved(store, "char", get(ns.VendorWares, "PATH") or "learned.vendorWares")
+    local function contOf(map) return ask(client, "mapCont", map) end
     local stations = stationsSeen(store)
     local target
     if kind then target = stationTarget(stations, kind, pos) end
@@ -957,7 +999,18 @@ function P.Input(client, store, prof, nodeSource)
             return nil
         end,
         vendorOf = function(item)
-            return call(get(ns.VendorWares, "Of"), wares, item, pos)
+            -- Only the vendors on the player's continent count.
+            local all = get(wares, item)
+            if type(all) ~= "table" then return nil end
+            local near = {}
+            for npc, e in pairs(all) do
+                if P.OnContinent(get(e, "map"), pos, contOf) then near[npc] = e end
+            end
+            return call(get(ns.VendorWares, "Of"), { [item] = near }, item, pos)
+        end,
+        tradeVendor = function()
+            return P.TradeVendor(saved(store, "char", get(ns.ServiceSeen, "PLACES") or "learned.places.services"),
+                pos, contOf)
         end,
         skill = get(r, "skill"),
         max = get(r, "max"),
@@ -986,7 +1039,7 @@ function P.Input(client, store, prof, nodeSource)
         -- Lead section 422 item 1: recipes seen at vendors (Items/VendorRecipes.lua).
         vendorRecipes = ns.VendorRecipes and ns.VendorRecipes.Rows(store) or nil,
         npcs = saved(store, "account", "learned.places.npcs"),
-        contOf = function(map) return ask(client, "mapCont", map) end,
+        contOf = contOf,
         station = kind,
         stationTarget = target,
         smeltTarget = smeltTarget,

@@ -11,6 +11,12 @@ local _, ns = ...
 --   MERCHANT_SHOW     a vendor; also a repair vendor when
 --                     client.merchantRepairs() says true. A plain false
 --                     takes a repair mark off again; no answer leaves it.
+--                     trade = true when one of its wares
+--                     (client.merchantItems()) is a trade good
+--                     (client.itemInfo's classID is ServiceSeen.TRADE_CLASS;
+--                     a first guess); wares read with none takes it off; no
+--                     wares read leaves it. The profession plan's buy step
+--                     falls back to the nearest such vendor (Items/ProfPlan.lua).
 --   BANKFRAME_OPENED  a banker
 --   TAXIMAP_OPENED    a flight master
 --   CONFIRM_BINDER    an innkeeper (the player asked to make the inn home)
@@ -65,6 +71,8 @@ ServiceSeen.PLACES = "learned.places.services"
 ServiceSeen.MAX = 400
 -- A sighting this close (a share of the map) to the saved spot is the same spot.
 ServiceSeen.NEAR = 0.01
+-- The game's item class for trade goods; a first guess, not seen in game.
+ServiceSeen.TRADE_CLASS = 7
 -- The order the events are listened for; each names the kind it shows.
 ServiceSeen.EVENTS = {
     { event = "MERCHANT_SHOW", kind = "vendor" },
@@ -91,6 +99,21 @@ end
 local function ask(client, read)
     if type(client) ~= "table" or type(client[read]) ~= "function" then return nil end
     return client[read]()
+end
+
+-- Whether the open merchant sells a trade good: true, false, or nil when
+-- the wares cannot be read.
+local function sellsTrade(client)
+    local rows = ask(client, "merchantItems")
+    if type(rows) ~= "table" then return nil end
+    if type(client.itemInfo) ~= "function" then return nil end
+    for _, r in ipairs(rows) do
+        if type(r) == "table" and r.item ~= nil then
+            local info = client.itemInfo(r.item)
+            if type(info) == "table" and info.classID == ServiceSeen.TRADE_CLASS then return true end
+        end
+    end
+    return false
 end
 
 local function refuse(report, reason)
@@ -146,6 +169,8 @@ function ServiceSeen.Seen(kind, client, store)
         if type(repair) ~= "boolean" then repair = nil end
         report.repair = repair
     end
+    local trade
+    if kind == "vendor" then trade = sellsTrade(client) end
     local now = ask(client, "clock")
     if not finite(now) then now = nil end
 
@@ -179,6 +204,7 @@ function ServiceSeen.Seen(kind, client, store)
     kinds[kind] = true
     if repair == true then kinds.repair = true elseif repair == false then kinds.repair = nil end
     e.kinds = kinds
+    if trade == true then e.trade = true elseif trade == false then e.trade = nil end
     if guid then e.guid = guid end
     if name then e.name = name end
     if type(old) == "table" then

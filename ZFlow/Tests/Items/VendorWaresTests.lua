@@ -166,7 +166,7 @@ end
 
 tests["vendor wares: no vendor seen keeps the old line, with no place guessed"] = function(t)
     local plain = ns.ProfSources.For(input(), 2320, 5)
-    t.ok(plain.text:find("Buy 5 Test Thread from a vendor (", 1, true) == 1, plain.text)
+    t.ok(plain.text:find("Buy 5 Test Thread from a trade goods vendor (", 1, true) == 1, plain.text)
     t.eq(plain.npc, nil, "no vendor named")
     t.eq(plain.target, nil, "no place")
     local unseen = ns.ProfSources.For(input({ vendorOf = function() return nil end }), 2320, 5)
