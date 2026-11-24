@@ -56,7 +56,9 @@ tests["riding step: level 40, no riding, the trainer seen with its price - the l
     c.setTrainer(nil)
     c.fire("TRAINER_CLOSED")
     c.setPosition(1453, 0.6, 0.6)
-    c.fire("PLAYER_MONEY")
+    -- Money is read again when a window that changes it closes, never on
+    -- PLAYER_MONEY (the info bar alone listens to that, Tests/E2E/InfoBar.lua).
+    c.fire("MERCHANT_CLOSED")
     t.eq(prompt(addon), "You can learn riding now: about 20g at the riding trainer " .. RIDER .. "."
         .. " You need 5g more. Then buy a mount from a mount vendor (a city guard knows where).")
     local s = step(addon)
@@ -81,6 +83,13 @@ tests["riding step: level 60 with the first tier says faster riding"] = function
     local _, addon = boot({ level = 60, skills = { ["Horse Riding"] = { rank = 75, max = 75 } } })
     t.eq(prompt(addon), "You can learn faster riding now (price not seen yet). Ask a city guard for the riding"
         .. " trainer. Then buy a fast mount from a mount vendor.")
+end
+
+-- The riding step does not listen to PLAYER_MONEY: the info bar's own
+-- event (Tests/E2E/InfoBar.lua: a hidden bar listens to nothing of its own).
+tests["riding step: it never listens to PLAYER_MONEY"] = function(t)
+    local c = boot()
+    for _, ev in ipairs(c.events()) do t.ok(ev ~= "PLAYER_MONEY", "PLAYER_MONEY not listened to") end
 end
 
 return tests
