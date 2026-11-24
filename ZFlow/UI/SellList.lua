@@ -211,6 +211,12 @@ function SellList.Listing(client, store, grants, r)
         local ok, mats = pcall(ns.ProfPlan.Materials, client, store)
         if ok and type(mats) == "table" then context.materials = mats end
     end
+    -- Lead section 418 item 4: gathered goods of a profession the player
+    -- has (by item class and subclass) are kept too.
+    if type(ns.ProfPlan) == "table" and type(ns.ProfPlan.Gathered) == "function" then
+        local ok, mats = pcall(ns.ProfPlan.Gathered, client, store, stacks, context.materials)
+        if ok and type(mats) == "table" then context.materials = mats end
+    end
     local out = { stacks = stacks, kept = ns.SellView.Kept(bag, context), notRead = 0 }
     -- Items whose facts were not read yet (no name, quality or price),
     -- counted once per item: two stacks of one item are one item.
