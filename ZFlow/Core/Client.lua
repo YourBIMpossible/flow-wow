@@ -11992,6 +11992,27 @@ function ns.make.client(env)
         end
         return out
     end
+    -- Lead section 382 (Nav/ProfFeed.lua): the name of the continent a map
+    -- lies on, for "Next time you are in <continent>". C_Map.GetMapInfo up
+    -- the parents to the first of Enum.UIMapType.Continent (2 when the enum
+    -- is not there). nil when the client will not say; never guessed. A
+    -- first guess, not seen in game.
+    function c.mapContName(map)
+        if type(map) ~= "number" then return nil end
+        local kinds = type(env.Enum) == "table" and env.Enum.UIMapType
+        local contType = type(kinds) == "table" and tonumber(kinds.Continent) or 2
+        for _ = 1, 8 do
+            local ok, info = mapCall("GetMapInfo", map)
+            if not ok or type(info) ~= "table" then return nil end
+            if tonumber(info.mapType) == contType then
+                if type(info.name) ~= "string" or hidden(info.name) or info.name == "" then return nil end
+                return info.name
+            end
+            if type(info.parentMapID) ~= "number" or info.parentMapID == 0 then return nil end
+            map = info.parentMapID
+        end
+        return nil
+    end
 
     -- P-QUEST (lead section 354 item 4): whether quest id can be shared
     -- with your group: true, false, or nil when not known.

@@ -227,19 +227,51 @@ local function stackPointOf(saved, defaultPoint, size, sw, sh)
         or N.ClampPoint(N.ARROW_DEFAULT_POINT, size, sw, sh)
 end
 
+-- Two arrows in one stack: the profession arrow above, the quest arrow
+-- below. The needle is longer than its frame and turns, so the gap is
+-- kept between the quest arrow and the needle's whole turning circle
+-- (N.NeedleClearance, Nav/ArrowView.lua).
+N.STACK_GAP = 4
+
+-- Where the two stand when both are shown. point: the stack's place (the
+-- quest arrow's). above, below: the room the profession text takes over
+-- the stack and the quest text takes under it. drawn: the profession arrow
+-- is drawn (false: only its text, on the quest arrow's own place).
+-- On a known screen the stack is moved down or up, as one, so neither text
+-- leaves it. -> questPoint, profPoint
+function N.ArrowStack(point, size, sw, sh, above, below, drawn)
+    size = finite(size) and size or N.ARROW_SIZE
+    above = finite(above) and above > 0 and above or 0
+    below = finite(below) and below > 0 and below or 0
+    local clear = type(N.NeedleClearance) == "function" and N.NeedleClearance(size) or 0
+    local rise = drawn and (size + clear + N.STACK_GAP) or 0
+    local shift = 0
+    if knownScreen(sw, sh) then
+        local _, bottom = corner(point, size, sw, sh)
+        if bottom - below < 0 then shift = below - bottom end
+        local top = bottom + shift + size + rise + above
+        if top > sh then shift = shift - (top - sh) end
+    end
+    return { point[1], point[2], point[3], point[4] + shift },
+           { point[1], point[2], point[3], point[4] + shift + rise }
+end
+
 -- ------------------------------------------------------------------ layout
 -- state = {
 --   layout  = the saved table (see above),
 --   gate    = N.ArrowGate's answer,
---   quest   = { hasStep, overlay },   -- overlay: follow, waypoint
---   prof    = { hasStep, mode },      -- mode nil or "arrow": needle drawn
+--   quest   = { hasStep, overlay, room },   -- overlay: follow, waypoint
+--   prof    = { hasStep, mode, room },      -- mode "off": only its text
+--   room: the height its text takes beyond the arrow, 0 or nil for none.
 --   screenW, screenH, size, defaultPoint,
 -- }
 -- -> { quest = {...}, prof = {...}, stacked = bool }, each arrow:
---   shown, anchor ("screen" or "quest"), position { a, r, x, y } on the
---   screen, look ("pointer" or "needle"), behind, small, scale, alpha,
---   tint ("quest" or "own"), faint, emphasis, text. Map and path styling is
---   not decided here: it does not change when the arrows are separated.
+--   shown, anchor ("screen"), position { a, r, x, y } on the screen, look
+--   ("pointer" or "needle"), behind, small, scale, alpha, tint ("quest" or
+--   "own"), faint, emphasis, text; prof.above: it stands over the quest
+--   arrow, its text above it and the quest text below the quest arrow. Map
+--   and path styling is not decided here: it does not change when the
+--   arrows are separated.
 function N.ArrowLayout(state)
     state = type(state) == "table" and state or {}
     local saved = N.ArrowSaved(state.layout)
@@ -278,10 +310,14 @@ function N.ArrowLayout(state)
         -- Nothing to stand under: the profession step takes the stack's place.
         prof.anchor, prof.look, prof.tint = "screen", "pointer", "quest"
     else
-        prof.anchor, prof.look, prof.tint = "quest", "needle", "own"
-        prof.behind = true
-        if profShown and (p.mode == nil or p.mode == "arrow") then
-            quest.small, quest.scale, quest.alpha = true, N.ON_NEEDLE_SCALE, N.ON_NEEDLE_ALPHA
+        -- Two arrows, one over the other: the profession arrow on top, in
+        -- its own colour and at full strength, so the two never overlap or
+        -- read as one. The quest arrow keeps its size.
+        prof.anchor, prof.look, prof.tint = "screen", "needle", "own"
+        prof.above, prof.alpha, prof.faint = true, 1, false
+        if profShown then
+            quest.position, prof.position = N.ArrowStack(stackPoint, size, sw, sh,
+                p.room, q.room, p.mode ~= "off")
         end
     end
     return { quest = quest, prof = prof, stacked = not separate }
@@ -343,7 +379,11 @@ function N.ArrowApply(layout, action, ctx)
         if to and other and knownScreen(sw, sh) then
             local ax, ay = centre(to, size, sw, sh)
             local bx, by = centre(other, size, sw, sh)
-            if N.StackSnap(ax - bx, ay - by, ctx.snap) then
+            -- The profession arrow stands one rise over the quest arrow in
+            -- the stack: let go near that place it is stacked too.
+            local rise = size + N.NeedleClearance(size) + N.STACK_GAP
+            if N.StackSnap(ax - bx, ay - by, ctx.snap)
+                or (key == "prof" and N.StackSnap(ax - bx, ay - by - rise, ctx.snap)) then
                 -- Stacked again where the quest arrow stands; places kept.
                 s.mode = "stacked"
                 return withArrows(layout, s)
