@@ -161,10 +161,12 @@ tests["prof plan: nothing gives a point: learn a recipe the trainer lists at thi
     t.eq(s.text, "Learn Test Hinge at Test Smith (Blacksmithing 50 of 75)")
     steps = P().Plan(input({ colours = grey, trainerLists = lists }))
     t.eq(steps[1] and steps[1].target, nil, "trainer place not seen: text only")
-    local none, why = P().Plan(input({ colours = grey, trainerLists = { a = { profession = "Blacksmithing", npc = "Test Smith",
+    -- Lead section 422 item 1 (b): nothing to learn at this skill yet names
+    -- the next skill the trainer teaches at, as one plain line.
+    local none = P().Plan(input({ colours = grey, trainerLists = { a = { profession = "Blacksmithing", npc = "Test Smith",
         rows = { { name = "Test Later", state = "unavailable", skill = 60 } } } } }))
-    t.eq(none, {})
-    t.eq(why, "no recipe", "nothing to learn at this skill yet")
+    t.eq(kinds(none), { "no_point" }, "nothing to learn at this skill yet")
+    t.eq(none[1] and none[1].text, "No point yet; next rank at 60")
 end
 
 tests["prof plan: at the cap: train the next rank"] = function(t)

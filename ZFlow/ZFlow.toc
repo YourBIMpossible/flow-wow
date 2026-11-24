@@ -244,6 +244,7 @@ Nav\ProfFeed.lua
 Nav\HearthAdvice.lua
 Nav\GateWords.lua
 Items\RecipeFacts.lua
+Items\VendorRecipes.lua
 Nav\CrossingWords.lua
 Nav\Activities.lua
 UI\Lite.lua
