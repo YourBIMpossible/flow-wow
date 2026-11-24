@@ -242,6 +242,17 @@ function F.Declare(k, diag)
         return true
     end
 
+    -- The title of the line that holds quest id, or nil when none does
+    -- (for the arrow menu's Remove rows, UI/ArrowMenu.lua M.FocusRows).
+    function api.TitleOf(id)
+        id = tonumber(id)
+        local i = id and lineOf(id)
+        if not i then return nil end
+        local line = saved()[i]
+        local _, title = idsOf(line)
+        return tostring(line.title or title or F.UNNAMED)
+    end
+
     -- The quests of every line ({ [id] = true }), for the route reader.
     function api.Quests()
         local out = {}
@@ -298,6 +309,7 @@ function F.Declare(k, diag)
             RemoveFrom = function(id) return api.RemoveFrom(id) end,
             RemoveLine = function(id) return api.RemoveLine(id) end,
             Clear = function() return api.Clear() end,
+            TitleOf = function(id) return api.TitleOf(id) end,
             Quests = function() return api.Quests() end,
             Lines = function() return api.Lines() end,
         },

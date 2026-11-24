@@ -95,4 +95,11 @@ tests["focus e2e: a quest still in the log keeps its line"] = function(t)
     t.eq(said(c, "focus")[1], "custom route lines: 1")
 end
 
+tests["focus e2e: the title of the line that holds a quest, for the menu's Remove rows"] = function(t)
+    local _, addon = boot({ { quest = 702 } })
+    local focus = addon.use and addon.use("focus") or ns.focus
+    t.eq(focus.TitleOf(701), "Last Steps")
+    t.eq(focus.TitleOf(801), nil, "a quest on no line has no title")
+end
+
 return tests
