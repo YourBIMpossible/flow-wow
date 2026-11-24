@@ -35,7 +35,8 @@ local _, ns = ...
 -- Module: RidingStep.Declare(k) -> api; api.step(), api.lines().
 --   ns.use(RidingStep.NAME) -> { Step, Lines }. The advisor line (id
 --   RidingStep.PROMPT) is the lines joined, kept in step at login, level-up,
---   skill and money changes and at a trainer.
+--   skill changes, when a merchant, loot, mail window closes or a quest is
+--   handed in (money), and at a trainer.
 -- Setting "nav.ridingStep" (bool, default true): false turns it off.
 -- LOOK ONLY: nothing trains, buys, mounts or clicks. Not seen in game.
 
@@ -56,7 +57,11 @@ R.TIERS = {
     { level = 60, rank = 150, words = "faster riding",
       mount = "Then buy a fast mount from a mount vendor." },
 }
-R.EVENTS = { "PLAYER_ENTERING_WORLD", "PLAYER_LEVEL_UP", "SKILL_LINES_CHANGED", "PLAYER_MONEY" }
+-- Money is read again when a window that changes it closes, not on
+-- PLAYER_MONEY: that event is the info bar's own, and a hidden bar must
+-- leave it unheard (Tests/E2E/InfoBar.lua, gate of lead section 397).
+R.EVENTS = { "PLAYER_ENTERING_WORLD", "PLAYER_LEVEL_UP", "SKILL_LINES_CHANGED",
+    "MERCHANT_CLOSED", "LOOT_CLOSED", "MAIL_CLOSED", "QUEST_TURNED_IN" }
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
