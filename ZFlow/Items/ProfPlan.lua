@@ -74,11 +74,14 @@ P.SAY_NO_PROF = "Open a profession window once"
 -- kind is the node kind Nav/AddonSources.lua gives. First guesses, not
 -- seen in game: the lines, and that any node gives a point.
 P.GATHER = {
-    Mining = { kind = "Mining", text = "Mine any ore vein you find" },
+    Mining = { kind = "Mining", text = "Mine any ore vein you find", tool = "Mining Pick" },
     Herbalism = { kind = "Herb Gathering", text = "Pick any herb you find" },
-    Fishing = { kind = "Fishing", text = "Fish in any water, with a fishing pole on" },
-    Skinning = { text = "Skin the beasts you kill, with a skinning knife in your bags" },
+    Fishing = { kind = "Fishing", text = "Fish in any water, with a fishing pole on", tool = "Fishing Pole" },
+    Skinning = { text = "Skin the beasts you kill, with a skinning knife in your bags", tool = "Skinning Knife" },
 }
+-- Section 402 item 4 (G19): the gathering tool, bought from a vendor at a
+-- price this account saw. Never the auction house; nothing is bought.
+P.BUY_TOOL = "Buy a %s from a vendor (%s)"
 P.GATHER_NEAR = "%s; the nearest seen is %s"
 -- A gathering profession with no skill read: it has no window to open.
 P.SAY_GATHER = "Learn %s from a trainer, then gather once"
@@ -311,6 +314,28 @@ local function tierStep(input)
 end
 
 -- The steps for one candidate, or nil when its materials make none.
+-- Section 402 item 4 (G19): the gathering tool is not in the bags and a
+-- vendor price was seen for an item of that name: buy it first, with the
+-- cost. No price seen: no step (the gather line names the tool).
+local function toolStep(input)
+    local tool = get(gathers(input), "tool")
+    if type(tool) ~= "string" or type(input.name) ~= "function" then return nil end
+    for key in pairs(type(input.bags) == "table" and input.bags or {}) do
+        if count(input.bags, key) > 0 and input.name(key) == tool then return nil end
+    end
+    local keys = type(input.vendorItems) == "function" and input.vendorItems() or nil
+    if type(keys) ~= "table" then return nil end
+    table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+    for _, key in ipairs(keys) do
+        local price = type(input.vendorPrice) == "function" and input.vendorPrice(key) or nil
+        if input.name(key) == tool and type(price) == "number" and price >= 0 and ns.Prices then
+            local cost = ns.Prices.Text({ value = price, basis = ns.Prices.OBSERVED })
+            return { kind = "buy_tool", item = key, cost = price, text = string.format(P.BUY_TOOL, tool, cost) }
+        end
+    end
+    return nil
+end
+
 -- Section 388 (a), R1: one material's line, "Test Bar x4: 1 in your bags,
 -- 1 from your bank, smelt 2 from 4 Test Ore".
 local function matLine(input, item, need, bags, bank, smelt)
@@ -387,6 +412,8 @@ local function sourcedSteps(input, c)
         local got = have(input, item)
         if need > got then
             local s = ns.ProfSources.For(input, item, need - got)
+            -- Section 402 item 4: a plan step never sends to the auction house.
+            if s and s.kind == "buy_auction" then s = nil end
             if s then
                 s.recipe = c.recipe
                 steps[#steps + 1] = s
@@ -490,7 +517,11 @@ function P.Plan(input)
         local steps = craftSteps(input, c)
         if steps then return thenLine(input, list, c, steps) end
     end
-    if gathers(input) then return { gatherStep(input) } end
+    if gathers(input) then
+        local tool = toolStep(input)
+        if tool then return { tool, gatherStep(input) } end
+        return { gatherStep(input) }
+    end
     if #list > 0 and sourced(input) then
         local steps = sourcedSteps(input, list[1])
         if steps then return thenLine(input, list, list[1], steps) end
@@ -593,6 +624,11 @@ function P.Input(client, store, prof, nodeSource)
                 if type(p) == "table" and type(p.value) == "number" then return p.value end
             end
             return nil
+        end,
+        vendorItems = function()
+            local out = {}
+            for key in pairs(type(get(prices, "vendor")) == "table" and prices.vendor or {}) do out[#out + 1] = key end
+            return out
         end,
         name = function(item)
             local info = ask(client, "itemInfo", item)
