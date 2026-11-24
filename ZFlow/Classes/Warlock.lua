@@ -365,6 +365,18 @@ local pack = {
     },
 
     options = {
+        -- P-SELFBUFF: the self-buff rows (Tests/Rotation/SelfBuffRows.lua):
+        -- rows are buff rules in the lists; none do not apply as a row (why);
+        -- waits are not suggested until the read named in on is there.
+        selfBuffs = {
+            rows = { "Demon Armor", "Demon Skin" },
+            none = {
+                { what = "Shadow Ward", why = "for a shadow spell coming at you; no read says one is" },
+            },
+            waits = {
+                { spell = "Soul Link", on = "N50", why = "a Demonology talent (first guess): asked for only once the talent probe says you have it" },
+            },
+        },
         crowdControl = { { spell = "Banish", creatures = { demon = true, elemental = true } } },
         threatDrop = { none = "no warlock spell drops threat at once" },
         -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,

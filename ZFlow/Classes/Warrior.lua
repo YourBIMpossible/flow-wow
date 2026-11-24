@@ -351,6 +351,16 @@ local pack = {
     },
 
     options = {
+        -- P-SELFBUFF: the self-buff rows (Tests/Rotation/SelfBuffRows.lua):
+        -- rows are buff rules in the lists; none do not apply as a row (why);
+        -- waits are not suggested until the read named in on is there.
+        selfBuffs = {
+            rows = { "Battle Shout", "Battle Stance", "Defensive Stance", "Berserker Stance" },
+            none = {
+                { what = "sharpening stone", why = "the use of an item, not a spell: the weapon enchant reminder (Rotation/Enchant.lua) says when it runs out" },
+            },
+            waits = {},
+        },
         crowdControl = { none = "Intimidating Shout and Hamstring do not hold one chosen second enemy" },
         threatDrop = { none = "no warrior ability drops threat" },
         -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,

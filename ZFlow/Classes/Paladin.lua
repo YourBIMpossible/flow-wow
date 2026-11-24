@@ -527,6 +527,17 @@ local pack = {
     },
 
     options = {
+        -- P-SELFBUFF: the self-buff rows (Tests/Rotation/SelfBuffRows.lua):
+        -- rows are buff rules in the lists; none do not apply as a row (why);
+        -- waits are not suggested until the read named in on is there.
+        selfBuffs = {
+            rows = { "Devotion Aura", "Retribution Aura", "Concentration Aura", "Righteous Fury",
+                     "Blessing of Might", "Seal of Righteousness" },
+            none = {},
+            waits = {
+                { spell = "Sanctity Aura", on = "N50", why = "a Retribution talent (first guess): asked for only once the talent probe says you have it" },
+            },
+        },
         crowdControl = { { spell = "Turn Undead", creatures = { undead = true } } },
         threatDrop = { none = "no paladin spell drops threat at once; Blessing of Salvation only slows it" },
         -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,

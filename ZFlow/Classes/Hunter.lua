@@ -350,6 +350,16 @@ local pack = {
     },
 
     options = {
+        -- P-SELFBUFF: the self-buff rows (Tests/Rotation/SelfBuffRows.lua):
+        -- rows are buff rules in the lists; none do not apply as a row (why);
+        -- waits are not suggested until the read named in on is there.
+        selfBuffs = {
+            rows = { "Aspect of the Hawk", "Aspect of the Monkey" },
+            none = {},
+            waits = {
+                { spell = "Trueshot Aura", on = "N50", why = "a Marksmanship talent (first guess): asked for only once the talent probe says you have it" },
+            },
+        },
         crowdControl = { { spell = "Scare Beast", creatures = { beast = true } } },
         threatDrop = { spell = "Feign Death" },
         -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,

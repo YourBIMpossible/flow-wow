@@ -339,6 +339,18 @@ local pack = {
     },
 
     options = {
+        -- P-SELFBUFF: the self-buff rows (Tests/Rotation/SelfBuffRows.lua):
+        -- rows are buff rules in the lists; none do not apply as a row (why);
+        -- waits are not suggested until the read named in on is there.
+        selfBuffs = {
+            rows = { "Frost Armor", "Ice Armor", "Mage Armor", "Arcane Intellect", "Amplify Magic", "Dampen Magic" },
+            none = {
+                { what = "Mana Shield", why = "it spends mana for health, and no health or mana amount is read (R.FROM_AMOUNT)" },
+            },
+            waits = {
+                { spell = "Ice Barrier", on = "N50", why = "a Frost talent (first guess): asked for only once the talent probe says you have it" },
+            },
+        },
         threatDrop = { none = "no mage spell drops threat at once; Ice Block stops damage, not threat" },
         -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,
         -- in order: the first you know names your tree (snapshot.tree,

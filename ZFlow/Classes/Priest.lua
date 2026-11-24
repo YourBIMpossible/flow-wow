@@ -337,6 +337,19 @@ local pack = {
     },
 
     options = {
+        -- P-SELFBUFF: the self-buff rows (Tests/Rotation/SelfBuffRows.lua):
+        -- rows are buff rules in the lists; none do not apply as a row (why);
+        -- waits are not suggested until the read named in on is there.
+        selfBuffs = {
+            rows = { "Power Word: Fortitude", "Inner Fire", "Power Word: Shield", "Shadowform" },
+            none = {},
+            waits = {
+                { spell = "Divine Spirit", on = "N50", why = "a Discipline talent (first guess): asked for only once the talent probe says you have it" },
+                { spell = "Fear Ward", on = "race read", why = "a spell of one race's priests (first guess): needs a read of your race" },
+                { spell = "Touch of Weakness", on = "race read", why = "a spell of one race's priests (first guess): needs a read of your race" },
+                { spell = "Shadowguard", on = "race read", why = "a spell of one race's priests (first guess): needs a read of your race" },
+            },
+        },
         -- N50 / GAP DRUID-2 (P-SELFBUFF): the known-spell tree. Talent spells,
         -- in order: the first you know names your tree (snapshot.tree,
         -- Rotation/Driver.lua). Which spell is a talent of which tree: a first

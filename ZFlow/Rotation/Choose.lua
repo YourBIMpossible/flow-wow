@@ -35,6 +35,7 @@ local _, ns = ...
 --   targetDebuffs { [name] = true }                  yours, on the target
 --   debuffTypes   { [type] = debuffName }            on you ("Poison", "Curse")
 --   debuffs       { [name] = secondsLeft or true }   on you, by name (PRIEST-3); nil when not read
+--   weaponEnchant { main = secondsLeft, true or false, off = ... }  your weapons (P-SELFBUFF); nil when not read
 --   tree          the talent tree a known talent spell marks (N50, pack options.trees); nil when not known
 --   current       { [spell] = true or false }        queued or toggled on (Attack, Maul)
 --   conjured      { [conjure spell] = count }        what it makes, in your bags
